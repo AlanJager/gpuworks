@@ -5,13 +5,16 @@ import "time"
 // PriorityClass is a request priority class (store.PriorityClass): a name
 // keys and clients refer to and a value, larger is more important.
 type PriorityClass struct {
-	Name        string    `json:"name"`
-	DisplayName string    `json:"display_name"`
-	Description string    `json:"description"`
-	Value       int       `json:"value"`
-	Builtin     bool      `json:"builtin"`
-	Default     bool      `json:"default"`
-	CreatedAt   time.Time `json:"created_at"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	Value       int    `json:"value"`
+	Builtin     bool   `json:"builtin"`
+	Default     bool   `json:"default"`
+	// Deletable says whether DELETE would take it: not built in, not the
+	// default, and named by no live key.
+	Deletable bool      `json:"deletable"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // PriorityClasses is GET /priority-classes: the classes, most important

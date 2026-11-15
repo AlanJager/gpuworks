@@ -1645,7 +1645,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/priority-classes` | 优先级列表，按数值从大到小：`items[]`（`name`、`display_name`、`description`、`value`、`builtin`、`default`、`created_at`），以及 `min_value`/`max_value`（数值范围，-100 到 100）、`policies`（key 可用的策略，界面按此展示）、`default_policy`、`ceiling_policies`（有上限的策略） | JWT |
+| GET | `/api/v1/priority-classes` | 优先级列表，按数值从大到小：`items[]`（`name`、`display_name`、`description`、`value`、`builtin`、`default`、`deletable`（能否删除：非内置、非默认且没有未吊销 key 绑定）、`created_at`），以及 `min_value`/`max_value`（数值范围，-100 到 100）、`policies`（key 可用的策略，界面按此展示）、`default_policy`、`ceiling_policies`（有上限的策略） | JWT |
 | POST | `/api/v1/priority-classes` | 新建优先级 `{"name":"gold","display_name":"Gold","description":"","value":30}`：`name` 为小写字母、数字和连字符并以字母开头、最多 32 个字符，`value` 必填且在范围内，否则 400 `PRIORITY_CLASS_INVALID`（`params.field`）；同名 409 `PRIORITY_CLASS_EXISTS`。返回 201 与新的优先级 | JWT（管理员） |
 | PUT | `/api/v1/priority-classes/{name}` | 修改 `display_name`、`description`、`value`（省略的不变）；内置优先级改数值 409 `PRIORITY_CLASS_BUILTIN`，不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |
 | DELETE | `/api/v1/priority-classes/{name}` | 删除优先级，成功 204；内置优先级 409 `PRIORITY_CLASS_BUILTIN`，默认优先级或仍有未吊销 key 绑定（作为优先级或上限）409 `PRIORITY_CLASS_IN_USE`，不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |

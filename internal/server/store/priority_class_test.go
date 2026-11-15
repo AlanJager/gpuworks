@@ -225,3 +225,58 @@ func TestPriorityClassLifecycle(t *testing.T) {
 		t.Fatalf("classes = %+v", rows)
 	}
 }
+
+// A class a live key names, as its class or its ceiling, is bound; a revoked
+// key binds nothing.
+func TestPriorityClassesBound(t *testing.T) {
+	st := newTestStore(t)
+	for _, c := range []*PriorityClass{{Name: "gold", Value: 30}, {Name: "silver", Value: 10}, {Name: "bronze", Value: 5}} {
+		if err := st.CreatePriorityClass(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prefixOf := func(name string) string {
+		t.Helper()
+		if _, err := st.CreateAPIKey(name, 0); err != nil {
+			t.Fatal(err)
+		}
+		keys, err := st.ListAPIKeys()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range keys {
+			if k.Name == name {
+				return k.Prefix
+			}
+		}
+		t.Fatalf("no key %s", name)
+		return ""
+	}
+	classed, ceilinged, revoked := prefixOf("classed"), prefixOf("ceilinged"), prefixOf("revoked")
+	if err := st.SetAPIKeyPriority(classed, APIKeyPriority{Class: "silver", Policy: priority.PolicyFixed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetAPIKeyPriority(ceilinged, APIKeyPriority{Ceiling: "gold", Policy: priority.PolicyWithinCeiling}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetAPIKeyPriority(revoked, APIKeyPriority{Class: "bronze", Policy: priority.PolicyFixed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RevokeAPIKey(revoked); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := st.PriorityClassesBound()
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := st.PriorityClassTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{"gold": true, "silver": true, "bronze": false, priority.High: false} {
+		c, _ := table.ByName(name)
+		if bound[c.ID] != want {
+			t.Fatalf("%s bound = %v, want %v (%v)", name, bound[c.ID], want, bound)
+		}
+	}
+}

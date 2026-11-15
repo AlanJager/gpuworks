@@ -31,8 +31,8 @@ func TestPriorityClassesAPI(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`"min_value":-100`, `"max_value":100`, `"policies":["within_ceiling","fixed","down_only"]`, `"default_policy":"within_ceiling"`, `"ceiling_policies":["within_ceiling"]`,
-		`{"name":"critical","display_name":"","description":"","value":40,"builtin":true,"default":false,"created_at":`,
-		`{"name":"normal","display_name":"","description":"","value":0,"builtin":true,"default":true,"created_at":`,
+		`{"name":"critical","display_name":"","description":"","value":40,"builtin":true,"default":false,"deletable":false,"created_at":`,
+		`{"name":"normal","display_name":"","description":"","value":0,"builtin":true,"default":true,"deletable":false,"created_at":`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("list lacks %s: %s", want, body)
@@ -70,6 +70,27 @@ func TestPriorityClassesAPI(t *testing.T) {
 		}
 	}
 	expect(rig.do(rig.session, http.MethodPost, "/api/v1/priority-classes", `{"name":"gold","display_name":"Gold","value":30}`), http.StatusCreated, "")
+	// deletable says what DELETE would do: a class of one's own, unbound.
+	deletable := func(name string) bool {
+		t.Helper()
+		var out struct {
+			Items []struct {
+				Name      string `json:"name"`
+				Deletable bool   `json:"deletable"`
+			} `json:"items"`
+		}
+		_ = json.Unmarshal(rig.do(rig.session, http.MethodGet, "/api/v1/priority-classes", "").Body.Bytes(), &out)
+		for _, c := range out.Items {
+			if c.Name == name {
+				return c.Deletable
+			}
+		}
+		t.Fatalf("no class %s", name)
+		return false
+	}
+	if !deletable("gold") || deletable("low") {
+		t.Fatalf("deletable: gold %v, low %v", deletable("gold"), deletable("low"))
+	}
 	expect(rig.do(rig.session, http.MethodPost, "/api/v1/priority-classes", `{"name":"gold","value":30}`), http.StatusConflict, messages.ErrorPriorityClassExists)
 	expect(rig.do(rig.session, http.MethodPost, "/api/v1/priority-classes", `{"name":"Gold","value":30}`), http.StatusBadRequest, messages.ErrorPriorityClassInvalid)
 	expect(rig.do(rig.session, http.MethodPost, "/api/v1/priority-classes", `{"name":"x","value":101}`), http.StatusBadRequest, messages.ErrorPriorityClassInvalid)
@@ -93,6 +114,9 @@ func TestPriorityClassesAPI(t *testing.T) {
 		t.Fatalf("key list = %s", list)
 	}
 	expect(rig.do(rig.session, http.MethodDelete, "/api/v1/priority-classes/gold", ""), http.StatusConflict, messages.ErrorPriorityClassInUse)
+	if deletable("gold") {
+		t.Fatal("a class a key is bound to reads as deletable")
+	}
 	// A user may still create a key, but not with a priority.
 	expect(rig.do(user, http.MethodPost, "/api/v1/apikeys", `{"name":"mine","priority":{"class":"critical"}}`), http.StatusForbidden, "")
 	expect(rig.do(rig.session, http.MethodPost, "/api/v1/apikeys", `{"name":"bad","priority":{"class":"platinum"}}`), http.StatusBadRequest, messages.ErrorPriorityClassInvalid)
@@ -117,6 +141,9 @@ func TestPriorityClassesAPI(t *testing.T) {
 		t.Fatalf("default = %d %s", rec.Code, rec.Body)
 	}
 	expect(rig.do(rig.session, http.MethodDelete, "/api/v1/priority-classes/gold", ""), http.StatusConflict, messages.ErrorPriorityClassInUse)
+	if deletable("gold") {
+		t.Fatal("the default reads as deletable")
+	}
 	expect(rig.do(rig.session, http.MethodPut, "/api/v1/priority-classes/nope/default", ""), http.StatusNotFound, messages.ErrorPriorityClassNotFound)
 	expect(rig.do(rig.session, http.MethodPut, "/api/v1/priority-classes/normal/default", ""), http.StatusOK, "")
 	if rec := rig.do(rig.session, http.MethodDelete, "/api/v1/priority-classes/gold", ""); rec.Code != http.StatusNoContent {

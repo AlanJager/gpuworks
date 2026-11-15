@@ -52,9 +52,11 @@ after(() => {
 const classes = (): PriorityClasses => ({
   min_value: -100, max_value: 100, policies: ["within_ceiling", "fixed", "down_only"], default_policy: "within_ceiling", ceiling_policies: ["within_ceiling"],
   items: [
-    { name: "critical", display_name: "", description: "", value: 40, builtin: true, default: false, created_at: "" },
-    { name: "gold", display_name: "Gold", description: "paying tenants", value: 30, builtin: false, default: false, created_at: "" },
-    { name: "normal", display_name: "", description: "", value: 0, builtin: true, default: true, created_at: "" },
+    { name: "critical", display_name: "", description: "", value: 40, builtin: true, default: false, deletable: false, created_at: "" },
+    { name: "gold", display_name: "Gold", description: "paying tenants", value: 30, builtin: false, default: false, deletable: true, created_at: "" },
+    { name: "normal", display_name: "", description: "", value: 0, builtin: true, default: true, deletable: false, created_at: "" },
+    // Named by a live key: the server says it cannot be deleted.
+    { name: "bound", display_name: "", description: "", value: 10, builtin: false, default: false, deletable: false, created_at: "" },
   ],
 });
 const wrap = (node: React.ReactNode) => render(<I18nextProvider i18n={i18n}>{node}<FeedbackHost /></I18nextProvider>);
@@ -65,7 +67,7 @@ test("the settings card lists the classes, and an administrator adds one, makes 
   let listed = classes();
   const calls: string[] = [];
   api.priorityClasses = async () => listed;
-  api.createPriorityClass = async (body) => { calls.push(`create ${body.name} ${body.value} ${body.display_name}`); listed = { ...listed, items: [...listed.items, { ...body, builtin: false, default: false, created_at: "" }] }; return listed.items.at(-1)!; };
+  api.createPriorityClass = async (body) => { calls.push(`create ${body.name} ${body.value} ${body.display_name}`); listed = { ...listed, items: [...listed.items, { ...body, builtin: false, default: false, deletable: true, created_at: "" }] }; return listed.items.at(-1)!; };
   api.setDefaultPriorityClass = async (name) => { calls.push(`default ${name}`); return listed; };
   api.deletePriorityClass = async (name) => { calls.push(`delete ${name}`); };
   wrap(<PrioritySettingsCard />);
@@ -81,6 +83,10 @@ test("the settings card lists the classes, and an administrator adds one, makes 
   assert.equal(within(normal).queryByRole("button", { name: "Delete" }), null);
   assert.equal(within(normal).queryByRole("button", { name: "Make default" }), null);
   assert.equal(within(screen.getByTestId("priority-class-critical")).queryByRole("button", { name: "Delete" }), null);
+  // Nor one the server says is in use.
+  const bound = screen.getByTestId("priority-class-bound");
+  assert.equal(within(bound).queryByRole("button", { name: "Delete" }), null);
+  within(bound).getByRole("button", { name: "Make default" });
 
   await user.click(await screen.findByRole("button", { name: "New class" }));
   await user.type(screen.getByLabelText("Name"), "silver");

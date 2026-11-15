@@ -2557,6 +2557,8 @@ export interface PriorityClass {
   value: number;
   builtin: boolean;
   default: boolean;
+  /** Whether DELETE would take it: decided by the server (built in, the default, or named by a live key). */
+  deletable: boolean;
   created_at: string;
 }
 

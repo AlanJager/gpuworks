@@ -16,9 +16,11 @@ import (
 // signed in may read them; only an administrator defines classes, picks the
 // default and binds keys, so no key can raise its own priority.
 
-func priorityClassDTO(c store.PriorityClass) dto.PriorityClass {
+// priorityClassDTO is a class as the API answers it; bound is whether a live
+// key names it.
+func priorityClassDTO(c store.PriorityClass, bound bool) dto.PriorityClass {
 	return dto.PriorityClass{Name: c.Name, DisplayName: c.DisplayName, Description: c.Description, Value: c.Value,
-		Builtin: c.Builtin, Default: c.IsDefault, CreatedAt: utcTime(c.CreatedAt)}
+		Builtin: c.Builtin, Default: c.IsDefault, Deletable: !c.Builtin && !c.IsDefault && !bound, CreatedAt: utcTime(c.CreatedAt)}
 }
 
 func (a *apiHandlers) listPriorityClasses(w http.ResponseWriter, r *http.Request) {
@@ -27,11 +29,16 @@ func (a *apiHandlers) listPriorityClasses(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	bound, err := a.d.Store.PriorityClassesBound()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
 	out := dto.PriorityClasses{Items: make([]dto.PriorityClass, 0, len(rows)), MinValue: store.PriorityClassMinValue, MaxValue: store.PriorityClassMaxValue,
 		DefaultPolicy: store.DefaultPriorityPolicy, Policies: store.PriorityPolicies(),
 		CeilingPolicies: store.PriorityCeilingPolicies()}
 	for _, row := range rows {
-		out.Items = append(out.Items, priorityClassDTO(row))
+		out.Items = append(out.Items, priorityClassDTO(row, bound[row.ID]))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -93,7 +100,7 @@ func (a *apiHandlers) createPriorityClass(w http.ResponseWriter, r *http.Request
 		writePriorityClassError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, priorityClassDTO(row))
+	writeJSON(w, http.StatusCreated, priorityClassDTO(row, false))
 }
 
 func (a *apiHandlers) updatePriorityClass(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +120,12 @@ func (a *apiHandlers) updatePriorityClass(w http.ResponseWriter, r *http.Request
 		writePriorityClassError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, priorityClassDTO(row))
+	bound, err := a.d.Store.PriorityClassesBound()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, priorityClassDTO(row, bound[row.ID]))
 }
 
 func (a *apiHandlers) deletePriorityClass(w http.ResponseWriter, r *http.Request) {

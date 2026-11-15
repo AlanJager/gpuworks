@@ -187,7 +187,7 @@ export default function PrioritySettingsCard() {
                           {t("priority.makeDefault")}
                         </Button>
                       )}
-                      {!c.builtin && !c.default && (
+                      {c.deletable && (
                         <Button size="sm" variant="ghost" onClick={() => remove(c)}>{t("priority.delete")}</Button>
                       )}
                     </span>

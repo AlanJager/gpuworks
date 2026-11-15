@@ -198,6 +198,27 @@ func (s *Store) UpdatePriorityClass(name string, update PriorityClassUpdate) (Pr
 // DeletePriorityClass removes a class no live key is bound to; a built-in
 // class or the default is refused. Revoked keys that named it lose the
 // binding, which no request can use any more.
+// PriorityClassesBound is the classes a live API key names, as its class or
+// its ceiling: DeletePriorityClass refuses them.
+func (s *Store) PriorityClassesBound() (map[uint]bool, error) {
+	var rows []struct {
+		Class, Ceiling *uint
+	}
+	if err := s.reader().Model(&APIKey{}).Select("priority_class_id AS class, priority_ceiling_class_id AS ceiling").
+		Where("revoked_at IS NULL AND (priority_class_id IS NOT NULL OR priority_ceiling_class_id IS NOT NULL)").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	bound := map[uint]bool{}
+	for _, r := range rows {
+		for _, id := range []*uint{r.Class, r.Ceiling} {
+			if id != nil {
+				bound[*id] = true
+			}
+		}
+	}
+	return bound, nil
+}
+
 func (s *Store) DeletePriorityClass(name string) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var c PriorityClass
