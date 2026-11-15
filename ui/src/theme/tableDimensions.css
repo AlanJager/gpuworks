@@ -1,8 +1,10 @@
-/* Product table density. Keep Zeron controls and their interaction targets intact. */
-:root { --table-header-height: 44px; }
-[data-slot="table"] [data-slot="table-head"],
-.ant-table-wrapper .ant-table-thead > tr > th {
-  height: var(--table-header-height);
+/* A table header is as tall as the shortest body row of its density: a single
+   line of text. Zeron and default antd headers already are; the small antd
+   header carries a taller title box, so it is held to its row height: the body
+   line plus antd's 6px small cell padding on both sides and the 1px row rule. */
+:root { --table-row-min-height-sm: calc(var(--line-height-body) + 13px); }
+.ant-table-wrapper .ant-table-small .ant-table-thead > tr > th {
+  height: var(--table-row-min-height-sm);
   padding-block: 0;
   vertical-align: middle;
 }

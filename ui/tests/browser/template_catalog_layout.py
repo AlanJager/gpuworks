@@ -122,7 +122,8 @@ class TemplateCatalogLayout(unittest.TestCase):
                     expect(page.get_by_text('Chip models', exact=True)).to_be_visible()
                     expect(page.get_by_text('Detected in this environment', exact=True)).to_have_count(0)
                     heights = page.locator('[data-slot="table-head"]').evaluate_all('els=>els.map(el=>el.getBoundingClientRect().height)')
-                    self.assertTrue(all(abs(height-44) <= 1 for height in heights), heights)
+                    shortest_row = min(page.locator('[data-slot="table-body"] tr').evaluate_all('els=>els.map(el=>el.getBoundingClientRect().height)'))
+                    self.assertTrue(all(abs(height-shortest_row) <= 1 for height in heights), (heights, shortest_row))
                     self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
                     container = page.locator('[data-slot="table-container"]')
                     if width == 1280:
