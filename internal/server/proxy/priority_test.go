@@ -556,9 +556,22 @@ func TestEvaluationRequestsAreRecordedAsTheirOwnSource(t *testing.T) {
 	if !slices.Equal(sources, want) {
 		t.Fatalf("sources = %v, want %v", sources, want)
 	}
+	mu.Unlock()
+	// An API caller claiming a run is still an API caller, and its claim
+	// goes no further either.
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"s","messages":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(loadgen.BenchmarkRunHeader, "12")
+	if rec, _, _, _ := rig.sendRequest(t, rig.key(t, store.APIKeyPriority{}), req); rec.Code != http.StatusOK {
+		t.Fatalf("api = %d", rec.Code)
+	}
+	mu.Lock()
+	if sources[len(sources)-1] != uxrecord.SourceAPI {
+		t.Fatalf("api source = %v", sources[len(sources)-1])
+	}
 	rig.mu.Lock()
 	defer rig.mu.Unlock()
-	if !slices.Equal(rig.bench, []string{"", "", ""}) {
+	if !slices.Equal(rig.bench, []string{"", "", "", ""}) {
 		t.Fatalf("the engine got the run mark: %q", rig.bench)
 	}
 }

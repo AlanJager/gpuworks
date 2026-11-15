@@ -96,12 +96,14 @@ type MonitorRequest struct {
 	EngineDecodeMS  *int32 `json:"engine_decode_ms"`
 
 	// TTFTMS is the time from receipt to the first generated output,
-	// reasoning included; null for a reply that does not stream, or one
-	// still waiting for it.
+	// reasoning included; null for a reply that does not stream, one still
+	// waiting for it, and a stream that ended without one.
 	TTFTMS *int32 `json:"ttft_ms"`
-	// TPOTMS is the time per output token after the first, and
-	// PrefillTokS and DecodeTokS the prefill and decode speeds
-	// (uxrecord.SpeedsOf); null when a figure they need is missing, and for
+	// TPOTMS is the decode time per output token, and PrefillTokS and
+	// DecodeTokS the prefill and decode speeds (uxrecord.SpeedsOf): decode is
+	// the engine's decode time over the output when the engine reports it,
+	// else the stream from the first token to the last over the tokens after
+	// the first; null when a figure they need is missing, and for
 	// a request still in flight.
 	TPOTMS      *float64 `json:"tpot_ms"`
 	PrefillTokS *float64 `json:"prefill_tok_s"`
@@ -143,7 +145,7 @@ type MonitorRequestPD struct {
 // waiting, thinking, answering or tail, in milliseconds. Stage is the part of
 // the request's time it belongs to: first_token (the segments up to the
 // first token, which add up to ttft_ms), decode or tail; empty for a reply
-// that does not stream.
+// that does not stream and a stream that ended without a token.
 type MonitorRequestSegment struct {
 	Kind  string  `json:"kind"`
 	MS    float64 `json:"ms"`

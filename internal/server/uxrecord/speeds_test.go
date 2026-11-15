@@ -12,7 +12,7 @@ func TestStageOf(t *testing.T) {
 			t.Errorf("%s = %q, want %q", kind, got, want)
 		}
 		if got := StageOf(kind, false); got != "" {
-			t.Errorf("%s without a stream = %q", kind, got)
+			t.Errorf("%s unstaged = %q", kind, got)
 		}
 	}
 	if len(SegmentKinds()) != 9 {

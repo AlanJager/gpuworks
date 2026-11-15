@@ -227,6 +227,35 @@ func TestRequestsHistoryMapsRecords(t *testing.T) {
 	}
 }
 
+// A stream that ended without a token, an upstream error say, has no first
+// token to split at: no TTFT, and its segments sit under no stage, even when
+// the engine reported its queue, prefill and decode.
+func TestRequestsHistoryStreamWithoutTokenHasNoStages(t *testing.T) {
+	for _, r := range []uxrecord.Request{
+		{ID: "err", Stream: true, DispatchMS: 1, FirstByteMS: uxrecord.Unknown, FirstThinkMS: uxrecord.Unknown, FirstAnswerMS: uxrecord.Unknown,
+			LastChunkMS: uxrecord.Unknown, EndMS: 3000, Status: 502, Outcome: uxrecord.OutcomeUpstreamError, CachedTokens: uxrecord.Unknown,
+			ReasoningTokens: uxrecord.Unknown, EngineQueueMS: uxrecord.Unknown, EnginePrefillMS: uxrecord.Unknown, EngineDecodeMS: uxrecord.Unknown},
+		{ID: "empty", Stream: true, DispatchMS: 1, FirstByteMS: 20, FirstThinkMS: uxrecord.Unknown, FirstAnswerMS: uxrecord.Unknown,
+			LastChunkMS: 900, EndMS: 950, Events: 3, Status: 200, FinishReason: "stop", Usage: true, PromptTokens: 100, CompletionTokens: 5,
+			CachedTokens: 0, ReasoningTokens: uxrecord.Unknown, EngineQueueMS: 10, EnginePrefillMS: 40, EngineDecodeMS: 800},
+	} {
+		src := &fakeRequests{deployments: map[uint]bool{7: true}, history: []uxrecord.Request{r}, names: map[uint]string{}}
+		out, err := requestsService(src).Requests(context.Background(), 7, dto.MonitorRequestsQuery{View: "history", RangeMS: 3_600_000, Limit: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := out.Requests[0]
+		if got.TTFTMS != nil || len(got.Segments) == 0 {
+			t.Fatalf("%s: ttft %v segments %v", r.ID, got.TTFTMS, got.Segments)
+		}
+		for _, s := range got.Segments {
+			if s.Stage != "" {
+				t.Fatalf("%s: segments %v, want no stage", r.ID, got.Segments)
+			}
+		}
+	}
+}
+
 func TestRequestsErrors(t *testing.T) {
 	ctx := context.Background()
 	if _, err := requestsService(nil).Requests(ctx, 7, dto.MonitorRequestsQuery{View: "live"}); err != errRequestsNotFound {

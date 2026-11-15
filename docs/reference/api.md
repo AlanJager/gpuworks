@@ -1936,9 +1936,9 @@ trace id 为 32 位十六进制、不区分大小写，查询该 trace 的全部
 
 每条记录的关键含义如下：
 
-- `result` 是请求结果；`segments[{kind,ms,stage}]` 是阶段耗时，合计等于端到端时间或在途时长；`stage` 是该段所属的部分：`first_token`（首个 token 之前，合计等于 `ttft_ms`）、`decode` 或 `tail`，非流式回复为空。
+- `result` 是请求结果；`segments[{kind,ms,stage}]` 是阶段耗时，合计等于端到端时间或在途时长；`stage` 是该段所属的部分：`first_token`（首个 token 之前，合计等于 `ttft_ms`）、`decode` 或 `tail`；非流式回复、以及没出过 token 就结束的流式请求为空。
 - `source` 是 `api`、`playground`、`batch` 或 `evaluation`（从 server 发压的评测）。
-- `ttft_ms` 是收到请求到首个生成内容（含思考）的时间，非流式或仍在等首字时为 `null`；`tpot_ms`、`prefill_tok_s`、`decode_tok_s` 是首个之后每个输出 token 的时间与 Prefill / Decode 速度，缺少所需数据或请求进行中时为 `null`。
+- `ttft_ms` 是收到请求到首个生成内容（含思考）的时间，非流式、仍在等首字或没出过 token 就结束时为 `null`；`tpot_ms`、`prefill_tok_s`、`decode_tok_s` 是 Decode 阶段每个输出 token 的时间与 Prefill / Decode 速度（引擎上报了 decode 耗时就用它除以输出 token 数，否则用首个到最后一个 token 的时间除以首个之后的 token 数），缺少所需数据或请求进行中时为 `null`。
   阶段名称、边界与计算方式见[请求阶段](request-timeline.md#2-阶段)。
 - `pd` 仅 PD 请求有值，其余为 `null`。包含 `prefill_instance_uuid`、`prefill_ms`、`prefill_queue_ms`、`prefill_compute_ms` 和 `fallback`；
   降级时 prefill 实例为空，未报告的时长为 `null`。并发交接的 `prefill_ms` 为 `null`；顺序交接的请求仍在 prefill 时也为 `null`，转发给 decode 后即使请求尚未结束，也可返回该阶段耗时。

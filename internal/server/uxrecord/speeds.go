@@ -15,11 +15,13 @@ const (
 	StageTail       Stage = "tail"
 )
 
-// StageOf is the stage a segment of a streamed request belongs to. A reply
-// that does not stream shows no first token, so its segments belong to no
-// stage (""); a streamed one still waiting is in its first-token stage.
-func StageOf(kind SegmentKind, stream bool) Stage {
-	if !stream {
+// StageOf is the stage a segment belongs to. Only a streamed request that
+// has its first token, or is still waiting for it, is split into stages; a
+// reply that does not stream, or a stream that ended without a token (an
+// error, a disconnect, an empty reply), has no first token to split at, so
+// its segments belong to no stage ("").
+func StageOf(kind SegmentKind, staged bool) Stage {
+	if !staged {
 		return ""
 	}
 	switch kind {

@@ -106,11 +106,18 @@ func TestBenchmarkPriorityClassNeedsTheGateway(t *testing.T) {
 // Every request of a server-origin run says which run it is, so the gateway
 // records it as an evaluation's, and asks for the run's class when it has one.
 func TestBenchmarkRequestHeader(t *testing.T) {
-	h := benchmarkRequestHeader(12, "")
+	h := benchmarkRequestHeader(12, "", true)
 	if h.Get(loadgen.BenchmarkRunHeader) != "12" || h.Get(loadgen.PriorityClassHeader) != "" {
 		t.Fatalf("no class = %v", h)
 	}
-	if h := benchmarkRequestHeader(12, "high"); h.Get(loadgen.PriorityClassHeader) != "high" || h.Get(loadgen.BenchmarkRunHeader) != "12" {
+	if h := benchmarkRequestHeader(12, "high", true); h.Get(loadgen.PriorityClassHeader) != "high" || h.Get(loadgen.BenchmarkRunHeader) != "12" {
 		t.Fatalf("class = %v", h)
+	}
+	// An external endpoint is not told the run.
+	if h := benchmarkRequestHeader(12, "high", false); h.Get(loadgen.BenchmarkRunHeader) != "" || h.Get(loadgen.PriorityClassHeader) != "high" {
+		t.Fatalf("external with class = %v", h)
+	}
+	if h := benchmarkRequestHeader(12, "", false); h != nil {
+		t.Fatalf("external = %v, want none", h)
 	}
 }

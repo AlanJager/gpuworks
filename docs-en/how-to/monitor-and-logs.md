@@ -61,7 +61,7 @@ Both **History** and **In flight** can be filtered by API key and replica. Each 
 the row ends with `TTFT · total`, or `TTFT · elapsed` for a request in flight; one still waiting for its first token, or a reply that does not stream, shows only its duration.
 Hovering, keyboard focus and the request detail list the time as a tree: the total, split into TTFT (gateway, engine preprocessing, queue, Prefill and so on) and Decode (thinking, answering), then the Prefill / Decode speeds, TPOT, the longest pause and the finish reason.
 Figures whose measurement needs explaining (such as engine preprocessing or an unsplit wait) carry an info icon. The chunk count on the output line counts the streamed chunks carrying generated text; one chunk may carry several tokens, so it can be below the output token count.
-Requests of an evaluation measured from the server are recorded as **Evaluation**, shown separately in the request list and in the sources of usage analytics.
+Requests of an evaluation an administrator measures from the server are recorded as **Evaluation**, shown separately in the request list and in the sources of usage analytics.
 
 ### View In-Flight Requests and Stalls
 

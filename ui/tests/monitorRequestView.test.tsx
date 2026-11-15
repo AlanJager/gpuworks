@@ -191,7 +191,7 @@ test("history: rows split the wait with the engine's stats and say which replica
   assert.ok(within(detail).getByRole("button", { name: /tokenizing, waiting for the current step/ }));
   assert.ok(screen.getByText("Prefill 5714 tok/s"));
   assert.ok(screen.getByText("Decode 201 tok/s"));
-  assert.ok(screen.getByText("TPOT 5 ms"));
+  assert.ok(screen.getByText("TPOT 5.0 ms"));
   assert.ok(screen.getByText("Output 201 tokens · 101 chunks"));
   assert.ok(screen.getByText("Input 3000 tokens · cached 1000 · uncached 2000"));
 

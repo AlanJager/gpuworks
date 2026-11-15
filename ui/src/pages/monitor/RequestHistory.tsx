@@ -178,6 +178,7 @@ export default function RequestHistory({
             size="small"
             min={0}
             step={100}
+            precision={0}
             aria-label={t("requests.ttftMin")}
             placeholder={t("requests.ttftMin")}
             value={filters.minTtftMs}
@@ -188,6 +189,7 @@ export default function RequestHistory({
             size="small"
             min={0}
             step={100}
+            precision={0}
             aria-label={t("requests.ttftMax")}
             placeholder={t("requests.ttftMax")}
             value={filters.maxTtftMs}

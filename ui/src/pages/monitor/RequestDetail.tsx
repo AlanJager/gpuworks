@@ -96,6 +96,12 @@ function rate(value: number): string {
   return value >= 100 ? String(Math.round(value)) : value.toFixed(1);
 }
 
+// tpot keeps a decimal: a fast decode takes a few milliseconds a token, and
+// whole milliseconds would read 3 ms for 300 tok/s and 0 ms past 2000.
+function tpot(ms: number): string {
+  return ms >= 100 ? formatMS(ms) : `${ms.toFixed(1)} ms`;
+}
+
 export function RequestDetailLines({ r, replica }: { r: MonitorRequest; replica: string }) {
   const { t } = useTranslation("monitoring");
   const caller = callerLabel(r, t);
@@ -125,7 +131,7 @@ export function RequestDetailLines({ r, replica }: { r: MonitorRequest; replica:
   const after: Line[] = [];
   if (r.prefill_tok_s != null) after.push({ text: t("requests.detail.prefillRate", { speed: rate(r.prefill_tok_s) }), depth: 0 });
   if (r.decode_tok_s != null) after.push({ text: t("requests.detail.decodeRate", { speed: rate(r.decode_tok_s) }), depth: 0 });
-  if (r.tpot_ms != null) after.push({ text: t("requests.detail.tpot", { time: formatMS(r.tpot_ms) }), depth: 0 });
+  if (r.tpot_ms != null) after.push({ text: t("requests.detail.tpot", { time: tpot(r.tpot_ms) }), depth: 0 });
   if (r.pd?.fallback) after.push({ text: t("requests.detail.pdFallback", { reason: r.pd.fallback }), depth: 0 });
   if (r.phase === "done") {
     if (r.max_gap_ms != null && r.events > 1) after.push({ text: t("requests.detail.maxGap", { time: formatMS(r.max_gap_ms) }), depth: 0 });

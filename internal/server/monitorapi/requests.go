@@ -207,7 +207,7 @@ func liveDTO(r uxrecord.Live, names map[uint]string) dto.MonitorRequest {
 		Stream: r.Stream, BodyBytes: r.BodyBytes, Images: r.Images,
 		DispatchMS: ms(r.DispatchMS), FirstThinkMS: ms(r.FirstThinkMS), FirstAnswerMS: ms(r.FirstAnswerMS),
 		LastChunkMS: ms(r.LastEventMS), Events: r.Events, ThinkEvents: r.ThinkEvents, Weight: 1,
-		Segments: segmentsDTO(uxrecord.LiveSegments(r), r.Stream),
+		Segments: segmentsDTO(uxrecord.LiveSegments(r), r.Stream), // still waiting is the first-token stage so far
 		TTFTMS:   ttftMS(r.Stream, r.FirstThinkMS, r.FirstAnswerMS),
 		PD:       livePDDTO(r),
 	}
@@ -237,10 +237,12 @@ func pdDTOOf(pd *uxrecord.PDStage) *dto.MonitorRequestPD {
 	}
 }
 
-func segmentsDTO(segments []uxrecord.Segment, stream bool) []dto.MonitorRequestSegment {
+// segmentsDTO labels each segment with its stage when the request is staged
+// (see uxrecord.StageOf).
+func segmentsDTO(segments []uxrecord.Segment, staged bool) []dto.MonitorRequestSegment {
 	out := make([]dto.MonitorRequestSegment, len(segments))
 	for i, s := range segments {
-		out[i] = dto.MonitorRequestSegment{Kind: string(s.Kind), MS: s.MS, Stage: string(uxrecord.StageOf(s.Kind, stream))}
+		out[i] = dto.MonitorRequestSegment{Kind: string(s.Kind), MS: s.MS, Stage: string(uxrecord.StageOf(s.Kind, staged))}
 	}
 	return out
 }
@@ -273,7 +275,7 @@ func recordDTO(r uxrecord.Request, names map[uint]string) dto.MonitorRequest {
 		Events: r.Events, ThinkEvents: r.ThinkEvents, MaxGapMS: ms(r.MaxGapMS),
 		Status: &status, Outcome: r.Outcome.String(), FinishReason: r.FinishReason, Result: string(uxrecord.ResultOf(r)),
 		EngineQueueMS: ms(r.EngineQueueMS), EnginePrefillMS: ms(r.EnginePrefillMS), EngineDecodeMS: ms(r.EngineDecodeMS),
-		Weight: max(r.Weight, 1), Segments: segmentsDTO(uxrecord.SegmentsOf(r), r.Stream), PD: pdDTOOf(r.PD),
+		Weight: max(r.Weight, 1), Segments: segmentsDTO(uxrecord.SegmentsOf(r), r.Stream && r.FirstTokenMS() >= 0), PD: pdDTOOf(r.PD),
 		TTFTMS: ttftMS(r.Stream, r.FirstThinkMS, r.FirstAnswerMS),
 	}
 	speeds := uxrecord.SpeedsOf(r)
