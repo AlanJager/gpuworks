@@ -1171,6 +1171,7 @@ type imageToleranceDriver struct {
 	present   map[string]bool
 	tags      [][2]string
 	runImages []string
+	runSpecs  []runtime.WorkloadSpec
 	// hook runs at the start of every pull, to model an image that appears
 	// while the pull is failing.
 	hook func(ref string)
@@ -1237,6 +1238,7 @@ func (d *imageToleranceDriver) TagImage(_ context.Context, source, target string
 func (d *imageToleranceDriver) Run(_ context.Context, ws runtime.WorkloadSpec) (string, error) {
 	d.runCalls++
 	d.runImages = append(d.runImages, ws.Image)
+	d.runSpecs = append(d.runSpecs, ws)
 	d.status = runtime.Status{Exists: true, Running: true}
 	return "container", nil
 }

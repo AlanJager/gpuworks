@@ -375,6 +375,7 @@ func buildRunArgs(spec runtime.WorkloadSpec) []string {
 	}
 
 	args = append(args, spec.DockerArgs...)
+	args = append(args, runtime.LabelArgs(spec.Labels)...)
 
 	if spec.ShmBytes > 0 {
 		args = append(args, "--shm-size", strconv.FormatInt(spec.ShmBytes, 10))

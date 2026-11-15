@@ -402,3 +402,17 @@ func TestDetectSeparatesADaemonNotReadyFromOneThisAgentMayNotUse(t *testing.T) {
 		t.Fatal("a docker info that outlived its timeout is a busy daemon")
 	}
 }
+
+func TestBuildRunArgsRendersWorkloadLabels(t *testing.T) {
+	args := buildRunArgs(runtime.WorkloadSpec{
+		Name:   "gpuworks-test",
+		Image:  "vllm/vllm-openai:latest",
+		Labels: map[string]string{"gpuworks.server": "https://gw.example:8800", "gpuworks.instance": "inst-1"},
+	})
+
+	assertContainsPair(t, args, "--label", "gpuworks.server=https://gw.example:8800")
+	assertContainsPair(t, args, "--label", "gpuworks.instance=inst-1")
+	if i := slices.Index(args, "vllm/vllm-openai:latest"); i < 0 || slices.Index(args, "--label") > i {
+		t.Fatalf("labels must come before the image: %q", args)
+	}
+}

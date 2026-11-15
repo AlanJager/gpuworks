@@ -345,8 +345,8 @@
   {
     "path": "reference/deployment-launch-sources.md",
     "block_index": 0,
-    "source_sha256": "5c8bd8e4936da6915893b819fa58a778f10e82527ec75b4395ddd7eeb845bafe",
-    "translation_sha256": "761f2a0792155090dc26fbfc96b99961c9a7568083783a88535d63abd202913d",
+    "source_sha256": "bb1bf7727f072376c3c7e1ad0f8662c7b7d72d881f032a66b71f42ab5475a198",
+    "translation_sha256": "aa31ab60fc8387786ba75ad63414f7e99f82c785baeae8a33e9304231006194b",
     "reason": "Translate explanatory comments and placeholders in runtime assembly illustration."
   },
   {

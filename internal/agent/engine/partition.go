@@ -120,7 +120,7 @@ func (e *Engine) BuildPartitionProbeWorkload(ctx context.Context, backend, image
 		// Exercise its actual shared-compute path in the behavior probe.
 		spec.SMLimitPct = 0
 	}
-	ws := toWorkloadSpec(spec, "gpuworks-partition-probe-"+sanitizeID(backend)+"-"+strconv.Itoa(gpuIndex))
+	ws := e.workloadSpec(spec, "gpuworks-partition-probe-"+sanitizeID(backend)+"-"+strconv.Itoa(gpuIndex))
 	// On Kubernetes (e.hostRoot is set only there) the probe is a pod. It
 	// needs no network, and the host's network, as instance pods use, keeps
 	// it from depending on the cluster's network plugin. Docker keeps its

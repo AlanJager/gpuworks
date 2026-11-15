@@ -146,14 +146,18 @@ type Mount struct {
 
 // WorkloadSpec is a driver-agnostic container spec (plan §3).
 type WorkloadSpec struct {
-	Name        string
-	Image       string
-	Cmd         []string // args (appended to the image entrypoint)
-	Entrypoint  []string // override entrypoint (empty = image default)
-	Env         map[string]string
-	Mounts      []Mount
-	GPUIndexes  []int // physical GPU indexes to expose
-	DockerArgs  []string
+	Name       string
+	Image      string
+	Cmd        []string // args (appended to the image entrypoint)
+	Entrypoint []string // override entrypoint (empty = image default)
+	Env        map[string]string
+	Mounts     []Mount
+	GPUIndexes []int // physical GPU indexes to expose
+	DockerArgs []string
+	// Labels are container labels naming who launched the workload (see
+	// engine.WorkloadOwner). Runtimes with labels (docker, nerdctl) render
+	// them; the others ignore them. They identify, they never select.
+	Labels      map[string]string
 	HostNetwork bool
 	ShmBytes    int64
 	Ports       []int // published ports (ignored under host network)
