@@ -134,7 +134,7 @@
   "reference/inference-metrics.md": "ac47d7ddcc67202ff5b51459689eb4702fd0855b091abe2028af74c2f6ca097f",
   "reference/install-layout.md": "a2e6bf1cd23aeab1753c43277b72ab5b00444066347045b8bd863ef6bf26e3a3",
   "reference/network-metrics.md": "c0738811e1db07438a70b886d25262bdf7029d77e123fb0ff4c4b5cc768d2370",
-  "reference/openai-gateway.md": "6484e9818fed229271165f85367ee6c41d4e9a31ee721a39914303c9e368e19d",
+  "reference/openai-gateway.md": "7fba94d40209ffcee59fb08b8c33599a399cb243cca291cca288b57663dd0ec1",
   "reference/request-timeline.md": "9db73f5fbec69ed1ca22756ced70a6b101272b5c5d956062e5efaee399c6a624",
   "reference/security.md": "d87eff96b106525214b2d6a0ab4e2b6f711e6afcc2424bc80b215ae1c552b25c",
   "reference/support-matrix.md": "131e04a4d10494f34199d8530469c21656e2f9220d6af7673056427db9f9af2c",
@@ -154,5 +154,5 @@
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0064-telemetry-stream-on-the-data-lane.md": "ceba2d6e3e7fe379d5fd7364138dc06d635c137c143335caaf5f18286d88cd06",
   "adr/0065-official-catalog-read-tolerantly.md": "f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0",
-  "explanation/request-priority.md": "4200b5a155294e300b1c17d49109c18b59f37463f5104edc2fdb7f9ebe42cb1c"
+  "explanation/request-priority.md": "b91967809194409fbdfd79b33c0c73931c3ad21ab8e8fc77ff180500dde72a28"
 }

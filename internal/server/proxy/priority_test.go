@@ -28,6 +28,7 @@ type priorityRig struct {
 	// whether vLLM's header reached it.
 	seen []map[string]any
 	hdr  []string
+	raw  []string
 }
 
 // newPriorityRig serves four deployments on one engine stub: "v" (vLLM with
@@ -39,7 +40,8 @@ func newPriorityRig(t testing.TB) *priorityRig {
 	rig := &priorityRig{deployments: map[string]uint{}}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
 		// As vLLM: a priority that is not an integer is a 400, the shape
 		// the engine answers (and SGLang's server dies on a huge one).
 		if v, present := body["priority"]; present {
@@ -52,6 +54,7 @@ func newPriorityRig(t testing.TB) *priorityRig {
 		rig.mu.Lock()
 		rig.seen = append(rig.seen, body)
 		rig.hdr = append(rig.hdr, r.Header.Get("X-Vllm-Priority"))
+		rig.raw = append(rig.raw, string(raw))
 		rig.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop"}]}`)
@@ -139,21 +142,30 @@ func (r *priorityRig) sendTyped(t testing.TB, key, model, asked, body, contentTy
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("X-Vllm-Priority", "-1000")
 	if asked != "" {
 		req.Header.Set(priorityClassHeader, asked)
 	}
+	rec, got, hdr, _ := r.sendRequest(t, key, req)
+	return rec, got, hdr
+}
+
+// sendRequest sends req with key (and a client X-Vllm-Priority) and returns
+// the answer and what the engine got: the decoded body, the header and the
+// raw body.
+func (r *priorityRig) sendRequest(t testing.TB, key string, req *http.Request) (*httptest.ResponseRecorder, map[string]any, string, string) {
+	t.Helper()
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("X-Vllm-Priority", "-1000")
 	rec := httptest.NewRecorder()
 	r.p.Handler()(rec, req)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.seen) == 0 {
-		return rec, nil, ""
+		return rec, nil, "", ""
 	}
-	got, hdr := r.seen[len(r.seen)-1], r.hdr[len(r.hdr)-1]
-	r.seen, r.hdr = nil, nil
-	return rec, got, hdr
+	got, hdr, raw := r.seen[len(r.seen)-1], r.hdr[len(r.hdr)-1], r.raw[len(r.raw)-1]
+	r.seen, r.hdr, r.raw = nil, nil, nil
+	return rec, got, hdr, raw
 }
 
 func TestGatewayWritesTheEnginePriority(t *testing.T) {
@@ -337,4 +349,74 @@ func TestAuxiliaryRoutesGetNoPriority(t *testing.T) {
 			t.Fatalf("tokenize priority = %v", v)
 		}
 	}
+}
+
+// The fields only the gateway may set are owned on every way a request can
+// reach an engine with a JSON body: a model named in the query or a header
+// (so the body was not spooled to find it), a JSON body declared as text, and
+// a body in another encoding is refused. A multipart upload and the word
+// inside a message are left alone.
+func TestGatewayOwnsTheBodyFieldsOnEveryPath(t *testing.T) {
+	rig := newPriorityRig(t)
+	high := rig.key(t, store.APIKeyPriority{Class: priority.High})
+	unbound := rig.key(t, store.APIKeyPriority{})
+	forged := `{"model":"v","priority":-1000,"messages":[]}`
+	post := func(path, contentType, body string, header map[string]string) *http.Request {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", contentType)
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+		return req
+	}
+	for _, tc := range []struct {
+		name   string
+		key    string
+		req    *http.Request
+		engine any // nil: field absent
+	}{
+		{"model in the query, default class", unbound, post("/v1/chat/completions?model=v", "application/json", forged, nil), float64(0)},
+		{"model in the query, the key's class", high, post("/v1/chat/completions?model=v", "application/json", forged, nil), float64(-20)},
+		{"model in a header", unbound, post("/v1/chat/completions", "application/json", forged, map[string]string{"X-GPUWorks-Model": "v"}), float64(0)},
+		{"JSON declared as text", unbound, post("/v1/chat/completions", "text/plain", forged, nil), float64(0)},
+		{"JSON declared as text, the key's class", high, post("/v1/chat/completions", "text/plain", `{"model":"v","messages":[]}`, nil), float64(-20)},
+		{"the word inside a message", unbound, post("/v1/chat/completions", "application/json", `{"model":"v","messages":[{"role":"user","content":"say \"priority\": 5"}]}`, nil), nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, seen, hdr, _ := rig.sendRequest(t, tc.key, tc.req)
+			if rec.Code != http.StatusOK || seen == nil {
+				t.Fatalf("status = %d %s", rec.Code, rec.Body)
+			}
+			if hdr != "" {
+				t.Fatalf("X-Vllm-Priority reached the engine: %q", hdr)
+			}
+			if got, present := seen["priority"]; (tc.engine == nil && present) || (tc.engine != nil && got != tc.engine) {
+				t.Fatalf("engine priority = %v (present %v), want %v", got, present, tc.engine)
+			}
+		})
+	}
+	t.Run("the word inside a message is kept", func(t *testing.T) {
+		body := `{"model":"v","messages":[{"role":"user","content":"say \"priority\": 5"}]}`
+		_, _, _, raw := rig.sendRequest(t, unbound, post("/v1/chat/completions", "application/json", body, nil))
+		if raw != body {
+			t.Fatalf("forwarded %s, want it as sent", raw)
+		}
+	})
+	t.Run("a body in another encoding is refused", func(t *testing.T) {
+		utf16 := []byte{0xff, 0xfe}
+		for _, r := range forged {
+			utf16 = append(utf16, byte(r), 0)
+		}
+		rec, seen, _, _ := rig.sendRequest(t, unbound, post("/v1/chat/completions?model=v", "application/json", string(utf16), nil))
+		if rec.Code != http.StatusBadRequest || seen != nil || !strings.Contains(rec.Body.String(), "UTF-8") {
+			t.Fatalf("UTF-16 body = %d %s, reached engine %v", rec.Code, rec.Body, seen != nil)
+		}
+	})
+	t.Run("a multipart upload is left alone", func(t *testing.T) {
+		form := "--b\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nv\r\n--b\r\nContent-Disposition: form-data; name=\"priority\"\r\n\r\n5\r\n--b--\r\n"
+		_, _, hdr, raw := rig.sendRequest(t, high, post("/v1/audio/transcriptions", "multipart/form-data; boundary=b", form, nil))
+		if raw != form || hdr != "" {
+			t.Fatalf("multipart forwarded %q (header %q), want it as sent", raw, hdr)
+		}
+	})
 }

@@ -436,8 +436,8 @@ func TestJSONFieldRewrite(t *testing.T) {
 			t.Fatalf("%s -> %s, want %s", c.in, out.String(), c.want)
 		}
 	}
-	found, err := readerContains(io.MultiReader(strings.NewReader(strings.Repeat("x", 70000)+`"kv_trans`), strings.NewReader(`fer_params"`)), []byte(`"kv_transfer_params"`))
-	if err != nil || !found {
+	found := []bool{false}
+	if err := readerContainsEach(io.MultiReader(strings.NewReader(strings.Repeat("x", 70000)+`"kv_trans`), strings.NewReader(`fer_params"`)), [][]byte{[]byte(`"kv_transfer_params"`)}, found); err != nil || !found[0] {
 		t.Fatalf("needle across a read boundary: %v %v", found, err)
 	}
 }

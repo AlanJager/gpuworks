@@ -33,31 +33,70 @@ func isJSONRequest(r *http.Request) bool {
 	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
 }
 
-// readerContains reports whether needle occurs in the stream, reading it in
-// chunks so a large spooled body is never held in memory at once.
-func readerContains(source io.Reader, needle []byte) (bool, error) {
-	buf := make([]byte, 64<<10)
-	var carry []byte
-	for {
-		n, err := source.Read(buf)
-		if n > 0 {
-			window := append(carry, buf[:n]...)
-			if bytes.Contains(window, needle) {
-				return true, nil
-			}
-			if keep := len(needle) - 1; len(window) > keep {
-				carry = append(carry[:0], window[len(window)-keep:]...)
-			} else {
-				carry = append(carry[:0], window...)
-			}
-		}
-		if err == io.EOF {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
+// ensureReplayableBody makes the request body replayable when nothing on
+// its way did (a request that named its model outside the body is never
+// spooled to find it), so the fields the gateway owns are read and rewritten
+// on every request. A websocket upgrade has no body to own.
+func ensureReplayableBody(r *http.Request, maxBody int64) (func(), error) {
+	if r.GetBody != nil || r.Body == nil || r.Body == http.NoBody || strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return func() {}, nil
+	}
+	if maxBody > 0 && r.ContentLength > maxBody {
+		return func() {}, tooLarge(maxBody)
+	}
+	b, err := newReplayBodyFromReader(r.Body, maxBody)
+	if err != nil {
+		return func() {}, err
+	}
+	_ = r.Body.Close()
+	installReplayBody(r, b)
+	return func() { _ = b.Close() }, nil
+}
+
+// errNotUTF8JSON refuses a JSON body in another encoding: a JSON parser that
+// detects UTF-16 or UTF-32 (Python's does) reads keys a byte search for the
+// gateway-owned fields cannot see.
+var errNotUTF8JSON = &httpError{status: http.StatusBadRequest, msg: "request body must be UTF-8 JSON"}
+
+// ownedJSONBody reports whether the gateway owns fields in the request body:
+// any body an engine may parse as JSON, which is one declared JSON (or not
+// declared at all) or one that reads as a JSON object whatever its declared
+// type, since an engine may parse a body without looking at its type. A
+// multipart upload, a websocket and a body that cannot be replayed are not.
+// A body declared JSON or text that is not UTF-8 is refused.
+func ownedJSONBody(r *http.Request) (bool, error) {
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") || r.GetBody == nil {
+		return false, nil
+	}
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		mediaType = strings.ToLower(strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0]))
+	}
+	if strings.HasPrefix(mediaType, "multipart/") {
+		return false, nil
+	}
+	body, err := r.GetBody()
+	if err != nil {
+		return false, err
+	}
+	defer body.Close()
+	head := make([]byte, 512)
+	n, err := io.ReadFull(body, head)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return false, err
+	}
+	head = head[:n]
+	declared := isJSONRequest(r)
+	if declared || strings.HasPrefix(mediaType, "text/") {
+		if bytes.HasPrefix(head, []byte{0xfe, 0xff}) || bytes.HasPrefix(head, []byte{0xff, 0xfe}) || bytes.IndexByte(head[:min(4, len(head))], 0) >= 0 {
+			return false, errNotUTF8JSON
 		}
 	}
+	if declared {
+		return true, nil
+	}
+	trimmed := bytes.TrimLeft(head, " \t\r\n")
+	return len(trimmed) > 0 && trimmed[0] == '{', nil
 }
 
 // asciiLetterEscape opens a JSON unicode escape of a character below 0x100;

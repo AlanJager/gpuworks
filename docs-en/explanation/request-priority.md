@@ -56,7 +56,7 @@ Only within ceiling has a ceiling; saving another policy drops it. The name in t
 
 The gateway first decides the request's class, names it in the response header `X-GPUWorks-Priority-Class`, and then:
 
-- when the target instance was actually launched with priority scheduling (judged from its launch command; an instance of a deployment that asks for it but landed on an accelerator that does not allow it does not count) and the request goes to a generation endpoint, writes the class value into the body's `priority` in the engine's direction: negated for vLLM (lower values run first), as is for SGLang;
+- when the target instance was actually launched with priority scheduling (judged from its launch command; an instance of a deployment that asks for it but landed on an accelerator that does not allow it does not count) and the request is not an auxiliary route such as `/v1/tokenize` or `/v1/detokenize`, writes the class value into the body's `priority` in the engine's direction: negated for vLLM (lower values run first), as is for SGLang;
 - otherwise (auxiliary endpoints such as tokenize included) sets a `priority` the body already has to `0`, and leaves a body without one untouched.
 
 A request whose `Content-Type` has a malformed parameter (such as `application/json; x`) is still handled as JSON, so a client cannot slip past this way.

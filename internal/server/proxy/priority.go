@@ -143,7 +143,7 @@ func (p *Proxy) decidePriority(w http.ResponseWriter, r *http.Request) (*http.Re
 // generates, and the neutral 0 otherwise (only rewriting a body that names
 // the field; named says whether it does). It writes the error itself when it
 // refuses the request.
-func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, deploymentID uint, tgt target, named bool) (*http.Request, func(), bool) {
+func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, deploymentID uint, tgt target, owned, named bool) (*http.Request, func(), bool) {
 	decision, ok := p.requestPriority(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "unknown priority class in "+priorityClassHeader)
@@ -158,7 +158,7 @@ func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, dep
 			value = v
 		}
 	}
-	if !isJSONRequest(r) || r.GetBody == nil || (value == 0 && !named) {
+	if !owned || (value == 0 && !named) {
 		return r, func() {}, true
 	}
 	encoded := []byte(strconv.Itoa(value))
@@ -183,19 +183,30 @@ func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, dep
 // fail answers a read or rewrite error; a refused class is answered and
 // accounted here. ok is false when the request was answered.
 func (p *Proxy) ownGatewayFields(w http.ResponseWriter, r *http.Request, tgt target, deploymentID uint, fail func(error)) (*http.Request, func(), bool) {
-	named, err := bodyNames(r, kvTransferField, priorityField)
+	cleanupBody, err := ensureReplayableBody(r, p.maxBodyBytes)
 	if err != nil {
+		fail(err)
+		return r, func() {}, false
+	}
+	owned, err := ownedJSONBody(r)
+	named := []bool{false, false}
+	if err == nil && owned {
+		named, err = bodyNames(r, kvTransferField, priorityField)
+	}
+	if err != nil {
+		cleanupBody()
 		fail(err)
 		return r, func() {}, false
 	}
 	cleanupKV, err := stripClientKVTransfer(r, p.maxBodyBytes, named[0])
 	if err != nil {
 		cleanupKV()
+		cleanupBody()
 		fail(err)
 		return r, func() {}, false
 	}
-	r, cleanupPriority, ok := p.applyRequestPriority(w, r, deploymentID, tgt, named[1])
-	cleanup := func() { cleanupPriority(); cleanupKV() }
+	r, cleanupPriority, ok := p.applyRequestPriority(w, r, deploymentID, tgt, owned, named[1])
+	cleanup := func() { cleanupPriority(); cleanupKV(); cleanupBody() }
 	if !ok {
 		p.releaseTarget(tgt)
 		p.acctFor(r.Context()).RecordImmediate(deploymentID, http.StatusBadRequest, false)
