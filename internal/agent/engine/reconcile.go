@@ -433,6 +433,10 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 	for _, note := range ws.PreparationNotes {
 		e.reportStateProgress(spec, proto.InstStarting, name, "", note, proto.PhaseContainerPrepare, 0, 0, 0, 0)
 	}
+	// The container created here is a new engine process: nothing learned
+	// about an earlier process under this UUID holds for it, however that one
+	// went (ADR 0066).
+	e.forgetProcess(spec.UUID)
 	e.reportStateProgress(spec, proto.InstStarting, name, "", "preparing container", proto.PhaseContainerPrepare, 0, 0, 0, 0)
 	runDone := make(chan struct {
 		id  string

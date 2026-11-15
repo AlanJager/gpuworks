@@ -2,9 +2,12 @@ package engine
 
 // processFacts is what the agent learned about one instance's engine process,
 // true only while that process lives. A container started later under the
-// same UUID is a new process and knows none of it, so the whole record goes
-// at the one place a container is confirmed gone (reclaimInstance) and when
-// the runtime is switched; no exit path removes a part of it (ADR 0066).
+// same UUID is a new process and knows none of it. The record is bounded by
+// its process: it starts empty where a container is created (startOrAdopt,
+// which also covers a dead container replaced without passing through
+// reclaimInstance) and goes whole where a container is confirmed gone
+// (reclaimInstance) and on a runtime switch; no exit path removes a part of
+// it (ADR 0066).
 type processFacts struct {
 	// sleepLevel is the level the engine sleeps at; sleepKnown is false until
 	// this agent has learned it (adoptSleepLevel asks an engine it does not

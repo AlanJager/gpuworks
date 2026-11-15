@@ -231,10 +231,10 @@ func TestLivenessSleepingInstance(t *testing.T) {
 				t.Fatalf("failed reports = %+v, want one without the sleep phase", failed)
 			}
 			e.mu.Lock()
-			remembered := e.processOfLocked(spec.UUID).sleepKnown
+			remembered := e.processes[spec.UUID]
 			e.mu.Unlock()
-			if remembered {
-				t.Fatal("the dead sleeper's level was kept for a later container")
+			if remembered != nil {
+				t.Fatalf("the dead sleeper's process facts were kept for a later container: %+v", *remembered)
 			}
 		})
 	}

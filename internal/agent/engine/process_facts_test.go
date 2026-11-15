@@ -27,10 +27,10 @@ func waitGone(t *testing.T, e *Engine, uuid string) {
 
 // What the agent knows about an instance's engine process - its sleep level,
 // that it holds an L1 host buffer, that its sleep was prewarmed, the processes
-// it keeps on its cards - belongs to that process. However the container goes
-// (the server removing it, stopping it, the container dying), a container
-// started later under the same UUID is a new process that holds none of it,
-// and is reported so: a stale "holds its L1 host buffer" lets the server skip
+// it keeps on its cards - belongs to that process. When the server removes or
+// stops the container, a container started later under the same UUID is a new
+// process that holds none of it, and is reported so (a process replaced
+// without the server's order is TestAReplacedEngineProcessIsPutToSleepAgain): a stale "holds its L1 host buffer" lets the server skip
 // the host memory check of the next L1 sleep.
 func TestANewContainerUnderTheSameUUIDKnowsNothingOfTheOldProcess(t *testing.T) {
 	for _, tc := range []struct {

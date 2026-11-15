@@ -251,18 +251,20 @@ grep -rnE '\.ListInstances\(\)' internal pkg cmd --include='*.go' | grep -v '_te
 
 排除：`*_test.go` 与 `internal/testenv/`（进程内测试夹具）。`\(\)` 只匹配无参调用，云厂商驱动的 `ListInstances(ctx, …)` 不计入。初值 `ListNodes` 39 → 23：`/healthz` 改用 `CountNodes`；放置选择（`LoadUnitSuggestFacts` 的调用方）不再为构造回退的在线判断先读一遍；存储、镜像、节点同步、镜像引用推送、agent 升级明细、部署运行时状态推导改用窄读。`ListNodes` 23 → 11：节点列表、筛选项、仪表盘、存储用量与节点探测、监控清单、`/gpus`、调度中心概览与看板、部署候选池、用量分析、拉取规则计数、网络状态、`NodesForStorage` 改读 `store.FleetNodes()`（节点快照，`store/fleet_nodes.go` 内部的 2 处调用计入）。`ListDeployments` 10 → 9、`ListInstances` 5 → 4：部署与实例列表改读 `deployment.Lists`（列表快照）；按请求读的回退也收进 `deployment.ReadListRows`，两条路径共用 `list_snapshot.go` 里的一处整表读。`ListDeployments` 9 → 6、`ListInstances` 4 → 1：仪表盘、监控清单与批处理模型列表改读同一份快照及其 `ListRows.States()`（每份快照只算一次全部部署的状态）。剩下的 `ListDeployments`：快照内部、启动时的启动配置规整与缓存拷贝认领、下载依赖索引、试验场、PD 校验；`ListInstances` 只剩快照内部。`ListNodes` 11 → 9：控制器的池副本放置、节点失联替换（`anotherNodeMayRun`、`planning.LoadUnitSuggestFactsFromSnapshot`）改读 `FleetNodes()`；控制器每批状态上报入队前先 `RefreshFleetNodes()`。运维者的交互式选择（部署评估 `evaluateEligibleNodes`、`rankEligible`、`CandidateNodes`，扩缩、建议与自动放置经 `planning.LoadUnitSuggestFacts`）保留直读：它们要按 agent 刚发来的上报回答，快照的 2 s 上报窗口会让刚报的磁盘不足在评估里晚 2 s 出现（`TestExistingModelDirectoryCanBeRegisteredAfterDiskRefusal`）。剩下的：快照内部 2 处、上述 4 处交互式选择、诊断包、网络测试、agent 升级预览。
 
-### agent_node_runtime_fields / agent_node_runtime_mutexes / agent_onrpc_cases / agent_engine_struct_maps（初值 75 / 11 / 50 / 9，2026-11-15）
+### agent_node_runtime_fields / agent_node_runtime_mutexes / agent_node_runtime_methods / agent_onrpc_cases / agent_engine_struct_maps（初值 77 / 12 / 233 / 51 / 9，2026-11-15）
 
-意图：agent 的组合根只做接线（ADR 0066）。`NodeRuntime` 的顶层字段与互斥锁、`OnRPC` 的 case 数只降不升：镜像、模型文件、卡健康、doctor 各自成为带锁的子系统，`NodeRuntime` 每个子系统一个字段，RPC 改为「方法 → handler」表。`Engine` 的 map 字段只降不升：一个实例的状态按生命周期收进记录（`processFacts` 是引擎进程那一份），不再加按 UUID 的并行 map；`TestEveryEngineFieldIsClassified` 要求每个新字段写明何时丢弃。
+意图：agent 的组合根只做接线（ADR 0066）。`NodeRuntime` 的字段、互斥锁、方法与 `OnRPC` 分发的 RPC 数只降不升：镜像、模型文件、卡健康、doctor 各自成为带锁的子系统，`NodeRuntime` 每个子系统一个字段，RPC 改为「方法 → handler」表。方法数守护行为：只把字段搬进子系统、方法仍挂在 `NodeRuntime` 上直接碰那些状态，不算拆开。`Engine` 的 map 字段只降不升：一个实例的状态按生命周期收进记录（`processFacts` 是引擎进程那一份），不再加按 UUID 的并行 map；`TestEveryEngineFieldIsClassified` 与 `TestRemovingAnInstanceLeavesNothingUnderItsUUID` 要求每个新字段分类、按实例的真的随移除清理。
 
 ```sh
-# 均用 check_architecture.sh 的 decl_count：只计声明体内、一个缩进的字段行
-# （嵌套的匿名 struct 内的字段与它自己的锁不计，那正是子记录自带锁的写法）。
-agent_node_runtime_fields   ^type NodeRuntime struct   '^[[:blank:]][*A-Za-z_]'
-agent_node_runtime_mutexes  ^type NodeRuntime struct   一个缩进的 sync.Mutex / sync.RWMutex 字段
-agent_onrpc_cases           ^func (n *NodeRuntime) OnRPC(   '^[[:blank:]]+case '
-agent_engine_struct_maps    ^type Engine struct        一个缩进的 map[ 字段
+# scripts/structcount 解析非测试文件的语法树，打印一个数
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure fields    # 77
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure mutexes   # 12
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure methods   # 233
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure rpcs      # 51
+go run ./scripts/structcount -dir internal/agent/engine -type Engine      -measure maps      # 9
 ```
+
+口径（`scripts/structcount/main_test.go` 的夹具逐条覆盖）：一行多个名字按名字计；指针锁、`sync.Map`、包内声明的 map 类型都计；匿名 struct 里的字段、锁与 map 照样计（包一层不算离开）；具名类型的字段只计这一个字段（移进具名子系统类型才算离开）；方法按接收者计，值与指针都算；`rpcs` 是包内所有 switch 的 case 里出现的不同 `proto.RPC*` 常量数，`OnRPC` 转交给辅助 switch（`kubeRPC`）的也计。
 
 初值是 R-23 第一个 MR（GWKS-321）之后的值：`Engine` 的 12 张按 UUID 的 map 中，描述引擎进程的四张（睡眠级别、预热、L1 主机缓冲、卡上进程）收成 `processes map[string]*processFacts`，12 → 9。
 
