@@ -74,6 +74,7 @@ var notPerInstanceEngineFields = map[string]string{
 	"captureObservationConnection": "a dependency", "reportRuntimeObservation": "a dependency",
 	"networkInterfaceName": "a dependency", "networkConfig": "a dependency", "logDrain": "a dependency",
 	"puller": "a dependency", "otherRuntimes": "a dependency", "cardGate": "a dependency",
+	"owner":    "the agent's own identity, labelled on every container it launches",
 	"stateDir": "configuration", "hostRoot": "configuration", "residueSettle": "configuration",
 	"headlessProbeInterval": "configuration", "headlessStableChecks": "configuration",
 	"livenessInterval": "configuration", "healthProbeAttempts": "configuration",
