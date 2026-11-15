@@ -176,21 +176,33 @@ func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.Instance
 // deployment reads asleep exactly when the gateway refuses it for sleep.
 func deploymentState(deployment monitor.DeploymentRef) string {
 	switch deployment.State {
-	case "running", "offline", "failed":
+	case serviceRunning, serviceOffline, serviceFailed:
 		return deployment.State
 	case "asleep", "sleeping":
-		return "asleep"
+		return serviceAsleep
 	case "pending", "pulling", "starting":
-		return "starting"
+		return serviceStarting
 	default: // stopped, deleting
-		return "stopped"
+		return serviceStopped
 	}
 }
+
+// The service states deploymentState returns. serviceStates lists them all;
+// a state added to deploymentState is added here, and
+// TestDeploymentStateStaysWithinServiceStates fails until it is.
+const (
+	serviceRunning  = "running"
+	serviceStarting = "starting"
+	serviceAsleep   = "asleep"
+	serviceOffline  = "offline"
+	serviceFailed   = "failed"
+	serviceStopped  = "stopped"
+)
 
 // serviceStates is deploymentState's whole vocabulary in the order the
 // overview's state summary lists it: serving first, then the ones that need
 // a look, then the deliberately stopped.
-var serviceStates = []string{"running", "starting", "asleep", "offline", "failed", "stopped"}
+var serviceStates = []string{serviceRunning, serviceStarting, serviceAsleep, serviceOffline, serviceFailed, serviceStopped}
 
 // stateCountsDTO counts the overview's own rows by state, one entry per
 // serviceStates state: it reads nothing beyond the rows already built.

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/deployment"
 	"gpuworks.ai/gpuworks/internal/server/monitor"
 )
 
@@ -62,5 +64,31 @@ func TestServiceOverviewStateCountsOfAnEmptyFleet(t *testing.T) {
 	const want = `"state_counts":[{"state":"running","count":0},{"state":"starting","count":0},{"state":"asleep","count":0},{"state":"offline","count":0},{"state":"failed","count":0},{"state":"stopped","count":0}]`
 	if !strings.Contains(string(raw), want) {
 		t.Fatalf("overview = %s, want %s", raw, want)
+	}
+}
+
+// Every state a deployment can show (deployment.States) maps onto one of the
+// overview's serviceStates, so state_counts never drops a service and "All N"
+// always equals the number of rows. A new deployment state that
+// deploymentState passes through unmapped fails here.
+func TestDeploymentStateStaysWithinServiceStates(t *testing.T) {
+	known := make(map[string]bool, len(serviceStates))
+	for _, state := range serviceStates {
+		known[state] = true
+	}
+	var rows []dto.MonitorServiceRow
+	for _, state := range deployment.States {
+		got := deploymentState(monitor.DeploymentRef{State: state})
+		if !known[got] {
+			t.Errorf("deployment state %q reads as %q, which serviceStates does not list", state, got)
+		}
+		rows = append(rows, dto.MonitorServiceRow{State: got})
+	}
+	total := 0
+	for _, count := range stateCountsDTO(rows) {
+		total += count.Count
+	}
+	if total != len(rows) {
+		t.Fatalf("state_counts add up to %d, want one per row (%d)", total, len(rows))
 	}
 }
