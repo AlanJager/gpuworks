@@ -21,7 +21,9 @@ import (
 type priorityRig struct {
 	p  *Proxy
 	st *store.Store
-	mu sync.Mutex
+	// deployments are the rig's deployment ids by name.
+	deployments map[string]uint
+	mu          sync.Mutex
 	// seen is what the engine got: its priority field (absent: nil) and
 	// whether vLLM's header reached it.
 	seen []map[string]any
@@ -32,9 +34,9 @@ type priorityRig struct {
 // priority scheduling), "s" (SGLang with it), "off" (vLLM without) and
 // "unlaunched" (asks for it, but its instance was launched without the flag,
 // as on a target that does not allow it).
-func newPriorityRig(t *testing.T) *priorityRig {
+func newPriorityRig(t testing.TB) *priorityRig {
 	t.Helper()
-	rig := &priorityRig{}
+	rig := &priorityRig{deployments: map[string]uint{}}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -82,6 +84,7 @@ func newPriorityRig(t *testing.T) *priorityRig {
 		if err != nil {
 			t.Fatal(err)
 		}
+		rig.deployments[d.name] = dep.ID
 		if _, err := st.CreateInstance(&store.Instance{UUID: d.name + "-instance", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30000 + i, Ports: "[30000]", DesiredStateJSON: d.spec}); err != nil {
 			t.Fatal(err)
 		}
@@ -93,7 +96,7 @@ func newPriorityRig(t *testing.T) *priorityRig {
 	return rig
 }
 
-func (r *priorityRig) key(t *testing.T, binding store.APIKeyPriority) string {
+func (r *priorityRig) key(t testing.TB, binding store.APIKeyPriority) string {
 	t.Helper()
 	full, err := r.st.CreateAPIKey("k-"+string(binding.Policy)+binding.Class+binding.Ceiling, 0)
 	if err != nil {
@@ -117,13 +120,16 @@ func (r *priorityRig) key(t *testing.T, binding store.APIKeyPriority) string {
 	return full
 }
 
+// jsonEscapes turns each %u in s into a JSON unicode escape's backslash-u.
+func jsonEscapes(s string) string { return strings.ReplaceAll(s, "%u", string(rune(0x5c))+"u") }
+
 // send posts a chat to model and returns the answer and what the engine got.
-func (r *priorityRig) send(t *testing.T, key, model, asked, body string) (*httptest.ResponseRecorder, map[string]any, string) {
+func (r *priorityRig) send(t testing.TB, key, model, asked, body string) (*httptest.ResponseRecorder, map[string]any, string) {
 	t.Helper()
 	return r.sendTyped(t, key, model, asked, body, "")
 }
 
-func (r *priorityRig) sendTyped(t *testing.T, key, model, asked, body, contentType string) (*httptest.ResponseRecorder, map[string]any, string) {
+func (r *priorityRig) sendTyped(t testing.TB, key, model, asked, body, contentType string) (*httptest.ResponseRecorder, map[string]any, string) {
 	t.Helper()
 	if body == "" {
 		body = `{"model":"` + model + `","messages":[]}`
@@ -173,6 +179,10 @@ func TestGatewayWritesTheEnginePriority(t *testing.T) {
 		{name: "no priority scheduling, no field: nothing written", key: high, model: "off", class: "high", engine: nil},
 		{name: "asked for but not launched with it: neutral", key: high, model: "unlaunched", body: `{"model":"unlaunched","priority":"x","messages":[]}`, class: "high", engine: float64(0)},
 		{name: "a malformed content type is still JSON", key: high, model: "off", body: `{"model":"off","priority":"crash","messages":[]}`, class: "high", engine: float64(0), contentType: "application/json; x"},
+		// A key spelled with escapes is the same key to the engine's parser.
+		{name: "escaped field at the default class is neutralized", key: unbound, model: "v", body: jsonEscapes(`{"model":"v","%u0070riority":-1000,"messages":[]}`), class: "normal", engine: float64(0)},
+		{name: "escaped field without priority scheduling is neutralized", key: high, model: "off", body: jsonEscapes(`{"model":"off","pr%u0069ority":-1000,"messages":[]}`), class: "high", engine: float64(0)},
+		{name: "escaped field replaced by the key's class", key: high, model: "v", body: jsonEscapes(`{"%u0070riority":-1000,"model":"v","messages":[]}`), class: "high", engine: float64(-20)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec, seen, hdr := rig.sendTyped(t, tc.key, tc.model, tc.asked, tc.body, tc.contentType)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func priorityRequest(t *testing.T, contentType, body string) *http.Request {
@@ -85,5 +86,39 @@ func TestStripClientPriorityLeavesOtherBodiesAlone(t *testing.T) {
 	defer cleanup()
 	if err != nil || forwardedBody(t, r) != form || r.Header.Get("X-Vllm-Priority") != "" {
 		t.Fatalf("err=%v body=%q", err, forwardedBody(t, r))
+	}
+}
+
+// A key spelled with an escaped letter is the plain key to the engine's
+// parser, so the scan reports every key as named and the caller looks them
+// up exactly; the escapes clients commonly send do not. Matches across two
+// reads are found, a byte at a time.
+func TestBodyNamesSeesEscapedKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		want       []bool
+	}{
+		{"plain", `{"model":"m","priority":1}`, []bool{false, true}},
+		{"escaped priority", jsonEscapes(`{"model":"m","%u0070riority":1}`), []bool{true, true}},
+		{"escaped kv field", jsonEscapes(`{"kv_tr%u0061nsfer_params":{}}`), []bool{true, true}},
+		{"escaped underscore", jsonEscapes(`{"kv%u005ftransfer_params":{}}`), []bool{true, true}},
+		{"non-ASCII text", jsonEscapes(`{"messages":[{"content":"%u4e2d%u6587 caf%u00e9"}]}`), []bool{false, false}},
+		{"HTML-safe escapes", jsonEscapes(`{"messages":[{"content":"%u003cb%u003e %u0026"}]}`), []bool{false, false}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, oneByte := range []bool{false, true} {
+				var source io.Reader = strings.NewReader(tc.body)
+				if oneByte {
+					source = iotest.OneByteReader(source)
+				}
+				found := make([]bool, 2)
+				if err := readerContainsEach(source, [][]byte{[]byte(`"` + kvTransferField + `"`), []byte(`"priority"`)}, found); err != nil {
+					t.Fatal(err)
+				}
+				if found[0] != tc.want[0] || found[1] != tc.want[1] {
+					t.Fatalf("one byte at a time %v: found = %v, want %v", oneByte, found, tc.want)
+				}
+			}
+		})
 	}
 }

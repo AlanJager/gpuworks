@@ -59,23 +59,55 @@ func readerContains(source io.Reader, needle []byte) (bool, error) {
 	}
 }
 
+// asciiLetterEscape opens a JSON unicode escape of a character below 0x100;
+// hasASCIILetterEscape narrows it to the code points 0x40-0x7f, which hold
+// the ASCII letters and the underscore. A client can spell a key the gateway
+// owns with such an escape: the engine's parser reads it as the plain key, a
+// byte search does not. The escapes clients commonly send (non-ASCII text;
+// "<", ">" and "&" from HTML-safe encoders) are outside that range.
+var asciiLetterEscape = []byte{'\\', 'u', '0', '0'}
+
+func hasASCIILetterEscape(window []byte) bool {
+	for from := 0; ; {
+		i := bytes.Index(window[from:], asciiLetterEscape)
+		if i < 0 {
+			return false
+		}
+		if at := from + i + len(asciiLetterEscape); at < len(window) && window[at] >= '4' && window[at] <= '7' {
+			return true
+		}
+		from += i + 1
+	}
+}
+
 // readerContainsEach marks found[i] when needles[i] occurs in the stream,
-// in one pass with a pooled buffer, stopping once every needle was seen.
+// in one pass with a pooled buffer, stopping once every needle was seen. A
+// stream with an escaped ASCII letter (hasASCIILetterEscape) marks them all,
+// so the caller looks its keys up exactly, decoding them.
 func readerContainsEach(source io.Reader, needles [][]byte, found []bool) error {
-	longest := 0
+	// keep is how many bytes of a chunk's tail the next one is searched
+	// with, so a match across two reads is found; the escape needs its
+	// digit after the four bytes.
+	keep := len(asciiLetterEscape)
 	for _, n := range needles {
-		longest = max(longest, len(n))
+		keep = max(keep, len(n)-1)
 	}
 	bufp := scanBuffers.Get().(*[]byte)
 	defer scanBuffers.Put(bufp)
 	buf := *bufp
-	carry := make([]byte, 0, longest)
-	window := make([]byte, 0, len(buf)+longest)
+	carry := make([]byte, 0, keep)
+	window := make([]byte, 0, len(buf)+keep)
 	remaining := len(needles)
 	for {
 		n, err := source.Read(buf)
 		if n > 0 {
 			window = append(append(window[:0], carry...), buf[:n]...)
+			if hasASCIILetterEscape(window) {
+				for i := range found {
+					found[i] = true
+				}
+				return nil
+			}
 			for i, needle := range needles {
 				if !found[i] && bytes.Contains(window, needle) {
 					found[i] = true
@@ -85,8 +117,8 @@ func readerContainsEach(source io.Reader, needles [][]byte, found []bool) error 
 			if remaining == 0 {
 				return nil
 			}
-			keep := min(longest-1, len(window))
-			carry = append(carry[:0], window[len(window)-keep:]...)
+			held := min(keep, len(window))
+			carry = append(carry[:0], window[len(window)-held:]...)
 		}
 		if err == io.EOF {
 			return nil

@@ -283,6 +283,15 @@ func TestPDClientKVTransferParamsNeverReachAnEngine(t *testing.T) {
 	if h.decode.paths[len(h.decode.paths)-1] != "/v1/embeddings" {
 		t.Fatalf("paths = %v", h.decode.paths)
 	}
+	// The field spelled with an escaped letter is the same field to the
+	// engine, and is neutralised the same.
+	if rec := h.do(t, "/v1/embeddings", jsonEscapes(`{"model":"pd","input":"x","kv_tr%u0061nsfer_params":{"remote_host":"evil"}}`)); rec.Code != http.StatusOK {
+		t.Fatalf("embeddings = %d", rec.Code)
+	}
+	last = h.decode.bodies[len(h.decode.bodies)-1]
+	if value, present := last["kv_transfer_params"]; !present || value != nil {
+		t.Fatalf("escaped kv params = %v (present=%v)", value, present)
+	}
 }
 
 // A client's priority reaches neither half of a two-stage request.
