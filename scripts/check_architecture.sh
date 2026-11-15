@@ -256,6 +256,14 @@ measure() {
   controller_struct_maps)
     controller_struct_count '^[[:blank:]][A-Za-z_][A-Za-z0-9_, ]*[[:blank:]]+map\['
     ;;
+  agent_node_runtime_fields | agent_node_runtime_mutexes | agent_node_runtime_methods | agent_onrpc_cases)
+    m=${key#agent_node_runtime_}
+    [ "$key" = agent_onrpc_cases ] && m=rpcs
+    CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/app -type NodeRuntime -measure "$m" 2>/dev/null || echo NOTFOUND
+    ;;
+  agent_engine_struct_maps)
+    CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/engine -type Engine -measure maps 2>/dev/null || echo NOTFOUND
+    ;;
   controller_exported_methods)
     grep -rnE '^func \(c \*Controller\) [A-Z]' internal/server/controller --include='*.go' 2>/dev/null \
       | grep -v '_test\.go' | grep -c . || true

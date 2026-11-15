@@ -65,16 +65,9 @@ type Engine struct {
 	inFlightCancel  map[string]context.CancelFunc         // cancels startup work before removal waits for it
 	cleanupRequired map[string]proto.InstanceDesiredState // old generation must be reclaimed before a replacement starts
 	pending         map[string]pendingEnsure
-	sleepLevel      map[string]int  // uuid → actual sleep level
-	prewarmed       map[string]bool // uuid → sleep prewarm done
-	// l1HostHeld names the instances whose engine completed an L1 sleep since
-	// its container started (holdsL1HostBuffer).
-	l1HostHeld map[string]bool
-	// sleepPIDs is, per sleeping instance, the process its engine keeps on
-	// each of its cards (by card identity), learned when its residue was
-	// measured: the card then held that one process only. It lets the node
-	// report a process somebody else starts on a sleeper's card.
-	sleepPIDs map[string]map[string]int
+	// processes is, by instance UUID, what the agent learned about the
+	// instance's engine process (processFacts); it goes with the container.
+	processes map[string]*processFacts
 	// runtimeEpoch identifies the one serialized start/adopt attempt allowed to
 	// publish a runtime observation for an instance. Removal invalidates it
 	// before teardown, so a slow inspect cannot publish after replacement.
@@ -177,10 +170,7 @@ func NewWithProber(driver runtime.Driver, report Reporter, log *slog.Logger, sta
 		inFlightCancel:        map[string]context.CancelFunc{},
 		cleanupRequired:       map[string]proto.InstanceDesiredState{},
 		pending:               map[string]pendingEnsure{},
-		sleepLevel:            map[string]int{},
-		prewarmed:             map[string]bool{},
-		l1HostHeld:            map[string]bool{},
-		sleepPIDs:             map[string]map[string]int{},
+		processes:             map[string]*processFacts{},
 		runtimeEpoch:          map[string]uint64{},
 		servingEpoch:          map[string]uint64{},
 		healthProbes:          map[string]*healthProbeTask{},
@@ -228,6 +218,9 @@ func (e *Engine) reclaimInstance(ctx context.Context, uuid string) error {
 	if err := e.removeContainer(ctx, uuid); err != nil {
 		return err
 	}
+	// The engine process went with its container: a container started
+	// later under this UUID is another process.
+	e.forgetProcess(uuid)
 	if err := e.cleanupPartitionState(uuid); err != nil {
 		return fmt.Errorf("remove partition state: %w", err)
 	}
@@ -479,7 +472,7 @@ func (e *Engine) RunningSpecs() []proto.InstanceDesiredState {
 	defer e.mu.Unlock()
 	var out []proto.InstanceDesiredState
 	for _, s := range e.desired {
-		if s.DesiredState == "running" && e.sleepLevel[s.UUID] == 0 {
+		if s.DesiredState == "running" && e.processOfLocked(s.UUID).sleepLevel == 0 {
 			out = append(out, s)
 		}
 	}

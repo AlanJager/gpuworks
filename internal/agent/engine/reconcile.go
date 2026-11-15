@@ -339,7 +339,7 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 			// restart. It has already served traffic, so repeating the cold
 			// sleep/wake prewarm would create an avoidable 503 window.
 			e.mu.Lock()
-			e.prewarmed[spec.UUID] = true
+			e.processLocked(spec.UUID).prewarmed = true
 			e.mu.Unlock()
 			if spec.Sleepable {
 				// Keep an exact level already applied by this agent. The engine
@@ -433,6 +433,10 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 	for _, note := range ws.PreparationNotes {
 		e.reportStateProgress(spec, proto.InstStarting, name, "", note, proto.PhaseContainerPrepare, 0, 0, 0, 0)
 	}
+	// The container created here is a new engine process: nothing learned
+	// about an earlier process under this UUID holds for it, however that one
+	// went (ADR 0066).
+	e.forgetProcess(spec.UUID)
 	e.reportStateProgress(spec, proto.InstStarting, name, "", "preparing container", proto.PhaseContainerPrepare, 0, 0, 0, 0)
 	runDone := make(chan struct {
 		id  string

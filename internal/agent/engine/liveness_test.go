@@ -212,7 +212,7 @@ func TestLivenessSleepingInstance(t *testing.T) {
 			serve(t, e, log, spec)
 			waitIdle(t, e, spec.UUID)
 			e.mu.Lock()
-			asleep := e.sleepLevel[spec.UUID]
+			asleep := e.processOfLocked(spec.UUID).sleepLevel
 			e.mu.Unlock()
 			if asleep != level {
 				t.Fatalf("sleep level = %d, want %d", asleep, level)
@@ -231,10 +231,10 @@ func TestLivenessSleepingInstance(t *testing.T) {
 				t.Fatalf("failed reports = %+v, want one without the sleep phase", failed)
 			}
 			e.mu.Lock()
-			_, remembered := e.sleepLevel[spec.UUID]
+			remembered := e.processes[spec.UUID]
 			e.mu.Unlock()
-			if remembered {
-				t.Fatal("the dead sleeper's level was kept for a later container")
+			if remembered != nil {
+				t.Fatalf("the dead sleeper's process facts were kept for a later container: %+v", *remembered)
 			}
 		})
 	}

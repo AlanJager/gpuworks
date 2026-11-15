@@ -191,7 +191,7 @@ func TestRunningHealthSkipsSleepAndHeadlessHTTP(t *testing.T) {
 			serve(t, e, reports, spec)
 			if kind == "actual sleep" {
 				e.mu.Lock()
-				e.sleepLevel[spec.UUID] = 1
+				e.setSleepLevelLocked(spec.UUID, 1)
 				e.mu.Unlock()
 			}
 			checking.Store(true)
