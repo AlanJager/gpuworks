@@ -28,7 +28,7 @@
 .template-organization-heading { display: flex; align-items: center; gap: 12px; min-height: 76px; }
 .template-organization-heading > div { min-width: 0; }
 .template-organization-heading h3 { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
-.template-organization-logo { flex: none; border: 0; border-radius: 0; background: transparent; }
+.template-organization-logo { flex: none; border: 0; border-radius: var(--radius-md); background: transparent; }
 .template-organization-logo img { object-fit: contain; }
 .template-table-vendors, .template-table-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .template-chip-picker { display: grid; grid-template-columns: 160px minmax(0, 1fr); margin-top: 12px; border-block: 1px solid var(--border); height: 320px; }
