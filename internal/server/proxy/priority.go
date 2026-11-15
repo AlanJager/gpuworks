@@ -161,7 +161,15 @@ func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, dep
 	if !isJSONRequest(r) || r.GetBody == nil || (value == 0 && !named) {
 		return r, func() {}, true
 	}
-	cleanup, err := setRequestJSONField(r, priorityField, []byte(strconv.Itoa(value)), value != 0, p.maxBodyBytes)
+	encoded := []byte(strconv.Itoa(value))
+	var cleanup func()
+	var err error
+	if named {
+		cleanup, err = setRequestJSONField(r, priorityField, encoded, value != 0, p.maxBodyBytes)
+	} else {
+		// The body names no such key at all: it goes in first, unsearched.
+		cleanup, err = insertRequestJSONField(r, priorityField, encoded, p.maxBodyBytes)
+	}
 	if err != nil {
 		writeErr(w, statusForExtractError(err), err.Error())
 		return r, cleanup, false

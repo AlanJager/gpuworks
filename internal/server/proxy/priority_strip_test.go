@@ -122,3 +122,64 @@ func TestBodyNamesSeesEscapedKeys(t *testing.T) {
 		})
 	}
 }
+
+// Setting a field the body does not have, without insert, leaves the body
+// as it is and uncopied; the escaped spelling of the key is replaced.
+func TestSetRequestJSONFieldWithoutTheKey(t *testing.T) {
+	r := priorityRequest(t, "application/json", `{"model":"m","messages":[{"content":"\"priority\": 5"}]}`)
+	before := r.Body
+	cleanup, err := setRequestJSONField(r, priorityField, []byte("0"), false, DefaultMaxBodyBytes)
+	defer cleanup()
+	if err != nil || r.Body != before {
+		t.Fatalf("err=%v, body replaced: %v", err, r.Body != before)
+	}
+	r = priorityRequest(t, "application/json", jsonEscapes(`{"model":"m","%u0070riority":-1000}`))
+	cleanup, err = setRequestJSONField(r, priorityField, []byte("0"), false, DefaultMaxBodyBytes)
+	defer cleanup()
+	if got := forwardedBody(t, r); err != nil || got != jsonEscapes(`{"model":"m","%u0070riority":0}`) {
+		t.Fatalf("err=%v body=%s", err, got)
+	}
+}
+
+// The inserted body reads as the copied insertion would, every time it is
+// read, with its length; a body spooled to disk works the same, and one that
+// is not a JSON object is refused.
+func TestInsertRequestJSONFieldReadsLikeACopy(t *testing.T) {
+	big := `{"model":"m","messages":[{"content":"` + strings.Repeat("x", bodyMemoryThreshold+10) + `"}]}`
+	for _, body := range []string{`{"model":"m"}`, " \n\t{ \"model\":\"m\"}", `{}`, `{ }`, big} {
+		rb, err := newReplayBody([]byte(body), DefaultMaxBodyBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := priorityRequest(t, "application/json", "")
+		installReplayBody(r, rb)
+		cleanup, err := insertRequestJSONField(r, priorityField, []byte("-20"), DefaultMaxBodyBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { cleanup(); _ = rb.Close() }()
+		var want strings.Builder
+		if err := insertJSONField(strings.NewReader(body), &want, priorityField, []byte("-20")); err != nil {
+			t.Fatal(err)
+		}
+		first, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The copy drops the whitespace after the brace; the view keeps it.
+		var got, wanted map[string]any
+		if err := json.Unmarshal(first, &got); err != nil || json.Unmarshal([]byte(want.String()), &wanted) != nil {
+			t.Fatalf("body %.40q: %v in %.80q", body, err, first)
+		}
+		if got["priority"] != float64(-20) || len(got) != len(wanted) || got["model"] != wanted["model"] {
+			t.Fatalf("body %.40q reads as %.80v, want %.80v", body, got, wanted)
+		}
+		if again := forwardedBody(t, r); again != string(first) || r.ContentLength != int64(len(first)) {
+			t.Fatalf("body %.40q: second read differs or length %d != %d", body, r.ContentLength, len(first))
+		}
+	}
+	r := priorityRequest(t, "application/json", `["not an object"]`)
+	if _, err := insertRequestJSONField(r, priorityField, []byte("1"), DefaultMaxBodyBytes); err == nil {
+		t.Fatal("an array took a member")
+	}
+}
