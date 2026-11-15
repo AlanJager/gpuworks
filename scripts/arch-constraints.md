@@ -328,6 +328,14 @@ GWKS-305：sleep/wake 的顺序锁与放置提示从 planning 的包级全局变
 全局变量变成显式传递：`planning_sync_files` 2 → 0；`controller_struct_fields` 34 → 35、`controller_exported_methods`
 18 → 19、`api_deps_fields` 63 → 64、`api_fanout` 48 → 49、`app_new_lines` 307 → 308，各带 `# raised:` 理由。
 
+GWKS-306：模型传输的 API 操作移出 Controller。`SyncModelToNode`、`SyncModelToNodeWithOptions`、`ProbeModelSync`、
+`CancelModelSync`、`CopyModelFile` 五个导出方法改为 `Controller.Transfers()` 返回的 `ModelTransfers`（Sync / Probe / Cancel /
+Copy），api 只依赖一个 `ModelTransfers` 接口（`Deps.SyncModel`、`Deps.CancelModelSync` 与 `PeerSyncHooks` 里三个模型钩子合为
+`Deps.ModelTransfers`）；传输运行表 `syncMu`/`modelSyncs` 收进 `modelSyncRuns`。收紧为 `controller_struct_fields` 34、
+`controller_struct_mutexes` 0、`controller_struct_maps` 0、`controller_exported_methods` 15、`api_deps_fields` 63，
+`app_new_lines` 304、`app_prod_lines` 10046。这只是第一步：`ModelTransfers` 指回 Controller，传输的实现与运行表仍在
+Controller 上，收窄的是 api 的依赖面与 Controller 的导出面，不是把传输逻辑搬出 Controller。
+
 结构体与函数的五项由 `decl_count 目录 声明模式 行模式 [body]` 测量：在该包的非测试文件里找到匹配声明模式的顶层声明，
 从它数到第一个顶格的 `}`，只数匹配行模式的行（行模式为空时数全部行；`body` 表示不数声明行本身）：
 
