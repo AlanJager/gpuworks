@@ -738,6 +738,34 @@ or use `PATCH /api/v1/nodes/{uuid}/runtime` to change the preference (`auto/dock
 When a container exits after starting, the failure message includes the engine's last error line, for example, `container exited (code 2): vllm: error: unrecognized arguments: …`.
 If there is no output at all, it says `… with no output`. This usually means the disk is full and even logs cannot be written.
 
+## Containers from Several gpuworks Installations on One Machine
+
+**Symptom**: one compute node runs several agents (each with its own state directory, each connected to a different
+control plane), and `docker ps` lists many `gpuworks-…` containers without showing which control plane started which.
+
+**How to confirm**
+
+docker and nerdctl containers carry ownership labels (see the label table in [Deployment Launch Parameter Sources](../reference/deployment-launch-sources.md#运行时拼装)).
+Filter by control-plane address or by the agent's state directory:
+
+```bash
+docker ps -a --filter label=gpuworks.server=https://<管理节点地址>
+docker ps -a --filter label=gpuworks.state-dir=/opt/gpuworks
+docker inspect -f '{{json .Config.Labels}}' <容器名>
+```
+
+nerdctl takes the same `--filter label=…`, plus the agent's `-n <namespace>`. `gpuworks.instance` and `gpuworks.deployment`
+match the instance UUID and deployment ID shown in the management UI.
+
+**Notes**
+
+- A server_dial node does not know the control-plane address, so its containers have no `gpuworks.server`; tell them apart by `gpuworks.state-dir`.
+- Labels are written when a container is created: containers already running before the agent upgrade have none until the instance is recreated.
+- runveil containers already live under each agent's own state directory and cannot see each other; list them with `gpuworks-agent runveil --state <dir> ps -a`.
+- Orphan container cleanup (the server setting `orphan_cleanup`, off by default) matches the `gpuworks-` name prefix, not the labels:
+  turning it on while several agents share one docker or nerdctl removes the other agents' containers.
+- Each control plane schedules on its own and does not know which cards the others use, so they can fill the same card; keep the cards each one uses apart by hand.
+
 ## Model Downloads Stall, Fail, or Leave Incomplete Directories
 
 **Symptoms**: A model remains in `downloading` on a node for a long time, or changes to `failed`, `insufficient_disk_space`, or `download_required`, and deployment creation is rejected.
