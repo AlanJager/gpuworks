@@ -740,6 +740,34 @@ runveil 只要 Linux 的 amd64 / arm64，
 容器启动后退出时，失败信息带上引擎最后一行报错，例如 `container exited (code 2): vllm: error: unrecognized arguments: …`；
 完全没有输出时写 `… with no output`，这多半是磁盘已满、日志都写不进去。
 
+## 同一台机器上有多套 gpuworks 的容器
+
+**现象**：一台计算节点上跑着多个 agent（各用自己的 state 目录、各自接入不同的管理节点），`docker ps` 里一堆
+`gpuworks-…` 容器，分不清哪个是哪个管理节点起的。
+
+**怎么确认**
+
+docker 与 nerdctl 容器带归属标签（标签表见[部署启动参数来源](../reference/deployment-launch-sources.md#运行时拼装)），
+按管理节点地址或 agent 的 state 目录筛选：
+
+```bash
+docker ps -a --filter label=gpuworks.server=https://<管理节点地址>
+docker ps -a --filter label=gpuworks.state-dir=/opt/gpuworks
+docker inspect -f '{{json .Config.Labels}}' <容器名>
+```
+
+nerdctl 同样用 `--filter label=…`，加上 agent 使用的 `-n <namespace>`。`gpuworks.instance` 与 `gpuworks.deployment`
+对应管理界面里的实例 UUID 与部署 ID。
+
+**注意**
+
+- server_dial 节点不知道管理节点地址，容器上没有 `gpuworks.server`，用 `gpuworks.state-dir` 区分。
+- 标签在创建容器时写入：升级 agent 之前已在运行的容器没有标签，实例重建后才有。
+- runveil 容器本来就在各自的 state 目录下，互不可见，用 `gpuworks-agent runveil --state <目录> ps -a` 分别查看。
+- 孤儿容器清理（server 设置 `orphan_cleanup`，默认关闭）按容器名前缀 `gpuworks-` 判断，不看标签：
+  多个 agent 共用一个 docker 或 nerdctl 时打开它，会删掉其他 agent 的容器。
+- 多套管理节点各自调度，互不知道对方占用了哪些卡，可能把同一张卡排满，需要手工错开各自使用的卡。
+
 ## 模型下载卡住、失败或目录不完整
 
 **现象**：模型在节点上长时间停在 `downloading`，或变成 `failed`、`insufficient_disk_space`、`download_required`，部署创建被拒。
