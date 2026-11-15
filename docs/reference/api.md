@@ -757,6 +757,10 @@ macOS 忽略 `no_systemd`。
   睡眠指令已被接受、但还有引擎没报出级别时算 `sleeping`（详见[查询部署详情](#查询部署详情)）。
 - `offline` 是 `runtime_state` 自己的取值：没有可服务的副本（在线节点上没有非 headless、且所在多机代完整的运行中实例），
   同时有运行中实例停在已离线的节点上。
+- 有副本在服务（非 headless、所在多机代的 follower 全部运行中的运行中实例；PD 部署每个角色都要有）时 `runtime_state` 是 `running`，
+  扩容或滚动重启中正在拉取、启动的新副本不会把它改成 `starting` / `pulling`；副本全睡着时同理，`state` 仍是 `asleep`。
+  headless follower 的状态不算副本存活：leader 失败，或醒着的 leader 同一代的 follower 失败时，没有别的副本在服务就是 `failed`。
+  休眠 leader 按网关顺序先判睡眠，即使 follower 未就绪，`state` 仍是 `asleep` / `sleeping`，`ready_replicas` 仍为 0。
 - 只有部分副本睡着的部署仍能服务，`state` 保持 `running`，睡着的副本数由 `asleep_replicas` 给出；
   这样的行同样能被 `state=running` 筛到。
 

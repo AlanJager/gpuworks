@@ -309,9 +309,16 @@ func TestDeploymentMultiNodeIncompleteAsleepReadsAsleep(t *testing.T) {
 	}
 	check := func(state string, ready, asleep int) {
 		t.Helper()
-		got := f.handler.deploymentDTO(mustDeployment(t, f.st, dep.ID), true)
+		page := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=1&page_size=100&q=incomplete"))
+		if len(page.Items) != 1 {
+			t.Fatalf("GET deployments returned %d rows, want the incomplete deployment", len(page.Items))
+		}
+		got := page.Items[0]
+		if (state == "sleeping" || state == "asleep") && got.RuntimeState != "running" {
+			t.Fatalf("sleeping engine runtime_state = %q, want running", got.RuntimeState)
+		}
 		if got.State != state || got.ReadyReplicas == nil || *got.ReadyReplicas != ready || got.AsleepReplicas != asleep {
-			t.Fatalf("got state=%q ready=%v asleep=%d, want %q/%d/%d", got.State, got.ReadyReplicas, got.AsleepReplicas, state, ready, asleep)
+			t.Fatalf("GET deployments: state=%q ready=%v asleep=%d, want %q/%d/%d", got.State, got.ReadyReplicas, got.AsleepReplicas, state, ready, asleep)
 		}
 	}
 	check("running", 1, 0)
@@ -319,13 +326,19 @@ func TestDeploymentMultiNodeIncompleteAsleepReadsAsleep(t *testing.T) {
 	if err := f.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "inc-follower", State: proto.InstStopped}); err != nil {
 		t.Fatal(err)
 	}
-	check("running", 0, 0)
-	// The leader is ordered to sleep and reports it: the gateway now refuses
-	// with the asleep message before it ever notices the missing rank.
+	check("starting", 0, 0)
+	// The leader is ordered to sleep: the gateway refuses for sleep before
+	// it ever notices the missing rank, including while the order settles.
 	if err := f.st.OrderDeploymentSleep(dep.ID, 1, "wait"); err != nil {
 		t.Fatal(err)
 	}
+	check("sleeping", 0, 1)
 	reportAsleep(t, f.st, "inc-leader", 1)
+	check("asleep", 0, 1)
+	// A failed follower still does not outrank the gateway's sleep refusal.
+	if err := f.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "inc-follower", State: proto.InstFailed}); err != nil {
+		t.Fatal(err)
+	}
 	check("asleep", 0, 1)
 }
 
