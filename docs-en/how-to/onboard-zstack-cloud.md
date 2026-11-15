@@ -4,9 +4,23 @@ Add an existing ZStack Cloud environment to GPUWorks, synchronize its KVM hosts 
 
 ## Version and Environment Requirements
 
-**Requires ZStack Cloud 5.4.2 or later.** The credentials form displays this notice when adding or editing ZStack Cloud.
+**Requires ZStack Cloud 4.8.0 or later.** The credentials form displays this notice when adding or editing ZStack Cloud.
 
-This minimum is based on the current implementation's source dependencies: the AK request date format requires the parsing support introduced in Cloud 5.4.0, and the GPU `allocateStatus` field was introduced in Cloud 5.4.2. Adding an environment, resource synchronization, agent installation, and GPU reservation and release have not yet been tested end to end on 5.4.2; this minimum does not mean that version has passed full compatibility validation.
+GPUWorks uses ZStack Cloud 4.8.0 as the minimum version for its integration and adapts to different versions according to their API capabilities. This minimum requirement does not mean that every later version has been tested in a real environment.
+
+GPUWorks handles physical GPUs according to the data Cloud provides:
+
+| Protocol shape | Ownership determination |
+|---|---|
+| PCI device query only | PCI device status and VM ownership |
+| GPU query without a separate allocation field | Reuses PCI status and VM ownership already included in the GPU response, without extra requests |
+| GPU query with a separate allocation field | Cloud's reported GPU allocation state |
+
+A missing allocation field does not mean that a GPU is free: PCI information must establish that the physical GPU is unoccupied before it can be used. An explicitly occupied, empty, or unknown allocation value is never made available through PCI interpretation. GPU disabling, enabling, and IOMMU group effects retain Cloud's behavior.
+
+AK request dates use a format accepted by these protocols. When CPU reservations cannot be configured per host, GPUWorks reads the global value and leaves host CPU reservations unchanged. Adding an environment confirms credential validation; resource synchronization and GPU use still require the corresponding permissions and valid states.
+
+These protocols are covered by source-based HTTP fixtures, including reservation, release, and sharing. Real-environment validation has passed on Cloud 4.8.0 Enterprise with one node and one GPU, and on Cloud 5.5.32 with one node and two GPUs: AK onboarding, synchronization, agent installation, inference, release on stop while preserving the original description, and inference after restarting. The 5.5.32 validation also covered regular and streaming inference, the browser Playground, and independent deployment and release on the two GPUs. Other versions, multiple nodes, vGPU, and GPU sharing still require their own real-environment validation.
 
 Before onboarding, confirm that:
 

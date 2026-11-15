@@ -56,7 +56,7 @@ for (const language of ["en", "zh"] as const) {
     render(<I18nextProvider i18n={i18n}><ProviderConfigModal open defaultKind="zstack" kindInfos={kindInfos} categories={kindCategories(kindInfos)} providerLabel="ZStack" onClose={() => {}} onSaved={() => { saved++; }} /></I18nextProvider>);
     await waitFor(() => assert.equal(input("endpoint")?.value, endpointTemplate));
     // What the vendor's version must be is a notice at the head of the form, not a refusal.
-    assert.deepEqual(within(screen.getByRole("dialog")).getAllByRole("status").map((notice) => notice.textContent), [language === "zh" ? "需要 ZStack Cloud 5.4.2 或更高版本。" : "Requires ZStack Cloud 5.4.2 or later."]);
+    assert.deepEqual(within(screen.getByRole("dialog")).getAllByRole("status").map((notice) => notice.textContent), [language === "zh" ? "需要 ZStack Cloud 4.8.0 或更高版本。" : "Requires ZStack Cloud 4.8.0 or later."]);
     assert.deepEqual(alerts(), []);
     for (const [name, value] of Object.entries({ name: "cloud", public_key: "entered-ak", private_key: "entered-sk" })) {
       fireEvent.change(input(name as keyof typeof LABELS), { target: { value } });
@@ -172,7 +172,7 @@ test("ZStack editing loads and submits the saved endpoint without applying the c
   render(<I18nextProvider i18n={i18n}><ProviderConfigModal open provider={provider} kindInfos={kindInfos} categories={kindCategories(kindInfos)} providerLabel="ZStack" onClose={() => {}} onSaved={() => { saved++; }} /></I18nextProvider>);
   await waitFor(() => assert.equal(input("endpoint")?.value, endpoint));
   assert.equal(input("private_key").value, "");
-  assert.ok(within(screen.getByRole("dialog")).getByText("Requires ZStack Cloud 5.4.2 or later."), "an edit states the requirement of the account's kind too");
+  assert.ok(within(screen.getByRole("dialog")).getByText("Requires ZStack Cloud 4.8.0 or later."), "an edit states the requirement of the account's kind too");
   const saveButton = () => screen.getByRole("button", { name: /Save/ }) as HTMLButtonElement;
   await waitFor(() => assert.equal(saveButton().disabled, false));
   fireEvent.click(saveButton());
