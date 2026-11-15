@@ -308,3 +308,126 @@ func TestRefreshFleetNodesTakesTheReportsInsideTheWindow(t *testing.T) {
 		t.Fatal("a refresh with nothing new read the fleet")
 	}
 }
+
+// A status report that changes what placement decides on - a card's health,
+// a process outside the platform holding a card, a card appearing or going -
+// is seen by the next read, inside the report window too: a reconcile that a
+// deployment or instance event (not the status batch) starts would otherwise
+// place work on a card that just reported a fault. A report that changes
+// only what is shown (the hostname here) still waits for the window.
+func TestFleetNodesSeesAReportThatChangesPlacementFactsAtOnce(t *testing.T) {
+	card := func(uuid string) proto.GPUInfo {
+		return proto.GPUInfo{Index: 0, UUID: "GPU-" + uuid, Name: "NVIDIA A100", Vendor: "nvidia", MemoryTotalBytes: 80 << 30, Healthy: true}
+	}
+	for _, tc := range []struct {
+		name   string
+		report func(uuid string) []proto.GPUInfo
+		seen   func(n *Node) bool
+	}{
+		{"a card reports a fault", func(uuid string) []proto.GPUInfo {
+			c := card(uuid)
+			c.Healthy, c.HealthStatus, c.HealthCode = false, "Error", "xid_79"
+			return []proto.GPUInfo{c}
+		}, func(n *Node) bool { return len(n.GPUs) == 1 && n.GPUs[0].HealthStatus == "Error" }},
+		{"a process outside the platform takes a card", func(uuid string) []proto.GPUInfo {
+			c := card(uuid)
+			c.ForeignProcesses = []proto.CardProcess{{PID: 4242, Name: "python"}}
+			return []proto.GPUInfo{c}
+		}, func(n *Node) bool { return len(n.GPUs) == 1 && n.GPUs[0].ForeignProcesses != "" }},
+		{"a card is added", func(uuid string) []proto.GPUInfo {
+			second := card(uuid)
+			second.Index, second.UUID = 1, "GPU-"+uuid+"-b"
+			return []proto.GPUInfo{card(uuid), second}
+		}, func(n *Node) bool { return len(n.GPUs) == 2 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFleetFixture(t)
+			uuid := f.uuids[0]
+			f.fleet(t)
+			// A display-only report inside the window is folded.
+			if err := f.st.UpdateNodeStatus(uuid, proto.NodeStatus{
+				Sys: proto.SysInfo{Hostname: "renamed-host", GPUVendor: "nvidia"}, GPUs: []proto.GPUInfo{card(uuid)},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			f.now = f.now.Add(500 * time.Millisecond)
+			if _, rebuilt := f.fleet(t); rebuilt {
+				t.Fatal("fixture: a hostname-only report inside the window rebuilt the snapshot")
+			}
+			if err := f.st.UpdateNodeStatus(uuid, proto.NodeStatus{
+				Sys: proto.SysInfo{Hostname: "renamed-host", GPUVendor: "nvidia"}, GPUs: tc.report(uuid),
+			}); err != nil {
+				t.Fatal(err)
+			}
+			f.now = f.now.Add(500 * time.Millisecond)
+			got, _ := f.fleet(t)
+			if n := nodeByUUID(got, uuid); n == nil || !tc.seen(n) {
+				t.Fatalf("the report was not seen inside the window: %+v", n)
+			}
+			// The same report again changes nothing and is folded.
+			if err := f.st.UpdateNodeStatus(uuid, proto.NodeStatus{
+				Sys: proto.SysInfo{Hostname: "renamed-host", GPUVendor: "nvidia"}, GPUs: tc.report(uuid),
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, rebuilt := f.fleet(t); rebuilt {
+				t.Fatal("a repeated report that changes nothing rebuilt the snapshot")
+			}
+		})
+	}
+}
+
+// A refresh that fails leaves no snapshot to answer from: the reads that
+// follow - the status batch's reconciles - rebuild (or fail) rather than take
+// the rows from before the reports the refresh was for.
+func TestAFailedRefreshDoesNotLeaveTheOldSnapshotAnswering(t *testing.T) {
+	f := newFleetFixture(t)
+	f.fleet(t)
+	if err := f.st.UpdateNodeStatus("fleet-1", proto.NodeStatus{
+		Sys:  proto.SysInfo{Hostname: "reported", GPUVendor: "nvidia"},
+		GPUs: []proto.GPUInfo{{Index: 0, UUID: "GPU-fleet-1", Name: "NVIDIA A100", Vendor: "nvidia", MemoryTotalBytes: 80 << 30, Healthy: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.now = f.now.Add(100 * time.Millisecond)
+	var fail atomic.Bool
+	fail.Store(true)
+	if err := f.st.DB().Callback().Query().Before("gorm:query").Register("test:fail_fleet_read", func(tx *gorm.DB) {
+		if fail.Load() && tx.Statement.Table == "nodes" {
+			fail.Store(false)
+			_ = tx.AddError(fmt.Errorf("injected: database is locked"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.st.DB().Callback().Query().Remove("test:fail_fleet_read") })
+	if err := f.st.RefreshFleetNodes(); err == nil {
+		t.Fatal("fixture: the refresh did not fail")
+	}
+	got, rebuilt := f.fleet(t)
+	if !rebuilt || nodeByUUID(got, "fleet-1").Hostname != "reported" {
+		t.Fatalf("after a failed refresh: rebuilt %v, hostname %q; the old snapshot answered", rebuilt, nodeByUUID(got, "fleet-1").Hostname)
+	}
+}
+
+// A node's network inventory is what its rails, its RDMA networks and its
+// engine ports are planned from; a report that changes it is seen by the
+// next read too, so an operator editing a network's HCAs right after a NIC
+// came up plans on the NIC.
+func TestFleetNodesSeesANetworkInventoryChangeAtOnce(t *testing.T) {
+	f := newFleetFixture(t)
+	uuid := f.uuids[0]
+	card := []proto.GPUInfo{{Index: 0, UUID: "GPU-" + uuid, Name: "NVIDIA A100", Vendor: "nvidia", MemoryTotalBytes: 80 << 30, Healthy: true}}
+	f.fleet(t)
+	if err := f.st.UpdateNodeStatus(uuid, proto.NodeStatus{
+		Sys: proto.SysInfo{Hostname: uuid, GPUVendor: "nvidia"}, GPUs: card,
+		Network: &proto.NetInventory{Interfaces: []proto.NetInterface{{Name: "ib0", State: "up", MTU: 4092}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.now = f.now.Add(500 * time.Millisecond)
+	got, _ := f.fleet(t)
+	if n := nodeByUUID(got, uuid); n == nil || !strings.Contains(n.NetworkInventory, "ib0") {
+		t.Fatalf("the new interface was not seen inside the window: %+v", n)
+	}
+}
