@@ -41,9 +41,9 @@ func TestCachedRouteRejectsKnownNonRunningInstance(t *testing.T) {
 			case "deleted":
 				err = st.DeleteInstance(inst.UUID)
 			case "port changed":
-				err = st.DB().Model(&store.Instance{}).Where("uuid = ?", inst.UUID).Update("api_port", 30002).Error
+				err = updateInstanceRow(st, inst.UUID, map[string]any{"api_port": 30002})
 			case "headless":
-				err = st.DB().Model(&store.Instance{}).Where("uuid = ?", inst.UUID).Update("headless", true).Error
+				err = updateInstanceRow(st, inst.UUID, map[string]any{"headless": true})
 			default:
 				err = st.SetInstanceState(inst.UUID, state, "engine exited; recovery pending")
 			}
@@ -71,9 +71,9 @@ func TestCachedRouteRejectsKnownNonRunningInstance(t *testing.T) {
 				inst.ID = 0
 				_, err = st.CreateInstance(inst)
 			case "port changed":
-				err = st.DB().Model(&store.Instance{}).Where("uuid = ?", inst.UUID).Update("api_port", 30001).Error
+				err = updateInstanceRow(st, inst.UUID, map[string]any{"api_port": 30001})
 			case "headless":
-				err = st.DB().Model(&store.Instance{}).Where("uuid = ?", inst.UUID).Update("headless", false).Error
+				err = updateInstanceRow(st, inst.UUID, map[string]any{"headless": false})
 			default:
 				err = st.SetInstanceState(inst.UUID, proto.InstRunning, "engine healthy")
 			}

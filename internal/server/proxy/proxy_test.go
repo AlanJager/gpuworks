@@ -642,7 +642,7 @@ func TestDistributedSelectionRequiresEveryRankAndRoutesOnlyLeader(t *testing.T) 
 	}
 	// A follower of another generation does not complete the leader's.
 	setAttempt := func(attempt int) {
-		if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", follower.UUID).Update("dist_attempt", attempt).Error; err != nil {
+		if err := updateInstanceRow(st, follower.UUID, map[string]any{"dist_attempt": attempt}); err != nil {
 			t.Fatal(err)
 		}
 	}

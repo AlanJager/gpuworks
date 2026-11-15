@@ -48,7 +48,7 @@ CI 引用的两个多进程用例有 Make target；其余直接用 `go test` 跑
 | `make test-fleet-perf-processes` | `TestFleet1000NodesRedeployChurnAcrossProcesses` | 同一负载，但 server 是独立进程、fleet 是另一个进程 |
 | `go test`（见测试注释） | `TestFleetLogCenterScale` | 日志中心在 fleet 负载下的读目标（单进程） |
 | `make test-fleet-log-scale-processes` | `TestFleetLogCenterScaleAcrossProcesses` | 同一日志中心负载，server 与 fleet 分进程 |
-| `go test`（见测试注释） | `TestFleetGatewayLoadAcrossProcesses` | `/v1` 数据面：server 进程 + 多卡 fleet（流式 fake 引擎）+ 流式客户端群，报告 req/s、TTFT/E2E、server 核数与内存、副本分布；`GPUWORKS_GATEWAY_*` 调形态，基线见 `artifacts/archive/2026-09-24-gateway-load-acceptance/gateway-load-gpu2-2026-09-24/` |
+| `make test-fleet-gateway-load-processes` | `TestFleetGatewayLoadAcrossProcesses` | `/v1` 数据面：server 进程 + 多卡 fleet（流式 fake 引擎）+ 流式客户端群，报告 req/s、TTFT/E2E、server 核数与内存、每请求 server CPU、副本分布；make 目标默认 1000 路客户端跑 30 s，`GPUWORKS_GATEWAY_*` 调形态，基线见 `artifacts/archive/2026-09-24-gateway-load-acceptance/gateway-load-gpu2-2026-09-24/` |
 
 fleet 用例默认 1000 个 agent，其中一半循环执行 部署→拉镜像→running→删除。数据库写入磁盘，
 以测量真实写入代价；`:memory:` 不执行 fsync（把数据同步到磁盘），测不出这部分开销。用例断言：
@@ -81,7 +81,10 @@ RSS（进程驻留内存）与 CPU。
 `l2-fleet-redeploy-churn` job 跑多进程形态，只在 `FLEET_REDEPLOY_CHURN=1` 的 schedule / web / api
 流水线里出现（每晚定时任务带这个变量）；job 以 `GPUWORKS_TEST_STRICT=1` 运行，文件描述符上限不够
 会失败而不是跳过，两个进程的日志压缩成一个 tar.gz（按进程拆开的 40 个日志文件曾因上传体积被网关以 413 拒绝）作为 artifact 保留 14 天。掉线重连数与接口 p99 目前只报数不断言，
-看 nightly 的趋势，积累足够运行后再定阈值。
+看 nightly 的趋势，积累足够运行后再定阈值。网关用例另外断言每请求 server CPU
+（`GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST`）：每请求的读库、复制之类的开销逐次累加时，
+吞吐和延迟要等到饱和才显出来，CPU 预算在每一步都能拦住。这个数与 CPU 型号有关，job 里的预算按最慢的
+runner（2.2 GHz Xeon Silver 4210）定，落在更快的 runner 上只会更低。
 
 多进程形态可用预编译二进制运行，**没有 Go 工具链的机器只能这样跑**：
 

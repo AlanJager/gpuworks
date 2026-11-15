@@ -275,6 +275,9 @@ func (r *routeTable) setOnRebuild(fn func(map[string]bool)) {
 }
 
 func (r *routeTable) build() (*routeSnapshot, error) {
+	// Read before the rows: a change committed while they are read moves the
+	// generation past this, and the candidates read as possibly stale.
+	routedAt := routingGeneration(r.store) + 1
 	deps, err := r.store.RoutingDeployments()
 	if err != nil {
 		return nil, err
@@ -340,7 +343,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		if nodeUUID == "" {
 			continue
 		}
-		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: instanceModelName(rd.dep, in), uuidHash: fnv64([]byte(in.UUID))}
+		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: instanceModelName(rd.dep, in), uuidHash: fnv64([]byte(in.UUID)), routedAt: routedAt}
 		if rd.pd != nil {
 			var ok bool
 			if c, ok = rd.pd.admit(in, c); !ok {
