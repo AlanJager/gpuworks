@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 )
 
 // PlaygroundHandler routes deployed models through the normal internal data
@@ -34,6 +35,14 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 		if !signedIn || claims.Role != "admin" {
 			r.Header.Del(priorityClassHeader)
 		}
+		// A server-origin evaluation's requests say they are one, so the
+		// request records tell them from the playground's. Only the
+		// administrator who may start one is believed; an engine never
+		// sees the header.
+		if r.Header.Get(loadgen.BenchmarkRunHeader) != "" && signedIn && claims.Role == "admin" {
+			caller.Source = uxrecord.SourceEvaluation
+		}
+		r.Header.Del(loadgen.BenchmarkRunHeader)
 		r = r.WithContext(uxrecord.WithCaller(r.Context(), caller))
 		modelName, cleanup, err := extractModel(r, p.maxBodyBytes)
 		defer cleanup()

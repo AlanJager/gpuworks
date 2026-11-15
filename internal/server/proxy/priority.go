@@ -118,7 +118,7 @@ func (p *Proxy) requestPriority(r *http.Request) (priority.Decision, bool) {
 	switch {
 	case caller.Source == uxrecord.SourceBatch:
 		source = priority.SourceBatch
-	case caller.Source == uxrecord.SourcePlayground:
+	case caller.Source == uxrecord.SourcePlayground, caller.Source == uxrecord.SourceEvaluation:
 		source = priority.SourceConsole
 	case caller.Source == uxrecord.SourceAPI && caller.APIKeyID != 0 && keyed:
 		source = priority.SourceKey

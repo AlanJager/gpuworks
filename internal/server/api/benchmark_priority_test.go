@@ -14,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 )
 
 // A run names the request priority class its requests ask the gateway for;
@@ -99,5 +100,17 @@ func TestBenchmarkPriorityClassNeedsTheGateway(t *testing.T) {
 				t.Fatalf("= %d %v, want 400 %s", status, out, tc.code)
 			}
 		})
+	}
+}
+
+// Every request of a server-origin run says which run it is, so the gateway
+// records it as an evaluation's, and asks for the run's class when it has one.
+func TestBenchmarkRequestHeader(t *testing.T) {
+	h := benchmarkRequestHeader(12, "")
+	if h.Get(loadgen.BenchmarkRunHeader) != "12" || h.Get(loadgen.PriorityClassHeader) != "" {
+		t.Fatalf("no class = %v", h)
+	}
+	if h := benchmarkRequestHeader(12, "high"); h.Get(loadgen.PriorityClassHeader) != "high" || h.Get(loadgen.BenchmarkRunHeader) != "12" {
+		t.Fatalf("class = %v", h)
 	}
 }

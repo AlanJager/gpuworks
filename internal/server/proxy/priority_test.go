@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
@@ -31,6 +33,8 @@ type priorityRig struct {
 	seen []map[string]any
 	hdr  []string
 	raw  []string
+	// bench is the benchmark-run header the engine got, which it never should.
+	bench []string
 }
 
 // newPriorityRig serves four deployments on one engine stub: "v" (vLLM with
@@ -57,6 +61,7 @@ func newPriorityRig(t testing.TB) *priorityRig {
 		rig.seen = append(rig.seen, body)
 		rig.hdr = append(rig.hdr, r.Header.Get("X-Vllm-Priority"))
 		rig.raw = append(rig.raw, string(raw))
+		rig.bench = append(rig.bench, r.Header.Get(loadgen.BenchmarkRunHeader))
 		rig.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop"}]}`)
@@ -504,4 +509,56 @@ func TestGatewayOwnsTheBodyFieldsOnEveryPath(t *testing.T) {
 			t.Fatalf("multipart forwarded %q (header %q), want it as sent", raw, hdr)
 		}
 	})
+}
+
+// A server-origin evaluation's requests come through the playground entry
+// marked with their run: the record says evaluation, they run at the class
+// they name as the playground's do, and the engine never sees the mark. Only
+// an administrator's mark is believed.
+func TestEvaluationRequestsAreRecordedAsTheirOwnSource(t *testing.T) {
+	rig := newPriorityRig(t)
+	dep, err := rig.st.GetDeployment(rig.deployments["s"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rig.st.SetModelInferenceConfig(dep.ModelID, `[{"type":"openai.chat"}]`, `["text"]`); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var sources []uxrecord.Source
+	rig.p.SetRequestSink(func(r uxrecord.Request) { mu.Lock(); sources = append(sources, r.Source); mu.Unlock() })
+	send := func(role, run, class string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/v1/chat/completions", strings.NewReader(`{"model":"s","messages":[]}`))
+		req = req.WithContext(auth.WithClaims(req.Context(), auth.Claims{UserID: 1, Username: "u", Role: role}))
+		req.Header.Set("Content-Type", "application/json")
+		if run != "" {
+			req.Header.Set(loadgen.BenchmarkRunHeader, run)
+		}
+		if class != "" {
+			req.Header.Set(priorityClassHeader, class)
+		}
+		rec := httptest.NewRecorder()
+		rig.p.PlaygroundHandler(nil)(rec, req)
+		return rec
+	}
+	if rec := send("admin", "12", "high"); rec.Code != http.StatusOK || rec.Header().Get(priorityClassHeader) != "high" {
+		t.Fatalf("evaluation = %d %q", rec.Code, rec.Header().Get(priorityClassHeader))
+	}
+	if rec := send("user", "12", ""); rec.Code != http.StatusOK {
+		t.Fatalf("user = %d", rec.Code)
+	}
+	if rec := send("admin", "", ""); rec.Code != http.StatusOK {
+		t.Fatalf("playground = %d", rec.Code)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	want := []uxrecord.Source{uxrecord.SourceEvaluation, uxrecord.SourcePlayground, uxrecord.SourcePlayground}
+	if !slices.Equal(sources, want) {
+		t.Fatalf("sources = %v, want %v", sources, want)
+	}
+	rig.mu.Lock()
+	defer rig.mu.Unlock()
+	if !slices.Equal(rig.bench, []string{"", "", ""}) {
+		t.Fatalf("the engine got the run mark: %q", rig.bench)
+	}
 }
