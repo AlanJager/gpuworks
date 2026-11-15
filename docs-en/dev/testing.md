@@ -48,7 +48,7 @@ The two multi-process tests referenced by CI have Make targets. Run the others d
 | `make test-fleet-perf-processes` | `TestFleet1000NodesRedeployChurnAcrossProcesses` | The same load, with the server in a separate process and the fleet in another process |
 | `go test` (see the test comments) | `TestFleetLogCenterScale` | Log center read targets under fleet load (single process) |
 | `make test-fleet-log-scale-processes` | `TestFleetLogCenterScaleAcrossProcesses` | The same log center load, with the server and fleet in separate processes |
-| `go test` (see the test comments) | `TestFleetGatewayLoadAcrossProcesses` | `/v1` data plane: server process + multi-GPU fleet (streaming fake engines) + streaming clients. Reports req/s, TTFT/E2E, server CPU core usage and memory, and replica distribution. Use `GPUWORKS_GATEWAY_*` to adjust the workload configuration; see the baseline in `artifacts/archive/2026-09-24-gateway-load-acceptance/gateway-load-gpu2-2026-09-24/` |
+| `make test-fleet-gateway-load-processes` | `TestFleetGatewayLoadAcrossProcesses` | `/v1` data plane: server process + multi-GPU fleet (streaming fake engines) + streaming clients. Reports req/s, TTFT/E2E, server CPU core usage and memory, server CPU per request, and replica distribution. The make target runs 1000 clients for 30 s by default. Use `GPUWORKS_GATEWAY_*` to adjust the workload configuration; see the baseline in `artifacts/archive/2026-09-24-gateway-load-acceptance/gateway-load-gpu2-2026-09-24/` |
 
 Fleet tests use 1000 agents by default, half of which repeatedly cycle through deployment → image pulling → running → deletion. The database writes to disk
 to measure the real cost of writes; `:memory:` does not perform fsync (synchronizing data to disk), so it cannot measure this overhead. The tests assert that:
@@ -81,7 +81,10 @@ and its measurements are more stable. The single-process configuration remains a
 the `l2-fleet-redeploy-churn` job runs the multi-process configuration and appears only in schedule / web / api
 pipelines with `FLEET_REDEPLOY_CHURN=1` (the nightly schedule includes this variable). The job runs with `GPUWORKS_TEST_STRICT=1`, so an insufficient file descriptor limit
 causes a failure rather than a skip. Logs from both processes are compressed into a single tar.gz (the 40 separate per-process log files were once rejected by the gateway with 413 on upload) and retained as artifacts for 14 days. Disconnect/reconnect counts and endpoint p99 are currently reported without assertions;
-thresholds will be set after enough nightly runs have accumulated to establish trends.
+thresholds will be set after enough nightly runs have accumulated to establish trends. The gateway case also asserts the server's CPU per request
+(`GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST`): per-request costs such as database reads or copies add up step by step and only show in throughput and latency once the
+host saturates, while a CPU budget stops each step. The figure depends on the CPU model; the job's budget is set for the slowest runner (a 2.2 GHz Xeon Silver 4210), and a
+faster runner only reads lower.
 
 The multi-process configuration can run with prebuilt binaries. **This is the only way to run it on machines without the Go toolchain**:
 

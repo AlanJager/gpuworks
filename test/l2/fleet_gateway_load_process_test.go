@@ -40,7 +40,10 @@ import (
 // (2000) clients for GPUWORKS_GATEWAY_SECONDS (60); engine shape
 // GPUWORKS_GATEWAY_TTFT_MS (200), _TPOT_MS (20), _DELTAS (64);
 // GPUWORKS_GATEWAY_PROMPT_BYTES pads each prompt (long-context requests);
-// GPUWORKS_GATEWAY_TRACE_EXPORT=1 runs with the request trace export on.
+// GPUWORKS_GATEWAY_TRACE_EXPORT=1 runs with the request trace export on;
+// GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST budgets the server's CPU per
+// request (the nightly job sets it for its runner: the figure depends on the
+// host's CPU).
 func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	if os.Getenv("GPUWORKS_TEST_PERF") != "1" {
 		t.Skip("gateway load case; set GPUWORKS_TEST_PERF=1 on an idle host to run (full command in the test's doc comment)")
@@ -57,6 +60,9 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	maxErrorPermille := fleet.EnvInt("GPUWORKS_GATEWAY_MAX_ERROR_PERMILLE", 1)
 	ttftOverheadBudget := time.Duration(fleet.EnvInt("GPUWORKS_GATEWAY_TTFT_OVERHEAD_P99_MS", 1000)) * time.Millisecond
 	maxImbalancePercent := fleet.EnvInt("GPUWORKS_GATEWAY_MAX_IMBALANCE_PERCENT", 25)
+	// The server's CPU per request, in microseconds; 0 checks nothing. A
+	// figure for one host only: set it where the case runs on fixed hardware.
+	maxServerCPUPerRequest := fleet.EnvInt("GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST", 0)
 	if gpus > 32 {
 		t.Fatalf("GPUWORKS_GATEWAY_GPUS_PER_NODE=%d: one deployment per node cannot exceed 32 replicas", gpus)
 	}
@@ -196,6 +202,8 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	seconds := report.Elapsed.Seconds()
 	t.Logf("server process: %.2f cores busy (%.1f CPU-s), RSS peak %.0f MiB, now %.0f MiB",
 		serverCPU/seconds, serverCPU, peak.max(), readProcessRSSMiB(server.Process.Pid))
+	perRequest := serverCPU * 1e6 / float64(max(report.Requests, 1))
+	t.Logf("server CPU per request: %.0f µs", perRequest)
 	t.Logf("fleet process (agents + engines): %.2f cores busy (%.1f CPU-s)", hostCPU/seconds, hostCPU)
 	t.Logf("request bodies spooled to disk at once (peak): %d", peak.spooled())
 
@@ -246,6 +254,9 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	}
 	if permille := report.Errors * 1000 / max(report.Requests, 1); permille > int64(maxErrorPermille) {
 		t.Errorf("%d of %d requests failed (%d‰, budget %d‰): %v", report.Errors, report.Requests, permille, maxErrorPermille, report.Failures())
+	}
+	if maxServerCPUPerRequest > 0 && perRequest > float64(maxServerCPUPerRequest) {
+		t.Errorf("server CPU per request is %.0f µs (budget %d µs)", perRequest, maxServerCPUPerRequest)
 	}
 	if overhead := report.TTFT.Percentile(0.99) - ttft; overhead > ttftOverheadBudget {
 		t.Errorf("gateway adds %s to TTFT at p99 (budget %s)", overhead.Round(time.Millisecond), ttftOverheadBudget)
