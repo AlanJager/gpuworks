@@ -849,6 +849,11 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 	if rowsAffected == 0 {
 		return nil
 	}
+	// The change is announced below, after more writes; a reader that trusts
+	// the instance generation must stop trusting it now (Bus.Advance).
+	if rolledBack || (st.State != "" && (prev != st.State || prevPhase != st.Phase || st.SleepLevel != prevSleep)) {
+		s.Bus.Advance("instance")
+	}
 	if sleepLevelChanged {
 		s.AddInstanceEventCode(inst, "sleep", instanceEventSleepResult, map[string]any{"result": "applied", "level": st.SleepLevel})
 	}
@@ -919,6 +924,7 @@ func (s *Store) SetInstanceState(uuid, state, message string) error {
 		Updates(map[string]any{"state": state, "message": message, "runtime_failure": ""}).Error; err != nil {
 		return err
 	}
+	s.Bus.Advance("instance") // announced after the event row; see Bus.Advance
 	s.AddInstanceEventCode(inst, "state", instanceEventStateChanged, map[string]any{"state": state, "detail": message})
 	s.Bus.PublishChange("instance", uuid, state)
 	return nil

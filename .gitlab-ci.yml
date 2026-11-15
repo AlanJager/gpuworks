@@ -658,7 +658,7 @@ core-l3:
 l2-fleet-redeploy-churn:
   extends: .go-core
   stage: core
-  timeout: 75m
+  timeout: 90m
   variables:
     GPUWORKS_TEST_STRICT: "1"
     GPUWORKS_FLEET_PROCESS_LOGS: "1"

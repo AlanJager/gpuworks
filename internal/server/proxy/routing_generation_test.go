@@ -52,39 +52,53 @@ func newSleepableRoute(t *testing.T, name string) (*Proxy, *store.Store, uint, s
 // While nothing that can change an instance row was announced since the
 // route snapshot was built, a request is routed from the snapshot without
 // reading the instance: a row changed behind the store's back is not seen.
-// The moment a change is announced - an instance's sleep level, a
-// deployment-wide sleep order - the instance is read again and refused, with
-// no wait for the snapshot to be rebuilt.
+// The moment a change is announced - a sleep level, a deployment-wide sleep
+// order, a state change, a moved port - the instance is read again and
+// routing follows it, with no wait for the snapshot to be rebuilt.
 func TestRoutingTrustsTheSnapshotUntilAChangeIsAnnounced(t *testing.T) {
-	for _, announce := range []struct {
-		name string
-		send func(st *store.Store, depID uint, uuid string) error
+	for _, tc := range []struct {
+		name     string
+		row      map[string]any
+		announce func(st *store.Store, depID uint, uuid string) error
+		// want is the selection after the announcement: 503 (asleep or
+		// not), or routed to port.
+		status int
+		asleep bool
+		port   int
 	}{
-		{"instance sleep reported", func(st *store.Store, _ uint, uuid string) error {
+		{"instance sleep reported", map[string]any{"sleep_level": 1}, func(st *store.Store, _ uint, uuid string) error {
 			st.Bus.PublishChange("instance", uuid, "sleep")
 			return nil
-		}},
-		{"deployment-wide sleep order", func(st *store.Store, depID uint, _ string) error {
+		}, http.StatusServiceUnavailable, true, 0},
+		{"deployment-wide sleep order", map[string]any{"sleep_level": 1}, func(st *store.Store, depID uint, _ string) error {
 			return st.SetDeploymentSleep(depID, 1)
-		}},
+		}, http.StatusServiceUnavailable, true, 0},
+		{"instance stopped", map[string]any{"state": proto.InstStopped}, func(st *store.Store, _ uint, uuid string) error {
+			return st.SetInstanceState(uuid, proto.InstStopped, "stopped")
+		}, http.StatusServiceUnavailable, false, 0},
+		{"port moved", map[string]any{"api_port": 30002}, func(st *store.Store, _ uint, uuid string) error {
+			st.Bus.PublishChange("instance", uuid, "status")
+			return nil
+		}, 0, false, 30002},
 	} {
-		t.Run(announce.name, func(t *testing.T) {
-			p, st, depID, uuid := newSleepableRoute(t, "trust_"+strings.ReplaceAll(announce.name, " ", "_"))
+		t.Run(tc.name, func(t *testing.T) {
+			p, st, depID, uuid := newSleepableRoute(t, "trust_"+strings.ReplaceAll(tc.name, " ", "_"))
 			p.routes.close() // the snapshot stays as built: only the generation moves
 			if _, _, status, msg, _ := p.selectDeploymentInstance("model"); status != 0 {
 				t.Fatalf("awake instance not routable: %d %q", status, msg)
 			}
-			if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", uuid).Update("sleep_level", 1).Error; err != nil {
+			if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", uuid).Updates(tc.row).Error; err != nil {
 				t.Fatal(err)
 			}
-			if _, _, status, msg, _ := p.selectDeploymentInstance("model"); status != 0 {
-				t.Fatalf("unannounced row change read per request: %d %q", status, msg)
+			if _, tgt, status, msg, _ := p.selectDeploymentInstance("model"); status != 0 || tgt.port != 30001 {
+				t.Fatalf("unannounced row change read per request: %d %q port %d", status, msg, tgt.port)
 			}
-			if err := announce.send(st, depID, uuid); err != nil {
+			if err := tc.announce(st, depID, uuid); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, status, msg, asleep := p.selectDeploymentInstance("model"); status != http.StatusServiceUnavailable || !asleep {
-				t.Fatalf("after the announcement = %d %q asleep=%v, want 503 asleep", status, msg, asleep)
+			_, tgt, status, msg, asleep := p.selectDeploymentInstance("model")
+			if status != tc.status || asleep != tc.asleep || (tc.status == 0 && tgt.port != tc.port) {
+				t.Fatalf("after the announcement = %d %q asleep=%v port %d, want %d asleep=%v port %d", status, msg, asleep, tgt.port, tc.status, tc.asleep, tc.port)
 			}
 		})
 	}
