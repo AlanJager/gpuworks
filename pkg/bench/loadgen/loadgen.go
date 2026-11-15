@@ -39,6 +39,9 @@ type Client struct {
 	// Header is sent with every request besides the content type and the
 	// key, such as the priority class a gpuworks gateway is asked for.
 	Header http.Header
+	// ObservePriorityClass keeps the class the endpoint says each request ran
+	// at; set only for a gpuworks gateway, whose answer the header is.
+	ObservePriorityClass bool
 }
 
 // PriorityClassHeader names the request priority class a gpuworks gateway
@@ -199,7 +202,9 @@ func (c Client) Do(ctx context.Context, req Request) (out Result, err error) {
 	}
 	defer resp.Body.Close()
 	out.Metrics.HTTPStatus = resp.StatusCode
-	out.Metrics.PriorityClass = resp.Header.Get(PriorityClassHeader)
+	if c.ObservePriorityClass {
+		out.Metrics.PriorityClass = observedClass(resp.Header.Get(PriorityClassHeader))
+	}
 	if resp.StatusCode/100 != 2 {
 		out.Metrics.ErrorStage = "http"
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -427,4 +432,13 @@ func (r Runner) sleep(ctx context.Context, d time.Duration) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// observedClass is a class name as the gateway writes it (lowercase, at most
+// 64 bytes); anything longer is cut there.
+func observedClass(name string) string {
+	if len(name) > 64 {
+		return name[:64]
+	}
+	return name
 }

@@ -5,17 +5,24 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 )
 
 // benchmarkPriorityClass checks the request priority class a run names: a
 // class that exists, on a run whose requests go through the gateway (a
 // managed target measured from the server), the only entry that applies
-// one. It returns the class's name, and writes the refusal itself.
-func (a *apiHandlers) benchmarkPriorityClass(w http.ResponseWriter, name, entry string) (string, bool) {
+// one. Only an administrator may name one, as only an administrator binds a
+// key to any class. It returns the class's name, and writes the refusal
+// itself.
+func (a *apiHandlers) benchmarkPriorityClass(w http.ResponseWriter, r *http.Request, name, entry string) (string, bool) {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {
 		return "", true
+	}
+	if claims, ok := a.claimsFromRequest(r); !ok || claims.Role != "admin" {
+		writeProductError(w, http.StatusForbidden, ErrorAdministratorRequired, "only an administrator may choose a request priority class", nil)
+		return "", false
 	}
 	if entry != benchmarkEntryGateway {
 		writeProductError(w, http.StatusBadRequest, ErrorBenchmarkPriorityClassGateway, "a request priority class applies only to a run of a managed deployment measured from the server, whose requests go through the gateway", nil)
@@ -31,6 +38,13 @@ func (a *apiHandlers) benchmarkPriorityClass(w http.ResponseWriter, name, entry 
 		return "", false
 	}
 	return name, true
+}
+
+// benchmarkObservesPriorityClass says whether the run's answers come from
+// this server's gateway, whose X-GPUWorks-Priority-Class names the class a
+// request ran at; any other endpoint's header of that name means nothing.
+func (a *apiHandlers) benchmarkObservesPriorityClass(run *store.BenchmarkRun) bool {
+	return a.managedBenchmarkGateway(run)
 }
 
 // benchmarkRequestHeader is what every request of a run sends besides its

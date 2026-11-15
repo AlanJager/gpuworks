@@ -34,7 +34,7 @@ func TestClientSendsItsHeaderAndKeepsTheAnsweredClass(t *testing.T) {
 	}))
 	defer srv.Close()
 	header := http.Header{PriorityClassHeader: []string{"high"}, "Authorization": []string{"Bearer spoofed"}}
-	c := Client{BaseURL: srv.URL, APIKey: "key", Header: header}
+	c := Client{BaseURL: srv.URL, APIKey: "key", Header: header, ObservePriorityClass: true}
 	if _, err := c.Models(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -55,9 +55,11 @@ func TestClientSendsItsHeaderAndKeepsTheAnsweredClass(t *testing.T) {
 	if len(asked) != 4 {
 		t.Fatalf("requests = %d", len(asked))
 	}
-	// No header: nothing asked.
+	// No header: nothing asked; and an endpoint that is not our gateway
+	// has its header of that name ignored.
 	shape = "whole"
-	if _, err := (Client{BaseURL: srv.URL}).Do(context.Background(), Request{Model: "m"}); err != nil || asked[len(asked)-1] != "" {
-		t.Fatalf("without a header asked %q err=%v", asked[len(asked)-1], err)
+	res, err := (Client{BaseURL: srv.URL}).Do(context.Background(), Request{Model: "m"})
+	if err != nil || asked[len(asked)-1] != "" || res.Metrics.PriorityClass != "" {
+		t.Fatalf("without a header asked %q, kept %q, err=%v", asked[len(asked)-1], res.Metrics.PriorityClass, err)
 	}
 }

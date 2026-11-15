@@ -77,7 +77,7 @@ export default function ParametersPanel({
 
   const defaultClass = priority?.classes?.items.find((c) => c.default);
   const priorityOptions = [
-    { value: DEFAULT_CLASS, label: t("parameters.priorityDefault", { name: defaultClass ? classLabel(defaultClass) : "" }) },
+    { value: DEFAULT_CLASS, label: defaultClass ? t("parameters.priorityDefault", { name: classLabel(defaultClass) }) : t("parameters.priorityDefaultUnnamed") },
     ...(priority?.classes?.items ?? []).map((c) => ({ value: c.name, label: `${classLabel(c)} (${c.value})` })),
   ];
 

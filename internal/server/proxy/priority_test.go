@@ -296,6 +296,7 @@ func TestPlaygroundRequestsRunAtTheClassNamed(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name, asked, class string
+		role               string
 		status             int
 		engine             any
 	}{
@@ -303,10 +304,15 @@ func TestPlaygroundRequestsRunAtTheClassNamed(t *testing.T) {
 		{name: "above normal", asked: "Critical", class: "critical", status: http.StatusOK, engine: float64(40)},
 		{name: "below normal", asked: "batch", class: "batch", status: http.StatusOK, engine: float64(-40)},
 		{name: "no such class", asked: "platinum", status: http.StatusBadRequest},
+		// Only an administrator may name any class; anyone else runs at the default.
+		{name: "not an administrator", asked: "critical", role: "user", class: "normal", status: http.StatusOK, engine: nil},
 	} {
+		if tc.role == "" {
+			tc.role = "admin"
+		}
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/v1/chat/completions", strings.NewReader(`{"model":"s","messages":[]}`))
-			req = req.WithContext(auth.WithClaims(req.Context(), auth.Claims{UserID: 1, Username: "admin", Role: "admin"}))
+			req = req.WithContext(auth.WithClaims(req.Context(), auth.Claims{UserID: 1, Username: "admin", Role: tc.role}))
 			req.Header.Set("Content-Type", "application/json")
 			if tc.asked != "" {
 				req.Header.Set(priorityClassHeader, tc.asked)
@@ -332,6 +338,17 @@ func TestPlaygroundRequestsRunAtTheClassNamed(t *testing.T) {
 			}
 			rig.seen, rig.hdr, rig.raw = nil, nil, nil
 		})
+	}
+	// An unknown class is refused before a deployment is chosen: a model
+	// nobody serves answers the class's 400, not its own 404, so a sleeping
+	// one is not woken for it either.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/v1/chat/completions", strings.NewReader(`{"model":"nobody","messages":[]}`))
+	req = req.WithContext(auth.WithClaims(req.Context(), auth.Claims{UserID: 1, Username: "admin", Role: "admin"}))
+	req.Header.Set(priorityClassHeader, "platinum")
+	rec := httptest.NewRecorder()
+	rig.p.PlaygroundHandler(nil)(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "unknown priority class") {
+		t.Fatalf("unknown class to an unserved model = %d %s", rec.Code, rec.Body)
 	}
 }
 

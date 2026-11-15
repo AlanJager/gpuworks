@@ -214,6 +214,9 @@ var (
 	ErrNotFound  = errors.New("not found")
 	ErrFileInUse = errors.New("a batch that has not finished uses the file")
 	ErrTerminal  = errors.New("the batch has finished")
+	// ErrPriorityClassGone: the batch's class was deleted while it was
+	// being created.
+	ErrPriorityClassGone = errors.New("the priority class does not exist")
 )
 
 // Repo persists files and batches. Its writes are per state change or per

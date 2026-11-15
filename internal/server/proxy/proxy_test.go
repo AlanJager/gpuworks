@@ -361,9 +361,10 @@ func TestProxyPreservesSSEBinaryAndUpstreamErrors(t *testing.T) {
 }
 
 func TestPlaygroundExternalEndpointRewritesModelAndStreams(t *testing.T) {
-	var gotAuthorization, gotCookie, gotOrigin, gotReferer, gotModel, gotPath string
+	var gotAuthorization, gotCookie, gotOrigin, gotReferer, gotModel, gotPath, gotClass string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuthorization = r.Header.Get("Authorization")
+		gotClass = r.Header.Get(priorityClassHeader)
 		gotCookie = r.Header.Get("Cookie")
 		gotOrigin = r.Header.Get("Origin")
 		gotReferer = r.Header.Get("Referer")
@@ -409,6 +410,9 @@ func TestPlaygroundExternalEndpointRewritesModelAndStreams(t *testing.T) {
 	req.Header.Set("Cookie", "gpuworks_session=must-not-leak")
 	req.Header.Set("Origin", "https://console.example:8443")
 	req.Header.Set("Referer", "https://console.example:8443/playground/chat")
+	// A class left chosen from a deployed model is the gateway's own.
+	req.Header.Set(priorityClassHeader, "critical")
+	req = req.WithContext(auth.WithClaims(req.Context(), auth.Claims{UserID: 1, Username: "admin", Role: "admin"}))
 	rec := &flushingRecorder{ResponseRecorder: httptest.NewRecorder()}
 	p.PlaygroundHandler(box)(rec, req)
 
@@ -420,6 +424,9 @@ func TestPlaygroundExternalEndpointRewritesModelAndStreams(t *testing.T) {
 	}
 	if gotOrigin != "" || gotReferer != "" {
 		t.Fatalf("the console page reached the external endpoint: origin=%q referer=%q", gotOrigin, gotReferer)
+	}
+	if gotClass != "" {
+		t.Fatalf("the priority class reached the external endpoint: %q", gotClass)
 	}
 }
 

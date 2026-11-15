@@ -104,3 +104,31 @@ test("a reply names the class it ran at beside its metrics", () => {
   wrap(<MessageBubble message={{ id: "b", role: "assistant", content: "hi", model: "m", metrics: { durationMS: 10 } }} />);
   assert.equal(screen.queryByText(p.metrics.priorityLabel), null);
 });
+
+test("a saved class that no longer exists asks for the default; one the page could not check is kept", async () => {
+  const { knownClass } = await import("../src/pages/playground/priorityClasses.ts");
+  assert.equal(knownClass("gold", { classes, failed: false }), "gold");
+  assert.equal(knownClass("platinum", { classes, failed: false }), "");
+  assert.equal(knownClass("platinum", { classes: null, failed: false }), "platinum");
+  assert.equal(knownClass("platinum", { classes: { ...classes, items: [] }, failed: true }), "platinum");
+  assert.equal(knownClass(undefined, { classes, failed: false }), undefined);
+});
+
+test("classes that cannot be read still leave the default to choose", async () => {
+  const { api } = await import("../src/api.ts");
+  const { usePlaygroundPriorityClasses } = await import("../src/pages/playground/priorityClasses.ts");
+  const original = api.priorityClasses;
+  api.priorityClasses = async () => { throw new Error("server down"); };
+  try {
+    function Probe() {
+      const loaded = usePlaygroundPriorityClasses();
+      return <ParametersPanel definitions={[]} presets={[]} value={initialParameterState([])} onChange={() => {}} priority={{ classes: loaded.classes, scheduling: true }} />;
+    }
+    wrap(<Probe />);
+    const trigger = screen.getByRole("combobox", { name: p.parameters.priority });
+    await waitFor(() => assert.equal((trigger as HTMLButtonElement).disabled, false));
+    assert.equal(trigger.textContent, p.parameters.priorityDefaultUnnamed);
+  } finally {
+    api.priorityClasses = original;
+  }
+});

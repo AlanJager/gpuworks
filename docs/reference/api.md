@@ -1591,7 +1591,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 |---|---|---|---|
 | GET | `/api/v1/benchmarks` | 评测任务列表 | JWT |
 | GET | `/api/v1/benchmarks/meta` | 评测字典（数据集/指标元信息） | JWT |
-| POST | `/api/v1/benchmarks` | 创建评测任务；可选 `priority_class`：每个请求向网关请求的请求优先级类（不区分大小写），只有从 server 发压测托管部署时可以指定，否则 400 `BENCHMARK_PRIORITY_CLASS_GATEWAY`，类不存在 400 `PRIORITY_CLASS_NOT_FOUND`；任务对象原样返回它（未指定时省略），逐请求明细的 `priority_class` 是网关实际使用的类 | JWT |
+| POST | `/api/v1/benchmarks` | 创建评测任务；可选 `priority_class`：每个请求向网关请求的请求优先级类（不区分大小写），只有从 server 发压测托管部署时可以指定，否则 400 `BENCHMARK_PRIORITY_CLASS_GATEWAY`，类不存在 400 `PRIORITY_CLASS_NOT_FOUND`，非管理员指定 403；任务对象原样返回它（未指定时省略），逐请求明细的 `priority_class` 是网关实际使用的类 | JWT |
 | POST | `/api/v1/benchmarks/probe` | 探测外部评测目标（连通性/鉴权） | JWT |
 | POST | `/api/v1/benchmarks/models` | 列出可评测模型 | JWT |
 | POST | `/api/v1/benchmarks/datasets/import` | 导入评测数据集 | JWT |

@@ -274,3 +274,27 @@ test("a server-origin run asks for the chosen request priority, and for none by 
 function renderWizard() {
 	return render(<I18nextProvider i18n={i18n}><BenchmarkWizard open meta={meta} deployments={[deployment]} nodes={nodes} preset={{ deploymentID: deployment.id, mode: "saturation" }} onClose={() => {}} onCreated={() => {}} /></I18nextProvider>);
 }
+
+// A rerun asks again for its run's class, or for the default once that class
+// is deleted; a deployment that does not schedule by class says so.
+test("a rerun keeps its class while it exists and falls back to the default once deleted", async () => {
+	const rerun = async (priority_class: string, scheduling: boolean) => {
+		apiModule.api.deployment = async () => ({ ...deployment, priority_scheduling: scheduling, instances: [{ uuid: "leader-1", deployment_id: deployment.id, node_uuid: "node-1", state: "running", sleep_level: 0, node_rank: 0, api_port: 8000 } as import("../src/api.ts").Instance] });
+		const sourceRun = { id: 9, name: "earlier", target_kind: "instance", deployment_id: deployment.id, model: "served", load_origin: "server", num_gpus: 1, mode: "saturation", priority_class, dataset: { kind: "random" }, search: {} } as unknown as BenchmarkRun;
+		const user = userEvent.setup();
+		render(<I18nextProvider i18n={i18n}><BenchmarkWizard open meta={meta} deployments={[deployment]} nodes={nodes} preset={{ deploymentID: deployment.id, mode: "saturation", sourceRun }} onClose={() => {}} onCreated={() => {}} /></I18nextProvider>);
+		await screen.findByRole("combobox", { name: zh.wizard.priorityClass });
+		return user;
+	};
+	let user = await rerun("high", true);
+	await screen.findByTitle("high (20)");
+	await user.click(screen.getByRole("button", { name: /下一步/ }));
+	assert.equal((await start(user)).priority_class, "high");
+	cleanup();
+	calls.length = 0;
+	user = await rerun("gone", false);
+	await screen.findByTitle(zh.wizard.priorityClassDefault.replace("{{name}}", "normal"));
+	await screen.findByText(zh.wizard.priorityClassNotScheduled);
+	await user.click(screen.getByRole("button", { name: /下一步/ }));
+	assert.equal("priority_class" in (await start(user)), false);
+});

@@ -43,10 +43,15 @@ func TestBenchmarkPriorityClassNeedsTheGateway(t *testing.T) {
 	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
 	box, _ := auth.NewSecretbox("prio-test")
 	h := &apiHandlers{d: Deps{Store: st, AuthSigner: signer, AISecretbox: box, Server: StaticServerSettings{Loopback: "http://127.0.0.1:1"}}, benchmarkExecutions: map[uint]*benchmarkExecution{}}
+	var createAs func(bearer, target string) (int, map[string]any)
+	user, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 2, Username: "user", Role: "user"})
 	create := func(target string) (int, map[string]any) {
+		return createAs(token, target)
+	}
+	createAs = func(bearer, target string) (int, map[string]any) {
 		body := `{"name":"prio",` + target + `,"dataset":{"kind":"random","input_tokens":8,"output_tokens":4},"mode":"grid","search":{"concurrency":[1],"isl":[8],"osl":[4],"requests_per_point_multiplier":1},"allow_conflict":true}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/benchmarks", strings.NewReader(body))
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+bearer)
 		rec := httptest.NewRecorder()
 		h.createBenchmark(rec, req)
 		var out map[string]any
@@ -62,6 +67,18 @@ func TestBenchmarkPriorityClassNeedsTheGateway(t *testing.T) {
 	run, err := st.GetBenchmarkRun(uint(out["id"].(float64)))
 	if err != nil || run.PriorityClass != "high" {
 		t.Fatalf("stored = %+v err=%v", run, err)
+	}
+	// The snapshot says whether the class could order anything: this
+	// instance was launched without priority scheduling.
+	if snapshot, _ := out["target_snapshot"].(map[string]any); snapshot["priority_scheduling"] != false {
+		t.Fatalf("snapshot = %v", out["target_snapshot"])
+	}
+	// Only an administrator chooses a class; anyone else may still run.
+	if status, _ := createAs(user, managed+`,"priority_class":"high"`); status != http.StatusForbidden {
+		t.Fatalf("user = %d", status)
+	}
+	if status, _ := createAs(user, managed); status != http.StatusAccepted {
+		t.Fatalf("user without a class = %d", status)
 	}
 	// None named: the key is absent and the requests ask for nothing.
 	if status, out := create(managed); status != http.StatusAccepted || out["priority_class"] != nil {

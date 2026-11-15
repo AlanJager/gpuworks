@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/messages"
+
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 
 	"github.com/go-chi/chi/v5"
@@ -203,7 +205,7 @@ func (a *apiHandlers) createBenchmark(w http.ResponseWriter, r *http.Request) {
 			req.NumGPUs = target.numGPUs
 		}
 	}
-	class, ok := a.benchmarkPriorityClass(w, req.PriorityClass, entry)
+	class, ok := a.benchmarkPriorityClass(w, r, req.PriorityClass, entry)
 	if !ok {
 		return
 	}
@@ -279,6 +281,10 @@ func (a *apiHandlers) createBenchmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run, err := a.d.Store.CreateBenchmarkRun(&store.BenchmarkRun{Name: req.Name, TargetKind: req.TargetKind, DeploymentID: req.DeploymentID, InstanceUUID: instanceUUID, BaseURL: req.BaseURL, APIKey: encryptedKey, Model: req.Model, LoadOrigin: req.LoadOrigin, PriorityClass: req.PriorityClass, NumGPUs: req.NumGPUs, Dataset: string(req.Dataset), Mode: req.Mode, Search: string(req.Search), TokenizerRef: req.TokenizerRef, TargetSnapshot: targetSnapshot, KeepDetail: req.KeepDetail, DetailCapMB: req.DetailCapMB})
+	if errors.Is(err, store.ErrPriorityClassGone) {
+		writeProductError(w, http.StatusBadRequest, messages.ErrorPriorityClassNotFound, "no request priority class is named "+req.PriorityClass, nil)
+		return
+	}
 	if err != nil {
 		writeErr(w, 500, err)
 		return

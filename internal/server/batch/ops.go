@@ -202,6 +202,9 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 		Metadata: req.Metadata, Model: req.Model, PriorityClass: class, CreatedAt: now, ExpiresAt: now.Add(window),
 	}
 	if err := s.repo.CreateBatch(b); err != nil {
+		if errors.Is(err, ErrPriorityClassGone) {
+			return Batch{}, invalid(CodePriorityClass, "priority_class", "no request priority class is named "+class)
+		}
 		return Batch{}, err
 	}
 	s.launch(b)

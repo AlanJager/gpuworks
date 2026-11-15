@@ -327,3 +327,28 @@ func TestPriorityClassesHeldByBatchesAndRuns(t *testing.T) {
 		}
 	}
 }
+
+// A batch or run naming a class that is gone by the time it is written is
+// refused in the write's own transaction, so a delete cannot slip between a
+// caller's check and the insert.
+func TestRowsNamingAGoneClassAreRefused(t *testing.T) {
+	st := newTestStore(t)
+	now := time.Now()
+	err := st.CreateBatch(&Batch{ID: "batch_gone", Endpoint: "/v1/chat/completions", InputFileID: "f", CompletionWindow: "24h", Status: BatchValidating, PriorityClass: "gone", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, nil)
+	if !errors.Is(err, ErrPriorityClassGone) {
+		t.Fatalf("batch err = %v", err)
+	}
+	if _, err := st.GetBatch("batch_gone"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a refused batch was written: %v", err)
+	}
+	if _, err := st.CreateBenchmarkRun(&BenchmarkRun{Name: "gone", PriorityClass: "gone"}); !errors.Is(err, ErrPriorityClassGone) {
+		t.Fatalf("run err = %v", err)
+	}
+	// A class that exists, and none at all, are written.
+	if err := st.CreateBatch(&Batch{ID: "batch_high", Endpoint: "/v1/chat/completions", InputFileID: "f", CompletionWindow: "24h", Status: BatchValidating, PriorityClass: priority.High, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateBenchmarkRun(&BenchmarkRun{Name: "none"}); err != nil {
+		t.Fatal(err)
+	}
+}

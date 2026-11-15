@@ -194,6 +194,16 @@ func TestConsoleFormPriorityClass(t *testing.T) {
 	if len(r.repo.files) != files {
 		t.Fatalf("a refused class left a file behind: %d, was %d", len(r.repo.files), files)
 	}
+	// A class deleted between the check and the write is refused the same way.
+	r.repo.mu.Lock()
+	r.repo.createErr = ErrPriorityClassGone
+	r.repo.mu.Unlock()
+	if _, err := form("high"); err == nil || err.(*Error).Code != CodePriorityClass {
+		t.Fatalf("deleted meanwhile: err = %v", err)
+	}
+	r.repo.mu.Lock()
+	r.repo.createErr = nil
+	r.repo.mu.Unlock()
 	// A lookup that fails refuses the batch rather than guessing.
 	r.cfg.PriorityClasses = func(string) (bool, error) { return false, errors.New("database locked") }
 	r.svc = New(r.repo, r.send, r.cfg)

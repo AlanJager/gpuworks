@@ -35,6 +35,9 @@ var (
 	ErrPriorityClassBuiltin = errors.New("a built-in priority class keeps its name and value and cannot be deleted")
 	ErrPriorityClassInUse   = errors.New("the priority class is the default or is bound to an API key")
 	ErrPriorityClassInvalid = errors.New("invalid priority class")
+	// ErrPriorityClassGone: a batch or evaluation run names a class that no
+	// longer exists when it is written.
+	ErrPriorityClassGone = errors.New("the priority class does not exist")
 )
 
 // priorityClassEvent is the bus topic class changes publish on (for
@@ -234,6 +237,23 @@ func (s *Store) PriorityClassesBound() (map[uint]bool, error) {
 func unfinishedBatchClasses(db *gorm.DB) *gorm.DB {
 	return db.Model(&Batch{}).Select("priority_class").
 		Where("priority_class <> '' AND status IN ?", []string{BatchValidating, BatchInProgress, BatchFinalizing, BatchCancelling})
+}
+
+// requirePriorityClass fails with ErrPriorityClassGone unless a class of
+// the name exists; "" names none. It runs in the transaction that writes the
+// row naming it, so a delete cannot slip between the check and the write.
+func requirePriorityClass(tx *gorm.DB, name string) error {
+	if name == "" {
+		return nil
+	}
+	var n int64
+	if err := tx.Model(&PriorityClass{}).Where("name = ?", name).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrPriorityClassGone
+	}
+	return nil
 }
 
 func activeBenchmarkClasses(db *gorm.DB) *gorm.DB {

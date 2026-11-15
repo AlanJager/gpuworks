@@ -29,6 +29,8 @@ func batchErr(err error) error {
 		return batch.ErrFileInUse
 	case errors.Is(err, store.ErrBatchTerminal):
 		return batch.ErrTerminal
+	case errors.Is(err, store.ErrPriorityClassGone):
+		return batch.ErrPriorityClassGone
 	}
 	return err
 }
@@ -93,10 +95,10 @@ func (r batchRepo) ListFiles(o batch.Owner, purpose, after string, limit int) ([
 func (r batchRepo) DeleteFile(id string) error { return batchErr(r.st.DeleteBatchFile(id)) }
 
 func (r batchRepo) CreateBatch(b batch.Batch) error {
-	return r.st.CreateBatch(&store.Batch{
+	return batchErr(r.st.CreateBatch(&store.Batch{
 		ID: b.ID, UserID: b.UserID, APIKeyID: b.APIKeyID, Endpoint: b.Endpoint, InputFileID: b.InputFileID,
 		CompletionWindow: b.CompletionWindow, ModelOverride: b.Model, PriorityClass: b.PriorityClass, Status: b.Status, Total: b.Total, CreatedAt: b.CreatedAt, ExpiresAt: b.ExpiresAt,
-	}, b.Metadata)
+	}, b.Metadata))
 }
 
 func (r batchRepo) GetBatch(id string) (batch.Batch, error) {

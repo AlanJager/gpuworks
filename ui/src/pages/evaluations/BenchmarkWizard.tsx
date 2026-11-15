@@ -120,6 +120,11 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 	const priorityApplies = targetKind === "instance" && loadOrigin === "server";
 	const priorityClasses = usePriorityClasses();
 	const defaultClass = priorityClasses?.items.find((c) => c.default);
+	// A rerun of a run whose class was deleted since asks for the default.
+	const chosenClass = Form.useWatch("priority_class", form) as string | undefined;
+	useEffect(() => {
+		if (priorityClasses && chosenClass && chosenClass !== DEFAULT_CLASS && !priorityClasses.items.some((c) => c.name === chosenClass)) form.setFieldValue("priority_class", DEFAULT_CLASS);
+	}, [priorityClasses, chosenClass, form]);
 	const keepDetail = Form.useWatch("keep_detail", form);
 	const dataset = Form.useWatch("dataset", form) || "random";
 	const concurrencyRaw = Form.useWatch("concurrency", form) || "1";
@@ -453,7 +458,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 					<Form.Item name="load_origin" label={t("wizard.loadOrigin")} extra={targetKind === "instance" && originError ? t("wizard.originLoadFailed") : undefined} rules={[{ required: true }, { validator: async (_, value) => {
 						if (targetKind === "instance" && value !== "server" && (originLoading || !originOptions.some((option) => option.value === value && !option.disabled))) throw new Error(t("wizard.originUnavailable"));
 					} }]}><Select loading={targetKind === "instance" && originLoading} showSearch {...(onSearchNodes ? { filterOption: false, onSearch: onSearchNodes } : { optionFilterProp: "label" })} options={originOptions} /></Form.Item>
-					{targetKind === "instance" && <Form.Item name="priority_class" label={t("wizard.priorityClass")} extra={priorityApplies ? t("wizard.priorityClassHelp") : t("wizard.priorityClassGateway")}>
+					{targetKind === "instance" && <Form.Item name="priority_class" label={t("wizard.priorityClass")} extra={!priorityApplies ? t("wizard.priorityClassGateway") : deploymentDetail?.id === deploymentID && deploymentDetail?.priority_scheduling === false ? t("wizard.priorityClassNotScheduled") : t("wizard.priorityClassHelp")}>
 						<Select disabled={!priorityApplies || !priorityClasses} loading={!priorityClasses} options={[
 							{ value: DEFAULT_CLASS, label: t("wizard.priorityClassDefault", { name: defaultClass ? classLabel(defaultClass) : "" }) },
 							...(priorityClasses?.items ?? []).map((c) => ({ value: c.name, label: `${classLabel(c)} (${c.value})` })),

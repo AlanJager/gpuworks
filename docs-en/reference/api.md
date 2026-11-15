@@ -1583,7 +1583,7 @@ Scripts and third-party clients cannot directly reuse vLLM parameters for SGLang
 |---|---|---|---|
 | GET | `/api/v1/benchmarks` | List benchmark tasks | JWT |
 | GET | `/api/v1/benchmarks/meta` | Benchmark dictionary (dataset/metric metadata) | JWT |
-| POST | `/api/v1/benchmarks` | Create a benchmark task; the optional `priority_class` is the request priority class every request asks the gateway for (not case-sensitive), allowed only for a managed deployment measured from the server, otherwise 400 `BENCHMARK_PRIORITY_CLASS_GATEWAY`, and 400 `PRIORITY_CLASS_NOT_FOUND` for a class that does not exist; the task object returns it (omitted when none), and the per-request detail's `priority_class` is the class the gateway ran the request at | JWT |
+| POST | `/api/v1/benchmarks` | Create a benchmark task; the optional `priority_class` is the request priority class every request asks the gateway for (not case-sensitive), allowed only for a managed deployment measured from the server, otherwise 400 `BENCHMARK_PRIORITY_CLASS_GATEWAY`, 400 `PRIORITY_CLASS_NOT_FOUND` for a class that does not exist and 403 when the caller is not an administrator; the task object returns it (omitted when none), and the per-request detail's `priority_class` is the class the gateway ran the request at | JWT |
 | POST | `/api/v1/benchmarks/probe` | Probe an external benchmark target (connectivity/authentication) | JWT |
 | POST | `/api/v1/benchmarks/models` | List models available for benchmarking | JWT |
 | POST | `/api/v1/benchmarks/datasets/import` | Import a benchmark dataset | JWT |
