@@ -262,7 +262,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// The deployment and instance lists, the dashboard, the monitor and the
 	// batches' model list share one snapshot of every deployment and instance.
 	lists := deployment.NewLists(st, modelPreparation{h, ctrl}, nil)
-	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st, modelPreparation{h, ctrl}, lists}, Log: log})
+	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st, modelPreparation{h, ctrl}, lists}, PriorityClasses: priorityClassExists(st), Log: log})
 	monSvc := newMonitorAPIServiceOn(lists, st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health, modelPreparation{h, ctrl})
 
 	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}

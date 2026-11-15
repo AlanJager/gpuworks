@@ -22,7 +22,12 @@ func TestResolve(t *testing.T) {
 		unknown   bool
 	}{
 		{name: "anonymous runs at the default", source: SourceAnonymous, requested: Critical, want: Normal},
-		{name: "batch is always batch", source: SourceBatch, binding: Binding{ClassID: 1}, requested: Critical, want: Batch},
+		{name: "a batch that names no class runs at batch", source: SourceBatch, binding: Binding{ClassID: 1}, want: Batch},
+		{name: "a batch runs at the class it was created with", source: SourceBatch, binding: Binding{ClassID: 4}, requested: Critical, want: Critical},
+		{name: "a batch whose class is gone runs at batch", source: SourceBatch, requested: "platinum", want: Batch},
+		{name: "the console runs at the default unless it names a class", source: SourceConsole, binding: Binding{ClassID: 1}, want: Normal},
+		{name: "the console runs at any class it names", source: SourceConsole, requested: " Critical ", want: Critical},
+		{name: "the console naming no class is refused", source: SourceConsole, requested: "platinum", unknown: true},
 		{name: "unbound key, nothing asked", want: Normal},
 		{name: "bound key, nothing asked", binding: Binding{ClassID: 2}, want: High},
 		{name: "within its own class by default", binding: Binding{ClassID: 2}, requested: Low, want: Low},

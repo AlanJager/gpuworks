@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -278,5 +279,76 @@ func TestPriorityClassesBound(t *testing.T) {
 		if bound[c.ID] != want {
 			t.Fatalf("%s bound = %v, want %v (%v)", name, bound[c.ID], want, bound)
 		}
+	}
+}
+
+// A batch still sending requests, or an evaluation run still to send them,
+// holds the class it runs at; a finished one does not.
+func TestPriorityClassesHeldByBatchesAndRuns(t *testing.T) {
+	st := newTestStore(t)
+	for _, name := range []string{"copper", "tin", "iron", "zinc"} {
+		if err := st.CreatePriorityClass(&PriorityClass{Name: name, Value: 5}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	for _, b := range []*Batch{
+		{ID: "batch_running", Endpoint: "/v1/chat/completions", InputFileID: "file-a", CompletionWindow: "24h", Status: BatchInProgress, PriorityClass: "copper", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{ID: "batch_done", Endpoint: "/v1/chat/completions", InputFileID: "file-b", CompletionWindow: "24h", Status: BatchCompleted, PriorityClass: "tin", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := st.CreateBatch(b, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, run := range []*BenchmarkRun{{Name: "active", State: "running", PriorityClass: "iron"}, {Name: "done", State: "succeeded", PriorityClass: "zinc"}} {
+		if _, err := st.CreateBenchmarkRun(run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bound, err := st.PriorityClassesBound()
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := st.PriorityClassTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, held := range map[string]bool{"copper": true, "iron": true, "tin": false, "zinc": false} {
+		c, _ := table.ByName(name)
+		if bound[c.ID] != held {
+			t.Fatalf("%s bound = %v, want %v", name, bound[c.ID], held)
+		}
+		err := st.DeletePriorityClass(name)
+		if held && !errors.Is(err, ErrPriorityClassInUse) {
+			t.Fatalf("delete %s = %v, want in use", name, err)
+		}
+		if !held && err != nil {
+			t.Fatalf("delete %s = %v", name, err)
+		}
+	}
+}
+
+// A batch or run naming a class that is gone by the time it is written is
+// refused in the write's own transaction, so a delete cannot slip between a
+// caller's check and the insert.
+func TestRowsNamingAGoneClassAreRefused(t *testing.T) {
+	st := newTestStore(t)
+	now := time.Now()
+	err := st.CreateBatch(&Batch{ID: "batch_gone", Endpoint: "/v1/chat/completions", InputFileID: "f", CompletionWindow: "24h", Status: BatchValidating, PriorityClass: "gone", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, nil)
+	if !errors.Is(err, ErrPriorityClassGone) {
+		t.Fatalf("batch err = %v", err)
+	}
+	if _, err := st.GetBatch("batch_gone"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a refused batch was written: %v", err)
+	}
+	if _, err := st.CreateBenchmarkRun(&BenchmarkRun{Name: "gone", PriorityClass: "gone"}); !errors.Is(err, ErrPriorityClassGone) {
+		t.Fatalf("run err = %v", err)
+	}
+	// A class that exists, and none at all, are written.
+	if err := st.CreateBatch(&Batch{ID: "batch_high", Endpoint: "/v1/chat/completions", InputFileID: "f", CompletionWindow: "24h", Status: BatchValidating, PriorityClass: priority.High, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateBenchmarkRun(&BenchmarkRun{Name: "none"}); err != nil {
+		t.Fatal(err)
 	}
 }

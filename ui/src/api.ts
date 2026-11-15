@@ -3117,6 +3117,8 @@ export interface BenchmarkRun {
   base_url?: string;
   model: string;
   load_origin: string;
+  /** The request priority class the run asked the gateway for; absent when it asked for none. */
+  priority_class?: string;
   num_gpus: number;
   dataset: {
     kind?: string;

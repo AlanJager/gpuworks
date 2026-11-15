@@ -26,7 +26,12 @@ func (s *Store) CreateBenchmarkRun(run *BenchmarkRun) (*BenchmarkRun, error) {
 	if run.DetailCapMB > benchmeta.MaxDetailCapMB {
 		run.DetailCapMB = benchmeta.MaxDetailCapMB
 	}
-	if err := s.db.Create(run).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := requirePriorityClass(tx, run.PriorityClass); err != nil {
+			return err
+		}
+		return tx.Create(run).Error
+	}); err != nil {
 		return nil, err
 	}
 	if s.Bus != nil {

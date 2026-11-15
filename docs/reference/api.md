@@ -1591,7 +1591,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 |---|---|---|---|
 | GET | `/api/v1/benchmarks` | 评测任务列表 | JWT |
 | GET | `/api/v1/benchmarks/meta` | 评测字典（数据集/指标元信息） | JWT |
-| POST | `/api/v1/benchmarks` | 创建评测任务 | JWT |
+| POST | `/api/v1/benchmarks` | 创建评测任务；可选 `priority_class`：每个请求向网关请求的请求优先级类（不区分大小写），只有从 server 发压测托管部署时可以指定，否则 400 `BENCHMARK_PRIORITY_CLASS_GATEWAY`，类不存在 400 `PRIORITY_CLASS_NOT_FOUND`，非管理员指定 403；任务对象原样返回它（未指定时省略），逐请求明细的 `priority_class` 是网关实际使用的类 | JWT |
 | POST | `/api/v1/benchmarks/probe` | 探测外部评测目标（连通性/鉴权） | JWT |
 | POST | `/api/v1/benchmarks/models` | 列出可评测模型 | JWT |
 | POST | `/api/v1/benchmarks/datasets/import` | 导入评测数据集 | JWT |
@@ -1648,7 +1648,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | GET | `/api/v1/priority-classes` | 优先级列表，按数值从大到小：`items[]`（`name`、`display_name`、`description`、`value`、`builtin`、`default`、`deletable`（能否删除：非内置、非默认且没有未吊销 key 绑定）、`created_at`），以及 `min_value`/`max_value`（数值范围，-100 到 100）、`policies`（key 可用的策略，界面按此展示）、`default_policy`、`ceiling_policies`（有上限的策略） | JWT |
 | POST | `/api/v1/priority-classes` | 新建优先级 `{"name":"gold","display_name":"Gold","description":"","value":30}`：`name` 为小写字母、数字和连字符并以字母开头、最多 32 个字符，`value` 必填且在范围内，否则 400 `PRIORITY_CLASS_INVALID`（`params.field`）；同名 409 `PRIORITY_CLASS_EXISTS`。返回 201 与新的优先级 | JWT（管理员） |
 | PUT | `/api/v1/priority-classes/{name}` | 修改 `display_name`、`description`、`value`（省略的不变）；内置优先级改数值 409 `PRIORITY_CLASS_BUILTIN`，不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |
-| DELETE | `/api/v1/priority-classes/{name}` | 删除优先级，成功 204；内置优先级 409 `PRIORITY_CLASS_BUILTIN`，默认优先级或仍有未吊销 key 绑定（作为优先级或上限）409 `PRIORITY_CLASS_IN_USE`，不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |
+| DELETE | `/api/v1/priority-classes/{name}` | 删除优先级，成功 204；内置优先级 409 `PRIORITY_CLASS_BUILTIN`，默认优先级、仍有未吊销 key 绑定（作为优先级或上限）或有未结束的批处理、评测使用 409 `PRIORITY_CLASS_IN_USE`，不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |
 | PUT | `/api/v1/priority-classes/{name}/default` | 设为默认优先级（没有绑定优先级的 key、试验场、无需 key 的请求使用它），返回整个列表；不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |
 
 ## Platform Tokens（平台 API 令牌）
@@ -2052,7 +2052,7 @@ server 组装上下文后运行带只读工具的 agent 循环。工具以提问
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/playground/models` | 可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置）；每项模型有 `sleeping`（布尔），休眠中且请求能唤醒它（部署可休眠、有一个休眠实例不是运维或定时计划下的保持休眠）时另有 `wakes_on_request: true`（否则省略）：这样的模型收到请求会由网关挂起、唤醒后放行，没有它的休眠模型请求回 503，须先唤醒；试验场据此提示 | JWT |
+| GET | `/api/v1/playground/models` | 可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；每项模型有 `request_priority`（为 true 时请求可带 `X-GPUWorks-Priority-Class` 指定任意请求优先级类，不带时用默认类，响应头写明实际使用的类）和 `priority_scheduling`（部署是否开启优先级调度；关闭时类只记录、不影响排队）；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置）；每项模型有 `sleeping`（布尔），休眠中且请求能唤醒它（部署可休眠、有一个休眠实例不是运维或定时计划下的保持休眠）时另有 `wakes_on_request: true`（否则省略）：这样的模型收到请求会由网关挂起、唤醒后放行，没有它的休眠模型请求回 503，须先唤醒；试验场据此提示 | JWT |
 | GET | `/api/v1/playground/openapi.json` | Playground 代理的 OpenAPI 描述 | JWT |
 | ANY | `/api/v1/playground/v1/*` | Playground 内部代理（管理 JWT 保护，非 `/v1` 网关 key） | JWT |
 
@@ -2073,10 +2073,10 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/batches` | 批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename` | JWT |
-| GET | `/api/v1/batches/dictionary` | 创建批处理任务可用的字典：`endpoints`、`completion_window_hours`（`min`/`max`/`default`）、`max_file_bytes`、`max_file_lines`、`statuses`（列表筛选顺序）、`output_retention_days`，以及 `models`：未在删除的部署（含已停止的）的对外模型名、状态和支持的端点 `{name, state, ready, endpoints}`。`ready` 由服务端计算，仅运行或请求可自动唤醒时为 true；控制台默认显示这些模型，用户显式开启等待选项后可选择其他状态。`state` 与部署列表一致，按能否尽快服务依次为 `running`（有副本醒着）、`asleep`（休眠，请求会唤醒）、`starting`（放置、拉取或启动中）、`asleep_held`（手动或定时休眠，请求不会唤醒）、`offline`（副本所在节点断开）、`failed`（启动失败）、`stopped`（已停止），列表按这个顺序再按名称排；`endpoints` 是模型推理接口声明里开放的批处理端点（网关按同一份声明放行请求）。与创建时的模型校验同一判定，同一个名字有多个部署时状态取其中最好的、端点取并集。控制台创建对话框的选项都来自这里，客户端不自行推断 | JWT |
+| GET | `/api/v1/batches/dictionary` | 创建批处理任务可用的字典：`priority_class`（不选类的任务使用的请求优先级类，即 `batch`）、`endpoints`、`completion_window_hours`（`min`/`max`/`default`）、`max_file_bytes`、`max_file_lines`、`statuses`（列表筛选顺序）、`output_retention_days`，以及 `models`：未在删除的部署（含已停止的）的对外模型名、状态和支持的端点 `{name, state, ready, endpoints}`。`ready` 由服务端计算，仅运行或请求可自动唤醒时为 true；控制台默认显示这些模型，用户显式开启等待选项后可选择其他状态。`state` 与部署列表一致，按能否尽快服务依次为 `running`（有副本醒着）、`asleep`（休眠，请求会唤醒）、`starting`（放置、拉取或启动中）、`asleep_held`（手动或定时休眠，请求不会唤醒）、`offline`（副本所在节点断开）、`failed`（启动失败）、`stopped`（已停止），列表按这个顺序再按名称排；`endpoints` 是模型推理接口声明里开放的批处理端点（网关按同一份声明放行请求）。与创建时的模型校验同一判定，同一个名字有多个部署时状态取其中最好的、端点取并集。控制台创建对话框的选项都来自这里，客户端不自行推断 | JWT |
 | GET | `/api/v1/batches/{id}` | 批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND` | JWT |
 | GET | `/api/v1/batches/{id}/files/{kind}` | 下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND` | JWT |
-| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL），可选 `endpoint`（不传时取文件各行共同的 `url`；各行 `url` 不同则返回 400 `BATCH_FILE_INVALID`，`reason` 为 `mixed_endpoints`，`line` 是第一处与首行不同的行）、`completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个未在删除的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`；它的部署不支持任务的端点时 400 `BATCH_MODEL_ENDPOINT`）；上传时逐行校验，成功返回 201 和任务对象，所选模型（未指定 `model` 时是文件里各行的模型）需要有人处理时响应带 `warnings`：手动休眠（请求不会唤醒）是 `BATCH_MODEL_SLEEP_HELD` 或 `BATCH_FILE_MODELS_SLEEP_HELD`，节点离线、启动失败、已停止是 `BATCH_MODEL_WAITS` 或 `BATCH_FILE_MODELS_WAIT`。未指定 `model` 时，文件里有模型没有部署使用，返回 400 `BATCH_FILE_MODELS_UNKNOWN`（`params` 为 `{models, more}`），有模型不支持任务的端点，返回 400 `BATCH_FILE_MODELS_ENDPOINT`（`params` 为 `{models, more, endpoint}`），都不创建任务。任务属于当前登录用户 | JWT(admin) |
+| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL），可选 `endpoint`（不传时取文件各行共同的 `url`；各行 `url` 不同则返回 400 `BATCH_FILE_INVALID`，`reason` 为 `mixed_endpoints`，`line` 是第一处与首行不同的行）、`completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个未在删除的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`；它的部署不支持任务的端点时 400 `BATCH_MODEL_ENDPOINT`）和 `priority_class`（任务的请求使用的请求优先级类，不区分大小写，不传时用字典的 `priority_class`；不存在返回 400 `PRIORITY_CLASS_NOT_FOUND`）；上传时逐行校验，成功返回 201 和任务对象，所选模型（未指定 `model` 时是文件里各行的模型）需要有人处理时响应带 `warnings`：手动休眠（请求不会唤醒）是 `BATCH_MODEL_SLEEP_HELD` 或 `BATCH_FILE_MODELS_SLEEP_HELD`，节点离线、启动失败、已停止是 `BATCH_MODEL_WAITS` 或 `BATCH_FILE_MODELS_WAIT`。未指定 `model` 时，文件里有模型没有部署使用，返回 400 `BATCH_FILE_MODELS_UNKNOWN`（`params` 为 `{models, more}`），有模型不支持任务的端点，返回 400 `BATCH_FILE_MODELS_ENDPOINT`（`params` 为 `{models, more, endpoint}`），都不创建任务。任务属于当前登录用户 | JWT(admin) |
 | POST | `/api/v1/batches/{id}/cancel` | 取消任务，返回带 `cancelling` 状态的任务对象；只有 `validating` 和 `in_progress` 的任务可以取消（对象的 `cancellable` 为 `true`），已结束的或正在 `finalizing`（写结果文件）的任务返回 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
 
 读取（GET）使用只读平台令牌即可；写入需要管理员角色（否则 403 `ADMINISTRATOR_REQUIRED`）和读写范围的平台令牌（否则 403 `PLATFORM_TOKEN_READ_ONLY`）。

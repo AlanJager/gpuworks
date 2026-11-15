@@ -135,6 +135,7 @@ function BatchBody({ batch, canManage, onChanged }: { batch: Batch; canManage: b
             { key: "endpoint", label: t("detail.endpoint"), value: <code>{batch.endpoint}</code> },
             ...(batch.model ? [{ key: "model", label: t("detail.model"), value: <code>{batch.model}</code> }] : []),
             { key: "window", label: t("detail.completionWindow"), value: batch.completion_window },
+            ...(batch.priority_class ? [{ key: "priority", label: t("detail.priorityClass"), value: <code>{batch.priority_class}</code> }] : []),
             ...(batch.input_filename ? [{ key: "file", label: t("detail.inputFilename"), value: batch.input_filename }] : []),
             { key: "owner", label: t("detail.owner"), value: batch.user_id },
             { key: "apiKey", label: t("detail.apiKey"), value: batch.api_key_id },

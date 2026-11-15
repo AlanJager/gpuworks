@@ -61,6 +61,7 @@
     "endpoint": "Endpoint",
     "model": "Model override",
     "completionWindow": "Completion window",
+    "priorityClass": "Request priority",
     "inputFilename": "Input file name",
     "owner": "Owner (user ID)",
     "apiKey": "API key ID",
@@ -112,6 +113,10 @@
       "label": "Completion window",
       "unit": "hours",
       "help": "A whole number of hours from {{min}} to {{max}}, {{default}} by default. Requests without a result by then are treated as expired."
+    },
+    "priority": {
+      "label": "Request priority",
+      "help": "The priority class the batch's requests run at, {{name}} by default; a deployment with request priority on queues them by it."
     },
     "model": {
       "label": "Model",

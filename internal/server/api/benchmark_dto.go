@@ -13,14 +13,18 @@ import (
 
 // benchmarkDTO is deliberately separate from the GORM entity.
 type benchmarkDTO struct {
-	ID                uint                      `json:"id"`
-	Name              string                    `json:"name"`
-	TargetKind        string                    `json:"target_kind"`
-	DeploymentID      uint                      `json:"deployment_id,omitempty"`
-	InstanceUUID      string                    `json:"instance_uuid,omitempty"`
-	BaseURL           string                    `json:"base_url,omitempty"`
-	Model             string                    `json:"model"`
-	LoadOrigin        string                    `json:"load_origin"`
+	ID           uint   `json:"id"`
+	Name         string `json:"name"`
+	TargetKind   string `json:"target_kind"`
+	DeploymentID uint   `json:"deployment_id,omitempty"`
+	InstanceUUID string `json:"instance_uuid,omitempty"`
+	BaseURL      string `json:"base_url,omitempty"`
+	Model        string `json:"model"`
+	LoadOrigin   string `json:"load_origin"`
+	// PriorityClass is the request priority class the run asked the gateway
+	// for (the configuration); each request's detail says the class it ran
+	// at. Absent when it asked for none.
+	PriorityClass     string                    `json:"priority_class,omitempty"`
 	NumGPUs           int                       `json:"num_gpus"`
 	Dataset           json.RawMessage           `json:"dataset,omitempty"`
 	Mode              string                    `json:"mode"`
@@ -108,7 +112,7 @@ func benchmarkPointDTOFromEntity(p store.BenchmarkPoint) benchmarkPointDTO {
 }
 
 func (a *apiHandlers) benchmarkDTO(rn *store.BenchmarkRun, points bool) benchmarkDTO {
-	d := benchmarkDTO{ID: rn.ID, Name: rn.Name, TargetKind: rn.TargetKind, DeploymentID: rn.DeploymentID, InstanceUUID: rn.InstanceUUID, BaseURL: rn.BaseURL, Model: rn.Model, LoadOrigin: rn.LoadOrigin, NumGPUs: rn.NumGPUs, Dataset: json.RawMessage(rn.Dataset), Mode: rn.Mode, Search: json.RawMessage(rn.Search), TokenizerRef: rn.TokenizerRef, TargetSnapshot: json.RawMessage(rn.TargetSnapshot), KeepDetail: rn.KeepDetail, DetailCapMB: rn.DetailCapMB, State: rn.State, Progress: json.RawMessage(rn.Progress), Verdict: json.RawMessage(rn.Verdict), Error: rn.Error, CreatedAt: utcTime(rn.CreatedAt), StartedAt: utcTimePtr(rn.StartedAt), EndedAt: utcTimePtr(rn.EndedAt)}
+	d := benchmarkDTO{ID: rn.ID, Name: rn.Name, TargetKind: rn.TargetKind, DeploymentID: rn.DeploymentID, InstanceUUID: rn.InstanceUUID, BaseURL: rn.BaseURL, Model: rn.Model, LoadOrigin: rn.LoadOrigin, PriorityClass: rn.PriorityClass, NumGPUs: rn.NumGPUs, Dataset: json.RawMessage(rn.Dataset), Mode: rn.Mode, Search: json.RawMessage(rn.Search), TokenizerRef: rn.TokenizerRef, TargetSnapshot: json.RawMessage(rn.TargetSnapshot), KeepDetail: rn.KeepDetail, DetailCapMB: rn.DetailCapMB, State: rn.State, Progress: json.RawMessage(rn.Progress), Verdict: json.RawMessage(rn.Verdict), Error: rn.Error, CreatedAt: utcTime(rn.CreatedAt), StartedAt: utcTimePtr(rn.StartedAt), EndedAt: utcTimePtr(rn.EndedAt)}
 	if rn.Warnings != "" {
 		_ = json.Unmarshal([]byte(rn.Warnings), &d.Warnings)
 	}

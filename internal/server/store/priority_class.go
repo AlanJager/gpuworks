@@ -35,6 +35,9 @@ var (
 	ErrPriorityClassBuiltin = errors.New("a built-in priority class keeps its name and value and cannot be deleted")
 	ErrPriorityClassInUse   = errors.New("the priority class is the default or is bound to an API key")
 	ErrPriorityClassInvalid = errors.New("invalid priority class")
+	// ErrPriorityClassGone: a batch or evaluation run names a class that no
+	// longer exists when it is written.
+	ErrPriorityClassGone = errors.New("the priority class does not exist")
 )
 
 // priorityClassEvent is the bus topic class changes publish on (for
@@ -216,7 +219,46 @@ func (s *Store) PriorityClassesBound() (map[uint]bool, error) {
 			}
 		}
 	}
+	var named []uint
+	if err := s.reader().Model(&PriorityClass{}).Where("name IN (?) OR name IN (?)", unfinishedBatchClasses(s.reader()), activeBenchmarkClasses(s.reader())).
+		Pluck("id", &named).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range named {
+		bound[id] = true
+	}
 	return bound, nil
+}
+
+// unfinishedBatchClasses and activeBenchmarkClasses are the class names a
+// batch still sending requests, or an evaluation run still to send them,
+// runs at: deleting one of those classes would change their requests' class
+// part way.
+func unfinishedBatchClasses(db *gorm.DB) *gorm.DB {
+	return db.Model(&Batch{}).Select("priority_class").
+		Where("priority_class <> '' AND status IN ?", []string{BatchValidating, BatchInProgress, BatchFinalizing, BatchCancelling})
+}
+
+// requirePriorityClass fails with ErrPriorityClassGone unless a class of
+// the name exists; "" names none. It runs in the transaction that writes the
+// row naming it, so a delete cannot slip between the check and the write.
+func requirePriorityClass(tx *gorm.DB, name string) error {
+	if name == "" {
+		return nil
+	}
+	var n int64
+	if err := tx.Model(&PriorityClass{}).Where("name = ?", name).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrPriorityClassGone
+	}
+	return nil
+}
+
+func activeBenchmarkClasses(db *gorm.DB) *gorm.DB {
+	return db.Model(&BenchmarkRun{}).Select("priority_class").
+		Where("priority_class <> '' AND state IN ?", []string{"", "pending", "running"})
 }
 
 func (s *Store) DeletePriorityClass(name string) error {
@@ -240,6 +282,14 @@ func (s *Store) DeletePriorityClass(name string) error {
 		}
 		if bound > 0 {
 			return ErrPriorityClassInUse
+		}
+		for _, users := range []*gorm.DB{unfinishedBatchClasses(tx), activeBenchmarkClasses(tx)} {
+			if err := users.Where("priority_class = ?", c.Name).Count(&bound).Error; err != nil {
+				return err
+			}
+			if bound > 0 {
+				return ErrPriorityClassInUse
+			}
 		}
 		for _, col := range []string{"priority_class_id", "priority_ceiling_class_id"} {
 			if err := tx.Model(&APIKey{}).Where(col+" = ?", c.ID).Update(col, nil).Error; err != nil {
