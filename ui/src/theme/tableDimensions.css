@@ -17,3 +17,8 @@
   padding-block: 0;
   vertical-align: middle;
 }
+
+/* A table link whose text is set as code (an image tag) keeps antd's code box
+   but takes the link color; it sits here because antd's typography layer
+   outranks the legacy layer. */
+.image-version-ref a[href] * { color: inherit; }
