@@ -149,6 +149,16 @@ def check_narrow_detail(page: Page, capture) -> None:
         }""")
         assert clearance >= 15, f"Data table touches the scrollbar ({clearance}px clearance)"
         assert pane.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), "Drawer requires horizontal scrolling"
+        if not overview:
+            log = pane.get_by_role("region", name="Logs", exact=True).locator("pre")
+            expect(log).to_have_css("white-space", "pre")
+            expect(log).to_have_css("overflow-x", "auto")
+            if log.evaluate("e => e.scrollWidth > e.clientWidth"):
+                log.scroll_into_view_if_needed()
+                log.evaluate("e => e.scrollLeft = e.scrollWidth")
+                assert log.evaluate("e => e.scrollLeft > 0"), "Long log lines must be scrollable within the log viewer"
+                assert pane.evaluate("e => e.scrollLeft === 0")
+                capture("narrow-instance-log-scrolled-right")
         pinned = [tabs] if overview else [tabs, panel.locator(".replica-cascade")]
         before = [control.bounding_box()["y"] for control in pinned]
         pane.evaluate("e => e.scrollTop = e.scrollHeight")
