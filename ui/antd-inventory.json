@@ -19,7 +19,7 @@
     "Flex": 7,
     "Form": 478,
     "Input": 159,
-    "InputNumber": 54,
+    "InputNumber": 56,
     "List": 6,
     "Modal": 67,
     "Pagination": 3,
@@ -33,7 +33,7 @@
     "Select": 109,
     "Skeleton": 17,
     "Slider": 1,
-    "Space": 554,
+    "Space": 555,
     "Spin": 42,
     "Statistic": 6,
     "Steps": 2,
@@ -296,7 +296,7 @@
     "ui/src/pages/monitor/PdCard.tsx": {"components":{"Card":1,"Space":2,"Tag":1,"Tooltip":1,"Typography":5},"icons":0,"imports":["Card","Space","Tag","Tooltip","Typography"],"sites":10,"types":[]},
     "ui/src/pages/monitor/ReplicaTable.tsx": {"components":{"Badge":1,"Tag":1},"icons":0,"imports":["Badge","Tag"],"sites":2,"types":[]},
     "ui/src/pages/monitor/RequestDetailDrawer.tsx": {"components":{"Alert":1,"Button":1,"Descriptions":14,"Drawer":1,"Tag":1,"Typography":5},"icons":1,"imports":["Alert","Button","Descriptions","Drawer","Tag","Typography"],"sites":23,"types":[]},
-    "ui/src/pages/monitor/RequestHistory.tsx": {"components":{"Alert":1,"Button":4,"DatePicker":1,"InputNumber":2,"Select":1,"Space":2,"Typography":2},"icons":0,"imports":["Alert","Button","DatePicker","InputNumber","Select","Space","Typography"],"sites":13,"types":[]},
+    "ui/src/pages/monitor/RequestHistory.tsx": {"components":{"Alert":1,"Button":4,"DatePicker":1,"InputNumber":4,"Select":1,"Space":3,"Typography":2},"icons":0,"imports":["Alert","Button","DatePicker","InputNumber","Select","Space","Typography"],"sites":16,"types":[]},
     "ui/src/pages/monitor/RequestLookup.tsx": {"components":{"Alert":2,"Button":2,"Drawer":1,"Input":1,"Space":1,"Typography":2},"icons":0,"imports":["Alert","Button","Drawer","Input","Space","Typography"],"sites":9,"types":[]},
     "ui/src/pages/monitor/RequestRow.tsx": {"components":{"Tooltip":1,"Typography":1},"icons":0,"imports":["Tooltip","Typography"],"sites":2,"types":[]},
     "ui/src/pages/monitor/RequestShapeCards.tsx": {"components":{"Alert":1,"Button":1,"Skeleton":1,"Typography":1},"icons":0,"imports":["Alert","Button","Skeleton","Typography"],"sites":4,"types":[]},
@@ -414,5 +414,5 @@
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":190,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4982}
+  "summary": {"antRules":190,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4985}
 }
