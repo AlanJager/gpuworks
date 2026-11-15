@@ -4289,11 +4289,19 @@ export interface MonitorEvent {
   label: string;
 }
 
+export interface MonitorStateCount {
+  state: MonitorService["state"];
+  count: number;
+}
+
 export interface MonitorOverview {
   as_of: number;
   stale: boolean;
   signals: MonitorSignal[];
   services: MonitorService[];
+  // services[] counted by state: every state, in the order the state
+  // summary lists them, zero counts included (dto.MonitorStateCount).
+  state_counts: MonitorStateCount[];
   vram_by_node: MonitorVramNode[];
   cluster_tokens: { prompt: MonitorSeries; generation: MonitorSeries };
   events: MonitorEvent[];

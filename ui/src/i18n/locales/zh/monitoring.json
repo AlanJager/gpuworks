@@ -61,12 +61,14 @@
   },
   "stateSummary": {
     "title": "服务状态",
-    "count": "{{state}} {{count}}"
+    "count": "{{state}} {{count}}",
+    "all": "全部 {{count}}"
   },
   "table": {
+    "serviceName": "服务名称",
     "state": "状态",
     "health": "健康",
-    "service": "服务",
+    "service": "推理服务",
     "replicas": "副本",
     "requestRate": "req/s",
     "ttftP95": "TTFT p95",
@@ -76,8 +78,7 @@
     "prefillTokS": "Prefill tok/s",
     "decodeTokS": "Decode tok/s",
     "placement": "{{engine}} · {{placement}}",
-    "filtered": "已按筛选显示 {{count}} 个服务",
-    "clearFilter": "清除筛选"
+    "signalFilter": "信号"
   },
   "metricExplorer": {
     "title": "指标浏览器",

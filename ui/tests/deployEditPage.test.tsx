@@ -302,7 +302,7 @@ test("focus names the controls to bring into view", async () => {
 
 test("the header names the deployment and its state; what it is stays locked", async () => {
   await loaded();
-  assert.ok(screen.getByText("Edit deployment: qwen-prod"));
+  assert.ok(screen.getByRole("heading", { name: /Edit deployment: qwen-prod/ }));
   await screen.findByText("Running");
   assert.equal(screen.getByText(deployLocale.edit.back).closest("a")?.getAttribute("href"), "/deployments?deployment=5");
   // identity controls are inside a disabled group, with the way to change them

@@ -818,7 +818,7 @@ test("Decision page edits questions, sends a JSON state from the keyboard and re
 
 test("Decision page without a decision model says how to get one", async () => {
   renderAt(<DecisionPage catalog={{ ...catalog, models: catalog.models.filter((item) => item.id !== "decision-model") }} />, "/playground/decision");
-  assert.ok(screen.getByText(/No decision model is available/));
+  assert.ok(screen.getByText(/No System One model is available/));
 });
 
 test("Decision page keeps the user's edits when the catalog is refreshed with the same content", async () => {
@@ -858,7 +858,7 @@ test("Decision page sends uploaded images as data URLs only to a model that take
   assert.ok(await screen.findByText("Question names must be unique"));
   assert.equal(bodies.length, 1, "a request with unnamed or repeated questions is never sent");
 
-  await user.click(screen.getByRole("combobox", { name: "Decision model" }));
+  await user.click(screen.getByRole("combobox", { name: "System One model" }));
   await user.click(await screen.findByRole("option", { name: "text-decision-model" }));
   await waitFor(() => assert.equal(screen.queryByLabelText("Add images"), null));
   await user.click(screen.getByRole("button", { name: "Decide" }));

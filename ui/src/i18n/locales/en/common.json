@@ -26,7 +26,7 @@
     "imageEdit": "Image editing",
     "videoGenerate": "Video generation",
     "realtime": "Realtime",
-    "decide": "Decision (System One)"
+    "decide": "System One"
   },
   "inputModality": {
     "text": "Text",
@@ -947,7 +947,7 @@
   },
   "healthCheck": {
     "title": "Health check",
-    "help": "When on, the server sends the service one minimal request through the gateway every minute: a chat model gets the message \"1\" and generates 1 token, an embedding model embeds \"1\", a decision model is asked one yes/no question about the state \"1\". A reply within the threshold is healthy, none by then a timeout, an error or an unreachable replica a failure; nothing is sent while no replica is running awake. The check only reports: it never restarts or removes a replica, and it is not counted in the request figures. Changing it needs no restart.",
+    "help": "When on, the server sends the service one minimal request through the gateway every minute: a chat model gets the message \"1\" and generates 1 token, an embedding model embeds \"1\", a System One model is asked one yes/no question about the state \"1\". A reply within the threshold is healthy, none by then a timeout, an error or an unreachable replica a failure; nothing is sent while no replica is running awake. The check only reports: it never restarts or removes a replica, and it is not counted in the request figures. Changing it needs no restart.",
     "helpLabel": "About the health check",
     "status": {
       "ok": "Healthy",
@@ -968,7 +968,7 @@
     "enable": "Health check",
     "threshold": "Threshold",
     "seconds": "s",
-    "unsupported": "This model serves neither chat, embeddings nor decisions, so it cannot be checked",
+    "unsupported": "This model serves neither chat, embeddings nor System One, so it cannot be checked",
     "save": "Save",
     "saved": "Health check updated"
   },

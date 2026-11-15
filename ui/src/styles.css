@@ -3,6 +3,9 @@
 @import "./pages/images/imageSummary.css";
 
 :root {
+  /* Brand artwork keeps its original light/dark canvas, independent of the UI theme. */
+  --vendor-logo-light: #fff;
+  --vendor-logo-dark: #252d3c;
   --assistant-panel-width: 480px;
   color: var(--fg-muted);
   background: var(--surface-base);
@@ -12,7 +15,10 @@
 
 * { box-sizing: border-box; }
 html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
-body { background: var(--surface-base); }
+/* Portal content sits outside .app-shell: plain prose must inherit the same
+   body token there. Explicit text-label/title/heading utilities still win. */
+body { background: var(--surface-base); font-size: var(--font-size-body); line-height: var(--line-height-body); }
+:where([role="dialog"], [role="alertdialog"]) { font-size: var(--font-size-body); line-height: var(--line-height-body); }
 button, input, textarea, select { letter-spacing: 0; }
 :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 
@@ -212,15 +218,22 @@ button, input, textarea, select { letter-spacing: 0; }
 .page-header { container: page-header / inline-size; margin-bottom: 16px; }
 .page-header-copy { flex: 1 1 280px; min-width: 0; }
 .page-header-breadcrumb { margin-bottom: 6px; font-size: 12px; line-height: 16px; color: var(--fg-subtle); }
-.page-header-breadcrumb a { color: var(--fg-subtle); }
-.page-header-breadcrumb a:hover { color: var(--fg-brand); }
+.page-header-breadcrumb a { color: var(--fg-brand); }
+.page-header-breadcrumb a:hover { text-decoration: underline; }
 .page-header-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .page-header-title::before { flex: none; width: 4px; height: 18px; border-radius: 2px; background: linear-gradient(180deg, var(--brand), var(--info-surface-raised)); content: ""; }
 .page-header-description { margin-top: 4px; }
 /* A name that is an antd link button starts flush with its column title, like plain text. */
 .resource-table-name .ant-btn-link { padding-inline: 0; }
-/* Every body cell draws its row rule, so the opaque pinned cells (scrolled
-   columns pass under them) keep it in line; they also draw the row hover. */
+/* Text navigation in both Zeron and remaining antd tables uses the brand
+   affordance. Button links and disabled controls retain their own variants. */
+:where([data-slot="table-cell"], .ant-table-cell) a[href]:not(:where(.ant-btn, [data-slot="button"], [role="button"], [aria-disabled="true"])):not(:has(button, [data-slot="button"])) {
+  color: var(--fg-brand);
+}
+:where([data-slot="table-cell"], .ant-table-cell) a[href]:not(:where(.ant-btn, [data-slot="button"], [role="button"], [aria-disabled="true"])):not(:has(button, [data-slot="button"])):hover {
+  text-decoration: underline;
+}
+/* Body cells, including opaque pinned cells, keep consistent row separators. */
 .resource-table-cell { border-bottom: 1px solid var(--border); }
 tbody tr:last-child > .resource-table-cell { border-bottom: 0; }
 tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(--hover), var(--hover)); }
@@ -1017,8 +1030,8 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .resource-table-toolbar-left { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .resource-table-toolbar-right { flex: 0 0 auto; margin-left: auto; min-height: 32px; }
 .resource-table { container: resource-table / inline-size; }
-/* Filters in effect, between the toolbar and the table. */
-.resource-table-filters { margin: -4px 0 12px; }
+/* Active filters share the toolbar with refresh and column settings. */
+.resource-table-filters { min-width: 0; }
 @container resource-table (max-width: 640px) { .resource-table-toolbar { flex-wrap: wrap; } }
 .resource-table-updated { font-size: 12px; white-space: nowrap; }
 .resource-table .ant-table-thead > tr > th { white-space: nowrap; }
@@ -1524,3 +1537,9 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .deployment-detail-tabs > [role="tabpanel"]:not([hidden]):has(> #deployment-instances > .replica-cascade) { overflow: hidden; scrollbar-gutter: auto; padding-inline-end: 0; }
 .deployment-detail-tabs #deployment-instances > section { flex: 1; }
 .deployment-detail-tabs #deployment-instances :is(.instance-startup-progress, [tabindex="-1"]) { scroll-margin-top: 8px; }
+
+/* Most vendor marks are dark artwork on a transparent canvas, so they need a
+   light plate only on the dark theme; Kunlunxin's mark is white and always
+   sits on its dark plate. */
+.vendor-logo-kunlunxin { background: var(--vendor-logo-dark); padding: 2px 4px; border-radius: var(--radius-sm); }
+[data-theme="dark"] .vendor-logo:not(.vendor-logo-kunlunxin) { background: var(--vendor-logo-light); padding: 2px 4px; border-radius: var(--radius-sm); }

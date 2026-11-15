@@ -61,12 +61,14 @@
   },
   "stateSummary": {
     "title": "Service state",
-    "count": "{{state}} {{count}}"
+    "count": "{{state}} {{count}}",
+    "all": "All {{count}}"
   },
   "table": {
+    "serviceName": "Service name",
     "state": "State",
     "health": "Health",
-    "service": "Service",
+    "service": "Inference Services",
     "replicas": "Replicas",
     "requestRate": "Req/s",
     "ttftP95": "TTFT p95",
@@ -76,8 +78,7 @@
     "prefillTokS": "Prefill tok/s",
     "decodeTokS": "Decode tok/s",
     "placement": "{{engine}} · {{placement}}",
-    "filtered": "Showing {{count}} filtered service(s)",
-    "clearFilter": "Clear filter"
+    "signalFilter": "Signal"
   },
   "metricExplorer": {
     "title": "Metric explorer",
