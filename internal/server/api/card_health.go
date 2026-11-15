@@ -121,7 +121,7 @@ func (a *apiHandlers) nodeHealthRecords(w http.ResponseWriter, r *http.Request) 
 	}
 	query := store.CardHealthEpisodeQuery{
 		NodeID: node.ID, CardIdent: cardFromQuery(r), CheckID: check,
-		Offset: (q.page - 1) * q.pageSize, Limit: q.pageSize,
+		Offset: q.offset(), Limit: q.pageSize,
 		StartedAfter: time.Now().UTC().Add(-cardhealth.Retention),
 	}
 	rows, total, err := a.d.Store.CardHealthEpisodes(query)

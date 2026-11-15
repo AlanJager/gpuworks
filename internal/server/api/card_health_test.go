@@ -208,6 +208,11 @@ func TestNodeHealthRecords(t *testing.T) {
 	if code, _ := callNode(t, a.nodeHealthRecords, http.MethodGet, "drain-a", "/health-records?page=0", ""); code != http.StatusBadRequest {
 		t.Fatalf("page 0 = %d", code)
 	}
+	// A page whose offset overflows an int is past the end, not page one.
+	code, body = callNode(t, a.nodeHealthRecords, http.MethodGet, "drain-a", "/health-records?page=9223372036854775807&page_size=200", "")
+	if out := decode(t, body); code != http.StatusOK || out["total"] != float64(2) || len(out["records"].([]any)) != 0 {
+		t.Fatalf("huge page = %d %v", code, out)
+	}
 }
 
 // The detail asks the agent through the bounded fetcher, and is refused with

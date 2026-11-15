@@ -61,6 +61,9 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 		// parameters.
 		instanceCalls.push(url);
 		const q = new URL(url, "http://localhost").searchParams.get("q")?.toLowerCase() ?? "";
+		if (q.includes("boom")) {
+			return new Response(JSON.stringify({ error: "instance list unavailable" }), { status: 500 });
+		}
 		const items = fleetInstances.filter((inst) => !q || inst.uuid.includes(q));
 		return new Response(JSON.stringify({ items, page: 1, page_size: 50, total: items.length }), { status: 200 });
 	}
@@ -326,6 +329,55 @@ test("the instance filter searches instances on the server instead of listing th
 	assert.equal(document.querySelector('.ant-select-item-option[title="6f9a1c2daaaa"]'), null);
 	fireEvent.click(option!);
 	await waitFor(() => assert.ok(searchCalls.at(-1)!.includes("instance=b0b0c0c0dddd"), `expected the instance filter in ${searchCalls.at(-1)}`));
+});
+
+async function renderInstancePicker() {
+	searchResponse = { total: 0, items: [] };
+	render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/logs"]}><LogsPage /></MemoryRouter></I18nextProvider>);
+	const picker = await screen.findByRole("combobox", { name: i18n.t("search.instancePlaceholder") });
+	await waitFor(() => assert.ok(instanceCalls.length > 0));
+	return picker;
+}
+
+const instanceOption = (uuid: string) => document.querySelector(`.ant-select-item-option[title="${uuid}"]`);
+
+test("typing in the instance filter searches once the typing pauses, not per keystroke", async () => {
+	instanceCalls.length = 0;
+	const picker = await renderInstancePicker();
+	const before = instanceCalls.length;
+	for (const value of ["b", "b0", "b0b", "b0b0"]) fireEvent.change(picker, { target: { value } });
+	await waitFor(() => assert.ok(instanceCalls.at(-1)!.includes("q=b0b0"), `expected a search for the whole input: ${instanceCalls.at(-1)}`));
+	await new Promise((resolve) => setTimeout(resolve, 400));
+	const typed = instanceCalls.slice(before);
+	assert.deepEqual(typed.map((url) => new URL(url, "http://localhost").searchParams.get("q")), ["b0b0"], `one search per pause, got ${typed}`);
+	await waitFor(() => assert.ok(instanceOption("b0b0c0c0dddd")));
+});
+
+test("an instance search with no match says so instead of offering nothing", async () => {
+	instanceCalls.length = 0;
+	const picker = await renderInstancePicker();
+	fireEvent.change(picker, { target: { value: "zzzz" } });
+	await waitFor(() => assert.ok(instanceCalls.at(-1)!.includes("q=zzzz")));
+	assert.ok(await screen.findByText(i18n.t("search.instanceEmpty")));
+	assert.equal(instanceOption("6f9a1c2daaaa"), null);
+	assert.equal(instanceOption("b0b0c0c0dddd"), null);
+});
+
+test("a failed instance search drops the previous results and reports the failure", async () => {
+	instanceCalls.length = 0;
+	const picker = await renderInstancePicker();
+	fireEvent.change(picker, { target: { value: "b0b0" } });
+	await waitFor(() => assert.ok(instanceOption("b0b0c0c0dddd")));
+	fireEvent.change(picker, { target: { value: "b0b0boom" } });
+	await waitFor(() => assert.ok(instanceCalls.at(-1)!.includes("q=b0b0boom")));
+	assert.ok(await screen.findByText(i18n.t("search.instanceError")));
+	assert.equal(instanceOption("b0b0c0c0dddd"), null, "results for an earlier input must not stay offered");
+	// The plain text input stays usable: the typed value still filters logs.
+	assert.equal((picker as HTMLInputElement).value, "b0b0boom");
+	// Typing again recovers.
+	fireEvent.change(picker, { target: { value: "b0b0" } });
+	await waitFor(() => assert.ok(instanceOption("b0b0c0c0dddd")));
+	assert.equal(screen.queryByText(i18n.t("search.instanceError")), null);
 });
 
 // Phase 0: selected text alone does not name an AntD combobox for assistive technology.
