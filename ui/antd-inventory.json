@@ -407,12 +407,12 @@
     "ui/src/pages/storage/useStorageRunner.ts": {"components":{"message":1},"icons":0,"imports":["message"],"sites":1,"types":[]},
     "ui/src/pages/yieldPolicy/DeploymentYieldPolicy.tsx": {"components":{"Alert":3,"Button":3,"Select":0,"Skeleton":1,"Typography":3,"message":2},"icons":0,"imports":["Alert","Button","Select","Skeleton","Typography","message"],"sites":12,"types":[]},
     "ui/src/pages/yieldPolicy/YieldPolicyFields.tsx": {"components":{"InputNumber":1,"Radio":2,"Select":0,"Space":1,"Tag":2,"Typography":5},"icons":0,"imports":["InputNumber","Radio","Select","Space","Tag","Typography"],"sites":11,"types":[]},
-    "ui/src/styles.css": {"antRules":99},
+    "ui/src/styles.css": {"antRules":101},
     "ui/src/theme/tableDimensions.css": {"antRules":1},
     "ui/src/theme/tokens.ts": {"components":{},"icons":0,"imports":[],"sites":0,"types":["ThemeConfig"]},
     "ui/src/ui-kit/Notice.tsx": {"components":{},"icons":2,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":188,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4979}
+  "summary": {"antRules":190,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4979}
 }
