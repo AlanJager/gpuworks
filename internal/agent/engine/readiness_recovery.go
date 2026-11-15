@@ -40,7 +40,7 @@ func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstan
 		return
 	}
 	e.mu.Lock()
-	asleep := e.sleepLevel[spec.UUID] > 0
+	asleep := e.processOfLocked(spec.UUID).sleepLevel > 0
 	e.mu.Unlock()
 	if asleep {
 		return
@@ -73,7 +73,7 @@ func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstan
 	}
 	e.mu.Lock()
 	current, ok := e.watchableLocked(spec.UUID, serving.epoch)
-	if !ok || ctx.Err() != nil || current.DesiredSleep > 0 || e.sleepLevel[spec.UUID] > 0 {
+	if !ok || ctx.Err() != nil || current.DesiredSleep > 0 || e.processOfLocked(spec.UUID).sleepLevel > 0 {
 		e.mu.Unlock()
 		return
 	}

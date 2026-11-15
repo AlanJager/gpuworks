@@ -339,7 +339,7 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 			// restart. It has already served traffic, so repeating the cold
 			// sleep/wake prewarm would create an avoidable 503 window.
 			e.mu.Lock()
-			e.prewarmed[spec.UUID] = true
+			e.processLocked(spec.UUID).prewarmed = true
 			e.mu.Unlock()
 			if spec.Sleepable {
 				// Keep an exact level already applied by this agent. The engine

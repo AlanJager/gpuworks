@@ -127,9 +127,10 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 					startupSeconds = &elapsed
 				}
 				e.mu.Lock()
-				doPrewarm := spec.Sleepable && spec.DesiredSleep == 0 && !e.prewarmed[spec.UUID]
+				process := e.processLocked(spec.UUID)
+				doPrewarm := spec.Sleepable && spec.DesiredSleep == 0 && !process.prewarmed
 				if doPrewarm {
-					e.prewarmed[spec.UUID] = true
+					process.prewarmed = true
 				}
 				e.mu.Unlock()
 				if doPrewarm {
@@ -140,7 +141,7 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 					}
 				}
 				e.mu.Lock()
-				actualSleep := e.sleepLevel[spec.UUID]
+				actualSleep := e.processOfLocked(spec.UUID).sleepLevel
 				e.mu.Unlock()
 				var measured json.RawMessage
 				if readLogs {

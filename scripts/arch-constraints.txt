@@ -28,6 +28,10 @@ store_db_accessor_callers	0	max
 controller_struct_fields	34	max	# lowered by GWKS-306 (the transfer run table became one field, Controller.syncs); earlier raised: the server's sleep and wake order lock and the placement hints moved from package globals in planning (lifecycleMu, placementHints) into lifecycle.Orders, built by the controller and handed to the API and the automation (GWKS-305); the controller holds it (Controller.orders)
 controller_struct_mutexes	0	max
 controller_struct_maps	0	max
+agent_node_runtime_fields	75	max
+agent_node_runtime_mutexes	11	max
+agent_onrpc_cases	50	max
+agent_engine_struct_maps	9	max
 controller_exported_methods	15	max	# lowered by GWKS-306 (the five model transfer methods became Controller.Transfers); earlier raised: the server's sleep and wake order lock and the placement hints moved from package globals in planning (lifecycleMu, placementHints) into lifecycle.Orders, built by the controller and handed to the API and the automation (GWKS-305); Controller.Orders hands it to the app
 planning_concrete_store_refs	74	max	# raised: the controller plans unit suggestions on the fleet node snapshot (LoadUnitSuggestFactsFromSnapshot, UnitSuggestFactsOn), merged with r32-controller-nodes before this budget landed; GWKS-309 moves these reads behind a narrow interface
 planning_sync_files	0	max

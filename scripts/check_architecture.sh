@@ -156,6 +156,12 @@ controller_struct_count() {
   decl_count internal/server/controller '^type Controller struct' "$1" body
 }
 
+# agent_struct_count counts the lines of the struct declared by $2 in $1
+# matching $3.
+agent_struct_count() {
+  decl_count "$1" "$2" "$3" body
+}
+
 # --- measurements ----------------------------------------------------------
 measure() {
   key="$1"
@@ -255,6 +261,18 @@ measure() {
     ;;
   controller_struct_maps)
     controller_struct_count '^[[:blank:]][A-Za-z_][A-Za-z0-9_, ]*[[:blank:]]+map\['
+    ;;
+  agent_node_runtime_fields)
+    agent_struct_count internal/agent/app '^type NodeRuntime struct' '^[[:blank:]][*A-Za-z_]'
+    ;;
+  agent_node_runtime_mutexes)
+    agent_struct_count internal/agent/app '^type NodeRuntime struct' '^[[:blank:]](\*?sync\.(RW)?Mutex|[A-Za-z_][A-Za-z0-9_, ]*[[:blank:]]+sync\.(RW)?Mutex)'
+    ;;
+  agent_onrpc_cases)
+    decl_count internal/agent/app '^func \(n \*NodeRuntime\) OnRPC\(' '^[[:blank:]]+case ' body
+    ;;
+  agent_engine_struct_maps)
+    agent_struct_count internal/agent/engine '^type Engine struct' '^[[:blank:]][A-Za-z_][A-Za-z0-9_, ]*[[:blank:]]+map\['
     ;;
   controller_exported_methods)
     grep -rnE '^func \(c \*Controller\) [A-Z]' internal/server/controller --include='*.go' 2>/dev/null \

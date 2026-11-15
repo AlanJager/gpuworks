@@ -215,9 +215,6 @@ func (e *Engine) servingExitMessage(ctx context.Context, spec proto.InstanceDesi
 // removal that took the instance over meanwhile owns the outcome instead.
 func (e *Engine) retireStopped(ctx context.Context, spec proto.InstanceDesiredState, epoch uint64, message string) {
 	err := e.reclaimInstance(ctx, spec.UUID)
-	if err == nil {
-		e.forgetSleepState(spec.UUID)
-	}
 	e.mu.Lock()
 	current, desired := e.desired[spec.UUID]
 	_, cleanup := e.cleanupRequired[spec.UUID]
