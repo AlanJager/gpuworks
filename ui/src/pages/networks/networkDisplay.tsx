@@ -122,7 +122,7 @@ export function HCAList({ hcas, linkLayer }: { hcas: NetworkRail[]; linkLayer?: 
   const { t } = useTranslation("networks");
   if (hcas.length === 0) return <span className="text-fg-muted">—</span>;
   const names = hcas.map((h) => h.name);
-  const layer = linkLayer ? <Badge size="sm" style={{ marginLeft: 6 }}>{t(`linkLayer.${linkLayer}`, { defaultValue: linkLayer })}</Badge> : null;
+  const layer = linkLayer ? <Badge size="sm" className="ml-1.5">{t(`linkLayer.${linkLayer}`, { defaultValue: linkLayer })}</Badge> : null;
   const shown = names.length > 3 ? `${names.slice(0, 2).join(", ")} … ${names[names.length - 1]} (${names.length})` : names.join(", ");
   const detail = hcas.map((h) => `${h.name} ${h.ip || "—"}`).join("\n");
   return <span><Tooltip content={<span style={{ whiteSpace: "pre-line" }}>{detail}</span>}><code className="font-mono">{shown}</code></Tooltip>{layer}</span>;

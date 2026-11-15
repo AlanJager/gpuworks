@@ -66,11 +66,11 @@ export default function DetailDrawer({
       subtitle={subtitle} inlineSubtitle extra={extra}>
       {banner}
       {tabs && <Tabs className="detail-tabs" value={activeTab} defaultValue={tabs[0]?.key} onValueChange={changeTab} variant="underline">
-        <TabsList className="sticky top-0 z-10 bg-surface-overlay my-0">
+        <TabsList className="sticky top-0 z-10 bg-surface-overlay my-0 mx-0 max-w-full">
           {tabs.map((tab) => <TabItem key={tab.key} value={tab.key} label={tab.label}
             badge={tab.count == null ? undefined : <span title={tab.countTitle}>{tab.count}</span>} />)}
         </TabsList>
-        {/* Keep the tab list inside its own box; panels start one block gap below. */}
+        {/* Zeron's list overhangs 4px on every side; keep it inside the body (no sideways scroll) and start panels one block gap below. */}
         {tabs.map((tab) => <TabPanel key={tab.key} value={tab.key} keepMounted={visited.has(tab.key)} className="pt-4">{tab.children}</TabPanel>)}
       </Tabs>}
       {children}

@@ -444,3 +444,19 @@ test("a column whose owner shows its filter itself still filters but lists no ch
   renderTable({ data: onlineRows, columns: quiet, filteredEmptyDescription: "Nothing matches the filters" });
   assert.ok(within(emptyCell()).getByText("Nothing matches the filters"), "a filter without a chip still counts as filtering");
 });
+
+test("a table with no toolbar content reserves no toolbar row above its header", () => {
+  const bare = renderTable({ columnSettings: false });
+  assert.equal(screen.queryByRole("button", { name: "Customize columns" }), null);
+  assert.equal(bare.container.querySelector(".resource-table-toolbar"), null, "no empty 44px row between a section title and the table");
+  bare.unmount();
+  const searched = renderTable({ columnSettings: false, toolbar: <input aria-label="Search rows" /> });
+  assert.ok(within(searched.container.querySelector(".resource-table-toolbar") as HTMLElement).getByRole("textbox", { name: "Search rows" }));
+});
+
+test("filter chips alone still render the toolbar that contains them", () => {
+  const filtered = columns().map((column) => column.key === "state" ? { ...column, defaultFilteredValue: ["offline"] } : column);
+  const table = renderTable({ columnSettings: false, columns: filtered });
+  const toolbar = table.container.querySelector(".resource-table-toolbar") as HTMLElement;
+  assert.ok(within(toolbar).getByRole("group", { name: "Filtered" }));
+});

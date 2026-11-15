@@ -5,7 +5,7 @@ import { Switch } from "../../components/ui/switch";
 import { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem } from "../../components/ui/combobox";
 import { OptionSelect } from "../../ui-kit/OptionSelect";
 import { ConfirmPopover } from "../../ui-kit/ConfirmPopover";
-import { HelpTip } from "../../ui-kit/HelpTip";
+import { Tooltip } from "../../components/ui/tooltip";
 import { Notice } from "../../ui-kit/Notice";
 import { message } from "../../ui-kit/feedback";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
@@ -75,16 +75,15 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
 
   // The header says what the switch is about; hovering it says what turning it off does.
   const roleColumn = (role: NetworkRole): ResourceColumn<NetworkNode> => ({
-    width: 120, label: t(`role.${role}`),
-    title: (
-      <span className="inline-flex items-center gap-1">{t(`role.${role}`)}<HelpTip content={t(`management.roleTip.${role}`)} /></span>
-    ),
+    width: 130, label: t(`role.${role}`),
+    // Dotted underline, no icon: an icon would widen the column in the 720px drawer.
+    title: <Tooltip content={t(`management.roleTip.${role}`)}><span className="header-help" tabIndex={0}>{t(`role.${role}`)}</span></Tooltip>,
     key: role,
     render: (_: unknown, n: NetworkNode) => {
       const allowed = !(n.roles_off ?? []).includes(role);
       const key = `${n.node_uuid}/${role}`;
       return (
-        <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+        <div className="flex flex-col items-start gap-0.5" onClick={(event) => event.stopPropagation()}>
           <Switch
             labelVisibility="sr-only"
             label={`${n.node_name} ${t(`management.roleSwitch.${role}`)}`}
@@ -93,7 +92,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
             aria-busy={busy === key}
             onCheckedChange={(on) => void apply([n.node_uuid], on ? [role] : [], on ? [] : [role], key)}
           />
-          {allowed && !n.roles.includes(role) && <span className="text-label text-fg-muted">{t("management.dedicated")}</span>}
+          {allowed && !n.roles.includes(role) && <span className="max-w-full truncate text-label text-fg-muted" title={t("management.dedicated")}>{t("management.dedicatedShort")}</span>}
         </div>
       );
     },
@@ -102,7 +101,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
   const columns: ResourceColumn<NetworkNode>[] = [
     {
       title: t("nodeTable.node"),
-      dataIndex: "node_name", key: "node", width: 210, role: "name",
+      dataIndex: "node_name", key: "node", width: 180, role: "name",
       render: (_, n) => <div className="min-w-0"><span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span><div className="truncate text-label text-fg-muted" title={[n.interface, n.ip].filter(Boolean).join(" · ")}><Endpoint iface={n.interface} ip={n.ip} /></div></div>,
     },
     ...ROLES.map(roleColumn),
@@ -138,14 +137,14 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
       {labelFilter.length > 0 && <div className="flex flex-wrap gap-1">{labelFilter.map(pair => <Button key={pair} size="sm" variant="secondary" onClick={() => setLabelFilter(values => values.filter(value => value !== pair))}>{pair} ×</Button>)}</div>}
       {isAdmin && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold">{t("management.bulk.label")}</span>
+          <span className="text-body font-semibold">{t("management.bulk.label")}</span>
           <Button size="sm" variant="secondary" onClick={() => setSelected(visible.map((n) => n.node_uuid))} disabled={visible.length === 0 || busy !== null}>
             {t("management.bulk.selectShown", { count: visible.length })}
           </Button>
-          <span>{t("management.bulk.selected", { count: selected.length })}</span>
+          <span className="text-body">{t("management.bulk.selected", { count: selected.length })}</span>
           {ROLES.map((role) => (
             <div key={role} className="flex items-center gap-1">
-              <span className="text-fg-muted">{t(`role.${role}`)}</span>
+              <span className="text-body text-fg-muted">{t(`role.${role}`)}</span>
               <OptionSelect size="sm" aria-label={`${t("management.bulk.title")} ${t(`role.${role}`)}`} value={bulk[role]} options={choiceOptions}
                 onChange={(v) => setBulk((b) => ({ ...b, [role]: v as BulkChoice }))} disabled={busy !== null} className="w-28" />
             </div>

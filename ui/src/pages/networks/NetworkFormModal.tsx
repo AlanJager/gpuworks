@@ -1,4 +1,5 @@
 import { Checkbox } from "../../components/ui/checkbox";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../components/ui/accordion";
 import { Segmented } from "../../ui-kit/Segmented";
 import { useForm } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../components/ui/dialog";
@@ -82,9 +83,10 @@ export default function NetworkFormModal({
           <FormField control={form.control} name="type" label={t("form.type")} description={<span className="inline-flex items-center gap-1">{t("form.typeHint")}<HelpTip content={t("form.typeHelp")} /></span>}>{field => <Segmented label={t("form.type")} value={field.value} onChange={field.onChange} options={typeOptions.map(value => ({ value, label: t(`type.${value}`, { defaultValue: value }) }))} />}</FormField>
           {railsType ? <>
             <Notice title={t(acceleratorType ? "form.acceleratorInferred" : "form.rdmaInferred")} />
-            <details open={network?.cidr ? true : undefined}><summary className="cursor-pointer">{t("form.advanced")}</summary><div className="pt-3">
-              <FormField control={form.control} name="cidr" label={t("form.bootstrapCidr")} description={t(acceleratorType ? "form.acceleratorBootstrapCidrHint" : "form.bootstrapCidrHint")}>{field => <Input {...field} value={field.value ?? ""} placeholder="10.20.0.0/16" />}</FormField>
-            </div></details>
+            <Accordion type="single" collapsible defaultValue={network?.cidr ? "advanced" : undefined}><AccordionItem value="advanced">
+              <AccordionTrigger>{t("form.advanced")}</AccordionTrigger>
+              <AccordionContent><FormField control={form.control} name="cidr" label={t("form.bootstrapCidr")} description={t(acceleratorType ? "form.acceleratorBootstrapCidrHint" : "form.bootstrapCidrHint")}>{field => <Input {...field} value={field.value ?? ""} placeholder="10.20.0.0/16" />}</FormField></AccordionContent>
+            </AccordionItem></Accordion>
           </> : <>
             <FormField control={form.control} name="cidr" label={t("form.cidr")} description={t("form.cidrHint")}>{field => <Input {...field} value={field.value ?? ""} placeholder="10.20.0.0/16" />}</FormField>
             <FormField control={form.control} name="interface" label={t("form.interface")} description={t("form.interfaceHint")}>{field => <Input {...field} value={field.value ?? ""} placeholder={t("form.interfacePlaceholder")} />}</FormField>

@@ -168,7 +168,12 @@ test("members see the management network's per-node roles read-only", async () =
   assert.ok(await within(a.nextElementSibling as HTMLElement).findByText("site=lab"));
   // Storage sync is allowed on gpu-a but a dedicated network carries it.
   assert.equal(roleSwitch("gpu-a", "storage_sync").getAttribute("aria-checked"), "true");
-  assert.ok(within(a).getByText(n.management.dedicated));
+  // The cell keeps a short mark that fits the role column; the full wording is its title.
+  assert.equal(within(a).getByText(n.management.dedicatedShort).getAttribute("title"), n.management.dedicated);
+  // What a switch does is on its header: a dotted, focusable title with a tooltip, no icon.
+  const header = screen.getByText(n.role.storage_sync, { selector: ".header-help" });
+  header.focus();
+  await waitFor(() => assert.ok(screen.getAllByRole("tooltip").some((tip) => tip.textContent === n.management.roleTip.storage_sync)));
   assert.equal(roleSwitch("gpu-b", "serving").getAttribute("aria-checked"), "false");
   for (const role of ["serving", "storage_sync", "compute"] as const) assert.equal(roleSwitch("gpu-b", role).getAttribute("aria-disabled"), "true");
   assert.equal(screen.queryAllByRole("checkbox").length, 0, "no bulk selection for members");

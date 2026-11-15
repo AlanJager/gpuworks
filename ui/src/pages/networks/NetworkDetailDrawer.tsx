@@ -79,7 +79,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
   if (!current) {
     return (
       <DetailDrawer open={open} onClose={onClose} title={t("detail.title")}>
-        {error ? <Notice tone="danger" title={error.message} action={<Button size="sm" onClick={load}>{t("detail.retry")}</Button>} /> : <Spinner label={t("detail.title")} />}
+        {error ? <Notice tone="danger" title={error.message} action={<Button variant="secondary" size="sm" onClick={load}>{t("detail.retry")}</Button>} /> : <Spinner label={t("detail.title")} />}
       </DetailDrawer>
     );
   }
@@ -112,7 +112,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
       extra={
         current.builtin ? undefined : (
           <span className="inline-flex items-center gap-2">
-            <Button size="sm" onClick={() => setFormOpen(true)}>{t("actions.edit")}</Button>
+            <Button variant="secondary" size="sm" onClick={() => setFormOpen(true)}>{t("actions.edit")}</Button>
             <ConfirmPopover title={t("actions.confirmDelete", { name: current.name })} onConfirm={remove} confirmText={t("actions.delete")} cancelText={t("actions.cancel")} destructive trigger={<Button size="sm" variant="destructive">{t("actions.delete")}</Button>} />
           </span>
         )
@@ -206,7 +206,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
         {
           key: "hcas",
           wide: true,
-          title: <span>{t("nodeTable.hcaIPs")}{detail.nodes[0]?.link_layer && <Badge size="sm" style={{ marginLeft: 6 }}>{t(`linkLayer.${detail.nodes[0].link_layer}`)}</Badge>}</span>,
+          title: <span>{t("nodeTable.hcaIPs")}{detail.nodes[0]?.link_layer && <Badge size="sm" className="ml-1.5">{t(`linkLayer.${detail.nodes[0].link_layer}`)}</Badge>}</span>,
           render: (_: unknown, n: NetworkNode) => <RailsCell network={detail} node={n} onChanged={onDetail} />,
         },
       ]
@@ -233,7 +233,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           </Descriptions>
         )}
       </DetailSection>
-      <DetailSection title={t("detail.attachments")} extra={<Button size="sm" onClick={() => onAttach(null)}>{t("actions.attach")}</Button>}>
+      <DetailSection title={t("detail.attachments")} extra={<Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("actions.attach")}</Button>}>
         {detail.attachments.length === 0 ? (
           <span className="text-fg-muted">{t("detail.noAttachments")}</span>
         ) : (
@@ -244,7 +244,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
             data={detail.attachments}
             columns={[
               {
-                key: "target", title: t("detail.attachments"), width: 240,
+                key: "target", title: t("detail.attachTarget"), width: 240,
                 render: (_, a) => (
                   <span className="flex flex-col gap-1">
                     <span>
@@ -258,7 +258,6 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
               { key: "time", title: t("detail.attachedTime"), width: 180, render: (_, a) => <span className="text-fg-muted">{formatTime(a.created_at)}</span> },
               {
                 key: "actions", width: 150, role: "actions",
-                align: "right",
                 render: (_, a) => (
                   <span className="inline-flex items-center gap-2">
                     {a.target === "node" && <Button variant="link" size="sm" onClick={() => onAttach(a)}>{t("actions.edit")}</Button>}
