@@ -51,7 +51,7 @@ var routeDocs = map[string]string{
 	"/api/v1/engines":                           "面向指定厂商的引擎参数字典（省略 `target_vendor` 时使用通用 profile，未知厂商返回 400）；AMD profile 只表示实现准入范围，不证明特定 GPU/ROCm 版本已通过真机验收",
 	"/api/v1/events":                            "SSE 变更事件流",
 	"/api/v1/experience":                        "功能体验模式状态 `{enabled, ready, port, user, password?, error?}`：体验环境是否在运行、控制台是否已应答、端口（控制台端口 +10）、账号，运行时附密码；自行退出时 `error` 为原因。体验环境是独立进程与数据目录，只含模拟数据；体验环境自身的控制台与无数据目录的服务端 404 `EXPERIENCE_UNAVAILABLE`",
-	"/api/v1/gpus":                              "集群 GPU 清单及最新指标，20 秒快照。支持 `page`/`page_size`、`q`、`node`、`vendor`、`model`；`allocation_state` 为 `available/partial/allocated/unusable/unknown`，与健康等级不同。`q` 匹配节点名/UUID、卡型号、GPU UUID、PCIe 地址子串，其余筛选可用逗号分隔。`unusable` 原因见 `schedulable/health_status/ownership/foreign_processes`。`sort` 为 `node/model/vendor/allocation_state/occupants/utilization/memory/temperature/power/fan/bdf/numa`；分页含全量 `overview`、`facets`。见[GPU 筛选与分配状态](#gpu-筛选与分配状态)",
+	"/api/v1/gpus":                              "集群 GPU 清单及最新指标，至多 20 秒的快照；实例、部署或节点（卡健康、停用卡、上下线）变化后，过 2 秒刷新下限即重建。支持 `page`/`page_size`、`q`、`node`、`vendor`、`model`；`allocation_state` 为 `available/partial/allocated/unusable/unknown`，与健康等级不同。`q` 匹配节点名/UUID、卡型号、GPU UUID、PCIe 地址子串，其余筛选可用逗号分隔。`unusable` 原因见 `schedulable/health_status/ownership/foreign_processes`。`sort` 为 `node/model/vendor/allocation_state/occupants/utilization/memory/temperature/power/fan/bdf/numa`；分页含全量 `overview`、`facets`。见[GPU 筛选与分配状态](#gpu-筛选与分配状态)",
 	"/api/v1/healthz":                           "健康检查（管理面）",
 	"/api/v1/images":                            "镜像系列列表",
 	"/api/v1/images/community/browse":           "`?repo=` 列出该仓库上游的全部 tag（任意仓库均可，不做 semver 过滤；内存缓存 1 小时）；仓库名为空或格式错误返回 400，上游报告仓库不存在返回 404",

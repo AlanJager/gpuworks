@@ -1,7 +1,10 @@
 package planning
 
 import (
+	"encoding/json"
+
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -119,10 +122,27 @@ func FleetCards(st *store.Store, nodes []store.Node) (*FleetLedger, error) {
 // the node's instances per node. Only the models of the sleepers are read,
 // once. The figures are the per-node ledger's, charged by the same
 // arithmetic (allocateInstances).
+//
+// The deployments are full rows: a memory-limited slice's claim reads its
+// deployment's gpu_mem_util (QuickParams) from them rather than one row at a
+// time.
 func FleetAllocations(st *store.Store, nodes []store.Node, instances []store.Instance, deployments []store.Deployment) (map[uint]map[int]GPUAllocation, error) {
 	charge, err := newFleetCharge(st, instances, deployments)
 	if err != nil {
 		return nil, err
+	}
+	utils := make(map[uint]float64, len(deployments))
+	for i := range deployments {
+		var quick deploy.LaunchConfig
+		if json.Unmarshal([]byte(deployments[i].QuickParams), &quick) == nil {
+			utils[deployments[i].ID] = quick.GPUMemUtil
+		} else {
+			utils[deployments[i].ID] = 0
+		}
+	}
+	charge.residue.gpuMemUtil = func(id uint) (float64, bool) {
+		util, ok := utils[id]
+		return util, ok
 	}
 	out := make(map[uint]map[int]GPUAllocation, len(nodes))
 	for i := range nodes {

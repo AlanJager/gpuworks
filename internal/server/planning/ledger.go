@@ -296,6 +296,31 @@ func ledgerFactsOf(inst *store.Instance) ledgerFacts {
 	return facts
 }
 
+// claim is instanceClaim with the deployment's gpu_mem_util from the rows
+// the pass already holds, when it holds them.
+func (r *residues) claim(inst *store.Instance, archFamily string) int64 {
+	if r.gpuMemUtil == nil {
+		return instanceClaim(r.st, inst, archFamily)
+	}
+	util, ok := r.gpuMemUtil(inst.DeploymentID)
+	if !ok {
+		return instanceClaim(r.st, inst, archFamily)
+	}
+	spec := ledgerFactsOf(inst)
+	if spec.MemoryClaimBytes > 0 {
+		return spec.MemoryClaimBytes
+	}
+	if spec.VRAMLimitBytes <= 0 {
+		return 0
+	}
+	if util <= 0 {
+		util = deploy.DefaultGPUMemUtil(spec.Engine)
+	}
+	return estimate.PartitionClaimBytes(spec.VRAMLimitBytes, spec.PartitionBackend, func() int64 {
+		return estimate.ReserveBytes(engineReserveBase(spec.Engine), archFamily, true, util)
+	})
+}
+
 func instanceGPUMemUtil(st *store.Store, inst *store.Instance, engine string) float64 {
 	if st != nil {
 		if dep, err := st.GetDeployment(inst.DeploymentID); err == nil {
@@ -471,7 +496,7 @@ func allocateInstances(st *store.Store, node *store.Node, instances []store.Inst
 		// be L1/L2, so the full claim remains reserved.
 		asleep := (view.alsoAsleep != nil && view.alsoAsleep(&instance)) ||
 			(sleeper(&instance) && (view.reserved == nil || !view.reserved(&instance)))
-		claim := instanceClaim(st, &instance, archFamily)
+		claim := residue.claim(&instance, archFamily)
 		for _, gpuIndex := range parseInts(instance.GPUIndexes) {
 			allocation := result[gpuIndex]
 			switch {
