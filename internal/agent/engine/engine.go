@@ -48,6 +48,8 @@ type Engine struct {
 	extractLibvgpu func(string) (string, error)
 	// checkPorts runs before a container is created (checkEnginePorts).
 	checkPorts func(proto.InstanceDesiredState) error
+	// owner is labelled on every launched container (workload_labels.go).
+	owner workloadOwnerSlot
 
 	mu          sync.Mutex
 	assetMu     sync.Mutex // serializes content-addressed cache publication

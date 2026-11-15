@@ -265,12 +265,25 @@ Docker argument order:
 docker run -d --name gpuworks-<first-12-UUID-characters> --restart no
   --network host                 # Linux; on other systems, use -p 127.0.0.1:<port>:<port>
   <docker_args>                  # deployment docker arguments + platform RDMA arguments + spec memlock_unlimited + device injection
+  --label gpuworks.…=…           # ownership labels, see below
   --shm-size <shm_bytes>         # omitted when shm_bytes is 0 (--ipc=host)
   -e …  -v …
   --entrypoint <entrypoint[0]> <image> <entrypoint[1:]> <argv>
 ```
 
 nerdctl uses the same order but omits `--restart`; udocker does not support network settings, shm settings, or most docker arguments.
+
+docker and nerdctl containers carry ownership labels that tell apart the containers started by several agents on one machine (each with its own state directory and its own control plane). They are for troubleshooting only: the agent never selects or cleans up containers by them. A label whose value is unknown is omitted:
+
+| Label | Value |
+| --- | --- |
+| `gpuworks.server` | the control-plane address the agent connects to (`--server`); omitted on server_dial nodes, which do not know it |
+| `gpuworks.node` | the node UUID the control plane issued |
+| `gpuworks.state-dir` | absolute path of the agent's state directory |
+| `gpuworks.instance` | instance UUID (instance containers only) |
+| `gpuworks.deployment` | deployment ID (instance containers only) |
+
+For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.example:8800`, or `docker inspect -f '{{json .Config.Labels}}' <container>`. Card runtime check and dGPU behavior probe containers carry only the first three labels.
 
 ## Related Documentation
 

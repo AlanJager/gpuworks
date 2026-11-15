@@ -265,12 +265,25 @@ docker 的参数顺序：
 docker run -d --name gpuworks-<uuid前12位> --restart no
   --network host                 # Linux；其他系统改为 -p 127.0.0.1:<端口>:<端口>
   <docker_args>                  # 部署 docker 参数 + 平台 RDMA 参数 + 档位 memlock_unlimited + 设备注入
+  --label gpuworks.…=…           # 归属标签，见下
   --shm-size <shm_bytes>         # shm_bytes 为 0（--ipc=host）时省略
   -e …  -v …
   --entrypoint <entrypoint[0]> <镜像> <entrypoint[1:]> <argv>
 ```
 
 nerdctl 顺序相同但不带 `--restart`；udocker 不支持网络、shm 与大部分 docker 参数。
+
+docker 与 nerdctl 容器带归属标签，用于区分同一台机器上多个 agent（各自的状态目录、各自接入的管理节点）起的容器，只供排障查看，agent 不按标签选择或清理容器。值未知时不写该标签：
+
+| 标签 | 值 |
+| --- | --- |
+| `gpuworks.server` | agent 连接的管理节点地址（`--server`）；server_dial 节点不知道该地址，不写 |
+| `gpuworks.node` | 管理节点分配的节点 UUID |
+| `gpuworks.state-dir` | agent 状态目录的绝对路径 |
+| `gpuworks.instance` | 实例 UUID（仅实例容器） |
+| `gpuworks.deployment` | 部署 ID（仅实例容器） |
+
+例如 `docker ps -a --filter label=gpuworks.server=https://gpuworks.example:8800`，或 `docker inspect -f '{{json .Config.Labels}}' <容器>`。卡运行时检查与 dGPU 行为探针容器只带前三个标签。
 
 ## 相关文档
 

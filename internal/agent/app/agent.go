@@ -189,7 +189,20 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Start metrics/log background loops once the node identity is known.
 	var bgOnce sync.Once
+	ownerStateDir := a.cfg.StateDir
+	if abs, err := filepath.Abs(ownerStateDir); err == nil {
+		ownerStateDir = abs
+	}
+	// Containers are labelled with who launched them (engine.WorkloadOwner);
+	// the node UUID joins the server and state directory at registration.
+	setOwner := func(uuid string) {
+		if node.engine != nil {
+			node.engine.SetWorkloadOwner(engine.WorkloadOwner{ServerURL: serverURL, NodeUUID: uuid, StateDir: ownerStateDir})
+		}
+	}
+	setOwner("")
 	startBG := func(uuid string) {
+		setOwner(uuid)
 		if uuid != "" {
 			bgOnce.Do(func() { node.StartBackground(ctx, uuid) })
 		}
