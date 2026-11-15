@@ -35,7 +35,8 @@ test("model organizations use original model IDs rather than variant repositorie
 });
 
 test("model organization icons use only reviewed local assets", () => {
-  assert.equal(modelOrganizationIconOrganizations.length, 60);
+  assert.equal(modelOrganizationIconOrganizations.length, 82);
+  assert.equal(modelOrganizationIcon("lmsys/vicuna-7b-v1.5"), "/model-org-icons/lmsys.webp");
   assert.equal(modelOrganizationIcon("deepseek-ai/deepseek-r1"), "/model-org-icons/deepseek-ai.webp");
   assert.equal(modelOrganizationIcon("eco-tech/deepseek-v3.1-w8a8"), undefined);
   assert.equal(modelOrganizationIcon("zhipuai/glm-5"), undefined);
