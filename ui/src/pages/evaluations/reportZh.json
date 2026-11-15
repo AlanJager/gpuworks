@@ -87,6 +87,7 @@
   "Failed": "失败",
   "Failed partial output": "失败请求的部分输出",
   "Failure diagnostic": "失败诊断",
+  "Requested priority class": "请求的优先级类",
   "Finish reason": "结束原因",
   "Finish reason unknown (requests)": "未上报结束原因的请求数",
   "Finish reasons": "结束原因",

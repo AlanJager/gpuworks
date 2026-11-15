@@ -34,11 +34,11 @@ A priority class is a name and a value, **larger is more important**, from -100 
 | `high` | 20 | |
 | `normal` | 0 | The initial default |
 | `low` | -20 | |
-| `batch` | -40 | Always used by batch requests |
+| `batch` | -40 | Used by batch requests by default |
 
 A built-in class can only change its display name and description; its name and value stay and it cannot be deleted. Administrators may create their own classes. Between two classes more than 10 apart, SGLang lets the higher preempt a running lower one; 10 or less only changes queue order.
 
-One class is the **default**: it is used by API keys bound to no class, the playground and requests without a key (when an administrator turned on anonymous access). The default cannot be deleted, nor can a class bound to an active key.
+One class is the **default**: it is used by API keys bound to no class, requests without a key (when an administrator turned on anonymous access) and playground requests that choose no class. The default cannot be deleted, nor can a class bound to an active key or used by a batch or evaluation that has not finished.
 
 ## Key Binding and Client Choice
 
@@ -50,7 +50,15 @@ On the API Keys page an administrator can bind a key:
   - **Fixed**: the header is ignored.
   - **Down only**: only classes up to the key's own.
 
-Only within ceiling has a ceiling; saving another policy drops it. The name in the header is not case-sensitive; one that matches no class is refused with 400 before a deployment is chosen, so nothing is forwarded and no sleeping deployment is woken. Retries of a request and its replay after preemption run at the class decided first. Batch requests ignore their key and always run at the `batch` class.
+Only within ceiling has a ceiling; saving another policy drops it. The name in the header is not case-sensitive; one that matches no class is refused with 400 before a deployment is chosen, so nothing is forwarded and no sleeping deployment is woken. Retries of a request and its replay after preemption run at the class decided first.
+
+## Playground, Batches and Evaluations
+
+Requests from these three do not take their class from a key; it is chosen on the page:
+
+- **Playground**: the chat parameters panel has "Request priority", offering any class; with none chosen the request runs at the default. The request carries the `X-GPUWorks-Priority-Class` header through the gateway, and each reply shows the class the gateway ran it at. When the deployment does not run priority scheduling, the panel says the class is only recorded and does not change queue order. External models do not go through the gateway and offer no choice.
+- **Batches**: creating a batch in the console may choose any class, the `batch` class otherwise; the batch detail shows it. Every request of the batch runs at that class, whatever key created it. A batch created through `/v1/batches` always runs at the `batch` class.
+- **Evaluations**: only a run of a managed deployment measured from the server goes through the gateway, and only then may it choose a class; with none chosen it sends no header and runs at the default. A run measured from a node, of a single instance or of an external endpoint calls the engine directly and cannot choose one; naming one is refused on create (`BENCHMARK_PRIORITY_CLASS_GATEWAY`). The run records the class chosen, listed as "Requested priority class" in the report; the class the gateway actually ran each request at is in the per-request detail's `priority_class`.
 
 ## How the Gateway Writes the Priority
 

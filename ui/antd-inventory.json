@@ -11,13 +11,13 @@
     "Collapse": 23,
     "ConfigProvider": 2,
     "DatePicker": 6,
-    "Descriptions": 292,
+    "Descriptions": 293,
     "Divider": 3,
     "Drawer": 16,
     "Dropdown": 8,
     "Empty": 29,
     "Flex": 7,
-    "Form": 476,
+    "Form": 477,
     "Input": 159,
     "InputNumber": 54,
     "List": 6,
@@ -30,7 +30,7 @@
     "Result": 3,
     "Row": 40,
     "Segmented": 25,
-    "Select": 108,
+    "Select": 109,
     "Skeleton": 17,
     "Slider": 1,
     "Space": 554,
@@ -250,8 +250,8 @@
     "ui/src/pages/evaluations/BenchmarkEvidencePanel.tsx": {"components":{"Alert":3,"Button":1,"Card":2,"Collapse":1,"Descriptions":3,"Space":1,"Table":4,"Typography":5},"icons":0,"imports":["Alert","Button","Card","Collapse","Descriptions","Space","Table","Typography"],"sites":20,"types":[]},
     "ui/src/pages/evaluations/BenchmarkReportMenu.tsx": {"components":{"Button":1,"Dropdown":1,"message":1},"icons":1,"imports":["Button","Dropdown","message"],"sites":3,"types":[]},
     "ui/src/pages/evaluations/BenchmarkRequestTimeline.tsx": {"components":{"Alert":3,"Button":2,"Card":1,"Descriptions":1,"Empty":1,"Pagination":1,"Space":2,"Spin":1,"Typography":2},"icons":0,"imports":["Alert","Button","Card","Descriptions","Empty","Pagination","Space","Spin","Typography"],"sites":14,"types":[]},
-    "ui/src/pages/evaluations/BenchmarkSnapshotPanel.tsx": {"components":{"Alert":2,"Card":1,"Collapse":2,"Descriptions":25,"Space":2,"Tag":1,"Typography":5},"icons":0,"imports":["Alert","Card","Collapse","Descriptions","Space","Tag","Typography"],"sites":38,"types":[]},
-    "ui/src/pages/evaluations/BenchmarkWizard.tsx": {"components":{"Alert":5,"Button":5,"Card":1,"Checkbox":2,"Col":15,"Collapse":1,"Drawer":1,"Form":49,"Input":8,"InputNumber":12,"Modal":1,"Radio":2,"Row":9,"Select":5,"Space":12,"Steps":1,"Tooltip":9,"Typography":5,"Upload":1,"message":9},"icons":3,"imports":["Alert","Button","Card","Checkbox","Col","Collapse","Drawer","Form","Input","InputNumber","Modal","Radio","Row","Select","Space","Steps","Tooltip","Typography","Upload","message"],"sites":153,"types":[]},
+    "ui/src/pages/evaluations/BenchmarkSnapshotPanel.tsx": {"components":{"Alert":2,"Card":1,"Collapse":2,"Descriptions":26,"Space":2,"Tag":1,"Typography":5},"icons":0,"imports":["Alert","Card","Collapse","Descriptions","Space","Tag","Typography"],"sites":39,"types":[]},
+    "ui/src/pages/evaluations/BenchmarkWizard.tsx": {"components":{"Alert":5,"Button":5,"Card":1,"Checkbox":2,"Col":15,"Collapse":1,"Drawer":1,"Form":50,"Input":8,"InputNumber":12,"Modal":1,"Radio":2,"Row":9,"Select":6,"Space":12,"Steps":1,"Tooltip":9,"Typography":5,"Upload":1,"message":9},"icons":3,"imports":["Alert","Button","Card","Checkbox","Col","Collapse","Drawer","Form","Input","InputNumber","Modal","Radio","Row","Select","Space","Steps","Tooltip","Typography","Upload","message"],"sites":155,"types":[]},
     "ui/src/pages/evaluations/EvaluationComparePage.tsx": {"components":{"Alert":3,"Button":2,"Card":6,"Col":3,"Row":2,"Segmented":1,"Space":4,"Spin":1,"Table":1,"Tag":2,"Typography":6},"icons":1,"imports":["Alert","Button","Card","Col","Row","Segmented","Space","Spin","Table","Tag","Typography"],"sites":31,"types":["ColumnsType"]},
     "ui/src/pages/evaluations/EvaluationDetailPage.tsx": {"components":{"Alert":3,"Button":5,"Card":7,"Col":2,"Popconfirm":1,"Progress":1,"Row":2,"Segmented":0,"Space":3,"Spin":1,"Typography":2,"message":3},"icons":3,"imports":["Alert","Button","Card","Col","Popconfirm","Progress","Row","Segmented","Space","Spin","Typography","message"],"sites":30,"types":[]},
     "ui/src/pages/evaluations/MetricLabel.tsx": {"components":{"Space":1,"Tooltip":1},"icons":1,"imports":["Space","Tooltip"],"sites":2,"types":[]},
@@ -414,5 +414,5 @@
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":190,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4978}
+  "summary": {"antRules":190,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4981}
 }

@@ -443,7 +443,11 @@ function renderAt(component: React.ReactElement, path: string) {
   return render(<ConversationStoreContext.Provider value={store}><I18nextProvider i18n={i18n}><MemoryRouter initialEntries={[path]}><LocationProbe /><Routes><Route path="*" element={component} /></Routes></MemoryRouter></I18nextProvider></ConversationStoreContext.Provider>);
 }
 
-const me = (input: RequestInfo | URL) => String(input).endsWith("/api/v1/auth/me") ? jsonResponse({ id: 1, username: "admin", role: "admin" }) : undefined;
+// The page reads who is signed in and the request priority classes it offers;
+// neither is an inference request.
+const priorityClasses = { items: [{ name: "normal", display_name: "", description: "", value: 0, builtin: true, default: true, deletable: false, created_at: "" }], min_value: -100, max_value: 100, policies: [], default_policy: "", ceiling_policies: [] };
+const me = (input: RequestInfo | URL) => String(input).endsWith("/api/v1/auth/me") ? jsonResponse({ id: 1, username: "admin", role: "admin" })
+  : String(input).endsWith("/api/v1/priority-classes") ? jsonResponse(priorityClasses) : undefined;
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
