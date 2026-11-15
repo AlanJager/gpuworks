@@ -4,7 +4,7 @@
     "AutoComplete": 5,
     "Badge": 8,
     "Breadcrumb": 1,
-    "Button": 482,
+    "Button": 481,
     "Card": 113,
     "Checkbox": 33,
     "Col": 108,
@@ -292,7 +292,7 @@
     "ui/src/pages/monitor/LatencyBreakdown.tsx": {"components":{"Alert":1,"Button":1,"Tooltip":1,"Typography":2},"icons":0,"imports":["Alert","Button","Tooltip","Typography"],"sites":5,"types":[]},
     "ui/src/pages/monitor/LiveRequestsOverview.tsx": {"components":{"Card":2,"Typography":2},"icons":0,"imports":["Card","Typography"],"sites":4,"types":[]},
     "ui/src/pages/monitor/MetricExplorer.tsx": {"components":{"Collapse":1,"Select":3,"Space":2,"Typography":4},"icons":0,"imports":["Collapse","Select","Space","Typography"],"sites":10,"types":[]},
-    "ui/src/pages/monitor/MonitorPage.tsx": {"components":{"Alert":1,"Button":2,"Card":2,"Col":2,"Row":1,"Skeleton":1},"icons":0,"imports":["Alert","Button","Card","Col","Row","Skeleton"],"sites":9,"types":[]},
+    "ui/src/pages/monitor/MonitorPage.tsx": {"components":{"Alert":1,"Button":1,"Card":2,"Col":2,"Row":1,"Skeleton":1},"icons":0,"imports":["Alert","Button","Card","Col","Row","Skeleton"],"sites":8,"types":[]},
     "ui/src/pages/monitor/PdCard.tsx": {"components":{"Card":1,"Space":2,"Tag":1,"Tooltip":1,"Typography":5},"icons":0,"imports":["Card","Space","Tag","Tooltip","Typography"],"sites":10,"types":[]},
     "ui/src/pages/monitor/ReplicaTable.tsx": {"components":{"Badge":1,"Tag":1},"icons":0,"imports":["Badge","Tag"],"sites":2,"types":[]},
     "ui/src/pages/monitor/RequestDetailDrawer.tsx": {"components":{"Alert":1,"Button":1,"Descriptions":14,"Drawer":1,"Tag":1,"Typography":5},"icons":1,"imports":["Alert","Button","Descriptions","Drawer","Tag","Typography"],"sites":23,"types":[]},
@@ -414,5 +414,5 @@
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":190,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4979}
+  "summary": {"antRules":190,"antdFiles":341,"cssFilesWithAntRules":12,"iconFiles":101,"iconImports":240,"sites":4978}
 }
