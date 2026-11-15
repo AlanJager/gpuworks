@@ -1583,6 +1583,26 @@
     {
       "term_en": "Hold Pod / Card Borrowing",
       "translations": { "zh": "占位 Pod / 借卡" }
+    },
+    {
+      "term_en": "Failure Code",
+      "translations": { "zh": "失败码" }
+    },
+    {
+      "term_en": "Check ID",
+      "translations": { "zh": "检查 id" }
+    },
+    {
+      "term_en": "Check Status",
+      "translations": { "zh": "检查状态" }
+    },
+    {
+      "term_en": "Runtime Failure",
+      "translations": { "zh": "运行期失败原因" }
+    },
+    {
+      "term_en": "Boundary Classification",
+      "translations": { "zh": "外部边界分类" }
     }
   ],
   "do_not_translate": [

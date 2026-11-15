@@ -126,7 +126,7 @@ func materialize(in MaterializeInput, legacy bool) (Materialized, error) {
 	for _, rawKey := range in.Unset {
 		key := strings.TrimSpace(rawKey)
 		if _, known := params[key]; !known {
-			return Materialized{}, fmt.Errorf("invalid quick_params_unset: unknown key %q", rawKey)
+			return Materialized{}, paramErrorf(ParamFieldQuickParamsUnset, "invalid quick_params_unset: unknown key %q", rawKey)
 		}
 		unset[key] = struct{}{}
 	}
@@ -480,13 +480,13 @@ func checkStatedBounds(spec engineParam, value any) error {
 		return nil
 	}
 	if number < 0 {
-		return fmt.Errorf("invalid quick_params: %s must not be negative", spec.Key)
+		return paramErrorf(spec.Key, "invalid quick_params: %s must not be negative", spec.Key)
 	}
 	if spec.Min != nil && number < *spec.Min {
-		return fmt.Errorf("invalid quick_params: %s must be at least %v", spec.Key, *spec.Min)
+		return paramErrorf(spec.Key, "invalid quick_params: %s must be at least %v", spec.Key, *spec.Min)
 	}
 	if spec.Max != nil && number > *spec.Max {
-		return fmt.Errorf("invalid quick_params: %s must be at most %v", spec.Key, *spec.Max)
+		return paramErrorf(spec.Key, "invalid quick_params: %s must be at most %v", spec.Key, *spec.Max)
 	}
 	return nil
 }

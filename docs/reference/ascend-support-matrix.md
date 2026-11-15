@@ -123,7 +123,7 @@ PRoot 兼容脚本。MiniMax-M3 的 Docker 结果同样不外推到 runveil。
 写死网卡名，agent 按节点广播 IP 反查网卡并填充集合通信变量，显式设置仍优先。
 
 有宿主 CANN 的节点按 die 做 ACL context 与 4 KiB 分配检查；只有明确归因于该 die 的
-失败才标记 `runtime_unusable`。driver-only 节点缺少 `libascendcl.so` 时跳过，不把缺工具
+失败才标记 `RUNTIME_UNUSABLE`。driver-only 节点缺少 `libascendcl.so` 时跳过，不把缺工具
 当成硬件故障。失败分级、退避和排查见[运行时不可用](../how-to/troubleshooting.md#某张卡运行时不可用或驱动初始化失败)。
 
 ## 覆盖层级

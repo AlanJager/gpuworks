@@ -46,7 +46,7 @@
       },
       "installedWithNotes": {
         "title": "Agent installed, with notes",
-        "description": "The agent was installed. The items marked Warning or Failed below are worth a look, but the install itself went through."
+        "description": "The agent was installed. The items below that did not pass are worth a look, but the install itself went through."
       },
       "waitingForAgent": {
         "title": "Agent started, not connected yet",
@@ -99,7 +99,7 @@
     "connectionUsed": "Used {{label}} · {{user}}@{{host}}:{{port}}",
     "connectionUsedChannel": "Used {{label}}",
     "attemptFailed": "Connection to {{target}} failed; fell back automatically",
-    "checks": { "item": "Check", "status": "Status", "detail": "Details", "passed": "Passed", "warning": "Warning", "failed": "Failed" }
+    "checks": { "item": "Check", "status": "Status", "detail": "Details" }
   },
   "clusters": { "loadFailed": "Cannot read the clusters", "empty": "This account has no managed Kubernetes clusters", "column": {"gpuPools": "GPU node pools"}, "field": {"id": "Cluster ID", "api": "API server", "nodes": "Nodes joined", "region": "Region", "version": "Version"}, "nodes_one": "{{count}} node", "nodes_other": "{{count}} nodes", "entryGone": "The account no longer has this cluster. Its entry and the nodes that joined are still here: revoke or delete it on the right.", "entryUnread": "The cloud's clusters could not be read, so the node pools cannot be shown; the entry can still be managed on the right.", "publicAPI": "Publicly reachable", "privateAPI": "Private network only", "privateAPIHint": "The API server has no public address, so gpuworks cannot apply the manifest for you; after connecting, run the kubectl command from inside the cluster's network.", "connected": "Connected", "notRunning": "Cluster not ready", "noGPUPools": "No recognizable GPU node pool (auto-mode pools, shared GPUs and unsupported vendors are not listed)", "pool": "{{name}} · {{model}} ×{{count}} · {{nodes}} nodes", "mixedModels": "mixed models", "connect": "Connect", "editPools": "Change", "inEntry": "In the entry"},
   "detail": {"syncedAt": "Last synced: {{time}}", "neverSynced": "Instances not synced yet", "standaloneInstances": "Standalone instances", "loadingInstances": "Reading instances", "loadingClusters": "Reading clusters", "showMore": "Show {{count}} more ({{rest}} left)", "collapse": "Collapse {{name}}", "expand": "Expand {{name}}"},

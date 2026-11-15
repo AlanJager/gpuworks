@@ -84,19 +84,19 @@ func TestRoutingTrustsTheSnapshotUntilAChangeIsAnnounced(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p, st, depID, uuid := newSleepableRoute(t, "trust_"+strings.ReplaceAll(tc.name, " ", "_"))
 			p.routes.close() // the snapshot stays as built: only the generation moves
-			if _, _, status, msg, _ := p.selectDeploymentInstance("model"); status != 0 {
+			if _, _, status, msg, _ := p.selectStatus("model"); status != 0 {
 				t.Fatalf("awake instance not routable: %d %q", status, msg)
 			}
 			if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", uuid).Updates(tc.row).Error; err != nil {
 				t.Fatal(err)
 			}
-			if _, tgt, status, msg, _ := p.selectDeploymentInstance("model"); status != 0 || tgt.port != 30001 {
+			if _, tgt, status, msg, _ := p.selectStatus("model"); status != 0 || tgt.port != 30001 {
 				t.Fatalf("unannounced row change read per request: %d %q port %d", status, msg, tgt.port)
 			}
 			if err := tc.announce(st, depID, uuid); err != nil {
 				t.Fatal(err)
 			}
-			_, tgt, status, msg, asleep := p.selectDeploymentInstance("model")
+			_, tgt, status, msg, asleep := p.selectStatus("model")
 			if status != tc.status || asleep != tc.asleep || (tc.status == 0 && tgt.port != tc.port) {
 				t.Fatalf("after the announcement = %d %q asleep=%v port %d, want %d asleep=%v port %d", status, msg, asleep, tgt.port, tc.status, tc.asleep, tc.port)
 			}

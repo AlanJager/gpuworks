@@ -76,7 +76,8 @@ func TestDoReportsTheGatewaysRefusalsAndTheContext(t *testing.T) {
 	defer closeUpstream()
 
 	unknown := p.Do(context.Background(), uxrecord.Caller{}, chatPath, []byte(`{"model":"nope"}`))
-	if unknown.Status != http.StatusNotFound || !strings.Contains(string(unknown.Body), "gpuworks_proxy") {
+	if unknown.Status != http.StatusNotFound || unknown.RequestID == "" ||
+		string(unknown.Body) != `{"error":{"message":"no deployment serves model nope","type":"not_found_error","code":"MODEL_NOT_FOUND","param":"model","params":{"model":"nope"}}}`+"\n" {
 		t.Fatalf("unknown model = %+v %s", unknown, unknown.Body)
 	}
 	noModel := p.Do(context.Background(), uxrecord.Caller{}, chatPath, []byte(`{}`))

@@ -1347,6 +1347,8 @@ var migrations = []migration{
 	{Version: 213, Name: "deployment_priority_scheduling", Apply: addDeploymentPriorityScheduling},
 	{Version: 214, Name: "priority_classes", Apply: createPriorityClasses},
 	{Version: 215, Name: "batch_and_benchmark_priority_class", Apply: addBatchAndBenchmarkPriorityClass},
+	{Version: 216, Name: "node_last_recovery_code", Apply: addNodeLastRecoveryCode},
+	{Version: 217, Name: "check_codes_upper_snake", Apply: upperCaseCheckCodes},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

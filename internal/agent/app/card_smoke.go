@@ -177,7 +177,7 @@ func (n *NodeRuntime) applyRuntimeFindings(gpus []proto.GPUInfo) {
 	}
 }
 
-// runtimeUnusableEvidence is what a runtime_unusable finding carries, however
+// runtimeUnusableEvidence is what a RUNTIME_UNUSABLE finding carries, however
 // the failed attempt came about (the periodic check or Doctor).
 func runtimeUnusableEvidence(at time.Time, detail string) []accelerator.HealthField {
 	return []accelerator.HealthField{

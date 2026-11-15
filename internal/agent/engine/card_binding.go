@@ -63,8 +63,9 @@ func (e *Engine) resolveBoundCards(ctx context.Context, spec *proto.InstanceDesi
 	for i, ident := range spec.GPUIdents {
 		index, ok := indexOf[ident]
 		if !ok {
-			return fmt.Errorf("the accelerator this instance is placed on is not present: %s (it was device %d); the node reports %s",
-				ident, spec.GPUIndexes[i], describeCards(gpus))
+			return withFailure(proto.RuntimeFailure{Code: proto.ErrorAcceleratorCardMissing, Resource: ident},
+				fmt.Errorf("the accelerator this instance is placed on is not present: %s (it was device %d); the node reports %s",
+					ident, spec.GPUIndexes[i], describeCards(gpus)))
 		}
 		resolved = append(resolved, index)
 	}

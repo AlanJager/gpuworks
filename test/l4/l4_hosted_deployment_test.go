@@ -126,13 +126,15 @@ func hostedRequireDistributedPreflight(t *testing.T, harness *hostedControlPlane
 	var result struct {
 		OK    bool `json:"ok"`
 		Pairs []struct {
-			SourceUUID      string  `json:"source_uuid"`
-			TargetUUID      string  `json:"target_uuid"`
-			Reachable       bool    `json:"reachable"`
-			BandwidthTested bool    `json:"bandwidth_tested"`
-			Gbps            float64 `json:"gbps"`
-			Error           string  `json:"error"`
-			BandwidthError  string  `json:"bandwidth_error"`
+			SourceUUID        string  `json:"source_uuid"`
+			TargetUUID        string  `json:"target_uuid"`
+			Reachable         bool    `json:"reachable"`
+			BandwidthTested   bool    `json:"bandwidth_tested"`
+			Gbps              float64 `json:"gbps"`
+			Status            string  `json:"status"`
+			Code              string  `json:"code"`
+			Evidence          string  `json:"evidence"`
+			BandwidthEvidence string  `json:"bandwidth_evidence"`
 		} `json:"pairs"`
 	}
 	if err := harness.API.PostJSON(t.Context(), "/api/v1/deployments/preflight", map[string]any{
@@ -146,7 +148,7 @@ func hostedRequireDistributedPreflight(t *testing.T, harness *hostedControlPlane
 		t.Fatalf("hosted distributed preflight result=%+v", result)
 	}
 	for _, pair := range result.Pairs {
-		if !pair.Reachable || !pair.BandwidthTested || pair.Gbps <= 0 || pair.Error != "" || pair.BandwidthError != "" {
+		if !pair.Reachable || !pair.BandwidthTested || pair.Gbps <= 0 || pair.Status != "pass" || pair.Evidence != "" || pair.BandwidthEvidence != "" {
 			t.Fatalf("hosted distributed preflight pair failed: %+v", pair)
 		}
 		t.Logf("hosted private network %s -> %s: %.3f Gbps", pair.SourceUUID, pair.TargetUUID, pair.Gbps)

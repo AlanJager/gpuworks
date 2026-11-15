@@ -24,6 +24,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/agentupgrade"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/prepobs"
 	"gpuworks.ai/gpuworks/internal/server/recovery"
@@ -266,7 +267,7 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	switch lane {
 	case "", proto.LaneCtrl, proto.LaneData:
 	default:
-		http.Error(w, "unknown lane", http.StatusBadRequest)
+		messages.WriteHTTPError(w, http.StatusBadRequest, errors.New("unknown lane"))
 		return
 	}
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{

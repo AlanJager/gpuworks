@@ -229,6 +229,9 @@ func TestRunningHealthFailedCleanupIsReportedRemoving(t *testing.T) {
 	if len(reports.states(proto.InstFailed)) != 0 || !driver.exists(containerName(spec.UUID)) || !strings.Contains(removing[0].Message, "HTTP 503; cleanup pending") {
 		t.Fatalf("cleanup failure=%+v", reports.snapshot())
 	}
+	if f := removing[0].RuntimeFailure; f == nil || f.Code != proto.ErrorEngineUnresponsive || f.Phase != proto.PhaseServing || !strings.Contains(f.Detail, "HTTP 503") {
+		t.Fatalf("removing reason = %+v", f)
+	}
 	waitHealthProbes(t, e)
 	spec.DesiredState = "stopped"
 	e.SetDesiredFull(context.Background(), []proto.InstanceDesiredState{spec})

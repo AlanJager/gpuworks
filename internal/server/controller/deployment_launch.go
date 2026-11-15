@@ -366,7 +366,7 @@ func (c *Controller) startScheduledInstance(dep *store.Deployment, node *store.N
 		// The instance could never be reached: fail it with the reason instead
 		// of starting a container nobody can call.
 		c.log.Warn("instance not started: serving path unavailable", "dep", dep.ID, "instance", spec.UUID, "node", node.UUID, "err", err)
-		return c.store.SetInstanceState(spec.UUID, proto.InstFailed, err.Error())
+		return c.store.SetInstanceFailed(spec.UUID, proto.RuntimeFailure{Code: proto.ErrorServingPathUnavailable, Phase: proto.PhaseContainerPrepare, Node: node.DisplayName(), Detail: err.Error()}, err.Error())
 	}
 
 	if err := c.hub.PushToNode(node.UUID, proto.StateUpdate{Instances: []proto.InstanceDesiredState{spec}}); err != nil {

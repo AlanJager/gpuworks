@@ -7,6 +7,7 @@ import { isOperatorEvent, operatorEventText } from "./operatorEvents.ts";
 import { stateLabel } from "./state.ts";
 import { formatBytes as formatSize } from "../format";
 import { storageStateLabel } from "../storageDisplay";
+import { isProductMessage, runtimeFailureText } from "../runtimeFailure";
 
 export const instanceEventCodes = [
   "INSTANCE_CREATED",
@@ -193,7 +194,10 @@ function eventBodyText(
     const phase = translatedPhase(t, paramText(event, "phase"));
     if (phase) text += ` [${phase}]`;
   }
-  const detail = paramText(event, "detail");
+  // A failed transition carries its reason as a product message; older
+  // events and other transitions have only the English detail.
+  const failure = event.params?.failure;
+  const detail = isProductMessage(failure) ? runtimeFailureText(tCommon, failure) : paramText(event, "detail");
   if (detail) text += `: ${detail}`;
   return text;
 }

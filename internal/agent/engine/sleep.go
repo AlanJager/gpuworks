@@ -156,11 +156,9 @@ func (e *Engine) reportUncertainSleep(spec proto.InstanceDesiredState, orderErr,
 	e.mu.Lock()
 	delete(e.servingEpoch, spec.UUID)
 	e.mu.Unlock()
-	e.report(proto.InstanceStatus{
-		UUID: spec.UUID, State: proto.InstFailed, ContainerID: containerName(spec.UUID),
-		Phase: proto.PhaseSleep, SleepLevel: 0,
-		Message: fmt.Sprintf("sleep level uncertain after %v: %v", orderErr, recoveryErr),
-	})
+	detail := fmt.Sprintf("%v: %v", orderErr, recoveryErr)
+	e.reportFailed(spec.UUID, proto.RuntimeFailure{Code: proto.ErrorSleepStateUncertain, Phase: proto.PhaseSleep, Detail: detail},
+		"sleep level uncertain after "+detail, failedStatus{ContainerID: containerName(spec.UUID), Phase: proto.PhaseSleep})
 }
 
 // applySleepLevel issues the orders that take the engine from level cur to

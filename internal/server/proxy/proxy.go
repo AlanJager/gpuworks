@@ -6,7 +6,6 @@ package proxy
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,10 +18,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 
-	// Aliased: New's own "hub" parameter (the Tunneler) shadows the package
-	// name for the rest of this file, so the sentinel below is only reachable
-	// through this alias.
-	hubpkg "gpuworks.ai/gpuworks/internal/server/hub"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -301,11 +296,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			id := requestID(r)
-			p.log.Warn("proxy upstream error", "request_id", id, "method", r.Method, "path", r.URL.Path, "err", err)
-			if w.Header().Get("X-Request-ID") == "" {
-				w.Header().Set("X-Request-ID", id)
-			}
+			p.log.Warn("proxy upstream error", "request_id", requestID(r), "method", r.Method, "path", r.URL.Path, "err", err)
 			// A detached data lane that did not reattach within the hub's wait
 			// budget is a distinct, retryable condition, not a dead upstream: the
 			// node is online and the tunnel will likely open on the very next
@@ -313,9 +304,9 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			// short Retry-After instead of the generic 502; the retry transport
 			// (which already treats every tunnelOpenError as retryable) still gets
 			// first chance to switch to another instance when one exists.
-			status := http.StatusBadGateway
-			if errors.Is(err, hubpkg.ErrDataLaneUnavailable) || errors.Is(err, errInstanceUnavailable) {
-				status = http.StatusServiceUnavailable
+			code := upstreamErrorCode(err)
+			status := gatewayErrors[code].status
+			if status == http.StatusServiceUnavailable {
 				w.Header().Set("Retry-After", strconv.Itoa(dataLaneUnavailableRetryAfterSeconds))
 			}
 			// RoundTrip failed before any response arrived (e.g. the tunnel
@@ -329,7 +320,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 				ob.clientGone = r.Context().Err() != nil || errors.Is(err, context.Canceled)
 				ob.finish(err)
 			}
-			writeErr(w, status, "upstream error: "+err.Error())
+			writeAPIError(w, r, code, map[string]any{"detail": err.Error()})
 		},
 	}
 	p.bufferPool = newBufferPool()
@@ -369,11 +360,11 @@ func (p *Proxy) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
 	modelName, cleanup, err := extractModel(r, p.maxBodyBytes)
 	defer cleanup()
 	if err != nil {
-		writeErr(w, statusForExtractError(err), err.Error())
+		writeRefusal(w, r, requestRefusal(err))
 		return
 	}
 	if modelName == "" {
-		writeErr(w, http.StatusBadRequest, "request body must specify a model")
+		writeAPIError(w, r, ErrorModelRequired, nil)
 		return
 	}
 
@@ -382,13 +373,13 @@ func (p *Proxy) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
 
 func (p *Proxy) serveModel(w http.ResponseWriter, r *http.Request, modelName string) {
 	affinity := p.affinityKey(modelName, r)
-	dep, tgt, status, msg, asleep := p.selectForRequest(r.Context(), modelName, affinity)
-	if status != 0 && asleep {
-		dep, tgt, status, msg, asleep = p.holdForWake(r.Context(), w, modelName, affinity, dep)
+	dep, tgt, rejection, asleep := p.selectForRequest(r.Context(), modelName, affinity)
+	if rejection != nil && asleep {
+		dep, tgt, rejection, asleep = p.holdForWake(r.Context(), w, modelName, affinity, dep)
 	}
-	if status != 0 {
-		p.acct.RecordImmediate(deploymentIDOrZero(dep), status, asleep)
-		writeErr(w, status, msg)
+	if rejection != nil {
+		p.acct.RecordImmediate(deploymentIDOrZero(dep), rejection.status(), asleep)
+		writeRefusal(w, r, rejection)
 		return
 	}
 	p.serveResolved(w, r, modelName, affinity, dep, tgt)
@@ -403,9 +394,9 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 	r, _ = p.identify(r, publicName)
 	fail := func(err error) {
 		p.releaseTarget(tgt)
-		status := statusForExtractError(err)
-		p.acctFor(r.Context()).RecordImmediate(deploymentID, status, false)
-		writeErr(w, status, err.Error())
+		rejection := requestRefusal(err)
+		p.acctFor(r.Context()).RecordImmediate(deploymentID, rejection.status(), false)
+		writeRefusal(w, r, rejection)
 	}
 	if p.rejectChatInput(w, r, tgt, deploymentID) {
 		return
@@ -441,15 +432,7 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 func (p *Proxy) authenticate(w http.ResponseWriter, r *http.Request) (uxrecord.Caller, store.APIKeyIdentity, bool) {
 	caller, identity, ok := p.identifyKey(r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "invalid or missing API key")
+		writeAPIError(w, r, ErrorInvalidAPIKey, nil)
 	}
 	return caller, identity, ok
-}
-
-func writeErr(w http.ResponseWriter, code int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]string{"message": msg, "type": "gpuworks_proxy"},
-	})
 }

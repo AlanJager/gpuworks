@@ -1,7 +1,5 @@
 package accelerator
 
-import "strings"
-
 // amdLogicalBackend is the AMD logical dGPU backend: a per-card VRAM quota
 // enforced in user space by libvrocm.so (the rocm-slicing
 // shim), interposed at the HIP runtime layer. ROCm enforces compute (CU)
@@ -44,13 +42,10 @@ func (amdLogicalBackend) SkipsBehaviorProbe() bool { return true }
 // host's, so the agent pre-creates the ledger on the host (through its
 // hostRoot) and the instance pod reaches it through an explicit hostPath
 // mount at that same path (see partition_amd.go).
-func (amdLogicalBackend) RuntimeConstraint(driver string) string {
-	switch strings.ToLower(strings.TrimSpace(driver)) {
-	case "docker", "nerdctl", "udocker", "kube":
-		return ""
-	default:
-		return "AMD dGPU currently requires the Docker, nerdctl, udocker or Kubernetes runtime"
-	}
+// SupportedRuntimes: AMD dGPU runs under Docker, nerdctl, udocker or
+// Kubernetes.
+func (amdLogicalBackend) SupportedRuntimes() []string {
+	return []string{"docker", "nerdctl", "udocker", "kube"}
 }
 
 // amdProfiles currently names the one combination proven on real hardware

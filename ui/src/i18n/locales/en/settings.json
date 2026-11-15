@@ -490,20 +490,10 @@
       "download": "Download",
       "item": "Content",
       "note": "Note",
-      "truncated": "Reached its size limit; only part was kept",
       "bundleState": {
         "running": "Collecting",
         "ready": "Ready",
         "failed": "Failed"
-      },
-      "itemState": {
-        "collected": "Collected",
-        "skipped": "Skipped",
-        "failed": "Failed"
-      },
-      "itemReason": {
-        "offline": "Node offline",
-        "unsupported": "The node's agent version does not support it"
       }
     },
     "debug": {

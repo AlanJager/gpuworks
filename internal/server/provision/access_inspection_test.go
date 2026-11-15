@@ -13,6 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // go test -race ./internal/server/provision -run TestAccessInspection -count=1 -timeout 40m
@@ -55,13 +58,13 @@ func TestAccessInspectionChecksCurrentStateOnEveryRequest(t *testing.T) {
 	req := SSHProbeRequest{Host: host, Port: port, User: "root", InstallDir: dir, Token: "owned", ConnectMode: "agent_dial", ServerURL: server.URL, SSHAuth: SSHAuth{Password: "pw"}}
 	installer := NewSSHInstaller(nil)
 	got := installer.InspectAccess(context.Background(), req)
-	if got.SSH != "passed" || got.Installation != "passed" || got.Process != "passed" || got.Connection.Outcome != "http_ok" || got.Connection.Target != server.URL+"/healthz" || got.Connection.ObservedAt.IsZero() {
+	if got.SSH != proto.CheckPass || got.Installation != proto.CheckPass || got.Process != proto.CheckPass || got.Connection.Outcome != "http_ok" || got.Connection.Target != server.URL+"/healthz" || got.Connection.ObservedAt.IsZero() {
 		t.Fatalf("first inspection: %+v", got)
 	}
 	status.Store(503)
 	writeExecutable(t, filepath.Join(bin, "ps"), "exit 0")
 	got = installer.InspectAccess(context.Background(), req)
-	if got.Process != "failed" || got.Connection.Outcome != "http_error" || requests.Load() != 2 || calls.Load() != 2 {
+	if got.Process != proto.CheckFail || got.Connection.Outcome != "http_error" || requests.Load() != 2 || calls.Load() != 2 {
 		t.Fatalf("rerun reused history: %+v HTTP=%d SSH=%d", got, requests.Load(), calls.Load())
 	}
 }
@@ -80,8 +83,8 @@ func TestAccessInspectionServerDialSkipsNodeHTTPAndSupportsLegacyProcess(t *test
 	if exit != 0 || stderr != "" {
 		t.Fatalf("%d %s", exit, stderr)
 	}
-	got := parseAccessInspection(stdout, AccessInspection{Reason: "inspection_unavailable"})
-	if got.Process != "passed" || got.Connection.Outcome != "not_applicable" {
+	got := parseAccessInspection(stdout, AccessInspection{Code: messages.DoctorInspectionUnavailable})
+	if got.Process != proto.CheckPass || got.Connection.Outcome != "not_applicable" {
 		t.Fatalf("%+v", got)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -94,10 +97,10 @@ func TestAccessInspectionDoesNotConfuseMissingProcessWithFailedInspection(t *tes
 		name, ps, token, process, connection string
 		installed                            bool
 	}{
-		{"not installed", "exit 0", "owned", "failed", "http_ok", false},
-		{"stopped", "exit 0", "owned", "failed", "http_ok", true},
-		{"process listing failed", "exit 1", "owned", "unavailable", "http_ok", true},
-		{"foreign installation", "current", "other", "unavailable", "identity_unverified", true},
+		{"not installed", "exit 0", "owned", proto.CheckFail, "http_ok", false},
+		{"stopped", "exit 0", "owned", proto.CheckFail, "http_ok", true},
+		{"process listing failed", "exit 1", "owned", proto.CheckSkip, "http_ok", true},
+		{"foreign installation", "current", "other", proto.CheckSkip, "identity_unverified", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, bin := connectionDiagnosticFixture(t, tc.token, "http://server")
@@ -114,8 +117,8 @@ func TestAccessInspectionDoesNotConfuseMissingProcessWithFailedInspection(t *tes
 			if exit != 0 {
 				t.Fatalf("exit %d", exit)
 			}
-			got := parseAccessInspection(raw, AccessInspection{Reason: "inspection_unavailable"})
-			if got.Process != tc.process || got.Connection.Outcome != tc.connection || (got.Installation == "passed") != tc.installed {
+			got := parseAccessInspection(raw, AccessInspection{Code: messages.DoctorInspectionUnavailable})
+			if got.Process != tc.process || got.Connection.Outcome != tc.connection || (got.Installation == proto.CheckPass) != tc.installed {
 				t.Fatalf("%+v", got)
 			}
 		})
@@ -130,7 +133,7 @@ func TestAccessInspectionInvalidOutputIsUnavailableAndNotLogged(t *testing.T) {
 	for _, raw := range []string{"{}", "GW_INSTALL passed\nGW_PROCESS passed\nprivate-token\n", strings.Repeat("private-token", 10000)} {
 		host, port := startFakeSSHServer(t, "root", "pw", func(string, io.Reader) (string, string, uint32) { return raw, "private-token", 0 })
 		got := NewSSHInstaller(nil).InspectAccess(context.Background(), SSHProbeRequest{Host: host, Port: port, User: "root", Token: "private-token", ConnectMode: "server_dial", SSHAuth: SSHAuth{Password: "pw"}})
-		if got.Process != "unavailable" || got.Installation != "unavailable" {
+		if got.Process != proto.CheckSkip || got.Installation != proto.CheckSkip {
 			t.Fatalf("%+v", got)
 		}
 	}
@@ -164,10 +167,36 @@ func TestAccessInspectionCancellationReturnsWithoutRecovery(t *testing.T) {
 	cancel()
 	select {
 	case got := <-done:
-		if got.Process != "unavailable" || got.Reason != "cancelled" || calls.Load() != 1 {
+		if got.Process != proto.CheckSkip || got.Code != messages.DoctorCancelled || calls.Load() != 1 {
 			t.Fatalf("%+v calls=%d", got, calls.Load())
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("cancelled inspection did not return")
+	}
+}
+
+// Each outcome the node-side probe reports becomes one check result; an
+// outcome this server does not know is skipped, never passed.
+func TestAccessInspectionConnectionOutcomesAreCheckResults(t *testing.T) {
+	for _, tc := range []struct{ outcome, status, code string }{
+		{"http_ok", proto.CheckPass, messages.DoctorHTTPConnected},
+		{"http_error", proto.CheckFail, messages.DoctorHTTPError},
+		{"dns", proto.CheckFail, messages.DoctorDNS},
+		{"tls", proto.CheckFail, messages.DoctorTLS},
+		{"timeout", proto.CheckFail, messages.DoctorTimeout},
+		{"tool_missing", proto.CheckSkip, messages.DoctorToolMissing},
+		{"identity_unverified", proto.CheckSkip, messages.DoctorIdentityUnverified},
+		{"invalid_address", proto.CheckSkip, messages.DoctorInvalidAddress},
+		{"secret=private", proto.CheckSkip, messages.DoctorInspectionUnavailable},
+		{"", "", ""},
+	} {
+		a := AccessInspection{Connection: ConnectionCheck{Outcome: tc.outcome}}
+		a.setConnectionResult()
+		if a.ConnectionStatus != tc.status || a.ConnectionCode != tc.code {
+			t.Errorf("%q = %q %q, want %q %q", tc.outcome, a.ConnectionStatus, a.ConnectionCode, tc.status, tc.code)
+		}
+	}
+	if a := NewAccessInspection(messages.DoctorCredentialsUnavailable); a.SSH != proto.CheckSkip || a.Installation != proto.CheckSkip || a.Process != proto.CheckSkip || a.Code != messages.DoctorCredentialsUnavailable {
+		t.Fatalf("not run = %+v", a)
 	}
 }

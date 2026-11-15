@@ -364,23 +364,6 @@ type PartitionProbeResult struct {
 	CheckedAt time.Time `json:"checked_at"`
 }
 
-// PartitionCapability is the server-derived, per-GPU partition fact exposed
-// through the API. Status has exactly two values: ready or unavailable.
-type PartitionCapability struct {
-	Backend            string   `json:"backend"`
-	DisplayName        string   `json:"display_name"`
-	Vendor             string   `json:"vendor"`
-	Maturity           string   `json:"maturity"`
-	Status             string   `json:"status"`
-	Reason             string   `json:"reason,omitempty"`
-	Compatibility      string   `json:"compatibility_summary,omitempty"`
-	CompatibilityNotes []string `json:"compatibility_notes,omitempty"`
-	ProbeStatus        string   `json:"probe_status,omitempty"`
-	// ProbeCheckedAt is absent until a probe result arrived: a zero time on
-	// the wire rendered as "checked 0001-01-01".
-	ProbeCheckedAt *time.Time `json:"probe_checked_at,omitempty"`
-}
-
 // Peer-memory states (SysInfo.PeerMemory).
 const (
 	PeerMemoryLoaded  = "loaded"

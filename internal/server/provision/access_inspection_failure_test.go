@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
+
 	"golang.org/x/crypto/ssh"
 )
 
@@ -74,7 +77,7 @@ func accessInspectionSSH(t *testing.T, handle func(ssh.NewChannel, <-chan struct
 }
 
 func TestAccessInspectionSessionOpenIsBounded(t *testing.T) {
-	for _, reason := range []string{"cancelled", "timeout"} {
+	for _, reason := range []string{messages.DoctorCancelled, messages.DoctorTimeout} {
 		t.Run(reason, func(t *testing.T) {
 			opened := make(chan struct{})
 			req, closed := accessInspectionSSH(t, func(_ ssh.NewChannel, closed <-chan struct{}) {
@@ -90,12 +93,12 @@ func TestAccessInspectionSessionOpenIsBounded(t *testing.T) {
 			case <-time.After(3 * time.Second):
 				t.Fatal("inspection did not reach channel-open")
 			}
-			if reason == "cancelled" {
+			if reason == messages.DoctorCancelled {
 				cancel()
 			}
 			select {
 			case got := <-done:
-				if got.SSH != "passed" || got.Installation != "unavailable" || got.Reason != reason {
+				if got.SSH != proto.CheckPass || got.Installation != proto.CheckSkip || got.Code != reason {
 					t.Fatalf("inspection = %+v", got)
 				}
 			case <-time.After(3 * time.Second):
@@ -114,12 +117,12 @@ func TestAccessInspectionPreservesCompletedChecksAfterTimeout(t *testing.T) {
 	for _, tc := range []struct {
 		name, output, installation, process, connection string
 	}{
-		{"before installation", "", "unavailable", "unavailable", ""},
-		{"after installation", "GW_INSTALL passed\n", "passed", "unavailable", ""},
-		{"within process result", "GW_INSTALL passed\nGW_PROCESS passed", "passed", "unavailable", ""},
-		{"after process", "GW_INSTALL passed\nGW_PROCESS failed\n", "passed", "failed", ""},
-		{"during HTTP", "GW_INSTALL passed\nGW_PROCESS passed\nGW_CONFIG state_file\nGW_ADDRESS http://server\n", "passed", "passed", ""},
-		{"waiting for exit", "GW_INSTALL passed\nGW_PROCESS passed\nGW_CONFIG state_file\nGW_ADDRESS http://server\nGW_HEALTH 0 200\n", "passed", "passed", "http_ok"},
+		{"before installation", "", proto.CheckSkip, proto.CheckSkip, ""},
+		{"after installation", "GW_INSTALL passed\n", proto.CheckPass, proto.CheckSkip, ""},
+		{"within process result", "GW_INSTALL passed\nGW_PROCESS passed", proto.CheckPass, proto.CheckSkip, ""},
+		{"after process", "GW_INSTALL passed\nGW_PROCESS failed\n", proto.CheckPass, proto.CheckFail, ""},
+		{"during HTTP", "GW_INSTALL passed\nGW_PROCESS passed\nGW_CONFIG state_file\nGW_ADDRESS http://server\n", proto.CheckPass, proto.CheckPass, ""},
+		{"waiting for exit", "GW_INSTALL passed\nGW_PROCESS passed\nGW_CONFIG state_file\nGW_ADDRESS http://server\nGW_HEALTH 0 200\n", proto.CheckPass, proto.CheckPass, "http_ok"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			started := make(chan struct{})
@@ -161,7 +164,7 @@ func TestAccessInspectionPreservesCompletedChecksAfterTimeout(t *testing.T) {
 			}
 			select {
 			case got := <-done:
-				if got.Reason != "timeout" || got.Installation != tc.installation || got.Process != tc.process || got.Connection.Outcome != tc.connection {
+				if got.Code != messages.DoctorTimeout || got.Installation != tc.installation || got.Process != tc.process || got.Connection.Outcome != tc.connection {
 					t.Fatalf("inspection = %+v", got)
 				}
 				if (got.Connection.Target != "") != (tc.connection != "") || got.Connection.ObservedAt.IsZero() != (tc.connection == "") {
@@ -179,7 +182,7 @@ func TestAccessInspectionPreservesCompletedChecksAfterCommandFailure(t *testing.
 		return "GW_INSTALL passed\nGW_PROCESS failed\n", "No space left on device", 1
 	})
 	got := NewSSHInstaller(nil).InspectAccess(context.Background(), SSHProbeRequest{Host: host, Port: port, User: "tester", Token: "owned", ConnectMode: "server_dial", SSHAuth: SSHAuth{Password: "pw"}})
-	if got.Installation != "passed" || got.Process != "failed" || got.Reason != "inspection_unavailable" {
+	if got.Installation != proto.CheckPass || got.Process != proto.CheckFail || got.Code != messages.DoctorInspectionUnavailable {
 		t.Fatalf("completed results lost after remote command failure: %+v", got)
 	}
 }
@@ -193,9 +196,29 @@ func TestAccessInspectionRejectsMalformedPartialOutput(t *testing.T) {
 		"GW_INSTALL passed\nGW_PROCESS passed\n\x00",
 		"GW_INSTALL passed\n" + strings.Repeat("x", connectionDiagnosticLimit),
 	} {
-		out := parseAccessInspection(raw, AccessInspection{Installation: "unavailable", Process: "unavailable"})
-		if out.Installation != "unavailable" || out.Process != "unavailable" || out.Connection.Outcome != "" {
+		out := parseAccessInspection(raw, AccessInspection{Installation: proto.CheckSkip, Process: proto.CheckSkip})
+		if out.Installation != proto.CheckSkip || out.Process != proto.CheckSkip || out.Connection.Outcome != "" {
 			t.Fatalf("malformed output accepted: %+v", out)
 		}
+	}
+}
+
+// A real SSH server refusing the password and a closed port: the inspection
+// carries the SSH adapter's own code for each, not one catch-all.
+func TestAccessInspectionNamesHowTheSSHConnectionFailed(t *testing.T) {
+	host, port := startFakeSSHServer(t, "tester", "pw", func(string, io.Reader) (string, string, uint32) { return "", "", 0 })
+	got := NewSSHInstaller(nil).InspectAccess(context.Background(), SSHProbeRequest{Host: host, Port: port, User: "tester", Token: "owned", ConnectMode: "server_dial", SSHAuth: SSHAuth{Password: "wrong"}})
+	if got.SSH != proto.CheckFail || got.Code != messages.ErrorSSHAuthFailed {
+		t.Fatalf("wrong password: %+v, want fail %s", got, messages.ErrorSSHAuthFailed)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	got = NewSSHInstaller(nil).InspectAccess(context.Background(), SSHProbeRequest{Host: "127.0.0.1", Port: closed, User: "tester", Token: "owned", ConnectMode: "server_dial", SSHAuth: SSHAuth{Password: "pw"}})
+	if got.SSH != proto.CheckFail || got.Code != messages.ErrorSSHUnreachable {
+		t.Fatalf("closed port: %+v, want fail %s", got, messages.ErrorSSHUnreachable)
 	}
 }

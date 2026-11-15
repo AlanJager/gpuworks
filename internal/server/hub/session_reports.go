@@ -150,6 +150,7 @@ func (s *Session) handleBenchmarkStatus(raw json.RawMessage) {
 		s.hub.log.Warn("bad status.benchmark", "node", s.NodeUUID, "err", err)
 		return
 	}
+	st.Code, st.Params = benchmarkFailureCode(st)
 	s.submitReport(func() {
 		accepted, err := s.applyCurrent(func(nodeID uint) error {
 			if err := s.hub.store.ApplyBenchmarkStatus(nodeID, st); err != nil {

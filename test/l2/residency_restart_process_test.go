@@ -227,7 +227,7 @@ func TestProcessResidencyAcrossAServerStopAndKill(t *testing.T) {
 	r.stop()
 	got := <-held
 	if got.err != nil || got.status != http.StatusServiceUnavailable || got.retryAfter != "10" ||
-		got.body != `{"error":{"message":"the server is restarting; send the request again","type":"gpuworks_proxy"}}`+"\n" {
+		got.body != `{"error":{"message":"the server is restarting; send the request again","type":"server_error","code":"SERVER_RESTARTING","param":null}}`+"\n" {
 		t.Fatalf("held request on a graceful stop = %+v, want 503 Retry-After 10 and the restart message", got)
 	}
 	r.start()

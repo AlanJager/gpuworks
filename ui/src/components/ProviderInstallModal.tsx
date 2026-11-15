@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import TemporaryAddressHint from "./TemporaryAddressHint";
-import { Alert, Button, Collapse, Input, Modal, Radio, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { Alert, Button, Collapse, Input, Modal, Radio, Select, Space, Switch, Typography } from "antd";
 import { APIError, apiErrorText } from "../apiError";
 import {
   api,
@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { localizedText } from "../i18n/localizedText";
 import { DEFAULT_AGENT_LISTEN } from "../agentListen";
 import { HelpTip } from "../ui-kit/HelpTip";
+import OnboardingChecks, { onboardingCheckText } from "./OnboardingChecks";
 
 // AutoDL's port documentation: its Pro instances open HTTP ports only, which
 // a server-dialed agent cannot use, so the one-click install never offers it.
@@ -151,7 +152,7 @@ export default function ProviderInstallModal({
     >
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         {submitting && <Alert type="info" showIcon message={t("install.running")} />}
-        {verdict && <InstallVerdictBanner outcome={verdict.outcome} detail={verdict.detail} />}
+        {verdict && <InstallVerdictBanner outcome={verdict.outcome} detail={verdict.check ? onboardingCheckText(tCommon, verdict.check) : verdict.detail} />}
         {!installed && (
           <>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
@@ -294,28 +295,7 @@ function InstallVerdictBanner({ outcome, detail }: { outcome: InstallOutcome; de
 
 function InstallChecks({ checks }: { checks: CheckResult[] }) {
   const { t } = useTranslation("providers");
-  return (
-    <Table<CheckResult>
-      rowKey="name"
-      size="small"
-      pagination={false}
-      dataSource={checks}
-      columns={[
-        { title: t("install.checks.item"), dataIndex: "name", width: 130 },
-        {
-          title: t("install.checks.status"),
-          dataIndex: "status",
-          width: 80,
-          render: (status: CheckResult["status"]) => (
-            <Tag color={status === "ok" ? "green" : status === "warn" ? "gold" : "red"}>
-              {t(status === "ok" ? "install.checks.passed" : status === "warn" ? "install.checks.warning" : "install.checks.failed")}
-            </Tag>
-          ),
-        },
-        { title: t("install.checks.detail"), dataIndex: "detail", render: (detail: string | undefined) => detail || "—" },
-      ]}
-    />
-  );
+  return <OnboardingChecks checks={checks} labels={{ item: t("install.checks.item"), status: t("install.checks.status"), detail: t("install.checks.detail") }} />;
 }
 
 // restartConfirmContent words the restart question by what the restart is

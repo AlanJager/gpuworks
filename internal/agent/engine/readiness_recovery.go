@@ -84,7 +84,7 @@ func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstan
 	e.mu.Unlock()
 	defer e.finishEnsure(current)
 	if probeErr != nil {
-		e.retireStopped(attemptCtx, current, serving.epoch, probeErr.Error())
+		e.retireStopped(attemptCtx, current, serving.epoch, proto.RuntimeFailure{Code: proto.ErrorEngineUnresponsive, Phase: proto.PhaseServing, Detail: probeErr.Error()}, probeErr.Error())
 		return
 	}
 	e.reportStateProgress(current, proto.InstStarting, containerName(spec.UUID), "", "engine child is not loaded; recovering", proto.PhaseHealthCheck, 0, 0, 0, 0)

@@ -1,4 +1,6 @@
 import type { PeerTransferSnapshot } from "./peerTransferTypes";
+import type { CheckStatus } from "./checkStatus";
+export type { CheckStatus } from "./checkStatus";
 export type * from "./peerTransferTypes";
 import type { ServerBuildInfo } from "./serverBuildInfo";
 import type { BenchmarkPointEvidence } from "./benchmarkEvidenceTypes";
@@ -86,13 +88,26 @@ export interface GPU {
   health_guide?: GPUHealthGuide;
 }
 
+/** The facts a capability's reason_code names; probe_detail is the agent's own probe output. */
+export interface PartitionReasonParams {
+  runtime?: string;
+  supported_runtimes?: string[];
+  missing_assets?: string[];
+  gpu_index?: number;
+  probe_detail?: string;
+}
+
 export interface PartitionCapability {
   backend: string;
   display_name: string;
   vendor: string;
   maturity: "release" | "experimental" | string;
   status: "ready" | "unavailable";
+  /** English fallback of reason_code; render reason_code instead. */
   reason?: string;
+  /** Why an unavailable capability is not ready (PARTITION_*). */
+  reason_code?: string;
+  reason_params?: PartitionReasonParams;
   compatibility_summary?: string;
   compatibility_notes?: string[];
   probe_status?: "passed" | "failed" | "skipped" | string;
@@ -152,6 +167,8 @@ export interface NodeReplica {
   drain_reason?: ScheduleMessage;
   drain_reason_at?: string;
   drain_message?: string;
+  /** The failed attempt's structured reason; absent for an older attempt. */
+  drain_failure?: ProductMessage;
 }
 
 export interface NodeReplicas {
@@ -316,6 +333,8 @@ export interface Node {
   recovery_attempts?: number;
   last_probe_at?: string;
   last_recovery_error?: string;
+  /** Names last_recovery_error (SSH_*, AGENT_INSTALL_*, RECOVERY_*); absent on errors recorded before codes. */
+  last_recovery_code?: string;
   has_ssh_credential: boolean;
   created_at: string;
   gpus: GPU[];
@@ -372,7 +391,11 @@ export interface RecoveryOutcome {
   action: string;
   probe: SSHProbeResult;
   recovered: boolean;
+  /** Why the round did nothing (RECOVERY_SKIPPED_*); skipped_reason is its English text. */
+  skipped_code?: string;
   skipped_reason?: string;
+  /** Names error, the same code recorded on the node. */
+  error_code?: string;
   error?: string;
 }
 
@@ -392,10 +415,17 @@ export interface SSHPrecheckRequest {
   host_address?: string;
 }
 
+/** One onboarding check (ADR 0067): which check (id), how it came out (one
+ * of the five check statuses), the outcome as a code with params (rendered
+ * from apiError.<code>, message being the English fallback), and what a
+ * command or provider answered (evidence). */
 export interface CheckResult {
-  name: string;
-  status: "ok" | "warn" | "error";
-  detail?: string;
+  id: string;
+  status: CheckStatus;
+  code?: string;
+  params?: Record<string, unknown>;
+  message?: string;
+  evidence?: string;
 }
 
 export interface SSHPrecheckReport {
@@ -450,17 +480,18 @@ export interface GPUHealthField {
 }
 
 // Card health checks: GET /nodes/{uuid}/health-checks lays a node's card
-// checks out as a table, the server deciding the columns, each cell's state
-// and staleness, the worst state per card and whether a recheck is offered.
-export type CardCheckState = "pass" | "warn" | "fail" | "skip" | "pending" | "na";
+// checks out as a table, the server deciding the columns, each cell's status,
+// code and staleness, the worst status per card and whether a recheck is
+// offered.
 export interface CardHealthColumn {
   id: string;
   period_seconds: number;
 }
 export interface CardHealthCell {
   check: string;
-  state: CardCheckState;
-  reason?: string;
+  status: CheckStatus;
+  /** What a warning or failure found, or why a skipped check did not run. */
+  code?: string;
   checked_at?: string;
   duration_ms?: number;
   stale: boolean;
@@ -471,7 +502,7 @@ export interface CardHealthCard {
   pcie_bdf?: string;
   name?: string;
   index: number;
-  worst: "pass" | "warn" | "fail";
+  worst: CheckStatus;
   can_recheck: boolean;
   cells: CardHealthCell[];
 }
@@ -494,8 +525,8 @@ export interface CardHealthRecord {
   pcie_bdf?: string;
   removed: boolean;
   check: string;
-  level: "warn" | "fail";
-  reason?: string;
+  status: "warn" | "fail";
+  code?: string;
   started_at: string;
   ended_at?: string;
   last_seen_at: string;
@@ -514,8 +545,8 @@ export interface CardHealthRecords {
   retention_days: number;
 }
 export interface CardCheckRun {
-  state: CardCheckState;
-  reason?: string;
+  status: CheckStatus;
+  code?: string;
   at: string;
   duration_ms?: number;
   probe?: string;
@@ -574,9 +605,11 @@ export interface DoctorTarget {
   processes?: { pid: number; name: string }[];
 }
 
+/** A doctor check that failed, warned or did not run (skip, with why in code). */
 export interface DoctorFinding {
+  id?: string;
+  status: "fail" | "warn" | "skip";
   code: string;
-  level: "warning" | "error";
   targets?: DoctorTarget[];
   disk?: DoctorDisk;
   probe?: string;
@@ -587,8 +620,8 @@ export interface DoctorFinding {
 /** A check in the Server's unified node diagnosis. */
 export interface NodeDoctorCheck {
   stage: string;
-  status: "passed" | "failed" | "warning" | "info" | "unavailable";
-  reason: string;
+  status: CheckStatus;
+  code: string;
   vantage: string;
   target?: string;
   source?: string;
@@ -598,7 +631,7 @@ export interface NodeDoctorCheck {
 
 export interface NodeDoctorReport {
   checked_at?: string;
-  summary?: string;
+  summary?: CheckStatus;
   checks?: NodeDoctorCheck[];
   report: string;
   host?: {
@@ -1956,7 +1989,7 @@ export interface Instance {
   image: string;
   image_digest_id?: string;
   message: string;
-  runtime_failure?: { code: string; params?: Record<string, unknown>; message: string };
+  runtime_failure?: ProductMessage;
   container_id?: string;
   phase?: string;
   progress?: number;
@@ -3217,6 +3250,8 @@ export interface BenchmarkRun {
     };
   };
   error?: string;
+  /** The failed run's code; the console renders it from the code (benchmarkError.<code>). */
+  failure?: ProductMessage;
   best_point?: BenchmarkPointSummary;
   points?: BenchmarkPoint[];
   created_at: string;
@@ -3494,13 +3529,16 @@ export interface InferenceTemplateIssue {
 // flat catalog template (docs/how-to/save-deployment-as-template.md). The
 // server tests the cheap operations before it writes the YAML; notes are the
 // facts the YAML comments state, by stable code.
+/** One operation the export tested, or did not (status skip, code says why). */
 export interface CatalogTemplateCheck {
+  id: string;
   operation: string;
-  endpoint?: string;
-  tested: boolean;
-  passed: boolean;
-  http_status?: number;
-  message?: string;
+  status: string;
+  code: string;
+  params?: Record<string, unknown>;
+  message: string;
+  /** What the gateway answered instead of an answer; external text. */
+  evidence?: string;
 }
 
 export interface CatalogTemplateExport {
@@ -3798,10 +3836,17 @@ export interface WeightSourceOption {
   registered: boolean;
 }
 
+/** One inline preflight check (ADR 0067): id names the check (a per-node
+ * check repeats it with params.node), status is one of the five check
+ * statuses, code + params render the text, message is the fallback. */
 export interface PreflightCheck {
-  code?: string;
+  id: string;
+  status: string;
+  code: string;
   params?: Record<string, unknown>;
   message?: string;
+  evidence?: string;
+  blocked_by?: string[];
 }
 
 export interface PreflightSummary {
@@ -4009,7 +4054,14 @@ export interface EvaluateRankCommand {
   };
 }
 
+/** One directed pair of the network preflight, as a check result: status is
+ * pass or fail; evidence is the agent's own text, never the message. */
 export interface DistributedPreflightPair {
+  id: string;
+  status: string;
+  code: string;
+  params?: Record<string, unknown>;
+  message?: string;
   source_uuid: string;
   target_uuid: string;
   target: string;
@@ -4021,14 +4073,13 @@ export interface DistributedPreflightPair {
   bytes_sent?: number;
   bytes_received?: number;
   duration_seconds?: number;
-  error?: string;
-  bandwidth_error?: string;
+  evidence?: string;
+  bandwidth_evidence?: string;
 }
 
 export interface DistributedPreflightResponse {
   ok: boolean;
   pairs: DistributedPreflightPair[];
-  warnings?: string[];
 }
 
 // --- Metrics & logs --------------------------------------------------------

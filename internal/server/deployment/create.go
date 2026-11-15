@@ -274,14 +274,15 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 			return nil, invalid(err)
 		}
 	}
+	// A refused backend is a ProductError with the capability's reason code
+	// (partitioncap.ValidateReady), whose params name the node.
 	req.PartitionBackend, err = ResolvePartitionBackend(node, req.VRAMLimitGiB, req.PartitionBackend)
 	if err != nil {
-		return nil, invalid(wrapProductError(messages.ErrorDistributedPartitionBackendUnavailable, err.Error(), map[string]any{"node": node.UUID, "detail": err.Error()}, err))
+		return nil, invalid(err)
 	}
 	for _, distNode := range distNodes {
 		if _, err := ResolvePartitionBackend(distNode, req.VRAMLimitGiB, req.PartitionBackend); err != nil {
-			message := fmt.Sprintf("node %s: %s", distNode.UUID, err)
-			return nil, invalid(wrapProductError(messages.ErrorDistributedPartitionBackendUnavailable, message, map[string]any{"node": distNode.UUID, "detail": err.Error()}, err))
+			return nil, invalid(distributedPartitionRefusal(distNode, req.PartitionBackend, err))
 		}
 	}
 	if err := s.admitImagePlatforms(eng.Name(), selection, req.Image, append([]*store.Node{node}, distNodes...)); err != nil {

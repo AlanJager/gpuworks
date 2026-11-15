@@ -440,6 +440,10 @@ func (s *Store) days(ctx context.Context, fromMS, toMS int64) ([]string, error) 
 	return daysInRange(all, fromMS, toMS), nil
 }
 
+// isNoSuchTable reports SQLite refusing a query on a day partition that
+// retention dropped after it was listed. The driver (glebarez/go-sqlite) has
+// only the generic SQLITE_ERROR code for it, so the text is read here, at the
+// query this package ran (external text: SQLite "no such table: <name>").
 func isNoSuchTable(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no such table")
 }

@@ -549,12 +549,6 @@ type rpcReqBody struct {
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
-// rpcRespBody mirrors the server's rpcResponse.
-type rpcRespBody struct {
-	Result any    `json:"result,omitempty"`
-	Error  string `json:"error,omitempty"`
-}
-
 func (c *Conn) handleRPC(ctx context.Context, env proto.Envelope) {
 	var req rpcReqBody
 	if err := json.Unmarshal(env.D, &req); err != nil {
@@ -564,7 +558,7 @@ func (c *Conn) handleRPC(ctx context.Context, env proto.Envelope) {
 	// The one door every RPC passes: a simulated node refuses here what
 	// would reach the real host, before any handler runs.
 	if err := c.creds.Simulated.RPC(req.Method, req.Params); err != nil {
-		_ = c.send(proto.TRPCResp, env.ID, rpcRespBody{Error: err.Error()})
+		_ = c.send(proto.TRPCResp, env.ID, rpcErrorBody(err))
 		return
 	}
 	if req.Method == proto.RPCNodeConnectionDiagnostics {
@@ -578,7 +572,7 @@ func (c *Conn) handleRPC(ctx context.Context, env proto.Envelope) {
 	result, err := c.handlers.OnRPC(ctx, req.Method, req.Params)
 	resp := rpcRespBody{Result: result}
 	if err != nil {
-		resp = rpcRespBody{Error: err.Error()}
+		resp = rpcErrorBody(err)
 	}
 	_ = c.send(proto.TRPCResp, env.ID, resp)
 }

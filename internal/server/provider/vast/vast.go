@@ -111,6 +111,9 @@ func (d *Driver) AttachSSHKey(ctx context.Context, creds provider.Credentials, e
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("vast: decode attach SSH key response: %w", err)
 	}
+	// External text: vast.ai answers a key that is already attached with
+	// success=false and only says so in msg ("... already associated with
+	// this instance"); that is the state this call wants.
 	if !result.Success && !strings.Contains(strings.ToLower(result.Message), "already associated") {
 		return fmt.Errorf("vast: attach SSH key failed: %s", firstNonEmpty(result.Message, "provider rejected request"))
 	}
@@ -475,9 +478,7 @@ func (d *Driver) InstallAgentWithReport(ctx context.Context, creds provider.Cred
 	defer client.Close()
 	keyCheck, authorized := provision.AuthorizePlatformKey(ctx, client, auth, outcome)
 	report := provider.InstallReport{AuthUsed: outcome.Used, PlatformKeyAuthorized: authorized, InstallDir: req.InstallDir}
-	for _, check := range []provision.CheckResult{outcome.Check(), keyCheck} {
-		report.Checks = append(report.Checks, provider.InstallCheck{Name: check.Name, Status: check.Status, Detail: check.Detail})
-	}
+	report.Checks = append(report.Checks, outcome.Check(), keyCheck)
 
 	session, err := client.NewSession()
 	if err != nil {
@@ -497,14 +498,14 @@ func (d *Driver) InstallAgentWithReport(ctx context.Context, creds provider.Cred
 // AuthorizePublicKey attaches publicKey to the instance; Vast writes it into
 // the container's authorized_keys. Before an instance exists there is nothing
 // to attach to: Vast keys are per instance, and the install attaches it.
-func (d *Driver) AuthorizePublicKey(ctx context.Context, creds provider.Credentials, externalID, publicKey string) (string, error) {
+func (d *Driver) AuthorizePublicKey(ctx context.Context, creds provider.Credentials, externalID, publicKey string) (provision.CheckResult, error) {
 	if strings.TrimSpace(externalID) == "" {
-		return "", nil
+		return provision.CheckResult{}, nil
 	}
 	if err := d.AttachSSHKey(ctx, creds, externalID, publicKey); err != nil {
-		return "", err
+		return provision.CheckResult{}, err
 	}
-	return "attached to the Vast instance", nil
+	return provider.PlatformKeyInstanceCheck("vast", "attached to the Vast instance"), nil
 }
 
 // installScriptCommand is the shared script install run over the SSH proxy,
@@ -527,9 +528,8 @@ func loopbackNoProxyPrefix(serverURL string) string {
 	return `export NO_PROXY="${NO_PROXY:+$NO_PROXY,}127.0.0.1,localhost"; export no_proxy="${no_proxy:+$no_proxy,}127.0.0.1,localhost"; `
 }
 
-func agentProcessCheck(output, dir string) provider.InstallCheck {
-	check := provision.AgentRunningCheck(output, dir)
-	return provider.InstallCheck{Name: check.Name, Status: check.Status, Detail: check.Detail}
+func agentProcessCheck(output, dir string) provision.CheckResult {
+	return provision.AgentRunningCheck(output, dir)
 }
 
 func providerInstallConnectMode(mode string) string {

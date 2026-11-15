@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 func TestAgentProcessProbePreservesFilterFailures(t *testing.T) {
@@ -42,11 +45,11 @@ func TestAgentProcessProbePreservesFilterFailures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("independent checks did not finish: %v", err)
 			}
-			got := parseAccessInspection(string(raw), AccessInspection{Reason: "inspection_unavailable"})
-			if got.Process != "unavailable" {
+			got := parseAccessInspection(string(raw), AccessInspection{Code: messages.DoctorInspectionUnavailable})
+			if got.Process != proto.CheckSkip {
 				t.Errorf("failed process inspection must be unavailable, got %+v", got)
 			}
-			if got.Installation != "passed" || got.Connection.Outcome != "http_ok" {
+			if got.Installation != proto.CheckPass || got.Connection.Outcome != "http_ok" {
 				t.Errorf("filter failure discarded independent checks: %+v", got)
 			}
 		})

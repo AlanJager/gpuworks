@@ -210,6 +210,7 @@ func instanceEventDTOs(evs []store.InstanceEvent) []dto.InstanceEvent {
 			// have no params, and their Data is the only thing that describes
 			// them, so it is still sent.
 			raw = ""
+			eventRuntimeFailure(params)
 		}
 		out = append(out, dto.InstanceEvent{
 			ID: e.ID, Kind: e.Kind, Code: e.Code, Params: params, Message: e.Message, Data: raw, CreatedAt: utcTime(e.CreatedAt),

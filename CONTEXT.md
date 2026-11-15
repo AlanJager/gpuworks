@@ -802,6 +802,28 @@ _Avoid_: 把未知 NUMA 当成 0、用 NVLink 连通性替代同 NUMA 条件
 具体运行单元在当前运行代次实际采用的 RDMA 数据传输。节点设备具备能力、两个节点预检连通和工作负载实际采用该传输是不同事实。
 _Avoid_: 用 TCP 吞吐或环境变量设置证明 RDMA 正在生效
 
+### 失败码与检查结果
+
+**失败码 — Failure Code**:
+运行期失败、API 拒绝或检查结果的稳定标识，UPPER_SNAKE，配插值参数；英文原文只作 fallback，人类可读文本由客户端按 locale 渲染。agent 与 server 共用的码定义在 `internal/proto`，只在 server 内产生的定义在 `internal/server/messages`，每个码都有 en/zh 文案（ADR 0067）。
+_Avoid_: 把英文消息当作契约、按消息文本匹配分支、小写或驼峰的码、在调用点写码的字面量
+
+**检查 id — Check ID**:
+标识「这是哪项检查」，lower_snake（如 `ssh_reachable`、`disk_free`）；与标识「结果是什么」的失败码分开。
+_Avoid_: 用失败码当检查 id、用显示名当检查 id
+
+**检查状态 — Check Status**:
+一项检查的结果，只有五个值（`proto.Check*`）：`pass`（查了，没问题）、`warn`（查了，有问题但不阻断）、`fail`（查了，有问题且阻断）、`skip`（应该查但没查：被前置检查挡住、缺能力、老 agent、超时、没收到结果，必须带码说明原因）、`na`（不适用于这个资源）。`skip` 与 `na` 不是通过。
+_Avoid_: `ok`、`error`、`warning`、`passed`、`failed`、`skipped`、`blocked`、`unsupported` 等各功能自造的状态词；把「没查」或「不适用」显示成通过
+
+**运行期失败原因 — Runtime Failure**:
+实例进入 `failed` 时 agent 上报的结构化原因（`proto.RuntimeFailure`）：失败码、阶段、退出码、OOM 标记、证据行等带类型字段，随 `InstanceStatus.Message` 一起落库（`instances.runtime_failure`）。引擎日志的已知失败签名只在 `pkg/enginelog` 一处，助手按码诊断。
+_Avoid_: 只上报一句 `err.Error()`、server 再用正则从消息里猜原因
+
+**外部边界分类 — Boundary Classification**:
+外部系统的输出（容器运行时 CLI 的 stderr、云厂商 API 错误体、引擎日志、SSH 错误）只能在调用它的适配器里按文本识别，并当场转成码或带类型的 error。仓库自己产生的 error 文本永不被解析，判断用 `errors.Is` / `errors.As`。
+_Avoid_: 在下游用 `strings.Contains(err.Error(), ...)` 判断错误类别
+
 ### 批处理
 
 **批处理任务 — Batch**:

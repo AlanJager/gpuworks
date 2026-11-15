@@ -170,8 +170,10 @@ type Instance struct {
 	// been read; false includes a document with an empty paths map.
 	TranscriptionServed *bool
 	Message             string `gorm:"size:512"`
-	// RuntimeFailure is JSON proto.RuntimeFailure, an opaque snapshot accompanying
-	// Message. The host facts cannot be reconstructed after the agent disconnects.
+	// RuntimeFailure is JSON proto.RuntimeFailure, the structured reason of a
+	// failure (read it with Failure), an opaque snapshot accompanying Message.
+	// What was observed (host facts, exit status, the engine's last output)
+	// cannot be reconstructed once the container and its logs are gone.
 	RuntimeFailure string `gorm:"type:text"`
 	Phase          string `gorm:"size:32"`
 	Progress       float64

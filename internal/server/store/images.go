@@ -346,7 +346,7 @@ func (s *Store) DeleteImage(id uint) error {
 		return err
 	}
 	if !deletableImageSource(image.Source) {
-		return errors.New("official image versions cannot be deleted")
+		return fmt.Errorf("%w: official image versions cannot be deleted", ErrCatalogManaged)
 	}
 	counts, err := s.ImageReferenceCounts([]string{image.ImageRef})
 	if err != nil {
@@ -387,7 +387,7 @@ func (s *Store) DeleteImageSeries(id uint) error {
 		return err
 	}
 	if !deletableImageSource(series.Source) {
-		return errors.New("official image series cannot be deleted")
+		return fmt.Errorf("%w: official image series cannot be deleted", ErrCatalogManaged)
 	}
 	versions, err := s.VersionsForSeries(id)
 	if err != nil {

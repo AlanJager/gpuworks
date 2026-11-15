@@ -135,7 +135,7 @@ type priorityDecisionKey struct{}
 func (p *Proxy) decidePriority(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
 	decision, ok := p.requestPriority(r)
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "unknown priority class in "+priorityClassHeader)
+		writeAPIError(w, r, ErrorPriorityClassUnknown, map[string]any{"header": priorityClassHeader})
 		return r, false
 	}
 	return r.WithContext(context.WithValue(r.Context(), priorityDecisionKey{}, decision)), true
@@ -150,7 +150,7 @@ func (p *Proxy) decidePriority(w http.ResponseWriter, r *http.Request) (*http.Re
 func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, deploymentID uint, tgt target, owned, named bool) (*http.Request, func(), bool) {
 	decision, ok := p.requestPriority(r)
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "unknown priority class in "+priorityClassHeader)
+		writeAPIError(w, r, ErrorPriorityClassUnknown, map[string]any{"header": priorityClassHeader})
 		return r, func() {}, false
 	}
 	w.Header().Set(priorityClassHeader, decision.Class.Name)
@@ -175,7 +175,7 @@ func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, dep
 		cleanup, err = insertRequestJSONField(r, priorityField, encoded, p.maxBodyBytes)
 	}
 	if err != nil {
-		writeErr(w, statusForExtractError(err), err.Error())
+		writeRefusal(w, r, requestRefusal(err))
 		return r, cleanup, false
 	}
 	return r, cleanup, true

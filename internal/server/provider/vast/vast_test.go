@@ -343,7 +343,7 @@ func TestInstallScriptCommandRunsTheSharedScriptInstall(t *testing.T) {
 			t.Fatalf("install command ignores the operator's choices: %s", cmd)
 		}
 	}
-	if got := agentProcessCheck("__GPUWORKS_AGENT_PROCESS_OK__", "/data/gpuworks"); got.Status != "ok" || !strings.Contains(got.Detail, "/data/gpuworks") {
+	if got := agentProcessCheck("__GPUWORKS_AGENT_PROCESS_OK__", "/data/gpuworks"); got.Status != "pass" || !strings.Contains(checkText(got), "/data/gpuworks") {
 		t.Fatalf("agentProcessCheck success = %+v", got)
 	}
 	if got := agentProcessCheck("__GPUWORKS_AGENT_PROCESS_WARN__", ""); got.Status != "warn" {
@@ -380,11 +380,11 @@ func TestAuthorizePublicKeyAttachesToTheInstance(t *testing.T) {
 		_, _ = w.Write([]byte(`{"success":true}`))
 	})
 	// Before the instance exists there is nothing to attach to.
-	if detail, err := d.AuthorizePublicKey(t.Context(), provider.Credentials{APIKey: "key"}, "", "ssh-ed25519 AAAA gpuworks@s"); err != nil || detail != "" || calls != 0 {
-		t.Fatalf("no instance: detail=%q err=%v calls=%d", detail, err, calls)
+	if check, err := d.AuthorizePublicKey(t.Context(), provider.Credentials{APIKey: "key"}, "", "ssh-ed25519 AAAA gpuworks@s"); err != nil || check.ID != "" || calls != 0 {
+		t.Fatalf("no instance: check=%+v err=%v calls=%d", check, err, calls)
 	}
-	detail, err := d.AuthorizePublicKey(t.Context(), provider.Credentials{APIKey: "key"}, "9988", "ssh-ed25519 AAAA gpuworks@s")
-	if err != nil || detail != "attached to the Vast instance" || calls != 1 {
-		t.Fatalf("detail=%q err=%v calls=%d", detail, err, calls)
+	check, err := d.AuthorizePublicKey(t.Context(), provider.Credentials{APIKey: "key"}, "9988", "ssh-ed25519 AAAA gpuworks@s")
+	if err != nil || check.Status != "pass" || check.Code != "CHECK_PLATFORM_KEY_INSTANCE_ATTACHED" || check.Message != "attached to the Vast instance" || calls != 1 {
+		t.Fatalf("check=%+v err=%v calls=%d", check, err, calls)
 	}
 }

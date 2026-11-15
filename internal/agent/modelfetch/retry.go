@@ -58,8 +58,11 @@ func IsTransient(err error) bool {
 	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) { //nolint:staticcheck // SA1019: preserve retries for temporary errors from legacy download transports.
 		return true
 	}
-	// Some HTTP/2 and TLS transport failures have no exported error type.
-	// Keep this list deliberately narrow.
+	// External text: Go's net/http transport reports these HTTP/1 and
+	// bundled HTTP/2 failures with unexported error types ("http: server
+	// closed idle connection", http2GoAwayError, http2StreamError), so their
+	// text is the only handle. This is the adapter that ran the request; keep
+	// the list deliberately narrow.
 	message := strings.ToLower(err.Error())
 	for _, marker := range []string{
 		"connection reset by peer",

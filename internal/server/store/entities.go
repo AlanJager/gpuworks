@@ -149,6 +149,7 @@ type Node struct {
 	RecoveryAttempts  int
 	LastProbeAt       *time.Time
 	LastRecoveryError string `gorm:"type:text"` // free text: the last out-of-band recovery error
+	LastRecoveryCode  string `gorm:"size:64"`   // names LastRecoveryError (messages.ErrorSSH*, ErrorAgentInstall*, ErrorRecovery*); empty on rows recorded before codes
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 

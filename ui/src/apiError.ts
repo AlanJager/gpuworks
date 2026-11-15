@@ -33,8 +33,33 @@ export class APIError extends Error {
   }
 }
 
+/** The codes the server gives an error that has no code of its own: one per
+ * HTTP status category (internal/server/messages/http.go, whose test keeps
+ * this list equal to the server's). Such a code names only the category; the
+ * English error text holds the detail. */
+export const GENERIC_API_ERROR_CODES = [
+  "BAD_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "NOT_FOUND", "METHOD_NOT_ALLOWED", "REQUEST_TIMEOUT",
+  "CONFLICT", "GONE", "REQUEST_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE", "RANGE_NOT_SATISFIABLE", "UNPROCESSABLE",
+  "FAILED_DEPENDENCY", "TOO_MANY_REQUESTS", "INTERNAL_ERROR", "NOT_IMPLEMENTED", "BAD_GATEWAY",
+  "SERVICE_UNAVAILABLE", "GATEWAY_TIMEOUT", "INSUFFICIENT_STORAGE",
+] as const;
+
+const genericCodes: ReadonlySet<string> = new Set(GENERIC_API_ERROR_CODES);
+
+export function isGenericAPIErrorCode(code: string): boolean {
+  return genericCodes.has(code);
+}
+
 export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
   if (!(error instanceof APIError)) return error instanceof Error ? error.message : String(error ?? "");
+  if (isGenericAPIErrorCode(error.code)) {
+    // The category in the reader's language, then the server's own detail:
+    // the category alone would hide what actually went wrong.
+    const category = t(`apiError.${error.code}`, { defaultValue: error.code });
+    const detail = error.fallback.trim();
+    if (!detail) return category;
+    return t("apiErrorDetail", { category, detail, defaultValue: `${category}: ${detail}` });
+  }
   const params = { ...error.params };
   if (error.code === "PULL_SETTING_INVALID") {
     const field = String(params.field ?? "");

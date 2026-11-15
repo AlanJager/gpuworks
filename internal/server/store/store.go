@@ -117,6 +117,10 @@ func HashToken(tok string) string {
 var ErrNotFound = errors.New("not found")
 var ErrReferenced = errors.New("resource is referenced")
 
+// ErrCatalogManaged refuses deleting an official (catalog-managed) image
+// version or series: the catalog deprecates them instead.
+var ErrCatalogManaged = errors.New("official images are managed by the catalog")
+
 // ---- node queries ----
 
 // NodeByUUID loads a node (without GPUs) by its UUID.

@@ -346,12 +346,71 @@ measure() {
   store_sql_json_lines)
     store_sql_json_hits | grep -c . || true
     ;;
+  error_text_classification)
+    error_text_classification_hits | grep -c . || true
+    ;;
+  instance_failed_without_reason)
+    instance_failed_without_reason_hits | grep -c . || true
+    ;;
+  gateway_error_bypass)
+    gateway_error_bypass_hits | grep -c . || true
+    ;;
+  legacy_check_vocabulary)
+    legacy_check_vocabulary_hits | grep -c . || true
+    ;;
+  console_unlinked_code_packages)
+    console_unlinked_code_package_links | grep -c . || true
+    ;;
   *)
     # `measure` runs inside a command substitution, so exiting here would only
     # kill the subshell. Emit a sentinel the caller turns into a failure.
     echo "UNKNOWN"
     ;;
   esac
+}
+
+# ADR 0067 guards: failures and check results are codes, never prose that a
+# later reader has to parse. Each *_hits function prints one line per
+# violation; exclusions and the external system each allowlisted adapter wraps
+# are listed in scripts/arch-constraints.md.
+error_text_classification_hits() {
+  grep -rnE 'strings\.(Contains|HasPrefix|HasSuffix|EqualFold|Index|LastIndex|Cut|CutPrefix)\((strings\.(ToLower|TrimSpace)\()?[A-Za-z_.]*([Ee]rr[A-Za-z]*|[Mm]sg|[Mm]essage|[Dd]etail|[Rr]eason|[Ss]tderr|[Oo]utput)\b|strings\.ToLower\([A-Za-z_.]*\.Error\(\)\)|\.Error\(\) *(==|!=)|switch [A-Za-z_.]*\.Error\(\)|MatchString\([^)]*\.Error\(\)' \
+    internal pkg cmd --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' \
+    | grep -vE '^(internal/agent/modelfetch/retry\.go|internal/agent/runtime/docker/cli_answers\.go|internal/server/logstore/query\.go|internal/server/uxstore/query\.go|internal/server/provider/compshare/api_error\.go|internal/server/provider/vast/vast\.go|internal/testenv/cloudprovider/aliyun_api\.go|internal/testenv/cloudprovider/aliyun_infra\.go|internal/integrationtest/fleet/gateway\.go|internal/server/hub/benchmark_failure_code\.go|internal/server/store/instance_runtime_failure\.go|internal/server/provision/ssh_failure\.go|internal/server/provision/install_command\.go|internal/server/provision/probe\.go|internal/server/inferencecatalog/package_tolerant\.go):' || true
+}
+instance_failed_without_reason_hits() {
+  grep -rnE 'State: *proto\.InstFailed|SetInstanceState\([^)]*proto\.InstFailed|reportState(Progress)?\([^)]*proto\.InstFailed|"state": *proto\.InstFailed|Update(Column)?\("state", *proto\.InstFailed|IsEnginePortRefusal|HasPrefix\([^)]*EnginePort|EnginePort(Refused|InUse)\+":"' \
+    internal cmd --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' | grep -v '^internal/agent/engine/runtime_failure\.go:' || true
+}
+gateway_error_bypass_hits() {
+  grep -rn 'writeErr(' internal/server/proxy --include='*.go' 2>/dev/null | grep -v '_test\.go:' || true
+  grep -rn '"gpuworks_proxy"' internal test ui/src --include='*.go' --include='*.ts' --include='*.tsx' --include='*.py' 2>/dev/null || true
+  grep -rn 'http\.Error(' internal/server/api internal/server/proxy internal/server/hub internal/server/batch --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' | grep -v '^internal/server/api/security_headers\.go:' || true
+  grep -rnE '`\{"error"|map\[string\](any|string)\{"error":' internal/server --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' | grep -vE '^internal/server/(messages/http|api/responses|api/inference_templates_official)\.go:' || true
+}
+legacy_check_vocabulary_hits() {
+  grep -rnE '(DoctorFinding|CardCheck|CardCheckRun)\{[^}]*(Status|Code|ID): "' internal pkg cmd --include='*.go' 2>/dev/null | grep -v '_test\.go:' || true
+  grep -rnE 'DoctorLevel|accelerator\.Check(Pass|Warn|Fail|Skip|Pending|NotApplicable|Reason)|CheckStateFor|\.Level != proto' \
+    internal/agent internal/server/cardhealth internal/server/diagnostics internal/proto --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' | grep -v '^internal/proto/check_compat\.go:' || true
+  grep -rn '"pending"' internal/server/cardhealth internal/agent/gpu internal/accelerator internal/proto/card_check.go internal/proto/doctor.go --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' || true
+  grep -rnE 'Status: *"(ok|error|warn|passed|failed|skipped)"|\.Status *[!=]= *"(ok|error|warn)"|status *:?= *"(ok|error)"' \
+    internal/server/provision internal/server/provider internal/server/api/provision.go internal/server/api/provider_install.go --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' || true
+  grep -rnE '\bInstallCheck\b|CheckResult\{Name|check\.Name ==' internal/server/provision internal/server/provider internal/server/api --include='*.go' 2>/dev/null | grep -v '_test\.go:' || true
+  grep -nE 'Status(:| =| ==| !=) *"(passed|failed|blocked|unknown|pending|not_applicable|ok|error)"|status(, reason)?(, message)? :?= "(passed|failed|blocked|unknown|pending|not_applicable)"' \
+    internal/server/deployment/*.go internal/server/api/diagnostic_projection.go internal/server/api/preflight.go 2>/dev/null | grep -v '_test\.go:' || true
+  grep -rnE '"(info|incomplete|completed|unavailable)"' internal/server/diagnostics/doctor_report.go internal/server/diagnostics/node_doctor.go internal/server/diagnostics/node_connection.go 2>/dev/null || true
+}
+console_unlinked_code_package_links() {
+  for main in ./cmd/gpuworks ./cmd/gpuworks-agent; do
+    CGO_ENABLED=0 go list -deps "$main" 2>/dev/null | grep -E '/internal/templateprobe$' || true
+  done
 }
 
 # process_name_hits prints "file:line:text" for every production source line

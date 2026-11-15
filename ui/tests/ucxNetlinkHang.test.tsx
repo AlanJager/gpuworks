@@ -97,13 +97,13 @@ test("another warning, or one without usable fixes, lists nothing; a malformed f
   assert.equal(screen.getByLabelText("disable_ipv6_persist").textContent, PERSIST);
 });
 
-test("the diagnosis explains a ucx_netlink_hang finding with the fix commands in its evidence", () => {
+test("the diagnosis explains a UCX_NETLINK_HANG finding with the fix commands in its evidence", () => {
   const report = {
     report: "== gpuworks agent doctor ==\n",
     host: { hostname: "h", os: "linux", arch: "amd64", kernel: "5.15.0-203-generic", cpu_model: "EPYC", cpu_cores: 8, mem_total_bytes: 1 << 30, mem_avail_bytes: 1 << 29, disks: [] },
     runtimes: [{ name: "docker", status: "ok", selected: true, command: "" }],
     findings: [{
-      code: "ucx_netlink_hang", level: "warning", probe: "agent: RTM_GETROUTE dump (AF_INET6) over a NETLINK_ROUTE socket",
+      id: "ucx_netlink", code: "UCX_NETLINK_HANG", status: "warn", probe: "agent: RTM_GETROUTE dump (AF_INET6) over a NETLINK_ROUTE socket",
       evidence: [{ name: "kernel", value: "5.15.0-203-generic" }, { name: "fix", value: NOW }, { name: "fix_persist", value: PERSIST }],
       recheck: "sysctl net.ipv6.conf.all.disable_ipv6 net.ipv6.conf.default.disable_ipv6",
     }],

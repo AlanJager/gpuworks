@@ -150,7 +150,7 @@ func TestModelFileEvictionNotFoundWireContract(t *testing.T) {
 		fmt.Sprintf("/api/v1/models/%d/nodes/missing-node", model.ID),
 	} {
 		response := modelEvictionRequest(t, router, token, path)
-		if response.Code != http.StatusNotFound || response.Body.String() != "{\"error\":\"not found\"}\n" {
+		if response.Code != http.StatusNotFound || response.Body.String() != "{\"code\":\"NOT_FOUND\",\"error\":\"not found\"}\n" {
 			t.Fatalf("path=%s response=%d %s", path, response.Code, response.Body.String())
 		}
 	}

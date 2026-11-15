@@ -127,7 +127,9 @@ func TestFleetNodesSeesEveryAnnouncedChangeAtOnce(t *testing.T) {
 			func(n []Node) bool { return nodeByUUID(n, "fleet-2").Scheduling == NodeCordoned }},
 		{"state", func() error { return f.st.SetNodeState("fleet-2", NodeStateOffline) },
 			func(n []Node) bool { return nodeByUUID(n, "fleet-2").State == NodeStateOffline }},
-		{"recovery", func() error { return f.st.SetNodeRecoveryPhase("fleet-2", RecoveryPhaseProbing, 1, nil, "") },
+		{"recovery", func() error {
+			return f.st.SetNodeRecoveryPhase("fleet-2", RecoveryPhaseProbing, 1, nil, RecoveryError{})
+		},
 			func(n []Node) bool { return nodeByUUID(n, "fleet-2").ConnectionState() == NodeStateConnecting }},
 		{"ssh credential", func() error {
 			_, err := f.st.SetNodeSSHCredential("fleet-3", "gpu.example", 22, "root", NodeSSHSecrets{Password: "high entropy password"})

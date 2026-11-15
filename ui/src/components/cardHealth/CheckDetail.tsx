@@ -5,18 +5,18 @@ import { api, type CardCheckDetail, type CardCheckRun, type CardRef } from "../.
 import { apiErrorText } from "../../apiError";
 import CopyButton from "../CopyButton";
 import { HelpTip } from "../../ui-kit/HelpTip";
-import { checkName, localTime, reasonText, stateName } from "./text";
+import { checkName, codeText, localTime, statusName } from "./text";
 
 const stateColor: Record<string, string> = { pass: "green", warn: "orange", fail: "red" };
 
 function Run({ title, run }: { title: string; run: CardCheckRun }) {
   const { t } = useTranslation("nodes");
-  const reason = reasonText(t, run.state, run.reason);
+  const reason = codeText(t, run.status, run.code);
   return (
     <Descriptions size="small" column={1} bordered title={title}>
       <Descriptions.Item label={t("cardHealth.detail.at")}>
         <Space size={8} wrap>
-          <Tag color={stateColor[run.state]}>{stateName(t, run.state)}</Tag>
+          <Tag color={stateColor[run.status]}>{statusName(t, run.status)}</Tag>
           {reason && <Typography.Text>{reason}</Typography.Text>}
           <Typography.Text type="secondary">{localTime(run.at)}</Typography.Text>
         </Space>
@@ -89,9 +89,9 @@ export default function CheckDetail({
       const d = await api.recheckCard(nodeUUID, card);
       setDetail(d);
       const last = d.last;
-      if (last?.state === "pass") message.success(t("cardHealth.recheckDone"));
-      else if (last?.state === "skip") message.warning(t("cardHealth.recheckSkipped", { reason: reasonText(t, "skip", last.reason) }));
-      else message.error(t("cardHealth.recheckFailed", { reason: last?.evidence[0]?.value ?? reasonText(t, "fail", last?.reason) }));
+      if (last?.status === "pass") message.success(t("cardHealth.recheckDone"));
+      else if (last?.status === "skip") message.warning(t("cardHealth.recheckSkipped", { reason: codeText(t, "skip", last.code) }));
+      else message.error(t("cardHealth.recheckFailed", { reason: last?.evidence[0]?.value ?? codeText(t, "fail", last?.code) }));
       onRechecked?.();
     } catch (err) {
       message.error(apiErrorText(tCommon, err));

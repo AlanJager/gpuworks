@@ -186,6 +186,7 @@ type Node struct {
 	RecoveryAttempts   int           `json:"recovery_attempts,omitempty"`
 	LastProbeAt        *time.Time    `json:"last_probe_at,omitempty"`
 	LastRecoveryError  string        `json:"last_recovery_error,omitempty"`
+	LastRecoveryCode   string        `json:"last_recovery_code,omitempty"` // names LastRecoveryError; absent on errors recorded before codes
 	HasSSHCredential   bool          `json:"has_ssh_credential"`
 	CreatedAt          time.Time     `json:"created_at"`
 	GPUs               []GPU         `json:"gpus"`
@@ -265,6 +266,9 @@ type NodeReplica struct {
 	DrainReason   *ScheduleReason `json:"drain_reason,omitempty"`
 	DrainReasonAt *time.Time      `json:"drain_reason_at,omitempty"`
 	DrainMessage  string          `json:"drain_message,omitempty"`
+	// DrainFailure is the failed attempt's structured reason; absent for an
+	// attempt without one, whose DrainMessage is all there is.
+	DrainFailure *ProductMessage `json:"drain_failure,omitempty"`
 }
 
 // NodeEviction is what POST /nodes/{uuid}/evict took off the node: the

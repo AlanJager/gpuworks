@@ -230,6 +230,9 @@ func (s *Session) handleStatusNode(raw json.RawMessage) {
 		s.hub.log.Warn("bad status.node", "node", s.NodeUUID, "err", err)
 		return
 	}
+	// An older agent's health codes and card checks, in today's words
+	// before anything reads them.
+	proto.NormalizeGPUReport(st.GPUs)
 	s.nvidiaIsolation.Store(st.NVIDIAIsolation)
 	s.ucxNetlinkHang.Store(st.UCXNetlinkHang)
 	if st.RuntimeProxy != nil {

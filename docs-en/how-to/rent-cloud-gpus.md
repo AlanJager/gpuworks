@@ -74,7 +74,7 @@ First confirm that the instance is running, then prepare addresses according to 
 1. Find an instance that is not yet onboarded in the instance table, then click **Install Agent**. Connected instances show **Onboarded**.
 2. In the page, select the **Connection** and **Connection direction**, and check the addresses against the table above. **Automatic** tries installation channels according to provider capabilities: Cloud Assistant is preferred for agent-initiated connections on Alibaba Cloud; otherwise, direct SSH is preferred, with other available endpoints tried after a failure. You can also select an endpoint explicitly; endpoints marked **Terminal only** cannot install the agent.
 3. Under **Advanced Settings**, check the installation directory and **Start via systemd**, then review the credentials, ports, and restart conditions below and click **Install**. You do not need to create a compute node or obtain a token first.
-4. Wait for the installation result and expand any failures or warnings. When **Agent installed and connected** appears, click **Done**. For **Agent installed, with notes**, inspect the report first. If **Agent started, not connected yet** appears, the agent is installed: fix connectivity first instead of reinstalling.
+4. Wait for the installation result and expand any failures, warnings or unchecked items. When **Agent installed and connected** appears, click **Done**. For **Agent installed, with notes**, inspect the report first. If **Agent started, not connected yet** appears, the agent is installed: fix connectivity first instead of reinstalling.
 5. Open **Compute Nodes**, confirm that the node for this instance is online, and check its accelerator model, count, and runtime. If installation fails, retain the reason from the report, fix it, and click **Try again** in the page. Pending nodes whose installation has not succeeded are cleaned up.
 
 An empty installation directory defaults to `/opt/gpuworks`. A custom directory must start with `/` and cannot be the root directory; `~` is not expanded. Installation fails if the specified directory is not writable, without falling back to `/tmp/gpuworks`.
@@ -95,7 +95,7 @@ SSH installation uses the platform key by default, so you usually do not need to
 
 Once the platform public key is written successfully, subsequent recovery uses the platform key. If writing fails, the credentials that worked for this attempt may be retained. See report items such as `SSH authentication` and `Platform key` for the actual result. If precheck indicates that the public key is added only during installation, other checks requiring a login continue during installation.
 
-**RunPod public key or port changes may require restart confirmation.** When `INSTANCE_RESTART_REQUIRED` appears, the pod has not yet been modified. Only after confirmation does the platform update the configuration, restart, and continue installation. **Restarting clears nonpersistent volumes, and port mappings (including SSH) may be reassigned**. Save data you need to keep first. If you cannot accept a restart, cancel and use working login credentials or another connection method. Use `Platform key (pod)` and `Server-dial port` in the report to check the results.
+**RunPod public key or port changes may require restart confirmation.** When `INSTANCE_RESTART_REQUIRED` appears, the pod has not yet been modified. Only after confirmation does the platform update the configuration, restart, and continue installation. **Restarting clears nonpersistent volumes, and port mappings (including SSH) may be reassigned**. Save data you need to keep first. If you cannot accept a restart, cancel and use working login credentials or another connection method. Use **Platform key (provider)** and **Server-dial port** in the report to check the results.
 
 ### Provider Differences for Server-Initiated Connections
 
@@ -185,7 +185,7 @@ To install the agent on a compatible persistent volume or data disk, enter the i
 
 - **SSH authentication fails after trying only the platform key**: the instance does not yet have the platform public key. For a RunPod pod started before the server registered its public key, installation from **External Platforms** asks whether to restart to add the key. You can also provide a private key or password once under **Advanced Settings**, or authorize it on the instance as instructed by the error.
 - **The provider returns no SSH endpoint**: the instance may still be starting. Click **Sync** again later.
-- **agent_dial warning**: the agent has started but is not connected to the server, usually because `server_url` is unreachable from the instance. Follow the next item.
+- **Agent connects to server warning**: the agent has started but is not connected to the server, usually because `server_url` is unreachable from the instance. Follow the next item.
 
 **Installation succeeds, but the node does not appear under Compute Nodes or remains offline**
 For an agent-initiated connection, check whether `server_url` is reachable from the instance and inspect the agent logs. If the address is wrong, correct the connection configuration while retaining this node's identity. For a server-initiated connection, check TCP connectivity from the server to the instance's connection address, port mappings, and security groups; do not enter `server_url`. For rejected connections or disconnections after onboarding, see [Troubleshooting](troubleshooting.md).
@@ -290,7 +290,7 @@ The server calls `RunCommand` to have the instance execute, as root, the same on
 
 The platform tries to append its public key to the instance root user's `~/.ssh/authorized_keys` through Cloud Assistant, avoiding duplicate keys, then logs in with the platform key:
 
-- **Cloud Assistant is online**: the public key can be added directly without manually entered credentials. The report item is `Platform key (Cloud Assistant)`.
+- **Cloud Assistant is online**: the public key can be added directly without manually entered credentials. The report item is **Platform key (provider)**.
 - **Cloud Assistant is not yet online**: installation waits up to 2 minutes, then adds the key once it comes online. The report records the wait time. Just after startup, SSH may become reachable first, while Cloud Assistant sends its first heartbeat roughly a minute later.
 - **Still offline after waiting**: for example, if a custom image has no preinstalled Cloud Assistant and the instance lacks the platform key, provide a password or private key once under **Advanced Settings**. The Alibaba Cloud API does not return the root password. To install Cloud Assistant, choose the method for your operating system in the [Alibaba Cloud installation instructions](https://help.aliyun.com/zh/ecs/user-guide/install-the-cloud-assistant-agent), and check whether it requires a restart.
 

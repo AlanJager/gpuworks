@@ -702,6 +702,9 @@ func TestHeadlessWorkerReportsContainerExit(t *testing.T) {
 	if st.State != proto.InstFailed || !strings.Contains(st.Message, "17") {
 		t.Fatalf("headless exit status = %+v", st)
 	}
+	if f := st.RuntimeFailure; f == nil || f.Code != proto.ErrorContainerExited || f.ExitCode == nil || *f.ExitCode != 17 {
+		t.Fatalf("headless exit reason = %+v", f)
+	}
 }
 
 func TestMetricSpecsExcludeHeadlessWorkers(t *testing.T) {
@@ -953,6 +956,9 @@ func TestReconcileSleepRefusedByTheEngineYetSleepingIsUncertain(t *testing.T) {
 	e.servingEpoch["half-offloaded"] = 7
 	e.reconcileSleep(context.Background(), proto.InstanceDesiredState{UUID: "half-offloaded", Sleepable: true, DesiredSleep: 1, APIPort: h.port(t)})
 	st := <-reported
+	if f := st.RuntimeFailure; f == nil || f.Code != proto.ErrorSleepStateUncertain || f.Phase != proto.PhaseSleep || !strings.Contains(f.Detail, "http 500") {
+		t.Fatalf("runtime failure = %+v", f)
+	}
 	if st.State != proto.InstFailed || st.Phase != proto.PhaseSleep || !strings.Contains(st.Message, "uncertain") || !strings.Contains(st.Message, "http 500") {
 		t.Fatalf("refused sleep report = %+v, want a failed generation in the sleep phase", st)
 	}

@@ -14,6 +14,12 @@ import (
 
 const BenchmarkErrorServerRestarted = "BENCHMARK_SERVER_RESTARTED"
 
+// BenchmarkErrorDatasetLoadFailed is dataset.LoadErrorCode as the run's
+// failure code (proto.BenchmarkStatus.Code); declared here with the other run
+// failure codes the console translates, and held equal to its producer's
+// constant by TestBenchmarkErrorCodesMatchTheirProducers.
+const BenchmarkErrorDatasetLoadFailed = "BENCHMARK_DATASET_LOAD_FAILED"
+
 var ErrBenchmarkActive = errors.New("benchmark is active; cancel it before deleting")
 
 func (s *Store) CreateBenchmarkRun(run *BenchmarkRun) (*BenchmarkRun, error) {

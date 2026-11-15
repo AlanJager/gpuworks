@@ -2,12 +2,14 @@ package deployment
 
 import (
 	"context"
+	"errors"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
@@ -62,7 +64,11 @@ func (s *Service) evaluateAutomaticPlacement(ctx context.Context, req *dto.Deplo
 		entry := dto.PlacementCandidate{NodeUUID: node.UUID, NodeName: names[node.UUID]}
 		backend, err := ResolvePartitionBackend(node, req.VRAMLimitGiB, req.PartitionBackend)
 		if err != nil {
-			entry.Reason = dto.ScheduleReason{Code: "partition_unavailable", Message: err.Error()}
+			entry.Reason = dto.ScheduleReason{Code: scheduler.ReasonPartitionUnavailable, Message: err.Error()}
+			var refusal *messages.ProductError
+			if errors.As(err, &refusal) {
+				entry.Reason.Params = refusal.Params()
+			}
 			candidates = append(candidates, entry)
 			continue
 		}
