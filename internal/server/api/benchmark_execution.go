@@ -27,7 +27,7 @@ func (a *apiHandlers) runServerBenchmark(ctx context.Context, run *store.Benchma
 	benchrun.Execute(ctx, benchrun.Run{
 		ID: run.ID, Model: run.Model, Mode: run.Mode,
 		Dataset: json.RawMessage(run.Dataset), Search: json.RawMessage(run.Search), TokenizerRef: run.TokenizerRef,
-		Client: loadgen.Client{HTTP: client, BaseURL: run.BaseURL, APIKey: apiKey},
+		Client: loadgen.Client{HTTP: client, BaseURL: run.BaseURL, APIKey: apiKey, Header: benchmarkRequestHeader(run.PriorityClass)},
 	}, benchrun.Hooks{
 		Report: func(st proto.BenchmarkStatus) {
 			if st.CurrentPoint != nil && !st.CurrentPoint.Warmup && len(st.Sample) > 0 {

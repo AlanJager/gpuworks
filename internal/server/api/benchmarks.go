@@ -112,6 +112,9 @@ func (a *apiHandlers) createBenchmark(w http.ResponseWriter, r *http.Request) {
 		// InstanceUUID measures one instance of the deployment directly instead
 		// of the deployment through the gateway (plan D9).
 		InstanceUUID string `json:"instance_uuid"`
+		// PriorityClass is the request priority class the run's requests ask
+		// the gateway for; only a run whose requests go through it may name one.
+		PriorityClass string `json:"priority_class"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
@@ -200,6 +203,11 @@ func (a *apiHandlers) createBenchmark(w http.ResponseWriter, r *http.Request) {
 			req.NumGPUs = target.numGPUs
 		}
 	}
+	class, ok := a.benchmarkPriorityClass(w, req.PriorityClass, entry)
+	if !ok {
+		return
+	}
+	req.PriorityClass = class
 	if req.TargetKind == "external" {
 		if strings.TrimSpace(req.BaseURL) == "" {
 			writeProductError(w, 400, ErrorBenchmarkExternalURLRequired, "external target url required", nil)
@@ -270,7 +278,7 @@ func (a *apiHandlers) createBenchmark(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	run, err := a.d.Store.CreateBenchmarkRun(&store.BenchmarkRun{Name: req.Name, TargetKind: req.TargetKind, DeploymentID: req.DeploymentID, InstanceUUID: instanceUUID, BaseURL: req.BaseURL, APIKey: encryptedKey, Model: req.Model, LoadOrigin: req.LoadOrigin, NumGPUs: req.NumGPUs, Dataset: string(req.Dataset), Mode: req.Mode, Search: string(req.Search), TokenizerRef: req.TokenizerRef, TargetSnapshot: targetSnapshot, KeepDetail: req.KeepDetail, DetailCapMB: req.DetailCapMB})
+	run, err := a.d.Store.CreateBenchmarkRun(&store.BenchmarkRun{Name: req.Name, TargetKind: req.TargetKind, DeploymentID: req.DeploymentID, InstanceUUID: instanceUUID, BaseURL: req.BaseURL, APIKey: encryptedKey, Model: req.Model, LoadOrigin: req.LoadOrigin, PriorityClass: req.PriorityClass, NumGPUs: req.NumGPUs, Dataset: string(req.Dataset), Mode: req.Mode, Search: string(req.Search), TokenizerRef: req.TokenizerRef, TargetSnapshot: targetSnapshot, KeepDetail: req.KeepDetail, DetailCapMB: req.DetailCapMB})
 	if err != nil {
 		writeErr(w, 500, err)
 		return

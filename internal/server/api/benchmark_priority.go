@@ -1,0 +1,43 @@
+package api
+
+import (
+	"net/http"
+	"strings"
+
+	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
+)
+
+// benchmarkPriorityClass checks the request priority class a run names: a
+// class that exists, on a run whose requests go through the gateway (a
+// managed target measured from the server), the only entry that applies
+// one. It returns the class's name, and writes the refusal itself.
+func (a *apiHandlers) benchmarkPriorityClass(w http.ResponseWriter, name, entry string) (string, bool) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return "", true
+	}
+	if entry != benchmarkEntryGateway {
+		writeProductError(w, http.StatusBadRequest, ErrorBenchmarkPriorityClassGateway, "a request priority class applies only to a run of a managed deployment measured from the server, whose requests go through the gateway", nil)
+		return "", false
+	}
+	table, err := a.d.Store.PriorityClassTable()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return "", false
+	}
+	if _, ok := table.ByName(name); !ok {
+		writeProductError(w, http.StatusBadRequest, messages.ErrorPriorityClassNotFound, "no request priority class is named "+name, nil)
+		return "", false
+	}
+	return name, true
+}
+
+// benchmarkRequestHeader is what every request of a run sends besides its
+// key: the priority class it asks the gateway for.
+func benchmarkRequestHeader(class string) http.Header {
+	if class == "" {
+		return nil
+	}
+	return http.Header{loadgen.PriorityClassHeader: []string{class}}
+}
