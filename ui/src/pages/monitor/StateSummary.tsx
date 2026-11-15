@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { MonitorService, MonitorStateCount } from "../../api";
 import { Badge } from "../../components/ui/badge";
 import { FilterChips } from "../../ui-kit/FilterChips";
-import { STATE_BADGE } from "./serviceStates";
+import { STATE_BADGE, offeredStates } from "./serviceStates";
 
 const ALL = "all";
 
@@ -13,13 +13,16 @@ const ALL = "all";
  * selection: none lights "All", exactly one lights that state, and a
  * multi-state pick from the column lights none (the toolbar chip names it).
  */
-export default function StateSummary({ counts, selected, onSelect }: {
-  counts: MonitorStateCount[]; selected: string[]; onSelect: (state: MonitorService["state"] | null) => void;
+export default function StateSummary({ counts, selected, narrowed = false, onSelect }: {
+  counts: MonitorStateCount[]; selected: string[];
+  /** Another filter (a signal tile's) narrows the table, so "All" is not what it shows. */
+  narrowed?: boolean;
+  onSelect: (state: MonitorService["state"] | null) => void;
 }) {
   const { t } = useTranslation("monitoring");
   const total = counts.reduce((sum, item) => sum + item.count, 0);
-  const shown = counts.filter((item) => item.count > 0 || selected.includes(item.state));
-  const value = selected.length === 0 ? ALL : selected.length === 1 ? selected[0] : "";
+  const shown = offeredStates(counts, selected);
+  const value = selected.length === 0 ? (narrowed ? "" : ALL) : selected.length === 1 ? selected[0] : "";
   return <FilterChips label={t("stateSummary.title")} value={value}
     onChange={(next) => onSelect(next === ALL ? null : next as MonitorService["state"])}
     items={[

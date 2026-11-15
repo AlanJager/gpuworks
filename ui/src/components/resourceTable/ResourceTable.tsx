@@ -221,7 +221,9 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   }).filter((item) => item.values.length > 0);
   const chips = activeFilters.filter(({ column }) => column.filterChip !== false);
   const chipCount = chips.length + extraFilters.length;
-  const filtered = activeFilters.length > 0 || extraFilters.length > 0;
+  // "Clear filters" counts every filter in effect, including one whose chip a page hides.
+  const filterCount = activeFilters.length + extraFilters.length;
+  const filtered = filterCount > 0;
   const clearAll = () => { table.resetColumnFilters(); extraFilters.forEach((filter) => filter.onClear()); };
   const chipButton = (key: string, name: string, values: string, onClick: () => void) => <Button key={key} size="xs" variant="tertiary" className="resource-table-filter-chip" trailingIcon={ClearIcon}
     aria-label={t("resourceTable.clearFilter", { name, values })} onClick={onClick}>
@@ -237,7 +239,7 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
           {chips.map(({ column, values }) => chipButton(column.key, labelOf(column), values.join(t("resourceTable.valueSeparator")),
             () => table.setColumnFilters((current) => current.filter((item) => item.id !== column.key))))}
           {extraFilters.map((filter) => chipButton(`extra:${filter.key}`, filter.name, filter.value, filter.onClear))}
-          {chipCount > 1 && <Button size="xs" variant="ghost" className="text-fg-brand" onClick={clearAll}>{t("resourceTable.clearFilters")}</Button>}
+          {filterCount > 1 && <Button size="xs" variant="ghost" className="text-fg-brand" onClick={clearAll}>{t("resourceTable.clearFilters")}</Button>}
         </div>}
       </div>
       <div className="resource-table-toolbar-right flex flex-nowrap items-center gap-2">

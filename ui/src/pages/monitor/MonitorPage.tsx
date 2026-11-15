@@ -101,10 +101,11 @@ function MonitorPageContent() {
   // funnel) and a signal tile's. Picking either replaces the other; both
   // live here so the table keeps its sort, other filters and page.
   const [stateFilter, setStateFilter] = useState<string[]>([]);
-  const [signalFilter, setSignalFilter] = useState<{ key: string; deploymentIds: number[] } | null>(null);
+  // A signal filter keeps the signal, not the services it matched when
+  // clicked: each refresh narrows the table to the services that match now.
+  const [signalFilter, setSignalFilter] = useState<string | null>(null);
   const pickSignal = (key: string, services: MonitorService[]) => {
-    const ids = filterForSignal(key, services);
-    setSignalFilter(ids ? { key, deploymentIds: ids } : null);
+    setSignalFilter(filterForSignal(key, services) ? key : null);
     setStateFilter([]);
   };
   const pickStates = (states: string[]) => {
@@ -160,7 +161,7 @@ function MonitorPageContent() {
 
           <div className="monitor-services-section mt-4">
           <ServiceTable services={layoutData.services} stateCounts={layoutData.state_counts} stateFilter={stateFilter} onStateFilterChange={pickStates}
-            signalFilter={signalFilter && { label: t(`signals.${signalFilter.key}`), deploymentIds: signalFilter.deploymentIds }} onClearSignalFilter={() => setSignalFilter(null)}
+            signalFilter={signalFilter ? { label: t(`signals.${signalFilter}`), deploymentIds: filterForSignal(signalFilter, layoutData.services) ?? [] } : null} onClearSignalFilter={() => setSignalFilter(null)}
             onRefresh={refetch} loading={loading && !data} />
           </div>
 

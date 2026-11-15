@@ -427,6 +427,14 @@ test("Clear filters clears an owner's filter together with the column filters", 
   assert.equal(firstCells().length, 6, "every row is back");
 });
 
+test("clear filters counts a filter whose chip is hidden, so two filters in effect can be cleared at once", () => {
+  const quiet = columns().map((column) => column.key === "state" ? { ...column, filterChip: false, filteredValue: ["offline"] } : column);
+  renderTable({ data: rows.slice(0, 6), columns: quiet, extraFilters: [{ key: "busy", name: "Signal", value: "Busy nodes", onClear: () => {} }] });
+  const active = screen.getByRole("group", { name: "Filtered" });
+  assert.equal(within(active).getAllByRole("button", { name: /^Clear filter:/ }).length, 1, "only the signal has a chip");
+  assert.ok(within(active).getByRole("button", { name: "Clear filters" }), "the hidden state filter still counts");
+});
+
 test("a column whose owner shows its filter itself still filters but lists no chip", () => {
   const quiet = columns().map((column) => column.key === "state" ? { ...column, filterChip: false, filteredValue: ["offline"] } : column);
   renderTable({ data: rows.slice(0, 6), columns: quiet });

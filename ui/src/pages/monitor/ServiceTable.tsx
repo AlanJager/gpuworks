@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Badge } from "../../components/ui/badge";
 import StateSummary from "./StateSummary";
-import { STATE_BADGE } from "./serviceStates";
+import { STATE_BADGE, offeredStates } from "./serviceStates";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import type { HealthStatus, MonitorService, MonitorStateCount } from "../../api";
@@ -130,7 +130,7 @@ export default function ServiceTable({
       // The summary shows the single picked state as its pressed chip; a
       // multi-state pick from the funnel keeps the toolbar chip.
       filterChip: stateFilter.length !== 1,
-      filters: stateCounts.filter((item) => item.count > 0 || stateFilter.includes(item.state)).map(({ state }) => ({ value: state, text: t(`states.${state}`, { defaultValue: state }) })),
+      filters: offeredStates(stateCounts, stateFilter).map(({ state }) => ({ value: state, text: t(`states.${state}`, { defaultValue: state }) })),
       onFilter: (value, row) => row.state === value,
       render: (_: unknown, row: MonitorService) => (
         <Badge variant="dot" status={STATE_BADGE[row.state] ?? "neutral"}>{t(`states.${row.state}`, { defaultValue: row.state })}</Badge>
@@ -183,7 +183,7 @@ export default function ServiceTable({
       tableId={narrow ? "monitor-services-narrow" : "monitor-services"}
       rowKey="deployment_id"
       columns={columns}
-      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="m-0 text-body font-semibold">{t("table.service")}</h2><StateSummary counts={stateCounts} selected={stateFilter} onSelect={state => setStateFilter(state === null || (stateFilter.length === 1 && stateFilter[0] === state) ? [] : [state])} /></div>}
+      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="m-0 text-body font-semibold">{t("table.service")}</h2><StateSummary counts={stateCounts} selected={stateFilter} narrowed={!!signalFilter} onSelect={state => setStateFilter(state === null || (stateFilter.length === 1 && stateFilter[0] === state) ? [] : [state])} /></div>}
       onFilterStateChange={filters => { const next = filters.state ?? []; if (next.join("|") !== stateFilter.join("|")) setStateFilter(next); }}
       extraFilters={signalFilter ? [{ key: "signal", name: t("table.signalFilter"), value: signalFilter.label, onClear: () => onClearSignalFilter?.() }] : undefined}
       data={rows}

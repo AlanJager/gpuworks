@@ -175,6 +175,24 @@ test("clicking the ready replicas tile narrows the table to the services short o
   assert.equal(screen.queryByText("Qwen3-32B"), null);
 });
 
+test("a signal filter follows each refresh: a service that falls short later joins the table, and All is not shown as the selection", async () => {
+  let qwenShort = false;
+  api.monitorOverview = async () => qwenShort
+    ? { ...overview, services: overview.services.map((s) => s.name === "Qwen3-32B" ? { ...s, replicas: { ...s.replicas, ready: 1 } } : s) }
+    : overview;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  assert.equal(screen.getByRole("button", { name: /^All 11/ }).getAttribute("aria-pressed"), "true");
+  screen.getByRole("button", { name: /^Ready replicas/ }).click();
+  await waitFor(() => assert.equal(document.querySelector("tbody")?.textContent?.includes("Qwen3-32B"), false, "Qwen3-32B has all its replicas"));
+  assert.notEqual(screen.getByRole("button", { name: /^All 11/ }).getAttribute("aria-pressed"), "true", "the table shows the signal's services, not all");
+  qwenShort = true;
+  screen.getByRole("button", { name: "Refresh data" }).click();
+  await waitFor(() => assert.ok(document.querySelector("tbody")?.textContent?.includes("Qwen3-32B"), "the refreshed overview's short service joins the narrowed table"));
+  assert.ok(screen.getByText("Llama-3.1-70B"));
+  assert.ok(screen.getByRole("button", { name: "Clear filter: Signal Ready replicas" }));
+});
+
 test("state shortcuts replace signal narrowing and signal shortcuts replace state narrowing", async () => {
   api.monitorOverview = async () => overview;
   renderPage();
@@ -191,7 +209,8 @@ test("state shortcuts replace signal narrowing and signal shortcuts replace stat
   assert.equal(screen.queryByText("Qwen3-32B"), null);
   assert.equal(screen.queryByRole("button", { name: "Clear filter: State Running" }), null);
   assert.equal(pressed("Running 8"), "false");
-  assert.equal(pressed("All 11"), "true");
+  // The signal narrows the table, so "All" is not the selection (review on !1169).
+  assert.equal(pressed("All 11"), "false");
 });
 
 test("clicking a service state count narrows the table to the services in that state", async () => {
