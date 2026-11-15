@@ -255,6 +255,8 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	}
 	quick := launch.Quick
 	userExtraArgs := launch.UserResidual
+	priority := PrioritySchedulingOf(eng.Name(), targetVendor, placementPD(req) != nil, launch.TemplateResidual, userExtraArgs)
+	resp.PriorityScheduling = &priority
 	resp.EffectiveParams = launchConfigMap(quick)
 	// FormValues is the same configuration read as a display instruction: the
 	// effective values plus the argument text after the moved flags left it.

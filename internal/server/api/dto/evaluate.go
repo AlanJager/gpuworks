@@ -162,6 +162,21 @@ type EvaluateResponse struct {
 	// deployment will get, which for a template draft includes the operations
 	// the template declares. Absent until the draft's model is resolved.
 	HealthCheckable *bool `json:"health_checkable,omitempty"`
+	// PriorityScheduling says whether a deployment of this draft may run its
+	// engine with per-request priority scheduling, judged on the arguments
+	// the engine will receive; absent until the draft's engine is known.
+	PriorityScheduling *PrioritySchedulingEligibility `json:"priority_scheduling,omitempty"`
+}
+
+// PrioritySchedulingEligibility is whether a draft may turn on priority
+// scheduling. A refused draft carries the refusal (a
+// messages.ErrorPriorityScheduling* code with its parameters), and FixArgs
+// when adding those user arguments clears it (they override a template flag
+// the engine cannot combine with priority scheduling).
+type PrioritySchedulingEligibility struct {
+	OK      bool              `json:"ok"`
+	Refusal *messages.Warning `json:"refusal,omitempty"`
+	FixArgs []string          `json:"fix_args,omitempty"`
 }
 
 type GPUCandidates struct {

@@ -283,6 +283,29 @@ func TestPDClientKVTransferParamsNeverReachAnEngine(t *testing.T) {
 	if h.decode.paths[len(h.decode.paths)-1] != "/v1/embeddings" {
 		t.Fatalf("paths = %v", h.decode.paths)
 	}
+	// The field spelled with an escaped letter is the same field to the
+	// engine, and is neutralised the same.
+	if rec := h.do(t, "/v1/embeddings", jsonEscapes(`{"model":"pd","input":"x","kv_tr%u0061nsfer_params":{"remote_host":"evil"}}`)); rec.Code != http.StatusOK {
+		t.Fatalf("embeddings = %d", rec.Code)
+	}
+	last = h.decode.bodies[len(h.decode.bodies)-1]
+	if value, present := last["kv_transfer_params"]; !present || value != nil {
+		t.Fatalf("escaped kv params = %v (present=%v)", value, present)
+	}
+}
+
+// A client's priority reaches neither half of a two-stage request.
+func TestPDClientPriorityNeverReachesAnEngine(t *testing.T) {
+	h := newPDHarness(t, 1, "")
+	if rec := h.do(t, "/v1/completions", `{"model":"pd","prompt":"x","max_tokens":4,"priority":-50}`); rec.Code != http.StatusOK {
+		t.Fatalf("response = %d", rec.Code)
+	}
+	if got := h.prefills[0].bodies[0]["priority"]; got != float64(0) {
+		t.Fatalf("prefill priority = %v", got)
+	}
+	if got := h.decode.bodies[0]["priority"]; got != float64(0) {
+		t.Fatalf("decode priority = %v", got)
+	}
 }
 
 func TestPDFallbackToDecode(t *testing.T) {
@@ -413,8 +436,8 @@ func TestJSONFieldRewrite(t *testing.T) {
 			t.Fatalf("%s -> %s, want %s", c.in, out.String(), c.want)
 		}
 	}
-	found, err := readerContains(io.MultiReader(strings.NewReader(strings.Repeat("x", 70000)+`"kv_trans`), strings.NewReader(`fer_params"`)), []byte(`"kv_transfer_params"`))
-	if err != nil || !found {
+	found := []bool{false}
+	if err := readerContainsEach(io.MultiReader(strings.NewReader(strings.Repeat("x", 70000)+`"kv_trans`), strings.NewReader(`fer_params"`)), [][]byte{[]byte(`"kv_transfer_params"`)}, found); err != nil || !found[0] {
 		t.Fatalf("needle across a read boundary: %v %v", found, err)
 	}
 }

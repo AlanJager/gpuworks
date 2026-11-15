@@ -53,6 +53,7 @@ type HistoryQuery struct {
 	FromMS, ToMS       int64
 	APIKeyID           uint
 	InstanceUUID       string
+	PriorityClass      string
 	Results            []uxrecord.Result
 	MinEndMS, MaxEndMS int32
 	Limit              int
@@ -117,7 +118,7 @@ func (s *Service) Requests(ctx context.Context, id uint, q dto.MonitorRequestsQu
 	}
 	records, next, err := src.History(ctx, HistoryQuery{
 		DeploymentID: id, FromMS: from, ToMS: to,
-		APIKeyID: q.APIKeyID, InstanceUUID: q.InstanceUUID, Results: results,
+		APIKeyID: q.APIKeyID, InstanceUUID: q.InstanceUUID, PriorityClass: q.PriorityClass, Results: results,
 		MinEndMS: q.MinEndMS, MaxEndMS: q.MaxEndMS, Limit: q.Limit, Cursor: q.Cursor,
 	})
 	if errors.Is(err, ErrBadHistoryQuery) {
@@ -246,7 +247,7 @@ func recordDTO(r uxrecord.Request, names map[uint]string) dto.MonitorRequest {
 	status := r.Status
 	out := dto.MonitorRequest{
 		ID: r.ID, TraceID: r.Trace.Trace.String(), DeploymentID: r.DeploymentID, ReceivedMS: r.ReceivedMS, Phase: "done", InstanceUUID: r.InstanceUUID,
-		APIKeyID: r.APIKeyID, APIKeyName: names[r.APIKeyID], UserID: r.UserID, Source: r.Source.String(),
+		APIKeyID: r.APIKeyID, APIKeyName: names[r.APIKeyID], PriorityClass: r.PriorityClass, UserID: r.UserID, Source: r.Source.String(),
 		Stream: r.Stream, BodyBytes: r.BodyBytes, Images: r.Images,
 		DispatchMS: ms(r.DispatchMS), FirstByteMS: ms(r.FirstByteMS), FirstThinkMS: ms(r.FirstThinkMS),
 		FirstAnswerMS: ms(r.FirstAnswerMS), LastChunkMS: ms(r.LastChunkMS), EndMS: ms(r.EndMS),

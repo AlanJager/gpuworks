@@ -87,6 +87,12 @@ export interface QualityAnalytics {
   totals: QualityFigures;
   series: QualityFigures[];
   rows: QualityRow[];
+  /** The totals split by the priority class requests ran at; "" is unknown (recorded before classes). */
+  classes: QualityClassRow[];
+}
+
+export interface QualityClassRow extends QualityFigures {
+  priority_class: string;
 }
 
 /** A card's or a group's statistics; null without samples of that kind. */

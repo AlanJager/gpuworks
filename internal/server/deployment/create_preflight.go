@@ -47,7 +47,7 @@ func (s *Service) prepareLaunchPreflight(eng deploy.Engine, req *dto.DeployReque
 	}
 	params := deploy.Params{
 		ModelPath: out.modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort,
-		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, Quick: launch.Quick,
+		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, PriorityScheduling: requestsPriorityScheduling(req), Quick: launch.Quick,
 		TemplateArgs: launch.TemplateResidual, TemplateEnv: selection.Env, ExtraArgs: launch.UserResidual,
 		Vendor: targetVendor, NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 	}

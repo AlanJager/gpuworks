@@ -73,6 +73,12 @@ Tokenization is not inference traffic: it does not count toward gateway request 
 
 You can disable tokenization forwarding for each deployment: set `tokenize_enabled: false` when creating it, or use `PUT /api/v1/deployments/{id}/tokenize` (see [API Reference](api.md)). It is enabled by default. When disabled, the gateway returns 404 directly (`deployment <model> does not expose POST /v1/tokenize: tokenize is turned off for it`) without contacting the engine. The setting takes effect through the gateway routing table without restarting instances. Engines other than vLLM and SGLang may not provide tokenization endpoints; in that case, requests receive the engine's own error.
 
+## Request Priority
+
+The gateway decides a request's priority: from the priority class its API key is bound to, and the class the client names with the request header `X-GPUWorks-Priority-Class: <name>` within what the key allows; batch requests always run at the `batch` class. A name that matches no class returns 400. The response header `X-GPUWorks-Priority-Class` names the class the request ran at.
+
+For a deployment with request priority on, the gateway writes the class value into the body's `priority` in the engine's direction; otherwise it sets an existing `priority` to `0`. A client's own `priority` field and `X-Vllm-Priority` header never reach the engine, whether the model is named in the body, in `?model=` or in `X-GPUWorks-Model`, and whatever Content-Type the body declares; a body declared as JSON or text must be UTF-8, or the request gets a 400. See [Request Priority](../explanation/request-priority.md).
+
 ## Trace Context
 
 Trace context **correlates records for the same call across different systems**. For example, when a request passes through an upstream gateway, GPUWorks, and an inference engine, you can use it to identify which stage takes time or fails. GPUWorks automatically establishes trace context for each forwarded request; ordinary inference calls do not require you to fill in this information manually.

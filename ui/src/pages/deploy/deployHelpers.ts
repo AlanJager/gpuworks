@@ -249,6 +249,8 @@ export function buildPayload(
   // Unstated, the server opens tokenize, which is what the form shows.
   if (typeof v.tokenize_enabled === "boolean")
     payload.tokenize_enabled = v.tokenize_enabled;
+  if (typeof v.priority_scheduling === "boolean")
+    payload.priority_scheduling = v.priority_scheduling;
   const startTimeout = Number(v.start_timeout_sec);
   if (Number.isFinite(startTimeout) && startTimeout > 0)
     payload.start_timeout_sec = Math.round(startTimeout);

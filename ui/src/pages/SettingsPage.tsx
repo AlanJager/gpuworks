@@ -31,6 +31,7 @@ import BrandingCard, { BRANDING_ANCHOR } from "./settings/BrandingCard";
 import { TELEMETRY_ANCHOR } from "./settings/TelemetryCard";
 import { SECURITY_ANCHOR } from "./settings/SecurityCard";
 import DataRetentionCard, { DATA_RETENTION_ANCHOR } from "./settings/DataRetentionCard";
+import PrioritySettingsCard, { PRIORITY_ANCHOR } from "./settings/PrioritySettingsCard";
 import AICard, { externalHost } from "./settings/AIConfigCard";
 import ExperienceCard, { EXPERIENCE_ANCHOR } from "./settings/ExperienceCard";
 
@@ -53,8 +54,8 @@ const SETTINGS_TABS: { key: string; anchors: string[]; cards: (active: boolean) 
   { key: "pull", anchors: ["pull-settings"], cards: () => <PullSettingsCard /> },
   {
     key: "nodes",
-    anchors: [],
-    cards: () => <><PlatformSSHKeyCard /><DeploymentPolicyCard /><OrphanCleanupCard /></>,
+    anchors: [PRIORITY_ANCHOR],
+    cards: () => <><PlatformSSHKeyCard /><DeploymentPolicyCard /><PrioritySettingsCard /><OrphanCleanupCard /></>,
   },
   {
     key: "access",

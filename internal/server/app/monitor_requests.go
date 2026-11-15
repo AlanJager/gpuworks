@@ -47,7 +47,7 @@ func (s *requestSource) Live(deploymentID uint, limit int) uxrecord.LiveSnapshot
 func (s *requestSource) History(ctx context.Context, q monitorapi.HistoryQuery) ([]uxrecord.Request, string, error) {
 	records, next, err := s.ux.Requests(ctx, uxstore.RequestQuery{
 		DeploymentID: q.DeploymentID, FromMS: q.FromMS, ToMS: q.ToMS,
-		APIKeyID: q.APIKeyID, InstanceUUID: q.InstanceUUID, Results: q.Results,
+		APIKeyID: q.APIKeyID, InstanceUUID: q.InstanceUUID, PriorityClass: q.PriorityClass, Results: q.Results,
 		MinEndMS: q.MinEndMS, MaxEndMS: q.MaxEndMS, Limit: q.Limit, Cursor: q.Cursor,
 	})
 	if errors.Is(err, uxstore.ErrBadQuery) {

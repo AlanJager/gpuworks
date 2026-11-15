@@ -147,6 +147,7 @@
     }
   },
   "quality": {
+    "byClass": {"title": "By request priority", "help": "Counted per priority class the gateway ran requests at. A low class can queue for long while a high one keeps the engine saturated, which the totals hide; this splits them. \"Unrecorded\" are requests from before priority classes, whose class is unknown.", "class": "Class", "requests": "Requests", "success": "Success rate", "ttftP50": "TTFT P50", "ttftP95": "TTFT P95", "e2eP50": "E2E P50", "e2eP95": "E2E P95", "unknown": "Unrecorded"},
     "cards": {
       "requests": "Requests",
       "completed": "Completed: {{count}}",

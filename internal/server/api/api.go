@@ -291,6 +291,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/apikeys", a.createAPIKey)
 			r.Delete("/apikeys/{prefix}", a.deleteAPIKey)
 			r.Put("/apikeys/{prefix}/scope", a.setAPIKeyScope)
+			r.With(a.managementAdmin).Put("/apikeys/{prefix}/priority", a.setAPIKeyPriority)
+
+			// Request priority classes.
+			r.Get("/priority-classes", a.listPriorityClasses)
+			r.With(a.managementAdmin).Post("/priority-classes", a.createPriorityClass)
+			r.With(a.managementAdmin).Put("/priority-classes/{name}", a.updatePriorityClass)
+			r.With(a.managementAdmin).Delete("/priority-classes/{name}", a.deletePriorityClass)
+			r.With(a.managementAdmin).Put("/priority-classes/{name}/default", a.setDefaultPriorityClass)
 			r.Get("/mcp/status", a.mcpStatus)
 			r.With(a.managementAdmin).Put("/mcp/settings", a.putMCPSettings)
 

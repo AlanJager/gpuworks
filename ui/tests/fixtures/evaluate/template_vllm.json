@@ -105,6 +105,8 @@
     "30000",
     "--tensor-parallel-size",
     "1",
+    "--scheduling-policy",
+    "priority",
     "--enable-prompt-tokens-details",
     "--max-model-len",
     "32768",
@@ -121,6 +123,8 @@
     "30000",
     "--tensor-parallel-size",
     "1",
+    "--scheduling-policy",
+    "priority",
     "--enable-prompt-tokens-details",
     "--max-model-len",
     "32768",
@@ -176,6 +180,8 @@
         "30000",
         "--tensor-parallel-size",
         "1",
+        "--scheduling-policy",
+        "priority",
         "--enable-prompt-tokens-details",
         "--max-model-len",
         "32768",
@@ -192,6 +198,8 @@
         "30000",
         "--tensor-parallel-size",
         "1",
+        "--scheduling-policy",
+        "priority",
         "--enable-prompt-tokens-details",
         "--max-model-len",
         "32768",
@@ -465,5 +473,8 @@
     "ok": false,
     "reason": "SLEEP_NOT_ENABLED"
   },
-  "health_checkable": false
+  "health_checkable": false,
+  "priority_scheduling": {
+    "ok": true
+  }
 }

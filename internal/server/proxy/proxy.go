@@ -63,7 +63,9 @@ type Proxy struct {
 	// acct is proxy request accounting (accounting.go). A nil *Accountant is
 	// valid and every method on it no-ops, so a Proxy built without
 	// SetAccountant behaves exactly as it did before accounting existed.
-	acct       *Accountant
+	acct *Accountant
+	// priority is the snapshot of request priority classes (priority.go).
+	priority   *priorityClasses
 	routes     *routeTable
 	serving    *servingDialer
 	balancer   *balancer
@@ -184,6 +186,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 	p.load = newEngineLoad()
 	p.balancer = newBalancer(p.load)
 	p.routes = newRouteTable(st, networks, hub, log)
+	p.priority = &priorityClasses{store: st}
 	p.serving = newServingDialer(log, func(nodeUUID string, status store.ServingForwardStatus) {
 		if st == nil {
 			return
@@ -345,7 +348,7 @@ func (p *Proxy) Handler() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		r = r.WithContext(withKeyScope(uxrecord.WithCaller(r.Context(), caller), identity))
+		r = r.WithContext(withPriorityBinding(withKeyScope(uxrecord.WithCaller(r.Context(), caller), identity), identity.Priority))
 		r.Header.Del(instanceHeader) // pinning is an internal-entry feature
 		p.serveAuthenticated(w, r)
 	}
@@ -492,6 +495,10 @@ func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected s
 }
 
 func (p *Proxy) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
+	r, ok := p.decidePriority(w, r)
+	if !ok {
+		return
+	}
 	if route, ok := inferenceapi.AuxiliaryRouteFor(r.URL.Path); ok {
 		p.serveAuxiliary(w, r, route)
 		return
@@ -548,11 +555,9 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 			return
 		}
 	}
-	// Only the gateway may hand KV between instances (ADR 0028).
-	cleanup, err := stripClientKVTransfer(r, p.maxBodyBytes)
-	defer cleanup()
-	if err != nil {
-		fail(err)
+	r, cleanupOwned, ok := p.ownGatewayFields(w, r, tgt, deploymentID, fail)
+	defer cleanupOwned()
+	if !ok {
 		return
 	}
 	proceed, cleanupPD := p.servePrefillStage(w, r, &tgt, deploymentID)

@@ -28,6 +28,8 @@ export interface MonitorRequest {
   api_key_id: number;
   // Empty for no key (playground) or a deleted key.
   api_key_name: string;
+  /** The priority class the gateway ran the request at; "" before classes or while in flight. */
+  priority_class: string;
   user_id: number;
   source: "api" | "playground" | "batch";
   stream: boolean;

@@ -69,6 +69,9 @@ type LaunchRequest struct {
 
 	ServedName string
 	Sleepable  bool
+	// PriorityScheduling is the deployment's ask for per-request priority
+	// scheduling (deploy.Params.PriorityScheduling).
+	PriorityScheduling bool
 	// YieldPolicy is the deployment's yield policy (package yieldpolicy):
 	// the cards of deployments it does not share with stay reserved against
 	// it even while they sleep. Empty reads as never.
@@ -219,7 +222,7 @@ func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel paral
 	params := deploy.Params{
 		ModelPath: req.ModelMount, ServedName: req.ServedName, APIPort: apiPort,
 		AssignedGPUs: assigned, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, DataParallel: parallel.DP,
-		Sleepable: req.Sleepable, Quick: req.Quick,
+		Sleepable: req.Sleepable, PriorityScheduling: req.PriorityScheduling, Quick: req.Quick,
 		TemplateArgs: req.Selection.ExtraArgs, TemplateEnv: req.Selection.Env, ExtraArgs: req.ExtraArgs,
 		Arch: arch.Family, ArchID: arch.ID, ComputeCapability: gpu.ComputeCapability, Vendor: vendor,
 		ModelType: modelType,

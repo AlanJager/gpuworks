@@ -2223,6 +2223,9 @@ export interface Deployment {
   // tokenize_enabled says whether the gateway forwards /v1/tokenize and
   // /v1/detokenize to the deployment's engine.
   tokenize_enabled: boolean;
+  // priority_scheduling says whether the deployment asked for its engine's
+  // per-request priority scheduling (applied when the launch allows it).
+  priority_scheduling: boolean;
   created_at: string;
   // quick_params is the deployment's complete launch configuration, keyed by
   // the parameter dictionary's keys. Panels read the values the deployment was
@@ -2531,6 +2534,43 @@ export interface ApiKey {
   all_deployments: boolean;
   /** Empty when all_deployments, or when every granted deployment is gone. */
   deployments: ApiKeyDeployment[];
+  /** The key's request priority binding (PUT /apikeys/{prefix}/priority). */
+  priority: ApiKeyPriority;
+}
+
+/**
+ * An API key's request priority binding: the class its requests run at ("" is
+ * the default class), the highest class a request may ask for ("" is its own
+ * class), and how a request may choose (one of PriorityClasses.policies).
+ */
+export interface ApiKeyPriority {
+  class: string;
+  ceiling: string;
+  policy: string;
+}
+
+/** A request priority class (GET /priority-classes): larger value is more important. */
+export interface PriorityClass {
+  name: string;
+  display_name: string;
+  description: string;
+  value: number;
+  builtin: boolean;
+  default: boolean;
+  /** Whether DELETE would take it: decided by the server (built in, the default, or named by a live key). */
+  deletable: boolean;
+  created_at: string;
+}
+
+/** GET /priority-classes: the classes, the bounds of a value and the key policies. */
+export interface PriorityClasses {
+  items: PriorityClass[];
+  min_value: number;
+  max_value: number;
+  policies: string[];
+  default_policy: string;
+  /** The policies a ceiling applies to; a binding of another policy has none. */
+  ceiling_policies: string[];
 }
 
 /** A deployment a restricted API key may call. */
@@ -3879,6 +3919,19 @@ export interface EvaluateResponse {
   // draft's includes the template's operations); absent until the draft's
   // model is resolved.
   health_checkable?: boolean;
+  // Whether a deployment of this draft may run its engine with per-request
+  // priority scheduling, judged on the arguments the engine will receive;
+  // absent until the draft's engine is known.
+  priority_scheduling?: PrioritySchedulingEligibility;
+}
+
+// PrioritySchedulingEligibility is the server's answer for the priority
+// scheduling switch: a refusal carries its product code with params, and
+// fix_args when adding those arguments clears it.
+export interface PrioritySchedulingEligibility {
+  ok: boolean;
+  refusal?: ProductWarning;
+  fix_args?: string[];
 }
 
 export interface GPUCandidates {
@@ -5361,6 +5414,17 @@ export const api = {
     sendJSON<ApiKey>("PUT", `/api/v1/apikeys/${prefix}/scope`, scope),
   revokeApiKey: (prefix: string) =>
     sendJSON<void>("DELETE", `/api/v1/apikeys/${prefix}`),
+  setApiKeyPriority: (prefix: string, priority: ApiKeyPriority) =>
+    sendJSON<ApiKey>("PUT", `/api/v1/apikeys/${prefix}/priority`, priority),
+  priorityClasses: () => getJSON<PriorityClasses>("/api/v1/priority-classes"),
+  createPriorityClass: (body: { name: string; display_name: string; description: string; value: number }) =>
+    sendJSON<PriorityClass>("POST", "/api/v1/priority-classes", body),
+  updatePriorityClass: (name: string, body: { display_name?: string; description?: string; value?: number }) =>
+    sendJSON<PriorityClass>("PUT", `/api/v1/priority-classes/${encodeURIComponent(name)}`, body),
+  deletePriorityClass: (name: string) =>
+    sendJSON<void>("DELETE", `/api/v1/priority-classes/${encodeURIComponent(name)}`),
+  setDefaultPriorityClass: (name: string) =>
+    sendJSON<PriorityClasses>("PUT", `/api/v1/priority-classes/${encodeURIComponent(name)}/default`),
   platformTokens: () => getJSON<List<PlatformToken>>("/api/v1/platform-tokens"),
   createPlatformToken: (body: { name: string; scope: PlatformToken["scope"]; expires_in_days?: number }) =>
     sendJSON<{ token: string; item: PlatformToken }>("POST", "/api/v1/platform-tokens", body),

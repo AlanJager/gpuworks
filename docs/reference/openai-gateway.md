@@ -73,6 +73,12 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 
 每个部署可以关掉分词转发：创建时 `tokenize_enabled: false`，或 `PUT /api/v1/deployments/{id}/tokenize`（见 [API 参考](api.md)）；默认开启。关掉后网关直接回 404（`deployment <model> does not expose POST /v1/tokenize: tokenize is turned off for it`），不联系引擎。开关随网关路由表生效，不重启实例。vLLM、SGLang 以外的引擎未必提供分词接口，届时请求收到引擎自己的错误。
 
+## 请求优先级
+
+请求的优先级由网关决定：按 API 令牌绑定的优先级类，以及客户端用请求头 `X-GPUWorks-Priority-Class: <名称>` 在令牌允许范围内的指定；批处理请求固定为 `batch` 类。名称不存在时返回 400。响应头 `X-GPUWorks-Priority-Class` 给出请求实际使用的类。
+
+部署开启了请求优先级时，网关把类的数值按引擎方向写进请求体的 `priority`；否则把已有的 `priority` 改为 `0`。客户端自带的 `priority` 字段和 `X-Vllm-Priority` 请求头都不会到达引擎，无论模型写在请求体、`?model=` 还是 `X-GPUWorks-Model` 里，也无论请求体声明的 Content-Type；声明为 JSON 或文本的请求体须为 UTF-8 编码，否则返回 400。详见[请求优先级](../explanation/request-priority.md)。
+
 ## Trace context
 
 追踪上下文用于把**同一次调用在不同系统中的记录关联起来**。例如，请求经过上游网关、GPUWorks 和推理引擎时，可以据此查出哪一段耗时或失败。GPUWorks 会为每个转发请求自动建立追踪上下文；普通推理调用不需要手工填写这些信息。

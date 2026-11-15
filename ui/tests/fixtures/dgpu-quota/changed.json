@@ -79,6 +79,7 @@
       "recent": []
     },
     "tokenize_enabled": true,
+    "priority_scheduling": true,
     "node_replacement": {
       "after_sec": 600
     },

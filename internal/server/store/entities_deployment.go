@@ -74,6 +74,11 @@ type Deployment struct {
 	// /v1/detokenize for the deployment. It is stored inverted so the zero
 	// value (and every row from before the column) means they are open.
 	TokenizeDisabled bool `gorm:"not null;default:false"`
+	// PriorityScheduling asks for the engine's per-request priority
+	// scheduling, so the gateway's request priorities take effect. A new
+	// deployment gets it when the launch allows it (deploy.PrioritySchedulingRefusal);
+	// a row from before the column keeps running as it did, without.
+	PriorityScheduling bool `gorm:"not null;default:false"`
 	// NodeReplaceAfterSec is how long a node that runs one of the
 	// deployment's replicas may stay offline before the replica is moved to
 	// another node; 0 never moves it.

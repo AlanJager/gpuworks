@@ -105,6 +105,7 @@ DELETE /api/v1/networks/{id}/attachments/{attachmentID}
 DELETE /api/v1/nodes/{uuid}
 DELETE /api/v1/nodes/{uuid}/ssh
 DELETE /api/v1/platform-tokens/{id}
+DELETE /api/v1/priority-classes/{name}
 DELETE /api/v1/providers/{id}
 DELETE /api/v1/providers/{id}/instances/{externalID}
 DELETE /api/v1/pull/credentials/{id}
@@ -227,6 +228,7 @@ GET /api/v1/peer-transfers
 GET /api/v1/platform-tokens
 GET /api/v1/playground/models
 GET /api/v1/playground/openapi.json
+GET /api/v1/priority-classes
 GET /api/v1/providers
 GET /api/v1/providers/kinds
 GET /api/v1/providers/{id}
@@ -374,6 +376,7 @@ POST /api/v1/nodes/{uuid}/token/regenerate
 POST /api/v1/nodes/{uuid}/upgrade
 POST /api/v1/notices/read
 POST /api/v1/platform-tokens
+POST /api/v1/priority-classes
 POST /api/v1/providers
 POST /api/v1/providers/{id}/install
 POST /api/v1/providers/{id}/instances
@@ -402,6 +405,7 @@ POST /api/v1/telemetry/export/test
 POST /api/v1/updates/prefetch
 POST /api/v1/updates/server
 POST /api/v1/updates/server/upload
+PUT /api/v1/apikeys/{prefix}/priority
 PUT /api/v1/apikeys/{prefix}/scope
 PUT /api/v1/data-retention
 PUT /api/v1/deployments/{id}
@@ -428,6 +432,8 @@ PUT /api/v1/nodes/{uuid}/management-roles
 PUT /api/v1/nodes/{uuid}/network
 PUT /api/v1/nodes/{uuid}/scheduling
 PUT /api/v1/nodes/{uuid}/ssh
+PUT /api/v1/priority-classes/{name}
+PUT /api/v1/priority-classes/{name}/default
 PUT /api/v1/providers/{id}
 PUT /api/v1/pull/credentials/{id}
 PUT /api/v1/pull/proxies/order

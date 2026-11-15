@@ -1,5 +1,5 @@
 {
-  "README.md": "7273b5b5881aec35613989b23a03d40a7481c79b355bd7cc8feab27c7bc68ac4",
+  "README.md": "39243e344d2c7f1def2012b7394eff3853657f3708a0775becc7de85dab23e33",
   "adr/0001-image-digest-tag-pull-verify-after.md": "a6510eb2e98dba9d784c1596acd0e17ed42dcd27d3b29a988238d275ee128c54",
   "adr/0003-benchmark-engine-embedded-no-containers.md": "22f9a7a4ae72120a531c94f745d1153d159a4dfe8c3ed41e03c12b64d1bfffe8",
   "adr/0004-empty-revision-default-branch.md": "7c6bbbb35d79d97b297cf6dab71c5765c05c90a4be287e99d0efafc76c6dfd9c",
@@ -94,7 +94,7 @@
   "how-to/connect-managed-kubernetes.md": "a53f4c4d9ea6dbac4bf792509fd36458c950cfba001013fdcb8d4e8e26175a60",
   "how-to/connect-nodes.md": "8a048d178612a4b77411c05214a33dd36fda18f104da0833f51df7e8b5d6426c",
   "how-to/declare-engine-metrics.md": "be1fb8eef925f9a4b1fbc20d8dbf3bc4eef9ba3b4ddb4ebc98e0581ff0ca8a49",
-  "how-to/deploy-models.md": "a8f17dbf5b2d5d49250414b2895f321d78a85e5a19db1a38bb315ca6a32dd84b",
+  "how-to/deploy-models.md": "250b157ede8d459ff8f79f1fc88ca05b64a59a46b90db3bc914a789b69c65283",
   "how-to/deploy-offline.md": "db7b5e72843d401af6b1edfd57fe988585405046991aee3ecda01551361f22fd",
   "how-to/deploy-production.md": "691ff3f61f6d9be6f7bc10b9546535dad35fa1aedc700c4692bcf95437d43330",
   "how-to/dgpu.md": "769a571c3cd06f2c49c05ce3275002140d64bc19866018ac266be6b856425d8b",
@@ -122,7 +122,7 @@
   "how-to/use-mineru.md": "d15ff3f71b23cc9eb22ae3c970eb5cbfcb743fdd644d5dd10e8a0f179d03228c",
   "how-to/wsl2-with-docker.md": "9da9306d2a5bbcf190f91f1481899ce34b0bdf48e73a6cd55ec2daa2501ec851",
   "reference/api-conventions.md": "be9237a197c811a623e5bd4e1aba875de5a46b333c3def6b5ac223b7a125a551",
-  "reference/api.md": "4f36e089ee121ded51f6c950435455e1d3b15a3827c54dbefe8009ba337969aa",
+  "reference/api.md": "c840b958c1371eaee22a557602787ca092685b1e6cfe94a473f63351a27b1b2a",
   "reference/ascend-support-matrix.md": "ca0ca41f25a1ea6ec08286d64c7fe195a9afda2e952242446631cb2e788e6aa9",
   "reference/cli.md": "e2a78d0e813832188c40cfc461cb27637c70d462f532e9194d92a76aadf77f21",
   "reference/configuration.md": "54d747b9ee678aa406b162c8f0044c7ad1e7688f0f8720b8c43fa25e8407a919",
@@ -134,7 +134,7 @@
   "reference/inference-metrics.md": "ac47d7ddcc67202ff5b51459689eb4702fd0855b091abe2028af74c2f6ca097f",
   "reference/install-layout.md": "a2e6bf1cd23aeab1753c43277b72ab5b00444066347045b8bd863ef6bf26e3a3",
   "reference/network-metrics.md": "c0738811e1db07438a70b886d25262bdf7029d77e123fb0ff4c4b5cc768d2370",
-  "reference/openai-gateway.md": "97665a03b18697f228d2421da074fdf476a818db847daf46b615c4b196efd2fc",
+  "reference/openai-gateway.md": "7fba94d40209ffcee59fb08b8c33599a399cb243cca291cca288b57663dd0ec1",
   "reference/request-timeline.md": "9db73f5fbec69ed1ca22756ced70a6b101272b5c5d956062e5efaee399c6a624",
   "reference/security.md": "d87eff96b106525214b2d6a0ab4e2b6f711e6afcc2424bc80b215ae1c552b25c",
   "reference/support-matrix.md": "131e04a4d10494f34199d8530469c21656e2f9220d6af7673056427db9f9af2c",
@@ -153,5 +153,6 @@
   "tutorials/scale-model-replicas.md": "93dc9c25f11625af4fb6157da7404538ca0b62699408fa5649f0de063cec15e9",
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0064-telemetry-stream-on-the-data-lane.md": "ceba2d6e3e7fe379d5fd7364138dc06d635c137c143335caaf5f18286d88cd06",
-  "adr/0065-official-catalog-read-tolerantly.md": "f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0"
+  "adr/0065-official-catalog-read-tolerantly.md": "f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0",
+  "explanation/request-priority.md": "b91967809194409fbdfd79b33c0c73931c3ad21ab8e8fc77ff180500dde72a28"
 }

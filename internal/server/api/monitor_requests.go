@@ -42,7 +42,7 @@ func (a *apiHandlers) monitorRequests(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, "invalid range", nil)
 		return
 	}
-	query := dto.MonitorRequestsQuery{View: view, RangeMS: rng.Milliseconds(), Cursor: q.Get("cursor"), InstanceUUID: q.Get("instance")}
+	query := dto.MonitorRequestsQuery{View: view, RangeMS: rng.Milliseconds(), Cursor: q.Get("cursor"), InstanceUUID: q.Get("instance"), PriorityClass: q.Get("priority_class")}
 	if msg := parseHistoryFilters(q, &query); msg != "" {
 		writeProductError(w, http.StatusBadRequest, ErrorMonitorRequestsQueryInvalid, msg, nil)
 		return

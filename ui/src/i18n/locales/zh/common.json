@@ -202,6 +202,16 @@
     "DISTRIBUTED_REPLICA_COUNT": "分布式部署必须恰好使用 {{required}} 个副本。",
     "SLEEP_NOT_ENABLED": "该部署未启用休眠模式。请以启用休眠模式的方式重新部署。",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
+    "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED": "{{engine}} 引擎不支持请求优先级调度，此部署不区分优先级。",
+    "PRIORITY_SCHEDULING_TARGET_UNVERIFIED": "{{vendor}} 上的引擎尚未验证请求优先级调度，此部署不区分优先级。",
+    "PRIORITY_SCHEDULING_PD_UNSUPPORTED": "PD 分离部署暂不支持请求优先级调度，此部署不区分优先级。",
+    "PRIORITY_SCHEDULING_POLICY_CONFLICT": "启动参数 {{flag}} {{value}} 与请求优先级调度冲突，此部署不区分优先级。",
+    "PRIORITY_CLASS_INVALID": "优先级不合法：名称只能用小写字母、数字和连字符并以字母开头（最多 32 个字符），数值必须在允许的范围内，绑定的优先级必须存在。",
+    "PRIORITY_CLASS_EXISTS": "已有同名的优先级。",
+    "PRIORITY_CLASS_BUILTIN": "内置优先级的名称和数值不能修改，也不能删除。",
+    "PRIORITY_CLASS_IN_USE": "这个优先级是默认优先级，或者有 API 令牌绑定了它；请先改用其他优先级。",
+    "PRIORITY_CLASS_NOT_FOUND": "没有这个优先级。",
+    "PRIORITY_POLICY_INVALID": "不认识的优先级策略 {{policy}}。",
     "SLEEP_ENGINE_UNSUPPORTED": "{{engine}} 引擎不支持休眠模式。",
     "SLEEP_INVALID_LEVEL": "休眠级别只能是 1（快速）或 2（深度）；{{level}} 不是有效级别。",
     "SLEEP_INVALID_MODE": "休眠方式只能是 wait（等待完成）或 abort（立即中止）；{{mode}} 无效。",
@@ -971,6 +981,14 @@
     "off": "未开放",
     "otherEngine": "vLLM 和 SGLang 提供分词接口；其他引擎不一定提供，届时请求会收到引擎自己的错误",
     "saved": "分词 API 已更新"
+  },
+  "prioritySchedulingSwitch": {
+    "title": "请求优先级",
+    "help": "开启后，引擎按请求的优先级排队：网关给每个请求写入它的优先级，高优先级请求先被调度；显存（KV 缓存）不够时先抢占低优先级请求。客户端自带的 priority 字段和 X-Vllm-Priority 头一律被网关去掉。只在引擎有排队时起作用，不保证低优先级请求的等待时间。修改需要重启服务。",
+    "helpLabel": "请求优先级说明",
+    "enable": "按请求优先级调度",
+    "fix": "改用 {{args}}",
+    "fixTradeoff": "在自定义参数里加上这条参数，覆盖推理模板的调度策略。会失去原调度策略的优化（如 lpm 的前缀缓存命中优化）。"
   },
   "notices": {
     "title": "通知",

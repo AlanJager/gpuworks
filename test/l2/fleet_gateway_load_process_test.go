@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,7 +45,9 @@ import (
 // GPUWORKS_GATEWAY_TRACE_EXPORT=1 runs with the request trace export on;
 // GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST budgets the server's CPU per
 // request (the nightly job sets it for its runner: the figure depends on the
-// host's CPU).
+// host's CPU); GPUWORKS_GATEWAY_PRIORITY_CLASS=high binds the clients' key to that request
+// priority class, so every request has its engine priority written into the
+// body (the deployments run priority scheduling by default).
 func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	if os.Getenv("GPUWORKS_TEST_PERF") != "1" {
 		t.Skip("gateway load case; set GPUWORKS_TEST_PERF=1 on an idle host to run (full command in the test's doc comment)")
@@ -54,6 +58,7 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	duration := time.Duration(fleet.EnvInt("GPUWORKS_GATEWAY_SECONDS", 60)) * time.Second
 	rampUp := time.Duration(fleet.EnvInt("GPUWORKS_GATEWAY_RAMP_SECONDS", 5)) * time.Second
 	promptBytes := fleet.EnvInt("GPUWORKS_GATEWAY_PROMPT_BYTES", 0)
+	priorityClass := os.Getenv("GPUWORKS_GATEWAY_PRIORITY_CLASS")
 	ttft := time.Duration(fleet.EnvInt("GPUWORKS_GATEWAY_TTFT_MS", 200)) * time.Millisecond
 	tpot := time.Duration(fleet.EnvInt("GPUWORKS_GATEWAY_TPOT_MS", 20)) * time.Millisecond
 	deltas := fleet.EnvInt("GPUWORKS_GATEWAY_DELTAS", 64)
@@ -160,8 +165,15 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	var key struct {
 		Key string `json:"key"`
 	}
-	if err := client.PostJSON("/api/v1/apikeys", []byte(`{"name":"gateway-load"}`), &key); err != nil || key.Key == "" {
+	keyRequest := []byte(`{"name":"gateway-load"}`)
+	if priorityClass != "" {
+		keyRequest = fmt.Appendf(nil, `{"name":"gateway-load","priority":{"class":%q,"policy":"fixed"}}`, priorityClass)
+	}
+	if err := client.PostJSON("/api/v1/apikeys", keyRequest, &key); err != nil || key.Key == "" {
 		t.Fatalf("create an API key: %v", err)
+	}
+	if priorityClass != "" {
+		requireGatewayPriority(t, client, base, key.Key, models[0], priorityClass, len(models))
 	}
 	// GPUWORKS_GATEWAY_TRACE_EXPORT=1 turns the request trace export on
 	// (ADR 0046), every trace sampled, to a collector in this process that
@@ -261,6 +273,45 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	if overhead := report.TTFT.Percentile(0.99) - ttft; overhead > ttftOverheadBudget {
 		t.Errorf("gateway adds %s to TTFT at p99 (budget %s)", overhead.Round(time.Millisecond), ttftOverheadBudget)
 	}
+}
+
+// requireGatewayPriority fails the run unless it measures what it says: every
+// deployment runs priority scheduling, and the gateway answers a request on
+// the key at the class it is bound to.
+func requireGatewayPriority(t *testing.T, client *fleet.Client, base, key, model, class string, deployments int) {
+	t.Helper()
+	var rows apiwire.List[struct {
+		PriorityScheduling bool `json:"priority_scheduling"`
+	}]
+	if err := client.GetJSON("/api/v1/deployments", &rows); err != nil {
+		t.Fatalf("list deployments: %v", err)
+	}
+	on := 0
+	for _, row := range rows.Items {
+		if row.PriorityScheduling {
+			on++
+		}
+	}
+	if on != deployments {
+		t.Fatalf("%d of %d deployments run priority scheduling", on, deployments)
+	}
+	body := fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}],"max_tokens":1}`, model)
+	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/completions", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("probe the class: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if got := resp.Header.Get("X-GPUWorks-Priority-Class"); resp.StatusCode != http.StatusOK || got != class {
+		t.Fatalf("probe answered %d at class %q, want %q", resp.StatusCode, got, class)
+	}
+	t.Logf("all %d deployments run priority scheduling; the key's requests run at class %q", deployments, class)
 }
 
 // waitGatewayInstancesRunning polls the instance list until want instances

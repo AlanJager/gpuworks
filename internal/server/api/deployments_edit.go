@@ -349,6 +349,17 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 		return bad(err)
 	}
 	next.TokenizeDisabled = req.TokenizeEnabled != nil && !*req.TokenizeEnabled
+	// An edit that says nothing keeps the deployment's switch, as far as the
+	// edited launch still allows it; turning it on is asked for explicitly.
+	priority := deployment.PrioritySchedulingOf(engine.Name(), req.TargetVendor, shape == deploymentShapePD, launch.TemplateResidual, launch.UserResidual)
+	requested := req.PriorityScheduling
+	if requested == nil {
+		kept := dep.PriorityScheduling && priority.OK
+		requested = &kept
+	}
+	if next.PriorityScheduling, err = deployment.ResolvePriorityScheduling(requested, priority); err != nil {
+		return bad(err)
+	}
 	next.StartTimeoutSec = req.StartTimeoutSec
 	next.RoutingPolicy = req.RoutingPolicy
 	launchChanged := next.QuickParams != dep.QuickParams || next.ExtraArgs != dep.ExtraArgs ||
