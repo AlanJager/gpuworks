@@ -66,7 +66,7 @@ export default function DetailDrawer({
       subtitle={subtitle} inlineSubtitle extra={extra}>
       {banner}
       {tabs && <Tabs className="detail-tabs" value={activeTab} defaultValue={tabs[0]?.key} onValueChange={changeTab} variant="underline">
-        <TabsList className="sticky top-0 z-10 bg-surface-overlay my-0 mx-0 max-w-full">
+        <TabsList className="sticky top-0 z-10 bg-surface-overlay my-0 mx-0 px-0 max-w-full">
           {tabs.map((tab) => <TabItem key={tab.key} value={tab.key} label={tab.label}
             badge={tab.count == null ? undefined : <span title={tab.countTitle}>{tab.count}</span>} />)}
         </TabsList>
