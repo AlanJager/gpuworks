@@ -230,6 +230,26 @@ test("the filter header summarizes choices when open or closed and clears only t
   assert.equal(engines.getByRole("button", { name: "All", exact: true }).getAttribute("aria-pressed"), "true");
 });
 
+test("a column filter set in one organization does not carry into the next", async () => {
+  const qwen = { ...upstreamModel, id: 8, model_id: "qwen/qwen-model", display_title: "Qwen Model", specs: [h100Spec] };
+  api.inferenceTemplates = (async () => list([upstreamModel, qwen])) as never;
+  api.detectedInferenceTemplateChips = (async () => list([])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  renderList();
+  const user = userEvent.setup();
+  await screen.findByText("DeepSeek Model");
+  await user.click(screen.getByRole("button", { name: /DeepSeek/ }));
+  await user.click(screen.getByRole("button", { name: "Filter by GPU vendor" }));
+  await user.click(await screen.findByRole("checkbox", { name: /Ascend/ }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: /^Clear filter: GPU vendor/ })));
+  await user.keyboard("{Escape}");
+  await waitFor(() => assert.equal(screen.queryByRole("checkbox", { name: /Ascend/ }), null));
+  await user.click(screen.getByRole("button", { name: /Qwen/ }));
+  const table = () => document.querySelector<HTMLElement>(".template-organization-main tbody");
+  await waitFor(() => assert.ok(table() && within(table()!).queryByRole("link", { name: "Qwen Model" }), "the NVIDIA-only organization is not emptied by the Ascend filter"));
+  assert.equal(document.querySelector('[aria-label^="Clear filter"]'), null, "no filter chip is carried over");
+});
+
 test("an organization's heading shows its display name and model count once without the internal identifier", async () => {
   api.inferenceTemplates = (async () => list([{ ...upstreamModel, source: "user" }])) as never;
   api.detectedInferenceTemplateChips = (async () => list([])) as never;

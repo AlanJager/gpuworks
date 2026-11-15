@@ -252,7 +252,7 @@ export default function InferenceTemplatesPage() {
         </nav></aside>
         <main className="template-organization-main">{activeGroup && <>
           <header className="template-organization-heading"><OrganizationAvatar key={activeGroup.key} group={activeGroup} size={42} /><div><h3>{activeGroup.label}</h3><span className="text-label text-fg-muted">{t("models.count", { count: activeGroup.items.length })}</span></div></header>
-          <TemplateCatalogTable models={activeGroup.items} catalogQuery={catalogQuery} onRefresh={() => void reload()} />
+          <TemplateCatalogTable key={activeGroup.key} models={activeGroup.items} catalogQuery={catalogQuery} onRefresh={() => void reload()} />
         </>}</main>
       </div>}
     </section>
