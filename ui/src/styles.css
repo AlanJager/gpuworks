@@ -1538,5 +1538,8 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .deployment-detail-tabs #deployment-instances > section { flex: 1; }
 .deployment-detail-tabs #deployment-instances :is(.instance-startup-progress, [tabindex="-1"]) { scroll-margin-top: 8px; }
 
-.vendor-logo { background: var(--vendor-logo-light); padding: 2px 4px; border-radius: var(--radius-sm); }
-.vendor-logo-kunlunxin { background: var(--vendor-logo-dark); }
+/* Most vendor marks are dark artwork on a transparent canvas, so they need a
+   light plate only on the dark theme; Kunlunxin's mark is white and always
+   sits on its dark plate. */
+.vendor-logo-kunlunxin { background: var(--vendor-logo-dark); padding: 2px 4px; border-radius: var(--radius-sm); }
+[data-theme="dark"] .vendor-logo:not(.vendor-logo-kunlunxin) { background: var(--vendor-logo-light); padding: 2px 4px; border-radius: var(--radius-sm); }
