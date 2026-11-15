@@ -1428,7 +1428,7 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .deployment-detail-tabs .deployment-card-disclosure > svg { margin-inline-start: auto; }
 .deployment-detail-tabs .instance-startup-progress[open] > summary { margin-bottom: 8px; }
 .deployment-logs { min-width: 0; margin-block-start: 8px; }
-.deployment-logs pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.deployment-logs pre { white-space: pre; overflow-x: auto; }
 .deployment-log-toolbar, .deployment-log-controls, .deployment-log-range {
   display: flex;
   flex-wrap: wrap;
