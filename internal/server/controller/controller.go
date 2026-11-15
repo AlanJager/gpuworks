@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -78,8 +77,8 @@ type Controller struct {
 	// startTimeout is the harness override of the instance health budget
 	// (SetStartTimeout); zero leaves it to the deployment and the policy.
 	startTimeout int
-	syncMu       sync.Mutex
-	modelSyncs   map[string]*modelSyncRun
+	// syncs are the peer model syncs this controller runs (model_sync_runs.go).
+	syncs modelSyncRuns
 	// drainProbe and drainClocks time the instances being drained (drain.go).
 	drainProbe  DrainProbe
 	drainClocks drainClocks
@@ -136,19 +135,6 @@ func (c *Controller) SetEnginePorts(start, end int) {
 // EnginePorts is the host-port range engine instances are allocated from.
 func (c *Controller) EnginePorts() proto.PortRange { return *c.enginePorts.Load() }
 
-type modelSyncRun struct {
-	transferID string
-	cancel     context.CancelFunc
-	// automatic marks a copy whose source the controller chose itself. Its
-	// failure is no one's recorded choice, so the model falls back to the
-	// public download rather than waiting on an operator's retry.
-	automatic bool
-	// canceled is set by an operator's cancel before it cancels the copy: the
-	// copy's own error is then that cancel, not a failure to fall back from,
-	// and CancelModelSync records the outcome.
-	canceled atomic.Bool
-}
-
 const modelSyncConfirmationTimeout = 2 * time.Minute
 
 // quotaChangeRemovalPending is what an instance retired for a partition
@@ -163,8 +149,8 @@ func New(st *store.Store, hub HubPusher, log *slog.Logger) *Controller {
 	c := &Controller{
 		store: st, networks: network.New(st, network.StoreCatalog{Store: st}), hub: hub, log: log, q: newWorkq(300 * time.Millisecond), cacheQ: newWorkq(300 * time.Millisecond),
 		retryBackoff: 15 * time.Second, offlineGrace: 2 * time.Minute,
-		maxAttempts: 3, modelSyncs: map[string]*modelSyncRun{},
-		now: time.Now, observation: newObservationRefresh(), evictions: prepobs.NewPhases[store.FileRef](),
+		maxAttempts: 3,
+		now:         time.Now, observation: newObservationRefresh(), evictions: prepobs.NewPhases[store.FileRef](),
 		waits: placewait.New(), imageRefsNotify: make(chan struct{}, 1), orders: &lifecycle.Orders{},
 	}
 	c.SetEnginePorts(defaultEnginePorts.Start, defaultEnginePorts.End)
@@ -291,17 +277,7 @@ func (c *Controller) Run(ctx context.Context) {
 	}
 }
 
-func (c *Controller) cancelAllModelSyncs() {
-	c.syncMu.Lock()
-	cancels := make([]context.CancelFunc, 0, len(c.modelSyncs))
-	for _, run := range c.modelSyncs {
-		cancels = append(cancels, run.cancel)
-	}
-	c.syncMu.Unlock()
-	for _, cancel := range cancels {
-		cancel()
-	}
-}
+func (c *Controller) cancelAllModelSyncs() { c.syncs.cancelAll() }
 
 func (c *Controller) worker(ctx context.Context) {
 	for {

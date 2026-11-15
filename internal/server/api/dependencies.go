@@ -131,13 +131,14 @@ type Deps struct {
 	Online func(uuid string) bool
 	// WakeHeld counts the requests the gateway holds for each deployment's
 	// wake right now (the scheduling overview's contention); nil reads none.
-	WakeHeld        func() map[uint]int
-	KickNode        func(uuid string)
-	NodeSync        NodeSync
-	CallNode        func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
-	SyncModel       func(ctx context.Context, modelID uint, nodeUUID string) (*store.ModelFile, error)
-	PeerSync        PeerSyncHooks
-	CancelModelSync func(ctx context.Context, modelID uint, nodeUUID string) (*store.ModelFile, error)
+	WakeHeld func() map[uint]int
+	KickNode func(uuid string)
+	NodeSync NodeSync
+	CallNode func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
+	// ModelTransfers are the model file transfers an operator asks for
+	// (the controller's); nil answers that model sync is not configured.
+	ModelTransfers ModelTransfers
+	PeerSync       PeerSyncHooks
 	// Preparation is model preparation as the hub and the controller hold it.
 	Preparation deployment.ModelPreparation
 	// Lists is the server's shared snapshot of every deployment and instance
@@ -246,15 +247,22 @@ type Deps struct {
 // PeerSyncHooks groups explicitly sourced model/image operations
 // so the API dependency surface remains stable as the peer protocol grows.
 type PeerSyncHooks struct {
-	RetryImage           func(ctx context.Context, imageID uint, nodeUUID string) (*store.ImageNode, error)
-	SyncModelWithOptions func(ctx context.Context, modelID uint, nodeUUID, sourceNodeUUID string, rateLimitKiB int) (*store.ModelFile, error)
-	ProbeModel           func(ctx context.Context, modelID uint, targetNodeUUID, sourceNodeUUID string) error
-	SyncImageWithRate    func(ctx context.Context, imageID uint, nodeUUID, sourceNodeUUID string, rateLimitKiB int64) (*store.ImageNode, error)
-	ProbeImage           func(ctx context.Context, imageID uint, targetNodeUUID, sourceNodeUUID string) error
-	ProbeImageResult     func(ctx context.Context, imageID uint, targetNodeUUID, sourceNodeUUID string) (proto.ImageSyncCopyResult, error)
-	// CopyModel copies a model's files between two locations (storage, and
-	// node for a local storage); see controller.CopyModelFile.
-	CopyModel func(ctx context.Context, modelID uint, src, dst store.FileRef, rateLimitKiB int) (*store.ModelFile, error)
+	RetryImage        func(ctx context.Context, imageID uint, nodeUUID string) (*store.ImageNode, error)
+	SyncImageWithRate func(ctx context.Context, imageID uint, nodeUUID, sourceNodeUUID string, rateLimitKiB int64) (*store.ImageNode, error)
+	ProbeImage        func(ctx context.Context, imageID uint, targetNodeUUID, sourceNodeUUID string) error
+	ProbeImageResult  func(ctx context.Context, imageID uint, targetNodeUUID, sourceNodeUUID string) (proto.ImageSyncCopyResult, error)
+}
+
+// ModelTransfers start, probe and cancel a model's peer transfer to a node
+// and copy its files between two locations (a storage, and a node for a
+// local storage): controller.ModelTransfers.
+type ModelTransfers interface {
+	// Sync starts or retries the peer transfer; an empty source lets the
+	// controller choose, and a rate of -1 keeps the one recorded.
+	Sync(ctx context.Context, modelID uint, nodeUUID, sourceNodeUUID string, rateLimitKiB int) (*store.ModelFile, error)
+	Probe(ctx context.Context, modelID uint, targetNodeUUID, sourceNodeUUID string) error
+	Cancel(ctx context.Context, modelID uint, nodeUUID string) (*store.ModelFile, error)
+	Copy(ctx context.Context, modelID uint, src, dst store.FileRef, rateLimitKiB int) (*store.ModelFile, error)
 }
 
 // NodeRuntimeHooks is the hub's view of a node's container runtime: the

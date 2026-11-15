@@ -112,10 +112,10 @@ func (c *Controller) onEvent(ev bus.Event) {
 func (c *Controller) releaseTerminalModelSync(key string) {
 	// Keep the database observation and map ownership in the same critical
 	// section: a delayed terminal observation must not remove a replacement.
-	c.syncMu.Lock()
-	run := c.modelSyncs[key]
+	c.syncs.mu.Lock()
+	run := c.syncs.byKey[key]
 	if run == nil {
-		c.syncMu.Unlock()
+		c.syncs.mu.Unlock()
 		return
 	}
 	mf, err := c.store.ResolveModelFileKey(key)
@@ -123,11 +123,11 @@ func (c *Controller) releaseTerminalModelSync(key string) {
 		// Admission registers its run before BeginModelSync changes pending to
 		// syncing. Neither a preparation event nor another attempt's terminal
 		// state is a reason to interrupt that new run.
-		c.syncMu.Unlock()
+		c.syncs.mu.Unlock()
 		return
 	}
-	delete(c.modelSyncs, key)
-	c.syncMu.Unlock()
+	delete(c.syncs.byKey, key)
+	c.syncs.mu.Unlock()
 	// A target can finish before the source-side RPC response reaches the
 	// coordinator. Let that successful response finish; failed or withdrawn
 	// terminal states must still interrupt their remaining transfer work.

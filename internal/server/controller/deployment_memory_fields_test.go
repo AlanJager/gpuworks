@@ -20,7 +20,7 @@ func TestEveryControllerFieldIsClassified(t *testing.T) {
 		"cacheCopies":          "by deployment, but released by withdrawCacheCopies, which talks to nodes and is retried",
 		"downloadUsers":        "by model, rebuilt from the store",
 		"evictions":            "by model file",
-		"modelSyncs":           "by model and node",
+		"syncs":                "by model file",
 		"routes":               "events waiting for the next tick",
 		"observation":          "by template",
 		"peerCool":             "by node pair",
@@ -42,7 +42,6 @@ func TestEveryControllerFieldIsClassified(t *testing.T) {
 		"now":                  "the clock",
 		"q":                    "the work queue",
 		"cacheQ":               "the work queue",
-		"syncMu":               "guards modelSyncs",
 	}
 	seen := map[string]bool{}
 	ty := reflect.TypeOf(Controller{})
