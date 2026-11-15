@@ -98,4 +98,15 @@ type OfficialInferenceCatalogResult struct {
 	Models        int    `json:"models"`
 	PackageDigest string `json:"package_digest"`
 	Version       string `json:"version"`
+	// Skipped lists what this server left out of the package because it
+	// cannot read it; a row it already had for one of them is unchanged.
+	Skipped []OfficialInferenceCatalogSkipped `json:"skipped,omitempty"`
+}
+
+// OfficialInferenceCatalogSkipped is a model, or one spec of a model when
+// Spec is set, of an official catalog that needs a newer server.
+type OfficialInferenceCatalogSkipped struct {
+	ModelID string `json:"model_id"`
+	Spec    string `json:"spec,omitempty"`
+	Reason  string `json:"reason"`
 }

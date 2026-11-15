@@ -58,7 +58,7 @@
   "adr/0061-spec-display-names-written-by-hand.md": "4a31f299b87d236fbd207f0ac03cdde11b4760f337acc286eaa6d1253f188805",
   "adr/0062-template-components-follow-the-primary-storage.md": "b22644c21e502e601f3625d75f7f4e177fcfbd0e1c558f1c4840b870723c4676",
   "adr/0063-apply-to-cloud-clusters.md": "e8be4715b60825361afbb4ef4857b31d1483e5c87ef65e4fc269a6c2143153de",
-  "adr/README.md": "f20f449170ccacfe1cc3df6d045e556daee5963ecacfef4fd8447773fbd4d90d",
+  "adr/README.md": "99906f1b3d18b09e74e480ca77dce5aeed2b52135af7eb5ea5415b24616b37eb",
   "dev/README.md": "ba5eb371a9818fce7c07eb9c833a2f92a4d05f265c6840ff390ce07571e64fa1",
   "dev/amd-hardware-validation.md": "3220b213c1296422816f73ca65d5d998c527b63af1677d3de3df4c2804e2a053",
   "dev/amd-support-design.md": "a029a001bc4b935cc19d9236f4e2ea7520b7393312ced7982533ebee97697e4a",
@@ -122,14 +122,14 @@
   "how-to/use-mineru.md": "d15ff3f71b23cc9eb22ae3c970eb5cbfcb743fdd644d5dd10e8a0f179d03228c",
   "how-to/wsl2-with-docker.md": "9da9306d2a5bbcf190f91f1481899ce34b0bdf48e73a6cd55ec2daa2501ec851",
   "reference/api-conventions.md": "be9237a197c811a623e5bd4e1aba875de5a46b333c3def6b5ac223b7a125a551",
-  "reference/api.md": "4dfb7ab18d46e4ce3af0c1350f51975044296a0089b18f5dd037566d17fb9a40",
+  "reference/api.md": "ea2d8111af6cf91185519428085af527201945984ab2cacaea7eb123b32fad0e",
   "reference/ascend-support-matrix.md": "ca0ca41f25a1ea6ec08286d64c7fe195a9afda2e952242446631cb2e788e6aa9",
   "reference/cli.md": "e2a78d0e813832188c40cfc461cb27637c70d462f532e9194d92a76aadf77f21",
   "reference/configuration.md": "54d747b9ee678aa406b162c8f0044c7ad1e7688f0f8720b8c43fa25e8407a919",
   "reference/deployment-launch-sources.md": "471a1f166e91853208e7b50a004fed664b266b6d07ce80a566e5469cc3e2bcfb",
   "reference/glossary.md": "d5cc6029e2baa7ab7c33d87cb58817397dc1c5daa636c69eef10475e52ab13a2",
   "reference/image-families.md": "e9150af6061f5d480380685b9cda945e6b884d7f4016b4865c67ca8f41a7e78d",
-  "reference/inference-catalog-package.md": "77e5687f071c983d1c49bdf10636c7ae890e0c7389a9bef1c6b1f30bb74609fe",
+  "reference/inference-catalog-package.md": "29039837d5399a351989a6b01249271b1061df159581b1aeb6681bb2e7431a79",
   "reference/inference-catalog-spec.md": "37e82ac4ebd937f1453e29137d8cd5759ada058292802a2bdfad6cd53088d322",
   "reference/inference-metrics.md": "ac47d7ddcc67202ff5b51459689eb4702fd0855b091abe2028af74c2f6ca097f",
   "reference/install-layout.md": "a2e6bf1cd23aeab1753c43277b72ab5b00444066347045b8bd863ef6bf26e3a3",
@@ -152,5 +152,6 @@
   "tutorials/one-gpu-two-models.md": "8708c171588f121e3fab5750fc9fad1cdfc965c44fe09ca0a80cbd874019eb41",
   "tutorials/scale-model-replicas.md": "93dc9c25f11625af4fb6157da7404538ca0b62699408fa5649f0de063cec15e9",
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
-  "adr/0064-telemetry-stream-on-the-data-lane.md": "ceba2d6e3e7fe379d5fd7364138dc06d635c137c143335caaf5f18286d88cd06"
+  "adr/0064-telemetry-stream-on-the-data-lane.md": "ceba2d6e3e7fe379d5fd7364138dc06d635c137c143335caaf5f18286d88cd06",
+  "adr/0065-official-catalog-read-tolerantly.md": "f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0"
 }
