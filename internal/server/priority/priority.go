@@ -164,8 +164,14 @@ const (
 	// SourceAnonymous is a request with no key (the playground, open access,
 	// the server's own probes): it runs at the global default.
 	SourceAnonymous
-	// SourceBatch is a batch job's request: always the Batch class.
+	// SourceBatch is a batch job's request: the class the batch was created
+	// with, the Batch class when it named none or that class is gone.
 	SourceBatch
+	// SourceConsole is a request a signed-in console user sends through the
+	// playground (a server-origin evaluation included): the class it names,
+	// any class, or the default when it names none. Every console user is an
+	// administrator, who may bind a key to any class anyway.
+	SourceConsole
 )
 
 // Decision is the class a request runs at, and whether the class it asked
@@ -179,18 +185,27 @@ type Decision struct {
 // asked for ("" for none); ok is false when it names no class, which the
 // gateway refuses rather than guessing.
 func Resolve(t Table, source Source, binding Binding, requested string) (Decision, bool) {
+	// Class names are lowercase, so a client's case does not matter.
+	requested = strings.ToLower(strings.TrimSpace(requested))
 	switch source {
 	case SourceBatch:
+		if c, found := t.ByName(requested); found && requested != "" {
+			return Decision{Class: c}, true
+		}
 		if c, found := t.ByName(Batch); found {
 			return Decision{Class: c}, true
 		}
 		return Decision{Class: t.Default}, true
 	case SourceAnonymous:
 		return Decision{Class: t.Default}, true
+	case SourceConsole:
+		if requested == "" {
+			return Decision{Class: t.Default}, true
+		}
+		c, found := t.ByName(requested)
+		return Decision{Class: c}, found
 	}
 	own := t.byIDOr(binding.ClassID, t.Default)
-	// Class names are lowercase, so a client's case does not matter.
-	requested = strings.ToLower(strings.TrimSpace(requested))
 	if requested == "" {
 		return Decision{Class: own}, true
 	}

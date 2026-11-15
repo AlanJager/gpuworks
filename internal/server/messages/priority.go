@@ -44,7 +44,9 @@ const (
 	ErrorPriorityClassExists = "PRIORITY_CLASS_EXISTS"
 	// ErrorPriorityClassBuiltin: a built-in class keeps its name and value.
 	ErrorPriorityClassBuiltin = "PRIORITY_CLASS_BUILTIN"
-	// ErrorPriorityClassInUse: the class is the default or bound to a live key.
+	// ErrorPriorityClassInUse: the class is the default, bound to a live key,
+	// or what a batch still sending requests or an evaluation still running
+	// runs at.
 	ErrorPriorityClassInUse = "PRIORITY_CLASS_IN_USE"
 	// ErrorPriorityClassNotFound: no class has the name.
 	ErrorPriorityClassNotFound = "PRIORITY_CLASS_NOT_FOUND"

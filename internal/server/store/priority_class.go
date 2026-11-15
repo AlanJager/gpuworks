@@ -216,7 +216,29 @@ func (s *Store) PriorityClassesBound() (map[uint]bool, error) {
 			}
 		}
 	}
+	var named []uint
+	if err := s.reader().Model(&PriorityClass{}).Where("name IN (?) OR name IN (?)", unfinishedBatchClasses(s.reader()), activeBenchmarkClasses(s.reader())).
+		Pluck("id", &named).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range named {
+		bound[id] = true
+	}
 	return bound, nil
+}
+
+// unfinishedBatchClasses and activeBenchmarkClasses are the class names a
+// batch still sending requests, or an evaluation run still to send them,
+// runs at: deleting one of those classes would change their requests' class
+// part way.
+func unfinishedBatchClasses(db *gorm.DB) *gorm.DB {
+	return db.Model(&Batch{}).Select("priority_class").
+		Where("priority_class <> '' AND status IN ?", []string{BatchValidating, BatchInProgress, BatchFinalizing, BatchCancelling})
+}
+
+func activeBenchmarkClasses(db *gorm.DB) *gorm.DB {
+	return db.Model(&BenchmarkRun{}).Select("priority_class").
+		Where("priority_class <> '' AND state IN ?", []string{"", "pending", "running"})
 }
 
 func (s *Store) DeletePriorityClass(name string) error {
@@ -240,6 +262,14 @@ func (s *Store) DeletePriorityClass(name string) error {
 		}
 		if bound > 0 {
 			return ErrPriorityClassInUse
+		}
+		for _, users := range []*gorm.DB{unfinishedBatchClasses(tx), activeBenchmarkClasses(tx)} {
+			if err := users.Where("priority_class = ?", c.Name).Count(&bound).Error; err != nil {
+				return err
+			}
+			if bound > 0 {
+				return ErrPriorityClassInUse
+			}
 		}
 		for _, col := range []string{"priority_class_id", "priority_ceiling_class_id"} {
 			if err := tx.Model(&APIKey{}).Where(col+" = ?", c.ID).Update(col, nil).Error; err != nil {

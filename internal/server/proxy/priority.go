@@ -98,8 +98,10 @@ func withPriorityBinding(ctx context.Context, binding priority.Binding) context.
 }
 
 // requestPriority decides the request's class: batch requests run at the
-// batch class, requests without a key (playground, open access, probes) at
-// the default, a key's requests by its binding and the class asked for.
+// class of their batch (the batch class by default), playground requests at
+// the class the signed-in user names, other requests without a key (open
+// access, probes) at the default, a key's requests by its binding and the
+// class asked for.
 // ok is false when the client named a class that does not exist. A request
 // the gateway already decided (decidePriority) keeps that decision, so a
 // replay after preemption runs at the class the first attempt did.
@@ -116,6 +118,8 @@ func (p *Proxy) requestPriority(r *http.Request) (priority.Decision, bool) {
 	switch {
 	case caller.Source == uxrecord.SourceBatch:
 		source = priority.SourceBatch
+	case caller.Source == uxrecord.SourcePlayground:
+		source = priority.SourceConsole
 	case caller.Source == uxrecord.SourceAPI && caller.APIKeyID != 0 && keyed:
 		source = priority.SourceKey
 	}

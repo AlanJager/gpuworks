@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/auth"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/priority"
@@ -251,19 +253,85 @@ func TestGatewayPriorityFollowsClassChanges(t *testing.T) {
 	}
 }
 
-// Batch requests always run at the batch class, whatever their key.
-func TestBatchRequestsRunAtTheBatchClass(t *testing.T) {
+// Batch requests run at their batch's class, the batch class when it names
+// none or one since deleted, whatever their key.
+func TestBatchRequestsRunAtTheirBatchClass(t *testing.T) {
 	rig := newPriorityRig(t)
 	key := rig.key(t, store.APIKeyPriority{Class: priority.Critical})
 	identity, _ := rig.st.ResolveAPIKey(key)
-	reply := rig.p.Do(t.Context(), uxrecord.Caller{APIKeyID: identity.KeyID, Source: uxrecord.SourceBatch}, "/v1/chat/completions", []byte(`{"model":"s","messages":[]}`))
-	if reply.Err != nil || reply.Status != http.StatusOK {
-		t.Fatalf("batch = %+v", reply)
+	for _, tc := range []struct {
+		name, class string
+		engine      float64
+	}{
+		{"no class: batch", "", -40},
+		{"the batch's class", priority.High, 20},
+		{"a class that is gone: batch", "platinum", -40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reply := rig.p.Do(t.Context(), uxrecord.Caller{APIKeyID: identity.KeyID, Source: uxrecord.SourceBatch}, "/v1/chat/completions", []byte(`{"model":"s","messages":[]}`), WithPriorityClass(tc.class))
+			if reply.Err != nil || reply.Status != http.StatusOK {
+				t.Fatalf("batch = %+v", reply)
+			}
+			rig.mu.Lock()
+			defer rig.mu.Unlock()
+			if len(rig.seen) != 1 || rig.seen[0]["priority"] != tc.engine {
+				t.Fatalf("batch priority = %v", rig.seen)
+			}
+			rig.seen, rig.hdr, rig.raw = nil, nil, nil
+		})
 	}
-	rig.mu.Lock()
-	defer rig.mu.Unlock()
-	if len(rig.seen) != 1 || rig.seen[0]["priority"] != float64(-40) {
-		t.Fatalf("batch priority = %v", rig.seen)
+}
+
+// A playground request (a server-origin evaluation's too) runs at the class
+// the signed-in user names, any class, and at the default without one.
+func TestPlaygroundRequestsRunAtTheClassNamed(t *testing.T) {
+	rig := newPriorityRig(t)
+	// The playground serves only the operations a deployment declares.
+	dep, err := rig.st.GetDeployment(rig.deployments["s"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rig.st.SetModelInferenceConfig(dep.ModelID, `[{"type":"openai.chat"}]`, `["text"]`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, asked, class string
+		status             int
+		engine             any
+	}{
+		{name: "nothing named: the default", class: "normal", status: http.StatusOK, engine: nil},
+		{name: "above normal", asked: "Critical", class: "critical", status: http.StatusOK, engine: float64(40)},
+		{name: "below normal", asked: "batch", class: "batch", status: http.StatusOK, engine: float64(-40)},
+		{name: "no such class", asked: "platinum", status: http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/v1/chat/completions", strings.NewReader(`{"model":"s","messages":[]}`))
+			req = req.WithContext(auth.WithClaims(req.Context(), auth.Claims{UserID: 1, Username: "admin", Role: "admin"}))
+			req.Header.Set("Content-Type", "application/json")
+			if tc.asked != "" {
+				req.Header.Set(priorityClassHeader, tc.asked)
+			}
+			rec := httptest.NewRecorder()
+			rig.p.PlaygroundHandler(nil)(rec, req)
+			rig.mu.Lock()
+			defer rig.mu.Unlock()
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d %s", rec.Code, rec.Body)
+			}
+			if tc.status != http.StatusOK {
+				if len(rig.seen) != 0 {
+					t.Fatal("a refused class reached the engine")
+				}
+				return
+			}
+			if got := rec.Header().Get(priorityClassHeader); got != tc.class {
+				t.Fatalf("answered class = %q", got)
+			}
+			if len(rig.seen) != 1 || rig.seen[0]["priority"] != tc.engine {
+				t.Fatalf("engine priority = %v", rig.seen)
+			}
+			rig.seen, rig.hdr, rig.raw = nil, nil, nil
+		})
 	}
 }
 

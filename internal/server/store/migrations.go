@@ -1346,6 +1346,7 @@ var migrations = []migration{
 	{Version: 212, Name: "provider_synced_at", Apply: addProviderSyncedAt},
 	{Version: 213, Name: "deployment_priority_scheduling", Apply: addDeploymentPriorityScheduling},
 	{Version: 214, Name: "priority_classes", Apply: createPriorityClasses},
+	{Version: 215, Name: "batch_and_benchmark_priority_class", Apply: addBatchAndBenchmarkPriorityClass},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
