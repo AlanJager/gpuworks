@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"log/slog"
@@ -21,7 +21,7 @@ func TestDrainSelfLogsWritesServerSource(t *testing.T) {
 		t.Fatalf("open logstore: %v", err)
 	}
 	defer st.Close()
-	o := &observability{logs: st}
+	o := &Pipeline{logs: st}
 
 	collector := selflog.NewCollector(slog.NewTextHandler(testDiscard{}, nil), slog.LevelError, 16)
 	logger := slog.New(collector)

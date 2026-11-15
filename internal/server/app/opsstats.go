@@ -115,7 +115,7 @@ func newOpsStats(dataDir string, metricsRetention time.Duration, st *store.Store
 	}
 	o.liveSinceMS = state.LiveSinceMS
 	o.applyRequestLogLimits(current)
-	obs.onSamples = o.observeSamples
+	obs.OnSamples(o.observeSamples)
 	o.newSchedulingActivity()
 	return o, nil
 }
@@ -162,8 +162,8 @@ func (o *opsStats) SetRetention(r store.DataRetention) error {
 }
 
 func (o *opsStats) applyRequestLogLimits(r store.DataRetention) {
-	if o.obs != nil && o.obs.ux != nil {
-		o.obs.ux.SetLimits(time.Duration(r.RequestLogDays)*24*time.Hour, int64(r.RequestLogMaxMB)<<20)
+	if o.obs != nil && o.obs.UX() != nil {
+		o.obs.UX().SetLimits(time.Duration(r.RequestLogDays)*24*time.Hour, int64(r.RequestLogMaxMB)<<20)
 	}
 }
 
@@ -492,8 +492,8 @@ func (o *opsStats) retain(ctx context.Context) {
 	if o.obs != nil {
 		// Both honour ctx between batches; what a stop cuts short resumes on
 		// the next pass.
-		note("metrics", o.obs.tsdb.Retain(ctx, now.Add(-time.Duration(r.MetricsHours)*time.Hour).UnixMilli()))
-		note("logs", o.obs.logs.Retain(ctx, now.Add(-time.Duration(r.LogsHours)*time.Hour).UnixMilli()))
+		note("metrics", o.obs.TSDB().Retain(ctx, now.Add(-time.Duration(r.MetricsHours)*time.Hour).UnixMilli()))
+		note("logs", o.obs.Logs().Retain(ctx, now.Add(-time.Duration(r.LogsHours)*time.Hour).UnixMilli()))
 	}
 	o.mu.Lock()
 	o.last.retainAt, o.last.retainErr = now, strings.Join(errs, "; ")

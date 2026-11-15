@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"context"
@@ -22,11 +22,11 @@ func TestPeerTransferProducersDoNotBlockOnFullProductionIngestQueues(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	o := &observability{now: time.Now, metricsQueue: make(chan []tsdb.Sample, 1), logQueue: make(chan []logstore.Entry, 1)}
+	o := &Pipeline{now: time.Now, metricsQueue: make(chan []tsdb.Sample, 1), logQueue: make(chan []logstore.Entry, 1)}
 	o.metricsQueue <- nil
 	o.logQueue <- nil
 	h := hub.New(st, slog.Default())
-	h.SetSinks(o.ingestMetrics, o.ingestLogs)
+	h.SetSinks(o.IngestMetrics, o.IngestLogs)
 	done := make(chan struct{})
 	go func() {
 		_ = h.ProbeModelPath(context.Background(), proto.ModelSyncCopyRequest{TransferID: "probe-full", Key: "probe", SourceNodeUUID: "offline-source", TargetNodeUUID: "offline-target", SourcePath: "source", TargetPath: "target"})

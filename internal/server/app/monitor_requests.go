@@ -127,10 +127,10 @@ func (a *App) closeRequestSinks() {
 		a.telemetry.exporter.Close()
 	}
 	a.ops.close()
-	if a.obs == nil || a.obs.ux == nil {
+	if a.obs == nil || a.obs.UX() == nil {
 		return
 	}
-	if err := a.obs.ux.Close(); err != nil {
+	if err := a.obs.UX().Close(); err != nil {
 		a.log.Warn("request store close failed", "err", err)
 	}
 }

@@ -72,11 +72,11 @@ func (a *aiService) seedLogs(instanceUUID string) ([]aihelper.LogLine, error) {
 	if a.obs == nil {
 		return nil, nil
 	}
-	tail, err := a.obs.logs.Tail(instanceUUID, seedTailLines)
+	tail, err := a.obs.Logs().Tail(instanceUUID, seedTailLines)
 	if err != nil {
 		return nil, err
 	}
-	errs, err := a.obs.logs.Search(logstore.Filter{Instance: instanceUUID, Level: logstore.LevelError, Limit: seedErrorLines})
+	errs, err := a.obs.Logs().Search(logstore.Filter{Instance: instanceUUID, Level: logstore.LevelError, Limit: seedErrorLines})
 	if err != nil {
 		return nil, err
 	}

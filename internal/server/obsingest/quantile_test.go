@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ const ttftFamily = "gpuworks_infer_ttft_seconds"
 // no quantile gauges are written, the _bucket samples are still dropped
 // (never written raw), and _sum/_count pass through unchanged.
 func TestApplyQuantilesFirstBatchEmitsNothing(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"0.1", "0.5", "1", "2", "5", "+Inf"}
 	batch := bucketBatch(ttftFamily, "inst-1", les, []float64{2, 5, 8, 9, 10, 10}, 1000)
 
@@ -89,7 +89,7 @@ func TestApplyQuantilesFirstBatchEmitsNothing(t *testing.T) {
 // p95: rank=9.5 -> bucket (2,5], count 10-9=1, offset 9.5-9=0.5 -> 2+3*0.5.
 // p99: rank=9.9 -> same bucket, offset 9.9-9=0.9 -> 2+3*0.9.
 func TestApplyQuantilesComputesExactQuantilesFromHandComputedDelta(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"0.1", "0.5", "1", "2", "5", "+Inf"}
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{2, 5, 8, 9, 10, 10}, 1000))
 
@@ -131,7 +131,7 @@ func TestApplyQuantilesComputesExactQuantilesFromHandComputedDelta(t *testing.T)
 // window), histogram_quantile has no upper bound to interpolate against and
 // must return the last finite bucket's own upper bound instead.
 func TestApplyQuantilesInfBucketRankFallsBackToLastFiniteBound(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"1", "+Inf"}
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{0, 0}, 1000))
 
@@ -153,7 +153,7 @@ func TestApplyQuantilesInfBucketRankFallsBackToLastFiniteBound(t *testing.T) {
 // observation - no quantile emitted - and the *next* batch must diff against
 // this reset baseline, not the pre-reset one.
 func TestApplyQuantilesCounterResetReseedsWithoutEmitting(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"1", "+Inf"}
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{50, 100}, 1000))
 
@@ -181,7 +181,7 @@ func TestApplyQuantilesCounterResetReseedsWithoutEmitting(t *testing.T) {
 // scraped): nothing is emitted, but the stored vector still advances so a
 // later batch diffs against this tick rather than the older one.
 func TestApplyQuantilesZeroDeltaEmitsNothingButAdvancesBaseline(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"1", "+Inf"}
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{5, 10}, 1000))
 
@@ -202,7 +202,7 @@ func TestApplyQuantilesZeroDeltaEmitsNothingButAdvancesBaseline(t *testing.T) {
 // of diffing against the now-stale vector.
 func TestApplyQuantilesTTLEvictionTreatsStaleEntryAsFirstObservation(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	o := &observability{now: func() time.Time { return now }, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: func() time.Time { return now }, bucketState: map[string]*bucketVector{}}
 	les := []string{"1", "+Inf"}
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{5, 10}, 1000))
 
@@ -227,7 +227,7 @@ func TestApplyQuantilesTTLEvictionTreatsStaleEntryAsFirstObservation(t *testing.
 // the same TTL) are dropped to fit.
 func TestApplyQuantilesCapEvictionDropsEntriesNearestExpiry(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	o := &observability{
+	o := &Pipeline{
 		now: func() time.Time { return now }, bucketState: map[string]*bucketVector{},
 		bucketStateCap: 3,
 	}
@@ -273,7 +273,7 @@ func keysOf(m map[string]*bucketVector) []string {
 // contract only defines _sum/_count for): those samples pass straight
 // through and no bucket state or quantile gauge is created.
 func TestApplyQuantilesFamilyWithOnlySumCountIsUntouched(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	batch := []tsdb.Sample{
 		{Metric: ttftFamily + "_sum", Labels: map[string]string{"instance": "inst-1"}, Value: 1.5, TimeMS: 1000},
 		{Metric: ttftFamily + "_count", Labels: map[string]string{"instance": "inst-1"}, Value: 3, TimeMS: 1000},
@@ -292,7 +292,7 @@ func TestApplyQuantilesFamilyWithOnlySumCountIsUntouched(t *testing.T) {
 // without "instance" it cannot be folded, and per the contract raw _bucket
 // series must never reach tsdb regardless, so it is simply dropped.
 func TestApplyQuantilesDropsBucketSampleMissingInstanceOrLe(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	batch := []tsdb.Sample{
 		{Metric: ttftFamily + "_bucket", Labels: map[string]string{"instance": "inst-1"}, Value: 1, TimeMS: 1000},    // no le
 		{Metric: ttftFamily + "_bucket", Labels: map[string]string{"le": "1", "node": "n1"}, Value: 1, TimeMS: 1000}, // no instance, no deployment
@@ -308,7 +308,7 @@ func TestApplyQuantilesDropsBucketSampleMissingInstanceOrLe(t *testing.T) {
 // quantile gauges per deployment like an engine's per instance, and two
 // deployments' histograms never mix.
 func TestApplyQuantilesFoldsGatewayHistogramsPerDeployment(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	const family = "gpuworks_proxy_ttft_ms"
 	les := []string{"250", "500", "1000", "+Inf"}
 	batch := func(deployment string, counts []float64, ts int64) []tsdb.Sample {
@@ -336,16 +336,16 @@ func TestApplyQuantilesFoldsGatewayHistogramsPerDeployment(t *testing.T) {
 }
 
 // TestApplyQuantilesCoalescesDuplicateLeFromTwoMergedTicks is the regression
-// test for the merged-batch bug: metricsIngestLoop batches by row
+// test for the merged-batch bug: RunMetrics batches by row
 // count/time, not by tick boundary, so a slow consumer or a burst can merge
-// two queued ingestMetrics calls (two ticks of the same instance+family)
+// two queued IngestMetrics calls (two ticks of the same instance+family)
 // into one applyQuantiles call. Without coalescing, the raw per-le sample
 // list would be twice the expected length, misaligning every index against
 // the stored previous vector. The fix (coalesceBucketSamples) keeps, per le,
 // only the sample with the largest tsMS — Prometheus' own coalesceBuckets
 // rule — so a stale duplicate must not affect the result at all.
 func TestApplyQuantilesCoalescesDuplicateLeFromTwoMergedTicks(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"0.1", "0.5", "1", "2", "5", "+Inf"}
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{2, 5, 8, 9, 10, 10}, 1000))
 
@@ -386,11 +386,11 @@ func TestApplyQuantilesBucketArrivalOrderIsIrrelevant(t *testing.T) {
 	first := bucketBatch(ttftFamily, "inst-1", les, []float64{2, 5, 8, 9, 10, 10}, 1000)
 	second := bucketBatch(ttftFamily, "inst-1", les, []float64{3, 9, 15, 18, 20, 20}, 2000)
 
-	inOrder := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	inOrder := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	inOrder.applyQuantiles(first)
 	wantOut := inOrder.applyQuantiles(second)
 
-	shuffled := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	shuffled := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	shuffled.applyQuantiles(reversed(first))
 	gotOut := shuffled.applyQuantiles(reversed(second))
 
@@ -424,7 +424,7 @@ func reversed(s []tsdb.Sample) []tsdb.Sample {
 // not folded against whatever the highest present finite bucket happens to
 // be, which would understate the true total and skew every quantile.
 func TestApplyQuantilesRejectsAFamilyMissingTheInfBucket(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"0.1", "0.5", "1"} // no +Inf
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{2, 5, 8}, 1000))
 
@@ -446,7 +446,7 @@ func TestApplyQuantilesRejectsAFamilyMissingTheInfBucket(t *testing.T) {
 // tick 3 (same shape as tick 2) must then compute normally against tick 2's
 // baseline.
 func TestApplyQuantilesBucketSetChangeReseedsThenRecoversOnThirdTick(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	lesOld := []string{"1", "+Inf"}
 	lesNew := []string{"1", "2", "+Inf"}
 
@@ -496,7 +496,7 @@ func TestEnsureMonotonicClampsDecreasesUpToTheRunningMax(t *testing.T) {
 // max (matching Prometheus' own correction) and the quantiles come out
 // correct for the corrected vector.
 func TestApplyQuantilesCorrectsANonMonotoneDeltaVector(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	les := []string{"0.1", "0.5", "1", "2", "5", "+Inf"}
 	o.applyQuantiles(bucketBatch(ttftFamily, "inst-1", les, []float64{0, 0, 0, 0, 0, 0}, 1000))
 
@@ -570,7 +570,7 @@ var fleetScaleBudgetRace = 3 * time.Second
 // batch via a bounded heap, this tick must complete well within budget and
 // account for every single group - none evicted mid-batch.
 func TestApplyQuantilesAtFleetScaleStaysFastAndLossless(t *testing.T) {
-	o := &observability{now: time.Now, bucketState: map[string]*bucketVector{}}
+	o := &Pipeline{now: time.Now, bucketState: map[string]*bucketVector{}}
 	const instances = 1000
 	const families = 6
 	les := []string{"0.1", "0.5", "1", "2", "5", "+Inf"}

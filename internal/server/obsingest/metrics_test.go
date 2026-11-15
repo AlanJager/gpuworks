@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"bytes"
@@ -15,18 +15,18 @@ import (
 )
 
 // TestIngestMetricsEnqueuesInsteadOfWritingSynchronouslyWhenQueued pins the
-// decoupling itself: with a queue wired, ingestMetrics must not touch tsdb at
-// all - only metricsIngestLoop (the sole writer) may.
+// decoupling itself: with a queue wired, IngestMetrics must not touch tsdb at
+// all - only RunMetrics (the sole writer) may.
 func TestIngestMetricsEnqueuesInsteadOfWritingSynchronouslyWhenQueued(t *testing.T) {
 	store := &fakeTSDBStore{}
-	o := &observability{
+	o := &Pipeline{
 		tsdb: store, now: time.Now, deployCache: map[string]deploymentLookup{},
 		metricsQueue: make(chan []tsdb.Sample, 4),
 	}
-	o.ingestMetrics("node-1", []proto.MetricSample{{Metric: "m", Labels: map[string]string{"gpu": "0"}, Value: 1, TimeMS: 1000}})
+	o.IngestMetrics("node-1", []proto.MetricSample{{Metric: "m", Labels: map[string]string{"gpu": "0"}, Value: 1, TimeMS: 1000}})
 
 	if got := store.samples(); len(got) != 0 {
-		t.Fatalf("ingestMetrics wrote synchronously with a queue wired: %+v", got)
+		t.Fatalf("IngestMetrics wrote synchronously with a queue wired: %+v", got)
 	}
 	select {
 	case batch := <-o.metricsQueue:
@@ -43,7 +43,7 @@ func TestIngestMetricsEnqueuesInsteadOfWritingSynchronouslyWhenQueued(t *testing
 // observability without a queue must keep working exactly as before.
 func TestIngestMetricsSynchronousFallbackWhenQueueNil(t *testing.T) {
 	o, store, _ := newTestObservability(map[string]uint{"inst-1": 7})
-	o.ingestMetrics("node-1", []proto.MetricSample{{Metric: "m", Labels: map[string]string{"instance": "inst-1"}, Value: 1, TimeMS: 1000}})
+	o.IngestMetrics("node-1", []proto.MetricSample{{Metric: "m", Labels: map[string]string{"instance": "inst-1"}, Value: 1, TimeMS: 1000}})
 	got := store.samples()
 	if len(got) != 1 || got[0].Labels["deployment"] != "7" {
 		t.Fatalf("synchronous fallback did not write+backfill: %+v", got)
@@ -55,12 +55,12 @@ func TestIngestMetricsSynchronousFallbackWhenQueueNil(t *testing.T) {
 // dropped sample, rather than blocking the caller (the hub's ctrl read loop).
 func TestIngestMetricsDropsWholeBatchWhenQueueFull(t *testing.T) {
 	store := &fakeTSDBStore{}
-	o := &observability{
+	o := &Pipeline{
 		tsdb: store, now: time.Now, deployCache: map[string]deploymentLookup{},
 		metricsQueue: make(chan []tsdb.Sample, 1),
 	}
-	o.ingestMetrics("node-1", []proto.MetricSample{{Metric: "m", Value: 1, TimeMS: 1000}})
-	o.ingestMetrics("node-1", []proto.MetricSample{
+	o.IngestMetrics("node-1", []proto.MetricSample{{Metric: "m", Value: 1, TimeMS: 1000}})
+	o.IngestMetrics("node-1", []proto.MetricSample{
 		{Metric: "m", Value: 2, TimeMS: 2000},
 		{Metric: "m", Value: 3, TimeMS: 3000},
 	})
@@ -80,7 +80,7 @@ func TestIngestMetricsDropsWholeBatchWhenQueueFull(t *testing.T) {
 func TestWarnMetricsDropRateLimitsLoggingButCountsEveryDrop(t *testing.T) {
 	store := &fakeTSDBStore{}
 	now := time.Unix(1_700_000_000, 0)
-	o := &observability{
+	o := &Pipeline{
 		tsdb: store, now: func() time.Time { return now }, deployCache: map[string]deploymentLookup{},
 		metricsQueue: make(chan []tsdb.Sample, 1),
 	}
@@ -90,14 +90,14 @@ func TestWarnMetricsDropRateLimitsLoggingButCountsEveryDrop(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(oldLogger) })
 
-	// Fill the queue once so every subsequent ingestMetrics call drops.
-	o.ingestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 1, TimeMS: 1}})
+	// Fill the queue once so every subsequent IngestMetrics call drops.
+	o.IngestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 1, TimeMS: 1}})
 
 	// Three drops in quick succession (same `now`), well within
 	// metricsDropWarnInterval: only the first may actually log.
-	o.ingestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 2, TimeMS: 2}})
-	o.ingestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 3, TimeMS: 3}})
-	o.ingestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 4, TimeMS: 4}})
+	o.IngestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 2, TimeMS: 2}})
+	o.IngestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 3, TimeMS: 3}})
+	o.IngestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 4, TimeMS: 4}})
 
 	if got := o.metricsDropped.Load(); got != 3 {
 		t.Fatalf("metricsDropped = %d, want 3 (every dropped sample counted)", got)
@@ -108,7 +108,7 @@ func TestWarnMetricsDropRateLimitsLoggingButCountsEveryDrop(t *testing.T) {
 
 	// Past the interval: the next drop must log again.
 	now = now.Add(metricsDropWarnInterval + time.Second)
-	o.ingestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 5, TimeMS: 5}})
+	o.IngestMetrics("n", []proto.MetricSample{{Metric: "m", Value: 5, TimeMS: 5}})
 	if got := o.metricsDropped.Load(); got != 4 {
 		t.Fatalf("metricsDropped = %d, want 4", got)
 	}
@@ -140,13 +140,13 @@ func waitForSamples(t *testing.T, store *fakeTSDBStore, n int, timeout time.Dura
 // metricsIngestFlushRows must be written without waiting for the flush timer.
 func TestMetricsIngestLoopFlushesWhenRowThresholdReached(t *testing.T) {
 	store := &fakeTSDBStore{}
-	o := &observability{
+	o := &Pipeline{
 		tsdb: store, now: time.Now, deployCache: map[string]deploymentLookup{},
 		metricsQueue: make(chan []tsdb.Sample, 2),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { o.metricsIngestLoop(ctx); close(done) }()
+	go func() { o.RunMetrics(ctx); close(done) }()
 	t.Cleanup(func() {
 		cancel()
 		<-done
@@ -169,13 +169,13 @@ func TestMetricsIngestLoopFlushesWhenRowThresholdReached(t *testing.T) {
 // the flush timer fires.
 func TestMetricsIngestLoopFlushesOnTimerWhenBelowRowThreshold(t *testing.T) {
 	store := &fakeTSDBStore{}
-	o := &observability{
+	o := &Pipeline{
 		tsdb: store, now: time.Now, deployCache: map[string]deploymentLookup{},
 		metricsQueue: make(chan []tsdb.Sample, 2),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { o.metricsIngestLoop(ctx); close(done) }()
+	go func() { o.RunMetrics(ctx); close(done) }()
 	t.Cleanup(func() {
 		cancel()
 		<-done
@@ -200,7 +200,7 @@ func TestMetricsIngestLoopFlushesOnTimerWhenBelowRowThreshold(t *testing.T) {
 // must still write everything already queued, rather than losing it.
 func TestMetricsIngestLoopDrainsQueuedBatchesOnContextDone(t *testing.T) {
 	store := &fakeTSDBStore{}
-	o := &observability{
+	o := &Pipeline{
 		tsdb: store, now: time.Now, deployCache: map[string]deploymentLookup{},
 		metricsQueue: make(chan []tsdb.Sample, 2),
 	}
@@ -209,7 +209,7 @@ func TestMetricsIngestLoopDrainsQueuedBatchesOnContextDone(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { o.metricsIngestLoop(ctx); close(done) }()
+	go func() { o.RunMetrics(ctx); close(done) }()
 	time.Sleep(10 * time.Millisecond) // well under metricsIngestFlushEvery
 	cancel()
 
@@ -234,7 +234,7 @@ func TestMetricsIngestLoopDrainsQueuedBatchesOnContextDone(t *testing.T) {
 // both withDeploymentLabel and applyQuantiles before WriteBatch.
 func TestMetricsIngestLoopAppliesDeploymentLabelAndQuantiles(t *testing.T) {
 	store := &fakeTSDBStore{}
-	o := &observability{
+	o := &Pipeline{
 		tsdb: store, now: time.Now, deployCache: map[string]deploymentLookup{},
 		bucketState:  map[string]*bucketVector{},
 		metricsQueue: make(chan []tsdb.Sample, 4),
@@ -244,7 +244,7 @@ func TestMetricsIngestLoopAppliesDeploymentLabelAndQuantiles(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { o.metricsIngestLoop(ctx); close(done) }()
+	go func() { o.RunMetrics(ctx); close(done) }()
 	t.Cleanup(func() {
 		cancel()
 		<-done

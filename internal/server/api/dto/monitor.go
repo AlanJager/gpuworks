@@ -20,7 +20,7 @@ type Point [2]float64
 // driven by metric families the agent/proxy only emit samples for when
 // something actually happens in that tick (a proxy request, a completed
 // engine request) - see internal/server/proxy/accounting.go's flush and
-// internal/server/app/observability_quantile.go's applyQuantiles. A
+// internal/server/obsingest/quantile.go's applyQuantiles. A
 // deployment that served heavy traffic ten minutes ago but nothing in the
 // last five minutes therefore has real data in a wider chart range but none
 // in the fixed diagnosis window monitor.BuildCluster reduces signals from.

@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"container/heap"
@@ -6,7 +6,7 @@ import (
 )
 
 // evictBoundedLocked and sweepExpiredLocked implement the eviction policy
-// shared by observability's two TTL-keyed maps: the deployment-label
+// shared by the pipeline's two TTL-keyed maps: the deployment-label
 // resolver cache (deployCache) and the quantile-at-ingest bucket-vector
 // state (bucketState). Both used to run a full sweep-then-sort.Slice pass
 // every time a single entry was inserted (deploymentFor / foldBucketGroup);
@@ -20,7 +20,7 @@ import (
 // The fix has two parts, matching the two functions here:
 //   - The full O(n) "delete everything already expired" sweep is cheap in
 //     isolation but must not run on every insert; it is instead called once
-//     per metricsIngestLoop observe tick (every 5s - the TTLs involved are
+//     per RunMetrics observe tick (every 5s - the TTLs involved are
 //     30s and 10m, so that cadence is still far more frequent than needed).
 //   - The "still over cap after sweeping" fallback no longer sorts the whole
 //     map: it selects exactly the entries to evict via a bounded max-heap

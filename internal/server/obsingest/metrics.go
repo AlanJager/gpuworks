@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"context"
@@ -51,26 +51,12 @@ const (
 	metricsDropWarnInterval = 5 * time.Second
 )
 
-// proxyMetricsSink adapts an Accountant flush batch to observability's tsdb
-// ingest path, the same one every agent-reported metric batch already goes
-// through. It always runs on the Accountant's own single writer goroutine
-// (see proxy.Accountant), never on a request-handling goroutine.
-func proxyMetricsSink(obs *observability) func([]tsdb.Sample) {
-	return func(samples []tsdb.Sample) {
-		batch := make([]proto.MetricSample, 0, len(samples))
-		for _, s := range samples {
-			batch = append(batch, proto.MetricSample{Metric: s.Metric, Labels: s.Labels, Value: s.Value, TimeMS: s.TimeMS})
-		}
-		obs.ingestMetrics("server", batch)
-	}
-}
-
-// ingestMetrics converts an agent (or the proxy accountant's) metric batch to
+// IngestMetrics converts an agent (or the proxy accountant's) metric batch to
 // the tsdb wire shape and hands it to the ingest queue; it never touches the
 // store and can never block the caller. Deployment-label backfill and
-// quantile-at-ingest both happen later, in metricsIngestLoop, so this stays
+// quantile-at-ingest both happen later, in RunMetrics, so this stays
 // cheap enough to call from the hub's ctrl-stream read loop.
-func (o *observability) ingestMetrics(_ string, samples []proto.MetricSample) {
+func (o *Pipeline) IngestMetrics(_ string, samples []proto.MetricSample) {
 	if len(samples) == 0 {
 		return
 	}
@@ -95,7 +81,7 @@ func (o *observability) ingestMetrics(_ string, samples []proto.MetricSample) {
 // warnMetricsDrop rate-limits the overflow warning so a sustained overflow
 // logs at most once per metricsDropWarnInterval instead of once per dropped
 // batch.
-func (o *observability) warnMetricsDrop() {
+func (o *Pipeline) warnMetricsDrop() {
 	nowMS := o.clock().UnixMilli()
 	last := o.lastMetricsDropWarnMS.Load()
 	if nowMS-last < metricsDropWarnInterval.Milliseconds() {
@@ -111,12 +97,12 @@ func (o *observability) warnMetricsDrop() {
 // writeMetricsBatch is the sole tsdb writer's per-batch work: resolve/backfill
 // the "deployment" label, fold histogram buckets into quantile gauges, and
 // write the result. Called either synchronously (queue nil, tests) or from
-// metricsIngestLoop.
+// RunMetrics.
 //
 // deployCache eviction runs at most once here (per batch), not once per
 // resolved instance inside withDeploymentLabel: see ttl_evict.go's doc
 // comment for why a per-insert eviction check does not scale.
-func (o *observability) writeMetricsBatch(batch []tsdb.Sample) {
+func (o *Pipeline) writeMetricsBatch(batch []tsdb.Sample) {
 	if len(batch) == 0 {
 		return
 	}
@@ -125,12 +111,12 @@ func (o *observability) writeMetricsBatch(batch []tsdb.Sample) {
 	}
 	if o.metricsQueue == nil {
 		// The synchronous fallback (queue nil, tests) never runs
-		// metricsIngestLoop, so it never gets the periodic 5s sweep either;
-		// without this, a test driving ingestMetrics directly in a loop
+		// RunMetrics, so it never gets the periodic 5s sweep either;
+		// without this, a test driving IngestMetrics directly in a loop
 		// would see over-cap eviction (below) but never TTL expiry, which is
 		// not the semantics a real ingest tick has. The sweep is one bounded
 		// map pass (cheap - see ttl_evict.go), so doing it every call here is
-		// fine: this path is never the fleet-scale hot path metricsIngestLoop
+		// fine: this path is never the fleet-scale hot path RunMetrics
 		// is.
 		now := o.clock()
 		o.sweepExpiredDeployCache(now)
@@ -145,18 +131,18 @@ func (o *observability) writeMetricsBatch(batch []tsdb.Sample) {
 
 // clock returns o.now, defaulting to time.Now when unset (test constructions
 // that skip it).
-func (o *observability) clock() time.Time {
+func (o *Pipeline) clock() time.Time {
 	if o.now != nil {
 		return o.now()
 	}
 	return time.Now()
 }
 
-// metricsIngestLoop is the single tsdb writer for agent- and proxy-reported
+// RunMetrics is the single tsdb writer for agent- and proxy-reported
 // metrics. It batches queued sample batches into commits of up to
 // metricsIngestFlushRows samples or one flush interval, whichever comes
 // first, and flushes what remains when ctx ends.
-func (o *observability) metricsIngestLoop(ctx context.Context) {
+func (o *Pipeline) RunMetrics(ctx context.Context) {
 	if o.metricsQueue == nil {
 		return
 	}
@@ -213,7 +199,7 @@ func (o *observability) metricsIngestLoop(ctx context.Context) {
 // but not "deployment" and the resolver finds a deployment for that instance,
 // in which case it returns a copy with "deployment" added. labels is never
 // mutated in place: it may be shared with the caller's own bookkeeping.
-func (o *observability) withDeploymentLabel(labels map[string]string) map[string]string {
+func (o *Pipeline) withDeploymentLabel(labels map[string]string) map[string]string {
 	instance, hasInstance := labels["instance"]
 	if !hasInstance || instance == "" {
 		return labels
@@ -233,8 +219,8 @@ func (o *observability) withDeploymentLabel(labels map[string]string) map[string
 	return out
 }
 
-// wrapDeploymentLookup adapts a raw instance -> deployment lookup (id, err)
-// into the (id, found, cacheable) shape observability.resolveDeployment
+// WrapDeploymentLookup adapts a raw instance -> deployment lookup (id, err)
+// into the (id, found, cacheable) shape Pipeline.SetDeploymentResolver
 // expects: notFound (the store's ErrNotFound sentinel) becomes a cacheable
 // negative, since it is a stable fact about the instance, while any other
 // error becomes an uncacheable negative, since it says nothing about whether
@@ -245,7 +231,7 @@ func (o *observability) withDeploymentLabel(labels map[string]string) map[string
 // Kept generic (only `error`, no store types) so this package stays free of
 // them, matching resolveDeployment's own doc comment; app.go supplies
 // store.ErrNotFound as notFound.
-func wrapDeploymentLookup(lookup func(instanceUUID string) (uint, error), notFound error) func(string) (uint, bool, bool) {
+func WrapDeploymentLookup(lookup func(instanceUUID string) (uint, error), notFound error) func(string) (uint, bool, bool) {
 	return func(instanceUUID string) (uint, bool, bool) {
 		id, err := lookup(instanceUUID)
 		switch {
@@ -270,7 +256,7 @@ func wrapDeploymentLookup(lookup func(instanceUUID string) (uint, error), notFou
 // instance it carries, and evicting per call was measured as the dominant
 // cost of an ingest tick at fleet scale (ttl_evict.go's doc comment). The
 // caller (writeMetricsBatch) evicts once per batch instead.
-func (o *observability) deploymentFor(instanceUUID string) (uint, bool) {
+func (o *Pipeline) deploymentFor(instanceUUID string) (uint, bool) {
 	if o.resolveDeployment == nil {
 		return 0, false
 	}
@@ -298,7 +284,7 @@ func (o *observability) deploymentFor(instanceUUID string) (uint, bool) {
 }
 
 // deployCacheLimit returns the configured cap, or the default when unset.
-func (o *observability) deployCacheLimit() int {
+func (o *Pipeline) deployCacheLimit() int {
 	if o.deployCacheCap > 0 {
 		return o.deployCacheCap
 	}
@@ -308,9 +294,9 @@ func (o *observability) deployCacheLimit() int {
 // evictDeployCacheIfOverCapacity is the bounded, once-per-batch fallback:
 // see ttl_evict.go's evictBoundedLocked doc comment. It does not sweep
 // expired entries itself; sweepExpiredDeployCache (run periodically from
-// metricsIngestLoop) does that. Takes no clock reading: evictBoundedLocked
+// RunMetrics) does that. Takes no clock reading: evictBoundedLocked
 // only needs the map and the limit, not the current time.
-func (o *observability) evictDeployCacheIfOverCapacity() {
+func (o *Pipeline) evictDeployCacheIfOverCapacity() {
 	o.deployMu.Lock()
 	defer o.deployMu.Unlock()
 	n := evictBoundedLocked(o.deployCache, o.deployCacheLimit(), func(v deploymentLookup) time.Time { return v.expires })
@@ -320,9 +306,9 @@ func (o *observability) evictDeployCacheIfOverCapacity() {
 }
 
 // sweepExpiredDeployCache removes every deployCache entry whose TTL has
-// already elapsed. Only called periodically (metricsIngestLoop's observe
+// already elapsed. Only called periodically (RunMetrics's observe
 // tick) — see ttl_evict.go's sweepExpiredLocked doc comment.
-func (o *observability) sweepExpiredDeployCache(now time.Time) {
+func (o *Pipeline) sweepExpiredDeployCache(now time.Time) {
 	o.deployMu.Lock()
 	defer o.deployMu.Unlock()
 	sweepExpiredLocked(o.deployCache, now, func(v deploymentLookup) time.Time { return v.expires })
