@@ -105,7 +105,7 @@ func TestAHeldSleepKeepsItsRefusalAfterTheStop(t *testing.T) {
 // are refused.
 func TestTheStopLeavesAnAwakeDeploymentServing(t *testing.T) {
 	p, st, key, _, front := newSleepingProxy(t, false)
-	if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_level", 0).Error; err != nil {
+	if err := updateInstanceRow(st, "omni-instance", map[string]any{"sleep_level": 0}); err != nil {
 		t.Fatal(err)
 	}
 	p.SetWakeDemand(func(uint) {})
@@ -126,7 +126,7 @@ func TestStartHoldsRequestsAgainAfterAStop(t *testing.T) {
 	p.SetWakeDemand(func(uint) {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			_ = st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_level", 0).Error
+			_ = updateInstanceRow(st, "omni-instance", map[string]any{"sleep_level": 0})
 		}()
 	})
 	resp := postChat(t, front, key)

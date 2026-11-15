@@ -19,17 +19,13 @@ func (p *Proxy) validateChatInput(r *http.Request, deploymentID uint) error {
 	if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/completions" || !isJSONRequest(r) {
 		return nil
 	}
-	dep, err := p.store.GetDeployment(deploymentID)
+	modelID, err := p.deploymentModel(deploymentID)
 	if err != nil {
 		return err
 	}
-	model, err := p.store.GetModel(dep.ModelID)
-	if err != nil {
+	supported, err := p.modalities.forModel(modelID)
+	if err != nil || len(supported) == 0 {
 		return err
-	}
-	var supported []string
-	if json.Unmarshal([]byte(model.InputModalities), &supported) != nil || len(supported) == 0 {
-		return nil
 	}
 	if r.GetBody == nil {
 		return nil
@@ -47,6 +43,19 @@ func (p *Proxy) validateChatInput(r *http.Request, deploymentID uint) error {
 			fmt.Sprintf("This model does not support %s input (supported: %s). Remove the attachment or select a compatible model.", modality, strings.Join(supported, ", ")),
 			map[string]any{"modality": modality, "supported": strings.Join(supported, ", ")})
 	})
+}
+
+// deploymentModel is the model a deployment serves: from the route table
+// (a deployment's model never changes), else read.
+func (p *Proxy) deploymentModel(deploymentID uint) (uint, error) {
+	if rd := p.routes.deployment(deploymentID); rd != nil && rd.dep != nil {
+		return rd.dep.ModelID, nil
+	}
+	dep, err := p.store.GetDeployment(deploymentID)
+	if err != nil {
+		return 0, err
+	}
+	return dep.ModelID, nil
 }
 
 // Walk the JSON structure without retaining media strings. Only the bounded

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
@@ -146,7 +145,7 @@ func TestInstanceGuardPreservesHealthyDrainingAndSleep(t *testing.T) {
 			t.Fatalf("healthy %s request canceled: %v", state, context.Cause(ctx))
 		}
 	}
-	if err := p.store.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Updates(map[string]any{"state": proto.InstRunning, "sleep_level": 1}).Error; err != nil {
+	if err := updateInstanceRow(p.store, "omni-instance", map[string]any{"state": proto.InstRunning, "sleep_level": 1}); err != nil {
 		t.Fatal(err)
 	}
 	p.guard.check("omni-instance")
@@ -177,7 +176,7 @@ func TestInstanceGuardChecksDeletionAndPortChanges(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				if err := p.store.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("api_port", 30001).Error; err != nil {
+				if err := updateInstanceRow(p.store, "omni-instance", map[string]any{"api_port": 30001}); err != nil {
 					t.Fatal(err)
 				}
 			}

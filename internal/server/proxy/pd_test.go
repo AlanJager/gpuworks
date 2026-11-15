@@ -507,7 +507,7 @@ func (h *pdHarness) orderSleep(t *testing.T, uuid string, level int) {
 func (h *pdHarness) orderSleepUnseen(t *testing.T, uuid string, level int) {
 	t.Helper()
 	raw, _ := json.Marshal(proto.InstanceDesiredState{UUID: uuid, DesiredState: "running", Sleepable: true, DesiredSleep: level})
-	if err := h.st.DB().Model(&store.Instance{}).Where("uuid = ?", uuid).Update("spec", string(raw)).Error; err != nil {
+	if err := updateInstanceRow(h.st, uuid, map[string]any{"spec": string(raw)}); err != nil {
 		t.Fatal(err)
 	}
 }

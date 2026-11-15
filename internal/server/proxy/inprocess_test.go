@@ -117,7 +117,7 @@ func TestDoWaitsForASleepingDeploymentToWake(t *testing.T) {
 	p.SetWakeDemand(func(id uint) {
 		go func() {
 			time.Sleep(150 * time.Millisecond)
-			_ = st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_level", 0).Error
+			_ = updateInstanceRow(st, "omni-instance", map[string]any{"sleep_level": 0})
 		}()
 	})
 	start := time.Now()

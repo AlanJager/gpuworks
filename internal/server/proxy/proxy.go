@@ -79,6 +79,8 @@ type Proxy struct {
 	// each forwarded request's record as its reply ends (ADR 0042).
 	live  liveTable
 	guard *instanceGuard
+	// modalities caches the models' declared input modalities.
+	modalities *modelModalities
 	// hold keeps requests for deployments the platform put to sleep while
 	// they wake.
 	hold *wakeHold
@@ -191,6 +193,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 		}
 	})
 	p.guard = &instanceGuard{store: st}
+	p.modalities = &modelModalities{store: st}
 	p.hold = newWakeHold()
 	p.routes.setOnRebuild(func(active map[string]bool) {
 		p.hold.signal()
