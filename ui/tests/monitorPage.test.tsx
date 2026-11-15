@@ -209,6 +209,7 @@ test("a fleet total signal has no per-service verdict behind it: clicking it cle
   await waitFor(() => assert.ok(screen.getByRole("button", { name: "Clear filter: State Starting" })));
   screen.getByRole("button", { name: /^Waiting p95/ }).click();
   await waitFor(() => assert.equal(screen.queryByRole("button", { name: "Clear filter: State Starting" }) === null, true));
+  assert.equal(screen.queryByRole("button", { name: /^Clear filter/ }), null);
   assert.ok(screen.getByText("Qwen3-32B"));
   assert.ok(screen.getByText("Qwen2.5-7B-Instruct"));
 });
@@ -226,7 +227,7 @@ test("an uncollected signal tile is not clickable and is marked aria-disabled", 
   assert.equal(tpotTile.getAttribute("aria-disabled"), "true");
   tpotTile.click();
   // Clicking must not produce a filter chip - there is nothing to filter by.
-  assert.equal(screen.queryByRole("button", { name: "Clear filter: State Starting" }), null);
+  assert.equal(screen.queryByRole("button", { name: /^Clear filter/ }), null);
 });
 
 test("the request_rate signal is collected:false in the fixture and renders the muted not-collected state", async () => {

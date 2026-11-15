@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { InferenceTemplate } from "../../api";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import VendorLogo from "../../components/VendorLogo";
+import { engineDisplayName } from "../../engineLabels";
 import { Badge } from "../../components/ui/badge";
 import { compactModelMetadata } from "../inferenceTemplateFlat";
 import { inputModalitiesOf, inputModalityLabelKey } from "../../modelInference";
@@ -34,7 +35,7 @@ export function TemplateCatalogTable({ models, catalogQuery, onRefresh }: {
       filters: quantizations.map(value => ({ value, text: value.toUpperCase() })),
       onFilter: (value, model) => model.specs.some(spec => spec.quantization === value),
       render: (_, model) => <div className="template-table-tags">{[...new Set(model.specs.map(spec => `${(spec.quantization || "unknown").toUpperCase()} · ${spec.weight_sources[0]?.repo_id || spec.name}`))].map(label => <Badge key={label} size="sm" title={label} className="max-w-full truncate">{label}</Badge>)}</div> },
-    { key: "engine", title: t("columns.engine"), width: 150, render: (_, model) => <div className="template-table-tags">{[...new Set(model.specs.map(spec => spec.engine))].map(engine => <Badge key={engine} size="sm">{engine}</Badge>)}</div> },
+    { key: "engine", title: t("columns.engine"), width: 150, render: (_, model) => <div className="template-table-tags">{[...new Set(model.specs.map(spec => spec.engine))].map(engine => <Badge key={engine} size="sm">{engineDisplayName(engine)}</Badge>)}</div> },
   ];
   return <ResourceTable tableId="inference-template-catalog" rowKey="model_id" columns={columns} data={models}
     onRefresh={onRefresh} pagination={false} emptyDescription={t("flat.empty")} filteredEmptyDescription={t("flat.empty")} />;

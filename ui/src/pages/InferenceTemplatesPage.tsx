@@ -8,6 +8,7 @@ import { Spinner } from "../ui-kit/Spinner";
 import EmptyState from "../components/EmptyState";
 import { message, confirm } from "../ui-kit/feedback";
 import { ConsoleIcon } from "../ui-kit/consoleIcons";
+import { engineDisplayName } from "../engineLabels";
 import { FilterChips } from "../ui-kit/FilterChips";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -211,7 +212,7 @@ export default function InferenceTemplatesPage() {
           <div className="min-w-0 w-full">
             <AccordionTrigger className="px-3 py-2 [&>span]:min-w-0 [&>span:first-child]:pr-28">
               <span>{t("filters.title")}</span>
-              <span className="ml-3 break-words text-label font-normal text-fg-muted">{[activeChip && chipDisplayLabel(activeChip), operation && t(operationLabelKey[operation]), engine === "vllm" ? "vLLM" : engine === "sglang" ? "SGLang" : engine].filter(Boolean).join(" · ")}</span>
+              <span className="ml-3 break-words text-label font-normal text-fg-muted">{[activeChip && chipDisplayLabel(activeChip), operation && t(operationLabelKey[operation]), engine && engineDisplayName(engine)].filter(Boolean).join(" · ")}</span>
             </AccordionTrigger>
           </div>
           <Button className="template-filter-clear z-action disabled:pointer-events-auto" variant="ghost" size="sm" disabled={!selectedChip && !operation && !engine}
@@ -228,7 +229,7 @@ export default function InferenceTemplatesPage() {
           <div className="template-filter-row">
             <span className="template-filter-label">{t("columns.engine")}</span>
             <FilterChips label={t("columns.engine")} value={engine || "all"} onChange={(value) => setEngine(value === "all" || value === engine ? "" : value)}
-              items={[{ value: "all", label: t("filters.all") }, { value: "vllm", label: "vLLM" }, { value: "sglang", label: "SGLang" }]} />
+              items={[{ value: "all", label: t("filters.all") }, ...["vllm", "sglang"].map(value => ({ value, label: engineDisplayName(value) }))]} />
           </div>
         </AccordionContent>
       </AccordionItem>

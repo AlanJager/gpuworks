@@ -241,6 +241,25 @@ test("an organization's heading shows its display name and model count once with
   assert.ok(within(main).queryByText("my-templates") === null);
 });
 
+test("an organization logo that fails to load falls back to colored initials, and My Templates keeps the pinned purple", async () => {
+  api.inferenceTemplates = (async () => list([upstreamModel, { ...upstreamModel, id: 8, model_id: "custom/model", source: "user" }])) as never;
+  api.detectedInferenceTemplateChips = (async () => list([])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  const { container } = renderList();
+  await screen.findByRole("heading", { name: "My Templates", exact: true });
+  const sidebar = container.querySelector<HTMLElement>(".template-organization-sidebar")!;
+  const mine = within(sidebar).getByRole("button", { name: /My Templates/ });
+  assert.equal(mine.querySelector("[data-color]")?.getAttribute("data-color"), "var(--organization-avatar-5)");
+  const deepseek = within(sidebar).getByRole("button", { name: /DeepSeek/ });
+  const logo = deepseek.querySelector("img");
+  assert.ok(logo, "a known organization shows its official logo first");
+  fireEvent.error(logo);
+  await waitFor(() => assert.equal(deepseek.querySelector("img"), null));
+  const fallback = deepseek.querySelector<HTMLElement>("[data-color]");
+  assert.match(fallback?.textContent ?? "", /^[A-Z0-9]{1,2}$/);
+  assert.match(fallback?.getAttribute("data-color") ?? "", /^var\(--organization-avatar-[1-5]\)$/);
+});
+
 test("my chips use short GPU names and reserve compute capability for an unknown vGPU model", async () => {
   api.inferenceTemplates = (async () => ({ items: [upstreamModel], page: 1, page_size: 200, total: 1 })) as never;
   api.detectedInferenceTemplateChips = (async () => list([

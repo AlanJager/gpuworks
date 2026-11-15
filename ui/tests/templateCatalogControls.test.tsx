@@ -39,7 +39,7 @@ test("GPU picker preserves selections across vendors, supports removal, and subm
   await user.click(screen.getByRole("checkbox", { name: "A100" }));
   await user.click(screen.getByRole("button", { name: "AMD", exact: true }));
   await user.click(screen.getByRole("checkbox", { name: /gfx1151/ }));
-  await user.click(screen.getByRole("button", { name: "A100 ×" }));
+  await user.click(screen.getByRole("button", { name: "Remove A100" }));
   await user.click(screen.getByRole("button", { name: "Save selection" }));
   assert.deepEqual(saved, [{ vendor: "amd", name: "AMD Radeon 8060S", cc: undefined, arch_id: "gfx1151" }]);
 });

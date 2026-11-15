@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
 import VendorLogo from "../../components/VendorLogo";
+import { ConsoleIcon } from "../../ui-kit/consoleIcons";
 import { compareVendors } from "../../vendors";
 import { chipDisplayLabel, chipKey } from "../inferenceTemplateFlat";
 
@@ -40,10 +41,10 @@ export function TemplateChipPicker({ catalog, existing, detectedKeys, onClose, o
         <nav aria-label={t("columns.vendor")}>{vendors.map(item => <Button key={item} variant="ghost" active={item === activeVendor} onClick={() => { setVendor(item); setQuery(""); }} aria-label={t(`vendor.${item}`, { defaultValue: item })}><VendorLogo vendor={item} size={18} /></Button>)}</nav>
         <div className="template-chip-options">{shown.map(chip => { const key = chipKey(chip); const locked = detectedKeys.has(key); return <label key={key}>
           <Checkbox checked={locked || isSelected(key)} disabled={locked} onCheckedChange={checked => setSelected(key, checked)} />
-          <span>{chipDisplayLabel(chip)}</span>{locked && <small>{t("chips.alreadyAdded")}</small>}
+          <span>{chipDisplayLabel(chip)}</span>{locked && <small>{t("chips.detected")}</small>}
         </label>; })}{!shown.length && <p className="text-fg-muted">{t("flat.empty")}</p>}</div>
       </div>
-      <div className="template-chip-selection">{pending.map(chip => <Button key={chipKey(chip)} size="sm" variant="tertiary" onClick={() => setSelected(chipKey(chip), false)}>{chipDisplayLabel(chip)} ×</Button>)}</div>
+      <div className="template-chip-selection">{pending.map(chip => <Button key={chipKey(chip)} size="sm" variant="tertiary" trailingIcon={ConsoleIcon.close} aria-label={t("chips.remove", { name: chipDisplayLabel(chip) })} onClick={() => setSelected(chipKey(chip), false)}>{chipDisplayLabel(chip)}</Button>)}</div>
       <DialogFooter><Button variant="ghost" onClick={onClose}>{t("flat.cancel")}</Button><Button disabled={!changed} onClick={() => onApply(pending)}>{t("chips.saveSelection")}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
