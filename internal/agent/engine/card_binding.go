@@ -125,6 +125,12 @@ type HeldCards struct {
 	// names them from the cards it probed, rather than reading "no identity"
 	// as "no card".
 	Indexes []int
+	// Partitions and PartitionIndexes repeat, for each memory-limited
+	// partition among them, its cards (by identity, or by index as above).
+	// A card listed as often here as above holds only partitions, whose
+	// engines keep one process each on it.
+	Partitions       []string
+	PartitionIndexes []int
 }
 
 // HeldCards is what the running instances occupy, and what the instances
@@ -137,11 +143,18 @@ func (e *Engine) HeldCards() HeldCards {
 	defer e.mu.Unlock()
 	var held HeldCards
 	add := func(s proto.InstanceDesiredState) {
+		partition := s.VRAMLimitBytes > 0
 		if len(s.GPUIdents) > 0 && len(s.GPUIdents) == len(s.GPUIndexes) {
 			held.Idents = append(held.Idents, s.GPUIdents...)
+			if partition {
+				held.Partitions = append(held.Partitions, s.GPUIdents...)
+			}
 			return
 		}
 		held.Indexes = append(held.Indexes, s.GPUIndexes...)
+		if partition {
+			held.PartitionIndexes = append(held.PartitionIndexes, s.GPUIndexes...)
+		}
 	}
 	for _, s := range e.desired {
 		if s.DesiredState == "running" {

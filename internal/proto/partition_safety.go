@@ -18,6 +18,14 @@ const (
 	// already beside such processes lose their cover, since the older agent
 	// stops reporting them.
 	PartitionSafetyForeignTracked = 2
+	// PartitionSafetyForeignTrackedPartitioned: besides, the agent reads a
+	// card that holds only memory-limited partitions of the platform by
+	// how many processes their engines keep there, so processes outside the
+	// platform that start on it after them are reported too (and the server
+	// notes them on the instances there). A card that holds a whole-card
+	// instance is not read so: its engine keeps no fixed number of
+	// processes, and processes that join it later are not reported.
+	PartitionSafetyForeignTrackedPartitioned = 3
 	// PartitionSafetyCurrent is the level this build's agent keeps.
-	PartitionSafetyCurrent = PartitionSafetyForeignTracked
+	PartitionSafetyCurrent = PartitionSafetyForeignTrackedPartitioned
 )

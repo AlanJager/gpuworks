@@ -317,7 +317,7 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		n.occupancy.restate(gpus)
 		return
 	}
-	ours, known := n.cardsInUse()
+	ours, partitionsOnly, known := n.cardsInUse()
 	if !known {
 		// This agent has just started and has not been told what it should
 		// be running. Every card serving one of our own instances would
@@ -348,9 +348,16 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		// foreign is read by how many processes our engines keep there
 		// (readSharedCard), and any other card of ours is not examined: a
 		// new process there may be our engine's.
+		//
+		// A card that holds only partitions of ours is read so too: each
+		// partition's engine keeps one process there, so a job somebody
+		// starts beside them later is told from ours and reported
+		// (proto.PartitionSafetyForeignTrackedPartitioned). A card with a
+		// whole-card instance of ours is not: its engine keeps no fixed
+		// number of processes.
 		own, examine := sleeping[ident]
 		if slots := ours[ident]; slots > 0 && !examine {
-			if known := n.occupancy.knownForeign(ident); len(known) > 0 || n.occupancy.readsShared(ident) {
+			if known := n.occupancy.knownForeign(ident); len(known) > 0 || n.occupancy.readsShared(ident) || partitionsOnly[ident] {
 				card.ForeignProcesses = n.occupancy.readSharedCard(ident, known, slots, procs, card.PCIeBDF)
 			}
 			continue
@@ -411,35 +418,50 @@ func (n *NodeRuntime) sleepingCardPIDs() map[string]map[int]bool {
 //
 // Each card counts how many of our instances hold it: an instance waiting on
 // its old generation counts for both.
-func (n *NodeRuntime) cardsInUse() (cards map[string]int, known bool) {
+//
+// partitionsOnly are the cards of ours that hold only memory-limited
+// partitions (engine.HeldCards.Partitions), whose engines keep one process
+// each there.
+func (n *NodeRuntime) cardsInUse() (cards map[string]int, partitionsOnly map[string]bool, known bool) {
 	var held engine.HeldCards
 	switch {
 	case n.heldCards != nil:
 		held, known = n.heldCards(), true
 	case n.engine == nil:
-		return map[string]int{}, false
+		return map[string]int{}, map[string]bool{}, false
 	default:
 		held, known = n.engine.HeldCards(), n.engine.DesiredKnown()
 	}
-	ours := map[string]int{}
-	for _, ident := range held.Idents {
-		if ident != "" {
-			ours[ident]++
+	count := func(idents []string, indexes []int) map[string]int {
+		out := map[string]int{}
+		for _, ident := range idents {
+			if ident != "" {
+				out[ident]++
+			}
+		}
+		for _, index := range indexes {
+			ident, ok := n.occupancy.identOf(index)
+			if !ok {
+				known = false
+				continue
+			}
+			out[ident]++
+		}
+		return out
+	}
+	ours := count(held.Idents, held.Indexes)
+	partitions := count(held.Partitions, held.PartitionIndexes)
+	partitionsOnly = map[string]bool{}
+	for ident, slots := range ours {
+		if partitions[ident] == slots {
+			partitionsOnly[ident] = true
 		}
 	}
-	for _, index := range held.Indexes {
-		ident, ok := n.occupancy.identOf(index)
-		if !ok {
-			known = false
-			continue
-		}
-		ours[ident]++
-	}
-	return ours, known
+	return ours, partitionsOnly, known
 }
 
-// cardSet is cardsInUse's answer without the counts.
-func cardSet(counts map[string]int, known bool) (map[string]bool, bool) {
+// cardSet is cardsInUse's answer without the counts and kinds.
+func cardSet(counts map[string]int, _ map[string]bool, known bool) (map[string]bool, bool) {
 	cards := make(map[string]bool, len(counts))
 	for ident := range counts {
 		cards[ident] = true

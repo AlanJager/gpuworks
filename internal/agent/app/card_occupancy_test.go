@@ -89,7 +89,7 @@ func TestAnAgentThatDoesNotYetKnowItsOwnInstancesClaimsNothing(t *testing.T) {
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()},
 			procs: []gpu.ComputeProcess{{PID: 7001, Name: "vllm", PCIeBDF: "0000:3f:00.0"}}}, nil)
-	if ours, known := n.cardsInUse(); known || len(ours) != 0 {
+	if ours, _, known := n.cardsInUse(); known || len(ours) != 0 {
 		t.Fatalf("cardsInUse = %v known=%v, want it to admit it does not know", ours, known)
 	}
 	cards := twoOwnedCards()
@@ -259,12 +259,12 @@ func TestAnUnboundInstanceWhoseCardIsNotNamedYetClaimsNothing(t *testing.T) {
 		{PID: 7001, Name: "vllm", PCIeBDF: "0000:3f:00.0"},
 	}, nil)
 	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Indexes: []int{0}} }
-	if ours, known := n.cardsInUse(); known || len(ours) != 0 {
+	if ours, _, known := n.cardsInUse(); known || len(ours) != 0 {
 		t.Fatalf("before any probe cardsInUse = %v known=%v, want not known", ours, known)
 	}
 	cards := twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
-	if ours, known := n.cardsInUse(); !known || ours[accelerator.CardIdent("GPU-3f", "0000:3f:00.0")] == 0 {
+	if ours, _, known := n.cardsInUse(); !known || ours[accelerator.CardIdent("GPU-3f", "0000:3f:00.0")] == 0 {
 		t.Fatalf("after a probe cardsInUse = %v known=%v, want device 0's card", ours, known)
 	}
 	if len(cards[0].ForeignProcesses) != 0 {
@@ -280,7 +280,7 @@ func TestAnUnboundInstanceWhoseCardIsNotNamedYetClaimsNothing(t *testing.T) {
 			t.Fatalf("card %s = %+v, want nothing claimed while an instance's card cannot be named", card.PCIeBDF, card.ForeignProcesses)
 		}
 	}
-	if _, known := n.cardsInUse(); known {
+	if _, _, known := n.cardsInUse(); known {
 		t.Fatal("an index no probe named read as known")
 	}
 }
@@ -337,7 +337,7 @@ func TestCardsAreNamedEvenWhenTheProberCannotListProcesses(t *testing.T) {
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()}, nil)
 	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Indexes: []int{1}} }
 	n.CardHealthFindings(context.Background(), twoOwnedCards(), true)
-	if ours, known := n.cardsInUse(); !known || ours[accelerator.CardIdent("GPU-40", "0000:40:00.0")] == 0 {
+	if ours, _, known := n.cardsInUse(); !known || ours[accelerator.CardIdent("GPU-40", "0000:40:00.0")] == 0 {
 		t.Fatalf("cardsInUse = %v known=%v, want device 1's card", ours, known)
 	}
 }
