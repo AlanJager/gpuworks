@@ -40,6 +40,7 @@ func (a *apiHandlers) listInferenceTemplates(w http.ResponseWriter, r *http.Requ
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	models = templatesWithWeight(models, r.URL.Query().Get("weight_provider"), r.URL.Query().Get("weight_repo"), r.URL.Query().Get("weight_revision"))
 	filtered, err := filterInferenceModels(models, r)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)

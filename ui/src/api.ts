@@ -4878,8 +4878,8 @@ export const api = {
   orderPullSourceRules: (ids: number[]) =>
     sendJSON<List<PullSourceRule>>("PUT", "/api/v1/pull/source-rules/order", { ids }),
   /** The management node's candidate bases for reading a source's metadata in the browser. */
-  metadataSources: (source: "huggingface" | "modelscope") =>
-    getJSON<MetadataSources>(`/api/v1/pull/metadata-sources?source=${encodeURIComponent(source)}`),
+  metadataSources: (source: "huggingface" | "modelscope", signal?: AbortSignal) =>
+    getJSON<MetadataSources>(`/api/v1/pull/metadata-sources?source=${encodeURIComponent(source)}`, signal),
   testPullSourceRule: (body: PullSourceRuleTestRequest) =>
     sendJSON<SourceRuleTestResult>("POST", "/api/v1/pull/source-rules/test", body),
   pullProxies: () => getJSON<List<PullProxy>>("/api/v1/pull/proxies"),

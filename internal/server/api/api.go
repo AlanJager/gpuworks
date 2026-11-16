@@ -138,6 +138,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 
 			// Models.
 			r.Get("/models", a.listModels)
+			r.Get("/models/catalog", a.modelCatalog)
 			r.Post("/models", a.createModel)
 			r.Post("/models/quick-register", a.quickRegisterModel)
 			r.Post("/models/local/preview", a.previewLocalModel)

@@ -305,6 +305,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
     selectedTemplateSpec?.spec.engine_decides_param_keys,
   );
   const weightSource = useTemplateWeightSource({
+    search: opened ? undefined : location.search,
     form,
     template: selectedTemplate ?? undefined,
     selection: selectedTemplateSpec,
