@@ -1,6 +1,11 @@
 package store
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+
+	"gorm.io/gorm"
+)
 
 // NodeScheduling is whether a node takes new replicas. It is the
 // operator's to set, with one exception: a node whose container runtime
@@ -56,7 +61,11 @@ func (s *Store) DrainingNodeIDs() (map[uint]bool, error) {
 //
 // It is the operator's decision, so it is recorded as theirs: the platform
 // then leaves a cordon they set alone, and a node they turn back on stays
-// on until the platform's own reason is seen again on the next report.
+// on until the platform's own reason is seen again on the next report. A
+// node a scheduling holder holds (node_hold.go) cannot be turned back on:
+// that answers ErrNodeHeld wrapped with the hold's product error and
+// changes nothing. Cordoning or draining a held node is the operator's to
+// do, as on any other.
 func (s *Store) SetNodeScheduling(uuid string, scheduling NodeScheduling) (*Node, error) {
 	if !scheduling.Valid() {
 		return nil, fmt.Errorf("node scheduling %q is not one of schedulable, cordoned, draining", scheduling)
@@ -65,13 +74,25 @@ func (s *Store) SetNodeScheduling(uuid string, scheduling NodeScheduling) (*Node
 	if scheduling == NodeSchedulable {
 		by = SchedulingBySelf
 	}
-	res := s.db.Model(&Node{}).Where("uuid = ?", uuid).
-		Updates(map[string]any{"scheduling": scheduling, "scheduling_by": by})
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var n Node
+		if err := tx.Select("id", "uuid", "created_at", "gpu_count", "gpu_vendor", "kube_cluster_id").
+			Where("uuid = ?", uuid).Take(&n).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if scheduling == NodeSchedulable {
+			if src, hold := s.admission.holdOf(nodeHoldFacts(&n)); src != SchedulingBySelf {
+				return fmt.Errorf("%w: %w", ErrNodeHeld, hold.ProductError())
+			}
+		}
+		return tx.Model(&Node{}).Where("id = ?", n.ID).
+			Updates(map[string]any{"scheduling": scheduling, "scheduling_by": by}).Error
+	})
+	if err != nil {
+		return nil, err
 	}
 	s.publishNode(uuid, NodeChangeScheduling)
 	return s.NodeWithGPUs(uuid)

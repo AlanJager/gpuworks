@@ -81,21 +81,38 @@ type cordonDecision struct {
 	changed    bool
 }
 
-// decideCordon applies the platform's half of NodeScheduling to a report.
+// decideScheduling applies the platform's and the holders' half of
+// NodeScheduling to a node's current facts.
 //
-// It cordons a schedulable node while it has a reason, and lifts its own
-// cordon once it has none. It never touches a node an operator cordoned or
-// drained, and never re-cordons within the same report: an operator who
-// turns scheduling back on gets until the next report (about a minute) to
-// try a deployment by hand, which is the point of letting them.
-func decideCordon(was NodeScheduling, by SchedulingSource, reason string) cordonDecision {
-	switch {
-	case reason != "" && was == NodeSchedulable:
-		return cordonDecision{scheduling: NodeCordoned, source: SchedulingByPlatform, reason: reason, changed: true}
-	case reason == "" && was == NodeCordoned && by == SchedulingByPlatform:
-		return cordonDecision{scheduling: NodeSchedulable, source: SchedulingBySelf, changed: true}
+// An operator's cordon or drain, and a cordon of unknown author, are never
+// touched. Otherwise the node is cordoned under hold, the source of the
+// holder that holds it (node_hold.go), if any; failing that under the
+// platform while platformReason names a reason; failing both it is
+// schedulable. Holds therefore outrank the platform: a platform reason
+// that clears does not lift a hold, and a hold that clears falls back to
+// the platform's cordon while its reason remains.
+//
+// platformKnown is false when the agent could not say whether its runtime
+// can give a container the cards: that is no reason to lift the platform's
+// cordon, so it stays (holds are decided regardless). The platform never
+// re-cordons a node within the report an operator turned scheduling back
+// on in: an operator gets until the next report (about a minute) to try a
+// deployment by hand, which is the point of letting them.
+func decideScheduling(was NodeScheduling, by SchedulingSource, platformReason string, platformKnown bool, hold SchedulingSource) cordonDecision {
+	if was == NodeDraining || (was == NodeCordoned && (by == SchedulingByOperator || by == SchedulingBySelf)) {
+		return cordonDecision{scheduling: was, source: by}
 	}
-	return cordonDecision{scheduling: was, source: by}
+	next := cordonDecision{scheduling: NodeSchedulable, source: SchedulingBySelf}
+	switch {
+	case hold != SchedulingBySelf:
+		next = cordonDecision{scheduling: NodeCordoned, source: hold}
+	case platformReason != "":
+		next = cordonDecision{scheduling: NodeCordoned, source: SchedulingByPlatform, reason: platformReason}
+	case was == NodeCordoned && by == SchedulingByPlatform && !platformKnown:
+		return cordonDecision{scheduling: was, source: by}
+	}
+	next.changed = next.scheduling != was || next.source != by
+	return next
 }
 
 // CordonReason is the platform's reason for holding the node out of

@@ -1,0 +1,139 @@
+package store
+
+import (
+	"gorm.io/gorm"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+)
+
+// holdColumns are the node columns a hold and its release decide on.
+var holdColumns = []string{"id", "uuid", "created_at", "gpu_count", "gpu_vendor", "kube_cluster_id",
+	"scheduling", "scheduling_by", "runtime_gpu_blocked", "kube_unschedulable"}
+
+// ApplySchedulingHolds asks the registered holders about every node now,
+// rather than at each node's next status report: a node a holder holds is
+// cordoned under its source, and a node cordoned under a holder's source
+// that no holder holds any more is released to the platform's cordon while
+// the platform has a reason, otherwise to schedulable. Operator cordons,
+// drains and the platform's own cordons are left to their owners. It is one
+// writer transaction over the fleet, for a holder whose answers changed (at
+// boot, or when what it decides on changes), never per report; each changed
+// node is published as a scheduling change. It returns the nodes it held
+// and those it released.
+func (s *Store) ApplySchedulingHolds() (held, released []string, err error) {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		held, released = nil, nil
+		var nodes []Node
+		if err := tx.Select(holdColumns).Order("id").Find(&nodes).Error; err != nil {
+			return err
+		}
+		for i := range nodes {
+			n := &nodes[i]
+			hold, _ := s.admission.holdOf(nodeHoldFacts(n))
+			if hold == SchedulingBySelf && !heldByHolder(n) {
+				continue
+			}
+			changed, err := s.applyHoldTx(tx, n, hold)
+			if err != nil {
+				return err
+			}
+			switch {
+			case changed && hold != SchedulingBySelf:
+				held = append(held, n.UUID)
+			case changed:
+				released = append(released, n.UUID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	s.publishSchedulingChanges(held, released)
+	return held, released, nil
+}
+
+// ReleaseUnownedHolds releases every node cordoned under a holder source
+// that is neither a registered holder's nor one of known, as
+// ApplySchedulingHolds releases a hold that ended. A server that no longer
+// runs the extension which held them (another build, the extension
+// removed) calls it at boot, so its cordons do not outlive it. known names
+// sources whose holder is expected but not registered yet. It returns the
+// released nodes.
+func (s *Store) ReleaseUnownedHolds(known ...SchedulingSource) (released []string, err error) {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		released = nil
+		var nodes []Node
+		if err := tx.Select(holdColumns).
+			Where("scheduling = ? AND scheduling_by NOT IN ?", NodeCordoned,
+				[]SchedulingSource{SchedulingBySelf, SchedulingByOperator, SchedulingByPlatform}).
+			Order("id").Find(&nodes).Error; err != nil {
+			return err
+		}
+		for i := range nodes {
+			n := &nodes[i]
+			if s.admission.registeredSource(n.SchedulingBy) || sourceIn(n.SchedulingBy, known) {
+				continue
+			}
+			changed, err := s.applyHoldTx(tx, n, SchedulingBySelf)
+			if err != nil {
+				return err
+			}
+			if changed {
+				released = append(released, n.UUID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.publishSchedulingChanges(nil, released)
+	return released, nil
+}
+
+// applyHoldTx writes what decideScheduling makes of n under hold. Only a
+// release needs the platform's reason, which reads the node's cards.
+func (s *Store) applyHoldTx(tx *gorm.DB, n *Node, hold SchedulingSource) (bool, error) {
+	reason := ""
+	if hold == SchedulingBySelf {
+		var cards []GPU
+		if err := tx.Select("ownership", "health_code").Where("node_id = ?", n.ID).Find(&cards).Error; err != nil {
+			return false, err
+		}
+		infos := make([]proto.GPUInfo, 0, len(cards))
+		for _, c := range cards {
+			infos = append(infos, proto.GPUInfo{Ownership: c.Ownership, HealthCode: c.HealthCode})
+		}
+		reason = PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, infos)
+	}
+	d := decideScheduling(n.Scheduling, n.SchedulingBy, reason, false, hold)
+	if !d.changed {
+		return false, nil
+	}
+	err := tx.Model(&Node{}).Where("id = ?", n.ID).
+		Updates(map[string]any{"scheduling": d.scheduling, "scheduling_by": d.source}).Error
+	return err == nil, err
+}
+
+func (s *Store) publishSchedulingChanges(lists ...[]string) {
+	for _, uuids := range lists {
+		for _, uuid := range uuids {
+			s.publishNode(uuid, NodeChangeScheduling)
+		}
+	}
+}
+
+// heldByHolder reports whether n is cordoned under a holder's source.
+func heldByHolder(n *Node) bool {
+	return n.Scheduling == NodeCordoned && IsHolderSource(n.SchedulingBy)
+}
+
+func sourceIn(src SchedulingSource, list []SchedulingSource) bool {
+	for _, s := range list {
+		if s == src {
+			return true
+		}
+	}
+	return false
+}

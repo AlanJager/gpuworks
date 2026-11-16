@@ -20,6 +20,7 @@ import (
 func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 	cordoned, uncordoned := false, false
 	cordonedFor := ""
+	var heldBy SchedulingSource
 	placementChanged := false
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var n Node
@@ -71,17 +72,28 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		runtimeFallbackSocketUpdates(updates, st.Sys)
 		updates["accelerator_vendors"] = encodeAcceleratorVendors(st.Sys.AcceleratorVendors)
 		updates["kube_unschedulable"] = st.Sys.KubeUnschedulable
-		// The platform's half of NodeScheduling: it cordons a schedulable
-		// node while it has a reason of its own, and lifts only the cordons
-		// it set (node_cordon.go). A node whose runtime cannot be asked at
-		// all keeps whatever it has: an agent that cannot say is not a
-		// reason to let work onto the node, nor to take it off.
+		// The platform's and the holders' half of NodeScheduling: a holder
+		// cordons a node while it holds it, the platform while it has a
+		// reason of its own, and each lifts only the cordons it set
+		// (node_cordon.go). A node whose runtime cannot be asked at all
+		// keeps the platform's cordon: an agent that cannot say is not a
+		// reason to let work onto the node, nor to take it off. Holds are
+		// decided on the facts this report writes, whatever the runtime.
 		runtimeKnown := st.Sys.RuntimeDriver != "" || st.Sys.RuntimeGPUBlocked != ""
 		cordonReason := PlatformCordonReason(st.Sys.RuntimeGPUBlocked, st.Sys.KubeUnschedulable, st.GPUs)
-		if d := decideCordon(n.Scheduling, n.SchedulingBy, cordonReason); d.changed && (runtimeKnown || cordonReason != "") {
+		facts := nodeHoldFacts(&n)
+		facts.GPUVendor = gpuVendor
+		if count, ok := updates["gpu_count"].(int); ok {
+			facts.OwnedCards = count
+		}
+		hold, _ := s.admission.holdOf(facts)
+		if d := decideScheduling(n.Scheduling, n.SchedulingBy, cordonReason, runtimeKnown, hold); d.changed {
 			updates["scheduling"] = d.scheduling
 			updates["scheduling_by"] = d.source
 			cordoned, uncordoned, cordonedFor = d.scheduling == NodeCordoned, d.scheduling == NodeSchedulable, d.reason
+			if IsHolderSource(d.source) {
+				heldBy = d.source
+			}
 		}
 		if len(st.Sys.Runtimes) > 0 {
 			if b, err := json.Marshal(st.Sys.Runtimes); err == nil {
@@ -137,15 +149,19 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 	}
 	s.publishNode(uuid, NodeChangeStatus)
 	if cordoned {
-		// The platform, not an operator, took the node out of scheduling:
-		// say so where an operator looks, and to every reader of
-		// scheduling changes.
-		slog.Warn("node cordoned by the platform", "node", uuid, "reason", cordonedFor,
-			"runtime_gpu_blocked", st.Sys.RuntimeGPUBlocked)
+		// The platform or a holder, not an operator, took the node out of
+		// scheduling: say so where an operator looks, and to every reader
+		// of scheduling changes.
+		if heldBy != SchedulingBySelf {
+			slog.Warn("node held out of scheduling", "node", uuid, "holder", heldBy)
+		} else {
+			slog.Warn("node cordoned by the platform", "node", uuid, "reason", cordonedFor,
+				"runtime_gpu_blocked", st.Sys.RuntimeGPUBlocked)
+		}
 		s.publishNode(uuid, NodeChangeScheduling)
 	}
 	if uncordoned {
-		slog.Info("node schedulable again: the platform's reason for cordoning it is gone",
+		slog.Info("node schedulable again: the reason for cordoning it is gone",
 			"node", uuid, "runtime", st.Sys.RuntimeDriver)
 		s.publishNode(uuid, NodeChangeScheduling)
 	}

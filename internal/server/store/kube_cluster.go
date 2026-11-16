@@ -399,7 +399,7 @@ func (s *Store) EnrollKubeNode(token, clusterUID, nodeName string) (*Node, *Kube
 			KubeClusterID: cluster.ID, KubeNodeName: nodeName,
 		}
 		created = true
-		return tx.Create(&node).Error
+		return s.insertNodeTx(tx, &node)
 	})
 	if err != nil {
 		return nil, nil, err
