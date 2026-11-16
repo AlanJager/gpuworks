@@ -61,6 +61,12 @@ type cardOccupancy struct {
 	// shared is the cards readSharedCard has read since our instances last
 	// joined them (readsShared).
 	shared map[string]bool
+	// guessed is, on a card readSharedCard last read with more unknown
+	// processes than our engines had places for, those processes by PID with
+	// their names: which of them are ours was a guess, so the next reading
+	// takes none of them as known either way (readSharedCard), and the state
+	// file keeps them without their PIDs (saveLocked).
+	guessed map[string]map[int]string
 	// path is where last is kept across restarts (cardOccupancyFile); empty
 	// keeps it in memory only.
 	path string
@@ -169,6 +175,12 @@ func (o *cardOccupancy) knownForeign(ident string) []proto.CardProcess {
 //     counted foreign: overstating what the outside holds refuses a
 //     partition, understating it runs one out of memory.
 //
+// When which of them are ours is a guess - more processes than our engines
+// have places for, none known - the guess is recorded (guessed) and not taken
+// as knowledge: the next reading weighs those processes afresh, so once the
+// outside job leaves, an engine of ours that was counted foreign in its
+// place is ours again rather than foreign for as long as it runs.
+//
 // A known process no longer listed - one that exited, restarted under a new
 // PID, or was carried over a reboot without its PID (see load) - is not
 // reported: the card has been read. Its memory is not offered at once,
@@ -178,7 +190,7 @@ func (o *cardOccupancy) knownForeign(ident string) []proto.CardProcess {
 func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, slots int, procs []gpu.ComputeProcess, bdf string) []proto.CardProcess {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	previous := o.own[ident]
+	previous, guessed := o.own[ident], o.guessed[ident]
 	own := map[int]string{}
 	var foreign, fresh []proto.CardProcess
 	for _, proc := range procs {
@@ -186,6 +198,17 @@ func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, 
 			continue
 		}
 		entry := proto.CardProcess{PID: proc.PID, Name: proc.Name, MemoryBytes: proc.MemoryBytes}
+		if name, ok := guessed[proc.PID]; ok && name == proc.Name {
+			fresh = append(fresh, entry)
+			continue
+		}
+		// Ours before known foreign: a process a guess counted foreign and
+		// a later reading found to be ours stays named in the last answer
+		// for the release rounds.
+		if name, ok := previous[proc.PID]; ok && name == proc.Name {
+			own[proc.PID] = proc.Name
+			continue
+		}
 		if i := slices.IndexFunc(known, func(k proto.CardProcess) bool { return k.PID > 0 && k.PID == proc.PID && k.Name == proc.Name }); i >= 0 {
 			if entry.MemoryBytes <= 0 {
 				entry.MemoryBytes = known[i].MemoryBytes
@@ -193,14 +216,17 @@ func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, 
 			foreign = append(foreign, entry)
 			continue
 		}
-		if name, ok := previous[proc.PID]; ok && name == proc.Name {
-			own[proc.PID] = proc.Name
-			continue
-		}
 		fresh = append(fresh, entry)
 	}
 	free := max(0, slots-len(own))
+	var guess map[int]string
 	if len(fresh) > free {
+		if free > 0 {
+			guess = make(map[int]string, len(fresh))
+			for _, entry := range fresh {
+				guess[entry.PID] = entry.Name
+			}
+		}
 		slices.SortStableFunc(fresh, func(a, b proto.CardProcess) int { return cmp.Compare(a.MemoryBytes, b.MemoryBytes) })
 		foreign = append(foreign, fresh[free:]...)
 		fresh = fresh[:free]
@@ -211,7 +237,15 @@ func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, 
 	if o.own == nil {
 		o.own, o.shared = map[string]map[int]string{}, map[string]bool{}
 	}
+	if o.guessed == nil {
+		o.guessed = map[string]map[int]string{}
+	}
 	o.own[ident], o.shared[ident] = own, true
+	if guess != nil {
+		o.guessed[ident] = guess
+	} else {
+		delete(o.guessed, ident)
+	}
 	return foreign
 }
 
@@ -233,6 +267,7 @@ func (o *cardOccupancy) setOwn(ident string, pids map[int]bool, procs []gpu.Comp
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	delete(o.shared, ident)
+	delete(o.guessed, ident)
 	if len(pids) == 0 {
 		delete(o.own, ident)
 		return
