@@ -20,9 +20,11 @@ import (
 // and leaves nothing behind when the instance does. Future notes are rules
 // in instanceNoteRules.
 
-// instanceNoteRule states the notes one fact gives an instance on node,
-// whose held cards (by index) are held.
-type instanceNoteRule func(inst *store.Instance, node *store.Node, held map[int]store.GPU) []messages.Warning
+// instanceNoteRule states the notes one fact gives an instance whose node's
+// held cards (by index) are held. A rule reads nothing itself: what it
+// needs joins the one read InstanceNotes makes for every instance, so a
+// detail or list read never costs a query per instance.
+type instanceNoteRule func(inst *store.Instance, held map[int]store.GPU) []messages.Warning
 
 var instanceNoteRules = []instanceNoteRule{foreignCardNote}
 
@@ -52,10 +54,9 @@ func InstanceNotes(rows Rows, insts []store.Instance) map[string][]messages.Warn
 		if !instanceLive(inst) || len(held[inst.NodeID]) == 0 {
 			continue
 		}
-		node := rows.Node(inst.NodeID)
 		var notes []messages.Warning
 		for _, rule := range instanceNoteRules {
-			found := rule(inst, node, held[inst.NodeID])
+			found := rule(inst, held[inst.NodeID])
 			sort.SliceStable(found, func(a, b int) bool { return found[a].Code < found[b].Code })
 			notes = append(notes, found...)
 		}
@@ -67,16 +68,18 @@ func InstanceNotes(rows Rows, insts []store.Instance) map[string][]messages.Warn
 }
 
 // instanceLive is an instance whose row still means it is, or is about to
-// be, on its cards: every state but stopped.
+// be, on its cards: every state but the finished ones
+// (proto.InstanceFinishedStates). A failed attempt kept as history, or one
+// awaiting removal, runs nothing; one draining or being removed still does.
 func instanceLive(inst *store.Instance) bool {
-	return inst.State != proto.InstStopped
+	return !slices.Contains(proto.InstanceFinishedStates(), inst.State)
 }
 
 // foreignCardNote notes the instance's cards that processes outside the
 // platform also use, whatever let the instance onto them: it states the
 // fact, not an admission verdict. The figure is the most they hold on any of
 // those cards, as the agent reports it, without the scheduler's headroom.
-func foreignCardNote(inst *store.Instance, _ *store.Node, held map[int]store.GPU) []messages.Warning {
+func foreignCardNote(inst *store.Instance, held map[int]store.GPU) []messages.Warning {
 	var indexes []int
 	if json.Unmarshal([]byte(inst.GPUIndexes), &indexes) != nil {
 		return nil

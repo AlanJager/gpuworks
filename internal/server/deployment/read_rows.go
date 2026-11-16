@@ -72,20 +72,23 @@ func (l StoreRows) Node(id uint) *store.Node {
 	return n
 }
 
-// HeldCards reads each node with its cards: a single object's read names
-// one node or a few, which the store reads whole anyway.
+// HeldCards reads the nodes' held cards in one indexed query
+// (heldCardsByNode).
 func (l StoreRows) HeldCards(nodeIDs []uint) map[uint][]store.GPU {
+	return heldCardsByNode(l.st, nodeIDs)
+}
+
+// heldCardsByNode is the cards processes outside the platform hold on these
+// nodes, by node, in one indexed query however many nodes there are; none
+// when it cannot be read.
+func heldCardsByNode(st *store.Store, nodeIDs []uint) map[uint][]store.GPU {
 	out := map[uint][]store.GPU{}
-	for _, id := range nodeIDs {
-		node, err := l.st.NodeByID(id)
-		if err != nil {
-			continue
-		}
-		for _, card := range node.GPUs {
-			if card.HeldOutsidePlatform() {
-				out[id] = append(out[id], card)
-			}
-		}
+	cards, err := st.HeldCardsOnNodes(nodeIDs)
+	if err != nil {
+		return out
+	}
+	for _, card := range cards {
+		out[card.NodeID] = append(out[card.NodeID], card)
 	}
 	return out
 }
@@ -374,15 +377,7 @@ func (l *ListRows) Model(id uint) *store.Model { return l.models[id] }
 // time it is asked: a card's holders change with every report, so they are
 // not kept in the shared list snapshot.
 func (l *ListRows) HeldCards(nodeIDs []uint) map[uint][]store.GPU {
-	out := map[uint][]store.GPU{}
-	cards, err := l.st.HeldCardsOnNodes(nodeIDs)
-	if err != nil {
-		return out
-	}
-	for _, card := range cards {
-		out[card.NodeID] = append(out[card.NodeID], card)
-	}
-	return out
+	return heldCardsByNode(l.st, nodeIDs)
 }
 
 func (l *ListRows) ModelFile(modelID, nodeID uint) *store.ModelFile {
