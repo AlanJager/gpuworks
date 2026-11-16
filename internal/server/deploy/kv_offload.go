@@ -62,6 +62,8 @@ func nativeKVValueEffective(q LaunchConfig, key string) bool {
 		return q.KVDiskOffload && q.KVOffloadReadThreads > 0
 	case "kv_offload_write_threads":
 		return q.KVDiskOffload && q.KVOffloadWriteThreads > 0
+	case "kv_offload_block_size":
+		return q.KVOffloadBlockSize > 0
 	}
 	// A key this switch does not know is judged as stated: a backend that
 	// names it in Replaces must not be combined with it at all.

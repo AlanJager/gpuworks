@@ -27,6 +27,25 @@ func vllmOffloadRenderers() map[string]vllmOffloadRenderer {
 	return map[string]vllmOffloadRenderer{kvbackend.Native: nativeVLLMOffload}
 }
 
+// nativeKVKeys are the launch configuration keys of an engine's own KV
+// offload: what an external backend replaces (it must replace all of them,
+// because the adapter renders no native tier while a backend is selected),
+// what validateKVBackend judges, and what PDRoleLaunchConfig drops on a role
+// that keeps no offload (TestKVBackendSetRendersEverySelectableRow and
+// TestPDRoleLaunchConfigDropsEveryOffloadKey hold the three to this list).
+// kv_offload_block_size has no dictionary row but is a native tier setting
+// all the same. Only vLLM has a KV offload adapter; a row of another engine
+// is refused by the same test until that engine's adapter renders it.
+func nativeKVKeys(engine string) []string {
+	if engine != EngineVLLM {
+		return nil
+	}
+	return []string{
+		paramKVOffloadingSize, "kv_disk_offload", "shared_kv_dir", "kv_disk_limit_gib",
+		"kv_offload_read_threads", "kv_offload_write_threads", "kv_offload_block_size",
+	}
+}
+
 // nativeVLLMOffload is vLLM's own offload: the disk tier as a tiering
 // OffloadingConnector, or the CPU tier, which without a PD connector is
 // carried by vLLM's own flags and only joins a composition as an object.

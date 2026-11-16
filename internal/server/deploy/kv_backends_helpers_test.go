@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"slices"
 	"strconv"
 	"testing"
 
@@ -14,8 +15,8 @@ import (
 // before a real third-party backend lands on it.
 const testExternalKVBackend = "testext"
 
-// testExternalKVBackendKeys are the native keys the test row replaces: all of
-// vLLM's own offload.
+// testExternalKVBackendKeys are the native dictionary keys the test row
+// replaces, the ones the deploy form tombstones when its card is chosen.
 var testExternalKVBackendKeys = []string{
 	"kv_offloading_size", "kv_disk_offload", "shared_kv_dir",
 	"kv_offload_read_threads", "kv_offload_write_threads", "kv_disk_limit_gib",
@@ -24,7 +25,10 @@ var testExternalKVBackendKeys = []string{
 func testExternalKVBackendRow() kvbackend.Backend {
 	return kvbackend.Backend{
 		ID: testExternalKVBackend, Engine: EngineVLLM, Label: "Test External", External: true,
-		Vendors: []string{accelerator.VendorNVIDIA}, Replaces: testExternalKVBackendKeys,
+		Vendors: []string{accelerator.VendorNVIDIA},
+		// All of vLLM's own offload, including the block size, which has no
+		// dictionary row (nativeKVKeys).
+		Replaces: append(slices.Clone(testExternalKVBackendKeys), "kv_offload_block_size"),
 		PDRoles: []string{pdmode.RolePrefill}, Topology: kvbackend.Topology{MaxNNodes: 1},
 	}
 }

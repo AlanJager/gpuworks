@@ -3,10 +3,12 @@ package deploy
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	enginenames "gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/server/kvbackend"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
@@ -97,7 +99,7 @@ func TestKVBackendSelectorAndProfileWire(t *testing.T) {
 		t.Fatalf("option label = %v", label)
 	}
 	backends, _ := json.Marshal(profile.KVBackends)
-	want := `[{"id":"testext","label":"Test External","replaces":["kv_offloading_size","kv_disk_offload","shared_kv_dir","kv_offload_read_threads","kv_offload_write_threads","kv_disk_limit_gib"],"pd_roles":["prefill"]}]`
+	want := `[{"id":"testext","label":"Test External","replaces":["kv_offloading_size","kv_disk_offload","shared_kv_dir","kv_offload_read_threads","kv_offload_write_threads","kv_disk_limit_gib","kv_offload_block_size"],"pd_roles":["prefill"]}]`
 	if string(backends) != want {
 		t.Fatalf("kv_backends = %s, want %s", backends, want)
 	}
@@ -145,6 +147,7 @@ func TestKVBackendSelectionValidation(t *testing.T) {
 		"kv_disk_limit_gib":        func(q *LaunchConfig) { q.KVDiskLimitGiB = 8 },
 		"kv_offload_read_threads":  func(q *LaunchConfig) { q.KVDiskOffload, q.KVOffloadReadThreads = true, 4 },
 		"kv_offload_write_threads": func(q *LaunchConfig) { q.KVOffloadWriteThreads = 4; q.KVDiskOffload = true },
+		"kv_offload_block_size":    func(q *LaunchConfig) { q.KVOffloadBlockSize = 128 },
 	} {
 		q := selectTestExternal()
 		edit(&q)
@@ -434,26 +437,103 @@ func TestKVBackendTemplateRoundTrip(t *testing.T) {
 	wantCode(t, err, ErrorLaunchConfigUnsetConflict)
 }
 
-// Every selectable row of the shipped catalog has a renderer and replaces
-// only real dictionary keys; the test catalog is held to the same rule.
+// kvBackendSetProblems are the rules every selectable row is held to beyond
+// what kvbackend.New can see: an engine adapter renders it, it replaces only
+// keys of the engine's own offload or its dictionary, and an external row
+// replaces every key of the engine's own offload, because the adapter drops
+// the engine's own tiers whenever a backend is selected (kv_compose.go).
+func kvBackendSetProblems(set kvBackendSet) []string {
+	var out []string
+	for _, engine := range enginenames.DialectNames() {
+		for _, row := range set.registry.Selectable(engine) {
+			if _, ok := set.vllmOffloadRenderer(row.ID); engine != EngineVLLM || !ok {
+				out = append(out, fmt.Sprintf("%s/%s: no renderer (only the vLLM adapter renders KV offload backends)", engine, row.ID))
+			}
+			native := nativeKVKeys(engine)
+			for _, key := range row.Replaces {
+				if _, ok := engineParams(engine)[key]; !ok && !slices.Contains(native, key) {
+					out = append(out, fmt.Sprintf("%s/%s: replaces %q, which is neither a dictionary key nor a native offload key", engine, row.ID, key))
+				}
+			}
+			if !row.External {
+				continue
+			}
+			for _, key := range native {
+				if !slices.Contains(row.Replaces, key) {
+					out = append(out, fmt.Sprintf("%s/%s: an external row must replace native key %q", engine, row.ID, key))
+				}
+			}
+		}
+	}
+	return out
+}
+
+// Every selectable row of the shipped catalog, and of the test catalog, is
+// rendered, replaces the whole native offload when external, and launches
+// without PD when the launch is not PD.
 func TestKVBackendSetRendersEverySelectableRow(t *testing.T) {
 	check := func() {
-		for _, engine := range []string{EngineVLLM, EngineSGLang} {
-			for _, row := range selectableKVBackends(engine) {
-				if _, ok := kvBackends.vllmOffloadRenderer(row.ID); engine == EngineVLLM && !ok {
-					t.Errorf("%s/%s has no renderer", engine, row.ID)
-				}
-				for _, key := range row.Replaces {
-					if _, ok := engineParams(engine)[key]; !ok {
-						t.Errorf("%s/%s replaces %q, which is not a dictionary key", engine, row.ID, key)
-					}
-				}
+		for _, problem := range kvBackendSetProblems(kvBackends) {
+			t.Error(problem)
+		}
+		for _, row := range selectableKVBackends(EngineVLLM) {
+			launch, err := resolveKVTest(kvTestParams(LaunchConfig{KVOffloadBackend: row.ID}, firstVendor(row)), CollectTargetCapabilities)
+			if err != nil || launch.RequestedFeatures.PD || !launch.RequestedFeatures.CommandKnown {
+				t.Errorf("%s: non-PD launch features = %+v, %v", row.ID, launch.RequestedFeatures, err)
 			}
 		}
 	}
 	check()
 	withKVBackends(t)
 	check()
+
+	native, _ := kvbackend.Builtin().Resolve(EngineVLLM, "")
+	for name, row := range map[string]kvbackend.Backend{
+		"a SGLang row has no adapter": {ID: "hicache", Engine: EngineSGLang, Label: "HiCache", External: true},
+		"a partial replacement":       {ID: "partial", Engine: EngineVLLM, Label: "Partial", External: true, Replaces: []string{"kv_disk_offload"}},
+		"a key nobody owns":           {ID: "stray", Engine: EngineVLLM, Label: "Stray", Replaces: []string{"no_such_key"}},
+	} {
+		registry, err := kvbackend.New(native, row)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		set := kvBackendSet{registry: registry, vllmOffload: map[string]vllmOffloadRenderer{row.ID: testExternalVLLMOffload}}
+		if problems := kvBackendSetProblems(set); len(problems) == 0 {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func firstVendor(row kvbackend.Backend) string {
+	if len(row.Vendors) == 0 {
+		return ""
+	}
+	return row.Vendors[0]
+}
+
+// A role that does not keep the backend launches with none of the engine's
+// own offload either, and nothing a backend owns survives on it: no
+// dictionary key depends on the selector until PDRoleLaunchConfig learns to
+// drop such keys.
+func TestPDRoleLaunchConfigDropsEveryOffloadKey(t *testing.T) {
+	q := LaunchConfig{KVOffloadingSize: 8, KVDiskOffload: true, SharedKVDir: "/kv", KVDiskLimitGiB: 4, KVOffloadReadThreads: 2, KVOffloadWriteThreads: 2, KVOffloadBlockSize: 64}
+	decode := PDRoleLaunchConfig(EngineVLLM, q, pdmode.RoleDecode)
+	values, err := launchConfigValues(decode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range nativeKVKeys(EngineVLLM) {
+		if _, stated := values[key]; stated {
+			t.Errorf("decode keeps %s = %v", key, values[key])
+		}
+	}
+	for _, engine := range enginenames.DialectNames() {
+		for key, spec := range engineParams(engine) {
+			if spec.DependsOn == paramKVOffloadBackend {
+				t.Errorf("%s/%s depends on %s: PDRoleLaunchConfig must drop it on a role that does not keep the backend", engine, key, paramKVOffloadBackend)
+			}
+		}
+	}
 }
 
 // A row written by this server, read by a server that predates the field,
