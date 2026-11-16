@@ -116,6 +116,7 @@ server-darwin-arm64-prebuilt-ui: cross-agents
 
 ## release-packages: build versioned Linux and macOS server archives with checksums
 release-packages:
+	./scripts/ui_overlay_guard.sh
 	GPUWORKS_RELEASE_CHANNEL="$${GPUWORKS_RELEASE_CHANNEL:-$(CHANNEL)}" GPUWORKS_SERVER_PKG="$(SERVER_PKG)" GPUWORKS_PACKAGE_PREFIX="$(PACKAGE_PREFIX)" ./scripts/package_release.sh
 
 DIST_DIR ?= dist
@@ -156,6 +157,7 @@ cross: cross-agents
 
 ## ui: install or refresh deps when package-lock.json changed (ui/ensure-deps.mjs), then build the frontend into the embed dir
 ui: i18n-check
+	./scripts/ui_overlay_guard.sh
 	@if [ -f secrets/i18n-llm.env ]; then echo "  i18n LLM config detected; run 'make i18n-translate' to fill new missing keys"; fi
 	@cd ui && node ensure-deps.mjs
 	cd ui && npm run lint:i18n

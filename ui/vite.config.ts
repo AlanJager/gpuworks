@@ -4,12 +4,18 @@ import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
 
 // Vite builds directly into the Go embed directory so `make ui` produces the
-// exact tree that go:embed bundles into the server binary.
+// exact tree that go:embed bundles into the server binary. A console built with
+// overlay modules in src/extensions/<id>/ sets GPUWORKS_UI_OUT_DIR to build
+// somewhere else, so its bundle never lands in the community server's embed
+// directory (`make ui` refuses an overlay without it). A relative path is
+// taken from the repository root, as scripts/check_ui_bundle_size.sh reads it.
+const outDir = resolve(__dirname, "..", process.env.GPUWORKS_UI_OUT_DIR || "internal/server/webui/dist");
+
 export default defineConfig({
   resolve: { alias: { "@": resolve(__dirname, "src") } },
   plugins: [react(), tailwindcss()],
   build: {
-    outDir: resolve(__dirname, "../internal/server/webui/dist"),
+    outDir,
     emptyOutDir: true,
   },
   server: {

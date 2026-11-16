@@ -3,14 +3,15 @@ set -eu
 
 # Soft budget on the size of the built web UI (ui_bundle_gzip_kb, a "warn" key
 # in scripts/arch-constraints.txt). Run after `npm run build`: it measures the
-# gzip-compressed tar of internal/server/webui/dist, the same way
+# gzip-compressed tar of internal/server/webui/dist (or GPUWORKS_UI_OUT_DIR,
+# where an overlay console builds), the same way
 # scripts/package_release.sh packs it, and warns (never fails) when the total
 # is over budget, listing the largest assets. Rationale and how to update the
 # budget: scripts/arch-constraints.md (ui_bundle_gzip_kb).
 
 cd "$(dirname "$0")/.."
 
-DIST="internal/server/webui/dist"
+DIST="${GPUWORKS_UI_OUT_DIR:-internal/server/webui/dist}"
 BUDGET_FILE="scripts/arch-constraints.txt"
 KEY="ui_bundle_gzip_kb"
 
