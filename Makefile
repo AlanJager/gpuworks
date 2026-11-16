@@ -34,6 +34,13 @@ LDFLAGS   := -s -w \
 	-X gpuworks.ai/gpuworks/internal/version.BuildDate=$(DATE) \
 	-X gpuworks.ai/gpuworks/internal/version.Channel=$(CHANNEL)
 
+# SERVER_PKG is the main package of the server binary and PACKAGE_PREFIX the
+# name release-packages gives its archives (<prefix>-<release>-<os>-<arch>.tar.gz).
+# A separately built server (another edition) sets both; the binary inside is
+# named gpuworks either way, which is what install and upgrade unpack.
+SERVER_PKG     ?= ./cmd/gpuworks
+PACKAGE_PREFIX ?= gpuworks
+
 BIN       := bin
 TEST_LOG_DIR ?= .testlogs
 PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
@@ -76,40 +83,40 @@ agent-image-publish:
 
 ## server: build the control-plane binary (embeds UI + cross-compiled agents)
 server: cross-agents
-	CGO_ENABLED=0 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks ./cmd/gpuworks
+	CGO_ENABLED=0 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks $(SERVER_PKG)
 
 # Explicit release targets avoid accidentally deploying a host (for example,
 # Darwin/arm64) control-plane binary to a Linux node from a developer laptop.
 server-linux-amd64: ui cross-agents
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-amd64 ./cmd/gpuworks
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-amd64 $(SERVER_PKG)
 
 # CI receives internal/server/webui/dist from core-ui. This target builds the
 # hosted cloud-test server without trying to run npm inside the Go image.
 server-linux-amd64-prebuilt-ui: cross-agents
 	@test -f internal/server/webui/dist/index.html || (echo "prebuilt UI artifact is required" >&2; exit 2)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-amd64 ./cmd/gpuworks
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-amd64 $(SERVER_PKG)
 
 server-linux-arm64: ui cross-agents
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-arm64 ./cmd/gpuworks
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-arm64 $(SERVER_PKG)
 
 # CI receives the same prebuilt UI artifact for both server architectures.
 server-linux-arm64-prebuilt-ui: cross-agents
 	@test -f internal/server/webui/dist/index.html || (echo "prebuilt UI artifact is required" >&2; exit 2)
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-arm64 ./cmd/gpuworks
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-arm64 $(SERVER_PKG)
 
 # macOS release binaries are cross-compiled by the Linux release job. They
 # still embed Linux agents because managed GPU nodes run the agent on Linux.
 server-darwin-amd64-prebuilt-ui: cross-agents
 	@test -f internal/server/webui/dist/index.html || (echo "prebuilt UI artifact is required" >&2; exit 2)
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-darwin-amd64 ./cmd/gpuworks
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-darwin-amd64 $(SERVER_PKG)
 
 server-darwin-arm64-prebuilt-ui: cross-agents
 	@test -f internal/server/webui/dist/index.html || (echo "prebuilt UI artifact is required" >&2; exit 2)
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-darwin-arm64 ./cmd/gpuworks
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-darwin-arm64 $(SERVER_PKG)
 
 ## release-packages: build versioned Linux and macOS server archives with checksums
 release-packages:
-	GPUWORKS_RELEASE_CHANNEL="$${GPUWORKS_RELEASE_CHANNEL:-$(CHANNEL)}" ./scripts/package_release.sh
+	GPUWORKS_RELEASE_CHANNEL="$${GPUWORKS_RELEASE_CHANNEL:-$(CHANNEL)}" GPUWORKS_SERVER_PKG="$(SERVER_PKG)" GPUWORKS_PACKAGE_PREFIX="$(PACKAGE_PREFIX)" ./scripts/package_release.sh
 
 DIST_DIR ?= dist
 
