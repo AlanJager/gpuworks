@@ -58,11 +58,11 @@ func TestNewRefusesModulesThatCannotCompose(t *testing.T) {
 		mods []Module
 		want string
 	}{
-		"nil module":         {[]Module{nil}, "extension module 1 is nil"},
-		"bad name":           {[]Module{namedModule("Bad")}, `"Bad" does not match`},
-		"one-letter name":    {[]Module{namedModule("a")}, `"a" does not match`},
-		"duplicate":          {[]Module{namedModule("dup"), namedModule("dup")}, `"dup" is registered twice`},
-		"foreign namespace":  {[]Module{migratingModule{name: "mine", namespace: "theirs"}}, `use namespace "theirs"`},
+		"nil module":             {[]Module{nil}, "extension module 1 is nil"},
+		"bad name":               {[]Module{namedModule("Bad")}, `"Bad" does not match`},
+		"one-letter name":        {[]Module{namedModule("a")}, `"a" does not match`},
+		"duplicate":              {[]Module{namedModule("dup"), namedModule("dup")}, `"dup" is registered twice`},
+		"foreign namespace":      {[]Module{migratingModule{name: "mine", namespace: "theirs"}}, `use namespace "theirs"`},
 		"migrator with no steps": {[]Module{migratingModule{name: "x1", namespace: "x1"}}, ""},
 	}
 	for name, c := range cases {

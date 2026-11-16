@@ -2,6 +2,8 @@
 
 Another Go module can use the gpuworks server as a library and compile it, together with its own code, into a new server binary (a "separately built server" below). This page describes the interfaces the open-source code leaves for that, the thread each one is called on, the rules they must follow, and what the open-source code does not do. The irreversible decisions are in [ADR 0070](../adr/0070-extension-tiers-and-edition-boundary.md); the terms (extension module, feature key, feature availability, extension-held cordon) are defined in `CONTEXT.md`.
 
+Extension docs, examples and tests describe each mechanism in its own terms; sample publishers, editions and plugins use the fictional name `acme`, as sample domains use `example.com`.
+
 ## Four tiers
 
 A capability goes in the lowest tier that can carry it:
@@ -138,4 +140,4 @@ Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtim
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: b046c6108d3be5516bf9766ba40e4650feda61bb1727094a5a9ef945d977e693 -->
+<!-- translation-source-sha256: 19eb305b80c14b2936a74757a5a229efeaca74d7b0f0e940ad89b9ef78572f03 -->
