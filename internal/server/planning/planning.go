@@ -211,9 +211,8 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningGPUArchCaution, map[string]any{"detail": q}))
 	}
 
-	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, reserved: reservedAgainst(st, in.YieldPolicy)}
+	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, reserved: reservedAgainst(st, in.YieldPolicy), servingUnavailable: in.ServingUnavailable}
 	snap := nodeSnapshot(st, in.Node, dtypeOK, dtypeReason, view)
-	snap.ServingUnavailable = in.ServingUnavailable
 	if in.Unloaded {
 		// A card that is busy or unhealthy now is a reason to wait, not to
 		// refuse; so is a disk that is full now.
@@ -340,7 +339,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 	// No fit → suggest sleeping sleepable instances to free room (confirm-based;
 	// the platform never sleeps silently).
 	if !out.Result.OK {
-		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
+		out.Eviction = suggestEviction(st, in.Node, req, view)
 		// Only a launch that shares cards by yield policy may wait for
 		// holders, and only one sleepers keep cards from may be refused by
 		// their name, or one whose evaluation asks who holds its cards
@@ -349,12 +348,12 @@ func (in Input) Evaluate(st *store.Store) Output {
 		shares := in.YieldPolicy != "" && in.YieldPolicy != yieldpolicy.Never
 		if !in.Unloaded && st != nil && (shares || view.reserved != nil || in.ExplainHolders) {
 			if insts, err := st.InstancesForNode(in.Node.ID); err == nil {
-				out.Yield = launchYield(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				out.Yield = launchYield(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, view)
 				if out.Yield == nil {
-					out.Reserved = launchReserved(st, in.Node, insts, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+					out.Reserved = launchReserved(st, in.Node, insts, req, dtypeOK, dtypeReason, view)
 				}
 				if out.Yield == nil && out.Reserved == nil && in.ExplainHolders {
-					out.Held = launchHeld(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+					out.Held = launchHeld(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, view)
 				}
 			}
 		}

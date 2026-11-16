@@ -526,7 +526,7 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 		t.Fatal(err)
 	}
 	req := scheduler.Request{WeightBytes: 8 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
-	suggestions := suggestEviction(st, node, req, false, ledgerView{})
+	suggestions := suggestEviction(st, node, req, ledgerView{})
 	// Sleeping releases the whole card down to the residue the sleeper keeps.
 	wantFrees := float64((16<<30)-sleep.UnknownResidueBytes) / (1 << 30)
 	if len(suggestions) != 1 || suggestions[0].InstanceUUID != "sleep-a" || suggestions[0].Deployment != "sleepable-a" || suggestions[0].FreesGiB != wantFrees {
@@ -544,7 +544,7 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 	if err := st.SetDeploymentSleep(dep.ID, 1); err != nil {
 		t.Fatal(err)
 	}
-	if got := suggestEviction(st, node, req, false, ledgerView{}); got != nil {
+	if got := suggestEviction(st, node, req, ledgerView{}); got != nil {
 		t.Fatalf("already-sleeping instance suggested again: %+v", got)
 	}
 	snap := NodeSnapshot(st, node, true, "")
@@ -777,7 +777,7 @@ func TestAReplicaSleepingAloneIsChargedItsResidue(t *testing.T) {
 		t.Fatalf("awake replica's card = %+v, want its full claim", allocations[1])
 	}
 	req := scheduler.Request{WeightBytes: 30 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
-	for _, suggestion := range suggestEviction(st, node, req, false, ledgerView{}) {
+	for _, suggestion := range suggestEviction(st, node, req, ledgerView{}) {
 		if suggestion.InstanceUUID == "replica-0" {
 			t.Fatalf("the sleeping replica was suggested for eviction: %+v", suggestion)
 		}
@@ -978,7 +978,7 @@ func TestLedgerViewExcludesTheEditedDeployment(t *testing.T) {
 		t.Fatalf("another deployment's claim changed: %+v", snap.GPUs[1])
 	}
 	req := scheduler.Request{WeightBytes: 30 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
-	if got := suggestEviction(st, node, req, false, view); got != nil {
+	if got := suggestEviction(st, node, req, view); got != nil {
 		t.Fatalf("the edited deployment's own instance suggested for sleep: %+v", got)
 	}
 }

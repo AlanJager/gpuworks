@@ -34,7 +34,7 @@ type EvictSuggestion struct {
 // that the current preview can use to make room, or nil if sleeping would not
 // help. Instances already asleep are not candidates: their memory is already
 // released down to the residue, so sleeping them again frees nothing.
-func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, servingUnavailable bool, view ledgerView) []EvictSuggestion {
+func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, view ledgerView) []EvictSuggestion {
 	insts, _ := st.InstancesForNode(node.ID)
 	_, _, archFamily, _ := nodeGPUProfile(node)
 	capacity := map[int]int64{}
@@ -79,7 +79,6 @@ func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, s
 	// residue, exactly as the ledger will charge them once they have slept.
 	view.alsoAsleep = func(in *store.Instance) bool { return evicted[in.UUID] }
 	snap := nodeSnapshot(st, node, true, "", view)
-	snap.ServingUnavailable = servingUnavailable
 	if scheduler.Schedule(req, snap).OK {
 		return sugg
 	}
@@ -352,6 +351,9 @@ type ledgerView struct {
 	// edit of a deployment is previewed as the launch that replaces them, so
 	// the memory they hold now is not counted against it (Input.ExcludeDeploymentID).
 	excludeDeployment uint
+	// servingUnavailable carries Input.ServingUnavailable into every snapshot
+	// read through this view, so a re-plan cannot forget it.
+	servingUnavailable bool
 	// reserved says a sleeper keeps its whole claim rather than its residue:
 	// it shares its cards by yield policy, but not with the deployment
 	// being placed (reservedAgainst).
@@ -406,6 +408,7 @@ func nodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason s
 		DtypeReason:           dtypeReason,
 		DiskAvailBytes:        modelDiskAvailable(node),
 		RuntimeDiskAvailBytes: runtimeDiskAvailable(node),
+		ServingUnavailable:    view.servingUnavailable,
 	}
 }
 
