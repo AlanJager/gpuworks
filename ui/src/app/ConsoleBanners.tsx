@@ -1,30 +1,22 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
 import { productMessageText } from "../apiError";
-import { consoleManifestApi, type ConsoleBanner } from "../consoleManifest";
+import { useConsoleBanners } from "../extensions/featureAccess";
 
 const tones: Record<string, "info" | "warning" | "danger"> = { info: "info", warning: "warning", danger: "danger" };
 
 /**
  * ConsoleBanners shows the server's banners (GET /api/v1/console/manifest)
  * above every page. Which banners exist, for whom and how severe is the
- * server's decision; this only renders them. While the manifest loads, when
+ * server's decision; this only renders them. The manifest read is the one the
+ * extension entries share. While the manifest loads, when
  * it has none, or when it cannot be read, nothing is shown: banners are never
  * what a page needs to work.
  */
 export default function ConsoleBanners() {
   const { t } = useTranslation();
-  const [banners, setBanners] = useState<ConsoleBanner[]>([]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    consoleManifestApi.manifest(controller.signal)
-      .then((manifest) => { if (!controller.signal.aborted) setBanners(manifest.banners ?? []); })
-      .catch(() => { /* No banners; the page itself is unaffected. */ });
-    return () => controller.abort();
-  }, []);
+  const banners = useConsoleBanners();
 
   if (banners.length === 0) return null;
   return (

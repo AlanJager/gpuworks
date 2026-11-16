@@ -47,5 +47,5 @@ export type {
   ConsoleExtension, ExtensionHeaderItem, ExtensionLocales, ExtensionNavGroup, ExtensionNavItem, ExtensionRoute,
   ExtensionSettingsTab, LockedSlotProps, SlotProps,
 } from "./types";
-export type { FeatureAccess } from "../consoleManifestApi";
+export type { FeatureAccess } from "../consoleManifest";
 export { LockedFeature } from "./LockedFeature";

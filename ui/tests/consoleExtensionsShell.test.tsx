@@ -100,7 +100,7 @@ function serve(manifest?: Route) {
 }
 // The manifest as the server writes it, with audit.log at the given access.
 const manifestWith = (access: string) => () => new Response(
-  `{"edition":"test","features":[{"key":"audit.log","access":"${access}","presentation":"promote","upsell_url":"https://example.com/audit"}],"nav":[],"banners":[]}`,
+  `{"edition":"test","features":[{"key":"audit.log","access":"${access}","presentation":"promote","link":"https://example.com/audit"}],"nav":[],"banners":[]}`,
   { headers: { "Content-Type": "application/json" } },
 );
 
@@ -133,8 +133,8 @@ const topBar = () => document.querySelector<HTMLElement>("header.app-header")!;
 const adminLinks = () => within(within(menu()).getByRole("region", { name: common.navigation.groups.admin })).getAllByRole("link");
 const builtInTabs = ["general", "pull", "nodes", "access", "integrations", "data", "diagnostics"].map((key) => locale.settings.page.tabs[key]);
 
-test("with no extension the frame is the built-in one and never asks for the manifest", async () => {
-  serve();
+test("with no extension the frame is the built-in one and reads the manifest once, for its banners", async () => {
+  serve(() => Response.json({ edition: "community", features: [], nav: [], banners: [] }));
   await mountApp("/audit");
   // The whole menu, group by group: name, then each entry's label and address.
   const regions = within(menu()).getAllByRole("region");
@@ -152,7 +152,7 @@ test("with no extension the frame is the built-in one and never asks for the man
   cleanup();
   await mountApp("/settings");
   await waitFor(() => assert.deepEqual(screen.getAllByRole("tab").map((tab) => tab.textContent), builtInTabs));
-  assert.equal(manifestReads, 0);
+  assert.equal(manifestReads, 1, "the banners read the manifest once and the remount reuses it");
   assert.equal(unexpected.includes("/api/v1/console/manifest"), false);
 });
 

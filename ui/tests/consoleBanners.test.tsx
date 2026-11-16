@@ -11,11 +11,12 @@ const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const manifestModule = await import("../src/consoleManifest.ts");
 const ConsoleBanners = (await import("../src/app/ConsoleBanners.tsx")).default;
+const { resetConsoleManifestForTest } = await import("../src/extensions/featureAccess.ts");
 type ConsoleManifest = import("../src/consoleManifest.ts").ConsoleManifest;
 
 const c = locale.common as Record<string, any>;
 const original = manifestModule.consoleManifestApi.manifest;
-afterEach(() => { cleanup(); manifestModule.consoleManifestApi.manifest = original; });
+afterEach(() => { cleanup(); manifestModule.consoleManifestApi.manifest = original; resetConsoleManifestForTest(); });
 
 function manifest(banners: ConsoleManifest["banners"]): ConsoleManifest {
   return { edition: "community", features: [], nav: [], banners };

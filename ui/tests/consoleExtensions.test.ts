@@ -149,7 +149,7 @@ test("extension translations merge into i18next without replacing built-in text"
 const manifestWire = `{"edition":"community-plus","features":[
   {"key":"audit.log","access":"full","presentation":"promote"},
   {"key":"quota.write","access":"read_only","presentation":"promote"},
-  {"key":"sso.login","access":"locked","presentation":"promote","upsell_url":"https://example.com/sso"},
+  {"key":"sso.login","access":"locked","presentation":"promote","link":"https://example.com/sso"},
   {"key":"pools.exclusive","access":"hidden","presentation":"hidden"},
   {"key":"future.key","access":"suspended"}
 ],"nav":[],"banners":[]}`;
