@@ -15,3 +15,5 @@ The tradeoff is explicit: during the detached window, requests to single-replica
 Out of scope: no new persistent data structures or wire protocol changes (the `DataHello`/`SessionID`/`stale_session` rejection logic stays unchanged). `file.large_read` (`OpenLargeFileRead`) retains its stricter existing semantics: it requires the lane to be `attached`, and immediately rejects both `none` and `detached` without waiting. This stream's contract is already "no lane means no fetch, and the caller immediately takes another path"; waiting another 5 seconds would only delay that fallback path.
 
 Later: the metric and log batches the agent ships are routed by the same rule; see [ADR 0064](0064-telemetry-stream-on-the-data-lane.md). Also, a `server_dial` node gets a second lane dialed by the server when the agent enables the data lane, so it is not permanently in the `none` state.
+
+<!-- translation-source-sha256: a5f1a7ea2d20b5aeaf7c0b2498a7ec9f94cdc7ad42b02744d4a0d92e5519cc9e -->

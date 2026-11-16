@@ -114,3 +114,5 @@ The platform evaluates placement rank by rank using the deployment configuration
 - Automatic placement chooses nodes only, not cards: how many cards each node uses is fixed by TP × PP ÷ node count, and the scheduler picks which ones at launch. A multi-node replica cannot pin cards.
 - The platform judges whether nodes can reach each other from the compute network **declaration**, not from network test results. When the declaration does not match reality (for example a switch that does not route), a group that cannot talk can still be chosen, and the engine reports the failure after launch. For network selection and verification see [Configure Node Networks](configure-networks.md).
 - Automatic placement does not start some ranks while it waits for the rest: the ranks of a replica are created together or wait together.
+
+<!-- translation-source-sha256: 45a3772fa6718e651775afd2137d1846cb578fd4b5fc9933bbdbed854d690be2 -->

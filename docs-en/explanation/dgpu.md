@@ -50,3 +50,5 @@ If the request does not specify a backend, the selected node uses its own ready 
 If one is specified, only that backend can be used. Automatic placement does not know the selected node in advance, so it never specifies a backend.
 With automatic placement, the deployment form determines whether dGPU can be enabled from the backends available on candidate nodes, not from the node chosen by the scheduler:
 when every GPU already has an instance, full GPU deployment cannot find a node, which is exactly when partitioning is needed most.
+
+<!-- translation-source-sha256: 40554aecae87ccd58e0f0dd20f43f93f7959195247e41e9d8509739680ac6917 -->

@@ -192,3 +192,6 @@ call, and reports:
 - `snake_case`: Reachable struct fields or keys in map literals written inline do not encode as snake_case.
 
 This check is included in `make test-unit`.
+
+<!-- translation-source-sha256: e2bda9af30c4ebf9224b33165c7eb2a3db50322778468b87776098bdb9ea2b9f -->
+<!-- translation-localized-code-block: bae0e4c7d262a34ee3ef790d5e20acb056000102304e33d31fffd72989b4b11c 575be17f25555cdcb9a913a995f63b3814eab0f2391908631ca49f5fa2d37787 Translate password input prompt -->

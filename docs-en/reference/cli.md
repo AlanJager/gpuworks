@@ -607,3 +607,6 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 | `--jobs N` | `8` | Number of repositories read in parallel |
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
+
+<!-- translation-source-sha256: 4472fbfc29ef70d8a6b70a51c45dd1fd5f4ef1e415ebb3155b2434bdbf8071e2 -->
+<!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

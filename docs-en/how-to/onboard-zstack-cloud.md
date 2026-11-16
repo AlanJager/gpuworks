@@ -75,3 +75,5 @@ See [Connect Nodes and Upgrade or Uninstall the Agent](connect-nodes.md) for ins
 Click **Edit** for the environment in the **Connected external platforms** list to update the name, endpoint, or AccessKey. Credential fields left blank retain their existing values; the **External platform** field cannot be changed. After saving, synchronize again to confirm that the new credentials can query resources.
 
 Credentials are encrypted at rest, and the Secret is not displayed in the edit form.
+
+<!-- translation-source-sha256: 4d2f97e1d38047cd1a35b98007e5f709641bf8413e9d08e7f9879bba6f31edb9 -->

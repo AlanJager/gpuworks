@@ -327,3 +327,13 @@ After verification passes, `VACUUM INTO` creates a database snapshot. The snapsh
 The page waits only 5 minutes, less than the server's confirmation window. You must therefore still check the actual version and logs after a page timeout.
 
 </details>
+
+<!-- translation-source-sha256: c09ac102a257e8ab2259b21f935759773c6f8ce7a4b604e2173265dd3580742d -->
+<!-- translation-localized-code-block: 5846ca9eedd24f71306cab5c0c641ac91d93017a204a10590d0da44869aca60c d30b290861df40db339879702ea834f9a0133c1811b5c3e1b4315db3810ae76b Translate the editorial arrow annotation for the password prompt; actual CLI prompt text unchanged. -->
+<!-- translation-localized-code-block: 5e39ad4e967ab522280dcf50bf738ec0bda0ead57e8cc62bfb507186fc142032 3b97e82a02b8ad42b870dad3ff601553828968e7146d828efc110fde90a6eea5 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
+<!-- translation-localized-code-block: a2a7d849742d4bc1b49eee629e9d586337d74603ea8592f6d24f2d3add8c1044 a51c2a29d1d5cfacb1af2136ca8e39aa3fcad8ea6674d3de2abc2c7c8f624e7b Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
+<!-- translation-localized-code-block: f0b38b5e68e138a05b5cbd313cf1014cb6614ad9ef5469dfa703fcdd1cc9155f 0d3b3889d02db3ff61a19c7ca7ad3712d1bb6010a6416388d4488fee5cbd52bf Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-localized-code-block: 065bb64e923f37496561b5ef8420b692b7d61b90d1fd7c1d642b2dc252b829ef 47722574ed1a0f86b771369b5e2cc33be3416bdbae43abc3f6493e06a142d86e Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-localized-code-block: dd7dcfa87a47cb4e7eb1762482c6a41e9622441dd96fe931d82eb60234fcb76d 55149b6b9b5b3f803f1cb0340e7fc5c2a9fba5bef9e13d94db5fcd8716475a55 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-localized-code-block: 5d9d6a97de49d41542d0693348156b71b71f4aac3570a2edcb13c74d522ee646 d224002af04a37e1c10bfbe1d9a27e3f7c4ca840be60632da8f7618625d16438 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-localized-code-block: d7ad60dbe1d54b38ab45eb37338d3402b04c9ec20d64909b986fe2c8c81370d7 0babf541726d9ba15196366f47ba5af457f2d3b0e96681b5db9bbcf8707c49e7 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->

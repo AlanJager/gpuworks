@@ -378,3 +378,6 @@ The following names appear in the code but are not user-configurable settings. D
 - `GPUWORKS_EXPOSE_CONNECTOR_SPEC`: When the connector service (`gpuworks expose run`) starts the public ingress connector helper process (`gpuworks expose connector-host`), it passes the startup request through an environment variable to keep credentials off the command line.
 - `GPUWORKS_PARTITION_PROBE_BACKEND`, `GPUWORKS_PARTITION_PROBE_QUOTA_MIB`: Inputs injected into the probe program when the agent starts a dGPU probe container; they are not configuration settings read by the agent.
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
+
+<!-- translation-source-sha256: 54d747b9ee678aa406b162c8f0044c7ad1e7688f0f8720b8c43fa25e8407a919 -->
+<!-- translation-localized-code-block: 86f9f71f25c2b857ad0011486eb8c57eb9996ec1a4417ab035e24d7b4b1f898d dc1d5c5bc85efcc1eb7d1d72bc584329c53e7d9c636c376ad8a7ce5dc1d901cb Reviewed configuration comments; usage_report=false suppresses the daily report and node/GPU counts, while automatic checks retain installation ID and versions. Keys and values unchanged. -->

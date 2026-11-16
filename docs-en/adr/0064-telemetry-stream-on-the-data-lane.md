@@ -31,3 +31,5 @@ Under the same measurement, the heavily logging node's RPC p50 is 72 ms at 2 Mbp
 - This buffer and `benchPending` (the short list of pending benchmark statuses) stay separate: that one counts entries, this one counts bytes and records drops, so their needs differ.
 - No extra rate limit on instance logs: with logs off ctrl, a heavily logging node no longer delays its own RPCs, which removes the need for one (GWKS-259).
 - Single-lane nodes (an older server, `--data-lane=false`) still send telemetry on ctrl, with the latency they had; the buffer applies to them as well.
+
+<!-- translation-source-sha256: ceba2d6e3e7fe379d5fd7364138dc06d635c137c143335caaf5f18286d88cd06 -->

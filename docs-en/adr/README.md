@@ -74,3 +74,5 @@ Numbers increase by creation time and are never reused once assigned. Some recor
 | [0068](0068-partitions-share-cards-with-foreign-processes-by-memory.md) | Memory-limited partitions share a card with processes outside the platform by the memory left (their memory known, 5%/at least 4 GiB headroom; the agent keeps reporting the outside processes once an instance joins them, gated by `partition_safety_protocol` level 2; whole-card and sleeping deployments still refused) | 2026-11-16 | Accepted; supplements 0060 |
 
 Note: 0012–0014 originally collided with 0004, 0004, and 0006, respectively, and were renumbered by creation order during cleanup on 2026-09-03. Old numbers in historical commit messages and MR descriptions are no longer accurate. Similarly, the original 0024 (node network objects) was renumbered to 0030 on 2026-09-30 because it collided with the data-plane lane's 0024. Earlier references to “ADR 0024” meaning network objects were updated accordingly; “ADR 0024” in `CLAUDE.md` and `todo.md` refers to the data-plane lane.
+
+<!-- translation-source-sha256: 2724f79a34461b79a623888fb99dec4fa43d7df382c1c912e9c9b4aa9a598f62 -->

@@ -252,3 +252,5 @@ The gateway does not emulate all OpenAI product APIs. For the exact capabilities
 | 502 `UPSTREAM_UNAVAILABLE` | Check tunnel and engine logs |
 
 Streaming SSE and binary responses (such as WAV) are forwarded with their original content type without truncation.
+
+<!-- translation-source-sha256: ef8552ba1e2e3e6482ecff83361632dcd16e8af60afa77d6a694f1fd714fa64b -->
