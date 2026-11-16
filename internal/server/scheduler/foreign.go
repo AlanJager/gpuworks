@@ -15,15 +15,17 @@ import (
 // - less a headroom, since their figure is a reading rather than a limit -
 // is room the partition can be admitted against like any other claim.
 
-// takesWorkFor is whether the card may host this request at all: a card
-// that takes work, or one held outside the platform that a partition may
-// share by memory. A deployment that sleeps is not placed beside such
-// processes: its wake would be refused for as long as they hold the card.
+// takesWorkFor is whether the card may host this request at all: a card no
+// gate withholds (resolveGates) that takes work, or one held outside the
+// platform that a partition may share by memory.
 func (g GPU) takesWorkFor(req Request) bool {
+	if g.withheld > 0 {
+		return false
+	}
 	if g.Schedulable {
 		return true
 	}
-	return g.sharesForeignWith(req) && !req.sleeps()
+	return g.sharesForeignWith(req)
 }
 
 // sharesForeignWith is whether this is a held card a partition request may
@@ -60,12 +62,13 @@ func pinnedGPUs(gpus []GPU, req Request) []GPU {
 	return gpus
 }
 
-// heldReason says why a card held outside the platform cannot host this
-// request: the sleep rule when only that stands in the way, otherwise the
-// holder.
-func heldReason(req Request, g GPU) string {
-	if g.sharesForeignWith(req) && req.sleeps() {
-		return ReasonHeldOutsidePlatformSleep
+// heldReason says why a card that does not take this request cannot: the
+// gate that withholds it (gateRefusal), otherwise the holder outside the
+// platform. gpus are the cards the verdict is about, which a gate's refusal
+// may name.
+func heldReason(req Request, node string, gpus []GPU, g GPU) Reason {
+	if g.withheld > 0 {
+		return gateRefusal(req, node, gpus, g)
 	}
-	return ReasonGPUsHeldOutsidePlatform
+	return Reason{Code: ReasonGPUsHeldOutsidePlatform}
 }

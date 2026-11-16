@@ -27,6 +27,7 @@ func GPUCandidates(req Request, gpus []GPU) []GPUCandidate {
 	if req.PerGPULimitBytes > 0 {
 		need = admitNeed(req, 1, 0)
 	}
+	gpus = resolveGates(req, NodeSnapshot{GPUs: gpus}).GPUs
 	for _, gpu := range gpus {
 		reason := invalid
 		if reason.Code == "" {
@@ -50,8 +51,8 @@ func gpuResourceRefusal(req Request, gpu GPU, need int64) Reason {
 		return Reason{Code: ReasonGPUIndexUnavailable}
 	}
 	if !gpu.takesWorkFor(req) {
-		if gpu.HeldOutsidePlatform {
-			return Reason{Code: heldReason(req, gpu)}
+		if gpu.HeldOutsidePlatform || gpu.withheld > 0 {
+			return heldReason(req, "", []GPU{gpu}, gpu)
 		}
 		return Reason{Code: ReasonGPUNotSchedulable}
 	}

@@ -58,6 +58,11 @@ type GPU struct {
 	// beside the platform's own instances (store.GPU.SharesMemoryWithForeign).
 	// It never makes the card take whole-card work (ADR 0068).
 	ForeignShareable bool
+
+	// withheld is 1 + the index of the card gate that withholds the card
+	// from the request being planned, 0 for none (resolveGates). It is the
+	// planner's working state, never a fact about the card.
+	withheld int
 }
 
 // Available returns the memory a request that shares the GPU may claim: its
@@ -427,6 +432,8 @@ func Schedule(req Request, node NodeSnapshot) Result {
 		ex.Filters = append(ex.Filters, reason)
 		return Result{OK: false, Message: reason, Explain: ex}
 	}
+
+	node = resolveGates(req, node)
 
 	// --- Filters ---
 	if ok, reason := runFilters(req, node); !ok {

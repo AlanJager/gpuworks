@@ -39,7 +39,7 @@ func runFilters(req Request, node NodeSnapshot) (bool, Reason) {
 			if countTaking(gpus, req) == 0 {
 				// None of the cards takes this request at all: that, not
 				// the backend, is what the operator must act on.
-				return false, Reason{Code: noSchedulableGPUReason(req, gpus)}
+				return false, noSchedulableGPUReason(req, node.UUID, gpus)
 			}
 			return false, Reason{Code: ReasonPartitionUnavailable}
 		}
@@ -51,7 +51,7 @@ func runFilters(req Request, node NodeSnapshot) (bool, Reason) {
 		return false, Reason{Code: ReasonInsufficientRuntimeDisk}
 	}
 	if countTaking(gpus, req) == 0 {
-		return false, Reason{Code: noSchedulableGPUReason(req, gpus)}
+		return false, noSchedulableGPUReason(req, node.UUID, gpus)
 	}
 	if countFree(gpus, req) == 0 {
 		return false, Reason{Code: ReasonNoFreeGPU}
@@ -123,16 +123,16 @@ func countSchedulable(gpus []GPU) int {
 // held outside the platform is named before a fault: freeing it is the
 // quicker remedy, and it is not something a health alert would show. A
 // partition that could share such a card but sleeps is told that instead.
-func noSchedulableGPUReason(req Request, gpus []GPU) string {
+func noSchedulableGPUReason(req Request, node string, gpus []GPU) Reason {
 	if len(gpus) == 0 {
-		return ReasonNoOwnedGPU
+		return Reason{Code: ReasonNoOwnedGPU}
 	}
 	for _, g := range gpus {
-		if g.HeldOutsidePlatform {
-			return heldReason(req, g)
+		if g.HeldOutsidePlatform || g.withheld > 0 {
+			return heldReason(req, node, gpus, g)
 		}
 	}
-	return ReasonNoHealthyGPU
+	return Reason{Code: ReasonNoHealthyGPU}
 }
 
 // usableGPUs returns the GPUs that can host the request at the given per-GPU
