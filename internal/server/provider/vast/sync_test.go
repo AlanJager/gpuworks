@@ -50,7 +50,7 @@ func TestSyncVastPreservesInventoryWhenSecondPageFails(t *testing.T) {
 	}
 	svc := provider.NewService(st, box)
 	svc.SetDriver(d)
-	creds := provider.Credentials{Endpoint: d.baseURL + "/api/v0", APIKey: "test-key"}
+	creds := provider.Credentials{Endpoint: d.baseURL, APIKey: "test-key"}
 	p, err := svc.Add(t.Context(), "vast", "vast-account", creds)
 	if err != nil {
 		t.Fatal(err)

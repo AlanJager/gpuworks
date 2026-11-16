@@ -24,19 +24,16 @@ type instancePage struct {
 	Total     int
 }
 
-// instanceListURL changes only the instance-list API version. Persisted v0
-// endpoints and proxy prefixes remain usable; other operations keep their URLs.
+// instanceListURL upgrades only the legacy /api/v0 suffix for instance queries.
+// Other configured paths and versions are used as supplied.
 func instanceListURL(base string, query url.Values) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
 		return "", err
 	}
 	u.Path = strings.TrimRight(u.Path, "/")
-	switch {
-	case strings.HasSuffix(u.Path, "/api/v0"):
+	if strings.HasSuffix(u.Path, "/api/v0") {
 		u.Path = strings.TrimSuffix(u.Path, "/api/v0") + "/api/v1"
-	case !strings.HasSuffix(u.Path, "/api/v1"):
-		u.Path += "/api/v1"
 	}
 	u.Path += "/instances/"
 	u.RawPath = ""

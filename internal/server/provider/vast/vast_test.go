@@ -48,7 +48,7 @@ func newTestDriver(t *testing.T, h http.HandlerFunc) *Driver {
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	d := New()
-	d.baseURL = srv.URL // override base URL to hit the mock
+	d.baseURL = srv.URL + "/api/v0" // preserve the real default API prefix
 	return d
 }
 
@@ -175,7 +175,7 @@ func TestPowerState(t *testing.T) {
 
 func TestSearchOffers(t *testing.T) {
 	d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/bundles/" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v0/bundles/" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		if got := r.Header.Get("Content-Type"); got != "application/json" {
@@ -223,7 +223,7 @@ func TestCreateInstanceRequiresExplicitOffer(t *testing.T) {
 
 func TestAttachSSHKey(t *testing.T) {
 	d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/instances/9988/ssh/" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v0/instances/9988/ssh/" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]string
@@ -242,7 +242,7 @@ func TestAttachSSHKey(t *testing.T) {
 
 func TestCreateInstanceFromOffer(t *testing.T) {
 	d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || r.URL.Path != "/asks/7654/" {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/v0/asks/7654/" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		data, err := io.ReadAll(r.Body)
@@ -289,7 +289,7 @@ func TestDeleteInstanceIsIdempotent(t *testing.T) {
 	var calls int
 	d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.Method != http.MethodDelete || r.URL.Path != "/instances/9988/" {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/v0/instances/9988/" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		if calls == 1 {
@@ -374,7 +374,7 @@ func TestAuthorizePublicKeyAttachesToTheInstance(t *testing.T) {
 	calls := 0
 	d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.Method != http.MethodPost || r.URL.Path != "/instances/9988/ssh/" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v0/instances/9988/ssh/" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		_, _ = w.Write([]byte(`{"success":true}`))

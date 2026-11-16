@@ -123,12 +123,22 @@ func TestListInstancesV1CancellationDiscardsFirstPage(t *testing.T) {
 }
 
 func TestVastInstanceQueriesKeepOtherOperationsAndEndpoint(t *testing.T) {
-	for _, suffix := range []string{"/api/v0", "/api/v0/", "/proxy/api/v0", "/api/v1", ""} {
-		t.Run(suffix, func(t *testing.T) {
-			prefix := ""
-			if strings.HasPrefix(suffix, "/proxy/") {
-				prefix = "/proxy"
-			}
+	for _, tc := range []struct {
+		endpointPath string
+		listPath     string
+	}{
+		{"/api/v0", "/api/v1/instances/"},
+		{"/api/v0/", "/api/v1/instances/"},
+		{"/proxy/api/v0", "/proxy/api/v1/instances/"},
+		{"/api/v1", "/api/v1/instances/"},
+		{"/api/v2", "/api/v2/instances/"},
+		{"/api/v2/", "/api/v2/instances/"},
+		{"/proxy/api/v2", "/proxy/api/v2/instances/"},
+		{"/api/v01", "/api/v01/instances/"},
+		{"/gateway", "/gateway/instances/"},
+		{"", "/instances/"},
+	} {
+		t.Run(tc.endpointPath, func(t *testing.T) {
 			paths := []string{}
 			d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
 				paths = append(paths, r.URL.Path)
@@ -136,18 +146,18 @@ func TestVastInstanceQueriesKeepOtherOperationsAndEndpoint(t *testing.T) {
 					t.Error("missing authorization")
 				}
 				switch {
-				case r.Method == http.MethodGet && r.URL.Path == prefix+"/api/v1/instances/":
+				case r.Method == http.MethodGet && r.URL.Path == tc.listPath:
 					if r.URL.Query().Get("limit") != "1" {
 						t.Error("credential check should request only one instance")
 					}
 					writeInstancePage(w, 1, 1, 26, "another-page")
-				case r.Method == http.MethodDelete && r.URL.Path == strings.TrimRight(suffix, "/")+"/instances/7/":
+				case r.Method == http.MethodDelete && r.URL.Path == strings.TrimRight(tc.endpointPath, "/")+"/instances/7/":
 					_, _ = w.Write([]byte(`{"success":true}`))
 				default:
 					http.Error(w, "unexpected route", 404)
 				}
 			})
-			creds := provider.Credentials{Endpoint: d.baseURL + suffix, APIKey: "test-key"}
+			creds := provider.Credentials{Endpoint: strings.TrimSuffix(d.baseURL, "/api/v0") + tc.endpointPath, APIKey: "test-key"}
 			d.baseURL = "https://must-not-be-used.invalid/api/v0"
 			if err := d.ValidateCredentials(t.Context(), creds); err != nil {
 				t.Fatal(err)
