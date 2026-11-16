@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"strconv"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -30,13 +31,31 @@ func testExternalKVBackendRow() kvbackend.Backend {
 
 // testExternalVLLMOffload renders the test row with a connector name package
 // engines does not know, as a real third-party connector would be: a non-PD
-// launch must still not read as PD.
-func testExternalVLLMOffload(LaunchConfig) *kvContribution {
-	return &kvContribution{object: map[string]any{
+// launch must still not read as PD. It reads its launch context the way a
+// real backend does: on a PD prefill its own role follows the PD role and it
+// shapes the MultiConnector around it, and under data parallelism it sets
+// environment for the engine process.
+func testExternalVLLMOffload(p Params) *kvContribution {
+	part := &kvContribution{object: map[string]any{
 		"kv_connector": "TestExternalConnector", "kv_role": "kv_both",
 		"kv_connector_extra_config": map[string]any{"spec_name": "TestExternalSpec"},
 	}}
+	if p.PD != nil && p.PD.Role == pdmode.RolePrefill {
+		part.object["kv_role"] = "kv_producer"
+		part.wrapper = map[string]any{"kv_connector_module_path": testExternalWrapperModule}
+	}
+	if p.Quick.DP > 1 {
+		part.env = map[string]string{testExternalEnv: strconv.Itoa(p.Quick.DP)}
+	}
+	return part
 }
+
+// testExternalWrapperModule and testExternalEnv are what the test row's
+// renderer adds from its launch context.
+const (
+	testExternalWrapperModule = "testext.multi_connector"
+	testExternalEnv           = "TESTEXT_DP_SIZE"
+)
 
 // testExternalKVTransfer is the --kv-transfer-config value the test row
 // renders without PD.

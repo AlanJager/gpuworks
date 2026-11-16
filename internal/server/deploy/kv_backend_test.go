@@ -365,6 +365,13 @@ func TestKVBackendPDRoleScopeAndComposition(t *testing.T) {
 			if config.Connector != "MultiConnector" || len(config.Extra.Connectors) != 2 || config.Extra.Connectors[0]["kv_connector"] != "NixlConnector" || config.Extra.Connectors[1]["kv_connector_extra_config"].(map[string]any)["spec_name"] != "TestExternalSpec" || config.Role != "kv_producer" {
 				t.Fatalf("prefill config = %+v", config)
 			}
+			// The backend shaped its own part and the wrapper from the role:
+			// the composer only assembles.
+			outer := map[string]any{}
+			_ = json.Unmarshal([]byte(argValue(t, launch.Argv, "--kv-transfer-config")), &outer)
+			if outer["kv_connector_module_path"] != testExternalWrapperModule || config.Extra.Connectors[1]["kv_role"] != "kv_producer" {
+				t.Fatalf("prefill wrapper = %v, inner = %v", outer, config.Extra.Connectors[1])
+			}
 			if !launch.RequestedFeatures.PD || !launch.RequestedFeatures.ExternalKVCache {
 				t.Fatalf("prefill features = %+v", launch.RequestedFeatures)
 			}
@@ -462,5 +469,20 @@ func TestKVBackendDowngradeDropsTheSelection(t *testing.T) {
 	again, _ := json.Marshal(old)
 	if string(again) != `{}` {
 		t.Fatalf("re-marshalled by an old server: %s", again)
+	}
+}
+
+// A backend's renderer sees the launch, and the environment it sets reaches
+// the engine process; the adapter merges it in one place.
+func TestKVBackendRendererEnvReachesTheLaunch(t *testing.T) {
+	withKVBackends(t)
+	p := kvTestParams(selectTestExternal(), "nvidia")
+	p.Quick.DP, p.AssignedGPUs = 2, 2
+	launch := vLLMEngine{}.Build(p)
+	if launch.Env[testExternalEnv] != "2" {
+		t.Fatalf("env = %v", launch.Env)
+	}
+	if launch := (vLLMEngine{}).Build(kvTestParams(selectTestExternal(), "nvidia")); launch.Env[testExternalEnv] != "" {
+		t.Fatalf("env without DP = %v", launch.Env)
 	}
 }

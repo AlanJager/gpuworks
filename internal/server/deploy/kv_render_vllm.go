@@ -14,8 +14,11 @@ import (
 )
 
 // vllmOffloadRenderer renders one KV offload backend's contribution for a
-// launch configuration, nil when the configuration asks for no offload.
-type vllmOffloadRenderer func(q LaunchConfig) *kvContribution
+// launch, nil when the launch asks for no offload. It sees the whole launch
+// (the PD role on a PD instance, the vendor, the compute network, the
+// parallelism), so a backend decides its own role, endpoint, wrapper keys and
+// environment; the composer only assembles the parts.
+type vllmOffloadRenderer func(p Params) *kvContribution
 
 // vllmOffloadRenderers are the renderers the product ships, keyed by
 // kvbackend id. A backend row without a renderer here cannot be selected
@@ -27,7 +30,8 @@ func vllmOffloadRenderers() map[string]vllmOffloadRenderer {
 // nativeVLLMOffload is vLLM's own offload: the disk tier as a tiering
 // OffloadingConnector, or the CPU tier, which without a PD connector is
 // carried by vLLM's own flags and only joins a composition as an object.
-func nativeVLLMOffload(q LaunchConfig) *kvContribution {
+func nativeVLLMOffload(p Params) *kvContribution {
+	q := p.Quick
 	switch {
 	case q.KVDiskOffload:
 		return &kvContribution{object: diskKVTransferObject(q)}

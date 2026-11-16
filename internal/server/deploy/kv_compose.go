@@ -18,6 +18,13 @@ type kvContribution struct {
 	// carried by the engine's own flags instead of a connector object (vLLM's
 	// native CPU tier: --kv-offloading-size and --kv-offloading-backend).
 	standaloneAsFlags bool
+	// wrapper are top-level keys an offload part needs on the MultiConnector
+	// that wraps it beside a PD part (a vendor's connector module path, say).
+	// The composer's own keys win over them.
+	wrapper map[string]any
+	// env is environment the engine process needs for this part; the adapter
+	// merges it into the launch (vLLMEngine.Build).
+	env map[string]string
 }
 
 // composeVLLMKVTransfer answers the --kv-transfer-config value, or false when
@@ -40,10 +47,10 @@ func composeVLLMKVTransfer(pd, offload *kvContribution, policy string) (string, 
 	case offload == nil:
 		config = cloneJSONObject(pd.object)
 	default:
-		config = map[string]any{
-			"kv_connector": "MultiConnector", "kv_role": pd.role,
-			"kv_connector_extra_config": map[string]any{"connectors": []map[string]any{pd.object, offload.object}},
-		}
+		config = cloneJSONObject(offload.wrapper)
+		config["kv_connector"] = "MultiConnector"
+		config["kv_role"] = pd.role
+		config["kv_connector_extra_config"] = map[string]any{"connectors": []map[string]any{pd.object, offload.object}}
 	}
 	if pd != nil && policy != "" {
 		config["kv_load_failure_policy"] = policy
@@ -65,19 +72,31 @@ func cloneJSONObject(object map[string]any) map[string]any {
 // instance, and the selected KV offload backend (PDRoleLaunchConfig has
 // already dropped it on a role that does not keep it).
 func vllmKVTransferConfig(p Params) (string, bool) {
+	config, ok, _ := vllmKVTransfer(p)
+	return config, ok
+}
+
+// vllmKVTransfer is vllmKVTransferConfig plus the environment the offload
+// part asks for, rendered once.
+func vllmKVTransfer(p Params) (string, bool, map[string]string) {
 	var pd *kvContribution
 	policy := ""
 	if p.PD != nil {
 		pd, policy = vllmPDContribution(p)
 	}
-	return composeVLLMKVTransfer(pd, vllmOffloadContribution(p.Quick), policy)
+	offload := vllmOffloadContribution(p)
+	config, ok := composeVLLMKVTransfer(pd, offload, policy)
+	if offload == nil {
+		return config, ok, nil
+	}
+	return config, ok, offload.env
 }
 
 // vllmOffloadContribution renders the selected backend's part, nil when the
 // selection names no row with a renderer (validateKVBackend refuses an
 // unknown id before any launch).
-func vllmOffloadContribution(q LaunchConfig) *kvContribution {
-	row, ok := selectedKVBackend(EngineVLLM, q)
+func vllmOffloadContribution(p Params) *kvContribution {
+	row, ok := selectedKVBackend(EngineVLLM, p.Quick)
 	if !ok {
 		return nil
 	}
@@ -85,5 +104,5 @@ func vllmOffloadContribution(q LaunchConfig) *kvContribution {
 	if !ok {
 		return nil
 	}
-	return render(q)
+	return render(p)
 }

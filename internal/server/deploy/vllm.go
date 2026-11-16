@@ -206,10 +206,11 @@ func BuildVLLM(p Params) ResolvedLaunch {
 	if q.LongPrefillTokenThreshold > 0 {
 		b.injectDictionary("long_prefill_token_threshold", q.LongPrefillTokenThreshold)
 	}
-	if config, ok := vllmKVTransferConfig(p); ok {
+	kvTransfer, kvTransferOK, kvOffloadEnv := vllmKVTransfer(p)
+	if kvTransferOK {
 		// The disk tier and the PD connector are composite flags: one JSON
 		// object carries them, so the adapter composes it in one place.
-		b.injectKV("--kv-transfer-config", config)
+		b.injectKV("--kv-transfer-config", kvTransfer)
 		vllmHybridKVCacheManager(b, p)
 	} else if q.KVOffloadingSize > 0 {
 		b.injectDictionary("kv_offloading_size", q.KVOffloadingSize)
@@ -297,6 +298,9 @@ func BuildVLLM(p Params) ResolvedLaunch {
 	// --- quirks (data-driven corrections keyed by arch/model) ---
 	applyQuirks(b, p, env)
 	vllmPDEnv(p, env)
+	for key, value := range kvOffloadEnv {
+		env[key] = value
+	}
 
 	argv := append(append(b.args(), templateArgs...), p.ExtraArgs...)
 
