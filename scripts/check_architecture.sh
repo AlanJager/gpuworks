@@ -764,6 +764,21 @@ if [ -n "$netplan_deps" ]; then
 else
   echo "  ok: netplan depends only on proto"
 fi
+# Metrics and log ingestion writes its own stores and knows nothing of the
+# server around it: no store, api, hub, planning or app (GWKS-307). The app
+# adapts the stores to those.
+obsingest_deps=$(pkg_imports ./internal/server/obsingest | grep 'gpuworks/' \
+  | grep -vxE 'gpuworks\.ai/gpuworks/internal/(proto|selflog|server/(logstore|tsdb|uxstore))' || true)
+if [ -z "$(pkg_imports ./internal/server/obsingest)" ]; then
+  echo "  FAIL: obsingest has no imports to check (package missing or broken)" >&2
+  failures=$((failures + 1))
+elif [ -n "$obsingest_deps" ]; then
+  echo "  FAIL: obsingest depends only on proto, selflog, logstore, tsdb and uxstore" >&2
+  echo "$obsingest_deps" | sed 's/^/    /' >&2
+  failures=$((failures + 1))
+else
+  echo "  ok: obsingest depends only on proto, selflog, logstore, tsdb and uxstore"
+fi
 # Site rule grammar is a pure leaf beside pullref: store and planning share it.
 sourceurl_deps=$(pkg_imports ./internal/server/sourceurl | grep 'gpuworks/' || true)
 if [ -n "$sourceurl_deps" ]; then

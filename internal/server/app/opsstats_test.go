@@ -23,7 +23,7 @@ func newTestOpsStats(t *testing.T, now *time.Time) (*opsStats, *store.Store, *ob
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(obs.close)
+	t.Cleanup(obs.Close)
 	ops, err := newOpsStats(dir, 72*time.Hour, st, obs, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestOpsStatsAccumulatesFlushesRollsUpAndRetains(t *testing.T) {
 	if err := ops.SetRetention(r); err != nil {
 		t.Fatal(err)
 	}
-	if age, bytes := obs.ux.Limits(); age != 3*24*time.Hour || bytes != 1024<<20 {
+	if age, bytes := obs.UX().Limits(); age != 3*24*time.Hour || bytes != 1024<<20 {
 		t.Fatalf("request log limits = %v %d", age, bytes)
 	}
 	// An invalid value is refused and changes nothing.
@@ -250,14 +250,14 @@ func TestOpsStatsBackfillsFromTheRequestLogOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(obs.close)
+	t.Cleanup(obs.Close)
 	// History the old release wrote: two days back and this morning.
 	for _, at := range []time.Time{now.Add(-50 * time.Hour), now.Add(-2 * time.Hour), now.Add(-time.Hour)} {
 		// ux.db weighs its own rows (1 unless it sampled); the weights
 		// themselves are rollup's test.
-		obs.ux.Observe(finished(17, 3, at, 1000, 500))
+		obs.UX().Observe(finished(17, 3, at, 1000, 500))
 	}
-	if err := obs.ux.Sync(); err != nil {
+	if err := obs.UX().Sync(); err != nil {
 		t.Fatal(err)
 	}
 	ops, err := newOpsStats(dir, 72*time.Hour, st, obs, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -268,8 +268,8 @@ func TestOpsStatsBackfillsFromTheRequestLogOnce(t *testing.T) {
 	ops.now = func() time.Time { return now }
 	// A request the new release counts live, already in the log too.
 	later := finished(17, 3, now.Add(time.Minute), 7, 0)
-	obs.ux.Observe(later)
-	_ = obs.ux.Sync()
+	obs.UX().Observe(later)
+	_ = obs.UX().Sync()
 	ctx := context.Background()
 	ops.liveSinceMS = now.UnixMilli()
 	ops.backfill(ctx)

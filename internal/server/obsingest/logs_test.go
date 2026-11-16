@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"context"
@@ -31,13 +31,13 @@ func TestLogIngestFlushesToStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	o := &observability{logs: st, logQueue: make(chan []logstore.Entry, logIngestQueueChunks)}
+	o := &Pipeline{logs: st, logQueue: make(chan []logstore.Entry, logIngestQueueChunks)}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go o.logIngestLoop(ctx)
+	go o.RunLogs(ctx)
 
-	o.ingestLogs("node-1", newTestLines("inst-a", 5, time.Now().UnixMilli()))
+	o.IngestLogs("node-1", newTestLines("inst-a", 5, time.Now().UnixMilli()))
 
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -55,7 +55,7 @@ func TestLogIngestFlushesToStore(t *testing.T) {
 	}
 }
 
-// blockingStore stalls Append until released, to prove ingestLogs stays
+// blockingStore stalls Append until released, to prove IngestLogs stays
 // non-blocking when the store does not keep up.
 type blockingStore struct {
 	release chan struct{}
@@ -84,25 +84,25 @@ func (b *blockingStore) Checkpoint() (bool, int64, int64, error) { return false,
 func (b *blockingStore) Close() error                            { return nil }
 
 // TestLogIngestNeverBlocksCallerWhenStoreStalls is the regression the queue
-// exists for: with the store wedged, a hub ctrl loop calling ingestLogs must
+// exists for: with the store wedged, a hub ctrl loop calling IngestLogs must
 // still return immediately — heartbeats ride the same loop — and the backlog
 // beyond the queue bound must be dropped with a counter, not buffered
 // unboundedly.
 func TestLogIngestNeverBlocksCallerWhenStoreStalls(t *testing.T) {
 	block := &blockingStore{release: make(chan struct{}), appends: make(chan []logstore.Entry, 1024)}
-	o := &observability{logs: block, logQueue: make(chan []logstore.Entry, 8)}
+	o := &Pipeline{logs: block, logQueue: make(chan []logstore.Entry, 8)}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go o.logIngestLoop(ctx)
+	go o.RunLogs(ctx)
 
 	// Overwhelm the queue: the batcher is stuck in Append on the first chunk,
 	// so the queue fills and every later chunk must drop fast.
 	for i := 0; i < 64; i++ {
 		start := time.Now()
-		o.ingestLogs("node-1", newTestLines("inst-a", 8, time.Now().UnixMilli()))
+		o.IngestLogs("node-1", newTestLines("inst-a", 8, time.Now().UnixMilli()))
 		if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-			t.Fatalf("ingestLogs blocked for %s behind a stalled store; the ctrl loop would stall with it", elapsed)
+			t.Fatalf("IngestLogs blocked for %s behind a stalled store; the ctrl loop would stall with it", elapsed)
 		}
 	}
 	if o.logDropped.Load() == 0 {
@@ -160,11 +160,11 @@ func (c *captureStore) Close() error                            { return nil }
 // accepted from agents.
 func TestLogIngestFinalFlushOnCancel(t *testing.T) {
 	cap := &captureStore{}
-	o := &observability{logs: cap, logQueue: make(chan []logstore.Entry, logIngestQueueChunks)}
+	o := &Pipeline{logs: cap, logQueue: make(chan []logstore.Entry, logIngestQueueChunks)}
 	ctx, cancel := context.WithCancel(context.Background())
-	go o.logIngestLoop(ctx)
+	go o.RunLogs(ctx)
 
-	o.ingestLogs("node-1", newTestLines("inst-a", 10, time.Now().UnixMilli()))
+	o.IngestLogs("node-1", newTestLines("inst-a", 10, time.Now().UnixMilli()))
 	// The flush interval is 200ms; cancel before it fires.
 	cancel()
 
@@ -181,22 +181,22 @@ func TestLogIngestFinalFlushOnCancel(t *testing.T) {
 // drop: it waits for room, and gives up (counted) only when its context ends.
 func TestLogIngestWaitHoldsTheBatchUntilThereIsRoom(t *testing.T) {
 	block := &blockingStore{release: make(chan struct{}), appends: make(chan []logstore.Entry, 1024)}
-	o := &observability{logs: block, logQueue: make(chan []logstore.Entry, 1)}
+	o := &Pipeline{logs: block, logQueue: make(chan []logstore.Entry, 1)}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go o.logIngestLoop(ctx)
+	go o.RunLogs(ctx)
 
 	// Feed chunks until one waits: the batcher wedges in Append and the
 	// queue fills behind it.
 	var waited chan error
 	for i := 0; waited == nil; i++ {
 		if i == 64 {
-			t.Fatal("ingestLogsWait never waited behind a wedged store")
+			t.Fatal("IngestLogsWait never waited behind a wedged store")
 		}
 		call := make(chan error, 1)
 		// A full flush's worth of rows sends the batcher straight into Append.
 		go func() {
-			call <- o.ingestLogsWait(ctx, "node-1", newTestLines("inst-a", logIngestFlushRows, time.Now().UnixMilli()))
+			call <- o.IngestLogsWait(ctx, "node-1", newTestLines("inst-a", logIngestFlushRows, time.Now().UnixMilli()))
 		}()
 		select {
 		case err := <-call:
@@ -211,20 +211,20 @@ func TestLogIngestWaitHoldsTheBatchUntilThereIsRoom(t *testing.T) {
 	select {
 	case err := <-waited:
 		if err != nil {
-			t.Fatalf("ingestLogsWait = %v after room opened", err)
+			t.Fatalf("IngestLogsWait = %v after room opened", err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("ingestLogsWait never got room")
+		t.Fatal("IngestLogsWait never got room")
 	}
 	if o.logDropped.Load() != 0 {
 		t.Fatalf("dropped %d lines while waiting", o.logDropped.Load())
 	}
 
-	full := &observability{logs: block, logQueue: make(chan []logstore.Entry)}
+	full := &Pipeline{logs: block, logQueue: make(chan []logstore.Entry)}
 	stop, cancelStop := context.WithCancel(context.Background())
 	cancelStop()
-	if err := full.ingestLogsWait(stop, "node-1", newTestLines("inst-a", 3, time.Now().UnixMilli())); err == nil {
-		t.Fatal("ingestLogsWait succeeded after its context ended with no room")
+	if err := full.IngestLogsWait(stop, "node-1", newTestLines("inst-a", 3, time.Now().UnixMilli())); err == nil {
+		t.Fatal("IngestLogsWait succeeded after its context ended with no room")
 	}
 	if full.logDropped.Load() != 3 {
 		t.Fatalf("dropped %d lines on a canceled wait, want 3", full.logDropped.Load())

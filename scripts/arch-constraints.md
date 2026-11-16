@@ -353,6 +353,10 @@ Copy），api 只依赖一个 `ModelTransfers` 接口（`Deps.SyncModel`、`Deps
 `app_new_lines` 304、`app_prod_lines` 10046。这只是第一步：`ModelTransfers` 指回 Controller，传输的实现与运行表仍在
 Controller 上，收窄的是 api 的依赖面与 Controller 的导出面，不是把传输逻辑搬出 Controller。
 
+GWKS-307：指标与日志的采集管线（队列、单写者、deployment 标签回填、直方图分位数折算、TTL 缓存淘汰）从 app 搬进叶子包
+`internal/server/obsingest`（约 1,140 行），app 只留约 150 行的适配：把 store 读成 API、自动化与 AI 助手要的形状。
+`app_prod_lines` 10046 → 8973；依赖方向检查新增「obsingest 只依赖 proto、selflog、logstore、tsdb、uxstore」。
+
 结构体与函数的五项由 `decl_count 目录 声明模式 行模式 [body]` 测量：在该包的非测试文件里找到匹配声明模式的顶层声明，
 从它数到第一个顶格的 `}`，只数匹配行模式的行（行模式为空时数全部行；`body` 表示不数声明行本身）：
 

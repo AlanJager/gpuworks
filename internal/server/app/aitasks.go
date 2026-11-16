@@ -225,7 +225,7 @@ func (a *aiService) nodeContext(uuid string) (aihelper.NodeContext, error) {
 	if a.obs != nil {
 		var lines []aihelper.LogLine
 		for _, source := range []string{logstore.SourceNode, logstore.SourceAgent} {
-			res, err := a.obs.logs.Search(logstore.Filter{Node: uuid, Source: source, Level: logstore.LevelWarn, Limit: seedNodeLogs})
+			res, err := a.obs.Logs().Search(logstore.Filter{Node: uuid, Source: source, Level: logstore.LevelWarn, Limit: seedNodeLogs})
 			if err != nil {
 				return aihelper.NodeContext{}, err
 			}

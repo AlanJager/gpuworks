@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/lifecycle"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/obsingest"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -110,7 +111,7 @@ func TestAutomationAdapterRefusesL1WhenTheHostCannotHoldTheWeights(t *testing.T)
 		t.Fatal(err)
 	}
 	// The reader the app wires: the metrics store through planning's host memory.
-	adapter.host = (&observability{tsdb: metrics}).hostMemory()
+	adapter.host = (&observability{obsingest.New(obsingest.Stores{TSDB: metrics})}).hostMemory()
 	_, err = adapter.Sleep(dep.ID, 1, true)
 	coded, ok := err.(interface{ Code() string })
 	if !ok || coded.Code() != "SLEEP_HOST_MEMORY_INSUFFICIENT" {

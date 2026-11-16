@@ -1,4 +1,4 @@
-package app
+package obsingest
 
 import (
 	"math"
@@ -76,14 +76,14 @@ func bucketOwner(labels map[string]string) (string, bool) {
 	return "", false
 }
 
-// applyQuantiles is metricsIngestLoop's (or the synchronous fallback's) last
+// applyQuantiles is RunMetrics's (or the synchronous fallback's) last
 // step before WriteBatch: it splits samples into "pass through unchanged"
 // (everything that is not a labeled histogram bucket) and "fold into
 // quantile gauges" (every `_bucket` sample carrying an `le` label and an
 // owner - an `instance`, or a `deployment` for the gateway's histograms). A
 // `_bucket` sample missing either cannot be tracked and is dropped rather
 // than written raw, since raw bucket series must never reach tsdb.
-func (o *observability) applyQuantiles(samples []tsdb.Sample) []tsdb.Sample {
+func (o *Pipeline) applyQuantiles(samples []tsdb.Sample) []tsdb.Sample {
 	out := make([]tsdb.Sample, 0, len(samples))
 	var groups map[bucketGroupKey][]bucketSample
 	for _, s := range samples {
@@ -151,9 +151,9 @@ func parseLE(s string) (float64, bool) {
 // coalesceBucketSamples sorts bs by le ascending and merges duplicate le
 // entries, keeping the sample with the largest tsMS for each — Prometheus'
 // own coalesceBuckets rule. Duplicates happen whenever two ticks of the same
-// (instance, family) end up in one flushed batch (metricsIngestLoop batches
+// (instance, family) end up in one flushed batch (RunMetrics batches
 // by row count/time, not by tick boundary, so a slow consumer or a burst can
-// merge two queued ingestMetrics calls into one applyQuantiles call): without
+// merge two queued IngestMetrics calls into one applyQuantiles call): without
 // coalescing, the raw per-le sample list would be twice the expected length,
 // misaligning every index against the stored previous vector and corrupting
 // (or entirely dropping, via the length-mismatch reseed path) both ticks'
@@ -207,7 +207,7 @@ func ensureMonotonic(counts []float64) {
 // always replaces the stored one, regardless of outcome, so the next batch
 // deltas against what this tick actually observed. at is the batch's clock
 // reading (applyQuantiles reads it once for the whole batch).
-func (o *observability) foldBucketGroup(instance, family string, bs []bucketSample, at time.Time) []tsdb.Sample {
+func (o *Pipeline) foldBucketGroup(instance, family string, bs []bucketSample, at time.Time) []tsdb.Sample {
 	if len(bs) == 0 {
 		return nil
 	}
@@ -296,7 +296,7 @@ func (o *observability) foldBucketGroup(instance, family string, bs []bucketSamp
 }
 
 // bucketStateLimit returns the configured cap, or the default when unset.
-func (o *observability) bucketStateLimit() int {
+func (o *Pipeline) bucketStateLimit() int {
 	if o.bucketStateCap > 0 {
 		return o.bucketStateCap
 	}
@@ -306,9 +306,9 @@ func (o *observability) bucketStateLimit() int {
 // evictBucketStateIfOverCapacity is the bounded, once-per-batch fallback:
 // see ttl_evict.go's evictBoundedLocked doc comment. It does not sweep
 // expired entries itself; sweepExpiredBucketState (run periodically from
-// metricsIngestLoop) does that. Takes no clock reading: evictBoundedLocked
+// RunMetrics) does that. Takes no clock reading: evictBoundedLocked
 // only needs the map and the limit, not the current time.
-func (o *observability) evictBucketStateIfOverCapacity() {
+func (o *Pipeline) evictBucketStateIfOverCapacity() {
 	o.bucketMu.Lock()
 	defer o.bucketMu.Unlock()
 	n := evictBoundedLocked(o.bucketState, o.bucketStateLimit(), func(v *bucketVector) time.Time { return v.expires })
@@ -318,9 +318,9 @@ func (o *observability) evictBucketStateIfOverCapacity() {
 }
 
 // sweepExpiredBucketState removes every bucketState entry whose TTL has
-// already elapsed. Only called periodically (metricsIngestLoop's observe
+// already elapsed. Only called periodically (RunMetrics's observe
 // tick) — see ttl_evict.go's sweepExpiredLocked doc comment.
-func (o *observability) sweepExpiredBucketState(now time.Time) {
+func (o *Pipeline) sweepExpiredBucketState(now time.Time) {
 	o.bucketMu.Lock()
 	defer o.bucketMu.Unlock()
 	sweepExpiredLocked(o.bucketState, now, func(v *bucketVector) time.Time { return v.expires })

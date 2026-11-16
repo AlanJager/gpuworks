@@ -26,7 +26,7 @@
     "ui/src/pages/logsPageRange.ts",
     "internal/server/api/logs_search.go",
     "internal/server/logstore/query.go",
-    "internal/server/app/observability.go"
+    "internal/server/obsingest/pipeline.go"
   ],
   "fixture": {
     "entry": "GET /api/v1/agent/connect with an invalid marker-bearing Sec-WebSocket-Version",
