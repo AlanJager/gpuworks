@@ -789,6 +789,27 @@ find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
 
 ---
 
+### kv_backend_id_literals（初值 0，2026-11-16）
+
+意图：KV 卸载后端（[ADR 0069](../docs/adr/0069-kv-offload-backends.md)）只是 `internal/server/kvbackend` 的一行
+加适配器里的一个渲染函数；后端 id 若以字面量出现在别处（Go 的 `== "lmcache"`、TS 的卡片判断），就是把
+本应由注册表下发的规则又写了一遍。计数单位是**行数**。
+
+```sh
+{
+  grep -rnE '"(lmcache|mooncake_store|hicache)"' internal pkg cmd --include='*.go' \
+    | grep -v '_test\.go' | grep -v '^internal/server/kvbackend/' \
+    | grep -v '^internal/server/deploy/kv_render_'
+  grep -rnE "['\"](lmcache|mooncake_store|hicache)['\"]" ui/src --include='*.ts' --include='*.tsx' \
+    | grep -v '\.test\.'
+} | grep -c .
+```
+
+排除：测试文件；`internal/server/kvbackend/`（后端目录本身）；`internal/server/deploy/kv_render_*.go`
+（各后端的引擎配置渲染）。名单里是已规划的三个后端 id，新增后端时把它的 id 加进正则。
+
+---
+
 ## 依赖方向检查
 
 `check_architecture.sh` 除预算外还执行计划 §5.3 的依赖方向检查。这些**不是预算**，
@@ -800,6 +821,8 @@ find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
 - `pkg/**` 不得 import `internal/**`；
 - `internal/agent/**` 不得 import `internal/server/**`；
 - `internal/proto` 不得 import 本仓库任何包；
+- `internal/server/kvbackend` 是叶子包，本仓库内只许 import `internal/accelerator`、`internal/engines`
+  与 `internal/server/pdmode`（它只是一张后端描述表，渲染与门禁在 `internal/server/deploy`）；
 - `internal/server/distribution`（发布通道客户端，CLI 升级与 api 共用）不得 import 本仓库任何包，
   免得 `selfinstall` 经由它依赖到 server 其余部分（ADR 0040）。
 
