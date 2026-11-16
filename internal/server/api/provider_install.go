@@ -60,6 +60,9 @@ func (a *apiHandlers) installAgentOnInstance(w http.ResponseWriter, r *http.Requ
 		writeErr(w, http.StatusBadRequest, serverURLErr)
 		return
 	}
+	if !a.nodeEnrollmentOpen(w) {
+		return
+	}
 	precheck, precheckErr := a.d.Providers.Precheck(r.Context(), parseUint(chi.URLParam(r, "id")), req.ExternalID, serverURL, provider.InstallOptions{
 		SSHKeyPEM: req.SSHKeyPEM, Password: req.Password, SSHConnectionID: req.SSHConnectionID, ConnectMode: req.ConnectMode, ServerDialListen: req.ServerDialListen,
 		HostAddress: req.HostAddress, ServerDialAddress: req.ServerDialAddress,
@@ -78,6 +81,9 @@ func (a *apiHandlers) installAgentOnInstance(w http.ResponseWriter, r *http.Requ
 		AllowInstanceRestart: req.AllowInstanceRestart,
 		InstallDir:           req.InstallDir, NoSystemd: req.NoSystemd,
 	})
+	if writeNodeEnrollmentRefused(w, err) {
+		return
+	}
 	if errors.Is(err, provider.ErrInstanceRestartRequired) {
 		// Nothing was changed: ask the operator, who may agree and retry.
 		// need says what the restart is for, which the question names.

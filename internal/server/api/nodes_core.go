@@ -83,6 +83,9 @@ func (a *apiHandlers) createNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, token, err := a.d.Store.CreateNodePending(req.Name, req.ConnectMode)
+	if writeNodeEnrollmentRefused(w, err) {
+		return
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -108,7 +111,7 @@ func (a *apiHandlers) createNode(w http.ResponseWriter, r *http.Request) {
 		}
 		n.ServerDialAddress = serverDialAddress
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"node": toNodeDTO(n), "token": token, "install_command": cmd, "server_url": serverURL, "server_dial_address": n.ServerDialAddress})
+	writeJSON(w, http.StatusCreated, map[string]any{"node": a.nodeView(n), "token": token, "install_command": cmd, "server_url": serverURL, "server_dial_address": n.ServerDialAddress})
 }
 
 // installServerURL is the server address an install records for the agent
@@ -197,9 +200,9 @@ func (a *apiHandlers) getNode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
-	view := toNodeDTO(n)
+	view := a.nodeView(n)
 	if claims, ok := a.claimsFromRequest(r); ok && claims.Role == "admin" {
-		view = toNodeDTOWithToken(n)
+		view = a.nodeViewWithToken(n)
 	}
 	views := []dto.Node{view}
 	a.fillResolvedNodeFields([]store.Node{*n}, views, nil)
@@ -304,7 +307,7 @@ func (a *apiHandlers) updateNodeRuntime(w http.ResponseWriter, r *http.Request) 
 	// runtime shortly; return an immediate view for the selector.
 	n.RuntimeDriver = result["runtime"]
 	n.RuntimePreference = preference
-	writeJSON(w, http.StatusOK, toNodeDTO(n))
+	writeJSON(w, http.StatusOK, a.nodeView(n))
 }
 
 func (a *apiHandlers) upgradeNode(w http.ResponseWriter, r *http.Request) {
@@ -379,7 +382,7 @@ func (a *apiHandlers) renameNode(w http.ResponseWriter, r *http.Request) {
 	// credential, so do not include it in this ordinary mutation response;
 	// token material is only returned by the admin-only regenerate endpoint (or
 	// an admin node detail request).
-	writeJSON(w, http.StatusOK, toNodeDTO(n))
+	writeJSON(w, http.StatusOK, a.nodeView(n))
 }
 
 func (a *apiHandlers) regenerateNodeToken(w http.ResponseWriter, r *http.Request) {
@@ -395,5 +398,5 @@ func (a *apiHandlers) regenerateNodeToken(w http.ResponseWriter, r *http.Request
 	if a.d.KickNode != nil {
 		a.d.KickNode(chi.URLParam(r, "uuid"))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"node": toNodeDTOWithToken(n), "token": token})
+	writeJSON(w, http.StatusOK, map[string]any{"node": a.nodeViewWithToken(n), "token": token})
 }

@@ -359,6 +359,8 @@ SSH 的 `vantage=control_plane` 描述控制面登录节点；HTTP 的 `vantage=
   `install_command` 返回[离线包](../how-to/connect-nodes.md#离线包)的命令：`sh gpuworks-agent.run --token '…' --connect-mode server_dial --listen '…'`。
 - **监听地址**：`server_dial_listen` 缺省为 `0.0.0.0:18800`；必须是有效的 `host:port` / `:port`，端口在 1–65535 之间，否则返回 400 `SERVER_DIAL_LISTEN_INVALID`（`address`）。
 
+**接入限制**：server 上可以注册节点接入守卫（供扩展模块使用，例如站点的节点上限）。守卫拒绝新节点时，`POST /api/v1/nodes`、`POST /api/v1/nodes/install`、`POST /api/v1/providers/{id}/install` 与 `POST /api/v1/providers/{id}/instances` 回 403，`code` 与 `params` 由守卫给出（守卫没有给 code 时为 `NODE_ENROLLMENT_REFUSED`），不创建节点；SSH 安装、云实例安装与租用实例在动手之前就先检查。Kubernetes agent 被拒时 `/api/v1/kube/enroll` 回 403 `KUBE_ENROLL_REFUSED`（`params.reason: enrollment_refused`，`params.refusal_code` 是守卫的 code，守卫的其余参数一并带上），agent 视为最终结果；接入过的节点重新注册从不被拒。集群条目尚无节点接入时的 `apply` 同样先检查。没有注册守卫时，上述接口的行为不受影响。
+
 ### SSH 检查与安装
 
 `POST /api/v1/nodes/precheck`、`POST /api/v1/nodes/install` 和 `PUT /api/v1/nodes/{uuid}/ssh` 共用以下 SSH 认证字段：
@@ -408,6 +410,8 @@ macOS 忽略 `no_systemd`。
 节点的 `scheduling_by` 说明当前状态是谁设的：`operator`（经这个接口设的）或 `platform`（平台自动停止调度）；可调度或升级前就停止的节点没有这个字段。
 平台只解除自己设的停止调度。`scheduling_by` 为 `platform` 时，`cordon_reason` 给出现在的原因：`runtime_gpu_blocked`（运行时给不了容器加速卡）、`card_needs_host_reboot`（有卡要重启主机或断电才能恢复）或 `kube_unschedulable`（Kubernetes 已 cordon 该节点，Kubernetes 里 uncordon 后平台随之恢复）。
 平台停止调度后，经这个接口设为 `schedulable` 立即生效，原因还在时下一次上报会再次停止。
+扩展模块还可以把节点保持在停止调度状态（扩展停止调度）：被保持的节点在下一次上报时（或扩展立即应用时）设为 `cordoned`，`scheduling_by` 为扩展的来源名；从不设为 `draining`，已有副本照常服务。扩展停止调度高于平台、低于管理员：平台原因消失不会解除它；保持期间设为 `schedulable` 回 409，`code` 与 `params` 由扩展给出（没有给 code 时为 `NODE_SCHEDULING_HELD`），设为 `cordoned` 或 `draining` 照常生效。扩展不再保持后，平台原因还在时回到平台停止调度，否则恢复可调度。
+节点的 `uncordon` 说明此时设为 `schedulable` 的结果，由 server 判定：`allowed`；`confirm`（平台有停止调度的原因，下一次上报会再次停止）；`refused`（扩展保持中，`cordon_message` 是扩展给出的 `{code, params, message}`）。
 
 `PATCH /api/v1/nodes/{uuid}/runtime` 设置节点的容器运行时偏好 `{runtime: auto|docker|nerdctl|udocker}`，由 agent 接受后保存。节点的 `runtime_choices` 列出这个节点可以设置的值，按展示顺序：Mac 只有 `auto`，其他节点是全部四种；**Kubernetes 节点没有这个字段**（实例是集群里的 Pod，没有运行时可选），对它设置返回 409 `NODE_RUNTIME_KUBE_NODE`。非法值回 400 `NODE_RUNTIME_INVALID`。
 

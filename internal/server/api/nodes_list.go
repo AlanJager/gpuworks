@@ -175,7 +175,7 @@ func (a *apiHandlers) filterNodes(nodes []store.Node, query listQuery, reqs map[
 func (a *apiHandlers) nodeDTOs(nodes []store.Node, sources map[uint]store.NodeSource) []dto.Node {
 	out := make([]dto.Node, 0, len(nodes))
 	for i := range nodes {
-		view := toNodeDTO(&nodes[i])
+		view := a.nodeView(&nodes[i])
 		if a.d.NodeCaps != nil {
 			view.Caps = a.d.NodeCaps(nodes[i].UUID)
 		}

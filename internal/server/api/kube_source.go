@@ -164,6 +164,11 @@ func (a *apiHandlers) kubeClusterOperation(w http.ResponseWriter, r *http.Reques
 		kubeInvalid(w, "uuid", "the cluster's enrollment token is revoked")
 		return
 	}
+	// A first apply brings new nodes; a later one updates the agents of
+	// nodes that already enrolled, which are never refused.
+	if !remove && c.ClusterUID == "" && !a.nodeEnrollmentOpen(w) {
+		return
+	}
 	params, err := a.kubeClusterParams(*c)
 	var manifest string
 	if err == nil {

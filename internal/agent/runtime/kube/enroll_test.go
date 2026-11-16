@@ -81,8 +81,11 @@ func TestARevokedTokenKeepsEnrolledNodes(t *testing.T) {
 // other_cluster and node_taken are facts about this node's own identity,
 // not about the server being unreachable or the token having gone stale,
 // so a saved identity must never mask them, with or without one on disk.
+// Nor may it mask enrollment_refused: the server refuses only a node that
+// never enrolled, so a node it refuses has no identity of its own to fall
+// back on.
 func TestEnrollRefusalsNamingAnotherEntryAreNeverPaperedOverBySavedIdentity(t *testing.T) {
-	for _, reason := range []string{"other_cluster", "node_taken"} {
+	for _, reason := range []string{"other_cluster", "node_taken", "enrollment_refused"} {
 		t.Run(reason, func(t *testing.T) {
 			k := kubefake.New(t, testNS, testNode)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

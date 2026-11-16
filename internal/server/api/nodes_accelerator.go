@@ -85,7 +85,7 @@ func (a *apiHandlers) updateNodeAccelerator(w http.ResponseWriter, r *http.Reque
 		writeNodeLookupError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toNodeDTO(n))
+	writeJSON(w, http.StatusOK, a.nodeView(n))
 }
 
 func writeNodeLookupError(w http.ResponseWriter, err error) {

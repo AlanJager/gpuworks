@@ -359,6 +359,8 @@ The report excludes SSH passwords, private keys, node tokens, complete configura
   `install_command` returns a command for the [offline package](../how-to/connect-nodes.md#离线包): `sh gpuworks-agent.run --token '…' --connect-mode server_dial --listen '…'`.
 - **Listen address**: `server_dial_listen` defaults to `0.0.0.0:18800`; it must be a valid `host:port` / `:port` with a port between 1 and 65535; otherwise, returns 400 `SERVER_DIAL_LISTEN_INVALID` (`address`).
 
+**Enrollment limits**: the server can register node enrollment guards (for extension modules, such as a site's node cap). When a guard refuses a new node, `POST /api/v1/nodes`, `POST /api/v1/nodes/install`, `POST /api/v1/providers/{id}/install` and `POST /api/v1/providers/{id}/instances` answer 403 with the guard's `code` and `params` (`NODE_ENROLLMENT_REFUSED` when the guard gives no code) and create no node; SSH installs, cloud instance installs and instance rentals check before they start. A refused Kubernetes agent gets 403 `KUBE_ENROLL_REFUSED` from `/api/v1/kube/enroll` (`params.reason: enrollment_refused`, `params.refusal_code` the guard's code, the guard's other params alongside), which the agent treats as final; a node that enrolled before is never refused when it enrolls again. An `apply` of a cluster entry no node has joined through yet checks first as well. With no guard registered these endpoints behave as before.
+
 ### SSH Checks and Installation
 
 `POST /api/v1/nodes/precheck`, `POST /api/v1/nodes/install`, and `PUT /api/v1/nodes/{uuid}/ssh` share these SSH authentication fields:
@@ -408,6 +410,8 @@ The three values for `PUT /api/v1/nodes/{uuid}/scheduling` have the following ef
 A node's `scheduling_by` says who set its current state: `operator` (set through this endpoint) or `platform` (the platform stopped scheduling on its own); a schedulable node, or one stopped before an upgrade, has no such field.
 The platform lifts only the stops it set. When `scheduling_by` is `platform`, `cordon_reason` gives the current reason: `runtime_gpu_blocked` (the runtime cannot give containers their accelerators), `card_needs_host_reboot` (a card needs a host reboot or power cycle to recover), or `kube_unschedulable` (Kubernetes has the node cordoned; the platform lifts its stop once Kubernetes uncordons it).
 After the platform stops scheduling, setting `schedulable` through this endpoint takes effect at once; while the reason remains, the next report stops it again.
+An extension module can also hold a node out of scheduling (an extension-held cordon): the node's next report (or the extension applying it at once) sets it `cordoned` with `scheduling_by` naming the extension's source; it is never set `draining`, and replicas already there keep serving. An extension-held cordon outranks the platform's and yields to an operator's: the platform's reason clearing does not lift it; while it is held, setting `schedulable` answers 409 with the extension's `code` and `params` (`NODE_SCHEDULING_HELD` when it gives no code), and setting `cordoned` or `draining` works as usual. Once the extension lets go, the node falls back to the platform's stop while the platform's reason remains, and is schedulable otherwise.
+A node's `uncordon` says what setting `schedulable` does now, as the server decides it: `allowed`; `confirm` (the platform has a reason to stop scheduling and its next report stops it again); `refused` (an extension holds the node, and `cordon_message` is the extension's `{code, params, message}`).
 
 `PATCH /api/v1/nodes/{uuid}/runtime` sets the node's container runtime preference `{runtime: auto|docker|nerdctl|udocker}`; it is saved after the agent accepts it. The node's `runtime_choices` lists the values this node may be set to, in display order: a Mac has only `auto`, every other node all four; **a Kubernetes node has no such field** (its instances are pods of the cluster, so there is no runtime to choose), and setting one returns 409 `NODE_RUNTIME_KUBE_NODE`. An invalid value returns 400 `NODE_RUNTIME_INVALID`.
 
@@ -2268,4 +2272,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: d9ca949ff70150a91a5e93ae5f1c8b66d7cf2be2d00d6fcca722c4d8e929097d -->
+<!-- translation-source-sha256: 47c554784917279a612722cc744629164389aa4b3250252b730c6055c451d8c4 -->

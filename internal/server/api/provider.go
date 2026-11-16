@@ -312,7 +312,7 @@ func (a *apiHandlers) createProviderInstance(w http.ResponseWriter, r *http.Requ
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	if !validateName(w, req.Name) {
+	if !validateName(w, req.Name) || !a.nodeEnrollmentOpen(w) {
 		return
 	}
 	inst, err := a.d.Providers.CreateInstance(r.Context(), parseUint(chi.URLParam(r, "id")), req)

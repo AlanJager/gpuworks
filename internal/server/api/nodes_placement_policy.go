@@ -46,7 +46,7 @@ func (a *apiHandlers) setNodePlacementPolicy(w http.ResponseWriter, r *http.Requ
 		after, _ := dto.NodePlacementPolicyOf(updated, false, false)
 		a.d.Log.InfoContext(r.Context(), "node placement policy changed", "node", uuid, "from", before, "to", after, "by", a.agentUpgradeActor(r))
 	}
-	writeJSON(w, http.StatusOK, toNodeDTO(node))
+	writeJSON(w, http.StatusOK, a.nodeView(node))
 }
 
 // nodePlacementPolicyDictionary is GET /scheduling/node-placement-policies:
