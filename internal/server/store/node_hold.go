@@ -144,8 +144,8 @@ func (s *Store) HoldOf(n *Node) NodeHold {
 	return hold
 }
 
-// IsHolderSource reports whether src names a scheduling holder rather than
+// isHolderSource reports whether src names a scheduling holder rather than
 // nobody, an operator or the platform.
-func IsHolderSource(src SchedulingSource) bool {
+func isHolderSource(src SchedulingSource) bool {
 	return src != SchedulingBySelf && src != SchedulingByOperator && src != SchedulingByPlatform
 }

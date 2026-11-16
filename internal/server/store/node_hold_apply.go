@@ -126,7 +126,7 @@ func (s *Store) publishSchedulingChanges(lists ...[]string) {
 
 // heldByHolder reports whether n is cordoned under a holder's source.
 func heldByHolder(n *Node) bool {
-	return n.Scheduling == NodeCordoned && IsHolderSource(n.SchedulingBy)
+	return n.Scheduling == NodeCordoned && isHolderSource(n.SchedulingBy)
 }
 
 func sourceIn(src SchedulingSource, list []SchedulingSource) bool {

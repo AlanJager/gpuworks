@@ -91,7 +91,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 			updates["scheduling"] = d.scheduling
 			updates["scheduling_by"] = d.source
 			cordoned, uncordoned, cordonedFor = d.scheduling == NodeCordoned, d.scheduling == NodeSchedulable, d.reason
-			if IsHolderSource(d.source) {
+			if isHolderSource(d.source) {
 				heldBy = d.source
 			}
 		}
