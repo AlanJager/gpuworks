@@ -15,10 +15,10 @@ type GPUCandidate struct {
 	Reason    *Reason
 }
 
-// GPUCandidates explains every card before the selected GPU range is applied.
-// Model fit, parallelism and topology remain the complete plan's responsibility.
-func GPUCandidates(req Request, gpus []GPU) []GPUCandidate {
-	items := make([]GPUCandidate, 0, len(gpus))
+// GPUCandidates explains every card of node before the selected GPU range is
+// applied, through the same card gates as Schedule. Model fit, parallelism and
+// topology remain the complete plan's responsibility.
+func GPUCandidates(req Request, node NodeSnapshot) []GPUCandidate {
 	var invalid Reason
 	if err := req.Validate(); err != nil {
 		invalid = Reason{Code: ReasonInvalidRequest, Message: err.Error()}
@@ -27,15 +27,16 @@ func GPUCandidates(req Request, gpus []GPU) []GPUCandidate {
 	if req.PerGPULimitBytes > 0 {
 		need = admitNeed(req, 1, 0)
 	}
-	gpus = resolveGates(req, NodeSnapshot{GPUs: gpus}).GPUs
-	for _, gpu := range gpus {
+	node = resolveGates(req, node)
+	items := make([]GPUCandidate, 0, len(node.GPUs))
+	for _, gpu := range node.GPUs {
 		reason := invalid
 		if reason.Code == "" {
 			cardNeed := need
 			if gpu.SharedByMemory && req.PerGPULimitBytes == 0 {
 				cardNeed = reserveFor(req)
 			}
-			reason = gpuResourceRefusal(req, gpu, cardNeed)
+			reason = gpuResourceRefusal(req, node.UUID, gpu, cardNeed)
 		}
 		item := GPUCandidate{Index: gpu.Index, Available: reason.Code == ""}
 		if !item.Available {
@@ -46,13 +47,13 @@ func GPUCandidates(req Request, gpus []GPU) []GPUCandidate {
 	return items
 }
 
-func gpuResourceRefusal(req Request, gpu GPU, need int64) Reason {
+func gpuResourceRefusal(req Request, node string, gpu GPU, need int64) Reason {
 	if gpu.Index < 0 {
 		return Reason{Code: ReasonGPUIndexUnavailable}
 	}
 	if !gpu.takesWorkFor(req) {
 		if gpu.HeldOutsidePlatform || gpu.withheld > 0 {
-			return heldReason(req, "", []GPU{gpu}, gpu)
+			return heldReason(req, node, []GPU{gpu}, gpu)
 		}
 		return Reason{Code: ReasonGPUNotSchedulable}
 	}

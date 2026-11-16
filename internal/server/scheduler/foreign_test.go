@@ -177,7 +177,7 @@ func TestGPUCandidatesOfferACardHeldOutsideThePlatformToPartitionsOnly(t *testin
 		{"filled by foreign and claims", filled, partition, ReasonNoFit},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := GPUCandidates(tc.req, []GPU{tc.card})
+			got := GPUCandidates(tc.req, NodeSnapshot{GPUs: []GPU{tc.card}})
 			code := ""
 			if got[0].Reason != nil {
 				code = got[0].Reason.Code
@@ -225,7 +225,7 @@ func TestAnOverriddenHeldCardStillTakesWholeCardWork(t *testing.T) {
 	if res := Schedule(whole, nvidiaNode(card)); !res.OK {
 		t.Fatalf("whole-card on an overridden held card = %+v, want placed", res.Message)
 	}
-	if got := GPUCandidates(whole, []GPU{card}); !got[0].Available {
+	if got := GPUCandidates(whole, NodeSnapshot{GPUs: []GPU{card}}); !got[0].Available {
 		t.Fatalf("candidate = %+v, want offered", got[0])
 	}
 	huge := whole
