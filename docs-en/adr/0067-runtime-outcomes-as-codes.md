@@ -39,3 +39,5 @@ That prose cannot be localized, counted or matched reliably; the assistant depen
 - Adding a runtime failure, a check or an API error has one way to be written: define the code where it is produced, report it with parameters, add its en/zh text.
 - The assistant and rule cards diagnose by code and no longer drift with the upstream engines' log wording.
 - Docs: the domain glossary's "failure codes and check results" (`CONTEXT.md`), [API conventions](../reference/api-conventions.md).
+
+<!-- translation-source-sha256: 0d2fcd578c0e94dee1ce9840e11f219acc63b6a90138a031121f2ecb040730a6 -->

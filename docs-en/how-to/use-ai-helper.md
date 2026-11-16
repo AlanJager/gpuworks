@@ -99,3 +99,5 @@ Diagnostic data is still sent to the configured AI service.
 To judge whether an analysis is useful, verify it against the original problem: does the evidence come from the current object and failure period, do the suggested parameters or actions apply,
 and after you act, does the instance become ready, do requests recover, or is the original scheduling constraint removed? Make configuration changes yourself on the corresponding page, then click **Analyze again** to view the new state.
 Receiving an answer or passing platform checks does not mean the failure is fixed. When evidence is insufficient, retain the uncertainty and continue checking logs or request records.
+
+<!-- translation-source-sha256: 7b2e3cdb20d5f53c0a2b5eb4f17386b6af371a1b3c621b79fc0539687d735058 -->

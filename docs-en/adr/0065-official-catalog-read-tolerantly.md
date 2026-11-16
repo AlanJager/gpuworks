@@ -28,3 +28,5 @@ A template written for a newer server affects only itself: an older server still
 - Skipped new models and specs are not visible on the older server; the result of applying is the only place that shows they exist.
 - Released servers without this decision (v26.11.0–v26.11.3) do not benefit: a version-3 catalog tells them to upgrade the server first. No downgraded compatibility package is published for them.
 - The reason of a skip is the parser's or validator's own error text and is not translated.
+
+<!-- translation-source-sha256: f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0 -->

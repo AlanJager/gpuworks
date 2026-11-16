@@ -47,3 +47,5 @@ The root [`CLAUDE.md`](../../CLAUDE.md) is authoritative for development convent
 - [Browser E2E Component Checklists](../../test/e2e/browser-e2e-component-checklists.md)
 - [Release Builds](release.md)
 - [Contributing and Documentation Rules](contributing.md)
+
+<!-- translation-source-sha256: ba5eb371a9818fce7c07eb9c833a2f92a4d05f265c6840ff390ce07571e64fa1 -->

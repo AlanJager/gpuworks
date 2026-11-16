@@ -174,3 +174,5 @@ Top-level shared packages in `internal/`:
 ## Frontend (`ui/`)
 
 React + Vite; build artifacts are output to `internal/server/webui/dist` and embedded by the server with `go:embed`. Parameter dictionaries are delivered by the server's `/engines` endpoint and are **not hardcoded into the frontend**. i18n: `ui/src/i18n/` (en/zh locales) + `ui/i18n/` (glossary and review status); `make i18n-check` is a prerequisite for `make ui`.
+
+<!-- translation-source-sha256: 5cc4772122954b4c1496a113de44433700bb779c9666af2837cf59ab09376ecf -->

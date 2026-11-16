@@ -31,3 +31,5 @@ The server's controller was already reorganized this way: one self-locking type 
 - The desired-generation and reconcile-attempt maps (`desired`, `inFlight`, `inFlightCancel`, `pending`, `cleanupRequired`) are not merged in this step: they are maintained together by reconcile's serialization protocol, and merging them means changing that protocol with them, which is a change of its own.
 - `NodeRuntime` gets no field classification test in this step: most of its fields are subsystem state that leaves whole as each subsystem is extracted, guarded by the ratchet; the per-instance cleanup test is required on `Engine` first.
 - Splitting subsystems does not change the agent–server protocol or behaviour.
+
+<!-- translation-source-sha256: 146b93ea09468aa95cb07fe9fd5617c3e70e2e03284ca4a47466c12024804438 -->

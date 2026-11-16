@@ -168,3 +168,5 @@ The updated built-in Strata catalog carries a source-hash-checked runtime patch 
 waiting as `timings.queue_ms` in the same response. It excludes model loading and later MCP rounds without enabling body
 monitoring. Update the deployment and recreate old instances to emit the field. For pinned source evidence and integration
 constraints, see [Observability Limits of Per-Request Engine Queue Time](../dev/engine-queue-observation.md).
+
+<!-- translation-source-sha256: bb5058260bf7cd3d49619c7866831f48a3735883704890349186b6c22f3b107c -->

@@ -453,3 +453,5 @@ For the events of node-loss rescheduling after a node is lost and of drain moves
 - Yield policies other than never yield automatically apply only to single-node deployments; a multi-node or PD deployment whose cards are held still waits as one that does not fit.
 - A scheduled replica count applies only to single-node deployments and automatically placed multi-node and PD ones, not to multi-node or PD deployments placed by hand; a PD entry changes one role, so changing both takes two entries.
 - The evaluator runs inside the server process; nothing happens automatically while the server is down, and after it recovers only the newest entry within 12 hours is made up.
+
+<!-- translation-source-sha256: e2c51bcbd90ebf3a2eeeb1b90d082a7aeee55f4e4d6f1134696df09300ad5a60 -->

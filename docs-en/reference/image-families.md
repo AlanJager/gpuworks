@@ -243,3 +243,6 @@ runveil (the `udocker` driver) creates a canonical ROOT loopback for every conta
 Only NVIDIA containers additionally set TRITON_LIBCUDA_PATH, FLASHINFER_DISABLE_VERSION_CHECK, and
 SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK. These variables address only library discovery and version checks; they do not bypass NCCL safety checks. See the architecture documentation for the full
 runtime explanation.
+
+<!-- translation-source-sha256: e9150af6061f5d480380685b9cda945e6b884d7f4016b4865c67ca8f41a7e78d -->
+<!-- translation-localized-code-block: 33dc668ac5b0d9b2a0cfa8da37a7788f4ecfcf62c3fc515c19751dd7eb192fa9 410f13f2684f9c121d60a95145d5030433a0f81edaec77f7421b35c3c4604973 Translate illustrative sha256 placeholder -->

@@ -179,3 +179,7 @@ UDOCKER_BUNDLE=
 - A missing file is not an error: older agent installations do not have it and continue to run from their own command-line arguments. Upgrading the binary does not change their startup method; they migrate to the file only after you rerun the installation script.
 - `gpuworks-agent uninstall` also deletes this file.
 - When the installation script, SSH wizard preflight checks, or out-of-band recovery need to identify the server or token associated with an agent on a host, they read this file (and read the older agent's command line only if the file is missing). For the design rationale, see [ADR 0051](../adr/0051-agent-launch-configuration-file.md).
+
+<!-- translation-source-sha256: a2e6bf1cd23aeab1753c43277b72ab5b00444066347045b8bd863ef6bf26e3a3 -->
+<!-- translation-localized-code-block: 1ca19a085af3173169e8a019ece928ec76960988ad2f598b8a566e4e2d832742 8c972d07f3dd0d39fd244e3fbb203038497d330e63dd4aad76c734e845e85399 Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->
+<!-- translation-localized-code-block: 0a0c78856b3bcc2f70519eaf27daec112ac8a20c1388e0ac5809fef7c3958d06 5126a8bc98f3780a7a6b25daeaa58a61a8cacb4075ece9e6bf89f05f91ec4fd7 Translate explanatory node-token placeholder -->

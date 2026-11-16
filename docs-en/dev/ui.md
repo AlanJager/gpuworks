@@ -238,3 +238,5 @@ Organization avatars keep official images when available. Missing or failed imag
 Resource names that open a drawer use the native link button variant (`variant="link"` for Zeron, `type="link"` for legacy antd). Names that navigate use actual links. Do not use ghost buttons for resource names, and do not make inert names look clickable. Icon/action buttons and disabled controls keep their own styles.
 
 `tests/tableNameAffordance.test.ts` runs in the normal UI test gate and scans name-column renderers across product pages. `ui-check` also runs `tests/browser/table-link-rules.mjs` against every visited page/drawer, including full-page details reached from a list: visible table text links and clickable resource names must resolve to the theme color, including nested text. Its unit tests exercise failures and exclusions; real computed colors require the browser job. When changing shared navigation, test breadcrumbs through the current page and click the parent link; use heading roles when the resource name also appears in the breadcrumb.
+
+<!-- translation-source-sha256: fc4f787023f4d95a4a7c0c9835b3c3c0ff77ba4c6d379fcc338aa113ac0864d3 -->
