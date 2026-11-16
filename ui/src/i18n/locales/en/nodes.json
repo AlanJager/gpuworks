@@ -533,6 +533,11 @@
         "gpu_runtime_unconfigured": "{{runtime}} has no GPU support configured, so a container cannot be given this node's accelerators. Point {{runtime}} at the vendor plugin (NVIDIA: nvidia-ctk runtime configure --runtime=docker, then restart Docker)."
       }
     },
+    "recordon": {
+      "title": "The platform will stop scheduling this node again",
+      "description": "{{reason}}\n\nThe platform will stop scheduling this node again on its next report unless the cause is fixed."
+    },
+    "held": "Scheduling cannot be turned back on while this node is held",
     "state": {
       "schedulable": "Schedulable",
       "cordoned": "Cordoned",
