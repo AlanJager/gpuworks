@@ -20,6 +20,9 @@ func (q *GPUDeviceQuery) List(ctx context.Context) ([]inventory.GPUDevice, error
 	}
 	out := make([]inventory.GPUDevice, 0, len(gpus))
 	for _, g := range gpus {
+		if g.ParentUUID != "" {
+			continue
+		}
 		out = append(out, inventory.GPUDevice{HostUUID: g.HostUUID, GPU: cloudGPU(g)})
 	}
 	return out, nil

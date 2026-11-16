@@ -82,17 +82,28 @@ func newCloudGPUAPI(t *testing.T, options cloudGPUAPIOptions, containerRemoved f
 				return
 			}
 			query := r.URL.Query()
-			targeted := query.Has("q")
+			targeted := strings.HasPrefix(query.Get("q"), "uuid=")
 			if targeted {
 				if len(query) != 1 || len(query["q"]) != 1 || query.Get("q") != "uuid=gpu-a" {
 					t.Errorf("unexpected selected GPU query: %s", r.URL)
 					http.Error(w, "invalid GPU query", http.StatusBadRequest)
 					return
 				}
-			} else if len(query) != 3 || query.Get("start") != "0" || query.Get("limit") != "100" || query.Get("sort") != "uuid" {
-				t.Errorf("unexpected GPU pagination: %s", r.URL)
-				http.Error(w, "invalid pagination", http.StatusBadRequest)
-				return
+			} else {
+				wantQuerySize := 3
+				if pci {
+					wantQuerySize++
+					if len(query["q"]) != 1 || query.Get("q") != "type?=GPU_Video_Controller,GPU_3D_Controller,GPU_Processing_Accelerators,GPU_Co_Processor" {
+						t.Errorf("unexpected PCI GPU type filter: %s", r.URL)
+						http.Error(w, "invalid filter", http.StatusBadRequest)
+						return
+					}
+				}
+				if len(query) != wantQuerySize || query.Get("start") != "0" || query.Get("limit") != "100" || query.Get("sort") != "uuid" {
+					t.Errorf("unexpected GPU pagination: %s", r.URL)
+					http.Error(w, "invalid pagination", http.StatusBadRequest)
+					return
+				}
 			}
 			switch {
 			case pci && targeted:
@@ -115,9 +126,6 @@ func newCloudGPUAPI(t *testing.T, options cloudGPUAPIOptions, containerRemoved f
 			devices := []string{free}
 			if !targeted {
 				devices = append(devices, `{"uuid":"gpu-used","hostUuid":"host-a","name":"NVIDIA Test","type":"GPU_3D_Controller","pciDeviceAddress":"0000:02:00.0","state":"Enabled","status":"Attached","virtStatus":"UNVIRTUALIZABLE","vmInstanceUuid":"vm-1"`+usedAllocation+`}`)
-				if pci {
-					devices = append(devices, `{"uuid":"audio","hostUuid":"host-a","type":"Audio_Controller","state":"Enabled","status":"Active"}`)
-				}
 			}
 			fmt.Fprintf(w, `{"inventories":[%s]}`, strings.Join(devices, ","))
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/resource-configurations/") && strings.HasSuffix(r.URL.Path, "/kvm/reservedCpu") && !options.hostCPU:

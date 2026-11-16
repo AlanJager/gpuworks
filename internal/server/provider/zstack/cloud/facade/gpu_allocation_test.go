@@ -12,22 +12,23 @@ func TestGPUAllocationUsesPCIStateOnlyWhenAllocationFieldIsAbsent(t *testing.T) 
 	for _, tc := range []struct {
 		name, fields, want string
 		wantError          bool
+		wantCount          int
 	}{
-		{"free physical GPU", `"status":"Active","virtStatus":"UNVIRTUALIZABLE"`, "Unallocated", false},
-		{"system physical GPU", `"status":"System","virtStatus":"SRIOV_VIRTUALIZABLE"`, "Unallocated", false},
-		{"VM reserved", `"status":"Reserved","virtStatus":"UNVIRTUALIZABLE"`, "Allocated", false},
-		{"VM attached", `"status":"Attached","virtStatus":"UNVIRTUALIZABLE"`, "Allocated", false},
-		{"VM reference", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","vmInstanceUuid":"vm"`, "Allocated", false},
-		{"missing PCI state", `"status":"Active"`, "", false},
-		{"unknown PCI state", `"status":"Future","virtStatus":"UNVIRTUALIZABLE"`, "", false},
-		{"virtual child", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","parentUuid":"parent"`, "", false},
-		{"virtualized physical GPU", `"status":"Active","virtStatus":"VFIO_MDEV_VIRTUALIZED"`, "", false},
-		{"explicit allocation wins", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":"Allocated"`, "Allocated", false},
-		{"current allocation remains available", `"allocateStatus":"Unallocated"`, "Unallocated", false},
-		{"empty allocation stays unknown", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":""`, "", false},
-		{"null allocation stays unknown", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":null`, "", false},
-		{"future allocation is preserved", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":"Future"`, "Future", false},
-		{"invalid allocation is rejected", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":42`, "", true},
+		{"free physical GPU", `"status":"Active","virtStatus":"UNVIRTUALIZABLE"`, "Unallocated", false, 1},
+		{"system physical GPU", `"status":"System","virtStatus":"SRIOV_VIRTUALIZABLE"`, "Unallocated", false, 1},
+		{"VM reserved", `"status":"Reserved","virtStatus":"UNVIRTUALIZABLE"`, "Allocated", false, 1},
+		{"VM attached", `"status":"Attached","virtStatus":"UNVIRTUALIZABLE"`, "Allocated", false, 1},
+		{"VM reference", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","vmInstanceUuid":"vm"`, "Allocated", false, 1},
+		{"missing PCI state", `"status":"Active"`, "", false, 1},
+		{"unknown PCI state", `"status":"Future","virtStatus":"UNVIRTUALIZABLE"`, "", false, 1},
+		{"virtual child", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","parentUuid":"parent"`, "", false, 0},
+		{"virtualized physical GPU", `"status":"Active","virtStatus":"VFIO_MDEV_VIRTUALIZED"`, "", false, 1},
+		{"explicit allocation wins", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":"Allocated"`, "Allocated", false, 1},
+		{"current allocation remains available", `"allocateStatus":"Unallocated"`, "Unallocated", false, 1},
+		{"empty allocation stays unknown", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":""`, "", false, 1},
+		{"null allocation stays unknown", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":null`, "", false, 1},
+		{"future allocation is preserved", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":"Future"`, "Future", false, 1},
+		{"invalid allocation is rejected", `"status":"Active","virtStatus":"UNVIRTUALIZABLE","allocateStatus":42`, "", true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +45,15 @@ func TestGPUAllocationUsesPCIStateOnlyWhenAllocationFieldIsAbsent(t *testing.T) 
 			if (err != nil) != tc.wantError || (listErr != nil) != tc.wantError {
 				t.Fatalf("list error=%v get error=%v", listErr, err)
 			}
-			if !tc.wantError && (len(list) != 1 || list[0].GPU.Allocation != tc.want || gpu.GPU.Allocation != tc.want) {
-				t.Fatalf("list=%+v gpu=%+v, want allocation %q", list, gpu, tc.want)
+			if !tc.wantError {
+				if len(list) != tc.wantCount || gpu.GPU.Allocation != tc.want {
+					t.Fatalf("list=%+v gpu=%+v, want count %d and allocation %q", list, gpu, tc.wantCount, tc.want)
+				}
+				for _, listed := range list {
+					if listed.GPU.Allocation != tc.want {
+						t.Fatalf("listed GPU=%+v, want allocation %q", listed, tc.want)
+					}
+				}
 			}
 		})
 	}

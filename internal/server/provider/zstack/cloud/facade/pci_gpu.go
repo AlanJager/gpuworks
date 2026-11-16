@@ -3,6 +3,8 @@ package facade
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"slices"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/provider/zstack/cloud/apiclient"
@@ -10,6 +12,11 @@ import (
 )
 
 const pciDevicePath = "/pci-device/pci-devices"
+
+// PciDeviceType.gpuDeviceTypes, including accelerator classes added after 4.8.
+var pciGPUTypes = []string{
+	"GPU_Video_Controller", "GPU_3D_Controller", "GPU_Processing_Accelerators", "GPU_Co_Processor",
+}
 
 // PciDeviceInventory and PciDeviceType in Cloud describe physical GPUs
 // and their auxiliary functions separately; only compute/display devices apply.
@@ -30,13 +37,14 @@ type pciInventory struct {
 type PCIGPUQuery struct{ client *apiclient.APIClient }
 
 func (q *PCIGPUQuery) List(ctx context.Context) ([]inventory.GPUDevice, error) {
-	devices, err := apiclient.QueryAll[pciInventory](ctx, q.client, pciDevicePath)
+	filter := url.Values{"q": {"type?=" + strings.Join(pciGPUTypes, ",")}}
+	devices, err := apiclient.QueryAll[pciInventory](ctx, q.client, pciDevicePath+"?"+filter.Encode())
 	if err != nil {
 		return nil, err
 	}
 	out := make([]inventory.GPUDevice, 0)
 	for _, device := range devices {
-		if isGPU(device) {
+		if isGPU(device) && device.ParentUUID == "" {
 			out = append(out, pciGPU(device))
 		}
 	}
@@ -55,13 +63,7 @@ func (q *PCIGPUQuery) Get(ctx context.Context, uuid string) (inventory.GPUDevice
 }
 
 func isGPU(device pciInventory) bool {
-	// PciDeviceType.gpuDeviceTypes, including accelerator classes added after 4.8.
-	switch device.Type {
-	case "GPU_Video_Controller", "GPU_3D_Controller", "GPU_Processing_Accelerators", "GPU_Co_Processor":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(pciGPUTypes, device.Type)
 }
 
 func pciGPU(device pciInventory) inventory.GPUDevice {
