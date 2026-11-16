@@ -430,6 +430,19 @@ func foreignShare(node *store.Node, g *store.GPU) (int64, bool) {
 	return bytes, shareable && node.PartitionSafetyProtocol >= proto.PartitionSafetyForeignTracked
 }
 
+// ForeignHoldBytes is the memory on one of the node's cards that processes
+// outside the platform hold, with the headroom kept beside it: what neither
+// admission (scheduler.GPU.Available), a quota change in place (QuotaRoom)
+// nor the GPU list's free figure may offer to the platform. Zero when no
+// holder's memory is counted.
+func ForeignHoldBytes(node *store.Node, g *store.GPU) int64 {
+	bytes, _ := foreignShare(node, g)
+	if bytes <= 0 {
+		return 0
+	}
+	return bytes + estimate.ForeignHeadroomBytes(g.MemoryTotal)
+}
+
 // modelDiskAvailable reads the agent's statfs snapshot for the filesystem that
 // actually holds model weights. A missing or invalid snapshot is deliberately
 // reported as unknown (zero), so scheduling does not mistake the node root

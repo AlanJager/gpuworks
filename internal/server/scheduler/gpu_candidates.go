@@ -72,7 +72,7 @@ func gpuResourceRefusal(req Request, gpu GPU, need int64) Reason {
 			return reason
 		}
 	}
-	if gpu.Available() <= 0 {
+	if gpu.unclaimed() <= 0 {
 		return Reason{Code: ReasonNoFreeGPU}
 	}
 	return Reason{}

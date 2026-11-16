@@ -88,7 +88,7 @@ func contains(values []string, want string) bool {
 func countFree(gpus []GPU, req Request) int {
 	n := 0
 	for _, g := range gpus {
-		if g.takesWorkFor(req) && g.Available() > 0 {
+		if g.takesWorkFor(req) && g.unclaimed() > 0 {
 			n++
 		}
 	}

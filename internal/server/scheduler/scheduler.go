@@ -60,12 +60,18 @@ type GPU struct {
 	ForeignShareable bool
 }
 
-// Available returns the unclaimed memory on the GPU: its total less the
-// platform's claims and, on a card shared with processes outside the
-// platform, what they hold and the headroom kept beside them (foreignHold).
-func (g GPU) Available() int64 {
-	return g.MemoryTotal - g.AllocatedBytes - g.SleepingBytes - g.foreignHold()
-}
+// Available returns the memory a request that shares the GPU may claim: its
+// total less the platform's claims and what processes outside the platform
+// hold, with the headroom kept beside them (foreignHold).
+func (g GPU) Available() int64 { return g.unclaimed() - g.foreignHold() }
+
+// unclaimed is the GPU's total less the platform's own claims. The free-card
+// gates ask it rather than Available: whole-card work is admitted against
+// the engine's share of the card (CapacityFor), which an operator who allowed
+// work on a held card has accepted, and a partition that the foreign memory
+// leaves no room for is refused by the capacity check, whose verdict names
+// that memory (reasonMemoryShortfall).
+func (g GPU) unclaimed() int64 { return g.MemoryTotal - g.AllocatedBytes - g.SleepingBytes }
 
 // Empty reports whether the GPU has no claims (needed for whole-GPU placement).
 func (g GPU) Empty() bool { return g.AllocatedBytes <= 0 }

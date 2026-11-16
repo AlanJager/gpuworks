@@ -511,7 +511,7 @@ less the headroom kept beside them (5% of the card, at least 4 GiB), less what t
 When it does not fit, the refusal (`no_fit`) lists what the processes hold and the headroom, and in the deploy form the card can be picked only for such a deployment. The card is still not shared,
 and is refused as “In use outside the platform”, for: a whole-card deployment; a process the vendor tool gives no memory figure for, or a card Kubernetes gave to another pod
 (what such use may grow to is not known); and a node whose agent is older—sharing needs an agent that, once a platform instance is on the card, keeps reporting the outside processes that were already there
-with their current memory until they exit, and keeps that record in its state directory across restarts; an older agent drops them once the first instance starts, and the card would read as free.
+(one still listed with its current memory, one no longer found with its last figure, since it may have restarted under a new PID) until every platform instance there sleeps or has left and the card is examined in full again, and keeps that record in its state directory across restarts; an older agent drops them once the first instance starts, and the card would read as free.
 A deployment that sleeps is not placed on such a card either (`held_outside_platform_sleep`): while those processes run, a sleeping instance could not be woken there.
 A process that appears only after a platform instance is on the card is still not reported as outside the platform, since the agent cannot tell it from its own instance's. The rationale is in [ADR 0068](../adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md).
 
@@ -951,7 +951,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 
 | Reason code | Meaning |
 |---|---|
-| `no_fit` | Fixed startup requirement per card > available GPU memory; parameters include `required_gib`, `available_gib`, `tp`, and `gpu_memory_utilization` |
+| `no_fit` | Fixed startup requirement per card > available GPU memory; parameters include `required_gib`, `available_gib`, `tp`, and `gpu_memory_utilization`, plus `foreign_gib` (what outside processes hold) and `foreign_headroom_gib` (the headroom kept beside them) on a card shared with processes outside the platform |
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | Not enough idle whole cards / shareable cards |
 | `pinned_gpus_unavailable` | The cards a manually placed PD instance is pinned to are held by other deployments; the parameters give `node`, `gpus` (the pinned card indexes), and `holders` (the deployments holding them). The instance does not switch to other free cards on the node but waits for the pinned cards: stop or move the deployments holding them, or switch this deployment to automatic placement (`PUT /deployments/{id}/placement-mode`) so the platform uses free cards. When a pinned card is held outside the platform, is not healthy, or is free but still does not fit, the corresponding reason code applies |
 | `waiting_for_yield` | The replica fits once deployments sharing its cards by yield policy give them up, and waits for them; the parameters give `node`, `holders` (each holding deployment with `at_once`, or `idle_sec` and for yield-on-a-turn `max_serve_sec`: the terms it gives way to this deployment on) and `instances`. It resolves by itself when the holders sleep; see [How a New Deployment Gets onto a Shared Card](scheduling-center.md#新部署怎样放到共用的卡上). A holder with never yield is never asked to give way |
@@ -961,7 +961,8 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `no_free_gpu` | No idle GPUs |
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
 | `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, unbound from drivers, or held by other drivers |
-| `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards are occupied by processes outside the platform |
+| `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards (the named ones, when the request names cards) are occupied by processes outside the platform, and this deployment cannot share them: it takes whole cards, or the outside processes' memory is unknown |
+| `held_outside_platform_sleep` | Only cards shared with processes outside the platform could take this memory-limited deployment, but it sleeps: while those processes run, it could not be woken on that card once asleep. Fix: turn off sleep for this deployment, or pick another card |
 | `tp_head_count_not_divisible` | The attention head count is not divisible by TP |
 | `sleep_residue_blocks_startup` | Residual GPU memory from sleeping instances blocks startup |
 | `engine_ports_exhausted` | The node's engine port range is exhausted |

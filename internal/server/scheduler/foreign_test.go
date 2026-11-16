@@ -199,3 +199,42 @@ func TestAnOverriddenHeldCardStillCountsTheForeignMemoryForPartitions(t *testing
 		t.Fatalf("an 80 GiB partition beside 62.5 GiB held outside = %+v, want refused", res.Plan)
 	}
 }
+
+// A shareable held card whose foreign memory and claims leave no room is
+// refused with the figures that explain it (no_fit with the foreign memory),
+// not "no free GPU", which sends the reader looking for a deployment to stop.
+func TestAHeldCardWithNoRoomLeftNamesTheForeignMemory(t *testing.T) {
+	card := GPU{Index: 0, MemoryTotal: 80 * giB, HeldOutsidePlatform: true, ForeignShareable: true,
+		ForeignBytes: 74 * giB, AllocatedBytes: 2 * giB, PartitionBackends: []string{accelerator.BackendNVIDIALogical}}
+	res := Schedule(reporterPartition(16), nvidiaNode(card))
+	if res.OK || res.Message.Code != ReasonNoFit || res.Message.Params["foreign_bytes"] != 74*giB {
+		t.Fatalf("refusal = ok %v %+v, want %s with foreign_bytes", res.OK, res.Message, ReasonNoFit)
+	}
+}
+
+// An operator who allowed work on a held card keeps that override for
+// whole-card work: whole-card capacity is the engine's share of the card,
+// which never subtracted the foreign memory, so the free-card gate must not
+// either - and a whole-card refusal does not name foreign figures it never
+// applied.
+func TestAnOverriddenHeldCardStillTakesWholeCardWork(t *testing.T) {
+	card := GPU{Index: 0, MemoryTotal: 80 * giB, Schedulable: true, HeldOutsidePlatform: true,
+		ForeignBytes: 77 * giB, PartitionBackends: []string{accelerator.BackendNVIDIALogical}}
+	whole := reporterPartition(50)
+	whole.PerGPULimitBytes, whole.PartitionBackend = 0, ""
+	if res := Schedule(whole, nvidiaNode(card)); !res.OK {
+		t.Fatalf("whole-card on an overridden held card = %+v, want placed", res.Message)
+	}
+	if got := GPUCandidates(whole, []GPU{card}); !got[0].Available {
+		t.Fatalf("candidate = %+v, want offered", got[0])
+	}
+	huge := whole
+	huge.WeightBytes = 100 * giB
+	res := Schedule(huge, nvidiaNode(card))
+	if res.OK || res.Message.Code != ReasonNoFit {
+		t.Fatalf("oversized whole-card = ok %v %+v, want %s", res.OK, res.Message, ReasonNoFit)
+	}
+	if _, named := res.Message.Params["foreign_bytes"]; named {
+		t.Fatalf("whole-card no_fit names foreign memory it never subtracted: %+v", res.Message.Params)
+	}
+}

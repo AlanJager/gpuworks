@@ -257,7 +257,11 @@ func (o *opsStats) sampleGPUTime(at time.Time, interval time.Duration) error {
 		if c.Ownership != "" {
 			continue // owned elsewhere: never the platform's to schedule
 		}
-		cards = append(cards, rollup.Card{Model: c.Name, Schedulable: c.CanTakeWork()})
+		// A held card a partition may share by memory (ADR 0068) is
+		// capacity the platform schedules on, and its partitions' time is
+		// charged to it.
+		_, shared := c.SharesMemoryWithForeign()
+		cards = append(cards, rollup.Card{Model: c.Name, Schedulable: c.CanTakeWork() || shared})
 	}
 	holdings := make([]rollup.Holding, 0, len(snap.Holdings))
 	for _, h := range snap.Holdings {

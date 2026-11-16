@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/rollup"
 	"gpuworks.ai/gpuworks/internal/server/statsdb"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -300,5 +302,37 @@ func TestOpsStatsBackfillsFromTheRequestLogOnce(t *testing.T) {
 	}
 	if again != 3 {
 		t.Fatalf("a second fill added: %d", again)
+	}
+}
+
+// A card held outside the platform that a partition of ours shares by
+// memory (ADR 0068) is capacity the platform schedules on: counting it as
+// unschedulable while charging the partition's time to it would put the
+// allocated hours above the schedulable ones.
+func TestOpsStatsCountsACardSharedWithForeignProcessesAsSchedulable(t *testing.T) {
+	now := time.Date(2026, 10, 22, 2, 0, 0, 0, time.UTC)
+	ops, st, _ := newTestOpsStats(t, &now)
+	node, err := st.RegisterNode("n1", store.HashToken("n1"), "n1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Model(&store.Node{}).Where("id = ?", node.ID).Update("state", store.NodeStateOnline).Error; err != nil {
+		t.Fatal(err)
+	}
+	held, _ := json.Marshal([]proto.CardProcess{{PID: 41235, Name: "python3", MemoryBytes: 62 << 30}})
+	card := store.GPU{NodeID: node.ID, Ident: "GPU-h", Name: "H20", MemoryTotal: 140 << 30, ForeignProcesses: string(held)}
+	if err := st.DB().Create(&card).Error; err != nil {
+		t.Fatal(err)
+	}
+	dgpu, _ := st.CreateDeployment(&store.Deployment{Name: "dgpu", ServedName: "dgpu", State: store.DeployActive, VRAMLimitBytes: 50 << 30})
+	if _, err := st.CreateInstance(&store.Instance{UUID: "d", DeploymentID: dgpu.ID, NodeID: node.ID, State: "running", GPUIndexes: "[0]", GPUIdents: `["GPU-h"]`}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ops.sampleGPUTime(now, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	_, capacity := ops.gpuTimes.Take()
+	if c := capacity[rollup.CapacityKey{HourMS: rollup.HourMS(now), GPUModel: "H20"}]; c.TotalGPUSeconds != 60 || c.SchedulableGPUSeconds != 60 {
+		t.Fatalf("capacity = %+v, want the shared card schedulable", c)
 	}
 }

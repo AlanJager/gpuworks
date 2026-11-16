@@ -433,7 +433,8 @@ type SysInfo struct {
 	// PartitionSafetyProtocol is the level of the partition safety contract
 	// this agent keeps (PartitionSafety*); zero for an agent that keeps none.
 	// Each level includes the ones below it, and the server reads it from
-	// every report, so rolling an agent back revokes what it no longer keeps.
+	// every report, so rolling an agent back revokes what it no longer keeps
+	// for new placements (not for what was placed under the higher level).
 	PartitionSafetyProtocol int `json:"partition_safety_protocol,omitempty"`
 }
 

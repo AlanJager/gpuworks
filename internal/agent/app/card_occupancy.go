@@ -28,8 +28,8 @@ import (
 // not examined for a second, foreign workload. The processes that were
 // found there before our instance joined them stay foreign, though: the
 // server may place a memory-limited partition beside them and counts what
-// they hold (ADR 0068), so they are reported, with what they hold now,
-// until they exit (knownForeign).
+// they hold (ADR 0068), so they are reported for as long as our instance
+// stays there (stillForeign).
 
 // cardOccupancy is the last occupancy this agent established, by card
 // identity. The server writes a report's occupancy over what it had, so a
@@ -54,6 +54,8 @@ type cardOccupancy struct {
 	// path is where last is kept across restarts (cardOccupancyFile); empty
 	// keeps it in memory only.
 	path string
+	// bootTime reads when the running boot started (hostBootTime when nil).
+	bootTime func() time.Time
 }
 
 // learnCards records which card each device index names in a probe that
@@ -133,22 +135,35 @@ func (o *cardOccupancy) remember(gpus []proto.GPUInfo) (changed []proto.GPUInfo)
 }
 
 // knownForeign is the processes the last answer named on a card as
-// somebody else's, by PID and name: on a card our instance has joined since,
-// they are the ones still known not to be ours. The name guards against the
-// PID being reused by a process of our own.
-func (o *cardOccupancy) knownForeign(ident string) map[int]string {
+// somebody else's: on a card our instance has joined since, they are the
+// ones still known not to be ours.
+func (o *cardOccupancy) knownForeign(ident string) []proto.CardProcess {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if len(o.last[ident]) == 0 {
-		return nil
-	}
-	known := make(map[int]string, len(o.last[ident]))
-	for _, proc := range o.last[ident] {
-		if proc.PID > 0 {
-			known[proc.PID] = proc.Name
+	return append([]proto.CardProcess(nil), o.last[ident]...)
+}
+
+// stillForeign is the processes known to be foreign on a card of ours that
+// is not examined: each with what it holds now when it is still listed under
+// its PID and name - the name guards against the PID being reused by a
+// process of ours - and with its last figure when it is not. Its leaving the
+// list may be an exit or a restart under a new PID that could just as well
+// be our engine's, and reading a restart as a free card would admit
+// partitions into memory the workload holds again (ADR 0068); the card is
+// read afresh once it is examined again. An entry without a PID (one
+// carried over from a previous boot, see load) is matched against nothing.
+func stillForeign(known []proto.CardProcess, procs []gpu.ComputeProcess, bdf string) []proto.CardProcess {
+	out := make([]proto.CardProcess, 0, len(known))
+	for _, entry := range known {
+		for _, proc := range procs {
+			if entry.PID > 0 && proc.PID == entry.PID && proc.Name == entry.Name && gpu.SameBDF(proc.PCIeBDF, bdf) {
+				entry.MemoryBytes = proc.MemoryBytes
+				break
+			}
 		}
+		out = append(out, entry)
 	}
-	return known
+	return out
 }
 
 // foreign reports whether the last answer found somebody outside the
@@ -247,17 +262,11 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		// and its engines' own processes are known: any other process there
 		// is somebody else's, and the server must refuse a wake onto it.
 		// Otherwise only the processes already known to be foreign there are
-		// reported, with what they hold now: a new one may be our engine's.
+		// reported (stillForeign): a new one may be our engine's.
 		own, examine := sleeping[ident]
 		if ours[ident] && !examine {
 			if known := n.occupancy.knownForeign(ident); len(known) > 0 {
-				for _, proc := range procs {
-					if name, ok := known[proc.PID]; ok && name == proc.Name && gpu.SameBDF(proc.PCIeBDF, card.PCIeBDF) {
-						card.ForeignProcesses = append(card.ForeignProcesses, proto.CardProcess{
-							PID: proc.PID, Name: proc.Name, MemoryBytes: proc.MemoryBytes,
-						})
-					}
-				}
+				card.ForeignProcesses = stillForeign(known, procs, card.PCIeBDF)
 			}
 			continue
 		}
