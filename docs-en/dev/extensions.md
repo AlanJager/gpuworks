@@ -1,25 +1,26 @@
-# Extension Points: How a Separately Built Server Composes
+# Extension Points: The Module Contract and Installable Extensions
 
-Another Go module can use the gpuworks server as a library and compile it, together with its own code, into a new server binary (a "separately built server" below). This page describes the interfaces the open-source code leaves for that, the thread each one is called on, the rules they must follow, and what the open-source code does not do. The irreversible decisions are in [ADR 0070](../adr/0070-extension-tiers-and-edition-boundary.md); the terms (extension module, feature key, feature availability, extension-held cordon) are defined in `CONTEXT.md`.
+Inside the core, the gpuworks server composes modules through one set of interfaces (`app.Module` and `app.Host`). Tests and forks use this contract today: another Go module can use the server as a library and compile it, together with its own modules, into a new server binary (a "separately built server" below); official builds carry no module. Official and third-party extensions are to be installed as signed plugin packages and connected through the same contract by a built-in plugin host module ([ADR 0071](../adr/0071-installable-extensions.md)). The plugin host is not built yet; see [Installable extensions](#installable-extensions).
+
+This page describes the interfaces the open-source code leaves, the thread each one is called on, the rules they must follow, and what the open-source code does not do. The irreversible decisions are in [ADR 0070](../adr/0070-extension-tiers-and-edition-boundary.md) and ADR 0071; the terms (extension module, feature key, feature availability, extension-held cordon, plugin package, pushed table) are defined in `CONTEXT.md`.
 
 Extension docs, examples and tests describe each mechanism in its own terms; sample publishers, editions and plugins use the fictional name `acme`, as sample domains use `example.com`.
 
-## Four tiers
+## Tiers
 
-A capability goes in the lowest tier that can carry it:
-
-| Tier | Runs where | Fits |
+| Tier | Runs where | Carries |
 |---|---|---|
-| T0 Core | server, agent | Domain primitives every build needs; the community edition itself |
-| T1 Compiled module | inside the server process, in Go; its console part is a UI module overlaid at build time | Capabilities that decide on every management request, inside an insert or status transaction, or must work before any node exists |
-| T2 Server plugin | a child process of the server, over stdio | Adapters to outside systems with no UI and no state of their own |
-| T3 App | container workloads on nodes | Its own UI, data and domain workflow, using GPUs only through platform-scheduled workloads |
+| T0 Core | server, agent | Every general capability and every enforcement point: all decisions taken per request, insert, status report, claim or placement live here; the community edition itself, free by definition |
+| T1 Built-in module | inside the server process, in Go | Core-internal composition through `app.Module` / `app.Host`; `cli.Options.Extensions` stays for tests and forks and is not a distribution path for vendors or third parties |
+| T2 Package server part | a child process of the server | Decisions that need I/O, state, workflows or integrations, pushed as tables the core enforces (not built yet) |
+| T3 Package node part | core workloads and jobs on nodes | Products that use GPUs; no plugin code runs in the agent (not built yet) |
+| T4 Policy part | inside the server | Reserved only, not built |
 
-This page covers only what T0 leaves for T1. The T2 and T3 interfaces do not exist yet.
+Every interface on this page belongs to T1. The design of T2–T4 is in ADR 0071.
 
 ## How a build composes
 
-A separately built server has its own `main`, which calls `cli.Main` once:
+A separately built server (a fork or a test) has its own `main`, which calls `cli.Main` once:
 
 ```go
 func main() {
@@ -41,6 +42,8 @@ The zero value of `cli.Options` is the community server that `cmd/gpuworks` runs
 - `Distribution` is the build's own distribution channel: update checks, notices, catalog updates and upgrades read it, and an index signed for another edition is refused. Its edition must equal `Edition`, or the binary panics at startup.
 - `InstallHooks` run in order on `install` and `upgrade` and in reverse on `uninstall`, for host steps that need root, such as device permissions.
 
+Official builds pass the zero value. The edition scoping of `Edition` and `Distribution` serves forks only, and the official release path no longer extends it (ADR 0071).
+
 ## Modules and the Host
 
 ```go
@@ -60,7 +63,7 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `Section(v)` | Strict decode of `extensions.<name>` in `server.yaml`; without the section `v` stays as it is |
 | `Tables()` | The module's own tables (`store.ExtensionTables`); nil for a module without a migration set |
 | `DeriveKey(purpose)` | A 32-byte key derived from the master key with HKDF-SHA256 and bound to the module name |
-| `MountAPI(e)` | Mounts an `api.Extension`'s routes under `/api/v1/<name>/` |
+| `MountAPI(e)` | Mounts an `api.Extension`'s routes under `/api/v1/x/<name>/` |
 | `DeclareFeatures(...)` / `ProvideFeatures(src)` | Declares feature keys; provides the feature source (at most one across all modules) |
 | `AddBannerSource(b)` | Banners at the top of every console page |
 | `GuardNodeInsert(g)` | A guard on every new node's insert |
@@ -70,13 +73,15 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 
 The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds` and `NodeFleet` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
 
+Extension routes live under `/api/v1/x/<name>/`: `api.RouteSpec.Pattern` is relative to `/api/v1` and is `/x/<name>` or starts with `/x/<name>/`; a route outside the module's own namespace panics while the router is built. The core registers no route under `/api/v1/x/`, so a module name may equal a core path segment (such as `nodes`) and never collides with a path the core adds later.
+
 After every `Init` has run, the server releases extension-held cordons that no module of this build owns (so they do not outlive a changed build or a removed module), applies the holders' answers to every node once if any holder is registered, then builds the feature gate (`featuregate.New`) and hands it to the API.
 
 ## Reapplying holds and the node fleet
 
 A holder is otherwise asked on every status report, so a node whose answer changed can wait up to a minute to be cordoned or released. A module whose answers changed (for example, a rebuilt snapshot holds a different set of nodes) calls `ReapplySchedulingHolds()`, and the server runs `ApplySchedulingHolds` over every node again:
 
-- It never blocks and allocates nothing, and may be called from any goroutine, **except from inside a hook** (`SchedulingHolder.Hold`, an insert guard): a pass asks every holder again, so a holder that asked for one from `Hold` would keep the whole fleet in passes.
+- It never blocks and allocates nothing, and may be called from any goroutine, **except from inside a hook** (`SchedulingHolder.Hold`, an insert guard): a pass asks every holder again, so a holder that asked for one from `Hold` would keep the whole fleet in passes. Hooks request no other recompute either.
 - Requests are coalesced: any number made while a pass is pending or running make at most one more pass, and passes are at least 2 seconds apart, so a holder whose answers flap costs at most one fleet-wide writer transaction every 2 seconds, never one per event.
 - The pass runs in the same `services()` loop as the modules' `Service`, off the caller's goroutine, and stops with the server; a failed pass is logged as an error and retried with a backoff that starts at 2 seconds and doubles up to a minute. With no holder registered it does nothing.
 
@@ -88,6 +93,8 @@ A holder whose answers depend on the whole fleet (for example, choosing nodes in
 `Service.Run` is started by the same `services()` loop in `App.Run` as the health checks, card failure records, usage report and notice refresh, after the controller starts. It returns when `ctx` is done; an error it returns is logged and the service is not restarted. One App can be `Run` more than once (an in-place restart), so `Run` must tolerate being called again.
 
 ## Tables and migrations
+
+Extension migrations serve compiled modules only (forks and tests). Plugin packages are to use storage in their own data directory, and the tables the core persists for plugins are core tables; neither uses this mechanism (ADR 0071).
 
 Migration sets (`store.MigrationSet`) run after the core migrations, in the same `store.OpenWith`:
 
@@ -135,6 +142,8 @@ The console renders `GET /api/v1/console/manifest` (fields in the [API reference
 
 ## Console overlay
 
+The build-time overlay serves forks only; plugin package UIs are to be loaded at runtime (ADR 0071, not built yet).
+
 A separately built server's UI modules are copied to `ui/src/extensions/<id>/` (git-ignored), registered in `ui/src/extensions/index.ts`, and may import only the components, hooks and API client that `ui/src/extensions/sdk.ts` re-exports (the `ee_ui_internal_imports` budget is 0). The build sets `GPUWORKS_UI_OUT_DIR` to write elsewhere; with UI modules checked out and the variable unset, `make ui` and `make release-packages` refuse to build, so nothing is overlaid onto the community edition. The modules' texts ship in their own locale bundles merged into `common`, checked by the same i18n check through `GPUWORKS_I18N_EXTRA_LOCALES` / `GPUWORKS_I18N_EXTRA_MESSAGES`.
 
 ## Codes and texts
@@ -143,16 +152,30 @@ Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtim
 
 ## Upgrades and installation
 
+The edition checks below matter only to forks: official builds name no edition, and ADR 0071 removes this machinery from the official release path once the first availability authority runs as a plugin.
+
 - A distribution index names its edition inside the signed payload; an index whose edition does not match the build's channel is refused, and the community edition accepts only indexes that name no edition or `community`.
 - `upgrade` compares `gpuworks edition` of the installed binary and the staged one and refuses a different edition unless given `--allow-edition-change`; a console upgrade to another edition answers 409 `SERVER_EDITION_MISMATCH`.
 - `upgrade` runs the install hooks of the binary doing the upgrade; after a cross-grade, run `install` with the new binary as prompted.
 - Going back from an extended build to the community edition, the `extensions:` section of `server.yaml` only logs a warning, the extension tables are left as they are, and extension-held cordons are released at startup.
 
+## Installable extensions
+
+ADR 0071 decides that official and third-party extensions are installed as signed plugin packages (`.gwpkg`) instead of being compiled into the binary. This part is **not built yet**; this section only says how it will connect to the contract on this page:
+
+- The plugin host is a built-in module that registers the existing hooks through the `Host` (feature source, node insert guard, scheduling holder, banners) and answers them from tables plugins push and the core validates and persists; in official builds it will be the only caller of `ProvideFeatures`.
+- A plugin is a child process of the server that talks to the core over `gwx/1` on inherited fds, never enters a hot path and never gets the Store; its routes live under `/api/v1/x/<id>/`, the same prefix as compiled modules.
+- Whether a feature key is gated is declared by the plugin package itself; grant tables accept pushes only from the authority its publisher certificate names; while a plugin is down its restrictions stay enforced, its grants clamp to read-only after a bounded grace, and timelines keep firing on extclock.
+- The hook rules on this page (hooks inside the writer transaction are pure, holders cordon without draining, running workloads are never interrupted) apply to the plugin host as well.
+
+The package format, trust, lifecycle and protocol are documented as they are built.
+
 ## What the open-source code does not do
 
-- It interprets no feature key and never branches on the edition name.
+- It interprets no feature key and never branches on the edition name; core code names no feature.
+- It calls no out-of-process extension on any request, insert, status report, claim or placement path, and runs no extension code such as WASM inside the writer transaction.
 - It never hands extensions the Store or a raw database handle.
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: a3991a1ac2492ca90ae779214df33a1898ac3492408ecdf823f705ed657a43f8 -->
+<!-- translation-source-sha256: 1509ce6c27af84f979c5495ceb602c8ccaa92c9881684c4247755c1e800a1ce8 -->

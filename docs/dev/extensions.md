@@ -1,25 +1,26 @@
-# 扩展点：单独构建的 server 如何组合
+# 扩展点：模块契约与可安装扩展
 
-gpuworks 的 server 可以被另一个 Go 模块当作库，加上自己的代码编成一个新的 server 二进制（下文称「单独构建的 server」）。本页说明开源代码为此留下的接口、每个接口在哪个线程上被调用、必须遵守的规则，以及开源代码不做的事。不可逆的取舍见 [ADR 0070](../adr/0070-extension-tiers-and-edition-boundary.md)；术语（扩展模块、功能键、可用性、扩展停止调度）以 `CONTEXT.md` 为准。
+gpuworks 的 server 在核心内部经一组接口组合模块（`app.Module` 与 `app.Host`）。这套契约今天由测试与分叉使用：另一个 Go 模块可以把 server 当作库，加上自己的模块编成新的 server 二进制（下文称「单独构建的 server」）；官方构建不带任何模块。官方与第三方扩展将以签名插件包的形式安装，由一个内置的插件宿主模块经同一套契约接入（[ADR 0071](../adr/0071-installable-extensions.md)），插件宿主尚未实现，见[可安装扩展](#可安装扩展)。
+
+本页说明开源代码留下的接口、每个接口在哪个线程上被调用、必须遵守的规则，以及开源代码不做的事。不可逆的取舍见 [ADR 0070](../adr/0070-extension-tiers-and-edition-boundary.md) 与 ADR 0071；术语（扩展模块、功能键、可用性、扩展停止调度、插件包、推送表）以 `CONTEXT.md` 为准。
 
 扩展相关的文档、示例与测试都按机制本身描述；示例里的发布者、版本名与插件统一用虚构的 `acme`，就像示例域名用 `example.com`。
 
-## 四个层级
+## 层级
 
-一项能力放在能承载它的最低层级：
-
-| 层级 | 运行在哪里 | 适合什么 |
+| 层级 | 运行在哪里 | 放什么 |
 |---|---|---|
-| T0 核心 | server、agent | 所有构建都需要的领域原语；社区版本身 |
-| T1 编译进来的模块 | server 进程内，Go；控制台部分是构建时叠加的界面模块 | 要在每个管理请求、每次插入或状态事务里做决定，或在任何节点存在之前就要工作的能力 |
-| T2 server 插件 | server 的子进程，经 stdio 通信 | 没有界面、不持有自己状态、只对接外部系统的适配器 |
-| T3 应用 | 节点上的容器负载 | 有自己的界面、数据和领域流程，只通过平台调度的负载使用 GPU |
+| T0 核心 | server、agent | 全部通用能力与每个执行点：逐请求、逐插入、逐状态上报、逐认领、逐放置的判断都在这里；社区版本身，按定义免费 |
+| T1 内置模块 | server 进程内，Go | 经 `app.Module` / `app.Host` 的核心内部组合；`cli.Options.Extensions` 留给测试与分叉，不是厂商或第三方的分发途径 |
+| T2 插件包的服务端部分 | server 的子进程 | 需要 I/O、状态、流程或对接的决定，把结果推成核心执行的表（尚未实现） |
+| T3 插件包的节点部分 | 节点上的核心工作负载与作业 | 用 GPU 的产品，agent 里不跑插件代码（尚未实现） |
+| T4 策略部分 | server 内 | 只预留，不实现 |
 
-本页只描述 T0 留给 T1 的接口。T2 与 T3 的接口尚未实现。
+本页的接口都属于 T1。T2–T4 的设计见 ADR 0071。
 
 ## 组合方式
 
-单独构建的 server 有自己的 `main`，只调用一次 `cli.Main`：
+单独构建的 server（分叉或测试）有自己的 `main`，只调用一次 `cli.Main`：
 
 ```go
 func main() {
@@ -41,6 +42,8 @@ func main() {
 - `Distribution` 是该构建自己的发布通道：版本检查、通知、目录更新与升级都读它，签名索引里的版本名不符即拒绝。它的版本名必须与 `Edition` 相同，否则启动即 panic。
 - `InstallHooks` 在 `install`、`upgrade` 时依次执行，`uninstall` 时倒序执行，用于设备权限之类必须由 root 完成的主机步骤。
 
+官方构建传零值。`Edition` 与 `Distribution` 的按版本名作用域只服务分叉构建，官方发布流程不再扩展它们（ADR 0071）。
+
 ## 模块与 Host
 
 ```go
@@ -60,7 +63,7 @@ type Service interface{ Run(ctx context.Context) error }
 | `Section(v)` | 严格解码 `server.yaml` 的 `extensions.<名>`；没有这一节时 `v` 保持原样 |
 | `Tables()` | 本模块的表（`store.ExtensionTables`）；没有迁移集的模块为 nil |
 | `DeriveKey(purpose)` | 由 master key 经 HKDF-SHA256 派生、与模块名绑定的 32 字节密钥 |
-| `MountAPI(e)` | 把 `api.Extension` 的路由挂到 `/api/v1/<名>/` |
+| `MountAPI(e)` | 把 `api.Extension` 的路由挂到 `/api/v1/x/<名>/` |
 | `DeclareFeatures(...)` / `ProvideFeatures(src)` | 声明功能键；提供功能来源（全部模块中至多一个） |
 | `AddBannerSource(b)` | 控制台每页顶部的横幅 |
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
@@ -70,13 +73,15 @@ type Service interface{ Run(ctx context.Context) error }
 
 `Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds` 与 `NodeFleet` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
+扩展路由挂在 `/api/v1/x/<名>/` 下：`api.RouteSpec.Pattern` 相对 `/api/v1`，是 `/x/<名>` 或以 `/x/<名>/` 开头，越出自己的命名空间即在路由构建时 panic。核心不在 `/api/v1/x/` 下注册任何路由，所以模块名可以与核心路径段同名（如 `nodes`），也不会与核心将来新增的路径冲突。
+
 所有 `Init` 结束后，server 先释放本构建没有任何模块认领的扩展停止调度（换了构建或去掉了模块时，它们不会一直留着），有保持者时再对全部节点应用一次保持，然后构建功能门（`featuregate.New`）并交给 API。
 
 ## 保持者的重新应用与节点集合
 
 保持者的答案平时在每次状态上报时被问到，所以答案变了的节点最多要等一分钟才被停止或恢复调度。答案变了（例如快照重建后被保持的集合不同了）的模块调用 `ReapplySchedulingHolds()`，server 对全部节点再执行一次 `ApplySchedulingHolds`：
 
-- 不阻塞、不分配内存，可以在任何 goroutine 调用，**唯独不能在钩子里**（`SchedulingHolder.Hold`、插入守卫）：一次重新应用会再问一遍所有保持者，在 `Hold` 里请求就会让全部节点不停地重新应用。
+- 不阻塞、不分配内存，可以在任何 goroutine 调用，**唯独不能在钩子里**（`SchedulingHolder.Hold`、插入守卫）：一次重新应用会再问一遍所有保持者，在 `Hold` 里请求就会让全部节点不停地重新应用。钩子里同样不请求任何其他重算。
 - 请求会合并：一次重新应用等待或执行期间的任意多次请求，最多再引起一次；两次之间至少隔 2 秒，所以答案来回抖动的保持者每 2 秒最多花一次全表写事务，不会变成每个事件一次。
 - 重新应用在模块的 `Service` 所在的同一个 `services()` 循环里执行，不占调用方的 goroutine，随 server 停止；失败时记错误日志，从 2 秒起加倍退避（最长一分钟）重试。没有注册保持者时什么也不做。
 
@@ -88,6 +93,8 @@ type Service interface{ Run(ctx context.Context) error }
 `Service.Run` 由 `App.Run` 的同一个 `services()` 循环启动，与健康检查、卡故障记录、用量报告、通知刷新并列，在控制器启动之后运行；`ctx` 结束时返回，返回的错误只记日志、不重启。同一个 App 可以多次 `Run`（原地重启），所以 `Run` 必须能被再次调用。
 
 ## 表与迁移
+
+扩展迁移只服务编译进来的模块（分叉与测试）；插件包将用自己数据目录里的存储，核心为插件持久化的表是核心表，都不用这套机制（ADR 0071）。
 
 迁移集（`store.MigrationSet`）在核心迁移之后、同一次 `store.OpenWith` 里执行：
 
@@ -135,6 +142,8 @@ type Service interface{ Run(ctx context.Context) error }
 
 ## 控制台叠加
 
+构建时叠加只服务分叉构建；插件包的界面将在运行时加载（ADR 0071，尚未实现）。
+
 单独构建的 server 的界面模块复制到 `ui/src/extensions/<id>/`（已被 git 忽略），在 `ui/src/extensions/index.ts` 注册，只能 import `ui/src/extensions/sdk.ts` 再导出的组件、hook 与 API 客户端（`ee_ui_internal_imports` 预算为 0）。构建时设置 `GPUWORKS_UI_OUT_DIR` 输出到别处；检出了界面模块却没设这个变量时，`make ui` 与 `make release-packages` 拒绝构建，以免叠加进社区版。界面模块的文案放在自己的 locale 包里合并进 `common`，用 `GPUWORKS_I18N_EXTRA_LOCALES` / `GPUWORKS_I18N_EXTRA_MESSAGES` 跑同一套 i18n 检查。
 
 ## 码与文案
@@ -143,14 +152,28 @@ type Service interface{ Run(ctx context.Context) error }
 
 ## 升级与安装
 
+以下按版本名的检查只对分叉构建有意义：官方构建不写版本名，ADR 0071 决定第一个可用性权威作为插件运行之后从官方发布流程删除这套机制。
+
 - 发布索引在签名内容里写明版本名；索引的版本名与构建的发布通道不符即拒绝，社区版只接受不写版本名或写 `community` 的索引。
 - `upgrade` 比较已安装二进制与待安装二进制的 `gpuworks edition`，不同则拒绝，除非带 `--allow-edition-change`；控制台升级遇到版本不同返回 409 `SERVER_EDITION_MISMATCH`。
 - `upgrade` 执行的是当前二进制的安装钩子；跨版本升级后按提示用新二进制再执行一次 `install`。
 - 从扩展构建回到社区版时，`server.yaml` 里的 `extensions:` 节只产生告警；扩展的表原样保留；扩展停止调度在启动时释放。
 
+## 可安装扩展
+
+ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，而不是编进二进制。这部分**尚未实现**，本节只说明它将如何接入本页的契约：
+
+- 插件宿主是一个内置模块，经 `Host` 注册已有的钩子（功能来源、节点插入守卫、调度保持者、横幅），从插件推送、由核心校验并持久化的表作答；官方构建里它将是 `ProvideFeatures` 唯一的调用者。
+- 插件是 server 的子进程，经继承的 fd 用 `gwx/1` 与核心通信，从不进入热路径，也不拿 Store；它的路由挂在 `/api/v1/x/<id>/` 下，与编译模块同一个前缀。
+- 功能键是否受控由插件包自己声明；授权类的表只接受发布者证书指定的权威推送；插件掉线时限制继续执行，授权在有界宽限后降为只读，时间线按 extclock 照常生效。
+- 本页的钩子规则（写事务里的钩子是纯函数、保持者只停止调度不驱逐、运行中的负载不中断）对插件宿主同样适用。
+
+包格式、信任、生命周期与协议的文档随实现补齐。
+
 ## 开源代码不做的事
 
-- 不解释任何功能键，不按版本名分支。
+- 不解释任何功能键，不按版本名分支；核心代码不点名任何功能。
+- 不在任何请求、插入、状态上报、认领或放置路径上调用进程外的扩展；不在写事务里运行 WASM 之类的扩展代码。
 - 不交出 Store 或原始数据库句柄给扩展。
 - 不提供 `init()` 注册或新的包级全局变量：一切经 `cli.Options` 与 `app.Config` 传入。
 - 不中断正在运行的负载：功能门只作用于新的请求与写入，保持者只停止调度、不驱逐。

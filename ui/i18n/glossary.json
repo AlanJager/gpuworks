@@ -1383,6 +1383,34 @@
       "translations": { "zh": "可用性" }
     },
     {
+      "term_en": "Plugin Package",
+      "translations": { "zh": "插件包" }
+    },
+    {
+      "term_en": "Publisher Certificate",
+      "translations": { "zh": "发布者证书" }
+    },
+    {
+      "term_en": "Pushed Table",
+      "translations": { "zh": "推送表" }
+    },
+    {
+      "term_en": "Authority",
+      "translations": { "zh": "权威" }
+    },
+    {
+      "term_en": "Down Grace",
+      "translations": { "zh": "宽限" }
+    },
+    {
+      "term_en": "Restriction Override",
+      "translations": { "zh": "限制覆盖" }
+    },
+    {
+      "term_en": "Extension Clock",
+      "translations": { "zh": "extclock" }
+    },
+    {
       "term_en": "Node Drain",
       "translations": { "zh": "驱逐" }
     },

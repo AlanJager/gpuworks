@@ -1,6 +1,8 @@
 # ADR 0070: 扩展分层与版本边界：开源代码只说可用性，单独构建的 server 经一组接口组合
 
-日期：2026-11-16 · 状态：已接受（补充 [ADR 0040](0040-signed-multi-source-distribution.md) 的版本作用域、[ADR 0067](0067-runtime-outcomes-as-codes.md) 对扩展码的要求）
+日期：2026-11-16 · 状态：已接受，部分被 [ADR 0071](0071-installable-extensions.md) 取代（补充 [ADR 0040](0040-signed-multi-source-distribution.md) 的版本作用域、[ADR 0067](0067-runtime-outcomes-as-codes.md) 对扩展码的要求）
+
+> 2026-11-17：[ADR 0071](0071-installable-extensions.md) 改为「通用核心 + 签名插件包」。决策 1（四个层级）被其分层取代，T1 只做核心内部组合；决策 10（按版本名分开的发布与升级）对官方发布流程撤回。其余决策保留，并由 0071 扩充（各条去向见 0071）。扩展路由已改挂在 `/api/v1/x/<名>/` 下。下文保留原文。
 
 ## 背景
 

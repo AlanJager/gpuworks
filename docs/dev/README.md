@@ -36,7 +36,7 @@ make demo
 ## 下一步
 
 - [代码地图：逐包职责](code-map.md)
-- [扩展点：单独构建的 server 如何组合](extensions.md)
+- [扩展点：模块契约与可安装扩展](extensions.md)
 - [本地开发环境](setup.md)
 - [测试分层和云端策略](testing.md)
 - [AMD 支持设计：职责、准入与兼容边界](amd-support-design.md)

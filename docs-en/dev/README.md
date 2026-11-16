@@ -36,7 +36,7 @@ The root [`CLAUDE.md`](../../CLAUDE.md) is authoritative for development convent
 ## Next Steps
 
 - [Code Map: Package Responsibilities](code-map.md)
-- [Extension Points: How a Separately Built Server Composes](extensions.md)
+- [Extension Points: The Module Contract and Installable Extensions](extensions.md)
 - [Local Development Environment](setup.md)
 - [Test Tiers and Cloud Strategy](testing.md)
 - [AMD support design: responsibilities, admission and compatibility](amd-support-design.md)
@@ -50,4 +50,4 @@ The root [`CLAUDE.md`](../../CLAUDE.md) is authoritative for development convent
 - [Release Builds](release.md)
 - [Contributing and Documentation Rules](contributing.md)
 
-<!-- translation-source-sha256: 426f79c957a6c3863ba69790d60ed0635dc0ee15b6d4c07c8315e51bdb60d6a8 -->
+<!-- translation-source-sha256: 6827bdacfc3a53e455de335877ca8f0982913dd42674d7847dd69b2d0120b680 -->

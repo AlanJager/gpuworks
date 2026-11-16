@@ -1,6 +1,8 @@
 # ADR 0070: Extension Tiers and the Edition Boundary: Open-Source Code Speaks Only of Availability, and a Separately Built Server Composes Through One Set of Interfaces
 
-Date: 2026-11-16 · Status: Accepted (adds the edition scope to [ADR 0040](0040-signed-multi-source-distribution.md) and the requirements of [ADR 0067](0067-runtime-outcomes-as-codes.md) for extension codes)
+Date: 2026-11-16 · Status: Accepted, partly superseded by [ADR 0071](0071-installable-extensions.md) (adds the edition scope to [ADR 0040](0040-signed-multi-source-distribution.md) and the requirements of [ADR 0067](0067-runtime-outcomes-as-codes.md) for extension codes)
+
+> 2026-11-17: [ADR 0071](0071-installable-extensions.md) moves to "a general core plus signed plugin packages". Decision 1 (four tiers) is superseded by its tier model, in which T1 is core-internal composition only; decision 10 (edition-scoped release and upgrade) is withdrawn for the official release path. The other decisions are kept and extended by 0071 (it lists where each one goes). Extension routes are now mounted under `/api/v1/x/<name>/`. The original text is kept below.
 
 ## Context
 
@@ -37,4 +39,4 @@ A few things cannot change once released: the key reserved for extensions in `se
 - `api.Deps` gained exactly one field for extensions (`Extensions`); later API-side hooks are added inside that struct.
 - The contract and operational details are in [Extension Points](../dev/extensions.md).
 
-<!-- translation-source-sha256: f9625f94b904e1d17cd623e8b998cee99a22e5df39be5d2e0caf3eac45d169c9 -->
+<!-- translation-source-sha256: dcaef04133f5c3e86996941480e87b0a7722a82b4c1fabcbdc28434cb19fae7e -->
