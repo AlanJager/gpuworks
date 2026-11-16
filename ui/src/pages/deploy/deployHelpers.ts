@@ -155,7 +155,16 @@ export function projectDraft(
   }
   // A selected backend replaces the native keys the server lists for it:
   // their draft values stay in the form, and the payload tombstones them.
+  // A selection the profile does not list (the target changed to one the
+  // backend does not run on) is not one the cards show: it is tombstoned, so
+  // the payload matches the engine tiers the form shows instead.
   const backend = selectedKVBackend(v, profile);
+  const statedBackend = v[kvBackendKey];
+  const selectorPublished = published.some((spec) => spec.key === kvBackendKey);
+  if (!backend && selectorPublished && typeof statedBackend === "string" && statedBackend !== "") {
+    delete quick[kvBackendKey];
+    unset.add(kvBackendKey);
+  }
   if (backend) {
     const publishedKeys = new Set(published.map((spec) => spec.key));
     for (const key of backend.replaces) {

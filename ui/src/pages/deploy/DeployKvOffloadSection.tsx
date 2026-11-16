@@ -58,10 +58,11 @@ export default function DeployKvOffloadSection({
   // dark with it even though their draft values survive.
   const kvDiskEnabled = kvMemoryEnabled && kvDiskValue;
   // A selected backend replaces the engine's own tiers: their cards go dark
-  // and picking one of them clears the selection.
+  // and picking one of them clears the selection, including one the profile
+  // no longer lists (the payload already leaves that one out).
   const backend = backends.find((entry) => entry.id === backendValue);
   const clearBackend = () => {
-    if (backend) form.setFieldValue(kvBackendKey, "");
+    if (typeof backendValue === "string" && backendValue !== "") form.setFieldValue(kvBackendKey, "");
   };
 
   return (

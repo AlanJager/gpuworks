@@ -82,6 +82,20 @@ test("a backend the UI has never seen renders from the profile and selecting it 
   assert.ok(back.quickParamsUnset.includes("kv_offload_backend"));
 });
 
+test("a selection the target's profile no longer lists is cleared, not sent", () => {
+  // The deployer picked the backend, then moved to a target whose profile
+  // does not list it: the cards fall back to the engine's own tiers, and the
+  // payload must match them instead of carrying a hidden selection.
+  mount([], { kv_offload_backend: synthetic.id, kv_offloading_size: 16, kv_memory_tier_enabled: true });
+  assert.equal(active(locale.deploy.workbench.kv.memory), true);
+  const { payload } = buildPayload({ engine: "engine-x", ...form.getFieldsValue(true) }, { ...profile, kv_backends: [] } as EngineProfile);
+  assert.deepEqual(payload.quick_params, { kv_offloading_size: 16 });
+  assert.ok((payload.quick_params_unset ?? []).includes("kv_offload_backend"));
+  // Choosing an engine card clears the hidden value too.
+  fireEvent.click(card(locale.deploy.workbench.kv.disabled));
+  assert.equal(form.getFieldValue("kv_offload_backend"), "");
+});
+
 function projected() {
   const { payload } = buildPayload({ engine: "engine-x", ...form.getFieldsValue(true) }, profile);
   return { payload: payload.quick_params as Record<string, unknown>, quickParamsUnset: (payload.quick_params_unset ?? []) as string[] };
