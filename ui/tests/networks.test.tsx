@@ -227,8 +227,13 @@ test("creating a network sends the server dictionary values and opens the detail
   renderAt("/networks", <NetworksPage />);
   await user.click(await screen.findByRole("button", { name: n.actions.create }));
   const dialog = await modalDialog();
+  assert.ok(within(dialog).getByRole("button", { name: i18n.t("actions.close") }));
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.ok(within(dialog).getByText(n.form.nameRequired)));
+  const roleGroup = within(dialog).getByRole("group", { name: new RegExp(n.form.roles) });
+  assert.equal(roleGroup.getAttribute("aria-required"), "true");
+  assert.equal(roleGroup.getAttribute("aria-invalid"), "true");
+  assert.deepEqual((roleGroup.getAttribute("aria-describedby") ?? "").split(" "), [`${roleGroup.id}-description`, `${roleGroup.id}-error`]);
   assert.equal(bodies.length, 0, "validation blocks the request");
 
   await user.type(within(dialog).getByRole("textbox", { name: n.form.name }), "ib-a");
@@ -242,6 +247,9 @@ test("creating a network sends the server dictionary values and opens the detail
   assert.equal(within(dialog).queryByLabelText(n.form.interface), null);
   await user.click(within(dialog).getByText(n.form.advanced));
   await user.type(within(dialog).getByLabelText(n.form.bootstrapCidr), "10.20.0.0/16");
+  within(dialog).getByRole("textbox", { name: n.form.name }).focus();
+  await user.keyboard("{Enter}");
+  assert.equal(bodies.length, 0, "Enter in a field does not create the network");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   // The created network opens in the drawer over the list.
   await waitFor(() => assert.match(screen.getByTestId("where").textContent ?? "", /\?network=\d+/));

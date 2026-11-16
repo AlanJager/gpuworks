@@ -106,7 +106,7 @@ export default function AttachNetworkModal({
   });
 
   return <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) onClose(); }}>
-    <DialogContent size="lg" className="max-h-[calc(100dvh-32px)] overflow-y-auto" closeButtonDisabled={saving}>
+    <DialogContent size="lg" className="max-h-[calc(100dvh-32px)] overflow-y-auto" closeButtonDisabled={saving} closeButtonLabel={t("actions.close", { ns: "common" })}>
       <form onSubmit={submit}>
         <DialogHeader><DialogTitle>{editing ? t(rdma ? "attach.editBootstrapTitle" : "attach.editTitle") : t("attach.title", { name: network.name })}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-4">

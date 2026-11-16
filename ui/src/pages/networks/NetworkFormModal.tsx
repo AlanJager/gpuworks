@@ -70,13 +70,13 @@ export default function NetworkFormModal({
   });
 
   return <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) onClose(); }}>
-    <DialogContent size="lg" className="max-h-[calc(100dvh-32px)] overflow-y-auto" closeButtonDisabled={saving}>
-      <form onSubmit={submit}>
+    <DialogContent size="lg" className="max-h-[calc(100dvh-32px)] overflow-y-auto" closeButtonDisabled={saving} closeButtonLabel={t("actions.close", { ns: "common" })}>
+      <form onSubmit={submit} onKeyDown={event => { if (event.key === "Enter" && (event.target as HTMLElement).tagName === "INPUT") event.preventDefault(); }}>
         <DialogHeader><DialogTitle>{t(network ? "form.editTitle" : "form.createTitle")}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-4">
           <FormField control={form.control} name="name" label={t("form.name")} required rules={{ validate: value => !!value?.trim() || t("form.nameRequired") }}>{field => <Input {...field} value={field.value ?? ""} maxLength={64} />}</FormField>
           <FormField control={form.control} name="description" label={t("form.description")}>{field => <Input {...field} value={field.value ?? ""} maxLength={256} />}</FormField>
-          <FormField control={form.control} name="roles" label={t("form.roles")} description={t("form.rolesHint")} required rules={{ validate: value => !!value?.length || t("form.rolesRequired") }}>{field => <div id={field.id} className="flex flex-wrap gap-3">
+          <FormField control={form.control} name="roles" label={t("form.roles")} description={t("form.rolesHint")} required rules={{ validate: value => !!value?.length || t("form.rolesRequired") }}>{field => <div id={field.id} role="group" aria-label={t("form.roles")} aria-required={field["aria-required"]} aria-invalid={field["aria-invalid"]} aria-describedby={field["aria-describedby"]} className="flex flex-wrap gap-3">
             {roleOptions.map(role => <label key={role} className="inline-flex items-center gap-2 text-body"><Checkbox aria-label={t(`role.${role}`)} checked={(field.value ?? []).includes(role)} disabled={!allowed(type, role)}
               onCheckedChange={checked => field.onChange(checked ? [...(field.value ?? []), role] : (field.value ?? []).filter(value => value !== role))} /><span>{t(`role.${role}`)}</span>{!allowed(type, role) && <span tabIndex={0} aria-label={`${t(`role.${role}`)}: ${t("form.roleNotOnType")}`}><HelpTip content={t("form.roleNotOnType")} /></span>}</label>)}
           </div>}</FormField>
