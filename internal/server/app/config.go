@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
@@ -62,6 +63,10 @@ type Config struct {
 	// UsageReportOff is server.yaml's usage_report: false. The zero value
 	// takes part in the user experience improvement program.
 	UsageReportOff bool
+	// Distribution is the edition's distribution channel (its sources, keys
+	// and edition) that update checks, notices, catalog updates and console
+	// upgrades read; the zero value is distribution.Community().
+	Distribution distribution.Profile
 	// PeerRelay is machine-scoped archive relay policy, resolved at startup.
 	PeerRelay serverconfig.PeerRelay
 	// Experience, when set, makes this server the experience environment's

@@ -274,7 +274,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	a.settings = newServerSettings(cfg, restart, st.SnapshotTo)
 	a.settings.readPrivateHosts = readPrivateHosts
 	a.settings.installID = installIDOf(master)
-	outside := outsideSources(st, readPrivateHosts)
+	outside := outsideSources(st, readPrivateHosts, cfg.Distribution)
 	a.usage, a.notices = newImprovementProgram(st, obs.UX(), a.settings, outside.Channel, log)
 	h.SetUsageCounters(a.usage.Counters())
 	if a.cards, err = newCardHealth(log, st, h); err != nil {

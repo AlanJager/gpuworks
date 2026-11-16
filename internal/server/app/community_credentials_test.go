@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/distribution"
 )
 
 func TestCommunityBrowseUsesStoredRegistryLogin(t *testing.T) {
@@ -33,7 +35,7 @@ func TestCommunityBrowseUsesStoredRegistryLogin(t *testing.T) {
 	application, _ := newTestApp(t, "gpuworks-test-password-2026")
 	t.Cleanup(func() { _ = application.Store().Close() })
 	host := strings.TrimPrefix(server.URL, "https://")
-	browser := outsideSources(application.Store(), func() []string { return []string{"127.0.0.1"} }).Community
+	browser := outsideSources(application.Store(), func() []string { return []string{"127.0.0.1"} }, distribution.Profile{}).Community
 	if _, err := browser.Browse(context.Background(), host+"/team/runner", nil); err == nil {
 		t.Fatal("private repository allowed anonymous browse")
 	}

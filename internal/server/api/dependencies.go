@@ -45,8 +45,9 @@ type ImageFetchHooks struct {
 // OutsideSources are what the API reads from outside the installation: the
 // community registries the image page lists tags from, and the distribution
 // channel the update checks read (ADR 0040). A nil Community uses a shared
-// default browser; a nil Channel reads the built-in sources with the built-in
-// keys. Which channel is read is the server's setting (ServerSettings).
+// default browser; a nil Channel reads the community edition's channel (the
+// built-in sources with the built-in keys): the app always passes its
+// edition's. Which channel is read is the server's setting (ServerSettings).
 type OutsideSources struct {
 	AllowPrivateHosts []string
 	Community         *community.Browser
@@ -55,7 +56,7 @@ type OutsideSources struct {
 
 var (
 	defaultCommunityBrowser = community.NewBrowser(nil)
-	defaultChannelClient    = &distribution.Client{}
+	defaultChannelClient    = distribution.Community().Client(nil)
 )
 
 func (s OutsideSources) community() *community.Browser {
