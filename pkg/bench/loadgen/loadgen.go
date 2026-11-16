@@ -53,6 +53,10 @@ type Client struct {
 // is asked for; its answer names the class the request ran at.
 const PriorityClassHeader = "X-GPUWorks-Priority-Class"
 
+// BenchmarkRunHeader marks a server-origin evaluation's request with its
+// run, so a gpuworks gateway records it as an evaluation's.
+const BenchmarkRunHeader = "X-GPUWorks-Benchmark-Run"
+
 func (c Client) setHeader(req *http.Request) {
 	for name, values := range c.Header {
 		for _, v := range values {

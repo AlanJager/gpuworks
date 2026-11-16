@@ -23,6 +23,11 @@ const (
 	MaxRequestLimit     = 500
 )
 
+// firstTokenSQL is a request's time to its first token in SQL, as
+// uxrecord.FirstTokenOf works it out: the earlier of the first reasoning and
+// the first answer, -1 when neither came.
+const firstTokenSQL = "(CASE WHEN r.first_think_ms >= 0 AND (r.first_answer_ms < 0 OR r.first_think_ms < r.first_answer_ms) THEN r.first_think_ms ELSE r.first_answer_ms END)"
+
 // RequestQuery selects a page of a deployment's request log, newest first.
 type RequestQuery struct {
 	// DeploymentID is required.
@@ -41,6 +46,10 @@ type RequestQuery struct {
 	// MinEndMS and MaxEndMS bound the end-to-end time (EndMS), inclusive;
 	// <= 0 is open.
 	MinEndMS, MaxEndMS int32
+	// MinTTFTMS and MaxTTFTMS bound the time to the first token, the earlier
+	// of the first reasoning and the first answer, inclusive; <= 0 is open.
+	// Either keeps only streamed requests that had a first token.
+	MinTTFTMS, MaxTTFTMS int32
 	// Limit is the page size: <= 0 is DefaultRequestLimit, capped at
 	// MaxRequestLimit.
 	Limit int
@@ -161,6 +170,14 @@ func requestSQL(day string, q RequestQuery, cur *cursor, limit int) (string, []a
 	if q.MaxEndMS > 0 {
 		where = append(where, "r.end_ms >= 0 AND r.end_ms <= ?")
 		args = append(args, q.MaxEndMS)
+	}
+	if q.MinTTFTMS > 0 || q.MaxTTFTMS > 0 {
+		where = append(where, "r.stream = 1 AND "+firstTokenSQL+" >= ?")
+		args = append(args, max(q.MinTTFTMS, 0))
+	}
+	if q.MaxTTFTMS > 0 {
+		where = append(where, firstTokenSQL+" <= ?")
+		args = append(args, q.MaxTTFTMS)
 	}
 	if len(q.Results) > 0 {
 		terms := make([]string, 0, len(q.Results))

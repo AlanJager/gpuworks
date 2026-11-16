@@ -170,7 +170,7 @@ func analyticsQuery(r *http.Request) (AnalyticsQuery, error) {
 		q.APIKeyID = uint(id)
 	}
 	switch q.Source = v.Get("source"); q.Source {
-	case "", "api", "playground", "batch":
+	case "", "api", "playground", "batch", "evaluation":
 	default:
 		return q, bad("source")
 	}

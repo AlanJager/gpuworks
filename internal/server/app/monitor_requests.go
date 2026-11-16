@@ -48,7 +48,7 @@ func (s *requestSource) History(ctx context.Context, q monitorapi.HistoryQuery) 
 	records, next, err := s.ux.Requests(ctx, uxstore.RequestQuery{
 		DeploymentID: q.DeploymentID, FromMS: q.FromMS, ToMS: q.ToMS,
 		APIKeyID: q.APIKeyID, InstanceUUID: q.InstanceUUID, PriorityClass: q.PriorityClass, Results: q.Results,
-		MinEndMS: q.MinEndMS, MaxEndMS: q.MaxEndMS, Limit: q.Limit, Cursor: q.Cursor,
+		MinEndMS: q.MinEndMS, MaxEndMS: q.MaxEndMS, MinTTFTMS: q.MinTTFTMS, MaxTTFTMS: q.MaxTTFTMS, Limit: q.Limit, Cursor: q.Cursor,
 	})
 	if errors.Is(err, uxstore.ErrBadQuery) {
 		return nil, "", fmt.Errorf("%w: %w", monitorapi.ErrBadHistoryQuery, err)

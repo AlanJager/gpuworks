@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -48,10 +49,19 @@ func (a *apiHandlers) benchmarkObservesPriorityClass(run *store.BenchmarkRun) bo
 }
 
 // benchmarkRequestHeader is what every request of a run sends besides its
-// key: the priority class it asks the gateway for.
-func benchmarkRequestHeader(class string) http.Header {
-	if class == "" {
+// key: the priority class it asks the gateway for, if any, and, only to this
+// server's own gateway, that it is this run's, so the gateway records it as an
+// evaluation's. An external endpoint is not told the run.
+func benchmarkRequestHeader(runID uint, class string, ownGateway bool) http.Header {
+	header := http.Header{}
+	if ownGateway {
+		header.Set(loadgen.BenchmarkRunHeader, strconv.FormatUint(uint64(runID), 10))
+	}
+	if class != "" {
+		header.Set(loadgen.PriorityClassHeader, class)
+	}
+	if len(header) == 0 {
 		return nil
 	}
-	return http.Header{loadgen.PriorityClassHeader: []string{class}}
+	return header
 }

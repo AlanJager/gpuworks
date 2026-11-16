@@ -23,6 +23,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tracecontext"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 )
 
 // dataLaneUnavailableRetryAfterSeconds is the Retry-After hint sent with the
@@ -337,6 +338,9 @@ func (p *Proxy) Handler() http.HandlerFunc {
 		}
 		r = r.WithContext(withPriorityBinding(withKeyScope(uxrecord.WithCaller(r.Context(), caller), identity), identity.Priority))
 		r.Header.Del(instanceHeader) // pinning is an internal-entry feature
+		// Only an administrator's console entry may say it runs an
+		// evaluation; an API caller's claim goes no further.
+		r.Header.Del(loadgen.BenchmarkRunHeader)
 		p.serveAuthenticated(w, r)
 	}
 }
