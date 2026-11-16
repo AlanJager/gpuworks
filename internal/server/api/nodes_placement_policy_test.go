@@ -129,7 +129,7 @@ func TestPatchNodePlacementPolicyRefusals(t *testing.T) {
 func TestNodePlacementPolicyDictionaryWire(t *testing.T) {
 	a := newPlacementPolicyAPI(t)
 	status, _, raw := a.do(a.token, http.MethodGet, "/api/v1/scheduling/node-placement-policies", "")
-	if status != http.StatusOK || strings.TrimSpace(raw) != `[{"key":"share_with_foreign","kind":"bool","default":false}]` {
+	if status != http.StatusOK || strings.TrimSpace(raw) != `{"items":[{"key":"share_with_foreign","kind":"bool","default":false}],"total":1}` {
 		t.Fatalf("dictionary: %d %s", status, raw)
 	}
 	if status, _, _ := a.do("", http.MethodGet, "/api/v1/scheduling/node-placement-policies", ""); status != http.StatusUnauthorized {

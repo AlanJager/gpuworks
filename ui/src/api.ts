@@ -4885,7 +4885,7 @@ export const api = {
   setNodePlacementPolicy: (uuid: string, patch: Record<string, NodePlacementPolicyValue>) =>
     sendJSON<Node>("PATCH", `/api/v1/nodes/${encodeURIComponent(uuid)}/placement-policy`, patch),
   nodePlacementPolicyDictionary: () =>
-    getJSON<NodePlacementPolicySetting[]>("/api/v1/scheduling/node-placement-policies"),
+    getJSON<{ items: NodePlacementPolicySetting[] }>("/api/v1/scheduling/node-placement-policies").then((list) => list.items ?? []),
   nodeHealthChecks: (nodeUUID: string, card?: CardRef) => {
     const q = cardQuery(card);
     return getJSON<CardHealthChecks>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-checks${q ? `?${q}` : ""}`);

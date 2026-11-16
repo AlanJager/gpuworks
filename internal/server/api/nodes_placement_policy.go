@@ -52,5 +52,5 @@ func (a *apiHandlers) setNodePlacementPolicy(w http.ResponseWriter, r *http.Requ
 // nodePlacementPolicyDictionary is GET /scheduling/node-placement-policies:
 // the knobs a node placement policy has, for the UI to render by kind.
 func (a *apiHandlers) nodePlacementPolicyDictionary(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, dto.NodePlacementPolicyDictionaryOf())
+	writeJSON(w, http.StatusOK, dto.NewList(dto.NodePlacementPolicyDictionaryOf()))
 }
