@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Button,
@@ -34,6 +34,8 @@ import DataRetentionCard, { DATA_RETENTION_ANCHOR } from "./settings/DataRetenti
 import PrioritySettingsCard, { PRIORITY_ANCHOR } from "./settings/PrioritySettingsCard";
 import AICard, { externalHost } from "./settings/AIConfigCard";
 import ExperienceCard, { EXPERIENCE_ANCHOR } from "./settings/ExperienceCard";
+import { consoleExtensions, isExtensionTab, mergeSettingsTabs, type ResolvedSettingsTab } from "../extensions";
+import { FeatureSlot, useExtensionAvailability } from "../extensions/shell";
 
 const { Text } = Typography;
 
@@ -43,9 +45,10 @@ export { externalHost };
  * SETTINGS_TABS groups the settings cards. A tab is addressed by its key as
  * the URL fragment (/settings#access); a card's own fragment
  * (/settings#security) opens the tab holding it, so links into the page keep
- * working.
+ * working. Console extensions' tabs (ui/src/extensions) follow these.
  */
-const SETTINGS_TABS: { key: string; anchors: string[]; cards: (active: boolean) => ReactNode }[] = [
+type SettingsTab = { key: string; anchors: string[]; cards: (active: boolean) => ReactNode };
+const SETTINGS_TABS: SettingsTab[] = [
   {
     key: "general",
     anchors: [BRANDING_ANCHOR, "updates", EXPERIENCE_ANCHOR],
@@ -68,21 +71,32 @@ const SETTINGS_TABS: { key: string; anchors: string[]; cards: (active: boolean) 
 ];
 
 /** settingsTabFor returns the tab a URL fragment selects (the first by default). */
-export function settingsTabFor(hash: string): string {
+export function settingsTabFor(hash: string, tabs: readonly { key: string; anchors: string[] }[] = SETTINGS_TABS): string {
   const fragment = hash.replace(/^#/, "");
-  return SETTINGS_TABS.find((tab) => tab.key === fragment || tab.anchors.includes(fragment))?.key ?? SETTINGS_TABS[0].key;
+  return tabs.find((tab) => tab.key === fragment || tab.anchors.includes(fragment))?.key ?? tabs[0].key;
+}
+
+function tabLabel(t: (key: string) => string, tab: SettingsTab | ResolvedSettingsTab) {
+  return isExtensionTab(tab) ? t(tab.labelKey) : t(`page.tabs.${tab.key}`);
+}
+
+function tabCards(tab: SettingsTab | ResolvedSettingsTab, active: boolean) {
+  if (!isExtensionTab(tab)) return tab.cards(active);
+  return <FeatureSlot availability={tab.availability} component={tab.extension.component} locked={tab.extension.locked} />;
 }
 
 export default function SettingsPage() {
   const { t } = useTranslation("settings");
   const { hash } = useLocation();
   const navigate = useNavigate();
-  const active = settingsTabFor(hash);
+  const availabilityOf = useExtensionAvailability();
+  const tabs = useMemo(() => mergeSettingsTabs(SETTINGS_TABS, consoleExtensions(), availabilityOf), [availabilityOf]);
+  const active = settingsTabFor(hash, tabs);
   // A card's fragment opens its tab; then bring the card into view once the
   // tab has rendered it (the browser's own jump ran against an empty page).
   useEffect(() => {
     const fragment = hash.replace(/^#/, "");
-    if (!fragment || SETTINGS_TABS.some((tab) => tab.key === fragment)) return;
+    if (!fragment || tabs.some((tab) => tab.key === fragment)) return;
     let frame = 0;
     const deadline = Date.now() + 2000;
     const jump = () => {
@@ -92,7 +106,7 @@ export default function SettingsPage() {
     };
     jump();
     return () => cancelAnimationFrame(frame);
-  }, [hash]);
+  }, [hash, tabs]);
   return (
     <>
       <PageHeader title={t("page.title")} description={t("page.description")} />
@@ -100,10 +114,10 @@ export default function SettingsPage() {
         className="settings-tabs"
         activeKey={active}
         onChange={(key) => navigate({ hash: key }, { replace: true })}
-        items={SETTINGS_TABS.map((tab) => ({
+        items={tabs.map((tab) => ({
           key: tab.key,
-          label: t(`page.tabs.${tab.key}`),
-          children: <Space direction="vertical" size={16} style={{ width: "100%" }}>{tab.cards(active === tab.key)}</Space>,
+          label: tabLabel(t, tab),
+          children: <Space direction="vertical" size={16} style={{ width: "100%" }}>{tabCards(tab, active === tab.key)}</Space>,
         }))}
       />
     </>

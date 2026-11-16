@@ -1537,5 +1537,14 @@
     "rank": "Rank {{rank}} on {{node}}: {{text}}",
     "evidence": "{{text}} Last error: {{evidence}}",
     "causes": "{{text}} Output shows: {{causes, list}}."
+  },
+  "consoleExtension": {
+    "locked": {
+      "title": "Not available on this server",
+      "description": "This feature is turned off on this server. Ask your administrator to enable it.",
+      "learnMore": "Learn more",
+      "badge": "Locked"
+    },
+    "loading": "Loading…"
   }
 }

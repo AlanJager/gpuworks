@@ -34,6 +34,7 @@ import View from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOff from "@hugeicons/core-free-icons/ViewOffIcon";
 import Add01 from "@hugeicons/core-free-icons/Add01Icon";
 import Blocked from "@hugeicons/core-free-icons/BlockedIcon";
+import Locked from "@hugeicons/core-free-icons/LockedIcon";
 import CloudUpload from "@hugeicons/core-free-icons/CloudUploadIcon";
 import Delete02 from "@hugeicons/core-free-icons/Delete02Icon";
 import ComputerTerminal01 from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
@@ -101,4 +102,5 @@ export const ConsoleIcon = {
   more: createHugeIcon(MoreHorizontal),
   copy: createHugeIcon(Copy01),
   decision: createHugeIcon(GitBranch),
+  locked: createHugeIcon(Locked),
 };

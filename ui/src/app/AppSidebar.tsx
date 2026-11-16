@@ -3,17 +3,19 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { NavMenu } from "@/components/ui/nav-menu";
-import { NavItem, NavItemContent, NavItemLabel, NavItemLeading, NavItemTrigger } from "@/components/ui/nav-item";
+import { NavItem, NavItemContent, NavItemLabel, NavItemLeading, NavItemTrailing, NavItemTrigger } from "@/components/ui/nav-item";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, useSidebar,
 } from "@/components/ui/sidebar";
-import { navGroups, selectedNavKey } from "../navigation";
+import { selectedNavKey } from "../navigation";
+import { useConsoleNavGroups } from "../extensions/shell";
 
 const ToggleIcon = ConsoleIcon.sidebar;
+const LockedIcon = ConsoleIcon.locked;
 
 /**
  * AppSidebar is the side menu under the full-width top bar, built from
- * navigation.tsx. Below Zeron's compact breakpoint (1280px) it folds to icons
+ * navigation.tsx and the console extensions' entries (ui/src/extensions). Below Zeron's compact breakpoint (1280px) it folds to icons
  * on its own; above it, the user's collapse choice holds (SidebarProvider in
  * App.tsx keeps it in localStorage).
  */
@@ -21,7 +23,8 @@ export default function AppSidebar() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const { state, toggle } = useSidebar();
-  const selected = selectedNavKey(pathname);
+  const navGroups = useConsoleNavGroups();
+  const selected = selectedNavKey(pathname, navGroups);
   const collapsed = state === "collapsed";
   const toggleLabel = t(collapsed ? "header.expandNavigation" : "header.collapseNavigation");
   return (
@@ -38,7 +41,7 @@ export default function AppSidebar() {
         {navGroups.map((group) => {
           const label = group.labelKey ? t(group.labelKey) : t("navigation.dashboard");
           return (
-            <SidebarGroup key={group.labelKey ?? "overview"} aria-label={label}>
+            <SidebarGroup key={group.id} aria-label={label}>
               {group.labelKey && <SidebarGroupLabel className="text-fg-subtle">{label}</SidebarGroupLabel>}
               <SidebarGroupContent>
                 <NavMenu activeValue={selected} aria-label={label} keyboardNavigation="roving">
@@ -52,6 +55,8 @@ export default function AppSidebar() {
                           {/* Decorative: antd icons name themselves ("heart"), which would leak into the link name. */}
                           <NavItemLeading aria-hidden="true">{item.icon}</NavItemLeading>
                           <NavItemContent><NavItemLabel>{name}</NavItemLabel></NavItemContent>
+                          {/* A locked extension entry still opens its page, which says why and links to more. */}
+                          {item.locked && <NavItemTrailing className="group-data-[state=collapsed]/sidebar:hidden"><LockedIcon size={14} strokeWidth={1.5} role="img" aria-label={t("consoleExtension.locked.badge")} /></NavItemTrailing>}
                         </NavItemTrigger>
                       </NavItem>
                     );

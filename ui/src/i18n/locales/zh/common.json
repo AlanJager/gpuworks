@@ -1537,5 +1537,14 @@
     "rank": "{{node}} 上的 rank {{rank}}：{{text}}",
     "evidence": "{{text}}最后的错误：{{evidence}}",
     "causes": "{{text}}输出显示：{{causes, list}}。"
+  },
+  "consoleExtension": {
+    "locked": {
+      "title": "此服务器未开放该功能",
+      "description": "此服务器关闭了该功能，请联系管理员开启。",
+      "learnMore": "了解更多",
+      "badge": "未开放"
+    },
+    "loading": "加载中…"
   }
 }
