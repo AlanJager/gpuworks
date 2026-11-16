@@ -15,12 +15,13 @@ import (
 // is deleted. Nothing else is published on it: a routine status report
 // that changed no fact is not.
 //
-// Read events with NodeFleetChangeOf. Like every bus topic, a subscriber
-// that falls behind gets each node's latest event only (an insert followed
-// by a facts change reads as the facts change, anything followed by the
-// delete as the delete), so a subscriber treats every event as "this node,
-// and so the fleet, changed": it recomputes what it derives from NodeFleet,
-// coalesced, rather than counting events.
+// Read events with NodeFleetChangeOf. Each event is published after its
+// own transaction commits, so events of one node from different writers (a
+// status report racing a delete, say) may arrive in either order, and like
+// every bus topic a subscriber that falls behind gets each node's latest
+// event only. An event is therefore only a hint that this node, and so the
+// fleet, changed: a subscriber recomputes what it derives from NodeFleet,
+// coalesced, and never infers a node's state from the event's kind.
 const NodeFleetTopic = "node_fleet"
 
 // NodeFleetChangeKind is what happened to a node of the fleet.
