@@ -192,20 +192,30 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 	// cards give them up: taken only when none fits outright.
 	var yieldWait *scheduler.Reason
 	var waitsFor *planning.LaunchYield
+	take := func(index int) (*store.Node, bool) {
+		candidate := &pool.Ranked[index]
+		candidate.Replicas++
+		candidate.FreeGPUs -= pool.need
+		picked := candidate.Node
+		pool.Ranked = planning.RankPool(pool.Ranked, dep.PlacementStrategy, pool.need)
+		c.pool.settled(dep.ID)
+		return picked, true
+	}
+	// A node that fits only by a pool-wide concession is kept while the
+	// search looks for one that fits without it (planning.FitPicker).
+	var picker planning.FitPicker[int]
 	for _, index := range order {
 		if tried == poolTrialBudget {
 			break
 		}
 		candidate := &pool.Ranked[index]
 		tried++
-		refusal, yield, err := c.trialPoolNode(ctx, dep, candidate.Node, model)
+		refusal, yield, concessions, err := c.trialPoolNode(ctx, dep, candidate.Node, model)
 		if err == nil && refusal == nil {
-			candidate.Replicas++
-			candidate.FreeGPUs -= pool.need
-			picked := candidate.Node
-			pool.Ranked = planning.RankPool(pool.Ranked, dep.PlacementStrategy, pool.need)
-			c.pool.settled(dep.ID)
-			return picked, true
+			if picker.Offer(index, concessions) {
+				return take(index)
+			}
+			continue
 		}
 		if err != nil {
 			c.log.Warn("candidate trial plan", "dep", dep.ID, "node", candidate.Node.UUID, "err", err)
@@ -224,6 +234,9 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 		if len(closest) < poolClosest {
 			closest = append(closest, map[string]any{"node": candidate.Node.UUID, "name": candidate.Node.DisplayName(), "reason": *refusal})
 		}
+	}
+	if index, ok := picker.Fallback(); ok {
+		return take(index)
 	}
 	if yieldWait != nil {
 		c.recordRefusal(dep, *yieldWait, waitsFor, nil)
@@ -249,24 +262,28 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 // scheduler against the node's ledger and the template's hardware contract,
 // without the model being there yet, a port reserved or anything written. A
 // non-nil refusal is the scheduler's reason, or the model being stuck there;
-// yield is what a refusal that waits for holders to yield waits for.
-func (c *Controller) trialPoolNode(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model) (refusal *scheduler.Reason, yield *planning.LaunchYield, err error) {
+// yield is what a refusal that waits for holders to yield waits for;
+// concessions are the card preferences a fitting plan gave up.
+func (c *Controller) trialPoolNode(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model) (refusal *scheduler.Reason, yield *planning.LaunchYield, concessions []scheduler.Concession, err error) {
 	// A node where the model is stuck would take the replica and then hold
 	// it there; the pool passes it over until the model is sorted out.
 	if refusal, err := c.modelUnavailable(dep, node, model); refusal != nil || err != nil {
-		return refusal, nil, err
+		return refusal, nil, nil, err
 	}
 	req, templateLayer, _, err := c.launchRequest(dep, node, model, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	topology, err := planning.RankTopology(node, nil, planning.GroupRank{Ranks: 1})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	req.Preview, req.Topology = true, topology
 	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
-	return refusal, plan.YieldWait(refusal), err
+	if refusal == nil && err == nil && plan.Output.Fits() {
+		concessions = plan.Output.Result.Plan.Concessions
+	}
+	return refusal, plan.YieldWait(refusal), concessions, err
 }
 
 // forgetPool drops what the controller remembers about a deployment's pool,
