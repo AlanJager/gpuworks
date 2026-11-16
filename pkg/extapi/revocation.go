@@ -121,6 +121,9 @@ type Floor struct {
 
 // DecodeTrustUpdate decodes and validates a trust update payload.
 func DecodeTrustUpdate(data []byte) (*TrustUpdate, error) {
+	if err := checkSize(objectTrustUpdate, data, MaxEnvelopePayload); err != nil {
+		return nil, err
+	}
 	var u TrustUpdate
 	if err := decodeVersioned(objectTrustUpdate, data, "format", TrustUpdateFormat, &u); err != nil {
 		return nil, err
@@ -227,6 +230,9 @@ type CRL struct {
 
 // DecodeCRL decodes and validates a revocation list payload.
 func DecodeCRL(data []byte) (*CRL, error) {
+	if err := checkSize(objectCRL, data, MaxEnvelopePayload); err != nil {
+		return nil, err
+	}
 	var c CRL
 	if err := decodeVersioned(objectCRL, data, "format", CRLFormat, &c); err != nil {
 		return nil, err

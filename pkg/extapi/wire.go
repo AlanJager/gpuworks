@@ -22,10 +22,11 @@ const maxDepth = 64
 
 // parseTree reads data as exactly one JSON value into a tree of
 // map[string]any, []any, string, json.Number, bool and nil. It refuses
-// invalid UTF-8, duplicate keys, non-integer or unsafe numbers, nesting
-// deeper than maxDepth and trailing data.
+// invalid UTF-8, a \u escape of a lone UTF-16 surrogate, duplicate keys,
+// non-integer or unsafe numbers, nesting deeper than maxDepth and trailing
+// data.
 func parseTree(data []byte) (any, *fieldError) {
-	if !utf8.Valid(data) {
+	if !utf8.Valid(data) || loneSurrogate(data) {
 		return nil, &fieldError{rule: RuleSyntax}
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -38,6 +39,45 @@ func parseTree(data []byte) (any, *fieldError) {
 		return nil, &fieldError{rule: RuleTrailing}
 	}
 	return v, nil
+}
+
+// loneSurrogate reports whether data has a \u escape of a UTF-16 surrogate
+// that is not half of a high-low pair. encoding/json would decode it as
+// U+FFFD, so two different documents would decode, and canonicalize, to the
+// same value. A backslash appears only inside strings in valid JSON; in
+// anything else the decoder fails anyway.
+func loneSurrogate(data []byte) bool {
+	for i := 0; i < len(data); i++ {
+		if data[i] != '\\' {
+			continue
+		}
+		r, ok := uEscape(data, i)
+		if !ok {
+			i++ // skip the escaped character, which may be a backslash
+			continue
+		}
+		i += 5
+		switch {
+		case r >= 0xdc00 && r <= 0xdfff:
+			return true
+		case r >= 0xd800 && r <= 0xdbff:
+			low, ok := uEscape(data, i+1)
+			if !ok || low < 0xdc00 || low > 0xdfff {
+				return true
+			}
+			i += 6
+		}
+	}
+	return false
+}
+
+// uEscape decodes the \uXXXX escape at data[i:], if there is one.
+func uEscape(data []byte, i int) (rune, bool) {
+	if i+6 > len(data) || data[i] != '\\' || data[i+1] != 'u' {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(string(data[i+2:i+6]), 16, 16)
+	return rune(n), err == nil
 }
 
 func parseValue(dec *json.Decoder, path string, depth int) (any, *fieldError) {

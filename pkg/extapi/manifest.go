@@ -259,6 +259,9 @@ func PeekManifestVersion(data []byte) (schema int, minCoreHint string, err error
 // DecodeManifest decodes and validates a manifest. A manifest at a schema
 // newer than ManifestSchema fails with ErrorManifestTooNew.
 func DecodeManifest(data []byte) (*Manifest, error) {
+	if err := checkSize(objectManifest, data, MaxEnvelopePayload); err != nil {
+		return nil, err
+	}
 	schema, hint, err := PeekManifestVersion(data)
 	if err != nil {
 		return nil, err

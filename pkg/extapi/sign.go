@@ -26,12 +26,24 @@ const (
 	AlgECDSAP256 = "ecdsa-p256-sha256"
 )
 
-// Envelope limits.
+// Envelope limits. A reader refuses an encoded envelope longer than
+// MaxEnvelopeBytes (the base64 of the largest payload plus the signatures),
+// and a signed document (manifest, certificate, trust update, revocation
+// list) longer than MaxEnvelopePayload, before parsing it.
 const (
 	MaxEnvelopePayload = 4 << 20
+	MaxEnvelopeBytes   = 6 << 20
 	MaxSignatures      = 8
 	maxSignatureBytes  = 512
 )
+
+// checkSize refuses data longer than limit before it is parsed.
+func checkSize(object string, data []byte, limit int) error {
+	if len(data) > limit {
+		return malformed(object, &fieldError{rule: RuleRange})
+	}
+	return nil
+}
 
 // Envelope is a signed document: the payload bytes exactly as signed, and
 // the signatures over them. Keeping both in one file means a reader never
@@ -185,6 +197,9 @@ const objectEnvelope = "envelope"
 
 // DecodeEnvelope decodes and validates an envelope; it verifies nothing.
 func DecodeEnvelope(data []byte) (*Envelope, error) {
+	if err := checkSize(objectEnvelope, data, MaxEnvelopeBytes); err != nil {
+		return nil, err
+	}
 	var env Envelope
 	if err := decodeStrict(objectEnvelope, data, &env); err != nil {
 		return nil, err

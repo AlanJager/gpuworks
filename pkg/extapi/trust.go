@@ -101,6 +101,9 @@ func (c *PublisherCert) Key() PublicKey {
 
 // DecodePublisherCert decodes and validates a certificate payload.
 func DecodePublisherCert(data []byte) (*PublisherCert, error) {
+	if err := checkSize(objectPublisherCert, data, MaxEnvelopePayload); err != nil {
+		return nil, err
+	}
 	var c PublisherCert
 	if err := decodeVersioned(objectPublisherCert, data, "format", CertFormat, &c); err != nil {
 		return nil, err
@@ -230,6 +233,9 @@ func checkNamespaces(path string, ns []string) *fieldError {
 // certificates let a publisher sign with an old and a new key while it
 // rotates.
 func DecodeCertBundle(data []byte) ([]Envelope, error) {
+	if err := checkSize(objectCertBundle, data, MaxCertBundle*MaxEnvelopeBytes); err != nil {
+		return nil, err
+	}
 	var bundle []Envelope
 	if err := decodeStrict(objectCertBundle, data, &bundle); err != nil {
 		return nil, err

@@ -12,6 +12,7 @@ func TestCanonicalForm(t *testing.T) {
 		`{"b":1,"a":[true,false,null],"c":{"z":"","y":-0}}`: `{"a":[true,false,null],"b":1,"c":{"y":0,"z":""}}`,
 		"{ \"a\" : 1 }":                `{"a":1}`,
 		`"Aé中\/"`:                      `"Aé中/"`,
+		`"\ud83d\ude00\\ud800"`:        "\"\U0001F600\\\\ud800\"",
 		`"\b\f\n\r\t\u0001\u001f\"\\"`: `"\b\f\n\r\t\u0001\u001f\"\\"`,
 		`"<>&` + " " + `"`:             `"<>&` + " " + `"`,
 		`{"é":1,"z":2,"Z":3}`:          `{"Z":3,"z":2,"é":1}`,
@@ -43,6 +44,11 @@ func TestCanonicalRefusals(t *testing.T) {
 		`{"a":1} {}`:       RuleTrailing,
 		`{"a":`:            RuleSyntax,
 		"\"\xff\"":         RuleSyntax,
+		`"\ud800"`:         RuleSyntax,
+		`"\udc00\ud800"`:   RuleSyntax,
+		`"\ud800\u0041"`:   RuleSyntax,
+		`"\ud800x"`:        RuleSyntax,
+		`{"\udfff":1}`:     RuleSyntax,
 		strings.Repeat("[", 70) + strings.Repeat("]", 70): RuleRange,
 	} {
 		_, err := Canonical([]byte(in))
@@ -163,5 +169,31 @@ func TestWireErrorOf(t *testing.T) {
 	}
 	if _, err := DecodeWireError(raw); err != nil {
 		t.Fatalf("%s: %v", raw, err)
+	}
+}
+
+// Every signed document and envelope is refused by its length before it is
+// parsed.
+func TestSignedDocumentsAreBoundedBeforeParsing(t *testing.T) {
+	payload := make([]byte, MaxEnvelopePayload+1)
+	for name, decode := range map[string]func([]byte) error{
+		"manifest":       func(b []byte) error { _, err := DecodeManifest(b); return err },
+		"publisher_cert": func(b []byte) error { _, err := DecodePublisherCert(b); return err },
+		"trust_update":   func(b []byte) error { _, err := DecodeTrustUpdate(b); return err },
+		"crl":            func(b []byte) error { _, err := DecodeCRL(b); return err },
+	} {
+		if e, ok := decode(payload).(*Error); !ok || e.Code != ErrorWireMalformed || e.Params["rule"] != RuleRange {
+			t.Errorf("%s: %v, want %s range", name, e, ErrorWireMalformed)
+		}
+	}
+	if e, ok := func() error { _, err := DecodeEnvelope(make([]byte, MaxEnvelopeBytes+1)); return err }().(*Error); !ok || e.Params["rule"] != RuleRange {
+		t.Errorf("envelope: %v", e)
+	}
+	if e, ok := func() error { _, err := DecodeCertBundle(make([]byte, MaxCertBundle*MaxEnvelopeBytes+1)); return err }().(*Error); !ok || e.Params["rule"] != RuleRange {
+		t.Errorf("bundle: %v", e)
+	}
+	// The largest payload still fits an envelope.
+	if max := (MaxEnvelopePayload+2)/3*4 + MaxSignatures*(64+(maxSignatureBytes+2)/3*4+32) + 64; max > MaxEnvelopeBytes {
+		t.Fatalf("an envelope of the largest payload takes %d bytes, more than %d", max, MaxEnvelopeBytes)
 	}
 }

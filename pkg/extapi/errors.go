@@ -11,7 +11,8 @@ import (
 const (
 	// ErrorWireMalformed: the bytes are not one JSON value of the expected
 	// shape (invalid JSON, a duplicate key, trailing data, a value of the
-	// wrong JSON type, a non-integer or out-of-range number, invalid UTF-8).
+	// wrong JSON type, a non-integer or out-of-range number, invalid UTF-8 or
+	// a lone surrogate escape, more bytes than the object's size limit).
 	// Params: object, field, rule.
 	ErrorWireMalformed = "PLUGIN_WIRE_MALFORMED"
 	// ErrorWireUnknownField: a field this version of the object does not

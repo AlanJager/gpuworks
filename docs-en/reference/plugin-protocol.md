@@ -8,7 +8,7 @@ The golden corpus `pkg/extapi/testdata/golden/` is the authority on the formats.
 
 ## General rules
 
-- **Strict decoding.** A reader decodes an object only at a version it knows and refuses any field that version does not define (`PLUGIN_WIRE_UNKNOWN_FIELD`). Keys are case-sensitive; duplicate keys, data after the JSON value, values of the wrong type and invalid UTF-8 are refused (`PLUGIN_WIRE_MALFORMED`).
+- **Strict decoding.** A reader decodes an object only at a version it knows and refuses any field that version does not define (`PLUGIN_WIRE_UNKNOWN_FIELD`). Keys are case-sensitive; duplicate keys, data after the JSON value, values of the wrong type, invalid UTF-8 and an escaped UTF-16 surrogate that is not half of a pair (a lone `\ud800`) are refused (`PLUGIN_WIRE_MALFORMED`).
 - **`display` is the only lenient part.** Manifests, certificates, revocation entries, availability rows and banners may carry a `display` object: any JSON object of at most 8 KiB encoded, kept as received so a relay loses nothing. It is for display only, never changes what the core enforces, and an older reader may drop it.
 - **Numbers, times and bytes.** Every number is an integer of magnitude at most 2^53−1; every time is an RFC 3339 UTC timestamp with whole seconds (`2026-01-02T03:04:05Z`), and any other spelling of the same instant is refused; every byte string is standard padded base64.
 - **Sorted sets.** Lists that are sets (roles, permissions, codes, files, root key ids, namespaces and so on) must be sorted by bytes without repeats, so a set has exactly one encoding.
@@ -50,7 +50,7 @@ Signed documents travel as envelopes: the payload bytes and the signatures over 
 
 | Field | Rules |
 |---|---|
-| `payload` | The signed bytes exactly as signed (base64); must be canonical JSON, at most 4 MiB |
+| `payload` | The signed bytes exactly as signed (base64); must be canonical JSON, at most 4 MiB. An encoded envelope is at most 6 MiB and `publisher.crt` at most 24 MiB; anything longer is refused before parsing (`PLUGIN_WIRE_MALFORMED`, rule `range`) |
 | `signatures` | 1–8 `{keyid, sig}` entries; no `keyid` repeats within an envelope; each `sig` is 1–512 bytes |
 
 The signatures in the example are filler bytes that only show the shape.
@@ -387,4 +387,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: e6f0ccc635e52aadc159260ef2b428064b3ea6c04ea9643d306a18866313e131 -->
+<!-- translation-source-sha256: 3c24bebb6762323f3779def6b4f07cfc36d8ccc7b5256bb14dec089614b813eb -->
