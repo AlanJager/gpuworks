@@ -32,3 +32,18 @@ func TestNodePlacementPolicyKeysMatchTheDictionary(t *testing.T) {
 		t.Fatal("a value of unknown kind was written")
 	}
 }
+
+// The node DTO round-trips: a client of the Go DTO reads back what it was sent.
+func TestNodePlacementPolicyValueRoundTrips(t *testing.T) {
+	var back map[string]NodePlacementPolicyValue
+	if err := json.Unmarshal([]byte(`{"share_with_foreign":true}`), &back); err != nil {
+		t.Fatal(err)
+	}
+	if got := back["share_with_foreign"]; got.Kind != "bool" || !got.Bool {
+		t.Fatalf("read back = %+v", got)
+	}
+	var bad NodePlacementPolicyValue
+	if err := json.Unmarshal([]byte(`"yes"`), &bad); err == nil {
+		t.Fatal("a string read as a bool knob's value")
+	}
+}

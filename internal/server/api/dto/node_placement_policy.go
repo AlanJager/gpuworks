@@ -35,6 +35,17 @@ func (v NodePlacementPolicyValue) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("node placement policy value of unknown kind %q", v.Kind)
 }
 
+// UnmarshalJSON reads a value back by its JSON shape: a boolean is a bool
+// knob's. A shape no kind has is refused.
+func (v *NodePlacementPolicyValue) UnmarshalJSON(raw []byte) error {
+	var b bool
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return fmt.Errorf("node placement policy value %s: %w", raw, err)
+	}
+	*v = NodePlacementPolicyValue{Kind: string(nodepolicy.KindBool), Bool: b}
+	return nil
+}
+
 // placementPolicyValue types a knob's value by its kind.
 func placementPolicyValue(kind nodepolicy.Kind, value any) NodePlacementPolicyValue {
 	out := NodePlacementPolicyValue{Kind: string(kind)}
