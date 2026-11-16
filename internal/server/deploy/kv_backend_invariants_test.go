@@ -12,9 +12,11 @@ import (
 
 // kvBackendSetProblems are the rules every selectable row is held to beyond
 // what kvbackend.New can see: an engine adapter renders it, it replaces only
-// keys of the engine's own offload or its dictionary, and an external row
-// replaces every key of the engine's own offload, because the adapter drops
-// the engine's own tiers whenever a backend is selected (kv_compose.go).
+// keys of the engine's own offload or its dictionary, and it replaces every
+// key of the engine's own offload, because the adapter renders only the
+// selected row, never the engine's own tiers beside it (kv_compose.go). The
+// deploy form and the instance panel rely on it: a selected backend darkens
+// both engine tiers.
 func kvBackendSetProblems(set kvBackendSet) []string {
 	var out []string
 	for _, engine := range enginenames.DialectNames() {
@@ -28,12 +30,9 @@ func kvBackendSetProblems(set kvBackendSet) []string {
 					out = append(out, fmt.Sprintf("%s/%s: replaces %q, which is neither a dictionary key nor a native offload key", engine, row.ID, key))
 				}
 			}
-			if !row.External {
-				continue
-			}
 			for _, key := range native {
 				if !slices.Contains(row.Replaces, key) {
-					out = append(out, fmt.Sprintf("%s/%s: an external row must replace native key %q", engine, row.ID, key))
+					out = append(out, fmt.Sprintf("%s/%s: a selectable row must replace native key %q", engine, row.ID, key))
 				}
 			}
 		}
@@ -65,7 +64,8 @@ func TestKVBackendSetRendersEverySelectableRow(t *testing.T) {
 	for name, row := range map[string]kvbackend.Backend{
 		"a SGLang row has no adapter": {ID: "hicache", Engine: EngineSGLang, Label: "HiCache", External: true, PDRoles: prefillOnly},
 		"a partial replacement":       {ID: "partial", Engine: EngineVLLM, Label: "Partial", External: true, Replaces: []string{"kv_disk_offload"}, PDRoles: prefillOnly},
-		"a key nobody owns":           {ID: "stray", Engine: EngineVLLM, Label: "Stray", Replaces: []string{"no_such_key"}, PDRoles: prefillOnly},
+		"a key nobody owns":           {ID: "stray", Engine: EngineVLLM, Label: "Stray", Replaces: append(slices.Clone(testExternalKVBackendRow().Replaces), "no_such_key"), PDRoles: prefillOnly},
+		"an internal partial row":     {ID: "inner", Engine: EngineVLLM, Label: "Inner", Replaces: []string{"kv_disk_offload"}, PDRoles: prefillOnly},
 	} {
 		registry, err := kvbackend.New(native, row)
 		if err != nil {
