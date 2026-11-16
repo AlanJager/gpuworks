@@ -430,17 +430,42 @@ func foreignShare(node *store.Node, g *store.GPU) (int64, bool) {
 	return bytes, shareable && node.PartitionSafetyProtocol >= proto.PartitionSafetyForeignTracked
 }
 
-// ForeignHoldBytes is the memory on one of the node's cards that processes
+// PartitionMayShareHeldCard is whether the scheduler may place a partition
+// on a card held outside the platform: foreignShare's verdict and a
+// partition backend ready on the card, as NodeSnapshot hands them to
+// admission. Statistics that count such a card as schedulable capacity ask
+// it, so they do not count capacity the scheduler never uses.
+func PartitionMayShareHeldCard(node *store.Node, g *store.GPU) bool {
+	if _, shareable := foreignShare(node, g); !shareable {
+		return false
+	}
+	for _, capability := range partitioncap.ForGPU(node, g) {
+		if capability.Status == partitioncap.StatusReady {
+			return true
+		}
+	}
+	return false
+}
+
+// ForeignHold is the memory on one of the node's cards that processes
 // outside the platform hold, with the headroom kept beside it: what neither
 // admission (scheduler.GPU.Available), a quota change in place (QuotaRoom)
 // nor the GPU list's free figure may offer to the platform. Zero when no
-// holder's memory is counted.
-func ForeignHoldBytes(node *store.Node, g *store.GPU) int64 {
-	bytes, _ := foreignShare(node, g)
-	if bytes <= 0 {
-		return 0
+// holder's memory is counted. known is false on a held card that takes no
+// work and whose holders' memory is not known (store.GPU.ForeignBytes): the
+// card offers nothing beyond what is placed on it already, as admission
+// refuses it outright, rather than reading the unknown as nothing held.
+func ForeignHold(node *store.Node, g *store.GPU) (bytes int64, known bool) {
+	if g.HeldOutsidePlatform() && !g.CanTakeWork() {
+		if _, ok := g.ForeignBytes(); !ok {
+			return 0, false
+		}
 	}
-	return bytes + estimate.ForeignHeadroomBytes(g.MemoryTotal)
+	held, _ := foreignShare(node, g)
+	if held <= 0 {
+		return 0, true
+	}
+	return held + estimate.ForeignHeadroomBytes(g.MemoryTotal), true
 }
 
 // modelDiskAvailable reads the agent's statfs snapshot for the filesystem that

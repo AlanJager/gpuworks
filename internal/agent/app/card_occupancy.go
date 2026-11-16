@@ -1,8 +1,10 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -24,12 +26,12 @@ import (
 // agent's instances. That is deliberately coarser than matching process
 // IDs to containers: it never mistakes an idle card for a busy one, which
 // is the error that would cost a deployment, and it needs no cgroup
-// parsing. Its cost is that a card already running one of our instances is
-// not examined for a second, foreign workload. The processes that were
-// found there before our instance joined them stay foreign, though: the
+// parsing. Its cost is that a card running only our instances is not
+// examined for a second, foreign workload. A card our instance shares with
+// processes found there before it joined them is read differently: the
 // server may place a memory-limited partition beside them and counts what
-// they hold (ADR 0068), so they are reported for as long as our instance
-// stays there (stillForeign).
+// they hold (ADR 0068), so every process there beyond the one each of our
+// engines keeps on the card is somebody else's (readSharedCard).
 
 // cardOccupancy is the last occupancy this agent established, by card
 // identity. The server writes a report's occupancy over what it had, so a
@@ -51,6 +53,14 @@ type cardOccupancy struct {
 	identOfIndex map[int]string
 	// external is the last answer of the runtime's external card holders.
 	external map[string][]proto.CardProcess
+	// own is, on a card our instance shares with foreign processes, the
+	// processes taken for our engines', by PID with their names
+	// (readSharedCard). Kept in memory only: a restarted agent takes them
+	// again from what the card lists.
+	own map[string]map[int]string
+	// shared is the cards readSharedCard has read since our instances last
+	// joined them (readsShared).
+	shared map[string]bool
 	// path is where last is kept across restarts (cardOccupancyFile); empty
 	// keeps it in memory only.
 	path string
@@ -143,27 +153,100 @@ func (o *cardOccupancy) knownForeign(ident string) []proto.CardProcess {
 	return append([]proto.CardProcess(nil), o.last[ident]...)
 }
 
-// stillForeign is the processes known to be foreign on a card of ours that
-// is not examined: each with what it holds now when it is still listed under
-// its PID and name - the name guards against the PID being reused by a
-// process of ours - and with its last figure when it is not. Its leaving the
-// list may be an exit or a restart under a new PID that could just as well
-// be our engine's, and reading a restart as a free card would admit
-// partitions into memory the workload holds again (ADR 0068); the card is
-// read afresh once it is examined again. An entry without a PID (one
-// carried over from a previous boot, see load) is matched against nothing.
-func stillForeign(known []proto.CardProcess, procs []gpu.ComputeProcess, bdf string) []proto.CardProcess {
-	out := make([]proto.CardProcess, 0, len(known))
-	for _, entry := range known {
-		for _, proc := range procs {
-			if entry.PID > 0 && proc.PID == entry.PID && proc.Name == entry.Name && gpu.SameBDF(proc.PCIeBDF, bdf) {
-				entry.MemoryBytes = proc.MemoryBytes
-				break
-			}
+// readSharedCard reads a card our instances share with processes known to
+// be foreign there (known), listing procs, and returns the foreign ones. Our
+// engines keep one process each on a card - the rule the sleep residue's
+// reading relies on too - so slots of the listed processes are ours:
+//
+//   - a known foreign process still listed under its PID and name (the name
+//     guards against the PID being reused by a process of ours) is foreign,
+//     at what it holds now, or at its last figure when the tool prints none;
+//   - a process already taken for one of our engines' stays ours;
+//   - of the rest, as many as our engines have no process for yet are taken
+//     for theirs, and any beyond them are foreign - a second job somebody
+//     starts beside ours, or the foreign workload restarted under a new PID.
+//     When more appear than that at once, the ones holding the most are
+//     counted foreign: overstating what the outside holds refuses a
+//     partition, understating it runs one out of memory.
+//
+// A known process no longer listed - one that exited, restarted under a new
+// PID, or was carried over a reboot without its PID (see load) - is not
+// reported: the card has been read. Its memory is not offered at once,
+// though: when nothing foreign is left, remember keeps the last answer for
+// the release rounds. The card is read so for as long as our instances stay
+// (readsShared).
+func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, slots int, procs []gpu.ComputeProcess, bdf string) []proto.CardProcess {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	previous := o.own[ident]
+	own := map[int]string{}
+	var foreign, fresh []proto.CardProcess
+	for _, proc := range procs {
+		if !gpu.SameBDF(proc.PCIeBDF, bdf) {
+			continue
 		}
-		out = append(out, entry)
+		entry := proto.CardProcess{PID: proc.PID, Name: proc.Name, MemoryBytes: proc.MemoryBytes}
+		if i := slices.IndexFunc(known, func(k proto.CardProcess) bool { return k.PID > 0 && k.PID == proc.PID && k.Name == proc.Name }); i >= 0 {
+			if entry.MemoryBytes <= 0 {
+				entry.MemoryBytes = known[i].MemoryBytes
+			}
+			foreign = append(foreign, entry)
+			continue
+		}
+		if name, ok := previous[proc.PID]; ok && name == proc.Name {
+			own[proc.PID] = proc.Name
+			continue
+		}
+		fresh = append(fresh, entry)
 	}
-	return out
+	free := max(0, slots-len(own))
+	if len(fresh) > free {
+		slices.SortStableFunc(fresh, func(a, b proto.CardProcess) int { return cmp.Compare(a.MemoryBytes, b.MemoryBytes) })
+		foreign = append(foreign, fresh[free:]...)
+		fresh = fresh[:free]
+	}
+	for _, entry := range fresh {
+		own[entry.PID] = entry.Name
+	}
+	if o.own == nil {
+		o.own, o.shared = map[string]map[int]string{}, map[string]bool{}
+	}
+	o.own[ident], o.shared[ident] = own, true
+	return foreign
+}
+
+// readsShared is whether readSharedCard has read the card since our
+// instances last joined it: a card once shared with foreign processes is
+// read so for as long as they stay, and a foreign workload that comes back
+// after its processes were let go is found again.
+func (o *cardOccupancy) readsShared(ident string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.shared[ident]
+}
+
+// setOwn records, on a card examined this round, the processes known to be
+// our engines' there: those of instances that all sleep (pids), or none when
+// nothing of ours runs there. When such an engine wakes, readSharedCard
+// starts from them rather than from whatever the card lists first.
+func (o *cardOccupancy) setOwn(ident string, pids map[int]bool, procs []gpu.ComputeProcess, bdf string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.shared, ident)
+	if len(pids) == 0 {
+		delete(o.own, ident)
+		return
+	}
+	own := map[int]string{}
+	for _, proc := range procs {
+		if pids[proc.PID] && gpu.SameBDF(proc.PCIeBDF, bdf) {
+			own[proc.PID] = proc.Name
+		}
+	}
+	if o.own == nil {
+		o.own, o.shared = map[string]map[int]string{}, map[string]bool{}
+	}
+	o.own[ident] = own
 }
 
 // foreign reports whether the last answer found somebody outside the
@@ -234,7 +317,7 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		n.occupancy.restate(gpus)
 		return
 	}
-	ours, known := n.cardsInUse()
+	ours, known := n.instancesOnCards()
 	if !known {
 		// This agent has just started and has not been told what it should
 		// be running. Every card serving one of our own instances would
@@ -261,15 +344,18 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		// A card of ours is examined only when every instance on it sleeps
 		// and its engines' own processes are known: any other process there
 		// is somebody else's, and the server must refuse a wake onto it.
-		// Otherwise only the processes already known to be foreign there are
-		// reported (stillForeign): a new one may be our engine's.
+		// Otherwise a card our instances share with processes known to be
+		// foreign is read by how many processes our engines keep there
+		// (readSharedCard), and any other card of ours is not examined: a
+		// new process there may be our engine's.
 		own, examine := sleeping[ident]
-		if ours[ident] && !examine {
-			if known := n.occupancy.knownForeign(ident); len(known) > 0 {
-				card.ForeignProcesses = stillForeign(known, procs, card.PCIeBDF)
+		if slots := ours[ident]; slots > 0 && !examine {
+			if known := n.occupancy.knownForeign(ident); len(known) > 0 || n.occupancy.readsShared(ident) {
+				card.ForeignProcesses = n.occupancy.readSharedCard(ident, known, slots, procs, card.PCIeBDF)
 			}
 			continue
 		}
+		n.occupancy.setOwn(ident, own, procs, card.PCIeBDF)
 		for _, proc := range procs {
 			if !gpu.SameBDF(proc.PCIeBDF, card.PCIeBDF) || own[proc.PID] {
 				continue
@@ -323,19 +409,30 @@ func (n *NodeRuntime) sleepingCardPIDs() map[string]map[int]bool {
 // heldCards is a seam: the engine starts containers, which a test of
 // these rules has no business doing.
 func (n *NodeRuntime) cardsInUse() (cards map[string]bool, known bool) {
+	counts, known := n.instancesOnCards()
+	cards = make(map[string]bool, len(counts))
+	for ident := range counts {
+		cards[ident] = true
+	}
+	return cards, known
+}
+
+// instancesOnCards is cardsInUse with how many of our instances each card
+// holds: an instance waiting on its old generation counts for both.
+func (n *NodeRuntime) instancesOnCards() (cards map[string]int, known bool) {
 	var held engine.HeldCards
 	switch {
 	case n.heldCards != nil:
 		held, known = n.heldCards(), true
 	case n.engine == nil:
-		return map[string]bool{}, false
+		return map[string]int{}, false
 	default:
 		held, known = n.engine.HeldCards(), n.engine.DesiredKnown()
 	}
-	ours := map[string]bool{}
+	ours := map[string]int{}
 	for _, ident := range held.Idents {
 		if ident != "" {
-			ours[ident] = true
+			ours[ident]++
 		}
 	}
 	for _, index := range held.Indexes {
@@ -344,7 +441,7 @@ func (n *NodeRuntime) cardsInUse() (cards map[string]bool, known bool) {
 			known = false
 			continue
 		}
-		ours[ident] = true
+		ours[ident]++
 	}
 	return ours, known
 }

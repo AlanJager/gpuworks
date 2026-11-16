@@ -115,7 +115,7 @@
   "how-to/scheduling-center.md": "e2c51bcbd90ebf3a2eeeb1b90d082a7aeee55f4e4d6f1134696df09300ad5a60",
   "how-to/sleep-wake.md": "bc3720fdb8244a90e7c3663f322b636f8090fbdc1bec40fedd7fbfe5cc013ee5",
   "how-to/storages.md": "e63c3268befa5c72eafecd1f7845faafc4511d8778f5c1fa7e372325fda0360c",
-  "how-to/troubleshooting.md": "18270fee7f4e3b7370d975871a6a34bfda8263c624ec636573fb3e145c1a157f",
+  "how-to/troubleshooting.md": "fc165b284f51b62316cc8a02d5230a9be440225f791f25245aaa9f2ea2883a77",
   "how-to/upgrade-and-compatibility.md": "b99537385ee0a4fcc9f6d09b4b3398d6042c8c31fa233175e3f4ca6d84dc6b16",
   "how-to/use-ai-helper.md": "7b2e3cdb20d5f53c0a2b5eb4f17386b6af371a1b3c621b79fc0539687d735058",
   "how-to/use-mcp.md": "be5232f32da10ac3b92736b326a8fb03c7f465dd4c839e28d6701b99c12de9c6",
@@ -157,5 +157,5 @@
   "explanation/request-priority.md": "4db915372627d83b4700741dcf48c9002b2eafc29412b076194d34e5207a27f1",
   "adr/0066-agent-state-by-owner-and-lifetime.md": "146b93ea09468aa95cb07fe9fd5617c3e70e2e03284ca4a47466c12024804438",
   "adr/0067-runtime-outcomes-as-codes.md": "0d2fcd578c0e94dee1ce9840e11f219acc63b6a90138a031121f2ecb040730a6",
-  "adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md": "cb7a00daeebaf393b0ddf9c5f2db1a001fefdb1603625eeae096423bcb023530"
+  "adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md": "012e37e9b4a8d006ceb600f7caad09446978a2a4930a679deb64abb7d8f93bc0"
 }

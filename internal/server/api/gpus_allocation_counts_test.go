@@ -132,3 +132,18 @@ func TestGPUAvailableBytesLeavesOutForeignMemory(t *testing.T) {
 		t.Fatalf("available = %d, want %d (total less foreign, headroom and claims)", item.AvailableBytes, want)
 	}
 }
+
+// A held card whose foreign memory is not known shows nothing free: what the
+// outside processes hold is not zero just because it cannot be read, and no
+// partition is admitted onto such a card.
+func TestGPUAvailableBytesIsZeroOnAHeldCardWhoseForeignMemoryIsUnknown(t *testing.T) {
+	node := store.Node{State: store.NodeStateOnline, PartitionSafetyProtocol: proto.PartitionSafetyForeignTracked}
+	for _, holder := range []proto.CardProcess{{Name: "python3", MemoryBytes: 60 << 30}, {PID: 41235, Name: "python3"}} {
+		raw, _ := json.Marshal([]proto.CardProcess{holder})
+		gpu := store.GPU{MemoryTotal: 140 << 30, HealthStatus: "OK", ForeignProcesses: string(raw)}
+		item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 16 << 30}, func(uint) *store.Deployment { return nil }, nil)
+		if item.AvailableBytes != 0 {
+			t.Fatalf("holder %+v: available = %d, want 0 on a held card whose foreign memory is unknown", holder, item.AvailableBytes)
+		}
+	}
+}

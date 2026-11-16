@@ -51,14 +51,21 @@ func TestAForeignProcessStaysForeignAfterOurInstanceJoinsItsCard(t *testing.T) {
 		t.Fatalf("with our instance on the card = %+v, want only the container's process at its current 70 GiB", got)
 	}
 
-	// A process that appears on the card after ours is not examined: it
-	// may be one of our engine's, and calling it foreign would stop the
-	// card the platform is using (the coarse rule, unchanged).
-	prober.procs = append(prober.procs, gpu.ComputeProcess{PID: 7002, Name: "python3", PCIeBDF: bdf, MemoryBytes: 1 << 30})
+	// A process that appears on the card beyond the one our instance's
+	// engine keeps there is somebody else's: a second job the outside user
+	// starts beside ours is counted, not left out of the card's figure.
+	prober.procs = append(prober.procs, gpu.ComputeProcess{PID: 7002, Name: "python3", PCIeBDF: bdf, MemoryBytes: 40 << 30})
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if got := cards[0].ForeignProcesses; len(got) != 2 || got[0].PID != 41235 || got[1].PID != 7002 || got[1].MemoryBytes != 40<<30 {
+		t.Fatalf("after a new process on our card = %+v, want the known foreign one and the new 40 GiB job", got)
+	}
+	// The job ends: the card is read again without it.
+	prober.procs = prober.procs[:2]
 	cards = twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
 	if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 41235 {
-		t.Fatalf("after a new process on our card = %+v, want only the known foreign one", got)
+		t.Fatalf("after the second job ended = %+v, want only the container's process", got)
 	}
 
 	// Not knowing is not knowing the card is free: a round that cannot ask
@@ -80,18 +87,32 @@ func TestAForeignProcessStaysForeignAfterOurInstanceJoinsItsCard(t *testing.T) {
 	}
 	prober.err = nil
 
-	// The container's process leaves the list. While our instance is on
-	// the card the agent cannot tell an exit from a restart under a new
-	// PID - the new one could be our engine's - so the card keeps the last
-	// figure: reading it as free would admit partitions into memory a
-	// restarted container holds again.
+	// The container's process leaves the list. Its memory is not offered
+	// the moment it stops showing: the card keeps its last figure for the
+	// release rounds, as an examined card does, and is then let go while
+	// our instance stays (a stale entry is not reported for our instance's
+	// whole life).
 	prober.procs = []gpu.ComputeProcess{{PID: 7001, Name: "python3", PCIeBDF: bdf, MemoryBytes: 51 << 30}}
-	for i := 0; i < 2*occupancyReleaseRounds; i++ {
+	for i := 1; i < occupancyReleaseRounds; i++ {
 		cards = twoOwnedCards()
 		n.CardHealthFindings(context.Background(), cards, true)
 		if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 41235 || got[0].MemoryBytes != 70<<30 {
-			t.Fatalf("reading %d without the container let our card go: %+v", i, got)
+			t.Fatalf("reading %d without the container let our card go early: %+v", i, got)
 		}
+	}
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if got := cards[0].ForeignProcesses; len(got) != 0 {
+		t.Fatalf("after the release rounds our card = %+v, want it free of foreign use", got)
+	}
+
+	// The container comes back: once our engine's process is known, a new
+	// one on the card is foreign again.
+	prober.procs = append(prober.procs, gpu.ComputeProcess{PID: 41300, Name: "python3", PCIeBDF: bdf, MemoryBytes: 64 << 30})
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 41300 {
+		t.Fatalf("after the container came back = %+v, want it foreign", got)
 	}
 
 	// Our instance leaves: the card is examined again, and let go after the
@@ -101,7 +122,7 @@ func TestAForeignProcessStaysForeignAfterOurInstanceJoinsItsCard(t *testing.T) {
 	for i := 1; i < occupancyReleaseRounds; i++ {
 		cards = twoOwnedCards()
 		n.CardHealthFindings(context.Background(), cards, true)
-		if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 41235 {
+		if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 41300 {
 			t.Fatalf("free reading %d let the card go early: %+v", i, got)
 		}
 	}
@@ -154,7 +175,9 @@ func TestAForeignWorkloadRestartedUnderANewPIDKeepsOurCardHeld(t *testing.T) {
 
 // A process ID the tool reuses for a different executable is not the
 // process that was known to be foreign: what it holds is not reported in
-// the foreign process's name, which keeps its last figure.
+// the foreign process's name, which keeps its last figure until the release
+// rounds let it go. A figure the tool does not print for a known process
+// keeps the last one too, rather than reading as unknown.
 func TestAReusedProcessIDOnOurCardIsNotTheForeignProcess(t *testing.T) {
 	const bdf = "0000:3f:00.0"
 	prober := &occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()},
@@ -166,14 +189,26 @@ func TestAReusedProcessIDOnOurCardIsNotTheForeignProcess(t *testing.T) {
 	n.heldCards = func() engine.HeldCards {
 		return engine.HeldCards{Idents: []string{accelerator.CardIdent("GPU-3f", bdf)}}
 	}
+	// The tool prints no figure for the foreign process this round.
+	prober.procs = []gpu.ComputeProcess{{PID: 41235, Name: "python3", PCIeBDF: bdf}, {PID: 7001, Name: "python3", PCIeBDF: bdf, MemoryBytes: 20 << 30}}
+	cards := twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 41235 || got[0].MemoryBytes != 8<<30 {
+		t.Fatalf("our card without a figure = %+v, want the foreign process at its last 8 GiB", got)
+	}
+
 	prober.procs = []gpu.ComputeProcess{{PID: 41235, Name: "vllm", PCIeBDF: bdf, MemoryBytes: 20 << 30}}
-	var cards []proto.GPUInfo
-	for range occupancyReleaseRounds {
+	for i := 1; i < occupancyReleaseRounds; i++ {
 		cards = twoOwnedCards()
 		n.CardHealthFindings(context.Background(), cards, true)
+		if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].Name != "python3" || got[0].MemoryBytes != 8<<30 {
+			t.Fatalf("reading %d: our card = %+v, want the foreign process at its last 8 GiB, not the reused PID's 20", i, got)
+		}
 	}
-	if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].Name != "python3" || got[0].MemoryBytes != 8<<30 {
-		t.Fatalf("our card = %+v, want the foreign process at its last 8 GiB, not the reused PID's 20", got)
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if got := cards[0].ForeignProcesses; len(got) != 0 {
+		t.Fatalf("after the release rounds = %+v, want the exited foreign process let go", got)
 	}
 }
 
@@ -303,5 +338,71 @@ func TestBootTimeIsReadFromProcStat(t *testing.T) {
 		if got := parseBootTime(data); !got.IsZero() {
 			t.Fatalf("%q = %v, want unknown", data, got)
 		}
+	}
+}
+
+// After a reboot the outside workload may not come back. Our partition
+// restarts on the card; the entries the file carried over without a PID are
+// not reported for as long as it runs - that would keep the card held, with
+// unknown memory, and refuse every partition - but let go after the release
+// rounds, as any foreign process that stopped showing is.
+func TestAForeignProcessFromAPreviousBootThatDoesNotComeBackIsLetGo(t *testing.T) {
+	const bdf = "0000:3f:00.0"
+	ident := accelerator.CardIdent("GPU-3f", bdf)
+	modelsDir := filepath.Join(t.TempDir(), "models")
+	procs := []gpu.ComputeProcess{{PID: 4242, Name: "python3", PCIeBDF: bdf, MemoryBytes: 60 << 30}}
+	var boot time.Time
+	start := func() *NodeRuntime {
+		n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, modelsDir, "none",
+			&occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()}, procs: procs}, nil)
+		n.heldCards = func() engine.HeldCards { return engine.HeldCards{} }
+		n.occupancy.bootTime = func() time.Time { return boot }
+		n.occupancy.load(n.occupancy.path)
+		return n
+	}
+	first := start()
+	first.CardHealthFindings(context.Background(), twoOwnedCards(), true)
+	written, err := os.Stat(first.occupancy.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot = written.ModTime().Add(time.Minute)
+	procs = []gpu.ComputeProcess{{PID: 900, Name: "python3", PCIeBDF: bdf, MemoryBytes: 16 << 30}} // our partition only
+	rebooted := start()
+	rebooted.heldCards = func() engine.HeldCards { return engine.HeldCards{Idents: []string{ident}} }
+	var cards []proto.GPUInfo
+	for range occupancyReleaseRounds {
+		cards = twoOwnedCards()
+		rebooted.CardHealthFindings(context.Background(), cards, true)
+	}
+	if got := cards[0].ForeignProcesses; len(got) != 0 {
+		t.Fatalf("after the release rounds = %+v, want the workload that did not come back let go", got)
+	}
+}
+
+// Our engine's process that was still releasing the card when it was
+// examined (a stopped deployment) may be read as foreign. When a partition
+// of ours is then placed on the card, that dead process is not reported for
+// the partition's whole life: once it stops showing it is let go after the
+// release rounds.
+func TestADeadProcessReadAsForeignIsLetGoAfterOurInstanceJoinsTheCard(t *testing.T) {
+	const bdf = "0000:3f:00.0"
+	prober := &occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()},
+		procs: []gpu.ComputeProcess{{PID: 3100, Name: "VLLM::EngineCore", PCIeBDF: bdf, MemoryBytes: 70 << 30}}}
+	n := occupancyNode(t, twoOwnedCards(), nil, nil)
+	n.prober = prober
+	n.CardHealthFindings(context.Background(), twoOwnedCards(), true)
+
+	n.heldCards = func() engine.HeldCards {
+		return engine.HeldCards{Idents: []string{accelerator.CardIdent("GPU-3f", bdf)}}
+	}
+	prober.procs = []gpu.ComputeProcess{{PID: 3200, Name: "VLLM::EngineCore", PCIeBDF: bdf, MemoryBytes: 30 << 30}}
+	var cards []proto.GPUInfo
+	for range occupancyReleaseRounds {
+		cards = twoOwnedCards()
+		n.CardHealthFindings(context.Background(), cards, true)
+	}
+	if got := cards[0].ForeignProcesses; len(got) != 0 {
+		t.Fatalf("our card = %+v, want the dead process let go", got)
 	}
 }

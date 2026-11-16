@@ -361,9 +361,11 @@ func TestASleepersCardReportsAProcessThatIsNotItsEngine(t *testing.T) {
 		t.Fatalf("the sleeper's card = %+v, want only the process that is not its engine", got)
 	}
 
-	// The sleeper's process unknown (its residue was not measured): the card
-	// is not examined. The process already found to be somebody else's stays
-	// so (ADR 0068); one that appears now is not called foreign.
+	// The sleeper wakes: the card is no longer examined, but it is shared
+	// with a process found to be somebody else's, so it is read by how many
+	// processes our engines keep there (ADR 0068). The engine's own process
+	// was known while it slept; a second one that appears now is beyond
+	// what our one instance keeps there, and is counted as foreign.
 	n.sleepingCards = func() map[string]map[int]bool { return nil }
 	n.prober = &occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()}, procs: []gpu.ComputeProcess{
 		{PID: 7001, Name: "vllm", PCIeBDF: "0000:3f:00.0", MemoryBytes: 600 << 20},
@@ -372,8 +374,8 @@ func TestASleepersCardReportsAProcessThatIsNotItsEngine(t *testing.T) {
 	}}
 	cards = twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
-	if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 4242 {
-		t.Fatalf("a card of ours with unknown processes = %+v, want only the process already known to be foreign", got)
+	if got := cards[0].ForeignProcesses; len(got) != 2 || got[0].PID != 4242 || got[1].PID != 7002 {
+		t.Fatalf("a card of ours shared with a foreign process = %+v, want it and the process beyond our engine's", got)
 	}
 }
 

@@ -215,8 +215,9 @@ func (a *apiHandlers) buildGPUInventory() (*gpuInventoryCache, error) {
 }
 
 func physicalGPU(node *store.Node, partitionReports partitioncap.Reports, gpu *store.GPU, allocation planning.GPUAllocation, deployment func(uint) *store.Deployment, metrics map[string]map[string]MetricLatest) dto.PhysicalGPU {
-	available := gpu.MemoryTotal - allocation.AllocatedBytes - allocation.SleepingBytes - planning.ForeignHoldBytes(node, gpu)
-	if available < 0 || node.State != store.NodeStateOnline {
+	foreign, foreignKnown := planning.ForeignHold(node, gpu)
+	available := gpu.MemoryTotal - allocation.AllocatedBytes - allocation.SleepingBytes - foreign
+	if available < 0 || !foreignKnown || node.State != store.NodeStateOnline {
 		available = 0
 	}
 	arch := node.ArchOf(*gpu)

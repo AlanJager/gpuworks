@@ -14,10 +14,9 @@ import (
 
 // cardOccupancyFile keeps, beside the agent's state, the foreign use the
 // last reading established, by card identity. A restarted agent finds its
-// own instances still on the cards and does not examine those cards, so
-// without it the processes outside the platform that a partition was placed
-// beside would be forgotten at every upgrade, and the card would read as
-// free (ADR 0068). Only this agent reads it; nothing reaches the server
+// own instances still on the cards, so without it the processes outside the
+// platform that a partition was placed beside would be taken for our
+// engines' at every upgrade, and the card would read as free (ADR 0068). Only this agent reads it; nothing reaches the server
 // from it that a reading could not have said.
 const cardOccupancyFile = "card-occupancy.json"
 
@@ -52,8 +51,9 @@ func parseBootTime(data string) time.Time {
 // boot - after a reboot our own engine may be given one the file names - so
 // a file last written before the running boot started (or when that start
 // cannot be read) is kept without its PIDs: the processes are restated at
-// the figure they last held, as holders without a PID are, and matched
-// against no live process (stillForeign) until the card is examined again.
+// the figure they last held and matched against no live process; a card our
+// instance shares is read afresh (readSharedCard), and what did not come
+// back is let go after the release rounds.
 func (o *cardOccupancy) load(path string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
