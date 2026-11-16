@@ -126,6 +126,11 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 4. 协议版本不匹配，reason 为 `proto_mismatch`（detail 形如 `server supports 1-1`），需要升级 agent。
 5. `stale_session`：只出现在**数据通道**握手，表示它绑定的控制会话已过期。agent 只打 Debug 日志并退避
    重试，控制通道重连后自愈，见 [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md)；持续出现才需要处理。
+6. 两个 agent 用同一个节点身份：节点在线、离线间来回跳，agent 日志反复出现 `reconnecting` 却没有 reject；
+   server 日志有 `AGENT_DUPLICATE_INSTANCE`，`host`/`remote` 与 `other_host`/`other_remote` 是互相顶替连接的两个 agent。
+   同一 state 目录的第二个 `run` 已被 `<state>/agent.lock` 挡住（见 [CLI 参考](../reference/cli.md)），剩下的多是
+   state 目录或 token 被复制到另一台主机（克隆的磁盘或镜像）、另一个 state 目录写了同一个 token，或旧版 agent。
+   停掉多余的 agent；克隆出来的主机删掉复制来的 state 目录，作为新节点重新接入。同一节点每小时最多记一次。
 
 时钟偏差**不是** reject 原因：握手里没有时间戳校验，`server_dial` 的 HMAC 只签一次性 nonce，不含时间。
 server_dial 节点的密钥不符时 agent 报 `invalid server_dial proof`。

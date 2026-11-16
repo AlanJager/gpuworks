@@ -43,7 +43,8 @@ type laneTestServer struct {
 	telTail        map[string]chan struct{} // per batch type: the last accepted stream's done channel
 	ctrlLanes      []string                 // lane query seen on each ctrl dial
 	dataHellos     []proto.DataHello
-	helloTimes     []time.Time // wall-clock arrival of each data hello, index-aligned with dataHellos
+	agentHellos    []proto.Hello // the agent's ctrl hello on each ctrl dial
+	helloTimes     []time.Time   // wall-clock arrival of each data hello, index-aligned with dataHellos
 }
 
 func (s *laneTestServer) handle(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +88,11 @@ func (s *laneTestServer) serveCtrl(nc net.Conn, lane string) {
 	if err := dec.Decode(&hello); err != nil || hello.T != proto.THello {
 		return
 	}
+	var agentHello proto.Hello
+	_ = json.Unmarshal(hello.D, &agentHello)
+	s.mu.Lock()
+	s.agentHellos = append(s.agentHellos, agentHello)
+	s.mu.Unlock()
 	write := func(t string, d any) {
 		b, _ := json.Marshal(d)
 		line, _ := json.Marshal(proto.Envelope{T: t, D: b})

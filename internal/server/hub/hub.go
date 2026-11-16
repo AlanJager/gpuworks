@@ -81,6 +81,7 @@ type Hub struct {
 	imageSyncMu      sync.Mutex
 	imageSyncOwners  map[string]context.CancelFunc
 	sessions         map[string]*Session             // keyed by node UUID
+	duplicates       duplicateAgents                 // agent processes trading a node (duplicate_agents.go)
 	imageWatches     map[[2]uint]map[string]struct{} // active image/node watchers, owned by transfer id
 	rejectMu         sync.Mutex
 	rejects          []RejectEvent
@@ -523,7 +524,11 @@ func (h *Hub) register(s *Session) {
 		old.Close()
 	}
 	h.sessions[s.NodeUUID] = s
+	duplicate, flagged := h.duplicates.observe(s, old, h.now()) // under h.mu: in replacement order
 	h.mu.Unlock()
+	if flagged {
+		h.logDuplicateAgents(s, duplicate)
+	}
 	if old != nil {
 		// A report write the old session validated under applyCurrent lands
 		// before anything this session reports (session_reports.go), and

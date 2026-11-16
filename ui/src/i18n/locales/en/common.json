@@ -284,6 +284,7 @@
     "RPC_UNKNOWN_METHOD": "The node is running an older agent that does not support this operation. Upgrade the agent first.",
     "AGENT_UPGRADE_IN_PROGRESS": "An agent upgrade is already running on this node. Wait for it to finish.",
     "AGENT_UPGRADE_ROLLED_BACK": "The new agent never connected, so the node went back to the previous agent.",
+    "AGENT_DUPLICATE_INSTANCE": "Two agent processes present this node's identity and keep replacing each other's connection. Stop the extra `gpuworks-agent`; if the node's state directory was copied to another host (a cloned disk), give that host its own node.",
     "PATH_NOT_FOUND": "The path {{path}} does not exist on the node.",
     "NODE_RPC_UNAVAILABLE": "Node RPC is not configured.",
     "NODE_OFFLINE": "The node is offline.",

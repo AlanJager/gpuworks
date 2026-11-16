@@ -222,6 +222,7 @@ func (c *Conn) handshake() error {
 		hello.OwnModelsDir = h.OwnModelsDir()
 	}
 	hello.ConnectMode = c.creds.ConnectMode
+	hello.InstanceID = processInstanceID()
 	hello.Smoke = c.creds.Smoke
 	if err := c.send(proto.THello, 0, hello); err != nil {
 		endHello()

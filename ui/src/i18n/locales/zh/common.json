@@ -284,6 +284,7 @@
     "RPC_UNKNOWN_METHOD": "该节点的 agent 版本过旧，不支持此操作；请先升级 agent。",
     "AGENT_UPGRADE_IN_PROGRESS": "该节点正在升级 agent，请等待升级结束。",
     "AGENT_UPGRADE_ROLLED_BACK": "新版 agent 未能接入，节点已回退到原来的 agent。",
+    "AGENT_DUPLICATE_INSTANCE": "两个 agent 进程使用同一节点的身份，互相顶替连接。请停止多余的 `gpuworks-agent`；如果节点的状态目录被复制到了另一台主机（克隆磁盘），请为那台主机单独添加节点。",
     "PATH_NOT_FOUND": "节点上不存在路径 {{path}}。",
     "NODE_RPC_UNAVAILABLE": "节点 RPC 尚未配置。",
     "NODE_OFFLINE": "计算节点已离线。",
