@@ -172,10 +172,11 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningEngineUnavailable, map[string]any{"engine": in.Engine, "detail": err.Error()}))
 	}
 
-	maxLen := in.Quick.MaxModelLen
+	// Native fitting is an intent, never a negative token-count estimate.
+	maxLen := max(in.Quick.MaxModelLen, 0)
 	if maxLen <= 0 && cfg != nil {
-		// Estimate an unset context from the model limit; the engine's effective
-		// default may differ. This is not a node-sized context recommendation.
+		// Unset and native auto-fit contexts use the model limit as an estimate
+		// ceiling, not a prediction of the engine's eventual fitted length.
 		maxLen = cfg.MaxPositionEmbeddings
 	}
 	kvDtype := in.Quick.KVCacheDtype
@@ -358,7 +359,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 			}
 		}
 	}
-	if out.Result.OK && out.Breakdown.ContextExceedsKVPool() {
+	if out.Result.OK && !(in.Engine == deploy.EngineVLLM && in.Quick.MaxModelLen == -1) && out.Breakdown.ContextExceedsKVPool() {
 		// Deliberately non-blocking (GWKS-79): new attention layouts and engine
 		// versions can make the KV estimate wrong. Keep Fits, OK and the plan
 		// from startup/resource admission so evaluate, create and controller

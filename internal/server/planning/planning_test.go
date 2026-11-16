@@ -137,6 +137,26 @@ func TestEvaluateWarnsWhenEstimatedKVPoolCannotHoldContext(t *testing.T) {
 			t.Fatalf("short context should not warn: %+v", warning)
 		}
 	}
+	// Native fit may shorten the model ceiling. Keep that ceiling as an
+	// estimate, but do not warn as if it were a fixed launch requirement.
+	autoQuick := launchConfig(t, deploy.EngineVLLM)
+	autoQuick.MaxModelLen = -1
+	auto := (Input{
+		Model: &store.Model{ID: model.ID, Name: model.Name, WeightBytes: 1 << 30, Meta: `{"max_position_embeddings":262144}`},
+		Node:  node, Engine: deploy.EngineVLLM, Quick: autoQuick, KVBytesPerToken: 114688,
+	}).Evaluate(st)
+	if !auto.Result.OK || auto.Breakdown.MaxModelLen != 262144 || !auto.Breakdown.ContextExceedsKVPool() {
+		t.Fatalf("auto lost model ceiling or startup admission: %+v", auto)
+	}
+	for _, warning := range auto.Warnings {
+		if warning.Code == messages.WarningPlanningKVBelowContext {
+			t.Fatalf("native auto was treated as a fixed context: %+v", warning)
+		}
+	}
+	unknown := (Input{Model: model, Node: node, Engine: deploy.EngineVLLM, Quick: autoQuick, KVBytesPerToken: 114688}).Evaluate(st)
+	if unknown.Breakdown.MaxModelLen != 0 {
+		t.Fatalf("unknown model window became a negative token count: %+v", unknown.Breakdown)
+	}
 	heavy := evaluate(40<<30, 40960)
 	if heavy.Result.OK || heavy.Result.Message.Code != scheduler.ReasonNoFit {
 		t.Fatalf("weight shortfall = %+v, want %s", heavy.Result.Message, scheduler.ReasonNoFit)

@@ -186,7 +186,7 @@ func BuildVLLM(p Params) ResolvedLaunch {
 	if q.PerformanceMode != "" && q.PerformanceMode != "balanced" {
 		b.injectDictionary("performance_mode", q.PerformanceMode)
 	}
-	if q.MaxModelLen > 0 {
+	if q.MaxModelLen == -1 || q.MaxModelLen > 0 {
 		b.injectDictionary("max_model_len", q.MaxModelLen)
 	}
 	if q.Dtype != "" && q.Dtype != "auto" {

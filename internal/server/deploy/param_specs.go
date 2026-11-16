@@ -189,7 +189,7 @@ var parameterDefinitions = []paramDefinition{
 	// Defaults on where the server takes it: SGLang's diffusion server only
 	// from v0.5.21 (sglangDiffusionFlagsSince).
 	{ParamDefinition: ParamDefinition{Key: "enable_metrics", Type: "boolean", Control: "switch", Group: "performance", Default: true, Layout: "quick", Order: 37}, Flags: map[string]flagPair{EngineSGLang: {On: "--enable-metrics"}}},
-	{ParamDefinition: ParamDefinition{Key: "max_model_len", Type: "integer", Control: "number", Group: "model", Automatic: true, Layout: "quick", Order: 10}, Flags: map[string]flagPair{EngineVLLM: {On: "--max-model-len"}, EngineSGLang: {On: "--context-length"}}},
+	{ParamDefinition: ParamDefinition{Key: "max_model_len", Type: "integer", Control: "number", Group: "model", Automatic: true, Layout: "quick", Order: 10}, DefaultByEngine: map[string]any{EngineVLLM: -1}, Flags: map[string]flagPair{EngineVLLM: {On: "--max-model-len"}, EngineSGLang: {On: "--context-length"}}},
 	{ParamDefinition: ParamDefinition{Key: "dtype", Type: "enum", Control: "select", Group: "model", Default: "auto", Options: options("auto", "float16", "bfloat16", "float32")}, Flags: map[string]flagPair{EngineVLLM: {On: "--dtype"}, EngineSGLang: {On: "--dtype"}}, Aliases: map[string]string{"half": "float16", "float": "float32"}},
 	{ParamDefinition: ParamDefinition{Key: "quantization", Type: "string", Control: "text", Group: "model"}, Flags: map[string]flagPair{EngineVLLM: {On: "--quantization"}, EngineSGLang: {On: "--quantization"}}},
 	{ParamDefinition: ParamDefinition{Key: "rope_scaling", Type: "json", Control: "json", Group: "model"}, Flags: map[string]flagPair{EngineVLLM: {On: "--rope-scaling"}}},
