@@ -50,6 +50,8 @@ func TestCertificateGrantsStayInsideTheSubject(t *testing.T) {
 		{"third party claims another namespace", testCert("acme", "acme-1", []string{"acme_"}, []string{"acmebank"}), "grants.feature_ns.0"},
 		{"key id of another publisher", testCert("acme", "acmebank-1", []string{"acme_"}, nil), "keyid"},
 		{"key id of a root", testCert("acme", "gwroot-1", []string{"acme_"}, nil), "keyid"},
+		{"project publisher claims a third party's ids", testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"acme_"}, nil), "grants.id_prefixes.0"},
+		{"project publisher claims a third party's id", testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"acme_quota"}, nil), "grants.id_prefixes.0"},
 		{"project publisher claims another namespace", testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"quota"}, []string{"acme"}), "grants.feature_ns.0"},
 	}
 	for _, tc := range cases {
@@ -68,8 +70,52 @@ func TestCertificateGrantsStayInsideTheSubject(t *testing.T) {
 	if ValidPublisher("gwroot") || !ValidPublisher("gwroots") {
 		t.Error("ValidPublisher must refuse exactly the roots' stem")
 	}
-	project := testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"quota", "sso"}, []string{"", ProjectPublisher})
+	project := testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"gpuworks_", "quota", "sso"}, []string{"", ProjectPublisher})
 	if err := project.Validate(); err != nil {
 		t.Fatalf("project publisher: %v", err)
+	}
+}
+
+// Only a project root certifies the project publisher, the bare namespace or
+// same-origin console modules; an issuer the host trusts certifies the rest.
+func TestRootOnlyGrantsNeedARootSignature(t *testing.T) {
+	root, rootPub := newEd25519(t, RootKeyIDPrefix+"1")
+	site, sitePub := newEd25519(t, "site-1")
+	issuers := keySet(t, rootPub, sitePub)
+	seal := func(c *PublisherCert, by ...KeySigner) *Envelope {
+		t.Helper()
+		raw, err := Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env, err := Seal(raw, by...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return env
+	}
+	project := testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"quota"}, []string{"", ProjectPublisher})
+	module := testCert("acme", "acme-1", []string{"acme_"}, nil)
+	module.Grants.UIModule = true
+	for _, tc := range []struct {
+		name  string
+		cert  *PublisherCert
+		field string
+	}{
+		{"project publisher", project, "publisher"},
+		{"ui module", module, "grants.ui_module"},
+	} {
+		_, _, err := OpenPublisherCert(seal(tc.cert, site), issuers)
+		if e, ok := err.(*Error); !ok || e.Code != ErrorSignatureUntrusted || e.Params["field"] != tc.field {
+			t.Errorf("%s signed by a host issuer: %v, want %s at %s", tc.name, err, ErrorSignatureUntrusted, tc.field)
+		}
+		if _, ids, err := OpenPublisherCert(seal(tc.cert, root, site), issuers); err != nil || len(ids) != 2 {
+			t.Errorf("%s signed by a root and a host issuer: %v %v", tc.name, ids, err)
+		}
+	}
+	plain := testCert("acme", "acme-1", []string{"acme_"}, []string{"acme"})
+	plain.Grants.Roles = []string{"clock_authority"}
+	if _, ids, err := OpenPublisherCert(seal(plain, site), issuers); err != nil || len(ids) != 1 || ids[0] != "site-1" {
+		t.Fatalf("third-party cert signed by a host issuer: %v %v", ids, err)
 	}
 }

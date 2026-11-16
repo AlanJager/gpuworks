@@ -16,7 +16,8 @@ const objectManifest = "manifest"
 type Manifest struct {
 	// Schema is 1.
 	Schema int `json:"schema"`
-	// ID is the package id (ValidPackageID).
+	// ID is the package id (ValidPackageID), inside the publisher's names
+	// (IDBelongsTo).
 	ID string `json:"id"`
 	// Publisher must equal the subject of the signing certificate.
 	Publisher string `json:"publisher"`
@@ -311,6 +312,9 @@ func (m *Manifest) validate() *fieldError {
 		m.Display.validate("display"),
 	); f != nil {
 		return f
+	}
+	if !idBelongsTo(m.Publisher, m.ID) {
+		return &fieldError{field: "id", rule: RuleRelation}
 	}
 	return m.validateRequiredParts()
 }

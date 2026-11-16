@@ -82,7 +82,7 @@ An example that uses every field is `manifest/v1/valid/full.json` in the corpus.
 | Field | Rules |
 |---|---|
 | `schema` | 1 |
-| `id` | The package id, `^[a-z][a-z0-9_]{1,31}$`; also the route segment `/api/v1/x/<id>/` and a directory name. A third party's ids start with `<publisher>_`; which prefixes it may use is a grant of its certificate |
+| `id` | The package id, `^[a-z][a-z0-9_]{1,31}$`; also the route segment `/api/v1/x/<id>/` and a directory name. It must belong to `publisher`: a third party's ids start with `<publisher>_`, and the project publisher's have no `_` or start with `gpuworks_`, so a project id never equals a third party's; which prefixes it may use is a grant of its certificate |
 | `publisher` | `^[a-z][a-z0-9]{1,15}$` (no underscore, so `<publisher>_` splits a package id unambiguously; `gwroot` is reserved for the root keys); must equal the subject of the signing certificate |
 | `version` | A semantic version without a leading `v` |
 | `min_core_hint` | Optional, at most 32 bytes; names the server release needed, for messages only. Compatibility is decided by `requires` |
@@ -129,7 +129,7 @@ Routes are served at `/api/v1/x/<id><pattern>`:
 
 ## Publisher certificate
 
-A certificate is a publisher's signing key and its grants. It travels as the payload of an envelope signed by a project root key (or, for a publisher the host operator trusts, as the operator configures). The issuer is the key id whose signature verified; the payload has no issuer field.
+A certificate is a publisher's signing key and its grants. It travels as the payload of an envelope signed by a project root key (or, for a publisher the host operator trusts, as the operator configures). The issuer is the key id whose signature verified; the payload has no issuer field. A certificate for the project publisher, or one granting the bare namespace or `ui_module`, needs a project root's signature to verify; signed only by issuers the host operator configures, it fails with `PLUGIN_SIGNATURE_UNTRUSTED`, whose `field` parameter names the grant.
 
 <!-- golden: publisher_cert/v1/valid/authority.json -->
 ```json
@@ -143,7 +143,7 @@ A certificate is a publisher's signing key and its grants. It travels as the pay
 | `publisher` | The subject; manifests signed with this key must name it |
 | `keyid` / `alg` / `public_key` | The publisher's signing key, with the rules of the [signature envelope](#signature-envelope); `keyid` starts with `<publisher>-` and not with `gwroot-` |
 | `not_before` / `not_after` | The signing window; `not_after` must be later than `not_before`. A package whose `created` lies in the window stays valid after `not_after`, so installed packages never expire |
-| `grants.id_prefixes` | Required: the package ids the key may sign, sorted, each with the package id grammar. An entry ending in `_` covers every id that starts with it; any other entry covers exactly that id. Except for the project publisher, every entry starts with `<publisher>_`, so a certificate never covers another publisher's ids (`acme_` does not cover `acmebank_pay`) |
+| `grants.id_prefixes` | Required: the package ids the key may sign, sorted, each with the package id grammar. An entry ending in `_` covers every id that starts with it; any other entry covers exactly that id. Every entry belongs to the subject, by the rule for a manifest's `id` (a third party's start with `<publisher>_`; the project publisher's have no `_` or start with `gpuworks_`), so a certificate never covers another publisher's ids (`acme_` does not cover `acmebank_pay`, and a project certificate cannot list `acme_`) |
 | `grants.feature_ns` | Namespaces its packages may declare feature keys in, sorted: only the publisher's own name, plus `""` (the bare namespace) for the project publisher |
 | `grants.authority_id` | The one package id that may answer `gate: authority` keys of `feature_ns`; needs `feature_ns` and must be covered by `id_prefixes` |
 | `grants.roles` / `grants.tables` | Privileged roles its packages may claim / privileged tables they may push, sorted |
@@ -387,4 +387,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 7555f1148180c5aed7b8d57efae39b281b9e00e753a1f2d96e954e88f0bf149e -->
+<!-- translation-source-sha256: e6f0ccc635e52aadc159260ef2b428064b3ea6c04ea9643d306a18866313e131 -->

@@ -33,7 +33,9 @@ const (
 	// the major this build speaks. Params: min, max, supported.
 	ErrorProtocolUnsupported = "PLUGIN_PROTOCOL_UNSUPPORTED"
 	// ErrorSignatureUntrusted: no signature on an envelope is by a key the
-	// reader trusts. Params: object.
+	// reader trusts, or a publisher certificate's grant (field) needs a
+	// project root's signature and only other issuers signed it. Params:
+	// object, and field for a certificate grant.
 	ErrorSignatureUntrusted = "PLUGIN_SIGNATURE_UNTRUSTED"
 	// ErrorSignatureInvalid: a signature by a trusted key does not verify.
 	// Params: object, keyid.

@@ -2,6 +2,7 @@ package extapi
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -72,8 +73,9 @@ type PublisherCert struct {
 type CertGrants struct {
 	// IDPrefixes are the package ids the key may sign, sorted. An entry
 	// ending in "_" covers every id that starts with it; any other entry
-	// covers exactly that id. Except for ProjectPublisher, every entry
-	// starts with "<publisher>_".
+	// covers exactly that id. Every entry lies inside the publisher's names
+	// (IDBelongsTo): it starts with "<publisher>_", or, for
+	// ProjectPublisher, has no "_" or starts with "gpuworks_".
 	IDPrefixes []string `json:"id_prefixes"`
 	// FeatureNS are the feature namespaces its packages may declare keys
 	// in, sorted: the publisher's own name, and "" (the bare namespace)
@@ -166,7 +168,7 @@ func (c *PublisherCert) validateSubject() *fieldError {
 	}
 	project := c.Publisher == ProjectPublisher
 	for i, p := range c.Grants.IDPrefixes {
-		if !project && !strings.HasPrefix(p, c.Publisher+"_") {
+		if !idBelongsTo(c.Publisher, p) {
 			return &fieldError{field: joinPath("grants.id_prefixes", strconv.Itoa(i)), rule: RuleRelation}
 		}
 	}
@@ -177,6 +179,22 @@ func (c *PublisherCert) validateSubject() *fieldError {
 	}
 	return nil
 }
+
+// idBelongsTo reports whether a package id, or an id prefix, lies inside
+// publisher's names. A third party's ids start with "<publisher>_". The
+// project's ids either have no "_" or start with "gpuworks_", so a project id
+// is never also a third party's: an id with a "_" belongs to the publisher
+// named before its first "_".
+func idBelongsTo(publisher, id string) bool {
+	if publisher == ProjectPublisher {
+		return !strings.Contains(id, "_") || strings.HasPrefix(id, ProjectPublisher+"_")
+	}
+	return strings.HasPrefix(id, publisher+"_")
+}
+
+// IDBelongsTo reports whether a package id lies inside publisher's names
+// (see CertGrants.IDPrefixes); a manifest's id always does.
+func IDBelongsTo(publisher, id string) bool { return idBelongsTo(publisher, id) }
 
 // coversID reports whether the grants let the key sign package id.
 func (g CertGrants) coversID(id string) bool {
@@ -229,7 +247,15 @@ func DecodeCertBundle(data []byte) ([]Envelope, error) {
 }
 
 // OpenPublisherCert verifies a certificate envelope against the issuers a
-// reader trusts and decodes it. The returned key ids name the issuers.
+// reader trusts (the project roots, under key ids starting with
+// RootKeyIDPrefix, and the issuers the host operator configures, never under
+// that prefix) and decodes it. The returned key ids name the issuers.
+//
+// A certificate for ProjectPublisher, or one granting the bare feature
+// namespace or ui_module, opens only when a project root's signature
+// verified: an issuer the host trusts cannot certify the project's packages
+// or same-origin console modules. Such a certificate signed only by other
+// issuers fails with ErrorSignatureUntrusted, whose field names the grant.
 func OpenPublisherCert(env *Envelope, issuers KeySet) (*PublisherCert, []string, error) {
 	v, err := env.Verify(objectPublisherCert, issuers)
 	if err != nil {
@@ -239,7 +265,34 @@ func OpenPublisherCert(env *Envelope, issuers KeySet) (*PublisherCert, []string,
 	if err != nil {
 		return nil, nil, err
 	}
+	if field := c.rootOnlyGrant(); field != "" && !anyRoot(v.KeyIDs) {
+		return nil, nil, newError(ErrorSignatureUntrusted, map[string]any{"object": objectPublisherCert, "field": field},
+			"%s: %s needs a project root's signature", objectPublisherCert, field)
+	}
 	return c, v.KeyIDs, nil
+}
+
+// rootOnlyGrant names the first part of c that only a project root may
+// certify, or "".
+func (c *PublisherCert) rootOnlyGrant() string {
+	switch {
+	case c.Publisher == ProjectPublisher:
+		return "publisher"
+	case slices.Contains(c.Grants.FeatureNS, ""):
+		return "grants.feature_ns"
+	case c.Grants.UIModule:
+		return "grants.ui_module"
+	}
+	return ""
+}
+
+func anyRoot(keyIDs []string) bool {
+	for _, id := range keyIDs {
+		if strings.HasPrefix(id, RootKeyIDPrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeVersioned reads the version field named versionKey first, so an
