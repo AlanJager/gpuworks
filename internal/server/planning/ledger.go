@@ -409,6 +409,7 @@ func nodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason s
 		DiskAvailBytes:        modelDiskAvailable(node),
 		RuntimeDiskAvailBytes: runtimeDiskAvailable(node),
 		ServingUnavailable:    view.servingUnavailable,
+		Policy:                node.PlacementPolicy,
 	}
 }
 

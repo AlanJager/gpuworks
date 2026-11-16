@@ -22,8 +22,12 @@ type cardPreference struct {
 }
 
 // cardPreferences is ordered by precedence: entry 0 is avoided longest, so
-// the tiers relax the last entry first.
+// the tiers relax the last entry first. Sharing a card with processes
+// outside the platform is avoided longest: the platform cannot see or bound
+// that load, while a degraded card is one it watches (ADR 0068). Only it is
+// worth trying other nodes for.
 var cardPreferences = []cardPreference{
+	{avoid: func(g GPU, _ Request) bool { return g.sharesForeignNow() }, reason: ReasonForeignSharedGPUsUsed, params: foreignUsedParams, poolWide: true},
 	{avoid: func(g GPU, _ Request) bool { return g.Degraded }, reason: ReasonDegradedGPUsUsed, params: cardListParams},
 }
 
@@ -109,4 +113,16 @@ func planPreferring(req Request, node NodeSnapshot) ([]Plan, []Rejected) {
 		}
 	}
 	return plans, rejected
+}
+
+// foreignUsedParams names the shared cards a plan uses and the most the
+// processes outside the platform hold on any of them.
+func foreignUsedParams(used []GPU) map[string]any {
+	params := cardListParams(used)
+	var most int64
+	for _, g := range used {
+		most = max(most, g.ForeignBytes)
+	}
+	params["foreign_gib"] = gib(most)
+	return params
 }

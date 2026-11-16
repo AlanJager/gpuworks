@@ -188,6 +188,10 @@ type GPUCandidate struct {
 	Index     int             `json:"index"`
 	Available bool            `json:"available"`
 	Reason    *ScheduleReason `json:"reason,omitempty"`
+	// Note is what choosing an available card entails (a schedule reason
+	// code: foreign_shared_card, the card shared with processes outside the
+	// platform); absent for a card with nothing to note.
+	Note *ScheduleReason `json:"note,omitempty"`
 }
 
 // EvaluatePD is the preview of a PD draft (ADR 0028).

@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -89,14 +90,15 @@ func TestNodeSnapshotSharesAHeldCardOnlyWithAnAgentThatKeepsReportingTheHolders(
 }
 
 // The deploy form's evaluation of the reported deployment: a 50 GiB
-// nvidia-dgpu partition pinned to the held GPU 0 is placed there, the card
-// is offered to it, and a whole-card deployment is still refused the card.
+// nvidia-dgpu partition an operator pinned to the held GPU 0 is placed
+// there (picking the card is consent), the card is offered to it, and a
+// whole-card deployment is still refused the card.
 func TestEvaluatePlacesTheReportedPartitionBesideTheForeignProcess(t *testing.T) {
 	st := foreignStore(t)
 	node := foreignHeldNode(t, st, "h20", proto.PartitionSafetyForeignTracked, reporterForeign)
 	in := Input{
 		Model: &store.Model{WeightBytes: 15 << 30}, Node: node, Engine: "vllm",
-		Quick: deploy.LaunchConfig{GPUMemUtil: 0.9}, GPUIndexes: []int{0},
+		Quick: deploy.LaunchConfig{GPUMemUtil: 0.9}, GPUIndexes: []int{0}, Consent: nodepolicy.Consent{CardsChosen: true},
 		VRAMLimitBytes: 50 << 30, PartitionBackend: accelerator.BackendNVIDIALogical,
 	}
 	out := in.Evaluate(st)

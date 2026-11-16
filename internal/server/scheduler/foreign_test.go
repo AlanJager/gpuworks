@@ -46,8 +46,12 @@ func partitionClaim(req Request) int64 {
 	return serverestimate.PartitionClaimBytes(req.PerGPULimitBytes, req.PartitionBackend, func() int64 { return reserveFor(req) })
 }
 
+// nvidiaNode allows partitions beside processes outside the platform: the
+// tests of what may share a card by memory describe a node that allows it
+// (gates_test.go covers one that does not).
 func nvidiaNode(gpus ...GPU) NodeSnapshot {
-	return NodeSnapshot{UUID: "h20", Vendor: accelerator.VendorNVIDIA, DtypeSupported: true, DiskAvailBytes: 1 << 50, GPUs: gpus}
+	return NodeSnapshot{UUID: "h20", Vendor: accelerator.VendorNVIDIA, DtypeSupported: true, DiskAvailBytes: 1 << 50, GPUs: gpus,
+		Policy: NodePolicy{ShareWithForeign: true}}
 }
 
 // A pin names the cards a request may use; the filters must judge those,

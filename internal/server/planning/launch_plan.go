@@ -16,6 +16,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
@@ -314,6 +315,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		ExplainHolders:       req.ExplainHolders,
 		Parallel:             parallel,
 		GPUIndexes:           req.Placement.GPUIndexes,
+		Consent:              nodepolicy.Consent{CardsChosen: req.Placement.OperatorPinned()},
 		VRAMLimitBytes:       req.VRAMLimitBytes,
 		PartitionBackend:     req.PartitionBackend,
 		Sleepable:            req.Sleepable,

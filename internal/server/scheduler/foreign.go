@@ -34,6 +34,14 @@ func (g GPU) sharesForeignWith(req Request) bool {
 	return g.ForeignShareable && req.PerGPULimitBytes > 0
 }
 
+// sharesForeignNow is whether placing on this card shares it with processes
+// outside the platform: a held card no gate withholds and that takes no
+// work otherwise. A card an operator allowed work on is not shared by this
+// rule (ADR 0068).
+func (g GPU) sharesForeignNow() bool {
+	return g.ForeignShareable && !g.Schedulable && g.withheld == 0
+}
+
 // foreignHold is the memory a partition may not claim because processes
 // outside the platform hold it: their figure and the headroom kept beside it.
 func (g GPU) foreignHold() int64 {

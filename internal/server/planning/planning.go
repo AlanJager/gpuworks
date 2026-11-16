@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/estimate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
@@ -56,8 +57,14 @@ type Input struct {
 	Quick              deploy.LaunchConfig
 	// Parallel is the deployment's parallelism; an unstated one lets the
 	// scheduler choose the GPU count on a single node.
-	Parallel       parallelism.Spec
-	GPUIndexes     []int // optional manual GPU selection
+	Parallel   parallelism.Spec
+	GPUIndexes []int // optional manual GPU selection
+	// Consent is what the request says about the cards beyond GPUIndexes:
+	// the operator chose them (Placement.OperatorPinned), which consents to
+	// sharing them with processes outside the platform. It is set in one
+	// place per path (launchInput; the deploy form's evaluation goes
+	// through it too); the platform's own pins leave it zero.
+	Consent        nodepolicy.Consent
 	VRAMLimitBytes int64 // > 0 = dGPU memory-limited (shareable) deployment
 	// Sleepable is the deployment's declaration that it may be put to sleep,
 	// a platform feature not every vendor provides.
@@ -266,6 +273,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		RuntimeDiskNeedBytes: runtimeImageBytes,
 		HeadCount:            estimate.HeadCount(cfg),
 		AllowedGPUIndexes:    in.GPUIndexes,
+		Consent:              in.Consent,
 		PerGPULimitBytes:     in.VRAMLimitBytes,
 		PartitionBackend:     in.PartitionBackend,
 		GPUMemUtil:           util,

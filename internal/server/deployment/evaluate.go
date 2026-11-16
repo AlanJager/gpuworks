@@ -174,7 +174,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// drafts. Requirements that cannot be read leave every node ineligible
 	// rather than every node eligible.
 	pool, poolErr := requestPool(req)
-	placement, _ := planning.ParsePlacement(req.Placement)
+	placement := evaluationPlacement(req)
 	eligibleLoaded := false
 	loadEligible := func(requests func(*store.Node) map[int]planning.TargetCardRequest) {
 		if eligibleLoaded {
@@ -359,7 +359,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			// when the draft stated none, is what the form shows and what
 			// the plan below runs with.
 			req.Placement = normalized.Placement
-			placement, _ = planning.ParsePlacement(req.Placement)
+			placement = evaluationPlacement(req)
 			resp.FormValues["tp"], resp.FormValues["pp"] = placement.TP, placement.PP
 		}
 		for _, n := range nodes {
@@ -586,4 +586,17 @@ func evaluateParallelism(placement planning.Placement, nnodes, scheduledTP int, 
 		return nil, err
 	}
 	return &dto.EvaluateParallelism{TP: spec.TP, PP: spec.PP, Nodes: spec.NNodes, GPUsPerNode: perNode}, nil
+}
+
+// evaluationPlacement is the draft's placement as the evaluation plans it.
+// Cards a manual draft names under "gpus" are the operator's choice, which
+// consents to sharing them with processes outside the platform
+// (planning.Placement.OperatorPinned); an automatic draft's cards are the
+// scheduler's, whatever the client sends back.
+func evaluationPlacement(req *dto.DeployRequest) planning.Placement {
+	placement, _ := planning.ParsePlacement(req.Placement)
+	if IsAutomaticPlacement(req) {
+		placement = placement.WithoutOperatorChoice()
+	}
+	return placement
 }

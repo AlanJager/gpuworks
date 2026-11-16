@@ -55,8 +55,11 @@ func foreignHeldH20(t *testing.T, st *store.Store, name string, safety int) *sto
 
 // The reported deployment - manual placement, pinned to GPU 0, TP 1, a 50 GiB
 // nvidia-dgpu limit - starts beside the foreign process once the agent keeps
-// reporting it; with an agent that would forget it, it waits and says the
-// card is held outside the platform rather than "no free GPU".
+// reporting it: an operator who picked the card consented to sharing it. An
+// automatic placement does so only on a node whose placement policy allows
+// it, and otherwise waits naming the setting. With an agent that would forget
+// the holder, it waits and says the card is held outside the platform rather
+// than "no free GPU".
 func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testing.T) {
 	for i, tc := range []struct {
 		name   string
@@ -64,12 +67,15 @@ func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testi
 		// automatic leaves the placement to the scheduler with GPU 1 taken
 		// whole by another deployment: the shape that answered no_free_gpu.
 		automatic bool
+		allow     bool
 		starts    bool
+		refusal   string
 	}{
-		{"pinned, agent keeps foreign processes reported", proto.PartitionSafetyForeignTracked, false, true},
-		{"automatic, the other card taken", proto.PartitionSafetyForeignTracked, true, true},
-		{"pinned, agent before that", proto.PartitionSafetyOwnership, false, false},
-		{"automatic, agent before that", proto.PartitionSafetyOwnership, true, false},
+		{"pinned, agent keeps foreign processes reported", proto.PartitionSafetyForeignTracked, false, false, true, ""},
+		{"automatic, the other card taken, node allows", proto.PartitionSafetyForeignTracked, true, true, true, ""},
+		{"automatic, the other card taken, node does not allow", proto.PartitionSafetyForeignTracked, true, false, false, scheduler.ReasonHeldOutsidePlatformNotAllowed},
+		{"pinned, agent before that", proto.PartitionSafetyOwnership, false, true, false, scheduler.ReasonGPUsHeldOutsidePlatform},
+		{"automatic, agent before that", proto.PartitionSafetyOwnership, true, true, false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, err := store.Open(fmt.Sprintf("file:foreign_held_partition_%d?mode=memory&cache=shared", i), bus.New())
@@ -78,6 +84,14 @@ func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testi
 			}
 			t.Cleanup(func() { _ = st.Close() })
 			node := foreignHeldH20(t, st, "h20-3e", tc.safety)
+			if tc.allow {
+				if _, _, _, err := st.SetNodePlacementPolicy(node.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
+					p.ShareWithForeign = true
+					return p, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			model, err := st.UpsertModel(&store.Model{
 				Source: "huggingface", SourceID: "fixture/foreign-held", Revision: "main", Name: "foreign-held", WeightBytes: 15 << 30,
 				Meta: `{"model_type":"qwen3","num_hidden_layers":1,"hidden_size":256,"num_attention_heads":8,"num_key_value_heads":8,"max_position_embeddings":2048}`,
@@ -125,8 +139,11 @@ func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testi
 					t.Fatalf("no refusal recorded: found=%v err=%v", found, err)
 				}
 				data := fmt.Sprint(last.Data)
-				if !tc.automatic && (!strings.Contains(data, scheduler.ReasonGPUsHeldOutsidePlatform) || strings.Contains(data, scheduler.ReasonNoFreeGPU)) {
-					t.Fatalf("refusal = %s, want it to name %s, not %s", data, scheduler.ReasonGPUsHeldOutsidePlatform, scheduler.ReasonNoFreeGPU)
+				if tc.refusal != "" && (!strings.Contains(data, tc.refusal) || strings.Contains(data, scheduler.ReasonNoFreeGPU)) {
+					t.Fatalf("refusal = %s, want it to name %s, not %s", data, tc.refusal, scheduler.ReasonNoFreeGPU)
+				}
+				if tc.refusal == scheduler.ReasonHeldOutsidePlatformNotAllowed && !strings.Contains(data, "share_with_foreign") {
+					t.Fatalf("refusal = %s, want it to name the setting", data)
 				}
 				return
 			}

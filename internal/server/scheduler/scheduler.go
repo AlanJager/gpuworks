@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	serverestimate "gpuworks.ai/gpuworks/internal/server/estimate"
+	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/pkg/topoparse"
 )
@@ -157,7 +158,13 @@ type NodeSnapshot struct {
 	// ServingUnavailable marks a node with no network that may carry serving
 	// traffic: no serving network, and the management network may not.
 	ServingUnavailable bool
+	// Policy is the node's placement policy; the card gates ask it whether
+	// a card they would withhold may be used (cardGate.consented).
+	Policy NodePolicy
 }
+
+// NodePolicy is a node's placement policy (package nodepolicy).
+type NodePolicy = nodepolicy.Policy
 
 // Request describes what to place. Weight and multimodal bytes are the startup
 // requirements; KV cache is deliberately absent because engines allocate those
@@ -200,6 +207,11 @@ type Request struct {
 	// Features are the platform features the deployment needs beyond running
 	// its engine; a node whose vendor lacks one is filtered out.
 	Features []accelerator.Feature
+	// Consent is what the request itself says about the cards: an operator
+	// who chose them consents to sharing them (nodepolicy.Consent). The zero
+	// value is the scheduler choosing. AllowedGPUIndexes alone is not
+	// consent: the platform pins cards of its own.
+	Consent nodepolicy.Consent
 	// GPUMemUtil is the effective whole-GPU capacity fraction this deployment
 	// runs at. It is materialized from the launch configuration before the
 	// request is built, so there is no such thing as "not set": Validate
@@ -277,7 +289,16 @@ const (
 	// ReasonHeldOutsidePlatformSleep: the only cards that could take the
 	// partition are shared with processes outside the platform, and a
 	// deployment that sleeps could not be woken there while they run.
-	ReasonHeldOutsidePlatformSleep  = "held_outside_platform_sleep"
+	ReasonHeldOutsidePlatformSleep = "held_outside_platform_sleep"
+	// ReasonHeldOutsidePlatformNotAllowed: cards that could take the
+	// partition ({gpus}, {count} on {node}) are shared with processes
+	// outside the platform, and the node's placement policy does not allow
+	// partitions beside them; {setting} names the policy key that would.
+	ReasonHeldOutsidePlatformNotAllowed = "held_outside_platform_not_allowed"
+	// ReasonForeignSharedGPUsUsed: the chosen group includes cards shared
+	// with processes outside the platform ({gpus}, {count}, up to
+	// {foreign_gib}) because no card free of them could take the request.
+	ReasonForeignSharedGPUsUsed     = "foreign_shared_gpus_used"
 	ReasonNoHealthyGPU              = "no_healthy_gpu"
 	ReasonNoFreeGPU                 = "no_free_gpu"
 	ReasonFiltersPassed             = "filters_passed"
@@ -433,7 +454,20 @@ func Schedule(req Request, node NodeSnapshot) Result {
 		return Result{OK: false, Message: reason, Explain: ex}
 	}
 
-	node = resolveGates(req, node)
+	gated := resolveGates(req, node)
+	result := schedule(req, gated)
+	if !result.OK {
+		if reason, ok := consentRetry(req, node, gated, result.Message); ok {
+			result.Message = reason
+		}
+	}
+	return result
+}
+
+// schedule runs the filters, the planner and the scorers on a node whose
+// cards the gates have been resolved for.
+func schedule(req Request, node NodeSnapshot) Result {
+	var ex Explain
 
 	// --- Filters ---
 	if ok, reason := runFilters(req, node); !ok {
