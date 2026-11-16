@@ -45,8 +45,8 @@
   },
   "evidence": {
     "source": {"server_usage": "服务端 usage", "local_tokenizer_estimate": "本地 tokenizer 估算", "character_estimate": "字符估算"},
-    "chunkInterval": "流式块间隔",
-    "legacySpeculative": "历史值由流式块数估算，不能作为引擎实际推测解码的证据。",
+    "chunkInterval": "流式 chunk 间隔",
+    "legacySpeculative": "历史值由流式 chunk 数估算，不能作为引擎实际推测解码的证据。",
     "noEligible": "没有已测点同时满足配置门槛并具有足够证据。",
     "slaMissing": "{{metric}} 缺少有效观测证据。",
     "title": "请求与会话解释",
