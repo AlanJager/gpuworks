@@ -74,14 +74,16 @@ func nativeKVValueEffective(q LaunchConfig, key string) bool {
 // validateKVBackendLaunch is the selection's check on a concrete launch. It
 // repeats validateKVBackend, because a stored row reaches a launch without a
 // new evaluation, and refuses an argument layer that states a flag which
-// would replace the backend's connector. Under PD the PD rule
-// (PD_CONNECTOR_ARG_CONFLICT) already refuses those flags in every layer.
+// would replace the backend's connector, in any spelling the parser accepts.
+// It runs under PD too: PD_CONNECTOR_ARG_CONFLICT matches the hyphen spelling
+// only, and the parser takes the underscore one as the same flag, which would
+// drop the backend from the prefill's composed MultiConnector.
 func validateKVBackendLaunch(engine Engine, p Params) error {
 	if err := validateKVBackend(engine.Name(), p.Quick); err != nil {
 		return err
 	}
 	row, ok := selectedKVBackend(engine.Name(), p.Quick)
-	if !ok || !row.External || p.PD != nil {
+	if !ok || !row.External {
 		return nil
 	}
 	flags := hooks(engine).KVConflictFlags()

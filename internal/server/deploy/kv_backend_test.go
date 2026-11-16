@@ -243,6 +243,17 @@ func TestKVBackendArgConflicts(t *testing.T) {
 			}
 		}
 	}
+	// Under PD the prefill keeps the backend inside the composed
+	// MultiConnector; a layer spelling the flag the parser's other way would
+	// replace it as surely as the hyphen spelling PD_CONNECTOR_ARG_CONFLICT
+	// matches, so the backend's own normalized check runs there too.
+	for _, layer := range [][]string{{"--kv_transfer_config", `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`}, {"--kv_offloading_size", "4"}} {
+		p := kvTestParams(PDRoleLaunchConfig(EngineVLLM, selectTestExternal(), pdmode.RolePrefill), "nvidia")
+		p.PD = &PDLaunch{Mode: "vllm-nixl", Role: pdmode.RolePrefill, SideChannelHost: "10.0.0.5", SideChannelPort: 30001, RoleTP: map[string]int{pdmode.RolePrefill: 1, pdmode.RoleDecode: 1}}
+		p.ExtraArgs = layer
+		_, err := resolveKVTest(p, ValidateAssignedTarget)
+		wantCode(t, err, messages.ErrorKVOffloadBackendConflictsArg)
+	}
 	if got := matchConflictFlags([]string{"--kv-transfer-configs", "kv-transfer-config", "--model"}, []string{"--kv-transfer-config"}); len(got) != 0 {
 		t.Fatalf("near misses matched: %v", got)
 	}
