@@ -341,7 +341,7 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		defer n.doctorRunning.Store(false)
 		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
 		defer cancel()
-		ctx = withDoctorCardsInUse(ctx, n.cardsInUse)
+		ctx = withDoctorCardsInUse(ctx, func() (map[string]bool, bool) { return cardSet(n.cardsInUse()) })
 		ctx = withDoctorForeignCards(ctx, n.occupancy.foreign)
 		ctx = withDoctorRuntimeCheck(ctx, n.cardRuntimeCheck)
 		ctx = withDoctorAttempts(ctx, n.cardSmoke.Begin)

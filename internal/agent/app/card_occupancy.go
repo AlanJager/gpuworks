@@ -317,7 +317,7 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		n.occupancy.restate(gpus)
 		return
 	}
-	ours, known := n.instancesOnCards()
+	ours, known := n.cardsInUse()
 	if !known {
 		// This agent has just started and has not been told what it should
 		// be running. Every card serving one of our own instances would
@@ -408,18 +408,10 @@ func (n *NodeRuntime) sleepingCardPIDs() map[string]map[int]bool {
 //
 // heldCards is a seam: the engine starts containers, which a test of
 // these rules has no business doing.
-func (n *NodeRuntime) cardsInUse() (cards map[string]bool, known bool) {
-	counts, known := n.instancesOnCards()
-	cards = make(map[string]bool, len(counts))
-	for ident := range counts {
-		cards[ident] = true
-	}
-	return cards, known
-}
-
-// instancesOnCards is cardsInUse with how many of our instances each card
-// holds: an instance waiting on its old generation counts for both.
-func (n *NodeRuntime) instancesOnCards() (cards map[string]int, known bool) {
+//
+// Each card counts how many of our instances hold it: an instance waiting on
+// its old generation counts for both.
+func (n *NodeRuntime) cardsInUse() (cards map[string]int, known bool) {
 	var held engine.HeldCards
 	switch {
 	case n.heldCards != nil:
@@ -444,6 +436,15 @@ func (n *NodeRuntime) instancesOnCards() (cards map[string]int, known bool) {
 		ours[ident]++
 	}
 	return ours, known
+}
+
+// cardSet is cardsInUse's answer without the counts.
+func cardSet(counts map[string]int, known bool) (map[string]bool, bool) {
+	cards := make(map[string]bool, len(counts))
+	for ident := range counts {
+		cards[ident] = true
+	}
+	return cards, known
 }
 
 // externalCardHolders is a runtime that knows of allocations outside the

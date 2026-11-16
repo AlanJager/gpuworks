@@ -264,7 +264,7 @@ func TestAnUnboundInstanceWhoseCardIsNotNamedYetClaimsNothing(t *testing.T) {
 	}
 	cards := twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
-	if ours, known := n.cardsInUse(); !known || !ours[accelerator.CardIdent("GPU-3f", "0000:3f:00.0")] {
+	if ours, known := n.cardsInUse(); !known || ours[accelerator.CardIdent("GPU-3f", "0000:3f:00.0")] == 0 {
 		t.Fatalf("after a probe cardsInUse = %v known=%v, want device 0's card", ours, known)
 	}
 	if len(cards[0].ForeignProcesses) != 0 {
@@ -337,7 +337,7 @@ func TestCardsAreNamedEvenWhenTheProberCannotListProcesses(t *testing.T) {
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()}, nil)
 	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Indexes: []int{1}} }
 	n.CardHealthFindings(context.Background(), twoOwnedCards(), true)
-	if ours, known := n.cardsInUse(); !known || !ours[accelerator.CardIdent("GPU-40", "0000:40:00.0")] {
+	if ours, known := n.cardsInUse(); !known || ours[accelerator.CardIdent("GPU-40", "0000:40:00.0")] == 0 {
 		t.Fatalf("cardsInUse = %v known=%v, want device 1's card", ours, known)
 	}
 }

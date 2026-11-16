@@ -39,7 +39,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		Try:   cardSmokeAttempt(check),
 		Busy: func(card cardsmoke.Card) bool {
 			ours, _ := n.cardsInUse()
-			return ours[card.Ident]
+			return ours[card.Ident] > 0
 		},
 		Foreign: func(card cardsmoke.Card) bool { return n.occupancy.foreign(card.Ident) },
 		// Until the control plane says what this node runs, no card can be
