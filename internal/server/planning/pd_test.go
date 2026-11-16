@@ -403,3 +403,37 @@ func TestValidatePDChecksPoliciesAgainstTheMode(t *testing.T) {
 		t.Fatalf("sglang kv_load_failure: %v", err)
 	}
 }
+
+// TestCheckPDArgsSpellings pins which spellings of the composed vLLM flags
+// CheckPDArgs refuses today: the exact flag and its --flag=value form. The
+// underscore spelling vLLM's parser also accepts passes, which the KV offload
+// backend seam leaves as it is (changing it changes native outcomes).
+func TestCheckPDArgsSpellings(t *testing.T) {
+	config := `{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}`
+	for _, tc := range []struct {
+		args    []string
+		refused bool
+	}{
+		{[]string{"--kv-transfer-config", config}, true},
+		{[]string{"--kv-transfer-config=" + config}, true},
+		{[]string{"--kv_transfer_config", config}, false},
+		{[]string{"--kv_transfer_config=" + config}, false},
+		{[]string{"--kv-offloading-size", "8"}, true},
+		{[]string{"--kv-offloading-size=8"}, true},
+		{[]string{"--kv_offloading_size", "8"}, false},
+		{[]string{"--kv-offloading-backend", "native"}, true},
+		{[]string{"--kv_offloading_backend=native"}, false},
+		{[]string{"'--kv-transfer-config'", config}, false},
+	} {
+		for _, layer := range []string{"template", "user"} {
+			layers := [][]string{tc.args, nil}
+			if layer == "user" {
+				layers = [][]string{nil, tc.args}
+			}
+			err := CheckPDArgs("vllm", layers...)
+			if refused := productCode(err) == messages.ErrorPDConnectorArgConflict; refused != tc.refused {
+				t.Fatalf("%s %v: refused=%v (%v), want %v", layer, tc.args, refused, err, tc.refused)
+			}
+		}
+	}
+}
