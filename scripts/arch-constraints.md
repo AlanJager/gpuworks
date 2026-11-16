@@ -305,7 +305,8 @@ go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
 ### store_db_accessor_callers（初值 0，2026-11-14）
 
 意图：store 之外的生产代码不拿原始 `*gorm.DB`。`(*store.Store).DB()` 只留给测试；
-其他包经 `Store` 的方法读写，ZStack Cloud 的主机与租约台账经 `(*store.Store).CloudLedger()`。
+其他包经 `Store` 的方法读写，ZStack Cloud 的主机与租约台账经 `(*store.Store).CloudLedger()`，
+单独构建的服务器所加模块的表经 `(*store.Store).ExtensionTables(namespace)`（只限该命名空间前缀的表）。
 
 ```sh
 grep -rnE '\.DB\(\)' internal cmd pkg scripts test --include='*.go' \

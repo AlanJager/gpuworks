@@ -25,6 +25,9 @@ import (
 type Store struct {
 	db  *gorm.DB
 	Bus *bus.Bus
+	// extensions are the migration sets the store was opened with
+	// (ExtensionTables).
+	extensions []MigrationSet
 	// sharing keeps SharingDeployments' rows between deployment changes.
 	sharing sharingCache
 	// fleetNodes is FleetNodes' snapshot of every node.
