@@ -68,6 +68,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		updates["peer_memory"] = truncate(st.Sys.PeerMemory, 16)
 		updates["runtime_fallback_from"] = truncate(st.Sys.RuntimeFallbackFrom, 16)
 		updates["runtime_fallback_reason"] = truncate(st.Sys.RuntimeFallbackReason, 64)
+		runtimeFallbackSocketUpdates(updates, st.Sys)
 		updates["accelerator_vendors"] = encodeAcceleratorVendors(st.Sys.AcceleratorVendors)
 		updates["kube_unschedulable"] = st.Sys.KubeUnschedulable
 		// The platform's half of NodeScheduling: it cordons a schedulable

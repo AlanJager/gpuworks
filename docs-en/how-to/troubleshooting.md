@@ -429,7 +429,30 @@ After a runtime switch (manual or automatic), instances are recreated in the new
 When the agent starts before dockerd at boot, or dockerd is busy pulling a large image and does not answer within 5 seconds, an agent that picks its own runtime waits up to 2 more minutes at startup;
 only if Docker still does not answer does it use runveil, and the orange notice on the node details gives the reason (`daemon_not_ready`). It then rechecks every minute and switches back automatically once Docker answers and the node has no instances;
 with instances present it likewise shows “Docker is ready and can be switched to”. The agent's systemd unit starts after `docker.service` and `containerd.service` (ordering only,
-so a host without Docker is unaffected). An agent user that may not use Docker (not in the docker group) is a different case and is not waited for.
+so a host without Docker is unaffected). An agent user that may not use Docker (not in the docker group) is a different case and is not waited for; see the next paragraph.
+
+**The agent's account cannot open the Docker socket**
+
+When an agent running as an ordinary account gets `permission denied while trying to connect to the Docker daemon socket` from `docker info`,
+an agent that picks its own runtime uses runveil, and the orange notice on the node details gives the reason (`socket_permission_denied`), lists the socket path, the group that owns it and its gid,
+and the agent's account, and offers a command to copy: `sudo gpasswd -a <account> <group>`, followed by a restart of the agent that fits the install (a systemd install uses
+`sudo systemctl restart gpuworks-agent`; an install without systemd stops, as that account, the process whose command line is `gpuworks-agent run --state <state directory>`
+(identified by its command line, not trusted from the pid file), and runs `agent-restart.sh` in the state directory only once it has exited; if it has not exited within 30 seconds the command reports an error and does not start a second agent).
+When the agent cannot tell what started it, the command holds only the line that adds the group, and the notice names both ways to restart.
+
+After the restart the agent uses Docker. Instances on runveil are not moved: runveil's instance processes keep running after the agent stops, and the restarted agent starts the same instances again in Docker,
+so stop the node's deployments before the restart. If the account is not meant to use Docker, set the node's runtime to runveil (udocker);
+the notice and the per-minute recheck then stop.
+
+When group membership is not the cause, the notice offers no command: the agent already holds the socket's group and is still refused (the socket's mode is 0600, or SELinux or AppArmor blocks it);
+the socket belongs to the root group (a service account should not join root; give the socket a group of its own); or the socket's group could not be read.
+
+The agent must be restarted: a process's supplementary groups are fixed when it starts, so after the group is added the running agent still cannot open the socket, and the minute-level recheck cannot switch back either.
+The recheck still runs (it switches back directly when the socket's mode or group is changed or an ACL is added), and once the account database lists the account in the group and only the restart is missing, the notice changes to "restart the agent";
+a recheck whose result has not changed is not logged again.
+
+When the account is in a group that has the name of the socket's group but another gid (typically a `docker` group that a directory service such as NIS or LDAP also defines), the notice points it out:
+the socket belongs to the host's own group (for example gid 999), the directory service's group of the same name (for example gid 1002) does not open it, and the account still has to be added to the host's group with `gpasswd`.
 
 **Nodes with an explicitly selected runtime, or Ascend nodes**
 
@@ -1347,7 +1370,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: fc165b284f51b62316cc8a02d5230a9be440225f791f25245aaa9f2ea2883a77 -->
+<!-- translation-source-sha256: 63b16d81948f3f90907b27c290927dc82b17c9602c297e08b8b626261fc32935 -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

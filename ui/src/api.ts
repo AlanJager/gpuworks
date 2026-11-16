@@ -206,6 +206,28 @@ export interface NodeUCXNetlinkHang {
   fixes: Array<{ code: string; commands: string[] }>;
 }
 
+/** A container daemon socket the node agent's account may not open (Node.runtime_fallback_socket). */
+export interface RuntimeSocketDenial {
+  /**
+   * The server's reading of the facts, which words the notice:
+   * not_in_group | restart_pending | group_held | root_group | unknown.
+   */
+  cause: string;
+  socket: string;
+  /** The group that owns the socket; absent when its gid has no name. */
+  group?: string;
+  /** Absent when the agent could not read the socket. */
+  gid?: number;
+  /** The account the agent runs as; absent when it could not tell. */
+  account?: string;
+  /** Another group of the same name the account is in (a directory service's). */
+  same_name_gid?: number;
+  /** systemd | nohup, absent when the agent cannot tell what restarts it. */
+  supervisor?: string;
+  /** Adds the account to the group and restarts the agent where the supervisor is known. */
+  command?: string;
+}
+
 export interface Node {
   uuid: string;
   // scheduling is whether the node takes new replicas: cordoned takes none,
@@ -246,14 +268,20 @@ export interface Node {
    */
   runtime_gpu_plugin?: string;
   /**
-   * The runtime the agent passed over for runveil because it cannot give a
-   * container this node's accelerators ("docker" | "nerdctl"), why
-   * (gpu_plugin_missing | gpu_runtime_unconfigured | gpu_ready), and the
-   * plugin that runtime needs. Absent when nothing was passed over.
+   * The runtime the agent passed over for runveil ("docker" | "nerdctl"),
+   * why (gpu_plugin_missing | gpu_runtime_unconfigured | daemon_not_ready |
+   * socket_permission_denied | gpu_ready), and the plugin that runtime
+   * needs. Absent when nothing was passed over.
    */
   runtime_fallback_from?: string;
   runtime_fallback_reason?: string;
   runtime_fallback_plugin?: string;
+  /**
+   * With socket_permission_denied: the daemon socket the agent's account
+   * may not open, as the agent found it, and the server's command that adds
+   * the account to the group and restarts the agent.
+   */
+  runtime_fallback_socket?: RuntimeSocketDenial;
   /**
    * Set while a Kubernetes node's NVIDIA instance pods are kept to their own
    * card by CUDA_VISIBLE_DEVICES alone (soft isolation), with the fixes the

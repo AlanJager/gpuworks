@@ -218,11 +218,26 @@
     "autoCurrent": "auto (now {{runtime}})",
     "copyConfigureCommand": "Copy configure command",
     "configureCopied": "Configure command copied",
+    "copySocketCommand": "Copy the command",
+    "socketCommandCopied": "Command copied",
+    "socketCommandTitle": "Copy the command",
     "fallback": {
       "gpu_plugin_missing": "{{from}} is installed but {{plugin}} is not, so this node uses runveil. Install {{plugin}}; the node switches back to {{from}} once it is idle.",
       "daemon_not_ready": "{{from}} is installed but did not answer when the agent started (still starting or busy), so this node uses runveil for now. The agent retries every minute and switches back to {{from}} once it answers and the node is idle.",
       "gpu_runtime_unconfigured": "{{from}} and {{plugin}} are installed but {{from}} is not configured for GPUs, so this node uses runveil. Configure it and restart {{from}}; the node switches back once it is idle.",
-      "gpu_ready": "{{from}} is ready and can be switched to; the node switches automatically once it is idle."
+      "gpu_ready": "{{from}} is ready and can be switched to; the node switches automatically once it is idle.",
+      "socket_permission_denied": "{{from}} is installed, but the agent's account {{account}} may not open its socket {{socket}}, which belongs to {{group}}, so this node uses runveil for now. Add {{account}} to that group, then restart the agent: it has only the groups it started with.",
+      "socket_restart_pending": "{{account}} is now in {{group}}, which owns the {{from}} socket {{socket}}, but the agent started before that and keeps the groups it started with, so this node uses runveil until the agent is restarted.",
+      "socketSameName": "{{account}} is in another group named {{name}} (gid {{sameGid}}), likely from a directory service such as NIS or LDAP. The socket belongs to the host's own {{name}} group (gid {{gid}}), and only that group opens it.",
+      "socketRestartHow": "To restart the agent: sudo systemctl restart gpuworks-agent, or, on an install without systemd, stop it and run agent-restart.sh in its state directory as {{account}}.",
+      "socketGroup": "group {{group}} (gid {{gid}})",
+      "socketGid": "the group with gid {{gid}}",
+      "socket_group_held": "{{from}} refuses the agent's account {{account}} its socket {{socket}} although the agent already has {{group}}, so this node uses runveil for now. The socket's mode or a security module (SELinux, AppArmor) refuses it; adding groups will not help.",
+      "socket_root_group": "{{from}}'s socket {{socket}} belongs to the root group, which the agent's account {{account}} should not join, so this node uses runveil for now. Give the socket a group of its own that {{account}} is in, then restart the agent.",
+      "socket_unknown": "The agent's account {{account}} may not open the {{from}} socket {{socket}}, and the agent could not read the socket's group, so this node uses runveil for now.",
+      "socketRestartEffect": "After the restart the agent uses {{from}}. Instances on runveil are not moved: their processes keep running after the agent stops, and the restarted agent starts them again in {{from}}, so stop this node's deployments first.",
+      "socketOptOut": "If {{account}} is not meant to use {{from}}, set this node's runtime to runveil (udocker); the notice and the per-minute check then stop.",
+      "socketAccountUnknown": "(unknown)"
     }
   },
   "accelerator": {
