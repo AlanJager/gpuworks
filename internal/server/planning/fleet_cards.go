@@ -27,7 +27,7 @@ type CardState string
 const (
 	CardOffline     CardState = "offline"      // its node is not online
 	CardUnhealthy   CardState = "unhealthy"    // faulty or unusable for a reason other than being held
-	CardHeldOutside CardState = "held_outside" // a process outside the platform uses it
+	CardHeldOutside CardState = "held_outside" // a process outside the platform uses it, and nothing of ours serves there
 	CardAwake       CardState = "awake"        // an instance claims memory on it
 	CardAsleep      CardState = "asleep"       // only sleepers' residue is on it
 	CardFree        CardState = "free"
@@ -43,7 +43,9 @@ func (c FleetCard) State(online bool) CardState {
 		return CardOffline
 	case c.Unhealthy:
 		return CardUnhealthy
-	case c.HeldOutside:
+	case c.HeldOutside && c.AwakeBytes <= 0:
+		// A held card our instances serve on - partitions beside the
+		// holders (ADR 0068), or work an operator allowed - is serving.
 		return CardHeldOutside
 	case c.AwakeBytes > 0:
 		return CardAwake

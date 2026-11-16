@@ -11,12 +11,27 @@ export type GPUResourceContext = {
   t: TFunction<"deploy">;
 };
 
-// Resource feedback annotates a card; only its inventory state gates selection.
+// The server's evaluated verdict on one card for the request being formed,
+// when there is a current one for this node.
+function gpuCandidate(gpu: GPU, context?: GPUResourceContext) {
+  if (!context || context.pending || context.candidates?.node_uuid !== context.nodeUUID) return undefined;
+  return context.candidates.items.find((item) => item.index === gpu.index);
+}
+
+// Whether the card can be picked: the inventory says it takes work, or the
+// server evaluated it as able to host this very request - a card shared with
+// processes outside the platform takes no whole-card work, yet the server
+// offers it to a memory-limited partition that fits beside them.
+export function gpuPickable(gpu: GPU, context?: GPUResourceContext): boolean {
+  if (cardPickable(gpu)) return true;
+  return gpu.index >= 0 && gpuCandidate(gpu, context)?.available === true;
+}
+
+// Resource feedback annotates a card; the inventory state, or the server's
+// verdict that the card hosts this request, gates selection (gpuPickable).
 export function gpuResourceHint(gpu: GPU, context?: GPUResourceContext) {
-  if (!context || !cardPickable(gpu)) return undefined;
-  const item = !context.pending && context.candidates?.node_uuid === context.nodeUUID
-    ? context.candidates.items.find((item) => item.index === gpu.index)
-    : undefined;
+  if (!context || !gpuPickable(gpu, context)) return undefined;
+  const item = gpuCandidate(gpu, context);
   if (!item) return { unavailable: false, text: context.t("workbench.gpu.notEvaluated") };
   if (item.available) return undefined;
   const reason = item.reason;

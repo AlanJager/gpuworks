@@ -58,7 +58,7 @@
   "adr/0061-spec-display-names-written-by-hand.md": "4a31f299b87d236fbd207f0ac03cdde11b4760f337acc286eaa6d1253f188805",
   "adr/0062-template-components-follow-the-primary-storage.md": "b22644c21e502e601f3625d75f7f4e177fcfbd0e1c558f1c4840b870723c4676",
   "adr/0063-apply-to-cloud-clusters.md": "e8be4715b60825361afbb4ef4857b31d1483e5c87ef65e4fc269a6c2143153de",
-  "adr/README.md": "2782855046973f9b5870c4557a3745470847216c7edd2323f384f6f16f8efe2c",
+  "adr/README.md": "2724f79a34461b79a623888fb99dec4fa43d7df382c1c912e9c9b4aa9a598f62",
   "dev/README.md": "ba5eb371a9818fce7c07eb9c833a2f92a4d05f265c6840ff390ce07571e64fa1",
   "dev/amd-hardware-validation.md": "3220b213c1296422816f73ca65d5d998c527b63af1677d3de3df4c2804e2a053",
   "dev/amd-support-design.md": "a029a001bc4b935cc19d9236f4e2ea7520b7393312ced7982533ebee97697e4a",
@@ -112,10 +112,10 @@
   "how-to/peer-sync-models.md": "30b806dc7264c71c3a898f25db45602827530feec7e354efed2fa320379e8407",
   "how-to/rent-cloud-gpus.md": "2d6bb04ca5510c9ea63d698a1a46a731f91b2611688855b1083b6cd01d599097",
   "how-to/save-deployment-as-template.md": "3b100cf74fb9a1d2980a58faeeadd44263959bb6255553812aaff2cbe8908147",
-  "how-to/scheduling-center.md": "a077559abeb7b14f48ec430124a589a5347d131af2b5c32caac923fb97f158be",
+  "how-to/scheduling-center.md": "e2c51bcbd90ebf3a2eeeb1b90d082a7aeee55f4e4d6f1134696df09300ad5a60",
   "how-to/sleep-wake.md": "bc3720fdb8244a90e7c3663f322b636f8090fbdc1bec40fedd7fbfe5cc013ee5",
   "how-to/storages.md": "e63c3268befa5c72eafecd1f7845faafc4511d8778f5c1fa7e372325fda0360c",
-  "how-to/troubleshooting.md": "be75b91a4295fd83846b61c52e0921c18f016ca47856ef9664c523512d91bc3d",
+  "how-to/troubleshooting.md": "fc165b284f51b62316cc8a02d5230a9be440225f791f25245aaa9f2ea2883a77",
   "how-to/upgrade-and-compatibility.md": "bf8e94f6b1a4d60e4c21e26904ed70c6fd64affe95b05088416411e25feab5ac",
   "how-to/use-ai-helper.md": "7b2e3cdb20d5f53c0a2b5eb4f17386b6af371a1b3c621b79fc0539687d735058",
   "how-to/use-mcp.md": "be5232f32da10ac3b92736b326a8fb03c7f465dd4c839e28d6701b99c12de9c6",
@@ -156,5 +156,6 @@
   "adr/0065-official-catalog-read-tolerantly.md": "f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0",
   "explanation/request-priority.md": "4db915372627d83b4700741dcf48c9002b2eafc29412b076194d34e5207a27f1",
   "adr/0066-agent-state-by-owner-and-lifetime.md": "146b93ea09468aa95cb07fe9fd5617c3e70e2e03284ca4a47466c12024804438",
-  "adr/0067-runtime-outcomes-as-codes.md": "0d2fcd578c0e94dee1ce9840e11f219acc63b6a90138a031121f2ecb040730a6"
+  "adr/0067-runtime-outcomes-as-codes.md": "0d2fcd578c0e94dee1ce9840e11f219acc63b6a90138a031121f2ecb040730a6",
+  "adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md": "012e37e9b4a8d006ceb600f7caad09446978a2a4930a679deb64abb7d8f93bc0"
 }

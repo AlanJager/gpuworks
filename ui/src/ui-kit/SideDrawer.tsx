@@ -5,10 +5,12 @@ import { Button } from "../components/ui/button";
 import { ConsoleIcon } from "./consoleIcons";
 
 /** Product dimensions and scroll ownership; Zeron owns portal, motion and focus. */
-export function SideDrawer({ open, onClose, title, subtitle, children, extra, footer, width = 720, className, busy = false, deferEscapeToModal = false }: {
+export function SideDrawer({ open, onClose, title, subtitle, inlineSubtitle = false, children, extra, footer, width = 720, className, busy = false, deferEscapeToModal = false }: {
   open: boolean; onClose: () => void; title: ReactNode; children?: ReactNode;
   /** A line under the title (identifiers, tags). */
   subtitle?: ReactNode;
+  /** Resource names and secondary identifiers share a compact, wrapping title row. */
+  inlineSubtitle?: boolean;
   /** Actions on the title row, right-aligned beside the close button, at their own size. */
   extra?: ReactNode; footer?: ReactNode; width?: number | string; className?: string; busy?: boolean; deferEscapeToModal?: boolean;
 }) {
@@ -27,11 +29,11 @@ export function SideDrawer({ open, onClose, title, subtitle, children, extra, fo
       {/* Title and subtitle on the left, then the actions and the close button on
           the same row, as antd's Drawer laid them out. DialogHeader stacks its
           children and stretches them, which turned a switch into a full-width bar. */}
-      <DialogHeader>
+      <DialogHeader className="shrink-0">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <DialogTitle>{title}</DialogTitle>
-            {subtitle != null && <div className="mt-1 min-w-0 text-label text-fg-muted">{subtitle}</div>}
+          <div className={inlineSubtitle ? "flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1" : "min-w-0 flex-1"}>
+            <DialogTitle className="min-w-0 break-words">{title}</DialogTitle>
+            {subtitle != null && <div className={`${inlineSubtitle ? "" : "mt-1 "}min-w-0 break-words text-label text-fg-muted`}>{subtitle}</div>}
           </div>
           {extra != null && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{extra}</div>}
           <DialogClose aria-label={t("actions.close")} disabled={busy}

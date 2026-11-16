@@ -219,7 +219,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		// refuse; so is a disk that is full now.
 		for i := range snap.GPUs {
 			snap.GPUs[i].AllocatedBytes, snap.GPUs[i].SleepingBytes, snap.GPUs[i].Schedulable = 0, 0, true
-			snap.GPUs[i].WholeGPUAllocated = false
+			snap.GPUs[i].WholeGPUAllocated, snap.GPUs[i].ForeignBytes = false, 0
 		}
 		diskNeedBytes, runtimeImageBytes = 0, 0
 		// A storage that is not ready here, or a cache full of models in use,
@@ -472,7 +472,10 @@ func selectedGPUCapacity(node *store.Node, plan *scheduler.Plan) int64 {
 	}
 	var capacity int64
 	for _, gpu := range node.OwnedGPUs() {
-		if !gpu.CanTakeWork() || (len(selected) > 0 && !selected[gpu.Index]) {
+		// The scheduler's pick is the verdict: a card it chose for a
+		// partition may be one shared with processes outside the platform,
+		// which takes no whole-card work.
+		if (len(selected) > 0 && !selected[gpu.Index]) || (len(selected) == 0 && !gpu.CanTakeWork()) {
 			continue
 		}
 		if len(selected) > 0 {

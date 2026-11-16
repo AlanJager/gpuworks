@@ -149,8 +149,8 @@ export function NodeRecoveryStatus({ node, onUpdated }: { node: Node; onUpdated:
 
   const label = recoveryLabel[node.recovery_phase];
   return (
-    <>
-      <Typography.Title level={5} style={{ marginTop: 20 }}>{t("recovery.title")}</Typography.Title>
+    <section className="mb-4" aria-label={t("recovery.title")}>
+      <Typography.Title level={5} style={{ marginTop: 0 }}>{t("recovery.title")}</Typography.Title>
       <Descriptions column={1} bordered size="small">
         <Descriptions.Item label={t("recovery.currentPhase")}><Tag color={label?.color}>{label ? t(label.key) : node.recovery_phase}</Tag></Descriptions.Item>
         <Descriptions.Item label={t("recovery.attempts")}>{node.recovery_attempts ?? 0}</Descriptions.Item>
@@ -163,6 +163,6 @@ export function NodeRecoveryStatus({ node, onUpdated }: { node: Node; onUpdated:
           items={events.map((event) => { const eventLabel = recoveryLabel[event.reason.slice("recovery:".length)]; return { children: `${formatTimeSec(event.at)} · ${eventLabel ? t(eventLabel.key) : event.reason}` }; })}
         />
       )}
-    </>
+    </section>
   );
 }
