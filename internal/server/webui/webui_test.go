@@ -250,10 +250,14 @@ func TestHandlerFSWithoutIndexSaysNotBuilt(t *testing.T) {
 }
 
 // FS is rooted inside the embedded dist directory: its files sit at the top,
-// so a caller can hand it straight to HandlerFS.
+// so a caller can hand it straight to HandlerFS. A built tree has index.html
+// there (make ui empties the directory, .gitkeep included, before building);
+// a fresh checkout has only the tracked .gitkeep.
 func TestFSIsRootedAtTheBuild(t *testing.T) {
-	if _, err := fs.Stat(FS(), ".gitkeep"); err != nil {
-		t.Fatalf("FS() has no .gitkeep at its root: %v", err)
+	_, indexErr := fs.Stat(FS(), "index.html")
+	_, keepErr := fs.Stat(FS(), ".gitkeep")
+	if indexErr != nil && keepErr != nil {
+		t.Fatalf("FS() has neither index.html nor .gitkeep at its root: %v; %v", indexErr, keepErr)
 	}
 	if _, err := fs.Stat(FS(), "dist"); err == nil {
 		t.Fatal("FS() still contains the dist directory; want its contents at the root")
