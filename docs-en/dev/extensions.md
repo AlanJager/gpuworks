@@ -73,7 +73,7 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 
 The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds` and `NodeFleet` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
 
-Extension routes live under `/api/v1/x/<name>/`: `api.RouteSpec.Pattern` is relative to `/api/v1` and is `/x/<name>` or starts with `/x/<name>/`; a route outside the module's own namespace panics while the router is built. The core registers no route under `/api/v1/x/`, so a module name may equal a core path segment (such as `nodes`) and never collides with a path the core adds later.
+Extension routes live under `/api/v1/x/<name>/`: `api.RouteSpec.Pattern` is relative to `/api/v1` and is `/x/<name>` or starts with `/x/<name>/`, and is a clean path (no `.`, `..`, `//` or trailing `/`). A route outside the module's own namespace, an unclean pattern, or two patterns of one method that differ only in parameter names (`{id}` and `{name}`) panic while the router is built. The core registers no route under `/api/v1/x/`, so a module name may equal a core path segment (such as `nodes`) and never collides with a path the core adds later.
 
 After every `Init` has run, the server releases extension-held cordons that no module of this build owns (so they do not outlive a changed build or a removed module), applies the holders' answers to every node once if any holder is registered, then builds the feature gate (`featuregate.New`) and hands it to the API.
 
@@ -178,4 +178,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 4d25e6c5a6c805a97cc5675ac85eb887497e6959b784fb00a32e197df315d9fb -->
+<!-- translation-source-sha256: d94dc1404cb179b0db8b2481e74f0601847f575d359e4d1c71551573429bacb2 -->

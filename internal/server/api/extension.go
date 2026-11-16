@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
 
@@ -117,6 +118,10 @@ type RouteSpec struct {
 
 var extensionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
 
+// routeParam matches a chi parameter ({id}, {id:[0-9]+}); two patterns that
+// differ only in parameter names match the same requests.
+var routeParam = regexp.MustCompile(`\{[^}]*\}`)
+
 // extensionRoot is the /api/v1 subtree that holds every extension's
 // namespace. The core mounts no route under it (a router inventory test
 // keeps it so), so no extension name can collide with a core path.
@@ -183,17 +188,21 @@ func (m *extensionMounter) Handle(spec RouteSpec, h http.Handler) {
 	if ns := extensionRoot + "/" + m.name; spec.Pattern != ns && !strings.HasPrefix(spec.Pattern, ns+"/") {
 		panic(fmt.Sprintf("api: extension %s: %s is outside /api/v1%s/", m.name, where, ns))
 	}
+	if path.Clean(spec.Pattern) != spec.Pattern {
+		panic(fmt.Sprintf("api: extension %s: %s is not a clean path (no \"..\", \".\", \"//\" or trailing \"/\")", m.name, where))
+	}
 	if h == nil {
 		panic(fmt.Sprintf("api: extension %s: %s has no handler", m.name, where))
 	}
-	if m.seen[spec.Method+" "+spec.Pattern] {
+	key := spec.Method + " " + routeParam.ReplaceAllString(spec.Pattern, "{}")
+	if m.seen[key] {
 		panic(fmt.Sprintf("api: extension %s: %s registered twice", m.name, where))
 	}
 	if spec.AIReadable && spec.Method != http.MethodGet {
 		panic(fmt.Sprintf("api: extension %s: %s: only a GET route can be AIReadable", m.name, where))
 	}
 	m.checkFeature(where, spec.Feature, spec.Community)
-	m.seen[spec.Method+" "+spec.Pattern] = true
+	m.seen[key] = true
 	m.r.Method(spec.Method, spec.Pattern, &extensionEndpoint{spec: spec, next: m.a.extensionChain(spec, h)})
 }
 
