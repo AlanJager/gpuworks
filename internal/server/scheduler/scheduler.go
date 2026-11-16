@@ -47,10 +47,25 @@ type GPU struct {
 	// whole card to hand out, so a request is admitted against what is
 	// unclaimed, by the share it will take (Claim).
 	SharedByMemory bool
+	// ForeignBytes is what processes outside the platform hold on the card,
+	// when the card is held and every holder's memory is known
+	// (store.GPU.ForeignBytes); zero otherwise. Available keeps it, and a
+	// headroom beside it, out of what a partition may claim.
+	ForeignBytes int64
+	// ForeignShareable marks a held card that a memory-limited partition
+	// may still share by memory: healthy, not stopped by an operator, every
+	// holder's memory known, and an agent that keeps reporting the holders
+	// beside the platform's own instances (store.GPU.SharesMemoryWithForeign).
+	// It never makes the card take whole-card work (ADR 0068).
+	ForeignShareable bool
 }
 
-// Available returns the unclaimed memory on the GPU.
-func (g GPU) Available() int64 { return g.MemoryTotal - g.AllocatedBytes - g.SleepingBytes }
+// Available returns the unclaimed memory on the GPU: its total less the
+// platform's claims and, on a card shared with processes outside the
+// platform, what they hold and the headroom kept beside them (foreignHold).
+func (g GPU) Available() int64 {
+	return g.MemoryTotal - g.AllocatedBytes - g.SleepingBytes - g.foreignHold()
+}
 
 // Empty reports whether the GPU has no claims (needed for whole-GPU placement).
 func (g GPU) Empty() bool { return g.AllocatedBytes <= 0 }
@@ -69,9 +84,10 @@ func (g GPU) CapacityFor(req Request) int64 {
 
 // QualifiesFor reports whether the GPU can host the request at all, before any
 // per-candidate memory requirement is applied: a shared request needs a healthy
-// GPU, a whole-GPU request needs one that is also free.
+// GPU (or one it may share with processes outside the platform, takesWorkFor),
+// a whole-GPU request needs one that is also free.
 func (g GPU) QualifiesFor(req Request) bool {
-	if !g.Schedulable {
+	if !g.takesWorkFor(req) {
 		return false
 	}
 	if req.PerGPULimitBytes > 0 {
@@ -242,8 +258,12 @@ const (
 	// no card of its own (none at all, or all lent to virtual machines or
 	// held by another driver), its cards are held by processes outside the
 	// platform, or none is at a health level that serves.
-	ReasonNoOwnedGPU                = "no_owned_gpu"
-	ReasonGPUsHeldOutsidePlatform   = "gpus_held_outside_platform"
+	ReasonNoOwnedGPU              = "no_owned_gpu"
+	ReasonGPUsHeldOutsidePlatform = "gpus_held_outside_platform"
+	// ReasonHeldOutsidePlatformSleep: the only cards that could take the
+	// partition are shared with processes outside the platform, and a
+	// deployment that sleeps could not be woken there while they run.
+	ReasonHeldOutsidePlatformSleep  = "held_outside_platform_sleep"
 	ReasonNoHealthyGPU              = "no_healthy_gpu"
 	ReasonNoFreeGPU                 = "no_free_gpu"
 	ReasonFiltersPassed             = "filters_passed"

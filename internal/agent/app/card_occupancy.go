@@ -25,8 +25,11 @@ import (
 // IDs to containers: it never mistakes an idle card for a busy one, which
 // is the error that would cost a deployment, and it needs no cgroup
 // parsing. Its cost is that a card already running one of our instances is
-// not examined for a second, foreign workload — and such a card is already
-// accounted for and not offered again.
+// not examined for a second, foreign workload. The processes that were
+// found there before our instance joined them stay foreign, though: the
+// server may place a memory-limited partition beside them and counts what
+// they hold (ADR 0068), so they are reported, with what they hold now,
+// until they exit (knownForeign).
 
 // cardOccupancy is the last occupancy this agent established, by card
 // identity. The server writes a report's occupancy over what it had, so a
@@ -48,6 +51,9 @@ type cardOccupancy struct {
 	identOfIndex map[int]string
 	// external is the last answer of the runtime's external card holders.
 	external map[string][]proto.CardProcess
+	// path is where last is kept across restarts (cardOccupancyFile); empty
+	// keeps it in memory only.
+	path string
 }
 
 // learnCards records which card each device index names in a probe that
@@ -83,9 +89,10 @@ const occupancyReleaseRounds = 3
 // foreign use changed since the last one, so it is logged once rather than
 // every minute. A card found free after being used outside the platform keeps
 // its last processes until occupancyReleaseRounds readings in a row have found
-// it free — unless it now holds one of this node's own instances (ours),
-// whose processes are not foreign.
-func (o *cardOccupancy) remember(gpus []proto.GPUInfo, ours map[string]bool) (changed []proto.GPUInfo) {
+// it free, whether or not one of this node's own instances is on it now: a
+// partition placed beside those processes was admitted against what they
+// held, and the card is not to read as free the moment they stop showing.
+func (o *cardOccupancy) remember(gpus []proto.GPUInfo) (changed []proto.GPUInfo) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.freeRounds == nil {
@@ -100,7 +107,7 @@ func (o *cardOccupancy) remember(gpus []proto.GPUInfo, ours map[string]bool) (ch
 		}
 		if len(card.ForeignProcesses) == 0 {
 			held := o.last[ident]
-			if len(held) == 0 || ours[ident] || !accelerator.CardUsable(card.Ownership) {
+			if len(held) == 0 || !accelerator.CardUsable(card.Ownership) {
 				delete(o.freeRounds, ident)
 				continue
 			}
@@ -119,8 +126,29 @@ func (o *cardOccupancy) remember(gpus []proto.GPUInfo, ours map[string]bool) (ch
 			changed = append(changed, *card)
 		}
 	}
+	previous := o.last
 	o.last = next
+	o.saveLocked(previous)
 	return changed
+}
+
+// knownForeign is the processes the last answer named on a card as
+// somebody else's, by PID and name: on a card our instance has joined since,
+// they are the ones still known not to be ours. The name guards against the
+// PID being reused by a process of our own.
+func (o *cardOccupancy) knownForeign(ident string) map[int]string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if len(o.last[ident]) == 0 {
+		return nil
+	}
+	known := make(map[int]string, len(o.last[ident]))
+	for _, proc := range o.last[ident] {
+		if proc.PID > 0 {
+			known[proc.PID] = proc.Name
+		}
+	}
+	return known
 }
 
 // foreign reports whether the last answer found somebody outside the
@@ -218,8 +246,19 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		// A card of ours is examined only when every instance on it sleeps
 		// and its engines' own processes are known: any other process there
 		// is somebody else's, and the server must refuse a wake onto it.
+		// Otherwise only the processes already known to be foreign there are
+		// reported, with what they hold now: a new one may be our engine's.
 		own, examine := sleeping[ident]
 		if ours[ident] && !examine {
+			if known := n.occupancy.knownForeign(ident); len(known) > 0 {
+				for _, proc := range procs {
+					if name, ok := known[proc.PID]; ok && name == proc.Name && gpu.SameBDF(proc.PCIeBDF, card.PCIeBDF) {
+						card.ForeignProcesses = append(card.ForeignProcesses, proto.CardProcess{
+							PID: proc.PID, Name: proc.Name, MemoryBytes: proc.MemoryBytes,
+						})
+					}
+				}
+			}
 			continue
 		}
 		for _, proc := range procs {
@@ -231,7 +270,7 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 			})
 		}
 	}
-	for _, card := range n.occupancy.remember(gpus, ours) {
+	for _, card := range n.occupancy.remember(gpus) {
 		slog.Info("card is in use outside the platform",
 			"card", card.PCIeBDF, "processes", len(card.ForeignProcesses))
 	}

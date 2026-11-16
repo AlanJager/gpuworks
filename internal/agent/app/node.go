@@ -303,6 +303,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 		// mount.nfs, where instance pods see it.
 		mountRunner = kube.HostExec
 	}
+	n.occupancy.load(filepath.Join(stateDir, cardOccupancyFile))
 	n.storage = newStorageRuntime(stateDir, n.mountBusy, mountRunner)
 	n.servingForward = newServingForwarder(log, n.currentNodeToken, n.instanceAPIPort)
 	n.perftest = perftest.Host(stateDir)

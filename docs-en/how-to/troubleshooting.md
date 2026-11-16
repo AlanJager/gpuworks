@@ -499,12 +499,21 @@ A card passed through to a virtual machine or without a driver is not this node'
 ### Card Is in Use by Processes Outside the Platform
 
 A card marked “In use outside the platform” has compute processes that the platform did not start (such as a vLLM process started by a user).
-The card does not participate in scheduling until these processes exit; hover to see process names and GPU memory usage. After they exit, the card is released only once 3 readings in a row (about 3 minutes) find it free,
+The card takes no whole-card deployment until these processes exit; hover to see process names and GPU memory usage. After they exit, the card is released only once 3 readings in a row (about 3 minutes) find it free,
 and until then it still shows the processes last seen: a job somebody starts and stops every minute would otherwise move the card in and out of scheduling with every report. The agent does not make this determination just after restarting, before it receives
 which instances it should run—otherwise its own instances would be treated as external processes. It also skips this check if probing failed in the current round;
 if the vendor tool just failed to return the inventory, asking it for processes would only incur another timeout.
 The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
 gets its identities filled in by a migration when the server is upgraded, and the agent also maps those indexes to cards through the latest probe, so it still counts as the platform's own.
+
+**A dGPU deployment with a memory limit can share the card with those processes**, admitted by the memory left: the card's total, less what the processes hold,
+less the headroom kept beside them (5% of the card, at least 4 GiB), less what the platform's instances already claim, must cover the deployment's memory limit plus the partition overhead.
+When it does not fit, the refusal (`no_fit`) lists what the processes hold and the headroom, and in the deploy form the card can be picked only for such a deployment. The card is still not shared,
+and is refused as “In use outside the platform”, for: a whole-card deployment; a process the vendor tool gives no memory figure for, or a card Kubernetes gave to another pod
+(what such use may grow to is not known); and a node whose agent is older—sharing needs an agent that, once a platform instance is on the card, keeps reporting the outside processes that were already there
+with their current memory until they exit, and keeps that record in its state directory across restarts; an older agent drops them once the first instance starts, and the card would read as free.
+A deployment that sleeps is not placed on such a card either (`held_outside_platform_sleep`): while those processes run, a sleeping instance could not be woken there.
+A process that appears only after a platform instance is on the card is still not reported as outside the platform, since the agent cannot tell it from its own instance's. The rationale is in [ADR 0068](../adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md).
 
 Such a card is also left out of the periodic runtime check and of the recheck after an instance fails to start: someone else's workload should not be disturbed,
 and memory held by someone else says nothing about whether the runtime can use the card. The card keeps its last check result, and checking resumes once the processes exit.

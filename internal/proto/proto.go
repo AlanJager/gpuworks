@@ -429,8 +429,12 @@ type SysInfo struct {
 	PartitionAssets []AssetReport `json:"partition_assets"`
 	// Keep this field on the wire even when empty. nil after decoding therefore
 	// identifies an older agent that predates behavioral partition probes.
-	PartitionProbes         []PartitionProbeResult `json:"partition_probes"`
-	PartitionSafetyProtocol int                    `json:"partition_safety_protocol,omitempty"`
+	PartitionProbes []PartitionProbeResult `json:"partition_probes"`
+	// PartitionSafetyProtocol is the level of the partition safety contract
+	// this agent keeps (PartitionSafety*); zero for an agent that keeps none.
+	// Each level includes the ones below it, and the server reads it from
+	// every report, so rolling an agent back revokes what it no longer keeps.
+	PartitionSafetyProtocol int `json:"partition_safety_protocol,omitempty"`
 }
 
 // ImagePresence is the directory-driven image catalog report from an agent.

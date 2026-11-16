@@ -49,9 +49,9 @@ func gpuResourceRefusal(req Request, gpu GPU, need int64) Reason {
 	if gpu.Index < 0 {
 		return Reason{Code: ReasonGPUIndexUnavailable}
 	}
-	if !gpu.Schedulable {
+	if !gpu.takesWorkFor(req) {
 		if gpu.HeldOutsidePlatform {
-			return Reason{Code: ReasonGPUsHeldOutsidePlatform}
+			return Reason{Code: heldReason(req, gpu)}
 		}
 		return Reason{Code: ReasonGPUNotSchedulable}
 	}
