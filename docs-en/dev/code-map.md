@@ -15,6 +15,7 @@ For complete definitions of domain terms such as nodes, deployments, and PD disa
 ## Server Side (`internal/server/`)
 
 - `app`: Composition root (config/store/bus/hub/HTTP wiring, startup and graceful shutdown, accesslog, admin bootstrap).
+- `cli`: The server command line (subcommand dispatch, flag parsing and execution for `serve` / `migrate` / `reset-password` / install and upgrade / expose / support-bundle). `cmd/gpuworks` only calls `cli.Main`; a separately built server adds subcommands through `cli.Options`, which may not reuse a built-in name.
 - `api` (+`api/dto`): REST layer, split into dozens of files by domain, with strict separation between DTOs and entities; deployment create/evaluate delegate to `deployment`, and the handlers only decode and map; `auth` handles JWT login and authentication.
 - `hub`: Agent session management, desired-state delivery (including source rules, proxies, sync group members, and credentials; credentials are delivered only with state.sync), and server_dial.
 - Pull settings (ADR 0048, [ADR 0050](../adr/0050-model-pull-sources-and-proxies.md)): Typed tables for rules (image rules and model site rules share a table; the type depends on whether `match` includes `http(s)://`), proxies, sync groups, and credentials live in `store` (see `migration_pull_settings.go` for migrations); APIs live in `api/pull*.go`.
@@ -176,4 +177,4 @@ Top-level shared packages in `internal/`:
 
 React + Vite; build artifacts are output to `internal/server/webui/dist` and embedded by the server with `go:embed`. Parameter dictionaries are delivered by the server's `/engines` endpoint and are **not hardcoded into the frontend**. i18n: `ui/src/i18n/` (en/zh locales) + `ui/i18n/` (glossary and review status); `make i18n-check` is a prerequisite for `make ui`.
 
-<!-- translation-source-sha256: 1de561a0a5f10561ebf4c804d0eb99c1a1d3541db371d27c1bd6095f181c2759 -->
+<!-- translation-source-sha256: 631068649739e68c20bd8e0b3092fd9b21df7ddeaa0cce1b7167955d9668ddc4 -->

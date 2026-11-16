@@ -4,7 +4,7 @@ GPUWorks 提供两个命令行程序：`gpuworks` 用于安装、运行、升级
 用于连接 GPU 节点、检查节点环境、排查容器问题和执行评测。
 
 本页按子命令列出 flag、默认值和行为要点；以各命令的 `--help`（`-h`）输出为准，flag 定义分别在
-`cmd/gpuworks`、`cmd/gpuworks-agent`。环境变量见[配置参考](configuration.md)。
+`internal/server/cli`（`cmd/gpuworks` 只调用它）、`cmd/gpuworks-agent`。环境变量见[配置参考](configuration.md)。
 
 ## 示例：重启控制面
 

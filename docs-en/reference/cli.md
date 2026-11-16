@@ -4,7 +4,7 @@ GPUWorks provides two command-line programs: `gpuworks` installs, runs, upgrades
 connects GPU nodes, checks node environments, troubleshoots containers, and runs benchmarks.
 
 This page lists flags, defaults, and key behavior by subcommand. Each command's `--help` (`-h`) output is authoritative. Flag definitions are in
-`cmd/gpuworks` and `cmd/gpuworks-agent`, respectively. For environment variables, see the [Configuration Reference](configuration.md).
+`internal/server/cli` (which `cmd/gpuworks` only calls) and `cmd/gpuworks-agent`, respectively. For environment variables, see the [Configuration Reference](configuration.md).
 
 ## Example: Restart the Control Plane
 
@@ -608,5 +608,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: 2bb787739b2ec76795fd03f7121f92fba0ba0de96155a3f450ee81a91f340f1a -->
+<!-- translation-source-sha256: bd42af6ee5d8daf7488705b3931d8da4dc23eb3d4814f77304708b6ffd259dc8 -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

@@ -19,7 +19,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/storagerules"
 )
 
-// Config holds server runtime configuration. cmd/gpuworks fills it from
+// Config holds server runtime configuration. The cli package fills it from
 // server.yaml and the command line; nothing here reads the environment.
 type Config struct {
 	// SelfLog captures the server's own error-level slog records into the

@@ -12,6 +12,7 @@
 contract	internal/proto/*.go
 contract	internal/server/api/errors.go
 contract	cmd/gpuworks/*.go
+contract	internal/server/cli/*.go
 contract	internal/server/inferencecatalog/flat.go
 contract	internal/server/store/deployment_policy.go
 

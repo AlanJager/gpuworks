@@ -17,6 +17,7 @@
 ## server 侧（`internal/server/`）
 
 - `app`：装配根（config/store/bus/hub/HTTP 接线、启动与优雅关停、accesslog、admin bootstrap）。
+- `cli`：server 命令行（子命令分发、`serve` / `migrate` / `reset-password` / install 与 upgrade / expose / support-bundle 的参数解析与执行）；`cmd/gpuworks` 只调用 `cli.Main`，单独构建的服务端经 `cli.Options` 追加子命令，不得与内置子命令重名。
 - `api`（+`api/dto`）：REST 层，按域拆分为数十个文件，DTO 与 entity 严格分离；部署创建/评估委托 `deployment`，handler 只做解码与映射；`auth` JWT 登录鉴权。
 - `hub`：agent 会话管理、desired state 推送（含来源规则、代理、同步组成员与凭据，凭据只随 state.sync 下发）、server_dial。
 - 拉取设置（ADR 0048、[ADR 0050](../adr/0050-model-pull-sources-and-proxies.md)）：规则（镜像规则与模型站点规则同表，种类由 `match` 是否带 `http(s)://` 决定）、代理、同步组、凭据带类型的表在 `store`（迁移见 `migration_pull_settings.go`），API 在 `api/pull*.go`。
