@@ -127,6 +127,9 @@ func (i *Installer) StageSelectedInService(ctx context.Context, from string, arc
 	if err := i.checkConsoleProtocol(ctx, staged, build.ReleaseID); err != nil {
 		return InServiceUpgrade{}, err
 	}
+	if err := i.checkEdition(ctx, staged, build.ReleaseID, false, true); err != nil {
+		return InServiceUpgrade{}, err
+	}
 
 	at := i.deps.now()
 	snapshot := filepath.Join(i.layout.TmpDir(), "gpuworks.db.snapshot")

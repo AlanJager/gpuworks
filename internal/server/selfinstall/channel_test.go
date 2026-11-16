@@ -336,12 +336,24 @@ func TestUpgradeFromTheChannelRefuses(t *testing.T) {
 
 func TestChannelClientDefaults(t *testing.T) {
 	client, err := Deps{}.channelClient(nil)
-	if err != nil || len(client.Sources) != 0 || client.Keys != nil {
-		t.Fatalf("production client = %+v, %v (want built-in sources and keys)", client, err)
+	if err != nil || strings.Join(client.Sources, ",") != strings.Join(distribution.DefaultSources, ",") ||
+		len(client.Keys) != len(distribution.TrustedKeys()) || client.Edition != distribution.EditionCommunity || !client.Published {
+		t.Fatalf("production client = %+v, %v (want the community profile)", client, err)
 	}
 	client, err = Deps{}.channelClient([]string{"https://mirror.example/dist/", "https://mirror.example/dist"})
-	if err != nil || strings.Join(client.Sources, ",") != "https://mirror.example/dist" {
+	if err != nil || strings.Join(client.Sources, ",") != "https://mirror.example/dist" || client.Published {
 		t.Fatalf("client = %+v, %v", client, err)
+	}
+	// An edition's profile carries its edition and keys onto a mirror too.
+	keys := distribution.Keys{"test": channelKeyPublic}
+	acme := Deps{Profile: distribution.Profile{Edition: "acme", Sources: []string{"https://acme.example"}, Keys: keys}}
+	client, err = acme.channelClient(nil)
+	if err != nil || client.Edition != "acme" || strings.Join(client.Sources, ",") != "https://acme.example" || len(client.Keys) != 1 {
+		t.Fatalf("edition client = %+v, %v", client, err)
+	}
+	client, err = acme.channelClient([]string{"https://mirror.example"})
+	if err != nil || client.Edition != "acme" || strings.Join(client.Sources, ",") != "https://mirror.example" || len(client.Keys) != 1 || client.Published {
+		t.Fatalf("edition mirror client = %+v, %v", client, err)
 	}
 	if _, err := (Deps{}).channelClient([]string{"mirror.example"}); err == nil {
 		t.Fatal("a source without a scheme must be refused")
