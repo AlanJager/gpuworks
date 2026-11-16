@@ -411,12 +411,18 @@ type SysInfo struct {
 	// RuntimeFallbackReason the code saying why: it cannot give a container
 	// this node's accelerators (accelerator.RuntimeGPUBlocked*), its daemon
 	// is installed but did not answer at startup
-	// (RuntimeFallbackDaemonNotReady), or accelerator.RuntimeGPUReady once it
+	// (RuntimeFallbackDaemonNotReady), its daemon refuses the agent's
+	// account the socket (RuntimeFallbackSocketPermissionDenied), or
+	// accelerator.RuntimeGPUReady once it
 	// can serve and the agent has yet to switch back. Both empty when nothing
 	// was passed over.
-	RuntimeFallbackFrom   string   `json:"runtime_fallback_from,omitempty"`
-	RuntimeFallbackReason string   `json:"runtime_fallback_reason,omitempty"`
-	Runtimes              []string `json:"runtimes,omitempty"`
+	RuntimeFallbackFrom   string `json:"runtime_fallback_from,omitempty"`
+	RuntimeFallbackReason string `json:"runtime_fallback_reason,omitempty"`
+	// RuntimeFallbackSocket is what the agent found about the daemon socket
+	// its account may not open, sent only with
+	// RuntimeFallbackSocketPermissionDenied.
+	RuntimeFallbackSocket *RuntimeSocketDenial `json:"runtime_fallback_socket,omitempty"`
+	Runtimes              []string             `json:"runtimes,omitempty"`
 	// AcceleratorVendors is every vendor whose cards are in the host, the
 	// one the node manages (GPUVendor) included, so the operator can choose
 	// another (AcceleratorPreference). Empty when the host's PCI bus cannot
@@ -567,13 +573,6 @@ const (
 	RuntimePrivilegeSudo = "sudo"
 	RuntimePrivilegeNone = "none"
 )
-
-// RuntimeFallbackDaemonNotReady is the fallback reason for a runtime whose
-// CLI and local socket are present but whose daemon did not answer while the
-// agent started: dockerd still starting at boot, or too busy (pulling a
-// large image) to answer in time. The agent rechecks it every minute and
-// switches back once it answers and no instance would be disturbed.
-const RuntimeFallbackDaemonNotReady = "daemon_not_ready"
 
 // PeerRelayReady is consumed by the coordinator before forwarding TLS bytes.
 type PeerRelayReady struct {

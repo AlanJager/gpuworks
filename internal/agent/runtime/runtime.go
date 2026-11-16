@@ -18,9 +18,25 @@ import (
 // ErrDaemonNotReady is what Detect returns for a runtime whose CLI and local
 // socket are present but whose daemon did not answer: still starting, or too
 // busy to answer in time. It is a state that passes, unlike a missing
-// runtime or one the agent may not use (permission denied), which Detect
-// reports as plain false.
+// runtime (plain false) or one the agent may not use (*SocketDeniedError).
 var ErrDaemonNotReady = errors.New("container daemon is installed but not answering")
+
+// SocketDeniedError is what Detect returns for a runtime whose daemon
+// answers but refuses the agent's account its local socket: the CLI said
+// permission denied connecting to Socket. It matches ErrPermissionDenied.
+// Unlike ErrDaemonNotReady it does not pass by waiting.
+type SocketDeniedError struct {
+	// Socket is the path of the socket the CLI could not open; Detail the
+	// CLI's own first line, for the log.
+	Socket, Detail string
+}
+
+func (e *SocketDeniedError) Error() string {
+	return fmt.Sprintf("permission denied on the container daemon socket %s: %s", e.Socket, e.Detail)
+}
+
+// Unwrap makes the refusal an ErrPermissionDenied.
+func (e *SocketDeniedError) Unwrap() error { return ErrPermissionDenied }
 
 // ErrImageNotFound is what an ImageInspector returns when the runtime itself
 // answered that the image is not in its local store, as opposed to a runtime
