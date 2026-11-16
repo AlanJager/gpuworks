@@ -22,7 +22,7 @@ type tokenRig struct {
 	session string
 }
 
-func newTokenRig(t *testing.T) *tokenRig {
+func newTokenRig(t *testing.T, with ...func(*Deps)) *tokenRig {
 	t.Helper()
 	st, err := store.Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())
 	if err != nil {
@@ -43,7 +43,11 @@ func newTokenRig(t *testing.T) *tokenRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &tokenRig{t: t, h: Router(Deps{AuthSigner: signer, Store: st, AI: &fakeAI{available: true}, SchedulingActivity: replayActivity{st}}), st: st, session: session}
+	deps := Deps{AuthSigner: signer, Store: st, AI: &fakeAI{available: true}, SchedulingActivity: replayActivity{st}}
+	for _, f := range with {
+		f(&deps)
+	}
+	return &tokenRig{t: t, h: Router(deps), st: st, session: session}
 }
 
 func (r *tokenRig) do(bearer, method, path, body string) *httptest.ResponseRecorder {

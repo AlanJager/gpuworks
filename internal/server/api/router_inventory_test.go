@@ -3,30 +3,18 @@ package api
 import (
 	"net/http"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
-
-	"github.com/go-chi/chi/v5"
 )
 
 // TestRouterInventory guards the registration surface separately from handler
 // tests. A handler can have excellent unit coverage while accidentally being
 // omitted from Router or mounted under the wrong method/path.
 func TestRouterInventoryMatchesCompleteContract(t *testing.T) {
-	h := Router(Deps{})
-	r, ok := h.(chi.Routes)
-	if !ok {
-		t.Fatalf("Router returned %T, want chi.Routes for inventory inspection", h)
-	}
-	var routes []string
-	if err := chi.Walk(r, func(method string, path string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		routes = append(routes, method+" "+path)
-		return nil
-	}); err != nil {
+	routes, err := RouteInventory(Router(Deps{}))
+	if err != nil {
 		t.Fatal(err)
 	}
-	sort.Strings(routes)
 	want := strings.Split(strings.TrimSpace(fullRouteInventory), "\n")
 	if !slices.Equal(routes, want) {
 		t.Fatalf("router inventory changed; update the contract deliberately\ngot:\n%s\nwant:\n%s", strings.Join(routes, "\n"), strings.Join(want, "\n"))

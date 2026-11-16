@@ -476,6 +476,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Post("/batches/{id}/cancel", a.cancelBatch)
 			r.Get("/batches/{id}/files/{kind}", a.downloadBatchFile)
 		})
+		// Last, so an extension cannot take a path the core serves.
+		a.mountExtensions(r)
 	})
 	r.Get("/healthz", a.health)
 
