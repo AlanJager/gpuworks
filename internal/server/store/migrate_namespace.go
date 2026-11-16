@@ -121,10 +121,12 @@ func validateMigrationSets(sets []MigrationSet) error {
 // alone with a warning: a database moved between builds keeps the tables
 // of modules this build lacks, and a later build with them carries on.
 func migrateNamespaces(db *gorm.DB, sets []MigrationSet) error {
-	if len(sets) == 0 && !db.Migrator().HasTable(&NamespaceMigration{}) {
-		return nil
-	}
-	if err := db.AutoMigrate(&NamespaceMigration{}); err != nil {
+	if len(sets) == 0 {
+		// A community open only reads: it warns about what it finds.
+		if !db.Migrator().HasTable(&NamespaceMigration{}) {
+			return nil
+		}
+	} else if err := db.AutoMigrate(&NamespaceMigration{}); err != nil {
 		return err
 	}
 	var recorded []string
