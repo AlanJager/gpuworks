@@ -6,6 +6,8 @@ import type { EvaluateResponse } from "../../api";
 // evaluated form; this filter only prepares another evaluation.
 export class EvaluateQuickParams {
   private displayed: Record<string, unknown> = {};
+  // The engine whose dictionary produced `displayed`.
+  private displayedEngine = "";
   private authored = new Set<string>();
 
   noteChanged(changed: Record<string, unknown>) {
@@ -34,15 +36,36 @@ export class EvaluateQuickParams {
     return request;
   }
 
-  accept(response: EvaluateResponse) {
+  accept(response: EvaluateResponse, engine: string) {
     if (!response.form_values) return;
     // Do this before updating the form, and only after the request's stale
     // guards pass. Its programmatic update must not look like a user edit.
     this.displayed = structuredClone(response.form_values);
+    this.displayedEngine = engine;
     // Once an explicit extra_args flag moves into its field, the field owns
     // that choice. Editing the remaining argument text must not erase it.
     for (const moved of response.moved ?? []) {
       if (moved.source === "extra_args") this.authored.add(moved.key);
     }
+  }
+
+  // A displayed value is that engine's dictionary default or projection, not
+  // the deployer's choice. Once the draft names another engine it describes
+  // nothing: vLLM's automatic context (-1) is no value at all to SGLang. The
+  // keys returned still hold such a value on the form and nobody stated them;
+  // the caller clears them so the next answer derives them for the new
+  // engine, or leaves them unstated where a manual command owns the launch.
+  // Values the deployer stated are kept and judged by the server as ever.
+  staleFor(engine: string, draft: Record<string, unknown>): string[] {
+    if (!engine || !this.displayedEngine || engine === this.displayedEngine) return [];
+    const stale = Object.entries(this.displayed)
+      .filter(([key, value]) =>
+        !this.authored.has(key) &&
+        draft[key] !== undefined &&
+        JSON.stringify(draft[key]) === JSON.stringify(value))
+      .map(([key]) => key);
+    this.displayed = {};
+    this.displayedEngine = "";
+    return stale;
   }
 }
