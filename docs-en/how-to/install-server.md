@@ -191,8 +191,8 @@ The control plane must be managed by systemd, launchd, or `serve --supervise`, m
 
 1. As an administrator, open **Settings → General → Version and updates** and check the current version of **Server**.
 2. Under **Update channel**, select **Release** (stable releases) or **Nightly** (rolling previews), click **Check for updates**, and verify the latest server version.
-3. Click **Upgrade** on the **Server** row. Check the target version and interruption notice in the confirmation page, then click **Upgrade**.
-4. Wait for the page to recover. Confirm that it reports that the server now runs the target version, and that the **Current** version matches the target. If the new version does not respond within 5 minutes, the page reports an issue. Follow [Troubleshooting](#排查) to check the actual version and logs; do not assume a timeout means the upgrade succeeded or rolled back.
+3. Click **Select upgrade version** on the **Server** row. Choose a published release or build, review the current version, target and restart impact, then click **Confirm upgrade**.
+4. Wait for the page to recover. Confirm that it reports that the server now runs the target version, and that the **Current** version matches the target. If the new version does not respond within 5 minutes, the result remains unconfirmed. The page checks every 15 seconds, and **Recheck running version** checks immediately. A confirmed return to the previous version displays a rollback notice. See [Troubleshooting](#排查).
 
 **If the server cannot access the release source**, click **Upload release** in the same row and select a `gpuworks-<release_id>-<os>-<arch>.tar.gz` matching the server's operating system and architecture. **Selecting the file immediately starts upload and upgrade; the online upgrade confirmation page does not appear again.** After completion, verify the result as described in step 4.
 

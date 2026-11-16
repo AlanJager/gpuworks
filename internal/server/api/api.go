@@ -387,6 +387,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Get("/updates", a.getUpdates)
 			r.With(a.managementAdmin).Put("/updates/channel", a.putUpdateChannel)
 			r.With(a.managementAdmin).Put("/updates/auto-check", a.putUpdateAutoCheck)
+			r.With(a.managementAdmin).Get("/updates/server/versions", a.serverVersionChoices)
+			r.With(a.managementAdmin).Get("/updates/server/result", a.serverUpgradeResult)
 			r.With(a.managementAdmin).Post("/updates/server", a.upgradeServerFromChannel)
 			r.With(a.managementAdmin).Post("/updates/server/upload", a.upgradeServerFromUpload)
 			r.With(a.managementAdmin).Get("/usage-report", a.getUsageReport)

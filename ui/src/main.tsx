@@ -14,6 +14,7 @@ import "./app.css";
 import "./theme/layers.css";
 // Export-only overrides, scoped to .benchmark-report-export; unlayered so they beat antd.
 import "./pages/evaluations/benchmarkReportExport.css";
+import "./pages/settings/updates.css";
 
 function Root() {
   const { i18n } = useTranslation();

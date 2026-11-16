@@ -1847,6 +1847,15 @@ export interface NoticeList {
 }
 
 /** A console upgrade that has swapped the binary and is restarting into `to`. */
+export interface ServerVersionChoice {
+  latest?: boolean;
+  version: string;
+  commit?: string;
+  built_at: string;
+  sha256?: string;
+  reason?: "installed" | "arch" | "older" | "backup";
+}
+
 export interface ServerUpgradeStarted {
   from: string;
   to: string;
@@ -5014,7 +5023,14 @@ export const api = {
   notices: () => sendJSON<NoticeList>("GET", "/api/v1/notices"),
   readNotices: (ids: string[]) => sendJSON<void>("POST", "/api/v1/notices/read", { ids }),
   // The server downloads its release from the channel, swaps the binary and restarts.
-  upgradeServer: () => sendJSON<ServerUpgradeStarted>("POST", "/api/v1/updates/server"),
+  serverVersions: (channel: string, signal?: AbortSignal) =>
+    sendJSON<{ channel: string; platform: string; versions: ServerVersionChoice[] }>("GET",
+      "/api/v1/updates/server/versions?channel=" + encodeURIComponent(channel), undefined, signal),
+  serverUpgradeResult: (attempt: string, backup: string, signal: AbortSignal) =>
+    sendJSON<{ phase: "unknown" | "download" | "restart" | "failed" | "rollback"; from?: string; to?: string }>("GET",
+      "/api/v1/updates/server/result?" + new URLSearchParams({ attempt, backup }), undefined, signal),
+  upgradeServer: (target?: { channel: string; version: string; sha256?: string; attempt: string }) =>
+    sendJSON<ServerUpgradeStarted>("POST", "/api/v1/updates/server", target),
   // The same with a release archive uploaded for a server that cannot reach the channel.
   uploadServerArchive: (file: File) =>
     sendFile<ServerUpgradeStarted>("/api/v1/updates/server/upload", file),
