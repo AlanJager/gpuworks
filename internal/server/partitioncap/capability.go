@@ -124,7 +124,7 @@ func (r Reports) ForGPU(gpu *store.GPU) []proto.PartitionCapability {
 			continue
 		}
 		requiresProbe := !accelerator.SkipsBehaviorProbe(backend)
-		if !requiresProbe && node.PartitionSafetyProtocol < 1 {
+		if !requiresProbe && node.PartitionSafetyProtocol < proto.PartitionSafetyOwnership {
 			unavailable(&capability, messages.ErrorPartitionAgentUpgradeRequired, proto.PartitionReasonParams{})
 			out = append(out, capability)
 			continue

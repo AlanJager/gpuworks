@@ -220,10 +220,14 @@ func (n *NodeRuntime) cardsBusy() map[string]bool {
 	if !known {
 		return nil
 	}
-	for ident := range n.sleepingCardPIDs() {
-		delete(ours, ident)
+	sleeping := n.sleepingCardPIDs()
+	busy := make(map[string]bool, len(ours))
+	for ident := range ours {
+		if _, asleep := sleeping[ident]; !asleep {
+			busy[ident] = true
+		}
 	}
-	return ours
+	return busy
 }
 
 // runtimeCheckPassedSince reports whether the runtime check passed on the

@@ -452,7 +452,7 @@ func (c *Conn) reportStatus(ctx context.Context) {
 	}); ok {
 		sys.PartitionProbes = h.PartitionProbes(ctx, sys.PartitionAssets, gpus)
 	}
-	sys.PartitionSafetyProtocol = 1
+	sys.PartitionSafetyProtocol = proto.PartitionSafetyCurrent
 	imageRevision := c.imageRevision()
 	var images []proto.ImagePresence
 	var pathUsage []proto.PathUsage
