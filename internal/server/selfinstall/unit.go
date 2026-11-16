@@ -16,7 +16,10 @@ type UnitConfig struct {
 	DataDir      string // for RequiresMountsFor
 	ServiceUser  string
 	ServiceGroup string
-	StderrLog    string // launchd's StandardErrorPath; systemd has the journal
+	// SupplementaryGroups are extra groups the service runs with, which
+	// install hooks ask for (ServiceGroups); systemd only.
+	SupplementaryGroups []string
+	StderrLog           string // launchd's StandardErrorPath; systemd has the journal
 }
 
 // RenderUnit produces the systemd unit for an installed control plane.
@@ -46,6 +49,9 @@ func RenderUnit(cfg UnitConfig) string {
 	}
 	if group := strings.TrimSpace(cfg.ServiceGroup); group != "" {
 		fmt.Fprintf(&b, "Group=%s\n", group)
+	}
+	if len(cfg.SupplementaryGroups) > 0 {
+		fmt.Fprintf(&b, "SupplementaryGroups=%s\n", systemdArgs(cfg.SupplementaryGroups))
 	}
 	fmt.Fprintf(&b, "ExecStart=%s\n", systemdArgs(append([]string{cfg.Binary}, serveArgs(cfg)...)))
 	fmt.Fprintf(&b, "ExecStartPre=/usr/bin/test -x %s\n", systemdQuote(cfg.Binary))

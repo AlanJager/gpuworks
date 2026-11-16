@@ -215,6 +215,9 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	if err := i.createHistory(ctx, i.layout.HistoryPath(), 0o600); err != nil {
 		i.io.Warn("warning: could not create the install history: %v", err)
 	}
+	if err := i.reapplyInstallHooks(ctx, svc); err != nil {
+		return fmt.Errorf("%w; the installed binary was not replaced", err)
+	}
 	if err := i.chownTree(ctx, inst.ServiceUser); err != nil {
 		return err
 	}
