@@ -43,7 +43,12 @@ routes_arg=()
 if [ -n "${UI_CHECK_BASE_REF:-}" ]; then
   node scripts/ui_antd_inventory.mjs --base "$UI_CHECK_BASE_REF" --affected > "$work/affected.json"
   echo "ui-check: pages to walk: $(cat "$work/affected.json")"
-  if [ "$(cat "$work/affected.json")" = "[]" ]; then echo "ui-check: the change touches no page"; exit 0; fi
+  if [ "$(cat "$work/affected.json")" = "[]" ]; then
+    echo "ui-check: no affected pages; running the detail-spacing checks only"
+    (cd ui && node tests/browser/detail-spacing.mjs "$out/detail-spacing") || exit $?
+    test -s "$out/detail-spacing/measurements.json" || { echo "ui-check: the detail-spacing checker produced no measurements; failing" >&2; exit 2; }
+    exit 0
+  fi
   routes_arg=(--affected "$work/affected.json")
 fi
 

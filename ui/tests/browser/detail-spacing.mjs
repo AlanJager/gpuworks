@@ -29,7 +29,7 @@ let server, browser;
 try {
   await writeFile(fixture, html);
   server=await createServer({root,server:{host:'127.0.0.1',port:0}});await server.listen();
-  browser=await chromium.launch({channel:'chrome',headless:true});
+  browser=await chromium.launch(process.env.CHROME_PATH ? {executablePath:process.env.CHROME_PATH,headless:true} : {channel:'chrome',headless:true});
   const results=[];
   for(const theme of ['light','dark']) for(const locale of ['zh','en']) for(const width of [1440,1024,768]) {
     const page=await browser.newPage({viewport:{width,height:1000}});

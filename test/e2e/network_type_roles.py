@@ -257,9 +257,11 @@ def exercise_minimum_network(page, server, t, name, network_id, result):
     table = resolved.locator('.resource-table')
     expect(table).to_have_count(1)
     expect(table.locator('table')).to_have_count(1)
+    expect(table.locator('thead')).to_have_css('height', '36px')
     attach = button(page, t['actions']['attach'])
     expect(attach).to_have_count(1)
     expect(attach).to_be_visible()
+    expect(attach).to_have_css('height', '28px')
     cidr = resolved.get_by_role('rowheader', name=t['selector']['cidr'], exact=True).locator('..')
     interface = resolved.get_by_role('rowheader', name=t['selector']['interface'], exact=True).locator('..')
     expect(cidr).to_have_count(1)
@@ -293,7 +295,7 @@ def exercise_minimum_network(page, server, t, name, network_id, result):
     page.goto(server.base + '/networks?network=' + str(network_id))
     expect(page.get_by_role('heading', name=re.compile(r'^' + re.escape(name) + r'(?:\s|$)'))).to_be_visible()
     return {
-        'attach_button_visible': True,
+        'attach_button_small': True,
         'list_name': True,
         'list_selector_empty': True,
         'detail_cidr_empty': True,
@@ -302,7 +304,7 @@ def exercise_minimum_network(page, server, t, name, network_id, result):
         'edit_button_text': True,
         'edit_backfill': True,
         'edit_password_fields': 0,
-        'resolved_resource_table': True,
+        'resolved_table_header_36': True,
         'selector_descriptions': True,
     }
 
