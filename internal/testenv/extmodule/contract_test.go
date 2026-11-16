@@ -98,7 +98,7 @@ func TestAModuleReachesEveryHostMethod(t *testing.T) {
 	}
 
 	api := e.API(t)
-	if status, body := send(t, api, http.MethodGet, "/api/v1/fake/ping", ""); status != http.StatusOK || string(body) != `{"pong":true}` {
+	if status, body := send(t, api, http.MethodGet, "/api/v1/x/fake/ping", ""); status != http.StatusOK || string(body) != `{"pong":true}` {
 		t.Fatalf("mounted community route = %d %s", status, body)
 	}
 	status, body := send(t, api, http.MethodGet, "/api/v1/console/manifest", "")
@@ -189,16 +189,16 @@ func TestAFeatureSourceDecidesAnExtensionRoute(t *testing.T) {
 	}
 	for _, c := range cases {
 		src.set(c.access)
-		status, body := send(t, api, http.MethodGet, "/api/v1/fake/reports", "")
+		status, body := send(t, api, http.MethodGet, "/api/v1/x/fake/reports", "")
 		if code, _ := productError(body); status != c.get || (c.getCode != "" && code != c.getCode) {
 			t.Fatalf("%s GET = %d %s", c.access, status, body)
 		}
-		status, body = send(t, api, http.MethodPost, "/api/v1/fake/reports", "{}")
+		status, body = send(t, api, http.MethodPost, "/api/v1/x/fake/reports", "{}")
 		if code, _ := productError(body); status != c.post || (c.postCod != "" && code != c.postCod) {
 			t.Fatalf("%s POST = %d %s", c.access, status, body)
 		}
 		// The community route ignores the feature.
-		if status, _ := send(t, api, http.MethodGet, "/api/v1/fake/ping", ""); status != http.StatusOK {
+		if status, _ := send(t, api, http.MethodGet, "/api/v1/x/fake/ping", ""); status != http.StatusOK {
 			t.Fatalf("%s community route = %d", c.access, status)
 		}
 		_, manifest := send(t, api, http.MethodGet, "/api/v1/console/manifest", "")
@@ -213,11 +213,11 @@ func TestAFeatureSourceDecidesAnExtensionRoute(t *testing.T) {
 func TestADeclaredFeatureWithoutASourceIsLocked(t *testing.T) {
 	e := testenv.NewWithExtensions(t, app.Extensions{Modules: []app.Module{&fakeModule{name: "fake"}}}, nil)
 	api := e.API(t)
-	status, body := send(t, api, http.MethodGet, "/api/v1/fake/reports", "")
+	status, body := send(t, api, http.MethodGet, "/api/v1/x/fake/reports", "")
 	if code, _ := productError(body); status != http.StatusForbidden || code != messages.ErrorFeatureProviderAbsent {
 		t.Fatalf("GET without a source = %d %s", status, body)
 	}
-	if status, _ := send(t, api, http.MethodGet, "/api/v1/fake/ping", ""); status != http.StatusOK {
+	if status, _ := send(t, api, http.MethodGet, "/api/v1/x/fake/ping", ""); status != http.StatusOK {
 		t.Fatalf("community route = %d", status)
 	}
 }

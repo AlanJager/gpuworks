@@ -74,7 +74,7 @@ func (h *Host) DeriveKey(purpose string) ([]byte, error) {
 	return hkdf.Key(sha256.New, []byte(h.master), []byte("gpuworks extension key"), h.name+"\x00"+purpose, 32)
 }
 
-// MountAPI adds e's routes under /api/v1/<e.Name()>/ (api.Extension).
+// MountAPI adds e's routes under /api/v1/x/<e.Name()>/ (api.Extension).
 func (h *Host) MountAPI(e api.Extension) {
 	h.mustBeOpen("MountAPI")
 	if e == nil {

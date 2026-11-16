@@ -70,9 +70,9 @@ func (fakeRoutes) Routes(m api.Mounter) {
 			_, _ = w.Write([]byte(body))
 		})
 	}
-	m.Handle(api.RouteSpec{Method: http.MethodGet, Pattern: "/fake/ping", Action: "fake.ping", Community: true}, ok(`{"pong":true}`))
-	m.Handle(api.RouteSpec{Method: http.MethodGet, Pattern: "/fake/reports", Action: "fake.list", Feature: featureKey}, ok(`{"reports":[]}`))
-	m.Handle(api.RouteSpec{Method: http.MethodPost, Pattern: "/fake/reports", Access: api.AccessAdmin, Action: "fake.create", Feature: featureKey}, ok(`{"created":true}`))
+	m.Handle(api.RouteSpec{Method: http.MethodGet, Pattern: "/x/fake/ping", Action: "fake.ping", Community: true}, ok(`{"pong":true}`))
+	m.Handle(api.RouteSpec{Method: http.MethodGet, Pattern: "/x/fake/reports", Action: "fake.list", Feature: featureKey}, ok(`{"reports":[]}`))
+	m.Handle(api.RouteSpec{Method: http.MethodPost, Pattern: "/x/fake/reports", Access: api.AccessAdmin, Action: "fake.create", Feature: featureKey}, ok(`{"created":true}`))
 }
 
 func (fakeRoutes) Nav() []dto.NavContribution {

@@ -13,7 +13,7 @@ export type { ComponentType, ReactNode } from "react";
 export { Trans, useTranslation } from "react-i18next";
 export { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-// The API client: reads and writes under /api/v1 with the console's session and error decoding.
+// The API client: reads and writes under /api/v1 (an extension's own routes are under /api/v1/x/<name>/) with the console's session and error decoding.
 export { getJSON, sendJSON } from "../api";
 export type { List } from "../api";
 export { APIError, apiErrorText, productMessageText } from "../apiError";

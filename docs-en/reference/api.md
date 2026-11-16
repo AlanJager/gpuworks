@@ -2249,9 +2249,9 @@ The following conventions maintain the endpoint inventory; they are not prerequi
 
 ### Console manifest and extension routes
 
-A separately built server can mount its own management routes under `/api/v1/<name>/` (`api.Deps.Extensions`). The community server mounts no extension routes, and its route inventory is exactly the same as with no extensions.
+A separately built server can mount its own management routes under `/api/v1/x/<name>/` (`api.Deps.Extensions`). The community server mounts no extension routes, and its route inventory is exactly the same as with no extensions.
 
-- **Namespace and collisions**: an extension name must match `[a-z][a-z0-9_]{1,31}` and must not be a first path segment the core already uses (such as `nodes` or `console`); a route must be `/<name>` or start with `/<name>/`. `Router` panics at startup on a route outside its namespace or a method and path registered twice.
+- **Namespace and collisions**: an extension name must match `[a-z][a-z0-9_]{1,31}`; a route (relative to `/api/v1`) must be `/x/<name>` or start with `/x/<name>/`. The core registers no route under `/api/v1/x/`, so an extension name may equal a core path segment (such as `nodes`), and `/api/v1/nodes` stays the core route. `Router` panics at startup on a route outside its namespace or a method and path registered twice.
 - **Authentication**: extension routes use the same management authentication as core routes (including the session's origin check and renewal). Each declares one of three levels: `read` (any signed-in user and platform token; a read token only for GET/HEAD/OPTIONS), `admin` (also requires an administrator, otherwise `403 ADMINISTRATOR_REQUIRED`), or `admin-session` (an administrator with a login session only; a platform token gets `403 PLATFORM_TOKEN_NOT_ALLOWED`).
 - **Feature availability**: every extension route either belongs to one feature or is explicitly marked as a community route, never both. A feature's availability is `full`, `read_only`, `locked`, or `hidden`, enforced on the server: under `read_only` only reads pass (plus routes declared writable while read-only) and writes get `403 FEATURE_READ_ONLY`; under `locked` the route returns `403 FEATURE_UNAVAILABLE`; under `hidden` it returns `404 FEATURE_UNAVAILABLE`. When nothing answers for availability, the feature counts as unavailable and returns `FEATURE_PROVIDER_ABSENT`. The error's `params.feature` is the feature name.
 - **AI assistant and MCP**: extension GET routes are closed to the AI assistant and MCP by default; only explicitly marked routes appear in the readable route list and can be read.
@@ -2272,4 +2272,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 47c554784917279a612722cc744629164389aa4b3250252b730c6055c451d8c4 -->
+<!-- translation-source-sha256: 51eae070afdbfbf10b9e7413c2025e939eaa1e932c1d852d7ed58442263902c9 -->

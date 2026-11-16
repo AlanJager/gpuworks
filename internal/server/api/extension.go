@@ -18,7 +18,7 @@ import (
 // ExtensionDeps are the hooks a separately built server hands the API. The
 // zero value adds nothing: the community server.
 type ExtensionDeps struct {
-	// Extensions mount routes under /api/v1/<name>/ (Extension).
+	// Extensions mount routes under /api/v1/x/<name>/ (Extension).
 	Extensions []Extension
 	// Features answers for the feature keys extension routes and menu
 	// entries name; nil declares none, so naming a feature fails at Router.
@@ -33,8 +33,9 @@ type ExtensionDeps struct {
 // Extension is a set of management routes a separately built server mounts.
 type Extension interface {
 	// Name is the extension's namespace: its routes live under
-	// /api/v1/<Name>/. It follows [a-z][a-z0-9_]{1,31} and must not be a
-	// path the core already serves.
+	// /api/v1/x/<Name>/. It follows [a-z][a-z0-9_]{1,31}. The core serves
+	// nothing under /api/v1/x/, so a name may equal a core path segment
+	// ("nodes") without colliding with a core route, now or later.
 	Name() string
 	// Routes registers the routes, once, while Router builds.
 	Routes(m Mounter)
@@ -91,8 +92,8 @@ func (a RouteAccess) String() string {
 type RouteSpec struct {
 	// Method is GET, POST, PUT, PATCH or DELETE.
 	Method string
-	// Pattern is relative to /api/v1 and is "/<name>" or starts with
-	// "/<name>/"; chi parameters ({id}) are allowed.
+	// Pattern is relative to /api/v1 and is "/x/<name>" or starts with
+	// "/x/<name>/"; chi parameters ({id}) are allowed.
 	Pattern string
 	Access  RouteAccess
 	// Action names what the route does ("<extension>.<verb>"), for the
@@ -116,6 +117,11 @@ type RouteSpec struct {
 
 var extensionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
 
+// extensionRoot is the /api/v1 subtree that holds every extension's
+// namespace. The core mounts no route under it (a router inventory test
+// keeps it so), so no extension name can collide with a core path.
+const extensionRoot = "/x"
+
 // extensionEndpoint is an extension route's registered handler; the route
 // inventory and the assistant's reader find a route's spec through it.
 type extensionEndpoint struct {
@@ -129,11 +135,10 @@ func (e *extensionEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // extensionMounter mounts every extension into the /api/v1 router.
 type extensionMounter struct {
-	a        *apiHandlers
-	r        chi.Router
-	name     string
-	reserved map[string]bool
-	seen     map[string]bool
+	a    *apiHandlers
+	r    chi.Router
+	name string
+	seen map[string]bool
 }
 
 // mountExtensions registers the extensions' routes on r, the /api/v1 router,
@@ -143,7 +148,7 @@ func (a *apiHandlers) mountExtensions(r chi.Router) {
 	if len(ext.Extensions) == 0 {
 		return
 	}
-	m := &extensionMounter{a: a, r: r, reserved: coreSegments(r), seen: map[string]bool{}}
+	m := &extensionMounter{a: a, r: r, seen: map[string]bool{}}
 	names := map[string]bool{}
 	for _, e := range ext.Extensions {
 		name := e.Name()
@@ -152,8 +157,6 @@ func (a *apiHandlers) mountExtensions(r chi.Router) {
 			panic(fmt.Sprintf("api: extension name %q does not match [a-z][a-z0-9_]{1,31}", name))
 		case names[name]:
 			panic(fmt.Sprintf("api: extension %q registered twice", name))
-		case m.reserved[name]:
-			panic(fmt.Sprintf("api: extension %q collides with the core path /api/v1/%s", name, name))
 		}
 		names[name] = true
 		m.name = name
@@ -167,18 +170,6 @@ func (a *apiHandlers) mountExtensions(r chi.Router) {
 	m.name = "" // a Mounter kept past Routes mounts nothing
 }
 
-// coreSegments are the first path segments the core already serves under
-// /api/v1, which no extension may take as its name.
-func coreSegments(r chi.Router) map[string]bool {
-	out := map[string]bool{}
-	_ = chi.Walk(r, func(_, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		seg, _, _ := strings.Cut(strings.TrimPrefix(route, "/"), "/")
-		out[seg] = true
-		return nil
-	})
-	return out
-}
-
 func (m *extensionMounter) Handle(spec RouteSpec, h http.Handler) {
 	if m.name == "" {
 		panic("api: an extension mounted a route after Router was built")
@@ -189,8 +180,8 @@ func (m *extensionMounter) Handle(spec RouteSpec, h http.Handler) {
 	default:
 		panic(fmt.Sprintf("api: extension %s: method %q not allowed", m.name, spec.Method))
 	}
-	if spec.Pattern != "/"+m.name && !strings.HasPrefix(spec.Pattern, "/"+m.name+"/") {
-		panic(fmt.Sprintf("api: extension %s: %s is outside /api/v1/%s/", m.name, where, m.name))
+	if ns := extensionRoot + "/" + m.name; spec.Pattern != ns && !strings.HasPrefix(spec.Pattern, ns+"/") {
+		panic(fmt.Sprintf("api: extension %s: %s is outside /api/v1%s/", m.name, where, ns))
 	}
 	if h == nil {
 		panic(fmt.Sprintf("api: extension %s: %s has no handler", m.name, where))

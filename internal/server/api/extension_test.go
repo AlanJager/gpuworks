@@ -93,17 +93,17 @@ func TestExtensionMountRefusesBadRegistrations(t *testing.T) {
 		{"bad name", []Extension{fakeExtension{name: "Fake"}}, "does not match"},
 		{"one-letter name", []Extension{fakeExtension{name: "f"}}, "does not match"},
 		{"twice", []Extension{fakeExtension{name: "fake"}, fakeExtension{name: "fake"}}, "registered twice"},
-		{"core path", []Extension{fakeExtension{name: "nodes"}}, "collides with the core path"},
-		{"core manifest path", []Extension{fakeExtension{name: "console"}}, "collides with the core path"},
-		{"outside namespace", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/other")}}}, "outside /api/v1/fake/"},
-		{"prefix is not a namespace", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/fakes/x")}}}, "outside /api/v1/fake/"},
-		{"method", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodTrace, Pattern: "/fake", Community: true}}}}, "not allowed"},
-		{"collision", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/fake/a"), get("/fake/a")}}}, "registered twice"},
-		{"no feature", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/fake"}}}}, "names no feature and is not Community"},
-		{"both", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/fake", Feature: "fake.things", Community: true}}}}, "choose one"},
-		{"undeclared feature", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/fake", Feature: "fake.other"}}}}, "undeclared feature"},
-		{"readable write", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodPost, Pattern: "/fake", Community: true, AIReadable: true}}}}, "only a GET route"},
-		{"nil handler", []Extension{fakeExtension{name: "fake", nilH: true, routes: []RouteSpec{get("/fake")}}}, "has no handler"},
+		{"outside namespace", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/other")}}}, "outside /api/v1/x/fake/"},
+		{"outside the extension root", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/fake/a")}}}, "outside /api/v1/x/fake/"},
+		{"another extension's namespace", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/x/other/a")}}}, "outside /api/v1/x/fake/"},
+		{"prefix is not a namespace", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/x/fakes/x")}}}, "outside /api/v1/x/fake/"},
+		{"method", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodTrace, Pattern: "/x/fake", Community: true}}}}, "not allowed"},
+		{"collision", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/x/fake/a"), get("/x/fake/a")}}}, "registered twice"},
+		{"no feature", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/x/fake"}}}}, "names no feature and is not Community"},
+		{"both", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/x/fake", Feature: "fake.things", Community: true}}}}, "choose one"},
+		{"undeclared feature", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/x/fake", Feature: "fake.other"}}}}, "undeclared feature"},
+		{"readable write", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodPost, Pattern: "/x/fake", Community: true, AIReadable: true}}}}, "only a GET route"},
+		{"nil handler", []Extension{fakeExtension{name: "fake", nilH: true, routes: []RouteSpec{get("/x/fake")}}}, "has no handler"},
 		{"menu entry", []Extension{fakeNavExtension{fakeExtension{name: "fake", nav: []dto.NavContribution{{ID: "x", Group: "g", LabelKey: "k", Route: "no-slash"}}}}}, "needs an id"},
 		{"menu entry twice", []Extension{fakeNavExtension{fakeExtension{name: "fake", nav: []dto.NavContribution{{ID: "x", Group: "g", LabelKey: "k", Route: "/x"}, {ID: "x", Group: "g", LabelKey: "k", Route: "/y"}}}}}, "added twice"},
 		{"menu feature", []Extension{fakeNavExtension{fakeExtension{name: "fake", nav: []dto.NavContribution{{ID: "x", Group: "g", LabelKey: "k", Route: "/x", Feature: "fake.other"}}}}}, "undeclared feature"},
@@ -124,10 +124,10 @@ func TestExtensionMountRefusesBadRegistrations(t *testing.T) {
 				t.Fatalf("late Handle: panic = %q", r)
 			}
 		}()
-		keeper.m.Handle(RouteSpec{Method: http.MethodGet, Pattern: "/keeper/late", Community: true}, http.NotFoundHandler())
+		keeper.m.Handle(RouteSpec{Method: http.MethodGet, Pattern: "/x/keeper/late", Community: true}, http.NotFoundHandler())
 	}()
 	// Without a gate no feature is declared, so naming one fails at Router.
-	if got := routerPanic(Deps{Extensions: ExtensionDeps{Extensions: []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/fake", Feature: "fake.things"}}}}}}); !strings.Contains(got, "undeclared feature") {
+	if got := routerPanic(Deps{Extensions: ExtensionDeps{Extensions: []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/x/fake", Feature: "fake.things"}}}}}}); !strings.Contains(got, "undeclared feature") {
 		t.Fatalf("nil gate: panic = %q", got)
 	}
 }
@@ -135,11 +135,11 @@ func TestExtensionMountRefusesBadRegistrations(t *testing.T) {
 func TestExtensionRoutesInheritManagementAuth(t *testing.T) {
 	var signer *auth.TokenSigner
 	ext := fakeExtension{name: "fake", routes: []RouteSpec{
-		{Method: http.MethodGet, Pattern: "/fake/items", Community: true},
-		{Method: http.MethodPost, Pattern: "/fake/items", Community: true},
-		{Method: http.MethodPost, Pattern: "/fake/admin", Access: AccessAdmin, Community: true},
-		{Method: http.MethodGet, Pattern: "/fake/admin/{id}", Access: AccessAdmin, Community: true},
-		{Method: http.MethodPost, Pattern: "/fake/session", Access: AccessAdminSession, Community: true},
+		{Method: http.MethodGet, Pattern: "/x/fake/items", Community: true},
+		{Method: http.MethodPost, Pattern: "/x/fake/items", Community: true},
+		{Method: http.MethodPost, Pattern: "/x/fake/admin", Access: AccessAdmin, Community: true},
+		{Method: http.MethodGet, Pattern: "/x/fake/admin/{id}", Access: AccessAdmin, Community: true},
+		{Method: http.MethodPost, Pattern: "/x/fake/session", Access: AccessAdminSession, Community: true},
 	}}
 	rig := newTokenRig(t, func(d *Deps) {
 		d.Extensions = ExtensionDeps{Extensions: []Extension{ext}}
@@ -155,23 +155,23 @@ func TestExtensionRoutesInheritManagementAuth(t *testing.T) {
 		status                     int
 		code, user                 string
 	}{
-		{"anonymous read", "", "GET", "/api/v1/fake/items", 401, "AUTHENTICATION_REQUIRED", ""},
-		{"anonymous admin", "", "POST", "/api/v1/fake/admin", 401, "AUTHENTICATION_REQUIRED", ""},
-		{"anonymous unknown path", "", "GET", "/api/v1/fake/none", 401, "AUTHENTICATION_REQUIRED", ""},
-		{"member reads", member, "GET", "/api/v1/fake/items", 200, "", "member"},
-		{"member writes a read route", member, "POST", "/api/v1/fake/items", 200, "", "member"},
-		{"member on admin", member, "POST", "/api/v1/fake/admin", 403, "ADMINISTRATOR_REQUIRED", ""},
-		{"member on admin read", member, "GET", "/api/v1/fake/admin/7", 403, "ADMINISTRATOR_REQUIRED", ""},
-		{"admin session", rig.session, "POST", "/api/v1/fake/admin", 200, "", "admin"},
-		{"read token reads", read, "GET", "/api/v1/fake/items", 200, "", "admin"},
-		{"read token posts", read, "POST", "/api/v1/fake/items", 403, "PLATFORM_TOKEN_READ_ONLY", ""},
-		{"read token on admin write", read, "POST", "/api/v1/fake/admin", 403, "PLATFORM_TOKEN_READ_ONLY", ""},
-		{"write token on admin", write, "POST", "/api/v1/fake/admin", 200, "", "admin"},
-		{"write token on session-only", write, "POST", "/api/v1/fake/session", 403, "PLATFORM_TOKEN_NOT_ALLOWED", ""},
-		{"read token on session-only", read, "POST", "/api/v1/fake/session", 403, "PLATFORM_TOKEN_NOT_ALLOWED", ""},
-		{"member on session-only", member, "POST", "/api/v1/fake/session", 403, "ADMINISTRATOR_REQUIRED", ""},
-		{"admin session on session-only", rig.session, "POST", "/api/v1/fake/session", 200, "", "admin"},
-		{"unregistered method", rig.session, "DELETE", "/api/v1/fake/items", 405, "METHOD_NOT_ALLOWED", ""},
+		{"anonymous read", "", "GET", "/api/v1/x/fake/items", 401, "AUTHENTICATION_REQUIRED", ""},
+		{"anonymous admin", "", "POST", "/api/v1/x/fake/admin", 401, "AUTHENTICATION_REQUIRED", ""},
+		{"anonymous unknown path", "", "GET", "/api/v1/x/fake/none", 401, "AUTHENTICATION_REQUIRED", ""},
+		{"member reads", member, "GET", "/api/v1/x/fake/items", 200, "", "member"},
+		{"member writes a read route", member, "POST", "/api/v1/x/fake/items", 200, "", "member"},
+		{"member on admin", member, "POST", "/api/v1/x/fake/admin", 403, "ADMINISTRATOR_REQUIRED", ""},
+		{"member on admin read", member, "GET", "/api/v1/x/fake/admin/7", 403, "ADMINISTRATOR_REQUIRED", ""},
+		{"admin session", rig.session, "POST", "/api/v1/x/fake/admin", 200, "", "admin"},
+		{"read token reads", read, "GET", "/api/v1/x/fake/items", 200, "", "admin"},
+		{"read token posts", read, "POST", "/api/v1/x/fake/items", 403, "PLATFORM_TOKEN_READ_ONLY", ""},
+		{"read token on admin write", read, "POST", "/api/v1/x/fake/admin", 403, "PLATFORM_TOKEN_READ_ONLY", ""},
+		{"write token on admin", write, "POST", "/api/v1/x/fake/admin", 200, "", "admin"},
+		{"write token on session-only", write, "POST", "/api/v1/x/fake/session", 403, "PLATFORM_TOKEN_NOT_ALLOWED", ""},
+		{"read token on session-only", read, "POST", "/api/v1/x/fake/session", 403, "PLATFORM_TOKEN_NOT_ALLOWED", ""},
+		{"member on session-only", member, "POST", "/api/v1/x/fake/session", 403, "ADMINISTRATOR_REQUIRED", ""},
+		{"admin session on session-only", rig.session, "POST", "/api/v1/x/fake/session", 200, "", "admin"},
+		{"unregistered method", rig.session, "DELETE", "/api/v1/x/fake/items", 405, "METHOD_NOT_ALLOWED", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := rig.do(tc.bearer, tc.method, tc.path, "")
@@ -189,7 +189,7 @@ func TestExtensionRoutesInheritManagementAuth(t *testing.T) {
 		})
 	}
 	// A browser session's cross-site write is refused before the handler.
-	req := httptestRequest(http.MethodPost, "/api/v1/fake/items", rig.session)
+	req := httptestRequest(http.MethodPost, "/api/v1/x/fake/items", rig.session)
 	req.Header.Set("Origin", "https://elsewhere.example")
 	rec := serve(rig.h, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"code":"MANAGEMENT_ORIGIN_REJECTED"`) {
@@ -201,11 +201,11 @@ func TestExtensionRoutesFollowTheFeatureGate(t *testing.T) {
 	src := &switchSource{}
 	gate := mustGate(t, src, featuregate.Feature{Key: "fake.things"}, featuregate.Feature{Key: "fake.infra", Presentation: featuregate.Conceal})
 	ext := fakeExtension{name: "fake", routes: []RouteSpec{
-		{Method: http.MethodGet, Pattern: "/fake/things", Feature: "fake.things"},
-		{Method: http.MethodPost, Pattern: "/fake/things", Feature: "fake.things"},
-		{Method: http.MethodDelete, Pattern: "/fake/things/{id}", Feature: "fake.things", WriteWhenReadOnly: true},
-		{Method: http.MethodGet, Pattern: "/fake/infra", Feature: "fake.infra"},
-		{Method: http.MethodGet, Pattern: "/fake/open", Community: true},
+		{Method: http.MethodGet, Pattern: "/x/fake/things", Feature: "fake.things"},
+		{Method: http.MethodPost, Pattern: "/x/fake/things", Feature: "fake.things"},
+		{Method: http.MethodDelete, Pattern: "/x/fake/things/{id}", Feature: "fake.things", WriteWhenReadOnly: true},
+		{Method: http.MethodGet, Pattern: "/x/fake/infra", Feature: "fake.infra"},
+		{Method: http.MethodGet, Pattern: "/x/fake/open", Community: true},
 	}}
 	rig := newTokenRig(t, func(d *Deps) { d.Extensions = ExtensionDeps{Extensions: []Extension{ext}, Features: gate} })
 	type call struct {
@@ -219,18 +219,18 @@ func TestExtensionRoutesFollowTheFeatureGate(t *testing.T) {
 		calls []call
 	}{
 		{"full", map[featuregate.Key]featuregate.Availability{"fake.things": {Access: featuregate.Full}, "fake.infra": {Access: featuregate.Full}}, []call{
-			{"GET", "/api/v1/fake/things", 200, ""}, {"POST", "/api/v1/fake/things", 200, ""}, {"DELETE", "/api/v1/fake/things/1", 200, ""}, {"GET", "/api/v1/fake/infra", 200, ""},
+			{"GET", "/api/v1/x/fake/things", 200, ""}, {"POST", "/api/v1/x/fake/things", 200, ""}, {"DELETE", "/api/v1/x/fake/things/1", 200, ""}, {"GET", "/api/v1/x/fake/infra", 200, ""},
 		}},
 		{"read-only", map[featuregate.Key]featuregate.Availability{"fake.things": {Access: featuregate.ReadOnly}}, []call{
-			{"GET", "/api/v1/fake/things", 200, ""}, {"POST", "/api/v1/fake/things", 403, "FEATURE_READ_ONLY"}, {"DELETE", "/api/v1/fake/things/1", 200, ""},
+			{"GET", "/api/v1/x/fake/things", 200, ""}, {"POST", "/api/v1/x/fake/things", 403, "FEATURE_READ_ONLY"}, {"DELETE", "/api/v1/x/fake/things/1", 200, ""},
 		}},
 		{"locked", map[featuregate.Key]featuregate.Availability{"fake.things": {Access: featuregate.Locked}, "fake.infra": {Access: featuregate.Locked}}, []call{
-			{"GET", "/api/v1/fake/things", 403, "FEATURE_UNAVAILABLE"}, {"POST", "/api/v1/fake/things", 403, "FEATURE_UNAVAILABLE"}, {"DELETE", "/api/v1/fake/things/1", 403, "FEATURE_UNAVAILABLE"},
+			{"GET", "/api/v1/x/fake/things", 403, "FEATURE_UNAVAILABLE"}, {"POST", "/api/v1/x/fake/things", 403, "FEATURE_UNAVAILABLE"}, {"DELETE", "/api/v1/x/fake/things/1", 403, "FEATURE_UNAVAILABLE"},
 			// A concealed feature that is locked does not exist for the caller.
-			{"GET", "/api/v1/fake/infra", 404, "FEATURE_UNAVAILABLE"},
+			{"GET", "/api/v1/x/fake/infra", 404, "FEATURE_UNAVAILABLE"},
 		}},
 		{"hidden", map[featuregate.Key]featuregate.Availability{}, []call{
-			{"GET", "/api/v1/fake/things", 404, "FEATURE_UNAVAILABLE"}, {"POST", "/api/v1/fake/things", 404, "FEATURE_UNAVAILABLE"}, {"GET", "/api/v1/fake/open", 200, ""},
+			{"GET", "/api/v1/x/fake/things", 404, "FEATURE_UNAVAILABLE"}, {"POST", "/api/v1/x/fake/things", 404, "FEATURE_UNAVAILABLE"}, {"GET", "/api/v1/x/fake/open", 200, ""},
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -249,16 +249,16 @@ func TestExtensionRoutesFollowTheFeatureGate(t *testing.T) {
 	// Authentication still comes first: an anonymous caller learns nothing
 	// about the feature.
 	src.set(map[featuregate.Key]featuregate.Availability{})
-	if rec := rig.do("", "GET", "/api/v1/fake/things", ""); rec.Code != http.StatusUnauthorized {
+	if rec := rig.do("", "GET", "/api/v1/x/fake/things", ""); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous on a hidden feature = %d %s", rec.Code, rec.Body)
 	}
 }
 
 func TestExtensionFeatureFailsClosedWithoutASource(t *testing.T) {
 	gate := mustGate(t, nil, featuregate.Feature{Key: "fake.things"})
-	ext := fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/fake/things", Feature: "fake.things"}}}
+	ext := fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/x/fake/things", Feature: "fake.things"}}}
 	rig := newTokenRig(t, func(d *Deps) { d.Extensions = ExtensionDeps{Extensions: []Extension{ext}, Features: gate} })
-	rec := rig.do(rig.session, "GET", "/api/v1/fake/things", "")
+	rec := rig.do(rig.session, "GET", "/api/v1/x/fake/things", "")
 	if rec.Code != http.StatusForbidden || strings.TrimSpace(rec.Body.String()) != `{"code":"FEATURE_PROVIDER_ABSENT","error":"nothing on this server answers for feature fake.things","params":{"feature":"fake.things"}}` {
 		t.Fatalf("no source = %d %s", rec.Code, rec.Body)
 	}
@@ -266,8 +266,8 @@ func TestExtensionFeatureFailsClosedWithoutASource(t *testing.T) {
 
 func TestAssistantReadsOnlyMarkedExtensionRoutes(t *testing.T) {
 	ext := fakeExtension{name: "fake", routes: []RouteSpec{
-		{Method: http.MethodGet, Pattern: "/fake/public", Community: true, AIReadable: true},
-		{Method: http.MethodGet, Pattern: "/fake/secret", Community: true},
+		{Method: http.MethodGet, Pattern: "/x/fake/public", Community: true, AIReadable: true},
+		{Method: http.MethodGet, Pattern: "/x/fake/secret", Community: true},
 	}}
 	var deps Deps
 	rig := newTokenRig(t, func(d *Deps) {
@@ -277,24 +277,24 @@ func TestAssistantReadsOnlyMarkedExtensionRoutes(t *testing.T) {
 	a := &apiHandlers{d: deps, mux: rigMux(t, rig)}
 	ask := httptestRequest(http.MethodPost, "/api/v1/ai/ask", rig.session)
 	reader := a.apiReaderFor(ask)
-	if status, body, err := reader.Get(ask.Context(), "/api/v1/fake/public", nil); err != nil || status != 200 || !strings.Contains(string(body), `"user":"admin"`) {
+	if status, body, err := reader.Get(ask.Context(), "/api/v1/x/fake/public", nil); err != nil || status != 200 || !strings.Contains(string(body), `"user":"admin"`) {
 		t.Fatalf("readable route: %d %s %v", status, body, err)
 	}
-	if _, _, err := reader.Get(ask.Context(), "/api/v1/fake/secret", nil); err == nil || !strings.Contains(err.Error(), "not a readable API route") {
+	if _, _, err := reader.Get(ask.Context(), "/api/v1/x/fake/secret", nil); err == nil || !strings.Contains(err.Error(), "not a readable API route") {
 		t.Fatalf("unmarked route read: %v", err)
 	}
 	routes := reader.Routes()
-	if !slices.Contains(routes, "/api/v1/fake/public") || slices.Contains(routes, "/api/v1/fake/secret") || !slices.Contains(routes, "/api/v1/nodes") {
+	if !slices.Contains(routes, "/api/v1/x/fake/public") || slices.Contains(routes, "/api/v1/x/fake/secret") || !slices.Contains(routes, "/api/v1/nodes") {
 		t.Fatalf("listed routes miss the rule: %v", routes)
 	}
 	// The route refuses an assistant read on its own as well, for a reader
 	// that skipped the list.
 	bare := &aiReader{mux: a.mux, header: http.Header{"Authorization": {"Bearer " + rig.session}}}
-	if status, body, err := bare.Get(ask.Context(), "/api/v1/fake/secret", nil); err != nil || status != http.StatusNotFound {
+	if status, body, err := bare.Get(ask.Context(), "/api/v1/x/fake/secret", nil); err != nil || status != http.StatusNotFound {
 		t.Fatalf("route-level refusal: %d %s %v", status, body, err)
 	}
 	// A browser still reads it.
-	if rec := rig.do(rig.session, "GET", "/api/v1/fake/secret", ""); rec.Code != http.StatusOK {
+	if rec := rig.do(rig.session, "GET", "/api/v1/x/fake/secret", ""); rec.Code != http.StatusOK {
 		t.Fatalf("console read = %d %s", rec.Code, rec.Body)
 	}
 
@@ -309,10 +309,10 @@ func TestAssistantReadsOnlyMarkedExtensionRoutes(t *testing.T) {
 		}
 		return res["content"].([]any)[0].(map[string]any)["text"].(string), res["isError"].(bool)
 	}
-	if text, isErr := call("/api/v1/fake/secret"); !isErr || !strings.Contains(text, "not a readable API route") {
+	if text, isErr := call("/api/v1/x/fake/secret"); !isErr || !strings.Contains(text, "not a readable API route") {
 		t.Fatalf("MCP unmarked read: %v %s", isErr, text)
 	}
-	if text, isErr := call("/api/v1/fake/public"); isErr || !strings.Contains(text, "admin") {
+	if text, isErr := call("/api/v1/x/fake/public"); isErr || !strings.Contains(text, "admin") {
 		t.Fatalf("MCP marked read: %v %s", isErr, text)
 	}
 }
@@ -320,9 +320,9 @@ func TestAssistantReadsOnlyMarkedExtensionRoutes(t *testing.T) {
 func TestRouteInventoryNamesExtensionRoutes(t *testing.T) {
 	gate := mustGate(t, nil, featuregate.Feature{Key: "fake.things"})
 	ext := fakeExtension{name: "fake", routes: []RouteSpec{
-		{Method: http.MethodGet, Pattern: "/fake/things", Feature: "fake.things", Action: "fake.list"},
-		{Method: http.MethodPost, Pattern: "/fake/things", Access: AccessAdmin, Feature: "fake.things", Action: "fake.create"},
-		{Method: http.MethodPost, Pattern: "/fake/session", Access: AccessAdminSession, Community: true},
+		{Method: http.MethodGet, Pattern: "/x/fake/things", Feature: "fake.things", Action: "fake.list"},
+		{Method: http.MethodPost, Pattern: "/x/fake/things", Access: AccessAdmin, Feature: "fake.things", Action: "fake.create"},
+		{Method: http.MethodPost, Pattern: "/x/fake/session", Access: AccessAdminSession, Community: true},
 	}}
 	got, err := RouteInventory(Router(Deps{Extensions: ExtensionDeps{Extensions: []Extension{ext}, Features: gate}}))
 	if err != nil {
@@ -339,9 +339,9 @@ func TestRouteInventoryNamesExtensionRoutes(t *testing.T) {
 		}
 	}
 	want := []string{
-		"GET /api/v1/fake/things [access=read] [action=fake.list] [feature=fake.things]",
-		"POST /api/v1/fake/session [access=admin-session] [community]",
-		"POST /api/v1/fake/things [access=admin] [action=fake.create] [feature=fake.things]",
+		"GET /api/v1/x/fake/things [access=read] [action=fake.list] [feature=fake.things]",
+		"POST /api/v1/x/fake/session [access=admin-session] [community]",
+		"POST /api/v1/x/fake/things [access=admin] [action=fake.create] [feature=fake.things]",
 	}
 	if !slices.Equal(added, want) || len(got) != len(core)+len(want) {
 		t.Fatalf("extension inventory = %v, want %v", added, want)
@@ -353,7 +353,7 @@ func TestRouteInventoryNamesExtensionRoutes(t *testing.T) {
 	}
 	// A route that names neither a feature nor Community fails the inventory,
 	// even when registered past Router's own check.
-	mux := chiMuxWith(http.MethodGet, "/api/v1/fake/x", &extensionEndpoint{spec: RouteSpec{Method: http.MethodGet, Pattern: "/fake/x"}, next: http.NotFoundHandler()})
+	mux := chiMuxWith(http.MethodGet, "/api/v1/x/fake/x", &extensionEndpoint{spec: RouteSpec{Method: http.MethodGet, Pattern: "/x/fake/x"}, next: http.NotFoundHandler()})
 	if _, err := RouteInventory(mux); err == nil || !strings.Contains(err.Error(), "names neither a feature nor Community") {
 		t.Fatalf("unmarked route: %v", err)
 	}
@@ -389,4 +389,27 @@ func chiMuxWith(method, pattern string, h http.Handler) *chi.Mux {
 	mux := chi.NewRouter()
 	mux.Method(method, pattern, h)
 	return mux
+}
+
+// Extension namespaces live under /api/v1/x/, where the core serves nothing,
+// so a module may take a core path segment as its name: "nodes" mounts at
+// /api/v1/x/nodes/ and the core's /api/v1/nodes keeps answering as before.
+func TestExtensionNamedAfterACoreSegmentStaysUnderTheExtensionRoot(t *testing.T) {
+	core, err := RouteInventory(Router(Deps{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range core {
+		if _, path, _ := strings.Cut(line, " "); path == "/api/v1"+extensionRoot || strings.HasPrefix(path, "/api/v1"+extensionRoot+"/") {
+			t.Fatalf("the core serves %s under the extension root", line)
+		}
+	}
+	ext := fakeExtension{name: "nodes", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/x/nodes", Community: true}}}
+	rig := newTokenRig(t, func(d *Deps) { d.Extensions = ExtensionDeps{Extensions: []Extension{ext}} })
+	if rec := rig.do(rig.session, "GET", "/api/v1/x/nodes", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"route":"GET /x/nodes"`) {
+		t.Fatalf("extension route = %d %s", rec.Code, rec.Body)
+	}
+	if rec := rig.do(rig.session, "GET", "/api/v1/nodes", ""); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"route"`) {
+		t.Fatalf("core /api/v1/nodes = %d %s, want the core list", rec.Code, rec.Body)
+	}
 }

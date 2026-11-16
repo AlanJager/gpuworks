@@ -2258,9 +2258,9 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 
 ### 控制台清单与扩展路由
 
-另行构建的服务端可以在 `/api/v1/<名称>/` 下挂载自己的管理路由（`api.Deps.Extensions`）。社区版不挂载任何扩展路由，路由清单与没有扩展时完全相同。
+另行构建的服务端可以在 `/api/v1/x/<名称>/` 下挂载自己的管理路由（`api.Deps.Extensions`）。社区版不挂载任何扩展路由，路由清单与没有扩展时完全相同。
 
-- **命名空间与冲突**：扩展名须符合 `[a-z][a-z0-9_]{1,31}`，且不能是核心已使用的第一段路径（如 `nodes`、`console`）；路由须为 `/<名称>` 或以 `/<名称>/` 开头。命名空间越界、同一方法与路径重复注册，`Router` 都会在启动时直接 panic。
+- **命名空间与冲突**：扩展名须符合 `[a-z][a-z0-9_]{1,31}`；路由（相对 `/api/v1`）须为 `/x/<名称>` 或以 `/x/<名称>/` 开头。核心不在 `/api/v1/x/` 下注册任何路由，所以扩展名可以与核心路径段同名（如 `nodes`），`/api/v1/nodes` 仍是核心路由。命名空间越界、同一方法与路径重复注册，`Router` 都会在启动时直接 panic。
 - **鉴权**：扩展路由与核心路由走同一套管理鉴权（含会话的来源检查与续期）。按声明分三档：`read`（任何已登录用户与平台令牌，读令牌只能 GET/HEAD/OPTIONS）、`admin`（另需管理员，否则 `403 ADMINISTRATOR_REQUIRED`）、`admin-session`（管理员且只接受登录会话，平台令牌返回 `403 PLATFORM_TOKEN_NOT_ALLOWED`）。
 - **功能可用性**：每条扩展路由要么属于一个功能（feature），要么明确标为社区路由，二者必居其一。功能的可用性为 `full`、`read_only`、`locked` 或 `hidden`，在 server 端执行：`read_only` 时只放行读请求（以及声明为只读时可写的路由），写请求返回 `403 FEATURE_READ_ONLY`；`locked` 时返回 `403 FEATURE_UNAVAILABLE`；`hidden` 时返回 `404 FEATURE_UNAVAILABLE`；没有组件回答可用性时按不可用处理，返回 `FEATURE_PROVIDER_ABSENT`。错误的 `params.feature` 是功能名。
 - **AI 助手与 MCP**：扩展的 GET 路由默认不对 AI 助手和 MCP 开放，只有显式标记的才会出现在可读路由列表里并能被读取。
