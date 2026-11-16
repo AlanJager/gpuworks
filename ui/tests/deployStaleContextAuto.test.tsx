@@ -120,25 +120,25 @@ async function openOnVLLM() {
   fireEvent.mouseDown(vendor);
   fireEvent.click(await screen.findByTitle(deployLocale.basic.vendor.nvidia));
   // The vLLM answer lands its dictionary default: the context shows automatic.
-  await waitFor(() => assert.equal(contextInput().value, automatic), { timeout: 5000 });
+  await waitFor(() => assert.equal(contextInput().value, automatic));
 }
 
 test("an SGLang template chosen while editing the command does not inherit vLLM's automatic context", async () => {
   await openOnVLLM();
   // Command text editing is how a draft reaches manual mode on the page.
   const labels = deployLocale.runtimeCommand;
-  await waitFor(() => assert.equal((screen.getByRole("button", { name: new RegExp(labels.edit) }) as HTMLButtonElement).disabled, false), { timeout: 5000 });
+  await waitFor(() => assert.equal((screen.getByRole("button", { name: new RegExp(labels.edit) }) as HTMLButtonElement).disabled, false));
   fireEvent.click(screen.getByRole("button", { name: new RegExp(labels.edit) }));
   fireEvent.click(await screen.findByRole("button", { name: labels.enter, exact: true }));
-  await waitFor(() => assert.equal(requests.at(-1)?.container_overrides?.command_mode, "manual"), { timeout: 5000 });
+  await waitFor(() => assert.equal(requests.at(-1)?.container_overrides?.command_mode, "manual"));
   fireEvent.click(await screen.findByRole("button", { name: /Qwen3 0\.6B/ }));
-  await waitFor(() => assert.ok(requests.some((request) => request.engine === "sglang")), { timeout: 5000 });
+  await waitFor(() => assert.ok(requests.some((request) => request.engine === "sglang")));
   await waitFor(() => {
     const last = requests.at(-1)!;
     assert.equal(last.engine, "sglang");
     assert.equal(last.container_overrides?.command_mode, "manual");
     assert.equal(last.quick_params?.max_model_len, undefined);
-  }, { timeout: 5000 });
+  });
   // The visible symptom: the field no longer shows a literal -1.
   assert.notEqual(contextInput().value, "-1");
   assert.equal(contextInput().value, "");
@@ -171,10 +171,10 @@ function Host() {
     </Form>
   );
 }
-const settled = () => waitFor(() => assert.equal(screen.getByTestId("pending").textContent, "false"), { timeout: 5000 });
+const settled = () => waitFor(() => assert.equal(screen.getByTestId("pending").textContent, "false"));
 async function openHost() {
   render(<I18nextProvider i18n={i18n}><Host /></I18nextProvider>);
-  await waitFor(() => assert.equal(contextInput().value, automatic), { timeout: 5000 });
+  await waitFor(() => assert.equal(contextInput().value, automatic));
   await settled();
 }
 const switchTo = (engine: string, manual: boolean) => act(() => {
@@ -186,7 +186,7 @@ for (const manual of [true, false]) {
     await openHost();
     const start = requests.length;
     switchTo("sglang", manual);
-    await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
+    await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
     await settled();
     for (const request of requests.slice(start)) assert.equal(request.quick_params?.max_model_len, undefined);
     assert.equal(form.getFieldValue("max_model_len"), undefined);
@@ -202,10 +202,10 @@ test("an engine switch right after an answer lands, before the next request, dro
   // request has stated the key yet, so only the answer says it is a
   // dictionary parameter.
   render(<I18nextProvider i18n={i18n}><Host /></I18nextProvider>);
-  await waitFor(() => assert.equal(contextInput().value, automatic), { timeout: 5000 });
+  await waitFor(() => assert.equal(contextInput().value, automatic));
   const start = requests.length;
   switchTo("sglang", false);
-  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
   await settled();
   for (const request of requests.slice(start)) assert.equal(request.quick_params?.max_model_len, undefined);
   assert.equal(form.getFieldValue("max_model_len"), undefined);
@@ -216,10 +216,10 @@ test("a context the deployer typed survives the switch to SGLang", async () => {
   await openHost();
   fireEvent.change(contextInput(), { target: { value: "16384" } });
   fireEvent.blur(contextInput());
-  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 16384), { timeout: 5000 });
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 16384));
   await settled();
   switchTo("sglang", true);
-  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
   await settled();
   assert.equal(requests.at(-1)?.quick_params?.max_model_len, 16384);
   assert.equal(form.getFieldValue("max_model_len"), 16384);
@@ -230,12 +230,12 @@ test("a context the deployer set back to automatic is kept across the switch", a
   await openHost();
   fireEvent.change(contextInput(), { target: { value: "8192" } });
   fireEvent.blur(contextInput());
-  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 8192), { timeout: 5000 });
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 8192));
   fireEvent.click(screen.getByRole("button", { name: automatic }));
-  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, -1), { timeout: 5000 });
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, -1));
   await settled();
   switchTo("sglang", false);
-  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
   assert.equal(requests.at(-1)?.quick_params?.max_model_len, -1);
   assert.equal(form.getFieldValue("max_model_len"), -1);
 });
@@ -251,15 +251,15 @@ for (const manual of [true, false]) {
     await waitFor(() => {
       assert.equal(requests.at(-1)?.extra_args, "--enable-x");
       assert.equal(requests.at(-1)?.placement?.tp, 2);
-    }, { timeout: 5000 });
+    });
     await settled();
     // A further structured evaluation, so the typed values are now displayed.
     fireEvent.change(contextInput(), { target: { value: "4096" } });
     fireEvent.blur(contextInput());
-    await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 4096), { timeout: 5000 });
+    await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 4096));
     await settled();
     switchTo("sglang", manual);
-    await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
+    await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
     await settled();
     assert.equal(form.getFieldValue("extra_args"), "--enable-x");
     assert.equal(form.getFieldValue("tp"), 2);
