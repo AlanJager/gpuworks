@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/pkg/localization"
 )
 
@@ -336,13 +337,17 @@ type Instance struct {
 	StartTimeoutConflict  bool             `json:"start_timeout_conflict,omitempty"`
 	EngineStartTimeoutSec int              `json:"engine_start_timeout_sec,omitempty"`
 	RuntimeFailure        *ProductMessage  `json:"runtime_failure,omitempty"`
-	PreStartArgv          []string         `json:"pre_start_argv,omitempty"`
-	PreStartScript        string           `json:"pre_start_script,omitempty"`
-	UUID                  string           `json:"uuid"`
-	DeploymentID          uint             `json:"deployment_id"`
-	NodeUUID              string           `json:"node_uuid"`
-	State                 string           `json:"state"`
-	GPUIndexes            []int            `json:"gpu_indexes"`
+	// Notes are non-blocking facts the server derives about the instance
+	// when it is read (deployment.InstanceNotes): code and params, e.g. a
+	// card shared with processes outside the platform. Absent when none.
+	Notes          []messages.Warning `json:"notes,omitempty"`
+	PreStartArgv   []string           `json:"pre_start_argv,omitempty"`
+	PreStartScript string             `json:"pre_start_script,omitempty"`
+	UUID           string             `json:"uuid"`
+	DeploymentID   uint               `json:"deployment_id"`
+	NodeUUID       string             `json:"node_uuid"`
+	State          string             `json:"state"`
+	GPUIndexes     []int              `json:"gpu_indexes"`
 	// VRAMLimitBytes is the dGPU memory limit the instance runs under on each
 	// of its GPUs; absent for an instance that holds its GPUs whole.
 	VRAMLimitBytes int64              `json:"vram_limit_bytes,omitempty"`
