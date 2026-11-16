@@ -17,7 +17,9 @@ import (
 // verifyInput checks a channel on each source on its own, so one good source
 // cannot hide a broken one.
 type verifyInput struct {
-	Channel   string
+	Channel string
+	// Edition is the edition every index must name; empty is community.
+	Edition   string
 	Sources   []string
 	ReleaseID string
 	// Index, when set, is a signed index not published yet: each source is
@@ -37,6 +39,7 @@ func verifyCommand(args []string, stdout io.Writer) error {
 	in := verifyInput{}
 	var sources stringList
 	fs.StringVar(&in.Channel, "channel", "", "channel to verify")
+	fs.StringVar(&in.Edition, "edition", "", "edition the channel is published for (default: community)")
 	fs.Var(&sources, "source", "source base URL (repeatable); default: the built-in sources")
 	fs.StringVar(&in.ReleaseID, "release-id", "", "release id every source must offer")
 	fs.BoolVar(&in.Full, "full", false, "download every file and check its sha256")
@@ -78,7 +81,7 @@ func verify(ctx context.Context, in verifyInput, stdout io.Writer) error {
 }
 
 func verifySource(ctx context.Context, in verifyInput, source string) error {
-	client := &distribution.Client{Sources: []string{source}, Keys: in.Keys, HTTP: in.HTTP}
+	client := &distribution.Client{Edition: in.Edition, Sources: []string{source}, Keys: in.Keys, HTTP: in.HTTP}
 	fetched, err := sourceIndex(ctx, in, client, source)
 	if err != nil {
 		var sourcesErr *distribution.SourcesError
@@ -129,7 +132,7 @@ func sourceIndex(ctx context.Context, in verifyInput, client *distribution.Clien
 	if err != nil {
 		return nil, fmt.Errorf("candidate index: %w", err)
 	}
-	index, err := distribution.ParseIndex(payload, in.Channel)
+	index, err := distribution.ParseIndexFor(payload, in.Channel, in.Edition)
 	if err != nil {
 		return nil, fmt.Errorf("candidate index: %w", err)
 	}

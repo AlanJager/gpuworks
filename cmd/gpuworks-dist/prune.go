@@ -23,8 +23,9 @@ func pruneCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
 	var keep int
 	var protect stringList
-	var nightlyIndex string
+	var nightlyIndex, edition string
 	fs.StringVar(&nightlyIndex, "nightly-index", "", "signed nightly index whose listed releases must be retained")
+	fs.StringVar(&edition, "edition", "", "edition the nightly index is published for (default: community)")
 	fs.IntVar(&keep, "keep", 30, "newest nightly (non-version) directories to keep; version tags are always kept")
 	fs.Var(&protect, "protect", "release id that must be kept (repeatable): what each channel's latest names")
 	if err := fs.Parse(args); err != nil {
@@ -39,7 +40,7 @@ func pruneCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		index, err := distribution.ParseIndex(payload, distribution.ChannelNightly)
+		index, err := distribution.ParseIndexFor(payload, distribution.ChannelNightly, edition)
 		if err != nil {
 			return err
 		}
