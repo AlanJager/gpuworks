@@ -23,13 +23,27 @@ var contentHashedAsset = regexp.MustCompile(`(?:^|/)[^/]+-[A-Za-z0-9_-]{8}\.[^./
 //go:embed all:dist
 var embedded embed.FS
 
-// Handler returns an http.Handler serving the embedded SPA.
-func Handler() http.Handler {
+// FS returns the embedded SPA build: the dist directory's contents, rooted at
+// index.html.
+func FS() fs.FS {
 	sub, err := fs.Sub(embedded, "dist")
 	if err != nil {
 		panic(err)
 	}
-	return handler(sub)
+	return sub
+}
+
+// Handler returns an http.Handler serving the embedded SPA.
+func Handler() http.Handler {
+	return HandlerFS(FS())
+}
+
+// HandlerFS serves the SPA build in dist, rooted at index.html, with the same
+// caching, compression and history fallback as Handler. A separately built
+// server passes its own console build (one made with console overlay modules)
+// in place of the embedded one.
+func HandlerFS(dist fs.FS) http.Handler {
+	return handler(dist)
 }
 
 func handler(sub fs.FS) http.Handler {

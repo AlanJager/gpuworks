@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -202,4 +204,58 @@ func testHandler(raw []byte) http.Handler {
 // testScript is a script large and repetitive enough that gzip shrinks it.
 func testScript() []byte {
 	return bytes.Repeat([]byte("console.log('gpuworks');\n"), 64)
+}
+
+// A separately built server serves its own console build through HandlerFS,
+// with the embedded build's history fallback and asset handling.
+func TestHandlerFSServesAnInjectedBuild(t *testing.T) {
+	h := HandlerFS(fstest.MapFS{
+		"index.html":               &fstest.MapFile{Data: []byte("<html>overlay console</html>")},
+		"assets/audit-abc12345.js": &fstest.MapFile{Data: testScript()},
+	})
+	for _, path := range []string{"/", "/audit/42"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code != http.StatusOK || res.Body.String() != "<html>overlay console</html>" {
+			t.Fatalf("GET %s = %d %q, want the injected index.html", path, res.Code, res.Body.String())
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/assets/audit-abc12345.js", nil)
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || !bytes.Equal(res.Body.Bytes(), testScript()) {
+		t.Fatalf("asset = %d (%d bytes), want the injected asset", res.Code, res.Body.Len())
+	}
+	if got := res.Header().Get("Cache-Control"); got != immutableAssetCacheControl {
+		t.Fatalf("Cache-Control = %q, want %q", got, immutableAssetCacheControl)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/assets/missing-abc12345.js", nil)
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("missing asset = %d, want 404", res.Code)
+	}
+}
+
+// A build without index.html (an injected FS rooted one level too high, say)
+// answers 404 "ui not built" rather than an empty page.
+func TestHandlerFSWithoutIndexSaysNotBuilt(t *testing.T) {
+	h := HandlerFS(fstest.MapFS{"dist/index.html": &fstest.MapFile{Data: []byte("<html></html>")}})
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/nodes", nil))
+	if res.Code != http.StatusNotFound || !strings.Contains(res.Body.String(), "ui not built") {
+		t.Fatalf("GET /nodes = %d %q, want 404 ui not built", res.Code, res.Body.String())
+	}
+}
+
+// FS is rooted inside the embedded dist directory: its files sit at the top,
+// so a caller can hand it straight to HandlerFS.
+func TestFSIsRootedAtTheBuild(t *testing.T) {
+	if _, err := fs.Stat(FS(), ".gitkeep"); err != nil {
+		t.Fatalf("FS() has no .gitkeep at its root: %v", err)
+	}
+	if _, err := fs.Stat(FS(), "dist"); err == nil {
+		t.Fatal("FS() still contains the dist directory; want its contents at the root")
+	}
 }
