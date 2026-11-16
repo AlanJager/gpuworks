@@ -21,7 +21,7 @@ import (
 // does not start, or whose console cannot be reached. The data directory's
 // databases and the log file are read directly; nodes cannot be asked, so
 // their part is missing (the manifest says so).
-func supportBundle(ctx context.Context, log *slog.Logger, args []string) error {
+func (o Options) supportBundle(ctx context.Context, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("support-bundle", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	var dataDir, dbPath, logFile, out, from, to, deployments, instances string
@@ -95,7 +95,7 @@ func supportBundle(ctx context.Context, log *slog.Logger, args []string) error {
 		return fmt.Errorf("stage the collection in %s: %w", outDir, err)
 	}
 	defer os.RemoveAll(work)
-	bundle, archive, err := app.CollectDiagnosticsOffline(ctx, app.OfflineDiagnosticsRequest{DataDir: dataDir, DBPath: db, LogFile: logFile, WorkDir: work, Request: req}, log, policy)
+	bundle, archive, err := app.CollectDiagnosticsOffline(ctx, app.OfflineDiagnosticsRequest{DataDir: dataDir, DBPath: db, LogFile: logFile, WorkDir: work, Request: req, Extensions: o.Extensions}, log, policy)
 	if err != nil {
 		return err
 	}

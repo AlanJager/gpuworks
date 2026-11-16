@@ -91,10 +91,12 @@ type App struct {
 	// (planning.Scaling, which the handlers share), for the scheduling
 	// automation's replica schedules.
 	scaleReplicas func(deploymentID uint, role string, replicas int) error
+	// ext is what the extension modules registered (extension_start.go).
+	ext *extensionSet
 }
 
 // New builds the server from config.
-func New(cfg Config, log *slog.Logger) (*App, error) {
+func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	cfg = normalizeRuntimeConfig(cfg)
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err
@@ -103,19 +105,21 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	if cfg.DBPath == "" {
 		cfg.DBPath = filepath.Join(cfg.DataDir, "gpuworks.db")
 	}
-	// New node enrollment uses per-node tokens stored in the database.
-
 	b := bus.New()
 	st, master, err := openCredentialStore(cfg, b, log)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { // The data file stays reserved to an open store: free it for the next New.
+		if err != nil {
+			_ = st.Close()
+		}
+	}()
 	// The node lists, the dashboard and the monitor share one snapshot of the
 	// fleet instead of each reading every node and card per request.
 	st.EnableFleetNodeSnapshot(nil)
 	embedded, err := startEmbeddedCatalogs(st, log)
 	if err != nil {
-		_ = st.Close()
 		return nil, err
 	}
 	// Bring stored deployments to the current launch-configuration shape before
@@ -123,12 +127,10 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// columns, so a row still in the old shape would be started from a
 	// configuration that is missing values nobody merges in any more.
 	if err := normalizeLaunchConfigs(st); err != nil {
-		_ = st.Close()
 		return nil, err
 	}
 	catalogPackages, err := packages.New(filepath.Join(cfg.DataDir, "catalog-packages"))
 	if err != nil {
-		_ = st.Close()
 		return nil, err
 	}
 	// Materialize the exact package embedded in this binary before updating the
@@ -136,19 +138,15 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// long as an older deployment or instance snapshot still references it.
 	embeddedCatalog, embeddedDigest, err := seed.Package()
 	if err != nil {
-		_ = st.Close()
 		return nil, err
 	}
 	if _, err := catalogPackages.PutLoaded(embeddedCatalog, embeddedDigest); err != nil {
-		_ = st.Close()
 		return nil, err
 	}
 	if err := embedded.finish(st); err != nil {
-		_ = st.Close()
 		return nil, err
 	}
 	if recovered, err := st.RecoverServerBenchmarkRuns(); err != nil {
-		_ = st.Close()
 		return nil, err
 	} else if recovered > 0 {
 		log.Warn("recovered orphaned server benchmarks", "count", recovered)
@@ -266,7 +264,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st, modelPreparation{h, ctrl}, lists}, PriorityClasses: priorityClassExists(st), Log: log})
 	monSvc := newMonitorAPIServiceOn(lists, st, obs.TSDB(), nil, newRequestSource(st, px.LiveRequests, obs.UX()), health.Health, modelPreparation{h, ctrl})
 
-	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}
+	a = &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}
 	var restart func()
 	if cfg.SelfRestart {
 		restart = a.requestRestart
@@ -321,7 +319,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		InstallSh:      a.installHandler(),
 		RecentRejects:  func() []dto.AgentReject { return agentRejectDTOs(h.RecentRejects()) },
 		AgentUpgrades:  api.AgentUpgradeHooks{Service: agentUpgradeAPI{service: a.agentUpgrades}, Errors: h.UpgradeErrors},
-		UIHandler:      withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.Handler(), a.agentUpgrades.DownloadBinary),
+		UIHandler:      withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.HandlerFS(cfg.Extensions.ui()), a.agentUpgrades.DownloadBinary),
 		Online:         h.Online,
 		Orders:         ctrl.Orders(),
 		KickNode:       h.Kick,
@@ -385,9 +383,10 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AISecretbox:          box,
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
 		Recovery:             recoverer,
+		Diagnostics:          diag,
 	}
-	if diag != nil {
-		apiDeps.Diagnostics = diag
+	if err := startExtensions(cfg, a, master, &apiDeps); err != nil {
+		return nil, err
 	}
 	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
 	a.scaleReplicas = planning.Scaling{Store: st, Resolve: networks.Resolve, Online: h.Online, UCXNetlinkHang: h.UCXNetlinkHang}.ScaleScheduled
@@ -471,16 +470,15 @@ func (a *App) Run(ctx context.Context) error {
 	goBG(func() {
 		runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.hostMemory(), a.scaleReplicas, waits, orders, a.log)
 	}) // Background: schedules, waiting wakes, residency.
-	goBG(func() { a.health.Run(ctx) }) // Background: the deployments' health checks.
-	goBG(func() { a.cards.run(ctx) })  // Background: the cards' failure records.
+	for _, run := range a.services() {
+		goBG(func() { run(ctx) }) // Background: health checks, card records, usage report, notices, extension services.
+	}
 	// Background: the batches in progress, resumed from their checkpoints.
 	if err := a.batches.Start(ctx); err != nil {
 		a.log.Error("batch executor not started", "err", err)
 	} else {
 		goBG(func() { <-ctx.Done(); a.batches.Wait() })
 	}
-	goBG(func() { a.usage.Run(ctx) })   // Background: the daily usage report.
-	goBG(func() { a.notices.Run(ctx) }) // Background: the notices' refresh.
 	// Background: prune metrics/logs beyond the retention window
 	// (--metrics-retention, default 72h).
 	//

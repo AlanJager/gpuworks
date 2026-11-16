@@ -8,12 +8,15 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/version"
 )
 
@@ -29,6 +32,11 @@ type Options struct {
 	// built-in "community". A name that is not a lowercase word
 	// ([a-z][a-z0-9-]{0,31}) makes Run panic, as a defect of the build.
 	Edition string
+	// Extensions are the build's compiled modules and console: serve runs
+	// them, and migrate, reset-password, support-bundle and extra commands
+	// open the database with their migrations. Each module's name is also
+	// the server.yaml extensions section it reads.
+	Extensions app.Extensions
 	// Distribution is the edition's distribution channel: serve's update
 	// checks, notices and catalog updates and the upgrade command read it.
 	// The zero value is distribution.Community().
@@ -60,6 +68,23 @@ type Command struct {
 type Env struct {
 	Log            *slog.Logger
 	Stdout, Stderr io.Writer
+	// Extensions are the build's modules (Options.Extensions).
+	Extensions app.Extensions
+}
+
+// OpenMaintenanceStore opens the database of an installation for a
+// maintenance command: with the permission policy the built-in maintenance
+// commands use, and with the build's extension migrations. dbPath empty is
+// gpuworks.db in dataDir.
+func (e Env) OpenMaintenanceStore(dataDir, dbPath string) (*store.Store, error) {
+	if dbPath == "" {
+		dbPath = filepath.Join(dataDir, "gpuworks.db")
+	}
+	policy, err := maintenanceDatabasePolicy(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	return Options{Extensions: e.Extensions}.openMaintenanceStore(dbPath, policy)
 }
 
 // validate panics when an extra command cannot be dispatched unambiguously,
@@ -67,6 +92,9 @@ type Env struct {
 func (o Options) validate() {
 	if o.Edition != "" && !editionName.MatchString(o.Edition) {
 		panic(fmt.Sprintf("cli: edition %q is not a lowercase name", o.Edition))
+	}
+	if !o.Distribution.IsZero() && !distribution.SameEdition(o.Distribution.Edition, o.Edition) {
+		panic(fmt.Sprintf("cli: the distribution profile is for edition %q but the build is %q", distribution.NormalizeEdition(o.Distribution.Edition), distribution.NormalizeEdition(o.Edition)))
 	}
 	for n, hook := range o.InstallHooks {
 		if hook == nil {
@@ -122,8 +150,8 @@ func (o Options) command(name string) *Command {
 }
 
 // runExtra runs an extra command the way Run runs a built-in one.
-func runExtra(c Command, log *slog.Logger, args []string, stderr io.Writer) int {
-	env := Env{Log: log, Stdout: os.Stdout, Stderr: stderr}
+func runExtra(c Command, log *slog.Logger, args []string, stderr io.Writer, ext app.Extensions) int {
+	env := Env{Log: log, Stdout: os.Stdout, Stderr: stderr, Extensions: ext}
 	if err := c.Run(cmdContext(), env, args); err != nil && !errors.Is(err, flag.ErrHelp) {
 		log.Error(c.Name+" failed", "err", err)
 		return 1

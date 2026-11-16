@@ -10,6 +10,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/securefile"
+	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
@@ -22,8 +23,9 @@ import (
 // newDiagnostics is the installation's debug sessions and diagnostics
 // collections, kept under <data>/diagnostics: the gateway records the
 // sessions' requests, and collections read the stores and the log file. A
-// server built without a debug tee (tests, embedding) runs without them.
-func newDiagnostics(cfg Config, st *store.Store, h *hub.Hub, obs *observability, px *proxy.Proxy, log *slog.Logger) *diagnostics.Manager {
+// server built without a debug tee (tests, embedding) runs without them: the
+// result is then a nil interface, which the API reads as "off".
+func newDiagnostics(cfg Config, st *store.Store, h *hub.Hub, obs *observability, px *proxy.Proxy, log *slog.Logger) api.Diagnostics {
 	if cfg.DebugLog == nil {
 		return nil
 	}
@@ -102,11 +104,14 @@ type OfflineDiagnosticsRequest struct {
 	// data directory's diagnostics/bundles, which a full disk refuses.
 	WorkDir string
 	Request diagnostics.BundleRequest
+	// Extensions are the build's modules: their migrations run when the
+	// store opens, as they do in New.
+	Extensions Extensions
 }
 
 // CollectDiagnosticsOffline builds the collection and answers its archive.
 func CollectDiagnosticsOffline(ctx context.Context, in OfflineDiagnosticsRequest, log *slog.Logger, policies ...securefile.Policy) (diagnostics.Bundle, string, error) {
-	st, err := store.Open(in.DBPath, bus.New(), policies...)
+	st, err := store.OpenWith(in.DBPath, bus.New(), store.OpenOptions{Policies: policies, Extensions: MigrationSets(in.Extensions)})
 	if err != nil {
 		return diagnostics.Bundle{}, "", err
 	}

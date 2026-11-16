@@ -45,6 +45,9 @@ type Config struct {
 	// Sections are server.yaml's extensions sections, by module name, raw;
 	// each module decodes its own strictly. Nil without server.yaml.
 	Sections map[string]yaml.Node
+	// Extensions are the modules and console a separately built server
+	// adds (extensions.go); the zero value is the community server.
+	Extensions Extensions
 	// ListenOverridden is set when --addr replaced the file's listen section,
 	// so the console shows it read-only.
 	ListenOverridden bool

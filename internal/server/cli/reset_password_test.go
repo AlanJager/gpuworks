@@ -20,7 +20,7 @@ func TestResetPasswordRejectsWeakInputBeforeDatabaseAccess(t *testing.T) {
 	for _, password := range []string{"123", "password", "admin123"} {
 		t.Run(password, func(t *testing.T) {
 			dir := t.TempDir()
-			err := resetPassword(discardLog(), []string{"--db", filepath.Join(dir, "missing.db"), "--password", password})
+			err := (Options{}).resetPassword(discardLog(), []string{"--db", filepath.Join(dir, "missing.db"), "--password", password})
 			if !errors.Is(err, auth.ErrPasswordPolicy) {
 				t.Fatalf("weak password did not fail before database access: %v", err)
 			}
@@ -63,7 +63,7 @@ func verifyPassword(t *testing.T, db, password string) bool {
 func TestResetPasswordWithDataDir(t *testing.T) {
 	data := t.TempDir()
 	db := seedAdmin(t, data)
-	if err := resetPassword(discardLog(), []string{"--data", data, "--password", "new-admin-password-2026"}); err != nil {
+	if err := (Options{}).resetPassword(discardLog(), []string{"--data", data, "--password", "new-admin-password-2026"}); err != nil {
 		t.Fatal(err)
 	}
 	if !verifyPassword(t, db, "new-admin-password-2026") {
@@ -79,7 +79,7 @@ func TestResetPasswordUsesTheDriversPersistentDSNPath(t *testing.T) {
 			if format == "file-uri" {
 				dsn = (&url.URL{Scheme: "file", Path: db, RawQuery: "cache=shared"}).String()
 			}
-			if err := resetPassword(discardLog(), []string{"--db", dsn, "--password", "new-admin-password-2026"}); err != nil {
+			if err := (Options{}).resetPassword(discardLog(), []string{"--db", dsn, "--password", "new-admin-password-2026"}); err != nil {
 				t.Fatal(err)
 			}
 			if !verifyPassword(t, db, "new-admin-password-2026") {
@@ -112,7 +112,7 @@ func TestResetPasswordMissingDatabase(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			err := resetPassword(discardLog(), append(tc.args(dir), "--password", "new-admin-password-2026"))
+			err := (Options{}).resetPassword(discardLog(), append(tc.args(dir), "--password", "new-admin-password-2026"))
 			if err == nil {
 				t.Fatal("reset succeeded without a database")
 			}
@@ -191,18 +191,18 @@ func TestResetPasswordPromptsWhenNoneIsGiven(t *testing.T) {
 	db := seedAdmin(t, data)
 
 	promptNewPassword = func() (string, error) { return "", errPasswordMismatch }
-	if err := resetPassword(discardLog(), []string{"--data", data}); !errors.Is(err, errPasswordMismatch) {
+	if err := (Options{}).resetPassword(discardLog(), []string{"--data", data}); !errors.Is(err, errPasswordMismatch) {
 		t.Fatalf("a failed prompt: %v", err)
 	}
 	promptNewPassword = func() (string, error) { return "short", nil }
-	if err := resetPassword(discardLog(), []string{"--data", data}); !errors.Is(err, auth.ErrPasswordPolicy) {
+	if err := (Options{}).resetPassword(discardLog(), []string{"--data", data}); !errors.Is(err, auth.ErrPasswordPolicy) {
 		t.Fatalf("a weak prompted password: %v", err)
 	}
 	if !verifyPassword(t, db, "old-admin-password-2026") {
 		t.Fatal("a refused reset changed the password")
 	}
 	promptNewPassword = func() (string, error) { return "Tiger#Lake9", nil }
-	if err := resetPassword(discardLog(), []string{"--data", data}); err != nil {
+	if err := (Options{}).resetPassword(discardLog(), []string{"--data", data}); err != nil {
 		t.Fatal(err)
 	}
 	if !verifyPassword(t, db, "Tiger#Lake9") {
@@ -228,7 +228,7 @@ func TestResetPasswordForgetsOnlyItsOwnInitialCredentials(t *testing.T) {
 			if err := installcred.WriteInitialCredentials(data, tc.recorded, "old-admin-password-2026"); err != nil {
 				t.Fatal(err)
 			}
-			if err := resetPassword(discardLog(), []string{"--data", data, "--password", "new-admin-password-2026"}); err != nil {
+			if err := (Options{}).resetPassword(discardLog(), []string{"--data", data, "--password", "new-admin-password-2026"}); err != nil {
 				t.Fatal(err)
 			}
 			_, err := os.Stat(installcred.CredentialsPath(data))
@@ -245,7 +245,7 @@ func TestResetPasswordSucceedsWhenTheRecordCannotBeRead(t *testing.T) {
 	if err := os.WriteFile(installcred.CredentialsPath(data), []byte("not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := resetPassword(discardLog(), []string{"--data", data, "--password", "new-admin-password-2026"}); err != nil {
+	if err := (Options{}).resetPassword(discardLog(), []string{"--data", data, "--password", "new-admin-password-2026"}); err != nil {
 		t.Fatalf("an unreadable record failed the reset: %v", err)
 	}
 	if !verifyPassword(t, db, "new-admin-password-2026") {

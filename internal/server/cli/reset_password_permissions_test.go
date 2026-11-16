@@ -168,7 +168,7 @@ func TestMigrateKeepsStandaloneDatabasePrivate(t *testing.T) {
 		t.Run(fmt.Sprintf("query=%s", query), func(t *testing.T) {
 			dbPath := filepath.Join(t.TempDir(), "standalone.db")
 			for range 2 {
-				if err := migrate(discardLog(), []string{"--db", dbPath + query}); err != nil {
+				if err := (Options{}).migrate(discardLog(), []string{"--db", dbPath + query}); err != nil {
 					t.Fatal(err)
 				}
 				info, err := os.Stat(dbPath)

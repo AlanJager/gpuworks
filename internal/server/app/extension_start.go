@@ -1,0 +1,99 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"gpuworks.ai/gpuworks/internal/server/api"
+	"gpuworks.ai/gpuworks/internal/server/featuregate"
+	"gpuworks.ai/gpuworks/internal/server/serverconfig"
+	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/version"
+)
+
+// extensionSet is what the modules registered through their Hosts, and the
+// services the server runs for them.
+type extensionSet struct {
+	apis     []api.Extension
+	banners  []api.BannerSource
+	features []featuregate.Feature
+	source   featuregate.Source
+	sourceBy string
+	holders  int
+	services []func(context.Context)
+	closed   bool
+}
+
+// startExtensions runs every module's Init, applies the scheduling holds
+// they registered (and releases holds no module of this build owns), and
+// hands the API what they added. With no modules it leaves the API exactly
+// as the community server has it, apart from releasing holds a former build
+// left behind. On error it stops what New has started that Run would
+// otherwise stop; New closes the store.
+func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err error) {
+	defer func() {
+		if err != nil {
+			a.proxy.Close()
+		}
+	}()
+	set := &extensionSet{}
+	section := serverconfig.File{Extensions: cfg.Sections}
+	for _, m := range cfg.Extensions.Modules {
+		name := m.Name()
+		if svc, ok := m.(Service); ok {
+			set.services = append(set.services, moduleService(a, name, svc))
+		}
+		starter, ok := m.(Initializer)
+		if !ok {
+			continue
+		}
+		h := &Host{name: name, log: a.log.With("module", name), bus: a.bus, dataDir: cfg.DataDir,
+			install: a.settings.installID, master: master, section: section, st: a.store, reg: set}
+		if h.tables, err = a.store.ExtensionTables(name); err != nil && !errors.Is(err, store.ErrUnknownNamespace) {
+			return err
+		}
+		if err = starter.Init(context.Background(), h); err != nil {
+			return fmt.Errorf("extension %s: init: %w", name, err)
+		}
+	}
+	set.closed = true
+	if released, err := a.store.ReleaseUnownedHolds(); err != nil {
+		return fmt.Errorf("release scheduling holds no extension owns: %w", err)
+	} else if len(released) > 0 {
+		a.log.Info("released nodes held by an extension this server does not run", "nodes", len(released))
+	}
+	if set.holders > 0 {
+		held, released, err := a.store.ApplySchedulingHolds()
+		if err != nil {
+			return fmt.Errorf("apply extension scheduling holds: %w", err)
+		}
+		a.log.Info("applied extension scheduling holds", "held", len(held), "released", len(released))
+	}
+	if deps.Extensions, err = set.apiDeps(); err != nil {
+		return err
+	}
+	a.ext = set
+	return nil
+}
+
+// apiDeps is what the API gets from the modules: their routes, banners and
+// the feature gate over the declared features, and the build's edition for
+// the console manifest. Without modules it changes no route.
+func (set *extensionSet) apiDeps() (api.ExtensionDeps, error) {
+	gate, err := featuregate.New(set.features, set.source)
+	if err != nil {
+		return api.ExtensionDeps{}, err
+	}
+	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition}, nil
+}
+
+// moduleService runs a module's Service on Run's context and logs an error it
+// stops with while the server is still running.
+func moduleService(a *App, name string, svc Service) func(context.Context) {
+	return func(ctx context.Context) {
+		if err := svc.Run(ctx); err != nil && ctx.Err() == nil {
+			a.log.Error("extension service stopped", "module", name, "err", err)
+		}
+	}
+}

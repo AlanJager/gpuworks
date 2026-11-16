@@ -38,7 +38,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
 	"gpuworks.ai/gpuworks/internal/server/installcred"
@@ -120,17 +119,17 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 			return 1
 		}
 	case "support-bundle":
-		if err := supportBundle(cmdContext(), log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := opt.supportBundle(cmdContext(), log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("support bundle failed", "err", err)
 			return 1
 		}
 	case "reset-password":
-		if err := resetPassword(log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := opt.resetPassword(log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("reset password failed", "err", err)
 			return 1
 		}
 	case "migrate":
-		if err := migrate(log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := opt.migrate(log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("migration failed", "err", err)
 			return 1
 		}
@@ -148,7 +147,7 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 		usageTo(stderr, opt.Commands)
 	default:
 		if c := opt.command(sub); c != nil {
-			return runExtra(*c, log, rest, stderr)
+			return runExtra(*c, log, rest, stderr, opt.Extensions)
 		}
 		fmt.Fprintf(stderr, "unknown subcommand %q\n", sub)
 		usageTo(stderr, opt.Commands)
@@ -164,6 +163,7 @@ var errServeLogged = errors.New("server exited")
 func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	cfg := app.DefaultConfig()
 	cfg.Distribution = opt.Distribution
+	cfg.Extensions = opt.Extensions
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "", "server.yaml; flags below override its values")
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "serve every function on this one address, replacing listen in server.yaml")
@@ -300,7 +300,7 @@ func cmdContext() context.Context {
 	return ctx
 }
 
-func migrate(log *slog.Logger, args []string) error {
+func (o Options) migrate(log *slog.Logger, args []string) error {
 	cfg := app.DefaultConfig()
 	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -316,7 +316,7 @@ func migrate(log *slog.Logger, args []string) error {
 	if err != nil {
 		return err
 	}
-	st, err := store.Open(cfg.DBPath, bus.New(), policy)
+	st, err := o.openMaintenanceStore(cfg.DBPath, policy)
 	if err != nil {
 		return fmt.Errorf("open migration database %s: %w; use the installed gpuworks binary or run it with the service owner's privileges (sudo when required)", cfg.DBPath, err)
 	}
@@ -341,10 +341,10 @@ func migrate(log *slog.Logger, args []string) error {
 		return err
 	}
 	log.Info("database migrated", "version", version, "db", cfg.DBPath)
-	return nil
+	return logNamespaceVersions(log, st, o.Extensions)
 }
 
-func resetPassword(log *slog.Logger, args []string) error {
+func (o Options) resetPassword(log *slog.Logger, args []string) error {
 	cfg := app.DefaultConfig()
 	fs := flag.NewFlagSet("reset-password", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -375,7 +375,7 @@ func resetPassword(log *slog.Logger, args []string) error {
 	}
 	// Opening the existing database requires its owner's privileges. Policy
 	// validation above happens before touching any database or its permissions.
-	st, err := store.Open(dbPath, bus.New(), policy)
+	st, err := o.openMaintenanceStore(dbPath, policy)
 	if err != nil {
 		return fmt.Errorf("open password database %s: %w; use the installed gpuworks binary or run it with the service owner's privileges (sudo when required)", dbPath, err)
 	}

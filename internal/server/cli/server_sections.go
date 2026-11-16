@@ -3,13 +3,13 @@ package cli
 import (
 	"log/slog"
 
+	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 )
 
 // claimedSections are the server.yaml extensions sections a module of this
-// build reads. Options carries no modules yet, so none is claimed and every
-// section present draws the warning below.
-func (o Options) claimedSections() []string { return nil }
+// build reads: one per module, under its name.
+func (o Options) claimedSections() []string { return app.ModuleNames(o.Extensions) }
 
 // warnUnclaimedSections logs each extensions section of server.yaml that no
 // module of this build reads. It is a warning, not a refusal: a data
