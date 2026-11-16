@@ -11,7 +11,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/pdmode"
 )
 
 type vLLMEngine struct{ BaseEngine }
@@ -335,114 +334,6 @@ func stripEquivalentModelIdentity(args []string, modelPath string) []string {
 // replace it (measured: --kv-offloading-size alone drops NIXL).
 func (vLLMEngine) PDConnectorFlags() []string {
 	return []string{"--kv-transfer-config", "--kv-offloading-size", "--kv-offloading-backend"}
-}
-
-// vllmKVTransferConfig is the single assembly point of --kv-transfer-config.
-// Without PD it is the disk tier alone. On a PD instance it is the mode's
-// connector in the role's connector role; when KV offload is also on (only
-// ever on the prefill role, see PDRoleLaunchConfig) the two become one
-// MultiConnector, because a second flag would replace the first: measured on
-// vLLM 0.25.1, --kv-offloading-size next to a NIXL config silently drops NIXL,
-// so the CPU tier joins the composition too. Settings the engine only reads at
-// the top level (the KV load failure policy) stay at the top level.
-func vllmKVTransferConfig(p Params) (string, bool) {
-	q := p.Quick
-	if p.PD == nil {
-		if q.KVDiskOffload {
-			return diskKVTransferConfig(q), true
-		}
-		return "", false
-	}
-	mode := p.PD.mode()
-	policy := mode.EffectiveKVLoadFailure(p.PD.KVLoadFailure)
-	role := mode.ConnectorRole(p.PD.Role)
-	pd := map[string]any{"kv_connector": mode.Connector, "kv_role": role}
-	if mode.ConnectorPortKey != "" && p.PD.SideChannelPort > 0 {
-		pd[mode.ConnectorPortKey] = p.sideChannelPortText()
-	}
-	if mode.ConnectorParallelism {
-		sides := map[string]any{}
-		for _, r := range mode.Roles {
-			sides[r] = map[string]any{"tp_size": max(p.PD.RoleTP[r], 1), "dp_size": 1}
-		}
-		pd["kv_connector_extra_config"] = sides
-	}
-	if len(mode.ConnectorExtra) > 0 || mode.Transport.MooncakeBootstrap() {
-		extra, _ := pd["kv_connector_extra_config"].(map[string]any)
-		if extra == nil {
-			extra = map[string]any{}
-		}
-		for key, value := range mode.ConnectorExtra {
-			extra[key] = value
-		}
-		// TransportMooncake follows the network the group shares; the RDMA
-		// transport states its protocol in ConnectorExtra.
-		if mode.Transport == pdmode.TransportMooncake {
-			extra["mooncake_protocol"] = MooncakeProtocol(p.ComputeNetwork)
-		}
-		if hcas := hcaDevices(p.ComputeNetwork.HCAs); len(hcas) > 0 && extra["mooncake_protocol"] == "rdma" {
-			extra["device_name"] = strings.Join(hcas, ",")
-		}
-		pd["kv_connector_extra_config"] = extra
-	}
-	// No engine_id: vLLM gives each engine process a fresh one, and the
-	// gateway reads it from the prefill's bootstrap server
-	// (pdmode.Mode.SynthesizedHandoff).
-	var offload map[string]any
-	switch {
-	case q.KVDiskOffload:
-		offload = diskKVTransferObject(q)
-	case q.KVOffloadingSize > 0:
-		offload = map[string]any{
-			"kv_connector": "OffloadingConnector", "kv_role": "kv_both",
-			"kv_connector_extra_config": map[string]any{"cpu_bytes_to_use": KVCPUTierBytes(q)},
-		}
-	}
-	config := pd
-	if offload != nil {
-		config = map[string]any{
-			"kv_connector": "MultiConnector", "kv_role": role,
-			"kv_connector_extra_config": map[string]any{"connectors": []map[string]any{pd, offload}},
-		}
-	}
-	if policy != "" {
-		config["kv_load_failure_policy"] = policy
-	}
-	raw, _ := json.Marshal(config)
-	return string(raw), true
-}
-
-func diskKVTransferConfig(q LaunchConfig) string {
-	raw, _ := json.Marshal(diskKVTransferObject(q))
-	return string(raw)
-}
-
-func diskKVTransferObject(q LaunchConfig) map[string]any {
-	// The thread counts are folded into one composite flag, so an unset one has
-	// no "emit nothing" spelling of its own: the dictionary's default is what
-	// the connector is given.
-	readThreads, writeThreads := q.KVOffloadReadThreads, q.KVOffloadWriteThreads
-	if readThreads <= 0 {
-		readThreads = defaultInt(EngineVLLM, "kv_offload_read_threads")
-	}
-	if writeThreads <= 0 {
-		writeThreads = defaultInt(EngineVLLM, "kv_offload_write_threads")
-	}
-	extra := map[string]any{
-		"spec_name":        "TieringOffloadingSpec",
-		"cpu_bytes_to_use": KVCPUTierBytes(q),
-		"secondary_tiers": []map[string]any{{
-			"type": "fs", "root_dir": filepath.Clean(q.SharedKVDir),
-			"n_read_threads": readThreads, "n_write_threads": writeThreads,
-		}},
-	}
-	if q.KVOffloadBlockSize > 0 {
-		extra["block_size"] = q.KVOffloadBlockSize
-	}
-	return map[string]any{
-		"kv_connector": "OffloadingConnector", "kv_role": "kv_both",
-		"kv_connector_extra_config": extra,
-	}
 }
 
 func speculativeConfig(q LaunchConfig) string {
