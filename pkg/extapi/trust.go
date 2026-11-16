@@ -51,8 +51,12 @@ const rootStem = "gwroot"
 type PublisherCert struct {
 	// Format is 1.
 	Format int `json:"format"`
-	// Serial is unique among all certificates of Publisher, whichever key
-	// issued them, so (Publisher, Serial) names one certificate.
+	// Serial is unique among the certificates of Publisher that one trust
+	// anchor issues, whichever of its keys signed them. The project roots
+	// are one anchor; each issuer the host operator configures is another,
+	// and picks its publisher names and serials itself. So (anchor,
+	// Publisher, Serial) names one certificate, and a revocation by serial
+	// applies within its list's anchor only (see Revocation).
 	Serial uint64 `json:"serial"`
 	// Publisher is the subject; manifests signed with this key must name it.
 	Publisher string `json:"publisher"`

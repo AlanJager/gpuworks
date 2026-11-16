@@ -139,7 +139,7 @@ A certificate is a publisher's signing key and its grants. It travels as the pay
 | Field | Rules |
 |---|---|
 | `format` | 1 |
-| `serial` | Unique among all certificates of the publisher, whichever root issued them, so `publisher` + `serial` names one certificate; ≥1 |
+| `serial` | Unique among the certificates one trust anchor issues to the publisher, whichever of the anchor's keys signed them. The project roots are one anchor; each issuer the host operator configures is another and picks its publisher names and serials itself, so anchor + `publisher` + `serial` names one certificate; ≥1 |
 | `publisher` | The subject; manifests signed with this key must name it |
 | `keyid` / `alg` / `public_key` | The publisher's signing key, with the rules of the [signature envelope](#signature-envelope); `keyid` starts with `<publisher>-` and not with `gwroot-` |
 | `not_before` / `not_after` | The signing window; `not_after` must be later than `not_before`. A package whose `created` lies in the window stays valid after `not_after`, so installed packages never expire |
@@ -184,6 +184,8 @@ At least one of the four lists is non-empty. Every revocation names its `publish
 | `publisher` + `manifest` | One package build of the publisher, by manifest digest, applied only to a package whose manifest names that publisher; only this kind of entry may carry `replacement` (the version to install instead) |
 
 Revoking by manifest digest rather than by package file hash means re-compressing the tar does not escape a revocation.
+
+Publisher names, key ids and serials are assigned by the anchor that certifies the publisher, so an entry by `publisher`, `cert_serial` or `keyid` applies only to certificates of the same anchor as the list carrying it: a root-signed trust update or revocation list (no `publisher`) to certificates the project roots issued; a publisher's own list to that publisher's certificates under the anchor that certified the key that signed it. The host operator withdraws what its own issuers certified in its configuration. An entry by `manifest` names one build by its content, so it applies under every anchor.
 
 Revocation lists are cumulative: a reader keeps the highest `serial` per issuer. A list issued under a project root has no `publisher`; a publisher may issue one about its own certificates, keys and builds, naming itself, and then every entry must name that same publisher, so one publisher's list never revokes another's keys or builds. `revoked` must not be empty.
 
@@ -375,7 +377,7 @@ Every decoding, validation and verification failure is an error with a stable co
 
 Values of `rule`: `required` (missing or empty), `grammar` (does not match its grammar), `range` (a number or length out of bounds), `enum` (not in the closed set), `duplicate`, `order` (a list that must be sorted is not), `exclusive` (sets fields that exclude each other), `relation` (contradicts another field of the object), `syntax`, `type`, `number` (not an integer, or outside the safe range) and `trailing`. `field` is a dotted path with list indexes, for example `routes.0.feature`.
 
-`PLUGIN_STATE_TOO_NEW` comes from `extapi.CheckMarkers`: it compares persisted version markers (name, version, and the server version that wrote it) with the highest versions this build reads, and `needs` is the newest server version among the writers of those markers, the version to run instead.
+`PLUGIN_STATE_TOO_NEW` comes from `extapi.CheckMarkers`: it compares persisted version markers (name, version, and the server version that wrote it) with the highest versions this build reads, and `needs` is the newest server version among the writers of those markers, the version to run instead. A core marker missing from the known set counts as newer; a plugin data marker (`plugin.<id>.data`, at the `storage.state_version` of the build that wrote it) is compared only with the version the caller lists for an installed package, and the data of a package not listed never stops the core.
 
 ## Golden files
 
@@ -387,4 +389,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: df08575c47ce6c70957015b9b3a66d815473685b2686cc385a53f9b2bf443dfc -->
+<!-- translation-source-sha256: efdfe805d9679181b5dc1afafaac1896b2cfe085627d5fda90bc95c3cb4d7abf -->

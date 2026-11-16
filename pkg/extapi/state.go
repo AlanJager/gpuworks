@@ -102,8 +102,9 @@ func (p *StatePush) Validate() error {
 	return nil
 }
 
-// DecodeBody decodes the push's table at its kind and schema. A kind or
-// schema this package does not define fails with ErrorSchemaTooNew.
+// DecodeBody decodes the push's table at its kind and schema. A well-formed
+// kind or a schema of at least 1 that this package does not define fails
+// with ErrorSchemaTooNew: a newer server defines it.
 func (p *StatePush) DecodeBody() (Table, error) {
 	return DecodeTable(p.Kind, p.Schema, p.Body)
 }
@@ -122,6 +123,10 @@ func DecodeTable(kind string, schema int, body []byte) (Table, error) {
 		t = &BannersV1{}
 	case kind == KindAttestations && schema == 1:
 		t = &AttestationsV1{}
+	case !wordPattern.MatchString(kind):
+		return nil, wireInvalid(objectStatePush, &fieldError{field: "kind", rule: RuleGrammar})
+	case schema < 1:
+		return nil, wireInvalid(objectStatePush, &fieldError{field: "schema", rule: RuleRange})
 	default:
 		known := 0
 		if s := tableSchemas[kind]; len(s) > 0 {

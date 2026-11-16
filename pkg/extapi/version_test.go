@@ -73,6 +73,25 @@ func TestCheckMarkersRefusesNewerState(t *testing.T) {
 	}
 }
 
+// A package's data marker is checked against the version the caller lists
+// for it (the installed package's storage.state_version); the data of a
+// package the caller does not list never stops the core.
+func TestPluginDataMarkersFollowTheirPackage(t *testing.T) {
+	core := map[string]int{"pstate.availability": 1}
+	unlisted := []Marker{{Name: PluginDataMarker("acme_backup"), Version: 7, WrittenBy: "v27.1.0"}}
+	if err := CheckMarkers(unlisted, core); err != nil {
+		t.Fatalf("data of an unlisted package stopped the core: %v", err)
+	}
+	listed := map[string]int{"pstate.availability": 1, PluginDataMarker("acme_backup"): 6}
+	if got := TooNew(unlisted, listed); len(got) != 1 || got[0].Name != "plugin.acme_backup.data" {
+		t.Fatalf("data newer than the installed package: %v", got)
+	}
+	listed[PluginDataMarker("acme_backup")] = 7
+	if got := TooNew(unlisted, listed); len(got) != 0 {
+		t.Fatalf("data at the installed package's version: %v", got)
+	}
+}
+
 func TestProtocolRange(t *testing.T) {
 	if !(Range{Min: 1, Max: 3}).Contains(ProtocolMajor) || (Range{Min: 2, Max: 3}).Contains(ProtocolMajor) {
 		t.Fatal("contains")

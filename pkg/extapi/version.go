@@ -129,13 +129,32 @@ type Marker struct {
 	WrittenBy string
 }
 
+// PluginMarkerPrefix starts the name of every marker a package's data
+// carries; every other marker is the core's own.
+const PluginMarkerPrefix = "plugin."
+
+// PluginDataMarker is the name of the marker of package id's data, whose
+// version is the storage.state_version of the build that wrote it.
+func PluginDataMarker(id string) string { return PluginMarkerPrefix + id + ".data" }
+
 // TooNew returns the stored markers newer than known (marker name to the
-// highest version this build reads), sorted by name. A marker whose name
-// this build does not know at all is newer than it.
+// highest version this build reads), sorted by name.
+//
+// known holds the core's own markers and, for each installed package the
+// caller checks, PluginDataMarker(id) at the package's storage.state_version.
+// A core marker missing from known names state a newer core added, so it is
+// newer than this build. A package marker missing from known belongs to a
+// package the caller did not list (no longer installed, or one whose data
+// its own plugin host checks before starting it), so it is not the core's to
+// refuse.
 func TooNew(stored []Marker, known map[string]int) []Marker {
 	var out []Marker
 	for _, m := range stored {
-		if m.Version > known[m.Name] {
+		v, listed := known[m.Name]
+		if !listed && strings.HasPrefix(m.Name, PluginMarkerPrefix) {
+			continue
+		}
+		if m.Version > v {
 			out = append(out, m)
 		}
 	}

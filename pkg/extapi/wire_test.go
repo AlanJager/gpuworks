@@ -154,6 +154,17 @@ func TestUnknownTableIsTooNew(t *testing.T) {
 	if e, ok := err.(*Error); !ok || e.Code != ErrorSchemaTooNew || e.Params["known"] != 1 {
 		t.Fatalf("newer schema: %v", err)
 	}
+	// Input no server version would define is invalid, not too new.
+	for _, tc := range []struct {
+		kind   string
+		schema int
+		field  string
+	}{{KindAvailability, 0, "schema"}, {"quota_limits", -1, "schema"}, {"Quota", 1, "kind"}, {"", 1, "kind"}} {
+		_, err := DecodeTable(tc.kind, tc.schema, []byte(`{}`))
+		if e, ok := err.(*Error); !ok || e.Code != ErrorWireInvalid || e.Params["field"] != tc.field {
+			t.Errorf("%q@%d: %v, want %s at %s", tc.kind, tc.schema, err, ErrorWireInvalid, tc.field)
+		}
+	}
 }
 
 func TestWireErrorOf(t *testing.T) {

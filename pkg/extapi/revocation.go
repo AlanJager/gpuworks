@@ -37,6 +37,16 @@ type TrustUpdate struct {
 // the publisher, by its manifest digest, which a reader applies only to a
 // package whose manifest names Publisher.
 //
+// Publisher names, key ids and serials are assigned by the anchor that
+// certifies the publisher, so an entry by Publisher, CertSerial or KeyID
+// applies only to certificates of the same anchor as the list carrying it:
+// a root-signed trust update or CRL (empty Publisher) to certificates the
+// project roots issued; a publisher's own CRL to that publisher's
+// certificates under the anchor that certified the key that signed the
+// list. The host operator withdraws what its own issuers certified in its
+// configuration. An entry by Manifest names one build by its content, so it
+// applies under every anchor.
+//
 // A revocation refuses new installs. It never stops an installed package by
 // itself, except an authority package revoked by Manifest, which is not
 // started again; Replacement then names the version to install instead.
