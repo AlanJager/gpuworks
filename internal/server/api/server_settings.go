@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/version"
 )
@@ -161,7 +162,8 @@ func writeServerSettingsError(w http.ResponseWriter, err error) {
 		status := http.StatusBadRequest
 		switch settingsErr.Code {
 		case ErrorServerListenReadOnly, ErrorServerRestartManual, ErrorServerUpgradeUnavailable, ErrorServerAlreadyAtRelease,
-			ErrorUpdateChannelReadOnly, ErrorUpdateAutoCheckReadOnly, ErrorServerNewerThanRelease, ErrorUsageReportReadOnly:
+			ErrorUpdateChannelReadOnly, ErrorUpdateAutoCheckReadOnly, ErrorServerNewerThanRelease, ErrorUsageReportReadOnly,
+			messages.ErrorServerEditionMismatch:
 			status = http.StatusConflict
 		}
 		writeProductError(w, status, settingsErr.Code, settingsErr.Fallback, settingsErr.Params)

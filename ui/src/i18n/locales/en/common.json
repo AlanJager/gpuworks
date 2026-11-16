@@ -498,6 +498,7 @@
     "SERVER_UPGRADE_UNAVAILABLE": "This server cannot be upgraded from the console ({{reason}}); run gpuworks upgrade on its host.",
     "SERVER_UPGRADE_ARCHIVE_INVALID": "Not a gpuworks release archive this server can use: {{detail}}",
     "SERVER_ALREADY_AT_RELEASE": "The server already runs {{release}}; there is nothing to upgrade.",
+    "SERVER_EDITION_MISMATCH": "{{release}} is the {{release_edition}} edition, but this server runs the {{edition}} edition; the console does not switch editions. Run gpuworks upgrade with --allow-edition-change on the server host.",
     "SERVER_NEWER_THAN_RELEASE": "The server runs {{current}}, which is newer than {{release}} in this channel; it will not be downgraded.",
     "UPDATE_CHANNEL_READ_ONLY": "The server has no server.yaml, so its update channel cannot be changed here.",
     "SERVER_UPGRADE_IN_PROGRESS": "A server upgrade is in progress. Check its result.",

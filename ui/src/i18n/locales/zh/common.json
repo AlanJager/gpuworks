@@ -498,6 +498,7 @@
     "SERVER_UPGRADE_UNAVAILABLE": "这台服务端不能在控制台里升级（{{reason}}），请在主机上执行 gpuworks upgrade。",
     "SERVER_UPGRADE_ARCHIVE_INVALID": "不是这台服务端可用的 gpuworks 发布包：{{detail}}",
     "SERVER_ALREADY_AT_RELEASE": "服务端已经是 {{release}}，不需要升级。",
+    "SERVER_EDITION_MISMATCH": "{{release}} 是 {{release_edition}} 版，本服务端是 {{edition}} 版；控制台不切换版本，请在主机上执行 gpuworks upgrade 并加 --allow-edition-change。",
     "SERVER_NEWER_THAN_RELEASE": "服务端当前的 {{current}} 比渠道里的 {{release}} 更新，不会降级。",
     "UPDATE_CHANNEL_READ_ONLY": "服务端没有 server.yaml，不能在这里切换更新渠道。",
     "SERVER_UPGRADE_IN_PROGRESS": "服务端升级正在执行，请查看本次升级结果。",
