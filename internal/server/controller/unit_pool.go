@@ -212,7 +212,9 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 		tried++
 		refusal, yield, concessions, err := c.trialPoolNode(ctx, dep, candidate.Node, model)
 		if err == nil && refusal == nil {
-			if picker.Offer(index, concessions) {
+			// A node the operator named is taken when it fits: preferences
+			// rank the nodes the scheduler chooses, not the operator's.
+			if picker.Offer(index, concessions) || (hasHint && candidate.Node.UUID == hinted) {
 				return take(index)
 			}
 			continue

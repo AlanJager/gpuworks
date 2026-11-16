@@ -25,6 +25,7 @@ func (c *Controller) rollRestart(dep *store.Deployment, insts []store.Instance, 
 	since := *dep.RestartRequestedAt
 	incomplete := planning.GroupsIncomplete(insts)
 	var oldest *store.Instance
+	var oldestUnit planning.Unit
 	var stalled *planning.UnitSlot
 	unavailable := 0
 	for i, slot := range match.Slots {
@@ -36,7 +37,7 @@ func (c *Controller) rollRestart(dep *store.Deployment, insts []store.Instance, 
 			}
 		}
 		if inst != nil && inst.CreatedAt.Before(since) && (oldest == nil || inst.CreatedAt.Before(oldest.CreatedAt)) {
-			oldest = inst
+			oldest, oldestUnit = inst, slot.Unit
 		}
 	}
 	if oldest == nil {
@@ -50,7 +51,7 @@ func (c *Controller) rollRestart(dep *store.Deployment, insts []store.Instance, 
 		c.q.addAfter(depKey(dep.ID), c.retryBackoff)
 		return nil
 	}
-	if refusal := c.rollReplacementRefused(dep, oldest); refusal != nil {
+	if refusal := c.rollReplacementRefused(dep, oldestUnit, oldest); refusal != nil {
 		// Its replacement could not be placed: keep the replica rather than
 		// drop it, and say what would let the roll go on.
 		c.recordUnschedulable(dep, *refusal)
@@ -95,14 +96,23 @@ func (c *Controller) recordRollStalled(dep *store.Deployment, since time.Time, s
 // placed would refuse it (ADR 0068): the refusal is returned and the replica
 // kept. Anything else - another reason, a check that cannot run - lets the
 // roll go on as before; only this case is one the roll itself would cause.
-// The check plans one node, and only for a replica on a held card.
-func (c *Controller) rollReplacementRefused(dep *store.Deployment, inst *store.Instance) *scheduler.Reason {
+// The check plans one node, and only for a replica on a held card that
+// cannot move: a pool replica whose requirements do not pin it to one node
+// is replaced by a pick across the pool (pickPoolNode), so its own node's
+// refusal says nothing about where the replacement goes.
+func (c *Controller) rollReplacementRefused(dep *store.Deployment, unit planning.Unit, inst *store.Instance) *scheduler.Reason {
 	if dep.VRAMLimitBytes <= 0 || dep.NNodes > 1 {
 		return nil
 	}
 	node, err := c.store.NodeByID(inst.NodeID)
 	if err != nil || !onHeldCard(node, inst) {
 		return nil
+	}
+	if unit.Pool() {
+		reqs, err := c.store.DeploymentRequirements(dep.ID)
+		if pinned, ok := planning.PinnedNode(reqs); err != nil || !ok || pinned != node.UUID {
+			return nil
+		}
 	}
 	model, err := c.store.GetModel(dep.ModelID)
 	if err != nil {
