@@ -5,6 +5,8 @@ export interface ServerBuildInfo {
   commit?: string;
   built_at?: string;
   build_channel?: string;
+  /** Present for the running build only; display only. */
+  edition?: string;
   published_version?: string;
   published_at?: string;
 }

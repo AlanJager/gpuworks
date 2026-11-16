@@ -226,10 +226,12 @@ type SystemLabel struct {
 	DisplayCode string `json:"display_code,omitempty"`
 }
 
-// Health is the /healthz payload.
+// Health is the /healthz payload. Edition is the build's edition
+// (version.Edition), shown for support; it never changes what the server does.
 type Health struct {
 	Status   string `json:"status"`
 	Version  string `json:"version"`
+	Edition  string `json:"edition"`
 	Nodes    int    `json:"nodes"`
 	Sessions int    `json:"sessions"`
 }

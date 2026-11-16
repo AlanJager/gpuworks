@@ -13,6 +13,7 @@
 //	migrate         apply database migrations and exit
 //	expose          publish this server through a Cloudflare quick tunnel
 //	version         print version
+//	edition         print the edition this binary was built as
 //
 // Running the binary without a subcommand prints the usage.
 package cli
@@ -57,7 +58,7 @@ func Main(args []string, opt Options) int {
 // builtinCommands are the names Run's switch dispatches itself; an extra
 // Command may not take one of them. Keep the two in step.
 var builtinCommands = []string{
-	"serve", "version", "-v", "--version", "database-migration", selfinstall.ConsoleUpgradeProtocolCommand,
+	"serve", "version", "-v", "--version", "database-migration", editionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
 	"install", "upgrade", "uninstall", "restart", "stop", "support-bundle",
 	"reset-password", "migrate", "expose", experiencelaunch.Command,
 	"help", "-h", "--help",
@@ -70,6 +71,7 @@ var builtinCommands = []string{
 // reuses a built-in name panics, since that is a defect of the build.
 func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 	opt.validate()
+	opt.applyEdition()
 	if len(args) == 0 {
 		usageTo(stderr, opt.Commands)
 		return 2
@@ -87,6 +89,8 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 		fmt.Println("gpuworks", version.String())
 	case "database-migration":
 		fmt.Println(store.LatestMigration())
+	case editionCommand:
+		fmt.Println(version.Edition)
 	case selfinstall.ConsoleUpgradeProtocolCommand:
 		// Asked by a server about to install this release from the console.
 		fmt.Println(selfinstall.ConsoleUpgradeProtocol)

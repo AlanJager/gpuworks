@@ -39,6 +39,7 @@ gpuworks restarted (systemd)
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
 | | `version` | 打印版本 | 任何人 |
+| | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
 | | `console-upgrade-protocol` | 打印本版本支持的控制台升级协议号（当前 `1`）；控制台升级之前的版本没有这个子命令 | 控制台升级前，服务端对待装的新二进制调用 |
 | `gpuworks-agent` | [`configure`](#gpuworks-agent-configure) | 把启动配置写进 `<state>/gpuworks-agent.conf` | 安装脚本调用；手工接入的节点 |
 | | [`run`](#gpuworks-agent-run) | 连接 server 并提供节点能力 | 由安装脚本/单元拉起，通常不手工运行 |

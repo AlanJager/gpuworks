@@ -129,8 +129,7 @@ func TestRunPanicsOnAnAmbiguousExtraCommand(t *testing.T) {
 
 // builtinCommands lists exactly the names Run's switch answers, so no extra
 // command can take one of them and none is refused for no reason. The case
-// values are read off the source; the two named constants stand for their
-// values.
+// values are read off the source; the named constants stand for their values.
 func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
 	if err != nil {
@@ -139,6 +138,7 @@ func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 	constants := map[string]string{
 		"selfinstall.ConsoleUpgradeProtocolCommand": selfinstall.ConsoleUpgradeProtocolCommand,
 		"experiencelaunch.Command":                  experiencelaunch.Command,
+		"editionCommand":                            editionCommand,
 	}
 	var dispatched []string
 	for _, decl := range file.Decls {
@@ -158,6 +158,12 @@ func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 						name, err := strconv.Unquote(v.Value)
 						if err != nil {
 							t.Fatal(err)
+						}
+						dispatched = append(dispatched, name)
+					case *ast.Ident:
+						name, ok := constants[v.Name]
+						if !ok {
+							t.Fatalf("case %s: add the constant to this test", v.Name)
 						}
 						dispatched = append(dispatched, name)
 					case *ast.SelectorExpr:

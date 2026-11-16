@@ -32,6 +32,8 @@ type Report struct {
 type Server struct {
 	Version string `json:"version"`
 	Channel string `json:"channel"`
+	// Edition is the build's edition (version.Edition).
+	Edition string `json:"edition"`
 	OS      string `json:"os"`
 	Arch    string `json:"arch"`
 	// SchemaVersion is the database migration the server is at.

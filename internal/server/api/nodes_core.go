@@ -30,6 +30,7 @@ func (a *apiHandlers) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.Health{
 		Status:   "ok",
 		Version:  version.Version,
+		Edition:  version.Edition,
 		Nodes:    nodes,
 		Sessions: sessions,
 	})

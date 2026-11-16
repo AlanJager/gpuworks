@@ -212,7 +212,7 @@ func (u *usageReporter) build(ctx context.Context, day, now time.Time, counts ma
 	channel, _ := u.settings.UpdateChannel()
 	r := &usagereport.Report{
 		Schema: usagereport.Schema, InstallID: u.settings.InstallID(), Day: day.Format(usagereport.DayLayout),
-		Server: usagereport.Server{Version: version.Version, Channel: channel, OS: runtime.GOOS, Arch: runtime.GOARCH,
+		Server: usagereport.Server{Version: version.Version, Channel: channel, Edition: version.Edition, OS: runtime.GOOS, Arch: runtime.GOARCH,
 			SchemaVersion: facts.SchemaVersion},
 	}
 	environmentOf(&r.Environment, facts)

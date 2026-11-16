@@ -37,6 +37,7 @@ A distribution (the “Distribution” type in the table below) is a `{"name": c
 | `delivery.probe_ms` | Object | Each collector's response time to the probe request in milliseconds; `-1` means no response |
 | `server.version` | String | Server version |
 | `server.channel` | String | Followed release channel (`nightly` / `release`) |
+| `server.edition` | String | Build edition: `community` for the community build; a separately built server reports its own name |
 | `server.os` / `server.arch` | String | Server operating system and CPU architecture |
 | `server.schema_version` | Integer | Database migration version |
 | `environment.nodes` / `environment.online_nodes` | Integer | Total nodes / online nodes (at report generation time) |
@@ -91,4 +92,4 @@ The bell in the page header lists notices the publisher sends to this installati
 
 For design tradeoffs, see [ADR 0054](../adr/0054-usage-report-and-notices.md).
 
-<!-- translation-source-sha256: ee3391351bad92ba79f30b8941f771de244963cb47d94765fdce32d677f3de12 -->
+<!-- translation-source-sha256: 6ca9fc0b06f3aba11ea9c2010c9b5947d9f54eae2fe5450bc58370c57897c3e1 -->

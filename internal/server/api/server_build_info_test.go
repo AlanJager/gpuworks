@@ -237,7 +237,7 @@ func TestServerBuildInfoUpdatesWireKeepsLatestSeparate(t *testing.T) {
 	if err := json.Unmarshal(wire["server"], &server); err != nil {
 		t.Fatal(err)
 	}
-	want := `{"version":"v1.2.3","commit":"0123456789abcdef0123456789abcdef01234567","built_at":"2026-10-30T02:00:00Z","build_channel":"release","kind":"stable","published_version":"v1.2.3","published_at":"2026-10-11T00:00:00Z"}`
+	want := `{"version":"v1.2.3","commit":"0123456789abcdef0123456789abcdef01234567","built_at":"2026-10-30T02:00:00Z","build_channel":"release","edition":"community","kind":"stable","published_version":"v1.2.3","published_at":"2026-10-11T00:00:00Z"}`
 	if string(server["current_build"]) != want {
 		t.Fatalf("current_build wire = %s, want %s", server["current_build"], want)
 	}

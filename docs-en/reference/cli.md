@@ -39,6 +39,7 @@ To specify another installation directory, append `--dir /path/to/installation` 
 | | [`migrate`](#gpuworks-migrate) | Run migrations and seed the built-in catalog in the specified SQLite database, then exit | Operators/developers, for offline checks or database premigration |
 | | [`reset-password`](#gpuworks-reset-password) | Reset the administrator account password | Operators, when the password is forgotten |
 | | `version` | Print the version | Anyone |
+| | `edition` | Print the build edition (`community` for the community build); the `version` output does not include it | Anyone; to confirm which build is installed when troubleshooting |
 | | `console-upgrade-protocol` | Print the console upgrade protocol number supported by this version (currently `1`); versions predating console upgrades do not have this subcommand | Before a console upgrade, the server invokes it on the new binary to be installed |
 | `gpuworks-agent` | [`configure`](#gpuworks-agent-configure) | Write startup configuration to `<state>/gpuworks-agent.conf` | Called by the installation script; used for manually connected nodes |
 | | [`run`](#gpuworks-agent-run) | Connect to the server and provide node capabilities | Started by the installation script/unit; usually not run manually |
@@ -608,5 +609,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: bd42af6ee5d8daf7488705b3931d8da4dc23eb3d4814f77304708b6ffd259dc8 -->
+<!-- translation-source-sha256: 0ffe20805ac318d19ad623cf85619168569e9248d3d8015ab9959b6ce18f9112 -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

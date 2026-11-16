@@ -8,13 +8,30 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
+
+	"gpuworks.ai/gpuworks/internal/version"
 )
+
+// editionCommand prints version.Edition. A server that stages another binary
+// asks it this to learn the edition it is about to install; a binary from
+// before the command existed is the community edition.
+const editionCommand = "edition"
+
+// editionName is the form an edition name takes.
+var editionName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 // Options are what a build adds to the built-in command line. The zero value
 // is the community server exactly as cmd/gpuworks runs it.
 type Options struct {
+	// Edition names the build: it is written to version.Edition before any
+	// subcommand runs, and `gpuworks edition`, /healthz, the server build
+	// info, the usage report and support bundles show it. Empty keeps the
+	// built-in "community". A name that is not a lowercase word
+	// ([a-z][a-z0-9-]{0,31}) makes Run panic, as a defect of the build.
+	Edition string
 	// Commands are extra subcommands, dispatched after the built-in ones and
 	// listed in the usage after them, in this order. A name that a built-in
 	// subcommand or another extra command already uses makes Run panic: two
@@ -43,6 +60,9 @@ type Env struct {
 
 // validate panics when an extra command cannot be dispatched unambiguously.
 func (o Options) validate() {
+	if o.Edition != "" && !editionName.MatchString(o.Edition) {
+		panic(fmt.Sprintf("cli: edition %q is not a lowercase name", o.Edition))
+	}
 	seen := map[string]bool{}
 	for _, c := range o.Commands {
 		switch {
@@ -56,6 +76,14 @@ func (o Options) validate() {
 			panic(fmt.Sprintf("cli: extra command %q is registered twice", c.Name))
 		}
 		seen[c.Name] = true
+	}
+}
+
+// applyEdition writes the build's edition before dispatch, so every
+// subcommand and the server it starts report the same one.
+func (o Options) applyEdition() {
+	if o.Edition != "" {
+		version.Edition = o.Edition
 	}
 }
 

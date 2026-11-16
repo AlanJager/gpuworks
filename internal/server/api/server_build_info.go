@@ -51,6 +51,7 @@ func serverBuildInfo(target string, fetched *distribution.Fetched) dto.ServerBui
 		return info
 	}
 	info.BuildChannel = version.Channel
+	info.Edition = version.Edition
 	if version.Commit != "" && version.Commit != "none" {
 		info.Commit = version.Commit
 	}
