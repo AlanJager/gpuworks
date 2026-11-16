@@ -406,6 +406,7 @@ func (s *Store) EnrollKubeNode(token, clusterUID, nodeName string) (*Node, *Kube
 	}
 	if created {
 		s.publishNode(node.UUID, "pending")
+		s.publishNodeFleet(node.ID, NodeInserted)
 	}
 	return &node, &cluster, nil
 }

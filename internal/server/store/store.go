@@ -252,6 +252,7 @@ func (s *Store) RegisterNode(uuid, tokenHash, hostname string, connectModeOpt ..
 		return nil, err
 	}
 	s.publishNode(n.UUID, "registered")
+	s.publishNodeFleet(n.ID, NodeInserted)
 	return n, nil
 }
 
@@ -283,6 +284,7 @@ func (s *Store) CreateNodePending(name string, connectModeOpt ...string) (*Node,
 		return nil, "", err
 	}
 	s.publishNode(n.UUID, "pending")
+	s.publishNodeFleet(n.ID, NodeInserted)
 	return n, token, nil
 }
 
@@ -550,5 +552,6 @@ func (s *Store) DeleteNode(uuid string) error {
 		s.observe(ev, nil)
 	}
 	s.publishNode(uuid, fmt.Sprintf("deleted:%d", nodeID))
+	s.publishNodeFleet(nodeID, NodeDeleted)
 	return nil
 }

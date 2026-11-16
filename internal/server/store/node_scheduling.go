@@ -76,7 +76,7 @@ func (s *Store) SetNodeScheduling(uuid string, scheduling NodeScheduling) (*Node
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var n Node
-		if err := tx.Select("id", "uuid", "created_at", "gpu_count", "gpu_vendor", "kube_cluster_id").
+		if err := tx.Select(holdFactColumns).
 			Where("uuid = ?", uuid).Take(&n).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrNotFound

@@ -7,8 +7,8 @@ import (
 )
 
 // holdColumns are the node columns a hold and its release decide on.
-var holdColumns = []string{"id", "uuid", "created_at", "gpu_count", "gpu_vendor", "kube_cluster_id",
-	"scheduling", "scheduling_by", "runtime_gpu_blocked", "kube_unschedulable"}
+var holdColumns = append(append([]string(nil), holdFactColumns...),
+	"scheduling", "scheduling_by", "runtime_gpu_blocked", "kube_unschedulable")
 
 // ApplySchedulingHolds asks the registered holders about every node now,
 // rather than at each node's next status report: a node a holder holds is

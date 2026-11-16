@@ -22,6 +22,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 	cordonedFor := ""
 	var heldBy SchedulingSource
 	placementChanged := false
+	var factsChangedOf uint // the node's id when the report changed its hold facts
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var n Node
 		if err := tx.Where("uuid = ?", uuid).First(&n).Error; err != nil {
@@ -86,6 +87,9 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		if count, ok := updates["gpu_count"].(int); ok {
 			facts.OwnedCards = count
 		}
+		if facts.OwnedCards != n.GPUCount || facts.GPUVendor != n.GPUVendor {
+			factsChangedOf = n.ID
+		}
 		hold, _ := s.admission.holdOf(facts)
 		if d := decideScheduling(n.Scheduling, n.SchedulingBy, cordonReason, runtimeKnown, hold); d.changed {
 			updates["scheduling"] = d.scheduling
@@ -148,6 +152,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		s.fleetNodes.changes.Add(1)
 	}
 	s.publishNode(uuid, NodeChangeStatus)
+	s.publishNodeFleet(factsChangedOf, NodeFactsChanged)
 	if cordoned {
 		// The platform or a holder, not an operator, took the node out of
 		// scheduling: say so where an operator looks, and to every reader
