@@ -1754,6 +1754,7 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 | POST | `/api/v1/experience/password` | Generates a new password for the running environment; sessions of the old one end. 409 `EXPERIENCE_FAILED` if it is not running | JWT(admin) |
 | GET | `/api/v1/notices` | Header notification bell `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`: publisher-signed notices applicable to this installation (`kind` is `security` / `release` / `event`; `title`/`body` provide plain text by language). Sorted by urgency, then by time; `read` and `unread` are calculated per caller | JWT |
 | POST | `/api/v1/notices/read` | Mark notices as read with `{"ids": [...]}` (1–128 IDs, each ≤64 bytes; otherwise, 400 `NOTICE_IDS_INVALID`). Records only the caller's own read status; repeated marking has no side effects. Returns 204 | JWT |
+| GET | `/api/v1/console/manifest` | What the console shell shows beyond its own pages, `{edition, features, nav, banners}`. The server decides every value and the console only renders it; see [Console manifest and extension routes](#console-manifest-and-extension-routes). A community server always returns `{"edition":"community","features":[],"nav":[],"banners":[]}` | JWT |
 | GET | `/api/v1/updates/server/versions` | Supply the saved `channel` to list verified server versions in publication order, the local platform, Git commits (when available), package checksums and installability reasons. The running channel omits earlier builds. A different channel includes its published history. The `latest` flag identifies the channel head. | JWT(admin) |
 | GET | `/api/v1/updates/server/result` | Supply the upgrade `attempt` or the accepted response's `backup` to check for download, restart, failure or confirmed rollback. Returns `unknown` without matching evidence. | JWT(admin) |
 | POST | `/api/v1/updates/server` | Optionally pin a package with `{channel,version,sha256,attempt}`. An empty selection uses the channel head. Download a release package, back up and replace the server, and restart. On acceptance, returns 202 `{from,to,backup}`; confirms or rolls back on the next startup. See [Server Upgrade Restrictions](#服务端升级限制) | JWT(admin) |
@@ -2242,10 +2243,29 @@ The following conventions maintain the endpoint inventory; they are not prerequi
   `ProxyV1`, `ProxyModels`, and `PlaygroundV1` handlers for `/v1/*`, `/v1/models`, and `/api/v1/playground/v1/*`. Route inventory tests use zero-value `Deps{}`, so these three gateway routes
   and the SPA fallback `/*` are excluded from their assertions, but are always mounted in production.
 
+### Console manifest and extension routes
+
+A separately built server can mount its own management routes under `/api/v1/<name>/` (`api.Deps.Extensions`). The community server mounts no extension routes, and its route inventory is exactly the same as with no extensions.
+
+- **Namespace and collisions**: an extension name must match `[a-z][a-z0-9_]{1,31}` and must not be a first path segment the core already uses (such as `nodes` or `console`); a route must be `/<name>` or start with `/<name>/`. `Router` panics at startup on a route outside its namespace or a method and path registered twice.
+- **Authentication**: extension routes use the same management authentication as core routes (including the session's origin check and renewal). Each declares one of three levels: `read` (any signed-in user and platform token; a read token only for GET/HEAD/OPTIONS), `admin` (also requires an administrator, otherwise `403 ADMINISTRATOR_REQUIRED`), or `admin-session` (an administrator with a login session only; a platform token gets `403 PLATFORM_TOKEN_NOT_ALLOWED`).
+- **Feature availability**: every extension route either belongs to one feature or is explicitly marked as a community route, never both. A feature's availability is `full`, `read_only`, `locked`, or `hidden`, enforced on the server: under `read_only` only reads pass (plus routes declared writable while read-only) and writes get `403 FEATURE_READ_ONLY`; under `locked` the route returns `403 FEATURE_UNAVAILABLE`; under `hidden` it returns `404 FEATURE_UNAVAILABLE`. When nothing answers for availability, the feature counts as unavailable and returns `FEATURE_PROVIDER_ABSENT`. The error's `params.feature` is the feature name.
+- **AI assistant and MCP**: extension GET routes are closed to the AI assistant and MCP by default; only explicitly marked routes appear in the readable route list and can be read.
+- **Route inventory**: `api.RouteInventory` lists one route per line; an extension route adds `[access=…] [action=…] [feature=…]` (`[community]` for a community route), and an extension route that neither belongs to a feature nor is marked community fails the inventory.
+
+Fields of `GET /api/v1/console/manifest`:
+
+| Field | Description |
+|---|---|
+| `edition` | Build name, for display only |
+| `features[]` | Current availability of each declared feature, sorted by `key`: `{key, access, presentation, link?, message?, limits}`. `access` is `full` / `read_only` / `locked` / `hidden`; `presentation` is `promote` (shown as locked with `link` when unavailable) or `hidden` (hidden entirely when unavailable, so locked is returned as `hidden`); `message` is a product message `{code, params?, message}` explaining the current availability; `limits` is `[{dim, max}]`, where a `null` `max` means unlimited |
+| `nav[]` | Menu entries extensions add to the console `{id, group, label_key, icon?, route, feature?}`; entries whose feature is `hidden` are not returned |
+| `banners[]` | Notices shown at the top of every page `{id, severity, message, link?}`; `severity` is `info` / `warning` / `danger` (any other value is returned as `info`), and `message` is a product message `{code, params?, message}` |
+
 ### Whether GPU capacity is known
 
 Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_capacity_known`. It is derived from inventory capacity and not persisted. When false, `memory_total_bytes` must not render as a known zero-GB capacity. Measured zero usage remains a valid metric. Only the compatibility boundary for old APIs without the field uses the legacy zero-capacity sentinel.
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 69820850dac3a62fc794b5826de790573ecda9958e97a3f5054e089b7ccb2c20 -->
+<!-- translation-source-sha256: d9ca949ff70150a91a5e93ae5f1c8b66d7cf2be2d00d6fcca722c4d8e929097d -->

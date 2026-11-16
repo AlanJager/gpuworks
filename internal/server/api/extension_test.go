@@ -94,6 +94,7 @@ func TestExtensionMountRefusesBadRegistrations(t *testing.T) {
 		{"one-letter name", []Extension{fakeExtension{name: "f"}}, "does not match"},
 		{"twice", []Extension{fakeExtension{name: "fake"}, fakeExtension{name: "fake"}}, "registered twice"},
 		{"core path", []Extension{fakeExtension{name: "nodes"}}, "collides with the core path"},
+		{"core manifest path", []Extension{fakeExtension{name: "console"}}, "collides with the core path"},
 		{"outside namespace", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/other")}}}, "outside /api/v1/fake/"},
 		{"prefix is not a namespace", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{get("/fakes/x")}}}, "outside /api/v1/fake/"},
 		{"method", []Extension{fakeExtension{name: "fake", routes: []RouteSpec{{Method: http.MethodTrace, Pattern: "/fake", Community: true}}}}, "not allowed"},

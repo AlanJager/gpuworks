@@ -135,6 +135,7 @@ GET /api/v1/benchmarks/{id}/points/{seq}/detail
 GET /api/v1/benchmarks/{id}/points/{seq}/timeline
 GET /api/v1/benchmarks/{id}/report
 GET /api/v1/branding
+GET /api/v1/console/manifest
 GET /api/v1/dashboard/summary
 GET /api/v1/data-retention
 GET /api/v1/data-retention/status

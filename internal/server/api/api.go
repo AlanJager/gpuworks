@@ -408,6 +408,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Post("/experience/reset", a.postExperienceReset)
 			r.With(a.managementAdmin).Post("/experience/password", a.postExperiencePassword)
 			r.Get("/notices", a.getNotices)
+			r.Get("/console/manifest", a.consoleManifest)
 			r.Post("/notices/read", a.postNoticesRead)
 			r.With(a.managementAdmin).Get("/server/outbound-policy", a.getServerOutboundPolicy)
 			r.With(a.managementAdmin).Put("/server/outbound-policy", a.putServerOutboundPolicy)
