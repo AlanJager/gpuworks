@@ -88,6 +88,10 @@ type Input struct {
 	// instances: an edit of the deployment replaces them, so what they hold
 	// now is not in the way of the launch being previewed. Zero excludes none.
 	ExcludeDeploymentID uint
+	// ExcludeInstanceUUID previews the node without that one instance: a
+	// replacement checked before the instance it replaces goes (a rolling
+	// restart) is not charged what that instance holds. Empty excludes none.
+	ExcludeInstanceUUID string
 	// DeploymentID is the launching deployment's, zero for one not created
 	// yet: its own instances never give up their cards to it (launchYield).
 	DeploymentID uint
@@ -218,7 +222,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningGPUArchCaution, map[string]any{"detail": q}))
 	}
 
-	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, reserved: reservedAgainst(st, in.YieldPolicy), servingUnavailable: in.ServingUnavailable}
+	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, excludeInstance: in.ExcludeInstanceUUID, reserved: reservedAgainst(st, in.YieldPolicy), servingUnavailable: in.ServingUnavailable}
 	snap := nodeSnapshot(st, in.Node, dtypeOK, dtypeReason, view)
 	if in.Unloaded {
 		// A card that is busy or unhealthy now is a reason to wait, not to

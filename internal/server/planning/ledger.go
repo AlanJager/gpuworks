@@ -351,6 +351,8 @@ type ledgerView struct {
 	// edit of a deployment is previewed as the launch that replaces them, so
 	// the memory they hold now is not counted against it (Input.ExcludeDeploymentID).
 	excludeDeployment uint
+	// excludeInstance leaves that one instance out (Input.ExcludeInstanceUUID).
+	excludeInstance string
 	// servingUnavailable carries Input.ServingUnavailable into every snapshot
 	// read through this view, so a re-plan cannot forget it.
 	servingUnavailable bool
@@ -361,7 +363,8 @@ type ledgerView struct {
 }
 
 func (v ledgerView) excludes(in *store.Instance) bool {
-	return v.excludeDeployment != 0 && in.DeploymentID == v.excludeDeployment
+	return (v.excludeDeployment != 0 && in.DeploymentID == v.excludeDeployment) ||
+		(v.excludeInstance != "" && in.UUID == v.excludeInstance)
 }
 
 // nodeSnapshot is NodeSnapshot read through view.
