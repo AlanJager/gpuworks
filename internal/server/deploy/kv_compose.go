@@ -100,9 +100,9 @@ func vllmOffloadContribution(p Params) *kvContribution {
 	if !ok {
 		return nil
 	}
-	render, ok := kvBackends.vllmOffloadRenderer(row.ID)
+	backend, ok := kvBackends.vllmBackend(row.ID)
 	if !ok {
 		return nil
 	}
-	return render(p)
+	return backend.render(p)
 }

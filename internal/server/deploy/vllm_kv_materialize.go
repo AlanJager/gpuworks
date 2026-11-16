@@ -59,20 +59,33 @@ func onlyVLLMKVKeys(values map[string]any, allowed ...string) bool {
 }
 
 // RecognizeKVBackend reads a --kv-transfer-config value back into the
-// selectable backend whose renderer produces exactly that object for a
-// configuration that selects it. Only the non-PD object is recognized: a
-// MultiConnector wrapping a PD connector stays opaque, and ExportLaunchArgs
-// builds without PD, so a template only ever carries the non-PD shape.
-func (vLLMEngine) RecognizeKVBackend(flag, raw string) (string, bool) {
+// selectable backend it configures: through the backend's own reader, which
+// also answers its dictionary values, or, for a backend without one, when
+// the object is exactly what it renders selected with nothing else stated.
+// Only the non-PD object is recognized: a MultiConnector wrapping a PD
+// connector stays opaque, and ExportLaunchArgs builds without PD, so a
+// template only ever carries the non-PD shape.
+func (vLLMEngine) RecognizeKVBackend(flag, raw string) (KVBackendRecognition, bool) {
 	if flag != "--kv-transfer-config" {
-		return "", false
+		return KVBackendRecognition{}, false
 	}
 	var stated any
 	if err := json.Unmarshal([]byte(unquoteArgument(raw)), &stated); err != nil {
-		return "", false
+		return KVBackendRecognition{}, false
 	}
+	object, isObject := stated.(map[string]any)
 	for _, row := range selectableKVBackends(EngineVLLM) {
-		if !row.External {
+		backend, ok := kvBackends.vllmBackend(row.ID)
+		if !row.External || !ok {
+			continue
+		}
+		if backend.recognize != nil {
+			if !isObject {
+				continue
+			}
+			if values, ok := backend.recognize(object); ok {
+				return KVBackendRecognition{ID: row.ID, Values: values}, true
+			}
 			continue
 		}
 		rendered, ok := vllmKVTransferConfig(Params{Quick: LaunchConfig{KVOffloadBackend: row.ID}})
@@ -81,8 +94,8 @@ func (vLLMEngine) RecognizeKVBackend(flag, raw string) (string, bool) {
 		}
 		var own any
 		if json.Unmarshal([]byte(rendered), &own) == nil && reflect.DeepEqual(stated, own) {
-			return row.ID, true
+			return KVBackendRecognition{ID: row.ID}, true
 		}
 	}
-	return "", false
+	return KVBackendRecognition{}, false
 }

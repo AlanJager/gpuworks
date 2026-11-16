@@ -13,11 +13,11 @@ import (
 // paramKVOffloadBackend is the dictionary key that selects a backend.
 const paramKVOffloadBackend = "kv_offload_backend"
 
-// kvBackendSet is the catalog this package works from, and the renderers of
-// rows the shipped renderers do not cover (only a test catalog has any).
+// kvBackendSet is the catalog this package works from, and the vLLM halves of
+// rows the shipped ones do not cover (only a test catalog has any).
 type kvBackendSet struct {
 	registry    kvbackend.Registry
-	vllmOffload map[string]vllmOffloadRenderer
+	vllmOffload map[string]vllmOffloadBackend
 }
 
 // kvBackends is assigned once from the shipped catalog, like the parameter
@@ -25,15 +25,15 @@ type kvBackendSet struct {
 // swap it whole (withKVBackends), never a row.
 var kvBackends = kvBackendSet{registry: kvbackend.Builtin()}
 
-// vllmOffloadRenderer answers the renderer of a vLLM row. The shipped
-// renderers are looked up at call time rather than held in kvBackends: they
-// read the dictionary, which itself reads kvBackends.
-func (s kvBackendSet) vllmOffloadRenderer(id string) (vllmOffloadRenderer, bool) {
-	if render, ok := s.vllmOffload[id]; ok {
-		return render, true
+// vllmBackend answers the vLLM half of a row: its renderer and reader. The
+// shipped ones are looked up at call time rather than held in kvBackends:
+// they read the dictionary, which itself reads kvBackends.
+func (s kvBackendSet) vllmBackend(id string) (vllmOffloadBackend, bool) {
+	if backend, ok := s.vllmOffload[id]; ok {
+		return backend, true
 	}
-	render, ok := vllmOffloadRenderers()[id]
-	return render, ok
+	backend, ok := vllmOffloadBackends()[id]
+	return backend, ok
 }
 
 // selectedKVBackend is the row q selects on engine: its stated id, or the

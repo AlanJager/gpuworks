@@ -142,10 +142,11 @@ type EngineHooks interface {
 	// engine accepts (matchConflictFlags).
 	KVConflictFlags() []string
 	// RecognizeKVBackend reads a flag/value pair back into the KV offload
-	// backend whose configuration it is exactly: the inverse of the backend's
-	// renderer, so a template exported from a deployment selects the backend
-	// again instead of carrying an opaque connector.
-	RecognizeKVBackend(flag, value string) (string, bool)
+	// backend whose configuration it is, with the backend's own dictionary
+	// values: the inverse of the backend's renderer, so a template exported
+	// from a deployment selects the backend again instead of carrying an
+	// opaque connector.
+	RecognizeKVBackend(flag, value string) (KVBackendRecognition, bool)
 	// APIBindHost is the address the served API binds when the launch names
 	// none; the template variable ${API_HOST} states it.
 	APIBindHost() string
@@ -197,7 +198,17 @@ func (BaseEngine) PDConnectorFlags() []string { return nil }
 
 func (BaseEngine) KVConflictFlags() []string { return nil }
 
-func (BaseEngine) RecognizeKVBackend(string, string) (string, bool) { return "", false }
+func (BaseEngine) RecognizeKVBackend(string, string) (KVBackendRecognition, bool) {
+	return KVBackendRecognition{}, false
+}
+
+// KVBackendRecognition is a stated configuration read back as a KV offload
+// backend's selection: the backend's id, and the values of its own
+// dictionary keys the configuration states.
+type KVBackendRecognition struct {
+	ID     string
+	Values map[string]any
+}
 
 func (BaseEngine) APIBindHost() string { return "127.0.0.1" }
 

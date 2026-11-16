@@ -40,11 +40,15 @@ func reverseArgs(engine string, args []string) (map[string]any, map[string]strin
 		token := args[index]
 		flag, inlineValue, hasInlineValue := splitInlineFlag(token)
 		entries := byFlag[flag]
-		if id, consumed, ok := recognizeKVBackendToken(adapter, args, index, flag, inlineValue, hasInlineValue); ok {
-			// The exact object a KV offload backend renders is that backend's
+		if recognized, consumed, ok := recognizeKVBackendToken(adapter, args, index, flag, inlineValue, hasInlineValue); ok {
+			// The object a KV offload backend renders is that backend's
 			// selection, not an opaque connector (ADR 0069).
-			params[paramKVOffloadBackend] = id
+			params[paramKVOffloadBackend] = recognized.ID
 			flags[paramKVOffloadBackend] = flag
+			for key, value := range recognized.Values {
+				params[key] = value
+				flags[key] = flag
+			}
 			index += consumed
 			continue
 		}
@@ -142,17 +146,17 @@ func unquoteArgument(value string) string {
 // recognizeKVBackendToken asks the adapter whether the flag at index carries
 // a KV offload backend's own configuration; consumed is how many tokens after
 // the flag the value took.
-func recognizeKVBackendToken(adapter Engine, args []string, index int, flag, inline string, hasInline bool) (string, int, bool) {
+func recognizeKVBackendToken(adapter Engine, args []string, index int, flag, inline string, hasInline bool) (KVBackendRecognition, int, bool) {
 	if !strings.HasPrefix(flag, "-") {
-		return "", 0, false
+		return KVBackendRecognition{}, 0, false
 	}
 	value, consumed := inline, 0
 	if !hasInline {
 		if index+1 >= len(args) {
-			return "", 0, false
+			return KVBackendRecognition{}, 0, false
 		}
 		value, consumed = args[index+1], 1
 	}
-	id, ok := hooks(adapter).RecognizeKVBackend(flag, value)
-	return id, consumed, ok
+	recognized, ok := hooks(adapter).RecognizeKVBackend(flag, value)
+	return recognized, consumed, ok
 }

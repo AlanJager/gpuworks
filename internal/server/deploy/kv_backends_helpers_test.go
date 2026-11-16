@@ -80,6 +80,6 @@ func withKVBackends(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := kvBackends
-	kvBackends = kvBackendSet{registry: registry, vllmOffload: map[string]vllmOffloadRenderer{testExternalKVBackend: testExternalVLLMOffload}}
+	kvBackends = kvBackendSet{registry: registry, vllmOffload: map[string]vllmOffloadBackend{testExternalKVBackend: {render: testExternalVLLMOffload}}}
 	t.Cleanup(func() { kvBackends = previous })
 }

@@ -457,7 +457,7 @@ func kvBackendSetProblems(set kvBackendSet) []string {
 	var out []string
 	for _, engine := range enginenames.DialectNames() {
 		for _, row := range set.registry.Selectable(engine) {
-			if _, ok := set.vllmOffloadRenderer(row.ID); engine != EngineVLLM || !ok {
+			if _, ok := set.vllmBackend(row.ID); engine != EngineVLLM || !ok {
 				out = append(out, fmt.Sprintf("%s/%s: no renderer (only the vLLM adapter renders KV offload backends)", engine, row.ID))
 			}
 			native := nativeKVKeys(engine)
@@ -509,7 +509,7 @@ func TestKVBackendSetRendersEverySelectableRow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		set := kvBackendSet{registry: registry, vllmOffload: map[string]vllmOffloadRenderer{row.ID: testExternalVLLMOffload}}
+		set := kvBackendSet{registry: registry, vllmOffload: map[string]vllmOffloadBackend{row.ID: {render: testExternalVLLMOffload}}}
 		if problems := kvBackendSetProblems(set); len(problems) == 0 {
 			t.Errorf("%s: accepted", name)
 		}
@@ -600,5 +600,45 @@ func TestKVOffloadPDRoles(t *testing.T) {
 		if got := KVOffloadPDRoles(tc.engine, tc.q); !slices.Equal(got, tc.want) {
 			t.Errorf("%s: roles = %v, want %v", name, got, tc.want)
 		}
+	}
+}
+
+// A backend whose object carries its own values is recognized by its own
+// reader, and the values it reads come back as dictionary values beside the
+// selection, so a template exported with non-default values selects the
+// backend again instead of leaving an opaque connector in the residual.
+func TestKVBackendRecognizerReturnsTheBackendsValues(t *testing.T) {
+	withKVBackends(t)
+	const segment = "testext_segment_gib"
+	object := map[string]any{"kv_connector": "ValuedConnector", "kv_role": "kv_both", "kv_connector_extra_config": map[string]any{"segment_gib": float64(12)}}
+	kvBackends.vllmOffload["valued"] = vllmOffloadBackend{
+		render: func(Params) *kvContribution { return &kvContribution{object: object} },
+		recognize: func(stated map[string]any) (map[string]any, bool) {
+			extra, _ := stated["kv_connector_extra_config"].(map[string]any)
+			if stated["kv_connector"] != "ValuedConnector" || extra == nil {
+				return nil, false
+			}
+			return map[string]any{segment: extra["segment_gib"]}, true
+		},
+	}
+	native, _ := kvbackend.Builtin().Resolve(EngineVLLM, "")
+	registry, err := kvbackend.New(native, testExternalKVBackendRow(), kvbackend.Backend{
+		ID: "valued", Engine: EngineVLLM, Label: "Valued", External: true,
+		Replaces: testExternalKVBackendRow().Replaces, PDRoles: []string{pdmode.RolePrefill},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kvBackends.registry = registry
+	stated := `{"kv_connector":"ValuedConnector","kv_role":"kv_both","kv_connector_extra_config":{"segment_gib":24}}`
+	params, residual, err := ReverseArgs(EngineVLLM, []string{"--kv-transfer-config", stated})
+	if err != nil || params[paramKVOffloadBackend] != "valued" || params[segment] != float64(24) || len(residual) != 0 {
+		t.Fatalf("reverse = %v, %v, %v", params, residual, err)
+	}
+	// The test row has no reader of its own: exactly its rendering is its
+	// selection, and nothing else.
+	params, _, _ = ReverseArgs(EngineVLLM, []string{"--kv-transfer-config", testExternalKVTransfer})
+	if params[paramKVOffloadBackend] != testExternalKVBackend || len(params) != 1 {
+		t.Fatalf("test row read as %v", params)
 	}
 }

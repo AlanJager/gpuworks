@@ -20,11 +20,25 @@ import (
 // environment; the composer only assembles the parts.
 type vllmOffloadRenderer func(p Params) *kvContribution
 
-// vllmOffloadRenderers are the renderers the product ships, keyed by
-// kvbackend id. A backend row without a renderer here cannot be selected
+// vllmOffloadReader reads a stated --kv-transfer-config object back into
+// the backend's own dictionary values, false when the object is not the
+// backend's.
+type vllmOffloadReader func(object map[string]any) (map[string]any, bool)
+
+// vllmOffloadBackend is a backend's vLLM half: how it renders, and how a
+// template's object reads back into its selection. A backend with no reader
+// is recognized only by exactly the object it renders when selected with
+// nothing else stated; one whose object carries its own values needs one.
+type vllmOffloadBackend struct {
+	render    vllmOffloadRenderer
+	recognize vllmOffloadReader
+}
+
+// vllmOffloadBackends are the backends the product ships, keyed by kvbackend
+// id. A backend row without one here cannot be selected
 // (TestKVBackendSetRendersEverySelectableRow).
-func vllmOffloadRenderers() map[string]vllmOffloadRenderer {
-	return map[string]vllmOffloadRenderer{kvbackend.Native: nativeVLLMOffload}
+func vllmOffloadBackends() map[string]vllmOffloadBackend {
+	return map[string]vllmOffloadBackend{kvbackend.Native: {render: nativeVLLMOffload}}
 }
 
 // nativeKVKeys are the launch configuration keys of an engine's own KV
