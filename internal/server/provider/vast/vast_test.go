@@ -13,8 +13,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/provision"
 )
 
-// sample /instances/ body: one running instance with ssh access, one stopped.
-const instancesBody = `{"instances":[
+// Sample v1 instance page: one running instance with ssh access, one stopped.
+const instancesBody = `{"success":true,"instances_found":2,"total_instances":2,"next_token":null,"instances":[
   {
     "id": 12345,
     "machine_id": 678,
@@ -54,7 +54,7 @@ func newTestDriver(t *testing.T, h http.HandlerFunc) *Driver {
 
 func TestListInstances(t *testing.T) {
 	d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/instances/" {
+		if r.URL.Path != "/api/v1/instances/" {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer key123" {
@@ -135,7 +135,7 @@ func TestValidateCredentials(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tc.status)
-				w.Write([]byte(`{"instances":[]}`))
+				writeInstancePage(w, 1, 0, 0, nil)
 			})
 			err := d.ValidateCredentials(context.Background(), provider.Credentials{APIKey: "k"})
 			if tc.wantErr && err == nil {
@@ -150,7 +150,7 @@ func TestValidateCredentials(t *testing.T) {
 
 func TestPowerState(t *testing.T) {
 	d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(instancesBody))
+		writeFilteredInstanceFixture(t, w, r, instancesBody)
 	})
 	cases := []struct {
 		id   string
