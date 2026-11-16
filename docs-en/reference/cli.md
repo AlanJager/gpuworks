@@ -150,6 +150,7 @@ Fetch the current version from a [release channel](../adr/0040-signed-multi-sour
 | `--version ID` | Empty | Release ID from the signed channel index. A release site or a local archive must carry the exact version specified |
 | `--keep N` | `3` | Number of pre-upgrade backup sets to retain |
 | `--force` | `false` | Allow replacement of a local build without a release ID (`dev` / `-dirty`) |
+| `--allow-edition-change` | `false` | Allow installing a release of another edition than the installed one |
 | `--check` | `false` | Only report whether a newer version is available; make no changes |
 | `--quiet` | `false` | Output only warnings and errors; no output on success |
 
@@ -159,6 +160,7 @@ Key behavior:
 - Without `--dir`, operate on the installation containing the binary being executed: `/opt/gpuworks1/gpuworks upgrade` upgrades `/opt/gpuworks1` without touching another installation in the default directory. A binary downloaded elsewhere still operates on the default installation directory. At startup, print `upgrading the installation at <dir> (<current-version>, <service-mode>)`.
 - After stopping the service, first confirm that the listen address in `server.yaml` has been released. If it is still occupied (for example, another installation on the same machine listens on the same port), fail immediately without backing up or replacing anything, and restart the stopped service unchanged. On Linux, report the occupying process's PID and command line; if it is another gpuworks installation, suggest `--dir <its-install-dir>`. If the process cannot be found, report the version returned by `/healthz` at that address.
 - Local builds (`dev` or `-dirty`) are rejected unless `--force` is supplied.
+- The edition does not change: the distribution channel accepts only signed indexes of this edition (an index that names no edition is community), and before the service is stopped the new binary is asked for its edition with the `edition` subcommand (an older release that does not know it counts as community). If it differs from the installed binary, the upgrade is refused and nothing is changed; with `--allow-edition-change` it is installed, followed by a reminder to run the new binary's `install` once more so its own install steps are applied. Console upgrades have no such switch and always refuse another edition (`SERVER_EDITION_MISMATCH`).
 - `--source`, `--base-url`, and `--archive` are mutually exclusive. `--channel` can only be used with release channels (the default or `--source`).
 - If the channel version is older than the current build (for example, when switching from nightly to release), do not downgrade; print a message and exit with code 0. Supply `--force` to install it.
 - Release channels: request `<channel>/index.json` from all sources simultaneously and use the first one whose signature passes verification (ed25519, with the public key compiled into the binary; the source itself does not need to be trusted). Download the archive from that source first. On failure or no new data for 30 seconds, switch to the next source and resume using Range. Finally, verify the size and sha256 against the index. The output identifies the source used. Built-in sources are Alibaba Cloud OSS (`https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com`), Huawei Cloud OBS (`https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com`), and Cloudflare R2 (`https://dl.gpuworks.ai`).
@@ -609,5 +611,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: 0ffe20805ac318d19ad623cf85619168569e9248d3d8015ab9959b6ce18f9112 -->
+<!-- translation-source-sha256: 8b9f9f3c329de15e472e6d5459699555d6b66b93ea5a077b9ac0166545ecad50 -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

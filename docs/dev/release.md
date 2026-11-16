@@ -22,6 +22,10 @@ make release-packages
 每个压缩包里除 `gpuworks` 二进制与 `INSTALL.txt` 外，还带 `LICENSE`、`NOTICE` 与 `LICENSES/`：二进制内嵌的 PRoot、talloc、perftest 等第三方程序
 要求分发二进制时附上许可证正文。新增或更换内嵌资产时，同步更新 `NOTICE` 与 `LICENSES/`。
 
+单独构建的服务端（另一个版本类型）沿用同一套构建：`SERVER_PKG` 换成它自己的 main 包（默认 `./cmd/gpuworks`），`PACKAGE_PREFIX`
+换成它的包名前缀（默认 `gpuworks`，包名为 `<前缀>-<release>-<os>-<arch>.tar.gz`），包里的二进制仍叫 `gpuworks`。发布通道用
+`gpuworks-dist assemble -edition <版本类型> -prefix <前缀>` 组装，见 [ADR 0040](../adr/0040-signed-multi-source-distribution.md) 2026-11-16 补充。
+
 CI 为避开单 job artifact 大小限制（server 内嵌了 macOS agent 后单个压缩包约 53 MB，
 一个 job 放两个就超限），按 OS 与架构拆成四个 job：`release-build-linux-amd64`、
 `release-build-linux-arm64`、`release-build-macos-amd64`、`release-build-macos-arm64`，
