@@ -21,9 +21,10 @@ var errNotNewer = fmt.Errorf("no source serves a newer build")
 // back.
 func newerCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("newer", flag.ContinueOnError)
-	var channel, builtAt string
+	var channel, builtAt, edition string
 	var sources stringList
 	fs.StringVar(&channel, "channel", "", "channel to read")
+	fs.StringVar(&edition, "edition", "", "edition the channel is published for (default: community)")
 	fs.StringVar(&builtAt, "built-at", "", "this build's time (RFC3339)")
 	fs.Var(&sources, "source", "source base URL (repeatable); default: the built-in sources")
 	if err := fs.Parse(args); err != nil {
@@ -38,7 +39,7 @@ func newerCommand(args []string, stdout io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	newer, err := publishedNewer(ctx, &distribution.Client{Sources: sources}, channel, ours)
+	newer, err := publishedNewer(ctx, &distribution.Client{Edition: edition, Sources: sources}, channel, ours)
 	if err != nil {
 		return err
 	}

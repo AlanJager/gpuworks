@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/distribution"
 )
@@ -108,5 +109,26 @@ func TestAssembleEditionKeepsItsOwnHistory(t *testing.T) {
 	in.Previous = prior
 	if _, err := assemble(in); err == nil || !strings.Contains(err.Error(), "acme edition") {
 		t.Fatalf("community publication over the acme history: err = %v", err)
+	}
+}
+
+// newer reads a channel as the edition's clients do: another edition's
+// builds are not newer, so they never hold back this edition's publish.
+func TestNewerReadsOnlyItsEdition(t *testing.T) {
+	in := realInput(t, distDir(t, "gpuworks-abc123-linux-amd64.tar.gz"))
+	in.Edition = "acme"
+	if _, err := assemble(in); err != nil {
+		t.Fatal(err)
+	}
+	served := serveTree(t, in.OutDir)
+	keys := distribution.Keys{"test": testPublic}
+	before := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	acme := &distribution.Client{Edition: "acme", Sources: []string{served.URL}, Keys: keys, IndexTimeout: time.Second}
+	if got, err := publishedNewer(context.Background(), acme, "nightly", before); err != nil || !strings.Contains(got, "serves abc123") {
+		t.Fatalf("acme newer = %q, %v", got, err)
+	}
+	community := &distribution.Client{Sources: []string{served.URL}, Keys: keys, IndexTimeout: time.Second}
+	if got, _ := publishedNewer(context.Background(), community, "nightly", before); got != "" {
+		t.Fatalf("a community publish saw the acme build as newer: %q", got)
 	}
 }
