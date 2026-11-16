@@ -168,7 +168,7 @@ ADR 0071 decides that official and third-party extensions are installed as signe
 - Whether a feature key is gated is declared by the plugin package itself; grant tables accept pushes only from the authority its publisher certificate names; while a plugin is down its restrictions stay enforced, its grants clamp to read-only after a bounded grace, and timelines keep firing on extclock.
 - The hook rules on this page (hooks inside the writer transaction are pure, holders cordon without draining, running workloads are never interrupted) apply to the plugin host as well.
 
-The package format, trust, lifecycle and protocol are documented as they are built.
+The wire formats of manifests, certificates, trust updates, `gwx/1` messages and pushed tables are frozen in `pkg/extapi`; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md). Installation, trust chain enforcement, the process lifecycle and the plugin host are documented as they are built.
 
 ## What the open-source code does not do
 
@@ -178,4 +178,4 @@ The package format, trust, lifecycle and protocol are documented as they are bui
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 1509ce6c27af84f979c5495ceb602c8ccaa92c9881684c4247755c1e800a1ce8 -->
+<!-- translation-source-sha256: 4d25e6c5a6c805a97cc5675ac85eb887497e6959b784fb00a32e197df315d9fb -->

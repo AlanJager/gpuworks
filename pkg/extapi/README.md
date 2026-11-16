@@ -72,6 +72,11 @@ under `invalid/<CODE>/` fails with exactly that code, at the field its name
 gives. `testdata/golden/SHA256SUMS` may only grow: a released golden is never
 edited or removed. A new version of an object gets its own `v2/` directory.
 
+The reference page `docs/reference/plugin-protocol.md` (and its English
+translation under `docs-en/`) embeds goldens as its examples;
+`TestReferencePageExamplesAreGoldenFiles` keeps each one byte-for-byte
+equal to its file and requires an example of every wire object.
+
 ## Tests
 
 ```bash

@@ -112,8 +112,9 @@ Implemented:
 
 - ADR 0070's module contract (`app.Module`, `app.Host`, the feature gate, node insert guards, scheduling holders and their reapply, `NodeFleet` and the node fleet topic, banners, the console manifest, extension migration namespaces) and the contract tests in `internal/testenv/extmodule`, as the core-internal contract and the base for the future plugin host.
 - The extension route prefix `/api/v1/x/<name>/` (the compiled-module part of decision 12): the core registers no route under `/api/v1/x/`, so extension names no longer need to avoid core path segments.
+- The wire formats (the format part of decisions 4, 5, 7, 8 and 16): the package manifest, publisher certificates, trust updates and revocation lists, the signature envelope, the `gwx/1` handshake, health and errors, the push envelope and the rows of the first five pushed tables, and the comparison of persisted version markers are frozen in the public, standard-library-only module `pkg/extapi`, with a golden corpus as the authority; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md).
 
-Decided but not implemented yet: the plugin package format and verification, the trust chain and offline trust updates, the `plugin-exec` trampoline and process supervision, `gwx/1`, pushed tables and the writer tick, the plugin host (a built-in module) with dynamic feature declarations, dynamic route mounting, down grace and timelines, extclock and its corrections, restriction overrides, the `users.local_admin` floor, the `/api/v1/plugins` management API and the `gpuworks plugin` subcommand, compatibility detection on core downgrade, contract tests against a fake plugin process, and the ratchet on feature-key literals in core code. The edition-scoped release machinery is still in the code (until the cleanup in decision 17). Each part is added to `docs/` with its code.
+Decided but not implemented yet: packing and verifying plugin packages, the trust chain and offline trust updates, the `plugin-exec` trampoline and process supervision, `gwx/1`, pushed tables and the writer tick, the plugin host (a built-in module) with dynamic feature declarations, dynamic route mounting, down grace and timelines, extclock and its corrections, restriction overrides, the `users.local_admin` floor, the `/api/v1/plugins` management API and the `gpuworks plugin` subcommand, compatibility detection on core downgrade, contract tests against a fake plugin process, and the ratchet on feature-key literals in core code. The edition-scoped release machinery is still in the code (until the cleanup in decision 17). Each part is added to `docs/` with its code.
 
 ## Trade-offs
 
@@ -129,6 +130,6 @@ Decided but not implemented yet: the plugin package format and verification, the
 - A new extension need first asks whether existing tables can express it; when they cannot, the new decision point is a new core table that must be useful to the community server, comes with a contract test, and ships only with a core release.
 - Plugin packages carry the compatibility burden: new availability rules, identity editors, rating rules and fixes ship as new packages without a core upgrade; only a new enforcement point needs a core upgrade.
 - The existing way of building a separate server (`cli.Options`, extension migrations, the build-time console overlay) stays valid for forks and tests, but it is not a distribution path for official or third-party extensions.
-- Contract and operating details are in [Extension Points](../dev/extensions.md).
+- Contract and operating details are in [Extension Points](../dev/extensions.md); the wire formats are in [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md).
 
-<!-- translation-source-sha256: b108d678bcfe21410ab9362580a8bcd41ccdb80666bf4cf1015ff8b060e1326a -->
+<!-- translation-source-sha256: e21d082bcb1dec7cd581fc6406a49624c4ecafb239f68ab241656818f933e454 -->

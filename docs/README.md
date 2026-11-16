@@ -100,6 +100,7 @@
 - [部署启动参数来源](reference/deployment-launch-sources.md)
 - [可执行推理目录包](reference/inference-catalog-package.md)
 - [推理目录 model.yaml 语法参考](reference/inference-catalog-spec.md)
+- [插件协议与线上格式（gwx/1）](reference/plugin-protocol.md)
 - [安全默认值清单](reference/security.md)
 - [用户术语表](reference/glossary.md)
 
