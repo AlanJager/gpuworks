@@ -5,6 +5,7 @@ import type {
   EvaluateResponse,
   InferenceSpec,
   InferenceTemplate,
+  KVBackendProfile,
   Node,
   PartitionCapability,
 } from "../../api";
@@ -72,6 +73,9 @@ export function findTemplateSpec(
 // the draft is one click. This is draft state, not a rule: which flags the
 // tier emits is the server's judgement.
 export const memoryTierKey = "kv_offloading_size";
+// The dictionary parameter that selects a KV offload backend (ADR 0069). Its
+// options and what each one replaces come from the profile's kv_backends.
+export const kvBackendKey = "kv_offload_backend";
 export const memoryTierEnabledField = "kv_memory_tier_enabled";
 const diskTierKey = "kv_disk_offload";
 
@@ -92,6 +96,17 @@ export function kvTierSpecs(specs: EngineParamSpec[] | undefined): {
       (spec) => spec.depends_on === diskTierKey && spec.key !== diskTierKey,
     ),
   };
+}
+
+// selectedKVBackend is the backend the draft selects, when the profile lists
+// it; an empty selection is the engine's own tiers.
+export function selectedKVBackend(
+  v: Record<string, unknown>,
+  profile?: Pick<EngineProfile, "kv_backends">,
+): KVBackendProfile | undefined {
+  const id = v[kvBackendKey];
+  if (typeof id !== "string" || id === "") return undefined;
+  return profile?.kv_backends?.find((backend) => backend.id === id);
 }
 
 // projectDraft is the form's one projection onto the parameter dictionary: the
@@ -137,6 +152,17 @@ export function projectDraft(
   } else if (tiers.disk && v[diskTierKey] === false) {
     unset.add(tiers.disk.key);
     for (const spec of tiers.companions) unset.add(spec.key);
+  }
+  // A selected backend replaces the native keys the server lists for it:
+  // their draft values stay in the form, and the payload tombstones them.
+  const backend = selectedKVBackend(v, profile);
+  if (backend) {
+    const publishedKeys = new Set(published.map((spec) => spec.key));
+    for (const key of backend.replaces) {
+      if (!publishedKeys.has(key)) continue;
+      delete quick[key];
+      unset.add(key);
+    }
   }
   return { quick, unset: [...unset] };
 }
