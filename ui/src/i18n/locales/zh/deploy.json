@@ -164,8 +164,9 @@
     "storage_disabled": "这台节点上没有模型，而它的存储是只读的，不能往里放；请启用该存储或换一个。",
     "no_healthy_gpu": "节点自己的加速卡都不处于可用的健康级别；请先处理 GPU 告警或故障，或更换节点。",
     "no_owned_gpu": "节点没有归本机使用的加速卡（可能全部直通给虚拟机、未绑定驱动或被其他驱动持有）；请检查节点的加速卡列表或更换节点。",
-    "gpus_held_outside_platform": "此部署可用的卡被平台外的进程占用；请在节点上释放这些进程或更换节点。节点 agent 上报了这些进程的显存用量时，带显存上限的 dGPU 部署可以与它们共用此卡。",
+    "gpus_held_outside_platform": "此部署可用的卡被平台外的进程占用；请在节点上释放这些进程或更换节点。节点 agent 上报了这些进程的显存用量、且节点允许或你手工选择了这张卡时，带显存上限的 dGPU 部署可以与它们共用此卡。",
     "held_outside_platform_sleep": "此部署可共用的卡上还有平台外的进程，会休眠的部署在这些进程运行期间无法在那里唤醒。请关闭此部署的休眠或换一张卡。",
+    "held_outside_platform_not_allowed": "此节点上能承载本部署的卡有平台外的进程，而节点不允许分区与它们共卡。可在节点的放置策略中开启「{{settingLabel}}」，或为此部署手工选择这些卡。",
     "no_free_gpu": "所选节点没有空闲 GPU；请停止或休眠其他部署，或更换节点。",
     "placement_rejected": "所选 GPU 组合不满足该推理模板的放置规则；请调整 GPU 数量或改选兼容 GPU。",
     "engine_ports_exhausted": "节点 {{node}} 的引擎端口 {{start}}–{{end}} 已被实例或主机上的其他服务全部占用；请释放该范围内的端口或更换节点。",
@@ -196,6 +197,7 @@
     "tight_fit": "GPU 容量与显存需求较匹配。",
     "placement_preference": "模板更倾向于该 GPU 数量：{{count}} 张。",
     "degraded_gpus_used": "所选 GPU 中有 {{count}} 张处于告警状态；健康 GPU 不足以承载本部署时才会使用这些 GPU。",
+    "foreign_shared_gpus_used": "所选 GPU 中有 {{count}} 张与平台外进程共用（外部占用最多 {{foreign_gib}} GiB）；只是因为没有不被占用的卡能承载本部署才使用它们。显存隔离，但算力与带宽与平台看不见的负载共享。",
     "invalid_request": "到达调度器的启动配置无效：显存利用率 {{gpu_memory_utilization}} 超出允许范围，请刷新页面后重新评估。",
     "runtime_unsupported": "{{vendor}} 需要 {{required_os}}/{{required_arch}} 和 {{required_runtime}}；此节点报告 {{os}}/{{arch}}、{{runtime}}。",
     "runtime_unreported": "{{vendor}} 需要 {{required_os}}/{{required_arch}} 和 {{required_runtime}}；此节点尚未上报完整的运行时信息。",
@@ -708,6 +710,9 @@
         "gpu_whole_allocated": "该 GPU 已被推理服务整卡占用",
         "partition_unavailable": "此 GPU 不支持当前 dGPU 后端",
         "no_fit": "可用显存 {{available_gib}} GiB，不足所需 {{required_gib}} GiB"
+      },
+      "resourceNote": {
+        "foreign_shared_card": "与平台外进程共用（{{foreign_gib}} GiB），算力不隔离"
       },
       "notReported": "节点尚未上报 GPU 明细",
       "selectionAria": "GPU 选择",

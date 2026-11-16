@@ -55,7 +55,14 @@
     "count": "{{filtered}}/{{total}} 个计算节点",
     "search": "按名称、主机名或 ID 搜索"
   },
-  "source": { "manual": "手动添加", "unknown": "来源读取失败", "cluster": "集群 {{name}}", "clusterOf": "集群 {{name}}（{{provider}}）", "standaloneCluster": "Kubernetes 集群", "selected": "所选来源" },
+  "source": {
+    "manual": "手动添加",
+    "unknown": "来源读取失败",
+    "cluster": "集群 {{name}}",
+    "clusterOf": "集群 {{name}}（{{provider}}）",
+    "standaloneCluster": "Kubernetes 集群",
+    "selected": "所选来源"
+  },
   "column": {
     "source": "来源",
     "status": "状态",
@@ -1367,6 +1374,21 @@
       "REQUIRES_AGENT": "需要 Agent 已连接后才能执行检查。",
       "NOT_REPORTED": "Agent 未返回此项结构化结果，无法判断；可查看原始报告。",
       "INFORMATION_COLLECTED": "已取得此项详细信息；具体异常列在检查列表中。"
+    }
+  },
+  "placementPolicy": {
+    "title": "放置策略",
+    "loadFailed": "无法加载放置策略设置。",
+    "saveFailed": "设置未保存：{{detail}}",
+    "empty": "此节点没有放置策略设置。",
+    "notApplicable": "当前在此节点上不生效：{{reason}}",
+    "share_with_foreign": {
+      "label": "允许分区与平台外进程共卡",
+      "help": "显存够时，带显存上限的 dGPU 分区可以放到同时被平台外进程使用的卡上；总是先尝试没有这类进程的卡。显存隔离，算力与带宽不隔离。关闭后已运行的实例不受影响，但重新放置（重启、故障替换、扩容）按新设置；滚动重启会停住等待，而不会丢副本。"
+    },
+    "reason": {
+      "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "此节点没有就绪的 dGPU 分区后端；在有之前此设置不生效。",
+      "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "请升级此节点的 agent，使其在共用卡上持续跟踪平台外进程；在此之前此设置不生效。"
     }
   }
 }

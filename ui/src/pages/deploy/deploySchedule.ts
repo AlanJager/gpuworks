@@ -35,10 +35,20 @@ export function scheduleText(
         : code === "does_not_wait_for_yield" || code === "held_by_non_yielding"
           ? heldParams(t, value.params)
           : value.params;
-    const translated = t(key, { ...params, defaultValue: "" });
+    const translated = t(key, { ...withSettingLabel(t, params), defaultValue: "" });
     if (translated && translated !== key) return translated + scheduleNote(t, value);
   }
   return value.message?.trim() || code;
+}
+
+// A reason that names a node placement policy setting (params.setting, its
+// key) reads it by the setting's own label (nodes:placementPolicy.<key>.label),
+// whichever reason and setting it is; one the client has no label for keeps
+// its key.
+function withSettingLabel(t: TFunction<"deploy">, params: Record<string, unknown> | undefined) {
+  const setting = params?.setting;
+  if (typeof setting !== "string" || !setting) return params;
+  return { ...params, settingLabel: t(`nodes:placementPolicy.${setting}.label`, { defaultValue: setting }) };
 }
 
 /**

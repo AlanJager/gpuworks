@@ -28,6 +28,7 @@ import { LogStream } from "./InstanceLogStream";
 import InstanceMetricsTab from "./InstanceMetricsTab";
 import InstanceLaunchDetails from "./InstanceLaunchDetails";
 import InstanceLaunchValue from "./InstanceLaunchValue";
+import InstanceNotes from "./InstanceNotes";
 import InstanceComputeNetworkView from "./InstanceComputeNetwork";
 import type { DistRank } from "./instanceGroups";
 import { shortImageID } from "./instanceImage";
@@ -187,6 +188,11 @@ export default function InstancePanel({ inst, readyModel, sleepable, params, ran
                     </div>
                   </DeploymentInfoField>
                 )}
+                {inst.notes?.length ? (
+                  <DeploymentInfoField label={t("instance.field.notes")}>
+                    <InstanceNotes notes={inst.notes} />
+                  </DeploymentInfoField>
+                ) : null}
               </DeploymentInfoList>
             </DetailSection>
             <DetailSection title={t("detail.instanceLaunch")}>

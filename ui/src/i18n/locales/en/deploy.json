@@ -164,8 +164,9 @@
     "storage_disabled": "The node lacks the model and its storage is read-only, so nothing can be put there. Enable the storage or choose another one.",
     "no_healthy_gpu": "None of the node's own accelerators is at a health level that can serve. Resolve the GPU warnings or faults, or select another node.",
     "no_owned_gpu": "The node has no accelerator of its own to use: they may all be passed through to virtual machines, have no driver bound, or be held by another driver. Check the node's accelerator list or select another node.",
-    "gpus_held_outside_platform": "The accelerators this deployment may use are occupied by processes outside the platform. Free those processes on the node or select another node; a dGPU deployment with a memory limit can share such a card when the node's agent reports how much memory those processes use.",
+    "gpus_held_outside_platform": "The accelerators this deployment may use are occupied by processes outside the platform. Free those processes on the node or select another node. A dGPU deployment with a memory limit can share such a card when the node's agent reports their memory and the node allows it, or when you pick the card yourself.",
     "held_outside_platform_sleep": "The card this deployment could share is also used by processes outside the platform, and a deployment that sleeps could not be woken there while they run. Turn off sleep for this deployment or select another card.",
+    "held_outside_platform_not_allowed": "Cards on this node that could take this deployment are used by processes outside the platform, and the node does not allow partitions beside them. Turn on \"{{settingLabel}}\" in the node's placement policy, or pick the cards yourself to share them for this deployment.",
     "no_free_gpu": "The selected node has no free GPUs. Stop or sleep another deployment, or select another node.",
     "placement_rejected": "The selected GPU set does not satisfy this template's placement rules. Adjust the GPU count or choose compatible GPUs.",
     "engine_ports_exhausted": "Every engine port {{start}}–{{end}} on node {{node}} is in use by instances or other host services. Free a port in that range or select another node.",
@@ -196,6 +197,7 @@
     "tight_fit": "GPU capacity closely matches the VRAM requirement.",
     "placement_preference": "The template prefers this GPU count: {{count}} GPUs.",
     "degraded_gpus_used": "{{count}} of the chosen GPUs are at warning level; they are used only because the healthy GPUs cannot take this deployment.",
+    "foreign_shared_gpus_used": "{{count}} of the chosen GPUs are shared with processes outside the platform (up to {{foreign_gib}} GiB); they are used only because no card free of such processes can take this deployment. Memory is isolated, but compute and bandwidth are shared with load the platform cannot see.",
     "invalid_request": "The launch configuration reaching the scheduler is invalid: VRAM utilization {{gpu_memory_utilization}} is outside the allowed range. Reload the page and evaluate again.",
     "runtime_unsupported": "{{vendor}} requires {{required_os}}/{{required_arch}} with {{required_runtime}}; this node reports {{os}}/{{arch}} and {{runtime}}.",
     "runtime_unreported": "{{vendor}} requires {{required_os}}/{{required_arch}} with {{required_runtime}}; this node has not reported all required runtime facts.",
@@ -708,6 +710,9 @@
         "gpu_whole_allocated": "This GPU is fully allocated to an inference service",
         "partition_unavailable": "This GPU does not support the requested dGPU backend",
         "no_fit": "Available memory {{available_gib}} GiB is below the required {{required_gib}} GiB"
+      },
+      "resourceNote": {
+        "foreign_shared_card": "Shared with processes outside the platform ({{foreign_gib}} GiB); compute is not isolated"
       },
       "notReported": "The node has not reported GPU details",
       "selectionAria": "GPU selection",

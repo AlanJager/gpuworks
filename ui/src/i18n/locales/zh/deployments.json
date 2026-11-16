@@ -403,7 +403,8 @@
       "imageId": "镜像 ID",
       "command": "启动命令",
       "message": "消息",
-      "modelFiles": "模型文件"
+      "modelFiles": "模型文件",
+      "notes": "提示"
     },
     "copyModelPath": "复制模型文件路径",
     "copyImageId": "复制完整镜像 ID",
@@ -1130,5 +1131,9 @@
     "saved": "已保存到目录",
     "saveFailed": "保存失败",
     "openTemplate": "打开模板"
+  },
+  "instanceNote": {
+    "INSTANCE_CARD_SHARED_OUTSIDE": "与平台外进程共用 GPU {{gpu_indexes}}（外部占用 {{foreign_gib}} GiB）。显存隔离，算力与带宽共享，推理可能因此变慢。",
+    "INSTANCE_CARD_SHARED_OUTSIDE_UNKNOWN": "与平台外进程共用 GPU {{gpu_indexes}}，其显存用量未知。算力与带宽共享，推理可能因此变慢。"
   }
 }

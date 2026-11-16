@@ -239,6 +239,13 @@ export interface Node {
   // cordon_reason is why the platform holds the node now; absent unless
   // scheduling_by is platform.
   cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot" | "kube_unschedulable";
+  // placement_policy is the operator's per-node placement knobs, keyed as
+  // the dictionary (GET /scheduling/node-placement-policies) keys them; the
+  // UI renders them from the dictionary rather than naming any here.
+  placement_policy?: Record<string, NodePlacementPolicyValue>;
+  // placement_policy_availability says, per knob, whether it takes effect on
+  // this node; reason is a product code when it does not.
+  placement_policy_availability?: NodePlacementPolicyAvailability[];
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back
@@ -2041,6 +2048,9 @@ export interface Instance {
   image_digest_id?: string;
   message: string;
   runtime_failure?: ProductMessage;
+  // notes are non-blocking facts the server derives about the instance
+  // (code + params), e.g. a card shared with processes outside the platform.
+  notes?: ProductWarning[];
   container_id?: string;
   phase?: string;
   progress?: number;
@@ -4038,7 +4048,25 @@ export interface PrioritySchedulingEligibility {
 
 export interface GPUCandidates {
   node_uuid: string;
-  items: { index: number; available: boolean; reason?: ScheduleReason }[];
+  // note is what choosing an available card entails (a schedule reason
+  // code), e.g. sharing it with processes outside the platform.
+  items: { index: number; available: boolean; reason?: ScheduleReason; note?: ScheduleReason }[];
+}
+
+// A node placement policy knob's value, shaped by its kind.
+export type NodePlacementPolicyValue = boolean | string;
+
+// One knob of GET /api/v1/scheduling/node-placement-policies.
+export interface NodePlacementPolicySetting {
+  key: string;
+  kind: "bool" | string;
+  default: NodePlacementPolicyValue;
+}
+
+export interface NodePlacementPolicyAvailability {
+  key: string;
+  applicable: boolean;
+  reason?: string;
 }
 
 // PdRoleName is the fixed pair every PD mode declares today (ADR 0028); the
@@ -4854,6 +4882,10 @@ export const api = {
     ),
   setNodeScheduling: (uuid: string, scheduling: NodeScheduling) =>
     sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(uuid)}/scheduling`, { scheduling }),
+  setNodePlacementPolicy: (uuid: string, patch: Record<string, NodePlacementPolicyValue>) =>
+    sendJSON<Node>("PATCH", `/api/v1/nodes/${encodeURIComponent(uuid)}/placement-policy`, patch),
+  nodePlacementPolicyDictionary: () =>
+    getJSON<NodePlacementPolicySetting[]>("/api/v1/scheduling/node-placement-policies"),
   nodeHealthChecks: (nodeUUID: string, card?: CardRef) => {
     const q = cardQuery(card);
     return getJSON<CardHealthChecks>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-checks${q ? `?${q}` : ""}`);
