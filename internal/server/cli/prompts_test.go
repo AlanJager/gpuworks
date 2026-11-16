@@ -250,7 +250,7 @@ func TestTildePath(t *testing.T) {
 }
 
 func TestInstallRejectsContradictoryAutostartFlags(t *testing.T) {
-	err := installCommand(context.Background(), []string{"--autostart", "--no-systemd", "--quiet"})
+	err := installCommand(context.Background(), []string{"--autostart", "--no-systemd", "--quiet"}, Options{})
 	if err == nil || !strings.Contains(err.Error(), "contradict") {
 		t.Fatalf("err = %v, want the contradiction refused before anything is installed", err)
 	}

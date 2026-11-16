@@ -138,7 +138,7 @@ func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 	constants := map[string]string{
 		"selfinstall.ConsoleUpgradeProtocolCommand": selfinstall.ConsoleUpgradeProtocolCommand,
 		"experiencelaunch.Command":                  experiencelaunch.Command,
-		"editionCommand":                            editionCommand,
+		"selfinstall.EditionCommand":                selfinstall.EditionCommand,
 	}
 	var dispatched []string
 	for _, decl := range file.Decls {

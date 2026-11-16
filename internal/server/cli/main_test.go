@@ -88,7 +88,7 @@ func TestUpgradeTakesOneSource(t *testing.T) {
 	} {
 		// Each is refused before the installation directory is even read, so
 		// the default --dir need not exist.
-		err := upgradeCommand(context.Background(), tc.args)
+		err := upgradeCommand(context.Background(), tc.args, Options{})
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("upgrade %v: err = %v, want it to mention %q", tc.args, err, tc.want)
 		}

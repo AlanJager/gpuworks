@@ -17,7 +17,7 @@ import (
 
 // installCommand runs `gpuworks install`: copy this binary into place, write the
 // service definition, start it, and wait until it answers.
-func installCommand(ctx context.Context, args []string) error {
+func installCommand(ctx context.Context, args []string, opt Options) error {
 	req := selfinstall.InstallRequest{}
 	var dir, dataDir, logsDir string
 	var autostart bool
@@ -67,7 +67,7 @@ func installCommand(ctx context.Context, args []string) error {
 
 	// An earlier installation's server.yaml gives the defaults the questions
 	// offer, so pressing enter on a repair keeps it instead of resetting it.
-	prev, hasPrev := selfinstall.New(probe, selfinstall.NewDeps(os.Stderr), io).Existing(ctx)
+	prev, hasPrev := selfinstall.New(probe, opt.installDeps(os.Stderr), io).Existing(ctx)
 	if !autostartSet {
 		req.NoSystemd = !defaultAutostart(runtime.GOOS, hasPrev, prev)
 	}
@@ -83,7 +83,7 @@ func installCommand(ctx context.Context, args []string) error {
 	}
 
 	layout := selfinstall.NewLayout(dir, dataDir, logsDir)
-	inst := selfinstall.New(layout, selfinstall.NewDeps(os.Stderr), io)
+	inst := opt.installer(layout, os.Stderr, io)
 	report, err := inst.Install(ctx, req)
 	if err != nil {
 		return err
@@ -275,7 +275,7 @@ func describeServiceUser(r selfinstall.InstallReport) string {
 // channel offers (or read a release site, or unpack a local archive), back the
 // installation up, replace the binary and roll back if the new one does not
 // come up.
-func upgradeCommand(ctx context.Context, args []string) error {
+func upgradeCommand(ctx context.Context, args []string, opt Options) error {
 	req := selfinstall.UpgradeRequest{}
 	var dir, dataDir, logsDir string
 	var sources stringList
@@ -291,6 +291,7 @@ func upgradeCommand(ctx context.Context, args []string) error {
 	fs.StringVar(&req.Version, "version", "", "release id in the signed channel index (or the exact version from a site or local archive)")
 	fs.IntVar(&req.Keep, "keep", selfinstall.DefaultBackupKeep, "pre-upgrade backups to keep")
 	fs.BoolVar(&req.Force, "force", false, "replace a build without a release id (dev/dirty)")
+	fs.BoolVar(&req.AllowEditionChange, "allow-edition-change", false, "install a release of another edition than the installed one")
 	fs.BoolVar(&req.Check, "check", false, "report whether an update is available and exit")
 	fs.BoolVar(&req.Quiet, "quiet", false, "print only warnings and errors")
 	if err := fs.Parse(args); err != nil {
@@ -330,7 +331,7 @@ func upgradeCommand(ctx context.Context, args []string) error {
 	// progress narration and the success summary, and leaves warnings and
 	// errors on stderr.
 	io.Quiet = req.Quiet
-	inst := selfinstall.New(layout, selfinstall.NewDeps(os.Stderr), io)
+	inst := opt.installer(layout, os.Stderr, io)
 	report, err := inst.Upgrade(ctx, req)
 	if err != nil {
 		// A rollback already printed its own warnings; the report still tells

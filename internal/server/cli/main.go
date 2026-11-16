@@ -58,7 +58,7 @@ func Main(args []string, opt Options) int {
 // builtinCommands are the names Run's switch dispatches itself; an extra
 // Command may not take one of them. Keep the two in step.
 var builtinCommands = []string{
-	"serve", "version", "-v", "--version", "database-migration", editionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
+	"serve", "version", "-v", "--version", "database-migration", selfinstall.EditionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
 	"install", "upgrade", "uninstall", "restart", "stop", "support-bundle",
 	"reset-password", "migrate", "expose", experiencelaunch.Command,
 	"help", "-h", "--help",
@@ -89,23 +89,23 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 		fmt.Println("gpuworks", version.String())
 	case "database-migration":
 		fmt.Println(store.LatestMigration())
-	case editionCommand:
+	case selfinstall.EditionCommand:
 		fmt.Println(version.Edition)
 	case selfinstall.ConsoleUpgradeProtocolCommand:
 		// Asked by a server about to install this release from the console.
 		fmt.Println(selfinstall.ConsoleUpgradeProtocol)
 	case "install":
-		if err := installCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := installCommand(cmdContext(), rest, opt); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("install failed", "err", err)
 			return 1
 		}
 	case "upgrade":
-		if err := upgradeCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := upgradeCommand(cmdContext(), rest, opt); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("upgrade failed", "err", err)
 			return 1
 		}
 	case "uninstall":
-		if err := uninstallCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := uninstallCommand(cmdContext(), rest, opt); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("uninstall failed", "err", err)
 			return 1
 		}
@@ -163,6 +163,7 @@ var errServeLogged = errors.New("server exited")
 
 func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	cfg := app.DefaultConfig()
+	cfg.Distribution = opt.Distribution
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "", "server.yaml; flags below override its values")
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "serve every function on this one address, replacing listen in server.yaml")
