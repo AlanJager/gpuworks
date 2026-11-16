@@ -28,19 +28,19 @@ func testExternalKVBackendRow() kvbackend.Backend {
 	}
 }
 
-// testExternalVLLMOffload renders the test row as an OffloadingConnector
-// object with its own spec, so connector-based PD classification reads it as
-// offload and the recognizer can tell it from the native disk object.
+// testExternalVLLMOffload renders the test row with a connector name package
+// engines does not know, as a real third-party connector would be: a non-PD
+// launch must still not read as PD.
 func testExternalVLLMOffload(LaunchConfig) *kvContribution {
 	return &kvContribution{object: map[string]any{
-		"kv_connector": "OffloadingConnector", "kv_role": "kv_both",
+		"kv_connector": "TestExternalConnector", "kv_role": "kv_both",
 		"kv_connector_extra_config": map[string]any{"spec_name": "TestExternalSpec"},
 	}}
 }
 
 // testExternalKVTransfer is the --kv-transfer-config value the test row
 // renders without PD.
-const testExternalKVTransfer = `{"kv_connector":"OffloadingConnector","kv_connector_extra_config":{"spec_name":"TestExternalSpec"},"kv_role":"kv_both"}`
+const testExternalKVTransfer = `{"kv_connector":"TestExternalConnector","kv_connector_extra_config":{"spec_name":"TestExternalSpec"},"kv_role":"kv_both"}`
 
 // withKVBackends swaps the package's catalog for the shipped rows plus the
 // test row for the rest of the test. Safe because this package's tests do not

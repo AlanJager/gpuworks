@@ -1,6 +1,9 @@
 package deploy
 
 import (
+	"encoding/json"
+	"reflect"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	enginenames "gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -66,7 +69,33 @@ func ResolveRequestedFeatures(engine string, launch ResolvedLaunch, p Params) *p
 			f.DataParallel = true
 		}
 	}
+	if f.PD && p.PD == nil && platformKVOffloadConfig(engine, args, p) {
+		f.PD = false
+	}
 	return f
+}
+
+// platformKVOffloadConfig reports whether the launch's --kv-transfer-config is
+// exactly the one this adapter composes for a launch that is not PD: then it
+// carries only the selected KV offload backend (kv_compose.go), which keeps KV
+// on the instance whatever its connector is called. The connector table in
+// package engines classifies every other config, which is the one a user
+// wrote; a backend therefore never has to be listed there (ADR 0069).
+func platformKVOffloadConfig(engine string, args []string, p Params) bool {
+	if engine != EngineVLLM {
+		return false
+	}
+	stated, ok := lastFlagValue(args, "--kv-transfer-config")
+	if !ok {
+		return false
+	}
+	own, ok := vllmKVTransferConfig(p)
+	if !ok {
+		return false
+	}
+	var statedValue, ownValue any
+	return json.Unmarshal([]byte(unquoteArgument(stated)), &statedValue) == nil &&
+		json.Unmarshal([]byte(own), &ownValue) == nil && reflect.DeepEqual(statedValue, ownValue)
 }
 
 // RequestedLaunchFeatures is retained for callers inspecting an already
