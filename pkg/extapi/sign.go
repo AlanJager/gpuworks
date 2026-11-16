@@ -1,14 +1,17 @@
 package extapi
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/asn1"
 	"errors"
 	"fmt"
+	"math/big"
 	"sort"
 	"strconv"
 )
@@ -23,6 +26,10 @@ const (
 	// AlgECDSAP256: a NIST P-256 public key as an uncompressed SEC 1 point
 	// (65 bytes, 0x04 || X || Y); ASN.1 DER signatures over the SHA-256 of
 	// the payload, the form hardware keys and cloud key services return.
+	// A signature must be DER exactly (minimal encoding, nothing after it)
+	// with s at most n/2 ("low-S"): (r, n-s) also verifies, so without the
+	// rule anyone could re-encode a signature into different bytes. Seal
+	// normalizes what a signer returns.
 	AlgECDSAP256 = "ecdsa-p256-sha256"
 )
 
@@ -108,10 +115,43 @@ func (k PublicKey) Verify(msg, sig []byte) bool {
 		if err != nil {
 			return false
 		}
+		if _, ok := parseLowS(sig); !ok {
+			return false
+		}
 		sum := sha256.Sum256(msg)
 		return ecdsa.VerifyASN1(pub, sum[:], sig)
 	}
 	return false
+}
+
+type ecdsaSig struct{ R, S *big.Int }
+
+var p256HalfOrder = new(big.Int).Rsh(elliptic.P256().Params().N, 1)
+
+// parseLowS decodes a P-256 signature that is exactly DER, with r and s
+// positive and s at most n/2.
+func parseLowS(sig []byte) (ecdsaSig, bool) {
+	var s ecdsaSig
+	rest, err := asn1.Unmarshal(sig, &s)
+	if err != nil || len(rest) != 0 || s.R.Sign() <= 0 || s.S.Sign() <= 0 || s.S.Cmp(p256HalfOrder) > 0 {
+		return s, false
+	}
+	der, err := asn1.Marshal(s)
+	return s, err == nil && bytes.Equal(der, sig)
+}
+
+// lowS returns sig, a valid DER P-256 signature, with s replaced by n-s
+// when s is above n/2.
+func lowS(sig []byte) ([]byte, error) {
+	var s ecdsaSig
+	rest, err := asn1.Unmarshal(sig, &s)
+	if err != nil || len(rest) != 0 || s.R.Sign() <= 0 || s.S.Sign() <= 0 {
+		return nil, errors.New("signer returned a malformed ECDSA signature")
+	}
+	if s.S.Cmp(p256HalfOrder) > 0 {
+		s.S = new(big.Int).Sub(elliptic.P256().Params().N, s.S)
+	}
+	return asn1.Marshal(s)
 }
 
 // PublicKeyOf returns the wire form of an Ed25519 or ECDSA P-256 public key.
@@ -179,6 +219,9 @@ func Seal(payload []byte, signers ...KeySigner) (*Envelope, error) {
 			}
 			sum := sha256.Sum256(payload)
 			sig, err = s.Signer.Sign(rand.Reader, sum[:], crypto.SHA256)
+			if err == nil {
+				sig, err = lowS(sig)
+			}
 		default:
 			return nil, fmt.Errorf("unsupported signer key type %T", pub)
 		}

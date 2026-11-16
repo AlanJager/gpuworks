@@ -1,12 +1,17 @@
 package extapi
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/asn1"
 	"encoding/json"
 	"errors"
+	"io"
+	"math/big"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -260,5 +265,81 @@ func TestTrustUpdateOpensOnlyUnderATrustedRoot(t *testing.T) {
 	}
 	if _, err := OpenTrustUpdate(env, keySet(t, newRoot)); !errors.Is(err, &Error{Code: ErrorSignatureUntrusted}) {
 		t.Fatalf("update opened under a root it adds: %v", err)
+	}
+}
+
+// A P-256 signature verifies only as minimal DER with a low s, so it has one
+// encoding; Seal normalizes whatever the signer returned.
+func TestECDSASignaturesHaveOneEncoding(t *testing.T) {
+	signer, pub := newP256(t, "acme-1")
+	n := elliptic.P256().Params().N
+	for i := range 32 {
+		payload := []byte(`{"n":` + strconv.Itoa(i) + `}`)
+		env, err := Seal(payload, signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sig := env.Signatures[0].Sig
+		var s ecdsaSig
+		if _, err := asn1.Unmarshal(sig, &s); err != nil || s.S.Cmp(p256HalfOrder) > 0 {
+			t.Fatalf("Seal returned a high-S signature (%v)", err)
+		}
+		if !pub.Verify(payload, sig) {
+			t.Fatal("sealed signature does not verify")
+		}
+		high, _ := asn1.Marshal(ecdsaSig{R: s.R, S: new(big.Int).Sub(n, s.S)})
+		if pub.Verify(payload, high) {
+			t.Fatal("high-S twin of a valid signature verifies")
+		}
+		if pub.Verify(payload, append(append([]byte(nil), sig...), 0)) {
+			t.Fatal("signature with trailing data verifies")
+		}
+		// A long-form length for the short SEQUENCE is valid BER, not DER.
+		long := append([]byte{0x30, 0x81, sig[1]}, sig[2:]...)
+		if pub.Verify(payload, long) {
+			t.Fatal("non-minimal DER verifies")
+		}
+		// Through an envelope the twin is tampering, not a second encoding.
+		env.Signatures[0].Sig = high
+		if _, err := env.Verify("doc", keySet(t, pub)); CodeOf(err) != ErrorSignatureInvalid {
+			t.Fatalf("envelope with a high-S signature: %v", err)
+		}
+	}
+}
+
+// highSSigner returns the high-S twin of every signature, as some signers
+// may; Seal must still produce the low-S form.
+type highSSigner struct{ *ecdsa.PrivateKey }
+
+func (h highSSigner) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	sig, err := h.PrivateKey.Sign(r, digest, opts)
+	if err != nil {
+		return nil, err
+	}
+	var s ecdsaSig
+	if _, err := asn1.Unmarshal(sig, &s); err != nil {
+		return nil, err
+	}
+	if s.S.Cmp(p256HalfOrder) <= 0 {
+		s.S = new(big.Int).Sub(elliptic.P256().Params().N, s.S)
+	}
+	return asn1.Marshal(s)
+}
+
+func TestSealNormalizesHighS(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := PublicKeyOf("acme-1", &key.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := Seal([]byte(`{}`), KeySigner{KeyID: "acme-1", Signer: highSSigner{key}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pub.Verify(env.Payload, env.Signatures[0].Sig) {
+		t.Fatal("Seal did not normalize a high-S signature")
 	}
 }

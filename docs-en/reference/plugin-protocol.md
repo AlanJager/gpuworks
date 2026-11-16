@@ -60,7 +60,7 @@ The algorithm belongs to the trusted key, never to the signature: a reader verif
 | `alg` | Public key | Signature |
 |---|---|---|
 | `ed25519` | A 32-byte Ed25519 public key | A 64-byte pure Ed25519 signature over the payload (RFC 8032) |
-| `ecdsa-p256-sha256` | A P-256 point in uncompressed SEC 1 form (65 bytes, `0x04‖X‖Y`) | An ASN.1 DER signature over the SHA-256 of the payload, the form hardware keys and cloud key services return |
+| `ecdsa-p256-sha256` | A P-256 point in uncompressed SEC 1 form (65 bytes, `0x04‖X‖Y`) | An ASN.1 DER signature over the SHA-256 of the payload, the form hardware keys and cloud key services return; it must be minimal DER with nothing after it and `s` ≤ n/2 (low-S), or it does not verify, so a signature has one encoding; `Seal` replaces a high `s` a signer returns with n−s |
 
 A key id matches `^[a-z0-9][a-z0-9._-]{1,63}$` and names one key forever; it is never reused. A project root's key id starts with `gwroot-` (`gwroot-1`, `gwroot-2`), and a certified key's with `<publisher>-` (never with `gwroot-`), and `gwroot` is not a valid publisher name, so a root and a publisher key, or two publishers' keys, never share an id. Verification rules:
 
@@ -387,4 +387,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 3c24bebb6762323f3779def6b4f07cfc36d8ccc7b5256bb14dec089614b813eb -->
+<!-- translation-source-sha256: df08575c47ce6c70957015b9b3a66d815473685b2686cc385a53f9b2bf443dfc -->
