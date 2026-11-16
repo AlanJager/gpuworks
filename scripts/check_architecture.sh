@@ -808,6 +808,21 @@ elif [ -n "$obsingest_deps" ]; then
 else
   echo "  ok: obsingest depends only on proto, selflog, logstore, tsdb and uxstore"
 fi
+# The feature gate is read on every extension request and by the extensions a
+# separately built server adds: it answers availability from a snapshot and
+# builds its refusals, so it needs messages and nothing else of this tree.
+featuregate_deps=$(pkg_imports ./internal/server/featuregate | grep 'gpuworks/' \
+  | grep -vxE 'gpuworks\.ai/gpuworks/internal/server/messages' || true)
+if [ -z "$(pkg_imports ./internal/server/featuregate)" ]; then
+  echo "  FAIL: featuregate has no imports to check (package missing or broken)" >&2
+  failures=$((failures + 1))
+elif [ -n "$featuregate_deps" ]; then
+  echo "  FAIL: featuregate depends only on messages" >&2
+  echo "$featuregate_deps" | sed 's/^/    /' >&2
+  failures=$((failures + 1))
+else
+  echo "  ok: featuregate depends only on messages"
+fi
 # Site rule grammar is a pure leaf beside pullref: store and planning share it.
 sourceurl_deps=$(pkg_imports ./internal/server/sourceurl | grep 'gpuworks/' || true)
 if [ -n "$sourceurl_deps" ]; then
