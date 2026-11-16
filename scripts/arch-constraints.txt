@@ -59,4 +59,5 @@ instance_failed_without_reason	0	max
 gateway_error_bypass	0	max
 legacy_check_vocabulary	0	max
 console_unlinked_code_packages	0	max
+edition_branches	0	max
 kv_backend_id_literals	0	max

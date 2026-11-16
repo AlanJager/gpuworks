@@ -104,6 +104,18 @@ store_sql_json_hits() {
     | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true
 }
 
+# edition_branch_hits prints "file:line:text" for every production Go line that
+# branches on the edition: a comparison with version.Edition (either operand
+# order) or a switch on it, which covers every case of that switch. The open
+# source tree only displays the edition; behaviour that differs by edition
+# belongs to the separately built server that supplies it. Comment lines do
+# not count.
+edition_branch_hits() {
+  go_prod_files \
+    | xargs grep -nE 'version\.Edition[[:space:]]*(==|!=)|(==|!=)[[:space:]]*version\.Edition|switch[[:space:]]+version\.Edition' 2>/dev/null \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true
+}
+
 # go_imports prints "<import-path>\t<space separated imports>" for every package
 # in the module. `go list` without -e fails on this repo whenever
 # internal/server/webui/dist is absent (the go:embed pattern matches nothing),
@@ -345,6 +357,9 @@ measure() {
     ;;
   store_sql_json_lines)
     store_sql_json_hits | grep -c . || true
+    ;;
+  edition_branches)
+    edition_branch_hits | grep -c . || true
     ;;
   error_text_classification)
     error_text_classification_hits | grep -c . || true

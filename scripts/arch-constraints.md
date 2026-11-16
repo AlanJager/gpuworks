@@ -787,6 +787,25 @@ find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
 盲区（归 review）：对 JSON 列做 `LIKE '%"key":"v"%'` 的文本匹配与普通的 `LIKE` 查询在正则上无法区分，
 本项不数它；评审时看到对 JSON 列的 `LIKE` / `=` / `GLOB` 比较，按 ADR 0032 第 4 条改成在领域包里解码。
 
+### edition_branches（初值 0，2026-11-16）
+
+意图：开源代码只**显示**版本类型（edition），不按它分支。不同版本在行为上的差异由单独构建的服务端通过
+扩展点提供，开源树里不出现「如果是某个版本就……」的判断。
+
+```sh
+find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort \
+  | xargs grep -nE 'version\.Edition[[:space:]]*(==|!=)|(==|!=)[[:space:]]*version\.Edition|switch[[:space:]]+version\.Edition' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c .
+```
+
+脚本里这段是 `edition_branch_hits()`。匹配：与 `version.Edition` 的 `==` / `!=` 比较（两种操作数顺序）与
+`switch version.Edition`（一个 switch 计一处，其下每个 `case` 都在内）。整行注释不计入。
+
+排除：`*_test.go`（测试可以断言版本字符串）。初值 0：引入时 `version.Edition` 尚不存在。
+
+盲区（归 review）：先把 `version.Edition` 赋给局部变量再比较、或经函数包装后比较，正则看不到；
+评审时看到按版本类型取值的分支，一律改成扩展点。
+
 ---
 
 ### kv_backend_id_literals（初值 0，2026-11-16）
