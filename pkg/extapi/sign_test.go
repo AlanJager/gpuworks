@@ -62,8 +62,8 @@ func roundTripEnvelope(t *testing.T, env *Envelope) *Envelope {
 }
 
 func TestSealAndVerifyBothAlgorithms(t *testing.T) {
-	ed, edPub := newEd25519(t, "root-1")
-	ec, ecPub := newP256(t, "root-2")
+	ed, edPub := newEd25519(t, "gwroot-1")
+	ec, ecPub := newP256(t, "gwroot-2")
 	payload := []byte(`{"format":1,"serial":3}`)
 	env, err := Seal(payload, ed, ec)
 	if err != nil {
@@ -86,8 +86,8 @@ func TestSealAndVerifyBothAlgorithms(t *testing.T) {
 }
 
 func TestVerifyRefusals(t *testing.T) {
-	ed, edPub := newEd25519(t, "root-1")
-	_, otherPub := newEd25519(t, "root-9")
+	ed, edPub := newEd25519(t, "gwroot-1")
+	_, otherPub := newEd25519(t, "gwroot-9")
 	payload := []byte(`{"a":1}`)
 	env, err := Seal(payload, ed)
 	if err != nil {
@@ -106,11 +106,11 @@ func TestVerifyRefusals(t *testing.T) {
 
 	// The same key id bound to another key: a key id names one key, so
 	// a failing trusted signature fails the envelope even beside a good one.
-	stale := PublicKey{KeyID: "root-1", Alg: AlgEd25519, Key: otherPub.Key}
+	stale := PublicKey{KeyID: "gwroot-1", Alg: AlgEd25519, Key: otherPub.Key}
 	if _, err := env.Verify("x", keySet(t, stale)); CodeOf(err) != ErrorSignatureInvalid {
 		t.Fatalf("wrong key under a trusted id: %v", err)
 	}
-	ed2, ed2Pub := newEd25519(t, "root-2")
+	ed2, ed2Pub := newEd25519(t, "gwroot-2")
 	both, err := Seal(payload, ed, ed2)
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestVerifyRefusals(t *testing.T) {
 	// A signature over a non-canonical payload never verifies as a document.
 	raw := []byte(`{"b":1, "a":2}`)
 	sig := ed25519.Sign(ed.Signer.(ed25519.PrivateKey), raw)
-	nc := &Envelope{Payload: raw, Signatures: []Signature{{KeyID: "root-1", Sig: sig}}}
+	nc := &Envelope{Payload: raw, Signatures: []Signature{{KeyID: "gwroot-1", Sig: sig}}}
 	if _, err := nc.Verify("x", keySet(t, edPub)); CodeOf(err) != ErrorWireNotCanonical {
 		t.Fatalf("non-canonical payload: %v", err)
 	}
@@ -133,14 +133,14 @@ func TestVerifyRefusals(t *testing.T) {
 }
 
 func TestAlgorithmComesFromTheTrustedKey(t *testing.T) {
-	ec, ecPub := newP256(t, "root-2")
+	ec, ecPub := newP256(t, "gwroot-2")
 	env, err := Seal([]byte(`{"a":1}`), ec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A reader that trusts root-2 as an Ed25519 key never verifies the
 	// ECDSA signature: the signature cannot pick the algorithm.
-	asEd := PublicKey{KeyID: "root-2", Alg: AlgEd25519, Key: make([]byte, ed25519.PublicKeySize)}
+	asEd := PublicKey{KeyID: "gwroot-2", Alg: AlgEd25519, Key: make([]byte, ed25519.PublicKeySize)}
 	if _, err := env.Verify("x", keySet(t, asEd)); CodeOf(err) != ErrorSignatureInvalid {
 		t.Fatalf("algorithm confusion: %v", err)
 	}
@@ -150,14 +150,14 @@ func TestAlgorithmComesFromTheTrustedKey(t *testing.T) {
 }
 
 func TestKeySetRefusesBadKeys(t *testing.T) {
-	_, pub := newEd25519(t, "root-1")
+	_, pub := newEd25519(t, "gwroot-1")
 	if _, err := NewKeySet(pub, pub); CodeOf(err) != ErrorWireInvalid {
 		t.Fatalf("duplicate key id: %v", err)
 	}
 	if _, err := NewKeySet(PublicKey{KeyID: "Root 1", Alg: AlgEd25519, Key: pub.Key}); CodeOf(err) != ErrorWireInvalid {
 		t.Fatalf("bad key id: %v", err)
 	}
-	if _, err := NewKeySet(PublicKey{KeyID: "root-1", Alg: AlgECDSAP256, Key: pub.Key}); CodeOf(err) != ErrorWireInvalid {
+	if _, err := NewKeySet(PublicKey{KeyID: "gwroot-1", Alg: AlgECDSAP256, Key: pub.Key}); CodeOf(err) != ErrorWireInvalid {
 		t.Fatalf("ed25519 bytes as a P-256 point: %v", err)
 	}
 	if _, err := PublicKeyOf("x1", "not a key"); err == nil {
@@ -178,7 +178,7 @@ func TestKeySetRefusesBadKeys(t *testing.T) {
 // A publisher certificate, signed by a root, opened from publisher.crt,
 // then the manifest it signs: the chain a verifier walks.
 func TestCertificateChainOpens(t *testing.T) {
-	root, rootPub := newEd25519(t, "root-1")
+	root, rootPub := newEd25519(t, "gwroot-1")
 	pubSigner, pubKey := newP256(t, "acme-2026a")
 	cert := PublisherCert{
 		Format: 1, Serial: 7, Publisher: "acme", KeyID: pubKey.KeyID, Alg: pubKey.Alg, PublicKey: pubKey.Key,
@@ -206,7 +206,7 @@ func TestCertificateChainOpens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Publisher != "acme" || len(issuers) != 1 || issuers[0] != "root-1" || !got.CoversID("acme_backup") || got.CoversID("other") {
+	if got.Publisher != "acme" || len(issuers) != 1 || issuers[0] != "gwroot-1" || !got.CoversID("acme_backup") || got.CoversID("other") {
 		t.Fatalf("opened %+v by %v", got, issuers)
 	}
 
@@ -239,10 +239,10 @@ func TestCertificateChainOpens(t *testing.T) {
 }
 
 func TestTrustUpdateOpensOnlyUnderATrustedRoot(t *testing.T) {
-	root, rootPub := newEd25519(t, "root-1")
-	_, newRoot := newP256(t, "root-3")
+	root, rootPub := newEd25519(t, "gwroot-1")
+	_, newRoot := newP256(t, "gwroot-3")
 	u := TrustUpdate{Format: 1, Serial: 2, Created: NewTime(time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)),
-		AddRoots: []PublicKey{newRoot}, RetireRoots: []string{"root-0"}}
+		AddRoots: []PublicKey{newRoot}, RetireRoots: []string{"gwroot-0"}}
 	raw, err := Marshal(u)
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +255,7 @@ func TestTrustUpdateOpensOnlyUnderATrustedRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.AddRoots[0].KeyID != "root-3" {
+	if got.AddRoots[0].KeyID != "gwroot-3" {
 		t.Fatalf("%+v", got)
 	}
 	if _, err := OpenTrustUpdate(env, keySet(t, newRoot)); !errors.Is(err, &Error{Code: ErrorSignatureUntrusted}) {

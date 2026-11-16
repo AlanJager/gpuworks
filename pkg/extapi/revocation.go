@@ -76,7 +76,7 @@ func (r Revocation) validate(path string) *fieldError {
 		return &fieldError{field: path, rule: RuleExclusive}
 	}
 	if f := first(
-		matches(joinPath(path, "publisher"), r.Publisher, publisherPattern),
+		publisherName(joinPath(path, "publisher"), r.Publisher),
 		optionalMatches(joinPath(path, "keyid"), r.KeyID, keyIDPattern),
 		optionalMatches(joinPath(path, "manifest"), string(r.Manifest), digestPattern),
 		optionalMatches(joinPath(path, "replacement"), r.Replacement, semverPattern),
@@ -252,7 +252,7 @@ func (c *CRL) validate() *fieldError {
 	if f := first(
 		inRange("serial", int64(min(c.Serial, maxSafeInteger+1)), 1, maxSafeInteger),
 		requiredTime("created", c.Created),
-		optionalMatches("publisher", c.Publisher, publisherPattern),
+		optionalPublisherName("publisher", c.Publisher),
 	); f != nil {
 		return f
 	}

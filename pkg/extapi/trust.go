@@ -28,10 +28,15 @@ const MaxCertBundle = 4
 // not start with "<publisher>_".
 const ProjectPublisher = "gpuworks"
 
-// RootKeyIDPrefix starts the key id of every project root. A certified key's
-// id starts with "<publisher>-" instead, and never with this prefix, so a
-// revocation or a trust decision by key id names one key.
-const RootKeyIDPrefix = "root-"
+// RootKeyIDPrefix starts the key id of every project root ("gwroot-1",
+// "gwroot-2"). A certified key's id starts with "<publisher>-" instead, and
+// never with this prefix; the stem "gwroot" is not a valid publisher name
+// (ValidPublisher), so no publisher, certificate or revocation by key id can
+// name a root's key id.
+const RootKeyIDPrefix = "gwroot-"
+
+// rootStem is RootKeyIDPrefix without its "-": reserved, never a publisher.
+const rootStem = "gwroot"
 
 // PublisherCert is a publisher certificate at format 1: a publisher's
 // signing key and what packages signed with it may do. It travels as the
@@ -118,7 +123,7 @@ func (c *PublisherCert) validate() *fieldError {
 	}
 	if f := first(
 		inRange("serial", int64(min(c.Serial, maxSafeInteger+1)), 1, maxSafeInteger),
-		matches("publisher", c.Publisher, publisherPattern),
+		publisherName("publisher", c.Publisher),
 		c.Key().validate(""),
 		requiredTime("not_before", c.NotBefore),
 		requiredTime("not_after", c.NotAfter),
@@ -189,7 +194,7 @@ func (c *PublisherCert) CoversID(id string) bool { return c.Grants.coversID(id) 
 func checkNamespaces(path string, ns []string) *fieldError {
 	for i, n := range ns {
 		at := joinPath(path, strconv.Itoa(i))
-		if n != "" && !publisherPattern.MatchString(n) {
+		if n != "" && !ValidPublisher(n) {
 			return &fieldError{field: at, rule: RuleGrammar}
 		}
 		if i > 0 && ns[i-1] == n {

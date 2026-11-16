@@ -62,7 +62,7 @@ The algorithm belongs to the trusted key, never to the signature: a reader verif
 | `ed25519` | A 32-byte Ed25519 public key | A 64-byte pure Ed25519 signature over the payload (RFC 8032) |
 | `ecdsa-p256-sha256` | A P-256 point in uncompressed SEC 1 form (65 bytes, `0x04‖X‖Y`) | An ASN.1 DER signature over the SHA-256 of the payload, the form hardware keys and cloud key services return |
 
-A key id matches `^[a-z0-9][a-z0-9._-]{1,63}$` and names one key forever; it is never reused. A project root's key id starts with `root-`, and a certified key's with `<publisher>-` (never with `root-`), so a root and a publisher key, or two publishers' keys, never share an id. Verification rules:
+A key id matches `^[a-z0-9][a-z0-9._-]{1,63}$` and names one key forever; it is never reused. A project root's key id starts with `gwroot-` (`gwroot-1`, `gwroot-2`), and a certified key's with `<publisher>-` (never with `gwroot-`), and `gwroot` is not a valid publisher name, so a root and a publisher key, or two publishers' keys, never share an id. Verification rules:
 
 - Signatures by key ids the reader does not know are skipped, so a signer can sign with the old and the new key before readers switch to trusting the new one.
 - When a signature by a trusted key does not verify, the whole envelope fails (`PLUGIN_SIGNATURE_INVALID`): a key id names one key, so a failure is tampering or corruption, never a rotation.
@@ -83,7 +83,7 @@ An example that uses every field is `manifest/v1/valid/full.json` in the corpus.
 |---|---|
 | `schema` | 1 |
 | `id` | The package id, `^[a-z][a-z0-9_]{1,31}$`; also the route segment `/api/v1/x/<id>/` and a directory name. A third party's ids start with `<publisher>_`; which prefixes it may use is a grant of its certificate |
-| `publisher` | `^[a-z][a-z0-9]{1,15}$` (no underscore, so `<publisher>_` splits a package id unambiguously); must equal the subject of the signing certificate |
+| `publisher` | `^[a-z][a-z0-9]{1,15}$` (no underscore, so `<publisher>_` splits a package id unambiguously; `gwroot` is reserved for the root keys); must equal the subject of the signing certificate |
 | `version` | A semantic version without a leading `v` |
 | `min_core_hint` | Optional, at most 32 bytes; names the server release needed, for messages only. Compatibility is decided by `requires` |
 | `created` | Must lie inside the signing certificate's signing window |
@@ -141,7 +141,7 @@ A certificate is a publisher's signing key and its grants. It travels as the pay
 | `format` | 1 |
 | `serial` | Unique among all certificates of the publisher, whichever root issued them, so `publisher` + `serial` names one certificate; ≥1 |
 | `publisher` | The subject; manifests signed with this key must name it |
-| `keyid` / `alg` / `public_key` | The publisher's signing key, with the rules of the [signature envelope](#signature-envelope); `keyid` starts with `<publisher>-` and not with `root-` |
+| `keyid` / `alg` / `public_key` | The publisher's signing key, with the rules of the [signature envelope](#signature-envelope); `keyid` starts with `<publisher>-` and not with `gwroot-` |
 | `not_before` / `not_after` | The signing window; `not_after` must be later than `not_before`. A package whose `created` lies in the window stays valid after `not_after`, so installed packages never expire |
 | `grants.id_prefixes` | Required: the package ids the key may sign, sorted, each with the package id grammar. An entry ending in `_` covers every id that starts with it; any other entry covers exactly that id. Except for the project publisher, every entry starts with `<publisher>_`, so a certificate never covers another publisher's ids (`acme_` does not cover `acmebank_pay`) |
 | `grants.feature_ns` | Namespaces its packages may declare feature keys in, sorted: only the publisher's own name, plus `""` (the bare namespace) for the project publisher |
@@ -163,14 +163,14 @@ A trust update is signed by at least one project root key the reader trusts now,
 
 <!-- golden: trust_update/v1/valid/rotate.json -->
 ```json
-{"add_roots":[{"alg":"ed25519","keyid":"root-3","public_key":"eC0hm7/hzMkrq452w7FbsvdumRZzFEroSPiJYIFGCqs="},{"alg":"ecdsa-p256-sha256","keyid":"root-4","public_key":"BMX+c4VTtfKGKA3l0EjO3d6IXwcBTVbSabaijGatYQCn+OSfRFHDO2UzUlWZu07cpYIEmdreHZH0eYnGPrSojuY="}],"created":"2026-12-01T00:00:00Z","floors":[{"id":"acme_backup","min_version":"1.1.0"},{"id":"acme_quota","min_version":"2.0.3"}],"format":1,"retire_roots":["root-1"],"revoke":[{"keyid":"acme-2025a","publisher":"acme"},{"cert_serial":9,"publisher":"acme"}],"serial":3}
+{"add_roots":[{"alg":"ed25519","keyid":"gwroot-3","public_key":"eC0hm7/hzMkrq452w7FbsvdumRZzFEroSPiJYIFGCqs="},{"alg":"ecdsa-p256-sha256","keyid":"gwroot-4","public_key":"BMX+c4VTtfKGKA3l0EjO3d6IXwcBTVbSabaijGatYQCn+OSfRFHDO2UzUlWZu07cpYIEmdreHZH0eYnGPrSojuY="}],"created":"2026-12-01T00:00:00Z","floors":[{"id":"acme_backup","min_version":"1.1.0"},{"id":"acme_quota","min_version":"2.0.3"}],"format":1,"retire_roots":["gwroot-1"],"revoke":[{"keyid":"acme-2025a","publisher":"acme"},{"cert_serial":9,"publisher":"acme"}],"serial":3}
 ```
 
 | Field | Rules |
 |---|---|
 | `format` / `serial` / `created` | 1 / an increasing serial / when it was issued |
-| `add_roots` | Root public keys to trust from now on, sorted by key id, each key id starting with `root-`; none may also be in `retire_roots` |
-| `retire_roots` | Root key ids to stop trusting, sorted, each starting with `root-` |
+| `add_roots` | Root public keys to trust from now on, sorted by key id, each key id starting with `gwroot-`; none may also be in `retire_roots` |
+| `retire_roots` | Root key ids to stop trusting, sorted, each starting with `gwroot-` |
 | `revoke` | Revocation entries, see below; at most 4096 |
 | `floors` | Raise the lowest installable version of packages, `{id, min_version}`, sorted by id; a floor only rises |
 
@@ -387,4 +387,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 71482904f8462068790cced7b2d7b859ca5227054ac1d49c413f5d85d70433ce -->
+<!-- translation-source-sha256: 7555f1148180c5aed7b8d57efae39b281b9e00e753a1f2d96e954e88f0bf149e -->

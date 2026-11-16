@@ -293,7 +293,7 @@ func (m *Manifest) validate() *fieldError {
 	}
 	if f := first(
 		matches("id", m.ID, packageIDPattern),
-		matches("publisher", m.Publisher, publisherPattern),
+		publisherName("publisher", m.Publisher),
 		matches("version", m.Version, semverPattern),
 		inRange("min_core_hint", int64(len(m.MinCoreHint)), 0, 32),
 		requiredTime("created", m.Created),

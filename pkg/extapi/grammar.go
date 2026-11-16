@@ -17,7 +17,8 @@ var (
 	packageIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
 	// A publisher name. It is also the feature namespace of a third party's
 	// keys, so it is a valid feature key segment, and it has no underscore,
-	// so "<publisher>_" splits a package id unambiguously.
+	// so "<publisher>_" splits a package id unambiguously. The stem of the
+	// roots' key ids, "gwroot", is reserved (ValidPublisher).
 	publisherPattern = regexp.MustCompile(`^[a-z][a-z0-9]{1,15}$`)
 	// A feature key: up to three dot-separated segments. A third party's
 	// keys start with its publisher name as the first segment.
@@ -66,8 +67,28 @@ func ValidKeyID(id string) bool { return keyIDPattern.MatchString(id) }
 // ValidPackageID reports whether id is a package id.
 func ValidPackageID(id string) bool { return packageIDPattern.MatchString(id) }
 
-// ValidPublisher reports whether p is a publisher name.
-func ValidPublisher(p string) bool { return publisherPattern.MatchString(p) }
+// ValidPublisher reports whether p is a publisher name: it matches the
+// publisher grammar and is not the reserved stem of the project roots' key
+// ids (see RootKeyIDPrefix).
+func ValidPublisher(p string) bool { return publisherPattern.MatchString(p) && p != rootStem }
+
+// publisherName checks a required publisher name.
+func publisherName(path, value string) *fieldError {
+	if f := matches(path, value, publisherPattern); f != nil {
+		return f
+	}
+	if value == rootStem {
+		return &fieldError{field: path, rule: RuleGrammar}
+	}
+	return nil
+}
+
+func optionalPublisherName(path, value string) *fieldError {
+	if value == "" {
+		return nil
+	}
+	return publisherName(path, value)
+}
 
 // checkSortedSet reports the first element of list that breaks grammar,
 // repeats or is out of order; sets on the wire are sorted so they have one

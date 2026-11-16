@@ -49,8 +49,7 @@ func TestCertificateGrantsStayInsideTheSubject(t *testing.T) {
 		{"third party claims the bare namespace", testCert("acme", "acme-1", []string{"acme_"}, []string{"", "acme"}), "grants.feature_ns.0"},
 		{"third party claims another namespace", testCert("acme", "acme-1", []string{"acme_"}, []string{"acmebank"}), "grants.feature_ns.0"},
 		{"key id of another publisher", testCert("acme", "acmebank-1", []string{"acme_"}, nil), "keyid"},
-		{"key id of a root", testCert("acme", "root-1", []string{"acme_"}, nil), "keyid"},
-		{"publisher named like the roots", testCert("root", "root-9", []string{"root_"}, nil), "keyid"},
+		{"key id of a root", testCert("acme", "gwroot-1", []string{"acme_"}, nil), "keyid"},
 		{"project publisher claims another namespace", testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"quota"}, []string{"acme"}), "grants.feature_ns.0"},
 	}
 	for _, tc := range cases {
@@ -59,6 +58,15 @@ func TestCertificateGrantsStayInsideTheSubject(t *testing.T) {
 		if !ok || e.Code != ErrorWireInvalid || e.Params["field"] != tc.field || e.Params["rule"] != RuleRelation {
 			t.Errorf("%s: %v, want relation at %s", tc.name, err, tc.field)
 		}
+	}
+	// The roots' key id stem is not a publisher, so no certificate can carry
+	// a root's key id as its own.
+	rootStem := testCert("gwroot", "gwroot-9", []string{"gwroot_"}, nil)
+	if e, ok := rootStem.Validate().(*Error); !ok || e.Params["field"] != "publisher" || e.Params["rule"] != RuleGrammar {
+		t.Errorf("publisher named like the roots: %v, want grammar at publisher", rootStem.Validate())
+	}
+	if ValidPublisher("gwroot") || !ValidPublisher("gwroots") {
+		t.Error("ValidPublisher must refuse exactly the roots' stem")
 	}
 	project := testCert(ProjectPublisher, ProjectPublisher+"-1", []string{"quota", "sso"}, []string{"", ProjectPublisher})
 	if err := project.Validate(); err != nil {
