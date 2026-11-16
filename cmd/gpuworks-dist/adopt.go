@@ -27,12 +27,13 @@ import (
 
 func releaseIDCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("release-id", flag.ContinueOnError)
-	var dist string
-	fs.StringVar(&dist, "dist", "dist", "directory holding gpuworks-<id>-<os>-<arch>.tar.gz")
+	var dist, prefix string
+	fs.StringVar(&dist, "dist", "dist", "directory holding <prefix>-<id>-<os>-<arch>.tar.gz")
+	fs.StringVar(&prefix, "prefix", defaultArchivePrefix, "release archive name prefix (<prefix>-<id>-<os>-<arch>.tar.gz)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, releaseID, err := findArchives(dist, "")
+	_, releaseID, err := findArchives(dist, prefix, "")
 	if err != nil {
 		return err
 	}
@@ -42,16 +43,17 @@ func releaseIDCommand(args []string, stdout io.Writer) error {
 
 func adoptCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("adopt", flag.ContinueOnError)
-	var dir, releaseID string
+	var dir, releaseID, prefix string
 	fs.StringVar(&dir, "dir", "", "release directory copied from a source (releases/<id>/)")
 	fs.StringVar(&releaseID, "release-id", "", "release id the directory must hold")
+	fs.StringVar(&prefix, "prefix", defaultArchivePrefix, "release archive name prefix (<prefix>-<id>-<os>-<arch>.tar.gz)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if dir == "" || releaseID == "" {
 		return errors.New("-dir and -release-id are required")
 	}
-	builtAt, err := adopt(dir, releaseID)
+	builtAt, err := adopt(dir, prefix, releaseID)
 	if err != nil {
 		return err
 	}
@@ -60,13 +62,14 @@ func adoptCommand(args []string, stdout io.Writer) error {
 }
 
 // adopt checks that dir holds exactly the archives its SHA256SUMS lists, all
-// of releaseID, and returns the build time they were packaged with.
-func adopt(dir, releaseID string) (string, error) {
+// of releaseID and named with prefix (empty is defaultArchivePrefix), and
+// returns the build time they were packaged with.
+func adopt(dir, prefix, releaseID string) (string, error) {
 	sums, err := readSums(filepath.Join(dir, "SHA256SUMS"))
 	if err != nil {
 		return "", err
 	}
-	archives, _, err := findArchives(dir, releaseID)
+	archives, _, err := findArchives(dir, prefix, releaseID)
 	if err != nil {
 		return "", err
 	}

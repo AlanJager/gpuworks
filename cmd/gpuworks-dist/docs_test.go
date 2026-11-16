@@ -58,7 +58,7 @@ func TestAdoptPreservesPublishedReleaseDocs(t *testing.T) {
 		t.Fatal(err)
 	}
 	published := filepath.Join(first.OutDir, "releases", "abc123")
-	builtAt, err := adopt(published, "abc123")
+	builtAt, err := adopt(published, "", "abc123")
 	if err != nil || builtAt != "2026-11-10T00:00:00Z" {
 		t.Fatalf("adopt = %q, %v", builtAt, err)
 	}
@@ -148,7 +148,7 @@ func TestReleaseDocsRejectInvalidSidecars(t *testing.T) {
 			if _, err := os.Stat(in.OutDir); !os.IsNotExist(err) {
 				t.Fatalf("invalid docs created an output tree: %v", err)
 			}
-			if _, err := adopt(in.DistDir, "abc123"); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := adopt(in.DistDir, "", "abc123"); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("adopt error = %v, want %q", err, tc.want)
 			}
 		})

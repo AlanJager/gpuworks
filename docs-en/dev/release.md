@@ -24,7 +24,7 @@ require their license texts to accompany every binary distribution. When you add
 
 A separately built server (another edition) uses the same build: `SERVER_PKG` names its own main package (default `./cmd/gpuworks`) and `PACKAGE_PREFIX`
 its package name prefix (default `gpuworks`, giving `<prefix>-<release>-<os>-<arch>.tar.gz`); the binary inside is still named `gpuworks`. Its distribution channel is
-assembled with `gpuworks-dist assemble -edition <edition> -prefix <prefix>`; see the 2026-11-16 supplement to [ADR 0040](../adr/0040-signed-multi-source-distribution.md).
+assembled with `gpuworks-dist assemble -edition <edition> -prefix <prefix>`, and `release-id` and `adopt` read those package names with the same `-prefix <prefix>`; `assemble -previous-index` carries over only the same edition's history, and `prune -nightly-index` reads that edition's index with `-edition <edition>`; see the 2026-11-16 supplement to [ADR 0040](../adr/0040-signed-multi-source-distribution.md).
 
 To avoid the artifact size limit for a single job (each archive is approximately 53 MB after the server embeds the macOS agent,
 so two archives in one job exceed the limit), CI splits the build into four jobs by OS and architecture: `release-build-linux-amd64`,
@@ -252,5 +252,5 @@ embedded seed is generated from the gpuworks-runner build matrix by `make image-
 - Record the release version, build commit, platform, embedded asset digests, and catalog package digest. Store one-time acceptance results in
   `artifacts/work/<YYYY-MM-DD>-<topic>/` (move them with the topic into `artifacts/archive/` after completion).
 
-<!-- translation-source-sha256: 5f9809062a446f5f28c7c79a791952f27a6eef324af167117423521bcd4ee876 -->
+<!-- translation-source-sha256: e966a228492a8debf3dfa973734b7f3b497d0ab0ffb739d47e50416568e6f889 -->
 <!-- translation-localized-code-block: 957acfe4b88a2bb0b730fab70c725bbbdaf2e1536f84f94d12918def820c5a7c cac397a0dea3afc07b0e87be5f17fd4204658d3b070919f828730dc6f0f4992d Translate release validation command comments -->

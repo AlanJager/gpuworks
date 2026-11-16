@@ -31,6 +31,18 @@ const defaultArchivePrefix = "gpuworks"
 
 var archivePrefixPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
+// archivePrefix is the archive name prefix a -prefix flag names; empty is
+// defaultArchivePrefix.
+func archivePrefix(flag string) (string, error) {
+	if flag == "" {
+		return defaultArchivePrefix, nil
+	}
+	if !archivePrefixPattern.MatchString(flag) {
+		return "", fmt.Errorf("-prefix %q is not an archive name prefix", flag)
+	}
+	return flag, nil
+}
+
 // archivePattern matches the release archive names that start with prefix.
 func archivePattern(prefix string) *regexp.Regexp {
 	return regexp.MustCompile(`^` + regexp.QuoteMeta(prefix) + `-([A-Za-z0-9._+-]+)-(linux|darwin)-(amd64|arm64)\.tar\.gz$`)
@@ -123,17 +135,13 @@ func assemble(in assembleInput) (distribution.Index, error) {
 	if !distribution.ValidEdition(edition) {
 		return distribution.Index{}, fmt.Errorf("-edition %q is not an edition name", in.Edition)
 	}
-	prefix := in.ArchivePrefix
-	if prefix == "" {
-		prefix = defaultArchivePrefix
-	}
-	if !archivePrefixPattern.MatchString(prefix) {
-		return distribution.Index{}, fmt.Errorf("-prefix %q is not an archive name prefix", in.ArchivePrefix)
+	if _, err := archivePrefix(in.ArchivePrefix); err != nil {
+		return distribution.Index{}, err
 	}
 	if _, err := os.Stat(in.OutDir); err == nil {
 		return distribution.Index{}, fmt.Errorf("%s already exists; assemble writes a fresh tree", in.OutDir)
 	}
-	archives, releaseID, err := findPrefixedArchives(in.DistDir, prefix, in.ReleaseID)
+	archives, releaseID, err := findArchives(in.DistDir, in.ArchivePrefix, in.ReleaseID)
 	if err != nil {
 		return distribution.Index{}, err
 	}
@@ -254,15 +262,16 @@ type archiveName struct {
 	name, os, arch string
 }
 
-// findArchives lists the release archives in dir. Every one must carry the
-// same release id; the two CI build jobs' dist directories are merged here,
-// so their separate release.json files are not trusted.
-func findArchives(dir, want string) ([]archiveName, string, error) {
-	return findPrefixedArchives(dir, defaultArchivePrefix, want)
-}
-
-// findPrefixedArchives is findArchives for archives named <prefix>-....
-func findPrefixedArchives(dir, prefix, want string) ([]archiveName, string, error) {
+// findArchives lists the release archives in dir named
+// <prefix>-<id>-<os>-<arch>.tar.gz (an empty prefix is
+// defaultArchivePrefix). Every one must carry the same release id; the two
+// CI build jobs' dist directories are merged here, so their separate
+// release.json files are not trusted.
+func findArchives(dir, prefix, want string) ([]archiveName, string, error) {
+	prefix, err := archivePrefix(prefix)
+	if err != nil {
+		return nil, "", err
+	}
 	pattern := archivePattern(prefix)
 	entries, err := os.ReadDir(dir)
 	if err != nil {

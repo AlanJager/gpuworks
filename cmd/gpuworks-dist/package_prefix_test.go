@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"io"
@@ -102,9 +103,15 @@ func TestPackageReleaseWithAnotherPrefixAndServerPackage(t *testing.T) {
 	if !strings.Contains(string(sums), "  gpuworks-acme-abc123-linux-amd64.tar.gz") || !strings.Contains(string(release), `"name": "gpuworks-acme-abc123-linux-amd64.tar.gz"`) {
 		t.Fatalf("SHA256SUMS = %q\nrelease.json = %s", sums, release)
 	}
-	// gpuworks-dist reads the same names back under the same prefix.
-	if _, id, err := findPrefixedArchives(dist, "gpuworks-acme", ""); err != nil || id != "abc123" {
-		t.Fatalf("findPrefixedArchives = %q, %v", id, err)
+	// gpuworks-dist reads the same names back under the same prefix: the
+	// release id, and the directory as adopt checks a published release.
+	var out, errOut bytes.Buffer
+	if code := run([]string{"release-id", "-dist", dist, "-prefix", "gpuworks-acme"}, nil, &out, &errOut); code != 0 || out.String() != "abc123\n" {
+		t.Fatalf("release-id = %d %q %s", code, out.String(), errOut.String())
+	}
+	out.Reset()
+	if code := run([]string{"adopt", "-dir", dist, "-release-id", "abc123", "-prefix", "gpuworks-acme"}, nil, &out, &errOut); code != 0 || out.String() != "2026-11-16T00:00:00Z\n" {
+		t.Fatalf("adopt = %d %q %s", code, out.String(), errOut.String())
 	}
 }
 
@@ -120,7 +127,7 @@ func TestPackageReleaseDefaultsToTheCommunityPackage(t *testing.T) {
 	if !strings.Contains(string(made), "SERVER_PKG=./cmd/gpuworks ") {
 		t.Fatalf("make was asked = %q", made)
 	}
-	if _, id, err := findArchives(filepath.Join(repo, "dist"), ""); err != nil || id != "abc123" {
+	if _, id, err := findArchives(filepath.Join(repo, "dist"), "", ""); err != nil || id != "abc123" {
 		t.Fatalf("findArchives = %q, %v", id, err)
 	}
 }

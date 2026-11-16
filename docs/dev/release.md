@@ -24,7 +24,7 @@ make release-packages
 
 单独构建的服务端（另一个版本类型）沿用同一套构建：`SERVER_PKG` 换成它自己的 main 包（默认 `./cmd/gpuworks`），`PACKAGE_PREFIX`
 换成它的包名前缀（默认 `gpuworks`，包名为 `<前缀>-<release>-<os>-<arch>.tar.gz`），包里的二进制仍叫 `gpuworks`。发布通道用
-`gpuworks-dist assemble -edition <版本类型> -prefix <前缀>` 组装，见 [ADR 0040](../adr/0040-signed-multi-source-distribution.md) 2026-11-16 补充。
+`gpuworks-dist assemble -edition <版本类型> -prefix <前缀>` 组装，`release-id` 与 `adopt` 同样带 `-prefix <前缀>` 读这些包名；`assemble -previous-index` 只沿用同一版本类型的历史，`prune -nightly-index` 带 `-edition <版本类型>` 读该版本类型的索引，见 [ADR 0040](../adr/0040-signed-multi-source-distribution.md) 2026-11-16 补充。
 
 CI 为避开单 job artifact 大小限制（server 内嵌了 macOS agent 后单个压缩包约 53 MB，
 一个 job 放两个就超限），按 OS 与架构拆成四个 job：`release-build-linux-amd64`、
