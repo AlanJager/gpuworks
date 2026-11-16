@@ -135,7 +135,8 @@ For complete definitions of domain terms such as nodes, deployments, and PD disa
 - `httpproxy` (proxy selection and Go `NO_PROXY` semantics for `no_proxy`, shared by server+agent),
 - `bench` (benchmark vocabulary and execution: dataset/loadgen/metrics/report/search; `search.Document` is the named type for a Run's search column),
 - `catalogasset` (validation and unpacking of runtime assets bundled with the catalog),
-- `localization` (BCP 47 wire text types).
+- `localization` (BCP 47 wire text types),
+- `extapi` (the wire formats between plugins and the server: the package manifest, publisher certificates, trust updates and revocation lists, the signature envelope and canonical JSON, the gwx/1 handshake and errors, the state push envelope and the rows of the first five pushed tables, and the comparison of persisted version markers; a public module of its own that uses only the standard library, which the root `go.mod` points to with `replace` and `make test-extapi` tests; `testdata/golden` freezes the wire formats, and released golden files are only ever added, never edited).
 
 Top-level shared packages in `internal/`:
 
@@ -179,4 +180,4 @@ Top-level shared packages in `internal/`:
 
 React + Vite; build artifacts are output to `internal/server/webui/dist` and embedded by the server with `go:embed`. Parameter dictionaries are delivered by the server's `/engines` endpoint and are **not hardcoded into the frontend**. i18n: `ui/src/i18n/` (en/zh locales) + `ui/i18n/` (glossary and review status); `make i18n-check` is a prerequisite for `make ui`.
 
-<!-- translation-source-sha256: a7c59531ffbd19db9c988e9db205a95f9bf09dbd38a464c2f8e977aad23ef3e7 -->
+<!-- translation-source-sha256: dc1398f8d563700f4d0beb62acdcd581c42daf6e889c6bafa7afdcad91f8dfec -->

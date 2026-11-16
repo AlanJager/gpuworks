@@ -931,7 +931,19 @@
     "EXTERNAL_KEY_UNREADABLE": "The external endpoint's key could not be decrypted: {{detail}}",
     "EXTERNAL_REQUEST_INVALID": "External Playground requests must be JSON: {{detail}}",
     "EXTERNAL_UPSTREAM_UNAVAILABLE": "The external endpoint could not be reached: {{detail}}",
-    "RESPONSE_ENCODING_FAILED": "The response data could not be encoded as JSON."
+    "RESPONSE_ENCODING_FAILED": "The response data could not be encoded as JSON.",
+    "PLUGIN_WIRE_MALFORMED": "Plugin data {{object}} is not well-formed at \"{{field}}\" ({{rule}}).",
+    "PLUGIN_WIRE_UNKNOWN_FIELD": "Plugin data {{object}} has a field this server does not know: {{field}}. The plugin may need a newer server.",
+    "PLUGIN_WIRE_INVALID": "Plugin data {{object}} is invalid: field {{field}} breaks rule {{rule}}.",
+    "PLUGIN_WIRE_NOT_CANONICAL": "The signed {{object}} is not in canonical form, so its signature cannot be trusted.",
+    "PLUGIN_SCHEMA_TOO_NEW": "{{object}} version {{version}} is newer than this server reads (up to {{known}}). Upgrade the server to use it.",
+    "PLUGIN_MANIFEST_TOO_NEW": "This plugin package needs a newer server ({{min_core_hint}}): its manifest schema {{version}} is newer than this server reads (up to {{known}}).",
+    "PLUGIN_PROTOCOL_UNSUPPORTED": "The plugin speaks gwx protocol {{min}} to {{max}}, but this server speaks {{supported}}.",
+    "PLUGIN_SIGNATURE_UNTRUSTED": "The {{object}} is not signed by a key this server trusts.",
+    "PLUGIN_SIGNATURE_INVALID": "The signature on the {{object}} by key {{keyid}} does not verify: the file was changed or damaged.",
+    "PLUGIN_STATE_REJECTED": "The plugin pushed invalid {{kind}} state: field {{field}} breaks rule {{rule}}.",
+    "PLUGIN_STATE_TOO_LARGE": "The plugin pushed too much {{kind}} state: {{field}} exceeds {{max}}.",
+    "PLUGIN_STATE_TOO_NEW": "Stored {{marker}} is at version {{version}}, but this server reads up to version {{known}}. Run {{needs}} or newer instead of this older server."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {

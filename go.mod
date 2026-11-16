@@ -18,6 +18,7 @@ require (
 	golang.org/x/tools v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.2
+	gpuworks.ai/gpuworks/pkg/extapi v0.0.0
 	modernc.org/sqlite v1.23.1
 	pgregory.net/rapid v1.3.0
 )
@@ -38,3 +39,7 @@ require (
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
 )
+
+// pkg/extapi is a public module of its own (the plugin wire formats, which
+// plugins import without the server); the server builds against this copy.
+replace gpuworks.ai/gpuworks/pkg/extapi => ./pkg/extapi

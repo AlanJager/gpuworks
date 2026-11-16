@@ -1,0 +1,1 @@
+{"id":"acme_quota","manifest_sha256":"sha256:69a8fc5cf9fa0174e3dfe74b1c9c1f5f4f64710afa362419883f19c6b42ee422","protocol":1,"services":["backup","support"],"use":{"host.fleet":0,"table.attestations":1,"table.availability":1,"table.banners":1,"table.fleet_capacity":1},"version":"2.0.4"}

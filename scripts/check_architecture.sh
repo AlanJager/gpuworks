@@ -927,6 +927,65 @@ tree_forbids ./internal/server/mcp 'gpuworks/' 'mcp speaks the protocol only: it
 tree_forbids ./internal/agent/gpu/cardsmoke 'gpuworks/' 'cardsmoke schedules attempts and knows no vendor'
 tree_forbids ./internal/agent/gpu/pcicards 'gpuworks/internal/agent' 'pcicards reads sysfs and knows nothing of the agent'
 
+# --- public wire module ------------------------------------------------------
+# pkg/extapi is a module of its own: the wire formats plugins import without
+# the server. `go list ./...` at the root does not enter it, so its rules are
+# checked here: standard library only (tests included), no requirement, the
+# root's go line, and a golden corpus whose released files are never edited
+# or removed (SHA256SUMS only grows against the baseline commit).
+echo "public wire module (pkg/extapi):"
+EXTAPI_DIR=pkg/extapi
+EXTAPI_MOD=gpuworks.ai/gpuworks/pkg/extapi
+if [ ! -f "$EXTAPI_DIR/go.mod" ]; then
+  echo "  FAIL: $EXTAPI_DIR/go.mod is missing" >&2
+  failures=$((failures + 1))
+else
+  if ! extapi_deps=$(cd "$EXTAPI_DIR" && go list -e -deps -test \
+    -f '{{if not .Standard}}{{.ImportPath}}{{if .Error}} ERROR{{end}}{{end}}' ./... 2>&1); then
+    extapi_deps="go list failed: $extapi_deps"
+  fi
+  extapi_foreign=$(printf '%s\n' "$extapi_deps" | grep -v '^$' \
+    | grep -vE "^${EXTAPI_MOD}( \[${EXTAPI_MOD}(\.test)?\]|\.test|_test \[${EXTAPI_MOD}\.test\])?\$" || true)
+  if [ -n "$extapi_foreign" ]; then
+    echo "  FAIL: pkg/extapi imports only the standard library" >&2
+    echo "$extapi_foreign" | sed 's/^/    /' >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: pkg/extapi imports only the standard library"
+  fi
+  extapi_require=$(grep -nE '^[[:space:]]*(require|replace)([[:space:]]|\()' "$EXTAPI_DIR/go.mod" || true)
+  root_go=$(awk '$1 == "go" {print $2; exit}' go.mod)
+  extapi_go=$(awk '$1 == "go" {print $2; exit}' "$EXTAPI_DIR/go.mod")
+  if [ -n "$extapi_require" ] || [ "$root_go" != "$extapi_go" ]; then
+    echo "  FAIL: pkg/extapi/go.mod requires nothing and has the root's go line ($root_go, has $extapi_go)" >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: pkg/extapi/go.mod requires nothing and has the root's go line"
+  fi
+  if ! grep -qE "^replace[[:space:]]+${EXTAPI_MOD}[[:space:]]+=>[[:space:]]+\./${EXTAPI_DIR}\$" go.mod; then
+    echo "  FAIL: go.mod replaces $EXTAPI_MOD with ./$EXTAPI_DIR" >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: go.mod builds against ./$EXTAPI_DIR"
+  fi
+  golden_sums="$EXTAPI_DIR/testdata/golden/SHA256SUMS"
+  if [ -n "${baseline_sha:-}" ] && [ "$baseline_sha" != "$(git rev-parse HEAD 2>/dev/null)" ] \
+    && git cat-file -e "$baseline_sha:$golden_sums" 2>/dev/null; then
+    golden_lost=$(git show "$baseline_sha:$golden_sums" | while IFS= read -r line; do
+      grep -qxF -- "$line" "$golden_sums" 2>/dev/null || printf '%s\n' "$line"
+    done)
+    if [ -n "$golden_lost" ]; then
+      echo "  FAIL: released wire goldens are never edited or removed (add a new version instead)" >&2
+      echo "$golden_lost" | sed 's/^/    /' >&2
+      failures=$((failures + 1))
+    else
+      echo "  ok: released wire goldens unchanged (baseline $baseline_sha)"
+    fi
+  else
+    echo "  NOTE: no baseline golden list to compare; skipping the append-only check"
+  fi
+fi
+
 # --- console overlays --------------------------------------------------------
 # Console overlay modules (ui/src/extensions/<id>/) belong to the separately
 # built console: they are copied in, git-ignored, and left out of the UI

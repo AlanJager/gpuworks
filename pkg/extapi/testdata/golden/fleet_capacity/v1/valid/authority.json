@@ -1,0 +1,1 @@
+{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT","params":{"max":64}},"refuse_node":{"code":"ACME_NODE_LIMIT","params":{"max":8}},"select":"enrollment_order","steps":[{"max_cards":64,"max_nodes_with_cards":8},{"at":"2027-02-01T00:00:00Z","max_cards":16,"max_nodes_with_cards":2}]}

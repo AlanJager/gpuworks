@@ -195,7 +195,17 @@ test-unit: check-change-record
 test-unit-checked: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets test-strata-queue-assets test-sglang-video-cancel-assets
 	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./...
 	cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
+	$(MAKE) test-extapi
 	$(MAKE) check-tagged-build
+
+## test-extapi: gofmt, vet and test pkg/extapi, the plugin wire formats. It is
+## a module of its own, which `go test ./...` and `go vet ./...` at the root
+## do not enter; test-unit, vet and both CI pipelines run it.
+.PHONY: test-extapi
+test-extapi:
+	@unformatted=$$(cd pkg/extapi && gofmt -l .); if [ -n "$$unformatted" ]; then echo "pkg/extapi needs gofmt: $$unformatted" >&2; exit 1; fi
+	cd pkg/extapi && CGO_ENABLED=0 $(GO) vet ./...
+	cd pkg/extapi && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 
 ## test-host-env-adapters: the serve adapters macOS environment packages ship
 ## (build/host-envs/adapters); standard library only, so no install step
@@ -758,6 +768,7 @@ check-perftest:
 ## vet: static analysis
 vet:
 	CGO_ENABLED=0 $(GO) vet ./...
+	cd pkg/extapi && CGO_ENABLED=0 $(GO) vet ./...
 
 .PHONY: lint
 ## lint: run the complete pinned Go lint rule set, including tests.

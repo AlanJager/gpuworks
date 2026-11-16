@@ -1,0 +1,1 @@
+{"banners":[{"audience":"admin","id":"grace","steps":[{"link":"/x/acme_quota","notice":{"code":"ACME_QUOTA_GRACE","params":{"days":30}},"severity":"warning"},{"at":"2027-02-01T00:00:00Z","hidden":true}]},{"audience":"all","display":{"icon":"key"},"id":"usb_key_missing","steps":[{"at":"2026-12-01T00:00:00Z","notice":{"code":"ACME_USB_KEY_MISSING"},"severity":"danger"}]}]}

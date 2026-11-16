@@ -154,6 +154,8 @@ jobs:
       - run: make lint
       - run: make test-l4-compshare-offline-contracts
       - run: (cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 go test -timeout 5m ./...)
+      # pkg/extapi is a module of its own, which go test/vet ./... skip.
+      - run: make test-extapi GO_TEST_FLAGS="-timeout 5m"
       # Build-tag suites run in their own jobs; compile them here so a
       # refactor cannot silently break an opt-in lane.
       - run: make check-tagged-build

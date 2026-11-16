@@ -339,6 +339,9 @@ const productErrorSourceFiles = [
   ...fs.readdirSync(messagesDir).filter((name) => name.endsWith(".go") && !name.endsWith("_test.go")).sort().map((name) => path.join(messagesDir, name)),
   path.join(root, "internal/server/api/errors.go"),
   path.join(root, "internal/server/proxy/api_errors.go"),
+  // The plugin wire formats (a public module that cannot import messages)
+  // declare the codes of their failures, which the console renders.
+  path.join(root, "pkg/extapi/errors.go"),
   // Every proto file: agent-produced codes (runtime failures, RPC refusals)
   // reach the console through the same ProductMessage path.
   ...fs.readdirSync(path.join(root, "internal/proto")).filter((name) => name.endsWith(".go") && !name.endsWith("_test.go")).sort().map((name) => path.join(root, "internal/proto", name)),

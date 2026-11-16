@@ -1,0 +1,1 @@
+{"down_grace_s":3600,"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[]},{"display":{"plan":"pro"},"down_access":"locked","feature":"acme.reports","steps":[{"access":"locked","notice":{"code":"ACME_NOT_PURCHASED"}}]}]}

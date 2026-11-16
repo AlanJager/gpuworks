@@ -867,6 +867,19 @@ find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort \
 - `internal/server/distribution`（发布通道客户端，CLI 升级与 api 共用）不得 import 本仓库任何包，
   免得 `selfinstall` 经由它依赖到 server 其余部分（ADR 0040）。
 
+**公开线格式模块**：`pkg/extapi`（插件与 server 之间的线格式）是自带 `go.mod` 的嵌套模块，根目录的
+`go list ./...` 进不去，所以脚本的「public wire module」一节单独硬性检查（违反即失败，不是预算）：
+
+- 在 `pkg/extapi` 里 `go list -e -deps -test ./...` 列出的非标准库包只有它自己（含测试）：只用标准库；
+- `pkg/extapi/go.mod` 没有 `require`/`replace`，`go` 行与根 `go.mod` 相同；
+- 根 `go.mod` 有 `replace gpuworks.ai/gpuworks/pkg/extapi => ./pkg/extapi`；
+- 黄金文件清单 `pkg/extapi/testdata/golden/SHA256SUMS` 只增不改：基线提交（与预算比较同一个基线）里的每一行
+  必须原样留在当前清单里；解析不出基线时打印 NOTE 跳过。已发布的黄金文件改了或删了，就是改了冻结的线格式，
+  应当新增版本目录。
+
+`make test-extapi`（`make test-unit`、两条 CI 流水线都会调用）负责它的 gofmt、vet 与测试；`make vet` 也
+vet 这个模块。
+
 **当前豁免**：`inferenceapi` 与 `partitioncap` 今天确实 import 了 store（计划 B7、B6），
 计划在 store 边界阶段切断。脚本用 `LEAF_STORE_WAIVED` 按包名豁免并打印 `WAIVED`，
 这样规则仍能拦住**新**的叶子包伸手够 store。豁免是双向的：某个包不再 import store 时，

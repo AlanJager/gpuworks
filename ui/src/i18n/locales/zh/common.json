@@ -931,7 +931,19 @@
     "EXTERNAL_KEY_UNREADABLE": "无法解密外部端点的密钥：{{detail}}",
     "EXTERNAL_REQUEST_INVALID": "试验场外部请求必须是 JSON：{{detail}}",
     "EXTERNAL_UPSTREAM_UNAVAILABLE": "无法连接外部端点：{{detail}}",
-    "RESPONSE_ENCODING_FAILED": "响应数据无法编码为 JSON。"
+    "RESPONSE_ENCODING_FAILED": "响应数据无法编码为 JSON。",
+    "PLUGIN_WIRE_MALFORMED": "插件数据 {{object}} 格式错误，位置“{{field}}”（{{rule}}）。",
+    "PLUGIN_WIRE_UNKNOWN_FIELD": "插件数据 {{object}} 含有此服务器不认识的字段：{{field}}。该插件可能需要更新的服务器。",
+    "PLUGIN_WIRE_INVALID": "插件数据 {{object}} 无效：字段 {{field}} 违反规则 {{rule}}。",
+    "PLUGIN_WIRE_NOT_CANONICAL": "已签名的 {{object}} 不是规范格式，其签名不可信。",
+    "PLUGIN_SCHEMA_TOO_NEW": "{{object}} 版本 {{version}} 比此服务器能读取的版本（最高 {{known}}）更新。请升级服务器后再使用。",
+    "PLUGIN_MANIFEST_TOO_NEW": "此插件包需要更新的服务器（{{min_core_hint}}）：其清单格式版本 {{version}} 比此服务器能读取的版本（最高 {{known}}）更新。",
+    "PLUGIN_PROTOCOL_UNSUPPORTED": "插件使用的 gwx 协议版本为 {{min}} 至 {{max}}，此服务器使用 {{supported}}。",
+    "PLUGIN_SIGNATURE_UNTRUSTED": "{{object}} 没有此服务器信任的密钥签名。",
+    "PLUGIN_SIGNATURE_INVALID": "{{object}} 上密钥 {{keyid}} 的签名校验失败：文件已被修改或损坏。",
+    "PLUGIN_STATE_REJECTED": "插件推送的 {{kind}} 状态无效：字段 {{field}} 违反规则 {{rule}}。",
+    "PLUGIN_STATE_TOO_LARGE": "插件推送的 {{kind}} 状态过大：{{field}} 超过 {{max}}。",
+    "PLUGIN_STATE_TOO_NEW": "已存储的 {{marker}} 版本为 {{version}}，此服务器最高只能读取版本 {{known}}。请运行 {{needs}} 或更新的版本，不要使用这个较旧的服务器。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {

@@ -137,7 +137,8 @@
 - `httpproxy`（代理选择与 `no_proxy` 的 Go `NO_PROXY` 语义，server+agent 共用）、
 - `bench`（评测字典与执行：dataset/loadgen/metrics/report/search；`search.Document` 是 Run 的 search 列的具名类型）、
 - `catalogasset`（目录随带运行时资产校验解包）、
-- `localization`（BCP 47 wire 文本类型）。
+- `localization`（BCP 47 wire 文本类型）、
+- `extapi`（插件与 server 之间的线格式：包清单、发布者证书、信任更新与吊销列表、签名信封与规范 JSON、gwx/1 握手与错误、状态推送信封与首批五种推送表的行，以及持久化版本标记比较；是只用标准库的独立公开模块，根 `go.mod` 用 `replace` 指向它，`make test-extapi` 跑它的测试；`testdata/golden` 冻结线格式，已发布的黄金文件只增不改）。
 
 `internal/` 顶层共享：
 
