@@ -192,6 +192,9 @@ type ListRows struct {
 	fresh *freshRows
 	// states memoizes States for the rows (and the copies Fresh makes).
 	states *listStates
+	// now is the clock States measures the pending timeout by: the Lists'
+	// clock for a shared snapshot; nil is time.Now.
+	now func() time.Time
 }
 
 // freshRows is what Fresh read again for a page.

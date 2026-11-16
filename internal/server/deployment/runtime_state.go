@@ -12,7 +12,12 @@ import (
 
 // RuntimeState is the runtime_state the deployment DTO reports.
 func RuntimeState(rows Rows, d *store.Deployment, insts []store.Instance, progress []dto.ModelNodePresence) string {
-	state := DeriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d.ID, len(insts)))
+	return runtimeStateAt(rows, d, insts, progress, time.Now())
+}
+
+// runtimeStateAt is RuntimeState with the pending timeout measured at now.
+func runtimeStateAt(rows Rows, d *store.Deployment, insts []store.Instance, progress []dto.ModelNodePresence, now time.Time) string {
+	state := DeriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d.ID, len(insts), now))
 	if state != "running" {
 		return state
 	}
@@ -43,7 +48,7 @@ func RuntimeState(rows Rows, d *store.Deployment, insts []store.Instance, progre
 // legitimately takes tens of minutes, and counting from creation would call a
 // perfectly healthy download a stall - the same confusion this whole mechanism
 // exists to remove.
-func scheduleStalled(rows Rows, deploymentID uint, instanceCount int) bool {
+func scheduleStalled(rows Rows, deploymentID uint, instanceCount int, now time.Time) bool {
 	if instanceCount > 0 {
 		return false
 	}
@@ -51,7 +56,13 @@ func scheduleStalled(rows Rows, deploymentID uint, instanceCount int) bool {
 	if !found {
 		return false
 	}
-	return time.Since(ev.CreatedAt) >= rows.PendingTimeout()
+	return !now.Before(scheduleStallDeadline(rows, ev))
+}
+
+// scheduleStallDeadline is when a deployment first refused at ev reads as
+// stalled.
+func scheduleStallDeadline(rows Rows, ev store.InstanceEvent) time.Time {
+	return ev.CreatedAt.Add(rows.PendingTimeout())
 }
 
 // DeriveRuntimeState is planning.DeriveRuntimeState over the model progress
