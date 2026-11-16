@@ -382,6 +382,9 @@ type Plan struct {
 	// and is deliberately not part of it.
 	Preference int64    `json:"preference,omitempty"`
 	Reasons    []Reason `json:"reasons"`
+	// Concessions are the card preferences this plan gave up, in table
+	// order (planPreferring); its Reasons state them for the reader.
+	Concessions []Concession `json:"-"`
 }
 
 // Rejected records a considered-but-discarded option.
@@ -433,7 +436,7 @@ func Schedule(req Request, node NodeSnapshot) Result {
 	ex.Filters = append(ex.Filters, Reason{Code: ReasonFiltersPassed})
 
 	// --- GPU planner ---
-	plans, rejected := planPreferringHealthy(req, node)
+	plans, rejected := planPreferring(req, node)
 	ex.Rejected = rejected
 	if len(plans) == 0 {
 		return Result{OK: false, Message: blockingReason(rejected), Explain: ex}
@@ -445,43 +448,6 @@ func Schedule(req Request, node NodeSnapshot) Result {
 	ex.TopoHighlight = highlight(best, node)
 
 	return Result{Plan: best, Explain: ex, OK: true}
-}
-
-// planPreferringHealthy places on fully healthy GPUs whenever they can take
-// the request, and only otherwise lets degraded GPUs take part, so a degraded
-// GPU is used last. A plan that ends up on degraded GPUs says so.
-func planPreferringHealthy(req Request, node NodeSnapshot) ([]Plan, []Rejected) {
-	preferred := node
-	preferred.GPUs = nil
-	for _, g := range node.GPUs {
-		if !g.Degraded {
-			preferred.GPUs = append(preferred.GPUs, g)
-		}
-	}
-	if len(preferred.GPUs) == len(node.GPUs) {
-		return plan(req, node)
-	}
-	if plans, rejected := plan(req, preferred); len(plans) > 0 {
-		return plans, rejected
-	}
-	plans, rejected := plan(req, node)
-	degraded := map[int]bool{}
-	for _, g := range node.GPUs {
-		degraded[g.Index] = g.Degraded
-	}
-	for i := range plans {
-		var used []int
-		for _, index := range plans[i].GPUIndexes {
-			if degraded[index] {
-				used = append(used, index)
-			}
-		}
-		if len(used) > 0 {
-			plans[i].Reasons = append(plans[i].Reasons, Reason{Code: ReasonDegradedGPUsUsed,
-				Params: map[string]any{"gpus": used, "count": len(used)}})
-		}
-	}
-	return plans, rejected
 }
 
 // reserveFor is the reserve a request is charged. A caller that did not compute
