@@ -42,4 +42,8 @@ require (
 
 // pkg/extapi is a public module of its own (the plugin wire formats, which
 // plugins import without the server); the server builds against this copy.
+// Go applies replace directives only in the main module, so a module that
+// depends on this one needs its own replace for pkg/extapi, or a go.work
+// that uses this checkout (see pkg/extapi/README.md); requiring a tagged
+// pkg/extapi/vX.Y.Z here replaces v0.0.0 before the module is published.
 replace gpuworks.ai/gpuworks/pkg/extapi => ./pkg/extapi

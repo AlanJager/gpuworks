@@ -80,6 +80,7 @@ Several constraints shape the answer together. Server and agent are static `CGO_
 18. **Only HA belongs to the core.** Plugins run on the leader only, and plugin SQLite storage is replicated by core HA.
 
 19. **Other accepted product decisions.**
+    - The first plugin package is an availability authority, and later authority packages follow it as the reference: it picks its down grace within the bounds of decision 9 and declares its storage and HA mode in its manifest like any other package.
     - Audit tamper evidence: the core keeps a hash chain at write time (about 1 µs per row); retention, signing and SIEM export belong to plugins.
     - OEM: console branding only (the pushed `branding` table); rebranding the binary, installer and agent is a custom fork through `cli.Options`.
     - No offline LDAP verifier cache: while LDAP is down, local users and existing sessions keep working.
@@ -132,4 +133,4 @@ Decided but not implemented yet: packing and verifying plugin packages, the trus
 - The existing way of building a separate server (`cli.Options`, extension migrations, the build-time console overlay) stays valid for forks and tests, but it is not a distribution path for official or third-party extensions.
 - Contract and operating details are in [Extension Points](../dev/extensions.md); the wire formats are in [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md).
 
-<!-- translation-source-sha256: e21d082bcb1dec7cd581fc6406a49624c4ecafb239f68ab241656818f933e454 -->
+<!-- translation-source-sha256: fdada658ae3a28a40d3b8572875399b2bd7853cc92433593a3e94657c8c3c9ea -->

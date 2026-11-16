@@ -19,6 +19,22 @@ What it defines:
 | State push and its acknowledgement | `StatePush`, `StateAck` | protocol major 1 |
 | Pushed tables | `AvailabilityV1`, `FleetCapacityV1`, `NodeHoldsV1`, `BannersV1`, `AttestationsV1` | `table.<kind>@1` |
 
+## Building against it
+
+The server's `go.mod` requires `gpuworks.ai/gpuworks/pkg/extapi v0.0.0` and
+points it at this directory with a `replace`. Go applies `replace` only in
+the main module, so a module that depends on `gpuworks.ai/gpuworks` (a
+separately built server, a fork) resolves `pkg/extapi` only if it either
+uses a `go.work` that includes the server checkout, or carries the same
+replace itself:
+
+```
+replace gpuworks.ai/gpuworks/pkg/extapi => <server checkout>/pkg/extapi
+```
+
+Before the module is published for plugins, tag it `pkg/extapi/vX.Y.Z` and
+require that version in the server's `go.mod` instead of `v0.0.0`.
+
 ## Compatibility promise
 
 Sites run servers that are never upgraded next to plugins built years later,
