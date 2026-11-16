@@ -197,7 +197,7 @@ type Node struct {
 	Topology           *NodeTopology `json:"topology,omitempty"`
 	// PlacementPolicy is the operator's per-node placement knobs, keyed as
 	// GET /scheduling/node-placement-policies keys them (NodePlacementPolicyOf).
-	PlacementPolicy map[string]any `json:"placement_policy"`
+	PlacementPolicy map[string]NodePlacementPolicyValue `json:"placement_policy"`
 	// PlacementPolicyAvailability says, per knob, whether it takes effect on
 	// this node.
 	PlacementPolicyAvailability []NodePlacementPolicyAvailability `json:"placement_policy_availability"`

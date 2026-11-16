@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 )
@@ -12,9 +13,35 @@ import (
 // policy, which the UI renders by kind and labels by key
 // (nodes:placementPolicy.<key>.*), so a new knob needs no client change.
 type NodePlacementPolicySetting struct {
-	Key     string `json:"key"`
-	Kind    string `json:"kind"`
-	Default any    `json:"default"`
+	Key     string                   `json:"key"`
+	Kind    string                   `json:"kind"`
+	Default NodePlacementPolicyValue `json:"default"`
+}
+
+// NodePlacementPolicyValue is one knob's value, shaped by its kind: a JSON
+// boolean for a bool knob, the only kind so far. A new kind adds a field and
+// a case here, not an untyped value on the wire.
+type NodePlacementPolicyValue struct {
+	Kind string
+	Bool bool
+}
+
+// MarshalJSON writes the value in its kind's JSON shape.
+func (v NodePlacementPolicyValue) MarshalJSON() ([]byte, error) {
+	switch nodepolicy.Kind(v.Kind) {
+	case nodepolicy.KindBool:
+		return json.Marshal(v.Bool)
+	}
+	return nil, fmt.Errorf("node placement policy value of unknown kind %q", v.Kind)
+}
+
+// placementPolicyValue types a knob's value by its kind.
+func placementPolicyValue(kind nodepolicy.Kind, value any) NodePlacementPolicyValue {
+	out := NodePlacementPolicyValue{Kind: string(kind)}
+	if kind == nodepolicy.KindBool {
+		out.Bool, _ = value.(bool)
+	}
+	return out
 }
 
 // NodePlacementPolicyDictionaryOf is the dictionary, from nodepolicy.Settings.
@@ -22,7 +49,7 @@ func NodePlacementPolicyDictionaryOf() []NodePlacementPolicySetting {
 	settings := nodepolicy.Settings()
 	out := make([]NodePlacementPolicySetting, 0, len(settings))
 	for _, setting := range settings {
-		out = append(out, NodePlacementPolicySetting{Key: string(setting.Key), Kind: string(setting.Kind), Default: setting.Default})
+		out = append(out, NodePlacementPolicySetting{Key: string(setting.Key), Kind: string(setting.Kind), Default: placementPolicyValue(setting.Kind, setting.Default)})
 	}
 	return out
 }
@@ -40,11 +67,11 @@ type NodePlacementPolicyAvailability struct {
 // keyed as the dictionary is, and each knob's availability from the facts
 // the caller read off the node row: a ready partition backend, and an agent
 // that keeps processes outside the platform reported.
-func NodePlacementPolicyOf(policy nodepolicy.Policy, partitionBackendReady, tracksForeign bool) (map[string]any, []NodePlacementPolicyAvailability) {
-	values := nodepolicy.Values(policy)
-	out := make(map[string]any, len(values))
-	for key, value := range values {
-		out[string(key)] = value
+func NodePlacementPolicyOf(policy nodepolicy.Policy, partitionBackendReady, tracksForeign bool) (map[string]NodePlacementPolicyValue, []NodePlacementPolicyAvailability) {
+	settings := nodepolicy.Settings()
+	out := make(map[string]NodePlacementPolicyValue, len(settings))
+	for _, setting := range settings {
+		out[string(setting.Key)] = placementPolicyValue(setting.Kind, setting.Get(policy))
 	}
 	facts := nodepolicy.Facts{PartitionBackendReady: partitionBackendReady, TracksForeign: tracksForeign}
 	var availability []NodePlacementPolicyAvailability
