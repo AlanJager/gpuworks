@@ -35,6 +35,7 @@ func ProfileForTarget(engine, vendor string) (Profile, error) {
 		}
 		p.PDModes = modes
 	}
+	p.KVBackends = kvBackendProfiles(p.Name, vendor)
 	return p, nil
 }
 
@@ -50,7 +51,7 @@ func ResolveRequestedFeatures(engine string, launch ResolvedLaunch, p Params) *p
 		}
 	}
 	features, known := enginenames.CommandFeatures(engine, args, valueFlags...)
-	f := &proto.RequestedFeatures{CommandKnown: known, EngineSleep: p.Sleepable, MultiNode: p.NNodes > 1 || p.NodeRank != 0 || p.Headless || p.DistGroup != "" || p.DistAttempt != 0 || (p.DistRole != "" && p.DistRole != "leader" && p.DistRole != "standalone"), PD: p.PD != nil, KVDiskTier: p.Quick.KVDiskOffload, PipelineParallel: p.PipelineParallel > 1, DataParallel: p.Quick.DP > 1}
+	f := &proto.RequestedFeatures{CommandKnown: known, EngineSleep: p.Sleepable, MultiNode: p.NNodes > 1 || p.NodeRank != 0 || p.Headless || p.DistGroup != "" || p.DistAttempt != 0 || (p.DistRole != "" && p.DistRole != "leader" && p.DistRole != "standalone"), PD: p.PD != nil, KVDiskTier: p.Quick.KVDiskOffload, PipelineParallel: p.PipelineParallel > 1, DataParallel: p.Quick.DP > 1, ExternalKVCache: kvBackendRequestsExternalCache(engine, p.Quick)}
 	for _, feature := range features {
 		switch feature {
 		case enginenames.EngineSleep:
@@ -99,6 +100,13 @@ func ValidateTargetFeatures(engine string, launch ResolvedLaunch, p Params) erro
 	snapshot := launch.RequestedFeatures
 	if snapshot == nil {
 		snapshot = ResolveRequestedFeatures(engine, launch, p)
+	}
+	nodes := max(p.NNodes, 1)
+	if snapshot.MultiNode && nodes == 1 {
+		nodes = 2
+	}
+	if err := validateKVBackendTarget(engine, requestedTopology{nodes: nodes, pp: snapshot.PipelineParallel, dp: snapshot.DataParallel}, p); err != nil {
+		return err
 	}
 
 	for _, f := range RequestedLaunchFeatures(engine, launch, p) {

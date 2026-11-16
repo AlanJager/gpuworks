@@ -259,6 +259,9 @@ const (
 	ReasonMultiNodeUnsupportedOnNode = "multi_node_unsupported_on_node"
 	ReasonPDUnsupportedOnNode        = "pd_unsupported_on_node"
 	ReasonKVDiskUnsupportedOnNode    = "kv_disk_unsupported_on_node"
+	// ReasonKVBackendUnsupportedOnNode: the node's vendor cannot run the
+	// deployment's KV offload backend (ADR 0069).
+	ReasonKVBackendUnsupportedOnNode = "kv_backend_unsupported_on_node"
 	ReasonInsufficientRuntimeDisk    = "insufficient_runtime_disk"
 	// No card takes work, and why, from the operator's side: the node has
 	// no card of its own (none at all, or all lent to virtual machines or

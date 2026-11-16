@@ -97,7 +97,7 @@ func genManualWorld(t *testing.T) *rapid.Generator[manualWorld] {
 					params.APIPort = rapid.IntRange(30000, 39999).Draw(rt, "apiPort")
 				}
 				if role != "" {
-					params.Quick = PDRoleLaunchConfig(quick, role)
+					params.Quick = PDRoleLaunchConfig(engine.Name(), quick, role)
 					params.PD = &PDLaunch{Mode: pdMode, Role: role, SideChannelHost: address, SideChannelPort: rapid.IntRange(40000, 49999).Draw(rt, "sideChannelPort")}
 				}
 				world.ranks = append(world.ranks, ResolveLaunchInput{Engine: engine, Params: params})

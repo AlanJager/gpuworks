@@ -171,7 +171,7 @@ func recordKVGoldenCase(t *testing.T, test kvGoldenCase) kvGoldenRecord {
 		TemplateArgs: out.TemplateResidual, ExtraArgs: out.UserResidual,
 	}
 	if test.pdMode != "" {
-		params.Quick = PDRoleLaunchConfig(quick, test.pdRole)
+		params.Quick = PDRoleLaunchConfig(EngineVLLM, quick, test.pdRole)
 		record.Materialize.RoleQuick = mustJSON(t, params.Quick)
 		params.PD = &PDLaunch{
 			Mode: test.pdMode, Role: test.pdRole, SideChannelHost: "10.0.0.5", SideChannelPort: 30001,

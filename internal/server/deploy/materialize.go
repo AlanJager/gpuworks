@@ -156,6 +156,11 @@ func materialize(in MaterializeInput, legacy bool) (Materialized, error) {
 		}
 		spec, known := params[key]
 		if !known {
+			if key == paramKVOffloadBackend {
+				// The engine has no backend to select (kvBackendSelector), so
+				// the selection names nothing; it was always dropped here.
+				continue
+			}
 			// A key this engine has no flag for is still the caller's data: it
 			// may be an internal field (cpu_cores) or a parameter another
 			// engine owns, and validation is where that is judged.

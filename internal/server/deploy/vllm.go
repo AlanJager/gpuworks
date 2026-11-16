@@ -336,6 +336,10 @@ func (vLLMEngine) PDConnectorFlags() []string {
 	return []string{"--kv-transfer-config", "--kv-offloading-size", "--kv-offloading-backend"}
 }
 
+// KVConflictFlags: a KV offload backend's connector is the same composed
+// flag, so the same flags would replace it.
+func (e vLLMEngine) KVConflictFlags() []string { return e.PDConnectorFlags() }
+
 func speculativeConfig(q LaunchConfig) string {
 	config := map[string]any{}
 	if q.SpeculativeAlgorithm != "" {

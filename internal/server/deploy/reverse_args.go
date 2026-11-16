@@ -27,7 +27,8 @@ func ReverseArgs(engine string, args []string) (map[string]any, []string, error)
 // one is the same walk, so there is only one, and the importer can never
 // disagree with the reader about which flag belongs to which key.
 func reverseArgs(engine string, args []string) (map[string]any, map[string]string, []string, []ArgProblem, error) {
-	if _, err := SelectEngine(engine); err != nil {
+	adapter, err := SelectEngine(engine)
+	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 	byFlag := flagIndex(engine)
@@ -39,6 +40,14 @@ func reverseArgs(engine string, args []string) (map[string]any, map[string]strin
 		token := args[index]
 		flag, inlineValue, hasInlineValue := splitInlineFlag(token)
 		entries := byFlag[flag]
+		if id, consumed, ok := recognizeKVBackendToken(adapter, args, index, flag, inlineValue, hasInlineValue); ok {
+			// The exact object a KV offload backend renders is that backend's
+			// selection, not an opaque connector (ADR 0069).
+			params[paramKVOffloadBackend] = id
+			flags[paramKVOffloadBackend] = flag
+			index += consumed
+			continue
+		}
 		if len(entries) != 1 {
 			// No dictionary key owns this flag, or several do and the platform
 			// would have to guess which one the author meant.
@@ -128,4 +137,22 @@ func unquoteArgument(value string) string {
 		}
 	}
 	return value
+}
+
+// recognizeKVBackendToken asks the adapter whether the flag at index carries
+// a KV offload backend's own configuration; consumed is how many tokens after
+// the flag the value took.
+func recognizeKVBackendToken(adapter Engine, args []string, index int, flag, inline string, hasInline bool) (string, int, bool) {
+	if !strings.HasPrefix(flag, "-") {
+		return "", 0, false
+	}
+	value, consumed := inline, 0
+	if !hasInline {
+		if index+1 >= len(args) {
+			return "", 0, false
+		}
+		value, consumed = args[index+1], 1
+	}
+	id, ok := hooks(adapter).RecognizeKVBackend(flag, value)
+	return id, consumed, ok
 }

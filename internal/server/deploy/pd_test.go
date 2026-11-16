@@ -33,7 +33,7 @@ func countFlag(argv []string, flag string) int {
 func pdParams(role string, q LaunchConfig, network ComputeNetwork) Params {
 	return Params{
 		ModelPath: "/model", ServedName: "qwen", APIPort: 30000, AssignedGPUs: 1, TensorParallel: 1,
-		Quick: PDRoleLaunchConfig(q, role), ComputeNetwork: network, NNodes: 1,
+		Quick: PDRoleLaunchConfig(EngineVLLM, q, role), ComputeNetwork: network, NNodes: 1,
 		PD: &PDLaunch{Mode: "vllm-nixl", Role: role, SideChannelHost: "10.0.0.5", SideChannelPort: 30001},
 	}
 }
@@ -177,10 +177,10 @@ func TestVLLMPDComposesKVOffloadOnPrefillOnly(t *testing.T) {
 	if config.Connector != "MultiConnector" || len(config.Extra.Connectors) != 2 || config.Extra.Connectors[1]["kv_connector"] != "OffloadingConnector" {
 		t.Fatalf("disk composition = %+v", config)
 	}
-	if got := PDRoleLaunchConfig(disk, "decode"); got.KVDiskOffload || got.SharedKVDir != "" || got.KVOffloadingSize != 0 {
+	if got := PDRoleLaunchConfig(EngineVLLM, disk, "decode"); got.KVDiskOffload || got.SharedKVDir != "" || got.KVOffloadingSize != 0 {
 		t.Fatalf("decode kept a tier: %+v", got)
 	}
-	if got := PDRoleLaunchConfig(disk, "prefill"); !reflect.DeepEqual(got, disk) {
+	if got := PDRoleLaunchConfig(EngineVLLM, disk, "prefill"); !reflect.DeepEqual(got, disk) {
 		t.Fatal("prefill config changed")
 	}
 }

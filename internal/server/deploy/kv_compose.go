@@ -70,5 +70,20 @@ func vllmKVTransferConfig(p Params) (string, bool) {
 	if p.PD != nil {
 		pd, policy = vllmPDContribution(p)
 	}
-	return composeVLLMKVTransfer(pd, nativeVLLMOffload(p.Quick), policy)
+	return composeVLLMKVTransfer(pd, vllmOffloadContribution(p.Quick), policy)
+}
+
+// vllmOffloadContribution renders the selected backend's part, nil when the
+// selection names no row with a renderer (validateKVBackend refuses an
+// unknown id before any launch).
+func vllmOffloadContribution(q LaunchConfig) *kvContribution {
+	row, ok := selectedKVBackend(EngineVLLM, q)
+	if !ok {
+		return nil
+	}
+	render, ok := kvBackends.vllmOffloadRenderer(row.ID)
+	if !ok {
+		return nil
+	}
+	return render(q)
 }

@@ -155,6 +155,7 @@
     "multi_node_unsupported_on_node": "{{vendor}} 节点不支持多机推理；请改为单机部署，或改选其他节点。",
     "pd_unsupported_on_node": "{{vendor}} 节点不支持 PD 分离；请改选其他节点。",
     "kv_disk_unsupported_on_node": "{{vendor}} 节点不支持 KV 磁盘层；请关闭 KV 磁盘层，或改选其他节点。",
+    "kv_backend_unsupported_on_node": "{{vendor}} 节点不能运行所选的 KV 卸载后端；请改选其他 KV 卸载方式，或改选其他节点。",
     "storage_unavailable": "这台节点上能读到该模型的存储还没就绪；请查看这些存储的节点状态，或更换节点。",
     "model_exceeds_cache_limit": "模型比该存储在这台节点上的缓存上限还大；请调高缓存上限，或改用直接读的存储。",
     "cache_full_in_use": "这台节点上该存储的缓存已被正在使用的模型占满，无法腾出空间；请调高缓存上限，或停止使用这些模型的部署。",
