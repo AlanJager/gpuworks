@@ -467,7 +467,8 @@
     "max_model_len": 32768
   },
   "engine_decides_param_keys": [
-    "enable_request_metrics"
+    "enable_request_metrics",
+    "max_model_len"
   ],
   "yield_policy_eligible": {
     "ok": false,

@@ -36,3 +36,7 @@ ADR 0007 决策 3 已经规定"导入时能映射参数字典的拆成 key-value
 功能准入消费 ResolveLaunch 生成的真实可执行 argv 与结构化拓扑，参数名词表由 internal/engines 维护。RequestedFeatures 随现有 ResolvedLaunch 快照下发；agent 核对该快照和 desired state 的显式结构字段，不反向解析 shell。预览与实际创建都使用同一个 resolver；预览明确采用功能收集模式，不靠未分配 GPU 等字段组合隐式选择校验模式。
 
 未知入口、动态 shell 和不可识别的功能值记为 CommandKnown=false。显式受限目标拒绝无法确认的命令，未声明该限制的目标保留既有自定义命令行为。历史无快照协议保留结构检查。该快照用于准入，不成为估算器反解 argv 的第二个配置源；估算继续消费既有 LaunchConfig。分区状态仍由 partitioncap 唯一推导。
+
+## vLLM 原生上下文适配（2026-11-16）
+
+决策 3 的 `Automatic` 数值推导不代表引擎原生内存拟合。新建普通 vLLM 命令在镜像版本已知且不低于 0.14.0 时，由字典默认显式记录 `max_model_len=-1`，发出 `--max-model-len auto`。零仍表示省略；模板或用户数值优先，显式 unset 和存量编辑不补默认。`auto` 字符串与 `-1` 在写边界归一为同一整数，不保留一份与 typed 配置分离的残余参数。估算只保留模型窗口上限，真实拟合长度仍需运行时证据。SGLang 和 Omni 阶段不继承这一默认策略。

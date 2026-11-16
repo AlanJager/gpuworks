@@ -46,10 +46,12 @@ type LaunchConfig struct {
 	EnableCacheReport    *bool `json:"enable_cache_report,omitempty"`
 	// EnableRequestMetrics gets its default only on an image whose engine
 	// release takes the flag (vllmAcceptsRequestMetrics).
-	EnableRequestMetrics *bool  `json:"enable_request_metrics,omitempty"`
-	MaxModelLen          int    `json:"max_model_len,omitempty"`
-	Dtype                string `json:"dtype,omitempty"`          // auto|bfloat16|float16|float32
-	KVCacheDtype         string `json:"kv_cache_dtype,omitempty"` // auto|fp8|fp8_e5m2
+	EnableRequestMetrics *bool `json:"enable_request_metrics,omitempty"`
+	// MaxModelLen -1 is vLLM's explicit memory-fit intent, not a measured length.
+	// Zero remains unset, so stored deployments keep their original command.
+	MaxModelLen  int    `json:"max_model_len,omitempty"`
+	Dtype        string `json:"dtype,omitempty"`          // auto|bfloat16|float16|float32
+	KVCacheDtype string `json:"kv_cache_dtype,omitempty"` // auto|fp8|fp8_e5m2
 	// GPUMemUtil zero is unset: no --gpu-memory-utilization is emitted and the
 	// engine runs at its own default. Materialize rejects an explicit zero, so
 	// a zero here can only mean "not stated".
@@ -241,7 +243,7 @@ func neutralParameterValue(definition paramDefinition, engine string, value any)
 // and a number stays within the bounds its row declares. A zero integer or
 // float is how LaunchConfig spells "this optional parameter was not set", so
 // only a value that is actually present is measured - except that a negative
-// value is never a legitimate "unset" and is always rejected.
+// value is rejected except for the native vLLM context-auto sentinel.
 func validateAgainstDictionary(engine string, params map[string]engineParam, q LaunchConfig) error {
 	values := map[string]any{}
 	encoded, err := json.Marshal(q)
@@ -281,7 +283,7 @@ func validateAgainstDictionary(engine string, params map[string]engineParam, q L
 			if !ok {
 				continue
 			}
-			if number < 0 {
+			if number < 0 && !isVLLMContextAuto(spec, number) {
 				return paramErrorf(spec.Key, "%s must not be negative", spec.Key)
 			}
 			if number == 0 {

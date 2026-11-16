@@ -187,6 +187,9 @@ func canonicalValue(spec engineParam, value any) (any, bool) {
 		return nil, false
 	case "integer":
 		if text, ok := value.(string); ok {
+			if isVLLMContextAuto(spec, -1) && strings.EqualFold(strings.TrimSpace(text), "auto") {
+				return int64(-1), true
+			}
 			parsed, err := strconv.ParseInt(strings.TrimSpace(text), 10, 64)
 			return parsed, err == nil
 		}

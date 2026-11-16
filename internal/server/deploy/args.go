@@ -85,6 +85,10 @@ func (b *builder) injectDictionary(key string, value any) {
 			return
 		}
 		number, _ := stated.(int64)
+		if isVLLMContextAuto(spec, float64(number)) {
+			b.injectKV(spec.Flag, "auto")
+			return
+		}
 		b.injectKV(spec.Flag, strconv.FormatInt(number, 10))
 	case "number":
 		number, ok := toFloat(value)

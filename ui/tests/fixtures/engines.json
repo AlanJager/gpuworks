@@ -153,8 +153,8 @@
           "zh": "自动"
         },
         "help": {
-          "en": "Leave empty to use the model configuration",
-          "zh": "留空时沿用模型配置"
+          "en": "Specify a fixed length, or choose automatic memory fitting on supported vLLM versions. The model limit is not the observed runtime limit.",
+          "zh": "可指定固定长度；支持的 vLLM 版本可选择自动按可用内存适配。模型上限不等于实际可用长度。"
         },
         "engines": [
           "sglang"
@@ -1458,13 +1458,14 @@
         "type": "integer",
         "control": "number",
         "group": "model",
+        "default": -1,
         "placeholder": {
           "en": "Automatic",
           "zh": "自动"
         },
         "help": {
-          "en": "Leave empty to use the model configuration",
-          "zh": "留空时沿用模型配置"
+          "en": "Specify a fixed length, or choose automatic memory fitting on supported vLLM versions. The model limit is not the observed runtime limit.",
+          "zh": "可指定固定长度；支持的 vLLM 版本可选择自动按可用内存适配。模型上限不等于实际可用长度。"
         },
         "engines": [
           "vllm"

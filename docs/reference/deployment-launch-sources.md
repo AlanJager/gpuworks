@@ -64,7 +64,9 @@ controller 都经 `planning.PlanLaunch` 调它，产物是 `proto.ResolvedLaunch
   - 会出 flag：vLLM `gpu_memory_utilization` 0.9、`enable_cache_report`；SGLang `log_level`、`--mem-fraction-static 0.88`、`--enable-cache-report`。
   - 看镜像版本：vLLM `enable_request_metrics`（`--enable-per-request-metrics`）只在镜像目录或镜像 tag 表明为 vLLM 0.25.0 及以上、且模板与 `extra_args` 都没有 `--disable-log-stats` 时套默认值；SGLang diffusion server 从 0.5.18 起套 `enable_cache_report`、从 0.5.21 起套 `enable_metrics`。版本未知或更旧的镜像上不写默认值、不出 flag（表单显示「自动」，用户仍可显式打开），以免引擎因不认识参数起不来。请求没指定镜像时，按目标节点（未选节点时按目标厂商）从镜像目录挑出的镜像判断。
   - 只写配置不出 flag：`dtype auto`、`kv_cache_dtype auto`、`performance_mode balanced`、值为 false 的布尔开关。
-  - 没有默认值：`max_model_len`、三态开关（`enable_prefix_caching` 等）与其他 `automatic` 行。
+  - 没有默认值：SGLang `max_model_len`、三态开关（`enable_prefix_caching` 等）与其他 `automatic` 行。
+- vLLM 上下文默认按内存适配：普通引擎命令的新请求，镜像目录记录或明确 tag 表明为 vLLM 0.14.0 及以上时，未指定的 `max_model_len` 物化为整数 `-1`，命令发出 `--max-model-len auto`。不按 GPU 厂商加额外门槛；版本未知、更旧、manual 命令或 Omni 多阶段不套这个默认值。模板固定长度、用户明确数值和 `quick_params_unset` 优先，存量部署重建及编辑不凭空添加默认值。
+- vLLM 的显式 `auto` 与 `-1`（字段、模板 args、`extra_args`）归一为同一个整数 `-1`，用于保存、编辑、估算及另存模板；它是自动适配意图，不是实际生效 token 数。显式配置沿用其他版本相关参数的策略，由用户负责所选镜像的兼容性。SGLang 不接受此哨兵。估算仍用模型窗口作上限，不声称已知道拟合结果；不再把自动模式当成必须容纳完整模型窗口的固定配置发出 KV 不足警告。auto 不能解决权重本身或多模态运行时内存不足。
 - 平台参数（如 `kv_disk_limit_gib`）永远不进 argv，只影响平台行为（ADR 0021）。
 - 当前 entrypoint 方言或镜像版本可能不接受的参数不写默认值，交给引擎决定（`engine_decides_param_keys`），但不隐藏、不拒绝：表单显示「自动」，用户仍可开或关，表单上看到的值与 argv 一一对应。
 - 镜像系列的「常用参数/环境变量候选」只是按钮：点了才写进用户的 `extra_args` 或环境变量行，不点不生效。

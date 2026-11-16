@@ -14,7 +14,7 @@
   "max_model_len": {
     "label": "Maximum Context Length",
     "placeholder": "Automatic",
-    "help": "Leave empty to use the model configuration"
+    "help": "Specify a fixed length, or choose automatic memory fitting on supported vLLM versions. The model limit is not the observed runtime limit."
   },
   "dtype": {
     "label": "Weight Precision",
