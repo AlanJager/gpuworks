@@ -1,6 +1,6 @@
-import { Alert, Space } from "antd";
 import { useTranslation } from "react-i18next";
 import type { ProductWarning } from "../api";
+import { Alert, AlertTitle } from "../components/ui/alert";
 
 /**
  * InstanceNotes shows the non-blocking facts the server derives about an
@@ -13,22 +13,18 @@ export default function InstanceNotes({ notes }: { notes?: ProductWarning[] }) {
   const { t } = useTranslation("deployments");
   if (!notes?.length) return null;
   return (
-    <Space direction="vertical" size={4} style={{ width: "100%" }}>
+    <div className="flex flex-col gap-1">
       {notes.map((note, index) => {
         const params: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(note.params ?? {})) {
           params[key] = Array.isArray(value) ? value.join(", ") : value;
         }
         return (
-          <Alert
-            key={`${note.code}:${index}`}
-            role="status"
-            type="info"
-            showIcon
-            message={t(`instanceNote.${note.code}`, { ...params, defaultValue: note.code })}
-          />
+          <Alert key={`${note.code}:${index}`} status="info">
+            <AlertTitle>{t(`instanceNote.${note.code}`, { ...params, defaultValue: note.code })}</AlertTitle>
+          </Alert>
         );
       })}
-    </Space>
+    </div>
   );
 }

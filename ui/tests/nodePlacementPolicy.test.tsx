@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import React from "react";
 import { I18nextProvider } from "react-i18next";
-import { createI18n } from "./helpers/dom.ts";
+import { createI18n, dom } from "./helpers/dom.ts";
 
 const { i18n, locale } = await createI18n(["nodes", "common"], "en");
 const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+const userEvent = (await import("@testing-library/user-event")).default;
 const apiModule = await import("../src/api.ts");
 const NodePlacementPolicy = (await import("../src/components/NodePlacementPolicy.tsx")).default;
 
@@ -40,7 +41,7 @@ test("each knob of the dictionary renders by its kind with its label and help", 
   const restore = stub(async () => dictionary);
   try {
     show(node());
-    assert.ok(document.querySelector(".ant-skeleton"), "a loading placeholder shows first");
+    assert.ok(screen.getByTestId("placement-policy-loading"), "a loading placeholder shows first");
     const toggle = await screen.findByRole("switch", { name: text.share_with_foreign.label });
     assert.equal(toggle.getAttribute("aria-checked"), "false");
     assert.ok(screen.getByText(text.share_with_foreign.help));
@@ -62,7 +63,7 @@ test("switching a knob from the keyboard saves it by key and hands the node back
     show(node(), (n) => { updated = n; });
     const toggle = await screen.findByRole("switch", { name: text.share_with_foreign.label });
     toggle.focus();
-    fireEvent.keyDown(toggle, { key: "ArrowRight", code: "ArrowRight", keyCode: 39, which: 39 });
+    await userEvent.setup({ document: dom.window.document }).keyboard(" ");
     await waitFor(() => assert.deepEqual(saved, [{ share_with_foreign: true }]));
     await waitFor(() => assert.equal(updated?.placement_policy?.share_with_foreign, true));
     assert.equal(toggle.getAttribute("aria-checked"), "true");

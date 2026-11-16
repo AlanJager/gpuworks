@@ -1,7 +1,9 @@
-import { Alert, Skeleton, Space, Switch, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type Node, type NodePlacementPolicySetting, type NodePlacementPolicyValue } from "../api";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { Skeleton } from "./ui/skeleton";
+import { Switch } from "./ui/switch";
 
 /**
  * NodePlacementPolicy edits a node's placement policy: the per-node knobs on
@@ -29,9 +31,16 @@ export default function NodePlacementPolicy({ node, onUpdated }: { node: Node; o
   }, []);
   useEffect(() => { setValues(node.placement_policy ?? {}); }, [node.placement_policy]);
 
-  if (loadError) return <Alert type="error" showIcon message={t("placementPolicy.loadFailed")} description={loadError.message} />;
-  if (!settings) return <Skeleton active paragraph={{ rows: 1 }} title={false} />;
-  if (settings.length === 0) return <Typography.Text type="secondary">{t("placementPolicy.empty")}</Typography.Text>;
+  if (loadError) {
+    return (
+      <Alert status="danger">
+        <AlertTitle>{t("placementPolicy.loadFailed")}</AlertTitle>
+        <AlertDescription>{loadError.message}</AlertDescription>
+      </Alert>
+    );
+  }
+  if (!settings) return <Skeleton className="h-6 w-full" data-testid="placement-policy-loading" />;
+  if (settings.length === 0) return <p className="text-sm text-fg-muted">{t("placementPolicy.empty")}</p>;
 
   const save = async (key: string, value: NodePlacementPolicyValue) => {
     const previous = values;
@@ -49,41 +58,37 @@ export default function NodePlacementPolicy({ node, onUpdated }: { node: Node; o
   };
 
   return (
-    <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      {saveError && <Alert type="error" showIcon message={saveError} />}
+    <div className="flex flex-col gap-3">
+      {saveError && <Alert status="danger"><AlertTitle>{saveError}</AlertTitle></Alert>}
       {settings.map((setting) => {
         const value = values[setting.key] ?? setting.default;
         const availability = node.placement_policy_availability?.find((item) => item.key === setting.key);
         const label = t(`placementPolicy.${setting.key}.label`, { defaultValue: setting.key });
-        const labelID = `placement-policy-${setting.key}`;
         return (
-          <Space key={setting.key} direction="vertical" size={4} style={{ width: "100%" }}>
-            <Space>
-              {setting.kind === "bool" ? (
-                <Switch
-                  aria-labelledby={labelID}
-                  checked={value === true}
-                  loading={saving === setting.key}
-                  onChange={(checked) => void save(setting.key, checked)}
-                />
-              ) : (
-                <Typography.Text code>{String(value)}</Typography.Text>
-              )}
-              <Typography.Text id={labelID}>{label}</Typography.Text>
-            </Space>
-            <Typography.Text type="secondary">{t(`placementPolicy.${setting.key}.help`, { defaultValue: "" })}</Typography.Text>
-            {availability && !availability.applicable && (
-              <Alert
-                type="warning"
-                showIcon
-                message={t("placementPolicy.notApplicable", {
-                  reason: t(`placementPolicy.reason.${availability.reason}`, { defaultValue: availability.reason ?? "" }),
-                })}
+          <div key={setting.key} className="flex flex-col gap-1">
+            {setting.kind === "bool" ? (
+              <Switch
+                label={label}
+                checked={value === true}
+                disabled={saving === setting.key}
+                onCheckedChange={(checked) => void save(setting.key, checked)}
               />
+            ) : (
+              <span>{label}: <code>{String(value)}</code></span>
             )}
-          </Space>
+            <p className="text-sm text-fg-muted">{t(`placementPolicy.${setting.key}.help`, { defaultValue: "" })}</p>
+            {availability && !availability.applicable && (
+              <Alert status="warning">
+                <AlertTitle>
+                  {t("placementPolicy.notApplicable", {
+                    reason: t(`placementPolicy.reason.${availability.reason}`, { defaultValue: availability.reason ?? "" }),
+                  })}
+                </AlertTitle>
+              </Alert>
+            )}
+          </div>
         );
       })}
-    </Space>
+    </div>
   );
 }
