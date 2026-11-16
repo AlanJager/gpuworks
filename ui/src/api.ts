@@ -2088,6 +2088,10 @@ export interface Instance {
   model_files?: InstanceModelFile[];
   // role is the instance's PD role; absent outside PD deployments.
   role?: PdRoleName | string;
+  // kv_offload_backend is the KV offload backend the instance keeps, as the
+  // server scoped the deployment's selection to the instance's PD role:
+  // absent when it keeps the engine's own tiers or none.
+  kv_offload_backend?: { id: string; label: string };
 }
 
 export interface InstanceModelFile {

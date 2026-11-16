@@ -194,6 +194,24 @@ func KVOffloadPDRoles(engine string, q LaunchConfig) []string {
 	return []string{pdmode.RolePrefill}
 }
 
+// KVOffloadBackendOn is the KV offload backend an instance keeps: the
+// deployment's selection as the instance's PD role scopes it (role empty
+// outside PD). ok is false when the instance keeps the engine's own tiers or
+// no offload, and for an id the catalog does not have.
+func KVOffloadBackendOn(engine string, q LaunchConfig, role string) (id, label string, ok bool) {
+	if role != "" {
+		q = PDRoleLaunchConfig(engine, q, role)
+	}
+	if q.KVOffloadBackend == "" {
+		return "", "", false
+	}
+	row, found := selectedKVBackend(engine, q)
+	if !found || row.Default {
+		return "", "", false
+	}
+	return row.ID, row.Label, true
+}
+
 // launchConfigValues reads q by its dictionary keys.
 func launchConfigValues(q LaunchConfig) (map[string]any, error) {
 	encoded, err := json.Marshal(q)

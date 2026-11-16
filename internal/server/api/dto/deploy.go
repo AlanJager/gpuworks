@@ -247,6 +247,13 @@ type DeploymentRetryExhausted struct {
 	LastFailure    string `json:"last_failure,omitempty"`
 }
 
+// KVOffloadBackendRef names a KV offload backend: its id and its product
+// name, shown as is.
+type KVOffloadBackendRef struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
 // InstanceReplica names the replica an instance fills: its PD role (empty
 // outside PD) and its position among the role's replicas.
 type InstanceReplica struct {
@@ -394,6 +401,11 @@ type Instance struct {
 	Mounts      []EvaluateMount   `json:"mounts,omitempty"`
 	CommandMode string            `json:"command_mode,omitempty"`
 	ModelMount  string            `json:"model_mount_path,omitempty"`
+	// KVOffloadBackend is the KV offload backend (ADR 0069) the instance
+	// keeps: its deployment's selection as the instance's PD role scopes it.
+	// Absent when it keeps the engine's own tiers or none; only a
+	// deployment's read with its instances carries it.
+	KVOffloadBackend *KVOffloadBackendRef `json:"kv_offload_backend,omitempty"`
 	// ModelFiles are the model files the instance reads, as recorded when it
 	// launched; empty for an instance from before they were recorded.
 	ModelFiles []InstanceModelFile `json:"model_files,omitempty"`

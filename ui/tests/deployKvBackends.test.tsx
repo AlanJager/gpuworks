@@ -99,13 +99,13 @@ test("a backend card is reachable and selected with the keyboard", async () => {
 
 test("the instance panel names the backend that keeps the cache", async () => {
   api.metricsQuery = (async () => list([])) as typeof api.metricsQuery;
-  render(<I18nextProvider i18n={i18n}><KVTierPanel params={{ kv_offload_backend: synthetic.id, kv_offloading_size: 8 }} instanceUuid="i" backends={[synthetic]} /></I18nextProvider>);
+  render(<I18nextProvider i18n={i18n}><KVTierPanel params={{ kv_offload_backend: synthetic.id, kv_offloading_size: 8 }} instanceUuid="i" backend={{ id: synthetic.id, label: synthetic.label }} /></I18nextProvider>);
   const managed = locale.deployments.kvTier.managedBy.replace("{{label}}", "Synthetic Cache");
   assert.equal(screen.getAllByText(managed, { exact: true }).length, 2);
   cleanup();
-  // Without the profile the id stands in for the label.
-  render(<I18nextProvider i18n={i18n}><KVTierPanel params={{ kv_offload_backend: synthetic.id }} instanceUuid="i" /></I18nextProvider>);
-  assert.equal(screen.getAllByText(locale.deployments.kvTier.managedBy.replace("{{label}}", synthetic.id), { exact: true }).length, 2);
+  // An instance the server names no backend for keeps no offload at all.
+  render(<I18nextProvider i18n={i18n}><KVTierPanel params={{ kv_offload_backend: synthetic.id, kv_offloading_size: 8 }} instanceUuid="i" /></I18nextProvider>);
+  assert.equal(screen.getAllByText(locale.deployments.kvTier.disabled, { exact: true }).length, 2);
   cleanup();
   render(<I18nextProvider i18n={i18n}><KVTierPanel params={{}} instanceUuid="i" /></I18nextProvider>);
   assert.equal(screen.getAllByText(locale.deployments.kvTier.disabled, { exact: true }).length, 2);

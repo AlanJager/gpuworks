@@ -188,3 +188,25 @@ func TestKVBackendRecognizerReturnsTheBackendsValues(t *testing.T) {
 		t.Fatalf("test row read as %v", params)
 	}
 }
+
+// The backend an instance keeps is the deployment's selection as the
+// instance's PD role scopes it: what the instance panel names.
+func TestKVOffloadBackendOn(t *testing.T) {
+	withKVBackends(t)
+	for name, tc := range map[string]struct {
+		q    LaunchConfig
+		role string
+		want string
+	}{
+		"ordinary replica": {selectTestExternal(), "", testExternalKVBackend},
+		"prefill keeps it": {selectTestExternal(), pdmode.RolePrefill, testExternalKVBackend},
+		"decode drops it":  {selectTestExternal(), pdmode.RoleDecode, ""},
+		"engine's own":     {LaunchConfig{KVOffloadingSize: 8}, "", ""},
+		"unknown id":       {LaunchConfig{KVOffloadBackend: "missing"}, "", ""},
+	} {
+		id, label, ok := KVOffloadBackendOn(EngineVLLM, tc.q, tc.role)
+		if id != tc.want || ok != (tc.want != "") || (ok && label != "Test External") {
+			t.Errorf("%s: %q %q %v, want %q", name, id, label, ok, tc.want)
+		}
+	}
+}

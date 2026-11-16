@@ -104,6 +104,25 @@ test("the metric group changes the diagnostics for the same instance without sta
   assert.equal(screen.getByRole("region", { name: "Instance Metrics" }).querySelectorAll("[data-slot='metric-card']").length, 5);
 });
 
+test("the cache tab names the backend the instance keeps, by the label the server resolved", async () => {
+  stubMetrics({});
+  stubMonitorDeployment();
+  const params = { kv_offload_backend: "synthetic-cache-7", kv_offloading_size: 8 };
+  render(<I18nextProvider i18n={i18n}><InstanceMetricsTab inst={baseInstance({ role: "prefill", kv_offload_backend: { id: "synthetic-cache-7", label: "Synthetic Cache" } })} params={params} /></I18nextProvider>);
+  fireEvent.click(screen.getByRole("tab", { name: "Cache & engine" }));
+  await screen.findByText("KV Tiers");
+  assert.equal(screen.getAllByText("KV cache managed by Synthetic Cache").length, 2);
+  cleanup();
+  // A decode instance of the same deployment keeps no offload: the server
+  // names no backend on it, and its engine tiers stay off too.
+  render(<I18nextProvider i18n={i18n}><InstanceMetricsTab inst={baseInstance({ role: "decode" })} params={params} /></I18nextProvider>);
+  fireEvent.click(screen.getByRole("tab", { name: "Cache & engine" }));
+  await screen.findByText("KV Tiers");
+  assert.equal(screen.queryByText(/managed by/), null);
+  assert.equal(screen.queryByText("8 GiB"), null);
+  assert.equal(screen.getAllByText("Not enabled").length, 2);
+});
+
 test("a historical instance keeps the selected tab visible when switching between cache and requests", async () => {
   stubMetrics({});
   render(<I18nextProvider i18n={i18n}><InstanceMetricsTab inst={baseInstance({ state: "failed" })} /></I18nextProvider>);
