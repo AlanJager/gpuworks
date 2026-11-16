@@ -16,8 +16,8 @@
 
 ## server 侧（`internal/server/`）
 
-- `app`：装配根（config/store/bus/hub/HTTP 接线、启动与优雅关停、accesslog、admin bootstrap）。
-- `cli`：server 命令行（子命令分发、`serve` / `migrate` / `reset-password` / install 与 upgrade / expose / support-bundle 的参数解析与执行）；`cmd/gpuworks` 只调用 `cli.Main`，单独构建的服务端经 `cli.Options` 追加子命令，不得与内置子命令重名。
+- `app`：装配根（config/store/bus/hub/HTTP 接线、启动与优雅关停、accesslog、admin bootstrap）。扩展模块的契约（`Extensions`、`Module` 及可选的 `Migrator`/`Initializer`/`Service`、`Host`）在 `extensions.go` / `extension_host.go`，`New` 只调一次 `startExtensions`（`extension_start.go`），`Run` 经 `services()`（`services.go`）一个循环启动互不依赖的后台循环与模块服务；见 [扩展点](extensions.md)。
+- `cli`：server 命令行（子命令分发、`serve` / `migrate` / `reset-password` / install 与 upgrade / expose / support-bundle 的参数解析与执行）；`cmd/gpuworks` 只调用 `cli.Main`，单独构建的服务端经 `cli.Options` 带入版本名、扩展模块、发布通道与安装钩子并追加子命令，不得与内置子命令重名。
 - `api`（+`api/dto`）：REST 层，按域拆分为数十个文件，DTO 与 entity 严格分离；部署创建/评估委托 `deployment`，handler 只做解码与映射；`auth` JWT 登录鉴权。
 - `hub`：agent 会话管理、desired state 推送（含来源规则、代理、同步组成员与凭据，凭据只随 state.sync 下发）、server_dial。
 - 拉取设置（ADR 0048、[ADR 0050](../adr/0050-model-pull-sources-and-proxies.md)）：规则（镜像规则与模型站点规则同表，种类由 `match` 是否带 `http(s)://` 决定）、代理、同步组、凭据带类型的表在 `store`（迁移见 `migration_pull_settings.go`），API 在 `api/pull*.go`。
@@ -86,7 +86,8 @@
 - `messages`：语言中立 ProductError（稳定 code + 插值参数 + 英文 fallback），人类可读文本归客户端 locale。
 - `webterm`：web 终端会话策略（kill switch、并发上限、空闲超时、审计）。
 - `agentbin`：内嵌各平台 agent 二进制（zstd 压缩存放，`make cross-agents` 优先用 zstd CLI `-19`，没有时退回 `scripts/zstdpack`），经 `/dl/` 下发时流式解压并给出原始长度。
-- `webui`：`go:embed` 内嵌前端构建产物（`internal/server/webui/dist`），文本资源在首次被请求时 gzip 一次并缓存在内存，构建产物不再附带 `.gz` 副本。
+- `webui`：`go:embed` 内嵌前端构建产物（`internal/server/webui/dist`），文本资源在首次被请求时 gzip 一次并缓存在内存，构建产物不再附带 `.gz` 副本。`HandlerFS` 服务任意同布局的构建，单独构建的服务端经 `app.Extensions.UI` 换上自己的控制台。
+- `featuregate`：功能可用性的叶子包（只依赖 `messages`）：功能键、四种可用性（完整、只读、锁定、隐藏）与预先构造的拒绝；扩展路由与控制台清单经它询问扩展模块提供的功能来源，社区路径从不查询。
 - `selfinstall` / `installcred`：`gpuworks install` / `upgrade` 的实现（复制二进制、写 service 定义、从发布通道或发布站拉发布件、带备份可回滚）、控制台升级的启动守卫、无 systemd 时的 `serve --supervise` 守护循环，与首启 bootstrap admin 凭据记录（叶子包，install 与 server 两端共用，不得反向依赖 server）。
 - `distribution`：发布通道客户端（ADR 0040）：签名信封与索引 schema、同时请求所有发布源取第一个验签通过的索引、文件按 sha256 校验并换源续传；发布方通知 `notices.json` 的 schema、校验、本地匹配与拉取（`notices.go`，ADR 0054）；默认源与信任公钥是包内常量。只依赖标准库（`check-architecture` 守护），selfinstall 与 api 共用。
 - `diagnostics`：远程排查。调试采集（server 与所选节点的 debug 会话、所选部署请求原文的记录，一次一个、按时长与大小自动结束）与诊断信息收集（时间范围内的日志、调试采集文件、节点诊断与脱敏的数据库快照打包下载）；数据源由 `app/diagnostics_sources.go` 提供，`gpuworks support-bundle` 走同一套收集。
@@ -149,7 +150,7 @@
 - `assets`（内嵌原生资产：libvgpu、partition probe、ib_write_bw 等）、
 - `commandlog`（外部命令脱敏日志）、
 - `templateprobe`（推理模板 L1/L2/L3 校验核心）、
-- `testenv` / `integrationtest`（进程内集成测试 harness）、
+- `testenv` / `integrationtest`（进程内集成测试 harness；`testenv.NewWithExtensions` 带扩展模块启动，`testenv/extmodule` 是各扩展点对假模块的契约测试）、
 - `benchrun`（一次评测 Run 的执行：预热、按 search 文档逐点闭环/开环发压、把点位结果编成 `status.benchmark` 协议；server 发压、agent 发压与 `gpuworks-agent bench` 共用，两侧只提供状态、警告与逐请求明细的去处）、
 - `platformmetrics`（平台自身序列的词表：GPU、dGPU、节点、网络、KV 缓存盘、评测与网关运营指标的名字、单位、label 与含义，与推理词表 `inferencemetrics` 并列，共同构成 `GET /api/v1/monitor/metrics` 的指标目录；纯叶子，agent 与 server 共用；`TestEveryMetricLiteralIsRegistered` 扫描 agent、server 与 UI 源码，要求出现的每个指标名都已登记）、
 - `agentconf`（agent 启动配置的唯一定义，叶子包：`<state>/gpuworks-agent.conf` 的字段、校验、读写、默认监听地址 `DefaultListen`，以及供所有脚本读取主机上 agent 配置的 shell 函数 `ShellFuncs`，同时识别较早安装的命令行形式；agent 的 `configure`/`run`/`smoke`/`upgrade` 与 server 的安装、预检查、卸载、带外恢复共用，见 [ADR 0051](../adr/0051-agent-launch-configuration-file.md)）、

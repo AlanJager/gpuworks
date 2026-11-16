@@ -1,0 +1,40 @@
+# ADR 0070: Extension Tiers and the Edition Boundary: Open-Source Code Speaks Only of Availability, and a Separately Built Server Composes Through One Set of Interfaces
+
+Date: 2026-11-16 · Status: Accepted (adds the edition scope to [ADR 0040](0040-signed-multi-source-distribution.md) and the requirements of [ADR 0067](0067-runtime-outcomes-as-codes.md) for extension codes)
+
+## Context
+
+Another Go module should be able to use gpuworks as a library and build a server with more capabilities: organizations and permissions, audit, billing, capabilities enabled per feature, and vendor customization. Each touches different places: management routes, the node insert transaction, every status report, the console menu, database tables, installation and upgrade.
+
+If each capability changed the open-source code on its own, the open-source repository would grow edition branches, product-specific vocabulary and code paths that exist for one build only. If extensions got the Store or a database handle directly, deadlocks on the single writer connection, core tables rewritten by extension migrations and table-name clashes would all follow, and once extensions depend on those internals the open-source code can no longer be refactored freely.
+
+A few things cannot change once released: the key reserved for extensions in `server.yaml`, the table that records extension migrations, the shape of the console manifest, and the availability vocabulary. They need to be decided now.
+
+## Decision
+
+1. **Four tiers; a capability goes in the lowest tier that can carry it.** T0 core (open source); T1 modules compiled into the server; T2 server child-process plugins; T3 apps on nodes. Only what must decide on every management request, inside an insert or status transaction, or work before any node exists goes in T1. This ADR settles only the interfaces T0 leaves for T1.
+2. **One entry point; the zero value is the community edition.** A separately built server passes everything (edition name, extension modules, console build, distribution channel, install hooks, extra commands) through `cli.Options`, which `cli` hands to `app.Config`. No `init()` registration and no new package globals. `cli.Options{}` is `cmd/gpuworks`.
+3. **Open-source code speaks only of availability.** The vocabulary is feature keys (opaque; open-source code interprets none) and four availabilities: full, read-only, locked and hidden, plus opaque limits, a link and a prebuilt `ProductError`. Commercial or site-specific rules and their states, and who decides and why, exist only on the feature source's side. Community paths never consult the feature gate; only extension routes, extension menu entries and guards an extension registers name a feature key. Open-source code never branches on the edition name, which is for display only (the `edition_branches` budget is 0).
+4. **The server decides; the UI renders.** Every gate is enforced at a server choke point: the extension route wrapper, the node insert transaction, scheduling holds. The console renders `GET /api/v1/console/manifest` (edition name, each declared feature's availability, extension menu entries, banners) and derives nothing itself. An extension route must either name a feature or be marked as a community route, or router construction panics; extension GET routes are not readable by the AI assistant and MCP by default.
+5. **Extensions do not get the Store.** A module reaches the server only through `app.Host`: the tables of its own namespace (`store.ExtensionTables`, two closures: a transaction on the writer and a read transaction on the read pool), a logger, the bus, the data directory, the installation ID, keys derived from the master key and bound to the module name, its own section of `server.yaml`, and methods that register routes, features, banners, node insert guards and scheduling holders. Registrations are accepted only during `Init`.
+6. **Extension migrations are recorded apart from core migrations.** Extension steps are recorded in `namespace_migrations` (created only when sets are passed), one namespace and one table prefix starting with `ee_` per module; core tables never use the `ee_` prefix. A step that creates an object without the prefix is rolled back and refused; a namespace this build does not know only logs a warning; a known namespace newer than the binary, or a recorded step that is missing or renamed, stops startup.
+7. **`server.yaml` reserves one `extensions:` key.** The top level is still decoded strictly; `extensions.<module name>` is kept raw and each module decodes its own section strictly. A section no module claims only logs a warning, so the server still starts after a change of build.
+8. **Hooks inside writer transactions must be pure.** Insert guards and scheduling holders are called inside transactions on the single writer connection and may only answer from a snapshot: one atomic load plus one map lookup, no Store calls, no I/O, and a prebuilt error when they refuse. Holders cordon and never drain; an operator cannot make a held node schedulable, but can still cordon or drain it; holds no module claims are released at startup.
+9. **Running workloads are never interrupted.** A change of availability acts only on new requests and writes.
+10. **Edition-scoped distribution and upgrades.** A signed distribution index names its edition, and a build's channel accepts only indexes of the same edition; an upgrade compares the edition of the old and new binaries and needs explicit confirmation when they differ (an addition to ADR 0040).
+11. **Every extension point has a contract test against fake modules in the open-source repository** (`internal/testenv/extmodule`), and a build without modules has a route inventory identical to the community edition's, route by route.
+
+## Trade-offs
+
+- **Compiled modules vs out-of-process plugins**: an out-of-process plugin cannot decide synchronously inside an insert transaction, on every status report or on every management request. The cost is that modules depend on internal packages of the open-source repository; contract tests and this page constrain that, and the separately built side has to keep building against open-source master.
+- **Namespaced tables only vs the Store**: with tables only, an extension must reach core data through Store methods, the API or hooks, which is more roundabout, but types rule out writer deadlocks, rewritten core schema and a frozen open-source refactoring surface.
+- **Availability only vs commercial rules in open source**: open-source code thus knows no commercial rule, and the community edition is untouched by any such logic; the cost is that the feature source must map its own state onto the four availabilities and coded notices itself.
+- **Hidden answers 404, locked answers 403**: a hidden feature does not exist for this server, and 404 matches a route that is not there; a locked feature is visible in the UI, and 403 carries a code saying why it cannot be used.
+
+## Consequences
+
+- A new extension need is first expressed with the existing interfaces; when a new interface is really needed, it is defined in the package that calls it, exposed through `Host`, given a contract test against a fake module, and documented in `docs/dev/extensions.md`.
+- `api.Deps` gained exactly one field for extensions (`Extensions`); later API-side hooks are added inside that struct.
+- The contract and operational details are in [Extension Points](../dev/extensions.md).
+
+<!-- translation-source-sha256: c34a2a0ab693c9cf5cef4d7c5cc986deee4bbad0f336fa3e6b5648f98f6078d7 -->

@@ -1371,6 +1371,18 @@
       "translations": { "zh": "扩展停止调度" }
     },
     {
+      "term_en": "Extension Module",
+      "translations": { "zh": "扩展模块" }
+    },
+    {
+      "term_en": "Feature Key",
+      "translations": { "zh": "功能键" }
+    },
+    {
+      "term_en": "Feature Availability",
+      "translations": { "zh": "可用性" }
+    },
+    {
       "term_en": "Node Drain",
       "translations": { "zh": "驱逐" }
     },

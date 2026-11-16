@@ -826,6 +826,20 @@ _Avoid_: 把未知 NUMA 当成 0、用 NVLink 连通性替代同 NUMA 条件
 具体运行单元在当前运行代次实际采用的 RDMA 数据传输。节点设备具备能力、两个节点预检连通和工作负载实际采用该传输是不同事实。
 _Avoid_: 用 TCP 吞吐或环境变量设置证明 RDMA 正在生效
 
+### 扩展与构建
+
+**扩展模块 — Extension Module**:
+单独构建的 server 编进二进制的一段 Go 代码（`app.Module`），经 `cli.Options.Extensions` 交给 server：可带自己的迁移（只建以 `ee_<名>_` 开头的表，记在 `namespace_migrations`）、在 `Init` 里经 `app.Host` 注册路由、功能、横幅、节点接入守卫与调度保持者，以及随 server 运行的后台服务。社区版不含任何扩展模块，零值即今天的 server（ADR 0070、`docs/dev/extensions.md`）。
+_Avoid_: 插件（插件是跑在 server 进程外的子进程）、应用（应用是装在节点上的容器负载）、按版本命名的模块（模块按能力命名）
+
+**功能键 — Feature Key**:
+扩展路由、扩展菜单项与扩展注册的守卫用来指明「属于哪项可选能力」的不透明名字（`featuregate.Key`，如 `audit` 或 `iam.custom_roles`）。开源代码不解释任何功能键，社区路径从不查询；功能键只在扩展模块声明后才存在。
+_Avoid_: 商品项、SKU（谁决定、为什么决定是功能来源的事）
+
+**可用性 — Feature Availability**:
+功能来源（`featuregate.Source`）对一个[[功能键]]给出的当前答复：完整（full）、只读（read_only）、锁定（locked，界面显示但不能用）或隐藏（hidden），可附限额、链接与带码的说明。server 在扩展路由上按它放行或拒绝（只读放行读与声明为放宽的写；锁定 403；隐藏 404），控制台按 `GET /api/v1/console/manifest` 渲染，自己不推导。正在运行的负载从不因可用性变化而中断。
+_Avoid_: 功能来源内部的状态词（谁决定、为什么是功能来源的事，开源代码只说可用性）
+
 ### 失败码与检查结果
 
 **失败码 — Failure Code**:

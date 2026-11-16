@@ -126,6 +126,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 
 - [Developer Documentation Overview](dev/README.md)
 - [Code Map: Package Responsibilities](dev/code-map.md)
+- [Extension Points: How a Separately Built Server Composes](dev/extensions.md)
 - [Local Setup](dev/setup.md)
 - [Testing Guide and Cloud Test Tiers](dev/testing.md)
 - [AMD Integration and Hardware Validation](dev/amd-hardware-validation.md)
@@ -148,4 +149,4 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - Do not use M numbers or relative paths outside the repository in current documentation. External research repository paths in historical logs are retained only as source references.
 - `CLAUDE.md` is the sole authority for development conventions; `CONTEXT.md` is the complete glossary. Guides in this directory only expand on procedures and link to those files.
 
-<!-- translation-source-sha256: 39243e344d2c7f1def2012b7394eff3853657f3708a0775becc7de85dab23e33 -->
+<!-- translation-source-sha256: 78e1dff9941332767137379344cc4a74b9277f9f048f05c5f4f9a95f4d272edd -->
