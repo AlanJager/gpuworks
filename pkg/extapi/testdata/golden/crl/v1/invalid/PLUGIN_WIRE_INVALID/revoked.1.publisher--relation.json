@@ -1,1 +1,1 @@
-{"created":"2026-12-01T00:00:00Z","format":1,"publisher":"acme","revoked":[{"manifest":"sha256:69a8fc5cf9fa0174e3dfe74b1c9c1f5f4f64710afa362419883f19c6b42ee422","replacement":"2.0.4"},{"cert_serial":3,"publisher":"other"}],"serial":2}
+{"created":"2026-12-01T00:00:00Z","format":1,"publisher":"acme","revoked":[{"manifest":"sha256:69a8fc5cf9fa0174e3dfe74b1c9c1f5f4f64710afa362419883f19c6b42ee422","publisher":"acme","replacement":"2.0.4"},{"cert_serial":3,"publisher":"other"}],"serial":2}

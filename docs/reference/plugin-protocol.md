@@ -163,7 +163,7 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 
 <!-- golden: trust_update/v1/valid/rotate.json -->
 ```json
-{"add_roots":[{"alg":"ed25519","keyid":"root-3","public_key":"eC0hm7/hzMkrq452w7FbsvdumRZzFEroSPiJYIFGCqs="},{"alg":"ecdsa-p256-sha256","keyid":"root-4","public_key":"BMX+c4VTtfKGKA3l0EjO3d6IXwcBTVbSabaijGatYQCn+OSfRFHDO2UzUlWZu07cpYIEmdreHZH0eYnGPrSojuY="}],"created":"2026-12-01T00:00:00Z","floors":[{"id":"acme_backup","min_version":"1.1.0"},{"id":"acme_quota","min_version":"2.0.3"}],"format":1,"retire_roots":["root-1"],"revoke":[{"keyid":"acme-2025a"},{"cert_serial":9,"publisher":"acme"}],"serial":3}
+{"add_roots":[{"alg":"ed25519","keyid":"root-3","public_key":"eC0hm7/hzMkrq452w7FbsvdumRZzFEroSPiJYIFGCqs="},{"alg":"ecdsa-p256-sha256","keyid":"root-4","public_key":"BMX+c4VTtfKGKA3l0EjO3d6IXwcBTVbSabaijGatYQCn+OSfRFHDO2UzUlWZu07cpYIEmdreHZH0eYnGPrSojuY="}],"created":"2026-12-01T00:00:00Z","floors":[{"id":"acme_backup","min_version":"1.1.0"},{"id":"acme_quota","min_version":"2.0.3"}],"format":1,"retire_roots":["root-1"],"revoke":[{"keyid":"acme-2025a","publisher":"acme"},{"cert_serial":9,"publisher":"acme"}],"serial":3}
 ```
 
 | 字段 | 规则 |
@@ -174,22 +174,22 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `revoke` | 吊销条目，见下文；至多 4096 条 |
 | `floors` | 抬高包可安装的最低版本 `{id, min_version}`，按 id 排序；最低版本只升不降 |
 
-四个列表至少有一个非空。一条吊销恰好用一种方式指明对象，同一列表里不重复：
+四个列表至少有一个非空。每条吊销都写明 `publisher` 来限定范围，再用 `cert_serial`、`keyid`、`manifest` 中至多一个缩小范围；同一列表里不重复：
 
 | 选择方式 | 吊销什么 |
 |---|---|
 | `publisher` | 该发布者的全部证书 |
 | `publisher` + `cert_serial` | 一张证书 |
-| `keyid` | 一把密钥，无论在哪张证书里 |
-| `manifest` | 一个包构建，按清单摘要；只有这种条目可以带 `replacement`（应改装的版本） |
+| `publisher` + `keyid` | 该发布者的一把密钥，在所有认证它的证书里；key id 以 `<publisher>-` 开头 |
+| `publisher` + `manifest` | 该发布者的一个包构建，按清单摘要，只作用于清单写着该发布者的包；只有这种条目可以带 `replacement`（应改装的版本） |
 
 按清单摘要而不是包文件的哈希吊销，重新压缩 tar 也逃不掉。
 
-吊销列表是累积的：读者按签发者记住最高的 `serial`。项目根签发的列表不写 `publisher`；发布者也可以就自己的密钥与包构建签发列表，此时写上自己的名字，每条条目都只能关于它自己。`revoked` 不能为空。
+吊销列表是累积的：读者按签发者记住最高的 `serial`。项目根签发的列表不写 `publisher`；发布者也可以就自己的证书、密钥与包构建签发列表，此时写上自己的名字，每条条目都必须写同一个发布者，所以一个发布者的列表永远吊销不了别人的密钥或包构建。`revoked` 不能为空。
 
 <!-- golden: crl/v1/valid/root.json -->
 ```json
-{"created":"2026-12-01T00:00:00Z","format":1,"revoked":[{"cert_serial":9,"publisher":"acme"},{"keyid":"acme-2025a"}],"serial":12}
+{"created":"2026-12-01T00:00:00Z","format":1,"revoked":[{"cert_serial":9,"publisher":"acme"},{"keyid":"acme-2025a","publisher":"acme"}],"serial":12}
 ```
 
 ## gwx/1 传输与握手

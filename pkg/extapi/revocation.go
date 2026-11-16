@@ -29,10 +29,13 @@ type TrustUpdate struct {
 	Floors []Floor `json:"floors,omitempty"`
 }
 
-// Revocation names what to stop trusting. Exactly one selector is set:
-// Publisher alone (every certificate of the publisher), Publisher with
-// CertSerial (one certificate), KeyID (one key, wherever certified), or
-// Manifest (one package build, by its manifest digest).
+// Revocation names what to stop trusting. Publisher is always set and
+// scopes the entry; at most one of CertSerial, KeyID and Manifest narrows
+// it. Publisher alone revokes every certificate of the publisher; with
+// CertSerial, one certificate; with KeyID, one of the publisher's keys (the
+// key id starts with "<publisher>-"); with Manifest, one package build of
+// the publisher, by its manifest digest, which a reader applies only to a
+// package whose manifest names Publisher.
 //
 // A revocation refuses new installs. It never stops an installed package by
 // itself, except an authority package revoked by Manifest, which is not
@@ -60,20 +63,20 @@ func (r Revocation) selector() string {
 }
 
 func (r Revocation) validate(path string) *fieldError {
+	if r.Publisher == "" {
+		return &fieldError{field: joinPath(path, "publisher"), rule: RuleRequired}
+	}
 	set := 0
-	for _, has := range []bool{r.Publisher != "", r.KeyID != "", r.Manifest != ""} {
+	for _, has := range []bool{r.CertSerial != 0, r.KeyID != "", r.Manifest != ""} {
 		if has {
 			set++
 		}
-	}
-	if set == 0 {
-		return &fieldError{field: joinPath(path, "publisher"), rule: RuleRequired}
 	}
 	if set > 1 {
 		return &fieldError{field: path, rule: RuleExclusive}
 	}
 	if f := first(
-		optionalMatches(joinPath(path, "publisher"), r.Publisher, publisherPattern),
+		matches(joinPath(path, "publisher"), r.Publisher, publisherPattern),
 		optionalMatches(joinPath(path, "keyid"), r.KeyID, keyIDPattern),
 		optionalMatches(joinPath(path, "manifest"), string(r.Manifest), digestPattern),
 		optionalMatches(joinPath(path, "replacement"), r.Replacement, semverPattern),
@@ -82,8 +85,8 @@ func (r Revocation) validate(path string) *fieldError {
 	); f != nil {
 		return f
 	}
-	if r.CertSerial != 0 && r.Publisher == "" {
-		return &fieldError{field: joinPath(path, "cert_serial"), rule: RuleRelation}
+	if r.KeyID != "" && !strings.HasPrefix(r.KeyID, r.Publisher+"-") {
+		return &fieldError{field: joinPath(path, "keyid"), rule: RuleRelation}
 	}
 	if r.Replacement != "" && r.Manifest == "" {
 		return &fieldError{field: joinPath(path, "replacement"), rule: RuleRelation}
@@ -209,10 +212,10 @@ func (u *TrustUpdate) validate() *fieldError {
 }
 
 // CRL is a revocation list at format 1. A list issued under a project root
-// leaves Publisher empty; a publisher may issue one about its own keys and
-// package builds, naming itself in Publisher, and then every entry is about
-// that publisher. Lists are cumulative: a reader keeps the highest Serial
-// per issuer.
+// leaves Publisher empty; a publisher may issue one about its own
+// certificates, keys and package builds, naming itself in Publisher, and
+// then every entry names that publisher. Lists are cumulative: a reader
+// keeps the highest Serial per issuer.
 type CRL struct {
 	// Format is 1.
 	Format    int          `json:"format"`
@@ -263,7 +266,7 @@ func (c *CRL) validate() *fieldError {
 		return nil
 	}
 	for i, r := range c.Revoked {
-		if r.Publisher != "" && r.Publisher != c.Publisher {
+		if r.Publisher != c.Publisher {
 			return &fieldError{field: joinPath(joinPath("revoked", strconv.Itoa(i)), "publisher"), rule: RuleRelation}
 		}
 	}

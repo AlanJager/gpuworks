@@ -163,7 +163,7 @@ A trust update is signed by at least one project root key the reader trusts now,
 
 <!-- golden: trust_update/v1/valid/rotate.json -->
 ```json
-{"add_roots":[{"alg":"ed25519","keyid":"root-3","public_key":"eC0hm7/hzMkrq452w7FbsvdumRZzFEroSPiJYIFGCqs="},{"alg":"ecdsa-p256-sha256","keyid":"root-4","public_key":"BMX+c4VTtfKGKA3l0EjO3d6IXwcBTVbSabaijGatYQCn+OSfRFHDO2UzUlWZu07cpYIEmdreHZH0eYnGPrSojuY="}],"created":"2026-12-01T00:00:00Z","floors":[{"id":"acme_backup","min_version":"1.1.0"},{"id":"acme_quota","min_version":"2.0.3"}],"format":1,"retire_roots":["root-1"],"revoke":[{"keyid":"acme-2025a"},{"cert_serial":9,"publisher":"acme"}],"serial":3}
+{"add_roots":[{"alg":"ed25519","keyid":"root-3","public_key":"eC0hm7/hzMkrq452w7FbsvdumRZzFEroSPiJYIFGCqs="},{"alg":"ecdsa-p256-sha256","keyid":"root-4","public_key":"BMX+c4VTtfKGKA3l0EjO3d6IXwcBTVbSabaijGatYQCn+OSfRFHDO2UzUlWZu07cpYIEmdreHZH0eYnGPrSojuY="}],"created":"2026-12-01T00:00:00Z","floors":[{"id":"acme_backup","min_version":"1.1.0"},{"id":"acme_quota","min_version":"2.0.3"}],"format":1,"retire_roots":["root-1"],"revoke":[{"keyid":"acme-2025a","publisher":"acme"},{"cert_serial":9,"publisher":"acme"}],"serial":3}
 ```
 
 | Field | Rules |
@@ -174,22 +174,22 @@ A trust update is signed by at least one project root key the reader trusts now,
 | `revoke` | Revocation entries, see below; at most 4096 |
 | `floors` | Raise the lowest installable version of packages, `{id, min_version}`, sorted by id; a floor only rises |
 
-At least one of the four lists is non-empty. A revocation names what it revokes in exactly one way and does not repeat within a list:
+At least one of the four lists is non-empty. Every revocation names its `publisher`, which scopes it, and at most one of `cert_serial`, `keyid` and `manifest` narrows it; an entry does not repeat within a list:
 
 | Selector | Revokes |
 |---|---|
 | `publisher` | Every certificate of the publisher |
 | `publisher` + `cert_serial` | One certificate |
-| `keyid` | One key, wherever it is certified |
-| `manifest` | One package build, by manifest digest; only this kind of entry may carry `replacement` (the version to install instead) |
+| `publisher` + `keyid` | One of the publisher's keys, in every certificate that certifies it; the key id starts with `<publisher>-` |
+| `publisher` + `manifest` | One package build of the publisher, by manifest digest, applied only to a package whose manifest names that publisher; only this kind of entry may carry `replacement` (the version to install instead) |
 
 Revoking by manifest digest rather than by package file hash means re-compressing the tar does not escape a revocation.
 
-Revocation lists are cumulative: a reader keeps the highest `serial` per issuer. A list issued under a project root has no `publisher`; a publisher may issue one about its own keys and builds, naming itself, and then every entry may only be about itself. `revoked` must not be empty.
+Revocation lists are cumulative: a reader keeps the highest `serial` per issuer. A list issued under a project root has no `publisher`; a publisher may issue one about its own certificates, keys and builds, naming itself, and then every entry must name that same publisher, so one publisher's list never revokes another's keys or builds. `revoked` must not be empty.
 
 <!-- golden: crl/v1/valid/root.json -->
 ```json
-{"created":"2026-12-01T00:00:00Z","format":1,"revoked":[{"cert_serial":9,"publisher":"acme"},{"keyid":"acme-2025a"}],"serial":12}
+{"created":"2026-12-01T00:00:00Z","format":1,"revoked":[{"cert_serial":9,"publisher":"acme"},{"keyid":"acme-2025a","publisher":"acme"}],"serial":12}
 ```
 
 ## gwx/1 transport and handshake
@@ -387,4 +387,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: a348518bec7df8b62b0397d1f34160d00dbbab5c2e186a9a1e76245ddc0b637b -->
+<!-- translation-source-sha256: 71482904f8462068790cced7b2d7b859ca5227054ac1d49c413f5d85d70433ce -->
