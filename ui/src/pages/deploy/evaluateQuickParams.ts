@@ -12,10 +12,14 @@ export class EvaluateQuickParams {
   // Keys the deployer has edited at any point. Unlike `authored`, which
   // follows what the next request states, this is never pruned: placement
   // and argument fields (tp, pp, extra_args) never travel in quick_params,
-  // yet a value typed there is still the deployer's own.
+  // yet a value typed there is still the deployer's own. Never pruning is
+  // deliberate: a key the deployer once set, even back to the dictionary's
+  // own value (an explicit "Automatic"), stays theirs across engines.
   private touched = new Set<string>();
-  // Keys seen in quick_params: the dictionary parameters, the only values
-  // whose meaning comes from one engine's dictionary.
+  // The dictionary parameters, the only values whose meaning comes from one
+  // engine's dictionary: learned from each answer's effective_params (the
+  // launch configuration form_values is built from, before the argument text
+  // and placement are added) and from the keys a request states.
   private paramKeys = new Set<string>();
 
   noteChanged(changed: Record<string, unknown>) {
@@ -53,6 +57,9 @@ export class EvaluateQuickParams {
 
   accept(response: EvaluateResponse, engine: string) {
     if (!response.form_values) return;
+    // Known from the answer itself, so an engine switch made before the next
+    // request still recognizes the displayed parameters.
+    for (const key of Object.keys(response.effective_params ?? {})) this.paramKeys.add(key);
     // Do this before updating the form, and only after the request's stale
     // guards pass. Its programmatic update must not look like a user edit.
     this.displayed = structuredClone(response.form_values);

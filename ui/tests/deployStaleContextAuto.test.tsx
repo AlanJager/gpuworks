@@ -72,8 +72,9 @@ function answer(request: Record<string, any>): EvaluateResponse {
   // nothing for SGLang unless the draft states a context; the argument text
   // and the placement's degrees are echoed, as evaluate.go does.
   const context = stated ?? (engine === "vllm" ? -1 : undefined);
+  const effective = context === undefined ? {} : { max_model_len: context };
   return {
-    ...base, ok: true,
+    ...base, ok: true, effective_params: effective,
     form_values: {
       extra_args: request.extra_args ?? "", tp: request.placement?.tp ?? 1, pp: request.placement?.pp ?? 1,
       ...(context === undefined ? {} : { max_model_len: context }),
@@ -138,6 +139,9 @@ test("an SGLang template chosen while editing the command does not inherit vLLM'
     assert.equal(last.container_overrides?.command_mode, "manual");
     assert.equal(last.quick_params?.max_model_len, undefined);
   }, { timeout: 5000 });
+  // The visible symptom: the field no longer shows a literal -1.
+  assert.notEqual(contextInput().value, "-1");
+  assert.equal(contextInput().value, "");
   for (const request of requests.filter((item) => item.engine === "sglang")) {
     assert.notEqual(request.quick_params?.max_model_len, -1, "no SGLang evaluation states the vLLM sentinel");
   }
@@ -192,6 +196,21 @@ for (const manual of [true, false]) {
     assert.equal((body.quick_params as Record<string, unknown> | undefined)?.max_model_len, undefined);
   });
 }
+
+test("an engine switch right after an answer lands, before the next request, drops the displayed context", async () => {
+  // The switch falls inside the debounce that follows the first answer: no
+  // request has stated the key yet, so only the answer says it is a
+  // dictionary parameter.
+  render(<I18nextProvider i18n={i18n}><Host /></I18nextProvider>);
+  await waitFor(() => assert.equal(contextInput().value, automatic), { timeout: 5000 });
+  const start = requests.length;
+  switchTo("sglang", false);
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
+  await settled();
+  for (const request of requests.slice(start)) assert.equal(request.quick_params?.max_model_len, undefined);
+  assert.equal(form.getFieldValue("max_model_len"), undefined);
+  assert.equal(contextInput().value, "");
+});
 
 test("a context the deployer typed survives the switch to SGLang", async () => {
   await openHost();
@@ -251,6 +270,9 @@ for (const manual of [true, false]) {
 
 test("only untouched dictionary values are stale for another engine, and only once", () => {
   const params = new EvaluateQuickParams();
+  // Before any request: the answer alone names its dictionary parameters.
+  params.accept({ form_values: { max_model_len: -1, extra_args: "", tp: 1 }, effective_params: { max_model_len: -1 } } as never, "vllm");
+  assert.deepEqual(params.takeStaleFor("sglang", { max_model_len: -1, extra_args: "", tp: 1 }), ["max_model_len"]);
   const draft = { max_model_len: -1, dtype: "auto", extra_args: "--enable-x", tp: 2, pp: 1, kv_cache_dtype: "" };
   params.accept({ form_values: { max_model_len: -1, dtype: "auto", kv_cache_dtype: "" } } as never, "vllm");
   params.prepare({ quick_params: { max_model_len: -1, dtype: "auto", kv_cache_dtype: "" }, extra_args: "--enable-x" });
