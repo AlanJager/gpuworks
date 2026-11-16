@@ -103,7 +103,7 @@
 2. 按[接入指南](connect-nodes.md#升级)，沿用原接入参数重新运行安装脚本；**Server 发起连接**的节点使用[离线包](connect-nodes.md#离线包)。
 3. 确认节点重新在线、版本与 server 一致，再处理下一个节点。
 
-`gpuworks-agent upgrade` 仅适用于没有常驻 agent 的手工运行环境，参数见 [CLI 参考](../reference/cli.md#gpuworks-agent-upgrade)。它会进入前台运行，不会重启原服务；已有常驻 agent 时不要另起该命令。Server 发起连接的节点不能用它下载升级。
+`gpuworks-agent upgrade` 仅适用于没有常驻 agent 的手工运行环境，参数见 [CLI 参考](../reference/cli.md#gpuworks-agent-upgrade)。它会进入前台运行，不会重启原服务；同一 state 目录已有 agent 在运行时，该命令会拒绝执行。Server 发起连接的节点不能用它下载升级。
 
 ## 验证结果
 
