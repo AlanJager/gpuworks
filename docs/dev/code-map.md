@@ -31,6 +31,7 @@
   网络目录经 `Catalog` 注入：`StoreCatalog` 为库里全部网络，`ManagementOnly` 不声明任何网络、一律走管理网与 agent 隧道；`app` 创建唯一实例分给 hub、controller、proxy 与 api。`nettest`（网络内部测试编排）与 `servingdial`（服务网络转发拨号）是它的周边叶子包。
 - `parallelism`：叶子包，部署并行度（全局 TP、PP 与节点数）及每节点卡数换算的唯一实现；planning 从 placement 构造它，scheduler 按它定分组大小、权重分摊与头数整除。
 - `nodelabel`：叶子包（只依赖 `accelerator`），节点标签的词表：保留域 `gpuworks.ai/` 与八个系统标签键（生成在 `planning.SystemLabels`）、人写标签的校验 `ValidateWritten`（节点标签与按标签加载网络共用，拒绝保留域）、部署节点条件的校验与归一 `NormalizeRequirements`（系统键只认已声明的八个，值去重排序）。store 与 planning 都依赖它，彼此不必互相依赖。
+- `kvbackend`：叶子包，KV 卸载后端目录（按引擎划分的描述行：默认行、厂商白名单、是否外部、替代的原生键、保留它的 PD 角色、拓扑上限，ADR 0069），只依赖 `accelerator`、`engines`、`pdmode`，无 `init()` 与包级变量；`deploy/kv_backends.go` 据此发布选择键与 `kv_backends`，`deploy/kv_offload.go` 做互斥与门禁，`deploy/kv_render_vllm.go` 渲染、`kv_compose.go` 合成 `--kv-transfer-config`。
 - `pdmode`：叶子包，PD 分离模式目录（引擎、角色、连接器、线协议、TP 规则、端口、传输），PD 规则的唯一产地；`planning/pd*.go` 据此校验 `placement.pd`、给出 PD 的 unit 与部署状态（实例与 unit 的对应由所有形态共用的 `planning.MatchUnits` 推导），`deploy/pd.go` 按角色注入连接器与环境，`controller/pd*.go` 提供 PD 的启动参数与漂移检查，`proxy/pd*.go` 做两阶段路由与降级。
 - `healthcheck`：部署的健康检查，每分钟给开启的部署经网关发一个最小请求（`proxy.Proxy.Probe`，不记账），最近 10 次结果只在内存里；由 `app` 接线与提供部署列表。
 - `pdverify`：PD 交接自检，逐个 prefill 实例经网关做一次内部交接并判定传输方式，结果写实例时间线；由 `app` 接线。

@@ -688,6 +688,10 @@ _Avoid_: 重试（重试是在同角色的其他实例之间重放）
 D 收到的 prompt token 中经 KV 传输得到的占比（vLLM `prompt_tokens_by_source{source="external_kv_transfer"}`）。持续下降说明分离没有真的发生。
 _Avoid_: 用 P 侧的传输计数判断（NIXL 是 D 拉取，P 侧计数一直为 0）
 
+**KV 卸载后端 — KV Offload Backend**:
+在 GPU 之外保存实例 KV 缓存的组件：引擎自带的内存层与磁盘层（默认，`native`），或引擎之外的组件。部署用 `kv_offload_backend` 选 id，描述行由 `internal/server/kvbackend` 声明（ADR 0069）；PD 下只在行声明的角色上保留。
+_Avoid_: KV 连接器（只是后端渲染出的配置）、缓存层（指引擎自带的内存层或磁盘层）
+
 ### 部署放置与资源
 
 **副本 — Replica**:
