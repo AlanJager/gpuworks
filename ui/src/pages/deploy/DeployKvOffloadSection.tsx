@@ -41,10 +41,16 @@ export default function DeployKvOffloadSection({
   );
   // The card position is explicit once the deployer clicks; before that the
   // tier follows its value, so a template-provided size lights the card.
-  const kvMemoryIntent = Form.useWatch(memoryTierEnabledField, {
-    form,
-    preserve: true,
-  });
+  // One watch reads both draft-only positions: the memory card's and the
+  // selected KV offload backend, which replaces the engine's own tiers.
+  const { kvMemoryIntent, backendValue } =
+    Form.useWatch(
+      (values: Record<string, unknown>) => ({
+        kvMemoryIntent: values[memoryTierEnabledField],
+        backendValue: values[kvBackendKey],
+      }),
+      { form, preserve: true },
+    ) ?? {};
   const kvMemoryDesired =
     kvMemoryIntent === undefined ? kvMemoryValue > 0 : Boolean(kvMemoryIntent);
   const kvMemoryEnabled = kvMemoryDesired && kvMemoryValue > 0;
@@ -53,7 +59,6 @@ export default function DeployKvOffloadSection({
   const kvDiskEnabled = kvMemoryEnabled && kvDiskValue;
   // A selected backend replaces the engine's own tiers: their cards go dark
   // and picking one of them clears the selection.
-  const backendValue = Form.useWatch(kvBackendKey, { form, preserve: true });
   const backend = backends.find((entry) => entry.id === backendValue);
   const clearBackend = () => {
     if (backend) form.setFieldValue(kvBackendKey, "");
