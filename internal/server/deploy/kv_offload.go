@@ -174,6 +174,24 @@ func kvBackendKeptOn(engine string, q LaunchConfig, role string) bool {
 	return row.KeptOn(role)
 }
 
+// KVOffloadPDRoles are the PD roles that keep the launch's KV offload, nil
+// when it has none: the selected row's PDRoles when it names a backend or
+// states one of the engine's own tiers. An engine with no rows (SGLang)
+// keeps the original rule, prefill only.
+func KVOffloadPDRoles(engine string, q LaunchConfig) []string {
+	if q.KVOffloadBackend == "" && q.KVOffloadingSize <= 0 && !q.KVDiskOffload {
+		return nil
+	}
+	row, ok := selectedKVBackend(engine, q)
+	switch {
+	case ok:
+		return row.PDRoles
+	case q.KVOffloadBackend != "":
+		return nil // validateKVBackend refuses an unknown id
+	}
+	return []string{pdmode.RolePrefill}
+}
+
 // launchConfigValues reads q by its dictionary keys.
 func launchConfigValues(q LaunchConfig) (map[string]any, error) {
 	encoded, err := json.Marshal(q)

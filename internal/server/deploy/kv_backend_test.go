@@ -488,10 +488,11 @@ func TestKVBackendSetRendersEverySelectableRow(t *testing.T) {
 	check()
 
 	native, _ := kvbackend.Builtin().Resolve(EngineVLLM, "")
+	prefillOnly := []string{pdmode.RolePrefill}
 	for name, row := range map[string]kvbackend.Backend{
-		"a SGLang row has no adapter": {ID: "hicache", Engine: EngineSGLang, Label: "HiCache", External: true},
-		"a partial replacement":       {ID: "partial", Engine: EngineVLLM, Label: "Partial", External: true, Replaces: []string{"kv_disk_offload"}},
-		"a key nobody owns":           {ID: "stray", Engine: EngineVLLM, Label: "Stray", Replaces: []string{"no_such_key"}},
+		"a SGLang row has no adapter": {ID: "hicache", Engine: EngineSGLang, Label: "HiCache", External: true, PDRoles: prefillOnly},
+		"a partial replacement":       {ID: "partial", Engine: EngineVLLM, Label: "Partial", External: true, Replaces: []string{"kv_disk_offload"}, PDRoles: prefillOnly},
+		"a key nobody owns":           {ID: "stray", Engine: EngineVLLM, Label: "Stray", Replaces: []string{"no_such_key"}, PDRoles: prefillOnly},
 	} {
 		registry, err := kvbackend.New(native, row)
 		if err != nil {
@@ -564,5 +565,29 @@ func TestKVBackendRendererEnvReachesTheLaunch(t *testing.T) {
 	}
 	if launch := (vLLMEngine{}).Build(kvTestParams(selectTestExternal(), "nvidia")); launch.Env[testExternalEnv] != "" {
 		t.Fatalf("env without DP = %v", launch.Env)
+	}
+}
+
+// The roles that keep KV offload under PD come from the selected row: the
+// engine's own tiers and the test row are kept on prefill, and a launch with
+// no offload has none.
+func TestKVOffloadPDRoles(t *testing.T) {
+	withKVBackends(t)
+	prefill := []string{pdmode.RolePrefill}
+	for name, tc := range map[string]struct {
+		engine string
+		q      LaunchConfig
+		want   []string
+	}{
+		"no offload":       {EngineVLLM, LaunchConfig{}, nil},
+		"native cpu tier":  {EngineVLLM, LaunchConfig{KVOffloadingSize: 8}, prefill},
+		"native disk tier": {EngineVLLM, LaunchConfig{KVOffloadingSize: 8, KVDiskOffload: true, SharedKVDir: "/kv"}, prefill},
+		"external backend": {EngineVLLM, selectTestExternal(), prefill},
+		"sglang cpu tier":  {EngineSGLang, LaunchConfig{KVOffloadingSize: 8}, prefill},
+		"unknown backend":  {EngineVLLM, LaunchConfig{KVOffloadBackend: "missing"}, nil},
+	} {
+		if got := KVOffloadPDRoles(tc.engine, tc.q); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: roles = %v, want %v", name, got, tc.want)
+		}
 	}
 }

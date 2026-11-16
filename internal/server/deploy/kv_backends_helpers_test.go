@@ -29,7 +29,7 @@ func testExternalKVBackendRow() kvbackend.Backend {
 		// All of vLLM's own offload, including the block size, which has no
 		// dictionary row (nativeKVKeys).
 		Replaces: append(slices.Clone(testExternalKVBackendKeys), "kv_offload_block_size"),
-		PDRoles: []string{pdmode.RolePrefill}, Topology: kvbackend.Topology{MaxNNodes: 1},
+		PDRoles:  []string{pdmode.RolePrefill}, Topology: kvbackend.Topology{MaxNNodes: 1},
 	}
 }
 

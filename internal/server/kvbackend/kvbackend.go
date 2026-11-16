@@ -48,8 +48,8 @@ type Backend struct {
 	// Replaces are the native dictionary keys this backend excludes while it
 	// is selected: a stated value for one of them is refused.
 	Replaces []string
-	// PDRoles are the PD roles that keep the backend; other roles launch
-	// without KV offload.
+	// PDRoles are the PD roles that keep the backend, prefill always among
+	// them; other roles launch without KV offload.
 	PDRoles  []string
 	Topology Topology
 }
@@ -137,6 +137,13 @@ func New(rows ...Backend) (Registry, error) {
 			if role != pdmode.RolePrefill && role != pdmode.RoleDecode {
 				return Registry{}, fmt.Errorf("kv backend %s/%s: unknown PD role %q", row.Engine, row.ID, role)
 			}
+		}
+		// The prefill computes the KV a cache tier serves again; a decoder
+		// gets its prefix from the PD connector first, so a tier there only
+		// writes. Every row is kept on prefill, which is also what lets the
+		// PD warning say "prefill only" whenever decode does not keep it.
+		if !slices.Contains(row.PDRoles, pdmode.RolePrefill) {
+			return Registry{}, fmt.Errorf("kv backend %s/%s: PDRoles must include %s", row.Engine, row.ID, pdmode.RolePrefill)
 		}
 		if row.Topology.MaxNNodes < 0 {
 			return Registry{}, fmt.Errorf("kv backend %s/%s: negative node bound", row.Engine, row.ID)

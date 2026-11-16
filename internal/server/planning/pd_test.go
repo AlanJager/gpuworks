@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -222,12 +223,16 @@ func TestCheckPDArgsAndWarnings(t *testing.T) {
 	if err := CheckPDArgs("unknown-engine", []string{"--kv-transfer-config", "{}"}); err != nil {
 		t.Fatalf("an unknown engine composes nothing: %v", err)
 	}
-	got := PDFeatureWarnings(true, true)
-	if len(got) != 2 || got[0].Code != messages.WarningPDKVOffloadPrefillOnly || got[1].Params["feature"] != "dgpu" {
+	got := PDFeatureWarnings([]string{pdmode.RolePrefill}, true)
+	if len(got) != 2 || got[0].Code != messages.WarningPDKVOffloadPrefillOnly || got[0].Params != nil || got[1].Params["feature"] != "dgpu" {
 		t.Fatalf("warnings = %+v", got)
 	}
-	if len(PDFeatureWarnings(false, false)) != 0 {
+	if len(PDFeatureWarnings(nil, false)) != 0 {
 		t.Fatal("no feature, no warning")
+	}
+	// Offload kept on both roles is not prefill only.
+	if got := PDFeatureWarnings([]string{pdmode.RolePrefill, pdmode.RoleDecode}, false); len(got) != 0 {
+		t.Fatalf("offload on both roles warned: %+v", got)
 	}
 }
 

@@ -111,18 +111,20 @@ func TestNewRejectsBrokenTables(t *testing.T) {
 		return row
 	}
 	for name, rows := range map[string][]Backend{
-		"empty id":           {mutate(func(b *Backend) { b.ID = "" })},
-		"empty engine":       {mutate(func(b *Backend) { b.Engine = "" })},
-		"not a dialect":      {mutate(func(b *Backend) { b.Engine = engines.Callable })},
-		"duplicate":          {externalRow(), externalRow()},
-		"two defaults":       {native, mutate(func(b *Backend) { b.ID, b.External, b.Default, b.Replaces = "other", false, true, nil })},
-		"external default":   {mutate(func(b *Backend) { b.Default = true })},
-		"unknown vendor":     {mutate(func(b *Backend) { b.Vendors = []string{"voodoo"} })},
-		"alias vendor":       {mutate(func(b *Backend) { b.Vendors = []string{"NVIDIA"} })},
-		"unknown role":       {mutate(func(b *Backend) { b.PDRoles = []string{"router"} })},
-		"empty label":        {mutate(func(b *Backend) { b.Label = "" })},
-		"negative max nodes": {mutate(func(b *Backend) { b.Topology.MaxNNodes = -1 })},
-		"default replaces":   {mutate(func(b *Backend) { b.External, b.Default = false, true; b.Replaces = []string{"x"} })},
+		"empty id":            {mutate(func(b *Backend) { b.ID = "" })},
+		"empty engine":        {mutate(func(b *Backend) { b.Engine = "" })},
+		"not a dialect":       {mutate(func(b *Backend) { b.Engine = engines.Callable })},
+		"duplicate":           {externalRow(), externalRow()},
+		"two defaults":        {native, mutate(func(b *Backend) { b.ID, b.External, b.Default, b.Replaces = "other", false, true, nil })},
+		"external default":    {mutate(func(b *Backend) { b.Default = true })},
+		"unknown vendor":      {mutate(func(b *Backend) { b.Vendors = []string{"voodoo"} })},
+		"alias vendor":        {mutate(func(b *Backend) { b.Vendors = []string{"NVIDIA"} })},
+		"unknown role":        {mutate(func(b *Backend) { b.PDRoles = []string{"router"} })},
+		"not kept on prefill": {mutate(func(b *Backend) { b.PDRoles = []string{pdmode.RoleDecode} })},
+		"kept on no role":     {mutate(func(b *Backend) { b.PDRoles = nil })},
+		"empty label":         {mutate(func(b *Backend) { b.Label = "" })},
+		"negative max nodes":  {mutate(func(b *Backend) { b.Topology.MaxNNodes = -1 })},
+		"default replaces":    {mutate(func(b *Backend) { b.External, b.Default = false, true; b.Replaces = []string{"x"} })},
 	} {
 		if _, err := New(rows...); err == nil {
 			t.Errorf("%s: New accepted %+v", name, rows)
