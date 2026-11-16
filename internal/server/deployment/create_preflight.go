@@ -30,7 +30,7 @@ type launchPreflight struct {
 func (s *Service) prepareLaunchPreflight(eng deploy.Engine, req *dto.DeployRequest, selection templateSelection, launch deploy.Materialized, dp int, targetVendor string, profileNode *store.Node, pdReq *pdRequest) (launchPreflight, error) {
 	var out launchPreflight
 	out.modelMount, out.componentMounts = previewComponentMounts(s.d.Store, selection.Components, profileNode)
-	placement, err := planning.ParsePlacement(req.Placement)
+	placement, err := requestPlacement(req)
 	if err != nil {
 		return out, err
 	}
