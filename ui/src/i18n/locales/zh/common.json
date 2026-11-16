@@ -1317,6 +1317,10 @@
     "fix": "改用 {{args}}",
     "fixTradeoff": "在自定义参数里加上这条参数，覆盖推理模板的调度策略。会失去原调度策略的优化（如 lpm 的前缀缓存命中优化）。"
   },
+  "consoleBanners": {
+    "region": "服务器通知",
+    "details": "查看详情"
+  },
   "notices": {
     "title": "通知",
     "empty": "暂无通知",

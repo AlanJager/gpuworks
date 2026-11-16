@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "./app/AppSidebar";
+import ConsoleBanners from "./app/ConsoleBanners";
 import { ConsoleIcon } from "./ui-kit/consoleIcons";
 
 const AssistantIcon = ConsoleIcon.assistant;
@@ -110,6 +111,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
       <div className="app-body">
         <AppSidebar />
         <main className="app-content"><div className="app-page">
+          <ConsoleBanners />
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/login" element={<Navigate to="/dashboard" replace />} />

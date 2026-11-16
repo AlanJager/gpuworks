@@ -1317,6 +1317,10 @@
     "fix": "Use {{args}}",
     "fixTradeoff": "Adds this argument to the custom arguments, overriding the inference template's scheduling policy. The original policy's optimization (such as lpm's prefix-cache hits) is lost."
   },
+  "consoleBanners": {
+    "region": "Server notices",
+    "details": "Details"
+  },
   "notices": {
     "title": "Notices",
     "empty": "No notices",
