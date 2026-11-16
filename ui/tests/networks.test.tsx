@@ -104,12 +104,12 @@ function renderAt(path: string, element: React.ReactElement, pattern = path) {
 // A node's bootstrap and HCAs sit in its row's expanded detail: open every
 // node row, then read a row's detail from the row after it.
 async function expandNodeRows() {
-  for (const button of await screen.findAllByRole("button", { name: n.detail.expand })) await userEvent.click(button);
+  for (const button of await screen.findAllByRole("button", { name: /Show details|Expand row/ })) await userEvent.click(button);
 }
 const detailOf = (row: HTMLElement) => row.nextElementSibling as HTMLElement;
 // The detail is a drawer, itself a dialog: a modal is the other one.
 const modalDialog = () => waitFor(() => {
-  const found = screen.getAllByRole("dialog").find((el) => el.classList.contains("ant-modal") || el.closest(".ant-modal"));
+  const found = screen.getAllByRole("dialog").find((el) => el.getAttribute("data-placement") === "center" || el.classList.contains("ant-modal") || el.closest(".ant-modal"));
   assert.ok(found, "the modal is open");
   return found as HTMLElement;
 });
@@ -168,7 +168,7 @@ test("detaching in the drawer reads the list again, so its attachments column fo
   const before = listReads;
   fireEvent.click(detach);
   const ok = await waitFor(() => {
-    const found = [...document.querySelectorAll(".ant-popover:not(.ant-popover-hidden)")].flatMap((pop) => within(pop as HTMLElement).queryAllByRole("button", { name: n.actions.detach }));
+    const found = [...document.querySelectorAll('[data-slot="popover-content"]')].flatMap((pop) => within(pop as HTMLElement).queryAllByRole("button", { name: n.actions.detach }));
     if (!found.length) throw new Error("no confirm");
     return found.at(-1) as HTMLElement;
   });
@@ -227,12 +227,17 @@ test("creating a network sends the server dictionary values and opens the detail
   renderAt("/networks", <NetworksPage />);
   await user.click(await screen.findByRole("button", { name: n.actions.create }));
   const dialog = await modalDialog();
+  assert.ok(within(dialog).getByRole("button", { name: i18n.t("actions.close") }));
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.ok(within(dialog).getByText(n.form.nameRequired)));
+  const roleGroup = within(dialog).getByRole("group", { name: new RegExp(n.form.roles) });
+  assert.equal(roleGroup.getAttribute("aria-required"), "true");
+  assert.equal(roleGroup.getAttribute("aria-invalid"), "true");
+  assert.deepEqual((roleGroup.getAttribute("aria-describedby") ?? "").split(" "), [`${roleGroup.id}-description`, `${roleGroup.id}-error`]);
   assert.equal(bodies.length, 0, "validation blocks the request");
 
-  await user.type(within(dialog).getByLabelText(n.form.name), "ib-a");
-  await user.click(within(dialog).getByLabelText(n.role.compute));
+  await user.type(within(dialog).getByRole("textbox", { name: n.form.name }), "ib-a");
+  await user.click(within(dialog).getByRole("checkbox", { name: n.role.compute }));
   assert.ok(within(dialog).getByText(n.form.typeHint));
   assert.equal(within(dialog).queryByText(n.form.typeHelp), null, "what each type means waits behind the help mark");
   await user.click(within(dialog).getByText(n.type.host_rdma));
@@ -242,6 +247,9 @@ test("creating a network sends the server dictionary values and opens the detail
   assert.equal(within(dialog).queryByLabelText(n.form.interface), null);
   await user.click(within(dialog).getByText(n.form.advanced));
   await user.type(within(dialog).getByLabelText(n.form.bootstrapCidr), "10.20.0.0/16");
+  within(dialog).getByRole("textbox", { name: n.form.name }).focus();
+  await user.keyboard("{Enter}");
+  assert.equal(bodies.length, 0, "Enter in a field does not create the network");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   // The created network opens in the drawer over the list.
   await waitFor(() => assert.match(screen.getByTestId("where").textContent ?? "", /\?network=\d+/));
@@ -256,8 +264,8 @@ test("an RDMA network is created with nothing filled in", async () => {
   renderAt("/networks", <NetworksPage />);
   await user.click(await screen.findByRole("button", { name: n.actions.create }));
   const dialog = await modalDialog();
-  await user.type(within(dialog).getByLabelText(n.form.name), "weiw1");
-  await user.click(within(dialog).getByLabelText(n.role.compute));
+  await user.type(within(dialog).getByRole("textbox", { name: n.form.name }), "weiw1");
+  await user.click(within(dialog).getByRole("checkbox", { name: n.role.compute }));
   await user.click(within(dialog).getByText(n.type.host_rdma));
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.equal(bodies.length, 1));
@@ -272,19 +280,19 @@ test("an accelerator network carries compute traffic only and asks for a bootstr
   renderAt("/networks", <NetworksPage />);
   await user.click(await screen.findByRole("button", { name: n.actions.create }));
   const dialog = await modalDialog();
-  await user.type(within(dialog).getByLabelText(n.form.name), "npu");
+  await user.type(within(dialog).getByRole("textbox", { name: n.form.name }), "npu");
   // On a host network every role can be ticked.
-  await user.click(within(dialog).getByLabelText(n.role.storage_sync));
-  await user.click(within(dialog).getByLabelText(n.role.compute));
-  assert.equal((within(dialog).getByLabelText(n.role.serving) as HTMLInputElement).disabled, false);
+  await user.click(within(dialog).getByRole("checkbox", { name: n.role.storage_sync }));
+  await user.click(within(dialog).getByRole("checkbox", { name: n.role.compute }));
+  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.serving }).getAttribute("aria-disabled") === "true"), false);
 
   await user.click(within(dialog).getByText(n.type.accelerator_rdma));
   // Storage sync and serving are greyed out and say why; the role already
   // ticked that the type cannot carry is dropped.
-  await waitFor(() => assert.equal((within(dialog).getByRole("checkbox", { name: n.role.storage_sync }) as HTMLInputElement).disabled, true));
-  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.serving }) as HTMLInputElement).disabled, true);
-  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.storage_sync }) as HTMLInputElement).checked, false);
-  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.compute }) as HTMLInputElement).checked, true);
+  await waitFor(() => assert.equal((within(dialog).getByRole("checkbox", { name: n.role.storage_sync }).getAttribute("aria-disabled") === "true"), true));
+  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.serving }).getAttribute("aria-disabled") === "true"), true);
+  assert.equal(within(dialog).getByRole("checkbox", { name: n.role.storage_sync }).getAttribute("aria-checked") == "true", false);
+  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.compute }).getAttribute("aria-checked") === "true"), true);
   assert.ok(within(dialog).getByLabelText(`${n.role.serving}: ${n.form.roleNotOnType}`), "the reason is reachable by keyboard and screen reader");
   assert.ok(within(dialog).getByText(n.form.acceleratorInferred));
   assert.equal(within(dialog).queryByLabelText(n.form.interface), null);
@@ -488,7 +496,7 @@ test("attaching several nodes at once reports the ones that failed", async () =>
     return { network: detailFixture, results: [{ node_uuid: "uuid-a", status: "attached" }, { node_uuid: "uuid-b", status: "failed", code: "NETWORK_ATTACHMENT_TARGET_INVALID", error: "node not found" }] } as never;
   });
   const warnings: string[] = [];
-  const antd = await import("antd");
+  const antd = await import("../src/ui-kit/feedback/index.tsx");
   const originalWarning = antd.message.warning;
   antd.message.warning = ((content: unknown) => { warnings.push(String(content)); return Promise.resolve(true) as never; }) as never;
   try {
@@ -523,7 +531,7 @@ test("attaching to a label sends only the label target", async () => {
   await user.click(await screen.findByRole("button", { name: n.actions.attach }));
   const dialog = await modalDialog();
   await user.click(within(dialog).getByText(n.attach.modeLabel));
-  await user.type(within(dialog).getByLabelText(n.attach.labelKey), "rack");
+  await user.type(within(dialog).getByRole("textbox", { name: n.attach.labelKey }), "rack");
   await user.type(within(dialog).getByLabelText(n.attach.labelValue), "r3");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.equal(bodies.length, 1));
@@ -543,12 +551,23 @@ test("editing a node attachment prefills and sends its overrides", async () => {
   await user.click(within(attachmentRow).getByRole("button", { name: n.actions.edit }));
   const dialog = await modalDialog();
   assert.ok(within(dialog).getByText(n.attach.editBootstrapTitle));
-  assert.equal((within(dialog).getByLabelText(n.attach.interfaceIB) as HTMLInputElement).value, "bond0");
+  assert.equal((within(dialog).getByRole("combobox", { name: n.attach.interfaceIB }) as HTMLInputElement).value, "bond0");
+  const iface = within(dialog).getByRole("combobox", { name: n.attach.interfaceIB });
+  await user.clear(iface);
+  await user.type(iface, "bond");
+  await waitFor(() => assert.equal(iface.getAttribute("aria-expanded"), "true"));
+  await user.keyboard("{Escape}");
+  assert.ok(dialog.isConnected, "Escape closes interface suggestions, not the editor");
+  assert.equal((iface as HTMLInputElement).value, "bond");
+  await user.clear(iface);
+  await user.type(iface, "bond-custom");
+  await user.tab();
+  await waitFor(() => assert.equal((iface as HTMLInputElement).value, "bond-custom", "closing suggestions preserves a manually typed interface"));
   const ip = within(dialog).getByLabelText(n.attach.ip);
   await user.type(ip, "10.20.1.17");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.equal(calls.length, 1));
-  assert.deepEqual(calls[0], [1, 3, { interface: "bond0", ip: "10.20.1.17", hcas: ["mlx5_0", "mlx5_9:1"] }]);
+  assert.deepEqual(calls[0], [1, 3, { interface: "bond-custom", ip: "10.20.1.17", hcas: ["mlx5_0", "mlx5_9:1"] }]);
 });
 
 test("node networks card shows loaded networks and the reported inventory", async () => {
@@ -572,7 +591,7 @@ test("node networks card shows loaded networks and the reported inventory", asyn
   tunnel.focus();
   await waitFor(() => assert.ok(screen.getAllByRole("tooltip").some((tip) => tip.textContent === "dial tcp: i/o timeout")));
   assert.ok(screen.getByText("400G"));
-  assert.ok(screen.getAllByText(n.linkLayer.infiniband).some((el) => el.classList.contains("ant-tag")), "the detected link layer is tagged beside the loaded HCAs");
+  assert.ok(screen.getAllByText(n.linkLayer.infiniband).some((el) => !!el.closest('[data-slot="badge"]')), "the detected link layer is tagged beside the loaded HCAs");
 });
 
 test("node networks card explains an agent without inventory and a node without networks", async () => {
