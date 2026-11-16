@@ -138,6 +138,8 @@ export function toCsv(entries: LogEntry[]): string {
 
 /** How many instances one search offers; typing narrows the list on the server. */
 const INSTANCE_PICKER_PAGE_SIZE = 50;
+/** How long typing in the instance filter pauses before the server is searched. */
+const INSTANCE_SEARCH_DEBOUNCE_MS = 250;
 
 export default function LogsPage() {
   const { t } = useTranslation("logs");
@@ -168,6 +170,7 @@ export default function LogsPage() {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   const [instanceOptions, setInstanceOptions] = useState<{ uuid: string; state: string }[]>([]);
+  const [instanceStatus, setInstanceStatus] = useState<"loading" | "ready" | "error">("loading");
 
   // Context window: anchored on one hit, grep -C style, N is user-adjustable.
   const [context, setContext] = useState<{ anchor: LogEntry; rows: LogEntry[]; matchIndex: number } | null>(null);
@@ -234,15 +237,27 @@ export default function LogsPage() {
     [effectiveQuery, instance, node, level, source, fromMS, toMS, range, absoluteWindow],
   );
 
-  // Instances are searched on the server, one page at a time, as typed;
-  // failure keeps the plain text input usable.
+  // Instances are searched on the server, one page at a time, once typing
+  // pauses. A failed search offers nothing rather than an earlier input's
+  // results; the plain text input stays usable either way.
   const [instanceSearch, setInstanceSearch] = useState("");
   useEffect(() => {
     let current = true;
-    api.instancesPage({ page: 1, page_size: INSTANCE_PICKER_PAGE_SIZE, q: instanceSearch })
-      .then((page) => { if (current) setInstanceOptions(page.items.map((i) => ({ uuid: i.uuid, state: i.state }))); })
-      .catch(() => {});
-    return () => { current = false; };
+    setInstanceStatus("loading");
+    const timer = window.setTimeout(() => {
+      api.instancesPage({ page: 1, page_size: INSTANCE_PICKER_PAGE_SIZE, q: instanceSearch })
+        .then((page) => {
+          if (!current) return;
+          setInstanceOptions(page.items.map((i) => ({ uuid: i.uuid, state: i.state })));
+          setInstanceStatus("ready");
+        })
+        .catch(() => {
+          if (!current) return;
+          setInstanceOptions([]);
+          setInstanceStatus("error");
+        });
+    }, INSTANCE_SEARCH_DEBOUNCE_MS);
+    return () => { current = false; window.clearTimeout(timer); };
   }, [instanceSearch]);
 
   useEffect(() => {
@@ -364,6 +379,11 @@ export default function LogsPage() {
               onChange={(v) => setInstance(v || undefined)}
               onSearch={setInstanceSearch}
               options={instanceOptions.map((i) => ({ value: i.uuid, title: i.uuid, label: `${shortId(i.uuid)} · ${i.state}` }))}
+              notFoundContent={
+                instanceStatus === "error"
+                  ? <span role="alert" style={{ color: "var(--fg-danger)" }}>{t("search.instanceError")}</span>
+                  : t(instanceStatus === "loading" ? "search.instanceLoading" : "search.instanceEmpty")
+              }
               filterOption={false}
             />
             {/* Nodes are searched on the server, not listed whole. */}

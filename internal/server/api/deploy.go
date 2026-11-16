@@ -23,11 +23,12 @@ var instanceListStates = []string{
 	proto.InstDraining, proto.InstRemoving, proto.InstStopped, proto.InstFailed, proto.InstPendingRemoval,
 }
 
-// listInstances answers GET /instances. With page or page_size it returns one
-// dto.ListPage of instances, newest first, filtered by q (a substring of the
-// instance UUID, its deployment's name or its node's name) and state (the
-// instance's own states, comma separated); without them, every instance.
-// Either way only the rows returned are turned into DTOs.
+// listInstances answers GET /instances, newest first, filtered by q (a
+// substring of the instance UUID, its deployment's name or its node's name)
+// and state (the instance's own states, comma separated; an unknown one is
+// refused). With page or page_size it returns one dto.ListPage of the
+// matches; without them, every match. Either way only the rows returned are
+// turned into DTOs.
 func (a *apiHandlers) listInstances(w http.ResponseWriter, r *http.Request) {
 	query, err := parseListQuery(r, instanceListStates)
 	if err != nil {
