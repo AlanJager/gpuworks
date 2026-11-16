@@ -56,3 +56,7 @@ base-mirrors.local
 
 # pgregory.net/rapid writes a failing property's replay file next to the test.
 testdata/rapid/
+
+# Console overlay modules copied in by a separately built console; the
+# registry files directly in ui/src/extensions/ stay tracked.
+/ui/src/extensions/*/

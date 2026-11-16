@@ -56,11 +56,20 @@ go_prod_files() {
   find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort
 }
 
+# Console overlay modules a separately built console copies into
+# ui/src/extensions/<id>/ are git-ignored and not this repository's code, so no
+# UI measurement counts them; ee_ui_internal_imports alone looks at them, and
+# the console overlays section refuses tracked files there. drop_ui_overlays
+# removes their paths (or "path:line:..." hits) from a list on stdin.
+drop_ui_overlays() {
+  grep -vE '^ui/src/extensions/[^/]+/' || true
+}
+
 # Production UI sources: ui/src minus *.test.* (and minus the i18n locale JSON,
-# which is translated text rather than code).
+# which is translated text rather than code, and the console overlays).
 ui_prod_files() {
   find ui/src -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.css' \) \
-    ! -name '*.test.ts' ! -name '*.test.tsx' | sort
+    ! -name '*.test.ts' ! -name '*.test.tsx' | drop_ui_overlays | sort
 }
 
 # Production store sources: internal/server/store minus *_test.go.
@@ -197,18 +206,18 @@ measure() {
   engine_literal_ui)
     grep -rnE "'vllm'|\"vllm\"|'sglang'|\"sglang\"" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
-      | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | grep -c . || true
+      | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | drop_ui_overlays | grep -c . || true
     ;;
   ui_antd_import_files)
     # Count source files, including re-exports, dynamic imports and subpaths.
     grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
-      | grep -v '\.test\.' | grep -c . || true
+      | grep -v '\.test\.' | drop_ui_overlays | grep -c . || true
     ;;
   ui_antd_icon_import_files)
     grep -rlE "['\"]@ant-design/icons(/[^'\"]*)?['\"]" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
-      | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | grep -c . || true
+      | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | drop_ui_overlays | grep -c . || true
     ;;
   ui_untested_shared_files)
     untested_shared_ui | grep -c . || true
@@ -218,6 +227,9 @@ measure() {
     ;;
   ui_copy_caveat_strings)
     node scripts/ui_copy_audit.mjs caveat
+    ;;
+  ee_ui_internal_imports)
+    node scripts/ui_overlay_imports.mjs | grep -c . || true
     ;;
   ui_bundle_gzip_kb)
     # Needs a fresh UI build; measured by scripts/check_ui_bundle_size.sh.
@@ -914,6 +926,22 @@ tree_forbids ./internal/agent/connbudget 'gpuworks/' 'connbudget imports nothing
 tree_forbids ./internal/server/mcp 'gpuworks/' 'mcp speaks the protocol only: it knows neither callers nor tools'
 tree_forbids ./internal/agent/gpu/cardsmoke 'gpuworks/' 'cardsmoke schedules attempts and knows no vendor'
 tree_forbids ./internal/agent/gpu/pcicards 'gpuworks/internal/agent' 'pcicards reads sysfs and knows nothing of the agent'
+
+# --- console overlays --------------------------------------------------------
+# Console overlay modules (ui/src/extensions/<id>/) belong to the separately
+# built console: they are copied in, git-ignored, and left out of the UI
+# budgets, which is only sound while none of them is committed here.
+echo "console overlays:"
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  tracked_overlays=$(git ls-files -- 'ui/src/extensions/*/*' 2>/dev/null || true)
+  if [ -n "$tracked_overlays" ]; then
+    echo "  FAIL: no tracked file under ui/src/extensions/<id>/ (console overlays are copied in, not committed)" >&2
+    echo "$tracked_overlays" | sed 's/^/    /' >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: no tracked console overlay under ui/src/extensions/"
+  fi
+fi
 
 # --- verdict ---------------------------------------------------------------
 if [ "$failures" -gt 0 ]; then

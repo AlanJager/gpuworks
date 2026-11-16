@@ -102,7 +102,7 @@ grep -rnE "'vllm'|\"vllm\"|'sglang'|\"sglang\"" ui/src --include='*.ts' --includ
   | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | grep -c .
 ```
 
-排除：`*.test.*`；`ui/src/i18n/**`（引擎名作为展示文案出现在 locale 里是合理的）。
+排除：`*.test.*`；`ui/src/i18n/**`（引擎名作为展示文案出现在 locale 里是合理的）；控制台覆盖层 `ui/src/extensions/<id>/`（见 ee_ui_internal_imports）。
 
 ### ui_antd_import_files（迁移基线 349，2026-11-09）
 
@@ -114,7 +114,7 @@ grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src --include='*.ts' --include='*.tsx' 
   | grep -v '\.test\.' | grep -c .
 ```
 
-排除：`*.test.*`。降到 0 时脚本额外提示加 `ui_raw_color` / `ui_raw_radius` 规则。
+排除：`*.test.*`；控制台覆盖层 `ui/src/extensions/<id>/`（见 ee_ui_internal_imports）。降到 0 时脚本额外提示加 `ui_raw_color` / `ui_raw_radius` 规则。
 
 文件数只能拦"新文件引入 antd"，拦不住已有文件里继续加 antd 用法；逐文件的棘轮由下面的
 `ui/antd-inventory.json` 负责。
@@ -130,6 +130,27 @@ node scripts/ui_copy_audit.mjs long     # 或 caveat；list 逐条列出
 ```
 
 排除：无。超长说明改写或移进文档；"不包含模型文件"这类事实不算免责，正则不收。
+
+### ee_ui_internal_imports（初值 0，2026-11-16）
+
+意图：控制台覆盖层模块（单独构建的控制台复制进 `ui/src/extensions/<id>/` 的代码，本仓库 git 忽略）只通过
+`ui/src/extensions/sdk.ts` 使用控制台，这样控制台内部可以自由重构而不破坏覆盖层；`sdk.ts` 的导出清单由
+`ui/tests/consoleExtensionsSdk.test.ts` 钉住，只增不改。本项数覆盖层里越过 SDK 的 import。
+
+```sh
+node scripts/ui_overlay_imports.mjs | grep -c .   # 脚本逐条列出 file:line: specifier，预算取行数
+```
+
+计入：`ui/src/extensions/<id>/` 下任一 `.ts/.tsx/.js/.jsx/.mjs/.cjs` 文件（含测试）的静态 import、re-export、
+副作用 import、`import()` 与 `require()`，只要目标既不是 `sdk.ts`（相对路径或 `@/extensions/sdk`），也不在该覆盖层
+自己的目录里。npm 包同样计入（React、i18n、路由都经 SDK 再导出），整行注释不计入。社区树里没有覆盖层，恒为 0；
+单独构建的控制台在自己的 CI 里把覆盖层复制进来后跑同一个脚本。
+
+盲区（归 review）：拼接出来的动态 import 路径、写在字符串里的 `from "x"` 文本，正则分不清。
+
+同一组覆盖层目录被其他 UI 测量排除（`check_architecture.sh` 的 `drop_ui_overlays` 与 `ui_antd_inventory.mjs` 的
+范围），这只在覆盖层从不提交时成立，所以脚本的「console overlays」一节硬性要求 `git ls-files 'ui/src/extensions/*/*'`
+为空。
 
 ### ui_untested_shared_files（基线 0，2026-11-11）
 
@@ -187,7 +208,7 @@ grep -rlE "['\"]@ant-design/icons(/[^'\"]*)?['\"]" ui/src --include='*.ts' --inc
   | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | grep -c .
 ```
 
-排除：`*.test.*`；`ui/src/components/ui/`（Zeron 托管代码）。
+排除：`*.test.*`；`ui/src/components/ui/`（Zeron 托管代码）；控制台覆盖层 `ui/src/extensions/<id>/`。
 
 ### ui_bundle_gzip_kb（软预算 warn，初值 2450，2026-11-09）
 

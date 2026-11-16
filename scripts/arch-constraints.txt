@@ -17,6 +17,7 @@ ui_bundle_gzip_kb	2450	warn
 ui_untested_shared_files	0	max
 ui_copy_long_strings	0	max
 ui_copy_caveat_strings	0	max
+ee_ui_internal_imports	0	max
 setting_key_literal	0	max
 vendor_normalize_funcs	1	max
 infer_vendor_callers	0	max
