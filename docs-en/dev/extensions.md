@@ -65,10 +65,25 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `AddBannerSource(b)` | Banners at the top of every console page |
 | `GuardNodeInsert(g)` | A guard on every new node's insert |
 | `HoldScheduling(h)` | A scheduling holder, keyed by its source; a repeated source is refused |
+| `ReapplySchedulingHolds()` | The holder's answers changed: asks for the holds to be applied to every node again, rather than at each node's next status report |
+| `NodeFleet(ctx)` | Every node's hold facts (`store.NodeHoldFacts`), ordered by ID (enrollment order), in one query on the read pool |
 
-The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (methods with an error result return `app.ErrHostClosed`, the others panic). If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
+The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds` and `NodeFleet` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
 
 After every `Init` has run, the server releases extension-held cordons that no module of this build owns (so they do not outlive a changed build or a removed module), applies the holders' answers to every node once if any holder is registered, then builds the feature gate (`featuregate.New`) and hands it to the API.
+
+## Reapplying holds and the node fleet
+
+A holder is otherwise asked on every status report, so a node whose answer changed can wait up to a minute to be cordoned or released. A module whose answers changed (for example, a rebuilt snapshot holds a different set of nodes) calls `ReapplySchedulingHolds()`, and the server runs `ApplySchedulingHolds` over every node again:
+
+- It never blocks and allocates nothing, and may be called from any goroutine, **except from inside a hook** (`SchedulingHolder.Hold`, an insert guard): a pass asks every holder again, so a holder that asked for one from `Hold` would keep the whole fleet in passes.
+- Requests are coalesced: any number made while a pass is pending or running make at most one more pass, and passes are at least 2 seconds apart, so a holder whose answers flap costs at most one fleet-wide writer transaction every 2 seconds, never one per event.
+- The pass runs in the same `services()` loop as the modules' `Service`, off the caller's goroutine, and stops with the server; a failed pass is logged as an error and retried with a backoff that starts at 2 seconds and doubles up to a minute. With no holder registered it does nothing.
+
+A holder whose answers depend on the whole fleet (for example, choosing nodes in enrollment order) learns the fleet from these two, rather than by recording the nodes it sees in `Hold`:
+
+- `NodeFleet(ctx)`: every node's hold facts, in one query on the read pool. It is for boot and for a recompute after the fleet changed, coalesced; never per report or per event, and never from inside a hook. Subscribe to the topic below before the first read, so no change between them is missed.
+- The bus topic `store.NodeFleetTopic`: one event for each node insert (all three insert paths), each delete, and each status report that changed the node's hold facts (its card count or vendor; its ID, UUID, enrollment time and Kubernetes cluster never change), keyed by the node's ID. Read it with `store.NodeFleetChangeOf(ev)`, which gives `{NodeID, Kind}` (`NodeInserted`, `NodeDeleted`, `NodeFactsChanged`); do not parse the reason text of the `node` topic. A routine report that changed no hold fact publishes nothing, so publishers cost what they did. Like every bus topic, a subscriber that falls behind gets only each node's latest event, so it treats any event as "this node, and so the fleet, changed" and recomputes from `NodeFleet`, coalesced, rather than counting events. A node ID is never reused after its node is deleted.
 
 `Service.Run` is started by the same `services()` loop in `App.Run` as the health checks, card failure records, usage report and notice refresh, after the controller starts. It returns when `ctx` is done; an error it returns is logged and the service is not restarted. One App can be `Run` more than once (an in-place restart), so `Run` must tolerate being called again.
 
@@ -88,7 +103,7 @@ Migration sets (`store.MigrationSet`) run after the core migrations, in the same
 | Hook | Called where | How often |
 |---|---|---|
 | `NodeEnrollmentGuard` | Inside the writer transaction of the three node insert paths (`CreateNodePending`, `EnrollKubeNode`, `RegisterNode`) | Every new node insert |
-| `SchedulingHolder.Hold` | Inside the writer transaction of every status report and scheduling change; for every node at startup and in `ApplySchedulingHolds` | Every report of every node |
+| `SchedulingHolder.Hold` | Inside the writer transaction of every status report and scheduling change; for every node at startup and in every `ApplySchedulingHolds` (including the passes modules ask for) | Every report of every node |
 | `featuregate.Source.Availability` | Every request to an extension route, every console manifest request | Every request |
 | `BannerSource.Banners` | Every console manifest request | Every request |
 | `Service.Run` | A background loop | Continuously |
@@ -101,7 +116,7 @@ There is a single writer connection (`SetMaxOpenConns(1)` in `store/database_ope
 
 - not call the Store or `Tables()`, do no I/O, and take no contended lock;
 - be O(1): one atomic load plus one map lookup, with no allocation when they do not hold;
-- answer from a snapshot the module maintains elsewhere (a `Service`, a bus subscription, an API write);
+- answer from a snapshot the module maintains elsewhere (a `Service`, a bus subscription, an API write), and call `ReapplySchedulingHolds` there when the snapshot changes;
 - return a prebuilt `*messages.ProductError` when they refuse.
 
 Feature sources and banner sources are called on request threads and likewise answer from snapshots, never scanning nodes, deployments or tables. The contract tests in `testenv/extmodule` show what breaking the rule does: a guard that writes its own table cannot proceed until the insert transaction ends.
@@ -140,4 +155,4 @@ Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtim
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 19eb305b80c14b2936a74757a5a229efeaca74d7b0f0e940ad89b9ef78572f03 -->
+<!-- translation-source-sha256: a3991a1ac2492ca90ae779214df33a1898ac3492408ecdf823f705ed657a43f8 -->

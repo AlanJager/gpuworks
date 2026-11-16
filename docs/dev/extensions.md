@@ -65,10 +65,25 @@ type Service interface{ Run(ctx context.Context) error }
 | `AddBannerSource(b)` | 控制台每页顶部的横幅 |
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
+| `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
+| `NodeFleet(ctx)` | 全部节点的保持事实（`store.NodeHoldFacts`），按 id（加入顺序）排序，读池上一次查询 |
 
-`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic）。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
+`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds` 与 `NodeFleet` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
 所有 `Init` 结束后，server 先释放本构建没有任何模块认领的扩展停止调度（换了构建或去掉了模块时，它们不会一直留着），有保持者时再对全部节点应用一次保持，然后构建功能门（`featuregate.New`）并交给 API。
+
+## 保持者的重新应用与节点集合
+
+保持者的答案平时在每次状态上报时被问到，所以答案变了的节点最多要等一分钟才被停止或恢复调度。答案变了（例如快照重建后被保持的集合不同了）的模块调用 `ReapplySchedulingHolds()`，server 对全部节点再执行一次 `ApplySchedulingHolds`：
+
+- 不阻塞、不分配内存，可以在任何 goroutine 调用，**唯独不能在钩子里**（`SchedulingHolder.Hold`、插入守卫）：一次重新应用会再问一遍所有保持者，在 `Hold` 里请求就会让全部节点不停地重新应用。
+- 请求会合并：一次重新应用等待或执行期间的任意多次请求，最多再引起一次；两次之间至少隔 2 秒，所以答案来回抖动的保持者每 2 秒最多花一次全表写事务，不会变成每个事件一次。
+- 重新应用在模块的 `Service` 所在的同一个 `services()` 循环里执行，不占调用方的 goroutine，随 server 停止；失败时记错误日志，从 2 秒起加倍退避（最长一分钟）重试。没有注册保持者时什么也不做。
+
+答案取决于整个节点集合的保持者（例如按加入顺序挑选节点），用下面两样了解集合，而不是在 `Hold` 里记下见过的节点：
+
+- `NodeFleet(ctx)`：全部节点的保持事实，读池上一次查询。只用于启动时和节点集合变化之后合并执行的重算，不在每次上报或每个事件里调用，也不在钩子里调用。先订阅下面的主题再第一次读取，二者之间的变化就不会漏掉。
+- 总线主题 `store.NodeFleetTopic`：节点插入（三条插入路径）、删除，以及改变了保持事实（卡数或厂商；id、UUID、加入时间与所属 Kubernetes 集群不会变）的状态上报，各发一个事件，以节点 id 为键；用 `store.NodeFleetChangeOf(ev)` 读出 `{NodeID, Kind}`（`NodeInserted`、`NodeDeleted`、`NodeFactsChanged`），不要解析 `node` 主题的原因文本。没有改变保持事实的例行上报不发事件，所以发布方的开销不变。和所有总线主题一样，跟不上的订阅者只收到每个节点最新的一个事件，所以订阅者把任何事件都当作「这个节点、因而集合变了」，合并后从 `NodeFleet` 重算，不数事件。节点 id 删除后不再复用。
 
 `Service.Run` 由 `App.Run` 的同一个 `services()` 循环启动，与健康检查、卡故障记录、用量报告、通知刷新并列，在控制器启动之后运行；`ctx` 结束时返回，返回的错误只记日志、不重启。同一个 App 可以多次 `Run`（原地重启），所以 `Run` 必须能被再次调用。
 
@@ -88,7 +103,7 @@ type Service interface{ Run(ctx context.Context) error }
 | 钩子 | 在哪里被调用 | 频率 |
 |---|---|---|
 | `NodeEnrollmentGuard` | 三条节点插入路径（`CreateNodePending`、`EnrollKubeNode`、`RegisterNode`）的写事务内 | 每次插入新节点 |
-| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与 `ApplySchedulingHolds` 时对全部节点 | 每节点每次上报 |
+| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与每次 `ApplySchedulingHolds`（含模块请求的重新应用）时对全部节点 | 每节点每次上报 |
 | `featuregate.Source.Availability` | 扩展路由的每个请求、每次控制台清单请求 | 每请求 |
 | `BannerSource.Banners` | 每次控制台清单请求 | 每请求 |
 | `Service.Run` | 后台循环 | 常驻 |
@@ -101,7 +116,7 @@ type Service interface{ Run(ctx context.Context) error }
 
 - 不调用 Store、`Tables()`，不做任何 I/O，不取有竞争的锁；
 - O(1)：一次原子读加一次 map 查找；不保持时不分配内存；
-- 从模块自己维护的快照作答，快照在别处（`Service`、事件订阅、API 写入）更新；
+- 从模块自己维护的快照作答，快照在别处（`Service`、事件订阅、API 写入）更新，快照变了再调用 `ReapplySchedulingHolds`；
 - 拒绝时返回预先构造好的 `*messages.ProductError`。
 
 功能来源与横幅来源在请求线程上被调用，同样从快照作答，不扫节点、部署或表。`testenv/extmodule` 里的契约测试演示了违反规则的后果：一个在守卫里写自己表的守卫，在插入事务结束前无法继续。

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/hkdf"
 	"crypto/sha256"
 	"errors"
@@ -132,7 +133,8 @@ func (h *Host) GuardNodeInsert(g store.NodeEnrollmentGuard) {
 // (store.SchedulingHolder): it is asked on every status report inside the
 // writer's transaction, so it must be pure and O(1). Holders are keyed by
 // their source; a second holder with a source already registered is refused.
-// The server applies every holder's answers once Init has run.
+// The server applies every holder's answers once Init has run, and again
+// whenever a module calls ReapplySchedulingHolds.
 func (h *Host) HoldScheduling(holder store.SchedulingHolder) error {
 	if h.reg.closed {
 		return ErrHostClosed
@@ -142,6 +144,31 @@ func (h *Host) HoldScheduling(holder store.SchedulingHolder) error {
 	}
 	h.reg.holders++
 	return nil
+}
+
+// ReapplySchedulingHolds asks the server to apply every holder's answers to
+// the whole fleet (store.ApplySchedulingHolds) instead of waiting for each
+// node's next status report, up to a minute away. A module calls it when its
+// answers change. It never blocks and may be called from any goroutine, at
+// any time, except from inside a hook (SchedulingHolder.Hold, a
+// NodeEnrollmentGuard): a pass asks every holder again, so a holder that
+// asked for one from Hold would keep the fleet in passes. Calls are
+// coalesced: any number made while a pass is pending or running make at
+// most one more pass, at least two seconds after the last one. The pass
+// runs with the modules' services and stops with the server; a failed pass
+// is logged and retried with a backoff. With no holder registered it does
+// nothing.
+func (h *Host) ReapplySchedulingHolds() { h.reg.holds.Request() }
+
+// NodeFleet is every node's hold facts, ordered by id (enrollment order),
+// read in one query on the read pool (store.NodeFleet). It is for a module
+// that derives its answers from the whole fleet: at boot, and for a
+// recompute after node lifecycle changes (store.NodeFleetTopic on the Bus,
+// read with store.NodeFleetChangeOf), coalesced; never per status report or
+// per event, and never from inside a hook. Subscribe before the first read,
+// so no change between them is missed.
+func (h *Host) NodeFleet(ctx context.Context) ([]store.NodeHoldFacts, error) {
+	return h.st.NodeFleet(ctx)
 }
 
 func (h *Host) mustBeOpen(method string) {

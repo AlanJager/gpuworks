@@ -40,12 +40,17 @@ func (s *fakeSource) Availability(featuregate.Key) featuregate.Availability {
 	return featuregate.Availability{Access: featuregate.Access(s.access.Load()), Link: "https://example.com/fake"}
 }
 
-// fakeHolder holds every node with cards while on.
-type fakeHolder struct{ on atomic.Bool }
+// fakeHolder holds every node with cards while on, and counts how often it
+// was asked.
+type fakeHolder struct {
+	on    atomic.Bool
+	asked atomic.Int64
+}
 
 func (h *fakeHolder) Source() store.SchedulingSource { return "fakehold" }
 
 func (h *fakeHolder) Hold(f store.NodeHoldFacts) store.NodeHold {
+	h.asked.Add(1)
 	if !h.on.Load() || f.OwnedCards == 0 {
 		return store.NodeHold{}
 	}

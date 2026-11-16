@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
+	"gpuworks.ai/gpuworks/internal/server/holdpass"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/version"
@@ -21,13 +23,21 @@ type extensionSet struct {
 	source   featuregate.Source
 	sourceBy string
 	holders  int
+	holds    *holdpass.Runner
 	services []func(context.Context)
 	closed   bool
 }
 
+// holdPassFloor is the least time between two passes of the scheduling
+// holds a module asks for (Host.ReapplySchedulingHolds): each is a writer
+// transaction over the fleet, so a holder whose answers flap costs one pass
+// per floor.
+const holdPassFloor = 2 * time.Second
+
 // startExtensions runs every module's Init, applies the scheduling holds
-// they registered (and releases holds no module of this build owns), and
-// hands the API what they added. With no modules it leaves the API exactly
+// they registered (and releases holds no module of this build owns), runs
+// the passes they ask for afterwards with the modules' services, and hands
+// the API what they added. With no modules it leaves the API exactly
 // as the community server has it, apart from releasing holds a former build
 // left behind. On error it stops what New has started that Run would
 // otherwise stop; New closes the store.
@@ -37,7 +47,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 			a.proxy.Close()
 		}
 	}()
-	set := &extensionSet{}
+	set := &extensionSet{holds: holdpass.New(a.store.ApplySchedulingHolds, a.log.With("component", "scheduling_holds"), holdPassFloor)}
 	section := serverconfig.File{Extensions: cfg.Sections}
 	for _, m := range cfg.Extensions.Modules {
 		name := m.Name()
@@ -69,6 +79,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 			return fmt.Errorf("apply extension scheduling holds: %w", err)
 		}
 		a.log.Info("applied extension scheduling holds", "held", len(held), "released", len(released))
+		set.services = append(set.services, set.holds.Run)
 	}
 	if deps.Extensions, err = set.apiDeps(); err != nil {
 		return err
