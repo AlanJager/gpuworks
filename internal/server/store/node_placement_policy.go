@@ -8,6 +8,10 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 )
 
+// NodePlacementPolicy is the placement policy a node row embeds, named here
+// so callers that write it through the store need not import nodepolicy.
+type NodePlacementPolicy = nodepolicy.Policy
+
 // NodeChangePlacementPolicy is the change reason of an operator's edit of a
 // node's placement policy. Like a cordon it is not a status report, so the
 // controller retries the deployments waiting for a node at once.

@@ -195,6 +195,12 @@ type Node struct {
 	CreatedAt          time.Time     `json:"created_at"`
 	GPUs               []GPU         `json:"gpus"`
 	Topology           *NodeTopology `json:"topology,omitempty"`
+	// PlacementPolicy is the operator's per-node placement knobs, keyed as
+	// GET /scheduling/node-placement-policies keys them (NodePlacementPolicyOf).
+	PlacementPolicy map[string]any `json:"placement_policy"`
+	// PlacementPolicyAvailability says, per knob, whether it takes effect on
+	// this node.
+	PlacementPolicyAvailability []NodePlacementPolicyAvailability `json:"placement_policy_availability"`
 	// GPUIsolation is set while the node's NVIDIA instance pods are kept to
 	// their own card by CUDA alone (soft isolation); absent when strict, and
 	// while the node is offline.
