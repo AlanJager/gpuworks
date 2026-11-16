@@ -66,11 +66,15 @@ const (
 const testExternalKVTransfer = `{"kv_connector":"TestExternalConnector","kv_connector_extra_config":{"spec_name":"TestExternalSpec"},"kv_role":"kv_both"}`
 
 // withKVBackends swaps the package's catalog for the shipped rows plus the
-// test row for the rest of the test. Safe because this package's tests do not
-// run in parallel (t.Parallel is not used here); a parallel test would see the
-// swapped catalog.
+// test row for the rest of the test. The swap is a package variable, so a
+// caller must not run in parallel with any test that reads the catalog (most
+// of this package does, through engineParams). t.Setenv enforces that: the
+// testing package fails it in a parallel test or under a parallel parent,
+// and fails a later t.Parallel in the same test, so a parallel caller fails
+// fast instead of racing.
 func withKVBackends(t *testing.T) {
 	t.Helper()
+	t.Setenv("GPUWORKS_TEST_KV_BACKENDS_SWAPPED", "1")
 	native, ok := kvbackend.Builtin().Resolve(EngineVLLM, "")
 	if !ok {
 		t.Fatal("no native vLLM row")
