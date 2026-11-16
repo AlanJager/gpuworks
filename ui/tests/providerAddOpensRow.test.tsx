@@ -6,7 +6,7 @@
 // does (its toast included); the clusters are read when the row opens.
 // Editing an account changes neither the address nor syncs.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test, type TestContext } from "node:test";
 import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
@@ -50,9 +50,9 @@ function Address() {
  * lists it from then on. A sync records the account and, once it has run, the
  * account lists its instance; `syncError` makes it fail.
  */
-function mount({ providers = [] as CloudProvider[], syncError = null as Error | null } = {}) {
+function mount(t: TestContext, { providers = [] as CloudProvider[], syncError = null as Error | null } = {}) {
   const server = servePlatforms(api, { providers, kinds: [aliyun, hostsOnly] });
-  const seen = { added: [] as unknown[], synced: [] as number[], instanceReads: 0, clusterReads: [] as number[] };
+  const seen = { added: [] as unknown[], synced: [] as number[], instanceReads: 0, clusterReads: [] as number[], notices: [] as string[] };
   let synced = false;
   Object.assign(api, {
     addProvider: async (body: { kind: string; name: string }) => {
@@ -77,10 +77,23 @@ function mount({ providers = [] as CloudProvider[], syncError = null as Error | 
       <MemoryRouter initialEntries={["/providers"]}><Address /><CloudProvidersPage /></MemoryRouter>
     </I18nextProvider>,
   );
+  // Record real rendered feedback before click/act and row reads can outlast its 3s lifetime.
+  const notices = screen.getByRole("list", { name: "Notices" });
+  const captured = new Set<Element>();
+  const observer = new dom.window.MutationObserver(() => {
+    for (const notice of notices.children) {
+      const content = notice.textContent;
+      if (content && !captured.has(notice)) {
+        captured.add(notice);
+        seen.notices.push(content);
+      }
+    }
+  });
+  observer.observe(notices, { childList: true, subtree: true, characterData: true });
+  t.after(() => observer.disconnect());
   return { server, seen, user: userEvent.setup({ document: dom.window.document }) };
 }
 
-const toasts = () => [...(screen.queryByRole("list", { name: "Notices" })?.children ?? [])].map((toast) => toast.textContent);
 /** The row of the platform with that name. */
 const rowOf = (name: string) => screen.getAllByRole("row").find((row) => within(row).queryAllByRole("cell")[1]?.textContent === name) as HTMLElement | undefined;
 /** Whether a row is open: its own fold button says so. */
@@ -100,8 +113,8 @@ async function addFromCard(user: ReturnType<typeof userEvent.setup>, kind: strin
   await waitFor(() => assert.equal(screen.queryAllByRole("dialog").length, 0, "the dialog closes once the account is added"));
 }
 
-test("adding an Alibaba Cloud account closes the dialog and opens its row: it is synchronized once, so its instances are listed, and its clusters are read", async () => {
-  const { seen, user } = mount();
+test("adding an Alibaba Cloud account closes the dialog and opens its row: it is synchronized once, so its instances are listed, and its clusters are read", async (t) => {
+  const { seen, user } = mount(t);
   await screen.findByRole("button", { name: "Add Alibaba Cloud" });
   await addFromCard(user, "Alibaba Cloud", "ali-new");
   assert.deepEqual(seen.added, [{ kind: "aliyun", name: "ali-new", api_key: "key" }]);
@@ -112,32 +125,32 @@ test("adding an Alibaba Cloud account closes the dialog and opens its row: it is
   assert.ok(await instanceRow("train-01"), "the instances the sync found are listed");
   assert.ok(await groupOf("ack-gpu"), "and the account's clusters, read as the row opened");
   assert.ok(seen.clusterReads.every((id) => id === 7) && seen.clusterReads.length >= 1);
-  await waitFor(() => assert.deepEqual(toasts(), [p.message.syncDone.replace("{{count}}", "1")], "the sync says how it went, as the row's Sync does"));
+  await waitFor(() => assert.deepEqual(seen.notices, [p.message.syncDone.replace("{{count}}", "1")], "the sync says how it went, as the row's Sync does"));
   assert.deepEqual(seen.synced, [7], "only once");
 });
 
-test("adding an account of a kind that lists no instances opens its row without a sync", async () => {
-  const { seen, user } = mount();
+test("adding an account of a kind that lists no instances opens its row without a sync", async (t) => {
+  const { seen, user } = mount(t);
   await addFromCard(user, "Racks", "rack-a");
   await waitFor(() => assert.equal(where.search, "?open=p7"));
   await waitFor(() => assert.ok(opened("rack-a")));
   assert.deepEqual(seen.synced, []);
-  assert.deepEqual(toasts(), [], "nothing to say of a sync that did not run");
+  assert.deepEqual(seen.notices, [], "nothing to say of a sync that did not run");
 });
 
-test("a failed first sync says why, and the new account's row stays open", async () => {
-  const { seen, user } = mount({ syncError: new Error("aliyun: InvalidAccessKeyId") });
+test("a failed first sync says why, and the new account's row stays open", async (t) => {
+  const { seen, user } = mount(t, { syncError: new Error("aliyun: InvalidAccessKeyId") });
   await addFromCard(user, "Alibaba Cloud", "ali-new");
   await waitFor(() => assert.deepEqual(seen.synced, [7]));
-  await waitFor(() => assert.deepEqual(toasts(), [p.message.syncFailed.replace("{{detail}}", "aliyun: InvalidAccessKeyId")]));
+  await waitFor(() => assert.deepEqual(seen.notices, [p.message.syncFailed.replace("{{detail}}", "aliyun: InvalidAccessKeyId")]));
   assert.equal(where.search, "?open=p7");
   await waitFor(() => assert.ok(opened("ali-new"), "the row is open all the same"));
   assert.ok(await groupOf("ack-gpu"), "its clusters are still read");
 });
 
-test("saving an edited account closes the dialog without changing the address or syncing", async () => {
+test("saving an edited account closes the dialog without changing the address or syncing", async (t) => {
   const existing = account(3, "ali-prod", "aliyun");
-  const { seen, user } = mount({ providers: [existing] });
+  const { seen, user } = mount(t, { providers: [existing] });
   const updates: unknown[] = [];
   Object.assign(api, {
     provider: async () => ({ id: 3, kind: "aliyun", name: "ali-prod", extra: {} }),
