@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/selflog"
@@ -39,6 +41,9 @@ type Config struct {
 	// ConfigPath is server.yaml; empty means the listen addresses cannot be
 	// edited from the console.
 	ConfigPath string
+	// Sections are server.yaml's extensions sections, by module name, raw;
+	// each module decodes its own strictly. Nil without server.yaml.
+	Sections map[string]yaml.Node
 	// ListenOverridden is set when --addr replaced the file's listen section,
 	// so the console shows it read-only.
 	ListenOverridden bool

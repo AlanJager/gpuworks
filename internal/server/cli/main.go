@@ -79,7 +79,7 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 	sub, rest := args[0], args[1:]
 	switch sub {
 	case "serve":
-		if err := serve(log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := serve(log, rest, opt); err != nil && !errors.Is(err, flag.ErrHelp) {
 			if !errors.Is(err, errServeLogged) {
 				log.Error("server exited", "err", err)
 			}
@@ -161,7 +161,7 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 // own logger (its file and stderr), so Run does not print it a second time.
 var errServeLogged = errors.New("server exited")
 
-func serve(log *slog.Logger, args []string) (err error) {
+func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	cfg := app.DefaultConfig()
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "", "server.yaml; flags below override its values")
@@ -261,6 +261,7 @@ func serve(log *slog.Logger, args []string) (err error) {
 	// them) reach the log file too, rather than bare stderr - which under
 	// launchd is a file nothing rotates.
 	slog.SetDefault(log)
+	warnUnclaimedSections(log, file, opt.claimedSections())
 
 	// Diagnostics on demand: SIGUSR1 opens a loopback pprof listener for a
 	// bounded window (debugsrv.DefaultWindow), then it closes itself.

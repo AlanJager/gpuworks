@@ -39,6 +39,7 @@ func loadServerConfig(path string, addrGiven bool, host serverconfig.Host) (serv
 // flag named on the command line already set the value.
 func applyServerConfig(cfg *app.Config, file serverconfig.File, given map[string]bool) {
 	cfg.PeerRelay = file.PeerRelay
+	cfg.Sections = file.Extensions
 	cfg.TLSCertFile, cfg.TLSKeyFile = file.TLSCertFile, file.TLSKeyFile
 	cfg.OutboundAllowPrivateHosts = append([]string(nil), file.OutboundAllowPrivateHosts...)
 	cfg.OutboundRestrictPrivateHosts = file.OutboundRestrictPrivateHosts

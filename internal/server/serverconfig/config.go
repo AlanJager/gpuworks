@@ -86,6 +86,12 @@ type File struct {
 	// and the fleet's size on automatic update checks. Absent means yes; a
 	// private delivery writes false before the first start.
 	UsageReport *bool `yaml:"usage_report,omitempty"`
+	// Extensions holds one section per module a separately built server
+	// adds, under the module's name. The sections are kept raw: each module
+	// decodes its own with Section, strictly. The top-level keys around them
+	// stay strict; a section no module claims only draws a warning at start,
+	// so moving a data directory between builds never stops the server.
+	Extensions map[string]yaml.Node `yaml:"extensions,omitempty"`
 }
 
 // Log configures the server's own log.
