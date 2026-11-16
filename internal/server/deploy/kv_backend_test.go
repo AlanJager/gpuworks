@@ -276,6 +276,18 @@ func TestKVBackendTargetAndTopologyGates(t *testing.T) {
 			t.Fatalf("mode %d: supported target refused: %v", mode, err)
 		}
 	}
+	// An unknown vendor (evaluate with no node, automatic placement) is not
+	// yet a target: the profile lists the card, so the zero mode allows it,
+	// and the assigned target is held to the vendor list after placement.
+	if _, err := resolveKVTest(kvTestParams(selectTestExternal(), ""), ValidateTargetCapabilities); err != nil {
+		t.Fatalf("unknown vendor refused before placement: %v", err)
+	}
+	if !slices.ContainsFunc(kvBackendProfiles(EngineVLLM, ""), func(p KVBackendProfile) bool { return p.ID == testExternalKVBackend }) {
+		t.Fatal("the profile does not list the row for an unknown vendor")
+	}
+	if _, err := resolveKVTest(kvTestParams(selectTestExternal(), ""), ValidateAssignedTarget); err != nil {
+		t.Fatalf("assigned target with no vendor fact refused: %v", err)
+	}
 	// Collection only gathers what is requested; the assigned target is
 	// validated after placement.
 	launch, err := resolveKVTest(kvTestParams(selectTestExternal(), "ascend"), CollectTargetCapabilities)

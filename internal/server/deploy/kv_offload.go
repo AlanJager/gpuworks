@@ -127,7 +127,11 @@ func validateKVBackendTarget(engine string, f requestedTopology, p Params) error
 	if !ok {
 		return nil // validateKVBackend refuses an unknown id
 	}
-	if !row.Supports(p.Vendor) {
+	// An empty vendor is a target not known yet (evaluate with no node,
+	// automatic placement): like accelerator.Supports and the profile's card
+	// list, the gate allows it, and the assigned target is checked after
+	// placement.
+	if strings.TrimSpace(p.Vendor) != "" && !row.Supports(p.Vendor) {
 		return messages.NewProductError(messages.ErrorKVOffloadBackendUnsupportedOnTarget,
 			fmt.Sprintf("KV offload backend %s does not run on %s", row.ID, accelerator.VendorBrand(p.Vendor)),
 			map[string]any{"backend": row.ID, "vendor": accelerator.VendorBrand(p.Vendor)})
