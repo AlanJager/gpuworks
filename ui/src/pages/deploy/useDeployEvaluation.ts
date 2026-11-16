@@ -130,7 +130,7 @@ export default function useDeployEvaluation({
     setEvaluating(true);
     // Another engine's displayed defaults leave the form first; clearing them
     // is itself a draft change, which evaluates the cleaned draft.
-    const stale = quickParamsRef.current.staleFor(
+    const stale = quickParamsRef.current.takeStaleFor(
       String(form.getFieldValue("engine") ?? ""),
       form.getFieldsValue(true),
     );

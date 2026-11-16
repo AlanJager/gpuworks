@@ -16,15 +16,18 @@ register(pathToFileURL(new URL("./deploySleepableCssHook.mjs", import.meta.url).
 // (-1) as its default, and gives SGLang's none. A form first evaluated for
 // vLLM displays -1 as "Automatic"; choosing an SGLang template afterwards must
 // not carry that displayed default into the SGLang draft, where -1 is no
-// value at all (the server refuses it as negative).
+// value at all (the server refuses it as negative). The structured form
+// already left displayed values out of its requests; a draft under a manual
+// command serializes the whole form, and that is where the -1 leaked.
 
 const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 const { MemoryRouter } = await import("react-router-dom");
-const { Form } = await import("antd");
+const { Form, Input, InputNumber } = await import("antd");
 const { api } = await import("../src/api.ts");
 const useEvaluation = (await import("../src/pages/deploy/useDeployEvaluation.ts")).default;
 const DeployParamField = (await import("../src/pages/deploy/DeployParamField.tsx")).default;
 const { buildPayload } = await import("../src/pages/deploy/deployHelpers.ts");
+const { EvaluateQuickParams } = await import("../src/pages/deploy/evaluateQuickParams.ts");
 const { i18n, locale } = await createI18n(["deploy", "images"]);
 const deployLocale = locale.deploy;
 const profiles = JSON.parse(fs.readFileSync(new URL("./fixtures/engines.json", import.meta.url), "utf8")) as EngineProfile[];
@@ -54,7 +57,7 @@ function answer(request: Record<string, any>): EvaluateResponse {
   const engine = String(request.engine);
   const base = {
     warnings: [], defaults: { model_mount: "/model", master_port: 29500, engine: "vllm" }, image: request.image || `runner:${engine}`,
-    command: [engine], argv: [], entrypoint: [], env: {}, injected: [],
+    command: [engine, "serve"], argv: ["/model"], entrypoint: [engine, "serve"], env: {}, injected: [],
     eligible_nodes: [{ uuid: "node-uuid-1", name: "gpu3", eligible: true }],
     selected_node: { uuid: "node-uuid-1", name: "gpu3", reasons: [{ code: "auto_selected" }] },
   };
@@ -66,11 +69,15 @@ function answer(request: Record<string, any>): EvaluateResponse {
     return { ...base, ok: false, errors: [{ field: "max_model_len", code: "FIELD_INVALID", params: { field: "max_model_len" } }] } as never;
   }
   // form_values are the effective values: the dictionary default for vLLM,
-  // nothing for SGLang unless the draft states a context.
+  // nothing for SGLang unless the draft states a context; the argument text
+  // and the placement's degrees are echoed, as evaluate.go does.
   const context = stated ?? (engine === "vllm" ? -1 : undefined);
   return {
-    ...base, ok: true, extra_args: "",
-    form_values: { extra_args: "", ...(context === undefined ? {} : { max_model_len: context }) },
+    ...base, ok: true,
+    form_values: {
+      extra_args: request.extra_args ?? "", tp: request.placement?.tp ?? 1, pp: request.placement?.pp ?? 1,
+      ...(context === undefined ? {} : { max_model_len: context }),
+    },
   } as never;
 }
 
@@ -115,15 +122,21 @@ async function openOnVLLM() {
   await waitFor(() => assert.equal(contextInput().value, automatic), { timeout: 5000 });
 }
 
-test("an SGLang template does not inherit vLLM's automatic context default", async () => {
+test("an SGLang template chosen while editing the command does not inherit vLLM's automatic context", async () => {
   await openOnVLLM();
+  // Command text editing is how a draft reaches manual mode on the page.
+  const labels = deployLocale.runtimeCommand;
+  await waitFor(() => assert.equal((screen.getByRole("button", { name: new RegExp(labels.edit) }) as HTMLButtonElement).disabled, false), { timeout: 5000 });
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(labels.edit) }));
+  fireEvent.click(await screen.findByRole("button", { name: labels.enter, exact: true }));
+  await waitFor(() => assert.equal(requests.at(-1)?.container_overrides?.command_mode, "manual"), { timeout: 5000 });
   fireEvent.click(await screen.findByRole("button", { name: /Qwen3 0\.6B/ }));
   await waitFor(() => assert.ok(requests.some((request) => request.engine === "sglang")), { timeout: 5000 });
   await waitFor(() => {
     const last = requests.at(-1)!;
     assert.equal(last.engine, "sglang");
+    assert.equal(last.container_overrides?.command_mode, "manual");
     assert.equal(last.quick_params?.max_model_len, undefined);
-    assert.equal(contextInput().value, "");
   }, { timeout: 5000 });
   for (const request of requests.filter((item) => item.engine === "sglang")) {
     assert.notEqual(request.quick_params?.max_model_len, -1, "no SGLang evaluation states the vLLM sentinel");
@@ -131,10 +144,8 @@ test("an SGLang template does not inherit vLLM's automatic context default", asy
   assert.equal(screen.queryByText(/FIELD_INVALID|Invalid value/i), null);
 });
 
-// The same feedback loop without the page around it, where the second engine
-// may arrive with a manual command (as a PD template's launch script does): a
-// manual draft serializes the whole form, so a displayed default still on it
-// would be sent as if the deployer had stated it.
+// The same feedback loop without the page around it, switching the engine
+// with and without a manual command.
 let form: import("antd").FormInstance;
 const profileOf = (engine: string) => profiles.find((profile) => profile.name === engine)!;
 function Host() {
@@ -150,6 +161,8 @@ function Host() {
   return (
     <Form form={form} initialValues={{ engine: "vllm" }} onValuesChange={(changed) => evaluation.noteDraftChanged(changed)}>
       <DeployParamField key={engine} spec={spec} />
+      <Form.Item name="extra_args" label="Extra arguments"><Input /></Form.Item>
+      <Form.Item name="tp" label="Tensor parallel"><InputNumber /></Form.Item>
       <output data-testid="pending">{String(evaluation.evaluating)}</output>
     </Form>
   );
@@ -206,4 +219,46 @@ test("a context the deployer set back to automatic is kept across the switch", a
   await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
   assert.equal(requests.at(-1)?.quick_params?.max_model_len, -1);
   assert.equal(form.getFieldValue("max_model_len"), -1);
+});
+
+for (const manual of [true, false]) {
+  test(`typed extra arguments and tensor parallelism survive the switch${manual ? " with a manual command" : ""}`, async () => {
+    // Neither travels in quick_params, and the server echoes both in
+    // form_values: the draft equals the display, yet they are the deployer's.
+    await openHost();
+    fireEvent.change(screen.getByRole("textbox", { name: "Extra arguments" }), { target: { value: "--enable-x" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Tensor parallel" }), { target: { value: "2" } });
+    fireEvent.blur(screen.getByRole("spinbutton", { name: "Tensor parallel" }));
+    await waitFor(() => {
+      assert.equal(requests.at(-1)?.extra_args, "--enable-x");
+      assert.equal(requests.at(-1)?.placement?.tp, 2);
+    }, { timeout: 5000 });
+    await settled();
+    // A further structured evaluation, so the typed values are now displayed.
+    fireEvent.change(contextInput(), { target: { value: "4096" } });
+    fireEvent.blur(contextInput());
+    await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 4096), { timeout: 5000 });
+    await settled();
+    switchTo("sglang", manual);
+    await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"), { timeout: 5000 });
+    await settled();
+    assert.equal(form.getFieldValue("extra_args"), "--enable-x");
+    assert.equal(form.getFieldValue("tp"), 2);
+    assert.equal(requests.at(-1)?.extra_args, "--enable-x");
+    assert.equal(requests.at(-1)?.placement?.tp, 2);
+  });
+}
+
+test("only untouched dictionary values are stale for another engine, and only once", () => {
+  const params = new EvaluateQuickParams();
+  const draft = { max_model_len: -1, dtype: "auto", extra_args: "--enable-x", tp: 2, pp: 1, kv_cache_dtype: "" };
+  params.accept({ form_values: { max_model_len: -1, dtype: "auto", kv_cache_dtype: "" } } as never, "vllm");
+  params.prepare({ quick_params: { max_model_len: -1, dtype: "auto", kv_cache_dtype: "" }, extra_args: "--enable-x" });
+  params.noteChanged({ extra_args: "--enable-x", tp: 2 });
+  params.prepare({ quick_params: { max_model_len: -1, dtype: "auto" }, extra_args: "--enable-x" });
+  params.accept({ form_values: { ...draft } } as never, "vllm");
+  assert.deepEqual(params.takeStaleFor("vllm", draft), [], "the same engine keeps its display");
+  assert.deepEqual(params.takeStaleFor("", draft), [], "an engine not yet known decides nothing");
+  assert.deepEqual(params.takeStaleFor("sglang", draft).sort(), ["dtype", "max_model_len"]);
+  assert.deepEqual(params.takeStaleFor("sglang", draft), [], "the display is forgotten once taken");
 });

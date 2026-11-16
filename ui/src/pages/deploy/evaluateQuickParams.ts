@@ -9,9 +9,20 @@ export class EvaluateQuickParams {
   // The engine whose dictionary produced `displayed`.
   private displayedEngine = "";
   private authored = new Set<string>();
+  // Keys the deployer has edited at any point. Unlike `authored`, which
+  // follows what the next request states, this is never pruned: placement
+  // and argument fields (tp, pp, extra_args) never travel in quick_params,
+  // yet a value typed there is still the deployer's own.
+  private touched = new Set<string>();
+  // Keys seen in quick_params: the dictionary parameters, the only values
+  // whose meaning comes from one engine's dictionary.
+  private paramKeys = new Set<string>();
 
   noteChanged(changed: Record<string, unknown>) {
-    for (const key of Object.keys(changed)) this.authored.add(key);
+    for (const key of Object.keys(changed)) {
+      this.authored.add(key);
+      this.touched.add(key);
+    }
   }
 
   prepare(payload: Record<string, unknown>): Record<string, unknown> {
@@ -23,11 +34,15 @@ export class EvaluateQuickParams {
     }
     const explicit: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(quick)) {
+      this.paramKeys.add(key);
       // Programmatic controls also edit the form, without onValuesChange.
       if (
         !Object.prototype.hasOwnProperty.call(this.displayed, key) ||
         JSON.stringify(value) !== JSON.stringify(this.displayed[key])
-      ) this.authored.add(key);
+      ) {
+        this.authored.add(key);
+        this.touched.add(key);
+      }
       if (this.authored.has(key)) explicit[key] = value;
     }
     const request = { ...payload };
@@ -45,7 +60,10 @@ export class EvaluateQuickParams {
     // Once an explicit extra_args flag moves into its field, the field owns
     // that choice. Editing the remaining argument text must not erase it.
     for (const moved of response.moved ?? []) {
-      if (moved.source === "extra_args") this.authored.add(moved.key);
+      if (moved.source === "extra_args") {
+        this.authored.add(moved.key);
+        this.touched.add(moved.key);
+      }
     }
   }
 
@@ -55,13 +73,18 @@ export class EvaluateQuickParams {
   // keys returned still hold such a value on the form and nobody stated them;
   // the caller clears them so the next answer derives them for the new
   // engine, or leaves them unstated where a manual command owns the launch.
-  // Values the deployer stated are kept and judged by the server as ever.
-  staleFor(engine: string, draft: Record<string, unknown>): string[] {
+  // Only dictionary parameters are considered, and none the deployer ever
+  // edited; those are judged by the server as ever. Taking the stale keys
+  // also forgets the display, so a switch is answered once.
+  takeStaleFor(engine: string, draft: Record<string, unknown>): string[] {
     if (!engine || !this.displayedEngine || engine === this.displayedEngine) return [];
     const stale = Object.entries(this.displayed)
       .filter(([key, value]) =>
+        this.paramKeys.has(key) &&
         !this.authored.has(key) &&
-        draft[key] !== undefined &&
+        !this.touched.has(key) &&
+        draft[key] != null &&
+        draft[key] !== "" &&
         JSON.stringify(draft[key]) === JSON.stringify(value))
       .map(([key]) => key);
     this.displayed = {};
