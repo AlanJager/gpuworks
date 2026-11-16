@@ -126,10 +126,13 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 4. 协议版本不匹配，reason 为 `proto_mismatch`（detail 形如 `server supports 1-1`），需要升级 agent。
 5. `stale_session`：只出现在**数据通道**握手，表示它绑定的控制会话已过期。agent 只打 Debug 日志并退避
    重试，控制通道重连后自愈，见 [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md)；持续出现才需要处理。
-6. 两个 agent 用同一个节点身份：节点在线、离线间来回跳，agent 日志反复出现 `reconnecting` 却没有 reject；
+6. 两个 agent 用同一个节点身份：两边轮流接入、互相顶掉连接，节点页却一直「在线」（被顶掉的旧连接不会把节点标成离线），
+   表现是终端、日志跟随、模型或镜像传输反复中断；两台主机的 agent 日志都反复出现 `connection ended` 和 `reconnecting`，却没有 reject；
    server 日志有 `AGENT_DUPLICATE_INSTANCE`，`host`/`remote` 与 `other_host`/`other_remote` 是互相顶替连接的两个 agent。
    同一 state 目录的第二个 `run` 已被 `<state>/agent.lock` 挡住（见 [CLI 参考](../reference/cli.md)），剩下的多是
-   state 目录或 token 被复制到另一台主机（克隆的磁盘或镜像）、另一个 state 目录写了同一个 token，或旧版 agent。
+   state 目录或 token 被复制到另一台主机（克隆的磁盘或镜像）、另一个 state 目录写了同一个 token，或本版本之前的旧 agent
+   与当前 agent 同用一个身份。识别靠 agent 握手时带的进程实例标识，至少一方是当前版本才会上报；两个都是旧版 agent 时
+   server 日志里没有这条记录，只能按上面的现象和两台主机上的进程排查。
    停掉多余的 agent；克隆出来的主机删掉复制来的 state 目录，作为新节点重新接入。同一节点每小时最多记一次。
 
 时钟偏差**不是** reject 原因：握手里没有时间戳校验，`server_dial` 的 HMAC 只签一次性 nonce，不含时间。
