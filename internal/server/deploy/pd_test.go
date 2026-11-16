@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/netplan"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 )
 
 func argValue(t *testing.T, argv []string, flag string) string {
@@ -375,5 +376,27 @@ func TestVLLMPPUMooncakeLaunch(t *testing.T) {
 		PD: &PDLaunch{Mode: "vllm-nixl", Role: "prefill", SideChannelHost: "10.0.0.5", SideChannelPort: 30001}})
 	if raw := argValue(t, nixl.Argv, "--kv-transfer-config"); strings.Contains(raw, "engine_id") || strings.Contains(raw, "device_name") {
 		t.Fatalf("vllm-nixl config = %s", raw)
+	}
+}
+
+// TestVLLMPDLaunchesStayPDWithKVOffload: every vLLM PD mode's launch is a PD
+// request in both roles, also when the prefill composes the PD connector with
+// a KV tier in one MultiConnector.
+func TestVLLMPDLaunchesStayPDWithKVOffload(t *testing.T) {
+	for _, name := range pdmode.ForEngine(EngineVLLM) {
+		mode, _ := pdmode.Lookup(name)
+		for _, role := range mode.Roles {
+			for _, quick := range []LaunchConfig{{}, {KVOffloadingSize: 8}, {KVOffloadingSize: 16, KVDiskOffload: true, SharedKVDir: "/kv-cache"}} {
+				p := pdParams(role, quick, ComputeNetwork{})
+				p.PD.Mode, p.Vendor = name, mode.Vendors[0]
+				launch, err := ResolveLaunch(ResolveLaunchInput{Engine: vLLMEngine{}, Params: p, TargetValidation: CollectTargetCapabilities})
+				if err != nil {
+					t.Fatalf("%s %s: %v", name, role, err)
+				}
+				if f := launch.RequestedFeatures; !f.PD || !f.CommandKnown {
+					t.Fatalf("%s %s %+v: requested features %+v", name, role, quick, f)
+				}
+			}
+		}
 	}
 }

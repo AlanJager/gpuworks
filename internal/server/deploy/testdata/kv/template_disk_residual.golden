@@ -45,8 +45,7 @@
     },
     "shm_bytes": 17179869184,
     "requested_features": {
-      "command_known": true,
-      "prefill_decode_disaggregation": true
+      "command_known": true
     },
     "reverse_params": {
       "enable_cache_report": true,

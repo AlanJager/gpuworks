@@ -62,7 +62,6 @@
     "requested_features": {
       "command_known": true,
       "multi_node": true,
-      "prefill_decode_disaggregation": true,
       "kv_disk_tier": true
     },
     "reverse_params": {
