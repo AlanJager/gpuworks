@@ -3,6 +3,7 @@ package extapi
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 )
 
 // Object names, as they appear in error parameters.
@@ -22,6 +23,16 @@ const (
 // MaxCertBundle bounds the certificates in publisher.crt.
 const MaxCertBundle = 4
 
+// ProjectPublisher is the publisher of the project's own packages. Only its
+// certificates may grant the bare feature namespace and package ids that do
+// not start with "<publisher>_".
+const ProjectPublisher = "gpuworks"
+
+// RootKeyIDPrefix starts the key id of every project root. A certified key's
+// id starts with "<publisher>-" instead, and never with this prefix, so a
+// revocation or a trust decision by key id names one key.
+const RootKeyIDPrefix = "root-"
+
 // PublisherCert is a publisher certificate at format 1: a publisher's
 // signing key and what packages signed with it may do. It travels as the
 // payload of an Envelope signed by a project root (or, for a publisher the
@@ -34,11 +45,13 @@ const MaxCertBundle = 4
 type PublisherCert struct {
 	// Format is 1.
 	Format int `json:"format"`
-	// Serial is unique among the certificates its issuer signs.
+	// Serial is unique among all certificates of Publisher, whichever key
+	// issued them, so (Publisher, Serial) names one certificate.
 	Serial uint64 `json:"serial"`
 	// Publisher is the subject; manifests signed with this key must name it.
 	Publisher string `json:"publisher"`
-	// KeyID, Alg and PublicKey are the publisher's signing key.
+	// KeyID, Alg and PublicKey are the publisher's signing key. KeyID
+	// starts with Publisher followed by "-".
 	KeyID     string     `json:"keyid"`
 	Alg       string     `json:"alg"`
 	PublicKey []byte     `json:"public_key"`
@@ -52,10 +65,14 @@ type PublisherCert struct {
 // CertGrants is what packages signed under a certificate may do. A grant
 // not listed is not given.
 type CertGrants struct {
-	// IDPrefixes are the package ids, or starts of ids, the key may sign.
+	// IDPrefixes are the package ids the key may sign, sorted. An entry
+	// ending in "_" covers every id that starts with it; any other entry
+	// covers exactly that id. Except for ProjectPublisher, every entry
+	// starts with "<publisher>_".
 	IDPrefixes []string `json:"id_prefixes"`
 	// FeatureNS are the feature namespaces its packages may declare keys
-	// in, sorted; "" is the bare namespace, for the project publisher only.
+	// in, sorted: the publisher's own name, and "" (the bare namespace)
+	// for ProjectPublisher only.
 	FeatureNS []string `json:"feature_ns,omitempty"`
 	// AuthorityID is the one package id that may answer gate:authority keys
 	// of FeatureNS.
@@ -116,7 +133,7 @@ func (c *PublisherCert) validate() *fieldError {
 		return &fieldError{field: "grants.id_prefixes", rule: RuleRequired}
 	}
 	if f := first(
-		checkSortedSet("grants.id_prefixes", g.IDPrefixes, idPrefixPattern),
+		checkSortedSet("grants.id_prefixes", g.IDPrefixes, packageIDPattern),
 		checkNamespaces("grants.feature_ns", g.FeatureNS),
 		optionalMatches("grants.authority_id", g.AuthorityID, packageIDPattern),
 		checkSortedSet("grants.roles", g.Roles, wordPattern),
@@ -126,8 +143,32 @@ func (c *PublisherCert) validate() *fieldError {
 	); f != nil {
 		return f
 	}
+	if f := c.validateSubject(); f != nil {
+		return f
+	}
 	if g.AuthorityID != "" && (len(g.FeatureNS) == 0 || !g.coversID(g.AuthorityID)) {
 		return &fieldError{field: "grants.authority_id", rule: RuleRelation}
+	}
+	return nil
+}
+
+// validateSubject keeps the key id and the grants inside the subject's own
+// names, so one publisher's certificate never reaches another's packages,
+// feature keys or keys.
+func (c *PublisherCert) validateSubject() *fieldError {
+	if !strings.HasPrefix(c.KeyID, c.Publisher+"-") || strings.HasPrefix(c.KeyID, RootKeyIDPrefix) {
+		return &fieldError{field: "keyid", rule: RuleRelation}
+	}
+	project := c.Publisher == ProjectPublisher
+	for i, p := range c.Grants.IDPrefixes {
+		if !project && !strings.HasPrefix(p, c.Publisher+"_") {
+			return &fieldError{field: joinPath("grants.id_prefixes", strconv.Itoa(i)), rule: RuleRelation}
+		}
+	}
+	for i, ns := range c.Grants.FeatureNS {
+		if ns != c.Publisher && (ns != "" || !project) {
+			return &fieldError{field: joinPath("grants.feature_ns", strconv.Itoa(i)), rule: RuleRelation}
+		}
 	}
 	return nil
 }
@@ -135,7 +176,7 @@ func (c *PublisherCert) validate() *fieldError {
 // coversID reports whether the grants let the key sign package id.
 func (g CertGrants) coversID(id string) bool {
 	for _, p := range g.IDPrefixes {
-		if len(id) >= len(p) && id[:len(p)] == p {
+		if id == p || strings.HasSuffix(p, "_") && strings.HasPrefix(id, p) {
 			return true
 		}
 	}

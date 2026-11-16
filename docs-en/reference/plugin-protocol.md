@@ -62,7 +62,7 @@ The algorithm belongs to the trusted key, never to the signature: a reader verif
 | `ed25519` | A 32-byte Ed25519 public key | A 64-byte pure Ed25519 signature over the payload (RFC 8032) |
 | `ecdsa-p256-sha256` | A P-256 point in uncompressed SEC 1 form (65 bytes, `0x04‖X‖Y`) | An ASN.1 DER signature over the SHA-256 of the payload, the form hardware keys and cloud key services return |
 
-A key id matches `^[a-z0-9][a-z0-9._-]{1,63}$` and names one key forever; it is never reused. Verification rules:
+A key id matches `^[a-z0-9][a-z0-9._-]{1,63}$` and names one key forever; it is never reused. A project root's key id starts with `root-`, and a certified key's with `<publisher>-` (never with `root-`), so a root and a publisher key, or two publishers' keys, never share an id. Verification rules:
 
 - Signatures by key ids the reader does not know are skipped, so a signer can sign with the old and the new key before readers switch to trusting the new one.
 - When a signature by a trusted key does not verify, the whole envelope fails (`PLUGIN_SIGNATURE_INVALID`): a key id names one key, so a failure is tampering or corruption, never a rotation.
@@ -139,16 +139,23 @@ A certificate is a publisher's signing key and its grants. It travels as the pay
 | Field | Rules |
 |---|---|
 | `format` | 1 |
-| `serial` | Unique among the certificates of one issuer, ≥1 |
+| `serial` | Unique among all certificates of the publisher, whichever root issued them, so `publisher` + `serial` names one certificate; ≥1 |
 | `publisher` | The subject; manifests signed with this key must name it |
-| `keyid` / `alg` / `public_key` | The publisher's signing key, with the rules of the [signature envelope](#signature-envelope) |
+| `keyid` / `alg` / `public_key` | The publisher's signing key, with the rules of the [signature envelope](#signature-envelope); `keyid` starts with `<publisher>-` and not with `root-` |
 | `not_before` / `not_after` | The signing window; `not_after` must be later than `not_before`. A package whose `created` lies in the window stays valid after `not_after`, so installed packages never expire |
-| `grants.id_prefixes` | Required: the package ids, or starts of ids, the key may sign |
-| `grants.feature_ns` | Namespaces its packages may declare feature keys in, sorted; `""` is the bare namespace, for the project publisher only |
+| `grants.id_prefixes` | Required: the package ids the key may sign, sorted, each with the package id grammar. An entry ending in `_` covers every id that starts with it; any other entry covers exactly that id. Except for the project publisher, every entry starts with `<publisher>_`, so a certificate never covers another publisher's ids (`acme_` does not cover `acmebank_pay`) |
+| `grants.feature_ns` | Namespaces its packages may declare feature keys in, sorted: only the publisher's own name, plus `""` (the bare namespace) for the project publisher |
 | `grants.authority_id` | The one package id that may answer `gate: authority` keys of `feature_ns`; needs `feature_ns` and must be covered by `id_prefixes` |
 | `grants.roles` / `grants.tables` | Privileged roles its packages may claim / privileged tables they may push, sorted |
 | `grants.ui_module` | Its packages may ship same-origin console modules |
 | `grants.min_isolation` | Required: `landlock` (runs only where Landlock confines it) or `none` |
+
+The project publisher is named `gpuworks`; its own packages use bare feature keys and ids without a publisher prefix:
+
+<!-- golden: publisher_cert/v1/valid/project.json -->
+```json
+{"alg":"ed25519","format":1,"grants":{"authority_id":"quota","feature_ns":["","gpuworks"],"id_prefixes":["quota","sso"],"min_isolation":"landlock","roles":["availability_authority","clock_authority"],"tables":["fleet_capacity"]},"keyid":"gpuworks-2026a","not_after":"2027-02-01T00:00:00Z","not_before":"2026-11-17T00:00:00Z","public_key":"0RZF/KSeB5I5emmRFX7vHLklBOUA2A8ot0mLncySqxs=","publisher":"gpuworks","serial":1}
+```
 
 ## Trust updates and revocation lists
 
@@ -162,8 +169,8 @@ A trust update is signed by at least one project root key the reader trusts now,
 | Field | Rules |
 |---|---|
 | `format` / `serial` / `created` | 1 / an increasing serial / when it was issued |
-| `add_roots` | Root public keys to trust from now on, sorted by key id; none may also be in `retire_roots` |
-| `retire_roots` | Root key ids to stop trusting, sorted |
+| `add_roots` | Root public keys to trust from now on, sorted by key id, each key id starting with `root-`; none may also be in `retire_roots` |
+| `retire_roots` | Root key ids to stop trusting, sorted, each starting with `root-` |
 | `revoke` | Revocation entries, see below; at most 4096 |
 | `floors` | Raise the lowest installable version of packages, `{id, min_version}`, sorted by id; a floor only rises |
 
@@ -380,4 +387,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: f3f0309cce13500de2d31801f4493468cd1612bfbf16dbbdb1e74875168bf222 -->
+<!-- translation-source-sha256: a348518bec7df8b62b0397d1f34160d00dbbab5c2e186a9a1e76245ddc0b637b -->

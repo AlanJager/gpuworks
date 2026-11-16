@@ -52,7 +52,8 @@ digest, `sha256:<hex>`.
 An envelope holds one or more `{keyid, sig}` signatures. The algorithm
 belongs to the trusted key, never to the signature: Ed25519 (`ed25519`) or
 ECDSA P-256 with SHA-256 and DER signatures (`ecdsa-p256-sha256`). A key id
-names one key forever. Signatures by unknown key ids are skipped, so a signer
+names one key forever: a project root's starts with `root-`, a certified
+publisher key's with `<publisher>-`. Signatures by unknown key ids are skipped, so a signer
 can rotate by signing with the old and the new key; a signature by a trusted
 key that does not verify fails the whole envelope.
 

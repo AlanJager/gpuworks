@@ -62,7 +62,7 @@
 | `ed25519` | 32 字节 Ed25519 公钥 | 对载荷的 64 字节纯 Ed25519 签名（RFC 8032） |
 | `ecdsa-p256-sha256` | 未压缩 SEC 1 格式的 P-256 点（65 字节，`0x04‖X‖Y`） | 对载荷 SHA-256 的 ASN.1 DER 签名，即硬件密钥与云端密钥服务返回的形式 |
 
-key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不复用。验证规则：
+key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不复用。项目根密钥的 key id 以 `root-` 开头，证书里密钥的 key id 以 `<publisher>-` 开头（且不以 `root-` 开头），所以根密钥与发布者密钥、两个发布者的密钥永远不会同名。验证规则：
 
 - 读者不认识的 key id 的签名被跳过，所以签名方可以先用新旧两把密钥一起签，再让读者改为信任新密钥。
 - 受信任密钥的签名验证失败时，整个信封失败（`PLUGIN_SIGNATURE_INVALID`）：key id 只指一把密钥，失败只能是篡改或损坏，不可能是轮换。
@@ -139,16 +139,23 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | 字段 | 规则 |
 |---|---|
 | `format` | 1 |
-| `serial` | 在同一签发者签发的证书里唯一，≥1 |
+| `serial` | 在该发布者的全部证书里唯一（无论由哪把根密钥签发），所以 `publisher` + `serial` 指一张证书；≥1 |
 | `publisher` | 主体，用这把密钥签的清单必须写同一个名字 |
-| `keyid` / `alg` / `public_key` | 发布者的签名密钥，规则同[签名信封](#签名信封) |
+| `keyid` / `alg` / `public_key` | 发布者的签名密钥，规则同[签名信封](#签名信封)；`keyid` 以 `<publisher>-` 开头，且不以 `root-` 开头 |
 | `not_before` / `not_after` | 签发窗口；`not_after` 必须晚于 `not_before`。`created` 落在窗口内的包在 `not_after` 之后仍然有效，已安装的包不会过期 |
-| `grants.id_prefixes` | 必填：这把密钥可签的包 id 或 id 前缀 |
-| `grants.feature_ns` | 包可以在其中声明功能键的命名空间，已排序；`""` 是无前缀命名空间，只给项目发布者 |
+| `grants.id_prefixes` | 必填：这把密钥可签的包 id，已排序，每项符合包 id 文法。以 `_` 结尾的一项覆盖以它开头的所有 id，其他项只覆盖这一个 id。除项目发布者外，每项都以 `<publisher>_` 开头，所以证书永远覆盖不到别的发布者的 id（`acme_` 不覆盖 `acmebank_pay`） |
+| `grants.feature_ns` | 包可以在其中声明功能键的命名空间，已排序：只能是发布者自己的名字，项目发布者另可有 `""`（无前缀命名空间） |
 | `grants.authority_id` | 唯一能对 `feature_ns` 里 `gate: authority` 的键作答的包 id；要求有 `feature_ns`，且被 `id_prefixes` 覆盖 |
 | `grants.roles` / `grants.tables` | 包可以声明的特权角色 / 可以推送的特权表，已排序 |
 | `grants.ui_module` | 包可以提供同源的控制台模块 |
 | `grants.min_isolation` | 必填：`landlock`（只在 Landlock 能约束它的主机上运行）或 `none` |
+
+项目发布者名为 `gpuworks`，它自己的包用无前缀的功能键和不带发布者前缀的 id：
+
+<!-- golden: publisher_cert/v1/valid/project.json -->
+```json
+{"alg":"ed25519","format":1,"grants":{"authority_id":"quota","feature_ns":["","gpuworks"],"id_prefixes":["quota","sso"],"min_isolation":"landlock","roles":["availability_authority","clock_authority"],"tables":["fleet_capacity"]},"keyid":"gpuworks-2026a","not_after":"2027-02-01T00:00:00Z","not_before":"2026-11-17T00:00:00Z","public_key":"0RZF/KSeB5I5emmRFX7vHLklBOUA2A8ot0mLncySqxs=","publisher":"gpuworks","serial":1}
+```
 
 ## 信任更新与吊销列表
 
@@ -162,8 +169,8 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | 字段 | 规则 |
 |---|---|
 | `format` / `serial` / `created` | 1 / 递增的序号 / 签发时间 |
-| `add_roots` | 从此信任的根公钥，按 key id 排序；不能同时出现在 `retire_roots` |
-| `retire_roots` | 不再信任的根 key id，已排序 |
+| `add_roots` | 从此信任的根公钥，按 key id 排序，每个 key id 以 `root-` 开头；不能同时出现在 `retire_roots` |
+| `retire_roots` | 不再信任的根 key id，已排序，每个以 `root-` 开头 |
 | `revoke` | 吊销条目，见下文；至多 4096 条 |
 | `floors` | 抬高包可安装的最低版本 `{id, min_version}`，按 id 排序；最低版本只升不降 |
 

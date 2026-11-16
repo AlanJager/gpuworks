@@ -11,11 +11,10 @@ import (
 // Grammars shared by the wire objects. Each is part of the frozen format.
 var (
 	// A package id: also the route segment /api/v1/x/<id>/ and a directory
-	// name. A third party's ids start with "<publisher>_"; which prefixes a
-	// publisher may use is a grant of its certificate.
+	// name. A third party's ids start with "<publisher>_"; which ids a
+	// publisher may sign is a grant of its certificate, whose entries share
+	// this grammar (an entry ending in "_" grants every id it starts).
 	packageIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
-	// A certificate's id prefix: a package id or the start of one.
-	idPrefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 	// A publisher name. It is also the feature namespace of a third party's
 	// keys, so it is a valid feature key segment, and it has no underscore,
 	// so "<publisher>_" splits a package id unambiguously.
@@ -25,7 +24,9 @@ var (
 	featureKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}(\.[a-z][a-z0-9_]{1,31}){0,2}$`)
 	// A product code (ADR 0067).
 	codePattern = regexp.MustCompile(`^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$`)
-	// A key id: names exactly one public key, forever.
+	// A key id: names exactly one public key, forever. A project root's key
+	// id starts with RootKeyIDPrefix and a certified key's with
+	// "<publisher>-", so the two never collide.
 	keyIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,63}$`)
 	// A capability name: "table.availability", "host.fleet", "routes".
 	capabilityPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){0,3}$`)

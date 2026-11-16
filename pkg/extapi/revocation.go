@@ -2,6 +2,7 @@ package extapi
 
 import (
 	"strconv"
+	"strings"
 )
 
 // MaxRevocations bounds the entries of one trust update or revocation list.
@@ -17,7 +18,8 @@ type TrustUpdate struct {
 	// Serial increases with every update.
 	Serial  uint64 `json:"serial"`
 	Created Time   `json:"created"`
-	// AddRoots are roots to trust from now on, sorted by key id.
+	// AddRoots are roots to trust from now on, sorted by key id. Every
+	// root key id starts with RootKeyIDPrefix.
 	AddRoots []PublicKey `json:"add_roots,omitempty"`
 	// RetireRoots are root key ids to stop trusting, sorted.
 	RetireRoots []string `json:"retire_roots,omitempty"`
@@ -152,8 +154,15 @@ func (u *TrustUpdate) validate() *fieldError {
 		inRange("serial", int64(min(u.Serial, maxSafeInteger+1)), 1, maxSafeInteger),
 		requiredTime("created", u.Created),
 		checkSortedSet("retire_roots", u.RetireRoots, keyIDPattern),
-		validateRevocations("revoke", u.Revoke),
 	); f != nil {
+		return f
+	}
+	for i, r := range u.RetireRoots {
+		if !strings.HasPrefix(r, RootKeyIDPrefix) {
+			return &fieldError{field: joinPath("retire_roots", strconv.Itoa(i)), rule: RuleRelation}
+		}
+	}
+	if f := validateRevocations("revoke", u.Revoke); f != nil {
 		return f
 	}
 	if len(u.AddRoots)+len(u.RetireRoots)+len(u.Revoke)+len(u.Floors) == 0 {
@@ -163,6 +172,9 @@ func (u *TrustUpdate) validate() *fieldError {
 		at := joinPath("add_roots", strconv.Itoa(i))
 		if f := k.validate(at); f != nil {
 			return f
+		}
+		if !strings.HasPrefix(k.KeyID, RootKeyIDPrefix) {
+			return &fieldError{field: joinPath(at, "keyid"), rule: RuleRelation}
 		}
 		if i > 0 && u.AddRoots[i-1].KeyID >= k.KeyID {
 			rule := RuleOrder
