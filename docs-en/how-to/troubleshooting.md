@@ -537,14 +537,23 @@ if the vendor tool just failed to return the inventory, asking it for processes 
 The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
 gets its identities filled in by a migration when the server is upgraded, and the agent also maps those indexes to cards through the latest probe, so it still counts as the platform's own.
 
-**A dGPU deployment with a memory limit can share the card with those processes**, admitted by the memory left: the card's total, less what the processes hold,
+**A dGPU deployment with a memory limit can share the card with those processes, with consent**: when "Allow partitions beside processes outside the platform" (`share_with_foreign`, off by default) is on in the node's placement policy, automatic placement may use the card,
+and always tries cards without such processes first (on the node and across nodes); with it off, only picking the card yourself (in the deploy form, or `placement.gpus` in the request) puts a deployment there.
+With the switch off, automatic placement is refused with `held_outside_platform_not_allowed`, and the UI names the switch. The switch is under "Placement policy" on the node detail's overview;
+when the node has no ready partition backend or its agent is older, the switch says it has no effect yet. Switching it off stops no running instance, but re-placement (a restart, a failure replacement, scaling) follows the new setting:
+a rolling restart waits rather than drop a replica, and a replacement after a crash goes pending. Sharing a card isolates memory only; compute and bandwidth are shared with those processes.
+A deployment is admitted by the memory left: the card's total, less what the processes hold,
 less the headroom kept beside them (5% of the card, at least 4 GiB), less what the platform's instances already claim, must cover the deployment's memory limit plus the partition overhead.
 When it does not fit, the refusal (`no_fit`) lists what the processes hold and the headroom, and in the deploy form the card can be picked only for such a deployment. The card is still not shared,
 and is refused as “In use outside the platform”, for: a whole-card deployment; a process the vendor tool gives no memory figure for, or a card Kubernetes gave to another pod
 (what such use may grow to is not known); and a node whose agent is older—sharing needs an agent that, once a platform instance is on the card, keeps reporting the outside processes that were already there
 (each of the platform's engines keeps one process on the card, so processes beyond the number of platform instances there are foreign, including a workload restarted under a new PID or a job started beside ours; a process that exits still has its memory held back until 3 free readings in a row) until every platform instance there sleeps or has left and the card is examined in full again, and keeps that record in its state directory across restarts; an older agent drops them once the first instance starts, and the card would read as free.
 A deployment that sleeps is not placed on such a card either (`held_outside_platform_sleep`): while those processes run, a sleeping instance could not be woken there.
-A card of platform instances that was never shared with outside processes is not read this way: a process that appears there is not reported as outside the platform, since the agent cannot tell it from its own instance's. On a held card whose outside use is unknown, raising a dGPU quota in place is refused, and the GPU list shows no available memory. The rationale is in [ADR 0068](../adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md).
+A card holding only partition instances is read by the same slot rule by a newer agent, so an outside process that starts there later is reported too; a card holding a whole-card instance that was never shared with outside processes is not read this way: a process that appears there is not reported as outside the platform, since the agent cannot tell it from its own instance's. On a held card whose outside use is unknown, raising a dGPU quota in place is refused, and the GPU list shows no available memory. The rationale is in [ADR 0068](../adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md).
+
+**Slow inference: check the instance's shared-card note**. When an instance's cards are shared with processes outside the platform, the instance panel's "Notes" names the cards and how much memory the outside processes hold (`INSTANCE_CARD_SHARED_OUTSIDE`, or `..._UNKNOWN` when that is not known):
+memory is isolated, but compute and bandwidth are shared with them, which can slow inference. The note appears at the next refresh after the processes are reported, and goes once they leave and the card is released.
+Outside processes that start later on a card holding a whole-card instance, and older agents, show no such note.
 
 Such a card is also left out of the periodic runtime check and of the recheck after an instance fails to start: someone else's workload should not be disturbed,
 and memory held by someone else says nothing about whether the runtime can use the card. The card keeps its last check result, and checking resumes once the processes exit.
@@ -992,8 +1001,10 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `no_free_gpu` | No idle GPUs |
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
 | `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, unbound from drivers, or held by other drivers |
-| `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards (the named ones, when the request names cards) are occupied by processes outside the platform, and this deployment cannot share them: it takes whole cards, or the outside processes' memory is unknown |
+| `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards (the named ones, when the request names cards) are occupied by processes outside the platform, and this deployment cannot share them: it takes whole cards, the outside processes' memory is unknown, or the node's agent is older |
 | `held_outside_platform_sleep` | Only cards shared with processes outside the platform could take this memory-limited deployment, but it sleeps: while those processes run, it could not be woken on that card once asleep. Fix: turn off sleep for this deployment, or pick another card |
+| `held_outside_platform_not_allowed` | Cards that could take this memory-limited deployment are used by processes outside the platform, and the node's placement policy does not allow partitions beside them; params `setting` (the switch's key), `gpus`, `count`, `node`. Also reported when the node has a clean card that is busy or too small. Fix: turn the switch on in the node's placement policy, or pick the card yourself |
+| `foreign_shared_gpus_used` | A plan note (not a refusal): `count` of the chosen cards are shared with processes outside the platform (up to `foreign_gib` GiB), because no clean card could take the deployment |
 | `tp_head_count_not_divisible` | The attention head count is not divisible by TP |
 | `sleep_residue_blocks_startup` | Residual GPU memory from sleeping instances blocks startup |
 | `engine_ports_exhausted` | The node's engine port range is exhausted |
@@ -1378,7 +1389,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 081eb8cceabb438367337ca0b64d6a4d1311b9d290d9e355a89b8b961f145bb0 -->
+<!-- translation-source-sha256: 0c6cc6d9c371984f4bdc58c15281e664fa7c898cc103b60480ef7a6cfd38548e -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
