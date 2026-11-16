@@ -7,6 +7,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -130,5 +131,38 @@ func TestPartitionMaySharedHeldCardFollowsTheNodePolicy(t *testing.T) {
 	node.PlacementPolicy.ShareWithForeign = false
 	if bytes, known := ForeignHold(node, &node.GPUs[0]); !known || bytes <= reporterForeign.MemoryBytes {
 		t.Fatalf("foreign hold switched off = %d %v", bytes, known)
+	}
+}
+
+// Cards an operator pins on a PD unit or a multi-node rank are the
+// operator's choice as much as the top-level "gpus": the rank's launch
+// carries the consent, so a hand-picked held card that fits by memory is
+// admitted on a node whose switch is off. A unit the platform places names
+// no cards, and gives none.
+func TestPDRankLaunchConsentsForTheUnitsPinnedCards(t *testing.T) {
+	st := foreignStore(t)
+	node := foreignHeldNode(t, st, "h20", proto.PartitionSafetyForeignTracked, reporterForeign)
+	model := &store.Model{WeightBytes: 15 << 30}
+	mode, _ := pdmode.Lookup("vllm-nixl")
+	pd := &PDPlacement{}
+	for _, tc := range []struct {
+		name string
+		unit PDUnit
+		want bool
+	}{
+		{"pinned unit", PDUnit{NodeUUID: node.UUID, GPUIndexes: []int{0}}, true},
+		{"placed unit", PDUnit{NodeUUID: node.UUID}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := LaunchRequest{Engine: "vllm", Model: model, Node: node}
+			pd.RankLaunch(mode, pdmode.RolePrefill, tc.unit, 0, DistTopology{NNodes: 1}, PDRankPorts{}).Apply(&req)
+			input, err := launchInput(st, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if input.Consent.CardsChosen != tc.want {
+				t.Fatalf("consent = %+v, want CardsChosen %v", input.Consent, tc.want)
+			}
+		})
 	}
 }
