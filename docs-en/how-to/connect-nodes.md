@@ -211,7 +211,7 @@ Upgrade the server first, then the agent; the node's target version comes from t
 - **Upgrade from the console**: Select nodes in the node list, click **Upgrade selected Agents**, preview the selected nodes, and confirm to view progress for each node; **Upgrade Agent** in node details also remains available. Wait for successful formal reconnection, then verify that the node is online and its **Agent version** matches the server. Newer agents can receive the upgrade package over the existing connection; older agents still need access to the server's download address.
 - **Rerun the installation script or offline package**: Preserve the old binary first, then install using the original token, connection method, installation directory, and state directory. Afterward, check the online status and version. This rewrites the configuration and does not provide the automatic rollback available with self-upgrade.
 
-For manual environments without a persistent agent, you can also use [`gpuworks-agent upgrade`](../reference/cli.md#gpuworks-agent-upgrade). It runs in the foreground and does not restart the original service. It is unsuitable for server-initiated nodes without a server address.
+For manual environments without a persistent agent, you can also use [`gpuworks-agent upgrade`](../reference/cli.md#gpuworks-agent-upgrade). It runs in the foreground and does not restart the original service, and refuses to run if an agent is already running with the same state directory. It is unsuitable for server-initiated nodes without a server address.
 
 For rollback boundaries before and after the new process registers, failure handling, and model call verification, see [Upgrades and Version Compatibility](upgrade-and-compatibility.md#升级-agent).
 

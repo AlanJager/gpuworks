@@ -103,7 +103,7 @@ If you can sign in to the node, you can also rerun `/install.sh` to update the a
 2. Follow the [Connection Guide](connect-nodes.md#升级) to rerun the installation script with the original connection parameters. Nodes using **Server-initiated connections** use an [Offline Package](connect-nodes.md#离线包).
 3. Confirm that the node is back online and its version matches the server, then proceed to the next node.
 
-`gpuworks-agent upgrade` is only for environments where you run the agent manually without a persistent agent service. For options, see the [CLI Reference](../reference/cli.md#gpuworks-agent-upgrade). It runs in the foreground and does not restart the original service. Do not start this command alongside an existing persistent agent. Nodes with server-initiated connections cannot use it to download upgrades.
+`gpuworks-agent upgrade` is only for environments where you run the agent manually without a persistent agent service. For options, see the [CLI Reference](../reference/cli.md#gpuworks-agent-upgrade). It runs in the foreground and does not restart the original service. If an agent is already running with the same state directory, the command refuses to run. Nodes with server-initiated connections cannot use it to download upgrades.
 
 ## Verify the Results
 
