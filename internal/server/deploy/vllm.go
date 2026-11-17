@@ -121,7 +121,7 @@ func BuildVLLM(p Params) ResolvedLaunch {
 	} else {
 		b.injectKV("--model", p.ModelPath)
 	}
-	if servedName := p.EngineServedName(); servedName != "" && !p.Headless {
+	if servedName := p.launchServedName(); servedName != "" {
 		b.injectKV("--served-model-name", servedName)
 	}
 	if !p.Headless {

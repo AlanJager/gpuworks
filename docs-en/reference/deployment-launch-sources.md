@@ -47,8 +47,8 @@ The layers are listed in merge order. Later layers generally override earlier on
 
 | Engine | Command | Baseline Env |
 |---|---|---|
-| vLLM | `vllm serve <model-path>`, `--host 127.0.0.1`, `--port`, `--served-model-name` (omitted when headless); `--tensor-parallel-size` is always injected, and `--pipeline-parallel-size` is injected when greater than 1 | `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `VLLM_HOST_IP=127.0.0.1`, `GLOO_SOCKET_IFNAME=lo`, `NCCL_SOCKET_IFNAME=lo` |
-| SGLang | `python -m sglang.launch_server --model-path … --tp-size --pp-size --host --port --served-model-name` (all in the entrypoint) | `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1` |
+| vLLM | `vllm serve <model-path>`, `--host 127.0.0.1`, `--port`, `--served-model-name` (the deployment alias; the model path `/model` when no alias is set; omitted when headless); `--tensor-parallel-size` is always injected, and `--pipeline-parallel-size` is injected when greater than 1 | `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `VLLM_HOST_IP=127.0.0.1`, `GLOO_SOCKET_IFNAME=lo`, `NCCL_SOCKET_IFNAME=lo` |
+| SGLang | `python -m sglang.launch_server --model-path … --tp-size --pp-size --host --port --served-model-name` (all in the entrypoint; `--served-model-name` as for vLLM) | `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1` |
 | callable | `gpuworks-callable` (usually replaced by the template entrypoint); argv contains only template and user arguments. The template places platform facts using variables such as `${MODEL_PATH}`, `${API_HOST}`, and `${API_PORT}` (ADR 0036) | Same as above, with template env merged in |
 
 All three have a `/dev/shm` baseline of 16 GiB (`shm_bytes` in the engine Profile, delivered through `GET /api/v1/engines`).
@@ -295,5 +295,5 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 - [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Image Catalog and Inference Image Families](image-families.md)
 - [Deploy Models](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation](../how-to/pd-disaggregation.md)
 
-<!-- translation-source-sha256: 368db6db8a56c8e26e4c97e427ace7b07d0fc2edf9896eb33b8b4c658e7dd185 -->
+<!-- translation-source-sha256: 07dbe3171f0bb1665df416f3c3adc3d83452cf1cf39f087557294c64c0f4f0bc -->
 <!-- translation-localized-code-block: bb1bf7727f072376c3c7e1ad0f8662c7b7d72d881f032a66b71f42ab5475a198 aa31ab60fc8387786ba75ad63414f7e99f82c785baeae8a33e9304231006194b Translate explanatory comments and placeholders in runtime assembly illustration. -->

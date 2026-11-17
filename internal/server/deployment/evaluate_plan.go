@@ -74,7 +74,7 @@ func (s *Service) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, bool) {
 		request := evaluationLaunchRequest(env, node)
 		request.RuntimeImageCached = out.nodeImageCached
 		request.ModelRules.SaveTo = s.previewSaveToStorageID(req.ModelSource, env.model, node)
-		previewPlan, planErr := planning.PlanLaunch(env.ctx, s.d.Store, s.networks(), request)
+		previewPlan, planErr := s.planLaunch(env.ctx, request)
 
 		if items := previewPlan.Output.GPUCandidates; !IsAutomaticPlacement(req) && req.NNodes <= 1 && items != nil {
 			resp.GPUCandidates = &dto.GPUCandidates{NodeUUID: node.UUID, Items: make([]dto.GPUCandidate, 0, len(items))}

@@ -135,6 +135,12 @@ const (
 	CapConnectionDiagnostics = "node.connection_diagnostics"
 	// CapPeerRelayV1 accepts transfer-scoped peer TLS relay streams on data.
 	CapPeerRelayV1 = "peer.relay.v1"
+	// CapLaunchNameVerbatim: a host-process launch keeps the value of
+	// --served-model-name as written instead of translating it as a path.
+	// An older host-process agent turns "--served-model-name /model" into
+	// the model's host path, so the server names a launch with no alias
+	// only on an agent that advertises this.
+	CapLaunchNameVerbatim = "launch.name_verbatim"
 )
 
 // Server capabilities, advertised in the server's Hello.Caps.

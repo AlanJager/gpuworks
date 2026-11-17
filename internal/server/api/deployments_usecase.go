@@ -25,7 +25,7 @@ func (a *apiHandlers) deployments() *deployment.Service {
 	return deployment.New(deployment.Deps{
 		Store: a.d.Store, Log: a.d.Log, Online: a.d.Online, UCXNetlinkHang: a.ucxNetlinkHangOf(), NodeSync: a.d.NodeSync, CallNode: a.d.CallNode,
 		ImageExists: a.d.ImageExists, CatalogPackages: a.d.CatalogPackages, FetchModelMeta: a.d.FetchModelMeta, ReadModelMeta: readMeta,
-		Networks: a.d.Networks, AfterAutomaticPick: afterAutomaticPick,
+		Networks: a.d.Networks, AfterAutomaticPick: afterAutomaticPick, NodeCaps: a.d.NodeCaps,
 	})
 }
 

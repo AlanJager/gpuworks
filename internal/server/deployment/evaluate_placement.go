@@ -74,7 +74,7 @@ func (s *Service) evaluateAutomaticPlacement(ctx context.Context, req *dto.Deplo
 			candidates = append(candidates, entry)
 			continue
 		}
-		plan, planErr := planning.PlanLaunch(ctx, s.d.Store, s.networks(), planning.LaunchRequest{
+		plan, planErr := s.planLaunch(ctx, planning.LaunchRequest{
 			StartTimeoutSec: req.StartTimeoutSec,
 			Preview:         true, AllowUnresolvedImage: true, ExcludeDeploymentID: excludeDeployment, Engine: engine.Name(), Model: model, Node: node,
 			Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
@@ -191,7 +191,7 @@ func selectedReasons(result planning.ScheduleResult) []dto.ScheduleReason {
 // silent re-placement or a row the controller will fail to schedule.
 func (s *Service) revalidateAutomaticPlacement(ctx context.Context, req *dto.DeployRequest, engine deploy.Engine, model *store.Model, selection templateSelection, placement planning.Placement, quick deploy.LaunchConfig, userExtraArgs []string, servedName string, node *store.Node, modelMount string, componentMounts []proto.MountSpec, requestOverrides deploy.ContainerOverrides, weightStorageID uint) error {
 	previewSelection := snapshotTemplateSelection(selection, req.Image)
-	plan, planErr := planning.PlanLaunch(ctx, s.d.Store, s.networks(), planning.LaunchRequest{
+	plan, planErr := s.planLaunch(ctx, planning.LaunchRequest{
 		StartTimeoutSec: req.StartTimeoutSec,
 		Preview:         true, Engine: engine.Name(), Model: model, Node: node,
 		Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,

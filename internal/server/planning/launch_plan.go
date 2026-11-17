@@ -72,7 +72,10 @@ type LaunchRequest struct {
 	ModelPaths map[uint]string
 
 	ServedName string
-	Sleepable  bool
+	// ImplicitServedName is deploy.Params.ImplicitServedName: the node's
+	// host-process agent would translate an explicit model name to a path.
+	ImplicitServedName bool
+	Sleepable          bool
 	// PriorityScheduling is the deployment's ask for per-request priority
 	// scheduling (deploy.Params.PriorityScheduling).
 	PriorityScheduling bool
@@ -234,10 +237,11 @@ func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel paral
 		DistGroup: req.Topology.Group, DistRole: req.Topology.Role, DistAttempt: req.Topology.Attempt,
 		MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 		Headless: req.Topology.Headless, NodeAddress: req.Topology.NodeAddress,
-		ComputeNetwork: req.Topology.Network,
-		PD:             req.PD,
-		Host:           deploy.RuntimeBindHost(req.Node.RuntimeDriver),
-		RuntimeDriver:  req.Node.RuntimeDriver, VRAMLimitBytes: req.VRAMLimitBytes, Partitioned: req.PartitionBackend != "", PartitionBackend: req.PartitionBackend,
+		ComputeNetwork:     req.Topology.Network,
+		PD:                 req.PD,
+		Host:               deploy.RuntimeBindHost(req.Node.RuntimeDriver),
+		ImplicitServedName: req.ImplicitServedName,
+		RuntimeDriver:      req.Node.RuntimeDriver, VRAMLimitBytes: req.VRAMLimitBytes, Partitioned: req.PartitionBackend != "", PartitionBackend: req.PartitionBackend,
 	}
 	if params.PD != nil && LoadConfig(req.Model).HasRecurrentLayers() {
 		// A copy: the PD launch is the rank's, shared with the request.

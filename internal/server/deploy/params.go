@@ -411,6 +411,13 @@ type Params struct {
 	// RuntimeDriver is the container runtime the target node reports
 	// ("docker", "udocker", "host", ...); empty when no node is known.
 	RuntimeDriver string
+	// ImplicitServedName leaves a launch with no alias to the engine's own
+	// default name instead of naming the model after ModelPath. It is set
+	// only for a host-process agent that predates
+	// proto.CapLaunchNameVerbatim: that agent translates the value of
+	// --served-model-name to the model's host path, so an explicit name would
+	// fail its port identity check while the engine still served the model.
+	ImplicitServedName bool
 	// Symbolic makes the engine write the facts only one rank's launch knows
 	// (API port, node rank, master port, PD side channel port) as their
 	// ${NAME} references instead of this rank's values. It builds the command
