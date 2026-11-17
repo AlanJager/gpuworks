@@ -19,10 +19,15 @@ func TestCheckStartupRefusesUnknownAndNewerCoreMarkers(t *testing.T) {
 	if err := CheckStartup([]extapi.Marker{{Name: extapi.PluginDataMarker("acme_x"), Version: 9, WrittenBy: "v29.0.0"}}); err != nil {
 		t.Fatalf("package marker stopped the core: %v", err)
 	}
-	// A core marker this build does not know is newer than it.
+	// Pushed state at the version this build writes starts; a newer version
+	// of it, or a core marker this build does not know, is newer than it.
+	if err := CheckStartup([]extapi.Marker{{Name: "pstate.node_holds", Version: 1, WrittenBy: "v27.2.0"}}); err != nil {
+		t.Fatalf("pushed state this build writes = %v", err)
+	}
 	err := CheckStartup([]extapi.Marker{
 		{Name: "pstate.node_holds", Version: 1, WrittenBy: "v27.2.0"},
 		{Name: "pstate.availability", Version: 2, WrittenBy: "v27.4.1"},
+		{Name: "pstate.quota_limits", Version: 1, WrittenBy: "v27.3.0"},
 	})
 	if extapi.CodeOf(err) != extapi.ErrorStateTooNew {
 		t.Fatalf("unknown core marker = %v", err)

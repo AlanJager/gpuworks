@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -11,6 +12,7 @@ import (
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 
+	"gpuworks.ai/gpuworks/internal/server/store/pstate"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
@@ -257,7 +259,10 @@ func raisePluginFloor(tx *gorm.DB, id, version string, now time.Time) (bool, err
 	return true, tx.Save(&PluginFloor{ID: id, MinVersion: version, UpdatedAt: now}).Error
 }
 
-// PluginMarkers returns every persisted version marker, sorted by name.
+// PluginMarkers returns every persisted version marker, sorted by name:
+// those of the plugin host and package data (plugin_markers) and those of
+// pushed state (pstate_marker), so one check sees every format a newer
+// core may have written.
 func (s *Store) PluginMarkers() ([]extapi.Marker, error) {
 	return readPluginMarkers(s.reader())
 }
@@ -271,6 +276,17 @@ func readPluginMarkers(db *gorm.DB) ([]extapi.Marker, error) {
 	for i, r := range rows {
 		out[i] = extapi.Marker{Name: r.Name, Version: r.Version, WrittenBy: r.WrittenBy}
 	}
+	if !db.Migrator().HasTable(&pstate.Marker{}) {
+		return out, nil
+	}
+	var pushed []pstate.Marker
+	if err := db.Order("name").Find(&pushed).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range pushed {
+		out = append(out, extapi.Marker{Name: r.Name, Version: r.Version, WrittenBy: r.WrittenBy})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 

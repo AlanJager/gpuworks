@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/store/pstate"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
@@ -269,4 +271,44 @@ func TestReadPluginMarkersNeverWrites(t *testing.T) {
 	if got, err := ReadPluginMarkers(filepath.Join(dir, "old.db")); err != nil || len(got) != 0 {
 		t.Fatalf("pre-marker database = %v %v", got, err)
 	}
+}
+
+// The markers pushed state writes (pstate_marker) are read together with
+// the plugin host's, sorted, online and offline, so the downgrade check and
+// `gpuworks plugin compat` see both.
+func TestPluginMarkersIncludePushedStateMarkers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gpuworks.db")
+	s, err := Open(path, bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPluginMarker(extapi.Marker{Name: "plugin.acme_x.data", Version: 1, WrittenBy: "v27.0.0"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WritePushedState(context.Background(), &pstate.Batch{Markers: []pstate.Marker{{Name: "pstate.banners", Version: 2, WrittenBy: "v27.4.0"}}}); err != nil {
+		t.Fatal(err)
+	}
+	want := []extapi.Marker{{Name: "plugin.acme_x.data", Version: 1, WrittenBy: "v27.0.0"}, {Name: "pstate.banners", Version: 2, WrittenBy: "v27.4.0"}}
+	if got, err := s.PluginMarkers(); err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("online markers = %v %v", got, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadPluginMarkers(path); err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("offline markers = %v %v", got, err)
+	}
+	// A database from before pushed state has only the host's markers.
+	old, err := Open(filepath.Join(dir, "old.db"), bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.db.Migrator().DropTable(&pstate.Marker{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := old.PluginMarkers(); err != nil || len(got) != 0 {
+		t.Fatalf("pre-pushed-state markers = %v %v", got, err)
+	}
+	old.Close()
 }

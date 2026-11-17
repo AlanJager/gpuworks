@@ -25,8 +25,18 @@ import (
 // coreMarkers are the format versions of the core's own persisted plugin
 // state that this build reads, by marker name. The part of the core that
 // persists a kind of state adds its marker here in the change that writes
-// it; a version only ever rises.
-var coreMarkers = map[string]int{}
+// it; a version only ever rises. Pushed state writes "pstate.<kind>" at
+// version 1 for every table kind (package pushstate, Markers; a test keeps
+// the two equal).
+var coreMarkers = pushedStateMarkers()
+
+func pushedStateMarkers() map[string]int {
+	out := map[string]int{}
+	for _, kind := range extapi.TableKinds() {
+		out["pstate."+kind] = 1
+	}
+	return out
+}
 
 // CoreMarkers returns the core markers this build reads.
 func CoreMarkers() map[string]int { return maps.Clone(coreMarkers) }
