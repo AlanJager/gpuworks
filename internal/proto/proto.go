@@ -245,6 +245,11 @@ type Hello struct {
 	// the node's own directory for the default local storage when the node
 	// has none; a directory an operator set is never replaced.
 	OwnModelsDir string `json:"own_models_dir,omitempty"`
+	// InstanceID names the agent process that sent the hello: random per
+	// process image (an in-place exec starts a new one), the same for every
+	// connection the process makes. Two ids taking turns on one node are two
+	// agents sharing its token. Agents before it send none.
+	InstanceID string `json:"instance_id,omitempty"`
 }
 
 // Reject explains why a connection is being closed. It is sent before the

@@ -79,6 +79,9 @@ type Session struct {
 	remote          string
 	proto           int
 	lastSeen        atomic.Int64 // unix ms
+	// instanceID and hostname are the agent process's, from its hello;
+	// written before register publishes the session (duplicate_agents.go).
+	instanceID, hostname string
 	// runtimeProxy is the container runtime daemon's proxy as the agent last
 	// reported it (proto.NodeStatus.RuntimeProxy). It is not stored: the next
 	// report after a server restart brings it back.
@@ -251,6 +254,10 @@ func (s *Session) handshake() error {
 	// Persist the handshake facts first so that the instant the node reads as
 	// online (register below) they are already on record.
 	s.recordHandshakeFacts(n, hello)
+	if id := strings.TrimSpace(hello.InstanceID); len(id) <= maxInstanceIDLen {
+		s.instanceID = id
+	}
+	s.hostname = hello.Hostname
 	s.hub.register(s)
 	if err := s.send(proto.TRegistered, 0, proto.Registered{NodeUUID: n.UUID, NodeToken: registeredToken, Proto: negotiated, SessionID: s.sessionID}); err != nil {
 		return err

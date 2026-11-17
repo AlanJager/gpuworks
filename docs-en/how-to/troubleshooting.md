@@ -126,6 +126,14 @@ After a storage download sends HTTP 200, an interruption can only abort the conn
 4. The protocol versions do not match, with reason `proto_mismatch` (a detail such as `server supports 1-1`); upgrade the agent.
 5. `stale_session`: occurs only during a **data channel** handshake and means its bound control session has expired. The agent only logs it at Debug level and retries
    with backoff; it recovers automatically after the control channel reconnects. See [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md). Take action only if it persists.
+6. Two agents use the same node identity: they take turns connecting and knock each other's connection off, yet the node page stays "Online" the whole time (the replaced connection does not mark the node offline).
+   What you see is terminals, log follows and model or image transfers breaking again and again; the agent log on both hosts repeatedly shows `connection ended` and `reconnecting` without any reject;
+   the server log has `AGENT_DUPLICATE_INSTANCE`, where `host`/`remote` and `other_host`/`other_remote` are the two agents replacing each other's connection.
+   A second `run` on the same state directory is already stopped by `<state>/agent.lock` (see [CLI Reference](../reference/cli.md)), so what remains is mostly
+   a state directory or token copied to another host (a cloned disk or image), another state directory holding the same token, or an agent older than this release
+   sharing an identity with a current one. Detection relies on the process instance ID the agent sends in its handshake, so it is reported only when at least one side is a current agent;
+   when both are older agents the server log has no such entry, and you can only go by the symptoms above and the processes on the two hosts.
+   Stop the extra agent; on a cloned host, delete the copied state directory and connect it again as a new node. It is logged at most once an hour per node.
 
 Clock skew is **not** a reason for rejection: the handshake does not validate timestamps, and the HMAC for `server_dial` signs only a one-time nonce, with no time component.
 If the key for a server_dial node does not match, the agent reports `invalid server_dial proof`.
@@ -1370,7 +1378,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 63b16d81948f3f90907b27c290927dc82b17c9602c297e08b8b626261fc32935 -->
+<!-- translation-source-sha256: 081eb8cceabb438367337ca0b64d6a4d1311b9d290d9e355a89b8b961f145bb0 -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
