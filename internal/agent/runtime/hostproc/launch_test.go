@@ -191,3 +191,33 @@ func TestScriptTranslatesEachMountWordOnce(t *testing.T) {
 		}
 	}
 }
+
+// The value of --served-model-name is the name the gateway sends, not a path:
+// a launch with no alias names the model after its mount target ("/model"),
+// and translating that to the host path would leave the engine answering
+// under a name the gateway never asks for.
+func TestPlanLaunchKeepsServedModelNameVerbatim(t *testing.T) {
+	spec := runtime.WorkloadSpec{
+		Entrypoint: []string{"vllm", "serve", "/model"},
+		Cmd:        []string{"--served-model-name", "/model", "--tokenizer", "/model", "--served-model-name=/model/sub"},
+		Mounts:     []runtime.Mount{{Source: "/Users/x/m", Target: "/model"}},
+	}
+	exists := fakeFS("/env/ROOT/bin/vllm", "/env/ROOT/bin/python3", "/env/ROOT/bin")
+	config := oci.ImageConfig{Env: []string{"PATH=/bin"}}
+	got := plan(t, config, spec, exists)
+	want := []string{"vllm", "serve", "/Users/x/m", "--served-model-name", "/model", "--tokenizer", "/Users/x/m", "--served-model-name=/model/sub"}
+	if !slices.Equal(got.Args, want) {
+		t.Fatalf("Args = %v, want %v", got.Args, want)
+	}
+
+	sglang := runtime.WorkloadSpec{
+		Entrypoint: []string{"python3", "-m", "sglang.launch_server"},
+		Cmd:        []string{"--model-path", "/model", "--served-model-name", "/model"},
+		Mounts:     []runtime.Mount{{Source: "/Users/x/m", Target: "/model"}},
+	}
+	got = plan(t, config, sglang, exists)
+	want = []string{"python3", "-m", "sglang.launch_server", "--model-path", "/Users/x/m", "--served-model-name", "/model"}
+	if !slices.Equal(got.Args, want) {
+		t.Fatalf("Args = %v, want %v", got.Args, want)
+	}
+}

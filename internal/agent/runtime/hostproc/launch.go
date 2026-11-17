@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -26,7 +27,8 @@ import (
 //
 // Only whole tokens are translated, plus the value of a "--flag=value" or
 // "KEY=value" token and each element of a colon-separated path list, because
-// those are the places a launch puts a path. A shell script (an argument with
+// those are the places a launch puts a path. The value of a flag in nameFlags
+// is a name, not a path, and is kept as written. A shell script (an argument with
 // whitespace) gets its mount targets translated where they stand as words: a
 // pre-start script names the model mount that way.
 type pathMap struct {
@@ -98,6 +100,34 @@ func (m pathMap) value(v string) string {
 // flagOrKey matches the "--flag=" or "KEY=" prefix of a token whose value is
 // to be translated.
 var flagOrKey = regexp.MustCompile(`^(-{1,2}[A-Za-z0-9][A-Za-z0-9._-]*|[A-Za-z_][A-Za-z0-9_]*)=`)
+
+// nameFlags are the flags whose value is a name that merely looks like a path.
+// A launch with no model alias names the model after its mount target
+// ("--served-model-name /model"), and that is the name the gateway asks for:
+// translating it would leave the engine answering under the host path.
+var nameFlags = []string{"--served-model-name"}
+
+// isNameFlag reports whether tok is a flag in nameFlags.
+func isNameFlag(tok string) bool {
+	return slices.Contains(nameFlags, tok)
+}
+
+// args translates a whole argv, keeping the values of nameFlags.
+func (m pathMap) args(argv []string) []string {
+	out := make([]string, len(argv))
+	for i, tok := range argv {
+		if i > 0 && isNameFlag(argv[i-1]) {
+			out[i] = tok
+			continue
+		}
+		if flag, _, ok := strings.Cut(tok, "="); ok && isNameFlag(flag) {
+			out[i] = tok
+			continue
+		}
+		out[i] = m.arg(tok)
+	}
+	return out
+}
 
 // arg translates one argv token.
 func (m pathMap) arg(tok string) string {
@@ -195,9 +225,7 @@ func planLaunch(root string, config oci.ImageConfig, spec runtime.WorkloadSpec, 
 	if len(argv) == 0 {
 		return launch{}, fmt.Errorf("workload %s has no command: neither the spec nor image %s names one", spec.Name, spec.Image)
 	}
-	for i, tok := range argv {
-		argv[i] = paths.arg(tok)
-	}
+	argv = paths.args(argv)
 
 	env := map[string]string{}
 	for _, key := range hostEnvKeys {
