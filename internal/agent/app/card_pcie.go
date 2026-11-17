@@ -216,7 +216,7 @@ func (w *pcieWatch) aerFinding(ident, bdf string, now time.Time, passedSince fun
 // cardsBusy are the cards one of this node's instances uses and that are not
 // asleep: the ones whose link speed means something.
 func (n *NodeRuntime) cardsBusy() map[string]bool {
-	ours, known := n.cardsInUse()
+	ours, _, known := n.cardsInUse()
 	if !known {
 		return nil
 	}

@@ -61,6 +61,12 @@ type cardOccupancy struct {
 	// shared is the cards readSharedCard has read since our instances last
 	// joined them (readsShared).
 	shared map[string]bool
+	// guessed is, on a card readSharedCard last read with more unknown
+	// processes than our engines had places for, those processes by PID with
+	// their names: which of them are ours was a guess, so the next reading
+	// takes none of them as known either way (readSharedCard), and the state
+	// file keeps them without their PIDs (saveLocked).
+	guessed map[string]map[int]string
 	// path is where last is kept across restarts (cardOccupancyFile); empty
 	// keeps it in memory only.
 	path string
@@ -169,6 +175,12 @@ func (o *cardOccupancy) knownForeign(ident string) []proto.CardProcess {
 //     counted foreign: overstating what the outside holds refuses a
 //     partition, understating it runs one out of memory.
 //
+// When which of them are ours is a guess - more processes than our engines
+// have places for, none known - the guess is recorded (guessed) and not taken
+// as knowledge: the next reading weighs those processes afresh, so once the
+// outside job leaves, an engine of ours that was counted foreign in its
+// place is ours again rather than foreign for as long as it runs.
+//
 // A known process no longer listed - one that exited, restarted under a new
 // PID, or was carried over a reboot without its PID (see load) - is not
 // reported: the card has been read. Its memory is not offered at once,
@@ -178,7 +190,7 @@ func (o *cardOccupancy) knownForeign(ident string) []proto.CardProcess {
 func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, slots int, procs []gpu.ComputeProcess, bdf string) []proto.CardProcess {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	previous := o.own[ident]
+	previous, guessed := o.own[ident], o.guessed[ident]
 	own := map[int]string{}
 	var foreign, fresh []proto.CardProcess
 	for _, proc := range procs {
@@ -186,6 +198,17 @@ func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, 
 			continue
 		}
 		entry := proto.CardProcess{PID: proc.PID, Name: proc.Name, MemoryBytes: proc.MemoryBytes}
+		if name, ok := guessed[proc.PID]; ok && name == proc.Name {
+			fresh = append(fresh, entry)
+			continue
+		}
+		// Ours before known foreign: a process a guess counted foreign and
+		// a later reading found to be ours stays named in the last answer
+		// for the release rounds.
+		if name, ok := previous[proc.PID]; ok && name == proc.Name {
+			own[proc.PID] = proc.Name
+			continue
+		}
 		if i := slices.IndexFunc(known, func(k proto.CardProcess) bool { return k.PID > 0 && k.PID == proc.PID && k.Name == proc.Name }); i >= 0 {
 			if entry.MemoryBytes <= 0 {
 				entry.MemoryBytes = known[i].MemoryBytes
@@ -193,14 +216,17 @@ func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, 
 			foreign = append(foreign, entry)
 			continue
 		}
-		if name, ok := previous[proc.PID]; ok && name == proc.Name {
-			own[proc.PID] = proc.Name
-			continue
-		}
 		fresh = append(fresh, entry)
 	}
 	free := max(0, slots-len(own))
+	var guess map[int]string
 	if len(fresh) > free {
+		if free > 0 {
+			guess = make(map[int]string, len(fresh))
+			for _, entry := range fresh {
+				guess[entry.PID] = entry.Name
+			}
+		}
 		slices.SortStableFunc(fresh, func(a, b proto.CardProcess) int { return cmp.Compare(a.MemoryBytes, b.MemoryBytes) })
 		foreign = append(foreign, fresh[free:]...)
 		fresh = fresh[:free]
@@ -211,7 +237,15 @@ func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, 
 	if o.own == nil {
 		o.own, o.shared = map[string]map[int]string{}, map[string]bool{}
 	}
+	if o.guessed == nil {
+		o.guessed = map[string]map[int]string{}
+	}
 	o.own[ident], o.shared[ident] = own, true
+	if guess != nil {
+		o.guessed[ident] = guess
+	} else {
+		delete(o.guessed, ident)
+	}
 	return foreign
 }
 
@@ -233,6 +267,7 @@ func (o *cardOccupancy) setOwn(ident string, pids map[int]bool, procs []gpu.Comp
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	delete(o.shared, ident)
+	delete(o.guessed, ident)
 	if len(pids) == 0 {
 		delete(o.own, ident)
 		return
@@ -317,7 +352,7 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		n.occupancy.restate(gpus)
 		return
 	}
-	ours, known := n.cardsInUse()
+	ours, partitionsOnly, known := n.cardsInUse()
 	if !known {
 		// This agent has just started and has not been told what it should
 		// be running. Every card serving one of our own instances would
@@ -348,9 +383,16 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		// foreign is read by how many processes our engines keep there
 		// (readSharedCard), and any other card of ours is not examined: a
 		// new process there may be our engine's.
+		//
+		// A card that holds only partitions of ours is read so too: each
+		// partition's engine keeps one process there, so a job somebody
+		// starts beside them later is told from ours and reported
+		// (proto.PartitionSafetyForeignTrackedPartitioned). A card with a
+		// whole-card instance of ours is not: its engine keeps no fixed
+		// number of processes.
 		own, examine := sleeping[ident]
 		if slots := ours[ident]; slots > 0 && !examine {
-			if known := n.occupancy.knownForeign(ident); len(known) > 0 || n.occupancy.readsShared(ident) {
+			if known := n.occupancy.knownForeign(ident); len(known) > 0 || n.occupancy.readsShared(ident) || partitionsOnly[ident] {
 				card.ForeignProcesses = n.occupancy.readSharedCard(ident, known, slots, procs, card.PCIeBDF)
 			}
 			continue
@@ -411,35 +453,50 @@ func (n *NodeRuntime) sleepingCardPIDs() map[string]map[int]bool {
 //
 // Each card counts how many of our instances hold it: an instance waiting on
 // its old generation counts for both.
-func (n *NodeRuntime) cardsInUse() (cards map[string]int, known bool) {
+//
+// partitionsOnly are the cards of ours that hold only memory-limited
+// partitions (engine.HeldCards.Partitions), whose engines keep one process
+// each there.
+func (n *NodeRuntime) cardsInUse() (cards map[string]int, partitionsOnly map[string]bool, known bool) {
 	var held engine.HeldCards
 	switch {
 	case n.heldCards != nil:
 		held, known = n.heldCards(), true
 	case n.engine == nil:
-		return map[string]int{}, false
+		return map[string]int{}, map[string]bool{}, false
 	default:
 		held, known = n.engine.HeldCards(), n.engine.DesiredKnown()
 	}
-	ours := map[string]int{}
-	for _, ident := range held.Idents {
-		if ident != "" {
-			ours[ident]++
+	count := func(idents []string, indexes []int) map[string]int {
+		out := map[string]int{}
+		for _, ident := range idents {
+			if ident != "" {
+				out[ident]++
+			}
+		}
+		for _, index := range indexes {
+			ident, ok := n.occupancy.identOf(index)
+			if !ok {
+				known = false
+				continue
+			}
+			out[ident]++
+		}
+		return out
+	}
+	ours := count(held.Idents, held.Indexes)
+	partitions := count(held.Partitions, held.PartitionIndexes)
+	partitionsOnly = map[string]bool{}
+	for ident, slots := range ours {
+		if partitions[ident] == slots {
+			partitionsOnly[ident] = true
 		}
 	}
-	for _, index := range held.Indexes {
-		ident, ok := n.occupancy.identOf(index)
-		if !ok {
-			known = false
-			continue
-		}
-		ours[ident]++
-	}
-	return ours, known
+	return ours, partitionsOnly, known
 }
 
-// cardSet is cardsInUse's answer without the counts.
-func cardSet(counts map[string]int, known bool) (map[string]bool, bool) {
+// cardSet is cardsInUse's answer without the counts and kinds.
+func cardSet(counts map[string]int, _ map[string]bool, known bool) (map[string]bool, bool) {
 	cards := make(map[string]bool, len(counts))
 	for ident := range counts {
 		cards[ident] = true

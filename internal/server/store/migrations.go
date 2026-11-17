@@ -1350,6 +1350,7 @@ var migrations = []migration{
 	{Version: 216, Name: "node_last_recovery_code", Apply: addNodeLastRecoveryCode},
 	{Version: 217, Name: "check_codes_upper_snake", Apply: upperCaseCheckCodes},
 	{Version: 218, Name: "node_runtime_fallback_socket", Apply: addNodeRuntimeFallbackSocket},
+	{Version: 219, Name: "node_placement_policy", Apply: addNodePlacementPolicy},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

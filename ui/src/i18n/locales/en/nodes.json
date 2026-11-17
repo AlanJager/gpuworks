@@ -55,7 +55,14 @@
     "count": "{{filtered}}/{{total}} nodes",
     "search": "Search by name, hostname or ID"
   },
-  "source": { "manual": "Added by hand", "unknown": "Source could not be read", "cluster": "Cluster {{name}}", "clusterOf": "Cluster {{name}} ({{provider}})", "standaloneCluster": "Kubernetes cluster", "selected": "The chosen source" },
+  "source": {
+    "manual": "Added by hand",
+    "unknown": "Source could not be read",
+    "cluster": "Cluster {{name}}",
+    "clusterOf": "Cluster {{name}} ({{provider}})",
+    "standaloneCluster": "Kubernetes cluster",
+    "selected": "The chosen source"
+  },
   "column": {
     "source": "Source",
     "status": "Status",
@@ -1367,6 +1374,21 @@
       "REQUIRES_AGENT": "This check requires a connected Agent.",
       "NOT_REPORTED": "The Agent did not return structured results for this item. Review the original report.",
       "INFORMATION_COLLECTED": "Detailed information is available. Findings are listed separately among the checks."
+    }
+  },
+  "placementPolicy": {
+    "title": "Placement policy",
+    "loadFailed": "The placement policy settings could not be loaded.",
+    "saveFailed": "The setting was not saved: {{detail}}",
+    "empty": "This node has no placement settings.",
+    "notApplicable": "No effect on this node now: {{reason}}",
+    "share_with_foreign": {
+      "label": "Allow partitions beside processes outside the platform",
+      "help": "Memory-limited dGPU partitions may be placed on cards that processes outside the platform also use, when memory fits. Cards without such processes are always tried first. Memory is isolated; compute and bandwidth are not. Turning this off does not stop running instances, but replacing them (a restart, a crash, scaling) follows the new setting; a rolling restart waits rather than drop a replica."
+    },
+    "reason": {
+      "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "This node has no ready dGPU partition backend; the setting has no effect until it has one.",
+      "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "Upgrade this node's agent to track processes outside the platform on shared cards; the setting has no effect until then."
     }
   }
 }

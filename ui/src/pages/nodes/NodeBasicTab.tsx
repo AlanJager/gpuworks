@@ -9,6 +9,7 @@ import GPUIsolationNotice, { GPUIsolationTag } from "../../components/NodeGPUIso
 import UCXNetlinkHangNotice, { UCXNetlinkHangTag } from "../../components/NodeUCXNetlinkHang";
 import { NodeConnectionBadge } from "../../components/NodeConnectionBadge";
 import NodeNetworksCard from "../../components/NodeNetworksCard";
+import NodePlacementPolicy from "../../components/NodePlacementPolicy";
 import NodePullProxy from "../../components/NodePullProxy";
 import { NodeSSHAccess } from "../../components/NodeRecoveryControls";
 import RuntimeFallbackNotice from "../../components/RuntimeFallbackNotice";
@@ -138,6 +139,10 @@ export default function NodeBasicTab({
             <RuntimePluginStatus node={node} />
           </Descriptions.Item>
         </Descriptions>
+      </DetailSection>
+
+      <DetailSection title={t("placementPolicy.title")}>
+        <NodePlacementPolicy node={node} onUpdated={onUpdated} />
       </DetailSection>
 
       <DetailSection title={t("detail.section.storage")}>

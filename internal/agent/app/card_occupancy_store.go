@@ -92,7 +92,28 @@ func (o *cardOccupancy) saveLocked(previous map[string][]proto.CardProcess) {
 	if o.path == "" || sameOccupancy(previous, o.last) {
 		return
 	}
-	data, err := json.Marshal(o.last)
+	// A process counted foreign by a guess (readSharedCard) is kept without
+	// its PID, as across a reboot: a restarted agent restates its figure but
+	// does not take it as knowing the process is somebody else's.
+	saved := o.last
+	if len(o.guessed) > 0 {
+		saved = make(map[string][]proto.CardProcess, len(o.last))
+		for ident, procs := range o.last {
+			guess := o.guessed[ident]
+			if len(guess) == 0 {
+				saved[ident] = procs
+				continue
+			}
+			out := append([]proto.CardProcess(nil), procs...)
+			for i := range out {
+				if name, ok := guess[out[i].PID]; ok && name == out[i].Name {
+					out[i].PID = 0
+				}
+			}
+			saved[ident] = out
+		}
+	}
+	data, err := json.Marshal(saved)
 	if err != nil {
 		return
 	}

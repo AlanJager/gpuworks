@@ -46,8 +46,12 @@ func partitionClaim(req Request) int64 {
 	return serverestimate.PartitionClaimBytes(req.PerGPULimitBytes, req.PartitionBackend, func() int64 { return reserveFor(req) })
 }
 
+// nvidiaNode allows partitions beside processes outside the platform: the
+// tests of what may share a card by memory describe a node that allows it
+// (gates_test.go covers one that does not).
 func nvidiaNode(gpus ...GPU) NodeSnapshot {
-	return NodeSnapshot{UUID: "h20", Vendor: accelerator.VendorNVIDIA, DtypeSupported: true, DiskAvailBytes: 1 << 50, GPUs: gpus}
+	return NodeSnapshot{UUID: "h20", Vendor: accelerator.VendorNVIDIA, DtypeSupported: true, DiskAvailBytes: 1 << 50, GPUs: gpus,
+		Policy: NodePolicy{ShareWithForeign: true}}
 }
 
 // A pin names the cards a request may use; the filters must judge those,
@@ -177,7 +181,7 @@ func TestGPUCandidatesOfferACardHeldOutsideThePlatformToPartitionsOnly(t *testin
 		{"filled by foreign and claims", filled, partition, ReasonNoFit},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := GPUCandidates(tc.req, []GPU{tc.card})
+			got := GPUCandidates(tc.req, NodeSnapshot{GPUs: []GPU{tc.card}})
 			code := ""
 			if got[0].Reason != nil {
 				code = got[0].Reason.Code
@@ -225,7 +229,7 @@ func TestAnOverriddenHeldCardStillTakesWholeCardWork(t *testing.T) {
 	if res := Schedule(whole, nvidiaNode(card)); !res.OK {
 		t.Fatalf("whole-card on an overridden held card = %+v, want placed", res.Message)
 	}
-	if got := GPUCandidates(whole, []GPU{card}); !got[0].Available {
+	if got := GPUCandidates(whole, NodeSnapshot{GPUs: []GPU{card}}); !got[0].Available {
 		t.Fatalf("candidate = %+v, want offered", got[0])
 	}
 	huge := whole

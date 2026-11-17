@@ -197,8 +197,10 @@ func (a *apiHandlers) deploymentDTOFrom(rows deployment.Rows, d *store.Deploymen
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)
 		quick, quickErr := storedLaunchConfig(d)
+		notes := deployment.InstanceNotes(rows, insts)
 		for i := range insts {
 			item := a.instanceDTOFrom(rows, &insts[i])
+			item.Notes = notes[insts[i].UUID]
 			if viewErr == nil {
 				replicaFields(&item, d, view.Match, &insts[i])
 			}
@@ -294,8 +296,10 @@ func (a *apiHandlers) instanceDTO(in *store.Instance) dto.Instance {
 func (a *apiHandlers) instanceDTOs(rows deployment.Rows, insts []store.Instance) []dto.Instance {
 	views := map[uint]*replicaView{}
 	out := make([]dto.Instance, 0, len(insts))
+	notes := deployment.InstanceNotes(rows, insts)
 	for i := range insts {
 		item := a.instanceDTOFrom(rows, &insts[i])
+		item.Notes = notes[insts[i].UUID]
 		if dep := rows.Deployment(insts[i].DeploymentID); dep != nil {
 			view, seen := views[dep.ID]
 			if !seen {

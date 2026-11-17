@@ -56,6 +56,8 @@ func (s *Service) evaluateAutomaticPlacement(ctx context.Context, req *dto.Deplo
 	modelMount, componentMounts := previewComponentMounts(s.d.Store, selection.Components, nil)
 	previewSelection := snapshotTemplateSelection(selection, "")
 	var selected *dto.PlacementNode
+	// The controller's pool placement picks the same way (planning.FitPicker).
+	var picker planning.FitPicker[*dto.PlacementNode]
 	for index, candidate := range ranked {
 		if index == planning.PoolTrialBudget || selected != nil {
 			break
@@ -99,9 +101,15 @@ func (s *Service) evaluateAutomaticPlacement(ctx context.Context, req *dto.Deplo
 		entry.Reason = scheduleReasonOf(plan.Output, node, requestYield(req.YieldPolicy))
 		if plan.Output.Result.OK && plan.Output.Result.Plan != nil {
 			entry.OK = true
-			selected = &dto.PlacementNode{UUID: node.UUID, Name: names[node.UUID], Reasons: selectedReasons(plan.Output.Result)}
+			fit := &dto.PlacementNode{UUID: node.UUID, Name: names[node.UUID], Reasons: selectedReasons(plan.Output.Result)}
+			if picker.Offer(fit, plan.Output.Result.Plan.Concessions) {
+				selected = fit
+			}
 		}
 		candidates = append(candidates, entry)
+	}
+	if selected == nil {
+		selected, _ = picker.Fallback()
 	}
 	return selected, candidates
 }

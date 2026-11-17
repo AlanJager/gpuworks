@@ -83,6 +83,9 @@ func (s *Service) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, bool) {
 				if reason := item.Reason; reason != nil {
 					card.Reason = &dto.ScheduleReason{Code: reason.Code, Params: reason.Params, Message: reason.Message}
 				}
+				if note := item.Note; note != nil {
+					card.Note = &dto.ScheduleReason{Code: note.Code, Params: note.Params}
+				}
 				resp.GPUCandidates.Items = append(resp.GPUCandidates.Items, card)
 			}
 		}

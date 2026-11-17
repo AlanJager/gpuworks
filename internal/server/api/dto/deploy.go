@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/pkg/localization"
 )
 
@@ -336,13 +337,17 @@ type Instance struct {
 	StartTimeoutConflict  bool             `json:"start_timeout_conflict,omitempty"`
 	EngineStartTimeoutSec int              `json:"engine_start_timeout_sec,omitempty"`
 	RuntimeFailure        *ProductMessage  `json:"runtime_failure,omitempty"`
-	PreStartArgv          []string         `json:"pre_start_argv,omitempty"`
-	PreStartScript        string           `json:"pre_start_script,omitempty"`
-	UUID                  string           `json:"uuid"`
-	DeploymentID          uint             `json:"deployment_id"`
-	NodeUUID              string           `json:"node_uuid"`
-	State                 string           `json:"state"`
-	GPUIndexes            []int            `json:"gpu_indexes"`
+	// Notes are non-blocking facts the server derives about the instance
+	// when it is read (deployment.InstanceNotes): code and params, e.g. a
+	// card shared with processes outside the platform. Absent when none.
+	Notes          []messages.Warning `json:"notes,omitempty"`
+	PreStartArgv   []string           `json:"pre_start_argv,omitempty"`
+	PreStartScript string             `json:"pre_start_script,omitempty"`
+	UUID           string             `json:"uuid"`
+	DeploymentID   uint               `json:"deployment_id"`
+	NodeUUID       string             `json:"node_uuid"`
+	State          string             `json:"state"`
+	GPUIndexes     []int              `json:"gpu_indexes"`
 	// VRAMLimitBytes is the dGPU memory limit the instance runs under on each
 	// of its GPUs; absent for an instance that holds its GPUs whole.
 	VRAMLimitBytes int64              `json:"vram_limit_bytes,omitempty"`
@@ -424,30 +429,6 @@ type InstanceEvent struct {
 	Message   string         `json:"message,omitempty"`
 	Data      string         `json:"data,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
-}
-
-// APIKey is the API view of a key (never includes the secret).
-type APIKey struct {
-	Name     string     `json:"name"`
-	Prefix   string     `json:"prefix"`
-	LastUsed *time.Time `json:"last_used,omitempty"`
-	Created  time.Time  `json:"created_at"`
-	// Revoked is when the key was revoked; a revoked key never authenticates
-	// and is listed so its past usage keeps a name.
-	Revoked *time.Time `json:"revoked_at,omitempty"`
-	// AllDeployments: the key may call every deployment. Otherwise only
-	// Deployments, which may have become empty when they were all deleted.
-	AllDeployments bool               `json:"all_deployments"`
-	Deployments    []APIKeyDeployment `json:"deployments"`
-	// Priority is the key's request priority binding.
-	Priority APIKeyPriority `json:"priority"`
-}
-
-// APIKeyDeployment is a deployment a restricted API key may call.
-type APIKeyDeployment struct {
-	ID         uint   `json:"id"`
-	Name       string `json:"name"`
-	ServedName string `json:"served_name"`
 }
 
 // DeployRequest is the create-deployment body.

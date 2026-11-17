@@ -710,6 +710,22 @@ _Avoid_: restart count（已删除）、attempt 单指数字
 一类加速卡（当前只有 Apple 统一内存）的调度语义：一张卡可以同时承载多个实例，每个实例按准入时的内存份额（`memory_claim_bytes`）记账，卡满即止。份额在准入时确定并随实例保存，之后不按模板或估算重算（ADR 0044）。
 _Avoid_: 把它当 dGPU 切分、按卡独占计数
 
+**放置策略 — Placement Policy**:
+运维按节点设置的放置旋钮（`nodepolicy.Policy`，节点行的 `placement_*` 列），决定调度器在这个节点上可以把工作放到哪里；它不停止放置，那是节点调度状态（封锁、排空）的事。旋钮由 `nodepolicy.Settings` 一处定义，字典、补丁、DTO 与存储写入都由它驱动；第一个旋钮是 `share_with_foreign`（允许分区与平台外进程共卡，默认关，ADR 0068）。
+_Avoid_: scheduling（已指封锁/排空）、按节点存 Setting 键、把旋钮写进 labels
+
+**卡准入闸 — Card Gate**:
+调度器里在某个条件下扣下一张本可使用的卡的规则（`scheduler.cardGate`），按表序决定先报哪个拒绝原因；可同意的闸在节点放置策略或请求的同意（手工选卡）下放行。闸不改卡的能力事实（如 `ForeignShareable`）。
+_Avoid_: 把同意折进能力位、在 `takesWorkFor` 里加特例
+
+**卡偏好档 — Card Preference**:
+放置在有得选时避开的一类卡（`scheduler.cardPreferences`），不是准入规则：先试不含这类卡的方案，放不下才逐档放宽，并在方案里说明用了哪些卡。表序即优先级：先放宽告警卡，最后放宽与平台外进程共用的卡；只有标为 `poolWide` 的让步才让池放置跨节点继续找。
+_Avoid_: 用打分罚分表达偏好、在调度器里复制「先试 X 再试全部」的分支
+
+**实例提示 — Instance Note**:
+服务端读实例时按规则表推导的非阻塞事实（`deployment.InstanceNotes`，码 + 参数，如 `INSTANCE_CARD_SHARED_OUTSIDE`），随实例 DTO 的 `notes` 下发，用来解释用户看到的现象（如推理变慢）。不持久化、不按实例保存状态：原因消失或实例删除后不留任何东西。
+_Avoid_: 运行失败（`runtime_failure` 是持久化的失败原因）、把提示写进实例行
+
 **用户标签 — Node Label**:
 运维写在节点上的键值（`Node.Labels`），也是按标签加载网络时匹配的对象。键不得落在保留域 `gpuworks.ai/` 及其子域里。
 _Avoid_: 用标签代替芯片探测事实

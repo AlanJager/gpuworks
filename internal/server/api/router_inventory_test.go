@@ -245,6 +245,7 @@ GET /api/v1/routing-policies
 GET /api/v1/scheduling/activity
 GET /api/v1/scheduling/board
 GET /api/v1/scheduling/history
+GET /api/v1/scheduling/node-placement-policies
 GET /api/v1/scheduling/overview
 GET /api/v1/scheduling/timeline
 GET /api/v1/scheduling/yield-policies
@@ -279,6 +280,7 @@ PATCH /api/v1/models/{id}/inference-config
 PATCH /api/v1/nodes/management-roles
 PATCH /api/v1/nodes/{uuid}/accelerator
 PATCH /api/v1/nodes/{uuid}/name
+PATCH /api/v1/nodes/{uuid}/placement-policy
 PATCH /api/v1/nodes/{uuid}/runtime
 PATCH /api/v1/security/settings
 PATCH /api/v1/storages/settings

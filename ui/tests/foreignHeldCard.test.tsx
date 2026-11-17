@@ -74,3 +74,29 @@ test("a no_fit reason names what processes outside the platform hold, in both la
 test("a sleepable partition is told why the shared card is refused", () => {
   assert.match(scheduleText(t, { code: "held_outside_platform_sleep" }), /could not be woken there/);
 });
+
+test("an offered card shared with processes outside the platform says so when picked", () => {
+  const partition: GPUCandidates = { node_uuid: node.uuid, items: [
+    { index: 0, available: true, note: { code: "foreign_shared_card", params: { foreign_gib: "62.5" } } }, { index: 1, available: true },
+  ] };
+  render(<Grid value={partition} />);
+  const shared = screen.getByRole("button", { name: "0" }) as HTMLButtonElement;
+  assert.equal(shared.disabled, false);
+  assert.match(shared.title, /Shared with processes outside the platform \(62\.5 GiB\); compute is not isolated/);
+  assert.doesNotMatch((screen.getByRole("button", { name: "1" }) as HTMLButtonElement).title, /outside the platform/);
+});
+
+test("a refusal naming a setting reads the setting's own label, whatever the setting", async () => {
+  const params = { setting: "share_with_foreign", gpus: [0, 1], count: 2, node: "h20" };
+  assert.match(scheduleText(t, { code: "held_outside_platform_not_allowed", params }),
+    /Turn on "Allow partitions beside processes outside the platform" in the node's placement policy/);
+  const { i18n: zh } = await createI18n(["deploy", "nodes"], "zh");
+  assert.match(scheduleText(zh.getFixedT("zh", "deploy"), { code: "held_outside_platform_not_allowed", params }), /开启「允许分区与平台外进程共卡」/);
+  // A setting the client has no label for still names its key.
+  assert.match(scheduleText(t, { code: "held_outside_platform_not_allowed", params: { ...params, setting: "future_knob" } }), /"future_knob"/);
+});
+
+test("a plan on a shared card states how many and how much", () => {
+  assert.match(scheduleText(t, { code: "foreign_shared_gpus_used", params: { gpus: [0], count: 1, foreign_gib: "62.5" } }),
+    /1 of the chosen GPUs are shared with processes outside the platform \(up to 62\.5 GiB\)/);
+});

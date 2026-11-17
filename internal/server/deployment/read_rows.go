@@ -34,6 +34,9 @@ type Rows interface {
 	ModelReads(instanceID uint) []dto.InstanceModelFile
 	// NodeByUUID is the node with that UUID; nil when there is none.
 	NodeByUUID(uuid string) *store.Node
+	// HeldCards is the cards processes outside the platform hold on these
+	// nodes, by node: one read for all of them (InstanceNotes).
+	HeldCards(nodeIDs []uint) map[uint][]store.GPU
 }
 
 // StoreRows asks the store for each row as it is needed. It suits a single
@@ -67,6 +70,27 @@ func (l StoreRows) Node(id uint) *store.Node {
 		return nil
 	}
 	return n
+}
+
+// HeldCards reads the nodes' held cards in one indexed query
+// (heldCardsByNode).
+func (l StoreRows) HeldCards(nodeIDs []uint) map[uint][]store.GPU {
+	return heldCardsByNode(l.st, nodeIDs)
+}
+
+// heldCardsByNode is the cards processes outside the platform hold on these
+// nodes, by node, in one indexed query however many nodes there are; none
+// when it cannot be read.
+func heldCardsByNode(st *store.Store, nodeIDs []uint) map[uint][]store.GPU {
+	out := map[uint][]store.GPU{}
+	cards, err := st.HeldCardsOnNodes(nodeIDs)
+	if err != nil {
+		return out
+	}
+	for _, card := range cards {
+		out[card.NodeID] = append(out[card.NodeID], card)
+	}
+	return out
 }
 
 func (l StoreRows) Model(id uint) *store.Model {
@@ -348,6 +372,13 @@ func (l *ListRows) Deployment(id uint) *store.Deployment { return l.deployments[
 func (l *ListRows) Node(id uint) *store.Node { return l.nodes[id] }
 
 func (l *ListRows) Model(id uint) *store.Model { return l.models[id] }
+
+// HeldCards reads the page's nodes' held cards in one indexed query, each
+// time it is asked: a card's holders change with every report, so they are
+// not kept in the shared list snapshot.
+func (l *ListRows) HeldCards(nodeIDs []uint) map[uint][]store.GPU {
+	return heldCardsByNode(l.st, nodeIDs)
+}
 
 func (l *ListRows) ModelFile(modelID, nodeID uint) *store.ModelFile {
 	if l.fresh != nil && l.fresh.models[modelID] && l.fresh.nodes[nodeID] {

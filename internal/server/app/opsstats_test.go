@@ -309,18 +309,21 @@ func TestOpsStatsBackfillsFromTheRequestLogOnce(t *testing.T) {
 // A card held outside the platform counts as schedulable capacity only when
 // the scheduler may place a partition on it by memory (ADR 0068): the
 // holders' memory known, the node's agent keeping them reported beside a
-// partition, and a partition backend ready on the card. Counting any other
+// partition, a partition backend ready on the card, and a node whose
+// placement policy lets automatic placement share it. Counting any other
 // held card would report capacity the scheduler never uses.
 func TestOpsStatsCountsAHeldCardAsSchedulableOnlyWhenAPartitionMayShareIt(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		safety      int
 		ready       bool
+		allow       bool
 		schedulable float64
 	}{
-		{"current agent with a ready backend", proto.PartitionSafetyForeignTracked, true, 60},
-		{"agent before foreign tracking", 1, true, 0},
-		{"no ready partition backend", proto.PartitionSafetyForeignTracked, false, 0},
+		{"current agent with a ready backend", proto.PartitionSafetyForeignTracked, true, true, 60},
+		{"node does not allow sharing", proto.PartitionSafetyForeignTracked, true, false, 0},
+		{"agent before foreign tracking", 1, true, true, 0},
+		{"no ready partition backend", proto.PartitionSafetyForeignTracked, false, true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Date(2026, 10, 22, 2, 0, 0, 0, time.UTC)
@@ -330,7 +333,7 @@ func TestOpsStatsCountsAHeldCardAsSchedulableOnlyWhenAPartitionMayShareIt(t *tes
 				t.Fatal(err)
 			}
 			updates := map[string]any{"state": store.NodeStateOnline, "gpu_vendor": "nvidia", "arch": "amd64", "os": "linux",
-				"runtime_driver": "docker", "partition_safety_protocol": tc.safety}
+				"runtime_driver": "docker", "partition_safety_protocol": tc.safety, "placement_share_with_foreign": tc.allow}
 			if tc.ready {
 				index := 0
 				probes, _ := json.Marshal([]proto.PartitionProbeResult{{Backend: accelerator.BackendNVIDIALogical, GPUIndex: &index, Status: proto.PartitionProbePassed}})

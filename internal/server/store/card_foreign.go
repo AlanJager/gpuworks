@@ -3,6 +3,8 @@ package store
 import (
 	"encoding/json"
 
+	"gorm.io/gorm"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -47,4 +49,22 @@ func (g GPU) SharesMemoryWithForeign() (int64, bool) {
 		return 0, false
 	}
 	return bytes, true
+}
+
+// HeldCardsOnNodes is the cards processes outside the platform hold on these
+// nodes, for what is shown beside the instances running there. It reads only
+// those nodes' cards, through the node index.
+func (s *Store) HeldCardsOnNodes(nodeIDs []uint) ([]GPU, error) {
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	var cards []GPU
+	err := heldCardsQuery(s.db, nodeIDs).Find(&cards).Error
+	return cards, err
+}
+
+func heldCardsQuery(db *gorm.DB, nodeIDs []uint) *gorm.DB {
+	return db.Model(&GPU{}).
+		Select("id", "node_id", "index", "memory_total", "ownership", "health_status", "foreign_processes").
+		Where("node_id IN ? AND foreign_processes <> ''", nodeIDs)
 }

@@ -99,6 +99,8 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 		d.Topology = dto.ParseNodeTopology(n.TopoJSON)
 	}
 	partitionReports := partitioncap.Decode(n)
+	d.PlacementPolicy, d.PlacementPolicyAvailability = dto.NodePlacementPolicyOf(n.PlacementPolicy,
+		partitionBackendReady(d.PartitionCapabilities), n.PartitionSafetyProtocol >= proto.PartitionSafetyForeignTracked)
 	for i := range n.GPUs {
 		g := &n.GPUs[i]
 		arch := n.ArchOf(*g)
@@ -182,4 +184,15 @@ func nodeDTORuntimes(n *store.Node) []string {
 		return []string{n.RuntimeDriver}
 	}
 	return nil
+}
+
+// partitionBackendReady is whether any partition backend is ready on the
+// node, from the capabilities the DTO already derived.
+func partitionBackendReady(capabilities []proto.PartitionCapability) bool {
+	for _, capability := range capabilities {
+		if capability.Status == partitioncap.StatusReady {
+			return true
+		}
+	}
+	return false
 }

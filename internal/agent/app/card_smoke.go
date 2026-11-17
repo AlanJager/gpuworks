@@ -38,7 +38,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		Cards: func(ctx context.Context) []cardsmoke.Card { return n.smokeCards(ctx, check) },
 		Try:   cardSmokeAttempt(check),
 		Busy: func(card cardsmoke.Card) bool {
-			ours, _ := n.cardsInUse()
+			ours, _, _ := n.cardsInUse()
 			return ours[card.Ident] > 0
 		},
 		Foreign: func(card cardsmoke.Card) bool { return n.occupancy.foreign(card.Ident) },
@@ -49,7 +49,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		// instead of leaving every card on the vendor tool's verdict for
 		// an interval.
 		Deferred: func() string {
-			if _, known := n.cardsInUse(); known {
+			if _, _, known := n.cardsInUse(); known {
 				return ""
 			}
 			return "what this node runs is not known yet; the runtime check waits for the control plane"

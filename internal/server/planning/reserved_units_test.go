@@ -124,7 +124,7 @@ func TestAMultiNodeRankRefusedForASleepersCardNamesIt(t *testing.T) {
 	if scheduler.Schedule(req, nodeSnapshot(st, node, true, "", view)).OK {
 		t.Fatal("the sleeper's card was free to a never launch")
 	}
-	reserved := launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, view)
+	reserved := launchReserved(st, node, nodeInstances(t, st, node), req, true, "", view)
 	if reserved == nil || !slices.Equal(reserved.GPUIndexes, []int{0}) || len(reserved.Sleepers) != 1 || reserved.Sleepers[0].DeploymentID != chat.ID {
 		t.Fatalf("reserved = %+v, want card 0 kept by chat", reserved)
 	}
