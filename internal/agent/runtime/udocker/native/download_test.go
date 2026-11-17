@@ -346,6 +346,17 @@ func TestDownloadSplitBlobFallsBackToOneConnectionWhenRangeIsIgnored(t *testing.
 	quickRecovery(t)
 	s := newBlobServer(t, 1<<20)
 	s.ignoreRange = true
+	// The fixture's blobRequest describes the response after ignoreRange has
+	// been applied. Observe the actual request header to prove the fallback.
+	var ranged, whole atomic.Int32
+	s.misbehave = func(_ int, _ blobRequest, _ http.ResponseWriter, r *http.Request) bool {
+		if r.Header.Get("Range") == "" {
+			whole.Add(1)
+		} else {
+			ranged.Add(1)
+		}
+		return false
+	}
 	d := s.downloaderFor(t, 4, 1)
 	began := time.Now()
 	_, restarts, err := s.fetch(t, d)
@@ -358,9 +369,8 @@ func TestDownloadSplitBlobFallsBackToOneConnectionWhenRangeIsIgnored(t *testing.
 	if took := time.Since(began); took > 800*time.Millisecond {
 		t.Fatalf("took %s: the fallback should not wait out a retry pause", took)
 	}
-	seen := s.seen()
-	if last := seen[len(seen)-1]; last.ranged {
-		t.Fatalf("the blob was asked for with Range after the registry showed it ignores it: %+v", seen)
+	if ranged.Load() == 0 || whole.Load() != 1 {
+		t.Fatalf("ranged=%d whole=%d, want range attempts and one whole read", ranged.Load(), whole.Load())
 	}
 }
 
