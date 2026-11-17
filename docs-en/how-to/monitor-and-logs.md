@@ -186,6 +186,7 @@ After identifying a time range and instance ID in instance details, open **Logs*
 3. **Expand context**. Click **Context** on a hit to view several lines before and after it (up to 1000 per side). For agent and server logs, restrict the scope by node and source; do not reuse the instance filter.
 4. **View the histogram**. Above the search results, log volume is counted by time bucket × level using the current filters (red for error/fatal, blue for other levels, including lines without a level). Click a bar to narrow the time range to that bucket (switching to Custom); the new range is redrawn with finer buckets, so you can keep clicking to drill down.
 5. **Return to the original event**. Match the level, time, source, and instance UUID in a hit to the corresponding event in instance details.
+6. **Export CSV**. Export the currently loaded logs as UTF-8 with a BOM so Excel can identify Chinese text. Commas, quotes, and newlines in log content are preserved using CSV escaping.
 
 To search through the API, use `GET /api/v1/logs/search`. Add `with_total=1` to retrieve hit counts, and use `cursor_ts` / `cursor_id` for pagination.
 For context, use `GET /api/v1/logs/context?instance=..&ts=..&id=..&before=..&after=..`. For logs without an instance UUID, such as agent and server logs, use `node` to restrict the scope instead.
@@ -229,4 +230,4 @@ The deployment command preview shows `SGLANG_LOGGING_CONFIG_PATH` and the pre-st
 
 For startup methods without automatic injection, reasons multi-GPU logs may still lack levels, and how to take over the full script yourself, see [SGLang Logging Injection: Behavior and Boundaries](../explanation/sglang-logging.md).
 
-<!-- translation-source-sha256: 1d33af24ff68fcbc9eed0db3e0e2140d738bf92f567ae94a64c87abe67b1087f -->
+<!-- translation-source-sha256: b229159aec1fd52bcab9aebef2488366526dbfc328f98d4cc8c5e5c1d78635ec -->

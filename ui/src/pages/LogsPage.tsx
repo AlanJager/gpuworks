@@ -272,7 +272,8 @@ export default function LogsPage() {
   }, [auto, runSearch]);
 
   const exportCsv = () => {
-    const blob = new Blob([toCsv(entries)], { type: "text/csv;charset=utf-8" });
+    // A leading BOM lets spreadsheets identify the downloaded text as UTF-8.
+    const blob = new Blob(["\uFEFF", toCsv(entries)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
