@@ -1,0 +1,1 @@
+{"created":"2026-12-01T00:00:00Z","format":1,"packages":[{"files":[{"path":"acme_backup_1.0.0.gwpkg","sha256":"63a5bce3a60970c25511673e2619ae3b92035a85548c97ff5b479598e3d18de3","size":8203411}],"id":"acme_backup","manifest":"sha256:b7fcf4401d9ce4bf107ece16db8c71123ef334473ab62dbced6283cd0f4a002f","protocol":{"max":1,"min":1},"version":"1.0.0"}],"publisher":"acme","serial":1}

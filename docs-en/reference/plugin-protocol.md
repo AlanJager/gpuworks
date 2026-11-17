@@ -1,8 +1,8 @@
 # Plugin Protocol and Wire Formats (gwx/1)
 
-The wire formats of plugin package manifests, publisher certificates, trust updates, revocation lists, signature envelopes, the `gwx/1` handshake, health and error messages, and the tables plugins push are defined in a separate Go module, `pkg/extapi` (module path `gpuworks.ai/gpuworks/pkg/extapi`). It uses only the standard library, so a plugin depends on it and not on the server.
+The wire formats of plugin package manifests, publisher certificates, trust updates, revocation lists, package indexes, signature envelopes, the `gwx/1` handshake, health and error messages, and the tables plugins push are defined in a separate Go module, `pkg/extapi` (module path `gpuworks.ai/gpuworks/pkg/extapi`). It uses only the standard library, so a plugin depends on it and not on the server.
 
-These formats are frozen, and this page describes each of them. The server's plugin host (installing and verifying packages, starting plugin processes, enforcing pushed tables) is **not built yet**: the merge, grace, timeline and revocation semantics this page mentions are conventions of the formats that the future plugin host will enforce. The design and its trade-offs are in [ADR 0071](../adr/0071-installable-extensions.md); the contract for modules compiled into the server is in [Extension Points](../dev/extensions.md).
+These formats are frozen, and this page describes each of them. The server already verifies, installs and removes plugin packages and imports trust updates and revocation lists as this page describes (the `gpuworks plugin` subcommands, see [CLI Reference](cli.md)); the plugin host that starts plugin processes and enforces pushed tables is **not built yet**: the merge, grace and timeline semantics this page mentions are conventions of the formats that the future plugin host will enforce. The design and its trade-offs are in [ADR 0071](../adr/0071-installable-extensions.md); the contract for modules compiled into the server is in [Extension Points](../dev/extensions.md).
 
 The golden corpus `pkg/extapi/testdata/golden/` is the authority on the formats. Every JSON example on this page is byte-for-byte identical to a file in the corpus, named in a comment above the example in the page source, and a test in `pkg/extapi` (`TestReferencePageExamplesAreGoldenFiles`) compares each one. That is why the examples are canonical JSON (one line, sorted keys).
 
@@ -193,6 +193,30 @@ Revocation lists are cumulative: a reader keeps the highest `serial` per issuer.
 ```json
 {"created":"2026-12-01T00:00:00Z","format":1,"revoked":[{"cert_serial":9,"publisher":"acme"},{"keyid":"acme-2025a","publisher":"acme"}],"serial":12}
 ```
+
+## Package index
+
+A package index (`plugins/index.json`) lists the package builds of one publisher that a server may install. It travels as the payload of an envelope signed by that publisher's certified key, next to the publisher's `publisher.crt`, and imports offline. Each build states the capabilities it needs, so a server decides which version it can run before downloading anything: for each package it offers the newest version whose `requires` it satisfies, and lists newer versions it cannot run with `PLUGIN_NEEDS_NEWER_CORE` (parameter `min_core_hint`). A reader keeps the highest `serial` it applied per publisher and refuses a lower or equal one.
+
+<!-- golden: index/v1/valid/minimal.json -->
+```json
+{"created":"2026-12-01T00:00:00Z","format":1,"packages":[{"files":[{"path":"acme_backup_1.0.0.gwpkg","sha256":"63a5bce3a60970c25511673e2619ae3b92035a85548c97ff5b479598e3d18de3","size":8203411}],"id":"acme_backup","manifest":"sha256:b7fcf4401d9ce4bf107ece16db8c71123ef334473ab62dbced6283cd0f4a002f","protocol":{"max":1,"min":1},"version":"1.0.0"}],"publisher":"acme","serial":1}
+```
+
+The example using every field is `index/v1/valid/catalog.json` in the corpus.
+
+| Field | Rule |
+|---|---|
+| `format` / `serial` / `created` | 1 / an increasing serial / when it was published |
+| `publisher` | The publisher name; the certificate of the signing key must be this publisher's |
+| `packages` | At most 4096 builds, sorted by `id` and, within one `id`, by version precedence; each build once |
+| `packages[].id` / `version` | The package id (inside `publisher`'s names, as for a manifest) / a semantic version |
+| `packages[].manifest` | The digest of the build's `manifest.json`; the downloaded package must carry exactly that manifest |
+| `packages[].min_core_hint` / `protocol` / `requires` | The same as in the manifest, for the verdict before download |
+| `packages[].files` | 1–16 downloads `{platform, path, size, sha256}`, sorted by `platform` without repeats: `platform` is `<os>_<arch>`, or absent for a full package holding every platform; `path` is relative to the index's location and ends in `.gwpkg`; `size` ≥1 |
+| `packages[].display` | Display only |
+| `revoked` | Optional revocation entries, each naming the publisher, applied like the publisher's own revocation list |
+| `floors` | Optional; raise only the lowest version of the publisher's own packages, sorted by id |
 
 ## gwx/1 transport and handshake
 
@@ -389,4 +413,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: efdfe805d9679181b5dc1afafaac1896b2cfe085627d5fda90bc95c3cb4d7abf -->
+<!-- translation-source-sha256: 5419268322860447e6730465b9d85a50eaef40640c87b6725187a3c7f69e8b28 -->

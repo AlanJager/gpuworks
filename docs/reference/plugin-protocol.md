@@ -1,8 +1,8 @@
 # 插件协议与线上格式（gwx/1）
 
-插件包清单、发布者证书、信任更新、吊销列表、签名信封、`gwx/1` 的握手、健康与错误消息，以及插件推送的表，线上格式都定义在独立的 Go 模块 `pkg/extapi`（模块路径 `gpuworks.ai/gpuworks/pkg/extapi`）里。它只依赖标准库，插件只依赖它，不依赖 server。
+插件包清单、发布者证书、信任更新、吊销列表、包索引、签名信封、`gwx/1` 的握手、健康与错误消息，以及插件推送的表，线上格式都定义在独立的 Go 模块 `pkg/extapi`（模块路径 `gpuworks.ai/gpuworks/pkg/extapi`）里。它只依赖标准库，插件只依赖它，不依赖 server。
 
-这些格式已经冻结，本页逐个说明。server 端的插件宿主（安装与校验插件包、拉起插件进程、执行推送表）**尚未实现**：本页写到的合并、宽限、时间线与吊销语义是这些格式的约定，由将来的插件宿主执行，设计与取舍见 [ADR 0071](../adr/0071-installable-extensions.md)；编译进 server 的模块契约见[扩展点](../dev/extensions.md)。
+这些格式已经冻结，本页逐个说明。server 已经按本页校验、安装与移除插件包，导入信任更新与吊销列表（`gpuworks plugin` 子命令，见 [CLI 参考](cli.md)）；拉起插件进程、执行推送表的插件宿主**尚未实现**：本页写到的合并、宽限与时间线语义是这些格式的约定，由将来的插件宿主执行，设计与取舍见 [ADR 0071](../adr/0071-installable-extensions.md)；编译进 server 的模块契约见[扩展点](../dev/extensions.md)。
 
 格式以黄金文件语料 `pkg/extapi/testdata/golden/` 为准。本页的每个 JSON 示例都与语料里的一个文件逐字节相同，页面源文件里示例上方的注释写明是哪个文件，`pkg/extapi` 的测试（`TestReferencePageExamplesAreGoldenFiles`）逐个比对，所以示例都是规范 JSON（单行、键已排序）。
 
@@ -193,6 +193,30 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 ```json
 {"created":"2026-12-01T00:00:00Z","format":1,"revoked":[{"cert_serial":9,"publisher":"acme"},{"keyid":"acme-2025a","publisher":"acme"}],"serial":12}
 ```
+
+## 包索引
+
+包索引（`plugins/index.json`）是一个发布者可安装的包构建清单，作为信封的载荷传递，由该发布者经证书认证的密钥签名，与发布者的 `publisher.crt` 放在一起，可以离线导入。每个构建写明它需要的能力，所以 server 不用下载就能决定自己能运行哪个版本：对每个包给出它能满足 `requires` 的最新版本，比它新、它运行不了的版本带 `PLUGIN_NEEDS_NEWER_CORE`（参数 `min_core_hint`）列出。读者按发布者记住已应用的最高 `serial`，拒绝更低或相等的。
+
+<!-- golden: index/v1/valid/minimal.json -->
+```json
+{"created":"2026-12-01T00:00:00Z","format":1,"packages":[{"files":[{"path":"acme_backup_1.0.0.gwpkg","sha256":"63a5bce3a60970c25511673e2619ae3b92035a85548c97ff5b479598e3d18de3","size":8203411}],"id":"acme_backup","manifest":"sha256:b7fcf4401d9ce4bf107ece16db8c71123ef334473ab62dbced6283cd0f4a002f","protocol":{"max":1,"min":1},"version":"1.0.0"}],"publisher":"acme","serial":1}
+```
+
+用到全部字段的例子是语料里的 `index/v1/valid/catalog.json`。
+
+| 字段 | 规则 |
+|---|---|
+| `format` / `serial` / `created` | 1 / 递增的序号 / 发布时间 |
+| `publisher` | 发布者名；签名密钥的证书必须是这个发布者的 |
+| `packages` | 至多 4096 个构建，按 `id` 排序、同一 `id` 按版本先后排序，每个构建只出现一次 |
+| `packages[].id` / `version` | 包 id（属于 `publisher`，规则同清单）/ 语义化版本 |
+| `packages[].manifest` | 该构建 `manifest.json` 的摘要；下载得到的包必须正好带这份清单 |
+| `packages[].min_core_hint` / `protocol` / `requires` | 与清单里的相同，用于下载前的判定 |
+| `packages[].files` | 1–16 个下载 `{platform, path, size, sha256}`，按 `platform` 排序且不重复：`platform` 为 `<os>_<arch>`，不写表示包含所有平台的完整包；`path` 相对于索引所在位置，以 `.gwpkg` 结尾；`size` ≥1 |
+| `packages[].display` | 只用于显示 |
+| `revoked` | 可选，吊销条目，每条都写该发布者，作用同该发布者自己的吊销列表 |
+| `floors` | 可选，只能抬高该发布者自己的包的最低版本，按 id 排序 |
 
 ## gwx/1 传输与握手
 
