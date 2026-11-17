@@ -249,6 +249,28 @@ func TestImportRevocationLists(t *testing.T) {
 		t.Fatal("a manifest revocation reached another publisher")
 	}
 
+	// The key revoked above cannot sign acme's next list: it would otherwise
+	// raise the serial out of the publisher's reach.
+	stolen := extsign.CRL(t, 1<<20, "acme", []extapi.Revocation{{Publisher: "acme", KeyID: "acme-k2"}}, pub.Key)
+	if _, err := trust.Import(st, s, stolen, pub.CertBundle(t)); codeOf(err) != extapi.ErrorSignatureUntrusted {
+		t.Fatalf("list signed by a revoked certificate = %v", err)
+	}
+	if serials, _ := st.PluginTrustSerials(); serials["crl:host:acme-issuer:acme"] != 1 {
+		t.Fatalf("a refused list moved the serial: %v", serials)
+	}
+	key2 := extsign.NewKey(t, "acme-k2")
+	cert2 := extsign.CertFor("acme", key2)
+	cert2.Serial = 2
+	pub2 := &extsign.Publisher{Name: "acme", Key: key2, Cert: cert2, Certs: []*extapi.Envelope{extsign.Seal(t, cert2, issuer)}}
+	both := &extsign.Publisher{Name: "acme", Certs: append(append([]*extapi.Envelope{}, pub.Certs...), pub2.Certs...)}
+	if _, err := trust.Import(st, s, stolen, both.CertBundle(t)); codeOf(err) != extapi.ErrorSignatureUntrusted {
+		t.Fatalf("list signed by a revoked certificate beside a good one = %v", err)
+	}
+	next := extsign.CRL(t, 2, "acme", []extapi.Revocation{{Publisher: "acme", Manifest: extapi.Digest("sha256:" + hex64("c"))}}, key2)
+	if in, err := trust.Import(st, s, next, both.CertBundle(t)); err != nil || in.Serial != 2 {
+		t.Fatalf("list signed by the publisher's new certificate = %+v %v", in, err)
+	}
+
 	// Another publisher's key cannot sign acme's list.
 	beta := extsign.NewPublisher(t, "beta", nil, root)
 	forged := extsign.CRL(t, 2, "acme", []extapi.Revocation{{Publisher: "acme"}}, beta.Key)

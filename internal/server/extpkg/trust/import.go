@@ -104,7 +104,8 @@ func importCRL(db Store, s *Set, env *extapi.Envelope, certs []byte) (*Imported,
 }
 
 // PublisherKeys opens the certificates of publisher in a publisher.crt and
-// returns their keys and, per key id, the anchor that certified it.
+// returns the keys of those not revoked under their anchor and, per key id,
+// the anchor that certified it.
 func (s *Set) PublisherKeys(publisher string, certs []byte) (extapi.KeySet, map[string]string, error) {
 	if len(certs) == 0 {
 		return nil, nil, &extapi.Error{Code: extapi.ErrorSignatureUntrusted, Params: map[string]any{"object": "crl"},
@@ -117,6 +118,7 @@ func (s *Set) PublisherKeys(publisher string, certs []byte) (extapi.KeySet, map[
 	keys := extapi.KeySet{}
 	anchors := map[string]string{}
 	var firstErr error
+	revoked := 0
 	for i := range bundle {
 		c, issuers, err := extapi.OpenPublisherCert(&bundle[i], s.issuers)
 		if err != nil {
@@ -128,10 +130,21 @@ func (s *Set) PublisherKeys(publisher string, certs []byte) (extapi.KeySet, map[
 		if c.Publisher != publisher {
 			continue
 		}
+		anchor := s.Anchor(issuers)
+		if s.CertRevocation(anchor, c) != nil {
+			// A revoked key signs nothing: neither a revocation list that
+			// could lock the publisher out by its serial, nor an index.
+			revoked++
+			continue
+		}
 		keys[c.KeyID] = c.Key()
-		anchors[c.KeyID] = s.Anchor(issuers)
+		anchors[c.KeyID] = anchor
 	}
 	if len(keys) == 0 {
+		if revoked > 0 {
+			return nil, nil, &extapi.Error{Code: extapi.ErrorSignatureUntrusted, Params: map[string]any{"object": "crl"},
+				Message: "crl: every certificate of " + publisher + " in the bundle is revoked"}
+		}
 		if firstErr != nil {
 			return nil, nil, firstErr
 		}
