@@ -19,13 +19,13 @@ func hotState(t testing.TB) *harness {
 		nodes[i] = fleetcap.Node{ID: uint(i + 1), Cards: 8}
 	}
 	h.setFleet(nodes...)
-	quota := pusherOf(acmeQuota, "push:banners")
+	authority := pusherOf(acmeAuthority, "push:banners")
 	var rows strings.Builder
 	rows.WriteString(`{"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[{"access":"full","limits":[{"dim":"gpus","max":4}]}]}`)
 	rows.WriteString(`,{"down_access":"read_only","feature":"acme.reports","steps":[{"access":"locked","notice":{"code":"ACME_GRACE"}}]}]}`)
-	h.push2(quota, extapi.KindAvailability, 1, rows.String())
-	h.push2(quota, extapi.KindFleetCapacity, 1, capacityBody(900, 8000))
-	h.push2(quota, extapi.KindBanners, 1, quotaBanners)
+	h.push2(authority, extapi.KindAvailability, 1, rows.String())
+	h.push2(authority, extapi.KindFleetCapacity, 1, capacityBody(900, 8000))
+	h.push2(authority, extapi.KindBanners, 1, authorityBanners)
 	var holds strings.Builder
 	holds.WriteString(`{"nodes":{`)
 	for i := 2001; i <= 4000; i++ {

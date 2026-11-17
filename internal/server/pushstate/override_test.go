@@ -60,9 +60,9 @@ func TestAnOverrideRaisesACapAndSurvivesARestart(t *testing.T) {
 	st := openStore(t, "")
 	h := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z")).load().run()
 	h.setFleet(fleetcap.Node{ID: 1, Cards: 8}, fleetcap.Node{ID: 2, Cards: 8})
-	h.push(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, capacityBody(1, 64))
+	h.push(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, capacityBody(1, 64))
 	h.waitFor("node 2 held", func() bool { return h.s.Hold(2, 8).held() })
-	if _, err := h.s.Override(context.Background(), OverrideRequest{Owner: "acme_quota", Kind: extapi.KindFleetCapacity, Entry: EntryMaxNodesWithCards, Action: OverrideLoosen, Value: i64(2), ByUser: 1}); err != nil {
+	if _, err := h.s.Override(context.Background(), OverrideRequest{Owner: "acme_authority", Kind: extapi.KindFleetCapacity, Entry: EntryMaxNodesWithCards, Action: OverrideLoosen, Value: i64(2), ByUser: 1}); err != nil {
 		t.Fatal(err)
 	}
 	h.waitFor("node 2 released", func() bool { return !h.s.Hold(2, 8).held() })
@@ -79,21 +79,21 @@ func TestAnOverrideRaisesACapAndSurvivesARestart(t *testing.T) {
 func TestOverrideRefusals(t *testing.T) {
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load().run()
 	h.push(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, opsHolds)
-	h.push(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, `{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT"},"select":"enrollment_order","steps":[{"max_cards":16}]}`)
-	h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, backupFull)
+	h.push(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, `{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT"},"select":"enrollment_order","steps":[{"max_cards":16}]}`)
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, backupFull)
 	for _, tc := range []struct {
 		name string
 		req  OverrideRequest
 		rule string
 	}{
-		{"a grant", OverrideRequest{Owner: "acme_quota", Kind: extapi.KindAvailability, Entry: "acme.backup", Action: OverrideDelete}, "not_restrict"},
+		{"a grant", OverrideRequest{Owner: "acme_authority", Kind: extapi.KindAvailability, Entry: "acme.backup", Action: OverrideDelete}, "not_restrict"},
 		{"no such table", OverrideRequest{Owner: "acme_backup", Kind: extapi.KindNodeHolds, Entry: "12", Action: OverrideDelete}, "no_entry"},
 		{"no such node", OverrideRequest{Owner: "acme_ops", Kind: extapi.KindNodeHolds, Entry: "13", Action: OverrideDelete}, "no_entry"},
 		{"loosening a hold", OverrideRequest{Owner: "acme_ops", Kind: extapi.KindNodeHolds, Entry: "12", Action: OverrideLoosen, Value: i64(1)}, "action"},
-		{"a cap that is not set", OverrideRequest{Owner: "acme_quota", Kind: extapi.KindFleetCapacity, Entry: EntryMaxNodesWithCards, Action: OverrideDelete}, "no_entry"},
-		{"no such cap", OverrideRequest{Owner: "acme_quota", Kind: extapi.KindFleetCapacity, Entry: "max_gpus", Action: OverrideDelete}, "no_entry"},
-		{"tightening a cap", OverrideRequest{Owner: "acme_quota", Kind: extapi.KindFleetCapacity, Entry: EntryMaxCards, Action: OverrideLoosen, Value: i64(8)}, "not_looser"},
-		{"loosen without a value", OverrideRequest{Owner: "acme_quota", Kind: extapi.KindFleetCapacity, Entry: EntryMaxCards, Action: OverrideLoosen}, "action"},
+		{"a cap that is not set", OverrideRequest{Owner: "acme_authority", Kind: extapi.KindFleetCapacity, Entry: EntryMaxNodesWithCards, Action: OverrideDelete}, "no_entry"},
+		{"no such cap", OverrideRequest{Owner: "acme_authority", Kind: extapi.KindFleetCapacity, Entry: "max_gpus", Action: OverrideDelete}, "no_entry"},
+		{"tightening a cap", OverrideRequest{Owner: "acme_authority", Kind: extapi.KindFleetCapacity, Entry: EntryMaxCards, Action: OverrideLoosen, Value: i64(8)}, "not_looser"},
+		{"loosen without a value", OverrideRequest{Owner: "acme_authority", Kind: extapi.KindFleetCapacity, Entry: EntryMaxCards, Action: OverrideLoosen}, "action"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := h.s.Override(context.Background(), tc.req)
@@ -124,20 +124,20 @@ func TestAnOverrideWhoseCommitFailsIsNotApplied(t *testing.T) {
 func TestUninstallReleasesEverythingTheOwnerPushed(t *testing.T) {
 	st := openStore(t, "")
 	h := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z")).load().run()
-	quota := pusherOf(acmeQuota, "push:banners", "push:node_holds")
-	h.push(quota, extapi.KindAvailability, 1, backupFull)
-	h.push(quota, extapi.KindFleetCapacity, 1, capacityBody(1, 8))
-	h.push(quota, extapi.KindNodeHolds, 1, opsHolds)
-	h.push(quota, extapi.KindBanners, 1, quotaBanners)
+	authority := pusherOf(acmeAuthority, "push:banners", "push:node_holds")
+	h.push(authority, extapi.KindAvailability, 1, backupFull)
+	h.push(authority, extapi.KindFleetCapacity, 1, capacityBody(1, 8))
+	h.push(authority, extapi.KindNodeHolds, 1, opsHolds)
+	h.push(authority, extapi.KindBanners, 1, authorityBanners)
 	h.push(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, `{"nodes":{"7":{"code":"ACME_QUARANTINE"}}}`)
-	h.s.OwnerDown("acme_quota")
-	if _, err := h.s.Override(context.Background(), OverrideRequest{Owner: "acme_quota", Kind: extapi.KindNodeHolds, Entry: "12", Action: OverrideDelete}); err != nil {
+	h.s.OwnerDown("acme_authority")
+	if _, err := h.s.Override(context.Background(), OverrideRequest{Owner: "acme_authority", Kind: extapi.KindNodeHolds, Entry: "12", Action: OverrideDelete}); err != nil {
 		t.Fatal(err)
 	}
 	before := h.reapply.Load()
 
 	h.s.SetPackages([]Package{acmeBackup, acmeOps})
-	if err := h.s.Uninstall(context.Background(), "acme_quota"); err != nil {
+	if err := h.s.Uninstall(context.Background(), "acme_authority"); err != nil {
 		t.Fatal(err)
 	}
 	if h.s.GuardNode(5, 500) != nil || h.s.Hold(12, 8).held() || h.s.Hold(9, 8).held() || len(h.s.Banners(true)) != 0 {
@@ -157,23 +157,23 @@ func TestUninstallReleasesEverythingTheOwnerPushed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, o := range snap.Owners {
-		if o.Owner == "acme_quota" {
+		if o.Owner == "acme_authority" {
 			t.Fatalf("uninstall left %+v", o)
 		}
 	}
 	for _, d := range snap.Down {
-		if d.Owner == "acme_quota" {
+		if d.Owner == "acme_authority" {
 			t.Fatal("uninstall left the down record")
 		}
 	}
 	if len(snap.Overrides) != 0 || len(snap.Rows.Banners) != 0 || len(snap.Rows.CapacitySteps) != 0 || len(snap.Rows.NodeHolds) != 1 {
 		t.Fatalf("uninstall left rows: %+v", snap.Rows)
 	}
-	if len(h.s.Held("acme_quota")) != 0 {
+	if len(h.s.Held("acme_authority")) != 0 {
 		t.Fatal("uninstall left held state in memory")
 	}
 	// It can push nothing more.
-	if _, w := h.try(quota, extapi.KindAvailability, 2, backupFull); w == nil || w.Code != messages.ErrorPluginStateNotOwner {
+	if _, w := h.try(authority, extapi.KindAvailability, 2, backupFull); w == nil || w.Code != messages.ErrorPluginStateNotOwner {
 		t.Fatalf("push after uninstall = %+v", w)
 	}
 }

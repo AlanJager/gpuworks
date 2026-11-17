@@ -118,23 +118,23 @@ func (c *fakeClock) setWall(at string) {
 // The packages of the tests: acme's authority and the package whose keys it
 // answers for, a third party, and the project's own authority.
 var (
-	acmeGrants  = extapi.CertGrants{IDPrefixes: []string{"acme_"}, FeatureNS: []string{"acme"}, AuthorityID: "acme_quota", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
-	rogueGrants = extapi.CertGrants{IDPrefixes: []string{"rogue_"}, FeatureNS: []string{"rogue"}, AuthorityID: "rogue_quota", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
-	projGrants  = extapi.CertGrants{IDPrefixes: []string{"quota"}, FeatureNS: []string{"", "gpuworks"}, AuthorityID: "quota", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
+	acmeGrants  = extapi.CertGrants{IDPrefixes: []string{"acme_"}, FeatureNS: []string{"acme"}, AuthorityID: "acme_authority", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
+	rogueGrants = extapi.CertGrants{IDPrefixes: []string{"rogue_"}, FeatureNS: []string{"rogue"}, AuthorityID: "rogue_authority", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
+	projGrants  = extapi.CertGrants{IDPrefixes: []string{"keys"}, FeatureNS: []string{"", "gpuworks"}, AuthorityID: "keys", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
 
-	acmeQuota = Package{ID: "acme_quota", Publisher: "acme", Grants: acmeGrants, Verified: true}
-	acmeBackup  = Package{ID: "acme_backup", Publisher: "acme", Grants: acmeGrants, Verified: true, Features: []extapi.FeatureDecl{
+	acmeAuthority = Package{ID: "acme_authority", Publisher: "acme", Grants: acmeGrants, Verified: true}
+	acmeBackup    = Package{ID: "acme_backup", Publisher: "acme", Grants: acmeGrants, Verified: true, Features: []extapi.FeatureDecl{
 		{Key: "acme.backup", Presentation: extapi.PresentationPromote, Gate: extapi.GateAuthority},
 		{Key: "acme.reports", Presentation: extapi.PresentationPromote, Gate: extapi.GateAuthority},
 		{Key: "acme.tools", Presentation: extapi.PresentationConceal, Gate: extapi.GateSelf},
 		{Key: "acme.free", Presentation: extapi.PresentationPromote, Gate: extapi.GateNone},
 	}}
-	acmeOps      = Package{ID: "acme_ops", Publisher: "acme", Grants: acmeGrants, Verified: true}
-	rogueQuota = Package{ID: "rogue_quota", Publisher: "rogue", Grants: rogueGrants, Verified: true}
-	projQuota  = Package{ID: "quota", Publisher: extapi.ProjectPublisher, Grants: projGrants, Verified: true, Features: []extapi.FeatureDecl{
+	acmeOps        = Package{ID: "acme_ops", Publisher: "acme", Grants: acmeGrants, Verified: true}
+	rogueAuthority = Package{ID: "rogue_authority", Publisher: "rogue", Grants: rogueGrants, Verified: true}
+	projAuthority  = Package{ID: "keys", Publisher: extapi.ProjectPublisher, Grants: projGrants, Verified: true, Features: []extapi.FeatureDecl{
 		{Key: "audit", Presentation: extapi.PresentationPromote, Gate: extapi.GateAuthority},
 	}}
-	allPackages = []Package{acmeQuota, acmeBackup, acmeOps, rogueQuota, projQuota}
+	allPackages = []Package{acmeAuthority, acmeBackup, acmeOps, rogueAuthority, projAuthority}
 
 	acmeCodes = []string{"ACME_CARD_LIMIT", "ACME_EXPIRED", "ACME_GRACE", "ACME_MAINTENANCE", "ACME_NODE_LIMIT", "ACME_OVER_CAPACITY", "ACME_QUARANTINE"}
 )

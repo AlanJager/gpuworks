@@ -15,8 +15,8 @@ import (
 func TestAStepFiresAtItsInstantWithTheOwnerDown(t *testing.T) {
 	clk := newFakeClock("2027-01-31T23:59:00Z")
 	h := newHarness(t, openStore(t, ""), clk).load().run()
-	h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, backupFull)
-	h.s.OwnerDown("acme_quota")
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, backupFull)
+	h.s.OwnerDown("acme_authority")
 	h.s.mu.Lock()
 	next := h.s.next
 	h.s.mu.Unlock()
@@ -40,8 +40,8 @@ func TestTheStepTimerFiresOnTheRealClock(t *testing.T) {
 	at := time.Now().UTC().Add(1500 * time.Millisecond).Truncate(time.Second).Add(time.Second)
 	body := `{"rows":[{"down_access":"locked","feature":"acme.backup","steps":[{"access":"full"},{"access":"locked","at":"` + at.Format(time.RFC3339) + `"}]}]}`
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-01-01T00:00:00Z"), func(c *Config) { c.Clock = Clock{} }).load().run()
-	h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, body)
-	h.s.OwnerDown("acme_quota")
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, body)
+	h.s.OwnerDown("acme_authority")
 	h.waitFor("the step to fire", func() bool { return h.s.Availability("acme.backup").Access == featuregate.Locked })
 	if time.Now().Before(at) {
 		t.Fatal("the step fired before its instant")
@@ -53,7 +53,7 @@ func TestTurningTheWallClockBackCannotReviveAnExpiredStep(t *testing.T) {
 	clk := newFakeClock("2027-02-01T00:00:30Z")
 	st := openStore(t, dsn)
 	h := newHarness(t, st, clk).load().run()
-	h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, backupFull)
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, backupFull)
 	if h.s.Availability("acme.backup").Access != featuregate.ReadOnly {
 		t.Fatal("the step has not fired")
 	}
@@ -113,7 +113,7 @@ func TestACorrectionUnfiresStepsAndIsBounded(t *testing.T) {
 			corrections = append(corrections, from.Format(time.RFC3339)+">"+to.Format(time.RFC3339)+" by "+by)
 		}
 	}).load().run()
-	h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, backupFull)
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, backupFull)
 	clk.setWall("2027-01-15T00:00:00Z")
 	h.recombine()
 	if h.s.Availability("acme.backup").Access != featuregate.ReadOnly {
@@ -125,13 +125,13 @@ func TestACorrectionUnfiresStepsAndIsBounded(t *testing.T) {
 	} else if pe, ok := err.(*messages.ProductError); !ok || pe.Code() != messages.ErrorPluginClockCorrectionTooLarge {
 		t.Fatalf("too far = %v", err)
 	}
-	if err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_quota"); err != nil {
+	if err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_authority"); err != nil {
 		t.Fatal(err)
 	}
 	if a := h.s.Availability("acme.backup"); a.Access != featuregate.Full {
 		t.Fatalf("the correction did not un-fire the step: %+v", a)
 	}
-	if len(corrections) != 1 || corrections[0] != "2027-03-01T00:00:00Z>2027-01-15T00:00:00Z by acme_quota" {
+	if len(corrections) != 1 || corrections[0] != "2027-03-01T00:00:00Z>2027-01-15T00:00:00Z by acme_authority" {
 		t.Fatalf("corrections = %v", corrections)
 	}
 	admin := h.s.Banners(true)
@@ -153,23 +153,23 @@ func TestACorrectionUnfiresStepsAndIsBounded(t *testing.T) {
 func TestGrantsClampAfterTheGraceAndRestrictionsNeverLapse(t *testing.T) {
 	clk := newFakeClock("2026-12-01T00:00:00Z")
 	h := newHarness(t, openStore(t, ""), clk).load().run()
-	quota := pusherOf(acmeQuota)
-	h.push(quota, extapi.KindAvailability, 1, `{"down_grace_s":600,"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[{"access":"full"}]},{"down_access":"locked","feature":"acme.reports","steps":[{"access":"read_only","notice":{"code":"ACME_GRACE"}}]}]}`)
-	h.push(quota, extapi.KindFleetCapacity, 1, capacityBody(1, 8))
-	h.s.OwnerDown("acme_quota")
+	authority := pusherOf(acmeAuthority)
+	h.push(authority, extapi.KindAvailability, 1, `{"down_grace_s":600,"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[{"access":"full"}]},{"down_access":"locked","feature":"acme.reports","steps":[{"access":"read_only","notice":{"code":"ACME_GRACE"}}]}]}`)
+	h.push(authority, extapi.KindFleetCapacity, 1, capacityBody(1, 8))
+	h.s.OwnerDown("acme_authority")
 
 	clk.advance(10*time.Minute + BootExtension - time.Second)
 	h.recombine()
 	if h.s.Availability("acme.backup").Access != featuregate.Full {
 		t.Fatal("clamped before the grace")
 	}
-	if b := h.s.Banners(true); len(b) != 1 || b[0].Notice.Code() != messages.ErrorPluginDown || b[0].Notice.Params()["plugin"] != "acme_quota" {
+	if b := h.s.Banners(true); len(b) != 1 || b[0].Notice.Code() != messages.ErrorPluginDown || b[0].Notice.Params()["plugin"] != "acme_authority" {
 		t.Fatalf("down banner = %+v", b)
 	}
 	clk.advance(time.Second)
 	h.recombine()
 	a := h.s.Availability("acme.backup")
-	if a.Access != featuregate.ReadOnly || a.Notice.Code() != messages.ErrorPluginUnavailable || a.Notice.Params()["plugin"] != "acme_quota" {
+	if a.Access != featuregate.ReadOnly || a.Notice.Code() != messages.ErrorPluginUnavailable || a.Notice.Params()["plugin"] != "acme_authority" {
 		t.Fatalf("after the grace: %+v", a)
 	}
 	if r := h.s.Availability("acme.reports"); r.Access != featuregate.Locked {
@@ -182,7 +182,7 @@ func TestGrantsClampAfterTheGraceAndRestrictionsNeverLapse(t *testing.T) {
 		t.Fatal("a restriction lapsed while its owner was down")
 	}
 	// Back up: as pushed again.
-	h.s.OwnerUp("acme_quota", 1)
+	h.s.OwnerUp("acme_authority", 1)
 	if h.s.Availability("acme.backup").Access != featuregate.Full || len(h.s.Banners(true)) != 0 {
 		t.Fatal("the grant stayed clamped after the owner came back")
 	}
@@ -208,9 +208,9 @@ func TestTheGraceIsBoundedAndTheSiteMayOnlyLowerIt(t *testing.T) {
 			if tc.pushed != 0 {
 				body = `{"down_grace_s":` + strconv.Itoa(tc.pushed) + `,` + body[1:]
 			}
-			h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, body)
+			h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, body)
 			h.s.mu.Lock()
-			got := h.s.graceLocked("acme_quota")
+			got := h.s.graceLocked("acme_authority")
 			h.s.mu.Unlock()
 			if got != tc.want {
 				t.Fatalf("grace = %v, want %v", got, tc.want)
@@ -218,7 +218,7 @@ func TestTheGraceIsBoundedAndTheSiteMayOnlyLowerIt(t *testing.T) {
 		})
 	}
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load().run()
-	if _, w := h.try(pusherOf(acmeQuota), extapi.KindAvailability, 1, `{"down_grace_s":30}`); w == nil || w.Code != extapi.ErrorStateRejected {
+	if _, w := h.try(pusherOf(acmeAuthority), extapi.KindAvailability, 1, `{"down_grace_s":30}`); w == nil || w.Code != extapi.ErrorStateRejected {
 		t.Fatalf("a grace below the floor = %+v", w)
 	}
 }
@@ -230,8 +230,8 @@ func TestARestartDoesNotRenewTheGrace(t *testing.T) {
 	clk := newFakeClock("2026-12-01T00:00:00Z")
 	st := openStore(t, dsn)
 	h := newHarness(t, st, clk).load().run()
-	h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, `{"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[{"access":"full"}]}]}`)
-	h.s.OwnerDown("acme_quota")
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, `{"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[{"access":"full"}]}]}`)
+	h.s.OwnerDown("acme_authority")
 	h.stop() // the shutdown commit persists the down start
 	_ = st.Close()
 
@@ -255,11 +255,11 @@ func TestARestartDoesNotRenewTheGrace(t *testing.T) {
 // only its grants go.
 func TestAnUnverifiedPackageKeepsItsRestrictionsAndLosesItsGrants(t *testing.T) {
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load().run()
-	quota := pusherOf(acmeQuota, "push:banners")
-	h.push(quota, extapi.KindAvailability, 1, backupFull)
-	h.push(quota, extapi.KindFleetCapacity, 1, capacityBody(1, 8))
-	h.push(quota, extapi.KindBanners, 1, quotaBanners)
-	broken := acmeQuota
+	authority := pusherOf(acmeAuthority, "push:banners")
+	h.push(authority, extapi.KindAvailability, 1, backupFull)
+	h.push(authority, extapi.KindFleetCapacity, 1, capacityBody(1, 8))
+	h.push(authority, extapi.KindBanners, 1, authorityBanners)
+	broken := acmeAuthority
 	broken.Verified = false
 	h.s.SetPackages([]Package{broken, acmeBackup, acmeOps})
 	if a := h.s.Availability("acme.backup"); a.Access != featuregate.Locked || a.Notice.Code() != messages.ErrorFeatureProviderAbsent {

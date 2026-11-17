@@ -86,15 +86,15 @@ func i64(v int64) *int64   { return &v }
 func str(v string) *string { return &v }
 
 func availabilityWrite(gen int64, features ...string) pstate.TableWrite {
-	w := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_quota", Kind: extapi.KindAvailability, Schema: 1, Generation: gen, Digest: "sha256:x", PushedAtMS: 1000 * gen}}
-	w.Insert.Availability = []pstate.AvailabilityTable{{Owner: "acme_quota", DownGraceS: 600}}
+	w := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_authority", Kind: extapi.KindAvailability, Schema: 1, Generation: gen, Digest: "sha256:x", PushedAtMS: 1000 * gen}}
+	w.Insert.Availability = []pstate.AvailabilityTable{{Owner: "acme_authority", DownGraceS: 600}}
 	for _, f := range features {
-		w.Insert.AvailabilityRows = append(w.Insert.AvailabilityRows, pstate.AvailabilityRow{Owner: "acme_quota", Feature: f, DownAccess: "read_only"})
+		w.Insert.AvailabilityRows = append(w.Insert.AvailabilityRows, pstate.AvailabilityRow{Owner: "acme_authority", Feature: f, DownAccess: "read_only"})
 		w.Insert.AvailabilitySteps = append(w.Insert.AvailabilitySteps,
-			pstate.AvailabilityStep{Owner: "acme_quota", Feature: f, Step: 0, Access: "full"},
-			pstate.AvailabilityStep{Owner: "acme_quota", Feature: f, Step: 1, AtMS: 5000, Access: "read_only", NoticeCode: "ACME_EXPIRED"})
-		w.Insert.AvailabilityLimits = append(w.Insert.AvailabilityLimits, pstate.AvailabilityLimit{Owner: "acme_quota", Feature: f, Step: 0, Dim: "gpus", Max: 4})
-		w.Insert.Params = append(w.Insert.Params, pstate.NoticeParam{Owner: "acme_quota", Kind: extapi.KindAvailability, Entry: f, Slot: pstate.StepSlot(1), Key: "days", Int: i64(3)})
+			pstate.AvailabilityStep{Owner: "acme_authority", Feature: f, Step: 0, Access: "full"},
+			pstate.AvailabilityStep{Owner: "acme_authority", Feature: f, Step: 1, AtMS: 5000, Access: "read_only", NoticeCode: "ACME_EXPIRED"})
+		w.Insert.AvailabilityLimits = append(w.Insert.AvailabilityLimits, pstate.AvailabilityLimit{Owner: "acme_authority", Feature: f, Step: 0, Dim: "gpus", Max: 4})
+		w.Insert.Params = append(w.Insert.Params, pstate.NoticeParam{Owner: "acme_authority", Kind: extapi.KindAvailability, Entry: f, Slot: pstate.StepSlot(1), Key: "days", Int: i64(3)})
 	}
 	return w
 }
@@ -110,7 +110,7 @@ func TestPushedStateWriteIsOneTransactionAndRefusesStaleGenerations(t *testing.T
 	holds.Insert.Params = []pstate.NoticeParam{{Owner: "acme_ops", Kind: extapi.KindNodeHolds, Entry: "12", Slot: pstate.SlotNode, Key: "ticket", Str: str("OPS-1")}}
 	res, err := s.WritePushedState(ctx, &pstate.Batch{
 		Tables:    []pstate.TableWrite{first, holds},
-		Down:      []pstate.Down{{Owner: "acme_quota", SinceMS: 77}},
+		Down:      []pstate.Down{{Owner: "acme_authority", SinceMS: 77}},
 		Overrides: []pstate.Override{{Owner: "acme_ops", Kind: extapi.KindNodeHolds, EntryKey: "9", Generation: 1, Action: pstate.OverrideDelete, ByUser: 1, AtMS: 5, Reason: "reboot done"}},
 		Clock:     &pstate.Clock{HWMMS: 123},
 		Markers:   []pstate.Marker{{Name: "pstate.availability", Version: 1, WrittenBy: "v26.12.0"}},
@@ -122,12 +122,12 @@ func TestPushedStateWriteIsOneTransactionAndRefusesStaleGenerations(t *testing.T
 	// The same generation again is stale and changes nothing; a newer one
 	// replaces only the entries it names.
 	res, err = s.WritePushedState(ctx, &pstate.Batch{Tables: []pstate.TableWrite{availabilityWrite(2, "acme.other")}})
-	if err != nil || !reflect.DeepEqual(res.Stale, []pstate.OwnerKind{{Owner: "acme_quota", Kind: extapi.KindAvailability}}) {
+	if err != nil || !reflect.DeepEqual(res.Stale, []pstate.OwnerKind{{Owner: "acme_authority", Kind: extapi.KindAvailability}}) {
 		t.Fatalf("stale write = %+v, %v", res, err)
 	}
 	next := availabilityWrite(3)
 	next.DeleteEntries = []string{"acme.reports"}
-	if _, err := s.WritePushedState(ctx, &pstate.Batch{Tables: []pstate.TableWrite{next}, Up: []string{"acme_quota"}}); err != nil {
+	if _, err := s.WritePushedState(ctx, &pstate.Batch{Tables: []pstate.TableWrite{next}, Up: []string{"acme_authority"}}); err != nil {
 		t.Fatal(err)
 	}
 	snap, err := s.LoadPushedState(ctx)
@@ -183,12 +183,12 @@ func TestPushedStateWriteFailureRollsBackEveryPart(t *testing.T) {
 	// A row of another owner breaks the table write's own rule only after
 	// the down record and the clock were written: a step whose access is
 	// NULL fails its NOT NULL constraint.
-	bad.Insert.NodeHolds = []pstate.NodeHold{{Owner: "acme_quota", NodeID: 1, Code: "X"}}
+	bad.Insert.NodeHolds = []pstate.NodeHold{{Owner: "acme_authority", NodeID: 1, Code: "X"}}
 	if err := s.db.Exec("CREATE TRIGGER pstate_test_fail BEFORE INSERT ON pstate_node_hold BEGIN SELECT RAISE(ABORT, 'injected'); END").Error; err != nil {
 		t.Fatal(err)
 	}
 	_, err := s.WritePushedState(ctx, &pstate.Batch{
-		Down:   []pstate.Down{{Owner: "acme_quota", SinceMS: 1}},
+		Down:   []pstate.Down{{Owner: "acme_authority", SinceMS: 1}},
 		Clock:  &pstate.Clock{HWMMS: 9},
 		Tables: []pstate.TableWrite{bad},
 	})

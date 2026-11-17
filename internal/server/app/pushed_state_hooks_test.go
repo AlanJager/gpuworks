@@ -26,23 +26,23 @@ func TestPushedStateHooksAdaptWithoutAllocating(t *testing.T) {
 	maxNodes := int64(1)
 
 	// What a plugin pushed before the restart: a hold, a cap and a banner.
-	holds := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_quota", Kind: extapi.KindNodeHolds, Schema: 1, Generation: 1, Digest: "sha256:x"}}
-	holds.Insert.NodeHolds = []pstate.NodeHold{{Owner: "acme_quota", NodeID: 9, Code: "ACME_MAINTENANCE"}}
-	holds.Insert.Params = []pstate.NoticeParam{{Owner: "acme_quota", Kind: extapi.KindNodeHolds, Entry: "9", Slot: pstate.SlotNode, Key: "ticket", Str: str("OPS-1")}}
-	capacity := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_quota", Kind: extapi.KindFleetCapacity, Schema: 1, Generation: 1, Digest: "sha256:y"}}
-	capacity.Insert.FleetCapacity = []pstate.FleetCapacity{{Owner: "acme_quota", Select: extapi.SelectEnrollmentOrder, RefuseNodeCode: "ACME_NODE_LIMIT", RefuseCardCode: "ACME_CARD_LIMIT", HoldCode: "ACME_OVER_CAPACITY"}}
-	capacity.Insert.CapacitySteps = []pstate.CapacityStep{{Owner: "acme_quota", MaxNodesWithCards: &maxNodes}}
-	banners := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_quota", Kind: extapi.KindBanners, Schema: 1, Generation: 1, Digest: "sha256:z"}}
-	banners.Insert.Banners = []pstate.Banner{{Owner: "acme_quota", BannerID: "grace", Audience: extapi.AudienceAdmin}}
-	banners.Insert.BannerSteps = []pstate.BannerStep{{Owner: "acme_quota", BannerID: "grace", Severity: extapi.SeverityWarning, NoticeCode: "ACME_GRACE"}}
+	holds := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_authority", Kind: extapi.KindNodeHolds, Schema: 1, Generation: 1, Digest: "sha256:x"}}
+	holds.Insert.NodeHolds = []pstate.NodeHold{{Owner: "acme_authority", NodeID: 9, Code: "ACME_MAINTENANCE"}}
+	holds.Insert.Params = []pstate.NoticeParam{{Owner: "acme_authority", Kind: extapi.KindNodeHolds, Entry: "9", Slot: pstate.SlotNode, Key: "ticket", Str: str("OPS-1")}}
+	capacity := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_authority", Kind: extapi.KindFleetCapacity, Schema: 1, Generation: 1, Digest: "sha256:y"}}
+	capacity.Insert.FleetCapacity = []pstate.FleetCapacity{{Owner: "acme_authority", Select: extapi.SelectEnrollmentOrder, RefuseNodeCode: "ACME_NODE_LIMIT", RefuseCardCode: "ACME_CARD_LIMIT", HoldCode: "ACME_OVER_CAPACITY"}}
+	capacity.Insert.CapacitySteps = []pstate.CapacityStep{{Owner: "acme_authority", MaxNodesWithCards: &maxNodes}}
+	banners := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_authority", Kind: extapi.KindBanners, Schema: 1, Generation: 1, Digest: "sha256:z"}}
+	banners.Insert.Banners = []pstate.Banner{{Owner: "acme_authority", BannerID: "grace", Audience: extapi.AudienceAdmin}}
+	banners.Insert.BannerSteps = []pstate.BannerStep{{Owner: "acme_authority", BannerID: "grace", Severity: extapi.SeverityWarning, NoticeCode: "ACME_GRACE"}}
 	if _, err := st.WritePushedState(ctx, &pstate.Batch{Tables: []pstate.TableWrite{holds, capacity, banners}}); err != nil {
 		t.Fatal(err)
 	}
 
-	grants := extapi.CertGrants{IDPrefixes: []string{"acme_"}, FeatureNS: []string{"acme"}, AuthorityID: "acme_quota", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
+	grants := extapi.CertGrants{IDPrefixes: []string{"acme_"}, FeatureNS: []string{"acme"}, AuthorityID: "acme_authority", Tables: []string{extapi.KindFleetCapacity}, MinIsolation: extapi.IsolationLandlock}
 	state := pushstate.New(pushstate.Config{
 		Store: st, Fleet: PushedStateFleet(st), Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Packages: []pushstate.Package{{ID: "acme_quota", Publisher: "acme", Grants: grants, Verified: true,
+		Packages: []pushstate.Package{{ID: "acme_authority", Publisher: "acme", Grants: grants, Verified: true,
 			Features: []extapi.FeatureDecl{{Key: "acme.backup", Presentation: extapi.PresentationPromote, Gate: extapi.GateAuthority}}}},
 	})
 	if err := state.Load(ctx); err != nil {
@@ -69,7 +69,7 @@ func TestPushedStateHooksAdaptWithoutAllocating(t *testing.T) {
 		t.Fatalf("availability = %+v", a)
 	}
 	admin, member := hooks.Banners().Banners(ctx, auth.Claims{Role: adminRole}), hooks.Banners().Banners(ctx, auth.Claims{Role: "user"})
-	if len(admin) != 1 || admin[0].ID != "acme_quota.grace" || admin[0].Message.Code != "ACME_GRACE" || len(member) != 0 {
+	if len(admin) != 1 || admin[0].ID != "acme_authority.grace" || admin[0].Message.Code != "ACME_GRACE" || len(member) != 0 {
 		t.Fatalf("banners: admin=%+v member=%+v", admin, member)
 	}
 

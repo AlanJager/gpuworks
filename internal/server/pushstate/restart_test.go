@@ -16,7 +16,7 @@ import (
 
 const opsHolds = `{"nodes":{"12":{"code":"ACME_MAINTENANCE","params":{"ticket":"OPS-118"}},"9":{"code":"ACME_QUARANTINE"}}}`
 
-const quotaBanners = `{"banners":[{"audience":"admin","id":"grace","steps":[{"notice":{"code":"ACME_GRACE","params":{"days":30}},"severity":"warning"}]},{"audience":"all","id":"usb","steps":[{"notice":{"code":"ACME_GRACE"},"severity":"danger"}]}]}`
+const authorityBanners = `{"banners":[{"audience":"admin","id":"grace","steps":[{"notice":{"code":"ACME_GRACE","params":{"days":30}},"severity":"warning"}]},{"audience":"all","id":"usb","steps":[{"notice":{"code":"ACME_GRACE"},"severity":"danger"}]}]}`
 
 // The core is killed with plugins' state committed and boots again with no
 // plugin running: everything pushed is enforced before any plugin starts.
@@ -26,12 +26,12 @@ func TestStateIsEnforcedAfterACoreRestartBeforeAnyPluginRuns(t *testing.T) {
 	{
 		st := openStore(t, dsn)
 		h := newHarness(t, st, clk).load().run()
-		quota := pusherOf(acmeQuota, "push:banners")
-		h.push(quota, extapi.KindAvailability, 1, backupFull)
-		h.push(quota, extapi.KindFleetCapacity, 1, capacityBody(2, 16))
-		h.push(quota, extapi.KindBanners, 1, quotaBanners)
+		authority := pusherOf(acmeAuthority, "push:banners")
+		h.push(authority, extapi.KindAvailability, 1, backupFull)
+		h.push(authority, extapi.KindFleetCapacity, 1, capacityBody(2, 16))
+		h.push(authority, extapi.KindBanners, 1, authorityBanners)
 		h.push(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, opsHolds)
-		h.push(quota, extapi.KindAttestations, 1, `{"attestations":[{"blob":"c3RhdGVtZW50","feature":"acme.backup","format":"acme.grant","name":"grant"}]}`)
+		h.push(authority, extapi.KindAttestations, 1, `{"attestations":[{"blob":"c3RhdGVtZW50","feature":"acme.backup","format":"acme.grant","name":"grant"}]}`)
 		// Killed: the store goes away under it, so not even its shutdown
 		// commit lands.
 		_ = st.Close()
@@ -65,13 +65,13 @@ func TestStateIsEnforcedAfterACoreRestartBeforeAnyPluginRuns(t *testing.T) {
 	if all, admin := h.s.Banners(false), h.s.Banners(true); len(all) != 1 || len(admin) != 2 || admin[0].Severity != extapi.SeverityDanger {
 		t.Fatalf("banners after restart: all=%+v admin=%+v", all, admin)
 	}
-	if att := h.s.Attestations("acme"); len(att) != 1 || string(att[0].Blob) != "statement" || att[0].Owner != "acme_quota" {
+	if att := h.s.Attestations("acme"); len(att) != 1 || string(att[0].Blob) != "statement" || att[0].Owner != "acme_authority" {
 		t.Fatalf("attestations after restart: %+v", att)
 	}
 	if len(h.s.Attestations("rogue")) != 0 {
 		t.Fatal("attestations relayed to another publisher")
 	}
-	held := h.s.Held("acme_quota")
+	held := h.s.Held("acme_authority")
 	if len(held) != 4 {
 		t.Fatalf("held after restart = %+v", held)
 	}
@@ -121,8 +121,8 @@ func TestLoadFailsClosed(t *testing.T) {
 	})
 	t.Run("a corrupt grant is left out", func(t *testing.T) {
 		st := openStore(t, "")
-		w := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_quota", Kind: extapi.KindAvailability, Schema: 1, Generation: 1, Digest: "sha256:x"}}
-		w.Insert.AvailabilityRows = []pstate.AvailabilityRow{{Owner: "acme_quota", Feature: "acme.backup", DownAccess: "full"}}
+		w := pstate.TableWrite{Record: pstate.Owner{Owner: "acme_authority", Kind: extapi.KindAvailability, Schema: 1, Generation: 1, Digest: "sha256:x"}}
+		w.Insert.AvailabilityRows = []pstate.AvailabilityRow{{Owner: "acme_authority", Feature: "acme.backup", DownAccess: "full"}}
 		if _, err := st.Store.WritePushedState(ctx, &pstate.Batch{Tables: []pstate.TableWrite{w}}); err != nil {
 			t.Fatal(err)
 		}
@@ -134,7 +134,7 @@ func TestLoadFailsClosed(t *testing.T) {
 	t.Run("recording owners down fails", func(t *testing.T) {
 		st := openStore(t, "")
 		h := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z")).load().run()
-		h.push(pusherOf(acmeQuota), extapi.KindAvailability, 1, backupFull)
+		h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, backupFull)
 		h.stop()
 		st.failWrites.Store(1)
 		if err := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z")).s.Load(ctx); !errors.Is(err, errInjected) {
@@ -147,10 +147,10 @@ func TestLoadFailsClosed(t *testing.T) {
 // written, read back and rebuilt, it equals what was pushed.
 func TestEveryGoldenTableRoundTripsThroughTheTypedRows(t *testing.T) {
 	goldens := map[string][]string{
-		extapi.KindAvailability:  {backupFull, `{"down_grace_s":3600,"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[{"access":"full","limits":[{"dim":"concurrent_jobs","max":4},{"dim":"gpus","unlimited":true}]},{"access":"full","at":"2027-01-01T00:00:00Z","link":"/x/acme_quota/renew","notice":{"code":"ACME_QUOTA_GRACE","params":{"days":30}}},{"access":"read_only","at":"2027-02-01T00:00:00Z","link":"https://acme.example/renew","notice":{"code":"FEATURE_EXPIRED"}}]},{"display":{"plan":"pro"},"down_access":"locked","feature":"acme.reports","steps":[{"access":"locked","notice":{"code":"ACME_NOT_PURCHASED","params":{"flag":true,"who":"x"}}}]}]}`, `{}`},
+		extapi.KindAvailability:  {backupFull, `{"down_grace_s":3600,"rows":[{"down_access":"read_only","feature":"acme.backup","steps":[{"access":"full","limits":[{"dim":"concurrent_jobs","max":4},{"dim":"gpus","unlimited":true}]},{"access":"full","at":"2027-01-01T00:00:00Z","link":"/x/acme_authority/renew","notice":{"code":"ACME_TERM_GRACE","params":{"days":30}}},{"access":"read_only","at":"2027-02-01T00:00:00Z","link":"https://acme.example/renew","notice":{"code":"FEATURE_EXPIRED"}}]},{"display":{"plan":"pro"},"down_access":"locked","feature":"acme.reports","steps":[{"access":"locked","notice":{"code":"ACME_NOT_PURCHASED","params":{"flag":true,"who":"x"}}}]}]}`, `{}`},
 		extapi.KindFleetCapacity: {capacityBody(8, 64), `{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT"},"select":"enrollment_order","steps":[{},{"at":"2027-02-01T00:00:00Z","max_cards":16}]}`},
 		extapi.KindNodeHolds:     {opsHolds, `{}`},
-		extapi.KindBanners:       {quotaBanners, `{"banners":[{"audience":"admin","display":{"icon":"key"},"id":"grace","steps":[{"link":"/x/acme_quota","notice":{"code":"ACME_QUOTA_GRACE"},"severity":"warning"},{"at":"2027-02-01T00:00:00Z","hidden":true}]}]}`},
+		extapi.KindBanners:       {authorityBanners, `{"banners":[{"audience":"admin","display":{"icon":"key"},"id":"grace","steps":[{"link":"/x/acme_authority","notice":{"code":"ACME_TERM_GRACE"},"severity":"warning"},{"at":"2027-02-01T00:00:00Z","hidden":true}]}]}`},
 		extapi.KindAttestations:  {`{"attestations":[{"blob":"c3RhdGVtZW50LTE=","feature":"acme.backup","format":"acme.grant-statement.v1","name":"grant_backup"},{"blob":"AAEC","format":"acme.binding.v1","name":"install_binding"}]}`},
 	}
 	st := openStore(t, "")
@@ -164,7 +164,7 @@ func TestEveryGoldenTableRoundTripsThroughTheTypedRows(t *testing.T) {
 				t.Fatalf("%s %s: %v", kind, body, err)
 			}
 			gen++
-			next := &part{owner: "acme_quota", kind: kind, schema: 1, gen: uint64(gen), digest: "sha256:x", table: normalize(table)}
+			next := &part{owner: "acme_authority", kind: kind, schema: 1, gen: uint64(gen), digest: "sha256:x", table: normalize(table)}
 			w := tableWrite(prev, next)
 			if _, err := st.WritePushedState(ctx, &pstate.Batch{Tables: []pstate.TableWrite{w}}); err != nil {
 				t.Fatal(err)
@@ -177,7 +177,7 @@ func TestEveryGoldenTableRoundTripsThroughTheTypedRows(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := tables[ownerKind{"acme_quota", kind}]
+			got := tables[ownerKind{"acme_authority", kind}]
 			if !reflect.DeepEqual(entriesOf(got), entriesOf(next.table)) {
 				t.Fatalf("%s round trip:\n got %#v\nwant %#v", kind, got, next.table)
 			}

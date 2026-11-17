@@ -24,7 +24,7 @@ func heldNodes(h *harness, ids ...uint) []uint {
 func TestCapacityKeepsNodesInEnrollmentOrderAndPlacesNewcomers(t *testing.T) {
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load().run()
 	h.setFleet(fleetcap.Node{ID: 1, Cards: 8}, fleetcap.Node{ID: 2, Cards: 8}, fleetcap.Node{ID: 3, Cards: 8}, fleetcap.Node{ID: 4, Cards: 0})
-	h.push(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, capacityBody(2, 24))
+	h.push(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, capacityBody(2, 24))
 	h.waitFor("the selection to place the fleet", func() bool { return h.s.Hold(3, 8).held() })
 	if got := heldNodes(h, 1, 2, 3); len(got) != 1 || got[0] != 3 {
 		t.Fatalf("held = %v", got)
@@ -50,7 +50,7 @@ func TestCapacityKeepsNodesInEnrollmentOrderAndPlacesNewcomers(t *testing.T) {
 func TestANewcomerIsHeldOnlyIfCountingItExceedsACap(t *testing.T) {
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load()
 	h.setFleet(fleetcap.Node{ID: 1, Cards: 4}, fleetcap.Node{ID: 2, Cards: 4})
-	h.push2(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, capacityBody(3, 12))
+	h.push2(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, capacityBody(3, 12))
 	h.selectNow()
 	if heldNodes(h, 1, 2) != nil {
 		t.Fatal("nodes within the caps are held")
@@ -89,8 +89,8 @@ func TestANodeJoiningWhileTheOwnerIsDownIsPlacedByTheCore(t *testing.T) {
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z"), func(c *Config) { c.Bus, c.FleetTopic = b, "node_fleet" })
 	h.setFleet(fleetcap.Node{ID: 1, Cards: 8})
 	h.load().run()
-	h.push(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, capacityBody(2, 64))
-	h.s.OwnerDown("acme_quota")
+	h.push(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, capacityBody(2, 64))
+	h.s.OwnerDown("acme_authority")
 	h.waitFor("the first placement", func() bool { h.s.mu.Lock(); defer h.s.mu.Unlock(); return len(h.s.fleet) == 1 })
 
 	h.setFleet(fleetcap.Node{ID: 1, Cards: 8}, fleetcap.Node{ID: 2, Cards: 8}, fleetcap.Node{ID: 3, Cards: 8})
@@ -127,7 +127,7 @@ func TestTheSelectionDoesNotReadTheFleetWithoutACapAndRetriesAFailedRead(t *test
 	if _, _, err := h.s.selectPass(); err != nil || h.reads.Load() != 0 {
 		t.Fatalf("selection without caps read the fleet %d times (%v)", h.reads.Load(), err)
 	}
-	h.push2(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, capacityBody(1, 8))
+	h.push2(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, capacityBody(1, 8))
 	fail = true
 	if _, _, err := h.s.selectPass(); !errors.Is(err, errInjected) || !h.s.fleetDirty.Load() {
 		t.Fatalf("failed read = %v, dirty %v", err, h.s.fleetDirty.Load())
@@ -142,8 +142,8 @@ func TestTheSelectionDoesNotReadTheFleetWithoutACapAndRetriesAFailedRead(t *test
 
 func TestTheTightestCapWinsAcrossOwnersAndItsOwnerSpeaks(t *testing.T) {
 	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load().run()
-	h.push(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, capacityBody(4, 8))
-	h.push(pusherOf(rogueQuota), extapi.KindFleetCapacity, 1, `{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT","params":{"who":"rogue"}},"select":"enrollment_order","steps":[{"max_nodes_with_cards":2}]}`)
+	h.push(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, capacityBody(4, 8))
+	h.push(pusherOf(rogueAuthority), extapi.KindFleetCapacity, 1, `{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT","params":{"who":"rogue"}},"select":"enrollment_order","steps":[{"max_nodes_with_cards":2}]}`)
 	if r := h.s.GuardNode(2, 0); r == nil || r.Params()["who"] != "rogue" {
 		t.Fatalf("node cap refusal = %v", r)
 	}
@@ -159,7 +159,7 @@ func TestCapsFollowTheirTimeline(t *testing.T) {
 	clk := newFakeClock("2027-01-31T00:00:00Z")
 	h := newHarness(t, openStore(t, ""), clk).load()
 	h.setFleet(fleetcap.Node{ID: 1, Cards: 8}, fleetcap.Node{ID: 2, Cards: 8})
-	h.push2(pusherOf(acmeQuota), extapi.KindFleetCapacity, 1, `{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT"},"select":"enrollment_order","steps":[{"max_nodes_with_cards":8},{"at":"2027-02-01T00:00:00Z","max_nodes_with_cards":1}]}`)
+	h.push2(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, `{"hold":{"code":"ACME_OVER_CAPACITY"},"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT"},"select":"enrollment_order","steps":[{"max_nodes_with_cards":8},{"at":"2027-02-01T00:00:00Z","max_nodes_with_cards":1}]}`)
 	h.selectNow()
 	if heldNodes(h, 1, 2) != nil {
 		t.Fatal("held before the step")
