@@ -2,6 +2,8 @@ package extapi
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +182,38 @@ func TestWireErrorOf(t *testing.T) {
 	}
 	if _, err := DecodeWireError(raw); err != nil {
 		t.Fatalf("%s: %v", raw, err)
+	}
+}
+
+// A plugin's refusal of a server that lacks a capability travels as the
+// golden error, and every reason has a status that tells a generic HTTP
+// client failure from success.
+func TestCapabilityMissingRefusal(t *testing.T) {
+	w := WireErrorOf(CapabilityMissing("table.availability", 2, 2), ReasonUnsupported)
+	raw, err := Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden, err := os.ReadFile(filepath.Join(goldenRoot, "error", "v1", "valid", "capability_missing.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != string(golden) {
+		t.Fatalf("refusal = %s, want the golden %s", raw, golden)
+	}
+	seen := map[int]string{}
+	for _, r := range reasons {
+		s := StatusForReason(r)
+		if s < 400 || s > 599 {
+			t.Errorf("%s: status %d is not an error status", r, s)
+		}
+		if other, dup := seen[s]; dup && !(r == ReasonInternal || other == ReasonInternal) {
+			t.Errorf("%s and %s share status %d", r, other, s)
+		}
+		seen[s] = r
+	}
+	if StatusForReason("no_such_reason") != 500 {
+		t.Error("an unknown reason must travel as 500")
 	}
 }
 

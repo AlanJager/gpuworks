@@ -230,6 +230,7 @@ Under ADR 0071, a plugin is a child process of the server and runs plaintext HTT
 | `/gwx/v1/shutdown` | Stop | Asks the plugin to exit |
 | `GET /gwx/v1/health` | Health | The server's periodic probe |
 | `PUT /host/v1/state/{kind}` | Push | The plugin pushes the whole table of one kind |
+| `GET /host/v1/health` | Host health | The plugin probes the host API; the answer is a health object |
 | Request header `Gwx-Deadline-Ms` | Unix milliseconds | The call's deadline |
 | Response header `Gwx-Product-Error` | — | Marks a plugin route's response body as an error object |
 
@@ -280,6 +281,15 @@ Every `gwx/1` error, in both directions, and every product error a plugin route 
 | `message` | The required English fallback, at most 2048 bytes |
 | `reason` | A handling class independent of the code, closed within major 1: `invalid_argument`, `permission_denied`, `not_found`, `failed_precondition`, `conflict`, `busy`, `unavailable`, `unsupported`, `cancelled`, `deadline_exceeded`, `internal` |
 | `retry_after_ms` | A suggested retry delay, 0–86400000, only with `busy` and `unavailable` |
+
+The HTTP status of an error response follows its `reason` (`extapi.StatusForReason`): `invalid_argument` 400, `permission_denied` 403, `not_found` 404, `conflict` 409, `failed_precondition` 412, `busy` 429, `cancelled` 499, `unsupported` 501, `unavailable` 503, `deadline_exceeded` 504, `internal` 500. Readers go by the body; the status only lets a generic HTTP client tell success from failure and retry from refusal.
+
+A plugin that finds, during the handshake, no version of a capability it cannot run without in the server's `offer` (or none within the range it speaks) refuses `initialize` with `PLUGIN_CAPABILITY_MISSING`:
+
+<!-- golden: error/v1/valid/capability_missing.json -->
+```json
+{"code":"PLUGIN_CAPABILITY_MISSING","message":"the server offers no version of table.availability from 2 to 2","params":{"capability":"table.availability","max":2,"min":2},"reason":"unsupported"}
+```
 
 ## Pushes and acknowledgements
 
@@ -398,6 +408,7 @@ Every decoding, validation and verification failure is an error with a stable co
 | `PLUGIN_STATE_REJECTED` | A pushed table row breaks a rule of its kind | `kind`, `field`, `rule`, `row` |
 | `PLUGIN_STATE_TOO_LARGE` | A pushed table exceeds a size limit of its kind | `kind`, `field`, `max` |
 | `PLUGIN_STATE_TOO_NEW` | A persisted version marker is newer than this build knows | `marker`, `version`, `known`, `needs`, `count` |
+| `PLUGIN_CAPABILITY_MISSING` | The plugin refuses the handshake: the server offers no version of a capability it cannot run without within the range it speaks | `capability`, `min`, `max` |
 
 Values of `rule`: `required` (missing or empty), `grammar` (does not match its grammar), `range` (a number or length out of bounds), `enum` (not in the closed set), `duplicate`, `order` (a list that must be sorted is not), `exclusive` (sets fields that exclude each other), `relation` (contradicts another field of the object), `syntax`, `type`, `number` (not an integer, or outside the safe range) and `trailing`. `field` is a dotted path with list indexes, for example `routes.0.feature`.
 
@@ -413,4 +424,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 5419268322860447e6730465b9d85a50eaef40640c87b6725187a3c7f69e8b28 -->
+<!-- translation-source-sha256: cbeedddd29e1fb802c807416a0ac37d0c34e5c3f60e294f299b21caded4b42f4 -->

@@ -230,6 +230,7 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `/gwx/v1/shutdown` | 停止 | 请插件退出 |
 | `GET /gwx/v1/health` | 健康 | server 的周期探测 |
 | `PUT /host/v1/state/{kind}` | 推送 | 插件推送一种表的整表 |
+| `GET /host/v1/health` | 宿主健康 | 插件探测宿主接口，应答是健康对象 |
 | 请求头 `Gwx-Deadline-Ms` | Unix 毫秒 | 调用的截止时间 |
 | 响应头 `Gwx-Product-Error` | — | 标明插件路由的响应体是一个错误对象 |
 
@@ -280,6 +281,15 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `message` | 必填的英文 fallback，至多 2048 字节 |
 | `reason` | 与码无关的处理分类，主版本 1 内封闭：`invalid_argument`、`permission_denied`、`not_found`、`failed_precondition`、`conflict`、`busy`、`unavailable`、`unsupported`、`cancelled`、`deadline_exceeded`、`internal` |
 | `retry_after_ms` | 建议的重试间隔，0–86400000，只用于 `busy` 与 `unavailable` |
+
+错误响应的 HTTP 状态由 `reason` 决定（`extapi.StatusForReason`）：`invalid_argument` 400、`permission_denied` 403、`not_found` 404、`conflict` 409、`failed_precondition` 412、`busy` 429、`cancelled` 499、`unsupported` 501、`unavailable` 503、`deadline_exceeded` 504、`internal` 500。读者以响应体为准，状态只让通用的 HTTP 客户端分清成败与能否重试。
+
+插件在握手时发现 server 的 `offer` 里没有它离不开的能力（或版本不在它支持的范围内），以 `PLUGIN_CAPABILITY_MISSING` 拒绝 `initialize`：
+
+<!-- golden: error/v1/valid/capability_missing.json -->
+```json
+{"code":"PLUGIN_CAPABILITY_MISSING","message":"the server offers no version of table.availability from 2 to 2","params":{"capability":"table.availability","max":2,"min":2},"reason":"unsupported"}
+```
 
 ## 推送与确认
 
@@ -398,6 +408,7 @@ server 存储并转交给同一发布者其他包的不透明声明，server 从
 | `PLUGIN_STATE_REJECTED` | 推送表的行违反该种类的规则 | `kind`、`field`、`rule`、`row` |
 | `PLUGIN_STATE_TOO_LARGE` | 推送表超过该种类的大小上限 | `kind`、`field`、`max` |
 | `PLUGIN_STATE_TOO_NEW` | 持久化状态的版本标记比本构建认识的新 | `marker`、`version`、`known`、`needs`、`count` |
+| `PLUGIN_CAPABILITY_MISSING` | 插件拒绝握手：server 没有提供它离不开的能力在它支持范围内的版本 | `capability`、`min`、`max` |
 
 `rule` 取值：`required`（缺失或为空）、`grammar`（不符合文法）、`range`（数值或长度越界）、`enum`（不在封闭集合内）、`duplicate`、`order`（应排序的列表未排序）、`exclusive`（设了互斥的字段）、`relation`（与同一对象的另一字段矛盾）、`syntax`、`type`、`number`（非整数或越出安全范围）、`trailing`。`field` 是点分路径，列表元素用下标，例如 `routes.0.feature`。
 

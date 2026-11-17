@@ -77,3 +77,41 @@ func (e *WireError) Validate() error {
 func WireErrorOf(err *Error, reason string) WireError {
 	return WireError{Code: err.Code, Message: err.Message, Params: Params(err.Params), Reason: reason}
 }
+
+// StatusForReason is the HTTP status a gwx/1 error with reason travels
+// under, in both directions. The body decides; the status only lets a
+// generic HTTP client tell success from failure and retry from refusal.
+func StatusForReason(reason string) int {
+	switch reason {
+	case ReasonInvalidArgument:
+		return 400
+	case ReasonPermissionDenied:
+		return 403
+	case ReasonNotFound:
+		return 404
+	case ReasonFailedPrecondition:
+		return 412
+	case ReasonConflict:
+		return 409
+	case ReasonBusy:
+		return 429
+	case ReasonUnavailable:
+		return 503
+	case ReasonUnsupported:
+		return 501
+	case ReasonCancelled:
+		return 499
+	case ReasonDeadlineExceeded:
+		return 504
+	default:
+		return 500
+	}
+}
+
+// CapabilityMissing is the refusal of a plugin whose server offers no
+// version of capability within [min, max].
+func CapabilityMissing(capability string, min, max int) *Error {
+	return newError(ErrorCapabilityMissing,
+		map[string]any{"capability": capability, "min": min, "max": max},
+		"the server offers no version of %s from %d to %d", capability, min, max)
+}

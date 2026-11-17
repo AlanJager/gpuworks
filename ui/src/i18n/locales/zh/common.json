@@ -964,7 +964,8 @@
     "PLUGIN_TRUST_CONFLICT": "信任更新要添加根密钥 {{keyid}}，但此服务器在该 id 下已有另一把密钥。",
     "PLUGIN_NOT_INSTALLED": "没有安装插件 {{id}}。",
     "PLUGIN_VERSION_CONFLICT": "{{id}} 的版本 {{version}} 已经以不同的内容安装。改动请以新版本发布。",
-    "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} 需要更新的服务器（{{min_core_hint}}）：它需要 {{capability}}。"
+    "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} 需要更新的服务器（{{min_core_hint}}）：它需要 {{capability}}。",
+    "PLUGIN_CAPABILITY_MISSING": "服务器没有提供插件离不开的能力 {{capability}} 在 {{min}} 至 {{max}} 之间的版本。请安装适用于此服务器的插件版本，或升级服务器。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {
