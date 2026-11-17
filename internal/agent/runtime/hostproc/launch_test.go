@@ -250,3 +250,25 @@ func TestScriptKeepsServedModelNameVerbatim(t *testing.T) {
 		t.Fatalf("script = %q, want %q", got.Args[len(got.Args)-1], want)
 	}
 }
+
+// A mount target is a word when what follows it ends the word: a slash, a
+// blank (space, tab, newline), a quote or a shell operator. A longer word that
+// only begins with the target is another path and is left alone.
+func TestScriptFindsTheEndOfAMountWord(t *testing.T) {
+	m := newPathMap("", []runtime.Mount{{Source: "/Users/x/m", Target: "/model"}}, func(string) bool { return false })
+	for script, want := range map[string]string{
+		"set -a\nvllm serve /model\n":                              "set -a\nvllm serve /Users/x/m\n",
+		"set -a\nls /model\nexec vllm serve /model --port 8000":    "set -a\nls /Users/x/m\nexec vllm serve /Users/x/m --port 8000",
+		"vllm serve /model\t--port 1":                              "vllm serve /Users/x/m\t--port 1",
+		"ls /model&& vllm serve /model|tee log":                    "ls /Users/x/m&& vllm serve /Users/x/m|tee log",
+		"cat </model >/dev/null":                                   "cat </Users/x/m >/dev/null",
+		"vllm serve /modeltmp --port 8000":                         "vllm serve /modeltmp --port 8000",
+		"vllm serve /modelnew":                                     "vllm serve /modelnew",
+		"vllm serve /model\\x":                                     "vllm serve /model\\x",
+		"vllm serve /model \\\n  --tokenizer /model\\\n  --port 1": "vllm serve /Users/x/m \\\n  --tokenizer /Users/x/m\\\n  --port 1",
+	} {
+		if got := m.script(script); got != want {
+			t.Errorf("script(%q)\n got %q\nwant %q", script, got, want)
+		}
+	}
+}

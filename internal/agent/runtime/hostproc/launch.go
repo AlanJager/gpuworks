@@ -171,7 +171,7 @@ func (m pathMap) script(s string) string {
 	if len(targets) == 0 {
 		return s
 	}
-	word := regexp.MustCompile(`(?:^|[\s"'=:(])(` + strings.Join(targets, "|") + `)`)
+	word := regexp.MustCompile(`(?:^|[` + regexp.QuoteMeta(wordStart) + `])(` + strings.Join(targets, "|") + `)`)
 	names := scriptNameValue.FindAllStringSubmatchIndex(s, -1)
 	isName := func(at int) bool {
 		for _, loc := range names {
@@ -188,7 +188,7 @@ func (m pathMap) script(s string) string {
 		if isName(start) {
 			continue // a name, kept as written (nameFlags)
 		}
-		if end < len(s) && !strings.ContainsRune(`/ \t\n"';)`, rune(s[end])) {
+		if !endsWord(s, end) {
 			continue // a longer word that only begins with the target
 		}
 		out.WriteString(s[last:start])
@@ -197,6 +197,24 @@ func (m pathMap) script(s string) string {
 	}
 	out.WriteString(s[last:])
 	return out.String()
+}
+
+// wordStart and wordEnd are the characters that may stand right before and
+// right after a mount target for it to be a word of a shell script: blanks,
+// quotes and shell operators, "=" or ":" before a value ("--x=/model",
+// "PATH=/a:/model"), and "/" after it for a path below the target.
+const (
+	wordStart = " \t\n\"'=:(;&|<>"
+	wordEnd   = "/ \t\n\"');&|<>"
+)
+
+// endsWord reports whether a word of s that runs up to s[end] ends there: at
+// the end of s, at a wordEnd character or at a line continuation.
+func endsWord(s string, end int) bool {
+	if end >= len(s) || strings.IndexByte(wordEnd, s[end]) >= 0 {
+		return true
+	}
+	return strings.HasPrefix(s[end:], "\\\n")
 }
 
 // instanceDirs are the per-instance and per-environment directories a host
