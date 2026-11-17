@@ -115,12 +115,15 @@ func isNameFlag(tok string) bool {
 
 // scriptNameValue matches a nameFlags flag in a shell script and captures its
 // value: after "=" or blanks (line continuations included), bare or quoted.
+// The flag itself may be quoted ("--served-model-name" /model), since the
+// server's deploy.ParseArgsText reads that as the same flag and expects the
+// engine under the name that follows.
 var scriptNameValue = func() *regexp.Regexp {
 	flags := make([]string, len(nameFlags))
 	for i, flag := range nameFlags {
 		flags[i] = regexp.QuoteMeta(flag)
 	}
-	return regexp.MustCompile(`(?:^|[\s"'(;])(?:` + strings.Join(flags, "|") + `)(?:=|(?:[ \t]|\\\n)+)("[^"]*"|'[^']*'|[^\s"';)]+)`)
+	return regexp.MustCompile(`(?:^|[\s"'(;&|])(?:` + strings.Join(flags, "|") + `)["']?(?:=|(?:[ \t]|\\\n)+)("[^"]*"|'[^']*'|[^\s"';)&|<>]+)`)
 }()
 
 // args translates a whole argv, keeping the values of nameFlags.

@@ -234,6 +234,8 @@ func TestScriptKeepsServedModelNameVerbatim(t *testing.T) {
 		"vllm serve /model --served-model-name='/model' --port 8000":                                   "vllm serve /Users/x/m --served-model-name='/model' --port 8000",
 		"python3 -m sglang.launch_server --model-path /model \\\n  --served-model-name \\\n  /model\n": "python3 -m sglang.launch_server --model-path /Users/x/m \\\n  --served-model-name \\\n  /model\n",
 		"vllm serve /model --served-model-name /model/sub; ls /model":                                  "vllm serve /Users/x/m --served-model-name /model/sub; ls /Users/x/m",
+		`vllm serve /model "--served-model-name" /model`:                                               `vllm serve /Users/x/m "--served-model-name" /model`,
+		"vllm serve /model '--served-model-name'=/model":                                               "vllm serve /Users/x/m '--served-model-name'=/model",
 	} {
 		if got := m.script(script); got != want {
 			t.Errorf("script(%q)\n got %q\nwant %q", script, got, want)
