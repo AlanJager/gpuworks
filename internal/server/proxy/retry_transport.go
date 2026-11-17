@@ -14,12 +14,17 @@ func (e *tunnelOpenError) Error() string { return "open proxy tunnel: " + e.err.
 func (e *tunnelOpenError) Unwrap() error { return e.err }
 
 type routeAttempt struct {
-	candidates   []candidate
-	current      *lease
-	tried        map[string]bool
-	started      time.Time
-	attempts     int
-	modelName    string
+	candidates []candidate
+	current    *lease
+	tried      map[string]bool
+	started    time.Time
+	attempts   int
+	// modelName is the name the request body asks the engine for: the
+	// first replica's, then each retried replica's (empty: the public name).
+	modelName string
+	// renamed releases the bodies a retry rewrote for another replica's
+	// name; serveTarget calls it once the reply is copied.
+	renamed      []func()
 	policy       string
 	affinity     string
 	deploymentID uint
@@ -34,6 +39,8 @@ type retryTransport struct {
 	// (Proxy.awake); nil takes every lease.
 	awake func(*lease) bool
 	guard *instanceGuard
+	// maxBody bounds a body a retry rewrites for another replica's name.
+	maxBody int64
 }
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -61,7 +68,8 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if !t.canRetry(req, a, err) {
 			return nil, err
 		}
-		next := t.pickNext(a)
+		publicName := publicNameFor(req.Context())
+		next := t.pickNext(a, publicName != "")
 		if next == nil {
 			return nil, err
 		}
@@ -89,15 +97,50 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		clone.Body = body
 		clone.ContentLength = req.ContentLength
 		clone.GetBody = req.GetBody
+		if next.c.modelName != a.modelName {
+			if err := t.rename(clone, a, next.c.modelName, publicName); err != nil {
+				next.release(outcomeCanceled)
+				a.current = nil
+				return nil, err
+			}
+		}
 		req = clone
 	}
 }
 
-func (t *retryTransport) pickNext(a *routeAttempt) *lease {
+// rename rewrites a retry's body for a replica whose engine answers under
+// another name than the one the body asks for: replicas of one deployment on
+// host-process nodes answer under their own nodes' model paths (ADR 0044).
+func (t *retryTransport) rename(clone *http.Request, a *routeAttempt, engineName, publicName string) error {
+	name := engineName
+	if name == "" {
+		name = publicName
+	}
+	release, err := rewriteModel(clone, name, t.maxBody)
+	if err != nil {
+		return err
+	}
+	a.renamed = append(a.renamed, release)
+	a.modelName = engineName
+	return nil
+}
+
+// releaseRenamed frees the bodies retries rewrote; the request is done.
+func (a *routeAttempt) releaseRenamed() {
+	for _, release := range a.renamed {
+		release()
+	}
+	a.renamed = nil
+}
+
+// pickNext leases the next replica to retry on. One whose engine answers
+// under another name is taken only when the body can be renamed for it,
+// which needs the public name the client asked for.
+func (t *retryTransport) pickNext(a *routeAttempt, rename bool) *lease {
 	return leaseUntil(func(excluded map[string]bool) *lease {
 		return t.balancer.pickBy(a.policy, a.candidates, a.affinity, excluded, t.hub.Online)
 	}, a.tried, func(l *lease) bool {
-		if l.c.modelName != a.modelName {
+		if l.c.modelName != a.modelName && !rename {
 			return false
 		}
 		return t.awake == nil || t.awake(l)

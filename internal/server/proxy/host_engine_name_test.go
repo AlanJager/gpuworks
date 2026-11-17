@@ -23,10 +23,12 @@ const hostModelPath = "/Users/a/models/q"
 // only, which the host agent rewrites to the mount's source.
 const flaglessHostDesired = `{"launch":{"entrypoint":["vllm","serve"],"argv":["--model","/model","--port","30000"],"model_mount":"/model"},"model_path":"` + hostModelPath + `"}`
 
-// hostEngine answers like vLLM: only under the name it registered, and with
-// vLLM's 404 for any other model.
+// hostEngine answers like vLLM: only under the name it registered (any of
+// names, hostModelPath when empty), with vLLM's 404 for any other model, and
+// echoing the name in the reply's model field, streamed or not.
 type hostEngine struct {
 	mu     sync.Mutex
+	names  []string
 	models []string
 }
 
@@ -36,11 +38,28 @@ func (e *hostEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	model, _ := body["model"].(string)
 	e.mu.Lock()
 	e.models = append(e.models, model)
+	names := e.names
 	e.mu.Unlock()
+	if len(names) == 0 {
+		names = []string{hostModelPath}
+	}
+	known := false
+	for _, name := range names {
+		known = known || name == model
+	}
 	w.Header().Set("Content-Type", "application/json")
-	if model != hostModelPath {
+	if !known {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = fmt.Fprintf(w, `{"object":"error","message":"The model %s does not exist.","type":"NotFoundError","param":null,"code":404}`, "`"+model+"`")
+		return
+	}
+	if stream, _ := body["stream"].(bool); stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, content := range []string{"h", "i"} {
+			_, _ = fmt.Fprintf(w, "data: {\"id\":\"chatcmpl-h\",\"object\":\"chat.completion.chunk\",\"model\":%q,\"choices\":[{\"index\":0,\"delta\":{\"content\":%q}}]}\n\n", model, content)
+			w.(http.Flusher).Flush()
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		return
 	}
 	_, _ = fmt.Fprintf(w, `{"id":"chatcmpl-h","object":"chat.completion","model":%q,"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`, model)
@@ -108,15 +127,18 @@ func TestGatewayReachesAFlaglessHostProcessEngine(t *testing.T) {
 				return
 			}
 
-			chat := `{"model":"qwen","messages":[{"role":"user","content":"hello"}]}`
 			for _, entry := range []struct {
 				handler http.HandlerFunc
 				path    string
 				pin     string
+				stream  bool
 			}{
-				{p.Handler(), "/v1/chat/completions", ""},
-				{p.PlaygroundHandler(nil), "/api/v1/playground/v1/chat/completions", "mac-0"},
+				{p.Handler(), "/v1/chat/completions", "", false},
+				{p.Handler(), "/v1/chat/completions", "", true},
+				{p.PlaygroundHandler(nil), "/api/v1/playground/v1/chat/completions", "mac-0", false},
+				{p.PlaygroundHandler(nil), "/api/v1/playground/v1/chat/completions", "mac-0", true},
 			} {
+				chat := fmt.Sprintf(`{"model":"qwen","stream":%t,"messages":[{"role":"user","content":"hello"}]}`, entry.stream)
 				req := httptest.NewRequest(http.MethodPost, entry.path, strings.NewReader(chat))
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("Authorization", "Bearer "+key)
@@ -128,6 +150,7 @@ func TestGatewayReachesAFlaglessHostProcessEngine(t *testing.T) {
 				if rec.Code != http.StatusOK {
 					t.Fatalf("%s: status %d: %s (engine asked for %q)", entry.path, rec.Code, rec.Body.String(), engine.models)
 				}
+				assertPublicReplyModel(t, rec.Body.String(), "qwen", entry.stream)
 			}
 			for _, asked := range engine.models {
 				if asked != hostModelPath {
@@ -153,5 +176,36 @@ func TestPDPrefillCandidateOnAHostProcessNodeCarriesItsHostModelPath(t *testing.
 	pd := snapshot.byName["pd"][0].pd
 	if pd == nil || len(pd.prefill) != 1 || pd.prefill[0].modelName != hostModelPath {
 		t.Fatalf("prefill candidates = %+v, want model %q", pd, hostModelPath)
+	}
+}
+
+// assertPublicReplyModel checks that every reply object a client received,
+// whole or streamed, names the deployment's public name and that the host
+// model path, which carries the Mac account's user name, never reaches it.
+func assertPublicReplyModel(t *testing.T, reply, public string, stream bool) {
+	t.Helper()
+	if strings.Contains(reply, hostModelPath) || strings.Contains(reply, "/Users/") {
+		t.Fatalf("reply leaks the host model path: %s", reply)
+	}
+	var objects []string
+	if stream {
+		for _, line := range strings.Split(reply, "\n") {
+			if data, ok := strings.CutPrefix(line, "data: "); ok && data != "[DONE]" {
+				objects = append(objects, data)
+			}
+		}
+	} else {
+		objects = []string{reply}
+	}
+	if len(objects) == 0 {
+		t.Fatalf("no reply objects in %q", reply)
+	}
+	for _, object := range objects {
+		var decoded struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal([]byte(object), &decoded); err != nil || decoded.Model != public {
+			t.Fatalf("reply object %s: model %q (%v), want %q", object, decoded.Model, err, public)
+		}
 	}
 }

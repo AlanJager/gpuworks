@@ -64,7 +64,7 @@ func TestCachedRouteRejectsKnownNonRunningInstance(t *testing.T) {
 			rows, _ := p.routes.snapshot("model")
 			attempt := &routeAttempt{candidates: rows[0].candidates, tried: map[string]bool{}, modelName: "model"}
 			retry := &retryTransport{balancer: p.balancer, hub: p.hub, awake: p.awake}
-			if next := retry.pickNext(attempt); next != nil {
+			if next := retry.pickNext(attempt, false); next != nil {
 				next.release(outcomeCanceled)
 				t.Fatal("retry selected known non-running instance")
 			}

@@ -136,9 +136,12 @@ const attemptKey ctxKey = 1
 
 // target identifies the selected instance's node + local port.
 type target struct {
-	nodeUUID     string
-	port         int
-	modelName    string
+	nodeUUID  string
+	port      int
+	modelName string
+	// publicName is the model name the client asked for, which a reply
+	// gets back when the engine was asked for another (model_reply.go).
+	publicName   string
 	instanceUUID string
 	lease        *lease
 	candidates   []candidate
@@ -242,7 +245,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			setTraceHeaders(r.Context(), r.Header)
 		},
 		FlushInterval: -1,
-		Transport:     &retryTransport{base: transport, balancer: p.balancer, hub: p.hub, awake: p.awake, guard: p.guard},
+		Transport:     &retryTransport{base: transport, balancer: p.balancer, hub: p.hub, awake: p.awake, guard: p.guard, maxBody: maxBodyBytes},
 		BufferPool:    nil,
 		// ModifyResponse runs after the upstream status/headers arrive but before
 		// the body is copied. It records the declared framing and wraps the body
@@ -256,6 +259,9 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			}
 			if err := boundUpstreamError(resp); err != nil {
 				return err
+			}
+			if resp.StatusCode != http.StatusSwitchingProtocols && wrapReplyModel(resp, engineNameFor(resp.Request.Context()), publicNameFor(resp.Request.Context())) && ob != nil {
+				ob.declaredLen = -1
 			}
 			if ob == nil {
 				return nil
@@ -396,6 +402,7 @@ func (p *Proxy) serveModel(w http.ResponseWriter, r *http.Request, modelName str
 // completion for the deployment it was resolved to.
 func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publicName string, tgt target, deploymentID uint) {
 	r, _ = p.identify(r, publicName)
+	tgt.publicName = publicName
 	fail := func(err error) {
 		p.releaseTarget(tgt)
 		rejection := requestRefusal(err)

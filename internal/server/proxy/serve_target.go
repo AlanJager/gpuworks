@@ -98,6 +98,9 @@ func (p *Proxy) serveTarget(w http.ResponseWriter, r *http.Request, tgt target, 
 		ctx = context.WithValue(ctx, attemptKey, tgt.attempt)
 	}
 	ctx = context.WithValue(ctx, obsKey, ob)
+	if tgt.attempt != nil {
+		defer tgt.attempt.releaseRenamed()
+	}
 	p.rp.ServeHTTP(cw, r.WithContext(ctx))
 	if probe != nil {
 		probe.instanceUUID = tgt.instanceUUID
