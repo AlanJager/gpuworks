@@ -207,6 +207,26 @@ test("server paging keeps selected stable IDs across pages and never treats a pa
   assert.deepEqual(pages, [[3, 20]]);
 });
 
+test("fixed cells retain their opaque surface through selection and deselection", async () => {
+  renderTable({ data: rows.slice(0, 1), pagination: false, rowSelection: {}, expandable: { expandedRowRender: () => <div>Details</div> } });
+  const row = screen.getByText("node-01").closest("tr")!;
+  const checkbox = within(row).getByRole("checkbox");
+  const assertOpaque = () => {
+    const pinned = [...row.querySelectorAll<HTMLElement>(".resource-table-pinned")];
+    assert.equal(pinned.length, 4, "selection, expander, name and actions all stay fixed");
+    for (const cell of pinned) assert.equal(cell.style.backgroundColor, "var(--surface-floating)");
+  };
+  assertOpaque();
+  for (let repeat = 0; repeat < 2; repeat++) {
+    await userEvent.setup().click(checkbox);
+    assert.equal(row.getAttribute("data-state"), "selected");
+    assertOpaque();
+    await userEvent.setup().click(checkbox);
+    assert.equal(row.getAttribute("data-state"), null);
+    assertOpaque();
+  }
+});
+
 test("row presentation and expandable details survive refresh without nested actions expanding", async () => {
   renderTable({ data: rows.slice(0, 2), pagination: false, onRow: (row) => ({ title: row.name, style: { opacity: row.id === 1 ? 0.5 : 1 } }), expandable: { rowExpandable: (row) => row.id === 1, expandRowByClick: true, expandedRowRender: (row) => <div>Details {row.name}</div> } });
   assert.equal(screen.getByTitle("node-01").style.opacity, "0.5");
