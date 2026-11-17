@@ -160,6 +160,8 @@ SDK 带主版本号 `SDK_MAJOR`（当前为 1），只在删掉或改变某个�
 - `saveBlob` 把一个 Blob 交给浏览器下载。
 - `sendForm` 发 multipart 表单，错误解码与 `sendJSON` 相同。
 
+界面模块的测试复制到 `ui/tests/ext-<id>/`（已被 git 忽略），用 `UI_EXTRA_TESTS='tests/ext-<id>/*.test.tsx' npm test` 跑。测试不在 `ui/src/extensions/<id>/` 里，所以 import `node:test`、testing-library 不计入 import 预算；`npm run test:coverage` 的 `c8 --all --include='src/**'` 仍统计界面模块的全部源文件。
+
 ## 码与文案
 
 扩展产生的失败与拒绝同样遵守 [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md)：UPPER_SNAKE 码、插值参数、英文 fallback。扩展的码与 en/zh 文案放在扩展自己的代码与界面模块里，不进开源的 `messages` 与 locale 文件；没有叠加界面时，控制台显示英文 fallback。

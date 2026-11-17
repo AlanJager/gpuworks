@@ -160,6 +160,8 @@ The SDK carries a major version, `SDK_MAJOR` (1 for now), which goes up only whe
 - `saveBlob` hands a Blob to the browser as a download.
 - `sendForm` sends a multipart form and decodes errors as `sendJSON` does.
 
+A UI module's tests are copied to `ui/tests/ext-<id>/` (git-ignored) and run with `UI_EXTRA_TESTS='tests/ext-<id>/*.test.tsx' npm test`. They sit outside `ui/src/extensions/<id>/`, so their imports of `node:test` and testing-library do not count against the import budget, while the `c8 --all --include='src/**'` of `npm run test:coverage` still counts every source file of the module.
+
 ## Codes and texts
 
 Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md) too: UPPER_SNAKE codes, interpolated params, an English fallback. An extension's codes and their en/zh texts live in the extension's own code and UI modules, not in the open-source `messages` or locale files; without the overlay, the console shows the English fallback.
@@ -192,4 +194,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: d900b18a293bae66127caa8cf4e8fba00010c93507ef156c636503d51f273144 -->
+<!-- translation-source-sha256: a5b3074649b816d90b5b3dd3b02abf23483ce6818f419a3d98f2386e300a2061 -->

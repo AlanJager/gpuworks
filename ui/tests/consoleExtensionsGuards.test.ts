@@ -112,3 +112,30 @@ test("i18n-check validates an extra locale root against the core languages and r
   assert.match(i18nCheck({ GPUWORKS_I18N_EXTRA_LOCALES: noEnglish }).stderr, /extra locale root has no en directory/);
   assert.match(i18nCheck({ GPUWORKS_I18N_EXTRA_MESSAGES: path.join(scratch, "nowhere") }).stderr, /extra messages directory does not exist/);
 });
+
+test("overlay tests live in ui/tests/ext-<id>/: git ignores them, the import budget skips them and the test scripts run them", () => {
+  const ignored = (file: string) => spawnSync("git", ["check-ignore", "-q", file], { cwd: repo }).status === 0;
+  assert.equal(ignored("ui/tests/ext-audit/auditPage.test.tsx"), true);
+  assert.equal(ignored("ui/tests/ext-audit/fixtures/status.json"), true);
+  assert.equal(ignored("ui/tests/consoleExtensionsGuards.test.ts"), false, "the console's own tests stay tracked");
+  assert.equal(ignored("ui/tests/extended.test.tsx"), false, "only ext-<id> directories are ignored");
+
+  // A test imports node:test, testing-library and the console's sources; outside
+  // src/extensions/<id>/ none of that counts against the overlay import budget.
+  const root = path.join(scratch, "overlay-tests");
+  write(root, "ui/src/extensions/sdk.ts", "export {};\n");
+  write(root, "ui/src/extensions/audit/index.ts", "import { Button } from \"@/extensions/sdk\";\n");
+  write(root, "ui/tests/ext-audit/auditPage.test.tsx", [
+    "import test from \"node:test\";",
+    "import { render } from \"@testing-library/react\";",
+    "import { api } from \"../../src/api\";",
+  ].join("\n"));
+  assert.equal(execFileSync("node", [path.join(repo, "scripts/ui_overlay_imports.mjs"), root], { encoding: "utf8" }), "");
+
+  // npm test and the coverage run take the copied tests through UI_EXTRA_TESTS;
+  // coverage still counts every source file, the overlay's included.
+  const scripts = JSON.parse(fs.readFileSync(path.join(repo, "ui/package.json"), "utf8")).scripts as Record<string, string>;
+  assert.match(scripts.test, /\$\{UI_EXTRA_TESTS:-\}/);
+  assert.match(scripts["test:coverage"], /\$\{UI_EXTRA_TESTS:-\}/);
+  assert.match(scripts["test:coverage"], /c8 --all --include='src\/\*\*/);
+});
