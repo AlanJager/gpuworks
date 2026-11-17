@@ -2,7 +2,8 @@ package messages
 
 // Plugin process supervision and the host API (internal/server/pluginhost,
 // docs/dev/extensions.md). Params name the package ({id}) where one is
-// concerned. The codes a plugin's wire objects fail with are pkg/extapi's.
+// concerned. PLUGIN_ISOLATION_UNAVAILABLE is plugin.go's, shared with package
+// verification. The codes a plugin's wire objects fail with are pkg/extapi's.
 const (
 	// ErrorPluginUnavailable: the plugin is not running, so a call to it
 	// cannot be served now.
@@ -55,7 +56,7 @@ const (
 // console carries text for each.
 func PluginHostErrorCodes() []string {
 	return []string{
-		ErrorPluginUnavailable, ErrorPluginBusy, ErrorPluginStartFailed, ErrorPluginIsolationUnavailable,
+		ErrorPluginUnavailable, ErrorPluginBusy, ErrorPluginStartFailed,
 		ErrorPluginHandshakeTimeout, ErrorPluginHandshakeRefused, ErrorPluginHandshakeMismatch,
 		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginCrashloop, ErrorPluginUnhealthy,
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,

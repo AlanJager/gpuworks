@@ -100,7 +100,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 	})
 	if spec.RequireLandlock && isolation != "landlock" {
 		return outcome{kind: outcomeFailed, code: messages.ErrorPluginIsolationUnavailable,
-			params: map[string]any{"id": spec.ID, "required": "landlock"}}, time.Time{}
+			params: map[string]any{"id": spec.ID, "isolation": "landlock"}}, time.Time{}
 	}
 	prof := i.profile()
 	env := pluginexec.Environ(h.cfg.Environ, spec.DataDir, spec.TmpDir, extapi.ProtocolMajor)
@@ -303,7 +303,7 @@ func exitOutcome(id string, exit ExitStatus, beforeHandshake bool) outcome {
 	if beforeHandshake {
 		switch exit.Code {
 		case pluginexec.ExitIsolationUnavailable:
-			return outcome{kind: outcomeFailed, code: messages.ErrorPluginIsolationUnavailable, params: map[string]any{"id": id, "required": "landlock"}}
+			return outcome{kind: outcomeFailed, code: messages.ErrorPluginIsolationUnavailable, params: map[string]any{"id": id, "isolation": "landlock"}}
 		case pluginexec.ExitUsage:
 			return outcome{kind: outcomeFailed, code: messages.ErrorPluginStartFailed,
 				params: map[string]any{"id": id, "detail": "the trampoline refused its command line"}}
