@@ -103,6 +103,49 @@ func TestReadRefusesUnsafeArchives(t *testing.T) {
 	}
 }
 
+// Members must unpack to one tree on any filesystem: a name may not be both
+// a file and a directory, in either order, and no two names may differ only
+// in case.
+func TestReadRefusesMembersThatClashAsATree(t *testing.T) {
+	file := func(name string) extsign.Entry {
+		return extsign.Entry{Header: tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644}, Body: []byte("x")}
+	}
+	dir := func(name string) extsign.Entry {
+		return extsign.Entry{Header: tar.Header{Name: name, Typeflag: tar.TypeDir, Mode: 0o755}}
+	}
+	cases := []struct {
+		name   string
+		extra  []extsign.Entry
+		member string
+		reason string
+	}{
+		{"file then below it", []extsign.Entry{file("a"), file("a/b")}, "a/b", archive.ReasonUnsafePath},
+		{"below then the file", []extsign.Entry{file("a/b/c"), file("a/b")}, "a/b", archive.ReasonUnsafePath},
+		{"file then a directory entry", []extsign.Entry{file("a"), dir("a/")}, "a", archive.ReasonDuplicate},
+		{"directory entry then a file", []extsign.Entry{dir("a/"), file("a")}, "a", archive.ReasonDuplicate},
+		{"case twin", []extsign.Entry{file("Locales/en.json")}, "Locales/en.json", archive.ReasonDuplicate},
+		{"file folding onto a directory", []extsign.Entry{file("LOCALES")}, "LOCALES", archive.ReasonUnsafePath},
+		{"below a file of another case", []extsign.Entry{file("Readme"), file("readme/x")}, "readme/x", archive.ReasonUnsafePath},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := built(t)
+			b.Extra = tc.extra
+			_, err := archive.Read(bytes.NewReader(b.Archive(t)), memSink{}, archive.DefaultLimits())
+			code, params := codeOf(err)
+			if code != messages.ErrorPluginPackageMalformed || params["member"] != tc.member || params["reason"] != tc.reason {
+				t.Fatalf("err = %v (%s %v), want %s at %s", err, code, params, tc.reason, tc.member)
+			}
+		})
+	}
+	// A directory entry for a directory already implied is not a clash.
+	b := built(t)
+	b.Extra = []extsign.Entry{file("ui/x/y"), dir("ui/x/"), dir("ui/")}
+	if _, err := archive.Read(bytes.NewReader(b.Archive(t)), memSink{}, archive.DefaultLimits()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReadRequiresEverySignatureMember(t *testing.T) {
 	for _, name := range []string{archive.ManifestMember, archive.SignatureMember, archive.CertificatesMember} {
 		b := built(t)

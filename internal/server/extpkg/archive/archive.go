@@ -141,6 +141,7 @@ func Read(r io.Reader, sink Sink, lim Limits) (*Contents, error) {
 	tr := tar.NewReader(gz)
 	c := &Contents{}
 	seen := map[string]bool{}
+	tree := newPaths()
 	var plain, images int64
 	entries := 0
 	for {
@@ -168,6 +169,9 @@ func Read(r io.Reader, sink Sink, lim Limits) (*Contents, error) {
 			return nil, malformed(name, ReasonDuplicate)
 		}
 		seen[name] = true
+		if err := tree.add(name, h.Typeflag == tar.TypeDir); err != nil {
+			return nil, err
+		}
 		if h.Typeflag == tar.TypeDir {
 			continue
 		}
@@ -212,6 +216,51 @@ func Read(r io.Reader, sink Sink, lim Limits) (*Contents, error) {
 	}
 	sort.Slice(c.Members, func(i, j int) bool { return c.Members[i].Path < c.Members[j].Path })
 	return c, nil
+}
+
+// paths tracks the member names case-folded, so that the members unpack to
+// the same tree on a case-insensitive filesystem: no two names may fold to
+// one, and no name may be both a file and a directory (a file "a" with a
+// member "a/b", in either order).
+type paths struct {
+	names map[string]bool // every member, folded
+	files map[string]bool // file members, folded
+	dirs  map[string]bool // directories, explicit or implied by a member below
+}
+
+func newPaths() *paths {
+	return &paths{names: map[string]bool{}, files: map[string]bool{}, dirs: map[string]bool{}}
+}
+
+func (p *paths) add(name string, dir bool) error {
+	f := strings.ToLower(name)
+	if p.names[f] {
+		return malformed(name, ReasonDuplicate)
+	}
+	if p.files[f] || !dir && p.dirs[f] {
+		return malformed(name, ReasonUnsafePath)
+	}
+	for i := strings.IndexByte(f, '/'); i >= 0; i = nextSlash(f, i) {
+		if p.files[f[:i]] {
+			return malformed(name, ReasonUnsafePath)
+		}
+		p.dirs[f[:i]] = true
+	}
+	p.names[f] = true
+	if dir {
+		p.dirs[f] = true
+	} else {
+		p.files[f] = true
+	}
+	return nil
+}
+
+func nextSlash(s string, i int) int {
+	j := strings.IndexByte(s[i+1:], '/')
+	if j < 0 {
+		return -1
+	}
+	return i + 1 + j
 }
 
 // memberName validates an entry's type and name and returns the name
