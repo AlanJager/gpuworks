@@ -175,6 +175,7 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	cfg := app.DefaultConfig()
 	cfg.Distribution = opt.Distribution
 	cfg.Extensions = opt.Extensions
+	cfg.PluginRoots = opt.pluginRoots()
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "", "server.yaml; flags below override its values")
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "serve every function on this one address, replacing listen in server.yaml")

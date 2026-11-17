@@ -75,6 +75,8 @@ func (e Extensions) validate() error {
 			return fmt.Errorf("extension module name %q does not match [a-z][a-z0-9_]{1,31}", name)
 		case seen[name]:
 			return fmt.Errorf("extension module %q is registered twice", name)
+		case name == pluginsModuleName:
+			return fmt.Errorf("extension module name %q is the built-in plugin host's", name)
 		}
 		seen[name] = true
 		if mig, ok := m.(Migrator); ok {
