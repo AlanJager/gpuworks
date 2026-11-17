@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -93,5 +94,77 @@ func TestTranslatesServedNameWithoutCapsCountsTheHostAgentAsOld(t *testing.T) {
 	}
 	if c.translatesServedName(&store.Node{UUID: "n", RuntimeDriver: "nerdctl"}) || c.translatesServedName(nil) {
 		t.Fatal("a container agent was treated as translating the name")
+	}
+}
+
+// A manual command is launched as written, so a --served-model-name /model
+// in it (copied from the evaluate preview, say) reaches an older host agent,
+// which translates it to the host path. The desired state then must not
+// expect /model, or that agent would refuse its own engine as foreign; a name
+// no mount target covers is still checked.
+func TestManualCommandNameIsNotExpectedFromAnOlderHostAgent(t *testing.T) {
+	for i, tc := range []struct {
+		name   string
+		caps   []string
+		script string
+		want   string
+	}{
+		{"older host agent, mount name", nil, "vllm serve /model --served-model-name /model --port 8000", ""},
+		{"older host agent, name below the mount", nil, "vllm serve /model --served-model-name /model/x --port 8000", ""},
+		{"older host agent, plain alias", nil, "vllm serve /model --served-model-name qwen --port 8000", "qwen"},
+		{"host agent that keeps names", []string{proto.CapLaunchNameVerbatim}, "vllm serve /model --served-model-name /model --port 8000", "/model"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, err := store.Open(fmt.Sprintf("file:controller_manual_name_%d?mode=memory&cache=shared", i), bus.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = st.Close() })
+			node := sparseGPUNode(t, st, fmt.Sprintf("manual-name-node-%d", i))
+			if err := st.DB().Model(&store.Node{}).Where("id = ?", node.ID).Update("runtime_driver", proto.RuntimeDriverHost).Error; err != nil {
+				t.Fatal(err)
+			}
+			model, err := st.UpsertModel(&store.Model{
+				Source: "huggingface", SourceID: fmt.Sprintf("fixture/manual-name-%d", i), Revision: "main", Name: "manual-name",
+				WeightBytes: 1 << 30,
+				Meta:        `{"model_type":"qwen3","num_hidden_layers":1,"hidden_size":256,"num_attention_heads":8,"num_key_value_heads":8,"max_position_embeddings":2048}`,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.UpsertModelFile(&store.ModelFile{ModelID: model.ID, NodeID: node.ID, State: proto.MFPresent, Path: "/models/manual-name"}); err != nil {
+				t.Fatal(err)
+			}
+			overrides, err := json.Marshal(map[string]string{"command_mode": "manual", "cmd_display": tc.script})
+			if err != nil {
+				t.Fatal(err)
+			}
+			dep, err := createTestDeployment(t, st, &store.Deployment{
+				Name: "manual-name", ModelID: model.ID, NodeID: node.ID, Engine: "vllm", State: "active",
+				Placement: `{"tp":1,"gpus":[6]}`, QuickParams: `{"served_model_name":"","max_model_len":512}`,
+				ContainerOverrides: string(overrides),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			hub := &capsHub{
+				distributedTestHub: &distributedTestHub{online: map[string]bool{node.UUID: true}, updates: map[string][]proto.StateUpdate{}},
+				caps:               map[string][]string{node.UUID: tc.caps},
+			}
+			if err := New(st, hub, nil).reconcileDeployment(context.Background(), dep.ID); err != nil {
+				t.Fatalf("reconcile: %v", err)
+			}
+			updates := hub.updates[node.UUID]
+			if len(updates) != 1 || len(updates[0].Instances) != 1 {
+				t.Fatalf("state updates=%+v, want one instance push", updates)
+			}
+			spec := updates[0].Instances[0]
+			if spec.CommandMode != "manual" {
+				t.Fatalf("command mode = %q, want manual", spec.CommandMode)
+			}
+			if spec.ServedModelName != tc.want {
+				t.Fatalf("desired ServedModelName = %q, want %q (launch %v %v)", spec.ServedModelName, tc.want, spec.Entrypoint, spec.Argv)
+			}
+		})
 	}
 }
