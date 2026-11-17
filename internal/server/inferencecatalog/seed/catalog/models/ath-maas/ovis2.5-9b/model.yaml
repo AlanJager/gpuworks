@@ -12,7 +12,7 @@ specs:
   display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: callable
-  image: image.sourcefind.cn:5000/dcu/admin/base/pytorch
+  image: image.sourcefind.cn:5000/dcu/admin/base/pytorch@sha256:52f2f4f7d4cc3e420b379f9212e1983d52fd3fd31e7427edcf8a07bf62acc069
   weights:
     quantization: bf16
     sources:
