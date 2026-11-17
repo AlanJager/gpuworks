@@ -82,6 +82,11 @@ func (b *Bridge) startIfEnabled(id string) {
 		_ = b.refresh()
 		return
 	}
+	if v.Revoked != nil {
+		b.log.Warn("plugin build is revoked; it is not started", "plugin", id)
+		_ = b.refresh()
+		return
+	}
 	spec, err := b.specOf(v)
 	if err != nil {
 		b.log.Error("plugin cannot be started", "plugin", id, "err", err)
