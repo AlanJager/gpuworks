@@ -32,7 +32,8 @@ func readEngineReadiness(resp *http.Response) (engineReadiness, error) {
 	return state, err
 }
 
-// checkEngineReadiness retires engines that repeatedly fail their HTTP check.
+// checkEngineReadiness retires engines whose HTTP check keeps failing for the
+// whole failure window.
 // A Strata child failure still uses its existing in-container recovery path.
 func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstance) {
 	spec := serving.spec
@@ -46,7 +47,7 @@ func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstan
 		return
 	}
 	client := &http.Client{Timeout: e.healthProbeTimeout}
-	resp, probeErr := probeEngineHealth(ctx, spec, client, e.healthProbeAttempts, e.healthProbeInterval)
+	resp, probeErr := probeEngineHealth(ctx, spec, client, e.healthFailureWindow, e.healthProbeInterval)
 	if ctx.Err() != nil || errors.Is(probeErr, errInvalidHealthEndpoint) {
 		if resp != nil {
 			resp.Body.Close()
