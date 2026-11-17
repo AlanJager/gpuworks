@@ -2,6 +2,7 @@ package netplan
 
 import (
 	"net"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,8 +25,8 @@ import (
 // network.
 type Rail struct {
 	Name      string // "device:port", or the card ("npu3")
-	NetDev    string // the host interface on the same PCI function; "" for IB without IPoIB and for a card
-	Addr      string // the rail's first IPv4 address with its prefix; "" when it has none
+	NetDev    string // the host interface carrying Addr; "" for IB without IPoIB and for a card
+	Addr      string // the rail's selected IPv4 address with its prefix; "" when it has none
 	LinkLayer string // LinkLayerInfiniBand | LinkLayerRoCE; "" when the port is not in the inventory
 	State     string // as reported: ACTIVE, DOWN, ... for an RDMA port; UP or DOWN for a card's port
 	SpeedGbps float64
@@ -131,6 +132,16 @@ func describeRail(inv *proto.NetInventory, p proto.RDMAPort) Rail {
 		// reports the same one); the interface's link speed is not.
 		if rail.LinkLayer == LinkLayerRoCE && iface.SpeedMbps > 0 {
 			rail.SpeedGbps = float64(iface.SpeedMbps) / 1000
+		}
+	}
+	if rail.LinkLayer == LinkLayerRoCE && p.RoCEAddress != nil {
+		address := p.RoCEAddress
+		iface, found := findInterface(inv, address.NetDev)
+		ip, _, err := net.ParseCIDR(address.CIDR)
+		if found && err == nil && ip.To4() != nil && slices.Contains(iface.Addrs, address.CIDR) {
+			// Only address ownership changes. Keep physical link speed above,
+			// and keep the exact GID-matched address on multi-address netdevs.
+			rail.NetDev, rail.Addr = address.NetDev, address.CIDR
 		}
 	}
 	return rail

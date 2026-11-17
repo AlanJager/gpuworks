@@ -22,6 +22,18 @@ type RDMAPort struct {
 	LinkLayer string  `json:"link_layer,omitempty"`
 	RateGbps  float64 `json:"rate_gbps,omitempty"`
 	NetDev    string  `json:"netdev,omitempty"`
+	// RoCEAddress is an IPv4 address verified against this port's GID table.
+	// Its interface can be a bridge, bond or VLAN above NetDev. Keep the
+	// physical association separate: a bond's aggregate speed is not the
+	// bandwidth of one RDMA port. Absent on older agents and InfiniBand ports.
+	RoCEAddress *RoCEAddress `json:"roce_address,omitempty"`
+}
+
+// RoCEAddress retains both halves of a GID-to-interface address match. A
+// consumer must not replace CIDR with the interface's first unrelated address.
+type RoCEAddress struct {
+	NetDev string `json:"netdev"`
+	CIDR   string `json:"cidr"`
 }
 
 // AcceleratorPort is one network port an accelerator card owns. Ascend cards

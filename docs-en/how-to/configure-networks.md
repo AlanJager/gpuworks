@@ -55,6 +55,8 @@ The node list on the network details page shows each node's bootstrap IP and gro
 - **Change** next to bootstrap lets you select an interface on that node that has an address; **Back to auto** clears the override.
 - These changes are stored only in the node attachment. For a node attached through a label, the first change creates a node attachment for it.
 
+A RoCE address can also belong to a bridge, bond, or VLAN. The agent cross-checks each port's GID, its named interface, and the interface's current addresses. The server uses the matching IPv4 address as the HCA IP and an automatic bootstrap candidate, rather than taking the interface's first address. Speed still comes from the physical port and its physical interface, not the aggregate bond speed. This association requires support in both server and agent; older reports or missing valid GIDs retain the original physical-interface inference. Address discovery does not prove connectivity between nodes; run the internal tests to verify it.
+
 Inferred nodes show the following warnings (orange exclamation marks): no usable RDMA port, no bootstrap address, an unavailable manually specified HCA, or inconsistent HCA counts across nodes.
 
 ### Accelerator RDMA Networks: Ports Built Into Accelerator Cards
@@ -271,4 +273,4 @@ If most node pairs have the same shape, the results give the corresponding concl
 
 Click or press Enter to open a node pair: the full card matrix shows a source-card × target-card grid, while same-named cards shows a list of individual pairs. Hover to see both addresses, RTT, or the failure reason. When testing only one node pair, this grid is shown directly.
 
-<!-- translation-source-sha256: f66b4f040af4f64c5e265795abcd0538775d15cf6f6beb694d3bfc13f59aab1f -->
+<!-- translation-source-sha256: ed61e217de95f33c0888d0aec91c80fc9049c520667e854be40051178b0f5d05 -->
