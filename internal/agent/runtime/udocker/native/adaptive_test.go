@@ -346,8 +346,18 @@ func TestPullReadsWholeFromARegistryThatIgnoresRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests := f.reg.Requests()
-	if last := requests[len(requests)-1]; last.Range != "" {
-		t.Fatalf("the last request still asked for %q: %+v", last.Range, requests)
+	// Canceled range requests can reach the server after the whole read.
+	// Count the fallback without imposing an arrival order on those requests.
+	ranged, whole := 0, 0
+	for _, r := range requests {
+		if r.Range == "" {
+			whole++
+		} else {
+			ranged++
+		}
+	}
+	if ranged == 0 || whole != 1 {
+		t.Fatalf("ranged=%d whole=%d, want range attempts and one whole read: %+v", ranged, whole, requests)
 	}
 }
 
@@ -542,14 +552,18 @@ func TestPullReadsOnlyTheLayerWithoutRangeSupportWhole(t *testing.T) {
 	if other != 6 { // six spans of 1 MiB, each asked for once
 		t.Fatalf("%d requests for the layer with Range support, want its 6 spans", other)
 	}
-	var last fakeregistry.Request
+	ranged, whole := 0, 0
 	for _, r := range f.reg.Requests() {
 		if r.Digest == f.descs[0].Digest {
-			last = r
+			if r.Range == "" {
+				whole++
+			} else {
+				ranged++
+			}
 		}
 	}
-	if last.Range != "" {
-		t.Fatalf("the layer without Range support was still asked for %q at the end", last.Range)
+	if ranged == 0 || whole != 1 {
+		t.Fatalf("layer without Range support: ranged=%d whole=%d, want range attempts and one whole read: %+v", ranged, whole, f.reg.Requests())
 	}
 }
 
