@@ -453,7 +453,8 @@ func TestExitOutcomes(t *testing.T) {
 		{ExitStatus{Code: pluginexec.ExitUsage}, true, outcomeFailed, messages.ErrorPluginStartFailed},
 		{ExitStatus{Code: pluginexec.ExitExecFailed}, true, outcomeCrash, messages.ErrorPluginStartFailed},
 		{ExitStatus{Code: pluginexec.ExitIsolationUnavailable}, false, outcomeCrash, messages.ErrorPluginCrashed},
-		{ExitStatus{Code: -1, Signal: "killed"}, true, outcomeCrash, messages.ErrorPluginCrashed},
+		{ExitStatus{Code: -1, Signal: "killed"}, true, outcomeCrash, messages.ErrorPluginKilled},
+		{ExitStatus{Code: 2}, false, outcomeCrash, messages.ErrorPluginCrashed},
 	} {
 		o := exitOutcome("acme", tc.exit, tc.before)
 		if o.kind != tc.kind || o.code != tc.code {

@@ -28,9 +28,12 @@ const (
 	// version ({capability}@{version}) this server did not offer or the
 	// package was not approved for.
 	ErrorPluginCapabilityNotOffered = "PLUGIN_CAPABILITY_NOT_OFFERED"
-	// ErrorPluginCrashed: the plugin process exited unexpectedly
-	// ({exit_code}, or {signal}); it is restarted after a backoff.
+	// ErrorPluginCrashed: the plugin process exited unexpectedly with
+	// {exit_code}; it is restarted after a backoff.
 	ErrorPluginCrashed = "PLUGIN_CRASHED"
+	// ErrorPluginKilled: the plugin process was ended by {signal}; it is
+	// restarted after a backoff.
+	ErrorPluginKilled = "PLUGIN_KILLED"
 	// ErrorPluginCrashloop: the plugin crashed {crashes} times within
 	// {window_s} seconds; it is retried every {retry_s} seconds.
 	ErrorPluginCrashloop = "PLUGIN_CRASHLOOP"
@@ -59,7 +62,7 @@ func PluginHostErrorCodes() []string {
 	return []string{
 		ErrorPluginUnavailable, ErrorPluginBusy, ErrorPluginStartFailed,
 		ErrorPluginHandshakeTimeout, ErrorPluginHandshakeRefused, ErrorPluginHandshakeMismatch,
-		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginCrashloop, ErrorPluginUnhealthy,
+		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginKilled, ErrorPluginCrashloop, ErrorPluginUnhealthy,
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,
 		ErrorPluginStateOnDemand,
 	}

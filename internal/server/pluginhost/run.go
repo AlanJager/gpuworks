@@ -314,5 +314,8 @@ func exitOutcome(id string, exit ExitStatus, beforeHandshake bool) outcome {
 				params: map[string]any{"id": id, "detail": fmt.Sprintf("the trampoline exited with %d", exit.Code)}}
 		}
 	}
-	return outcome{kind: outcomeCrash, code: messages.ErrorPluginCrashed, params: map[string]any{"id": id, "exit_code": exit.Code, "signal": exit.Signal}}
+	if exit.Signal != "" {
+		return outcome{kind: outcomeCrash, code: messages.ErrorPluginKilled, params: map[string]any{"id": id, "signal": exit.Signal}}
+	}
+	return outcome{kind: outcomeCrash, code: messages.ErrorPluginCrashed, params: map[string]any{"id": id, "exit_code": exit.Code}}
 }
