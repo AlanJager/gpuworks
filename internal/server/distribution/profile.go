@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
 // EditionCommunity is the edition this repository builds. An index that
@@ -45,16 +47,31 @@ type Profile struct {
 	// Keys are the index signing keys the edition trusts; nil is
 	// TrustedKeys().
 	Keys Keys
+	// PluginRoots are the project roots plugin publisher certificates and
+	// trust updates must chain to (key ids starting with "gwroot-"); nil is
+	// ProjectPluginRoots(). A fork's profile replaces them with its own.
+	PluginRoots []extapi.PublicKey
 }
 
 // Community is the profile of the community edition: the built-in sources
 // and keys.
 func Community() Profile {
-	return Profile{Edition: EditionCommunity, Sources: append([]string(nil), DefaultSources...), Keys: TrustedKeys()}
+	return Profile{Edition: EditionCommunity, Sources: append([]string(nil), DefaultSources...), Keys: TrustedKeys(), PluginRoots: ProjectPluginRoots()}
+}
+
+// Roots returns the plugin roots of the profile: PluginRoots, or the
+// project's when the profile names none.
+func (p Profile) Roots() []extapi.PublicKey {
+	if p.PluginRoots != nil {
+		return append([]extapi.PublicKey(nil), p.PluginRoots...)
+	}
+	return ProjectPluginRoots()
 }
 
 // IsZero reports whether p is the zero profile, which reads as Community().
-func (p Profile) IsZero() bool { return p.Edition == "" && len(p.Sources) == 0 && p.Keys == nil }
+func (p Profile) IsZero() bool {
+	return p.Edition == "" && len(p.Sources) == 0 && p.Keys == nil && p.PluginRoots == nil
+}
 
 // Client is a channel client for the profile over httpClient (nil keeps the
 // distribution client's own bounded transport). Its sources are the edition's

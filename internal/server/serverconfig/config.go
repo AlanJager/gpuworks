@@ -92,6 +92,8 @@ type File struct {
 	// stay strict; a section no module claims only draws a warning at start,
 	// so moving a data directory between builds never stops the server.
 	Extensions map[string]yaml.Node `yaml:"extensions,omitempty"`
+	// Plugins is the plugin host's trust and site policy.
+	Plugins Plugins `yaml:"plugins,omitempty"`
 }
 
 // Log configures the server's own log.
@@ -131,6 +133,9 @@ func decodeFile(path string, raw []byte) (File, error) {
 		return File{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := ValidateUpdateChannel(f.UpdateChannel); err != nil {
+		return File{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := f.Plugins.Validate(); err != nil {
 		return File{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if (f.TLSCertFile == "") != (f.TLSKeyFile == "") {

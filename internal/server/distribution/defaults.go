@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
 // DefaultSources are the public sources every release is published to, in no
@@ -35,6 +37,17 @@ func TrustedKeys() Keys {
 		keys[id] = key
 	}
 	return keys
+}
+
+// projectPluginRoots are the project roots compiled into this build that
+// plugin publisher certificates and trust updates chain to. None ships yet:
+// until the project's roots are generated, only issuers the host operator
+// trusts in server.yaml certify packages.
+var projectPluginRoots []extapi.PublicKey
+
+// ProjectPluginRoots returns the plugin roots built into this binary.
+func ProjectPluginRoots() []extapi.PublicKey {
+	return append([]extapi.PublicKey{}, projectPluginRoots...)
 }
 
 // NormalizeSource validates a source base URL and strips trailing slashes.
