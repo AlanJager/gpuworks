@@ -61,6 +61,13 @@ export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
     return t("apiErrorDetail", { category, detail, defaultValue: `${category}: ${detail}` });
   }
   const params = { ...error.params };
+  if (error.code === "SETTING_REMOVED") {
+    const target = params.setting === "default_model_source" ? "modelSource"
+      : params.route === "/api/v1/pull/source-rules" ? "sourceRules"
+      : params.route === "/api/v1/pull/proxies" ? "proxies"
+      : params.route === "/api/v1/pull/credentials" ? "credentials" : undefined;
+    if (target) return t(`removedSetting.${target}`, { ...params, defaultValue: error.fallback || error.code });
+  }
   if (error.code === "PULL_SETTING_INVALID") {
     const field = String(params.field ?? "");
     params.field = t(`pullSettingField.${field}`, { defaultValue: field });

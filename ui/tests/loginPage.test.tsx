@@ -165,3 +165,29 @@ test("the sign-in page keeps the built-in branding when it cannot be loaded", as
   assert.ok(await screen.findByRole("region", { name: "GPUWorks product information" }));
   assert.ok(screen.getByRole("button", { name: "Sign in" }));
 });
+
+for (const failure of [new TypeError("Failed to fetch"), new TypeError("NetworkError when attempting to fetch resource."), new Error("connection closed")]) {
+  test(`unreachable sign-in service shows a retry hint instead of ${failure.message}`, async () => {
+    apiModule.api.prefetchUpdates = async () => {};
+    globalThis.fetch = async () => { throw failure; };
+    let signedIn = 0;
+    render(page(() => { signedIn++; }));
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Username"), "admin");
+    await user.type(screen.getByLabelText("Password"), "password{Enter}");
+    const alert = await screen.findByRole("alert");
+    assert.ok(alert.textContent?.includes("Sign-in failed. Try again later."));
+    assert.ok(!alert.textContent?.includes(failure.message), "browser transport text must not become the user-facing message");
+    assert.equal(signedIn, 0);
+  });
+}
+
+test("invalid credentials retain their specific sign-in guidance", async () => {
+  apiModule.api.prefetchUpdates = async () => {};
+  globalThis.fetch = async () => new Response(JSON.stringify({ code: "AUTH_INVALID_CREDENTIALS" }), { status: 401 });
+  render(page());
+  const user = userEvent.setup();
+  await user.type(await screen.findByLabelText("Username"), "admin");
+  await user.type(screen.getByLabelText("Password"), "password{Enter}");
+  assert.ok((await screen.findByRole("alert")).textContent?.includes("Incorrect username or password. Check your credentials and try again."));
+});

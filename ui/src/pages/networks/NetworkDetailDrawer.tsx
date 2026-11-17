@@ -19,7 +19,7 @@ import NetworkFormModal from "./NetworkFormModal";
 import NetworkTestPanel from "./NetworkTestPanel";
 import NetworkMonitorPanel from "./NetworkMonitorPanel";
 import ManagementNodesTable from "./ManagementNodesTable";
-import { Endpoint, RoleTags, TypeTag, WarningMark, isAcceleratorRDMA, usesRails, sourceText } from "./networkDisplay";
+import { Endpoint, LinkLayerTag, RoleTags, TypeTag, WarningMark, isAcceleratorRDMA, usesRails, sourceText } from "./networkDisplay";
 import { BootstrapCell, RailsCell } from "./RDMAEndpoints";
 import { HelpTip } from "../../ui-kit/HelpTip";
 
@@ -206,7 +206,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
         {
           key: "hcas",
           wide: true,
-          title: <span>{t("nodeTable.hcaIPs")}{detail.nodes[0]?.link_layer && <Badge size="sm" className="ml-1.5">{t(`linkLayer.${detail.nodes[0].link_layer}`)}</Badge>}</span>,
+          title: <span>{t("nodeTable.hcaIPs")}<LinkLayerTag layer={detail.nodes[0]?.link_layer} /></span>,
           render: (_: unknown, n: NetworkNode) => <RailsCell network={detail} node={n} onChanged={onDetail} />,
         },
       ]

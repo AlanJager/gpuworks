@@ -1,4 +1,5 @@
 {
+  "removedSetting": {"modelSource": "设置“{{setting}}”已移除；请在部署时显式选择模型来源。", "sourceRules": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置来源规则。", "proxies": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置代理和来源规则。", "credentials": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置主机凭据。"},
   "terminalPage": {
     "title": "终端 · {{label}} — {{product}}",
     "loading": "正在加载终端…"
@@ -451,7 +452,7 @@
     "MODEL_SYNC_UNAVAILABLE": "模型同步功能尚未配置。",
     "ACQUISITION_CANDIDATE_STALE": "你选择的保存存储或权重来源已不可用，请重新评估后再选择。",
     "ACQUISITION_IMAGE_REQUIRED": "描述镜像拉取时必须提供镜像。",
-    "SETTING_REMOVED": "设置“{{setting}}”已移除；镜像从哪里拉取现在在 设置 → 拉取设置 中配置。",
+    "SETTING_REMOVED": "设置“{{setting}}”已移除。",
     "LOCAL_STORAGE_DISABLED": "本地存储已停用，不能开始新的下载或同步。",
     "LOCAL_MODEL_FIELDS_REQUIRED": "请选择节点并填写模型路径。",
     "MODEL_PATH_REQUIRED": "请输入模型路径。",
@@ -673,7 +674,7 @@
     "NETWORK_NAME_REQUIRED": "请输入不超过 64 个字符的网络名称。",
     "NETWORK_NAME_TAKEN": "已存在同名网络。",
     "NETWORK_ROLE_INVALID": "请至少选择一个角色：存储同步、参数、服务。",
-    "NETWORK_TYPE_INVALID": "网络类型必须是主机以太网、主机 RDMA 或加速器 RDMA。",
+    "NETWORK_TYPE_INVALID": "网络类型必须是以下类型之一：$t(networks:typeGroup.all)。",
     "NETWORK_TYPE_ROLE_INVALID": "{{type}} 类型的网络不能承载 {{role}} 角色。",
     "NETWORK_SELECTOR_INVALID": "网络选择器 {{field}} 无效：{{value}}",
     "NETWORK_ATTACHMENT_TARGET_INVALID": "只能加载到一个已存在的节点或一个节点标签。",
@@ -696,10 +697,10 @@
     "COMPUTE_NETWORK_MIXED": "节点“{{node}}”有参数网络，但节点“{{other}}”没有，且管理网不能同时为两者承担参数同步。",
     "COMPUTE_NETWORK_MISMATCH": "节点“{{node}}”在参数网络 {{network}} 上，而节点“{{other}}”在 {{expected}} 上，且管理网不能同时为两者承担参数同步。",
     "COMPUTE_NETWORK_RUNTIME": "节点“{{node}}”使用 {{runtime}}，无法向容器暴露参数网络 {{network}} 需要的 RDMA 设备。",
-    "COMPUTE_NETWORK_ACCELERATOR_REQUIRED": "节点“{{node}}”是昇腾加速卡，跨机集合通信只能走加速卡自带的网口；这组节点共用的网络“{{network}}”不是加速器 RDMA 网络。请新建一个加速器 RDMA 网络并加载这些节点。",
-    "COMPUTE_NETWORK_NO_CARDS": "节点“{{node}}”在加速器 RDMA 网络“{{network}}”上没有可用的加速卡网口。",
-    "PD_NETWORK_ACCELERATOR_REQUIRED": "PD 模式 {{mode}} 的 KV 走加速卡自带的网口，跨机部署需要加速器 RDMA 网络；这组节点共用的是“{{network}}”。",
-    "PD_NETWORK_HOST_REQUIRED": "PD 模式 {{mode}} 的 KV 走主机网卡（UCX 或 Mooncake），需要主机网络；这组节点共用的“{{network}}”是加速器 RDMA 网络。",
+    "COMPUTE_NETWORK_ACCELERATOR_REQUIRED": "节点“{{node}}”是昇腾加速卡，跨机集合通信只能走加速卡自带的网口；这组节点共用的网络“{{network}}”不是加速器网络（$t(networks:typeGroup.accelerator)）。请新建这两种类型之一的加速器网络并加载节点。",
+    "COMPUTE_NETWORK_NO_CARDS": "节点“{{node}}”在加速器网络“{{network}}”（$t(networks:typeGroup.accelerator)）上没有可用的加速卡网口。",
+    "PD_NETWORK_ACCELERATOR_REQUIRED": "PD 模式 {{mode}} 的 KV 走加速卡自带的网口，跨机部署需要加速器网络（$t(networks:typeGroup.accelerator)）；这组节点共用的是“{{network}}”。",
+    "PD_NETWORK_HOST_REQUIRED": "PD 模式 {{mode}} 的 KV 走主机网卡（UCX 或 Mooncake），需要主机网络（$t(networks:typeGroup.host)）；这组节点共用的“{{network}}”是加速器网络（$t(networks:typeGroup.accelerator)）。",
     "PD_NETWORK_RDMA_REQUIRED": "PD 模式 {{mode}} 经 RDMA 传 KV，节点需要在同一个主机 RDMA 网络上（单机也一样），才能拿到 RDMA 设备；当前这组节点没有共用这样的网络。",
     "PD_SLEEP_RDMA_UNSUPPORTED": "可休眠的 PD 部署不能经 RDMA 网络“{{network}}”传 KV：引擎休眠后申请不回注册给网卡的 KV 显存，唤醒会报 out of memory。请关闭“可休眠”，或改用以太网参数网络。",
     "NETWORK_TEST_UNSUPPORTED": "只有存储同步网络和参数网络支持内部测试。",

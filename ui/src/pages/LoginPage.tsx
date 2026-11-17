@@ -61,14 +61,18 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
       if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After") ?? "";
         const seconds = /^\d+$/.test(retryAfter) ? Number(retryAfter) : 0;
-        throw new Error(Number.isSafeInteger(seconds) && seconds > 0
+        setError(Number.isSafeInteger(seconds) && seconds > 0
           ? t("throttledRetry", { seconds })
           : t("apiError.LOGIN_THROTTLED", { ns: "common" }));
+        return;
       }
-      if (!res.ok) throw new Error(t(res.status === 401 ? "invalidCredentials" : "failed"));
+      if (!res.ok) {
+        setError(t(res.status === 401 ? "invalidCredentials" : "failed"));
+        return;
+      }
       onLogin();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("failed"));
+    } catch {
+      setError(t("failed"));
     } finally {
       setLoading(false);
     }
