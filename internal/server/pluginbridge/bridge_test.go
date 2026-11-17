@@ -19,6 +19,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
+	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/testenv/extsign"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -75,7 +76,12 @@ func (w *world) open() *Bridge {
 
 func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 	w.t.Helper()
-	pkgs, err := extpkg.NewHost(extpkg.Setup{DataDir: w.dir, Roots: []extapi.PublicKey{w.root.Public}, Store: w.st})
+	// The refusing spawner starts no process. Permit only these fixture
+	// packages when Landlock is unavailable, retaining their signed grants.
+	pkgs, err := extpkg.NewHost(extpkg.Setup{
+		DataDir: w.dir, Roots: []extapi.PublicKey{w.root.Public}, Store: w.st,
+		Config: serverconfig.Plugins{AllowUnsandboxed: []string{"acme_backup", "acme_off", "acme_driver"}},
+	})
 	if err != nil {
 		w.t.Fatal(err)
 	}

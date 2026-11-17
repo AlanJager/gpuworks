@@ -29,6 +29,10 @@ type pluginEnv struct {
 	config string
 }
 
+// These CLI cases inspect packages without starting them. The test site
+// explicitly permits its one fixture package on hosts without Landlock.
+const testPluginSite = "plugins:\n  allow_unsandboxed: [acme_backup]\n"
+
 func newPluginEnv(t *testing.T, serverYAML string) *pluginEnv {
 	t.Helper()
 	root := extsign.NewRoot(t, "1")
@@ -77,7 +81,7 @@ func productCode(err error) string {
 }
 
 func TestPluginInstallListRemoveWithTheServerStopped(t *testing.T) {
-	e := newPluginEnv(t, "")
+	e := newPluginEnv(t, testPluginSite)
 	out, err := e.run("list")
 	if err != nil || !strings.Contains(out, "no plugin installed") {
 		t.Fatalf("empty list = %q %v", out, err)
@@ -145,7 +149,7 @@ func TestPluginInstallRefusesWithCodes(t *testing.T) {
 }
 
 func TestPluginTrustImportRaisesTheFloor(t *testing.T) {
-	e := newPluginEnv(t, "")
+	e := newPluginEnv(t, testPluginSite)
 	update := extsign.TrustUpdate(t, 1, func(u *extapi.TrustUpdate) {
 		u.Floors = []extapi.Floor{{ID: "acme_backup", MinVersion: "1.1.0"}}
 	}, e.root)
@@ -207,7 +211,7 @@ func TestPluginHostTrustedIssuerFromServerYAML(t *testing.T) {
 }
 
 func TestPluginCompatIsReadOnly(t *testing.T) {
-	e := newPluginEnv(t, "")
+	e := newPluginEnv(t, testPluginSite)
 	out, err := e.run("compat")
 	if err != nil || !strings.Contains(out, "compatible") {
 		t.Fatalf("fresh data directory = %q %v", out, err)
