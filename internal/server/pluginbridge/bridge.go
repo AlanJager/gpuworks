@@ -153,12 +153,16 @@ func (b *Bridge) Features() []featuregate.Feature { return slices.Clone(b.featur
 
 // Run runs pushed state's writer tick, timelines and capacity selection,
 // starts every enabled resident plugin, and stops them all when ctx ends.
-// It may run again after it returned.
+// Pushed state stops after the plugins, so the moment each went down is
+// persisted and a restart of the server never renews its grace. It may
+// run again after it returned.
 func (b *Bridge) Run(ctx context.Context) error {
+	stateCtx, stopState := context.WithCancel(context.WithoutCancel(ctx))
+	defer stopState()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if err := b.state.Run(ctx); err != nil {
+		if err := b.state.Run(stateCtx); err != nil {
 			b.log.Error("pushed state stopped", "err", err)
 		}
 	}()
@@ -179,6 +183,7 @@ func (b *Bridge) Run(ctx context.Context) error {
 	b.mu.Unlock()
 	b.stopAll()
 	b.admin.Unlock()
+	stopState()
 	<-done
 	return nil
 }
