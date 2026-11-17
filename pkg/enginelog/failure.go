@@ -170,8 +170,10 @@ var signatures = []signature{
 		hypothesis: "The image's kernels were not built for this GPU architecture. Check the GPU's compute capability against the image/engine build; fixes are an image built for that architecture or a different GPU.",
 	},
 	{
-		code:       CodeTrustRemoteCodeRequired,
-		match:      re(`trust_remote_code|requires you to execute the configuration file in that repo`),
+		code: CodeTrustRemoteCodeRequired,
+		// Engines also print this option in configuration dumps and ignored-option
+		// warnings. Only a request for permission is evidence of a refusal.
+		match:      re("requires you to execute the configuration file in that repo|(?:please (?:pass|set)|make sure (?:that )?you set|you need to (?:pass|set)) (?:the (?:argument|option) )?[`'\"]?trust_remote_code\\s*=\\s*true\\b"),
 		hypothesis: "The model ships custom code and the engine refused to load it without --trust-remote-code. Check whether the model's repository is trusted before enabling it.",
 	},
 	{
