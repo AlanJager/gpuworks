@@ -111,7 +111,7 @@ type Service interface{ Run(ctx context.Context) error }
   | 假探测器 | `GPU-FAKE-<n>`、`FAKE-<厂商>-<n>` | 否（测试值，每个节点都一样） |
 
 - `NodeIdentity(ctx, ids, salt)` 对每个仍存在的指定节点给出 `{NodeID, Host, Cards, CardsWithoutSerial}`，按 id 升序：
-  - `Host` 与 `Cards` 的每一项是 `store.IdentityPart{H, Tail}`。`H` 是以调用方的盐为密钥、对「种类、一个零字节、原始值」做 HMAC-SHA256 的前 16 个十六进制字符（8 字节），种类是 `host` 或 `card`；`Tail` 是原始值的最后 4 个字符，供人到机器上核对，原始值不足 8 个字符时为空，所以尾号永远不等于整个值。同一个盐每次得到相同的摘要，不同的盐得到互不相关的摘要。
+  - `Host` 与 `Cards` 的每一项是 `store.IdentityPart{H, Tail}`。`H` 是以调用方的盐为密钥、对「种类、一个零字节、原始值」做 HMAC-SHA256 的前 16 个十六进制字符（8 字节），种类是 `host` 或 `card`；`Tail` 是原始值的最后 4 个字符，供人到机器上核对，原始值不足 8 个字符时为空，所以尾号永远不等于整个值。同一个盐每次得到相同的摘要，不同的盐得到互不相关的 `H`；`Tail` 不加盐，每个调用方看到的都是同一段原始尾号。
   - `Cards` 只含本节点可用（`accelerator.CardUsable`）且带序列号的卡，按 `H` 排序；可用但标识是编出来的卡只计入 `CardsWithoutSerial`。所以同一台机器上的两个逻辑节点共用 `Host`，各自只有自己的卡。
   - 部分答复：agent 还没上报主机 UUID 时 `Host` 是零值（`Known()` 为假）；不存在的节点（从未有过或已删除）不出现在结果里，调用方比对 id；重复的 id 只算一次。
   - `ids` 为 1 到 500 个节点，否则返回 `store.ErrNodeReadBatch`；盐为 1 到 256 字节，否则返回 `store.ErrIdentitySalt`。越界的调用被拒绝，不会被截断。

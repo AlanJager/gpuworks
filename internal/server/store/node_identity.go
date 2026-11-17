@@ -46,8 +46,10 @@ func (p IdentityPart) Known() bool { return p.H != "" }
 
 // NodeIdentity is what identifies one node's hardware, salted: the machine
 // it runs on and the cards it owns. Raw serials never leave the server;
-// two callers with different salts get unrelated digests of the same
-// machine, one caller gets the same digests every time.
+// two callers with different salts get unrelated H digests of the same
+// machine, one caller gets the same digests every time. Tail is not
+// salted: every caller sees the same raw tail, so callers can still match
+// a machine by it.
 type NodeIdentity struct {
 	NodeID uint
 	// Host is the machine's system UUID (Node.HostSystemUUID); unknown

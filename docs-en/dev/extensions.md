@@ -111,7 +111,7 @@ A module that needs to recognize "the same machine, the same cards" (an inventor
   | Fake probers | `GPU-FAKE-<n>`, `FAKE-<vendor>-<n>` | No (test values, the same on every node) |
 
 - `NodeIdentity(ctx, ids, salt)` answers `{NodeID, Host, Cards, CardsWithoutSerial}` for each named node that still exists, in ascending ID order:
-  - Each item of `Host` and `Cards` is a `store.IdentityPart{H, Tail}`. `H` is the first 16 hex characters (8 bytes) of HMAC-SHA256 keyed with the caller's salt over the kind, a zero byte and the raw value, the kind being `host` or `card`; `Tail` is the raw value's last 4 characters, for a person to check against the machine, and is empty when the raw value is shorter than 8 characters, so a tail is never the whole value. One salt gives the same digests every time; different salts give unrelated digests.
+  - Each item of `Host` and `Cards` is a `store.IdentityPart{H, Tail}`. `H` is the first 16 hex characters (8 bytes) of HMAC-SHA256 keyed with the caller's salt over the kind, a zero byte and the raw value, the kind being `host` or `card`; `Tail` is the raw value's last 4 characters, for a person to check against the machine, and is empty when the raw value is shorter than 8 characters, so a tail is never the whole value. One salt gives the same digests every time; different salts give unrelated `H` values. `Tail` is not salted: every caller sees the same raw tail.
   - `Cards` holds only the cards the node may use (`accelerator.CardUsable`) that carry a serial, ordered by `H`; usable cards whose id was made up are only counted in `CardsWithoutSerial`. So two logical nodes on one machine share `Host` and each has only its own cards.
   - Partial answers: `Host` is the zero value (`Known()` is false) until the agent reports a host UUID; a node that does not exist (never did, or was deleted) is left out of the result, so the caller compares IDs; a repeated ID counts once.
   - `ids` holds 1 to 500 nodes, else `store.ErrNodeReadBatch`; the salt is 1 to 256 bytes, else `store.ErrIdentitySalt`. A call out of bounds is refused, never cut short.
@@ -204,4 +204,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 71d7bd1922f8fc6d7d35c4716954bd933c5d44b2827d70d4294813998754f1cc -->
+<!-- translation-source-sha256: 7d5519579846d63d7c0638b74cffd5c7d5e8a34ed0b56f9fcb538fc93ec1a4d1 -->

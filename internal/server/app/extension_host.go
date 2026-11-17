@@ -175,7 +175,8 @@ func (h *Host) NodeFleet(ctx context.Context) ([]store.NodeHoldFacts, error) {
 // exists, in ascending id order (store.NodeIdentity): the machine's system
 // UUID and the serials of the cards the node owns, each as a 16-hex-digit
 // HMAC-SHA256 keyed with salt plus the raw value's last four characters.
-// Raw serials never leave the server. A node that does not exist is left
+// Raw serials never leave the server. The digest differs per salt; the
+// tail is the same for every caller. A node that does not exist is left
 // out. ids holds 1 to 500 nodes and salt 1 to 256 bytes, else
 // store.ErrNodeReadBatch or store.ErrIdentitySalt. It reads only the named
 // nodes: call it for the nodes a page shows, not for the whole fleet on
