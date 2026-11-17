@@ -42,7 +42,7 @@ no rules beyond "prefill/decode". The table lists some of them:
 | Mode | Wire Protocol | TP Rule | Transport | Hardware Verification |
 |---|---|---|---|---|
 | `vllm-nixl` | Sequential, two-stage | decode ≥ prefill | UCX | Verified (same node, cross-node Ethernet, and multiple nodes within a role) |
-| `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Not compared (the engine pairs) | UCX | Not verified |
+| `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Not compared (the engine pairs) | UCX | Verified (cross-node Ethernet, multiple nodes within a role; SGLang 0.5.21) |
 | `vllm-ascend-mooncake` | Sequential, two-stage | prefill ≥ decode | HCCL (RoCE built into the NPU; mounts `/etc/hccn.conf`) | Verified (cross-node; P and D NPUs must reach each other on the NPU network) |
 | `vllm-mooncake` | Sequential, two-stage; the gateway generates the handoff parameters (prefill returns no `kv_transfer_params`; the gateway reads the engine id from its bootstrap server) | Not compared (the engine pairs) | Mooncake transfer engine (Hygon DTK build, RDMA or TCP) | Verified (K100, two cards in one node, TP 1) |
 | `sglang-mooncake` | Concurrent dispatch to both | Not compared (SGLang pairs by attention TP); decode PP equals prefill PP or is 1 | Mooncake transfer engine (Hygon DTK build, host RDMA network) | Not verified |
@@ -151,4 +151,4 @@ the request with the same KV parameters to other D instances. Internal requests 
 - PPU images include only Mooncake, not NIXL; supporting PPU most likely means adding another Mooncake mode without changing the data model.
 - Per-role images or presets and auxiliary roles (a coordination process for a shared KV pool) require only extensions to the `pd` object and catalog; `role` is a string with unrestricted values.
 
-<!-- translation-source-sha256: 7b467f75012125847b15315005f5b54af4fe1f674e2a0913d55393867d24d97e -->
+<!-- translation-source-sha256: 1ce4b137cbc203df4019d3935e9ec1c1d3fdcbb88e8b07571328f572bd66cb8e -->

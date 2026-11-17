@@ -7,7 +7,7 @@ After completing this guide, you can call the model through a single service nam
 **Prerequisites**:
 
 - You are familiar with ordinary deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
-- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA and AMD, `vllm-ascend-mooncake` targets Ascend, `vllm-mooncake` targets Hygon DCU (it needs the Hygon vLLM 0.21 image; see [Hygon DCU](#海光-dcu)), `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), `sglang-mooncake` targets SGLang on Hygon DCU with the KV over RDMA NICs (see [Hygon SGLang over Mooncake RDMA](#海光-sglang-经-mooncake-rdma); unverified), and `sglang-nixl` is unverified.
+- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA and AMD, `vllm-ascend-mooncake` targets Ascend, `vllm-mooncake` targets Hygon DCU (it needs the Hygon vLLM 0.21 image; see [Hygon DCU](#海光-dcu)), `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), `sglang-mooncake` targets SGLang on Hygon DCU with the KV over RDMA NICs (see [Hygon SGLang over Mooncake RDMA](#海光-sglang-经-mooncake-rdma); unverified), and `sglang-nixl` targets SGLang on NVIDIA with the KV over UCX.
 - PPU Mooncake modes: the nodes are on a host RDMA compute network and have `alixpu_peermem` loaded (see [PPU KV over RDMA](#ppu-经-rdma-传-kv)).
 - `sglang-mooncake`: the nodes of P and D share one host RDMA compute network (even on a single node).
 - In the NVIDIA and Hygon modes, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared Accelerator RDMA or Accelerator HCCS network, and the NPUs hosting prefill and decode must be mutually reachable over that accelerator network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
@@ -27,7 +27,7 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 
 1. On the deployments page, select **PD disaggregation** under **Node Placement**, then select a PD mode. Available modes come from the engine profiles: vLLM offers `vllm-nixl` (NVIDIA, AMD),
    `vllm-ascend-mooncake` (Ascend), `vllm-mooncake` (Hygon), and `vllm-ppu-mooncake` (PPU, RDMA); SGLang offers `sglang-ppu-ipc` (PPU, same node),
-   `sglang-ppu-mooncake` (PPU, RDMA), `sglang-mooncake` (Hygon, RDMA, unverified), and `sglang-nixl` (unverified).
+   `sglang-ppu-mooncake` (PPU, RDMA), `sglang-mooncake` (Hygon, RDMA, unverified), and `sglang-nixl` (NVIDIA, UCX).
 
 2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)), set TP separately for prefill and decode, then add instances one by one. In manual mode select a node for each instance and optionally pin cards; in automatic mode an instance may leave its node out and the platform picks it. Each mode has TP rules: `vllm-nixl` requires
    decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse; for the other modes the platform does not compare TP, and the engine pairs unequal TPs itself; a pairing it cannot make fails the instance's start or its first handoff, and the instance log says why. `sglang-mooncake` also requires decode PP to equal prefill PP or be 1 (see [Hygon SGLang over Mooncake RDMA](#海光-sglang-经-mooncake-rdma)).
@@ -306,5 +306,5 @@ By default, evaluations measure end-to-end performance through the gateway. If y
   if a container exits or disappears, it is treated as failed and the controller recreates it according to the retry policy. Use **Retry** when the retry limit is reached.
   This check is not continuous HTTP health probing. If the container is still running but the engine does not respond, check logs and request errors, then restart or replace the instance through role adjustment if necessary.
 
-<!-- translation-source-sha256: b425adde9dda75c8838d7d9ab102e5de77630257df17868727119803b9be9b15 -->
+<!-- translation-source-sha256: 294464e09a92a35e7565027933a7f31fe141d60f9eee23dda7c36cf40210d263 -->
 <!-- translation-localized-code-block: 2513da8d7e22b4b434e5b388074c523ee6fe392dc62a5486c6f3b2e866546493 900283aac222ec81c58a9b790638cf4b5d10495895e866cd20adbc835c88153e Translate the inline shell comment. -->

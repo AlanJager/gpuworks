@@ -205,7 +205,7 @@ the two groups in sequence. The greatest benefit appears with long prompts (thou
 | `vllm-ascend-mooncake` | vLLM / Ascend | NPU's built-in RoCE ports (HCCL) | Validated: across two 910B4 machines; P and D NPUs must be mutually reachable on the NPU network |
 | `vllm-mooncake` | vLLM 0.21 / Hygon | Mooncake transfer engine (over the compute network, RDMA or TCP) | Verified: Hygon K100, two cards in one node, TP 1, including GDN hybrid models (r4 image required); cross-node and RDMA not verified |
 | `sglang-mooncake` | SGLang / Hygon | Mooncake RDMA (over a host RDMA compute network) | **Unverified** |
-| `sglang-nixl` | SGLang / NVIDIA | UCX | **Unverified** |
+| `sglang-nixl` | SGLang / NVIDIA | UCX (over the compute network) | Verified: SGLang 0.5.21 on two L20 hosts over cross-node Ethernet, prefill TP 2 spanning both hosts (multiple nodes within a role), decode TP 1 |
 | `sglang-ppu-ipc` | SGLang / PPU | Card-to-card IPC within one host (Mooncake NVLink transport) | Validated: two PPU ZW810E cards on one host, TP 1; P and D must be on the same node |
 | `sglang-ppu-mooncake` | SGLang / PPU | Mooncake RDMA (over a host RDMA compute network) | Validated: PPU ZW810E over RoCE NICs, TP 1; nodes need `alixpu_peermem` loaded |
 | `vllm-ppu-mooncake` | vLLM / PPU | Mooncake RDMA (over a host RDMA compute network) | Validated: PPU ZW810E over RoCE NICs, TP 1; nodes need `alixpu_peermem` loaded |
@@ -318,4 +318,4 @@ Likewise, point model [site rules](../how-to/configure-pull-settings.md#站点�
 
 For combinations not listed here, use the errors and warnings returned by evaluation on the deployment page. Evaluation does not reserve resources, so you can try repeatedly.
 
-<!-- translation-source-sha256: 68a2a520ac1408da661b17581c996837f1219033f726a7b1e6be36a4eaf14d90 -->
+<!-- translation-source-sha256: b52576ab04f1bb5cf8c9911e41962d5a4014194753c3d9c729de7cf1b4ecb2aa -->

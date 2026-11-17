@@ -7,7 +7,7 @@
 **前置条件**：
 
 - 已熟悉普通部署流程，见[部署模型、选卡与解释调度结果](deploy-models.md)。
-- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA 与 AMD，`vllm-ascend-mooncake` 面向昇腾，`vllm-mooncake` 面向海光 DCU（要求 vLLM 0.21 的海光镜像，见[海光 DCU](#海光-dcu)），`sglang-ppu-ipc` 面向 PPU（P、D 必须在同一节点），`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 面向经 RoCE 网卡传 KV 的 PPU（可跨机），`sglang-mooncake` 面向海光 DCU 上的 SGLang（经 RDMA 网卡传 KV，见[海光 SGLang 经 Mooncake RDMA](#海光-sglang-经-mooncake-rdma)，未验证），`sglang-nixl` 未验证。
+- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA 与 AMD，`vllm-ascend-mooncake` 面向昇腾，`vllm-mooncake` 面向海光 DCU（要求 vLLM 0.21 的海光镜像，见[海光 DCU](#海光-dcu)），`sglang-ppu-ipc` 面向 PPU（P、D 必须在同一节点），`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 面向经 RoCE 网卡传 KV 的 PPU（可跨机），`sglang-mooncake` 面向海光 DCU 上的 SGLang（经 RDMA 网卡传 KV，见[海光 SGLang 经 Mooncake RDMA](#海光-sglang-经-mooncake-rdma)，未验证），`sglang-nixl` 面向 NVIDIA 上的 SGLang（经 UCX 传 KV）。
 - PPU Mooncake 模式：节点在主机 RDMA 参数网络上，并已加载 `alixpu_peermem`（见[PPU 经 RDMA 传 KV](#ppu-经-rdma-传-kv)）。
 - `sglang-mooncake`：P、D 的节点共用一个主机 RDMA 参数网络（单机也一样）。
 - NVIDIA 与海光模式的 P、D 跨机时 KV 走参数网络，可选 RDMA 或以太网；昇腾模式跨机时必须共用加速器 RDMA 或加速器 HCCS 网络，且 prefill 与 decode 所在 NPU 在对应加速器网络上互通。配置与验证见[配置节点网络](configure-networks.md)。
@@ -27,7 +27,7 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
 
 1. 部署页的 **节点放置** 选 **PD 分离**，再选 PD 模式。可选模式来自引擎档位：vLLM 有 `vllm-nixl`（NVIDIA、AMD）、
    `vllm-ascend-mooncake`（昇腾）、`vllm-mooncake`（海光）、`vllm-ppu-mooncake`（PPU，RDMA），SGLang 有 `sglang-ppu-ipc`（PPU，同机）、
-   `sglang-ppu-mooncake`（PPU，RDMA）、`sglang-mooncake`（海光，RDMA，未验证）与 `sglang-nixl`（未验证）。
+   `sglang-ppu-mooncake`（PPU，RDMA）、`sglang-mooncake`（海光，RDMA，未验证）与 `sglang-nixl`（NVIDIA，UCX）。
 
 2. 选择放置方式（见[自动放置与手动放置](#自动放置与手动放置)），为 prefill 与 decode 各设 TP，并逐个添加实例：手动时每个实例选一个节点，可选钉卡；自动时实例可以不选节点，由平台挑。模式有 TP 规则：`vllm-nixl` 要求
    decode TP ≥ prefill TP，`vllm-ascend-mooncake` 相反；其余模式平台不比较 TP，两边 TP 不同时由引擎配对，配不上时实例启动失败或首次交接失败，从实例日志看原因。`sglang-mooncake` 另要求 decode 的 PP 等于 prefill 的 PP 或为 1（见[海光 SGLang 经 Mooncake RDMA](#海光-sglang-经-mooncake-rdma)）。

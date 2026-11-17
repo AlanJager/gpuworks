@@ -47,8 +47,8 @@ test("defaultPdMode without a matching vendor prefers a verified mode, then the 
   const nixl = vllmModes.find((mode) => mode.name === "vllm-nixl")!;
   const unverifiedFirst = { pd_modes: [{ ...nixl, name: "x-unverified", unverified: true }, nixl] };
   assert.equal(defaultPdMode(unverifiedFirst, undefined), "vllm-nixl");
-  // No SGLang mode serves Ascend: the verified PPU mode beats the unverified NIXL one.
-  assert.equal(defaultPdMode({ pd_modes: sglangModes }, "ascend"), "sglang-ppu-ipc");
+  // No SGLang mode serves Ascend: the first verified one (NIXL) beats the unverified Hygon one listed before it.
+  assert.equal(defaultPdMode({ pd_modes: sglangModes }, "ascend"), "sglang-nixl");
 });
 
 test("defaultPdMode returns undefined for an engine with no PD modes", () => {

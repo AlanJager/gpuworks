@@ -1704,8 +1704,7 @@
       "fallbacks": [
         "fail"
       ],
-      "kv_load_failures": [],
-      "unverified": true
+      "kv_load_failures": []
     }
   ]
 }

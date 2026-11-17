@@ -76,6 +76,9 @@ var modes = map[string]Mode{
 	// disaggregation mode, so there is no fallback and no scaling prefill to
 	// zero. The TP pairing is SGLang's (see TPAny); a pairing it cannot
 	// make fails the decode instance's start, not the platform's checks.
+	// Verified with SGLang 0.5.21 on two Aliyun L20 hosts: a TP 2 prefill
+	// spanning both hosts (its follower meeting the leader's bootstrap port)
+	// and a TP 1 decoder, across hosts over Ethernet.
 	"sglang-nixl": {
 		Name:                "sglang-nixl",
 		Engine:              engines.SGLang,
@@ -89,7 +92,7 @@ var modes = map[string]Mode{
 		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
 		TransferMetricsRole: RoleDecode,
 		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
-		Unverified:          true,
+		VerifiedVersions:    "0.5.21",
 		Transport:           TransportUCX,
 	},
 	// SGLang on T-Head PPU with Mooncake's RDMA transport: the KV goes card

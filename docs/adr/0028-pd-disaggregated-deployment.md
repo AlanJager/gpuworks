@@ -42,7 +42,7 @@
 | 模式 | 线协议 | TP 规则 | 传输 | 真机 |
 |---|---|---|---|---|
 | `vllm-nixl` | 顺序两阶段 | decode ≥ prefill | UCX | 已验证（同机、跨机以太、角色内跨机） |
-| `sglang-nixl` | 并发双发（`bootstrap_host/port/room`） | 不比较（引擎配对） | UCX | 未验证 |
+| `sglang-nixl` | 并发双发（`bootstrap_host/port/room`） | 不比较（引擎配对） | UCX | 已验证（跨机以太、角色内跨机；SGLang 0.5.21） |
 | `vllm-ascend-mooncake` | 顺序两阶段 | prefill ≥ decode | HCCL（NPU 自带 RoCE，挂载 `/etc/hccn.conf`） | 已验证（跨机；P、D 的 NPU 须在 NPU 网络上互通） |
 | `vllm-mooncake` | 顺序两阶段，交接参数由网关生成（prefill 不返回 `kv_transfer_params`，网关从其 bootstrap 服务读 engine id） | 不比较（引擎配对） | Mooncake 传输引擎（海光 DTK 构建，RDMA 或 TCP） | 已验证（K100 同机两卡、TP 1） |
 | `sglang-mooncake` | 并发双发 | 不比较（SGLang 按注意力 TP 配对）；decode 的 PP 等于 prefill 的 PP 或为 1 | Mooncake 传输引擎（海光 DTK 构建，主机 RDMA 网络） | 未验证 |
