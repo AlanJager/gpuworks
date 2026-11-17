@@ -104,13 +104,19 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
         t(`gpus.table.unit.${group}`), t("gpus.export.detail"), t("gpus.table.utilAvg"), t("gpus.table.utilMax"), t("gpus.export.memAvgGiB"), t("gpus.export.memAvgPct"),
         t("gpus.export.memMaxGiB"), t("gpus.export.memMaxPct"), group === "gpu" ? t("gpus.table.power") : t("gpus.table.powerPerCard"), t("gpus.table.tempMax"), t("gpus.table.deployments"), t("gpus.table.idle"),
       ],
-      rows: rows.map((r) => [
+      rows: [...rows.map((r) => [
         r.title, r.sub, fmtFixed(r.utilAvg, 1), fmtFixed(r.utilMax, 1),
         r.memAvg == null ? "" : (r.memAvg / 1024 ** 3).toFixed(1), r.memAvgPercent == null ? "" : r.memAvgPercent.toFixed(1),
         r.memMax == null ? "" : (r.memMax / 1024 ** 3).toFixed(1), r.memMaxPercent == null ? "" : r.memMaxPercent.toFixed(1),
         r.powerAvg == null ? "" : Math.round(r.powerAvg), r.tempMax == null ? "" : Math.round(r.tempMax),
         r.deployments.map((d) => d.name).join(" / ") || t("gpus.table.unassigned"), r.utilAvg != null && r.utilAvg < IDLE_UTIL ? t("gpus.export.yes") : "",
-      ]),
+      ]), [
+        t("table.total"), "", fmtFixed(data.totals.util_avg, 1), fmtFixed(data.totals.util_max, 1),
+        data.totals.mem_used_avg_bytes == null ? "" : (data.totals.mem_used_avg_bytes / 1024 ** 3).toFixed(1), "",
+        data.totals.mem_used_max_bytes == null ? "" : (data.totals.mem_used_max_bytes / 1024 ** 3).toFixed(1), "",
+        data.totals.power_avg_watts == null ? "" : Math.round(data.totals.power_avg_watts),
+        data.totals.temp_max_celsius == null ? "" : Math.round(data.totals.temp_max_celsius), "", "",
+      ]],
     };
   }, [data, rows, group, t]);
   useExportModel(exportModel);

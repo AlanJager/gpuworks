@@ -19,6 +19,8 @@ The page has four tabs:
 
 Periods backfilled from before the upgrade appear with a light background in charts. Backfill uses per-request records, which were sampled under high traffic and are estimated using their weights. At that time, the gateway did not recognize usage from `/v1/messages` or `/v1/responses`, so those requests have no token counts.
 
+CSV exports use the current range and filters and include a total row. Token usage exports one row per selected key, deployment, or model group, without repeating its expanded children; each group's hit rate uses only input whose cache usage was reported. GPU utilization totals use the range's overall statistics, rather than averaging group means. The total row leaves memory percentages, deployment ownership, and the low-load flag blank across cards.
+
 ## 2. View Each Key's Usage on the API Tokens Page
 
 The API tokens list includes **Tokens today** and **Tokens, last 7 days** columns. Click a number to open that key's details in Usage analytics.
@@ -27,4 +29,4 @@ The API tokens list includes **Tokens today** and **Tokens, last 7 days** column
 
 Under **Settings → Data retention**, configure hourly and daily retention separately for token usage and the other statistics (defaults: 31 days and 400 days). The three other statistics categories can each be disabled independently. When retention is shortened, excess data is deleted in batches in the background. The page also shows current space usage for each category. For the API, see the [API Reference](../reference/api.md#analytics用量分析).
 
-<!-- translation-source-sha256: b23bd6f4b2a844cfb435a78892a09ceed641d1ea0f36909f08c6f5cafb5d321b -->
+<!-- translation-source-sha256: 63476ab9ad8fa8ac78b7468add67de260a9e7837b18813f9110f57f7f2eadcab -->

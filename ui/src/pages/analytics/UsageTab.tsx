@@ -8,7 +8,7 @@ import { type CsvModel } from "./csv";
 import EChart from "./EChart";
 import { useExportModel } from "./exportContext";
 import { fmtCompact, fmtInt, fmtPct, ratio } from "./format";
-import { keyTitle } from "./names";
+import { deploymentTitle, keyTitle } from "./names";
 import QueryState from "./QueryState";
 import StatCards, { type StatItem } from "./StatCards";
 import type { TabProps } from "./types";
@@ -74,22 +74,26 @@ export default function UsageTab(props: TabProps) {
     return {
       name: "usage",
       head: [
-        t("usage.export.key"), t("usage.export.prefix"), t("usage.export.status"), t("usage.export.deployment"), t("usage.export.model"), t("usage.export.source"),
+        t(`usage.table.group.${group}`), t("usage.export.prefix"), t("usage.export.status"), t("usage.table.scope"),
         t("usage.table.requests"), t("usage.table.input"), t("usage.table.cached"), t("usage.table.hitRate"), t("usage.table.uncached"), t("usage.table.output"), t("usage.table.noUsage"),
         t("usage.export.first"), t("usage.export.last"),
       ],
       rows: [
-        ...data.rows.map((r) => {
-          const info = { id: r.api_key_id, name: r.api_key_name, prefix: r.api_key_prefix, revoked: r.api_key_revoked, deleted: r.api_key_deleted, playground: !r.api_key_id && r.source === "playground", batch: !r.api_key_id && r.source === "batch", evaluation: !r.api_key_id && r.source === "evaluation", userName: r.user_name };
+        ...tree.map((n) => {
+          const name = n.key ? keyTitle(t, n.key).title : n.deployment ? deploymentTitle(t, n.deployment) : n.model ?? "";
+          const scope = n.key
+            ? n.deployments?.map((d) => deploymentTitle(t, d)).join(" / ") ?? ""
+            : n.deployment ? t("usage.table.keys", { count: n.keyCount ?? 0 })
+              : t("usage.table.deploymentsOfModel", { count: n.deployments?.length ?? 0, keys: n.keyCount ?? 0 });
           return [
-            keyTitle(t, info).title, r.api_key_prefix, r.api_key_revoked ? t("names.revoked") : "", r.deployment_name || t("names.deploymentId", { id: r.deployment_id }), r.served_name, t(`usage.source.${r.source}`),
-            ...cs(r), fullTime(r.first_ms, tz), fullTime(r.last_ms, tz),
+            name, n.key?.prefix ?? "", n.key?.revoked ? t("names.revoked") : "", scope,
+            ...cs(n.counts), fullTime(n.firstMs, tz), fullTime(n.lastMs, tz),
           ];
         }),
-        [t("table.total"), "", "", "", "", "", ...cs(data.totals), "", ""],
+        [t("table.total"), "", "", "", ...cs(data.totals), "", ""],
       ],
     };
-  }, [data, t, tz]);
+  }, [data, tree, group, t, tz]);
   useExportModel(exportModel);
 
   const cards = (): StatItem[] => {
