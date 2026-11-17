@@ -47,8 +47,8 @@ controller 都经 `planning.PlanLaunch` 调它，产物是 `proto.ResolvedLaunch
 
 | 引擎 | 命令 | 基线 env |
 |---|---|---|
-| vLLM | `vllm serve <模型路径>`，`--host 127.0.0.1`、`--port`、`--served-model-name`（headless 时不带）、`--tensor-parallel-size` 总是注入、`--pipeline-parallel-size` 大于 1 时注入 | `HF_HUB_OFFLINE=1`、`TRANSFORMERS_OFFLINE=1`、`VLLM_HOST_IP=127.0.0.1`、`GLOO_SOCKET_IFNAME=lo`、`NCCL_SOCKET_IFNAME=lo` |
-| SGLang | `python -m sglang.launch_server --model-path … --tp-size --pp-size --host --port --served-model-name`（全部在 entrypoint 里） | `HF_HUB_OFFLINE=1`、`TRANSFORMERS_OFFLINE=1` |
+| vLLM | `vllm serve <模型路径>`，`--host 127.0.0.1`、`--port`、`--served-model-name`（部署别名；未设别名时为模型路径 `/model`；headless 时不带）、`--tensor-parallel-size` 总是注入、`--pipeline-parallel-size` 大于 1 时注入 | `HF_HUB_OFFLINE=1`、`TRANSFORMERS_OFFLINE=1`、`VLLM_HOST_IP=127.0.0.1`、`GLOO_SOCKET_IFNAME=lo`、`NCCL_SOCKET_IFNAME=lo` |
+| SGLang | `python -m sglang.launch_server --model-path … --tp-size --pp-size --host --port --served-model-name`（全部在 entrypoint 里；`--served-model-name` 同 vLLM） | `HF_HUB_OFFLINE=1`、`TRANSFORMERS_OFFLINE=1` |
 | callable | `gpuworks-callable`（通常被模板 entrypoint 替换），argv 只有模板参数与用户参数，平台事实由模板以 `${MODEL_PATH}`、`${API_HOST}`、`${API_PORT}` 等变量摆放（ADR 0036） | 同上，另并入模板 env |
 
 三者的 `/dev/shm` 基线都是 16 GiB（引擎 Profile 的 `shm_bytes`，经 `GET /api/v1/engines` 下发）。

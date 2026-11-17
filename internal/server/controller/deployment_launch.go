@@ -235,7 +235,9 @@ func (c *Controller) launchRequest(dep *store.Deployment, node *store.Node, mode
 	if err != nil {
 		return planning.LaunchRequest{}, deploy.CatalogSelection{}, "", fmt.Errorf("deployment %d node requirements: %w", dep.ID, err)
 	}
-	return planning.DeploymentLaunch(dep, reqs, node, model, files.paths())
+	req, templateLayer, modelHostPath, err := planning.DeploymentLaunch(dep, reqs, node, model, files.paths())
+	req.ImplicitServedName = c.translatesServedName(node)
+	return req, templateLayer, modelHostPath, err
 }
 
 // planInstanceLaunch assembles the launch and checks it against the node and

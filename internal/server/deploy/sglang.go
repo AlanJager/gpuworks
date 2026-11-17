@@ -108,7 +108,7 @@ func (sglangEngine) Build(p Params) ResolvedLaunch {
 	}
 	b.injectKV("--host", host)
 	b.injectKV("--port", p.apiPortText())
-	if servedName := p.EngineServedName(); servedName != "" && !p.Headless {
+	if servedName := p.launchServedName(); servedName != "" {
 		b.injectKV("--served-model-name", servedName)
 	}
 	if p.NNodes > 1 {
