@@ -70,6 +70,7 @@ usage_report: false        # 不发日报，自动检查不带节点数/GPU型�
 | `update_channel` | 空（跟随构建：master 构建为 `nightly`，`v*` tag 构建为 `release`） | 检查更新、官方目录更新与升级读哪个发布渠道：`release`（正式发布版）或 `nightly`（滚动预览版）。设置页「版本与更新」切换渠道时写入本键并立即生效；`gpuworks upgrade` 不带 `--channel` 时也读它。发布通道之前的版本不认识这个键、会拒绝启动：降级到那些版本前先删掉这一行（`gpuworks upgrade --archive` 降级时旧版本起不来会自动回滚） | `gpuworks upgrade --channel` |
 | `auto_check_updates` | 空（开启） | 是否自动检测新版本：开启时打开控制台会触发检查（同时拉取发布方的[通知](usage-report.md#发布方通知)），`false` 时 server 不自动检查，只在设置页点「检查更新」时读取版本索引与通知。自动检查总会附带安装标识、server 版本与 agent 版本分布（用于统计装机数与版本），节点数与 GPU 型号只在加入改进计划（`usage_report`）时附带，见下文「更新检查报告什么」。设置页「版本与更新」的开关写入本键并立即生效，开启时删除该键。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
 | `usage_report` | 空（加入） | 是否加入[用户体验改进计划](usage-report.md)：每天向发布方发送一份匿名日报，并在自动检查更新时附带节点数与 GPU 型号（见下文「更新检查报告什么」）。`false` 时不发日报、检查更新不再附带节点数与 GPU 型号；自动检查仍会附带安装标识与版本，要完全不发送还需关闭 `auto_check_updates`。设置页「用户体验改进计划」的开关写入本键并立即生效，开启时删除该键。**私有化交付在 server 首次启动前写入 `usage_report: false`**（首次启动会立刻发送一份）；环境变量 `GPUWORKS_USAGE_REPORT=off` 同样强制关闭。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
+| `plugins` | 空 | 插件包的信任与站点策略：主机信任的证书签发者与只能收窄的策略，见下文[插件的信任与站点策略](#插件的信任与站点策略)。只能编辑文件，`gpuworks plugin` 子命令每次运行时读取；更早的版本不认识这个键、会拒绝启动，降级前先删掉整节 | `gpuworks plugin --config` |
 | `extensions.<名称>` | 空 | 单独构建的服务器所加模块的配置，每个模块一节、以模块名为键，由该模块按自己的格式严格解析；顶层其他键仍不认识即拒绝启动。没有模块认领的一节只在启动时记一条警告，不影响启动（在不同构建之间迁移数据目录时会遇到）。社区版不读其中任何内容；更早的版本不认识 `extensions` 这个键、会拒绝启动，降级前先删掉整节 | — |
 
 ### 管理会话
@@ -166,6 +167,33 @@ peer_relay:
 敏感文件默认仅所有者可读写（`0600`）。明确绑定本安装二进制和非 root 服务账户的 Linux systemd 安装可使用可信服务组（`0660`）；该组成员等价于拥有平台凭据访问权。macOS 与独立运行默认不向普通用户组授权。启动、安装和升级会收紧存量凭据、数据库及其 sidecar、已识别备份；临时数据库快照仅所有者可读。无法保护文件时拒绝继续，按错误路径修复所有者与服务组后重试。生成口令不写入服务日志。
 
 - 模型下载镜像站：在设置 → 拉取设置里配置站点规则，不再有启动参数（`--model-endpoint` 只留给进程内测试夹具：每个站点一条指向该端点、不回源、用于管理节点的站点规则）。
+
+### 插件的信任与站点策略
+
+`plugins` 一节归主机 root 所有（与文件其余部分一样），决定除编进 server 的项目根密钥之外还信任谁签发的插件包，以及本站点额外拒绝哪些包（[ADR 0071](../adr/0071-installable-extensions.md)）。策略只能收窄：没有任何一项能放进校验本会拒绝的包。
+
+```yaml
+plugins:
+  publishers:                  # 主机信任的证书签发者
+    - keyid: acme-issuer-1     # 不能以 gwroot- 开头（那是项目根密钥）
+      alg: ed25519             # 或 ecdsa-p256-sha256
+      public_key: 0RZF/KSeB5I5emmRFX7vHLklBOUA2A8ot0mLncySqxs=
+      roles: [availability_authority]   # 可选：允许它的包声明的特权角色
+      tables: [fleet_capacity]          # 可选：允许它的包推送的特权表
+      authority: true          # 可选：允许它的证书为发布者自己的命名空间指定权威包
+      unsandboxed: false       # 可选：允许证书写的 min_isolation: none 生效
+  policy:
+    allow_publishers: [acme]   # 非空时只装这些发布者的包
+    deny_packages: [acme_beta]
+    deny_permissions: [read:directory]
+    deny_roles: [key_wrap]
+  allow_unsandboxed: [acme_backup]  # 没有 Landlock 的主机上仍允许运行的第三方包
+  require_isolation: landlock  # 没有 Landlock 时拒绝一切插件进程
+```
+
+- 主机信任的签发者默认什么特权都不给：没有特权角色、没有特权表、不能指定权威、界面只能用 iframe、必须在 Landlock 下运行；`roles`、`tables`、`authority`、`unsandboxed` 逐项放开，且只在证书本身也授予时生效。它永远不能签发项目发布者 `gpuworks`、无前缀的功能命名空间或同源界面模块。
+- 没有 Landlock 的主机（4.19 内核的麒麟 V10、UOS 20、macOS）上，带服务端部分的第三方包只有在证书写明 `min_isolation: none`（且签发者允许 `unsandboxed`）或列在 `allow_unsandboxed` 里时才能安装，此时签名是唯一的防护。
+- 写错的键、不合法的公钥或 key id、不认识的 `require_isolation` 值都让文件读取失败。
 
 ## 拉取代理与出站访问
 

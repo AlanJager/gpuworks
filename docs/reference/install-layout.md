@@ -36,8 +36,11 @@
     ├── master.key                  # 凭证加密密钥
     ├── initial-credentials         # 初始密码记录
     ├── install-history.jsonl       # 安装/升级审计
+    ├── plugins/                    # 插件包：<id>/pkg/<版本>/（只读）、<id>/pkg/current、<id>/control.json、<id>/data/ 等
     └── logs.db / metrics.db / ux.db / images/ / catalog-packages/ …
 ```
+
+`data/plugins/` 由 `gpuworks plugin` 管理：包先解到 `.incoming-*.partial/` 里校验，全部通过才改名为 `<id>/pkg/<版本>/`（文件 0444、可执行文件与目录 0555），再以改名替换 `<id>/pkg/current` 切换版本，上一个版本保留以便回滚；中断留下的 `*.partial` 在下次安装时清掉。`<id>/data/`、`<id>/tmp/`、`<id>/snapshots/` 是插件自己的目录（0700），卸载时保留，`--purge` 时整个 `<id>/` 移到 `.trash/<id>-<时间>/`；`.index/<发布者>/` 存导入的包索引。
 
 `server.yaml` 放在安装目录而不在数据目录：把数据库恢复到另一台机器时，不会带上旧机器的监听地址。
 

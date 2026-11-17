@@ -87,6 +87,7 @@
 - `webterm`：web 终端会话策略（kill switch、并发上限、空闲超时、审计）。
 - `agentbin`：内嵌各平台 agent 二进制（zstd 压缩存放，`make cross-agents` 优先用 zstd CLI `-19`，没有时退回 `scripts/zstdpack`），经 `/dl/` 下发时流式解压并给出原始长度。
 - `webui`：`go:embed` 内嵌前端构建产物（`internal/server/webui/dist`），文本资源在首次被请求时 gzip 一次并缓存在内存，构建产物不再附带 `.gz` 副本。`HandlerFS` 服务任意同布局的构建，单独构建的服务端经 `app.Extensions.UI` 换上自己的控制台。
+- `extpkg`：插件包（`.gwpkg`）的处理，不拉起进程：`extpkg` 按协议的校验顺序校验包并在数据目录里安装、重新校验与移除（`Host`）；`extpkg/archive` 带上限地读取包；`extpkg/trust` 解析根密钥、主机信任的签发者、吊销与最低版本并导入信任更新与吊销列表；`extpkg/layout` 管 `<data>/plugins/` 的暂存、原子切换与文件哈希缓存；`extpkg/catalog` 导入包索引并选择可装的版本；`extpkg/compat` 是核心降级的版本标记检查。持久化在 store 的 `plugin_*` 表里，经窄接口访问，不依赖 store。
 - `featuregate`：功能可用性的叶子包（只依赖 `messages`）：功能键、四种可用性（完整、只读、锁定、隐藏）与预先构造的拒绝；扩展路由与控制台清单经它询问扩展模块提供的功能来源，社区路径从不查询。
 - `holdpass`：扩展模块请求的调度保持重新应用（`Host.ReapplySchedulingHolds`）：合并请求，两次全表写事务之间有下限间隔，失败退避重试；只依赖标准库，由 app 接进 `services()` 循环。
 - `selfinstall` / `installcred`：`gpuworks install` / `upgrade` 的实现（复制二进制、写 service 定义、从发布通道或发布站拉发布件、带备份可回滚）、控制台升级的启动守卫、无 systemd 时的 `serve --supervise` 守护循环，与首启 bootstrap admin 凭据记录（叶子包，install 与 server 两端共用，不得反向依赖 server）。
@@ -153,7 +154,7 @@
 - `assets`（内嵌原生资产：libvgpu、partition probe、ib_write_bw 等）、
 - `commandlog`（外部命令脱敏日志）、
 - `templateprobe`（推理模板 L1/L2/L3 校验核心）、
-- `testenv` / `integrationtest`（进程内集成测试 harness；`testenv.NewWithExtensions` 带扩展模块启动，`testenv/extmodule` 是各扩展点对假模块的契约测试）、
+- `testenv` / `integrationtest`（进程内集成测试 harness；`testenv.NewWithExtensions` 带扩展模块启动，`testenv/extmodule` 是各扩展点对假模块的契约测试，`testenv/extsign` 生成测试用的根密钥、发布者证书、信任更新与签名插件包）、
 - `benchrun`（一次评测 Run 的执行：预热、按 search 文档逐点闭环/开环发压、把点位结果编成 `status.benchmark` 协议；server 发压、agent 发压与 `gpuworks-agent bench` 共用，两侧只提供状态、警告与逐请求明细的去处）、
 - `platformmetrics`（平台自身序列的词表：GPU、dGPU、节点、网络、KV 缓存盘、评测与网关运营指标的名字、单位、label 与含义，与推理词表 `inferencemetrics` 并列，共同构成 `GET /api/v1/monitor/metrics` 的指标目录；纯叶子，agent 与 server 共用；`TestEveryMetricLiteralIsRegistered` 扫描 agent、server 与 UI 源码，要求出现的每个指标名都已登记）、
 - `agentconf`（agent 启动配置的唯一定义，叶子包：`<state>/gpuworks-agent.conf` 的字段、校验、读写、默认监听地址 `DefaultListen`，以及供所有脚本读取主机上 agent 配置的 shell 函数 `ShellFuncs`，同时识别较早安装的命令行形式；agent 的 `configure`/`run`/`smoke`/`upgrade` 与 server 的安装、预检查、卸载、带外恢复共用，见 [ADR 0051](../adr/0051-agent-launch-configuration-file.md)）、

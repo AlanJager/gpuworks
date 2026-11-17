@@ -38,6 +38,7 @@ gpuworks restarted (systemd)
 | | [`expose`](#gpuworks-expose) | 给控制台发布一个公网入口 | 运维，控制面在 NAT 后面时 |
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
+| | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、移除插件包，导入信任与包索引，降级前检查兼容性 | 运维，server 停止时也能用 |
 | | `version` | 打印版本 | 任何人 |
 | | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
 | | `console-upgrade-protocol` | 打印本版本支持的控制台升级协议号（当前 `1`）；控制台升级之前的版本没有这个子命令 | 控制台升级前，服务端对待装的新二进制调用 |
@@ -273,6 +274,23 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 - 成功后，若数据库旁的 `initial-credentials` 记录的正是该用户，尝试删除它（其中的密码已失效）；删除失败只打告警，不影响重置结果。
 - 以操作员身份运行、不需要 `sudo`；数据库权限不足时按其自身的权限错误失败。
 - 密码和 key 不要写进 shell history 或日志。
+
+## gpuworks plugin
+
+校验、安装、列出与移除签名插件包，离线导入信任更新、吊销列表与包索引，并在降级前检查兼容性。格式与校验顺序见[插件协议与线上格式](plugin-protocol.md)，设计见 [ADR 0071](../adr/0071-installable-extensions.md)。拉起插件进程的插件宿主尚未实现：安装的包目前只校验并放到数据目录里。
+
+| 子命令 | 说明 |
+|---|---|
+| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。从命令行安装即视为批准其权限，默认启用，`--disabled` 只安装不启用 |
+| `list` | 重新校验每个已安装的包（只重新哈希大小、修改时间或 inode 变了的文件），列出 id、版本、发布者、信任来源（`project` 根签发或 `host` 主机信任的签发者）、是否启用与状态：`ok`、`revoked`（已吊销但不自动停止），或 `broken: <码>` |
+| `remove ID [--purge]` | 卸载：删除包与控制文件，保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包的最低版本永远保留，旧构建不能靠重装回来 |
+| `trust import FILE [--cert publisher.crt]` | 导入根签名的信任更新、根签名的吊销列表，或发布者自己的吊销列表（需 `--cert` 给出该发布者的证书）；序号不比已应用的新时拒绝（`PLUGIN_TRUST_REPLAYED`） |
+| `index import FILE --cert publisher.crt` | 导入发布者的包索引：应用其中的吊销与最低版本，保存到 `<data>/plugins/.index/`，并打印每个包会装哪个版本，以及更新而本 server 运行不了的版本（`PLUGIN_NEEDS_NEWER_CORE`） |
+| `compat` | 只读检查：不迁移、不写数据库，报告会让本构建拒绝启动的持久化版本标记，以及因数据标记过新、需要本 server 没有的能力或清单读不了而不能运行的包。降级 server 之前用旧版本的二进制运行它；有问题时以 1 退出 |
+
+每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。数据目录必须已存在，不会新建。拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
+
+本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉可以用自己的发布配置换上根密钥。
 
 ## gpuworks support-bundle
 
