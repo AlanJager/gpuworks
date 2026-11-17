@@ -214,3 +214,68 @@ test("a refresh replaces the answer, and a slower earlier read cannot overwrite 
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(result.current("audit.log"), { access: "locked" }, "the stale read is dropped");
 });
+
+// An overlay with an account menu entry and admin-only entries of every kind.
+const account: ConsoleExtension = {
+  id: "account_tools",
+  routes: [{ path: "/x/keys", component: Page, admin: true }],
+  navItems: [
+    { group: "account", key: "/x/keys", labelKey: "keys:menu.manage", admin: true },
+    { group: "account", key: "/x/profile", labelKey: "keys:menu.profile", feature: "profile.view" },
+    { group: "admin", key: "/x/audit", icon, labelKey: "keys:nav.audit", admin: true },
+  ],
+  settingsTabs: [{ key: "keys", labelKey: "keys:settings.tab", component: Page, admin: true }],
+  headerItems: [{ key: "keys-alerts", component: Page, admin: true }],
+};
+
+test("account group entries go to the account menu, never to the side menu", () => {
+  const all = accessFrom({ "profile.view": { access: "full" } });
+  const merged = registry.mergeNavGroups(navGroups, [account], all, true);
+  assert.equal(merged.some((group) => group.id === "account"), false);
+  assert.equal(merged.flatMap((group) => group.items).some((item) => item.key === "/x/keys" || item.key === "/x/profile"), false);
+  assert.deepEqual(merged.find((group) => group.id === "admin")?.items.map((item) => item.key), ["/apikeys", "/logs", "/settings", "/x/audit"]);
+  assert.deepEqual(registry.accountMenuItems([account], all, true), [
+    { key: "/x/keys", labelKey: "keys:menu.manage" },
+    { key: "/x/profile", labelKey: "keys:menu.profile" },
+  ]);
+  // Only account entries: the side menu is the built-in list itself.
+  const accountOnly: ConsoleExtension = { id: "only", navItems: [{ group: "account", key: "/x/only", labelKey: "x" }] };
+  assert.equal(registry.mergeNavGroups(navGroups, [accountOnly], all), navGroups);
+  assert.deepEqual(registry.accountMenuItems([], all, true), []);
+});
+
+test("account entries follow extension order, then their own order, and show only when full or read-only", () => {
+  const zeta: ConsoleExtension = { id: "zeta", navItems: [{ group: "account", key: "/x/z", labelKey: "z" }] };
+  const alpha: ConsoleExtension = { id: "alpha", navItems: [{ group: "account", key: "/x/a2", labelKey: "a2", feature: "a.two" }, { group: "account", key: "/x/a1", labelKey: "a1", feature: "a.one" }] };
+  registry.setConsoleExtensionsForTest([zeta, alpha]);
+  const keys = (table: Record<string, Availability>) => registry.accountMenuItems(registry.consoleExtensions(), accessFrom(table)).map((item) => item.key);
+  assert.deepEqual(keys({ "a.two": { access: "read_only" }, "a.one": { access: "full" } }), ["/x/a2", "/x/a1", "/x/z"]);
+  assert.deepEqual(keys({ "a.two": { access: "locked", link: "https://example.com" }, "a.one": { access: "hidden" } }), ["/x/z"], "no room for a locked entry; hidden ones are left out");
+  assert.deepEqual(registry.accountMenuItems(registry.consoleExtensions(), () => ({ access: "pending" })).map((item) => item.key), ["/x/z"], "keyed entries wait for the manifest");
+});
+
+test("admin-only entries are shown to administrators only, whatever the manifest says", () => {
+  const all = accessFrom({ "profile.view": { access: "full" } });
+  assert.deepEqual(registry.accountMenuItems([account], all, false), [{ key: "/x/profile", labelKey: "keys:menu.profile" }]);
+  assert.deepEqual(registry.accountMenuItems([account], all), [{ key: "/x/profile", labelKey: "keys:menu.profile" }], "not an administrator unless told");
+  assert.deepEqual(registry.mergeNavGroups(navGroups, [account], all, false).find((group) => group.id === "admin")?.items.map((item) => item.key), ["/apikeys", "/logs", "/settings"]);
+  const base = [{ key: "general", anchors: [] }];
+  assert.deepEqual(registry.mergeSettingsTabs(base, [account], all, false), base);
+  assert.deepEqual(registry.mergeSettingsTabs(base, [account], all, true).map((tab) => tab.key), ["general", "keys"]);
+  // entryAvailability is what the frame asks for a page and a top bar control.
+  assert.deepEqual(registry.entryAvailability({ admin: true }, all, false), { access: "hidden" });
+  assert.deepEqual(registry.entryAvailability({ admin: true }, all, true), { access: "full" });
+  assert.deepEqual(registry.entryAvailability({ admin: true, feature: "profile.view" }, accessFrom({ "profile.view": { access: "locked" } }), true), { access: "locked" }, "for an administrator the manifest still decides");
+  assert.deepEqual(registry.entryAvailability({ feature: "profile.view" }, all, false), { access: "full" }, "an entry not marked admin is everyone's");
+  assert.deepEqual(registry.entryAvailability({}, () => { throw new Error("the manifest is asked only for keyed entries"); }, false), { access: "full" });
+});
+
+test("the account group is reserved, its entries clash like any other, and side menu entries need an icon", () => {
+  const all = accessFrom({});
+  assert.throws(() => registry.mergeNavGroups(navGroups, [{ id: "x1", navGroups: [{ id: "account", labelKey: "x" }] }], all), /menu group account is built in/);
+  assert.throws(() => registry.setConsoleExtensionsForTest([
+    { id: "a1", navItems: [{ group: "account", key: "/x/me", labelKey: "a" }] },
+    { id: "b1", navItems: [{ group: "admin", key: "/x/me", icon, labelKey: "b" }] },
+  ]), /menu entry \/x\/me is already contributed by a1/);
+  assert.throws(() => registry.mergeNavGroups(navGroups, [{ id: "x1", navItems: [{ group: "admin", key: "/x/plain", labelKey: "x" }] }], all), /menu entry \/x\/plain needs an icon in the side menu/);
+});

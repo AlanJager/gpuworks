@@ -146,6 +146,12 @@ The build-time overlay serves forks only; plugin package UIs are to be loaded at
 
 A separately built server's UI modules are copied to `ui/src/extensions/<id>/` (git-ignored), registered in `ui/src/extensions/index.ts`, and may import only the components, hooks and API client that `ui/src/extensions/sdk.ts` re-exports (the `ee_ui_internal_imports` budget is 0). The build sets `GPUWORKS_UI_OUT_DIR` to write elsewhere; with UI modules checked out and the variable unset, `make ui` and `make release-packages` refuse to build, so nothing is overlaid onto the community edition. The modules' texts ship in their own locale bundles merged into `common`, checked by the same i18n check through `GPUWORKS_I18N_EXTRA_LOCALES` / `GPUWORKS_I18N_EXTRA_MESSAGES`.
 
+The entries a UI module can add:
+
+- Pages (`routes`), side menu entries (`navItems`, which need an icon), settings tabs (`settingsTabs`) and top bar controls (`headerItems`).
+- Account menu entries: a `navItems` entry whose `group` is the reserved `account` goes to the account menu at the top right, after the built-in entries and before signing out, ordered by extension id, as text only. The account menu has no room for a locked entry, so a locked one is left out like a hidden one. `account` cannot be the id of a new menu group.
+- Admin-only: each kind of entry above can be marked `admin: true` and then follows the role of the user the session check read. A user who is not an administrator sees no menu entry, tab or control, and the page answers as not found; a session whose user could not be read is treated the same way. This shapes only what is shown: the server's route access levels still guard the API.
+
 ## Codes and texts
 
 Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md) too: UPPER_SNAKE codes, interpolated params, an English fallback. An extension's codes and their en/zh texts live in the extension's own code and UI modules, not in the open-source `messages` or locale files; without the overlay, the console shows the English fallback.
@@ -178,4 +184,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: d94dc1404cb179b0db8b2481e74f0601847f575d359e4d1c71551573429bacb2 -->
+<!-- translation-source-sha256: 7727c04ac1ec915df42b9d657e56ca35793671ca6f4dc9ab0f35c57d244f347a -->
