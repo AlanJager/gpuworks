@@ -200,7 +200,6 @@ var modes = map[string]Mode{
 		Wire:                       WireConcurrent,
 		TP:                         TPAny,
 		DecodePipelineMatchesOrOne: true,
-		SharedSideChannel:          true,
 		TwoStagePaths:              []string{"/v1/chat/completions", "/v1/completions", "/generate"},
 		TransferMetricsRole:        RoleDecode,
 		ExtraPortsFixed:            map[string]int{RolePrefill: 1},

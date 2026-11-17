@@ -301,7 +301,7 @@ A sketch follows (the other required fields such as `image`, `weights` and `gpus
           --nnodes ${GPUWORKS_NNODES} --node-rank ${GPUWORKS_NODE_RANK} \
           --dist-init-addr ${GPUWORKS_MASTER_ADDR}:${GPUWORKS_MASTER_PORT} \
           --disaggregation-mode prefill --disaggregation-transfer-backend mooncake \
-          --disaggregation-bootstrap-port ${GPUWORKS_PD_SIDE_CHANNEL_PORT} \
+          --disaggregation-bootstrap-port ${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT} \
           --disaggregation-ib-device "$IB_DEVICES"
         ;;
       decode)
@@ -416,7 +416,8 @@ the vocabulary in `internal/server/placement/expand.go` and `internal/server/dep
 | `GPUWORKS_MASTER_ADDR` / `GPUWORKS_MASTER_PORT` | Address and rendezvous port of rank 0 in a multi-node deployment | Multi-node only |
 | `GPUWORKS_PD_ROLE` | This instance's PD role: `prefill` or `decode` | PD instances |
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | Address this instance's KV side channel listens on | PD instances whose address is known |
-| `GPUWORKS_PD_SIDE_CHANNEL_PORT` | First port of this instance's extra port block, the KV side channel port | PD instances whose port is allocated |
+| `GPUWORKS_PD_SIDE_CHANNEL_PORT` | First port of this rank's extra port block, the KV side channel port; each rank of a multi-node instance has its own | PD instances whose port is allocated |
+| `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | The side channel port of this instance's leader: its own on the leader, the leader's on a follower. Use it where a follower meets the leader's side channel (such as SGLang's bootstrap server); commands the platform composes do not use it | PD instances whose port is allocated |
 
 Rules:
 
@@ -638,11 +639,11 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: ad962e5abb6c3d18bfd513b28283fceb87fa62b3902b58b4070e9d744b3dfbdc -->
+<!-- translation-source-sha256: f3d72c2653d6db3fca8e507a5c8903b06153aca6ee82b26017aa93b8ff1cb4d3 -->
 <!-- translation-localized-code-block: 26b59d93b4900f054e9c78c569388285db977d8a1a29c7231646a264e33074f3 d2ac202220acef0f04a4a5bdf2d4ffd3695b808693b508f83ea49253037b2d2d Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->
-<!-- translation-localized-code-block: a1b46fd70228a0da1bb5609580c5833b06a6239d6c91dc23dbf524753124cd9e 8f5ac88c9f38d9481fcdf861dcf922217f943aa3ec164bd1597bef1142ede0f0 Translate the inline shell comment. -->
+<!-- translation-localized-code-block: 0db7a21f5d58dc3f0536ef0b3909ce67ba6415f6c0e158dbee9122f79b1f2209 8da5a4455c5d0ab53369e8e0b4455543b9acd70a2615f7faf4b34b620d9cd204 Translate the inline shell comment. -->
 <!-- translation-localized-code-block: a611f2e8254725bdcf88ae19eb23c532ef8c679903131a8881bbd61f09aafdb2 33859cded67f664966175739bc36d429175e7fe4c8f3d71422f40719d24be6e6 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: bee5e6aa5c268b0bca3195996e1394ed7ca27c6938ea75731026b323c425c162 50a7b72308d2093f9b328d73f1c889122beed6408c02fe79a803f0bd63b3246f Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: d0cf90e53d24fed8cc724f20d6eb7df85810710388a02b23e6ede399e6bb8294 9a3a3028b77be7c62002a4762ea29528a08dd641897608dcc4383e36d62744cb Translate YAML comments and illustrative user-facing reason text. -->

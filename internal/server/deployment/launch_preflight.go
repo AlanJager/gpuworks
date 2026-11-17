@@ -84,7 +84,7 @@ func preflightCreatePDRuntimes(base deploy.ResolveLaunchInput, pdReq *pdRequest,
 				if index > 0 {
 					topology.Role = "follower"
 				}
-				ports := planning.PDRankPorts{API: planning.PreviewAPIPort, SideChannel: planning.PreviewAPIPort + 1, LeaderAddress: leaderAddress}
+				ports := planning.PDRankPorts{API: planning.PreviewAPIPort, SideChannel: planning.PreviewAPIPort + 1, LeaderAddress: leaderAddress, LeaderSideChannel: planning.PreviewAPIPort + 1}
 				if len(ranks) > 1 {
 					ports.Master = deploy.DefaultMasterPort
 				}

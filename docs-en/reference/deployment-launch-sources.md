@@ -250,7 +250,7 @@ Variables expand at every launch, in template args, env, entrypoint, and prepara
 The syntax is `${GPUWORKS_NAME}`, where the name consists of uppercase letters, digits, and underscores. Available variables are resolver outputs plus the platform-provided `GPUWORKS_GPU_COUNT`,
 `GPUWORKS_TP_SIZE`, `GPUWORKS_MODEL_PATH`, `GPUWORKS_SERVED_MODEL_NAME`, `GPUWORKS_API_HOST`, `GPUWORKS_API_PORT`,
 `GPUWORKS_NNODES`, `GPUWORKS_NODE_RANK`, and `GPUWORKS_HEADLESS`, with `GPUWORKS_NODE_ADDR`, `GPUWORKS_MASTER_ADDR`, and
-`GPUWORKS_MASTER_PORT` additionally available for multi-node deployments, and `GPUWORKS_PD_ROLE`, `GPUWORKS_PD_SIDE_CHANNEL_HOST`, and `GPUWORKS_PD_SIDE_CHANNEL_PORT` for PD instances;
+`GPUWORKS_MASTER_PORT` additionally available for multi-node deployments, and `GPUWORKS_PD_ROLE`, `GPUWORKS_PD_SIDE_CHANNEL_HOST`, `GPUWORKS_PD_SIDE_CHANNEL_PORT`, and `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` for PD instances;
 `PP_SIZE` has no default. Template fields still expand the older unprefixed spelling (`${NODE_RANK}`); a handwritten command expands prefixed names only and leaves every other `${...}`
 to the shell. For the full vocabulary, availability conditions, and error rules, see [Inference Catalog Syntax](inference-catalog-spec.md#变量展开).
 
@@ -312,5 +312,5 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 - [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Image Catalog and Inference Image Families](image-families.md)
 - [Deploy Models](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation](../how-to/pd-disaggregation.md)
 
-<!-- translation-source-sha256: c1736db6ce5033a9368192d2b2cbc0568997f8d6f9ebb2d907f14e765536d161 -->
+<!-- translation-source-sha256: 171a6b24a7c709bf4c026876a132a17f399c68aa81bfb877102bc7414893d7ca -->
 <!-- translation-localized-code-block: 87810a25cc9d7f6adbb697b3c419cb2727115525f01d20d8ba378215c02d16e7 9f5706e114d2dd907dd8185a9c7d45f2bdd0387155df33a59bb6930888f598f1 Translate explanatory comments and placeholders in runtime assembly illustration. -->

@@ -27,8 +27,8 @@ type pdRankLaunch struct {
 
 // launchPDGeneration launches one generation of a PD unit: the leader with
 // its API port, side channel block and, on a multi-node unit, the port its
-// ranks meet on, then each follower with its own side channel block (or the
-// leader's, where the mode's ranks share one), meeting the leader there. Like launchGeneration it plans every rank before writing
+// ranks meet on, then each follower with its own side channel block, meeting
+// the leader there. Like launchGeneration it plans every rank before writing
 // any, and reports whether the generation was written.
 func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDeployment, model *store.Model, slot planning.UnitSlot, nodes []*store.Node, attempt int) (bool, error) {
 	dep, pd := deployment.dep, deployment.pd
@@ -56,14 +56,7 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 	if slot.Unit.MultiNode() {
 		blocks = append(blocks, 1)
 	}
-	// A unit whose ranks share one side channel port picks the leader's
-	// ports among those every node of the unit leaves free.
-	shared := sideSize > 0 && len(nodes) > 1 && pd.mode.SharedSideChannel
-	portNodes := nodes[:1]
-	if shared {
-		portNodes = nodes
-	}
-	ports, rejected := c.pickPortsOn(portNodes, blocks...)
+	ports, rejected := c.pickPorts(nodes[0], blocks...)
 	if rejected != nil {
 		c.recordRankRefusal(dep, rejected, rank, nodes[0])
 		return false, nil
@@ -92,11 +85,8 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 	for index, node := range nodes[1:] {
 		follower := pdRankLaunch{unit: unit, role: role, rank: rank, pd: planning.PDRecord{Role: role}}
 		follower.rank.Rank = index + 1
-		follower.ports = planning.PDRankPorts{Master: record.MasterPort, LeaderAddress: record.Address}
-		if shared {
-			follower.ports.SideChannel = leader.ports.SideChannel
-			follower.held = portBlock(follower.ports.SideChannel, sideSize)
-		} else if sideSize > 0 {
+		follower.ports = planning.PDRankPorts{Master: record.MasterPort, LeaderAddress: record.Address, LeaderSideChannel: record.Port}
+		if sideSize > 0 {
 			ports, rejected := c.pickPorts(node, sideSize)
 			if rejected != nil {
 				c.recordRankRefusal(dep, rejected, follower.rank, node)

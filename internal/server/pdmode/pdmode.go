@@ -239,11 +239,6 @@ type Mode struct {
 	// from every prefill PP stage). The platform sees both roles' PP, so it
 	// refuses another pairing up front instead of at the decoder's start.
 	DecodePipelineMatchesOrOne bool
-	// SharedSideChannel: every rank of a multi-node instance serves its side
-	// channel on the same port. SGLang's prefill ranks register with the
-	// bootstrap server at their own --disaggregation-bootstrap-port; a build
-	// that does not align the ranks itself needs them all on the leader's.
-	SharedSideChannel bool
 }
 
 // Lookup returns the mode with this name.

@@ -16,7 +16,7 @@ import (
 var rankOwnedVariables = []string{
 	placementeval.VarAPIPort, placementeval.VarNodeRank, placementeval.VarNodeAddr,
 	placementeval.VarMasterAddr, placementeval.VarMasterPort,
-	placementeval.VarPDSideChannelHost, placementeval.VarPDSideChannelPort,
+	placementeval.VarPDSideChannelHost, placementeval.VarPDSideChannelPort, placementeval.VarPDLeaderSideChannelPort,
 }
 
 // variableReference is how a manual command writes a platform variable: under

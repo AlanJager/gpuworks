@@ -194,8 +194,9 @@ P 与 D 并发收到请求，网关不等 prefill，与 `sglang-nixl` 同一种�
 - **TP**：平台不比较 prefill 与 decode 的 TP。SGLang 按各自的注意力 TP（TP 除以 attention-dp、attention-cp 度数）配对，平台看不到这些度数，
   宽度不等的配对由引擎处理；配对不上时 decode 实例启动失败，从它的日志里看原因。
 - **PP**：decode 的 PP 必须等于 prefill 的 PP，或为 1（每个 decode rank 向 prefill 的各个流水线级拉取 KV），否则拒绝 `PD_PP_DECODE_MISMATCH`。
-- **多机实例**：跨多台节点的 prefill 实例在每个 rank 上用同一个端口提供 bootstrap 服务。控制器从该实例全部节点都空闲的端口里挑这一个，
-  所以各节点引擎端口范围的交集内要有空闲端口，否则该实例不能启动，并记引擎端口不足。
+- **多机实例**：bootstrap 服务只在 prefill 实例的 leader 上启动，follower 要向 leader 的这个端口登记。平台给每个 rank 各分一个端口
+  （`${GPUWORKS_PD_SIDE_CHANNEL_PORT}`，号码通常不同），但平台组装的 SGLang 命令给 follower 传的是 leader 的端口，不依赖 SGLang 自己
+  （0.5.13 起）把 leader 端口同步给各 rank。手工命令同样在各 rank 上写 `--disaggregation-bootstrap-port ${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT}`。
 - **平台注入的环境变量**：只有通用的网络变量，与其他模式相同。跨多台节点的实例在主机 RDMA 网络上得到 `NCCL_IB_HCA`（`设备:端口`，逗号分隔）、
   `NCCL_SOCKET_IFNAME`（该网络的网卡，逐节点覆盖后可能是 `bond1` 这类名字）；单机实例没有这两个变量，下面的脚本会直接报错退出。所有 PD rank 都有启动变量 `${GPUWORKS_PD_SIDE_CHANNEL_HOST}`（本 rank 节点在 P、D 共用网络上的地址）。
   平台按结构化参数组装命令时还会写 `--disaggregation-ib-device`（设备名，去掉端口后缀）。

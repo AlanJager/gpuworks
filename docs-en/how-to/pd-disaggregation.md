@@ -198,8 +198,9 @@ P and D receive the request concurrently and the gateway does not wait for prefi
 - **TP**: The platform does not compare prefill TP with decode TP. SGLang pairs the roles by their attention TP (TP divided by the attention-dp and attention-cp degrees), which the platform cannot see,
   and the engine handles unequal widths; a pairing it cannot handle makes the decode instance fail at start, and its log gives the reason.
 - **PP**: Decode PP must equal prefill PP or be 1 (each decode rank then pulls KV from every prefill pipeline stage); otherwise `PD_PP_DECODE_MISMATCH` is returned.
-- **Multi-node instances**: A prefill instance that spans several nodes serves its bootstrap on the same port on every rank. The controller picks that port among those free on all of the instance's nodes,
-  so the intersection of the nodes' engine port ranges needs a free port; otherwise the instance cannot start and the engine ports are recorded as exhausted.
+- **Multi-node instances**: Only the prefill instance's leader starts the bootstrap server, and followers register with it on its port. The platform gives each rank its own port
+  (`${GPUWORKS_PD_SIDE_CHANNEL_PORT}`, usually a different number on each), but the SGLang command the platform composes hands a follower the leader's port, without depending on SGLang's own
+  sync of the leader's port to every rank (0.5.13 and later). A manual command likewise writes `--disaggregation-bootstrap-port ${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT}` on every rank.
 - **Environment variables injected by the platform**: only the generic network variables, as for other modes. An instance that spans several nodes gets, on a host RDMA network, `NCCL_IB_HCA` (`device:port`, comma-separated) and
   `NCCL_SOCKET_IFNAME` (the network's interface, which a per-node override may make a name such as `bond1`); a single-node instance gets neither, and the script below then stops with an error. Every PD rank has the launch variable `${GPUWORKS_PD_SIDE_CHANNEL_HOST}` (the address of this rank's node on the network P and D share).
   When the platform composes the command from structured parameters it also writes `--disaggregation-ib-device` (device names, port suffix stripped).
@@ -305,5 +306,5 @@ By default, evaluations measure end-to-end performance through the gateway. If y
   if a container exits or disappears, it is treated as failed and the controller recreates it according to the retry policy. Use **Retry** when the retry limit is reached.
   This check is not continuous HTTP health probing. If the container is still running but the engine does not respond, check logs and request errors, then restart or replace the instance through role adjustment if necessary.
 
-<!-- translation-source-sha256: 6fdebfb49679e8cf61818df4a0f28c99c351609369282a2e779029f1baafb2ab -->
+<!-- translation-source-sha256: b425adde9dda75c8838d7d9ab102e5de77630257df17868727119803b9be9b15 -->
 <!-- translation-localized-code-block: 2513da8d7e22b4b434e5b388074c523ee6fe392dc62a5486c6f3b2e866546493 900283aac222ec81c58a9b790638cf4b5d10495895e866cd20adbc835c88153e Translate the inline shell comment. -->

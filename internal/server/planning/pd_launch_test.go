@@ -24,18 +24,19 @@ func TestPDRankLaunchShapesEachRankOfAMultiNodeUnit(t *testing.T) {
 	if leader.TP != 2 || leader.PP != 1 || !reflect.DeepEqual(leader.GPUIndexes, []int{0}) {
 		t.Fatalf("leader parallelism tp=%d pp=%d gpus=%v", leader.TP, leader.PP, leader.GPUIndexes)
 	}
-	want := &deploy.PDLaunch{Mode: "vllm-nixl", Role: "decode", KVLoadFailure: "recompute", SideChannelHost: "10.0.0.2", SideChannelPort: 30001, RoleTP: map[string]int{"prefill": 1, "decode": 2}}
+	want := &deploy.PDLaunch{Mode: "vllm-nixl", Role: "decode", KVLoadFailure: "recompute", SideChannelHost: "10.0.0.2", SideChannelPort: 30001, LeaderSideChannelPort: 30001, RoleTP: map[string]int{"prefill": 1, "decode": 2}}
 	if !reflect.DeepEqual(leader.PD, want) {
 		t.Fatalf("leader PD launch = %+v, want %+v", leader.PD, want)
 	}
 
 	follower := pd.RankLaunch(mode, "decode", unit, 1, DistTopology{NNodes: 2, NodeRank: 1, Headless: true, NodeAddress: "10.0.0.3"},
-		PDRankPorts{SideChannel: 30010, Master: 30003, LeaderAddress: "10.0.0.2"})
+		PDRankPorts{SideChannel: 30010, Master: 30003, LeaderAddress: "10.0.0.2", LeaderSideChannel: 30001})
 	if follower.MasterAddr != "10.0.0.2" || follower.APIPort != 0 || !reflect.DeepEqual(follower.GPUIndexes, []int{3}) {
 		t.Fatalf("follower meets on %s, api %d, gpus %v", follower.MasterAddr, follower.APIPort, follower.GPUIndexes)
 	}
-	if follower.PD.SideChannelHost != "10.0.0.3" || follower.PD.SideChannelPort != 30010 {
-		t.Fatalf("follower side channel %s:%d", follower.PD.SideChannelHost, follower.PD.SideChannelPort)
+	// A follower keeps its own side channel and also learns the leader's.
+	if follower.PD.SideChannelHost != "10.0.0.3" || follower.PD.SideChannelPort != 30010 || follower.PD.LeaderSideChannelPort != 30001 {
+		t.Fatalf("follower side channel %s:%d, leader's %d", follower.PD.SideChannelHost, follower.PD.SideChannelPort, follower.PD.LeaderSideChannelPort)
 	}
 }
 

@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/netplan"
@@ -61,5 +62,74 @@ func TestSGLangHygonMooncakeLaunch(t *testing.T) {
 		if !hasDockerArgValue(resolved.DockerArgs, "--device", "/dev/infiniband") {
 			t.Fatalf("%s docker args = %v", c.role, resolved.DockerArgs)
 		}
+	}
+}
+
+// Every rank of a multi-node prefill can name the leader's bootstrap port
+// (${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT}) instead of its own, so a build
+// that does not align its ranks' ports itself still registers with the
+// leader; ${GPUWORKS_PD_SIDE_CHANNEL_PORT} stays the rank's own.
+func TestManualCommandNamesTheLeadersSideChannel(t *testing.T) {
+	engine, _ := SelectEngine("sglang")
+	script := `exec python3 -m sglang.launch_server --disaggregation-bootstrap-port ${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT} --own ${GPUWORKS_PD_SIDE_CHANNEL_PORT}`
+	for _, c := range []struct {
+		rank, own int
+		address   string
+		want      string
+	}{
+		{rank: 0, own: 31104, address: "10.113.46.21", want: "--disaggregation-bootstrap-port 31104 --own 31104"},
+		{rank: 1, own: 31107, address: "10.113.46.22", want: "--disaggregation-bootstrap-port 31104 --own 31107"},
+	} {
+		p := Params{ModelPath: "/model", TensorParallel: 8, NNodes: 2, NodeRank: c.rank, Headless: c.rank > 0, MasterAddr: "10.113.46.21", MasterPort: 31105,
+			NodeAddress: c.address,
+			PD:          &PDLaunch{Mode: "sglang-mooncake", Role: "prefill", SideChannelPort: c.own, LeaderSideChannelPort: 31104}}
+		launch, err := ResolveLaunch(ResolveLaunchInput{Engine: engine, Params: p,
+			ContainerOverrides: ContainerOverrides{CommandMode: string(CommandManual), CmdDisplay: script}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := launch.Argv[len(launch.Argv)-1]; !strings.HasSuffix(got, c.want) {
+			t.Fatalf("rank %d script = %q, want suffix %q", c.rank, got, c.want)
+		}
+	}
+}
+
+// The command the platform composes points a prefill follower at the
+// leader's bootstrap server: the leader's port, not the follower's own,
+// whatever port broadcast the SGLang build has. The leader and a decoder are
+// unchanged.
+func TestSGLangPrefillFollowerNamesTheLeadersBootstrapPort(t *testing.T) {
+	engine, _ := SelectEngine("sglang")
+	network := ComputeNetwork{Type: netplan.TypeHostRDMA, Interface: "eth0", HCAs: []string{"mlx5_0:1"}}
+	for _, c := range []struct {
+		role      string
+		rank, own int
+		want      string
+	}{
+		{role: "prefill", rank: 0, own: 31104, want: "31104"},
+		{role: "prefill", rank: 1, own: 31107, want: "31104"},
+		{role: "decode", rank: 1, own: 0, want: ""},
+	} {
+		p := Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 2, Vendor: "nvidia", NNodes: 2, NodeRank: c.rank, Headless: c.rank > 0,
+			MasterAddr: "10.0.0.1", MasterPort: 31105, NodeAddress: "10.0.0.2", ComputeNetwork: network,
+			PD: &PDLaunch{Mode: "sglang-nixl", Role: c.role, SideChannelHost: "10.0.0.2", SideChannelPort: c.own, LeaderSideChannelPort: 31104}}
+		resolved, err := ResolveLaunch(ResolveLaunchInput{Engine: engine, Params: p})
+		if err != nil {
+			t.Fatal(err)
+		}
+		argv := append(append([]string(nil), resolved.Entrypoint...), resolved.Argv...)
+		got := ""
+		if countFlag(argv, "--disaggregation-bootstrap-port") == 1 {
+			got = argValue(t, argv, "--disaggregation-bootstrap-port")
+		}
+		if got != c.want {
+			t.Fatalf("%s rank %d bootstrap port = %q, want %q (argv %v)", c.role, c.rank, got, c.want, argv)
+		}
+	}
+	// A preview names the variable rather than a number.
+	p := Params{ModelPath: "/model", TensorParallel: 2, NNodes: 2, NodeRank: 1, Headless: true, Symbolic: true,
+		PD: &PDLaunch{Mode: "sglang-nixl", Role: "prefill", SideChannelPort: 31107, LeaderSideChannelPort: 31104}}
+	if got := p.sglangBootstrapPortText(); got != "${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT}" {
+		t.Fatalf("preview bootstrap port = %q", got)
 	}
 }

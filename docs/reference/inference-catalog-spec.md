@@ -302,7 +302,7 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
           --nnodes ${GPUWORKS_NNODES} --node-rank ${GPUWORKS_NODE_RANK} \
           --dist-init-addr ${GPUWORKS_MASTER_ADDR}:${GPUWORKS_MASTER_PORT} \
           --disaggregation-mode prefill --disaggregation-transfer-backend mooncake \
-          --disaggregation-bootstrap-port ${GPUWORKS_PD_SIDE_CHANNEL_PORT} \
+          --disaggregation-bootstrap-port ${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT} \
           --disaggregation-ib-device "$IB_DEVICES"
         ;;
       decode)
@@ -417,7 +417,8 @@ placement:
 | `GPUWORKS_MASTER_ADDR` / `GPUWORKS_MASTER_PORT` | 多机 rank 0 的地址与 rendezvous 端口 | 仅多机 |
 | `GPUWORKS_PD_ROLE` | 本实例的 PD 角色：`prefill` 或 `decode` | PD 实例 |
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | 本实例 KV side channel 的监听地址 | PD 实例且地址已知 |
-| `GPUWORKS_PD_SIDE_CHANNEL_PORT` | 本实例额外端口段的首端口，即 KV side channel 端口 | PD 实例且端口已分配 |
+| `GPUWORKS_PD_SIDE_CHANNEL_PORT` | 本 rank 额外端口段的首端口，即 KV side channel 端口；多机实例的各 rank 各有各的 | PD 实例且端口已分配 |
+| `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | 本实例 leader 的 side channel 端口：leader 上就是自己的，follower 上是 leader 的。follower 要连 leader 的 side channel（如 SGLang 的 bootstrap 服务）时用它；平台自己组装的命令不用 | PD 实例且端口已分配 |
 
 规则：
 

@@ -194,8 +194,8 @@ func TestHygonSGLangMooncakeDeclaration(t *testing.T) {
 		t.Fatalf("connector roles = %v", mode.ConnectorRoles)
 	}
 	// One bootstrap port, on the prefill only, shared by its ranks.
-	if mode.ExtraPorts(RolePrefill, 8) != 1 || mode.ExtraPorts(RoleDecode, 16) != 0 || !mode.SharedSideChannel {
-		t.Fatalf("ports: prefill %d decode %d shared %v", mode.ExtraPorts(RolePrefill, 8), mode.ExtraPorts(RoleDecode, 16), mode.SharedSideChannel)
+	if mode.ExtraPorts(RolePrefill, 8) != 1 || mode.ExtraPorts(RoleDecode, 16) != 0 {
+		t.Fatalf("ports: prefill %d decode %d", mode.ExtraPorts(RolePrefill, 8), mode.ExtraPorts(RoleDecode, 16))
 	}
 	// A decoder cannot compute a prefill in disaggregation mode.
 	if mode.DecodeServesAlone || mode.MayBeEmpty(RolePrefill) || mode.EffectiveFallback("") != FallbackFail {
