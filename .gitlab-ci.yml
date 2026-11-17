@@ -384,7 +384,18 @@ core-test:
     # their own, which go test ./... at the root does not enter.
     - make test-extapi GO_TEST_FLAGS="-v -timeout 5m"
     - make test-pluginsdk GO_TEST_FLAGS="-v -timeout 5m"
-    - CGO_ENABLED=0 go test -v -timeout 30m -coverprofile=coverage-core.out ./...
+    - |
+      # Keep all output as an artifact; streaming the verbose suite exceeds
+      # the runner's 4 MB trace cap before the last packages report failures.
+      mkdir -p .testlogs
+      test_status=0
+      CGO_ENABLED=0 go test -v -timeout 30m -coverprofile=coverage-core.out ./... > .testlogs/core-test.log 2>&1 || test_status=$?
+      if [ "$test_status" -ne 0 ]; then
+        grep -E '^[[:space:]]*--- FAIL:|^FAIL([[:space:]]|$)|^panic:|^fatal error:' .testlogs/core-test.log || true
+        tail -n 120 .testlogs/core-test.log
+        exit "$test_status"
+      fi
+      tail -n 20 .testlogs/core-test.log
     # Build-tag suites are reported separately; compile them here so a
     # refactor cannot silently break an opt-in lane while core remains green.
     - make check-tagged-build
@@ -392,6 +403,7 @@ core-test:
     when: always
     paths:
       - coverage-core.out
+      - .testlogs/core-test.log
     expire_in: 14 days
 
 core-vet:
