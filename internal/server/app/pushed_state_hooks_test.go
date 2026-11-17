@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
@@ -77,18 +79,37 @@ func TestPushedStateHooksAdaptWithoutAllocating(t *testing.T) {
 		held    store.NodeHold
 		refusal any
 		av      featuregate.Availability
+		shown   []dto.ConsoleBanner
 	)
+	bs := hooks.Banners()
 	for name, fn := range map[string]func(){
-		"hold":    func() { held = holder.Hold(store.NodeHoldFacts{ID: 9, OwnedCards: 8}) },
-		"no hold": func() { held = holder.Hold(store.NodeHoldFacts{ID: 3, OwnedCards: 0}) },
-		"guard":   func() { refusal = hooks.GuardNode(store.FleetCapacity{}) },
-		"feature": func() { av = hooks.Features().Availability("acme.backup") },
+		"hold":       func() { held = holder.Hold(store.NodeHoldFacts{ID: 9, OwnedCards: 8}) },
+		"no hold":    func() { held = holder.Hold(store.NodeHoldFacts{ID: 3, OwnedCards: 0}) },
+		"guard":      func() { refusal = hooks.GuardNode(store.FleetCapacity{}) },
+		"feature":    func() { av = hooks.Features().Availability("acme.backup") },
+		"banners":    func() { shown = bs.Banners(ctx, auth.Claims{Role: adminRole}) },
+		"no banners": func() { shown = bs.Banners(ctx, auth.Claims{Role: "user"}) },
 	} {
 		if n := testing.AllocsPerRun(1000, fn); n != 0 {
 			t.Errorf("%s: %v allocations per call", name, n)
 		}
 	}
-	_, _, _ = held, refusal, av
+	_, _, _, _ = held, refusal, av, shown
+
+	// A new snapshot is converted afresh.
+	runCtx, stop := context.WithCancel(ctx)
+	ran := make(chan error, 1)
+	go func() { ran <- state.Run(runCtx) }()
+	defer func() { stop(); <-ran }()
+	state.OwnerUp("acme_authority", 1)
+	pusher := pushstate.Pusher{ID: "acme_authority", Publisher: "acme", Grants: grants, Permissions: []string{"push:banners"}, Codes: []string{"ACME_EXPIRED", "ACME_GRACE"}, Generation: 1}
+	body := `{"banners":[{"audience":"admin","id":"grace","steps":[{"notice":{"code":"ACME_EXPIRED"},"severity":"danger"}]}]}`
+	if _, w := state.Push(ctx, pusher, &extapi.StatePush{Kind: extapi.KindBanners, Schema: 1, Generation: 2, Body: json.RawMessage(body)}); w != nil {
+		t.Fatalf("push: %+v", w)
+	}
+	if got := bs.Banners(ctx, auth.Claims{Role: adminRole}); len(got) != 1 || got[0].Message.Code != "ACME_EXPIRED" || got[0].Severity != extapi.SeverityDanger {
+		t.Fatalf("banners after a push: %+v", got)
+	}
 
 	// The fleet reader converts the store's fleet in enrollment order.
 	for _, uuid := range []string{"n-1", "n-2"} {
