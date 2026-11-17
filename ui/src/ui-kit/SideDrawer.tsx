@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
 import { ConsoleIcon } from "./consoleIcons";
+import { useOptionalAssistant } from "../assistant/AssistantContext";
 
 /** Product dimensions and scroll ownership; Zeron owns portal, motion and focus. */
 export function SideDrawer({ open, onClose, title, subtitle, inlineSubtitle = false, children, extra, footer, width = 720, className, busy = false, deferEscapeToModal = false }: {
@@ -15,13 +16,31 @@ export function SideDrawer({ open, onClose, title, subtitle, inlineSubtitle = fa
   extra?: ReactNode; footer?: ReactNode; width?: number | string; className?: string; busy?: boolean; deferEscapeToModal?: boolean;
 }) {
   const { t } = useTranslation("common");
-  return <Dialog open={open} onOpenChange={(next, details) => {
-    if (next || busy) return;
-    if (deferEscapeToModal && details.reason === "escape-key" && Array.from(document.querySelectorAll<HTMLElement>(".ant-modal-wrap")).some(modal => modal.getClientRects().length > 0)) return;
+  const assistantOpen = useOptionalAssistant()?.open ?? false;
+  // A resident assistant and a detail are sibling workspaces. A modal focus
+  // trap here would pull focus back from the assistant's independent portal.
+  // Keep the detail one layer below it, so opening order cannot hide the
+  // assistant on narrow screens; nested confirmations retain the normal layer.
+  const zIndex = assistantOpen ? "calc(var(--layer-popover) - 1)" : undefined;
+  return <Dialog open={open} modal={!assistantOpen} onOpenChange={(next, details) => {
+    if (next) return;
+    if (busy) { details.cancel(); return; }
+    const target = details.reason === "focus-out" ? (details.event as FocusEvent).relatedTarget : details.event.target;
+    if (assistantOpen && target instanceof Element && target.closest(".assistant-panel")) {
+      details.cancel();
+      details.allowPropagation();
+      return;
+    }
+    if (deferEscapeToModal && details.reason === "escape-key" && Array.from(document.querySelectorAll<HTMLElement>(".ant-modal-wrap")).some(modal => modal.getClientRects().length > 0)) {
+      details.cancel();
+      details.allowPropagation();
+      return;
+    }
     onClose();
   }}>
-    <DialogContent placement="right" className={`rounded-none flex flex-col overflow-hidden ${className ?? ""}`}
-      style={{ width: typeof width === "number" ? `min(${width}px, calc(100vw - 32px))` : width, maxWidth: "calc(100vw - 32px)" }}
+    <DialogContent placement="right" className={`side-drawer rounded-none flex flex-col overflow-hidden ${className ?? ""}`}
+      backdropClassName="side-drawer-backdrop" backdropStyle={{ zIndex }}
+      style={{ width: typeof width === "number" ? `min(${width}px, calc(100vw - 32px))` : width, maxWidth: "var(--side-drawer-max-width, calc(100vw - 32px))", zIndex }}
       // The close button sits in the header row below. Zeron's own one is a
       // full-width sticky row laid over the header, which swallowed clicks on
       // the header actions next to the title.
