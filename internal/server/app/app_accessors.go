@@ -2,11 +2,26 @@ package app
 
 import (
 	"context"
+	"net/http"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/api"
+	"gpuworks.ai/gpuworks/internal/server/auth"
 
 	"gpuworks.ai/gpuworks/internal/server/hub"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
+
+// apiRouter builds the API router and keeps it for RouteInventory.
+func (a *App) apiRouter(deps api.Deps, policy auth.SessionPolicy) http.Handler {
+	a.routes = api.Router(deps, policy)
+	return a.routes
+}
+
+// RouteInventory lists the routes this server's API serves
+// (api.RouteInventory): contract tests compare it with the community
+// server's.
+func (a *App) RouteInventory() ([]string, error) { return api.RouteInventory(a.routes) }
 
 // Store exposes the store (used by CLI subcommands like migrate).
 func (a *App) Store() *store.Store { return a.store }
