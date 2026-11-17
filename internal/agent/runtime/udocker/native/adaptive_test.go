@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -504,19 +506,59 @@ func TestPullRetriesRefusedConnectionsWithBackoff(t *testing.T) {
 	}
 }
 
-// A host that refuses for good is given up on after a bounded number of
-// waits: the pull fails, the caller moves to the next source, and nothing is
-// left held.
+// A host that refuses for good is given up on after bounded network attempts:
+// the pull fails, the caller moves to the next source, and nothing is held.
 func TestPullGivesUpOnAHostThatKeepsRefusing(t *testing.T) {
-	f := newRegFixture(t, fakeregistry.Options{Redirect: true}, 8, 4*miB)
+	for _, parts := range []int{1, 4, 8} {
+		t.Run(strconv.Itoa(parts)+" spans", func(t *testing.T) {
+			f := newRegFixture(t, fakeregistry.Options{Redirect: true}, 8, parts*miB)
+			f.reg.SetRefusing(true)
+			d := f.downloader(t, nil)
+			d.RangeParts = parts
+			_, err := f.pull(t, d)
+			if !errors.Is(err, syscall.ECONNREFUSED) {
+				t.Fatalf("err = %v, want the original connection refusal", err)
+			}
+			// Every attempt first reaches the registry and follows its 307 to
+			// the closed CDN listener. ADR 0056 allows at most five attempts
+			// per span; the first exhausted span cancels its siblings. Waiting
+			// is not an attempt: another refusal may extend the pool's pause
+			// while a worker queues, making that worker wait again.
+			if got := f.reg.Stats().Redirects; got < 5 || got > parts*5 {
+				t.Fatalf("%d requests for %d spans, want 5..%d before giving up", got, parts, parts*5)
+			}
+			waits := f.waits.all()
+			if len(waits) == 0 {
+				t.Fatal("the refused host was retried without backoff")
+			}
+			for _, pause := range waits {
+				if pause <= 0 || pause > connbudget.MaxPause {
+					t.Fatalf("backoff %s is outside the budget's positive bounded pause", pause)
+				}
+			}
+		})
+	}
+}
+
+func TestPullCanceledDuringRefusalBackoffReturnsTheCancellation(t *testing.T) {
+	f := newRegFixture(t, fakeregistry.Options{Redirect: true}, 8, 8*miB)
 	f.reg.SetRefusing(true)
-	_, err := f.pull(t, f.downloader(t, nil))
-	if err == nil || !strings.Contains(err.Error(), "refused") {
-		t.Fatalf("err = %v, want the refusal", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.onWait = cancel
+	d := f.downloader(t, nil)
+	before := runtime.NumGoroutine()
+	err := d.FetchAll(ctx, f.ref, f.descs, nil, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want cancellation during backoff", err)
 	}
-	if got := len(f.waits.all()); got == 0 || got > 8*throttleAttempts {
-		t.Fatalf("%d waits for a host that never answers", got)
+	if len(f.waits.all()) == 0 {
+		t.Fatal("the cancellation did not reach the refusal backoff")
 	}
+	if d.Present(f.descs[0]) {
+		t.Fatal("a canceled transfer published a blob")
+	}
+	f.assertQuiet(t, before)
 }
 
 // New connections deliver nothing in the window they open in on a link with
