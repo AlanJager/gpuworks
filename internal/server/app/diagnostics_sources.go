@@ -120,7 +120,7 @@ func (s diagnosticsSources) DeploymentInstances(ids []uint) ([]string, error) {
 // nodes, storages, settings, and the chosen deployments' request records.
 func (s diagnosticsSources) Snapshot(ctx context.Context, scope diagnostics.SnapshotScope) (map[string]any, error) {
 	docs := map[string]any{
-		"server": map[string]any{"version": version.String(), "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH,
+		"server": map[string]any{"version": version.String(), "edition": version.Edition, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH,
 			"window_from": scope.From.UTC().Format(time.RFC3339), "window_to": scope.To.UTC().Format(time.RFC3339)},
 	}
 	nodes, err := s.st.ListNodes()

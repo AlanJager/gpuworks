@@ -38,11 +38,13 @@ function walk(dir, out = []) {
 const isTest = (p) => /\.test\.[^/]+$/.test(p);
 
 // Inventory scope: managed Zeron code (components/ui, lib, hooks/use-*),
-// tests and locale text are not migration targets.
+// tests and locale text are not migration targets, and console overlay
+// modules (ui/src/extensions/<id>/, git-ignored, copied in by a separately
+// built console) are not this repository's code.
 function inInventoryScope(p) {
   const r = rel(p);
   if (!sourceExt.test(r) || isTest(r)) return false;
-  return !/^ui\/src\/(components\/ui\/|lib\/|hooks\/use-|i18n\/)/.test(r);
+  return !/^ui\/src\/(components\/ui\/|lib\/|hooks\/use-|i18n\/|extensions\/[^/]+\/)/.test(r);
 }
 
 // --- source scanning -------------------------------------------------------

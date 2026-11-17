@@ -81,8 +81,18 @@ type Node struct {
 	// now (runtime_gpu_blocked, card_needs_host_reboot, kube_unschedulable); absent unless
 	// SchedulingBy is platform. A client renders the code in its language.
 	CordonReason string `json:"cordon_reason,omitempty"`
-	Name         string `json:"name,omitempty"`
-	Token        string `json:"token,omitempty"`
+	// CordonMessage is why an extension holds the node out of scheduling
+	// (a scheduling holder, whose source SchedulingBy names once a report
+	// applied it); absent when none does. A client renders the code in its
+	// language, with Message as the English fallback.
+	CordonMessage *ProductMessage `json:"cordon_message,omitempty"`
+	// Uncordon is what turning scheduling back on does, decided by the
+	// server: allowed; confirm, when the platform has a reason to cordon the
+	// node and will do so again on its next report; refused, while an
+	// extension holds the node (CordonMessage says why).
+	Uncordon string `json:"uncordon"`
+	Name     string `json:"name,omitempty"`
+	Token    string `json:"token,omitempty"`
 	// InstallCommand installs this node's agent, and is also how a node
 	// whose agent the platform cannot restore itself is brought back. It
 	// carries the token, so it is returned only alongside it.
@@ -226,10 +236,12 @@ type SystemLabel struct {
 	DisplayCode string `json:"display_code,omitempty"`
 }
 
-// Health is the /healthz payload.
+// Health is the /healthz payload. Edition is the build's edition
+// (version.Edition), shown for support; it never changes what the server does.
 type Health struct {
 	Status   string `json:"status"`
 	Version  string `json:"version"`
+	Edition  string `json:"edition"`
 	Nodes    int    `json:"nodes"`
 	Sessions int    `json:"sessions"`
 }

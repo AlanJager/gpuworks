@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "./app/AppSidebar";
+import ConsoleBanners from "./app/ConsoleBanners";
 import { ConsoleIcon } from "./ui-kit/consoleIcons";
 
 const AssistantIcon = ConsoleIcon.assistant;
@@ -47,6 +48,8 @@ import PlaygroundPage from "./pages/playground/PlaygroundPage";
 import { signOutPlayground } from "./pages/playground/conversations/useConversations";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import { BrandMark, useBranding, useDocumentBranding } from "./branding";
+import { extensionRoutes } from "./extensions";
+import { ExtensionHeaderItems, ExtensionRoutePage } from "./extensions/shell";
 import "./pages/evaluations/agenticWorkload.css";
 import "./pages/inferenceTemplateFlat.css";
 import "./pages/networks/topology/networkTopology.css";
@@ -101,6 +104,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
         <div className="app-header-actions">
           <UpdateNotice />
           <NoticeBell />
+          <ExtensionHeaderItems />
           <AssistantHeaderButton />
           <LanguageSwitcher light />
           <UserMenu onLogout={onLogout} />
@@ -110,6 +114,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
       <div className="app-body">
         <AppSidebar />
         <main className="app-content"><div className="app-page">
+          <ConsoleBanners />
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/login" element={<Navigate to="/dashboard" replace />} />
@@ -145,6 +150,10 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             <Route path="/apikeys" element={<APIKeysPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            {/* Console extensions' pages (ui/src/extensions); none in the community build. */}
+            {extensionRoutes().map((route) => (
+              <Route key={route.path} path={route.path} element={<ExtensionRoutePage route={route} notFound={<NotFoundPage />} />} />
+            ))}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </div></main>

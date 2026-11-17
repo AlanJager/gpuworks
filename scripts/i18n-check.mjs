@@ -111,6 +111,68 @@ for (const language of languages) {
   }
 }
 
+// A separately built console adds locale roots of its own (its overlay
+// modules' translations) through GPUWORKS_I18N_EXTRA_LOCALES, a list of
+// directories laid out like ui/src/i18n/locales (<root>/<language>/<ns>.json)
+// separated by the platform's path delimiter. Each root follows the same
+// English-source contract against the core languages. A namespace may share a
+// core namespace's name (overlay bundles merge into it, the way an overlay adds
+// its product codes under common's apiError), but may not repeat a core key:
+// the console merges without overwriting, so the overlay's text would never show.
+const pathList = (name) => (process.env[name] ?? "").split(path.delimiter).map((entry) => entry.trim()).filter(Boolean).map((entry) => path.resolve(entry));
+const extraLocaleMaps = new Map();
+for (const extraRoot of pathList("GPUWORKS_I18N_EXTRA_LOCALES")) {
+  const label = path.relative(root, extraRoot) || extraRoot;
+  if (!fs.existsSync(path.join(extraRoot, "en"))) {
+    errors.push(`${label}: extra locale root has no en directory`);
+    continue;
+  }
+  const extraLanguages = fs.readdirSync(extraRoot).filter((entry) => fs.statSync(path.join(extraRoot, entry)).isDirectory()).sort();
+  for (const language of extraLanguages) {
+    if (!languages.includes(language)) errors.push(`${label}/${language}: language not in ui/src/i18n/locales`);
+  }
+  const extraNamespaces = fs.readdirSync(path.join(extraRoot, "en")).filter((name) => name.endsWith(".json")).sort();
+  for (const language of languages) {
+    const dir = path.join(extraRoot, language);
+    const actual = fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(".json")).sort() : [];
+    for (const namespace of new Set([...extraNamespaces, ...actual])) {
+      const sourceFile = path.join(extraRoot, "en", namespace);
+      const targetFile = path.join(dir, namespace);
+      if (!fs.existsSync(sourceFile)) {
+        errors.push(`${label}/${language}/${namespace}: orphan namespace not present in en`);
+        continue;
+      }
+      if (!fs.existsSync(targetFile)) {
+        errors.push(`${label}/${language}/${namespace}: missing namespace`);
+        continue;
+      }
+      const source = flatten(readJSON(sourceFile));
+      const target = flatten(readJSON(targetFile));
+      extraLocaleMaps.set(`${label}/${language}/${namespace}`, target);
+      const core = localeMaps.get(`${language}/${namespace}`);
+      for (const key of target.keys()) {
+        if (core?.has(key)) errors.push(`${label}/${language}/${namespace}:${key}: repeats a core key; the console keeps the core text`);
+        if (!source.has(key)) errors.push(`${label}/${language}/${namespace}:${key}: orphan key`);
+      }
+      for (const [key, sourceValue] of source) {
+        if (!target.has(key)) {
+          errors.push(`${label}/${language}/${namespace}:${key}: missing key`);
+          continue;
+        }
+        const targetValue = target.get(key);
+        localePairs.push({ language, source: sourceValue, target: targetValue, location: `${label}/${language}/${namespace}:${key}` });
+        if (placeholders(sourceValue).join("\0") !== placeholders(targetValue).join("\0")) {
+          errors.push(`${label}/${language}/${namespace}:${key}: placeholders differ from en`);
+        }
+      }
+      if (source.size === target.size && [...source.keys()].every((key) => target.has(key)) &&
+          [...source.keys()].some((key, index) => [...target.keys()][index] !== key)) {
+        errors.push(`${label}/${language}/${namespace}: key order differs from en`);
+      }
+    }
+  }
+}
+
 // Server-owned dictionaries use the same English-source contract as UI
 // locales. Validate them in the secret-free CI check so a Go source change
 // cannot silently ship a missing translation or backfill display text into
@@ -277,6 +339,9 @@ const productErrorSourceFiles = [
   ...fs.readdirSync(messagesDir).filter((name) => name.endsWith(".go") && !name.endsWith("_test.go")).sort().map((name) => path.join(messagesDir, name)),
   path.join(root, "internal/server/api/errors.go"),
   path.join(root, "internal/server/proxy/api_errors.go"),
+  // The plugin wire formats (a public module that cannot import messages)
+  // declare the codes of their failures, which the console renders.
+  path.join(root, "pkg/extapi/errors.go"),
   // Every proto file: agent-produced codes (runtime failures, RPC refusals)
   // reach the console through the same ProductMessage path.
   ...fs.readdirSync(path.join(root, "internal/proto")).filter((name) => name.endsWith(".go") && !name.endsWith("_test.go")).sort().map((name) => path.join(root, "internal/proto", name)),
@@ -328,6 +393,18 @@ for (const [name, map] of localeMaps) {
   }
   leafKeys.set(language, keys);
 }
+// An extra locale root's text resolves codes too (an overlay's own codes).
+for (const [name, map] of extraLocaleMaps) {
+  const language = name.split("/").at(-2);
+  const keys = leafKeys.get(language) ?? new Set();
+  for (const key of map.keys()) {
+    for (const segment of key.split(".")) {
+      keys.add(segment);
+      keys.add(segment.replace(/_(?:zero|one|two|few|many|other)$/, ""));
+    }
+  }
+  leafKeys.set(language, keys);
+}
 // Packages that neither binary links: their codes are read by catalog
 // maintainers in a CLI's English output, never rendered by the console.
 // check_architecture.sh's console_unlinked_code_packages proves each one stays
@@ -343,6 +420,24 @@ for (const top of ["internal", "pkg"]) {
     for (const match of source.matchAll(/^\s*(?:const\s+)?([A-Za-z]\w*)\s*(?:[A-Za-z.]+\s*)?=\s*"([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)"/gm)) {
       const [, name, code] = match;
       if (!inCodePackage && !codeName.test(name)) continue;
+      if (!runtimeCodes.has(code)) runtimeCodes.set(code, `${path.relative(root, file)}:${source.slice(0, match.index).split("\n").length}`);
+    }
+  }
+}
+// GPUWORKS_I18N_EXTRA_MESSAGES lists a separately built server's Go source
+// directories (path-delimiter separated, read recursively). Every UPPER_SNAKE
+// string constant in them is a product code, as in internal/server/messages,
+// and needs en and zh text in the core or an extra locale root.
+for (const extraDir of pathList("GPUWORKS_I18N_EXTRA_MESSAGES")) {
+  if (!fs.existsSync(extraDir)) {
+    errors.push(`${extraDir}: extra messages directory does not exist`);
+    continue;
+  }
+  for (const file of filesUnder(extraDir, ".go")) {
+    if (file.endsWith("_test.go") || file.includes(`${path.sep}testdata${path.sep}`)) continue;
+    const source = fs.readFileSync(file, "utf8");
+    for (const match of source.matchAll(/^\s*(?:const\s+)?([A-Za-z]\w*)\s*(?:[A-Za-z.]+\s*)?=\s*"([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)"/gm)) {
+      const code = match[2];
       if (!runtimeCodes.has(code)) runtimeCodes.set(code, `${path.relative(root, file)}:${source.slice(0, match.index).split("\n").length}`);
     }
   }

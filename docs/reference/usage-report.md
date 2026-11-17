@@ -37,6 +37,7 @@
 | `delivery.probe_ms` | 对象 | 每个收集端应答测速请求的毫秒数，`-1` 表示没有应答 |
 | `server.version` | 字符串 | server 版本 |
 | `server.channel` | 字符串 | 跟随的发布渠道（`nightly` / `release`） |
+| `server.edition` | 字符串 | 构建版本类别，社区版为 `community`；单独构建的服务器报出它自己的名称 |
 | `server.os` / `server.arch` | 字符串 | server 的操作系统与 CPU 架构 |
 | `server.schema_version` | 整数 | 数据库迁移版本 |
 | `environment.nodes` / `environment.online_nodes` | 整数 | 节点总数 / 在线节点数（报告生成时） |

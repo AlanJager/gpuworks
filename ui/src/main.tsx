@@ -8,7 +8,8 @@ import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import App from "./App";
-import "./i18n";
+import consoleI18n from "./i18n";
+import { registerExtensionLocales } from "./extensions";
 import { darkPreview, themeConfig } from "./theme/tokens";
 import "./app.css";
 import "./theme/layers.css";
@@ -34,6 +35,9 @@ function Root() {
     </ConfigProvider>
   );
 }
+
+// Console extensions bring their own translations (none in the community build).
+registerExtensionLocales(consoleI18n);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

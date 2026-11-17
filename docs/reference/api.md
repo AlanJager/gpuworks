@@ -359,6 +359,8 @@ SSH 的 `vantage=control_plane` 描述控制面登录节点；HTTP 的 `vantage=
   `install_command` 返回[离线包](../how-to/connect-nodes.md#离线包)的命令：`sh gpuworks-agent.run --token '…' --connect-mode server_dial --listen '…'`。
 - **监听地址**：`server_dial_listen` 缺省为 `0.0.0.0:18800`；必须是有效的 `host:port` / `:port`，端口在 1–65535 之间，否则返回 400 `SERVER_DIAL_LISTEN_INVALID`（`address`）。
 
+**接入限制**：server 上可以注册节点接入守卫（供扩展模块使用，例如站点的节点上限）。守卫拒绝新节点时，`POST /api/v1/nodes`、`POST /api/v1/nodes/install`、`POST /api/v1/providers/{id}/install` 与 `POST /api/v1/providers/{id}/instances` 回 403，`code` 与 `params` 由守卫给出（守卫没有给 code 时为 `NODE_ENROLLMENT_REFUSED`），不创建节点；SSH 安装、云实例安装与租用实例在动手之前就先检查。Kubernetes agent 被拒时 `/api/v1/kube/enroll` 回 403 `KUBE_ENROLL_REFUSED`（`params.reason: enrollment_refused`，`params.refusal_code` 是守卫的 code，守卫的其余参数一并带上），agent 视为最终结果；接入过的节点重新注册从不被拒。集群条目尚无节点接入时的 `apply` 同样先检查。没有注册守卫时，上述接口的行为不受影响。
+
 ### SSH 检查与安装
 
 `POST /api/v1/nodes/precheck`、`POST /api/v1/nodes/install` 和 `PUT /api/v1/nodes/{uuid}/ssh` 共用以下 SSH 认证字段：
@@ -408,6 +410,8 @@ macOS 忽略 `no_systemd`。
 节点的 `scheduling_by` 说明当前状态是谁设的：`operator`（经这个接口设的）或 `platform`（平台自动停止调度）；可调度或升级前就停止的节点没有这个字段。
 平台只解除自己设的停止调度。`scheduling_by` 为 `platform` 时，`cordon_reason` 给出现在的原因：`runtime_gpu_blocked`（运行时给不了容器加速卡）、`card_needs_host_reboot`（有卡要重启主机或断电才能恢复）或 `kube_unschedulable`（Kubernetes 已 cordon 该节点，Kubernetes 里 uncordon 后平台随之恢复）。
 平台停止调度后，经这个接口设为 `schedulable` 立即生效，原因还在时下一次上报会再次停止。
+扩展模块还可以把节点保持在停止调度状态（扩展停止调度）：被保持的节点在下一次上报时（或扩展立即应用时）设为 `cordoned`，`scheduling_by` 为扩展的来源名；从不设为 `draining`，已有副本照常服务。扩展停止调度高于平台、低于管理员：平台原因消失不会解除它；保持期间设为 `schedulable` 回 409，`code` 与 `params` 由扩展给出（没有给 code 时为 `NODE_SCHEDULING_HELD`），设为 `cordoned` 或 `draining` 照常生效。扩展不再保持后，平台原因还在时回到平台停止调度，否则恢复可调度。
+节点的 `uncordon` 说明此时设为 `schedulable` 的结果，由 server 判定：`allowed`；`confirm`（平台有停止调度的原因，下一次上报会再次停止）；`refused`（扩展保持中，`cordon_message` 是扩展给出的 `{code, params, message}`）。
 
 `PATCH /api/v1/nodes/{uuid}/runtime` 设置节点的容器运行时偏好 `{runtime: auto|docker|nerdctl|udocker}`，由 agent 接受后保存。节点的 `runtime_choices` 列出这个节点可以设置的值，按展示顺序：Mac 只有 `auto`，其他节点是全部四种；**Kubernetes 节点没有这个字段**（实例是集群里的 Pod，没有运行时可选），对它设置返回 409 `NODE_RUNTIME_KUBE_NODE`。非法值回 400 `NODE_RUNTIME_INVALID`。
 
@@ -1765,6 +1769,7 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | POST | `/api/v1/experience/password` | 为运行中的体验环境生成新密码，旧密码的会话随即失效；未运行时 409 `EXPERIENCE_FAILED` | JWT(admin) |
 | GET | `/api/v1/notices` | 页头通知铃铛 `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`：发布方签名发布的、适用于本安装的通知（`kind` 为 `security` / `release` / `event`，`title`/`body` 按语言给出纯文本）；按紧急程度、再按时间排序，`read` 与 `unread` 按调用者计算 | JWT |
 | POST | `/api/v1/notices/read` | 把通知标为已读 `{"ids": [...]}`（1–128 个，每个 ≤64 字节，否则 400 `NOTICE_IDS_INVALID`）；只记调用者自己的已读，重复标记无副作用，204 | JWT |
+| GET | `/api/v1/console/manifest` | 控制台外壳在自身页面之外显示的内容 `{edition, features, nav, banners}`，全部由 server 决定，控制台只负责渲染，见[控制台清单与扩展路由](#控制台清单与扩展路由)。社区版服务端固定返回 `{"edition":"community","features":[],"nav":[],"banners":[]}` | JWT |
 | GET | `/api/v1/updates/server/versions` | 传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列。同渠道排除早于当前的构建，跨渠道保留目标渠道记录；`latest` 标识渠道索引的最新构建。 | JWT(admin) |
 | GET | `/api/v1/updates/server/result` | 传入本次升级的 `attempt` 或已接受响应的 `backup`，核对下载、等待重启、失败或已确认回滚。无匹配证据时返回 `unknown`。 | JWT(admin) |
 | POST | `/api/v1/updates/server` | 可传入 `{channel,version,sha256,attempt}` 精确选择包。无选择时沿用渠道最新版本。下载发布包，备份并替换服务端后重启；接受返回 202 `{from,to,backup}`，下一次启动确认或回滚；见[服务端升级限制](#服务端升级限制) | JWT(admin) |
@@ -2250,6 +2255,25 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 - `internal/server/app` 在生产装配时始终为 `/v1/*`、`/v1/models`、`/api/v1/playground/v1/*` 注入非空
   `ProxyV1`、`ProxyModels`、`PlaygroundV1` handler。路由清单测试使用零值 `Deps{}`，因此这三个网关路由
   和 SPA fallback `/*` 不在其断言列表内，但生产环境始终挂载。
+
+### 控制台清单与扩展路由
+
+另行构建的服务端可以在 `/api/v1/x/<名称>/` 下挂载自己的管理路由（`api.Deps.Extensions`）。社区版不挂载任何扩展路由，路由清单与没有扩展时完全相同。
+
+- **命名空间与冲突**：扩展名须符合 `[a-z][a-z0-9_]{1,31}`；路由（相对 `/api/v1`）须为 `/x/<名称>` 或以 `/x/<名称>/` 开头。核心不在 `/api/v1/x/` 下注册任何路由，所以扩展名可以与核心路径段同名（如 `nodes`），`/api/v1/nodes` 仍是核心路由。命名空间越界、同一方法与路径重复注册，`Router` 都会在启动时直接 panic。
+- **鉴权**：扩展路由与核心路由走同一套管理鉴权（含会话的来源检查与续期）。按声明分三档：`read`（任何已登录用户与平台令牌，读令牌只能 GET/HEAD/OPTIONS）、`admin`（另需管理员，否则 `403 ADMINISTRATOR_REQUIRED`）、`admin-session`（管理员且只接受登录会话，平台令牌返回 `403 PLATFORM_TOKEN_NOT_ALLOWED`）。
+- **功能可用性**：每条扩展路由要么属于一个功能（feature），要么明确标为社区路由，二者必居其一。功能的可用性为 `full`、`read_only`、`locked` 或 `hidden`，在 server 端执行：`read_only` 时只放行读请求（以及声明为只读时可写的路由），写请求返回 `403 FEATURE_READ_ONLY`；`locked` 时返回 `403 FEATURE_UNAVAILABLE`；`hidden` 时返回 `404 FEATURE_UNAVAILABLE`；没有组件回答可用性时按不可用处理，返回 `FEATURE_PROVIDER_ABSENT`。错误的 `params.feature` 是功能名。
+- **AI 助手与 MCP**：扩展的 GET 路由默认不对 AI 助手和 MCP 开放，只有显式标记的才会出现在可读路由列表里并能被读取。
+- **路由清单**：`api.RouteInventory` 每行一条路由；扩展路由附带 `[access=…] [action=…] [feature=…]`（社区路由为 `[community]`），既不属于功能也未标为社区路由的扩展路由会使清单失败。
+
+`GET /api/v1/console/manifest` 的字段：
+
+| 字段 | 说明 |
+|---|---|
+| `edition` | 构建名称，仅用于展示 |
+| `features[]` | 已声明功能的当前可用性，按 `key` 排序：`{key, access, presentation, link?, message?, limits}`。`access` 为 `full` / `read_only` / `locked` / `hidden`；`presentation` 为 `promote`（不可用时显示为锁定并给出 `link`）或 `hidden`（不可用时完全隐藏，此时锁定按 `hidden` 返回）；`message` 是说明当前可用性的产品消息 `{code, params?, message}`；`limits` 为 `[{dim, max}]`，`max` 为 `null` 表示不限 |
+| `nav[]` | 扩展加入控制台菜单的入口 `{id, group, label_key, icon?, route, feature?}`；所属功能为 `hidden` 的入口不返回 |
+| `banners[]` | 显示在每个页面顶部的通知 `{id, severity, message, link?}`，`severity` 为 `info` / `warning` / `danger`（其他值按 `info` 返回），`message` 为产品消息 `{code, params?, message}` |
 
 ### GPU 容量是否已知
 

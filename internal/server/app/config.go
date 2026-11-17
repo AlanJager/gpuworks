@@ -9,17 +9,20 @@ import (
 	"path/filepath"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/storagerules"
 )
 
-// Config holds server runtime configuration. cmd/gpuworks fills it from
+// Config holds server runtime configuration. The cli package fills it from
 // server.yaml and the command line; nothing here reads the environment.
 type Config struct {
 	// SelfLog captures the server's own error-level slog records into the
@@ -39,6 +42,12 @@ type Config struct {
 	// ConfigPath is server.yaml; empty means the listen addresses cannot be
 	// edited from the console.
 	ConfigPath string
+	// Sections are server.yaml's extensions sections, by module name, raw;
+	// each module decodes its own strictly. Nil without server.yaml.
+	Sections map[string]yaml.Node
+	// Extensions are the modules and console a separately built server
+	// adds (extensions.go); the zero value is the community server.
+	Extensions Extensions
 	// ListenOverridden is set when --addr replaced the file's listen section,
 	// so the console shows it read-only.
 	ListenOverridden bool
@@ -57,6 +66,10 @@ type Config struct {
 	// UsageReportOff is server.yaml's usage_report: false. The zero value
 	// takes part in the user experience improvement program.
 	UsageReportOff bool
+	// Distribution is the edition's distribution channel (its sources, keys
+	// and edition) that update checks, notices, catalog updates and console
+	// upgrades read; the zero value is distribution.Community().
+	Distribution distribution.Profile
 	// PeerRelay is machine-scoped archive relay policy, resolved at startup.
 	PeerRelay serverconfig.PeerRelay
 	// Experience, when set, makes this server the experience environment's

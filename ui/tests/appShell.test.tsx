@@ -98,6 +98,7 @@ const frameRoutes: Record<string, Route> = {
   "/api/v1/auth/me": () => Response.json({ id: 1, username: "admin", role: "admin" }),
   "/api/v1/branding": () => Response.json({ product_name: "", console_title: "", login_description: "", logo: "" }),
   "/api/v1/notices": () => Response.json({ notices: [], unread: 0 }),
+  "/api/v1/console/manifest": () => Response.json({ edition: "community", features: [], nav: [], banners: [] }),
   // No update check result: the server could not reach the channel.
   "/api/v1/updates": () => Response.json({ code: "UPDATE_CHECK_FAILED", message: "channel unreachable" }, { status: 502 }),
 };

@@ -1,0 +1,1 @@
+{"code":"ACME_QUOTA_STORE_LOCKED","params":{"path":"data/quota.db","retries":3},"status":"degraded"}

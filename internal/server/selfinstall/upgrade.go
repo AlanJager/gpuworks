@@ -33,6 +33,10 @@ type UpgradeRequest struct {
 	Check   bool
 	Quiet   bool
 	Keep    int
+	// AllowEditionChange lets the release be another edition than the
+	// installed binary (--allow-edition-change); without it such an upgrade
+	// is refused before the service is touched.
+	AllowEditionChange bool
 
 	// Addr is not a flag of its own: the health check after a restart reaches
 	// the address server.yaml binds.
@@ -195,6 +199,9 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	if err != nil {
 		return err
 	}
+	if err := i.checkEdition(ctx, staged, report.To, req.AllowEditionChange, false); err != nil {
+		return fmt.Errorf("%w; nothing was changed", err)
+	}
 
 	// The service writes its log file and its database under the install tree;
 	// it must be able to start even if one of those was removed by hand. An
@@ -207,6 +214,9 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	// audit line below, it would be root's again (see createHistory).
 	if err := i.createHistory(ctx, i.layout.HistoryPath(), 0o600); err != nil {
 		i.io.Warn("warning: could not create the install history: %v", err)
+	}
+	if err := i.reapplyInstallHooks(ctx, svc); err != nil {
+		return fmt.Errorf("%w; the installed binary was not replaced", err)
 	}
 	if err := i.chownTree(ctx, inst.ServiceUser); err != nil {
 		return err

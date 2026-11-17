@@ -27,9 +27,17 @@ var ErrNotAwaited = errors.New("not needed: another source answered first")
 // default sources, the built-in keys and a client with bounded connect and
 // header timeouts that honours the proxy environment.
 type Client struct {
+	// Edition is the edition an index must name to be accepted; empty is
+	// community (see ParseIndexFor).
+	Edition string
 	Sources []string
-	Keys    Keys
-	HTTP    *http.Client
+	// Published marks Sources as an edition's own published sources
+	// (Profile.Client sets it), which update checks report to as they do to
+	// the built-in ones. Sources an operator chose (--source, a mirror) leave
+	// it false.
+	Published bool
+	Keys      Keys
+	HTTP      *http.Client
 	// IndexTimeout bounds one source's index request.
 	IndexTimeout time.Duration
 	// StallTimeout abandons a file transfer that received nothing for this
@@ -126,9 +134,10 @@ func (c *Client) FetchIndex(ctx context.Context, channel string) (*Fetched, erro
 // describes itself with report, query parameters the publisher reads from the
 // sources' access logs (usagereport.FleetReport). Only the built-in sources
 // get it — a client pointed at sources of its own (--source, an internal
-// release site) asks for the index and says nothing else.
+// release site) asks for the index and says nothing else. An edition's own
+// published sources (Published) count as built-in.
 func (c *Client) FetchIndexReporting(ctx context.Context, channel string, report url.Values) (*Fetched, error) {
-	if len(c.Sources) > 0 {
+	if len(c.Sources) > 0 && !c.Published {
 		report = nil
 	}
 	return c.race(ctx, channel, false, report)
@@ -209,7 +218,7 @@ func (c *Client) indexFrom(ctx context.Context, source, channel string, report u
 	if err != nil {
 		return Index{}, "", err
 	}
-	index, err := ParseIndex(payload, channel)
+	index, err := ParseIndexFor(payload, channel, c.Edition)
 	if err != nil {
 		return Index{}, "", fmt.Errorf("%s/%s/index.json: %w: %w", source, channel, ErrInvalidIndex, err)
 	}

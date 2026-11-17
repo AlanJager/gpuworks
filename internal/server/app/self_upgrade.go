@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/version"
 )
@@ -112,7 +113,11 @@ func (s *serverSettings) Upgrade(ctx context.Context, archive io.Reader, by stri
 	up, err := installer.StageSelectedInService(ctx, version.Version, archive, s.snapshot, strings.TrimSpace(by), target.Version, target.Attempt)
 	var archiveErr *selfinstall.ArchiveError
 	var tooLarge *http.MaxBytesError
+	var editionErr *selfinstall.EditionMismatchError
 	switch {
+	case errors.As(err, &editionErr):
+		return dto.ServerUpgradeStarted{}, &api.ServerSettingsError{Code: messages.ErrorServerEditionMismatch, Fallback: err.Error(),
+			Params: map[string]any{"release": editionErr.ReleaseID, "release_edition": editionErr.Release, "edition": editionErr.Installed}}
 	case errors.Is(err, selfinstall.ErrAlreadyAtRelease):
 		return dto.ServerUpgradeStarted{}, &api.ServerSettingsError{Code: api.ErrorServerAlreadyAtRelease,
 			Fallback: "the archive holds " + version.Version + ", which this server already runs", Params: map[string]any{"release": version.Version}}

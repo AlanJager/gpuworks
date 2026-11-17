@@ -24,8 +24,29 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 )
 
-// archivePattern is the release archive name scripts/package_release.sh writes.
-var archivePattern = regexp.MustCompile(`^gpuworks-([A-Za-z0-9._+-]+)-(linux|darwin)-(amd64|arm64)\.tar\.gz$`)
+// defaultArchivePrefix starts the release archive names
+// scripts/package_release.sh writes (its PACKAGE_PREFIX):
+// <prefix>-<release>-<os>-<arch>.tar.gz.
+const defaultArchivePrefix = "gpuworks"
+
+var archivePrefixPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// archivePrefix is the archive name prefix a -prefix flag names; empty is
+// defaultArchivePrefix.
+func archivePrefix(flag string) (string, error) {
+	if flag == "" {
+		return defaultArchivePrefix, nil
+	}
+	if !archivePrefixPattern.MatchString(flag) {
+		return "", fmt.Errorf("-prefix %q is not an archive name prefix", flag)
+	}
+	return flag, nil
+}
+
+// archivePattern matches the release archive names that start with prefix.
+func archivePattern(prefix string) *regexp.Regexp {
+	return regexp.MustCompile(`^` + regexp.QuoteMeta(prefix) + `-([A-Za-z0-9._+-]+)-(linux|darwin)-(amd64|arm64)\.tar\.gz$`)
+}
 
 // assembleInput is everything a tree is made from. The catalogs default to the
 // ones embedded in this build, so the published catalogs are exactly what a
@@ -36,14 +57,20 @@ type assembleInput struct {
 	Previous          string
 	Keep              int
 	Channel           string
-	DistDir           string
-	OutDir            string
-	ReleaseID         string
-	Commit            string
-	BuiltAt           string
-	PublishedAt       time.Time
-	KeyID             string
-	Key               ed25519.PrivateKey
+	// Edition is the edition the index is published for; empty is
+	// community, which leaves the index exactly as before editions.
+	Edition string
+	// ArchivePrefix starts the archive names in DistDir; empty is
+	// defaultArchivePrefix.
+	ArchivePrefix string
+	DistDir       string
+	OutDir        string
+	ReleaseID     string
+	Commit        string
+	BuiltAt       string
+	PublishedAt   time.Time
+	KeyID         string
+	Key           ed25519.PrivateKey
 
 	ImageCatalog    []byte
 	TemplateArchive []byte
@@ -60,6 +87,8 @@ func assembleCommand(args []string, stdout io.Writer) error {
 	fs.StringVar(&in.Previous, "previous-index", "", "prior signed channel index")
 	fs.IntVar(&in.Keep, "keep", 30, "number of nightly builds to advertise")
 	fs.StringVar(&in.Channel, "channel", "", "channel the index is for (nightly or release)")
+	fs.StringVar(&in.Edition, "edition", "", "edition the index is for (default: community, written as no edition)")
+	fs.StringVar(&in.ArchivePrefix, "prefix", defaultArchivePrefix, "release archive name prefix (<prefix>-<id>-<os>-<arch>.tar.gz)")
 	fs.StringVar(&in.DistDir, "dist", "dist", "directory holding gpuworks-<id>-<os>-<arch>.tar.gz")
 	fs.StringVar(&in.OutDir, "out", "", "directory to write the tree into (must not exist)")
 	fs.StringVar(&in.ReleaseID, "release-id", "", "expected release id (default: the one the archive names carry)")
@@ -98,10 +127,21 @@ func assemble(in assembleInput) (distribution.Index, error) {
 	if strings.TrimSpace(in.OutDir) == "" {
 		return distribution.Index{}, errors.New("-out is required")
 	}
+	edition := strings.TrimSpace(in.Edition)
+	if edition == distribution.EditionCommunity {
+		// Community indexes name no edition, as they did before editions.
+		edition = ""
+	}
+	if !distribution.ValidEdition(edition) {
+		return distribution.Index{}, fmt.Errorf("-edition %q is not an edition name", in.Edition)
+	}
+	if _, err := archivePrefix(in.ArchivePrefix); err != nil {
+		return distribution.Index{}, err
+	}
 	if _, err := os.Stat(in.OutDir); err == nil {
 		return distribution.Index{}, fmt.Errorf("%s already exists; assemble writes a fresh tree", in.OutDir)
 	}
-	archives, releaseID, err := findArchives(in.DistDir, in.ReleaseID)
+	archives, releaseID, err := findArchives(in.DistDir, in.ArchivePrefix, in.ReleaseID)
 	if err != nil {
 		return distribution.Index{}, err
 	}
@@ -110,7 +150,7 @@ func assemble(in assembleInput) (distribution.Index, error) {
 		return distribution.Index{}, err
 	}
 	index := distribution.Index{
-		Schema: distribution.IndexSchema, Channel: in.Channel, PublishedAt: in.PublishedAt.UTC(),
+		Schema: distribution.IndexSchema, Channel: in.Channel, Edition: edition, PublishedAt: in.PublishedAt.UTC(),
 		Server: distribution.ServerRelease{ReleaseID: releaseID, Commit: in.Commit, BuiltAt: in.BuiltAt},
 	}
 
@@ -177,7 +217,9 @@ func assemble(in assembleInput) (distribution.Index, error) {
 		if err != nil {
 			return distribution.Index{}, err
 		}
-		previous, err := distribution.ParseIndex(data, in.Channel)
+		// The history is the same edition's: another edition's index is
+		// refused like another channel's.
+		previous, err := distribution.ParseIndexFor(data, in.Channel, edition)
 		if err != nil {
 			return distribution.Index{}, err
 		}
@@ -220,10 +262,17 @@ type archiveName struct {
 	name, os, arch string
 }
 
-// findArchives lists the release archives in dir. Every one must carry the
-// same release id; the two CI build jobs' dist directories are merged here,
-// so their separate release.json files are not trusted.
-func findArchives(dir, want string) ([]archiveName, string, error) {
+// findArchives lists the release archives in dir named
+// <prefix>-<id>-<os>-<arch>.tar.gz (an empty prefix is
+// defaultArchivePrefix). Every one must carry the same release id; the two
+// CI build jobs' dist directories are merged here, so their separate
+// release.json files are not trusted.
+func findArchives(dir, prefix, want string) ([]archiveName, string, error) {
+	prefix, err := archivePrefix(prefix)
+	if err != nil {
+		return nil, "", err
+	}
+	pattern := archivePattern(prefix)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, "", err
@@ -231,7 +280,7 @@ func findArchives(dir, want string) ([]archiveName, string, error) {
 	var found []archiveName
 	releaseID := strings.TrimSpace(want)
 	for _, entry := range entries {
-		match := archivePattern.FindStringSubmatch(entry.Name())
+		match := pattern.FindStringSubmatch(entry.Name())
 		if match == nil || entry.IsDir() {
 			continue
 		}
@@ -244,7 +293,7 @@ func findArchives(dir, want string) ([]archiveName, string, error) {
 		found = append(found, archiveName{name: entry.Name(), os: match[2], arch: match[3]})
 	}
 	if len(found) == 0 {
-		return nil, "", fmt.Errorf("%s holds no gpuworks-<id>-<os>-<arch>.tar.gz", dir)
+		return nil, "", fmt.Errorf("%s holds no %s-<id>-<os>-<arch>.tar.gz", dir, prefix)
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].name < found[j].name })
 	return found, releaseID, nil

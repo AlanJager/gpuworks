@@ -45,8 +45,9 @@ type ImageFetchHooks struct {
 // OutsideSources are what the API reads from outside the installation: the
 // community registries the image page lists tags from, and the distribution
 // channel the update checks read (ADR 0040). A nil Community uses a shared
-// default browser; a nil Channel reads the built-in sources with the built-in
-// keys. Which channel is read is the server's setting (ServerSettings).
+// default browser; a nil Channel reads the community edition's channel (the
+// built-in sources with the built-in keys): the app always passes its
+// edition's. Which channel is read is the server's setting (ServerSettings).
 type OutsideSources struct {
 	AllowPrivateHosts []string
 	Community         *community.Browser
@@ -55,7 +56,7 @@ type OutsideSources struct {
 
 var (
 	defaultCommunityBrowser = community.NewBrowser(nil)
-	defaultChannelClient    = &distribution.Client{}
+	defaultChannelClient    = distribution.Community().Client(nil)
 )
 
 func (s OutsideSources) community() *community.Browser {
@@ -238,6 +239,10 @@ type Deps struct {
 	// CatalogTemplates saves a running deployment as an inference template
 	// (deployments_catalog_template.go). Nil answers 404.
 	CatalogTemplates CatalogTemplates
+	// Extensions are what a separately built server adds: routes under
+	// /api/v1/x/<name>/, the feature gate they answer to, and the console's
+	// menu entries and banners (extension.go). The zero value adds nothing.
+	Extensions ExtensionDeps
 
 	// Management-plane authentication. Data-plane /v1 uses API keys separately.
 	AuthSigner           *auth.TokenSigner
@@ -301,6 +306,9 @@ type apiHandlers struct {
 	// in-process reads (ai_reader.go).
 	mux *chi.Mux
 	routesState
+	// extensionNav are the extensions' console menu entries, checked once
+	// by Router (extension.go).
+	extensionNav []dto.NavContribution
 	// aiAsks and mcpCalls count each user's questions and MCP tool calls
 	// in flight (ai.go, mcp.go).
 	aiAsks, mcpCalls inFlightLimiter

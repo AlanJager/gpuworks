@@ -12,20 +12,30 @@ import (
 
 const bytesPerGiB = 1024 * 1024 * 1024
 
-func toNodeDTO(n *store.Node) dto.Node {
-	return nodeDTO(n, false)
+// nodeView is n as the API shows it, with the registered scheduling
+// holders' answer for it.
+func (a *apiHandlers) nodeView(n *store.Node) dto.Node {
+	return nodeDTO(n, false, a.nodeHold(n))
 }
 
-func toNodeDTOWithToken(n *store.Node) dto.Node {
-	return nodeDTO(n, true)
+func (a *apiHandlers) nodeViewWithToken(n *store.Node) dto.Node {
+	return nodeDTO(n, true, a.nodeHold(n))
 }
 
-func nodeDTO(n *store.Node, includeToken bool) dto.Node {
+func (a *apiHandlers) nodeHold(n *store.Node) store.NodeHold {
+	if a.d.Store == nil {
+		return store.NodeHold{}
+	}
+	return a.d.Store.HoldOf(n)
+}
+
+func nodeDTO(n *store.Node, includeToken bool, hold store.NodeHold) dto.Node {
 	d := dto.Node{
 		UUID:                  n.UUID,
 		Scheduling:            nodeSchedulingName(n.Scheduling),
 		SchedulingBy:          string(n.SchedulingBy),
 		CordonReason:          n.CordonReason(),
+		Uncordon:              nodeUncordon(n, hold),
 		Name:                  n.Name,
 		State:                 n.ConnectionState(),
 		Hostname:              n.Hostname,
@@ -66,6 +76,10 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 		HasSSHCredential:      n.HasSSHCredential,
 		CreatedAt:             utcTime(n.CreatedAt),
 		GPUs:                  make([]dto.GPU, 0, len(n.GPUs)),
+	}
+	if hold.Held() {
+		pe := hold.ProductError()
+		d.CordonMessage = &dto.ProductMessage{Code: pe.Code(), Params: pe.Params(), Message: pe.Error()}
 	}
 	d.Labels, _ = store.NodeLabels(n.Labels)
 	if d.Labels == nil {
@@ -184,6 +198,31 @@ func nodeDTORuntimes(n *store.Node) []string {
 		return []string{n.RuntimeDriver}
 	}
 	return nil
+}
+
+// Uncordon values (dto.Node.Uncordon).
+const (
+	nodeUncordonAllowed = "allowed"
+	nodeUncordonConfirm = "confirm"
+	nodeUncordonRefused = "refused"
+)
+
+// nodeUncordon is what turning n's scheduling back on does: refused while
+// held (store.SetNodeScheduling answers ErrNodeHeld); confirm while the
+// platform has a reason to cordon it, which it does again on the next
+// report; otherwise allowed.
+func nodeUncordon(n *store.Node, hold store.NodeHold) string {
+	if hold.Held() {
+		return nodeUncordonRefused
+	}
+	cards := make([]proto.GPUInfo, 0, len(n.GPUs))
+	for _, g := range n.GPUs {
+		cards = append(cards, proto.GPUInfo{Ownership: g.Ownership, HealthCode: g.HealthCode})
+	}
+	if store.PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, cards) != "" {
+		return nodeUncordonConfirm
+	}
+	return nodeUncordonAllowed
 }
 
 // partitionBackendReady is whether any partition backend is ready on the

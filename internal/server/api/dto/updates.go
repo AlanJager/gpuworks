@@ -40,11 +40,13 @@ type UpdateSourceStatus struct {
 
 // ServerBuildInfo describes this exact running build. Publication details are
 // present only when a verified distribution index matches its full identity.
+// Edition is set only for the running build (version.Edition).
 type ServerBuildInfo struct {
 	Version          string `json:"version"`
 	Commit           string `json:"commit,omitempty"`
 	BuiltAt          string `json:"built_at,omitempty"`
 	BuildChannel     string `json:"build_channel,omitempty"`
+	Edition          string `json:"edition,omitempty"`
 	Kind             string `json:"kind"` // stable | prerelease | development | unknown
 	PublishedVersion string `json:"published_version,omitempty"`
 	PublishedAt      string `json:"published_at,omitempty"`

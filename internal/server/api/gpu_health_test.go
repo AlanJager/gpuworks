@@ -12,7 +12,7 @@ import (
 func gpuJSON(t *testing.T, g store.GPU) map[string]any {
 	t.Helper()
 	node := &store.Node{UUID: "n1", GPUs: []store.GPU{g}}
-	raw, err := json.Marshal(nodeDTO(node, false))
+	raw, err := json.Marshal(nodeDTO(node, false, store.NodeHold{}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -163,7 +163,7 @@ test("un-cordoning a node whose runtime cannot use its cards warns with the reas
     apiAny.nodeReplicas = async () => ({ scheduling: "cordoned", items: [] });
     const set: string[] = [];
     apiAny.setNodeScheduling = async (_uuid: string, next: string) => { set.push(next); return { ...(node as object), scheduling: next }; };
-    const blocked = { ...(node as object), scheduling: "cordoned", runtime_driver: "docker", runtime_gpu_blocked: tc.code, runtime_gpu_plugin: "NVIDIA Container Toolkit", runtime_plugin: tc.plugin } as never;
+    const blocked = { ...(node as object), scheduling: "cordoned", uncordon: "confirm", runtime_driver: "docker", runtime_gpu_blocked: tc.code, runtime_gpu_plugin: "NVIDIA Container Toolkit", runtime_plugin: tc.plugin } as never;
     const user = userEvent.setup({ document: dom.window.document });
     render(<I18nextProvider i18n={i18n}><NodeSchedulingModal node={blocked} onClose={() => {}} onChanged={() => {}} /></I18nextProvider>);
 
@@ -188,12 +188,66 @@ test("un-cordoning a node whose runtime cannot use its cards warns with the reas
 test("a reason this client does not know is shown as the code", async () => {
   apiAny.nodeReplicas = async () => ({ scheduling: "cordoned", items: [] });
   apiAny.setNodeScheduling = async () => ({ ...(node as object), scheduling: "schedulable" });
-  const blocked = { ...(node as object), scheduling: "cordoned", runtime_driver: "docker", runtime_gpu_blocked: "gpu_from_the_future" } as never;
+  const blocked = { ...(node as object), scheduling: "cordoned", uncordon: "confirm", runtime_driver: "docker", runtime_gpu_blocked: "gpu_from_the_future" } as never;
   const user = userEvent.setup({ document: dom.window.document });
   render(<I18nextProvider i18n={i18n}><NodeSchedulingModal node={blocked} onClose={() => {}} onChanged={() => {}} /></I18nextProvider>);
   await user.click(await screen.findByRole("button", { name: new RegExp(`${sched.action.uncordon}$`) }));
   const title = await screen.findByText(sched.blocked.title);
   assert.ok((title.closest(".ant-popover") as HTMLElement).textContent?.includes("gpu_from_the_future"));
+});
+
+// Whether turning scheduling back on warns first is the server's call
+// (Node.uncordon), whatever the node's facts say: the console only renders it.
+test("the server's uncordon decides whether making a node schedulable warns first", async () => {
+  apiAny.nodeReplicas = async () => ({ scheduling: "cordoned", items: [] });
+  const set: string[] = [];
+  apiAny.setNodeScheduling = async (_uuid: string, next: string) => { set.push(next); return { ...(node as object), scheduling: next, uncordon: "allowed" }; };
+  const user = userEvent.setup({ document: dom.window.document });
+  const allowed = { ...(node as object), scheduling: "cordoned", uncordon: "allowed", runtime_driver: "docker", runtime_gpu_blocked: "gpu_plugin_missing" } as never;
+  render(<I18nextProvider i18n={i18n}><NodeSchedulingModal node={allowed} onClose={() => {}} onChanged={() => {}} /></I18nextProvider>);
+  await user.click(await screen.findByRole("button", { name: new RegExp(`${sched.action.uncordon}$`) }));
+  await waitFor(() => assert.deepEqual(set, ["schedulable"]));
+  assert.equal(screen.queryByText(sched.blocked.title), null, "no warning the server did not ask for");
+  cleanup();
+
+  // Kubernetes cordoned the node: the warning names that reason.
+  set.length = 0;
+  const kube = { ...(node as object), scheduling: "cordoned", scheduling_by: "platform", cordon_reason: "kube_unschedulable", uncordon: "confirm" } as never;
+  render(<I18nextProvider i18n={i18n}><NodeSchedulingModal node={kube} onClose={() => {}} onChanged={() => {}} /></I18nextProvider>);
+  await user.click(await screen.findByRole("button", { name: new RegExp(`${sched.action.uncordon}$`) }));
+  const title = await screen.findByText(sched.recordon.title);
+  const popover = title.closest(".ant-popover") as HTMLElement;
+  assert.ok(popover.textContent?.includes(sched.cordonReason.kube_unschedulable), popover.textContent ?? "");
+  assert.deepEqual(set, [], "nothing changed before the operator confirmed");
+  await user.click(within(popover).getByRole("button", { name: sched.action.uncordonAnyway }));
+  await waitFor(() => assert.deepEqual(set, ["schedulable"]));
+});
+
+// A node an extension holds cannot be turned back on: the button is
+// disabled and the dialog and the tag say why, in the reader's language.
+test("a held node cannot be made schedulable and says why", async () => {
+  apiAny.nodeReplicas = async () => ({ scheduling: "cordoned", items: [] });
+  let calls = 0;
+  apiAny.setNodeScheduling = async () => { calls++; return node; };
+  const held = { ...(node as object), scheduling: "cordoned", scheduling_by: "maint", uncordon: "refused",
+    cordon_message: { code: "NODE_SCHEDULING_HELD", message: "the node is held out of scheduling" } } as never;
+  const common = i18n.getResourceBundle("en", "common");
+  const user = userEvent.setup({ document: dom.window.document });
+  render(<I18nextProvider i18n={i18n}><NodeSchedulingModal node={held} onClose={() => {}} onChanged={() => {}} /></I18nextProvider>);
+  const button = await screen.findByRole("button", { name: new RegExp(`${sched.action.uncordon}$`) });
+  assert.ok((button as HTMLButtonElement).disabled, "the uncordon button is disabled");
+  await user.click(button);
+  assert.equal(calls, 0);
+  assert.ok(screen.getByText(sched.held));
+  assert.ok(screen.getByText(common.apiError.NODE_SCHEDULING_HELD));
+  assert.ok(screen.getByRole("button", { name: sched.action.drain }), "an operator may still drain a held node");
+  cleanup();
+
+  // An extension's own code this client has no text for falls back to its
+  // English message on the tag.
+  render(<I18nextProvider i18n={i18n}><NodeSchedulingTag node={{ ...(held as object), cordon_message: { code: "SITE_MAINTENANCE", message: "maintenance until 06:00" } } as never} /></I18nextProvider>);
+  await user.hover(screen.getByText(sched.state.cordoned));
+  assert.ok((await screen.findByRole("tooltip")).textContent?.includes("maintenance until 06:00"));
 });
 
 test("a waiting pool drain exposes scheduler feedback and stops without enabling scheduling", async () => {

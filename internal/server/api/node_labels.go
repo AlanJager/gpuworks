@@ -41,5 +41,5 @@ func (a *apiHandlers) updateNodeLabels(w http.ResponseWriter, r *http.Request) {
 	}
 	// Labels decide which label-attached networks a node loads.
 	a.syncNodesIfOnline(node.UUID)
-	writeJSON(w, http.StatusOK, toNodeDTO(node))
+	writeJSON(w, http.StatusOK, a.nodeView(node))
 }

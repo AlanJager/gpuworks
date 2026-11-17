@@ -44,6 +44,8 @@ type aiReader struct {
 	header  http.Header
 	cookies []*http.Cookie
 	routes  func() []string
+	// denied reports the extension routes the assistant may not read.
+	denied func(pattern string) bool
 	// log records every read with who asked; nil drops the record.
 	log  *slog.Logger
 	user string
@@ -62,7 +64,7 @@ func (a *apiHandlers) apiReaderFor(r *http.Request) aihelper.APIReader {
 	if claims, ok := a.claimsFromRequest(r); ok {
 		user = claims.Username
 	}
-	return &aiReader{mux: a.mux, header: header, cookies: r.Cookies(), routes: a.getRoutes, log: a.d.Log, user: user}
+	return &aiReader{mux: a.mux, header: header, cookies: r.Cookies(), routes: a.getRoutes, denied: a.aiDenied, log: a.d.Log, user: user}
 }
 
 func (rd *aiReader) Route(path string) string {
@@ -79,7 +81,7 @@ func (rd *aiReader) Get(ctx context.Context, path string, query url.Values) (int
 		return 0, nil, errors.New("api router not wired")
 	}
 	pattern := rd.Route(path)
-	if pattern == "" || !aihelper.Readable(pattern) {
+	if pattern == "" || !aihelper.Readable(pattern) || (rd.denied != nil && rd.denied(pattern)) {
 		return 0, nil, errors.New("not a readable API route: " + path)
 	}
 	target := path
@@ -137,25 +139,45 @@ func (c *capturedResponse) Write(b []byte) (int, error) {
 	return c.body.Write(b)
 }
 
-// getRoutes lists the GET route patterns under /api/v1, once.
+// getRoutes lists the GET route patterns under /api/v1 the assistant may
+// read, once: an extension route only when it is marked AIReadable.
 func (a *apiHandlers) getRoutes() []string {
+	a.walkRoutes()
+	return a.routes
+}
+
+// aiDenied reports whether pattern is an extension GET route the assistant
+// may not read.
+func (a *apiHandlers) aiDenied(pattern string) bool {
+	a.walkRoutes()
+	return a.unreadable[pattern]
+}
+
+func (a *apiHandlers) walkRoutes() {
 	a.routesOnce.Do(func() {
 		if a.mux == nil {
 			return
 		}
-		_ = chi.Walk(a.mux, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-			if method == http.MethodGet && strings.HasPrefix(route, "/api/v1/") {
-				a.routes = append(a.routes, route)
+		a.unreadable = map[string]bool{}
+		_ = chi.Walk(a.mux, func(method, route string, h http.Handler, _ ...func(http.Handler) http.Handler) error {
+			if method != http.MethodGet || !strings.HasPrefix(route, "/api/v1/") {
+				return nil
 			}
+			if ep, ok := h.(*extensionEndpoint); ok && !ep.spec.AIReadable {
+				a.unreadable[route] = true
+				return nil
+			}
+			a.routes = append(a.routes, route)
 			return nil
 		})
 		sort.Strings(a.routes)
 	})
-	return a.routes
 }
 
-// routesState is apiHandlers' cached route list.
+// routesState is apiHandlers' cached route list and the extension routes
+// left out of it.
 type routesState struct {
 	routesOnce sync.Once
 	routes     []string
+	unreadable map[string]bool
 }

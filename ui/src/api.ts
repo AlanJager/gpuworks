@@ -234,11 +234,19 @@ export interface Node {
   // draining also moves the replicas a pool placed there.
   scheduling?: NodeScheduling;
   // scheduling_by is who set scheduling (absent when nobody holds the node,
-  // or the author was not recorded): the platform lifts only its own.
-  scheduling_by?: "operator" | "platform";
+  // or the author was not recorded): operator, platform, or the source of
+  // an extension that holds the node. Each lifts only its own.
+  scheduling_by?: string;
   // cordon_reason is why the platform holds the node now; absent unless
   // scheduling_by is platform.
   cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot" | "kube_unschedulable";
+  // cordon_message is why an extension holds the node out of scheduling;
+  // absent when none does.
+  cordon_message?: ProductMessage;
+  // uncordon is what making the node schedulable does, decided by the
+  // server: allowed; confirm, when the platform will cordon it again on its
+  // next report; refused, while an extension holds it.
+  uncordon?: "allowed" | "confirm" | "refused";
   // placement_policy is the operator's per-node placement knobs, keyed as
   // the dictionary (GET /scheduling/node-placement-policies) keys them; the
   // UI renders them from the dictionary rather than naming any here.
@@ -898,6 +906,8 @@ export interface PdModeProfile {
 export interface Health {
   status: string;
   version: string;
+  /** Build edition for display only ("community" for the community build). */
+  edition: string;
   nodes: number;
   sessions: number;
 }

@@ -124,6 +124,9 @@ func (a *apiHandlers) installNode(w http.ResponseWriter, r *http.Request) {
 	}
 	req.GuardExistingAgent = true
 	pending, token, err := a.d.Store.CreateNodePending(req.Name, req.ConnectMode)
+	if writeNodeEnrollmentRefused(w, err) {
+		return
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return

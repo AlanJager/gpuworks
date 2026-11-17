@@ -30,7 +30,7 @@ import (
 const User = "admin"
 
 // The `gpuworks experience` command line: the launcher writes it and
-// cmd/gpuworks parses it, both from these names.
+// the server command line (internal/server/cli) parses it, both from these names.
 const (
 	Command          = "experience"
 	FlagListen       = "listen"        // comma-separated console addresses

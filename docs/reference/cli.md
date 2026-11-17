@@ -4,7 +4,7 @@ GPUWorks 提供两个命令行程序：`gpuworks` 用于安装、运行、升级
 用于连接 GPU 节点、检查节点环境、排查容器问题和执行评测。
 
 本页按子命令列出 flag、默认值和行为要点；以各命令的 `--help`（`-h`）输出为准，flag 定义分别在
-`cmd/gpuworks`、`cmd/gpuworks-agent`。环境变量见[配置参考](configuration.md)。
+`internal/server/cli`（`cmd/gpuworks` 只调用它）、`cmd/gpuworks-agent`。环境变量见[配置参考](configuration.md)。
 
 ## 示例：重启控制面
 
@@ -39,6 +39,7 @@ gpuworks restarted (systemd)
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
 | | `version` | 打印版本 | 任何人 |
+| | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
 | | `console-upgrade-protocol` | 打印本版本支持的控制台升级协议号（当前 `1`）；控制台升级之前的版本没有这个子命令 | 控制台升级前，服务端对待装的新二进制调用 |
 | `gpuworks-agent` | [`configure`](#gpuworks-agent-configure) | 把启动配置写进 `<state>/gpuworks-agent.conf` | 安装脚本调用；手工接入的节点 |
 | | [`run`](#gpuworks-agent-run) | 连接 server 并提供节点能力 | 由安装脚本/单元拉起，通常不手工运行 |
@@ -149,6 +150,7 @@ gpuworks restarted (systemd)
 | `--version ID` | 空 | 指定渠道签名清单中的 release id；使用发布站点或本地包时须匹配该站点或包的版本 |
 | `--keep N` | `3` | 保留的升级前备份组数 |
 | `--force` | `false` | 允许替换没有 release id 的本地构建（`dev` / `-dirty`） |
+| `--allow-edition-change` | `false` | 允许安装与已安装版本类型（edition）不同的发布 |
 | `--check` | `false` | 只报告是否有新版，不做任何修改 |
 | `--quiet` | `false` | 只输出警告与错误，成功时无输出 |
 
@@ -158,6 +160,7 @@ gpuworks restarted (systemd)
 - 不给 `--dir` 时操作执行的这个二进制所属的安装：`/opt/gpuworks1/gpuworks upgrade` 升级 `/opt/gpuworks1`，不会去动默认目录里的另一套安装；下载到别处的二进制仍操作默认安装目录。开始时打印 `upgrading the installation at <dir> (<当前版本>, <服务方式>)`。
 - 停服后先确认 `server.yaml` 里的监听地址已经释放；仍被占用（例如同机另一套安装监听同一端口）时直接失败，不备份、不替换，停掉的服务原样拉起。Linux 上报出占用进程的 pid 与命令行，占用者是另一套 gpuworks 安装时提示用 `--dir <它的目录>`；查不到进程时报出该地址 `/healthz` 应答的版本。
 - 本地构建（`dev` 或 `-dirty`）不加 `--force` 会被拒绝。
+- 版本类型（edition）不变：发布通道只接受本版本类型的签名索引（索引不写版本类型即社区版）；下载或解出的新二进制在停服前用 `edition` 子命令问一遍版本类型（不认识该子命令的旧版本算社区版），与已安装的二进制不同就拒绝、不做任何修改，加 `--allow-edition-change` 才安装，并提示之后再跑一次新二进制的 `install` 补上它自己的安装步骤。控制台升级没有这个开关，遇到不同版本类型一律拒绝（`SERVER_EDITION_MISMATCH`）。
 - `--source`、`--base-url`、`--archive` 三者互斥；`--channel` 只能与发布通道（默认或 `--source`）一起用。
 - 渠道里的版本比当前构建旧时（例如从 nightly 切到 release）不降级，打印提示并以 0 退出；加 `--force` 才安装。
 - 发布通道：同时请求所有源的 `<channel>/index.json`，用第一个签名校验通过的（ed25519，公钥编在二进制里，源本身不需要可信）；压缩包先从该源下载，失败或 30 秒没有新数据就换下一个源并用 Range 续传，最后按索引里的大小与 sha256 校验。输出里写明来自哪个源。内置源是阿里云 OSS（`https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com`）、华为云 OBS（`https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com`）与 Cloudflare R2（`https://dl.gpuworks.ai`）。

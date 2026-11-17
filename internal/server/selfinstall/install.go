@@ -194,6 +194,11 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 		return InstallReport{}, fmt.Errorf("write %s: %w", i.layout.ConfigPath(), err)
 	}
 	cfg := i.unitConfig(pf.ServiceUser, pf.Mode)
+	// The build's own host steps come before the service definition, which
+	// may name the groups they create.
+	if err := i.runInstallHooks(ctx, cfg.ServiceUser); err != nil {
+		return InstallReport{}, err
+	}
 	svc := i.service(pf.Mode, pf.ServiceUser, cfg)
 	// A previous run may have supervised the server the other way (installed
 	// with --no-systemd, repaired after systemd appeared). Stop that process

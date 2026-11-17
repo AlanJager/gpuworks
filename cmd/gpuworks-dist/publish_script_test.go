@@ -165,7 +165,7 @@ func TestPublishScriptProcess(t *testing.T) {
 		for i := 1; i+1 < len(args); i += 2 {
 			flags[args[i]] = args[i+1]
 		}
-		archives, _, err := findArchives(flags["-dist"], flags["-release-id"])
+		archives, _, err := findArchives(flags["-dist"], flags["-prefix"], flags["-release-id"])
 		if err != nil || len(archives) != 1 {
 			os.Exit(97)
 		}

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/version"
 )
 
@@ -139,6 +140,13 @@ func TestUpgradeServerFromAnUpload(t *testing.T) {
 	rec = run.do(http.MethodPost, "/api/v1/updates/server/upload", "application/gzip", "junk")
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), ErrorServerUpgradeArchiveInvalid) || !strings.Contains(rec.Body.String(), "gzip: invalid header") {
 		t.Fatalf("invalid archive = %d %s", rec.Code, rec.Body.String())
+	}
+	server.err = &ServerSettingsError{Code: messages.ErrorServerEditionMismatch, Fallback: "release v2.0.0 is the acme edition",
+		Params: map[string]any{"release": "v2.0.0", "release_edition": "acme", "edition": "community"}}
+	rec = run.do(http.MethodPost, "/api/v1/updates/server/upload", "application/gzip", "other edition")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"SERVER_EDITION_MISMATCH"`) ||
+		!strings.Contains(rec.Body.String(), `"params":{"edition":"community","release":"v2.0.0","release_edition":"acme"}`) {
+		t.Fatalf("edition mismatch = %d %s", rec.Code, rec.Body.String())
 	}
 	server.err = errors.New("disk full")
 	if rec = run.do(http.MethodPost, "/api/v1/updates/server/upload", "application/gzip", "x"); rec.Code != http.StatusInternalServerError {

@@ -56,11 +56,20 @@ go_prod_files() {
   find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort
 }
 
+# Console overlay modules a separately built console copies into
+# ui/src/extensions/<id>/ are git-ignored and not this repository's code, so no
+# UI measurement counts them; ee_ui_internal_imports alone looks at them, and
+# the console overlays section refuses tracked files there. drop_ui_overlays
+# removes their paths (or "path:line:..." hits) from a list on stdin.
+drop_ui_overlays() {
+  grep -vE '^ui/src/extensions/[^/]+/' || true
+}
+
 # Production UI sources: ui/src minus *.test.* (and minus the i18n locale JSON,
-# which is translated text rather than code).
+# which is translated text rather than code, and the console overlays).
 ui_prod_files() {
   find ui/src -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.css' \) \
-    ! -name '*.test.ts' ! -name '*.test.tsx' | sort
+    ! -name '*.test.ts' ! -name '*.test.tsx' | drop_ui_overlays | sort
 }
 
 # Production store sources: internal/server/store minus *_test.go.
@@ -101,6 +110,18 @@ store_json_column_lines() {
 store_sql_json_hits() {
   store_prod_files | grep -v '/migration[^/]*\.go$' \
     | xargs grep -nE "json_[a-z_]+[[:space:]]*\(|instr[[:space:]]*\(|->>?[[:space:]]*('|\\?|[0-9])" 2>/dev/null \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true
+}
+
+# edition_branch_hits prints "file:line:text" for every production Go line that
+# branches on the edition: a comparison with version.Edition (either operand
+# order) or a switch on it, which covers every case of that switch. The open
+# source tree only displays the edition; behaviour that differs by edition
+# belongs to the separately built server that supplies it. Comment lines do
+# not count.
+edition_branch_hits() {
+  go_prod_files \
+    | xargs grep -nE 'version\.Edition[[:space:]]*(==|!=)|(==|!=)[[:space:]]*version\.Edition|switch[[:space:]]+version\.Edition' 2>/dev/null \
     | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true
 }
 
@@ -185,18 +206,18 @@ measure() {
   engine_literal_ui)
     grep -rnE "'vllm'|\"vllm\"|'sglang'|\"sglang\"" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
-      | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | grep -c . || true
+      | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | drop_ui_overlays | grep -c . || true
     ;;
   ui_antd_import_files)
     # Count source files, including re-exports, dynamic imports and subpaths.
     grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
-      | grep -v '\.test\.' | grep -c . || true
+      | grep -v '\.test\.' | drop_ui_overlays | grep -c . || true
     ;;
   ui_antd_icon_import_files)
     grep -rlE "['\"]@ant-design/icons(/[^'\"]*)?['\"]" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
-      | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | grep -c . || true
+      | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | drop_ui_overlays | grep -c . || true
     ;;
   ui_untested_shared_files)
     untested_shared_ui | grep -c . || true
@@ -206,6 +227,9 @@ measure() {
     ;;
   ui_copy_caveat_strings)
     node scripts/ui_copy_audit.mjs caveat
+    ;;
+  ee_ui_internal_imports)
+    node scripts/ui_overlay_imports.mjs | grep -c . || true
     ;;
   ui_bundle_gzip_kb)
     # Needs a fresh UI build; measured by scripts/check_ui_bundle_size.sh.
@@ -345,6 +369,9 @@ measure() {
     ;;
   store_sql_json_lines)
     store_sql_json_hits | grep -c . || true
+    ;;
+  edition_branches)
+    edition_branch_hits | grep -c . || true
     ;;
   error_text_classification)
     error_text_classification_hits | grep -c . || true
@@ -793,6 +820,21 @@ elif [ -n "$obsingest_deps" ]; then
 else
   echo "  ok: obsingest depends only on proto, selflog, logstore, tsdb and uxstore"
 fi
+# The feature gate is read on every extension request and by the extensions a
+# separately built server adds: it answers availability from a snapshot and
+# builds its refusals, so it needs messages and nothing else of this tree.
+featuregate_deps=$(pkg_imports ./internal/server/featuregate | grep 'gpuworks/' \
+  | grep -vxE 'gpuworks\.ai/gpuworks/internal/server/messages' || true)
+if [ -z "$(pkg_imports ./internal/server/featuregate)" ]; then
+  echo "  FAIL: featuregate has no imports to check (package missing or broken)" >&2
+  failures=$((failures + 1))
+elif [ -n "$featuregate_deps" ]; then
+  echo "  FAIL: featuregate depends only on messages" >&2
+  echo "$featuregate_deps" | sed 's/^/    /' >&2
+  failures=$((failures + 1))
+else
+  echo "  ok: featuregate depends only on messages"
+fi
 # Site rule grammar is a pure leaf beside pullref: store and planning share it.
 sourceurl_deps=$(pkg_imports ./internal/server/sourceurl | grep 'gpuworks/' || true)
 if [ -n "$sourceurl_deps" ]; then
@@ -884,6 +926,81 @@ tree_forbids ./internal/agent/connbudget 'gpuworks/' 'connbudget imports nothing
 tree_forbids ./internal/server/mcp 'gpuworks/' 'mcp speaks the protocol only: it knows neither callers nor tools'
 tree_forbids ./internal/agent/gpu/cardsmoke 'gpuworks/' 'cardsmoke schedules attempts and knows no vendor'
 tree_forbids ./internal/agent/gpu/pcicards 'gpuworks/internal/agent' 'pcicards reads sysfs and knows nothing of the agent'
+
+# --- public wire module ------------------------------------------------------
+# pkg/extapi is a module of its own: the wire formats plugins import without
+# the server. `go list ./...` at the root does not enter it, so its rules are
+# checked here: standard library only (tests included), no requirement, the
+# root's go line, and a golden corpus whose released files are never edited
+# or removed (SHA256SUMS only grows against the baseline commit).
+echo "public wire module (pkg/extapi):"
+EXTAPI_DIR=pkg/extapi
+EXTAPI_MOD=gpuworks.ai/gpuworks/pkg/extapi
+if [ ! -f "$EXTAPI_DIR/go.mod" ]; then
+  echo "  FAIL: $EXTAPI_DIR/go.mod is missing" >&2
+  failures=$((failures + 1))
+else
+  if ! extapi_deps=$(cd "$EXTAPI_DIR" && go list -e -deps -test \
+    -f '{{if not .Standard}}{{.ImportPath}}{{if .Error}} ERROR{{end}}{{end}}' ./... 2>&1); then
+    extapi_deps="go list failed: $extapi_deps"
+  fi
+  extapi_foreign=$(printf '%s\n' "$extapi_deps" | grep -v '^$' \
+    | grep -vE "^${EXTAPI_MOD}( \[${EXTAPI_MOD}(\.test)?\]|\.test|_test \[${EXTAPI_MOD}\.test\])?\$" || true)
+  if [ -n "$extapi_foreign" ]; then
+    echo "  FAIL: pkg/extapi imports only the standard library" >&2
+    echo "$extapi_foreign" | sed 's/^/    /' >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: pkg/extapi imports only the standard library"
+  fi
+  extapi_require=$(grep -nE '^[[:space:]]*(require|replace)([[:space:]]|\()' "$EXTAPI_DIR/go.mod" || true)
+  root_go=$(awk '$1 == "go" {print $2; exit}' go.mod)
+  extapi_go=$(awk '$1 == "go" {print $2; exit}' "$EXTAPI_DIR/go.mod")
+  if [ -n "$extapi_require" ] || [ "$root_go" != "$extapi_go" ]; then
+    echo "  FAIL: pkg/extapi/go.mod requires nothing and has the root's go line ($root_go, has $extapi_go)" >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: pkg/extapi/go.mod requires nothing and has the root's go line"
+  fi
+  if ! grep -qE "^replace[[:space:]]+${EXTAPI_MOD}[[:space:]]+=>[[:space:]]+\./${EXTAPI_DIR}\$" go.mod; then
+    echo "  FAIL: go.mod replaces $EXTAPI_MOD with ./$EXTAPI_DIR" >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: go.mod builds against ./$EXTAPI_DIR"
+  fi
+  golden_sums="$EXTAPI_DIR/testdata/golden/SHA256SUMS"
+  if [ -n "${baseline_sha:-}" ] && [ "$baseline_sha" != "$(git rev-parse HEAD 2>/dev/null)" ] \
+    && git cat-file -e "$baseline_sha:$golden_sums" 2>/dev/null; then
+    golden_lost=$(git show "$baseline_sha:$golden_sums" | while IFS= read -r line; do
+      grep -qxF -- "$line" "$golden_sums" 2>/dev/null || printf '%s\n' "$line"
+    done)
+    if [ -n "$golden_lost" ]; then
+      echo "  FAIL: released wire goldens are never edited or removed (add a new version instead)" >&2
+      echo "$golden_lost" | sed 's/^/    /' >&2
+      failures=$((failures + 1))
+    else
+      echo "  ok: released wire goldens unchanged (baseline $baseline_sha)"
+    fi
+  else
+    echo "  NOTE: no baseline golden list to compare; skipping the append-only check"
+  fi
+fi
+
+# --- console overlays --------------------------------------------------------
+# Console overlay modules (ui/src/extensions/<id>/) belong to the separately
+# built console: they are copied in, git-ignored, and left out of the UI
+# budgets, which is only sound while none of them is committed here.
+echo "console overlays:"
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  tracked_overlays=$(git ls-files -- 'ui/src/extensions/*/*' 2>/dev/null || true)
+  if [ -n "$tracked_overlays" ]; then
+    echo "  FAIL: no tracked file under ui/src/extensions/<id>/ (console overlays are copied in, not committed)" >&2
+    echo "$tracked_overlays" | sed 's/^/    /' >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: no tracked console overlay under ui/src/extensions/"
+  fi
+fi
 
 # --- verdict ---------------------------------------------------------------
 if [ "$failures" -gt 0 ]; then

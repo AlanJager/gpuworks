@@ -39,7 +39,7 @@ func TestGPUCapacityFactMatchesNodeAndFleetWire(t *testing.T) {
 				if len(inventory.physical.Items) != 1 || len(node.GPUs) != 1 {
 					t.Fatal("missing card")
 				}
-				for _, view := range []any{nodeDTO(node, false).GPUs[0], inventory.physical.Items[0]} {
+				for _, view := range []any{nodeDTO(node, false, store.NodeHold{}).GPUs[0], inventory.physical.Items[0]} {
 					data, err := json.Marshal(view)
 					if err != nil {
 						t.Fatal(err)

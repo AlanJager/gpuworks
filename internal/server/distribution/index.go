@@ -46,8 +46,12 @@ const IndexSchema = 1
 
 // Index is one channel's signed payload: what the channel currently offers.
 type Index struct {
-	Schema          int             `json:"schema"`
-	Channel         string          `json:"channel"`
+	Schema  int    `json:"schema"`
+	Channel string `json:"channel"`
+	// Edition is the edition the channel is published for; absent is
+	// community. It is part of the signed payload, so a source cannot hand
+	// one edition's release to another (ParseIndexFor).
+	Edition         string          `json:"edition,omitempty"`
 	PublishedAt     time.Time       `json:"published_at"`
 	Server          ServerRelease   `json:"server"`
 	PreviousServers []ServerRelease `json:"previous_servers,omitempty"`
@@ -106,9 +110,17 @@ var (
 func ValidChannel(name string) bool { return channelPattern.MatchString(name) }
 
 // ParseIndex decodes and validates a verified payload for the channel that was
-// asked for. A payload naming another channel is refused: a source must not be
-// able to answer a release request with a nightly build.
+// asked for, as a community index (ParseIndexFor with no edition).
 func ParseIndex(payload []byte, channel string) (Index, error) {
+	return ParseIndexFor(payload, channel, "")
+}
+
+// ParseIndexFor decodes and validates a verified payload for the channel and
+// edition that were asked for. A payload naming another channel is refused: a
+// source must not be able to answer a release request with a nightly build.
+// So is one naming another edition, which would replace a server with another
+// edition's build; an empty edition on either side is community.
+func ParseIndexFor(payload []byte, channel, edition string) (Index, error) {
 	var index Index
 	if err := json.Unmarshal(payload, &index); err != nil {
 		return Index{}, fmt.Errorf("decode index: %w", err)
@@ -118,6 +130,9 @@ func ParseIndex(payload []byte, channel string) (Index, error) {
 	}
 	if index.Channel != channel {
 		return Index{}, fmt.Errorf("index is for channel %q, not %q", index.Channel, channel)
+	}
+	if !SameEdition(index.Edition, edition) {
+		return Index{}, fmt.Errorf("index is for the %s edition, not %s", NormalizeEdition(index.Edition), NormalizeEdition(edition))
 	}
 	return index, nil
 }
@@ -147,6 +162,9 @@ func (x Index) Validate() error {
 	}
 	if !ValidChannel(x.Channel) {
 		return fmt.Errorf("index channel %q is invalid", x.Channel)
+	}
+	if !ValidEdition(x.Edition) {
+		return fmt.Errorf("index edition %q is invalid", x.Edition)
 	}
 	seen := make(map[string]bool)
 	for _, release := range x.Servers() {

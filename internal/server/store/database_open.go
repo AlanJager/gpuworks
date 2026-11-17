@@ -17,8 +17,28 @@ import (
 // Open connects to SQLite (pure-Go driver) and runs migrations.
 // dsn "" or ":memory:" opens an in-memory database (used by tests).
 // Files are owner-only unless the caller supplies a verified service-group policy.
-func Open(dsn string, b *bus.Bus, policies ...securefile.Policy) (result *Store, err error) {
+func Open(dsn string, b *bus.Bus, policies ...securefile.Policy) (*Store, error) {
+	return OpenWith(dsn, b, OpenOptions{Policies: policies})
+}
+
+// OpenOptions are what OpenWith takes beyond the database and the bus.
+type OpenOptions struct {
+	// Policies are the file policies Open takes.
+	Policies []securefile.Policy
+	// Extensions are the schemas of the extensions a separately built server
+	// adds. They run after the core migrations, each step in its own
+	// transaction with its marker; ExtensionTables then hands out their
+	// tables. None leaves the database exactly as Open does.
+	Extensions []MigrationSet
+}
+
+// OpenWith is Open with extension schemas.
+func OpenWith(dsn string, b *bus.Bus, o OpenOptions) (result *Store, err error) {
 	defer func() { err = sqliteutil.WrapOpenError(dsn, err) }()
+	if err := validateMigrationSets(o.Extensions); err != nil {
+		return nil, err
+	}
+	policies := o.Policies
 	inMemory := isInMemoryDSN(dsn)
 	s := &Store{Bus: b}
 	defer func() {
@@ -93,6 +113,10 @@ func Open(dsn string, b *bus.Bus, policies ...securefile.Policy) (result *Store,
 	if err := migrate(); err != nil {
 		return nil, err
 	}
+	if err := migrateNamespaces(s.db, o.Extensions); err != nil {
+		return nil, err
+	}
+	s.extensions = append([]MigrationSet(nil), o.Extensions...)
 	if err := verifyDatabase(dsn, policies...); err != nil {
 		return nil, err
 	}

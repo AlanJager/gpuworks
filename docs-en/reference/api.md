@@ -359,6 +359,8 @@ The report excludes SSH passwords, private keys, node tokens, complete configura
   `install_command` returns a command for the [offline package](../how-to/connect-nodes.md#离线包): `sh gpuworks-agent.run --token '…' --connect-mode server_dial --listen '…'`.
 - **Listen address**: `server_dial_listen` defaults to `0.0.0.0:18800`; it must be a valid `host:port` / `:port` with a port between 1 and 65535; otherwise, returns 400 `SERVER_DIAL_LISTEN_INVALID` (`address`).
 
+**Enrollment limits**: the server can register node enrollment guards (for extension modules, such as a site's node cap). When a guard refuses a new node, `POST /api/v1/nodes`, `POST /api/v1/nodes/install`, `POST /api/v1/providers/{id}/install` and `POST /api/v1/providers/{id}/instances` answer 403 with the guard's `code` and `params` (`NODE_ENROLLMENT_REFUSED` when the guard gives no code) and create no node; SSH installs, cloud instance installs and instance rentals check before they start. A refused Kubernetes agent gets 403 `KUBE_ENROLL_REFUSED` from `/api/v1/kube/enroll` (`params.reason: enrollment_refused`, `params.refusal_code` the guard's code, the guard's other params alongside), which the agent treats as final; a node that enrolled before is never refused when it enrolls again. An `apply` of a cluster entry no node has joined through yet checks first as well. With no guard registered these endpoints behave as before.
+
 ### SSH Checks and Installation
 
 `POST /api/v1/nodes/precheck`, `POST /api/v1/nodes/install`, and `PUT /api/v1/nodes/{uuid}/ssh` share these SSH authentication fields:
@@ -408,6 +410,8 @@ The three values for `PUT /api/v1/nodes/{uuid}/scheduling` have the following ef
 A node's `scheduling_by` says who set its current state: `operator` (set through this endpoint) or `platform` (the platform stopped scheduling on its own); a schedulable node, or one stopped before an upgrade, has no such field.
 The platform lifts only the stops it set. When `scheduling_by` is `platform`, `cordon_reason` gives the current reason: `runtime_gpu_blocked` (the runtime cannot give containers their accelerators), `card_needs_host_reboot` (a card needs a host reboot or power cycle to recover), or `kube_unschedulable` (Kubernetes has the node cordoned; the platform lifts its stop once Kubernetes uncordons it).
 After the platform stops scheduling, setting `schedulable` through this endpoint takes effect at once; while the reason remains, the next report stops it again.
+An extension module can also hold a node out of scheduling (an extension-held cordon): the node's next report (or the extension applying it at once) sets it `cordoned` with `scheduling_by` naming the extension's source; it is never set `draining`, and replicas already there keep serving. An extension-held cordon outranks the platform's and yields to an operator's: the platform's reason clearing does not lift it; while it is held, setting `schedulable` answers 409 with the extension's `code` and `params` (`NODE_SCHEDULING_HELD` when it gives no code), and setting `cordoned` or `draining` works as usual. Once the extension lets go, the node falls back to the platform's stop while the platform's reason remains, and is schedulable otherwise.
+A node's `uncordon` says what setting `schedulable` does now, as the server decides it: `allowed`; `confirm` (the platform has a reason to stop scheduling and its next report stops it again); `refused` (an extension holds the node, and `cordon_message` is the extension's `{code, params, message}`).
 
 `PATCH /api/v1/nodes/{uuid}/runtime` sets the node's container runtime preference `{runtime: auto|docker|nerdctl|udocker}`; it is saved after the agent accepts it. The node's `runtime_choices` lists the values this node may be set to, in display order: a Mac has only `auto`, every other node all four; **a Kubernetes node has no such field** (its instances are pods of the cluster, so there is no runtime to choose), and setting one returns 409 `NODE_RUNTIME_KUBE_NODE`. An invalid value returns 400 `NODE_RUNTIME_INVALID`.
 
@@ -1754,6 +1758,7 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 | POST | `/api/v1/experience/password` | Generates a new password for the running environment; sessions of the old one end. 409 `EXPERIENCE_FAILED` if it is not running | JWT(admin) |
 | GET | `/api/v1/notices` | Header notification bell `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`: publisher-signed notices applicable to this installation (`kind` is `security` / `release` / `event`; `title`/`body` provide plain text by language). Sorted by urgency, then by time; `read` and `unread` are calculated per caller | JWT |
 | POST | `/api/v1/notices/read` | Mark notices as read with `{"ids": [...]}` (1–128 IDs, each ≤64 bytes; otherwise, 400 `NOTICE_IDS_INVALID`). Records only the caller's own read status; repeated marking has no side effects. Returns 204 | JWT |
+| GET | `/api/v1/console/manifest` | What the console shell shows beyond its own pages, `{edition, features, nav, banners}`. The server decides every value and the console only renders it; see [Console manifest and extension routes](#console-manifest-and-extension-routes). A community server always returns `{"edition":"community","features":[],"nav":[],"banners":[]}` | JWT |
 | GET | `/api/v1/updates/server/versions` | Supply the saved `channel` to list verified server versions in publication order, the local platform, Git commits (when available), package checksums and installability reasons. The running channel omits earlier builds. A different channel includes its published history. The `latest` flag identifies the channel head. | JWT(admin) |
 | GET | `/api/v1/updates/server/result` | Supply the upgrade `attempt` or the accepted response's `backup` to check for download, restart, failure or confirmed rollback. Returns `unknown` without matching evidence. | JWT(admin) |
 | POST | `/api/v1/updates/server` | Optionally pin a package with `{channel,version,sha256,attempt}`. An empty selection uses the channel head. Download a release package, back up and replace the server, and restart. On acceptance, returns 202 `{from,to,backup}`; confirms or rolls back on the next startup. See [Server Upgrade Restrictions](#服务端升级限制) | JWT(admin) |
@@ -2242,10 +2247,29 @@ The following conventions maintain the endpoint inventory; they are not prerequi
   `ProxyV1`, `ProxyModels`, and `PlaygroundV1` handlers for `/v1/*`, `/v1/models`, and `/api/v1/playground/v1/*`. Route inventory tests use zero-value `Deps{}`, so these three gateway routes
   and the SPA fallback `/*` are excluded from their assertions, but are always mounted in production.
 
+### Console manifest and extension routes
+
+A separately built server can mount its own management routes under `/api/v1/x/<name>/` (`api.Deps.Extensions`). The community server mounts no extension routes, and its route inventory is exactly the same as with no extensions.
+
+- **Namespace and collisions**: an extension name must match `[a-z][a-z0-9_]{1,31}`; a route (relative to `/api/v1`) must be `/x/<name>` or start with `/x/<name>/`. The core registers no route under `/api/v1/x/`, so an extension name may equal a core path segment (such as `nodes`), and `/api/v1/nodes` stays the core route. `Router` panics at startup on a route outside its namespace or a method and path registered twice.
+- **Authentication**: extension routes use the same management authentication as core routes (including the session's origin check and renewal). Each declares one of three levels: `read` (any signed-in user and platform token; a read token only for GET/HEAD/OPTIONS), `admin` (also requires an administrator, otherwise `403 ADMINISTRATOR_REQUIRED`), or `admin-session` (an administrator with a login session only; a platform token gets `403 PLATFORM_TOKEN_NOT_ALLOWED`).
+- **Feature availability**: every extension route either belongs to one feature or is explicitly marked as a community route, never both. A feature's availability is `full`, `read_only`, `locked`, or `hidden`, enforced on the server: under `read_only` only reads pass (plus routes declared writable while read-only) and writes get `403 FEATURE_READ_ONLY`; under `locked` the route returns `403 FEATURE_UNAVAILABLE`; under `hidden` it returns `404 FEATURE_UNAVAILABLE`. When nothing answers for availability, the feature counts as unavailable and returns `FEATURE_PROVIDER_ABSENT`. The error's `params.feature` is the feature name.
+- **AI assistant and MCP**: extension GET routes are closed to the AI assistant and MCP by default; only explicitly marked routes appear in the readable route list and can be read.
+- **Route inventory**: `api.RouteInventory` lists one route per line; an extension route adds `[access=…] [action=…] [feature=…]` (`[community]` for a community route), and an extension route that neither belongs to a feature nor is marked community fails the inventory.
+
+Fields of `GET /api/v1/console/manifest`:
+
+| Field | Description |
+|---|---|
+| `edition` | Build name, for display only |
+| `features[]` | Current availability of each declared feature, sorted by `key`: `{key, access, presentation, link?, message?, limits}`. `access` is `full` / `read_only` / `locked` / `hidden`; `presentation` is `promote` (shown as locked with `link` when unavailable) or `hidden` (hidden entirely when unavailable, so locked is returned as `hidden`); `message` is a product message `{code, params?, message}` explaining the current availability; `limits` is `[{dim, max}]`, where a `null` `max` means unlimited |
+| `nav[]` | Menu entries extensions add to the console `{id, group, label_key, icon?, route, feature?}`; entries whose feature is `hidden` are not returned |
+| `banners[]` | Notices shown at the top of every page `{id, severity, message, link?}`; `severity` is `info` / `warning` / `danger` (any other value is returned as `info`), and `message` is a product message `{code, params?, message}` |
+
 ### Whether GPU capacity is known
 
 Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_capacity_known`. It is derived from inventory capacity and not persisted. When false, `memory_total_bytes` must not render as a known zero-GB capacity. Measured zero usage remains a valid metric. Only the compatibility boundary for old APIs without the field uses the legacy zero-capacity sentinel.
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 69820850dac3a62fc794b5826de790573ecda9958e97a3f5054e089b7ccb2c20 -->
+<!-- translation-source-sha256: 51eae070afdbfbf10b9e7413c2025e939eaa1e932c1d852d7ed58442263902c9 -->

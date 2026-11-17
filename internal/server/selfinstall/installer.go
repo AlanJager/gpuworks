@@ -17,6 +17,8 @@ type Installer struct {
 	io     *IO
 	// self is the executable to install; empty means the running one.
 	self string
+	// hooks are the build's install steps (see InstallHook).
+	hooks []InstallHook
 }
 
 // New builds an installer for a layout.
@@ -60,6 +62,9 @@ func (i *Installer) unitConfig(serviceUser, mode string) UnitConfig {
 	cfg.StderrLog = i.layout.StderrLog()
 	if mode == ModeSystemd && serviceUser != "" && serviceUser != "root" {
 		cfg.ServiceGroup = DefaultCredentialGroup
+	}
+	if mode == ModeSystemd {
+		cfg.SupplementaryGroups = i.supplementaryGroups()
 	}
 	if mode == ModeNohup {
 		// The detached process runs as whoever starts it.

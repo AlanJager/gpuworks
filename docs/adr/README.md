@@ -73,5 +73,7 @@
 | [0067](0067-runtime-outcomes-as-codes.md) | 运行期失败与检查结果用码加参数表达（五个检查状态、UPPER_SNAKE 码、外部输出只在边界按文本识别），英文原文只作 fallback | 2026-11-14 | 已接受；推广 API 层的 ProductError |
 | [0068](0068-partitions-share-cards-with-foreign-processes-by-memory.md) | 带显存上限的分区按剩余显存与平台外进程共用一张卡（外部进程显存已知、留 5%/至少 4 GiB 余量；agent 在实例上卡后继续上报原有外部进程，按 `partition_safety_protocol` 2 级把关；整卡与会休眠的部署照旧拒绝） | 2026-11-16 | 已接受；补充 0060 |
 | [0069](0069-kv-offload-backends.md) | KV 卸载后端是编译进来、按 (引擎, id) 划分的描述行：调用方只选 id，`kv_offload_backend` 是选择键（只在有可选行时发布），vLLM 的 `--kv-transfer-config` 只在一个组装点合成，PD 按 connector 判定 | 2026-11-16 | 已接受；修订 0021 |
+| [0070](0070-extension-tiers-and-edition-boundary.md) | 扩展分四层；单独构建的 server 只经 `cli.Options` 与 `app.Host` 组合，不拿 Store；开源代码只说可用性、不按版本名分支；扩展迁移记在 `namespace_migrations`，`server.yaml` 保留 `extensions:` | 2026-11-16 | 已接受；补充 0040、0067；决策 1、10 被 0071 取代 |
+| [0071](0071-installable-extensions.md) | 可安装扩展：通用核心 + 签名插件包。免费由代码决定、热路径判断都在核心、插件经继承 fd 上的 `gwx/1` 推送带类型的表；信任链、掉线宽限与 extclock、本地管理员兜底；扩展路由挂在 `/api/v1/x/<名>/` | 2026-11-17 | 已接受；部分取代 0070；路由前缀已实现，插件宿主尚未实现 |
 
 说明：0012–0014 原分别与 0004、0004、0006 撞号，2026-09-03 整理时按创建顺序重新编号；历史提交信息与 MR 描述中的旧编号不再准确。原 0024（节点网络对象）同理，因与数据面 lane 的 0024 撞号，2026-09-30 改为 0030；此前引用「ADR 0024」指网络对象的文字已随之更新，`CLAUDE.md` 与 `todo.md` 中的「ADR 0024」指数据面 lane。

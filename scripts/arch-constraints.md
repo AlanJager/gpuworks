@@ -102,7 +102,7 @@ grep -rnE "'vllm'|\"vllm\"|'sglang'|\"sglang\"" ui/src --include='*.ts' --includ
   | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | grep -c .
 ```
 
-排除：`*.test.*`；`ui/src/i18n/**`（引擎名作为展示文案出现在 locale 里是合理的）。
+排除：`*.test.*`；`ui/src/i18n/**`（引擎名作为展示文案出现在 locale 里是合理的）；控制台覆盖层 `ui/src/extensions/<id>/`（见 ee_ui_internal_imports）。
 
 ### ui_antd_import_files（迁移基线 349，2026-11-09）
 
@@ -114,7 +114,7 @@ grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src --include='*.ts' --include='*.tsx' 
   | grep -v '\.test\.' | grep -c .
 ```
 
-排除：`*.test.*`。降到 0 时脚本额外提示加 `ui_raw_color` / `ui_raw_radius` 规则。
+排除：`*.test.*`；控制台覆盖层 `ui/src/extensions/<id>/`（见 ee_ui_internal_imports）。降到 0 时脚本额外提示加 `ui_raw_color` / `ui_raw_radius` 规则。
 
 文件数只能拦"新文件引入 antd"，拦不住已有文件里继续加 antd 用法；逐文件的棘轮由下面的
 `ui/antd-inventory.json` 负责。
@@ -130,6 +130,27 @@ node scripts/ui_copy_audit.mjs long     # 或 caveat；list 逐条列出
 ```
 
 排除：无。超长说明改写或移进文档；"不包含模型文件"这类事实不算免责，正则不收。
+
+### ee_ui_internal_imports（初值 0，2026-11-16）
+
+意图：控制台覆盖层模块（单独构建的控制台复制进 `ui/src/extensions/<id>/` 的代码，本仓库 git 忽略）只通过
+`ui/src/extensions/sdk.ts` 使用控制台，这样控制台内部可以自由重构而不破坏覆盖层；`sdk.ts` 的导出清单由
+`ui/tests/consoleExtensionsSdk.test.ts` 钉住，只增不改。本项数覆盖层里越过 SDK 的 import。
+
+```sh
+node scripts/ui_overlay_imports.mjs | grep -c .   # 脚本逐条列出 file:line: specifier，预算取行数
+```
+
+计入：`ui/src/extensions/<id>/` 下任一 `.ts/.tsx/.js/.jsx/.mjs/.cjs` 文件（含测试）的静态 import、re-export、
+副作用 import、`import()` 与 `require()`，只要目标既不是 `sdk.ts`（相对路径或 `@/extensions/sdk`），也不在该覆盖层
+自己的目录里。npm 包同样计入（React、i18n、路由都经 SDK 再导出），整行注释不计入。社区树里没有覆盖层，恒为 0；
+单独构建的控制台在自己的 CI 里把覆盖层复制进来后跑同一个脚本。
+
+盲区（归 review）：拼接出来的动态 import 路径、写在字符串里的 `from "x"` 文本，正则分不清。
+
+同一组覆盖层目录被其他 UI 测量排除（`check_architecture.sh` 的 `drop_ui_overlays` 与 `ui_antd_inventory.mjs` 的
+范围），这只在覆盖层从不提交时成立，所以脚本的「console overlays」一节硬性要求 `git ls-files 'ui/src/extensions/*/*'`
+为空。
 
 ### ui_untested_shared_files（基线 0，2026-11-11）
 
@@ -187,7 +208,7 @@ grep -rlE "['\"]@ant-design/icons(/[^'\"]*)?['\"]" ui/src --include='*.ts' --inc
   | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | grep -c .
 ```
 
-排除：`*.test.*`；`ui/src/components/ui/`（Zeron 托管代码）。
+排除：`*.test.*`；`ui/src/components/ui/`（Zeron 托管代码）；控制台覆盖层 `ui/src/extensions/<id>/`。
 
 ### ui_bundle_gzip_kb（软预算 warn，初值 2450，2026-11-09）
 
@@ -305,7 +326,8 @@ go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
 ### store_db_accessor_callers（初值 0，2026-11-14）
 
 意图：store 之外的生产代码不拿原始 `*gorm.DB`。`(*store.Store).DB()` 只留给测试；
-其他包经 `Store` 的方法读写，ZStack Cloud 的主机与租约台账经 `(*store.Store).CloudLedger()`。
+其他包经 `Store` 的方法读写，ZStack Cloud 的主机与租约台账经 `(*store.Store).CloudLedger()`，
+单独构建的服务器所加模块的表经 `(*store.Store).ExtensionTables(namespace)`（只限该命名空间前缀的表）。
 
 ```sh
 grep -rnE '\.DB\(\)' internal cmd pkg scripts test --include='*.go' \
@@ -787,6 +809,25 @@ find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
 盲区（归 review）：对 JSON 列做 `LIKE '%"key":"v"%'` 的文本匹配与普通的 `LIKE` 查询在正则上无法区分，
 本项不数它；评审时看到对 JSON 列的 `LIKE` / `=` / `GLOB` 比较，按 ADR 0032 第 4 条改成在领域包里解码。
 
+### edition_branches（初值 0，2026-11-16）
+
+意图：开源代码只**显示**版本类型（edition），不按它分支。不同版本在行为上的差异由单独构建的服务端通过
+扩展点提供，开源树里不出现「如果是某个版本就……」的判断。
+
+```sh
+find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort \
+  | xargs grep -nE 'version\.Edition[[:space:]]*(==|!=)|(==|!=)[[:space:]]*version\.Edition|switch[[:space:]]+version\.Edition' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c .
+```
+
+脚本里这段是 `edition_branch_hits()`。匹配：与 `version.Edition` 的 `==` / `!=` 比较（两种操作数顺序）与
+`switch version.Edition`（一个 switch 计一处，其下每个 `case` 都在内）。整行注释不计入。
+
+排除：`*_test.go`（测试可以断言版本字符串）。初值 0：引入时 `version.Edition` 尚不存在。
+
+盲区（归 review）：先把 `version.Edition` 赋给局部变量再比较、或经函数包装后比较，正则看不到；
+评审时看到按版本类型取值的分支，一律改成扩展点。
+
 ---
 
 ### kv_backend_id_literals（初值 0，2026-11-16）
@@ -825,6 +866,19 @@ find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
   与 `internal/server/pdmode`（它只是一张后端描述表，渲染与门禁在 `internal/server/deploy`）；
 - `internal/server/distribution`（发布通道客户端，CLI 升级与 api 共用）不得 import 本仓库任何包，
   免得 `selfinstall` 经由它依赖到 server 其余部分（ADR 0040）。
+
+**公开线格式模块**：`pkg/extapi`（插件与 server 之间的线格式）是自带 `go.mod` 的嵌套模块，根目录的
+`go list ./...` 进不去，所以脚本的「public wire module」一节单独硬性检查（违反即失败，不是预算）：
+
+- 在 `pkg/extapi` 里 `go list -e -deps -test ./...` 列出的非标准库包只有它自己（含测试）：只用标准库；
+- `pkg/extapi/go.mod` 没有 `require`/`replace`，`go` 行与根 `go.mod` 相同；
+- 根 `go.mod` 有 `replace gpuworks.ai/gpuworks/pkg/extapi => ./pkg/extapi`；
+- 黄金文件清单 `pkg/extapi/testdata/golden/SHA256SUMS` 只增不改：基线提交（与预算比较同一个基线）里的每一行
+  必须原样留在当前清单里；解析不出基线时打印 NOTE 跳过。已发布的黄金文件改了或删了，就是改了冻结的线格式，
+  应当新增版本目录。
+
+`make test-extapi`（`make test-unit`、两条 CI 流水线都会调用）负责它的 gofmt、vet 与测试；`make vet` 也
+vet 这个模块。
 
 **当前豁免**：`inferenceapi` 与 `partitioncap` 今天确实 import 了 store（计划 B7、B6），
 计划在 store 边界阶段切断。脚本用 `LEAF_STORE_WAIVED` 按包名豁免并打印 `WAIVED`，

@@ -1,0 +1,136 @@
+# ADR 0071: Installable Extensions: A General Core Plus Signed Plugin Packages
+
+Date: 2026-11-17 · Status: Accepted; supersedes [ADR 0070](0070-extension-tiers-and-edition-boundary.md) in part (decisions 1 and 10 are superseded; the rest are kept and extended here). Most of what this page decides is not implemented yet; see "Implementation status" for what is.
+
+Terminology follows `CONTEXT.md`: **plugin package**, **publisher certificate**, **pushed table**, **authority**, **down grace**, **restriction override**, **extclock**, **extension module**, **feature key**, **availability**.
+
+## Context
+
+ADR 0070 expected another Go module to compile extra capabilities into the server and produce a separately built binary. Each deployment wants a different set of capabilities (custom roles, identity integrations, audit export, KMS, console branding, site-specific availability rules, ...). One build per combination means several binaries, release indexes split by edition name, and an upgrade path that "changes edition"; a customer also cannot install just the few capabilities it wants.
+
+Several constraints shape the answer together. Server and agent are static `CGO_ENABLED=0` binaries and both Linux and macOS are supported, so there is no Go `plugin` and no dlopen. The scale target is 1000 nodes / 3000 instances / about 2k gateway QPS, so no hot path can wait on an out-of-process call. The database has a single writer connection. Many sites are offline and do not upgrade for years. When a plugin is down, its last restrictions must keep being enforced, running work must not stop, and the local administrator must always be able to log in.
+
+## Decision
+
+1. **Tiers (supersedes ADR 0070 decision 1).**
+
+   | Tier | Runs in | Written by | Carries |
+   |---|---|---|---|
+   | T0 core | server, agent | open source | Every general capability and every enforcement point (route permission, data scope, quota and budget counters, availability, node caps, scheduling holds, placement filter), the generic evaluators, the plugin host, HA. Free by definition |
+   | T1 built-in module | inside the server process | open source only | Core-internal composition through `app.Module` / `app.Host`; the plugin host is itself a built-in module. `cli.Options.Extensions` stays for tests and forks and is not a distribution path for vendors or third parties |
+   | T2 package server part | a child process of the server | any trusted publisher | Decisions that need I/O, state, workflows or integrations: availability authorities, custom roles, identity integrations, billing, audit export, KMS, branding, quota and pool editors, cloud provider drivers |
+   | T3 package node part | core workloads and jobs on nodes | any trusted publisher | Products that use GPUs (fine-tuning, notebooks, evaluation, third-party apps); no plugin code runs in the agent |
+   | T4 policy part | inside the server (WASM) | — | Only the name and interfaces are reserved, nothing is built; when it is built it will never run inside the writer transaction |
+
+   One plugin package may carry T2, T3 and a UI together.
+
+2. **Code decides what is free.** Whatever is compiled into the open-source server is free. The framework holds mechanisms only (availability, caps, holds, counters, roles, scopes, pools), names no feature and keeps no list of gated features; feature-key literals in core code are held at 0 by a ratchet budget, beside `edition_branches = 0`. Whether a feature key is gated is declared by the plugin package in its own manifest (`gate`): `none` is always full, `self` is answered by the declaring package itself, and `authority` is answered only by the authority package named in the publisher certificate; with no authority installed the key is locked (`FEATURE_PROVIDER_ABSENT`), or hidden if it is declared concealed. The namespace lives inside the key: the project publisher uses bare keys and third parties use `acme.x` or `acme.x.y`, which fits the existing three-segment `featuregate.Key` grammar, so `featuregate.Source` is unchanged.
+
+3. **Every hot-path decision point is in the core.** Decisions taken per request, insert, status report, claim or placement are core evaluators answering from tables plugins push: one atomic load plus O(1) lookups, zero allocations on the allow path. A feature that needs a new kind of decision point gets a new kind of core table, and that table must also be useful to the community server; the table catalogue is the core's public extension API and grows only with core releases. There are only two synchronous plugin calls: password verification at login (LDAP), and the first credential decrypt after boot (KMS unwrapping the data key). Neither is on a request, insert, report, claim or placement path.
+
+4. **One package format.** A plugin package `.gwpkg` is a signed tar with up to four optional parts: a server process (one static executable per os/arch), node components (services and GPU job templates run as core workloads), a UI bundle, and the plugin's own storage migrations. The manifest is decoded strictly at a schema the core knows, lists the size and SHA-256 of every member file, and lists every code the package can emit, each with en/zh text (ADR 0067). Cloud provider drivers and third-party apps use the same format.
+
+5. **Trust chain.** Two offline project root keys are compiled into the core and sign **publisher certificates**. A certificate states what it grants: the package id prefixes it may sign, the feature namespaces it may declare, the one authority package for that namespace (`authority_id`), the privileged roles it may claim, the privileged tables it may push, whether it may ship same-origin UI modules, and the minimum isolation level.
+   - A certificate's `not_after` limits only the signing window: packages signed inside the window stay valid forever, and installed packages never expire.
+   - Root-signed trust updates (adding or retiring roots, revocations, minimum versions) can be imported offline and are protected against replay by a serial.
+   - Third-party publishers are trusted by the host's root in `server.yaml`. By default they get no privileged roles and no privileged tables, iframe-only UI, and Landlock is required. A host-trusted publisher may be an authority only through an explicit root edit of `server.yaml`, only for its own namespace, and never for bare keys.
+   - Revoked packages are refused at install. An installed package is not stopped automatically because of a revocation and its grants are not released; a banner tells the administrator, who decides. The one exception is an authority package revoked by exact digest: it is not started at boot and counts as down (grace first, then clamp).
+   - Authority packages have an anti-rollback minimum version: a version becomes the floor after it has run healthily for 24 hours, and a root-signed trust update can also raise it. Install, upgrade and rollback below the floor are refused.
+   - Development mode (`serve --plugin-dev`) loads unsigned packages behind a permanent banner and is refused when the data directory carries the production marker.
+   - Verification fails closed, and nothing is unpacked into place until every step passes. It runs at install, at every boot and before every spawn.
+
+6. **Process model.** A plugin is a child process of the server launched through the self-re-exec trampoline `gpuworks plugin-exec`. Before `execve` the trampoline applies `no_new_privs`, Landlock, rlimits, the cgroup and Pdeathsig (with the spawning goroutine locked to its OS thread), so the host enforces the sandbox instead of trusting the plugin to apply it. By default the plugin runs as the server's user; a per-plugin user is later hardening. On hosts without Landlock (Kylin V10 and UOS 20 on 4.19 kernels, macOS), third-party packages are refused by default unless their certificate says `min_isolation: none` or root allows them per package in `server.yaml`, and the console marks them "signature-only". Plugins never run as root; root-level host steps come only from the closed `host_setup` vocabulary, run by the core's `gpuworks install`, and never from a script.
+
+7. **Protocol `gwx/1`, with a frozen major version.** Two inherited socketpairs each carry cleartext HTTP/2: on fd 3 the plugin serves lifecycle calls, service calls and proxied routes, and on fd 4 the core serves the host API. The fd is the identity: there is no socket path another process could dial or squat, and a push carries no identity field that could be forged. Errors are ADR 0067 codes with parameters.
+   - Major version 1 is frozen: the envelope, handshake, error shape and push envelope never change. A new major needs a new ADR, and a core that supports major 2 keeps major 1 for at least three years.
+   - Growth happens only through capabilities: each capability is versioned on its own, and a version once shipped is never removed within major 1; old versions are small adapters into the core's canonical form.
+   - Rows decode strictly: any field that changes an enforcement result is a new schema version, so an old core never silently drops a restriction. Optional display-only data goes in a designated `display` sub-object, which old cores may drop.
+   - Compatibility is decided statically at install from the signed manifest (the manifest's `Requires` must be a subset of the capabilities this core offers), so an offline administrator sees the verdict on upload.
+
+8. **Pushed tables.** Plugins stay off the hot path and only push their decisions as typed tables; the core validates and persists them, then swaps one snapshot pointer atomically.
+   - Four classes: Restrict (combined by intersection, any approved plugin may push, never lapses), Grant (accepts rows only from the namespace's authority, identified by its fd; clamps when the plugin has been down longer than the grace), Display (banners and branding, never used for enforcement), and Opaque (attestations, only stored and relayed).
+   - Merges only tighten: holds are a union, caps, quotas and capacity take the minimum, admission holds are a union, allowances require every owner to admit, constraints are a union; grants are exclusive per key, or a union of role keys where a clash is refused. Installing one plugin can never loosen another plugin's restriction.
+   - Writes: each tick (at most 1 Hz) puts every owner's pending pushes in one writer transaction, and large tables write only core-computed diffs; the snapshot is swapped only after persistence succeeds, so a tick touching several tables is never seen half-applied.
+   - Persistence uses typed tables: one table per small kind with a `body` column holding exactly one named Go type (the core's canonical form, not the plugin's wire schema), and typed rows for large kinds (ADR 0032). Rows reference core ids, never names.
+   - At boot every pushed table is read and applied before the router is built, so after a core restart the last state is enforced before any plugin process exists. For a package that is installed but no longer verifies (corrupted file, revoked by digest, missing executable), Restrict and Display rows stay enforced and only its Grant rows are dropped: deleting or corrupting a package file never loosens a restriction; only an audited uninstall or override does.
+
+9. **Down, grace, timelines and extclock.**
+   - While a plugin is down (any state other than `running`/`degraded`, disabled included), its own routes answer 503 at once; restrictions stay as pushed, indefinitely; grants clamp after the **down grace** to `min(current, down_access)` (read-only by default) with the code `PLUGIN_UNAVAILABLE`.
+   - The owner pushes the grace with each table; the core bounds it to 60 seconds through 24 hours, with 1 hour when none is given; a site may only lower it (`plugins.policy.max_down_grace` in `server.yaml`). The start of the down period is persisted, so a restart never renews the grace; each boot has a one-time boot extension computed from the persisted start, which cannot be stacked.
+   - Timelines: rows may carry future steps (for example "full now; a grace notice at T1; read-only from T2"). The core arms one timer for the earliest next step across all snapshots and recombines and swaps when it fires; the hot path never compares times. Steps fire while the plugin is dead, so killing a plugin cannot extend an expiry.
+   - **extclock** = `max(wall clock, high-water mark)`: the high-water mark is persisted every minute and at shutdown and advances on the monotonic clock while running, so turning the wall clock back cannot revive a past step. An offline site whose clock jumped forward has two corrections: root runs `gpuworks plugin clock reset --to <time>` with the server stopped (audited at the next boot), or a package holding the root-granted `clock_authority` role submits a correction it has verified; a single correction is capped at 366 days, audited and shown as an administrator banner. The core owns only the monotone rule; the rest of trusted time (node clock consensus, hardware key clocks) stays in plugins.
+   - Disable equals down, not removal; only an uninstall (after an impact preview and an explicit confirmation) releases caps and holds.
+
+10. **Restriction override.** When a plugin is dead and one of its restrictions must be lifted, an administrator may override one entry of a Restrict table: it can only loosen (release one hold, raise one quota, refill one allowance), and it is persisted, audited and shown in the plugin's state. It is bound to the owner's table version; when the owner pushes the same entry again, the override is superseded (the owner is alive and has decided again) and the administrator is told. Offline, `gpuworks plugin pstate clear <id> <table>` releases a whole table. This is core code, and free.
+
+11. **Local administrator floor.** Users with `users.local_admin` set are exempt from pushed constraints, admission holds and pushed roles on the recovery surface (login, `reset-password`, `/api/v1/plugins/*`, overrides, and the settings needed to recover); evaluators check that flag first. The plugin management API is core routes: `platform_admin` plus an administrator session, never feature-gated, always audited, and closed to the AI assistant and MCP. With every plugin down, removed or crashlooping, the local administrator can still log in and manage plugins.
+
+12. **Extension route prefix `/api/v1/x/<name>/`.** Management routes of compiled modules and of plugin packages are all mounted under this subtree, and the core never registers a route under `/api/v1/x/`, so an extension name may equal a core path segment and never collides with a path the core adds later (which matters most for sites that rarely upgrade). Plugin routes are declared statically in the signed manifest (method, pattern, action, access level, a feature or an explicit ungated mark, whether readers may read it, and so on); "every route names a feature or is marked community" moves from a build-time rule to an install-time rule. The core authenticates, authorizes the action, applies the feature gate, the body cap and auditing, and only then forwards over fd 3; the plugin never sees a session, and the principal travels in headers the core signs.
+
+13. **Running work is never interrupted** (extends ADR 0070 decision 9): pushed state, plugin crashes, grace clamps, revocation and uninstall act only on new requests, writes and admissions, and never stop, evict or restart running workloads; their effects are limited to cordoning (never draining), refusing new writes and refusing new admissions.
+
+14. **KMS wraps only the credential data key.** The master key also derives the login session signing key and the install id, so it cannot be handed to a plugin or an external KMS; a KMS plugin only wraps and unwraps the data key used to encrypt credentials (one synchronous call at the first decrypt after boot). The KMS plugin's own secret settings are sealed with a separate key derived from the master key; otherwise it could never read its own credentials.
+
+15. **Guomi is not a plugin.** For now an external TLS terminator provides it; when a customer contract needs native TLCP or SM4 at rest, SM primitives go into the core (free). There is no plugin that takes over the listener on the public port.
+
+16. **A core downgrade only detects compatibility; there is no down-migration.** Pushed state and plugin data carry version markers; a core that finds a version newer than it knows refuses to start with a coded error naming the version it needs, and it never drops enforcement or rewrites data. A read-only `gpuworks plugin compat` checks before a downgrade. This matches what `namespace_migrations` already does with `ErrNamespaceTooNew`.
+
+17. **One server binary (supersedes ADR 0070 decision 10).** Official builds pass the zero value of `cli.Options`, and the binary is always the community build (the edition name is display only). Release indexes split by edition name, `--allow-edition-change`, `SERVER_EDITION_MISMATCH` and the "change edition" install path leave the official release path: they are not extended from now on and are removed in one cleanup once the first availability authority runs as a plugin. The other entries of `cli.Options` stay for forks.
+
+18. **Only HA belongs to the core.** Plugins run on the leader only, and plugin SQLite storage is replicated by core HA.
+
+19. **Other accepted product decisions.**
+    - The first plugin package is an availability authority, and later authority packages follow it as the reference: it picks its down grace within the bounds of decision 9 and declares its storage and HA mode in its manifest like any other package.
+    - Audit tamper evidence: the core keeps a hash chain at write time (about 1 µs per row); retention, signing and SIEM export belong to plugins.
+    - OEM: console branding only (the pushed `branding` table); rebranding the binary, installer and agent is a custom fork through `cli.Options`.
+    - No offline LDAP verifier cache: while LDAP is down, local users and existing sessions keep working.
+    - Offline sites get a separate release tarball carrying the official plugin packages, so the default download stays small; nothing is installed by default.
+    - The WASM policy part is reserved only, and built when its criteria are met (request-time logic no pushed table can express, most likely gateway content policy).
+
+20. **`server.yaml` gains a `plugins:` key** (extends ADR 0070 decision 7), owned by root: trusted publishers, site policy (which may only narrow), the unsandboxed allow list, the required isolation level, the maximum down grace, and the maximum cursor lag. Plugin packages never use `extensions:`, `namespace_migrations` or the `ee_` prefix; the pushed tables and the plugin management tables are core tables created by core migrations.
+
+21. **Contract tests.** Beside `internal/testenv/extmodule`, contract tests against a fake plugin process cover: no waiting and zero allocations on hot paths, no Store or plugin calls from hooks inside the writer transaction, a framework that names no feature, restrictions combined by intersection and grants only from the authority, enforcement from boot, running work unaffected, the local administrator floor, plugins importing only public packages, only trusted packages running, strict row decoding, capability versions never removed, and, with no package installed, a route inventory, console manifest and set of hooks byte-identical to the community server's.
+
+## Where each ADR 0070 decision goes
+
+| ADR 0070 decision | Fate |
+|---|---|
+| 1 four tiers, T1 carries per-request work | Superseded by decision 1: T1 is core-internal composition only, and per-request work is always a core evaluator |
+| 2 single entry, zero value is community | Kept for tests and forks; official builds pass the zero value, and `cli.Options` is not a vendor distribution path |
+| 3 open-source code speaks only of availability | Kept, with the vocabulary extended to caps, holds, counters, roles, scopes and pools; adds "code decides what is free, the framework names no feature, the package declares `gate`" (decision 2) |
+| 4 the server decides, the UI renders | Kept; adds the install-time route rule for plugin manifests and the `/api/v1/x/<name>/` prefix (decision 12) |
+| 5 extensions never get the Store | Kept for modules; plugins import only `pkg/pluginsdk` and `pkg/extapi`, work through `gwx/1` and their own storage, and never open the core database |
+| 6 extension migrations recorded separately | Kept for forks; plugins do not use them |
+| 7 `server.yaml` reserves `extensions:` | Kept; adds `plugins:` (decision 20) |
+| 8 hooks inside the writer transaction are pure | Kept verbatim; adds that hooks never request any recompute, and WASM never runs inside the writer transaction |
+| 9 running workloads are never interrupted | Kept and extended to grace clamps, revocation and uninstall (decision 13) |
+| 10 edition-scoped release and upgrade | Withdrawn for the official release path (decision 17) |
+| 11 contract tests against fake modules | Kept, with contract tests against a fake plugin process added (decision 21) |
+
+## Implementation status
+
+Implemented:
+
+- ADR 0070's module contract (`app.Module`, `app.Host`, the feature gate, node insert guards, scheduling holders and their reapply, `NodeFleet` and the node fleet topic, banners, the console manifest, extension migration namespaces) and the contract tests in `internal/testenv/extmodule`, as the core-internal contract and the base for the future plugin host.
+- The extension route prefix `/api/v1/x/<name>/` (the compiled-module part of decision 12): the core registers no route under `/api/v1/x/`, so extension names no longer need to avoid core path segments.
+- The wire formats (the format part of decisions 4, 5, 7, 8 and 16): the package manifest, publisher certificates, trust updates and revocation lists, the signature envelope, the `gwx/1` handshake, health and errors, the push envelope and the rows of the first five pushed tables, and the comparison of persisted version markers are frozen in the public, standard-library-only module `pkg/extapi`, with a golden corpus as the authority; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md).
+
+Decided but not implemented yet: packing and verifying plugin packages, the trust chain and offline trust updates, the `plugin-exec` trampoline and process supervision, `gwx/1`, pushed tables and the writer tick, the plugin host (a built-in module) with dynamic feature declarations, dynamic route mounting, down grace and timelines, extclock and its corrections, restriction overrides, the `users.local_admin` floor, the `/api/v1/plugins` management API and the `gpuworks plugin` subcommand, compatibility detection on core downgrade, contract tests against a fake plugin process, and the ratchet on feature-key literals in core code. The edition-scoped release machinery is still in the code (until the cleanup in decision 17). Each part is added to `docs/` with its code.
+
+## Trade-offs
+
+- **Child processes plus pushed tables vs compiled modules**: compiled modules can decide synchronously inside a transaction, but every combination of capabilities needs its own binary, and the modules depend on open-source internal packages and must be rebuilt against open-source master. Pushed tables keep plugins off the hot path; the cost is that every new kind of decision point needs a new core table shipped with a core release, which makes the table catalogue a public interface that must stay compatible for a long time.
+- **Child processes vs WASM**: WASM isolates better, but plugins do I/O, integrate with external systems and hold state, and in WASM the host would have to provide each of those one by one; child processes use ordinary languages and libraries. WASM is reserved for request-time logic that pushed tables cannot express.
+- **Identity by fd vs a socket with a token**: inherited socketpairs have no path that another process of the same user could dial or squat, and they avoid macOS's `sun_path` length limit; the cost is that only the core can launch a plugin.
+- **A bounded grace after going down vs clamping at once**: clamping at once would make the authority plugin a fleet-wide single point of failure; staying full forever would let anyone bypass a commercial or site-specific rule by killing the plugin. A bounded, persisted grace that sites can only lower, plus timelines that keep firing, closes both.
+- **Revocation does not stop installed packages vs stopping them at once**: offline sites never receive revocations, and stopping at once on online sites would cause wide feature outages; so revocation only refuses new installs, and the risk of old builds is covered by minimum versions and by revoking authority packages by digest.
+- **Detect only on downgrade vs down-migrations**: down-migrations need a reverse transformation written and tested for every table and may silently drop restrictions; refusing to start and naming the needed version never loses enforcement and never corrupts data.
+
+## Consequences
+
+- A new extension need first asks whether existing tables can express it; when they cannot, the new decision point is a new core table that must be useful to the community server, comes with a contract test, and ships only with a core release.
+- Plugin packages carry the compatibility burden: new availability rules, identity editors, rating rules and fixes ship as new packages without a core upgrade; only a new enforcement point needs a core upgrade.
+- The existing way of building a separate server (`cli.Options`, extension migrations, the build-time console overlay) stays valid for forks and tests, but it is not a distribution path for official or third-party extensions.
+- Contract and operating details are in [Extension Points](../dev/extensions.md); the wire formats are in [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md).
+
+<!-- translation-source-sha256: fdada658ae3a28a40d3b8572875399b2bd7853cc92433593a3e94657c8c3c9ea -->

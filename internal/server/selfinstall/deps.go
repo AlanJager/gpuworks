@@ -22,9 +22,13 @@ type Deps struct {
 	// Client fetches a release site's manifest and archive (--base-url).
 	Client *http.Client
 	// Channel builds the distribution client for an upgrade from the channel;
-	// sources is empty for the built-in ones. Nil is the production client
-	// (built-in keys, no overall timeout, stalls cut off).
+	// sources is empty for the profile's own. Nil is the production client
+	// (Profile's edition and keys, no overall timeout, stalls cut off).
 	Channel func(sources []string) (*distribution.Client, error)
+	// Profile is the edition's distribution channel: which sources publish
+	// it, which keys sign it and which edition its indexes must name. The
+	// zero value is distribution.Community().
+	Profile distribution.Profile
 	// Now timestamps backups and audit entries.
 	Now func() time.Time
 	// Sleep waits between health probes and process-exit polls.
@@ -120,14 +124,17 @@ func (d Deps) channelClient(sources []string) (*distribution.Client, error) {
 	if d.Channel != nil {
 		return d.Channel(sources)
 	}
+	client := d.Profile.Client(nil)
 	if len(sources) > 0 {
 		normalized, err := distribution.NormalizeSources(sources)
 		if err != nil {
 			return nil, err
 		}
-		sources = normalized
+		// A mirror copies the channel tree, so the edition and its keys
+		// still apply; it is the operator's, not a published source.
+		client.Sources, client.Published = normalized, false
 	}
-	return &distribution.Client{Sources: sources}, nil
+	return client, nil
 }
 
 func (d Deps) healthTimeout() time.Duration {

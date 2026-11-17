@@ -4,6 +4,8 @@
 package testenv
 
 import (
+	"gopkg.in/yaml.v3"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -226,7 +228,18 @@ func (e *Env) DBPath() string { return e.dbPath }
 // instance), as opposed to the database the API exposes.
 func (e *Env) DataDir() string { return e.dataDir }
 
+// NewWithExtensions is New for a separately built server: the same real app
+// wiring with ext's modules and console, and sections as server.yaml's
+// extensions sections. Extension contract tests start servers this way.
+func NewWithExtensions(t testing.TB, ext serverapp.Extensions, sections map[string]yaml.Node) *Env {
+	return newEnvConfigured(t, func(cfg *serverapp.Config) { cfg.Extensions, cfg.Sections = ext, sections }, "", "", false)
+}
+
 func newEnv(t testing.TB, modelEndpoint, dbPath string, recovery bool, allowedPrivateHosts ...string) *Env {
+	return newEnvConfigured(t, nil, modelEndpoint, dbPath, recovery, allowedPrivateHosts...)
+}
+
+func newEnvConfigured(t testing.TB, configure func(*serverapp.Config), modelEndpoint, dbPath string, recovery bool, allowedPrivateHosts ...string) *Env {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	dir := t.TempDir()
@@ -242,9 +255,13 @@ func newEnv(t testing.TB, modelEndpoint, dbPath string, recovery bool, allowedPr
 			allowedPrivateHosts = append(append([]string(nil), allowedPrivateHosts...), endpoint.Hostname())
 		}
 	}
-	a, err := serverapp.New(serverapp.Config{Addr: "127.0.0.1:0", DataDir: dir, DBPath: dsn, AdminUser: "admin", AdminPassword: AdminPassword, ModelEndpoint: modelEndpoint, OutboundAllowPrivateHosts: allowedPrivateHosts,
+	cfg := serverapp.Config{Addr: "127.0.0.1:0", DataDir: dir, DBPath: dsn, AdminUser: "admin", AdminPassword: AdminPassword, ModelEndpoint: modelEndpoint, OutboundAllowPrivateHosts: allowedPrivateHosts,
 		// CI routes SSH to cloud nodes through a SOCKS proxy (.gitlab-ci.yml).
-		SSHProxy: os.Getenv("GPUWORKS_SSH_PROXY"), RecoveryEnabled: recovery}, harnessLogger(t))
+		SSHProxy: os.Getenv("GPUWORKS_SSH_PROXY"), RecoveryEnabled: recovery}
+	if configure != nil {
+		configure(&cfg)
+	}
+	a, err := serverapp.New(cfg, harnessLogger(t))
 	if err != nil {
 		cancel()
 		t.Fatalf("server app: %v", err)

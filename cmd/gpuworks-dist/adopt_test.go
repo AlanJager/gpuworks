@@ -77,7 +77,7 @@ func TestAdoptRepublishesThePublishedRelease(t *testing.T) {
 	}
 
 	published := filepath.Join(first.OutDir, "releases", "abc123")
-	builtAt, err := adopt(published, "abc123")
+	builtAt, err := adopt(published, "", "abc123")
 	if err != nil || builtAt != "2026-10-14T13:39:57+08:00" {
 		t.Fatalf("adopt = %q, %v", builtAt, err)
 	}
@@ -151,7 +151,7 @@ func TestAdoptRefusesAReleaseThatDoesNotCheckOut(t *testing.T) {
 			if id == "" {
 				id = "abc123"
 			}
-			if got, err := adopt(dir, id); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if got, err := adopt(dir, "", id); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("adopt = %q, %v; want error with %q", got, err, tc.want)
 			}
 		})
@@ -252,5 +252,42 @@ func TestReleaseIDAndAdoptCommands(t *testing.T) {
 	errOut.Reset()
 	if code := run([]string{"adopt", "-dir", dir}, nil, &out, &errOut); code != 1 || !strings.Contains(errOut.String(), "required") {
 		t.Fatalf("adopt without -release-id: %d %s", code, errOut.String())
+	}
+}
+
+// An edition publishes its archives under its own prefix: release-id and
+// adopt read them under the same -prefix assemble wrote them with, and a
+// reader without it does not take them for community archives.
+func TestReleaseIDAndAdoptReadTheEditionPrefix(t *testing.T) {
+	const prefix = "gpuworks-acme"
+	dist := buildDist(t, "2026-11-16T08:00:00Z", prefix+"-abc123-linux-amd64.tar.gz", prefix+"-abc123-linux-arm64.tar.gz")
+	var out, errOut bytes.Buffer
+	if code := run([]string{"release-id", "-dist", dist, "-prefix", prefix}, nil, &out, &errOut); code != 0 || out.String() != "abc123\n" {
+		t.Fatalf("release-id -prefix: %d %q %s", code, out.String(), errOut.String())
+	}
+	out.Reset()
+	errOut.Reset()
+	if code := run([]string{"release-id", "-dist", dist, "-prefix", "../x"}, nil, &out, &errOut); code != 1 || !strings.Contains(errOut.String(), "not an archive name prefix") {
+		t.Fatalf("release-id with a bad prefix: %d %s", code, errOut.String())
+	}
+
+	in := realInput(t, dist)
+	in.Edition, in.ArchivePrefix = "acme", prefix
+	if _, err := assemble(in); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(in.OutDir, "releases", "abc123")
+	out.Reset()
+	errOut.Reset()
+	if code := run([]string{"adopt", "-dir", dir, "-release-id", "abc123", "-prefix", prefix}, nil, &out, &errOut); code != 0 || out.String() != "2026-11-16T08:00:00Z\n" {
+		t.Fatalf("adopt -prefix: %d %q %s", code, out.String(), errOut.String())
+	}
+	// Read with the community prefix, gpuworks-acme-abc123-... is release
+	// "acme-abc123", so the directory does not hold release abc123.
+	if _, err := adopt(dir, "", "abc123"); err == nil || !strings.Contains(err.Error(), "is release acme-abc123, not abc123") {
+		t.Fatalf("adopt without the prefix = %v", err)
+	}
+	if _, err := adopt(dir, "acme", "abc123"); err == nil || !strings.Contains(err.Error(), "holds no acme-<id>") {
+		t.Fatalf("adopt under another prefix = %v", err)
 	}
 }

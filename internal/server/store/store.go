@@ -25,10 +25,16 @@ import (
 type Store struct {
 	db  *gorm.DB
 	Bus *bus.Bus
+	// extensions are the migration sets the store was opened with
+	// (ExtensionTables).
+	extensions []MigrationSet
 	// sharing keeps SharingDeployments' rows between deployment changes.
 	sharing sharingCache
 	// fleetNodes is FleetNodes' snapshot of every node.
 	fleetNodes fleetNodeCache
+	// admission is the enrollment guards and scheduling holders extensions
+	// registered on node writes (node_enrollment.go, node_hold.go).
+	admission nodeAdmission
 	// scheduleEvents counts the scheduling events written (ScheduleEventCount).
 	scheduleEvents atomic.Uint64
 	// priorityGen counts priority class changes (PriorityClassGeneration).
@@ -242,10 +248,11 @@ func (s *Store) RegisterNode(uuid, tokenHash, hostname string, connectModeOpt ..
 		ConnectMode: connectMode,
 		LastSeenAt:  &now,
 	}
-	if err := s.db.Create(n).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error { return s.insertNodeTx(tx, n) }); err != nil {
 		return nil, err
 	}
 	s.publishNode(n.UUID, "registered")
+	s.publishNodeFleet(n.ID, NodeInserted)
 	return n, nil
 }
 
@@ -273,12 +280,11 @@ func (s *Store) CreateNodePending(name string, connectModeOpt ...string) (*Node,
 		State:       NodeStateConnecting,
 		ConnectMode: connectMode,
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		return tx.Create(n).Error
-	}); err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error { return s.insertNodeTx(tx, n) }); err != nil {
 		return nil, "", err
 	}
 	s.publishNode(n.UUID, "pending")
+	s.publishNodeFleet(n.ID, NodeInserted)
 	return n, token, nil
 }
 
@@ -546,5 +552,6 @@ func (s *Store) DeleteNode(uuid string) error {
 		s.observe(ev, nil)
 	}
 	s.publishNode(uuid, fmt.Sprintf("deleted:%d", nodeID))
+	s.publishNodeFleet(nodeID, NodeDeleted)
 	return nil
 }

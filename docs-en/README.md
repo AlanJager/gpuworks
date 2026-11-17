@@ -100,6 +100,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Sources of Deployment Launch Parameters](reference/deployment-launch-sources.md)
 - [Executable Inference Catalog Package](reference/inference-catalog-package.md)
 - [Inference Catalog model.yaml Syntax Reference](reference/inference-catalog-spec.md)
+- [Plugin Protocol and Wire Formats (gwx/1)](reference/plugin-protocol.md)
 - [Security Defaults Checklist](reference/security.md)
 - [User Glossary](reference/glossary.md)
 
@@ -126,6 +127,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 
 - [Developer Documentation Overview](dev/README.md)
 - [Code Map: Package Responsibilities](dev/code-map.md)
+- [Extension Points: The Module Contract and Installable Extensions](dev/extensions.md)
 - [Local Setup](dev/setup.md)
 - [Testing Guide and Cloud Test Tiers](dev/testing.md)
 - [AMD Integration and Hardware Validation](dev/amd-hardware-validation.md)
@@ -148,4 +150,4 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - Do not use M numbers or relative paths outside the repository in current documentation. External research repository paths in historical logs are retained only as source references.
 - `CLAUDE.md` is the sole authority for development conventions; `CONTEXT.md` is the complete glossary. Guides in this directory only expand on procedures and link to those files.
 
-<!-- translation-source-sha256: 39243e344d2c7f1def2012b7394eff3853657f3708a0775becc7de85dab23e33 -->
+<!-- translation-source-sha256: b61a4dbdec36697d6814a72b548c498a7191e4536870a5d1f4249e2b79be5aac -->

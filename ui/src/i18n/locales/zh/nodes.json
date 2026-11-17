@@ -533,6 +533,11 @@
         "gpu_runtime_unconfigured": "{{runtime}} 没有配置 GPU 支持，容器拿不到加速卡。请让 {{runtime}} 用上厂商插件（NVIDIA：nvidia-ctk runtime configure --runtime=docker，再重启 Docker）。"
       }
     },
+    "recordon": {
+      "title": "平台会再次停止该节点的调度",
+      "description": "{{reason}}\n\n如果原因未解决，平台会在下一次上报时再次停止该节点的调度。"
+    },
+    "held": "该节点被保持在停止调度状态，暂不能恢复调度",
     "state": {
       "schedulable": "可调度",
       "cordoned": "已停止调度",

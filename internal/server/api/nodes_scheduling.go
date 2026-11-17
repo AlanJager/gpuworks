@@ -38,7 +38,8 @@ func parseNodeScheduling(name string) (store.NodeScheduling, bool) {
 // running; draining, the controller also replaces each replica a pool placed
 // there on another node, one at a time per deployment, before retiring it
 // (controller.nodeDrain). Schedulable again, every waiting deployment is
-// retried at once.
+// retried at once. A node a scheduling holder holds cannot be made
+// schedulable (409 with the holder's code); it can be cordoned or drained.
 func (a *apiHandlers) setNodeScheduling(w http.ResponseWriter, r *http.Request) {
 	var req dto.NodeSchedulingRequest
 	decoder := json.NewDecoder(r.Body)
@@ -57,11 +58,17 @@ func (a *apiHandlers) setNodeScheduling(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
+	if errors.Is(err, store.ErrNodeHeld) {
+		// An extension holds the node: the error carries its code and
+		// params, which the operator is shown.
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toNodeDTO(node))
+	writeJSON(w, http.StatusOK, a.nodeView(node))
 }
 
 // setCardScheduling stops one card's scheduling, or makes it schedulable
@@ -105,7 +112,7 @@ func (a *apiHandlers) setCardScheduling(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toNodeDTO(node))
+	writeJSON(w, http.StatusOK, a.nodeView(node))
 }
 
 // nodeReplicas lists what still runs on a node and whether a drain moves it

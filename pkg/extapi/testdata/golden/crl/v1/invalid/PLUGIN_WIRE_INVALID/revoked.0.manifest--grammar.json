@@ -1,0 +1,1 @@
+{"created":"2026-12-01T00:00:00Z","format":1,"publisher":"acme","revoked":[{"manifest":"sha256:abc","publisher":"acme","replacement":"2.0.4"},{"cert_serial":3,"publisher":"acme"}],"serial":2}

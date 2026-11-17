@@ -289,6 +289,8 @@
     "PATH_NOT_FOUND": "The path {{path}} does not exist on the node.",
     "NODE_RPC_UNAVAILABLE": "Node RPC is not configured.",
     "NODE_OFFLINE": "The node is offline.",
+    "NODE_ENROLLMENT_REFUSED": "A new node cannot join the fleet now; nothing was created.",
+    "NODE_SCHEDULING_HELD": "An extension holds this node out of scheduling, so it cannot be made schedulable now. What already runs there keeps running.",
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",
     "NODE_RUNTIME_INVALID": "Runtime must be auto, Docker, nerdctl, or runveil (API value udocker).",
     "NODE_RUNTIME_KUBE_NODE": "A Kubernetes node's runtime is its cluster's and cannot be switched.",
@@ -378,6 +380,10 @@
     "ROUTING_POLICY_INVALID": "The routing policy is invalid.",
     "DISTRIBUTED_REPLICA_COUNT": "Distributed deployments require exactly {{required}} replica.",
     "SLEEP_NOT_ENABLED": "Sleep mode was not enabled for this deployment. Redeploy with sleep mode enabled to use it.",
+    "FEATURE_UNAVAILABLE": "{{feature}} is not available on this server.",
+    "FEATURE_READ_ONLY": "{{feature}} is read-only on this server: you can view its data but not change it.",
+    "FEATURE_PROVIDER_ABSENT": "{{feature}} cannot be used: nothing on this server reports whether it is available.",
+    "FEATURE_LIMIT_REACHED": "{{feature}} allows at most {{max}} {{dim}}; {{used}} are already in use.",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED": "The {{engine}} engine has no request priority scheduling; this deployment does not distinguish priorities.",
     "PRIORITY_SCHEDULING_TARGET_UNVERIFIED": "Request priority scheduling has not been verified for the engine on {{vendor}}; this deployment does not distinguish priorities.",
@@ -499,6 +505,7 @@
     "SERVER_UPGRADE_UNAVAILABLE": "This server cannot be upgraded from the console ({{reason}}); run gpuworks upgrade on its host.",
     "SERVER_UPGRADE_ARCHIVE_INVALID": "Not a gpuworks release archive this server can use: {{detail}}",
     "SERVER_ALREADY_AT_RELEASE": "The server already runs {{release}}; there is nothing to upgrade.",
+    "SERVER_EDITION_MISMATCH": "{{release}} is the {{release_edition}} edition, but this server runs the {{edition}} edition; the console does not switch editions. Run gpuworks upgrade with --allow-edition-change on the server host.",
     "SERVER_NEWER_THAN_RELEASE": "The server runs {{current}}, which is newer than {{release}} in this channel; it will not be downgraded.",
     "UPDATE_CHANNEL_READ_ONLY": "The server has no server.yaml, so its update channel cannot be changed here.",
     "SERVER_UPGRADE_IN_PROGRESS": "A server upgrade is in progress. Check its result.",
@@ -925,7 +932,19 @@
     "EXTERNAL_KEY_UNREADABLE": "The external endpoint's key could not be decrypted: {{detail}}",
     "EXTERNAL_REQUEST_INVALID": "External Playground requests must be JSON: {{detail}}",
     "EXTERNAL_UPSTREAM_UNAVAILABLE": "The external endpoint could not be reached: {{detail}}",
-    "RESPONSE_ENCODING_FAILED": "The response data could not be encoded as JSON."
+    "RESPONSE_ENCODING_FAILED": "The response data could not be encoded as JSON.",
+    "PLUGIN_WIRE_MALFORMED": "Plugin data {{object}} is not well-formed at \"{{field}}\" ({{rule}}).",
+    "PLUGIN_WIRE_UNKNOWN_FIELD": "Plugin data {{object}} has a field this server does not know: {{field}}. The plugin may need a newer server.",
+    "PLUGIN_WIRE_INVALID": "Plugin data {{object}} is invalid: field {{field}} breaks rule {{rule}}.",
+    "PLUGIN_WIRE_NOT_CANONICAL": "The signed {{object}} is not in canonical form, so its signature cannot be trusted.",
+    "PLUGIN_SCHEMA_TOO_NEW": "{{object}} version {{version}} is newer than this server reads (up to {{known}}). Upgrade the server to use it.",
+    "PLUGIN_MANIFEST_TOO_NEW": "This plugin package needs a newer server ({{min_core_hint}}): its manifest schema {{version}} is newer than this server reads (up to {{known}}).",
+    "PLUGIN_PROTOCOL_UNSUPPORTED": "The plugin speaks gwx protocol {{min}} to {{max}}, but this server speaks {{supported}}.",
+    "PLUGIN_SIGNATURE_UNTRUSTED": "The {{object}} is not signed by a key this server trusts.",
+    "PLUGIN_SIGNATURE_INVALID": "The signature on the {{object}} by key {{keyid}} does not verify: the file was changed or damaged.",
+    "PLUGIN_STATE_REJECTED": "The plugin pushed invalid {{kind}} state: field {{field}} breaks rule {{rule}}.",
+    "PLUGIN_STATE_TOO_LARGE": "The plugin pushed too much {{kind}} state: {{field}} exceeds {{max}}.",
+    "PLUGIN_STATE_TOO_NEW": "Stored {{marker}} is at version {{version}}, but this server reads up to version {{known}}. Run {{needs}} or newer instead of this older server."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {
@@ -1313,6 +1332,10 @@
     "fix": "Use {{args}}",
     "fixTradeoff": "Adds this argument to the custom arguments, overriding the inference template's scheduling policy. The original policy's optimization (such as lpm's prefix-cache hits) is lost."
   },
+  "consoleBanners": {
+    "region": "Server notices",
+    "details": "Details"
+  },
   "notices": {
     "title": "Notices",
     "empty": "No notices",
@@ -1527,5 +1550,14 @@
     "rank": "Rank {{rank}} on {{node}}: {{text}}",
     "evidence": "{{text}} Last error: {{evidence}}",
     "causes": "{{text}} Output shows: {{causes, list}}."
+  },
+  "consoleExtension": {
+    "locked": {
+      "title": "Not available on this server",
+      "description": "This feature is turned off on this server. Ask your administrator to enable it.",
+      "learnMore": "Learn more",
+      "badge": "Locked"
+    },
+    "loading": "Loading…"
   }
 }

@@ -16,13 +16,14 @@
 
 ## server 侧（`internal/server/`）
 
-- `app`：装配根（config/store/bus/hub/HTTP 接线、启动与优雅关停、accesslog、admin bootstrap）。
+- `app`：装配根（config/store/bus/hub/HTTP 接线、启动与优雅关停、accesslog、admin bootstrap）。扩展模块的契约（`Extensions`、`Module` 及可选的 `Migrator`/`Initializer`/`Service`、`Host`）在 `extensions.go` / `extension_host.go`，`New` 只调一次 `startExtensions`（`extension_start.go`），`Run` 经 `services()`（`services.go`）一个循环启动互不依赖的后台循环与模块服务；见 [扩展点](extensions.md)。
+- `cli`：server 命令行（子命令分发、`serve` / `migrate` / `reset-password` / install 与 upgrade / expose / support-bundle 的参数解析与执行）；`cmd/gpuworks` 只调用 `cli.Main`，单独构建的服务端经 `cli.Options` 带入版本名、扩展模块、发布通道与安装钩子并追加子命令，不得与内置子命令重名。
 - `api`（+`api/dto`）：REST 层，按域拆分为数十个文件，DTO 与 entity 严格分离；部署创建/评估委托 `deployment`，handler 只做解码与映射；`auth` JWT 登录鉴权。
 - `hub`：agent 会话管理、desired state 推送（含来源规则、代理、同步组成员与凭据，凭据只随 state.sync 下发）、server_dial。
 - 拉取设置（ADR 0048、[ADR 0050](../adr/0050-model-pull-sources-and-proxies.md)）：规则（镜像规则与模型站点规则同表，种类由 `match` 是否带 `http(s)://` 决定）、代理、同步组、凭据带类型的表在 `store`（迁移见 `migration_pull_settings.go`），API 在 `api/pull*.go`。
 
   `planning.PullCandidatesFor` 是启动、期望状态重放、镜像页拉取、多机预拉取共用的唯一镜像候选入口；`planning.PullSettingsFor` 取一台节点适用的规则与代理，模型文件任务的候选（`PlanModelFileTasks`，hub 重放与 controller 推送共用）和 server 自己读元数据的候选（`ServerFetchCandidates`）也由 `planning` 一处算出；`controller/image_acquisition.go` 决定节点缺镜像时是否从同组节点复制，并在内存里记节点对的 3 小时冷却。
-- `store`：GORM entity + 版本化迁移（`schema_migrations`），SQLite（glebarez 驱动，全仓统一，勿混用 modernc）。
+- `store`：GORM entity + 版本化迁移（`schema_migrations`），SQLite（glebarez 驱动，全仓统一，勿混用 modernc）。单独构建的服务器所加模块的表走 `OpenWith` 的命名空间迁移：每个模块一个命名空间，步骤与标记同一事务记入 `namespace_migrations`（只在传入迁移集时建表），所建对象必须带该集的表名前缀，核心表不用保留前缀 `ee_`；本构建不认识的命名空间只告警，模块经 `ExtensionTables` 读写自己的表。
 - `controller`：每资源一个 reconcile 文件，手写 workqueue（`workq.go`，不引 client-go）。部署不分形态走同一套 unit 对账（`units.go` / `unit_launch.go`，ADR 0029），PD 专属的启动与漂移检查在 `pd*.go`。总线事件只把变化记进 `event_routes.go`，每 250 ms 按依赖入队：节点事件入队在该节点上有实例的部署，模型文件事件入队用到该模型的部署，节点存储状态变化只入队未稳定的部署，读失败或对象已不存在时退回入队全部部署；节点状态另走 2 秒一次、带池退避的合并（`node_status.go`）。
 - 多机与 PD 的自动放置（[ADR 0057](../adr/0057-units-placed-by-writing-the-pick-back.md)）：`planning/unit_choice.go` 挑节点（`ChooseReplicaNodes`、`ChoosePDUnits`，建立在 `SuggestUnitGroups` 的分组上），`planning/unit_trial.go` 是 API 与 controller 共用的单元试算；`api/deployments_auto_units.go`（创建与评估时补节点）与 `deployments_auto_scale.go`（按副本数扩缩、PD 增加单元、`PUT /placement-mode`）；`controller/unit_auto.go` 在单元要启动时只换放不下的 rank（复用换节点的候选与写回），`controller/pd_pinned.go` 给手动钉卡被占的 PD 单元写 `pinned_gpus_unavailable`；`store/units_auto.go` 是 `deployments.units_auto` 列的迁移与写入。
 - `netplan`：纯叶子包（只依赖 `proto`），节点网络的唯一决策处：角色 / 类型词表、按挂载与网卡清单解析每个节点每个角色走哪张网（RDMA 网络的 HCA 与 bootstrap 推断在 `rdma.go`）、管理网兜底、多机组共享的参数网络、两节点间的存储同步路径、能否承载服务、服务转发地址。
@@ -85,7 +86,9 @@
 - `messages`：语言中立 ProductError（稳定 code + 插值参数 + 英文 fallback），人类可读文本归客户端 locale。
 - `webterm`：web 终端会话策略（kill switch、并发上限、空闲超时、审计）。
 - `agentbin`：内嵌各平台 agent 二进制（zstd 压缩存放，`make cross-agents` 优先用 zstd CLI `-19`，没有时退回 `scripts/zstdpack`），经 `/dl/` 下发时流式解压并给出原始长度。
-- `webui`：`go:embed` 内嵌前端构建产物（`internal/server/webui/dist`），文本资源在首次被请求时 gzip 一次并缓存在内存，构建产物不再附带 `.gz` 副本。
+- `webui`：`go:embed` 内嵌前端构建产物（`internal/server/webui/dist`），文本资源在首次被请求时 gzip 一次并缓存在内存，构建产物不再附带 `.gz` 副本。`HandlerFS` 服务任意同布局的构建，单独构建的服务端经 `app.Extensions.UI` 换上自己的控制台。
+- `featuregate`：功能可用性的叶子包（只依赖 `messages`）：功能键、四种可用性（完整、只读、锁定、隐藏）与预先构造的拒绝；扩展路由与控制台清单经它询问扩展模块提供的功能来源，社区路径从不查询。
+- `holdpass`：扩展模块请求的调度保持重新应用（`Host.ReapplySchedulingHolds`）：合并请求，两次全表写事务之间有下限间隔，失败退避重试；只依赖标准库，由 app 接进 `services()` 循环。
 - `selfinstall` / `installcred`：`gpuworks install` / `upgrade` 的实现（复制二进制、写 service 定义、从发布通道或发布站拉发布件、带备份可回滚）、控制台升级的启动守卫、无 systemd 时的 `serve --supervise` 守护循环，与首启 bootstrap admin 凭据记录（叶子包，install 与 server 两端共用，不得反向依赖 server）。
 - `distribution`：发布通道客户端（ADR 0040）：签名信封与索引 schema、同时请求所有发布源取第一个验签通过的索引、文件按 sha256 校验并换源续传；发布方通知 `notices.json` 的 schema、校验、本地匹配与拉取（`notices.go`，ADR 0054）；默认源与信任公钥是包内常量。只依赖标准库（`check-architecture` 守护），selfinstall 与 api 共用。
 - `diagnostics`：远程排查。调试采集（server 与所选节点的 debug 会话、所选部署请求原文的记录，一次一个、按时长与大小自动结束）与诊断信息收集（时间范围内的日志、调试采集文件、节点诊断与脱敏的数据库快照打包下载）；数据源由 `app/diagnostics_sources.go` 提供，`gpuworks support-bundle` 走同一套收集。
@@ -134,7 +137,8 @@
 - `httpproxy`（代理选择与 `no_proxy` 的 Go `NO_PROXY` 语义，server+agent 共用）、
 - `bench`（评测字典与执行：dataset/loadgen/metrics/report/search；`search.Document` 是 Run 的 search 列的具名类型）、
 - `catalogasset`（目录随带运行时资产校验解包）、
-- `localization`（BCP 47 wire 文本类型）。
+- `localization`（BCP 47 wire 文本类型）、
+- `extapi`（插件与 server 之间的线格式：包清单、发布者证书、信任更新与吊销列表、签名信封与规范 JSON、gwx/1 握手与错误、状态推送信封与首批五种推送表的行，以及持久化版本标记比较；是只用标准库的独立公开模块，根 `go.mod` 用 `replace` 指向它，`make test-extapi` 跑它的测试；`testdata/golden` 冻结线格式，已发布的黄金文件只增不改）。
 
 `internal/` 顶层共享：
 
@@ -148,7 +152,7 @@
 - `assets`（内嵌原生资产：libvgpu、partition probe、ib_write_bw 等）、
 - `commandlog`（外部命令脱敏日志）、
 - `templateprobe`（推理模板 L1/L2/L3 校验核心）、
-- `testenv` / `integrationtest`（进程内集成测试 harness）、
+- `testenv` / `integrationtest`（进程内集成测试 harness；`testenv.NewWithExtensions` 带扩展模块启动，`testenv/extmodule` 是各扩展点对假模块的契约测试）、
 - `benchrun`（一次评测 Run 的执行：预热、按 search 文档逐点闭环/开环发压、把点位结果编成 `status.benchmark` 协议；server 发压、agent 发压与 `gpuworks-agent bench` 共用，两侧只提供状态、警告与逐请求明细的去处）、
 - `platformmetrics`（平台自身序列的词表：GPU、dGPU、节点、网络、KV 缓存盘、评测与网关运营指标的名字、单位、label 与含义，与推理词表 `inferencemetrics` 并列，共同构成 `GET /api/v1/monitor/metrics` 的指标目录；纯叶子，agent 与 server 共用；`TestEveryMetricLiteralIsRegistered` 扫描 agent、server 与 UI 源码，要求出现的每个指标名都已登记）、
 - `agentconf`（agent 启动配置的唯一定义，叶子包：`<state>/gpuworks-agent.conf` 的字段、校验、读写、默认监听地址 `DefaultListen`，以及供所有脚本读取主机上 agent 配置的 shell 函数 `ShellFuncs`，同时识别较早安装的命令行形式；agent 的 `configure`/`run`/`smoke`/`upgrade` 与 server 的安装、预检查、卸载、带外恢复共用，见 [ADR 0051](../adr/0051-agent-launch-configuration-file.md)）、

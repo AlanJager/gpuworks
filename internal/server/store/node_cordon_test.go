@@ -8,28 +8,50 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-func TestDecideCordon(t *testing.T) {
+func TestDecideScheduling(t *testing.T) {
+	const lic SchedulingSource = "maint"
+	const other SchedulingSource = "freeze"
 	for _, tc := range []struct {
 		name   string
 		was    NodeScheduling
 		by     SchedulingSource
 		reason string
+		known  bool
+		hold   SchedulingSource
 		want   NodeScheduling
 		wantBy SchedulingSource
 		change bool
 	}{
-		{"schedulable with a reason is cordoned by the platform", NodeSchedulable, SchedulingBySelf, CordonCardNeedsHostReboot, NodeCordoned, SchedulingByPlatform, true},
-		{"the platform's cordon without a reason is lifted", NodeCordoned, SchedulingByPlatform, "", NodeSchedulable, SchedulingBySelf, true},
-		{"the platform's cordon with a reason stays", NodeCordoned, SchedulingByPlatform, CordonRuntimeGPUBlocked, NodeCordoned, SchedulingByPlatform, false},
-		{"an operator's cordon is never lifted", NodeCordoned, SchedulingByOperator, "", NodeCordoned, SchedulingByOperator, false},
-		{"a cordon of unknown author is never lifted", NodeCordoned, SchedulingBySelf, "", NodeCordoned, SchedulingBySelf, false},
-		{"a drain is never touched", NodeDraining, SchedulingByOperator, CordonCardNeedsHostReboot, NodeDraining, SchedulingByOperator, false},
-		{"schedulable without a reason stays", NodeSchedulable, SchedulingBySelf, "", NodeSchedulable, SchedulingBySelf, false},
+		{"schedulable with a reason is cordoned by the platform", NodeSchedulable, SchedulingBySelf, CordonCardNeedsHostReboot, true, "", NodeCordoned, SchedulingByPlatform, true},
+		{"the platform's cordon without a reason is lifted", NodeCordoned, SchedulingByPlatform, "", true, "", NodeSchedulable, SchedulingBySelf, true},
+		{"the platform's cordon is kept while the runtime cannot say", NodeCordoned, SchedulingByPlatform, "", false, "", NodeCordoned, SchedulingByPlatform, false},
+		{"the platform's cordon with a reason stays", NodeCordoned, SchedulingByPlatform, CordonRuntimeGPUBlocked, true, "", NodeCordoned, SchedulingByPlatform, false},
+		{"an operator's cordon is never lifted", NodeCordoned, SchedulingByOperator, "", true, "", NodeCordoned, SchedulingByOperator, false},
+		{"a cordon of unknown author is never lifted", NodeCordoned, SchedulingBySelf, "", true, "", NodeCordoned, SchedulingBySelf, false},
+		{"a drain is never touched", NodeDraining, SchedulingByOperator, CordonCardNeedsHostReboot, true, "", NodeDraining, SchedulingByOperator, false},
+		{"schedulable without a reason stays", NodeSchedulable, SchedulingBySelf, "", true, "", NodeSchedulable, SchedulingBySelf, false},
+
+		{"a held node is cordoned under the holder", NodeSchedulable, SchedulingBySelf, "", true, lic, NodeCordoned, lic, true},
+		{"a hold is applied when the runtime cannot say", NodeSchedulable, SchedulingBySelf, "", false, lic, NodeCordoned, lic, true},
+		{"a hold outranks a platform reason", NodeSchedulable, SchedulingBySelf, CordonKubeUnschedulable, true, lic, NodeCordoned, lic, true},
+		{"a hold takes over the platform's cordon", NodeCordoned, SchedulingByPlatform, CordonRuntimeGPUBlocked, true, lic, NodeCordoned, lic, true},
+		{"a platform lift does not lift a hold", NodeCordoned, lic, "", true, lic, NodeCordoned, lic, false},
+		{"an ended hold falls back to the platform's reason", NodeCordoned, lic, CordonCardNeedsHostReboot, true, "", NodeCordoned, SchedulingByPlatform, true},
+		{"an ended hold falls back to kube_unschedulable", NodeCordoned, lic, CordonKubeUnschedulable, false, "", NodeCordoned, SchedulingByPlatform, true},
+		{"an ended hold without a reason is lifted", NodeCordoned, lic, "", true, "", NodeSchedulable, SchedulingBySelf, true},
+		{"an ended hold is lifted when the runtime cannot say", NodeCordoned, lic, "", false, "", NodeSchedulable, SchedulingBySelf, true},
+		{"another holder takes the node over", NodeCordoned, lic, "", true, other, NodeCordoned, other, true},
+		{"a hold never touches an operator's cordon", NodeCordoned, SchedulingByOperator, "", true, lic, NodeCordoned, SchedulingByOperator, false},
+		{"a hold never touches a drain", NodeDraining, SchedulingByOperator, "", true, lic, NodeDraining, SchedulingByOperator, false},
+		{"a hold never touches a cordon of unknown author", NodeCordoned, SchedulingBySelf, "", true, lic, NodeCordoned, SchedulingBySelf, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := decideCordon(tc.was, tc.by, tc.reason)
+			d := decideScheduling(tc.was, tc.by, tc.reason, tc.known, tc.hold)
 			if d.scheduling != tc.want || d.source != tc.wantBy || d.changed != tc.change {
-				t.Fatalf("decideCordon = %+v, want %q by %q changed=%v", d, tc.want, tc.wantBy, tc.change)
+				t.Fatalf("decideScheduling = %+v, want %q by %q changed=%v", d, tc.want, tc.wantBy, tc.change)
+			}
+			if d.scheduling == NodeDraining && tc.was != NodeDraining {
+				t.Fatal("a decision produced a drain")
 			}
 		})
 	}

@@ -100,6 +100,7 @@
 - [部署启动参数来源](reference/deployment-launch-sources.md)
 - [可执行推理目录包](reference/inference-catalog-package.md)
 - [推理目录 model.yaml 语法参考](reference/inference-catalog-spec.md)
+- [插件协议与线上格式（gwx/1）](reference/plugin-protocol.md)
 - [安全默认值清单](reference/security.md)
 - [用户术语表](reference/glossary.md)
 
@@ -126,6 +127,7 @@
 
 - [开发者文档总览](dev/README.md)
 - [代码地图：逐包职责](dev/code-map.md)
+- [扩展点：模块契约与可安装扩展](dev/extensions.md)
 - [本地搭建](dev/setup.md)
 - [测试指南与云端分层](dev/testing.md)
 - [AMD 接入结构与硬件验收](dev/amd-hardware-validation.md)

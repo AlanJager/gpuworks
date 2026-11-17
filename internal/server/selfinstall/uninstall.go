@@ -192,6 +192,11 @@ func (i *Installer) Uninstall(ctx context.Context, req UninstallRequest, beforeS
 		}
 		report.Removed = append(report.Removed, path)
 	}
+	// The build's host steps are undone while the files they may read are
+	// still there.
+	if err := i.runUninstallHooks(ctx); err != nil {
+		return report, err
+	}
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return report, err

@@ -70,11 +70,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 const usage = `usage:
-  gpuworks-dist assemble -channel nightly -dist DIR -out DIR [-commit SHA] [-built-at TIME]
-  gpuworks-dist release-id -dist DIR
-  gpuworks-dist adopt -dir DIR -release-id ID   (prints the archives' build time)
-  gpuworks-dist verify -channel nightly -source URL [-source URL ...] [-release-id ID] [-index FILE] [-full]
-  gpuworks-dist newer -channel nightly -built-at TIME [-source URL ...]   (exit 0: a newer build is published)
+  gpuworks-dist assemble -channel nightly -dist DIR -out DIR [-commit SHA] [-built-at TIME] [-edition NAME] [-prefix NAME]
+  gpuworks-dist release-id -dist DIR [-prefix NAME]
+  gpuworks-dist adopt -dir DIR -release-id ID [-prefix NAME]   (prints the archives' build time)
+  gpuworks-dist verify -channel nightly -source URL [-source URL ...] [-release-id ID] [-index FILE] [-full] [-edition NAME]
+  gpuworks-dist newer -channel nightly -built-at TIME [-source URL ...] [-edition NAME]   (exit 0: a newer build is published)
   gpuworks-dist prune -keep 30 [-protect ID ...] < rclone-lsjson-of-releases.json
   gpuworks-dist notices -in build/notices/notices.json -out FILE
   gpuworks-dist notices -source URL [-source URL ...] [-expect FILE]`

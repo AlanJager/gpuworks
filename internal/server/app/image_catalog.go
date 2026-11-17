@@ -87,8 +87,9 @@ func SyncImageCatalog(st *store.Store, log *slog.Logger) error {
 
 // outsideSources builds what the API reads from outside: one community
 // browser for the process, so its tag cache is shared by every request, and
-// the distribution channel on its built-in sources.
-func outsideSources(st *store.Store, readPrivateHosts func() []string) api.OutsideSources {
+// the distribution channel of the edition's profile (the zero profile is the
+// community one on the built-in sources).
+func outsideSources(st *store.Store, readPrivateHosts func() []string, profile distribution.Profile) api.OutsideSources {
 	transport := outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, readPrivateHosts)
 	channelTransport := outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, readPrivateHosts)
 	channelTransport.TLSHandshakeTimeout = 10 * time.Second
@@ -108,7 +109,7 @@ func outsideSources(st *store.Store, readPrivateHosts func() []string) api.Outsi
 	}
 	return api.OutsideSources{
 		Community: browser,
-		Channel:   &distribution.Client{HTTP: &http.Client{Transport: channelTransport}},
+		Channel:   profile.Client(&http.Client{Transport: channelTransport}),
 	}
 }
 

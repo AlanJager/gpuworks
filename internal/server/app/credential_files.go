@@ -16,6 +16,9 @@ import (
 // openCredentialStore enforces credential permissions and creation policy
 // before the rest of the server allocates resources or accepts requests.
 func openCredentialStore(cfg Config, events *bus.Bus, log *slog.Logger) (*store.Store, string, error) {
+	if err := cfg.Extensions.validate(); err != nil {
+		return nil, "", err
+	}
 	policy, err := startupCredentialPolicy(cfg)
 	if err != nil {
 		return nil, "", err
@@ -27,7 +30,7 @@ func openCredentialStore(cfg Config, events *bus.Bus, log *slog.Logger) (*store.
 	if err != nil {
 		return nil, "", fmt.Errorf("load credential encryption key: %w", err)
 	}
-	st, err := store.Open(cfg.DBPath, events, policy)
+	st, err := store.OpenWith(cfg.DBPath, events, store.OpenOptions{Policies: []securefile.Policy{policy}, Extensions: MigrationSets(cfg.Extensions)})
 	if err != nil {
 		return nil, "", err
 	}

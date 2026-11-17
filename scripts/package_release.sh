@@ -15,12 +15,31 @@ build_at=${GPUWORKS_BUILT_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 dist_dir=${GPUWORKS_DIST_DIR:-$repo_dir/dist}
 release_oses=${GPUWORKS_RELEASE_OSES:-"linux darwin"}
 release_arches=${GPUWORKS_RELEASE_ARCHES:-"amd64 arm64"}
+# A separately built server (another edition) builds its own main package and
+# names its packages after itself; the binary inside is gpuworks either way,
+# which is what install and upgrade unpack (ADR 0040).
+server_pkg=${GPUWORKS_SERVER_PKG:-./cmd/gpuworks}
+package_prefix=${GPUWORKS_PACKAGE_PREFIX:-gpuworks}
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/gpuworks-release.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT INT TERM
 
 case "$release_id" in
   *[!A-Za-z0-9._+-]*|'')
     echo "invalid release id: $release_id" >&2
+    exit 2
+    ;;
+esac
+
+case "$package_prefix" in
+  [a-z]*) ;;
+  *)
+    echo "invalid package prefix: $package_prefix" >&2
+    exit 2
+    ;;
+esac
+case "$package_prefix" in
+  *[!a-z0-9-]*)
+    echo "invalid package prefix: $package_prefix" >&2
     exit 2
     ;;
 esac
@@ -87,7 +106,7 @@ for target_os in $release_oses; do
   seen_oses="$seen_oses$target_os "
   target_count=$((target_count + 1))
   for target_arch in $release_arches; do
-    make VERSION="$release_id" COMMIT="$commit" DATE="$build_at" CHANNEL="$channel" "server-${target_os}-${target_arch}-prebuilt-ui"
+    make VERSION="$release_id" COMMIT="$commit" DATE="$build_at" CHANNEL="$channel" SERVER_PKG="$server_pkg" "server-${target_os}-${target_arch}-prebuilt-ui"
   done
 done
 
@@ -98,7 +117,7 @@ fi
 
 for os in $release_oses; do
   for arch in $release_arches; do
-    package="gpuworks-${release_id}-${os}-${arch}"
+    package="${package_prefix}-${release_id}-${os}-${arch}"
     package_dir="$work_dir/$package"
     mkdir -p "$package_dir"
     cp "bin/gpuworks-${os}-${arch}" "$package_dir/gpuworks"
@@ -162,7 +181,7 @@ systemd or launchd install asks for sudo to stop and restart the service and
 to restore file ownership; a background install upgrades without sudo. A host
 that cannot reach the distribution sources upgrades from a copied archive:
 
-   ${default_dir}/gpuworks upgrade --archive gpuworks-<release>-${os}-${arch}.tar.gz
+   ${default_dir}/gpuworks upgrade --archive ${package_prefix}-<release>-${os}-${arch}.tar.gz
 
 With a different --dir, use the gpuworks binary in that directory.
 
@@ -179,7 +198,7 @@ done
   set --
   for os in $release_oses; do
     for arch in $release_arches; do
-      set -- "$@" "gpuworks-${release_id}-${os}-${arch}.tar.gz"
+      set -- "$@" "${package_prefix}-${release_id}-${os}-${arch}.tar.gz"
     done
   done
   if command -v sha256sum >/dev/null 2>&1; then
@@ -203,7 +222,7 @@ EOF
 first_file=1
 for os in $release_oses; do
   for arch in $release_arches; do
-    filename="gpuworks-${release_id}-${os}-${arch}.tar.gz"
+    filename="${package_prefix}-${release_id}-${os}-${arch}.tar.gz"
     file_sha=$(awk -v file="$filename" '$2 == file {print $1}' "$dist_dir/SHA256SUMS")
     file_size=$(wc -c < "$dist_dir/$filename" | tr -d ' ')
     case "$os" in

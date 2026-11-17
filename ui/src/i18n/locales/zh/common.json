@@ -289,6 +289,8 @@
     "PATH_NOT_FOUND": "节点上不存在路径 {{path}}。",
     "NODE_RPC_UNAVAILABLE": "节点 RPC 尚未配置。",
     "NODE_OFFLINE": "计算节点已离线。",
+    "NODE_ENROLLMENT_REFUSED": "当前不能再接入新节点，未创建任何节点。",
+    "NODE_SCHEDULING_HELD": "扩展模块将该节点保持在停止调度状态，现在不能恢复调度。节点上已运行的服务不受影响。",
     "NODE_SCHEDULABLE": "请先停止调度或驱逐该节点，再强制撤下副本。",
     "NODE_RUNTIME_INVALID": "运行时必须是自动、Docker、nerdctl 或 runveil（API 值为 udocker）。",
     "NODE_RUNTIME_KUBE_NODE": "Kubernetes 节点的运行时由所在集群决定，不能切换。",
@@ -378,6 +380,10 @@
     "ROUTING_POLICY_INVALID": "路由策略无效。",
     "DISTRIBUTED_REPLICA_COUNT": "分布式部署必须恰好使用 {{required}} 个副本。",
     "SLEEP_NOT_ENABLED": "该部署未启用休眠模式。请以启用休眠模式的方式重新部署。",
+    "FEATURE_UNAVAILABLE": "此服务器上没有 {{feature}} 功能。",
+    "FEATURE_READ_ONLY": "{{feature}} 在此服务器上为只读：可以查看其数据，但不能修改。",
+    "FEATURE_PROVIDER_ABSENT": "{{feature}} 无法使用：此服务器上没有组件报告它是否可用。",
+    "FEATURE_LIMIT_REACHED": "{{feature}} 最多允许 {{max}} 个 {{dim}}，已使用 {{used}} 个。",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
     "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED": "{{engine}} 引擎不支持请求优先级调度，此部署不区分优先级。",
     "PRIORITY_SCHEDULING_TARGET_UNVERIFIED": "{{vendor}} 上的引擎尚未验证请求优先级调度，此部署不区分优先级。",
@@ -499,6 +505,7 @@
     "SERVER_UPGRADE_UNAVAILABLE": "这台服务端不能在控制台里升级（{{reason}}），请在主机上执行 gpuworks upgrade。",
     "SERVER_UPGRADE_ARCHIVE_INVALID": "不是这台服务端可用的 gpuworks 发布包：{{detail}}",
     "SERVER_ALREADY_AT_RELEASE": "服务端已经是 {{release}}，不需要升级。",
+    "SERVER_EDITION_MISMATCH": "{{release}} 是 {{release_edition}} 版，本服务端是 {{edition}} 版；控制台不切换版本，请在主机上执行 gpuworks upgrade 并加 --allow-edition-change。",
     "SERVER_NEWER_THAN_RELEASE": "服务端当前的 {{current}} 比渠道里的 {{release}} 更新，不会降级。",
     "UPDATE_CHANNEL_READ_ONLY": "服务端没有 server.yaml，不能在这里切换更新渠道。",
     "SERVER_UPGRADE_IN_PROGRESS": "服务端升级正在执行，请查看本次升级结果。",
@@ -925,7 +932,19 @@
     "EXTERNAL_KEY_UNREADABLE": "无法解密外部端点的密钥：{{detail}}",
     "EXTERNAL_REQUEST_INVALID": "试验场外部请求必须是 JSON：{{detail}}",
     "EXTERNAL_UPSTREAM_UNAVAILABLE": "无法连接外部端点：{{detail}}",
-    "RESPONSE_ENCODING_FAILED": "响应数据无法编码为 JSON。"
+    "RESPONSE_ENCODING_FAILED": "响应数据无法编码为 JSON。",
+    "PLUGIN_WIRE_MALFORMED": "插件数据 {{object}} 格式错误，位置“{{field}}”（{{rule}}）。",
+    "PLUGIN_WIRE_UNKNOWN_FIELD": "插件数据 {{object}} 含有此服务器不认识的字段：{{field}}。该插件可能需要更新的服务器。",
+    "PLUGIN_WIRE_INVALID": "插件数据 {{object}} 无效：字段 {{field}} 违反规则 {{rule}}。",
+    "PLUGIN_WIRE_NOT_CANONICAL": "已签名的 {{object}} 不是规范格式，其签名不可信。",
+    "PLUGIN_SCHEMA_TOO_NEW": "{{object}} 版本 {{version}} 比此服务器能读取的版本（最高 {{known}}）更新。请升级服务器后再使用。",
+    "PLUGIN_MANIFEST_TOO_NEW": "此插件包需要更新的服务器（{{min_core_hint}}）：其清单格式版本 {{version}} 比此服务器能读取的版本（最高 {{known}}）更新。",
+    "PLUGIN_PROTOCOL_UNSUPPORTED": "插件使用的 gwx 协议版本为 {{min}} 至 {{max}}，此服务器使用 {{supported}}。",
+    "PLUGIN_SIGNATURE_UNTRUSTED": "{{object}} 没有此服务器信任的密钥签名。",
+    "PLUGIN_SIGNATURE_INVALID": "{{object}} 上密钥 {{keyid}} 的签名校验失败：文件已被修改或损坏。",
+    "PLUGIN_STATE_REJECTED": "插件推送的 {{kind}} 状态无效：字段 {{field}} 违反规则 {{rule}}。",
+    "PLUGIN_STATE_TOO_LARGE": "插件推送的 {{kind}} 状态过大：{{field}} 超过 {{max}}。",
+    "PLUGIN_STATE_TOO_NEW": "已存储的 {{marker}} 版本为 {{version}}，此服务器最高只能读取版本 {{known}}。请运行 {{needs}} 或更新的版本，不要使用这个较旧的服务器。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {
@@ -1313,6 +1332,10 @@
     "fix": "改用 {{args}}",
     "fixTradeoff": "在自定义参数里加上这条参数，覆盖推理模板的调度策略。会失去原调度策略的优化（如 lpm 的前缀缓存命中优化）。"
   },
+  "consoleBanners": {
+    "region": "服务器通知",
+    "details": "查看详情"
+  },
   "notices": {
     "title": "通知",
     "empty": "暂无通知",
@@ -1527,5 +1550,14 @@
     "rank": "{{node}} 上的 rank {{rank}}：{{text}}",
     "evidence": "{{text}}最后的错误：{{evidence}}",
     "causes": "{{text}}输出显示：{{causes, list}}。"
+  },
+  "consoleExtension": {
+    "locked": {
+      "title": "此服务器未开放该功能",
+      "description": "此服务器关闭了该功能，请联系管理员开启。",
+      "learnMore": "了解更多",
+      "badge": "未开放"
+    },
+    "loading": "加载中…"
   }
 }

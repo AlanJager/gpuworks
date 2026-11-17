@@ -22,6 +22,10 @@ UI, documentation builds or other tests start. The CI graph check rejects jobs
 that bypass this dependency. `make test` and `make test-unit` also wait for the
 gate before starting their expensive prerequisites, including under `make -j`.
 
+The gate's CI job sets `GIT_DEPTH: "0"` so the MR diff base remains available
+even on branches longer than the runner's default shallow history. A missing
+base causes `git diff` to fail before any documentation checks run.
+
 ## Credentials
 
 GitLab 14's built-in job token cannot read MR changes. Set the masked

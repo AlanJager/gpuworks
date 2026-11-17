@@ -14,6 +14,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/version"
@@ -178,6 +179,31 @@ func TestSelfUpgradeRefusals(t *testing.T) {
 	var settingsErr *api.ServerSettingsError
 	if !errors.As(err, &settingsErr) || settingsErr.Code != api.ErrorServerUpgradeUnavailable || settingsErr.Params["reason"] != "no_service_manager" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// The console never switches editions: a release of another edition is
+// refused with its own code and the editions as parameters, and nothing is
+// swapped or restarted.
+func TestSelfUpgradeRefusesAnotherEdition(t *testing.T) {
+	settings, dir, restarts := installedTree(t)
+	archive := releaseArchiveWith(t, "v2.0.0", `  `+selfinstall.ConsoleUpgradeProtocolCommand+`) echo 1 ;;`+"\n"+
+		`  `+selfinstall.EditionCommand+`) echo acme ;;`+"\n")
+	_, err := settings.Upgrade(context.Background(), bytes.NewReader(archive), "admin", dto.ServerUpgradeSelection{})
+	var settingsErr *api.ServerSettingsError
+	if !errors.As(err, &settingsErr) || settingsErr.Code != messages.ErrorServerEditionMismatch ||
+		settingsErr.Params["release"] != "v2.0.0" || settingsErr.Params["release_edition"] != "acme" || settingsErr.Params["edition"] != "community" {
+		t.Fatalf("err = %#v", err)
+	}
+	if !strings.Contains(settingsErr.Fallback, "--allow-edition-change") {
+		t.Fatalf("fallback = %q", settingsErr.Fallback)
+	}
+	if *restarts != 0 {
+		t.Fatal("a refused upgrade restarted the server")
+	}
+	binary, _ := os.ReadFile(filepath.Join(dir, "gpuworks"))
+	if !bytes.Contains(binary, []byte("gpuworks v1.0.0")) {
+		t.Fatalf("binary changed: %q", binary)
 	}
 }
 
