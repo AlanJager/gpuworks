@@ -395,8 +395,8 @@ func socketInodes(t *testing.T, pid int) map[string]bool {
 	return out
 }
 
-// A plugin holds only its own two sockets, cannot open another plugin's
-// through /proc, and (Landlock ABI 6+) cannot signal it.
+// A plugin holds only its own two sockets on every host. With Landlock it
+// also cannot open a sibling's descriptors through /proc or (ABI 6+) signal it.
 func TestSiblingCannotReachAnotherPluginsSockets(t *testing.T) {
 	h := newHost(t, nil, timing())
 	_ = h.Start(fakeSpec(t, "acme_one"))
@@ -407,9 +407,6 @@ func TestSiblingCannotReachAnotherPluginsSockets(t *testing.T) {
 	}
 	_ = h.Start(fakeSpec(t, "acme_two", "--probe-pid", strconv.Itoa(one.PID)))
 	rep := probeReport(t, h, "acme_two", "sibling")
-	if rep["opened"] != "" {
-		t.Fatalf("plugin two opened plugin one's descriptors %v", rep["opened"])
-	}
 	theirs := strings.Split(rep["sockets"].(string), ",")
 	if len(theirs) != 2 {
 		t.Fatalf("plugin two holds sockets %v, want only its own two", theirs)
@@ -419,9 +416,15 @@ func TestSiblingCannotReachAnotherPluginsSockets(t *testing.T) {
 			t.Fatalf("plugin two holds plugin one's socket %s", ino)
 		}
 	}
-	if pluginexec.LandlockABI() >= 6 && rep["signal"] != "EPERM" {
-		t.Fatalf("plugin two signalling plugin one: %v, want EPERM", rep["signal"])
-	}
+	t.Run("Landlock blocks sibling access", func(t *testing.T) {
+		requireLandlock(t)
+		if rep["opened"] != "" {
+			t.Fatalf("plugin two opened plugin one's descriptors %v", rep["opened"])
+		}
+		if pluginexec.LandlockABI() >= 6 && rep["signal"] != "EPERM" {
+			t.Fatalf("plugin two signalling plugin one: %v, want EPERM", rep["signal"])
+		}
+	})
 	if !alive(one.PID) {
 		t.Fatal("plugin one died")
 	}
