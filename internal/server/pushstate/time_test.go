@@ -75,6 +75,37 @@ func TestTurningTheWallClockBackCannotReviveAnExpiredStep(t *testing.T) {
 	}
 }
 
+// A wall clock set ahead and then back while the server runs: the step that
+// fired while it was ahead stays fired, and extclock never runs backwards.
+func TestAWallClockSetAheadThenBackCannotUnfireAStep(t *testing.T) {
+	clk := newFakeClock("2027-01-31T23:59:00Z")
+	h := newHarness(t, openStore(t, ""), clk).load().run()
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, backupFull)
+	h.s.OwnerDown("acme_authority")
+	if h.s.Availability("acme.backup").Access != featuregate.Full {
+		t.Fatal("expired early")
+	}
+	clk.setWall("2027-06-01T00:00:00Z")
+	clk.advance(time.Second)
+	h.recombine()
+	ahead := h.s.Now()
+	if h.s.Availability("acme.backup").Access != featuregate.ReadOnly {
+		t.Fatal("the step did not fire with the wall clock ahead")
+	}
+	clk.setWall("2027-01-31T23:59:02Z")
+	h.recombine()
+	if a := h.s.Availability("acme.backup"); a.Access != featuregate.ReadOnly {
+		t.Fatalf("setting the wall clock back un-fired the step: %+v", a)
+	}
+	if back := h.s.Now(); back.Before(ahead) {
+		t.Fatalf("extclock went backwards: %v after %v", back, ahead)
+	}
+	clk.advance(time.Minute)
+	if now := h.s.Now(); !now.After(ahead) {
+		t.Fatalf("extclock stopped advancing: %v after %v", now, ahead)
+	}
+}
+
 func TestTheHighWaterMarkIsPersistedEveryMinute(t *testing.T) {
 	st := openStore(t, "")
 	clk := newFakeClock("2026-12-01T00:00:00Z")

@@ -7,7 +7,7 @@ import (
 
 // extclock is the clock timelines follow: max(wall clock, high-water mark),
 // where the high-water mark advances by monotonic elapsed time while the
-// server runs and is persisted every minute and at shutdown (ADR 0071
+// server runs, is raised to every wall reading ahead of it, and is persisted every minute and at shutdown (ADR 0071
 // decision 9). Turning the wall clock back therefore cannot bring back a
 // step that already fired; only an explicit correction moves it back, and a
 // step is never consumed, so a correction un-fires the steps after it.
@@ -55,13 +55,21 @@ func (e *extclock) start(hwmMS int64) {
 	e.mu.Unlock()
 }
 
-// nowMS is extclock now, in Unix milliseconds.
+// nowMS is extclock now, in Unix milliseconds. A wall reading ahead of the
+// high-water mark raises the mark, so extclock never returns less than a
+// value it has already returned: a wall clock set ahead and then back while
+// the server runs cannot un-fire a step (ADR 0071 decision 9). Only correct
+// moves the mark back.
 func (e *extclock) nowMS() int64 {
 	w := e.wall().UnixMilli()
 	e.mu.Lock()
-	m := e.base + (e.mono() - e.anchor).Milliseconds()
-	e.mu.Unlock()
-	return max(w, m)
+	defer e.mu.Unlock()
+	mono := e.mono()
+	if m := e.base + (mono - e.anchor).Milliseconds(); m >= w {
+		return m
+	}
+	e.base, e.anchor = w, mono
+	return w
 }
 
 // correct sets extclock's high-water mark to to and returns the extclock it
