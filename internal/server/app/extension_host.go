@@ -171,6 +171,30 @@ func (h *Host) NodeFleet(ctx context.Context) ([]store.NodeHoldFacts, error) {
 	return h.st.NodeFleet(ctx)
 }
 
+// NodeIdentity is the salted hardware identity of each named node that
+// exists, in ascending id order (store.NodeIdentity): the machine's system
+// UUID and the serials of the cards the node owns, each as a 16-hex-digit
+// HMAC-SHA256 keyed with salt plus the raw value's last four characters.
+// Raw serials never leave the server. A node that does not exist is left
+// out. ids holds 1 to 500 nodes and salt 1 to 256 bytes, else
+// store.ErrNodeReadBatch or store.ErrIdentitySalt. It reads only the named
+// nodes: call it for the nodes a page shows, not for the whole fleet on
+// every event. Identity changes (a new host UUID, a swapped card) are not
+// announced on store.NodeFleetTopic.
+func (h *Host) NodeIdentity(ctx context.Context, ids []uint, salt []byte) ([]store.NodeIdentity, error) {
+	return h.st.NodeIdentity(ctx, ids, salt)
+}
+
+// NodeInventory is one page of every node in enrollment order
+// (store.NodeInventory): id, UUID, display name, enrollment time, whether
+// its host UUID is known, and the cards it owns (index, model, whether each
+// carries a serial), never a raw serial. cursor is 0 for the first page and
+// the previous page's Next after that; limit is 1 to 500
+// (store.ErrNodeReadBatch).
+func (h *Host) NodeInventory(ctx context.Context, cursor uint, limit int) (store.NodeInventoryPage, error) {
+	return h.st.NodeInventory(ctx, cursor, limit)
+}
+
 func (h *Host) mustBeOpen(method string) {
 	if h.reg.closed {
 		panic(fmt.Sprintf("extension %s: %s: %v", h.name, method, ErrHostClosed))
