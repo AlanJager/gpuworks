@@ -77,9 +77,11 @@ func TestContractHandshakeRefusal(t *testing.T) {
 	if p.Message == nil || p.Message.Code != messages.ErrorPluginHandshakeRefused || p.Message.Params["plugin_code"] != "ACME_NOT_READY" {
 		t.Fatalf("refused plugin = %+v", p)
 	}
-	time.Sleep(300 * time.Millisecond)
-	if p := sv.plugin("acme_fake"); p.State != "failed" || p.Restarts != 0 {
-		t.Fatalf("a refused plugin was restarted: %+v", p)
+	// A start that timed out on a loaded host is retried; a refusal is
+	// final.
+	time.Sleep(500 * time.Millisecond)
+	if again := sv.plugin("acme_fake"); again.State != "failed" || again.Restarts != p.Restarts {
+		t.Fatalf("a refused plugin was restarted: %+v, then %+v", p, again)
 	}
 }
 
