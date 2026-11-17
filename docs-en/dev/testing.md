@@ -460,3 +460,5 @@ Variables CI needs (scoped to `cloud-test/aliyun/*`): `ALIYUN_ACCESS_KEY_ID`, `A
 This guide documents testing methods. Put one-off run logs, screenshots, image digests, and environment facts in
 `artifacts/work/<YYYY-MM-DD>-<topic>/<topic>-<YYYY-MM-DD>.md` (move them with the topic into
 `artifacts/archive/` when the work is closed out). Current documentation only links to this evidence.
+
+<!-- translation-source-sha256: 72730b1d6b3e623c55255076539c355a4b0ee36805c9876be21488353b19716e -->

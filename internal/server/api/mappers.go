@@ -196,10 +196,16 @@ func (a *apiHandlers) deploymentDTOFrom(rows deployment.Rows, d *store.Deploymen
 	out.State = deployment.EffectiveState(d, out.RuntimeState, facts)
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)
+		quick, quickErr := storedLaunchConfig(d)
 		for i := range insts {
 			item := a.instanceDTOFrom(rows, &insts[i])
 			if viewErr == nil {
 				replicaFields(&item, d, view.Match, &insts[i])
+			}
+			if quickErr == nil {
+				if id, label, ok := deploy.KVOffloadBackendOn(d.Engine, quick, insts[i].Role); ok {
+					item.KVOffloadBackend = &dto.KVOffloadBackendRef{ID: id, Label: label}
+				}
 			}
 			out.Instances = append(out.Instances, item)
 		}

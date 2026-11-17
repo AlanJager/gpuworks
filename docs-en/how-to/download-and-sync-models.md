@@ -92,3 +92,5 @@ After a public download fails, you can still transfer a complete copy from an on
 
 Failed peer sync operations can be retried, and ongoing sync operations can be canceled. Do not register partial files as a complete copy. Deleting a node-local copy requires administrator privileges. The API is
 `DELETE /api/v1/models/{id}/nodes/{uuid}`; a model used by an active deployment returns 409.
+
+<!-- translation-source-sha256: e6a6a5d35a4404de7514769cdfc55fd3df0de257381a886a5c4e47a3532af23d -->

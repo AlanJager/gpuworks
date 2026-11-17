@@ -72,7 +72,12 @@ type LaunchConfig struct {
 	// keeps the disk tier directory under it, and no engine flag carries it.
 	// Zero is unset, and unset means the server derives the ceiling from the
 	// model's weight bytes without writing a number back here.
-	KVDiskLimitGiB          float64 `json:"kv_disk_limit_gib,omitempty"`
+	KVDiskLimitGiB float64 `json:"kv_disk_limit_gib,omitempty"`
+	// KVOffloadBackend selects the KV offload backend (package kvbackend,
+	// ADR 0069) by id; empty is the engine's own offload, which the native
+	// keys above configure. It is stored only where the engine publishes the
+	// key, i.e. has a backend besides its own.
+	KVOffloadBackend        string  `json:"kv_offload_backend,omitempty"`
 	KVOffloadBlockSize      int     `json:"kv_offload_block_size,omitempty"`
 	GPUBlockSize            int     `json:"gpu_block_size,omitempty"`
 	KVCacheMemoryBytes      int64   `json:"kv_cache_memory_bytes,omitempty"`
@@ -132,6 +137,9 @@ func ValidateLaunchConfig(q LaunchConfig) error {
 // other, and the parameters one engine does not support at all.
 func ValidateLaunchConfigForEngine(engine string, q LaunchConfig) error {
 	params := engineParams(engine)
+	if err := validateKVBackend(engine, q); err != nil {
+		return err
+	}
 	if err := validateAgainstDictionary(engine, params, q); err != nil {
 		return err
 	}

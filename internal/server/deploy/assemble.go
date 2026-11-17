@@ -346,6 +346,9 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
 	}
+	if err := validateKVBackendLaunch(input.Engine, params); err != nil {
+		return ResolvedLaunch{}, nil, err
+	}
 	launch.RequestedFeatures = ResolveRequestedFeatures(input.Engine.Name(), launch, params)
 	var targetErr error
 	if input.TargetValidation == CollectTargetCapabilities {

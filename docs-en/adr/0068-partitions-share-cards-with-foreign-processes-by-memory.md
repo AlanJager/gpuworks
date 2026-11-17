@@ -28,3 +28,5 @@ Relaxing the server alone is not enough: the agent's rule for processes outside 
 - The headroom is a fixed share rather than the outside processes' historical peak: a peak would need a new persisted fact, and 5%/4 GiB covers the reading fluctuation observed; an operator can still stop scheduling on the card.
 - Nodes with an older agent cannot share until upgraded: better to ask for an agent upgrade than to take the card for free after the first placement.
 - This ADR supersedes the former deferred item T68 in `known-issues.md` ("cards held by outside processes are only excluded whole").
+
+<!-- translation-source-sha256: 012e37e9b4a8d006ceb600f7caad09446978a2a4930a679deb64abb7d8f93bc0 -->

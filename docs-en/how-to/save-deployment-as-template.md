@@ -115,3 +115,5 @@ For 409 `TEMPLATE_EXPORT_UNAVAILABLE`, read `params.reason`:
 | `no_gpu_facts`, `template_missing`, `model_missing` | The instance is not bound to specific cards, or the source template or model has been deleted |
 
 409 `LAUNCH_NOT_EXPORTABLE` means the exported arguments cannot rebuild the deployment's original command line, and the platform refuses to give an approximation; report the deployment's launch arguments and engine version to the maintainers.
+
+<!-- translation-source-sha256: 3b100cf74fb9a1d2980a58faeeadd44263959bb6255553812aaff2cbe8908147 -->

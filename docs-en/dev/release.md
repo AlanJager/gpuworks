@@ -247,3 +247,6 @@ embedded seed is generated from the gpuworks-runner build matrix by `make image-
   must not overwrite the current executable.
 - Record the release version, build commit, platform, embedded asset digests, and catalog package digest. Store one-time acceptance results in
   `artifacts/work/<YYYY-MM-DD>-<topic>/` (move them with the topic into `artifacts/archive/` after completion).
+
+<!-- translation-source-sha256: 3ed92909a9f8b87c5b455f45229601323014b6578deb8e72e94c51350178ffd7 -->
+<!-- translation-localized-code-block: 957acfe4b88a2bb0b730fab70c725bbbdaf2e1536f84f94d12918def820c5a7c cac397a0dea3afc07b0e87be5f17fd4204658d3b070919f828730dc6f0f4992d Translate release validation command comments -->

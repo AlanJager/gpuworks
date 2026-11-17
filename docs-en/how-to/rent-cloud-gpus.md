@@ -317,3 +317,6 @@ For GPUWORKS to apply the manifest, the cluster's API Server needs a public addr
 **Power control and release**: power on and power off map to the Droplet's power on / power off (billing continues after power-off); releasing deletes the Droplet together with its data.
 
 **DOKS clusters**: an expanded account lists the account's DOKS clusters below the “Standalone instances” group, one group per cluster showing its NVIDIA GPU node pools (AMD node pools are not listed). Connect it with “Connect” in the group header, settling the node pools in the drawer (all are chosen by default); after that, the agent runs only on the nodes of the chosen pools (selected by the node label `doks.digitalocean.com/node-pool-id`). GPUWORKS can apply the manifest with a kubeconfig valid for 15 minutes, or you can run kubectl yourself; see [Connect Managed Kubernetes from a Public Cloud](connect-managed-kubernetes.md).
+
+<!-- translation-source-sha256: 2d6bb04ca5510c9ea63d698a1a46a731f91b2611688855b1083b6cd01d599097 -->
+<!-- translation-localized-code-block: a6a0a8058e9146b7cd2f396be4bad9947574d42b7cd5f0b9919404ca23294d5e 2c9437c6fbea28b4dc5c7f8200bb9e8b0b7ef31cd2e89dfcf8055f3c69392472 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->

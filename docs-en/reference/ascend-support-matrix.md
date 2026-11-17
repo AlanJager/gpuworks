@@ -199,3 +199,5 @@ The basis for using Phy-ID consistently as the device number is read-only verifi
 For 910C, Logic ID in `npu-smi info -m` equals Phy-ID and is not compacted when cards are missing (on a host missing NPUs 3–6, NPU 7's two chips remain 14 and 15).
 All `/dev/davinci0..15` devices exist and map one-to-one to Phy-ID (`Phy-ID = 2 × NPU ID + Chip ID`).
 For 910B, NPU ID equals Phy-ID, so single-chip cards continue to use NPU ID.
+
+<!-- translation-source-sha256: e8dc90c7cfe5b6bcb1272c36ae52cb34e53016bc2a89a1be1159b13d9d53ab19 -->

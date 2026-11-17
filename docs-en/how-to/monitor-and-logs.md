@@ -228,3 +228,5 @@ Select the log level directly in the **Features** section of Quick Deploy:
 The deployment command preview shows `SGLANG_LOGGING_CONFIG_PATH` and the pre-start script that writes the configuration. You can also view the saved script and env in instance details. `/tmp/gpuworks-sglang-logging.json` is the configuration file, not the log output file.
 
 For startup methods without automatic injection, reasons multi-GPU logs may still lack levels, and how to take over the full script yourself, see [SGLang Logging Injection: Behavior and Boundaries](../explanation/sglang-logging.md).
+
+<!-- translation-source-sha256: 1d33af24ff68fcbc9eed0db3e0e2140d738bf92f567ae94a64c87abe67b1087f -->

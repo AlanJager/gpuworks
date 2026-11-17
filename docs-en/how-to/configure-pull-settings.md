@@ -312,3 +312,6 @@ Behavior changes:
 - The “Network” card on the Settings page, “Network override” in node details, `/settings/network`, `network:<id>`, `/nodes/{uuid}/network` (now returns 410), and network presets (hf-mirror and xget presets and DNS suggestions) have all been removed. No presets remain.
 - Models with directory URL sources previously connected directly without a proxy. They now download through the node proxy. Add internal file servers to `no_proxy`; otherwise, requests are sent through the proxy.
 - Model downloads previously retried the same address up to 16 times. They now switch addresses as described above when candidates remain; only the last address retains the 16-attempt limit.
+
+<!-- translation-source-sha256: 4057a5ac3e8e716a445adc8722c8255c8c7dad2c4ea151add93cf4aba3a12f77 -->
+<!-- translation-localized-code-block: cc414d43679c3ca4bb839fd237cd475e74be2c5c6d42c27abdf2bcf1101fe4e9 787bbac38ac38f3870567bcb2222c08d8463c6a1a327f386fb37b2909cf8c6fd Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

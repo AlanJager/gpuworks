@@ -565,3 +565,13 @@ Warnings do not block import. A successful import response includes the same `wa
   `fallback-sources.json`).
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
+
+<!-- translation-source-sha256: 37e82ac4ebd937f1453e29137d8cd5759ada058292802a2bdfad6cd53088d322 -->
+<!-- translation-localized-code-block: 87b9b0138ba4ec53acde102a7c6b84d62b6c2f8f0d3d75cab349af25de5c4c50 d678bb21d75ccc75960270f23e4263c515e921694b27de418282915199ae6923 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: a611f2e8254725bdcf88ae19eb23c532ef8c679903131a8881bbd61f09aafdb2 33859cded67f664966175739bc36d429175e7fe4c8f3d71422f40719d24be6e6 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: bee5e6aa5c268b0bca3195996e1394ed7ca27c6938ea75731026b323c425c162 50a7b72308d2093f9b328d73f1c889122beed6408c02fe79a803f0bd63b3246f Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: d0cf90e53d24fed8cc724f20d6eb7df85810710388a02b23e6ede399e6bb8294 9a3a3028b77be7c62002a4762ea29528a08dd641897608dcc4383e36d62744cb Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: a7d524edd753182838ebcc0b5d00da0acb23a4e6ceb9481fd31f031c520b6138 7454b07423d39cda5d3f4e571f923044557c02bd167ecf53284bb63e4e601388 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: cb01e807364a6fa35f11fd6e177ffbbcbfe444a9860c0043a088d4693962c102 7c96acf3d55e07b7b1526005845a7f4eaae06818f9de255105ab3e2d2216985f Translate YAML comments and illustrative user-facing reason text. -->

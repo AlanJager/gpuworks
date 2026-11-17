@@ -246,6 +246,10 @@
     "placeholder": "Twice the model weights",
     "help": "Ceiling the platform enforces on the disk tier directory; the engine has no such limit. Leave empty to let the platform derive it from the model weights."
   },
+  "kv_offload_backend": {
+    "label": "KV Offload Backend",
+    "help": "Which component keeps the KV cache beyond the GPU. Leave empty to use the engine's own memory and disk tiers; a backend replaces them."
+  },
   "enforce_eager": {
     "label": "Enforce Eager Mode",
     "help": "Starts faster and uses less GPU memory, but reduces steady-state decoding performance"

@@ -77,3 +77,5 @@ The vendors that run on Kubernetes are decided by `accelerator.RunsOnKube`; AMD 
 Why: with the engine port range, RuntimeClass, and idle return in the manifest, changing one meant reapplying it and rolling the DaemonSet, which restarts the agents, even though these are entry settings the server already knows. Soft isolation lets clusters running HAMi and similar connect, instead of the whole node being unusable under CDI mode.
 
 Consequences: no new persisted facts; one more control message between server and agent, `kube.settings` (an older agent ignores it, and so does a node that is not a Kubernetes node); one more optional field, `NVIDIAIsolation`, in the node's status report.
+
+<!-- translation-source-sha256: dda7553288e1b0b4f04060d579d2840a66a4f87e23630d28eabafc6f51943db4 -->

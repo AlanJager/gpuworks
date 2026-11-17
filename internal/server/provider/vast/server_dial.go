@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -55,28 +54,6 @@ func (in *instance) tcpMappings() map[int]int {
 		}
 	}
 	return out
-}
-
-// instanceByID finds one instance; Vast's API lists them all.
-func (d *Driver) instanceByID(ctx context.Context, creds provider.Credentials, externalID string) (instance, error) {
-	resp, err := d.do(ctx, creds, http.MethodGet, "/instances/")
-	if err != nil {
-		return instance{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return instance{}, fmt.Errorf("vast: list instances: status %d", resp.StatusCode)
-	}
-	insts, err := decodeInstances(resp.Body)
-	if err != nil {
-		return instance{}, fmt.Errorf("vast: decode instances: %w", err)
-	}
-	for i := range insts {
-		if insts[i].ID.String() == externalID {
-			return insts[i], nil
-		}
-	}
-	return instance{}, fmt.Errorf("vast: instance %q not found", externalID)
 }
 
 // ServerDialAddressFor implements provider.ServerDialPortMapper: the public

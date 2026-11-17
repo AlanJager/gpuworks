@@ -218,11 +218,26 @@
     "autoCurrent": "auto（当前 {{runtime}}）",
     "copyConfigureCommand": "复制配置命令",
     "configureCopied": "配置命令已复制",
+    "copySocketCommand": "复制命令",
+    "socketCommandCopied": "命令已复制",
+    "socketCommandTitle": "复制命令",
     "fallback": {
       "gpu_plugin_missing": "检测到 {{from}}，但未安装 {{plugin}}，已改用 runveil。建议安装 {{plugin}}；安装后节点空闲时自动切回 {{from}}。",
       "daemon_not_ready": "{{from}} 已安装但 agent 启动时没有响应（可能仍在启动或正忙），已暂用 runveil。agent 每分钟重试；{{from}} 响应后，节点空闲时自动切回。",
       "gpu_runtime_unconfigured": "检测到 {{from}} 且已安装 {{plugin}}，但 {{from}} 未配置 GPU 支持，已改用 runveil。建议配置后重启 {{from}}；之后节点空闲时自动切回。",
-      "gpu_ready": "{{from}} 已可用，可切换；节点空闲时将自动切换。"
+      "gpu_ready": "{{from}} 已可用，可切换；节点空闲时将自动切换。",
+      "socket_permission_denied": "{{from}} 的 socket {{socket}} 属于{{group}}，agent 的账号 {{account}} 无权打开，已暂用 runveil。请把 {{account}} 加入该组再重启 agent（它只有启动时的组）。",
+      "socket_restart_pending": "{{account}} 已加入{{group}}（{{from}} 的 socket {{socket}} 属于该组），但 agent 是在此之前启动的，仍只有启动时的组，重启 agent 之前节点继续使用 runveil。",
+      "socketSameName": "{{account}} 所在的另一个组也叫 {{name}}（gid {{sameGid}}），很可能来自 NIS、LDAP 等目录服务；socket 属于本机自己的 {{name}} 组（gid {{gid}}），只有这个组能打开它。",
+      "socketRestartHow": "重启 agent：sudo systemctl restart gpuworks-agent；不用 systemd 的安装，先停掉 agent，再以 {{account}} 运行状态目录下的 agent-restart.sh。",
+      "socketGroup": "组 {{group}}（gid {{gid}}）",
+      "socketGid": "gid 为 {{gid}} 的组",
+      "socket_group_held": "agent 已在{{group}}中，{{from}} 的 socket {{socket}} 仍拒绝账号 {{account}}，已暂用 runveil。拒绝来自 socket 权限位或 SELinux、AppArmor，加组无效。",
+      "socket_root_group": "{{from}} 的 socket {{socket}} 属于 root 组，账号 {{account}} 不应加入，已暂用 runveil。请给 socket 设专用组并把 {{account}} 加入，再重启 agent。",
+      "socket_unknown": "agent 的账号 {{account}} 无权打开 {{from}} 的 socket {{socket}}，且读不到 socket 所属的组，已暂用 runveil。",
+      "socketRestartEffect": "重启后 agent 改用 {{from}}。runveil 上的实例不会迁移：agent 停止后其进程仍在运行，重启后的 agent 又会在 {{from}} 中再启动一份，请先停掉该节点上的部署。",
+      "socketOptOut": "如果 {{account}} 本就不该用 {{from}}，把节点运行时设为 runveil（udocker），提示和每分钟的复查随之停止。",
+      "socketAccountUnknown": "（未知）"
     }
   },
   "accelerator": {

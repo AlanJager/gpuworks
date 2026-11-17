@@ -89,6 +89,7 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 		d.RuntimeFallbackFrom = n.RuntimeFallbackFrom
 		d.RuntimeFallbackReason = n.RuntimeFallbackReason
 		d.RuntimeFallbackPlugin = accelerator.RuntimeGPUPlugin(n.GPUVendor, n.RuntimeFallbackFrom)
+		d.RuntimeFallbackSocket = runtimeSocketDenialDTO(n.RuntimeSocketDenial())
 	}
 	d.AcceleratorPreference = n.AcceleratorPreference
 	d.AcceleratorVendors = acceleratorChoices(n)

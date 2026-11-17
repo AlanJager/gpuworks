@@ -86,3 +86,5 @@ A class change applies to the next request on the server that made it; with seve
 - Both engines use strict priority with no aging by waiting time: under sustained saturation, low-priority requests can wait without bound.
 - Priority only takes effect inside one replica; the gateway does not consider it when choosing among replicas.
 - Measured on a single NVIDIA card, turning it on changed throughput, time to first token and prefix-cache hit rate for same-priority load by no more than measurement noise.
+
+<!-- translation-source-sha256: 4db915372627d83b4700741dcf48c9002b2eafc29412b076194d34e5207a27f1 -->

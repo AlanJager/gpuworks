@@ -272,3 +272,5 @@ By default, evaluations measure end-to-end performance through the gateway. If y
 - **An instance was ready, but requests later keep failing or falling back**: First check instance events and logs. The agent periodically checks running containers;
   if a container exits or disappears, it is treated as failed and the controller recreates it according to the retry policy. Use **Retry** when the retry limit is reached.
   This check is not continuous HTTP health probing. If the container is still running but the engine does not respond, check logs and request errors, then restart or replace the instance through role adjustment if necessary.
+
+<!-- translation-source-sha256: 9998b76d3dcd4ac87b607ae37f1fb2db200d3e1d9041b9edd15ca18317c8d24c -->

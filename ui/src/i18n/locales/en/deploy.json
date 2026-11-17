@@ -155,6 +155,7 @@
     "multi_node_unsupported_on_node": "{{vendor}} nodes cannot run ranks across several nodes. Deploy on a single node or select other nodes.",
     "pd_unsupported_on_node": "PD disaggregation is not supported on {{vendor}} nodes. Select other nodes.",
     "kv_disk_unsupported_on_node": "{{vendor}} nodes have no KV disk tier. Turn off the KV disk tier or select another node.",
+    "kv_backend_unsupported_on_node": "{{vendor}} nodes cannot run the selected KV offload backend. Choose another KV offload or select another node.",
     "storage_unavailable": "The storages that can serve this model are not ready on this node. Check the storages' node status or select another node.",
     "model_exceeds_cache_limit": "The model is larger than this node's cache limit for the storage. Raise the cache limit or use a storage that reads in place.",
     "cache_full_in_use": "This node's cache for the storage is full of models that are in use, so no room can be made. Raise the cache limit or stop the deployments that use those models.",
@@ -901,7 +902,8 @@
       "disk": "Disk",
       "memoryRequired": "Enable the memory tier first",
       "enterCapacity": "Enter a capacity greater than 0 GiB",
-      "restoresWithMemory": "Will be restored when the memory tier is enabled"
+      "restoresWithMemory": "Will be restored when the memory tier is enabled",
+      "backendReplaces": "Replaces the engine's memory and disk tiers"
     },
     "features": {
       "title": "Features",
