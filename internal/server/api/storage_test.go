@@ -27,6 +27,7 @@ func TestStorageUsageAggregatesManagedBytesAndDiskWatermark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = st.Close() })
 	node, err := st.RegisterNode("node-storage", store.HashToken("t"), "storage")
 	if err != nil {
 		t.Fatal(err)
