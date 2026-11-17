@@ -203,14 +203,56 @@ SDK 带主版本号 `SDK_MAJOR`（当前为 1），只在删掉或改变某个�
 
 ## 可安装扩展
 
-ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，而不是编进二进制。这部分**尚未实现**，本节只说明它将如何接入本页的契约：
+ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，而不是编进二进制。插件宿主模块尚未实现，下面几点说明它将如何接入本页的契约：
 
 - 插件宿主是一个内置模块，经 `Host` 注册已有的钩子（功能来源、节点插入守卫、调度保持者、横幅），从插件推送、由核心校验并持久化的表作答；官方构建里它将是 `ProvideFeatures` 唯一的调用者。
 - 插件是 server 的子进程，经继承的 fd 用 `gwx/1` 与核心通信，从不进入热路径，也不拿 Store；它的路由挂在 `/api/v1/x/<id>/` 下，与编译模块同一个前缀。
 - 功能键是否受控由插件包自己声明；授权类的表只接受发布者证书指定的权威推送；插件掉线时限制继续执行，授权在有界宽限后降为只读，时间线按 extclock 照常生效。
 - 本页的钩子规则（写事务里的钩子是纯函数、保持者只停止调度不驱逐、运行中的负载不中断）对插件宿主同样适用。
 
-包清单、证书、信任更新、`gwx/1` 消息与推送表的线上格式已经冻结在 `pkg/extapi` 里，见[插件协议与线上格式](../reference/plugin-protocol.md)；安装、信任链的执行、进程生命周期与插件宿主的文档随实现补齐。
+包清单、证书、信任更新、`gwx/1` 消息与推送表的线上格式已经冻结在 `pkg/extapi` 里，见[插件协议与线上格式](../reference/plugin-protocol.md)。下面几节是已经实现的进程与协议部分（还没有接入 `serve`）；安装与信任链的执行、推送表与插件宿主模块的文档随实现补齐。
+
+### 跳板：`gpuworks plugin-exec`
+
+server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile <json> -- <可执行文件> serve`（`internal/server/pluginexec`，不是给人用的子命令）。跳板以将来的插件进程身份施加沙箱，然后 `execve` 插件，所以沙箱由宿主施加，插件无法撤销：
+
+| 步骤 | Linux | macOS |
+|---|---|---|
+| 父进程死亡信号 | `PR_SET_PDEATHSIG(SIGKILL)`，并核对父进程仍是 server，否则不启动 | 无；SDK 靠 fd EOF 与轮询 `getppid` 退出 |
+| 权限 | `PR_SET_NO_NEW_PRIVS` | — |
+| 进程组 | 独立进程组，server 按组发信号 | 同左 |
+| 资源 | `RLIMIT_CORE=0`、`RLIMIT_NOFILE=4096`、nice 5；`RLIMIT_NPROC` 按用户计数，插件与 server 同一用户时不设，进程数由 cgroup 的 `pids.max` 限制 | 同左（无 cgroup） |
+| 描述符 | fd 3、4 必须是 socket；stdin、stdout 指向 `/dev/null`；stderr 是日志 | 同左 |
+| 环境变量 | 只保留 `PATH`、`TZ`、代理与 CA 变量，另设 `HOME`=数据目录、`TMPDIR`、`LANG=C.UTF-8` 与 `GWX_*` | 同左 |
+| cgroup | server 的 cgroup 已委派（`subtree_control` 可写）时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`、`memory.high`、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动 | — |
+| Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，批准的设备节点读写；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
+
+要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
+
+### 监管
+
+`internal/server/pluginhost` 为每个包运行一个监管者。拉起插件的 goroutine 在插件存活期间一直锁定在自己的 OS 线程上：Linux 的父进程死亡信号属于 fork 子进程的那个线程，而 Go 运行时会回收锁定线程的 goroutine 结束时的线程，不锁定的话别的 goroutine 结束时就可能把插件一起杀掉。
+
+| 项 | 默认值 |
+|---|---|
+| `initialize` 应答期限 | 10 秒 |
+| 健康探测 | 每 10 秒一次，单次 3 秒；连续 3 次未通过则杀掉重启（`PLUGIN_UNHEALTHY`） |
+| 崩溃重启 | 1 秒起翻倍，最长 5 分钟；连续健康运行 10 分钟后重新从 1 秒算 |
+| 崩溃循环 | 10 分钟内崩溃 5 次进入 `crashloop`（`PLUGIN_CRASHLOOP`），之后每 5 分钟重试一次，无人值守的离线站点能自己恢复 |
+| 停止 | `POST /gwx/v1/shutdown`，10 秒后向进程组发 SIGTERM，再 5 秒 SIGKILL |
+| 调用并发 | 每个插件同时至多 `max_concurrency`（默认 8）个调用，满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
+| 无截止时间的调用 | 60 秒 |
+| stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |
+
+`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动，空闲 10 分钟后停止，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+
+### gwx/1 连接与宿主接口
+
+每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`）。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
+
+### 插件 SDK：`pkg/pluginsdk`
+
+插件作者用 `pkg/pluginsdk`（与 `pkg/extapi` 一样是独立模块，只依赖标准库与 `pkg/extapi`）：`pluginsdk.Main(cfg)` 打开两个描述符、回答握手（协议与能力协商，拒绝时用 `PLUGIN_PROTOCOL_UNSUPPORTED` 或 `PLUGIN_CAPABILITY_MISSING`）、在握手被接受后运行 `Start`、回答健康、把其他调用交给插件的 `http.Handler`；收到 `shutdown`、server 一端关闭或父进程不在时退出。`PushState` 跳过 server 已持有且摘要相同的表，推送的代数取 `max(自己的计数, 持有的代数)+1`，所以存储被恢复或清空的插件不会因代数过期被拒。`pkg/pluginsdk/plugintest` 在进程内用真实 socketpair 扮演 server，供插件自己的测试使用。
 
 ## 开源代码不做的事
 

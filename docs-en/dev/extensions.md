@@ -203,14 +203,56 @@ The edition checks below matter only to forks: official builds name no edition, 
 
 ## Installable extensions
 
-ADR 0071 decides that official and third-party extensions are installed as signed plugin packages (`.gwpkg`) instead of being compiled into the binary. This part is **not built yet**; this section only says how it will connect to the contract on this page:
+ADR 0071 decides that official and third-party extensions are installed as signed plugin packages (`.gwpkg`) instead of being compiled into the binary. The plugin host module is not built yet; the points below say how it will connect to the contract on this page:
 
 - The plugin host is a built-in module that registers the existing hooks through the `Host` (feature source, node insert guard, scheduling holder, banners) and answers them from tables plugins push and the core validates and persists; in official builds it will be the only caller of `ProvideFeatures`.
 - A plugin is a child process of the server that talks to the core over `gwx/1` on inherited fds, never enters a hot path and never gets the Store; its routes live under `/api/v1/x/<id>/`, the same prefix as compiled modules.
 - Whether a feature key is gated is declared by the plugin package itself; grant tables accept pushes only from the authority its publisher certificate names; while a plugin is down its restrictions stay enforced, its grants clamp to read-only after a bounded grace, and timelines keep firing on extclock.
 - The hook rules on this page (hooks inside the writer transaction are pure, holders cordon without draining, running workloads are never interrupted) apply to the plugin host as well.
 
-The wire formats of manifests, certificates, trust updates, `gwx/1` messages and pushed tables are frozen in `pkg/extapi`; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md). Installation, trust chain enforcement, the process lifecycle and the plugin host are documented as they are built.
+The wire formats of manifests, certificates, trust updates, `gwx/1` messages and pushed tables are frozen in `pkg/extapi`; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md). The sections below describe the process and protocol parts that are built (not yet wired into `serve`); installation and trust chain enforcement, pushed tables and the plugin host module are documented as they are built.
+
+### Trampoline: `gpuworks plugin-exec`
+
+The server starts every plugin through its own binary: `gpuworks plugin-exec --profile <json> -- <executable> serve` (`internal/server/pluginexec`, a subcommand not meant for people). The trampoline applies the sandbox as the process-to-be and then `execve`s the plugin, so the host applies the sandbox and the plugin cannot undo it:
+
+| Step | Linux | macOS |
+|---|---|---|
+| Parent-death signal | `PR_SET_PDEATHSIG(SIGKILL)`, and a check that the parent is still the server, or nothing starts | None; the SDK exits on fd EOF and by polling `getppid` |
+| Privileges | `PR_SET_NO_NEW_PRIVS` | — |
+| Process group | A group of its own, which the server signals as a whole | Same |
+| Resources | `RLIMIT_CORE=0`, `RLIMIT_NOFILE=4096`, nice 5; `RLIMIT_NPROC` counts per user, so it is not set while the plugin shares the server's user, and the cgroup's `pids.max` bounds processes | Same (no cgroup) |
+| Descriptors | fd 3 and 4 must be sockets; stdin and stdout are `/dev/null`; stderr is the log | Same |
+| Environment | Only `PATH`, `TZ` and the proxy and CA variables are kept, plus `HOME` = the data directory, `TMPDIR`, `LANG=C.UTF-8` and `GWX_*` | Same |
+| cgroup | When the server's cgroup is delegated (`subtree_control` writable), creates `<service cgroup>/plugins/<id>`, writes `memory.max`, `memory.high`, `cpu.weight=50` and `pids.max=512`, and moves in; when it cannot, it only warns and the plugin starts anyway | — |
+| Landlock | ABI ≥ 1: the package directory readable and executable, the data and tmp directories with every right, CA files, `resolv.conf`, `hosts` and time zones read-only, approved device nodes read-write; from ABI 6 also no signals to processes outside the domain (the server and other plugins) | None |
+
+A package that requires Landlock (certificate `min_isolation: landlock`) does not start on a host without it: the trampoline exits with code 78 and writes `PLUGIN_ISOLATION_UNAVAILABLE` to stderr. The trampoline's other exit codes: 64 for a bad command line, 71 when applying the sandbox failed, 127 when the plugin could not be executed.
+
+### Supervision
+
+`internal/server/pluginhost` runs one supervisor per package. The goroutine that starts a plugin stays locked to its OS thread for the plugin's whole life: on Linux the parent-death signal belongs to the thread that forked the child, and the Go runtime retires the thread of a locked goroutine that ends, so without the lock another goroutine ending could take the plugin with it.
+
+| Item | Default |
+|---|---|
+| `initialize` deadline | 10 seconds |
+| Health probe | Every 10 seconds, 3 seconds each; after 3 misses in a row the plugin is killed and restarted (`PLUGIN_UNHEALTHY`) |
+| Crash restart | From 1 second, doubling, up to 5 minutes; 10 minutes of healthy running starts again from 1 second |
+| Crashloop | 5 crashes within 10 minutes enter `crashloop` (`PLUGIN_CRASHLOOP`), retried every 5 minutes after that, so unattended offline sites recover by themselves |
+| Stop | `POST /gwx/v1/shutdown`, SIGTERM to the process group 10 seconds later, SIGKILL 5 seconds after that |
+| Call concurrency | At most `max_concurrency` (default 8) calls per plugin at once; beyond that `PLUGIN_BUSY` at once, never queued; health probes take no slot |
+| Calls without a deadline | 60 seconds |
+| stderr | Forwarded to the server log with `plugin=<id>`, JSON lines keep their level; 50 lines a second with bursts of 500, the excess counted and reported; the last 1 MiB kept for diagnostics |
+
+A `resident` plugin starts as soon as it is added; an `on_demand` plugin starts on its first call, stops after 10 idle minutes and may not push state (`PLUGIN_STATE_ON_DEMAND`). Only `running` and `degraded` count as up; every other state (`starting`, `backoff`, `crashloop`, `stopping`, `stopped`, `idle`, `failed`) counts as down. A plugin that refuses the handshake for a reason retrying cannot change (such as `PLUGIN_CAPABILITY_MISSING`), answers for another build (`PLUGIN_HANDSHAKE_MISMATCH`) or picks a capability version that was not offered or approved (`PLUGIN_CAPABILITY_NOT_OFFERED`) enters `failed` and is not restarted until it is started again.
+
+### gwx/1 connections and the host API
+
+Each plugin gets two socketpairs. On fd 3 the server is the HTTP/2 client: first `initialize` (the server's capabilities, the approved grant, the tables it holds, and a principal key fresh per spawn), checking that the answer's `id`, `version` and `manifest_sha256` match the package and that `use` stays within what was offered and approved; then health probes, and forwarded routes and service calls, each with `Gwx-Deadline-Ms`. On fd 4 the server serves the host API: `PUT`/`PATCH /host/v1/state/{kind}` goes to the pushed-state implementation (an interface), and `GET /host/v1/health`; 20 calls a second per plugin with bursts of 100 (`PLUGIN_HOST_RATE_LIMITED`). The owner is the package the connection was bound to at the handshake, and a push carries no identity field; a push that arrives before the handshake is accepted waits for the outcome and gets `PLUGIN_HOST_NOT_READY` if it fails.
+
+### Plugin SDK: `pkg/pluginsdk`
+
+Plugin authors use `pkg/pluginsdk` (a module of its own like `pkg/extapi`, depending only on the standard library and `pkg/extapi`): `pluginsdk.Main(cfg)` opens the two descriptors, answers the handshake (protocol and capability negotiation, refusing with `PLUGIN_PROTOCOL_UNSUPPORTED` or `PLUGIN_CAPABILITY_MISSING`), runs `Start` once the handshake is accepted, answers health, and hands every other call to the plugin's `http.Handler`; it exits on `shutdown`, when the server's end closes, or when its parent is gone. `PushState` skips a table the server already holds with the same digest and numbers pushes `max(own counter, held generation)+1`, so a plugin whose storage was restored or wiped is never refused as stale. `pkg/pluginsdk/plugintest` plays the server in process over real socketpairs, for a plugin's own tests.
 
 ## What the open-source code does not do
 
@@ -220,4 +262,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 7ae14cb428e015e80758e66e1a5a28ed6379dbbbe94aff1152d1af58cc593d05 -->
+<!-- translation-source-sha256: c20bd964206cb3ce5a0e6c985a5baa482de72778a3f0ba3fa0de0eec906faf92 -->
