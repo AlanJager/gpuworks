@@ -498,14 +498,14 @@ usage:
                           [--deployments IDS] [--instances UUIDS] [--out PATH]
   gpuworks version`+extraUsage(extra)+`
 
-plugins:
-`+pluginUsage+`
-
 installation:
 `+installUsage+`
 
 public address:
 `+exposeUsage+`
+
+plugins:
+`+pluginUsage+`
 
 serve reads server.yaml (written by install) when --config names it; a flag
 given on the command line overrides the file. Without --config it serves every
