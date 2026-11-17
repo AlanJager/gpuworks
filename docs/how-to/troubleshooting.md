@@ -126,6 +126,14 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 4. 协议版本不匹配，reason 为 `proto_mismatch`（detail 形如 `server supports 1-1`），需要升级 agent。
 5. `stale_session`：只出现在**数据通道**握手，表示它绑定的控制会话已过期。agent 只打 Debug 日志并退避
    重试，控制通道重连后自愈，见 [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md)；持续出现才需要处理。
+6. 两个 agent 用同一个节点身份：两边轮流接入、互相顶掉连接，节点页却一直「在线」（被顶掉的旧连接不会把节点标成离线），
+   表现是终端、日志跟随、模型或镜像传输反复中断；两台主机的 agent 日志都反复出现 `connection ended` 和 `reconnecting`，却没有 reject；
+   server 日志有 `AGENT_DUPLICATE_INSTANCE`，`host`/`remote` 与 `other_host`/`other_remote` 是互相顶替连接的两个 agent。
+   同一 state 目录的第二个 `run` 已被 `<state>/agent.lock` 挡住（见 [CLI 参考](../reference/cli.md)），剩下的多是
+   state 目录或 token 被复制到另一台主机（克隆的磁盘或镜像）、另一个 state 目录写了同一个 token，或本版本之前的旧 agent
+   与当前 agent 同用一个身份。识别靠 agent 握手时带的进程实例标识，至少一方是当前版本才会上报；两个都是旧版 agent 时
+   server 日志里没有这条记录，只能按上面的现象和两台主机上的进程排查。
+   停掉多余的 agent；克隆出来的主机删掉复制来的 state 目录，作为新节点重新接入。同一节点每小时最多记一次。
 
 时钟偏差**不是** reject 原因：握手里没有时间戳校验，`server_dial` 的 HMAC 只签一次性 nonce，不含时间。
 server_dial 节点的密钥不符时 agent 报 `invalid server_dial proof`。
@@ -431,7 +439,30 @@ agent 每分钟复查一次：被跳过的运行时能用了，节点上没有�
 开机时 agent 早于 dockerd 启动，或 dockerd 正忙着拉大镜像、5 秒内没有应答时，自动选择运行时的 agent 在启动阶段最多再等 2 分钟；
 仍不应答才改用 runveil，节点详情的橙色提示说明原因（`daemon_not_ready`）。之后每分钟复查一次，Docker 应答且节点上没有实例时自动切回，
 有实例时同样提示「Docker 已可用，可切换」。agent 的 systemd 单元排在 `docker.service`、`containerd.service` 之后启动（只排顺序，
-没有 Docker 的主机不受影响）。agent 用户无权访问 Docker（不在 docker 组）不属于这种情况，不会等待。
+没有 Docker 的主机不受影响）。agent 用户无权访问 Docker（不在 docker 组）不属于这种情况，不会等待，见下一段。
+
+**agent 的账号打不开 Docker 的 socket**
+
+以普通账号运行的 agent，`docker info` 报 `permission denied while trying to connect to the Docker daemon socket` 时，
+自动选择运行时的 agent 改用 runveil，节点详情的橙色提示说明原因（`socket_permission_denied`），列出 socket 路径、它所属的组与 gid、
+agent 的账号，并附可复制的命令：`sudo gpasswd -a <账号> <组>`，再按安装方式重启 agent（systemd 安装为
+`sudo systemctl restart gpuworks-agent`；不用 systemd 的安装以该账号停掉命令行为 `gpuworks-agent run --state <状态目录>` 的进程
+（按命令行认，不信 pid 文件），确认它已退出后再运行状态目录下的 `agent-restart.sh`；30 秒内没退出就报错，不启动第二个 agent）。
+agent 看不出自己由什么拉起时，命令只含加组一行，提示里写明两种重启方式。
+
+重启后 agent 改用 Docker。runveil 上的实例不会迁移：runveil 的实例进程在 agent 停止后继续运行，重启后的 agent 又会在 Docker 中
+把这些实例再启动一份，所以重启前先停掉该节点上的部署。若该账号本就不该用 Docker，把节点的运行时设为 runveil（udocker），
+提示和每分钟的复查随之停止。
+
+加组不是原因时提示不给命令：agent 已经持有 socket 的属组仍被拒绝（socket 权限为 0600，或 SELinux、AppArmor 拦截）；
+socket 属于 root 组（不应让服务账号加入 root 组，应给 socket 设专用组）；读不到 socket 的属组。
+
+必须重启 agent：进程的附加组在启动时就定下了，加组之后正在运行的 agent 仍然打不开 socket，每分钟的复查也切不回去。
+复查照常进行（socket 的权限或属组被改掉、加了 ACL 时能直接切回），并在账号数据库已把账号列入该组、只差重启时把提示改为「重启 agent」；
+结果不变的复查不重复记日志。
+
+账号所在的组里有一个与 socket 属组同名、gid 不同的组时（典型是 NIS / LDAP 等目录服务里也定义了 `docker` 组），提示会点明：
+socket 属于本机自己的组（如 gid 999），目录服务里的同名组（如 gid 1002）打不开它，仍要用 `gpasswd` 把账号加进本机的组。
 
 **指定运行时的节点，或昇腾节点**
 
@@ -501,12 +532,21 @@ server 重启后进行中的记录接着记；重启前最多一小时内的次�
 ### 卡被平台外进程占用
 
 卡标着「被平台外的进程占用」：卡上有不是平台启动的计算进程（比如用户自己起的 vLLM）。
-这张卡在这些进程退出前不参与调度，悬停可看进程名与显存占用。进程退出后要连续 3 次（约 3 分钟）读到空闲才解除，
+这张卡在这些进程退出前不接受整卡部署，悬停可看进程名与显存占用。进程退出后要连续 3 次（约 3 分钟）读到空闲才解除，
 期间仍显示最后一次看到的进程：别人每分钟起停一次的任务，否则会让卡随每次上报进出调度。agent 刚重启、还没收到自己
 该跑哪些实例之前不做这个判断——否则自己的实例会被当成外部进程；本轮探测失败时也不做，
 厂商工具刚答不出清单，再问它进程只会再等一个超时。
 平台按卡的硬件身份认出自己的实例；较早版本启动、期望状态里只记了设备序号的实例，
 升级 server 时迁移会补上身份，agent 也会按最近一次探测把序号对应到卡，同样算作平台自己的。
+
+**带显存上限的 dGPU 部署可以与这些进程共用这张卡**，按剩余显存放行：卡的总显存减去这些进程占用的显存、
+再减去在其旁保留的余量（卡的 5%，至少 4 GiB）、再减去平台已有实例的占用，够这个部署的显存上限加分区开销才放上去；
+放不下时拒绝原因（`no_fit`）会列出这些进程的占用和余量，部署表单里这张卡也只对这样的部署可选。以下情况仍然不共用、
+按「被平台外进程占用」拒绝：整卡部署；厂商工具没给出某个进程的显存、或占用者是 Kubernetes 分给别的 Pod 的卡
+（这些占用以后会长到多大不得而知）；节点 agent 版本较旧——共用要求 agent 在平台实例上卡之后继续上报卡上原有的外部进程
+（平台的每个引擎在卡上只留一个进程，超出平台实例个数的进程都算外部的，包括对方换了 PID 重启或在旁边新起的作业；退出的进程照样连读 3 次空闲才放出显存），直到卡上的平台实例全部休眠或离开、卡重新被完整检查，并把这份记录存在 agent 状态目录里、重启后接着用，旧 agent 会在第一个实例上卡后丢掉它们，
+卡就会被当成空闲。会休眠的部署也不放到这样的卡上（`held_outside_platform_sleep`）：这些进程还在时，休眠的实例在这张卡上唤不醒。
+没有与外部进程共用过的平台实例的卡不做这种检查：上面新出现的进程，agent 分不清是不是自己实例的，不报为外部进程。外部占用未知的被占用卡，原地调大 dGPU 配额会被拒绝，GPU 列表里的可用显存显示为 0。设计依据见 [ADR 0068](../adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md)。
 
 这张卡同时不做周期运行时检查，实例启动失败后的补检也跳过它：别人的业务不该被打扰，
 卡的显存被别人占着也说明不了运行时能不能用它；卡保留上一次检查的结论，进程退出后恢复检查。
@@ -944,7 +984,7 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 
 | 原因码 | 含义 |
 |---|---|
-| `no_fit` | 每卡启动固定需求 > 可用显存；参数含 `required_gib`、`available_gib`、`tp`、`gpu_memory_utilization` |
+| `no_fit` | 每卡启动固定需求 > 可用显存；参数含 `required_gib`、`available_gib`、`tp`、`gpu_memory_utilization`，卡与平台外进程共用时另带 `foreign_gib`（外部进程占用）与 `foreign_headroom_gib`（留出的余量） |
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | 空闲整卡 / 可共享的卡不够 |
 | `pinned_gpus_unavailable` | 手动放置的 PD 实例钉住的卡被其他部署占着；参数给出 `node`、`gpus`（钉住的卡号）和 `holders`（占卡的部署）。实例不会改用同节点的其他空卡，而是等钉住的卡空出来：停掉或迁走占卡的部署，或把这个部署切成自动放置（`PUT /deployments/{id}/placement-mode`），由平台改用空闲的卡。钉住的卡被平台外进程占着、不健康或空着仍放不下时，仍是对应的原因码 |
 | `waiting_for_yield` | 副本在共卡的部署按出让策略让出卡后放得下，正在等它们让卡；参数给出 `node`、`holders`（占卡的部署，各带 `at_once`，或 `idle_sec` 与按时自动出让的 `max_serve_sec`：它按什么条件把卡让给这个部署）和 `instances`。占卡者睡下后自行解决，见[新部署怎样放到共用的卡上](scheduling-center.md#新部署怎样放到共用的卡上)；不自动出让的占卡者从不被要求让卡 |
@@ -954,7 +994,8 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `no_free_gpu` | 没有空闲的 GPU |
 | `no_healthy_gpu` | 节点自己的卡都不在能服务的健康级别 |
 | `no_owned_gpu` | 节点没有归本机使用的卡：一张都没有，或全部直通给虚拟机、未绑定驱动、被其他驱动持有 |
-| `gpus_held_outside_platform` | 卡本身健康，但能用的都被平台外的进程占着 |
+| `gpus_held_outside_platform` | 卡本身健康，但能用的（指定了卡时为指定的卡）都被平台外的进程占着，且这个部署不能与它们共用：整卡部署，或外部进程的显存未知 |
+| `held_outside_platform_sleep` | 只有与平台外进程共用的卡能放这个带显存上限的部署，但它会休眠：这些进程还在时，它睡下后在这张卡上唤不醒。处理：关掉这个部署的休眠，或换一张卡 |
 | `tp_head_count_not_divisible` | TP 不能整除注意力头数 |
 | `sleep_residue_blocks_startup` | 休眠实例的残留显存挡住了启动 |
 | `engine_ports_exhausted` | 节点引擎端口区间用尽 |

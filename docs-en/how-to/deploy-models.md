@@ -133,3 +133,6 @@ If submission fails, the error appears on the page with one of the following sta
 | `LAUNCH_CONFIG_UNSET_CONFLICT` | A parameter is disabled (cleared) in the form but is still specified in extra arguments. Remove that value or enable the parameter again |
 | `NODE_REQUIREMENTS_NOT_EDITABLE` | Multi-node and PD deployments list nodes by rank and have no editable node requirements. Use “Edit replicas” to change their nodes |
 | `NODE_REQUIREMENTS_UNMET` | The selected node does not satisfy the deployment's node requirements (labels, vendor, and so on). Select a matching node or adjust the requirements |
+
+<!-- translation-source-sha256: 250b157ede8d459ff8f79f1fc88ca05b64a59a46b90db3bc914a789b69c65283 -->
+<!-- translation-localized-code-block: 3f7bcea4babb3aa89f5841e7e49c5ec9ed2447d48c4ddd7fc3ec19b3540848b3 ec505cd5af4bae19eef698a2786536dfd7864a08dbf0655c03da288a7a89e580 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->

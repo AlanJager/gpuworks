@@ -42,7 +42,8 @@ func (d *Driver) Detect(ctx context.Context) (bool, error) {
 		slog.Debug("docker runtime unavailable", "reason", "docker binary not found")
 		return false, nil
 	}
-	if host, ok := localDockerHost(); !ok {
+	host, ok := localDockerHost()
+	if !ok {
 		slog.Debug("docker runtime unavailable", "reason", "local docker socket unavailable or endpoint is remote", "host", host)
 		return false, nil
 	}
@@ -57,7 +58,10 @@ func (d *Driver) Detect(ctx context.Context) (bool, error) {
 		if daemonNotReady(ctx.Err(), stderr.String()) {
 			return false, fmt.Errorf("%w: %s", runtime.ErrDaemonNotReady, firstLine(stderr.String(), err))
 		}
-		return false, nil // installed, but this agent may not use it (permission denied)
+		if socketPermissionDenied(stderr.String()) {
+			return false, &runtime.SocketDeniedError{Socket: host, Detail: firstLine(stderr.String(), err)}
+		}
+		return false, nil
 	}
 	return true, nil
 }

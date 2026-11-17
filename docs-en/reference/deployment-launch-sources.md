@@ -294,3 +294,6 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
   [0022](../adr/0022-template-owned-deployment-launch.md) (template-owned launch), [0031](../adr/0031-image-catalog-carries-no-launch-config.md) (image catalog carries no launch configuration)
 - [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Image Catalog and Inference Image Families](image-families.md)
 - [Deploy Models](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation](../how-to/pd-disaggregation.md)
+
+<!-- translation-source-sha256: 368db6db8a56c8e26e4c97e427ace7b07d0fc2edf9896eb33b8b4c658e7dd185 -->
+<!-- translation-localized-code-block: bb1bf7727f072376c3c7e1ad0f8662c7b7d72d881f032a66b71f42ab5475a198 aa31ab60fc8387786ba75ad63414f7e99f82c785baeae8a33e9304231006194b Translate explanatory comments and placeholders in runtime assembly illustration. -->

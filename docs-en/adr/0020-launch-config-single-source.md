@@ -40,3 +40,5 @@ Unknown entrypoints, dynamic shell and unrecognized feature values have CommandK
 ## Native vLLM Context Fitting (2026-11-16)
 
 The `Automatic` numeric derivation in decision 3 does not imply native engine memory fitting. For a new ordinary vLLM command with a known image version of 0.14.0 or later, the dictionary default explicitly records `max_model_len=-1` and emits `--max-model-len auto`. Zero still means omission. Template or user limits take precedence; explicit unset and stored-deployment edits gain no default. The string `auto` and integer `-1` normalize to one integer at the write boundary rather than remaining residual arguments separate from the typed configuration. Estimation retains only the model-window ceiling; the fitted length still requires runtime evidence. SGLang and Omni stages do not inherit this default policy.
+
+<!-- translation-source-sha256: 6ec2f91f0890f0e654460ddf7f31262f55dc5d2c7c1bca00830778fed9d9917e -->

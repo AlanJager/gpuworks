@@ -690,6 +690,7 @@
     "memory": "Host Memory",
     "disk": "Disk",
     "disabled": "Not enabled",
+    "managedBy": "KV cache managed by {{label}}",
     "capacityGiB": "{{gib}} GiB",
     "hitRate": "Hit rate",
     "engineSilent": "Engine did not report this metric",

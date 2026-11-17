@@ -136,11 +136,15 @@ type Node struct {
 	// gpu_runtime_unconfigured when it cannot give a container this node's
 	// cards, daemon_not_ready when its daemon did not answer while the agent
 	// started, or gpu_ready once it can serve and the agent switches back when
-	// the node is idle. RuntimeFallbackPlugin names the plugin that runtime needs
+	// the node is idle, socket_permission_denied when the agent's account may
+	// not open its daemon socket (RuntimeFallbackSocket says more).
+	// RuntimeFallbackPlugin names the plugin that runtime needs
 	// (accelerator.RuntimeGPUPlugin). All empty when nothing was passed over.
 	RuntimeFallbackFrom   string `json:"runtime_fallback_from,omitempty"`
 	RuntimeFallbackReason string `json:"runtime_fallback_reason,omitempty"`
 	RuntimeFallbackPlugin string `json:"runtime_fallback_plugin,omitempty"`
+	// RuntimeFallbackSocket is present only with socket_permission_denied.
+	RuntimeFallbackSocket *RuntimeSocketDenial `json:"runtime_fallback_socket,omitempty"`
 	// AcceleratorPreference is the operator's choice of which vendor's
 	// cards the node manages: auto, a vendor, or absent when never chosen
 	// (which is automatic). AcceleratorVendors is every vendor whose cards
@@ -295,3 +299,50 @@ type NodeSource struct {
 	ClusterUUID string `json:"cluster_uuid,omitempty"`
 	ClusterName string `json:"cluster_name,omitempty"`
 }
+
+// RuntimeSocketDenial is a container daemon socket the node agent's account
+// may not open, as the agent found it, and the operator's way out.
+type RuntimeSocketDenial struct {
+	// Cause is the server's reading of the facts (RuntimeSocketCause*); a
+	// client words its notice by it.
+	Cause string `json:"cause"`
+	// Socket is the socket's path; Group the group that owns it, absent when
+	// its gid has no name on the host, and GID that group's id, absent when
+	// the agent could not read the socket.
+	Socket string `json:"socket"`
+	Group  string `json:"group,omitempty"`
+	GID    *int   `json:"gid,omitempty"`
+	// Account is the account the agent runs as, absent when it could not
+	// tell.
+	Account string `json:"account,omitempty"`
+	// SameNameGID is the id of another group of the socket group's name that
+	// the account is in, as a directory service (NIS, LDAP) may define;
+	// absent when there is none. Being in it does not open the socket.
+	SameNameGID int `json:"same_name_gid,omitempty"`
+	// Supervisor is what restarts the agent: systemd, nohup (the install's
+	// agent-restart.sh), or absent when the agent cannot tell.
+	Supervisor string `json:"supervisor,omitempty"`
+	// Command adds the account to the group (unless that is done) and
+	// restarts the agent the way it was installed; without a known
+	// supervisor it only adds the account. Absent when the cause is not
+	// group membership, or the account or the group's name is unknown.
+	Command string `json:"command,omitempty"`
+}
+
+// Why the agent's account may not open the socket (RuntimeSocketDenial.Cause).
+const (
+	// RuntimeSocketCauseNotInGroup: the account is not in the socket's
+	// group; adding it and restarting the agent lets it in.
+	RuntimeSocketCauseNotInGroup = "not_in_group"
+	// RuntimeSocketCauseRestartPending: the account database already lists
+	// the account in the group; only a restart of the agent is missing.
+	RuntimeSocketCauseRestartPending = "restart_pending"
+	// RuntimeSocketCauseGroupHeld: the agent already holds the group, so the
+	// socket's mode or a security module (SELinux, AppArmor) refuses it.
+	RuntimeSocketCauseGroupHeld = "group_held"
+	// RuntimeSocketCauseRootGroup: the socket belongs to the root group,
+	// which a service account should not join.
+	RuntimeSocketCauseRootGroup = "root_group"
+	// RuntimeSocketCauseUnknown: the agent could not read the socket's group.
+	RuntimeSocketCauseUnknown = "unknown"
+)

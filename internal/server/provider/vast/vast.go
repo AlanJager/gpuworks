@@ -1,6 +1,6 @@
 // Package vast implements the vast.ai cloud-provider driver.
 //
-// vast.ai exposes a REST API (base https://console.vast.ai/api/v0) authenticated
+// vast.ai exposes a REST API with endpoint-specific versions, authenticated
 // with a bearer API key. vast.ai instances are docker containers, so agent
 // installation uses the udocker path (Kind="container").
 package vast
@@ -167,6 +167,10 @@ func (in *instance) name() string {
 
 // doJSON performs an authenticated request against the vast.ai API.
 func (d *Driver) doJSON(ctx context.Context, creds provider.Credentials, method, path string, body any) (*http.Response, error) {
+	return d.doRequest(ctx, creds, method, creds.EndpointOr(d.baseURL)+path, body)
+}
+
+func (d *Driver) doRequest(ctx context.Context, creds provider.Credentials, method, endpoint string, body any) (*http.Response, error) {
 	var payload io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -175,7 +179,7 @@ func (d *Driver) doJSON(ctx context.Context, creds provider.Credentials, method,
 		}
 		payload = bytes.NewReader(data)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, creds.EndpointOr(d.baseURL)+path, payload)
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -185,10 +189,6 @@ func (d *Driver) doJSON(ctx context.Context, creds provider.Credentials, method,
 		req.Header.Set("Content-Type", "application/json")
 	}
 	return d.http.Do(req)
-}
-
-func (d *Driver) do(ctx context.Context, creds provider.Credentials, method, path string) (*http.Response, error) {
-	return d.doJSON(ctx, creds, method, path, nil)
 }
 
 // SearchOffers returns verified on-demand offers satisfying the requested
@@ -246,35 +246,15 @@ func (d *Driver) SearchOffers(ctx context.Context, creds provider.Credentials, r
 
 // ValidateCredentials implements provider.Driver.
 func (d *Driver) ValidateCredentials(ctx context.Context, creds provider.Credentials) error {
-	resp, err := d.do(ctx, creds, http.MethodGet, "/instances/")
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusOK:
-		return nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("vast: invalid credentials (status %d)", resp.StatusCode)
-	default:
-		return fmt.Errorf("vast: validate credentials: unexpected status %d", resp.StatusCode)
-	}
+	_, err := d.listInstancePage(ctx, creds, url.Values{"limit": {"1"}})
+	return err
 }
 
 // ListInstances implements provider.Driver.
 func (d *Driver) ListInstances(ctx context.Context, creds provider.Credentials) ([]provider.Instance, error) {
-	resp, err := d.do(ctx, creds, http.MethodGet, "/instances/")
+	insts, err := d.listAllInstances(ctx, creds)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("vast: list instances: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	insts, err := decodeInstances(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("vast: decode instances: %w", err)
 	}
 	out := make([]provider.Instance, 0, len(insts))
 	for i := range insts {
@@ -283,55 +263,13 @@ func (d *Driver) ListInstances(ctx context.Context, creds provider.Credentials) 
 	return out, nil
 }
 
-// decodeInstances tolerates either a {"instances":[...]} envelope or a bare
-// array. Any other shape is an error rather than an empty list: sync removes
-// rows for instances it does not list.
-func decodeInstances(r io.Reader) ([]instance, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	data = []byte(strings.TrimSpace(string(data)))
-	if len(data) > 0 && data[0] == '[' {
-		var insts []instance
-		if err := json.Unmarshal(data, &insts); err != nil {
-			return nil, err
-		}
-		return insts, nil
-	}
-	var env struct {
-		Instances *[]instance `json:"instances"`
-	}
-	if err := json.Unmarshal(data, &env); err != nil {
-		return nil, err
-	}
-	if env.Instances == nil {
-		return nil, errors.New("response has neither an instance array nor an instances envelope")
-	}
-	return *env.Instances, nil
-}
-
 // PowerState implements provider.Driver.
 func (d *Driver) PowerState(ctx context.Context, creds provider.Credentials, externalID string) (provider.PowerState, error) {
-	// vast.ai has no cheap single-instance GET, so list and match by ID.
-	resp, err := d.do(ctx, creds, http.MethodGet, "/instances/")
+	in, err := d.instanceByID(ctx, creds, externalID)
 	if err != nil {
 		return provider.PowerUnknown, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return provider.PowerUnknown, fmt.Errorf("vast: power state: status %d", resp.StatusCode)
-	}
-	insts, err := decodeInstances(resp.Body)
-	if err != nil {
-		return provider.PowerUnknown, fmt.Errorf("vast: decode instances: %w", err)
-	}
-	for i := range insts {
-		if insts[i].ID.String() == externalID {
-			return insts[i].power(), nil
-		}
-	}
-	return provider.PowerUnknown, fmt.Errorf("vast: instance %q not found", externalID)
+	return in.power(), nil
 }
 
 func (d *Driver) PowerOn(ctx context.Context, creds provider.Credentials, externalID string) error {

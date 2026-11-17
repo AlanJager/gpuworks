@@ -394,6 +394,8 @@ type Instance struct {
 	Mounts      []EvaluateMount   `json:"mounts,omitempty"`
 	CommandMode string            `json:"command_mode,omitempty"`
 	ModelMount  string            `json:"model_mount_path,omitempty"`
+	// KVOffloadBackend: see KVOffloadBackendRef.
+	KVOffloadBackend *KVOffloadBackendRef `json:"kv_offload_backend,omitempty"`
 	// ModelFiles are the model files the instance reads, as recorded when it
 	// launched; empty for an instance from before they were recorded.
 	ModelFiles []InstanceModelFile `json:"model_files,omitempty"`

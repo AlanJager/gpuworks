@@ -64,6 +64,19 @@ func daemonNotReady(ctxErr error, stderr string) bool {
 	return strings.Contains(text, "cannot connect to the docker daemon") || strings.Contains(text, "connection refused") || strings.Contains(text, "is the docker daemon running")
 }
 
+// socketPermissionDenied reports whether a failed `docker info` is the CLI
+// refused the daemon's socket: the agent's account is not in its group.
+// Docker words it "permission denied while trying to connect to the Docker
+// daemon socket at unix://..." (the docker API, from 25.0 on); the dial
+// error under it ends "dial unix ...: connect: permission denied".
+func socketPermissionDenied(stderr string) bool {
+	text := strings.ToLower(stderr)
+	if !strings.Contains(text, "permission denied") {
+		return false
+	}
+	return strings.Contains(text, "while trying to connect to the docker") || strings.Contains(text, "dial unix")
+}
+
 func firstLine(stderr string, err error) string {
 	if line, _, _ := strings.Cut(strings.TrimSpace(stderr), "\n"); line != "" {
 		return line

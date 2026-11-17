@@ -192,3 +192,8 @@ Configuring offline sources does not disconnect the operating system from the ne
 
 - Model directories or image archives already hosted on a private HTTP file server: [Import Models and Images from an HTTP File Server](import-from-http.md)
 - Downloads, caching, and how “already present locally” is determined: [Download, Cache, and Sync Models Between Nodes](download-and-sync-models.md)
+
+<!-- translation-source-sha256: db7b5e72843d401af6b1edfd57fe988585405046991aee3ecda01551361f22fd -->
+<!-- translation-localized-code-block: c717c0459f55443287bf882bfa1df2c29a02f63e677ed105a6b9f0cfa648769b fb1f692b5059c1a518bf7610bc04b414fbac8c14c412eb611037ff1567010f7c Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-localized-code-block: 02989a499c64fa46ffdb61c1d644c92435ac76da6d226fe734a210745b3e8a0a 0f5116535f0bd45f3e3eff27d33b8cf064e261a7dab15ef84c529acd212a8ccf Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-localized-code-block: e0baf1bbf17d7510b11d7a5aa8e9e820fbea43761101fa63db5b2afc691e9ac2 053400b1c9f5dbf83f869d2d57b5498e3a982ac5ffa9457381f740b0c01dd791 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->

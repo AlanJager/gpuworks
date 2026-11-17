@@ -211,7 +211,7 @@ Upgrade the server first, then the agent; the node's target version comes from t
 - **Upgrade from the console**: Select nodes in the node list, click **Upgrade selected Agents**, preview the selected nodes, and confirm to view progress for each node; **Upgrade Agent** in node details also remains available. Wait for successful formal reconnection, then verify that the node is online and its **Agent version** matches the server. Newer agents can receive the upgrade package over the existing connection; older agents still need access to the server's download address.
 - **Rerun the installation script or offline package**: Preserve the old binary first, then install using the original token, connection method, installation directory, and state directory. Afterward, check the online status and version. This rewrites the configuration and does not provide the automatic rollback available with self-upgrade.
 
-For manual environments without a persistent agent, you can also use [`gpuworks-agent upgrade`](../reference/cli.md#gpuworks-agent-upgrade). It runs in the foreground and does not restart the original service. It is unsuitable for server-initiated nodes without a server address.
+For manual environments without a persistent agent, you can also use [`gpuworks-agent upgrade`](../reference/cli.md#gpuworks-agent-upgrade). It runs in the foreground and does not restart the original service, and refuses to run if an agent is already running with the same state directory. It is unsuitable for server-initiated nodes without a server address.
 
 For rollback boundaries before and after the new process registers, failure handling, and model call verification, see [Upgrades and Version Compatibility](upgrade-and-compatibility.md#升级-agent).
 
@@ -253,3 +253,8 @@ sudo ./gpuworks-agent uninstall --state '<actual-node-state-directory>'
 On Linux, the command stops the corresponding systemd service or nohup process, then removes the node identity, connection configuration, and PID files after confirming that it has exited. It returns a nonzero status on failure. On Mac, use `./gpuworks-agent uninstall` to remove the launchd job; add `sudo` for a LaunchDaemon. The state directory is read from the job.
 
 **Binaries, models, logs, and the state directory are retained.** After a successful manual uninstall, return to the console and select **Force removal: only delete management records** to finish removing the node. To completely remove the data, first confirm that no instances or models are still in use, then have an administrator delete the corresponding directories.
+
+<!-- translation-source-sha256: 06c39a81e1ddcd0a96090a191d40d835a10cdc48c7b8f60d9905a0ca868d052a -->
+<!-- translation-localized-code-block: 88ddeff56766d61d95f726b03c19bcdd484f3058933f20151101f2aa86b3e2d8 3013982f8f2cf42b34ce49ffcfebbdb4df071d024665d8b213ed9e002ba2b8dc Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
+<!-- translation-localized-code-block: 181a232a825fc9cab52b5351f82956d27bb63db9de1f89189683b763f45ae66e a676446b2b83c5c8f6ea4dbbc7b13b20f13fd8c96dcde9c1221174a8a8251d86 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
+<!-- translation-localized-code-block: 46acba10a4f9eda089ae5143f05203f228f6ee9ec76d0d086dba619af8b295c2 dca5fd1a1d98ead273c71bf5d8beb2cd4044783316b14ab2289493021e7cc5e1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

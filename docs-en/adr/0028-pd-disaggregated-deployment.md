@@ -149,3 +149,5 @@ the request with the same KV parameters to other D instances. Internal requests 
 
 - PPU images include only Mooncake, not NIXL; supporting PPU most likely means adding another Mooncake mode without changing the data model.
 - Per-role images or presets and auxiliary roles (a coordination process for a shared KV pool) require only extensions to the `pd` object and catalog; `role` is a string with unrestricted values.
+
+<!-- translation-source-sha256: 979c0cdb4a3600b02f49b803b4efad857cecabbc24d698b7eadf046e1ac34b9f -->

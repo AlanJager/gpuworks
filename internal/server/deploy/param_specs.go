@@ -96,6 +96,12 @@ type paramDefinition struct {
 	// ReverseArgs (ADR 0021); the engines it applies to are listed in the
 	// embedded ParamDefinition.Engines instead of being read off a flag column.
 	Platform bool
+	// Selector marks the row that selects a KV offload backend (ADR 0069,
+	// amending ADR 0021). It has no flag and is not a platform parameter: the
+	// engine adapter renders the selected backend, and an engine publishes
+	// the row only while it has a selectable backend (kvBackendSelector),
+	// with the backends as its options.
+	Selector bool
 	// Flags is where each engine's spellings live, keyed by engine name. A row
 	// with no entry for an engine has no flag there, and the engine cannot
 	// express that parameter at all (ADR 0021) - which is exactly what makes
@@ -249,6 +255,7 @@ var parameterDefinitions = []paramDefinition{
 	// only while the disk tier is enabled, so disabling that tier can preserve
 	// the draft without leaving an active sweeper ceiling behind.
 	{ParamDefinition: ParamDefinition{Key: "kv_disk_limit_gib", Type: "number", Control: "number", Group: "performance", Automatic: true, Min: number(1), Step: number(1), Engines: []string{EngineVLLM}, DependsOn: "kv_disk_offload", Layout: "quick", Order: 25}, Platform: true},
+	{ParamDefinition: ParamDefinition{Key: "kv_offload_backend", Type: "enum", Control: "select", Group: "performance"}, Selector: true},
 	// --disable-cuda-graph is SGLang's spelling of enforce_eager=true, not an off
 	// form: turning it off means emitting nothing.
 	{ParamDefinition: ParamDefinition{Key: "enforce_eager", Type: "boolean", Control: "switch", Group: "performance", Default: false, Layout: "quick", Order: 35}, Flags: map[string]flagPair{EngineVLLM: {On: "--enforce-eager"}, EngineSGLang: {On: "--disable-cuda-graph"}}},

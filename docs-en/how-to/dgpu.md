@@ -75,3 +75,5 @@ Rejections (the original quota remains unchanged):
 
 The deployment timeline records “dGPU memory limit A → B” with the counts of instances updated immediately and those awaiting restart. When an instance exits because usage reaches its limit, the failure reason is
 `dGPU memory limit reached on GPU N: the engine needed X GiB, its limit is Y GiB`.
+
+<!-- translation-source-sha256: 6fa400893aa166a0d1109fa4d2a324e93a48b2df2b6aa1d4dcad4e1cfd2077d4 -->

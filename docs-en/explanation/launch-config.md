@@ -117,3 +117,5 @@ The deployment's launch configuration is determined by materializing and resolvi
 - All deployments follow the same semantics: command mode defaults to `engine`, while `image-entry` and `manual` can only be selected explicitly by the deployment. Residual `launch_contract` markers in early snapshots are ignored.
 - The deployment's own container settings (environment variables, removed environment variables, mounts, docker arguments, `/dev/shm` size, entrypoint, and command) all belong to the "Container overrides" layer. Docker arguments that duplicate platform-managed items or dedicated fields (such as `--network`, `--shm-size`, `-e`, `-v`, and `--entrypoint`) are rejected instead of silently overriding them.
 - For the source layer of each item and override precedence, see [Deployment Launch Parameter Sources](../reference/deployment-launch-sources.md).
+
+<!-- translation-source-sha256: ac4c5e6c65d4e976c24c1d7ecd4bfe12f784102f45eefbb5fa7b67685a8cb715 -->

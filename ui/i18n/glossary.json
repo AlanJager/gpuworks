@@ -1603,6 +1603,10 @@
     {
       "term_en": "Boundary Classification",
       "translations": { "zh": "外部边界分类" }
+    },
+    {
+      "term_en": "KV Offload Backend",
+      "translations": { "zh": "KV 卸载后端" }
     }
   ],
   "do_not_translate": [

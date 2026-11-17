@@ -199,3 +199,5 @@ When checking weight indexes, also account for these differences:
 
 - The DeepSeek-V3 family may have one more MTP layer than the configuration specifies (61+1); vision and audio encoders may contain multiple parallel stacks. `-verify` already classifies these cases.
 - The `dots-studio/dots3-note-prev` checkpoint has one more layer than its config. The serving engine constructs the model from the config, so the config takes precedence.
+
+<!-- translation-source-sha256: 29039837d5399a351989a6b01249271b1061df159581b1aeb6681bb2e7431a79 -->

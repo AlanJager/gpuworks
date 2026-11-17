@@ -245,6 +245,11 @@ type Hello struct {
 	// the node's own directory for the default local storage when the node
 	// has none; a directory an operator set is never replaced.
 	OwnModelsDir string `json:"own_models_dir,omitempty"`
+	// InstanceID names the agent process that sent the hello: random per
+	// process image (an in-place exec starts a new one), the same for every
+	// connection the process makes. Two ids taking turns on one node are two
+	// agents sharing its token. Agents before it send none.
+	InstanceID string `json:"instance_id,omitempty"`
 }
 
 // Reject explains why a connection is being closed. It is sent before the
@@ -411,12 +416,18 @@ type SysInfo struct {
 	// RuntimeFallbackReason the code saying why: it cannot give a container
 	// this node's accelerators (accelerator.RuntimeGPUBlocked*), its daemon
 	// is installed but did not answer at startup
-	// (RuntimeFallbackDaemonNotReady), or accelerator.RuntimeGPUReady once it
+	// (RuntimeFallbackDaemonNotReady), its daemon refuses the agent's
+	// account the socket (RuntimeFallbackSocketPermissionDenied), or
+	// accelerator.RuntimeGPUReady once it
 	// can serve and the agent has yet to switch back. Both empty when nothing
 	// was passed over.
-	RuntimeFallbackFrom   string   `json:"runtime_fallback_from,omitempty"`
-	RuntimeFallbackReason string   `json:"runtime_fallback_reason,omitempty"`
-	Runtimes              []string `json:"runtimes,omitempty"`
+	RuntimeFallbackFrom   string `json:"runtime_fallback_from,omitempty"`
+	RuntimeFallbackReason string `json:"runtime_fallback_reason,omitempty"`
+	// RuntimeFallbackSocket is what the agent found about the daemon socket
+	// its account may not open, sent only with
+	// RuntimeFallbackSocketPermissionDenied.
+	RuntimeFallbackSocket *RuntimeSocketDenial `json:"runtime_fallback_socket,omitempty"`
+	Runtimes              []string             `json:"runtimes,omitempty"`
 	// AcceleratorVendors is every vendor whose cards are in the host, the
 	// one the node manages (GPUVendor) included, so the operator can choose
 	// another (AcceleratorPreference). Empty when the host's PCI bus cannot
@@ -429,8 +440,13 @@ type SysInfo struct {
 	PartitionAssets []AssetReport `json:"partition_assets"`
 	// Keep this field on the wire even when empty. nil after decoding therefore
 	// identifies an older agent that predates behavioral partition probes.
-	PartitionProbes         []PartitionProbeResult `json:"partition_probes"`
-	PartitionSafetyProtocol int                    `json:"partition_safety_protocol,omitempty"`
+	PartitionProbes []PartitionProbeResult `json:"partition_probes"`
+	// PartitionSafetyProtocol is the level of the partition safety contract
+	// this agent keeps (PartitionSafety*); zero for an agent that keeps none.
+	// Each level includes the ones below it, and the server reads it from
+	// every report, so rolling an agent back revokes what it no longer keeps
+	// for new placements (not for what was placed under the higher level).
+	PartitionSafetyProtocol int `json:"partition_safety_protocol,omitempty"`
 }
 
 // ImagePresence is the directory-driven image catalog report from an agent.
@@ -562,13 +578,6 @@ const (
 	RuntimePrivilegeSudo = "sudo"
 	RuntimePrivilegeNone = "none"
 )
-
-// RuntimeFallbackDaemonNotReady is the fallback reason for a runtime whose
-// CLI and local socket are present but whose daemon did not answer while the
-// agent started: dockerd still starting at boot, or too busy (pulling a
-// large image) to answer in time. The agent rechecks it every minute and
-// switches back once it answers and no instance would be disturbed.
-const RuntimeFallbackDaemonNotReady = "daemon_not_ready"
 
 // PeerRelayReady is consumed by the coordinator before forwarding TLS bytes.
 type PeerRelayReady struct {

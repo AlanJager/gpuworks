@@ -69,7 +69,7 @@ func (p *PDPlacement) RankLaunch(mode pdmode.Mode, role string, unit PDUnit, ran
 func (l PDRankLaunch) Apply(req *LaunchRequest) {
 	req.Topology, req.APIPort = l.Topology, l.APIPort
 	req.Placement = Placement{GPUIndexes: l.GPUIndexes, TP: l.TP, PP: l.PP}
-	req.Quick = deploy.PDRoleLaunchConfig(req.Quick, l.Role)
+	req.Quick = deploy.PDRoleLaunchConfig(req.Engine, req.Quick, l.Role)
 	req.MasterAddr, req.MasterPort = l.MasterAddr, l.MasterPort
 	req.PD = l.PD
 }

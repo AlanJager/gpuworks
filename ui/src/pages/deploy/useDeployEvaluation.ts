@@ -128,6 +128,16 @@ export default function useDeployEvaluation({
     // The answer on screen describes the previous draft from this moment on;
     // report "evaluating" through the debounce so nothing acts on it.
     setEvaluating(true);
+    // Another engine's displayed defaults leave the form first; clearing them
+    // is itself a draft change, which evaluates the cleaned draft.
+    const stale = quickParamsRef.current.takeStaleFor(
+      String(form.getFieldValue("engine") ?? ""),
+      form.getFieldsValue(true),
+    );
+    if (stale.length) {
+      form.setFieldsValue(Object.fromEntries(stale.map((key) => [key, undefined])));
+      return;
+    }
     const timer = setTimeout(() => {
       const payload = buildPayload();
       if (!payload) {
@@ -201,7 +211,10 @@ export default function useDeployEvaluation({
           // Manual previews describe their command, not the structured draft
           // restored by explicit discard. Keep its keys and quick-param origins.
           if (!manual && applyFormValues()) {
-            quickParamsRef.current.accept(response);
+            quickParamsRef.current.accept(
+              response,
+              String(request.engine || response.defaults?.engine || ""),
+            );
             deferredRef.current = applyEvaluateFormValues(
               form,
               response,

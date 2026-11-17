@@ -201,8 +201,7 @@ func (s *Service) evaluatePD(env evaluatePDEnv) {
 		}
 		resp.Acquisition.Nodes = s.evaluateNodeAcquisition(env.ctx, uuids, resp.Image, templateImageSources(env.selection, resp.Image), env.model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, env.model, prepared.nodes[0])}, nil)
 	}
-	q := env.launch.Quick
-	resp.Warnings = append(resp.Warnings, planning.PDFeatureWarnings(q.KVOffloadingSize > 0 || q.KVDiskOffload, req.VRAMLimitGiB > 0)...)
+	resp.Warnings = append(resp.Warnings, planning.PDFeatureWarnings(deploy.KVOffloadPDRoles(env.engine.Name(), env.launch.Quick), req.VRAMLimitGiB > 0)...)
 	if mode.Unverified {
 		resp.Warnings = append(resp.Warnings, messages.Warning{Code: messages.WarningPDUnverified, Params: map[string]any{"feature": "mode", "mode": mode.Name}})
 	}

@@ -155,6 +155,7 @@
     "multi_node_unsupported_on_node": "{{vendor}} 节点不支持多机推理；请改为单机部署，或改选其他节点。",
     "pd_unsupported_on_node": "{{vendor}} 节点不支持 PD 分离；请改选其他节点。",
     "kv_disk_unsupported_on_node": "{{vendor}} 节点不支持 KV 磁盘层；请关闭 KV 磁盘层，或改选其他节点。",
+    "kv_backend_unsupported_on_node": "{{vendor}} 节点不能运行所选的 KV 卸载后端；请改选其他 KV 卸载方式，或改选其他节点。",
     "storage_unavailable": "这台节点上能读到该模型的存储还没就绪；请查看这些存储的节点状态，或更换节点。",
     "model_exceeds_cache_limit": "模型比该存储在这台节点上的缓存上限还大；请调高缓存上限，或改用直接读的存储。",
     "cache_full_in_use": "这台节点上该存储的缓存已被正在使用的模型占满，无法腾出空间；请调高缓存上限，或停止使用这些模型的部署。",
@@ -162,7 +163,8 @@
     "storage_disabled": "这台节点上没有模型，而它的存储是只读的，不能往里放；请启用该存储或换一个。",
     "no_healthy_gpu": "节点自己的加速卡都不处于可用的健康级别；请先处理 GPU 告警或故障，或更换节点。",
     "no_owned_gpu": "节点没有归本机使用的加速卡（可能全部直通给虚拟机、未绑定驱动或被其他驱动持有）；请检查节点的加速卡列表或更换节点。",
-    "gpus_held_outside_platform": "节点的卡都被平台外的进程占用；请在节点上释放这些进程或更换节点。",
+    "gpus_held_outside_platform": "此部署可用的卡被平台外的进程占用；请在节点上释放这些进程或更换节点。节点 agent 上报了这些进程的显存用量时，带显存上限的 dGPU 部署可以与它们共用此卡。",
+    "held_outside_platform_sleep": "此部署可共用的卡上还有平台外的进程，会休眠的部署在这些进程运行期间无法在那里唤醒。请关闭此部署的休眠或换一张卡。",
     "no_free_gpu": "所选节点没有空闲 GPU；请停止或休眠其他部署，或更换节点。",
     "placement_rejected": "所选 GPU 组合不满足该推理模板的放置规则；请调整 GPU 数量或改选兼容 GPU。",
     "engine_ports_exhausted": "节点 {{node}} 的引擎端口 {{start}}–{{end}} 已被实例或主机上的其他服务全部占用；请释放该范围内的端口或更换节点。",
@@ -217,6 +219,7 @@
   },
   "scheduleNote": {
     "sleeping_residue": "休眠实例需保留 {{sleeping_gib}} GiB 常驻显存。",
+    "foreign_held": "平台外的进程占用此卡 {{foreign_gib}} GiB，另在其旁保留 {{foreign_headroom_gib}} GiB 余量。",
     "image_delivery_detail": "失败原因：{{detail}}",
     "model_unavailable_detail": "失败原因：{{detail}}",
     "plan_failed_detail": "上报的失败原因：{{detail}}",
@@ -699,6 +702,7 @@
         "gpu_not_schedulable": "此 GPU 当前不可调度，请查看设备状态",
         "gpu_index_unavailable": "此 GPU 尚无有效设备编号",
         "gpus_held_outside_platform": "此 GPU 被平台外进程占用",
+        "held_outside_platform_sleep": "此 GPU 与平台外进程共用，会休眠的部署不能放在这里",
         "no_free_gpu": "此 GPU 当前没有空闲资源",
         "gpu_whole_allocated": "该 GPU 已被推理服务整卡占用",
         "partition_unavailable": "此 GPU 不支持当前 dGPU 后端",
@@ -898,7 +902,8 @@
       "disk": "磁盘",
       "memoryRequired": "需要先开启内存层",
       "enterCapacity": "请输入大于 0 GiB 的容量",
-      "restoresWithMemory": "重新启用内存层时恢复"
+      "restoresWithMemory": "重新启用内存层时恢复",
+      "backendReplaces": "取代引擎自带的内存层与磁盘层"
     },
     "features": {
       "title": "功能",

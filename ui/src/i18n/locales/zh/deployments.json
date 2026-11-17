@@ -690,6 +690,7 @@
     "memory": "内存",
     "disk": "磁盘",
     "disabled": "未启用",
+    "managedBy": "KV 缓存由 {{label}} 管理",
     "capacityGiB": "{{gib}} GiB",
     "hitRate": "命中率",
     "engineSilent": "引擎未上报",

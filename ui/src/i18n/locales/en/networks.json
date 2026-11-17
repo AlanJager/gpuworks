@@ -85,7 +85,8 @@
     "noAttachments": "Not attached yet",
     "noNodes": "No node resolves to this network yet",
     "overrides": "Overrides: {{value}}",
-    "attachedAt": "Attached {{time}}",
+    "attachTarget": "Target",
+    "attachedTime": "Attached at",
     "rdmaInferredHelp": "Each node uses its fastest active RDMA ports (a RoCE port needs an IPv4 address on its interface) as HCAs, and the first HCA's interface address as bootstrap; InfiniBand without IPoIB uses the management address.",
     "acceleratorInferredHelp": "Each node's rails are the accelerator cards whose port is up and has an address. The bootstrap is the host address the handshake uses, the management address by default; data moves on the cards' ports.",
     "title": "Network details",
@@ -377,6 +378,7 @@
     },
     "roleHint": "Dedicated networks come first; these switches only matter where a node has none for the role. When off: serving — no new instances on this node; storage sync — download from the image or model source only; compute traffic — multi-node deployments are refused. Applies to new instances only.",
     "dedicated": "Carried by a dedicated network",
+    "dedicatedShort": "Dedicated",
     "labels": "Labels",
     "search": "Search name or address",
     "labelFilter": "Filter by label",
@@ -395,7 +397,6 @@
       "label": "Bulk edit selected nodes"
     },
     "saved": "Management network roles updated",
-    "carried": "Carried by the management network",
     "roleTip": {
       "serving": "Inference requests reach this node over the agent tunnel. Where the node has no dedicated serving network, turning this off places no new instance on it.",
       "storage_sync": "Nodes copy models and images to each other directly. Where the node has no dedicated storage-sync network, turning this off makes it download from the image or model source only.",

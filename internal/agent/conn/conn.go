@@ -424,8 +424,10 @@ func (c *Conn) reportStatus(ctx context.Context) {
 		}); ok {
 			sys.KubeUnschedulable = h.KubeUnschedulable(ctx)
 		}
-		if h, ok := c.handlers.(interface{ RuntimeFallback() (string, string) }); ok {
-			sys.RuntimeFallbackFrom, sys.RuntimeFallbackReason = h.RuntimeFallback()
+		if h, ok := c.handlers.(interface {
+			RuntimeFallback() (string, string, *proto.RuntimeSocketDenial)
+		}); ok {
+			sys.RuntimeFallbackFrom, sys.RuntimeFallbackReason, sys.RuntimeFallbackSocket = h.RuntimeFallback()
 		}
 	}
 	if sys.RuntimeDriver != "" {
@@ -452,7 +454,7 @@ func (c *Conn) reportStatus(ctx context.Context) {
 	}); ok {
 		sys.PartitionProbes = h.PartitionProbes(ctx, sys.PartitionAssets, gpus)
 	}
-	sys.PartitionSafetyProtocol = 1
+	sys.PartitionSafetyProtocol = proto.PartitionSafetyCurrent
 	imageRevision := c.imageRevision()
 	var images []proto.ImagePresence
 	var pathUsage []proto.PathUsage

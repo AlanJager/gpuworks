@@ -184,3 +184,5 @@ Deleting the DaemonSet deletes the instance Pods and placeholder Pods with it, a
 - Vendor command-line tools (`npu-smi`, `hy-smi`, `ppu-smi`, `xpu-smi`, `nvidia-smi`) run in the node's mount namespace and use the node's own C libraries and driver libraries, so the agent image is independent of the node's distribution; the lookup order is in “Accelerator Vendor: Detected Automatically”.
 - Only NVIDIA, Ascend, Hygon, PPU, AMD, and Kunlunxin nodes are supported; nodes of other vendors stay in stand-by and do not become platform nodes. Hygon and Kunlunxin are deployed as whole cards only: Hygon dGPU memory slicing is not available on Kubernetes, and Kunlunxin has no dGPU; AMD and PPU dGPU slicing is available on Kubernetes.
 - The agent runs privileged with hostNetwork and hostPID (required for probing and for running nerdctl and mount through the node's mount namespace).
+
+<!-- translation-source-sha256: 8879afabbb2e62e756b430e63530736eab38ce253f1bc25877959f49e013a7b5 -->

@@ -206,6 +206,28 @@ export interface NodeUCXNetlinkHang {
   fixes: Array<{ code: string; commands: string[] }>;
 }
 
+/** A container daemon socket the node agent's account may not open (Node.runtime_fallback_socket). */
+export interface RuntimeSocketDenial {
+  /**
+   * The server's reading of the facts, which words the notice:
+   * not_in_group | restart_pending | group_held | root_group | unknown.
+   */
+  cause: string;
+  socket: string;
+  /** The group that owns the socket; absent when its gid has no name. */
+  group?: string;
+  /** Absent when the agent could not read the socket. */
+  gid?: number;
+  /** The account the agent runs as; absent when it could not tell. */
+  account?: string;
+  /** Another group of the same name the account is in (a directory service's). */
+  same_name_gid?: number;
+  /** systemd | nohup, absent when the agent cannot tell what restarts it. */
+  supervisor?: string;
+  /** Adds the account to the group and restarts the agent where the supervisor is known. */
+  command?: string;
+}
+
 export interface Node {
   uuid: string;
   // scheduling is whether the node takes new replicas: cordoned takes none,
@@ -246,14 +268,20 @@ export interface Node {
    */
   runtime_gpu_plugin?: string;
   /**
-   * The runtime the agent passed over for runveil because it cannot give a
-   * container this node's accelerators ("docker" | "nerdctl"), why
-   * (gpu_plugin_missing | gpu_runtime_unconfigured | gpu_ready), and the
-   * plugin that runtime needs. Absent when nothing was passed over.
+   * The runtime the agent passed over for runveil ("docker" | "nerdctl"),
+   * why (gpu_plugin_missing | gpu_runtime_unconfigured | daemon_not_ready |
+   * socket_permission_denied | gpu_ready), and the plugin that runtime
+   * needs. Absent when nothing was passed over.
    */
   runtime_fallback_from?: string;
   runtime_fallback_reason?: string;
   runtime_fallback_plugin?: string;
+  /**
+   * With socket_permission_denied: the daemon socket the agent's account
+   * may not open, as the agent found it, and the server's command that adds
+   * the account to the group and restarts the agent.
+   */
+  runtime_fallback_socket?: RuntimeSocketDenial;
   /**
    * Set while a Kubernetes node's NVIDIA instance pods are kept to their own
    * card by CUDA_VISIBLE_DEVICES alone (soft isolation), with the fixes the
@@ -776,7 +804,21 @@ export interface EngineProfile {
   // form and the scale dialog read modes, policy options, defaults and
   // limits from here (pages/deploy/deployPd.ts) instead of restating them.
   pd_modes?: PdModeProfile[];
+  // The KV offload backends a deployment can select besides the engine's own
+  // tiers (ADR 0069); absent when there are none. The deploy form renders one
+  // card per entry from these fields alone and holds no backend of its own.
+  kv_backends?: KVBackendProfile[];
   multi_node_supported?: boolean;
+}
+
+// KVBackendProfile is one selectable KV offload backend: its id (the value of
+// the kv_offload_backend parameter), its product name, the native parameters
+// it replaces while selected, and the PD roles that keep it.
+export interface KVBackendProfile {
+  id: string;
+  label: string;
+  replaces: string[];
+  pd_roles: string[];
 }
 
 // WakeRefusal is one group of sleepers a wake could not put back: the cards
@@ -1847,6 +1889,15 @@ export interface NoticeList {
 }
 
 /** A console upgrade that has swapped the binary and is restarting into `to`. */
+export interface ServerVersionChoice {
+  latest?: boolean;
+  version: string;
+  commit?: string;
+  built_at: string;
+  sha256?: string;
+  reason?: "installed" | "arch" | "older" | "backup";
+}
+
 export interface ServerUpgradeStarted {
   from: string;
   to: string;
@@ -2046,6 +2097,10 @@ export interface Instance {
   model_files?: InstanceModelFile[];
   // role is the instance's PD role; absent outside PD deployments.
   role?: PdRoleName | string;
+  // kv_offload_backend is the KV offload backend the instance keeps, as the
+  // server scoped the deployment's selection to the instance's PD role:
+  // absent when it keeps the engine's own tiers or none.
+  kv_offload_backend?: { id: string; label: string };
 }
 
 export interface InstanceModelFile {
@@ -5014,7 +5069,14 @@ export const api = {
   notices: () => sendJSON<NoticeList>("GET", "/api/v1/notices"),
   readNotices: (ids: string[]) => sendJSON<void>("POST", "/api/v1/notices/read", { ids }),
   // The server downloads its release from the channel, swaps the binary and restarts.
-  upgradeServer: () => sendJSON<ServerUpgradeStarted>("POST", "/api/v1/updates/server"),
+  serverVersions: (channel: string, signal?: AbortSignal) =>
+    sendJSON<{ channel: string; platform: string; versions: ServerVersionChoice[] }>("GET",
+      "/api/v1/updates/server/versions?channel=" + encodeURIComponent(channel), undefined, signal),
+  serverUpgradeResult: (attempt: string, backup: string, signal: AbortSignal) =>
+    sendJSON<{ phase: "unknown" | "download" | "restart" | "failed" | "rollback"; from?: string; to?: string }>("GET",
+      "/api/v1/updates/server/result?" + new URLSearchParams({ attempt, backup }), undefined, signal),
+  upgradeServer: (target?: { channel: string; version: string; sha256?: string; attempt: string }) =>
+    sendJSON<ServerUpgradeStarted>("POST", "/api/v1/updates/server", target),
   // The same with a release archive uploaded for a server that cannot reach the channel.
   uploadServerArchive: (file: File) =>
     sendFile<ServerUpgradeStarted>("/api/v1/updates/server/upload", file),

@@ -116,3 +116,7 @@ stores metrics.
 inferenceapi provides stable chat, embeddings, rerank, audio, image, video, and realtime contracts.
 The scheduler runs filters, the GPU planner, and scorers in sequence and produces schedule_explain. The accelerator registry is
 the sole entry point for adding dGPU backends. See the [ADR Index](../adr/README.md) for more long-term tradeoffs, and [ADR 0030](../adr/0030-network-objects.md) for the node networking design.
+
+<!-- translation-source-sha256: 4e165fe15830db18f44b6bcc62f75d2c1ba553c42fb23dea3db5a3f3dae4bed9 -->
+<!-- translation-localized-code-block: 167d5e87ca7539da09ef0cc542067ff5dc3b07a9363c7ef5e316f2f81306eda7 7e010cf647f284e2567ec28a53a48d9decd79b9b10d63ce726a08d16b3c3ea31 根据同站security-model修正管理API认证标签，原JWT遗漏HttpOnly会话和平台API token -->
+<!-- translation-localized-code-block: 77869ca31e30f73fa69b7b1e7bd294c127c4a5ab1e2d5c77635e8b6d93feaa38 067be51fbe0918ef224453d2ab0dafbf7f688af4b3fcf3ca81cc3717bd301bc8 Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->

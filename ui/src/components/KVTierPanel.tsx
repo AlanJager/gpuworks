@@ -3,7 +3,7 @@ import { Typography } from "antd";
 import { Progress } from "../pages/DeploymentControls";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { MetricSeries } from "../api";
+import type { Instance, MetricSeries } from "../api";
 import { useInstanceMetricSeries } from "../instanceMetricSeries";
 import { useMetricWindow } from "./MetricWindow";
 import { ratioSeries } from "./InferenceMetricsPanel";
@@ -25,11 +25,17 @@ const METRICS = {
 // above, the memory tier is engine-reported only, and the disk tier's size is
 // measured by the agent because the engine never reports it. A tier the
 // deployment configured but the engine does not report is shown as configured
-// and labelled, never as a zero.
-export default function KVTierPanel({ params, instanceUuid }: { params?: Record<string, unknown>; instanceUuid: string }) {
+// and labelled, never as a zero. A deployment that selects a KV offload
+// backend (ADR 0069) keeps neither engine tier. The backend this instance
+// keeps is the server's answer (backend, scoped to the instance's PD role):
+// both tiers name it, and an instance the server names none for (a PD
+// decoder) shows both tiers off.
+export default function KVTierPanel({ params, instanceUuid, backend }: { params?: Record<string, unknown>; instanceUuid: string; backend?: Instance["kv_offload_backend"] }) {
   const { t } = useTranslation("deployments");
-  const memoryGiB = Number(params?.kv_offloading_size ?? 0);
-  const diskEnabled = Boolean(params?.kv_disk_offload);
+  const selectsBackend = typeof params?.kv_offload_backend === "string" && params.kv_offload_backend !== "";
+  const backendLabel = backend?.label ?? "";
+  const memoryGiB = selectsBackend ? 0 : Number(params?.kv_offloading_size ?? 0);
+  const diskEnabled = !selectsBackend && Boolean(params?.kv_disk_offload);
   const diskDir = String(params?.shared_kv_dir ?? "");
 
   const [selection] = useMetricWindow();
@@ -65,7 +71,7 @@ export default function KVTierPanel({ params, instanceUuid }: { params?: Record<
               <HitRate rate={memoryHitRate} t={t} />
             </>
           ) : (
-            <Typography.Text type="secondary">{t("kvTier.disabled")}</Typography.Text>
+            <TierOff backendLabel={backendLabel} t={t} />
           )}
         </Tier>
 
@@ -96,12 +102,16 @@ export default function KVTierPanel({ params, instanceUuid }: { params?: Record<
               )}
             </>
           ) : (
-            <Typography.Text type="secondary">{t("kvTier.disabled")}</Typography.Text>
+            <TierOff backendLabel={backendLabel} t={t} />
           )}
         </Tier>
       </div>
     </div>
   );
+}
+
+function TierOff({ backendLabel, t }: { backendLabel: string; t: (key: string, options?: Record<string, unknown>) => string }) {
+  return <Typography.Text type="secondary">{backendLabel ? t("kvTier.managedBy", { label: backendLabel }) : t("kvTier.disabled")}</Typography.Text>;
 }
 
 function Tier({ title, children }: { title: string; children: React.ReactNode }) {

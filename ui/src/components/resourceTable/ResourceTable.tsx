@@ -229,8 +229,10 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
     aria-label={t("resourceTable.clearFilter", { name, values })} onClick={onClick}>
     <span className="font-semibold">{name}</span>{t("resourceTable.filterValues", { values })}
   </Button>;
+  // A table with nothing to put above it (no search, filters, refresh or column settings) starts at its header.
+  const hasToolbar = toolbar != null || chipCount > 0 || toolbarExtra != null || !!updatedAt || !!onRefresh || !!columnSettings;
   return <div className="resource-table">
-    <div className="resource-table-toolbar">
+    {hasToolbar && <div className="resource-table-toolbar">
       <div className="resource-table-toolbar-left">{toolbar}
         {/* Filters are set from the column header funnels; the ones in effect are listed here
             as "column: values" so a filter on an off-screen column is never invisible. */}
@@ -248,7 +250,7 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
         {onRefresh && <Button iconOnly variant="tertiary" className="[&_svg]:size-4!" aria-label={t("dataTable.refresh")} onClick={onRefresh}><RefreshIcon /></Button>}
         {columnSettings && <Button iconOnly variant="tertiary" className="[&_svg]:size-4!" aria-label={t("resourceTable.settings")} onClick={() => setSettingsOpen(true)}><ColumnsIcon /></Button>}
       </div>
-    </div>
+    </div>}
     {error ? <div role="alert" className="flex flex-wrap items-center gap-2 text-fg-danger"><strong>{t("dataTable.loadFailed")}</strong><span>{error.message}</span>{onRefresh && <Button onClick={onRefresh}>{t("actions.retry")}</Button>}</div> : <>
       {loading && <Spinner label={t("dataTable.refresh")} />}
       {/* DataTable has no row-props or header-cell slot at the pinned release. Table preserves

@@ -126,6 +126,14 @@ After a storage download sends HTTP 200, an interruption can only abort the conn
 4. The protocol versions do not match, with reason `proto_mismatch` (a detail such as `server supports 1-1`); upgrade the agent.
 5. `stale_session`: occurs only during a **data channel** handshake and means its bound control session has expired. The agent only logs it at Debug level and retries
    with backoff; it recovers automatically after the control channel reconnects. See [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md). Take action only if it persists.
+6. Two agents use the same node identity: they take turns connecting and knock each other's connection off, yet the node page stays "Online" the whole time (the replaced connection does not mark the node offline).
+   What you see is terminals, log follows and model or image transfers breaking again and again; the agent log on both hosts repeatedly shows `connection ended` and `reconnecting` without any reject;
+   the server log has `AGENT_DUPLICATE_INSTANCE`, where `host`/`remote` and `other_host`/`other_remote` are the two agents replacing each other's connection.
+   A second `run` on the same state directory is already stopped by `<state>/agent.lock` (see [CLI Reference](../reference/cli.md)), so what remains is mostly
+   a state directory or token copied to another host (a cloned disk or image), another state directory holding the same token, or an agent older than this release
+   sharing an identity with a current one. Detection relies on the process instance ID the agent sends in its handshake, so it is reported only when at least one side is a current agent;
+   when both are older agents the server log has no such entry, and you can only go by the symptoms above and the processes on the two hosts.
+   Stop the extra agent; on a cloned host, delete the copied state directory and connect it again as a new node. It is logged at most once an hour per node.
 
 Clock skew is **not** a reason for rejection: the handshake does not validate timestamps, and the HMAC for `server_dial` signs only a one-time nonce, with no time component.
 If the key for a server_dial node does not match, the agent reports `invalid server_dial proof`.
@@ -429,7 +437,30 @@ After a runtime switch (manual or automatic), instances are recreated in the new
 When the agent starts before dockerd at boot, or dockerd is busy pulling a large image and does not answer within 5 seconds, an agent that picks its own runtime waits up to 2 more minutes at startup;
 only if Docker still does not answer does it use runveil, and the orange notice on the node details gives the reason (`daemon_not_ready`). It then rechecks every minute and switches back automatically once Docker answers and the node has no instances;
 with instances present it likewise shows “Docker is ready and can be switched to”. The agent's systemd unit starts after `docker.service` and `containerd.service` (ordering only,
-so a host without Docker is unaffected). An agent user that may not use Docker (not in the docker group) is a different case and is not waited for.
+so a host without Docker is unaffected). An agent user that may not use Docker (not in the docker group) is a different case and is not waited for; see the next paragraph.
+
+**The agent's account cannot open the Docker socket**
+
+When an agent running as an ordinary account gets `permission denied while trying to connect to the Docker daemon socket` from `docker info`,
+an agent that picks its own runtime uses runveil, and the orange notice on the node details gives the reason (`socket_permission_denied`), lists the socket path, the group that owns it and its gid,
+and the agent's account, and offers a command to copy: `sudo gpasswd -a <account> <group>`, followed by a restart of the agent that fits the install (a systemd install uses
+`sudo systemctl restart gpuworks-agent`; an install without systemd stops, as that account, the process whose command line is `gpuworks-agent run --state <state directory>`
+(identified by its command line, not trusted from the pid file), and runs `agent-restart.sh` in the state directory only once it has exited; if it has not exited within 30 seconds the command reports an error and does not start a second agent).
+When the agent cannot tell what started it, the command holds only the line that adds the group, and the notice names both ways to restart.
+
+After the restart the agent uses Docker. Instances on runveil are not moved: runveil's instance processes keep running after the agent stops, and the restarted agent starts the same instances again in Docker,
+so stop the node's deployments before the restart. If the account is not meant to use Docker, set the node's runtime to runveil (udocker);
+the notice and the per-minute recheck then stop.
+
+When group membership is not the cause, the notice offers no command: the agent already holds the socket's group and is still refused (the socket's mode is 0600, or SELinux or AppArmor blocks it);
+the socket belongs to the root group (a service account should not join root; give the socket a group of its own); or the socket's group could not be read.
+
+The agent must be restarted: a process's supplementary groups are fixed when it starts, so after the group is added the running agent still cannot open the socket, and the minute-level recheck cannot switch back either.
+The recheck still runs (it switches back directly when the socket's mode or group is changed or an ACL is added), and once the account database lists the account in the group and only the restart is missing, the notice changes to "restart the agent";
+a recheck whose result has not changed is not logged again.
+
+When the account is in a group that has the name of the socket's group but another gid (typically a `docker` group that a directory service such as NIS or LDAP also defines), the notice points it out:
+the socket belongs to the host's own group (for example gid 999), the directory service's group of the same name (for example gid 1002) does not open it, and the account still has to be added to the host's group with `gpasswd`.
 
 **Nodes with an explicitly selected runtime, or Ascend nodes**
 
@@ -499,12 +530,21 @@ A card passed through to a virtual machine or without a driver is not this node'
 ### Card Is in Use by Processes Outside the Platform
 
 A card marked “In use outside the platform” has compute processes that the platform did not start (such as a vLLM process started by a user).
-The card does not participate in scheduling until these processes exit; hover to see process names and GPU memory usage. After they exit, the card is released only once 3 readings in a row (about 3 minutes) find it free,
+The card takes no whole-card deployment until these processes exit; hover to see process names and GPU memory usage. After they exit, the card is released only once 3 readings in a row (about 3 minutes) find it free,
 and until then it still shows the processes last seen: a job somebody starts and stops every minute would otherwise move the card in and out of scheduling with every report. The agent does not make this determination just after restarting, before it receives
 which instances it should run—otherwise its own instances would be treated as external processes. It also skips this check if probing failed in the current round;
 if the vendor tool just failed to return the inventory, asking it for processes would only incur another timeout.
 The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
 gets its identities filled in by a migration when the server is upgraded, and the agent also maps those indexes to cards through the latest probe, so it still counts as the platform's own.
+
+**A dGPU deployment with a memory limit can share the card with those processes**, admitted by the memory left: the card's total, less what the processes hold,
+less the headroom kept beside them (5% of the card, at least 4 GiB), less what the platform's instances already claim, must cover the deployment's memory limit plus the partition overhead.
+When it does not fit, the refusal (`no_fit`) lists what the processes hold and the headroom, and in the deploy form the card can be picked only for such a deployment. The card is still not shared,
+and is refused as “In use outside the platform”, for: a whole-card deployment; a process the vendor tool gives no memory figure for, or a card Kubernetes gave to another pod
+(what such use may grow to is not known); and a node whose agent is older—sharing needs an agent that, once a platform instance is on the card, keeps reporting the outside processes that were already there
+(each of the platform's engines keeps one process on the card, so processes beyond the number of platform instances there are foreign, including a workload restarted under a new PID or a job started beside ours; a process that exits still has its memory held back until 3 free readings in a row) until every platform instance there sleeps or has left and the card is examined in full again, and keeps that record in its state directory across restarts; an older agent drops them once the first instance starts, and the card would read as free.
+A deployment that sleeps is not placed on such a card either (`held_outside_platform_sleep`): while those processes run, a sleeping instance could not be woken there.
+A card of platform instances that was never shared with outside processes is not read this way: a process that appears there is not reported as outside the platform, since the agent cannot tell it from its own instance's. On a held card whose outside use is unknown, raising a dGPU quota in place is refused, and the GPU list shows no available memory. The rationale is in [ADR 0068](../adr/0068-partitions-share-cards-with-foreign-processes-by-memory.md).
 
 Such a card is also left out of the periodic runtime check and of the recheck after an instance fails to start: someone else's workload should not be disturbed,
 and memory held by someone else says nothing about whether the runtime can use the card. The card keeps its last check result, and checking resumes once the processes exit.
@@ -942,7 +982,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 
 | Reason code | Meaning |
 |---|---|
-| `no_fit` | Fixed startup requirement per card > available GPU memory; parameters include `required_gib`, `available_gib`, `tp`, and `gpu_memory_utilization` |
+| `no_fit` | Fixed startup requirement per card > available GPU memory; parameters include `required_gib`, `available_gib`, `tp`, and `gpu_memory_utilization`, plus `foreign_gib` (what outside processes hold) and `foreign_headroom_gib` (the headroom kept beside them) on a card shared with processes outside the platform |
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | Not enough idle whole cards / shareable cards |
 | `pinned_gpus_unavailable` | The cards a manually placed PD instance is pinned to are held by other deployments; the parameters give `node`, `gpus` (the pinned card indexes), and `holders` (the deployments holding them). The instance does not switch to other free cards on the node but waits for the pinned cards: stop or move the deployments holding them, or switch this deployment to automatic placement (`PUT /deployments/{id}/placement-mode`) so the platform uses free cards. When a pinned card is held outside the platform, is not healthy, or is free but still does not fit, the corresponding reason code applies |
 | `waiting_for_yield` | The replica fits once deployments sharing its cards by yield policy give them up, and waits for them; the parameters give `node`, `holders` (each holding deployment with `at_once`, or `idle_sec` and for yield-on-a-turn `max_serve_sec`: the terms it gives way to this deployment on) and `instances`. It resolves by itself when the holders sleep; see [How a New Deployment Gets onto a Shared Card](scheduling-center.md#新部署怎样放到共用的卡上). A holder with never yield is never asked to give way |
@@ -952,7 +992,8 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `no_free_gpu` | No idle GPUs |
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
 | `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, unbound from drivers, or held by other drivers |
-| `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards are occupied by processes outside the platform |
+| `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards (the named ones, when the request names cards) are occupied by processes outside the platform, and this deployment cannot share them: it takes whole cards, or the outside processes' memory is unknown |
+| `held_outside_platform_sleep` | Only cards shared with processes outside the platform could take this memory-limited deployment, but it sleeps: while those processes run, it could not be woken on that card once asleep. Fix: turn off sleep for this deployment, or pick another card |
 | `tp_head_count_not_divisible` | The attention head count is not divisible by TP |
 | `sleep_residue_blocks_startup` | Residual GPU memory from sleeping instances blocks startup |
 | `engine_ports_exhausted` | The node's engine port range is exhausted |
@@ -1336,3 +1377,8 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 4. The complete output of `gpuworks-agent doctor` on the node.
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
+
+<!-- translation-source-sha256: 081eb8cceabb438367337ca0b64d6a4d1311b9d290d9e355a89b8b961f145bb0 -->
+<!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
+<!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
+<!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
