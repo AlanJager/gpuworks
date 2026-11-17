@@ -247,6 +247,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
   const evaluation = useDeployEvaluation({
     form,
     signal: evaluationSignal,
+    profiles: engines.data?.items,
     // Without a target accelerator the scheduler would pick any vendor's
     // node, and that answer would linger on screen once one is chosen.
     buildPayload: () => {

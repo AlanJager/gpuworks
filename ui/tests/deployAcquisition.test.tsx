@@ -257,3 +257,29 @@ test("before the first evaluation the image row explains that it is still checki
   assert.equal(screen.getAllByText(text("loading")).length, 1);
   assert.equal(screen.queryByText(text("weightTitle")), null);
 });
+
+for (const language of ["en", "zh"] as const) {
+  test(`an unverified engine argument is a localized non-blocking warning in ${language}`, async () => {
+    const locale = JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${language}/deploy.json`, import.meta.url), "utf8"));
+    const localized = createInstance();
+    await localized.use(initReactI18next).init({
+      lng: language, fallbackLng: language,
+      resources: { [language]: { deploy: locale } }, defaultNS: "deploy",
+      interpolation: { escapeValue: false },
+    });
+    render(<I18nextProvider i18n={localized}><Form><DeployStepSummary result={{
+      ok: true,
+      warnings: [{ code: "EXTRA_ARGS_ENGINE_UNVERIFIED", params: {
+        flag: "--cpu-offload-gb", engine: "sglang", documented_engine: "vllm",
+      } }],
+    } as never} error={null} loading={false} /></Form></I18nextProvider>);
+    const warning = screen.getByRole("alert");
+    assert.ok(warning.classList.contains("ant-alert-warning"));
+    assert.match(warning.textContent ?? "", /--cpu-offload-gb/);
+    assert.match(warning.textContent ?? "", /sglang/);
+    assert.match(warning.textContent ?? "", /vllm/);
+    assert.doesNotMatch(warning.textContent ?? "", /EXTRA_ARGS_ENGINE_UNVERIFIED|\{\{/);
+    assert.match(warning.textContent ?? "", language === "en" ? /passed through unchanged/ : /原样传递/);
+    assert.equal(document.querySelector(".ant-alert-error"), null);
+  });
+}

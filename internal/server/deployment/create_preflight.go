@@ -83,9 +83,10 @@ func (p launchPreflight) run(req *dto.DeployRequest, selection templateSelection
 // sees it at this step, before the model binds its components and API
 // contract. The rank images are the ones the evaluation already resolved
 // (resp.RankCommands), so this step reads no image catalog of its own.
-func (s *Service) evaluateLaunchPreflight(eng deploy.Engine, req *dto.DeployRequest, selection templateSelection, targetVendor string, profileNode *store.Node, rankNodes []*store.Node, resp *dto.EvaluateResponse) error {
+func (s *Service) evaluateLaunchPreflight(eng deploy.Engine, req *dto.DeployRequest, selection templateSelection, targetVendor string, profileNode *store.Node, rankNodes []*store.Node, resp *dto.EvaluateResponse, storedArgs *deploy.StoredLaunchConfig) error {
 	draft := cloneRequest(*req)
-	launch, err := s.materializeCreateLaunch(eng.Name(), &draft, selection, DeployTargetCards(profileNode, draft.Placement), s.requestEngineVersion(eng.Name(), &draft, selection, targetVendor, profileNode))
+	selection.APIContract = nil
+	launch, err := materializeDeployRequestWithStoredArgs(eng.Name(), &draft, selection, DeployTargetCards(profileNode, draft.Placement), s.requestEngineVersion(eng.Name(), &draft, selection, targetVendor, profileNode), storedArgs)
 	if err != nil {
 		return err
 	}

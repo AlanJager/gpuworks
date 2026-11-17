@@ -245,7 +245,13 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// One materialization decides this deployment's launch configuration. The
 	// preview below, the estimate, and a create submitted from this form all
 	// read the same object.
-	launch, err := materializeDeployRequest(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode))
+	var storedArgs *deploy.StoredLaunchConfig
+	if evaluateReq.DeploymentID != 0 {
+		if stored, err := s.d.Store.GetDeployment(evaluateReq.DeploymentID); err == nil {
+			storedArgs = &deploy.StoredLaunchConfig{Engine: stored.Engine, ExtraArgsText: stored.ExtraArgs}
+		}
+	}
+	launch, err := materializeDeployRequestWithStoredArgs(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), storedArgs)
 	if err != nil {
 		// ProductErrors that name a key land on that key's control; the
 		// extra-args parse error is the one that starts on the text box.
@@ -255,6 +261,12 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	}
 	quick := launch.Quick
 	userExtraArgs := launch.UserResidual
+	// Materialization parsed this text already. Compare the original user
+	// tokens before any flags moved into fields or were derived for a task.
+	submittedExtra, _ := deploy.ParseArgsText(req.ExtraArgs)
+	if command, err := effectiveRequestCommand(req, selection); err == nil && command.InterpretEngineDialect && !sameStoredExtraArgs(eng.Name(), submittedExtra, storedArgs) {
+		resp.Warnings = append(resp.Warnings, deploy.ExtraArgsEngineWarnings(eng.Name(), userExtraArgs)...)
+	}
 	priority := PrioritySchedulingOf(eng.Name(), targetVendor, placementPD(req) != nil, launch.TemplateResidual, userExtraArgs)
 	resp.PriorityScheduling = &priority
 	resp.EffectiveParams = launchConfigMap(quick)
@@ -516,7 +528,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// memory-limited draft can get fewer cards than it states. The same
 	// preflight here makes what the create would refuse a blocking error.
 	if errs.empty() {
-		if err := s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp); err != nil {
+		if err := s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp, storedArgs); err != nil {
 			errs.add("", err)
 			writeFieldErrors()
 			return

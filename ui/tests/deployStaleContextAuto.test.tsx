@@ -25,6 +25,7 @@ const { MemoryRouter } = await import("react-router-dom");
 const { Form, Input, InputNumber } = await import("antd");
 const { api } = await import("../src/api.ts");
 const useEvaluation = (await import("../src/pages/deploy/useDeployEvaluation.ts")).default;
+const DeployImageRow = (await import("../src/pages/deploy/DeployImageRow.tsx")).default;
 const DeployParamField = (await import("../src/pages/deploy/DeployParamField.tsx")).default;
 const { buildPayload } = await import("../src/pages/deploy/deployHelpers.ts");
 const { EvaluateQuickParams } = await import("../src/pages/deploy/evaluateQuickParams.ts");
@@ -148,23 +149,44 @@ test("an SGLang template chosen while editing the command does not inherit vLLM'
   assert.equal(screen.queryByText(/FIELD_INVALID|Invalid value/i), null);
 });
 
+test("choosing SGLang after explicitly returning to automatic leaves context to SGLang", async () => {
+  await openOnVLLM();
+  fireEvent.change(contextInput(), { target: { value: "8192" } });
+  fireEvent.blur(contextInput());
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 8192));
+  fireEvent.click(screen.getByRole("button", { name: automatic }));
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, -1));
+  const start = requests.length;
+  fireEvent.click(await screen.findByRole("button", { name: /Qwen3 0\.6B/ }));
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
+  await waitFor(() => assert.equal(contextInput().value, ""));
+  for (const request of requests.slice(start).filter((item) => item.engine === "sglang")) {
+    assert.equal(request.quick_params?.max_model_len, undefined, "SGLang uses its own automatic context semantics");
+  }
+  assert.equal(screen.queryByText(/FIELD_INVALID|Invalid value/i), null);
+});
+
 // The same feedback loop without the page around it, switching the engine
 // with and without a manual command.
 let form: import("antd").FormInstance;
 const profileOf = (engine: string) => profiles.find((profile) => profile.name === engine)!;
-function Host() {
+function Host({ imagePicker = false }: { imagePicker?: boolean }) {
   [form] = Form.useForm();
   const values = Form.useWatch([], { form, preserve: true }) || {};
   const engine = String(values.engine || "vllm");
   const spec = profileOf(engine).param_specs!.find((item) => item.key === "max_model_len")!;
   const evaluation = useEvaluation({
-    form, signal: values,
+    form, signal: values, profiles,
     buildPayload: () => buildPayload(form.getFieldsValue(true), profileOf(String(form.getFieldValue("engine")))).payload,
     translate: (key, options) => i18n.t(key, options),
   });
   return (
     <Form form={form} initialValues={{ engine: "vllm" }} onValuesChange={(changed) => evaluation.noteDraftChanged(changed)}>
       <DeployParamField key={engine} spec={spec} />
+      {imagePicker && <DeployImageRow evaluated images={[
+        { image_ref: "vllm/vllm-openai:v0.19.0", engine: "vllm" },
+        { image_ref: "lmsysorg/sglang:v0.5.21", engine: "sglang" },
+      ] as never} />}
       <Form.Item name="extra_args" label="Extra arguments"><Input /></Form.Item>
       <Form.Item name="tp" label="Tensor parallel"><InputNumber /></Form.Item>
       <output data-testid="pending">{String(evaluation.evaluating)}</output>
@@ -179,6 +201,76 @@ async function openHost() {
 }
 const switchTo = (engine: string, manual: boolean) => act(() => {
   form.setFieldsValue({ engine, ...(manual ? { command_mode: "manual" } : {}) });
+});
+
+test("selecting a registered SGLang image resets automatic context but retains a fixed length", async () => {
+  render(<I18nextProvider i18n={i18n}><Host imagePicker /></I18nextProvider>);
+  await waitFor(() => assert.equal(contextInput().value, automatic));
+  await settled();
+  fireEvent.change(contextInput(), { target: { value: "8192" } });
+  fireEvent.blur(contextInput());
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 8192));
+  fireEvent.click(screen.getByRole("button", { name: automatic }));
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, -1));
+  await settled();
+  const image = () => screen.getByRole("combobox", { name: deployLocale.workbench.acquisition.imageOptions });
+  fireEvent.change(image(), { target: { value: "lmsysorg/sglang:v0.5.21" } });
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
+  await settled();
+  assert.equal(contextInput().value, "");
+  assert.equal(requests.at(-1)?.quick_params?.max_model_len, undefined);
+  assert.equal((buildPayload(form.getFieldsValue(true), profileOf("sglang")).payload.quick_params as Record<string, unknown> | undefined)?.max_model_len, undefined);
+
+  fireEvent.change(image(), { target: { value: "vllm/vllm-openai:v0.19.0" } });
+  await waitFor(() => assert.equal(contextInput().value, automatic));
+  fireEvent.change(contextInput(), { target: { value: "16384" } });
+  fireEvent.blur(contextInput());
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 16384));
+  await settled();
+  fireEvent.change(image(), { target: { value: "lmsysorg/sglang:v0.5.21" } });
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
+  await settled();
+  assert.equal(contextInput().value, "16384");
+  assert.equal(requests.at(-1)?.quick_params?.max_model_len, 16384);
+});
+
+test("clearing an edited context then switching engines does not resurrect vLLM automatic", async () => {
+  await openHost();
+  fireEvent.change(contextInput(), { target: { value: "8192" } });
+  fireEvent.blur(contextInput());
+  await waitFor(() => assert.equal(requests.at(-1)?.quick_params?.max_model_len, 8192));
+  await settled();
+  fireEvent.change(contextInput(), { target: { value: "" } });
+  fireEvent.blur(contextInput());
+  await waitFor(() => assert.equal(contextInput().value, automatic));
+  await settled();
+  const start = requests.length;
+  switchTo("sglang", false);
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
+  await settled();
+  for (const request of requests.slice(start)) assert.equal(request.quick_params?.max_model_len, undefined);
+  assert.equal(contextInput().value, "");
+});
+
+test("a late vLLM automatic response cannot overwrite the SGLang image selection", async () => {
+  let reply: ((response: EvaluateResponse) => void) | undefined;
+  stub("evaluate", (payload: Record<string, unknown>) => {
+    const request = structuredClone(payload) as Record<string, any>;
+    requests.push(request);
+    if (request.engine === "vllm") return new Promise<EvaluateResponse>((resolve) => { reply = resolve; });
+    return Promise.resolve(answer(request));
+  });
+  render(<I18nextProvider i18n={i18n}><Host imagePicker /></I18nextProvider>);
+  await waitFor(() => assert.ok(reply, "the vLLM response is held in flight"));
+  fireEvent.change(screen.getByRole("combobox", { name: deployLocale.workbench.acquisition.imageOptions }),
+    { target: { value: "lmsysorg/sglang:v0.5.21" } });
+  await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
+  await settled();
+  await act(async () => { reply!(answer({ engine: "vllm" })); });
+  assert.equal(contextInput().value, "");
+  assert.equal(form.getFieldValue("engine"), "sglang");
+  assert.equal(requests.at(-1)?.quick_params?.max_model_len, undefined);
+  assert.equal((buildPayload(form.getFieldsValue(true), profileOf("sglang")).payload.quick_params as Record<string, unknown> | undefined)?.max_model_len, undefined);
 });
 
 for (const manual of [true, false]) {
@@ -225,8 +317,8 @@ test("a context the deployer typed survives the switch to SGLang", async () => {
   assert.equal(form.getFieldValue("max_model_len"), 16384);
 });
 
-test("a context the deployer set back to automatic is kept across the switch", async () => {
-  // An explicit -1 is the deployer's choice; the server judges it for SGLang.
+test("an explicit automatic context uses the target engine’s automatic semantics", async () => {
+  // Automatic is an intent; its negative spelling belongs to vLLM.
   await openHost();
   fireEvent.change(contextInput(), { target: { value: "8192" } });
   fireEvent.blur(contextInput());
@@ -236,8 +328,9 @@ test("a context the deployer set back to automatic is kept across the switch", a
   await settled();
   switchTo("sglang", false);
   await waitFor(() => assert.equal(requests.at(-1)?.engine, "sglang"));
-  assert.equal(requests.at(-1)?.quick_params?.max_model_len, -1);
-  assert.equal(form.getFieldValue("max_model_len"), -1);
+  await settled();
+  assert.equal(requests.at(-1)?.quick_params?.max_model_len, undefined);
+  assert.equal(form.getFieldValue("max_model_len"), undefined);
 });
 
 for (const manual of [true, false]) {
