@@ -4,6 +4,7 @@ package pluginexec
 
 import (
 	"bytes"
+	"debug/elf"
 	"encoding/json"
 	"errors"
 	"os"
@@ -174,8 +175,27 @@ func sandboxProfile(t *testing.T) *Profile {
 	}
 	data := t.TempDir()
 	return &Profile{ID: "acme_probe", ParentPID: os.Getpid(), Dir: data, Nice: 5, NoFile: 256,
-		Landlock:        &Landlock{ReadExec: []string{filepath.Dir(self)}, ReadWrite: []string{data}, Read: []string{"/etc/ssl", "/nonexistent-ca"}},
+		Landlock: &Landlock{ReadExec: append([]string{filepath.Dir(self)}, dynamicLoader(t, self)...),
+			ReadWrite: []string{data}, Read: []string{"/etc/ssl", "/nonexistent-ca"}},
 		RequireLandlock: true}
+}
+
+// dynamicLoader lists what executing a dynamically linked binary needs
+// (the loader and the system libraries). Plugins are static, but the test
+// binary, which stands in for one, is dynamic under -race.
+func dynamicLoader(t *testing.T, exe string) []string {
+	t.Helper()
+	f, err := elf.Open(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for _, p := range f.Progs {
+		if p.Type == elf.PT_INTERP {
+			return []string{"/lib", "/lib64", "/usr/lib", "/usr/lib64", "/etc/ld.so.cache"}
+		}
+	}
+	return nil
 }
 
 func requireLandlock(t *testing.T) {
