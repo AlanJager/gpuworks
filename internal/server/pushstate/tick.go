@@ -164,6 +164,7 @@ func (s *State) commit(ctx context.Context) {
 
 	s.mu.Lock()
 	results := s.applyLocked(b, w, res, err)
+	s.holdsDirty = s.holdsDirty || err == nil
 	holds, features := s.recombineLocked()
 	s.mu.Unlock()
 	for pp, r := range results {

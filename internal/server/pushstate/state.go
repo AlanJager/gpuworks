@@ -113,6 +113,9 @@ type State struct {
 	hwmDirty  bool
 	markers   []pstate.Marker
 	next      int64
+	// holdsDirty marks the explicit holds for recombination: a commit, an
+	// installed package set or a load changed what they are built from.
+	holdsDirty bool
 
 	// The capacity selection's own state, touched only by its pass.
 	fleet      []fleetcap.Node
@@ -243,6 +246,7 @@ func (s *State) Load(ctx context.Context) error {
 	if err := s.flushBootLocked(ctx); err != nil {
 		return err
 	}
+	s.holdsDirty = true
 	s.recombineLocked()
 	if s.cur.Load().caps.Limited() && s.cfg.Fleet != nil {
 		fleet, err := s.cfg.Fleet(ctx)
@@ -277,6 +281,7 @@ func (s *State) flushBootLocked(ctx context.Context) error {
 func (s *State) SetPackages(pkgs []Package) {
 	s.mu.Lock()
 	s.reg = newRegistry(pkgs)
+	s.holdsDirty = true
 	s.changed()
 }
 

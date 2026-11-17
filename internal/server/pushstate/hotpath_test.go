@@ -104,3 +104,60 @@ func BenchmarkHooks(b *testing.B) {
 		}
 	})
 }
+
+// A full replace of a large table writes only the entries that changed.
+func TestALargePushWritesOnlyItsChangedEntries(t *testing.T) {
+	holds := func(changed map[int]string) *part {
+		t := &extapi.NodeHoldsV1{Nodes: map[string]extapi.Notice{}}
+		for i := 1; i <= extapi.MaxNodeHolds; i++ {
+			code := "ACME_MAINTENANCE"
+			if c, ok := changed[i]; ok {
+				code = c
+			}
+			if code != "" {
+				t.Nodes[strconv.Itoa(i)] = extapi.Notice{Code: code}
+			}
+		}
+		p := &part{owner: "acme_ops", kind: extapi.KindNodeHolds, schema: 1, gen: 1, table: normalize(t)}
+		compile(p)
+		return p
+	}
+	old := holds(nil)
+	next := holds(map[int]string{3: "ACME_QUARANTINE", 4: "ACME_QUARANTINE", 9999: ""})
+	w := tableWrite(old, next)
+	if w.DeleteAll || len(w.DeleteEntries) != 3 || len(w.Insert.NodeHolds) != 2 {
+		t.Fatalf("diff deletes %v (all %v) and inserts %d rows", w.DeleteEntries, w.DeleteAll, len(w.Insert.NodeHolds))
+	}
+	if first := tableWrite(nil, next); !first.DeleteAll || len(first.Insert.NodeHolds) != extapi.MaxNodeHolds-1 {
+		t.Fatal("a first push does not write the whole table")
+	}
+}
+
+// BenchmarkCommitLargeHolds measures one writer tick that replaces a
+// 10 000-node holds table with ten entries changed.
+func BenchmarkCommitLargeHolds(b *testing.B) {
+	h := newHarness(b, openStore(b, ""), newFakeClock("2026-12-01T00:00:00Z")).load()
+	ops := pusherOf(acmeOps, "push:node_holds")
+	body := func(variant int) string {
+		var s strings.Builder
+		s.WriteString(`{"nodes":{`)
+		for i := 1; i <= extapi.MaxNodeHolds; i++ {
+			if i > 1 {
+				s.WriteByte(',')
+			}
+			code := "ACME_MAINTENANCE"
+			if i <= 10 && variant%2 == 1 {
+				code = "ACME_QUARANTINE"
+			}
+			s.WriteString(`"` + strconv.Itoa(i) + `":{"code":"` + code + `"}`)
+		}
+		s.WriteString(`}}`)
+		return s.String()
+	}
+	h.push2(ops, extapi.KindNodeHolds, 1, body(0))
+	gen := uint64(1)
+	for b.Loop() {
+		gen++
+		h.push2(ops, extapi.KindNodeHolds, gen, body(int(gen)))
+	}
+}

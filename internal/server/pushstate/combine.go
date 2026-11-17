@@ -97,7 +97,13 @@ func (s *State) recombineLocked() (holdsChanged, featuresChanged bool) {
 
 	c.avail = s.combineAvailabilityLocked(now, soon)
 	s.combineCapacityLocked(c, now, soon, overrides)
-	c.holds = s.combineHoldsLocked(overrides)
+	// Explicit holds do not follow the clock: a recombination for a step,
+	// a grace or an owner going down reuses them.
+	if prev != nil && !s.holdsDirty {
+		c.holds = prev.holds
+	} else {
+		c.holds, s.holdsDirty = s.combineHoldsLocked(overrides), false
+	}
 	c.bannersAll, c.bannersAdmin = s.combineBannersLocked(now, soon)
 	if prev != nil {
 		c.capacity = prev.capacity
