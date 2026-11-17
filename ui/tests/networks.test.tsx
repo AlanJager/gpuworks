@@ -69,6 +69,7 @@ const typeRoles = {
   host_ethernet: ["storage_sync", "compute", "serving"],
   host_rdma: ["storage_sync", "compute", "serving"],
   accelerator_rdma: ["compute"],
+  accelerator_hccs: ["compute"],
 };
 const n = networksLocale;
 
@@ -273,37 +274,40 @@ test("an RDMA network is created with nothing filled in", async () => {
   assert.deepEqual(bodies[0], { name: "weiw1", description: "", roles: ["compute"], type: "host_rdma", cidr: "", interface: "" });
 });
 
-test("an accelerator network carries compute traffic only and asks for a bootstrap subnet at most", async () => {
-  const bodies: unknown[] = [];
-  stub("networks", async () => ({ items: [], roles: ["storage_sync", "compute", "serving"], types: ["host_ethernet", "host_rdma", "accelerator_rdma"], type_roles: typeRoles }));
-  stub("createNetwork", async (body) => { bodies.push(body); return { ...detailFixture, id: 7 }; });
-  const user = userEvent.setup();
-  renderAt("/networks", <NetworksPage />);
-  await user.click(await screen.findByRole("button", { name: n.actions.create }));
-  const dialog = await modalDialog();
-  await user.type(within(dialog).getByRole("textbox", { name: n.form.name }), "npu");
-  // On a host network every role can be ticked.
-  await user.click(within(dialog).getByRole("checkbox", { name: n.role.storage_sync }));
-  await user.click(within(dialog).getByRole("checkbox", { name: n.role.compute }));
-  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.serving }).getAttribute("aria-disabled") === "true"), false);
+for (const networkType of ["accelerator_rdma", "accelerator_hccs"] as const) {
+  test(`an accelerator network carries compute traffic only and asks for a bootstrap subnet at most (${networkType})`, async () => {
+    const bodies: unknown[] = [];
+    stub("networks", async () => ({ items: [], roles: ["storage_sync", "compute", "serving"], types: ["host_ethernet", "host_rdma", "accelerator_rdma", "accelerator_hccs"], type_roles: typeRoles }));
+    stub("createNetwork", async (body) => { bodies.push(body); return { ...detailFixture, id: 7 }; });
+    const user = userEvent.setup();
+    renderAt("/networks", <NetworksPage />);
+    await user.click(await screen.findByRole("button", { name: n.actions.create }));
+    const dialog = await modalDialog();
+    await user.type(within(dialog).getByRole("textbox", { name: n.form.name }), "npu");
+    // On a host network every role can be ticked.
+    await user.click(within(dialog).getByRole("checkbox", { name: n.role.storage_sync }));
+    await user.click(within(dialog).getByRole("checkbox", { name: n.role.compute }));
+    assert.equal((within(dialog).getByRole("checkbox", { name: n.role.serving }).getAttribute("aria-disabled") === "true"), false);
 
-  await user.click(within(dialog).getByText(n.type.accelerator_rdma));
-  // Storage sync and serving are greyed out and say why; the role already
-  // ticked that the type cannot carry is dropped.
-  await waitFor(() => assert.equal((within(dialog).getByRole("checkbox", { name: n.role.storage_sync }).getAttribute("aria-disabled") === "true"), true));
-  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.serving }).getAttribute("aria-disabled") === "true"), true);
-  assert.equal(within(dialog).getByRole("checkbox", { name: n.role.storage_sync }).getAttribute("aria-checked") == "true", false);
-  assert.equal((within(dialog).getByRole("checkbox", { name: n.role.compute }).getAttribute("aria-checked") === "true"), true);
-  assert.ok(within(dialog).getByLabelText(`${n.role.serving}: ${n.form.roleNotOnType}`), "the reason is reachable by keyboard and screen reader");
-  assert.ok(within(dialog).getByText(n.form.acceleratorInferred));
-  assert.equal(within(dialog).queryByLabelText(n.form.interface), null);
-  await user.click(within(dialog).getByText(n.form.advanced));
-  assert.ok(within(dialog).getByText(n.form.acceleratorBootstrapCidrHint));
-  await user.type(within(dialog).getByLabelText(n.form.bootstrapCidr), "198.51.100.0/24");
-  await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
-  await waitFor(() => assert.equal(bodies.length, 1));
-  assert.deepEqual(bodies[0], { name: "npu", description: "", roles: ["compute"], type: "accelerator_rdma", cidr: "198.51.100.0/24", interface: "" });
-});
+    await user.click(within(dialog).getByText(n.type[networkType]));
+    // Storage sync and serving are greyed out and say why; the role already
+    // ticked that the type cannot carry is dropped.
+    await waitFor(() => assert.equal((within(dialog).getByRole("checkbox", { name: n.role.storage_sync }).getAttribute("aria-disabled") === "true"), true));
+    assert.equal((within(dialog).getByRole("checkbox", { name: n.role.serving }).getAttribute("aria-disabled") === "true"), true);
+    assert.equal(within(dialog).getByRole("checkbox", { name: n.role.storage_sync }).getAttribute("aria-checked") == "true", false);
+    assert.equal((within(dialog).getByRole("checkbox", { name: n.role.compute }).getAttribute("aria-checked") === "true"), true);
+    assert.ok(within(dialog).getByLabelText(`${n.role.serving}: ${i18n.t("networks:form.roleNotOnType")}`), "the reason is reachable by keyboard and screen reader");
+    assert.ok(within(dialog).getByText(n.form.acceleratorInferred));
+    assert.equal(within(dialog).queryByLabelText(n.form.interface), null);
+    await user.click(within(dialog).getByText(n.form.advanced));
+    assert.ok(within(dialog).getByText(n.form.acceleratorBootstrapCidrHint));
+    await user.type(within(dialog).getByLabelText(n.form.bootstrapCidr), "198.51.100.0/24");
+    await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
+    await waitFor(() => assert.equal(bodies.length, 1));
+    assert.deepEqual(bodies[0], { name: "npu", description: "", roles: ["compute"], type: networkType, cidr: "198.51.100.0/24", interface: "" });
+  });
+
+}
 
 test("an accelerator network's rails are picked from the node's cards", async () => {
   const calls: unknown[] = [];
@@ -654,7 +658,10 @@ for (const language of ["en", "zh"]) {
       await i18n.changeLanguage(language);
       const detail = structuredClone(detailFixture);
       detail.type = "accelerator_hccs";
-      detail.nodes = detail.nodes.map((node: Record<string, unknown>) => ({ ...node, link_layer: layer }));
+      detail.nodes = detail.nodes.map((node: Record<string, unknown>, index: number) => ({
+        ...node, link_layer: layer,
+        hcas: [{ name: "npu0", ip: `192.9.2.${199 - index * 2}`, netdev: "", link_layer: layer, state: "UP", speed_gbps: 200 }],
+      }));
       stub("network", async () => detail);
       renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
       const title = detail.name;
