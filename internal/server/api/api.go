@@ -56,6 +56,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 		// Open to the sign-in page, which shows the product name and logo.
 		r.Get("/branding", a.getBranding)
 		r.With(a.managementAuth).Get("/auth/me", a.me)
+		a.pluginRoutes(r)
 		r.With(a.managementAuth, sessionOnly).Post("/auth/activity", a.activity)
 		r.With(a.managementAuth, sessionOnly).Post("/auth/password", a.changePassword)
 		// Platform tokens are managed from a login session only, so no token

@@ -29,6 +29,9 @@ type ExtensionDeps struct {
 	// Edition names the build in the console manifest, for display only;
 	// empty reads community.
 	Edition string
+	// Plugins manages the installed plugin packages (/api/v1/plugins); nil
+	// answers PLUGINS_UNAVAILABLE.
+	Plugins PluginAdmin
 }
 
 // Extension is a set of management routes a separately built server mounts.
