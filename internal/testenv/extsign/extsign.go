@@ -290,3 +290,31 @@ func CRL(t testing.TB, serial uint64, publisher string, revoked []extapi.Revocat
 
 // ManifestDigest is the digest a revocation by manifest names.
 func (b *Built) ManifestDigest() extapi.Digest { return extapi.DigestOf(b.Manifest) }
+
+// IndexEntry returns the index entry of a built package: its id, version,
+// manifest digest, protocol, requires and hint, with one download for
+// every platform.
+func (b *Built) IndexEntry(t testing.TB, path string, archived []byte) extapi.IndexEntry {
+	t.Helper()
+	m, err := extapi.DecodeManifest(b.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(archived)
+	return extapi.IndexEntry{
+		ID: m.ID, Version: m.Version, Manifest: b.ManifestDigest(), MinCoreHint: m.MinCoreHint,
+		Protocol: m.Protocol, Requires: m.Requires,
+		Files: []extapi.IndexFile{{Path: path, Size: int64(len(archived)), SHA256: hex.EncodeToString(sum[:])}},
+	}
+}
+
+// Index seals a package index of pub with serial and entries (sorted by
+// the caller), edited by edit when it is not nil, signed by pub's key.
+func Index(t testing.TB, pub *Publisher, serial uint64, entries []extapi.IndexEntry, edit func(*extapi.Index)) []byte {
+	t.Helper()
+	x := extapi.Index{Format: extapi.IndexFormat, Serial: serial, Created: extapi.NewTime(Epoch.AddDate(0, 0, int(serial))), Publisher: pub.Name, Packages: entries}
+	if edit != nil {
+		edit(&x)
+	}
+	return Encode(t, Seal(t, x, pub.Key))
+}

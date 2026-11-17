@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/expose"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
+	"gpuworks.ai/gpuworks/internal/server/extpkg/catalog"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/compat"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/layout"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/trust"
@@ -27,6 +28,7 @@ const pluginUsage = `  gpuworks plugin install --file PKG.gwpkg [--disabled]
   gpuworks plugin list
   gpuworks plugin remove ID [--purge]
   gpuworks plugin trust import FILE [--cert publisher.crt]
+  gpuworks plugin index import FILE --cert publisher.crt
   gpuworks plugin compat
                  (each also takes [--data DIR] [--db PATH] [--config server.yaml])`
 
@@ -55,6 +57,12 @@ func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer
 			return flag.ErrHelp
 		}
 		return o.pluginTrustImport(log, rest[1:], stdout)
+	case "index":
+		if len(rest) == 0 || rest[0] != "import" {
+			fmt.Fprintln(stdout, "usage:\n"+pluginUsage)
+			return flag.ErrHelp
+		}
+		return o.pluginIndexImport(log, rest[1:], stdout)
 	case "compat":
 		return o.pluginCompat(rest, stdout)
 	case "help", "-h", "--help":
@@ -67,6 +75,8 @@ func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer
 // pluginPaths are the locations a plugin subcommand works on.
 type pluginPaths struct {
 	data, db, config string
+	// loaded is the plugins section openHost applied.
+	loaded serverconfig.Plugins
 }
 
 func pluginFlags(name string) (*flag.FlagSet, *pluginPaths) {
@@ -134,6 +144,7 @@ func (o Options) openHost(p *pluginPaths) (*extpkg.Host, *store.Store, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	p.loaded = cfg
 	policy, err := maintenanceDatabasePolicy(p.db)
 	if err != nil {
 		return nil, nil, err
@@ -277,6 +288,54 @@ func (o Options) pluginTrustImport(log *slog.Logger, args []string, stdout io.Wr
 	fmt.Fprintf(stdout, "applied %s serial %d (%s): %d roots added, %d retired, %d revocations, %d floors\n",
 		in.Kind, in.Serial, in.Issuer, in.AddedRoots, in.RetiredRoots, in.Revocations, in.Floors)
 	log.Info("plugin trust imported", "kind", in.Kind, "issuer", in.Issuer, "serial", in.Serial)
+	return nil
+}
+
+// pluginIndexImport applies a publisher's package index offline and prints
+// which version of each package this server would install.
+func (o Options) pluginIndexImport(log *slog.Logger, args []string, stdout io.Writer) error {
+	fs, p := pluginFlags("index import")
+	certFile := fs.String("cert", "", "the publisher's publisher.crt")
+	files, err := parseInterleaved(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(files) != 1 || *certFile == "" {
+		return errors.New("plugin index import needs one index file and --cert publisher.crt")
+	}
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		return err
+	}
+	certs, err := os.ReadFile(*certFile)
+	if err != nil {
+		return err
+	}
+	h, st, err := o.openHost(p)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	in, err := catalog.Import(st, h.Verifier.Trust, h.Dir, raw, certs)
+	if err != nil {
+		return err
+	}
+	// The floors and revocations the index carried apply to the choice.
+	if h, err = extpkg.NewHost(extpkg.Setup{DataDir: p.data, Roots: o.Distribution.Roots(), Config: p.loaded, Store: st}); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "imported the index of %s, serial %d\n", in.Index.Publisher, in.Index.Serial)
+	for _, c := range catalog.Choose(in.Index, h.Verifier.Offered, h.Verifier.Trust) {
+		best := "none"
+		if c.Best != nil {
+			best = c.Best.Version
+		}
+		fmt.Fprintf(stdout, "%s: installs %s\n", c.ID, best)
+		for _, r := range c.Newer {
+			fmt.Fprintf(stdout, "  %s refused: %s (%s)\n", r.Entry.Version, r.Err, codeText(r.Err))
+		}
+	}
+	log.Info("plugin index imported", "publisher", in.Index.Publisher, "serial", in.Index.Serial)
 	return nil
 }
 

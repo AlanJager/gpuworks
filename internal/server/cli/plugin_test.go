@@ -250,6 +250,34 @@ func TestPluginCompatIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestPluginIndexImportPrintsTheChoice(t *testing.T) {
+	e := newPluginEnv(t, "")
+	b := extsign.Build(t, e.pub, extsign.Minimal("acme", "acme_backup", "1.0.0"))
+	newer := extsign.Minimal("acme", "acme_backup", "1.1.0")
+	newer.Manifest.Requires = map[string]int{"table.availability": 1}
+	newer.Manifest.MinCoreHint = "v27.3"
+	bn := extsign.Build(t, e.pub, newer)
+	idx := extsign.Index(t, e.pub, 1, []extapi.IndexEntry{b.IndexEntry(t, "a.gwpkg", b.Archive(t)), bn.IndexEntry(t, "b.gwpkg", bn.Archive(t))}, func(x *extapi.Index) {
+		x.Floors = []extapi.Floor{{ID: "acme_backup", MinVersion: "1.0.0"}}
+	})
+	file, cert := e.writePackage("index.json", idx), e.writePackage("publisher.crt", e.pub.CertBundle(t))
+	out, err := e.run("index", "import", file, "--cert", cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"imported the index of acme, serial 1", "acme_backup: installs 1.0.0", "1.1.0 refused", messages.ErrorPluginNeedsNewerCore} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if _, err := e.run("index", "import", file, "--cert", cert); productCode(err) != messages.ErrorPluginTrustReplayed {
+		t.Fatalf("replay = %v", err)
+	}
+	if _, err := e.run("index", "import", file); err == nil {
+		t.Fatal("index import without --cert succeeded")
+	}
+}
+
 func TestPluginNeedsAnExistingDataDirectory(t *testing.T) {
 	e := newPluginEnv(t, "")
 	e.data += "-typo"

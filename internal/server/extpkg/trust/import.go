@@ -85,7 +85,7 @@ func importCRL(db Store, s *Set, env *extapi.Envelope, certs []byte) (*Imported,
 		}
 		in = &Imported{Kind: KindCRL, Issuer: "crl:" + RootAnchor, Anchor: RootAnchor}
 	} else {
-		keys, anchors, err := s.publisherKeys(claimed.Publisher, certs)
+		keys, anchors, err := s.PublisherKeys(claimed.Publisher, certs)
 		if err != nil {
 			return nil, err
 		}
@@ -103,9 +103,9 @@ func importCRL(db Store, s *Set, env *extapi.Envelope, certs []byte) (*Imported,
 	return in, apply(db, in, extapi.TrustUpdate{Format: extapi.TrustUpdateFormat, Serial: list.Serial, Created: list.Created, Revoke: list.Revoked})
 }
 
-// publisherKeys opens the certificates of publisher in a publisher.crt and
+// PublisherKeys opens the certificates of publisher in a publisher.crt and
 // returns their keys and, per key id, the anchor that certified it.
-func (s *Set) publisherKeys(publisher string, certs []byte) (extapi.KeySet, map[string]string, error) {
+func (s *Set) PublisherKeys(publisher string, certs []byte) (extapi.KeySet, map[string]string, error) {
 	if len(certs) == 0 {
 		return nil, nil, &extapi.Error{Code: extapi.ErrorSignatureUntrusted, Params: map[string]any{"object": "crl"},
 			Message: "crl: a publisher's revocation list needs the publisher's certificate to verify"}

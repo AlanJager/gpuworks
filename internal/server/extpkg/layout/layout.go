@@ -397,3 +397,55 @@ func syncDir(dir string) error {
 	}
 	return nil
 }
+
+const indexDir = ".index"
+
+// Saved index files of one publisher.
+const (
+	IndexFile = "index.json"
+	CertsFile = "publisher.crt"
+)
+
+// SaveIndex keeps a verified package index of publisher and the
+// certificates it was verified with, replacing the previous ones.
+func (d Dir) SaveIndex(publisher string, index, certs []byte) error {
+	dir := filepath.Join(d.Root, indexDir, publisher)
+	if err := writeAtomic(filepath.Join(dir, CertsFile), certs, 0o644); err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(dir, IndexFile), index, 0o644)
+}
+
+// SavedIndex is one publisher's saved index.
+type SavedIndex struct {
+	Publisher    string
+	Index, Certs []byte
+}
+
+// Indexes returns the saved indexes, sorted by publisher.
+func (d Dir) Indexes() ([]SavedIndex, error) {
+	entries, err := os.ReadDir(filepath.Join(d.Root, indexDir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []SavedIndex
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(d.Root, indexDir, e.Name())
+		index, err := os.ReadFile(filepath.Join(dir, IndexFile))
+		if err != nil {
+			return nil, err
+		}
+		certs, err := os.ReadFile(filepath.Join(dir, CertsFile))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, SavedIndex{Publisher: e.Name(), Index: index, Certs: certs})
+	}
+	return out, nil
+}
