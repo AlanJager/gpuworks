@@ -966,7 +966,7 @@
     "PLUGIN_VERSION_CONFLICT": "Version {{version}} of {{id}} is already installed with different contents. Publish the change under a new version.",
     "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} needs a newer server ({{min_core_hint}}): it requires {{capability}}.",
     "PLUGIN_CAPABILITY_MISSING": "The server offers no version of {{capability}} from {{min}} to {{max}}, which the plugin cannot run without. Install a plugin build for this server or upgrade the server.",
-    "PLUGIN_UNAVAILABLE": "Plugin {{id}} is not running, so this cannot be served now. Retry when it is running again.",
+    "PLUGIN_UNAVAILABLE": "Plugin {{plugin}} is not running, so what it provides is limited or unavailable until it runs again.",
     "PLUGIN_BUSY": "Plugin {{id}} is already handling {{limit}} requests. Retry shortly.",
     "PLUGIN_START_FAILED": "Plugin {{id}} could not be started: {{detail}}",
     "PLUGIN_HANDSHAKE_TIMEOUT": "Plugin {{id}} did not answer the handshake within {{timeout_s}} seconds.",
@@ -980,7 +980,16 @@
     "PLUGIN_HOST_RATE_LIMITED": "The plugin calls the server faster than {{limit}} requests a second. Retry shortly.",
     "PLUGIN_HOST_ROUTE_UNKNOWN": "The server's plugin interface has no {{method}} {{path}}.",
     "PLUGIN_HOST_FAILED": "The server could not handle the plugin's request: {{detail}}",
-    "PLUGIN_STATE_ON_DEMAND": "Plugin {{id}} starts on demand and may not push state."
+    "PLUGIN_STATE_ON_DEMAND": "Plugin {{id}} starts on demand and may not push state.",
+    "PLUGIN_STATE_NOT_PERMITTED": "The plugin may not push {{kind}} state: it needs {{needs}}.",
+    "PLUGIN_STATE_NOT_OWNER": "The plugin pushed {{kind}} state it does not answer for: {{field}} ({{row}}).",
+    "PLUGIN_STATE_STALE": "The plugin pushed {{kind}} state at generation {{generation}}, but the server already holds generation {{held}}.",
+    "PLUGIN_STATE_NOT_SAVED": "The server could not save the plugin's {{kind}} state, so it was not applied. The plugin will push it again.",
+    "PLUGIN_DOWN": "Plugin {{plugin}} has been down since {{since}}. What it set up stays in force.",
+    "PLUGIN_CLOCK_CORRECTED": "The plugin clock was corrected from {{from}} to {{to}} by {{by}}.",
+    "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "A clock correction may move the plugin clock by at most {{max_days}} days.",
+    "PLUGIN_OVERRIDE_REJECTED": "The override of {{kind}} entry {{entry}} from plugin {{plugin}} cannot be applied ({{rule}}).",
+    "PLUGIN_OVERRIDE_SUPERSEDED": "Plugin {{plugin}} set {{kind}} entry {{entry}} again, which replaced your override."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {

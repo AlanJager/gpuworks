@@ -196,7 +196,7 @@ func (h *Host) Do(ctx context.Context, id string, req *http.Request) (*http.Resp
 }
 
 func unavailable(id string, cause error) error {
-	return messages.WrapProductError(messages.ErrorPluginUnavailable, "the plugin is not running", map[string]any{"id": id}, cause)
+	return messages.WrapProductError(messages.ErrorPluginUnavailable, "the plugin is not running", map[string]any{"plugin": id}, cause)
 }
 
 func (h *Host) get(id string) *instance {

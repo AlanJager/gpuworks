@@ -5,8 +5,9 @@ package messages
 // concerned. PLUGIN_ISOLATION_UNAVAILABLE is plugin.go's, shared with package
 // verification. The codes a plugin's wire objects fail with are pkg/extapi's.
 const (
-	// ErrorPluginUnavailable: the plugin is not running, so a call to it
-	// cannot be served now.
+	// ErrorPluginUnavailable: plugin {plugin} is not running, so a call to
+	// it cannot be served now, or a feature it answers for ({feature}) is
+	// narrowed because it has been down longer than its grace.
 	ErrorPluginUnavailable = "PLUGIN_UNAVAILABLE"
 	// ErrorPluginBusy: the plugin already serves as many server calls as it
 	// may ({limit}); retry shortly.

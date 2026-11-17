@@ -966,7 +966,7 @@
     "PLUGIN_VERSION_CONFLICT": "{{id}} 的版本 {{version}} 已经以不同的内容安装。改动请以新版本发布。",
     "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} 需要更新的服务器（{{min_core_hint}}）：它需要 {{capability}}。",
     "PLUGIN_CAPABILITY_MISSING": "服务器没有提供插件离不开的能力 {{capability}} 在 {{min}} 至 {{max}} 之间的版本。请安装适用于此服务器的插件版本，或升级服务器。",
-    "PLUGIN_UNAVAILABLE": "插件 {{id}} 未在运行，暂时无法处理。请在它恢复运行后重试。",
+    "PLUGIN_UNAVAILABLE": "插件 {{plugin}} 未在运行，它提供的功能在恢复运行前受限或不可用。",
     "PLUGIN_BUSY": "插件 {{id}} 正在处理 {{limit}} 个请求，已达上限。请稍后重试。",
     "PLUGIN_START_FAILED": "插件 {{id}} 无法启动：{{detail}}",
     "PLUGIN_HANDSHAKE_TIMEOUT": "插件 {{id}} 未在 {{timeout_s}} 秒内应答握手。",
@@ -980,7 +980,16 @@
     "PLUGIN_HOST_RATE_LIMITED": "插件调用服务器的速度超过每秒 {{limit}} 次。请稍后重试。",
     "PLUGIN_HOST_ROUTE_UNKNOWN": "服务器的插件接口没有 {{method}} {{path}}。",
     "PLUGIN_HOST_FAILED": "服务器无法处理插件的请求：{{detail}}",
-    "PLUGIN_STATE_ON_DEMAND": "插件 {{id}} 按需启动，不能推送状态。"
+    "PLUGIN_STATE_ON_DEMAND": "插件 {{id}} 按需启动，不能推送状态。",
+    "PLUGIN_STATE_NOT_PERMITTED": "该插件无权推送 {{kind}} 状态：需要 {{needs}}。",
+    "PLUGIN_STATE_NOT_OWNER": "该插件推送了不归它负责的 {{kind}} 状态：{{field}}（{{row}}）。",
+    "PLUGIN_STATE_STALE": "该插件推送的 {{kind}} 状态版本为 {{generation}}，但服务器已持有版本 {{held}}。",
+    "PLUGIN_STATE_NOT_SAVED": "服务器未能保存该插件的 {{kind}} 状态，因此没有生效，插件会重新推送。",
+    "PLUGIN_DOWN": "插件 {{plugin}} 自 {{since}} 起掉线，它设定的内容继续生效。",
+    "PLUGIN_CLOCK_CORRECTED": "插件时钟已由 {{by}} 从 {{from}} 校正为 {{to}}。",
+    "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "一次时钟校正最多只能调整 {{max_days}} 天。",
+    "PLUGIN_OVERRIDE_REJECTED": "无法覆盖插件 {{plugin}} 的 {{kind}} 条目 {{entry}}（{{rule}}）。",
+    "PLUGIN_OVERRIDE_SUPERSEDED": "插件 {{plugin}} 重新设定了 {{kind}} 条目 {{entry}}，你的覆盖已被取代。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {
