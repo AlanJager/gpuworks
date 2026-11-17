@@ -37,16 +37,17 @@ The instance count, placement, and TP for each role go in the `pd` object of the
 
 **The PD mode catalog is the sole source of rules.** The pure leaf package `internal/server/pdmode` declares each mode: engine, role names, each role's KV connector
 role value, wire protocol, TP direction rule, ports required per instance, whether the same vendor is required, and the role from which KV transfer metrics are read. Platform code hardcodes
-no rules beyond "prefill/decode". There are currently four modes:
+no rules beyond "prefill/decode". The table lists some of them:
 
 | Mode | Wire Protocol | TP Rule | Transport | Hardware Verification |
 |---|---|---|---|---|
 | `vllm-nixl` | Sequential, two-stage | decode ≥ prefill | UCX | Verified (same node, cross-node Ethernet, and multiple nodes within a role) |
-| `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Equal | UCX | Not verified |
+| `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Not compared (the engine pairs) | UCX | Verified (cross-node Ethernet, multiple nodes within a role; SGLang 0.5.21) |
 | `vllm-ascend-mooncake` | Sequential, two-stage | prefill ≥ decode | HCCL (RoCE built into the NPU; mounts `/etc/hccn.conf`) | Verified (cross-node; P and D NPUs must reach each other on the NPU network) |
-| `vllm-mooncake` | Sequential, two-stage; the gateway generates the handoff parameters (prefill returns no `kv_transfer_params`; the gateway reads the engine id from its bootstrap server) | Equal | Mooncake transfer engine (Hygon DTK build, RDMA or TCP) | Verified (K100, two cards in one node, TP 1) |
+| `vllm-mooncake` | Sequential, two-stage; the gateway generates the handoff parameters (prefill returns no `kv_transfer_params`; the gateway reads the engine id from its bootstrap server) | Not compared (the engine pairs) | Mooncake transfer engine (Hygon DTK build, RDMA or TCP) | Verified (K100, two cards in one node, TP 1) |
+| `sglang-mooncake` | Concurrent dispatch to both | Not compared (SGLang pairs by attention TP); decode PP equals prefill PP or is 1 | Mooncake transfer engine (Hygon DTK build, host RDMA network) | Not verified |
 
-Violating a TP rule returns the corresponding error code. Engine presets expose `pd_modes` through `pdmode.ForEngine`, and the frontend uses them to offer available modes.
+A mode that declares a TP rule (currently only `vllm-nixl` and `vllm-ascend-mooncake`) returns the rule's error code when it is violated; the other modes do not compare TP and leave the pairing to the engine, so the platform does not block a layout nobody has seen fail. Engine presets expose `pd_modes` through `pdmode.ForEngine`, and the frontend uses them to offer available modes.
 
 **Validation has one implementation.** One function in `planning` parses and validates the `pd` object (all roles present, nonempty units, no overlapping cards, TP rules, a limit
 of 32 per role, and rank partitioning). Evaluation, creation, scaling, and the controller share it.
@@ -150,4 +151,4 @@ the request with the same KV parameters to other D instances. Internal requests 
 - PPU images include only Mooncake, not NIXL; supporting PPU most likely means adding another Mooncake mode without changing the data model.
 - Per-role images or presets and auxiliary roles (a coordination process for a shared KV pool) require only extensions to the `pd` object and catalog; `role` is a string with unrestricted values.
 
-<!-- translation-source-sha256: 979c0cdb4a3600b02f49b803b4efad857cecabbc24d698b7eadf046e1ac34b9f -->
+<!-- translation-source-sha256: 1ce4b137cbc203df4019d3935e9ec1c1d3fdcbb88e8b07571328f572bd66cb8e -->

@@ -27,6 +27,11 @@ type PDLaunch struct {
 	// SideChannelPort is the first port of the instance's extra port block
 	// (NIXL side channels, a bootstrap server, a Mooncake kv_port band).
 	SideChannelPort int
+	// LeaderSideChannelPort is the side channel port of the instance's
+	// leader: the rank's own on the leader, the leader's on a follower. It
+	// reaches only the launch variables; the composed command keeps each
+	// rank on its own SideChannelPort.
+	LeaderSideChannelPort int
 	// RoleTP is every role's tensor parallel degree, for connectors whose
 	// config names both sides.
 	RoleTP map[string]int

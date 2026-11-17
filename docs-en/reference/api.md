@@ -1563,11 +1563,11 @@ Scripts and third-party clients cannot directly reuse vLLM parameters for SGLang
 }}}
 ```
 
-- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `vllm-mooncake`, `vllm-ppu-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`). All unknown fields are rejected.
+- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `vllm-mooncake`, `vllm-ppu-mooncake`, `sglang-nixl`, `sglang-mooncake`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`). All unknown fields are rejected.
 - Each `unit` is a replica; `gpus` can be omitted. `followers` makes the replica span multiple nodes (ranks 1…N), in which case the role must specify `tp`.
   For each rank, the GPU count is `tp × pp` divided by the number of ranks.
 - Allowed values and defaults for `fallback` and `kv_load_failure` depend on the mode: for `vllm-nixl`, `vllm-ascend-mooncake`, and `vllm-mooncake`, `fallback`
-  is `decode` (default) or `fail`, and `kv_load_failure` is `fail` (default) or `recompute`. For `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`, and
+  is `decode` (default) or `fail`, and `kv_load_failure` is `fail` (default) or `recompute`. For `sglang-nixl`, `sglang-mooncake`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`, and
   `vllm-ppu-mooncake`, `fallback` only accepts `fail`, and there is no `kv_load_failure`. Values disallowed by the mode return `PD_FALLBACK_INVALID` /
   `PD_KV_LOAD_FAILURE_INVALID`.
 - In `GET /api/v1/engines`, each engine's `pd_modes[]` provides these rules: `name`, `vendors`, `roles`, `scalable_to_zero` (roles that can scale to 0
@@ -2246,4 +2246,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 0b42195037c129074567ab9edd3b64285bd6c8d9dd8e0078ad5dcffc0f0e0410 -->
+<!-- translation-source-sha256: 230240e87bb10e9af46d9eea1d053360cd64743e2bc1f75f52106730b506d323 -->

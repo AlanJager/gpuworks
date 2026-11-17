@@ -473,6 +473,9 @@ func (c *Conn) reportStatus(ctx context.Context) {
 		if c.creds.Simulated.Simulated() {
 			network.EnginePortListeners = c.enginePortListeners()
 		}
+		// The range is the agent's own configuration (--engine-ports), not a
+		// fact of the host, so a supplied inventory carries it too.
+		network.EnginePortRange = c.creds.EnginePorts
 	} else {
 		network = netinfo.Collect()
 		// A simulated inventory brings its own management address; the

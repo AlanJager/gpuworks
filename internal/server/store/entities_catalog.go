@@ -67,12 +67,22 @@ type InferenceSpecRow struct {
 	Components         string `gorm:"column:components;type:text"`       // JSON []inferencecatalog.Component
 	// PDMode is the PD mode a PD-only spec is for; empty for every other spec.
 	PDMode string `gorm:"column:pd_mode;size:32"`
+	// PDRoles is the layout a PD-only spec is written for: JSON
+	// inferencecatalog.PDRoleShapes, read and written whole; "" when none.
+	PDRoles string `gorm:"column:pd_roles;type:text"`
+	// ManualCommand is the shell script a deployment of the spec runs as its
+	// manual command; "" when the spec leaves the command to the engine.
+	ManualCommand string `gorm:"column:manual_command;type:text"`
 	// ShmBytes is the /dev/shm size the spec's engine needs; zero states none.
 	ShmBytes int64 `gorm:"column:shm_bytes"`
 	// MemlockUnlimited starts the spec's container with unlimited locked memory.
 	MemlockUnlimited bool `gorm:"column:memlock_unlimited"`
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// DockerArgs is the extra docker run options the spec's engine needs: JSON
+	// []string (inferencecatalog.InferenceSpec.DockerArgs), read and written
+	// whole with the rest of the spec, same shape as args.
+	DockerArgs string `gorm:"column:docker_args;type:text"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 func (InferenceSpecRow) TableName() string { return "inference_specs" }

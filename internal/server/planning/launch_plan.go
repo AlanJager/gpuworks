@@ -281,7 +281,7 @@ func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, erro
 		ComponentModelMount: componentModelMount(req), Entrypoint: req.Selection.Entrypoint,
 		PreStartArgv: req.Selection.PreStartArgv, PreStartScript: req.Selection.PreStartScript,
 		RuntimeAssets: req.Selection.RuntimeAssets, ComponentMounts: req.ComponentMounts, ModelPaths: req.ModelPaths,
-		TemplateShmBytes: req.Selection.ShmBytes, TemplateMemlockUnlimited: req.Selection.MemlockUnlimited,
+		TemplateShmBytes: req.Selection.ShmBytes, TemplateMemlockUnlimited: req.Selection.MemlockUnlimited, TemplateDockerArgs: req.Selection.DockerArgs,
 		APIContract: req.APIContract, AllowUnresolved: true, TargetValidation: deploy.CollectTargetCapabilities,
 	})
 	if err != nil {

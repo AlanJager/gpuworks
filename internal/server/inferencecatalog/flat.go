@@ -98,6 +98,15 @@ type InferenceSpec struct {
 	// mode (a name from package pdmode): it may only be deployed as PD, and
 	// its args and env are what the model needs there (plan D15).
 	PDMode string `yaml:"pd_mode,omitempty" json:"pd_mode,omitempty"`
+	// PDRoles is the layout a PD-only spec is written for, by role: what the
+	// deploy form starts a deployment of the spec from (pd_shape.go).
+	PDRoles PDRoleShapes `yaml:"pd_roles,omitempty" json:"pd_roles,omitempty"`
+	// ManualCommand is a launch the spec owns whole: a shell script the
+	// deployment runs as its manual command (command_mode=manual), with the
+	// ${GPUWORKS_*} launch variables expanded per rank. It is for a recipe
+	// whose roles or ranks differ in more than the platform composes, such as
+	// a PD layout whose roles take different engine flags.
+	ManualCommand string `yaml:"manual_command,omitempty" json:"manual_command,omitempty"`
 	// ShmBytes is the /dev/shm size the engine needs, for an engine that keeps
 	// large state in shared memory. Zero states none. It is a floor on the
 	// container's shared memory, not a replacement for the deployment's own
@@ -108,6 +117,13 @@ type InferenceSpec struct {
 	// A memlock ulimit the deployment's docker_args state wins over it (see
 	// deploy.withMemlockDockerArgs).
 	MemlockUnlimited bool `yaml:"memlock_unlimited,omitempty" json:"memlock_unlimited,omitempty"`
+	// DockerArgs are extra docker run options the spec's engine needs (such as
+	// --cap-add=SYS_PTRACE), applied before the deployment's own docker args
+	// and the platform's (see deploy.launchDockerArgs). Validated the same way
+	// as a deployment's own container_overrides.docker_args
+	// (deploy.ValidateDockerArgs): platform-managed options and options that
+	// would hand the container the host are refused.
+	DockerArgs []string `yaml:"docker_args,omitempty" json:"docker_args,omitempty"`
 	// RetiredDisplayProfile is the display_profile key specs carried before
 	// display names. It is still read, so older YAML imports, but never
 	// stored; CatalogWarnings reports it.
@@ -457,7 +473,13 @@ func validateSpec(modelID string, index int, spec *InferenceSpec, names map[stri
 			return fmt.Errorf("model %s spec %s pd_mode %s runs on %s, not %s", modelID, spec.Name, spec.PDMode, mode.Engine, spec.Engine)
 		}
 	}
+	if err := validatePDShape(modelID, spec); err != nil {
+		return err
+	}
 	if err := validateShmBytes(modelID, spec); err != nil {
+		return err
+	}
+	if err := validateDockerArgs(modelID, spec); err != nil {
 		return err
 	}
 	if spec.RuntimeWeightBytes < 0 {

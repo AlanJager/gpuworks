@@ -35,7 +35,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/kubeboot"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
-	recordingruntime "gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	udockerruntime "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
 	udockernative "gpuworks.ai/gpuworks/internal/agent/runtime/udocker/native"
 	"gpuworks.ai/gpuworks/internal/agent/runveilcli"
@@ -251,19 +250,8 @@ func run(log *slog.Logger, args []string) error {
 			_ = os.Setenv(name, value)
 		}
 	}
-	if record := strings.TrimSpace(os.Getenv("GPUWORKS_FAKE_RUNTIME_RECORD")); record != "" {
-		driver := recordingruntime.New(record)
-		// A process test that has to observe an image arriving needs the node to
-		// start out without it; the recording runtime otherwise reports every
-		// image as already present.
-		for _, ref := range strings.Split(os.Getenv("GPUWORKS_FAKE_RUNTIME_ABSENT_IMAGES"), ",") {
-			if ref = strings.TrimSpace(ref); ref != "" {
-				driver.InjectMissingImage(ref)
-			}
-		}
-		cfg.Driver = driver
-		cfg.ForceDriver = "recording"
-		log.Warn("recording runtime enabled for process test", "path", record)
+	if err := applyFakeRuntime(&cfg, log); err != nil {
+		return err
 	}
 	if path := strings.TrimSpace(os.Getenv(simulate.EnvSpec)); path != "" {
 		if err := applySimulation(&cfg, path); err != nil {

@@ -200,7 +200,7 @@ func TestAPIKeyDTOContractCannotExposeSecret(t *testing.T) {
 }
 
 func TestFlatSpecAndMatchedByDTOUseLiteralWireJSON(t *testing.T) {
-	specWire := `{"id":7,"source":"upstream","name":"blackwell","display_name_zh_cn":"Blackwell · NVFP4","display_name_en":"Blackwell · NVFP4","engine":"vllm","image":"vllm:latest","weight_sources":[{"provider":"huggingface","repo_id":"org/model","revision":"commit","subfolder":"runtime"}],"weight_bytes":2000,"runtime_weight_bytes":1000,"shm_bytes":429496729600,"memlock_unlimited":true,"gpus":{"vendor":"nvidia","cc":">=10.0"}}`
+	specWire := `{"id":7,"source":"upstream","name":"blackwell","display_name_zh_cn":"Blackwell · NVFP4","display_name_en":"Blackwell · NVFP4","engine":"vllm","image":"vllm:latest","weight_sources":[{"provider":"huggingface","repo_id":"org/model","revision":"commit","subfolder":"runtime"}],"weight_bytes":2000,"runtime_weight_bytes":1000,"shm_bytes":429496729600,"memlock_unlimited":true,"docker_args":["--cap-add=SYS_PTRACE"],"gpus":{"vendor":"nvidia","cc":">=10.0"}}`
 	var spec dto.InferenceSpecDTO
 	if err := json.Unmarshal([]byte(specWire), &spec); err != nil {
 		t.Fatal(err)
@@ -228,6 +228,11 @@ func TestFlatSpecAndMatchedByDTOUseLiteralWireJSON(t *testing.T) {
 	spec.MemlockUnlimited = false
 	if raw, err := json.Marshal(spec); err != nil || strings.Contains(string(raw), "memlock_unlimited") {
 		t.Fatalf("flat spec DTO without memlock_unlimited wire=%s err=%v", raw, err)
+	}
+	// And docker_args is left out when the spec states none.
+	spec.DockerArgs = nil
+	if raw, err := json.Marshal(spec); err != nil || strings.Contains(string(raw), "docker_args") {
+		t.Fatalf("flat spec DTO without docker_args wire=%s err=%v", raw, err)
 	}
 
 	evaluateWire := `{"replicas":1,"plan_scope":"per_replica","ok":true,"matched_by":"spec:blackwell gpus:{vendor=nvidia cc=>=10.0}","template_deviated":false,"argv":null,"image":"vllm:latest","warnings":null}`

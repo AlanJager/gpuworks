@@ -70,8 +70,21 @@ func manualDraftInput(input deploy.ResolveLaunchInput) deploy.ResolveLaunchInput
 // .LaunchInput), so the draft cannot drift from the launches shown beside it.
 // A draft that cannot be built faithfully is a warning, never an error: the
 // draft only seeds the editor.
+//
+// A spec that owns its command has already put that script in the draft
+// (applySpecManualCommand); it stays, and only the variables are added.
 func setManualCommandDraft(resp *dto.EvaluateResponse, ranks []deploy.ResolveLaunchInput) {
 	if len(ranks) < 2 {
+		return
+	}
+	if resp.ManualCommandDraft != "" {
+		inputs := make([]deploy.ResolveLaunchInput, 0, len(ranks))
+		for _, rank := range ranks {
+			if rank.Engine != nil {
+				inputs = append(inputs, manualDraftInput(rank))
+			}
+		}
+		resp.ManualCommandVariables = deploy.ManualCommandVariables(inputs)
 		return
 	}
 	inputs := make([]deploy.ResolveLaunchInput, len(ranks))

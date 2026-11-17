@@ -68,7 +68,7 @@ func TestResolveLaunchMemlockUnlimited(t *testing.T) {
 func TestLaunchDockerArgsDoesNotMutateTheDeploymentsArgs(t *testing.T) {
 	own := make([]string, 2, 8)
 	own[0], own[1] = "--cap-add", "SYS_NICE"
-	got := launchDockerArgs(own, Params{}, true)
+	got := launchDockerArgs(nil, own, Params{}, true)
 	if want := []string{"--cap-add", "SYS_NICE", "--ulimit", "memlock=-1:-1"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %v", got)
 	}
@@ -96,6 +96,30 @@ func TestCatalogSelectionCarriesMemlockUnlimited(t *testing.T) {
 		t.Fatalf("old snapshot = %+v, %v", old, err)
 	}
 	if encoded, err := old.Encode(); err != nil || strings.Contains(string(encoded), "memlock") {
+		t.Fatalf("old snapshot re-encoded as %s, %v", encoded, err)
+	}
+}
+
+// A running deployment keeps the template docker_args it was created with:
+// the snapshot carries them the same way it carries memlock_unlimited, and a
+// snapshot written before the field existed reads as none.
+func TestCatalogSelectionCarriesDockerArgs(t *testing.T) {
+	selection, err := DecodeCatalogSelection([]byte(`{"engine":"vllm","spec_name":"deepinfer","spec_source":"upstream","docker_args":["--cap-add=SYS_PTRACE"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(selection.DockerArgs, []string{"--cap-add=SYS_PTRACE"}) {
+		t.Fatalf("docker_args was not decoded: %+v", selection)
+	}
+	encoded, err := selection.Encode()
+	if err != nil || !strings.Contains(string(encoded), `"docker_args":["--cap-add=SYS_PTRACE"]`) {
+		t.Fatalf("encoded = %s, %v", encoded, err)
+	}
+	old, err := DecodeCatalogSelection([]byte(`{"engine":"vllm","spec_name":"balanced","spec_source":"upstream"}`))
+	if err != nil || len(old.DockerArgs) != 0 {
+		t.Fatalf("old snapshot = %+v, %v", old, err)
+	}
+	if encoded, err := old.Encode(); err != nil || strings.Contains(string(encoded), "docker_args") {
 		t.Fatalf("old snapshot re-encoded as %s, %v", encoded, err)
 	}
 }

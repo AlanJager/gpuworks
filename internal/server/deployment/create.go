@@ -149,6 +149,11 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if err == nil {
 		err = checkPDSpec(selection, placementPD(&req))
 	}
+	if err == nil && selection.ManualCommandDefault {
+		// The spec's own command was checked when it was imported, against
+		// the layout it was written for; this request may span more nodes.
+		err = checkManualCommandRanks(&req)
+	}
 	if err != nil {
 		return nil, invalid(err)
 	}

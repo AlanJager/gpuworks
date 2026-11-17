@@ -32,7 +32,7 @@ func TestFlatCatalogPDModeSpec(t *testing.T) {
 		t.Fatalf("restored = %+v %v", restored.Specs, err)
 	}
 
-	for value, want := range map[string]string{"vllm-magic": "unknown pd_mode", "sglang-mooncake": "unknown pd_mode"} {
+	for value, want := range map[string]string{"vllm-magic": "unknown pd_mode", "sglang-magic": "unknown pd_mode"} {
 		broken := flatFixture()
 		broken.Models[0].Specs[0].PDMode = value
 		if err := ValidateFlatCatalog(&broken); err == nil || !strings.Contains(err.Error(), want) {

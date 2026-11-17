@@ -85,7 +85,7 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 	for index, node := range nodes[1:] {
 		follower := pdRankLaunch{unit: unit, role: role, rank: rank, pd: planning.PDRecord{Role: role}}
 		follower.rank.Rank = index + 1
-		follower.ports = planning.PDRankPorts{Master: record.MasterPort, LeaderAddress: record.Address}
+		follower.ports = planning.PDRankPorts{Master: record.MasterPort, LeaderAddress: record.Address, LeaderSideChannel: record.Port}
 		if sideSize > 0 {
 			ports, rejected := c.pickPorts(node, sideSize)
 			if rejected != nil {

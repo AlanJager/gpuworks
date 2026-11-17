@@ -39,6 +39,7 @@ import useDeployEditMode, { type OpenedDeployment } from "./deploy/useDeployEdit
 import useDeploymentDraft from "./deploy/useDeploymentDraft";
 import useDeployEvaluation from "./deploy/useDeployEvaluation";
 import useDeploySubmit from "./deploy/useDeploySubmit";
+import useDeploySpecDefaults from "./deploy/useDeploySpecDefaults";
 import useDeployPrefill from "./deploy/useDeployPrefill";
 import useDeployTemplateSelection from "./deploy/useDeployTemplateSelection";
 import useDeployNodeSync from "./deploy/useDeployNodeSync";
@@ -354,6 +355,13 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
     nodeSelectionMode,
     defaultsEngine: evalResult?.defaults?.engine,
     fromDraft: Boolean(opened),
+  });
+
+  useDeploySpecDefaults({
+    form,
+    templateID: selectedTemplate?.id,
+    spec: selectedTemplateSpec?.spec,
+    enabled: !opened,
   });
 
   const { submit, submitting, submitError } = useDeploySubmit({

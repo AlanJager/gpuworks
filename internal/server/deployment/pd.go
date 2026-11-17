@@ -289,7 +289,7 @@ func (s *Service) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement, mod
 	}
 	rankSelection := snapshotTemplateSelection(env.selection, env.response.Image)
 	rankSelection.ExtraArgs = env.launch.TemplateResidual
-	ports := planning.PDRankPorts{SideChannel: planning.PreviewAPIPort + 1, LeaderAddress: leaderAddress}
+	ports := planning.PDRankPorts{SideChannel: planning.PreviewAPIPort + 1, LeaderAddress: leaderAddress, LeaderSideChannel: planning.PreviewAPIPort + 1}
 	if unit.MultiNode() {
 		ports.Master = deploy.DefaultMasterPort
 	}

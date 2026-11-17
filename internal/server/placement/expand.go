@@ -28,10 +28,14 @@ const (
 	VarMasterAddr      = "MASTER_ADDR"
 	VarMasterPort      = "MASTER_PORT"
 	// A PD disaggregated instance also states which role it plays and where
-	// its KV side channel listens (the first port of its extra port block).
-	VarPDRole            = "PD_ROLE"
-	VarPDSideChannelHost = "PD_SIDE_CHANNEL_HOST"
-	VarPDSideChannelPort = "PD_SIDE_CHANNEL_PORT"
+	// its KV side channel listens (the first port of its extra port block),
+	// and, for every rank of a multi-node instance, the leader's side channel
+	// port: a follower that meets the leader's side channel (SGLang's
+	// bootstrap server) names it there, as MASTER_PORT names where ranks meet.
+	VarPDRole                  = "PD_ROLE"
+	VarPDSideChannelHost       = "PD_SIDE_CHANNEL_HOST"
+	VarPDSideChannelPort       = "PD_SIDE_CHANNEL_PORT"
+	VarPDLeaderSideChannelPort = "PD_LEADER_SIDE_CHANNEL_PORT"
 )
 
 // VariablePrefix is the documented spelling of every platform variable:
@@ -77,7 +81,7 @@ func Lookup(variables map[string]any, name string) (any, bool) {
 var launchOwned = map[string]struct{}{
 	VarModelPath: {}, VarServedModelName: {}, VarAPIHost: {}, VarAPIPort: {}, VarNNodes: {}, VarNodeRank: {},
 	VarHeadless: {}, VarNodeAddr: {}, VarMasterAddr: {}, VarMasterPort: {},
-	VarPDRole: {}, VarPDSideChannelHost: {}, VarPDSideChannelPort: {},
+	VarPDRole: {}, VarPDSideChannelHost: {}, VarPDSideChannelPort: {}, VarPDLeaderSideChannelPort: {},
 }
 
 // LaunchOwned reports whether name is a variable only the launch states.

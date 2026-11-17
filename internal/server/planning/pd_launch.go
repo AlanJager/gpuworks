@@ -21,6 +21,9 @@ type PDRankPorts struct {
 	// LeaderAddress is where a follower meets its leader. A leader meets its
 	// followers on its own address.
 	LeaderAddress string
+	// LeaderSideChannel is the leader's side channel port, on a follower; a
+	// leader's is its own SideChannel.
+	LeaderSideChannel int
 }
 
 // PDRankLaunch is the PD part of one rank's launch request: what makes a
@@ -49,7 +52,11 @@ func (p *PDPlacement) RankLaunch(mode pdmode.Mode, role string, unit PDUnit, ran
 		PD: &deploy.PDLaunch{
 			Mode: mode.Name, Role: role, KVLoadFailure: p.EffectiveKVLoadFailure(),
 			SideChannelHost: topology.NodeAddress, SideChannelPort: ports.SideChannel, RoleTP: p.RoleTPs(mode),
+			LeaderSideChannelPort: ports.LeaderSideChannel,
 		},
+	}
+	if rank == 0 {
+		out.PD.LeaderSideChannelPort = ports.SideChannel
 	}
 	if ranks := unit.Ranks(); rank >= 0 && rank < len(ranks) {
 		out.GPUIndexes = ranks[rank].GPUIndexes

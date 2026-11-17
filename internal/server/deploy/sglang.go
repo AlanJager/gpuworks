@@ -10,6 +10,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
+	placementeval "gpuworks.ai/gpuworks/internal/server/placement"
 )
 
 type sglangEngine struct{ BaseEngine }
@@ -196,6 +197,21 @@ func (sglangEngine) Build(p Params) ResolvedLaunch {
 	return ResolvedLaunch{Entrypoint: entry, Env: env, EnvLayers: proto.LaunchEnvLayers{Template: cloneEnv(p.TemplateEnv)}}
 }
 
+// sglangBootstrapPortText is the bootstrap port a prefill rank names: its
+// own on the leader, where the bootstrap server runs, and the leader's on a
+// follower, which only registers there. A follower handed its own port
+// reaches the leader only through SGLang's own port broadcast (0.5.13 and
+// later), which a build may lack.
+func (p Params) sglangBootstrapPortText() string {
+	if p.NodeRank > 0 && p.PD.LeaderSideChannelPort > 0 {
+		if p.Symbolic {
+			return variableReference(placementeval.VarPDLeaderSideChannelPort)
+		}
+		return strconv.Itoa(p.PD.LeaderSideChannelPort)
+	}
+	return p.sideChannelPortText()
+}
+
 // PDConnectorFlags are the disaggregation flags sglangPD composes.
 func (sglangEngine) PDConnectorFlags() []string {
 	return []string{"--disaggregation-mode", "--disaggregation-transfer-backend", "--disaggregation-bootstrap-port"}
@@ -213,7 +229,7 @@ func sglangPD(b *builder, p Params, env map[string]string) {
 	b.injectKV("--disaggregation-mode", mode.ConnectorRole(p.PD.Role))
 	b.injectKV("--disaggregation-transfer-backend", mode.Connector)
 	if p.PD.Role == pdmode.RolePrefill && p.PD.SideChannelPort > 0 {
-		b.injectKV("--disaggregation-bootstrap-port", p.sideChannelPortText())
+		b.injectKV("--disaggregation-bootstrap-port", p.sglangBootstrapPortText())
 	}
 	for _, flag := range mode.EngineArgs {
 		b.injectFlag(flag)

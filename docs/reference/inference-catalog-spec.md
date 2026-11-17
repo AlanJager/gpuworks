@@ -54,6 +54,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
     weight_bytes: 28935653617
     shm_bytes: 429496729600   # 可选：引擎需要的 /dev/shm 字节数（这里是 400 GiB）
     memlock_unlimited: true   # 可选：容器不限锁定内存（--ulimit memlock=-1:-1）
+    docker_args: [--cap-add=SYS_PTRACE]   # 可选：引擎需要的额外 docker run 选项
     gpus:
       vendor: nvidia          # 必填
       cc: '>=8.0'             # 精确值 / >=x / <x / a..b
@@ -114,9 +115,13 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `weight_bytes` / `runtime_weight_bytes` | 非负；后者 ≤ 前者 | 调度与估算输入 |
 | `shm_bytes` | 可选整数，字节；> 0 且 ≤ 16 TiB（`1<<44`），否则报稳定错误码 `CATALOG_SHM_BYTES_INVALID`；显式写 `0` 等同于不写 | 引擎自己需要的容器 `/dev/shm` 大小，例如把大块查表数据放在共享内存里的引擎。部署不填共享内存大小时，容器得到「引擎基线 + CPU 内存层」与它之间较大的一个；部署自己填的值优先。详见 [容器 `/dev/shm` 大小](deployment-launch-sources.md#devshm-大小) |
 | `memlock_unlimited` | 可选布尔，缺省 `false`；写成非布尔值（数字、字符串等）会被拒绝 | 为 `true` 时该部署的容器带 `--ulimit memlock=-1:-1`（只对这个容器取消锁定内存上限），给要锁页大块主机内存的引擎用（例如 DeepInfer 用 `cudaHostRegister` 锁住约 197 GB）。部署自己的 `docker_args` 已写 `memlock` 时以部署为准，不重复追加；与主机 RDMA 网络注入的 `memlock` 合并为一条。详见 [锁定内存](deployment-launch-sources.md#锁定内存memlock) |
+| `docker_args` | 可选字符串数组；每项 trim 后非空；校验与部署自己的 `container_overrides.docker_args` 完全一致（`deploy.ValidateDockerArgs`）：拒绝 `--privileged`、`--pid`、`-v /` 等交出主机控制权的选项，拒绝 `--name`、`--network`、`--gpus`、`--shm-size`、`-e`、`-v`、`--mount`、`--entrypoint` 等平台已管的选项，`--ipc=host` 与本 spec 自己的 `shm_bytes` 同时出现也拒绝 | 引擎需要的额外 `docker run` 选项（例如 `--cap-add=SYS_PTRACE`），是部署 `docker_args` 的模板层：先套用模板的，再套用部署自己的，最后是平台追加的（RDMA、memlock）。部署自己若没写 `--ipc=host` 但模板写了，部署自己的 `shm_bytes` 会被拒绝而不是静默失效，因为那个大小不会生效。详见 [docker run 参数的三层顺序](deployment-launch-sources.md#docker-run-参数的三层顺序) |
 | `gpus` | 必填 | 见下 |
 | `args` | 字符串数组 | 进入引擎命令行，支持 `${VAR}` [变量展开](#变量展开)；部署时按参数字典拆分（见下） |
 | `env` | 键非空 | 容器环境变量，值支持 `${VAR}` 展开 |
+| `pd_mode` | 可选，PD 模式名（`internal/server/pdmode` 的名字，如 `sglang-mooncake`）；模式的引擎必须与 `engine` 相同 | 声明后该 spec 只能以这个模式的 PD 分离部署，其 `args` 与 `env` 是模型在 PD 下需要的配置。模式见 [PD 分离部署](../how-to/pd-disaggregation.md) |
+| `pd_roles` | 可选，按角色写版式；必须同时写 `pd_mode`。每个角色：`tp`（必填，≥ 1）、`pp`、`nodes`（一个实例跨几台节点）、`units`（初始实例数），后三项缺省为 1 | PD 部署表单据此预填角色与实例。见 [PD 版式与手工命令](#pd-版式与手工命令) |
+| `manual_command` | 可选字符串，shell 脚本（不是 JSON argv），≤ 64 KiB | 部署默认使用的手工命令。PD spec 的脚本必须引用 `${GPUWORKS_PD_ROLE}`。见 [PD 版式与手工命令](#pd-版式与手工命令) |
 | `pre_start_argv` / `pre_start_script` | **二选一**；argv 项非空；script ≤ 64 KiB | 引擎启动前在容器内执行 |
 | `assets[]` | 见下 | 随包分发的小文件 |
 | `entrypoint` | 项非空 | 见下文专节 |
@@ -249,6 +254,73 @@ image_sources:                                    # 按偏好顺序
 entrypoint 文本）或绝对路径供给，否则校验报稳定错误码
 `CATALOG_FILE_VALUED_ARG_UNRESOLVED`（该规则的边界与动机详见包文档）。
 
+### PD 版式与手工命令
+
+PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每个实例跨几台节点都是配方的一部分，有的配方两个角色的引擎参数还不同。
+`pd_roles` 与 `manual_command` 让 spec 把这些写下来，部署表单据此打开时已经填好。
+
+**`pd_roles`** 只描述起点，部署仍可改实例数、选节点：
+
+- 每个角色一项：`tp`、`pp`（流水线并行度）、`nodes`（一个实例占几台节点，即 leader 加 follower 的总数）、`units`（初始实例数，≤ 32）。
+- 校验：模式的每个角色都要写，不能写模式没有的角色；`tp` ≥ 1；`tp × pp` 必须能被 `nodes` 整除；还要满足模式的 TP 与 PP 规则。
+  `sglang-mooncake` 不比较两个角色的 TP（SGLang 按注意力 TP 配对，平台看不到它，宽度不等的配对由引擎处理，配不上时 decode 实例启动失败），
+  只要求 decode 的 PP 等于 prefill 的 PP 或为 1（`PD_PP_DECODE_MISMATCH`）。
+- 推理模板列表接口（`GET /api/v1/inference-templates`）在 spec 上返回 `pd_roles`，缺省值已补全：每个角色给出 `tp`、`pp`、`nodes`、`gpus_per_node`、`units`。
+- 部署表单切到 PD 分离并选该 spec 的模式，按版式填各角色的 TP、PP 与实例行。自动放置不接受跨节点的实例，所以实例行是手动放置、follower 槽位留空，由你选节点。
+
+**`manual_command`** 是 spec 自己拥有整条启动命令：
+
+- 请求的 `container_overrides` 既没写 `cmd_display` 也没写 `command_mode` 时，部署的手工命令取这段脚本（`command_mode` 为 `manual`）；写了任一项则按请求，
+  所以部署者仍可改写它，或写 `command_mode: engine` 回到平台组装的命令。部署保存的是创建时的副本，之后目录改了不影响它。
+- 评估接口把它作为 `manual_command_draft` 返回，命令编辑框从它开始。
+- 导入时校验：是 shell 脚本而非以 `[` 开头的 JSON argv，≤ 64 KiB；PD spec 的脚本必须引用 `${GPUWORKS_PD_ROLE}`，有角色跨多台节点时
+  还要引用 `${GPUWORKS_NODE_RANK}` 或 `${GPUWORKS_HEADLESS}`。创建部署时再按这次请求的版式检查一次（请求可以比 spec 的版式跨更多节点），
+  不满足返回 `MANUAL_COMMAND_RANK_BLIND`。
+- 变量展开与系统层环境变量的规则与手写手工命令相同，见[多机与 PD 的手工命令](../explanation/launch-config.md#多机与-pd-的手工命令)：
+  只展开带 `GPUWORKS_` 前缀、本次启动给出的名字；rank 仍带系统层环境变量（跨多台节点时有 `NCCL_*`、`GLOO_SOCKET_IFNAME` 等，单机实例没有这些网络变量），
+  脚本里可以直接按 shell 变量读，例如 `"$NCCL_IB_HCA"`。本次启动没给出的名字（decode 实例上的 `${GPUWORKS_PD_SIDE_CHANNEL_PORT}`、
+  单机角色上的 `${GPUWORKS_MASTER_ADDR}`）原样留给 shell，所以只写在用得上它的分支里。
+
+下面是一个示意（省略 `image`、`weights`、`gpus` 等其他必填字段）：两个角色都跨 2 台节点，TP 不同，引擎参数也不同。
+
+```yaml
+- name: pd-mooncake
+  engine: sglang
+  pd_mode: sglang-mooncake
+  pd_roles:
+    prefill: {tp: 8, nodes: 2, units: 1}
+    decode:  {tp: 16, nodes: 2, units: 2}
+  manual_command: |
+    set -eu
+    : "${NCCL_IB_HCA:?needs a multi-node instance on a host RDMA network}"   # 命令替换会吞掉 set -u，先检查
+    IB_DEVICES=$(printf '%s\n' "$NCCL_IB_HCA" | tr ',' '\n' | sed 's/:.*//' | awk 'NF && !seen[$0]++' | paste -sd, -)
+    case "${GPUWORKS_PD_ROLE}" in
+      prefill)
+        exec python3 -m sglang.launch_server --model-path ${GPUWORKS_MODEL_PATH} \
+          --served-model-name ${GPUWORKS_SERVED_MODEL_NAME} \
+          --host 0.0.0.0 --port ${GPUWORKS_API_PORT} --tp-size 8 \
+          --nnodes ${GPUWORKS_NNODES} --node-rank ${GPUWORKS_NODE_RANK} \
+          --dist-init-addr ${GPUWORKS_MASTER_ADDR}:${GPUWORKS_MASTER_PORT} \
+          --disaggregation-mode prefill --disaggregation-transfer-backend mooncake \
+          --disaggregation-bootstrap-port ${GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT} \
+          --disaggregation-ib-device "$IB_DEVICES"
+        ;;
+      decode)
+        exec python3 -m sglang.launch_server --model-path ${GPUWORKS_MODEL_PATH} \
+          --served-model-name ${GPUWORKS_SERVED_MODEL_NAME} \
+          --host 0.0.0.0 --port ${GPUWORKS_API_PORT} --tp-size 16 \
+          --nnodes ${GPUWORKS_NNODES} --node-rank ${GPUWORKS_NODE_RANK} \
+          --dist-init-addr ${GPUWORKS_MASTER_ADDR}:${GPUWORKS_MASTER_PORT} \
+          --disaggregation-mode decode --disaggregation-transfer-backend mooncake \
+          --disaggregation-ib-device "$IB_DEVICES"
+        ;;
+    esac
+```
+
+**服务名的写法**：服务名是用户填的任意文本，手工命令里 `--served-model-name` 的值在展开后会被平台改写成已转义的单引号字符串。
+所以把 `${GPUWORKS_SERVED_MODEL_NAME}` 直接写在命令行上、不加引号，如上例。不要把它连同 `--served-model-name` 放进一个双引号字符串
+（例如 `bash -c "... --served-model-name ${GPUWORKS_SERVED_MODEL_NAME}"`）：平台插入的单引号会作为字面字符留在服务名里，或让外层引号错位。
+
 ## entrypoint：入口覆盖的唯一声明处
 
 **入口形式只有两个产地**：
@@ -345,7 +417,8 @@ placement:
 | `GPUWORKS_MASTER_ADDR` / `GPUWORKS_MASTER_PORT` | 多机 rank 0 的地址与 rendezvous 端口 | 仅多机 |
 | `GPUWORKS_PD_ROLE` | 本实例的 PD 角色：`prefill` 或 `decode` | PD 实例 |
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | 本实例 KV side channel 的监听地址 | PD 实例且地址已知 |
-| `GPUWORKS_PD_SIDE_CHANNEL_PORT` | 本实例额外端口段的首端口，即 KV side channel 端口 | PD 实例且端口已分配 |
+| `GPUWORKS_PD_SIDE_CHANNEL_PORT` | 本 rank 额外端口段的首端口，即 KV side channel 端口；多机实例的各 rank 各有各的 | PD 实例且端口已分配 |
+| `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | 本实例 leader 的 side channel 端口：leader 上就是自己的，follower 上是 leader 的。follower 要连 leader 的 side channel（如 SGLang 的 bootstrap 服务）时用它；平台自己组装的命令不用 | PD 实例且端口已分配 |
 
 规则：
 

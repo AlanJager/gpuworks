@@ -1690,6 +1690,24 @@
   ],
   "pd_modes": [
     {
+      "name": "sglang-mooncake",
+      "vendors": [
+        "hygon"
+      ],
+      "roles": [
+        "decode",
+        "prefill"
+      ],
+      "scalable_to_zero": [],
+      "tp_rule": "any",
+      "max_units_per_role": 32,
+      "fallbacks": [
+        "fail"
+      ],
+      "kv_load_failures": [],
+      "unverified": true
+    },
+    {
       "name": "sglang-nixl",
       "vendors": [
         "nvidia"
@@ -1699,13 +1717,12 @@
         "prefill"
       ],
       "scalable_to_zero": [],
-      "tp_rule": "equal",
+      "tp_rule": "any",
       "max_units_per_role": 32,
       "fallbacks": [
         "fail"
       ],
-      "kv_load_failures": [],
-      "unverified": true
+      "kv_load_failures": []
     },
     {
       "name": "sglang-ppu-ipc",
@@ -1717,7 +1734,7 @@
         "prefill"
       ],
       "scalable_to_zero": [],
-      "tp_rule": "equal",
+      "tp_rule": "any",
       "max_units_per_role": 32,
       "fallbacks": [
         "fail"
@@ -1735,7 +1752,7 @@
         "prefill"
       ],
       "scalable_to_zero": [],
-      "tp_rule": "equal",
+      "tp_rule": "any",
       "max_units_per_role": 32,
       "fallbacks": [
         "fail"

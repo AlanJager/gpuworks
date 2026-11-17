@@ -64,7 +64,7 @@ func (s *Service) prepareLaunchPreflight(eng deploy.Engine, req *dto.DeployReque
 		Entrypoint: selection.Entrypoint, PreStartArgv: selection.PreStartArgv,
 		PreStartScript: selection.PreStartScript, RuntimeAssets: selection.Assets,
 		ComponentMounts: out.componentMounts, APIContract: selection.APIContract,
-		TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(),
+		TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(), TemplateDockerArgs: selection.dockerArgs(),
 		AllowUnresolved: true,
 	}
 	return out, nil

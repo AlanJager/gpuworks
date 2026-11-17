@@ -177,7 +177,7 @@ Queue, prefill and decode times are the original values reported by the engine i
 - The `traceparent` sent to the prefill instance uses this child span as its parent, while the one sent to the decode instance uses the gateway span. Spans exported by the two engines attach to these two respective locations.
 - The parent span's `gen_ai.latency.*` values are reported by the decode instance: queue time includes waiting for remote KV, and prefill only recomputes the last token. See [Request Timeline](../reference/request-timeline.md#6-pd-分离部署).
 
-**Concurrent handoff (`sglang-nixl`)**: The gateway does not wait for prefill and there is no child span; the prefill replica's request uses the gateway span as its parent.
+**Concurrent handoff (`sglang-nixl`, `sglang-mooncake`)**: The gateway does not wait for prefill and there is no child span; the prefill replica's request uses the gateway span as its parent.
 
 ### Timeline Events and Resource Attributes
 
@@ -191,5 +191,5 @@ Only spans with platform-side failures (`error`, `interrupted`) have Error statu
 
 Prompts and replies are **not exported**, and the platform itself does not store them.
 
-<!-- translation-source-sha256: 26f9639692f41c35c41c82dc931f342e7b36cb6ab11c6f2ebe664c39e73703a9 -->
+<!-- translation-source-sha256: 688124de0e9a9b479db665c92a0d54d0c9f9ebc6719c53e21561a80546593775 -->
 <!-- translation-localized-code-block: c87cce8916d515a6b24467acbe5590291890c9618f42b2743c08fb0fe1d463cd 67d464e4acec589ac40309dd150cf2f2695cc935b7474316bc7bd9857ffdf160 Translate inference-token and served-name placeholders and generic sample user message to English; this is an uncaptured example, not tested transcript or screenshot evidence. -->

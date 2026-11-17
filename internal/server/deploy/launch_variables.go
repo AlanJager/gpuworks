@@ -79,6 +79,9 @@ func launchVariables(engine Engine, params Params, modelMount string, placement 
 		if params.PD.SideChannelPort > 0 {
 			variables[placementeval.VarPDSideChannelPort] = int64(params.PD.SideChannelPort)
 		}
+		if params.PD.LeaderSideChannelPort > 0 {
+			variables[placementeval.VarPDLeaderSideChannelPort] = int64(params.PD.LeaderSideChannelPort)
+		}
 	}
 	if params.Symbolic {
 		// A template that places a rank-owned fact itself hands the draft
