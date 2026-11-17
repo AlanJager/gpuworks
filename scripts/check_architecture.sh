@@ -361,6 +361,20 @@ measure() {
   console_unlinked_code_packages)
     console_unlinked_code_package_links | grep -c . || true
     ;;
+  kv_backend_id_literals)
+    # A KV offload backend id is a row of internal/server/kvbackend and is
+    # rendered only by the adapter's kv_render_* files (ADR 0069); anywhere
+    # else, server or UI, it is a hard-coded backend rule.
+    {
+      grep -rnE '"(lmcache|mooncake_store|hicache)"' internal pkg cmd --include='*.go' 2>/dev/null \
+        | grep -v '_test\.go' \
+        | grep -v '^internal/server/kvbackend/' \
+        | grep -v '^internal/server/deploy/kv_render_' || true
+      grep -rnE "['\"](lmcache|mooncake_store|hicache)['\"]" ui/src \
+        --include='*.ts' --include='*.tsx' 2>/dev/null \
+        | grep -v '\.test\.' || true
+    } | grep -c . || true
+    ;;
   *)
     # `measure` runs inside a command substitution, so exiting here would only
     # kill the subshell. Emit a sentinel the caller turns into a failure.
@@ -708,7 +722,7 @@ leaf_is_waived() {
   return 1
 }
 
-for leaf in inferenceapi messages placement acquisition chipmatch partitioncap netplan pdmode nodelabel uxrecord uxstore tracecontext traceexport usagereport yieldpolicy lifecycle; do
+for leaf in inferenceapi messages placement acquisition chipmatch partitioncap netplan pdmode kvbackend nodelabel uxrecord uxstore tracecontext traceexport usagereport yieldpolicy lifecycle; do
   if pkg_imports "./internal/server/$leaf" | grep -qF 'gpuworks/internal/server/store'; then
     if leaf_is_waived "$leaf"; then
       echo "  WAIVED: leaf package $leaf still imports store (planned removal)"
@@ -848,6 +862,20 @@ tree_forbids() {
 }
 
 tree_forbids ./pkg/... 'gpuworks/internal' 'pkg does not import internal'
+
+# kvbackend is a pure data table (ADR 0069): its only in-repo imports are the
+# vendor, engine and PD role vocabularies it names. Rendering and gating live
+# in the engine adapter (internal/server/deploy).
+kvbackend_extra=$(go list -e -f '{{join .Imports "\n"}}' ./internal/server/kvbackend 2>/dev/null \
+  | grep '^gpuworks\.ai/gpuworks/' \
+  | grep -vxE 'gpuworks\.ai/gpuworks/internal/(accelerator|engines|server/pdmode)' || true)
+if [ -n "$kvbackend_extra" ]; then
+  echo "  FAIL: kvbackend imports only accelerator, engines and pdmode" >&2
+  echo "$kvbackend_extra" | sed 's/^/    /' >&2
+  failures=$((failures + 1))
+else
+  echo "  ok: kvbackend imports only accelerator, engines and pdmode"
+fi
 tree_forbids ./internal/agent/... 'gpuworks/internal/server' 'agent does not import server'
 tree_forbids ./internal/proto 'gpuworks/' 'proto has no in-repo imports'
 tree_forbids ./internal/platformmetrics 'gpuworks/' 'platformmetrics has no in-repo imports (agent and server share it)'

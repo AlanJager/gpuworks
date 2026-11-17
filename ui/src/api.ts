@@ -804,7 +804,21 @@ export interface EngineProfile {
   // form and the scale dialog read modes, policy options, defaults and
   // limits from here (pages/deploy/deployPd.ts) instead of restating them.
   pd_modes?: PdModeProfile[];
+  // The KV offload backends a deployment can select besides the engine's own
+  // tiers (ADR 0069); absent when there are none. The deploy form renders one
+  // card per entry from these fields alone and holds no backend of its own.
+  kv_backends?: KVBackendProfile[];
   multi_node_supported?: boolean;
+}
+
+// KVBackendProfile is one selectable KV offload backend: its id (the value of
+// the kv_offload_backend parameter), its product name, the native parameters
+// it replaces while selected, and the PD roles that keep it.
+export interface KVBackendProfile {
+  id: string;
+  label: string;
+  replaces: string[];
+  pd_roles: string[];
 }
 
 // WakeRefusal is one group of sleepers a wake could not put back: the cards
@@ -2074,6 +2088,10 @@ export interface Instance {
   model_files?: InstanceModelFile[];
   // role is the instance's PD role; absent outside PD deployments.
   role?: PdRoleName | string;
+  // kv_offload_backend is the KV offload backend the instance keeps, as the
+  // server scoped the deployment's selection to the instance's PD role:
+  // absent when it keeps the engine's own tiers or none.
+  kv_offload_backend?: { id: string; label: string };
 }
 
 export interface InstanceModelFile {

@@ -28,6 +28,9 @@ type engineParam struct {
 	// Composed repeats flagPair.Composed for readers that only hold the
 	// resolved row: the adapter writes this flag itself (see flagPair).
 	Composed bool
+	// Selector repeats paramDefinition.Selector: the row selects a KV
+	// offload backend and carries no flag of its own.
+	Selector bool
 }
 
 // engineParams returns the dictionary rows that are part of this engine's
@@ -45,6 +48,12 @@ func engineParams(engine string) map[string]engineParam {
 	}
 	out := make(map[string]engineParam, len(parameterDefinitions))
 	for _, definition := range parameterDefinitions {
+		if definition.Selector {
+			if selector, published := kvBackendSelector(definition, engine); published {
+				out[definition.Key] = selector
+			}
+			continue
+		}
 		flags := definition.Flags[engine]
 		if definition.Platform {
 			if !containsString(definition.Engines, engine) {
@@ -300,7 +309,7 @@ func paramDictForEngine(engine string) map[string]string {
 	params := engineParams(engine)
 	out := make(map[string]string, len(params))
 	for key, spec := range params {
-		if spec.Platform {
+		if spec.Platform || spec.Selector {
 			continue
 		}
 		if spec.Flag != "" {
@@ -323,7 +332,7 @@ func structuredParams(engine string, dict map[string]string) []ParamDefinition {
 			continue
 		}
 		flag, published := dict[definition.Key]
-		if !published && !spec.Platform {
+		if !published && !spec.Platform && !spec.Selector {
 			continue
 		}
 		wire := spec.ParamDefinition

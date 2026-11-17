@@ -67,6 +67,7 @@ var featureReason = map[accelerator.Feature]string{
 	accelerator.FeatureKVDiskTier:       ReasonKVDiskUnsupportedOnNode,
 	accelerator.FeaturePipelineParallel: ReasonAcceleratorFeatureUnsupported,
 	accelerator.FeatureDataParallel:     ReasonAcceleratorFeatureUnsupported,
+	accelerator.FeatureExternalKVCache:  ReasonKVBackendUnsupportedOnNode,
 }
 
 // FeatureReason returns the scheduler refusal code for an unsupported
