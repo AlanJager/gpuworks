@@ -38,7 +38,7 @@ func TestInstanceModelNameFollowsConcreteLaunch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := instanceModelName(&store.Deployment{Engine: test.engine, ServedName: "public"}, &store.Instance{DesiredStateJSON: string(desired)})
+			got := instanceModelName(&store.Deployment{Engine: test.engine, ServedName: "public"}, &store.Instance{DesiredStateJSON: string(desired)}, false)
 			if got != test.want {
 				t.Fatalf("engine model=%q, want %q", got, test.want)
 			}

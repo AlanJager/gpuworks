@@ -224,7 +224,7 @@ func TestRetryPickPassesOverAnInstanceOrderedToSleep(t *testing.T) {
 	transport := &retryTransport{balancer: b, hub: readinessTestHub{online: map[string]bool{"n": true}}, awake: func(l *lease) bool { return !ordered[l.c.instanceUUID] }}
 	attempt := &routeAttempt{candidates: candidates, tried: map[string]bool{"tried": true}, modelName: "model", policy: "failover"}
 	for i := 0; i < 8; i++ {
-		next := transport.pickNext(attempt)
+		next := transport.pickNext(attempt, false)
 		if next == nil || next.c.instanceUUID != "awake" {
 			t.Fatalf("retry pick %d = %+v, want awake", i, next)
 		}
@@ -234,7 +234,7 @@ func TestRetryPickPassesOverAnInstanceOrderedToSleep(t *testing.T) {
 		t.Fatalf("the pick changed the attempt's tried set: %v", attempt.tried)
 	}
 	ordered["awake"] = true
-	if next := transport.pickNext(attempt); next != nil {
+	if next := transport.pickNext(attempt, false); next != nil {
 		t.Fatalf("with every untried candidate asleep the retry = %+v", next.c)
 	}
 }

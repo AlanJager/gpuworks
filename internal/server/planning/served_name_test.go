@@ -54,3 +54,11 @@ func TestExpectedServedNameDropsANameTheAgentWouldTranslate(t *testing.T) {
 		t.Errorf("a launch with no name expects %q", got)
 	}
 }
+
+func TestHostTranslatesModelPathsOnHostNodesWhateverTheAgentVersion(t *testing.T) {
+	for driver, want := range map[string]bool{proto.RuntimeDriverHost: true, "docker": false, "nerdctl": false, "udocker": false, "": false} {
+		if got := HostTranslatesModelPaths(driver); got != want {
+			t.Errorf("HostTranslatesModelPaths(%q) = %v, want %v", driver, got, want)
+		}
+	}
+}

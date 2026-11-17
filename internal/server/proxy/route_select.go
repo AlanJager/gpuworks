@@ -95,7 +95,7 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, drai
 		// snapshot still supplies the node UUID map, avoiding one NodeByID
 		// query for every rank.
 		insts, _ := p.store.InstancesForDeployment(rd.id)
-		tgt, rejection, _ := p.selectDistributedInstanceWithNodes(rd.dep, insts, modelName, affinity, rd.nodes)
+		tgt, rejection, _ := p.selectDistributedInstanceWithNodes(rd.dep, insts, modelName, affinity, rd.nodes, rd.drivers)
 		return tgt, rejection == nil
 	}
 	candidates := withoutDraining(rd.candidates, draining)
@@ -147,7 +147,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 			if !p.hub.Online(node.UUID) {
 				continue
 			}
-			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: instanceModelName(dep, &in), uuidHash: fnv64([]byte(in.UUID))}
+			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: instanceModelName(dep, &in, planning.HostTranslatesModelPaths(node.RuntimeDriver)), uuidHash: fnv64([]byte(in.UUID))}
 			if pd != nil {
 				var ok bool
 				if c, ok = pd.admit(&in, c); !ok {
@@ -218,16 +218,27 @@ func instancesGaveUp(insts []store.Instance) bool {
 // may list several multi-node replicas; each generation is its own group.
 // The final bool return is asleep; see selectDeploymentInstance.
 func (p *Proxy) selectDistributedInstance(dep *store.Deployment, insts []store.Instance, modelName, affinity string) (target, *refusal, bool) {
-	return p.selectDistributedInstanceWithNodes(dep, insts, modelName, affinity, nil)
+	return p.selectDistributedInstanceWithNodes(dep, insts, modelName, affinity, nil, nil)
 }
 
-func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts []store.Instance, modelName, affinity string, nodes map[uint]string) (target, *refusal, bool) {
+// nodes and drivers are the route snapshot's node UUIDs and runtime drivers by
+// node ID; nil reads each node from the store.
+func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts []store.Instance, modelName, affinity string, nodes, drivers map[uint]string) (target, *refusal, bool) {
 	nodeUUID := func(id uint) string {
 		if nodes != nil {
 			return nodes[id]
 		}
 		if node, err := p.store.NodeByID(id); err == nil {
 			return node.UUID
+		}
+		return ""
+	}
+	nodeDriver := func(id uint) string {
+		if nodes != nil {
+			return drivers[id]
+		}
+		if node, err := p.store.NodeByID(id); err == nil {
+			return node.RuntimeDriver
 		}
 		return ""
 	}
@@ -269,7 +280,7 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 		if in.APIPort <= 0 || incomplete[in.UUID] || (legacy && ranks < dep.NNodes-1) || !reachable {
 			continue
 		}
-		candidates = append(candidates, candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID(in.NodeID), port: in.APIPort, modelName: instanceModelName(dep, in), uuidHash: fnv64([]byte(in.UUID))})
+		candidates = append(candidates, candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID(in.NodeID), port: in.APIPort, modelName: instanceModelName(dep, in, planning.HostTranslatesModelPaths(nodeDriver(in.NodeID))), uuidHash: fnv64([]byte(in.UUID))})
 	}
 	if len(candidates) == 0 {
 		if anySleeping {

@@ -1,0 +1,54 @@
+{
+  "_comment": "The name a host-process engine answers under, for launches as the server stores them. desired is an InstanceDesiredState; host_args is the argv the host agent runs for it (internal/agent/runtime/hostproc); engine_name is the model name that engine registers, which the gateway must ask for (internal/server/proxy instanceModelName). Both packages test against this file, so a change to either side's rule fails a test.",
+  "cases": [
+    {
+      "name": "vllm model flag",
+      "engine": "vllm",
+      "desired": {"launch": {"entrypoint": ["vllm", "serve"], "argv": ["--model", "/model", "--port", "8000"], "model_mount": "/model"}, "model_path": "/Users/a/models/q"},
+      "host_args": ["vllm", "serve", "--model", "/Users/a/models/q", "--port", "8000"],
+      "engine_name": "/Users/a/models/q"
+    },
+    {
+      "name": "vllm positional model",
+      "engine": "vllm",
+      "desired": {"launch": {"entrypoint": ["vllm", "serve", "/model"], "argv": ["--port", "8000"], "model_mount": "/model"}, "model_path": "/Users/a/models/q"},
+      "host_args": ["vllm", "serve", "/Users/a/models/q", "--port", "8000"],
+      "engine_name": "/Users/a/models/q"
+    },
+    {
+      "name": "sglang model path",
+      "engine": "sglang",
+      "desired": {"launch": {"entrypoint": ["python3", "-m", "sglang.launch_server"], "argv": ["--model-path", "/model", "--port", "30000"], "model_mount": "/model"}, "model_path": "/Users/a/models/q"},
+      "host_args": ["python3", "-m", "sglang.launch_server", "--model-path", "/Users/a/models/q", "--port", "30000"],
+      "engine_name": "/Users/a/models/q"
+    },
+    {
+      "name": "model below the mount",
+      "engine": "vllm",
+      "desired": {"launch": {"entrypoint": ["vllm", "serve", "/model/sub"], "model_mount": "/model"}, "model_path": "/Users/a/models/q"},
+      "host_args": ["vllm", "serve", "/Users/a/models/q/sub"],
+      "engine_name": "/Users/a/models/q/sub"
+    },
+    {
+      "name": "trailing slash",
+      "engine": "vllm",
+      "desired": {"launch": {"entrypoint": ["vllm", "serve", "/model/"], "model_mount": "/model"}, "model_path": "/Users/a/models/q"},
+      "host_args": ["vllm", "serve", "/Users/a/models/q/"],
+      "engine_name": "/Users/a/models/q/"
+    },
+    {
+      "name": "manual script",
+      "engine": "vllm",
+      "desired": {"launch": {"entrypoint": ["/bin/sh"], "argv": ["-c", "set -a\nexec vllm serve --model /model --port 8000"], "model_mount": "/model"}, "model_path": "/Users/a/models/q"},
+      "host_args": ["/bin/sh", "-c", "set -a\nexec vllm serve --model /Users/a/models/q --port 8000"],
+      "engine_name": "/Users/a/models/q"
+    },
+    {
+      "name": "served name kept verbatim",
+      "engine": "vllm",
+      "desired": {"launch": {"entrypoint": ["vllm", "serve", "/model"], "argv": ["--served-model-name", "/model"], "model_mount": "/model"}, "model_path": "/Users/a/models/q"},
+      "host_args": ["vllm", "serve", "/Users/a/models/q", "--served-model-name", "/model"],
+      "engine_name": "/model"
+    }
+  ]
+}

@@ -59,5 +59,5 @@ func (p *Proxy) pinnedTarget(r *http.Request, modelName string) (dep *store.Depl
 	if err != nil || !p.hub.Online(node.UUID) {
 		return dep, target{}, true, refuse(ErrorInstanceOffline, map[string]any{"instance": uuid}), false
 	}
-	return dep, target{nodeUUID: node.UUID, port: inst.APIPort, modelName: instanceModelName(dep, inst), instanceUUID: inst.UUID}, true, nil, false
+	return dep, target{nodeUUID: node.UUID, port: inst.APIPort, modelName: instanceModelName(dep, inst, planning.HostTranslatesModelPaths(node.RuntimeDriver)), instanceUUID: inst.UUID}, true, nil, false
 }

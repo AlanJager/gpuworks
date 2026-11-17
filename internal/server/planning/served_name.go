@@ -51,3 +51,14 @@ func ExpectedServedName(resolved deploy.ResolvedLaunch, implicit bool) string {
 	}
 	return name
 }
+
+// HostTranslatesModelPaths reports whether a node runs engines as host
+// processes, whose agent rewrites every container path a launch names under
+// the model mount to the mount's host source (ADR 0044). The value of
+// --served-model-name is exempt on an agent that advertises
+// proto.CapLaunchNameVerbatim; the model path itself never is, on any agent
+// version, so an engine launched without a served name registers its model's
+// host path as its name.
+func HostTranslatesModelPaths(runtimeDriver string) bool {
+	return runtimeDriver == proto.RuntimeDriverHost
+}

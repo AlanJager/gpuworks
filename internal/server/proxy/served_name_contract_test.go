@@ -37,13 +37,16 @@ func TestGatewayModelNameIsTheLaunchServedName(t *testing.T) {
 			if served != "/model" {
 				t.Fatalf("launch names the model %q, want /model: %v %v", served, launch.Entrypoint, launch.Argv)
 			}
-			desired, err := json.Marshal(proto.InstanceDesiredState{ResolvedLaunch: launch, ServedModelName: served})
+			desired, err := json.Marshal(proto.InstanceDesiredState{ResolvedLaunch: launch, ServedModelName: served, ModelPath: "/Users/a/models/q"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := instanceModelName(&store.Deployment{Engine: c.engine}, &store.Instance{DesiredStateJSON: string(desired)})
-			if got != served {
-				t.Fatalf("gateway sends %q, launch serves %q", got, served)
+			// The name is kept verbatim on a host-process node too.
+			for _, hostProcess := range []bool{false, true} {
+				got := instanceModelName(&store.Deployment{Engine: c.engine}, &store.Instance{DesiredStateJSON: string(desired)}, hostProcess)
+				if got != served {
+					t.Fatalf("host process %v: gateway sends %q, launch serves %q", hostProcess, got, served)
+				}
 			}
 		})
 	}
