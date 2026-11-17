@@ -236,7 +236,11 @@ button, input, textarea, select { letter-spacing: 0; }
 /* Body cells, including opaque pinned cells, keep consistent row separators. */
 .resource-table-cell { border-bottom: 1px solid var(--border); }
 tbody tr:last-child > .resource-table-cell { border-bottom: 0; }
+/* Selection and hover tokens are translucent. Layer them over the pinned
+   cells' permanent opaque surface; never replace that surface on selection. */
+tbody tr[data-state="selected"] > .resource-table-cell { background-image: linear-gradient(var(--selection), var(--selection)); }
 tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(--hover), var(--hover)); }
+tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-image: linear-gradient(var(--hover), var(--hover)), linear-gradient(var(--selection), var(--selection)); }
 /* Page-wide controls sit flush with the title, 12px under the header row. */
 .page-header-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
 @container page-header (max-width: 600px) {

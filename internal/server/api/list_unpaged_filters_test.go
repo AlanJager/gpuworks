@@ -50,7 +50,7 @@ func TestModelListWithoutPageAppliesFiltersAndOrder(t *testing.T) {
 
 func TestDeploymentListWithoutPageAppliesFiltersAndOrder(t *testing.T) {
 	f := newListFixture(t, 12)
-	for _, query := range []string{"q=EXTRA-1&sort=name", "q=node-gone", "q=nothing-like-it", "state=running&sort=-name", "sort=replicas"} {
+	for _, query := range []string{"q=EXTRA-1&sort=name", "q=node-gone", "q=nothing-like-it", "state=running&sort=-name", "sort=replicas", "node=list-b", "node=list-a,list-b", "node=missing"} {
 		var full []dto.Deployment
 		if err := unmarshalList(f.get(t, f.handler.listDeployments, "/api/v1/deployments?"+query), &full); err != nil {
 			t.Fatalf("%s: %v", query, err)

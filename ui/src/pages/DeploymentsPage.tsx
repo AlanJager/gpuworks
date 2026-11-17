@@ -40,6 +40,7 @@ import { createRefreshCoalescer } from "./evaluations/evaluationRefresh";
 import { localizedText } from "../i18n/localizedText";
 import { apiErrorText } from "../apiError";
 import { useCopy } from "../components/CopyButton";
+import { migrateDeploymentColumnPrefs } from "./deploymentColumnPrefs";
 import { HealthCheckHelp, HealthTag } from "../components/DeploymentHealth";
 
 export { actualNodesDiffer, DeploymentRuntimeNodeLinks } from "./DeploymentDetailOverview";
@@ -87,15 +88,20 @@ export default function DeploymentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   // The server pages, searches and filters: at thousands of deployments the
   // page used to fetch and render every one of them every few seconds.
+  const [initialPageSize] = useState(() => {
+    migrateDeploymentColumnPrefs();
+    return storedPageSize(DEPLOYMENT_TABLE_ID, DEPLOYMENT_PAGE_SIZE);
+  });
   const [search, setSearch] = useState("");
   const [states, setStates] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<string[]>([]);
   const [sort, setSort] = useState<ServerSort | null>(null);
   const { data, refetch, refresh, loading, error, updatedAt, pagination } = usePagedList(api.deploymentsPage, {
-    filters: { q: search, state: states, ...(sort ? { sort: `${sort.order === "desc" ? "-" : ""}${sort.key}` } : {}) },
-    pageSize: storedPageSize(DEPLOYMENT_TABLE_ID, DEPLOYMENT_PAGE_SIZE),
+    filters: { q: search, state: states, ...(nodes.length ? { extra: { node: nodes } } : {}), ...(sort ? { sort: `${sort.order === "desc" ? "-" : ""}${sort.key}` } : {}) },
+    pageSize: initialPageSize,
     intervalMs: 8000,
   });
-  const filtered = search.trim() !== "" || states.length > 0;
+  const filtered = search.trim() !== "" || states.length > 0 || nodes.length > 0;
   const routingPolicies = usePolling(api.routingPolicies, 0);
   const requested = Number(searchParams.get("deployment"));
   const detailId = Number.isInteger(requested) && requested > 0 ? requested : null;
@@ -182,53 +188,6 @@ export default function DeploymentsPage() {
       render: (_: unknown, d: DeploymentListItem) => <Button type="link" onClick={() => openDetail(d.id)}>{d.name}</Button>,
     },
     {
-      key: "served_name",
-      title: t("page.column.servedName"),
-      width: 220,
-      // ResourceTable ellipsizes every column but actions, and that clips the
-      // whole cell: with an inline copy button inside it, a long external
-      // model name took the button off the edge with it, so the name could not
-      // be copied at all (GWKS-145). The cell therefore clips nothing itself —
-      // the name truncates on its own and the copy button is its sibling, so
-      // the button keeps its space at any name length. Typography's ellipsis
-      // does not engage alongside copyable, hence the two elements.
-      ellipsis: false,
-      render: (_: unknown, d: DeploymentListItem) => d.served_name
-        ? (
-          <span className="served-name-cell">
-            <Typography.Text className="served-name-text" ellipsis={{ tooltip: d.served_name }}>{d.served_name}</Typography.Text>
-            <Typography.Text className="served-name-copy" copyable={{ text: d.served_name }} />
-          </span>
-        )
-        : "—",
-    },
-    { key: "model", title: t("page.column.model"), width: 220, serverSort: true, render: (_: unknown, d: DeploymentListItem) => d.model_name || "—" },
-    {
-      key: "runtime",
-      title: t("page.column.runtime"),
-      width: 220,
-      render: (_: unknown, d: DeploymentListItem) => <><span>{d.engine || "—"}</span><Typography.Text type="secondary" className="resource-table-sub">{d.image || t("page.autoImage")}</Typography.Text></>,
-    },
-    {
-      key: "node",
-      title: t("page.column.node"),
-      width: 160,
-      // Where the replicas run now - not where the deployment was asked to run,
-      // which has its own column beside it. A spread deployment folds into
-      // "198.51.100.31 and 1 more" with every node in the tooltip and the drawer,
-      // so no replica's node is hidden behind another's (GWKS-120).
-      render: (_: unknown, d: DeploymentListItem) => <DeploymentRuntimeNodes dep={d} />,
-    },
-    {
-      key: "targetNode",
-      title: t("page.column.targetNode"),
-      width: 160,
-      defaultHidden: true,
-      // The node the deployment was asked to run on. It stays available beside
-      // the actual one rather than carrying both meanings in one field.
-      render: (_: unknown, d: DeploymentListItem) => <DeploymentTargetNodes dep={d} />,
-    },
-    {
       key: "state",
       title: t("page.column.state"),
       width: 120,
@@ -252,6 +211,56 @@ export default function DeploymentsPage() {
           {deployment.preparation && <ListPreparationAction item={deployment.preparation} onChanged={refetch} />}
         </>;
       },
+    },
+    { key: "model", title: t("page.column.model"), width: 220, serverSort: true, render: (_: unknown, d: DeploymentListItem) => d.model_name || "—" },
+    {
+      key: "runtime",
+      title: t("page.column.runtime"),
+      width: 220,
+      render: (_: unknown, d: DeploymentListItem) => <><span>{d.engine || "—"}</span><Typography.Text type="secondary" className="resource-table-sub">{d.image || t("page.autoImage")}</Typography.Text></>,
+    },
+    {
+      key: "node",
+      title: t("page.column.node"),
+      width: 160,
+      filters: (data?.node_options ?? []).map((node) => ({ value: node.uuid, text: node.name || node.uuid })),
+      filterSearch: true,
+      filteredValue: nodes,
+      // Where the replicas run now - not where the deployment was asked to run,
+      // which has its own column beside it. A spread deployment folds into
+      // "198.51.100.31 and 1 more" with every node in the tooltip and the drawer,
+      // so no replica's node is hidden behind another's (GWKS-120).
+      render: (_: unknown, d: DeploymentListItem) => <DeploymentRuntimeNodes dep={d} />,
+    },
+    {
+      key: "targetNode",
+      title: t("page.column.targetNode"),
+      width: 160,
+      defaultHidden: true,
+      // The node the deployment was asked to run on. It stays available beside
+      // the actual one rather than carrying both meanings in one field.
+      render: (_: unknown, d: DeploymentListItem) => <DeploymentTargetNodes dep={d} />,
+    },
+    {
+      key: "served_name",
+      title: t("page.column.servedName"),
+      width: 220,
+      // ResourceTable ellipsizes every column but actions, and that clips the
+      // whole cell: with an inline copy button inside it, a long external
+      // model name took the button off the edge with it, so the name could not
+      // be copied at all (GWKS-145). The cell therefore clips nothing itself —
+      // the name truncates on its own and the copy button is its sibling, so
+      // the button keeps its space at any name length. Typography's ellipsis
+      // does not engage alongside copyable, hence the two elements.
+      ellipsis: false,
+      render: (_: unknown, d: DeploymentListItem) => d.served_name
+        ? (
+          <span className="served-name-cell">
+            <Typography.Text className="served-name-text" ellipsis={{ tooltip: d.served_name }}>{d.served_name}</Typography.Text>
+            <Typography.Text className="served-name-copy" copyable={{ text: d.served_name }} />
+          </span>
+        )
+        : "—",
     },
     { key: "health", title: <Space size={0}>{t("page.column.health")}<HealthCheckHelp /></Space>, width: 140, render: (_: unknown, d: DeploymentListItem) => <HealthTag health={d.health} /> },
     // A list row carries the replica counts; the detail lists the instances.
@@ -301,7 +310,7 @@ export default function DeploymentsPage() {
           pagination={pagination}
           sort={sort}
           onSortChange={setSort}
-          onFiltersChange={(filters) => setStates(filters.state ?? [])}
+          onFiltersChange={(filters) => { setStates(filters.state ?? []); setNodes(filters.node ?? []); }}
           toolbar={
             <Input.Search
               allowClear

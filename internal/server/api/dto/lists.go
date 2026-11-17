@@ -45,7 +45,16 @@ type ListPage[T any] struct {
 }
 
 // DeploymentPage is one page of GET /api/v1/deployments?page=…, newest first.
-type DeploymentPage = ListPage[DeploymentListItem]
+type DeploymentPage struct {
+	ListPage[DeploymentListItem]
+	NodeOptions []DeploymentNodeOption `json:"node_options"`
+}
+
+// DeploymentNodeOption names a runtime node available in the list filter.
+type DeploymentNodeOption struct {
+	UUID string `json:"uuid"`
+	Name string `json:"name"`
+}
 
 // DeploymentRuntimeNode is one node the deployment's instances are on now.
 type DeploymentRuntimeNode struct {

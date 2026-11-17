@@ -1502,7 +1502,10 @@ export type DeploymentListItem = Pick<
   preparation?: ModelNodePresence;
 };
 
-export type DeploymentPage = ListPage<DeploymentListItem>;
+export type DeploymentPage = ListPage<DeploymentListItem> & {
+  /** Runtime nodes across all deployments, independent of filters and paging. */
+  node_options?: Array<{ uuid: string; name: string }>;
+};
 
 
 export interface AgentFleetSummary {

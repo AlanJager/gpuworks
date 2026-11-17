@@ -51,6 +51,7 @@ const fleet: DeploymentListItem[] = Array.from({ length: 45 }, (_, i) => {
   const id = 45 - i;
   return {
     id, name: `svc-${id}`, model_id: 1, model_name: id % 5 === 0 ? "Qwen/Qwen3-8B" : "org/other", served_name: `api-${id}`,
+    runtime_nodes: [{ node_uuid: id % 2 ? "node-1" : "node-2", node_name: id % 2 ? "gpu3" : "gpu4", instances: 1 }],
     engine: "vllm", node_uuid: "node-1", node_name: "gpu3", desired_state: "active", runtime_state: id % 3 === 0 ? "failed" : "running",
     sleepable: false, replicas: 1, template_deviated: false, created_at: "2026-10-03T00:00:00Z", operations: [],
     ready_replicas: id % 3 === 0 ? 0 : 1,
@@ -71,9 +72,10 @@ function fakeServer(rows: DeploymentListItem[]) {
     // with no state of its own shows its runtime state.
     const matched = rows.filter((row) =>
       (!q || [row.name, row.served_name, row.model_name].some((name) => name.toLowerCase().includes(q))) &&
-      (!query.state?.length || query.state.includes(row.state ?? row.runtime_state)));
+      (!query.state?.length || query.state.includes(row.state ?? row.runtime_state)) &&
+      (!query.extra?.node?.length || row.runtime_nodes?.some((node) => query.extra!.node.includes(node.node_uuid))));
     const start = (query.page - 1) * query.page_size;
-    return { items: matched.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: matched.length };
+    return { node_options: [{ uuid: "node-1", name: "gpu3" }, { uuid: "node-2", name: "gpu4" }], items: matched.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: matched.length };
   };
   return { queries, serve };
 }
@@ -359,4 +361,51 @@ test("the state filter offers sleeping and asleep", async () => {
   await waitFor(() => assert.deepEqual(server.queries.at(-1)?.state, ["asleep"]));
   await waitFor(() => assert.equal(screen.queryByText("awake"), null));
   assert.ok(screen.getByText("slept"));
+});
+
+
+test("runtime node filter applies on the server with state and resets paging", async () => {
+  const server = fakeServer(fleet);
+  renderPage(server.serve);
+  await screen.findByText("svc-45");
+  const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
+  assert.ok(headers[1]?.includes("State"));
+  assert.ok(headers.indexOf("Served name") > headers.findIndex((header) => header?.includes("Compute Node")));
+  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+  await screen.findByText("svc-25");
+  await userEvent.setup().click(screen.getByRole("button", { name: "Filter by Compute Node" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "gpu4" }));
+  await waitFor(() => assert.deepEqual(server.queries.at(-1)?.extra, { node: ["node-2"] }));
+  assert.equal(server.queries.at(-1)?.page, 1);
+  await screen.findByText("22 deployments");
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await userEvent.setup().click(screen.getByRole("button", { name: "Filter by State" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: /Failed/ }));
+  await screen.findByText("7 deployments");
+  assert.deepEqual(server.queries.at(-1)?.extra, { node: ["node-2"] });
+  assert.deepEqual(server.queries.at(-1)?.state, ["failed"]);
+});
+
+
+test("saved page size and widths keep the new default column order on upgrade", async () => {
+  const key = "gpuworks.table.deployments.v1";
+  localStorage.removeItem(`${key}.state-first`);
+  localStorage.setItem(key, JSON.stringify({
+    order: ["served_name", "model", "runtime", "node", "targetNode", "state", "health", "replicas", "created_at"],
+    hidden: ["targetNode"], widths: { state: 180 }, pageSize: 50,
+  }));
+  try {
+    const server = fakeServer(fleet);
+    renderPage(server.serve);
+    await screen.findByText("svc-45");
+    assert.equal(server.queries[0].page_size, 50);
+    assert.ok(screen.getAllByRole("columnheader")[1].textContent?.includes("State"));
+    const saved = JSON.parse(localStorage.getItem(key)!);
+    assert.deepEqual(saved.widths, { state: 180 });
+    assert.deepEqual(saved.hidden, ["targetNode"]);
+    assert.equal(saved.pageSize, 50);
+  } finally {
+    localStorage.removeItem(key);
+    localStorage.removeItem(`${key}.state-first`);
+  }
 });

@@ -3,6 +3,7 @@ package api
 import (
 	"cmp"
 	"net/http"
+	"slices"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deployment"
@@ -13,7 +14,8 @@ import (
 // listDeployments answers GET /deployments. With page or page_size it returns
 // one dto.DeploymentPage of list rows, filtered by q (a substring of the
 // name, the served name or the model's name) and state (effective states,
-// comma separated); without them, every deployment as a full dto.Deployment.
+// comma separated) and node (runtime node UUIDs, comma separated).
+// Without paging, matches are returned as full dto.Deployment objects.
 //
 // Either way the rows are read with a fixed number of queries; only the
 // requested page is turned into DTOs. A page is ordered by sort (one of
@@ -29,6 +31,11 @@ func (a *apiHandlers) listDeployments(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	nodes, err := listValues(r, "node", nil)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	rows, deps, _, err := a.listRows()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -38,8 +45,15 @@ func (a *apiHandlers) listDeployments(w http.ResponseWriter, r *http.Request) {
 	// filter and the state order read it.
 	states := rows.States()
 	matched := make([]*store.Deployment, 0, len(deps))
+	nodeOptions := map[string]dto.DeploymentNodeOption{}
 	for i := range deps {
-		if deploymentMatches(rows, states, &deps[i], query) {
+		runtimeNodes, _ := deploymentRuntimeNodes(rows, rows.Instances(deps[i].ID))
+		nodeMatches := len(nodes) == 0
+		for _, node := range runtimeNodes {
+			nodeOptions[node.NodeUUID] = dto.DeploymentNodeOption{UUID: node.NodeUUID, Name: node.NodeName}
+			nodeMatches = nodeMatches || nodes[node.NodeUUID]
+		}
+		if nodeMatches && deploymentMatches(rows, states, &deps[i], query) {
 			matched = append(matched, &deps[i])
 		}
 	}
@@ -66,14 +80,22 @@ func (a *apiHandlers) listDeployments(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, dto.NewList(out))
 		return
 	}
-	writeJSON(w, http.StatusOK, pageOf(matched, query, func(page []*store.Deployment) []dto.DeploymentListItem {
+	page := pageOf(matched, query, func(page []*store.Deployment) []dto.DeploymentListItem {
 		items := make([]dto.DeploymentListItem, 0, len(page))
 		for _, d := range page {
 			full := a.deploymentDTOFrom(pageRows, d, false)
 			items = append(items, deploymentListItem(full, deploymentPreparationSummary(d, full.ModelProgress)))
 		}
 		return items
-	}))
+	})
+	options := make([]dto.DeploymentNodeOption, 0, len(nodeOptions))
+	for _, option := range nodeOptions {
+		options = append(options, option)
+	}
+	slices.SortFunc(options, func(a, b dto.DeploymentNodeOption) int {
+		return cmp.Or(compareText(a.Name, b.Name), cmp.Compare(a.UUID, b.UUID))
+	})
+	writeJSON(w, http.StatusOK, dto.DeploymentPage{ListPage: page, NodeOptions: options})
 }
 
 // deploymentListSorts names the orders GET /deployments offers; the
