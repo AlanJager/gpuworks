@@ -3,6 +3,7 @@ package pushstate
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -169,5 +170,27 @@ func TestCapsFollowTheirTimeline(t *testing.T) {
 	h.selectNow()
 	if got := heldNodes(h, 1, 2); len(got) != 1 || got[0] != 2 {
 		t.Fatalf("held after the step = %v", got)
+	}
+}
+
+// When the caps are lifted (their owner removed), the selection asks for a
+// pass of the scheduling holds even when no node it placed is released: a
+// node held only because it was not placed yet must be released too.
+func TestLiftingTheCapsReleasesNodesTheSelectionNeverPlaced(t *testing.T) {
+	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load()
+	h.setFleet(fleetcap.Node{ID: 1, Cards: 4})
+	h.push2(pusherOf(acmeAuthority), extapi.KindFleetCapacity, 1, capacityBody(3, 4))
+	h.selectNow()
+	if !h.s.Hold(2, 4).held() {
+		t.Fatal("a newcomer past the card cap is not held")
+	}
+	h.s.SetPackages(slices.DeleteFunc(slices.Clone(allPackages), func(p Package) bool { return p.ID == acmeAuthority.ID }))
+	before := h.reapply.Load()
+	h.selectNow()
+	if h.s.Hold(2, 4).held() {
+		t.Fatal("the newcomer is still held with no cap left")
+	}
+	if h.reapply.Load() == before {
+		t.Fatal("lifting the caps asked for no pass of the scheduling holds")
 	}
 }

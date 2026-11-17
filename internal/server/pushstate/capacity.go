@@ -33,9 +33,17 @@ func (s *State) selectPass() (held, released []string, err error) {
 		s.mu.Unlock()
 	}
 	s.mu.Lock()
+	var prev fleetcap.Caps
+	if c := s.cur.Load().capacity; c != nil {
+		prev = c.caps
+	}
 	held, released = s.placeLocked()
+	capsChanged := s.cur.Load().capacity.caps != prev
 	s.mu.Unlock()
-	if len(held) > 0 || len(released) > 0 {
+	// A changed cap changes the answer for nodes the selection has not
+	// placed yet too (Hold judges them against the room left), so it asks
+	// for a pass even when no placed node changed.
+	if len(held) > 0 || len(released) > 0 || capsChanged {
 		s.effects(true, false)
 	}
 	return held, released, nil
