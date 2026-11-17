@@ -28,6 +28,7 @@ type session struct {
 	runCtx    context.Context
 	shutdown  chan struct{}
 	stopOnce  sync.Once
+	initMu    sync.Mutex
 	started   atomic.Bool
 	inflight  atomic.Int64
 	startDone chan error
@@ -172,6 +173,8 @@ func (s *session) initialize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, methodRefusal(r))
 		return
 	}
+	s.initMu.Lock() // one initialize at a time; the first accepted wins
+	defer s.initMu.Unlock()
 	p := s.p
 	if p.ready.Load() {
 		writeError(w, Refuse(extapi.ReasonConflict, extapi.ErrorWireInvalid, "initialize was already answered",
