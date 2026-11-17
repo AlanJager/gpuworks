@@ -11,6 +11,7 @@
 //	reset-password  change an admin password
 //	support-bundle  collect diagnostics without the server running
 //	migrate         apply database migrations and exit
+//	plugin          install, list and remove plugin packages; import trust
 //	expose          publish this server through a Cloudflare quick tunnel
 //	version         print version
 //	edition         print the edition this binary was built as
@@ -59,7 +60,7 @@ func Main(args []string, opt Options) int {
 var builtinCommands = []string{
 	"serve", "version", "-v", "--version", "database-migration", selfinstall.EditionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
 	"install", "upgrade", "uninstall", "restart", "stop", "support-bundle",
-	"reset-password", "migrate", "expose", experiencelaunch.Command,
+	"reset-password", "migrate", "plugin", "expose", experiencelaunch.Command,
 	"help", "-h", "--help",
 }
 
@@ -131,6 +132,11 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 	case "migrate":
 		if err := opt.migrate(log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("migration failed", "err", err)
+			return 1
+		}
+	case "plugin":
+		if err := opt.pluginCommand(log, rest, os.Stdout); err != nil && !errors.Is(err, flag.ErrHelp) {
+			log.Error("plugin failed", "err", err, "code", codeText(err))
 			return 1
 		}
 	case "expose":
@@ -491,6 +497,9 @@ usage:
   gpuworks support-bundle [--data DIR] [--since 1h | --from T --to T]
                           [--deployments IDS] [--instances UUIDS] [--out PATH]
   gpuworks version`+extraUsage(extra)+`
+
+plugins:
+`+pluginUsage+`
 
 installation:
 `+installUsage+`
