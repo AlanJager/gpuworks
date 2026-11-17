@@ -22,6 +22,14 @@ func (s *Session) recordHandshakeFacts(n *store.Node, hello proto.Hello) {
 			s.hub.log.Warn("record node models directory failed", "node", n.UUID, "err", err)
 		}
 	}
+	if id := proto.NormalizeHostSystemUUID(hello.HostSystemUUID); id != "" && id != n.HostSystemUUID {
+		// Written only when it differs from the row authentication already
+		// read, so a routine reconnect adds no write; an empty value (an old
+		// or non-root agent) keeps what an earlier agent reported.
+		if _, err := s.hub.store.SetNodeHostSystemUUID(n.UUID, id); err != nil {
+			s.hub.log.Warn("record node host system uuid failed", "node", n.UUID, "err", err)
+		}
+	}
 	if n.Name == "" && strings.TrimSpace(hello.Hostname) != "" {
 		// The first observed hostname is a useful default display name. Once a
 		// user sets Name, it is never overwritten by reconnects.

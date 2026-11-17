@@ -40,7 +40,13 @@ type Node struct {
 	AgentVersion string `gorm:"size:64"`
 	State        string `gorm:"size:16;index"`
 	Hostname     string `gorm:"size:255"`
-	Labels       string `gorm:"type:text"` // JSON map[string]string, user-defined (decoded by NodeLabels)
+	// HostSystemUUID is the firmware system UUID of the machine the node's
+	// agent runs on, as the agent last reported it (proto.Hello.HostSystemUUID,
+	// normalized), and "" until one does. It names the machine, not the
+	// node: logical nodes on one host share it. It is never shown or handed
+	// to an extension raw; NodeIdentity hands out salted digests of it.
+	HostSystemUUID string `gorm:"size:64;not null;default:''"`
+	Labels         string `gorm:"type:text"` // JSON map[string]string, user-defined (decoded by NodeLabels)
 	// Scheduling is an operator's say over new replicas on the node
 	// (NodeScheduling): empty while it takes them, cordoned or draining
 	// while it does not. Nothing else records it.
