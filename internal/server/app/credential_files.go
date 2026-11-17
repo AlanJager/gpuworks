@@ -8,6 +8,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/extpkg/compat"
 	"gpuworks.ai/gpuworks/internal/server/installcred"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -32,6 +33,10 @@ func openCredentialStore(cfg Config, events *bus.Bus, log *slog.Logger) (*store.
 	}
 	st, err := store.OpenWith(cfg.DBPath, events, store.OpenOptions{Policies: []securefile.Policy{policy}, Extensions: MigrationSets(cfg.Extensions)})
 	if err != nil {
+		return nil, "", err
+	}
+	if err := checkStoredPluginState(st); err != nil {
+		_ = st.Close()
 		return nil, "", err
 	}
 	if err := bootstrapAdminAccount(cfg, st, log, policy); err != nil {
@@ -105,4 +110,16 @@ func forgetInitialCredentials(cfg Config) func(username string) error {
 		}
 		return installcred.ForgetInitialCredentials(cfg.DataDir, username, policy)
 	}
+}
+
+// checkStoredPluginState refuses to start a server older than the plugin
+// state a newer server persisted (PLUGIN_STATE_TOO_NEW, naming the version
+// to run instead): a downgrade is detected, never migrated (ADR 0071,
+// decision 16).
+func checkStoredPluginState(st *store.Store) error {
+	markers, err := st.PluginMarkers()
+	if err != nil {
+		return fmt.Errorf("read plugin state markers: %w", err)
+	}
+	return compat.CheckStartup(markers)
 }
