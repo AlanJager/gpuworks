@@ -160,3 +160,25 @@ func (r *registry) installed(id string) (installed, verified bool) {
 	p, ok := r.pkgs[id]
 	return ok, ok && p.Verified
 }
+
+// Features are the feature keys the installed packages declare and pushed
+// state answers for, sorted by key, as the feature gate declares them: a
+// key outside its publisher's granted namespaces, invalid, or declared
+// again by another package is left out, exactly as the answers are.
+func (s *State) Features() []featuregate.Feature {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]featuregate.Feature, 0, len(s.reg.decls))
+	for k, d := range s.reg.decls {
+		if !k.Valid() {
+			continue
+		}
+		f := featuregate.Feature{Key: k, Presentation: featuregate.Promote}
+		if d.presentation == extapi.PresentationConceal {
+			f.Presentation = featuregate.Conceal
+		}
+		out = append(out, f)
+	}
+	slices.SortFunc(out, func(a, b featuregate.Feature) int { return strings.Compare(string(a.Key), string(b.Key)) })
+	return out
+}
