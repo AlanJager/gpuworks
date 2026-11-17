@@ -103,7 +103,7 @@ func (s *State) CorrectClock(ctx context.Context, to time.Time, by string) error
 		},
 		after: func(_ pstate.Result, err error) {
 			if err != nil {
-				s.hwmDirty = true
+				s.clock.correct(fromMS) // not persisted: not applied
 				return
 			}
 			s.corrected = &clockCorrection{fromMS: fromMS, toMS: toMS, by: by}

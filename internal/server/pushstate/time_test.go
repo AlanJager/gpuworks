@@ -125,6 +125,13 @@ func TestACorrectionUnfiresStepsAndIsBounded(t *testing.T) {
 	} else if pe, ok := err.(*messages.ProductError); !ok || pe.Code() != messages.ErrorPluginClockCorrectionTooLarge {
 		t.Fatalf("too far = %v", err)
 	}
+	st.failWrites.Store(1)
+	if err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_authority"); err == nil {
+		t.Fatal("a correction whose commit failed reported success")
+	}
+	if now := h.s.Now(); now.Before(time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)) || len(corrections) != 0 {
+		t.Fatalf("a correction whose commit failed moved extclock to %v", now)
+	}
 	if err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_authority"); err != nil {
 		t.Fatal(err)
 	}
