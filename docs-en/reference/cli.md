@@ -290,7 +290,7 @@ Verifies, installs, lists and removes signed plugin packages, imports trust upda
 
 Every subcommand takes `--data DIR` (by default found the same way as for `reset-password`), `--db PATH` (default `<data>/gpuworks.db`) and `--config server.yaml` (default: the `server.yaml` next to the binary, then the default installation's; its `plugins` section applies, see [Configuration Reference](configuration.md#plugin-trust-and-site-policy)). They work with the server stopped: the database opens the way the other maintenance commands open it, and `<data>/plugins/` has its own lock. The data directory must already exist; it is never created. Every refusal carries a code (see [Error codes](plugin-protocol.md#error-codes) and the `PLUGIN_*` codes), which the log shows as `code=`.
 
-This build compiles in no project root, so for now only packages certified by an issuer trusted in `server.yaml` install; a fork can put in its own roots through its distribution profile.
+This build compiles in no project root, so for now only packages certified by an issuer trusted in `server.yaml` install; a fork puts in its own roots through `cli.Options.PluginRoots` in its build.
 
 ## gpuworks support-bundle
 
@@ -629,5 +629,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: c4d0777a8ebf4cf1efbaa8cafbbf215e5b9d8334232069bfdd5f93f858fca47d -->
+<!-- translation-source-sha256: d1fffa2d5085be2cc0f29f893475c86e5c0708cbc8a77fa2e77a7dcf3faa3d1e -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

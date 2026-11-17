@@ -43,6 +43,12 @@ func load(t *testing.T, st trust.Store, compiled []*extsign.Key, hosts ...trust.
 	return s
 }
 
+func TestNoProjectRootIsCompiledInYet(t *testing.T) {
+	if roots := trust.ProjectRoots(); len(roots) != 0 {
+		t.Fatalf("a real root was compiled in before the project generated one: %v", roots)
+	}
+}
+
 func TestNewRefusesAmbiguousKeys(t *testing.T) {
 	r1 := extsign.NewRoot(t, "1")
 	other := extsign.NewRoot(t, "1")

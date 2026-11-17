@@ -242,3 +242,12 @@ func (s *Set) known(keyID string) (extapi.PublicKey, bool) {
 	k, ok := s.issuers[keyID]
 	return k, ok
 }
+
+// projectRoots are the project roots compiled into this build. None ships
+// yet: until the project's roots are generated, only issuers the host
+// operator trusts in server.yaml certify packages. A fork's build replaces
+// them through cli.Options.PluginRoots, never by editing this list.
+var projectRoots []extapi.PublicKey
+
+// ProjectRoots returns the project roots compiled into this build.
+func ProjectRoots() []extapi.PublicKey { return slices.Clone(projectRoots) }

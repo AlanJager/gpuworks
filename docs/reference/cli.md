@@ -290,7 +290,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。数据目录必须已存在，不会新建。拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
 
-本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉可以用自己的发布配置换上根密钥。
+本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
 
 ## gpuworks support-bundle
 

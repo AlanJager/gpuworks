@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/layout"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -39,7 +38,7 @@ func newPluginEnv(t *testing.T, serverYAML string) *pluginEnv {
 		t: t, root: root, pub: extsign.NewPublisher(t, "acme", nil, root),
 		data:   filepath.Join(dir, "data"),
 		config: filepath.Join(dir, "server.yaml"),
-		opt:    Options{Distribution: distribution.Profile{PluginRoots: []extapi.PublicKey{root.Public}}},
+		opt:    Options{PluginRoots: []extapi.PublicKey{root.Public}},
 	}
 	if err := os.WriteFile(e.config, []byte(serverYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -138,7 +137,7 @@ func TestPluginInstallRefusesWithCodes(t *testing.T) {
 		t.Fatalf("untrusted = %v", err)
 	}
 	// The production build compiles no root: nothing installs without one.
-	e.opt.Distribution = distribution.Profile{}
+	e.opt.PluginRoots = nil
 	good := e.writePackage("y.gwpkg", extsign.Package(t, e.pub, extsign.Minimal("acme", "acme_backup", "1.0.0")))
 	if _, err := e.run("install", "--file", good); productCode(err) != extapi.ErrorSignatureUntrusted {
 		t.Fatalf("install without a compiled root = %v", err)
@@ -181,7 +180,7 @@ func TestPluginHostTrustedIssuerFromServerYAML(t *testing.T) {
 	yaml := "plugins:\n  publishers:\n    - keyid: site-issuer\n      alg: ed25519\n      public_key: " +
 		base64.StdEncoding.EncodeToString(issuer.Public.Key) + "\n  allow_unsandboxed: [beta_tools]\n"
 	e := newPluginEnv(t, yaml)
-	e.opt.Distribution = distribution.Profile{}
+	e.opt.PluginRoots = nil
 	pub := extsign.NewPublisher(t, "beta", nil, issuer)
 	path := e.writePackage("b.gwpkg", extsign.Package(t, pub, extsign.Minimal("beta", "beta_tools", "1.0.0")))
 	out, err := e.run("install", "--file", path)

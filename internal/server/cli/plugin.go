@@ -153,7 +153,7 @@ func (o Options) openHost(p *pluginPaths) (*extpkg.Host, *store.Store, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("open plugin database %s: %w; use the installed gpuworks binary or run it with the service owner's privileges (sudo when required)", p.db, err)
 	}
-	h, err := extpkg.NewHost(extpkg.Setup{DataDir: p.data, Roots: o.Distribution.Roots(), Config: cfg, Store: st})
+	h, err := extpkg.NewHost(extpkg.Setup{DataDir: p.data, Roots: o.pluginRoots(), Config: cfg, Store: st})
 	if err != nil {
 		st.Close()
 		return nil, nil, err
@@ -321,7 +321,7 @@ func (o Options) pluginIndexImport(log *slog.Logger, args []string, stdout io.Wr
 		return err
 	}
 	// The floors and revocations the index carried apply to the choice.
-	if h, err = extpkg.NewHost(extpkg.Setup{DataDir: p.data, Roots: o.Distribution.Roots(), Config: p.loaded, Store: st}); err != nil {
+	if h, err = extpkg.NewHost(extpkg.Setup{DataDir: p.data, Roots: o.pluginRoots(), Config: p.loaded, Store: st}); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "imported the index of %s, serial %d\n", in.Index.Publisher, in.Index.Serial)

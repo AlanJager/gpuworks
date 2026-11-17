@@ -38,7 +38,8 @@ type Store interface {
 type Setup struct {
 	// DataDir is the server's data directory.
 	DataDir string
-	// Roots are the compiled-in project roots (the distribution profile's).
+	// Roots are the project roots of the build (trust.ProjectRoots, or a
+	// fork's own).
 	Roots []extapi.PublicKey
 	// Config is server.yaml's plugins section.
 	Config serverconfig.Plugins

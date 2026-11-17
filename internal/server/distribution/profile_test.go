@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
 func editionIndex(channel, edition string) Index {
@@ -189,27 +187,5 @@ func TestEditionNames(t *testing.T) {
 	}
 	if !ValidEdition("") || !ValidEdition("oem-a") || ValidEdition("OEM") {
 		t.Fatal("ValidEdition")
-	}
-}
-
-func TestProfilePluginRoots(t *testing.T) {
-	if roots := (Profile{}).Roots(); roots == nil || len(roots) != len(ProjectPluginRoots()) {
-		t.Fatalf("zero profile roots = %v", roots)
-	}
-	if len(ProjectPluginRoots()) != 0 {
-		t.Fatal("a real plugin root was compiled in before the project generated one")
-	}
-	fork := []extapi.PublicKey{{KeyID: "gwroot-fork-1", Alg: extapi.AlgEd25519, Key: make([]byte, 32)}}
-	p := Profile{PluginRoots: fork}
-	if p.IsZero() {
-		t.Fatal("a profile with its own plugin roots reads as the zero profile")
-	}
-	got := p.Roots()
-	got[0].KeyID = "changed"
-	if p.Roots()[0].KeyID != "gwroot-fork-1" {
-		t.Fatal("Roots handed out the profile's own slice")
-	}
-	if Community().PluginRoots == nil {
-		t.Fatal("the community profile names no plugin roots")
 	}
 }
