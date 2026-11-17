@@ -69,6 +69,7 @@ grep -rn '"pending-removal"' internal --include='*.go' | grep -v '_test\.go' \
 ```sh
 grep -rlE '"vllm"|"sglang"' internal pkg cmd --include='*.go' \
   | grep -v '_test\.go' \
+  | grep -v '^internal/integrationtest/' \
   | grep -v '^internal/engines/engines\.go$' \
   | grep -v '^internal/server/deploy/engine\.go$' \
   | grep -v '^pkg/enginelog/' | grep -c .
@@ -300,10 +301,16 @@ go run ./scripts/structcount -dir internal/agent/engine -type Engine      -measu
 ```sh
 go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
   | grep -v '\.test$' \
+  | grep -v '/internal/integrationtest/' \
   | awk -F'\t' '$2 ~ /gpuworks\/internal\/server\/store( |$)/ {print $1}' | sort -u | grep -c .
 ```
 
 排除：`.test` 伪包（`go list` 为带测试的包生成的合成包）。
+
+Both `engine_literal_server` and `store_concrete_importers` also exclude
+`internal/integrationtest/`: shared test fixtures use ordinary `.go` files so
+test packages can import them. They do not add production engine decisions or
+store dependencies. The budgets themselves are unchanged.
 计划正文列了 16 个包；实测 17，多出的是 `scripts/seeddemo`（同属 module，计划正文漏计）。
 
 `go list` 说明：本仓库缺少 `internal/server/webui/dist` 时 `go list` 会因 `go:embed all:dist`
