@@ -1,6 +1,7 @@
 package plugintest
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -22,7 +23,11 @@ type Push struct {
 // fakeHost answers the host API the way the server does for the parts a
 // plugin can observe: the push envelope and its table decode strictly, the
 // path names the kind, generations strictly increase per kind, and an
-// applied push is acknowledged with the digest of its canonical body.
+// applied push is acknowledged with the digest of its canonical body. Its
+// refusals carry the server's codes and reasons (a test in the server's
+// module compares them); refusals that depend on the server's state, such
+// as a rate limit or a permission the administrator did not approve, are
+// injected with Harness.RefuseNextPush.
 type fakeHost struct {
 	mu      sync.Mutex
 	held    map[string]extapi.HeldState
@@ -37,16 +42,36 @@ func newFakeHost() *fakeHost {
 		changed: make(chan struct{}), now: time.Now}
 }
 
+// The server's product codes the fake host refuses with. They are the
+// server's, not part of pkg/extapi; the server's module tests that its host
+// API answers the same inputs with the same codes and reasons.
+const (
+	codeRouteUnknown = "PLUGIN_HOST_ROUTE_UNKNOWN"
+	codeStateStale   = "PLUGIN_STATE_STALE"
+)
+
 func (h *fakeHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
-	case r.URL.Path == extapi.PathHostHealth && r.Method == http.MethodGet:
+	case r.URL.Path == extapi.PathHostHealth:
+		if r.Method != http.MethodGet {
+			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
+			return
+		}
 		writeJSON(w, http.StatusOK, extapi.Health{Status: extapi.HealthOK})
-	case strings.HasPrefix(r.URL.Path, extapi.PathHostState) && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+	case strings.HasPrefix(r.URL.Path, extapi.PathHostState):
+		if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
+			return
+		}
 		h.push(w, r, strings.TrimPrefix(r.URL.Path, extapi.PathHostState))
 	default:
-		writeRefusal(w, extapi.WireError{Code: extapi.ErrorWireInvalid, Message: "no such host endpoint: " + r.Method + " " + r.URL.Path,
-			Params: extapi.Params{"object": "request", "field": "path", "rule": extapi.RuleEnum}, Reason: extapi.ReasonNotFound})
+		writeRefusal(w, routeUnknown(r, extapi.ReasonNotFound))
 	}
+}
+
+func routeUnknown(r *http.Request, reason string) extapi.WireError {
+	return extapi.WireError{Code: codeRouteUnknown, Message: "the host API does not serve " + r.Method + " " + r.URL.Path,
+		Params: extapi.Params{"method": r.Method, "path": r.URL.Path}, Reason: reason}
 }
 
 func (h *fakeHost) push(w http.ResponseWriter, r *http.Request, kind string) {
@@ -65,9 +90,9 @@ func (h *fakeHost) push(w http.ResponseWriter, r *http.Request, kind string) {
 		return
 	}
 	if r.Method == http.MethodPatch {
-		h.record(Push{Method: r.Method, Envelope: *env}, nil, &extapi.WireError{Code: extapi.ErrorWireInvalid,
-			Message: "no kind of protocol major 1 has a patch form", Reason: extapi.ReasonUnsupported,
-			Params: extapi.Params{"object": "state_push", "field": "base", "rule": extapi.RuleRelation}}, w)
+		refusal := routeUnknown(r, extapi.ReasonUnsupported)
+		refusal.Message = "no pushed table of this server takes a patch"
+		h.record(Push{Method: r.Method, Envelope: *env}, nil, &refusal, w)
 		return
 	}
 	if _, err := env.DecodeBody(); err != nil {
@@ -83,9 +108,10 @@ func (h *fakeHost) push(w http.ResponseWriter, r *http.Request, kind string) {
 	}
 	if held, ok := h.held[kind]; ok && env.Generation <= held.Generation {
 		h.mu.Unlock()
-		h.record(Push{Method: r.Method, Envelope: *env}, nil, &extapi.WireError{Code: extapi.ErrorWireInvalid,
-			Message: "the generation is not newer than the one held", Reason: extapi.ReasonConflict,
-			Params: extapi.Params{"object": "state_push", "field": "generation", "rule": extapi.RuleRelation}}, w)
+		h.record(Push{Method: r.Method, Envelope: *env}, nil, &extapi.WireError{Code: codeStateStale,
+			Message: fmt.Sprintf("pushed %s at generation %d; the server holds %d", kind, env.Generation, held.Generation),
+			Reason:  extapi.ReasonFailedPrecondition,
+			Params:  extapi.Params{"kind": kind, "generation": int64(env.Generation), "held": int64(held.Generation)}}, w)
 		return
 	}
 	h.mu.Unlock()
@@ -125,6 +151,9 @@ func (h *fakeHost) record(p Push, ack *extapi.StateAck, refusal *extapi.WireErro
 
 func wireOf(err error, reason string) *extapi.WireError {
 	e, ok := err.(*extapi.Error)
+	if ok && e.Code == extapi.ErrorSchemaTooNew {
+		reason = extapi.ReasonUnsupported
+	}
 	if !ok {
 		e = &extapi.Error{Code: extapi.ErrorWireMalformed, Message: err.Error(),
 			Params: map[string]any{"object": "state_push", "field": "_root", "rule": extapi.RuleSyntax}}

@@ -433,7 +433,7 @@ func TestFakeHostRefusesWhatTheServerRefuses(t *testing.T) {
 	if s := put(extapi.PathHostState+"node_holds", `{"body":{},"generation":9,"kind":"banners","schema":1}`); s != http.StatusBadRequest {
 		t.Fatalf("kind mismatch = %d", s)
 	}
-	if s := put(extapi.PathHostState+"banners", `{"body":{},"generation":5,"kind":"banners","schema":1}`); s != http.StatusConflict {
+	if s := put(extapi.PathHostState+"banners", `{"body":{},"generation":5,"kind":"banners","schema":1}`); s != http.StatusPreconditionFailed {
 		t.Fatalf("stale generation = %d", s)
 	}
 	if s := put("/host/v1/nothing", `{}`); s != http.StatusNotFound {
@@ -442,5 +442,8 @@ func TestFakeHostRefusesWhatTheServerRefuses(t *testing.T) {
 	pushes := h.Pushes()
 	if len(pushes) != 2 || pushes[0].Refusal == nil || pushes[1].Refusal == nil {
 		t.Fatalf("pushes = %+v", pushes)
+	}
+	if r := pushes[1].Refusal; r.Code != "PLUGIN_STATE_STALE" || r.Reason != extapi.ReasonFailedPrecondition || r.Params["held"] != int64(5) {
+		t.Fatalf("stale refusal = %+v", r)
 	}
 }

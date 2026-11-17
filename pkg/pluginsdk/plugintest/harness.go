@@ -223,7 +223,10 @@ func (h *Harness) SetHeld(held ...extapi.HeldState) {
 	}
 }
 
-// RefuseNextPush makes the fake host refuse the next push of kind with e.
+// RefuseNextPush makes the fake host refuse the next push of kind with e,
+// for the refusals that depend on the server's state: for example
+// PLUGIN_HOST_RATE_LIMITED (reason busy, with retry_after_ms) or
+// PLUGIN_STATE_NOT_PERMITTED (reason permission_denied).
 func (h *Harness) RefuseNextPush(kind string, e extapi.WireError) {
 	h.host.mu.Lock()
 	defer h.host.mu.Unlock()
