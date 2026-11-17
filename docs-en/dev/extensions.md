@@ -70,8 +70,10 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `HoldScheduling(h)` | A scheduling holder, keyed by its source; a repeated source is refused |
 | `ReapplySchedulingHolds()` | The holder's answers changed: asks for the holds to be applied to every node again, rather than at each node's next status report |
 | `NodeFleet(ctx)` | Every node's hold facts (`store.NodeHoldFacts`), ordered by ID (enrollment order), in one query on the read pool |
+| `NodeIdentity(ctx, ids, salt)` | The salted hardware identity of the named nodes (`store.NodeIdentity`); raw serials never leave the core. See [Node identity and node inventory](#node-identity-and-node-inventory) |
+| `NodeInventory(ctx, cursor, limit)` | A page of the node inventory in enrollment order (`store.NodeInventoryPage`): names, enrollment times, each node's own cards (index, model, whether it has a serial) |
 
-The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds` and `NodeFleet` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
+The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds`, `NodeFleet`, `NodeIdentity` and `NodeInventory` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
 
 Extension routes live under `/api/v1/x/<name>/`: `api.RouteSpec.Pattern` is relative to `/api/v1` and is `/x/<name>` or starts with `/x/<name>/`, and is a clean path (no `.`, `..`, `//` or trailing `/`). A route outside the module's own namespace, an unclean pattern, or two patterns of one method that differ only in parameter names (`{id}` and `{name}`) panic while the router is built. The core registers no route under `/api/v1/x/`, so a module name may equal a core path segment (such as `nodes`) and never collides with a path the core adds later.
 
@@ -91,6 +93,30 @@ A holder whose answers depend on the whole fleet (for example, choosing nodes in
 - The bus topic `store.NodeFleetTopic`: one event for each node insert (all three insert paths), each delete, and each status report that changed the node's hold facts (its card count or vendor; its ID, UUID, enrollment time and Kubernetes cluster never change), keyed by the node's ID. Read it with `store.NodeFleetChangeOf(ev)`, which gives `{NodeID, Kind}` (`NodeInserted`, `NodeDeleted`, `NodeFactsChanged`); do not parse the reason text of the `node` topic. A routine report that changed no hold fact publishes nothing, so publishers cost what they did. Like every bus topic, a subscriber that falls behind gets only each node's latest event, so it treats any event as "this node, and so the fleet, changed" and recomputes from `NodeFleet`, coalesced, rather than counting events. A node ID is never reused after its node is deleted.
 
 `Service.Run` is started by the same `services()` loop in `App.Run` as the health checks, card failure records, usage report and notice refresh, after the controller starts. It returns when `ctx` is done; an error it returns is logged and the service is not restarted. One App can be `Run` more than once (an in-place restart), so `Run` must tolerate being called again.
+
+## Node identity and node inventory
+
+A module that needs to recognize "the same machine, the same cards" (an inventory export, a support bundle) reads salted digests through the `Host`, never raw serials:
+
+- **Host system UUID**: the agent reports `host_system_uuid` in the hello of every handshake: the firmware system UUID (`/sys/class/dmi/id/product_uuid` on Linux, `IOPlatformUUID` on macOS), normalized by `proto.NormalizeHostSystemUUID` (lower case; placeholders, all zeros, all F and malformed values dropped). On Linux only root can read that file, so a non-root agent reports none; older agents report none either and connect as before. The server normalizes it again on receipt and writes `nodes.host_system_uuid` only when it differs from the node's row, so a routine reconnect adds no write; an empty value never clears one already recorded. It describes the machine, not the node: several logical nodes on one machine report the same value.
+- **Card serials**: a card's id is the `GPUInfo.UUID` its probe reported. `accelerator.CardSerial` tells a serial the hardware carries, which survives a move to another slot or host, from an id the probe made up from a slot or an index; only serials take part in identity:
+
+  | Vendor | Reported id | Stable |
+  |---|---|---|
+  | NVIDIA, PPU, Kunlunxin | The card UUID from the vendor CLI | Yes |
+  | AMD | `amd-<unique_id>` (the ASIC serial) | Yes; `amd-<PCI address>` when the driver has no `unique_id`, no |
+  | Hygon | `GPU-<unique id>` (hy-smi or sysfs) | Yes; `hygon-<PCI address>` or `hygon-<index>` without one, no |
+  | Ascend | `ascend-<index>` | No (npu-smi's table gives no serial) |
+  | Apple | `APPLE-<IOPlatformUUID>` | Yes, and the same machine as the host system UUID |
+  | Fake probers | `GPU-FAKE-<n>`, `FAKE-<vendor>-<n>` | No (test values, the same on every node) |
+
+- `NodeIdentity(ctx, ids, salt)` answers `{NodeID, Host, Cards, CardsWithoutSerial}` for each named node that still exists, in ascending ID order:
+  - Each item of `Host` and `Cards` is a `store.IdentityPart{H, Tail}`. `H` is the first 16 hex characters (8 bytes) of HMAC-SHA256 keyed with the caller's salt over the kind, a zero byte and the raw value, the kind being `host` or `card`; `Tail` is the raw value's last 4 characters, for a person to check against the machine, and is empty when the raw value is shorter than 8 characters, so a tail is never the whole value. One salt gives the same digests every time; different salts give unrelated `H` values. `Tail` is not salted: every caller sees the same raw tail.
+  - `Cards` holds only the cards the node may use (`accelerator.CardUsable`) that carry a serial, ordered by `H`; usable cards whose id was made up are only counted in `CardsWithoutSerial`. So two logical nodes on one machine share `Host` and each has only its own cards.
+  - Partial answers: `Host` is the zero value (`Known()` is false) until the agent reports a host UUID; a node that does not exist (never did, or was deleted) is left out of the result, so the caller compares IDs; a repeated ID counts once.
+  - `ids` holds 1 to 500 nodes, else `store.ErrNodeReadBatch`; the salt is 1 to 256 bytes, else `store.ErrIdentitySalt`. A call out of bounds is refused, never cut short.
+- `NodeInventory(ctx, cursor, limit)` returns one page `store.NodeInventoryPage{Nodes, Next}` in ID (enrollment) order: each node's ID, UUID, display name (the name an operator gave it, otherwise its hostname), enrollment time, `HostReported` (whether its host UUID is known) and the cards it may use as `{Index, Model, Serial}`, with no raw serial. Pass 0 as `cursor` for the first page and the previous page's `Next` after that; a `Next` of 0 means this was the last page. `limit` is 1 to 500, else `store.ErrNodeReadBatch`. Node IDs are never reused, so a node enrolled or deleted between pages neither shifts nor repeats the others.
+- Scale: both are pinned reads, two indexed queries each on the read pool (nodes by primary-key lookup or range, cards through the `gpus` `(node_id, ident)` index), at most 500 nodes per call. Call `NodeIdentity` for the nodes a page shows, not for the whole fleet on every event. Identity changes (a new host UUID, a swapped card) are not published on `store.NodeFleetTopic`; a module that must follow them reads again when it reads the page.
 
 ## Tables and migrations
 
@@ -194,4 +220,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: a5b3074649b816d90b5b3dd3b02abf23483ce6818f419a3d98f2386e300a2061 -->
+<!-- translation-source-sha256: 7ae14cb428e015e80758e66e1a5a28ed6379dbbbe94aff1152d1af58cc593d05 -->

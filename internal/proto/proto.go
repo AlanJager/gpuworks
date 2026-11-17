@@ -256,6 +256,9 @@ type Hello struct {
 	// connection the process makes. Two ids taking turns on one node are two
 	// agents sharing its token. Agents before it send none.
 	InstanceID string `json:"instance_id,omitempty"`
+	// HostSystemUUID is the host's firmware system UUID, normalized with
+	// NormalizeHostSystemUUID (see host_system_uuid.go for when it is empty).
+	HostSystemUUID string `json:"host_system_uuid,omitempty"`
 }
 
 // Reject explains why a connection is being closed. It is sent before the
