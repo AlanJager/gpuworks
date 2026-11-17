@@ -87,6 +87,11 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 		return nil, err
 	}
 	defer unlock()
+	// Under the lock no other install is running: what an interrupted one
+	// left behind goes first.
+	if err := h.Dir.Cleanup(); err != nil {
+		return nil, err
+	}
 	stage, err := h.Dir.Stage()
 	if err != nil {
 		return nil, err
