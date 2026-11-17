@@ -490,3 +490,38 @@ test("histogram bars are inert images without onPick and keyboard buttons with i
 	fireEvent.keyDown(bars[1], { key: "a" });
 	assert.deepEqual(picked, [1000, 2000]);
 });
+
+test("exported log CSV includes the UTF-8 BOM and preserves Chinese and CSV escaping", async () => {
+  searchResponse = { items: [
+    { id: 101, time_ms: 1740000000124, level: "warn", source: "server", instance: "", node: "n1", line: '中文,含"引号"\n第二行' },
+    { id: 102, time_ms: 1740000000123, level: "info", source: "instance", instance: "inst-2", node: "n2", line: "ready" },
+  ] };
+  let downloaded: Blob | undefined;
+  let filename = "";
+  let clickedURL = "";
+  const revoked: string[] = [];
+  const createURL = URL.createObjectURL;
+  const revokeURL = URL.revokeObjectURL;
+  const click = dom.window.HTMLAnchorElement.prototype.click;
+  URL.createObjectURL = (blob: Blob) => { downloaded = blob; return "blob:log-csv"; };
+  URL.revokeObjectURL = (url: string) => { revoked.push(url); };
+  dom.window.HTMLAnchorElement.prototype.click = function () { filename = this.download; clickedURL = this.href; };
+  try {
+    render(<I18nextProvider i18n={i18n}><MemoryRouter><LogsPage /></MemoryRouter></I18nextProvider>);
+    await waitFor(() => assert.equal(screen.getAllByTestId("log-row").length, 2));
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(i18n.t("search.export") + "$") }));
+    assert.ok(downloaded, "export creates the download Blob");
+    assert.equal(downloaded.type, "text/csv;charset=utf-8");
+    assert.match(filename, /^gpuworks-logs-\d{4}-\d{2}-\d{2}\d{6}\.csv$/);
+    assert.equal(clickedURL, "blob:log-csv");
+    assert.deepEqual(revoked, ["blob:log-csv"]);
+    const bytes = new Uint8Array(await downloaded.arrayBuffer());
+    assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], "Excel detects UTF-8 from the BOM bytes");
+    assert.equal(Buffer.from(bytes.subarray(3)).toString("utf8"),
+      'TimeMS,Level,Source,Instance,Node,Line\n1740000000124,warn,server,,n1,"中文,含""引号""\n第二行"\n1740000000123,info,instance,inst-2,n2,ready');
+  } finally {
+    URL.createObjectURL = createURL;
+    URL.revokeObjectURL = revokeURL;
+    dom.window.HTMLAnchorElement.prototype.click = click;
+  }
+});
