@@ -27,13 +27,17 @@ Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub,
 
 const common = JSON.parse(readFileSync(new URL("../src/i18n/locales/en/common.json", import.meta.url), "utf8"));
 const nodes = JSON.parse(readFileSync(new URL("../src/i18n/locales/en/nodes.json", import.meta.url), "utf8"));
+const zh = {
+  common: JSON.parse(readFileSync(new URL("../src/i18n/locales/zh/common.json", import.meta.url), "utf8")),
+  nodes: JSON.parse(readFileSync(new URL("../src/i18n/locales/zh/nodes.json", import.meta.url), "utf8")),
+};
 
 const i18n = createInstance();
 await i18n.use(initReactI18next).init({
   lng: "en",
   fallbackLng: "en",
   defaultNS: "common",
-  resources: { en: { common, nodes } },
+  resources: { en: { common, nodes }, zh },
   interpolation: { escapeValue: false },
 });
 const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
@@ -55,10 +59,11 @@ beforeEach(() => {
   api.platformSSHKey = async () => platformKey;
   keyStub.restore = () => { api.platformSSHKey = original; api.node = originalNode; };
 });
-afterEach(() => {
+afterEach(async () => {
   zeronMessage.destroy();
   cleanup();
   keyStub.restore();
+  await i18n.changeLanguage("en");
 });
 
 const { FeedbackHost, message: zeronMessage } = await import("../src/ui-kit/feedback");
@@ -298,6 +303,48 @@ async function generateManualCommand() {
   fireEvent.click(screen.getByRole("button", { name: nodes.add.createCommand }));
   await screen.findByText(nodes.add.tokenSaved);
   return document.querySelector("pre")?.textContent ?? "";
+}
+
+for (const language of ["en", "zh"] as const) {
+  for (const direction of ["agent_dial", "server_dial"] as const) {
+    test(`manual node creation directs the user to run the command without promising Token management (${language}, ${direction})`, async () => {
+      await i18n.changeLanguage(language);
+      const t = i18n.getFixedT(language, "nodes");
+      const token = "test-node-token";
+      const command = direction === "agent_dial"
+        ? `curl -fsSL 'http://localhost/install.sh' | sh -s -- --server 'http://localhost' --token '${token}'`
+        : `sh gpuworks-agent.run --token '${token}' --connect-mode server_dial --listen '0.0.0.0:6006'`;
+      const create = stubAPI("createNode", { node: { uuid: "manual-hint-node" }, token, install_command: command });
+      const clipboard = plainHTTPClipboard(true);
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async (url: string) => {
+        assert.equal(url, "/dl/gpuworks-agent.run.sha256", "manual enrollment only fetches the offline package checksum");
+        return new Response(`${"a".repeat(64)}  gpuworks-agent.run\n`, { status: 200 });
+      }) as typeof fetch;
+      try {
+        renderDrawer();
+        fireEvent.click(screen.getByRole("radio", { name: t("add.sshUnsupported") }));
+        if (direction === "server_dial") {
+          fireEvent.click(screen.getByRole("radio", { name: t("connection.serverDial") }));
+          fireEvent.change(screen.getByRole("textbox", { name: t("add.agentListenAddress") }), { target: { value: "0.0.0.0:6006" } });
+          fireEvent.change(screen.getByRole("textbox", { name: t("add.hostAddress") }), { target: { value: "connect.westd.example:37145" } });
+        }
+        fireEvent.click(screen.getByRole("button", { name: t("add.createCommand") }));
+        const hint = await screen.findByText(language === "zh" ? /Token.*保存/ : /Token.*saved/);
+        assert.doesNotMatch(hint.textContent ?? "", /regenerat|node details|重新生成|节点详情|回看/i, "do not promise Token actions the console does not offer");
+        assert.match(hint.textContent ?? "", language === "zh" ? /复制.*命令.*目标主机.*执行/ : /Copy.*command.*run.*target host/i);
+        assert.equal(create.bodies.length, 1, "one node is created for the displayed command");
+        assert.equal(create.bodies[0].connect_mode, direction);
+        assert.equal(document.querySelector("pre")?.textContent, command, "keep the server's runnable command intact");
+        fireEvent.click(screen.getByRole("button", { name: new RegExp(t("add.copyCommand")) }));
+        await waitFor(() => assert.deepEqual(clipboard.copied, [command]));
+      } finally {
+        clipboard.restore();
+        create.restore();
+        globalThis.fetch = originalFetch;
+      }
+    });
+  }
 }
 
 test("server-initiated installs refuse an empty compute node address before calling the server", async () => {
