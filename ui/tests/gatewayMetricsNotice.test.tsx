@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { list } from "./helpers/listPage.ts";
+import { retentionView } from "./helpers/analyticsFixtures.ts";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
 for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
@@ -44,6 +45,11 @@ const { default: DeploymentMetricsPanel } = await import("../src/components/Depl
 const { monitorRangeCovering } = await import("../src/components/GatewayMetricsNotice.tsx");
 const originalMetricsQuery = api.metricsQuery;
 const originalMonitorDeployment = api.monitorDeployment;
+const originalDataRetention = api.dataRetention;
+
+beforeEach(() => {
+  api.dataRetention = async () => retentionView();
+});
 
 // The recorded deployment monitor response the panel reads its sources from.
 const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/monitor-deployment.json", import.meta.url), "utf8"));
@@ -52,6 +58,7 @@ afterEach(() => {
   cleanup();
   api.metricsQuery = originalMetricsQuery;
   api.monitorDeployment = originalMonitorDeployment;
+  api.dataRetention = originalDataRetention;
 });
 
 const runningInstance = { uuid: "inst-strata-1", state: "running", node_uuid: "node-1" } as never;
@@ -107,6 +114,16 @@ test("an engine without metrics shows what the gateway measured, with the way to
   assert.equal(screen.queryByText("Waiting for Deployment Metrics"), null);
   const link = screen.getByRole("link", { name: "Open the service monitor" });
   assert.equal(link.getAttribute("href"), "/monitor/d/7");
+});
+
+test("unknown retention does not mistake absent historical samples for an engine without metrics", async () => {
+  noEngineSeries();
+  const requested = snapshotWith({ ttft: "gateway" });
+  api.dataRetention = async () => { throw new Error("service unavailable"); };
+  renderPanel();
+  assert.ok(await screen.findByText("Unable to confirm metric retention. The selected range may include expired data."));
+  assert.equal(screen.queryByText("The engine reports no inference metrics"), null);
+  assert.equal(requested.length, 0, "unknown retention must not trigger the no-engine-metrics diagnosis");
 });
 
 test("a gateway signal the snapshot has no line for reads as a dash, not a zero", async () => {

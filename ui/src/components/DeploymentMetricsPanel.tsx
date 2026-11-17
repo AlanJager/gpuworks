@@ -6,7 +6,7 @@ import { api, usePolling, type Instance, type MetricPoint, type MetricSeries } f
 import TimeSeriesChart, { autoValueFmt } from "./TimeSeriesChart";
 import EmptyState from "./EmptyState";
 import GatewayMetricsNotice, { useGatewayOnlyMetrics } from "./GatewayMetricsNotice";
-import { RangeHeader, useMetricWindow } from "./MetricWindow";
+import { RangeHeader, useMetricRange, useMetricWindow } from "./MetricWindow";
 import { rateSeries } from "../instanceMetricSeries";
 import { MetricStat, percentScaled } from "./InferenceMetricsPanel";
 import { resolveRange, stepString, type TimeRangeSelection } from "../timeRange";
@@ -47,7 +47,7 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
     [instances],
   );
   const instanceKey = instances.map((inst) => inst.uuid).sort().join(",");
-  const eff = resolveRange(selection, Date.now());
+  const eff = useMetricRange(selection);
   const queryKey = `${deploymentId}/${instanceKey}/${selectionKey(selection)}`;
   const metrics = usePolling(async () => ({
     queryKey, ...await loadMetricData(instances, deploymentId, selection),
@@ -56,14 +56,15 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
   const data = result?.data ?? EMPTY_DATA;
   const hasAnyMetric = Object.values(data).some(hasPoints);
   const gateway = useGatewayOnlyMetrics(
-    result && !result.error && selection.kind === "quick" && !eff.beyondRetention && liveInstances.length > 0 && !hasAnyMetric ? deploymentId : undefined,
+    result && !result.error && selection.kind === "quick" && eff.beyondRetention === false && liveInstances.length > 0 && !hasAnyMetric ? deploymentId : undefined,
     eff.endMS - eff.startMS,
     eff.pollMs || 15000,
     liveInstances.every((inst) => inst.state === "running"),
   );
 
   const rangeHeader = (
-    <RangeHeader selection={selection} onChange={setSelection} beyondRetention={eff.beyondRetention} />
+    <RangeHeader selection={selection} onChange={setSelection} beyondRetention={eff.beyondRetention}
+      retentionHours={eff.retentionHours} retentionError={eff.retentionError} />
   );
   if (gateway) return (
     <div className="flex flex-col gap-3">

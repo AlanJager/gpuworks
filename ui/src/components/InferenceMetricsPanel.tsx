@@ -7,10 +7,10 @@ import { type MetricPoint, type MetricSeries } from "../api";
 import TimeSeriesChart, { autoValueFmt, defaultSeriesName } from "./TimeSeriesChart";
 import { useInstanceMetricSeries, rateSeries } from "../instanceMetricSeries";
 import { StageCharts, useInstanceStages } from "./InstanceStagePanel";
-import { RangeHeader, useMetricWindow } from "./MetricWindow";
+import { RangeHeader, useMetricRange, useMetricWindow } from "./MetricWindow";
 import { colors } from "../theme/tokens";
 import { Tabs, TabsList, TabItem, TabPanel } from "./ui/tabs";
-import { resolveRange, type TimeRangeSelection } from "../timeRange";
+import type { TimeRangeSelection } from "../timeRange";
 import { useTranslation } from "react-i18next";
 
 const METRICS = {
@@ -37,7 +37,7 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
   const [selection, setSelection] = useMetricWindow();
   const [selectedGroup, setGroup] = useState("requests");
   const group = selectedGroup === "gpu" && !gpu ? "requests" : selectedGroup;
-  const eff = resolveRange(selection, Date.now());
+  const eff = useMetricRange(selection);
   const running = useInstanceMetricSeries(METRICS.running, instanceUuid, selection);
   const waiting = useInstanceMetricSeries(METRICS.waiting, instanceUuid, selection);
   const cache = useInstanceMetricSeries(METRICS.cache, instanceUuid, selection);
@@ -118,7 +118,8 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
         <MetricStat title={t("instanceMetrics.generationThroughput")} value={generationNow} suffix="tok/s" precision={1} />
       </div>
       <Tabs variant="segment" value={group} onValueChange={setGroup}>
-        <RangeHeader selection={selection} onChange={setSelection} beyondRetention={eff.beyondRetention}>
+        <RangeHeader selection={selection} onChange={setSelection} beyondRetention={eff.beyondRetention}
+          retentionHours={eff.retentionHours} retentionError={eff.retentionError}>
           <TabsList aria-label={t("instanceMetrics.groupLabel")} className="max-w-full overflow-x-auto">
             <TabItem value="requests" label={t("instanceMetrics.requestsGroup")} />
             <TabItem value="cache" label={t("instanceMetrics.cacheGroup")} />

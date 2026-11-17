@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   QUICK_RANGES,
-  RETENTION_MS,
   isBeyondRetention,
   quickRange,
   resolveRange,
@@ -34,7 +33,7 @@ test("quick ranges anchor the window at now so polls slide forward", () => {
   );
   assert.equal(resolved.stepMS, 10_000);
   assert.equal(resolved.pollMs, 10_000);
-  assert.equal(resolved.beyondRetention, false);
+  assert.equal(resolved.beyondRetention, undefined, "coverage is unknown until retention is supplied");
 });
 
 test("polling cadence widens as the window grows", () => {
@@ -52,25 +51,34 @@ test("polling cadence widens as the window grows", () => {
   assert.equal(resolveRange({ kind: "quick", key: "1w" }, NOW).pollMs, 5 * MIN);
 });
 
-test("ranges beyond the 7-day retention are flagged, 1 week exactly is not", () => {
-  assert.equal(isBeyondRetention({ kind: "quick", key: "1w" }, NOW), false);
-  assert.equal(RETENTION_MS, 7 * DAY);
-  assert.equal(isBeyondRetention({ kind: "quick", key: "1mo" }, NOW), true);
-  assert.equal(isBeyondRetention({ kind: "quick", key: "1y" }, NOW), true);
+test("quick ranges use the actual retention and keep its exact boundary", () => {
+  assert.equal(isBeyondRetention({ kind: "quick", key: "1d" }, NOW, 72 * HOUR), false);
+  assert.equal(isBeyondRetention({ kind: "quick", key: "1w" }, NOW, 72 * HOUR), true);
+  assert.equal(isBeyondRetention({ kind: "quick", key: "1w" }, NOW, 7 * DAY), false);
+  assert.equal(isBeyondRetention({ kind: "quick", key: "1mo" }, NOW, 30 * DAY), false);
+  assert.equal(isBeyondRetention({ kind: "quick", key: "1y" }, NOW, 30 * DAY), true);
 });
 
 test("custom ranges are one-shot and keep the caller's bounds", () => {
   const resolved = resolveRange(
     { kind: "custom", startMS: NOW - 2 * DAY, endMS: NOW - DAY },
     NOW,
+    72 * HOUR,
   );
   assert.equal(resolved.startMS, NOW - 2 * DAY);
   assert.equal(resolved.endMS, NOW - DAY);
   assert.equal(resolved.pollMs, 0, "a historical window must not poll");
   assert.equal(resolved.beyondRetention, false);
 
-  const stale = resolveRange({ kind: "custom", startMS: NOW - 30 * DAY, endMS: NOW - 20 * DAY }, NOW);
+  const stale = resolveRange({ kind: "custom", startMS: NOW - 30 * DAY, endMS: NOW - 20 * DAY }, NOW, 72 * HOUR);
   assert.equal(stale.beyondRetention, true);
+});
+
+test("a short historical range warns by its age, including a partially retained window", () => {
+  assert.equal(isBeyondRetention({ kind: "custom", startMS: NOW - 73 * HOUR, endMS: NOW - 72 * HOUR }, NOW, 72 * HOUR), true);
+  assert.equal(isBeyondRetention({ kind: "custom", startMS: NOW - 73 * HOUR, endMS: NOW - 71 * HOUR }, NOW, 72 * HOUR), true);
+  assert.equal(isBeyondRetention({ kind: "custom", startMS: NOW - 72 * HOUR, endMS: NOW - 71 * HOUR }, NOW, 72 * HOUR), false);
+  assert.equal(resolveRange({ kind: "custom", startMS: NOW - 73 * HOUR, endMS: NOW }, NOW).beyondRetention, undefined);
 });
 
 test("custom windows pick the step of the enclosing quick range", () => {

@@ -779,7 +779,8 @@
     "1w": "1 周",
     "1mo": "1 月",
     "1y": "1 年",
-    "beyondRetention": "所选范围超出数据保留期（{{days}} 天），仅显示保留期内数据。",
+    "beyondRetention": "所选范围超出数据保留期（{{hours}} 小时），仅显示保留期内数据。",
+    "retentionUnavailable": "无法确认指标数据保留期，所选范围可能包含已过期的数据。",
     "ariaLabel": "时间范围"
   },
   "startup": {

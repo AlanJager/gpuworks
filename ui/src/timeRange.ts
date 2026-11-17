@@ -2,18 +2,12 @@
 // deployment drawer: the quick options, their windows, the query step that
 // keeps the returned point count bounded, and the polling cadence per window
 // (a historical custom range is a one-shot query, so it never polls).
-// RETENTION_MS must stay in sync with the server-side retention loop in
-// internal/server/app/app.go (metrics.db and logs.db keep 7 days).
 
 export type QuickRangeKey = "15m" | "1h" | "6h" | "1d" | "1w" | "1mo" | "1y";
 
 export type TimeRangeSelection =
   | { kind: "quick"; key: QuickRangeKey }
   | { kind: "custom"; startMS: number; endMS: number };
-
-export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-
-export const RETENTION_WARNING_DAYS = RETENTION_MS / (24 * 60 * 60 * 1000);
 
 type QuickRangeSpec = {
   key: QuickRangeKey;
@@ -49,20 +43,21 @@ export type ResolvedRange = {
   endMS: number;
   stepMS: number;
   pollMs: number;
-  beyondRetention: boolean;
+  beyondRetention: boolean | undefined;
 };
 
 // resolveRange turns a selection into concrete query bounds. Quick ranges end
 // at `now` so a polled window slides forward; a custom range is fixed, hence
 // one-shot (pollMs 0).
-export function resolveRange(selection: TimeRangeSelection, nowMS: number): ResolvedRange {
+// Without a known retention, leave its coverage unknown rather than guessing.
+export function resolveRange(selection: TimeRangeSelection, nowMS: number, retentionMS?: number): ResolvedRange {
   if (selection.kind === "custom") {
     return {
       startMS: selection.startMS,
       endMS: selection.endMS,
       stepMS: customStepMS(selection.endMS - selection.startMS),
       pollMs: 0,
-      beyondRetention: selection.startMS < nowMS - RETENTION_MS,
+      beyondRetention: retentionMS == null ? undefined : selection.startMS < nowMS - retentionMS,
     };
   }
   const spec = quickRange(selection.key);
@@ -71,7 +66,7 @@ export function resolveRange(selection: TimeRangeSelection, nowMS: number): Reso
     endMS: nowMS,
     stepMS: spec.stepMS,
     pollMs: spec.pollMs,
-    beyondRetention: spec.ms > RETENTION_MS,
+    beyondRetention: retentionMS == null ? undefined : spec.ms > retentionMS,
   };
 }
 
@@ -88,8 +83,8 @@ export function stepString(stepMS: number): string {
   return `${Math.round(stepMS / 1000)}s`;
 }
 
-export function isBeyondRetention(selection: TimeRangeSelection, nowMS: number): boolean {
-  return resolveRange(selection, nowMS).beyondRetention;
+export function isBeyondRetention(selection: TimeRangeSelection, nowMS: number, retentionMS: number): boolean {
+  return resolveRange(selection, nowMS, retentionMS).beyondRetention === true;
 }
 
 export function selectionLabelKey(selection: TimeRangeSelection): string {
