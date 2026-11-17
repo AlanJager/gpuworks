@@ -221,3 +221,32 @@ func TestPlanLaunchKeepsServedModelNameVerbatim(t *testing.T) {
 		t.Fatalf("Args = %v, want %v", got.Args, want)
 	}
 }
+
+// A manual command reaches the agent as one shell script ("/bin/sh -c ...").
+// Its --served-model-name value is a name in every spelling a script can
+// give it, while the model path words around it are still translated.
+func TestScriptKeepsServedModelNameVerbatim(t *testing.T) {
+	m := newPathMap("", []runtime.Mount{{Source: "/Users/x/m", Target: "/model"}}, func(string) bool { return false })
+	for script, want := range map[string]string{
+		"set -a\nvllm serve /model --served-model-name /model --tokenizer /model":                      "set -a\nvllm serve /Users/x/m --served-model-name /model --tokenizer /Users/x/m",
+		"vllm serve /model --served-model-name=/model":                                                 "vllm serve /Users/x/m --served-model-name=/model",
+		`vllm serve "/model" --served-model-name "/model"`:                                             `vllm serve "/Users/x/m" --served-model-name "/model"`,
+		"vllm serve /model --served-model-name='/model' --port 8000":                                   "vllm serve /Users/x/m --served-model-name='/model' --port 8000",
+		"python3 -m sglang.launch_server --model-path /model \\\n  --served-model-name \\\n  /model\n": "python3 -m sglang.launch_server --model-path /Users/x/m \\\n  --served-model-name \\\n  /model\n",
+		"vllm serve /model --served-model-name /model/sub; ls /model":                                  "vllm serve /Users/x/m --served-model-name /model/sub; ls /Users/x/m",
+	} {
+		if got := m.script(script); got != want {
+			t.Errorf("script(%q)\n got %q\nwant %q", script, got, want)
+		}
+	}
+
+	spec := runtime.WorkloadSpec{
+		Entrypoint: []string{"/bin/sh", "-c"},
+		Cmd:        []string{"set -a\nexec vllm serve /model --served-model-name /model"},
+		Mounts:     []runtime.Mount{{Source: "/Users/x/m", Target: "/model"}},
+	}
+	got := plan(t, oci.ImageConfig{Env: []string{"PATH=/bin"}}, spec, fakeFS("/env/ROOT/bin/sh", "/env/ROOT/bin"))
+	if want := "set -a\nexec vllm serve /Users/x/m --served-model-name /model"; got.Args[len(got.Args)-1] != want {
+		t.Fatalf("script = %q, want %q", got.Args[len(got.Args)-1], want)
+	}
+}
