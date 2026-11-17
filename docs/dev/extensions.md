@@ -256,7 +256,7 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | 进程组 | 独立进程组，server 按组发信号 | 同左 |
 | 资源 | `RLIMIT_CORE=0`、`RLIMIT_NOFILE=4096`、nice 5；`RLIMIT_NPROC` 按用户计数，插件与 server 同一用户时不设，进程数由 cgroup 的 `pids.max` 限制 | 同左（无 cgroup） |
 | 描述符 | fd 3、4 必须是 socket；stdin、stdout 指向 `/dev/null`；stderr 是日志 | 同左 |
-| 环境变量 | 只保留 `PATH`、`TZ`、代理与 CA 变量，另设 `HOME`=数据目录、`TMPDIR`、`LANG=C.UTF-8` 与 `GWX_*` | 同左 |
+| 环境变量 | 只保留 `PATH`、`TZ`、代理与 CA 变量，另设 `HOME`=数据目录、`TMPDIR`、`LANG=C.UTF-8` 与 `GWX_*`；代理变量原样传入，代理 URL 里的用户名密码因此也交给每个插件，代理凭据应只授予插件也可以用的权限 | 同左 |
 | cgroup | server 的 cgroup 已委派（`subtree_control` 可写）时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`、`memory.high`、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动 | — |
 | Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，批准的设备节点读写；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
 

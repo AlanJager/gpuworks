@@ -256,7 +256,7 @@ The server starts every plugin through its own binary: `gpuworks plugin-exec --p
 | Process group | A group of its own, which the server signals as a whole | Same |
 | Resources | `RLIMIT_CORE=0`, `RLIMIT_NOFILE=4096`, nice 5; `RLIMIT_NPROC` counts per user, so it is not set while the plugin shares the server's user, and the cgroup's `pids.max` bounds processes | Same (no cgroup) |
 | Descriptors | fd 3 and 4 must be sockets; stdin and stdout are `/dev/null`; stderr is the log | Same |
-| Environment | Only `PATH`, `TZ` and the proxy and CA variables are kept, plus `HOME` = the data directory, `TMPDIR`, `LANG=C.UTF-8` and `GWX_*` | Same |
+| Environment | Only `PATH`, `TZ` and the proxy and CA variables are kept, plus `HOME` = the data directory, `TMPDIR`, `LANG=C.UTF-8` and `GWX_*`; the proxy variables pass unchanged, so a user name and password in a proxy URL reach every plugin too, and proxy credentials should grant only what a plugin may also use | Same |
 | cgroup | When the server's cgroup is delegated (`subtree_control` writable), creates `<service cgroup>/plugins/<id>`, writes `memory.max`, `memory.high`, `cpu.weight=50` and `pids.max=512`, and moves in; when it cannot, it only warns and the plugin starts anyway | — |
 | Landlock | ABI ≥ 1: the package directory readable and executable, the data and tmp directories with every right, CA files, `resolv.conf`, `hosts` and time zones read-only, approved device nodes read-write; from ABI 6 also no signals to processes outside the domain (the server and other plugins) | None |
 
@@ -308,4 +308,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: adce6d8ebce3ce53f6cb18a7ad67b648159362e88992498311113f52027e5be1 -->
+<!-- translation-source-sha256: ac8d8b62fe7b6310b5bbc1e5ac59f7d79afe89402c3900bc08b7f1465394a0ae -->
