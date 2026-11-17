@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { list } from "./helpers/listPage.ts";
-import { installCanvas } from "./helpers/analyticsFixtures.ts";
+import { installCanvas, retentionView } from "./helpers/analyticsFixtures.ts";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
 for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
@@ -46,10 +46,16 @@ const userEvent = userEventModule.default ?? userEventModule;
 const { api } = await import("../src/api.ts");
 const { default: DeploymentMetricsPanel } = await import("../src/components/DeploymentMetricsPanel.tsx");
 const originalMetricsQuery = api.metricsQuery;
+const originalDataRetention = api.dataRetention;
+
+beforeEach(() => {
+  api.dataRetention = async () => retentionView();
+});
 
 afterEach(() => {
   cleanup();
   api.metricsQuery = originalMetricsQuery;
+  api.dataRetention = originalDataRetention;
 });
 
 const runningInstance = { uuid: "inst-range-1", state: "running", node_uuid: "node-1" } as never;
@@ -77,6 +83,7 @@ async function chooseRange(label: string) {
   fireEvent.click(combo);
   const option = await screen.findByRole("option", { name: label });
   await user.click(option);
+  await waitFor(() => assert.equal(combo.getAttribute("aria-expanded"), "false", "wait for the selection acknowledgment to close the popup"));
 }
 
 test("the default 15-minute window queries a 10s step for every metric", async () => {
@@ -139,16 +146,94 @@ test("picking a quick range widens the window and coarsens the step", async () =
   }
 });
 
-test("a range beyond retention keeps querying but shows the warning", async () => {
+test("the default 72-hour retention warns for a week while still querying the selected window", async () => {
   const calls = recordMetricsQuery();
   renderPanel();
   await waitFor(() => assert.ok(calls.length >= 5));
   calls.length = 0;
 
-  await chooseRange("1 month");
+  await chooseRange("1 week");
 
-  assert.ok(await screen.findByText(/exceeds the 7-day retention/), "retention warning missing");
-  await waitFor(() => assert.ok(calls.length >= 5, "1 month must still query the retained window"));
+  assert.ok(await screen.findByText(/exceeds the 72-hour retention/, {}, { timeout: 1500 }), "retention warning missing");
+  await waitFor(() => assert.ok(calls.length >= 5, "1 week must still query the selected window"));
+  for (const call of calls) {
+    assert.equal(Number(call.end) - Number(call.start), 604_800_000, "retention must not truncate the requested window");
+  }
+});
+
+test("metric retention is independent of log retention and refreshes when the range changes", async () => {
+  recordMetricsQuery();
+  renderPanel();
+  await chooseRange("1 week");
+  assert.ok(await screen.findByText(/exceeds the 72-hour retention/));
+
+  api.dataRetention = async () => retentionView({ metrics_hours: 240, logs_hours: 24 });
+  await chooseRange("1 month");
+  assert.ok(await screen.findByText(/exceeds the 240-hour retention/));
+  await chooseRange("1 week");
+  await waitFor(() => assert.ok(!screen.queryByText(/exceeds the \d+-hour retention/), "the retained range must not carry an expiry warning"));
+});
+
+test("returning to an open panel picks up retention changes without changing the selected range", async () => {
+  let hours = 72;
+  api.dataRetention = async () => retentionView({ metrics_hours: hours });
+  recordMetricsQuery();
+  renderPanel();
+  await chooseRange("1 week");
+  assert.ok(await screen.findByText(/exceeds the 72-hour retention/));
+  hours = 240;
+  await act(async () => document.dispatchEvent(new dom.window.Event("visibilitychange")));
+  await waitFor(() => assert.ok(!screen.queryByText(/exceeds the \d+-hour retention/), "the retained range must not carry an expiry warning"));
+  assert.ok(screen.getByRole("combobox", { name: "Time range" }).textContent?.includes("1 week"));
+});
+
+test("pending retention does not block metric queries or invent a retention warning", async () => {
+  let release!: (value: Awaited<ReturnType<typeof api.dataRetention>>) => void;
+  const pending = new Promise<Awaited<ReturnType<typeof api.dataRetention>>>(resolve => { release = resolve; });
+  api.dataRetention = () => pending;
+  const calls = recordMetricsQuery();
+  renderPanel();
+  await waitFor(() => assert.ok(calls.length >= 5));
+  await chooseRange("1 week");
+  assert.ok(!screen.queryByText(/exceeds the .* retention/), "do not invent a retention warning");
+  assert.ok(!screen.queryByText(/Unable to confirm metric retention/), "do not show an unavailable warning after a successful read");
+  await act(async () => release(retentionView()));
+  assert.ok(await screen.findByText(/exceeds the 72-hour retention/));
+});
+
+test("an unusable retention response is reported instead of treated as unlimited history", async () => {
+  api.dataRetention = async () => retentionView({ metrics_hours: 0 });
+  recordMetricsQuery();
+  renderPanel();
+  assert.ok(await screen.findByText("Unable to confirm metric retention. The selected range may include expired data."));
+  await chooseRange("1 week");
+  assert.ok(!screen.queryByText(/exceeds the .* retention/), "do not invent a retention warning");
+});
+
+test("retention read failures are explicit and recover without blocking queries", async () => {
+  api.dataRetention = async () => { throw new Error("service unavailable"); };
+  const calls = recordMetricsQuery();
+  renderPanel();
+  assert.ok(await screen.findByText("Unable to confirm metric retention. The selected range may include expired data."));
+  await waitFor(() => assert.ok(calls.length >= 5));
+  assert.ok(!screen.queryByText(/exceeds the .* retention/), "do not invent a retention warning");
+  api.dataRetention = async () => retentionView();
+  await chooseRange("1 week");
+  assert.ok(await screen.findByText(/exceeds the 72-hour retention/));
+  assert.ok(!screen.queryByText(/Unable to confirm metric retention/), "do not show an unavailable warning after a successful read");
+});
+
+test("instance metrics use the configured hours, including a retention that is not whole days", async () => {
+  api.dataRetention = async () => retentionView({ metrics_hours: 36, logs_hours: 72 });
+  const { default: InstanceMetricsTab } = await import("../src/pages/InstanceMetricsTab.tsx");
+  recordMetricsQuery();
+  render(<I18nextProvider i18n={i18n}><InstanceMetricsTab inst={runningInstance} /></I18nextProvider>);
+  await chooseRange("1 day");
+  assert.ok(!screen.queryByText(/exceeds the .* retention/), "do not invent a retention warning");
+  await chooseRange("1 week");
+  assert.ok(await screen.findByText(/exceeds the 36-hour retention/));
+  fireEvent.click(screen.getByRole("tab", { name: "Cache & engine" }));
+  assert.ok(screen.getByText(/exceeds the 36-hour retention/));
 });
 
 

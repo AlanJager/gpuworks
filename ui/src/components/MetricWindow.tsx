@@ -2,7 +2,8 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { Notice } from "../ui-kit/Notice";
 import { useTranslation } from "react-i18next";
 import TimeRangePicker from "./TimeRangePicker";
-import { RETENTION_WARNING_DAYS, type TimeRangeSelection } from "../timeRange";
+import { api, usePolling } from "../api";
+import { resolveRange, type TimeRangeSelection } from "../timeRange";
 
 const initial: TimeRangeSelection = { kind: "quick", key: "15m" };
 type WindowState = [TimeRangeSelection, (next: TimeRangeSelection) => void];
@@ -19,15 +20,30 @@ export function useMetricWindow(): WindowState {
   return shared ?? local;
 }
 
+export function useMetricRange(selection: TimeRangeSelection) {
+  const retention = usePolling(api.dataRetention, 60_000, [selection]);
+  const hours = retention.error ? undefined : retention.data?.value?.metrics_hours;
+  const retentionHours = typeof hours === "number" && Number.isFinite(hours) && hours > 0 ? hours : undefined;
+  return {
+    ...resolveRange(selection, Date.now(), retentionHours == null ? undefined : retentionHours * 3_600_000),
+    retentionHours,
+    retentionError: !!retention.error || (!!retention.data && retentionHours == null),
+  };
+}
+
 export function RangeHeader({
   selection,
   onChange,
   beyondRetention,
+  retentionHours,
+  retentionError,
   children,
 }: {
   selection: TimeRangeSelection;
   onChange: (next: TimeRangeSelection) => void;
   beyondRetention?: boolean;
+  retentionHours?: number;
+  retentionError?: boolean;
   children?: ReactNode;
 }) {
   const { t } = useTranslation("deployments");
@@ -39,8 +55,9 @@ export function RangeHeader({
           className={children ? "contents" : undefined} />
       </div>
       {beyondRetention && (
-        <Notice className="mt-2" tone="warning" title={t("timeRange.beyondRetention", { days: RETENTION_WARNING_DAYS })} />
+        <Notice className="mt-2" tone="warning" title={t("timeRange.beyondRetention", { hours: retentionHours })} />
       )}
+      {retentionError && <Notice className="mt-2" tone="warning" title={t("timeRange.retentionUnavailable")} />}
     </div>
   );
 }
