@@ -145,8 +145,6 @@ specs:
       mode: stream
 # Apple silicon (macOS 15+, M1-M5): vllm-metal runs as a host process from the
 # gpuworks-runner metal package. weight_bytes is the measured safetensors total.
-# The context is capped so the KV cache of one sequence fits a 32-64 GB Mac;
-# a deployment may raise it.
 - name: bf16-vllm-apple
   display_name_zh_cn: Apple 芯片 · BF16
   display_name_en: Apple silicon · BF16
@@ -165,9 +163,6 @@ specs:
   weight_bytes: 7672066216
   gpus:
     vendor: apple
-  args:
-  - --max-model-len
-  - '32768'
   api:
     health_endpoint: /health
     operations:

@@ -667,6 +667,12 @@ specs:
   weight_bytes: 1503300328
   gpus:
     vendor: apple
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
   api:
     health_endpoint: /health
     operations:
