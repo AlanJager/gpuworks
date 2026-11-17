@@ -52,7 +52,7 @@ func (f *faultyStore) LoadPushedState(ctx context.Context) (pstate.Snapshot, err
 	return f.Store.LoadPushedState(ctx)
 }
 
-func openStore(t *testing.T, dsn string) *faultyStore {
+func openStore(t testing.TB, dsn string) *faultyStore {
 	t.Helper()
 	if dsn == "" {
 		dsn = "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
@@ -63,6 +63,16 @@ func openStore(t *testing.T, dsn string) *faultyStore {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return &faultyStore{Store: s}
+}
+
+// durableDSN names an in-memory database that outlives the stores opened on
+// it, as a database file does: a store kept open for the test holds it, so a
+// test can close its store ("kill the core") and open another on the same
+// rows without replaying the whole migration chain on a file each time.
+func durableDSN(t testing.TB) string {
+	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "_durable?mode=memory&cache=shared"
+	openStore(t, dsn)
+	return dsn
 }
 
 // fakeClock is a settable wall clock and monotonic reading.
@@ -136,7 +146,7 @@ func pusherOf(p Package, perms ...string) Pusher {
 // harness is a State over a real store, with a fake clock and recorded
 // effects.
 type harness struct {
-	t        *testing.T
+	t        testing.TB
 	st       *faultyStore
 	clk      *fakeClock
 	s        *State
@@ -150,7 +160,7 @@ type harness struct {
 	dropped  []Override
 }
 
-func newHarness(t *testing.T, st *faultyStore, clk *fakeClock, mutate ...func(*Config)) *harness {
+func newHarness(t testing.TB, st *faultyStore, clk *fakeClock, mutate ...func(*Config)) *harness {
 	t.Helper()
 	h := &harness{t: t, st: st, clk: clk}
 	empty := []fleetcap.Node{}

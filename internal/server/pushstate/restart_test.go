@@ -3,7 +3,6 @@ package pushstate
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -22,7 +21,7 @@ const quotaBanners = `{"banners":[{"audience":"admin","id":"grace","steps":[{"no
 // The core is killed with plugins' state committed and boots again with no
 // plugin running: everything pushed is enforced before any plugin starts.
 func TestStateIsEnforcedAfterACoreRestartBeforeAnyPluginRuns(t *testing.T) {
-	dsn := filepath.Join(t.TempDir(), "gpuworks.db")
+	dsn := durableDSN(t)
 	clk := newFakeClock("2026-12-01T00:00:00Z")
 	{
 		st := openStore(t, dsn)

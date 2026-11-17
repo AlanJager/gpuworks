@@ -2,7 +2,6 @@ package pushstate
 
 import (
 	"context"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -50,7 +49,7 @@ func TestTheStepTimerFiresOnTheRealClock(t *testing.T) {
 }
 
 func TestTurningTheWallClockBackCannotReviveAnExpiredStep(t *testing.T) {
-	dsn := filepath.Join(t.TempDir(), "gpuworks.db")
+	dsn := durableDSN(t)
 	clk := newFakeClock("2027-02-01T00:00:30Z")
 	st := openStore(t, dsn)
 	h := newHarness(t, st, clk).load().run()
@@ -227,7 +226,7 @@ func TestTheGraceIsBoundedAndTheSiteMayOnlyLowerIt(t *testing.T) {
 // A restart never renews the grace: the down start is persisted, and a
 // crash-looping core keeps the first one.
 func TestARestartDoesNotRenewTheGrace(t *testing.T) {
-	dsn := filepath.Join(t.TempDir(), "gpuworks.db")
+	dsn := durableDSN(t)
 	clk := newFakeClock("2026-12-01T00:00:00Z")
 	st := openStore(t, dsn)
 	h := newHarness(t, st, clk).load().run()
