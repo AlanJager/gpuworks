@@ -203,14 +203,47 @@ The edition checks below matter only to forks: official builds name no edition, 
 
 ## Installable extensions
 
-ADR 0071 decides that official and third-party extensions are installed as signed plugin packages (`.gwpkg`) instead of being compiled into the binary. The plugin host module is not built yet; the points below say how it will connect to the contract on this page:
+ADR 0071 decides that official and third-party extensions are installed as signed plugin packages (`.gwpkg`) instead of being compiled into the binary. The plugin host is connected to the contract on this page as a built-in module:
 
-- The plugin host is a built-in module that registers the existing hooks through the `Host` (feature source, node insert guard, scheduling holder, banners) and answers them from tables plugins push and the core validates and persists; in official builds it will be the only caller of `ProvideFeatures`.
-- A plugin is a child process of the server that talks to the core over `gwx/1` on inherited fds, never enters a hot path and never gets the Store; its routes live under `/api/v1/x/<id>/`, the same prefix as compiled modules.
+- The plugin host is the built-in module `plugins` (`app/plugins.go`, implemented in `internal/server/pluginbridge`). It registers the existing hooks through the `Host`: the node insert guard, the scheduling holder (source `plugins`) and banners always; when installed packages declare feature keys it is also the feature source. It answers them from tables plugins push and the core validates and persists. A compiled module may no longer be named `plugins`; when a compiled module already calls `ProvideFeatures` and installed packages declare feature keys too, the server refuses to start.
+- A plugin is a child process of the server that talks to the core over `gwx/1` on inherited fds, never enters a hot path and never gets the Store.
 - Whether a feature key is gated is declared by the plugin package itself; grant tables accept pushes only from the authority its publisher certificate names; while a plugin is down its restrictions stay enforced, its grants clamp to read-only after a bounded grace, and timelines keep firing on extclock.
 - The hook rules on this page (hooks inside the writer transaction are pure, holders cordon without draining, running workloads are never interrupted) apply to the plugin host as well.
 
-The wire formats of manifests, certificates, trust updates, `gwx/1` messages and pushed tables are frozen in `pkg/extapi`; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md). The sections below describe the process and protocol parts that are built (not yet wired into `serve`); installation and trust chain enforcement, pushed tables and the plugin host module are documented as they are built.
+The wire formats of manifests, certificates, trust updates, `gwx/1` messages and pushed tables are frozen in `pkg/extapi`; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md). Reading, verifying and trusting packages and the `gpuworks plugin` subcommands are in the [CLI Reference](../reference/cli.md#gpuworks-plugin) and the [Install Layout](../reference/install-layout.md).
+
+### The plugin host module
+
+Boot order (the `plugins` module's `Init`, before the router is built):
+
+1. Remove what interrupted installs left and verify every installed package again (rehashing every file this time). A package that no longer verifies or is revoked counts as installed but not verified: the restrictions and banners it pushed stay enforced, its grants are dropped, and it does not start.
+2. Load every pushed table with that package list (see "Pushed state" below), enforced before the server accepts its first request and before any plugin starts.
+3. Register the hooks and declare the feature keys (of the packages installed at boot only).
+
+The module's service (run with the server's other background loops) starts pushed state's writer tick, timelines and capacity selection, then starts every enabled package with a `resident` server part, in parallel and without holding up `serve`; only changed files are rehashed before a start. The supervisor tells pushed state each plugin's process state: `running` and `degraded` count as up, everything else as down. When the server stops, the plugins stop first and pushed state after, so the moment each plugin went down is persisted and a restart never renews its grace.
+
+The pusher's identity comes from the package verified when it was started: the supervisor numbers every process (a generation rising across all of them), and a push on the host API is taken as the package bound to that connection, with its certificate grants (including the authority `server.yaml` configures for a host-trusted issuer), the permissions its administrator approved, its manifest's codes and that process's generation. A push over the connection of a package that was replaced or changed version is refused (`PLUGIN_STATE_STALE`). The core offers the capabilities `table.<kind>@1` for the first five kinds; packages' `requires` are verified against them and plugins negotiate them in the handshake.
+
+### Management API
+
+`/api/v1/plugins` are core routes, never feature-gated, and work with every plugin down, crashlooping or removed; the assistant and MCP cannot read them (they are not among the routes the assistant reads, and the handlers refuse the assistant's in-process reads):
+
+| Method and path | Who may call it | What it does |
+|---|---|---|
+| `GET /api/v1/plugins` | administrators (session or token) | installed packages with their state, reason and the actions available (server-computed) |
+| `POST /api/v1/plugins/install?approve=<approval>&enable=true` | an administrator's login session | the request body is the `.gwpkg`; without the approval, or with a wrong one, it answers 409 `PLUGIN_APPROVAL_REQUIRED` with the approval and the permissions and roles it covers in its params, and installs nothing |
+| `POST /api/v1/plugins/{id}/enable`, `/disable` | an administrator's login session | enable and start; stop and keep from starting (its pushed tables stay enforced and it counts as down) |
+| `DELETE /api/v1/plugins/{id}?purge=true` | an administrator's login session | stop and uninstall (`purge` moves the data to `.trash/` too), delete everything it pushed in one commit and reapply the holds; a retry finishes an uninstall that failed halfway |
+
+Every call writes a structured log record with `audit=true` saying who did what to which package and how it ended. States in the list: `disabled`, `installed` (no `resident` server part), `idle` (`on_demand`), `broken` (no longer verifies) or `revoked` when the server part does not run; otherwise the supervisor's process state. The fields are in the [API Reference](../reference/api.md).
+
+### Not built yet
+
+- Feature keys of a package installed while the server runs enter the feature gate at the next start (the gate is built once at boot); the restrictions, banners and holds it pushes apply at once.
+- Dynamic mounting of plugin routes under `/api/v1/x/<id>/`, on-demand starts of `on_demand` plugins, and host API endpoints other than state and health.
+- The management route for overrides (`State.Override` is built), the `users.local_admin` floor, the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
+- The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
+- The ratchet on feature-key literals in core code.
 
 ### Trampoline: `gpuworks plugin-exec`
 
@@ -256,7 +289,7 @@ Plugin authors use `pkg/pluginsdk` (a module of its own like `pkg/extapi`, depen
 
 ### Pushed state
 
-The core's part of the first five pushed tables (`availability`, `fleet_capacity`, `node_holds`, `banners`, `attestations`) is built, in `internal/server/pushstate`; it is not connected to a plugin host yet, and the host, the supervisor and the routes will work through it once they are built:
+The core's part of the first five pushed tables (`availability`, `fleet_capacity`, `node_holds`, `banners`, `attestations`) is in `internal/server/pushstate`; through the plugin host module above it takes plugins' pushes, is loaded at boot and is registered as the hooks:
 
 - **Intake**: `State.Push` takes the pusher's identity as the supervisor binds it to the connection (package id, publisher, certificate grants, approved permissions, the manifest's codes, process generation) and one push. Each `availability` row is accepted only from the key's authority (for `gate: authority`, the `authority_id` the declaring publisher's certificate names; for `gate: self`, the declaring package), and a bare key only from a package of the project publisher; `fleet_capacity` needs the certificate's grant of that privileged table, `attestations` needs the pusher to be the authority of its own namespace, the rest need the approved `push:<kind>`; a notice's code must be listed in the package's manifest. A generation not above the one held or about to commit is refused (`PLUGIN_STATE_STALE`), as is a push over the connection of a replaced process.
 - **Writes**: pending pushes are coalesced per owner and kind (the later replaces the earlier, which is answered `superseded_by`); each tick (at most 1 Hz) writes every owner's changes in one writer transaction, then swaps one snapshot pointer; when the write fails nothing applies (`PLUGIN_STATE_NOT_SAVED`). Persistence uses the typed `pstate_*` tables a core migration creates: a timeline is rows of steps, a notice is a code column plus typed parameter rows, and no column holds JSON; display-only `display` data is not kept. Writes are diffs by entry (feature key, node id, banner id, attestation name).
@@ -265,7 +298,7 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - **Time**: timelines fire at their instants on extclock (`max(wall clock, high-water mark)`), with the plugin dead too; the high-water mark is saved every minute and at shutdown. `State.CorrectClock` moves it by at most 366 days per correction, reports it for the audit and shows an administrator banner; steps are not consumed, so a correction backwards un-fires the steps after it.
 - **Down**: `State.OwnerDown` records a persisted down start (a restart never renews it); grants clamp to `min(current, down_access)` with `PLUGIN_UNAVAILABLE` after the grace (1 hour by default, 60 seconds to 24 hours as the plugin pushes, only lowered by the site) plus a 2-minute boot extension; restrictions never lapse. A package that is installed but no longer verifies keeps its restrictions and banners and loses only its grants.
 - **Overrides and uninstall**: `State.Override` only loosens one restriction entry (a node hold, or one fleet cap), is persisted and bound to the owner's generation; it is superseded, and reported, when the owner pushes that entry again. `State.Uninstall` deletes every row of the owner in one commit and asks for one pass of the scheduling holds.
-- **Capacity selection**: `fleet_capacity` gives only caps; the core selects the nodes in enrollment order (`internal/server/fleetcap`: once a cap is full, every later node is held). It reads the node list once after coalesced node fleet topic changes, at least 2 seconds apart, so nodes that join while the plugin is down are placed by the same rule. A node not placed yet is held only if counting it would exceed a cap.
+- **Capacity selection**: `fleet_capacity` gives only caps; the core selects the nodes in enrollment order (`internal/server/fleetcap`: once a cap is full, every later node is held). It reads the node list once after coalesced node fleet topic changes, at least 2 seconds apart, so nodes that join while the plugin is down are placed by the same rule. A node not placed yet is held only if counting it would exceed a cap. Whenever the caps change (their owner uninstalled included), the selection asks for a pass of the holds, so such a node is released too.
 
 ## What the open-source code does not do
 
@@ -275,4 +308,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 9ad2bedd1b37dee16e113059cae724cc4e62b8eea3ad105fbbe16af6b210b46a -->
+<!-- translation-source-sha256: adce6d8ebce3ce53f6cb18a7ad67b648159362e88992498311113f52027e5be1 -->

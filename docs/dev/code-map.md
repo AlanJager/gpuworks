@@ -88,6 +88,9 @@
 - `agentbin`：内嵌各平台 agent 二进制（zstd 压缩存放，`make cross-agents` 优先用 zstd CLI `-19`，没有时退回 `scripts/zstdpack`），经 `/dl/` 下发时流式解压并给出原始长度。
 - `webui`：`go:embed` 内嵌前端构建产物（`internal/server/webui/dist`），文本资源在首次被请求时 gzip 一次并缓存在内存，构建产物不再附带 `.gz` 副本。`HandlerFS` 服务任意同布局的构建，单独构建的服务端经 `app.Extensions.UI` 换上自己的控制台。
 - `extpkg`：插件包（`.gwpkg`）的处理，不拉起进程：`extpkg` 按协议的校验顺序校验包并在数据目录里安装、重新校验与移除（`Host`）；`extpkg/archive` 带上限地读取包；`extpkg/trust` 解析根密钥、主机信任的签发者、吊销与最低版本并导入信任更新与吊销列表；`extpkg/layout` 管 `<data>/plugins/` 的暂存、原子切换与文件哈希缓存；`extpkg/catalog` 导入包索引并选择可装的版本；`extpkg/compat` 是核心降级的版本标记检查。持久化在 store 的 `plugin_*` 表里，经窄接口访问，不依赖 store。
+- `pushstate`：插件推送表在核心里的部分：校验、按 tick 一个写事务持久化（`store/pstate` 的带类型行）、启动时读入、零分配的执行钩子、extclock、掉线宽限、覆盖与卸载；`fleetcap` 是按接入顺序的核心容量选择规则。不依赖 store、进程或 HTTP。
+- `pluginexec`、`pluginhost`：`pluginexec` 是 `gpuworks plugin-exec` 跳板，在 `execve` 插件之前施加沙箱；`pluginhost` 监管插件进程并在两对 socketpair 上说 `gwx/1`（握手、健康、宿主接口）。
+- `pluginbridge`：把 `extpkg`、`pushstate` 与 `pluginhost` 接成插件宿主：启动时校验已安装的包并读入推送状态，运行时启动已启用的常驻插件，按启动时校验的包认定推送方，承担 `/api/v1/plugins` 的安装、启用、停用与卸载；`app` 的内置模块 `plugins` 只做装配。
 - `featuregate`：功能可用性的叶子包（只依赖 `messages`）：功能键、四种可用性（完整、只读、锁定、隐藏）与预先构造的拒绝；扩展路由与控制台清单经它询问扩展模块提供的功能来源，社区路径从不查询。
 - `holdpass`：扩展模块请求的调度保持重新应用（`Host.ReapplySchedulingHolds`）：合并请求，两次全表写事务之间有下限间隔，失败退避重试；只依赖标准库，由 app 接进 `services()` 循环。
 - `selfinstall` / `installcred`：`gpuworks install` / `upgrade` 的实现（复制二进制、写 service 定义、从发布通道或发布站拉发布件、带备份可回滚）、控制台升级的启动守卫、无 systemd 时的 `serve --supervise` 守护循环，与首启 bootstrap admin 凭据记录（叶子包，install 与 server 两端共用，不得反向依赖 server）。
