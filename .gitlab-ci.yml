@@ -75,6 +75,9 @@ change-record:
   extends: .go-core
   stage: change-record
   timeout: 10m
+  variables:
+    # The MR diff base can precede the runner's default 50-commit history.
+    GIT_DEPTH: "0"
   # The gate compiles only its own package; it must not wait for embedded UI.
   needs: []
   script:
