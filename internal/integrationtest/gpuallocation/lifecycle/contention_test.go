@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/integrationtest/gpuallocation/internal/fixtures"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -152,7 +153,7 @@ func TestConcurrentDeploymentsRetainClaimsUntilCleanup(t *testing.T) {
 			ledger := planning.GPUAllocations(env.Store(), node)[0]
 			wantBytes := int64(24 << 30)
 			if partition {
-				wantBytes = 17 << 30
+				wantBytes = int64(slots) * fixtures.NVIDIASliceClaim(int64(limit)*fixtures.GiB)
 			}
 			if ledger.AllocatedBytes != wantBytes || len(ledger.Instances) != slots {
 				t.Fatalf("failed cleanup released claim: %+v, want %d bytes / %d instances", ledger, wantBytes, slots)

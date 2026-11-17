@@ -2,18 +2,18 @@ package scheduler_test
 
 import (
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/integrationtest/gpuallocation/internal/fixtures"
 	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 )
 
 // This is a bounded scheduler input model, not a universal test runner.
-// Add a dimension here, in input and in expectation; coverage is then rebuilt
-// from the complete valid domain, without editing existing case rows.
+// Add a dimension here, in input and in expectation; every combination of the
+// complete valid domain is then checked, without editing existing case rows.
 const (
 	modeDimension = iota
 	occupancyDimension
@@ -56,7 +56,7 @@ func (c scheduleCombination) input() scheduleInput {
 	g.HeldOutsidePlatform = c[foreignDimension] != "no-foreign"
 	g.ForeignShareable = c[foreignDimension] == "known-foreign" && c[healthDimension] == "healthy"
 	if c[foreignDimension] == "known-foreign" {
-		g.ForeignBytes = 16 * gib
+		g.ForeignBytes = fixtures.ForeignHolderBytes
 	}
 	r := scheduler.Request{WeightBytes: 8 * gib, ReserveBytes: 2 * gib, GPUMemUtil: 0.5, AllowedTPs: []int{1}}
 	switch c[modeDimension] {
@@ -90,13 +90,13 @@ func (c scheduleCombination) expectation() scheduleExpectation {
 	ok := c[healthDimension] == "healthy"
 	if c[foreignDimension] != "no-foreign" {
 		ok = ok && c[modeDimension] == "partition" && c[foreignDimension] == "known-foreign" && c[sleepDimension] == "awake-only" && (c[selectionDimension] == "operator-pin" || c[policyDimension] == "sharing-on")
-		room -= 20 * gib
+		room -= fixtures.ForeignHolderBytes + fixtures.ForeignHeadroom
 	}
 	switch c[modeDimension] {
 	case "whole":
 		ok = ok && c[occupancyDimension] == "empty" && room >= 32*gib
 	case "partition":
-		ok = ok && c[backendDimension] == "backend-ready" && room >= 16*gib+gib/2
+		ok = ok && c[backendDimension] == "backend-ready" && room >= fixtures.NVIDIASliceClaim(16*gib)
 	case "native":
 		ok = ok && room >= 32*gib
 	default:
@@ -121,122 +121,37 @@ func scheduleCombinationInputs() []scheduleCombination {
 	return rows
 }
 
-type dimensionPair struct {
-	first, second int
-	a, b          string
+func (c scheduleCombination) eligibilityGatesOpen() bool {
+	return c[foreignDimension] == "no-foreign" && c[backendDimension] == "backend-ready" && c[healthDimension] == "healthy"
 }
 
-func pairs(c scheduleCombination) []dimensionPair {
-	var out []dimensionPair
-	for i := range c {
-		for j := i + 1; j < len(c); j++ {
-			out = append(out, dimensionPair{i, j, c[i], c[j]})
-		}
-	}
-	return out
-}
-
-// Greedy selection is deterministic (domain order breaks ties). The universe
-// is deliberately small; larger models should use a checked-in covering
-// array from a constraint-aware tool, with the same coverage assertion.
-func pairwiseScheduleInputs(domain []scheduleCombination) []scheduleCombination {
-	missing := map[dimensionPair]bool{}
-	for _, row := range domain {
-		for _, pair := range pairs(row) {
-			missing[pair] = true
-		}
-	}
-	var selected []scheduleCombination
-	for len(missing) > 0 {
-		best, score := -1, 0
-		for i, row := range domain {
-			count := 0
-			for _, pair := range pairs(row) {
-				if missing[pair] {
-					count++
-				}
-			}
-			if count > score {
-				best, score = i, count
-			}
-		}
-		if best < 0 {
-			panic("unreachable pair")
-		}
-		selected = append(selected, domain[best])
-		for _, pair := range pairs(domain[best]) {
-			delete(missing, pair)
-		}
-	}
-	return selected
-}
-
-func assertScheduleCombinationCoverage(t *testing.T, rows []scheduleCombination) {
-	t.Helper()
-	seen := map[dimensionPair]bool{}
-	for _, row := range rows {
-		for i, value := range row {
-			if !slices.Contains(scheduleDimensions[i], value) {
-				t.Fatalf("unknown dimension %d=%s", i, value)
-			}
-		}
-		for _, pair := range pairs(row) {
-			seen[pair] = true
-		}
-	}
-	// Enumerate expected pairs independently of the row generator.
-	for i, values := range scheduleDimensions {
-		for j := i + 1; j < len(scheduleDimensions); j++ {
-			for _, a := range values {
-				for _, b := range scheduleDimensions[j] {
-					if !seen[dimensionPair{i, j, a, b}] {
-						t.Errorf("missing pair: dimension %d=%s / %d=%s", i, a, j, b)
-					}
-				}
-			}
-		}
-	}
-}
-
+// Schedule is a pure function, so the full product is cheaper to check than to
+// sample. Each mode still needs an accepted and a refused row with every
+// eligibility gate open: otherwise an unrelated refusal could be the only
+// negative evidence for that mode.
 func TestScheduleCombinations(t *testing.T) {
-	domain := scheduleCombinationInputs()
-	rows := pairwiseScheduleInputs(domain)
-	assertScheduleCombinationCoverage(t, rows)
-	t.Logf("%d pairwise rows from %d combinations", len(rows), len(domain))
-	for _, row := range rows {
+	accepted, refused := map[string]int{}, map[string]int{}
+	for _, row := range scheduleCombinationInputs() {
+		want := row.expectation()
+		if row.eligibilityGatesOpen() {
+			if want.ok {
+				accepted[row[modeDimension]]++
+			} else {
+				refused[row[modeDimension]]++
+			}
+		}
 		t.Run(row.name(), func(t *testing.T) {
 			in := row.input()
 			before := append([]scheduler.GPU(nil), in.node.GPUs...)
-			runScheduleCase(t, scheduleCase{input: in, want: row.expectation()})
+			runScheduleCase(t, scheduleCase{input: in, want: want})
 			if !reflect.DeepEqual(before, in.node.GPUs) {
 				t.Fatal("scheduling mutated the inventory")
 			}
 		})
 	}
-}
-
-// Pairwise coverage alone can hide a bug behind an unrelated refusal. Fix all
-// eligibility gates open and exhaust mode × occupancy × residue × selection.
-// Both successful and rejected placements are required for each mode.
-func TestCapacityAndSelectionCombinations(t *testing.T) {
 	for _, mode := range scheduleDimensions[modeDimension] {
-		accepted, refused := 0, 0
-		for _, occupied := range scheduleDimensions[occupancyDimension] {
-			for _, residue := range scheduleDimensions[residueDimension] {
-				for _, selection := range scheduleDimensions[selectionDimension] {
-					row := scheduleCombination{modeDimension: mode, occupancyDimension: occupied, residueDimension: residue, foreignDimension: "no-foreign", backendDimension: "backend-ready", healthDimension: "healthy", selectionDimension: selection, policyDimension: "sharing-off", sleepDimension: "awake-only"}
-					want := row.expectation()
-					if want.ok {
-						accepted++
-					} else {
-						refused++
-					}
-					t.Run(row.name(), func(t *testing.T) { runScheduleCase(t, scheduleCase{input: row.input(), want: want}) })
-				}
-			}
-		}
-		if accepted == 0 || refused == 0 {
-			t.Fatalf("%s has no positive or negative witness", mode)
+		if accepted[mode] == 0 || refused[mode] == 0 {
+			t.Errorf("%s has no accepted or refused row with every gate open", mode)
 		}
 	}
 }

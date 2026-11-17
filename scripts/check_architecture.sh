@@ -204,7 +204,6 @@ measure() {
   engine_literal_server)
     grep -rlE '"vllm"|"sglang"' internal pkg cmd --include='*.go' 2>/dev/null \
       | grep -v '_test\.go' \
-      | grep -v '^internal/integrationtest/' \
       | grep -v '^internal/engines/engines\.go$' \
       | grep -v '^internal/server/deploy/engine\.go$' \
       | grep -v '^pkg/enginelog/' \
@@ -264,7 +263,7 @@ measure() {
   store_concrete_importers)
     go_imports \
       | grep -v '\.test$' \
-      | grep -v '/internal/integrationtest/' \
+      | grep -v '^gpuworks\.ai/gpuworks/internal/integrationtest/gpuallocation/internal/fixtures[[:space:]]' \
       | awk -F'\t' '$2 ~ /gpuworks\/internal\/server\/store( |$)/ {print $1}' \
       | sort -u | grep -c . || true
     ;;

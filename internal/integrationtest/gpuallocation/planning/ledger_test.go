@@ -33,16 +33,19 @@ func assertAllocation(t *testing.T, w fixtures.World, want allocationExpectation
 	}
 }
 
+// Each claim kind with the bytes it holds on a 64 GiB card while awake.
+var claimKinds = []struct {
+	name                string
+	limit, claim, bytes int64
+	whole               bool
+}{
+	{"whole", 0, 0, 64 * gib, true}, {"partition", 16 * gib, 0, fixtures.NVIDIASliceClaim(16 * gib), false}, {"native", 0, 20 * gib, 20 * gib, false},
+}
+
 // Unlike candidate availability, this matrix checks the exact accounting and
 // retention of each claim kind across every claim-bearing/terminal state.
 func TestClaimKindByInstanceState(t *testing.T) {
-	for _, mode := range []struct {
-		name                string
-		limit, claim, bytes int64
-		whole               bool
-	}{
-		{"whole", 0, 0, 64 * gib, true}, {"partition", 16 * gib, 0, 16*gib + gib/2, false}, {"native", 0, 20 * gib, 20 * gib, false},
-	} {
+	for _, mode := range claimKinds {
 		for _, state := range []struct {
 			name, state, phase string
 			holds              bool
@@ -69,13 +72,7 @@ func TestClaimKindByInstanceState(t *testing.T) {
 // Sleep/wake is a sequence: an order does not free memory before the report,
 // and a wake reserves its full claim before the engine has reported awake.
 func TestClaimKindThroughSleepAndWake(t *testing.T) {
-	for _, mode := range []struct {
-		name                string
-		limit, claim, bytes int64
-		whole               bool
-	}{
-		{"whole", 0, 0, 64 * gib, true}, {"partition", 16 * gib, 0, 16*gib + gib/2, false}, {"native", 0, 20 * gib, 20 * gib, false},
-	} {
+	for _, mode := range claimKinds {
 		t.Run(mode.name, func(t *testing.T) {
 			w := fixtures.NewWorld(t)
 			dep := w.Deployment(t, "holder", mode.limit)
