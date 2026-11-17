@@ -529,6 +529,24 @@ const replicaNodes = [
   { uuid: "node-b", name: "Node B", hostname: "b", state: "online", gpu_count: 2, gpus: [] },
 ];
 
+test("a single multi-node replica explains its follower even without replica actions", async () => {
+  const single = multiNodeDeployment();
+  stub("deploymentsPage", async () => listPage([single]));
+  stub("deployment", async () => single);
+  await openDetail();
+  selectInstance("follow-b");
+  const follower = within(screen.getByRole("region", { name: locale.detail.instanceDetails }));
+  assert.ok(follower.getByText("A follower rank: it is restarted, removed, slept and woken with its replica's leader."));
+  assert.ok(follower.getByText("follower · rank 1 · leader lead-a"));
+  const controls = within(screen.getByRole("group", { name: locale.detailLayout.replicaControls }));
+  assert.equal(controls.queryByRole("button", { name: locale.replica.restart }), null);
+  assert.equal(controls.queryByRole("button", { name: locale.replica.remove }), null);
+  selectInstance("lead-a");
+  const leader = within(screen.getByRole("region", { name: locale.detail.instanceDetails }));
+  assert.ok(leader.getByText("leader · rank 0"));
+  assert.equal(leader.queryByText(locale.replica.followerHint), null);
+});
+
 function multiNodeDeployment(overrides: Record<string, unknown> = {}) {
   return deployment({
     nnodes: 2, replicas: 1,
