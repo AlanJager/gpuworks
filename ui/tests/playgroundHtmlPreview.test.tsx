@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
-import { chatCatalog, controllableSSE, dom, locale, originalFetch, renderChat, sendPrompt, serveStreams } from "./helpers/playgroundChat.tsx";
+import { chatCatalog, controllableSSE, dom, i18n, locale, originalFetch, renderChat, sendPrompt, serveStreams } from "./helpers/playgroundChat.tsx";
 
 const { act, cleanup, fireEvent, screen, waitFor, within } = await import("@testing-library/react");
 const { PREVIEW_SANDBOX, RESTRICTED_CSP, PREVIEW_MESSAGE_SOURCE } = await import("../src/pages/playground/previewSandbox.ts");
@@ -105,7 +106,7 @@ test("a blocked request is explained; non-admins are told to ask an administrato
   fromFrame({ source: PREVIEW_MESSAGE_SOURCE, type: "blocked", directive: "img-src", uri: "http://10.0.0.5/logo.png" });
   const alert = await within(drawer()).findByText(p.blocked.replace("{{targets}}", "api.example.com, 10.0.0.5"));
   assert.ok(alert);
-  assert.ok(within(drawer()).getByText(p.askAdmin));
+  assert.match(within(drawer()).getByText(p.askAdmin).textContent ?? "", /Settings → Security & access → Security/);
   assert.equal(within(drawer()).queryByRole("link", { name: p.openSettings }), null);
 });
 
@@ -113,6 +114,7 @@ test("an administrator gets a link to the security setting", async () => {
   const { user } = await finishedHTMLBlock();
   fromFrame({ source: PREVIEW_MESSAGE_SOURCE, type: "blocked", directive: "connect-src", uri: "wss://socket.example/feed" });
   const link = await within(drawer()).findByRole("link", { name: p.openSettings });
+  assert.equal(link.textContent, "Open Settings → Security & access → Security");
   assert.equal(link.getAttribute("href"), "/settings#security");
   await user.click(link);
   assert.equal((await screen.findByTestId("where")).textContent, "/settings#security");
@@ -225,3 +227,21 @@ test("Escape closes the preview", async () => {
   fireEvent.keyDown(reload, { key: "Escape", code: "Escape", keyCode: 27 });
   await waitFor(() => assert.ok(screen.queryByRole("dialog", { name: p.title }) === null, "drawer gone"));
 });
+
+for (const role of ["admin", "user"] as const) {
+  test(`Chinese blocked-preview guidance names the actual settings tab for ${role}`, async () => {
+    await finishedHTMLBlock(chatCatalog(), role);
+    fromFrame({ source: PREVIEW_MESSAGE_SOURCE, type: "blocked", directive: "connect-src", uri: "https://api.example.com/" });
+    i18n.addResourceBundle("zh", "playground", JSON.parse(readFileSync(new URL("../src/i18n/locales/zh/playground.json", import.meta.url), "utf8")));
+    try {
+      await act(async () => { await i18n.changeLanguage("zh"); });
+      if (role === "admin") {
+        const link = await screen.findByRole("link", { name: "前往「设置 → 安全与访问 → 安全」" });
+        assert.equal(link.getAttribute("href"), "/settings#security");
+      } else {
+        assert.ok(await screen.findByText(/请联系管理员在「设置 → 安全与访问 → 安全」/));
+        assert.ok(!screen.queryByRole("link", { name: /前往「设置/ }));
+      }
+    } finally { await act(async () => { await i18n.changeLanguage("en"); }); }
+  });
+}
