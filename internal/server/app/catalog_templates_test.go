@@ -27,6 +27,10 @@ type templateFixture struct {
 	deployment store.Deployment
 	instance   store.Instance
 	model      store.Model
+	// implicitServedName persists launches the way a server that predates
+	// naming alias-less launches, or a host agent without
+	// proto.CapLaunchNameVerbatim, left them: no --served-model-name.
+	implicitServedName bool
 }
 
 // newTemplateFixture stores a running single-node deployment of a model made
@@ -102,6 +106,7 @@ func (f *templateFixture) persistAllocatedRuntimeLaunch(t *testing.T, port int, 
 		t.Fatal(err)
 	}
 	request.Source.Image = f.instance.Image
+	request.ImplicitServedName = f.implicitServedName
 	plan, err := planning.ResolveAllocatedLaunch(request, indexes, len(indexes), parallel, port, nil, model.WeightBytes, false)
 	if err != nil {
 		t.Fatal(err)
