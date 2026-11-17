@@ -93,7 +93,7 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer unlock()
+	defer func() { _ = unlock() }()
 	// Under the lock no other install is running: what an interrupted one
 	// left behind goes first.
 	if err := h.Dir.Cleanup(); err != nil {
@@ -103,7 +103,7 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer stage.Abort()
+	defer func() { _ = stage.Abort() }()
 	c, err := archive.Read(r, stage, h.limits())
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ func (h *Host) SetEnabled(id string, enabled bool) error {
 	if err != nil {
 		return err
 	}
-	defer unlock()
+	defer func() { _ = unlock() }()
 	version, err := h.Dir.Current(id)
 	if err != nil {
 		return err
@@ -310,7 +310,7 @@ func (h *Host) Remove(id string, purge bool) error {
 	if err != nil {
 		return err
 	}
-	defer unlock()
+	defer func() { _ = unlock() }()
 	version, err := h.Dir.Current(id)
 	if err != nil {
 		return err

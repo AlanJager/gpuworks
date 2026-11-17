@@ -35,7 +35,7 @@ func (h PushedStateHooks) GuardNode(c store.FleetCapacity) *messages.ProductErro
 
 // Holder is the scheduling holder (Host.HoldScheduling), under the one
 // source pushstate.HoldSource.
-func (h PushedStateHooks) Holder() store.SchedulingHolder { return pushedHolder{h.state} }
+func (h PushedStateHooks) Holder() store.SchedulingHolder { return pushedHolder(h) }
 
 // Banners is the console banner source (Host.AddBannerSource).
 func (h PushedStateHooks) Banners() api.BannerSource { return &pushedBanners{state: h.state} }

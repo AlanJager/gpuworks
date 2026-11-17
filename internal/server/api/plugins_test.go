@@ -101,7 +101,7 @@ func TestPluginRoutesAccess(t *testing.T) {
 	rig := newPluginRig(t, &fakePlugins{})
 	readToken, writeToken := rig.mint("read"), rig.mint("write")
 	for _, tc := range []struct {
-		method, path string
+		method, path                 string
 		member, read, write, session int
 	}{
 		{"GET", "/api/v1/plugins", 403, 200, 200, 200},

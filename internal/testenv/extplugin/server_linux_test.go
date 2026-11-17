@@ -280,7 +280,7 @@ func (s *site) fakePackage(id, version string) []byte {
 		},
 		Files: map[string]extsign.File{
 			"bin/linux_" + runtime.GOARCH + "/" + id: {Body: bin, Exec: true},
-			"locales/en.json":                         {Body: []byte(`{}`)},
+			"locales/en.json":                        {Body: []byte(`{}`)},
 		},
 	}
 	if id != "acme_fake" {

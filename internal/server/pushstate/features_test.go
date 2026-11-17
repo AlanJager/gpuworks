@@ -13,7 +13,7 @@ import (
 // namespace, an invalid key and a second declaration are left out.
 func TestFeaturesAreTheDeclaredKeysPushedStateAnswersFor(t *testing.T) {
 	stray := Package{ID: "acme_stray", Publisher: "acme", Grants: acmeGrants, Verified: true, Features: []extapi.FeatureDecl{
-		{Key: "acme.backup", Presentation: extapi.PresentationConceal, Gate: extapi.GateSelf}, // acme_backup declared it first
+		{Key: "acme.backup", Presentation: extapi.PresentationConceal, Gate: extapi.GateSelf},  // acme_backup declared it first
 		{Key: "rogue.thing", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf},  // another publisher's namespace
 		{Key: "acme.Bad Key", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf}, // not a key
 	}}

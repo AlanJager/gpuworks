@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 
 	"gpuworks.ai/gpuworks/internal/server/pluginexec"
 )
@@ -34,11 +33,9 @@ func RunTrampolineIfAsked() {
 // BuildFakePlugin builds the fake plugin as a static binary in dir (its
 // package directory) and returns the binary's path.
 func BuildFakePlugin(dir string) (string, error) {
-	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
-	if _, err := os.Stat(goBin); err != nil {
-		if goBin, err = exec.LookPath("go"); err != nil {
-			return "", fmt.Errorf("building the fake plugin needs the go command: %w", err)
-		}
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		return "", fmt.Errorf("building the fake plugin needs the go command: %w", err)
 	}
 	out := filepath.Join(dir, "fakeplugin")
 	cmd := exec.Command(goBin, "build", "-o", out, FakePluginPackage)
