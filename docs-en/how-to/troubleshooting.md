@@ -1128,6 +1128,12 @@ The agent checks containers of running instances every 15 seconds. Whether cause
 
 Containers of sleeping instances are still running and are not treated as exited. If a container check such as `docker inspect` fails, only that check cycle is skipped.
 
+### Engine Stops Responding After Reaching Running
+
+While the container is running, the agent also requests the engine's health endpoint (default `/health`) every 15 seconds. After a failed or timed-out request (3 seconds each) it retries every 5 seconds; any single success restarts the clock. Only after **3 consecutive minutes of failures** does it clean up the container, report `failed` with `ENGINE_UNRESPONSIVE`, and enter retry, with the message `engine health check failed continuously for …`. Busy periods such as the prefill of a long prompt or a kernel compile triggered by the first request are usually far shorter than 3 minutes and do not get the instance cleaned up; a truly hung engine is detected at most about 3 minutes later.
+
+SGLang's default `/health` submits a request that generates a single token to the scheduler, and it does not return while the scheduler is busy with a long prefill. The platform sets `SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0` for every SGLang instance so that `/health` bypasses the scheduler; during startup it still returns 200 only after the engine's own warmup generation completes, so readiness is unaffected. A hung scheduler is ended by SGLang's `--watchdog-timeout`, which terminates the process; that is then handled as the container exit in the previous section. A deployment's environment variables can override or remove this setting.
+
 ### Retry After Fixing the Cause
 
 The platform recreates instances through the controller. Containers use `--restart no` and do not rely on Docker restart policies.
@@ -1389,7 +1395,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 0c6cc6d9c371984f4bdc58c15281e664fa7c898cc103b60480ef7a6cfd38548e -->
+<!-- translation-source-sha256: e8fc467628d15eb7d9d1a8d0af21055390f789ec1a7117c32ec29ab0c3ec42b3 -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

@@ -93,7 +93,7 @@ type Engine struct {
 	headlessProbeInterval time.Duration
 	headlessStableChecks  int
 	livenessInterval      time.Duration
-	healthProbeAttempts   int
+	healthFailureWindow   time.Duration
 	healthProbeInterval   time.Duration
 	healthProbeTimeout    time.Duration
 	networkInterfaceName  func(string) (string, error)
@@ -178,8 +178,8 @@ func NewWithProber(driver runtime.Driver, report Reporter, log *slog.Logger, sta
 		headlessProbeInterval: time.Second,
 		headlessStableChecks:  3,
 		livenessInterval:      defaultLivenessInterval,
-		healthProbeAttempts:   runningHealthAttempts,
-		healthProbeInterval:   engineHealthRetryInterval,
+		healthFailureWindow:   runningHealthFailureWindow,
+		healthProbeInterval:   runningHealthRetryInterval,
 		healthProbeTimeout:    engineHealthTimeout,
 		networkInterfaceName:  networkInterfaceNameForIP,
 	}

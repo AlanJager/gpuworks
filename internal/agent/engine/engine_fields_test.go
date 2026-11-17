@@ -77,7 +77,7 @@ var notPerInstanceEngineFields = map[string]string{
 	"owner":    "the agent's own identity, labelled on every container it launches",
 	"stateDir": "configuration", "hostRoot": "configuration", "residueSettle": "configuration",
 	"headlessProbeInterval": "configuration", "headlessStableChecks": "configuration",
-	"livenessInterval": "configuration", "healthProbeAttempts": "configuration",
+	"livenessInterval": "configuration", "healthFailureWindow": "configuration",
 	"healthProbeInterval": "configuration", "healthProbeTimeout": "configuration",
 	"mu":               "guards the per-instance state",
 	"assetMu":          "serializes content-addressed cache publication",
