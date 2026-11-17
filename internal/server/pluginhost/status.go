@@ -38,6 +38,10 @@ type Status struct {
 	PID    int
 	// Starts counts the processes started since the plugin was added.
 	Starts int
+	// Generation numbers the current (or last) process: it rises with
+	// every process the host starts, for any plugin, and is the
+	// generation its host API connection pushes under (Owner.Generation).
+	Generation uint64
 	// Isolation is "landlock" when the plugin runs in a Landlock sandbox,
 	// "none" otherwise.
 	Isolation string

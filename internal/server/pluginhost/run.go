@@ -94,9 +94,11 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 	if landlockABI() > 0 {
 		isolation = "landlock"
 	}
+	gen := h.generation.Add(1)
 	i.update(func(s *Status) {
 		s.State, s.Code, s.Params, s.PID, s.Use, s.Isolation = StateStarting, "", nil, 0, nil, isolation
 		s.Starts++
+		s.Generation = gen
 	})
 	if spec.RequireLandlock && isolation != "landlock" {
 		return outcome{kind: outcomeFailed, code: messages.ErrorPluginIsolationUnavailable,
@@ -171,7 +173,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 		i.terminate(proc, conn)
 		return outcome{kind: outcomeStopped}, time.Time{}
 	}
-	hc.accept(Owner{ID: spec.ID, Version: spec.Version, Lifecycle: spec.Lifecycle, Grant: spec.Grant, Use: cloneUse(resp.Use)})
+	hc.accept(Owner{ID: spec.ID, Version: spec.Version, Lifecycle: spec.Lifecycle, Grant: spec.Grant, Use: cloneUse(resp.Use), Generation: gen})
 	run := &procRun{conn: conn, resp: resp, key: req.PrincipalKey, health: extapi.Health{Status: extapi.HealthOK}}
 	run.touch()
 	upSince = time.Now()

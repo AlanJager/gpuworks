@@ -190,6 +190,10 @@ type Owner struct {
 	Grant     extapi.PluginGrant
 	// Use is the negotiated version of each capability the plugin uses.
 	Use map[string]int
+	// Generation is the process's number (Status.Generation): a push over
+	// the connection of a process the host has since replaced carries a
+	// lower one.
+	Generation uint64
 }
 
 // Error is a gwx/1 error: one the host API answers a plugin with, or one a

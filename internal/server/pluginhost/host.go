@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -21,6 +22,10 @@ type Host struct {
 	timing  Timing
 	spawner Spawner
 	log     *slog.Logger
+
+	// generation numbers every process the host starts, across plugins
+	// and restarts, so a later process always has a higher number.
+	generation atomic.Uint64
 
 	mu      sync.Mutex
 	plugins map[string]*instance
