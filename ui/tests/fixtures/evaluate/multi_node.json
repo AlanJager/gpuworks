@@ -115,6 +115,8 @@
     "/model"
   ],
   "argv": [
+    "--served-model-name",
+    "/model",
     "--host",
     "127.0.0.1",
     "--port",
@@ -143,6 +145,8 @@
   "command": [
     "vllm",
     "serve",
+    "/model",
+    "--served-model-name",
     "/model",
     "--host",
     "127.0.0.1",
@@ -207,6 +211,8 @@
         "/model"
       ],
       "argv": [
+        "--served-model-name",
+        "/model",
         "--host",
         "127.0.0.1",
         "--port",
@@ -235,6 +241,8 @@
       "command": [
         "vllm",
         "serve",
+        "/model",
+        "--served-model-name",
         "/model",
         "--host",
         "127.0.0.1",
@@ -659,7 +667,7 @@
     "performance_mode": "balanced",
     "served_model_name": ""
   },
-  "manual_command_draft": "set -eu\ncase \"${GPUWORKS_HEADLESS}\" in\n  0)\n    exec vllm serve /model --host 127.0.0.1 --port ${GPUWORKS_API_PORT} --tensor-parallel-size 2 --scheduling-policy priority --distributed-executor-backend mp --nnodes 2 --node-rank ${GPUWORKS_NODE_RANK} --master-addr ${GPUWORKS_MASTER_ADDR} --master-port ${GPUWORKS_MASTER_PORT} --enable-prompt-tokens-details --enable-per-request-metrics --max-model-len auto --gpu-memory-utilization 0.9\n    ;;\n  1)\n    exec vllm serve /model --tensor-parallel-size 2 --scheduling-policy priority --distributed-executor-backend mp --nnodes 2 --node-rank ${GPUWORKS_NODE_RANK} --headless --master-addr ${GPUWORKS_MASTER_ADDR} --master-port ${GPUWORKS_MASTER_PORT} --enable-prompt-tokens-details --enable-per-request-metrics --max-model-len auto --gpu-memory-utilization 0.9\n    ;;\n  *)\n    echo \"unexpected launch class ${GPUWORKS_HEADLESS}\" \u003e\u00262\n    exit 1\n    ;;\nesac",
+  "manual_command_draft": "set -eu\ncase \"${GPUWORKS_HEADLESS}\" in\n  0)\n    exec vllm serve /model --served-model-name /model --host 127.0.0.1 --port ${GPUWORKS_API_PORT} --tensor-parallel-size 2 --scheduling-policy priority --distributed-executor-backend mp --nnodes 2 --node-rank ${GPUWORKS_NODE_RANK} --master-addr ${GPUWORKS_MASTER_ADDR} --master-port ${GPUWORKS_MASTER_PORT} --enable-prompt-tokens-details --enable-per-request-metrics --max-model-len auto --gpu-memory-utilization 0.9\n    ;;\n  1)\n    exec vllm serve /model --tensor-parallel-size 2 --scheduling-policy priority --distributed-executor-backend mp --nnodes 2 --node-rank ${GPUWORKS_NODE_RANK} --headless --master-addr ${GPUWORKS_MASTER_ADDR} --master-port ${GPUWORKS_MASTER_PORT} --enable-prompt-tokens-details --enable-per-request-metrics --max-model-len auto --gpu-memory-utilization 0.9\n    ;;\n  *)\n    echo \"unexpected launch class ${GPUWORKS_HEADLESS}\" \u003e\u00262\n    exit 1\n    ;;\nesac",
   "manual_command_variables": [
     "GPUWORKS_API_HOST",
     "GPUWORKS_API_PORT",

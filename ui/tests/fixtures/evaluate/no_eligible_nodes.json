@@ -17,6 +17,8 @@
     "/model"
   ],
   "argv": [
+    "--served-model-name",
+    "/model",
     "--host",
     "127.0.0.1",
     "--port",
@@ -32,6 +34,8 @@
   "command": [
     "vllm",
     "serve",
+    "/model",
+    "--served-model-name",
     "/model",
     "--host",
     "127.0.0.1",

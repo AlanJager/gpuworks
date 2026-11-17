@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +15,10 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-func TestClearedServedNamePreservesPublicNameButOmitsEngineAlias(t *testing.T) {
+// A cleared alias keeps the model's public routing name, and the engine is
+// named after the model mount rather than the public name: the string the
+// gateway sends upstream for an alias-less deployment.
+func TestClearedServedNamePreservesPublicNameAndNamesEngineAfterMount(t *testing.T) {
 	for _, served := range []string{"", "custom-public"} {
 		t.Run(served, func(t *testing.T) {
 			st, err := store.Open(":memory:", bus.New())
@@ -49,8 +51,15 @@ func TestClearedServedNamePreservesPublicNameButOmitsEngineAlias(t *testing.T) {
 			if err := json.Unmarshal(evaluation.Body.Bytes(), &preview); err != nil {
 				t.Fatal(err)
 			}
-			if slices.Contains(append(preview.Entrypoint, preview.Argv...), "--served-model-name") != (served != "") {
-				t.Fatalf("preview did not preserve cleared alias: %s", evaluation.Body.String())
+			engineName := served
+			if engineName == "" {
+				engineName = preview.ModelMount
+			}
+			if engineName == "" {
+				t.Fatalf("preview reports no model mount: %s", evaluation.Body.String())
+			}
+			if got := deploy.ServedModelName(proto.ResolvedLaunch{Entrypoint: preview.Entrypoint, Argv: preview.Argv}); got != engineName {
+				t.Fatalf("preview engine name=%q, want %q: %s", got, engineName, evaluation.Body.String())
 			}
 			created := httptest.NewRecorder()
 			handler.createDeployment(created, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)))
@@ -78,8 +87,12 @@ func TestClearedServedNamePreservesPublicNameButOmitsEngineAlias(t *testing.T) {
 			}
 			engine, _ := deploy.SelectEngine(deployment.Engine)
 			launch := engine.Build(deploy.Params{ModelPath: "/model", ServedName: deployment.ServedName, Quick: quick})
-			if slices.Contains(launch.Entrypoint, "--served-model-name") != (served != "") {
-				t.Fatalf("persisted launch=%v", launch.Entrypoint)
+			want := served
+			if want == "" {
+				want = "/model"
+			}
+			if got := deploy.ServedModelName(proto.ResolvedLaunch{Entrypoint: launch.Entrypoint, Argv: launch.Argv}); got != want {
+				t.Fatalf("persisted launch engine name=%q, want %q: %v", got, want, launch.Entrypoint)
 			}
 		})
 	}
