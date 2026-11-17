@@ -154,6 +154,12 @@ type Service interface{ Run(ctx context.Context) error }
 
 横幅：链接指向当前页面（不计查询与片段）的横幅，在那个页面上不显示，由页面自己说明。
 
+SDK 带主版本号 `SDK_MAJOR`（当前为 1），只在删掉或改变某个导出的含义时加一；新增导出不改版本，`ui/tests/consoleExtensionsSdk.test.ts` 固定导出清单。文件收发用 SDK 的 `downloadFile`、`saveBlob` 与 `sendForm`：
+
+- `downloadFile` 带会话请求，文件名取响应的 `Content-Disposition`，没有时用调用方给的名字。错误响应按码解成本地化的 `APIError`，不会把错误正文存成文件。
+- `saveBlob` 把一个 Blob 交给浏览器下载。
+- `sendForm` 发 multipart 表单，错误解码与 `sendJSON` 相同。
+
 ## 码与文案
 
 扩展产生的失败与拒绝同样遵守 [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md)：UPPER_SNAKE 码、插值参数、英文 fallback。扩展的码与 en/zh 文案放在扩展自己的代码与界面模块里，不进开源的 `messages` 与 locale 文件；没有叠加界面时，控制台显示英文 fallback。

@@ -154,6 +154,12 @@ The entries a UI module can add:
 
 Banners: a banner whose link opens the current page (query and fragment aside) is left out on that page, which states the matter itself.
 
+The SDK carries a major version, `SDK_MAJOR` (1 for now), which goes up only when an export is removed or changes meaning; adding an export leaves it alone, and `ui/tests/consoleExtensionsSdk.test.ts` pins the export list. Files go through the SDK's `downloadFile`, `saveBlob` and `sendForm`:
+
+- `downloadFile` asks with the session and names the file from the answer's `Content-Disposition`, or else from the name the caller gives. An error answer decodes by its code into a localized `APIError`; the error body is never saved as the file.
+- `saveBlob` hands a Blob to the browser as a download.
+- `sendForm` sends a multipart form and decodes errors as `sendJSON` does.
+
 ## Codes and texts
 
 Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md) too: UPPER_SNAKE codes, interpolated params, an English fallback. An extension's codes and their en/zh texts live in the extension's own code and UI modules, not in the open-source `messages` or locale files; without the overlay, the console shows the English fallback.
@@ -186,4 +192,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 6aa37ab39e72fa0d3c9276ebccf179ed212b34c220b73bc4fb0c2447509e4ccb -->
+<!-- translation-source-sha256: d900b18a293bae66127caa8cf4e8fba00010c93507ef156c636503d51f273144 -->
