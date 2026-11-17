@@ -13,11 +13,13 @@ import (
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
-// startStopWait bounds how long shutdown waits for Start to return, and
-// drainWait how long answers in flight get to reach the server.
+// startStopWait bounds how long shutdown waits for Start to return,
+// drainWait how long handlers in flight get to finish when the plugin ends
+// on its own, and goodbyeWait the HTTP/2 goodbye after them.
 const (
 	startStopWait = 5 * time.Second
 	drainWait     = 2 * time.Second
+	goodbyeWait   = 100 * time.Millisecond
 )
 
 // session is one run of the plugin on its two connections.
@@ -27,6 +29,7 @@ type session struct {
 	shutdown  chan struct{}
 	stopOnce  sync.Once
 	started   atomic.Bool
+	inflight  atomic.Int64
 	startDone chan error
 	failed    chan error
 	gone      chan struct{}
@@ -65,12 +68,21 @@ func serveConns(ctx context.Context, cfg Config, serve, host net.Conn, parentPol
 	}
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
+	drain := false
 	defer func() {
-		// Let answers in flight (the shutdown call's own, a refusal) reach
-		// the server before the connection goes.
-		sctx, scancel := context.WithTimeout(context.Background(), drainWait)
-		_ = srv.Shutdown(sctx)
-		scancel()
+		// When the plugin ends on its own (shutdown, a failed init or
+		// Start), let the answers in flight reach the server first: wait
+		// for the handlers to return, then say goodbye briefly. A server
+		// that hung up already ends this at once.
+		if drain {
+			deadline := time.Now().Add(drainWait)
+			for s.inflight.Load() > 0 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			sctx, scancel := context.WithTimeout(context.Background(), goodbyeWait)
+			_ = srv.Shutdown(sctx)
+			scancel()
+		}
 		_ = ln.Close()
 		_ = srv.Close()
 		<-served
@@ -90,13 +102,16 @@ func serveConns(ctx context.Context, cfg Config, serve, host net.Conn, parentPol
 		case <-parentGone:
 			return ErrServerGone
 		case err := <-s.failed:
+			drain = true
 			return err
 		case err := <-startDone:
 			if err != nil {
+				drain = true
 				return err
 			}
 			startDone = nil // Start finished its work; keep serving
 		case <-s.shutdown:
+			drain = true
 			cancel()
 			if startDone != nil && s.started.Load() {
 				select {
@@ -113,6 +128,8 @@ func serveConns(ctx context.Context, cfg Config, serve, host net.Conn, parentPol
 }
 
 func (s *session) route(w http.ResponseWriter, r *http.Request) {
+	s.inflight.Add(1)
+	defer s.inflight.Add(-1)
 	r, cancel := withDeadline(r)
 	defer cancel()
 	switch r.URL.Path {

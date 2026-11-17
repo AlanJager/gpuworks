@@ -71,11 +71,13 @@ func Start(t testing.TB, cfg pluginsdk.Config) *Harness {
 		}
 		return c, nil
 	}}
-	h.cc, err = tr.NewClientConn(context.Background(), "http", "gwx-plugin:80")
-	if err != nil {
-		t.Fatal(err)
+	if h.cc, err = tr.NewClientConn(context.Background(), "http", "gwx-plugin:80"); err == nil {
+		h.client = &http.Client{Transport: h.cc}
+	} else {
+		// The plugin hung up at once (a config it refuses); its calls fail
+		// with this, and Wait returns why.
+		h.client = &http.Client{Transport: failingTransport{err}}
 	}
-	h.client = &http.Client{Transport: h.cc}
 	t.Cleanup(func() { _ = h.Close() })
 	return h
 }
@@ -243,7 +245,9 @@ func (h *Harness) Wait(timeout time.Duration) error {
 // Close closes the server's ends of both connections, as a dying server
 // does, and returns what the plugin's Serve returned.
 func (h *Harness) Close() error {
-	_ = h.cc.Close()
+	if h.cc != nil {
+		_ = h.cc.Close()
+	}
 	_ = h.srv.Close()
 	for _, c := range h.conns {
 		_ = c.Close()
@@ -276,3 +280,7 @@ func (l *oneConnListener) Close() error {
 }
 
 func (l *oneConnListener) Addr() net.Addr { return l.conn.LocalAddr() }
+
+type failingTransport struct{ err error }
+
+func (f failingTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, f.err }
