@@ -117,8 +117,9 @@ ADR 0070 设想由另一个 Go 模块把带额外能力的代码编进 server，
 - 插件包的读取与校验（决策 4、5）：`internal/server/extpkg` 按校验顺序逐项、失败即拒绝地校验 `.gwpkg`，在数据目录里暂存、原子切换与回滚，安装、启动前与列出时重新校验（启动前只重新哈希变过的文件）；信任链、主机信任的签发者与站点策略（`server.yaml` 的 `plugins`）、吊销、防回滚最低版本与离线导入的信任更新、吊销列表和包索引存在核心的带类型表里；`gpuworks plugin` 的 `install`、`list`、`remove`、`trust import`、`index import` 与只读的 `compat` 子命令在 server 停止时也能用（[CLI 参考](../reference/cli.md#gpuworks-plugin)）。本构建还没有编进项目根密钥。
 - 核心降级的兼容性检测（决策 16）：数据库里有比本构建新的核心版本标记时，server 以 `PLUGIN_STATE_TOO_NEW` 拒绝启动并说明应运行的版本，不改动数据。
 - `plugin-exec` 跳板（决策 6 的沙箱）、插件进程监管、`gwx/1` 的双向连接与宿主接口的推送入口，以及插件作者用的 `pkg/pluginsdk`（含进程内测试工具 `plugintest`）和对假插件进程的契约测试（`internal/testenv/extplugin`）；尚未接入 `serve`，见[扩展点](../dev/extensions.md#可安装扩展)。
+- 推送状态的核心部分（决策 8、9、10 与 16 的核心一侧，`internal/server/pushstate`）：首批五种推送表的接收与权威校验、带类型表的持久化与每个 tick 一个写事务、启动时先于插件生效、版本标记的降级检测、零分配的执行钩子、extclock 与纠正、掉线宽限、限制覆盖、卸载，以及按接入顺序的核心容量选择（`internal/server/fleetcap`），见[扩展点](../dev/extensions.md#推送状态)。它还没有接到插件宿主上。
 
-已决定、尚未实现：推送表与写入 tick、插件宿主（内置模块）与动态功能声明、动态路由挂载、宽限与时间线、extclock 与纠正、限制覆盖、`users.local_admin` 兜底、`/api/v1/plugins` 管理接口、`gpuworks plugin` 的其余子命令（启用、停用、升级、回滚等）、核心代码功能键字面量的棘轮。按版本名分开的发布机制仍在代码里（决策 17 的清理之前）。实现时各部分随代码补进 `docs/`。
+已决定、尚未实现：插件宿主（内置模块）与动态功能声明、动态路由挂载、覆盖的管理路由、`users.local_admin` 兜底、`/api/v1/plugins` 管理接口、`gpuworks plugin` 的其余子命令（启用、停用、升级、回滚、离线 `clock reset` 等）、核心代码功能键字面量的棘轮。按版本名分开的发布机制仍在代码里（决策 17 的清理之前）。实现时各部分随代码补进 `docs/`。
 
 ## 取舍
 
