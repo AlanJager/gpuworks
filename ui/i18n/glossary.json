@@ -1383,6 +1383,10 @@
       "translations": { "zh": "可用性" }
     },
     {
+      "term_en": "Node Identity",
+      "translations": { "zh": "节点身份" }
+    },
+    {
       "term_en": "Plugin Package",
       "translations": { "zh": "插件包" }
     },

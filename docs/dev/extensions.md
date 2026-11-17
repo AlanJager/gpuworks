@@ -70,8 +70,10 @@ type Service interface{ Run(ctx context.Context) error }
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
 | `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
 | `NodeFleet(ctx)` | 全部节点的保持事实（`store.NodeHoldFacts`），按 id（加入顺序）排序，读池上一次查询 |
+| `NodeIdentity(ctx, ids, salt)` | 指定节点的加盐硬件身份（`store.NodeIdentity`），原始序列号不出核心，见[节点身份与节点清单](#节点身份与节点清单) |
+| `NodeInventory(ctx, cursor, limit)` | 按加入顺序分页的节点清单（`store.NodeInventoryPage`）：名称、加入时间、自己的卡（序号、型号、有无序列号） |
 
-`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds` 与 `NodeFleet` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
+`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`NodeFleet`、`NodeIdentity` 与 `NodeInventory` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
 扩展路由挂在 `/api/v1/x/<名>/` 下：`api.RouteSpec.Pattern` 相对 `/api/v1`，是 `/x/<名>` 或以 `/x/<名>/` 开头，且是规整的路径（没有 `.`、`..`、`//` 与结尾的 `/`）；越出自己的命名空间、路径不规整，或同一方法下两个模式只差参数名（`{id}` 与 `{name}`），都在路由构建时 panic。核心不在 `/api/v1/x/` 下注册任何路由，所以模块名可以与核心路径段同名（如 `nodes`），也不会与核心将来新增的路径冲突。
 
@@ -91,6 +93,30 @@ type Service interface{ Run(ctx context.Context) error }
 - 总线主题 `store.NodeFleetTopic`：节点插入（三条插入路径）、删除，以及改变了保持事实（卡数或厂商；id、UUID、加入时间与所属 Kubernetes 集群不会变）的状态上报，各发一个事件，以节点 id 为键；用 `store.NodeFleetChangeOf(ev)` 读出 `{NodeID, Kind}`（`NodeInserted`、`NodeDeleted`、`NodeFactsChanged`），不要解析 `node` 主题的原因文本。没有改变保持事实的例行上报不发事件，所以发布方的开销不变。和所有总线主题一样，跟不上的订阅者只收到每个节点最新的一个事件，所以订阅者把任何事件都当作「这个节点、因而集合变了」，合并后从 `NodeFleet` 重算，不数事件。节点 id 删除后不再复用。
 
 `Service.Run` 由 `App.Run` 的同一个 `services()` 循环启动，与健康检查、卡故障记录、用量报告、通知刷新并列，在控制器启动之后运行；`ctx` 结束时返回，返回的错误只记日志、不重启。同一个 App 可以多次 `Run`（原地重启），所以 `Run` 必须能被再次调用。
+
+## 节点身份与节点清单
+
+需要认出「同一台机器、同一批卡」的模块（如节点清单导出、支持包）经 `Host` 读加盐摘要，而不是原始序列号：
+
+- **主机系统 UUID**：agent 在每次握手的 hello 里上报 `host_system_uuid`，即固件的系统 UUID（Linux 读 `/sys/class/dmi/id/product_uuid`，macOS 读 `IOPlatformUUID`），经 `proto.NormalizeHostSystemUUID` 规整（小写；占位值、全 0、全 F 与格式不对的值丢弃）。Linux 上该文件只有 root 能读，所以非 root 的 agent 不上报；旧 agent 也不上报，照常接入。server 收到后再规整一次，只在与节点行不同时写入 `nodes.host_system_uuid`，例行重连不多一次写；空值从不清掉已记下的值。它描述机器而不是节点：同一台机器上的多个逻辑节点上报同一个值。
+- **卡的序列号**：卡的标识就是探测上报的 `GPUInfo.UUID`。`accelerator.CardSerial` 区分硬件自带、换槽换机也不变的序列号与探测按槽位或序号编出来的标识，只有前者参与身份：
+
+  | 厂商 | 上报的标识 | 稳定 |
+  |---|---|---|
+  | NVIDIA、PPU、昆仑芯 | 厂商 CLI 给出的卡 UUID | 是 |
+  | AMD | `amd-<unique_id>`（ASIC 序列号） | 是；驱动没有 `unique_id` 时为 `amd-<PCI 地址>`，否 |
+  | 海光 | `GPU-<unique id>`（hy-smi 或 sysfs） | 是；没有时为 `hygon-<PCI 地址>` 或 `hygon-<序号>`，否 |
+  | 昇腾 | `ascend-<序号>` | 否（npu-smi 的表格不给序列号） |
+  | Apple | `APPLE-<IOPlatformUUID>` | 是，与主机系统 UUID 是同一台机器 |
+  | 假探测器 | `GPU-FAKE-<n>`、`FAKE-<厂商>-<n>` | 否（测试值，每个节点都一样） |
+
+- `NodeIdentity(ctx, ids, salt)` 对每个仍存在的指定节点给出 `{NodeID, Host, Cards, CardsWithoutSerial}`，按 id 升序：
+  - `Host` 与 `Cards` 的每一项是 `store.IdentityPart{H, Tail}`。`H` 是以调用方的盐为密钥、对「种类、一个零字节、原始值」做 HMAC-SHA256 的前 16 个十六进制字符（8 字节），种类是 `host` 或 `card`；`Tail` 是原始值的最后 4 个字符，供人到机器上核对，原始值不足 8 个字符时为空，所以尾号永远不等于整个值。同一个盐每次得到相同的摘要，不同的盐得到互不相关的摘要。
+  - `Cards` 只含本节点可用（`accelerator.CardUsable`）且带序列号的卡，按 `H` 排序；可用但标识是编出来的卡只计入 `CardsWithoutSerial`。所以同一台机器上的两个逻辑节点共用 `Host`，各自只有自己的卡。
+  - 部分答复：agent 还没上报主机 UUID 时 `Host` 是零值（`Known()` 为假）；不存在的节点（从未有过或已删除）不出现在结果里，调用方比对 id；重复的 id 只算一次。
+  - `ids` 为 1 到 500 个节点，否则返回 `store.ErrNodeReadBatch`；盐为 1 到 256 字节，否则返回 `store.ErrIdentitySalt`。越界的调用被拒绝，不会被截断。
+- `NodeInventory(ctx, cursor, limit)` 按 id（加入顺序）返回一页 `store.NodeInventoryPage{Nodes, Next}`：每个节点的 id、UUID、显示名（运维起的名字，否则主机名）、加入时间、`HostReported`（主机 UUID 是否已知），以及本节点可用的卡 `{Index, Model, Serial}`，不含任何原始序列号。第一页 `cursor` 为 0，之后传上一页的 `Next`；`Next` 为 0 表示已是最后一页。`limit` 为 1 到 500，否则 `store.ErrNodeReadBatch`。节点 id 不复用，所以翻页之间加入或删除的节点不会让其余节点移位或重复。
+- 规模：两者都是钉住的读，在读池上各两次带索引的查询（节点按主键查找或按主键范围、卡走 `gpus` 的 `(node_id, ident)` 索引），一次最多 500 个节点。按页面上显示的节点调用 `NodeIdentity`，不要在每个事件里对整个节点集合调用。身份的变化（新的主机 UUID、换卡）不在 `store.NodeFleetTopic` 上发布；需要跟上它的模块在读页面时重新读。
 
 ## 表与迁移
 
