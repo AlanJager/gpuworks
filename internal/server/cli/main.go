@@ -42,6 +42,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
 	"gpuworks.ai/gpuworks/internal/server/installcred"
+	"gpuworks.ai/gpuworks/internal/server/pluginexec"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -60,7 +61,7 @@ func Main(args []string, opt Options) int {
 var builtinCommands = []string{
 	"serve", "version", "-v", "--version", "database-migration", selfinstall.EditionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
 	"install", "upgrade", "uninstall", "restart", "stop", "support-bundle",
-	"reset-password", "migrate", "plugin", "expose", experiencelaunch.Command,
+	"reset-password", "migrate", "plugin", "expose", experiencelaunch.Command, pluginexec.Command,
 	"help", "-h", "--help",
 }
 
@@ -144,6 +145,10 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 			log.Error("expose failed", "err", err)
 			return 1
 		}
+	case pluginexec.Command:
+		// The server starts every plugin through this, never a person; on
+		// success the process becomes the plugin and this does not return.
+		return pluginexec.Main(rest)
 	case experiencelaunch.Command:
 		if err := experienceCommand(rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("experience environment exited", "err", err)
