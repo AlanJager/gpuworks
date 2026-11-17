@@ -211,8 +211,8 @@ func (s *State) ownsLocked(p *Pusher, t extapi.Table) *extapi.WireError {
 // to commit, from the owner's current process.
 func (s *State) freshLocked(p *Pusher, next *part) *extapi.WireError {
 	if p.Generation < s.spawn[p.ID] {
-		return wireError(messages.ErrorPluginStateStale, extapi.ReasonFailedPrecondition,
-			map[string]any{"kind": next.kind, "generation": int64(p.Generation), "held": int64(s.spawn[p.ID])},
+		return wireError(messages.ErrorPluginStateConnectionReplaced, extapi.ReasonFailedPrecondition,
+			map[string]any{"id": p.ID, "kind": next.kind},
 			"plugin %s pushed over the connection of process %d, replaced by %d", p.ID, p.Generation, s.spawn[p.ID])
 	}
 	s.spawn[p.ID] = p.Generation

@@ -15,9 +15,12 @@ const (
 	// its manifest does not list ({kind}, {field}, {row}).
 	ErrorPluginStateNotOwner = "PLUGIN_STATE_NOT_OWNER"
 	// ErrorPluginStateStale: the push's generation is not above the one the
-	// server holds or is about to commit, or it came over a connection of a
-	// process the plugin has since replaced ({kind}, {generation}, {held}).
+	// server holds or is about to commit ({kind}, {generation}, {held}).
 	ErrorPluginStateStale = "PLUGIN_STATE_STALE"
+	// ErrorPluginStateConnectionReplaced: plugin {id} pushed {kind} over the
+	// connection of a process the server has since replaced, or of a
+	// package version no longer started.
+	ErrorPluginStateConnectionReplaced = "PLUGIN_STATE_CONNECTION_REPLACED"
 	// ErrorPluginStateNotSaved: the server could not persist the push, so it
 	// did not apply it; the plugin pushes again ({kind}).
 	ErrorPluginStateNotSaved = "PLUGIN_STATE_NOT_SAVED"

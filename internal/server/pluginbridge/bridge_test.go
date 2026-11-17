@@ -228,11 +228,11 @@ func TestStateHostPushesAsTheStartedPackage(t *testing.T) {
 		}
 		return e
 	}
-	if _, err := h.Push(context.Background(), owner, http.MethodPut, push); refusal(err).Wire.Code != messages.ErrorPluginStateStale {
+	if _, err := h.Push(context.Background(), owner, http.MethodPut, push); refusal(err).Wire.Code != messages.ErrorPluginStateConnectionReplaced {
 		t.Fatalf("unknown owner = %v", err)
 	}
 	b.pushers["acme_backup"] = identity{version: "1.0.0", pusher: pushstate.Pusher{ID: "acme_backup", Publisher: "acme", Grants: w.pub.Cert.Grants}}
-	if _, err := h.Push(context.Background(), pluginhost.Owner{ID: "acme_backup", Version: "0.9.0"}, http.MethodPut, push); refusal(err).Wire.Code != messages.ErrorPluginStateStale {
+	if _, err := h.Push(context.Background(), pluginhost.Owner{ID: "acme_backup", Version: "0.9.0"}, http.MethodPut, push); refusal(err).Wire.Code != messages.ErrorPluginStateConnectionReplaced {
 		t.Fatalf("other version = %v", err)
 	}
 	if e := refusal2(h.Push(context.Background(), owner, http.MethodPatch, push)); e.Status != http.StatusNotImplemented && e.Wire.Reason != extapi.ReasonUnsupported {

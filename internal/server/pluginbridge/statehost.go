@@ -21,15 +21,15 @@ func (h stateHost) Held(id string) []extapi.HeldState { return h.b.state.Held(id
 // codes), never anything in the push, and the connection's process
 // generation lets pushed state refuse a replaced process. A connection of
 // a package started under another version, or no longer started, is
-// refused as stale.
+// refused as replaced.
 func (h stateHost) Push(ctx context.Context, owner pluginhost.Owner, method string, push *extapi.StatePush) (*extapi.StateAck, error) {
 	h.b.mu.Lock()
 	id, ok := h.b.pushers[owner.ID]
 	h.b.mu.Unlock()
 	if !ok || id.version != owner.Version {
-		return nil, pluginhost.Refuse(extapi.ReasonFailedPrecondition, messages.ErrorPluginStateStale,
+		return nil, pluginhost.Refuse(extapi.ReasonFailedPrecondition, messages.ErrorPluginStateConnectionReplaced,
 			"the plugin is no longer started under this connection's package",
-			map[string]any{"kind": push.Kind, "generation": int64(owner.Generation), "held": int64(0)})
+			map[string]any{"id": owner.ID, "kind": push.Kind})
 	}
 	if method == http.MethodPatch {
 		return nil, pluginhost.Refuse(extapi.ReasonUnsupported, messages.ErrorPluginHostRouteUnknown,

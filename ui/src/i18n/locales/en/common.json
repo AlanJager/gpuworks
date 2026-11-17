@@ -984,6 +984,7 @@
     "PLUGIN_STATE_ON_DEMAND": "Plugin {{id}} starts on demand and may not push state.",
     "PLUGIN_STATE_NOT_PERMITTED": "The plugin may not push {{kind}} state: it needs {{needs}}.",
     "PLUGIN_STATE_NOT_OWNER": "The plugin pushed {{kind}} state it does not answer for: {{field}} ({{row}}).",
+    "PLUGIN_STATE_CONNECTION_REPLACED": "Plugin {{id}} pushed {{kind}} state over the connection of a process or package version the server has since replaced.",
     "PLUGIN_STATE_STALE": "The plugin pushed {{kind}} state at generation {{generation}}, but the server already holds generation {{held}}.",
     "PLUGIN_STATE_NOT_SAVED": "The server could not save the plugin's {{kind}} state, so it was not applied. The plugin will push it again.",
     "PLUGIN_DOWN": "Plugin {{plugin}} has been down since {{since}}. What it set up stays in force.",

@@ -125,7 +125,7 @@ func TestAPushOverAReplacedProcessIsStale(t *testing.T) {
 	h.s.OwnerUp("acme_authority", 3)
 	old := pusherOf(acmeAuthority)
 	old.Generation = 2
-	if _, w := h.try(old, extapi.KindAvailability, 1, backupFull); w == nil || w.Code != messages.ErrorPluginStateStale {
+	if _, w := h.try(old, extapi.KindAvailability, 1, backupFull); w == nil || w.Code != messages.ErrorPluginStateConnectionReplaced || w.Params["id"] != "acme_authority" {
 		t.Fatalf("old process push = %+v", w)
 	}
 	current := old

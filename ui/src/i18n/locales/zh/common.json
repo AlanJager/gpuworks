@@ -984,6 +984,7 @@
     "PLUGIN_STATE_ON_DEMAND": "插件 {{id}} 按需启动，不能推送状态。",
     "PLUGIN_STATE_NOT_PERMITTED": "该插件无权推送 {{kind}} 状态：需要 {{needs}}。",
     "PLUGIN_STATE_NOT_OWNER": "该插件推送了不归它负责的 {{kind}} 状态：{{field}}（{{row}}）。",
+    "PLUGIN_STATE_CONNECTION_REPLACED": "插件 {{id}} 通过已被服务器替换的进程或包版本的连接推送了 {{kind}} 状态。",
     "PLUGIN_STATE_STALE": "该插件推送的 {{kind}} 状态版本为 {{generation}}，但服务器已持有版本 {{held}}。",
     "PLUGIN_STATE_NOT_SAVED": "服务器未能保存该插件的 {{kind}} 状态，因此没有生效，插件会重新推送。",
     "PLUGIN_DOWN": "插件 {{plugin}} 自 {{since}} 起掉线，它设定的内容继续生效。",
