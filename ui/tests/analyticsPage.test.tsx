@@ -433,11 +433,11 @@ test("export is off until a table is on screen, then downloads the rows with a l
     assert.equal(created.length, 1);
     const text = await created[0].text();
     const lines = text.replace(/^﻿/, "").split("\r\n");
-    assert.equal(lines[0], [a.usage.export.key, a.usage.export.prefix, a.usage.export.status, a.usage.export.deployment, a.usage.export.model, a.usage.export.source,
+    assert.equal(lines[0], [a.usage.table.group.key, a.usage.export.prefix, a.usage.export.status, a.usage.table.scope,
       a.usage.table.requests, a.usage.table.input, a.usage.table.cached, a.usage.table.hitRate, a.usage.table.uncached, a.usage.table.output, a.usage.table.noUsage,
       a.usage.export.first, a.usage.export.last].map((c) => `"${c}"`).join(","));
-    assert.equal(lines.length, 1 + 7 + 1, "header, one line per row, a total");
-    assert.match(lines[1], /^"111","gw-5fd30737e","","glm-5-3-flash-nvfp4","glm-5.3-flash","API","1000","9000000","7200000","80.0%","1800000","300000","10","2026-10-22 01:00","2026-10-22 13:00"$/);
+    assert.equal(lines.length, 1 + 5 + 1, "header, one line per selected token group, a total");
+    assert.equal(lines[1], '"111","gw-5fd30737e","","glm-5-3-flash-nvfp4 / qwen3-32b","1100","9800000","7200000","80.0%","2600000","320000","10","2026-10-22 01:00","2026-10-22 13:00"');
     assert.match(lines.at(-1)!, new RegExp(`^"${a.table.total}"`));
     assert.match(lines.at(-1)!, /"1317","10865000","7315000","76\.5%","3550000","375500","30"/);
     assert.match(lines.find((l) => l.includes("trial-2026q3"))!, new RegExp(`"${a.names.revoked}"`));

@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { installPullFake } from "./helpers/pullFake.ts";
+import { APIError } from "../src/apiError.ts";
 
 const { i18n, locale } = await createI18n(["settings", "nodes"]);
 const { cleanup, render, screen, waitFor, within, fireEvent } = await import("@testing-library/react");
@@ -32,6 +33,46 @@ function setup(groups: Parameters<typeof installPullFake>[1] = { groups: GROUPS 
   fakes.push(fake);
   render(<I18nextProvider i18n={i18n}><SyncGroups /></I18nextProvider>);
   return { fake, user: userEvent.setup({ document: dom.window.document }) };
+}
+
+// Keep the real API client for the rate validation regressions. The HTTP
+// adapter reuses the shared fixture's validation and single mutable group list.
+function setupHTTP(groups: Parameters<typeof installPullFake>[1] = { groups: GROUPS }) {
+  const endpoints: Record<string, unknown> = {};
+  const fake = installPullFake(endpoints, groups);
+  const originalFetch = globalThis.fetch;
+  const requests: { method: string; path: string; body: unknown }[] = [];
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+    status, headers: { "Content-Type": "application/json" },
+  });
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input), "http://localhost");
+    const method = init?.method ?? "GET";
+    const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+    requests.push({ method, path: url.pathname, body });
+    let endpoint: string;
+    let args: unknown[];
+    if (method === "GET" && url.pathname === "/api/v1/pull/sync-groups") {
+      endpoint = "syncGroups"; args = [];
+    } else if (method === "GET" && url.pathname === "/api/v1/nodes/facets") {
+      endpoint = "nodeFacets"; args = [{ label: url.searchParams.getAll("label") }];
+    } else if (method === "POST" && url.pathname === "/api/v1/pull/sync-groups") {
+      endpoint = "createSyncGroup"; args = [body];
+    } else if (method === "PUT" && /^\/api\/v1\/pull\/sync-groups\/\d+$/.test(url.pathname)) {
+      endpoint = "updateSyncGroup"; args = [Number(url.pathname.split("/").at(-1)), body];
+    } else {
+      return json({ error: `Unexpected ${method} ${url.pathname}` }, 599);
+    }
+    try {
+      return json(await (endpoints[endpoint] as (...args: unknown[]) => Promise<unknown>)(...args), method === "POST" ? 201 : 200);
+    } catch (error) {
+      if (!(error instanceof APIError)) throw error;
+      return json({ code: error.code, params: error.params, error: error.message }, error.status);
+    }
+  };
+  fakes.push({ restore: () => { globalThis.fetch = originalFetch; fake.restore(); } });
+  render(<I18nextProvider i18n={i18n}><SyncGroups /></I18nextProvider>);
+  return { requests, user: userEvent.setup({ document: dom.window.document }) };
 }
 const rows = () => within(screen.getByRole("region", { name: text.tableLabel })).getAllByRole("row").slice(1);
 const rowText = (row: HTMLElement) => row.textContent ?? "";
@@ -91,6 +132,132 @@ test("a limit that is switched on but empty is refused before any request", asyn
   await user.click(within(drawer).getByRole("button", { name: saveName }));
   await within(drawer).findByText(text.rateRequired);
   assert.equal(fake.calls.filter((call) => call.method === "createSyncGroup").length, 0);
+});
+
+test("a new sync group refuses zero after the rate input loses focus without sending a request", async () => {
+  const { requests, user } = setupHTTP();
+  await waitFor(() => assert.equal(rows().length, 2));
+  await user.click(screen.getByRole("button", { name: new RegExp(text.new) }));
+  const drawer = await screen.findByRole("dialog");
+  await user.type(within(drawer).getByLabelText(text.name), "Zero limit");
+  await user.click(within(drawer).getByRole("switch", { name: text.rateLimit }));
+  const value = within(drawer).getByRole("spinbutton", { name: text.rateValue }) as HTMLInputElement;
+  await user.type(value, "0");
+  await user.tab();
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  const writes = requests.filter((request) => request.method !== "GET");
+  assert.deepEqual(writes, [], "a zero limit must not be replaced with a positive rate and saved");
+  assert.equal(value.value, "0");
+  await within(drawer).findByText(text.rateRequired);
+  assert.equal(screen.getByRole("dialog"), drawer);
+});
+
+test("editing a sync group cannot save its old limit or a clamped limit when replaced with zero", async () => {
+  const { requests, user } = setupHTTP();
+  await waitFor(() => assert.equal(rows().length, 2));
+  await user.click(within(rows()[1]).getByRole("button", { name: action.edit }));
+  const drawer = await screen.findByRole("dialog");
+  const value = within(drawer).getByRole("spinbutton", { name: text.rateValue }) as HTMLInputElement;
+  assert.equal(value.value, "200");
+  await user.click(value);
+  await user.keyboard("{Control>}a{/Control}0");
+  await user.tab();
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), []);
+  assert.equal(value.value, "0");
+  await within(drawer).findByText(text.rateRequired);
+  assert.equal(screen.getByRole("dialog"), drawer);
+});
+
+test("a negative sync rate remains invalid after blur instead of becoming a saved minimum", async () => {
+  const { requests, user } = setupHTTP();
+  await waitFor(() => assert.equal(rows().length, 2));
+  await user.click(screen.getByRole("button", { name: new RegExp(text.new) }));
+  const drawer = await screen.findByRole("dialog");
+  await user.type(within(drawer).getByLabelText(text.name), "Negative limit");
+  await user.click(within(drawer).getByRole("switch", { name: text.rateLimit }));
+  const value = within(drawer).getByRole("spinbutton", { name: text.rateValue }) as HTMLInputElement;
+  await user.type(value, "-5");
+  await user.tab();
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), []);
+  assert.equal(value.value, "-5");
+  await within(drawer).findByText(text.rateRequired);
+});
+
+test("turning the rate limit off after an invalid zero saves an unlimited group", async () => {
+  const { requests, user } = setupHTTP();
+  await waitFor(() => assert.equal(rows().length, 2));
+  await user.click(screen.getByRole("button", { name: new RegExp(text.new) }));
+  const drawer = await screen.findByRole("dialog");
+  await user.type(within(drawer).getByLabelText(text.name), "Unlimited group");
+  const toggle = within(drawer).getByRole("switch", { name: text.rateLimit });
+  await user.click(toggle);
+  const value = within(drawer).getByRole("spinbutton", { name: text.rateValue }) as HTMLInputElement;
+  await user.type(value, "0");
+  await user.tab();
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  await within(drawer).findByText(text.rateRequired);
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), []);
+  await user.click(toggle);
+  assert.equal(value.disabled, true);
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  await waitFor(() => assert.equal(rows().length, 3));
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), [{
+    method: "POST", path: "/api/v1/pull/sync-groups",
+    body: { name: "Unlimited group", node_requirements: {}, rate_limit_kib_s: 0 },
+  }]);
+  assert.equal(screen.queryByRole("dialog"), null);
+  assert.ok(rowText(rows()[2]).includes(text.unlimited));
+});
+
+test("Enter rejects zero and saves a corrected small positive rate that remains editable", async () => {
+  const { requests, user } = setupHTTP();
+  await waitFor(() => assert.equal(rows().length, 2));
+  await user.click(screen.getByRole("button", { name: new RegExp(text.new) }));
+  const drawer = await screen.findByRole("dialog");
+  await user.type(within(drawer).getByLabelText(text.name), "Small limit");
+  await user.click(within(drawer).getByRole("switch", { name: text.rateLimit }));
+  const value = within(drawer).getByRole("spinbutton", { name: text.rateValue });
+  await user.type(value, "0{Enter}");
+  await within(drawer).findByText(text.rateRequired);
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), []);
+  await user.clear(value);
+  await user.type(value, "0.005{Enter}");
+  await waitFor(() => assert.equal(rows().length, 3));
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), [{
+    method: "POST", path: "/api/v1/pull/sync-groups",
+    body: { name: "Small limit", node_requirements: {}, rate_limit_kib_s: 5 },
+  }]);
+  assert.equal(screen.queryByRole("dialog"), null);
+  assert.ok(rowText(rows()[2]).includes("0.0048828125 MB/s"), "the saved 5 KiB/s must not display as zero");
+  await user.click(within(rows()[2]).getByRole("button", { name: action.edit }));
+  const reopened = await screen.findByRole("dialog");
+  assert.equal((within(reopened).getByRole("spinbutton", { name: text.rateValue }) as HTMLInputElement).value, "0.0048828125");
+  await user.click(within(reopened).getByRole("button", { name: saveName }));
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), [{
+    method: "POST", path: "/api/v1/pull/sync-groups",
+    body: { name: "Small limit", node_requirements: {}, rate_limit_kib_s: 5 },
+  }, {
+    method: "PUT", path: "/api/v1/pull/sync-groups/101",
+    body: { name: "Small limit", node_requirements: {}, rate_limit_kib_s: 5 },
+  }]);
+});
+
+test("an existing minimum positive KiB rate displays as positive and saves unchanged", async () => {
+  const { requests, user } = setupHTTP({ groups: [GROUPS[0], { ...GROUPS[1], rate_limit_kib_s: 1 }] });
+  await waitFor(() => assert.equal(rows().length, 2));
+  assert.ok(rowText(rows()[1]).includes("0.0009765625 MB/s"));
+  await user.click(within(rows()[1]).getByRole("button", { name: action.edit }));
+  const drawer = await screen.findByRole("dialog");
+  assert.equal((within(drawer).getByRole("spinbutton", { name: text.rateValue }) as HTMLInputElement).value, "0.0009765625");
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  assert.deepEqual(requests.filter((request) => request.method !== "GET"), [{
+    method: "PUT", path: "/api/v1/pull/sync-groups/2",
+    body: { name: "Site B", node_requirements: { site: ["idc-b"] }, rate_limit_kib_s: 1 },
+  }]);
 });
 
 test("the server's refusal of an empty name shows at the name field", async () => {

@@ -40,9 +40,10 @@ export function requirementChips(requirements: NodeRequirementsMap | undefined):
     .map(([key, values]) => `${key}=${values.join(" | ")}`);
 }
 
-/** kibToMiB shows a stored KiB/s limit in the MB/s unit the form uses (1 MB/s = 1024 KiB/s), without float noise. */
+/** kibToMiB shows MB/s (1 MB/s = 1024 KiB/s), keeping sub-0.01 limits precise instead of rounding them to zero. */
 export function kibToMiB(kib: number): number {
-  return Math.round((kib / 1024) * 100) / 100;
+  const mib = kib / 1024;
+  return mib > 0 && mib < 0.01 ? mib : Math.round(mib * 100) / 100;
 }
 
 /** miBToKiB converts the form's MB/s back to the KiB/s the API stores; a positive limit is at least 1 KiB/s. */

@@ -102,7 +102,6 @@ export default function SyncGroupDrawer({
             <Switch aria-label={t("pull.groups.rateLimit")} checked={limited} onChange={setLimited} />
             <InputNumber
               aria-label={t("pull.groups.rateValue")}
-              min={0.01}
               step={10}
               style={{ width: 120 }}
               disabled={!limited}
