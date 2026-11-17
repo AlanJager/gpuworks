@@ -306,7 +306,7 @@ func (s *Service) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement, mod
 		ModelRules:  store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, env.model, target)},
 	}
 	pd.RankLaunch(mode, role, unit, rankIndex, topology, ports).Apply(&launch)
-	plan, err := planning.PlanLaunch(env.ctx, s.d.Store, s.networks(), launch)
+	plan, err := s.planLaunch(env.ctx, launch)
 	if err != nil {
 		return dto.EvaluatePDUnit{}, plan, err
 	}

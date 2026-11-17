@@ -46,6 +46,11 @@ type Deps struct {
 	// the picked cards in that window, the race a fleet of concurrent creates
 	// hits.
 	AfterAutomaticPick func(nodeUUID string)
+	// NodeCaps is what a connected node's agent advertised, nil for an
+	// offline one (hub.Hub.NodeCaps). A preview reads it to build the command
+	// the controller will send that node (planning.TranslatesServedName); nil
+	// counts every agent as offline.
+	NodeCaps func(nodeUUID string) []string
 }
 
 // Service runs the deployment use cases over Deps. It keeps no state of its
