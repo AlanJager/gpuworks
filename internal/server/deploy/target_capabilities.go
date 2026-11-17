@@ -3,6 +3,8 @@ package deploy
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
+	"strings"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	enginenames "gpuworks.ai/gpuworks/internal/engines"
@@ -134,7 +136,17 @@ func ValidateTargetFeatures(engine string, launch ResolvedLaunch, p Params) erro
 	if snapshot.MultiNode && nodes == 1 {
 		nodes = 2
 	}
-	if err := validateKVBackendTarget(engine, requestedTopology{nodes: nodes, pp: snapshot.PipelineParallel, dp: snapshot.DataParallel}, p); err != nil {
+	kvParams := p
+	if engine == EngineVLLM {
+		active := nativeKVOffloadInArgs(append(append([]string{}, launch.Entrypoint...), launch.Argv...))
+		if snapshot.CommandKnown {
+			kvParams.Quick.KVOffloadingSize = 0
+			kvParams.Quick.KVDiskOffload = active
+		} else if active {
+			kvParams.Quick.KVDiskOffload = true
+		}
+	}
+	if err := validateKVBackendTarget(engine, requestedTopology{nodes: nodes, pp: snapshot.PipelineParallel, dp: snapshot.DataParallel}, kvParams); err != nil {
 		return err
 	}
 
@@ -147,4 +159,51 @@ func ValidateTargetFeatures(engine string, launch ResolvedLaunch, p Params) erro
 		return messages.NewProductError(messages.ErrorLaunchFeaturesUnknown, "cannot confirm custom launch features; provide a recognizable executable entrypoint", map[string]any{"vendor": accelerator.VendorBrand(p.Vendor)})
 	}
 	return nil
+}
+
+func nativeKVOffloadInArgs(args []string) bool {
+	for i, arg := range args {
+		name, value, equal := strings.Cut(unquoteArgument(arg), "=")
+		if strings.HasPrefix(name, "--") {
+			args[i] = normalizeFlagSpelling(name)
+			if equal {
+				args[i] += "=" + value
+			}
+		}
+	}
+	backend, _ := lastFlagValue(args, "--kv-offloading-backend")
+	if backend == "" || unquoteArgument(backend) == "native" {
+		if raw, ok := lastFlagValue(args, "--kv-offloading-size"); ok {
+			if size, err := strconv.ParseFloat(unquoteArgument(raw), 64); err == nil && size > 0 {
+				return true
+			}
+		}
+	}
+	raw, ok := lastFlagValue(args, "--kv-transfer-config")
+	if !ok {
+		return false
+	}
+	var config any
+	return json.Unmarshal([]byte(unquoteArgument(raw)), &config) == nil && nativeKVConnector(config)
+}
+
+func nativeKVConnector(value any) bool {
+	config, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	if config["kv_connector"] == "OffloadingConnector" {
+		return true
+	}
+	if config["kv_connector"] != "MultiConnector" {
+		return false
+	}
+	extra, _ := config["kv_connector_extra_config"].(map[string]any)
+	children, _ := extra["connectors"].([]any)
+	for _, child := range children {
+		if nativeKVConnector(child) {
+			return true
+		}
+	}
+	return false
 }
