@@ -44,6 +44,8 @@ type routeDeployment struct {
 	policy     string
 	candidates []candidate
 	nodes      map[uint]string
+	// drivers is each node's runtime driver, by node ID (store.RoutingNodes).
+	drivers map[uint]string
 	// pd is set on a PD deployment: candidates then holds its decode
 	// instances and pd its prefill ones.
 	pd *pdRoute
@@ -290,7 +292,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := r.store.NodeUUIDsByID()
+	nodes, drivers, err := r.store.RoutingNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +307,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 			r.log.Warn("PD deployment not routed: placement cannot be read", "dep", d.ID, "err", err)
 			continue
 		}
-		rd := &routeDeployment{dep: d, id: d.ID, servedName: d.ServedName, nnodes: d.NNodes, policy: policy, nodes: nodes, pd: pd}
+		rd := &routeDeployment{dep: d, id: d.ID, servedName: d.ServedName, nnodes: d.NNodes, policy: policy, nodes: nodes, drivers: drivers, pd: pd}
 		byDep[d.ID] = rd
 		byName[d.ServedName] = append(byName[d.ServedName], rd)
 	}
@@ -351,7 +353,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		if nodeUUID == "" {
 			continue
 		}
-		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: instanceModelName(rd.dep, in), uuidHash: fnv64([]byte(in.UUID)), routedAt: routedAt}
+		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: instanceModelName(rd.dep, in, planning.HostTranslatesModelPaths(drivers[in.NodeID])), uuidHash: fnv64([]byte(in.UUID)), routedAt: routedAt}
 		if rd.pd != nil {
 			var ok bool
 			if c, ok = rd.pd.admit(in, c); !ok {

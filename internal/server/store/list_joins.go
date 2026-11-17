@@ -34,6 +34,25 @@ func (s *Store) NodeUUIDsByID() (map[uint]string, error) {
 	return out, nil
 }
 
+// RoutingNodes is NodeUUIDsByID with each node's runtime driver, in the same
+// single read: the proxy's route table needs both, the driver to know which
+// engines run as host processes and answer under their host model path.
+func (s *Store) RoutingNodes() (uuids map[uint]string, drivers map[uint]string, err error) {
+	var rows []Node
+	if err := s.reader().Select("id", "uuid", "runtime_driver").Find(&rows).Error; err != nil {
+		return nil, nil, err
+	}
+	uuids = make(map[uint]string, len(rows))
+	drivers = make(map[uint]string, len(rows))
+	for _, row := range rows {
+		uuids[row.ID] = row.UUID
+		if row.RuntimeDriver != "" {
+			drivers[row.ID] = row.RuntimeDriver
+		}
+	}
+	return uuids, drivers, nil
+}
+
 // The list endpoints join every row against nodes, models, model files and
 // schedule events. These readers fetch each of those once for the whole list,
 // so the query count stays constant as the fleet grows.

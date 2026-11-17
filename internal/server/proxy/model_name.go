@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"path"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/engines"
@@ -10,9 +11,16 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// Read the concrete launch, since a template or manual command can override
-// both the model path and its alias independently of the public routing name.
-func instanceModelName(dep *store.Deployment, instance *store.Instance) string {
+// instanceModelName is the name the instance's engine answers under. It reads
+// the concrete launch, since a template or manual command can override both
+// the model path and its alias independently of the public routing name.
+//
+// hostProcess is whether the instance's node runs engines as host processes
+// (planning.HostTranslatesModelPaths). There the agent rewrites the model path
+// to its host source before the engine sees it, so an engine launched without
+// --served-model-name registers that host path as its name, whatever the
+// agent's version; hostEngineName applies the same rewrite.
+func instanceModelName(dep *store.Deployment, instance *store.Instance, hostProcess bool) string {
 	if dep.Engine != engines.SGLang && dep.Engine != engines.VLLM {
 		return ""
 	}
@@ -24,9 +32,23 @@ func instanceModelName(dep *store.Deployment, instance *store.Instance) string {
 	if !ok {
 		return ""
 	}
-	for _, flag := range []string{"--served-model-name", "--model-id", "--model-path", "--model"} {
+	engineName := func(name string) string {
+		if hostProcess {
+			return hostEngineName(desired, name)
+		}
+		return name
+	}
+	// The served name is a name, kept verbatim by the agent; only a
+	// model path is rewritten on a host-process node.
+	if value, found := deploy.LaunchFlag(args, "--served-model-name"); found {
+		return value
+	}
+	if hasUnfixedFlag(args, "--served-model-name") {
+		return ""
+	}
+	for _, flag := range []string{"--model-id", "--model-path", "--model"} {
 		if value, found := deploy.LaunchFlag(args, flag); found {
-			return value
+			return engineName(value)
 		}
 		if hasUnfixedFlag(args, flag) {
 			return ""
@@ -36,17 +58,44 @@ func instanceModelName(dep *store.Deployment, instance *store.Instance) string {
 	// through the engine's own split of its command, so the separator token is
 	// not restated here.
 	if name, ok := positionalModelName(dep.Engine, proto.ResolvedLaunch{Entrypoint: desired.Entrypoint, Argv: desired.Argv}); ok {
-		return name
+		return engineName(name)
 	}
 	// A manual command keeps its tokens inside a shell script, where the engine
 	// command starts after whatever the script did first (set -a, exports). Each
 	// suffix of those tokens is offered to the same rule.
 	for start := range scriptArgs {
 		if name, ok := positionalModelName(dep.Engine, proto.ResolvedLaunch{Entrypoint: scriptArgs[start:]}); ok {
-			return name
+			return engineName(name)
 		}
 	}
-	return desired.ModelMount
+	return engineName(desired.ModelMount)
+}
+
+// hostEngineName is name as a host-process agent hands it to the engine: a
+// path at or below the model mount becomes the same path under the model's
+// host directory (ModelPath), with a trailing slash kept, as the agent's
+// translation of a launch does (internal/agent/runtime/hostproc). Any other
+// name is left alone: the model is never under the other mounts, whose host
+// sources only the agent resolves. The two rules are held together by
+// internal/proto/testdata/hostproc_engine_names.json.
+func hostEngineName(desired proto.InstanceDesiredState, name string) string {
+	mount := path.Clean(desired.ModelMount)
+	if desired.ModelPath == "" || desired.ModelMount == "" || mount == "/" || !strings.HasPrefix(name, "/") {
+		return name
+	}
+	clean := path.Clean(name)
+	mapped := ""
+	if clean == mount {
+		mapped = desired.ModelPath
+	} else if rest, ok := strings.CutPrefix(clean, mount+"/"); ok {
+		mapped = path.Join(desired.ModelPath, rest)
+	} else {
+		return name
+	}
+	if strings.HasSuffix(name, "/") && !strings.HasSuffix(mapped, "/") {
+		mapped += "/"
+	}
+	return mapped
 }
 
 // positionalModelName reports a model path an engine carries as a positional
