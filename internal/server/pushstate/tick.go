@@ -167,12 +167,8 @@ func (s *State) commit(ctx context.Context) {
 	s.holdsDirty = s.holdsDirty || err == nil
 	holds, features := s.recombineLocked()
 	s.mu.Unlock()
-	for pp, r := range results {
-		pp.done <- r
-	}
-	for _, o := range w.ops {
-		o.done <- err
-	}
+	// Effects first, so a waiter that returns sees everything its commit
+	// caused.
 	if err == nil {
 		for _, o := range w.dropped {
 			if f := s.cfg.Effects.OverrideSuperseded; f != nil {
@@ -181,6 +177,12 @@ func (s *State) commit(ctx context.Context) {
 		}
 	}
 	s.effects(holds, features)
+	for pp, r := range results {
+		pp.done <- r
+	}
+	for _, o := range w.ops {
+		o.done <- err
+	}
 }
 
 func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
