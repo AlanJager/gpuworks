@@ -478,6 +478,7 @@ A Kubernetes cluster joins as one DaemonSet: an administrator creates the cluste
 | Method | Path | Description | Authentication |
 |---|---|---|---|
 | GET | `/api/v1/models` | List models; supports `page`/`page_size`, `q`, `source` (`huggingface/modelscope/url/local`), `operation`, and `source_id`. The last three accept comma-separated values; `source_id` uses case-insensitive whole-value matching. `sort` accepts `name/source/source_id/published_at/created_at/weight/presence`. Paginated responses return a `presence{ready_nodes,cached_nodes,ready_storages,in_flight,in_flight_percent,failed}` presence summary and a `summary` for all models; query model details for per-location information. See [List Filtering and Presence Summary](#列表筛选与就位汇总) | JWT |
+| GET | `/api/v1/models/catalog` | Read a public model listing, README or ModelScope default-branch commit by passing `huggingface` or `modelscope` as `source` and a supported `path`. The management node uses the configured source rules and returns the upstream body. Hugging Face pagination links are returned in `X-Catalog-Link`. | JWT |
 | POST | `/api/v1/models` | Register a model from a public repository (HF/ModelScope) | JWT |
 | POST | `/api/v1/models/preview-url` | Preview an HTTP model directory (`url`); requires an http/https URL with a hostname and no embedded credentials. Invalid URLs return 400 `MODEL_SOURCE_URL_INVALID`; valid but unreadable directories return 502 `HTTP_DIRECTORY_UNREACHABLE` | JWT |
 | POST | `/api/v1/models/register-url` | Register an HTTP model directory (`source_url`, optional `source_id` and `name`); URL validation is the same as preview-url. Returns 201 on successful registration | JWT |
@@ -623,7 +624,7 @@ For the format and import rules, see [Image Catalog and Inference Image Families
 
 | Method | Path | Description | Authentication |
 |---|---|---|---|
-| GET | `/api/v1/inference-templates` | List inference templates | JWT |
+| GET | `/api/v1/inference-templates` | List inference templates. Pass `weight_provider`, `weight_repo` and `weight_revision` together to return only specs whose root-directory weights match that provider, repository ID and commit. | JWT |
 | GET | `/api/v1/inference-templates/index` | Get the template index (a lightweight list for selectors) | JWT |
 | GET | `/api/v1/inference-templates/organizations` | List organizations/publishers represented in the templates | JWT |
 | GET | `/api/v1/inference-templates/chips` | Static catalog of accelerator cards supported by templates; optional `arch_id` identifies the architecture required by a template, with other vendor fields unchanged | JWT |
@@ -2243,4 +2244,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 2703baf85bce6d4fa5c2e1bdf8bae951244a68a9a8647e74e00ed3ac9ed0409e -->
+<!-- translation-source-sha256: ed1e744f598df220c64e7be1742cd0e9ff44a415cbb366a1126c243c9aaa2af0 -->

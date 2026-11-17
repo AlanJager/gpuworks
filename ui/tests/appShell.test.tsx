@@ -398,7 +398,8 @@ test("the old Kubernetes address opens the external platforms page on what conne
   assert.equal(within(menu()).getByRole("link", { name: common.navigation.platforms }).getAttribute("aria-current"), "page");
 });
 
-test("going back from the old Kubernetes address returns to the page before it, not to the old address", async () => {
+test("going back from the old Kubernetes address returns to the page before it, not to the old address", async (t) => {
+  t.after(acceptJsdomAbortSignals());
   serve(platforms);
   const router = createMemoryRouter([{ path: "*", element: <App /> }], { initialEntries: ["/apikeys", "/kubernetes"], initialIndex: 1 });
   render(<I18nextProvider i18n={i18n}><ConfigProvider theme={{ token: { motion: false } }}><RouterProvider router={router} /></ConfigProvider></I18nextProvider>);

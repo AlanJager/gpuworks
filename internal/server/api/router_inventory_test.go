@@ -197,6 +197,7 @@ GET /api/v1/logs/search
 GET /api/v1/mcp/status
 GET /api/v1/metrics/query
 GET /api/v1/models
+GET /api/v1/models/catalog
 GET /api/v1/models/{id}
 GET /api/v1/models/{id}/logo
 GET /api/v1/monitor/deployments/{id}

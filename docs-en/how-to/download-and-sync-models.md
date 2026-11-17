@@ -12,6 +12,8 @@ This guide explains how to register a model, download it to a selected storage, 
 
 ## Register and Download a Model
 
+In the model repository, open the online catalog, choose ModelScope or Hugging Face, and search by model name or repository ID. Use the register button on a result to confirm or edit its display name. The registered model then appears in the repository. If a template matches the selected weights and revision, select **Deploy** above the README to open the deployment form for that spec. When offline or when you already know the repository ID, use **Register model** in the page header.
+
 1. Open **Models**, click **Register model**, select Hugging Face or ModelScope, and enter the **Source ID**, such as `Qwen/Qwen3-8B`.
 2. To specify a version, enter the **Revision** under advanced options. If left blank, the platform default branch is resolved first; when a commit is obtained, the model is pinned to it. ModelScope's `main` is normalized to `master`. Click **Confirm registration** and check the source and resolved revision in the list.
 3. Click **Download to…** in the model row and select a writable storage. For local storage, also select online target nodes; each node downloads its own copy. For shared storage, the model is downloaded only once. Select one online node with write access and access to the model source to perform the download. To change the node for an active download, cancel it first, then select a new node and restart the download.
@@ -93,4 +95,4 @@ After a public download fails, you can still transfer a complete copy from an on
 Failed peer sync operations can be retried, and ongoing sync operations can be canceled. Do not register partial files as a complete copy. Deleting a node-local copy requires administrator privileges. The API is
 `DELETE /api/v1/models/{id}/nodes/{uuid}`; a model used by an active deployment returns 409.
 
-<!-- translation-source-sha256: e6a6a5d35a4404de7514769cdfc55fd3df0de257381a886a5c4e47a3532af23d -->
+<!-- translation-source-sha256: 01303ee9306b256228323c50fbea1bb49e0c89ef32976139286ce6797d6be88c -->
