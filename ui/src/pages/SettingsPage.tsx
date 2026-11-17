@@ -35,7 +35,7 @@ import PrioritySettingsCard, { PRIORITY_ANCHOR } from "./settings/PrioritySettin
 import AICard, { externalHost } from "./settings/AIConfigCard";
 import ExperienceCard, { EXPERIENCE_ANCHOR } from "./settings/ExperienceCard";
 import { consoleExtensions, isExtensionTab, mergeSettingsTabs, type ResolvedSettingsTab } from "../extensions";
-import { FeatureSlot, useExtensionAvailability } from "../extensions/shell";
+import { FeatureSlot, useExtensionAvailability, useViewerIsAdmin } from "../extensions/shell";
 
 const { Text } = Typography;
 
@@ -90,7 +90,8 @@ export default function SettingsPage() {
   const { hash } = useLocation();
   const navigate = useNavigate();
   const availabilityOf = useExtensionAvailability();
-  const tabs = useMemo(() => mergeSettingsTabs(SETTINGS_TABS, consoleExtensions(), availabilityOf), [availabilityOf]);
+  const isAdmin = useViewerIsAdmin();
+  const tabs = useMemo(() => mergeSettingsTabs(SETTINGS_TABS, consoleExtensions(), availabilityOf, isAdmin), [availabilityOf, isAdmin]);
   const active = settingsTabFor(hash, tabs);
   // A card's fragment opens its tab; then bring the card into view once the
   // tab has rendered it (the browser's own jump ran against an empty page).

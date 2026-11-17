@@ -10,15 +10,20 @@ const sdk = await import("../src/extensions/sdk.ts");
 
 test("the overlay SDK exports exactly the pinned runtime names", () => {
   assert.deepEqual(Object.keys(sdk).sort(), [
-    "APIError", "Badge", "Button", "ConfirmPopover", "ConsoleIcon",
+    "APIError", "Accordion", "AccordionContent", "AccordionItem", "AccordionTrigger", "Badge", "Button", "ConfirmPopover", "ConsoleIcon",
+    "Container", "ContainerBody", "ContainerHeader", "CopyButton",
     "Dialog", "DialogClose", "DialogContent", "DialogDescription", "DialogFooter", "DialogHeader", "DialogTitle", "DialogTrigger",
-    "EmptyState", "Field", "FieldDescription", "FieldError", "FieldLabel", "Fragment", "HelpTip", "Input", "Link", "LockedFeature",
-    "Navigate", "Notice", "PageHeader", "Progress", "Result", "SideDrawer", "Spinner", "Switch", "TabItem", "TabPanel",
+    "EmptyState", "Field", "FieldDescription", "FieldError", "FieldLabel", "FileUpload", "Fragment", "HelpTip", "Input", "Link", "LockedFeature",
+    "MetricCard", "Navigate", "Notice", "PageHeader", "Progress", "Result", "SDK_MAJOR", "SideDrawer", "Spinner", "Switch", "TabItem", "TabPanel",
     "Table", "TableBody", "TableCell", "TableHead", "TableHeader", "TableRow", "Tabs", "TabsList", "Timeline", "Tooltip", "Trans",
-    "apiErrorText", "confirm", "createContext", "createElement", "getJSON", "message", "productMessageText", "sendJSON",
-    "useCallback", "useContext", "useEffect", "useId", "useLocation", "useMemo", "useNavigate", "useParams", "useReducer",
-    "useRef", "useSearchParams", "useState", "useTranslation",
+    "apiErrorText", "confirm", "createContext", "createElement", "downloadFile", "getJSON", "message", "productMessageText", "saveBlob",
+    "sendForm", "sendJSON", "useCallback", "useContext", "useCopy", "useEffect", "useId", "useLocation", "useMemo", "useNavigate",
+    "useParams", "useReducer", "useRef", "useSearchParams", "useState", "useTranslation",
   ].sort());
+});
+
+test("the SDK major is 1: it moves only when a pinned name is removed or changes meaning", () => {
+  assert.equal(sdk.SDK_MAJOR, 1);
 });
 
 test("every SDK export is defined, so an overlay never imports an undefined binding", () => {

@@ -1,4 +1,5 @@
 import type { BatchEndpoint } from "../../batchApi";
+import { saveBlob } from "../../apiFiles";
 
 // The sample is a thousand requests built at click time from a seeded PRNG
 // and a handful of task templates (multi-step arithmetic, equations, number
@@ -226,13 +227,5 @@ export function sampleFileName(endpoint: BatchEndpoint): string {
  * downloadBatchSample hands the browser the sample as a file to save.
  */
 export function downloadBatchSample(endpoint: BatchEndpoint, model: string): void {
-  const blob = new Blob([batchSampleJSONL(endpoint, model)], { type: "application/jsonl" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = sampleFileName(endpoint);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  saveBlob(new Blob([batchSampleJSONL(endpoint, model)], { type: "application/jsonl" }), sampleFileName(endpoint));
 }

@@ -5,6 +5,11 @@
 // so tests/consoleExtensionsSdk.test.ts pins the list and a change to it is a
 // deliberate one. Add names rather than changing them.
 
+// SDK_MAJOR is the major version of this surface. It changes only when a name
+// is removed or changes meaning; an overlay records the major it was built
+// against.
+export const SDK_MAJOR = 1;
+
 // React, so an overlay builds against the console's single copy.
 export { createContext, createElement, Fragment, useCallback, useContext, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 export type { ComponentType, ReactNode } from "react";
@@ -16,6 +21,9 @@ export { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } 
 // The API client: reads and writes under /api/v1 (an extension's own routes are under /api/v1/x/<name>/) with the console's session and error decoding.
 export { getJSON, sendJSON } from "../api";
 export type { List } from "../api";
+// A file answer saved by the browser, a Blob saved as a file, and a multipart upload.
+export { downloadFile, saveBlob, sendForm } from "../apiFiles";
+export type { DownloadOptions } from "../apiFiles";
 export { APIError, apiErrorText, productMessageText } from "../apiError";
 export type { ProductMessage } from "../apiError";
 
@@ -41,6 +49,13 @@ export { TabItem, TabPanel, Tabs, TabsList } from "../components/ui/tabs";
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 export { Field, FieldDescription, FieldError, FieldLabel } from "../components/ui/field";
+export { Container, ContainerBody, ContainerHeader } from "../components/ui/container";
+export { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
+export { MetricCard } from "../components/ui/metric-card";
+export { FileUpload } from "../ui-kit/FileUpload";
+// Copy to the clipboard, falling back to a dialog with the text selected when the browser refuses.
+export { default as CopyButton, useCopy } from "../components/CopyButton";
+export type { CopyOptions } from "../components/CopyButton";
 
 // The overlay contract itself.
 export type {
