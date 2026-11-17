@@ -380,9 +380,10 @@ core-test:
     # (a store package that takes 45 s alone ran 10 min on one) turns it into a
     # panic that names whichever test happened to be running.
     - (cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 go test -v -timeout 5m ./...)
-    # pkg/extapi (the plugin wire formats) is a module of its own, which
-    # go test ./... at the root does not enter.
+    # pkg/extapi (the plugin wire formats) and pkg/pluginsdk are modules of
+    # their own, which go test ./... at the root does not enter.
     - make test-extapi GO_TEST_FLAGS="-v -timeout 5m"
+    - make test-pluginsdk GO_TEST_FLAGS="-v -timeout 5m"
     - CGO_ENABLED=0 go test -v -timeout 30m -coverprofile=coverage-core.out ./...
     # Build-tag suites are reported separately; compile them here so a
     # refactor cannot silently break an opt-in lane while core remains green.

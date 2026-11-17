@@ -196,6 +196,7 @@ test-unit-checked: ui check-time-policy check-architecture check-api-conventions
 	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./...
 	cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 	$(MAKE) test-extapi
+	$(MAKE) test-pluginsdk
 	$(MAKE) check-tagged-build
 
 ## test-extapi: gofmt, vet and test pkg/extapi, the plugin wire formats. It is
@@ -206,6 +207,15 @@ test-extapi:
 	@unformatted=$$(cd pkg/extapi && gofmt -l .); if [ -n "$$unformatted" ]; then echo "pkg/extapi needs gofmt: $$unformatted" >&2; exit 1; fi
 	cd pkg/extapi && CGO_ENABLED=0 $(GO) vet ./...
 	cd pkg/extapi && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
+
+## test-pluginsdk: gofmt, vet and test pkg/pluginsdk, what plugins are built
+## with. Like pkg/extapi it is a module of its own that the root's
+## `go test ./...` and `go vet ./...` do not enter.
+.PHONY: test-pluginsdk
+test-pluginsdk:
+	@unformatted=$$(cd pkg/pluginsdk && gofmt -l .); if [ -n "$$unformatted" ]; then echo "pkg/pluginsdk needs gofmt: $$unformatted" >&2; exit 1; fi
+	cd pkg/pluginsdk && CGO_ENABLED=0 $(GO) vet ./...
+	cd pkg/pluginsdk && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 
 ## test-host-env-adapters: the serve adapters macOS environment packages ship
 ## (build/host-envs/adapters); standard library only, so no install step
@@ -769,6 +779,7 @@ check-perftest:
 vet:
 	CGO_ENABLED=0 $(GO) vet ./...
 	cd pkg/extapi && CGO_ENABLED=0 $(GO) vet ./...
+	cd pkg/pluginsdk && CGO_ENABLED=0 $(GO) vet ./...
 
 .PHONY: lint
 ## lint: run the complete pinned Go lint rule set, including tests.

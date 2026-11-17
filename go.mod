@@ -19,6 +19,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.2
 	gpuworks.ai/gpuworks/pkg/extapi v0.0.0
+	gpuworks.ai/gpuworks/pkg/pluginsdk v0.0.0
 	modernc.org/sqlite v1.23.1
 	pgregory.net/rapid v1.3.0
 )
@@ -47,3 +48,7 @@ require (
 // that uses this checkout (see pkg/extapi/README.md); requiring a tagged
 // pkg/extapi/vX.Y.Z here replaces v0.0.0 before the module is published.
 replace gpuworks.ai/gpuworks/pkg/extapi => ./pkg/extapi
+
+// pkg/pluginsdk, what plugins are built with, is a module of its own for
+// the same reason; the contract tests build a fake plugin against it.
+replace gpuworks.ai/gpuworks/pkg/pluginsdk => ./pkg/pluginsdk

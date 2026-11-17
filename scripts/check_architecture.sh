@@ -986,6 +986,63 @@ else
   fi
 fi
 
+# --- plugin SDK module -------------------------------------------------------
+# pkg/pluginsdk is what plugins are built with, a module of its own beside
+# pkg/extapi: a plugin imports these two and nothing of the server, so the
+# SDK imports only the standard library and pkg/extapi (tests included), and
+# its go.mod requires only pkg/extapi, from the directory beside it. The fake
+# plugin the contract tests build stands for a third-party plugin and is held
+# to the same rule.
+echo "plugin SDK module (pkg/pluginsdk):"
+SDK_DIR=pkg/pluginsdk
+SDK_MOD=gpuworks.ai/gpuworks/pkg/pluginsdk
+if [ ! -f "$SDK_DIR/go.mod" ]; then
+  echo "  FAIL: $SDK_DIR/go.mod is missing" >&2
+  failures=$((failures + 1))
+else
+  if ! sdk_deps=$(cd "$SDK_DIR" && go list -e -deps -test \
+    -f '{{if not .Standard}}{{.ImportPath}}{{if .Error}} ERROR{{end}}{{end}}' ./... 2>&1); then
+    sdk_deps="go list failed: $sdk_deps"
+  fi
+  sdk_foreign=$(printf '%s\n' "$sdk_deps" | grep -v '^$' \
+    | grep -vE "^(${SDK_MOD}(/[a-z0-9/]+)?|${EXTAPI_MOD})( \[${SDK_MOD}(/[a-z0-9/]+)?(\.test)?\]|\.test|_test \[${SDK_MOD}(/[a-z0-9/]+)?\.test\])?\$" || true)
+  if [ -n "$sdk_foreign" ]; then
+    echo "  FAIL: pkg/pluginsdk imports only the standard library and pkg/extapi" >&2
+    echo "$sdk_foreign" | sed 's/^/    /' >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: pkg/pluginsdk imports only the standard library and pkg/extapi"
+  fi
+  sdk_require=$(grep -E '^[[:space:]]*(require|replace)([[:space:]]|\()' "$SDK_DIR/go.mod" | sed 's/[[:space:]]\+/ /g' || true)
+  sdk_want="require ${EXTAPI_MOD} v0.0.0
+replace ${EXTAPI_MOD} => ../extapi"
+  sdk_go=$(awk '$1 == "go" {print $2; exit}' "$SDK_DIR/go.mod")
+  if [ "$sdk_require" != "$sdk_want" ] || [ "$(awk '$1 == "go" {print $2; exit}' go.mod)" != "$sdk_go" ]; then
+    echo "  FAIL: pkg/pluginsdk/go.mod requires only pkg/extapi from ../extapi and has the root's go line" >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: pkg/pluginsdk/go.mod requires only pkg/extapi from ../extapi"
+  fi
+  if ! grep -qE "^replace[[:space:]]+${SDK_MOD}[[:space:]]+=>[[:space:]]+\./${SDK_DIR}\$" go.mod; then
+    echo "  FAIL: go.mod replaces $SDK_MOD with ./$SDK_DIR" >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: go.mod builds against ./$SDK_DIR"
+  fi
+fi
+FAKE_PLUGIN=./internal/testenv/extplugin/fakeplugin
+if [ -d "$FAKE_PLUGIN" ]; then
+  fake_foreign=$(go list -e -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' "$FAKE_PLUGIN" 2>&1 \
+    | grep -v '^$' | grep -vE "^(${SDK_MOD}(/[a-z0-9/]+)?|${EXTAPI_MOD}|gpuworks\.ai/gpuworks/internal/testenv/extplugin/fakeplugin)\$" || true)
+  if [ -n "$fake_foreign" ]; then
+    echo "  FAIL: the fake plugin imports only pkg/pluginsdk, pkg/extapi and the standard library, as a plugin does" >&2
+    echo "$fake_foreign" | sed 's/^/    /' >&2
+    failures=$((failures + 1))
+  else
+    echo "  ok: the fake plugin imports only pkg/pluginsdk, pkg/extapi and the standard library"
+  fi
+fi
+
 # --- console overlays --------------------------------------------------------
 # Console overlay modules (ui/src/extensions/<id>/) belong to the separately
 # built console: they are copied in, git-ignored, and left out of the UI
