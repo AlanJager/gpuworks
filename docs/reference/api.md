@@ -750,6 +750,8 @@ macOS 忽略 `no_systemd`。
 `q` 匹配部署名称、对外模型名、模型名。`state` 对应界面显示的状态：`running`、`starting`、`pulling`、
 `pending`、`offline`、`failed`、`stopped`、`deleting`、`sleeping`、`asleep`；删除中状态优先于运行时状态。
 取值必须是其中之一，否则 400 `LIST_FILTER_INVALID`（不静默匹配全部）。
+`node` 按 `runtime_nodes` 的节点 UUID 筛选，多个值用逗号分隔，匹配任一所选节点；与 `q`、`state` 取交集，在排序和分页之前执行。只匹配实际运行位置，不匹配放置目标；没有实际运行节点的部署不命中。未知 UUID 返回空结果。`node=` 表示不筛选；逗号分隔值中出现空项时返回 400 `LIST_FILTER_INVALID`。分页响应另含 `node_options: [{uuid, name}]`，列出完整部署快照中的实际运行节点，按名称、UUID 排序并按 UUID 去重，不受当前筛选与分页影响；无可选节点时为 `[]`。
+
 可排序的列为 `name`、`model`、`state`、`replicas`、`created_at`；`sort=state` 按的就是下面这个 `state`。
 
 `state` 是每行唯一该显示的状态，`runtime_state` 不是：睡着的引擎仍在运行，`runtime_state` 一直是 `running`，

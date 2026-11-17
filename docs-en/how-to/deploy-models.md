@@ -58,6 +58,8 @@ The three types of information displayed side by side in the Inference Services 
 - **Health** is the result of the latest minimal request.
 - **Replicas** shows **running / desired** counts. A single health result cannot represent the readiness of all replicas.
 
+Saved layouts that retain the old default column order are updated automatically, preserving widths, hidden columns, and page size. Manually reordered layouts are preserved. By default, the Inference Services list places **Status** after the name and **API model name** in the former status-column position. Use the filter icon in the **Compute nodes** header to select one or more actual runtime nodes. Services on any selected node are included, and the node filter can be combined with the status filter. The server filters before pagination. Multi-replica, distributed, and PD services match their actual instance nodes; services without an actual runtime node do not match a node filter. Active filters appear in the toolbar and can be cleared individually or together.
+
 ### Evaluate and Deploy
 
 1. Wait for evaluation of the current draft to finish. Resolve errors beside fields or at the page level, and review the GPU memory breakdown, token capacity, and scheduling explanation.
@@ -134,5 +136,5 @@ If submission fails, the error appears on the page with one of the following sta
 | `NODE_REQUIREMENTS_NOT_EDITABLE` | Multi-node and PD deployments list nodes by rank and have no editable node requirements. Use “Edit replicas” to change their nodes |
 | `NODE_REQUIREMENTS_UNMET` | The selected node does not satisfy the deployment's node requirements (labels, vendor, and so on). Select a matching node or adjust the requirements |
 
-<!-- translation-source-sha256: 250b157ede8d459ff8f79f1fc88ca05b64a59a46b90db3bc914a789b69c65283 -->
+<!-- translation-source-sha256: 904557f30c711234242b9bbbb3c2354005d188b71b1e4456309560160e3e45f4 -->
 <!-- translation-localized-code-block: 3f7bcea4babb3aa89f5841e7e49c5ec9ed2447d48c4ddd7fc3ec19b3540848b3 ec505cd5af4bae19eef698a2786536dfd7864a08dbf0655c03da288a7a89e580 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->

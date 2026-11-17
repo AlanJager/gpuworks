@@ -233,7 +233,7 @@ test("deployment list exposes the copyable served name and deletes from the more
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments"]}><Routes><Route path="/deployments" element={<DeploymentsPage />} /></Routes></MemoryRouter></I18nextProvider>);
   await screen.findByRole("button", { name: "templated" });
   const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
-  assert.deepEqual(headers.filter(Boolean), ["Name", "Served name", "Model", "Engine / Image", "Compute Node", "State", "Health", "Ready / desired replicas", "Created", "Actions"]);
+  assert.deepEqual(headers.filter(Boolean), ["Name", "State", "Model", "Engine / Image", "Compute Node", "Served name", "Health", "Ready / desired replicas", "Created", "Actions"]);
   const servedName = screen.getByText("public-name");
   assert.ok(servedName.closest("td"), "the wire served_name is visible in the list without opening details");
   assert.equal(screen.queryByText(/Inference Template/), null, "the template badge no longer crowds the name");

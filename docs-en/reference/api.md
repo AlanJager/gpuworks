@@ -751,6 +751,8 @@ Local exports use `weights.sources: [{local: <source_id>}]` to reference registe
 `q` matches the deployment name, served model name, and model name. `state` corresponds to the state displayed in the UI: `running`, `starting`, `pulling`,
 `pending`, `offline`, `failed`, `stopped`, `deleting`, `sleeping`, or `asleep`; the deleting state takes precedence over runtime states.
 A value must be one of these; anything else returns 400 `LIST_FILTER_INVALID` rather than silently matching everything.
+`node` filters by node UUID in `runtime_nodes`. Comma-separated values match any selected node and intersect with `q` and `state` before sorting and pagination. Only actual runtime locations match, not placement targets; deployments without runtime nodes do not match. Unknown UUIDs return no results. `node=` disables this filter; an empty comma-separated item returns 400 `LIST_FILTER_INVALID`. Paginated responses also include `node_options: [{uuid, name}]`: actual runtime nodes from the complete deployment snapshot, deduplicated by UUID and sorted by name then UUID, independent of current filters and pagination. With no available nodes this is `[]`.
+
 Sortable columns are `name`, `model`, `state`, `replicas`, and `created_at`; `sort=state` sorts by this same `state`.
 
 `state` is the one state a row should display; `runtime_state` is not, because a sleeping engine is still running and stays `running` there
@@ -2246,4 +2248,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 230240e87bb10e9af46d9eea1d053360cd64743e2bc1f75f52106730b506d323 -->
+<!-- translation-source-sha256: 69820850dac3a62fc794b5826de790573ecda9958e97a3f5054e089b7ccb2c20 -->

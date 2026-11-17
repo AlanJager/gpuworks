@@ -38,21 +38,28 @@ func pageNames(page dto.DeploymentPage) []string {
 // list's columns and none of the launch configuration.
 func TestDeploymentPageWireJSON(t *testing.T) {
 	ready := 1
-	page := dto.DeploymentPage{Page: 2, PageSize: 1, Total: 3, Items: []dto.DeploymentListItem{{
+	page := dto.DeploymentPage{ListPage: dto.ListPage[dto.DeploymentListItem]{Page: 2, PageSize: 1, Total: 3, Items: []dto.DeploymentListItem{{
 		ID: 7, Name: "qwen", TemplateID: 3, TemplateDeviated: true, Engine: "vllm", Image: "vllm/vllm-openai:v0.10.1",
 		ModelID: 2, ModelName: "Qwen/Qwen3-8B", ServedName: "qwen3", NodeUUID: "n-1", NodeName: "gpu3", NodeNames: []string{"gpu3", "gpu2"},
 		DesiredState: "active", RuntimeState: "running", State: "running", Sleepable: true, Replicas: 2, ReadyReplicas: &ready,
 		Health:     dto.DeploymentHealth{Status: "timeout", ThresholdSec: 60, Last: &dto.HealthProbe{AtMS: 9, Status: "timeout", LatencyMS: 60000}, Recent: []dto.HealthProbe{{AtMS: 9, Status: "timeout", LatencyMS: 60000}}},
 		Operations: []dto.DeploymentOperation{{Type: "openai.chat", Endpoint: "/v1/chat/completions", Renderer: "chat"}},
 		CreatedAt:  time.Date(2026, 10, 3, 1, 2, 3, 0, time.UTC),
-	}}}
+	}}}, NodeOptions: []dto.DeploymentNodeOption{}}
 	got, err := json.Marshal(page)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"items":[{"id":7,"name":"qwen","template_id":3,"template_deviated":true,"engine":"vllm","image":"vllm/vllm-openai:v0.10.1","model_id":2,"model_name":"Qwen/Qwen3-8B","served_name":"qwen3","node_uuid":"n-1","node_name":"gpu3","node_names":["gpu3","gpu2"],"desired_state":"active","runtime_state":"running","state":"running","sleepable":true,"replicas":2,"ready_replicas":1,"health":{"status":"timeout","threshold_sec":60,"last":{"at_ms":9,"status":"timeout","latency_ms":60000},"recent_mean_ms":null,"recent_ok":0,"recent":[{"at_ms":9,"status":"timeout","latency_ms":60000}]},"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","renderer":"chat"}],"created_at":"2026-10-03T01:02:03Z"}],"page":2,"page_size":1,"total":3}`
+	const want = `{"items":[{"id":7,"name":"qwen","template_id":3,"template_deviated":true,"engine":"vllm","image":"vllm/vllm-openai:v0.10.1","model_id":2,"model_name":"Qwen/Qwen3-8B","served_name":"qwen3","node_uuid":"n-1","node_name":"gpu3","node_names":["gpu3","gpu2"],"desired_state":"active","runtime_state":"running","state":"running","sleepable":true,"replicas":2,"ready_replicas":1,"health":{"status":"timeout","threshold_sec":60,"last":{"at_ms":9,"status":"timeout","latency_ms":60000},"recent_mean_ms":null,"recent_ok":0,"recent":[{"at_ms":9,"status":"timeout","latency_ms":60000}]},"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","renderer":"chat"}],"created_at":"2026-10-03T01:02:03Z"}],"page":2,"page_size":1,"total":3,"node_options":[]}`
 	if string(got) != want {
 		t.Fatalf("wire JSON\n got: %s\nwant: %s", got, want)
+	}
+	withOptions := page
+	withOptions.NodeOptions = []dto.DeploymentNodeOption{{UUID: "node-a", Name: "Compute A"}}
+	optionJSON, err := json.Marshal(withOptions)
+	wantOptions := strings.TrimSuffix(want, `"node_options":[]}`) + `"node_options":[{"uuid":"node-a","name":"Compute A"}]}`
+	if err != nil || string(optionJSON) != wantOptions {
+		t.Fatalf("options wire JSON = %s, err=%v", optionJSON, err)
 	}
 	minimal, err := json.Marshal(dto.DeploymentListItem{ID: 1, Name: "bare", Operations: []dto.DeploymentOperation{}})
 	if err != nil {
