@@ -172,6 +172,22 @@ type Service interface{ Run(ctx context.Context) error }
 
 单独构建的 server 的界面模块复制到 `ui/src/extensions/<id>/`（已被 git 忽略），在 `ui/src/extensions/index.ts` 注册，只能 import `ui/src/extensions/sdk.ts` 再导出的组件、hook 与 API 客户端（`ee_ui_internal_imports` 预算为 0）。构建时设置 `GPUWORKS_UI_OUT_DIR` 输出到别处；检出了界面模块却没设这个变量时，`make ui` 与 `make release-packages` 拒绝构建，以免叠加进社区版。界面模块的文案放在自己的 locale 包里合并进 `common`，用 `GPUWORKS_I18N_EXTRA_LOCALES` / `GPUWORKS_I18N_EXTRA_MESSAGES` 跑同一套 i18n 检查。
 
+界面模块能放的入口：
+
+- 页面（`routes`）、侧边菜单项（`navItems`，必须带图标）、设置页签（`settingsTabs`）、顶栏控件（`headerItems`）。
+- 账户菜单项：`navItems` 的 `group` 写保留值 `account`，入口进右上角账户菜单，排在内置项之后、退出登录之前，按扩展 id 排序，只显示文字。账户菜单没有放锁定入口的位置，锁定与隐藏一样不显示。`account` 不能再用作新菜单分组的 id。
+- 仅管理员：以上每种入口都可标 `admin: true`，按会话检查时读到的用户角色显示。非管理员看不到菜单项、页签与控件，打开页面得到不存在页；读不到用户时同样按非管理员处理。这只影响显示，接口仍由服务端路由的访问级别把关。
+
+横幅：链接指向当前页面（不计查询与片段）的横幅，在那个页面上不显示，由页面自己说明。
+
+SDK 带主版本号 `SDK_MAJOR`（当前为 1），只在删掉或改变某个导出的含义时加一；新增导出不改版本，`ui/tests/consoleExtensionsSdk.test.ts` 固定导出清单。文件收发用 SDK 的 `downloadFile`、`saveBlob` 与 `sendForm`：
+
+- `downloadFile` 带会话请求，文件名取响应的 `Content-Disposition`，没有时用调用方给的名字。错误响应按码解成本地化的 `APIError`，不会把错误正文存成文件。
+- `saveBlob` 把一个 Blob 交给浏览器下载。
+- `sendForm` 发 multipart 表单，错误解码与 `sendJSON` 相同。
+
+界面模块的测试复制到 `ui/tests/ext-<id>/`（已被 git 忽略），用 `UI_EXTRA_TESTS='tests/ext-<id>/*.test.tsx' npm test` 跑。测试不在 `ui/src/extensions/<id>/` 里，所以 import `node:test`、testing-library 不计入 import 预算；`npm run test:coverage` 的 `c8 --all --include='src/**'` 仍统计界面模块的全部源文件。
+
 ## 码与文案
 
 扩展产生的失败与拒绝同样遵守 [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md)：UPPER_SNAKE 码、插值参数、英文 fallback。扩展的码与 en/zh 文案放在扩展自己的代码与界面模块里，不进开源的 `messages` 与 locale 文件；没有叠加界面时，控制台显示英文 fallback。

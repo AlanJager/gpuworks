@@ -18,9 +18,15 @@ export interface LockedSlotProps {
  * Feature keys are opaque to the console: the server's manifest says how an
  * entry carrying one is shown (full, read-only, locked or hidden), and an entry
  * whose key the manifest does not list is hidden.
+ *
+ * admin marks an entry for administrators only: other users, and a session
+ * whose user could not be read, see no menu entry, tab or control, and the
+ * page answers as not found. It only shapes what is shown; the server still
+ * refuses the entry's API routes to whoever may not call them.
  */
 interface FeatureKeyed {
   feature?: string;
+  admin?: true;
 }
 
 /** ExtensionRoute is a page under the console frame, matched before the not-found page. */
@@ -41,12 +47,16 @@ export interface ExtensionNavGroup {
 /**
  * ExtensionNavItem is a menu entry. group names a NavGroup id from
  * navigation.tsx or an ExtensionNavGroup; the entry goes to the end of it.
- * labelKey may name its namespace ("audit:nav.title").
+ * The reserved group "account" puts the entry in the top bar's account menu
+ * instead, after the built-in account entries and before signing out. key is
+ * the console path the entry opens. labelKey may name its namespace
+ * ("audit:nav.title"). icon is required in the side menu; the account menu
+ * shows labels only.
  */
 export interface ExtensionNavItem extends FeatureKeyed {
   group: string;
   key: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   labelKey: string;
   also?: string[];
 }

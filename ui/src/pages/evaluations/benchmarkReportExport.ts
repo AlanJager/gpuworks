@@ -1,4 +1,5 @@
 import { getInstanceByDom } from "echarts/core";
+import { saveBlob } from "../../apiFiles";
 
 export type BenchmarkVisualFormat = "png" | "html";
 
@@ -127,13 +128,5 @@ function inlineStyle(style: CSSStyleDeclaration) {
 }
 
 export function downloadBenchmarkReport(blob: Blob, runID: number, format: BenchmarkVisualFormat) {
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement("a");
-	link.href = url;
-	link.download = `benchmark-${runID}.${format}`;
-	document.body.append(link);
-	link.click();
-	link.remove();
-	// Give the browser time to begin consuming the object URL.
-	setTimeout(() => URL.revokeObjectURL(url), 1000);
+	saveBlob(blob, `benchmark-${runID}.${format}`);
 }

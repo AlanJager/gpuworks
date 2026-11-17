@@ -172,6 +172,22 @@ The build-time overlay serves forks only; plugin package UIs are to be loaded at
 
 A separately built server's UI modules are copied to `ui/src/extensions/<id>/` (git-ignored), registered in `ui/src/extensions/index.ts`, and may import only the components, hooks and API client that `ui/src/extensions/sdk.ts` re-exports (the `ee_ui_internal_imports` budget is 0). The build sets `GPUWORKS_UI_OUT_DIR` to write elsewhere; with UI modules checked out and the variable unset, `make ui` and `make release-packages` refuse to build, so nothing is overlaid onto the community edition. The modules' texts ship in their own locale bundles merged into `common`, checked by the same i18n check through `GPUWORKS_I18N_EXTRA_LOCALES` / `GPUWORKS_I18N_EXTRA_MESSAGES`.
 
+The entries a UI module can add:
+
+- Pages (`routes`), side menu entries (`navItems`, which need an icon), settings tabs (`settingsTabs`) and top bar controls (`headerItems`).
+- Account menu entries: a `navItems` entry whose `group` is the reserved `account` goes to the account menu at the top right, after the built-in entries and before signing out, ordered by extension id, as text only. The account menu has no room for a locked entry, so a locked one is left out like a hidden one. `account` cannot be the id of a new menu group.
+- Admin-only: each kind of entry above can be marked `admin: true` and then follows the role of the user the session check read. A user who is not an administrator sees no menu entry, tab or control, and the page answers as not found; a session whose user could not be read is treated the same way. This shapes only what is shown: the server's route access levels still guard the API.
+
+Banners: a banner whose link opens the current page (query and fragment aside) is left out on that page, which states the matter itself.
+
+The SDK carries a major version, `SDK_MAJOR` (1 for now), which goes up only when an export is removed or changes meaning; adding an export leaves it alone, and `ui/tests/consoleExtensionsSdk.test.ts` pins the export list. Files go through the SDK's `downloadFile`, `saveBlob` and `sendForm`:
+
+- `downloadFile` asks with the session and names the file from the answer's `Content-Disposition`, or else from the name the caller gives. An error answer decodes by its code into a localized `APIError`; the error body is never saved as the file.
+- `saveBlob` hands a Blob to the browser as a download.
+- `sendForm` sends a multipart form and decodes errors as `sendJSON` does.
+
+A UI module's tests are copied to `ui/tests/ext-<id>/` (git-ignored) and run with `UI_EXTRA_TESTS='tests/ext-<id>/*.test.tsx' npm test`. They sit outside `ui/src/extensions/<id>/`, so their imports of `node:test` and testing-library do not count against the import budget, while the `c8 --all --include='src/**'` of `npm run test:coverage` still counts every source file of the module.
+
 ## Codes and texts
 
 Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md) too: UPPER_SNAKE codes, interpolated params, an English fallback. An extension's codes and their en/zh texts live in the extension's own code and UI modules, not in the open-source `messages` or locale files; without the overlay, the console shows the English fallback.
@@ -204,4 +220,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 7d5519579846d63d7c0638b74cffd5c7d5e8a34ed0b56f9fcb538fc93ec1a4d1 -->
+<!-- translation-source-sha256: 7ae14cb428e015e80758e66e1a5a28ed6379dbbbe94aff1152d1af58cc593d05 -->

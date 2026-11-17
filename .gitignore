@@ -60,3 +60,5 @@ testdata/rapid/
 # Console overlay modules copied in by a separately built console; the
 # registry files directly in ui/src/extensions/ stay tracked.
 /ui/src/extensions/*/
+# Their tests, copied beside the console's own (run through UI_EXTRA_TESTS).
+/ui/tests/ext-*/
