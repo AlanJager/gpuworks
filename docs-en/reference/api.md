@@ -2246,4 +2246,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 52f30a52bd4b0b97077caff7d09c6887076f6a0ff343193db1a246997dc7a391 -->
+<!-- translation-source-sha256: 230240e87bb10e9af46d9eea1d053360cd64743e2bc1f75f52106730b506d323 -->
