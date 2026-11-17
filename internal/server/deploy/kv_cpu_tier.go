@@ -53,10 +53,16 @@ func launchKVCPUTierBytes(engine Engine, q LaunchConfig, command EffectiveComman
 
 // launchShmBytes derives the container's /dev/shm size, where zero means the
 // launch states none (the container uses the host's /dev/shm, or the runtime's
-// own default).
+// own default). templateDockerArgs is the selected template spec's own
+// docker_args, checked here (not just the deployment's own) because
+// --ipc=host can come from either layer.
 //
-//   - --ipc=host: the host's /dev/shm applies and no size is stated; the host's
-//     size is not known to the platform, so it is not measured against the tier.
+//   - --ipc=host from either layer: the host's /dev/shm applies and no size is
+//     stated; the host's size is not known to the platform, so it is not
+//     measured against the tier. An explicit deployment size together with a
+//     template's --ipc=host is refused rather than silently dropped: the
+//     deployment's own args not stating --ipc=host means
+//     ValidateContainerDockerArgs never saw this combination.
 //   - an explicit override wins, but one smaller than the CPU tier can never
 //     start, so it is refused here, where preflight and evaluation see it.
 //   - otherwise the larger of the engine default plus the CPU tier, and the
@@ -67,8 +73,12 @@ func launchKVCPUTierBytes(engine Engine, q LaunchConfig, command EffectiveComman
 //     needs in total, so it is a floor, not an addition. It never reaches the
 //     explicit-override branch: a deployer who states a size has chosen it, and
 //     only the CPU tier can refuse it.
-func launchShmBytes(profileDefault, templateBytes int64, overrides ContainerOverrides, tierBytes int64) (int64, error) {
-	if DockerArgsShareHostIPC(overrides.DockerArgs) {
+func launchShmBytes(profileDefault, templateBytes int64, templateDockerArgs []string, overrides ContainerOverrides, tierBytes int64) (int64, error) {
+	templateHostIPC := DockerArgsShareHostIPC(templateDockerArgs)
+	if overrides.ShmBytes > 0 && templateHostIPC {
+		return 0, shmSizeWithTemplateHostIPC()
+	}
+	if templateHostIPC || DockerArgsShareHostIPC(overrides.DockerArgs) {
 		return 0, nil
 	}
 	if overrides.ShmBytes > 0 {

@@ -170,7 +170,7 @@ func (s *Service) evaluateRankFallback(env evaluateRankEnv) bool {
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, ComponentMounts: componentMounts, APIContract: selection.APIContract,
 		PlacementVariables: placementVariables, AllowUnresolved: allowUnresolvedPlacement,
-		ModelWeightBytes: modelWeightBytes, TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(),
+		ModelWeightBytes: modelWeightBytes, TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(), TemplateDockerArgs: selection.dockerArgs(),
 	}, req.ContainerOverrides, selection.Components, modelMount)
 	if resolveErr != nil {
 		env.errs.add("", resolveErr)

@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"sort"
 
-	"gpuworks.ai/gpuworks/internal/accelerator"
-	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
@@ -76,6 +74,12 @@ const (
 	TPPrefillAtLeastDecode TPRule = "prefill_at_least_decode"
 	// TPEqual requires both roles to use the same TP.
 	TPEqual TPRule = "equal"
+	// TPAny leaves the pairing to the engine. SGLang pairs the roles by
+	// their attention TP (TP divided by the attention DP and CP degrees,
+	// which the platform does not see) and handles unequal widths in both
+	// directions, so a rule on the roles' TP would refuse layouts the
+	// engine runs; a pairing it cannot handle fails the decoder's start.
+	TPAny TPRule = "any"
 )
 
 // SideChannel is how an instance tells its peers where it is.
@@ -228,219 +232,16 @@ type Mode struct {
 	// KV connector is configured unless told otherwise. Without it the
 	// layers' KV specs cannot be unified and the engine fails to start.
 	HybridKVCacheManager bool
-}
-
-// ascendCards is what HCCL needs to be told on an Ascend host; the mode that
-// hands KV to HCCL sets the same variables an ordinary multi-node rank gets.
-var ascendCards, _ = accelerator.CardNetworkOf(accelerator.VendorAscend)
-
-var modes = map[string]Mode{
-	"vllm-nixl": {
-		Name:   "vllm-nixl",
-		Engine: engines.VLLM,
-		// AMD: nixl-rocm over UCX TCP, validated across two MI300X hosts.
-		Vendors:             []string{accelerator.VendorNVIDIA, accelerator.VendorAMD},
-		SameVendor:          true,
-		Roles:               []string{RoleDecode, RolePrefill},
-		Connector:           "NixlConnector",
-		ConnectorRoles:      map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
-		Wire:                WireSequential,
-		TP:                  TPDecodeAtLeastPrefill,
-		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions"},
-		TransferMetricsRole: RoleDecode,
-		TransferBytesMetric: "vllm:nixl_bytes_transferred",
-		VerifiedVersions:    "0.17.1-0.29.1",
-		ScalableToZero:      []string{RolePrefill},
-		DecodeServesAlone:   true,
-		KVLoadFailures:      []string{KVLoadFail, KVLoadRecompute},
-		ExtraPortsPerTP:     map[string]int{RolePrefill: 1, RoleDecode: 1},
-		SideChannel:         SideChannelNIXL,
-		// NixlConnector transfers a Mamba-style layer's conv state (gated
-		// delta net, KDA, short conv) only in the dim-first layout and refuses
-		// to start otherwise; vLLM's default is state-first. The variable means
-		// nothing to a model without such layers, which is why vLLM's own CPU
-		// platform sets it whenever a NIXL connector is configured.
-		Env:       map[string]string{"VLLM_SSM_CONV_STATE_LAYOUT": "DS"},
-		Transport: TransportUCX,
-	},
-	// vllm-ascend with its MooncakeConnectorV1: the same kv_transfer_params
-	// wire as NIXL, KV over the NPUs' RoCE ports (HCCL), handshakes on the
-	// node's control network. MooncakeConnectorV1 rather than
-	// MooncakeHybridConnector: when a transfer fails V1 answers 500, while
-	// the hybrid connector was measured to answer 200 with garbage.
-	// Verified across two 910B4 hosts (vllm-ascend 0.26.0rc1, driver
-	// 26.0.rc1): the prefill and decode NPUs must reach each other on the NPU
-	// network; the lab's hosts are cabled NPU to NPU, card N to card N, so
-	// only same-index pairs across the two hosts can. The earlier failure
-	// (HcclCommPrepare) was a same-host pair, whose ports are not linked.
-	"vllm-ascend-mooncake": {
-		Name:                 "vllm-ascend-mooncake",
-		Engine:               engines.VLLM,
-		Vendors:              []string{accelerator.VendorAscend},
-		SameVendor:           true,
-		Roles:                []string{RoleDecode, RolePrefill},
-		Connector:            "MooncakeConnectorV1",
-		ConnectorRoles:       map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
-		Wire:                 WireSequential,
-		TP:                   TPPrefillAtLeastDecode,
-		TwoStagePaths:        []string{"/v1/chat/completions", "/v1/completions"},
-		TransferMetricsRole:  RoleDecode,
-		ScalableToZero:       []string{RolePrefill},
-		DecodeServesAlone:    true,
-		KVLoadFailures:       []string{KVLoadFail, KVLoadRecompute},
-		ExtraPortsPerTP:      map[string]int{RolePrefill: 1, RoleDecode: 1},
-		SideChannel:          SideChannelHostIP,
-		AddressEnv:           append([]string{"VLLM_HOST_IP"}, ascendCards.AddressEnv...),
-		InterfaceEnv:         append(append([]string(nil), ascendCards.InterfaceEnv...), "GLOO_SOCKET_IFNAME", "TP_SOCKET_IFNAME"),
-		Transport:            TransportHCCL,
-		ConnectorPortKey:     "kv_port",
-		ConnectorParallelism: true,
-	},
-	// SGLang with the NIXL transfer backend: UCX carries the KV, so the
-	// network rules are vllm-nixl's. The decoder cannot compute a prefill in
-	// disaggregation mode, so there is no fallback and no scaling prefill to
-	// zero. Both roles keep one TP until heterogeneous TP is verified.
-	"sglang-nixl": {
-		Name:                "sglang-nixl",
-		Engine:              engines.SGLang,
-		Vendors:             []string{accelerator.VendorNVIDIA},
-		SameVendor:          true,
-		Roles:               []string{RoleDecode, RolePrefill},
-		Connector:           "nixl",
-		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
-		Wire:                WireConcurrent,
-		TP:                  TPEqual,
-		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
-		TransferMetricsRole: RoleDecode,
-		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
-		Unverified:          true,
-		Transport:           TransportUCX,
-	},
-	// SGLang on T-Head PPU with Mooncake's RDMA transport: the KV goes card
-	// to NIC to card, across hosts on a host RDMA network or between two cards
-	// of one host. The NIC registers the cards' memory through the PPU
-	// driver's peer-memory module (alixpu_peermem), so every node needs it
-	// loaded. None of the IPC mode's patches is involved. Verified on PPU
-	// ZW810E (RoCE, mlx5) with TP 1 on both roles.
-	"sglang-ppu-mooncake": {
-		Name:                "sglang-ppu-mooncake",
-		Engine:              engines.SGLang,
-		Vendors:             []string{accelerator.VendorPPU},
-		SameVendor:          true,
-		Roles:               []string{RoleDecode, RolePrefill},
-		Connector:           "mooncake",
-		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
-		Wire:                WireConcurrent,
-		TP:                  TPEqual,
-		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
-		TransferMetricsRole: RoleDecode,
-		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
-		VerifiedVersions:    "0.5.13",
-		// First requests of a shape compile PPU kernels for minutes; a
-		// generating health check would time out and retire the instance.
-		Env:                  map[string]string{"SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "0"},
-		FirstRequestCompiles: true,
-		PeerMemory:           true,
-		Transport:            TransportMooncakeRDMA,
-	},
-	// vLLM's MooncakeConnector on T-Head PPU over RDMA, as sglang-ppu-mooncake.
-	// The prefill engine answers its one-token copy without kv_transfer_params;
-	// the decoder pulls by the prefill engine's id from its bootstrap server
-	// (VLLM_MOONCAKE_BOOTSTRAP_PORT), so the gateway composes the handoff.
-	// Verified on PPU ZW810E with vLLM 0.23.0 and TP 1 on both roles.
-	"vllm-ppu-mooncake": {
-		Name:                "vllm-ppu-mooncake",
-		Engine:              engines.VLLM,
-		Vendors:             []string{accelerator.VendorPPU},
-		SameVendor:          true,
-		Roles:               []string{RoleDecode, RolePrefill},
-		Connector:           "MooncakeConnector",
-		ConnectorRoles:      map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
-		Wire:                WireSequential,
-		TP:                  TPEqual,
-		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions"},
-		TransferMetricsRole: RoleDecode,
-		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
-		VerifiedVersions:    "0.23.0",
-		ConnectorExtra:      map[string]any{"mooncake_protocol": "rdma"},
-		SynthesizedHandoff:  true,
-		PeerMemory:          true,
-		Transport:           TransportMooncakeRDMA,
-	},
-	// vLLM's MooncakeConnector on Hygon DCU: the Hygon vLLM 0.21 image runs it
-	// on a Mooncake transfer engine built for DTK (TCP, RDMA and an intra-host
-	// HIP transport), patched by vllm-hcu, so the KV moves over whatever host
-	// network the group shares. A decoder given no handoff computes the
-	// prefill itself. The vllm-hcu patch is about heterogeneous TP/PP; only
-	// equal TP was tried. Verified on K100, two cards in one host at TP 1. It
-	// needs the image's r2 or later: r1's connector reported a failed pull as
-	// finished, so the decoder answered from KV it never received and the
-	// load failure policy did not apply. Hybrid models with gated delta net
-	// layers (Qwen3.5/3.6/3.8) need r4, whose connector moves their KV pages
-	// whole at equal TP and whose scheduler survives their failed pulls and
-	// does not zero blocks a pull is writing (r3 can), and the hybrid KV cache
-	// manager (verified on K100 with Qwen3.5-0.8B and
-	// hygon/Qwen3.8-27B-Channel-INT8-w8a8).
-	"vllm-mooncake": {
-		Name:                 "vllm-mooncake",
-		Engine:               engines.VLLM,
-		Vendors:              []string{accelerator.VendorHygon},
-		SameVendor:           true,
-		Roles:                []string{RoleDecode, RolePrefill},
-		Connector:            "MooncakeConnector",
-		ConnectorRoles:       map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
-		Wire:                 WireSequential,
-		TP:                   TPEqual,
-		TwoStagePaths:        []string{"/v1/chat/completions", "/v1/completions"},
-		TransferMetricsRole:  RoleDecode,
-		VerifiedVersions:     "0.21.0",
-		ScalableToZero:       []string{RolePrefill},
-		DecodeServesAlone:    true,
-		KVLoadFailures:       []string{KVLoadFail, KVLoadRecompute},
-		ExtraPortsFixed:      map[string]int{RolePrefill: 1},
-		SynthesizedHandoff:   true,
-		Transport:            TransportMooncake,
-		HybridKVCacheManager: true,
-	},
-	// SGLang on T-Head PPU with the mooncake backend: Mooncake's NVLink
-	// transport over legacy IPC handles copies the KV card to card inside one
-	// host, so the two roles share a node. The PPU SGLang runner carries the
-	// patches the variables switch on (build/runner-images/hggc/ppu-pd):
-	// registering the KV by allocation (an IPC handle names a whole
-	// allocation), metadata on the card, and serialized transfers - an IPC
-	// copy issued while a forward pass runs can deadlock the PPU driver, which
-	// is also why the overlap scheduler is off. The health endpoint answers
-	// without a generation: the first requests of a new shape compile PPU
-	// kernels for minutes, a generating health check times out meanwhile and
-	// the agent would retire a healthy instance, and every such check would
-	// queue a fake transfer on the prefill side. Verified on PPU ZW810E with
-	// TP 1 on both roles.
-	"sglang-ppu-ipc": {
-		Name:                "sglang-ppu-ipc",
-		Engine:              engines.SGLang,
-		Vendors:             []string{accelerator.VendorPPU},
-		SameVendor:          true,
-		SameNode:            true,
-		Roles:               []string{RoleDecode, RolePrefill},
-		Connector:           "mooncake",
-		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
-		Wire:                WireConcurrent,
-		TP:                  TPEqual,
-		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
-		TransferMetricsRole: RoleDecode,
-		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
-		VerifiedVersions:    "0.5.13",
-		Env: map[string]string{
-			"SGLANG_PPU_PD_IPC":                        "1",
-			"SGLANG_PPU_PD_SERIAL_TRANSFER":            "1",
-			"MC_FORCE_MNNVL":                           "1",
-			"MC_USE_NVLINK_IPC":                        "1",
-			"SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "0",
-		},
-		EngineArgs:           []string{"--disable-overlap-schedule"},
-		FirstRequestCompiles: true,
-		Transport:            TransportIPC,
-	},
+	// DecodePipelineMatchesOrOne is SGLang's pipeline pairing rule: the
+	// decoder's PP equals the prefill's or is 1 (each decode rank then pulls
+	// from every prefill PP stage). The platform sees both roles' PP, so it
+	// refuses another pairing up front instead of at the decoder's start.
+	DecodePipelineMatchesOrOne bool
+	// SharedSideChannel: every rank of a multi-node instance serves its side
+	// channel on the same port. SGLang's prefill ranks register with the
+	// bootstrap server at their own --disaggregation-bootstrap-port; a build
+	// that does not align the ranks itself needs them all on the leader's.
+	SharedSideChannel bool
 }
 
 // Lookup returns the mode with this name.
@@ -503,6 +304,16 @@ func (m Mode) CheckTP(prefill, decode int) error {
 		if decode != prefill {
 			return messages.NewProductError(messages.ErrorPDTPEqual, fmt.Sprintf("%s needs the same TP on both roles, got prefill %d and decode %d", m.Name, prefill, decode), params)
 		}
+	}
+	return nil
+}
+
+// CheckPP validates the two roles' pipeline parallel degrees against the
+// mode's pipeline rule; a degree below 1 means 1.
+func (m Mode) CheckPP(prefill, decode int) error {
+	prefill, decode = max(prefill, 1), max(decode, 1)
+	if m.DecodePipelineMatchesOrOne && decode != 1 && decode != prefill {
+		return messages.NewProductError(messages.ErrorPDPPDecodeMismatch, fmt.Sprintf("%s needs decode PP equal to prefill PP or 1, got prefill %d and decode %d", m.Name, prefill, decode), map[string]any{"mode": m.Name, "prefill": prefill, "decode": decode})
 	}
 	return nil
 }

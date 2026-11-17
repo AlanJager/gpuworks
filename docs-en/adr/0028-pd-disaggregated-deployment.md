@@ -37,7 +37,7 @@ The instance count, placement, and TP for each role go in the `pd` object of the
 
 **The PD mode catalog is the sole source of rules.** The pure leaf package `internal/server/pdmode` declares each mode: engine, role names, each role's KV connector
 role value, wire protocol, TP direction rule, ports required per instance, whether the same vendor is required, and the role from which KV transfer metrics are read. Platform code hardcodes
-no rules beyond "prefill/decode". There are currently four modes:
+no rules beyond "prefill/decode". The table lists some of them:
 
 | Mode | Wire Protocol | TP Rule | Transport | Hardware Verification |
 |---|---|---|---|---|
@@ -45,6 +45,7 @@ no rules beyond "prefill/decode". There are currently four modes:
 | `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Equal | UCX | Not verified |
 | `vllm-ascend-mooncake` | Sequential, two-stage | prefill ≥ decode | HCCL (RoCE built into the NPU; mounts `/etc/hccn.conf`) | Verified (cross-node; P and D NPUs must reach each other on the NPU network) |
 | `vllm-mooncake` | Sequential, two-stage; the gateway generates the handoff parameters (prefill returns no `kv_transfer_params`; the gateway reads the engine id from its bootstrap server) | Equal | Mooncake transfer engine (Hygon DTK build, RDMA or TCP) | Verified (K100, two cards in one node, TP 1) |
+| `sglang-mooncake` | Concurrent dispatch to both | Not compared (SGLang pairs by attention TP); decode PP equals prefill PP or is 1 | Mooncake transfer engine (Hygon DTK build, host RDMA network) | Not verified |
 
 Violating a TP rule returns the corresponding error code. Engine presets expose `pd_modes` through `pdmode.ForEngine`, and the frontend uses them to offer available modes.
 
@@ -150,4 +151,4 @@ the request with the same KV parameters to other D instances. Internal requests 
 - PPU images include only Mooncake, not NIXL; supporting PPU most likely means adding another Mooncake mode without changing the data model.
 - Per-role images or presets and auxiliary roles (a coordination process for a shared KV pool) require only extensions to the `pd` object and catalog; `role` is a string with unrestricted values.
 
-<!-- translation-source-sha256: 979c0cdb4a3600b02f49b803b4efad857cecabbc24d698b7eadf046e1ac34b9f -->
+<!-- translation-source-sha256: 1703ca87fe992d6a49519a412723926f0bcac0f5d2558a6fe6d7b58279ab85db -->

@@ -683,7 +683,7 @@ cat internal/server/api/dto/*_test.go | grep -c ''
 
 用 `grep -c ''` 而非 `wc -l`，这样最后一行即使没有换行符也计入。
 
-### store_text_columns（初值 74，2026-10-01 → 70（镜像目录四个适配声明列删除，迁移 115）→ 72（计量扩到注释声明 JSON 的定长列）→ 73（`inference_specs.image_sources`，迁移 133）→ 75（`gpus.foreign_processes`，迁移 146）→ 76（`nodes.accelerator_vendors`，迁移 156））
+### store_text_columns（初值 74，2026-10-01 → 70（镜像目录四个适配声明列删除，迁移 115）→ 72（计量扩到注释声明 JSON 的定长列）→ 73（`inference_specs.image_sources`，迁移 133）→ 75（`gpus.foreign_processes`，迁移 146）→ 76（`nodes.accelerator_vendors`，迁移 156）→ 81（`inference_specs.pd_roles` 与 `manual_command`，迁移 220）→ 82（`inference_specs.docker_args`，迁移 220））
 
 意图：持久化默认用带类型的列/表，JSON 只做整体读写的不透明快照（ADR 0032）。能装 JSON 的列是把 schema
 藏进 Go 代码的入口，所以按行数设上限。新增这样的列必须上调本项，并在 `# raised:` 里写明

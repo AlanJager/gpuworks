@@ -54,6 +54,7 @@ models:                       # FlatCatalog: a single top-level models list
     weight_bytes: 28935653617
     shm_bytes: 429496729600   # Optional /dev/shm bytes required by the engine (400 GiB here)
     memlock_unlimited: true   # Optional: unlimited locked memory in the container (--ulimit memlock=-1:-1)
+    docker_args: [--cap-add=SYS_PTRACE]   # Optional: extra docker run options the engine needs
     gpus:
       vendor: nvidia          # Required
       cc: '>=8.0'             # Exact value / >=x / <x / a..b
@@ -114,9 +115,13 @@ models:                       # FlatCatalog: a single top-level models list
 | `weight_bytes` / `runtime_weight_bytes` | Nonnegative; the latter ≤ the former | Inputs to scheduling and estimation |
 | `shm_bytes` | Optional integer in bytes; > 0 and ≤ 16 TiB (`1<<44`), otherwise returns the stable error code `CATALOG_SHM_BYTES_INVALID`; an explicit `0` is equivalent to omission | The container `/dev/shm` size required by the engine itself, for example, an engine that stores large lookup tables in shared memory. If the deployment does not specify a shared memory size, the container receives the larger of this value and “engine baseline + CPU memory tier”; an explicit deployment value takes precedence. See [Container `/dev/shm` Size](deployment-launch-sources.md#devshm-大小) |
 | `memlock_unlimited` | Optional Boolean, default `false`; non-Boolean values (numbers, strings, and so on) are rejected | When `true`, the deployment's container uses `--ulimit memlock=-1:-1` (removing the locked-memory limit only for this container), for engines that lock large amounts of host memory into RAM (for example, DeepInfer uses `cudaHostRegister` to lock about 197 GB). If the deployment's own `docker_args` already specifies `memlock`, that setting takes precedence and no duplicate is appended; this is merged with the `memlock` injected for host RDMA networking into a single entry. See [Locked Memory](deployment-launch-sources.md#锁定内存memlock) |
+| `docker_args` | Optional string array; each item nonempty after trimming; validated exactly like the deployment's own `container_overrides.docker_args` (`deploy.ValidateDockerArgs`): options that hand the container the host (`--privileged`, `--pid`, `-v /`, and so on) are rejected, as are options the platform already manages (`--name`, `--network`, `--gpus`, `--shm-size`, `-e`, `-v`, `--mount`, `--entrypoint`, and so on); `--ipc=host` together with this same spec's own `shm_bytes` is also rejected | Extra `docker run` options the engine needs (for example `--cap-add=SYS_PTRACE`), the template layer of the deployment's own `docker_args`: the template's own args apply first, then the deployment's own, then the platform's (RDMA, memlock). If the deployment itself does not state `--ipc=host` but the selected template does, the deployment's own `shm_bytes` is rejected rather than silently having no effect, because it would never apply. See [the three-layer order of docker run arguments](deployment-launch-sources.md#docker-run-参数的三层顺序) |
 | `gpus` | Required | See below |
 | `args` | String array | Included in the engine command line; supports `${VAR}` [variable expansion](#变量展开); split using the parameter dictionary at deployment time (see below) |
 | `env` | Nonempty keys | Container environment variables; values support `${VAR}` expansion |
+| `pd_mode` | Optional PD mode name (a name from `internal/server/pdmode`, such as `sglang-mooncake`); the mode's engine must equal `engine` | Once declared, the spec can only be deployed as PD disaggregation in that mode, and its `args` and `env` are what the model needs under PD. For the modes see [PD Disaggregation Deployment](../how-to/pd-disaggregation.md) |
+| `pd_roles` | Optional layout by role; requires `pd_mode`. Each role: `tp` (required, ≥ 1), `pp`, `nodes` (how many nodes one instance spans), `units` (initial instance count); the last three default to 1 | The PD deployment form is pre-filled with the roles and instances from it. See [PD Layout and Manual Command](#pd-版式与手工命令) |
+| `manual_command` | Optional string, a shell script (not a JSON argv), ≤ 64 KiB | The manual command a deployment uses by default. A PD spec's script must reference `${GPUWORKS_PD_ROLE}`. See [PD Layout and Manual Command](#pd-版式与手工命令) |
 | `pre_start_argv` / `pre_start_script` | **Mutually exclusive**; argv entries are nonempty; script ≤ 64 KiB | Executed inside the container before the engine starts |
 | `assets[]` | See below | Small files distributed with the package |
 | `entrypoint` | Nonempty entries | See the dedicated section below |
@@ -247,6 +252,72 @@ Images, weights, framework libraries, and venvs cannot be included in assets; se
 arguments of the `--*-plugin` class must be supplied by the spec itself (assets / components / pre_start /
 entrypoint text) or through an absolute path. Otherwise, validation returns the stable error code
 `CATALOG_FILE_VALUED_ARG_UNRESOLVED` (see the package document for this rule's boundaries and rationale).
+
+### PD Layout and Manual Command
+
+A PD recipe is often more than "one set of arguments for each of two roles": each role's TP and how many nodes an instance spans are part of the recipe, and for some recipes the two roles also take different engine arguments.
+`pd_roles` and `manual_command` let a spec write these down, so the deployment form opens already filled in.
+
+**`pd_roles`** describes only the starting point; a deployment can still change the instance count and pick nodes:
+
+- One entry per role: `tp`, `pp` (pipeline parallel degree), `nodes` (how many nodes one instance occupies, leader plus followers) and `units` (initial instance count, ≤ 32).
+- Validation: every role of the mode must be present and no role the mode lacks may be written; `tp` ≥ 1; `tp × pp` must be divisible by `nodes`; and the mode's TP and PP rules must hold.
+  `sglang-mooncake` does not compare the two roles' TP (SGLang pairs by attention TP, which the platform cannot see, the engine handles unequal widths, and a pairing it cannot handle makes the decode instance fail at start),
+  and only requires decode PP to equal prefill PP or be 1 (`PD_PP_DECODE_MISMATCH`).
+- The inference template list API (`GET /api/v1/inference-templates`) returns `pd_roles` on the spec with defaults filled in: each role carries `tp`, `pp`, `nodes`, `gpus_per_node` and `units`.
+- The deployment form switches to PD disaggregation and selects the spec's mode, then fills each role's TP, PP and instance rows from the layout. Automatic placement does not take instances that span nodes, so the rows use manual placement with empty follower slots, and you pick the nodes.
+
+**`manual_command`** lets the spec own the whole launch command:
+
+- When the request's `container_overrides` states neither `cmd_display` nor `command_mode`, the deployment's manual command is this script (`command_mode` is `manual`); if either is stated the request wins,
+  so the deployer can still rewrite it, or state `command_mode: engine` to return to the platform-built command. The deployment keeps the copy it was created with; a later catalog change does not reach it.
+- The evaluation API returns it as `manual_command_draft`, and the command editor starts from it.
+- Import-time validation: it is a shell script, not a JSON argv starting with `[`, ≤ 64 KiB; a PD spec's script must reference `${GPUWORKS_PD_ROLE}`, and if any role spans more than one node it must also reference
+  `${GPUWORKS_NODE_RANK}` or `${GPUWORKS_HEADLESS}`. Creating a deployment checks once more against the layout of that request (a request may span more nodes than the spec's layout),
+  and returns `MANUAL_COMMAND_RANK_BLIND` when it is not met.
+- Variable expansion and the system environment layer follow the same rules as a hand-written manual command; see [Manual Commands for Multi-Node and PD Deployments](../explanation/launch-config.md#多机与-pd-的手工命令):
+  only names with the `GPUWORKS_` prefix that this launch states are expanded; ranks of multi-node and PD deployments still carry the system environment layer (`NCCL_*`, `GLOO_SOCKET_IFNAME`, and so on),
+  and the script can read them as shell variables, for example `"$NCCL_IB_HCA"`. Names this launch does not state (`${GPUWORKS_PD_SIDE_CHANNEL_PORT}` on a decode instance,
+  `${GPUWORKS_MASTER_ADDR}` on a single-node role) are left as written for the shell, so write them only in the branch that can use them.
+
+A sketch follows (the other required fields such as `image`, `weights` and `gpus` are omitted): both roles span 2 nodes, with different TP and different engine arguments.
+
+```yaml
+- name: pd-mooncake
+  engine: sglang
+  pd_mode: sglang-mooncake
+  pd_roles:
+    prefill: {tp: 8, nodes: 2, units: 1}
+    decode:  {tp: 16, nodes: 2, units: 2}
+  manual_command: |
+    set -eu
+    IB_DEVICES=$(printf '%s' "$NCCL_IB_HCA" | sed 's/:[0-9]*//g')
+    case "${GPUWORKS_PD_ROLE}" in
+      prefill)
+        exec python3 -m sglang.launch_server --model-path ${GPUWORKS_MODEL_PATH} \
+          --served-model-name ${GPUWORKS_SERVED_MODEL_NAME} \
+          --host 0.0.0.0 --port ${GPUWORKS_API_PORT} --tp-size 8 \
+          --nnodes ${GPUWORKS_NNODES} --node-rank ${GPUWORKS_NODE_RANK} \
+          --dist-init-addr ${GPUWORKS_MASTER_ADDR}:${GPUWORKS_MASTER_PORT} \
+          --disaggregation-mode prefill --disaggregation-transfer-backend mooncake \
+          --disaggregation-bootstrap-port ${GPUWORKS_PD_SIDE_CHANNEL_PORT} \
+          --disaggregation-ib-device "$IB_DEVICES"
+        ;;
+      decode)
+        exec python3 -m sglang.launch_server --model-path ${GPUWORKS_MODEL_PATH} \
+          --served-model-name ${GPUWORKS_SERVED_MODEL_NAME} \
+          --host 0.0.0.0 --port ${GPUWORKS_API_PORT} --tp-size 16 \
+          --nnodes ${GPUWORKS_NNODES} --node-rank ${GPUWORKS_NODE_RANK} \
+          --dist-init-addr ${GPUWORKS_MASTER_ADDR}:${GPUWORKS_MASTER_PORT} \
+          --disaggregation-mode decode --disaggregation-transfer-backend mooncake \
+          --disaggregation-ib-device "$IB_DEVICES"
+        ;;
+    esac
+```
+
+**Writing the served name**: The served name is free text the user enters, and the platform rewrites the value of `--served-model-name` in a manual command, after expansion, into an escaped single-quoted string.
+So put `${GPUWORKS_SERVED_MODEL_NAME}` directly on the command line, unquoted, as in the example. Do not put it together with `--served-model-name` inside one double-quoted string
+(for example `bash -c "... --served-model-name ${GPUWORKS_SERVED_MODEL_NAME}"`): the single quotes the platform inserts stay as literal characters in the served name, or misalign the outer quotes.
 
 ## entrypoint: The Sole Declaration Point for Entrypoint Overrides
 
@@ -566,8 +637,8 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 37e82ac4ebd937f1453e29137d8cd5759ada058292802a2bdfad6cd53088d322 -->
-<!-- translation-localized-code-block: 87b9b0138ba4ec53acde102a7c6b84d62b6c2f8f0d3d75cab349af25de5c4c50 d678bb21d75ccc75960270f23e4263c515e921694b27de418282915199ae6923 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-source-sha256: 3c35c54110bb240c15b200a66d598b696da82ef14441dc68e437b029807574ed -->
+<!-- translation-localized-code-block: 26b59d93b4900f054e9c78c569388285db977d8a1a29c7231646a264e33074f3 d2ac202220acef0f04a4a5bdf2d4ffd3695b808693b508f83ea49253037b2d2d Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: a611f2e8254725bdcf88ae19eb23c532ef8c679903131a8881bbd61f09aafdb2 33859cded67f664966175739bc36d429175e7fe4c8f3d71422f40719d24be6e6 Translate YAML comments and illustrative user-facing reason text. -->

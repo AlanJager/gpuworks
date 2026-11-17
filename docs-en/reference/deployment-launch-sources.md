@@ -35,7 +35,7 @@ The layers are listed in merge order. Later layers generally override earlier on
 | 2 | Parameter dictionary | Declared dictionary parameters (typed fields) → flags | Dictionary flags in template args and user args are first extracted into fields (ADR 0020); conflicts return `LAUNCH_CONFIG_CONFLICT` | `deploy/param_specs.go`, `materialize.go`, `args.go` |
 | 3 | GPU/chip dialect | A few vLLM compatibility fixes | **Fills in missing values**: has no effect when fields, templates, or users have already set the value | `deploy/quirks.go` |
 | 4 | Scheduler-derived values | Allocated GPU count → TP; placement variables | Estimator values **do not enter** argv | `planning/launch_plan.go` |
-| 5 | Inference template spec | Non-dictionary args, env, entrypoint, preparation scripts, assets, components, API contract, `/dev/shm` minimum (`shm_bytes`), and unlimited locked memory (`memlock_unlimited`) | Overrides engine-injected values; user input can override this layer in turn | `inferencecatalog/flat.go`, `deploy/catalog_selection.go` |
+| 5 | Inference template spec | Non-dictionary args, env, entrypoint, preparation scripts, assets, components, API contract, `/dev/shm` minimum (`shm_bytes`), unlimited locked memory (`memlock_unlimited`), and extra docker arguments (`docker_args`) | Overrides engine-injected values; user input can override this layer in turn | `inferencecatalog/flat.go`, `deploy/catalog_selection.go` |
 | 6 | Topology | Multi-node and PD role arguments and env; RDMA docker arguments | Platform-owned; neither templates nor user input can override the PD connector | `deploy/pd.go`, `deploy/compute_network.go` |
 | 7 | Engine finalization | For example, SGLang logging configuration | **Fills in missing values** | `deploy/sglang_logging.go` |
 | 8 | User input | Dictionary fields, `extra_args` | Overrides the template | `deployment/launch_config.go` |
@@ -113,6 +113,7 @@ For spec field syntax, see the [Inference Catalog model.yaml Syntax Reference](i
 | `api` | API contract and health check path |
 | `shm_bytes` | Minimum size for the container's `/dev/shm`; see "`/dev/shm` Size". Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `memlock_unlimited` | When `true`, the container receives `--ulimit memlock=-1:-1`; see "Locked Memory". Saved with the spec snapshot |
+| `docker_args` | Appended to the front of `docker run`, before the deployment's own `docker_args` and the platform's appended arguments; see "The three-layer order of docker run arguments". Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `image` | Image used by the deployment; it need not be registered in the image catalog first |
 
 Template specs always use the `engine` command mode; `image-entry` and `manual` can only be explicitly selected for the current deployment.
@@ -152,7 +153,7 @@ a multi-node or PD deployment is shared by every rank and must reference the var
 | `extra_mounts` | Host directory, named volume or registered model (`model_id`) → container path; can be read-only. A model row is always read-only, and the deployment depends on that model as on a template component: a node without it acquires it from the model's storage, and the launch mounts the node's actual directory, e.g. a speculative-decoding draft at `/draft` | One source per row; paths must be absolute and non-root; they must not overlap or nest with platform mounts; `model_id` must be a registered model (`MOUNT_MODEL_NOT_FOUND`) |
 | `model_mount_path` | Model mount path (default `/model`); also rewrites the model path in the command | The primary component path cannot be changed when model components are present |
 | `shm_bytes` | Upper size limit of the container's `/dev/shm` tmpfs, not a memory reservation. When unspecified, it is the engine baseline of 16 GiB plus the CPU memory tier size (16 GiB if the memory tier is disabled). If the template spec declares a larger `shm_bytes`, that value is used. When docker arguments contain `--ipc=host`, the launch configuration carries no size (and no `--shm-size` is sent); the container shares the host's `/dev/shm` | Rejected when set together with `--ipc=host` (`SHM_SIZE_WITH_HOST_IPC`); rejected when smaller than the CPU memory tier (`SHM_BELOW_KV_CPU_TIER`) |
-| `docker_args` | Appended to `docker run` in order; the final arguments also include platform-appended RDMA options and `--ulimit memlock=-1:-1` from the template spec's `memlock_unlimited` | See the table below |
+| `docker_args` | Appended to `docker run` in order, after the template spec's own `docker_args`; the final arguments also include platform-appended RDMA options and `--ulimit memlock=-1:-1` from the template spec's `memlock_unlimited`; see "The three-layer order of docker run arguments" | See the table below |
 | `entrypoint_display`, `cmd_display`, `command_mode`, `command_includes_preparation` | See command modes | — |
 
 ### `/dev/shm` Size
@@ -192,9 +193,23 @@ Some engines need to lock large amounts of host memory into RAM (for example, De
 - Removing the limit requires container permission: docker allows `--ulimit memlock=-1` by default; udocker only parses `--device` and does not apply ulimit.
 - The spec value is saved with the deployment's spec snapshot; later template changes do not affect existing deployments.
 
+### The three-layer order of docker run arguments
+
+A template spec's own `docker_args` (an inference catalog field; see [Inference Catalog Syntax](inference-catalog-spec.md)) is the template layer of the deployment's `docker_args`: like `shm_bytes` and `memlock_unlimited`, it is saved with the spec snapshot, and later template changes do not affect existing deployments. The final `docker run` arguments always apply in this order:
+
+1. The template spec's own `docker_args`
+2. The deployment's own `docker_args` (container override field)
+3. Platform-appended arguments (topology RDMA options, the `--ulimit` from `memlock_unlimited`; see "Locked Memory")
+
+Validation is identical to the deployment's own `docker_args` (`deploy.ValidateDockerArgs`, see "Disallowed Docker Arguments" below), and applies to this same spec's own `shm_bytes`: a spec that states both `--ipc=host` and `shm_bytes` is already rejected on import.
+
+If the deployment itself does not state `--ipc=host` but the selected template spec does, the deployment's own `shm_bytes` has no effect; the platform rejects this (`SHM_SIZE_WITH_HOST_IPC`) rather than silently ignoring it, because that size would never apply - see "`/dev/shm` Size".
+
+The evaluation API's `docker_args` (the deployment page's "Runtime specification" preview) and the runtime information in instance details are already the result of merging all three layers, matching what the container actually receives.
+
 ### Disallowed Docker Arguments
 
-The platform's own docker arguments (RDMA) are exempt from these restrictions; only arguments supplied by the deployment are validated here.
+The platform's own docker arguments (RDMA) are exempt from these restrictions; this validation (`deploy.ValidateDockerArgs`) treats the deployment's own `docker_args` and a template spec's own `docker_args` the same way.
 
 | Syntax | Error Code | Use Instead |
 |---|---|---|
@@ -204,8 +219,10 @@ The platform's own docker arguments (RDMA) are exempt from these restrictions; o
 | `-v`, `--volume`, `--mount` | `DOCKER_ARG_USE_MOUNT_FIELD` | Mount rows |
 | `--entrypoint` | `DOCKER_ARG_USE_ENTRYPOINT_FIELD` | Entrypoint override |
 | `--privileged`, `--pid`, `-v /` mounting the host root directory | Rejected for security (`FIELD_INVALID`) | Unsupported |
+| `--ipc=host` together with this same layer's own non-zero `shm_bytes` | `SHM_SIZE_WITH_HOST_IPC` | Clear that layer's `shm_bytes`, or remove `--ipc=host` |
 
 The evaluation API attaches these errors to the docker arguments or shared memory control in the deployment form; the creation API returns 400. The udocker runtime only parses `--device` among these arguments.
+A template spec's `docker_args` that fails this validation is rejected on import, so it is never discovered only at deployment time.
 
 ## Environment Variable Layers
 
@@ -266,7 +283,7 @@ Docker argument order:
 ```text
 docker run -d --name gpuworks-<first-12-UUID-characters> --restart no
   --network host                 # Linux; on other systems, use -p 127.0.0.1:<port>:<port>
-  <docker_args>                  # deployment docker arguments + platform RDMA arguments + spec memlock_unlimited + device injection
+  <docker_args>                  # spec docker_args + deployment docker arguments + platform RDMA arguments + spec memlock_unlimited + device injection
   --label gpuworks.…=…           # ownership labels, see below
   --shm-size <shm_bytes>         # omitted when shm_bytes is 0 (--ipc=host)
   -e …  -v …
@@ -295,5 +312,5 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 - [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Image Catalog and Inference Image Families](image-families.md)
 - [Deploy Models](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation](../how-to/pd-disaggregation.md)
 
-<!-- translation-source-sha256: 07dbe3171f0bb1665df416f3c3adc3d83452cf1cf39f087557294c64c0f4f0bc -->
-<!-- translation-localized-code-block: bb1bf7727f072376c3c7e1ad0f8662c7b7d72d881f032a66b71f42ab5475a198 aa31ab60fc8387786ba75ad63414f7e99f82c785baeae8a33e9304231006194b Translate explanatory comments and placeholders in runtime assembly illustration. -->
+<!-- translation-source-sha256: c1736db6ce5033a9368192d2b2cbc0568997f8d6f9ebb2d907f14e765536d161 -->
+<!-- translation-localized-code-block: 87810a25cc9d7f6adbb697b3c419cb2727115525f01d20d8ba378215c02d16e7 9f5706e114d2dd907dd8185a9c7d45f2bdd0387155df33a59bb6930888f598f1 Translate explanatory comments and placeholders in runtime assembly illustration. -->

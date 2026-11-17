@@ -37,13 +37,16 @@ func FromFlatStoreModel(row store.InferenceModel) (InferenceModel, error) {
 			Name: stored.Name, DisplayNameZHCN: stored.DisplayNameZHCN, DisplayNameEN: stored.DisplayNameEN, Scenario: stored.Scenario,
 			Engine: stored.Engine, Image: stored.Image,
 			Weights: Weights{Quantization: stored.Quantization}, WeightBytes: stored.WeightBytes, RuntimeWeightBytes: stored.RuntimeWeightBytes,
-			PreStartScript: stored.PreStartScript, PDMode: stored.PDMode, ShmBytes: stored.ShmBytes, MemlockUnlimited: stored.MemlockUnlimited,
+			PreStartScript: stored.PreStartScript, PDMode: stored.PDMode, ManualCommand: stored.ManualCommand, ShmBytes: stored.ShmBytes, MemlockUnlimited: stored.MemlockUnlimited,
 		}
 		sources, err := DecodeWeightSources(stored.WeightSources)
 		if err != nil {
 			return InferenceModel{}, fmt.Errorf("decode stored inference catalog %s/%s weight_sources: %w", row.ModelID, stored.Name, err)
 		}
 		spec.Weights.Sources = sources
+		if spec.PDRoles, err = DecodePDRoleShapes(stored.PDRoles); err != nil {
+			return InferenceModel{}, fmt.Errorf("decode stored inference catalog %s/%s pd_roles: %w", row.ModelID, stored.Name, err)
+		}
 		imageSources, err := DecodeImageSources(stored.ImageSources)
 		if err != nil {
 			return InferenceModel{}, fmt.Errorf("decode stored inference catalog %s/%s image_sources: %w", row.ModelID, stored.Name, err)
@@ -60,6 +63,7 @@ func FromFlatStoreModel(row store.InferenceModel) (InferenceModel, error) {
 			{"pre_start_argv", stored.PreStartArgv, &spec.PreStartArgv},
 			{"assets", stored.Assets, &spec.Assets},
 			{"entrypoint", stored.Entrypoint, &spec.Entrypoint},
+			{"docker_args", stored.DockerArgs, &spec.DockerArgs},
 			{"placement", stored.Placement, &spec.Placement},
 			{"api_contract", stored.APIContract, &spec.API},
 			{"components", stored.Components, &spec.Components},

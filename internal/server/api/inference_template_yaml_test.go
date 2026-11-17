@@ -92,15 +92,21 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 		Image: "gpuworks/vllm:test", ImageSources: []string{"quay.io/gpuworks/vllm:test", "registry.example/gpuworks/vllm:test"},
 		Weights: weights(fullTemplateID), WeightBytes: 140_000_000_000, RuntimeWeightBytes: 70_000_000_000,
 		GPUs: gpus, Args: []string{"--max-model-len", "32768"}, Env: map[string]string{"VLLM_TEST": "1", "DRAFT_PATH": fullDraftMount},
-		PreStartArgv:     []string{"/opt/gpuworks/serve.py", "--prepare"},
-		Assets:           []inferencecatalog.Asset{{File: fullAssetPath, SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(asset)), UnpackTo: "/opt/gpuworks/serve.py"}},
-		Entrypoint:       []string{"python3", "-m", "vllm.entrypoints.openai.api_server"},
-		Placement:        &inferencecatalog.Placement{Language: "starlark", Resolver: fullPlacementFn},
-		API:              &inferencecatalog.APIContract{HealthEndpoint: "/health", TokenizerRef: "ms://Acme/Tokenizer@0123456789abcdef0123456789abcdef01234567", Operations: []inferenceapi.Operation{chat, completion}, Metrics: prometheus},
-		Components:       []inferencecatalog.Component{primary, draft},
-		PDMode:           "vllm-nixl",
+		PreStartArgv: []string{"/opt/gpuworks/serve.py", "--prepare"},
+		Assets:       []inferencecatalog.Asset{{File: fullAssetPath, SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(asset)), UnpackTo: "/opt/gpuworks/serve.py"}},
+		Entrypoint:   []string{"python3", "-m", "vllm.entrypoints.openai.api_server"},
+		Placement:    &inferencecatalog.Placement{Language: "starlark", Resolver: fullPlacementFn},
+		API:          &inferencecatalog.APIContract{HealthEndpoint: "/health", TokenizerRef: "ms://Acme/Tokenizer@0123456789abcdef0123456789abcdef01234567", Operations: []inferenceapi.Operation{chat, completion}, Metrics: prometheus},
+		Components:   []inferencecatalog.Component{primary, draft},
+		PDMode:       "vllm-nixl",
+		PDRoles: inferencecatalog.PDRoleShapes{
+			"prefill": {TP: 1, PP: 2, Nodes: 2, Units: 1},
+			"decode":  {TP: 2, Nodes: 2, Units: 2},
+		},
+		ManualCommand:    "set -eu\ncase \"${GPUWORKS_PD_ROLE}/${GPUWORKS_NODE_RANK}\" in\n  *) exec vllm serve ${GPUWORKS_MODEL_PATH} --port ${GPUWORKS_API_PORT} ;;\nesac",
 		ShmBytes:         429_496_729_600,
 		MemlockUnlimited: true,
+		DockerArgs:       []string{"--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"},
 	}
 	scripted := inferencecatalog.InferenceSpec{
 		Name: "scripted", Engine: "vllm", Image: "gpuworks/vllm:test", Weights: weights(fullTemplateID),
@@ -284,7 +290,7 @@ func TestInferenceTemplateYAMLRoundTripsEveryFieldThroughImport(t *testing.T) {
 	text := response.Body.String()
 	for _, want := range []string{
 		"tokenizer_ref: ms://Acme/Tokenizer@0123456789abcdef0123456789abcdef01234567",
-		"runtime_weight_bytes: 70000000000", "pd_mode: vllm-nixl", "shm_bytes: 429496729600", "memlock_unlimited: true", "kv_bytes_per_token:", "model_config:", "unsupported:",
+		"runtime_weight_bytes: 70000000000", "pd_mode: vllm-nixl", "shm_bytes: 429496729600", "memlock_unlimited: true", "docker_args:", "--cap-add=SYS_PTRACE", "kv_bytes_per_token:", "model_config:", "unsupported:",
 		"arch_id: sm_90", "readme_zh_cn: README.zh-CN.md", "resolver: |", "pre_start_script: |", "request_defaults:", "format: json",
 	} {
 		if !strings.Contains(text, want) {
@@ -375,6 +381,7 @@ func TestInferenceTemplateYAMLWireContract(t *testing.T) {
 		Source: "user", Name: "plain", Engine: "vllm", Image: "vllm:wire", Quantization: "bf16",
 		WeightSources: `[{"provider":"huggingface","repo_id":"acme/wire"}]`, GPUs: `{"vendor":"nvidia"}`, Args: `[]`, Env: `{}`, PreStartArgv: `[]`,
 		RuntimeWeightBytes: 12884901888, PDMode: "vllm-nixl", ShmBytes: 429496729600, MemlockUnlimited: true,
+		DockerArgs: `["--cap-add=SYS_PTRACE"]`,
 	}}}
 	if err := database.ImportUserInferenceCatalog([]store.InferenceModel{row}, false); err != nil {
 		t.Fatal(err)
@@ -398,7 +405,9 @@ func TestInferenceTemplateYAMLWireContract(t *testing.T) {
 		"          vendor: nvidia\n" +
 		"        pd_mode: vllm-nixl\n" +
 		"        shm_bytes: 429496729600\n" +
-		"        memlock_unlimited: true\n"
+		"        memlock_unlimited: true\n" +
+		"        docker_args:\n" +
+		"          - --cap-add=SYS_PTRACE\n"
 	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "application/yaml; charset=utf-8" || recorder.Body.String() != want {
 		t.Fatalf("status=%d type=%q body:\n%s\nwant:\n%s", recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.String(), want)
 	}

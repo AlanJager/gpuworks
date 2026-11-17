@@ -64,6 +64,23 @@ var (
 	shortValueOptions         = "acehlmpuvw"
 )
 
+// ValidateDockerArgs judges one layer's docker args together with that same
+// layer's own shared memory size: a deployment's own container_overrides, and
+// a template spec's docker_args with its shm_bytes (inferencecatalog), call
+// this one function so an option refused in one layer is refused in the
+// other. It refuses an option that would hand the container the host
+// (validateUnsafeDockerArg) before judging restatements of a platform-managed
+// field and --ipc=host together with this layer's own shm_bytes
+// (ValidateContainerDockerArgs).
+func ValidateDockerArgs(args []string, shmBytes int64) error {
+	for _, arg := range args {
+		if err := validateUnsafeDockerArg(arg); err != nil {
+			return err
+		}
+	}
+	return ValidateContainerDockerArgs(args, shmBytes)
+}
+
 // ValidateContainerDockerArgs judges a deployment's own docker args. Only the
 // deployment layer is judged: arguments the launch adds itself (the compute
 // network's RDMA options) are the platform's, not a restatement of them.
@@ -93,6 +110,19 @@ func DockerArgsShareHostIPC(args []string) bool {
 		}
 	}
 	return false
+}
+
+// shmSizeWithTemplateHostIPC reports the cross-layer form of
+// ErrorShmSizeWithHostIPC: the deployment's own shm_bytes has no effect
+// because the selected template's docker_args already put the container on
+// the host's IPC namespace. The deployment did not state --ipc=host itself,
+// so ValidateContainerDockerArgs (which only sees the deployment's own args)
+// cannot catch this; it is checked once the template layer is known, beside
+// launchShmBytes.
+func shmSizeWithTemplateHostIPC() error {
+	return messages.NewProductError(ErrorShmSizeWithHostIPC,
+		"a shared memory size has no effect with --ipc=host, which the template sets",
+		map[string]any{"arg": "--ipc=host"})
 }
 
 // dockerOptionName answers the long option a docker args token names, or ""

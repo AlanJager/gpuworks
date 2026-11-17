@@ -104,12 +104,7 @@ func (o ContainerOverrides) Validate() error {
 			return errors.New("container overrides env_unset key is empty")
 		}
 	}
-	for _, arg := range o.DockerArgs {
-		if err := validateUnsafeDockerArg(arg); err != nil {
-			return err
-		}
-	}
-	if err := ValidateContainerDockerArgs(o.DockerArgs, o.ShmBytes); err != nil {
+	if err := ValidateDockerArgs(o.DockerArgs, o.ShmBytes); err != nil {
 		return err
 	}
 	for _, mount := range o.ExtraMounts {

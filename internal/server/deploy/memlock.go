@@ -7,13 +7,17 @@ import "strings"
 // memory all use this one pair.
 var memlockUnlimitedArgs = [2]string{"--ulimit", "memlock=-1:-1"}
 
-// launchDockerArgs is the docker args a launch ends with: the deployment's own
-// args, then the options the platform adds. A memlock ulimit is added at most
-// once, and only when the deployment's own args state none: a deployer who
+// launchDockerArgs is the docker args a launch ends with, in the order the
+// layers apply: the selected template spec's docker_args, then the
+// deployment's own, then the options the platform adds. A memlock ulimit is
+// added at most once, and only when neither layer states one: a deployer who
 // states a locked-memory limit has chosen it, whatever the template spec
-// (memlock_unlimited), RDMA network or Engram shared memory would have asked for.
-func launchDockerArgs(own []string, p Params, memlockUnlimited bool) []string {
-	args := withComputeNetworkDockerArgs(append([]string(nil), own...), p)
+// (memlock_unlimited or its own docker_args), RDMA network or Engram shared
+// memory would have asked for; a template that states one wins over the
+// platform the same way, but not over the deployment's own.
+func launchDockerArgs(template, own []string, p Params, memlockUnlimited bool) []string {
+	args := append(append([]string(nil), template...), own...)
+	args = withComputeNetworkDockerArgs(args, p)
 	if memlockUnlimited && !hasMemlockUlimit(args) {
 		args = append(args, memlockUnlimitedArgs[0], memlockUnlimitedArgs[1])
 	}

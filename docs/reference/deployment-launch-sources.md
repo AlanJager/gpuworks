@@ -35,7 +35,7 @@ controller 都经 `planning.PlanLaunch` 调它，产物是 `proto.ResolvedLaunch
 | 2 | 参数字典 | 已声明的字典参数（类型化字段）→ flag | 模板 args 与用户 args 里的字典 flag 先被拆成字段（ADR 0020），冲突报 `LAUNCH_CONFIG_CONFLICT` | `deploy/param_specs.go`、`materialize.go`、`args.go` |
 | 3 | GPU/芯片方言 | 少数 vLLM 兼容性修正 | **补缺**：字段、模板与用户已设置时不生效 | `deploy/quirks.go` |
 | 4 | 调度推导值 | 分配到的 GPU 数 → TP；放置变量 | 估算器的值**不进** argv | `planning/launch_plan.go` |
-| 5 | 推理模板档位 | 字典外的 args、env、entrypoint、准备脚本、资产、组件、API 契约、`/dev/shm` 下限（`shm_bytes`）、不限锁定内存（`memlock_unlimited`） | 覆盖引擎注入的值；用户输入可再覆盖本层 | `inferencecatalog/flat.go`、`deploy/catalog_selection.go` |
+| 5 | 推理模板档位 | 字典外的 args、env、entrypoint、准备脚本、资产、组件、API 契约、`/dev/shm` 下限（`shm_bytes`）、不限锁定内存（`memlock_unlimited`）、额外 docker 参数（`docker_args`） | 覆盖引擎注入的值；用户输入可再覆盖本层 | `inferencecatalog/flat.go`、`deploy/catalog_selection.go` |
 | 6 | 拓扑 | 多机、PD 的角色参数与 env、RDMA docker 参数 | 平台所有，模板与用户不得重写 PD connector | `deploy/pd.go`、`deploy/compute_network.go` |
 | 7 | 引擎收尾 | 如 SGLang 日志配置 | **补缺** | `deploy/sglang_logging.go` |
 | 8 | 用户输入 | 字典字段、`extra_args` | 盖过模板 | `deployment/launch_config.go` |
@@ -113,6 +113,7 @@ dtype 兼容矩阵只用于准入与告警，不改写 argv。
 | `api` | API 契约与健康检查路径 |
 | `shm_bytes` | 容器 `/dev/shm` 的下限，见「`/dev/shm` 大小」；随档位快照保存，之后改模板不影响已有部署 |
 | `memlock_unlimited` | 为 `true` 时容器带 `--ulimit memlock=-1:-1`，见「锁定内存」；随档位快照保存 |
+| `docker_args` | 追加到 `docker run` 的最前面，排在部署自己的 `docker_args` 与平台追加的参数之前，见「docker run 参数的三层顺序」；随档位快照保存，之后改模板不影响已有部署 |
 | `image` | 部署使用的镜像；无需先在镜像目录登记 |
 
 模板档位固定使用 `engine` 命令模式；`image-entry`、`manual` 只能由本次部署显式选择。
@@ -152,7 +153,7 @@ sleep、LoRA、投机解码、KV 卸载等特性只在对应字典字段被声�
 | `extra_mounts` | 主机目录、命名卷或已注册模型（`model_id`）→ 容器路径，可只读；模型行总是只读，部署像依赖模板组件一样依赖该模型：节点上没有时按模型所在存储获取，启动时挂载节点上的实际目录，例如把投机解码的 draft 挂到 `/draft` | 每行只有一个来源；路径须绝对、非根；不得与平台挂载重叠或嵌套；`model_id` 须是已注册模型（`MOUNT_MODEL_NOT_FOUND`） |
 | `model_mount_path` | 模型挂载路径（默认 `/model`），同时改写命令里的模型路径 | 有模型组件时不得改主组件路径 |
 | `shm_bytes` | 容器 `/dev/shm` tmpfs 的大小上限，不是内存预留；不填为引擎基线 16 GiB 加上 CPU 内存层的大小（没开内存层就是 16 GiB），模板档位声明了 `shm_bytes` 且更大时取模板的值；docker 参数含 `--ipc=host` 时启动配置不带大小（也不下发 `--shm-size`），容器共用宿主机 `/dev/shm` | 与 `--ipc=host` 同时设置被拒（`SHM_SIZE_WITH_HOST_IPC`）；小于 CPU 内存层被拒（`SHM_BELOW_KV_CPU_TIER`） |
-| `docker_args` | 按顺序追加到 `docker run`；最终的参数里还有平台追加的 RDMA 选项，以及模板档位 `memlock_unlimited` 带来的 `--ulimit memlock=-1:-1` | 见下表 |
+| `docker_args` | 按顺序追加到 `docker run`，排在模板档位自己的 `docker_args` 之后；最终的参数里还有平台追加的 RDMA 选项，以及模板档位 `memlock_unlimited` 带来的 `--ulimit memlock=-1:-1`，见「docker run 参数的三层顺序」 | 见下表 |
 | `entrypoint_display`、`cmd_display`、`command_mode`、`command_includes_preparation` | 见命令模式 | — |
 
 ### `/dev/shm` 大小
@@ -192,9 +193,29 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 - 取消上限需要容器有权限：docker 在默认配置下允许 `--ulimit memlock=-1`；udocker 只解析 `--device`，不应用 ulimit。
 - 档位的值随部署的档位快照保存，之后改模板不影响已有部署。
 
+### docker run 参数的三层顺序
+
+模板档位自己的 `docker_args`（推理目录字段，见 [推理目录语法](inference-catalog-spec.md)）是部署
+`docker_args` 的模板层：与 `shm_bytes`、`memlock_unlimited` 一样，随档位快照保存，之后改模板不影响
+已有部署。最终 `docker run` 参数的顺序固定为：
+
+1. 模板档位的 `docker_args`
+2. 部署自己的 `docker_args`（容器覆盖字段）
+3. 平台追加的参数（拓扑 RDMA 选项、`memlock_unlimited` 带来的 `--ulimit`，见「锁定内存」）
+
+校验与部署自己的 `docker_args` 完全一致（`deploy.ValidateDockerArgs`，见下节「docker 参数里不允许的项」），
+对模板档位自己的 `shm_bytes` 生效：一个模板写 `--ipc=host` 又写 `shm_bytes` 在导入时就被拒绝。
+
+部署自己没写 `--ipc=host`，但选中的模板档位写了：部署自己填的 `shm_bytes` 因此不生效，这时拒绝而不是
+静默忽略（`SHM_SIZE_WITH_HOST_IPC`），因为那个大小根本不会生效，参见「`/dev/shm` 大小」。
+
+评估接口的 `docker_args`（部署页「运行规格」预览）与实例详情的运行时信息已经是三层合并后的结果，
+与容器真正拿到的参数一致。
+
 ### docker 参数里不允许的项
 
-平台自己的 docker 参数（RDMA）不受此限；这里只校验部署自己写的。
+平台自己的 docker 参数（RDMA）不受此限；这里的校验（`deploy.ValidateDockerArgs`）对部署自己的
+`docker_args` 与模板档位自己的 `docker_args` 一视同仁。
 
 | 写法 | 错误码 | 应改为 |
 |---|---|---|
@@ -204,8 +225,10 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 | `-v`、`--volume`、`--mount` | `DOCKER_ARG_USE_MOUNT_FIELD` | 挂载行 |
 | `--entrypoint` | `DOCKER_ARG_USE_ENTRYPOINT_FIELD` | entrypoint 覆盖 |
 | `--privileged`、`--pid`、`-v /` 挂载主机根目录 | 安全拒绝（`FIELD_INVALID`） | 不支持 |
+| `--ipc=host` 且同一层自己的 `shm_bytes` 非零 | `SHM_SIZE_WITH_HOST_IPC` | 清空该层 `shm_bytes`，或去掉 `--ipc=host` |
 
 评估接口把这些错误挂在部署表单的 docker 参数或共享内存控件旁；创建接口返回 400。udocker 运行时只解析其中的 `--device`。
+模板档位的 `docker_args` 不合规会在导入时被拒绝，不会留到部署阶段才发现。
 
 ## 环境变量分层
 
@@ -266,7 +289,7 @@ docker 的参数顺序：
 ```text
 docker run -d --name gpuworks-<uuid前12位> --restart no
   --network host                 # Linux；其他系统改为 -p 127.0.0.1:<端口>:<端口>
-  <docker_args>                  # 部署 docker 参数 + 平台 RDMA 参数 + 档位 memlock_unlimited + 设备注入
+  <docker_args>                  # 档位 docker_args + 部署 docker 参数 + 平台 RDMA 参数 + 档位 memlock_unlimited + 设备注入
   --label gpuworks.…=…           # 归属标签，见下
   --shm-size <shm_bytes>         # shm_bytes 为 0（--ipc=host）时省略
   -e …  -v …

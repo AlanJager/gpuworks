@@ -7,8 +7,9 @@
 **前置条件**：
 
 - 已熟悉普通部署流程，见[部署模型、选卡与解释调度结果](deploy-models.md)。
-- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA 与 AMD，`vllm-ascend-mooncake` 面向昇腾，`vllm-mooncake` 面向海光 DCU（要求 vLLM 0.21 的海光镜像，见[海光 DCU](#海光-dcu)），`sglang-ppu-ipc` 面向 PPU（P、D 必须在同一节点），`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 面向经 RoCE 网卡传 KV 的 PPU（可跨机），`sglang-nixl` 未验证。
+- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA 与 AMD，`vllm-ascend-mooncake` 面向昇腾，`vllm-mooncake` 面向海光 DCU（要求 vLLM 0.21 的海光镜像，见[海光 DCU](#海光-dcu)），`sglang-ppu-ipc` 面向 PPU（P、D 必须在同一节点），`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 面向经 RoCE 网卡传 KV 的 PPU（可跨机），`sglang-mooncake` 面向海光 DCU 上的 SGLang（经 RDMA 网卡传 KV，见[海光 SGLang 经 Mooncake RDMA](#海光-sglang-经-mooncake-rdma)，未验证），`sglang-nixl` 未验证。
 - PPU Mooncake 模式：节点在主机 RDMA 参数网络上，并已加载 `alixpu_peermem`（见[PPU 经 RDMA 传 KV](#ppu-经-rdma-传-kv)）。
+- `sglang-mooncake`：P、D 的节点共用一个主机 RDMA 参数网络（单机也一样）。
 - NVIDIA 与海光模式的 P、D 跨机时 KV 走参数网络，可选 RDMA 或以太网；昇腾模式跨机时必须共用加速器 RDMA 或加速器 HCCS 网络，且 prefill 与 decode 所在 NPU 在对应加速器网络上互通。配置与验证见[配置节点网络](configure-networks.md)。
 
 PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示，decode 实例从它那里取走 KV 后逐 token 生成。对外仍是
@@ -26,10 +27,10 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
 
 1. 部署页的 **节点放置** 选 **PD 分离**，再选 PD 模式。可选模式来自引擎档位：vLLM 有 `vllm-nixl`（NVIDIA、AMD）、
    `vllm-ascend-mooncake`（昇腾）、`vllm-mooncake`（海光）、`vllm-ppu-mooncake`（PPU，RDMA），SGLang 有 `sglang-ppu-ipc`（PPU，同机）、
-   `sglang-ppu-mooncake`（PPU，RDMA）与 `sglang-nixl`（未验证）。
+   `sglang-ppu-mooncake`（PPU，RDMA）、`sglang-mooncake`（海光，RDMA，未验证）与 `sglang-nixl`（未验证）。
 
 2. 选择放置方式（见[自动放置与手动放置](#自动放置与手动放置)），为 prefill 与 decode 各设 TP，并逐个添加实例：手动时每个实例选一个节点，可选钉卡；自动时实例可以不选节点，由平台挑。模式有 TP 规则：`vllm-nixl` 要求
-   decode TP ≥ prefill TP，`vllm-ascend-mooncake` 相反，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` 与两个 PPU Mooncake 模式要求相等。
+   decode TP ≥ prefill TP，`vllm-ascend-mooncake` 相反，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` 与两个 PPU Mooncake 模式要求相等，`sglang-mooncake` 不比较 TP 但要求 decode 的 PP 等于 prefill 的 PP 或为 1（见[海光 SGLang 经 Mooncake RDMA](#海光-sglang-经-mooncake-rdma)）。
    创建部署时 P、D 每个角色都需要至少一个实例。
 
 3. 一个实例要跨多台节点时，在该实例下 **添加节点**：第一台是 leader（对外服务），其余是 follower。此时必须写 TP，
@@ -40,10 +41,13 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
    | 模式 | P 不可用时 | decode 取 KV 失败时 |
    |---|---|---|
    | `vllm-nixl`、`vllm-ascend-mooncake`、`vllm-mooncake` | 默认由 decode 本地完成（`fallback: decode`），也可选返回 503（`fail`） | 默认报错（`kv_load_failure: fail`），可选本地重算（`recompute`） |
-   | `sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake` | 只支持返回 503，decode 不能独立完成 prefill | 不提供这项配置 |
+   | `sglang-nixl`、`sglang-mooncake`、`sglang-ppu-ipc`、`sglang-ppu-mooncake` | 只支持返回 503，decode 不能独立完成 prefill | 不提供这项配置 |
    | `vllm-ppu-mooncake` | 只支持返回 503（降级未验证） | 不提供这项配置 |
 
    模式、TP、PP 与 KV 加载失败策略启动后不能改，需要克隆部署；提交前确认这些选择。
+
+   模板可以声明 PD 版式：选中这样的模板时，表单自动切到 **PD 分离**、选上模板的模式，并按模板填好各角色的 TP、PP 和实例行。
+   一个实例要跨多台节点时，实例行按手动放置留出空的 follower 槽位，你只需选节点；模板自带启动命令时，命令编辑框也已填好（手动模式，仍可改）。写法见[推理目录语法 · PD 版式与手工命令](../reference/inference-catalog-spec.md#pd-版式与手工命令)。
 
 5. 昇腾模式的 KV 走所选的加速器网络：910B/910 系列使用 NPU 自带的 RoCE 网口，A3/910C 灵衢网络使用 HCCS。跨机部署时这些节点必须共用一个加速器 RDMA 或加速器 HCCS 网络（见
    [配置节点网络](configure-networks.md)），否则被拒绝；prefill 与 decode 所在的 NPU 还必须在对应网络上互通。RoCE 用
@@ -180,6 +184,33 @@ P 与 D 要交换 KV，所以整个 PD 部署的实例都在同一张计算网�
   GDN 混合模型在 K100 上用 Qwen3.5-0.8B 与 `hygon/Qwen3.8-27B-Channel-INT8-w8a8` 验证（同机两卡、TP 1、`tcp`）：输出与不开 PD 的部署逐字一致，
   拉取失败时 `fail` 返回 500 且 decode 继续服务，`recompute` 重算出正确结果；BW 上未验证。
 
+### 海光 SGLang 经 Mooncake RDMA
+
+`sglang-mooncake` 在海光 DCU 上用 SGLang 的 Mooncake 传输后端（海光为 DTK 构建的 SGLang 带 Mooncake 传输引擎），KV 经主机的 RDMA 网卡传输。
+P 与 D 并发收到请求，网关不等 prefill，与 `sglang-nixl` 同一种交接线协议。**该模式未验证**：评估给出 `PD_UNVERIFIED_COMBINATION` 警告，尚未在平台上端到端跑通。
+
+- **网络**：节点必须共用一个**主机 RDMA** 参数网络，单机也一样，否则拒绝 `PD_NETWORK_RDMA_REQUIRED`。可休眠的部署不能用这类网络（`PD_SLEEP_RDMA_UNSUPPORTED`）。
+  不需要 `alixpu_peermem` 这类 PPU 模块。
+- **TP**：平台不比较 prefill 与 decode 的 TP。SGLang 按各自的注意力 TP（TP 除以 attention-dp、attention-cp 度数）配对，平台看不到这些度数，
+  宽度不等的配对由引擎处理；配对不上时 decode 实例启动失败，从它的日志里看原因。
+- **PP**：decode 的 PP 必须等于 prefill 的 PP，或为 1（每个 decode rank 向 prefill 的各个流水线级拉取 KV），否则拒绝 `PD_PP_DECODE_MISMATCH`。
+- **多机实例**：跨多台节点的 prefill 实例在每个 rank 上用同一个端口提供 bootstrap 服务。控制器从该实例全部节点都空闲的端口里挑这一个，
+  所以各节点引擎端口范围的交集内要有空闲端口，否则该实例不能启动，并记引擎端口不足。
+- **平台注入的环境变量**：只有通用的网络变量，与其他模式相同：主机 RDMA 网络上的 `NCCL_IB_HCA`（`设备:端口`，逗号分隔）、
+  `NCCL_SOCKET_IFNAME`（该网络的网卡，逐节点覆盖后可能是 `bond1` 这类名字），以及启动变量 `${GPUWORKS_PD_SIDE_CHANNEL_HOST}`（本 rank 节点在 P、D 共用网络上的地址）。
+  平台按结构化参数组装命令时还会写 `--disaggregation-ib-device`（设备名，去掉端口后缀）。
+- **由模板脚本推出的变量**：海光定制版 SGLang 还需要的 `MC_TE_FILTERS`（Mooncake 的设备过滤）、`ROCSHMEM_ALLOWED_IBV_DEVICES` 与
+  `ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME`（DeepEP 节点间所用的 ROCSHMEM 只用这个网络）、`SGLANG_HOST_IP`（向 bootstrap 登记的地址）
+  不由平台注入，写在模板的 `manual_command` 里，从上面的通用变量推出：
+
+  ```sh
+  IB_DEVICES=$(printf '%s' "$NCCL_IB_HCA" | sed 's/:[0-9]*//g')
+  export MC_TE_FILTERS="$IB_DEVICES" ROCSHMEM_ALLOWED_IBV_DEVICES="$IB_DEVICES"
+  export ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME="$NCCL_SOCKET_IFNAME" SGLANG_HOST_IP="${GPUWORKS_PD_SIDE_CHANNEL_HOST}"
+  ```
+- **默认环境**：`SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0`，健康检查不触发生成：生成式检查会在 prefill 侧排一个假请求，大模型的首批请求又很慢。
+- **缩放**：P、D 都必须保留实例，prefill 不能缩到 0。
+
 ## 运行中
 
 ### 状态
@@ -199,7 +230,7 @@ P 与 D 要交换 KV，所以整个 PD 部署的实例都在同一张计算网�
 - 自动放置的部署新增实例时可以不写节点：平台把它们放进已有实例所在的那张网络、那种架构里，并按放置策略挑。写了节点的实例按你写的放，并和其他实例一起过 PD 的常规校验。没有节点放得下新实例返回 409 `UNIT_PLACEMENT_NONE`。
 - `vllm-nixl`、`vllm-ascend-mooncake`、`vllm-mooncake` 支持将 prefill 缩到 0，此时请求有意全部由 decode 完成，不计为降级。
   这与仍期望 P 实例、但 P 故障时按 `fallback` 选择降级或返回 503 不同。
-- `sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 的 P、D 都必须保留实例。
+- `sglang-nixl`、`sglang-mooncake`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 的 P、D 都必须保留实例。
 
 ### 重试一个实例
 
@@ -254,7 +285,7 @@ vLLM 模式都采用顺序交接：请求视图在「网关」之后单列「PD 
 #### 查看 Trace
 
 顺序交接导出的 OTel trace 里 prefill 阶段是 `pd.prefill` 子 span。
-`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake` 并发调用 P、D，网关不等待 P 回复，因此没有独立的 `pd.prefill` 子 span。
+`sglang-nixl`、`sglang-mooncake`、`sglang-ppu-ipc`、`sglang-ppu-mooncake` 并发调用 P、D，网关不等待 P 回复，因此没有独立的 `pd.prefill` 子 span。
 
 ### 评测
 

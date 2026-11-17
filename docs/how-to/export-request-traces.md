@@ -177,7 +177,7 @@ span 的类型是 SERVER，名字是 `chat <模型名>`、`text_completion <模�
 - 发给 prefill 实例的 `traceparent` 以该子 span 为父，发给 decode 实例的以网关 span 为父；两个引擎各自导出 span 时分别挂在这两处。
 - 父 span 上的 `gen_ai.latency.*` 是 decode 实例的自报值：排队含等远端 KV 的时间，Prefill 只是重算最后一个 token，见[请求时间线](../reference/request-timeline.md#6-pd-分离部署)。
 
-**并发交接（`sglang-nixl`）**：网关不等 prefill，没有子 span，prefill 副本的请求以网关 span 为父。
+**并发交接（`sglang-nixl`、`sglang-mooncake`）**：网关不等 prefill，没有子 span，prefill 副本的请求以网关 span 为父。
 
 ### 时间线事件与资源属性
 

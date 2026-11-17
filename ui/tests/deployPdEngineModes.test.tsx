@@ -205,9 +205,9 @@ test("a PD mode picked for another vendor gives way to this vendor's default", a
 });
 
 test("an engine with PD modes, none for the draft's vendor, disables the PD card and names the vendor", () => {
-  render(<Harness vendor="hygon" profile={{ name: "sglang", pd_modes: fixturePdModes("sglang") } as EngineProfile} />);
+  render(<Harness vendor="amd" profile={{ name: "sglang", pd_modes: fixturePdModes("sglang") } as EngineProfile} />);
   assert.equal(pdCardButton().hasAttribute("disabled"), true);
-  assert.ok(screen.getByText(deployLocale.workbench.node.pdVendorUnsupported.replace("{{vendor}}", "Hygon")));
+  assert.ok(screen.getByText(deployLocale.workbench.node.pdVendorUnsupported.replace("{{vendor}}", "AMD")));
 });
 
 function PdSectionFor({ engine, vendor, mode }: { engine: string; vendor: string; mode?: string }) {

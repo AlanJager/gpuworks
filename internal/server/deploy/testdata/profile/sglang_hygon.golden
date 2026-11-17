@@ -1687,5 +1687,25 @@
     "enable_auto_tool_choice",
     "trust_remote_code",
     "enforce_eager"
+  ],
+  "pd_modes": [
+    {
+      "name": "sglang-mooncake",
+      "vendors": [
+        "hygon"
+      ],
+      "roles": [
+        "decode",
+        "prefill"
+      ],
+      "scalable_to_zero": [],
+      "tp_rule": "any",
+      "max_units_per_role": 32,
+      "fallbacks": [
+        "fail"
+      ],
+      "kv_load_failures": [],
+      "unverified": true
+    }
   ]
 }

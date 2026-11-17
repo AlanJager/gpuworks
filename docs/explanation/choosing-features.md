@@ -204,6 +204,7 @@
 | `vllm-nixl` | vLLM / NVIDIA | UCX（走参数网络） | 已验证：同机、跨机以太、角色内跨机 |
 | `vllm-ascend-mooncake` | vLLM / 昇腾 | NPU 自带 RoCE 口（HCCL） | 已验证：两台 910B4 跨机；P、D 的 NPU 必须在 NPU 网络上互通 |
 | `vllm-mooncake` | vLLM 0.21 / 海光 | Mooncake 传输引擎（走参数网络，RDMA 或 TCP） | 已验证：海光 K100 同机两卡、TP 1，含 GDN 混合模型（需 r4 镜像）；跨机与 RDMA 未验证 |
+| `sglang-mooncake` | SGLang / 海光 | Mooncake RDMA（走主机 RDMA 参数网络） | **未验证** |
 | `sglang-nixl` | SGLang / NVIDIA | UCX | **未验证** |
 | `sglang-ppu-ipc` | SGLang / PPU | 同机卡间 IPC（Mooncake NVLink 传输） | 已验证：PPU ZW810E 同机两卡、TP 1；P、D 必须在同一节点 |
 | `sglang-ppu-mooncake` | SGLang / PPU | Mooncake RDMA（走主机 RDMA 参数网络） | 已验证：PPU ZW810E 经 RoCE 网卡，TP 1；节点须加载 `alixpu_peermem` |
@@ -216,8 +217,9 @@
 没加载的节点在节点详情「健康检查」的 **GPUDirect RDMA** 一列显示警告并给出修复命令，诊断报告同样列出；
 手动选到这样的节点会被拒绝（`PD_PEER_MEMORY_MISSING`），自动放置跳过它们，一个都不剩时返回 `PD_PEER_MEMORY_NONE`。
 海光只有 vLLM 0.21 的镜像带 Mooncake，0.18.1 的镜像不能用于 PD。
+`sglang-mooncake` 在海光上经 RDMA 网卡传 KV，节点必须在主机 RDMA 参数网络上（单机也一样，否则拒绝 `PD_NETWORK_RDMA_REQUIRED`）。
 TP 规则按模式不同：`vllm-nixl` 要求 decode TP ≥ prefill TP，`vllm-ascend-mooncake` 要求
-prefill TP ≥ decode TP，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` 与两个 PPU Mooncake 模式要求相等。
+prefill TP ≥ decode TP，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` 与两个 PPU Mooncake 模式要求相等；`sglang-mooncake` 不比较 TP（SGLang 按注意力 TP 配对，由引擎处理），只要求 decode 的 PP 等于 prefill 的 PP 或为 1。
 
 **代价与限制**：
 
@@ -229,7 +231,7 @@ prefill TP ≥ decode TP，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` �
 - KV Offload 只在 prefill 上生效；不能在自定义参数里写 `--kv-transfer-config` 或
   `--kv-offloading-size`。
 - 与 sleep、dGPU 叠加时评估会给"未验证"警告（`PD_UNVERIFIED_COMBINATION`）。
-- `sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake` 的 decode 不能独立计算 prefill，所以没有降级、也不能把 prefill 缩到 0；
+- `sglang-nixl`、`sglang-mooncake`、`sglang-ppu-ipc`、`sglang-ppu-mooncake` 的 decode 不能独立计算 prefill，所以没有降级、也不能把 prefill 缩到 0；
   `vllm-ppu-mooncake` 也只支持返回 503（降级未验证）；其余模式默认
   在 prefill 不可用时降级到 decode 本地完成（`fallback: decode`），也可设为直接返回 503。
 - 已知缺陷：引擎进程在实例就绪后退出时，平台暂时不会发现（`todo.md` T26），PD 下表现为网关持续降级。

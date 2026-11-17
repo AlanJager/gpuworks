@@ -164,6 +164,10 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// exists from here on so every field-error exit carries the template facts
 	// it already resolved.
 	resp := dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, OK: true, Replicas: req.Replicas, AutoPlaced: autoPlaced, PlanScope: "per_replica", TemplateMatch: selection.Match, MatchedBy: selection.MatchedBy, TemplateDeviated: selection.Deviated}
+	if selection.ManualCommandDefault {
+		// The spec owns its command: the editor starts from that script.
+		resp.ManualCommandDraft = selection.Spec.ManualCommand
+	}
 	if selection.Spec != nil {
 		resp.TemplateSpecSource = selection.Spec.Source
 		resp.TemplateSpecName = selection.Spec.Name

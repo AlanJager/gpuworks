@@ -719,6 +719,7 @@
     "PD_TP_DIRECTION": "PD mode {{mode}} needs decode TP ({{decode}}) to be at least prefill TP ({{prefill}}).",
     "PD_TP_PREFILL_AT_LEAST_DECODE": "PD mode {{mode}} needs prefill TP ({{prefill}}) to be at least decode TP ({{decode}}).",
     "PD_TP_EQUAL": "PD mode {{mode}} needs the same TP on both roles; prefill has {{prefill}} and decode {{decode}}.",
+    "PD_PP_DECODE_MISMATCH": "PD mode {{mode}} needs the decode PP to equal the prefill PP or be 1; prefill has {{prefill}} and decode {{decode}}.",
     "PD_GPU_OVERLAP": "GPU {{gpu}} on {{node}} is pinned by two instances ({{role}} and {{other}}).",
     "PD_RANK_NODE_REPEATED": "An instance of the {{role}} role places two ranks on node {{node}}; each rank needs its own node.",
     "PD_RANK_TP_REQUIRED": "An instance of the {{role}} role spans {{ranks}} nodes, so the role must state its TP.",

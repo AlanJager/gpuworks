@@ -7,8 +7,9 @@ After completing this guide, you can call the model through a single service nam
 **Prerequisites**:
 
 - You are familiar with ordinary deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
-- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA and AMD, `vllm-ascend-mooncake` targets Ascend, `vllm-mooncake` targets Hygon DCU (it needs the Hygon vLLM 0.21 image; see [Hygon DCU](#海光-dcu)), `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), and `sglang-nixl` is unverified.
+- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA and AMD, `vllm-ascend-mooncake` targets Ascend, `vllm-mooncake` targets Hygon DCU (it needs the Hygon vLLM 0.21 image; see [Hygon DCU](#海光-dcu)), `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), `sglang-mooncake` targets SGLang on Hygon DCU with the KV over RDMA NICs (see [Hygon SGLang over Mooncake RDMA](#海光-sglang-经-mooncake-rdma); unverified), and `sglang-nixl` is unverified.
 - PPU Mooncake modes: the nodes are on a host RDMA compute network and have `alixpu_peermem` loaded (see [PPU KV over RDMA](#ppu-经-rdma-传-kv)).
+- `sglang-mooncake`: the nodes of P and D share one host RDMA compute network (even on a single node).
 - In the NVIDIA and Hygon modes, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared Accelerator RDMA or Accelerator HCCS network, and the NPUs hosting prefill and decode must be mutually reachable over that accelerator network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
 
 PD disaggregation splits inference for one model into two instance groups: prefill instances process only the prompt, and decode instances retrieve their KV and then generate tokens one by one. Externally, it remains
@@ -26,10 +27,10 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 
 1. On the deployments page, select **PD disaggregation** under **Node Placement**, then select a PD mode. Available modes come from the engine profiles: vLLM offers `vllm-nixl` (NVIDIA, AMD),
    `vllm-ascend-mooncake` (Ascend), `vllm-mooncake` (Hygon), and `vllm-ppu-mooncake` (PPU, RDMA); SGLang offers `sglang-ppu-ipc` (PPU, same node),
-   `sglang-ppu-mooncake` (PPU, RDMA), and `sglang-nixl` (unverified).
+   `sglang-ppu-mooncake` (PPU, RDMA), `sglang-mooncake` (Hygon, RDMA, unverified), and `sglang-nixl` (unverified).
 
 2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)), set TP separately for prefill and decode, then add instances one by one. In manual mode select a node for each instance and optionally pin cards; in automatic mode an instance may leave its node out and the platform picks it. Each mode has TP rules: `vllm-nixl` requires
-   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `vllm-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require equal values.
+   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `vllm-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require equal values; `sglang-mooncake` does not compare TP but requires decode PP to equal prefill PP or be 1 (see [Hygon SGLang over Mooncake RDMA](#海光-sglang-经-mooncake-rdma)).
    When creating a deployment, each of the P and D roles needs at least one instance.
 
 3. To span an instance across multiple nodes, select **Add Node** under that instance. The first node is the leader (serving external requests), and the rest are followers. You must specify TP in this case,
@@ -40,10 +41,13 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
    | Mode | When P Is Unavailable | When Decode Fails to Retrieve KV |
    |---|---|---|
    | `vllm-nixl`, `vllm-ascend-mooncake`, `vllm-mooncake` | Decode completes locally by default (`fallback: decode`); returning 503 (`fail`) is also available | Returns an error by default (`kv_load_failure: fail`); local recomputation (`recompute`) is also available |
-   | `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake` | Only returning 503 is supported; decode cannot perform prefill independently | This setting is unavailable |
+   | `sglang-nixl`, `sglang-mooncake`, `sglang-ppu-ipc`, `sglang-ppu-mooncake` | Only returning 503 is supported; decode cannot perform prefill independently | This setting is unavailable |
    | `vllm-ppu-mooncake` | Only returning 503 is supported (fallback is unverified) | This setting is unavailable |
 
    Mode, TP, PP, and KV load failure policy cannot be changed after startup; clone the deployment to change them. Confirm these selections before submitting.
+
+   A template can declare the PD layout: when you select such a template, the form switches to **PD disaggregation**, selects the template's mode, and fills in each role's TP and PP and the instance rows.
+   Where an instance spans several nodes, the rows use manual placement with empty follower slots, and you only pick the nodes; when the template ships its own launch command, the command editor is already filled in (manual mode, still editable). For how to write it, see [Inference Catalog Syntax · PD Layout and Manual Command](../reference/inference-catalog-spec.md#pd-版式与手工命令).
 
 5. In Ascend mode, KV uses the selected accelerator network: 910B/910 uses the NPUs' built-in RoCE ports, while A3/910C LingQu uses HCCS. For cross-machine deployment, these nodes must share an Accelerator RDMA or Accelerator HCCS network (see
    [Configure Node Networks](configure-networks.md)); otherwise, the deployment is rejected. The NPUs hosting prefill and decode must also be mutually reachable over that network. Use
@@ -184,6 +188,33 @@ When the cards a manual placement pins are held by other deployments, the instan
   GDN hybrid models are verified on K100 with Qwen3.5-0.8B and `hygon/Qwen3.8-27B-Channel-INT8-w8a8` (two cards in one node, TP 1, `tcp`): the output is identical to a deployment without PD,
   and on a failed pull `fail` returns 500 while decode keeps serving and `recompute` recomputes the correct result; not verified on BW.
 
+### Hygon SGLang over Mooncake RDMA
+
+`sglang-mooncake` uses SGLang's Mooncake transfer backend on Hygon DCU (Hygon's SGLang builds for DTK carry the Mooncake transfer engine), and the KV moves over the host's RDMA NICs.
+P and D receive the request concurrently and the gateway does not wait for prefill, the same handoff wire as `sglang-nixl`. **This mode is unverified**: evaluation gives a `PD_UNVERIFIED_COMBINATION` warning, and it has not yet been run end to end on the platform.
+
+- **Network**: The nodes must share one **host RDMA** compute network, even on a single node; otherwise `PD_NETWORK_RDMA_REQUIRED` is returned. A sleepable deployment cannot use such a network (`PD_SLEEP_RDMA_UNSUPPORTED`).
+  No PPU-style module such as `alixpu_peermem` is needed.
+- **TP**: The platform does not compare prefill TP with decode TP. SGLang pairs the roles by their attention TP (TP divided by the attention-dp and attention-cp degrees), which the platform cannot see,
+  and the engine handles unequal widths; a pairing it cannot handle makes the decode instance fail at start, and its log gives the reason.
+- **PP**: Decode PP must equal prefill PP or be 1 (each decode rank then pulls KV from every prefill pipeline stage); otherwise `PD_PP_DECODE_MISMATCH` is returned.
+- **Multi-node instances**: A prefill instance that spans several nodes serves its bootstrap on the same port on every rank. The controller picks that port among those free on all of the instance's nodes,
+  so the intersection of the nodes' engine port ranges needs a free port; otherwise the instance cannot start and the engine ports are recorded as exhausted.
+- **Environment variables injected by the platform**: only the generic network variables, as for other modes: on a host RDMA network `NCCL_IB_HCA` (`device:port`, comma-separated),
+  `NCCL_SOCKET_IFNAME` (the network's interface, which a per-node override may make a name such as `bond1`), and the launch variable `${GPUWORKS_PD_SIDE_CHANNEL_HOST}` (the address of this rank's node on the network P and D share).
+  When the platform composes the command from structured parameters it also writes `--disaggregation-ib-device` (device names, port suffix stripped).
+- **Variables a template script derives**: what the Hygon build of SGLang further needs, `MC_TE_FILTERS` (Mooncake's device filter), `ROCSHMEM_ALLOWED_IBV_DEVICES` and
+  `ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME` (so ROCSHMEM, which DeepEP uses between nodes, uses only this network) and `SGLANG_HOST_IP` (the address registered with the bootstrap),
+  is not injected by the platform; the template's `manual_command` derives it from the generic variables above:
+
+  ```sh
+  IB_DEVICES=$(printf '%s' "$NCCL_IB_HCA" | sed 's/:[0-9]*//g')
+  export MC_TE_FILTERS="$IB_DEVICES" ROCSHMEM_ALLOWED_IBV_DEVICES="$IB_DEVICES"
+  export ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME="$NCCL_SOCKET_IFNAME" SGLANG_HOST_IP="${GPUWORKS_PD_SIDE_CHANNEL_HOST}"
+  ```
+- **Default environment**: `SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION=0`, so the health check does not trigger a generation: a generating check queues a fake request on the prefill side, and a large model's first requests are slow.
+- **Scaling**: Both P and D must keep instances; prefill cannot be scaled to 0.
+
 ## During Operation
 
 ### Status
@@ -203,7 +234,7 @@ Open **Scale roles** in deployment details to change the instances for each role
 - For an automatically placed deployment, new instances may omit their nodes: the platform puts them in the network and architecture the existing instances are in and picks by the placement strategy. Instances that name a node are placed as written and pass the ordinary PD validation together with the others. When no node can take a new instance, 409 `UNIT_PLACEMENT_NONE`.
 - `vllm-nixl`, `vllm-ascend-mooncake`, and `vllm-mooncake` support scaling prefill to 0. Requests are then intentionally handled entirely by decode and do not count as fallback.
   This differs from still expecting P instances but falling back or returning 503 according to `fallback` when P fails.
-- `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`, and `vllm-ppu-mooncake` require instances to remain for both P and D.
+- `sglang-nixl`, `sglang-mooncake`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`, and `vllm-ppu-mooncake` require instances to remain for both P and D.
 
 ### Retry an Instance
 
@@ -258,7 +289,7 @@ Cache hits for sequential handoff requests (and `cached_tokens` returned to the 
 #### View Traces
 
 In exported OTel traces for sequential handoff, the prefill phase is a `pd.prefill` child span.
-`sglang-nixl`, `sglang-ppu-ipc`, and `sglang-ppu-mooncake` call P and D concurrently, and the gateway does not wait for P's response, so there is no separate `pd.prefill` child span.
+`sglang-nixl`, `sglang-mooncake`, `sglang-ppu-ipc`, and `sglang-ppu-mooncake` call P and D concurrently, and the gateway does not wait for P's response, so there is no separate `pd.prefill` child span.
 
 ### Evaluation
 
@@ -273,4 +304,4 @@ By default, evaluations measure end-to-end performance through the gateway. If y
   if a container exits or disappears, it is treated as failed and the controller recreates it according to the retry policy. Use **Retry** when the retry limit is reached.
   This check is not continuous HTTP health probing. If the container is still running but the engine does not respond, check logs and request errors, then restart or replace the instance through role adjustment if necessary.
 
-<!-- translation-source-sha256: 9998b76d3dcd4ac87b607ae37f1fb2db200d3e1d9041b9edd15ca18317c8d24c -->
+<!-- translation-source-sha256: 8c85bcc8de8ff204f9c9dacee7f3fbd7db7707c5c783c11edbd6ec3b6fc4e0e0 -->

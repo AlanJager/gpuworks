@@ -1,8 +1,11 @@
 package pdmode
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 func TestVLLMNixlDeclaration(t *testing.T) {
@@ -76,7 +79,7 @@ func TestSideChannelPortsAndValues(t *testing.T) {
 	if got := strings.Join(ForEngine("vllm"), " "); got != "vllm-ascend-mooncake vllm-mooncake vllm-nixl vllm-ppu-mooncake" {
 		t.Fatalf("ForEngine = %v", got)
 	}
-	if got := strings.Join(ForEngine("sglang"), " "); got != "sglang-nixl sglang-ppu-ipc sglang-ppu-mooncake" {
+	if got := strings.Join(ForEngine("sglang"), " "); got != "sglang-mooncake sglang-nixl sglang-ppu-ipc sglang-ppu-mooncake" {
 		t.Fatalf("sglang modes = %v", got)
 	}
 }
@@ -176,5 +179,61 @@ func TestVLLMMooncakeDeclaration(t *testing.T) {
 	}
 	if !TransportMooncake.OnHostNetwork() || !TransportMooncake.MooncakeBootstrap() || !TransportUCX.OnHostNetwork() || TransportUCX.MooncakeBootstrap() || TransportHCCL.OnHostNetwork() || TransportIPC.OnHostNetwork() {
 		t.Fatal("host network transports")
+	}
+}
+
+func TestHygonSGLangMooncakeDeclaration(t *testing.T) {
+	mode, ok := Lookup("sglang-mooncake")
+	if !ok || !mode.SupportsVendor("hygon") || mode.SupportsVendor("nvidia") || mode.SupportsVendor("ppu") || !mode.Unverified {
+		t.Fatalf("mode = %+v", mode)
+	}
+	if mode.Engine != "sglang" || mode.Wire != WireConcurrent || mode.Connector != "mooncake" || mode.Transport != TransportMooncakeRDMA {
+		t.Fatalf("mode = %+v", mode)
+	}
+	if mode.ConnectorRole(RolePrefill) != "prefill" || mode.ConnectorRole(RoleDecode) != "decode" {
+		t.Fatalf("connector roles = %v", mode.ConnectorRoles)
+	}
+	// One bootstrap port, on the prefill only, shared by its ranks.
+	if mode.ExtraPorts(RolePrefill, 8) != 1 || mode.ExtraPorts(RoleDecode, 16) != 0 || !mode.SharedSideChannel {
+		t.Fatalf("ports: prefill %d decode %d shared %v", mode.ExtraPorts(RolePrefill, 8), mode.ExtraPorts(RoleDecode, 16), mode.SharedSideChannel)
+	}
+	// A decoder cannot compute a prefill in disaggregation mode.
+	if mode.DecodeServesAlone || mode.MayBeEmpty(RolePrefill) || mode.EffectiveFallback("") != FallbackFail {
+		t.Fatalf("fallbacks = %v", mode.Fallbacks())
+	}
+	if mode.Env["SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION"] != "0" {
+		t.Fatalf("env = %v", mode.Env)
+	}
+}
+
+func TestAnyTPLeavesPairingToTheEngine(t *testing.T) {
+	mode, _ := Lookup("sglang-mooncake")
+	// The user's layout: prefill TP 8 x PP 2 with CP 8, decode TP 16 with DP
+	// 16. Both have attention TP 1, which only the engine can see.
+	for _, pair := range [][2]int{{8, 16}, {16, 8}, {1, 1}} {
+		if err := mode.CheckTP(pair[0], pair[1]); err != nil {
+			t.Fatalf("CheckTP(%d, %d) = %v", pair[0], pair[1], err)
+		}
+	}
+}
+
+func TestDecodePipelinePairing(t *testing.T) {
+	mode, _ := Lookup("sglang-mooncake")
+	for _, ok := range [][2]int{{2, 1}, {2, 2}, {1, 1}, {0, 0}, {4, 0}} {
+		if err := mode.CheckPP(ok[0], ok[1]); err != nil {
+			t.Fatalf("CheckPP(%d, %d) = %v", ok[0], ok[1], err)
+		}
+	}
+	for _, bad := range [][2]int{{2, 4}, {1, 2}, {4, 2}} {
+		err := mode.CheckPP(bad[0], bad[1])
+		var product *messages.ProductError
+		if !errors.As(err, &product) || product.Code() != messages.ErrorPDPPDecodeMismatch || product.Params()["prefill"] != bad[0] || product.Params()["decode"] != bad[1] {
+			t.Fatalf("CheckPP(%d, %d) = %v", bad[0], bad[1], err)
+		}
+	}
+	// A mode without the rule takes any pairing.
+	nixl, _ := Lookup("vllm-nixl")
+	if err := nixl.CheckPP(1, 2); err != nil {
+		t.Fatalf("vllm-nixl CheckPP = %v", err)
 	}
 }

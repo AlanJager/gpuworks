@@ -531,7 +531,8 @@ func inferenceTemplateView(model store.InferenceModel) dto.InferenceTemplate {
 	_ = json.Unmarshal([]byte(model.InputModalities), &out.InputModalities)
 	_ = json.Unmarshal([]byte(model.Unsupported), &out.Unsupported)
 	for _, spec := range model.Specs {
-		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode}
+		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode, ManualCommand: spec.ManualCommand}
+		view.PDRoles = pdRoleShapesView(spec.PDRoles)
 		if sources, _ := inferencecatalog.DecodeWeightSources(spec.WeightSources); sources != nil {
 			view.WeightSources = make([]dto.WeightSource, 0, len(sources))
 			for _, source := range sources {
@@ -543,6 +544,7 @@ func inferenceTemplateView(model store.InferenceModel) dto.InferenceTemplate {
 		_ = json.Unmarshal([]byte(spec.Args), &view.Args)
 		_ = json.Unmarshal([]byte(spec.Env), &view.Env)
 		_ = json.Unmarshal([]byte(spec.PreStartArgv), &view.PreStartArgv)
+		_ = json.Unmarshal([]byte(spec.DockerArgs), &view.DockerArgs)
 		_ = json.Unmarshal([]byte(spec.Assets), &view.Assets)
 		_ = json.Unmarshal([]byte(spec.Entrypoint), &view.Entrypoint)
 		// The image tag gives the release here; evaluate, which also reads the

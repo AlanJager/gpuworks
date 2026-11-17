@@ -218,6 +218,26 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 				"enum":        pdmode.Names(),
 				"description": "This spec is deployed only as PD disaggregation in this mode; its args and env are what the model needs there.",
 			},
+			"pd_roles": map[string]any{
+				"type":        "object",
+				"description": "The layout a PD-only spec is written for, by role (needs pd_mode): one instance's TP and PP, the nodes it spans and how many instances a deployment starts with. The deploy form starts from it.",
+				"additionalProperties": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []string{"tp"},
+					"properties": map[string]any{
+						"tp":    map[string]any{"type": "integer", "minimum": 1},
+						"pp":    map[string]any{"type": "integer", "minimum": 0, "description": "Pipeline degree; 0 or absent means 1."},
+						"nodes": map[string]any{"type": "integer", "minimum": 0, "description": "Nodes one instance spans; TP x PP must divide evenly over them. 0 or absent means 1."},
+						"units": map[string]any{"type": "integer", "minimum": 0, "maximum": pdmode.MaxUnitsPerRole, "description": "Instances a deployment starts with; 0 or absent means 1."},
+					},
+				},
+			},
+			"manual_command": map[string]any{
+				"type":        "string",
+				"maxLength":   MaxManualCommandBytes,
+				"description": "A shell script the deployment runs as its manual command, with ${GPUWORKS_*} launch variables expanded per rank. A PD spec's script must reference ${GPUWORKS_PD_ROLE}; one with a multi-node role also ${GPUWORKS_NODE_RANK} or ${GPUWORKS_HEADLESS}.",
+			},
 			"shm_bytes": map[string]any{
 				"type":        "integer",
 				"minimum":     1,
@@ -228,6 +248,7 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 				"type":        "boolean",
 				"description": "Start the container with unlimited locked memory (--ulimit memlock=-1:-1), for an engine that pins large host memory (for example with cudaHostRegister). A memlock ulimit in the deployment's docker_args overrides it.",
 			},
+			"docker_args":    stringArraySchema("Extra docker run options the engine needs (for example --cap-add=SYS_PTRACE), applied before the deployment's own docker_args and the platform's. Validated the same way as the deployment's own container_overrides.docker_args: platform-managed options (--name, --network, --gpus, --shm-size, -e, -v, --mount, --entrypoint, ...) and options that would hand the container the host (--privileged, --pid, -v /, ...) are refused, and --ipc=host together with shm_bytes is refused."),
 			"pre_start_argv": stringArraySchema("Host-side command run before the container starts."),
 			"pre_start_script": map[string]any{
 				"type":        "string",

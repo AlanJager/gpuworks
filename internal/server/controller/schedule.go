@@ -30,26 +30,24 @@ func (c *Controller) pickPort(node *store.Node) (int, *scheduler.Reason) {
 // channel block in one call; the caller writes every port into
 // Instance.Ports so the next allocation on the node avoids them.
 func (c *Controller) pickPorts(node *store.Node, sizes ...int) ([]int, *scheduler.Reason) {
+	return c.pickPortsOn([]*store.Node{node}, sizes...)
+}
+
+// pickPortsOn is pickPorts for ports every one of the nodes must have free:
+// a multi-node SGLang prefill unit serves its bootstrap on the same port on
+// every rank (pdmode.Mode.SharedSideChannel), so that port is picked from
+// the ports all of the unit's nodes leave free, inside the range they share.
+func (c *Controller) pickPortsOn(nodes []*store.Node, sizes ...int) ([]int, *scheduler.Reason) {
 	used := map[int]bool{}
-	insts, _ := c.store.InstancesForNode(node.ID)
-	for _, in := range insts {
-		if in.State == proto.InstStopped {
+	var r proto.PortRange
+	for index, node := range nodes {
+		nodeRange := c.markUsedPorts(node, used)
+		if index == 0 {
+			r = nodeRange
 			continue
 		}
-		for _, p := range parseInts(in.Ports) {
-			used[p] = true
-		}
+		r.Start, r.End = max(r.Start, nodeRange.Start), min(r.End, nodeRange.End)
 	}
-	r := c.EnginePorts()
-	if inv := network.Inventory(*node); inv != nil {
-		for _, p := range inv.EnginePortListeners {
-			used[p] = true
-		}
-		if own := inv.EnginePortRange; own != nil && own.Valid() {
-			r = *own
-		}
-	}
-	r = c.kubeEnginePorts(node, r)
 	out := make([]int, len(sizes))
 	next := r.Start
 	for i, size := range sizes {
@@ -75,11 +73,35 @@ func (c *Controller) pickPorts(node *store.Node, sizes ...int) ([]int, *schedule
 			break
 		}
 		if !found {
-			rejected := scheduler.EnginePortsExhausted(node.DisplayName(), r.Start, r.End)
+			rejected := scheduler.EnginePortsExhausted(nodes[0].DisplayName(), r.Start, r.End)
 			return nil, &rejected
 		}
 	}
 	return out, nil
+}
+
+// markUsedPorts marks the ports the node's other instances hold and its
+// agent reports listening on, and returns the node's engine port range.
+func (c *Controller) markUsedPorts(node *store.Node, used map[int]bool) proto.PortRange {
+	insts, _ := c.store.InstancesForNode(node.ID)
+	for _, in := range insts {
+		if in.State == proto.InstStopped {
+			continue
+		}
+		for _, p := range parseInts(in.Ports) {
+			used[p] = true
+		}
+	}
+	r := c.EnginePorts()
+	if inv := network.Inventory(*node); inv != nil {
+		for _, p := range inv.EnginePortListeners {
+			used[p] = true
+		}
+		if own := inv.EnginePortRange; own != nil && own.Valid() {
+			r = *own
+		}
+	}
+	return c.kubeEnginePorts(node, r)
 }
 
 func jsonInts(v []int) string {

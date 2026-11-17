@@ -719,6 +719,7 @@
     "PD_TP_DIRECTION": "PD 模式 {{mode}} 要求 decode 的 TP（{{decode}}）不小于 prefill 的 TP（{{prefill}}）。",
     "PD_TP_PREFILL_AT_LEAST_DECODE": "PD 模式 {{mode}} 要求 prefill 的 TP（{{prefill}}）不小于 decode 的 TP（{{decode}}）。",
     "PD_TP_EQUAL": "PD 模式 {{mode}} 要求两个角色的 TP 相同；当前 prefill 为 {{prefill}}，decode 为 {{decode}}。",
+    "PD_PP_DECODE_MISMATCH": "PD 模式 {{mode}} 要求 decode 的 PP 等于 prefill 的 PP 或为 1；当前 prefill 为 {{prefill}}，decode 为 {{decode}}。",
     "PD_GPU_OVERLAP": "节点 {{node}} 上的 GPU {{gpu}} 被两个实例同时钉选（{{role}} 与 {{other}}）。",
     "PD_RANK_NODE_REPEATED": "{{role}} 角色的一个实例在节点 {{node}} 上放了两个 rank；每个 rank 需要单独一台节点。",
     "PD_RANK_TP_REQUIRED": "{{role}} 角色的一个实例跨 {{ranks}} 台节点，该角色必须指定 TP。",

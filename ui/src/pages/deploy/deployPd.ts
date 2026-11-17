@@ -1,4 +1,4 @@
-import type { EngineProfile, PdModeProfile, PdRoleName } from "../../api";
+import type { EngineProfile, InferencePdRoleShape, PdModeProfile, PdRoleName } from "../../api";
 
 // Decode first, then prefill: the order the server's evaluate/deployment DTOs
 // use, and the order the deploy form renders the two role sections in.
@@ -124,6 +124,32 @@ export function defaultPdRoles(): PdRolesDraft {
     decode: { tp: 1, units: [{}] },
     prefill: { tp: 1, units: [{}] },
   };
+}
+
+// pdRolesFromShape turns a PD spec's layout (InferenceSpec.pd_roles) into the
+// form's role drafts exactly as the screen builds them by hand: the role's TP
+// and PP, one unit row per instance, and for an instance spanning several
+// nodes one empty follower row per extra node, left for the deployer to pick.
+// The numbers are the server's, used as stated. A role the shape omits keeps
+// the empty-role default.
+export function pdRolesFromShape(
+  shape: Partial<Record<PdRoleName, InferencePdRoleShape>>,
+): PdRolesDraft {
+  const roles = defaultPdRoles();
+  for (const role of PD_ROLE_ORDER) {
+    const one = shape[role];
+    if (!one) continue;
+    roles[role] = {
+      tp: one.tp,
+      pp: one.pp,
+      units: Array.from({ length: one.units }, () => ({
+        ...(one.nodes > 1
+          ? { followers: Array.from({ length: one.nodes - 1 }, () => ({})) }
+          : {}),
+      })),
+    };
+  }
+  return roles;
 }
 
 // buildPdPlacement projects the pd_* draft fields onto the wire

@@ -1351,6 +1351,7 @@ var migrations = []migration{
 	{Version: 217, Name: "check_codes_upper_snake", Apply: upperCaseCheckCodes},
 	{Version: 218, Name: "node_runtime_fallback_socket", Apply: addNodeRuntimeFallbackSocket},
 	{Version: 219, Name: "node_placement_policy", Apply: addNodePlacementPolicy},
+	{Version: 220, Name: "inference_spec_pd_roles_manual_command_docker_args", Apply: addInferenceSpecPDRolesManualCommandAndDockerArgs},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

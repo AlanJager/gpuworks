@@ -146,6 +146,11 @@ func (p *PDPlacement) TP(role string) int {
 	return 1
 }
 
+// PP is a role's pipeline parallel degree, one when unstated.
+func (p *PDPlacement) PP(role string) int {
+	return max(p.Roles[role].PP, 1)
+}
+
 // RoleTPs is every role's TP, for launches whose connector names both sides.
 func (p *PDPlacement) RoleTPs(mode pdmode.Mode) map[string]int {
 	out := map[string]int{}
@@ -271,6 +276,9 @@ func validatePD(p *PDPlacement, engine string, running bool) (pdmode.Mode, error
 		}
 	}
 	if err := mode.CheckTP(p.TP(pdmode.RolePrefill), p.TP(pdmode.RoleDecode)); err != nil && len(p.Units(pdmode.RolePrefill)) > 0 {
+		return mode, err
+	}
+	if err := mode.CheckPP(p.PP(pdmode.RolePrefill), p.PP(pdmode.RoleDecode)); err != nil && len(p.Units(pdmode.RolePrefill)) > 0 {
 		return mode, err
 	}
 	if !mode.ValidFallback(p.Fallback) {

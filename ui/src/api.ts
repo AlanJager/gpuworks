@@ -1677,8 +1677,24 @@ export interface InferenceTemplate {
   unsupported?: InferenceTemplateUnsupported[];
   specs: InferenceSpec[];
 }
+/** One role of a PD-only spec's layout: one instance's shape and how many instances to start with (server-filled defaults). */
+export interface InferencePdRoleShape {
+  tp: number;
+  pp: number;
+  /** Nodes ONE instance spans: leader plus followers. */
+  nodes: number;
+  gpus_per_node: number;
+  /** Instances of the role a deployment starts with. */
+  units: number;
+}
 export interface InferenceSpec {
   id: number;
+  /** Set on a spec deployed only as PD, in that mode. */
+  pd_mode?: string;
+  /** The layout a PD-only spec is written for, by role; only with pd_mode. */
+  pd_roles?: Partial<Record<PdRoleName, InferencePdRoleShape>>;
+  /** The shell script a deployment of the spec runs as its manual command. */
+  manual_command?: string;
   source: "upstream" | "user" | string;
   name: string;
   /** Human-written names; the page shows the one for its locale (specDisplayName). */
@@ -1697,6 +1713,8 @@ export interface InferenceSpec {
   shm_bytes?: number;
   /** The spec's container starts with unlimited locked memory (--ulimit memlock=-1:-1); absent when false. */
   memlock_unlimited?: boolean;
+  /** Extra docker run options the spec's engine needs, applied before the deployment's own docker_args. */
+  docker_args?: string[];
   gpus: GPUPredicate;
   args?: string[];
   env?: Record<string, string>;

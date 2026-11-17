@@ -87,6 +87,12 @@ type ResolveLaunchInput struct {
 	// memlock_unlimited: the container starts with --ulimit memlock=-1:-1
 	// unless the deployment's own docker args state a memlock ulimit.
 	TemplateMemlockUnlimited bool
+	// TemplateDockerArgs is the selected template spec's own docker_args: a
+	// template layer applied before the deployment's own docker args and the
+	// platform's (compute network, memlock), the same position shm_bytes and
+	// memlock_unlimited take. Empty when the deployment has no template or the
+	// spec states none.
+	TemplateDockerArgs []string
 }
 
 // ResolveLaunch is the only public path that merges catalog facts, image
@@ -281,7 +287,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	}
 	engram := inspectEngramLaunch(launch.Entrypoint, launch.Argv)
 	engramShared := engram.state.shared
-	launch.DockerArgs = launchDockerArgs(overrides.DockerArgs, params, input.TemplateMemlockUnlimited || engramShared)
+	launch.DockerArgs = launchDockerArgs(input.TemplateDockerArgs, overrides.DockerArgs, params, input.TemplateMemlockUnlimited || engramShared)
 	launch.DockerArgs = withEngramSharedMemoryDockerArgs(launch.DockerArgs, engram.args)
 	shmDefault := input.Engine.Profile().ShmBytes
 	if engramShared && shmDefault < engramSharedMemoryDefaultBytes {
@@ -289,7 +295,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	}
 	// The CPU KV tier lives in /dev/shm, so the size follows the tier the
 	// command was built with; see launchShmBytes for the rule.
-	launch.ShmBytes, err = launchShmBytes(shmDefault, input.TemplateShmBytes, overrides,
+	launch.ShmBytes, err = launchShmBytes(shmDefault, input.TemplateShmBytes, input.TemplateDockerArgs, overrides,
 		launchKVCPUTierBytes(input.Engine, params.Quick, command, overrides))
 	if err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)

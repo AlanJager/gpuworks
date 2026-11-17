@@ -436,7 +436,7 @@ func validateCatalogJSON(spec *InferenceSpecRow) error {
 	}
 	for name, value := range map[string]string{
 		"assets": spec.Assets, "entrypoint": spec.Entrypoint, "placement": spec.Placement,
-		"api_contract": spec.APIContract, "components": spec.Components, "image_sources": spec.ImageSources,
+		"api_contract": spec.APIContract, "components": spec.Components, "image_sources": spec.ImageSources, "docker_args": spec.DockerArgs,
 	} {
 		if strings.TrimSpace(value) == "" {
 			continue

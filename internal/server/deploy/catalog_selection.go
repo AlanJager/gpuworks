@@ -70,7 +70,13 @@ type CatalogSelection struct {
 	ShmBytes int64 `json:"shm_bytes,omitempty"`
 	// MemlockUnlimited asks for --ulimit memlock=-1:-1 unless the deployment's
 	// docker_args state a memlock ulimit.
-	MemlockUnlimited   bool     `json:"memlock_unlimited,omitempty"`
+	MemlockUnlimited bool `json:"memlock_unlimited,omitempty"`
+	// DockerArgs are the template's own docker run options, applied before
+	// the deployment's own docker_args and the platform's
+	// (deploy.launchDockerArgs). A running deployment keeps the args it was
+	// created with: this snapshot, not a fresh catalog read, is what every
+	// later launch of the deployment resolves against.
+	DockerArgs         []string `json:"docker_args,omitempty"`
 	DeviatedFields     []string `json:"deviated_fields,omitempty"`
 	MatchedBy          string   `json:"matched_by"`
 	ImageDigestWarning bool     `json:"image_digest_warning,omitempty"`

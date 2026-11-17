@@ -41,30 +41,50 @@ type InferenceTemplate struct {
 	Specs             []InferenceSpecDTO        `json:"specs"`
 }
 
+// InferencePDRoleShape is one role of a PD-only spec's layout: one
+// instance's TP and PP, the nodes it spans and the cards it takes on each,
+// and how many instances a deployment starts with.
+type InferencePDRoleShape struct {
+	TP          int `json:"tp"`
+	PP          int `json:"pp"`
+	Nodes       int `json:"nodes"`
+	GPUsPerNode int `json:"gpus_per_node"`
+	Units       int `json:"units"`
+}
+
 type InferenceSpecDTO struct {
 	// PDMode is set on a spec deployed only as PD in that mode.
-	PDMode             string            `json:"pd_mode,omitempty"`
-	ID                 uint              `json:"id"`
-	Source             string            `json:"source"`
-	Name               string            `json:"name"`
-	DisplayNameZHCN    string            `json:"display_name_zh_cn,omitempty"` // human-written name; the client shows the one for its locale
-	DisplayNameEN      string            `json:"display_name_en,omitempty"`
-	Scenario           string            `json:"scenario,omitempty"`
-	Engine             string            `json:"engine"`
-	Image              string            `json:"image"`
-	Quantization       string            `json:"quantization,omitempty"`
-	WeightSources      []WeightSource    `json:"weight_sources"`
-	WeightBytes        int64             `json:"weight_bytes,omitempty"`
-	RuntimeWeightBytes int64             `json:"runtime_weight_bytes,omitempty"`
-	ShmBytes           int64             `json:"shm_bytes,omitempty"`         // the /dev/shm size the engine needs; omitted when the spec states none
-	MemlockUnlimited   bool              `json:"memlock_unlimited,omitempty"` // the engine needs unlimited locked memory; omitted when false
-	GPUs               GPUPredicate      `json:"gpus"`
-	Args               []string          `json:"args,omitempty"`
-	Env                map[string]string `json:"env,omitempty"`
-	PreStartArgv       []string          `json:"pre_start_argv,omitempty"`
-	PreStartScript     string            `json:"pre_start_script,omitempty"`
-	Assets             []InferenceAsset  `json:"assets,omitempty"`
-	Entrypoint         []string          `json:"entrypoint,omitempty"`
+	PDMode string `json:"pd_mode,omitempty"`
+	// PDRoles is the layout a PD-only spec is written for, by role: the
+	// deploy form's starting roles and instances. Omitted when none.
+	PDRoles map[string]InferencePDRoleShape `json:"pd_roles,omitempty"`
+	// ManualCommand is the shell script a deployment of the spec runs as its
+	// manual command unless the request states its own. Omitted when none.
+	ManualCommand      string         `json:"manual_command,omitempty"`
+	ID                 uint           `json:"id"`
+	Source             string         `json:"source"`
+	Name               string         `json:"name"`
+	DisplayNameZHCN    string         `json:"display_name_zh_cn,omitempty"` // human-written name; the client shows the one for its locale
+	DisplayNameEN      string         `json:"display_name_en,omitempty"`
+	Scenario           string         `json:"scenario,omitempty"`
+	Engine             string         `json:"engine"`
+	Image              string         `json:"image"`
+	Quantization       string         `json:"quantization,omitempty"`
+	WeightSources      []WeightSource `json:"weight_sources"`
+	WeightBytes        int64          `json:"weight_bytes,omitempty"`
+	RuntimeWeightBytes int64          `json:"runtime_weight_bytes,omitempty"`
+	ShmBytes           int64          `json:"shm_bytes,omitempty"`         // the /dev/shm size the engine needs; omitted when the spec states none
+	MemlockUnlimited   bool           `json:"memlock_unlimited,omitempty"` // the engine needs unlimited locked memory; omitted when false
+	// DockerArgs are extra docker run options the spec's engine needs, applied
+	// before the deployment's own docker_args. Omitted when none.
+	DockerArgs     []string          `json:"docker_args,omitempty"`
+	GPUs           GPUPredicate      `json:"gpus"`
+	Args           []string          `json:"args,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	PreStartArgv   []string          `json:"pre_start_argv,omitempty"`
+	PreStartScript string            `json:"pre_start_script,omitempty"`
+	Assets         []InferenceAsset  `json:"assets,omitempty"`
+	Entrypoint     []string          `json:"entrypoint,omitempty"`
 	// EngineDecidesParamKeys are the dictionary keys whose default this spec's
 	// launch leaves to the engine (deploy.EngineDecidesParameterKeys): the form
 	// starts them at automatic. Derived by the engine adapter; catalog authors

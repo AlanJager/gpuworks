@@ -10,6 +10,7 @@ import {
   pdModesForEngine,
   pdPolicyValue,
   pdRoleRemovable,
+  pdRolesFromShape,
 } from "../src/pages/deploy/deployPd.ts";
 import { fixturePdModes } from "./helpers/engineFixture.ts";
 
@@ -25,7 +26,7 @@ test("pdActive reads the topology field, and only that field", () => {
 
 test("pdModesForEngine reads pd_modes straight off the engine profile", () => {
   assert.deepEqual(pdModesForEngine({ pd_modes: vllmModes }).map((mode) => mode.name), ["vllm-ascend-mooncake", "vllm-mooncake", "vllm-nixl", "vllm-ppu-mooncake"]);
-  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-nixl", "sglang-ppu-ipc", "sglang-ppu-mooncake"]);
+  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-mooncake", "sglang-nixl", "sglang-ppu-ipc", "sglang-ppu-mooncake"]);
   assert.deepEqual(pdModesForEngine({ pd_modes: [] }), []);
   assert.deepEqual(pdModesForEngine({}), []);
   assert.deepEqual(pdModesForEngine(undefined), []);
@@ -213,4 +214,55 @@ test("buildPdPlacement keeps a follower row with no node yet, and omits an empty
   }) as { roles: { decode: { units: Array<Record<string, unknown>> } } };
   assert.deepEqual(placement.roles.decode.units[0], { node_uuid: "n1", followers: [{}] });
   assert.deepEqual(placement.roles.decode.units[1], { node_uuid: "n2" });
+});
+
+const shape = {
+  decode: { tp: 4, pp: 1, nodes: 2, gpus_per_node: 2, units: 1 },
+  prefill: { tp: 8, pp: 2, nodes: 1, gpus_per_node: 8, units: 2 },
+};
+
+test("pdRolesFromShape states each role's TP/PP, one row per instance and one empty follower slot per extra node", () => {
+  assert.deepEqual(pdRolesFromShape(shape), {
+    decode: { tp: 4, pp: 1, units: [{ followers: [{}] }] },
+    prefill: { tp: 8, pp: 2, units: [{}, {}] },
+  });
+  assert.deepEqual(
+    pdRolesFromShape({ decode: { tp: 2, pp: 1, nodes: 3, gpus_per_node: 1, units: 2 } }).decode?.units,
+    [{ followers: [{}, {}] }, { followers: [{}, {}] }],
+  );
+});
+
+test("pdRolesFromShape leaves a role the shape omits at the empty default", () => {
+  const roles = pdRolesFromShape({ prefill: shape.prefill });
+  assert.deepEqual(roles.decode, defaultPdRoles().decode);
+  assert.equal(roles.prefill?.tp, 8);
+});
+
+test("a shape's roles with followers picked build placement.pd with tp/pp and node_uuid + followers per unit", () => {
+  const roles = pdRolesFromShape(shape);
+  roles.decode!.units![0] = { node_uuid: "n1", followers: [{ node_uuid: "n2" }] };
+  roles.prefill!.units = [{ node_uuid: "n3" }, { node_uuid: "n4" }];
+  assert.deepEqual(
+    buildPdPlacement({
+      node_selection_mode: "pd",
+      units_placement: "manual",
+      pd_mode: "sglang-nixl",
+      pd_roles: roles,
+    }),
+    {
+      mode: "sglang-nixl",
+      roles: {
+        decode: { tp: 4, pp: 1, units: [{ node_uuid: "n1", followers: [{ node_uuid: "n2" }] }] },
+        prefill: { tp: 8, pp: 2, units: [{ node_uuid: "n3" }, { node_uuid: "n4" }] },
+      },
+    },
+  );
+  // A follower slot still empty is stated as an empty row, so the screen and
+  // the evaluated draft agree on the shape.
+  const unpicked = pdRolesFromShape(shape);
+  unpicked.decode!.units![0].node_uuid = "n1";
+  const pd = buildPdPlacement({ node_selection_mode: "pd", units_placement: "manual", pd_mode: "m", pd_roles: unpicked }) as {
+    roles: { decode: { units: unknown[] } };
+  };
+  assert.deepEqual(pd.roles.decode.units, [{ node_uuid: "n1", followers: [{}] }]);
 });

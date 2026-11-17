@@ -29,20 +29,26 @@ type templateSelection struct {
 	SuggestedWeight  weightSource
 	ExplicitProvider bool
 	ExtraArgs        []string
-	Env              map[string]string
-	PreStartArgv     []string
-	PreStartScript   string
-	Assets           []proto.RuntimeAsset
-	Entrypoint       []string
-	ImageSources     []string
-	Placement        json.RawMessage
-	APIContract      json.RawMessage
-	Components       []deploy.ComponentBinding
-	Match            string
-	MatchedBy        string
-	Warnings         []messages.Warning
-	Deviated         bool
-	Diff             []string
+	// DockerArgs are the selected spec's own docker run options, decoded from
+	// InferenceSpecRow.DockerArgs; nil when the spec states none.
+	DockerArgs     []string
+	Env            map[string]string
+	PreStartArgv   []string
+	PreStartScript string
+	Assets         []proto.RuntimeAsset
+	Entrypoint     []string
+	ImageSources   []string
+	Placement      json.RawMessage
+	// ManualCommandDefault reports that the request runs the spec's own
+	// manual command because it stated none (applySpecManualCommand).
+	ManualCommandDefault bool
+	APIContract          json.RawMessage
+	Components           []deploy.ComponentBinding
+	Match                string
+	MatchedBy            string
+	Warnings             []messages.Warning
+	Deviated             bool
+	Diff                 []string
 
 	// ExplicitComponents names the non-primary components the request's
 	// explicit provider moved, so resolving their model rows keeps that
@@ -63,6 +69,13 @@ func (s templateSelection) shmBytes() int64 {
 // memory in its container.
 func (s templateSelection) memlockUnlimited() bool {
 	return s.Spec != nil && s.Spec.MemlockUnlimited
+}
+
+// dockerArgs is the selected spec's own docker run options, decoded once in
+// applyTemplateDefaults (DockerArgs); nil when the deployment has no template
+// or the spec states none.
+func (s templateSelection) dockerArgs() []string {
+	return s.DockerArgs
 }
 
 func (s *Service) resolveDeploymentModelFromTemplate(ctx context.Context, modelID uint, selection *templateSelection, templateID uint) (*store.Model, error) {
@@ -249,6 +262,7 @@ func (s *Service) applyTemplateDefaults(req *dto.DeployRequest, hardware templat
 		return selection, err
 	}
 	selection.Model, selection.Spec = model, spec
+	selection.ManualCommandDefault = applySpecManualCommand(req, spec)
 	selection.Match, selection.MatchedBy = "automatic", match.MatchedBy
 	if strings.TrimSpace(requestedSpec) != "" {
 		selection.Match = "spec-name"
@@ -258,6 +272,11 @@ func (s *Service) applyTemplateDefaults(req *dto.DeployRequest, hardware templat
 	if strings.TrimSpace(spec.Args) != "" {
 		if err := json.Unmarshal([]byte(spec.Args), &selection.ExtraArgs); err != nil {
 			return selection, fmt.Errorf("inference spec %s args: %w", spec.Name, err)
+		}
+	}
+	if strings.TrimSpace(spec.DockerArgs) != "" {
+		if err := json.Unmarshal([]byte(spec.DockerArgs), &selection.DockerArgs); err != nil {
+			return selection, fmt.Errorf("inference spec %s docker_args: %w", spec.Name, err)
 		}
 	}
 	if strings.TrimSpace(spec.Env) != "" {
@@ -501,7 +520,7 @@ func snapshotTemplateSelection(selection templateSelection, image string) deploy
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, Entrypoint: selection.Entrypoint,
 		Placement: selection.Placement, APIContract: selection.APIContract,
-		Components: selection.Components, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, ImageSources: templateImageSources(selection, image),
+		Components: selection.Components, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, DockerArgs: selection.DockerArgs, ImageSources: templateImageSources(selection, image),
 		DeviatedFields: selection.Diff, MatchedBy: selection.MatchedBy,
 		ImageDigestWarning: strings.Contains(strings.ToLower(image), "@sha256:"),
 	}
