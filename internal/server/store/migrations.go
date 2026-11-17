@@ -1663,6 +1663,9 @@ func (s *Store) AutoMigrateDev() error {
 	)
 }
 
+// LatestMigration is the database schema shipped by this build.
+func LatestMigration() int { return migrations[len(migrations)-1].Version }
+
 // CurrentMigration returns the highest applied schema version.
 func (s *Store) CurrentMigration() (int, error) {
 	var row SchemaMigration

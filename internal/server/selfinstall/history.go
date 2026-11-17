@@ -22,6 +22,8 @@ const (
 // HistoryEntry is one line of <data>/install-history.jsonl: an append-only
 // record of every install and upgrade, including the ones that failed.
 type HistoryEntry struct {
+	Attempt           string `json:"attempt,omitempty"`
+	RolledBack        bool   `json:"rolled_back,omitempty"`
 	Action            string `json:"action"`
 	Result            string `json:"result"` // ok | failed
 	ReleaseID         string `json:"release_id"`

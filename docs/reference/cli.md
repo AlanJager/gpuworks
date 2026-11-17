@@ -146,7 +146,7 @@ gpuworks restarted (systemd)
 | `--source URL` | 内置的三个公共源 | 发布通道格式的源（`<URL>/<channel>/index.json`），可重复，替换内置源；用于客户自建镜像站 |
 | `--base-url URL` | 空 | 改读发布站（`<URL>/data/release.json` 与 `<URL>/downloads/`），例如自建在内网的发布站 |
 | `--archive FILE` | 空 | 本地发布包 `gpuworks-<release_id>-<os>-<arch>.tar.gz`，不发任何网络请求 |
-| `--version ID` | 空 | 期望的 release id；与渠道或站点当前版本（或发布包里的版本）不一致时报错，不会静默升到别的版本 |
+| `--version ID` | 空 | 指定渠道签名清单中的 release id；使用发布站点或本地包时须匹配该站点或包的版本 |
 | `--keep N` | `3` | 保留的升级前备份组数 |
 | `--force` | `false` | 允许替换没有 release id 的本地构建（`dev` / `-dirty`） |
 | `--check` | `false` | 只报告是否有新版，不做任何修改 |

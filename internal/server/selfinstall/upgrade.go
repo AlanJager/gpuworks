@@ -27,9 +27,7 @@ type UpgradeRequest struct {
 	// Archive is a release archive already on this machine, for hosts that
 	// cannot reach any source.
 	Archive string
-	// Version pins the release to install. A channel or site offers one release
-	// at a time, so a pin that is not what it offers is an error rather than a
-	// silent upgrade to something else.
+	// Version pins an entry in the signed channel index, or the exact release from a site or archive.
 	Version string
 	Force   bool
 	Check   bool
@@ -106,7 +104,7 @@ func (i *Installer) Upgrade(ctx context.Context, req UpgradeRequest) (UpgradeRep
 	case strings.TrimSpace(req.BaseURL) != "":
 		src, err = i.siteSource(ctx, req.BaseURL)
 	default:
-		src, err = i.channelSource(ctx, req.Sources, req.Channel, inst.Config.UpdateChannel)
+		src, err = i.channelSource(ctx, req.Sources, req.Channel, inst.Config.UpdateChannel, strings.TrimSpace(req.Version))
 	}
 	if err != nil {
 		return UpgradeReport{}, err

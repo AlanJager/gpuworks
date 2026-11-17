@@ -263,6 +263,8 @@ GET /api/v1/storages/{id}/model-files
 GET /api/v1/telemetry/export
 GET /api/v1/terminal/sessions
 GET /api/v1/updates
+GET /api/v1/updates/server/result
+GET /api/v1/updates/server/versions
 GET /api/v1/usage-report
 GET /api/v1/usage-report/preview
 GET /healthz

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -279,19 +280,23 @@ type NodeRuntimeHooks interface {
 	RestartRuntime(ctx context.Context, uuid string) (*proto.RuntimeProxyStatus, error)
 }
 type apiHandlers struct {
-	sessionPolicy       auth.SessionPolicy
-	loginThrottle       loginThrottle
-	d                   Deps
-	ordersOnce          sync.Once
-	gpuCacheMu          sync.Mutex
-	gpuCacheAt          time.Time
-	gpuCache            *gpuInventoryCache
-	gpuCacheGeneration  uint64
-	overview            overviewCache // the scheduling overview (scheduling_overview.go)
-	benchmarkMu         sync.Mutex
-	benchmarkExecutions map[uint]*benchmarkExecution
-	updates             distribution.CheckCache
-	templateUpdate      templateUpdateCheck
+	sessionPolicy        auth.SessionPolicy
+	loginThrottle        loginThrottle
+	d                    Deps
+	ordersOnce           sync.Once
+	gpuCacheMu           sync.Mutex
+	gpuCacheAt           time.Time
+	gpuCache             *gpuInventoryCache
+	gpuCacheGeneration   uint64
+	overview             overviewCache // the scheduling overview (scheduling_overview.go)
+	benchmarkMu          sync.Mutex
+	benchmarkExecutions  map[uint]*benchmarkExecution
+	serverUpgradeMu      sync.Mutex
+	verifiedRunningBuild atomic.Pointer[dto.ServerBuildInfo]
+	progressMu           sync.Mutex
+	upgradeProgress      dto.ServerUpgradeProgress
+	updates              distribution.CheckCache
+	templateUpdate       templateUpdateCheck
 	// mux is the router the handlers are mounted on, for the assistant's
 	// in-process reads (ai_reader.go).
 	mux *chi.Mux

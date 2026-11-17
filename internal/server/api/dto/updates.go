@@ -78,6 +78,35 @@ type ServerUpgradeStarted struct {
 	Backup string `json:"backup"`
 }
 
+type ServerUpgradeSelection struct {
+	Channel string `json:"channel"`
+	Version string `json:"version"`
+	SHA256  string `json:"sha256,omitempty"`
+	Attempt string `json:"attempt,omitempty"`
+}
+
+type ServerVersionChoices struct {
+	Channel  string                `json:"channel"`
+	Platform string                `json:"platform"`
+	Versions []ServerVersionChoice `json:"versions"`
+}
+
+type ServerVersionChoice struct {
+	Latest  bool   `json:"latest"`
+	Version string `json:"version"`
+	Commit  string `json:"commit,omitempty"`
+	BuiltAt string `json:"built_at"`
+	SHA256  string `json:"sha256,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+type ServerUpgradeProgress struct {
+	Attempt string `json:"attempt,omitempty"`
+	Phase   string `json:"phase"`
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+}
+
 // CatalogUpdate compares an official catalog in force with the published one.
 // Versions are for display; UpdateAvailable compares identities. Compatible
 // requires a catalog this server can read; CheckError distinguishes a failed

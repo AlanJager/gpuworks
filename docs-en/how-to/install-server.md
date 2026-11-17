@@ -191,8 +191,8 @@ The control plane must be managed by systemd, launchd, or `serve --supervise`, m
 
 1. As an administrator, open **Settings → General → Version and updates** and check the current version of **Server**.
 2. Under **Update channel**, select **Release** (stable releases) or **Nightly** (rolling previews), click **Check for updates**, and verify the latest server version.
-3. Click **Upgrade** on the **Server** row. Check the target version and interruption notice in the confirmation page, then click **Upgrade**.
-4. Wait for the page to recover. Confirm that it reports that the server now runs the target version, and that the **Current** version matches the target. If the new version does not respond within 5 minutes, the page reports an issue. Follow [Troubleshooting](#排查) to check the actual version and logs; do not assume a timeout means the upgrade succeeded or rolled back.
+3. Click **Select upgrade version** on the **Server** row. Choose a published release or build, review the current version, target and restart impact, then click **Confirm upgrade**.
+4. Wait for the page to recover. Confirm that it reports that the server now runs the target version, and that the **Current** version matches the target. If the new version does not respond within 5 minutes, the result remains unconfirmed. The page checks every 15 seconds, and **Recheck running version** checks immediately. A confirmed return to the previous version displays a rollback notice. See [Troubleshooting](#排查).
 
 **If the server cannot access the release source**, click **Upload release** in the same row and select a `gpuworks-<release_id>-<os>-<arch>.tar.gz` matching the server's operating system and architecture. **Selecting the file immediately starts upload and upgrade; the online upgrade confirmation page does not appear again.** After completion, verify the result as described in step 4.
 
@@ -328,7 +328,7 @@ The page waits only 5 minutes, less than the server's confirmation window. You m
 
 </details>
 
-<!-- translation-source-sha256: c09ac102a257e8ab2259b21f935759773c6f8ce7a4b604e2173265dd3580742d -->
+<!-- translation-source-sha256: a4254a5f958784c069aed12cc62cf2364c69785d05ba4681e476cc86c0945d75 -->
 <!-- translation-localized-code-block: 5846ca9eedd24f71306cab5c0c641ac91d93017a204a10590d0da44869aca60c d30b290861df40db339879702ea834f9a0133c1811b5c3e1b4315db3810ae76b Translate the editorial arrow annotation for the password prompt; actual CLI prompt text unchanged. -->
 <!-- translation-localized-code-block: 5e39ad4e967ab522280dcf50bf738ec0bda0ead57e8cc62bfb507186fc142032 3b97e82a02b8ad42b870dad3ff601553828968e7146d828efc110fde90a6eea5 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: a2a7d849742d4bc1b49eee629e9d586337d74603ea8592f6d24f2d3add8c1044 a51c2a29d1d5cfacb1af2136ca8e39aa3fcad8ea6674d3de2abc2c7c8f624e7b Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
