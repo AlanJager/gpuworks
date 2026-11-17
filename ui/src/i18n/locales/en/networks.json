@@ -424,7 +424,8 @@
   },
   "linkLayer": {
     "infiniband": "InfiniBand",
-    "roce": "RoCE"
+    "roce": "RoCE",
+    "hccs": "HCCS"
   },
   "topology": {
     "title": "Network topology and settings",

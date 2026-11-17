@@ -40,7 +40,7 @@ const i18n = createInstance();
 await i18n.use(initReactI18next).init({
   lng: "en",
   fallbackLng: "en",
-  resources: { en: { networks: networksLocale, settings: settingsLocale, common: load("common") } },
+  resources: { en: { networks: networksLocale, settings: settingsLocale, common: load("common") }, zh: Object.fromEntries(["networks", "settings", "common"].map(ns => [ns, JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/zh/${ns}.json`, import.meta.url), "utf8"))])) },
   defaultNS: "common",
   ns: ["networks", "settings", "common"],
   interpolation: { escapeValue: false },
@@ -79,8 +79,9 @@ function stub<K extends keyof API>(key: K, impl: API[K]) {
   apiModule.api[key] = impl;
 }
 after(() => { closeChannels(); dom.window.close(); });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await i18n.changeLanguage("en");
   for (const [key, value] of Object.entries(originals)) (apiModule.api as Record<string, unknown>)[key] = value;
   for (const key of Object.keys(originals)) delete (originals as Record<string, unknown>)[key];
 });
@@ -645,4 +646,23 @@ function cardRun(kind: string, pattern: string, verdict: string, pairs: ReturnTy
 // The server's estimate for a request, as tests/estimate answers.
 function estimateOf(nodes: number, pairs: number, rounds: number, probes: number) {
   return { kind: "card_ping", pattern: "ring", node_count: nodes, pair_count: pairs, card: { rounds, probes, seconds: rounds * 3, max_seconds: 600 } };
+}
+
+for (const language of ["en", "zh"]) {
+  for (const layer of ["hccs", "future_fabric"]) {
+    test(`network detail names HCCS and retains unknown link layers (${language}, ${layer})`, async () => {
+      await i18n.changeLanguage(language);
+      const detail = structuredClone(detailFixture);
+      detail.type = "accelerator_hccs";
+      detail.nodes = detail.nodes.map((node: Record<string, unknown>) => ({ ...node, link_layer: layer }));
+      stub("network", async () => detail);
+      renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
+      const title = detail.name;
+      const dialog = await screen.findByRole("dialog", { name: title });
+      const expand = i18n.t("networks:detail.expand");
+      for (const button of await within(dialog).findAllByRole("button", { name: new RegExp(`${expand}|Expand row|展开行`) })) fireEvent.click(button);
+      await waitFor(() => assert.ok(within(dialog).queryAllByText(layer === "hccs" ? "HCCS" : layer).length > 0, "the HCA heading must name the actual link layer"));
+      assert.doesNotMatch(dialog.textContent ?? "", /linkLayer\./, "a future protocol must retain its raw label instead of a translation key");
+    });
+  }
 }

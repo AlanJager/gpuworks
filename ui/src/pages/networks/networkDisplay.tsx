@@ -117,13 +117,17 @@ export function Endpoint({ iface, ip }: { iface: string; ip: string }) {
   return <code className="font-mono">{[iface, ip].filter(Boolean).join(" · ")}</code>;
 }
 
+/** A reported link layer, retaining unknown future values as useful diagnostics. */
+export function LinkLayerTag({ layer }: { layer?: string }) {
+  const { t } = useTranslation("networks");
+  return layer ? <Badge size="sm" className="ml-1.5">{t(`linkLayer.${layer}`, { defaultValue: layer })}</Badge> : null;
+}
+
 /** A compact read-only list of rails ("mlx5_0:1, … mlx5_7:1 (8)") with each address in the tooltip. */
 export function HCAList({ hcas, linkLayer }: { hcas: NetworkRail[]; linkLayer?: string }) {
-  const { t } = useTranslation("networks");
   if (hcas.length === 0) return <span className="text-fg-muted">—</span>;
   const names = hcas.map((h) => h.name);
-  const layer = linkLayer ? <Badge size="sm" className="ml-1.5">{t(`linkLayer.${linkLayer}`, { defaultValue: linkLayer })}</Badge> : null;
   const shown = names.length > 3 ? `${names.slice(0, 2).join(", ")} … ${names[names.length - 1]} (${names.length})` : names.join(", ");
   const detail = hcas.map((h) => `${h.name} ${h.ip || "—"}`).join("\n");
-  return <span><Tooltip content={<span style={{ whiteSpace: "pre-line" }}>{detail}</span>}><code className="font-mono">{shown}</code></Tooltip>{layer}</span>;
+  return <span><Tooltip content={<span style={{ whiteSpace: "pre-line" }}>{detail}</span>}><code className="font-mono">{shown}</code></Tooltip><LinkLayerTag layer={linkLayer} /></span>;
 }
