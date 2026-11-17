@@ -155,7 +155,7 @@
     "installResults": "Installation results · {{binary}} · {{installDir}}{{address}}",
     "manualInstructions": "First create a node (shown as Connecting until its Agent arrives) to obtain its unique Token, then run the following command on the target machine:",
     "createCommand": "Create node and generate command",
-    "tokenSaved": "The Token has been minted and saved. You can view or regenerate it from node details.",
+    "tokenSaved": "Node created and Token saved. Copy the command below and run it on the target host.",
     "copyCommand": "Copy command",
     "message": {
       "hostAddressRequired": "A server-initiated connection needs the compute node address",

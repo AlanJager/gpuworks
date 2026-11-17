@@ -517,22 +517,22 @@ test("the delete dialog prevents duplicate submissions while SSH uninstall is pe
 test("the detail drawer renders identity rows and the accelerator table", async () => {
   stubApi([{ ...onlineNode, gpus: [gpuInfo(0), gpuInfo(1)] }]);
   api.node = async (uuid: string) => ({ ...onlineNode, uuid, token: "3267d3b0a4684093b8393fc6eeeacea0cdff34ae15108322", gpus: [gpuInfo(0), gpuInfo(1)] }) as never;
-  renderPage();
+  renderPage(1);
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   screen.getByRole("button", { name: "gpu-a100-node-01" }).click();
   // Identity block: UUID and the node name with its rename affordance.
   await waitFor(() => assert.ok(screen.getByText(onlineNode.uuid)));
   // The hostname shows both as the table's secondary line and the drawer title.
   assert.ok(screen.getAllByText("192.168.10.11").length >= 2);
-  // Accelerator table, on the GPU tab: one row per GPU with the model as a link.
-  fireEvent.click(await screen.findByRole("tab", { name: /GPUs/ }));
-  await waitFor(() => assert.equal(screen.getAllByRole("link", { name: "A100-SXM4-80GB" }).length, 2));
   // The detail response still carries the node token, but the drawer no
-  // longer shows it or offers to regenerate it.
+  // longer shows it or offers to regenerate it, even to an administrator.
   const drawer = screen.queryByRole("dialog")!;
   assert.ok(!drawer.textContent?.includes("3267d3b0a4684093b8393fc6eeeacea0cdff34ae15108322"), "token is not shown");
   assert.ok(drawer.querySelector(".ant-typography-copy") === null, "Expected the element to be absent");
   assert.ok(screen.queryByRole("button", { name: /regenerate/i }) === null, "Expected the element to be absent");
+  // Accelerator table, on the GPU tab: one row per GPU with the model as a link.
+  fireEvent.click(await screen.findByRole("tab", { name: /GPUs/ }));
+  await waitFor(() => assert.equal(screen.getAllByRole("link", { name: "A100-SXM4-80GB" }).length, 2));
 });
 
 test("ordinary node detail shows its last report without administrator diagnostics", async () => {

@@ -155,7 +155,7 @@
     "installResults": "安装结果 · {{binary}} · {{installDir}}{{address}}",
     "manualInstructions": "先创建一个节点（Agent 接入前显示为“连接中”）取得唯一 Token，再在目标机器执行以下命令：",
     "createCommand": "创建节点并生成命令",
-    "tokenSaved": "Token 已铸造并保存，可在节点详情中回看或重新生成。",
+    "tokenSaved": "节点已创建，Token 已保存。请复制下方安装命令到目标主机执行。",
     "copyCommand": "复制命令",
     "message": {
       "hostAddressRequired": "Server 发起连接需要填写计算节点接入地址",
