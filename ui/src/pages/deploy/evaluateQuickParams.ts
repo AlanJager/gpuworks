@@ -1,4 +1,4 @@
-import type { EvaluateResponse } from "../../api";
+import type { EngineProfile, EvaluateResponse } from "../../api";
 
 // Evaluation returns a display projection, not a new user override. Keep its
 // provenance through the feedback loop so an earlier default cannot defeat a
@@ -13,8 +13,8 @@ export class EvaluateQuickParams {
   // follows what the next request states, this is never pruned: placement
   // and argument fields (tp, pp, extra_args) never travel in quick_params,
   // yet a value typed there is still the deployer's own. Never pruning is
-  // deliberate: a key the deployer once set, even back to the dictionary's
-  // own value (an explicit "Automatic"), stays theirs across engines.
+  // deliberate: authored values remain theirs across engines, except a
+  // numeric automatic sentinel the target dictionary cannot express.
   private touched = new Set<string>();
   // The dictionary parameters, the only values whose meaning comes from one
   // engine's dictionary: learned from each answer's effective_params (the
@@ -80,11 +80,33 @@ export class EvaluateQuickParams {
   // keys returned still hold such a value on the form and nobody stated them;
   // the caller clears them so the next answer derives them for the new
   // engine, or leaves them unstated where a manual command owns the launch.
-  // Only dictionary parameters are considered, and none the deployer ever
-  // edited; those are judged by the server as ever. Taking the stale keys
-  // also forgets the display, so a switch is answered once.
-  takeStaleFor(engine: string, draft: Record<string, unknown>): string[] {
+  // Authored values remain for server validation, except negative automatic
+  // sentinels: automatic intent carries across engines, its numeric spelling
+  // does not. Read both dictionaries rather than maintaining an engine list.
+  // Taking the stale keys also forgets the display, so a switch is answered once.
+  takeStaleFor(
+    engine: string,
+    draft: Record<string, unknown>,
+    profiles?: EngineProfile[],
+  ): string[] {
     if (!engine || !this.displayedEngine || engine === this.displayedEngine) return [];
+    const source = profiles?.find((profile) => profile.name === this.displayedEngine);
+    const target = profiles?.find((profile) => profile.name === engine);
+    // A dictionary still loading establishes no compatibility claim. Keep the
+    // old display until both profiles arrive; the hook reevaluates then.
+    if (profiles && (!source || !target)) return [];
+    const automatic = (source?.param_specs ?? [])
+      .filter((spec) => {
+        const next = target?.param_specs?.find((item) => item.key === spec.key);
+        return spec.automatic && typeof spec.default === "number" && spec.default < 0 &&
+          draft[spec.key] === spec.default && next &&
+          !(next.automatic && next.default === spec.default);
+      })
+      .map((spec) => spec.key);
+    for (const key of automatic) {
+      this.authored.delete(key);
+      this.touched.delete(key);
+    }
     const stale = Object.entries(this.displayed)
       .filter(([key, value]) =>
         this.paramKeys.has(key) &&
@@ -96,6 +118,6 @@ export class EvaluateQuickParams {
       .map(([key]) => key);
     this.displayed = {};
     this.displayedEngine = "";
-    return stale;
+    return [...new Set([...stale, ...automatic])];
   }
 }

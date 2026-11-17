@@ -27,6 +27,11 @@ const (
 	WarningImageCatalogNoMatchDomestic     = "IMAGE_CATALOG_NO_MATCH_DOMESTIC"
 	WarningImageCatalogUnavailableDomestic = "IMAGE_CATALOG_UNAVAILABLE_DOMESTIC"
 	WarningImageDriverCompatibility        = "IMAGE_DRIVER_COMPATIBILITY"
+	// WarningExtraArgsEngineUnverified: a residual user flag is documented by
+	// another engine's dictionary, not this target's. It remains passthrough;
+	// dictionary absence is not evidence that the target CLI refuses it.
+	// Params: flag, engine, documented_engine.
+	WarningExtraArgsEngineUnverified = "EXTRA_ARGS_ENGINE_UNVERIFIED"
 	// WarningComputeNetworkFallback: some ranks have a compute network of
 	// their own, but not all share it, so the group runs over the management
 	// network.

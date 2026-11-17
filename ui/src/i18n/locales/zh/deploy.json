@@ -91,6 +91,7 @@
     "cloneFailed": "克隆模板失败：{{detail}}"
   },
   "warning": {
+    "EXTRA_ARGS_ENGINE_UNVERIFIED": "GPUWorks 暂无法确认 {{flag}} 在所选 {{engine}} 镜像中的兼容性（已知 {{documented_engine}} 参数）。请检查镜像支持情况，参数将原样传递。",
     "W1": "W1：单批 Token 数（{{max_num_batched_tokens}}）超过最大并发与上下文长度乘积（{{max_num_seqs}} × {{max_model_len}}），可能造成显存浪费。",
     "W2": "W2：KV 内存层（{{kv_offloading_size}} GiB）不大于预估的 GPU KV Cache（{{estimated_gpu_kv_gib}} GiB），命中率可能不会提升。",
     "W3": "W3：已指定 KV cache memory bytes，显存使用率设置可能被忽略。",

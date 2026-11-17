@@ -91,6 +91,7 @@
     "cloneFailed": "Failed to clone template: {{detail}}"
   },
   "warning": {
+    "EXTRA_ARGS_ENGINE_UNVERIFIED": "GPUWorks cannot confirm that {{flag}} is supported by this {{engine}} image; it is listed for {{documented_engine}}. Check the image's supported arguments. The argument will be passed through unchanged.",
     "W1": "W1: Max batched tokens ({{max_num_batched_tokens}}) exceeds max sequences × context length ({{max_num_seqs}} × {{max_model_len}}) and may waste VRAM.",
     "W2": "W2: The KV memory tier ({{kv_offloading_size}} GiB) is no larger than the estimated GPU KV cache ({{estimated_gpu_kv_gib}} GiB), so its hit rate may not improve.",
     "W3": "W3: KV cache memory bytes is set explicitly; the GPU memory utilization setting may be ignored.",

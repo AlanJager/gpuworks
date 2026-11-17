@@ -301,6 +301,9 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 	if err != nil {
 		return bad(err)
 	}
+	if err := deployment.ValidateChangedExtraArgs(engine.Name(), extra, command, &deploy.StoredLaunchConfig{Engine: dep.Engine, ExtraArgsText: dep.ExtraArgs}); err != nil {
+		return bad(err)
+	}
 	launch, err := deploy.Materialize(deploy.MaterializeInput{
 		Engine: engine.Name(), Command: &command, Raw: req.QuickParams, Unset: req.QuickParamsUnset,
 		TemplateArgs: snapshot.ExtraArgs, ExtraArgs: extra, Cards: deployment.DeployTargetCards(node, req.Placement), Base: &base,
