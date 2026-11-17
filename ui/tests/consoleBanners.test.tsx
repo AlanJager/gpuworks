@@ -38,11 +38,11 @@ function Where() {
   return <span data-testid="where">{useLocation().pathname}</span>;
 }
 
-function renderBanners(withI18n = i18n) {
+function renderBanners(withI18n = i18n, path = "/dashboard") {
   const user = userEvent.setup();
   render(
     <I18nextProvider i18n={withI18n}>
-      <MemoryRouter initialEntries={["/dashboard"]}>
+      <MemoryRouter initialEntries={[path]}>
         <ConsoleBanners />
         <Routes><Route path="*" element={<Where />} /></Routes>
       </MemoryRouter>
@@ -115,6 +115,31 @@ test("a banner's console link is reached and followed with the keyboard", async 
   assert.equal(document.activeElement, link);
   await user.keyboard("{Enter}");
   await waitFor(() => assert.equal(screen.getByTestId("where").textContent, "/settings"));
+  // The page it opened states the matter itself, so the banner steps aside there.
+  await waitFor(() => assert.equal(region(), null));
+});
+
+test("a banner is left out on the page its link opens and shown everywhere else", async () => {
+  const readOnly = { code: "FEATURE_READ_ONLY", params: { feature: "audit" }, message: "x" };
+  stub(manifest([
+    { id: "here", severity: "warning", message: readOnly, link: "/x?tab=second#top" },
+    { id: "elsewhere", severity: "info", message: { code: "NO_SUCH_CODE", message: "Elsewhere" }, link: "/x/other" },
+    { id: "outside", severity: "info", message: { code: "NO_SUCH_CODE", message: "Outside" }, link: "https://example.invalid/x" },
+    { id: "plain", severity: "info", message: { code: "NO_SUCH_CODE", message: "No link" } },
+  ]));
+  const shown = () => [...(region()?.querySelectorAll("[data-slot=alert]") ?? [])].map((note) => note.textContent ?? "");
+  renderBanners(i18n, "/dashboard");
+  await waitFor(() => assert.equal(shown().length, 4));
+  cleanup();
+  for (const path of ["/x", "/x/"]) {
+    renderBanners(i18n, path);
+    await waitFor(() => assert.equal(shown().length, 3, path));
+    const texts = shown();
+    assert.equal(texts.some((text) => text.includes(c.apiError.FEATURE_READ_ONLY.replace("{{feature}}", "audit"))), false, `${path}: the banner linking here is left out`);
+    assert.ok(texts.some((text) => text.includes("Elsewhere")), "a link to another page, even one below it, still shows");
+    assert.ok(texts.some((text) => text.includes("Outside")) && texts.some((text) => text.includes("No link")));
+    cleanup();
+  }
 });
 
 test("banners render in Chinese", async () => {

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
 import { productMessageText } from "../apiError";
@@ -12,11 +12,13 @@ const tones: Record<string, "info" | "warning" | "danger"> = { info: "info", war
  * server's decision; this only renders them. The manifest read is the one the
  * extension entries share. While the manifest loads, when
  * it has none, or when it cannot be read, nothing is shown: banners are never
- * what a page needs to work.
+ * what a page needs to work. A banner whose link opens the page already shown
+ * is left out there: that page states the matter itself.
  */
 export default function ConsoleBanners() {
   const { t } = useTranslation();
-  const banners = useConsoleBanners();
+  const { pathname } = useLocation();
+  const banners = useConsoleBanners().filter((banner) => !opensPage(banner.link, pathname));
 
   if (banners.length === 0) return null;
   return (
@@ -33,6 +35,15 @@ export default function ConsoleBanners() {
     </section>
   );
 }
+
+// opensPage reports whether a console link (query and fragment aside) is the
+// page at pathname; an outside address never is.
+function opensPage(link: string | undefined, pathname: string): boolean {
+  if (!link || !link.startsWith("/") || link.startsWith("//")) return false;
+  return trimSlash(link.replace(/[?#].*$/, "")) === trimSlash(pathname);
+}
+
+const trimSlash = (path: string) => (path.length > 1 ? path.replace(/\/+$/, "") : path);
 
 // BannerLink opens a console path in place and any other address in a new tab.
 function BannerLink({ to, label }: { to: string; label: string }) {

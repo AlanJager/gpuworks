@@ -152,6 +152,8 @@ type Service interface{ Run(ctx context.Context) error }
 - 账户菜单项：`navItems` 的 `group` 写保留值 `account`，入口进右上角账户菜单，排在内置项之后、退出登录之前，按扩展 id 排序，只显示文字。账户菜单没有放锁定入口的位置，锁定与隐藏一样不显示。`account` 不能再用作新菜单分组的 id。
 - 仅管理员：以上每种入口都可标 `admin: true`，按会话检查时读到的用户角色显示。非管理员看不到菜单项、页签与控件，打开页面得到不存在页；读不到用户时同样按非管理员处理。这只影响显示，接口仍由服务端路由的访问级别把关。
 
+横幅：链接指向当前页面（不计查询与片段）的横幅，在那个页面上不显示，由页面自己说明。
+
 ## 码与文案
 
 扩展产生的失败与拒绝同样遵守 [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md)：UPPER_SNAKE 码、插值参数、英文 fallback。扩展的码与 en/zh 文案放在扩展自己的代码与界面模块里，不进开源的 `messages` 与 locale 文件；没有叠加界面时，控制台显示英文 fallback。

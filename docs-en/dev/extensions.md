@@ -152,6 +152,8 @@ The entries a UI module can add:
 - Account menu entries: a `navItems` entry whose `group` is the reserved `account` goes to the account menu at the top right, after the built-in entries and before signing out, ordered by extension id, as text only. The account menu has no room for a locked entry, so a locked one is left out like a hidden one. `account` cannot be the id of a new menu group.
 - Admin-only: each kind of entry above can be marked `admin: true` and then follows the role of the user the session check read. A user who is not an administrator sees no menu entry, tab or control, and the page answers as not found; a session whose user could not be read is treated the same way. This shapes only what is shown: the server's route access levels still guard the API.
 
+Banners: a banner whose link opens the current page (query and fragment aside) is left out on that page, which states the matter itself.
+
 ## Codes and texts
 
 Failures and refusals an extension produces follow [ADR 0067](../adr/0067-runtime-outcomes-as-codes.md) too: UPPER_SNAKE codes, interpolated params, an English fallback. An extension's codes and their en/zh texts live in the extension's own code and UI modules, not in the open-source `messages` or locale files; without the overlay, the console shows the English fallback.
@@ -184,4 +186,4 @@ The wire formats of manifests, certificates, trust updates, `gwx/1` messages and
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 7727c04ac1ec915df42b9d657e56ca35793671ca6f4dc9ab0f35c57d244f347a -->
+<!-- translation-source-sha256: 6aa37ab39e72fa0d3c9276ebccf179ed212b34c220b73bc4fb0c2447509e4ccb -->
