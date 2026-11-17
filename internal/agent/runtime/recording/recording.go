@@ -15,8 +15,10 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
@@ -38,9 +40,16 @@ type Driver struct {
 	removeErr     error
 	inspection    runtime.ImageInspection
 	loadFileHook  func(path string)
+
+	// engineBin, when set, is a fake engine started for every serving
+	// container on the API port its command names (engine.go).
+	engineBin string
+	engines   map[string]*exec.Cmd
 }
 
-func New(path string) *Driver { return &Driver{path: path, running: map[string]bool{}} }
+func New(path string) *Driver {
+	return &Driver{path: path, running: map[string]bool{}, engines: map[string]*exec.Cmd{}}
+}
 
 func (d *Driver) Name() string                         { return "recording" }
 func (d *Driver) Detect(context.Context) (bool, error) { return true, nil }
@@ -74,21 +83,39 @@ func (d *Driver) Run(_ context.Context, spec runtime.WorkloadSpec) (string, erro
 	if err := os.Rename(tmp, d.path); err != nil {
 		return "", err
 	}
-	id := "recording-" + spec.Name
+	id := containerID(spec.Name)
 	d.running[id] = spec.Image != assets.PartitionProbeImage
+	if d.running[id] && d.engineBin != "" {
+		if err := d.startEngineLocked(id, spec); err != nil {
+			return "", err
+		}
+	}
 	return id, nil
 }
 func (d *Driver) Stop(_ context.Context, id string) error {
 	d.mu.Lock()
+	id = containerID(id)
 	d.running[id] = false
+	d.stopEngineLocked(id)
 	d.mu.Unlock()
 	return nil
 }
 func (d *Driver) Remove(_ context.Context, id string) error {
 	d.mu.Lock()
+	id = containerID(id)
 	delete(d.running, id)
+	d.stopEngineLocked(id)
 	d.mu.Unlock()
 	return nil
+}
+
+// containerID is the id Run returned for a container, given that id or the
+// container's name: the agent addresses a container by either.
+func containerID(nameOrID string) string {
+	if strings.HasPrefix(nameOrID, "recording-") {
+		return nameOrID
+	}
+	return "recording-" + nameOrID
 }
 func (d *Driver) ListContainers(context.Context) ([]string, error) {
 	d.mu.Lock()
@@ -114,7 +141,7 @@ func (d *Driver) RunningContainers(context.Context) ([]string, error) {
 }
 func (d *Driver) Status(_ context.Context, id string) (runtime.Status, error) {
 	d.mu.Lock()
-	running, exists := d.running[id]
+	running, exists := d.running[containerID(id)]
 	d.mu.Unlock()
 	return runtime.Status{Exists: exists, Running: running, Health: "healthy"}, nil
 }
