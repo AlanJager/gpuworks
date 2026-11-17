@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -159,9 +160,7 @@ func wireRefusal(err error) *Error {
 			reason = extapi.ReasonUnsupported
 		}
 		w := extapi.WireErrorOf(x, reason)
-		if len(w.Message) > extapi.MaxErrorMessage {
-			w.Message = w.Message[:extapi.MaxErrorMessage]
-		}
+		w.Message = clipMessage(w.Message)
 		return &Error{Status: extapi.StatusForReason(reason), Wire: w}
 	}
 	return Refuse(extapi.ReasonInternal, messages.ErrorPluginHostFailed, "the server failed to handle the call",
@@ -216,4 +215,17 @@ func (b *tokenBucket) allow() bool {
 	}
 	b.tokens--
 	return true
+}
+
+// clipMessage bounds an English fallback to extapi.MaxErrorMessage bytes,
+// cut at a rune boundary so the message stays valid UTF-8.
+func clipMessage(s string) string {
+	if len(s) <= extapi.MaxErrorMessage {
+		return s
+	}
+	n := extapi.MaxErrorMessage
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }

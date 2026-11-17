@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"unicode/utf8"
 
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
@@ -39,9 +40,7 @@ func refusalOf(err error, reason string) *Error {
 			Params: map[string]any{"object": "request", "field": "_root", "rule": extapi.RuleSyntax}}
 	}
 	w := extapi.WireErrorOf(e, reason)
-	if len(w.Message) > extapi.MaxErrorMessage {
-		w.Message = w.Message[:extapi.MaxErrorMessage]
-	}
+	w.Message = clipMessage(w.Message)
 	return &Error{Status: extapi.StatusForReason(reason), Wire: w}
 }
 
@@ -118,4 +117,17 @@ func compactJSON(v any) string {
 		return fmt.Sprint(v)
 	}
 	return string(b)
+}
+
+// clipMessage bounds an English fallback to extapi.MaxErrorMessage bytes,
+// cut at a rune boundary so the message stays valid UTF-8.
+func clipMessage(s string) string {
+	if len(s) <= extapi.MaxErrorMessage {
+		return s
+	}
+	n := extapi.MaxErrorMessage
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
