@@ -81,6 +81,14 @@ test("downloadFile falls back to the given name and sends a JSON body when asked
   assert.deepEqual(saved.map((entry) => entry.name), ["export.json"]);
 });
 
+test("downloadFile posts a body given without a method", async () => {
+  serve(() => new Response("{}", { headers: { "Content-Type": "application/json" } }));
+  await downloadFile("/api/v1/x/tools/export", { body: { nodes: ["n1"] }, fallbackName: "export.json" });
+  assert.equal(sent[0].method, "POST", "a GET with a body would make fetch throw");
+  assert.equal(sent[0].body, "{\"nodes\":[\"n1\"]}");
+  assert.deepEqual(saved.map((entry) => entry.name), ["export.json"]);
+});
+
 test("a coded error answer rejects with the localized APIError and saves nothing", async () => {
   serve(codedError(403, "FEATURE_UNAVAILABLE", { feature: "audit" }, "audit is not available"));
   const failure = await downloadFile("/api/v1/x/tools/code", { fallbackName: "code.txt" }).then(() => undefined, (error: unknown) => error);
