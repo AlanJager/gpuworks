@@ -42,10 +42,8 @@ func materializeDeployRequestWithStoredArgs(engine string, req *dto.DeployReques
 	if err != nil {
 		return deploy.Materialized{}, err
 	}
-	if command.InterpretEngineDialect && !sameStoredExtraArgs(engine, extra, stored) {
-		if err := deploy.ValidateExtraArgsForEngine(engine, extra); err != nil {
-			return deploy.Materialized{}, err
-		}
+	if err := ValidateChangedExtraArgs(engine, extra, command, stored); err != nil {
+		return deploy.Materialized{}, err
 	}
 	templateArgs := selection.ExtraArgs
 	// Task intent comes from the current explicit API contract, never a model
@@ -73,6 +71,15 @@ func materializeDeployRequestWithStoredArgs(engine string, req *dto.DeployReques
 		return deploy.Materialized{}, err
 	}
 	return out, nil
+}
+
+// ValidateChangedExtraArgs applies the target dictionary to new user tokens.
+// Create, evaluate and edit share the same historical and manual allowances.
+func ValidateChangedExtraArgs(engine string, args []string, command deploy.EffectiveCommand, stored *deploy.StoredLaunchConfig) error {
+	if !command.InterpretEngineDialect || sameStoredExtraArgs(engine, args, stored) {
+		return nil
+	}
+	return deploy.ValidateExtraArgsForEngine(engine, args)
 }
 
 func sameStoredExtraArgs(engine string, args []string, stored *deploy.StoredLaunchConfig) bool {
