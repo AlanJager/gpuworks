@@ -74,7 +74,8 @@ var modes = map[string]Mode{
 	// SGLang with the NIXL transfer backend: UCX carries the KV, so the
 	// network rules are vllm-nixl's. The decoder cannot compute a prefill in
 	// disaggregation mode, so there is no fallback and no scaling prefill to
-	// zero. Both roles keep one TP until heterogeneous TP is verified.
+	// zero. The TP pairing is SGLang's (see TPAny); a pairing it cannot
+	// make fails the decode instance's start, not the platform's checks.
 	"sglang-nixl": {
 		Name:                "sglang-nixl",
 		Engine:              engines.SGLang,
@@ -84,7 +85,7 @@ var modes = map[string]Mode{
 		Connector:           "nixl",
 		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
 		Wire:                WireConcurrent,
-		TP:                  TPEqual,
+		TP:                  TPAny,
 		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
 		TransferMetricsRole: RoleDecode,
 		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
@@ -96,7 +97,8 @@ var modes = map[string]Mode{
 	// of one host. The NIC registers the cards' memory through the PPU
 	// driver's peer-memory module (alixpu_peermem), so every node needs it
 	// loaded. None of the IPC mode's patches is involved. Verified on PPU
-	// ZW810E (RoCE, mlx5) with TP 1 on both roles.
+	// ZW810E (RoCE, mlx5) with TP 1 on both roles; other pairings are
+	// SGLang's to accept (TPAny).
 	"sglang-ppu-mooncake": {
 		Name:                "sglang-ppu-mooncake",
 		Engine:              engines.SGLang,
@@ -106,7 +108,7 @@ var modes = map[string]Mode{
 		Connector:           "mooncake",
 		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
 		Wire:                WireConcurrent,
-		TP:                  TPEqual,
+		TP:                  TPAny,
 		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
 		TransferMetricsRole: RoleDecode,
 		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
@@ -122,7 +124,8 @@ var modes = map[string]Mode{
 	// The prefill engine answers its one-token copy without kv_transfer_params;
 	// the decoder pulls by the prefill engine's id from its bootstrap server
 	// (VLLM_MOONCAKE_BOOTSTRAP_PORT), so the gateway composes the handoff.
-	// Verified on PPU ZW810E with vLLM 0.23.0 and TP 1 on both roles.
+	// Verified on PPU ZW810E with vLLM 0.23.0 and TP 1 on both roles; other
+	// pairings are the engine's (TPAny).
 	"vllm-ppu-mooncake": {
 		Name:                "vllm-ppu-mooncake",
 		Engine:              engines.VLLM,
@@ -132,7 +135,7 @@ var modes = map[string]Mode{
 		Connector:           "MooncakeConnector",
 		ConnectorRoles:      map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
 		Wire:                WireSequential,
-		TP:                  TPEqual,
+		TP:                  TPAny,
 		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions"},
 		TransferMetricsRole: RoleDecode,
 		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
@@ -155,7 +158,9 @@ var modes = map[string]Mode{
 	// whole at equal TP and whose scheduler survives their failed pulls and
 	// does not zero blocks a pull is writing (r3 can), and the hybrid KV cache
 	// manager (verified on K100 with Qwen3.5-0.8B and
-	// hygon/Qwen3.8-27B-Channel-INT8-w8a8).
+	// hygon/Qwen3.8-27B-Channel-INT8-w8a8). The TP pairing is the engine's
+	// (TPAny): unequal TP is untried, hybrid models' whole-page move above
+	// is r4's at equal TP only.
 	"vllm-mooncake": {
 		Name:                 "vllm-mooncake",
 		Engine:               engines.VLLM,
@@ -165,7 +170,7 @@ var modes = map[string]Mode{
 		Connector:            "MooncakeConnector",
 		ConnectorRoles:       map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
 		Wire:                 WireSequential,
-		TP:                   TPEqual,
+		TP:                   TPAny,
 		TwoStagePaths:        []string{"/v1/chat/completions", "/v1/completions"},
 		TransferMetricsRole:  RoleDecode,
 		VerifiedVersions:     "0.21.0",
@@ -217,7 +222,7 @@ var modes = map[string]Mode{
 	// kernels for minutes, a generating health check times out meanwhile and
 	// the agent would retire a healthy instance, and every such check would
 	// queue a fake transfer on the prefill side. Verified on PPU ZW810E with
-	// TP 1 on both roles.
+	// TP 1 on both roles; other pairings are the engine's (TPAny).
 	"sglang-ppu-ipc": {
 		Name:                "sglang-ppu-ipc",
 		Engine:              engines.SGLang,
@@ -228,7 +233,7 @@ var modes = map[string]Mode{
 		Connector:           "mooncake",
 		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
 		Wire:                WireConcurrent,
-		TP:                  TPEqual,
+		TP:                  TPAny,
 		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
 		TransferMetricsRole: RoleDecode,
 		ExtraPortsFixed:     map[string]int{RolePrefill: 1},

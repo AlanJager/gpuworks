@@ -72,13 +72,15 @@ const (
 	// Mooncake connector gathers one decode rank's KV from several prefill
 	// ranks, the reverse of NIXL).
 	TPPrefillAtLeastDecode TPRule = "prefill_at_least_decode"
-	// TPEqual requires both roles to use the same TP.
+	// TPEqual requires both roles to use the same TP. No mode declares it at
+	// present; it stays for a mode found to need it.
 	TPEqual TPRule = "equal"
-	// TPAny leaves the pairing to the engine. SGLang pairs the roles by
-	// their attention TP (TP divided by the attention DP and CP degrees,
-	// which the platform does not see) and handles unequal widths in both
-	// directions, so a rule on the roles' TP would refuse layouts the
-	// engine runs; a pairing it cannot handle fails the decoder's start.
+	// TPAny leaves the pairing to the engine, so the platform refuses no
+	// layout it has not seen fail. SGLang pairs the roles by their attention
+	// TP (TP divided by the attention DP and CP degrees, which the platform
+	// does not see) and handles unequal widths in both directions; a pairing
+	// an engine cannot handle fails the instance's start or its first
+	// handoff, and its log says why.
 	TPAny TPRule = "any"
 )
 

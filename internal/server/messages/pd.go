@@ -12,7 +12,9 @@ const (
 	ErrorPDTPInvalid          = "PD_TP_INVALID"
 	ErrorPDUnitGPUCount       = "PD_UNIT_GPU_COUNT"
 	// ErrorPDTPDirection, ErrorPDTPPrefillAtLeastDecode and ErrorPDTPEqual
-	// are the three TP rules a mode may declare (pdmode.TPRule).
+	// answer the TP rules a mode may declare (pdmode.TPRule); no mode
+	// declares pdmode.TPEqual at present, so ErrorPDTPEqual is kept for one
+	// found to need it.
 	ErrorPDTPDirection            = "PD_TP_DIRECTION"
 	ErrorPDTPPrefillAtLeastDecode = "PD_TP_PREFILL_AT_LEAST_DECODE"
 	ErrorPDTPEqual                = "PD_TP_EQUAL"

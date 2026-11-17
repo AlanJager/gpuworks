@@ -354,7 +354,6 @@ func TestValidatePDTPRuleCodes(t *testing.T) {
 	for mode, code := range map[string]string{
 		"vllm-nixl":            messages.ErrorPDTPDirection,
 		"vllm-ascend-mooncake": messages.ErrorPDTPPrefillAtLeastDecode,
-		"sglang-nixl":          messages.ErrorPDTPEqual,
 	} {
 		prefill, decode := 2, 1
 		if code != messages.ErrorPDTPDirection {

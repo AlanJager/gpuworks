@@ -276,7 +276,7 @@ A PD recipe is often more than "one set of arguments for each of two roles": eac
   `${GPUWORKS_NODE_RANK}` or `${GPUWORKS_HEADLESS}`. Creating a deployment checks once more against the layout of that request (a request may span more nodes than the spec's layout),
   and returns `MANUAL_COMMAND_RANK_BLIND` when it is not met.
 - Variable expansion and the system environment layer follow the same rules as a hand-written manual command; see [Manual Commands for Multi-Node and PD Deployments](../explanation/launch-config.md#多机与-pd-的手工命令):
-  only names with the `GPUWORKS_` prefix that this launch states are expanded; ranks of multi-node and PD deployments still carry the system environment layer (`NCCL_*`, `GLOO_SOCKET_IFNAME`, and so on),
+  only names with the `GPUWORKS_` prefix that this launch states are expanded; ranks still carry the system environment layer (an instance spanning several nodes also gets `NCCL_*`, `GLOO_SOCKET_IFNAME`, and so on, which a single-node instance does not),
   and the script can read them as shell variables, for example `"$NCCL_IB_HCA"`. Names this launch does not state (`${GPUWORKS_PD_SIDE_CHANNEL_PORT}` on a decode instance,
   `${GPUWORKS_MASTER_ADDR}` on a single-node role) are left as written for the shell, so write them only in the branch that can use them.
 
@@ -291,7 +291,8 @@ A sketch follows (the other required fields such as `image`, `weights` and `gpus
     decode:  {tp: 16, nodes: 2, units: 2}
   manual_command: |
     set -eu
-    IB_DEVICES=$(printf '%s' "$NCCL_IB_HCA" | sed 's/:[0-9]*//g')
+    : "${NCCL_IB_HCA:?needs a multi-node instance on a host RDMA network}"   # a command substitution swallows set -u, so check first
+    IB_DEVICES=$(printf '%s\n' "$NCCL_IB_HCA" | tr ',' '\n' | sed 's/:.*//' | awk 'NF && !seen[$0]++' | paste -sd, -)
     case "${GPUWORKS_PD_ROLE}" in
       prefill)
         exec python3 -m sglang.launch_server --model-path ${GPUWORKS_MODEL_PATH} \
@@ -637,10 +638,11 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 3c35c54110bb240c15b200a66d598b696da82ef14441dc68e437b029807574ed -->
+<!-- translation-source-sha256: ad962e5abb6c3d18bfd513b28283fceb87fa62b3902b58b4070e9d744b3dfbdc -->
 <!-- translation-localized-code-block: 26b59d93b4900f054e9c78c569388285db977d8a1a29c7231646a264e33074f3 d2ac202220acef0f04a4a5bdf2d4ffd3695b808693b508f83ea49253037b2d2d Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: a1b46fd70228a0da1bb5609580c5833b06a6239d6c91dc23dbf524753124cd9e 8f5ac88c9f38d9481fcdf861dcf922217f943aa3ec164bd1597bef1142ede0f0 Translate the inline shell comment. -->
 <!-- translation-localized-code-block: a611f2e8254725bdcf88ae19eb23c532ef8c679903131a8881bbd61f09aafdb2 33859cded67f664966175739bc36d429175e7fe4c8f3d71422f40719d24be6e6 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: bee5e6aa5c268b0bca3195996e1394ed7ca27c6938ea75731026b323c425c162 50a7b72308d2093f9b328d73f1c889122beed6408c02fe79a803f0bd63b3246f Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: d0cf90e53d24fed8cc724f20d6eb7df85810710388a02b23e6ede399e6bb8294 9a3a3028b77be7c62002a4762ea29528a08dd641897608dcc4383e36d62744cb Translate YAML comments and illustrative user-facing reason text. -->

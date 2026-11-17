@@ -277,7 +277,7 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
   还要引用 `${GPUWORKS_NODE_RANK}` 或 `${GPUWORKS_HEADLESS}`。创建部署时再按这次请求的版式检查一次（请求可以比 spec 的版式跨更多节点），
   不满足返回 `MANUAL_COMMAND_RANK_BLIND`。
 - 变量展开与系统层环境变量的规则与手写手工命令相同，见[多机与 PD 的手工命令](../explanation/launch-config.md#多机与-pd-的手工命令)：
-  只展开带 `GPUWORKS_` 前缀、本次启动给出的名字；多机与 PD 的 rank 仍带系统层环境变量（`NCCL_*`、`GLOO_SOCKET_IFNAME` 等），
+  只展开带 `GPUWORKS_` 前缀、本次启动给出的名字；rank 仍带系统层环境变量（跨多台节点时有 `NCCL_*`、`GLOO_SOCKET_IFNAME` 等，单机实例没有这些网络变量），
   脚本里可以直接按 shell 变量读，例如 `"$NCCL_IB_HCA"`。本次启动没给出的名字（decode 实例上的 `${GPUWORKS_PD_SIDE_CHANNEL_PORT}`、
   单机角色上的 `${GPUWORKS_MASTER_ADDR}`）原样留给 shell，所以只写在用得上它的分支里。
 
@@ -292,7 +292,8 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
     decode:  {tp: 16, nodes: 2, units: 2}
   manual_command: |
     set -eu
-    IB_DEVICES=$(printf '%s' "$NCCL_IB_HCA" | sed 's/:[0-9]*//g')
+    : "${NCCL_IB_HCA:?needs a multi-node instance on a host RDMA network}"   # 命令替换会吞掉 set -u，先检查
+    IB_DEVICES=$(printf '%s\n' "$NCCL_IB_HCA" | tr ',' '\n' | sed 's/:.*//' | awk 'NF && !seen[$0]++' | paste -sd, -)
     case "${GPUWORKS_PD_ROLE}" in
       prefill)
         exec python3 -m sglang.launch_server --model-path ${GPUWORKS_MODEL_PATH} \

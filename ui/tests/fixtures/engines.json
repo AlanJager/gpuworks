@@ -1345,7 +1345,7 @@
           "prefill"
         ],
         "scalable_to_zero": [],
-        "tp_rule": "equal",
+        "tp_rule": "any",
         "max_units_per_role": 32,
         "fallbacks": [
           "fail"
@@ -1363,7 +1363,7 @@
           "prefill"
         ],
         "scalable_to_zero": [],
-        "tp_rule": "equal",
+        "tp_rule": "any",
         "max_units_per_role": 32,
         "fallbacks": [
           "fail"
@@ -1381,7 +1381,7 @@
           "prefill"
         ],
         "scalable_to_zero": [],
-        "tp_rule": "equal",
+        "tp_rule": "any",
         "max_units_per_role": 32,
         "fallbacks": [
           "fail"
@@ -3452,7 +3452,7 @@
         "scalable_to_zero": [
           "prefill"
         ],
-        "tp_rule": "equal",
+        "tp_rule": "any",
         "max_units_per_role": 32,
         "fallbacks": [
           "decode",
@@ -3497,7 +3497,7 @@
           "prefill"
         ],
         "scalable_to_zero": [],
-        "tp_rule": "equal",
+        "tp_rule": "any",
         "max_units_per_role": 32,
         "fallbacks": [
           "fail"

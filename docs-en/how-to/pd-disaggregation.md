@@ -30,7 +30,7 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
    `sglang-ppu-mooncake` (PPU, RDMA), `sglang-mooncake` (Hygon, RDMA, unverified), and `sglang-nixl` (unverified).
 
 2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)), set TP separately for prefill and decode, then add instances one by one. In manual mode select a node for each instance and optionally pin cards; in automatic mode an instance may leave its node out and the platform picks it. Each mode has TP rules: `vllm-nixl` requires
-   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `vllm-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require equal values; `sglang-mooncake` does not compare TP but requires decode PP to equal prefill PP or be 1 (see [Hygon SGLang over Mooncake RDMA](#海光-sglang-经-mooncake-rdma)).
+   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse; for the other modes the platform does not compare TP, and the engine pairs unequal TPs itself; a pairing it cannot make fails the instance's start or its first handoff, and the instance log says why. `sglang-mooncake` also requires decode PP to equal prefill PP or be 1 (see [Hygon SGLang over Mooncake RDMA](#海光-sglang-经-mooncake-rdma)).
    When creating a deployment, each of the P and D roles needs at least one instance.
 
 3. To span an instance across multiple nodes, select **Add Node** under that instance. The first node is the leader (serving external requests), and the rest are followers. You must specify TP in this case,
@@ -172,7 +172,7 @@ When the cards a manual placement pins are held by other deployments, the instan
   `-r2` does not support the hybrid models below; `-r3` runs them but can occasionally zero blocks that are receiving remote KV, so decode answers wrongly; use r4 for hybrid models.
   The Hygon vLLM 0.18.1 image does not include Mooncake and cannot be used for PD.
 - **Transfer protocol**: The platform chooses it from the compute network shared by P and D: `rdma` on a host RDMA network, and `tcp` on Ethernet, the management network, or a single host.
-- **TP**: Prefill and decode must be equal.
+- **TP**: The platform does not compare them. Only equal TPs have been verified on real hardware; whether unequal TPs pair depends on the vLLM and Mooncake versions in the image, and a pairing that fails shows up at the instance's start or its first handoff.
 - **GDN hybrid models** (models with linear attention or Mamba layers, such as Qwen3.5, Qwen3.6 and Qwen3.8): They need the r4 image.
   vLLM turns off its hybrid KV cache manager whenever a KV connector is configured, and these models cannot start without it, so the platform adds
   `--no-disable-hybrid-kv-cache-manager` based on the `layer_types` in the model's `config.json`; a deployment that states `--disable-hybrid-kv-cache-manager` or `--no-disable-hybrid-kv-cache-manager` itself keeps its choice.
@@ -200,15 +200,16 @@ P and D receive the request concurrently and the gateway does not wait for prefi
 - **PP**: Decode PP must equal prefill PP or be 1 (each decode rank then pulls KV from every prefill pipeline stage); otherwise `PD_PP_DECODE_MISMATCH` is returned.
 - **Multi-node instances**: A prefill instance that spans several nodes serves its bootstrap on the same port on every rank. The controller picks that port among those free on all of the instance's nodes,
   so the intersection of the nodes' engine port ranges needs a free port; otherwise the instance cannot start and the engine ports are recorded as exhausted.
-- **Environment variables injected by the platform**: only the generic network variables, as for other modes: on a host RDMA network `NCCL_IB_HCA` (`device:port`, comma-separated),
-  `NCCL_SOCKET_IFNAME` (the network's interface, which a per-node override may make a name such as `bond1`), and the launch variable `${GPUWORKS_PD_SIDE_CHANNEL_HOST}` (the address of this rank's node on the network P and D share).
+- **Environment variables injected by the platform**: only the generic network variables, as for other modes. An instance that spans several nodes gets, on a host RDMA network, `NCCL_IB_HCA` (`device:port`, comma-separated) and
+  `NCCL_SOCKET_IFNAME` (the network's interface, which a per-node override may make a name such as `bond1`); a single-node instance gets neither, and the script below then stops with an error. Every PD rank has the launch variable `${GPUWORKS_PD_SIDE_CHANNEL_HOST}` (the address of this rank's node on the network P and D share).
   When the platform composes the command from structured parameters it also writes `--disaggregation-ib-device` (device names, port suffix stripped).
 - **Variables a template script derives**: what the Hygon build of SGLang further needs, `MC_TE_FILTERS` (Mooncake's device filter), `ROCSHMEM_ALLOWED_IBV_DEVICES` and
   `ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME` (so ROCSHMEM, which DeepEP uses between nodes, uses only this network) and `SGLANG_HOST_IP` (the address registered with the bootstrap),
   is not injected by the platform; the template's `manual_command` derives it from the generic variables above:
 
   ```sh
-  IB_DEVICES=$(printf '%s' "$NCCL_IB_HCA" | sed 's/:[0-9]*//g')
+  : "${NCCL_IB_HCA:?needs a multi-node instance on a host RDMA network}" "${NCCL_SOCKET_IFNAME:?needs the network interface}"   # a command substitution swallows set -u, so check first
+  IB_DEVICES=$(printf '%s\n' "$NCCL_IB_HCA" | tr ',' '\n' | sed 's/:.*//' | awk 'NF && !seen[$0]++' | paste -sd, -)
   export MC_TE_FILTERS="$IB_DEVICES" ROCSHMEM_ALLOWED_IBV_DEVICES="$IB_DEVICES"
   export ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME="$NCCL_SOCKET_IFNAME" SGLANG_HOST_IP="${GPUWORKS_PD_SIDE_CHANNEL_HOST}"
   ```
@@ -304,4 +305,5 @@ By default, evaluations measure end-to-end performance through the gateway. If y
   if a container exits or disappears, it is treated as failed and the controller recreates it according to the retry policy. Use **Retry** when the retry limit is reached.
   This check is not continuous HTTP health probing. If the container is still running but the engine does not respond, check logs and request errors, then restart or replace the instance through role adjustment if necessary.
 
-<!-- translation-source-sha256: 8c85bcc8de8ff204f9c9dacee7f3fbd7db7707c5c783c11edbd6ec3b6fc4e0e0 -->
+<!-- translation-source-sha256: 6fdebfb49679e8cf61818df4a0f28c99c351609369282a2e779029f1baafb2ab -->
+<!-- translation-localized-code-block: 2513da8d7e22b4b434e5b388074c523ee6fe392dc62a5486c6f3b2e866546493 900283aac222ec81c58a9b790638cf4b5d10495895e866cd20adbc835c88153e Translate the inline shell comment. -->

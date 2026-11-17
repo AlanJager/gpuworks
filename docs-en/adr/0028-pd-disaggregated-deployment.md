@@ -42,12 +42,12 @@ no rules beyond "prefill/decode". The table lists some of them:
 | Mode | Wire Protocol | TP Rule | Transport | Hardware Verification |
 |---|---|---|---|---|
 | `vllm-nixl` | Sequential, two-stage | decode ≥ prefill | UCX | Verified (same node, cross-node Ethernet, and multiple nodes within a role) |
-| `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Equal | UCX | Not verified |
+| `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Not compared (the engine pairs) | UCX | Not verified |
 | `vllm-ascend-mooncake` | Sequential, two-stage | prefill ≥ decode | HCCL (RoCE built into the NPU; mounts `/etc/hccn.conf`) | Verified (cross-node; P and D NPUs must reach each other on the NPU network) |
-| `vllm-mooncake` | Sequential, two-stage; the gateway generates the handoff parameters (prefill returns no `kv_transfer_params`; the gateway reads the engine id from its bootstrap server) | Equal | Mooncake transfer engine (Hygon DTK build, RDMA or TCP) | Verified (K100, two cards in one node, TP 1) |
+| `vllm-mooncake` | Sequential, two-stage; the gateway generates the handoff parameters (prefill returns no `kv_transfer_params`; the gateway reads the engine id from its bootstrap server) | Not compared (the engine pairs) | Mooncake transfer engine (Hygon DTK build, RDMA or TCP) | Verified (K100, two cards in one node, TP 1) |
 | `sglang-mooncake` | Concurrent dispatch to both | Not compared (SGLang pairs by attention TP); decode PP equals prefill PP or is 1 | Mooncake transfer engine (Hygon DTK build, host RDMA network) | Not verified |
 
-Violating a TP rule returns the corresponding error code. Engine presets expose `pd_modes` through `pdmode.ForEngine`, and the frontend uses them to offer available modes.
+A mode that declares a TP rule (currently only `vllm-nixl` and `vllm-ascend-mooncake`) returns the rule's error code when it is violated; the other modes do not compare TP and leave the pairing to the engine, so the platform does not block a layout nobody has seen fail. Engine presets expose `pd_modes` through `pdmode.ForEngine`, and the frontend uses them to offer available modes.
 
 **Validation has one implementation.** One function in `planning` parses and validates the `pd` object (all roles present, nonempty units, no overlapping cards, TP rules, a limit
 of 32 per role, and rank partitioning). Evaluation, creation, scaling, and the controller share it.
@@ -151,4 +151,4 @@ the request with the same KV parameters to other D instances. Internal requests 
 - PPU images include only Mooncake, not NIXL; supporting PPU most likely means adding another Mooncake mode without changing the data model.
 - Per-role images or presets and auxiliary roles (a coordination process for a shared KV pool) require only extensions to the `pd` object and catalog; `role` is a string with unrestricted values.
 
-<!-- translation-source-sha256: 1703ca87fe992d6a49519a412723926f0bcac0f5d2558a6fe6d7b58279ab85db -->
+<!-- translation-source-sha256: 7b467f75012125847b15315005f5b54af4fe1f674e2a0913d55393867d24d97e -->

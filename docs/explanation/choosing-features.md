@@ -219,7 +219,7 @@
 海光只有 vLLM 0.21 的镜像带 Mooncake，0.18.1 的镜像不能用于 PD。
 `sglang-mooncake` 在海光上经 RDMA 网卡传 KV，节点必须在主机 RDMA 参数网络上（单机也一样，否则拒绝 `PD_NETWORK_RDMA_REQUIRED`）。
 TP 规则按模式不同：`vllm-nixl` 要求 decode TP ≥ prefill TP，`vllm-ascend-mooncake` 要求
-prefill TP ≥ decode TP，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` 与两个 PPU Mooncake 模式要求相等；`sglang-mooncake` 不比较 TP（SGLang 按注意力 TP 配对，由引擎处理），只要求 decode 的 PP 等于 prefill 的 PP 或为 1。
+prefill TP ≥ decode TP，其余模式平台不比较 TP，由引擎配对（SGLang 按注意力 TP 配对）；`sglang-mooncake` 另要求 decode 的 PP 等于 prefill 的 PP 或为 1。
 
 **代价与限制**：
 

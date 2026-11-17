@@ -131,8 +131,8 @@ func TestPPUIPCDeclaration(t *testing.T) {
 	if !mode.SameNode || mode.Transport != TransportIPC || mode.Wire != WireConcurrent || mode.Connector != "mooncake" {
 		t.Fatalf("mode = %+v", mode)
 	}
-	if mode.CheckTP(1, 1) != nil || mode.CheckTP(1, 2) == nil {
-		t.Fatal("both roles take the same TP")
+	if mode.CheckTP(1, 1) != nil || mode.CheckTP(1, 2) != nil {
+		t.Fatal("the TP pairing is the engine's")
 	}
 	if mode.ExtraPorts(RolePrefill, 1) != 1 || mode.ExtraPorts(RoleDecode, 1) != 0 {
 		t.Fatal("the prefill instance needs one bootstrap port")
@@ -174,8 +174,8 @@ func TestVLLMMooncakeDeclaration(t *testing.T) {
 	if !mode.DecodeServesAlone || !mode.MayBeEmpty(RolePrefill) || mode.EffectiveFallback("") != FallbackDecode || mode.EffectiveKVLoadFailure("") != KVLoadFail {
 		t.Fatal("a decoder without kv_transfer_params computes the prefill itself")
 	}
-	if mode.CheckTP(2, 2) != nil || mode.CheckTP(1, 2) == nil {
-		t.Fatal("only equal TP is verified")
+	if mode.CheckTP(2, 2) != nil || mode.CheckTP(1, 2) != nil {
+		t.Fatal("the TP pairing is the engine's")
 	}
 	if !TransportMooncake.OnHostNetwork() || !TransportMooncake.MooncakeBootstrap() || !TransportUCX.OnHostNetwork() || TransportUCX.MooncakeBootstrap() || TransportHCCL.OnHostNetwork() || TransportIPC.OnHostNetwork() {
 		t.Fatal("host network transports")
@@ -235,5 +235,27 @@ func TestDecodePipelinePairing(t *testing.T) {
 	nixl, _ := Lookup("vllm-nixl")
 	if err := nixl.CheckPP(1, 2); err != nil {
 		t.Fatalf("vllm-nixl CheckPP = %v", err)
+	}
+}
+
+// Modes whose engine pairs unequal TPs itself leave the pairing to it: the
+// platform does not stop a pairing it has not seen fail. Only the vLLM
+// connectors with a known direction keep a rule.
+func TestEnginePairedModesLeaveTPToTheEngine(t *testing.T) {
+	for _, name := range []string{"sglang-nixl", "sglang-ppu-mooncake", "sglang-ppu-ipc", "sglang-mooncake", "vllm-ppu-mooncake", "vllm-mooncake"} {
+		mode, ok := Lookup(name)
+		if !ok || mode.TP != TPAny {
+			t.Fatalf("%s TP rule = %q, want %s", name, mode.TP, TPAny)
+		}
+		for _, pair := range [][2]int{{8, 16}, {16, 8}, {4, 4}} {
+			if err := mode.CheckTP(pair[0], pair[1]); err != nil {
+				t.Fatalf("%s prefill %d decode %d: %v", name, pair[0], pair[1], err)
+			}
+		}
+	}
+	for name, rule := range map[string]TPRule{"vllm-nixl": TPDecodeAtLeastPrefill, "vllm-ascend-mooncake": TPPrefillAtLeastDecode} {
+		if mode, _ := Lookup(name); mode.TP != rule {
+			t.Fatalf("%s TP rule = %q, want %s", name, mode.TP, rule)
+		}
 	}
 }

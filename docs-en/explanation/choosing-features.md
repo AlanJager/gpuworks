@@ -219,7 +219,7 @@ a manual placement on such a node is rejected (`PD_PEER_MEMORY_MISSING`), and au
 On Hygon only the vLLM 0.21 image includes Mooncake; the 0.18.1 image cannot be used for PD.
 `sglang-mooncake` moves the KV over RDMA NICs on Hygon: the nodes must be on a host RDMA compute network (even a single host; otherwise `PD_NETWORK_RDMA_REQUIRED` is returned).
 TP rules differ by mode: `vllm-nixl` requires decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires
-prefill TP ≥ decode TP, and `vllm-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require them to be equal; `sglang-mooncake` does not compare TP (SGLang pairs by attention TP, which the engine handles) and only requires decode PP to equal prefill PP or be 1.
+prefill TP ≥ decode TP; for the other modes the platform does not compare TP and the engine pairs the roles (SGLang pairs by attention TP); `sglang-mooncake` also requires decode PP to equal prefill PP or be 1.
 
 **Costs and limitations**:
 
@@ -318,4 +318,4 @@ Likewise, point model [site rules](../how-to/configure-pull-settings.md#站点�
 
 For combinations not listed here, use the errors and warnings returned by evaluation on the deployment page. Evaluation does not reserve resources, so you can try repeatedly.
 
-<!-- translation-source-sha256: 631167d1af12ed99bf85d800836db8abac9bfefe81d7102fc1dbd4405b316db3 -->
+<!-- translation-source-sha256: 68a2a520ac1408da661b17581c996837f1219033f726a7b1e6be36a4eaf14d90 -->

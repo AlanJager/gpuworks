@@ -30,7 +30,7 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
    `sglang-ppu-mooncake`（PPU，RDMA）、`sglang-mooncake`（海光，RDMA，未验证）与 `sglang-nixl`（未验证）。
 
 2. 选择放置方式（见[自动放置与手动放置](#自动放置与手动放置)），为 prefill 与 decode 各设 TP，并逐个添加实例：手动时每个实例选一个节点，可选钉卡；自动时实例可以不选节点，由平台挑。模式有 TP 规则：`vllm-nixl` 要求
-   decode TP ≥ prefill TP，`vllm-ascend-mooncake` 相反，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` 与两个 PPU Mooncake 模式要求相等，`sglang-mooncake` 不比较 TP 但要求 decode 的 PP 等于 prefill 的 PP 或为 1（见[海光 SGLang 经 Mooncake RDMA](#海光-sglang-经-mooncake-rdma)）。
+   decode TP ≥ prefill TP，`vllm-ascend-mooncake` 相反；其余模式平台不比较 TP，两边 TP 不同时由引擎配对，配不上时实例启动失败或首次交接失败，从实例日志看原因。`sglang-mooncake` 另要求 decode 的 PP 等于 prefill 的 PP 或为 1（见[海光 SGLang 经 Mooncake RDMA](#海光-sglang-经-mooncake-rdma)）。
    创建部署时 P、D 每个角色都需要至少一个实例。
 
 3. 一个实例要跨多台节点时，在该实例下 **添加节点**：第一台是 leader（对外服务），其余是 follower。此时必须写 TP，
@@ -168,7 +168,7 @@ P 与 D 要交换 KV，所以整个 PD 部署的实例都在同一张计算网�
   `-r2` 不支持下面的混合模型；`-r3` 能跑，但偶尔会把正在接收远端 KV 的块清零，导致 decode 回答错误，混合模型请用 r4。
   vLLM 0.18.1 的海光镜像没有 Mooncake，不能用于 PD。
 - **传输协议**：平台按 P、D 共用的参数网络选择：主机 RDMA 网络用 `rdma`，以太网、管理网络或同机用 `tcp`。
-- **TP**：prefill 与 decode 必须相等。
+- **TP**：平台不比较；真机只验证过两边 TP 相等，不等时能否配对取决于镜像里的 vLLM 与 Mooncake 版本，配不上时实例启动失败或首次交接失败。
 - **GDN 混合模型**（Qwen3.5、Qwen3.6、Qwen3.8 等含线性注意力或 Mamba 层的模型）：需要 r4 镜像。
   vLLM 配了 KV 连接器就会关掉混合 KV cache 管理器，这类模型没有它起不来，平台按模型 `config.json` 的 `layer_types` 自动加
   `--no-disable-hybrid-kv-cache-manager`；部署自己写了 `--disable-hybrid-kv-cache-manager` 或 `--no-disable-hybrid-kv-cache-manager` 时以部署为准。
@@ -196,15 +196,16 @@ P 与 D 并发收到请求，网关不等 prefill，与 `sglang-nixl` 同一种�
 - **PP**：decode 的 PP 必须等于 prefill 的 PP，或为 1（每个 decode rank 向 prefill 的各个流水线级拉取 KV），否则拒绝 `PD_PP_DECODE_MISMATCH`。
 - **多机实例**：跨多台节点的 prefill 实例在每个 rank 上用同一个端口提供 bootstrap 服务。控制器从该实例全部节点都空闲的端口里挑这一个，
   所以各节点引擎端口范围的交集内要有空闲端口，否则该实例不能启动，并记引擎端口不足。
-- **平台注入的环境变量**：只有通用的网络变量，与其他模式相同：主机 RDMA 网络上的 `NCCL_IB_HCA`（`设备:端口`，逗号分隔）、
-  `NCCL_SOCKET_IFNAME`（该网络的网卡，逐节点覆盖后可能是 `bond1` 这类名字），以及启动变量 `${GPUWORKS_PD_SIDE_CHANNEL_HOST}`（本 rank 节点在 P、D 共用网络上的地址）。
+- **平台注入的环境变量**：只有通用的网络变量，与其他模式相同。跨多台节点的实例在主机 RDMA 网络上得到 `NCCL_IB_HCA`（`设备:端口`，逗号分隔）、
+  `NCCL_SOCKET_IFNAME`（该网络的网卡，逐节点覆盖后可能是 `bond1` 这类名字）；单机实例没有这两个变量，下面的脚本会直接报错退出。所有 PD rank 都有启动变量 `${GPUWORKS_PD_SIDE_CHANNEL_HOST}`（本 rank 节点在 P、D 共用网络上的地址）。
   平台按结构化参数组装命令时还会写 `--disaggregation-ib-device`（设备名，去掉端口后缀）。
 - **由模板脚本推出的变量**：海光定制版 SGLang 还需要的 `MC_TE_FILTERS`（Mooncake 的设备过滤）、`ROCSHMEM_ALLOWED_IBV_DEVICES` 与
   `ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME`（DeepEP 节点间所用的 ROCSHMEM 只用这个网络）、`SGLANG_HOST_IP`（向 bootstrap 登记的地址）
   不由平台注入，写在模板的 `manual_command` 里，从上面的通用变量推出：
 
   ```sh
-  IB_DEVICES=$(printf '%s' "$NCCL_IB_HCA" | sed 's/:[0-9]*//g')
+  : "${NCCL_IB_HCA:?needs a multi-node instance on a host RDMA network}" "${NCCL_SOCKET_IFNAME:?needs the network interface}"   # 命令替换会吞掉 set -u，先检查
+  IB_DEVICES=$(printf '%s\n' "$NCCL_IB_HCA" | tr ',' '\n' | sed 's/:.*//' | awk 'NF && !seen[$0]++' | paste -sd, -)
   export MC_TE_FILTERS="$IB_DEVICES" ROCSHMEM_ALLOWED_IBV_DEVICES="$IB_DEVICES"
   export ROCSHMEM_BOOTSTRAP_SOCKET_IFNAME="$NCCL_SOCKET_IFNAME" SGLANG_HOST_IP="${GPUWORKS_PD_SIDE_CHANNEL_HOST}"
   ```
