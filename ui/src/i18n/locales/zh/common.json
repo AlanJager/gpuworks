@@ -1,4 +1,5 @@
 {
+  "removedSetting": {"modelSource": "设置“{{setting}}”已移除；请在部署时显式选择模型来源。", "sourceRules": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置来源规则。", "proxies": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置代理和来源规则。", "credentials": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置主机凭据。"},
   "terminalPage": {
     "title": "终端 · {{label}} — {{product}}",
     "loading": "正在加载终端…"
@@ -451,7 +452,7 @@
     "MODEL_SYNC_UNAVAILABLE": "模型同步功能尚未配置。",
     "ACQUISITION_CANDIDATE_STALE": "你选择的保存存储或权重来源已不可用，请重新评估后再选择。",
     "ACQUISITION_IMAGE_REQUIRED": "描述镜像拉取时必须提供镜像。",
-    "SETTING_REMOVED": "设置“{{setting}}”已移除；镜像从哪里拉取现在在 设置 → 拉取设置 中配置。",
+    "SETTING_REMOVED": "设置“{{setting}}”已移除。",
     "LOCAL_STORAGE_DISABLED": "本地存储已停用，不能开始新的下载或同步。",
     "LOCAL_MODEL_FIELDS_REQUIRED": "请选择节点并填写模型路径。",
     "MODEL_PATH_REQUIRED": "请输入模型路径。",

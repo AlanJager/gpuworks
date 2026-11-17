@@ -1,4 +1,5 @@
 {
+  "removedSetting": {"modelSource": "Setting “{{setting}}” has been removed; choose the model source explicitly when deploying.", "sourceRules": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure source rules.", "proxies": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure proxies and source rules.", "credentials": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure host credentials."},
   "terminalPage": {
     "title": "Terminal · {{label}} — {{product}}",
     "loading": "Loading terminal…"
@@ -451,7 +452,7 @@
     "MODEL_SYNC_UNAVAILABLE": "Model synchronization is not configured.",
     "ACQUISITION_CANDIDATE_STALE": "The storage or weight source you selected is no longer available. Re-evaluate and choose again.",
     "ACQUISITION_IMAGE_REQUIRED": "An image is required to describe the image pull.",
-    "SETTING_REMOVED": "The setting “{{setting}}” has been removed; where images are pulled from is now configured under Settings → Pull settings.",
+    "SETTING_REMOVED": "Setting “{{setting}}” has been removed.",
     "LOCAL_STORAGE_DISABLED": "Local storage is disabled, so new downloads or synchronization cannot start.",
     "LOCAL_MODEL_FIELDS_REQUIRED": "Select a node and enter a model path.",
     "MODEL_PATH_REQUIRED": "Enter a model path.",
