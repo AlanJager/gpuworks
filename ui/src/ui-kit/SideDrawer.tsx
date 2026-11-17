@@ -25,7 +25,11 @@ export function SideDrawer({ open, onClose, title, subtitle, inlineSubtitle = fa
   return <Dialog open={open} modal={!assistantOpen} onOpenChange={(next, details) => {
     if (next) return;
     if (busy) { details.cancel(); return; }
-    const target = details.reason === "focus-out" ? (details.event as FocusEvent).relatedTarget : details.event.target;
+    // Moving focus to a sibling portal (including an antd confirmation) is
+    // not a request to dismiss this persistent workspace. Cancel even after
+    // the assistant closes: a queued nonmodal focus-out can arrive afterward.
+    if (details.reason === "focus-out") { details.cancel(); return; }
+    const target = details.event.target;
     if (assistantOpen && target instanceof Element && target.closest(".assistant-panel")) {
       details.cancel();
       details.allowPropagation();

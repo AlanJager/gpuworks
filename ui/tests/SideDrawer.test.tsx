@@ -9,12 +9,14 @@ const { default: userEvent } = await import("@testing-library/user-event");
 const { SideDrawer } = await import("../src/ui-kit/SideDrawer.tsx");
 const { AssistantProvider, useAssistant } = await import("../src/assistant/AssistantContext.tsx");
 const { default: AssistantPanel } = await import("../src/assistant/AssistantPanel.tsx");
+const { Modal } = await import("antd");
 const { i18n } = await createI18n(["ai"]);
 const originalFetch = globalThis.fetch;
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch; });
 
 function Example({ nativeAssistant = false }: { nativeAssistant?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const assistant = useAssistant();
   return <>
     <button onClick={() => setOpen(true)}>Inspect node</button>
@@ -22,7 +24,12 @@ function Example({ nativeAssistant = false }: { nativeAssistant?: boolean }) {
     <SideDrawer open={open} onClose={() => setOpen(false)} title="Node detail">
       <button onClick={() => assistant.setOpen(true)}>Diagnose node</button>
       <input aria-label="Node note" />
+      <button onClick={() => setConfirmOpen(true)}>Delete node</button>
     </SideDrawer>
+    <Modal transitionName="" maskTransitionName="" open={confirmOpen} title="Delete node confirmation" onCancel={() => setConfirmOpen(false)} footer={null}>
+      <label><input type="checkbox" />Force removal</label>
+      <button onClick={() => setConfirmOpen(false)}>Cancel removal</button>
+    </Modal>
     {nativeAssistant ? assistant.open && <div className="assistant-panel"><input aria-label="Assistant editor" /></div> : <AssistantPanel />}
   </>;
 }
@@ -69,6 +76,33 @@ test("the detail backdrop still dismisses the detail while the assistant stays o
   await user.click(backdrop);
   await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: "Node detail" }), null));
   assert.ok(screen.getByRole("dialog", { name: /AI Assistant/ }));
+});
+
+test("canceling a nested antd confirmation keeps the detail and assistant open", async () => {
+  globalThis.fetch = (async () => new Response(JSON.stringify({ id: 1, available: false }), { headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  render(<I18nextProvider i18n={i18n}><AssistantProvider><Example /></AssistantProvider></I18nextProvider>);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Open assistant" }));
+  await user.click(screen.getByRole("button", { name: "Inspect node" }));
+  const deleteButton = await screen.findByRole("button", { name: "Delete node" });
+  await user.click(deleteButton);
+  const confirmation = await screen.findByRole("dialog", { name: "Delete node confirmation" });
+  // Reproduce the browser race: the first modal click moves focus from the
+  // detail action before the modal has performed its automatic focus transfer.
+  deleteButton.focus();
+  assert.equal(document.activeElement, deleteButton);
+  const force = within(confirmation).getByRole("checkbox", { name: "Force removal" });
+  fireEvent.pointerDown(force, { button: 0, pointerType: "mouse" });
+  force.focus();
+  await new Promise<void>((resolve) => queueMicrotask(resolve));
+  await user.click(force);
+  await user.click(within(confirmation).getByRole("button", { name: "Cancel removal" }));
+  await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: "Delete node confirmation" }), null));
+  assert.ok(screen.getByRole("dialog", { name: "Node detail" }));
+  const question = screen.getByRole("textbox", { name: "Question" });
+  await user.click(question);
+  await user.type(question, "Continue checking");
+  assert.equal((question as HTMLTextAreaElement).value, "Continue checking");
 });
 
 test("Escape in the assistant remains available to its own keyboard handler", async () => {
