@@ -1,4 +1,6 @@
 // Client-side CSV export of the table on screen.
+import { saveBlob } from "../../apiFiles";
+
 export interface CsvModel {
   /** The file name's middle part: ops-<name>-<from>_<to>.csv */
   name: string;
@@ -15,12 +17,5 @@ export function buildCsv(model: CsvModel): string {
 
 /** downloadCsv hands the model to the browser as a file download. */
 export function downloadCsv(model: CsvModel, fileName: string): void {
-  const url = URL.createObjectURL(new Blob([buildCsv(model)], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveBlob(new Blob([buildCsv(model)], { type: "text/csv;charset=utf-8" }), fileName);
 }
