@@ -965,7 +965,22 @@
     "PLUGIN_NOT_INSTALLED": "No plugin {{id}} is installed.",
     "PLUGIN_VERSION_CONFLICT": "Version {{version}} of {{id}} is already installed with different contents. Publish the change under a new version.",
     "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} needs a newer server ({{min_core_hint}}): it requires {{capability}}.",
-    "PLUGIN_CAPABILITY_MISSING": "The server offers no version of {{capability}} from {{min}} to {{max}}, which the plugin cannot run without. Install a plugin build for this server or upgrade the server."
+    "PLUGIN_CAPABILITY_MISSING": "The server offers no version of {{capability}} from {{min}} to {{max}}, which the plugin cannot run without. Install a plugin build for this server or upgrade the server.",
+    "PLUGIN_UNAVAILABLE": "Plugin {{id}} is not running, so this cannot be served now. Retry when it is running again.",
+    "PLUGIN_BUSY": "Plugin {{id}} is already handling {{limit}} requests. Retry shortly.",
+    "PLUGIN_START_FAILED": "Plugin {{id}} could not be started: {{detail}}",
+    "PLUGIN_HANDSHAKE_TIMEOUT": "Plugin {{id}} did not answer the handshake within {{timeout_s}} seconds.",
+    "PLUGIN_HANDSHAKE_REFUSED": "Plugin {{id}} refused to start: {{plugin_code}} ({{reason}}).",
+    "PLUGIN_HANDSHAKE_MISMATCH": "The binary of plugin {{id}} does not belong to the installed package: its {{field}} is {{got}}, not {{want}}.",
+    "PLUGIN_CAPABILITY_NOT_OFFERED": "Plugin {{id}} chose {{capability}} version {{version}}, which this server did not offer or the package was not approved for.",
+    "PLUGIN_CRASHED": "Plugin {{id}} exited unexpectedly (exit code {{exit_code}}, signal {{signal}}). It restarts after a short wait.",
+    "PLUGIN_CRASHLOOP": "Plugin {{id}} crashed {{crashes}} times within {{window_s}} seconds. It is retried every {{retry_s}} seconds.",
+    "PLUGIN_UNHEALTHY": "Plugin {{id}} missed {{misses}} health checks in a row and is being restarted.",
+    "PLUGIN_HOST_NOT_READY": "The plugin called the server before its handshake was accepted.",
+    "PLUGIN_HOST_RATE_LIMITED": "The plugin calls the server faster than {{limit}} requests a second. Retry shortly.",
+    "PLUGIN_HOST_ROUTE_UNKNOWN": "The server's plugin interface has no {{method}} {{path}}.",
+    "PLUGIN_HOST_FAILED": "The server could not handle the plugin's request: {{detail}}",
+    "PLUGIN_STATE_ON_DEMAND": "Plugin {{id}} starts on demand and may not push state."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {

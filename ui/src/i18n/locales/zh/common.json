@@ -965,7 +965,22 @@
     "PLUGIN_NOT_INSTALLED": "没有安装插件 {{id}}。",
     "PLUGIN_VERSION_CONFLICT": "{{id}} 的版本 {{version}} 已经以不同的内容安装。改动请以新版本发布。",
     "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} 需要更新的服务器（{{min_core_hint}}）：它需要 {{capability}}。",
-    "PLUGIN_CAPABILITY_MISSING": "服务器没有提供插件离不开的能力 {{capability}} 在 {{min}} 至 {{max}} 之间的版本。请安装适用于此服务器的插件版本，或升级服务器。"
+    "PLUGIN_CAPABILITY_MISSING": "服务器没有提供插件离不开的能力 {{capability}} 在 {{min}} 至 {{max}} 之间的版本。请安装适用于此服务器的插件版本，或升级服务器。",
+    "PLUGIN_UNAVAILABLE": "插件 {{id}} 未在运行，暂时无法处理。请在它恢复运行后重试。",
+    "PLUGIN_BUSY": "插件 {{id}} 正在处理 {{limit}} 个请求，已达上限。请稍后重试。",
+    "PLUGIN_START_FAILED": "插件 {{id}} 无法启动：{{detail}}",
+    "PLUGIN_HANDSHAKE_TIMEOUT": "插件 {{id}} 未在 {{timeout_s}} 秒内应答握手。",
+    "PLUGIN_HANDSHAKE_REFUSED": "插件 {{id}} 拒绝启动：{{plugin_code}}（{{reason}}）。",
+    "PLUGIN_HANDSHAKE_MISMATCH": "插件 {{id}} 的可执行文件不属于已安装的包：它的 {{field}} 是 {{got}}，而不是 {{want}}。",
+    "PLUGIN_CAPABILITY_NOT_OFFERED": "插件 {{id}} 选择了 {{capability}} 的版本 {{version}}，此服务器没有提供，或该包未获批准使用。",
+    "PLUGIN_CRASHED": "插件 {{id}} 意外退出（退出码 {{exit_code}}，信号 {{signal}}），稍后自动重启。",
+    "PLUGIN_CRASHLOOP": "插件 {{id}} 在 {{window_s}} 秒内崩溃了 {{crashes}} 次，此后每 {{retry_s}} 秒重试一次。",
+    "PLUGIN_UNHEALTHY": "插件 {{id}} 连续 {{misses}} 次健康检查未通过，正在重启。",
+    "PLUGIN_HOST_NOT_READY": "插件在握手被接受之前调用了服务器。",
+    "PLUGIN_HOST_RATE_LIMITED": "插件调用服务器的速度超过每秒 {{limit}} 次。请稍后重试。",
+    "PLUGIN_HOST_ROUTE_UNKNOWN": "服务器的插件接口没有 {{method}} {{path}}。",
+    "PLUGIN_HOST_FAILED": "服务器无法处理插件的请求：{{detail}}",
+    "PLUGIN_STATE_ON_DEMAND": "插件 {{id}} 按需启动，不能推送状态。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {
