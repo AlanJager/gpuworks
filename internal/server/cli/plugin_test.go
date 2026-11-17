@@ -253,7 +253,7 @@ func TestPluginIndexImportPrintsTheChoice(t *testing.T) {
 	e := newPluginEnv(t, "")
 	b := extsign.Build(t, e.pub, extsign.Minimal("acme", "acme_backup", "1.0.0"))
 	newer := extsign.Minimal("acme", "acme_backup", "1.1.0")
-	newer.Manifest.Requires = map[string]int{"table.availability": 1}
+	newer.Manifest.Requires = map[string]int{"table.availability": 2} // this server offers schema 1
 	newer.Manifest.MinCoreHint = "v27.3"
 	bn := extsign.Build(t, e.pub, newer)
 	idx := extsign.Index(t, e.pub, 1, []extapi.IndexEntry{b.IndexEntry(t, "a.gwpkg", b.Archive(t)), bn.IndexEntry(t, "b.gwpkg", bn.Archive(t))}, func(x *extapi.Index) {

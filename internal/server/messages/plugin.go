@@ -72,3 +72,18 @@ const (
 	// a newer server ({min_core_hint}) because it requires {capability}.
 	ErrorPluginNeedsNewerCore = "PLUGIN_NEEDS_NEWER_CORE"
 )
+
+// Plugin administration (/api/v1/plugins, docs/reference/api.md).
+const (
+	// ErrorPluginApprovalRequired: installing {id} {version} needs the
+	// administrator's approval of what it asks for ({permissions},
+	// {roles}); the request must carry {approve_hash}. Nothing was
+	// installed.
+	ErrorPluginApprovalRequired = "PLUGIN_APPROVAL_REQUIRED"
+	// ErrorPluginBroken: installed package {id} no longer verifies, so it
+	// cannot be enabled; see its state.
+	ErrorPluginBroken = "PLUGIN_BROKEN"
+	// ErrorPluginsUnavailable: this server runs no plugin host, so plugins
+	// cannot be managed here.
+	ErrorPluginsUnavailable = "PLUGINS_UNAVAILABLE"
+)

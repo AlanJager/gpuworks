@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg/archive"
@@ -74,6 +75,12 @@ type InstallOptions struct {
 	Enable bool
 	// ApprovedBy names who approved the package's permissions.
 	ApprovedBy string
+	// RequireApproval refuses the install unless Approve equals the
+	// package's approval hash (ErrorPluginApprovalRequired, carrying the
+	// hash and what it covers), before anything is unpacked into place:
+	// an administrator approves exactly what the package asks for.
+	RequireApproval bool
+	Approve         extapi.Digest
 }
 
 // Install reads a package from r, verifies it in an incoming directory,
@@ -113,6 +120,9 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opt.RequireApproval && opt.Approve != hash {
+		return nil, approvalRequired(m, hash)
+	}
 	out := &Installed{Verified: v, ApprovalHash: hash}
 	switch existing, err := os.ReadFile(filepath.Join(h.Dir.Version(m.ID, m.Version), archive.ManifestMember)); {
 	case err == nil:
@@ -150,6 +160,42 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// approvalRequired is the refusal that names what an install asks the
+// administrator to approve.
+func approvalRequired(m *extapi.Manifest, hash extapi.Digest) error {
+	return messages.NewProductError(messages.ErrorPluginApprovalRequired,
+		fmt.Sprintf("installing %s %s needs approval %s", m.ID, m.Version, hash),
+		map[string]any{"id": m.ID, "version": m.Version, "approve_hash": string(hash),
+			"permissions": strings.Join(m.Permissions, ","), "roles": strings.Join(m.Roles, ",")})
+}
+
+// SetEnabled records whether installed package id may run: a server starts
+// an enabled package's server part and stops a disabled one. What the
+// package pushed stays enforced either way. The approval stays as it was.
+func (h *Host) SetEnabled(id string, enabled bool) error {
+	if !extapi.ValidPackageID(id) {
+		return notInstalled(id)
+	}
+	unlock, err := h.Dir.Lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	version, err := h.Dir.Current(id)
+	if err != nil {
+		return err
+	}
+	if version == "" {
+		return notInstalled(id)
+	}
+	ctl, _, err := h.Dir.ReadControl(id)
+	if err != nil {
+		return err
+	}
+	ctl.Enabled, ctl.At = enabled, h.now().UTC()
+	return h.Dir.WriteControl(id, ctl)
 }
 
 // checkDataMarker refuses a build older than the data its plugin already

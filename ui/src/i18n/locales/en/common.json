@@ -989,7 +989,10 @@
     "PLUGIN_CLOCK_CORRECTED": "The plugin clock was corrected from {{from}} to {{to}} by {{by}}.",
     "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "A clock correction may move the plugin clock by at most {{max_days}} days.",
     "PLUGIN_OVERRIDE_REJECTED": "The override of {{kind}} entry {{entry}} from plugin {{plugin}} cannot be applied ({{rule}}).",
-    "PLUGIN_OVERRIDE_SUPERSEDED": "Plugin {{plugin}} set {{kind}} entry {{entry}} again, which replaced your override."
+    "PLUGIN_OVERRIDE_SUPERSEDED": "Plugin {{plugin}} set {{kind}} entry {{entry}} again, which replaced your override.",
+    "PLUGIN_APPROVAL_REQUIRED": "Installing {{id}} {{version}} needs your approval of what it asks for (permissions: {{permissions}}; roles: {{roles}}). Nothing was installed; send the upload again with approval {{approve_hash}}.",
+    "PLUGIN_BROKEN": "Plugin {{id}} no longer verifies, so it cannot be enabled. Reinstall it or remove it.",
+    "PLUGINS_UNAVAILABLE": "This server runs no plugin host, so plugins cannot be managed here."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {
