@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/layout"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -154,6 +155,27 @@ func TestPluginInstallRefusesWithCodes(t *testing.T) {
 		t.Fatalf("install without a compiled root = %v", err)
 	}
 }
+
+// The command line refuses a package whose id a module compiled into this
+// build has, as the server does, rather than leave one that breaks at
+// boot.
+func TestPluginInstallRefusesACompiledModulesID(t *testing.T) {
+	e := newPluginEnv(t, testPluginSite)
+	e.opt.Extensions = app.Extensions{Modules: []app.Module{compiledModule("acme_backup")}}
+	path := e.writePackage("x.gwpkg", extsign.Package(t, e.pub, extsign.Minimal("acme", "acme_backup", "1.0.0")))
+	_, err := e.run("install", "--file", path)
+	var pe *messages.ProductError
+	if !errors.As(err, &pe) || pe.Code() != messages.ErrorPluginIDTaken || pe.Params()["id"] != "acme_backup" {
+		t.Fatalf("install over a compiled module = %v", err)
+	}
+	if out, _ := e.run("list"); !strings.Contains(out, "no plugin installed") {
+		t.Fatalf("refused package listed:\n%s", out)
+	}
+}
+
+type compiledModule string
+
+func (m compiledModule) Name() string { return string(m) }
 
 // The command line refuses a package declaring a feature key an installed
 // package already declares, even from a lower id that would win the key at
