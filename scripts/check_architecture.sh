@@ -263,6 +263,7 @@ measure() {
   store_concrete_importers)
     go_imports \
       | grep -v '\.test$' \
+      | grep -v '^gpuworks\.ai/gpuworks/internal/integrationtest/gpuallocation/internal/fixtures[[:space:]]' \
       | awk -F'\t' '$2 ~ /gpuworks\/internal\/server\/store( |$)/ {print $1}' \
       | sort -u | grep -c . || true
     ;;

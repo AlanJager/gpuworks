@@ -300,10 +300,13 @@ go run ./scripts/structcount -dir internal/agent/engine -type Engine      -measu
 ```sh
 go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
   | grep -v '\.test$' \
+  | grep -v '^gpuworks\.ai/gpuworks/internal/integrationtest/gpuallocation/internal/fixtures[[:space:]]' \
   | awk -F'\t' '$2 ~ /gpuworks\/internal\/server\/store( |$)/ {print $1}' | sort -u | grep -c .
 ```
 
-排除：`.test` 伪包（`go list` 为带测试的包生成的合成包）。
+排除：`.test` 伪包（`go list` 为带测试的包生成的合成包）；`internal/integrationtest/gpuallocation/internal/fixtures`，
+它是分配测试共用的建库夹具，写成普通 `.go` 文件只为让多个测试包导入，不是生产依赖。只排除这一个包，
+新的生产包或测试辅助包导入 store 仍然计数。
 计划正文列了 16 个包；实测 17，多出的是 `scripts/seeddemo`（同属 module，计划正文漏计）。
 
 `go list` 说明：本仓库缺少 `internal/server/webui/dist` 时 `go list` 会因 `go:embed all:dist`

@@ -1,4 +1,4 @@
-package deploy
+package lifecycle_test
 
 import (
 	"encoding/json"
@@ -48,7 +48,7 @@ func TestPinnedReplicaScaleReportsBusyAndPreservesDesiredCount(t *testing.T) {
 	if err := json.Unmarshal(data, &dep); err != nil {
 		t.Fatal(err)
 	}
-	waitRunning(t, env, dep.ID, 1, nil)
+	waitRunning(t, env, dep.ID)
 	path := fmt.Sprintf("/api/v1/deployments/%d", dep.ID)
 	resp, err = api.Do(mustRequest(t, http.MethodPut, env.URL()+path+"/replicas", `{"replicas":2}`))
 	if err != nil {
