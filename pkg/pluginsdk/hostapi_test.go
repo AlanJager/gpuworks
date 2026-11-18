@@ -84,7 +84,7 @@ func TestDeriveKeyThroughTheSDK(t *testing.T) {
 		t.Fatalf("key = %x, %v", a, err)
 	}
 	again, _ := p.DeriveKey(ctx, "usb.challenge", 32)
-	other, _ := p.DeriveKey(ctx, "license.seal", 32)
+	other, _ := p.DeriveKey(ctx, "backup.seal", 32)
 	if !bytes.Equal(a, again) || bytes.Equal(a, other) {
 		t.Fatal("keys are not deterministic per label")
 	}

@@ -23,7 +23,7 @@ func TestPluginKeysAreBoundToThePackageAndTheLabel(t *testing.T) {
 		t.Fatalf("key = %x", got)
 	}
 	again, _ := keys.DeriveKey(quota, "usb.challenge", 32)
-	label, _ := keys.DeriveKey(quota, "license.seal", 32)
+	label, _ := keys.DeriveKey(quota, "backup.seal", 32)
 	other, _ := keys.DeriveKey(pluginhost.Owner{ID: "acme_backup"}, "usb.challenge", 32)
 	if !bytes.Equal(got, again) || bytes.Equal(got, label) || bytes.Equal(got, other) {
 		t.Fatal("keys are not bound to exactly the package and the label")
