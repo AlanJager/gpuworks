@@ -14,8 +14,9 @@ import (
 const AuthorityRole = "availability_authority"
 
 // privilegedTables are the table kinds a package may push only with its
-// certificate's (or the host operator's) grant (ADR 0071, decision 5).
-var privilegedTables = []string{"allowances", "fleet_capacity", "insert_caps", "prices", "roles.core_actions"}
+// certificate's (or the host operator's) grant (ADR 0071, decision 5); the
+// manifest schema reserves the ones it does not define yet.
+var privilegedTables = extapi.PrivilegedTableKinds()
 
 // PrivilegedTables returns the table kinds that need a certificate grant,
 // sorted.
