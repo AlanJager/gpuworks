@@ -397,7 +397,7 @@ func (o Options) resetPassword(log *slog.Logger, args []string) error {
 		return fmt.Errorf("open password database %s: %w; use the installed gpuworks binary or run it with the service owner's privileges (sudo when required)", dbPath, err)
 	}
 	defer st.Close()
-	if err := st.SetUserPassword(username, password); err != nil {
+	if err := st.RecoverUserPassword(username, password); err != nil {
 		return err
 	}
 	log.Info("password reset", "user", username, "db", dbPath)

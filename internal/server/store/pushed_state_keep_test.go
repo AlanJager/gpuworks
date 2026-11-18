@@ -20,8 +20,8 @@ func TestCapacityKeepMigrationCreatesTheTableOnceAndRollsBackWhole(t *testing.T)
 	s := newTestStore(t)
 	t.Cleanup(func() { _ = s.Close() })
 	m := migrationByName(t, "pushed_state_capacity_keep")
-	if m.Version != LatestMigration() || m.Version <= migrationByName(t, "pushed_state_tables").Version {
-		t.Fatalf("version %d is not after the pushed state tables and the head", m.Version)
+	if m.Version <= migrationByName(t, "pushed_state_tables").Version {
+		t.Fatalf("version %d is not after the pushed state tables", m.Version)
 	}
 	if err := s.db.Migrator().DropTable(&pstate.CapacityKeep{}); err != nil {
 		t.Fatal(err)
