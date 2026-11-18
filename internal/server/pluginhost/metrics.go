@@ -100,13 +100,6 @@ func (m *pluginMetrics) addPushRows(kind string, n int) {
 	}
 }
 
-// metricsFor returns id's counters, made on first use.
-func (h *Host) metricsFor(id string) *pluginMetrics {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.metricsLocked(id)
-}
-
 func (h *Host) metricsLocked(id string) *pluginMetrics {
 	m := h.metrics[id]
 	if m == nil {
@@ -117,8 +110,17 @@ func (h *Host) metricsLocked(id string) *pluginMetrics {
 }
 
 // CountPushRows counts n entries of kind that package id's push applied
-// (gpuworks_plugin_push_rows_total).
-func (h *Host) CountPushRows(id, kind string, n int) { h.metricsFor(id).addPushRows(kind, n) }
+// (gpuworks_plugin_push_rows_total). Only a package the host started has
+// counters: a push committed after its package was uninstalled
+// (ForgetMetrics) is not counted, so it leaves nothing behind.
+func (h *Host) CountPushRows(id, kind string, n int) {
+	h.mu.Lock()
+	m := h.metrics[id]
+	h.mu.Unlock()
+	if m != nil {
+		m.addPushRows(kind, n)
+	}
+}
 
 // ForgetMetrics drops package id's counters; the bridge calls it when the
 // package is uninstalled, so its series end with it.

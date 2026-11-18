@@ -165,13 +165,25 @@ func TestDoCountsCallsByOutcome(t *testing.T) {
 		t.Fatal("a call to an unsupervised id made counters for it")
 	}
 	h.ForgetMetrics("acme_backup")
-	if h.metricsFor("acme_backup").calls[classMember][CallOK].Load() != 0 {
-		t.Fatal("ForgetMetrics kept the counters")
+	h.CountPushRows("acme_backup", "banners", 2) // a push committed after the uninstall
+	h.mu.Lock()
+	_, kept := h.metrics["acme_backup"]
+	h.mu.Unlock()
+	if kept {
+		t.Fatal("ForgetMetrics kept the counters, or a late push made them again")
 	}
 }
 
+// metricsFor returns id's counters, made on first use.
+func (h *Host) metricsFor(id string) *pluginMetrics {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.metricsLocked(id)
+}
+
 // A crash restart is counted; the first start and an on-demand start are
-// not.
+// not, even after the on-demand plugin crashed: nothing restarts it, its
+// next start waits for a call.
 func TestRestartsCountCrashRestartsOnly(t *testing.T) {
 	sp := &fakeSpawner{config: okHandler("acme_backup"), spawnErr: func(n int) error {
 		if n <= 2 {
@@ -199,5 +211,26 @@ func TestRestartsCountCrashRestartsOnly(t *testing.T) {
 	resp.Body.Close()
 	if got := h2.metricsFor("acme_driver").restarts.Load(); got != 0 {
 		t.Fatalf("an on-demand start counted %d restarts", got)
+	}
+
+	crashy := &fakeSpawner{config: okHandler("acme_driver"), spawnErr: func(n int) error {
+		if n == 1 {
+			return errors.New("no such file")
+		}
+		return nil
+	}}
+	h3, _ := newTestHost(t, crashy, nil, fastTiming())
+	_ = h3.Start(onDemandSpec(t, "acme_driver"))
+	waitStatus(t, h3, "acme_driver", inState(StateIdle))
+	resp, err = callPlugin(ctx, h3, "acme_driver", "/r/x", Class{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if st, _ := h3.Status("acme_driver"); st.Starts != 2 {
+		t.Fatalf("starts = %d, want a failed start and the one that served", st.Starts)
+	}
+	if got := h3.metricsFor("acme_driver").restarts.Load(); got != 0 {
+		t.Fatalf("an on-demand plugin's crash counted %d restarts", got)
 	}
 }

@@ -156,7 +156,11 @@ func (i *instance) supervise() {
 		timer := time.NewTimer(delay)
 		select {
 		case <-timer.C:
-			i.metrics.restarts.Add(1)
+			// An on-demand plugin goes idle now; its next start waits
+			// for a call and is not a restart.
+			if i.spec.Lifecycle != extapi.LifecycleOnDemand {
+				i.metrics.restarts.Add(1)
+			}
 		case <-i.stop:
 			timer.Stop()
 			i.set(StateStopped, "", nil)
