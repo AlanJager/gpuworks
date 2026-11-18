@@ -485,7 +485,7 @@ Every decoding, validation and verification failure is an error with a stable co
 
 Values of `rule`: `required` (missing or empty), `grammar` (does not match its grammar), `range` (a number or length out of bounds), `enum` (not in the closed set), `duplicate`, `order` (a list that must be sorted is not), `exclusive` (sets fields that exclude each other), `relation` (contradicts another field of the object), `syntax`, `type`, `number` (not an integer, or outside the safe range) and `trailing`. `field` is a dotted path with list indexes, for example `routes.0.feature`.
 
-`PLUGIN_STATE_TOO_NEW` comes from `extapi.CheckMarkers`: it compares persisted version markers (name, version, and the server version that wrote it) with the highest versions this build reads, and `needs` is the newest server version among the writers of those markers, the version to run instead. A core marker missing from the known set counts as newer; a plugin data marker (`plugin.<id>.data`, at the `storage.state_version` of the build that wrote it) is compared only with the version the caller lists for an installed package, and the data of a package not listed never stops the core.
+`PLUGIN_STATE_TOO_NEW` comes from `extapi.CheckMarkers`: it compares persisted version markers (name, version, and the version of the build that wrote it: the server version for a core marker, the plugin build version for a plugin data marker) with the highest versions this build reads, and `needs` is the newest version among the writers of those markers, the version to run instead. A core marker missing from the known set counts as newer; a plugin data marker (`plugin.<id>.data`, at the `storage.state_version` of the build that wrote it) is compared only with the version the caller lists for an installed package, and the data of a package not listed never stops the core.
 
 ## Golden files
 
@@ -497,4 +497,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: b04283c308a7e753e1008f0498ba843106933f57a9a36f4a2612a2827d0dc0b8 -->
+<!-- translation-source-sha256: 18979a57d633eea9bb6c79e587b91f59dd524723ebc21e613eedfe2ecc72d077 -->

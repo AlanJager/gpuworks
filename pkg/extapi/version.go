@@ -119,15 +119,18 @@ func checkProtocol(r Range) error {
 
 // Marker is a persisted version marker: the format version of one kind of
 // stored state (pushed state's canonical form, a plugin's data) and the
-// server version that wrote it. A server that finds a marker newer than it
-// knows refuses to start instead of dropping or rewriting the state.
+// version of the build that wrote it. A server that finds a marker newer
+// than it knows refuses to start instead of dropping or rewriting the
+// state.
 type Marker struct {
 	// Name is the marker's name, a capability-style name such as
 	// "pstate.availability" or "plugin.acme_backup.data".
 	Name string
 	// Version is the format version the state is written in.
 	Version int
-	// WrittenBy is the server version that wrote it, for example "v26.12.0".
+	// WrittenBy is the version of the build that wrote it: the server's
+	// for a core marker, for example "v26.12.0", and the plugin build's
+	// for a package's data marker, for example "2.0.0".
 	WrittenBy string
 }
 

@@ -943,7 +943,7 @@
     "PLUGIN_SIGNATURE_INVALID": "The signature on the {{object}} by key {{keyid}} does not verify: the file was changed or damaged.",
     "PLUGIN_STATE_REJECTED": "The plugin pushed invalid {{kind}} state: field {{field}} breaks rule {{rule}}.",
     "PLUGIN_STATE_TOO_LARGE": "The plugin pushed too much {{kind}} state: {{field}} exceeds {{max}}.",
-    "PLUGIN_STATE_TOO_NEW": "Stored {{marker}} is at version {{version}}, but this server reads up to version {{known}}. Run {{needs}} or newer instead of this older server.",
+    "PLUGIN_STATE_TOO_NEW": "Stored {{marker}} is at version {{version}}, but this build reads up to version {{known}}. Run {{needs}} or newer.",
     "PLUGIN_PACKAGE_MALFORMED": "The plugin package is malformed at \"{{member}}\" ({{reason}}).",
     "PLUGIN_PACKAGE_TOO_LARGE": "The plugin package member \"{{member}}\" takes the package past its limit of {{max}} bytes.",
     "PLUGIN_CERT_REVOKED": "The certificate of publisher {{publisher}} that signed this package (serial {{serial}}, key {{keyid}}) is revoked.",

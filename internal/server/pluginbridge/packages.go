@@ -3,6 +3,7 @@ package pluginbridge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -49,6 +50,11 @@ func (b *Bridge) refresh() error {
 	for _, e := range entries {
 		b.entries[e.ID] = e
 	}
+	for id := range b.refusals {
+		if _, ok := b.entries[id]; !ok {
+			delete(b.refusals, id)
+		}
+	}
 	pkgs := b.statePackagesLocked()
 	b.mu.Unlock()
 	b.state.SetPackages(pkgs)
@@ -66,13 +72,15 @@ func runnable(e extpkg.Entry) bool {
 }
 
 // startIfEnabled starts package id's server part when it may run and Run
-// is running: verified again first (only changed files are rehashed), then
-// handed to the plugin host, which does not wait for it. The caller holds
-// admin.
+// is running: verified again first (only changed files are rehashed) and
+// refused when its data is newer than its build (PLUGIN_STATE_TOO_NEW, which
+// its view then shows), then handed to the plugin host, which does not wait
+// for it. The caller holds admin.
 func (b *Bridge) startIfEnabled(id string) {
 	b.mu.Lock()
 	e, ok := b.entries[id]
 	running := b.running
+	delete(b.refusals, id)
 	b.mu.Unlock()
 	if !ok || !running || !runnable(e) {
 		return
@@ -88,17 +96,85 @@ func (b *Bridge) startIfEnabled(id string) {
 		_ = b.refresh()
 		return
 	}
+	if err := b.pkgs.CheckDataMarker(v.Manifest); err != nil {
+		if code, _, _ := codeOf(err); code == extapi.ErrorStateTooNew {
+			b.log.Error("plugin data is newer than its build; it is not started", "plugin", id, "err", err)
+			b.mu.Lock()
+			b.refusals[id] = err
+			b.mu.Unlock()
+			return
+		}
+		// The marker could not be read: neither start a build that may
+		// be older than its data nor leave it down until an administrator
+		// steps in; try again shortly.
+		refused := fmt.Errorf("check the plugin data marker: %w", err)
+		b.log.Error("plugin data marker cannot be read; the start is retried", "plugin", id, "retry", b.markerRetry, "err", err)
+		b.mu.Lock()
+		b.refusals[id] = refused
+		b.mu.Unlock()
+		time.AfterFunc(b.markerRetry, func() { b.retryStart(id, refused) })
+		return
+	}
 	spec, err := b.specOf(v)
 	if err != nil {
 		b.log.Error("plugin cannot be started", "plugin", id, "err", err)
 		return
 	}
+	sv := 0
+	if s := v.Manifest.Storage; s != nil {
+		sv = s.StateVersion
+	}
 	b.mu.Lock()
-	b.pushers[id] = identity{version: v.Manifest.Version, pusher: pusherOf(v)}
+	b.pushers[id] = identity{version: v.Manifest.Version, pusher: pusherOf(v), stateVersion: sv}
 	b.mu.Unlock()
 	if err := b.host.Start(spec); err != nil {
 		b.log.Error("plugin cannot be started", "plugin", id, "err", err)
 	}
+}
+
+// retryStart starts package id again after its data marker could not be
+// read, unless something else (a start, stop or removal) has dealt with
+// it since.
+func (b *Bridge) retryStart(id string, refused error) {
+	b.admin.Lock()
+	defer b.admin.Unlock()
+	b.mu.Lock()
+	same := b.refusals[id] == refused
+	b.mu.Unlock()
+	if same {
+		b.startIfEnabled(id)
+	}
+}
+
+// markData records the first healthy run of package id's current start
+// in its data marker (docs/dev/extensions.md): max(stored, state_version),
+// never lowered, nothing for a build without storage, written by the
+// running build's version. It runs on the supervisor's callback, so the
+// write is done before Stop returns and an uninstall's purge, which stops
+// the plugin first, is never undone; it does not wait for the plugins
+// directory, only for the database. A failed or skipped write is retried
+// on the next healthy run (every health probe reports one).
+func (b *Bridge) markData(id string) {
+	b.mu.Lock()
+	ident, ok := b.pushers[id]
+	b.mu.Unlock()
+	if !ok || ident.marked || ident.stateVersion == 0 {
+		return
+	}
+	if err := b.pkgs.RecordDataMarker(id, ident.stateVersion, ident.version); err != nil {
+		level := b.log.Warn
+		if errors.Is(err, extpkg.ErrDirBusy) {
+			level = b.log.Debug
+		}
+		level("plugin data marker not recorded; retried on the next healthy run", "plugin", id, "state_version", ident.stateVersion, "err", err)
+		return
+	}
+	b.mu.Lock()
+	if cur, ok := b.pushers[id]; ok && cur.version == ident.version {
+		cur.marked = true
+		b.pushers[id] = cur
+	}
+	b.mu.Unlock()
 }
 
 // stop stops package id's server part, if it runs, and forgets its
@@ -107,6 +183,7 @@ func (b *Bridge) stop(ctx context.Context, id string) error {
 	err := b.host.Stop(ctx, id)
 	b.mu.Lock()
 	delete(b.pushers, id)
+	delete(b.refusals, id)
 	b.mu.Unlock()
 	if errors.Is(err, pluginhost.ErrUnknownPlugin) {
 		return nil
