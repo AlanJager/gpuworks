@@ -65,7 +65,7 @@ func (s *serverSettings) InstallDir() string {
 	if s.cfg.ConfigPath == "" {
 		return ""
 	}
-	return filepath.Dir(s.cfg.ConfigPath)
+	return selfinstall.DirOfConfig(s.cfg.ConfigPath)
 }
 
 func (s *serverSettings) SelfUpgradeBlocker() string {

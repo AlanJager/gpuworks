@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/launchd"
+	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 )
 
 // validateUninstall runs before confirmation and again after taking the lock.
@@ -17,6 +18,10 @@ import (
 // recursively removing data. Symlinks inside that tree are unlinked by rm,
 // not followed; nested mount points must be detached separately.
 func (i *Installer) validateUninstall(paths []string, purge bool) error {
+	migrated, err := i.layout.sharedConfig()
+	if err != nil {
+		return err
+	}
 	if err := i.validateUninstallPID(); err != nil {
 		return err
 	}
@@ -76,6 +81,11 @@ func (i *Installer) validateUninstall(paths []string, purge bool) error {
 	for _, path := range paths {
 		if !filepath.IsAbs(path) {
 			return fmt.Errorf("cleanup path must be absolute: %s", path)
+		}
+		// Only this fixed installer alias is unlinked, never followed. Its
+		// private parent and regular target were validated above.
+		if migrated && path == serverconfig.Path(i.layout.Dir) {
+			continue
 		}
 		for _, root := range []string{"/etc", "/usr/bin", "/usr/sbin", "/usr/lib", "/usr/lib64", "/usr/local/bin", "/usr/local/sbin", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/proc", "/sys", "/dev"} {
 			if pathWithin(root, path) {

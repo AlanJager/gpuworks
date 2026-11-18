@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/distribution"
+	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/storagerules"
 	"gpuworks.ai/gpuworks/internal/version"
@@ -204,7 +204,7 @@ func (s *serverSettings) restartCommand() string {
 	if s.cfg.ConfigPath == "" {
 		return "gpuworks restart"
 	}
-	return "gpuworks restart --dir " + filepath.Dir(s.cfg.ConfigPath)
+	return "gpuworks restart --dir " + selfinstall.DirOfConfig(s.cfg.ConfigPath)
 }
 
 func (s *serverSettings) UpdateListen(update dto.ServerListenUpdate, localAddr string) (dto.ServerListen, error) {

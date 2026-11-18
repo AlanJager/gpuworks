@@ -139,7 +139,12 @@ func RunningDir() string {
 func (l Layout) Binary() string { return filepath.Join(l.Dir, binaryName) }
 
 // ConfigPath is server.yaml, the installed server's configuration.
-func (l Layout) ConfigPath() string { return serverconfig.Path(l.Dir) }
+func (l Layout) ConfigPath() string {
+	if migrated, err := l.sharedConfig(); err == nil && migrated {
+		return l.sharedConfigFile()
+	}
+	return serverconfig.Path(l.Dir)
+}
 
 // PIDFile records the process started by the nohup fallback.
 func (l Layout) PIDFile() string { return filepath.Join(l.Dir, pidFile) }

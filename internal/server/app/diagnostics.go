@@ -41,7 +41,7 @@ func installBackupsDir(cfg Config) string {
 	if cfg.ConfigPath == "" {
 		return ""
 	}
-	dir := selfinstall.NewLayout(filepath.Dir(cfg.ConfigPath), cfg.DataDir, "").BackupsDir
+	dir := selfinstall.NewLayout(selfinstall.DirOfConfig(cfg.ConfigPath), cfg.DataDir, "").BackupsDir
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return ""
 	}

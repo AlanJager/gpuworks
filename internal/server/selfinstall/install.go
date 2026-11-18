@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -92,6 +93,9 @@ type InstallReport struct {
 // it again on an existing installation repairs the binary and the service
 // definition around the data that is already there.
 func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallReport, error) {
+	if _, err := i.layout.sharedConfig(); err != nil {
+		return InstallReport{}, err
+	}
 	req = req.withDefaults()
 	previous, hasPrevious := i.previousInstall(ctx)
 	if hasPrevious {
@@ -166,6 +170,13 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 	if err != nil {
 		return InstallReport{}, err
 	}
+	payload, err := i.installConfigPayload(config)
+	if err != nil {
+		return InstallReport{}, err
+	}
+	if _, err := i.isolateSharedConfig(ctx, payload); err != nil {
+		return InstallReport{}, err
+	}
 	if err := i.copyInstalled(ctx, self, i.layout.Binary(), binaryMode); err != nil {
 		return InstallReport{}, fmt.Errorf("install %s: %w", i.layout.Binary(), err)
 	}
@@ -184,13 +195,15 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 			return InstallReport{}, fmt.Errorf("record initial credentials: %w", err)
 		}
 	}
-	payload, err := serverconfig.Render(config)
-	if err != nil {
-		return InstallReport{}, err
-	}
 	// 0664 and the service group: the server edits its listen addresses here
 	// when the operator changes them in the console.
-	if err := i.writeInstalled(ctx, i.layout.ConfigPath(), payload, 0o664); err != nil {
+	mode := os.FileMode(0o664)
+	if i.layout.inSharedRoot() {
+		if info, err := os.Stat(i.layout.ConfigPath()); err == nil {
+			mode = info.Mode().Perm()
+		}
+	}
+	if err := i.writeInstalled(ctx, i.layout.ConfigPath(), payload, mode); err != nil {
 		return InstallReport{}, fmt.Errorf("write %s: %w", i.layout.ConfigPath(), err)
 	}
 	cfg := i.unitConfig(pf.ServiceUser, pf.Mode)
@@ -336,9 +349,16 @@ func consoleURL(l serverconfig.Listen) string {
 // The modes are permissive on purpose: the tree is shared between the service
 // account and whoever operates on it.
 func (i *Installer) prepareDirs(ctx context.Context) error {
-	for _, dir := range []string{i.layout.Dir, i.layout.DataDir, i.layout.LogsDir,
-		i.layout.BackupsDir, i.layout.TmpDir()} {
-		err := mkdirAll(dir, dirMode)
+	dirs := []string{i.layout.Dir, i.layout.DataDir, i.layout.LogsDir, i.layout.BackupsDir, i.layout.TmpDir()}
+	if i.layout.inSharedRoot() {
+		dirs = append(dirs, i.layout.sharedConfigDir())
+	}
+	for _, dir := range dirs {
+		mode := os.FileMode(dirMode)
+		if dir == i.layout.Dir && i.layout.inSharedRoot() {
+			mode = 0o755
+		}
+		err := mkdirAll(dir, mode)
 		if err == nil {
 			continue
 		}
@@ -350,7 +370,7 @@ func (i *Installer) prepareDirs(ctx context.Context) error {
 		}
 		// A directory created by root would otherwise lock the operator out;
 		// the tree's access comes from its modes, not its owner.
-		if err := i.deps.Run.Run(ctx, Command{Path: "chmod", Args: []string{fmt.Sprintf("%04o", dirMode), dir}, Sudo: true}); err != nil {
+		if err := i.deps.Run.Run(ctx, Command{Path: "chmod", Args: []string{fmt.Sprintf("%04o", mode), dir}, Sudo: true}); err != nil {
 			return err
 		}
 	}
