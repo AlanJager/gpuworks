@@ -258,7 +258,7 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 ### Not built yet
 
 - Dynamic mounting of plugin routes under `/api/v1/x/<id>/`, on-demand starts of `on_demand` plugins, and host API endpoints other than state and health.
-- The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
+- The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
 - The ratchet on feature-key literals in core code.
 - No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
@@ -326,4 +326,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 5055789d53c38e641281f29d476a3c59d8b1a2d25f02838f97ebc1436f1dc604 -->
+<!-- translation-source-sha256: 0326749aac8f878c0c84524f126add96fcfb6c99fb340d97fd54f938a9f1bcc6 -->

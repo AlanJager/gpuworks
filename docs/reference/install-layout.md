@@ -33,6 +33,7 @@
 ├── logs/gpuworks-server.log[.1..20]
 └── data/
     ├── gpuworks.db(+ -wal / -shm)  # 主库
+    ├── server.lock                 # serve 存活期间持有的排他锁，内容是其 pid
     ├── master.key                  # 凭证加密密钥
     ├── initial-credentials         # 初始密码记录
     ├── install-history.jsonl       # 安装/升级审计
@@ -41,6 +42,8 @@
 ```
 
 `data/plugins/` 由 `gpuworks plugin` 管理：包先解到 `.incoming-*.partial/` 里校验，全部通过才改名为 `<id>/pkg/<版本>/`（文件 0444、可执行文件与目录 0555），再以改名替换 `<id>/pkg/current` 切换版本，上一个版本保留以便回滚；中断留下的 `*.partial` 在下次安装时清掉。`<id>/data/`、`<id>/tmp/`、`<id>/snapshots/` 是插件自己的目录（0700），卸载时保留，`--purge` 时整个 `<id>/` 移到 `.trash/<id>-<时间>/`；`.index/<发布者>/` 存导入的包索引。
+
+`data/server.lock` 由 `gpuworks serve` 在整个生命周期里持有排他 flock，并写入自己的 pid。同一数据目录上的第二个 server 等待 10 秒后拒绝启动并报出持有者的 pid；`plugin uninstall`、`enable`、`disable` 这类会被运行中 server 的内存状态悄悄覆盖的离线命令拿不到锁就拒绝（见 [CLI 参考](cli.md#gpuworks-plugin)）。锁随进程走，进程崩溃时内核自动释放；文件本身留着不代表 server 在运行。
 
 `server.yaml` 放在安装目录而不在数据目录：把数据库恢复到另一台机器时，不会带上旧机器的监听地址。
 
