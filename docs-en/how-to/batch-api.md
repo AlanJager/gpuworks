@@ -290,6 +290,8 @@ How a batch interacts with a yield-anytime deployment:
 ## Scope and Limits
 
 - Files and batches belong to the user that owns the API token that created them; any inference token of the same user sees them, and other users get 404. Administrators see every user's batches in the console.
+- A token's deployment scope restricts inference execution, not the batch history its user already owns. Reading history with a restricted token does not grant it additional model-call permissions.
+- A historical token without a recorded user (`user_id=0`) sees only the files and batches created by that original token; other historical tokens and anonymous callers cannot see them. Reissuing a personal token does not transfer old data. Administrators can still manage the old batches in the console and explicitly revoke the old token after switching.
 - Concurrency: 8 concurrent requests per batch and 64 in-flight requests across all batches.
 - Files are stored under `batch-files/` in the server data directory and use server disk; `GET /v1/files` lists your own files, so delete input files you no longer need.
 - The completion window is a whole number of hours from `1h` to `72h`, `24h` by default.
@@ -311,5 +313,5 @@ How a batch interacts with a yield-anytime deployment:
 | Reading the output file returns 404 | The batch ended more than 30 days ago and the file was deleted, or no request succeeded so the output file never existed |
 | 401 `invalid_api_key` | Check `Authorization: Bearer <key>` |
 
-<!-- translation-source-sha256: 8954b2ed6686c12aad3cf7de402807990af584df1d6e3126df98ee9d1b88be47 -->
+<!-- translation-source-sha256: fd1b972f4ef0db8a3167f51e3fea4abeb362fd9bdc5aef23dcdaa7559a22ba0c -->
 <!-- translation-localized-code-block: 99c27d4c7c0f7c7f316e94615dd19c248a756fda2cd3f87c48828bbb4ffa1f84 f0fd6c6bfd121918a8813d6f5c64fdaa9479e8d6b3991fbccfc9c66c4a2110d5 Shell prompt text is translated; the commands are unchanged. -->

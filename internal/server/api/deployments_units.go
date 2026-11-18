@@ -47,7 +47,7 @@ func newReplicaView(rows deployment.Rows, d *store.Deployment, insts []store.Ins
 
 // deploymentUnitMatch is how a deployment's instances fill its replicas.
 func (a *apiHandlers) deploymentUnitMatch(dep *store.Deployment, insts []store.Instance) (planning.UnitMatch, error) {
-	view, err := newReplicaView(deployment.NewStoreRows(a.d.Store, a.d.Preparation), dep, insts)
+	view, err := newReplicaView(deployment.NewStoreRowsWithConnections(a.d.Store, a.d.Preparation, a.d.Online), dep, insts)
 	return view.Match, err
 }
 

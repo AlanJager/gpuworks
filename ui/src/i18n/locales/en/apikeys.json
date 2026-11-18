@@ -77,6 +77,10 @@
     "revokedAt": "Revoked {{time}}"
   },
   "showRevoked": "Show revoked ({{count}})",
+  "ownership": {
+    "legacyLabel": "Legacy token ownership",
+    "legacyHelp": "This token has no recorded user. Create a personal replacement, then ask an administrator to revoke the old token. Its old batches stay with the old token."
+  },
   "tokens": {
     "tooltip": "Input {{input}} (cached {{cached}}) · Output {{output}}",
     "open": "{{tokens}} tokens of {{name}}, open in Usage analytics"

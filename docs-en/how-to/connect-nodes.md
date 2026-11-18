@@ -79,6 +79,10 @@ The offline package contains the Linux / Mac agents embedded in the server and t
 
 Return to **Compute Nodes**, confirm that the node changes from **Connecting** to **Online**, and open its details to check the accelerator model, count, and runtime. If the node is still disconnected, check the installation report, its `agent.log`, and the [network requirements](#节点与-server-网络不通). Do not repeatedly create nodes.
 
+**Online** means the current server process has authenticated the node token and holds its control connection. After a server restart, a node whose last saved state was online shows **Connecting** until it authenticates again; it does not count as online yet. A known disconnected node remains **Offline**, while an ongoing out-of-band recovery retains its recovery indication. The existing heartbeat expiry check eventually marks an unreconnected old online record offline.
+
+Connecting does not mean a deployment has been rescheduled or provide an exact rescheduling countdown. The deployment recovery grace after a control-plane restart and the [node failover](node-failover.md) wait are evaluated independently. A brief disconnect does not require rebuilding running containers.
+
 For the networks used by peer sync, multi-node inference, and service traffic, see [Configure Node Networks](configure-networks.md).
 
 ### Startup Methods and Subsequent Restarts
@@ -254,7 +258,7 @@ On Linux, the command stops the corresponding systemd service or nohup process, 
 
 **Binaries, models, logs, and the state directory are retained.** After a successful manual uninstall, return to the console and select **Force removal: only delete management records** to finish removing the node. To completely remove the data, first confirm that no instances or models are still in use, then have an administrator delete the corresponding directories.
 
-<!-- translation-source-sha256: 06c39a81e1ddcd0a96090a191d40d835a10cdc48c7b8f60d9905a0ca868d052a -->
+<!-- translation-source-sha256: 930d47b61ca07320517a670633d1f99a8db326c8143896fb6b12288994ab917b -->
 <!-- translation-localized-code-block: 88ddeff56766d61d95f726b03c19bcdd484f3058933f20151101f2aa86b3e2d8 3013982f8f2cf42b34ce49ffcfebbdb4df071d024665d8b213ed9e002ba2b8dc Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: 181a232a825fc9cab52b5351f82956d27bb63db9de1f89189683b763f45ae66e a676446b2b83c5c8f6ea4dbbc7b13b20f13fd8c96dcde9c1221174a8a8251d86 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: 46acba10a4f9eda089ae5143f05203f228f6ee9ec76d0d086dba619af8b295c2 dca5fd1a1d98ead273c71bf5d8beb2cd4044783316b14ab2289493021e7cc5e1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

@@ -31,7 +31,9 @@ func imageStallFixture(t *testing.T, name string) (*Hub, *store.Image, *store.No
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(st, slog.New(slog.NewTextHandler(io.Discard, nil))), image, source, target
+	h := New(st, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(h.StopSessions)
+	return h, image, source, target
 }
 
 func TestAbandonedImageSnapshotCannotCancelNewPeerAttempt(t *testing.T) {
@@ -43,7 +45,7 @@ func TestAbandonedImageSnapshotCannotCancelNewPeerAttempt(t *testing.T) {
 	if _, err = h.store.UpsertImageNode(&store.ImageNode{ImageID: image.ID, NodeID: target.ID, SourceNodeID: source.ID, Source: "peer", State: store.ImageStateSyncing, TransferID: "new"}); err != nil {
 		t.Fatal(err)
 	}
-	h.abandonDirectImageTransfer(image.ID, target.ID, old)
+	h.abandonDirectImageTransfer(context.Background(), image.ID, target.ID, old)
 	current, err := h.store.ImageNode(image.ID, target.ID)
 	if err != nil || current.State != store.ImageStateSyncing || current.TransferID != "new" {
 		t.Fatalf("old watchdog cancelled newer attempt: %+v err=%v", current, err)
@@ -104,7 +106,7 @@ func TestOldImageWatchDoesNotCancelAdvancedProgressOrReusedTimestamp(t *testing.
 			} else if _, err := h.store.UpdateImageSyncProgressIfActive(image.ID, target.ID, id, 100, 50, 1); err != nil {
 				t.Fatal(err)
 			}
-			h.abandonDirectImageTransfer(image.ID, target.ID, old)
+			h.abandonDirectImageTransfer(context.Background(), image.ID, target.ID, old)
 			row, err := h.store.ImageNode(image.ID, target.ID)
 			if err != nil || row.State != store.ImageStateSyncing || row.TransferID != id {
 				t.Fatalf("stale observation cancelled live attempt: %+v %v", row, err)

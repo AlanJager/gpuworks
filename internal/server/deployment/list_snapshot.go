@@ -34,9 +34,10 @@ var listTopics = []string{"deployment", "instance", "model", "modelfile", "stora
 // come from the snapshot; the rows a page shows are read again with Fresh,
 // so their progress is current.
 type Lists struct {
-	st   *store.Store
-	prep ModelPreparation
-	now  func() time.Time
+	st     *store.Store
+	prep   ModelPreparation
+	now    func() time.Time
+	online func(string) bool
 
 	mu      sync.Mutex
 	rows    *ListRows
@@ -56,10 +57,17 @@ func NewLists(st *store.Store, prep ModelPreparation, now func() time.Time) *Lis
 // ReadListRows reads every deployment and instance and what they join
 // against for one request, the read Lists keeps between changes.
 func ReadListRows(st *store.Store, prep ModelPreparation) (*ListRows, error) {
+	return ReadListRowsWithConnections(st, prep, nil)
+}
+
+// ReadListRowsWithConnections reads one presentation snapshot using the current
+// authenticated sessions. A nil predicate retains the stored-state fallback.
+func ReadListRowsWithConnections(st *store.Store, prep ModelPreparation, online func(string) bool) (*ListRows, error) {
 	nodes, err := st.NodeIdentities()
 	if err != nil {
 		return nil, err
 	}
+	projectNodeConnections(nodes, online)
 	return readListRows(st, prep, nodes, false)
 }
 
@@ -88,6 +96,7 @@ func (l *Lists) Rows() (*ListRows, error) {
 	if err != nil {
 		return nil, err
 	}
+	projectNodeConnections(nodes, l.online)
 	marks := l.marks0()
 	if l.rows != nil && now.Sub(l.started) < listsMaxAge && slices.Equal(marks, l.marks) && sameNodeIdentities(nodes, l.rows) {
 		return l.rows, nil

@@ -55,7 +55,7 @@ func (a *apiHandlers) modelDTOs(models []store.Model) []dto.Model {
 }
 
 func (a *apiHandlers) deploymentDTO(d *store.Deployment, withInstances bool) dto.Deployment {
-	return a.deploymentDTOFrom(deployment.NewStoreRows(a.d.Store, a.d.Preparation), d, withInstances)
+	return a.deploymentDTOFrom(deployment.NewStoreRowsWithConnections(a.d.Store, a.d.Preparation, a.d.Online), d, withInstances)
 }
 
 // deploymentDTOFrom builds the DTO from whichever lookup the caller holds: the
@@ -288,7 +288,7 @@ var deploymentListStates = deployment.States
 // instanceDTO is one instance as GET /instances/{uuid} shows it, with the
 // replica it fills.
 func (a *apiHandlers) instanceDTO(in *store.Instance) dto.Instance {
-	return a.instanceDTOs(deployment.NewStoreRows(a.d.Store, a.d.Preparation), []store.Instance{*in})[0]
+	return a.instanceDTOs(deployment.NewStoreRowsWithConnections(a.d.Store, a.d.Preparation, a.d.Online), []store.Instance{*in})[0]
 }
 
 // instanceDTOs are instances as the API shows them, each with the replica it

@@ -77,6 +77,10 @@
     "revokedAt": "吊销于 {{time}}"
   },
   "showRevoked": "显示已吊销（{{count}}）",
+  "ownership": {
+    "legacyLabel": "历史令牌的归属",
+    "legacyHelp": "此令牌没有记录所属用户。请新建个人令牌，再请管理员吊销旧令牌。旧批处理数据仍归原令牌，不会自动转移。"
+  },
   "tokens": {
     "tooltip": "输入 {{input}}（缓存命中 {{cached}}）· 输出 {{output}}",
     "open": "{{name}} 的 {{tokens}} token，在用量分析中查看"

@@ -65,6 +65,17 @@ agent 主动连接 `wss://server/api/v1/agent/connect`，升级后通过 yamux �
 断线后 agent 重连并重放状态；server 以 desired state + watch 驱动长生命周期，短动作走 RPC。
 `server_dial` 是带 HMAC challenge 的例外，用于 server 主动拨入受控节点。
 
+## server 的资源与运行生命周期
+
+`app.New` 拥有它打开的主库、观测库、长期统计库和 trace exporter，固定连接请求的 sink 与 reader。
+同一个 App 可以依次多次 `Run`；每轮只管理监听、HTTP/agent 会话和后台循环。停止一轮时先拒绝新请求，
+等已有请求与尚未认证的连接结束，再按 accountant 最后入队、metrics 排空、统计 flush 和请求日志同步的顺序收尾。
+HTTP 的优雅窗口超时会断开连接，但仍要等 handler 退出，不能提前关掉它可能正在使用的库。
+
+最终由调用者调用幂等的 `App.Close`：阻止再启动，取消并等待活跃的 `Run`，最后释放 `New` 创建的资源。
+CLI 和测试环境都在最终退出时调用它；测试环境的 `StopServer` 只停止一轮，仍可重启。
+构造失败也释放已经打开的资源。详见 [ADR 0072](../adr/0072-app-and-run-lifetimes.md)。
+
 ## 一次部署的生命周期
 
 ```mermaid

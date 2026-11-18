@@ -148,7 +148,7 @@ func TestMonitorAndBatchReadTheListSnapshot(t *testing.T) {
 		}
 	}
 	lists := deployment.NewLists(st, nil, nil)
-	snapshot := newMonitorAPIServiceOn(lists, st, ts, time.Now, nil, nil, nil)
+	snapshot := newMonitorAPIServiceOn(lists, st, ts, time.Now, nil, nil, nil, nil)
 	perRequest := newMonitorAPIService(st, ts, time.Now, nil, nil, nil)
 	var reads atomic.Int64
 	if err := st.DB().Callback().Query().After("gorm:query").Register("test:monitor_table_reads", func(tx *gorm.DB) {

@@ -34,6 +34,11 @@ var (
 // watchDirectImageTransfer abandons a node-side transfer that stopped
 // reporting, so the row becomes retryable instead of frozen.
 func (h *Hub) watchDirectImageTransfer(imageID, nodeID uint) {
+	ctx, done, ok := h.sessionWork.begin()
+	if !ok {
+		return
+	}
+	defer done()
 	// Snapshot the knobs before the goroutine starts: tests shrink them around
 	// this call and restore them in cleanup, and the watcher, which outlives
 	// the caller, must not read them after that point.
@@ -57,7 +62,7 @@ func (h *Hub) watchDirectImageTransfer(imageID, nodeID uint) {
 	h.imageWatches[key][transferID] = struct{}{}
 	h.mu.Unlock()
 	h.log.Info("watching image transfer progress", "image_id", imageID, "node_id", nodeID, "transfer", transferID)
-	go func() {
+	h.trackSessionWork(func() {
 		defer func() {
 			h.mu.Lock()
 			delete(h.imageWatches[key], transferID)
@@ -68,7 +73,12 @@ func (h *Hub) watchDirectImageTransfer(imageID, nodeID uint) {
 		}()
 		ticker := time.NewTicker(checkEvery)
 		defer ticker.Stop()
-		for range ticker.C {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
 			row, err := h.store.ImageNode(imageID, nodeID)
 			if err != nil {
 				return
@@ -79,9 +89,9 @@ func (h *Hub) watchDirectImageTransfer(imageID, nodeID uint) {
 			if (row.TransferErrorCode == messages.ErrorPeerRelayBusy && h.ownsImageSync(transferID)) || time.Since(row.UpdatedAt) < silentAfter {
 				continue
 			}
-			h.abandonDirectImageTransfer(imageID, nodeID, row)
+			h.abandonDirectImageTransfer(ctx, imageID, nodeID, row)
 		}
-	}()
+	})
 }
 
 // imageRowActive reports whether a row still describes work that is plausibly
@@ -106,10 +116,10 @@ func imageRowActive(row *store.ImageNode) bool {
 // operation on the node, so the node's image slot is freed instead of staying
 // busy until the runtime's own cap, and fails the row: that is what gives the
 // operator a retry.
-func (h *Hub) abandonDirectImageTransfer(imageID, nodeID uint, row *store.ImageNode) {
+func (h *Hub) abandonDirectImageTransfer(ctx context.Context, imageID, nodeID uint, row *store.ImageNode) {
 	if image, err := h.store.GetImage(imageID); err == nil {
 		if node, nodeErr := h.store.NodeByID(nodeID); nodeErr == nil && h.Online(node.UUID) {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
 			if exists, existsErr := h.ImageExists(ctx, image.ImageRef, node.UUID); existsErr == nil && exists {
 				_ = h.store.ApplyImageNodeStatus(imageID, nodeID, proto.ImageNodeStatus{
@@ -121,6 +131,9 @@ func (h *Hub) abandonDirectImageTransfer(imageID, nodeID uint, row *store.ImageN
 			}
 		}
 	}
+	if ctx.Err() != nil {
+		return
+	}
 	const message = "this transfer stopped reporting progress, so it was cancelled (agent restart, lost connection, or a runtime that never returned). Retry it."
 	changed, err := h.store.FailImageNodeIfUnchanged(imageID, nodeID, row.TransferID, row.UpdatedAt, message)
 	if err != nil || !changed {
@@ -130,19 +143,24 @@ func (h *Hub) abandonDirectImageTransfer(imageID, nodeID uint, row *store.ImageN
 	image, imageErr := h.store.GetImage(imageID)
 	node, nodeErr := h.store.NodeByID(nodeID)
 	if imageErr == nil && nodeErr == nil {
-		h.stopImageTransfer(context.Background(), image, node, row)
+		h.stopImageTransfer(ctx, image, node, row)
 	}
 }
 
 // WatchImageTransfer restores monitoring for a persisted transfer after a
 // server restart. Repeated reconciles share one watcher for the same attempt.
 func (h *Hub) WatchImageTransfer(imageID, nodeID uint) {
+	ctx, done, ok := h.sessionWork.begin()
+	if !ok {
+		return
+	}
+	defer done()
 	row, err := h.store.ImageNode(imageID, nodeID)
 	if err == nil && row.State == store.ImageStateSyncing && row.TransferErrorCode == messages.ErrorPeerRelayBusy && !h.ownsImageSync(row.TransferID) {
 		source, e := h.store.NodeByID(row.SourceNodeID)
 		target, te := h.store.NodeByID(nodeID)
 		if e == nil && te == nil {
-			_, _ = h.syncImageDirect(context.Background(), imageID, target.UUID, source.UUID, row.RateLimitKiB, false)
+			_, _ = h.syncImageDirect(ctx, imageID, target.UUID, source.UUID, row.RateLimitKiB, false)
 		}
 	}
 	h.watchDirectImageTransfer(imageID, nodeID)

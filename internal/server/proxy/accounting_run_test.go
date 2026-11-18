@@ -200,3 +200,42 @@ func TestAccountantRunReturnsPromptlyDespiteStuckWriterAndGuardsRestart(t *testi
 
 	close(block) // release both stuck sink calls so neither goroutine leaks
 }
+
+func TestAccountantWaitJoinsFinalWriterAfterRunGraceExpires(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var released sync.Once
+	defer released.Do(func() { close(release) })
+	a := NewAccountant(func([]tsdb.Sample) {
+		close(entered)
+		<-release
+	}, nil)
+	a.RecordImmediate(9, 200, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	runDone := make(chan struct{})
+	go func() { a.Run(ctx); close(runDone) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("final batch did not reach the sink")
+	}
+	select {
+	case <-runDone: // Run retains its bounded wait for a slow external sink.
+	case <-time.After(time.Second):
+		t.Fatal("Run no longer respects its slow-sink grace period")
+	}
+	waitDone := make(chan struct{})
+	go func() { a.Wait(); close(waitDone) }()
+	select {
+	case <-waitDone:
+		t.Fatal("final writer was not joined")
+	case <-time.After(20 * time.Millisecond):
+	}
+	released.Do(func() { close(release) })
+	select {
+	case <-waitDone:
+	case <-time.After(time.Second):
+		t.Fatal("Wait did not finish after the final enqueue")
+	}
+	a.Wait() // Repeated waiting must not block or consume the completion.
+}

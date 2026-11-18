@@ -20,6 +20,7 @@ func (a *apiHandlers) dashboardSummary(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	nodes = a.nodeConnectionViews(nodes)
 	rows, deps, _, err := a.listRows()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)

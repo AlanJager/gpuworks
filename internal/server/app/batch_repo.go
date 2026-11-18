@@ -18,7 +18,12 @@ func (r batchRepo) owner(o batch.Owner) store.BatchOwnerFilter {
 		return store.BatchOwnerFilter{}
 	}
 	id := o.UserID
-	return store.BatchOwnerFilter{UserID: &id}
+	filter := store.BatchOwnerFilter{UserID: &id}
+	if id == 0 {
+		keyID := o.APIKeyID
+		filter.APIKeyID = &keyID
+	}
+	return filter
 }
 
 func batchErr(err error) error {

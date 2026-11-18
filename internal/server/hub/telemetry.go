@@ -70,14 +70,14 @@ func (s *Session) acceptDataStreams(data *yamux.Session) {
 		prev, done := s.telTail[hdr.Ref], make(chan struct{})
 		s.telTail[hdr.Ref] = done
 		s.telMu.Unlock()
-		go func() {
+		s.hub.trackSessionWork(func() {
 			defer close(done)
 			defer stream.Close()
 			if prev != nil {
 				<-prev
 			}
 			s.serveTelemetry(stream)
-		}()
+		})
 	}
 }
 

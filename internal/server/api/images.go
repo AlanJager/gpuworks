@@ -290,6 +290,7 @@ func (a *apiHandlers) imageNodeDTOs(rows []store.ImageNode, nodes []store.Node) 
 	}
 	out := make([]dto.ImageNode, 0, len(nodes))
 	for _, node := range nodes {
+		node = a.nodeConnectionView(node)
 		row, ok := byNode[node.ID]
 		item := dto.ImageNode{NodeUUID: node.UUID, NodeName: nodeDisplayName(&node), NodeState: node.ConnectionState(), State: store.ImageStateAbsent}
 		if ok {

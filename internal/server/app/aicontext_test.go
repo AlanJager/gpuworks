@@ -49,7 +49,7 @@ func newAIFixture(t *testing.T, name string) *aiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &aiFixture{st: st, logs: ls, ai: newAIService(st, &observability{obsingest.New(obsingest.Stores{Logs: ls})}, nil), node: node, dep: dep}
+	return &aiFixture{st: st, logs: ls, ai: newAIService(st, &observability{obsingest.New(obsingest.Stores{Logs: ls})}, nil, nil), node: node, dep: dep}
 }
 
 func (f *aiFixture) instance(t *testing.T, uuid, state, message string, argv []string) *store.Instance {

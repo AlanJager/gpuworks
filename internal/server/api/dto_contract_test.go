@@ -183,6 +183,7 @@ func TestAPIKeyDTOContractCannotExposeSecret(t *testing.T) {
 	created := time.Date(2026, 8, 29, 8, 0, 0, 0, time.UTC)
 	object := marshalJSONObject(t, dto.APIKey{Name: "automation", Prefix: "gw_abcd", Created: created, AllDeployments: true, Deployments: []dto.APIKeyDeployment{}})
 	want := map[string]any{
+		"user_id":         float64(0),
 		"name":            "automation",
 		"prefix":          "gw_abcd",
 		"created_at":      "2026-08-29T08:00:00Z",

@@ -104,6 +104,11 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := app.Close(); err != nil {
+			log.Warn("experience server resources close failed", "err", err)
+		}
+	}()
 	// Engines take ports from a block nothing else on this host holds, below
 	// the ephemeral range, so no starting instance meets a port another
 	// program took.

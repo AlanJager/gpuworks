@@ -185,7 +185,7 @@ func (a *apiHandlers) setAPIKeyPriority(w http.ResponseWriter, r *http.Request) 
 		writeAPIKeyPriorityError(w, err)
 		return
 	}
-	keys, err := a.apiKeyDTOs()
+	keys, err := a.apiKeyDTOs(r)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return

@@ -1633,6 +1633,10 @@ States refresh with the 20-second snapshot.
 
 ## API Keys (Gateway Keys)
 
+New inference tokens belong to the signed-in user; the request body cannot choose their owner. Non-administrators can list, change the call scope of, or revoke only their own tokens. Administrators retain management access to every token. The list carries the recorded owner in `user_id`; `0` explicitly identifies a historical token without a recorded user and is not automatically assigned to an administrator.
+
+Historical tokens retain their existing inference scope and can read only the historical zero-user batch resources created by that same token. To replace one, use the existing creation operation for a personal token, then have an administrator explicitly revoke the old token. Reissuing does not transfer its old batches; administrators can still manage them in the console. Deployment scope restricts inference execution; batch history visibility follows [user ownership](../how-to/batch-api.md#scope-and-limits).
+
 | Method | Path | Description | Authentication |
 |---|---|---|---|
 | GET | `/api/v1/apikeys` | List API keys (without plaintext values), including revoked keys. Revoked keys include `revoked_at` (UTC time); active keys omit this field. When `all_deployments` is true, the key can call every model service; when false, it can call only the deployments in `deployments` (`[{id,name,served_name}]`). If all of those deployments are deleted, the list is empty and the key can call nothing. `priority` is the key's request priority binding `{class, ceiling, policy}`: an empty `class` means the default class, an empty `ceiling` caps at the key's own class, and `policy` is `within_ceiling` (the default), `fixed` or `down_only`; see [Request Priority](../explanation/request-priority.md) | JWT |
@@ -2289,4 +2293,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 140d6d171b1585620b70356201d5cec83e8e51989a5de901d65028abfcc4b41d -->
+<!-- translation-source-sha256: 606a96d6107f0f05a4d197673607deda352376cb5942bf32cf4144d8aa35f13c -->

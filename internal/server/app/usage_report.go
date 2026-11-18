@@ -29,6 +29,9 @@ type usageReporter struct {
 	log      *slog.Logger
 	now      func() time.Time
 	counters usagereport.Counters
+	// onlineNodes is the current authenticated control-session count. Nil
+	// keeps the stored-state fallback of an offline report fixture.
+	onlineNodes func() int
 
 	// kick wakes the scheduler when the program is switched on, so the first
 	// report goes out at once instead of at the next idle check.
@@ -46,9 +49,9 @@ var _ api.UsageReport = (*usageReporter)(nil)
 // newImprovementProgram builds the daily usage report and the notice bell.
 // Both reach out through channel's client: the report to its endpoints, the
 // notices to the distribution sources.
-func newImprovementProgram(st *store.Store, ux *uxstore.Store, settings *serverSettings, channel *distribution.Client, log *slog.Logger) (*usageReporter, *noticeService) {
+func newImprovementProgram(st *store.Store, ux *uxstore.Store, settings *serverSettings, channel *distribution.Client, log *slog.Logger, onlineNodes func() int) (*usageReporter, *noticeService) {
 	usage := &usageReporter{store: st, ux: ux, settings: settings, log: log, now: time.Now,
-		sender: &usagereport.Sender{HTTP: channel.HTTP}, kick: make(chan struct{}, 1)}
+		sender: &usagereport.Sender{HTTP: channel.HTTP}, kick: make(chan struct{}, 1), onlineNodes: onlineNodes}
 	notices := &noticeService{store: st, client: func() *distribution.Client { return channel }, settings: settings,
 		log: log, now: time.Now, started: time.Now().UTC()}
 	return usage, notices
@@ -216,6 +219,9 @@ func (u *usageReporter) build(ctx context.Context, day, now time.Time, counts ma
 			SchemaVersion: facts.SchemaVersion},
 	}
 	environmentOf(&r.Environment, facts)
+	if u.onlineNodes != nil {
+		r.Environment.OnlineNodes = u.onlineNodes()
+	}
 	usageOf(&r.Usage, facts)
 	tasksOf(&r.Tasks, facts, since, until)
 	r.Errors = usagereport.Errors{

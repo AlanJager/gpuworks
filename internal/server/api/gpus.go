@@ -151,7 +151,8 @@ func (a *apiHandlers) buildGPUInventory() (*gpuInventoryCache, error) {
 		dgpu:     dto.DGPUListResponse{Items: []dto.DGPU{}},
 	}
 	for nodeIndex := range nodes {
-		node := &nodes[nodeIndex]
+		view := a.nodeConnectionView(nodes[nodeIndex])
+		node := &view
 		allocations := fleet[node.ID]
 		if allocations == nil {
 			allocations = map[int]planning.GPUAllocation{}

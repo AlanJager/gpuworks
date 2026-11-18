@@ -124,9 +124,17 @@ func (m batchModels) entriesWith(deployments []store.Deployment, instances []sto
 		return nil, nil
 	}
 	if states == nil {
-		var err error
-		if states, err = deployment.EffectiveStates(m.st, m.prep, kept, instances); err != nil {
-			return nil, err
+		if m.lists != nil {
+			rows, err := m.lists.Rows()
+			if err != nil {
+				return nil, err
+			}
+			states = rows.States()
+		} else {
+			var err error
+			if states, err = deployment.EffectiveStates(m.st, m.prep, kept, instances); err != nil {
+				return nil, err
+			}
 		}
 	}
 	byDeployment := map[uint][]store.Instance{}

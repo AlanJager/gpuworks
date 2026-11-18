@@ -97,6 +97,11 @@ func startShutdownTestApp(t *testing.T) (a *App, ctx context.Context, cancel con
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := a.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	ctx, cancel = context.WithCancel(context.Background())
 	done = make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()

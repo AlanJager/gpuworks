@@ -62,6 +62,13 @@ func (s *Session) useKubeEnginePorts(node *store.Node, cfg *proto.NetworkConfig)
 // again. It returns once both are queued; a slow or stalled agent holds up
 // only itself.
 func (h *Hub) PushKubeSettings(clusterID uint) {
+	// Edits enter from HTTP rather than an already-counted agent session.
+	// Keep their async pushes inside this epoch even when HTTP is draining.
+	_, done, ok := h.sessionWork.begin()
+	if !ok {
+		return
+	}
+	defer done()
 	uuids, err := h.store.KubeNodeUUIDs(clusterID)
 	if err != nil {
 		h.log.Warn("kubernetes settings push: listing the entry's nodes failed", "cluster", clusterID, "err", err)

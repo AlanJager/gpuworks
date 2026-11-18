@@ -1,0 +1,27 @@
+# ADR 0072: App owns resources; each Run stops and drains, and Close releases them
+
+Date: 2026-11-18 · Status: accepted
+
+## Background
+
+An App already supports stopping and running again in the same process, and the test harness relies on that contract. Request history, long-term statistics and the trace exporter are created and bound to fixed readers and sinks in New, but the first Run used to close them permanently. The second run could still serve inference while history and quality queries failed with a closed database. Replacing one field would not update closures capturing the original object.
+
+## Decision
+
+1. **App and an individual Run have different lifetimes.** Stores, fixed adapters and the exporter constructed by New remain valid until final App.Close; each Run owns its listeners, HTTP server and background loops. Ending a run stops admission, drains work and writes final records without destroying objects needed by the next run.
+2. **Close is the final, idempotent release operation.** A closed App cannot run again. One coordination state closes admission, stops and waits for an active run, then releases resources in dependency order. Waiting must not hold locks needed by the running code to finish.
+3. **Callers distinguish stopping from disposal.** The CLI finally closes the App on exit. The harness preserves it when StopServer returns and closes it only during final cleanup. Construction failure also releases resources already constructed, including observability stores, refresh loops and the exporter.
+4. **Drain ordering is a behavioral contract.** Finish requests and agent connections first, wait for the accountant's last enqueue, then finish the metrics ingest drain and flush request and statistics records. The trace sender belongs to App, survives between runs and drains on final Close. Normal exit, forced HTTP shutdown and listener failure share one stop sequence.
+5. **Hub owns its connection lifetime.** Waiting includes unauthenticated control/data handshakes, server_dial attempts and their child work, not just registered sessions. Stop first prevents new work and cancels the current connection generation, then waits for it to finish so no handshake or report accesses a closed store.
+
+## Trade-offs
+
+- Reopening and rebinding the whole request pipeline on each run would spread reference replacement across sinks, history, analytics and the exporter. Preserving existing App-level objects confines restart to per-run resources.
+- Merely removing a close defer loses final flushing and release. Waiting only for successful sessions misses unauthenticated handshakes. Ownership and connection admission and exit must all be covered.
+- No generic resource graph or lifecycle framework is introduced. Coordination state expresses running, final closure and connection-work admission; existing business algorithms and storage layouts remain.
+
+## Verification
+
+Two real inference HTTP requests across two Runs of one App succeed, both records remain queryable through history and quality endpoints, and a controlled collector receives traces. Final records are flushed on stop. Cover final and repeated Close, Run after Close, concurrent shutdown, construction/listener failure and unfinished handshakes, while retaining accountant-to-metrics drain and loop-exit regressions.
+
+<!-- translation-source-sha256: dd254f8062ad1207c2b79f58943171491754d99eac7e459cebd43d47dd79d30e -->

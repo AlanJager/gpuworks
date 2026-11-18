@@ -20,10 +20,11 @@ type aiService struct {
 	obs                       *observability
 	box                       *auth.Secretbox
 	log                       *slog.Logger
+	online                    func(string) bool
 }
 
-func newAIService(st *store.Store, obs *observability, box *auth.Secretbox) *aiService {
-	return &aiService{store: st, obs: obs, box: box}
+func newAIService(st *store.Store, obs *observability, box *auth.Secretbox, online func(string) bool) *aiService {
+	return &aiService{store: st, obs: obs, box: box, online: online}
 }
 
 // aiAnswerTimeout bounds one answer end to end, every LLM call and tool call

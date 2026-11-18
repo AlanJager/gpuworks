@@ -162,9 +162,7 @@ func (c *trackedConn) Close() error {
 // requestRestart stops Run shortly after the current response is written, so
 // the service manager starts the process again with the saved configuration.
 func (a *App) requestRestart() {
-	a.restartMu.Lock()
-	stop := a.stopForRestart
-	a.restartMu.Unlock()
+	stop := a.lifetime.stopper()
 	if stop == nil {
 		return
 	}
@@ -188,6 +186,14 @@ func (a *App) Addr() string {
 // It is primarily useful to restart an ephemeral test server on the same port
 // so an already-running agent can exercise reconnect and adoption.
 func (a *App) SetAddr(addr string) error {
+	a.lifetime.mu.Lock()
+	defer a.lifetime.mu.Unlock()
+	if a.lifetime.closed != nil {
+		return ErrClosed
+	}
+	if a.lifetime.run != nil {
+		return errors.New("server app is running")
+	}
 	a.lnMu.Lock()
 	defer a.lnMu.Unlock()
 	if a.lns != nil {

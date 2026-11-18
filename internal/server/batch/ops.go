@@ -70,7 +70,7 @@ func cleanFilename(name string) string {
 // File reads a file's metadata; a file of another user is not found.
 func (s *Service) File(owner Owner, id string) (File, error) {
 	f, err := s.repo.GetFile(id)
-	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(f.UserID)) {
+	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(f.UserID, f.APIKeyID)) {
 		return File{}, notFound(CodeFileNotFound, "No such File object: "+id)
 	}
 	return f, err
@@ -168,7 +168,7 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 		return Batch{}, err
 	}
 	in, err := s.repo.GetFile(req.InputFileID)
-	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(in.UserID)) {
+	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(in.UserID, in.APIKeyID)) {
 		return Batch{}, invalid(CodeFileNotFound, ParamInputFileID, "No such File object: "+req.InputFileID)
 	}
 	if err != nil {
@@ -271,7 +271,7 @@ func checkMetadata(m map[string]string) error {
 // Batch reads a batch; a batch of another user is not found.
 func (s *Service) Batch(owner Owner, id string) (Batch, error) {
 	b, err := s.repo.GetBatch(id)
-	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(b.UserID)) {
+	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(b.UserID, b.APIKeyID)) {
 		return Batch{}, notFound(CodeBatchNotFound, "No such Batch object: "+id)
 	}
 	return b, err

@@ -153,8 +153,8 @@ func (s *Session) attachData(data *yamux.Session) {
 		_ = old.Close()
 	}
 	s.hub.log.Info("data lane attached", "node", s.NodeUUID)
-	go s.watchData(data)
-	go s.acceptDataStreams(data)
+	s.hub.trackSessionWork(func() { s.watchData(data) })
+	s.hub.trackSessionWork(func() { s.acceptDataStreams(data) })
 }
 
 // watchData clears the data pointer once the lane closes, but only if it is

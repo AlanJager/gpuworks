@@ -196,3 +196,23 @@ func TestPutUpdateAutoCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestAutomaticUpdateCheckCountsOnlyAuthenticatedNodes(t *testing.T) {
+	run, channel := reportingRun(t, &autoCheckServer{id: "0123456789abcdef"})
+	run.deps.Online = func(string) bool { return false }
+	run.router = Router(run.deps)
+	if status := getUpdateStatus(t, run); !status.Available {
+		t.Fatal("update fixture unavailable")
+	}
+	queries := channel.queryLog()
+	if len(queries) != 1 {
+		t.Fatalf("queries=%d", len(queries))
+	}
+	got, err := url.ParseQuery(queries[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Get("nodes") != "3" || got.Get("online") != "0" {
+		t.Fatalf("fleet query=%v", got)
+	}
+}

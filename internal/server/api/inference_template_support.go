@@ -161,9 +161,30 @@ func (a *apiHandlers) templateCompatibilityGPUs(r *http.Request) ([]chipmatch.GP
 			}
 			return nil, true, status, err
 		}
-		if node.State == "online" {
+		if a.nodeConnectionView(*node).State == store.NodeStateOnline {
 			for _, gpu := range node.GPUs {
 				appendGPU(gpu.Name, gpu.Vendor, gpu.ArchID, gpu.ComputeCapability)
+			}
+		}
+		return result, true, 0, nil
+	}
+	if a.d.Online != nil {
+		nodes, err := a.d.Store.FleetNodes()
+		if err != nil {
+			return nil, true, http.StatusInternalServerError, err
+		}
+		seen := map[store.DetectedGPU]bool{}
+		for _, node := range nodes {
+			if !a.d.Online(node.UUID) {
+				continue
+			}
+			for _, gpu := range node.GPUs {
+				key := store.DetectedGPU{Vendor: strings.ToLower(strings.TrimSpace(gpu.Vendor)), Name: strings.TrimSpace(gpu.Name), CC: strings.TrimSpace(gpu.ComputeCapability), ArchID: strings.TrimSpace(gpu.ArchID)}
+				if key.Name == "" || seen[key] {
+					continue
+				}
+				seen[key] = true
+				appendGPU(key.Name, key.Vendor, key.ArchID, key.CC)
 			}
 		}
 		return result, true, 0, nil

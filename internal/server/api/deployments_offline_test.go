@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/deployment"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -137,4 +138,40 @@ func TestDeploymentPDOfflineReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(2, "running")
+}
+
+func TestDeploymentViewsUseLiveConnectionsBeforePersistedStateCatchesUp(t *testing.T) {
+	f := newListFixture(t, 0)
+	nodes, err := f.st.ListNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range nodes {
+		if err := f.st.SetNodeState(node.UUID, store.NodeStateOnline); err != nil {
+			t.Fatal(err)
+		}
+	}
+	connected := false
+	f.handler.d.Online = func(uuid string) bool { return uuid != "list-b" || connected }
+	f.handler.d.Lists = deployment.NewListsWithConnections(f.st, nil, nil, f.handler.d.Online)
+	for _, tc := range []struct {
+		live  bool
+		want  string
+		ready int
+	}{
+		{false, "offline", 0}, {true, "running", 1}, {false, "offline", 0},
+	} {
+		connected = tc.live
+		for range 2 {
+			page := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=1&page_size=100&q=scheduled-away"))
+			if len(page.Items) != 1 {
+				t.Fatalf("items=%d", len(page.Items))
+			}
+			row := page.Items[0]
+			detail := f.handler.deploymentDTO(mustDeployment(t, f.st, row.ID), true)
+			if row.RuntimeState != tc.want || detail.RuntimeState != tc.want || row.ReadyReplicas == nil || *row.ReadyReplicas != tc.ready || detail.ReadyReplicas == nil || *detail.ReadyReplicas != tc.ready {
+				t.Fatalf("list=%s/%v detail=%s/%v want=%s/%d", row.RuntimeState, row.ReadyReplicas, detail.RuntimeState, detail.ReadyReplicas, tc.want, tc.ready)
+			}
+		}
+	}
 }

@@ -17,6 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/usagereport"
 	"gpuworks.ai/gpuworks/internal/version"
 )
@@ -50,6 +51,18 @@ func (a *apiHandlers) fleetReport() url.Values {
 	summary, err := a.d.Store.FleetSummary()
 	if err != nil {
 		return nil
+	}
+	if a.d.Online != nil {
+		nodes, err := a.d.Store.FleetNodes()
+		if err != nil {
+			return nil
+		}
+		summary.OnlineNodes = 0
+		for i := range nodes {
+			if nodes[i].ConnectionStateForSession(a.d.Online(nodes[i].UUID)) == store.NodeStateOnline {
+				summary.OnlineNodes++
+			}
+		}
 	}
 	report := &usagereport.FleetReport{
 		InstallID: a.serverSettings().InstallID(), ServerVersion: version.Version,

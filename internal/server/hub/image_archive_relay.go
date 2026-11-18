@@ -71,6 +71,8 @@ func (h *Hub) CopyImageArchiveURL(ctx context.Context, archiveURL, targetNodeUUI
 		return 0, fmt.Errorf("open image load stream: %w", err)
 	}
 	defer writeConn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = writeConn.Close() })
+	defer stop()
 	reader := &countingReader{r: response.Body, progress: progress}
 	if _, err := io.CopyBuffer(writeConn, reader, make([]byte, 1<<20)); err != nil {
 		h.log.Warn("image archive relay failed", "target", targetNodeUUID, "image", imageRef, "transfer", transferID, "host", host, "bytes", reader.n, "err", err)

@@ -2653,6 +2653,8 @@ export interface MCPStatus {
 }
 
 export interface ApiKey {
+  /** Recorded owner; zero is a historical unassigned key. Older servers omit it. */
+  user_id?: number;
   name: string;
   prefix: string;
   last_used?: string;
