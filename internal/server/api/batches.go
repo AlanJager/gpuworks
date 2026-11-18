@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -155,16 +156,19 @@ func (a *apiHandlers) createBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
+		finishRejectedBatchUpload(w, r)
 		writeProductError(w, http.StatusBadRequest, ErrorBatchRequestInvalid, "the request must be multipart/form-data with a file field", map[string]any{"field": "file"})
 		return
 	}
 	form, err := r.MultipartReader()
 	if err != nil {
+		finishRejectedBatchUpload(w, r)
 		writeProductError(w, http.StatusBadRequest, ErrorBatchRequestInvalid, "the multipart body cannot be read: "+err.Error(), map[string]any{"field": "file"})
 		return
 	}
 	b, err := a.d.Batches.CreateFromUpload(a.batchCaller(r), form)
 	if err != nil {
+		finishRejectedBatchUpload(w, r)
 		a.writeBatchError(w, err)
 		return
 	}
@@ -194,4 +198,28 @@ func (a *apiHandlers) downloadBatchFile(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, file.Body)
+}
+
+// finishRejectedBatchUpload keeps an ordinary invalid upload readable to clients
+// still sending its body. This is a bounded best effort: oversized or stalled
+// uploads are closed rather than allowed to consume unlimited bytes or time.
+// Keep the policy aligned with the other Batch HTTP adapter's same helper.
+func finishRejectedBatchUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Body == nil {
+		return
+	}
+	controller := http.NewResponseController(w)
+	if err := controller.SetReadDeadline(time.Now().UTC().Add(5 * time.Second)); err != nil {
+		w.Header().Set("Connection", "close")
+		return
+	}
+	_, err := io.CopyN(io.Discard, r.Body, 200<<20)
+	if err == io.EOF {
+		_ = controller.SetReadDeadline(time.Time{})
+		return
+	}
+	w.Header().Set("Connection", "close")
+	// net/http closes (and may read) the body after the handler returns.
+	// Preserve the bound for that final read as well.
+	_ = controller.SetReadDeadline(time.Now().UTC())
 }

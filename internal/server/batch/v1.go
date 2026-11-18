@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -118,16 +119,19 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (h *v1) uploadFile(w http.ResponseWriter, r *http.Request) {
 	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
+		finishRejectedBatchUpload(w, r)
 		writeV1Error(w, invalid("invalid_content_type", "", "the request must be multipart/form-data with the fields file and purpose"))
 		return
 	}
 	mr, err := r.MultipartReader()
 	if err != nil {
+		finishRejectedBatchUpload(w, r)
 		writeV1Error(w, invalid("invalid_multipart", "", "the multipart body cannot be read: "+err.Error()))
 		return
 	}
 	file, err := h.s.UploadMultipart(h.owner(r), mr)
 	if err != nil {
+		finishRejectedBatchUpload(w, r)
 		h.fail(w, r, err)
 		return
 	}
@@ -332,4 +336,28 @@ func (h *v1) cancelBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toWireBatch(b))
+}
+
+// finishRejectedBatchUpload keeps an ordinary invalid upload readable to clients
+// still sending its body. This is a bounded best effort: oversized or stalled
+// uploads are closed rather than allowed to consume unlimited bytes or time.
+// Keep the policy aligned with the other Batch HTTP adapter's same helper.
+func finishRejectedBatchUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Body == nil {
+		return
+	}
+	controller := http.NewResponseController(w)
+	if err := controller.SetReadDeadline(time.Now().UTC().Add(5 * time.Second)); err != nil {
+		w.Header().Set("Connection", "close")
+		return
+	}
+	_, err := io.CopyN(io.Discard, r.Body, 200<<20)
+	if err == io.EOF {
+		_ = controller.SetReadDeadline(time.Time{})
+		return
+	}
+	w.Header().Set("Connection", "close")
+	// net/http closes (and may read) the body after the handler returns.
+	// Preserve the bound for that final read as well.
+	_ = controller.SetReadDeadline(time.Now().UTC())
 }
