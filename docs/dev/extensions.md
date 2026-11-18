@@ -72,8 +72,9 @@ type Service interface{ Run(ctx context.Context) error }
 | `NodeFleet(ctx)` | 全部节点的保持事实（`store.NodeHoldFacts`），按 id（加入顺序）排序，读池上一次查询 |
 | `NodeIdentity(ctx, ids, salt)` | 指定节点的加盐硬件身份（`store.NodeIdentity`），原始序列号不出核心，见[节点身份与节点清单](#节点身份与节点清单) |
 | `NodeInventory(ctx, cursor, limit)` | 按加入顺序分页的节点清单（`store.NodeInventoryPage`）：名称、加入时间、自己的卡（序号、型号、有无序列号） |
+| `NodeNamesByID(ctx, ids)` | 指定节点的显示名，以 id 为键（`map[uint]string`），读池上一次查询 |
 
-`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`NodeFleet`、`NodeIdentity` 与 `NodeInventory` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
+`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 与 `NodeNamesByID` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
 扩展路由挂在 `/api/v1/x/<名>/` 下：`api.RouteSpec.Pattern` 相对 `/api/v1`，是 `/x/<名>` 或以 `/x/<名>/` 开头，且是规整的路径（没有 `.`、`..`、`//` 与结尾的 `/`）；越出自己的命名空间、路径不规整，或同一方法下两个模式只差参数名（`{id}` 与 `{name}`），都在路由构建时 panic。核心不在 `/api/v1/x/` 下注册任何路由，所以模块名可以与核心路径段同名（如 `nodes`），也不会与核心将来新增的路径冲突。
 
@@ -116,7 +117,8 @@ type Service interface{ Run(ctx context.Context) error }
   - 部分答复：agent 还没上报主机 UUID 时 `Host` 是零值（`Known()` 为假）；不存在的节点（从未有过或已删除）不出现在结果里，调用方比对 id；重复的 id 只算一次。
   - `ids` 为 1 到 500 个节点，否则返回 `store.ErrNodeReadBatch`；盐为 1 到 256 字节，否则返回 `store.ErrIdentitySalt`。越界的调用被拒绝，不会被截断。
 - `NodeInventory(ctx, cursor, limit)` 按 id（加入顺序）返回一页 `store.NodeInventoryPage{Nodes, Next}`：每个节点的 id、UUID、显示名（运维起的名字，否则主机名）、加入时间、`HostReported`（主机 UUID 是否已知），以及本节点可用的卡 `{Index, Model, Serial}`，不含任何原始序列号。第一页 `cursor` 为 0，之后传上一页的 `Next`；`Next` 为 0 表示已是最后一页。`limit` 为 1 到 500，否则 `store.ErrNodeReadBatch`。节点 id 不复用，所以翻页之间加入或删除的节点不会让其余节点移位或重复。
-- 规模：两者都是钉住的读，在读池上各两次带索引的查询（节点按主键查找或按主键范围、卡走 `gpus` 的 `(node_id, ident)` 索引），一次最多 500 个节点。按页面上显示的节点调用 `NodeIdentity`，不要在每个事件里对整个节点集合调用。身份的变化（新的主机 UUID、换卡）不在 `store.NodeFleetTopic` 上发布；需要跟上它的模块在读页面时重新读。
+- `NodeNamesByID(ctx, ids)` 返回每个仍存在的指定节点的显示名（运维起的名字，否则主机名），以 id 为键；不存在的节点（从未有过或已删除）不在结果里，重复的 id 只算一次。只为少数节点打标签时用它，不必翻 `NodeInventory`。`ids` 为空时返回空 map、不查询；去重后超过 500 个返回 `store.ErrNodeReadBatch`，不会被截断。它是读池上一次按主键的查询。
+- 规模：`NodeIdentity` 与 `NodeInventory`都是钉住的读，在读池上各两次带索引的查询（节点按主键查找或按主键范围、卡走 `gpus` 的 `(node_id, ident)` 索引），一次最多 500 个节点。按页面上显示的节点调用 `NodeIdentity`，不要在每个事件里对整个节点集合调用。身份的变化（新的主机 UUID、换卡）不在 `store.NodeFleetTopic` 上发布；需要跟上它的模块在读页面时重新读。
 
 ## 表与迁移
 

@@ -72,8 +72,9 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `NodeFleet(ctx)` | Every node's hold facts (`store.NodeHoldFacts`), ordered by ID (enrollment order), in one query on the read pool |
 | `NodeIdentity(ctx, ids, salt)` | The salted hardware identity of the named nodes (`store.NodeIdentity`); raw serials never leave the core. See [Node identity and node inventory](#node-identity-and-node-inventory) |
 | `NodeInventory(ctx, cursor, limit)` | A page of the node inventory in enrollment order (`store.NodeInventoryPage`): names, enrollment times, each node's own cards (index, model, whether it has a serial) |
+| `NodeNamesByID(ctx, ids)` | The display names of the named nodes, keyed by ID (`map[uint]string`), in one query on the read pool |
 
-The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds`, `NodeFleet`, `NodeIdentity` and `NodeInventory` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
+The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds`, `NodeFleet`, `NodeIdentity`, `NodeInventory` and `NodeNamesByID` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
 
 Extension routes live under `/api/v1/x/<name>/`: `api.RouteSpec.Pattern` is relative to `/api/v1` and is `/x/<name>` or starts with `/x/<name>/`, and is a clean path (no `.`, `..`, `//` or trailing `/`). A route outside the module's own namespace, an unclean pattern, or two patterns of one method that differ only in parameter names (`{id}` and `{name}`) panic while the router is built. The core registers no route under `/api/v1/x/`, so a module name may equal a core path segment (such as `nodes`) and never collides with a path the core adds later.
 
@@ -116,7 +117,8 @@ A module that needs to recognize "the same machine, the same cards" (an inventor
   - Partial answers: `Host` is the zero value (`Known()` is false) until the agent reports a host UUID; a node that does not exist (never did, or was deleted) is left out of the result, so the caller compares IDs; a repeated ID counts once.
   - `ids` holds 1 to 500 nodes, else `store.ErrNodeReadBatch`; the salt is 1 to 256 bytes, else `store.ErrIdentitySalt`. A call out of bounds is refused, never cut short.
 - `NodeInventory(ctx, cursor, limit)` returns one page `store.NodeInventoryPage{Nodes, Next}` in ID (enrollment) order: each node's ID, UUID, display name (the name an operator gave it, otherwise its hostname), enrollment time, `HostReported` (whether its host UUID is known) and the cards it may use as `{Index, Model, Serial}`, with no raw serial. Pass 0 as `cursor` for the first page and the previous page's `Next` after that; a `Next` of 0 means this was the last page. `limit` is 1 to 500, else `store.ErrNodeReadBatch`. Node IDs are never reused, so a node enrolled or deleted between pages neither shifts nor repeats the others.
-- Scale: both are pinned reads, two indexed queries each on the read pool (nodes by primary-key lookup or range, cards through the `gpus` `(node_id, ident)` index), at most 500 nodes per call. Call `NodeIdentity` for the nodes a page shows, not for the whole fleet on every event. Identity changes (a new host UUID, a swapped card) are not published on `store.NodeFleetTopic`; a module that must follow them reads again when it reads the page.
+- `NodeNamesByID(ctx, ids)` returns the display name (the name an operator gave the node, otherwise its hostname) of each named node that still exists, keyed by ID; a node that does not exist (never did, or was deleted) is absent, and a repeated ID counts once. Use it to label a few nodes instead of paging `NodeInventory`. No IDs returns an empty map without a query; more than 500 distinct IDs returns `store.ErrNodeReadBatch`, never cut short. It is one primary-key query on the read pool.
+- Scale: `NodeIdentity` and `NodeInventory` are pinned reads, two indexed queries each on the read pool (nodes by primary-key lookup or range, cards through the `gpus` `(node_id, ident)` index), at most 500 nodes per call. Call `NodeIdentity` for the nodes a page shows, not for the whole fleet on every event. Identity changes (a new host UUID, a swapped card) are not published on `store.NodeFleetTopic`; a module that must follow them reads again when it reads the page.
 
 ## Tables and migrations
 
@@ -326,4 +328,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 0326749aac8f878c0c84524f126add96fcfb6c99fb340d97fd54f938a9f1bcc6 -->
+<!-- translation-source-sha256: 713ea9cd49647f7bc74cc8f1d82384d6ecd14509abf8c4c4c76a633c36f25e27 -->
