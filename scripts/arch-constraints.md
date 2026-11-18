@@ -977,6 +977,7 @@ error 一律用 `errors.Is/As`。排除的是**调用外部系统的适配器**�
 
 #### console_unlinked_code_packages
 
-`make i18n-check` 不要求其码有 locale 文案的包（目前只有 `internal/templateprobe`：目录维护者的 CLI 以英文输出它的
-失败族）必须不被 `cmd/gpuworks`、`cmd/gpuworks-agent` 链接。计数是这两个二进制依赖图里出现该包的次数。
+`make i18n-check` 不要求其码有核心 locale 文案的包必须不被 `cmd/gpuworks`、`cmd/gpuworks-agent` 链接。
+当前包括 `internal/templateprobe`（目录维护者 CLI 的英文诊断）与 `internal/testenv/extplugin/fakeplugin`
+（测试专用的第三方插件程序，故意发出合成的插件自有通知）。计数是这两个二进制依赖图里出现这些包的次数。
 一旦控制台要展示这些码，就从 i18n-check 的排除表里删掉它并补文案，而不是放宽这条预算。

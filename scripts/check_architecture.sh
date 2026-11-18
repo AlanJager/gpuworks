@@ -475,7 +475,7 @@ legacy_check_vocabulary_hits() {
 }
 console_unlinked_code_package_links() {
   for main in ./cmd/gpuworks ./cmd/gpuworks-agent; do
-    CGO_ENABLED=0 go list -deps "$main" 2>/dev/null | grep -E '/internal/templateprobe$' || true
+    CGO_ENABLED=0 go list -deps "$main" 2>/dev/null | grep -E '/internal/(templateprobe|testenv/extplugin/fakeplugin)$' || true
   done
 }
 

@@ -405,11 +405,14 @@ for (const [name, map] of extraLocaleMaps) {
   }
   leafKeys.set(language, keys);
 }
-// Packages that neither binary links: their codes are read by catalog
-// maintainers in a CLI's English output, never rendered by the console.
+// Packages that neither binary links: catalog CLI diagnostics and synthetic
+// third-party plugin notices never belong to the console's core locales.
 // check_architecture.sh's console_unlinked_code_packages proves each one stays
 // out of cmd/gpuworks and cmd/gpuworks-agent.
-const consoleUnlinkedCodePackages = [path.join(root, "internal/templateprobe")];
+const consoleUnlinkedCodePackages = [
+  path.join(root, "internal/templateprobe"),
+  path.join(root, "internal/testenv/extplugin/fakeplugin"),
+];
 const runtimeCodes = new Map();
 for (const top of ["internal", "pkg"]) {
   for (const file of filesUnder(path.join(root, top), ".go")) {
