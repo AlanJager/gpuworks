@@ -70,7 +70,7 @@ func (s Source) Collect() proto.NetInventory {
 		}
 	}
 	sort.Slice(inv.Interfaces, func(i, j int) bool { return inv.Interfaces[i].Name < inv.Interfaces[j].Name })
-	inv.RDMAPorts = s.rdmaPorts()
+	inv.RDMAPorts = s.rdmaPorts(inv.Interfaces)
 	if s.LookPath != nil {
 		for _, tool := range testTools {
 			if _, err := s.LookPath(tool); err == nil {
@@ -136,7 +136,7 @@ func (s Source) describe(iface Iface) proto.NetInterface {
 	return out
 }
 
-func (s Source) rdmaPorts() []proto.RDMAPort {
+func (s Source) rdmaPorts(ifaces []proto.NetInterface) []proto.RDMAPort {
 	ports := []proto.RDMAPort{}
 	root := filepath.Join(s.SysRoot, "class", "infiniband")
 	devices, err := os.ReadDir(root)
@@ -156,13 +156,19 @@ func (s Source) rdmaPorts() []proto.RDMAPort {
 				continue
 			}
 			dir := filepath.Join(root, name, "ports", portEntry.Name())
+			layer := readString(filepath.Join(dir, "link_layer"))
+			var address *proto.RoCEAddress
+			if strings.EqualFold(layer, "Ethernet") {
+				address = roceGIDAddress(dir, ifaces, netdev)
+			}
 			ports = append(ports, proto.RDMAPort{
-				Device:    name,
-				Port:      number,
-				State:     portState(readString(filepath.Join(dir, "state"))),
-				LinkLayer: readString(filepath.Join(dir, "link_layer")),
-				RateGbps:  portRate(readString(filepath.Join(dir, "rate"))),
-				NetDev:    netdev,
+				Device:      name,
+				Port:        number,
+				State:       portState(readString(filepath.Join(dir, "state"))),
+				LinkLayer:   layer,
+				RateGbps:    portRate(readString(filepath.Join(dir, "rate"))),
+				NetDev:      netdev,
+				RoCEAddress: address,
 			})
 		}
 	}
