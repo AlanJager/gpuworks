@@ -31,6 +31,11 @@
 // and numbers every push max(own counter, held generation)+1, so a plugin
 // whose storage was restored or purged is never refused as stale.
 //
+// RequirePrincipal wraps a route's handler: it verifies the principal the
+// server signed for the request under this spawn's key and refuses a
+// request whose route action differs from the route the plugin matched;
+// the handler reads the caller with PrincipalFrom.
+//
 // The package imports only the standard library and pkg/extapi. The
 // plugintest package runs a plugin in process against a fake server, for
 // the plugin's own tests. The protocol is described in

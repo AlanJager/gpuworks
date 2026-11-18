@@ -367,6 +367,14 @@ Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
 
 `extapi.VerifyPrincipal(key, 主体, MAC, 特性访问, now)` 先以常数时间比较 MAC，通过后才解码：严格解码，要求规范 JSON、拒绝未知字段，再校验上表的规则；`exp` 早于 `now`，或晚于 `now` 加最长路由超时（600 + 5 秒）时拒绝。缺请求头、MAC 不符、过期分别是 `ErrPrincipalMissing`、`ErrPrincipalMAC`、`ErrPrincipalExpired`（过远是 `ErrPrincipalTooLong`），格式错误是带码的 `*extapi.Error`。
 
+插件用 SDK 时在注册路由处包一层 `pluginsdk.RequirePrincipal(action, h)`：
+
+```go
+mux.Handle("POST /r/jobs", pluginsdk.RequirePrincipal("acme_backup.jobs_create", createJob))
+```
+
+它用本次拉起的密钥校验三个请求头，并要求 `route_action` 等于插件自己的路由器匹配到的路由的 `action`。server 与插件的路由器把同一路径匹配到不同路由时，请求因此被拒绝，而不会套用另一条路由的访问级别与特性检查。不通过时回 403 与带 `Gwx-Product-Error` 的错误对象（`reason` 为 `permission_denied`，`object` 为 `principal`；MAC 不符为 `PLUGIN_SIGNATURE_INVALID`，其余为 `PLUGIN_WIRE_*`），处理函数不会被调用。处理函数用 `pluginsdk.PrincipalFrom(r)` 与 `pluginsdk.FeatureAccessFrom(r)` 读校验过的调用方。`plugintest` 用固定密钥（`Harness.PrincipalKey`）签名：`Harness.Principal(action, route)` 给出一个管理员会话的主体，`Harness.Sign(req, p, access)` 像 server 一样设好三个请求头。
+
 ## 健康与错误
 
 健康探测的应答：`status` 为 `ok` 或 `degraded`；`degraded` 必须带 `code` 说明原因，`params` 只能随 `code` 出现。

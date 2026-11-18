@@ -367,6 +367,14 @@ Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
 
 `extapi.VerifyPrincipal(key, principal, MAC, feature access, now)` compares the MAC in constant time first and decodes only after it matches: strictly, requiring canonical JSON and refusing unknown fields, then checking the rules above. It refuses an `exp` before `now`, or later than `now` plus the longest route timeout (600 + 5 seconds). A missing header, a MAC mismatch and an expired principal are `ErrPrincipalMissing`, `ErrPrincipalMAC` and `ErrPrincipalExpired` (one too far ahead is `ErrPrincipalTooLong`); a malformed one is a coded `*extapi.Error`.
 
+A plugin built with the SDK wraps each route where it registers it with `pluginsdk.RequirePrincipal(action, h)`:
+
+```go
+mux.Handle("POST /r/jobs", pluginsdk.RequirePrincipal("acme_backup.jobs_create", createJob))
+```
+
+It verifies the three headers with this spawn's key and requires `route_action` to equal the `action` of the route the plugin's own router matched. If the server's router and the plugin's match the same path to different routes, the request is therefore refused rather than served under the other route's access level and feature checks. A request that fails gets 403 and an error object marked with `Gwx-Product-Error` (`reason` `permission_denied`, `object` `principal`; `PLUGIN_SIGNATURE_INVALID` for a MAC mismatch, `PLUGIN_WIRE_*` otherwise), and the handler is not called. The handler reads the verified caller with `pluginsdk.PrincipalFrom(r)` and `pluginsdk.FeatureAccessFrom(r)`. `plugintest` signs with a fixed key (`Harness.PrincipalKey`): `Harness.Principal(action, route)` returns an administrator session principal, and `Harness.Sign(req, p, access)` sets the three headers as the server does.
+
 ## Health and errors
 
 The answer to a health probe: `status` is `ok` or `degraded`; `degraded` must carry a `code` that says why, and `params` may only appear with a `code`.
@@ -545,4 +553,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: c1af06abcbf5ea6fdbbdbccaf83dad7328d98b397c2ab83ea0b41aa97d038a2a -->
+<!-- translation-source-sha256: c7e9c2ad36eae9657d58c6c84d488f7d59a9edf437a8b338aa46b291d846ab3f -->
