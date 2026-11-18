@@ -43,13 +43,15 @@ export async function downloadFile(path: string, { method, body, fallbackName, s
  */
 export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
+  const revoke = URL.revokeObjectURL.bind(URL);
   const link = document.createElement("a");
   link.href = url;
   link.download = name;
   document.body.append(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Keep cleanup with the API that owns the URL, even if a page replaces it.
+  setTimeout(() => revoke(url), 1000);
 }
 
 /**
