@@ -915,3 +915,31 @@ func TestABorrowWaitingForItsJobLetsTheSweepReturnAnIdleJob(t *testing.T) {
 		t.Fatalf("the sweep cancelled the job a borrow waited for (%d)", n)
 	}
 }
+
+// The grace for a job found at start ends with the first Lease: the engine
+// leases for the instances the server's sync named, so the cards in use are
+// known. An adopted job nobody uses is then idle, and returned, or a new
+// borrow waits behind it (E-HPC, 2026-11-18: after an upgrade the agent kept
+// its failed attempt's job while the retry pended behind it).
+func TestTheGraceForJobsFoundAtStartEndsWithTheFirstLease(t *testing.T) {
+	f := newFakeSlurm()
+	f.gpuCount = 2
+	f.add("30", HoldPrefix+"inst-old", "root", 0)
+	l, clock := newTestLeaser(t, f, Config{IdleReturn: time.Minute})
+	if err := l.Sweep(context.Background(), nil, func(string, string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := l.Lease(context.Background(), "inst-new", []string{card1}, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	newCards := map[string][]string{"inst-new": {card1}}
+	for i := 0; i < 3; i++ {
+		clock.advance(time.Minute)
+		if err := l.Sweep(context.Background(), newCards, func(string, string) {}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.called("scancel 30") != 1 {
+		t.Fatalf("after the first lease the unused adopted job was kept: %q", f.calls)
+	}
+}

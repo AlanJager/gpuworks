@@ -73,10 +73,12 @@ const (
 	defaultPendingTimeout = 10 * time.Minute
 	defaultIdleReturn     = 60 * time.Second
 	// adoptedGrace is how long after the agent starts a job it found is
-	// kept although no instance seems to use its cards: the engine learns
-	// its instances from the server's first state sync, which an
-	// unreachable or slow server delays, while their containers keep
-	// running on those cards.
+	// kept although no instance seems to use its cards, until the first
+	// Lease: the engine learns its instances from the server's first state
+	// sync, which an unreachable or slow server delays, while their
+	// containers keep running on those cards. Once it leases, the cards in
+	// use are known, and an adopted job nobody uses is idle like any other
+	// (it may hold the card a new borrow waits for).
 	adoptedGrace = 10 * time.Minute
 	pollInterval = 2 * time.Second
 )
@@ -109,6 +111,10 @@ type Leaser struct {
 	// startedAt is when this leaser first listed its jobs: jobs found then
 	// were submitted before a restart (adopted).
 	startedAt time.Time
+	// leased: Lease was called. The engine leases cards for the instances
+	// the server's state sync names, so from then on the cards in use are
+	// known and an adopted job no longer needs the grace.
+	leased bool
 
 	// cardMu guards the card naming below. It is apart from mu so the
 	// ledger keeps reporting while a borrow waits for its job to start.
@@ -328,6 +334,7 @@ func (l *Leaser) jobCardsOnNode(ctx context.Context, record string) ([]string, e
 func (l *Leaser) Lease(ctx context.Context, instance string, want []string, shared bool, progress func(string)) ([]string, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.leased = true
 	if err := l.refreshOwnLocked(ctx); err != nil {
 		return nil, false, fmt.Errorf("list this agent's Slurm jobs: %w", err)
 	}

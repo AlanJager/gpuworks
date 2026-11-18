@@ -51,7 +51,7 @@ func (l *Leaser) Sweep(ctx context.Context, inUse map[string][]string, lost func
 			l.cancelLocked(ctx, id, "pending with nobody waiting")
 			continue
 		}
-		if overlaps(j.cards, keys(used)) || (j.adopted && now.Sub(l.startedAt) < adoptedGrace) {
+		if overlaps(j.cards, keys(used)) || (j.adopted && !l.leased && now.Sub(l.startedAt) < adoptedGrace) {
 			j.idle = time.Time{}
 			continue
 		}
