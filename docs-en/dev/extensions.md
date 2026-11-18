@@ -281,6 +281,8 @@ The server starts every plugin through its own binary: `gpuworks plugin-exec --p
 
 A package that requires Landlock (certificate `min_isolation: landlock`) does not start on a host without it: the trampoline exits with code 78 and writes `PLUGIN_ISOLATION_UNAVAILABLE` to stderr. The trampoline's other exit codes: 64 for a bad command line, 71 when applying the sandbox failed, 127 when the plugin could not be executed.
 
+The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `master.key` or paths outside its package, and cannot signal a sibling process) skip on a host without Landlock; CI's `core-test` runs them once more with `GPUWORKS_TEST_STRICT=1`, where a missing Landlock is a failure rather than a skip, so they are known to have run on the Linux job.
+
 ### Supervision
 
 `internal/server/pluginhost` runs one supervisor per package. The goroutine that starts a plugin stays locked to its OS thread for the plugin's whole life: on Linux the parent-death signal belongs to the thread that forked the child, and the Go runtime retires the thread of a locked goroutine that ends, so without the lock another goroutine ending could take the plugin with it.
@@ -327,4 +329,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 1be642750a23c743a3b78ad47f510b60dc6a581c2da3991cf44780859a6c2679 -->
+<!-- translation-source-sha256: eb9df18178663df2d657c63406430de9a9accc58be2331457a72444c466a7e31 -->

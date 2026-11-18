@@ -381,6 +381,21 @@ core-test:
     # their own, which go test ./... at the root does not enter.
     - make test-extapi GO_TEST_FLAGS="-v -timeout 5m"
     - make test-pluginsdk GO_TEST_FLAGS="-v -timeout 5m"
+    # The Landlock cases of the plugin sandbox skip on a host without
+    # Landlock, which would let the suite below pass without ever applying
+    # it. Run them again strict: a missing Landlock fails instead of
+    # skipping, and each case must report PASS by name.
+    - |
+      mkdir -p .testlogs
+      landlock_cases='TestContractLandlockKeepsThePluginFromTheMasterKey TestLandlockDeniesPathsOutsideThePlugin TestSiblingCannotReachAnotherPluginsSockets'
+      GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 go test -v -count=1 -timeout 10m \
+        -run "^($(echo $landlock_cases | tr ' ' '|'))\$" ./internal/testenv/extplugin/ \
+        > .testlogs/landlock-strict.log 2>&1 || { tail -n 80 .testlogs/landlock-strict.log; exit 1; }
+      for c in $landlock_cases; do
+        grep -q -- "^--- PASS: $c " .testlogs/landlock-strict.log || { echo "$c did not pass"; tail -n 80 .testlogs/landlock-strict.log; exit 1; }
+      done
+      if grep -q -- '--- SKIP' .testlogs/landlock-strict.log; then grep -- '--- SKIP' .testlogs/landlock-strict.log; exit 1; fi
+      grep -E -- '--- (PASS|SKIP|FAIL)' .testlogs/landlock-strict.log
     - |
       # Keep all output as an artifact; streaming the verbose suite exceeds
       # the runner's 4 MB trace cap before the last packages report failures.

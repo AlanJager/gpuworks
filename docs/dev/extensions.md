@@ -281,6 +281,8 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 
 要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
 
+`internal/testenv/extplugin` 里验证 Landlock 的用例（插件读不到 `master.key` 与包外路径、不能向兄弟进程发信号）在没有 Landlock 的主机上跳过；CI 的 `core-test` 另以 `GPUWORKS_TEST_STRICT=1` 单独再跑一遍，这时缺少 Landlock 是失败而不是跳过，所以这些用例确实在 Linux 任务上执行过。
+
 ### 监管
 
 `internal/server/pluginhost` 为每个包运行一个监管者。拉起插件的 goroutine 在插件存活期间一直锁定在自己的 OS 线程上：Linux 的父进程死亡信号属于 fork 子进程的那个线程，而 Go 运行时会回收锁定线程的 goroutine 结束时的线程，不锁定的话别的 goroutine 结束时就可能把插件一起杀掉。
