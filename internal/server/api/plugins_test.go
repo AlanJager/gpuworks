@@ -30,8 +30,8 @@ type fakePlugins struct {
 }
 
 func (f *fakePlugins) Check(context.Context) dto.PluginsCheck {
-	return dto.PluginsCheck{ID: "plugins", Status: "fail", Code: messages.CheckPluginsFailing, Params: map[string]any{"ids": "acme_backup"},
-		Message: "enabled plugins cannot run: acme_backup"}
+	return dto.PluginsCheck{ID: "plugins", Status: "fail", Message: dto.ProductMessage{Code: messages.CheckPluginsFailing,
+		Params: map[string]any{"ids": "acme_backup"}, Message: "enabled plugins cannot run: acme_backup"}}
 }
 
 func (f *fakePlugins) WriteMetrics(w io.Writer) error {
@@ -154,7 +154,7 @@ func TestPluginRoutesWire(t *testing.T) {
 	want := `{"items":[{"id":"acme_backup","version":"1.0.0","publisher":"acme","trust":"host","enabled":true,"state":"running",` +
 		`"since":"2026-11-17T08:00:00Z","restarts":0,"parts":["server"],"isolation":"landlock","roles":[],"permissions":[{"name":"push:banners","risk":"low"}],` +
 		`"approve_hash":"sha256:00","actions":["disable","uninstall"]}],` +
-		`"check":{"id":"plugins","status":"fail","code":"CHECK_PLUGINS_FAILING","params":{"ids":"acme_backup"},"message":"enabled plugins cannot run: acme_backup"}}`
+		`"check":{"id":"plugins","status":"fail","message":{"code":"CHECK_PLUGINS_FAILING","params":{"ids":"acme_backup"},"message":"enabled plugins cannot run: acme_backup"}}}`
 	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("list: %d\n%s\nwant\n%s", rec.Code, rec.Body, want)
 	}
