@@ -30,7 +30,6 @@
   line-height: var(--line-height-label);
 }
 .live-controls > div,
-.live-pager,
 .live-meta,
 .live-spec {
   display: flex;
@@ -50,14 +49,6 @@
   min-height: 0;
   min-width: 0;
   border-right: 1px solid var(--border-subtle);
-}
-.live-pager {
-  flex-shrink: 0;
-  border-top: 1px solid var(--border-subtle);
-  justify-content: space-between;
-  padding: 8px;
-  font-size: var(--font-size-label);
-  color: var(--fg-muted);
 }
 .live-results,
 .live-readme {
@@ -254,7 +245,6 @@ article.live-card:hover {
 .repository-tab-row [role="tablist"] {margin:0;border-bottom:0;}
 .repository-discovery .live-tiles-view {display:flex;flex-direction:column;}
 .live-tiles-view .live-browser {border:0;flex:1;min-height:0;}
-.live-tiles-view .live-pager {justify-content:flex-end;gap:12px;}
 .live-tiles-view .live-results {padding:4px;}
 @media(max-width:760px){.discovery-tiles {grid-template-columns:minmax(0,1fr);}}
 
@@ -265,3 +255,15 @@ article.live-card:hover {
 .catalog-empty { display: grid; flex: 1; place-items: center; }
 .catalog-empty strong, .live-readme [data-slot="empty-description"] strong { display: block; color: var(--fg-default); }
 .live-readme [data-slot="empty-description"] span { display: block; }
+
+.catalog-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 40px;
+  padding: 12px;
+  color: var(--fg-muted);
+  font-size: var(--font-size-label);
+}

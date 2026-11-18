@@ -1,4 +1,5 @@
 import CatalogDetails from "./CatalogDetails";
+import { useCatalogPages } from "./useCatalogPages";
 import { CatalogDetailSkeleton, CatalogResultsSkeleton } from "./CatalogSkeleton";
 import { OnlineTiles } from "./OnlineTiles";
 import { RegisterIconButton } from "./RegisterIconButton";
@@ -22,15 +23,12 @@ import { OptionSelect } from "../../../ui-kit/OptionSelect";
 import { Segmented } from "../../../ui-kit/Segmented";
 import { CatalogAvatar } from "./CatalogAvatar";
 import {
-  catalogUrl,
   catalogSignal,
   readHub,
-  readPage,
   problem,
   providers,
   capabilityTasks,
   purposeLabel,
-  pageSize,
   type Provider,
   type HubModel,
 } from "./hubs";
@@ -65,29 +63,20 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
   const cards = view === "cards";
   const [query, setQuery] = useState(""),
     [capability, setCapability] = useState<OperationType | "all">("all"),
-    [sort, setSort] = useState("trending"),
-    [page, setPage] = useState(1),
-    [retry, setRetry] = useState(0);
+    [sort, setSort] = useState("trending");
   const [selected, setSelected] = useState(""),
-    [answer, setAnswer] = useState<Awaited<ReturnType<typeof readPage>>>(),
-    [error, setError] = useState(""),
     [feedback, setFeedback] = useState("");
-  const [responseKey, setResponseKey] = useState("");
+  const readmeCache = useRef(new Map<string, string>());
   const [refs, setRefs] = useState<Record<string, string>>({});
   const [known, setKnown] = useState<Array<{source:string; source_id:string; revision?:string; artifact_subfolder?:string}>>([]);
-  const discoveryDeadline = useRef(0);
   const [matchFailed, setMatchFailed] = useState(false);
-  const explicit = useRef(false),
-    tried = useRef(new Set<string>()),
-    cursors = useRef(new Map<number, string>());
-  const key = JSON.stringify([source, query, capability, sort, page, retry]);
-  const result = responseKey === key ? answer : undefined;
-  const failure = responseKey === key ? error : "";
+  const explicit = useRef(false), tried = useRef(new Set<string>());
+  const {result, error: failure, loading, loadMore, retry} = useCatalogPages(active, source, query, capability, sort);
+  const listRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
   const model =
     result?.items.find((m) => m.id === selected) || result?.items[0];
   function resetPage() {
-    setPage(1);
-    cursors.current.clear();
     setDetailOpen(false);
     setSelected("");
     setFeedback("");
@@ -100,66 +89,34 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
       false,
     );
   useEffect(() => {
-    if (!active) return;
-    const c = new AbortController();
-    if (!explicit.current && !tried.current.size)
-      discoveryDeadline.current = performance.now() + 5000;
-    const timer = setTimeout(async () => {
-      try {
-        const url =
-          source === "huggingface" && page > 1
-            ? cursors.current.get(page)
-            : catalogUrl(source, query, capability, sort, page);
-        if (!url) throw new Error(t("catalog.expired"));
-        const remaining = Math.max(
-          1,
-          Math.floor(discoveryDeadline.current - performance.now()),
-        );
-        const timeout = explicit.current
-          ? 4700
-          : tried.current.size
-            ? remaining
-            : Math.min(2800, remaining);
-        const data = await readPage(
-          source,
-          url,
-          catalogSignal(c.signal, timeout),
-        );
-        if (c.signal.aborted) return;
-        if (data.next) cursors.current.set(page + 1, data.next);
-        setAnswer(data);
-        setError("");
-        setResponseKey(key);
-        localStorage.setItem("model-catalog-source", source);
-        const previous = [...tried.current][0] as Provider | undefined;
-        setFeedback(previous && previous !== source ? t("catalog.fallback", {source:providers[previous], other:providers[source]}) : "");
-        tried.current.clear();
-      } catch (e) {
-        if (c.signal.aborted) return;
-        if (!explicit.current) {
-          tried.current.add(source);
-          const other = source === "modelscope" ? "huggingface" : "modelscope";
-          if (!tried.current.has(other)) {
-            setFeedback(t("catalog.switching", {source:providers[source], other:providers[other]}));
-            onProvider(other);
-            return;
-          }
-          explicit.current = true;
-          setError(t("catalog.unavailable"));
-          setAnswer(undefined);
-          setResponseKey(key);
-          return;
-        }
-        setError(providers[source] + " " + problem(e));
-        setAnswer(undefined);
-        setResponseKey(key);
+    if (!active || loading) return;
+    if (result) {
+      localStorage.setItem("model-catalog-source", source);
+      const previous = [...tried.current][0] as Provider | undefined;
+      setFeedback(previous && previous !== source ? t("catalog.fallback", {source: providers[previous], other: providers[source]}) : "");
+      tried.current.clear();
+      explicit.current = true;
+    } else if (failure && !explicit.current) {
+      tried.current.add(source);
+      const other = source === "modelscope" ? "huggingface" : "modelscope";
+      if (!tried.current.has(other)) {
+        setFeedback(t("catalog.switching", {source: providers[source], other: providers[other]}));
+        onProvider(other);
+      } else {
+        explicit.current = true;
+        setFeedback("");
       }
-    }, 220);
-    return () => {
-      clearTimeout(timer);
-      c.abort();
-    };
-  }, [key, active]);
+    }
+  }, [active, loading, result, failure, source, onProvider, t]);
+  useEffect(() => {
+    if (!active || loading || failure || !result?.next || !listRef.current || !moreRef.current) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) loadMore();
+    }, {root: listRef.current, rootMargin: "0px 0px 160px 0px"});
+    observer.observe(moreRef.current);
+    return () => observer.disconnect();
+  }, [active, loading, failure, result, cards, loadMore]);
+  useEffect(() => { listRef.current?.scrollTo?.(0, 0); }, [source, query, capability, sort]);
   useEffect(() => {
     if (!active) return;
     let alive = true;
@@ -173,7 +130,7 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
   const refFor = (m: HubModel) => m.revision || refs[idKey(source, m.id)] || "";
   const [matches, setMatches] = useState<{key:string; templates:InferenceTemplate[]}>();
   const [matchRetry, setMatchRetry] = useState(0);
-  const modelID = model?.id;
+  const modelID = active && (!cards || detailOpen) ? model?.id : undefined;
   const revision = model ? refFor(model) : "";
   const matchKey = JSON.stringify([source, modelID, revision]);
   const templates = matches?.key === matchKey ? matches.templates : [];
@@ -194,75 +151,32 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
     load().catch(() => { if (current) setMatchFailed(true); });
     return () => { current = false; };
   }, [active, modelID, source, revision, matchKey, matchRetry]);
-  // ModelScope does not include the commit in search results. Resolve it for
-  // the detail pane and for visible rows whose registration depends on it.
+  const [revisionErrors, setRevisionErrors] = useState<Record<string, string>>({});
   const revisionIDs = source !== "modelscope" ? [] : result?.items.filter(item =>
-    !refFor(item) && (item.id === modelID || known.some(m => m.source === source && m.source_id === item.id && !m.artifact_subfolder))
+    !refFor(item) && !revisionErrors[idKey(source, item.id)] &&
+    (item.id === modelID || known.some(m => m.source === source && m.source_id === item.id && !m.artifact_subfolder))
   ).map(item => item.id) ?? [];
-  const revisionKey = JSON.stringify(revisionIDs);
-  const [revisionErrors, setRevisionErrors] = useState<Set<string>>(new Set());
+  const revisionID = revisionIDs.find(id => id === modelID) || revisionIDs[0];
   useEffect(() => {
-    if (!active) return;
+    if (!active || !revisionID) return;
     const controller = new AbortController();
-    const ids: string[] = JSON.parse(revisionKey);
-    for (const id of ids) {
-      const signal = catalogSignal(controller.signal, 4500);
-      const url = "https://modelscope.cn/api/v1/models/" + id.split("/").map(encodeURIComponent).join("/") + "/commits?Revision=master&PageSize=1";
-      readHub(source, url, signal).then(async response => {
-        if (!response.ok) throw new Error();
-        const revision = (await response.json()).Data?.Commit?.[0]?.Id;
-        if (!/^[a-f0-9]{40}$/.test(revision)) throw new Error();
-        if (!controller.signal.aborted) setRefs(prev => ({...prev, [idKey(source, id)]: revision}));
-      }).catch(() => { if (!controller.signal.aborted) setRevisionErrors(prev => new Set(prev).add(id)); });
-    }
+    const key = idKey(source, revisionID);
+    const url = "https://modelscope.cn/api/v1/models/" + revisionID.split("/").map(encodeURIComponent).join("/") + "/commits?Revision=master&PageSize=1";
+    readHub(source, url, catalogSignal(controller.signal, 6000)).then(async response => {
+      if (!response.ok) throw new Error(t("catalog.revisionError"));
+      const revision = (await response.json()).Data?.Commit?.[0]?.Id;
+      if (!/^[a-f0-9]{40}$/.test(revision)) throw new Error(t("catalog.revisionError"));
+      if (!controller.signal.aborted) setRefs(prev => ({...prev, [key]: revision}));
+    }).catch(cause => {
+      if (!controller.signal.aborted) setRevisionErrors(prev => ({...prev, [key]: problem(cause)}));
+    });
     return () => controller.abort();
-  }, [active, revisionKey, source, matchRetry]);
+  }, [active, revisionID, source, t]);
   const registration = (m: HubModel) => (
     <RegisterIconButton
       registered={known.some(item => item.source === source && item.source_id === m.id && !item.artifact_subfolder && (item.revision || "") === refFor(m))}
       onClick={() => onManual(source, m.id, false, refFor(m))}
     />
-  );
-  const pager = (
-    <div className="live-pager">
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={page <= 1}
-        onClick={() => {
-          explicit.current = true;
-          setPage(page - 1);
-        }}
-      >
-        {t("catalog.prev")}
-      </Button>
-      <span>
-        {page}
-        {result?.total != null
-          ? " / " +
-            Math.max(
-              1,
-              Math.ceil(result.total / pageSize),
-            ).toLocaleString(i18n.language)
-          : ""}
-      </span>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={
-          !result ||
-          (source === "modelscope"
-            ? page * pageSize >= Math.min(result.total || 0, 3000)
-            : !result.next)
-        }
-        onClick={() => {
-          explicit.current = true;
-          setPage(page + 1);
-        }}
-      >
-        {t("catalog.next")}
-      </Button>
-    </div>
   );
   const details =
     model && active && (!cards || detailOpen) ? (
@@ -271,7 +185,10 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
         model={model}
         version={refFor(model)}
         source={source}
-        retryMatches={matchFailed || (!refFor(model) && revisionErrors.has(model.id)) ? () => setMatchRetry(v => v + 1) : undefined}
+        readmeCache={readmeCache.current}
+        retryMatches={matchFailed ? () => setMatchRetry(v => v + 1) : undefined}
+        revisionError={revisionErrors[idKey(source, model.id)]}
+        retryRevision={() => setRevisionErrors(prev => ({...prev, [idKey(source, model.id)]: ""}))}
         templates={templates}
         closeDrawer={cards ? () => setDetailOpen(false) : undefined}
       />
@@ -343,13 +260,13 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
             </TabsList>
         </Tabs>
       </div>
-      {failure || result?.items.length === 0 ? (
+      {(!result && failure) || result?.items.length === 0 ? (
         <div className="catalog-empty" role="status">
           <EmptyState kind="models" description={<>
             <strong>{failure || t("catalog.noResults")}</strong>
             <span>{failure ? t("catalog.unavailableHelp") : t("catalog.noResultsHelp")}</span>
           </>} action={<>
-            {failure ? <Button size="sm" onClick={() => setRetry((v) => v + 1)}>{t("catalog.retry")}</Button> :
+            {failure ? <Button size="sm" onClick={retry}>{t("catalog.retry")}</Button> :
               (query || capability !== "all") && <Button size="sm" onClick={() => {
                 resetPage();
                 setQuery("");
@@ -361,7 +278,7 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
         </div>
       ) : <div className={cards ? "live-grid live-tiles-view" : "live-grid"}>
         <section className="live-browser">
-          <div className="live-results" aria-busy={!result}>
+          <div className="live-results" ref={listRef} aria-busy={loading}>
             {!result ? (
               <CatalogResultsSkeleton cards={cards} />
             ) : (
@@ -411,8 +328,15 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
                 ))
               )
             )}
+            {result && (
+              <div className="catalog-more" ref={moreRef}>
+                {failure ? <><span role="status">{failure}</span><Button size="sm" variant="link" onClick={retry}>{t("catalog.retry")}</Button></> :
+                  loading ? <span role="status">{t("catalog.loading", {source: providers[source]})}</span> :
+                  result.next ? <Button size="sm" variant="ghost" onClick={loadMore}>{t("catalog.more")}</Button> :
+                  <span role="status">{t(source === "modelscope" && (result.total ?? 0) > result.items.length ? "catalog.refine" : "catalog.end")}</span>}
+              </div>
+            )}
           </div>
-          {pager}
         </section>
         {!cards && (!result ? <CatalogDetailSkeleton /> : details)}
       </div>}
