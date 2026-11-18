@@ -31,10 +31,12 @@ var hostCalls = map[string]int{
 
 // coreCapabilities offers every pushed table kind the core validates and
 // enforces (package pushstate), at the newest schema pkg/extapi defines,
-// and the host API reads and calls.
+// and the host API reads and calls. It also offers host.setup@1; package
+// verification refuses required USB setup on unsupported platforms.
 func coreCapabilities() map[string]int {
 	out := maps.Clone(hostReads)
 	maps.Copy(out, hostCalls)
+	out[extapi.CapHostSetup] = 1
 	for _, kind := range extapi.TableKinds() {
 		schemas := extapi.TableSchemas(kind)
 		out[extapi.TableCapability(kind)] = schemas[len(schemas)-1]
