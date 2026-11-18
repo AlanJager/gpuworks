@@ -120,6 +120,8 @@
     "PLANNING_KV_BELOW_CONTEXT": "The estimated KV cache capacity is {{kv_tokens}} tokens, below the maximum context of {{max_model_len}}. Actual capacity depends on the attention architecture and inference engine, so the estimate may be inaccurate. You can lower the maximum context or continue with the current settings; the engine may fail to start.",
     "IMAGE_PARTITION_PROFILE_UNBUILT": "Image CANN {{framework_version}} × {{arch}} is not in the built dGPU asset matrix; the probe only verifies the node execution path, the image itself may still be incompatible.",
     "IMAGE_PARTITION_PROFILE_UNVERIFIED": "The dGPU assets for image CANN {{framework_version}} × {{arch}} have not been verified on real hardware yet.",
+    "PD_CARD_NETWORK_UNREACHABLE": "The latest accelerator-card test on {{network}} found unreachable selected PD ports: {{pairs}}. Verified bidirectional alternatives: {{available}} (— means none). Select a reachable pair and run the card matrix test again before deploying.",
+    "PD_CARD_NETWORK_UNTESTED": "The PD ports on {{network}} have no verified bidirectional connectivity: {{pairs}}. Pin the cards and run a card matrix test. Verified alternatives: {{available}} (— means none). Retest after 24 hours.",
     "PD_UNVERIFIED_COMBINATION": "PD combined with {{feature}} is allowed but has not been verified on real hardware yet.",
     "PD_GPU_MODELS_DIFFER": "The PD roles run on different GPU models ({{models}}); throughput and latency will differ by role.",
     "PD_SAME_NODE_THROUGHPUT": "Every PD instance is on the same node, which trades some throughput for lower decode latency compared with spreading them across nodes.",
