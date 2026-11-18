@@ -226,7 +226,7 @@ func (r *evaluateState) resolveAcquisition() bool {
 		return false
 	}
 	if r.resp.Acquisition != nil {
-		r.resp.Acquisition.Components = r.s.evaluateComponentAcquisition(r.req.ModelSource, r.model, r.selection, store.StoragePins(r.req.NodeRequirements), r.rankNodes)
+		r.resp.Acquisition.Components = r.s.evaluateComponentAcquisition(r.req.ModelSource, r.model, r.selection.Components, store.StoragePins(r.req.NodeRequirements), r.rankNodes)
 	}
 	if r.parallelInvalid {
 		r.writeFieldErrors()

@@ -43,8 +43,6 @@ func (r *evaluateState) resolveEngineAndModel() bool {
 	if r.resp.Image == "" {
 		r.resp.Image = profile.DefaultImage
 	}
-	r.recommend = r.excludeDeployment == 0 && needsDistributedRecommendation(r.req, r.resp.AutoPlaced)
-	r.selection.previewWeights = r.recommend
 	r.preflightSelection = r.selection
 	r.preflightSelection.Components = append([]deploy.ComponentBinding(nil), r.selection.Components...)
 	r.model, err = r.s.resolveDeploymentModelFromTemplate(r.ctx, r.req.ModelID, &r.selection, r.req.TemplateID)

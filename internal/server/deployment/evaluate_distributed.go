@@ -25,6 +25,7 @@ func (r *evaluateState) prepareDistributed() bool {
 		}
 	}
 	if r.req.NNodes > 1 {
+		recommend := r.excludeDeployment == 0 && needsDistributedRecommendation(r.req, r.resp.AutoPlaced)
 		normalized := cloneRequest(*r.req)
 		dp, err := deploy.PlacementDataParallel(r.eng.Name(), r.quick.DP, r.launch.TemplateResidual, r.launch.UserResidual)
 		if r.errs.add("data_parallel_size", err) {
@@ -34,7 +35,7 @@ func (r *evaluateState) prepareDistributed() bool {
 		var nodes []*store.Node
 		// An invalid rank command still needs the engine draft that corrects
 		// it. The command error is attached once those ranks are previewed.
-		if r.recommend && checkManualCommandRanks(r.req) == nil {
+		if recommend && checkManualCommandRanks(r.req) == nil {
 			nodes, err = r.s.recommendDistributed(r.ctx, &normalized, dp, r.eng, r.launch, r.selection, r.model)
 		} else {
 			nodes, err = r.s.PrepareDistributedDeployRequest(&normalized, dp)
@@ -67,10 +68,10 @@ func (r *evaluateState) prepareDistributed() bool {
 			// Keep suggested degrees in the summary. Echoing them as form inputs
 			// would pin them when a model or node changes.
 			r.req.Placement = normalized.Placement
-			if !r.recommend || r.placement.TP > 0 {
+			if !recommend || r.placement.TP > 0 {
 				r.resp.FormValues["tp"] = normalized.Placement["tp"]
 			}
-			if !r.recommend || r.placement.PP > 0 {
+			if !recommend || r.placement.PP > 0 {
 				r.resp.FormValues["pp"] = normalized.Placement["pp"]
 			}
 			r.placement = evaluationPlacement(r.req)
