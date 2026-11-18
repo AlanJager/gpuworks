@@ -86,15 +86,13 @@ func ValidatePassword(password string) error {
 		}
 		return unicode.ToLower(r)
 	}, password)
-	if pattern == "" || commonPassword(guessableBase(password)) || repeatedPassword([]rune(pattern)) || sequentialPassword(pattern) {
+	if pattern == "" || commonPassword(password) || repeatedPassword([]rune(pattern)) || sequentialPassword(pattern) {
 		return &PolicyError{Reason: PolicyGuessable}
 	}
 	return nil
 }
 
-// guessableBase is what is left of a password once case, spaces, punctuation,
-// symbols and leading or trailing digits are dropped: "P@ssword123!" and
-// "password" share the base "password".
+// guessableBase normalizes account names and passwords for the username check.
 func guessableBase(password string) string {
 	normalized := strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
@@ -106,7 +104,7 @@ func guessableBase(password string) string {
 }
 
 func commonPassword(password string) bool {
-	switch password {
+	switch strings.ToLower(password) {
 	case "password", "passwordpassword", "passwordpasswordpassword", "admin", "adminpassword", "administrator",
 		"qwerty", "qwertyuiop", "letmein", "welcome", "welcomewelcome", "changeme", "changeyourpassword",
 		"defaultpassword", "thisisapassword", "iloveyou", "iloveyouforever", "gpuworks", "gpuworkspassword",

@@ -53,7 +53,7 @@ func TestChangePasswordEndsEverySessionAndForgetsInitialCredentials(t *testing.T
 	cookie, _ := sessionLogin(t, router, testPassword)
 	other, otherToken := sessionLogin(t, router, testPassword)
 
-	rec := postPassword(router, cookie, passwordBody(testPassword, "Tiger#Lake9"))
+	rec := postPassword(router, cookie, passwordBody(testPassword, "GPUWorks@2026"))
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"status":"password_changed"}` {
 		t.Fatalf("change: %d %s", rec.Code, rec.Body)
 	}
@@ -79,7 +79,7 @@ func TestChangePasswordEndsEverySessionAndForgetsInitialCredentials(t *testing.T
 	if _, err := st.AuthenticateUser("admin", testPassword); err == nil {
 		t.Fatal("old password still signs in")
 	}
-	sessionLogin(t, router, "Tiger#Lake9")
+	sessionLogin(t, router, "GPUWorks@2026")
 }
 
 func TestChangePasswordRejections(t *testing.T) {
@@ -91,7 +91,7 @@ func TestChangePasswordRejections(t *testing.T) {
 	}{
 		{"wrong current", passwordBody("not-the-password", "Tiger#Lake9"), ErrorCurrentPasswordInvalid, http.StatusBadRequest},
 		{"too short", passwordBody(testPassword, "short"), ErrorPasswordLength, http.StatusBadRequest},
-		{"guessable", passwordBody(testPassword, "Password123"), ErrorPasswordGuessable, http.StatusBadRequest},
+		{"guessable", passwordBody(testPassword, "PaSsWoRd"), ErrorPasswordGuessable, http.StatusBadRequest},
 		{"control", passwordBody(testPassword, "tab\tseparated"), ErrorPasswordCharacters, http.StatusBadRequest},
 		{"unchanged", passwordBody(testPassword, testPassword), ErrorPasswordUnchanged, http.StatusBadRequest},
 		{"unchanged but the current password is wrong", passwordBody("Tiger#Lake9", "Tiger#Lake9"), ErrorCurrentPasswordInvalid, http.StatusBadRequest},
@@ -105,7 +105,7 @@ func TestChangePasswordRejections(t *testing.T) {
 		})
 	}
 	// A wrong current password and a rejected new one are reported together.
-	both := postPassword(router, cookie, passwordBody("not-the-password", "Password123"))
+	both := postPassword(router, cookie, passwordBody("not-the-password", "PaSsWoRd"))
 	var combined struct {
 		Code   string         `json:"code"`
 		Params map[string]any `json:"params"`
