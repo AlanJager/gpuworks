@@ -34,17 +34,21 @@ type pluginConn struct {
 	// health.
 	plain, stream slotPool
 	callTimeout   time.Duration
+	// meter watches the connection for a plugin that stopped reading it
+	// (stall.go).
+	meter *stallMeter
 }
 
 func newPluginConn(c net.Conn, maxConcurrency int, callTimeout time.Duration) (*pluginConn, error) {
-	cc, err := (&http2.Transport{AllowHTTP: true}).NewClientConn(c)
+	meter := newStallMeter(nil)
+	cc, err := (&http2.Transport{AllowHTTP: true}).NewClientConn(&meteredConn{Conn: c, m: meter, scan: newFrameScan()})
 	if err != nil {
 		_ = c.Close()
 		return nil, err
 	}
 	reserve := AdminReserve(maxConcurrency)
 	return &pluginConn{cc: cc, plain: slotPool{limit: maxConcurrency, reserve: reserve},
-		stream: slotPool{limit: maxConcurrency, reserve: reserve}, callTimeout: callTimeout}, nil
+		stream: slotPool{limit: maxConcurrency, reserve: reserve}, callTimeout: callTimeout, meter: meter}, nil
 }
 
 func (c *pluginConn) close() { _ = c.cc.Close() }
@@ -158,10 +162,27 @@ func (c *pluginConn) do(ctx context.Context, req *http.Request, class Class, dea
 	} else {
 		ctx, cancel = context.WithDeadline(ctx, deadline)
 	}
-	release := sync.OnceFunc(func() { cancel(); pool.give(class.Admin); touch() })
+	// A body is metered while the client writes it, so a plugin that
+	// stops reading bodies is noticed (stall.go).
+	var body *meteredBody
+	if req.Body != nil && req.Body != http.NoBody {
+		body = &meteredBody{src: req.Body, m: c.meter}
+	}
+	release := sync.OnceFunc(func() {
+		cancel()
+		if body != nil {
+			body.finish(false)
+		}
+		pool.give(class.Admin)
+		touch()
+	})
 	var dispatched atomic.Bool
-	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteHeaders: func() { dispatched.Store(true) }})
-	resp, err := c.roundTrip(ctx, req)
+	trace := &httptrace.ClientTrace{WroteHeaders: func() { dispatched.Store(true) }}
+	if body != nil {
+		trace.WroteRequest = func(info httptrace.WroteRequestInfo) { body.finish(info.Err == nil) }
+	}
+	ctx = httptrace.WithClientTrace(ctx, trace)
+	resp, err := c.roundTrip(ctx, req, body)
 	if headers != nil && !headers.Stop() {
 		// The headers came too late, or not at all.
 		if err == nil {
@@ -187,8 +208,12 @@ type busyError struct {
 func (e *busyError) Error() string { return e.err.Error() }
 func (e *busyError) Unwrap() error { return e.err }
 
-func (c *pluginConn) roundTrip(ctx context.Context, req *http.Request) (*http.Response, error) {
+// roundTrip sends a copy of req; a non-nil body replaces its body.
+func (c *pluginConn) roundTrip(ctx context.Context, req *http.Request, body *meteredBody) (*http.Response, error) {
 	req = req.Clone(ctx)
+	if body != nil {
+		req.Body = body
+	}
 	req.URL.Scheme, req.URL.Host, req.Host = "http", pluginAuthority, pluginAuthority
 	req.RequestURI = ""
 	if d, ok := ctx.Deadline(); ok {
@@ -221,7 +246,7 @@ func (c *pluginConn) lifecycle(ctx context.Context, method, path string, body []
 	if body != nil {
 		req.Header.Set("Content-Type", extapi.ContentTypeJSON)
 	}
-	resp, err := c.roundTrip(ctx, req)
+	resp, err := c.roundTrip(ctx, req, nil)
 	if err != nil {
 		return nil, err
 	}

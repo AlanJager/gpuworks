@@ -124,6 +124,10 @@ type Timing struct {
 	IdleStop        time.Duration // an on-demand plugin idle this long stops (10 min)
 	CallTimeout     time.Duration // a call without a deadline gets this one (60 s)
 	MemoryEvery     time.Duration // between RSS watchdog samples (10 s)
+	// StallAfter is how long the serve connection may make no progress
+	// (a blocked write, or request body bytes it cannot send) before the
+	// plugin is restarted with PLUGIN_STALLED (10 s).
+	StallAfter time.Duration
 }
 
 func (t Timing) withDefaults() Timing {
@@ -145,6 +149,7 @@ func (t Timing) withDefaults() Timing {
 	def(&t.IdleStop, 10*time.Minute)
 	def(&t.CallTimeout, time.Minute)
 	def(&t.MemoryEvery, 10*time.Second)
+	def(&t.StallAfter, 10*time.Second)
 	if t.HealthMisses <= 0 {
 		t.HealthMisses = 3
 	}
