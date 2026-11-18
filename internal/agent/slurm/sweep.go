@@ -22,11 +22,26 @@ func (l *Leaser) Sweep(ctx context.Context, inUse map[string][]string, lost func
 		l.mu.Unlock()
 		return err
 	}
-	used := map[string]bool{}
-	for _, cards := range inUse {
-		for _, c := range cards {
-			used[c] = true
+	// A job is in use while its own instance is, or while an instance that
+	// has no job of its own runs on its cards (one sharing them, dGPU). The
+	// cards an instance with a job of its own names are that job's to hold:
+	// counting them against another job would keep an idle job whose card
+	// the instance's pending job waits for (E-HPC, 2026-11-18: a failed
+	// attempt's job held the card the retry was placed on, for good).
+	ownJob := map[string]bool{}
+	for _, j := range l.jobs {
+		ownJob[j.instance] = true
+	}
+	inUseOf := func(j *holdJob) bool {
+		if _, ok := inUse[j.instance]; ok {
+			return true
 		}
+		for instance, cards := range inUse {
+			if !ownJob[instance] && overlaps(cards, j.cards) {
+				return true
+			}
+		}
+		return false
 	}
 	type gone struct{ instance, message string }
 	var ended []gone
@@ -51,7 +66,7 @@ func (l *Leaser) Sweep(ctx context.Context, inUse map[string][]string, lost func
 			l.cancelLocked(ctx, id, "pending with nobody waiting")
 			continue
 		}
-		if overlaps(j.cards, keys(used)) || (j.adopted && !l.leased && now.Sub(l.startedAt) < adoptedGrace) {
+		if inUseOf(j) || (j.adopted && !l.leased && now.Sub(l.startedAt) < adoptedGrace) {
 			j.idle = time.Time{}
 			continue
 		}
@@ -90,14 +105,6 @@ func overlaps(a, b []string) bool {
 		}
 	}
 	return false
-}
-
-func keys(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }
 
 // Run sweeps every interval until ctx ends.

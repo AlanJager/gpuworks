@@ -943,3 +943,70 @@ func TestTheGraceForJobsFoundAtStartEndsWithTheFirstLease(t *testing.T) {
 		t.Fatalf("after the first lease the unused adopted job was kept: %q", f.calls)
 	}
 }
+
+// An instance placed on card 0 pends for its own job while a job of a failed
+// earlier attempt still holds card 0 and no instance runs on it: the old job
+// is idle and returned, though the card is the one the new instance names
+// (E-HPC, 2026-11-18: the old job was kept for good, the retry pended behind
+// it until the pending timeout).
+func TestAJobHoldingTheCardAnotherInstanceWaitsForIsReturned(t *testing.T) {
+	f := newFakeSlurm()
+	f.gpuCount = 1
+	f.add("30", HoldPrefix+"inst-failed", "root", 0)
+	l, clock := newTestLeaser(t, f, Config{IdleReturn: time.Minute})
+	f.mu.Lock()
+	f.pending = "Resources"
+	f.mu.Unlock()
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := l.Lease(context.Background(), "inst-retry", []string{card0}, false, nil)
+		done <- err
+	}()
+	inUse := map[string][]string{"inst-retry": {card0}} // the engine names the card placement chose
+	deadline := time.Now().Add(5 * time.Second)
+	for f.called("scancel 30") == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the failed attempt's job was kept: it holds the card the retry is placed on")
+		}
+		if err := l.Sweep(context.Background(), inUse, func(string, string) {}); err != nil {
+			t.Fatal(err)
+		}
+		clock.advance(time.Minute)
+		time.Sleep(5 * time.Millisecond)
+	}
+	f.mu.Lock()
+	f.pending = ""
+	for _, j := range f.jobs {
+		if j.state == "PENDING" {
+			j.state, j.idx = "RUNNING", []int{0}
+		}
+	}
+	f.mu.Unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the retry never got the card")
+	}
+}
+
+// A dGPU instance that shares another instance's job keeps that job in use.
+func TestAJobAnotherInstanceSharesStaysInUse(t *testing.T) {
+	f := newFakeSlurm()
+	f.add("30", HoldPrefix+"inst-a", "root", 0)
+	l, clock := newTestLeaser(t, f, Config{IdleReturn: time.Minute})
+	if _, _, err := l.Lease(context.Background(), "inst-b", []string{card0}, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		clock.advance(time.Minute)
+		if err := l.Sweep(context.Background(), map[string][]string{"inst-b": {card0}}, func(string, string) {}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.called("scancel 30") != 0 {
+		t.Fatal("the job a sharing instance runs on was returned")
+	}
+}
