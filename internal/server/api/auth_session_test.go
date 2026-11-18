@@ -297,7 +297,7 @@ func TestManagementSessionWireContractAndPolicy(t *testing.T) {
 		t.Fatal(me.Body.String())
 	}
 	actual, expected = nil, nil
-	if err := json.Unmarshal([]byte(`{"id":1,"username":"admin","role":"admin","password_policy":{"min_length":8,"max_length":128}}`), &expected); err != nil {
+	if err := json.Unmarshal([]byte(`{"id":1,"username":"admin","role":"admin","local_admin":true,"password_policy":{"min_length":8,"max_length":128}}`), &expected); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(me.Body.Bytes(), &actual); err != nil || !reflect.DeepEqual(actual, expected) {

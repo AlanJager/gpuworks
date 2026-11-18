@@ -122,7 +122,7 @@ func (a *apiHandlers) me(w http.ResponseWriter, r *http.Request) {
 	}
 	claims := id.claims
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"id": claims.UserID, "username": claims.Username, "role": claims.Role, "password_policy": passwordPolicy()})
+	writeJSON(w, http.StatusOK, map[string]any{"id": claims.UserID, "username": claims.Username, "role": claims.Role, "local_admin": claims.LocalAdmin, "password_policy": passwordPolicy()})
 }
 
 // activity reports browser interaction. Passive GET polling and connection
@@ -174,7 +174,7 @@ func (a *apiHandlers) authenticateManagement(r *http.Request) (auth.Claims, *sto
 			return auth.Claims{}, nil, auth.ErrInvalidToken
 		}
 	}
-	return auth.Claims{UserID: u.ID, Username: u.Username, Role: u.Role, SessionID: hash}, session, nil
+	return auth.Claims{UserID: u.ID, Username: u.Username, Role: u.Role, SessionID: hash, LocalAdmin: u.LocalAdmin && u.Role == "admin"}, session, nil
 }
 
 func (a *apiHandlers) claimsFromRequest(r *http.Request) (auth.Claims, bool) {
