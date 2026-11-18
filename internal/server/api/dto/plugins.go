@@ -65,3 +65,44 @@ type PluginInstalled struct {
 	// Unchanged reports that this exact build was already installed.
 	Unchanged bool `json:"unchanged"`
 }
+
+// PluginOverride is an administrator's release of one restriction entry a
+// plugin pushed (GET and POST /api/v1/plugins/overrides). The plugin's next
+// push that changes the entry supersedes it.
+type PluginOverride struct {
+	ID int64 `json:"id"`
+	// Owner is the plugin whose restriction is released.
+	Owner string `json:"owner"`
+	// Kind is node_holds or fleet_capacity.
+	Kind string `json:"kind"`
+	// Entry is a node id in decimal for node_holds, max_nodes_with_cards
+	// or max_cards for fleet_capacity.
+	Entry string `json:"entry"`
+	// Generation is the owner's generation of the kind when the override
+	// was made.
+	Generation uint64 `json:"generation"`
+	// Action is delete or loosen.
+	Action string `json:"action"`
+	// Value is the raised cap of a loosen; absent for a delete.
+	Value *int64 `json:"value,omitempty"`
+	// ByUser is the id of the administrator who made it.
+	ByUser uint      `json:"by_user"`
+	At     time.Time `json:"at"`
+	Reason string    `json:"reason"`
+}
+
+// PluginOverrideList is GET /api/v1/plugins/overrides.
+type PluginOverrideList struct {
+	Items []PluginOverride `json:"items"`
+}
+
+// PluginOverrideRequest is POST /api/v1/plugins/overrides.
+type PluginOverrideRequest struct {
+	Owner  string `json:"owner"`
+	Kind   string `json:"kind"`
+	Entry  string `json:"entry"`
+	Action string `json:"action"`
+	// Value is the raised cap of a loosen; a delete takes none.
+	Value  *int64 `json:"value,omitempty"`
+	Reason string `json:"reason"`
+}

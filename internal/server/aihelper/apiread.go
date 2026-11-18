@@ -51,6 +51,7 @@ var deniedRoutes = map[string]string{
 	"/api/v1/terminal/sessions":                   "terminal audit records, with client addresses",
 	"/api/v1/plugins":                             "plugin administration, for administrators in the console only",
 	"/api/v1/metrics/plugins":                     "plugin metrics for a Prometheus scrape by administrators",
+	"/api/v1/plugins/overrides":                   "restriction overrides, for administrators in the console only",
 }
 
 // Readable reports whether the assistant may read a GET route pattern.

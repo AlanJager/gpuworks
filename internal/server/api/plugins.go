@@ -34,6 +34,16 @@ type PluginAdmin interface {
 	// Uninstall stops and removes the package (and its data with purge)
 	// and releases what it pushed.
 	Uninstall(ctx context.Context, id string, purge bool, by string) error
+	// Overrides are the restriction overrides in force, by id.
+	Overrides(ctx context.Context) []dto.PluginOverride
+	// Override releases one restriction entry a plugin pushed, for any
+	// owner pushed state holds the entry of (running, down, broken,
+	// revoked, or uninstalled with its rows retained). A rule it breaks is
+	// PLUGIN_OVERRIDE_REJECTED.
+	Override(ctx context.Context, req dto.PluginOverrideRequest, by PluginAdministrator) (dto.PluginOverride, error)
+	// RemoveOverride withdraws override id; PLUGIN_OVERRIDE_NOT_FOUND
+	// when none is in force.
+	RemoveOverride(ctx context.Context, id int64, by PluginAdministrator) error
 }
 
 // pluginRoutes mounts /api/v1/plugins: administrators read the list by
@@ -48,6 +58,7 @@ func (a *apiHandlers) pluginRoutes(r chi.Router) {
 		r.Post("/plugins/{id}/disable", a.disablePlugin)
 		r.Delete("/plugins/{id}", a.uninstallPlugin)
 	})
+	a.pluginOverrideRoutes(r)
 }
 
 // pluginAdmin is the plugin administration this server runs, writing the
@@ -183,9 +194,10 @@ func (a *apiHandlers) adminName(r *http.Request) string {
 }
 
 // pluginErrorStatus maps a plugin administration refusal to its status:
-// not installed 404; a choice that conflicts with what is installed
+// not installed or no such override 404; a choice that conflicts with what is installed
 // (including a feature key another owner already provides) or asks for
-// approval 409; a package too large 413; any other refused package 422;
+// approval 409; a package too large 413; any other refused package or
+// override (PLUGIN_OVERRIDE_REJECTED) 422;
 // anything else 500.
 func pluginErrorStatus(err error) int {
 	var pe *messages.ProductError
@@ -193,7 +205,7 @@ func pluginErrorStatus(err error) int {
 		return http.StatusInternalServerError
 	}
 	switch pe.Code() {
-	case messages.ErrorPluginNotInstalled:
+	case messages.ErrorPluginNotInstalled, messages.ErrorPluginOverrideNotFound:
 		return http.StatusNotFound
 	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, messages.ErrorPluginFeatureTaken, errorPluginStateTooNew:
 		return http.StatusConflict

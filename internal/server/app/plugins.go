@@ -226,3 +226,31 @@ func pluginDTO(v pluginbridge.View) dto.Plugin {
 	}
 	return out
 }
+
+func (p pluginAdmin) Overrides(context.Context) []dto.PluginOverride {
+	list := p.b.Overrides()
+	out := make([]dto.PluginOverride, len(list))
+	for i, o := range list {
+		out[i] = pluginOverrideDTO(o)
+	}
+	return out
+}
+
+func (p pluginAdmin) Override(ctx context.Context, req dto.PluginOverrideRequest, by api.PluginAdministrator) (dto.PluginOverride, error) {
+	o, err := p.b.Override(ctx, pluginbridge.OverrideRequest{Owner: req.Owner, Kind: req.Kind, Entry: req.Entry, Action: req.Action,
+		Value: req.Value, Reason: req.Reason, By: pluginbridge.Administrator{UserID: by.UserID, Username: by.Username}})
+	if err != nil {
+		return dto.PluginOverride{}, productErrorOf(err)
+	}
+	return pluginOverrideDTO(o), nil
+}
+
+func (p pluginAdmin) RemoveOverride(ctx context.Context, id int64, by api.PluginAdministrator) error {
+	_, err := p.b.RemoveOverride(ctx, id, pluginbridge.Administrator{UserID: by.UserID, Username: by.Username})
+	return productErrorOf(err)
+}
+
+func pluginOverrideDTO(o pushstate.Override) dto.PluginOverride {
+	return dto.PluginOverride{ID: o.ID, Owner: o.Owner, Kind: o.Kind, Entry: o.Entry, Generation: o.Generation, Action: o.Action,
+		Value: o.Value, ByUser: o.ByUser, At: o.At.UTC(), Reason: o.Reason}
+}
