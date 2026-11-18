@@ -294,7 +294,7 @@ func TestABareEntryRunsTheRuntimeRevisionAcrossServerVersions(t *testing.T) {
 	for _, tc := range []struct {
 		uuid, want string
 	}{
-		{created["uuid"].(string), `image: "gpuworks/gpuworks-agent:` + kubemanifest.AgentImageRevision + `"`},
+		{created["uuid"].(string), `image: "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:` + kubemanifest.AgentImageRevision + `"`},
 		{pinned["uuid"].(string), `image: "registry.example/gpuworks-agent:mine"`},
 	} {
 		rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+tc.uuid+"/manifest", "")
