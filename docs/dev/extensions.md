@@ -326,11 +326,12 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 插件永不以 root 运行；需要 root 的主机步骤只来自清单封闭的 `host_setup` 词汇（目前只有 `usb_device`），由核心渲染（`internal/server/extpkg/hostsetup`，只依赖 `pkg/extapi`），规则见[插件协议](../reference/plugin-protocol.md#主机配置hostsetup1)。
 
 - **谁执行。** `sudo gpuworks plugin host-setup [--id ID | --prune]`（[CLI 参考](../reference/cli.md#gpuworks-plugin)）；`gpuworks install`、`upgrade` 与 `uninstall` 的核心安装钩子在主机上有包声明主机步骤、或已有本功能写的文件时也执行：安装与升级应用全部已安装包的步骤并清掉不再需要的，卸载全部删除（设备组保留）。没有这类包的主机上钩子不加入，安装流程与之前完全一样。
-- **顺序。** 建组并加入服务账号 → 写规则文件 → `udevadm control --reload-rules` 与 `udevadm trigger --action=change`（usb、hidraw）→ 最后写记录。中途失败就没有记录，包继续等待，下次执行重做；什么都没变时不执行任何命令。
+- **顺序。** 建组（`plugin host-setup` 还把服务账号加进组；安装钩子不改账号，把组写进服务单元的 `SupplementaryGroups=`）→ 写规则文件 → `udevadm control --reload-rules` 与 `udevadm trigger --action=change`（usb、hidraw）→ 最后写记录。中途失败就没有记录，包继续等待，下次执行重做；什么都没变时不执行任何命令。
 - **记录。** `/etc/gpuworks/plugins/<id>.applied` 属主 root、0644，内容是步骤摘要（不是批准值：只改权限的升级不需要再执行 root 步骤）。`control.json` 由服务账号拥有，所以不在那里记录；server 只认 root 所有、组与其他用户不可写的记录。
-- **启动门。** 包有主机步骤而记录缺失或不一致时，插件宿主不拉起它：状态 `needs_host_setup`，`PLUGIN_HOST_SETUP_REQUIRED{id, command}`。执行命令后再次启用该包或重启 server 即启动；升级改了步骤又回到 `needs_host_setup`。记录一致时才把设备目录与读取路径写进沙箱。
-- **边界。** 设备插上后才出现、名字事先不知道（`/dev/hidrawN`、`/dev/bus/usb/<总线>/<设备>`），所以沙箱授予目录 `/dev` 而不是节点；设备之间的边界是文件权限：规则只把匹配设备的节点设为组 `gpuworks-usb`、0660，其他节点保持自己的属主与模式。不建符号链接，因为 Landlock 检查的是路径解析到的 inode，链接什么也不多授。`TestDeviceDirGrantsNodesCreatedLater` 证明：沙箱生效后在授予目录里新建的节点能打开，授予目录之外指向它的符号链接也能打开，兄弟目录里的节点 `EACCES`。
+- **启动门。** 包有主机步骤而记录缺失或不一致时，插件宿主不拉起它：状态 `needs_host_setup`，`PLUGIN_HOST_SETUP_REQUIRED{id, command}`。执行命令后在该状态下提供的「启用」重新检查记录并启动它，重启 server 也一样；升级改了步骤又回到 `needs_host_setup`。记录一致时才把设备目录与读取路径写进沙箱。
+- **边界。** 设备插上后才出现、名字事先不知道（`/dev/hidrawN`、`/dev/bus/usb/<总线>/<设备>`），所以沙箱授予目录 `/dev` 而不是节点；设备之间的边界是文件权限：规则只把匹配设备的节点设为组 `gpuworks-usb`、0660，其他节点保持自己的属主与模式。所以这个授予覆盖服务账号本来就能打开的 `/dev` 下每个节点，不只是匹配的 USB 设备：插件以服务账号运行，默认 0666 的节点（如 `/dev/nvidia*`、`/dev/fuse`、部分 `/dev/dri/renderD*`）以及 `/dev/shm`、`/dev/mqueue` 里已有的文件它都能打开；hidraw 节点直接在 `/dev` 下，Landlock 无法收窄到目录以下。不建符号链接，因为 Landlock 检查的是路径解析到的 inode，链接什么也不多授。`TestDeviceDirGrantsNodesCreatedLater` 证明：沙箱生效后在授予目录里新建的节点能打开，授予目录之外指向它的符号链接也能打开，兄弟目录里的节点 `EACCES`。
 - **其他平台。** macOS 没有 udev 与 Landlock 设备规则，声明主机步骤的包安装时以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝。
+- **每台主机一个安装。** 规则文件与记录在全机路径、只按包 id 命名，`install`、`upgrade`、`uninstall` 与 `--prune` 会删掉同机另一个安装写的文件（见[安装布局](../reference/install-layout.md)）。
 - **卸载。** 规则文件与记录属于 root，离线 `gpuworks plugin uninstall` 删不掉，留着时打印 `sudo gpuworks plugin host-setup --prune`。
 
 ### gwx/1 连接与宿主接口

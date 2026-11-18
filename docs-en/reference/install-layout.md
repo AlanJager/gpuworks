@@ -49,7 +49,9 @@ A package that declares `host_setup` also has files outside the data directory, 
 |---|---|
 | `/etc/udev/rules.d/70-gpuworks-plugin-<id>.rules` | One udev rule file per package (0644) matching the USB devices the package declares by vendor and product id, setting their `/dev/bus/usb` node and hidraw nodes to group `gpuworks-usb`, mode 0660; no symlinks |
 | `/etc/gpuworks/plugins/<id>.applied` | The applied record (0644, owned by root): the digest of the host steps root applied. The server accepts only a record owned by root and writable by no group or other user, so the service account cannot forge one although it owns the plugins directory |
-| System group `gpuworks-usb` | The device group the service account is in; kept on uninstall |
+| System group `gpuworks-usb` | The service's device group: `install` and `upgrade` put it in the service unit's `SupplementaryGroups=`, and `plugin host-setup` adds the service account to it; kept on uninstall |
+
+These paths are host-wide and named by package id only: `install`, `upgrade`, `uninstall` and `--prune` match them to this installation's data directory and remove what another installation on the same host wrote, so only one installation per host applies host setup.
 
 `gpuworks serve` holds an exclusive flock on `data/server.lock` for its whole life and writes its pid into it. A second server on the same data directory waits 10 seconds, then refuses to start and reports the holder's pid; offline commands whose effect a running server's in-memory state would quietly undo, such as `plugin uninstall`, `enable` and `disable`, refuse when they cannot take the lock (see [CLI Reference](cli.md#gpuworks-plugin)). The lock belongs to the process, so the kernel releases it when the process crashes; the file existing does not mean a server is running, and the pid in it may belong to a server that has exited: a pid is reported only when that process is alive, otherwise the message names the lock file. Only servers from this version on hold the lock: during a rolling upgrade, offline commands take it beside a server of an earlier version, so stop that server yourself first.
 
@@ -205,6 +207,6 @@ UDOCKER_BUNDLE=
 - `gpuworks-agent uninstall` also deletes this file.
 - When the installation script, SSH wizard preflight checks, or out-of-band recovery need to identify the server or token associated with an agent on a host, they read this file (and read the older agent's command line only if the file is missing). For the design rationale, see [ADR 0051](../adr/0051-agent-launch-configuration-file.md).
 
-<!-- translation-source-sha256: 6e1d85e94b6fd99480512b9708c916de0122d85b167166dc48956ccf14e72e38 -->
+<!-- translation-source-sha256: 61f0fd76c92a3c26e83a7ebb72ae5ae8f1d47c4b939991cfd87c6e81a3c89c5d -->
 <!-- translation-localized-code-block: cf0228b7f6dd01a33d1c0533f369be665aca051a5cd6897ffbf9ee07afc42ce0 63316e0dc2128d8d692b7aa4ea5e28a81d5c9405afd4799c5c37297248c76b5a Reviewed localization of the directory annotations, including the plugins/ and server.lock lines; paths unchanged. -->
 <!-- translation-localized-code-block: 0a0c78856b3bcc2f70519eaf27daec112ac8a20c1388e0ac5809fef7c3958d06 5126a8bc98f3780a7a6b25daeaa58a61a8cacb4075ece9e6bf89f05f91ec4fd7 Translate explanatory node-token placeholder -->

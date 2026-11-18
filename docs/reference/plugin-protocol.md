@@ -191,7 +191,7 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 
 ### 主机配置（`host.setup@1`）
 
-server 在 Linux 上提供 `host.setup@1`：清单的 `host_setup` 只是声明，不是脚本，由 root 运行 `gpuworks plugin host-setup`（或 `gpuworks install`、`upgrade`）按下面的规则渲染。`usb_device` 步骤的含义：
+server 总是提供 `host.setup@1`，但只有 Linux 能执行它，其他平台上安装以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝：清单的 `host_setup` 只是声明，不是脚本，由 root 运行 `gpuworks plugin host-setup`（或 `gpuworks install`、`upgrade`）按下面的规则渲染。`usb_device` 步骤的含义：
 
 | 产物 | 规则 |
 |---|---|
@@ -199,7 +199,7 @@ server 在 Linux 上提供 `host.setup@1`：清单的 `host_setup` 只是声明�
 | 已应用记录 | root 所有的文件，内容是步骤的摘要：`{"host_setup":[{"type","vendor_id","product_id"}...]}` 的规范 JSON 的 SHA-256，列表按类型、厂商、产品排序并去重，所以步骤的顺序不影响它；升级不改步骤就不需要再执行 root 步骤 |
 | 沙箱 | 记录与当前步骤一致时，插件的 Landlock 规则另授 `/dev` 下设备节点的读写与 ioctl（也可列目录），并只读 `/sys/bus/usb`、`/sys/class/hidraw`、`/sys/devices`、`/run/udev/data` 以发现设备 |
 
-记录缺失、不一致或可能被服务账号写过（不属 root、组或其他用户可写）时，插件不启动，状态 `needs_host_setup`，原因 `PLUGIN_HOST_SETUP_REQUIRED`，参数 `id` 与 `command`（要执行的命令）。设备之间的边界是节点的文件权限：沙箱授予的是目录，因为设备插上之后才出现、名字事先不知道。
+记录缺失、不一致或可能被服务账号写过（不属 root、组或其他用户可写）时，插件不启动，状态 `needs_host_setup`，原因 `PLUGIN_HOST_SETUP_REQUIRED`，参数 `id` 与 `command`（要执行的命令）。设备之间的边界是节点的文件权限：沙箱授予的是目录，因为设备插上之后才出现、名字事先不知道。所以插件能打开 `/dev` 下服务账号本来就能打开的每个节点，不只是匹配的 USB 设备。
 
 ## 发布者证书
 

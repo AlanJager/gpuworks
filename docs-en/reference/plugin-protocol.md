@@ -191,7 +191,7 @@ Beyond the manifest, the server applies its own policy after the capability chec
 
 ### Host setup (`host.setup@1`)
 
-On Linux the server offers `host.setup@1`. The manifest's `host_setup` is a declaration, never a script; root renders it by running `gpuworks plugin host-setup` (or `gpuworks install` or `upgrade`) under these rules. What a `usb_device` step means:
+The server always offers `host.setup@1`, but only Linux can apply it; elsewhere install is refused with `PLUGIN_HOST_SETUP_UNSUPPORTED`. The manifest's `host_setup` is a declaration, never a script; root renders it by running `gpuworks plugin host-setup` (or `gpuworks install` or `upgrade`) under these rules. What a `usb_device` step means:
 
 | Product | Rule |
 |---|---|
@@ -199,7 +199,7 @@ On Linux the server offers `host.setup@1`. The manifest's `host_setup` is a decl
 | Applied record | A root-owned file holding the digest of the steps: the SHA-256 of the canonical JSON `{"host_setup":[{"type","vendor_id","product_id"}...]}`, the list sorted by type, vendor and product with duplicates removed, so the order of the steps does not change it; an upgrade that keeps the steps needs no new root step |
 | Sandbox | When the record matches the current steps, the plugin's Landlock rules also grant read, write and ioctl on device nodes under `/dev` (and listing it), and read-only `/sys/bus/usb`, `/sys/class/hidraw`, `/sys/devices` and `/run/udev/data` for device discovery |
 
-When the record is missing, differs, or could have been written by the service account (not owned by root, or writable by group or others), the plugin does not start: its state is `needs_host_setup` with reason `PLUGIN_HOST_SETUP_REQUIRED`, params `id` and `command` (what to run). The boundary between devices is the nodes' file permissions: the sandbox grants a directory, because a device's nodes appear only once it is plugged in, under names nobody knows in advance.
+When the record is missing, differs, or could have been written by the service account (not owned by root, or writable by group or others), the plugin does not start: its state is `needs_host_setup` with reason `PLUGIN_HOST_SETUP_REQUIRED`, params `id` and `command` (what to run). The boundary between devices is the nodes' file permissions: the sandbox grants a directory, because a device's nodes appear only once it is plugged in, under names nobody knows in advance. So the plugin can open every node under `/dev` the service account can already open, not only the matched USB devices.
 
 ## Publisher certificate
 
@@ -698,4 +698,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 5794d3e7f097c1da051a41bab7850bc8072673c02c31ac0f2c22343b5200df3d -->
+<!-- translation-source-sha256: a917b59f6f5003afb385432bfa0a5bc2a6feb548f66849576c6e36afaa8d3e6a -->
