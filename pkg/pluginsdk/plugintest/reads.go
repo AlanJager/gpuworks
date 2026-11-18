@@ -23,14 +23,6 @@ const (
 	defaultInventoryPageLimit = extapi.MaxNodeRead
 )
 
-// handshake is what the fake host learned from the accepted initialize:
-// the package, the permissions granted and the capabilities negotiated.
-type handshake struct {
-	id      string
-	granted []string
-	use     map[string]int
-}
-
 // SetNodes sets the inventory the fake host pages through, in any order;
 // it serves them by ascending id.
 func (h *Harness) SetNodes(nodes ...extapi.InventoryNode) {
@@ -56,7 +48,7 @@ func (h *Harness) SetNodeIdentities(ids ...extapi.NodeIdentity) {
 // in the accepted initialize, then the capability negotiated in its answer.
 func (h *fakeHost) readCaller(w http.ResponseWriter, permission, capability string) (string, bool) {
 	h.mu.Lock()
-	hs := h.handshake
+	hs := h.calls.accepted
 	h.mu.Unlock()
 	switch {
 	case !slices.Contains(hs.granted, permission):

@@ -35,11 +35,12 @@ type fakeHost struct {
 	refuse  map[string]extapi.WireError
 	changed chan struct{}
 	now     func() time.Time
-	// handshake is set by Harness.Initialize; nodes and identities are
-	// the canned answers of the reads.
-	handshake  handshake
+	// nodes and identities are the canned answers of the reads.
 	nodes      []extapi.InventoryNode
 	identities map[uint64]extapi.NodeIdentity
+	// calls is what the clock, ready, own-state and key calls see and
+	// keep.
+	calls hostCalls
 }
 
 func newFakeHost() *fakeHost {
@@ -63,12 +64,23 @@ func (h *fakeHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, extapi.Health{Status: extapi.HealthOK})
-	case strings.HasPrefix(r.URL.Path, extapi.PathHostState):
-		if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+	case r.URL.Path == extapi.PathHostReady:
+		if r.Method != http.MethodPost {
 			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
 			return
 		}
-		h.push(w, r, strings.TrimPrefix(r.URL.Path, extapi.PathHostState))
+		h.ready(w)
+	case strings.HasPrefix(r.URL.Path, extapi.PathHostState):
+		switch r.Method {
+		case http.MethodPut, http.MethodPatch:
+			h.push(w, r, strings.TrimPrefix(r.URL.Path, extapi.PathHostState))
+		case http.MethodGet:
+			h.ownState(w, strings.TrimPrefix(r.URL.Path, extapi.PathHostState))
+		default:
+			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
+		}
+	case r.URL.Path == extapi.PathHostMeta || r.URL.Path == extapi.PathHostClockCorrect || r.URL.Path == extapi.PathHostDeriveKey:
+		h.hostCall(w, r)
 	case r.URL.Path == extapi.PathHostNodeIdentity:
 		if r.Method != http.MethodPost {
 			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
@@ -141,6 +153,7 @@ func (h *fakeHost) push(w http.ResponseWriter, r *http.Request, kind string) {
 	ack := &extapi.StateAck{Kind: kind, Generation: env.Generation, Digest: extapi.DigestOf(canonical), AppliedAt: &at}
 	h.mu.Lock()
 	h.held[kind] = extapi.HeldState{Kind: kind, Schema: env.Schema, Generation: env.Generation, Digest: ack.Digest}
+	h.calls.keep(extapi.PushedState{Kind: kind, Schema: env.Schema, Generation: env.Generation, Digest: ack.Digest, PushedAt: &at, Body: canonical})
 	h.mu.Unlock()
 	h.record(Push{Method: r.Method, Envelope: *env}, ack, nil, w)
 }

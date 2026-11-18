@@ -50,6 +50,9 @@ const (
 	// MaxHostCallBytes bounds the encoded body of a clock correction or a
 	// key request; the server refuses a larger one as too large.
 	MaxHostCallBytes = 4 << 10
+	// MaxPushedStateBytes bounds an encoded own-state answer: a whole
+	// pushed table and its record.
+	MaxPushedStateBytes = MaxPushBytes + 4<<10
 )
 
 // bootIDPattern is a server boot id: 32 lowercase hex characters.
@@ -187,7 +190,7 @@ type PushedState struct {
 
 // DecodePushedState decodes and validates an own-state answer.
 func DecodePushedState(data []byte) (*PushedState, error) {
-	if len(data) > MaxPushBytes+(4<<10) {
+	if len(data) > MaxPushedStateBytes {
 		return nil, malformed(objectPushedState, &fieldError{rule: RuleRange})
 	}
 	var p PushedState
