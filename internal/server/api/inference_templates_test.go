@@ -382,6 +382,73 @@ func TestInferenceTemplateImportBackfillsWeightBytesUsingDeclaredSourceOrder(t *
 	}
 }
 
+func TestInferenceTemplateDeleteWholeTemplate(t *testing.T) {
+	st, err := store.Open("file:flat_api_delete_template?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	const builtin, custom = "acme/builtin", "acme/custom"
+	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{flatAPIFixture(builtin, "upstream")}); err != nil {
+		t.Fatal(err)
+	}
+	batch := flatAPIFixture(custom, "first")
+	batch.Specs = append(batch.Specs, flatAPIFixture(custom, "second").Specs[0])
+	if err := st.ImportUserInferenceCatalog([]store.InferenceModel{batch, flatAPIFixture(builtin, "extension")}, true); err != nil {
+		t.Fatal(err)
+	}
+	h := &apiHandlers{d: Deps{Store: st}}
+	deleteTemplate := func(id string, want int) string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		h.deleteInferenceTemplate(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/inference-templates?model_id="+url.QueryEscape(id), nil))
+		if rec.Code != want {
+			t.Fatalf("delete %q: status=%d want=%d body=%s", id, rec.Code, want, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+	checkBothSpecs := func(id string) *store.InferenceModel {
+		t.Helper()
+		m, err := st.InferenceModelByModelID(id)
+		if err != nil || len(m.Specs) != 2 {
+			t.Fatalf("expected both specs of %s: %+v, %v", id, m, err)
+		}
+		return m
+	}
+	deleteTemplate(" ", http.StatusBadRequest)
+	deleteTemplate(builtin, http.StatusNotFound)
+	checkBothSpecs(builtin)
+
+	model := checkBothSpecs(custom)
+	pin, err := st.CreateDeployment(&store.Deployment{Name: "active-pin", TemplateID: model.ID, TemplateSpecSource: "user", TemplateSpecName: "second", State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := deleteTemplate(custom, http.StatusConflict)
+	if !strings.Contains(body, `"code":"INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE"`) || !strings.Contains(body, `"deployments":"active-pin"`) {
+		t.Fatalf("missing deployment reference: %s", body)
+	}
+	checkBothSpecs(custom)
+	if err := st.SetDeploymentState(pin.ID, store.DeployDeleting); err != nil {
+		t.Fatal(err)
+	}
+
+	owner := flatAPIFixture("acme/combo", "combo")
+	owner.Specs[0].Components = `[{"name":"rerank","role":"component","model_id":"acme/custom","mount_path":"/models/rerank"}]`
+	if err := st.ImportUserInferenceCatalog([]store.InferenceModel{owner}, false); err != nil {
+		t.Fatal(err)
+	}
+	body = deleteTemplate(custom, http.StatusConflict)
+	if !strings.Contains(body, `"code":"INFERENCE_TEMPLATE_COMPONENT_REFERENCE"`) || !strings.Contains(body, `"owner":"acme/combo"`) || !strings.Contains(body, `"spec":"combo"`) {
+		t.Fatalf("missing component reference: %s", body)
+	}
+	checkBothSpecs(custom)
+	deleteTemplate(owner.ModelID, http.StatusOK)
+	deleteTemplate(custom, http.StatusOK)
+	deleteTemplate(custom, http.StatusNotFound)
+	checkBothSpecs(builtin)
+}
+
 func TestInferenceTemplateDeleteUserSpecScenarios(t *testing.T) {
 	st, err := store.Open("file:flat_api_delete_spec?mode=memory&cache=shared", bus.New())
 	if err != nil {

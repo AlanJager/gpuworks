@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/server/messages"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -187,15 +189,9 @@ func (s *Store) DeleteUserInferenceSpec(modelID, specName string) (modelDeleted 
 		if target < 0 {
 			return ErrInferenceSpecNotFound
 		}
-		var pinnedBy []string
-		if err := tx.Model(&Deployment{}).
-			Where("template_id = ? AND template_spec_source = ? AND template_spec_name = ? AND desired_state <> ?",
-				model.ID, "user", specName, string(DeployDeleting)).
-			Pluck("name", &pinnedBy).Error; err != nil {
+		pins := tx.Where("template_spec_source = ? AND template_spec_name = ?", "user", specName)
+		if err := refusePinnedInferenceTemplate(pins, model.ID); err != nil {
 			return err
-		}
-		if len(pinnedBy) > 0 {
-			return fmt.Errorf("%w: %s", ErrInferenceSpecInUse, strings.Join(pinnedBy, ", "))
 		}
 		if err := tx.Delete(&InferenceSpecRow{}, model.Specs[target].ID).Error; err != nil {
 			return err
@@ -213,6 +209,57 @@ func (s *Store) DeleteUserInferenceSpec(modelID, specName string) (modelDeleted 
 		return tx.Delete(&InferenceModel{}, model.ID).Error
 	})
 	return modelDeleted, err
+}
+
+// DeleteUserInferenceTemplate removes a custom model and its specs atomically.
+func (s *Store) DeleteUserInferenceTemplate(modelID string) error {
+	var model InferenceModel
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Where("model_id = ? AND source = ?", strings.ToLower(strings.TrimSpace(modelID)), "user").First(&model).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if err := refusePinnedInferenceTemplate(tx, model.ID); err != nil {
+			return err
+		}
+		if err := refuseDanglingComponentReference(tx, model.ID, model.ModelID); err != nil {
+			return err
+		}
+		if err := tx.Where("model_id = ? AND source = ?", model.ID, "user").Delete(&InferenceSpecRow{}).Error; err != nil {
+			return err
+		}
+		var remaining int64
+		if err := tx.Model(&InferenceSpecRow{}).Where("model_id = ?", model.ID).Count(&remaining).Error; err != nil {
+			return err
+		}
+		if remaining != 0 {
+			return ErrNotFound
+		}
+		return tx.Delete(&model).Error
+	})
+	if err == nil {
+		s.Bus.PublishChange(InferenceTemplateTopic, strconv.FormatUint(uint64(model.ID), 10), "")
+	}
+	return err
+}
+
+// query can be narrowed to a single spec when the other specs will survive.
+func refusePinnedInferenceTemplate(query *gorm.DB, modelID uint) error {
+	var names []string
+	if err := query.Model(&Deployment{}).Where("template_id = ? AND desired_state <> ?", modelID, string(DeployDeleting)).
+		Order("name").Pluck("name", &names).Error; err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	deployments := strings.Join(names, ", ")
+	return messages.WrapProductError(messages.ErrorInferenceTemplateDeploymentReference,
+		fmt.Sprintf("%s: %s", ErrInferenceSpecInUse, deployments),
+		map[string]any{"deployments": deployments}, ErrInferenceSpecInUse)
 }
 
 // refuseDanglingComponentReference mirrors
@@ -247,7 +294,9 @@ func refuseDanglingComponentReference(tx *gorm.DB, modelRowID uint, modelID stri
 		}
 		for _, component := range components {
 			if strings.EqualFold(strings.TrimSpace(component.ModelID), modelID) {
-				return fmt.Errorf("%w: %s spec %s mounts %s", ErrInferenceModelReferenced, ownerIDs[row.ModelID], row.Name, modelID)
+				return messages.WrapProductError(messages.ErrorInferenceTemplateComponentReference,
+					fmt.Sprintf("%s: %s spec %s mounts %s", ErrInferenceModelReferenced, ownerIDs[row.ModelID], row.Name, modelID),
+					map[string]any{"owner": ownerIDs[row.ModelID], "spec": row.Name}, ErrInferenceModelReferenced)
 			}
 		}
 	}

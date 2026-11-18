@@ -5157,6 +5157,8 @@ export const api = {
       `/api/v1/inference-templates/import${overwrite ? "?overwrite=true" : ""}`,
       file,
     ),
+  deleteInferenceTemplate: (modelID: string) =>
+    sendJSON<{ deleted: boolean; model_deleted: boolean }>("DELETE", `/api/v1/inference-templates?model_id=${encodeURIComponent(modelID)}`),
   deleteInferenceTemplateSpec: (modelID: string, spec: string) =>
     sendJSON<{ deleted: boolean; model_deleted: boolean }>(
       "DELETE",

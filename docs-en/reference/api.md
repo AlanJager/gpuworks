@@ -635,6 +635,7 @@ For the format and import rules, see [Image Catalog and Inference Image Families
 | Method | Path | Description | Authentication |
 |---|---|---|---|
 | GET | `/api/v1/inference-templates` | List inference templates | JWT |
+| DELETE | `/api/v1/inference-templates?model_id=…` | Delete a custom template and all its specs by model_id. A blocking deployment or component reference returns 409 and preserves all specs. | JWT(admin) |
 | GET | `/api/v1/inference-templates/index` | Get the template index (a lightweight list for selectors) | JWT |
 | GET | `/api/v1/inference-templates/organizations` | List organizations/publishers represented in the templates | JWT |
 | GET | `/api/v1/inference-templates/chips` | Static catalog of accelerator cards supported by templates; optional `arch_id` identifies the architecture required by a template, with other vendor fields unchanged | JWT |
@@ -2321,4 +2322,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 142e6833dd17d93f1a073eaf0ca3a8dc30b5a926a4d9308f517d4d80eec9706e -->
+<!-- translation-source-sha256: def08e6b14facbd157f017a35244163f47dcea0596ce2dce76e90d96701a936a -->

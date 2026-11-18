@@ -636,6 +636,7 @@ macOS 忽略 `no_systemd`。
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/inference-templates` | 推理模板列表。在线目录可同时传 `weight_provider`、`weight_repo`、`weight_revision`，仅返回权重来源、仓库 ID 和提交版本均匹配仓库根目录的规格。 | JWT |
+| DELETE | `/api/v1/inference-templates?model_id=…` | 按 model_id 删除自定义模板及全部档位。存在部署或其他模板引用时返回 409，并保留全部档位。 | JWT(admin) |
 | GET | `/api/v1/inference-templates/index` | 模板索引（轻量列表，用于选择器） | JWT |
 | GET | `/api/v1/inference-templates/organizations` | 模板涉及的组织/发布方列表 | JWT |
 | GET | `/api/v1/inference-templates/chips` | 模板声明支持的静态加速卡目录；可选 `arch_id` 表示模板需要的架构 ID，其他厂商字段保持原样 | JWT |

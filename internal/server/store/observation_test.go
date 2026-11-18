@@ -85,6 +85,16 @@ func TestCatalogWritesPublishTheChangedTemplates(t *testing.T) {
 		t.Fatalf("event after a refused import: %+v", ev)
 	case <-time.After(100 * time.Millisecond):
 	}
+
+	if err := st.DeleteUserInferenceTemplate(model.ModelID); err != nil {
+		t.Fatal(err)
+	}
+	if key := waitTemplateEvent(t, sub); key != strconv.FormatUint(uint64(model.ID), 10) {
+		t.Fatalf("delete key = %q, want the row %d", key, model.ID)
+	}
+	if _, err := st.TemplateSpecAPIContract(model.ID, "user", spec.Name); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted spec still exists: %v", err)
+	}
 }
 
 func TestTemplateSpecAPIContractReadsOneSpecByIdentity(t *testing.T) {

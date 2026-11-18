@@ -89,8 +89,11 @@ const (
 	// ErrorInferenceSpecTargetRequired reports a delete-spec request that did
 	// not name both the owning model_id and the user spec to retire.
 	ErrorInferenceSpecTargetRequired = "INFERENCE_SPEC_TARGET_REQUIRED"
-	// ErrorInferenceTemplateModelRequired reports a request for a template's
-	// editable YAML that did not name the model.
+	// A delete is blocked while a deployment pins its target or another
+	// template mounts the model as a component.
+	ErrorInferenceTemplateDeploymentReference = "INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE"
+	ErrorInferenceTemplateComponentReference  = "INFERENCE_TEMPLATE_COMPONENT_REFERENCE"
+	// ErrorInferenceTemplateModelRequired reports a missing model_id.
 	ErrorInferenceTemplateModelRequired = "INFERENCE_TEMPLATE_MODEL_REQUIRED"
 	// ErrorInferenceTemplateSpecSourceInvalid reports a spec_source filter that
 	// is neither user nor upstream.

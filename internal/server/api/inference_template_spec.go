@@ -63,6 +63,19 @@ func (a *apiHandlers) deleteInferenceTemplateSpec(w http.ResponseWriter, r *http
 		return
 	}
 	modelDeleted, err := a.d.Store.DeleteUserInferenceSpec(modelID, specName)
+	a.finishInferenceTemplateDelete(w, modelDeleted, err)
+}
+
+func (a *apiHandlers) deleteInferenceTemplate(w http.ResponseWriter, r *http.Request) {
+	modelID := strings.TrimSpace(r.URL.Query().Get("model_id"))
+	if modelID == "" {
+		writeProductError(w, http.StatusBadRequest, messages.ErrorInferenceTemplateModelRequired, "model_id is required", nil)
+		return
+	}
+	a.finishInferenceTemplateDelete(w, true, a.d.Store.DeleteUserInferenceTemplate(modelID))
+}
+
+func (a *apiHandlers) finishInferenceTemplateDelete(w http.ResponseWriter, modelDeleted bool, err error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrInferenceSpecNotFound):

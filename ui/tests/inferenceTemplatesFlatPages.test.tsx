@@ -43,6 +43,7 @@ const { default: InferenceTemplateDetailPage } = await import("../src/pages/Infe
 const { default: TemplateWarnings } = await import("../src/components/TemplateWarnings.tsx");
 
 const original = {
+  me: api.me,
   inferenceTemplates: api.inferenceTemplates,
   inferenceTemplate: api.inferenceTemplate,
   inferenceTemplateYAML: api.inferenceTemplateYAML,
@@ -50,6 +51,7 @@ const original = {
   detectedInferenceTemplateChips: api.detectedInferenceTemplateChips,
   importInferenceTemplates: api.importInferenceTemplates,
   cloneInferenceTemplate: api.cloneInferenceTemplate,
+  deleteInferenceTemplate: api.deleteInferenceTemplate,
   deleteInferenceTemplateSpec: api.deleteInferenceTemplateSpec,
   nodes: api.nodes,
   nodesPage: api.nodesPage,
@@ -99,7 +101,7 @@ function renderList() {
 }
 
 function renderDetail(path = "/inference-templates/deepseek-ai/model") {
-  return render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={[path]}><Routes><Route path="/inference-templates/*" element={<InferenceTemplateDetailPage />} /><Route path="/deploy" element={<div>deploy page</div>} /><Route path="/playground/*" element={<RouteLocation />} /></Routes></MemoryRouter></I18nextProvider>);
+  return render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={[path]}><Routes><Route path="/inference-templates" element={<RouteLocation />} /><Route path="/inference-templates/*" element={<InferenceTemplateDetailPage />} /><Route path="/deploy" element={<div>deploy page</div>} /><Route path="/playground/*" element={<RouteLocation />} /></Routes></MemoryRouter></I18nextProvider>);
 }
 
 function RouteLocation() {
@@ -863,6 +865,50 @@ test("user specs expose an in-place delete that removes the spec or the whole te
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete user spec my-tuned" }));
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete", exact: true }));
   await waitFor(() => assert.ok(screen.getByText("Last user spec deleted; template custom/model removed")));
+});
+
+test("whole custom template deletion requires confirmation", async () => {
+  api.me = (async () => ({ role: "admin" })) as never;
+  const model = { ...upstreamModel, source: "user", model_id: "custom/model", specs: [{ ...h100Spec, source: "user" }] };
+  api.inferenceTemplate = (async () => model) as never;
+  const deleted: string[] = [];
+  api.deleteInferenceTemplate = async id => {
+    deleted.push(id);
+    if (deleted.length === 1) throw new Error("Deployment serving pins this template");
+    return { deleted: true, model_deleted: true };
+  };
+  renderDetail("/inference-templates/custom/model?from=org%3Dmine");
+  const user = userEvent.setup();
+  const button = await screen.findByRole("button", { name: "Delete template" });
+  await user.click(button);
+  let dialog = await screen.findByRole("dialog", { name: "Delete template" });
+  assert.match(dialog.textContent || "", /custom\/model.*all its specs/);
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: "Delete template" }) === null, true));
+  assert.deepEqual(deleted, []);
+  await user.click(button);
+  dialog = await screen.findByRole("dialog", { name: "Delete template" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete template" }));
+  assert.match((await within(dialog).findByRole("alert")).textContent || "", /Deployment serving/);
+  await user.click(within(dialog).getByRole("button", { name: "Delete template" }));
+  await screen.findByText("/inference-templates?org=mine");
+  assert.deepEqual(deleted, ["custom/model", "custom/model"]);
+});
+
+test("whole-template deletion is hidden for non-admins and built-in templates with user specs", async () => {
+  let accountRead = false;
+  api.me = (async () => { accountRead = true; return { role: "member" }; }) as never;
+  const userSpec = { ...h100Spec, source: "user" };
+  api.inferenceTemplate = (async () => ({ ...upstreamModel, source: "user", specs: [userSpec] })) as never;
+  renderDetail();
+  await waitFor(() => assert.equal(accountRead, true));
+  assert.equal(screen.queryByRole("button", { name: "Delete template" }), null);
+  cleanup();
+  api.me = (async () => ({ role: "admin" })) as never;
+  api.inferenceTemplate = (async () => ({ ...upstreamModel, specs: [h100Spec, { ...userSpec, name: "tuned" }] })) as never;
+  renderDetail();
+  await screen.findByRole("button", { name: "Delete user spec tuned" });
+  assert.equal(screen.queryByRole("button", { name: "Delete template" }), null);
 });
 
 test("clone opens the editor without a remount via edit=1", async () => {
