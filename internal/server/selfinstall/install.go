@@ -209,7 +209,7 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 	cfg := i.unitConfig(pf.ServiceUser, pf.Mode)
 	// The build's own host steps come before the service definition, which
 	// may name the groups they create.
-	if err := i.runInstallHooks(ctx, cfg.ServiceUser); err != nil {
+	if err := i.runInstallHooks(ctx, pf.Mode, cfg.ServiceUser); err != nil {
 		return InstallReport{}, err
 	}
 	svc := i.service(pf.Mode, pf.ServiceUser, cfg)

@@ -43,7 +43,8 @@ func runHostIdentity(args []string, stderr io.Writer) error {
 // runs as; "-" lets the server start when the step fails, for instance
 // after a rollback to a release without the subcommand, and read what it
 // can itself). The file is readable by the service group the unit runs
-// with. Without a systemd unit directory, or off Linux, it does nothing.
+// with. Without a systemd unit directory (selfinstall clears it unless
+// systemd supervises the service), or off Linux, it does nothing.
 // Uninstall removes the drop-in.
 type hostIdentityHook struct{}
 
@@ -87,15 +88,19 @@ func serviceGroupOf(serviceUser string) string {
 }
 
 // hostIdentityDropInContent is the drop-in for binary and the service group.
+// The command line is quoted as the unit's own ExecStart is
+// (selfinstall.SystemdCommandLine), so an install directory with a space or
+// "%" works; a line break, or a "$" systemd would expand, is refused.
 func hostIdentityDropInContent(binary, group string) (string, error) {
 	for _, s := range []string{binary, group} {
-		if strings.ContainsAny(s, " \t\r\n\"'\\%$;") {
+		if strings.ContainsAny(s, "\r\n$") {
 			return "", fmt.Errorf("host identity drop-in: %q holds characters a unit file would reinterpret", s)
 		}
 	}
-	line := "ExecStartPre=-+" + binary + " " + hostIdentityCommand + " --write " + hostidentity.RunFile
+	argv := []string{binary, hostIdentityCommand, "--write", hostidentity.RunFile}
 	if group != "" {
-		line += " --group " + group
+		argv = append(argv, "--group", group)
 	}
+	line := "ExecStartPre=-+" + selfinstall.SystemdCommandLine(argv)
 	return "# Written by gpuworks install: reads the host identity facts only root may read.\n[Service]\n" + line + "\n", nil
 }

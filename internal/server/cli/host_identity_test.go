@@ -142,11 +142,27 @@ func TestHostIdentityHookNeedsSystemdOnLinux(t *testing.T) {
 	}
 }
 
-// A binary path a unit file would reinterpret is refused, not written.
+// A binary path is quoted as the unit's ExecStart quotes it; one a unit
+// file would still reinterpret (a line break, a "$") is refused.
 func TestHostIdentityDropInRefusesUnsafePaths(t *testing.T) {
-	for _, bin := range []string{"/opt/my gpuworks/gpuworks", "/opt/$x/gpuworks", "/opt/a;b/gpuworks", "/opt/%h/gpuworks"} {
+	for _, bin := range []string{"/opt/a\nb/gpuworks", "/opt/$x/gpuworks", "/opt/a\rb/gpuworks"} {
 		if _, err := hostIdentityDropInContent(bin, "gpuworks"); err == nil {
 			t.Errorf("binary %q accepted", bin)
+		}
+	}
+	for bin, want := range map[string]string{
+		"/opt/my gpuworks/gpuworks": `ExecStartPre=-+"/opt/my gpuworks/gpuworks" host-identity --write /run/gpuworks/host-identity.json --group gpuworks`,
+		"/opt/%h/gpuworks":          `ExecStartPre=-+"/opt/%%h/gpuworks" host-identity --write /run/gpuworks/host-identity.json --group gpuworks`,
+		`/opt/q"t/gpuworks`:         `ExecStartPre=-+"/opt/q\"t/gpuworks" host-identity --write /run/gpuworks/host-identity.json --group gpuworks`,
+	} {
+		got, err := hostIdentityDropInContent(bin, "gpuworks")
+		if err != nil || !strings.Contains(got, "\n"+want+"\n") {
+			t.Errorf("binary %q: drop-in = %q, %v; want line %s", bin, got, err, want)
+		}
+		// The same quoting as the server's own command line in the unit.
+		unit := selfinstall.RenderUnit(selfinstall.UnitConfig{Binary: bin, ConfigPath: "/c", DataDir: "/d"})
+		if !strings.Contains(unit, "ExecStart="+selfinstall.SystemdCommandLine([]string{bin})+" ") {
+			t.Errorf("binary %q quoted differently from the unit:\n%s", bin, unit)
 		}
 	}
 }
