@@ -62,9 +62,30 @@ func TestReadyEndsTheBootExtensionOfTheProcessThatDeclaredIt(t *testing.T) {
 	}
 }
 
-// A ready that arrives while its process is already counted down, during
-// the extension, ends the extension at the call rather than at +2 minutes.
-func TestReadyDuringTheExtensionEndsItAtTheCall(t *testing.T) {
+// A live process that declared itself ready clamps exactly at the grace
+// when it goes down, without the boot extension.
+func TestReadyFromALiveProcessClampsAtTheGrace(t *testing.T) {
+	clk := newFakeClock("2026-12-01T00:00:00Z")
+	h := newHarness(t, openStore(t, ""), clk).load().run()
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, graceTen)
+	h.s.OwnerUp("acme_authority", 1)
+	h.s.Ready("acme_authority", 1)
+	h.s.OwnerDown("acme_authority")
+	clk.advance(10*time.Minute - time.Millisecond)
+	h.recombine()
+	if h.access() != featuregate.Full {
+		t.Fatal("clamped before the grace")
+	}
+	clk.advance(time.Millisecond)
+	h.recombine()
+	if h.access() != featuregate.ReadOnly {
+		t.Fatalf("not clamped at the grace: %v", h.access())
+	}
+}
+
+// A late ready from the process that went down, handled after it was
+// counted down, ends the extension at the call.
+func TestALateReadyFromTheProcessThatWentDownEndsTheExtension(t *testing.T) {
 	clk := newFakeClock("2026-12-01T00:00:00Z")
 	h := newHarness(t, openStore(t, ""), clk).load().run()
 	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, graceTen)
@@ -76,10 +97,40 @@ func TestReadyDuringTheExtensionEndsItAtTheCall(t *testing.T) {
 		t.Fatal("clamped inside the boot extension")
 	}
 	if !h.s.Ready("acme_authority", 1) {
-		t.Fatal("ready did not end the extension")
+		t.Fatal("ready was not recorded")
 	}
 	if h.access() != featuregate.ReadOnly {
 		t.Fatalf("the extension outlived the ready: %v", h.access())
+	}
+}
+
+// The host connection accepts a new process before the supervisor counts
+// it up, so its ready can arrive while the previous process is still
+// counted down. That ready must not end the previous process's extension:
+// the grants stay as pushed until the new process is counted up.
+func TestReadyFromAProcessNotCountedUpYetKeepsTheExtension(t *testing.T) {
+	clk := newFakeClock("2026-12-01T00:00:00Z")
+	h := newHarness(t, openStore(t, ""), clk).load().run()
+	h.push(pusherOf(acmeAuthority), extapi.KindAvailability, 1, graceTen)
+	h.s.OwnerUp("acme_authority", 1)
+	h.s.OwnerDown("acme_authority")
+	clk.advance(10*time.Minute + 30*time.Second)
+	h.recombine()
+	h.s.Ready("acme_authority", 2)
+	h.recombine()
+	if h.access() != featuregate.Full {
+		t.Fatalf("a ready from the next process clamped the grants: %v", h.access())
+	}
+	h.s.OwnerUp("acme_authority", 2)
+	if h.access() != featuregate.Full {
+		t.Fatalf("not as pushed with the owner back: %v", h.access())
+	}
+	// The ready belongs to process 2: its own down period has no extension.
+	h.s.OwnerDown("acme_authority")
+	clk.advance(10 * time.Minute)
+	h.recombine()
+	if h.access() != featuregate.ReadOnly {
+		t.Fatalf("process 2 declared ready but kept the extension: %v", h.access())
 	}
 }
 
@@ -100,8 +151,11 @@ func TestReadyAfterARestartDoesNotRenewTheGrace(t *testing.T) {
 	clk.advance(5 * time.Minute)
 	st = openStore(t, dsn)
 	h = newHarness(t, st, clk).load().run()
+	// No process is counted up after the restart yet: the ready is only
+	// recorded, and the down period keeps its extension from the persisted
+	// start.
 	if !h.s.Ready("acme_authority", 1) {
-		t.Fatal("ready after the restart changed nothing")
+		t.Fatal("ready after the restart was not recorded")
 	}
 	snap, err := st.LoadPushedState(context.Background())
 	if err != nil {
@@ -111,6 +165,11 @@ func TestReadyAfterARestartDoesNotRenewTheGrace(t *testing.T) {
 		t.Fatalf("down after ready = %+v, want since %d", snap.Down, since)
 	}
 	clk.advance(5*time.Minute + time.Second)
+	h.recombine()
+	if h.access() != featuregate.Full {
+		t.Fatalf("clamped inside the extension: %v", h.access())
+	}
+	clk.advance(BootExtension)
 	h.recombine()
 	if h.access() != featuregate.ReadOnly {
 		t.Fatalf("the grace was renewed: %v", h.access())

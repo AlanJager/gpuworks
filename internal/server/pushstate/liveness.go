@@ -48,7 +48,9 @@ func (s *State) OwnerDown(owner string) {
 // grants clamp as soon as the grace has passed. It never touches the
 // persisted down start, so it cannot renew the grace. A call from a
 // generation the supervisor has since replaced, or a second call, changes
-// nothing; Ready reports whether this call ended the extension.
+// nothing; Ready reports whether it recorded the call. A ready from a
+// generation not counted up yet is recorded for that generation alone: the
+// down period of the process before it keeps its extension.
 func (s *State) Ready(owner string, generation uint64) bool {
 	s.mu.Lock()
 	if prev, ok := s.ready[owner]; generation < s.spawn[owner] || ok && prev >= generation {
@@ -56,7 +58,9 @@ func (s *State) Ready(owner string, generation uint64) bool {
 		return false
 	}
 	s.ready[owner] = generation
-	if _, down := s.down[owner]; !down {
+	// A newer process than the one counted up (its ready can arrive before
+	// OwnerUp) only takes effect for its own later down period.
+	if _, down := s.down[owner]; !down || generation > s.spawn[owner] {
 		s.mu.Unlock()
 		return true
 	}

@@ -41,15 +41,17 @@ func (s *State) graceLocked(owner string) time.Duration {
 // clampAtLocked is the extclock instant from which owner's grants clamp:
 // its persisted down start plus its grace plus the boot extension, all from
 // the persisted start, so neither a restart nor a crash loop renews it. The
-// boot extension is left out when the process that went down had declared
-// itself ready. It is math.MaxInt64 while owner is up.
+// boot extension is left out only when the process that went down, the
+// latest one counted up, had declared itself ready: a ready from a newer
+// process that is not counted up yet does not shorten its predecessor's
+// down period. It is math.MaxInt64 while owner is up.
 func (s *State) clampAtLocked(owner string) int64 {
 	since, down := s.down[owner]
 	if !down {
 		return math.MaxInt64
 	}
 	ext := BootExtension
-	if gen, ok := s.ready[owner]; ok && gen >= s.spawn[owner] {
+	if gen, ok := s.ready[owner]; ok && gen == s.spawn[owner] {
 		ext = 0
 	}
 	return since + (s.graceLocked(owner) + ext).Milliseconds()
