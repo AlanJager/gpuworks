@@ -12,6 +12,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/trust"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
@@ -94,6 +95,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		RequireIsolation: m.cfg.Plugins.RequireIsolation,
 		Features:         h.reg.dynamic,
 		StaticFeatures:   maps.Clone(h.reg.featureBy),
+		HealthChanged:    func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
 		Log:              h.Log(),
 	})
 	if err != nil {
@@ -105,6 +107,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		return err
 	}
 	h.AddBannerSource(hooks.Banners())
+	h.AddBannerSource(&healthBanners{list: b.HealthBanners})
 	m.bridge = b
 	return nil
 }
@@ -132,6 +135,20 @@ func pluginCgroups(log *slog.Logger, detect func(unit string) (root, parent stri
 	return root, parent
 }
 
+// healthBanners are the plugin health banners (crashloop, revoked,
+// incompatible), for administrators only; converted once per change.
+type healthBanners struct {
+	list  func() []pushstate.Banner // pluginbridge.Bridge.HealthBanners
+	cache bannerCache
+}
+
+func (h *healthBanners) Banners(_ context.Context, viewer auth.Claims) []dto.ConsoleBanner {
+	if viewer.Role != adminRole {
+		return nil
+	}
+	return h.cache.convert(h.list())
+}
+
 // pluginAdmin adapts the bridge to the API's plugin administration.
 type pluginAdmin struct{ b *pluginbridge.Bridge }
 
@@ -145,6 +162,13 @@ func (p pluginAdmin) List(context.Context) []dto.Plugin {
 	}
 	return out
 }
+
+func (p pluginAdmin) Check(context.Context) dto.PluginsCheck {
+	c := p.b.Check()
+	return dto.PluginsCheck{ID: c.ID, Status: c.Status, Code: c.Code, Params: c.Params, Message: c.Message}
+}
+
+func (p pluginAdmin) WriteMetrics(w io.Writer) error { return p.b.WriteMetrics(w) }
 
 func (p pluginAdmin) Install(ctx context.Context, body io.Reader, approve string, enable bool, by string) (dto.PluginInstalled, error) {
 	in, err := p.b.Install(ctx, body, pluginbridge.InstallRequest{Approve: extapi.Digest(approve), Enable: enable, By: by})

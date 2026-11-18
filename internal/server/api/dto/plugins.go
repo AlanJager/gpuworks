@@ -48,6 +48,21 @@ type PluginPermission struct {
 // PluginList is GET /api/v1/plugins.
 type PluginList struct {
 	Items []Plugin `json:"items"`
+	// Check is the plugins diagnostics check over the installed packages.
+	Check PluginsCheck `json:"check"`
+}
+
+// PluginsCheck is the plugins diagnostics check: status fail while an
+// enabled package is crashlooping, failed, broken or revoked, warn while
+// one is incompatible with this server, pass otherwise; code and params
+// (ids) say which.
+type PluginsCheck struct {
+	ID     string         `json:"id"`
+	Status string         `json:"status"`
+	Code   string         `json:"code"`
+	Params map[string]any `json:"params"`
+	// Message is the English fallback for Code.
+	Message string `json:"message,omitempty"`
 }
 
 // PluginInstalled answers POST /api/v1/plugins/install.

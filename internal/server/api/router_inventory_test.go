@@ -185,6 +185,7 @@ GET /api/v1/logs/context
 GET /api/v1/logs/histogram
 GET /api/v1/logs/search
 GET /api/v1/mcp/status
+GET /api/v1/metrics/plugins
 GET /api/v1/metrics/query
 GET /api/v1/models
 GET /api/v1/models/catalog

@@ -23,6 +23,21 @@ type fakePlugins struct {
 	calls []string
 	body  string
 	err   error
+	// metricsErr fails WriteMetrics.
+	metricsErr error
+}
+
+func (f *fakePlugins) Check(context.Context) dto.PluginsCheck {
+	return dto.PluginsCheck{ID: "plugins", Status: "fail", Code: messages.CheckPluginsFailing, Params: map[string]any{"ids": "acme_backup"},
+		Message: "enabled plugins cannot run: acme_backup"}
+}
+
+func (f *fakePlugins) WriteMetrics(w io.Writer) error {
+	if f.metricsErr != nil {
+		return f.metricsErr
+	}
+	_, err := io.WriteString(w, "# TYPE gpuworks_plugin_up gauge\ngpuworks_plugin_up{id=\"acme_backup\"} 1\n")
+	return err
 }
 
 func (f *fakePlugins) record(call string) error {
@@ -105,6 +120,7 @@ func TestPluginRoutesAccess(t *testing.T) {
 		member, read, write, session int
 	}{
 		{"GET", "/api/v1/plugins", 403, 200, 200, 200},
+		{"GET", "/api/v1/metrics/plugins", 403, 200, 200, 200},
 		{"POST", "/api/v1/plugins/install?approve=sha256:00", 403, 403, 403, 200},
 		{"POST", "/api/v1/plugins/acme_backup/enable", 403, 403, 403, 200},
 		{"POST", "/api/v1/plugins/acme_backup/disable", 403, 403, 403, 200},
@@ -132,7 +148,8 @@ func TestPluginRoutesWire(t *testing.T) {
 	rec := rig.do(rig.session, "GET", "/api/v1/plugins", "")
 	want := `{"items":[{"id":"acme_backup","version":"1.0.0","publisher":"acme","trust":"host","enabled":true,"state":"running",` +
 		`"since":"2026-11-17T08:00:00Z","restarts":0,"parts":["server"],"isolation":"landlock","roles":[],"permissions":[{"name":"push:banners","risk":"low"}],` +
-		`"approve_hash":"sha256:00","actions":["disable","uninstall"]}]}`
+		`"approve_hash":"sha256:00","actions":["disable","uninstall"]}],` +
+		`"check":{"id":"plugins","status":"fail","code":"CHECK_PLUGINS_FAILING","params":{"ids":"acme_backup"},"message":"enabled plugins cannot run: acme_backup"}}`
 	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("list: %d\n%s\nwant\n%s", rec.Code, rec.Body, want)
 	}
@@ -223,12 +240,33 @@ func TestPluginRoutesWithoutAHostAndForTheAssistant(t *testing.T) {
 		}
 	}
 	withHost := newPluginRig(t, &fakePlugins{})
-	req := httptest.NewRequest("GET", "/api/v1/plugins", nil)
-	req.Header.Set("Authorization", "Bearer "+withHost.session)
-	req = req.WithContext(context.WithValue(req.Context(), assistantReadKey{}, true))
-	rec := httptest.NewRecorder()
-	withHost.h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound || len(withHost.plugins.recorded()) != 0 {
-		t.Fatalf("assistant read: %d %s", rec.Code, rec.Body)
+	for _, path := range []string{"/api/v1/plugins", "/api/v1/metrics/plugins"} {
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("Authorization", "Bearer "+withHost.session)
+		req = req.WithContext(context.WithValue(req.Context(), assistantReadKey{}, true))
+		rec := httptest.NewRecorder()
+		withHost.h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound || len(withHost.plugins.recorded()) != 0 || strings.Contains(rec.Body.String(), "gpuworks_plugin") {
+			t.Fatalf("assistant read of %s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+}
+
+// The metrics route answers the Prometheus text format, and a failure to
+// write them is a 500 with nothing half-written.
+func TestPluginMetricsRoute(t *testing.T) {
+	rig := newPluginRig(t, &fakePlugins{})
+	rec := rig.do(rig.session, "GET", "/api/v1/metrics/plugins", "")
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "text/plain; version=0.0.4; charset=utf-8" ||
+		rec.Body.String() != "# TYPE gpuworks_plugin_up gauge\ngpuworks_plugin_up{id=\"acme_backup\"} 1\n" {
+		t.Fatalf("metrics: %d %q %q", rec.Code, rec.Header().Get("Content-Type"), rec.Body)
+	}
+	rig = newPluginRig(t, &fakePlugins{metricsErr: errors.New("disk on fire")})
+	if rec := rig.do(rig.session, "GET", "/api/v1/metrics/plugins", ""); rec.Code != 500 || strings.Contains(rec.Body.String(), "gpuworks_plugin_up") {
+		t.Fatalf("failed metrics: %d %s", rec.Code, rec.Body)
+	}
+	rig = newPluginRig(t, nil)
+	if rec := rig.do(rig.session, "GET", "/api/v1/metrics/plugins", ""); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), messages.ErrorPluginsUnavailable) {
+		t.Fatalf("metrics without a plugin host: %d %s", rec.Code, rec.Body)
 	}
 }

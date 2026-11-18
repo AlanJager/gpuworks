@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -19,6 +20,11 @@ import (
 // platform tokens for writes. A refusal is a *messages.ProductError.
 type PluginAdmin interface {
 	List(ctx context.Context) []dto.Plugin
+	// Check is the plugins diagnostics check.
+	Check(ctx context.Context) dto.PluginsCheck
+	// WriteMetrics writes the installed plugins' metrics in the
+	// Prometheus text format.
+	WriteMetrics(w io.Writer) error
 	// Install verifies the package read from body and installs it when
 	// approve is its approval hash; enable starts it once installed. by
 	// names the administrator for the audit record.
@@ -34,6 +40,7 @@ type PluginAdmin interface {
 // session or token; every change needs an administrator's login session.
 func (a *apiHandlers) pluginRoutes(r chi.Router) {
 	r.With(a.managementAuth, readTokensRead, a.managementAdmin, compressJSON).Get("/plugins", a.listPlugins)
+	r.With(a.managementAuth, readTokensRead, a.managementAdmin).Get("/metrics/plugins", a.pluginMetrics)
 	r.Group(func(r chi.Router) {
 		r.Use(a.managementAuth, sessionOnly, a.managementAdmin)
 		r.Post("/plugins/install", a.installPlugin)
@@ -67,7 +74,25 @@ func (a *apiHandlers) listPlugins(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []dto.Plugin{}
 	}
-	writeJSON(w, http.StatusOK, dto.PluginList{Items: items})
+	writeJSON(w, http.StatusOK, dto.PluginList{Items: items, Check: p.Check(r.Context())})
+}
+
+// pluginMetrics serves the gpuworks_plugin_* metrics of the installed
+// packages for a Prometheus scrape (text format 0.0.4), to administrators
+// by session or token.
+func (a *apiHandlers) pluginMetrics(w http.ResponseWriter, r *http.Request) {
+	p, ok := a.pluginAdmin(w, r)
+	if !ok {
+		return
+	}
+	var buf bytes.Buffer
+	if err := p.WriteMetrics(&buf); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(buf.Bytes())
 }
 
 // installPlugin takes the package as the request body
