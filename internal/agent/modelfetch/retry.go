@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
 
 // RetryPolicy is how often and how patiently one address is retried after a
@@ -36,10 +38,20 @@ var DefaultRetry = RetryPolicy{MaxAttempts: 6, LastAttempts: 16, InitialBackoff:
 
 // IsTransient reports a failure that clearly came from the HTTP transport
 // and may pass on its own: worth another try at the same address. HTTP
-// statuses, authentication, validation and filesystem errors are not.
+// temporary server statuses are retryable too; authentication, missing
+// repositories/revisions, validation and filesystem errors are not.
 func IsTransient(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
+	}
+	var status *modelrepo.StatusError
+	if errors.As(err, &status) {
+		switch status.Code {
+		case 408, 429, 500, 502, 503, 504:
+			return true
+		default:
+			return false
+		}
 	}
 	// The caller checks its own context first, so a deadline here is an
 	// HTTP-client or stall timeout, not the end of the task.

@@ -92,6 +92,8 @@ type ModelStoragePresence struct {
 	// Writable is whether this gpuworks may change the storage now (enabled,
 	// and a node can write to it): deleting the files needs it.
 	Writable bool `json:"writable"`
+
+	TransferErrorCode string `json:"transfer_error_code,omitempty"`
 }
 
 // ModelPreparation is the API projection of a transient preparation view.

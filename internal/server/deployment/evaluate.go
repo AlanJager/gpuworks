@@ -81,30 +81,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 		out.fieldErrors(&dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, Replicas: req.Replicas, AutoPlaced: true}, errs)
 		return
 	}
-	if err := ValidateReplicaShape(req); err != nil {
-		errs.add("replicas", err)
-	}
-	if err := ValidateStartTimeout(req); err != nil {
-		errs.add("start_timeout_sec", err)
-	}
-	if err := ValidateHealthCheckThreshold(req); err != nil {
-		errs.add("health_check_threshold_sec", err)
-	}
-	if _, err := s.preparePDDeployRequest(req, ""); err != nil {
-		errs.add(fieldPDPlacement, err)
-	}
-	if _, err := planning.ParsePlacement(req.Placement); err != nil {
-		errs.add("placement", err)
-	}
-	reqs, reqsErr := requestRequirements(req)
-	if reqsErr != nil {
-		errs.add("node_requirements", reqsErr)
-	} else if err := s.validateRequestNodes(req, reqs); err != nil {
-		errs.add("node_requirements", err)
-	}
-	if _, err := planning.PlacementStrategyOf(req.PlacementStrategy); err != nil {
-		errs.add("placement_strategy", err)
-	}
+	reqs := s.collectEvaluationRequestErrors(req, errs)
 	profileNode, _ := s.d.Store.NodeWithGPUs(templateTargetNodeUUID(req.NodeUUID, req.NodeUUIDs))
 	targetVendor := accelerator.NormalizeVendor(evaluateReq.TargetVendor)
 	if strings.TrimSpace(evaluateReq.TargetVendor) != "" && targetVendor == "" {
@@ -127,9 +104,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 		out.fail(err)
 		return
 	}
-	if err := checkPDSpec(selection, placementPD(req)); err != nil {
-		errs.add(fieldPDPlacement, err)
-	}
+	errs.add(fieldPDPlacement, checkPDSpec(selection, placementPD(req)))
 	preserveEngineModelName(req)
 	// The mounts the request states are judged against the assembled launch's
 	// own rules here, so the form learns about a duplicate or nested target at
@@ -214,8 +189,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	preflightSelection := selection
 	preflightSelection.Components = append([]deploy.ComponentBinding(nil), selection.Components...)
 	model, err := s.resolveDeploymentModelFromTemplate(ctx, req.ModelID, &selection, req.TemplateID)
-	if err != nil {
-		errs.add("model_id", err)
+	if errs.add("model_id", err) {
 		writeFieldErrors()
 		return
 	}
@@ -239,10 +213,9 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// preview below, the estimate, and a create submitted from this form all
 	// read the same object.
 	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
-	if err != nil {
+	if errs.add(fieldExtraArgs, err) {
 		// ProductErrors that name a key land on that key's control; the
 		// extra-args parse error is the one that starts on the text box.
-		errs.add(fieldExtraArgs, err)
 		writeFieldErrors()
 		return
 	}
@@ -315,8 +288,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			Placement: req.Placement,
 		}
 		dp, err := deploy.PlacementDataParallel(eng.Name(), quick.DP, launch.TemplateResidual, launch.UserResidual)
-		if err != nil {
-			errs.add("data_parallel_size", err)
+		if errs.add("data_parallel_size", err) {
 			writeFieldErrors()
 			return
 		}
@@ -412,8 +384,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	}
 	if nerr == nil {
 		req.PartitionBackend, err = ResolvePartitionBackend(node, req.VRAMLimitGiB, req.PartitionBackend)
-		if err != nil {
-			errs.add("partition_backend", err)
+		if errs.add("partition_backend", err) {
 			writeFieldErrors()
 			return
 		}
@@ -432,8 +403,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 		}
 	}
 	resp.Diagnostics, err = s.inspectDeploymentModel(ctx, model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes, false)
-	if err != nil {
-		errs.add("model_id", err)
+	if errs.add("model_id", err) {
 		writeFieldErrors()
 		return
 	}
@@ -460,10 +430,9 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// and the template layer the write boundary would keep (the residual, not
 	// the spec's raw argument list).
 	requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides)
-	if overrideErr != nil {
+	if errs.add("", overrideErr) {
 		// The override layer is a section, not one control: the page-level
 		// line carries its decode failures.
-		errs.add("", overrideErr)
 		writeFieldErrors()
 		return
 	}
@@ -482,8 +451,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	nodeImageCached, quick = plan.nodeImageCached, plan.quick
 	tp := plan.tp
 	parallelismSummary, parallelismErr := evaluateParallelism(placement, req.NNodes, tp, plan.placementResolved, quick, launch.TemplateResidual, launch.UserResidual, eng.Name())
-	if parallelismErr != nil {
-		errs.add("data_parallel_size", parallelismErr)
+	if errs.add("data_parallel_size", parallelismErr) {
 		writeFieldErrors()
 		return
 	}
@@ -511,23 +479,20 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	}
 	// Checked once the ranks are previewed, so the form shows the refusal
 	// beside the launches and the draft that would satisfy it.
-	if err := checkManualCommandRanks(req); err != nil {
-		errs.add(fieldContainerCmd, err)
-	}
+	errs.add(fieldContainerCmd, checkManualCommandRanks(req))
 	// The create resolves its launch on the per-node card count the request
 	// states, where the plan above used the cards the scheduler assigned; a
 	// memory-limited draft can get fewer cards than it states. The same
 	// preflight here makes what the create would refuse a blocking error.
 	if errs.empty() {
-		if err := s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp, base); err != nil {
-			errs.add("", err)
+		if errs.add("", s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp, base)) {
 			writeFieldErrors()
 			return
 		}
 	}
 	if !errs.empty() {
-		resp.OK = false
-		resp.Errors = errs.items
+		out.fieldErrors(&resp, errs)
+		return
 	}
 	resp.Warnings = uniqueWarnings(resp.Warnings)
 	out.answer(resp)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"runtime"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/trust"
+	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginbridge"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
@@ -41,10 +43,12 @@ const pluginsModuleName = "plugins"
 
 // pluginsModule is the built-in module that runs installed plugins
 // (package pluginbridge, docs/dev/extensions.md): its Init loads pushed
-// state before the router is built and registers its evaluators as the
-// feature source (when installed packages declare features), the node
+// state before the router is built, declares the installed packages'
+// feature keys in the dynamic feature set (answered by pushed state, and
+// replaced whenever the installed packages change), and registers the node
 // insert guard, the scheduling holder and a banner source; its service
-// starts the plugins.
+// starts the plugins. It runs after every compiled module, so the static
+// feature keys are all declared when it makes the dynamic set.
 type pluginsModule struct {
 	cfg    Config
 	st     *store.Store
@@ -64,6 +68,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 	}
 	rt := m.cfg.PluginRuntime
 	bus := h.Bus()
+	h.reg.dynamic = featuregate.NewDynamicSet(h.reg.features)
 	b, err := pluginbridge.Open(ctx, pluginbridge.Config{
 		Packages: pkgs,
 		State: pushstate.Config{Store: m.st, Fleet: PushedStateFleet(m.st), Bus: bus, FleetTopic: store.NodeFleetTopic,
@@ -75,18 +80,14 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing},
 		Core:             extapi.CoreInfo{Version: version.Version, InstallID: h.InstallID(), OS: runtime.GOOS, Arch: runtime.GOARCH, HARole: extapi.HARoleSingle},
 		RequireIsolation: m.cfg.Plugins.RequireIsolation,
+		Features:         h.reg.dynamic,
+		StaticFeatures:   maps.Clone(h.reg.featureBy),
 		Log:              h.Log(),
 	})
 	if err != nil {
 		return err
 	}
 	hooks := NewPushedStateHooks(b.State())
-	if features := b.Features(); len(features) > 0 {
-		h.DeclareFeatures(features...)
-		if err := h.ProvideFeatures(hooks.Features()); err != nil {
-			return err
-		}
-	}
 	h.GuardNodeInsert(hooks.GuardNode)
 	if err := h.HoldScheduling(hooks.Holder()); err != nil {
 		return err

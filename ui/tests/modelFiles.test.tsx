@@ -480,3 +480,50 @@ test("relay capacity refusal keeps its localized retry guidance in the task deta
   assert.ok(details.getByText(locale.common.apiError.PEER_RELAY_BUSY));
   assert.equal(details.queryByText("raw server capacity message"), null);
 });
+
+// A machine-readable listing category must not hide the address/revision/status
+// that makes the failure reproducible, on either local or shared storage rows.
+const listingFailures = [
+  ["MODEL_DOWNLOAD_NETWORK_EXHAUSTED", "context deadline exceeded"],
+  ["MODEL_DOWNLOAD_SOURCE_NOT_FOUND", "status=404"],
+  ["MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED", "status=403"],
+  ["MODEL_DOWNLOAD_SOURCE_THROTTLED", "status=429"],
+  ["MODEL_DOWNLOAD_SOURCE_REJECTED", "status=422"],
+] as const;
+
+for (const language of ["en", "zh"] as const) {
+  for (const [code, cause] of listingFailures) {
+    test(`${language} ${code} keeps its category and provider detail on local and shared rows`, async () => {
+      stubMe("admin");
+      const translated = await createI18n(["models", "storage"], language);
+      const detail = `list files: modelscope.example/org/model revision=requested-revision ${cause}`;
+      const category = translated.i18n.t(`apiError.${code}`, { ns: "common" });
+      assert.notEqual(category, `apiError.${code}`, "the code has a real localized category");
+      render(<I18nextProvider i18n={translated.i18n}><ModelFilesSection model={modelWith({
+        nodes: [row({ state: "failed", transfer_error_code: code, message: detail })],
+        storages: [shared({ state: "failed", acquisition: "download", transfer_error_code: code, message: detail })],
+      })} onChanged={() => {}} /></I18nextProvider>);
+      for (const name of ["gpu3", "archive"]) {
+        const fileRow = screen.getByText(name, { exact: true }).closest("tr")!;
+        fireEvent.click(within(fileRow).getByRole("button", { name: translated.locale.storage.detail.expand }));
+        const note = within(fileRow.nextElementSibling as HTMLElement).getByText(
+          translated.i18n.t("apiErrorDetail", { ns: "common", category, detail }),
+        );
+        assert.ok(note.textContent?.includes(category), "localized reason is visible");
+        assert.ok(note.textContent?.includes(detail), "provider address, revision and status remain visible");
+      }
+    });
+  }
+}
+
+for (const code of [undefined, "MODEL_DOWNLOAD_FUTURE_CODE"] as const) {
+  test(`local and shared file failures preserve fallback with ${code ?? "an older agent"}`, () => {
+    stubMe("admin");
+    const detail = "unclassified listing failure at legacy.example revision=legacy";
+    renderSection(modelWith({
+      nodes: [row({ state: "failed", transfer_error_code: code, message: detail })],
+      storages: [shared({ state: "failed", acquisition: "download", transfer_error_code: code, message: detail })],
+    }));
+    for (const name of ["gpu3", "archive"]) assert.ok(expandFile(name).getByText(detail));
+  });
+}

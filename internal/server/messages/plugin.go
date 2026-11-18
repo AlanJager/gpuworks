@@ -70,6 +70,11 @@ const (
 	// ErrorPluginVersionConflict: version {version} of {id} is installed
 	// with other contents; a build is never replaced under the same version.
 	ErrorPluginVersionConflict = "PLUGIN_VERSION_CONFLICT"
+	// ErrorPluginFeatureTaken: package {id} declares feature {feature},
+	// which {owner} already provides: a module compiled into this server
+	// (its name) or another installed package (its id). A key keeps its
+	// owner; nothing was installed.
+	ErrorPluginFeatureTaken = "PLUGIN_FEATURE_TAKEN"
 	// ErrorPluginNeedsNewerCore: an index offers {id} {version}, which needs
 	// a newer server ({min_core_hint}) because it requires {capability}.
 	ErrorPluginNeedsNewerCore = "PLUGIN_NEEDS_NEWER_CORE"

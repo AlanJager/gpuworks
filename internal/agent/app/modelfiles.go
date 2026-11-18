@@ -244,7 +244,7 @@ func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, 
 		}
 	}
 	report(proto.ModelFileStatus{Key: mf.Key, State: proto.MFDownloading, Path: absTarget, Acquisition: proto.ModelAcquireDownload})
-	fail := func(err error, revision string, total int64) {
+	failWithCode := func(err error, revision string, total int64, code string) {
 		state := proto.MFFailed
 		if modelDiskFull(err) {
 			state = proto.MFInsufficientDisk
@@ -252,9 +252,10 @@ func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, 
 		report(proto.ModelFileStatus{
 			Key: mf.Key, State: state, Path: absTarget, Revision: revision,
 			BytesTotal: total, BytesDone: modelRepoBytesDone(absTarget),
-			Message: err.Error(), Acquisition: proto.ModelAcquireDownload,
+			Message: err.Error(), Acquisition: proto.ModelAcquireDownload, TransferErrorCode: code,
 		})
 	}
+	fail := func(err error, revision string, total int64) { failWithCode(err, revision, total, "") }
 
 	net := n.network()
 	// Where the files come from, as the console shows it while they arrive:
@@ -293,7 +294,7 @@ func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, 
 		if ctx.Err() != nil {
 			return
 		}
-		fail(err, "", 0)
+		failWithCode(err, "", 0, modelfetch.ListingErrorCode(err))
 		return
 	}
 	files, err = selectRepoSubfolder(files, mf.Subfolder)

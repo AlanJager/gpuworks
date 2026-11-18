@@ -943,7 +943,7 @@
     "PLUGIN_SIGNATURE_INVALID": "{{object}} 上密钥 {{keyid}} 的签名校验失败：文件已被修改或损坏。",
     "PLUGIN_STATE_REJECTED": "插件推送的 {{kind}} 状态无效：字段 {{field}} 违反规则 {{rule}}。",
     "PLUGIN_STATE_TOO_LARGE": "插件推送的 {{kind}} 状态过大：{{field}} 超过 {{max}}。",
-    "PLUGIN_STATE_TOO_NEW": "已存储的 {{marker}} 版本为 {{version}}，此服务器最高只能读取版本 {{known}}。请运行 {{needs}} 或更新的版本，不要使用这个较旧的服务器。",
+    "PLUGIN_STATE_TOO_NEW": "已存储的 {{marker}} 版本为 {{version}}，此构建最高只能读取版本 {{known}}。请运行 {{needs}} 或更新的版本。",
     "PLUGIN_PACKAGE_MALFORMED": "插件包在“{{member}}”处格式错误（{{reason}}）。",
     "PLUGIN_PACKAGE_TOO_LARGE": "插件包成员“{{member}}”使包超过 {{max}} 字节的上限。",
     "PLUGIN_CERT_REVOKED": "签署此包的发布者 {{publisher}} 的证书（序号 {{serial}}，密钥 {{keyid}}）已被吊销。",
@@ -963,6 +963,7 @@
     "PLUGIN_TRUST_CONFLICT": "信任更新要添加根密钥 {{keyid}}，但此服务器在该 id 下已有另一把密钥。",
     "PLUGIN_NOT_INSTALLED": "没有安装插件 {{id}}。",
     "PLUGIN_VERSION_CONFLICT": "{{id}} 的版本 {{version}} 已经以不同的内容安装。改动请以新版本发布。",
+    "PLUGIN_FEATURE_TAKEN": "插件 {{id}} 的功能 {{feature}} 已由 {{owner}} 提供。",
     "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} 需要更新的服务器（{{min_core_hint}}）：它需要 {{capability}}。",
     "PLUGIN_CAPABILITY_MISSING": "服务器没有提供插件离不开的能力 {{capability}} 在 {{min}} 至 {{max}} 之间的版本。请安装适用于此服务器的插件版本，或升级服务器。",
     "PLUGIN_UNAVAILABLE": "插件 {{plugin}} 未在运行，它提供的功能在恢复运行前受限或不可用。",
@@ -993,7 +994,12 @@
     "PLUGIN_OVERRIDE_SUPERSEDED": "插件 {{plugin}} 重新设定了 {{kind}} 条目 {{entry}}，你的覆盖已被取代。",
     "PLUGIN_APPROVAL_REQUIRED": "安装 {{id}} {{version}} 需要你批准它申请的内容（权限：{{permissions}}；角色：{{roles}}）。尚未安装任何内容；请带上批准值 {{approve_hash}} 重新上传。",
     "PLUGIN_BROKEN": "插件 {{id}} 已无法通过校验，不能启用。请重新安装或卸载它。",
-    "PLUGINS_UNAVAILABLE": "此服务器没有运行插件宿主，无法在这里管理插件。"
+    "PLUGINS_UNAVAILABLE": "此服务器没有运行插件宿主，无法在这里管理插件。",
+    "MODEL_DOWNLOAD_NETWORK_EXHAUSTED": "多次重试后仍因临时网络或上游服务故障无法获取模型文件列表。请检查网络后重试下载。",
+    "MODEL_DOWNLOAD_SOURCE_NOT_FOUND": "该来源找不到模型仓库或指定版本。请核对仓库、版本和访问权限，并注册或选择正确的模型。",
+    "MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED": "模型来源拒绝访问。请检查仓库访问权限和该来源的登录凭据。",
+    "MODEL_DOWNLOAD_SOURCE_THROTTLED": "模型来源持续限制文件列表请求。请稍后重试下载。",
+    "MODEL_DOWNLOAD_SOURCE_REJECTED": "模型来源拒绝了文件列表请求。请检查来源地址和仓库设置。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {

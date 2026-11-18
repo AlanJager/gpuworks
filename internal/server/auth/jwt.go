@@ -23,6 +23,12 @@ type Claims struct {
 	SessionID string `json:"sid,omitempty"`
 	IssuedAt  int64  `json:"iat"`
 	Expires   int64  `json:"exp"`
+	// LocalAdmin is the effective break-glass floor of the plugin host
+	// (ADR 0071, decision 11): the user's stored flag while the user is an
+	// administrator signed in with a login session. The server fills it
+	// from the database on every request; it is never signed into a token
+	// nor read from one, and a platform token never carries it.
+	LocalAdmin bool `json:"-"`
 }
 
 // TokenSigner creates and validates compact HMAC-SHA256 bearer tokens.

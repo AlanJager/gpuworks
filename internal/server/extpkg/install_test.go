@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -21,7 +22,9 @@ type memMarkers struct {
 	mu        sync.Mutex
 	markers   map[string]extapi.Marker
 	readErr   error
+	setErr    error
 	deleteErr error
+	sets      int
 }
 
 func (m *memMarkers) PluginMarkers() ([]extapi.Marker, error) {
@@ -35,6 +38,17 @@ func (m *memMarkers) PluginMarkers() ([]extapi.Marker, error) {
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+func (m *memMarkers) SetPluginMarker(v extapi.Marker) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.setErr != nil {
+		return m.setErr
+	}
+	m.sets++
+	m.markers[v.Name] = v
+	return nil
 }
 
 func (m *memMarkers) DeletePluginMarker(name string) error {
@@ -412,5 +426,53 @@ func TestConcurrentInstallsSerialize(t *testing.T) {
 	}
 	if versions, _ := h.Dir.Versions("acme_backup"); len(versions) != 2 {
 		t.Fatalf("versions = %v", versions)
+	}
+}
+
+// featureOwners is a fixed owner per key; it records which package asked.
+type featureOwners struct {
+	owners map[string]string
+	asked  []string
+}
+
+func (f *featureOwners) FeatureOwner(id, key string) string {
+	f.asked = append(f.asked, id+" "+key)
+	if owner := f.owners[key]; owner != id {
+		return owner
+	}
+	return ""
+}
+
+// A package declaring a key someone else provides is refused before
+// approval is asked for, naming the key and its owner, and nothing is
+// unpacked; the package's own keys and free keys install.
+func TestInstallRefusesAFeatureKeySomeoneElseProvides(t *testing.T) {
+	w := newWorld(t)
+	h, _ := newHost(t, w)
+	withFeatures := func(s *extsign.Spec) {
+		s.Manifest.Features = []extapi.FeatureDecl{
+			{Key: "acme.backup", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf},
+			{Key: "acme.tools", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf},
+		}
+	}
+	raw := pkg(t, w, "1.0.0", withFeatures)
+	for owner, want := range map[string]string{"acme_other": "acme_other", "ops_audit": "ops_audit"} {
+		owners := &featureOwners{owners: map[string]string{"acme.tools": owner}}
+		_, err := h.Install(bytes.NewReader(raw), extpkg.InstallOptions{RequireApproval: true, Features: owners})
+		code, params := codeOf(err)
+		if code != messages.ErrorPluginFeatureTaken || params["id"] != "acme_backup" || params["feature"] != "acme.tools" || params["owner"] != want {
+			t.Fatalf("install over %s's key = %v %v", owner, err, params)
+		}
+		if versions, _ := h.Dir.Versions("acme_backup"); len(versions) != 0 {
+			t.Fatalf("a refused install left versions %v", versions)
+		}
+	}
+	// The package that already owns its keys (an upgrade) installs.
+	owners := &featureOwners{owners: map[string]string{"acme.backup": "acme_backup", "acme.tools": "acme_backup"}}
+	if _, err := h.Install(bytes.NewReader(raw), extpkg.InstallOptions{Features: owners}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"acme_backup acme.backup", "acme_backup acme.tools"}; !slices.Equal(owners.asked, want) {
+		t.Fatalf("asked %v, want %v", owners.asked, want)
 	}
 }

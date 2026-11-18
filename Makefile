@@ -157,6 +157,7 @@ cross: cross-agents
 
 ## ui: install or refresh deps when package-lock.json changed (ui/ensure-deps.mjs), then build the frontend into the embed dir
 ui: i18n-check
+	./scripts/check_ui_architecture.sh
 	./scripts/ui_overlay_guard.sh
 	@if [ -f secrets/i18n-llm.env ]; then echo "  i18n LLM config detected; run 'make i18n-translate' to fill new missing keys"; fi
 	@cd ui && node ensure-deps.mjs
@@ -634,6 +635,10 @@ test-l4-gitee-ascend-partition-capability: cross-agents
 ## small (~0.6B) ModelScope model and a /v1/chat/completions round trip.
 test-l4-gitee-ascend-deploy-chat: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,partition -run '^TestGiteeAscend(FullServerAgentDeployChatEndToEnd|ARM64ContainerInContainerDeployChatEndToEnd)$$' -timeout=125m ./test/l4
+
+.PHONY: test-l4-ppu-sglang-gateway-stability
+test-l4-ppu-sglang-gateway-stability:
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -count=1 -v -tags=cloudgpu,partition -run '^TestPPUSGLangGatewayStability$$' -timeout=40m ./test/l4
 
 ## test-l4-ascend-pool-partition-inference: treat the configured self-owned Ascend hosts as one
 ## capability-selected fixture pool. The platform test uploads the checked

@@ -4,17 +4,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 )
 
-// With the server's node snapshot on, the pages a console polls - the node
-// list, its facets, the dashboard, storage usage - read the fleet once
-// between changes, not once per request; and a change made through the API is
-// on the very next page.
+// Explicit node inventory/facet requests refresh the shared snapshot, so
+// external commits are visible. Dashboard/storage readers then reuse it;
+// background reads retain the original bounded-report cache behavior.
 func TestNodePagesShareTheFleetSnapshot(t *testing.T) {
 	r := newAutoRig(t, 3)
-	r.st.EnableFleetNodeSnapshot(nil)
+	r.st.EnableFleetNodeSnapshot(func() time.Time { return time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC) })
 	reads := countWholeNodeReads(t, r.st)
 	paths := []string{"/api/v1/nodes?page=1&page_size=20", "/api/v1/nodes/facets", "/api/v1/dashboard/summary", "/api/v1/storages/usage"}
 	get := func(path string) []byte {
@@ -30,13 +30,19 @@ func TestNodePagesShareTheFleetSnapshot(t *testing.T) {
 	}
 	reads.Store(0)
 	for range 3 {
-		for _, path := range paths {
+		for i, path := range paths {
+			before := reads.Load()
 			get(path)
+			want := int64(0)
+			if i < 2 {
+				want = 1
+			}
+			if delta := reads.Load() - before; delta != want {
+				t.Fatalf("GET %s read fleet %d times, want %d", path, delta, want)
+			}
 		}
 	}
-	if n := reads.Load(); n != 0 {
-		t.Fatalf("12 requests with nothing changed read the whole fleet %d times, want 0", n)
-	}
+	reads.Store(0)
 
 	if rec := r.do(r.session, http.MethodPatch, "/api/v1/nodes/au-2/name", `{"name":"renamed"}`); rec.Code != http.StatusOK {
 		t.Fatalf("rename = %d %s", rec.Code, rec.Body)

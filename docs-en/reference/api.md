@@ -153,7 +153,8 @@ Success returns HTTP 200 and sets `gpuworks_session` through `Set-Cookie`. Examp
 `token` is the JWT for subsequent requests; `user` contains the user ID, username, and role (`admin` or `user`).
 For a complete request example, see [Set the Address and Log In](api-conventions.md#1-设置地址并登录).
 
-`auth/me` returns current user information and the length a new password must have, in the form `{"id":1,"username":"admin","role":"admin","password_policy":{"min_length":8,"max_length":128}}`.
+`auth/me` returns current user information and the length a new password must have, in the form `{"id":1,"username":"admin","role":"admin","local_admin":true,"password_policy":{"min_length":8,"max_length":128}}`.
+`local_admin` says whether this request has the plugin host's local administrator floor (see [Installable extensions](../dev/extensions.md#local-administrator-floor)): it is `true` only for a user whose role is `admin`, who is marked a local administrator in the database, and who calls with a login session; a platform API token always reads `false`. It is for display only.
 The Cookie is set to `HttpOnly` and `SameSite=Lax` and stores an opaque session credential, not a JWT.
 When a request includes both Bearer and Cookie credentials, Bearer takes precedence; an invalid Bearer does not fall back to the Cookie.
 
@@ -287,6 +288,8 @@ Success returns 202 and a run object with `id`, `state`, and `counts`. An identi
 Stopping cancels only queued items. To continue, call `continue-preview`, then create a new run with `source_run_id` pointing to the original run; cancellation of the original queue and creation of the new run are atomic. After verifying an unconfirmed node, an administrator posts `{"note":"处理依据"}` to `items/{uuid}/release`; success returns 204. The original result remains and verification is audited separately. Management identities can read results; bulk writes require an administrator and reject read-only platform tokens. The existing single-node route retains its permissions, adds `run_id` to its 202 response, and shares the global execution reservation. For workflow and workload impact, see [Upgrade the Agent](../how-to/upgrade-and-compatibility.md#升级-agent).
 
 ### Node List Filters and Response Fields
+
+`GET /api/v1/nodes` and `/api/v1/nodes/facets` explicitly read the latest committed node and GPU facts and refresh the shared fleet snapshot. Changes committed through an external database connection do not wait for snapshot expiry. Uncommitted changes remain invisible, and long write transactions do not block these reads. Background monitoring and controllers keep the fleet snapshot's report window.
 
 `q` matches node names, hostnames, and UUIDs. `state` indicates only the agent connection state: `online`, `offline`, or `connecting`;
 accelerator problems do not change it. Sortable columns are `name`, `state`, `agent_version`, `gpu_count`, `cpu_cores`, `mem_total`, and `created_at`.
@@ -505,6 +508,8 @@ A Kubernetes cluster joins as one DaemonSet: an administrator creates the cluste
 Automatic downloads, copies, and deployment acquisition keep different models in separate directories within the same storage and node. An empty `revision` still selects the source's default branch and remains distinct from explicit `main`. If another model owns the historical default directory, the new copy uses a `-model-<model ID>` suffix and retains it on retries. Ownership checks also recognize absolute paths reported by agents. If the suffixed directory is occupied too, writes are rejected; download, copy, and sync return 409 `MODEL_FILE_PATH_OCCUPIED` (`storage_id`, `path`, `model_id`). Existing copies are not moved automatically, and manual registration retains the caller's chosen directory. This check does not identify different storage definitions or symlinks that refer to the same physical directory.
 
 ### List Filtering and Presence Summary
+
+Local-node and shared-storage rows in model details may include `transfer_error_code`. Final file-listing outcomes are `MODEL_DOWNLOAD_NETWORK_EXHAUSTED` (temporary network or upstream retries exhausted), `MODEL_DOWNLOAD_SOURCE_NOT_FOUND` (repository or revision missing), `MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED` (401/403), `MODEL_DOWNLOAD_SOURCE_THROTTLED` (persistent rate limiting), and `MODEL_DOWNLOAD_SOURCE_REJECTED` (another definite source rejection). `message` retains the original platform and address error details; the page displays both category and detail. Older agents, unknown errors and mixed failure categories across sources may omit the field; omission does not mean success. Restarting a download clears its old download error code and assigns a new transfer ID. Late reports from the old task cannot overwrite the new one.
 
 `GET /api/v1/models` without pagination parameters returns all models with presence details for each node and storage.
 With `page` or `page_size`, it returns `{items, page, page_size, total, summary}`:
@@ -859,6 +864,8 @@ Do not uniformly treat absent optional fields as `0` or empty arrays. Use the fo
 - For regular deployments, `retry_exhausted{index,failed_attempts,last_failure}` identifies replicas that have exhausted their retries; use `units/retry` to retry them. For multi-node deployments, `units[]` gives each replica's leader and `followers[]`. See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for adjustment methods.
 
 For a request example, see [Query Details of One Deployment](api-conventions.md#3-查询一个部署的详情).
+
+For a deployment with no instance, image preparation does not count as a scheduling timeout while its latest scheduling reason remains `image_delivery_waiting` and its image is actively pulling or syncing on a preparation target. Transfers for other images or nodes do not qualify. Completion, failure, cancellation or a changed scheduling reason restores the existing state derivation. Lists and details return 500 if these image facts cannot be read, rather than presenting an unknown state as failed.
 
 ### Deployment Sleep State (`state`, `asleep_replicas`, `sleep_level`)
 
@@ -1473,7 +1480,9 @@ validation failures attributable to request fields return HTTP 200 with `ok=fals
 `errors[]` (each entry is `{field, code, params?}`; `code` is a stable ProductError code that maps one-to-one to the error code on the corresponding create
 400 path, and `params` contains interpolation parameters for the client's locale). The form retains the draft and displays
 errors beside the corresponding controls; `POST /api/v1/deployments` (create) continues to return 400/409. Failures that cannot be attributed to a field
-(authentication, model not found, server errors) retain their original status codes. Field path conventions:
+(authentication, template resolution failures, server errors) retain their original status codes.
+
+Independent request-level checks report their errors together. Request-level field errors stop later launch planning while retaining template and eligible-node facts, together with health-check facts that can be resolved. A missing model ID at the model-resolution stage is attributed to `model_id`; health-check eligibility may be absent before a model is resolved. Automatic multi-node placement failures return a `placement_mode` error before later checks run. Field path conventions:
 
 - Quick parameters use the dictionary key directly (the form field name), such as `max_model_len` and `gpu_memory_utilization`.
 - Request-level fields use their names in the request JSON: `replicas`, `nnodes`, `engine`, `target_vendor`, `extra_args`,
@@ -1690,7 +1699,7 @@ Fields:
 - `parts`: the parts it carries, `server`, `node`, `ui`, `store`; `isolation`: `landlock` or `none`.
 - `actions`: the actions available now, computed by the server: `enable`, `disable`, `uninstall`.
 
-Errors: not installed 404 `PLUGIN_NOT_INSTALLED`; approval needed, a broken package, the same version with other contents (`PLUGIN_VERSION_CONFLICT`) or plugin data newer than the build (`PLUGIN_STATE_TOO_NEW`) 409; a package too large 413 `PLUGIN_PACKAGE_TOO_LARGE`; any other refused package 422, with the codes in [Plugin Protocol and Wire Formats](plugin-protocol.md); `enable` or `purge` not a boolean 400 `FIELD_INVALID`.
+Errors: not installed 404 `PLUGIN_NOT_INSTALLED`; approval needed, a broken package, the same version with other contents (`PLUGIN_VERSION_CONFLICT`), a declared feature key a compiled module or another installed package already provides (`PLUGIN_FEATURE_TAKEN{id, feature, owner}`, checked before approval) or plugin data newer than the build (`PLUGIN_STATE_TOO_NEW`) 409; a package too large 413 `PLUGIN_PACKAGE_TOO_LARGE`; any other refused package 422, with the codes in [Plugin Protocol and Wire Formats](plugin-protocol.md); `enable` or `purge` not a boolean 400 `FIELD_INVALID`.
 
 ## Providers (Cloud Instance Rental)
 
@@ -2287,7 +2296,7 @@ Fields of `GET /api/v1/console/manifest`:
 | Field | Description |
 |---|---|
 | `edition` | Build name, for display only |
-| `features[]` | Current availability of each declared feature, sorted by `key`: `{key, access, presentation, link?, message?, limits}`. `access` is `full` / `read_only` / `locked` / `hidden`; `presentation` is `promote` (shown as locked with `link` when unavailable) or `hidden` (hidden entirely when unavailable, so locked is returned as `hidden`); `message` is a product message `{code, params?, message}` explaining the current availability; `limits` is `[{dim, max}]`, where a `null` `max` means unlimited |
+| `features[]` | Current availability of each declared feature (those compiled modules declare together with those the plugin packages installed now declare, changing as soon as a plugin is installed or uninstalled), sorted by `key`: `{key, access, presentation, link?, message?, limits}`. `access` is `full` / `read_only` / `locked` / `hidden`; `presentation` is `promote` (shown as locked with `link` when unavailable) or `hidden` (hidden entirely when unavailable, so locked is returned as `hidden`); `message` is a product message `{code, params?, message}` explaining the current availability; `limits` is `[{dim, max}]`, where a `null` `max` means unlimited |
 | `nav[]` | Menu entries extensions add to the console `{id, group, label_key, icon?, route, feature?}`; entries whose feature is `hidden` are not returned |
 | `banners[]` | Notices shown at the top of every page `{id, severity, message, link?}`; `severity` is `info` / `warning` / `danger` (any other value is returned as `info`), and `message` is a product message `{code, params?, message}` |
 
@@ -2297,4 +2306,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 56bb5cc2c06a0180b0de35652e85a87aecc1b00e302f8191950f88ed8ee2ed66 -->
+<!-- translation-source-sha256: aa4bfc19a0f019920ad70f3cf9949695bc47f9cbbaa5ff4d940c3a169a6dcef5 -->

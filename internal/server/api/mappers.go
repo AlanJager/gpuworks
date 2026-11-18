@@ -61,6 +61,12 @@ func (a *apiHandlers) deploymentDTO(d *store.Deployment, withInstances bool) dto
 // deploymentDTOFrom builds the DTO from whichever lookup the caller holds: the
 // store for one deployment, a preloaded set for a list.
 func (a *apiHandlers) deploymentDTOFrom(rows deployment.Rows, d *store.Deployment, withInstances bool) dto.Deployment {
+	return a.deploymentDTOWithInstances(rows, d, withInstances, rows.Instances(d.ID))
+}
+
+// deploymentDTOWithInstances reuses instances already loaded by a checked
+// detail read rather than loading them again while projecting the same view.
+func (a *apiHandlers) deploymentDTOWithInstances(rows deployment.Rows, d *store.Deployment, withInstances bool, insts []store.Instance) dto.Deployment {
 	policy := deploy.NormalizeRoutingPolicy(d.RoutingPolicy)
 	out := dto.Deployment{
 		ID: d.ID, TemplateID: d.TemplateID, TemplateSpecSource: d.TemplateSpecSource, TemplateSpecName: d.TemplateSpecName,
@@ -104,7 +110,6 @@ func (a *apiHandlers) deploymentDTOFrom(rows deployment.Rows, d *store.Deploymen
 		}
 		redactAcquisitionSecrets(out.CatalogSelectionSnapshot)
 	}
-	insts := rows.Instances(d.ID)
 	for i := range insts {
 		if since := insts[i].WakeWaitingSince; since != nil && (out.WakeWaitingSince == nil || since.Before(*out.WakeWaitingSince)) {
 			out.WakeWaitingSince = utcTimePtr(since)

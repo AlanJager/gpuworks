@@ -8,8 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
-	"text/tabwriter"
 
 	"gpuworks.ai/gpuworks/internal/server/expose"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
@@ -26,7 +24,11 @@ import (
 
 const pluginUsage = `  gpuworks plugin install --file PKG.gwpkg [--disabled]
   gpuworks plugin list
-  gpuworks plugin remove ID [--purge]
+  gpuworks plugin verify ID
+  gpuworks plugin enable ID
+  gpuworks plugin disable ID
+  gpuworks plugin uninstall ID [--purge]
+  gpuworks plugin state ID
   gpuworks plugin trust import FILE [--cert publisher.crt]
   gpuworks plugin index import FILE --cert publisher.crt
   gpuworks plugin compat
@@ -37,7 +39,9 @@ var errCompatFindings = errors.New("this server build cannot run everything in t
 
 // pluginCommand runs `gpuworks plugin ...`. Every subcommand works with the
 // server stopped: it opens the database the way the other maintenance
-// commands do, and the plugins directory under its own lock.
+// commands do, and the plugins directory under its own lock. enable,
+// disable and uninstall change what a running server keeps in memory, so
+// they also require it to be stopped (requireServerStopped).
 func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		fmt.Fprintln(stdout, "usage:\n"+pluginUsage)
@@ -49,8 +53,14 @@ func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer
 		return o.pluginInstall(log, rest, stdout)
 	case "list":
 		return o.pluginList(rest, stdout)
-	case "remove":
-		return o.pluginRemove(log, rest)
+	case "verify":
+		return o.pluginVerify(rest, stdout)
+	case "enable", "disable":
+		return o.pluginSetEnabled(log, sub, rest, stdout)
+	case "uninstall", "remove": // remove is the earlier name, kept as an alias
+		return o.pluginUninstall(log, sub, rest, stdout)
+	case "state":
+		return o.pluginState(rest, stdout)
 	case "trust":
 		if len(rest) == 0 || rest[0] != "import" {
 			fmt.Fprintln(stdout, "usage:\n"+pluginUsage)
@@ -111,6 +121,16 @@ func (p *pluginPaths) resolve() {
 	}
 }
 
+// existing resolves p and refuses a data directory that does not exist: a
+// mistyped --data must not create a second installation.
+func (p *pluginPaths) existing() error {
+	p.resolve()
+	if info, err := os.Stat(p.data); err != nil || !info.IsDir() {
+		return fmt.Errorf("data directory %s does not exist; pass --data with the server's data directory", p.data)
+	}
+	return nil
+}
+
 // plugins reads server.yaml's plugins section: --config when given (it must
 // load), otherwise the first installation file that exists.
 func (p *pluginPaths) plugins() (serverconfig.Plugins, error) {
@@ -135,10 +155,8 @@ func (p *pluginPaths) plugins() (serverconfig.Plugins, error) {
 
 // openHost opens the database and the package host of p.
 func (o Options) openHost(p *pluginPaths) (*extpkg.Host, *store.Store, error) {
-	p.resolve()
-	// A mistyped --data must not create a second installation.
-	if info, err := os.Stat(p.data); err != nil || !info.IsDir() {
-		return nil, nil, fmt.Errorf("data directory %s does not exist; pass --data with the server's data directory", p.data)
+	if err := p.existing(); err != nil {
+		return nil, nil, err
 	}
 	cfg, err := p.plugins()
 	if err != nil {
@@ -159,101 +177,6 @@ func (o Options) openHost(p *pluginPaths) (*extpkg.Host, *store.Store, error) {
 		return nil, nil, err
 	}
 	return h, st, nil
-}
-
-func (o Options) pluginInstall(log *slog.Logger, args []string, stdout io.Writer) error {
-	fs, p := pluginFlags("install")
-	file := fs.String("file", "", "the .gwpkg package to install")
-	disabled := fs.Bool("disabled", false, "install without enabling the package")
-	if _, err := parseInterleaved(fs, args); err != nil {
-		return err
-	}
-	if *file == "" {
-		return errors.New("plugin install needs --file PKG.gwpkg")
-	}
-	f, err := os.Open(*file)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	h, st, err := o.openHost(p)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	in, err := h.Install(f, extpkg.InstallOptions{Enable: !*disabled, ApprovedBy: "command line"})
-	if err != nil {
-		return err
-	}
-	m := in.Manifest
-	what := "installed"
-	if in.Unchanged {
-		what = "already installed"
-	}
-	fmt.Fprintf(stdout, "%s %s %s (publisher %s, %s trust)\n", what, m.ID, m.Version, m.Publisher, in.Trust)
-	if in.Previous != "" {
-		fmt.Fprintf(stdout, "previous version %s kept for rollback\n", in.Previous)
-	}
-	fmt.Fprintf(stdout, "approved %s: permissions [%s] roles [%s]\n", in.ApprovalHash, strings.Join(m.Permissions, " "), strings.Join(m.Roles, " "))
-	log.Info("plugin installed", "id", m.ID, "version", m.Version, "data", p.data, "enabled", !*disabled)
-	return nil
-}
-
-func (o Options) pluginList(args []string, stdout io.Writer) error {
-	fs, p := pluginFlags("list")
-	if _, err := parseInterleaved(fs, args); err != nil {
-		return err
-	}
-	h, st, err := o.openHost(p)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	entries, err := h.List()
-	if err != nil {
-		return err
-	}
-	if len(entries) == 0 {
-		fmt.Fprintln(stdout, "no plugin installed")
-		return nil
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tVERSION\tPUBLISHER\tTRUST\tENABLED\tSTATE")
-	for _, e := range entries {
-		publisher, trustClass, state := "-", "-", "ok"
-		if v := e.Verified; v != nil {
-			publisher, trustClass = v.Manifest.Publisher, v.Trust
-			if v.Revoked != nil {
-				state = "revoked"
-			}
-		} else {
-			state = "broken: " + codeText(e.Err)
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%t\t%s\n", e.ID, e.Version, publisher, trustClass, e.Control.Enabled, state)
-	}
-	return tw.Flush()
-}
-
-func (o Options) pluginRemove(log *slog.Logger, args []string) error {
-	fs, p := pluginFlags("remove")
-	purge := fs.Bool("purge", false, "also move the plugin's data to the trash")
-	ids, err := parseInterleaved(fs, args)
-	if err != nil {
-		return err
-	}
-	if len(ids) != 1 {
-		return errors.New("plugin remove needs exactly one package id")
-	}
-	h, st, err := o.openHost(p)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	if err := h.Remove(ids[0], *purge); err != nil {
-		return err
-	}
-	log.Info("plugin removed", "id", ids[0], "purge", *purge, "data", p.data)
-	return nil
 }
 
 func (o Options) pluginTrustImport(log *slog.Logger, args []string, stdout io.Writer) error {

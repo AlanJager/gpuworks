@@ -6,7 +6,7 @@
 
 规则来自 `artifacts/archive/2026-09-09-architecture-cleanup/plan.md` §3 P0 与 §6：
 
-- 超限即失败（exit 1）。
+- 超限、统计命令执行失败或计数无效时，门禁失败（exit 1）。
 - `max` 键实测**严格低于**限额时打印 WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值。
 - 误报以**修模式为先**，不以调预算为先。每条排除项都记录在本文；改脚本时必须同步本文。
 - **上调（`max` 变大、`min` 变小）必须带理由**：`check_architecture.sh` 把本文件与基线版本
@@ -21,6 +21,10 @@
   `# raised: <原因>` 说明上调理由（约定，不由脚本强制）。
 - 需要额外前置条件才能测的键（如 `ui_bundle_gzip_kb` 需要先构建 UI），在 `measure()` 里返回
   `EXTERNAL`，预算循环只打印并跳过，由专门脚本测量。
+
+文案长度、免责短语、覆盖层导入和逐文件 antd 检查由 `./scripts/check_ui_architecture.sh` 执行。
+GitLab 的 `core-ui`、GitHub 的 `ui` 和本地 `make ui` 共用这个入口。`./scripts/check_architecture.sh`
+在有 Node 时也调用它；无 Node 时打印提示，由 UI 构建执行这四项检查。前三项预算仍由架构脚本对比基线。
 
 初值取 2026-09-09 `refactor/refactor-2` 分支上的实测结果，不是计划正文里的人工估算值。
 
@@ -168,7 +172,7 @@ grep -rqE "['\"](\.\./)+<去掉 ui/ 与扩展名的路径>(\.tsx?)?['\"]|ui/<同
 
 ### antd 逐文件棘轮（`ui/antd-inventory.json`，硬检查，非预算行）
 
-`check_architecture.sh` 在预算循环后运行
+`check_ui_architecture.sh` 在 UI 预算检查后运行
 `node scripts/ui_antd_inventory.mjs --check ui/antd-inventory.json`，与提交的快照逐文件比较，以下任一情况 FAIL：
 
 - 某文件的 antd 使用点（sites）变多；
@@ -178,7 +182,7 @@ grep -rqE "['\"](\.\./)+<去掉 ui/ 与扩展名的路径>(\.tsx?)?['\"]|ui/<同
 
 减少一律通过（打印 NOTE 提示刷新快照）。迁移 MR 在同一提交里运行
 `node scripts/ui_antd_inventory.mjs --write` 刷新快照；快照每个文件一行，diff 只显示动到的文件。
-机器上没有 `node` 时打印 NOTE 并跳过（CI 的 `core-test` 跑在 golang 镜像里，需在有 node 的 job 里执行）。
+该检查随 UI 构建执行，缺少 Node 或快照检查失败都会使作业失败。
 
 计量口径（`scripts/ui_antd_inventory.mjs`，只用 Node 内置模块）：
 
@@ -296,10 +300,13 @@ go run ./scripts/structcount -dir internal/agent/engine -type Engine      -measu
 ```sh
 go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
   | grep -v '\.test$' \
+  | grep -v '^gpuworks\.ai/gpuworks/internal/integrationtest/gpuallocation/internal/fixtures[[:space:]]' \
   | awk -F'\t' '$2 ~ /gpuworks\/internal\/server\/store( |$)/ {print $1}' | sort -u | grep -c .
 ```
 
-排除：`.test` 伪包（`go list` 为带测试的包生成的合成包）。
+排除：`.test` 伪包（`go list` 为带测试的包生成的合成包）；`internal/integrationtest/gpuallocation/internal/fixtures`，
+它是分配测试共用的建库夹具，写成普通 `.go` 文件只为让多个测试包导入，不是生产依赖。只排除这一个包，
+新的生产包或测试辅助包导入 store 仍然计数。
 计划正文列了 16 个包；实测 17，多出的是 `scripts/seeddemo`（同属 module，计划正文漏计）。
 
 `go list` 说明：本仓库缺少 `internal/server/webui/dist` 时 `go list` 会因 `go:embed all:dist`

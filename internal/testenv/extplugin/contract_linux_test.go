@@ -154,8 +154,8 @@ func TestContractAuthorityPluginLifecycle(t *testing.T) {
 	if len(m.Banners) != 1 || m.Banners[0].ID != "acme_fake.grace" || m.Banners[0].Message.Code != "ACME_GRACE" {
 		t.Fatalf("banners = %+v", m.Banners)
 	}
-	if f := feature(m, "acme.backup"); f.Access != "undeclared" {
-		t.Fatalf("a package installed while the server runs declared a feature at once: %+v", f)
+	if f := feature(m, "acme.backup"); f.Access != "full" {
+		t.Fatalf("acme.backup of a package installed while the server runs = %+v", f)
 	}
 	snap, err := st.LoadPushedState(context.Background())
 	if err != nil {
@@ -228,8 +228,8 @@ func TestContractAuthorityPluginLifecycle(t *testing.T) {
 	if _, _, err := st.CreateNodePending("d"); err != nil {
 		t.Fatalf("enrollment after uninstall = %v", err)
 	}
-	if m := sv.manifest(); len(m.Banners) != 0 {
-		t.Fatalf("banners after uninstall = %+v", m.Banners)
+	if m := sv.manifest(); len(m.Banners) != 0 || len(m.Features) != 0 {
+		t.Fatalf("banners and features after uninstall = %+v, %+v", m.Banners, m.Features)
 	}
 	if snap, err := st.LoadPushedState(context.Background()); err != nil || len(snap.Owners) != 0 {
 		t.Fatalf("pushed state after uninstall = %+v, %v", snap.Owners, err)

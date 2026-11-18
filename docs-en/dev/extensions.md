@@ -64,7 +64,7 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `Tables()` | The module's own tables (`store.ExtensionTables`); nil for a module without a migration set |
 | `DeriveKey(purpose)` | A 32-byte key derived from the master key with HKDF-SHA256 and bound to the module name |
 | `MountAPI(e)` | Mounts an `api.Extension`'s routes under `/api/v1/x/<name>/` |
-| `DeclareFeatures(...)` / `ProvideFeatures(src)` | Declares feature keys; provides the feature source (at most one across all modules) |
+| `DeclareFeatures(...)` / `ProvideFeatures(src)` | Declares feature keys; provides the feature source for the keys compiled modules declare (at most one across all modules; the keys plugin packages declare are answered by the plugin host, not by it) |
 | `AddBannerSource(b)` | Banners at the top of every console page |
 | `GuardNodeInsert(g)` | A guard on every new node's insert |
 | `HoldScheduling(h)` | A scheduling holder, keyed by its source; a repeated source is refused |
@@ -205,7 +205,9 @@ The edition checks below matter only to forks: official builds name no edition, 
 
 ADR 0071 decides that official and third-party extensions are installed as signed plugin packages (`.gwpkg`) instead of being compiled into the binary. The plugin host is connected to the contract on this page as a built-in module:
 
-- The plugin host is the built-in module `plugins` (`app/plugins.go`, implemented in `internal/server/pluginbridge`). It registers the existing hooks through the `Host`: the node insert guard, the scheduling holder (source `plugins`) and banners always; when installed packages declare feature keys it is also the feature source. It answers them from tables plugins push and the core validates and persists. A compiled module may no longer be named `plugins`; when a compiled module already calls `ProvideFeatures` and installed packages declare feature keys too, the server refuses to start.
+- The plugin host is the built-in module `plugins` (`app/plugins.go`, implemented in `internal/server/pluginbridge`). It registers the existing hooks through the `Host`: the node insert guard, the scheduling holder (source `plugins`) and banners. The feature keys installed packages declare go into the feature gate's dynamic set and are answered from tables plugins push and the core validates and persists; the keys compiled modules declare are still answered by the `ProvideFeatures` source, and the two coexist. A compiled module may no longer be named `plugins`.
+- Runtime feature declarations: after a package is installed, upgraded, enabled, disabled or uninstalled, the dynamic set is replaced as a whole by the keys the packages installed then declare. The feature gate and the console manifest see them at once, and the `feature` topic tells the console to read the manifest again; no restart is needed. A gate lookup checks the keys compiled modules declare first, then the dynamic set (one atomic load, no lock, no allocation); the `features` of `GET /api/v1/console/manifest` is both merged and sorted by key. With nothing installed the dynamic set is empty and the manifest is byte-identical to before.
+- A feature key has one owner: when a package declares a key a compiled module declares, or one another installed package declares (a package upgraded keeps its own keys), the install is refused with 409 `PLUGIN_FEATURE_TAKEN{id, feature, owner}` before approval is asked for, where `owner` is the module's name or that package's id, and nothing is installed. Clashing packages installed before this check still load at boot: the key stays with its earlier owner (the compiled module, or the package of lower id that has answered for it since both were installed), each clash is logged, and no key changes owner; such a package cannot be reinstalled or upgraded until a version drops the clashing key. An installed package that no longer verifies holds none of the keys it declares: while it is broken another package may install over such a key, and once it verifies again the key goes to the lower id of the two.
 - A plugin is a child process of the server that talks to the core over `gwx/1` on inherited fds, never enters a hot path and never gets the Store.
 - Whether a feature key is gated is declared by the plugin package itself; grant tables accept pushes only from the authority its publisher certificate names; while a plugin is down its restrictions stay enforced, its grants clamp to read-only after a bounded grace, and timelines keep firing on extclock.
 - The hook rules on this page (hooks inside the writer transaction are pure, holders cordon without draining, running workloads are never interrupted) apply to the plugin host as well.
@@ -218,11 +220,17 @@ Boot order (the `plugins` module's `Init`, before the router is built):
 
 1. Remove what interrupted installs left and verify every installed package again (rehashing every file this time). A package that no longer verifies or is revoked counts as installed but not verified: the restrictions and banners it pushed stay enforced, its grants are dropped, and it does not start.
 2. Load every pushed table with that package list (see "Pushed state" below), enforced before the server accepts its first request and before any plugin starts.
-3. Register the hooks and declare the feature keys (of the packages installed at boot only).
+3. Put the feature keys installed packages declare into the dynamic set (a key a compiled module declares is logged and left to the module), and register the hooks.
 
 The module's service (run with the server's other background loops) starts pushed state's writer tick, timelines and capacity selection, then starts every enabled package with a `resident` server part, in parallel and without holding up `serve`; only changed files are rehashed before a start. The supervisor tells pushed state each plugin's process state: `running` and `degraded` count as up, everything else as down. When the server stops, the plugins stop first and pushed state after, so the moment each plugin went down is persisted and a restart never renews its grace.
 
 The pusher's identity comes from the package verified when it was started: the supervisor numbers every process (a generation rising across all of them), and a push on the host API is taken as the package bound to that connection, with its certificate grants (including the authority `server.yaml` configures for a host-trusted issuer), the permissions its administrator approved, its manifest's codes and that process's generation. A push over the connection of a package that was replaced or changed version is refused (`PLUGIN_STATE_CONNECTION_REPLACED`). The core offers the capabilities `table.<kind>@1` for the first five kinds; packages' `requires` are verified against them and plugins negotiate them in the handshake.
+
+When a package declares `storage`, its data carries a version marker `plugin.<id>.data` (in the core's `plugin_markers` table), which keeps a site from going back to an older build that cannot read that data:
+
+- **Write**: the first time a plugin reaches `running` (handshake accepted) after each start, the host writes the marker as `max(stored version, storage.state_version)` and records the version of the plugin build that ran (which a refused older build names as the one to install); later returns to `running` within the same start read and write nothing. The marker is never lowered: an older build still running does not reduce it. A package without `storage` writes no marker, and neither does a package that has been uninstalled. A write that fails, or that finds the plugins directory held by an install or removal, is only logged and retried on the next health check; a marker that cannot be read keeps the plugin from starting, and the start is retried shortly.
+- **Check**: when the marker is newer than the package's `storage.state_version` (0 without `storage`), installing that build is refused with `PLUGIN_STATE_TOO_NEW` and nothing is installed; an installed build (for example an older build installed again after a newer one ran) is checked before every start as well. It is not started, and the list shows it `failed` with `PLUGIN_STATE_TOO_NEW` until a build with a recent enough `state_version` is installed. Before a downgrade, `gpuworks plugin compat` runs the same check.
+- **Lifetime**: a plain uninstall keeps the data and the marker, so reinstalling an older build is refused too; only `purge` deletes the marker, together with moving the data directory to `.trash/`.
 
 ### Management API
 
@@ -237,11 +245,20 @@ The pusher's identity comes from the package verified when it was started: the s
 
 Every call writes a structured log record with `audit=true` saying who did what to which package and how it ended. States in the list: `disabled`, `installed` (no `resident` server part), `idle` (`on_demand`), `broken` (no longer verifies) or `revoked` when the server part does not run; otherwise the supervisor's process state. The fields are in the [API Reference](../reference/api.md).
 
+### Local administrator floor
+
+`users.local_admin` marks who can still recover the site when every plugin is down, removed or crashlooping (ADR 0071, decision 11):
+
+- Migration 225 sets it for every administrator the database already had; the administrator created at first start gets it; the offline `gpuworks reset-password` sets it again for an administrator (other users are unaffected). Users created later start without it, and changing one's own password in the console leaves it alone.
+- The effective value is computed each time a request reads its user: `local_admin && role == admin && login session`. A demoted user loses the floor at once, without a write; a platform API token never carries it; it is never signed into a JWT nor read from one. `local_admin` in `GET /api/v1/auth/me` reports this effective value, for display only.
+- The recovery surface is core routes: login, `/auth/me`, the password change and `/api/v1/plugins/*` pass no feature gate and ask nothing of plugin-fed sources (feature availability, banners). The contract test `TestContractLocalAdminDuringCrashloop` puts two plugins into crashloop (one holding every node, one pushing a fleet cap of zero cards), and the local administrator still signs in afresh, lists, disables and uninstalls each package, every call answering within 10 seconds.
+
+The evaluators of pushed constraints, admission holds and pushed roles do not exist yet, so nothing needs to exempt by this flag today; when they arrive, they check it first.
+
 ### Not built yet
 
-- Feature keys of a package installed while the server runs enter the feature gate at the next start (the gate is built once at boot); the restrictions, banners and holds it pushes apply at once.
 - Dynamic mounting of plugin routes under `/api/v1/x/<id>/`, on-demand starts of `on_demand` plugins, and host API endpoints other than state and health.
-- The management route for overrides (`State.Override` is built), the `users.local_admin` floor, the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
+- The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
 - The ratchet on feature-key literals in core code.
 - No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
@@ -309,4 +326,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 0a478c1ff633630c10a80f7cc36f5e551dc7c69ac05583bfbca234f4d8a0c70f -->
+<!-- translation-source-sha256: 0326749aac8f878c0c84524f126add96fcfb6c99fb340d97fd54f938a9f1bcc6 -->

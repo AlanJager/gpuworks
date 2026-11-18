@@ -38,7 +38,7 @@ gpuworks restarted (systemd)
 | | [`expose`](#gpuworks-expose) | 给控制台发布一个公网入口 | 运维，控制面在 NAT 后面时 |
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
-| | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、移除插件包，导入信任与包索引，降级前检查兼容性 | 运维，server 停止时也能用 |
+| | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、启停、卸载插件包，查看推送状态，导入信任与包索引，降级前检查兼容性 | 运维，server 停止时也能用；启停与卸载要求 server 已停止 |
 | | `version` | 打印版本 | 任何人 |
 | | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
 | | `console-upgrade-protocol` | 打印本版本支持的控制台升级协议号（当前 `1`）；控制台升级之前的版本没有这个子命令 | 控制台升级前，服务端对待装的新二进制调用 |
@@ -271,24 +271,28 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 - 不给 `--data` 时依次取：二进制同目录 `server.yaml` 的 `data_dir`、默认安装（`/opt/gpuworks/server/server.yaml`，macOS 上 `~/gpuworks/server/server.yaml`）的 `data_dir`、`./data`，与当前工作目录无关地找到安装的数据库。
 - 数据库文件必须已存在：不存在时报出所用路径及其来源并退出，不会新建空库。
+- 用户是管理员时同时恢复它的本地管理员兜底（`users.local_admin`，见[可安装扩展](../dev/extensions.md#本地管理员兜底)），即使所有插件都掉线也能登录并管理插件；普通用户的标记不变。
 - 成功后，若数据库旁的 `initial-credentials` 记录的正是该用户，尝试删除它（其中的密码已失效）；删除失败只打告警，不影响重置结果。
 - 以操作员身份运行、不需要 `sudo`；数据库权限不足时按其自身的权限错误失败。
 - 密码和 key 不要写进 shell history 或日志。
 
 ## gpuworks plugin
 
-校验、安装、列出与移除签名插件包，离线导入信任更新、吊销列表与包索引，并在降级前检查兼容性。格式与校验顺序见[插件协议与线上格式](plugin-protocol.md)，设计见 [ADR 0071](../adr/0071-installable-extensions.md)。server 运行时，插件宿主拉起并监管已启用的包（见[扩展点](../dev/extensions.md#可安装扩展)）；这些子命令只处理数据目录里的包与信任，不拉起进程。
+校验、安装、列出、启停与卸载签名插件包，查看包推送的状态，离线导入信任更新、吊销列表与包索引，并在降级前检查兼容性。格式与校验顺序见[插件协议与线上格式](plugin-protocol.md)，设计见 [ADR 0071](../adr/0071-installable-extensions.md)。server 运行时，插件宿主拉起并监管已启用的包（见[扩展点](../dev/extensions.md#可安装扩展)）；这些子命令只处理数据目录里的包与信任，不拉起进程。
 
 | 子命令 | 说明 |
 |---|---|
-| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。从命令行安装即视为批准其权限，默认启用，`--disabled` 只安装不启用 |
+| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。包声明的功能键已由另一个已安装的包声明时拒绝（`PLUGIN_FEATURE_TAKEN`）；server 停止时编译模块不加载，命令行只对照已安装的包，与编译模块冲突的键启动时仍归编译模块。从命令行安装即视为批准其权限，默认启用，`--disabled` 只安装不启用 |
 | `list` | 重新校验每个已安装的包（只重新哈希大小、修改时间或 inode 变了的文件），列出 id、版本、发布者、信任来源（`project` 根签发或 `host` 主机信任的签发者）、是否启用与状态：`ok`、`revoked`（已吊销但不自动停止），或 `broken: <码>` |
-| `remove ID [--purge]` | 卸载：删除包与控制文件，保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包的最低版本永远保留，旧构建不能靠重装回来 |
+| `verify ID` | 重新校验已安装的包（重新哈希全部文件）并打印结果；不再通过校验或已吊销时以 `PLUGIN_BROKEN` 拒绝，没装时 `PLUGIN_NOT_INSTALLED`。只读，server 运行时也能用 |
+| `enable ID` / `disable ID` | 允许或禁止包的 server 部分运行，下次启动 server 时生效。`enable` 先像 `verify` 一样重新校验，校验不过就拒绝（`PLUGIN_BROKEN`），不改开关。要求 server 已停止 |
+| `uninstall ID [--purge]` | 卸载：删除包与控制文件，并删除它推送的全部状态（各类推送表、停机记录与管理员覆盖），释放它占住的节点，之后重装同一 id 从空状态开始。保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包已不在而推送状态还在时（上次卸载中途失败），再运行一次会补删并以 0 退出。包的最低版本永远保留，旧构建不能靠重装回来。`remove` 是它的旧名，仍可用。要求 server 已停止 |
+| `state ID` | 从数据库打印该 id 推送的状态：每张表的 schema、代数、推送时间与摘要，以及其中的行、停机记录与覆盖。只读；server 运行时会先提示这些行最多比它晚一个写入周期 |
 | `trust import FILE [--cert publisher.crt]` | 导入根签名的信任更新、根签名的吊销列表，或发布者自己的吊销列表（需 `--cert` 给出该发布者的证书）；序号不比已应用的新时拒绝（`PLUGIN_TRUST_REPLAYED`） |
 | `index import FILE --cert publisher.crt` | 导入发布者的包索引：应用其中的吊销与最低版本，保存到 `<data>/plugins/.index/`，并打印每个包会装哪个版本，以及更新而本 server 运行不了的版本（`PLUGIN_NEEDS_NEWER_CORE`） |
 | `compat` | 只读检查：不迁移、不写数据库，报告会让本构建拒绝启动的持久化版本标记，以及因数据标记过新、需要本 server 没有的能力或清单读不了而不能运行的包。降级 server 之前用旧版本的二进制运行它；有问题时以 1 退出 |
 
-每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。数据目录必须已存在，不会新建。拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
+每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。`enable`、`disable`、`uninstall` 改动的是运行中 server 还留在内存里、会悄悄覆盖回去的状态，所以要求 server 已停止：它们拿不到 `<data>/server.lock`（见[控制面安装布局](install-layout.md)）时以 2 退出，提示 `the server (pid N) is running; stop it first`（锁文件里没有存活的 server pid 时，即持有者可能是另一条维护命令，改为点名锁文件：`another gpuworks process holds <data>/server.lock; …`），什么都不改；拿到锁后一直持有到命令结束，期间 server 启不来。数据目录必须已存在，不会新建。其余拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
 
 本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
 

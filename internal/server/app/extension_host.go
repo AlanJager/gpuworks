@@ -96,12 +96,24 @@ func (h *Host) AddBannerSource(b api.BannerSource) {
 // and guards name. A key is declared once across all modules.
 func (h *Host) DeclareFeatures(features ...featuregate.Feature) {
 	h.mustBeOpen("DeclareFeatures")
+	if h.reg.dynamic != nil {
+		panic(fmt.Sprintf("extension %s: DeclareFeatures after the plugins module made the dynamic feature set", h.name))
+	}
+	if h.reg.featureBy == nil {
+		h.reg.featureBy = map[featuregate.Key]string{}
+	}
+	for _, f := range features {
+		if _, dup := h.reg.featureBy[f.Key]; !dup {
+			h.reg.featureBy[f.Key] = h.name
+		}
+	}
 	h.reg.features = append(h.reg.features, features...)
 }
 
-// ProvideFeatures makes src the answer for every declared feature. At most
-// one module provides it; without one, every declared feature is locked
-// (hidden when concealed).
+// ProvideFeatures makes src the answer for every feature the modules
+// declare. At most one module provides it; without one, every declared
+// feature is locked (hidden when concealed). The feature keys installed
+// plugin packages declare are answered by the plugins module, beside it.
 func (h *Host) ProvideFeatures(src featuregate.Source) error {
 	if h.reg.closed {
 		return ErrHostClosed

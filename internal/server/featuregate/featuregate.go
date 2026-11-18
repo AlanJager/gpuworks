@@ -10,7 +10,8 @@
 // The Gate is read on hot paths (every request to an extension route), so a
 // Source answers from a snapshot it swaps atomically: one atomic load and one
 // map lookup, no I/O, no lock and no allocation when the answer is Full. The
-// refusals a Gate returns are built once, when the Gate is.
+// refusals a Gate returns are built once, when the Gate is (for a
+// dynamic declaration, when the DynamicSet takes it).
 package featuregate
 
 import (
@@ -113,11 +114,14 @@ type Source interface {
 	Availability(k Key) Availability
 }
 
-// Gate answers for the features declared to it. A nil *Gate declares none.
+// Gate answers for the features declared to it: the static ones it was
+// built with, then those its DynamicSet holds now. A nil *Gate declares
+// none.
 type Gate struct {
 	src      Source
 	features map[Key]*feature
 	order    []Key
+	dynamic  *DynamicSet
 }
 
 type feature struct {
@@ -130,28 +134,73 @@ type feature struct {
 // New builds a Gate for features over src. A nil src fails closed: every
 // declared feature is unavailable (Locked, or Hidden when concealed).
 func New(features []Feature, src Source) (*Gate, error) {
-	g := &Gate{src: src, features: make(map[Key]*feature, len(features))}
+	byKey, order, err := declare(features)
+	if err != nil {
+		return nil, err
+	}
+	return &Gate{src: src, features: byKey, order: order}, nil
+}
+
+// NewWithDynamic builds a Gate for the static features over src that also
+// answers for the features d holds at each lookup, over the Source each
+// was declared with (DynamicSet.Replace). d must have been made over the
+// same static features (NewDynamicSet), so no key is ever declared by
+// both. A nil d is New.
+func NewWithDynamic(static []Feature, src Source, d *DynamicSet) (*Gate, error) {
+	g, err := New(static, src)
+	if err != nil || d == nil {
+		return g, err
+	}
+	for _, k := range g.order {
+		if _, ok := d.reserved[k]; !ok {
+			return nil, fmt.Errorf("feature %q was declared after the dynamic set was made", k)
+		}
+	}
+	g.dynamic = d
+	return g, nil
+}
+
+// declare checks features and builds each one's refusals, once.
+func declare(features []Feature) (map[Key]*feature, []Key, error) {
+	byKey := make(map[Key]*feature, len(features))
+	order := make([]Key, 0, len(features))
 	for _, f := range features {
 		if !f.Key.Valid() {
-			return nil, fmt.Errorf("feature key %q is not valid", f.Key)
+			return nil, nil, fmt.Errorf("feature key %q is not valid", f.Key)
 		}
 		if f.Presentation != Promote && f.Presentation != Conceal {
-			return nil, fmt.Errorf("feature %q: unknown presentation %d", f.Key, f.Presentation)
+			return nil, nil, fmt.Errorf("feature %q: unknown presentation %d", f.Key, f.Presentation)
 		}
-		if _, dup := g.features[f.Key]; dup {
-			return nil, fmt.Errorf("feature %q declared twice", f.Key)
+		if _, dup := byKey[f.Key]; dup {
+			return nil, nil, fmt.Errorf("feature %q declared twice", f.Key)
 		}
 		params := map[string]any{"feature": string(f.Key)}
-		g.features[f.Key] = &feature{
+		byKey[f.Key] = &feature{
 			spec:        f,
 			unavailable: messages.NewProductError(messages.ErrorFeatureUnavailable, "feature "+string(f.Key)+" is not available on this server", params),
 			readOnly:    messages.NewProductError(messages.ErrorFeatureReadOnly, "feature "+string(f.Key)+" is read-only on this server", params),
 			absent:      messages.NewProductError(messages.ErrorFeatureProviderAbsent, "nothing on this server answers for feature "+string(f.Key), params),
 		}
-		g.order = append(g.order, f.Key)
+		order = append(order, f.Key)
 	}
-	sort.Slice(g.order, func(i, j int) bool { return g.order[i] < g.order[j] })
-	return g, nil
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+	return byKey, order, nil
+}
+
+// find is the declared feature k and the Source that answers for it: a
+// static declaration first, then the dynamic set's current snapshot.
+func (g *Gate) find(k Key) (*feature, Source, bool) {
+	if f, ok := g.features[k]; ok {
+		return f, g.src, true
+	}
+	if g.dynamic != nil {
+		if s := g.dynamic.cur.Load(); s != nil {
+			if f, ok := s.features[k]; ok {
+				return f, s.src, true
+			}
+		}
+	}
+	return nil, nil, false
 }
 
 // Declared reports whether the Gate answers for k.
@@ -159,7 +208,7 @@ func (g *Gate) Declared(k Key) bool {
 	if g == nil {
 		return false
 	}
-	_, ok := g.features[k]
+	_, _, ok := g.find(k)
 	return ok
 }
 
@@ -169,15 +218,21 @@ func (g *Gate) lookup(k Key) (*feature, Availability, bool) {
 	if g == nil {
 		return nil, Availability{}, false
 	}
-	f, ok := g.features[k]
+	f, src, ok := g.find(k)
 	if !ok {
 		return nil, Availability{}, false
 	}
+	return f, answer(f, src), true
+}
+
+// answer is src's answer for f with the presentation applied; a nil src
+// fails closed.
+func answer(f *feature, src Source) Availability {
 	var av Availability
-	if g.src == nil {
+	if src == nil {
 		av = Availability{Access: Locked, Notice: f.absent}
 	} else {
-		av = g.src.Availability(k)
+		av = src.Availability(f.spec.Key)
 	}
 	if av.Access > Full {
 		av.Access = Hidden
@@ -185,7 +240,7 @@ func (g *Gate) lookup(k Key) (*feature, Availability, bool) {
 	if av.Access == Locked && f.spec.Presentation == Conceal {
 		av.Access = Hidden
 	}
-	return f, av, true
+	return av
 }
 
 // Access is k's availability now; Hidden for an undeclared key.
@@ -243,15 +298,32 @@ type State struct {
 	Availability
 }
 
-// States lists every declared feature's availability now, sorted by key.
+// States lists every declared feature's availability now, static and
+// dynamic together, sorted by key.
 func (g *Gate) States() []State {
 	if g == nil {
 		return nil
 	}
-	out := make([]State, 0, len(g.order))
-	for _, k := range g.order {
-		f, av, _ := g.lookup(k)
-		out = append(out, State{Key: k, Presentation: f.spec.Presentation, Availability: av})
+	var dyn *dynamicSnapshot
+	if g.dynamic != nil {
+		dyn = g.dynamic.cur.Load()
+	}
+	if dyn == nil {
+		dyn = &dynamicSnapshot{}
+	}
+	out := make([]State, 0, len(g.order)+len(dyn.order))
+	i, j := 0, 0
+	for i < len(g.order) || j < len(dyn.order) {
+		var f *feature
+		var src Source
+		if j == len(dyn.order) || (i < len(g.order) && g.order[i] < dyn.order[j]) {
+			f, src = g.features[g.order[i]], g.src
+			i++
+		} else {
+			f, src = dyn.features[dyn.order[j]], dyn.src
+			j++
+		}
+		out = append(out, State{Key: f.spec.Key, Presentation: f.spec.Presentation, Availability: answer(f, src)})
 	}
 	return out
 }

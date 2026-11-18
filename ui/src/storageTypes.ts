@@ -262,6 +262,7 @@ export interface ModelStoragePresence {
   state: string;
   acquisition: string;
   message?: string;
+  transfer_error_code?: string;
   revision?: string;
   size_bytes: number;
   downloaded: number;

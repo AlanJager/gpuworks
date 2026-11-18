@@ -14,6 +14,7 @@ import (
 
 // EnsureAdmin creates the admin user if none exists, returning (username,
 // generatedPassword, created). When created is false the password is "".
+// The administrator it creates is a local administrator (User.LocalAdmin).
 func (s *Store) EnsureAdmin(username, password string) (string, string, bool, error) {
 	var count int64
 	if err := s.db.Model(&User{}).Count(&count).Error; err != nil {
@@ -36,7 +37,7 @@ func (s *Store) EnsureAdmin(username, password string) (string, string, bool, er
 	if err != nil {
 		return "", "", false, err
 	}
-	u := &User{Username: username, PasswordHash: hash, Role: "admin"}
+	u := &User{Username: username, PasswordHash: hash, Role: "admin", LocalAdmin: true}
 	if err := s.db.Create(u).Error; err != nil {
 		return "", "", false, err
 	}
@@ -63,6 +64,19 @@ func (s *Store) AuthenticateUser(username, password string) (*User, error) {
 
 // SetUserPassword replaces a user's password hash.
 func (s *Store) SetUserPassword(username, password string) error {
+	return s.setUserPassword(username, password, false)
+}
+
+// RecoverUserPassword is SetUserPassword for the offline reset-password
+// command: it also restores the break-glass floor (User.LocalAdmin) of an
+// administrator, so whoever can run the server's binary on its host can
+// always manage plugins again. A user who is not an administrator keeps the
+// flag as it was; it counts only for administrators.
+func (s *Store) RecoverUserPassword(username, password string) error {
+	return s.setUserPassword(username, password, true)
+}
+
+func (s *Store) setUserPassword(username, password string, restoreFloor bool) error {
 	if err := auth.ValidatePassword(password); err != nil {
 		return err
 	}
@@ -77,6 +91,11 @@ func (s *Store) SetUserPassword(username, password string) error {
 		}
 		if err := tx.Model(&user).Update("password_hash", hash).Error; err != nil {
 			return err
+		}
+		if restoreFloor && user.Role == "admin" {
+			if err := tx.Model(&user).Update("local_admin", true).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Where("user_id = ?", user.ID).Delete(&ManagementSession{}).Error
 	})

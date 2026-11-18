@@ -17,12 +17,6 @@ import (
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
-// Markers are the persisted version markers; *store.Store satisfies it.
-type Markers interface {
-	PluginMarkers() ([]extapi.Marker, error)
-	DeletePluginMarker(name string) error
-}
-
 // Host installs, lists and removes packages in one data directory. It works
 // with the server stopped (the command line) as well as inside it.
 type Host struct {
@@ -81,6 +75,9 @@ type InstallOptions struct {
 	// an administrator approves exactly what the package asks for.
 	RequireApproval bool
 	Approve         extapi.Digest
+	// Features, when set, refuses a package declaring a feature key
+	// someone else provides (ErrorPluginFeatureTaken), before approval.
+	Features FeatureOwners
 }
 
 // Install reads a package from r, verifies it in an incoming directory,
@@ -113,7 +110,10 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 		return nil, err
 	}
 	m := v.Manifest
-	if err := h.checkDataMarker(m); err != nil {
+	if err := h.CheckDataMarker(m); err != nil {
+		return nil, err
+	}
+	if err := checkFeatureOwners(m, opt.Features); err != nil {
 		return nil, err
 	}
 	hash, err := ApprovalHash(v)
@@ -196,28 +196,6 @@ func (h *Host) SetEnabled(id string, enabled bool) error {
 	}
 	ctl.Enabled, ctl.At = enabled, h.now().UTC()
 	return h.Dir.WriteControl(id, ctl)
-}
-
-// checkDataMarker refuses a build older than the data its plugin already
-// wrote: the stored data marker of the package may not be newer than the
-// build's storage.state_version (0 for a build without storage).
-func (h *Host) checkDataMarker(m *extapi.Manifest) error {
-	stored, err := h.Markers.PluginMarkers()
-	if err != nil {
-		return fmt.Errorf("read plugin version markers: %w", err)
-	}
-	name := extapi.PluginDataMarker(m.ID)
-	version := 0
-	if m.Storage != nil {
-		version = m.Storage.StateVersion
-	}
-	var own []extapi.Marker
-	for _, s := range stored {
-		if s.Name == name {
-			own = append(own, s)
-		}
-	}
-	return extapi.CheckMarkers(own, map[string]int{name: version})
 }
 
 // Entry is one installed package as List reports it.
@@ -323,7 +301,7 @@ func (h *Host) Remove(id string, purge bool) error {
 			return notInstalled(id)
 		case statErr != nil:
 			// Finish a purge whose marker delete failed after the move.
-			if has, err := h.hasMarker(marker); err != nil || !has {
+			if _, has, err := h.dataMarker(id); err != nil || !has {
 				return errors.Join(err, notInstalled(id))
 			}
 			return h.Markers.DeletePluginMarker(marker)
@@ -336,17 +314,4 @@ func (h *Host) Remove(id string, purge bool) error {
 		return h.Markers.DeletePluginMarker(marker)
 	}
 	return nil
-}
-
-func (h *Host) hasMarker(name string) (bool, error) {
-	stored, err := h.Markers.PluginMarkers()
-	if err != nil {
-		return false, err
-	}
-	for _, m := range stored {
-		if m.Name == name {
-			return true, nil
-		}
-	}
-	return false, nil
 }

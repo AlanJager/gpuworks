@@ -21,6 +21,11 @@ type extensionSet struct {
 	apis     []api.Extension
 	banners  []api.BannerSource
 	features []featuregate.Feature
+	// featureBy names the module that declared each static feature key.
+	featureBy map[featuregate.Key]string
+	// dynamic holds the feature keys installed plugin packages declare;
+	// the plugins module makes it once every compiled module has declared.
+	dynamic  *featuregate.DynamicSet
 	source   featuregate.Source
 	sourceBy string
 	holders  int
@@ -94,10 +99,11 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 }
 
 // apiDeps is what the API gets from the modules: their routes, banners and
-// the feature gate over the declared features, and the build's edition for
+// the feature gate over the features the modules declared and those the
+// installed plugin packages declare now, and the build's edition for
 // the console manifest. Without modules it changes no route.
 func (set *extensionSet) apiDeps() (api.ExtensionDeps, error) {
-	gate, err := featuregate.New(set.features, set.source)
+	gate, err := featuregate.NewWithDynamic(set.features, set.source, set.dynamic)
 	if err != nil {
 		return api.ExtensionDeps{}, err
 	}

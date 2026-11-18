@@ -42,12 +42,11 @@ specs:
     language: starlark
     resolver: |-
       def resolve(gpu):
-          # Any card count whose memory holds the weights (16.2 GiB) and a KV pool
-          # of 1.8 GiB, within the engine's 0.85 share less about 2 GiB of runtime
-          # overhead per card. The scheduler takes the fewest such cards and keeps
-          # the tensor-parallel size a divisor of the attention heads.
-          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 18:
-              return reject("the weights and a minimal KV pool need 18 GiB; these cards offer less")
+          # This SGLang image initializes the language model in both the base
+          # and derived constructors. Budget 34 GiB for the transient duplicate
+          # weights, multimodal towers and a minimal KV pool.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 34:
+              return reject("initialization peak and a minimal KV pool need 34 GiB; these cards offer less")
           if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
           return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
@@ -87,12 +86,11 @@ specs:
     language: starlark
     resolver: |-
       def resolve(gpu):
-          # Any card count whose memory holds the weights (16.2 GiB) and a KV pool
-          # of 1.8 GiB, within the engine's 0.85 share less about 2 GiB of runtime
-          # overhead per card. The scheduler takes the fewest such cards and keeps
-          # the tensor-parallel size a divisor of the attention heads.
-          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 18:
-              return reject("the weights and a minimal KV pool need 18 GiB; these cards offer less")
+          # This SGLang image initializes the language model in both the base
+          # and derived constructors. Budget 34 GiB for the transient duplicate
+          # weights, multimodal towers and a minimal KV pool.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 34:
+              return reject("initialization peak and a minimal KV pool need 34 GiB; these cards offer less")
           if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
           return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:

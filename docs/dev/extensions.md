@@ -64,7 +64,7 @@ type Service interface{ Run(ctx context.Context) error }
 | `Tables()` | 本模块的表（`store.ExtensionTables`）；没有迁移集的模块为 nil |
 | `DeriveKey(purpose)` | 由 master key 经 HKDF-SHA256 派生、与模块名绑定的 32 字节密钥 |
 | `MountAPI(e)` | 把 `api.Extension` 的路由挂到 `/api/v1/x/<名>/` |
-| `DeclareFeatures(...)` / `ProvideFeatures(src)` | 声明功能键；提供功能来源（全部模块中至多一个） |
+| `DeclareFeatures(...)` / `ProvideFeatures(src)` | 声明功能键；为编译模块声明的功能键提供功能来源（全部模块中至多一个；插件包声明的功能键由插件宿主作答，不经它） |
 | `AddBannerSource(b)` | 控制台每页顶部的横幅 |
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
@@ -205,7 +205,9 @@ SDK 带主版本号 `SDK_MAJOR`（当前为 1），只在删掉或改变某个�
 
 ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，而不是编进二进制。插件宿主已经作为内置模块接入本页的契约：
 
-- 插件宿主是内置模块 `plugins`（`app/plugins.go`，实现在 `internal/server/pluginbridge`），经 `Host` 注册已有的钩子：节点插入守卫、调度保持者（来源 `plugins`）与横幅总是注册；已安装的包声明了功能键时它还是功能来源，从插件推送、由核心校验并持久化的表作答。编译模块不能再叫 `plugins`；编译模块已经调用 `ProvideFeatures` 而已安装的包又声明了功能键时，server 拒绝启动。
+- 插件宿主是内置模块 `plugins`（`app/plugins.go`，实现在 `internal/server/pluginbridge`），经 `Host` 注册已有的钩子：节点插入守卫、调度保持者（来源 `plugins`）与横幅。已安装的包声明的功能键进功能门的动态集合，由插件推送、核心校验并持久化的表作答；编译模块声明的功能键仍由 `ProvideFeatures` 的来源作答，两者并存。编译模块不能再叫 `plugins`。
+- 运行时功能声明：安装、升级、启用、停用或卸载一个包之后，动态集合整体替换为当时已安装的包声明的功能键，功能门与控制台清单立即看到，并在 `feature` 主题上通知控制台重读清单；不用重启。功能门查找先查编译模块声明的键，再查动态集合（一次原子读取，不加锁、不分配）；`GET /api/v1/console/manifest` 的 `features` 是两者合并后按键排序的列表。什么都没装时动态集合为空，清单与原来逐字节相同。
+- 一个功能键只有一个归属：包声明的键已由编译模块声明，或已由另一个已安装的包声明（同一个包升级时保留自己的键）时，安装在要求批准之前就以 409 `PLUGIN_FEATURE_TAKEN{id, feature, owner}` 拒绝，`owner` 是模块名或那个包的 id，什么都不装。在这项检查之前装上的冲突包启动时照常加载：键留给原来的归属（编译模块，或 id 较小、自两者都安装起就作答的包），每处冲突记一条日志，归属不变；这样的包在下一个版本去掉冲突的键之前不能重装或升级。已安装但不再通过校验的包不占用它声明的键：它坏着的时候，别的包可以装上这个键；它恢复校验后，键归 id 较小的一方。
 - 插件是 server 的子进程，经继承的 fd 用 `gwx/1` 与核心通信，从不进入热路径，也不拿 Store。
 - 功能键是否受控由插件包自己声明；授权类的表只接受发布者证书指定的权威推送；插件掉线时限制继续执行，授权在有界宽限后降为只读，时间线按 extclock 照常生效。
 - 本页的钩子规则（写事务里的钩子是纯函数、保持者只停止调度不驱逐、运行中的负载不中断）对插件宿主同样适用。
@@ -218,11 +220,17 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 1. 清掉中断的安装留下的目录，逐个重新校验已安装的包（这次全部重新哈希）；不再通过校验或已被吊销的包记为已安装但未校验：它推送的限制与横幅照常执行，授权被丢弃，它不会启动。
 2. 用这份包清单读入全部推送表（见下文「推送状态」），在 server 接受第一个请求之前、任何插件启动之前生效。
-3. 注册钩子；声明功能键（只取启动时已安装的包）。
+3. 把已安装的包声明的功能键放进动态集合（与编译模块的键冲突时记日志并留给模块），注册钩子。
 
 模块的服务（随 server 的其他后台循环运行）先启动推送状态的写入 tick、时间线与容量选择，再并行启动每个已启用、有 `resident` 服务端部分的包，不阻塞 `serve`；启动前只重新哈希变过的文件。插件的进程状态经监管回调推送状态：`running`、`degraded` 算在线，其余都算掉线。server 停止时先停插件，再停推送状态，所以每个插件掉线的时刻都被持久化，重启不会续期宽限。
 
 推送方身份来自启动它时校验通过的包：监管为每个进程编号（全局递增的代数），宿主接口的推送按这条连接所属的包认定，带证书授予（含 `server.yaml` 为主机信任的签发者配置的权威）、管理员批准的权限、清单的码和这个进程的代数；连接所属的包已被替换或换了版本时推送被拒（`PLUGIN_STATE_CONNECTION_REPLACED`）。核心提供首批五种表的能力 `table.<种类>@1`，包的 `requires` 据此校验，插件握手时也据此协商。
+
+包声明了 `storage` 时，它的数据带一个版本标记 `plugin.<id>.data`（在核心的 `plugin_markers` 表里），防止回退到读不了这份数据的旧构建：
+
+- **写入**：每次启动后插件第一次进入 `running`（握手通过）时，宿主把标记写成 `max(已存的版本, storage.state_version)`，并记下运行的插件构建版本（被拒的旧构建据此指明要装的版本）；同一次启动里之后再进入 `running` 不再读写。标记从不调低：仍在运行的旧构建不会把它改小。没有 `storage` 的包不写标记，已经卸载的包也不再写。写入失败，或插件目录正被安装、卸载占用时，只记日志，下次健康检查时重试；读不到标记时不启动，稍后自动重试启动。
+- **检查**：标记比包的 `storage.state_version`（没有 `storage` 时为 0）新时，安装这个构建以 `PLUGIN_STATE_TOO_NEW` 拒绝，什么都不装；已安装的构建（例如更新的构建运行过之后又装回旧构建）每次启动前也检查一次，不启动，列表里显示 `failed` 并带 `PLUGIN_STATE_TOO_NEW`，直到装上 `state_version` 足够新的构建。降级之前可以用 `gpuworks plugin compat` 做同样的检查。
+- **生命周期**：普通卸载保留数据，也保留标记，所以重装旧构建同样被拒；只有 `purge` 在把数据目录移进 `.trash/` 的同时删掉标记。
 
 ### 管理接口
 
@@ -237,11 +245,20 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不运行时是 `disabled`、`installed`（没有 `resident` 服务端部分）、`idle`（`on_demand`）、`broken`（不再通过校验）或 `revoked`；运行时是监管的进程状态。字段见 [API 参考](../reference/api.md)。
 
+### 本地管理员兜底
+
+`users.local_admin` 标记谁在所有插件掉线、被卸载或崩溃循环时仍能恢复站点（ADR 0071 决策 11）：
+
+- 迁移 225 给升级前已有的全部管理员设上；首次启动创建的管理员带上；离线的 `gpuworks reset-password` 给管理员重新设上（普通用户不受影响）。之后新建的用户默认没有，控制台里改自己的密码不改动它。
+- 生效值在每个请求读用户时计算：`local_admin && role == admin && 登录会话`。被降级的用户立即失去兜底，不需要写库；平台 API Token 永远不带；它不签进 JWT，也从不从 JWT 读取。`GET /api/v1/auth/me` 的 `local_admin` 返回这个生效值，只用于显示。
+- 恢复面是核心路由：登录、`/auth/me`、修改密码与 `/api/v1/plugins/*` 不经过功能门，也不向插件提供的来源（功能可用性、横幅）发问。契约测试 `TestContractLocalAdminDuringCrashloop` 让两个插件都进入崩溃循环（一个保持全部节点，一个把集群卡数上限推成 0），本地管理员仍能重新登录、列出、停用并卸载每个包，每次调用在 10 秒内返回。
+
+推送的约束、准入保持与推送角色的执行器还不存在，所以目前没有地方需要按这个标记豁免；它们出现时先查这个标记。
+
 ### 尚未实现
 
-- 运行中安装的包声明的功能键在下次启动时才进入功能门（功能门在启动时建立一次）；它推送的限制、横幅与保持立即生效。
 - 插件路由在 `/api/v1/x/<id>/` 下的动态挂载、`on_demand` 插件的按需启动、宿主接口里状态与健康之外的端点。
-- 覆盖的管理路由（`State.Override` 已实现）、`users.local_admin` 兜底、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `enable`、`disable`、`upgrade`、`rollback`、`clock reset` 子命令。
+- 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、没有 cgroup 时的 RSS 看门狗、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
 - 核心代码功能键字面量的棘轮。
 - 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。

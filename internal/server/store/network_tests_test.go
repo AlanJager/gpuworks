@@ -10,6 +10,33 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestLatestNetworkCardTestIgnoresHostTests(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.LatestNetworkCardTestRun(0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("no card run = %v", err)
+	}
+	var cardID uint
+	for _, kind := range []string{"card_matrix", "tcp", "rdma_tool"} {
+		run, err := s.StartNetworkTestRun(&NetworkTestRun{NetworkID: 0, Kind: kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind == "card_matrix" {
+			cardID = run.ID
+		}
+		if err := s.FinishNetworkTestRun(run.ID, "[]", 0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.LatestNetworkCardTestRun(0)
+	if err != nil || got.ID != cardID {
+		t.Fatalf("latest card = %+v, %v", got, err)
+	}
+	if _, err := s.LatestNetworkCardTestRun(999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other network = %v", err)
+	}
+}
+
 func TestNetworkTestRunLifecycle(t *testing.T) {
 	s := newTestStore(t)
 	n, err := s.CreateNetwork(&Network{Name: "lan", Type: "ethernet", Roles: `["storage_sync"]`})

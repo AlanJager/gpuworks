@@ -148,6 +148,35 @@ func TestPluginInstallRefusesWithCodes(t *testing.T) {
 	}
 }
 
+// The command line refuses a package declaring a feature key an installed
+// package already declares, even from a lower id that would win the key at
+// boot; the owner itself reinstalls.
+func TestPluginInstallRefusesAFeatureKeyAnInstalledPackageDeclares(t *testing.T) {
+	// Both fixture packages are allowed on hosts without Landlock so this
+	// case reaches feature ownership on those hosts too.
+	e := newPluginEnv(t, "plugins:\n  allow_unsandboxed: [acme_backup, acme_a]\n")
+	declaring := func(id string) string {
+		s := extsign.Minimal("acme", id, "1.0.0")
+		s.Manifest.Features = []extapi.FeatureDecl{{Key: "acme.backup", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf}}
+		return e.writePackage(id+".gwpkg", extsign.Package(t, e.pub, s))
+	}
+	owner := declaring("acme_backup")
+	if _, err := e.run("install", "--file", owner); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.run("install", "--file", declaring("acme_a"))
+	var pe *messages.ProductError
+	if !errors.As(err, &pe) || pe.Code() != messages.ErrorPluginFeatureTaken || pe.Params()["owner"] != "acme_backup" || pe.Params()["feature"] != "acme.backup" {
+		t.Fatalf("install over acme_backup's key = %v", err)
+	}
+	if out, _ := e.run("list"); strings.Contains(out, "acme_a") {
+		t.Fatalf("refused package listed:\n%s", out)
+	}
+	if _, err := e.run("install", "--file", owner); err != nil {
+		t.Fatalf("owner reinstall = %v", err)
+	}
+}
+
 func TestPluginTrustImportRaisesTheFloor(t *testing.T) {
 	e := newPluginEnv(t, testPluginSite)
 	update := extsign.TrustUpdate(t, 1, func(u *extapi.TrustUpdate) {

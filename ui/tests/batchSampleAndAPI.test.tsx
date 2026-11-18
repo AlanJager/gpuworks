@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { URL as NativeURL } from "node:url";
 import { after, afterEach, beforeEach, test } from "node:test";
 import React from "react";
 import { I18nextProvider } from "react-i18next";
@@ -221,13 +222,21 @@ test("the sample offers only the models serving its endpoint, in the server's or
 test("download the sample hands the browser a .jsonl file", async () => {
   const created: Blob[] = [];
   let clicked = "";
+  let href = "";
+  let downloadedBytes: Promise<string> | undefined;
+  const revoked: string[] = [];
+  const currentURL = globalThis.URL;
   const urlApi = dom.window.URL as unknown as { createObjectURL: (b: Blob) => string; revokeObjectURL: (u: string) => void };
   const before = { create: urlApi.createObjectURL, revoke: urlApi.revokeObjectURL };
-  urlApi.createObjectURL = (blob: Blob) => { created.push(blob); return "blob:sample"; };
-  urlApi.revokeObjectURL = () => {};
+  urlApi.createObjectURL = (blob: Blob) => { created.push(blob); return NativeURL.createObjectURL(blob); };
+  urlApi.revokeObjectURL = (url: string) => { revoked.push(url); NativeURL.revokeObjectURL(url); };
   Object.defineProperty(globalThis, "URL", { value: dom.window.URL, configurable: true });
   const anchorClick = dom.window.HTMLAnchorElement.prototype.click;
-  dom.window.HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { clicked = this.download; };
+  dom.window.HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+    clicked = this.download;
+    href = this.href;
+    downloadedBytes = fetch(href).then((response) => response.text());
+  };
   try {
     const user = mountPage();
     const dialog = await openCreate(user);
@@ -235,12 +244,17 @@ test("download the sample hands the browser a .jsonl file", async () => {
     await user.click(screen.getByRole("button", { name: b.create.sample.download }));
     assert.equal(clicked, "batch-sample-chat-completions.jsonl");
     assert.equal(created.length, 1);
-    assert.equal((await created[0].text()).trimEnd().split("\n").length, SAMPLE_LINES);
+    const bytes = await created[0].text();
+    assert.equal(bytes.trimEnd().split("\n").length, SAMPLE_LINES);
+    assert.equal(await downloadedBytes, bytes, "the browser can read the native object URL");
   } finally {
     dom.window.HTMLAnchorElement.prototype.click = anchorClick;
     urlApi.createObjectURL = before.create;
     urlApi.revokeObjectURL = before.revoke;
+    Object.defineProperty(globalThis, "URL", { value: currentURL, configurable: true });
+    await waitFor(() => assert.deepEqual(revoked, [href]), { timeout: 2000 });
   }
+  await assert.rejects(fetch(href), /fetch failed/);
 });
 
 test("the page says batches are an OpenAI-compatible API and shows the calls", async () => {

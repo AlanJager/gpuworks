@@ -71,6 +71,25 @@ test("downloadFile saves the answer under the server's file name with the consol
   assert.deepEqual(revoked, ["blob:test/1"]);
 });
 
+test("a pending download releases its URL through the API that created it", async () => {
+  const nativeCreate = originalURL.create.bind(URL);
+  const nativeRevoke = originalURL.revoke.bind(URL);
+  urlApi.createObjectURL = (blob) => nativeCreate(blob);
+  urlApi.revokeObjectURL = (url) => { revoked.push(url); nativeRevoke(url); };
+  serve(() => new Response("下载文件\n", { headers: { "Content-Type": "text/plain;charset=utf-8" } }));
+  await downloadFile("/api/v1/files/result", { fallbackName: "result.txt" });
+  const [{ href }] = saved;
+  assert.equal(await (await originalFetch(href)).text(), "下载文件\n");
+  mock.timers.tick(999);
+  assert.deepEqual(revoked, [], "a browser still has time to begin reading the download");
+  // A page/test may replace the current URL API before a pending cleanup runs.
+  // The creator still owns the live native URL and must release that exact URL.
+  urlApi.revokeObjectURL = undefined as never;
+  assert.doesNotThrow(() => mock.timers.tick(1));
+  assert.deepEqual(revoked, [href]);
+  await assert.rejects(originalFetch(href), /fetch failed/);
+});
+
 test("downloadFile falls back to the given name and sends a JSON body when asked", async () => {
   serve(() => new Response("{\"rows\":[]}", { headers: { "Content-Type": "application/json" } }));
   const name = await downloadFile("/api/v1/x/tools/export", { method: "POST", body: { nodes: ["n1", "n2"] }, fallbackName: "export.json" });

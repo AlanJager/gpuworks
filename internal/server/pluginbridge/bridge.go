@@ -4,11 +4,12 @@
 // decide; it hands each what the others know.
 //
 // At boot it verifies every installed package, loads pushed state with
-// them before anything is served, and hands the server the evaluators to
-// register (featuregate.Source, the node insert guard, the scheduling
-// holder, the console banners). Run then starts the enabled resident
-// plugins, in parallel and without holding up the server, and tells pushed
-// state which owners are up. A push arriving on a plugin's host connection
+// them before anything is served, declares their feature keys in the
+// server's dynamic feature set (again after every install, enable,
+// disable and uninstall), and hands the server the evaluators to register
+// (the node insert guard, the scheduling holder, the console banners). Run
+// then starts the enabled resident plugins, in parallel and without holding
+// up the server, and tells pushed state which owners are up. A push arriving on a plugin's host connection
 // is applied as the package bound to that connection, with the grants of
 // the certificate it verified under and the permissions its administrator
 // approved. See docs/dev/extensions.md and ADR 0071.
@@ -23,6 +24,7 @@ import (
 	"regexp"
 	"slices"
 	"sync"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
@@ -56,7 +58,13 @@ type Config struct {
 	Core extapi.CoreInfo
 	// RequireIsolation is the site's plugins.require_isolation.
 	RequireIsolation string
-	Log              *slog.Logger
+	// Features is the server's dynamic feature set: the keys installed
+	// packages declare, answered by pushed state. Nil declares none.
+	Features *featuregate.DynamicSet
+	// StaticFeatures name the module compiled into the server that
+	// declares each static feature key; no package may declare one.
+	StaticFeatures map[featuregate.Key]string
+	Log            *slog.Logger
 }
 
 // Bridge is the plugin host of one server.
@@ -66,8 +74,6 @@ type Bridge struct {
 	pkgs  *extpkg.Host
 	state *pushstate.State
 	host  *pluginhost.Host
-	// features are the feature keys declared at boot.
-	features []featuregate.Feature
 
 	// admin serializes the administration calls (install, enable,
 	// disable, uninstall) with each other and with Run's start.
@@ -79,15 +85,29 @@ type Bridge struct {
 	// pushers are the identities of the running plugins, by package id,
 	// bound when each is started.
 	pushers map[string]identity
+	// refusals are why an enabled package was not started (its data is
+	// newer than its build, or its data marker could not be read), by
+	// package id, until it is started, stopped or removed.
+	refusals map[string]error
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
 	running bool
+	// markerRetry is how long a start waits to be tried again when the
+	// package's data marker could not be read.
+	markerRetry time.Duration
 }
 
-// identity is who a plugin's pushes come from.
+// identity is who a plugin's pushes come from, and the data its build
+// writes: bound when the plugin is started, dropped when it is stopped.
 type identity struct {
 	version string
 	pusher  pushstate.Pusher
+	// stateVersion is the build's storage.state_version, 0 without
+	// storage.
+	stateVersion int
+	// marked is set once this start's first healthy run is recorded in
+	// the package's data marker.
+	marked bool
 }
 
 // Open verifies the installed packages (rehashing every file), removes
@@ -101,7 +121,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}}
+	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{},
+		markerRetry: 30 * time.Second}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
@@ -124,7 +145,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if err := b.state.Load(ctx); err != nil {
 		return nil, err
 	}
-	b.features = b.state.Features()
+	b.logFeatureClashes()
+	b.declareFeatures()
 	hostCfg := cfg.Host
 	core := cfg.Core
 	core.Offer = extpkg.Offer()
@@ -145,11 +167,6 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 
 // State is the pushed state the server's hooks answer from.
 func (b *Bridge) State() *pushstate.State { return b.state }
-
-// Features are the feature keys installed packages declare, for the
-// feature gate. The gate is built once at boot, so keys of a package
-// installed later are declared at the next start.
-func (b *Bridge) Features() []featuregate.Feature { return slices.Clone(b.features) }
 
 // Run runs pushed state's writer tick, timelines and capacity selection,
 // starts every enabled resident plugin, and stops them all when ctx ends.
@@ -210,6 +227,9 @@ func (b *Bridge) stopAll() {
 func (b *Bridge) onState(st pluginhost.Status) {
 	if st.State.Up() {
 		b.state.OwnerUp(st.ID, st.Generation)
+		if st.State == pluginhost.StateRunning {
+			b.markData(st.ID)
+		}
 		return
 	}
 	b.state.OwnerDown(st.ID)

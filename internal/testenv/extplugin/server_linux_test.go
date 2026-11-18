@@ -71,6 +71,8 @@ type site struct {
 	root  *extsign.Key
 	pub   *extsign.Publisher
 	clock *fakeClock
+	// modules are compiled into the server beside the plugin host.
+	modules []app.Module
 }
 
 func newSite(t *testing.T) *site {
@@ -112,6 +114,7 @@ func (s *site) open() *app.App {
 	// Landlock is unavailable. Available Landlock remains required by their
 	// certificates and the dedicated isolation tests still verify it.
 	cfg.Plugins = serverconfig.Plugins{AllowUnsandboxed: []string{"acme_fake", "acme_other"}}
+	cfg.Extensions.Modules = s.modules
 	a, err := app.New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		s.t.Fatalf("server: %v", err)

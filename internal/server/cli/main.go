@@ -11,7 +11,7 @@
 //	reset-password  change an admin password
 //	support-bundle  collect diagnostics without the server running
 //	migrate         apply database migrations and exit
-//	plugin          install, list and remove plugin packages; import trust
+//	plugin          install, verify, enable and uninstall plugin packages; import trust
 //	expose          publish this server through a Cloudflare quick tunnel
 //	version         print version
 //	edition         print the edition this binary was built as
@@ -137,6 +137,11 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 		}
 	case "plugin":
 		if err := opt.pluginCommand(log, rest, os.Stdout); err != nil && !errors.Is(err, flag.ErrHelp) {
+			var running *serverRunningError
+			if errors.As(err, &running) {
+				fmt.Fprintln(stderr, err)
+				return 2
+			}
 			log.Error("plugin failed", "err", err, "code", codeText(err))
 			return 1
 		}
@@ -284,6 +289,14 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	defer close(pprofStop)
 	go debugsrv.Start(log, debugsrv.DefaultWindow, pprofSignals, pprofStop)
 
+	// Offline maintenance commands refuse while this lock is held: what they
+	// change, this server keeps in memory and would quietly undo.
+	releaseLock, err := takeServerLock(cfg.DataDir, serverLockWait)
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+
 	pending, installLayout, err := guardConsoleUpgrade(cfg, log)
 	if err != nil {
 		return err
@@ -397,7 +410,7 @@ func (o Options) resetPassword(log *slog.Logger, args []string) error {
 		return fmt.Errorf("open password database %s: %w; use the installed gpuworks binary or run it with the service owner's privileges (sudo when required)", dbPath, err)
 	}
 	defer st.Close()
-	if err := st.SetUserPassword(username, password); err != nil {
+	if err := st.RecoverUserPassword(username, password); err != nil {
 		return err
 	}
 	log.Info("password reset", "user", username, "db", dbPath)

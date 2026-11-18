@@ -485,7 +485,7 @@ server 存储并转交给同一发布者其他包的不透明声明，server 从
 
 `rule` 取值：`required`（缺失或为空）、`grammar`（不符合文法）、`range`（数值或长度越界）、`enum`（不在封闭集合内）、`duplicate`、`order`（应排序的列表未排序）、`exclusive`（设了互斥的字段）、`relation`（与同一对象的另一字段矛盾）、`syntax`、`type`、`number`（非整数或越出安全范围）、`trailing`。`field` 是点分路径，列表元素用下标，例如 `routes.0.feature`。
 
-`PLUGIN_STATE_TOO_NEW` 由 `extapi.CheckMarkers` 给出：比较持久化的版本标记（名字、版本、写入它的 server 版本）与本构建能读的最高版本，`needs` 是这些标记的写入者里最新的 server 版本，即应改为运行的版本。核心自己的标记不在已知表里时视为更新的版本；插件数据的标记（`plugin.<id>.data`，版本是写入它的构建的 `storage.state_version`）只与调用方为已安装的包列出的版本比较，没列出的包的数据不阻止核心启动。
+`PLUGIN_STATE_TOO_NEW` 由 `extapi.CheckMarkers` 给出：比较持久化的版本标记（名字、版本、写入它的构建版本：核心标记是 server 版本，插件数据标记是插件构建版本）与本构建能读的最高版本，`needs` 是这些标记的写入者里最新的版本，即应改为运行的版本。核心自己的标记不在已知表里时视为更新的版本；插件数据的标记（`plugin.<id>.data`，版本是写入它的构建的 `storage.state_version`）只与调用方为已安装的包列出的版本比较，没列出的包的数据不阻止核心启动。
 
 ## 黄金文件
 
