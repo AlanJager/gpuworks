@@ -15,6 +15,9 @@ import (
 
 const imageArchiveMaxBytes int64 = 500 << 30
 
+// imageTransferConfirmWait bounds an archive that was sent but never loaded.
+var imageTransferConfirmWait = 2 * time.Minute
+
 // SyncImage starts a direct source-to-target image transfer. A source is
 // mandatory; a relay preserves the selected source and target nodes.
 func (h *Hub) SyncImage(ctx context.Context, imageID uint, targetNodeUUID string) (*store.ImageNode, error) {
@@ -32,6 +35,11 @@ func (h *Hub) SyncImageFromRate(ctx context.Context, imageID uint, targetNodeUUI
 }
 
 func (h *Hub) syncImageDirect(ctx context.Context, imageID uint, targetNodeUUID, requestedSourceNodeUUID string, rateLimitKiB int64, force bool) (*store.ImageNode, error) {
+	epoch, done, ok := h.sessionWork.begin()
+	if !ok {
+		return nil, errSessionsStopped
+	}
+	defer done()
 	requestedSourceNodeUUID = strings.TrimSpace(requestedSourceNodeUUID)
 	if requestedSourceNodeUUID == "" {
 		return nil, errors.New("source node is required for direct image sync")
@@ -100,10 +108,12 @@ func (h *Hub) syncImageDirect(ctx context.Context, imageID uint, targetNodeUUID,
 	transferID := auth.NewUUID()
 	sizeBytes := source.SizeBytes
 	copyCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	stopEpoch := context.AfterFunc(epoch, cancel)
 	h.imageSyncMu.Lock()
 	// Recheck after source validation: another caller may have started this slot.
 	if current, e := h.store.ImageNode(image.ID, target.ID); e == nil && (current.State == store.ImageStateSyncing || current.State == store.ImageStatePulling) && (!force || h.imageSyncOwners[current.TransferID] != nil) && !(current.TransferErrorCode == messages.ErrorPeerRelayBusy && h.imageSyncOwners[current.TransferID] == nil) {
 		h.imageSyncMu.Unlock()
+		stopEpoch()
 		cancel()
 		return current, nil
 	}
@@ -121,16 +131,26 @@ func (h *Hub) syncImageDirect(ctx context.Context, imageID uint, targetNodeUUID,
 	}
 	h.imageSyncMu.Unlock()
 	if err != nil {
+		stopEpoch()
 		return nil, err
 	}
 	h.watchDirectImageTransfer(image.ID, target.ID)
-	go h.runDirectImageSync(copyCtx, image, target, sourceNode, target.ID, transferID, sizeBytes, rateLimitKiB)
+	confirmationWait := imageTransferConfirmWait
+	h.trackSessionWork(func() {
+		defer stopEpoch()
+		h.runDirectImageSync(copyCtx, image, target, sourceNode, target.ID, transferID, sizeBytes, rateLimitKiB, confirmationWait)
+	})
 	return targetRow, nil
 }
 
 // RetryImageSync resets a failed transfer and starts it again. Docker save is
 // not seekable, so retries always restart from byte zero.
 func (h *Hub) RetryImageSync(ctx context.Context, imageID uint, targetNodeUUID string) (*store.ImageNode, error) {
+	_, done, ok := h.sessionWork.begin()
+	if !ok {
+		return nil, errSessionsStopped
+	}
+	defer done()
 	image, err := h.store.GetImage(imageID)
 	if err != nil {
 		return nil, err
@@ -153,7 +173,7 @@ func (h *Hub) RetryImageSync(ctx context.Context, imageID uint, targetNodeUUID s
 	return h.syncImageDirect(ctx, imageID, targetNodeUUID, source.UUID, row.LastRateLimitKiB, true)
 }
 
-func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target, source *store.Node, nodeID uint, transferID string, sizeBytes, rateLimitKiB int64) {
+func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target, source *store.Node, nodeID uint, transferID string, sizeBytes, rateLimitKiB int64, confirmationWait time.Duration) {
 	defer func() {
 		h.imageSyncMu.Lock()
 		cancel := h.imageSyncOwners[transferID]
@@ -232,9 +252,7 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 		_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, "image archive exceeded 500 GiB transfer limit")
 		return
 	}
-	time.AfterFunc(2*time.Minute, func() {
-		_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, "image archive transferred, but target did not confirm completion")
-	})
+	h.awaitImageConfirmation(ctx, image.ID, nodeID, transferID, "image archive transferred, but target did not confirm completion", confirmationWait)
 }
 
 // trackImageTransfer runs one server-relayed transfer in the background and
@@ -244,7 +262,20 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 // confirms its load. Every relay — peer save/load, offline blob, archive URL —
 // goes through here, so the three cannot drift apart.
 func (h *Hub) trackImageTransfer(ctx context.Context, imageID, nodeID uint, transferID string, sizeBytes int64, copy func(context.Context, func(int64)) (int64, error)) {
-	go func() {
+	epoch, done, ok := h.sessionWork.begin()
+	if !ok {
+		return
+	}
+	defer done()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	copyCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	stopEpoch := context.AfterFunc(epoch, cancel)
+	confirmationWait := imageTransferConfirmWait
+	h.trackSessionWork(func() {
+		defer cancel()
+		defer stopEpoch()
 		started := time.Now()
 		var progressLimiter imageSyncProgressLimiter
 		persistProgress := func(done int64, force bool) {
@@ -259,10 +290,6 @@ func (h *Hub) trackImageTransfer(ctx context.Context, imageID, nodeID uint, tran
 			}
 			_, _ = h.store.UpdateImageSyncProgressIfActive(imageID, nodeID, transferID, sizeBytes, done, rate)
 		}
-		copyCtx := context.Background()
-		if ctx != nil {
-			copyCtx = context.WithoutCancel(ctx)
-		}
 		bytes, copyErr := copy(copyCtx, func(done int64) { persistProgress(done, false) })
 		if copyErr != nil {
 			persistProgress(bytes, true)
@@ -273,8 +300,19 @@ func (h *Hub) trackImageTransfer(ctx context.Context, imageID, nodeID uint, tran
 		// Keep the ledger syncing here so io.Copy completion is not mistaken for
 		// a successful image import.
 		persistProgress(bytes, true)
-		time.AfterFunc(2*time.Minute, func() {
-			_ = h.store.FailImageSyncIfActive(imageID, nodeID, transferID, "image archive transferred, but target docker load did not confirm completion")
-		})
-	}()
+		h.awaitImageConfirmation(copyCtx, imageID, nodeID, transferID, "image archive transferred, but target docker load did not confirm completion", confirmationWait)
+	})
+}
+
+// awaitImageConfirmation stays inside the counted copy workflow. A detached
+// timer could otherwise write to a closed store minutes after Hub shutdown.
+func (h *Hub) awaitImageConfirmation(ctx context.Context, imageID, nodeID uint, transferID, message string, wait time.Duration) {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-timer.C:
+		_ = h.store.FailImageSyncIfActive(imageID, nodeID, transferID, message)
+	}
 }

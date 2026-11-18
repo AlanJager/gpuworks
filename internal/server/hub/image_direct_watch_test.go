@@ -48,6 +48,7 @@ func TestWatchDirectImageTransferAbandonsASilentTransfer(t *testing.T) {
 	})
 
 	h := New(st, slog.Default())
+	t.Cleanup(h.StopSessions)
 	h.watchDirectImageTransfer(image.ID, node.ID)
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -102,6 +103,7 @@ func TestWatchDirectImageTransferLeavesAReportingTransferAlone(t *testing.T) {
 	})
 
 	h := New(st, slog.Default())
+	t.Cleanup(h.StopSessions)
 	h.watchDirectImageTransfer(image.ID, node.ID)
 	time.Sleep(100 * time.Millisecond)
 
@@ -151,6 +153,7 @@ func TestWatchDirectImageTransferLeavesAQuietRegistryPull(t *testing.T) {
 	})
 
 	h := New(st, slog.Default())
+	t.Cleanup(h.StopSessions)
 	h.watchDirectImageTransfer(image.ID, node.ID)
 	time.Sleep(100 * time.Millisecond)
 

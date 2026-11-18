@@ -30,6 +30,15 @@ func (h *Hub) SetEnginePorts(ports func() proto.PortRange) { h.enginePorts = por
 // call; an older one gets them one by one. The agent reports terminal state
 // asynchronously through status.image_node.
 func (h *Hub) PullImage(ctx context.Context, imageID uint, targetNodeUUID string, fetch imagecatalog.FetchRequest) (*store.ImageNode, error) {
+	epoch, done, ok := h.sessionWork.begin()
+	if !ok {
+		return nil, errSessionsStopped
+	}
+	defer done()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(epoch, cancel)
+	defer stop()
 	image, err := h.store.GetImage(imageID)
 	if err != nil {
 		return nil, err
@@ -97,7 +106,9 @@ func (h *Hub) PullImage(ctx context.Context, imageID uint, targetNodeUUID string
 			// operation finishes. Watch terminal failure and advance to the next
 			// source without making the HTTP request wait for a large image.
 			if len(candidates) > index+1 {
-				go h.watchImagePullCandidates(image.ID, target.ID, target.UUID, row.ID, image.ImageRef, candidates, index)
+				h.trackSessionWork(func() {
+					h.watchImagePullCandidates(epoch, image.ID, target.ID, target.UUID, row.ID, image.ImageRef, candidates, index)
+				})
 			}
 			// The node is doing the work, so the row only moves while the agent
 			// reports. Watch for that reporting to stop, whatever the source.

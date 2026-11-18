@@ -203,6 +203,7 @@ func TestWatchImagePullCandidatesAdvancesAndAuditsFailures(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		h.watchImagePullCandidates(
+			context.Background(),
 			image.ID,
 			node.ID,
 			node.UUID,

@@ -76,6 +76,7 @@ func newRelayHub(t *testing.T, dsn, archivePath string, opts ...ocifixture.Archi
 	}
 
 	h := New(st, slog.Default())
+	t.Cleanup(h.StopSessions)
 	h.SetOutboundAllowPrivateHosts([]string{"127.0.0.1"})
 	serverConn, clientConn := net.Pipe()
 	t.Cleanup(func() { serverConn.Close(); clientConn.Close() })

@@ -107,13 +107,16 @@ func (h *Hub) planReplayImages(node *store.Node, imageRules []pullref.SourceRule
 // after the agent reports an asynchronous terminal failure. The initial HTTP
 // request remains quick, while image_nodes.message retains one audit entry per
 // attempted ref.
-func (h *Hub) watchImagePullCandidates(imageID, nodeID uint, nodeUUID string, rowID uint, canonical string, candidates []imagePullCandidate, current int) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+func (h *Hub) watchImagePullCandidates(epoch context.Context, imageID, nodeID uint, nodeUUID string, rowID uint, canonical string, candidates []imagePullCandidate, current int) {
+	ctx, cancel := context.WithTimeout(epoch, 10*time.Minute)
 	defer cancel()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	failures := make([]string, 0, len(candidates))
 	for {
+		if epoch.Err() != nil {
+			return
+		}
 		row, err := h.store.ImageNode(imageID, nodeID)
 		if err != nil {
 			return
@@ -135,6 +138,9 @@ func (h *Hub) watchImagePullCandidates(imageID, nodeID uint, nodeUUID string, ro
 			next := candidates[current]
 			_, _ = h.store.UpsertImageNode(&store.ImageNode{ID: rowID, ImageVersionID: imageID, ImageID: imageID, NodeID: nodeID, State: store.ImageStatePulling, Source: next.Source, Message: boundedPullMessage(strings.Join(failures, " | ") + " | trying " + next.Source + " " + next.Ref)})
 			if _, callErr := h.CallNode(ctx, nodeUUID, proto.RPCImagePull, proto.ImagePullParams{EffectiveRef: next.Ref, CanonicalRef: canonical}); callErr != nil {
+				if epoch.Err() != nil {
+					return
+				}
 				failures = append(failures, next.Source+": "+callErr.Error())
 				current++
 				if current >= len(candidates) {
@@ -145,6 +151,9 @@ func (h *Hub) watchImagePullCandidates(imageID, nodeID uint, nodeUUID string, ro
 		}
 		select {
 		case <-ctx.Done():
+			if epoch.Err() != nil {
+				return
+			}
 			message := "image pull source fallback timed out"
 			if len(failures) > 0 {
 				message = "all image sources failed or timed out: " + strings.Join(failures, " | ")

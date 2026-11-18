@@ -117,7 +117,7 @@ func trackRunRequests(ctx context.Context, next http.Handler) (http.Handler, fun
 	})
 	return handler, func() {
 		admission.Lock()
-		admission.Unlock()
+		defer admission.Unlock()
 		work.Wait()
 	}
 }

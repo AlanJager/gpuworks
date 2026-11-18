@@ -58,6 +58,7 @@ func newArchiveURLHub(t *testing.T, dsn string, reply func(env proto.Envelope) s
 	}
 
 	h := New(st, slog.Default())
+	t.Cleanup(h.StopSessions)
 	h.SetOutboundAllowPrivateHosts([]string{"127.0.0.1"})
 	server, client := net.Pipe()
 	t.Cleanup(func() { server.Close(); client.Close() })
