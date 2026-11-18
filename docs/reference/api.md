@@ -1716,6 +1716,8 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
 - `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。
 
+调用插件失败时的码（`PLUGIN_UNAVAILABLE`、`PLUGIN_BUSY`、`PLUGIN_TIMEOUT`、`PLUGIN_ROUTE_FAILED`）见[扩展点](../dev/extensions.md#调用与路由表)。
+
 错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）、声明的功能键已由编译模块或另一个已安装的包提供（`PLUGIN_FEATURE_TAKEN{id, feature, owner}`，在要求批准之前检查）或插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）409；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
 
 ## Providers（云厂商租机）

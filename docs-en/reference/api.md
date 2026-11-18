@@ -1702,6 +1702,8 @@ Fields:
 - `parts`: the parts it carries, `server`, `node`, `ui`, `store`; `isolation`: `landlock` or `none`.
 - `actions`: the actions available now, computed by the server: `enable`, `disable`, `uninstall`.
 
+The codes of a failed plugin call (`PLUGIN_UNAVAILABLE`, `PLUGIN_BUSY`, `PLUGIN_TIMEOUT`, `PLUGIN_ROUTE_FAILED`) are in [Extension Points](../dev/extensions.md#calls-and-the-route-table).
+
 Errors: not installed 404 `PLUGIN_NOT_INSTALLED`; approval needed, a broken package, the same version with other contents (`PLUGIN_VERSION_CONFLICT`), a declared feature key a compiled module or another installed package already provides (`PLUGIN_FEATURE_TAKEN{id, feature, owner}`, checked before approval) or plugin data newer than the build (`PLUGIN_STATE_TOO_NEW`) 409; a package too large 413 `PLUGIN_PACKAGE_TOO_LARGE`; any other refused package 422, with the codes in [Plugin Protocol and Wire Formats](plugin-protocol.md); `enable` or `purge` not a boolean 400 `FIELD_INVALID`.
 
 ## Providers (Cloud Instance Rental)
@@ -2306,4 +2308,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 06baeebb1286a8393aeece137f42f36cac98a7dc04a820681dceae7724370aed -->
+<!-- translation-source-sha256: 5bbdc07adb326534674f2c30ee2b74d5cf7bfb269e03de324ef03c40c1fd0a46 -->

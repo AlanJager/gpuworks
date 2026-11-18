@@ -311,14 +311,14 @@ The plugin host module calls a plugin through `Bridge.Call` (no route or service
 
 | Code | When | Retry |
 |---|---|---|
-| `PLUGIN_UNAVAILABLE{plugin, state}` | The request never reached the plugin: not supervised, not running, crashlooping, or the connection failed before the request headers were written. `state` is for programs only and the text does not interpolate it (pushed state's clamp banner uses the same code with only `plugin` and `feature`) | Yes |
-| `PLUGIN_BUSY{id, limit}` | Every slot the call's class may use is taken | Shortly |
+| `PLUGIN_UNAVAILABLE{plugin, state}` | The request never reached the plugin: not supervised (`state` is `stopped`), not running, crashlooping, or the connection failed before the request headers were written. `state` is for programs only and the text does not interpolate it (pushed state's clamp banner uses the same code with only `plugin` and `feature`) | Yes |
+| `PLUGIN_BUSY{id, limit}` | Every slot the call's class may use is taken; `limit` is the bound that refused the call: the pool size for an administrator call, the pool size less the reserved slots for any other | Shortly |
 | `PLUGIN_TIMEOUT{id, timeout_s, state}` | The deadline passed: `state` is `starting` while an `on_demand` plugin was still cold starting, `running` while the plugin was handling the call | Depends on the call |
 | `PLUGIN_ROUTE_FAILED{id}` | The call failed after the plugin had the request (it crashed or hung up), so the request may have been partly applied | No |
 
 A write that fails after the request headers were written counts as delivered: the caller is told the request may have been partly applied rather than led into a blind retry. A plugin's own refusal is a normal response.
 
-The route table is compiled from the installed packages' manifests: an enabled package that verifies serves its routes; a disabled package has none (404, and absent from the route inventory); a revoked package, and one that no longer verifies but verified earlier at the same version, keeps its routes and answers them with 503 `PLUGIN_UNAVAILABLE` without calling the plugin (a package already broken at boot has no routes until it verifies again). After every install, enable, disable, uninstall or recheck the whole table is compiled again and swapped atomically; matching takes no lock, walks one path segment at a time with literal segments tried before `{name}` parameters, and allocates once, for the parameters only; a request keeps the table it started with.
+The route table is compiled from the installed packages' manifests: an enabled package that verifies serves its routes; a disabled package has none (404, and absent from the route inventory), even when it is also revoked or no longer verifies; a revoked package, and one that no longer verifies but verified earlier at the same version, keeps its routes and answers them with 503 `PLUGIN_UNAVAILABLE` without calling the plugin (a package already broken at boot has no routes until it verifies again). After every install, enable, disable, uninstall or recheck the whole table is compiled again and swapped atomically; matching takes no lock, walks one path segment at a time with literal segments tried before `{name}` parameters, and allocates once, for the parameters only; a request keeps the table it started with.
 
 ### gwx/1 connections and the host API
 
@@ -349,4 +349,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: faa67ce9bb794371a68ab7b5747296271b9ae28da1528fda43491f531ff66cfc -->
+<!-- translation-source-sha256: 0fda37a1c561260a79fc56481b4e73845706bffe0ae08e8c63b94cd6f7ee1025 -->
