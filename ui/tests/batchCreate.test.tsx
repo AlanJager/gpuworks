@@ -351,3 +351,40 @@ test("a dictionary read again on every opening shows the models' states of now",
   await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
   await within(dialog).findByText(`m · ${b.create.model.state.asleepHeld}`, { selector: '[data-slot="select-value"]' });
 });
+
+test("the actual stopped-model create form displays BATCH_MODEL_WAITS from the HTTP response", async () => {
+  batchApi.list = async () => page([]);
+  batchApi.dictionary = async () => dictionary([model("parked", "stopped")]);
+  const created = batch({ id: "batch_parked", model: "parked", status: "validating", warnings: [{ code: "BATCH_MODEL_WAITS", params: { model: "parked", state: "stopped" } }] });
+  batchApi.get = async () => ({ ...created, warnings: undefined });
+  batchApi.create = original.create;
+  const originalFetch = globalThis.fetch;
+  const originalFormData = globalThis.FormData;
+  Object.defineProperty(globalThis, "FormData", { value: dom.window.FormData, configurable: true });
+  let posted = false;
+  globalThis.fetch = async (input, init) => {
+    if (String(input) !== "/api/v1/batches" || init?.method !== "POST") return originalFetch(input, init);
+    const body = init.body as FormData;
+    assert.equal(body.get("model"), "parked");
+    assert.equal(body.get("completion_window"), "24h");
+    assert.equal((body.get("file") as File).name, "reqs.jsonl");
+    posted = true;
+    return Response.json(created, { status: 201 });
+  };
+  try {
+    const user = mountPage();
+    const dialog = await openCreate(user);
+    await user.upload(within(dialog).getByLabelText(b.create.file, { exact: false }), jsonl());
+    await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
+    await user.click(within(dialog).getByRole("combobox", { name: b.create.model.label }));
+    await user.click(await screen.findByRole("option", { name: `parked · ${b.create.model.state.stopped}` }));
+    await user.click(submitButton(dialog));
+    await waitFor(() => assert.equal(posted, true));
+    await waitFor(() => assert.ok(!screen.queryByRole("dialog", { name: b.create.title })));
+    await screen.findByText(i18n.t("create.warnings.BATCH_MODEL_WAITS", { ns: "batches", model: "parked", state: b.create.model.state.stopped }));
+    assert.ok(await screen.findByText(b.create.created.replace("{{id}}", "batch_parked")));
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, "FormData", { value: originalFormData, configurable: true });
+  }
+});
