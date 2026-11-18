@@ -27,6 +27,10 @@ type Policy struct {
 	// unconfined on a host without Landlock although their certificate asks
 	// for it.
 	AllowUnsandboxed []string
+	// AutoApproveUnchanged lets Host.Upgrade apply a package whose approval
+	// hash equals the approved one without a new approval
+	// (plugins.policy.auto_approve_unchanged). Verification ignores it.
+	AutoApproveUnchanged bool
 }
 
 // Rules of ErrorPluginPolicyRefused.

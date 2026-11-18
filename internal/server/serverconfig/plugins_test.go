@@ -27,6 +27,7 @@ plugins:
     deny_packages: [acme_beta]
     deny_permissions: [read:directory]
     deny_roles: [key_wrap]
+    auto_approve_unchanged: true
   allow_unsandboxed: [acme_backup]
   require_isolation: landlock
 `
@@ -41,7 +42,8 @@ plugins:
 		Publishers: []PluginPublisher{{KeyID: "acme-issuer-1", Alg: "ed25519", PublicKey: issuerKey,
 			Roles: []string{"availability_authority"}, Tables: []string{"fleet_capacity"}, Authority: true}},
 		Policy: PluginPolicy{AllowPublishers: []string{"acme", "gpuworks"}, DenyPackages: []string{"acme_beta"},
-			DenyPermissions: []string{"read:directory"}, DenyRoles: []string{"key_wrap"}},
+			DenyPermissions: []string{"read:directory"}, DenyRoles: []string{"key_wrap"},
+			AutoApproveUnchanged: true},
 		AllowUnsandboxed: []string{"acme_backup"}, RequireIsolation: "landlock",
 	}
 	if !reflect.DeepEqual(f.Plugins, want) {
@@ -50,6 +52,18 @@ plugins:
 	k, err := f.Plugins.Publishers[0].Key()
 	if err != nil || k.KeyID != "acme-issuer-1" || len(k.Key) != 32 {
 		t.Fatalf("key = %+v %v", k, err)
+	}
+}
+
+// Without the key every upgrade needs a new approval.
+func TestAutoApproveUnchangedDefaultsOff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	if err := os.WriteFile(path, []byte("plugins:\n  policy:\n    deny_roles: [key_wrap]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(path)
+	if err != nil || f.Plugins.Policy.AutoApproveUnchanged {
+		t.Fatalf("policy = %+v, %v", f.Plugins.Policy, err)
 	}
 }
 

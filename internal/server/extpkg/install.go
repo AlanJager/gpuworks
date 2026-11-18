@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg/archive"
@@ -86,6 +85,92 @@ type InstallOptions struct {
 // unpacked with the same signed manifest is made current again; one with a
 // different manifest is refused (ErrorPluginVersionConflict).
 func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
+	return h.place(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
+		if opt.RequireApproval && opt.Approve != hash {
+			return layout.Control{}, approvalRequired(v.Manifest, hash, DiffApproval(nil, v))
+		}
+		return layout.Control{Enabled: opt.Enable, ApprovedHash: string(hash), ApprovedBy: opt.ApprovedBy, At: h.now().UTC()}, nil
+	})
+}
+
+// UpgradeOptions are an upgrade's choices.
+type UpgradeOptions struct {
+	// ApprovedBy names who approved the upgrade.
+	ApprovedBy string
+	// Approve must equal the incoming package's approval hash, unless the
+	// hash is the approved one and the site policy auto-approves that.
+	Approve extapi.Digest
+	// Features, when set, refuses a package declaring a feature key
+	// someone else provides (ErrorPluginFeatureTaken), before approval.
+	Features FeatureOwners
+}
+
+// Upgraded is the outcome of an upgrade.
+type Upgraded struct {
+	*Installed
+	// Diff is what the new version asks for compared with the old one.
+	Diff ApprovalDiff
+	// AutoApproved reports that the approval hash was unchanged and the
+	// site policy applied the upgrade without a new approval.
+	AutoApproved bool
+}
+
+// Upgrade replaces installed package id with the package read from r, the
+// way Install places it, keeping whether the package is enabled. The
+// package's id must be installed (ErrorPluginNotInstalled). Without
+// approval it is refused with ErrorPluginApprovalRequired, whose params
+// carry the diff from the installed version (an *ApprovalNeeded cause
+// holds it too), and nothing changes. An approval hash equal to the
+// approved one counts as approved when the site policy auto-approves
+// unchanged upgrades.
+func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (*Upgraded, error) {
+	up := &Upgraded{}
+	in, err := h.place(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
+		m := v.Manifest
+		current, err := h.Dir.Current(m.ID)
+		if err != nil {
+			return layout.Control{}, err
+		}
+		if current == "" {
+			return layout.Control{}, notInstalled(m.ID)
+		}
+		ctl, _, err := h.Dir.ReadControl(m.ID)
+		if err != nil {
+			return layout.Control{}, err
+		}
+		// An installed version that no longer verifies is diffed as
+		// nothing: the administrator sees everything the new one asks for.
+		old, _ := h.Recheck(m.ID, false)
+		up.Diff = DiffApproval(old, v)
+		up.Diff.FromVersion = current
+		up.Diff.HashChanged = string(hash) != ctl.ApprovedHash
+		up.AutoApproved = !up.Diff.HashChanged && h.Verifier.Policy.AutoApproveUnchanged
+		approvedBy := opt.ApprovedBy
+		switch {
+		case up.AutoApproved:
+			// Nothing new was approved: the earlier approver stands.
+			approvedBy = ctl.ApprovedBy
+		case opt.Approve != hash:
+			return layout.Control{}, approvalRequired(m, hash, up.Diff)
+		}
+		return layout.Control{
+			Enabled: ctl.Enabled, ApprovedHash: string(hash), ApprovedBy: approvedBy, At: h.now().UTC(),
+			// Host setup steps already applied stay applied unless the
+			// new version asks for one more.
+			HostSetupApplied: ctl.HostSetupApplied && len(up.Diff.HostSetupAdded) == 0,
+		}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	up.Installed = in
+	return up, nil
+}
+
+// place reads, verifies and unpacks a package under the data directory's
+// lock. decide runs after verification, before anything is moved into
+// place: it refuses the package or returns the control file to write.
+func (h *Host) place(r io.Reader, features FeatureOwners, decide func(*Verified, extapi.Digest) (layout.Control, error)) (*Installed, error) {
 	unlock, err := h.Dir.Lock()
 	if err != nil {
 		return nil, err
@@ -113,15 +198,16 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	if err := h.CheckDataMarker(m); err != nil {
 		return nil, err
 	}
-	if err := checkFeatureOwners(m, opt.Features); err != nil {
+	if err := checkFeatureOwners(m, features); err != nil {
 		return nil, err
 	}
 	hash, err := ApprovalHash(v)
 	if err != nil {
 		return nil, err
 	}
-	if opt.RequireApproval && opt.Approve != hash {
-		return nil, approvalRequired(m, hash)
+	ctl, err := decide(v, hash)
+	if err != nil {
+		return nil, err
 	}
 	out := &Installed{Verified: v, ApprovalHash: hash}
 	switch existing, err := os.ReadFile(filepath.Join(h.Dir.Version(m.ID, m.Version), archive.ManifestMember)); {
@@ -155,20 +241,10 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	if out.Previous == m.Version {
 		out.Previous = ""
 	}
-	ctl := layout.Control{Enabled: opt.Enable, ApprovedHash: string(hash), ApprovedBy: opt.ApprovedBy, At: h.now().UTC()}
 	if err := h.Dir.WriteControl(m.ID, ctl); err != nil {
 		return nil, err
 	}
 	return out, nil
-}
-
-// approvalRequired is the refusal that names what an install asks the
-// administrator to approve.
-func approvalRequired(m *extapi.Manifest, hash extapi.Digest) error {
-	return messages.NewProductError(messages.ErrorPluginApprovalRequired,
-		fmt.Sprintf("installing %s %s needs approval %s", m.ID, m.Version, hash),
-		map[string]any{"id": m.ID, "version": m.Version, "approve_hash": string(hash),
-			"permissions": strings.Join(m.Permissions, ","), "roles": strings.Join(m.Roles, ",")})
 }
 
 // SetEnabled records whether installed package id may run: a server starts
