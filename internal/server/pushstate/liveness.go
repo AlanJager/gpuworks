@@ -43,6 +43,27 @@ func (s *State) OwnerDown(owner string) {
 	s.changed()
 }
 
+// Ready records that owner's process generation has finished starting
+// ($/ready): a down period of this generation gets no boot extension, so its
+// grants clamp as soon as the grace has passed. It never touches the
+// persisted down start, so it cannot renew the grace. A call from a
+// generation the supervisor has since replaced, or a second call, changes
+// nothing; Ready reports whether this call ended the extension.
+func (s *State) Ready(owner string, generation uint64) bool {
+	s.mu.Lock()
+	if prev, ok := s.ready[owner]; generation < s.spawn[owner] || ok && prev >= generation {
+		s.mu.Unlock()
+		return false
+	}
+	s.ready[owner] = generation
+	if _, down := s.down[owner]; !down {
+		s.mu.Unlock()
+		return true
+	}
+	s.changed()
+	return true
+}
+
 // changed recombines after an in-memory change made under the lock,
 // releases it, wakes the writer tick for what it must persist and runs the
 // effects.
@@ -78,6 +99,7 @@ func (s *State) Uninstall(ctx context.Context, owner string) error {
 			delete(s.down, owner)
 			delete(s.downDirty, owner)
 			delete(s.spawn, owner)
+			delete(s.ready, owner)
 		},
 	})
 }
