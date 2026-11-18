@@ -94,6 +94,20 @@ test("latest test keeps its absolute start time and planned scope for every run 
   }
 });
 
+test("overview tones distinguish active outcomes while zero counts stay neutral", () => {
+  const run = { ...detailFixture.latest_test, passed_count: 1, partial_count: 1,
+    pairs: [...detailFixture.latest_test.pairs, detailFixture.latest_test.pairs[0]], pair_count: 3 };
+  const view = renderIn(<NetworkTestResult network={detailFixture} run={run} onChanged={() => {}} />);
+  const tone = (label: string) => screen.getByText(label, { selector: '[data-slot="metric-card-label"]' }).closest('[data-slot="metric-card"]')?.getAttribute("data-tone");
+  assert.equal(tone("Nodes tested"), "default");
+  assert.equal(tone("Passed"), "positive");
+  assert.equal(tone("Partial"), "warning");
+  assert.equal(tone("Failed"), "critical");
+  view.unmount();
+  renderIn(<NetworkTestResult network={detailFixture} run={finishedRun("tcp", "mesh", { scope: "all" })} onChanged={() => {}} />);
+  for (const label of ["Passed", "Partial", "Failed"]) assert.equal(tone(label), "default");
+});
+
 test("mesh filters combine the two node names with any selected test statuses, and issues open their pairs", async () => {
   const { fireEvent, within } = await import("@testing-library/react");
   const testPair = (source: string, target: string, status: string) => ({

@@ -122,7 +122,7 @@ export default function NetworkTestPanel({ network, onStarted, onChanged }: { ne
 
   return (
     <div className="isolate flex min-w-0 flex-col gap-6 text-body">
-      <form onSubmit={start} className="@container flex min-w-0 flex-col gap-3">
+      <form onSubmit={start} className="@container flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-muted p-4 [&_[data-slot=select-trigger]]:bg-surface-floating [&_input[data-slot=input]]:bg-surface-floating [&_[data-slot=combobox-chips]]:bg-surface-floating">
         <h3 className="flex items-center gap-1 text-body font-semibold">
           {t("test.configuration")}
           <HelpTip content={t(card ? `test.cardNote.${kind}` : kind === "rdma_tool" ? "test.rdmaHow" : "test.what")} />
