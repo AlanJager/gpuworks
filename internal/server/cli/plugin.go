@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -181,7 +182,11 @@ func (o Options) pluginInstall(log *slog.Logger, args []string, stdout io.Writer
 		return err
 	}
 	defer st.Close()
-	in, err := h.Install(f, extpkg.InstallOptions{Enable: !*disabled, ApprovedBy: "command line"})
+	owners, err := installedFeatureOwners(h)
+	if err != nil {
+		return err
+	}
+	in, err := h.Install(f, extpkg.InstallOptions{Enable: !*disabled, ApprovedBy: "command line", Features: owners})
 	if err != nil {
 		return err
 	}
@@ -197,6 +202,41 @@ func (o Options) pluginInstall(log *slog.Logger, args []string, stdout io.Writer
 	fmt.Fprintf(stdout, "approved %s: permissions [%s] roles [%s]\n", in.ApprovalHash, strings.Join(m.Permissions, " "), strings.Join(m.Roles, " "))
 	log.Info("plugin installed", "id", m.ID, "version", m.Version, "data", p.data, "enabled", !*disabled)
 	return nil
+}
+
+// packageFeatureOwners maps each feature key an installed package declares
+// to that package's id (extpkg.FeatureOwners). With the server stopped the
+// compiled modules are not loaded, so the command line checks installed
+// packages only; boot keeps a compiled module's keys either way.
+type packageFeatureOwners map[string]string
+
+func (p packageFeatureOwners) FeatureOwner(id, key string) string {
+	if owner := p[key]; owner != id {
+		return owner
+	}
+	return ""
+}
+
+// installedFeatureOwners reads the feature keys of the packages installed
+// now. A key two packages declare stays with the lower id, as at boot.
+func installedFeatureOwners(h *extpkg.Host) (packageFeatureOwners, error) {
+	entries, err := h.List()
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(entries, func(a, b extpkg.Entry) int { return strings.Compare(a.ID, b.ID) })
+	owners := packageFeatureOwners{}
+	for _, e := range entries {
+		if e.Verified == nil {
+			continue
+		}
+		for _, f := range e.Verified.Manifest.Features {
+			if _, taken := owners[f.Key]; !taken {
+				owners[f.Key] = e.ID
+			}
+		}
+	}
+	return owners, nil
 }
 
 func (o Options) pluginList(args []string, stdout io.Writer) error {

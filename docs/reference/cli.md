@@ -282,7 +282,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 | 子命令 | 说明 |
 |---|---|
-| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。从命令行安装即视为批准其权限，默认启用，`--disabled` 只安装不启用 |
+| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。包声明的功能键已由另一个已安装的包声明时拒绝（`PLUGIN_FEATURE_TAKEN`）；server 停止时编译模块不加载，命令行只对照已安装的包，与编译模块冲突的键启动时仍归编译模块。从命令行安装即视为批准其权限，默认启用，`--disabled` 只安装不启用 |
 | `list` | 重新校验每个已安装的包（只重新哈希大小、修改时间或 inode 变了的文件），列出 id、版本、发布者、信任来源（`project` 根签发或 `host` 主机信任的签发者）、是否启用与状态：`ok`、`revoked`（已吊销但不自动停止），或 `broken: <码>` |
 | `remove ID [--purge]` | 卸载：删除包与控制文件，保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包的最低版本永远保留，旧构建不能靠重装回来 |
 | `trust import FILE [--cert publisher.crt]` | 导入根签名的信任更新、根签名的吊销列表，或发布者自己的吊销列表（需 `--cert` 给出该发布者的证书）；序号不比已应用的新时拒绝（`PLUGIN_TRUST_REPLAYED`） |

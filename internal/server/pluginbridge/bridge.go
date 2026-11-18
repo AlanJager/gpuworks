@@ -7,9 +7,9 @@
 // them before anything is served, declares their feature keys in the
 // server's dynamic feature set (again after every install, enable,
 // disable and uninstall), and hands the server the evaluators to register
-// (the node insert guard, the scheduling holder, the console banners). Run then starts the enabled resident
-// plugins, in parallel and without holding up the server, and tells pushed
-// state which owners are up. A push arriving on a plugin's host connection
+// (the node insert guard, the scheduling holder, the console banners). Run
+// then starts the enabled resident plugins, in parallel and without holding
+// up the server, and tells pushed state which owners are up. A push arriving on a plugin's host connection
 // is applied as the package bound to that connection, with the grants of
 // the certificate it verified under and the permissions its administrator
 // approved. See docs/dev/extensions.md and ADR 0071.
