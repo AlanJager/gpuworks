@@ -433,3 +433,32 @@ func TestFleetNodesSeesANetworkInventoryChangeAtOnce(t *testing.T) {
 		t.Fatalf("the new interface was not seen inside the window: %+v", n)
 	}
 }
+
+// An explicit inventory read refreshes the same snapshot the next background
+// reader consumes. It also works before the app enables snapshots and sets a
+// clock, as in one-shot API/test assemblies.
+func TestFreshFleetNodesRefreshesSharedSnapshotWithoutChangingReportWindow(t *testing.T) {
+	f := newFleetFixture(t)
+	_, _ = f.fleet(t)
+	if err := f.st.DB().Model(&Node{}).Where("uuid = ?", f.uuids[0]).Update("name", "external").Error; err != nil {
+		t.Fatal(err)
+	}
+	before := f.reads.Load()
+	fresh, err := f.st.FreshFleetNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.reads.Load() != before+1 || nodeByUUID(fresh, f.uuids[0]).Name != "external" {
+		t.Fatalf("fresh inventory=%+v reads=%d", fresh, f.reads.Load()-before)
+	}
+	fresh[0].Name = "caller mutation"
+	cached, rebuilt := f.fleet(t)
+	if rebuilt || nodeByUUID(cached, f.uuids[0]).Name != "external" {
+		t.Fatalf("background read rebuilt or caller corrupted snapshot: rebuilt=%v rows=%+v", rebuilt, cached)
+	}
+	st := newTestStore(t)
+	defer st.Close()
+	if _, err := st.FreshFleetNodes(); err != nil {
+		t.Fatalf("fresh before snapshot enable: %v", err)
+	}
+}

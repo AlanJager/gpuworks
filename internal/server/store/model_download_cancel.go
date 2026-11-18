@@ -42,7 +42,7 @@ func (s *Store) CancelModelDownload(id uint, transferID, message string, owner .
 	if len(owner) > 0 {
 		q = q.Where("download_deployment_id = ?", owner[0])
 	}
-	result := q.Updates(map[string]any{"state": proto.MFCanceled, "rate_bps": 0, "message": message})
+	result := q.Updates(map[string]any{"state": proto.MFCanceled, "rate_bps": 0, "message": message, "transfer_error_code": ""})
 	if result.Error != nil {
 		return nil, result.Error
 	}

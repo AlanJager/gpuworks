@@ -290,6 +290,8 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 
 ### 节点列表的筛选与返回字段
 
+`GET /api/v1/nodes` 与 `/api/v1/nodes/facets` 显式读取已提交的最新节点与加速卡事实，并刷新共享机群快照；外部数据库连接提交的修改无需等待快照过期。未提交的修改不可见，长写事务不阻塞这些读取。后台监控与控制器继续使用机群快照的上报窗口。
+
 `q` 匹配节点名称、主机名、UUID。`state` 只表示 agent 的连接状态：`online`、`offline`、`connecting`，
 加速卡的问题不改变它。可排序的列为 `name`、`state`、`agent_version`、`gpu_count`、`cpu_cores`、`mem_total`、`created_at`。
 
@@ -507,6 +509,8 @@ macOS 忽略 `no_systemd`。
 自动下载、复制及部署获取在同一存储、同一节点上为不同模型保留独立目录。空 `revision` 仍表示来源的默认分支，与显式 `main` 是不同身份；若历史默认目录已被另一模型占用，新副本使用带 `-model-<模型ID>` 后缀的目录，重试保留该目录。节点回报绝对路径后仍检查占用；后缀目录也被占用时拒绝写入，下载、复制和同步接口返回 409 `MODEL_FILE_PATH_OCCUPIED`（`storage_id`、`path`、`model_id`）。既有副本不会自动搬迁，手动登记仍使用调用方指定的目录；该检查不识别不同存储定义或符号链接指向同一物理目录的情况。
 
 ### 列表筛选与就位汇总
+
+模型详情的本地节点行与共享存储行可带 `transfer_error_code`，列文件阶段的终态分类为：`MODEL_DOWNLOAD_NETWORK_EXHAUSTED`（瞬时网络或上游错误重试耗尽）、`MODEL_DOWNLOAD_SOURCE_NOT_FOUND`（仓库或版本不存在）、`MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED`（401/403）、`MODEL_DOWNLOAD_SOURCE_THROTTLED`（持续限流）、`MODEL_DOWNLOAD_SOURCE_REJECTED`（其他确定的来源拒绝）。`message` 保留原始平台和地址错误详情，页面同时展示分类与详情。旧 agent、未知错误或多个来源失败类型不一致时可省略该字段；省略不代表成功。重新发起下载会清理旧下载错误码、分配新的传输 ID，迟到的旧任务回报不能覆盖新任务。
 
 `GET /api/v1/models` 不带分页参数时返回全部模型及逐节点、存储的就位明细。
 带 `page` 或 `page_size` 时返回 `{items, page, page_size, total, summary}`：
@@ -870,6 +874,8 @@ macOS 忽略 `no_systemd`。
 - 普通部署的 `retry_exhausted{index,failed_attempts,last_failure}` 指出耗尽重试次数的副本，可用 `units/retry` 重试；多机部署的 `units[]` 给出各副本 leader 与 `followers[]`。调整方式见[普通部署的副本调整](#普通部署的副本调整)。
 
 请求示例见[查询一个部署的详情](api-conventions.md#3-查询一个部署的详情)。
+
+没有实例的部署，最近调度原因仍为 `image_delivery_waiting`、且该部署的镜像正在目标准备节点上拉取或同步时，等待不会被算成调度超时失败。其他镜像或其他节点的传输不影响判断；传输完成、失败或取消，或调度原因改变后，恢复原有状态推导。列表和详情读取这些镜像事实失败时返回 500，不把未知状态显示成已失败。
 
 ### 部署的睡眠状态（`state`、`asleep_replicas`、`sleep_level`）
 
@@ -1487,7 +1493,9 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 `errors[]`（每项 `{field, code, params?}`，`code` 是稳定 ProductError 码、与 create
 对应 400 路径的错误码一一对应，`params` 为客户端 locale 插值参数）。表单保留草稿并把
 错误显示在对应控件旁；`POST /api/v1/deployments`（create）保持 400/409 不变。无法归因到字段的
-失败（鉴权、模型不存在、服务端错误）仍按原状态码。字段路径约定：
+失败（鉴权、模板解析失败、服务端错误）仍按原状态码。
+
+请求层的独立校验会合并报告；请求层有字段错误时不继续启动试算，响应仍提供已经确定的模板、可选节点，以及能够解析的健康检查信息。模型 ID 在模型解析阶段找不到时，归到 `model_id` 字段；尚未解析到模型时，健康检查能力可以缺省。自动多机放置失败会先返回 `placement_mode` 错误，不继续后续校验。字段路径约定：
 
 - 快捷参数直接使用字典 key（即表单字段名），如 `max_model_len`、`gpu_memory_utilization`；
 - 请求级字段使用请求 JSON 中的名称：`replicas`、`nnodes`、`engine`、`target_vendor`、`extra_args`、

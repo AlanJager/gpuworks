@@ -17,7 +17,7 @@ const listsMaxAge = 30 * time.Second
 // listTopics are the bus topics whose changes a list's rows are read from.
 // Progress (a transfer's bytes, an engine's message) counts on none of them;
 // Fresh reads it again for the rows a page shows.
-var listTopics = []string{"deployment", "instance", "model", "modelfile", "storage", "setting"}
+var listTopics = []string{"deployment", "instance", "model", "modelfile", "storage", "setting", "image"}
 
 // Lists keeps one ListRows of every deployment and instance for the
 // deployment and instance lists, instead of each request reading every row

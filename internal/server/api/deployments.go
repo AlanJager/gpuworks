@@ -67,7 +67,17 @@ func (a *apiHandlers) getDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, a.deploymentDTO(dep, true))
+	insts, err := a.d.Store.InstancesForDeployment(dep.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	rows, err := deployment.NewStoreRowsWithConnections(a.d.Store, a.d.Preparation, a.d.Online).WithImageTransfers(dep, len(insts))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a.deploymentDTOWithInstances(rows, dep, true, insts))
 }
 
 func (a *apiHandlers) setRoutingPolicy(w http.ResponseWriter, r *http.Request) {

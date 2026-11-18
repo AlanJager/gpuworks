@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,8 +24,8 @@ import (
 	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
 
-// StallsBeforeSwitch is how many consecutive stalls (download.ErrStalled)
-// one address may cost a file before the fetch moves to the next address.
+// StallsBeforeSwitch bounds consecutive file stalls (download.ErrStalled) or
+// listing timeouts before the fetch tries another address, when one remains.
 const StallsBeforeSwitch = 2
 
 // ListingRetry is the file name Config.OnRetry is given for a retry of the
@@ -82,7 +83,7 @@ type Fetcher struct {
 	cfg      Config
 	order    []proto.ModelFetchCandidate
 	at       int
-	failures []string
+	failures []error
 }
 
 // New orders the candidates: every cooled address after every other one,
@@ -127,12 +128,14 @@ func (f *Fetcher) Host() string {
 
 // List lists the repository's files at revision, from the first address that
 // answers. An address that cannot is cooled and the next one asked; one that
-// asks for time (429/503) is waited for and asked again, as a file is.
+// has a transient transport/server failure is retried within the same bounds
+// as a file; throttled answers also retain their requested wait.
 func (f *Fetcher) List(ctx context.Context, revision string) ([]modelrepo.File, error) {
 	for f.at < len(f.order) {
 		candidate := f.order[f.at]
 		maxAttempts := f.attempts()
 		delay := f.cfg.Retry.InitialBackoff
+		timeouts := 0
 		for attempt := 1; ; attempt++ {
 			client, err := f.cfg.Client(candidate.Base)
 			if err == nil {
@@ -147,11 +150,21 @@ func (f *Fetcher) List(ctx context.Context, revision string) ([]modelrepo.File, 
 				return nil, ctx.Err()
 			}
 			retryAfter, throttled := ThrottleWait(err)
-			if !throttled || attempt >= maxAttempts {
+			var timeout net.Error
+			if !throttled && (errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout())) {
+				timeouts++
+			} else {
+				timeouts = 0
+			}
+			// Each timeout has already consumed a request deadline. Keep one
+			// retry for a short interruption, then prefer an available fallback;
+			// the last source and explicit throttle waits retain their patience.
+			stalled := timeouts >= StallsBeforeSwitch && f.at < len(f.order)-1
+			if stalled || (!throttled && !IsTransient(err)) || attempt >= maxAttempts {
 				// Whatever else this address answered - a missing repository,
 				// an error status, a portal page that does not parse, no
 				// answer at all - another address may still list it.
-				f.next("failed: " + err.Error())
+				f.next(fmt.Sprintf("failed: listing after %d attempt(s)", attempt), err)
 				break
 			}
 			pause := min(max(delay, retryAfter), MaxThrottleWait)
@@ -220,7 +233,7 @@ func (f *Fetcher) Fetch(ctx context.Context, file File, onProgress func(download
 			_ = os.Remove(file.Dest + ".part")
 			_ = os.Remove(file.Dest + ".part.state")
 		}
-		f.next(reason)
+		f.next(reason, err)
 	}
 	return f.exhausted("download " + file.Path)
 }
@@ -231,7 +244,7 @@ func (f *Fetcher) Fetch(ctx context.Context, file File, onProgress func(download
 func (f *Fetcher) fetchFrom(ctx context.Context, candidate proto.ModelFetchCandidate, file File, pinned bool, onProgress func(download.Progress)) (string, error) {
 	client, err := f.cfg.Client(candidate.Base)
 	if err != nil {
-		return err.Error(), err
+		return "failed to create model source client", err
 	}
 	address := modelrepo.ResolveURL(f.cfg.Source, f.cfg.Repo, file.Revision, file.Path, candidate.Base)
 	options := download.Options{
@@ -267,16 +280,16 @@ func (f *Fetcher) fetchFrom(ctx context.Context, candidate proto.ModelFetchCandi
 		} else if errors.Is(err, download.ErrStalled) {
 			stalls++
 			if stalls >= StallsBeforeSwitch && !last {
-				return fmt.Sprintf("stalled %d times in a row: %s: %v", stalls, address, err), err
+				return fmt.Sprintf("stalled %d times in a row: %s", stalls, address), err
 			}
 		} else {
 			stalls = 0
 			if !IsTransient(err) {
-				return fmt.Sprintf("failed: %s: %v", address, err), err
+				return fmt.Sprintf("failed: %s", address), err
 			}
 		}
 		if attempt >= maxAttempts {
-			return fmt.Sprintf("failed %d times: %s: %v", attempt, address, err), err
+			return fmt.Sprintf("failed %d times: %s", attempt, address), err
 		}
 		if f.cfg.OnRetry != nil {
 			f.cfg.OnRetry(file.Path, attempt, pause, err)
@@ -289,16 +302,16 @@ func (f *Fetcher) fetchFrom(ctx context.Context, candidate proto.ModelFetchCandi
 }
 
 // next cools the current address, records why it failed and moves on.
-func (f *Fetcher) next(reason string) {
+func (f *Fetcher) next(reason string, cause error) {
 	from := f.order[f.at]
 	if f.cfg.Cooler != nil {
 		f.cfg.Cooler.Cool(Host(from.Base))
 	}
-	failure := Host(from.Base) + " " + reason
+	failure := fmt.Errorf("%s %s: %w", Host(from.Base), reason, cause)
 	f.failures = append(f.failures, failure)
 	f.at++
 	if f.at < len(f.order) && f.cfg.OnSwitch != nil {
-		f.cfg.OnSwitch(Switch{From: Host(from.Base), To: Host(f.order[f.at].Base), Reason: failure})
+		f.cfg.OnSwitch(Switch{From: Host(from.Base), To: Host(f.order[f.at].Base), Reason: failure.Error()})
 	}
 }
 
@@ -306,9 +319,9 @@ func (f *Fetcher) next(reason string) {
 // in the order they were tried.
 func (f *Fetcher) exhausted(what string) error {
 	if len(f.failures) == 1 {
-		return fmt.Errorf("%s: %s", what, f.failures[0])
+		return fmt.Errorf("%s: %w", what, f.failures[0])
 	}
-	return fmt.Errorf("%s: every source failed: %s", what, strings.Join(f.failures, "; "))
+	return fmt.Errorf("%s: every source failed: %w", what, errors.Join(f.failures...))
 }
 
 // isCommit reports whether revision names a commit rather than a branch or

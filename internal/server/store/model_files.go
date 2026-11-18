@@ -282,8 +282,12 @@ func (s *Store) UpdateModelFileStatus(nodeID uint, st proto.ModelFileStatus) err
 		"state":    st.State,
 		"rate_bps": st.RateBytesPerS, "message": st.Message,
 	}
-	if proto.ModelFileStateReady(st.State) {
+	if proto.ModelFileStateReady(st.State) || st.State == proto.MFCanceled || proto.IsModelDownloadErrorCode(current.TransferErrorCode) {
 		updates["transfer_error_code"] = ""
+	}
+	if st.State == proto.MFFailed && current.Acquisition == proto.ModelAcquireDownload &&
+		st.TransferID != "" && st.TransferID == current.TransferID && proto.IsModelDownloadErrorCode(st.TransferErrorCode) {
+		updates["transfer_error_code"] = st.TransferErrorCode
 	}
 	if (current.RateLimit > 0 || current.State == proto.MFSyncing) && (st.State == proto.MFPresent || st.State == proto.MFFailed || st.State == proto.MFAbsent || st.State == proto.MFDownloadRequired) {
 		updates["last_rate_limit"] = current.RateLimit

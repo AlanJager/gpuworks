@@ -289,6 +289,8 @@ Stopping cancels only queued items. To continue, call `continue-preview`, then c
 
 ### Node List Filters and Response Fields
 
+`GET /api/v1/nodes` and `/api/v1/nodes/facets` explicitly read the latest committed node and GPU facts and refresh the shared fleet snapshot. Changes committed through an external database connection do not wait for snapshot expiry. Uncommitted changes remain invisible, and long write transactions do not block these reads. Background monitoring and controllers keep the fleet snapshot's report window.
+
 `q` matches node names, hostnames, and UUIDs. `state` indicates only the agent connection state: `online`, `offline`, or `connecting`;
 accelerator problems do not change it. Sortable columns are `name`, `state`, `agent_version`, `gpu_count`, `cpu_cores`, `mem_total`, and `created_at`.
 
@@ -506,6 +508,8 @@ A Kubernetes cluster joins as one DaemonSet: an administrator creates the cluste
 Automatic downloads, copies, and deployment acquisition keep different models in separate directories within the same storage and node. An empty `revision` still selects the source's default branch and remains distinct from explicit `main`. If another model owns the historical default directory, the new copy uses a `-model-<model ID>` suffix and retains it on retries. Ownership checks also recognize absolute paths reported by agents. If the suffixed directory is occupied too, writes are rejected; download, copy, and sync return 409 `MODEL_FILE_PATH_OCCUPIED` (`storage_id`, `path`, `model_id`). Existing copies are not moved automatically, and manual registration retains the caller's chosen directory. This check does not identify different storage definitions or symlinks that refer to the same physical directory.
 
 ### List Filtering and Presence Summary
+
+Local-node and shared-storage rows in model details may include `transfer_error_code`. Final file-listing outcomes are `MODEL_DOWNLOAD_NETWORK_EXHAUSTED` (temporary network or upstream retries exhausted), `MODEL_DOWNLOAD_SOURCE_NOT_FOUND` (repository or revision missing), `MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED` (401/403), `MODEL_DOWNLOAD_SOURCE_THROTTLED` (persistent rate limiting), and `MODEL_DOWNLOAD_SOURCE_REJECTED` (another definite source rejection). `message` retains the original platform and address error details; the page displays both category and detail. Older agents, unknown errors and mixed failure categories across sources may omit the field; omission does not mean success. Restarting a download clears its old download error code and assigns a new transfer ID. Late reports from the old task cannot overwrite the new one.
 
 `GET /api/v1/models` without pagination parameters returns all models with presence details for each node and storage.
 With `page` or `page_size`, it returns `{items, page, page_size, total, summary}`:
@@ -860,6 +864,8 @@ Do not uniformly treat absent optional fields as `0` or empty arrays. Use the fo
 - For regular deployments, `retry_exhausted{index,failed_attempts,last_failure}` identifies replicas that have exhausted their retries; use `units/retry` to retry them. For multi-node deployments, `units[]` gives each replica's leader and `followers[]`. See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for adjustment methods.
 
 For a request example, see [Query Details of One Deployment](api-conventions.md#3-查询一个部署的详情).
+
+For a deployment with no instance, image preparation does not count as a scheduling timeout while its latest scheduling reason remains `image_delivery_waiting` and its image is actively pulling or syncing on a preparation target. Transfers for other images or nodes do not qualify. Completion, failure, cancellation or a changed scheduling reason restores the existing state derivation. Lists and details return 500 if these image facts cannot be read, rather than presenting an unknown state as failed.
 
 ### Deployment Sleep State (`state`, `asleep_replicas`, `sleep_level`)
 
@@ -1474,7 +1480,9 @@ validation failures attributable to request fields return HTTP 200 with `ok=fals
 `errors[]` (each entry is `{field, code, params?}`; `code` is a stable ProductError code that maps one-to-one to the error code on the corresponding create
 400 path, and `params` contains interpolation parameters for the client's locale). The form retains the draft and displays
 errors beside the corresponding controls; `POST /api/v1/deployments` (create) continues to return 400/409. Failures that cannot be attributed to a field
-(authentication, model not found, server errors) retain their original status codes. Field path conventions:
+(authentication, template resolution failures, server errors) retain their original status codes.
+
+Independent request-level checks report their errors together. Request-level field errors stop later launch planning while retaining template and eligible-node facts, together with health-check facts that can be resolved. A missing model ID at the model-resolution stage is attributed to `model_id`; health-check eligibility may be absent before a model is resolved. Automatic multi-node placement failures return a `placement_mode` error before later checks run. Field path conventions:
 
 - Quick parameters use the dictionary key directly (the form field name), such as `max_model_len` and `gpu_memory_utilization`.
 - Request-level fields use their names in the request JSON: `replicas`, `nnodes`, `engine`, `target_vendor`, `extra_args`,
@@ -2295,4 +2303,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 1765969e9623fa25a819c0f8d00ba902b420bebbe5e7b273fb686c57265c1b52 -->
+<!-- translation-source-sha256: 448a1ddc7ffde027143b2f203b3dfec650997a86936a263ba0e037f5574f966b -->

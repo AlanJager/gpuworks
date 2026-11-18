@@ -115,8 +115,8 @@ func TestModelFetchMovesPastAHangingSite(t *testing.T) {
 
 	downloadBody, _ := json.Marshal(map[string]string{"node_uuid": node.UUID})
 	decodeAuthedPost(t, base, adminToken, fmt.Sprintf("/api/v1/models/%d/download", model.ID), downloadBody, http.StatusAccepted, nil)
-	// The agent gives the hanging address one listing (bounded at 30 s)
-	// before it moves on.
+	// Repeated listing timeouts must not consume every retry at a dead mirror:
+	// after two bounded 30 s attempts, the agent moves to the available source.
 	presence := waitModelPresence(t, base, adminToken, model.ID, node.UUID, 2*time.Minute)
 	if presence.State != "present" {
 		agentOutput, _ := os.ReadFile(agentLogPath)

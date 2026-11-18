@@ -11,10 +11,14 @@ import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
 const closeChannels = trackMessageChannels();
 Object.defineProperty(globalThis, "localStorage", { value: dom.window.localStorage, configurable: true });
-class Events { addEventListener() {} removeEventListener() {} close() {} }
+class Events extends EventTarget {
+  static current: Events;
+  constructor() { super(); Events.current = this; }
+  close() {}
+}
 Object.defineProperty(globalThis, "EventSource", { value: Events, configurable: true });
 const { i18n, locale } = await createI18n(["batches"]);
-const { cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { FeedbackHost, message } = await import("../src/ui-kit/feedback/index.tsx");
 const { ConfigProvider } = await import("antd");
@@ -63,6 +67,33 @@ async function openCreate(user: ReturnType<typeof userEvent.setup>) {
 }
 const submitButton = (dialog: HTMLElement) => within(dialog).getByRole("button", { name: b.create.submit }) as HTMLButtonElement;
 const windowInput = (dialog: HTMLElement) => within(dialog).getByRole("spinbutton", { name: b.create.window.label }) as HTMLInputElement;
+
+for (const interaction of ["pointer", "keyboard"] as const) {
+  test(`Create batch stays usable by ${interaction} while an SSE list refresh is pending`, async () => {
+    let authorize!: (value: { role: string }) => void;
+    const authorization = new Promise<{ role: string }>((resolve) => { authorize = resolve; });
+    api.me = (() => authorization) as never;
+    let finishRefresh!: () => void;
+    const refresh = new Promise<void>((resolve) => { finishRefresh = resolve; });
+    let calls = 0;
+    batchApi.list = (async () => { if (++calls > 1) await refresh; return page([batch()]); }) as never;
+    const user = mountPage();
+    const create = () => screen.getAllByRole("button", { name: b.action.create })[0] as HTMLButtonElement;
+    assert.equal(create().disabled, true, "authorization is required before creating a batch");
+    await act(async () => authorize({ role: "admin" }));
+    await waitFor(() => assert.equal(create().disabled, false));
+    await screen.findByRole("button", { name: b.action.open.replace("{{id}}", "batch_aaa111") });
+    // Trigger a real subscription between the helper's readiness check and click.
+    await act(async () => { Events.current.dispatchEvent(new Event("batch")); });
+    await waitFor(() => assert.equal(calls, 2));
+    assert.equal(create().disabled, false, "list refresh cannot revoke the admin's create action");
+    assert.notEqual(getComputedStyle(create()).pointerEvents, "none");
+    if (interaction === "pointer") await user.click(create());
+    else { create().focus(); await user.keyboard("{Enter}"); }
+    assert.ok(await screen.findByRole("dialog", { name: b.create.title }));
+    await act(async () => finishRefresh());
+  });
+}
 
 test("the window defaults to 24 hours, which is what is sent", async () => {
   const sent: Array<number | undefined> = [];

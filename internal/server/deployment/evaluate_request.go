@@ -1,9 +1,30 @@
 package deployment
 
 import (
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
+
+// collectEvaluationRequestErrors runs every independent request rule in order.
+// Some rules also normalize defaults; keep those effects before template and
+// launch resolution, even when an earlier rule already found a field error.
+func (s *Service) collectEvaluationRequestErrors(req *dto.DeployRequest, errs *evaluateFieldErrors) map[string][]string {
+	errs.add("replicas", ValidateReplicaShape(req))
+	errs.add("start_timeout_sec", ValidateStartTimeout(req))
+	errs.add("health_check_threshold_sec", ValidateHealthCheckThreshold(req))
+	_, pdErr := s.preparePDDeployRequest(req, "")
+	errs.add(fieldPDPlacement, pdErr)
+	_, placementErr := planning.ParsePlacement(req.Placement)
+	errs.add("placement", placementErr)
+	reqs, reqsErr := requestRequirements(req)
+	if !errs.add("node_requirements", reqsErr) {
+		errs.add("node_requirements", s.validateRequestNodes(req, reqs))
+	}
+	_, strategyErr := planning.PlacementStrategyOf(req.PlacementStrategy)
+	errs.add("placement_strategy", strategyErr)
+	return reqs
+}
 
 // evaluationLaunchRequest is the DTO boundary shared by the displayed plan
 // and per-card eligibility. All command/platform facts are resolved afterward

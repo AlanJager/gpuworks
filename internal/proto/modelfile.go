@@ -98,6 +98,7 @@ type ModelFileStatus struct {
 	Path              string            `json:"path,omitempty"`
 	Message           string            `json:"message,omitempty"`
 	TransferID        string            `json:"transfer_id,omitempty"`
+	TransferErrorCode string            `json:"transfer_error_code,omitempty"`
 	Acquisition       string            `json:"acquisition,omitempty"`
 }
 
