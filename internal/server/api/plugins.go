@@ -153,8 +153,8 @@ func (a *apiHandlers) adminName(r *http.Request) string {
 }
 
 // pluginErrorStatus maps a plugin administration refusal to its status:
-// not installed 404; a choice that conflicts with what is installed or
-// asks for approval 409; a package too large 413; any other refused
+// not installed 404; a choice that conflicts with what is installed (a
+// feature key another provides among it) or asks for approval 409; a package too large 413; any other refused
 // package 422; anything else 500.
 func pluginErrorStatus(err error) int {
 	var pe *messages.ProductError
@@ -164,7 +164,7 @@ func pluginErrorStatus(err error) int {
 	switch pe.Code() {
 	case messages.ErrorPluginNotInstalled:
 		return http.StatusNotFound
-	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, errorPluginStateTooNew:
+	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, messages.ErrorPluginFeatureTaken, errorPluginStateTooNew:
 		return http.StatusConflict
 	case messages.ErrorPluginPackageTooLarge:
 		return http.StatusRequestEntityTooLarge

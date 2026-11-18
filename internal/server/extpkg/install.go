@@ -81,6 +81,9 @@ type InstallOptions struct {
 	// an administrator approves exactly what the package asks for.
 	RequireApproval bool
 	Approve         extapi.Digest
+	// Features, when set, refuses a package declaring a feature key
+	// someone else provides (ErrorPluginFeatureTaken), before approval.
+	Features FeatureOwners
 }
 
 // Install reads a package from r, verifies it in an incoming directory,
@@ -114,6 +117,9 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	}
 	m := v.Manifest
 	if err := h.checkDataMarker(m); err != nil {
+		return nil, err
+	}
+	if err := checkFeatureOwners(m, opt.Features); err != nil {
 		return nil, err
 	}
 	hash, err := ApprovalHash(v)

@@ -184,6 +184,7 @@ func TestPluginRoutesMapRefusals(t *testing.T) {
 		{messages.NewProductError(messages.ErrorPluginApprovalRequired, "approve", map[string]any{"id": "acme_backup", "approve_hash": "sha256:11"}), 409},
 		{messages.NewProductError(messages.ErrorPluginBroken, "broken", map[string]any{"id": "acme_backup"}), 409},
 		{messages.NewProductError(messages.ErrorPluginVersionConflict, "conflict", map[string]any{"id": "acme_backup", "version": "1.0.0"}), 409},
+		{messages.NewProductError(messages.ErrorPluginFeatureTaken, "taken", map[string]any{"id": "acme_backup", "feature": "acme.backup", "owner": "acme_vault"}), 409},
 		{messages.NewProductError("PLUGIN_STATE_TOO_NEW", "too new", map[string]any{"marker": "plugin.acme_backup.data"}), 409},
 		{messages.NewProductError(messages.ErrorPluginPackageTooLarge, "large", map[string]any{"member": "bin/x", "max": 1}), 413},
 		{messages.NewProductError(messages.ErrorPluginCertRevoked, "revoked", map[string]any{"publisher": "acme"}), 422},
