@@ -292,7 +292,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `index import FILE --cert publisher.crt` | 导入发布者的包索引：应用其中的吊销与最低版本，保存到 `<data>/plugins/.index/`，并打印每个包会装哪个版本，以及更新而本 server 运行不了的版本（`PLUGIN_NEEDS_NEWER_CORE`） |
 | `compat` | 只读检查：不迁移、不写数据库，报告会让本构建拒绝启动的持久化版本标记，以及因数据标记过新、需要本 server 没有的能力或清单读不了而不能运行的包。降级 server 之前用旧版本的二进制运行它；有问题时以 1 退出 |
 
-每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。`enable`、`disable`、`uninstall` 改动的是运行中 server 还留在内存里、会悄悄覆盖回去的状态，所以要求 server 已停止：它们拿不到 `<data>/server.lock`（见[控制面安装布局](install-layout.md)）时以 2 退出，提示 `the server (pid N) is running; stop it first`，什么都不改；拿到锁后一直持有到命令结束，期间 server 启不来。数据目录必须已存在，不会新建。拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
+每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。`enable`、`disable`、`uninstall` 改动的是运行中 server 还留在内存里、会悄悄覆盖回去的状态，所以要求 server 已停止：它们拿不到 `<data>/server.lock`（见[控制面安装布局](install-layout.md)）时以 2 退出，提示 `the server (pid N) is running; stop it first`（锁文件里没有存活的 server pid 时，即持有者可能是另一条维护命令，改为点名锁文件：`another gpuworks process holds <data>/server.lock; …`），什么都不改；拿到锁后一直持有到命令结束，期间 server 启不来。数据目录必须已存在，不会新建。其余拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
 
 本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
 
