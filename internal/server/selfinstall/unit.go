@@ -79,7 +79,7 @@ func RenderPlist(cfg UnitConfig) string {
 		User:        strings.TrimSpace(cfg.ServiceUser),
 		Args:        append([]string{cfg.Binary}, serveArgs(cfg)...),
 		Env:         map[string]string{LaunchdEnv: "1"},
-		WorkingDir:  filepath.Dir(cfg.ConfigPath),
+		WorkingDir:  filepath.Dir(cfg.Binary),
 		StderrPath:  cfg.StderrLog,
 		ExitTimeout: 30,
 	}.Plist())

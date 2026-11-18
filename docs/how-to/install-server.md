@@ -176,6 +176,8 @@ Kubernetes 请通过更换镜像升级，不使用控制台升级。
 
 需要修复服务或切换 systemd/nohup 时，可在发布包目录重新执行 `./gpuworks install`，指定原安装目录。它会替换二进制、重建服务并重启，保留已有配置、数据库、主密钥和 admin 账户；只有显式指定的参数会覆盖对应配置。
 
+控制面若直接装在 agent 的共享根目录 `/opt/gpuworks`，网页保存设置出现 `server.yaml.tmp` 权限错误时，使用包含修复的新发布包执行 `./gpuworks install --dir /opt/gpuworks`。这会把配置迁到专用可写目录并重建服务；不要对整个共享根目录执行递归 `chown` 或放宽权限。默认 `/opt/gpuworks/server` 安装无需此迁移，详见[安装布局](../reference/install-layout.md#控制面装在-agent-共享根目录时)。
+
 `--password` 不会修改已有账户密码。需要更换版本时使用下面的升级流程，重复安装不提供升级备份与回滚。
 
 ## 升级

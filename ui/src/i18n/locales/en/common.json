@@ -384,6 +384,7 @@
     "FEATURE_PROVIDER_ABSENT": "{{feature}} cannot be used: nothing on this server reports whether it is available.",
     "FEATURE_LIMIT_REACHED": "{{feature}} allows at most {{max}} {{dim}}; {{used}} are already in use.",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
+    "PRIORITY_SCHEDULING_LAUNCH_UNSUPPORTED": "Priority scheduling has not been verified for this {{engine}} entrypoint or pipeline. Turn it off or select a supported LLM entrypoint.",
     "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED": "The {{engine}} engine has no request priority scheduling; this deployment does not distinguish priorities.",
     "PRIORITY_SCHEDULING_TARGET_UNVERIFIED": "Request priority scheduling has not been verified for the engine on {{vendor}}; this deployment does not distinguish priorities.",
     "PRIORITY_SCHEDULING_PD_UNSUPPORTED": "PD disaggregated deployments do not support request priority scheduling yet; this deployment does not distinguish priorities.",
@@ -1240,7 +1241,7 @@
     },
     "ownership": {
       "passthrough": "Passed through",
-      "no_driver": "No driver bound",
+      "no_driver": "Vendor driver unavailable",
       "held_elsewhere": "Held by another driver"
     },
     "noDeviceIndex": "No device number",

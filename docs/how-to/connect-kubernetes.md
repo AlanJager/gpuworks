@@ -198,8 +198,8 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
    - API server 地址：只给节点上没有组件提供 Service 地址的集群用（没有 kube-proxy 或其替代品，例如 KubeEdge、
      OpenYurt 的边缘节点），写成 `https://host:port`，地址须在 API server 的证书里；留空时 agent 经集群的
      `kubernetes` Service 访问。
-   - agent 镜像仓库：节点从哪里拉 agent 镜像，可选 Docker Hub（默认）、华为云 SWR、quay.io。中国内地的集群通常拉不到
-     Docker Hub，选华为云 SWR。镜像的 tag 是 agent 运行环境的版本（如 `r1`），不随 server 版本变化，见下文「升级 agent」。
+   - agent 镜像仓库：新建手动接入默认华为云 SWR，也可选 Docker Hub、quay.io；云账号接入仍按地域预选。
+     已有条目保留原来源，历史空来源仍按 Docker Hub 解释，不随默认值迁移；自定义镜像优先。镜像的 tag 是 agent 运行环境的版本（如 `r1`），不随 server 版本变化，见下文「升级 agent」。
    - agent 镜像：填了就用你自己的镜像，不再从上面的仓库拉。节点访问不了公网时，把 `gpuworks/gpuworks-agent:r1` 推到集群能访问的
      私有仓库（或在每个节点上 `ctr -n k8s.io images import` 导入）后填这个地址；运行环境版本变化前都不用再推。离线环境的镜像归档见[离线环境部署](deploy-offline.md#kubernetes-集群的-agent-镜像)。
    - 镜像拉取凭据：agent 镜像放在需要登录的仓库（企业 Harbor、云厂商的私有仓库）时，先在命名空间里建一个
@@ -239,6 +239,8 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
 镜像拉取凭据、RuntimeClass、containerd socket、API server 地址、引擎端口段、空闲归还、优先级与允许抢占，校验规则与创建时一致。
 命名空间、管理节点接入地址与状态目录创建后固定，要改就删掉条目重建。从云账号接入的条目按节点池选节点，不能改节点选择器，
 改它的节点池：集群分组里“GPU 节点池”一项下面的「修改」（见[接入公有云托管 Kubernetes](connect-managed-kubernetes.md)）。
+
+后台轮询会更新列表，不会重置已打开表单的草稿或收起「高级」。保存只提交本次编辑改变的字段；关闭后重新打开会读取最新条目。
 
 **RuntimeClass、引擎端口段、空闲归还这三项不在 manifest 里，保存后立即对在线的 agent 生效**：不用重新应用、不重启 agent、网关不中断。
 server 把它们直接发给该条目的每个在线 agent（离线的在重新连上时拿到），agent 在原地更换：新起的 NVIDIA 实例 Pod 用新的 RuntimeClass

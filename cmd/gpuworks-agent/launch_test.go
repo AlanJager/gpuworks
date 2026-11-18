@@ -76,7 +76,7 @@ func TestResolveLayersFlagsOverEnvironmentOverFile(t *testing.T) {
 	if conf != want || dir != state || !fromFile {
 		t.Fatalf("resolve = %+v %q %v, want %+v", conf, dir, fromFile, want)
 	}
-	if got := resumeArgs(conf, dir, fromFile); strings.Join(got, " ") != "--state "+state {
+	if got := l.resumeArgs(conf, dir, fromFile); strings.Join(got, " ") != "--state "+state+" --driver nerdctl" {
 		t.Fatalf("resume args = %q", got)
 	}
 
@@ -90,7 +90,7 @@ func TestResolveLayersFlagsOverEnvironmentOverFile(t *testing.T) {
 	if err != nil || fromFile || conf.Server != "http://flag:8800" {
 		t.Fatalf("resolve without a file = %+v %v %v", conf, fromFile, err)
 	}
-	if got := strings.Join(resumeArgs(conf, empty, false), " "); got != "--server http://flag:8800 --token t --connect-mode server_dial --state "+empty+" --listen :7000" {
+	if got := strings.Join(l.resumeArgs(conf, empty, false), " "); got != "--server http://flag:8800 --token t --connect-mode server_dial --state "+empty+" --listen :7000" {
 		t.Fatalf("legacy resume args = %q", got)
 	}
 }

@@ -353,6 +353,11 @@ func restoreTarget(layout Layout, name string) (string, error) {
 	name = filepath.Clean(name)
 	switch {
 	case name == serverconfig.FileName:
+		if migrated, err := layout.inspectSharedConfig(true); err != nil {
+			return "", err
+		} else if migrated {
+			return layout.sharedConfigFile(), nil
+		}
 		return layout.ConfigPath(), nil
 	case name == backupBinPrefix+binaryName:
 		return layout.Binary(), nil

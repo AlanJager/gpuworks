@@ -34,7 +34,11 @@ func sameDirectory(a, b string) bool {
 // anything, and the pid and lock files appear only on some paths.
 func (l Layout) serverEntries() []string {
 	var entries []string
-	for _, path := range []string{l.Binary(), l.ConfigPath(), filepath.Join(l.Dir, installJSONFile),
+	config := l.ConfigPath()
+	if migrated, _ := l.sharedConfig(); migrated {
+		config = l.sharedConfigDir()
+	}
+	for _, path := range []string{l.Binary(), config, filepath.Join(l.Dir, installJSONFile),
 		l.PIDFile(), l.LockPath(), l.TmpDir(), l.BackupsDir} {
 		if _, err := os.Lstat(path); err == nil {
 			entries = append(entries, path)
@@ -47,6 +51,9 @@ func (l Layout) serverEntries() []string {
 // deduplicating: data inside the install tree may point to an external disk.
 // The shared application root is never a root itself; see sharedApplicationRoot.
 func (i *Installer) permissionRoots() ([]string, error) {
+	if _, err := i.layout.sharedConfig(); err != nil {
+		return nil, err
+	}
 	dirs := []string{i.layout.Dir, i.layout.DataDir, i.layout.LogsDir}
 	sharedEntries := map[string]bool{}
 	if i.installedInSharedRoot() {

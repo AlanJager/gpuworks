@@ -157,7 +157,7 @@ func TestProcessGatewayRequestTracesReachTheCollector(t *testing.T) {
 	}
 	t.Cleanup(func() { stopProcess(host) })
 	waitForFile(t, workRoot+"/ready", time.Minute)
-	waitNode(t, base, token, func(n processNode) bool { return n.UUID == identity.UUID && n.State == "online" })
+	waitNodeWithCards(t, base, token, identity.UUID)
 
 	modelID, err := client.RegisterLocalModel(identity.UUID, modelDir, "qwen3-trace-fake")
 	if err != nil {

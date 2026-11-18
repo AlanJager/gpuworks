@@ -29,7 +29,7 @@ func superviseServe(log *slog.Logger, configPath string, args []string) error {
 	}
 	if configPath != "" {
 		if abs, err := filepath.Abs(configPath); err == nil {
-			layout := selfinstall.NewLayout(filepath.Dir(abs), "", "")
+			layout := selfinstall.NewLayout(selfinstall.DirOfConfig(abs), "", "")
 			if sameExecutable(binary, layout.Binary()) {
 				opts.PIDFile = layout.PIDFile()
 			}

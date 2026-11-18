@@ -36,9 +36,9 @@ func (a *apiHandlers) kubeDefaults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.KubeDefaults{
 		Namespace: kubeDefaultNamespace, StateDir: kubeDefaultStateDir,
 		EnginePorts: kubeDefaultEnginePorts, IdleReturnSeconds: store.KubeDefaultIdleReturnSeconds,
-		IdleReturnKeep: store.KubeKeepCards, AgentImage: kubemanifest.AgentImage(kubemanifest.AgentImageDockerHub),
+		IdleReturnKeep: store.KubeKeepCards, AgentImage: kubemanifest.AgentImage(kubemanifest.DefaultAgentImageSource),
 		StalledAfterSeconds: int(kubeStalledAfter / time.Second),
-		AgentImageSource:    kubemanifest.AgentImageDockerHub, AgentImageSources: kubeAgentImageSourceList(),
+		AgentImageSource:    kubemanifest.DefaultAgentImageSource, AgentImageSources: kubeAgentImageSourceList(),
 		Priority: store.KubeDefaultPriority, PriorityMax: kubemanifest.PriorityMax, AllowPreemption: false,
 	})
 }

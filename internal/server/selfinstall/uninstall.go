@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/uninstallcheck"
 )
 
@@ -78,6 +79,9 @@ func (i *Installer) Uninstall(ctx context.Context, req UninstallRequest, beforeS
 		report.Kept = append(report.Kept, i.layout.LockPath(), i.layout.Dir)
 	} else {
 		report.Kept = append(report.Kept, i.layout.ConfigPath(), i.layout.DataDir, i.layout.LogsDir, i.layout.BackupsDir)
+		if migrated, _ := i.layout.sharedConfig(); migrated {
+			report.Kept = append(report.Kept, serverconfig.Path(i.layout.Dir), i.layout.sharedConfigDir())
+		}
 	}
 	if inst.ServiceUser != "" {
 		report.Kept = append(report.Kept, "service account and group: "+inst.ServiceUser+" (existing accounts may be shared)")
@@ -201,8 +205,14 @@ func (i *Installer) Uninstall(ctx context.Context, req UninstallRequest, beforeS
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
-		if err := i.removeUninstallPath(ctx, path); err != nil {
-			return report, err
+		var removeErr error
+		if path == i.layout.sharedConfigFile() && i.layout.inSharedRoot() {
+			removeErr = i.purgeSharedConfig(ctx)
+		} else {
+			removeErr = i.removeUninstallPath(ctx, path)
+		}
+		if removeErr != nil {
+			return report, removeErr
 		}
 		report.Removed = append(report.Removed, path)
 		i.io.Say("removed: %s", path)
@@ -300,5 +310,8 @@ func (i *Installer) uninstallPaths(purge bool, logFile string) ([]string, error)
 		}
 	}
 	paths = append(paths, i.layout.PIDFile(), i.layout.Binary(), filepath.Join(i.layout.Dir, installJSONFile), i.layout.ConfigPath())
+	if migrated, _ := i.layout.sharedConfig(); migrated {
+		paths = append(paths, serverconfig.Path(i.layout.Dir))
+	}
 	return paths, nil
 }

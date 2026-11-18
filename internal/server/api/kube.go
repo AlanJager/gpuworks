@@ -221,6 +221,9 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+	// Persist the preference for new entries, so changing that preference
+	// never changes the meaning of an older entry with an empty source.
+	c.AgentImageSource = firstNonEmpty(c.AgentImageSource, kubemanifest.DefaultAgentImageSource)
 	if !kubeValid(w, c, pools) {
 		return
 	}

@@ -301,6 +301,30 @@ test("Escape closes the form without sending anything", async () => {
   assert.equal(seen.created, 0);
 });
 
+test("a new cluster follows the SWR preference from the server without sending untouched image fields", async () => {
+  const image = "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1";
+  const calls = stubApi({ defaults: {
+    ...DEFAULTS, agent_image: image, agent_image_source: "swr",
+    agent_image_sources: [
+      { id: "swr", image },
+      { id: "dockerhub", image: "gpuworks/gpuworks-agent:r1" },
+      { id: "quay", image: "quay.io/gpuworks/gpuworks-agent:r1" },
+    ],
+  } });
+  const { user } = openForm();
+  const form = dialog();
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "default-swr");
+  await user.click(form.getByText(k.drawer.advanced));
+  const registry = form.getByRole("combobox", { name: field(k.drawer.agentImageSource) });
+  await waitFor(() => assert.equal(registry.textContent, k.drawer.agentImageSources.swr));
+  const imageInput = form.getByLabelText(field(k.drawer.agentImage)) as HTMLInputElement;
+  assert.equal(imageInput.placeholder, image);
+  assert.equal(imageInput.value, "");
+  await user.click(form.getByRole("button", { name: k.drawer.submit }));
+  await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
+  assert.deepEqual(calls.createKubeCluster[0], [{ name: "default-swr", server_url: "http://localhost" }]);
+});
+
 test("the agent image registry offers what the server publishes to; choosing SWR shows its image and sends the choice", async () => {
   const calls = stubApi();
   const { user } = openForm();

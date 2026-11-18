@@ -35,7 +35,7 @@ func TestAgentImageNamesEachRegistryAtTheRevision(t *testing.T) {
 	if ValidAgentImageSource("ghcr") {
 		t.Error("ValidAgentImageSource accepts an unknown registry")
 	}
-	if len(AgentImageSources) != 3 || AgentImageSources[0] != AgentImageDockerHub {
-		t.Errorf("AgentImageSources = %v, want Docker Hub first of three", AgentImageSources)
+	if len(AgentImageSources) != 3 || AgentImageSources[0] != AgentImageSWR {
+		t.Errorf("AgentImageSources = %v, want SWR first of three for new entries", AgentImageSources)
 	}
 }

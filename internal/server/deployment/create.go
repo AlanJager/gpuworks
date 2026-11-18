@@ -250,7 +250,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if err != nil {
 		return nil, invalid(err)
 	}
-	priorityScheduling, err := ResolvePriorityScheduling(req.PriorityScheduling, PrioritySchedulingOf(eng.Name(), targetVendor, pdReq != nil, selection.ExtraArgs, launch.UserResidual))
+	priorityScheduling, err := ResolvePriorityScheduling(req.PriorityScheduling, requestPriorityScheduling(&req, eng.Name(), targetVendor, pdReq != nil, launch.TemplateResidual, launch.UserResidual, selection.Entrypoint))
 	if err != nil {
 		return nil, invalid(err)
 	}
