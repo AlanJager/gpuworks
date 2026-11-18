@@ -99,7 +99,7 @@ test("the GPU list keys cards without an index apart, never says GPU -1, and ope
     return row.textContent ?? "";
   };
   assert.ok(reasonOf("0000:1b:00.0").includes("Passed through"), "the passed-through card says so in its row");
-  assert.ok(reasonOf("0000:1a:00.0").includes("No driver bound"), "the card without a driver says so in its row");
+  assert.ok(reasonOf("0000:1a:00.0").includes("Vendor driver unavailable"), "the card without a driver says so in its row");
   assert.ok(reasonOf("GPU 1").includes("In use outside the platform"), "the card held outside the platform says so in its row");
 
   // A card the driver never answered for has no detail drawer and no charts.
@@ -134,7 +134,7 @@ test("the node's GPU list keys cards apart, reads no metrics for them, and tags 
   assert.equal(screen.queryByText(/GPU\s?-1/), null);
   assert.equal(screen.queryByText("99%"), null, "no card was handed the -1 series");
   assert.ok(screen.getByText("Passed through"));
-  assert.ok(screen.getByText("No driver bound"));
+  assert.ok(screen.getByText("Vendor driver unavailable"));
   assert.ok(screen.getByText("In use outside the platform"), "a card held by someone else's process is not shown as faulty");
   assert.equal(screen.queryByText("Unhealthy"), null);
   assert.equal(screen.queryByText("Fault"), null);
@@ -159,7 +159,7 @@ test("the deploy GPU select greys out cards that cannot be picked and says why",
   const text = options.map((option) => option.textContent ?? "").join("\n");
   assert.ok(!/GPU -1/.test(text), text);
   assert.match(text, /0000:1b:00\.0.*Passed through/);
-  assert.match(text, /0000:1a:00\.0.*No driver bound/);
+  assert.match(text, /0000:1a:00\.0.*Vendor driver unavailable/);
   assert.match(text, /GPU 1 .*In use outside the platform/);
   const open = options.find((option) => option.textContent?.startsWith("GPU 0 ·"))!;
   assert.ok(!open.classList.contains("ant-select-item-option-disabled"));

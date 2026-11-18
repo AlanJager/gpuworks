@@ -1240,7 +1240,7 @@
     },
     "ownership": {
       "passthrough": "已直通",
-      "no_driver": "未绑定驱动",
+      "no_driver": "厂商驱动不可用",
       "held_elsewhere": "被其它驱动占用"
     },
     "noDeviceIndex": "没有设备序号",

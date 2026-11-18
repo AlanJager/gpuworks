@@ -1240,7 +1240,7 @@
     },
     "ownership": {
       "passthrough": "Passed through",
-      "no_driver": "No driver bound",
+      "no_driver": "Vendor driver unavailable",
       "held_elsewhere": "Held by another driver"
     },
     "noDeviceIndex": "No device number",
