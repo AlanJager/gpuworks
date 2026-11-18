@@ -74,7 +74,12 @@ func (a *apiHandlers) listPlugins(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []dto.Plugin{}
 	}
-	writeJSON(w, http.StatusOK, dto.PluginList{Items: items, Check: p.Check(r.Context())})
+	out := dto.PluginList{Items: items}
+	if len(items) > 0 {
+		check := p.Check(r.Context())
+		out.Check = &check
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // pluginMetrics serves the gpuworks_plugin_* metrics of the installed

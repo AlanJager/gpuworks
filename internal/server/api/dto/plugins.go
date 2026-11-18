@@ -48,8 +48,10 @@ type PluginPermission struct {
 // PluginList is GET /api/v1/plugins.
 type PluginList struct {
 	Items []Plugin `json:"items"`
-	// Check is the plugins diagnostics check over the installed packages.
-	Check PluginsCheck `json:"check"`
+	// Check is the plugins diagnostics check over the installed packages;
+	// absent with nothing installed, so that list stays the community
+	// server's.
+	Check *PluginsCheck `json:"check,omitempty"`
 }
 
 // PluginsCheck is the plugins diagnostics check: status fail while an

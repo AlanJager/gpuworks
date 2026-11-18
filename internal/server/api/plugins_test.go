@@ -25,6 +25,8 @@ type fakePlugins struct {
 	err   error
 	// metricsErr fails WriteMetrics.
 	metricsErr error
+	// none lists no package.
+	none bool
 }
 
 func (f *fakePlugins) Check(context.Context) dto.PluginsCheck {
@@ -49,6 +51,9 @@ func (f *fakePlugins) record(call string) error {
 
 func (f *fakePlugins) List(context.Context) []dto.Plugin {
 	_ = f.record("list")
+	if f.none {
+		return nil
+	}
 	since := time.Date(2026, 11, 17, 8, 0, 0, 0, time.UTC)
 	return []dto.Plugin{{ID: "acme_backup", Version: "1.0.0", Publisher: "acme", Trust: "host", Enabled: true, State: "running",
 		Since: &since, Parts: []string{"server"}, Isolation: "landlock", Roles: []string{}, Permissions: []dto.PluginPermission{{Name: "push:banners", Risk: "low"}},
@@ -268,5 +273,14 @@ func TestPluginMetricsRoute(t *testing.T) {
 	rig = newPluginRig(t, nil)
 	if rec := rig.do(rig.session, "GET", "/api/v1/metrics/plugins", ""); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), messages.ErrorPluginsUnavailable) {
 		t.Fatalf("metrics without a plugin host: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// With nothing installed the list carries no check: it stays the
+// community server's list.
+func TestPluginListWithNothingInstalledCarriesNoCheck(t *testing.T) {
+	rig := newPluginRig(t, &fakePlugins{none: true})
+	if rec := rig.do(rig.session, "GET", "/api/v1/plugins", ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
+		t.Fatalf("empty list: %d %s", rec.Code, rec.Body)
 	}
 }
