@@ -30,6 +30,12 @@
 //	--read-nodes salt              read the first inventory page and the
 //	                               identity of its nodes with salt, and
 //	                               record the outcome as kind "read_nodes"
+//	--routes                       serve the manifest's routes, each
+//	                               behind RequirePrincipal, recording
+//	                               every call in results.jsonl
+//	--html                         answer routes as text/html
+//	--set-cookie line              add this Set-Cookie to route answers
+//	                               (repeatable)
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -100,6 +106,10 @@ func main() {
 	growRSS := fs.Int("grow-rss", 0, "MiB of resident memory to hold, in this process and a child")
 	readNodes := fs.String("read-nodes", "", "salt to read the node inventory and identity with")
 	probeDevs := fs.String("probe-devices", "", "comma-separated paths to wait for and open")
+	routes := fs.Bool("routes", false, "serve the manifest's routes")
+	html := fs.Bool("html", false, "answer routes as text/html")
+	var cookies pushes
+	fs.Var(&cookies, "set-cookie", "Set-Cookie line to add to route answers")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
 	fillFromPackage(id, version, manifest)
 
@@ -122,6 +132,9 @@ func main() {
 			}
 			cfg.Requires[name] = rng
 		}
+	}
+	if *routes {
+		cfg.Handler = routeHandler(*html, cookies)
 	}
 	if code, reason, ok := strings.Cut(*refuse, ":"); ok {
 		cfg.Init = func(context.Context, *pluginsdk.Plugin) error {
