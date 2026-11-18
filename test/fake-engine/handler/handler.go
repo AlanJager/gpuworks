@@ -21,9 +21,12 @@ type Options struct {
 	// Models, when set, is what /v1/models lists instead of Model alone: a
 	// handler serving many instances at once (a shared test port) answers
 	// for each of their models, as each instance's own engine would.
-	Models           func() []string
-	Health503        bool
-	ResponseText     string
+	Models       func() []string
+	Health503    bool
+	ResponseText string
+	// ReasoningText explicitly enables synthetic vLLM-compatible thinking
+	// before the final answer. It does not imply measured reasoning tokens.
+	ReasoningText    string
 	TTFTDelay        time.Duration
 	TPOTDelay        time.Duration
 	PromptTokens     int

@@ -71,7 +71,11 @@ func registerCompletions(mux *http.ServeMux, opts Options, stats *engineStats, l
 				answer := completionEnvelope(chat, false, model)
 				choice := map[string]any{"index": 0, "finish_reason": "stop", "logprobs": nil}
 				if chat {
-					choice["message"] = map[string]string{"role": "assistant", "content": opts.ResponseText}
+					message := map[string]string{"role": "assistant", "content": opts.ResponseText}
+					if opts.ReasoningText != "" {
+						message["reasoning_content"] = opts.ReasoningText
+					}
+					choice["message"] = message
 				} else {
 					choice["text"] = opts.ResponseText
 				}
@@ -137,6 +141,12 @@ func streamCompletion(w http.ResponseWriter, r *http.Request, opts Options, chat
 	}
 	if chat && !send([]any{map[string]any{"index": 0, "delta": map[string]string{"role": "assistant"}, "finish_reason": nil, "logprobs": nil}}, nil) {
 		return false
+	}
+	if chat && opts.ReasoningText != "" {
+		reasoning := map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": opts.ReasoningText}, "finish_reason": nil, "logprobs": nil}
+		if !send([]any{reasoning}, nil) || !waitGeneration(r.Context(), opts.TPOTDelay) {
+			return false
+		}
 	}
 	for i := 0; i < max(opts.StreamChunks, 1); i++ {
 		if !send([]any{choice(opts.ResponseText, nil)}, nil) || !waitGeneration(r.Context(), opts.TPOTDelay) {
