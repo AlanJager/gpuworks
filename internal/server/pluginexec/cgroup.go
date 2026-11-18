@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"syscall"
+	"time"
 )
 
 // controllers are the cgroup v2 controllers a plugin's limits use.
@@ -63,13 +66,54 @@ func MoveToCgroup(c *Cgroup, id string, pid int) (moved bool, warnings []string,
 }
 
 // RemoveCgroup removes a plugin's cgroup directory after its process
-// exited; cgroupfs removes an empty cgroup with rmdir.
+// exited; cgroupfs removes an empty cgroup with rmdir. A process the plugin
+// started outside its process group is still in the cgroup, so it is killed
+// through cgroup.kill (Linux 5.14 and later) and the removal retried while
+// the kernel reports the cgroup busy.
 func RemoveCgroup(c *Cgroup, id string) error {
-	err := os.Remove(c.Dir(id))
+	dir := c.Dir(id)
+	err := os.Remove(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if !errors.Is(err, syscall.EBUSY) {
+		return err
+	}
+	_ = writeExisting(filepath.Join(dir, "cgroup.kill"), "1")
+	for deadline := time.Now().Add(removeWait); errors.Is(err, syscall.EBUSY) && time.Now().Before(deadline); {
+		time.Sleep(removeWait / 50)
+		err = os.Remove(dir)
+	}
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	return err
+}
+
+// removeWait bounds how long RemoveCgroup waits for killed processes to
+// leave a cgroup.
+const removeWait = time.Second
+
+// Placed reports whether pid runs in the plugin's own cgroup with a memory
+// limit: it is listed in the cgroup's cgroup.procs and the memory controller
+// is enabled there (memory.max exists). The trampoline moves the plugin on a
+// best-effort basis, so the server asks once the plugin runs.
+func Placed(c *Cgroup, id string, pid int) bool {
+	dir := c.Dir(id)
+	if _, err := os.Stat(filepath.Join(dir, "memory.max")); err != nil {
+		return false
+	}
+	procs, err := os.ReadFile(filepath.Join(dir, "cgroup.procs"))
+	if err != nil {
+		return false
+	}
+	want := strconv.Itoa(pid)
+	for _, line := range strings.Split(string(procs), "\n") {
+		if strings.TrimSpace(line) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // writable reports whether path can be opened for writing.

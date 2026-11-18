@@ -58,6 +58,7 @@ func TestInstallSystemdFresh(t *testing.T) {
 		"ExecStartPre=/usr/bin/test -x " + h.layout.Binary(),
 		"Restart=always",
 		"TimeoutStopSec=30",
+		"Delegate=yes",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit file is missing %q:\n%s", want, unit)

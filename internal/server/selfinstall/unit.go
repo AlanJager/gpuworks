@@ -35,6 +35,12 @@ type UnitConfig struct {
 //     containers, and its children must go away with it.
 //   - TimeoutStopSec gives graceful shutdown room to finish in-flight model and
 //     image syncs before systemd escalates to SIGKILL.
+//   - Delegate=yes hands the unit's cgroup to the server, which moves itself
+//     into a leaf of it and gives each plugin a cgroup with memory, CPU and
+//     process limits. An installation upgraded from a unit without it keeps
+//     its unit (upgrade rewrites the unit only to move onto server.yaml), so
+//     its plugins share the server's cgroup and the RSS watchdog bounds
+//     their memory until the next install.
 func RenderUnit(cfg UnitConfig) string {
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
@@ -58,6 +64,7 @@ func RenderUnit(cfg UnitConfig) string {
 	b.WriteString("Restart=always\n")
 	b.WriteString("RestartSec=3\n")
 	b.WriteString("TimeoutStopSec=30\n")
+	b.WriteString("Delegate=yes\n")
 	b.WriteString("\n[Install]\n")
 	b.WriteString("WantedBy=multi-user.target\n")
 	return b.String()
