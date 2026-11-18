@@ -155,8 +155,8 @@ func TestDoCountsCallsByOutcome(t *testing.T) {
 		}
 	}
 	var count uint64
-	for _, b := range m.buckets[classMember] {
-		count += b.Load()
+	for b := range m.buckets[classMember] {
+		count += m.buckets[classMember][b].Load()
 	}
 	if count != 3 || m.sumNanos[classMember].Load() == 0 {
 		t.Fatalf("member calls timed %d times (sum %d ns), want 3", count, m.sumNanos[classMember].Load())
