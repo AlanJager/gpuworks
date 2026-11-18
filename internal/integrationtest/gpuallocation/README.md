@@ -16,7 +16,8 @@ Docker. SQLite databases and local engine HTTP listeners are temporary.
 
 The lifecycle contention cases can each take about a minute: other deployments
 retry on a periodic node report after a claim is released. Their polling budget
-includes that production cadence; there are no fixed sleeps in these cases.
+allows two report periods, the settle backoff and runner slack; there are no
+fixed sleeps in these cases.
 The suite is included by `go test ./...` and `make test-integration`.
 
 ## Organization
@@ -54,6 +55,11 @@ holder and its headroom) with their source. Nothing here asks the allocator
 what it should decide. The architecture gate excludes only the fixtures package
 from the production store-import budget.
 
+Shared fixtures keep complete node reports: foreign holders enter through
+`UpdateNodeStatus`, and placement policy changes use `SetNodePlacementPolicy`.
+Group trials use an empty store so synthetic nodes cannot inherit another
+fixture node's claims or topology.
+
 ## Coverage catalog
 
 The [rule coverage catalog](COVERAGE.md) is the only inventory of rules, their
@@ -67,7 +73,10 @@ Cartesian-product coverage.
 ## Combining dimensions without multiplying every expensive test
 
 1. **Focused cases** pin down boundaries and exact refusal codes at their
-   owning layer, with literal expected results.
+   owning layer, with literal expected results. In the node-pool matrix both
+   nodes fit, and each eligibility gate excludes the otherwise preferred node.
+   Every gate must change the choice and appear as the exact candidate refusal;
+   ranking or insufficient capacity cannot stand in for that evidence.
 2. **Scheduler combinations** check the full product of nine finite
    dimensions against an independent expectation. `Schedule` is a pure
    function, so checking every combination costs less than sampling them.
@@ -113,6 +122,8 @@ For a new card gate, for example:
 5. Update the owning row and affected interactions in [COVERAGE.md](COVERAGE.md).
    Its reference test checks that the linked case functions still exist; run
    the actual linked cases as well as the focused suite and relevant checks.
+   Implementation-owner labels are descriptive: their file paths, not their
+   Go symbol names, are checked.
    A discovered bug becomes a named regression with an explicit expected
    result, rather than only a random seed.
 

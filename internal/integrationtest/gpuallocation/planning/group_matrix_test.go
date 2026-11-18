@@ -17,7 +17,7 @@ import (
 // scheduler so a group with enough cards but too little memory is rejected.
 // The fallback must preserve network/architecture and explicit rank pins.
 func TestReplicaGroupByStrategyConstraintsAndTrial(t *testing.T) {
-	w := fixtures.NewWorld(t) // Read-only topology/ledger store shared by these trials.
+	st := fixtures.NewStore(t) // No fixture node can overlap the synthetic identities.
 	for _, strategy := range []store.PlacementStrategy{store.PlacementSpread, store.PlacementBinpack} {
 		for _, condition := range []string{"fits", "memory-short", "architecture-split", "networks-split", "pending-claim"} {
 			for _, pinned := range []bool{false, true} {
@@ -59,7 +59,7 @@ func TestReplicaGroupByStrategyConstraintsAndTrial(t *testing.T) {
 						trials++
 						for rank, node := range nodes {
 							request := scheduler.Request{WeightBytes: 32 * gib, ReserveBytes: 2 * gib, GPUMemUtil: 0.9, Parallel: parallelism.Spec{TP: 4, NNodes: 2}, HeadCount: 8}
-							if !scheduler.Schedule(request, planning.NodeSnapshot(w.Store, node, true, "")).OK {
+							if !scheduler.Schedule(request, planning.NodeSnapshot(st, node, true, "")).OK {
 								return rank
 							}
 						}

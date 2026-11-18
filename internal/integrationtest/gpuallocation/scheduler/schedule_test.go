@@ -34,7 +34,7 @@ func card(index int) scheduler.GPU {
 		PartitionBackends: []string{accelerator.BackendNVIDIALogical}}
 }
 
-func runScheduleCase(t *testing.T, tc scheduleCase) {
+func runScheduleCase(t *testing.T, tc scheduleCase) scheduler.Result {
 	t.Helper()
 	result := scheduler.Schedule(tc.input.request, tc.input.node)
 	if result.OK != tc.want.ok || (result.Plan != nil) != tc.want.ok {
@@ -44,7 +44,7 @@ func runScheduleCase(t *testing.T, tc scheduleCase) {
 		if result.Message.Code == "" || (tc.want.code != "" && result.Message.Code != tc.want.code) {
 			t.Fatalf("refusal=%+v, want code %q", result.Message, tc.want.code)
 		}
-		return
+		return result
 	}
 	if tc.want.indexes != nil && !reflect.DeepEqual(result.Plan.GPUIndexes, tc.want.indexes) {
 		t.Fatalf("indexes=%v, want %v", result.Plan.GPUIndexes, tc.want.indexes)
@@ -53,6 +53,7 @@ func runScheduleCase(t *testing.T, tc scheduleCase) {
 		t.Fatalf("TP=%d, want %d", result.Plan.TP, tc.want.tp)
 	}
 	assertScheduleInvariants(t, tc.input, result)
+	return result
 }
 
 func assertScheduleInvariants(t *testing.T, in scheduleInput, result scheduler.Result) {

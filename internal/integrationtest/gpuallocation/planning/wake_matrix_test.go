@@ -59,7 +59,7 @@ func TestWakeAtomicityByBlockedRankAndHolderState(t *testing.T) {
 		holds              bool
 	}{
 		{"running", proto.InstRunning, "", true}, {"removing", proto.InstRemoving, "", true},
-		{"failed-sleep", proto.InstFailed, proto.PhaseSleep, true}, {"failed-launch", proto.InstFailed, "pull", false}, {"stopped", proto.InstStopped, "", false},
+		{"failed-sleep", proto.InstFailed, proto.PhaseSleep, true}, {"failed-launch", proto.InstFailed, proto.PhaseImagePull, false}, {"stopped", proto.InstStopped, "", false},
 	} {
 		for _, rank := range []int{0, 1} {
 			for _, partial := range []bool{false, true} {

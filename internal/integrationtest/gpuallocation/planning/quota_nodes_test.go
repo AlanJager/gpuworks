@@ -18,7 +18,7 @@ func TestQuotaAcrossNodesBySelectedReplicaAndHolderState(t *testing.T) {
 		holds              bool
 	}{
 		{"pending", proto.InstPending, "", true}, {"removing", proto.InstRemoving, "", true},
-		{"failed-sleep", proto.InstFailed, proto.PhaseSleep, true}, {"failed-launch", proto.InstFailed, "pull", false}, {"stopped", proto.InstStopped, "", false},
+		{"failed-sleep", proto.InstFailed, proto.PhaseSleep, true}, {"failed-launch", proto.InstFailed, proto.PhaseImagePull, false}, {"stopped", proto.InstStopped, "", false},
 	} {
 		for _, both := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/both-%v", state.name, both), func(t *testing.T) {

@@ -48,9 +48,8 @@ func TestParallelShapeByMemoryAndPinWidth(t *testing.T) {
 						in.request.AllowedGPUIndexes = append(in.request.AllowedGPUIndexes, 99)
 					}
 					want := scheduleExpectation{ok: !short && pin != "too-narrow", tp: shape.cards}
-					runScheduleCase(t, scheduleCase{input: in, want: want})
+					result := runScheduleCase(t, scheduleCase{input: in, want: want})
 					if want.ok {
-						result := scheduler.Schedule(in.request, in.node)
 						if result.Plan.PerGPUBytes != shape.need {
 							t.Fatalf("per-card bytes=%d, want %d; DP must not dilute weights", result.Plan.PerGPUBytes, shape.need)
 						}

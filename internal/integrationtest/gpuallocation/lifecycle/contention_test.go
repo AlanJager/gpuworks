@@ -171,7 +171,8 @@ func TestConcurrentDeploymentsRetainClaimsUntilCleanup(t *testing.T) {
 			// Other deployments retry on the next periodic node report (one
 			// minute), after the pool's 20-second settle backoff. Teardown's
 			// own instance event reconciles only its owning deployment.
-			if !env.EventuallyNoFail(90*time.Second, func() bool {
+			// Allow two report periods, the backoff and loaded-runner slack.
+			if !env.EventuallyNoFail(3*time.Minute, func() bool {
 				rows, err := env.Store().ListInstances()
 				if err != nil || len(rows) != slots {
 					return false

@@ -44,9 +44,7 @@ func (r admissionRow) name() string {
 // deployments that exist before it.
 func (r admissionRow) arrange(t *testing.T, w fixtures.World) (dto.DeployRequest, int) {
 	t.Helper()
-	if err := w.Store.DB().Model(w.Node).Update("placement_share_with_foreign", r.allowForeign).Error; err != nil {
-		t.Fatal(err)
-	}
+	w.AllowForeignSharing(t, r.allowForeign)
 	existing := 0
 	switch r.occupancy {
 	case "whole", "partition":
@@ -60,12 +58,11 @@ func (r admissionRow) arrange(t *testing.T, w fixtures.World) (dto.DeployRequest
 			w.Instance(t, holder, fmt.Sprintf("holder-%d", index), proto.InstRunning, "", index, 0)
 		}
 	case "foreign":
-		held := fmt.Sprintf(`[{"pid":42,"name":"outside","memory_bytes":%d}]`, fixtures.ForeignHolderBytes)
-		for i := range w.Node.GPUs {
-			if err := w.Store.DB().Model(&w.Node.GPUs[i]).Update("foreign_processes", held).Error; err != nil {
-				t.Fatal(err)
-			}
+		var indexes []int
+		for _, gpu := range w.Node.GPUs {
+			indexes = append(indexes, gpu.Index)
 		}
+		w.HoldForeign(t, indexes...)
 	}
 	req := request(w)
 	if r.partition {

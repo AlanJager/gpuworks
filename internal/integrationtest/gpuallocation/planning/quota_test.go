@@ -44,10 +44,7 @@ func TestQuotaReplicaSelectionByForeignOccupancy(t *testing.T) {
 					w.Instance(t, dep, "first", proto.InstRunning, "", 0, 0)
 					w.Instance(t, dep, "second", proto.InstRunning, "", 0, 0)
 					if row.foreign {
-						held := fmt.Sprintf(`[{"pid":42,"name":"outside","memory_bytes":%d}]`, fixtures.ForeignHolderBytes)
-						if err := w.Store.DB().Model(&w.Node.GPUs[0]).Update("foreign_processes", held).Error; err != nil {
-							t.Fatal(err)
-						}
+						w.HoldForeign(t, 0)
 					}
 					live := []string{"first"}
 					if row.both {

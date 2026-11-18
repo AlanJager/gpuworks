@@ -53,7 +53,7 @@ func TestClaimKindByInstanceState(t *testing.T) {
 			{"pending", proto.InstPending, "", true}, {"pulling", proto.InstPulling, "", true}, {"starting", proto.InstStarting, "", true},
 			{"optimizing", proto.InstOptimizing, "", true}, {"running", proto.InstRunning, "", true},
 			{"draining", proto.InstDraining, "", true}, {"pending-removal", proto.InstPendingRemoval, "", true}, {"removing", proto.InstRemoving, "", true},
-			{"failed-sleep", proto.InstFailed, proto.PhaseSleep, true}, {"failed-launch", proto.InstFailed, "pull", false}, {"stopped", proto.InstStopped, "", false},
+			{"failed-sleep", proto.InstFailed, proto.PhaseSleep, true}, {"failed-launch", proto.InstFailed, proto.PhaseImagePull, false}, {"stopped", proto.InstStopped, "", false},
 		} {
 			t.Run(mode.name+"/"+state.name, func(t *testing.T) {
 				w := fixtures.NewWorld(t)

@@ -2,6 +2,7 @@ package scheduler_test
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -142,7 +143,10 @@ func TestScheduleCombinations(t *testing.T) {
 		}
 		t.Run(row.name(), func(t *testing.T) {
 			in := row.input()
-			before := append([]scheduler.GPU(nil), in.node.GPUs...)
+			before := slices.Clone(in.node.GPUs)
+			for i := range before {
+				before[i].PartitionBackends = slices.Clone(before[i].PartitionBackends)
+			}
 			runScheduleCase(t, scheduleCase{input: in, want: want})
 			if !reflect.DeepEqual(before, in.node.GPUs) {
 				t.Fatal("scheduling mutated the inventory")

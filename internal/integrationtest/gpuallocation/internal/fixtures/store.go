@@ -25,9 +25,12 @@ type World struct {
 	Store *store.Store
 	Node  *store.Node
 	Model *store.Model
+
+	reports map[string]proto.NodeStatus
 }
 
-func NewWorld(t *testing.T) World {
+// NewStore owns an empty, isolated store with the production schema.
+func NewStore(t *testing.T) *store.Store {
 	t.Helper()
 	// In memory, as the store's own tests do: a file database makes every
 	// matrix row pay for disk-backed migrations.
@@ -40,12 +43,18 @@ func NewWorld(t *testing.T) World {
 			t.Error(err)
 		}
 	})
+	return st
+}
+
+func NewWorld(t *testing.T) World {
+	t.Helper()
+	st := NewStore(t)
 	model, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "allocation/model", Revision: "main", Name: "allocation-model", Arch: "Qwen3ForCausalLM", WeightBytes: 8 * GiB,
 		Meta: `{"model_type":"qwen3","num_hidden_layers":1,"hidden_size":256,"num_attention_heads":8,"num_key_value_heads":8,"max_position_embeddings":2048}`})
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := World{Store: st, Model: model}
+	w := World{Store: st, Model: model, reports: map[string]proto.NodeStatus{}}
 	w.Node = w.AddNode(t, "allocation-node", 2)
 	return w
 }
@@ -67,6 +76,7 @@ func (w World) AddNode(t *testing.T, name string, cards int) *store.Node {
 	if err := w.Store.UpdateNodeStatus(node.UUID, status); err != nil {
 		t.Fatal(err)
 	}
+	w.reports[node.UUID] = status
 	node, err = w.Store.NodeWithGPUs(node.UUID)
 	if err != nil {
 		t.Fatal(err)
