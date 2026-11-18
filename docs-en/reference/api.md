@@ -1474,7 +1474,9 @@ validation failures attributable to request fields return HTTP 200 with `ok=fals
 `errors[]` (each entry is `{field, code, params?}`; `code` is a stable ProductError code that maps one-to-one to the error code on the corresponding create
 400 path, and `params` contains interpolation parameters for the client's locale). The form retains the draft and displays
 errors beside the corresponding controls; `POST /api/v1/deployments` (create) continues to return 400/409. Failures that cannot be attributed to a field
-(authentication, model not found, server errors) retain their original status codes. Field path conventions:
+(authentication, template resolution failures, server errors) retain their original status codes.
+
+Independent request-level checks report their errors together. Request-level field errors stop later launch planning while retaining template and eligible-node facts, together with health-check facts that can be resolved. A missing model ID at the model-resolution stage is attributed to `model_id`; health-check eligibility may be absent before a model is resolved. Automatic multi-node placement failures return a `placement_mode` error before later checks run. Field path conventions:
 
 - Quick parameters use the dictionary key directly (the form field name), such as `max_model_len` and `gpu_memory_utilization`.
 - Request-level fields use their names in the request JSON: `replicas`, `nnodes`, `engine`, `target_vendor`, `extra_args`,
@@ -2295,4 +2297,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 1765969e9623fa25a819c0f8d00ba902b420bebbe5e7b273fb686c57265c1b52 -->
+<!-- translation-source-sha256: 69a8a0bc2a994e3e9aafdf881e61408c3e5af78b30fac65041adc2535a1e1a6f -->

@@ -1487,7 +1487,9 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 `errors[]`（每项 `{field, code, params?}`，`code` 是稳定 ProductError 码、与 create
 对应 400 路径的错误码一一对应，`params` 为客户端 locale 插值参数）。表单保留草稿并把
 错误显示在对应控件旁；`POST /api/v1/deployments`（create）保持 400/409 不变。无法归因到字段的
-失败（鉴权、模型不存在、服务端错误）仍按原状态码。字段路径约定：
+失败（鉴权、模板解析失败、服务端错误）仍按原状态码。
+
+请求层的独立校验会合并报告；请求层有字段错误时不继续启动试算，响应仍提供已经确定的模板、可选节点，以及能够解析的健康检查信息。模型 ID 在模型解析阶段找不到时，归到 `model_id` 字段；尚未解析到模型时，健康检查能力可以缺省。自动多机放置失败会先返回 `placement_mode` 错误，不继续后续校验。字段路径约定：
 
 - 快捷参数直接使用字典 key（即表单字段名），如 `max_model_len`、`gpu_memory_utilization`；
 - 请求级字段使用请求 JSON 中的名称：`replicas`、`nnodes`、`engine`、`target_vendor`、`extra_args`、
