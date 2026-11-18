@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginexec"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
@@ -157,11 +159,22 @@ func probeReport(t *testing.T, h *pluginhost.Host, id, probe string) map[string]
 
 func requireLandlock(t *testing.T) {
 	t.Helper()
+	abi, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, 0, 0, unix.LANDLOCK_CREATE_RULESET_VERSION)
+	t.Logf("Landlock ABI probe: result=%d errno=%d (%s)", abi, errno, errno.Error())
+	if status, err := os.ReadFile("/proc/self/status"); err == nil {
+		for _, line := range strings.Split(string(status), "\n") {
+			if strings.HasPrefix(line, "NoNewPrivs:") || strings.HasPrefix(line, "Seccomp:") || strings.HasPrefix(line, "Seccomp_filters:") {
+				t.Log(line)
+			}
+		}
+	} else {
+		t.Logf("read sandbox process status: %v", err)
+	}
 	if pluginexec.LandlockABI() == 0 {
 		if os.Getenv("GPUWORKS_TEST_STRICT") == "1" {
-			t.Fatal("this kernel has no Landlock (5.13+ with landlock in the LSM list); GPUWORKS_TEST_STRICT=1 requires it")
+			t.Fatal("Landlock is unavailable to this process; GPUWORKS_TEST_STRICT=1 requires it (see probe diagnostics)")
 		}
-		t.Skip("this kernel has no Landlock (5.13+ with landlock in the LSM list)")
+		t.Skip("Landlock is unavailable to this process (see probe diagnostics)")
 	}
 }
 

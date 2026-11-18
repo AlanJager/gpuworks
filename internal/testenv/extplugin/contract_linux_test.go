@@ -18,7 +18,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/messages"
-	"gpuworks.ai/gpuworks/internal/server/pluginexec"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/store/pstate"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -239,12 +238,7 @@ func TestContractAuthorityPluginLifecycle(t *testing.T) {
 // Under Landlock the plugin can write its own data directory but cannot
 // open the server's master key.
 func TestContractLandlockKeepsThePluginFromTheMasterKey(t *testing.T) {
-	if pluginexec.LandlockABI() == 0 {
-		if os.Getenv("GPUWORKS_TEST_STRICT") == "1" {
-			t.Fatal("this host has no Landlock")
-		}
-		t.Skip("this host has no Landlock")
-	}
+	requireLandlock(t)
 	s := newSite(t)
 	sv := s.boot()
 	key := filepath.Join(s.dir, "master.key")

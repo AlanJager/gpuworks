@@ -283,7 +283,7 @@ The server starts every plugin through its own binary: `gpuworks plugin-exec --p
 
 A package that requires Landlock (certificate `min_isolation: landlock`) does not start on a host without it: the trampoline exits with code 78 and writes `PLUGIN_ISOLATION_UNAVAILABLE` to stderr. The trampoline's other exit codes: 64 for a bad command line, 71 when applying the sandbox failed, 127 when the plugin could not be executed.
 
-The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `master.key` or paths outside its package, and on Landlock ABI 6 or later cannot signal a sibling process) skip on a host without Landlock; CI's `core-test` runs them once more with `GPUWORKS_TEST_STRICT=1`, where a missing Landlock is a failure rather than a skip, so they are known to have run on the Linux job.
+The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `master.key` or paths outside its package, and on Landlock ABI 6 or later cannot signal a sibling process) skip in the ordinary suite when Landlock is unavailable to the process. `make test-plugin-landlock` runs three named cases with `GPUWORKS_TEST_STRICT=1`, requires an explicit PASS for each, and rejects every SKIP; unavailable Landlock fails the gate. CI's mandatory `core-plugin-sandbox` job reuses the Docker/L3 runner and runs this gate in a non-root Go container with the default seccomp profile, without changing L2/L3 or production plugin isolation. On both success and failure it retains the kernel version, visible Seccomp/NoNewPrivs status, and complete test log. The tests also record the raw ABI probe result and errno to help distinguish kernel capabilities from filtering policy; an unavailable Landlock probe alone does not identify its cause.
 
 ### Supervision
 
@@ -331,4 +331,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: e8e8fccd6622934fa723c86e160ece541d5cf182850a53f972c40ec5a88b7313 -->
+<!-- translation-source-sha256: d23c3cf3d4f64e966a1632941311c09780029a2fefd6cfead0313117e673195c -->
