@@ -311,7 +311,6 @@
     "PASSWORD_LENGTH": "密码需为 {{min}}–{{max}} 个字符，请更换。",
     "PASSWORD_CHARACTERS": "密码不能包含换行、制表符，请更换。",
     "PASSWORD_GUESSABLE": "检测到弱密码，请更换。",
-    "PASSWORD_USERNAME": "密码不能与用户名相同，请更换。",
     "PASSWORD_UNCHANGED": "新密码不能与当前密码相同，请更换。",
     "CURRENT_PASSWORD_INVALID": "当前密码不正确，请重新输入。",
     "MANAGEMENT_ORIGIN_REJECTED": "不允许跨来源访问管理接口。",

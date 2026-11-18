@@ -83,7 +83,7 @@ To check each step yourself, or when the host can only receive a copied release 
 
    Save the access URL, administrator password, actual installation directory, and data directory from the summary, then complete the verification in the next section. The default installation directory is `/opt/gpuworks/server`; for a custom directory, use the one in the summary.
 
-New or changed administrator passwords must contain 8–128 Unicode characters and at most 512 bytes, and must not be the username. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Without an explicit password, a 24-byte random value is encoded as hexadecimal. Existing accounts can still authenticate with their current passwords.
+New or changed administrator passwords must contain 8–128 Unicode characters and at most 512 bytes. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Without an explicit password, a 24-byte random value is encoded as hexadecimal. Existing accounts can still authenticate with their current passwords.
 
 ## Verification and First Login
 
@@ -328,7 +328,7 @@ The page waits only 5 minutes, less than the server's confirmation window. You m
 
 </details>
 
-<!-- translation-source-sha256: a4254a5f958784c069aed12cc62cf2364c69785d05ba4681e476cc86c0945d75 -->
+<!-- translation-source-sha256: 80b4f013ac8eafd43fa4be1a5d8d419fb7aa2787e0e91a78dc8800ab19cee5ca -->
 <!-- translation-localized-code-block: 5846ca9eedd24f71306cab5c0c641ac91d93017a204a10590d0da44869aca60c d30b290861df40db339879702ea834f9a0133c1811b5c3e1b4315db3810ae76b Translate the editorial arrow annotation for the password prompt; actual CLI prompt text unchanged. -->
 <!-- translation-localized-code-block: 5e39ad4e967ab522280dcf50bf738ec0bda0ead57e8cc62bfb507186fc142032 3b97e82a02b8ad42b870dad3ff601553828968e7146d828efc110fde90a6eea5 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: a2a7d849742d4bc1b49eee629e9d586337d74603ea8592f6d24f2d3add8c1044 a51c2a29d1d5cfacb1af2136ca8e39aa3fcad8ea6674d3de2abc2c7c8f624e7b Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

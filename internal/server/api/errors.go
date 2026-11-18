@@ -40,7 +40,6 @@ const (
 	ErrorPasswordLength                         = "PASSWORD_LENGTH"
 	ErrorPasswordCharacters                     = "PASSWORD_CHARACTERS"
 	ErrorPasswordGuessable                      = "PASSWORD_GUESSABLE"
-	ErrorPasswordUsername                       = "PASSWORD_USERNAME"
 	ErrorPasswordUnchanged                      = "PASSWORD_UNCHANGED"
 	ErrorCurrentPasswordInvalid                 = "CURRENT_PASSWORD_INVALID"
 	ErrorAuthenticationRequired                 = "AUTHENTICATION_REQUIRED"

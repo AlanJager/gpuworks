@@ -29,7 +29,6 @@ const (
 	PolicyLength     = "length"     // outside MinPasswordRunes..MaxPasswordRunes or MaxPasswordBytes
 	PolicyCharacters = "characters" // not UTF-8, or holds control characters
 	PolicyGuessable  = "guessable"  // a common word, repetition or sequence
-	PolicyUsername   = "username"   // the account's own name
 )
 
 // PolicyError is a rejected new password and why; errors.Is matches
@@ -42,27 +41,11 @@ func (e *PolicyError) Error() string {
 		return fmt.Sprintf("%s: use %d to %d characters, at most %d bytes", ErrPasswordPolicy, MinPasswordRunes, MaxPasswordRunes, MaxPasswordBytes)
 	case PolicyCharacters:
 		return ErrPasswordPolicy.Error() + ": use valid UTF-8 text without control characters"
-	case PolicyUsername:
-		return ErrPasswordPolicy.Error() + ": do not use the username as the password"
 	}
 	return ErrPasswordPolicy.Error() + ": choose an uncommon password or passphrase instead of a common word, repetition or sequence"
 }
 
 func (e *PolicyError) Is(target error) bool { return target == ErrPasswordPolicy }
-
-// ValidateAccountPassword is ValidatePassword for a named account: the
-// password may also not be the username, give or take case, punctuation and
-// surrounding digits ("Admin@2026" for admin).
-func ValidateAccountPassword(username, password string) error {
-	if err := ValidatePassword(password); err != nil {
-		return err
-	}
-	name := strings.TrimSpace(username)
-	if base := guessableBase(name); (base != "" && guessableBase(password) == base) || (name != "" && strings.EqualFold(strings.TrimSpace(password), name)) {
-		return &PolicyError{Reason: PolicyUsername}
-	}
-	return nil
-}
 
 // ValidatePassword is the shared policy for creating or replacing a management
 // password. Passphrases and Unicode are supported; character classes are not
@@ -86,27 +69,14 @@ func ValidatePassword(password string) error {
 		}
 		return unicode.ToLower(r)
 	}, password)
-	if pattern == "" || commonPassword(guessableBase(password)) || repeatedPassword([]rune(pattern)) || sequentialPassword(pattern) {
+	if pattern == "" || commonPassword(password) || repeatedPassword([]rune(pattern)) || sequentialPassword(pattern) {
 		return &PolicyError{Reason: PolicyGuessable}
 	}
 	return nil
 }
 
-// guessableBase is what is left of a password once case, spaces, punctuation,
-// symbols and leading or trailing digits are dropped: "P@ssword123!" and
-// "password" share the base "password".
-func guessableBase(password string) string {
-	normalized := strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
-			return -1
-		}
-		return unicode.ToLower(r)
-	}, password)
-	return strings.TrimFunc(normalized, unicode.IsNumber)
-}
-
 func commonPassword(password string) bool {
-	switch password {
+	switch strings.ToLower(password) {
 	case "password", "passwordpassword", "passwordpasswordpassword", "admin", "adminpassword", "administrator",
 		"qwerty", "qwertyuiop", "letmein", "welcome", "welcomewelcome", "changeme", "changeyourpassword",
 		"defaultpassword", "thisisapassword", "iloveyou", "iloveyouforever", "gpuworks", "gpuworkspassword",

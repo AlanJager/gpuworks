@@ -21,7 +21,6 @@ const FIELD_ERRORS: Record<string, keyof Values> = {
   PASSWORD_LENGTH: "next",
   PASSWORD_CHARACTERS: "next",
   PASSWORD_GUESSABLE: "next",
-  PASSWORD_USERNAME: "next",
   PASSWORD_UNCHANGED: "next",
 };
 

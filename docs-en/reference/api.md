@@ -178,7 +178,6 @@ Both passwords are checked in the same request, and every error returns 400:
 | The current password is wrong | `CURRENT_PASSWORD_INVALID` | When the new password is also rejected, `params.new_password` holds its error code |
 | The new password's length is out of range | `PASSWORD_LENGTH` | `params.min` and `params.max` are the bounds |
 | The new password is a common weak password, a repetition or a sequence | `PASSWORD_GUESSABLE` | |
-| The new password is the username | `PASSWORD_USERNAME` | Compared ignoring case, punctuation and leading or trailing digits |
 | The new password has control characters or is not valid UTF-8 | `PASSWORD_CHARACTERS` | |
 | The new password is the current one | `PASSWORD_UNCHANGED` | Judged only when the current password is right |
 
@@ -2293,4 +2292,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 9f96a67d2f8e8322771348213548273f4d62095bfef57b91fd261d7d6f12f0c1 -->
+<!-- translation-source-sha256: ea8db82fe2ff6ebb2bbde7894d82548d3808200d6c54ece419fe2b83a5e3826d -->
