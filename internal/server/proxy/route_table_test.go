@@ -78,14 +78,15 @@ func TestRouteTableBuildKeepsOnlyReadyServingCandidates(t *testing.T) {
 	}
 }
 
-// A routine node status report waits for the periodic refresh; every other
-// non-progress event rebuilds at once.
+// A routine node status report and a node's scheduling change wait for the
+// periodic refresh; every other non-progress event rebuilds at once.
 func TestRouteTableRebuildsOnEventsThatChangeRouting(t *testing.T) {
 	cases := []struct {
 		e    bus.Event
 		want bool
 	}{
 		{bus.Event{Topic: "node", Reason: store.NodeChangeStatus}, false},
+		{bus.Event{Topic: "node", Reason: store.NodeChangeScheduling}, false},
 		{bus.Event{Topic: "node", Reason: "state:offline"}, true},
 		{bus.Event{Topic: "instance", Reason: "status"}, true},
 		{bus.Event{Topic: "instance", Reason: bus.ReasonProgress}, false},

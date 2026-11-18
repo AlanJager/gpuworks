@@ -31,9 +31,12 @@ type FleetReader func(ctx context.Context) ([]fleetcap.Node, error)
 // Effects are what pushed state asks of the rest of the server when it
 // changes. Each must return at once; nil ones are skipped.
 type Effects struct {
-	// ReapplyHolds asks for a pass of the scheduling holds over the fleet
-	// (coalesced by the caller, at least two seconds apart).
-	ReapplyHolds func()
+	// ReapplyHolds asks for a pass of the scheduling holds over nodes, the
+	// nodes whose answer changed, or over the whole fleet when nodes is nil
+	// (coalesced by the caller, at least two seconds apart). A push that
+	// changes a few holds names those nodes, so the pass reads and writes
+	// them alone; only a change of the caps asks for the fleet.
+	ReapplyHolds func(nodes []uint)
 	// FeaturesChanged announces that feature availability or banners may
 	// have changed.
 	FeaturesChanged func()
@@ -330,10 +333,17 @@ func (s *State) Attestations(publisher string) []OwnedAttestation {
 
 func nodeKey(id uint) string { return strconv.FormatUint(uint64(id), 10) }
 
-// effects runs the hooks a recombination calls for, without blocking.
-func (s *State) effects(holds, features bool) {
-	if holds && s.cfg.Effects.ReapplyHolds != nil {
-		s.cfg.Effects.ReapplyHolds()
+// effects runs the hooks a recombination calls for, without blocking:
+// a pass of the scheduling holds over the nodes in holds, or over the fleet
+// when allHolds is set.
+func (s *State) effects(holds []uint, allHolds, features bool) {
+	if f := s.cfg.Effects.ReapplyHolds; f != nil {
+		switch {
+		case allHolds:
+			f(nil)
+		case len(holds) > 0:
+			f(holds)
+		}
 	}
 	if features && s.cfg.Effects.FeaturesChanged != nil {
 		s.cfg.Effects.FeaturesChanged()

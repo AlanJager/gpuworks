@@ -95,6 +95,22 @@ func (c *capacitySnap) answer(id uint, cards int64) Hold {
 	return Hold{}
 }
 
+// Evaluator is every answer pushed state gives on a hot path: the feature
+// gate's source on every extension request, the node insert guard, the
+// scheduling holder inside the status writer's transaction and the console
+// banners. The app wires the hooks through this interface only, and each
+// method answers from the published snapshot with one atomic load and map
+// lookups, allocating nothing; TestHooksDoNotAllocate measures every method
+// listed here, so a new hot answer joins this interface and that test.
+type Evaluator interface {
+	featuregate.Source
+	GuardNode(nodesWithCards, ownedCards int) *messages.ProductError
+	Hold(id uint, ownedCards int) Hold
+	Banners(admin bool) []Banner
+}
+
+var _ Evaluator = (*State)(nil)
+
 // Availability answers featuregate.Source: one atomic load and one map
 // lookup. A key no installed package answers for is locked with
 // FEATURE_PROVIDER_ABSENT (hidden where the key is concealed).

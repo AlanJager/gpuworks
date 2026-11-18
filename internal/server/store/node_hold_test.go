@@ -296,6 +296,38 @@ func TestApplySchedulingHoldsHoldsAndReleases(t *testing.T) {
 	}
 }
 
+// ApplySchedulingHoldsFor touches only the nodes it is given: a node whose
+// answer changed but is not named keeps its cordon state until a pass that
+// names it, and an id that no longer exists is skipped.
+func TestApplySchedulingHoldsForTouchesOnlyTheNamedNodes(t *testing.T) {
+	s := newTestStore(t)
+	h := newSetHolder("maint", "MAINT_WINDOW")
+	if err := s.AddSchedulingHolder(h); err != nil {
+		t.Fatal(err)
+	}
+	a, b := newHoldNode(t, s, "a"), newHoldNode(t, s, "b")
+	ra, rb := a.report(dockerOK), b.report(dockerOK)
+	h.set("a", true)
+	h.set("b", true)
+	if held, released, err := s.ApplySchedulingHoldsFor(nil); err != nil || len(held)+len(released) != 0 {
+		t.Fatalf("no ids: held=%v released=%v err=%v", held, released, err)
+	}
+	held, released, err := s.ApplySchedulingHoldsFor([]uint{ra.ID, 1 << 30})
+	if err != nil || len(held) != 1 || held[0] != "a" || len(released) != 0 {
+		t.Fatalf("held=%v released=%v err=%v", held, released, err)
+	}
+	wantScheduling(t, a.row(), NodeCordoned, "maint")
+	wantScheduling(t, b.row(), NodeSchedulable, SchedulingBySelf)
+
+	h.set("a", false)
+	held, released, err = s.ApplySchedulingHoldsFor([]uint{ra.ID, rb.ID})
+	if err != nil || len(held) != 1 || held[0] != "b" || len(released) != 1 || released[0] != "a" {
+		t.Fatalf("held=%v released=%v err=%v", held, released, err)
+	}
+	wantScheduling(t, a.row(), NodeSchedulable, SchedulingBySelf)
+	wantScheduling(t, b.row(), NodeCordoned, "maint")
+}
+
 // A server without the holder that cordoned a node releases it at boot:
 // to the platform's cordon if it has a reason, else schedulable. Sources
 // named as known, operator cordons and the platform's are left alone.

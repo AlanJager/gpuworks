@@ -193,4 +193,9 @@ func TestLiftingTheCapsReleasesNodesTheSelectionNeverPlaced(t *testing.T) {
 	if h.reapply.Load() == before {
 		t.Fatal("lifting the caps asked for no pass of the scheduling holds")
 	}
+	// Changed caps change the answer for nodes the selection never placed,
+	// so the pass covers the fleet.
+	if got := h.lastScope(); got != nil {
+		t.Fatalf("lifting the caps asked for a pass over %v, want the fleet", got)
+	}
 }

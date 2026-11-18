@@ -858,6 +858,30 @@ find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort \
 
 ---
 
+### feature_key_literals_in_core（初值 0，2026-11-18）
+
+意图：功能键属于声明它的包（安装包清单里的 `features`，或单独构建的 server 编进去的模块声明），
+功能门本身不解释任何键（`internal/server/featuregate` 包注释）。核心代码一旦用字面量点名某个键
+（`Require("acme.backup", …)`），社区代码路径就开始依赖一个它并不拥有的功能，这正是“社区代码路径
+从不查询功能门”要防的。计数单位是**行数**。
+
+```sh
+key='"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,2}"'
+{ grep -rnE "(featuregate\.Key\(|\.(Require|Admit|Access|Declared|Availability)\()${key}|featuregate\.Key[[:space:]]*=[[:space:]]*\"|Feature:[[:space:]]*${key}" \
+    internal cmd --include='*.go' | grep -v '_test\.go:'
+  grep -rlE '"gpuworks\.ai/gpuworks/internal/server/featuregate"' internal cmd --include='*.go' | grep -v '_test\.go$' \
+    | xargs -r grep -nHE "(^|[^A-Za-z0-9_])Key:[[:space:]]*${key}"; } | grep -c .
+```
+
+覆盖五种写法：把键形字面量直接交给功能门的方法、`featuregate.Key("…")` 转换、给
+`featuregate.Key` 常量赋字面量、路由或控制台入口的 `Feature: "…"`，以及导入了 `featuregate` 的文件里
+功能声明的 `Key: "…"`（`featuregate.Feature{Key: …}`，字面量常单独成行，所以按文件而不按同一行匹配）。
+`Feature: "…"` 不限定所属结构体（多行字面量里看不到结构体名）：别的结构体的 `Feature` 字段若写了键形字面量也会计入，
+到时把该处改为常量或在此登记排除。排除：测试文件（功能门与
+推送状态的测试要构造键）。看不到的：先赋给普通 `string` 变量再转换的键；这种写法在评审里拦。
+
+---
+
 ## 依赖方向检查
 
 `check_architecture.sh` 除预算外还执行计划 §5.3 的依赖方向检查。这些**不是预算**，
@@ -953,6 +977,7 @@ error 一律用 `errors.Is/As`。排除的是**调用外部系统的适配器**�
 
 #### console_unlinked_code_packages
 
-`make i18n-check` 不要求其码有 locale 文案的包（目前只有 `internal/templateprobe`：目录维护者的 CLI 以英文输出它的
-失败族）必须不被 `cmd/gpuworks`、`cmd/gpuworks-agent` 链接。计数是这两个二进制依赖图里出现该包的次数。
+`make i18n-check` 不要求其码有核心 locale 文案的包必须不被 `cmd/gpuworks`、`cmd/gpuworks-agent` 链接。
+当前包括 `internal/templateprobe`（目录维护者 CLI 的英文诊断）与 `internal/testenv/extplugin/fakeplugin`
+（测试专用的第三方插件程序，故意发出合成的插件自有通知）。计数是这两个二进制依赖图里出现这些包的次数。
 一旦控制台要展示这些码，就从 i18n-check 的排除表里删掉它并补文案，而不是放宽这条预算。

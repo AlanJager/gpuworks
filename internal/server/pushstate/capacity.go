@@ -15,8 +15,9 @@ const fleetReadTimeout = 30 * time.Second
 // so passes are coalesced and at least SelectFloor apart): it reads the
 // fleet again only after a fleet change and only while a cap is set, fits
 // it into the combined caps (kept nodes first, then enrollment order),
-// publishes the outcome and asks for a pass of the scheduling holds when the
-// set of held nodes changed. It never runs inside a hook.
+// publishes the outcome and asks for a pass of the scheduling holds over
+// the nodes it held or released, or over the fleet when the caps or kept
+// nodes changed. It never runs inside a hook.
 func (s *State) selectPass() (held, released []string, err error) {
 	if s.cfg.Fleet == nil {
 		return nil, nil, nil
@@ -39,23 +40,28 @@ func (s *State) selectPass() (held, released []string, err error) {
 	if c := s.cur.Load().capacity; c != nil {
 		prev, prevKeep = c.caps, c.keep
 	}
-	held, released = s.placeLocked()
+	changed := s.placeLocked()
+	for _, id := range changed {
+		if s.heldByCap[id] {
+			held = append(held, nodeKey(id))
+		} else {
+			released = append(released, nodeKey(id))
+		}
+	}
 	now := s.cur.Load().capacity
 	capsChanged := now.caps != prev || !slices.Equal(now.keep, prevKeep)
 	s.mu.Unlock()
 	// A changed cap or kept set changes the answer for nodes the selection
 	// has not placed yet too (Hold judges them against the room left), so
-	// it asks for a pass even when no placed node changed.
-	if len(held) > 0 || len(released) > 0 || capsChanged {
-		s.effects(true, false)
-	}
+	// it asks for a pass over the fleet even when no placed node changed.
+	s.effects(changed, capsChanged, false)
 	return held, released, nil
 }
 
 // placeLocked fits the fleet last read into the current caps and publishes
-// the outcome in the snapshot. It returns the nodes newly held and those
-// released since the last placement.
-func (s *State) placeLocked() (held, released []string) {
+// the outcome in the snapshot. It returns the nodes newly held or released
+// since the last placement, ascending.
+func (s *State) placeLocked() (changed []uint) {
 	c := s.cur.Load()
 	snap := &capacitySnap{caps: c.caps, keep: c.keep, hold: c.capHold}
 	next := map[uint]bool{}
@@ -72,17 +78,18 @@ func (s *State) placeLocked() (held, released []string) {
 	}
 	for id := range next {
 		if !s.heldByCap[id] {
-			held = append(held, nodeKey(id))
+			changed = append(changed, id)
 		}
 	}
 	for id := range s.heldByCap {
 		if !next[id] {
-			released = append(released, nodeKey(id))
+			changed = append(changed, id)
 		}
 	}
+	slices.Sort(changed)
 	s.heldByCap = next
 	nc := *c
 	nc.capacity = snap
 	s.cur.Store(&nc)
-	return held, released
+	return changed
 }

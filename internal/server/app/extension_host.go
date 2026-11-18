@@ -172,6 +172,15 @@ func (h *Host) HoldScheduling(holder store.SchedulingHolder) error {
 // nothing.
 func (h *Host) ReapplySchedulingHolds() { h.reg.holds.Request() }
 
+// ReapplySchedulingHoldsFor is ReapplySchedulingHolds for a module that
+// knows which nodes its answers changed for: the pass reads and writes
+// those nodes (store.ApplySchedulingHoldsFor) rather than the fleet, so a
+// module whose answers change often for a few nodes does not cost a fleet
+// pass each time. It coalesces with every other request; requests naming
+// more than holdpass.MaxScoped nodes between two passes make a fleet pass.
+// With no nodes it does nothing.
+func (h *Host) ReapplySchedulingHoldsFor(nodes []uint) { h.reg.holds.RequestNodes(nodes) }
+
 // NodeFleet is every node's hold facts, ordered by id (enrollment order),
 // read in one query on the read pool (store.NodeFleet). It is for a module
 // that derives its answers from the whole fleet: at boot, and for a

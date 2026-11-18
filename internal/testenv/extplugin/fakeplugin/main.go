@@ -17,6 +17,10 @@
 //	                               bare host API request, past the SDK's
 //	                               own generation counter (repeatable)
 //	--push-oversize kind           push an envelope over the size limit
+//	--push-every d                 push a node_holds table every d, as an
+//	                               authority plugin refreshing its state does
+//	--push-size n                  hold nodes 1..n in that table (default
+//	                               100); each push changes 1% of them
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -73,6 +77,8 @@ func main() {
 	hang := fs.String("hang", "", "init or health")
 	probeOpen := fs.String("probe-open", "", "path to try to read")
 	probePID := fs.Int("probe-pid", 0, "another process to try to reach")
+	pushEvery := fs.Duration("push-every", 0, "push a node_holds table this often")
+	pushSize := fs.Int("push-size", 100, "nodes held by each periodic push")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
 	fillFromPackage(id, version, manifest)
 
@@ -133,6 +139,11 @@ func main() {
 			envelope := []byte(`{"kind":"` + *oversize + `","schema":1,"generation":1,"body":{"pad":"` + pad + `"}}`)
 			record(*oversize, 1, putRaw(ctx, p, *oversize, envelope))
 		}
+		if *pushEvery > 0 {
+			// Start's context ends at shutdown; pushing alongside lets
+			// --crash-after still fire.
+			go pushPeriodically(ctx, log, p, *pushEvery, *pushSize)
+		}
 		if *crashAfter >= 0 {
 			select {
 			case <-time.After(*crashAfter):
@@ -144,6 +155,51 @@ func main() {
 		return nil
 	}
 	pluginsdk.Main(cfg)
+}
+
+// pushPeriodically pushes a node_holds table holding nodes 1..size every
+// interval until ctx ends. Each push differs from the one before in 1% of
+// its entries (at least one), a different slice of them each time, so the
+// server writes a full replace whose difference from the stored table is
+// small.
+func pushPeriodically(ctx context.Context, log *slog.Logger, p *pluginsdk.Plugin, every time.Duration, size int) {
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for round := 0; ; round++ {
+		r, err := p.PushState(ctx, extapi.KindNodeHolds, holdsTable(size, round))
+		record(extapi.KindNodeHolds, r.Generation, err)
+		if err != nil && ctx.Err() == nil {
+			log.Error("periodic push refused", "err", err.Error())
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// holdsTable is round's table of size holds. The entries fall into slices
+// of 1% (at least one entry); round r flips the code of slice r modulo the
+// slice count between ACME_MAINTENANCE and ACME_QUARANTINE, so rounds r-1
+// and r differ in exactly that slice.
+func holdsTable(size, round int) *extapi.NodeHoldsV1 {
+	size = max(1, size)
+	per := max(1, size/100)
+	slices := (size + per - 1) / per
+	t := &extapi.NodeHoldsV1{Nodes: make(map[string]extapi.Notice, size)}
+	for i := 0; i < size; i++ {
+		flips := 0
+		if s := i / per; round >= s {
+			flips = (round-s)/slices + 1
+		}
+		code := "ACME_MAINTENANCE"
+		if flips%2 == 1 {
+			code = "ACME_QUARANTINE"
+		}
+		t.Nodes[strconv.Itoa(i+1)] = extapi.Notice{Code: code}
+	}
+	return t
 }
 
 // argsFile reads fakeplugin.args from the working directory (the data

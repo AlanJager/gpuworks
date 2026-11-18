@@ -69,12 +69,13 @@ type Service interface{ Run(ctx context.Context) error }
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
 | `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
+| `ReapplySchedulingHoldsFor(ids)` | 同上，但只对答案变了的那些节点（按节点 id）重新应用 |
 | `NodeFleet(ctx)` | 全部节点的保持事实（`store.NodeHoldFacts`），按 id（加入顺序）排序，读池上一次查询 |
 | `NodeIdentity(ctx, ids, salt)` | 指定节点的加盐硬件身份（`store.NodeIdentity`），原始序列号不出核心，见[节点身份与节点清单](#节点身份与节点清单) |
 | `NodeInventory(ctx, cursor, limit)` | 按加入顺序分页的节点清单（`store.NodeInventoryPage`）：名称、加入时间、自己的卡（序号、型号、有无序列号） |
 | `NodeNamesByID(ctx, ids)` | 指定节点的显示名，以 id 为键（`map[uint]string`），读池上一次查询 |
 
-`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 与 `NodeNamesByID` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
+`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`ReapplySchedulingHoldsFor`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 与 `NodeNamesByID` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
 扩展路由挂在 `/api/v1/x/<名>/` 下：`api.RouteSpec.Pattern` 相对 `/api/v1`，是 `/x/<名>` 或以 `/x/<名>/` 开头，且是规整的路径（没有 `.`、`..`、`//` 与结尾的 `/`）；越出自己的命名空间、路径不规整，或同一方法下两个模式只差参数名（`{id}` 与 `{name}`），都在路由构建时 panic。核心不在 `/api/v1/x/` 下注册任何路由，所以模块名可以与核心路径段同名（如 `nodes`），也不会与核心将来新增的路径冲突。
 
@@ -86,6 +87,7 @@ type Service interface{ Run(ctx context.Context) error }
 
 - 不阻塞、不分配内存，可以在任何 goroutine 调用，**唯独不能在钩子里**（`SchedulingHolder.Hold`、插入守卫）：一次重新应用会再问一遍所有保持者，在 `Hold` 里请求就会让全部节点不停地重新应用。钩子里同样不请求任何其他重算。
 - 请求会合并：一次重新应用等待或执行期间的任意多次请求，最多再引起一次；两次之间至少隔 2 秒，所以答案来回抖动的保持者每 2 秒最多花一次全表写事务，不会变成每个事件一次。
+- 知道答案对哪些节点变了的模块调用 `ReapplySchedulingHoldsFor(ids)`：这次重新应用只读写这些节点（`ApplySchedulingHoldsFor`，`WHERE id IN`），频繁改动少数节点的保持者因此不会每次都花一遍全表事务。它与其他请求一样合并；两次重新应用之间点名的节点超过 `holdpass.MaxScoped`（512）个时改为全部节点，有人请求全部节点时也是全部节点。推送状态（插件推送的节点保持表）走这条路，只有容量上限变了才请求全部节点。
 - 重新应用在模块的 `Service` 所在的同一个 `services()` 循环里执行，不占调用方的 goroutine，随 server 停止；失败时记错误日志，从 2 秒起加倍退避（最长一分钟）重试。没有注册保持者时什么也不做。
 
 答案取决于整个节点集合的保持者（例如按加入顺序挑选节点），用下面两样了解集合，而不是在 `Hold` 里记下见过的节点：
@@ -138,7 +140,7 @@ type Service interface{ Run(ctx context.Context) error }
 | 钩子 | 在哪里被调用 | 频率 |
 |---|---|---|
 | `NodeEnrollmentGuard` | 三条节点插入路径（`CreateNodePending`、`EnrollKubeNode`、`RegisterNode`）的写事务内 | 每次插入新节点 |
-| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与每次 `ApplySchedulingHolds`（含模块请求的重新应用）时对全部节点 | 每节点每次上报 |
+| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与每次 `ApplySchedulingHolds`（含模块请求的重新应用）时对全部节点，`ApplySchedulingHoldsFor` 时对点名的节点 | 每节点每次上报 |
 | `featuregate.Source.Availability` | 扩展路由的每个请求、每次控制台清单请求 | 每请求 |
 | `BannerSource.Banners` | 每次控制台清单请求 | 每请求 |
 | `Service.Run` | 后台循环 | 常驻 |
@@ -163,7 +165,7 @@ type Service interface{ Run(ctx context.Context) error }
 - 扩展路由（`api.RouteSpec`）要么指明 `Feature`，要么标记 `Community`，二者必居其一；路由清单（`api.RouteInventory`）打印每条扩展路由的访问级别、动作与功能。
 - 完整：放行。只读：放行读，以及标记 `WriteWhenReadOnly` 的写（只做删除或放宽的写）；其他写返回 403 `FEATURE_READ_ONLY`。锁定：403 `FEATURE_UNAVAILABLE`。隐藏，或声明为隐藏呈现的功能被锁定：404。功能来源给了自己的说明时，返回它的码。
 - 没有模块提供功能来源时，所有声明过的功能都是锁定（`FEATURE_PROVIDER_ABSENT`）。
-- 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。
+- 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。核心代码不以字面量点名功能键：交给功能门的键形字面量、`featuregate.Key("…")` 转换、赋给 `featuregate.Key` 常量的字面量、功能声明的 `Key: "…"`（`featuregate.Feature{Key: …}`）与路由的 `Feature: "…"`，在非测试代码里由架构预算 `feature_key_literals_in_core`（上限 0）守护。
 - 扩展 GET 路由默认不给 AI 助手与 MCP 读，除非标记 `AIReadable`。
 
 控制台按 `GET /api/v1/console/manifest` 渲染（字段见 [API 参考](../reference/api.md)），自己不推导可用性：完整照常显示；只读时组件收到 `readOnly`；锁定时菜单项带锁，页面显示锁定页和服务端给的链接；隐藏或清单里没有的功能键，什么都不显示。
@@ -262,7 +264,6 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 - 插件路由在 `/api/v1/x/<id>/` 下的动态挂载、`on_demand` 插件的按需启动、宿主接口里状态与健康之外的端点。
 - 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、没有 cgroup 时的 RSS 看门狗、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
-- 核心代码功能键字面量的棘轮。
 - 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
@@ -281,6 +282,8 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，批准的设备节点读写；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
 
 要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
+
+`internal/testenv/extplugin` 里验证 Landlock 的用例（插件读不到 `master.key` 与包外路径；Landlock ABI 6 及以上还验证不能向兄弟进程发信号）在进程无法使用 Landlock 时，普通测试会跳过。`make test-plugin-landlock` 则以 `GPUWORKS_TEST_STRICT=1` 运行三个指定用例，要求每项明确报告 PASS，且不得有 SKIP；无法使用 Landlock 会失败。CI 的必跑任务 `core-plugin-sandbox` 使用带有 `gpuworks-l3` 与 `gpuworks-plugin-sandbox` 两个标签的专用 runner，在默认 seccomp 配置和非 root Go 容器中运行此门禁（普通 L3 runner 池包含不支持 Landlock 的旧内核），不改变 L2/L3 或生产插件的隔离策略。无论成功失败，任务都保存内核版本、可见的 Seccomp/NoNewPrivs 状态与完整测试日志；测试还记录 ABI 探测的原始返回值和 errno，供区分内核能力与过滤策略问题，不能仅凭“Landlock 不可用”认定具体原因。
 
 ### 监管
 
@@ -314,7 +317,7 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 - **接收**：`State.Push` 接收监管按连接认定的推送方身份（包 id、发布者、证书授予、批准的权限、清单的码、进程代数）和一份推送。`availability` 的每一行只接受该键的权威（`gate: authority` 时为声明它的发布者证书写明的 `authority_id`，`gate: self` 时为声明它的包），无前缀的键只接受项目发布者的包；`fleet_capacity` 要证书授予该特权表，`attestations` 要推送方是自己命名空间的权威，其余要批准的 `push:<种类>`；通知的码必须列在包的清单里。代数不高于已持有或待提交的被拒（`PLUGIN_STATE_STALE`）；被替换的进程的连接也被拒（`PLUGIN_STATE_CONNECTION_REPLACED`）。
 - **写入**：待写推送按所有者与种类合并（后到的取代先到的，先到的收到 `superseded_by`），每个 tick（至多 1 Hz）把全部所有者的改动放进一个写事务，再替换一个快照指针；写入失败则什么都不生效（`PLUGIN_STATE_NOT_SAVED`）。持久化用核心迁移建立的 `pstate_*` 带类型表：时间线是步骤行，通知是码列加带类型的参数行，没有 JSON 列；只用于显示的 `display` 不保存。按条目（功能键、节点 id、横幅 id、证明名）写差量。
 - **启动**：启动时在任何插件起来之前读入全部推送表；版本标记（`pstate.<种类>`）比本构建新则以 `PLUGIN_STATE_TOO_NEW` 拒绝启动，存储的限制解不开则拒绝启动而不放松，存储的授权解不开则略过（视为缺席）。
-- **执行**：功能来源、节点插入守卫、调度保持者（来源 `plugins`）与横幅各是一次原子读加查表，零分配。没有包作答的键为 `locked`，带 `FEATURE_PROVIDER_ABSENT`。`app.NewPushedStateHooks` 把它们适配成 `Host` 的钩子类型。
+- **执行**：功能来源、节点插入守卫、调度保持者（来源 `plugins`）与横幅各是一次原子读加查表，零分配。没有包作答的键为 `locked`，带 `FEATURE_PROVIDER_ABSENT`。四者都是接口 `pushstate.Evaluator` 的方法，`app.NewPushedStateHooks` 只经这个接口把它们适配成 `Host` 的钩子类型；`TestHooksDoNotAllocate` 逐个方法测分配，`TestEveryEvaluatorIsMeasured` 用反射读出接口的全部方法，核对每个都有用例，新增的热路径应答因此不会漏测。
 - **时间**：时间线按 extclock（`max(墙钟, 高水位)`）在各自的时刻生效，插件死了也一样；高水位每分钟和关机时保存。`State.CorrectClock` 一次至多移动 366 天，回调审计并显示管理员横幅；步骤不被消耗，所以往回校正会让之后的步骤重新未生效。
 - **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能调低）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
 - **覆盖与卸载**：`State.Override` 对限制类条目（一个节点保持，或一项容量上限）只能放松，持久化，绑定所有者的代数；所有者再推同一条目时被取代并回调。`State.Uninstall` 在一次提交里删掉所有者的全部行，并请求一次保持的重新应用。
