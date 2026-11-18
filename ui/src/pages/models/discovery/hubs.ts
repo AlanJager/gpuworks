@@ -102,7 +102,9 @@ export async function readPage(
   const r = await readHub(source, url, signal);
   if (!r.ok)
     throw new Error(
-      r.status === 429
+      r.status === 504
+        ? i18n.t("models:catalog.timeout")
+        : r.status === 429
         ? i18n.t("models:catalog.limited")
         : [401, 403].includes(r.status)
           ? i18n.t("models:catalog.denied")
@@ -152,31 +154,49 @@ export async function readHub(source: Provider, address: string, signal: AbortSi
   const params = new URLSearchParams(url.search);
   params.set("source", source);
   params.set("path", url.pathname);
-  const relay = fetch("/api/v1/models/catalog?" + params, {signal});
-  // A browser on a different network can read approved sites that the server
-  // cannot. Start the second path only if the relay fails or is slow.
-  let timer: number;
-  const slow = new Promise<undefined>(resolve => { timer = window.setTimeout(resolve, 650); });
-  const first = await Promise.race([relay.catch(() => undefined), slow]);
-  clearTimeout(timer!);
-  if (first?.ok) return first;
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal.reason);
   signal.throwIfAborted();
-  const browser = async () => {
-    const {bases} = await api.metadataSources(source, signal);
-    for (const base of usableBases(bases)) {
-      try {
-        const res = await fetch(base + url.pathname + url.search, {signal, credentials:"omit", referrerPolicy:"no-referrer"});
-        if (res.ok) return res;
-      } catch { signal.throwIfAborted(); }
-    }
-    throw new Error();
-  };
+  signal.addEventListener("abort", cancel, {once: true});
+  async function complete(address: string, direct = false) {
+    const response = await fetch(address, {
+      signal: controller.signal,
+      credentials: direct ? "omit" : "same-origin",
+      referrerPolicy: "no-referrer",
+    });
+    if (!response.ok) return response;
+    const body = await response.arrayBuffer();
+    return new Response(body, {status: response.status, headers: response.headers});
+  }
+  const relay = complete("/api/v1/models/catalog?" + params);
+  let timer: number | undefined;
   try {
-    const direct = browser();
-    const server = relay.then(res => { if (!res.ok) throw new Error(); return res; });
-    return await Promise.race([direct.catch(() => server), server.catch(() => direct)]);
-  } catch {
+    const slow = new Promise<undefined>(resolve => { timer = window.setTimeout(resolve, 650); });
+    const first = await Promise.race([relay.catch(() => undefined), slow]);
+    clearTimeout(timer);
+    if (first?.ok) return first;
     signal.throwIfAborted();
-    return relay;
+    const browser = async () => {
+      const {bases} = await api.metadataSources(source, controller.signal);
+      for (const base of usableBases(bases)) {
+        try {
+          const response = await complete(base + url.pathname + url.search, true);
+          if (response.ok) return response;
+        } catch { controller.signal.throwIfAborted(); }
+      }
+      throw new Error();
+    };
+    try {
+      const server = relay.then(response => { if (!response.ok) throw new Error(); return response; });
+      const direct = browser();
+      return await Promise.race([server.catch(() => direct), direct.catch(() => server)]);
+    } catch {
+      signal.throwIfAborted();
+      return await relay;
+    }
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", cancel);
+    controller.abort();
   }
 }
