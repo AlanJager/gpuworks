@@ -32,6 +32,9 @@ func (m *Manifest) validateRoutes() *fieldError {
 		); f != nil {
 			return f
 		}
+		if f := checkRouteSegments(joinPath(at, "pattern"), r.Pattern); f != nil {
+			return f
+		}
 		verb, ok := strings.CutPrefix(r.Action, m.ID+".")
 		if !ok || verb == "" {
 			return &fieldError{field: joinPath(at, "action"), rule: RuleRelation}
@@ -51,6 +54,9 @@ func (m *Manifest) validateRoutes() *fieldError {
 		if r.WebSocket && (r.Method != "GET" || r.Stream) {
 			return &fieldError{field: joinPath(at, "websocket"), rule: RuleRelation}
 		}
+		if r.HTML && r.Access == RouteMember {
+			return &fieldError{field: joinPath(at, "html"), rule: RuleRelation}
+		}
 		if r.Cookies && r.Access != RoutePublic {
 			return &fieldError{field: joinPath(at, "cookies"), rule: RuleRelation}
 		}
@@ -68,7 +74,7 @@ func (m *Manifest) validateRoutes() *fieldError {
 				return f
 			}
 		}
-		key := r.Method + " " + r.Pattern
+		key := r.Method + " " + routeShape(r.Pattern)
 		if seen[key] {
 			return &fieldError{field: joinPath(at, "pattern"), rule: RuleDuplicate}
 		}
@@ -168,6 +174,7 @@ func (m *Manifest) validateRequiredParts() *fieldError {
 		{m.UI != nil, CapUIBundle},
 		{m.Node != nil, CapNodeApp},
 		{len(m.HostSetup) > 0, CapHostSetup},
+		{len(m.Settings) > 0, CapHostConfig},
 	}
 	for _, n := range needs {
 		if n.has && m.Requires[n.cap] == 0 {
@@ -179,7 +186,49 @@ func (m *Manifest) validateRequiredParts() *fieldError {
 			return &fieldError{field: joinPath("uses", name), rule: RuleExclusive}
 		}
 	}
+	// A WebSocket route needs its own capability: a server that serves
+	// routes but not upgrades must not accept the package as if it did.
+	for i, r := range m.Routes {
+		if r.WebSocket && m.Requires[CapRoutesWebSocket] == 0 && m.Uses[CapRoutesWebSocket] == 0 {
+			return &fieldError{field: joinPath(joinPath("routes", strconv.Itoa(i)), "websocket"), rule: RuleRelation}
+		}
+	}
 	return nil
+}
+
+// checkRouteSegments refuses what the route grammar lets through but a
+// router could match differently: an empty, "." or ".." segment, and a
+// parameter named twice.
+func checkRouteSegments(path, pattern string) *fieldError {
+	if pattern == "/" {
+		return nil
+	}
+	var params []string
+	for seg := range strings.SplitSeq(pattern[1:], "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return &fieldError{field: path, rule: RuleGrammar}
+		}
+		if name, ok := strings.CutPrefix(seg, "{"); ok {
+			if slices.Contains(params, name) {
+				return &fieldError{field: path, rule: RuleDuplicate}
+			}
+			params = append(params, name)
+		}
+	}
+	return nil
+}
+
+// routeShape is the pattern with every parameter name dropped: two routes
+// of one method whose shapes are equal match exactly the same paths, so
+// the server's router and the plugin's own could pick different ones.
+func routeShape(pattern string) string {
+	segs := strings.Split(pattern, "/")
+	for i, seg := range segs {
+		if strings.HasPrefix(seg, "{") {
+			segs[i] = "{}"
+		}
+	}
+	return strings.Join(segs, "/")
 }
 
 // listed reports a member a part names but Files does not list.

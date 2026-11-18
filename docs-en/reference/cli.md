@@ -277,7 +277,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 ## gpuworks plugin
 
-Verifies, installs, lists and removes signed plugin packages, imports trust updates, revocation lists and package indexes offline, and checks compatibility before a downgrade. The formats and the verification order are in [Plugin Protocol and Wire Formats](plugin-protocol.md); the design is [ADR 0071](../adr/0071-installable-extensions.md). The plugin host that starts plugin processes is not built yet: an installed package is for now only verified and placed in the data directory.
+Verifies, installs, lists and removes signed plugin packages, imports trust updates, revocation lists and package indexes offline, and checks compatibility before a downgrade. The formats and the verification order are in [Plugin Protocol and Wire Formats](plugin-protocol.md); the design is [ADR 0071](../adr/0071-installable-extensions.md). While the server runs, its plugin host starts and supervises the enabled packages (see [Extension Points](../dev/extensions.md#installable-extensions)); these subcommands handle only the packages and trust in the data directory and start no process.
 
 | Subcommand | Description |
 |---|---|
@@ -629,5 +629,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: d1fffa2d5085be2cc0f29f893475c86e5c0708cbc8a77fa2e77a7dcf3faa3d1e -->
+<!-- translation-source-sha256: 20b4315db156fe89950d7e402a221bef85ac0105a1c8668190f65a2289230f03 -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

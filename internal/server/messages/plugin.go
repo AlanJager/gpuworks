@@ -47,8 +47,10 @@ const (
 	// {version}, and this server offers {offered} (0: not at all);
 	// {min_core_hint} names the server release the package was built for.
 	ErrorPluginIncompatible = "PLUGIN_INCOMPATIBLE"
-	// ErrorPluginPolicyRefused: the site's plugin policy in server.yaml
-	// refuses the package ({rule}, {value}).
+	// ErrorPluginPolicyRefused: plugin policy refuses the package ({rule},
+	// {value}): the site's policy in server.yaml (rule is the policy key),
+	// or this server's own policy on routes (rule is the permission the
+	// route needs, value the route).
 	ErrorPluginPolicyRefused = "PLUGIN_POLICY_REFUSED"
 	// ErrorPluginIsolationUnavailable: package {id} needs {isolation} and
 	// this host cannot confine it so.

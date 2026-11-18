@@ -51,8 +51,10 @@ const (
 	// ErrorPluginHostFailed: the server failed to handle a host API call
 	// ({detail}).
 	ErrorPluginHostFailed = "PLUGIN_HOST_FAILED"
-	// ErrorPluginStateOnDemand: an on-demand plugin may not push state,
-	// because it is not running most of the time.
+	// ErrorPluginStateOnDemand: on-demand plugin {id} may not push state
+	// or declare features, because it is not running most of the time.
+	// Install time only: a refused install also names the {permission} or
+	// {feature}; a refused push carries {id} alone.
 	ErrorPluginStateOnDemand = "PLUGIN_STATE_ON_DEMAND"
 )
 

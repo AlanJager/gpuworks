@@ -34,16 +34,19 @@ func TestPluginDTO(t *testing.T) {
 	since := time.Date(2026, 11, 17, 9, 0, 0, 0, time.FixedZone("x", 3600))
 	got := pluginDTO(pluginbridge.View{ID: "acme_backup", Version: "1.0.0", Publisher: "acme", Trust: "project", Enabled: true, State: "crashloop",
 		Code: messages.ErrorPluginCrashloop, Params: map[string]any{"crashes": 5}, Message: "crashed", Since: since, Restarts: 4,
-		Parts: []string{"server"}, Isolation: "landlock", ApproveHash: "sha256:00", Actions: []string{"disable", "uninstall"}})
+		Parts: []string{"server"}, Isolation: "landlock", Permissions: []string{"http:routes", "push:node_holds", "read:fleet"},
+		ApproveHash: "sha256:00", Actions: []string{"disable", "uninstall"}})
 	utc := since.UTC()
 	want := dto.Plugin{ID: "acme_backup", Version: "1.0.0", Publisher: "acme", Trust: "project", Enabled: true, State: "crashloop",
 		Message: &dto.ProductMessage{Code: messages.ErrorPluginCrashloop, Params: map[string]any{"crashes": 5}, Message: "crashed"}, Since: &utc, Restarts: 4,
-		Parts: []string{"server"}, Isolation: "landlock", Roles: []string{}, Permissions: []string{}, ApproveHash: "sha256:00", Actions: []string{"disable", "uninstall"}}
+		Parts: []string{"server"}, Isolation: "landlock", Roles: []string{},
+		Permissions: []dto.PluginPermission{{Name: "http:routes", Risk: "low"}, {Name: "push:node_holds", Risk: "high"}, {Name: "read:fleet", Risk: "elevated"}},
+		ApproveHash: "sha256:00", Actions: []string{"disable", "uninstall"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("dto = %+v\nwant %+v", got, want)
 	}
 	bare := pluginDTO(pluginbridge.View{ID: "acme_x", State: "broken"})
-	if bare.Message != nil || bare.Since != nil || bare.Parts == nil || bare.Actions == nil {
+	if bare.Message != nil || bare.Since != nil || bare.Parts == nil || bare.Actions == nil || bare.Permissions == nil {
 		t.Fatalf("bare dto = %+v", bare)
 	}
 }

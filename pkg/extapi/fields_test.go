@@ -142,6 +142,7 @@ Manifest.roles []string
 Manifest.routes []RouteDecl
 Manifest.runtime *RuntimeDecl
 Manifest.schema int
+Manifest.settings []SettingDecl
 Manifest.storage *StorageDecl
 Manifest.ui *UIDecl
 Manifest.uses map[string]int
@@ -187,6 +188,7 @@ RouteDecl.action string
 RouteDecl.ai_readable bool
 RouteDecl.cookies bool
 RouteDecl.feature string
+RouteDecl.html bool
 RouteDecl.max_body int64
 RouteDecl.method string
 RouteDecl.pattern string
@@ -203,6 +205,15 @@ RuntimeDecl.devices []string
 RuntimeDecl.lifecycle string
 RuntimeDecl.max_concurrency int
 RuntimeDecl.mem_mib int
+SettingDecl.key string
+SettingDecl.label_key string
+SettingDecl.max *int64
+SettingDecl.max_length int
+SettingDecl.min *int64
+SettingDecl.required bool
+SettingDecl.secret bool
+SettingDecl.type string
+SettingDecl.values []string
 Signature.keyid string
 Signature.sig []uint8
 StateAck.applied_at *Time

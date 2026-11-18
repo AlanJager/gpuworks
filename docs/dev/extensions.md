@@ -1,6 +1,6 @@
 # 扩展点：模块契约与可安装扩展
 
-gpuworks 的 server 在核心内部经一组接口组合模块（`app.Module` 与 `app.Host`）。这套契约今天由测试与分叉使用：另一个 Go 模块可以把 server 当作库，加上自己的模块编成新的 server 二进制（下文称「单独构建的 server」）；官方构建不带任何模块。官方与第三方扩展将以签名插件包的形式安装，由一个内置的插件宿主模块经同一套契约接入（[ADR 0071](../adr/0071-installable-extensions.md)），插件宿主尚未实现，见[可安装扩展](#可安装扩展)。
+gpuworks 的 server 在核心内部经一组接口组合模块（`app.Module` 与 `app.Host`）。这套契约今天由测试与分叉使用：另一个 Go 模块可以把 server 当作库，加上自己的模块编成新的 server 二进制（下文称「单独构建的 server」）；官方构建不带任何模块。官方与第三方扩展以签名插件包的形式安装，由内置的插件宿主模块经同一套契约接入（[ADR 0071](../adr/0071-installable-extensions.md)）；插件宿主已实现的部分与尚未实现的部分见[可安装扩展](#可安装扩展)。
 
 本页说明开源代码留下的接口、每个接口在哪个线程上被调用、必须遵守的规则，以及开源代码不做的事。不可逆的取舍见 [ADR 0070](../adr/0070-extension-tiers-and-edition-boundary.md) 与 ADR 0071；术语（扩展模块、功能键、可用性、扩展停止调度、插件包、推送表）以 `CONTEXT.md` 为准。
 
@@ -244,6 +244,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 - 覆盖的管理路由（`State.Override` 已实现）、`users.local_admin` 兜底、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `enable`、`disable`、`upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、没有 cgroup 时的 RSS 看门狗、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
 - 核心代码功能键字面量的棘轮。
+- 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
 
@@ -277,7 +278,7 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | 无截止时间的调用 | 60 秒 |
 | stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |
 
-`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动，空闲 10 分钟后停止，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动，空闲 10 分钟后停止，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）；安装与重新校验时，持有 `push:` 权限或声明功能的 `on_demand` 包同样以这个码拒绝。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
 
 ### gwx/1 连接与宿主接口
 

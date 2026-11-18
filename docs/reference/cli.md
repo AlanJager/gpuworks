@@ -277,7 +277,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks plugin
 
-校验、安装、列出与移除签名插件包，离线导入信任更新、吊销列表与包索引，并在降级前检查兼容性。格式与校验顺序见[插件协议与线上格式](plugin-protocol.md)，设计见 [ADR 0071](../adr/0071-installable-extensions.md)。拉起插件进程的插件宿主尚未实现：安装的包目前只校验并放到数据目录里。
+校验、安装、列出与移除签名插件包，离线导入信任更新、吊销列表与包索引，并在降级前检查兼容性。格式与校验顺序见[插件协议与线上格式](plugin-protocol.md)，设计见 [ADR 0071](../adr/0071-installable-extensions.md)。server 运行时，插件宿主拉起并监管已启用的包（见[扩展点](../dev/extensions.md#可安装扩展)）；这些子命令只处理数据目录里的包与信任，不拉起进程。
 
 | 子命令 | 说明 |
 |---|---|

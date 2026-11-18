@@ -26,14 +26,23 @@ type Plugin struct {
 	// Parts are the package's parts: server, node, ui, store.
 	Parts []string `json:"parts"`
 	// Isolation is how the server part runs: landlock or none.
-	Isolation   string   `json:"isolation"`
-	Roles       []string `json:"roles"`
-	Permissions []string `json:"permissions"`
+	Isolation string   `json:"isolation"`
+	Roles     []string `json:"roles"`
+	// Permissions are the approved permissions, sorted by name, each with
+	// the risk class the server gives it.
+	Permissions []PluginPermission `json:"permissions"`
 	// ApproveHash is the approval the administrator gave.
 	ApproveHash string `json:"approve_hash,omitempty"`
 	// Actions are what an administrator may do with it now: enable,
 	// disable, uninstall.
 	Actions []string `json:"actions"`
+}
+
+// PluginPermission is one permission of a plugin package.
+type PluginPermission struct {
+	Name string `json:"name"`
+	// Risk is low, elevated or high.
+	Risk string `json:"risk"`
 }
 
 // PluginList is GET /api/v1/plugins.
