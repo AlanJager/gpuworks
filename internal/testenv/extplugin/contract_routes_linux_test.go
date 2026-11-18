@@ -154,3 +154,37 @@ func TestContractPluginRoutesAtRuntime(t *testing.T) {
 		t.Fatalf("an uninstalled plugin's route = %d", status)
 	}
 }
+
+// What a real plugin answers passes only within its route's rules: HTML
+// from a route that does not declare html is refused, and a public
+// cookies route's cookies reach the client held to the plugin's prefix,
+// without a core cookie.
+func TestContractPluginRouteResponsesAtRuntime(t *testing.T) {
+	s := newSite(t)
+	sv := s.boot()
+	s.args("acme_fake", "--routes", "--html", "--set-cookie", "gpuworks_session=x; Path=/", "--set-cookie", "sso=1; Path=/")
+	sv.install(s.fakePackage("acme_fake", "1.0.0", func(spec *extsign.Spec) {
+		withFakeRoutes(spec)
+		spec.Manifest.Routes = append(spec.Manifest.Routes, extapi.RouteDecl{Method: "GET", Pattern: "/sso", Action: "acme_fake.sso",
+			Access: extapi.RoutePublic, Ungated: true, HTML: true, Cookies: true})
+	}), true)
+	sv.waitPlugin("acme_fake", "running", func(p dto.Plugin) bool { return p.State == "running" })
+
+	status, body := sv.do("GET", "/api/v1/x/acme_fake/jobs", nil)
+	if want := `{"code":"PLUGIN_ROUTE_RESPONSE_INVALID","error":"the plugin returned a response the server will not pass on: the route does not declare html","params":{"id":"acme_fake"}}`; status != http.StatusBadGateway || strings.TrimSpace(string(body)) != want {
+		t.Fatalf("html from a route without html = %d %s", status, body)
+	}
+
+	resp, err := http.Get(sv.url + "/api/v1/x/acme_fake/sso")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if got := resp.Header.Values("Set-Cookie"); resp.StatusCode != http.StatusOK || !slices.Equal(got, []string{"sso=1; Path=/api/v1/x/acme_fake/"}) ||
+		resp.Header.Get("Content-Type") != "text/html; charset=utf-8" || resp.Header.Get("Content-Security-Policy") != "sandbox; default-src 'none'" {
+		t.Fatalf("public cookies route = %d, cookies %q, headers %v", resp.StatusCode, got, resp.Header)
+	}
+	if n := len(routeCalls(s, "acme_fake")); n != 2 {
+		t.Fatalf("the plugin served %d calls, want 2", n)
+	}
+}

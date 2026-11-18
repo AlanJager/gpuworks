@@ -143,6 +143,9 @@ func TestFleetPluginRouteLoad(t *testing.T) {
 	if rssGrowth > 192 {
 		t.Errorf("RSS grew %.0f MiB, budget 192 MiB", rssGrowth)
 	}
+	if n := api.PublicLimiterSize(h); n > 10_000 || (addresses > 10_000 && n < 10_000) {
+		t.Errorf("the public limiter holds %d buckets, bound 10000", n)
+	}
 }
 
 func cpuSeconds() float64 {
