@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
+	"gpuworks.ai/gpuworks/internal/server/extpkg/hostsetup"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -115,6 +117,13 @@ func (b *Bridge) startIfEnabled(id string) {
 		time.AfterFunc(b.markerRetry, func() { b.retryStart(id, refused) })
 		return
 	}
+	if err := b.checkHostSetup(v.Manifest); err != nil {
+		b.log.Warn("plugin host setup is not applied; it is not started", "plugin", id, "err", err)
+		b.mu.Lock()
+		b.refusals[id] = err
+		b.mu.Unlock()
+		return
+	}
 	spec, err := b.specOf(v)
 	if err != nil {
 		b.log.Error("plugin cannot be started", "plugin", id, "err", err)
@@ -131,6 +140,23 @@ func (b *Bridge) startIfEnabled(id string) {
 	if err := b.host.Start(spec); err != nil {
 		b.log.Error("plugin cannot be started", "plugin", id, "err", err)
 	}
+}
+
+// checkHostSetup refuses to start a package whose host setup steps root
+// has not applied on this host, or applied for other steps (an upgrade
+// that changed them): PLUGIN_HOST_SETUP_REQUIRED names the command to run.
+// A record the service account could have written does not count.
+func (b *Bridge) checkHostSetup(m *extapi.Manifest) error {
+	ok, err := b.cfg.HostSetup.Matches(m.ID, m.HostSetup)
+	if ok {
+		return nil
+	}
+	command := hostsetup.Command(m.ID)
+	text := fmt.Sprintf("plugin %s needs a root setup step: run %s", m.ID, command)
+	if err != nil {
+		text += fmt.Sprintf(" (the applied record is not usable: %v)", err)
+	}
+	return messages.NewProductError(messages.ErrorPluginHostSetupRequired, text, map[string]any{"id": m.ID, "command": command})
 }
 
 // retryStart starts package id again after its data marker could not be
@@ -195,7 +221,9 @@ func (b *Bridge) stop(ctx context.Context, id string) error {
 // specOf is the plugin host's Spec for a verified package: its binary and
 // directories, what its administrator approved, and the capabilities it may
 // use (each required one at the version the server offers, each optional
-// one at most at the version the package names).
+// one at most at the version the package names). The device directories
+// and read paths of its host setup are granted only here, after
+// checkHostSetup found its applied record.
 func (b *Bridge) specOf(v *extpkg.Verified) (pluginhost.Spec, error) {
 	m := v.Manifest
 	dir := b.pkgs.Dir.Version(m.ID, m.Version)
@@ -216,11 +244,13 @@ func (b *Bridge) specOf(v *extpkg.Verified) (pluginhost.Spec, error) {
 		}
 	}
 	rt := m.Runtime
+	sandbox := hostsetup.Landlock(m.HostSetup)
 	return pluginhost.Spec{
 		ID: m.ID, Version: m.Version, ManifestSHA256: v.Digest,
 		Exe: filepath.Join(dir, filepath.FromSlash(v.Binary)), PackageDir: dir, DataDir: data, TmpDir: tmp,
 		Lifecycle: rt.Lifecycle, Grant: grantOf(v), Approved: approved,
 		MaxConcurrency: rt.MaxConcurrency, MemMiB: rt.MemMiB, Devices: rt.Devices,
+		DeviceDirs: sandbox.DeviceDirs, ReadPaths: sandbox.ReadPaths,
 		RequireLandlock: b.cfg.RequireIsolation == extapi.IsolationLandlock ||
 			(v.Grants.MinIsolation == extapi.IsolationLandlock && extpkg.HostIsolation() == extapi.IsolationLandlock),
 	}, nil

@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
+	"gpuworks.ai/gpuworks/internal/server/extpkg/hostsetup"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
@@ -63,6 +64,10 @@ type Config struct {
 	Core extapi.CoreInfo
 	// RequireIsolation is the site's plugins.require_isolation.
 	RequireIsolation string
+	// HostSetup are the applied host setup records a package with
+	// host_setup steps must match before its server part starts; the zero
+	// value is hostsetup.DefaultRecords.
+	HostSetup hostsetup.Records
 	// Features is the server's dynamic feature set: the keys installed
 	// packages declare, answered by pushed state. Nil declares none.
 	Features *featuregate.DynamicSet
@@ -91,8 +96,9 @@ type Bridge struct {
 	// bound when each is started.
 	pushers map[string]identity
 	// refusals are why an enabled package was not started (its data is
-	// newer than its build, or its data marker could not be read), by
-	// package id, until it is started, stopped or removed.
+	// newer than its build, its data marker could not be read, or its host
+	// setup is not applied), by package id, until it is started, stopped
+	// or removed.
 	refusals map[string]error
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
@@ -134,6 +140,9 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
+	}
+	if cfg.HostSetup.Dir == "" {
+		cfg.HostSetup = hostsetup.DefaultRecords()
 	}
 	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{},
 		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}

@@ -51,6 +51,14 @@ func RuleFile(id string) (string, error) {
 	return rulePrefix + id + ruleSuffix, nil
 }
 
+// Command is what an administrator runs as root to apply package id's
+// host setup, as PLUGIN_HOST_SETUP_REQUIRED names it.
+func Command(id string) string { return "sudo gpuworks plugin host-setup --id " + id }
+
+// PruneCommand removes the rule files and records of packages that are no
+// longer installed.
+const PruneCommand = "sudo gpuworks plugin host-setup --prune"
+
 // ruleFileID is the package id a rule file name belongs to, or "" when
 // the name is not one RuleFile makes.
 func ruleFileID(name string) string {
