@@ -5063,6 +5063,7 @@ export const api = {
     sendJSON<{ status: string }>("POST", "/api/v1/auth/password", { current_password: currentPassword, new_password: newPassword }),
   models: () => getJSON<List<Model>>("/api/v1/models"),
   modelsPage: (query: ListQuery) => getJSON<ModelPage>(`/api/v1/models?${listQueryString(query)}`),
+  modelPresence: (ids: number[]) => getJSON<Record<number, ModelPresenceSummary>>(`/api/v1/models/presence?ids=${ids.join(",")}`),
   model: (id: number) => getJSON<Model>(`/api/v1/models/${id}`),
   templateWeightModels: (templateID: number, specSource: string, specName: string) =>
     getJSON<TemplateWeightModels>(

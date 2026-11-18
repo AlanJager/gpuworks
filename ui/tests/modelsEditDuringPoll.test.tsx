@@ -21,7 +21,7 @@ class Events {
   }
   removeEventListener(type: string, listener: EventListener) { Events.listeners.get(type)?.delete(listener); }
   close() {}
-  static emit(type: string) { for (const listener of Events.listeners.get(type) ?? []) listener(new Event(type)); }
+  static emit(type: string, reason = "progress") { for (const listener of Events.listeners.get(type) ?? []) listener(new dom.window.MessageEvent(type, { data: JSON.stringify({ key: "f42", reason }) })); }
 }
 Object.defineProperty(globalThis, "EventSource", { value: Events, configurable: true });
 
@@ -34,6 +34,12 @@ const { default: ModelsPage } = await import("../src/pages/ModelsPage.tsx");
 const GiB = 1024 ** 3;
 let downloadedGiB = 1;
 let modelListRequests = 0;
+let detailRequests = 0;
+let presenceRequests = 0;
+let downloading = true;
+let visible = true;
+let heldPresence: ((response: Response) => void) | null = null;
+let holdPresence = false;
 const patches: unknown[] = [];
 
 // Every list request answers with freshly parsed objects, as a real HTTP
@@ -43,7 +49,7 @@ function modelList() {
     id: 9, source: "modelscope", source_id: "Qwen/Qwen3-8B", name: "Qwen3-8B", created_at: "2026-10-01T00:00:00Z",
     operations: [{ type: "openai.chat" }], input_modalities: ["text"],
     nodes: [{
-      node_uuid: "n1", node_name: "gpu3", state: "downloading", path: "/data/models/qwen",
+      node_uuid: "n1", node_name: "gpu3", state: downloading ? "downloading" : "present", path: "/data/models/qwen",
       progress: downloadedGiB / 4, size_bytes: 4 * GiB, downloaded: downloadedGiB * GiB,
       transferred_bytes: 0, rate_bps: 1024, acquisition: "download",
     }],
@@ -52,13 +58,20 @@ function modelList() {
 
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = new URL(String(input), "http://localhost");
+  if (url.pathname === "/api/v1/models/presence") {
+    presenceRequests += 1;
+    assert.equal(url.searchParams.get("ids"), "9", "only visible model IDs are read in one batch");
+    if (holdPresence) return new Promise<Response>((resolve) => { heldPresence = resolve; });
+    return Response.json({ 9: { ready_nodes: downloading ? 0 : 1, cached_nodes: 0, ready_storages: 0, in_flight: downloading ? 1 : 0, in_flight_percent: downloadedGiB / 4 * 100, failed: 0 } });
+  }
   if (url.pathname === "/api/v1/models") {
+    modelListRequests += 1;
     // The list is paged and its rows carry no per-node presence; the open
     // dialog reads the model itself.
     const { nodes: _nodes, ...row } = modelList()[0];
-    return Response.json({ items: [{ ...row, presence: { ready_nodes: 0, cached_nodes: 0, ready_storages: 0, in_flight: 1, in_flight_percent: 25, failed: 0 } }], page: 1, page_size: 20, total: 1, summary: { registered: 1, ready_files: 0, sources: 1, weight_gib: 0 } });
+    return Response.json({ items: visible ? [{ ...row, presence: { ready_nodes: downloading ? 0 : 1, cached_nodes: 0, ready_storages: 0, in_flight: downloading ? 1 : 0, in_flight_percent: downloadedGiB / 4 * 100, failed: 0 } }] : [], page: 1, page_size: 20, total: visible ? 1 : 0, summary: { registered: 1, ready_files: 0, sources: 1, weight_gib: 0 } });
   }
-  if (url.pathname === "/api/v1/models/9" && !init?.method) { modelListRequests += 1; return Response.json(modelList()[0]); }
+  if (url.pathname === "/api/v1/models/9" && !init?.method) { detailRequests += 1; return Response.json(modelList()[0]); }
   if (url.pathname === "/api/v1/nodes") {
     return Response.json(url.searchParams.has("page")
       ? { items: [], page: Number(url.searchParams.get("page")), page_size: Number(url.searchParams.get("page_size")), total: 0, all: 0, labels: [] }
@@ -77,7 +90,14 @@ afterEach(() => {
   cleanup();
   downloadedGiB = 1;
   modelListRequests = 0;
+  detailRequests = 0;
+  presenceRequests = 0;
+  downloading = true;
+  visible = true;
+  heldPresence = null;
+  holdPresence = false;
   patches.length = 0;
+  localStorage.removeItem("gpuworks-model-view");
 });
 
 async function pickOption(combobox: HTMLElement, label: string) {
@@ -103,13 +123,16 @@ test("a background model refresh during a download keeps unsaved capability and 
   assert.deepEqual(selectedTags(operations), [common.operation.chat, common.operation.embeddings]);
   assert.deepEqual(selectedTags(modalities), [common.inputModality.text, common.inputModality.image]);
 
-  // Download progress arrives: the page refreshes the list in the background.
-  const before = modelListRequests;
+  // Progress rereads open detail and lightweight visible presence only.
+  const before = detailRequests;
+  const listBefore = modelListRequests;
   downloadedGiB = 2;
   Events.emit("modelfile");
-  await waitFor(() => assert.ok(modelListRequests > before, "the open model was re-requested"));
+  await waitFor(() => assert.ok(detailRequests > before, "the open model was re-requested"));
   await waitFor(() => assert.ok(within(dialog).getAllByText(/2\.0 GiB \/ 4\.0 GiB/).length > 0, "new progress rendered"));
 
+  assert.equal(modelListRequests, listBefore, "progress must not re-request the full model list");
+  assert.ok(presenceRequests > 0);
   assert.deepEqual(selectedTags(operations), [common.operation.chat, common.operation.embeddings], "capability edit survived the refresh");
   assert.deepEqual(selectedTags(modalities), [common.inputModality.text, common.inputModality.image], "input modality edit survived the refresh");
 
@@ -120,4 +143,52 @@ test("a background model refresh during a download keeps unsaved capability and 
     operations: [{ type: "openai.chat" }, { type: "openai.embeddings" }],
     input_modalities: ["text", "image"],
   });
+});
+
+
+test("download progress updates visible percentages without reloading; terminal and model changes invalidate the page", async () => {
+  localStorage.setItem("gpuworks-model-view", "list");
+  render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/models"]}><ModelsPage /></MemoryRouter></I18nextProvider>);
+  await screen.findByText("Qwen3-8B");
+  const before = modelListRequests;
+  for (const value of [2, 3]) {
+    downloadedGiB = value;
+    const progressBefore = presenceRequests;
+    Events.emit("modelfile");
+    Events.emit("modelfile");
+    await waitFor(() => assert.ok(presenceRequests > progressBefore), { timeout: 2000 });
+    await screen.findByText(i18n.t("models:presenceSummary.inFlight", { count: 1, percent: value / 4 * 100 }));
+    assert.equal(modelListRequests, before, "progress keeps the original list response");
+  }
+  assert.equal(presenceRequests, 2, "duplicate events are coalesced into one lightweight read");
+  downloading = false;
+  Events.emit("modelfile", "present");
+  await waitFor(() => assert.equal(modelListRequests, before + 1, "terminal event reloads the list once"));
+  await screen.findByRole("button", { name: i18n.t("models:presenceSummary.nodes", { count: 1 }) });
+  Events.emit("model", "updated");
+  await waitFor(() => assert.equal(modelListRequests, before + 2, "model metadata event reloads once"));
+  visible = false;
+  Events.emit("model", "deleted");
+  await waitFor(() => assert.ok(screen.queryByText("Qwen3-8B") === null, "deleted model disappears"));
+  visible = true;
+  Events.emit("model", "created");
+  await screen.findByText("Qwen3-8B");
+});
+
+
+test("a late progress response cannot restore a transfer after its terminal state refreshed the list", async () => {
+  localStorage.setItem("gpuworks-model-view", "list");
+  render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/models"]}><ModelsPage /></MemoryRouter></I18nextProvider>);
+  await screen.findByText("Qwen3-8B");
+  holdPresence = true;
+  Events.emit("modelfile");
+  await waitFor(() => assert.ok(heldPresence), { timeout: 2000 });
+  downloading = false;
+  Events.emit("modelfile", "present");
+  await screen.findByRole("button", { name: i18n.t("models:presenceSummary.nodes", { count: 1 }) });
+  const resolve = heldPresence!;
+  resolve(Response.json({ 9: { ready_nodes: 0, cached_nodes: 0, ready_storages: 0, in_flight: 1, in_flight_percent: 40, failed: 0 } }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(screen.getByRole("button", { name: i18n.t("models:presenceSummary.nodes", { count: 1 }) }));
+  assert.ok(screen.queryByText(i18n.t("models:presenceSummary.inFlight", { count: 1, percent: 40 })) === null, "late progress cannot restore a finished transfer");
 });
