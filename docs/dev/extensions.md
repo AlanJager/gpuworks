@@ -281,7 +281,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 - 本指南尚未列出的其他宿主接口；插件路由的按动作授权与持久化审计记录（今天审计只写结构化日志）。
 - 卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
-- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
+- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、高可用下只在 leader 上运行插件。
 - 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.host_identity`、`host.clock`、`host.state_read`、`host.derive_key`、`host.setup`（[主机配置](#主机配置)）与 `routes` 以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
@@ -313,6 +313,7 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 |---|---|
 | `initialize` 应答期限 | 10 秒 |
 | 健康探测 | 每 10 秒一次，单次 3 秒；连续 3 次未通过则杀掉重启（`PLUGIN_UNHEALTHY`） |
+| 卡死检测 | 每秒检查一次 fd 3 连接：一次写入阻塞超过 10 秒，或有请求体字节等着发出、却 10 秒没有写出任何请求体数据（DATA 帧），就杀掉重启（`PLUGIN_STALLED{id, stalled_s}`），不论健康探测是否通过 |
 | 崩溃重启 | 1 秒起翻倍，最长 5 分钟；连续健康运行 10 分钟后重新从 1 秒算 |
 | 崩溃循环 | 10 分钟内崩溃 5 次进入 `crashloop`（`PLUGIN_CRASHLOOP`），之后每 5 分钟重试一次，无人值守的离线站点能自己恢复 |
 | 停止 | `POST /gwx/v1/shutdown`，10 秒后向进程组发 SIGTERM，再 5 秒 SIGKILL |
@@ -354,6 +355,8 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 | `PLUGIN_ROUTE_FAILED{id}` | 插件已经拿到请求后调用失败（崩溃、断开），请求可能已部分生效 | 不能 |
 
 请求头写出之后才失败的写入算作已送达，宁可报「可能已部分生效」也不让调用方盲目重试。插件自己的拒绝是正常的应答。
+
+插件停止读取请求体时，HTTP/2 的连接级流控窗口被没读的请求体占满，同一连接上其他调用的请求体也发不出去，而 SDK 在另一个 goroutine 里应答的健康探测照样通过。所以宿主按连接计量进度：请求体字节在 HTTP/2 客户端里等流控的期间，只要连接上还有 DATA 帧写出就算有进展，读得慢但一直在读的插件不受影响；请求体小到装得进窗口时没有字节在等，处理函数晚点再读也不算卡死。卡死的插件被杀掉重启（`PLUGIN_STALLED`），卡住的调用回 `PLUGIN_ROUTE_FAILED`。计数器都是原子量，逐请求、逐次写入都不分配内存。
 
 路由表由已安装包的清单编译：已启用且通过校验的包，它的路由照常服务；停用的包没有路由（404，也不进路由清单），即使它同时被吊销或不再通过校验；被吊销的包，以及不再通过校验、但同一版本此前校验通过过的包，路由仍在，回 503 `PLUGIN_UNAVAILABLE`，不调用插件（启动时就坏了的包在重新通过校验之前没有路由）。每次安装、启用、停用、卸载或重新校验之后整表重编并原子替换；匹配不加锁，按路径段逐级查找，字面段优先于 `{name}` 参数段，只为参数分配一次；请求一直用它开始时取到的那张表。 授权快照绑定通过校验的清单摘要：转发前若选中了另一构建，在签名和发送之前以 `PLUGIN_UNAVAILABLE` 拒绝；同一构建的进程重启仍使用新进程密钥正常调用。
 
