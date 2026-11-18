@@ -73,7 +73,7 @@ func (l presenceLookup) fill(d *dto.Model, modelID uint) {
 			count := l.ready[st.ID]
 			item := dto.ModelStoragePresence{
 				StorageID: st.ID, StorageName: st.Name, StorageType: st.Type, Path: mf.Path, State: mf.State,
-				Acquisition: mf.Acquisition, Message: mf.Message, Revision: mf.Revision, SizeBytes: mf.SizeBytes,
+				Acquisition: mf.Acquisition, Message: mf.Message, Revision: mf.Revision, SizeBytes: mf.SizeBytes, TransferErrorCode: mf.TransferErrorCode,
 				Downloaded: mf.Downloaded, Progress: deployment.TransferProgress(mf.Downloaded, mf.SizeBytes), RateBps: mf.RateBPS,
 				CachedNodes: cached[st.ID], ReadyNodes: count.Ready,
 				Writable: store.StorageAcceptsWritesWith(st, count.Writable) == nil,

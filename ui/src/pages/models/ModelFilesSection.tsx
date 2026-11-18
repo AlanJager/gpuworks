@@ -134,9 +134,13 @@ function FileDetails({ row }: { row: ModelFile }) {
   const { t: common } = useTranslation("common");
   const node = "node_uuid" in row;
   const tagTextColors: Record<string, string> = { red: "var(--fg-danger)", orange: "var(--fg-warning)" };
-  const codedMessage = "transfer_error_code" in row && row.transfer_error_code
-    ? productMessageText(common, { code: row.transfer_error_code, message: row.message ?? "" }) : undefined;
-  const statusNote = codedMessage || (row.state === "missing" && !node ? t("files.missingHint")
+  const code = row.transfer_error_code;
+  const codedMessage = code ? productMessageText(common, { code, message: row.message ?? "" }) : undefined;
+  // Listing categories guide recovery; the provider's address/revision/status
+  // still explains which request failed. Unknown codes already return raw text.
+  const listingMessage = code?.startsWith("MODEL_DOWNLOAD_") && row.message && codedMessage && codedMessage !== row.message
+    ? common("apiErrorDetail", { category: codedMessage, detail: row.message }) : codedMessage;
+  const statusNote = listingMessage || (row.state === "missing" && !node ? t("files.missingHint")
     : ["failed", "download_required", "canceled", "insufficient_disk_space"].includes(row.state) ? row.message : undefined);
   return <><dl className="detail-extra">
     <div style={{ gridColumn: node ? "1 / -1" : "1 / -2" }}>

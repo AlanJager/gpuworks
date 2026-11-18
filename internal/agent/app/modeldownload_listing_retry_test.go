@@ -42,9 +42,39 @@ func TestDownloadRepoRetriesListingBeforeReportingTerminalFailure(t *testing.T) 
 		if status.State == proto.MFFailed {
 			t.Fatalf("transient listing failure became terminal: %+v", status)
 		}
+		if status.TransferErrorCode != "" {
+			t.Fatalf("in-flight retry got a final error code: %+v", status)
+		}
 	}
 	got, err := os.ReadFile(filepath.Join(target, "vocab.json"))
 	if err != nil || !bytes.Equal(got, vocab) {
 		t.Fatalf("downloaded file = %q err=%v", got, err)
+	}
+}
+
+func TestDownloadRepoReportsFinalListingCode(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		code   string
+	}{
+		{404, proto.ErrorModelDownloadSourceNotFound},
+		{403, proto.ErrorModelDownloadSourceAccessDenied},
+		{400, proto.ErrorModelDownloadSourceRejected},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			var listings atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				listings.Add(1)
+				http.Error(w, "provider evidence", tc.status)
+			}))
+			defer server.Close()
+			n, task, target, statuses := newModelDownloadRetryFixture(t, server.URL, []byte(`{"model_type":"test"}`), []byte("weights"))
+			task.TransferID = "listing-error-transfer"
+			n.downloadRepo(context.Background(), task, target, target)
+			got := lastModelFileStatus(t, statuses)
+			if got.State != proto.MFFailed || got.TransferErrorCode != tc.code || got.TransferID != task.TransferID || listings.Load() != 1 {
+				t.Fatalf("terminal report=%+v listings=%d", got, listings.Load())
+			}
+		})
 	}
 }

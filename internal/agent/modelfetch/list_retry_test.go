@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
 
@@ -64,7 +65,7 @@ func TestListingTransportRetryIsBoundedAndRetainsCause(t *testing.T) {
 			})}
 			f.cfg.Client = func(string) (*http.Client, error) { return client, nil }
 			_, err := f.List(context.Background(), commit)
-			if attempts != 3 || len(*waits) != 2 || !errors.Is(err, tc.err) {
+			if attempts != 3 || len(*waits) != 2 || !errors.Is(err, tc.err) || ListingErrorCode(err) != proto.ErrorModelDownloadNetworkExhausted {
 				t.Fatalf("attempts=%d waits=%v error=%v; want three attempts and wrapped cause", attempts, *waits, err)
 			}
 		})
@@ -129,6 +130,10 @@ func TestListingProviderEnvelopeHasBoundedTransientAndPermanentSemantics(t *test
 			var status *modelrepo.StatusError
 			if int(attempts.Load()) != want || len(*waits) != want-1 || !errors.As(err, &status) || status.Code != code {
 				t.Fatalf("provider Code=%d: attempts=%d waits=%v error=%v", code, attempts.Load(), *waits, err)
+			}
+			wantCode := map[int]string{500: proto.ErrorModelDownloadNetworkExhausted, 404: proto.ErrorModelDownloadSourceNotFound, 401: proto.ErrorModelDownloadSourceAccessDenied}[code]
+			if got := ListingErrorCode(err); got != wantCode {
+				t.Fatalf("provider Code=%d produced outcome %q want %q", code, got, wantCode)
 			}
 		})
 	}

@@ -994,7 +994,12 @@
     "PLUGIN_OVERRIDE_SUPERSEDED": "Plugin {{plugin}} set {{kind}} entry {{entry}} again, which replaced your override.",
     "PLUGIN_APPROVAL_REQUIRED": "Installing {{id}} {{version}} needs your approval of what it asks for (permissions: {{permissions}}; roles: {{roles}}). Nothing was installed; send the upload again with approval {{approve_hash}}.",
     "PLUGIN_BROKEN": "Plugin {{id}} no longer verifies, so it cannot be enabled. Reinstall it or remove it.",
-    "PLUGINS_UNAVAILABLE": "This server runs no plugin host, so plugins cannot be managed here."
+    "PLUGINS_UNAVAILABLE": "This server runs no plugin host, so plugins cannot be managed here.",
+    "MODEL_DOWNLOAD_NETWORK_EXHAUSTED": "The model file list could not be fetched after repeated temporary network or upstream failures. Check connectivity and retry the download.",
+    "MODEL_DOWNLOAD_SOURCE_NOT_FOUND": "The model repository or requested revision was not found at this source. Check the repository, revision and access permissions, then register or select the correct model.",
+    "MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED": "The model source refused access. Check repository permissions and the source login.",
+    "MODEL_DOWNLOAD_SOURCE_THROTTLED": "The model source kept rate limiting the file listing. Wait and retry the download.",
+    "MODEL_DOWNLOAD_SOURCE_REJECTED": "The model source rejected the file listing request. Check the source address and repository settings."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {
