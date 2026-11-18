@@ -24,6 +24,9 @@
 //	--grow-rss MiB                 once initialized, hold this much more
 //	                               resident memory, and start a child (in
 //	                               its process group) that holds as much
+//	--read-nodes salt              read the first inventory page and the
+//	                               identity of its nodes with salt, and
+//	                               record the outcome as kind "read_nodes"
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -92,6 +95,7 @@ func main() {
 	pushEvery := fs.Duration("push-every", 0, "push a node_holds table this often")
 	pushSize := fs.Int("push-size", 100, "nodes held by each periodic push")
 	growRSS := fs.Int("grow-rss", 0, "MiB of resident memory to hold, in this process and a child")
+	readNodes := fs.String("read-nodes", "", "salt to read the node inventory and identity with")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
 	fillFromPackage(id, version, manifest)
 
@@ -149,6 +153,9 @@ func main() {
 			gen, _ := strconv.ParseUint(g, 10, 64)
 			envelope, _ := json.Marshal(extapi.StatePush{Kind: kind, Schema: 1, Generation: gen, Body: json.RawMessage(body)})
 			record(kind, gen, putRaw(ctx, p, kind, envelope))
+		}
+		if *readNodes != "" {
+			readNodesOnce(ctx, p, *readNodes)
 		}
 		if *oversize != "" {
 			pad := strings.Repeat("x", extapi.MaxPushBytes)
@@ -283,6 +290,34 @@ func putRaw(ctx context.Context, p *pluginsdk.Plugin, kind string, envelope []by
 	var w extapi.WireError
 	_ = json.NewDecoder(resp.Body).Decode(&w)
 	return &pluginsdk.Error{Status: resp.StatusCode, Wire: w}
+}
+
+// readNodesOnce reads the first inventory page and the identity of its
+// nodes, and records how many nodes each answered and the first node's
+// host digest, or why it was refused.
+func readNodesOnce(ctx context.Context, p *pluginsdk.Plugin, salt string) {
+	page, err := p.Nodes(ctx, extapi.NodesQuery{})
+	if err != nil {
+		record("read_nodes", 0, err)
+		return
+	}
+	ids := make([]uint64, len(page.Nodes))
+	for i, n := range page.Nodes {
+		ids[i] = n.ID
+	}
+	line := map[string]any{"kind": "read_nodes", "ok": true, "nodes": len(page.Nodes)}
+	if len(ids) > 0 {
+		ans, err := p.NodeIdentity(ctx, salt, ids)
+		if err != nil {
+			record("read_nodes", 0, err)
+			return
+		}
+		line["identities"] = len(ans.Nodes)
+		if len(ans.Nodes) > 0 && ans.Nodes[0].Host != nil {
+			line["host_h"] = ans.Nodes[0].Host.H
+		}
+	}
+	appendResult(line)
 }
 
 // record appends a push's outcome to results.jsonl in the data directory.
