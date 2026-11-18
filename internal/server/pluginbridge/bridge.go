@@ -103,6 +103,9 @@ type Bridge struct {
 	// setup is not applied), by package id, until it is started, stopped
 	// or removed.
 	refusals map[string]error
+	// crashloops are the status params of each plugin that entered
+	// crashloop and has not run since (latchCrashloop), by package id.
+	crashloops map[string]map[string]any
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
 	running bool
@@ -152,7 +155,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if cfg.HostSetup.Dir == "" {
 		cfg.HostSetup = hostsetup.DefaultRecords()
 	}
-	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{},
+	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{}, crashloops: map[string]map[string]any{},
 		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
@@ -275,6 +278,7 @@ func (b *Bridge) stopAll() {
 // on-demand plugin is not reported either way: it may not push state, and
 // its idle cycles would otherwise write a down record each time.
 func (b *Bridge) onState(st pluginhost.Status) {
+	b.latchCrashloop(st)
 	defer b.refreshHealth()
 	b.mu.Lock()
 	ident, bound := b.pushers[st.ID]

@@ -107,8 +107,8 @@ func TestCrashloopRaisesTheBannerAndRecoveryClearsIt(t *testing.T) {
 	timing.CrashloopCount, timing.CrashloopWindow, timing.CrashloopRetry = 3, time.Minute, 100*time.Millisecond
 	var changed atomic.Int32
 	b := w.openHealth(sp, timing, &changed)
-	if len(b.HealthBanners()) != 0 || b.Check().Status != proto.CheckPass {
-		t.Fatalf("banners %v check %+v with nothing installed", b.HealthBanners(), b.Check())
+	if len(b.HealthBanners()) != 0 || b.Check().Status != proto.CheckPass || changed.Load() != 0 {
+		t.Fatalf("banners %v check %+v announced %d with nothing installed", b.HealthBanners(), b.Check(), changed.Load())
 	}
 	install(t, b, w.pkg("acme_backup", "1.0.0", nil), true)
 
@@ -154,8 +154,9 @@ func TestCrashloopRaisesTheBannerAndRecoveryClearsIt(t *testing.T) {
 }
 
 // Revoking the certificate an enabled package was signed with makes it
-// revoked at the next boot: it does not start, raises PLUGIN_REVOKED{id}
-// and fails the plugins check.
+// revoked at the next boot: it does not start, raises PLUGIN_REVOKED with
+// the params of its list row (id, version, replacement) and fails the
+// plugins check.
 func TestRevokingTheKeyRaisesTheRevokedBanner(t *testing.T) {
 	w := newWorld(t, nil)
 	b, _ := w.openRunning()
@@ -173,7 +174,8 @@ func TestRevokingTheKeyRaisesTheRevokedBanner(t *testing.T) {
 		t.Fatalf("state after the revocation = %s (%s)", v.State, v.Code)
 	}
 	got := waitBanners(t, next, "plugins.revoked.acme_backup")
-	if n := got[0].Notice; got[0].Severity != extapi.SeverityDanger || n.Code() != messages.ErrorPluginRevoked || n.Params()["id"] != "acme_backup" {
+	if n := got[0].Notice; got[0].Severity != extapi.SeverityDanger || n.Code() != messages.ErrorPluginRevoked || n.Params()["id"] != "acme_backup" ||
+		n.Params()["version"] != "1.0.0" || n.Params()["replacement"] != "" {
 		t.Fatalf("revoked banner = %+v %v", got[0], n.Params())
 	}
 	if c := next.Check(); c.Status != proto.CheckFail || c.Params["ids"] != "acme_backup" {

@@ -1004,7 +1004,7 @@
     "PLUGIN_HOST_SETUP_UNSUPPORTED": "当前平台不支持主机配置步骤。",
     "PLUGIN_BROKEN": "插件 {{id}} 已无法通过校验，不能启用。请重新安装或卸载它。",
     "PLUGINS_UNAVAILABLE": "此服务器没有运行插件宿主，无法在这里管理插件。",
-    "PLUGIN_REVOKED": "插件 {{id}} 已被吊销，不再运行。它施加的限制仍然生效；请卸载它，或安装未被吊销的构建。",
+    "PLUGIN_REVOKED": "插件 {{id}} {{version}} 已被吊销，不再运行。它施加的限制仍然生效；请卸载它，或安装未被吊销的构建。",
     "CHECK_PLUGINS_OK": "没有已启用的插件处于崩溃循环、启动失败、校验失败、已吊销或不兼容的状态。",
     "CHECK_PLUGINS_FAILING": "以下已启用的插件无法运行：{{ids}}。各自的原因见插件页面。",
     "CHECK_PLUGINS_INCOMPATIBLE": "以下已启用的插件需要此服务器不提供的能力：{{ids}}。请升级服务器，或安装适配它的构建。",

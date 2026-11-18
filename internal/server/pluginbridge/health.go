@@ -2,6 +2,7 @@ package pluginbridge
 
 import (
 	"io"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -44,7 +45,7 @@ func healthOf(v View) health {
 			messages.NewProductError(messages.ErrorPluginCrashloop, "plugin "+v.ID+" keeps crashing", v.Params))}
 	case StateRevoked:
 		return health{failing: true, banner: healthBanner("revoked", v.ID, extapi.SeverityDanger,
-			messages.NewProductError(messages.ErrorPluginRevoked, "plugin "+v.ID+" is revoked", map[string]any{"id": v.ID}))}
+			messages.NewProductError(messages.ErrorPluginRevoked, "plugin "+v.ID+" is revoked", v.Params))}
 	case StateBroken:
 		if v.Code == messages.ErrorPluginIncompatible {
 			return health{incompatible: true, banner: healthBanner("incompatible", v.ID, extapi.SeverityWarning,
@@ -68,8 +69,9 @@ func healthBanner(kind, id, severity string, notice *messages.ProductError) *pus
 func (b *Bridge) refreshHealth() {
 	b.health.Lock()
 	defer b.health.Unlock()
-	list := bannersOf(b.List())
-	if cur := b.banners.Load(); cur != nil && sameHealthBanners(*cur, list) {
+	list := bannersOf(b.healthViews())
+	if cur := b.banners.Load(); (cur == nil && len(list) == 0) || (cur != nil && sameHealthBanners(*cur, list)) {
+		b.banners.Store(&list)
 		return
 	}
 	b.banners.Store(&list)
@@ -126,7 +128,41 @@ func (b *Bridge) HealthBanners() []pushstate.Banner {
 // is crashlooping, failed, broken or revoked (params: their ids), warn
 // while any is incompatible with this server (params: their ids), pass
 // otherwise.
-func (b *Bridge) Check() Check { return checkOf(b.List()) }
+func (b *Bridge) Check() Check { return checkOf(b.healthViews()) }
+
+// latchCrashloop remembers that a plugin entered crashloop, with its
+// status params, until it runs again, is stopped or fails for good: the
+// slow retries in between (starting, backoff, an on-demand plugin's idle
+// wait) are not a recovery.
+func (b *Bridge) latchCrashloop(st pluginhost.Status) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	switch st.State {
+	case pluginhost.StateCrashloop:
+		b.crashloops[st.ID] = maps.Clone(st.Params)
+	case pluginhost.StateRunning, pluginhost.StateDegraded, pluginhost.StateStopped, pluginhost.StateFailed:
+		delete(b.crashloops, st.ID)
+	}
+}
+
+// healthViews is List with every package that is retrying after a
+// crashloop judged as still crashlooping.
+func (b *Bridge) healthViews() []View {
+	views := b.List()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for i, v := range views {
+		params, latched := b.crashloops[v.ID]
+		if !latched || !v.Enabled {
+			continue
+		}
+		switch pluginhost.State(v.State) {
+		case pluginhost.StateStarting, pluginhost.StateBackoff, pluginhost.StateIdle:
+			views[i].State, views[i].Code, views[i].Params = string(pluginhost.StateCrashloop), messages.ErrorPluginCrashloop, params
+		}
+	}
+	return views
+}
 
 func checkOf(views []View) Check {
 	var failing, incompatible []string
@@ -173,10 +209,14 @@ func (b *Bridge) countApplied(owner, kind string, entries int) {
 }
 
 // forgetHealth drops what the bridge keeps in memory for an uninstalled
-// package: its counters. Its banners went with its entry.
+// package: its crashloop latch and its counters. Its banners went with its
+// entry.
 func (b *Bridge) forgetHealth(id string) {
 	b.mu.Lock()
 	_, installed := b.entries[id]
+	if !installed {
+		delete(b.crashloops, id)
+	}
 	b.mu.Unlock()
 	if !installed {
 		b.host.ForgetMetrics(id)

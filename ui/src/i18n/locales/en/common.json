@@ -1004,7 +1004,7 @@
     "PLUGIN_HOST_SETUP_UNSUPPORTED": "Host setup steps are not supported on this platform.",
     "PLUGIN_BROKEN": "Plugin {{id}} no longer verifies, so it cannot be enabled. Reinstall it or remove it.",
     "PLUGINS_UNAVAILABLE": "This server runs no plugin host, so plugins cannot be managed here.",
-    "PLUGIN_REVOKED": "Plugin {{id}} is revoked and no longer runs. What it restricted stays in force; remove it or install a build that is not revoked.",
+    "PLUGIN_REVOKED": "Plugin {{id}} {{version}} is revoked and no longer runs. What it restricted stays in force; remove it or install a build that is not revoked.",
     "CHECK_PLUGINS_OK": "No enabled plugin is crashlooping, failed, broken, revoked or incompatible.",
     "CHECK_PLUGINS_FAILING": "These enabled plugins cannot run: {{ids}}. The plugins page shows why for each.",
     "CHECK_PLUGINS_INCOMPATIBLE": "These enabled plugins need capabilities this server does not offer: {{ids}}. Upgrade the server or install builds made for it.",

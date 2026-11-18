@@ -8,8 +8,9 @@ package messages
 // of its refusal.
 const (
 	// ErrorPluginRevoked: an administrator banner while enabled plugin {id}
-	// is revoked (its build or its certificate); it does not run, and what
-	// it restricted stays in force.
+	// {version} is revoked (its build or its certificate); it does not run,
+	// and what it restricted stays in force. {replacement} is the version
+	// to install instead, empty when the revocation names none.
 	ErrorPluginRevoked = "PLUGIN_REVOKED"
 	// CheckPluginsOK: no enabled plugin is crashlooping, failed, broken,
 	// revoked or incompatible.
