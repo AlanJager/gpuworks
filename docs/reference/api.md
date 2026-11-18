@@ -1711,7 +1711,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 字段：
 
 - `trust`：`project`（项目根认证）或 `host`（`server.yaml` 信任的签发者认证）；包不再通过校验时缺省。
-- `state`：服务端部分不运行时是 `disabled`、`installed`（没有常驻服务端部分）、`idle`（按需启动的服务端部分）、`broken`（不再通过校验）或 `revoked`（构建或证书被吊销）；运行时是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`），没有可说的就缺省。
+- `state`：服务端部分不运行时是 `disabled`、`installed`（没有常驻服务端部分）、`idle`（按需启动的服务端部分）、`broken`（不再通过校验）或 `revoked`（构建或证书被吊销）；运行时是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`；没有自己 cgroup 的插件因内存超限被重启时是 `PLUGIN_MEMORY_EXCEEDED`，参数 `id`、`rss_mib`、`limit_mib`），没有可说的就缺省。
 - `since`：进入当前进程状态的时间，未受监管时缺省；`restarts`：第一次之后又启动了几个进程。
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
 - `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。

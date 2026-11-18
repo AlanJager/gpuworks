@@ -263,7 +263,7 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 
 - Dynamic mounting of plugin routes under `/api/v1/x/<id>/`, on-demand starts of `on_demand` plugins, and host API endpoints other than state and health.
 - The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
-- The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
+- The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
 - No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
 
 ### Trampoline: `gpuworks plugin-exec`
@@ -278,8 +278,10 @@ The server starts every plugin through its own binary: `gpuworks plugin-exec --p
 | Resources | `RLIMIT_CORE=0`, `RLIMIT_NOFILE=4096`, nice 5; `RLIMIT_NPROC` counts per user, so it is not set while the plugin shares the server's user, and the cgroup's `pids.max` bounds processes | Same (no cgroup) |
 | Descriptors | fd 3 and 4 must be sockets; stdin and stdout are `/dev/null`; stderr is the log | Same |
 | Environment | Only `PATH`, `TZ` and the proxy and CA variables are kept, plus `HOME` = the data directory, `TMPDIR`, `LANG=C.UTF-8` and `GWX_*`; the proxy variables pass unchanged, so a user name and password in a proxy URL reach every plugin too, and proxy credentials should grant only what a plugin may also use | Same |
-| cgroup | When the server's cgroup is delegated (`subtree_control` writable), creates `<service cgroup>/plugins/<id>`, writes `memory.max`, `memory.high`, `cpu.weight=50` and `pids.max=512`, and moves in; when it cannot, it only warns and the plugin starts anyway | — |
+| cgroup | When the server's cgroup is delegated, creates `<service cgroup>/plugins/<id>`, writes `memory.max` (`mem_mib`), `memory.high` (90% of it), `cpu.weight=50` and `pids.max=512`, and moves in; when it cannot, it only warns and the plugin starts anyway, its memory bounded by the RSS watchdog (see [Supervision](#supervision)) | — |
 | Landlock | ABI ≥ 1: the package directory readable and executable, the data and tmp directories with every right, CA files, `resolv.conf`, `hosts` and time zones read-only, approved device nodes read-write; from ABI 6 also no signals to processes outside the domain (the server and other plugins) | None |
+
+The server's cgroup counts as delegated when the host runs cgroup v2, `cgroup.subtree_control` is writable, and either systemd marked the cgroup delegated (the `user.delegate` or `trusted.delegate` attribute, systemd 251 and later) or the server runs as a non-root user in its own unit's cgroup, `gpuworks.service` (systemd hands a unit's cgroup to its `User=` only with `Delegate=yes`). Root can write any cgroup and a desktop session's scopes belong to their user, so being writable is not enough on its own. The unit `gpuworks install` writes carries `Delegate=yes` ([install layout](../reference/install-layout.md#systemd-unit)). With a delegated cgroup, the server moves itself into `<service cgroup>/server` before it starts the plugin host, because cgroup v2 lets only a cgroup without processes enable controllers for its children. A plugin's cgroup directory is removed when it stops or is uninstalled, and processes the plugin started outside its process group are ended with it through `cgroup.kill`. Once a plugin runs, the server checks that it really is in its own cgroup with the memory controller enabled before it counts as having one; otherwise the RSS watchdog takes over.
 
 A package that requires Landlock (certificate `min_isolation: landlock`) does not start on a host without it: the trampoline exits with code 78 and writes `PLUGIN_ISOLATION_UNAVAILABLE` to stderr. The trampoline's other exit codes: 64 for a bad command line, 71 when applying the sandbox failed, 127 when the plugin could not be executed.
 
@@ -296,6 +298,7 @@ The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `mast
 | Crash restart | From 1 second, doubling, up to 5 minutes; 10 minutes of healthy running starts again from 1 second |
 | Crashloop | 5 crashes within 10 minutes enter `crashloop` (`PLUGIN_CRASHLOOP`), retried every 5 minutes after that, so unattended offline sites recover by themselves |
 | Stop | `POST /gwx/v1/shutdown`, SIGTERM to the process group 10 seconds later, SIGKILL 5 seconds after that |
+| Memory | A plugin with a cgroup of its own is bounded by `memory.max`. For one without, the RSS watchdog sums the resident memory of the plugin's whole process group every 10 seconds (from `/proc/<pid>/stat` on Linux, `ps` on macOS); above 1.5 × `mem_mib` (default 128 MiB) it sends SIGKILL to the group and restarts the plugin as a crash (`PLUGIN_MEMORY_EXCEEDED`). When the memory cannot be read it logs one warning and leaves the plugin running. A child that moved to a process group or session of its own is not counted |
 | Call concurrency | At most `max_concurrency` (default 8) calls per plugin at once; beyond that `PLUGIN_BUSY` at once, never queued; health probes take no slot |
 | Calls without a deadline | 60 seconds |
 | stderr | Forwarded to the server log with `plugin=<id>`, JSON lines keep their level; 50 lines a second with bursts of 500, the excess counted and reported; the last 1 MiB kept for diagnostics |
@@ -331,4 +334,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 9e9b30dd974c612c452edbd88de7bc30ad131277139f7a3430794994fea252c6 -->
+<!-- translation-source-sha256: db3082b7f13eb35409739e9fad8a2980ae2ced8b41daeaf3f56599c5e3719bdb -->

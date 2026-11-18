@@ -133,6 +133,7 @@ The service unit reads the server configuration through `server.yaml`; it does n
 - `ExecStart=<dir>/gpuworks serve --config <dir>/server.yaml`; nohup mode runs the same command line, with identical logging, data, and health check behavior.
 - `User=` is the service account specified by `--service-user`; `Restart=always` and `RestartSec=3`; `TimeoutStopSec=30` allows ongoing model and image sync operations time to shut down gracefully.
 - `KillMode` retains the default (control-group): the server does not own inference containers, and its child processes should exit with it (the agent unit uses the opposite behavior).
+- `Delegate=yes` hands the unit's cgroup to the server, which moves itself into a `server` child cgroup of it and gives each plugin a cgroup with memory, CPU and process limits ([Extension points: trampoline](../dev/extensions.md#trampoline-gpuworks-plugin-exec)). `upgrade` rewrites the unit only to move an installation onto `server.yaml`, so an installation upgraded from a unit without this line keeps it: its plugins share the server's cgroup and the RSS watchdog bounds their memory until the next `install`.
 
 The unit is written only when root or usable `sudo` is available, `systemctl` exists, and `/run/systemd/system` actually exists (a container with systemctl installed but no systemd does not qualify). On macOS, the launchd plist below is written only with `--autostart` (or a `yes` answer to the prompt, or when reinstalling over an installation that has a launch daemon). Otherwise, installation uses a nohup background process with a PID file.
 
@@ -196,6 +197,6 @@ UDOCKER_BUNDLE=
 - `gpuworks-agent uninstall` also deletes this file.
 - When the installation script, SSH wizard preflight checks, or out-of-band recovery need to identify the server or token associated with an agent on a host, they read this file (and read the older agent's command line only if the file is missing). For the design rationale, see [ADR 0051](../adr/0051-agent-launch-configuration-file.md).
 
-<!-- translation-source-sha256: f182a6470e37ccda58059897aa310e54ca30a5221ede80b6b6e0469eba77b8e4 -->
+<!-- translation-source-sha256: 784e2202f83e34e2f19ce75c6d708e098bf20b0029d8d7520cc343d1f35c3826 -->
 <!-- translation-localized-code-block: cf0228b7f6dd01a33d1c0533f369be665aca051a5cd6897ffbf9ee07afc42ce0 63316e0dc2128d8d692b7aa4ea5e28a81d5c9405afd4799c5c37297248c76b5a Reviewed localization of the directory annotations, including the plugins/ and server.lock lines; paths unchanged. -->
 <!-- translation-localized-code-block: 0a0c78856b3bcc2f70519eaf27daec112ac8a20c1388e0ac5809fef7c3958d06 5126a8bc98f3780a7a6b25daeaa58a61a8cacb4075ece9e6bf89f05f91ec4fd7 Translate explanatory node-token placeholder -->
