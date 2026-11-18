@@ -13,6 +13,13 @@ import (
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
+// serveStreams bounds the server's streams on the serve connection: both
+// call pools at the manifest's largest runtime.max_concurrency (1024),
+// plus room for lifecycle calls, which take no slot. The default (250)
+// would make a full pair of pools wait for a stream instead of being
+// refused at once.
+const serveStreams = 2*1024 + 32
+
 // startStopWait bounds how long shutdown waits for Start to return,
 // drainWait how long handlers in flight get to finish when the plugin ends
 // on its own, and goodbyeWait the HTTP/2 goodbye after them.
@@ -60,6 +67,7 @@ func serveConns(ctx context.Context, cfg Config, serve, host net.Conn, parentPol
 	srv := &http.Server{
 		Handler:   http.HandlerFunc(s.route),
 		Protocols: h2c(),
+		HTTP2:     &http.HTTP2Config{MaxConcurrentStreams: serveStreams},
 		ConnState: func(_ net.Conn, st http.ConnState) {
 			if st == http.StateClosed || st == http.StateHijacked {
 				s.goneOnce.Do(func() { close(s.gone) })

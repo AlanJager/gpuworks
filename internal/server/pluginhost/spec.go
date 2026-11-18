@@ -50,7 +50,8 @@ type Spec struct {
 	// requires and uses) to the highest version it may use; the plugin's
 	// handshake answer must stay within it and within the offer.
 	Approved map[string]int
-	// MaxConcurrency bounds server-to-plugin calls in flight (0: 8).
+	// MaxConcurrency bounds server-to-plugin calls in flight, per pool:
+	// plain calls and streamed calls each have their own (0: 8).
 	MaxConcurrency int
 	// MemMiB is the cgroup memory limit (0: 128).
 	MemMiB int

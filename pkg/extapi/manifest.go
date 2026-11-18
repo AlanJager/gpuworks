@@ -203,7 +203,8 @@ type RuntimeDecl struct {
 	// MemMiB and CPUMilli request resources; 0 takes the server's default.
 	MemMiB   int `json:"mem_mib,omitempty"`
 	CPUMilli int `json:"cpu_milli,omitempty"`
-	// MaxConcurrency bounds server-to-plugin calls in flight; 0 is default.
+	// MaxConcurrency bounds server-to-plugin calls in flight, per pool:
+	// plain calls and streamed calls each have their own; 0 is default.
 	MaxConcurrency int `json:"max_concurrency,omitempty"`
 	// Devices are device nodes the part needs, absolute paths under /dev,
 	// sorted; host setup steps make them available.
