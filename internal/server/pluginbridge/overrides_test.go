@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
@@ -149,5 +150,28 @@ func TestABrokenPackagesHoldCanBeOverridden(t *testing.T) {
 	}
 	if b.State().Hold(12, 8).Code != "" {
 		t.Fatal("the override of a broken package's hold did not release it")
+	}
+}
+
+// A correction of extclock leaves an audit line, the server's own effect
+// still runs, and administrators see the banner.
+func TestAClockCorrectionIsAudited(t *testing.T) {
+	w := newWorld(t, nil)
+	b := w.open()
+	to := b.State().Now().Add(-time.Hour).Truncate(time.Second)
+	if err := b.State().CorrectClock(context.Background(), to, "root"); err != nil {
+		t.Fatal(err)
+	}
+	lines := auditLines(w, "clock_corrected")
+	if len(lines) != 1 || !strings.Contains(lines[0], "to="+to.UTC().Format(time.RFC3339)) || !strings.Contains(lines[0], "by=root") ||
+		!strings.Contains(lines[0], "code="+messages.ErrorPluginClockCorrected) {
+		t.Fatalf("clock audit = %q", lines)
+	}
+	if w.corrected.Load() != 1 {
+		t.Fatal("the server's own clock effect did not run")
+	}
+	admin := b.State().Banners(true)
+	if len(admin) != 1 || admin[0].Notice.Code() != messages.ErrorPluginClockCorrected {
+		t.Fatalf("banners = %+v", admin)
 	}
 }

@@ -116,7 +116,6 @@ func TestPluginOverrideRoutesValidate(t *testing.T) {
 		{"POST", "/api/v1/plugins/overrides", strings.Replace(holdOverrideBody, `"kind":"node_holds",`, ``, 1), "kind"},
 		{"POST", "/api/v1/plugins/overrides", strings.Replace(holdOverrideBody, `"entry":"12"`, `"entry":" "`, 1), "entry"},
 		{"POST", "/api/v1/plugins/overrides", strings.Replace(holdOverrideBody, `"maintenance done"`, `""`, 1), "reason"},
-		{"POST", "/api/v1/plugins/overrides", strings.Replace(holdOverrideBody, `"maintenance done"`, `"`+strings.Repeat("x", 1025)+`"`, 1), "reason"},
 		{"POST", "/api/v1/plugins/overrides", strings.Replace(holdOverrideBody, `"delete"`, `"tighten"`, 1), "action"},
 		{"DELETE", "/api/v1/plugins/overrides/x", "", "oid"},
 		{"DELETE", "/api/v1/plugins/overrides/0", "", "oid"},

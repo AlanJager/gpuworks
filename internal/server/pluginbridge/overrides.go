@@ -47,10 +47,16 @@ type OverrideRequest struct {
 func (b *Bridge) Override(ctx context.Context, req OverrideRequest) (o pushstate.Override, err error) {
 	b.admin.Lock()
 	defer b.admin.Unlock()
-	defer func() {
-		b.auditOverride("override", req.Owner, req.Kind, req.Entry, o.ID, req.Reason, req.By, err)
-	}()
 	reason := strings.TrimSpace(req.Reason)
+	defer func() {
+		// The audit line carries the reason as stored, cut to the stored
+		// length when it was refused for being longer.
+		logged := reason
+		if len(logged) > MaxOverrideReason {
+			logged = strings.ToValidUTF8(logged[:MaxOverrideReason], "")
+		}
+		b.auditOverride("override", req.Owner, req.Kind, req.Entry, o.ID, logged, req.By, err)
+	}()
 	if reason == "" || len(reason) > MaxOverrideReason || !utf8.ValidString(reason) {
 		return pushstate.Override{}, messages.NewProductError(messages.ErrorPluginOverrideRejected, "an override needs a reason of at most 1024 bytes",
 			map[string]any{"plugin": req.Owner, "kind": req.Kind, "entry": req.Entry, "rule": "reason"})

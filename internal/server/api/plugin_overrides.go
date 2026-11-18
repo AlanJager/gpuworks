@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -17,9 +16,6 @@ type PluginAdministrator struct {
 	UserID   uint
 	Username string
 }
-
-// maxOverrideReason is the longest reason an override records, in bytes.
-const maxOverrideReason = 1024
 
 // pluginOverrideRoutes mounts /api/v1/plugins/overrides: the list on the
 // chain of GET /plugins, every change by an administrator's login session.
@@ -45,8 +41,9 @@ func (a *apiHandlers) listPluginOverrides(w http.ResponseWriter, r *http.Request
 }
 
 // createPluginOverride takes a dto.PluginOverrideRequest. The shape is
-// checked here (400); whether the owner holds the entry and the action fits
-// it is pushed state's rule (PLUGIN_OVERRIDE_REJECTED, 422).
+// checked here (400); the reason's length, whether the owner holds the
+// entry and whether the action fits it are the bridge's rules
+// (PLUGIN_OVERRIDE_REJECTED, 422).
 func (a *apiHandlers) createPluginOverride(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.pluginAdmin(w, r)
 	if !ok {
@@ -64,10 +61,6 @@ func (a *apiHandlers) createPluginOverride(w http.ResponseWriter, r *http.Reques
 	}
 	if req.Action != "delete" && req.Action != "loosen" {
 		writeOverrideFieldInvalid(w, "action", "action must be delete or loosen")
-		return
-	}
-	if len(strings.TrimSpace(req.Reason)) > maxOverrideReason || !utf8.ValidString(req.Reason) {
-		writeOverrideFieldInvalid(w, "reason", "reason must be valid text of at most 1024 bytes")
 		return
 	}
 	out, err := p.Override(r.Context(), req, a.administrator(r))

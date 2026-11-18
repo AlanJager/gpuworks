@@ -45,6 +45,8 @@ type world struct {
 	// dynamic set; announced counts its feature announcements.
 	gate      *featuregate.Gate
 	announced atomic.Int32
+	// corrected counts the server's own clock correction effect.
+	corrected atomic.Int32
 	// logs is what the bridges logged.
 	logs lockedBuffer
 	// cgroupRoot, when set, is the cgroup mount the bridges' plugin host
@@ -136,7 +138,8 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 		w.t.Fatal(err)
 	}
 	b, err := Open(context.Background(), Config{Packages: pkgs,
-		State:    pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) }}},
+		State:    pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) },
+			ClockCorrected: func(time.Time, time.Time, string, string) { w.corrected.Add(1) }}},
 		Features: dyn, StaticFeatures: owners, HostSetup: w.records,
 		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour},
 			CgroupRoot: w.cgroupRoot, CgroupParent: "svc"},
