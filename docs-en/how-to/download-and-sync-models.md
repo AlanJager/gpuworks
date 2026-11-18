@@ -19,6 +19,8 @@ In the model repository, open the online catalog, choose ModelScope or Hugging F
 3. Click **Download to…** in the model row and select a writable storage. For local storage, also select online target nodes; each node downloads its own copy. For shared storage, the model is downloaded only once. Select one online node with write access and access to the model source to perform the download. To change the node for an active download, cancel it first, then select a new node and restart the download.
 4. Click **Download** and view progress for the target storage or node in the model details. The target copy is usable as a complete downloaded copy only after its status becomes `present`. If a download fails, check the reason before retrying.
 
+A revision belongs to the selected source platform; a Hugging Face commit may not exist on ModelScope. Use a revision verified on that platform when pinning a version. Catalog updates do not rewrite a registered model's source or revision. If an existing model has an invalid revision, register the correct version and select that model when deploying.
+
 When you register a Hugging Face / ModelScope model, a metadata read failure may produce only a notice; registration does not mean the weights have been downloaded. **Download to…** explicitly downloads from the registered source. To use complete files on another node, use **Copy to…**.
 
 In the model details, click **Cancel download** on a storage or node row to stop an active public download. The state becomes `canceled`; downloaded data is kept for a resumable retry. Deleting or stopping an inference service cancels downloads that service started when no other active service needs them. Downloads started separately from the models page continue. If the writer is offline, cancellation is saved and applied on reconnect. Changing a shared download writer requires the previous writer to acknowledge that it has stopped writing.
@@ -27,6 +29,8 @@ Downloads support resume, multiple connections, and rate limiting. A copy is rep
 There is no task-level download deadline. Each HTTP request lasts at most 15 minutes. After a timeout, the download attempts to resume from the downloaded portion; retry counts and address-switching conditions are described below.
 
 Downloads first try replacement addresses from applicable site rules, then the original sites allowed by those rules. When retrieving the file list, an unreachable address, an HTTP error, or an unparseable list puts the current address into a 30-minute cooldown and triggers a switch to the next candidate; source rate limiting (429, 503) is instead waited out and retried at the same address, as for file downloads.
+
+During file listing, transient network failures and HTTP 408, 429, 500, 502, 503 and 504 are retried within the attempt limits and backoff policy below. Listing also honors bounded rate-limit waits for 429/503. Cancellation interrupts the wait. Authentication failures (401/403) and missing repositories or revisions are not retried repeatedly at the same address. After a final failure, fix the network or permissions and use **Download to…** again to retry the same model without deleting it. Retrying does not change its source or revision.
 
 When downloading individual files, failures are handled by type:
 
@@ -95,4 +99,4 @@ After a public download fails, you can still transfer a complete copy from an on
 Failed peer sync operations can be retried, and ongoing sync operations can be canceled. Do not register partial files as a complete copy. Deleting a node-local copy requires administrator privileges. The API is
 `DELETE /api/v1/models/{id}/nodes/{uuid}`; a model used by an active deployment returns 409.
 
-<!-- translation-source-sha256: 01303ee9306b256228323c50fbea1bb49e0c89ef32976139286ce6797d6be88c -->
+<!-- translation-source-sha256: 13b3fe3dff34be504d92531dd059990ed5d559e9f3ca090b526de423fd1f1bfe -->
