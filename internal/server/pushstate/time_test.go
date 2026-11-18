@@ -2,6 +2,7 @@ package pushstate
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -310,5 +311,29 @@ func TestAnUnverifiedPackageKeepsItsRestrictionsAndLosesItsGrants(t *testing.T) 
 	h.s.SetPackages([]Package{acmeBackup})
 	if h.s.GuardNode(1, 0) != nil || len(h.s.Banners(true)) != 0 {
 		t.Fatal("rows of a package that is not installed are enforced")
+	}
+}
+
+// TestTimerWaitNeverWrapsToZero pins the step timer's sleep: no step due
+// (next = math.MaxInt64) and far-future steps sleep the full cap instead of
+// overflowing to a zero timer that spins the tick loop.
+func TestTimerWaitNeverWrapsToZero(t *testing.T) {
+	now := int64(1_795_000_000_000) // 2026-11 in Unix milliseconds
+	for _, c := range []struct {
+		name string
+		next int64
+		want time.Duration
+	}{
+		{"no step due", math.MaxInt64, maxTimerWait},
+		{"far future", now + 400*24*3600*1000, maxTimerWait},
+		{"just under the cap", now + maxTimerWait.Milliseconds() - 1, maxTimerWait - time.Millisecond},
+		{"at the cap", now + maxTimerWait.Milliseconds(), maxTimerWait},
+		{"soon", now + 250, 250 * time.Millisecond},
+		{"due now", now, 0},
+		{"overdue", now - 5000, 0},
+	} {
+		if got := timerWait(c.next, now); got != c.want {
+			t.Errorf("%s: timerWait = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
