@@ -395,6 +395,10 @@ core-test:
         exit "$test_status"
       fi
       tail -n 20 .testlogs/core-test.log
+    # The job runs as root, so the root-only host identity write is exercised
+    # here; strict mode turns a skip (no root, no unprivileged group) into a
+    # failure instead of a silent pass.
+    - GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 go test -count=1 -run '^TestWriteAsRootOwnsTheFile$' -v ./internal/server/hostidentity
     # Build-tag suites are reported separately; compile them here so a
     # refactor cannot silently break an opt-in lane while core remains green.
     - make check-tagged-build

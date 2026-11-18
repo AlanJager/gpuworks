@@ -211,8 +211,9 @@ func TestWriteRefusesBadPathsAndNonRoot(t *testing.T) {
 
 // As root, Write gives the file root:<group> and mode 0440 in a root-owned
 // 0755 directory, so the service group reads it and cannot change or
-// replace it. It needs root: it skips without, and fails under
-// GPUWORKS_TEST_STRICT=1.
+// replace it. It needs root and a group other than root's: it skips
+// without them, and fails under GPUWORKS_TEST_STRICT=1, which the core-test
+// CI job (root) sets for it.
 //
 //	sudo go test -run TestWriteAsRootOwnsTheFile ./internal/server/hostidentity
 func TestWriteAsRootOwnsTheFile(t *testing.T) {
@@ -230,6 +231,9 @@ func TestWriteAsRootOwnsTheFile(t *testing.T) {
 		}
 	}
 	if group == nil {
+		if os.Getenv("GPUWORKS_TEST_STRICT") == "1" {
+			t.Fatal("GPUWORKS_TEST_STRICT=1: no unprivileged group on this host")
+		}
 		t.Skip("no unprivileged group on this host")
 	}
 	dir := filepath.Join(t.TempDir(), "gpuworks")
