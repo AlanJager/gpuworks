@@ -6,7 +6,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 )
 
-func TestQwen3Reranker8BDeclaresOnlyRerank(t *testing.T) {
+func TestQwen3Reranker8BContract(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
 		t.Fatal(err)
@@ -22,6 +22,9 @@ func TestQwen3Reranker8BDeclaresOnlyRerank(t *testing.T) {
 			if spec.API == nil || len(spec.API.Operations) != 1 {
 				t.Errorf("%s: expected exactly one rerank operation", spec.Name)
 				continue
+			}
+			if spec.Engine == "sglang" && !containsArgumentPair(spec.Args, "--chat-template", "/sgl-workspace/sglang/examples/chat_template/qwen3_reranker.jinja") {
+				t.Errorf("%s: expected the SGLang template that accepts query and document as positional messages", spec.Name)
 			}
 			op := spec.API.Operations[0]
 			if op.Type != inferenceapi.OperationRerank || op.Endpoint != "/v1/rerank" || op.Mode != "sync" {

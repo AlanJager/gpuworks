@@ -100,6 +100,9 @@ specs:
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
   args:
   - --enable-metrics
+  # SGLang renders the query and document as positional user messages.
+  - --chat-template
+  - /sgl-workspace/sglang/examples/chat_template/qwen3_reranker.jinja
   weights:
     quantization: bf16
     sources:
