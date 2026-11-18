@@ -96,6 +96,7 @@
 - `selfinstall` / `installcred`：`gpuworks install` / `upgrade` 的实现（复制二进制、写 service 定义、从发布通道或发布站拉发布件、带备份可回滚）、控制台升级的启动守卫、无 systemd 时的 `serve --supervise` 守护循环，与首启 bootstrap admin 凭据记录（叶子包，install 与 server 两端共用，不得反向依赖 server）。
 - `distribution`：发布通道客户端（ADR 0040）：签名信封与索引 schema、同时请求所有发布源取第一个验签通过的索引、文件按 sha256 校验并换源续传；发布方通知 `notices.json` 的 schema、校验、本地匹配与拉取（`notices.go`，ADR 0054）；默认源与信任公钥是包内常量。只依赖标准库（`check-architecture` 守护），selfinstall 与 api 共用。
 - `diagnostics`：远程排查。调试采集（server 与所选节点的 debug 会话、所选部署请求原文的记录，一次一个、按时长与大小自动结束）与诊断信息收集（时间范围内的日志、调试采集文件、节点诊断与脱敏的数据库快照打包下载）；数据源由 `app/diagnostics_sources.go` 提供，`gpuworks support-bundle` 走同一套收集。
+- `hostidentity`：管理 server 所在机器的身份事实（系统 UUID、主板序列号、machine-id、根文件系统 UUID）：直接读取，root 才能读的两项由 systemd 以 root 运行的 `gpuworks host-identity` 写进 `/run/gpuworks/host-identity.json` 补齐（安全写入也在这里）；`app.Host.HostIdentity`、插件的 `POST /host/v1/host-identity` 与诊断信息收集读它，原始值不出 server。
 - `usagereport`：用户体验改进计划（ADR 0054，字段见 `docs/reference/usage-report.md`）：叶子包，日报结构与裁剪、进程内计数器（API 路由/错误码/panic、登录、agent 连接问题，由 `api.countUsage` 中间件与 hub 写入）、SLS WebTracking 与 Cloudflare 收集端的发送、每日发送时刻，以及检查更新附带的装机规模 `FleetReport`；库侧日汇总是 `store/usage_report.go`，调度与组装在 `app/usage_report.go`，通知铃铛服务在 `app/notices.go`。
 - `kubemanifest`：叶子包，Kubernetes 集群接入 manifest（Namespace、RBAC、Secret、PriorityClass、agent DaemonSet）的纯函数渲染；集群接入与 enroll 接口在 `api/kube.go`，离开集群的节点回收在 `app/kube_nodes.go`（ADR 0052）。
 - `kubeapply`：叶子包，用一份 kubeconfig（只认文件里自带的证书或 token）把 `kubemanifest` 渲染的对象 server-side apply 到 API server 或删除，支持 dry run，返回逐对象结果；kubeconfig 由 `provider.ClusterProvider` 为一次操作现发（ADR 0063）。`provider/cluster.go` 是集群能力：列出云账号的托管集群与 GPU 节点池、签发 kubeconfig、应用与卸载；阿里云实现在 `provider/aliyun/ack.go`。
@@ -161,6 +162,7 @@
 - `benchrun`（一次评测 Run 的执行：预热、按 search 文档逐点闭环/开环发压、把点位结果编成 `status.benchmark` 协议；server 发压、agent 发压与 `gpuworks-agent bench` 共用，两侧只提供状态、警告与逐请求明细的去处）、
 - `platformmetrics`（平台自身序列的词表：GPU、dGPU、节点、网络、KV 缓存盘、评测与网关运营指标的名字、单位、label 与含义，与推理词表 `inferencemetrics` 并列，共同构成 `GET /api/v1/monitor/metrics` 的指标目录；纯叶子，agent 与 server 共用；`TestEveryMetricLiteralIsRegistered` 扫描 agent、server 与 UI 源码，要求出现的每个指标名都已登记）、
 - `agentconf`（agent 启动配置的唯一定义，叶子包：`<state>/gpuworks-agent.conf` 的字段、校验、读写、默认监听地址 `DefaultListen`，以及供所有脚本读取主机上 agent 配置的 shell 函数 `ShellFuncs`，同时识别较早安装的命令行形式；agent 的 `configure`/`run`/`smoke`/`upgrade` 与 server 的安装、预检查、卸载、带外恢复共用，见 [ADR 0051](../adr/0051-agent-launch-configuration-file.md)）、
+- `hwident`（硬件身份加盐的唯一产地：原始序列号或 UUID 变成按调用方盐不同的摘要与原始值的最后 4 个字符；节点身份、管理 server 的主机身份与诊断信息收集共用；纯叶子，agent 也可以用）、
 - `launchd`（Mac agent 的 launchd 任务唯一产地：label、plist 位置、plist 编解码，以及 `install-service`/`uninstall` 用的安装与移除序列；纯叶子，agent 安装、server 查找已有 agent 共用）、
 - `version`（server 与 agent 共用的构建版本、提交、构建时间与发布渠道）、
 - `experience`（`gpuworks experience` 进程：一个带 guard 的控制台、模拟节点 fleet、为所有模拟实例应答的引擎宿主、离线 HF 仓库、种子数据与持续的轻量流量；guard 按路由器自己的路由模式判断请求，写默认拒绝，读默认放行但沿用 `aihelper` 不可读的路由一律拒绝）、
