@@ -55,12 +55,18 @@ func TestCheckEnrollsThroughTheRealInstaller(t *testing.T) {
 		if r := w.runCheck(); r.code != 0 {
 			t.Fatalf("exit %d", r.code)
 		}
-		confPath := agentconf.Path(w.p.InstallDir)
-		w.waitFor("the agent's configuration", func() bool { return w.exists(confPath) })
-		conf, err := agentconf.Load(w.p.InstallDir)
-		if err != nil {
-			t.Fatal(err)
-		}
+		// The installer writes the file in steps: wait until it names the
+		// server, not until it exists (under load the test read it half
+		// written).
+		var conf agentconf.Config
+		w.waitFor("the agent's configuration", func() bool {
+			c, err := agentconf.Load(w.p.InstallDir)
+			if err != nil || c.Server == "" {
+				return false
+			}
+			conf = c
+			return true
+		})
 		if conf.SlurmEnrollToken != w.p.Token || conf.SlurmNode != "cn000" || conf.Server != testServer || conf.Token != "" {
 			t.Fatalf("configuration = %+v", conf)
 		}
