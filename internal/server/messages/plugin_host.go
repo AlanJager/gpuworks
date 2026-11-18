@@ -40,6 +40,11 @@ const (
 	// ErrorPluginUnhealthy: the plugin missed {misses} health probes in a
 	// row and is restarted.
 	ErrorPluginUnhealthy = "PLUGIN_UNHEALTHY"
+	// ErrorPluginMemoryExceeded: plugin {id}, running without a cgroup of
+	// its own, held {rss_mib} MiB across its process group, more than the
+	// watchdog allows for its {limit_mib} MiB limit, and was killed; it is
+	// restarted after a backoff.
+	ErrorPluginMemoryExceeded = "PLUGIN_MEMORY_EXCEEDED"
 	// ErrorPluginHostNotReady: the plugin called the host API before its
 	// handshake was accepted.
 	ErrorPluginHostNotReady = "PLUGIN_HOST_NOT_READY"
@@ -65,6 +70,7 @@ func PluginHostErrorCodes() []string {
 		ErrorPluginUnavailable, ErrorPluginBusy, ErrorPluginStartFailed,
 		ErrorPluginHandshakeTimeout, ErrorPluginHandshakeRefused, ErrorPluginHandshakeMismatch,
 		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginKilled, ErrorPluginCrashloop, ErrorPluginUnhealthy,
+		ErrorPluginMemoryExceeded,
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,
 		ErrorPluginStateOnDemand,
 	}

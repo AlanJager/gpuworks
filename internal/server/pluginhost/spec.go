@@ -109,6 +109,7 @@ type Timing struct {
 	TermGrace       time.Duration // after SIGTERM, before SIGKILL (5 s)
 	IdleStop        time.Duration // an on-demand plugin idle this long stops (10 min)
 	CallTimeout     time.Duration // a call without a deadline gets this one (60 s)
+	MemoryEvery     time.Duration // between RSS watchdog samples (10 s)
 }
 
 func (t Timing) withDefaults() Timing {
@@ -129,6 +130,7 @@ func (t Timing) withDefaults() Timing {
 	def(&t.TermGrace, 5*time.Second)
 	def(&t.IdleStop, 10*time.Minute)
 	def(&t.CallTimeout, time.Minute)
+	def(&t.MemoryEvery, 10*time.Second)
 	if t.HealthMisses <= 0 {
 		t.HealthMisses = 3
 	}
@@ -166,7 +168,11 @@ type Config struct {
 	// root leaves plugins in the server's cgroup.
 	CgroupRoot   string
 	CgroupParent string
-	Timing       Timing
+	// Memory reads a plugin's resident memory for the RSS watchdog, which
+	// runs for a plugin that did not get a cgroup of its own; nil reads
+	// the operating system's process table.
+	Memory MemoryReader
+	Timing Timing
 }
 
 // StateHost applies pushed state. The owner comes from the connection the

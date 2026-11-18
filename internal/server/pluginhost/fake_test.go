@@ -269,7 +269,8 @@ func newTestHost(t *testing.T, sp *fakeSpawner, state StateHost, timing Timing) 
 	if state != nil {
 		st = state
 	}
-	h, err := New(Config{Spawner: sp, Core: testCore, State: st, Log: slog.New(slog.DiscardHandler), OnState: log.add, Timing: timing})
+	h, err := New(Config{Spawner: sp, Core: testCore, State: st, Log: slog.New(slog.DiscardHandler), OnState: log.add, Timing: timing,
+		Memory: &fakeMemory{}})
 	if err != nil {
 		t.Fatal(err)
 	}
