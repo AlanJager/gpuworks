@@ -265,7 +265,7 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 - Dynamic mounting of plugin routes under `/api/v1/x/<id>/` (the route table in "Calls and the route table" below is compiled, but no route uses it yet), and host API endpoints other than state and health.
 - The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
-- No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
+- No capability of the manifest vocabulary other than `table.<kind>`, `host.node_identity` and `host.nodes` is offered yet: the other read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
 
 ### Trampoline: `gpuworks plugin-exec`
 
@@ -350,4 +350,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: cc1dd965efe8e4969a3a6cc48479cfeaefc7bc6faa7cb348098c2314e95e1dc2 -->
+<!-- translation-source-sha256: 9d5b190f17ee338cae6e28ba0f6ab55f9705b8275373c545b8efbd463880677c -->

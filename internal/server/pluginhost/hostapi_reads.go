@@ -46,14 +46,14 @@ func (h *hostConn) readOwner(w http.ResponseWriter, r *http.Request, permission,
 // rule broken at a field is the plugin's argument error; a body that is not
 // the object at all keeps its wire code.
 func argumentInvalid(owner *Owner, err error) *Error {
-	var field any
+	var field string
 	if x, ok := err.(*extapi.Error); ok && x.Code == extapi.ErrorWireInvalid {
-		field = x.Params["field"]
+		field, _ = x.Params["field"].(string)
 	}
-	if field == nil {
+	if field == "" {
 		return wireRefusal(err)
 	}
-	return Refuse(extapi.ReasonInvalidArgument, messages.ErrorPluginHostArgumentInvalid, "invalid "+field.(string),
+	return Refuse(extapi.ReasonInvalidArgument, messages.ErrorPluginHostArgumentInvalid, "invalid "+field,
 		map[string]any{"id": owner.ID, "field": field})
 }
 
@@ -64,10 +64,17 @@ func (h *hostConn) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 	if owner == nil {
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, extapi.MaxNodeIdentityRequestBytes+1))
 	if err != nil {
 		writeWire(w, Refuse(extapi.ReasonCancelled, messages.ErrorPluginHostFailed, "reading the request failed",
 			map[string]any{"detail": err.Error()}))
+		return
+	}
+	if len(raw) > extapi.MaxNodeIdentityRequestBytes {
+		e := Refuse(extapi.ReasonInvalidArgument, messages.ErrorRequestTooLarge, "the request is larger than the server reads",
+			map[string]any{"max": extapi.MaxNodeIdentityRequestBytes})
+		e.Status = http.StatusRequestEntityTooLarge
+		writeWire(w, e)
 		return
 	}
 	req, err := extapi.DecodeNodeIdentityRequest(raw)
@@ -87,17 +94,11 @@ func (h *hostConn) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 }
 
 // nodes answers GET /host/v1/nodes with one page of the inventory. Pages
-// draw on their own bucket as well as the host API's.
+// draw on their own bucket as well as the host API's; a query refused for
+// its arguments costs no page.
 func (h *hostConn) nodes(w http.ResponseWriter, r *http.Request) {
 	owner := h.readOwner(w, r, permNodeInventory, extapi.CapHostNodes)
 	if owner == nil {
-		return
-	}
-	if !h.pages.allow() {
-		e := Refuse(extapi.ReasonBusy, messages.ErrorPluginHostRateLimited, "the plugin reads inventory pages too fast",
-			map[string]any{"limit": hostPagesPerSecond})
-		e.Wire.RetryAfterMS = 1000 / hostPagesPerSecond
-		writeWire(w, e)
 		return
 	}
 	q, err := extapi.ParseNodesQuery(r.URL.Query())
@@ -112,6 +113,13 @@ func (h *hostConn) nodes(w http.ResponseWriter, r *http.Request) {
 				map[string]any{"id": owner.ID, "field": "cursor"}))
 			return
 		}
+	}
+	if !h.pages.allow() {
+		e := Refuse(extapi.ReasonBusy, messages.ErrorPluginHostRateLimited, "the plugin reads inventory pages too fast",
+			map[string]any{"limit": hostPagesPerSecond})
+		e.Wire.RetryAfterMS = 1000 / hostPagesPerSecond
+		writeWire(w, e)
+		return
 	}
 	limit := q.Limit
 	if limit == 0 {

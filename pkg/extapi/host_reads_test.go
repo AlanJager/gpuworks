@@ -64,7 +64,7 @@ func TestNodeIdentityRequestSizeBound(t *testing.T) {
 	if _, err := DecodeNodeIdentityRequest(largest); err != nil {
 		t.Fatalf("largest valid request (%d bytes): %v", len(largest), err)
 	}
-	huge := []byte(`{"node_ids":[1],"salt":"` + strings.Repeat("a", maxNodeIdentityRequestBytes) + `"}`)
+	huge := []byte(`{"node_ids":[1],"salt":"` + strings.Repeat("a", MaxNodeIdentityRequestBytes) + `"}`)
 	if _, err := DecodeNodeIdentityRequest(huge); CodeOf(err) != ErrorWireMalformed {
 		t.Fatalf("huge request = %v", err)
 	}

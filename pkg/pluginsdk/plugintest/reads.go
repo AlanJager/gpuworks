@@ -17,9 +17,9 @@ const (
 	codeNotPermitted          = "PLUGIN_HOST_NOT_PERMITTED"
 	codeArgumentInvalid       = "PLUGIN_HOST_ARGUMENT_INVALID"
 	codeCapabilityNotOffered  = "PLUGIN_CAPABILITY_NOT_OFFERED"
+	codeRequestTooLarge       = "REQUEST_TOO_LARGE"
 	permNodeIdentity          = "read:node_identity"
 	permNodeInventory         = "read:node_inventory"
-	maxIdentityRequestBytes   = 64 << 10
 	defaultInventoryPageLimit = extapi.MaxNodeRead
 )
 
@@ -73,7 +73,9 @@ func (h *fakeHost) readCaller(w http.ResponseWriter, permission, capability stri
 
 func argumentRefusal(id string, err error) extapi.WireError {
 	if e, ok := err.(*extapi.Error); ok && e.Code == extapi.ErrorWireInvalid {
-		return argumentInvalid(id, e.Params["field"].(string))
+		if field, _ := e.Params["field"].(string); field != "" {
+			return argumentInvalid(id, field)
+		}
 	}
 	return *wireOf(err, extapi.ReasonInvalidArgument)
 }
@@ -88,9 +90,15 @@ func (h *fakeHost) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(r.Body, maxIdentityRequestBytes))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, extapi.MaxNodeIdentityRequestBytes+1))
 	if err != nil {
 		writeRefusal(w, *wireOf(err, extapi.ReasonInvalidArgument))
+		return
+	}
+	if len(raw) > extapi.MaxNodeIdentityRequestBytes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, extapi.WireError{Code: codeRequestTooLarge,
+			Message: "the request is larger than the server reads",
+			Params:  extapi.Params{"max": extapi.MaxNodeIdentityRequestBytes}, Reason: extapi.ReasonInvalidArgument})
 		return
 	}
 	req, err := extapi.DecodeNodeIdentityRequest(raw)

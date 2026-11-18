@@ -501,7 +501,8 @@ The host API allows each plugin 20 calls a second with a burst of 100; the node 
 |---|---|---|---|
 | `PLUGIN_HOST_NOT_PERMITTED` | 403 | The administrator did not approve the read's permission | `id`, `permission` |
 | `PLUGIN_CAPABILITY_NOT_OFFERED` | 412 | The plugin did not negotiate the capability at its handshake | `id`, `capability`, `version` |
-| `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | The salt, the node id list, `cursor` or `limit` is out of bounds or breaks its grammar; refused before any read | `id`, `field` |
+| `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | The salt, the node id list, `cursor` or `limit` is out of bounds or breaks its grammar; refused before any read, and a refused inventory query costs no page | `id`, `field` |
+| `REQUEST_TOO_LARGE` | 413 | The node identity request body is over 32 KiB; refused before decoding | `max` |
 | `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | The server offers no reads, or the method is wrong | `method`, `path` |
 
 A body that is not the object at all (invalid JSON, an unknown field) keeps its wire code, such as `PLUGIN_WIRE_UNKNOWN_FIELD`.
@@ -614,4 +615,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 1e73070152c41f9ea71be5d6aff5874389ed2296743abdcefa7bea064f8a1582 -->
+<!-- translation-source-sha256: 61747ab5c5f19b793e4951380fa837741e48f1368c1721eaeaeeddea938a6d33 -->

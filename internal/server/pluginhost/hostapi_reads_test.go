@@ -259,8 +259,16 @@ func TestHostAPIReadsRefuseInvalidArguments(t *testing.T) {
 	wantRefusal(t, readHost(t, h, http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":"s","x":1}`), 400,
 		extapi.ErrorWireUnknownField, extapi.Params{"field": "x"})
 	wantRefusal(t, readHost(t, h, http.MethodPost, extapi.PathHostNodeIdentity, `[`), 400, extapi.ErrorWireMalformed, nil)
+	// A body over the bound is too large, however far over it is.
+	for _, n := range []int{extapi.MaxNodeIdentityRequestBytes, 1 << 20} {
+		huge := `{"node_ids":[1],"salt":"` + strings.Repeat("s", n) + `"}`
+		wantRefusal(t, readHost(t, h, http.MethodPost, extapi.PathHostNodeIdentity, huge), 413,
+			messages.ErrorRequestTooLarge, extapi.Params{"max": extapi.MaxNodeIdentityRequestBytes})
+	}
 
-	h.pages = newTokenBucket(1000, 1000, time.Now)
+	// Refused queries cost no page: a bucket with one page left still
+	// serves a valid page after them all.
+	h.pages = newTokenBucket(1, 1, time.Now)
 	queries := map[string]string{
 		"limit=0": "limit", "limit=501": "limit", "limit=x": "limit",
 		"cursor=abc": "cursor", "cursor=0": "cursor", "cursor=07": "cursor", "cursor=a/b": "cursor",
@@ -271,6 +279,9 @@ func TestHostAPIReadsRefuseInvalidArguments(t *testing.T) {
 	}
 	if n := len(reads.recorded()); n != 0 {
 		t.Fatalf("invalid reads reached the store %d times", n)
+	}
+	if a := readHost(t, h, http.MethodGet, extapi.PathHostNodes, ""); a.status != 200 {
+		t.Fatalf("a valid page after refused queries = %d %+v", a.status, a.wire)
 	}
 }
 

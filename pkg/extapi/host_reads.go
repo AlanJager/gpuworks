@@ -42,8 +42,9 @@ const (
 	MaxNodeText = 255
 	// maxNodeUUID bounds a node's UUID, in bytes.
 	maxNodeUUID = 64
-	// maxNodeIdentityRequestBytes bounds an encoded identity request.
-	maxNodeIdentityRequestBytes = 32 << 10
+	// MaxNodeIdentityRequestBytes bounds an encoded identity request; the
+	// server refuses a larger body as too large before decoding it.
+	MaxNodeIdentityRequestBytes = 32 << 10
 )
 
 var (
@@ -66,7 +67,7 @@ type NodeIdentityRequest struct {
 
 // DecodeNodeIdentityRequest decodes and validates an identity request.
 func DecodeNodeIdentityRequest(data []byte) (*NodeIdentityRequest, error) {
-	if len(data) > maxNodeIdentityRequestBytes {
+	if len(data) > MaxNodeIdentityRequestBytes {
 		return nil, malformed(objectNodeIdentityRequest, &fieldError{rule: RuleRange})
 	}
 	var r NodeIdentityRequest
