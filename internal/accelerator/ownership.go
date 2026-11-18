@@ -16,11 +16,13 @@ const (
 	// CardPassedThrough is bound to a VFIO driver: assigned to a virtual
 	// machine, which may be on this very host. The host cannot touch it.
 	CardPassedThrough = "passthrough"
-	// CardWithoutDriver has no kernel driver bound. The hardware is there
-	// and nothing can talk to it until a driver is installed and loaded.
+	// CardWithoutDriver lacks the vendor's compute-driver binding: no
+	// driver is bound, or NVIDIA's card is using nouveau. The hardware is
+	// present but the required vendor stack is unavailable; this says
+	// nothing about whether its driver package is installed.
 	CardWithoutDriver = "no_driver"
-	// CardHeldElsewhere is bound to a driver that is neither the vendor's
-	// own nor VFIO: nouveau on an NVIDIA card, pci-stub, a hypervisor's
+	// CardHeldElsewhere is bound to another consumer's driver rather than
+	// the vendor's compute stack: pci-stub, a hypervisor's
 	// passthrough stub. The vendor's stack cannot reach it, so it is not
 	// this node's to use — and not a fault of the card either.
 	CardHeldElsewhere = "held_elsewhere"

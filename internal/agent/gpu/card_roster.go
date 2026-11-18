@@ -134,10 +134,13 @@ func unlistedCard(card pcicards.Card, name string, answered bool) proto.GPUInfo 
 	case card.Driver == pcicards.DriverVFIO:
 		// Assigned to a virtual machine. Nothing is wrong with it.
 		gpu.Ownership = accelerator.CardPassedThrough
-	case card.Driver == pcicards.DriverNone:
+	case card.Driver == pcicards.DriverNone || (card.Vendor == accelerator.VendorNVIDIA && card.Driver == "nouveau"):
+		// A distribution's nouveau driver does not provide NVIDIA's
+		// compute stack. Its binding is not evidence of external ownership,
+		// nor does it tell us whether the vendor package is installed.
 		gpu.Ownership = accelerator.CardWithoutDriver
 	case !accelerator.IsVendorAcceleratorDriver(card.VendorID, card.Driver):
-		// Something else holds the card — nouveau, pci-stub, a hypervisor's
+		// Something else holds the card — pci-stub, a hypervisor's
 		// passthrough stub. The vendor's stack cannot reach it either way,
 		// so it is not this node's card and certainly not a fault of it.
 		gpu.Ownership = accelerator.CardHeldElsewhere
