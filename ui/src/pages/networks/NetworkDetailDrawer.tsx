@@ -280,8 +280,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           </Descriptions>
         )}
       </DetailSection>
-      <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach} />
-      <DetailSection title={t("detail.resolved", { count: detail.nodes.length })}>
+      <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach}>
         <div className="network-overview-nodes"><NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
           tableId="network-resolved-nodes"
           rowKey="node_uuid"
@@ -290,7 +289,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           emptyDescription={t("detail.noNodes")}
           expandable={{ expandedRowRender, expandRowByClick: true }}
         /></div>
-      </DetailSection>
+      </NetworkLoadTargets>
     </>
   );
 }

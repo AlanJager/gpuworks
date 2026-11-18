@@ -98,11 +98,11 @@ automatically by deployment and card tests once the network is attached.
 
 On the network details page, click **Attach**, select multiple nodes or switch to a node label and enter `key=value`, then click **Save**. Check the attachment results and node list. If individual nodes fail, address only those failures; you do not need to repeat successful attachments.
 
-The **Overview** tab lists the nodes of a dedicated network in a paginated table. **Attachments** counts direct node attachments and configured labels separately. Each row shows the roles, attachment source and attachment time. For host RDMA networks, the summary shows the node’s resolved bootstrap IP for this network and its HCA port count. Accelerator networks show the bootstrap IP and card count. Use the button before the node name or click the row background to expand it. The expanded row shows the bootstrap interface, per-port addresses and configured overrides, and lets you add or remove HCAs. Ethernet rows show the interface and IP address.
+The **Overview** tab lists the nodes of a dedicated network in a paginated table. **Loaded nodes** shows the total number of nodes in the table. The configured label count, **Manage labels** and **Attach nodes** appear below the heading. Each row shows the roles, attachment source and attachment time. For host RDMA networks, the summary shows the node’s resolved bootstrap IP for this network and its HCA port count. Accelerator networks show the bootstrap IP and card count. Use the button before the node name or click the row background to expand it. The expanded row shows the bootstrap interface, per-port addresses and configured overrides, and lets you add or remove HCAs. Ethernet rows show the interface and IP address.
 
 Search across pages by part of a node name, UUID, interface name, HCA name, IP address or node label (for example, `rack=east`). Use the row actions to edit or detach a direct node attachment, or edit the attachment label for a node attached by label. Changing an attachment label affects all nodes matched by that rule.
 
-Open **Manage attached labels** to search, add, edit or detach labels, including rules that currently match no nodes. Direct attachments that have not resolved to nodes can also be viewed and managed separately.
+Open **Manage labels** to search, add, edit or detach labels, including rules that currently match no nodes. Direct attachments that have not resolved to nodes can also be viewed and managed separately.
 
 A network can be attached to any number of nodes and node labels. Each node ultimately uses only one network for each role:
 

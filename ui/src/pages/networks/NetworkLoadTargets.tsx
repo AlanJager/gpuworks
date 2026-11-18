@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import DetailSection from "../../components/detail/DetailSection";
 import { Button } from "../../components/ui/button";
@@ -8,12 +8,13 @@ import type { NetworkAttachment, NetworkDetail } from "../../networkTypes";
 import NetworkTargetTable from "./NetworkTargetTable";
 
 type Props = {
+  children: ReactNode;
   detail: NetworkDetail;
   onAttach: (attachment: NetworkAttachment | null, initialMode?: "node" | "label") => void;
   onDetach: (attachment: NetworkAttachment) => void;
 };
 
-export default function NetworkLoadTargets({ detail, onAttach, onDetach }: Props) {
+export default function NetworkLoadTargets({ detail, onAttach, onDetach, children }: Props) {
   const { t } = useTranslation("networks");
   const [view, setView] = useState<"labels" | "unresolved" | null>(null);
   const labels = useMemo(() => detail.attachments.filter(a => a.target === "label"), [detail.attachments]);
@@ -25,20 +26,22 @@ export default function NetworkLoadTargets({ detail, onAttach, onDetach }: Props
   const items = isLabels ? labels : unresolved;
   const panelID = `network-${detail.id}-load-targets`;
 
-  return <DetailSection title={t("detail.attachments")}>
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <span className="text-body text-fg-muted">{t("table.attachmentNodes", { count: detail.attachments.length - labels.length })} · {t("table.attachmentLabels", { count: labels.length })}</span>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" aria-expanded={isLabels} aria-controls={panelID}
+  return <DetailSection title={t("detail.loadedNodes", { count: detail.nodes.length })}>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="inline-flex items-center gap-2">
+        <span className="text-body text-fg-muted">{t("table.attachmentLabels", { count: labels.length })}</span>
+        <Button variant="link" size="sm" aria-expanded={isLabels} aria-controls={panelID}
           onClick={() => setView(isLabels ? null : "labels")}>{t("detail.manageLabels")}</Button>
+      </div>
+      <div className="flex flex-wrap gap-2">
         {unresolved.length > 0 && <Button variant="secondary" size="sm" aria-expanded={view === "unresolved"} aria-controls={panelID}
           onClick={() => setView(view === "unresolved" ? null : "unresolved")}>{t("detail.unresolvedAttachments", { count: unresolved.length })}</Button>}
-        <Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("actions.attach")}</Button>
+        <Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("detail.attachNodes")}</Button>
       </div>
     </div>
     <div id={panelID}>
       {view && (isLabels || unresolved.length > 0) && <div className="mt-3">
-        {isLabels && <div className="mb-2 flex justify-end"><Button variant="secondary" size="sm" onClick={() => onAttach(null, "label")}>{t("detail.addLabel")}</Button></div>}
+        {isLabels && <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><span className="text-label text-fg-muted">{t("detail.directAttachmentCount", { count: detail.attachments.length - labels.length })}</span><Button variant="secondary" size="sm" onClick={() => onAttach(null, "label")}>{t("detail.addLabel")}</Button></div>}
         {items.length === 0 ? <p className="text-body text-fg-muted">{t("detail.noLabels")}</p> :
           <NetworkTargetTable<NetworkAttachment> key={view} networkId={detail.id} kind="attachments" data={items}
             tableId={isLabels ? "network-attachment-labels" : "network-unresolved-attachments"} rowKey="id" columnSettings={false}
@@ -57,5 +60,6 @@ export default function NetworkLoadTargets({ detail, onAttach, onDetach }: Props
             ]} />}
       </div>}
     </div>
+    {children}
   </DetailSection>;
 }

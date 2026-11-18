@@ -175,7 +175,10 @@ test("the overview shows attachment sources on Ethernet and keeps unmatched atta
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
   const manage = await screen.findByRole("button", { name: n.detail.manageLabels });
   assert.equal(manage.getAttribute("aria-expanded"), "false");
-  assert.ok(screen.getByText("1 node · 2 labels"));
+  const section = screen.getByRole("heading", { name: "Loaded nodes (2)" }).closest("section")!;
+  assert.ok(within(section).getByText("2 labels"));
+  assert.ok(within(section).getByRole("table"));
+  assert.ok(within(section).getByRole("button", { name: n.detail.attachNodes }));
   assert.equal(screen.queryByText("rack=unassigned"), null);
   assert.ok(screen.getByRole("columnheader", { name: n.nodeTable.source }));
   const direct = screen.getByRole("link", { name: "h20-07" }).closest("tr") as HTMLElement;
@@ -387,7 +390,7 @@ test("an accelerator network's rails are picked from the node's cards", async ()
   stub("editNetworkHCAs", async (id, body) => { calls.push([id, body]); return npu; });
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
   assert.ok(screen.getByText(n.detail.acceleratorEditHint));
   assert.equal(screen.queryByText(n.detail.acceleratorInferredHelp), null, "how rails are picked waits behind the help mark");
   assert.ok(screen.getAllByText(n.type.accelerator_rdma).length > 0);
@@ -409,7 +412,7 @@ test("an accelerator network's rails are picked from the node's cards", async ()
 test("network detail lists each node's bootstrap and HCAs with their IPs", async () => {
   stub("network", async () => detailFixture);
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
   assert.ok(screen.getByText(n.detail.rdmaEditHint));
   assert.equal(screen.queryByText(n.detail.rdmaInferredHelp), null, "how HCAs are picked is not on the page");
   await userEvent.setup().hover(screen.getByRole("button", { name: "More information" }));
@@ -445,7 +448,7 @@ test("removing an HCA asks whether it leaves every node or one", async () => {
   stub("editNetworkHCAs", async (id, body) => { calls.push([id, body]); return detailFixture; });
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
   await expandNodeRows();
   const h5 = detailOf(screen.getByRole("link", { name: "h20-05" }).closest("tr")!);
   await user.click(within(h5).getByRole("button", { name: "Remove mlx5_2:1" }));
@@ -473,7 +476,7 @@ test("adding an HCA offers the node's other ports and reset goes back to auto", 
   stub("editNetworkHCAs", async (id, body) => { calls.push([id, body]); return detailFixture; });
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
   await expandNodeRows();
   const h7 = screen.getByText("bond0 · 10.20.1.17").closest("tr") as HTMLElement;
   await user.click(within(h7).getByRole("button", { name: new RegExp(n.rail.add) }));
@@ -501,7 +504,7 @@ test("the bootstrap can be pinned to one of the node's interfaces", async () => 
   stub("attachNetwork", async (id, body) => { calls.push([id, body]); return detailFixture; });
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
   // h20-05 is on the network by label: pinning its bootstrap attaches the node.
   await expandNodeRows();
   const h5 = detailOf(screen.getByRole("link", { name: "h20-05" }).closest("tr")!);
@@ -517,7 +520,7 @@ test("warning reasons are reachable from the keyboard", async () => {
   stub("network", async () => detailFixture);
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
   const reason = "Override mlx5_9:1 (hca) is not in the node's last reported inventory.";
   const mark = screen.getByRole("img", { name: reason });
   for (let i = 0; i < 120 && document.activeElement !== mark; i++) await user.tab();
@@ -566,7 +569,7 @@ test("attaching several nodes at once reports the ones that failed", async () =>
   try {
     const user = userEvent.setup();
     renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-    await user.click(await screen.findByRole("button", { name: n.actions.attach }));
+    await user.click(await screen.findByRole("button", { name: n.detail.attachNodes }));
     const dialog = await modalDialog();
     assert.ok(within(dialog).getByText(n.attach.rdmaInferred));
     const picker = within(dialog).getByRole("combobox");
@@ -593,7 +596,7 @@ test("attaching to a label sends only the label target", async () => {
   stub("attachNetwork", async (_id, body) => { bodies.push(body); return detailFixture; });
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await user.click(await screen.findByRole("button", { name: n.actions.attach }));
+  await user.click(await screen.findByRole("button", { name: n.detail.attachNodes }));
   const dialog = await modalDialog();
   await user.click(within(dialog).getByText(n.attach.modeLabel));
   await user.type(within(dialog).getByRole("textbox", { name: n.attach.labelKey }), "rack");
@@ -634,7 +637,7 @@ test("editing a node attachment prefills and sends its overrides", async () => {
   stub("updateNetworkAttachment", async (id, attachmentID, body) => { calls.push([id, attachmentID, body]); return detailFixture; });
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
   const attachmentRow = screen.getByRole("link", { name: "h20-07" }).closest("tr")!;
   await user.click(within(attachmentRow).getByRole("button", { name: n.actions.edit }));
   const dialog = await modalDialog();
