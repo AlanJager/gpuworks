@@ -83,8 +83,14 @@ type Landlock struct {
 	ReadWrite []string `json:"read_write,omitempty"`
 	// Read: read only (CA certificates, resolv.conf, hosts, zoneinfo).
 	Read []string `json:"read,omitempty"`
-	// Devices: read, write and ioctl on device nodes host setup approved.
+	// Devices: read, write and ioctl on the device nodes the manifest
+	// names.
 	Devices []string `json:"devices,omitempty"`
+	// DeviceDirs: read, write and ioctl on every node beneath, and listing
+	// them, for devices whose nodes appear only when plugged in (applied
+	// host setup). The nodes' own file modes stay the boundary between
+	// devices.
+	DeviceDirs []string `json:"device_dirs,omitempty"`
 }
 
 // Cgroup places the plugin at <Root>/<Parent>/plugins/<id>.
@@ -146,7 +152,7 @@ func (p *Profile) validate() error {
 		return fmt.Errorf("plugin-exec: profile: cgroup %+v is not an absolute root and a relative parent", *p.Cgroup)
 	}
 	if l := p.Landlock; l != nil {
-		for _, list := range [][]string{l.ReadExec, l.ReadWrite, l.Read, l.Devices} {
+		for _, list := range [][]string{l.ReadExec, l.ReadWrite, l.Read, l.Devices, l.DeviceDirs} {
 			for _, path := range list {
 				if !filepath.IsAbs(path) {
 					return fmt.Errorf("plugin-exec: profile: landlock path %q is not absolute", path)

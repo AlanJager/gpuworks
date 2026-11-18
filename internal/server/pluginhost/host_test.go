@@ -474,12 +474,14 @@ func TestExitOutcomes(t *testing.T) {
 func TestSpecValidation(t *testing.T) {
 	h, _ := newTestHost(t, &fakeSpawner{config: func(int) pluginsdk.Config { return sdkConfig("x") }}, nil, fastTiming())
 	for name, mutate := range map[string]func(*Spec){
-		"id":        func(s *Spec) { s.ID = "Acme" },
-		"grant":     func(s *Spec) { s.Grant.Version = "2.0.0" },
-		"digest":    func(s *Spec) { s.ManifestSHA256 = "x" },
-		"relative":  func(s *Spec) { s.Exe = "bin/acme" },
-		"lifecycle": func(s *Spec) { s.Lifecycle = "sometimes" },
-		"limits":    func(s *Spec) { s.MaxConcurrency = 5000 },
+		"id":         func(s *Spec) { s.ID = "Acme" },
+		"grant":      func(s *Spec) { s.Grant.Version = "2.0.0" },
+		"digest":     func(s *Spec) { s.ManifestSHA256 = "x" },
+		"relative":   func(s *Spec) { s.Exe = "bin/acme" },
+		"lifecycle":  func(s *Spec) { s.Lifecycle = "sometimes" },
+		"limits":     func(s *Spec) { s.MaxConcurrency = 5000 },
+		"device dir": func(s *Spec) { s.DeviceDirs = []string{"dev"} },
+		"read path":  func(s *Spec) { s.ReadPaths = []string{"sys"} },
 	} {
 		s := testSpec(t, "acme_backup")
 		mutate(&s)
@@ -492,5 +494,18 @@ func TestSpecValidation(t *testing.T) {
 	}
 	if err := h.Stop(context.Background(), "nobody"); !errors.Is(err, ErrUnknownPlugin) {
 		t.Errorf("stop of an unknown plugin = %v", err)
+	}
+}
+
+// Applied host setup reaches the trampoline's profile: the device
+// directories as device_dirs and the read paths after the system ones.
+func TestProfileCarriesTheHostSetupSandbox(t *testing.T) {
+	s := testSpec(t, "acme_key")
+	s.DeviceDirs, s.ReadPaths = []string{"/dev"}, []string{"/sys/devices"}
+	i := &instance{h: &Host{}, spec: s}
+	p := i.profile()
+	if l := p.Landlock; !slices.Equal(l.DeviceDirs, []string{"/dev"}) || l.Read[len(l.Read)-1] != "/sys/devices" ||
+		len(l.Read) != len(systemReadPaths)+1 || len(systemReadPaths) == 0 || systemReadPaths[len(systemReadPaths)-1] == "/sys/devices" {
+		t.Fatalf("landlock = %+v", p.Landlock)
 	}
 }

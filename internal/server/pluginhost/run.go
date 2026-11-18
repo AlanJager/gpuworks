@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -76,7 +77,7 @@ func (i *instance) profile() *pluginexec.Profile {
 	s := &i.spec
 	p := &pluginexec.Profile{ID: s.ID, ParentPID: os.Getpid(), Dir: s.DataDir, Nice: pluginNice, NoFile: pluginNoFile,
 		Landlock: &pluginexec.Landlock{ReadExec: []string{s.PackageDir}, ReadWrite: []string{s.DataDir, s.TmpDir},
-			Read: systemReadPaths, Devices: s.Devices},
+			Read: append(slices.Clone(systemReadPaths), s.ReadPaths...), Devices: s.Devices, DeviceDirs: s.DeviceDirs},
 		RequireLandlock: s.RequireLandlock, Cgroup: i.h.cgroup(s.MemMiB)}
 	return p
 }
