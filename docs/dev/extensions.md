@@ -226,7 +226,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 2. 用这份包清单读入全部推送表（见下文「推送状态」），在 server 接受第一个请求之前、任何插件启动之前生效。
 3. 把已安装的包声明的功能键放进动态集合（与编译模块的键冲突时记日志并留给模块），注册钩子。
 
-模块的服务（随 server 的其他后台循环运行）先启动推送状态的写入 tick、时间线与容量选择，再并行启动每个已启用、有 `resident` 服务端部分的包，不阻塞 `serve`；启动前只重新哈希变过的文件。插件的进程状态经监管回调推送状态：`running`、`degraded` 算在线，其余都算掉线。server 停止时先停插件，再停推送状态，所以每个插件掉线的时刻都被持久化，重启不会续期宽限。
+模块的服务（随 server 的其他后台循环运行）先启动推送状态的写入 tick、时间线与容量选择，再并行启动每个已启用、有 `resident` 服务端部分的包，不阻塞 `serve`；已启用的 `on_demand` 包交给监管、处于 `idle`，第一次调用时才启动。启动前只重新哈希变过的文件。`resident` 插件的进程状态经监管回调推送状态：`running`、`degraded` 算在线，其余都算掉线；`on_demand` 插件不推送状态，它的状态不报给推送状态，空闲停下再启动的循环也就不写掉线记录。server 停止时先停插件，再停推送状态，所以每个插件掉线的时刻都被持久化，重启不会续期宽限。
 
 推送方身份来自启动它时校验通过的包：监管为每个进程编号（全局递增的代数），宿主接口的推送按这条连接所属的包认定，带证书授予（含 `server.yaml` 为主机信任的签发者配置的权威）、管理员批准的权限、清单的码和这个进程的代数；连接所属的包已被替换或换了版本时推送被拒（`PLUGIN_STATE_CONNECTION_REPLACED`）。核心提供首批五种表的能力 `table.<种类>@1`，包的 `requires` 据此校验，插件握手时也据此协商。
 
@@ -247,7 +247,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 | `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
 | `DELETE /api/v1/plugins/{id}?purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据一起移到 `.trash/`），在一次提交里删掉它推送的全部内容并重新应用保持；重试能完成一半失败的卸载 |
 
-每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不运行时是 `disabled`、`installed`（没有 `resident` 服务端部分）、`idle`（`on_demand`）、`broken`（不再通过校验）或 `revoked`；运行时是监管的进程状态。字段见 [API 参考](../reference/api.md)。
+每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）或 `revoked`；其余是监管的进程状态（`on_demand` 包空闲时是 `idle`）。字段见 [API 参考](../reference/api.md)。
 
 ### 本地管理员兜底
 
@@ -261,7 +261,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 ### 尚未实现
 
-- 插件路由在 `/api/v1/x/<id>/` 下的动态挂载、`on_demand` 插件的按需启动、宿主接口里状态与健康之外的端点。
+- 插件路由在 `/api/v1/x/<id>/` 下的动态挂载（下文「调用与路由表」的路由表已经编译，还没有路由用它）、宿主接口里状态与健康之外的端点。
 - 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
 - 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
@@ -299,11 +299,26 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 | 崩溃循环 | 10 分钟内崩溃 5 次进入 `crashloop`（`PLUGIN_CRASHLOOP`），之后每 5 分钟重试一次，无人值守的离线站点能自己恢复 |
 | 停止 | `POST /gwx/v1/shutdown`，10 秒后向进程组发 SIGTERM，再 5 秒 SIGKILL |
 | 内存 | 有自己 cgroup 的插件由 `memory.max` 限制；没有的由 RSS 看门狗每 10 秒汇总插件整个进程组的常驻内存（Linux 读 `/proc/<pid>/stat`，macOS 用 `ps`），超过 1.5 × `mem_mib`（默认 128 MiB）就向进程组发 SIGKILL 并按崩溃重启（`PLUGIN_MEMORY_EXCEEDED`）；读不到内存只记一条告警，不停插件。自己另起进程组或会话的子进程不计入 |
-| 调用并发 | 每个插件同时至多 `max_concurrency`（默认 8）个调用，满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
-| 无截止时间的调用 | 60 秒 |
+| 调用并发 | 普通调用与流式调用各一个名额池，每个池至多 `max_concurrency`（默认 8）个；其中四分之一（至少 1 个，只有 1 个名额时不留）留给管理员调用；满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
+| 无截止时间的调用 | 60 秒；`on_demand` 插件的冷启动也算在这个时间里 |
 | stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |
 
-`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动，空闲 10 分钟后停止，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）；安装与重新校验时，持有 `push:` 权限或声明功能的 `on_demand` 包同样以这个码拒绝。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动（同时到达的调用只拉起一次，都等它就绪），空闲 10 分钟后停止（停止前先在同一步里拒收新调用，赶上这一刻的调用等下一次启动，不会被拒），崩溃循环时调用立即被拒，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）；安装与重新校验时，持有 `push:` 权限或声明功能的 `on_demand` 包同样以这个码拒绝。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线；这只对 `resident` 插件报给推送状态。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+
+### 调用与路由表
+
+插件宿主模块经 `Bridge.Call` 调用插件（目前还没有路由或服务用它）。只有已安装、已启用、通过校验且有服务端部分的包会被调用；其余在启动任何进程之前就被拒：未安装回 `PLUGIN_NOT_INSTALLED`，否则回 `PLUGIN_UNAVAILABLE`，参数带包的状态（`disabled`、`broken`、`revoked`、`installed`，启动被拒时为 `failed`）。调用方给出调用的类别：管理员调用（`admin`、`admin_session` 路由）可以用保留的名额，流式调用用流式名额池。调用失败分四类，调用方据此决定能否重试：
+
+| 码 | 何时 | 能否重试 |
+|---|---|---|
+| `PLUGIN_UNAVAILABLE{plugin, state}` | 请求没到插件：没在监管、没在运行、崩溃循环，或连接在请求头写出之前就断了。`state` 只给程序用，文案不插它（推送状态的降级横幅用同一个码，只带 `plugin` 与 `feature`） | 能 |
+| `PLUGIN_BUSY{id, limit}` | 调用类别能用的名额都满了 | 稍后能 |
+| `PLUGIN_TIMEOUT{id, timeout_s, state}` | 截止时间到了：`state` 为 `starting` 表示 `on_demand` 插件还在冷启动，`running` 表示插件在处理 | 视调用而定 |
+| `PLUGIN_ROUTE_FAILED{id}` | 插件已经拿到请求后调用失败（崩溃、断开），请求可能已部分生效 | 不能 |
+
+请求头写出之后才失败的写入算作已送达，宁可报「可能已部分生效」也不让调用方盲目重试。插件自己的拒绝是正常的应答。
+
+路由表由已安装包的清单编译：已启用且通过校验的包，它的路由照常服务；停用的包没有路由（404，也不进路由清单）；被吊销的包，以及不再通过校验、但同一版本此前校验通过过的包，路由仍在，回 503 `PLUGIN_UNAVAILABLE`，不调用插件（启动时就坏了的包在重新通过校验之前没有路由）。每次安装、启用、停用、卸载或重新校验之后整表重编并原子替换；匹配不加锁，按路径段逐级查找，字面段优先于 `{name}` 参数段，只为参数分配一次；请求一直用它开始时取到的那张表。
 
 ### gwx/1 连接与宿主接口
 
