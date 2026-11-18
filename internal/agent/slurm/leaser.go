@@ -437,6 +437,13 @@ func (l *Leaser) borrowLocked(ctx context.Context, instance string, n int, progr
 	if !hasFlag(cfg.SbatchArgs, "--mem", "--mem-per-cpu", "--mem-per-gpu") {
 		args = append(args, "--mem=1G")
 	}
+	if !hasFlag(cfg.SbatchArgs, "--requeue", "--no-requeue") {
+		// A placeholder job lives and dies with its instance's start: one
+		// Slurm requeued after its node failed would pend for that node with
+		// no agent left to cancel it (seen on E-HPC when a spot node was
+		// reclaimed), and start on whichever node takes its name.
+		args = append(args, "--no-requeue")
+	}
 	if !hasFlag(cfg.SbatchArgs, "-p", "--partition") {
 		// A job goes to the default partition unless it names one, and the
 		// node is often not in it (E-HPC puts each queue in a partition of

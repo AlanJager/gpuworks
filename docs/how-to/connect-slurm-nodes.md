@@ -30,7 +30,7 @@
    | 占位作业记账账号 | agent 自己的账号 | 借卡的占位作业记在哪个账号下，`squeue` 与记账里看到的就是它。agent 以 root 运行时用 `sbatch --uid=<账号>` 提交；agent 本身不是 root 时这一项不起作用。可以修改 |
    | 安装目录 | `/var/lib/gpuworks` | agent 在每个节点上的安装与状态目录，应是本地盘：它在共享存储上时，几个节点会共用一份 agent 状态。创建后不能改 |
    | 脚本目录 | `/opt/gpuworks-slurm` | 存放健康检查脚本与令牌文件，各节点同一路径，最好在共享存储上。创建后不能改 |
-   | sbatch 参数 | 无 | 追加给每个占位作业，如 `-p gpu -A research --qos=serving --time=7-0`。没写 `-c`/`--cpus-per-task` 时用 `-c 1`，没写内存时用 `--mem=1G`，没写 `-p`/`--partition` 时用本节点所在的分区。可以修改 |
+   | sbatch 参数 | 无 | 追加给每个占位作业，如 `-p gpu -A research --qos=serving --time=7-0`。没写 `-c`/`--cpus-per-task` 时用 `-c 1`，没写内存时用 `--mem=1G`，没写 `-p`/`--partition` 时用本节点所在的分区，没写 `--requeue` 时加 `--no-requeue`（节点故障后 Slurm 不会把占位作业重新排队）。可以修改 |
    | 空闲归还 | 60 秒 | 卡上最后一个实例停止后，借来的卡多久还给 Slurm（1 到 86400 秒）。可以修改 |
    | 排队超时 | 600 秒 | 占位作业在 Slurm 队列里排了这么久还没跑起来就取消，这次部署启动失败（30 到 86400 秒）。可以修改 |
 

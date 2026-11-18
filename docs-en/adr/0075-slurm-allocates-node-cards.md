@@ -15,7 +15,7 @@ The Kubernetes integration ([ADR 0052](0052-kubernetes-nodes.md)) already answer
    - `IDX` is Slurm's position in the machine's device list. It is matched to a card through the device files of `slurmd -G` (on a configless node, with the running slurmd's `-Z`, `--conf` and `--conf-server` options), or the device minor order when neither gives them, and then through `Device Minor` in `/proc/driver/nvidia/gpus/*/information`.
    - These cards go through the existing outside-occupancy path with the reason `Slurm job <id> (<user>)`. The scheduler is unchanged, as in item 3 of ADR 0052.
 3. **The cards are borrowed before an instance starts, and whichever cards Slurm gives are used**: before starting an instance, the engine borrows its cards through an optional `CardLeaser`.
-   - The Slurm implementation submits one job per instance: `sbatch -w <node> --gres=gpu:N -J gpuworks-hold-<instance> --wrap 'exec sleep infinity'`. The default is `-c 1 --mem=1G` and, when no partition is named, the node's own partitions; the entry's sbatch arguments append the account, partition, QOS, time limit and so on (`GPUWORKS_SLURM_SBATCH_ARGS` for an agent not installed through an entry).
+   - The Slurm implementation submits one job per instance: `sbatch -w <node> --gres=gpu:N -J gpuworks-hold-<instance> --wrap 'exec sleep infinity'`. The default is `-c 1 --mem=1G --no-requeue` and, when no partition is named, the node's own partitions; the entry's sbatch arguments append the account, partition, QOS, time limit and so on (`GPUWORKS_SLURM_SBATCH_ARGS` for an agent not installed through an entry).
    - The agent waits for the job to be RUNNING and reads the actual cards from its `IDX`.
    - A wanted card already held by one of this agent's placeholder jobs is used as it is, without borrowing again. This covers dGPU card sharing and an agent restart that finds its jobs again by name.
    - While the job is PENDING, its `Reason` is reported as the instance's progress. After the queue timeout (the entry's setting, 10 minutes by default; `GPUWORKS_SLURM_PENDING_TIMEOUT` for an agent not installed through an entry) the job is cancelled and the start fails.
@@ -69,4 +69,4 @@ The Kubernetes integration ([ADR 0052](0052-kubernetes-nodes.md)) already answer
   - an agent inside a job;
   - schedulers such as OpenPBS.
 
-<!-- translation-source-sha256: d879cf62030db0d39748a6fa8ace9e9d283ea175f32a300aa8ee1c91bbbb9e4d -->
+<!-- translation-source-sha256: b8fb08968a13d99b50fb4a906ec77a75003b4f30e041f878b98e66749414a6a3 -->

@@ -30,7 +30,7 @@ Slurm still allocates the cards. Cards other jobs hold are shown as held outside
    | Placeholder job account | The agent's own account | The account the placeholder jobs that borrow cards are charged to; `squeue` and accounting show it. An agent running as root submits with `sbatch --uid=<account>`; for an agent that is not root this field has no effect. Can be edited |
    | Install directory | `/var/lib/gpuworks` | The agent's install and state directory on every node; it should be on a local disk, because several nodes would share one agent state on shared storage. Fixed after creation |
    | Script directory | `/opt/gpuworks-slurm` | Holds the health check script and the token file, the same path on every node, preferably on shared storage. Fixed after creation |
-   | sbatch arguments | None | Appended to every placeholder job, such as `-p gpu -A research --qos=serving --time=7-0`. Without `-c`/`--cpus-per-task` it uses `-c 1`, without memory `--mem=1G`, and without `-p`/`--partition` the partition the node is in. Can be edited |
+   | sbatch arguments | None | Appended to every placeholder job, such as `-p gpu -A research --qos=serving --time=7-0`. Without `-c`/`--cpus-per-task` it uses `-c 1`, without memory `--mem=1G`, without `-p`/`--partition` the partition the node is in, and without `--requeue` it adds `--no-requeue` (Slurm does not requeue a placeholder job after its node fails). Can be edited |
    | Idle return | 60 seconds | How long borrowed cards are kept after the last instance on them stops, before they go back to Slurm (1 to 86400 seconds). Can be edited |
    | Queue timeout | 600 seconds | A placeholder job that has waited this long in the Slurm queue without starting is cancelled and the deployment's start fails (30 to 86400 seconds). Can be edited |
 
@@ -206,4 +206,4 @@ Register a directory on a shared file system as a **Mounted shared directory**, 
 - An agent installed on a Slurm node as an ordinary node, not through a cluster entry, still recognizes Slurm and borrows cards; its settings come from the environment variables `GPUWORKS_SLURM` (`auto`, `on`, `off`), `GPUWORKS_SLURM_NODE`, `GPUWORKS_SLURM_SBATCH_ARGS`, `GPUWORKS_SLURM_PENDING_TIMEOUT` and `GPUWORKS_SLURM_IDLE_RETURN`. For an agent installed through a cluster entry the node name and the settings come from the entry and these variables have no effect (`GPUWORKS_SLURM=off` is the exception: it keeps the agent out of Slurm mode).
 - Not supported yet: clusters without root (the agent running inside a job), Slurm on Kubernetes (such as Slinky), cards other than NVIDIA, a quota precheck before submitting, and relaying by a job's remaining time limit.
 
-<!-- translation-source-sha256: e1f5b065e5d1f618a8f778e160c922e38409912c5869fea16c88c63850b381d8 -->
+<!-- translation-source-sha256: 1ecbd1b82d93f0d4b07cc4a5ab96d5d10755522a5173add32494c4e025bf2945 -->

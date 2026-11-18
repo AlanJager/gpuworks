@@ -1010,3 +1010,25 @@ func TestAJobAnotherInstanceSharesStaysInUse(t *testing.T) {
 		t.Fatal("the job a sharing instance runs on was returned")
 	}
 }
+
+// A placeholder job is never requeued by Slurm: after its node fails, a
+// requeued one would pend with no agent to cancel it. A site that asks for
+// requeueing in its sbatch arguments keeps that.
+func TestPlaceholderJobsAreNotRequeued(t *testing.T) {
+	f := newFakeSlurm()
+	l, _ := newTestLeaser(t, f, Config{})
+	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if submit := f.lastCall("sbatch"); !strings.Contains(submit, " --no-requeue ") {
+		t.Fatalf("sbatch %q; want --no-requeue", submit)
+	}
+	f2 := newFakeSlurm()
+	l2, _ := newTestLeaser(t, f2, Config{SbatchArgs: []string{"--requeue"}})
+	if _, _, err := l2.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if submit := f2.lastCall("sbatch"); strings.Contains(submit, "--no-requeue") {
+		t.Fatalf("sbatch %q; the site's --requeue is overridden", submit)
+	}
+}
