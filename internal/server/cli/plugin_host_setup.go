@@ -244,5 +244,5 @@ func (o Options) installHooks(l selfinstall.Layout) []selfinstall.InstallHook {
 	if len(present) == 0 && !declaresHostSetup(l.DataDir) {
 		return hooks
 	}
-	return append(hooks[:1:1], append([]selfinstall.InstallHook{hostSetupHook{opt: o}}, hooks[1:]...)...)
+	return slices.Insert(hooks, 1, selfinstall.InstallHook(hostSetupHook{opt: o}))
 }

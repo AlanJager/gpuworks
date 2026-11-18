@@ -43,6 +43,8 @@ var goldenDecoders = map[string]func([]byte) (any, error){
 	"node_identity_request": func(b []byte) (any, error) { return DecodeNodeIdentityRequest(b) },
 	"node_identity_answer":  func(b []byte) (any, error) { return DecodeNodeIdentityAnswer(b) },
 	"nodes_page":            func(b []byte) (any, error) { return DecodeNodesPage(b) },
+	"host_identity_request": func(b []byte) (any, error) { return DecodeHostIdentityRequest(b) },
+	"host_identity_answer":  func(b []byte) (any, error) { return DecodeHostIdentityAnswer(b) },
 	KindAvailability:        tableDecoder(KindAvailability),
 	KindFleetCapacity:       tableDecoder(KindFleetCapacity),
 	KindNodeHolds:           tableDecoder(KindNodeHolds),
