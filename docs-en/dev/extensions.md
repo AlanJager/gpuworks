@@ -244,7 +244,7 @@ Every call writes a structured log record with `audit=true` saying who did what 
 - The management route for overrides (`State.Override` is built), the `users.local_admin` floor, the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
 - The ratchet on feature-key literals in core code.
-- No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes` and WebSocket routes (`routes.websocket`). A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
+- No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
 
 ### Trampoline: `gpuworks plugin-exec`
 
@@ -309,4 +309,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 9ad54a1582bb99f8ccf5708615d7f7262a46b119b20ac2d00828b54a2a7b37ca -->
+<!-- translation-source-sha256: 0a478c1ff633630c10a80f7cc36f5e551dc7c69ac05583bfbca234f4d8a0c70f -->

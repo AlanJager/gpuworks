@@ -15,6 +15,7 @@ const (
 	MaxSettings             = 64
 	DefaultSettingMaxLength = 4096
 	MaxSettingMaxLength     = 65536
+	MaxSettingValues        = 64 // values of one enum setting
 )
 
 // SettingDecl declares one value an administrator configures for the
@@ -86,7 +87,7 @@ func (s SettingDecl) validateTyped(at string) *fieldError {
 	}
 	if f := first(
 		inRange(joinPath(at, "max_length"), int64(s.MaxLength), 0, MaxSettingMaxLength),
-		inRange(joinPath(at, "values"), int64(len(s.Values)), 0, 64),
+		inRange(joinPath(at, "values"), int64(len(s.Values)), 0, MaxSettingValues),
 		checkSortedSet(joinPath(at, "values"), s.Values, wordPattern),
 	); f != nil {
 		return f

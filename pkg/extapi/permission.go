@@ -41,7 +41,9 @@ const (
 var permissionObjects = map[string]map[string]string{
 	"crypto": {"derive_key": CapHostDeriveKey},
 	// node_fleet is the change feed of the fleet read, so it rides on the
-	// same capability.
+	// same capability. It is the one topic schema 1 keeps because the
+	// frozen golden corpus (valid/full.json among it) already holds it;
+	// every other topic waits for a later schema.
 	"events":  {"node_fleet": CapHostFleet},
 	"http":    {"public": CapRoutes, "routes": CapRoutes, "uploads": CapRoutes},
 	"metrics": {"expose": CapMetricsExpose},
