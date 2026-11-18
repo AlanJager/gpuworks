@@ -3,9 +3,12 @@ package pluginbridge
 import (
 	"bytes"
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/testenv/extsign"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -37,7 +40,7 @@ func codeOfErr(err error) string {
 }
 
 // The first healthy run of a build with storage records its state version
-// in the package's data marker, signed by this server's version; starting
+// in the package's data marker, written by that build's version; starting
 // and degraded runs do not, and later healthy runs of the same start do
 // not write again. An older build is then refused at install.
 func TestTheFirstHealthyRunRecordsTheDataMarker(t *testing.T) {
@@ -55,7 +58,7 @@ func TestTheFirstHealthyRunRecordsTheDataMarker(t *testing.T) {
 	}
 	b.onState(pluginhost.Status{ID: "acme_backup", State: pluginhost.StateRunning, Generation: 1})
 	m, ok := w.dataMarker("acme_backup")
-	if !ok || m.Version != 2 || m.WrittenBy != devCoreVersion {
+	if !ok || m.Version != 2 || m.WrittenBy != "2.0.0" {
 		t.Fatalf("marker after the first healthy run = %+v %v", m, ok)
 	}
 	// Once recorded for this start, a healthy run after a degraded one
@@ -98,6 +101,68 @@ func TestOnlyStorageRaisesTheDataMarker(t *testing.T) {
 	if m, _ := w.dataMarker("acme_backup"); m != newer {
 		t.Fatalf("an older running build changed the marker to %+v", m)
 	}
+	// Both runs went through the recording path: the build without
+	// storage is bound at state version 0, the older one is recorded as
+	// done for this start without a write.
+	b.mu.Lock()
+	off, backup := b.pushers["acme_off"], b.pushers["acme_backup"]
+	b.mu.Unlock()
+	if off.version != "1.0.0" || off.stateVersion != 0 || backup.stateVersion != 1 || !backup.marked {
+		t.Fatalf("identities = %+v %+v", off, backup)
+	}
+}
+
+// A data marker that cannot be read neither starts the build nor leaves it
+// refused: the start is tried again, and the plugin starts once the read
+// succeeds.
+func TestAnUnreadableDataMarkerRetriesTheStart(t *testing.T) {
+	w := newWorld(t, nil)
+	b, sp := w.openRunning()
+	b.markerRetry = 20 * time.Millisecond
+	install(t, b, w.pkg("acme_backup", "1.0.0", withStateVersion(1)), false)
+	flaky := &flakyMarkers{Markers: b.pkgs.Markers, failures: 2}
+	b.pkgs.Markers = flaky
+	v, err := b.Enable(context.Background(), "acme_backup", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State != string(pluginhost.StateFailed) || v.Code == extapi.ErrorStateTooNew {
+		t.Fatalf("view while the marker cannot be read = %+v", v)
+	}
+	for _, s := range sp.started() {
+		if s.ID == "acme_backup" {
+			t.Fatal("a build was spawned without its data marker checked")
+		}
+	}
+	if got := waitStarted(t, sp, "1.0.0"); got.ID != "acme_backup" {
+		t.Fatalf("started %+v", got)
+	}
+	if flaky.left() != 0 {
+		t.Fatalf("started with %d failures left", flaky.left())
+	}
+}
+
+// flakyMarkers fails its first reads, then reads through.
+type flakyMarkers struct {
+	extpkg.Markers
+	mu       sync.Mutex
+	failures int
+}
+
+func (f *flakyMarkers) PluginMarkers() ([]extapi.Marker, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failures > 0 {
+		f.failures--
+		return nil, errors.New("database is locked")
+	}
+	return f.Markers.PluginMarkers()
+}
+
+func (f *flakyMarkers) left() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.failures
 }
 
 // A package whose data is newer than its installed build (a newer build

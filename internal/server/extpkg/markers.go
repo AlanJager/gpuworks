@@ -1,6 +1,7 @@
 package extpkg
 
 import (
+	"errors"
 	"fmt"
 
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -27,20 +28,32 @@ func (h *Host) CheckDataMarker(m *extapi.Manifest) error {
 	return extapi.CheckMarkers([]extapi.Marker{own}, map[string]int{name: stateVersion(m)})
 }
 
+// ErrDirBusy is RecordDataMarker's answer while an install or removal
+// holds the plugins directory: nothing was recorded, and the caller tries
+// again later instead of waiting.
+var ErrDirBusy = errors.New("plugins directory is busy with an install or removal")
+
 // RecordDataMarker records that package id's plugin has run healthy with
 // data at stateVersion: the data marker becomes max(stored, stateVersion),
 // so it is never lowered, and an older build cannot be installed or
 // started over data a newer one wrote. A build without storage
 // (stateVersion 0) writes no marker, and neither does a package no longer
 // installed, so a purge is not undone by a plugin that was still stopping.
-// writtenBy is the server version that ran the plugin.
+// writtenBy is the version of the plugin build that ran, which a refused
+// older build names as the one to install instead. It never waits for the
+// plugins directory: while an install or removal holds it, it returns
+// ErrDirBusy, so a caller on the plugin supervisor is held only by the
+// database read and write.
 func (h *Host) RecordDataMarker(id string, stateVersion int, writtenBy string) error {
 	if stateVersion < 1 || !extapi.ValidPackageID(id) {
 		return nil
 	}
-	unlock, err := h.Dir.Lock()
+	unlock, ok, err := h.Dir.TryLock()
 	if err != nil {
 		return err
+	}
+	if !ok {
+		return ErrDirBusy
 	}
 	defer func() { _ = unlock() }()
 	if version, err := h.Dir.Current(id); err != nil || version == "" {

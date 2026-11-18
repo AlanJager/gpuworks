@@ -228,7 +228,7 @@ The pusher's identity comes from the package verified when it was started: the s
 
 When a package declares `storage`, its data carries a version marker `plugin.<id>.data` (in the core's `plugin_markers` table), which keeps a site from going back to an older build that cannot read that data:
 
-- **Write**: the first time a plugin reaches `running` (handshake accepted and healthy) after each start, the host writes the marker as `max(stored version, storage.state_version)` and records the server version that ran it; later returns to `running` within the same start read and write nothing. The marker is never lowered: an older build still running does not reduce it. A package without `storage` writes no marker, and neither does a package that has been uninstalled. A failed write is only logged and retried on the next healthy run.
+- **Write**: the first time a plugin reaches `running` (handshake accepted) after each start, the host writes the marker as `max(stored version, storage.state_version)` and records the version of the plugin build that ran (which a refused older build names as the one to install); later returns to `running` within the same start read and write nothing. The marker is never lowered: an older build still running does not reduce it. A package without `storage` writes no marker, and neither does a package that has been uninstalled. A write that fails, or that finds the plugins directory held by an install or removal, is only logged and retried on the next health check; a marker that cannot be read keeps the plugin from starting, and the start is retried shortly.
 - **Check**: when the marker is newer than the package's `storage.state_version` (0 without `storage`), installing that build is refused with `PLUGIN_STATE_TOO_NEW` and nothing is installed; an installed build (for example an older build installed again after a newer one ran) is checked before every start as well. It is not started, and the list shows it `failed` with `PLUGIN_STATE_TOO_NEW` until a build with a recent enough `state_version` is installed. Before a downgrade, `gpuworks plugin compat` runs the same check.
 - **Lifetime**: a plain uninstall keeps the data and the marker, so reinstalling an older build is refused too; only `purge` deletes the marker, together with moving the data directory to `.trash/`.
 
@@ -326,4 +326,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 6335c1a2d46b4c386a40bf2cdd231f0b79d2c92ef9459c669be98bc01177bf88 -->
+<!-- translation-source-sha256: 5055789d53c38e641281f29d476a3c59d8b1a2d25f02838f97ebc1436f1dc604 -->

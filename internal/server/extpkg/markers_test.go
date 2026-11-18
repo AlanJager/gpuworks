@@ -30,27 +30,27 @@ func TestRecordDataMarkerNeverLowersIt(t *testing.T) {
 	if _, ok := mk.markers[name]; ok {
 		t.Fatal("install wrote the data marker before the plugin ran")
 	}
-	if err := h.RecordDataMarker("acme_backup", 1, "v26.12.0"); err != nil {
+	if err := h.RecordDataMarker("acme_backup", 1, "1.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.RecordDataMarker("acme_backup", 2, "v26.13.0"); err != nil {
+	if err := h.RecordDataMarker("acme_backup", 2, "2.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	if got := mk.markers[name]; got != (extapi.Marker{Name: name, Version: 2, WrittenBy: "v26.13.0"}) {
+	if got := mk.markers[name]; got != (extapi.Marker{Name: name, Version: 2, WrittenBy: "2.0.0"}) {
 		t.Fatalf("marker after version 2 ran = %+v", got)
 	}
 	sets := mk.sets
 	// An older build still running, and a build without storage, leave it.
 	for _, v := range []int{1, 2, 0} {
-		if err := h.RecordDataMarker("acme_backup", v, "v26.12.0"); err != nil {
+		if err := h.RecordDataMarker("acme_backup", v, "1.0.0"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := mk.markers[name]; got.Version != 2 || got.WrittenBy != "v26.13.0" || mk.sets != sets {
+	if got := mk.markers[name]; got.Version != 2 || got.WrittenBy != "2.0.0" || mk.sets != sets {
 		t.Fatalf("marker after older runs = %+v (%d writes, want %d)", got, mk.sets, sets)
 	}
 	_, err := h.Install(bytes.NewReader(pkg(t, w, "0.9.0", withState(1))), extpkg.InstallOptions{})
-	if code, params := codeOf(err); code != extapi.ErrorStateTooNew || params["marker"] != name || params["version"] != 2 || params["known"] != 1 || params["needs"] != "v26.13.0" {
+	if code, params := codeOf(err); code != extapi.ErrorStateTooNew || params["marker"] != name || params["version"] != 2 || params["known"] != 1 || params["needs"] != "2.0.0" {
 		t.Fatalf("install of an older build = %v %v", err, params)
 	}
 	v, err := h.Recheck("acme_backup", false)
@@ -73,28 +73,28 @@ func TestRecordDataMarkerWritesNothingItShouldNot(t *testing.T) {
 	w := newWorld(t)
 	h, mk := newHost(t, w)
 	name := extapi.PluginDataMarker("acme_backup")
-	if err := h.RecordDataMarker("acme_backup", 1, "v26.12.0"); err != nil || len(mk.markers) != 0 {
+	if err := h.RecordDataMarker("acme_backup", 1, "1.0.0"); err != nil || len(mk.markers) != 0 {
 		t.Fatalf("not installed: %v %v", mk.markers, err)
 	}
 	if _, err := h.Install(bytes.NewReader(pkg(t, w, "1.0.0", nil)), extpkg.InstallOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.RecordDataMarker("acme_backup", 0, "v26.12.0"); err != nil || len(mk.markers) != 0 {
+	if err := h.RecordDataMarker("acme_backup", 0, "1.0.0"); err != nil || len(mk.markers) != 0 {
 		t.Fatalf("no storage: %v %v", mk.markers, err)
 	}
-	if err := h.RecordDataMarker("../etc", 1, "v26.12.0"); err != nil || len(mk.markers) != 0 {
+	if err := h.RecordDataMarker("../etc", 1, "1.0.0"); err != nil || len(mk.markers) != 0 {
 		t.Fatalf("invalid id: %v %v", mk.markers, err)
 	}
 	mk.readErr = errors.New("database is locked")
-	if err := h.RecordDataMarker("acme_backup", 1, "v26.12.0"); !errors.Is(err, mk.readErr) {
+	if err := h.RecordDataMarker("acme_backup", 1, "1.0.0"); !errors.Is(err, mk.readErr) {
 		t.Fatalf("read failure = %v", err)
 	}
 	mk.readErr, mk.setErr = nil, errors.New("disk full")
-	if err := h.RecordDataMarker("acme_backup", 1, "v26.12.0"); !errors.Is(err, mk.setErr) {
+	if err := h.RecordDataMarker("acme_backup", 1, "1.0.0"); !errors.Is(err, mk.setErr) {
 		t.Fatalf("write failure = %v", err)
 	}
 	mk.setErr = nil
-	if err := h.RecordDataMarker("acme_backup", 1, "v26.12.0"); err != nil || mk.markers[name].Version != 1 {
+	if err := h.RecordDataMarker("acme_backup", 1, "1.0.0"); err != nil || mk.markers[name].Version != 1 {
 		t.Fatalf("retry = %v %v", mk.markers, err)
 	}
 	if err := h.Remove("acme_backup", true); err != nil {
@@ -103,7 +103,7 @@ func TestRecordDataMarkerWritesNothingItShouldNot(t *testing.T) {
 	if _, ok := mk.markers[name]; ok {
 		t.Fatal("purge kept the data marker")
 	}
-	if err := h.RecordDataMarker("acme_backup", 1, "v26.12.0"); err != nil || len(mk.markers) != 0 {
+	if err := h.RecordDataMarker("acme_backup", 1, "1.0.0"); err != nil || len(mk.markers) != 0 {
 		t.Fatalf("after purge: %v %v", mk.markers, err)
 	}
 }

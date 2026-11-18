@@ -11,3 +11,10 @@ func (d Dir) Lock() (func() error, error) {
 	}
 	return func() error { return nil }, nil
 }
+
+// TryLock is Lock: platforms without flock take no lock, so it is always
+// free.
+func (d Dir) TryLock() (func() error, bool, error) {
+	unlock, err := d.Lock()
+	return unlock, err == nil, err
+}

@@ -943,7 +943,7 @@
     "PLUGIN_SIGNATURE_INVALID": "{{object}} 上密钥 {{keyid}} 的签名校验失败：文件已被修改或损坏。",
     "PLUGIN_STATE_REJECTED": "插件推送的 {{kind}} 状态无效：字段 {{field}} 违反规则 {{rule}}。",
     "PLUGIN_STATE_TOO_LARGE": "插件推送的 {{kind}} 状态过大：{{field}} 超过 {{max}}。",
-    "PLUGIN_STATE_TOO_NEW": "已存储的 {{marker}} 版本为 {{version}}，此服务器最高只能读取版本 {{known}}。请运行 {{needs}} 或更新的版本，不要使用这个较旧的服务器。",
+    "PLUGIN_STATE_TOO_NEW": "已存储的 {{marker}} 版本为 {{version}}，此构建最高只能读取版本 {{known}}。请运行 {{needs}} 或更新的版本。",
     "PLUGIN_PACKAGE_MALFORMED": "插件包在“{{member}}”处格式错误（{{reason}}）。",
     "PLUGIN_PACKAGE_TOO_LARGE": "插件包成员“{{member}}”使包超过 {{max}} 字节的上限。",
     "PLUGIN_CERT_REVOKED": "签署此包的发布者 {{publisher}} 的证书（序号 {{serial}}，密钥 {{keyid}}）已被吊销。",

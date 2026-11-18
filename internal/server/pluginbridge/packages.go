@@ -3,6 +3,7 @@ package pluginbridge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -96,10 +97,22 @@ func (b *Bridge) startIfEnabled(id string) {
 		return
 	}
 	if err := b.pkgs.CheckDataMarker(v.Manifest); err != nil {
-		b.log.Error("plugin data is newer than its build; it is not started", "plugin", id, "err", err)
+		if code, _, _ := codeOf(err); code == extapi.ErrorStateTooNew {
+			b.log.Error("plugin data is newer than its build; it is not started", "plugin", id, "err", err)
+			b.mu.Lock()
+			b.refusals[id] = err
+			b.mu.Unlock()
+			return
+		}
+		// The marker could not be read: neither start a build that may
+		// be older than its data nor leave it down until an administrator
+		// steps in; try again shortly.
+		refused := fmt.Errorf("check the plugin data marker: %w", err)
+		b.log.Error("plugin data marker cannot be read; the start is retried", "plugin", id, "retry", b.markerRetry, "err", err)
 		b.mu.Lock()
-		b.refusals[id] = err
+		b.refusals[id] = refused
 		b.mu.Unlock()
+		time.AfterFunc(b.markerRetry, func() { b.retryStart(id, refused) })
 		return
 	}
 	spec, err := b.specOf(v)
@@ -119,12 +132,28 @@ func (b *Bridge) startIfEnabled(id string) {
 	}
 }
 
+// retryStart starts package id again after its data marker could not be
+// read, unless something else (a start, stop or removal) has dealt with
+// it since.
+func (b *Bridge) retryStart(id string, refused error) {
+	b.admin.Lock()
+	defer b.admin.Unlock()
+	b.mu.Lock()
+	same := b.refusals[id] == refused
+	b.mu.Unlock()
+	if same {
+		b.startIfEnabled(id)
+	}
+}
+
 // markData records the first healthy run of package id's current start
-// in its data marker (PO-13): max(stored, state_version), never lowered,
-// nothing for a build without storage. It runs on the supervisor's
-// callback, so the write is done before Stop returns and an uninstall's
-// purge, which stops the plugin first, is never undone. A failed write is
-// logged and retried on the next healthy run.
+// in its data marker (docs/dev/extensions.md): max(stored, state_version),
+// never lowered, nothing for a build without storage, written by the
+// running build's version. It runs on the supervisor's callback, so the
+// write is done before Stop returns and an uninstall's purge, which stops
+// the plugin first, is never undone; it does not wait for the plugins
+// directory, only for the database. A failed or skipped write is retried
+// on the next healthy run (every health probe reports one).
 func (b *Bridge) markData(id string) {
 	b.mu.Lock()
 	ident, ok := b.pushers[id]
@@ -132,8 +161,12 @@ func (b *Bridge) markData(id string) {
 	if !ok || ident.marked || ident.stateVersion == 0 {
 		return
 	}
-	if err := b.pkgs.RecordDataMarker(id, ident.stateVersion, b.coreVersion); err != nil {
-		b.log.Warn("plugin data marker not recorded", "plugin", id, "state_version", ident.stateVersion, "err", err)
+	if err := b.pkgs.RecordDataMarker(id, ident.stateVersion, ident.version); err != nil {
+		level := b.log.Warn
+		if errors.Is(err, extpkg.ErrDirBusy) {
+			level = b.log.Debug
+		}
+		level("plugin data marker not recorded; retried on the next healthy run", "plugin", id, "state_version", ident.stateVersion, "err", err)
 		return
 	}
 	b.mu.Lock()

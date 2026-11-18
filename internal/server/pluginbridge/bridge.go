@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"slices"
 	"sync"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
@@ -85,15 +86,15 @@ type Bridge struct {
 	// bound when each is started.
 	pushers map[string]identity
 	// refusals are why an enabled package was not started (its data is
-	// newer than its build), by package id, until it is started, stopped
-	// or removed.
+	// newer than its build, or its data marker could not be read), by
+	// package id, until it is started, stopped or removed.
 	refusals map[string]error
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
 	running bool
-	// coreVersion is this server's version as the handshake names it; it
-	// signs the data markers the server records.
-	coreVersion string
+	// markerRetry is how long a start waits to be tried again when the
+	// package's data marker could not be read.
+	markerRetry time.Duration
 }
 
 // identity is who a plugin's pushes come from, and the data its build
@@ -120,7 +121,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{}}
+	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{},
+		markerRetry: 30 * time.Second}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
@@ -151,7 +153,6 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if !coreVersionPattern.MatchString(core.Version) {
 		core.Version = devCoreVersion
 	}
-	b.coreVersion = core.Version
 	hostCfg.Core = func() extapi.CoreInfo { c := core; c.Offer = maps.Clone(core.Offer); return c }
 	hostCfg.State = stateHost{b}
 	hostCfg.OnState = b.onState
