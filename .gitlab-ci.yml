@@ -626,6 +626,11 @@ core-lint:
 
 core-plugin-sandbox:
   extends: .docker-core
+  # The L3 pool also contains pre-Landlock kernels. Keep this mandatory gate
+  # on the dedicated candidate; the strict tests verify its actual capability.
+  tags:
+    - gpuworks-l3
+    - gpuworks-plugin-sandbox
   # Keep the template's default seccomp profile and non-root Go identity.
   # Missing/blocked Landlock remains a failure, with raw probe diagnostics.
   allow_failure: false
