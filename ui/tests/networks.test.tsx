@@ -53,6 +53,7 @@ const userEvent = userEventModule.default ?? userEventModule;
 const { MemoryRouter, Route, Routes } = await import("react-router-dom");
 const apiModule = await import("../src/api.ts");
 const NetworksPage = (await import("../src/pages/networks/NetworksPage.tsx")).default;
+const NetworkTopologyGuide = (await import("../src/pages/networks/topology/NetworkTopologyGuide.tsx")).default;
 const { NetworkDetailRedirect } = await import("../src/pages/networks/networkLinks.tsx");
 const { default: NetworkDetailDrawer } = await import("../src/pages/networks/NetworkDetailDrawer.tsx");
 const { useParams: useRouteParams } = await import("react-router-dom");
@@ -97,6 +98,7 @@ function renderAt(path: string, element: React.ReactElement, pattern = path) {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path={pattern} element={<>{element}<Where /></>} />
+          <Route path="/networks/guide" element={<NetworkTopologyGuide />} />
           <Route path="/networks/:id" element={<div>detail route</div>} />
         </Routes>
       </MemoryRouter>
@@ -127,7 +129,12 @@ test("network list shows the empty state and the fallback note", async () => {
   renderAt("/networks", <NetworksPage />);
   await waitFor(() => assert.ok(screen.getByText(n.empty)));
   assert.ok(screen.getByText(n.fallbackNote));
-  assert.ok(screen.getByRole("group", { name: n.topology.diagram.simpleLabel }), "the page explains the topology");
+  assert.equal(screen.queryByRole("group", { name: n.topology.diagram.simpleLabel }), null);
+  await userEvent.click(screen.getByRole("link", { name: n.topology.guide }));
+  assert.ok(screen.getByRole("heading", { name: n.topology.guide }));
+  assert.ok(screen.getByRole("group", { name: n.topology.diagram.simpleLabel }));
+  await userEvent.click(screen.getByRole("link", { name: n.title }));
+  await waitFor(() => assert.ok(screen.getByText(n.empty)));
 });
 
 test("an empty ?network= opens no detail, while ?network=0 is the management network", async () => {

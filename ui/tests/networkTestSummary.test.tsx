@@ -79,3 +79,39 @@ test("a card test result names the label it ran on, and nothing else for other s
     view.unmount();
   }
 });
+
+test("mesh filters combine the two node names with any selected test statuses, and issues open their pairs", async () => {
+  const { fireEvent, within } = await import("@testing-library/react");
+  const testPair = (source: string, target: string, status: string) => ({
+    source_uuid: source, source_name: source, target_uuid: target, target_name: target,
+    status, reachable: status !== "failed", passed: status === "passed",
+    gbps: status === "failed" ? 0 : 180, avg_rail_gbps: status === "failed" ? undefined : 90, rtt_ms_p50: 0, rtt_ms_p99: 0,
+    ...(status === "failed" ? { code: "offline", side: "target" } : {}),
+    rails: status === "partial" ? [{ rail: "rail-a", gbps: 90 }, { rail: "rail-b", gbps: 0, code: "probe_failed" }] : [],
+  });
+  const pairs = [testPair("gpu-a", "gpu-b", "passed"), testPair("gpu-a", "gpu-c", "partial"), testPair("gpu-b", "gpu-c", "failed")];
+  const run = { ...detailFixture.latest_test, id: 10, kind: "rdma_tool", pattern: "mesh", bandwidth: true, pairs,
+    pair_count: 3, passed_count: 1, partial_count: 1, node_count: 3 };
+  renderIn(<NetworkTestResult network={detailFixture} run={run} onChanged={() => {}} />);
+  const matrix = () => screen.getByRole("table", { name: "Global matrix" });
+  const cells = () => within(matrix()).getAllByRole("button");
+  assert.equal(cells().length, 3);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Failed", exact: true }));
+  assert.equal(cells().length, 2);
+  fireEvent.click(screen.getByRole("checkbox", { name: "All passed" }));
+  assert.equal(cells().length, 1);
+  assert.equal(within(matrix()).getAllByRole("rowheader").length, 1);
+  assert.equal(within(matrix()).getAllByRole("columnheader").length, 2);
+  const target = screen.getByRole("searchbox", { name: "Filter target nodes" });
+  fireEvent.change(target, { target: { value: "GPU-C" } });
+  assert.match(cells()[0].getAttribute("aria-label") ?? "", /gpu-a → gpu-c: 90.0 Gb\/s · 1\/2 rails passed/);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Filter source nodes" }), { target: { value: "gpu-b" } });
+  assert.ok(screen.getByText("No matching pairs. Adjust the node names or status filters."));
+  fireEvent.click(screen.getByRole("tab", { name: /Issue summary.*2/ }));
+  const expand = await screen.findAllByRole("button", { name: /expand row/i });
+  fireEvent.click(expand[0]);
+  const failingPair = await screen.findByRole("button", { name: /gpu-a → gpu-c/ });
+  fireEvent.click(failingPair);
+  const details = await screen.findByRole("dialog");
+  assert.ok(within(details).getByText("rail-b"));
+});

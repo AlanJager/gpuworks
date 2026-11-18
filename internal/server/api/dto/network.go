@@ -306,6 +306,8 @@ type NetworkTestPair struct {
 	Code  string `json:"code,omitempty"`
 	Side  string `json:"side,omitempty"`
 	Error string `json:"error,omitempty"`
+	// AvgRailGbps is the mean of successful RDMA bandwidth readings.
+	AvgRailGbps float64 `json:"avg_rail_gbps,omitempty"`
 	// Rails are per-rail results of an rdma_tool test; Gbps is their sum.
 	Rails []NetworkTestRail `json:"rails,omitempty"`
 	// CardShape is how the two nodes' cards reach each other in a card run:

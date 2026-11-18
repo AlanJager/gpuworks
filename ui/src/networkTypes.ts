@@ -121,6 +121,8 @@ export interface NetworkTestPair {
   rtt_ms_p50: number;
   rtt_ms_p99: number;
   gbps: number;
+  /** Mean of measured passing rails for RDMA bandwidth tests. */
+  avg_rail_gbps?: number;
   /** Why the pair failed and which node it is about; runs stored before codes carry only error. */
   code?: string;
   side?: NetworkTestSide;

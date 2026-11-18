@@ -11,7 +11,8 @@ import type { Network, NetworkList } from "../../networkTypes";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import PageHeader from "../../components/PageHeader";
 import NetworkFormModal from "./NetworkFormModal";
-import NetworkTopologyGuide from "./topology/NetworkTopologyGuide";
+import { Button as GuideButton } from "../../components/ui/button";
+import { useIcon } from "../../lib/icon-context";
 import { RoleTags, SelectorSummary, TypeTag, WarningMark, networkName } from "./networkDisplay";
 
 export function AttachmentTags({ network }: { network: Network }) {
@@ -36,6 +37,7 @@ const NODE_STATUS_REPORT = "status";
 
 export default function NetworksPage() {
   const { t } = useTranslation("networks");
+  const GuideIcon = useIcon("doc-introduction");
   const detail = useDetailParam("network");
   // The list changes when a network or a node it resolves against does, so
   // it reads again on those events instead of on a timer. A node's routine
@@ -119,7 +121,14 @@ export default function NetworksPage() {
       <PageHeader
         title={t("title")}
         description={t("description")}
-        extra={<Button type="primary" onClick={() => { setEditing(null); setFormOpen(true); }}>{t("actions.create")}</Button>}
+        extra={
+          <>
+            <GuideButton asChild variant="secondary" leadingIcon={GuideIcon}>
+              <Link to="/networks/guide">{t("topology.guide")}</Link>
+            </GuideButton>
+            <Button type="primary" onClick={() => { setEditing(null); setFormOpen(true); }}>{t("actions.create")}</Button>
+          </>
+        }
       />
       <Card>
         <ResourceTable<Network>
@@ -135,9 +144,6 @@ export default function NetworksPage() {
         />
         <Alert style={{ marginTop: 16 }} type="info" showIcon message={t("fallbackNote")} />
       </Card>
-      <div style={{ marginTop: 16 }}>
-        <NetworkTopologyGuide />
-      </div>
       <NetworkFormModal
         open={formOpen}
         network={editing}

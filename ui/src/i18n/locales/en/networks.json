@@ -249,7 +249,22 @@
     },
     "pairCounts": "pairs {{passed}} passed / {{partial}} partial / {{failed}} failed",
     "railCounts": "HCAs {{passed}}/{{total}} passed",
-    "problems": "Problems",
+    "globalMatrix": "Global matrix",
+    "nodePairs": "Node pairs",
+    "noProblems": "No issues in this run.",
+    "matrixMean": "Bandwidth is the mean across passing rails. A partial result means some rails failed. Select a pair for its rail measurements.",
+    "meanBandwidth": "Mean bandwidth of passing rails",
+    "railsPassed": "{{passed}}/{{total}} rails passed",
+    "filterSource": "Filter source nodes",
+    "filterTarget": "Filter target nodes",
+    "filterStatus": {
+      "passed": "All passed",
+      "partial": "Partially passed",
+      "failed": "Failed"
+    },
+    "matchingPairs": "{{count}} matching pairs",
+    "noMatchingPairs": "No matching pairs. Adjust the node names or status filters.",
+    "problems": "Issue summary",
     "problemWhere": "Node / HCA",
     "problemPairs": "Affects",
     "problemWhy": "Reason",
@@ -433,6 +448,7 @@
     "hccs": "HCCS"
   },
   "topology": {
+    "guide": "Network guide",
     "title": "Network topology and settings",
     "description": "Two typical deployments: which network each kind of traffic takes, and where each setting is made and what it does. The numbers on the diagram match the table below; point at a number or a table row to highlight its lines.",
     "legend": {
@@ -489,7 +505,7 @@
       "hostAccess": "SSH / server dial"
     },
     "simple": {
-      "tab": "Simple",
+      "tab": "Simple topology example",
       "heading": "Simple: the management network carries everything, compute has its own",
       "summary": "The server has one listen address that operators, inference clients and nodes all reach. The management network carries serving and storage sync on its own; only multi-node inference needs a compute network.",
       "rows": {
@@ -514,7 +530,7 @@
       }
     },
     "complex": {
-      "tab": "Complex",
+      "tab": "Complex topology example",
       "heading": "Complex: a dedicated network per kind of traffic",
       "summary": "The console and management API listen on the office network and the inference API on the business network; the server and compute nodes share a dedicated management network, inference requests take a dedicated serving network, and nodes have dedicated storage sync and compute networks.",
       "rows": {

@@ -134,3 +134,22 @@ func TestNetworkTestRunNodeUUIDsOfUnreadableRows(t *testing.T) {
 		t.Fatalf("node_uuids = %#v", run.NodeUUIDs)
 	}
 }
+
+func TestNetworkTestPairAverageRailBandwidth(t *testing.T) {
+	for _, tc := range []struct {
+		kind, rails string
+		want        float64
+	}{
+		{"rdma_tool", `[{"gbps":80},{"gbps":100},{"code":"no_peer_rail"}]`, 90},
+		{"rdma_tool", `[{"error":"unavailable"}]`, 0},
+		{"rdma_tool", `[]`, 0},
+		{"tcp", `[]`, 0},
+		{"card_ping", `[{"reachable":true}]`, 0},
+	} {
+		run := &store.NetworkTestRun{Kind: tc.kind, Pairs: `[{"reachable":true,"gbps":180,"rails":` + tc.rails + `}]`}
+		pair := networkTestDTO(run, nil).Pairs[0]
+		if pair.AvgRailGbps != tc.want || pair.Gbps != 180 {
+			t.Errorf("%s %s: got mean %v and sum %v", tc.kind, tc.rails, pair.AvgRailGbps, pair.Gbps)
+		}
+	}
+}

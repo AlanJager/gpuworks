@@ -149,11 +149,13 @@ test("internal test tab shows the latest result as a pair matrix", async () => {
   assert.ok(pass);
   // The reason is in the problem summary, not only behind a hover.
   const why = "Connection failed: dial tcp 10.20.1.15:41000: i/o timeout";
+  assert.equal(fail.title, why);
+  await user.click(screen.getByRole("tab", { name: /Issue summary.*1/ }));
   assert.ok(screen.getByRole("cell", { name: why }));
-  fail.focus();
-  await waitFor(() => assert.ok(screen.getAllByRole("tooltip").some((tip) => tip.textContent === why)));
+  await user.click(screen.getByRole("tab", { name: n.test.globalMatrix }));
+  screen.getByLabelText("h20-07 → h20-05: Failed").focus();
   // Enter opens the pair.
-  fireEvent.keyDown(fail, { key: "Enter" });
+  await user.keyboard("{Enter}");
   const dialog = await modalDialog();
   assert.ok(within(dialog).getByText("h20-07 → h20-05"));
   assert.ok(within(dialog).getByText("10.20.1.15:41000"));
@@ -203,14 +205,14 @@ test("the test matrix sorts nodes by name and flags pairs far below the fastest 
   assert.deepEqual(headers.slice(1), ["alpha", "zeta"], "columns are sorted by node name");
   const slow = screen.getByLabelText("alpha → zeta: 0.9 Gb/s");
   slow.focus();
-  await waitFor(() => assert.ok(screen.getAllByRole("tooltip").some((tip) => tip.textContent?.includes(n.test.slow))));
+  assert.equal(slow.title, n.test.slow);
 });
 
 test("an RDMA bandwidth test names nodes without ib_write_bw and shows per-rail results", async () => {
   const bodies: unknown[] = [];
   const rdmaRun = {
     ...detailFixture.latest_test, kind: "rdma_tool", pair_count: 1, passed_count: 1, rail_count: 2, rail_passed_count: 2,
-    pairs: [{ source_uuid: "uuid-h5", source_name: "h20-05", target_uuid: "uuid-h7", target_name: "h20-07", target: "10.20.1.17", status: "passed", passed: true, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 715.2,
+    pairs: [{ source_uuid: "uuid-h5", source_name: "h20-05", target_uuid: "uuid-h7", target_name: "h20-07", target: "10.20.1.17", status: "passed", passed: true, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 715.2, avg_rail_gbps: 357.6,
       rails: [{ rail: "mlx5_0:1", target_rail: "mlx5_0:1", gbps: 358.7 }, { rail: "mlx5_1:1", target_rail: "mlx5_1:1", gbps: 356.5 }] }],
   };
   stub("network", async () => ({ ...detailFixture, latest_test: rdmaRun }));
@@ -225,7 +227,7 @@ test("an RDMA bandwidth test names nodes without ib_write_bw and shows per-rail 
   await user.click(screen.getAllByRole("button", { name: n.test.start })[0]);
   await waitFor(() => assert.equal(bodies.length, 1));
   assert.deepEqual(bodies[0], { kind: "rdma_tool", pattern: "mesh", scope: "all", bandwidth: true, seconds: 3 });
-  await user.click(screen.getByLabelText("h20-05 → h20-07: 715.2 Gb/s"));
+  await user.click(screen.getByLabelText("h20-05 → h20-07: 357.6 Gb/s"));
   const dialog = await modalDialog();
   assert.ok(within(dialog).getByText("356.5 Gb/s"));
   assert.equal(within(dialog).getAllByText("mlx5_1:1").length, 2, "source and target rail");
@@ -238,7 +240,7 @@ test("a partially failing RDMA run names the failing HCA and removes it", async 
   const rail = (name: string, src: string, dst: string, gbps: number) => ({ rail: name, source_ip: src, target_rail: name, target_ip: dst, gbps });
   const gidless = { rail: "rocep189s0f0:1", target_rail: "rocep189s0f0:1", gbps: 0, code: "no_roce_v2_gid", side: "target", error: "RoCE port has no IPv4 RoCE v2 GID" };
   const pair = (s: string, sn: string, t2: string, tn: string) => ({
-    source_uuid: s, source_name: sn, target_uuid: t2, target_name: tn, target: "100.64.29.210", status: "partial", passed: false, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 48.9,
+    source_uuid: s, source_name: sn, target_uuid: t2, target_name: tn, target: "100.64.29.210", status: "partial", passed: false, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 48.9, avg_rail_gbps: 24.45,
     rails: [rail("rocep61s0f0:1", "100.64.29.209", "100.64.29.210", 24.4), rail("rocep61s0f2:1", "100.64.29.213", "100.64.29.214", 24.5), gidless],
   });
   const run = { ...detailFixture.latest_test, kind: "rdma_tool", pattern: "ring", pair_count: 2, passed_count: 0, partial_count: 2, rail_count: 6, rail_passed_count: 4,
@@ -251,7 +253,8 @@ test("a partially failing RDMA run names the failing HCA and removes it", async 
   await waitFor(() => assert.ok(screen.getByText(/Ring · pairs 0 passed \/ 2 partial \/ 0 failed · HCAs 4\/6 passed/)));
   // A ring is listed pair by pair, not as a matrix.
   assert.ok(screen.getByRole("columnheader", { name: n.test.source }));
-  assert.ok(screen.getByLabelText("ascend-31 → ascend-32: 48.9 Gb/s · 2/3"));
+  assert.ok(screen.getByLabelText("ascend-31 → ascend-32: 24.4 Gb/s · 2/3 rails passed"));
+  await user.click(screen.getByRole("tab", { name: /Issue summary.*2/ }));
   const why = "This RoCE port on ascend-32 has no IPv4 address on its interface, so no RoCE v2 connection";
   const row = screen.getByRole("cell", { name: why }).closest("tr") as HTMLElement;
   assert.ok(within(row).getByText("rocep189s0f0:1"));

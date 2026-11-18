@@ -249,7 +249,22 @@
     },
     "pairCounts": "节点对 {{passed}} 通过 / {{partial}} 部分通过 / {{failed}} 失败",
     "railCounts": "HCA {{passed}}/{{total}} 通过",
-    "problems": "问题汇总",
+    "globalMatrix": "全局矩阵",
+    "nodePairs": "节点对",
+    "noProblems": "本次测试没有异常。",
+    "matrixMean": "带宽取通过链路的平均值。部分通表示仅部分链路通过，点击节点对可查看逐链路结果。",
+    "meanBandwidth": "通过链路平均带宽",
+    "railsPassed": "{{passed}}/{{total}} 条链路通过",
+    "filterSource": "筛选源节点名称",
+    "filterTarget": "筛选目标节点名称",
+    "filterStatus": {
+      "passed": "全通",
+      "partial": "部分通",
+      "failed": "失败"
+    },
+    "matchingPairs": "{{count}} 个匹配节点对",
+    "noMatchingPairs": "没有匹配的节点对，请调整名称或状态筛选。",
+    "problems": "异常汇总",
     "problemWhere": "节点 / HCA",
     "problemPairs": "影响",
     "problemWhy": "原因",
@@ -433,6 +448,7 @@
     "hccs": "HCCS"
   },
   "topology": {
+    "guide": "网络使用指南",
     "title": "网络拓扑与配置",
     "description": "两种典型部署下，各类流量走哪条网络、每项配置在哪里设置、起什么作用。图上的编号和下方表格一一对应，把鼠标移到编号或表格行上会高亮对应的线路。",
     "legend": {
@@ -489,7 +505,7 @@
       "hostAccess": "SSH 纳管 / server 拨号"
     },
     "simple": {
-      "tab": "简单拓扑",
+      "tab": "简单拓扑示例",
       "heading": "简单：管理网承载各类流量，参数网络独立",
       "summary": "server 只有一个监听地址，浏览器、推理客户端和节点都连它。服务和存储同步都由管理网自动承担，只需要为多机推理建一个参数网络。",
       "rows": {
@@ -514,7 +530,7 @@
       }
     },
     "complex": {
-      "tab": "复杂拓扑",
+      "tab": "复杂拓扑示例",
       "heading": "复杂：每类流量走专用网络",
       "summary": "控制台和管理 API 开在办公网上，推理 API 开在业务网上；server 与计算节点之间有专用管理网，推理请求走专用服务网络，计算节点之间有专用的存储同步网络和参数网络。",
       "rows": {
