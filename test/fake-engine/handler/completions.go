@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func registerCompletions(mux *http.ServeMux, opts Options, stats *engineStats, logf func(string, ...any)) {
+func registerCompletions(mux *http.ServeMux, opts Options, stats *engineStats, sleep *sleepState, logf func(string, ...any)) {
 	for _, path := range []string{"/v1/chat/completions", "/v1/completions"} {
 		chat := path == "/v1/chat/completions"
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -62,22 +62,29 @@ func registerCompletions(mux *http.ServeMux, opts Options, stats *engineStats, l
 			if model == "" {
 				model = request.Model
 			}
+			generation := opts
+			if !sleep.weightsAreValid() {
+				generation.ResponseText = "[synthetic corrupt output: discarded weights were not reloaded]"
+				if generation.ResponseText == opts.ResponseText {
+					generation.ResponseText += " (invalid weights)"
+				}
+			}
 			if request.Stream {
 				includeUsage := request.StreamOptions != nil && request.StreamOptions.IncludeUsage
-				if !streamCompletion(w, r, opts, chat, model, includeUsage) {
+				if !streamCompletion(w, r, generation, chat, model, includeUsage) {
 					return
 				}
 			} else {
 				answer := completionEnvelope(chat, false, model)
 				choice := map[string]any{"index": 0, "finish_reason": "stop", "logprobs": nil}
 				if chat {
-					message := map[string]string{"role": "assistant", "content": opts.ResponseText}
+					message := map[string]string{"role": "assistant", "content": generation.ResponseText}
 					if opts.ReasoningText != "" {
 						message["reasoning_content"] = opts.ReasoningText
 					}
 					choice["message"] = message
 				} else {
-					choice["text"] = opts.ResponseText
+					choice["text"] = generation.ResponseText
 				}
 				answer["choices"], answer["usage"] = []any{choice}, usage(opts)
 				writeJSON(w, answer)

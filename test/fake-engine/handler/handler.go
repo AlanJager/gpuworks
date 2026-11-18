@@ -200,7 +200,7 @@ func New(opts Options) *Engine {
 		}
 		writeJSON(w, map[string]any{"object": "list", "data": data})
 	})
-	registerCompletions(mux, opts, &stats, logf)
+	registerCompletions(mux, opts, &stats, sleep, logf)
 	mux.HandleFunc("/v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
 			return
