@@ -159,6 +159,14 @@ type Config struct {
 	// Reads answers the host API's reads of core facts; nil answers each
 	// of them as an unknown route.
 	Reads Reads
+	// ExtClock answers the host API's meta and clock correction, Ready
+	// ends a process's boot extension, OwnState reads back a plugin's own
+	// tables and Keys derives its keys. A nil one answers its endpoints as
+	// an unknown route; a nil Ready makes $/ready a no-op.
+	ExtClock ClockHost
+	Ready    ReadyHost
+	OwnState OwnState
+	Keys     KeyDeriver
 	// Log receives supervision events and the plugins' stderr.
 	Log *slog.Logger
 	// OnState is called after every change of a plugin's status, outside
@@ -212,6 +220,37 @@ type Reads interface {
 // extapi.MaxNodeIdentitySalt.
 func IdentityKey(id, salt string) []byte {
 	return []byte("pkg\x00" + id + "\x00" + salt)
+}
+
+// ClockHost serves the host API's clock from the clock pushed state's
+// timelines follow.
+type ClockHost interface {
+	// Clocks reads the wall clock, extclock and the stored high-water mark
+	// (zero before one is stored).
+	Clocks() (wall, ext, hwm time.Time)
+	// Correct moves extclock to to for owner, whose clock_authority role
+	// the host API has checked, records reason in the audit log, and
+	// returns extclock before and after. A refusal is an *Error.
+	Correct(ctx context.Context, owner Owner, to time.Time, reason string) (from, after time.Time, err error)
+}
+
+// ReadyHost hears a plugin process declare that it has finished starting
+// ($/ready); owner.Generation names the process.
+type ReadyHost interface {
+	Ready(owner Owner)
+}
+
+// OwnState reads back a plugin's own pushed tables, as the core holds them;
+// it never answers with another owner's.
+type OwnState interface {
+	OwnRows(owner Owner, kind string) (extapi.PushedState, error)
+}
+
+// KeyDeriver derives a plugin's keys from the server's master key, bound to
+// its package id and the label; the plugin never sees the master key. The
+// host API has checked the permission and the arguments' bounds.
+type KeyDeriver interface {
+	DeriveKey(owner Owner, label string, length int) ([]byte, error)
 }
 
 // Owner is the package a host API connection belongs to, as accepted at

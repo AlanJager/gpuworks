@@ -114,6 +114,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 		close(stderrDone)
 	}()
 	hc := newHostConn(spec, h.cfg.State, h.cfg.Reads, h.log)
+	hc.svc = h.svc
 	go (&http2.Server{MaxConcurrentStreams: hostStreams}).ServeConn(proc.Host(), &http2.ServeConnOpts{Handler: hc})
 	conn, connErr := newPluginConn(proc.Serve(), spec.MaxConcurrency, h.timing.CallTimeout)
 	defer func() {

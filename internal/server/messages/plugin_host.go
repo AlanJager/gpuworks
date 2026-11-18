@@ -36,8 +36,8 @@ const (
 	ErrorPluginHandshakeMismatch = "PLUGIN_HANDSHAKE_MISMATCH"
 	// ErrorPluginCapabilityNotOffered: the plugin cannot use a capability
 	// version ({capability}@{version}): it chose one this server did not
-	// offer or the package was not approved for, or it calls a read whose
-	// capability it did not negotiate at its handshake.
+	// offer or the package was not approved for, or it calls a host API
+	// endpoint whose capability it did not negotiate at its handshake.
 	ErrorPluginCapabilityNotOffered = "PLUGIN_CAPABILITY_NOT_OFFERED"
 	// ErrorPluginCrashed: the plugin process exited unexpectedly with
 	// {exit_code}; it is restarted after a backoff.
@@ -72,13 +72,15 @@ const (
 	// Install time only: a refused install also names the {permission} or
 	// {feature}; a refused push carries {id} alone.
 	ErrorPluginStateOnDemand = "PLUGIN_STATE_ON_DEMAND"
-	// ErrorPluginHostNotPermitted: plugin {id} called a host API read
+	// ErrorPluginHostNotPermitted: plugin {id} called a host API endpoint
 	// whose {permission} its administrator did not approve.
 	ErrorPluginHostNotPermitted = "PLUGIN_HOST_NOT_PERMITTED"
 	// ErrorPluginHostArgumentInvalid: a host API request from plugin {id}
-	// names an invalid {field} (a node batch, a salt, a cursor or a page
-	// limit out of bounds).
+	// names an invalid {field} (a value out of its bounds or grammar).
 	ErrorPluginHostArgumentInvalid = "PLUGIN_HOST_ARGUMENT_INVALID"
+	// ErrorPluginRoleRequired: plugin {id} called a host API endpoint that
+	// only a package granted the privileged {role} may call.
+	ErrorPluginRoleRequired = "PLUGIN_ROLE_REQUIRED"
 )
 
 // PluginHostErrorCodes lists the codes above, for the check that the
@@ -91,5 +93,6 @@ func PluginHostErrorCodes() []string {
 		ErrorPluginMemoryExceeded,
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,
 		ErrorPluginStateOnDemand, ErrorPluginHostNotPermitted, ErrorPluginHostArgumentInvalid,
+		ErrorPluginRoleRequired,
 	}
 }
