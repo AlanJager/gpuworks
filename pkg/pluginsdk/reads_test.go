@@ -17,7 +17,8 @@ import (
 func startReader(t *testing.T, perms ...string) (*plugintest.Harness, *pluginsdk.Plugin) {
 	t.Helper()
 	cfg := baseConfig()
-	cfg.Uses = map[string]extapi.Range{extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1}}
+	cfg.Uses = map[string]extapi.Range{extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1},
+		extapi.CapHostHostIdentity: {Min: 1, Max: 1}}
 	ready := make(chan *pluginsdk.Plugin, 1)
 	cfg.Start = func(_ context.Context, p *pluginsdk.Plugin) error { ready <- p; return nil }
 	h := plugintest.Start(t, cfg)
@@ -112,5 +113,34 @@ func TestPluginReadsRefusals(t *testing.T) {
 	}
 	if _, err := (<-ready).Nodes(ctx, extapi.NodesQuery{}); !errors.Is(err, pluginsdk.ErrNotNegotiated) {
 		t.Fatalf("read without the capability = %v", err)
+	}
+}
+
+// A plugin reads the server's host identity; the harness answers with the
+// canned one, and the empty answer is a server that could read nothing.
+// Without the permission the server's refusal reaches the plugin, and a
+// salt out of bounds is the plugin's argument error.
+func TestPluginReadsHostIdentity(t *testing.T) {
+	h, p := startReader(t, "read:host_identity")
+	ctx := context.Background()
+	ans, err := p.HostIdentity(ctx, "acme-2026")
+	if err != nil || *ans != (extapi.HostIdentityAnswer{}) {
+		t.Fatalf("nothing known = %+v, %v", ans, err)
+	}
+	h.SetHostIdentity(extapi.HostIdentityAnswer{SystemUUID: &extapi.IdentityPart{H: "5f0c8e2a9d413b77", Tail: "3432"},
+		MachineID: &extapi.IdentityPart{H: "03b5d7f91a2c4e68", Tail: "cdef"}})
+	ans, err = p.HostIdentity(ctx, "acme-2026")
+	if err != nil || ans.SystemUUID.Tail != "3432" || ans.MachineID.H != "03b5d7f91a2c4e68" || ans.BoardSerial != nil {
+		t.Fatalf("host identity = %+v, %v", ans, err)
+	}
+	_, err = p.HostIdentity(ctx, "")
+	if e := wireErr(t, err); e.Status != 400 || e.Wire.Code != "PLUGIN_HOST_ARGUMENT_INVALID" || e.Wire.Params["field"] != "salt" {
+		t.Fatalf("empty salt = %+v", e)
+	}
+
+	_, other := startReader(t, "read:node_identity")
+	_, err = other.HostIdentity(ctx, "s")
+	if e := wireErr(t, err); e.Status != 403 || e.Wire.Params["permission"] != "read:host_identity" {
+		t.Fatalf("host identity without permission = %+v", e)
 	}
 }

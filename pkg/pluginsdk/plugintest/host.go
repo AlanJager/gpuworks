@@ -41,6 +41,7 @@ type fakeHost struct {
 	// calls is what the clock, ready, own-state and key calls see and
 	// keep.
 	calls hostCalls
+	hostIdentity extapi.HostIdentityAnswer
 }
 
 func newFakeHost() *fakeHost {
@@ -93,6 +94,12 @@ func (h *fakeHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.inventory(w, r)
+	case r.URL.Path == extapi.PathHostHostIdentity:
+		if r.Method != http.MethodPost {
+			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
+			return
+		}
+		h.readHostIdentity(w, r)
 	default:
 		writeRefusal(w, routeUnknown(r, extapi.ReasonNotFound))
 	}

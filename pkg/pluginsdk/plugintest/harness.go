@@ -84,14 +84,14 @@ func Start(t testing.TB, cfg pluginsdk.Config) *Harness {
 
 // Request is a valid initialize request for cfg's package: this server's
 // offer of every table kind at every schema extapi defines plus routes@1
-// and node reads, clock, own-state and derived-key calls. It offers the
+// and node/host identity reads, clock, own-state and derived-key calls. It offers the
 // tables the fake host currently holds, but grants no permission or role;
 // tests set Plugin.PermissionsGranted or Plugin.RolesGranted as an
 // administrator's approval or a certificate does.
 func (h *Harness) Request() *extapi.HandshakeRequest {
 	offer := map[string]extapi.Range{extapi.CapRoutes: {Min: 1, Max: 1},
 		extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1},
-		extapi.CapHostClock: {Min: 1, Max: 1}, extapi.CapHostStateRead: {Min: 1, Max: 1}, extapi.CapHostDeriveKey: {Min: 1, Max: 1}}
+		extapi.CapHostHostIdentity: {Min: 1, Max: 1}, extapi.CapHostClock: {Min: 1, Max: 1}, extapi.CapHostStateRead: {Min: 1, Max: 1}, extapi.CapHostDeriveKey: {Min: 1, Max: 1}}
 	for _, kind := range extapi.TableKinds() {
 		s := extapi.TableSchemas(kind)
 		offer[extapi.TableCapability(kind)] = extapi.Range{Min: s[0], Max: s[len(s)-1]}

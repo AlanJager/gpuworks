@@ -126,6 +126,12 @@ func (h *hostConn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.nodes(w, r)
+	case r.URL.Path == extapi.PathHostHostIdentity:
+		if r.Method != http.MethodPost {
+			writeWire(w, methodNotServed(r))
+			return
+		}
+		h.hostIdentity(w, r)
 	default:
 		writeWire(w, Refuse(extapi.ReasonNotFound, messages.ErrorPluginHostRouteUnknown, "the host API has no such endpoint",
 			map[string]any{"method": r.Method, "path": r.URL.Path}))

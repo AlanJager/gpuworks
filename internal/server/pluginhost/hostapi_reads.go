@@ -14,6 +14,7 @@ import (
 const (
 	permNodeIdentity  = "read:node_identity"
 	permNodeInventory = "read:node_inventory"
+	permHostIdentity  = "read:host_identity"
 )
 
 // readOwner settles who calls a read and whether it may: the handshake was
@@ -64,17 +65,8 @@ func (h *hostConn) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 	if owner == nil {
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(r.Body, extapi.MaxNodeIdentityRequestBytes+1))
-	if err != nil {
-		writeWire(w, Refuse(extapi.ReasonCancelled, messages.ErrorPluginHostFailed, "reading the request failed",
-			map[string]any{"detail": err.Error()}))
-		return
-	}
-	if len(raw) > extapi.MaxNodeIdentityRequestBytes {
-		e := Refuse(extapi.ReasonInvalidArgument, messages.ErrorRequestTooLarge, "the request is larger than the server reads",
-			map[string]any{"max_bytes": extapi.MaxNodeIdentityRequestBytes})
-		e.Status = http.StatusRequestEntityTooLarge
-		writeWire(w, e)
+	raw, ok := readBody(w, r, extapi.MaxNodeIdentityRequestBytes)
+	if !ok {
 		return
 	}
 	req, err := extapi.DecodeNodeIdentityRequest(raw)
@@ -91,6 +83,50 @@ func (h *hostConn) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 		nodes = []extapi.NodeIdentity{}
 	}
 	h.answer(w, &extapi.NodeIdentityAnswer{Nodes: nodes})
+}
+
+// readBody reads a read's request body of at most max bytes; a longer one
+// is refused as too large before it is decoded.
+func readBody(w http.ResponseWriter, r *http.Request, max int) ([]byte, bool) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, int64(max)+1))
+	if err != nil {
+		writeWire(w, Refuse(extapi.ReasonCancelled, messages.ErrorPluginHostFailed, "reading the request failed",
+			map[string]any{"detail": err.Error()}))
+		return nil, false
+	}
+	if len(raw) > max {
+		e := Refuse(extapi.ReasonInvalidArgument, messages.ErrorRequestTooLarge, "the request is larger than the server reads",
+			map[string]any{"max": max})
+		e.Status = http.StatusRequestEntityTooLarge
+		writeWire(w, e)
+		return nil, false
+	}
+	return raw, true
+}
+
+// hostIdentity answers POST /host/v1/host-identity with the salted
+// identity of the server's machine, keyed with the salt bound to the
+// package as the node identity is.
+func (h *hostConn) hostIdentity(w http.ResponseWriter, r *http.Request) {
+	owner := h.readOwner(w, r, permHostIdentity, extapi.CapHostHostIdentity)
+	if owner == nil {
+		return
+	}
+	raw, ok := readBody(w, r, extapi.MaxHostIdentityRequestBytes)
+	if !ok {
+		return
+	}
+	req, err := extapi.DecodeHostIdentityRequest(raw)
+	if err != nil {
+		writeWire(w, argumentInvalid(owner, err))
+		return
+	}
+	ans, err := h.reads.HostIdentity(r.Context(), IdentityKey(owner.ID, req.Salt))
+	if err != nil {
+		writeWire(w, wireRefusal(err))
+		return
+	}
+	h.answer(w, &ans)
 }
 
 // nodes answers GET /host/v1/nodes with one page of the inventory. Pages

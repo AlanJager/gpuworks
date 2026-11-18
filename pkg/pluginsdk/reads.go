@@ -55,6 +55,28 @@ func (p *Plugin) Nodes(ctx context.Context, q extapi.NodesQuery) (*extapi.NodesP
 	return extapi.DecodeNodesPage(raw)
 }
 
+// HostIdentity reads the salted identity of the machine the management
+// server runs on: its system UUID (equal, under one salt, to the host of
+// each node on that machine), board serial, machine id and root file
+// system UUID, each absent when the server could not read it. The salt is
+// bound to this package as for NodeIdentity. It needs the
+// read:host_identity permission and the host.host_identity capability. A
+// refusal by the server is an *Error.
+func (p *Plugin) HostIdentity(ctx context.Context, salt string) (*extapi.HostIdentityAnswer, error) {
+	if err := p.canRead(extapi.CapHostHostIdentity); err != nil {
+		return nil, err
+	}
+	body, err := extapi.Marshal(extapi.HostIdentityRequest{Salt: salt})
+	if err != nil {
+		return nil, err
+	}
+	raw, err := p.hostCall(ctx, http.MethodPost, extapi.PathHostHostIdentity, body)
+	if err != nil {
+		return nil, err
+	}
+	return extapi.DecodeHostIdentityAnswer(raw)
+}
+
 func (p *Plugin) canRead(capability string) error {
 	if !p.ready.Load() {
 		return errors.New("pluginsdk: read before initialize")

@@ -4,6 +4,8 @@ import (
 	"context"
 	"unicode/utf8"
 
+	"gpuworks.ai/gpuworks/internal/hwident"
+	"gpuworks.ai/gpuworks/internal/server/hostidentity"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -12,10 +14,17 @@ import (
 // pluginReads answers the plugin host API's node reads from the store's
 // pinned reads (store.NodeIdentity, store.NodeInventory): each call is the
 // store's two indexed queries for at most 500 nodes, never a fleet scan.
-type pluginReads struct{ st *store.Store }
+// The host identity is the server's own facts, read once per process.
+type pluginReads struct {
+	st   *store.Store
+	host func() hostidentity.Facts
+}
 
-// PluginReads is the plugin host's reads of core facts, served by st.
-func PluginReads(st *store.Store) pluginhost.Reads { return pluginReads{st} }
+// PluginReads is the plugin host's reads of core facts, served by st and
+// this machine's host identity (hostidentity.Local).
+func PluginReads(st *store.Store) pluginhost.Reads {
+	return pluginReads{st: st, host: hostidentity.Local}
+}
 
 func (r pluginReads) NodeIdentity(ctx context.Context, ids []uint64, key []byte) ([]extapi.NodeIdentity, error) {
 	nodeIDs := make([]uint, len(ids))
@@ -30,9 +39,7 @@ func (r pluginReads) NodeIdentity(ctx context.Context, ids []uint64, key []byte)
 	for i, row := range rows {
 		n := extapi.NodeIdentity{NodeID: uint64(row.NodeID), CardsWithoutSerial: row.CardsWithoutSerial,
 			Cards: make([]extapi.IdentityPart, len(row.Cards))}
-		if row.Host.Known() {
-			n.Host = &extapi.IdentityPart{H: row.Host.H, Tail: row.Host.Tail}
-		}
+		n.Host = wirePart(row.Host)
 		for j, c := range row.Cards {
 			n.Cards[j] = extapi.IdentityPart{H: c.H, Tail: c.Tail}
 		}
@@ -59,6 +66,20 @@ func (r pluginReads) NodeInventory(ctx context.Context, cursor uint64, limit int
 		out[i] = node
 	}
 	return out, uint64(page.Next), nil
+}
+
+func (r pluginReads) HostIdentity(_ context.Context, key []byte) (extapi.HostIdentityAnswer, error) {
+	s := r.host().Salted(key)
+	return extapi.HostIdentityAnswer{SystemUUID: wirePart(s.SystemUUID), BoardSerial: wirePart(s.BoardSerial),
+		MachineID: wirePart(s.MachineID), RootFSUUID: wirePart(s.RootFSUUID)}, nil
+}
+
+// wirePart is a known part on the wire, nil for an unknown one.
+func wirePart(p hwident.IdentityPart) *extapi.IdentityPart {
+	if !p.Known() {
+		return nil
+	}
+	return &extapi.IdentityPart{H: p.H, Tail: p.Tail}
 }
 
 // clipText cuts s to at most n bytes at a rune boundary, so a long name

@@ -20,6 +20,7 @@ const (
 	codeRequestTooLarge       = "REQUEST_TOO_LARGE"
 	permNodeIdentity          = "read:node_identity"
 	permNodeInventory         = "read:node_inventory"
+	permHostIdentity          = "read:host_identity"
 	defaultInventoryPageLimit = extapi.MaxNodeRead
 )
 
@@ -42,6 +43,15 @@ func (h *Harness) SetNodeIdentities(ids ...extapi.NodeIdentity) {
 	for _, id := range ids {
 		h.host.identities[id.NodeID] = id
 	}
+}
+
+// SetHostIdentity sets the canned answer of host-identity requests. Unlike
+// the server the fake host ignores the salt. The zero answer, {}, is a
+// server that could read nothing of its machine.
+func (h *Harness) SetHostIdentity(a extapi.HostIdentityAnswer) {
+	h.host.mu.Lock()
+	defer h.host.mu.Unlock()
+	h.host.hostIdentity = a
 }
 
 // readCaller checks a read the way the server does: the permission granted
@@ -82,15 +92,8 @@ func (h *fakeHost) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(r.Body, extapi.MaxNodeIdentityRequestBytes+1))
-	if err != nil {
-		writeRefusal(w, *wireOf(err, extapi.ReasonInvalidArgument))
-		return
-	}
-	if len(raw) > extapi.MaxNodeIdentityRequestBytes {
-		writeJSON(w, http.StatusRequestEntityTooLarge, extapi.WireError{Code: codeRequestTooLarge,
-			Message: "the request is larger than the server reads",
-			Params:  extapi.Params{"max_bytes": extapi.MaxNodeIdentityRequestBytes}, Reason: extapi.ReasonInvalidArgument})
+	raw, ok := readBody(w, r, extapi.MaxNodeIdentityRequestBytes)
+	if !ok {
 		return
 	}
 	req, err := extapi.DecodeNodeIdentityRequest(raw)
@@ -107,6 +110,42 @@ func (h *fakeHost) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mu.Unlock()
 	writeJSON(w, http.StatusOK, out)
+}
+
+// readBody reads a request body of at most max bytes, refusing a longer
+// one as too large as the server does.
+func readBody(w http.ResponseWriter, r *http.Request, max int) ([]byte, bool) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, int64(max)+1))
+	if err != nil {
+		writeRefusal(w, *wireOf(err, extapi.ReasonInvalidArgument))
+		return nil, false
+	}
+	if len(raw) > max {
+		writeJSON(w, http.StatusRequestEntityTooLarge, extapi.WireError{Code: codeRequestTooLarge,
+			Message: "the request is larger than the server reads",
+			Params:  extapi.Params{"max": max}, Reason: extapi.ReasonInvalidArgument})
+		return nil, false
+	}
+	return raw, true
+}
+
+func (h *fakeHost) readHostIdentity(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.readCaller(w, permHostIdentity, extapi.CapHostHostIdentity)
+	if !ok {
+		return
+	}
+	raw, ok := readBody(w, r, extapi.MaxHostIdentityRequestBytes)
+	if !ok {
+		return
+	}
+	if _, err := extapi.DecodeHostIdentityRequest(raw); err != nil {
+		writeRefusal(w, argumentRefusal(id, err))
+		return
+	}
+	h.mu.Lock()
+	a := h.hostIdentity
+	h.mu.Unlock()
+	writeJSON(w, http.StatusOK, a)
 }
 
 func (h *fakeHost) inventory(w http.ResponseWriter, r *http.Request) {
