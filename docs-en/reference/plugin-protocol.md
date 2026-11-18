@@ -294,6 +294,8 @@ Under ADR 0071, a plugin is a child process of the server and runs plaintext HTT
 | `GET /host/v1/health` | Host health | The plugin probes the host API; the answer is a health object |
 | Request header `Gwx-Deadline-Ms` | Unix milliseconds | The call's deadline |
 | Response header `Gwx-Product-Error` | — | Marks a plugin route's response body as an error object |
+| `/r/<path>` | Route | A request to one of the plugin's routes ([route requests](#route-requests-and-the-principal)) |
+| Request headers `Gwx-Principal`, `Gwx-Principal-Mac`, `Gwx-Feature-Access` | — | Who calls a route, and the access of its features |
 
 The handshake request:
 
@@ -319,6 +321,51 @@ The plugin's answer:
 ```
 
 `protocol` is the major the plugin chose from the server's range (only 1 today); `manifest_sha256` is the digest of the manifest the plugin was built with, by which the server refuses a binary that does not belong to its package; `use` maps each capability the plugin will use to the version it chose, which must lie within the server's `offer`; `services` are the optional services the plugin serves, sorted.
+
+## Route requests and the principal
+
+A plugin's routes live at `/api/v1/x/<id><pattern>`. Once the server has authenticated, matched and checked a request, it forwards it to `/r<path>` on the serve connection (for example `/api/v1/x/acme_backup/jobs` to `/r/jobs`). Before forwarding it strips any `Gwx-*` header the client sent, then sets three headers that tell the plugin who is calling and which route the server matched:
+
+| Header | Content |
+|---|---|
+| `Gwx-Principal` | The principal: canonical JSON, base64url-encoded without padding |
+| `Gwx-Principal-Mac` | `base64url(HMAC-SHA256(principal_key, <Gwx-Principal value> + "\n" + <Gwx-Feature-Access value>))`, without padding; the feature access is signed together with the principal |
+| `Gwx-Feature-Access` | The current access level of each feature the matched route declares; an ungated route sends an empty value |
+
+`principal_key` is the key the handshake request generates fresh for each spawn, so after a plugin restarts, headers signed for the previous spawn no longer verify. The server does not offer the `routes` capability or forward routes yet; this section freezes the format and the plugin-side check.
+
+The principal:
+
+<!-- golden: principal/v1/valid/admin_session.json -->
+```json
+{"exp":"2026-12-01T00:01:05Z","kind":"session","local_admin":true,"platform_admin":true,"request_id":"gw-01/9f2c4e7a-000042","roles":["admin"],"route":"/reports/{period}","route_action":"acme_reports.read","user_id":1,"username":"admin"}
+```
+
+| Field | Rule |
+|---|---|
+| `kind` | `session` (a console login session), `token` (a platform token, on behalf of its user) or `public` (a `public` route, no user) |
+| `user_id` / `username` | The user; absent for `public`, required otherwise |
+| `platform_admin` | The user is a platform administrator |
+| `local_admin` | The break-glass local administrator; can be true only for a platform administrator signed in with a session |
+| `roles` | The user's roles, sorted, at least one; currently the single core role |
+| `scope_projects` | Optional: the projects the user's readable data is limited to, sorted; empty means no limit |
+| `api_key_id` | The platform token's id; required when `kind` is `token`, absent otherwise |
+| `request_id` | The server's request id, for correlating logs, at most 128 bytes |
+| `route_action` | The `action` of the route the server matched (`<package id>.<verb>`) |
+| `route` | The manifest `pattern` of the route the server matched |
+| `exp` | The expiry: the route's `timeout_s` (default 60) plus 5 seconds, rounded up to the second; a stream route's `timeout_s` bounds its first byte, and the same rule applies |
+
+The `Gwx-Feature-Access` grammar is `<feature key>=<level>` entries joined by `,`, sorted by key, without spaces, where the level is `full`, `read_only` or `locked` (a route of a `hidden` feature answers 404 and never reaches the plugin). It lists only the keys the route declares, and has exactly one spelling.
+
+Signing the principal above with the handshake golden file's `principal_key` (bytes 0 to 31) and `Gwx-Feature-Access` set to `acme.reports=read_only` gives these three headers (the vectors under `principal/v1/signed/` are frozen with the golden files):
+
+```text
+Gwx-Feature-Access: acme.reports=read_only
+Gwx-Principal: eyJleHAiOiIyMDI2LTEyLTAxVDAwOjAxOjA1WiIsImtpbmQiOiJzZXNzaW9uIiwibG9jYWxfYWRtaW4iOnRydWUsInBsYXRmb3JtX2FkbWluIjp0cnVlLCJyZXF1ZXN0X2lkIjoiZ3ctMDEvOWYyYzRlN2EtMDAwMDQyIiwicm9sZXMiOlsiYWRtaW4iXSwicm91dGUiOiIvcmVwb3J0cy97cGVyaW9kfSIsInJvdXRlX2FjdGlvbiI6ImFjbWVfcmVwb3J0cy5yZWFkIiwidXNlcl9pZCI6MSwidXNlcm5hbWUiOiJhZG1pbiJ9
+Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
+```
+
+`extapi.VerifyPrincipal(key, principal, MAC, feature access, now)` compares the MAC in constant time first and decodes only after it matches: strictly, requiring canonical JSON and refusing unknown fields, then checking the rules above. It refuses an `exp` before `now`, or later than `now` plus the longest route timeout (600 + 5 seconds). A missing header, a MAC mismatch and an expired principal are `ErrPrincipalMissing`, `ErrPrincipalMAC` and `ErrPrincipalExpired` (one too far ahead is `ErrPrincipalTooLong`); a malformed one is a coded `*extapi.Error`.
 
 ## Health and errors
 
@@ -493,8 +540,9 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 - every file under `valid/` decodes, validates and re-encodes to the same bytes;
 - every file under `invalid/<CODE>/` fails with exactly that code; a name `<field>--<rule>[--note].json` also gives the failing field and rule, and `_root` means the object itself;
+- `principal/v1/signed/<name>.txt` holds the three headers `valid/<name>.json` signs to under the key of bytes 0 to 31, and `SignPrincipal` must give the same values byte for byte;
 - `testdata/golden/SHA256SUMS` may only grow: a released golden file is never edited or removed, which `make check-architecture` enforces against its baseline; a new version of an object gets its own `v2/` directory.
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 18979a57d633eea9bb6c79e587b91f59dd524723ebc21e613eedfe2ecc72d077 -->
+<!-- translation-source-sha256: c1af06abcbf5ea6fdbbdbccaf83dad7328d98b397c2ab83ea0b41aa97d038a2a -->

@@ -294,6 +294,8 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `GET /host/v1/health` | 宿主健康 | 插件探测宿主接口，应答是健康对象 |
 | 请求头 `Gwx-Deadline-Ms` | Unix 毫秒 | 调用的截止时间 |
 | 响应头 `Gwx-Product-Error` | — | 标明插件路由的响应体是一个错误对象 |
+| `/r/<路径>` | 路由 | 对插件某条路由的请求（[路由请求](#路由请求与主体)） |
+| 请求头 `Gwx-Principal`、`Gwx-Principal-Mac`、`Gwx-Feature-Access` | — | 谁在调用路由，以及路由所声明特性的访问级别 |
 
 握手请求：
 
@@ -319,6 +321,51 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 ```
 
 `protocol` 是插件从 server 的范围里选的主版本（目前只能是 1）；`manifest_sha256` 是插件构建时所带清单的摘要，server 据此拒绝不属于该包的可执行文件；`use` 是每种要用的能力 → 选定的版本，必须落在 server 的 `offer` 里；`services` 是插件提供的可选服务，已排序。
+
+## 路由请求与主体
+
+插件的路由挂在 `/api/v1/x/<id><pattern>`；server 认证、匹配并检查完请求后，把它转发到 serve 连接上的 `/r<路径>`（例如 `/api/v1/x/acme_backup/jobs` 到 `/r/jobs`）。转发前先剥掉客户端发来的 `Gwx-*` 请求头，再设三个请求头，插件据此知道是谁在调用、server 匹配的是哪条路由：
+
+| 请求头 | 内容 |
+|---|---|
+| `Gwx-Principal` | 主体：规范 JSON，用不带填充的 base64url 编码 |
+| `Gwx-Principal-Mac` | `base64url(HMAC-SHA256(principal_key, <Gwx-Principal 的值> + "\n" + <Gwx-Feature-Access 的值>))`，不带填充；特性访问级别与主体一起被签名 |
+| `Gwx-Feature-Access` | 所匹配路由声明的每个特性此刻的访问级别；不受特性限制的路由发空值 |
+
+`principal_key` 是握手请求里每次拉起新生成的密钥，所以插件重启后，上一次拉起时签的请求头不再通过校验。当前 server 还不提供 `routes` 能力，也不转发路由；本节冻结的是格式与插件一侧的校验。
+
+主体：
+
+<!-- golden: principal/v1/valid/admin_session.json -->
+```json
+{"exp":"2026-12-01T00:01:05Z","kind":"session","local_admin":true,"platform_admin":true,"request_id":"gw-01/9f2c4e7a-000042","roles":["admin"],"route":"/reports/{period}","route_action":"acme_reports.read","user_id":1,"username":"admin"}
+```
+
+| 字段 | 规则 |
+|---|---|
+| `kind` | `session`（控制台登录会话）、`token`（平台令牌，代表其用户）或 `public`（`public` 路由，没有用户） |
+| `user_id` / `username` | 用户；`public` 不带，其余必填 |
+| `platform_admin` | 用户是平台管理员 |
+| `local_admin` | 应急本地管理员；只有以会话登录的平台管理员才可能为真 |
+| `roles` | 用户的角色，已排序，至少一个；当前只有核心角色一个 |
+| `scope_projects` | 可选：用户能读的数据所限的项目，已排序；为空表示不限 |
+| `api_key_id` | 平台令牌的 id；`kind` 为 `token` 时必填，其余不带 |
+| `request_id` | server 的请求 id，用来关联日志，至多 128 字节 |
+| `route_action` | server 匹配到的路由的 `action`（`<包 id>.<动词>`） |
+| `route` | server 匹配到的路由在清单里的 `pattern` |
+| `exp` | 过期时间：路由的 `timeout_s`（默认 60）加 5 秒，向上取整到秒；流式路由的 `timeout_s` 限定的是首字节，规则相同 |
+
+`Gwx-Feature-Access` 的文法是 `<特性键>=<级别>` 用 `,` 连接、按键排序、不含空格，级别为 `full`、`read_only` 或 `locked`（`hidden` 的特性的路由回 404，不会到达插件）；只列路由声明的键，只有这一种写法。
+
+以握手黄金文件里的 `principal_key`（字节 0 到 31）签上面的主体、`Gwx-Feature-Access` 为 `acme.reports=read_only` 时，三个请求头是（`principal/v1/signed/` 下的向量与黄金文件一同冻结）：
+
+```text
+Gwx-Feature-Access: acme.reports=read_only
+Gwx-Principal: eyJleHAiOiIyMDI2LTEyLTAxVDAwOjAxOjA1WiIsImtpbmQiOiJzZXNzaW9uIiwibG9jYWxfYWRtaW4iOnRydWUsInBsYXRmb3JtX2FkbWluIjp0cnVlLCJyZXF1ZXN0X2lkIjoiZ3ctMDEvOWYyYzRlN2EtMDAwMDQyIiwicm9sZXMiOlsiYWRtaW4iXSwicm91dGUiOiIvcmVwb3J0cy97cGVyaW9kfSIsInJvdXRlX2FjdGlvbiI6ImFjbWVfcmVwb3J0cy5yZWFkIiwidXNlcl9pZCI6MSwidXNlcm5hbWUiOiJhZG1pbiJ9
+Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
+```
+
+`extapi.VerifyPrincipal(key, 主体, MAC, 特性访问, now)` 先以常数时间比较 MAC，通过后才解码：严格解码，要求规范 JSON、拒绝未知字段，再校验上表的规则；`exp` 早于 `now`，或晚于 `now` 加最长路由超时（600 + 5 秒）时拒绝。缺请求头、MAC 不符、过期分别是 `ErrPrincipalMissing`、`ErrPrincipalMAC`、`ErrPrincipalExpired`（过远是 `ErrPrincipalTooLong`），格式错误是带码的 `*extapi.Error`。
 
 ## 健康与错误
 
@@ -493,6 +540,7 @@ server 存储并转交给同一发布者其他包的不透明声明，server 从
 
 - `valid/` 下的每个文件都能解码、通过校验，并重新编码成相同的字节；
 - `invalid/<码>/` 下的每个文件都恰好以该码失败；文件名 `<字段>--<规则>[--说明].json` 同时给出失败的字段与规则，`_root` 表示对象本身；
+- `principal/v1/signed/<名字>.txt` 是 `valid/<名字>.json` 在字节 0 到 31 这把密钥下签出的三个请求头，`SignPrincipal` 必须逐字节给出同样的值；
 - `testdata/golden/SHA256SUMS` 只能追加：已发布的黄金文件永不修改或删除，`make check-architecture` 与基线比对强制这一点；对象的新版本放进自己的 `v2/` 目录。
 
 在仓库根目录用 `make test-extapi` 跑这个模块的格式检查、vet 与测试，`make test` 包含它。
