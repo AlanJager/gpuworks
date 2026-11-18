@@ -40,7 +40,7 @@ func main() {
 - `Extensions.Modules` 交给 `serve`；`migrate`、`reset-password`、`support-bundle` 与追加子命令打开数据库时也带上模块的迁移（追加子命令用 `cli.Env.OpenMaintenanceStore`）。
 - `Extensions.UI` 替换内嵌的社区版控制台，布局与 `internal/server/webui/dist` 相同；为空时服务内嵌构建。
 - `Distribution` 是该构建自己的发布通道：版本检查、通知、目录更新与升级都读它，签名索引里的版本名不符即拒绝。它的版本名必须与 `Edition` 相同，否则启动即 panic。
-- `InstallHooks` 在 `install`、`upgrade` 时依次执行，`uninstall` 时倒序执行，用于设备权限之类必须由 root 完成的主机步骤。核心自己的钩子（[主机身份](#管理-server-的主机身份)的 systemd drop-in）排在它们之前，所以安装时先执行、卸载时最后执行。
+- `InstallHooks` 在 `install`、`upgrade` 时依次执行，`uninstall` 时倒序执行，用于设备权限之类必须由 root 完成的主机步骤。核心自己的钩子（[主机身份](#管理-server-的主机身份)的 systemd drop-in）排在它们之前，所以安装时先执行、卸载时最后执行。钩子拿到的 `Layout.UnitDir` 只在 systemd 模式下非空，没有它时 `selfinstall.WriteDropIn` 什么也不做；控制台升级不执行钩子。
 
 官方构建传零值。`Edition` 与 `Distribution` 的按版本名作用域只服务分叉构建，官方发布流程不再扩展它们（ADR 0071）。
 
@@ -129,7 +129,7 @@ type Service interface{ Run(ctx context.Context) error }
 `HostIdentity(salt)` 返回 server 自己这台机器的加盐身份 `hostidentity.Salted{SystemUUID, BoardSerial, MachineID, RootFSUUID}`，每一项是 `hwident.IdentityPart`（与节点身份同一种摘要与尾部，读不到时为零值）。系统 UUID 按节点 `Host` 的同一种类（`hwident.KindHost`）做摘要，所以同一个盐下它等于运行在 server 这台机器上的节点的 `Host.H`。盐为 1 到 256 字节，否则 `store.ErrIdentitySalt`。事实每个进程只读一次（`hostidentity.Local`）。
 
 - 来源（`internal/server/hostidentity`）：Linux 上读 `/sys/class/dmi/id/product_uuid`、`board_serial`、`/etc/machine-id`，并按 `/proc/self/mountinfo` 与 `/dev/disk/by-uuid` 找出 `/` 的文件系统 UUID；macOS 上用 `ioreg` 读 `IOPlatformUUID` 与整机序列号。空值、固件占位值、全 0 或全 F 视为未知。
-- 内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：核心安装钩子写 systemd drop-in，让 systemd 每次启动前以 root 执行 [`gpuworks host-identity`](../reference/cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`（`root:<服务组>`，0440，所在目录 root 所有、0755）。`hostidentity.Load` 只用这个文件补自己读不到的这两项，直接读到的值永远优先，`MachineID` 与 `RootFSUUID` 只来自直接读取；文件缺失、超过 4 KiB 或不合格式时什么也不补。`/run` 是内存文件系统，把数据目录拷到另一台机器不会带走原来那台的身份。
+- 内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：核心安装钩子在 systemd 模式下（以 root 运行的命令行 `install`、`upgrade`；控制台升级不执行安装钩子，独立运行模式下钩子拿到的 `Layout.UnitDir` 为空）写 systemd drop-in，让 systemd 每次启动前以 root 执行 [`gpuworks host-identity`](../reference/cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`（`root:<服务组>`，0440，所在目录 root 所有、0755）。`hostidentity.Load` 只用这个文件补自己读不到的这两项，直接读到的值永远优先，`MachineID` 与 `RootFSUUID` 只来自直接读取；文件缺失、超过 4 KiB 或不合格式时什么也不补。`/run` 是内存文件系统，把数据目录拷到另一台机器不会带走原来那台的身份。
 - 插件经宿主接口 `POST /host/v1/host-identity` 读同样的事实（线上格式见[插件协议](../reference/plugin-protocol.md#主机身份)），需要 `read:host_identity` 权限与 `host.host_identity@1` 能力；盐与节点读取一样由 `pluginhost.IdentityKey` 绑定到包 id。
 - 诊断信息收集（控制台与 `gpuworks support-bundle`）带上 `server/host-identity.json`：用固定的密钥 `core\0support_bundle` 加盐的同一组事实，所以同一台机器在不同的收集里摘要相同，原始值不进压缩包。
 

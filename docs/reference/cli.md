@@ -300,7 +300,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks host-identity
 
-`gpuworks host-identity --write PATH [--group GROUP]` 读出 server 所在机器的身份事实，把内核只让 root 读的两项（系统 UUID、主板序列号）连同其余两项写进 `PATH`，供以服务账户运行的 server 补齐[主机身份](../dev/extensions.md#管理-server-的主机身份)。`install` 写的 systemd drop-in 让 systemd 在每次启动之前以 root 执行它（见[控制面安装布局](install-layout.md#systemd-单元)），不需要手工运行。
+`gpuworks host-identity --write PATH [--group GROUP]` 读出 server 所在机器的身份事实，把内核只让 root 读的两项（系统 UUID、主板序列号）连同其余两项写进 `PATH`，供以服务账户运行的 server 补齐[主机身份](../dev/extensions.md#管理-server-的主机身份)。systemd 模式下以 root 运行的命令行 `gpuworks install`、`gpuworks upgrade` 写的 systemd drop-in 让 systemd 在每次启动之前以 root 执行它（控制台升级不写这个 drop-in）（见[控制面安装布局](install-layout.md#systemd-单元)），不需要手工运行。
 
 | flag | 说明 |
 |---|---|
