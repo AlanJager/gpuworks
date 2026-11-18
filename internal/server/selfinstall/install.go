@@ -145,7 +145,7 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 	// misleading; an explicit --password still earns the warning below.
 	var password, source string
 	if fileExists(filepath.Join(i.layout.DataDir, "gpuworks.db")) {
-		if strings.TrimSpace(req.Password) != "" {
+		if req.Password != "" {
 			i.io.Warn("warning: --password is ignored: the database in %s already has an admin account (use gpuworks reset-password to change it)", i.layout.DataDir)
 		}
 		source = PasswordUnchanged

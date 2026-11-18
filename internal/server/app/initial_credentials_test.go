@@ -20,7 +20,7 @@ func TestBootstrapAdminPasswordPrefersConfigThenEnvThenFile(t *testing.T) {
 		t.Fatalf("bootstrapAdminPassword = (%q, %q), want the configured password", got, source)
 	}
 	got, source = bootstrapAdminPassword(Config{DataDir: dataDir})
-	if got != "from-env" || source != "env" {
+	if got != " from-env " || source != "env" {
 		t.Fatalf("bootstrapAdminPassword = (%q, %q), want the environment password", got, source)
 	}
 	t.Setenv("GPUWORKS_ADMIN_PASSWORD", "")

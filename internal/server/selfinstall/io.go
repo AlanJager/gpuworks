@@ -83,12 +83,17 @@ func (o *IO) Prompt(question string) (string, error) {
 	if !o.Terminal() {
 		return "", ErrNoTerminal
 	}
+	answer, err := o.promptLine(question)
+	return strings.TrimSpace(answer), err
+}
+
+func (o *IO) promptLine(question string) (string, error) {
 	fmt.Fprintf(o.Out, "%s", question)
 	answer, err := o.line().ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	return strings.TrimSpace(answer), nil
+	return strings.TrimSuffix(strings.TrimSuffix(answer, "\n"), "\r"), nil
 }
 
 // PromptPassword asks a question without echoing the answer. Without a file
@@ -100,7 +105,7 @@ func (o *IO) PromptPassword(question string) (string, error) {
 	}
 	f, ok := o.In.(*os.File)
 	if !ok {
-		return o.Prompt(question)
+		return o.promptLine(question)
 	}
 	fmt.Fprintf(o.Out, "%s", question)
 	raw, err := term.ReadPassword(int(f.Fd()))
@@ -108,7 +113,7 @@ func (o *IO) PromptPassword(question string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(raw)), nil
+	return string(raw), nil
 }
 
 // Confirm asks a yes/no question. A blank answer takes want.

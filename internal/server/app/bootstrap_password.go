@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 
 	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/server/installcred"
@@ -22,7 +21,7 @@ func bootstrapAdminPassword(cfg Config, policies ...securefile.Policy) (string, 
 	if cfg.AdminPassword != "" {
 		return cfg.AdminPassword, "config"
 	}
-	if pw := strings.TrimSpace(os.Getenv(adminPasswordEnvVar)); pw != "" {
+	if pw := os.Getenv(adminPasswordEnvVar); pw != "" {
 		return pw, "env"
 	}
 	if creds, err := installcred.ReadInitialCredentials(cfg.DataDir, policies...); err == nil && creds.Password != "" {
