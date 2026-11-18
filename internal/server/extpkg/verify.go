@@ -168,8 +168,11 @@ func (v *Verifier) Verify(c *archive.Contents, mode Mode) (*Verified, error) {
 	if out.Binary, err = checkFiles(m, c.Members, v.Platform); err != nil {
 		return nil, err
 	}
-	// 10: capabilities.
+	// 10: capabilities, then this server's own policy.
 	if err := checkCapabilities(m, v.Offered); err != nil {
+		return nil, err
+	}
+	if err := checkServerPolicy(m); err != nil {
 		return nil, err
 	}
 	// 11: site policy.

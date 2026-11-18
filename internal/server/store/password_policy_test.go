@@ -8,7 +8,7 @@ import (
 )
 
 func TestAdminCreationRejectsWeakPasswordsWithoutCreatingUsers(t *testing.T) {
-	for _, password := range []string{"123", "password", "admin123"} {
+	for _, password := range []string{"123", "password", "GPUWorks"} {
 		t.Run(password, func(t *testing.T) {
 			s := newTestStore(t)
 			t.Cleanup(func() { _ = s.Close() })
@@ -26,7 +26,7 @@ func TestAdminCreationRejectsWeakPasswordsWithoutCreatingUsers(t *testing.T) {
 func TestRejectedPasswordChangePreservesPasswordAndSessions(t *testing.T) {
 	s := newTestStore(t)
 	t.Cleanup(func() { _ = s.Close() })
-	const original = "correct horse battery staple"
+	const original = "Admin@2026"
 	if _, _, _, err := s.EnsureAdmin("admin", original); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestRejectedPasswordChangePreservesPasswordAndSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, password := range []string{"123", "password", "admin123"} {
+	for _, password := range []string{"123", "password", "GPUWorks"} {
 		if err := s.SetUserPassword("admin", password); err == nil {
 			t.Errorf("weak replacement password was accepted")
 		}

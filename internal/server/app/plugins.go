@@ -145,9 +145,19 @@ func productErrorOf(err error) error {
 	return messages.WrapProductError(xe.Code, xe.Message, xe.Params, err)
 }
 
+// pluginPermissions gives each permission the server's risk class, so the
+// console shows the class without judging it.
+func pluginPermissions(names []string) []dto.PluginPermission {
+	out := make([]dto.PluginPermission, len(names))
+	for i, name := range names {
+		out[i] = dto.PluginPermission{Name: name, Risk: extpkg.PermissionRisk(name)}
+	}
+	return out
+}
+
 func pluginDTO(v pluginbridge.View) dto.Plugin {
 	out := dto.Plugin{ID: v.ID, Version: v.Version, Publisher: v.Publisher, Trust: v.Trust, Enabled: v.Enabled, State: v.State,
-		Restarts: v.Restarts, Parts: nonNil(v.Parts), Isolation: v.Isolation, Roles: nonNil(v.Roles), Permissions: nonNil(v.Permissions),
+		Restarts: v.Restarts, Parts: nonNil(v.Parts), Isolation: v.Isolation, Roles: nonNil(v.Roles), Permissions: pluginPermissions(v.Permissions),
 		ApproveHash: v.ApproveHash, Actions: nonNil(v.Actions)}
 	if v.Code != "" {
 		out.Message = &dto.ProductMessage{Code: v.Code, Params: v.Params, Message: v.Message}

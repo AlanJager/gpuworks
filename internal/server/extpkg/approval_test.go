@@ -18,7 +18,10 @@ import (
 func TestInstallRequiresTheApprovalHash(t *testing.T) {
 	w := newWorld(t)
 	h, _ := newHost(t, w)
-	raw := pkg(t, w, "1.0.0", func(s *extsign.Spec) { s.Manifest.Permissions = []string{"push:banners"} })
+	raw := pkg(t, w, "1.0.0", func(s *extsign.Spec) {
+		s.Manifest.Permissions = []string{"push:banners"}
+		s.Manifest.Uses = map[string]int{"table.banners": 1}
+	})
 	for _, approve := range []extapi.Digest{"", extapi.DigestOf([]byte("something else"))} {
 		_, err := h.Install(bytes.NewReader(raw), extpkg.InstallOptions{RequireApproval: true, Approve: approve})
 		var pe *messages.ProductError

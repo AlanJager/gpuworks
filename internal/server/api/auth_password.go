@@ -35,7 +35,7 @@ func (a *apiHandlers) changePassword(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	// Both passwords are judged on every submission, so the form can mark
 	// both fields at once instead of revealing one problem per attempt.
-	policyErr := auth.ValidateAccountPassword(claims.Username, req.NewPassword)
+	policyErr := auth.ValidatePassword(req.NewPassword)
 	finish, wait := a.loginThrottle.begin(time.Now().UTC(), a.loginClientIP(r), claims.Username)
 	if wait > 0 {
 		loginThrottled(w, wait)
@@ -95,7 +95,6 @@ var passwordPolicyErrors = map[string]string{
 	auth.PolicyLength:     ErrorPasswordLength,
 	auth.PolicyCharacters: ErrorPasswordCharacters,
 	auth.PolicyGuessable:  ErrorPasswordGuessable,
-	auth.PolicyUsername:   ErrorPasswordUsername,
 }
 
 // passwordPolicyCode is the product error naming why err rejected a password.

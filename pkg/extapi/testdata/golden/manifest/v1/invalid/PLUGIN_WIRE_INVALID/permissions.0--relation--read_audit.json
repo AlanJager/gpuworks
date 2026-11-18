@@ -1,0 +1,1 @@
+{"created":"2026-11-17T00:00:00Z","files":[{"exec":true,"path":"bin/linux_amd64/acme-backup","sha256":"51a1f05af85e342e3c849b47d387086476282d5f50dc240c19216d6edfb1eb5a","size":4096}],"id":"acme_backup","permissions":["read:audit"],"protocol":{"max":1,"min":1},"publisher":"acme","schema":1,"version":"1.0.0"}

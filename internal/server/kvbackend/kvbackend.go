@@ -91,6 +91,7 @@ type Registry struct{ rows []Backend }
 func Builtin() Registry {
 	registry, err := New(Backend{
 		ID: Native, Engine: engines.VLLM, Label: "vLLM", Default: true,
+		Vendors:  []string{accelerator.VendorNVIDIA, accelerator.VendorAMD, accelerator.VendorPPU, accelerator.VendorHygon, accelerator.VendorApple, accelerator.VendorKunlunxin},
 		PDRoles:  []string{pdmode.RolePrefill},
 		Topology: Topology{PP: true, DP: true},
 	})

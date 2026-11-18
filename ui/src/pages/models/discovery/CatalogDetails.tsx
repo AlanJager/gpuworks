@@ -24,6 +24,9 @@ export default function CatalogDetails({
   templates,
   closeDrawer,
   retryMatches,
+  revisionError = "",
+  retryRevision,
+  readmeCache,
 }: {
   source: Provider;
   model: HubModel;
@@ -31,6 +34,9 @@ export default function CatalogDetails({
   templates: InferenceTemplate[];
   closeDrawer?: () => void;
   retryMatches?: () => void;
+  revisionError?: string;
+  retryRevision?: () => void;
+  readmeCache?: Map<string, string>;
 }) {
   const { t, i18n } = useTranslation("models");
   const navigate = useNavigate();
@@ -40,9 +46,10 @@ export default function CatalogDetails({
     url +
     "/resolve/" +
     encodeURIComponent(
-      version || (source === "modelscope" ? "master" : "main"),
+      model.revision || (source === "modelscope" ? "master" : "main"),
     ) +
     "/";
+  const readmeKey = model.revision ? base : JSON.stringify([base, model.updated]);
   const [readme, setReadme] = useState(""),
     [error, setError] = useState(""),
     [retry, setRetry] = useState(0);
@@ -50,9 +57,11 @@ export default function CatalogDetails({
 
   useEffect(() => {
     const controller = new AbortController();
-    const signal = catalogSignal(controller.signal, 5000);
-    setReadme("");
+    const signal = catalogSignal(controller.signal, 6000);
     setError("");
+    const cached = readmeCache?.get(readmeKey);
+    setReadme(cached || "");
+    if (cached) return () => controller.abort();
     readHub(source, base + "README.md", signal)
       .then(async (r) => {
         if (!r.ok)
@@ -63,13 +72,17 @@ export default function CatalogDetails({
           .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "")
           .trim();
         if (!md) throw new Error(t("catalog.missingReadme"));
-        if (!controller.signal.aborted) setReadme(md);
+        if (!controller.signal.aborted) {
+          readmeCache?.set(readmeKey, md);
+          if (readmeCache && readmeCache.size > 20) readmeCache.delete(readmeCache.keys().next().value!);
+          setReadme(md);
+        }
       })
       .catch((e) => {
         if (!controller.signal.aborted) setError(problem(e));
       });
     return () => controller.abort();
-  }, [base, retry, source]);
+  }, [base, retry, source, readmeKey, readmeCache]);
   const specs = templates.flatMap(template => template.specs.map(spec => ({template, spec})));
   const name = model.id.split("/").pop();
   const owner = model.id.includes("/") ? model.id.split("/")[0] : "";
@@ -107,13 +120,13 @@ export default function CatalogDetails({
             ))}
           </ul>
         </header>
-        {retryMatches && (
+        {(revisionError || retryMatches) && (
           <aside aria-label={t("catalog.templates")}>
-            <EmptyState compact description={<><strong>{t("catalog.templatesError")}</strong><span>{t("catalog.templatesHelp")}</span></>}
-              action={<Button size="sm" variant="link" onClick={retryMatches}>{t("catalog.reload")}</Button>} />
+            <EmptyState compact description={revisionError || <><strong>{t("catalog.templatesError")}</strong><span>{t("catalog.templatesHelp")}</span></>}
+              action={<Button size="sm" variant="link" onClick={revisionError ? retryRevision : retryMatches}>{t("catalog.retry")}</Button>} />
           </aside>
         )}
-        {!retryMatches && specs.length > 0 && (
+        {!revisionError && !retryMatches && specs.length > 0 && (
           <aside className="live-matches" aria-label={t("catalog.templates")}>
             <h4>{t("catalog.templates")}</h4>
             {specs.map(({ template, spec }) => (

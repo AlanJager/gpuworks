@@ -124,7 +124,7 @@ func normalizeFlagSpelling(flag string) string {
 // reach it; CollectTargetCapabilities does not, because planning validates
 // the assigned target afterwards.
 func validateKVBackendTarget(engine string, f requestedTopology, p Params) error {
-	if p.Quick.KVOffloadBackend == "" {
+	if p.Quick.KVOffloadBackend == "" && p.Quick.KVOffloadingSize <= 0 && !p.Quick.KVDiskOffload {
 		return nil
 	}
 	row, ok := selectedKVBackend(engine, p.Quick)

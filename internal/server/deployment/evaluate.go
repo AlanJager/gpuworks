@@ -185,6 +185,10 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 		writeFieldErrors()
 		return
 	}
+	// Placement keeps the target-specific sleep refusals and their diagnostics.
+	if sleepErr := planning.SleepDeclarable(req.Sleepable, eng.Name(), ""); sleepErr != nil {
+		errs.add("sleepable", SleepDeclarationError(sleepErr))
+	}
 	// Whether the form may offer a yield policy other than never: the create's
 	// own check, answered even when a field error stops the preview below.
 	yieldEligible := dto.EligibilityOf(planning.DraftYieldPolicyRefusal(req.Sleepable, eng.Name(), req.NNodes, placementPD(req) != nil))

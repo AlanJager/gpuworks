@@ -1,9 +1,6 @@
 package extapi
 
-import (
-	"strconv"
-	"strings"
-)
+import "strconv"
 
 const objectManifest = "manifest"
 
@@ -41,7 +38,7 @@ type Manifest struct {
 	// honoured only if the publisher's certificate grants the role.
 	Roles []string `json:"roles,omitempty"`
 	// Permissions are what the administrator approves, sorted
-	// ("<verb>:<object>", see PermissionVerbs).
+	// ("<verb>:<object>" from a closed vocabulary, see PermissionCapability).
 	Permissions []string `json:"permissions,omitempty"`
 	// Features are the feature keys the package declares.
 	Features []FeatureDecl `json:"features,omitempty"`
@@ -55,6 +52,9 @@ type Manifest struct {
 	Runtime *RuntimeDecl `json:"runtime,omitempty"`
 	// Storage is what the package keeps in its data directory, if anything.
 	Storage *StorageDecl `json:"storage,omitempty"`
+	// Settings are the values an administrator configures for the
+	// package, if it has any; they need host.config.
+	Settings []SettingDecl `json:"settings,omitempty"`
 	// HostSetup are the host steps the package needs, from a closed
 	// vocabulary; never a script.
 	HostSetup []HostSetupStep `json:"host_setup,omitempty"`
@@ -110,7 +110,10 @@ const (
 type RouteDecl struct {
 	// Method is GET, POST, PUT, PATCH or DELETE.
 	Method string `json:"method"`
-	// Pattern starts with "/"; chi parameters ({name}) are allowed.
+	// Pattern starts with "/" and has literal segments and plain {name}
+	// parameters only: no regular expressions, no empty, "." or ".."
+	// segments, no percent-escapes and no parameter named twice, so the
+	// server and the plugin's router match a path the same way.
 	Pattern string `json:"pattern"`
 	// Action is "<package id>.<verb>", what an authorizer grants.
 	Action string `json:"action"`
@@ -128,8 +131,11 @@ type RouteDecl struct {
 	MaxBody int64 `json:"max_body,omitempty"`
 	// Stream marks a streamed response (no response buffering).
 	Stream bool `json:"stream,omitempty"`
-	// WebSocket marks a WebSocket upgrade.
+	// WebSocket marks a WebSocket upgrade; it needs routes.websocket.
 	WebSocket bool `json:"websocket,omitempty"`
+	// HTML lets the route answer text/html; only a public, admin or
+	// admin_session route may.
+	HTML bool `json:"html,omitempty"`
 	// TimeoutS bounds a request in seconds; 0 is DefaultRouteTimeoutS.
 	TimeoutS int `json:"timeout_s,omitempty"`
 	// AIReadable lets the assistant and MCP read a GET route.
@@ -306,10 +312,11 @@ func (m *Manifest) validate() *fieldError {
 		validateCapabilities("uses", m.Uses),
 		checkSortedSet("roles", m.Roles, wordPattern),
 		checkSortedSet("permissions", m.Permissions, permissionPattern),
-		checkPermissionVerbs(m.Permissions),
+		checkPermissionVocabulary(m.Permissions),
 		m.validateFeatures(),
 		m.validateRoutes(),
 		m.validateParts(),
+		validateSettings(m.Settings),
 		checkSortedSet("codes", m.Codes, codePattern),
 		validateFiles(m.Files),
 		m.Display.validate("display"),
@@ -319,7 +326,7 @@ func (m *Manifest) validate() *fieldError {
 	if !idBelongsTo(m.Publisher, m.ID) {
 		return &fieldError{field: "id", rule: RuleRelation}
 	}
-	return m.validateRequiredParts()
+	return first(m.validateRequiredParts(), m.validatePermissionCapabilities())
 }
 
 func requiredTime(path string, t Time) *fieldError {
@@ -348,22 +355,6 @@ func anyMap[V any](m map[string]V) map[string]any {
 		out[k] = v
 	}
 	return out
-}
-
-// PermissionVerbs is the closed set of permission verbs of schema 1. The
-// object after the colon is a table kind (push), an event topic (events), a
-// read surface (read), a service (svc) and so on; whether the server offers
-// it is decided against its capabilities.
-var PermissionVerbs = []string{"events", "http", "metrics", "node", "notify", "push", "read", "svc"}
-
-func checkPermissionVerbs(perms []string) *fieldError {
-	for i, p := range perms {
-		verb, _, _ := strings.Cut(p, ":")
-		if f := oneOf(joinPath("permissions", strconv.Itoa(i)), verb, PermissionVerbs...); f != nil {
-			return f
-		}
-	}
-	return nil
 }
 
 func (m *Manifest) validateFeatures() *fieldError {

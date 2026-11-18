@@ -17,7 +17,7 @@ import (
 )
 
 func TestResetPasswordRejectsWeakInputBeforeDatabaseAccess(t *testing.T) {
-	for _, password := range []string{"123", "password", "admin123"} {
+	for _, password := range []string{"123", "password", "GPUWorks"} {
 		t.Run(password, func(t *testing.T) {
 			dir := t.TempDir()
 			err := (Options{}).resetPassword(discardLog(), []string{"--db", filepath.Join(dir, "missing.db"), "--password", password})

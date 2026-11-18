@@ -338,17 +338,7 @@ func (a *apiHandlers) upgradeServerFromChannel(w http.ResponseWriter, r *http.Re
 		writeProductError(w, http.StatusConflict, ErrorServerAlreadyAtRelease, "this server already runs "+release.ReleaseID, map[string]any{"release": release.ReleaseID})
 		return
 	}
-	migration, err := a.d.Store.CurrentMigration()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	compatibility := upgradeCompatibility(release, fetched.Index.Channel, migration)
-	if target.Version != "" && (compatibility == "database_newer" || compatibility == "database_unknown") {
-		writeProductError(w, http.StatusConflict, ErrorUpgradeBackupRequired, "the selected version is incompatible with the current database or does not declare compatibility", map[string]any{"version": release.ReleaseID})
-		return
-	}
-	if (target.Version == "" && !release.NewerThan(version.Version, version.BuildDate)) || compatibility != "" {
+	if !release.NewerThan(version.Version, version.BuildDate) {
 		writeProductError(w, http.StatusConflict, ErrorServerNewerThanRelease, "this server runs "+version.Version+", which is newer than "+release.ReleaseID,
 			map[string]any{"current": version.Version, "release": release.ReleaseID})
 		return

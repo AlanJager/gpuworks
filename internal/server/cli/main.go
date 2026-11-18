@@ -379,7 +379,7 @@ func (o Options) resetPassword(log *slog.Logger, args []string) error {
 			return err
 		}
 	}
-	if err := auth.ValidateAccountPassword(username, password); err != nil {
+	if err := auth.ValidatePassword(password); err != nil {
 		return err
 	}
 	dbPath, err := resetPasswordDB(dataDir, cfg.DBPath)

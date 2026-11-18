@@ -57,9 +57,7 @@
       "installed": "Installed",
       "arch": "No {{platform}} package",
       "older": "Older than running version",
-      "backup": "Cannot install this version directly",
-      "database_newer": "Incompatible with the current database",
-      "database_unknown": "Database compatibility information missing"
+      "backup": "Cannot install this version directly"
     },
     "failed": "Could not install {{version}}. Check again and select a version."
   },

@@ -65,7 +65,7 @@ func TestBootstrapRejectsWeakPasswordBeforeCreatingDefaultKey(t *testing.T) {
 			case "env":
 				t.Setenv(adminPasswordEnvVar, "password")
 			case "file":
-				if err := installcred.WriteInitialCredentials(cfg.DataDir, "admin", "admin123"); err != nil {
+				if err := installcred.WriteInitialCredentials(cfg.DataDir, "admin", "GPUWorks"); err != nil {
 					t.Fatal(err)
 				}
 			}

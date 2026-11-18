@@ -147,7 +147,7 @@ test("a server rejection clears once the field is edited, and the next answer re
   const sent: Sent[] = [];
   answer(400, { code: "PASSWORD_GUESSABLE", error: "guessable" }, sent);
   const user = await openForm();
-  await fill(user, "wrong-password", "Password123");
+  await fill(user, "wrong-password", "PaSsWoRd");
   await waitFor(() => assert.deepEqual(fieldErrors(), [locale("common").apiError.PASSWORD_GUESSABLE]));
   answer(400, { code: "CURRENT_PASSWORD_INVALID", error: "wrong" }, sent);
   for (const label of [auth.next, auth.confirm]) {
@@ -163,7 +163,7 @@ test("a server rejection clears once the field is edited, and the next answer re
 test("a wrong current password and a weak new one are marked together", async () => {
   answer(400, { code: "CURRENT_PASSWORD_INVALID", error: "wrong", params: { new_password: "PASSWORD_GUESSABLE", min: 8, max: 128 } }, []);
   const user = await openForm();
-  await fill(user, "wrong-password", "Password123");
+  await fill(user, "wrong-password", "PaSsWoRd");
   await waitFor(() => assert.deepEqual(fieldErrors(), [
     locale("common").apiError.CURRENT_PASSWORD_INVALID,
     locale("common").apiError.PASSWORD_GUESSABLE,

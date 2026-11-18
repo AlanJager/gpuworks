@@ -20,7 +20,7 @@ export function serverUpdateState(status: UpdateStatus) {
   if (!status.available) return "unknown";
   if (!server.latest) return "notPublished";
   const installedChannel = server.current_build?.build_channel;
-  if (installedChannel && installedChannel !== status.channel && server.current !== server.latest) return "differentChannelVersion";
+  if (server.update_available && installedChannel && installedChannel !== status.channel && server.current !== server.latest) return "differentChannelVersion";
   return server.update_available ? "available" : "upToDate";
 }
 

@@ -723,19 +723,19 @@ func TestInstallTakesThePasswordFromTheEnvironment(t *testing.T) {
 	req.Password = ""
 
 	report := h.mustInstall(req)
-	if report.Password != "from-the-environment" || report.PasswordSource != PasswordFromEnv {
+	if report.Password != " from-the-environment " || report.PasswordSource != PasswordFromEnv {
 		t.Fatalf("report = %+v", report)
 	}
 	creds, err := installcred.ReadInitialCredentials(h.layout.DataDir)
-	if err != nil || creds.Password != "from-the-environment" {
+	if err != nil || creds.Password != " from-the-environment " {
 		t.Fatalf("recorded credentials = %+v, %v", creds, err)
 	}
 
 	h2 := newHarness(t, t.TempDir())
 	h2.installSelf("binary")
 	req2 := h2.quiet()
-	req2.Password = "from-the-explicit-flag"
-	if report := h2.mustInstall(req2); report.Password != "from-the-explicit-flag" || report.PasswordSource != PasswordFromFlag {
+	req2.Password = " GPUWorks "
+	if report := h2.mustInstall(req2); report.Password != " GPUWorks " || report.PasswordSource != PasswordFromFlag {
 		t.Fatalf("--password did not win over the environment: %+v", report)
 	}
 }
@@ -774,13 +774,13 @@ func TestInstallAsksForThePasswordInteractively(t *testing.T) {
 	h := newHarness(t, t.TempDir())
 	h.installSelf("binary")
 	h.terminal = true
-	h.stdin = "hand-typed-admin-password\n"
+	h.stdin = " Admin@2026 \r\n"
 	req := h.quiet()
 	req.Password = ""
 	req.Quiet = false
 
 	report := h.mustInstall(req)
-	if report.Password != "hand-typed-admin-password" || report.PasswordSource != PasswordFromPrompt {
+	if report.Password != " Admin@2026 " || report.PasswordSource != PasswordFromPrompt {
 		t.Fatalf("report = %+v", report)
 	}
 }

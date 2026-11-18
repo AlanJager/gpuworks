@@ -87,6 +87,7 @@ func TestVerifyAcceptsAWellSignedPackage(t *testing.T) {
 		t.Fatalf("approval hash = %q %v", h1, err)
 	}
 	spec.Manifest.Permissions = []string{"read:fleet"}
+	spec.Manifest.Uses = map[string]int{"host.fleet": 1}
 	v2, err := w.verifier().Verify(contents(t, extsign.Build(t, w.pub, spec)), extpkg.Install)
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +192,10 @@ func TestVerifyRefusesInOrder(t *testing.T) {
 			s.Manifest.Roles = []string{extpkg.AuthorityRole}
 			return extsign.Build(t, p, s)
 		}, code: messages.ErrorPluginGrantMissing, params: map[string]any{"grant": "authority", "value": "acme_backup"}},
-		{name: "8 privileged table not granted", build: withSpec(func(s *extsign.Spec) { s.Manifest.Permissions = []string{"push:fleet_capacity"} }),
+		{name: "8 privileged table not granted", build: withSpec(func(s *extsign.Spec) {
+			s.Manifest.Permissions = []string{"push:fleet_capacity"}
+			s.Manifest.Requires = map[string]int{"table.fleet_capacity": 1}
+		}),
 			code: messages.ErrorPluginGrantMissing, params: map[string]any{"grant": "table", "value": "fleet_capacity"}},
 		{name: "8 same-origin console module without the grant", build: withSpec(func(s *extsign.Spec) {
 			s.Files["ui/index.js"] = extsign.File{Body: []byte("export {}")}
@@ -233,7 +237,10 @@ func TestVerifyRefusesInOrder(t *testing.T) {
 			code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": extpkg.PolicyPublisher, "value": "acme"}},
 		{name: "11 package denied", build: minimal, edit: func(w *world, v *extpkg.Verifier) { v.Policy.DenyPackages = []string{"acme_backup"} },
 			code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": extpkg.PolicyPackage}},
-		{name: "11 permission denied", build: withSpec(func(s *extsign.Spec) { s.Manifest.Permissions = []string{"read:directory"} }),
+		{name: "11 permission denied", build: withSpec(func(s *extsign.Spec) {
+			s.Manifest.Permissions = []string{"read:directory"}
+			s.Manifest.Uses = map[string]int{"host.directory": 1}
+		}),
 			edit: func(w *world, v *extpkg.Verifier) { v.Policy.DenyPermissions = []string{"read:directory"} },
 			code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": extpkg.PolicyPermission}},
 		{name: "11 third party without Landlock", build: minimal, edit: func(w *world, v *extpkg.Verifier) { v.Isolation = extapi.IsolationNone },
@@ -330,6 +337,7 @@ func TestVerifyHostIssuedPackages(t *testing.T) {
 	}
 	spec.Manifest.Roles = nil
 	spec.Manifest.Permissions = []string{"push:fleet_capacity"}
+	spec.Manifest.Requires = map[string]int{"table.fleet_capacity": 1}
 	if _, err := w.verifier().Verify(contents(t, extsign.Build(t, pub, spec)), extpkg.Install); func() string { c, _ := codeOf(err); return c }() != messages.ErrorPluginGrantMissing {
 		t.Fatalf("table the operator did not allow = %v", err)
 	}

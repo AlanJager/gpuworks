@@ -2,7 +2,6 @@ package selfinstall
 
 import (
 	"os"
-	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
 )
@@ -27,11 +26,11 @@ const (
 // The password is returned to be written into <data>/initial-credentials; it is
 // never written into the unit file, which is world-readable.
 func (i *Installer) resolvePassword(req InstallRequest) (string, string, error) {
-	if pw := strings.TrimSpace(req.Password); pw != "" {
+	if pw := req.Password; pw != "" {
 		return checkedPassword(pw, PasswordFromFlag)
 	}
 	interactive := !req.Quiet && i.io.Terminal()
-	if pw := strings.TrimSpace(os.Getenv(AdminPasswordEnvVar)); pw != "" {
+	if pw := os.Getenv(AdminPasswordEnvVar); pw != "" {
 		if !interactive {
 			return checkedPassword(pw, PasswordFromEnv)
 		}
@@ -60,7 +59,7 @@ func (i *Installer) resolvePassword(req InstallRequest) (string, string, error) 
 }
 
 func checkedPassword(password, source string) (string, string, error) {
-	if err := auth.ValidateAccountPassword(DefaultAdminUser, password); err != nil {
+	if err := auth.ValidatePassword(password); err != nil {
 		return "", "", err
 	}
 	return password, source, nil

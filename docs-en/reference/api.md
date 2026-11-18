@@ -178,7 +178,6 @@ Both passwords are checked in the same request, and every error returns 400:
 | The current password is wrong | `CURRENT_PASSWORD_INVALID` | When the new password is also rejected, `params.new_password` holds its error code |
 | The new password's length is out of range | `PASSWORD_LENGTH` | `params.min` and `params.max` are the bounds |
 | The new password is a common weak password, a repetition or a sequence | `PASSWORD_GUESSABLE` | |
-| The new password is the username | `PASSWORD_USERNAME` | Compared ignoring case, punctuation and leading or trailing digits |
 | The new password has control characters or is not valid UTF-8 | `PASSWORD_CHARACTERS` | |
 | The new password is the current one | `PASSWORD_UNCHANGED` | Judged only when the current password is right |
 
@@ -1675,7 +1674,7 @@ The management API of installed signed plugin packages (`.gwpkg`); see [Extensio
 
 | Method | Path | Description | Authentication |
 |---|---|---|---|
-| GET | `/api/v1/plugins` | Installed packages: `{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`, sorted by `id` | `JWT(admin)` |
+| GET | `/api/v1/plugins` | Installed packages: `{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`, sorted by `id`; `permissions` is `[{name, risk}]`, sorted by `name`, where `risk` is `low`, `elevated` or `high` as the server classifies it ([Permissions](plugin-protocol.md#permissions)) | `JWT(admin)` |
 | POST | `/api/v1/plugins/install?approve=<approval>&enable=<bool>` | The request body is the `.gwpkg` itself (`application/octet-stream`). Without `approve`, or with a wrong one, it answers 409 `PLUGIN_APPROVAL_REQUIRED` whose `params` give `id`, `version`, `approve_hash` and the `permissions` and `roles` it covers (comma-separated), and installs nothing; with the right one it returns `{plugin, previous?, unchanged}`. `enable` defaults to `false` | Management session, admin |
 | POST | `/api/v1/plugins/{id}/enable` | Enable and start the server part, returning the package; a package that no longer verifies answers 409 `PLUGIN_BROKEN` | Management session, admin |
 | POST | `/api/v1/plugins/{id}/disable` | Stop it and keep it from starting, returning the package; its pushed tables stay enforced and its grace runs as for a down plugin | Management session, admin |
@@ -1783,6 +1782,7 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 | POST | `/api/v1/notices/read` | Mark notices as read with `{"ids": [...]}` (1–128 IDs, each ≤64 bytes; otherwise, 400 `NOTICE_IDS_INVALID`). Records only the caller's own read status; repeated marking has no side effects. Returns 204 | JWT |
 | GET | `/api/v1/console/manifest` | What the console shell shows beyond its own pages, `{edition, features, nav, banners}`. The server decides every value and the console only renders it; see [Console manifest and extension routes](#console-manifest-and-extension-routes). A community server always returns `{"edition":"community","features":[],"nav":[],"banners":[]}` | JWT |
 | POST | `/api/v1/updates/server` | Download a release package, back up and replace the server, and restart. On acceptance, returns 202 `{from,to,backup}`; confirms or rolls back on the next startup. See [Server Upgrade Restrictions](#服务端升级限制) | JWT(admin) |
+| GET | `/api/v1/updates/server/versions` | Pass the saved `channel` to receive verified server versions, the host platform, Git commits when available, package digests and reasons a version cannot be installed. Records retain publication order; both same-channel and cross-channel lists keep only the current version and newer builds. `latest` marks the channel head. | JWT(admin) |
 | POST | `/api/v1/updates/server/upload` | Same as above, but the request body is an uploaded release archive (512 MiB limit). Returns 400 `SERVER_UPGRADE_ARCHIVE_INVALID` if it is not a usable release package (including versions predating console upgrades: they cannot confirm or roll back their own startup, so `detail` advises using `gpuworks upgrade --archive` instead) | JWT(admin) |
 | GET | `/api/v1/settings` | Current values of all settings (excluding `telemetry_export` and `branding`, which are read and written only through their dedicated endpoints) | JWT |
 | PUT | `/api/v1/settings/{key}` | Modify a single setting; `telemetry_export`, `branding`, and `security` return 400 `SETTING_HAS_OWN_ROUTE` (`security` goes through `PATCH /api/v1/security/settings`, since a whole-object replace would silently clear switches the body does not name). Only administrators can modify `deployment` (pending scheduling timeout, instance startup timeout, and event retention; otherwise, 403 `ADMINISTRATOR_REQUIRED`). The request body overlays the current values and changes only the keys it contains. If the merged values are out of range, returns 400 `FIELD_INVALID` without writing | JWT(admin) |
@@ -1840,12 +1840,12 @@ When no source is available, the response is still 200 with `available=false`; `
 
 ### Server Upgrade Restrictions
 
-For `GET /api/v1/updates/server/versions`, `database_newer` means the current database version exceeds the version supported by the target package; `database_unknown` means the target package lacks the database compatibility information required for cross-channel installation. Both block installation; POST returns 409 `SERVER_UPGRADE_BACKUP_REQUIRED` (the existing error code is retained). The console does not provide an operation to restore historical backups.
-
 `POST /api/v1/updates/server` downloads the release package for the current platform, validates it against the signed index, backs up and replaces the server, and restarts. Returns 202 `{from,to,backup}`; confirms or rolls back on the next startup.
 
+Online update checks, version choices and installation requests use the same ordering rule; changing channels does not permit older versions. When both IDs are formal `vX.Y.Z` versions, compare version numbers; otherwise compare build times. Unreadable times retain the original update-check behavior: a different version is treated as an update. The database migration number in the signed index is not an online installation requirement. Uploaded packages keep their existing validation and are not subject to this online ordering restriction.
+
 - 409 `SERVER_UPGRADE_UNAVAILABLE`: self-upgrade is unavailable; `reason` is `no_service_manager`, `not_installed`, `not_installed_binary`, or `not_writable`.
-- 409 `SERVER_ALREADY_AT_RELEASE`: already at the target version; 409 `SERVER_NEWER_THAN_RELEASE`: the current build is newer than the channel version.
+- 409 `SERVER_ALREADY_AT_RELEASE`: already at the target version; 409 `SERVER_NEWER_THAN_RELEASE`: the target build is not newer than the current version.
 - 404 `UPDATE_NOT_PUBLISHED`: the channel has no package for the current platform.
 - 502 `UPDATE_DOWNLOAD_FAILED`: no source provides a package matching the size and SHA-256 in the index. `file` identifies the file, and `detail` gives each source's failure reason; the running service is not replaced.
 
@@ -2295,4 +2295,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 23e15e4aa8098d08dd2329926327184e8db6161fc81b09b6bf4e2dbb3342a052 -->
+<!-- translation-source-sha256: 13537aa291e3275371e3716ae6d294e335477522ecb6df2efe30a7588880a6aa -->

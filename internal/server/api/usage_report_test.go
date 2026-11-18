@@ -323,6 +323,9 @@ func TestNoticesRefreshWithTheUpdateCheck(t *testing.T) {
 			if notices.refreshes != tc.want {
 				t.Fatalf("refreshes = %d, want %d", notices.refreshes, tc.want)
 			}
+			if tc.name == "prefetch" && !getUpdateStatus(t, run).Available {
+				t.Fatal("the prefetched update check must finish before its source is removed")
+			}
 		})
 	}
 }

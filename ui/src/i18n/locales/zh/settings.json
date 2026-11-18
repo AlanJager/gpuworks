@@ -57,9 +57,7 @@
       "installed": "已安装",
       "arch": "无 {{platform}} 安装包",
       "older": "早于当前版本",
-      "backup": "无法直接安装此版本",
-      "database_newer": "不兼容当前数据库",
-      "database_unknown": "缺少数据库兼容性信息"
+      "backup": "无法直接安装此版本"
     },
     "failed": "未能安装 {{version}}，可重新检查并选择版本。"
   },

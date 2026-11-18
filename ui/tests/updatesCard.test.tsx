@@ -325,23 +325,19 @@ test("long histories keep the preferred target visible and filter by release or 
   }
 });
 
-test("blocked database choices explain incompatibility without promising a restore operation", async () => {
+test("the existing backup reason stays disabled without promising a restore operation", async () => {
   const s = stubServerUpgrade([statusFixture({ server: selfUpgradable })], []);
   apiModule.api.serverVersions = async channel => ({ channel, platform: "linux/arm64", versions: [
-    { version: "incompatible", built_at: "2026-11-01", sha256: "one", reason: "database_newer" },
-    { version: "unknown", built_at: "2026-11-01", sha256: "two", reason: "database_unknown" },
     { version: "legacy", built_at: "2026-11-01", sha256: "three", reason: "backup" },
   ] });
   try {
     renderCard();
     await userEvent.click(await readyServerUpgrade());
     const drawer = within(await screen.findByRole("dialog"));
-    for (const [version, reason] of [["incompatible", "database_newer"], ["unknown", "database_unknown"], ["legacy", "backup"]]) {
-      const radio = await drawer.findByRole("radio", { name: version }) as HTMLButtonElement;
-      assert.equal(radio.getAttribute("aria-disabled"), "true");
-      assert.equal(radio.closest("label")?.getAttribute("data-disabled"), "true");
-      assert.ok(drawer.getByText(picker.reasons[reason]));
-    }
+    const radio = await drawer.findByRole("radio", { name: "legacy" }) as HTMLButtonElement;
+    assert.equal(radio.getAttribute("aria-disabled"), "true");
+    assert.equal(radio.closest("label")?.getAttribute("data-disabled"), "true");
+    assert.ok(drawer.getByText(picker.reasons.backup));
     assert.equal((drawer.getByRole("button", { name: picker.upgradeTo.replace("{{version}}", picker.selectedTarget) }) as HTMLButtonElement).disabled, true);
     assert.doesNotMatch(screen.getByRole("dialog").textContent ?? "", /restore|backup/i);
     assert.deepEqual(s.calls, []);
@@ -412,7 +408,7 @@ test("the console upgrades the server after confirming and waits for the new ver
   }
 });
 
-test("a current server locks only the picker and can still switch to an earlier release on another channel", async () => {
+test("a current server keeps the picker locked for an earlier release on another channel", async () => {
   const server = { ...selfUpgradable, current: selfUpgradable.latest, update_available: false,
     current_build: { version: selfUpgradable.latest, kind: "prerelease" as const, build_channel: "nightly" } };
   const current = statusFixture({ server });
@@ -430,9 +426,11 @@ test("a current server locks only the picker and can still switch to an earlier 
 
     await userEvent.click(screen.getByRole("combobox"));
     await userEvent.click(await screen.findByRole("option", { name: u.channelRelease }));
-    await readyServerUpgrade();
+    await waitFor(() => assert.ok(within(row(u.server)).getByText("v26.11.0")));
+    assert.equal((within(row(u.server)).getByRole("button", { name: picker.title }) as HTMLButtonElement).disabled, true);
+    assert.equal((within(row(u.server)).getByRole("button", { name: u.uploadServer }) as HTMLButtonElement).disabled, false);
     assert.equal(screen.queryByText(picker.crossChannelWarning), null, "saving the channel does not confirm an installation");
-    assert.ok(within(row(u.server)).getByText(u.differentChannelVersion));
+    assert.ok(within(row(u.server)).getByText(u.upToDate));
   } finally {
     s.restore();
   }
