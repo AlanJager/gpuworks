@@ -29,8 +29,8 @@ type Options struct {
 	PromptTokens     int
 	CompletionTokens int
 	CachedTokens     int
-	// StreamChunks is how many content deltas a streaming chat completion
-	// emits, TPOTDelay apart, the way an engine streams one delta per token.
+	// StreamChunks is how many synthetic content deltas a streaming completion
+	// emits, TPOTDelay apart. Chunk count is not a measured token count.
 	// Zero or one keeps the single-delta response.
 	StreamChunks int
 	// StaticGauges makes /metrics report only the configured running and
@@ -79,7 +79,7 @@ type Options struct {
 	MetricsRequestsWaiting     int
 	MetricsKVCacheUsagePercent float64
 
-	// StatusOverride, when nonzero, makes /v1/chat/completions immediately
+	// StatusOverride, when nonzero, makes chat and text completions immediately
 	// respond with this HTTP status (a JSON error body) instead of serving
 	// the request - a deterministic way for a test to make the proxy see a
 	// 429/5xx from a real upstream instance without actually killing it (see
@@ -197,87 +197,7 @@ func New(opts Options) *Engine {
 		}
 		writeJSON(w, map[string]any{"object": "list", "data": data})
 	})
-	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodPost) {
-			return
-		}
-		if override := stats.statusOverride.Load(); override != 0 {
-			logf("Forcing status override %d for a chat completion request", override)
-			writeAPIError(w, int(override), "server_error", "fake-engine: forced status override")
-			return
-		}
-		var request struct {
-			Stream   bool            `json:"stream"`
-			Messages json.RawMessage `json:"messages"`
-		}
-		if err := decodeJSON(r, &request); err != nil {
-			writeAPIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
-			return
-		}
-		if len(request.Messages) == 0 || string(request.Messages) == "null" {
-			writeAPIError(w, http.StatusBadRequest, "invalid_request_error", "messages is required")
-			return
-		}
-		requestID := fmt.Sprintf("req-%08x", stats.requests.Add(1))
-		logf("Received request %s: prompt=%d tok, completion=%d tok", requestID, opts.PromptTokens, opts.CompletionTokens)
-		stats.waiting.Add(1)
-		if opts.TTFTDelay > 0 {
-			time.Sleep(opts.TTFTDelay)
-		}
-		stats.waiting.Add(-1)
-		stats.running.Add(1)
-		defer stats.running.Add(-1)
-		stats.promptTokens.Add(int64(opts.PromptTokens))
-		stats.generationTokens.Add(int64(opts.CompletionTokens))
-		if request.Stream {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			flusher, _ := w.(http.Flusher)
-			encoded, encodeErr := json.Marshal(opts.ResponseText)
-			if encodeErr != nil {
-				writeAPIError(w, http.StatusInternalServerError, "invalid_request_error", encodeErr.Error())
-				return
-			}
-			chunk := []byte("data: {\"id\":\"fake-engine-completion\",\"choices\":[{\"delta\":{\"content\":" + string(encoded) + "}}]}\n\n")
-			for i := 0; i < max(opts.StreamChunks, 1); i++ {
-				if _, err := w.Write(chunk); err != nil {
-					return
-				}
-				if flusher != nil {
-					flusher.Flush()
-				}
-				if opts.TPOTDelay > 0 {
-					time.Sleep(opts.TPOTDelay)
-				}
-			}
-			usageBytes, _ := json.Marshal(map[string]any{"choices": []any{}, "usage": usage(opts)})
-			_, _ = w.Write(append(append([]byte("data: "), usageBytes...), []byte("\n\n")...))
-			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-			return
-		}
-		writeJSON(w, map[string]any{"id": "fake-engine-completion", "object": "chat.completion", "choices": []any{map[string]any{"index": 0, "message": map[string]string{"role": "assistant", "content": opts.ResponseText}, "finish_reason": "stop"}}, "usage": usage(opts)})
-		logf("Generated response for %s in one pass", requestID)
-	})
-	mux.HandleFunc("/v1/completions", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodPost) {
-			return
-		}
-		var request struct {
-			Prompt json.RawMessage `json:"prompt"`
-		}
-		if err := decodeJSON(r, &request); err != nil {
-			writeAPIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
-			return
-		}
-		if len(request.Prompt) == 0 || string(request.Prompt) == "null" {
-			writeAPIError(w, http.StatusBadRequest, "invalid_request_error", "prompt is required")
-			return
-		}
-		stats.requests.Add(1)
-		stats.promptTokens.Add(int64(opts.PromptTokens))
-		stats.generationTokens.Add(int64(opts.CompletionTokens))
-		writeJSON(w, map[string]any{"id": "fake-engine-completion", "object": "text_completion", "choices": []any{map[string]any{"index": 0, "text": opts.ResponseText, "finish_reason": "stop"}}, "usage": usage(opts)})
-	})
+	registerCompletions(mux, opts, &stats, logf)
 	mux.HandleFunc("/v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
 			return
