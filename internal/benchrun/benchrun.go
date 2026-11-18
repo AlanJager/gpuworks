@@ -191,7 +191,10 @@ func (e *execution) requests(dc dataset.Config, n int) ([]loadgen.Request, error
 		if sample.OutputTokens > 0 {
 			maxTokens = sample.OutputTokens
 		}
-		out[i] = loadgen.Request{Model: e.run.Model, Messages: messages, FollowUps: followUps, MaxTokens: maxTokens, Stream: !e.run.NoStream, IgnoreEOS: ignoreEOS, DelayBefore: time.Duration(sample.WaitMillis) * time.Millisecond, StreamOptions: &loadgen.StreamOptions{IncludeUsage: true}}
+		out[i] = loadgen.Request{Model: e.run.Model, Messages: messages, FollowUps: followUps, MaxTokens: maxTokens, Stream: !e.run.NoStream, IgnoreEOS: ignoreEOS, DelayBefore: time.Duration(sample.WaitMillis) * time.Millisecond}
+		if out[i].Stream {
+			out[i].StreamOptions = &loadgen.StreamOptions{IncludeUsage: true}
+		}
 	}
 	return out, nil
 }

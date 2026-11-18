@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	serverdeploy "gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/testenv"
 )
@@ -19,7 +23,7 @@ import (
 // Startup policy edits apply without replacing the running container. Export
 // must replay its recorded environment while still refusing pending launch edits.
 func TestTemplateExportKeepsTheRunningStartupBudgetThroughHTTP(t *testing.T) {
-	exerciseTemplateExportStartup(t, 0, false, true)
+	exerciseTemplateExportStartup(t, 0, false, true, false)
 }
 
 func TestTemplateExportRespectsExplicitStartupChoicesThroughHTTP(t *testing.T) {
@@ -32,15 +36,34 @@ func TestTemplateExportRespectsExplicitStartupChoicesThroughHTTP(t *testing.T) {
 		{name: "explicit engine environment removal", removeEnv: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			exerciseTemplateExportStartup(t, tc.timeout, tc.removeEnv, false)
+			exerciseTemplateExportStartup(t, tc.timeout, tc.removeEnv, false, false)
 		})
 	}
 }
 
-func exerciseTemplateExportStartup(t *testing.T, timeout int, removeEnv, editPolicies bool) {
+// An untouched form can submit an empty public name. Exercise the real
+// controller/agent generation, a deployment restart and reuse of its export;
+// an app-only launch fixture cannot establish that these defaults agree.
+func TestTemplateExportReusesAnUnchangedDefaultDeploymentThroughHTTP(t *testing.T) {
+	exerciseTemplateExportStartup(t, 0, false, false, true)
+}
+
+func exerciseTemplateExportStartup(t *testing.T, timeout int, removeEnv, editPolicies, defaultName bool) {
 	t.Helper()
 	env := testenv.New(t)
 	node := env.AddNode("template-budget", testenv.WithGPUs(1, testenv.GPUSpec{Model: "A100", VRAMMB: 24576}), testenv.WithDriverName("fake"))
+	runs := make(chan runtime.WorkloadSpec, 4)
+	if defaultName {
+		node.Driver.AfterRun(func(spec runtime.WorkloadSpec) {
+			if strings.HasPrefix(spec.Name, "gpuworks-partition-probe-") {
+				return
+			}
+			select {
+			case runs <- spec:
+			default:
+			}
+		})
+	}
 	env.WaitNodeOnline(t, node.Name)
 	storedNode, err := env.Store().NodeByUUID(node.UUID)
 	if err != nil {
@@ -99,6 +122,9 @@ func exerciseTemplateExportStartup(t *testing.T, timeout int, removeEnv, editPol
 		"name": "template-budget", "model_id": model.ID, "node_uuid": node.UUID,
 		"engine": "vllm", "image": "example/template-budget:v1", "served_name": "template-budget",
 		"quick_params": map[string]any{"max_model_len": 512}, "extra_args": "--seed 7",
+	}
+	if defaultName {
+		createBody["served_name"] = ""
 	}
 	if timeout > 0 {
 		createBody["start_timeout_sec"] = timeout
@@ -164,13 +190,51 @@ func exerciseTemplateExportStartup(t *testing.T, timeout int, removeEnv, editPol
 			t.Fatalf("policy edit replaced or changed the running launch: before=%+v after=%+v", original, current)
 		}
 	}
-	export := func(stage string) {
+	checkExecutedLaunch := func(instance instanceState) {
+		t.Helper()
+		var facts dto.InstanceLaunchFacts
+		if err := json.Unmarshal(call(http.MethodGet, "/api/v1/instances/"+instance.UUID+"/launch-facts", nil, http.StatusOK), &facts); err != nil {
+			t.Fatal(err)
+		}
+		if facts.Resolved.Value == nil || facts.Intent.Value == nil || facts.Intent.Value.ServedName != model.Name {
+			t.Fatalf("default public name lost its captured launch: %+v", facts)
+		}
+		resolved := *facts.Resolved.Value
+		// The deployment's public route defaults to the model name; an empty
+		// engine-name parameter is independently named after its model mount.
+		if got := serverdeploy.ServedModelName(resolved); got != resolved.ModelMount {
+			t.Fatalf("current agent public name=%q; model mount=%q; argv=%v", got, resolved.ModelMount, resolved.Argv)
+		}
+		select {
+		case workload := <-runs:
+			if !reflect.DeepEqual(resolved.Argv, workload.Cmd) || !reflect.DeepEqual(resolved.Entrypoint, workload.Entrypoint) || !reflect.DeepEqual(resolved.Env, workload.Env) || workload.Image != "example/template-budget:v1" {
+				t.Fatalf("captured executable does not match the real agent workload: resolved=%+v workload=%+v", resolved, workload)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("running instance has no recorded agent workload")
+		}
+		for flag, want := range map[string]string{"--seed": "7", "--max-model-len": "512", "--tensor-parallel-size": "1"} {
+			found := false
+			for i, value := range resolved.Argv {
+				if value == flag && i+1 < len(resolved.Argv) && resolved.Argv[i+1] == want {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("saved launch lost %s=%s: %v", flag, want, resolved.Argv)
+			}
+		}
+	}
+	type exportedTemplate struct {
+		Saveable bool   `json:"saveable"`
+		YAML     string `json:"yaml"`
+		ModelID  string `json:"model_id"`
+		SpecName string `json:"spec_name"`
+	}
+	export := func(stage string) exportedTemplate {
 		t.Helper()
 		t.Log(stage)
-		var result struct {
-			Saveable bool   `json:"saveable"`
-			YAML     string `json:"yaml"`
-		}
+		var result exportedTemplate
 		if err := json.Unmarshal(call(http.MethodPost, deploymentPath+"/catalog-template", map[string]any{}, http.StatusOK), &result); err != nil {
 			t.Fatal(err)
 		}
@@ -180,8 +244,93 @@ func exerciseTemplateExportStartup(t *testing.T, timeout int, removeEnv, editPol
 		if removeEnv && strings.Contains(result.YAML, "VLLM_ENGINE_READY_TIMEOUT_S") {
 			t.Fatalf("export restored an explicitly removed environment variable: %s", result.YAML)
 		}
+		return result
 	}
 	export("initial startup budget")
+	if defaultName {
+		checkExecutedLaunch(original)
+		call(http.MethodPost, deploymentPath+"/restart", map[string]any{"strategy": "all"}, http.StatusAccepted)
+		deadline = time.Now().Add(30 * time.Second)
+		for {
+			restarted := readInstance()
+			if restarted.State == "running" && restarted.UUID != original.UUID {
+				original = restarted
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("deployment did not restart: %+v", restarted)
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		checkExecutedLaunch(original)
+		exported := export("unchanged default launch after deployment restart")
+		request, err := http.NewRequest(http.MethodPost, "/api/v1/inference-templates/import", strings.NewReader(exported.YAML))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Content-Type", "application/yaml")
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("import=%d %s (read error %v)", response.StatusCode, raw, err)
+		}
+		segments := strings.Split(exported.ModelID, "/")
+		for i := range segments {
+			segments[i] = url.PathEscape(segments[i])
+		}
+		var saved struct {
+			ID uint `json:"id"`
+		}
+		if err := json.Unmarshal(call(http.MethodGet, "/api/v1/inference-templates/model/"+strings.Join(segments, "/"), nil, http.StatusOK), &saved); err != nil || saved.ID == 0 {
+			t.Fatalf("saved template=%+v: %v", saved, err)
+		}
+		// A stopped deployment retains its public name. Delete it before
+		// reusing the same model default, keeping the source weights intact.
+		call(http.MethodDelete, deploymentPath, nil, http.StatusAccepted)
+		deadline = time.Now().Add(30 * time.Second)
+		for {
+			response, err := client.Get(deploymentPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode == http.StatusNotFound {
+				break
+			}
+			if response.StatusCode != http.StatusOK || time.Now().After(deadline) {
+				t.Fatalf("deleted deployment remains: status %d", response.StatusCode)
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		var reused struct {
+			ID      uint `json:"id"`
+			ModelID uint `json:"model_id"`
+		}
+		if err := json.Unmarshal(call(http.MethodPost, "/api/v1/deployments", map[string]any{
+			"name": "reused-template-budget", "template_id": saved.ID, "template_spec_source": "user", "template_spec_name": exported.SpecName,
+			"model_id": model.ID, "node_uuid": node.UUID, "served_name": "", "quick_params": map[string]any{},
+		}, http.StatusCreated), &reused); err != nil || reused.ID == 0 || reused.ModelID != model.ID {
+			t.Fatalf("reused deployment=%+v: %v", reused, err)
+		}
+		deploymentPath = fmt.Sprintf("/api/v1/deployments/%d", reused.ID)
+		deadline = time.Now().Add(30 * time.Second)
+		for {
+			reused := readInstance()
+			if reused.State == "running" {
+				checkExecutedLaunch(reused)
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("reused template did not run: %+v", reused)
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		export("reused default template")
+	}
 	if !editPolicies {
 		return
 	}
