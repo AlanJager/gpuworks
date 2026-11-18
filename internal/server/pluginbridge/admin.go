@@ -18,11 +18,11 @@ import (
 // States a View reports beside the plugin host's (pluginhost.State):
 // installed packages whose server part does not run, and why.
 const (
-	StateDisabled  = "disabled"  // installed, not enabled
-	StateInstalled = "installed" // enabled, with no resident server part to run
-	StateIdle      = "idle"      // enabled, an on-demand server part not running now
-	StateBroken    = "broken"    // installed, but no longer verifies; it does not run
-	StateRevoked   = "revoked"   // its build or its certificate is revoked; it does not run
+	StateDisabled  = "disabled"                   // installed, not enabled
+	StateInstalled = "installed"                  // enabled, with no server part to run
+	StateIdle      = string(pluginhost.StateIdle) // enabled, an on-demand server part not running now
+	StateBroken    = "broken"                     // installed, but no longer verifies; it does not run
+	StateRevoked   = "revoked"                    // its build or its certificate is revoked; it does not run
 )
 
 // Actions a View offers its administrator.
@@ -104,9 +104,6 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 	switch {
 	case m.Runtime == nil || ver.Binary == "":
 		v.State = StateInstalled
-		return v
-	case m.Runtime.Lifecycle != extapi.LifecycleResident:
-		v.State = StateIdle
 		return v
 	}
 	b.mu.Lock()
