@@ -3,13 +3,16 @@
 package extplugin
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/testenv/extsign"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
@@ -186,5 +189,70 @@ func TestContractPluginRouteResponsesAtRuntime(t *testing.T) {
 	}
 	if n := len(routeCalls(s, "acme_fake")); n != 2 {
 		t.Fatalf("the plugin served %d calls, want 2", n)
+	}
+}
+
+// A real plugin process that stops reading a route's request body is
+// restarted with PLUGIN_STALLED once its connection has made no progress
+// for StallAfter, though it keeps answering health probes; the stuck call
+// answers 502 PLUGIN_ROUTE_FAILED at once instead of waiting out the
+// route's timeout.
+func TestContractPluginThatStopsReadingBodiesIsRestarted(t *testing.T) {
+	s := newSite(t)
+	s.timing = func(tm *pluginhost.Timing) {
+		tm.StallAfter = time.Second
+		// A backoff long enough to read the reason from the plugin list.
+		tm.BackoffMin, tm.BackoffMax = 3*time.Second, 3*time.Second
+	}
+	sv := s.boot()
+	s.args("acme_fake", "--routes", "--stall-bodies")
+	sv.install(s.fakePackage("acme_fake", "1.0.0", func(spec *extsign.Spec) {
+		withFakeRoutes(spec)
+		m := &spec.Manifest
+		m.Permissions = append(m.Permissions, "http:uploads")
+		slices.Sort(m.Permissions)
+		m.Routes = append(m.Routes, extapi.RouteDecl{Method: "POST", Pattern: "/uploads", Action: "acme_fake.upload",
+			Access: extapi.RouteAdmin, Ungated: true, MaxBody: 16 << 20})
+	}), true)
+	sv.waitPlugin("acme_fake", "running", func(p dto.Plugin) bool { return p.State == "running" })
+
+	type answer struct {
+		status int
+		body   []byte
+		took   time.Duration
+	}
+	answered := make(chan answer, 1)
+	go func() {
+		started := time.Now()
+		status, body := sv.do(http.MethodPost, "/api/v1/x/acme_fake/uploads", bytes.NewReader(make([]byte, 8<<20)))
+		answered <- answer{status, body, time.Since(started)}
+	}()
+	p := sv.waitPlugin("acme_fake", "restarted for a stall", func(p dto.Plugin) bool {
+		return p.State == "backoff" && p.Message != nil && p.Message.Code == "PLUGIN_STALLED"
+	})
+	if p.Message.Params["id"] != "acme_fake" || p.Message.Params["stalled_s"] != float64(1) {
+		t.Fatalf("stall message = %+v", p.Message)
+	}
+	a := <-answered
+	var refusal struct {
+		Code string `json:"code"`
+	}
+	if a.status != http.StatusBadGateway || json.Unmarshal(a.body, &refusal) != nil || refusal.Code != "PLUGIN_ROUTE_FAILED" {
+		t.Fatalf("the stalled call = %d %s", a.status, a.body)
+	}
+	if a.took > 10*time.Second {
+		t.Fatalf("the stalled call took %v", a.took)
+	}
+	p = sv.waitPlugin("acme_fake", "running again", func(p dto.Plugin) bool { return p.State == "running" })
+	if p.Restarts != 1 {
+		t.Fatalf("restarts = %d, want 1", p.Restarts)
+	}
+
+	// The restarted plugin still answers calls without a body.
+	if status, body := sv.do(http.MethodGet, "/api/v1/x/acme_fake/jobs", nil); status != http.StatusOK {
+		t.Fatalf("a call without a body = %d %s", status, body)
+	}
+	if p := sv.plugin("acme_fake"); p.Restarts != 1 || p.State != "running" {
+		t.Fatalf("after a call without a body: %+v", p)
 	}
 }
