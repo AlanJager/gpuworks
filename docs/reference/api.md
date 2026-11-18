@@ -1856,6 +1856,8 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 
 ### 服务端升级限制
 
+`GET /api/v1/updates/server/versions` 的不可选原因：`database_newer` 表示当前数据库版本高于目标包支持的版本；`database_unknown` 表示目标包缺少跨渠道安装所需的数据库兼容性信息。这两种情况均禁止安装，POST 返回 409 `SERVER_UPGRADE_BACKUP_REQUIRED`（保留既有错误码）。控制台不提供历史备份恢复操作。
+
 `POST /api/v1/updates/server` 下载本平台发布包，按签名索引校验，备份替换后重启。返回 202 `{from,to,backup}`，下次启动确认或回滚。
 
 - 409 `SERVER_UPGRADE_UNAVAILABLE`：不能自升级，`reason` 为 `no_service_manager`、`not_installed`、`not_installed_binary` 或 `not_writable`。

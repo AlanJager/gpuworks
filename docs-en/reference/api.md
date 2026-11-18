@@ -1840,6 +1840,8 @@ When no source is available, the response is still 200 with `available=false`; `
 
 ### Server Upgrade Restrictions
 
+For `GET /api/v1/updates/server/versions`, `database_newer` means the current database version exceeds the version supported by the target package; `database_unknown` means the target package lacks the database compatibility information required for cross-channel installation. Both block installation; POST returns 409 `SERVER_UPGRADE_BACKUP_REQUIRED` (the existing error code is retained). The console does not provide an operation to restore historical backups.
+
 `POST /api/v1/updates/server` downloads the release package for the current platform, validates it against the signed index, backs up and replaces the server, and restarts. Returns 202 `{from,to,backup}`; confirms or rolls back on the next startup.
 
 - 409 `SERVER_UPGRADE_UNAVAILABLE`: self-upgrade is unavailable; `reason` is `no_service_manager`, `not_installed`, `not_installed_binary`, or `not_writable`.
@@ -2293,4 +2295,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 606a96d6107f0f05a4d197673607deda352376cb5942bf32cf4144d8aa35f13c -->
+<!-- translation-source-sha256: 23e15e4aa8098d08dd2329926327184e8db6161fc81b09b6bf4e2dbb3342a052 -->

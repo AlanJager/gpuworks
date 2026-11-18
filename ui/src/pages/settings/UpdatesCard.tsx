@@ -373,6 +373,9 @@ export default function UpdatesCard() {
       <Dialog open={Boolean(confirmed)} onOpenChange={open => { if (!open) returnToPicker(); }}>
         <DialogContent size="lg" closeButtonLabel={tCommon("actions.close")}>
           <DialogHeader><DialogTitle>{t("versionPicker.confirmTitle",{version:confirmed?.release.version})}</DialogTitle></DialogHeader>
+          {confirmed && status?.server.current_build?.build_channel &&
+            status.server.current_build.build_channel !== confirmed.channel &&
+            <Notice className="mb-4" tone="warning" title={t("versionPicker.crossChannelWarning")} />}
           <p className="mb-3"><strong>{status?.server.current_build?.build_channel || "—"} · {status?.server.current}</strong> → <strong>{confirmed?.channel} · {confirmed?.release.version}</strong></p>
           <p>{t("updates.serverConfirm")}</p>
           <DialogFooter>

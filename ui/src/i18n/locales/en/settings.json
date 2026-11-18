@@ -36,8 +36,7 @@
     "lookupFailed": "Could not load the version list. Check again.",
     "cannotInstall": "Console upgrade unavailable",
     "useHost": "Run the upgrade on the host.",
-    "recoveryTitle": "How to restore an earlier version",
-    "recoveryHelp": "Restore the database, configuration and binary from the pre-upgrade backup for that version, then verify the running server version.",
+    "crossChannelWarning": "After switching, you may not be able to return to the current version through the console. Continue?",
     "confirmTitle": "Upgrade to {{version}}?",
     "back": "Back to versions",
     "confirm": "Confirm upgrade",
@@ -58,7 +57,9 @@
       "installed": "Installed",
       "arch": "No {{platform}} package",
       "older": "Older than running version",
-      "backup": "Restore matching backup"
+      "backup": "Cannot install this version directly",
+      "database_newer": "Incompatible with the current database",
+      "database_unknown": "Database compatibility information missing"
     },
     "failed": "Could not install {{version}}. Check again and select a version."
   },

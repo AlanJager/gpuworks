@@ -1933,7 +1933,7 @@ export interface ServerVersionChoice {
   commit?: string;
   built_at: string;
   sha256?: string;
-  reason?: "installed" | "arch" | "older" | "backup";
+  reason?: "installed" | "arch" | "older" | "backup" | "database_newer" | "database_unknown";
 }
 
 export interface ServerUpgradeStarted {

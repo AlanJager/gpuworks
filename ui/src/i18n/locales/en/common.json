@@ -511,7 +511,7 @@
     "SERVER_UPGRADE_IN_PROGRESS": "A server upgrade is in progress. Check its result.",
     "SERVER_UPGRADE_SELECTION_CHANGED": "The channel or selected package changed. Check again.",
     "SERVER_UPGRADE_ATTEMPT_FINISHED": "This attempt already rolled back. Select a version again to retry.",
-    "SERVER_UPGRADE_BACKUP_REQUIRED": "Restore a backup compatible with {{version}} to install it.",
+    "SERVER_UPGRADE_BACKUP_REQUIRED": "Cannot install {{version}} because it is incompatible with the current database or does not declare compatibility.",
     "SERVER_UPGRADE_SELECTION_INVALID": "Select a valid update channel and version.",
     "SERVER_UPGRADE_WITHDRAWN": "{{version}} was withdrawn. Choose another version.",
     "UPDATE_CHANNEL_INVALID": "The update channel must be release or nightly.",

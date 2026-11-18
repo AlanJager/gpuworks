@@ -344,8 +344,8 @@ func (a *apiHandlers) upgradeServerFromChannel(w http.ResponseWriter, r *http.Re
 		return
 	}
 	compatibility := upgradeCompatibility(release, fetched.Index.Channel, migration)
-	if target.Version != "" && compatibility == "backup" {
-		writeProductError(w, http.StatusConflict, ErrorUpgradeBackupRequired, "restore a matching backup for this database version", map[string]any{"version": release.ReleaseID})
+	if target.Version != "" && (compatibility == "database_newer" || compatibility == "database_unknown") {
+		writeProductError(w, http.StatusConflict, ErrorUpgradeBackupRequired, "the selected version is incompatible with the current database or does not declare compatibility", map[string]any{"version": release.ReleaseID})
 		return
 	}
 	if (target.Version == "" && !release.NewerThan(version.Version, version.BuildDate)) || compatibility != "" {

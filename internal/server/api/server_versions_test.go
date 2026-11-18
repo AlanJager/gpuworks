@@ -121,7 +121,7 @@ func TestOlderBuildAcrossChannelsRequiresCompatibleSignedMigration(t *testing.T)
 	version.Version, version.BuildDate = "abc123", "2026-11-01T00:00:00Z"
 	defer func() { version.Version, version.BuildDate = oldVersion, oldDate }()
 	r := distribution.ServerRelease{ReleaseID: "v26.10.0", BuiltAt: "2026-10-01T00:00:00Z"}
-	if got := upgradeCompatibility(r, "release", 4); got != "backup" {
+	if got := upgradeCompatibility(r, "release", 4); got != "database_unknown" {
 		t.Fatal(got)
 	}
 	r.DatabaseMigration = 4
@@ -131,7 +131,45 @@ func TestOlderBuildAcrossChannelsRequiresCompatibleSignedMigration(t *testing.T)
 	if got := upgradeCompatibility(r, "nightly", 4); got != "older" {
 		t.Fatal(got)
 	}
-	if got := upgradeCompatibility(r, "release", 5); got != "backup" {
+	if got := upgradeCompatibility(r, "release", 5); got != "database_newer" {
 		t.Fatal(got)
+	}
+}
+
+func TestIncompatibleChoicesExplainTheBlockAndCannotBeInstalled(t *testing.T) {
+	savedVersion, savedDate, savedChannel := version.Version, version.BuildDate, version.Channel
+	t.Cleanup(func() { version.Version, version.BuildDate, version.Channel = savedVersion, savedDate, savedChannel })
+	version.Version, version.BuildDate, version.Channel = "v26.11.4", "2026-11-18T00:00:00Z", "release"
+	for _, tc := range []struct {
+		reason    string
+		migration int
+	}{
+		{"database_newer", 1}, {"database_unknown", 0},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			channel := newTestChannel(t)
+			channel.index.Server.BuiltAt = "2026-11-12T00:00:00Z"
+			channel.index.Server.DatabaseMigration = tc.migration
+			channel.sign()
+			server := &upgradingServer{StaticServerSettings: StaticServerSettings{Channel: "nightly"}}
+			run := newUpgradeRun(t, server, channel)
+			rec := run.do(http.MethodGet, "/api/v1/updates/server/versions?channel=nightly", "", "")
+			var list dto.ServerVersionChoices
+			if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != http.StatusOK || len(list.Versions) != 1 {
+				t.Fatalf("choices: %d %s", rec.Code, rec.Body)
+			}
+			choice := list.Versions[0]
+			if choice.Reason != tc.reason {
+				t.Fatalf("reason = %q, want %q", choice.Reason, tc.reason)
+			}
+			body, _ := json.Marshal(dto.ServerUpgradeSelection{Channel: "nightly", Version: choice.Version, SHA256: choice.SHA256, Attempt: tc.reason})
+			rec = run.do(http.MethodPost, "/api/v1/updates/server", "application/json", string(body))
+			if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), ErrorUpgradeBackupRequired) || len(server.archives) != 0 {
+				t.Fatalf("incompatible package installed: %d %s, archives %v", rec.Code, rec.Body, server.archives)
+			}
+			if strings.Contains(rec.Body.String(), "restore") {
+				t.Fatalf("unsupported recovery instruction: %s", rec.Body)
+			}
+		})
 	}
 }

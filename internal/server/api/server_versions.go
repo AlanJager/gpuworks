@@ -41,7 +41,7 @@ func readUpgradeSelection(body io.Reader) (dto.ServerUpgradeSelection, bool) {
 
 func upgradeCompatibility(release distribution.ServerRelease, channel string, migration int) string {
 	if release.DatabaseMigration > 0 && release.DatabaseMigration < migration {
-		return "backup"
+		return "database_newer"
 	}
 	if release.NewerThan(version.Version, version.BuildDate) {
 		return ""
@@ -50,7 +50,7 @@ func upgradeCompatibility(release distribution.ServerRelease, channel string, mi
 		return "older"
 	}
 	if release.DatabaseMigration == 0 {
-		return "backup"
+		return "database_unknown"
 	}
 	return ""
 }
