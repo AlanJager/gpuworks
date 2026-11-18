@@ -86,6 +86,25 @@ func (s *Store) FleetNodes() ([]Node, error) {
 	return cloneNodes(c.rows), nil
 }
 
+// FreshFleetNodes refreshes the shared fleet snapshot before returning it.
+// Explicit user list/facet reads must see committed rows from other processes
+// immediately; the controller and monitor retain FleetNodes' report window.
+// Reusing the same rebuild and lock also makes those subsequent cached reads
+// observe this inventory. Before snapshots are enabled, the clock is time.Now.
+func (s *Store) FreshFleetNodes() ([]Node, error) {
+	c := &s.fleetNodes
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now().UTC()
+	if c.now != nil {
+		now = c.now()
+	}
+	if err := s.rebuildFleetNodes(now); err != nil {
+		return nil, err
+	}
+	return cloneNodes(c.rows), nil
+}
+
 // rebuildFleetNodes reads the fleet into the snapshot; the caller holds the
 // lock. The counts are read before the rows: a change that lands while the
 // rows are read makes the next read rebuild again. A failed read drops the
