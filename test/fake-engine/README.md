@@ -47,6 +47,16 @@ request, but this fixture only reports final totals: it does not simulate
 intermediate cumulative usage or reasoning-token accounting. No token count is
 inferred from character or chunk counts.
 
+## Sleep and weight validity
+
+Level-1 sleep preserves weights. Level-2 sleep invalidates them: after a plain
+wake, chat and text completions deliberately return a recognizable synthetic
+corrupt body until `collective_rpc` reloads the weights. Correct staged wake
+(`weights`, `reload_weights`, then `kv_cache`) restores the configured answer.
+The corrupt body is a fixture signal, not a prediction of real model output;
+its configured usage remains synthetic. This keeps missed-reload regressions
+observable through actual inference responses rather than only call counts.
+
 ## Public images
 
 The same small image is published to both registries for optional network
