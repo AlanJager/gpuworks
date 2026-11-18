@@ -1,6 +1,8 @@
 package pushstate
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sync"
@@ -70,6 +72,30 @@ func TestAppliedReportsCommittedPushesOnly(t *testing.T) {
 	want := []string{"acme_ops/node_holds/2", "acme_authority/availability/1"}
 	if got := log.got(); !slices.Equal(got, want) {
 		t.Fatalf("applied = %v, want %v", got, want)
+	}
+}
+
+// A push the writer commits after its caller stopped waiting is still
+// reported: it was committed.
+func TestAppliedCountsACommitWhoseCallerStoppedWaiting(t *testing.T) {
+	st := openStore(t, "")
+	log := &appliedLog{}
+	h := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z"), func(c *Config) { c.Effects.Applied = log.add }).load()
+	ctx, cancel := context.WithCancel(context.Background())
+	returned := make(chan *extapi.WireError, 1)
+	go func() {
+		_, w := h.s.Push(ctx, pusherOf(acmeAuthority), &extapi.StatePush{Kind: extapi.KindAvailability, Schema: 1, Generation: 1, Body: json.RawMessage(backupFull)})
+		returned <- w
+	}()
+	h.waitFor("the push to queue", func() bool { h.s.mu.Lock(); defer h.s.mu.Unlock(); return len(h.s.pending) == 1 })
+	cancel()
+	if w := <-returned; w == nil {
+		t.Fatal("a push whose caller stopped waiting was acknowledged")
+	}
+	h.run()
+	h.waitFor("the commit to be reported", func() bool { return len(log.got()) == 1 })
+	if got := log.got(); got[0] != "acme_authority/availability/1" {
+		t.Fatalf("applied = %v", got)
 	}
 }
 

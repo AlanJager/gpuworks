@@ -89,9 +89,6 @@ func (s *State) Push(ctx context.Context, pusher Pusher, push *extapi.StatePush)
 
 	select {
 	case r := <-pp.done:
-		if r.ack != nil && r.ack.AppliedAt != nil && s.cfg.Effects.Applied != nil {
-			s.cfg.Effects.Applied(p.owner, p.kind, EntriesOf(p.table))
-		}
 		return r.ack, r.err
 	case <-ctx.Done():
 		return nil, wireError(messages.ErrorPluginStateNotSaved, extapi.ReasonCancelled, map[string]any{"kind": p.kind},

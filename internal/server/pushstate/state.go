@@ -47,7 +47,8 @@ type Effects struct {
 	ClockCorrected func(from, to time.Time, by, reason string)
 	// Applied reports a push the writer committed: owner's table of kind,
 	// with entries entries (EntriesOf), for the plugin metrics. It is not
-	// called for a push that was refused or superseded.
+	// called for a push that was refused or superseded, and it is called
+	// for a committed one whose caller stopped waiting.
 	Applied func(owner, kind string, entries int)
 }
 
