@@ -324,7 +324,7 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 
 | 类别 | 种类 | 合并 |
 |---|---|---|
-| 限制（Restrict） | `fleet_capacity`、`node_holds` | 任何获准的所有者都能推，按交集合并，所有者掉线时不失效 |
+| 限制（Restrict） | `fleet_capacity`、`node_holds` | 任何获准的所有者都能推，按交集合并（上限取最紧的；`keep` 取并集，只决定保留顺序，从不放宽上限），所有者掉线时不失效 |
 | 授权（Grant） | `availability` | 只来自命名空间的权威（`gate: self` 的键来自声明它的包），所有者掉线超过宽限后收紧 |
 | 显示（Display） | `banners` | 只显示，从不参与执行 |
 | 不透明（Opaque） | `attestations` | 只存储与转交，从不解释 |

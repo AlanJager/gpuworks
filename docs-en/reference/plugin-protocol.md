@@ -324,7 +324,7 @@ Each kind belongs to a class, which decides how the server combines the rows of 
 
 | Class | Kinds | Combination |
 |---|---|---|
-| Restrict | `fleet_capacity`, `node_holds` | Any approved owner may push; rows combine by intersection and do not lapse while the owner is down |
+| Restrict | `fleet_capacity`, `node_holds` | Any approved owner may push; rows combine by intersection (the tightest cap wins; `keep` lists are unioned, since they only order the selection and never loosen a cap) and do not lapse while the owner is down |
 | Grant | `availability` | Only from the namespace authority (or, for `gate: self` keys, the declaring package); tightens once the owner has been down longer than the grace |
 | Display | `banners` | Shown, never enforced |
 | Opaque | `attestations` | Stored and relayed, never interpreted |
@@ -436,4 +436,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: e2d61b3a7929f4e38d7d15a5f7e06558c69b1907bb53dde1f5104234cf1a9f35 -->
+<!-- translation-source-sha256: 7eae169f98108679e8ccbcd00d2e700062195877ad0a9171304443a89f3e1475 -->
