@@ -50,7 +50,7 @@ func (s *State) changed() {
 	holds, features := s.recombineLocked()
 	s.mu.Unlock()
 	s.poke()
-	s.effects(holds, features)
+	s.effects(holds, false, features)
 }
 
 // Uninstall removes everything owner pushed, its overrides and its down

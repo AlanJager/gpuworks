@@ -69,12 +69,13 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `GuardNodeInsert(g)` | A guard on every new node's insert |
 | `HoldScheduling(h)` | A scheduling holder, keyed by its source; a repeated source is refused |
 | `ReapplySchedulingHolds()` | The holder's answers changed: asks for the holds to be applied to every node again, rather than at each node's next status report |
+| `ReapplySchedulingHoldsFor(ids)` | The same, but only for the nodes (by node ID) whose answers changed |
 | `NodeFleet(ctx)` | Every node's hold facts (`store.NodeHoldFacts`), ordered by ID (enrollment order), in one query on the read pool |
 | `NodeIdentity(ctx, ids, salt)` | The salted hardware identity of the named nodes (`store.NodeIdentity`); raw serials never leave the core. See [Node identity and node inventory](#node-identity-and-node-inventory) |
 | `NodeInventory(ctx, cursor, limit)` | A page of the node inventory in enrollment order (`store.NodeInventoryPage`): names, enrollment times, each node's own cards (index, model, whether it has a serial) |
 | `NodeNamesByID(ctx, ids)` | The display names of the named nodes, keyed by ID (`map[uint]string`), in one query on the read pool |
 
-The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds`, `NodeFleet`, `NodeIdentity`, `NodeInventory` and `NodeNamesByID` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
+The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds`, `ReapplySchedulingHoldsFor`, `NodeFleet`, `NodeIdentity`, `NodeInventory` and `NodeNamesByID` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
 
 Extension routes live under `/api/v1/x/<name>/`: `api.RouteSpec.Pattern` is relative to `/api/v1` and is `/x/<name>` or starts with `/x/<name>/`, and is a clean path (no `.`, `..`, `//` or trailing `/`). A route outside the module's own namespace, an unclean pattern, or two patterns of one method that differ only in parameter names (`{id}` and `{name}`) panic while the router is built. The core registers no route under `/api/v1/x/`, so a module name may equal a core path segment (such as `nodes`) and never collides with a path the core adds later.
 
@@ -86,6 +87,7 @@ A holder is otherwise asked on every status report, so a node whose answer chang
 
 - It never blocks and allocates nothing, and may be called from any goroutine, **except from inside a hook** (`SchedulingHolder.Hold`, an insert guard): a pass asks every holder again, so a holder that asked for one from `Hold` would keep the whole fleet in passes. Hooks request no other recompute either.
 - Requests are coalesced: any number made while a pass is pending or running make at most one more pass, and passes are at least 2 seconds apart, so a holder whose answers flap costs at most one fleet-wide writer transaction every 2 seconds, never one per event.
+- A module that knows which nodes its answers changed for calls `ReapplySchedulingHoldsFor(ids)`: that pass reads and writes those nodes only (`ApplySchedulingHoldsFor`, `WHERE id IN`), so a holder that often changes a few nodes does not cost a fleet-wide transaction each time. It is coalesced with every other request; when the nodes named between two passes exceed `holdpass.MaxScoped` (512), or anyone asked for every node, the pass covers every node. Pushed state (the node holds table plugins push) takes this path and asks for every node only when a capacity cap changed.
 - The pass runs in the same `services()` loop as the modules' `Service`, off the caller's goroutine, and stops with the server; a failed pass is logged as an error and retried with a backoff that starts at 2 seconds and doubles up to a minute. With no holder registered it does nothing.
 
 A holder whose answers depend on the whole fleet (for example, choosing nodes in enrollment order) learns the fleet from these two, rather than by recording the nodes it sees in `Hold`:
@@ -138,7 +140,7 @@ Migration sets (`store.MigrationSet`) run after the core migrations, in the same
 | Hook | Called where | How often |
 |---|---|---|
 | `NodeEnrollmentGuard` | Inside the writer transaction of the three node insert paths (`CreateNodePending`, `EnrollKubeNode`, `RegisterNode`) | Every new node insert |
-| `SchedulingHolder.Hold` | Inside the writer transaction of every status report and scheduling change; for every node at startup and in every `ApplySchedulingHolds` (including the passes modules ask for) | Every report of every node |
+| `SchedulingHolder.Hold` | Inside the writer transaction of every status report and scheduling change; for every node at startup and in every `ApplySchedulingHolds` (including the passes modules ask for), and for the named nodes in `ApplySchedulingHoldsFor` | Every report of every node |
 | `featuregate.Source.Availability` | Every request to an extension route, every console manifest request | Every request |
 | `BannerSource.Banners` | Every console manifest request | Every request |
 | `Service.Run` | A background loop | Continuously |
@@ -163,7 +165,7 @@ Open-source code speaks only of availability: a feature source answers each feat
 - An extension route (`api.RouteSpec`) either names a `Feature` or is marked `Community`, exactly one of the two. The route inventory (`api.RouteInventory`) prints each extension route's access level, action and feature.
 - Full: passes. Read-only: reads pass, and so do writes marked `WriteWhenReadOnly` (writes that only remove or relax); other writes get 403 `FEATURE_READ_ONLY`. Locked: 403 `FEATURE_UNAVAILABLE`. Hidden, or a locked feature declared with concealed presentation: 404. When the source supplies its own notice, its code is returned.
 - Without a module that provides a feature source, every declared feature is locked (`FEATURE_PROVIDER_ABSENT`).
-- Community paths never consult the gate, and running workloads are never interrupted by a change of availability. Core code never names a feature key in a literal: key-shaped literals handed to the gate, `featuregate.Key("…")` conversions and a route's `Feature: "…"` in non-test code are held at 0 by the architecture budget `feature_key_literals_in_core`.
+- Community paths never consult the gate, and running workloads are never interrupted by a change of availability. Core code never names a feature key in a literal: key-shaped literals handed to the gate, `featuregate.Key("…")` conversions, a literal assigned to a `featuregate.Key` constant, a feature declaration's `Key: "…"` (`featuregate.Feature{Key: …}`) and a route's `Feature: "…"` in non-test code are held at 0 by the architecture budget `feature_key_literals_in_core`.
 - Extension GET routes are not readable by the AI assistant and MCP unless marked `AIReadable`.
 
 The console renders `GET /api/v1/console/manifest` (fields in the [API reference](../reference/api.md)) and derives no availability itself: full shows as usual; read-only passes `readOnly` to the component; locked keeps the menu entry with a lock and shows the locked page with the server's link; a hidden key, or one the manifest does not list, shows nothing.
@@ -281,7 +283,7 @@ The server starts every plugin through its own binary: `gpuworks plugin-exec --p
 
 A package that requires Landlock (certificate `min_isolation: landlock`) does not start on a host without it: the trampoline exits with code 78 and writes `PLUGIN_ISOLATION_UNAVAILABLE` to stderr. The trampoline's other exit codes: 64 for a bad command line, 71 when applying the sandbox failed, 127 when the plugin could not be executed.
 
-The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `master.key` or paths outside its package, and cannot signal a sibling process) skip on a host without Landlock; CI's `core-test` runs them once more with `GPUWORKS_TEST_STRICT=1`, where a missing Landlock is a failure rather than a skip, so they are known to have run on the Linux job.
+The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `master.key` or paths outside its package, and on Landlock ABI 6 or later cannot signal a sibling process) skip on a host without Landlock; CI's `core-test` runs them once more with `GPUWORKS_TEST_STRICT=1`, where a missing Landlock is a failure rather than a skip, so they are known to have run on the Linux job.
 
 ### Supervision
 
@@ -329,4 +331,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: eb9df18178663df2d657c63406430de9a9accc58be2331457a72444c466a7e31 -->
+<!-- translation-source-sha256: e8e8fccd6622934fa723c86e160ece541d5cf182850a53f972c40ec5a88b7313 -->

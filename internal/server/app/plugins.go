@@ -74,7 +74,13 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		State: pushstate.Config{Store: m.st, Fleet: PushedStateFleet(m.st), Bus: bus, FleetTopic: store.NodeFleetTopic,
 			CoreVersion: version.Version, Clock: rt.Clock, TickInterval: rt.TickInterval,
 			Effects: pushstate.Effects{
-				ReapplyHolds:    h.ReapplySchedulingHolds,
+				ReapplyHolds: func(nodes []uint) {
+					if nodes == nil {
+						h.ReapplySchedulingHolds()
+						return
+					}
+					h.ReapplySchedulingHoldsFor(nodes)
+				},
 				FeaturesChanged: func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
 			}},
 		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing},

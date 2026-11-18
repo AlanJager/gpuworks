@@ -19,12 +19,34 @@ var holdColumns = append(append([]string(nil), holdFactColumns...),
 // writer transaction over the fleet, for a holder whose answers changed (at
 // boot, or when what it decides on changes), never per report; each changed
 // node is published as a scheduling change. It returns the nodes it held
-// and those it released.
+// and those it released. A holder that knows which nodes its answers
+// changed for uses ApplySchedulingHoldsFor instead.
 func (s *Store) ApplySchedulingHolds() (held, released []string, err error) {
+	return s.applySchedulingHolds(nil)
+}
+
+// ApplySchedulingHoldsFor is ApplySchedulingHolds over the nodes with the
+// given ids only (ids that no longer exist are skipped): the pass for a
+// holder whose answers changed for a few nodes, which reads and writes just
+// those rather than the fleet. With no ids it does nothing.
+func (s *Store) ApplySchedulingHoldsFor(ids []uint) (held, released []string, err error) {
+	if len(ids) == 0 {
+		return nil, nil, nil
+	}
+	return s.applySchedulingHolds(ids)
+}
+
+// applySchedulingHolds is a pass over the nodes in ids, or every node when
+// ids is nil.
+func (s *Store) applySchedulingHolds(ids []uint) (held, released []string, err error) {
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		held, released = nil, nil
 		var nodes []Node
-		if err := tx.Select(holdColumns).Order("id").Find(&nodes).Error; err != nil {
+		q := tx.Select(holdColumns)
+		if ids != nil {
+			q = q.Where("id IN ?", ids)
+		}
+		if err := q.Order("id").Find(&nodes).Error; err != nil {
 			return err
 		}
 		for i := range nodes {

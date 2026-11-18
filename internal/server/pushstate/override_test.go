@@ -3,6 +3,7 @@ package pushstate
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
@@ -28,6 +29,10 @@ func TestAnOverrideReleasesOneHoldUntilTheOwnerDecidesAgain(t *testing.T) {
 	}
 	if h.reapply.Load() == before {
 		t.Fatal("the override did not ask for a pass of the holds")
+	}
+	// The pass covers the released node only, not the fleet.
+	if got := h.lastScope(); !slices.Equal(got, []uint{12}) {
+		t.Fatalf("the override asked for a pass over %v, want [12]", got)
 	}
 	if list := h.s.Overrides(); len(list) != 1 || list[0].Reason != "maintenance done" {
 		t.Fatalf("overrides = %+v", list)
@@ -175,5 +180,27 @@ func TestUninstallReleasesEverythingTheOwnerPushed(t *testing.T) {
 	// It can push nothing more.
 	if _, w := h.try(authority, extapi.KindAvailability, 2, backupFull); w == nil || w.Code != messages.ErrorPluginStateNotOwner {
 		t.Fatalf("push after uninstall = %+v", w)
+	}
+}
+
+// A push that changes some holds asks for a pass over exactly the nodes
+// whose hold changed, so the pass reads and writes those rows rather than
+// the fleet; a push that changes none asks for no pass.
+func TestAPushAsksForAPassOverTheNodesWhoseHoldChanged(t *testing.T) {
+	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load().run()
+	ops := pusherOf(acmeOps, "push:node_holds")
+	h.push(ops, extapi.KindNodeHolds, 1, opsHolds)
+	if got := h.lastScope(); !slices.Equal(got, []uint{9, 12}) {
+		t.Fatalf("the first push asked for a pass over %v, want [9 12]", got)
+	}
+	// 12 keeps its hold, 9 is released, 5 is held, and 12's params change.
+	h.push(ops, extapi.KindNodeHolds, 2, `{"nodes":{"12":{"code":"ACME_MAINTENANCE","params":{"ticket":"OPS-119"}},"5":{"code":"ACME_QUARANTINE"}}}`)
+	if got := h.lastScope(); !slices.Equal(got, []uint{5, 9, 12}) {
+		t.Fatalf("the second push asked for a pass over %v, want [5 9 12]", got)
+	}
+	before := h.reapply.Load()
+	h.push(ops, extapi.KindNodeHolds, 3, `{"nodes":{"12":{"code":"ACME_MAINTENANCE","params":{"ticket":"OPS-119"}},"5":{"code":"ACME_QUARANTINE"}}}`)
+	if h.reapply.Load() != before {
+		t.Fatalf("a push that changed no hold asked for a pass over %v", h.lastScope())
 	}
 }

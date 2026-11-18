@@ -69,12 +69,13 @@ type Service interface{ Run(ctx context.Context) error }
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
 | `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
+| `ReapplySchedulingHoldsFor(ids)` | 同上，但只对答案变了的那些节点（按节点 id）重新应用 |
 | `NodeFleet(ctx)` | 全部节点的保持事实（`store.NodeHoldFacts`），按 id（加入顺序）排序，读池上一次查询 |
 | `NodeIdentity(ctx, ids, salt)` | 指定节点的加盐硬件身份（`store.NodeIdentity`），原始序列号不出核心，见[节点身份与节点清单](#节点身份与节点清单) |
 | `NodeInventory(ctx, cursor, limit)` | 按加入顺序分页的节点清单（`store.NodeInventoryPage`）：名称、加入时间、自己的卡（序号、型号、有无序列号） |
 | `NodeNamesByID(ctx, ids)` | 指定节点的显示名，以 id 为键（`map[uint]string`），读池上一次查询 |
 
-`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 与 `NodeNamesByID` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
+`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`ReapplySchedulingHoldsFor`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 与 `NodeNamesByID` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
 扩展路由挂在 `/api/v1/x/<名>/` 下：`api.RouteSpec.Pattern` 相对 `/api/v1`，是 `/x/<名>` 或以 `/x/<名>/` 开头，且是规整的路径（没有 `.`、`..`、`//` 与结尾的 `/`）；越出自己的命名空间、路径不规整，或同一方法下两个模式只差参数名（`{id}` 与 `{name}`），都在路由构建时 panic。核心不在 `/api/v1/x/` 下注册任何路由，所以模块名可以与核心路径段同名（如 `nodes`），也不会与核心将来新增的路径冲突。
 
@@ -86,6 +87,7 @@ type Service interface{ Run(ctx context.Context) error }
 
 - 不阻塞、不分配内存，可以在任何 goroutine 调用，**唯独不能在钩子里**（`SchedulingHolder.Hold`、插入守卫）：一次重新应用会再问一遍所有保持者，在 `Hold` 里请求就会让全部节点不停地重新应用。钩子里同样不请求任何其他重算。
 - 请求会合并：一次重新应用等待或执行期间的任意多次请求，最多再引起一次；两次之间至少隔 2 秒，所以答案来回抖动的保持者每 2 秒最多花一次全表写事务，不会变成每个事件一次。
+- 知道答案对哪些节点变了的模块调用 `ReapplySchedulingHoldsFor(ids)`：这次重新应用只读写这些节点（`ApplySchedulingHoldsFor`，`WHERE id IN`），频繁改动少数节点的保持者因此不会每次都花一遍全表事务。它与其他请求一样合并；两次重新应用之间点名的节点超过 `holdpass.MaxScoped`（512）个时改为全部节点，有人请求全部节点时也是全部节点。推送状态（插件推送的节点保持表）走这条路，只有容量上限变了才请求全部节点。
 - 重新应用在模块的 `Service` 所在的同一个 `services()` 循环里执行，不占调用方的 goroutine，随 server 停止；失败时记错误日志，从 2 秒起加倍退避（最长一分钟）重试。没有注册保持者时什么也不做。
 
 答案取决于整个节点集合的保持者（例如按加入顺序挑选节点），用下面两样了解集合，而不是在 `Hold` 里记下见过的节点：
@@ -138,7 +140,7 @@ type Service interface{ Run(ctx context.Context) error }
 | 钩子 | 在哪里被调用 | 频率 |
 |---|---|---|
 | `NodeEnrollmentGuard` | 三条节点插入路径（`CreateNodePending`、`EnrollKubeNode`、`RegisterNode`）的写事务内 | 每次插入新节点 |
-| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与每次 `ApplySchedulingHolds`（含模块请求的重新应用）时对全部节点 | 每节点每次上报 |
+| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与每次 `ApplySchedulingHolds`（含模块请求的重新应用）时对全部节点，`ApplySchedulingHoldsFor` 时对点名的节点 | 每节点每次上报 |
 | `featuregate.Source.Availability` | 扩展路由的每个请求、每次控制台清单请求 | 每请求 |
 | `BannerSource.Banners` | 每次控制台清单请求 | 每请求 |
 | `Service.Run` | 后台循环 | 常驻 |
@@ -163,7 +165,7 @@ type Service interface{ Run(ctx context.Context) error }
 - 扩展路由（`api.RouteSpec`）要么指明 `Feature`，要么标记 `Community`，二者必居其一；路由清单（`api.RouteInventory`）打印每条扩展路由的访问级别、动作与功能。
 - 完整：放行。只读：放行读，以及标记 `WriteWhenReadOnly` 的写（只做删除或放宽的写）；其他写返回 403 `FEATURE_READ_ONLY`。锁定：403 `FEATURE_UNAVAILABLE`。隐藏，或声明为隐藏呈现的功能被锁定：404。功能来源给了自己的说明时，返回它的码。
 - 没有模块提供功能来源时，所有声明过的功能都是锁定（`FEATURE_PROVIDER_ABSENT`）。
-- 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。核心代码不以字面量点名功能键：交给功能门的键形字面量、`featuregate.Key("…")` 转换与路由的 `Feature: "…"`，在非测试代码里由架构预算 `feature_key_literals_in_core`（上限 0）守护。
+- 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。核心代码不以字面量点名功能键：交给功能门的键形字面量、`featuregate.Key("…")` 转换、赋给 `featuregate.Key` 常量的字面量、功能声明的 `Key: "…"`（`featuregate.Feature{Key: …}`）与路由的 `Feature: "…"`，在非测试代码里由架构预算 `feature_key_literals_in_core`（上限 0）守护。
 - 扩展 GET 路由默认不给 AI 助手与 MCP 读，除非标记 `AIReadable`。
 
 控制台按 `GET /api/v1/console/manifest` 渲染（字段见 [API 参考](../reference/api.md)），自己不推导可用性：完整照常显示；只读时组件收到 `readOnly`；锁定时菜单项带锁，页面显示锁定页和服务端给的链接；隐藏或清单里没有的功能键，什么都不显示。
@@ -281,7 +283,7 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 
 要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
 
-`internal/testenv/extplugin` 里验证 Landlock 的用例（插件读不到 `master.key` 与包外路径、不能向兄弟进程发信号）在没有 Landlock 的主机上跳过；CI 的 `core-test` 另以 `GPUWORKS_TEST_STRICT=1` 单独再跑一遍，这时缺少 Landlock 是失败而不是跳过，所以这些用例确实在 Linux 任务上执行过。
+`internal/testenv/extplugin` 里验证 Landlock 的用例（插件读不到 `master.key` 与包外路径；Landlock ABI 6 及以上还验证不能向兄弟进程发信号）在没有 Landlock 的主机上跳过；CI 的 `core-test` 另以 `GPUWORKS_TEST_STRICT=1` 单独再跑一遍，这时缺少 Landlock 是失败而不是跳过，所以这些用例确实在 Linux 任务上执行过。
 
 ### 监管
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/holdpass"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/store/pstate"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -25,27 +26,58 @@ import (
 //
 //   - a full replace that changes 1% of a table writes about twice the
 //     changed entries (a delete and an insert each) and a few rows more;
-//   - the writer holds the database for under budgetWriterHoldP99 per tick
-//     at the 99th percentile;
+//   - a commit of pushed state takes under budgetCommitP99 at the 99th
+//     percentile, measured around the whole write, so the figure is the
+//     writer's hold plus its wait for the write lock behind status reports
+//     (an upper bound on the hold);
+//   - each pass of the scheduling holds a push asks for (the store's real
+//     pass over the nodes whose hold changed, contending for the same
+//     writer) takes under budgetCommitP99 at the 99th percentile too;
 //   - status reports written at the same time wait under
 //     budgetStatusWaitP99 longer at the 99th percentile than without the
-//     pushes.
+//     pushes and their passes.
 const (
 	budgetNodes         = 1000
 	budgetPushes        = 60
 	budgetRowsConstant  = 4
-	budgetWriterHoldP99 = 20 * time.Millisecond
+	budgetCommitP99     = 20 * time.Millisecond
 	budgetStatusWaitP99 = 5 * time.Millisecond
 	budgetTickInterval  = 50 * time.Millisecond
 )
 
-// timedStore records how long each commit of pushed state held the writer
-// and what it wrote.
+// timedStore records how long each commit of pushed state took (the
+// writer's hold plus its wait for the write lock) and what it wrote, and
+// how long each pass of the scheduling holds took.
 type timedStore struct {
 	*faultyStore
-	mu    sync.Mutex
-	holds []time.Duration
-	rows  []int
+	mu     sync.Mutex
+	holds  []time.Duration
+	rows   []int
+	passes []time.Duration
+}
+
+// applyHolds is the store's pass of the scheduling holds, as the app wires
+// it (store.ApplySchedulingHoldsFor, or the fleet for nil), timed.
+func (s *timedStore) applyHolds(nodes []uint) (held, released []string, err error) {
+	start := time.Now()
+	if nodes == nil {
+		held, released, err = s.ApplySchedulingHolds()
+	} else {
+		held, released, err = s.ApplySchedulingHoldsFor(nodes)
+	}
+	took := time.Since(start)
+	s.mu.Lock()
+	s.passes = append(s.passes, took)
+	s.mu.Unlock()
+	return held, released, err
+}
+
+func (s *timedStore) takePasses() []time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.passes
+	s.passes = nil
+	return p
 }
 
 func (s *timedStore) WritePushedState(ctx context.Context, b *pstate.Batch) (pstate.Result, error) {
@@ -193,15 +225,31 @@ func TestPushedStateWriteBudget(t *testing.T) {
 		}
 	}
 	ts := &timedStore{faultyStore: fs}
+	// The passes run on a holdpass runner as in the server, but with the
+	// floor at the tick interval rather than the server's two seconds, so
+	// nearly every push gets a pass of its own: more writer contention than
+	// the server allows, never less.
+	passes := holdpass.NewScoped(ts.applyHolds, nil, budgetTickInterval)
 	var reapplied atomic.Int32
 	h := newHarness(t, fs, newFakeClock("2026-12-01T00:00:00Z"), func(c *Config) {
 		c.Store, c.TickInterval = ts, budgetTickInterval
-		c.Effects.ReapplyHolds = func() { reapplied.Add(1) }
+		c.Effects.ReapplyHolds = func(nodes []uint) {
+			reapplied.Add(1)
+			if nodes == nil {
+				passes.Request()
+			} else {
+				passes.RequestNodes(nodes)
+			}
+		}
 	}).load()
 	if err := fs.AddSchedulingHolder(budgetHolder{s: h.s}); err != nil {
 		t.Fatal(err)
 	}
 	h.run()
+	passCtx, stopPasses := context.WithCancel(context.Background())
+	passesDone := make(chan struct{})
+	go func() { passes.Run(passCtx); close(passesDone) }()
+	t.Cleanup(func() { stopPasses(); <-passesDone })
 	ops := pusherOf(acmeOps, "push:node_holds")
 	gen := uint64(1)
 	h.push(ops, extapi.KindNodeHolds, gen, holdsBody(budgetNodes, 0))
@@ -211,6 +259,17 @@ func TestPushedStateWriteBudget(t *testing.T) {
 	if !h.s.Hold(1, 8).held() || !h.s.Hold(budgetNodes, 8).held() {
 		t.Fatal("the first push holds no node")
 	}
+	// The first push holds every node; its pass (over the fleet, as it names
+	// more than holdpass.MaxScoped nodes) runs before the measured windows.
+	h.waitFor("the first pass of the scheduling holds", func() bool {
+		ts.mu.Lock()
+		defer ts.mu.Unlock()
+		return len(ts.passes) > 0
+	})
+	if n, err := fs.NodeByUUID(uuids[budgetNodes-1]); err != nil || n.SchedulingBy != store.SchedulingSource(HoldSource) {
+		t.Fatalf("the first pass left the last node %s by %q (%v)", n.Scheduling, n.SchedulingBy, err)
+	}
+	ts.takePasses()
 
 	// Each push continues the sequence, so it differs from the stored table
 	// in one slice.
@@ -230,6 +289,8 @@ func TestPushedStateWriteBudget(t *testing.T) {
 	// status reports alone over that window are the baseline.
 	window := pushing(make(chan struct{}))
 	ts.take()
+	time.Sleep(4 * budgetTickInterval) // the last pass of this run
+	ts.takePasses()
 	stop := make(chan struct{})
 	go func() { time.Sleep(window); close(stop) }()
 	baseline := statusReports(t, fs.Store, uuids, stop)
@@ -240,11 +301,16 @@ func TestPushedStateWriteBudget(t *testing.T) {
 	pushing(stop)
 	loaded := <-reports
 	holds, rows := ts.take()
+	time.Sleep(4 * budgetTickInterval)
+	passTimes := ts.takePasses()
 
 	changed := max(1, budgetNodes/100)
 	t.Logf("nodes=%d pushes=%d changed per push=%d window=%s", budgetNodes, budgetPushes, changed, window.Round(time.Millisecond))
 	t.Logf("rows written per push: max %d (budget %d)", slices.Max(rows), 2*changed+budgetRowsConstant)
-	t.Logf("writer hold per tick: p50 %s p99 %s max %s (budget p99 %s)", percentile(holds, 0.5), percentile(holds, 0.99), slices.Max(holds), budgetWriterHoldP99)
+	t.Logf("commit latency (writer hold plus lock wait): p50 %s p99 %s max %s (budget p99 %s)", percentile(holds, 0.5), percentile(holds, 0.99), slices.Max(holds), budgetCommitP99)
+	if len(passTimes) > 0 {
+		t.Logf("scheduling hold passes: n=%d p50 %s p99 %s max %s (budget p99 %s)", len(passTimes), percentile(passTimes, 0.5), percentile(passTimes, 0.99), slices.Max(passTimes), budgetCommitP99)
+	}
 	t.Logf("status write: baseline n=%d p50 %s p99 %s; with pushes n=%d p50 %s p99 %s (budget +%s)",
 		len(baseline), percentile(baseline, 0.5), percentile(baseline, 0.99), len(loaded), percentile(loaded, 0.5), percentile(loaded, 0.99), budgetStatusWaitP99)
 
@@ -256,8 +322,13 @@ func TestPushedStateWriteBudget(t *testing.T) {
 			t.Errorf("push %d wrote %d rows for %d changed entries; budget %d", i+1, n, changed, 2*changed+budgetRowsConstant)
 		}
 	}
-	if p := percentile(holds, 0.99); p > budgetWriterHoldP99 {
-		t.Errorf("writer hold p99 %s, budget %s", p, budgetWriterHoldP99)
+	if p := percentile(holds, 0.99); p > budgetCommitP99 {
+		t.Errorf("commit latency p99 %s, budget %s", p, budgetCommitP99)
+	}
+	if len(passTimes) < budgetPushes/4 {
+		t.Errorf("%d passes of the scheduling holds for %d pushes; the pushes did not contend with them", len(passTimes), budgetPushes)
+	} else if p := percentile(passTimes, 0.99); p > budgetCommitP99 {
+		t.Errorf("scheduling hold pass p99 %s, budget %s", p, budgetCommitP99)
 	}
 	if len(baseline) < 100 || len(loaded) < 100 {
 		t.Fatalf("too few status writes to compare: %d without pushes, %d with", len(baseline), len(loaded))
