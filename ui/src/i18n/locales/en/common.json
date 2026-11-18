@@ -913,7 +913,7 @@
     "INSTANCE_ASLEEP": "Instance {{instance}} does not take requests while its deployment sleeps. Wake it first.",
     "INSTANCE_NOT_RUNNING": "Instance {{instance}} is not awake and running.",
     "INSTANCE_OFFLINE": "Instance {{instance}} is offline.",
-    "MODEL_NOT_READY": "No instance of {{model}} is running yet; it may still be starting.",
+    "MODEL_NOT_READY": "No running instance of {{model}} is reachable. Check the deployment and node connection.",
     "DEPLOYMENT_START_FAILED": "The deployment for {{model}} failed to start. See the deployment list.",
     "PD_PLACEMENT_UNREADABLE": "The deployment's PD placement cannot be read.",
     "PD_PREFILL_UNAVAILABLE": "No prefill instance could take the request ({{reason}}). Retry shortly.",

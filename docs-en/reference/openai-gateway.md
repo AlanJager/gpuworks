@@ -217,7 +217,7 @@ Every `/v1` response, including a request refused before forwarding, carries `X-
 | `INSTANCE_ASLEEP` | 503 | `server_error` | — | The pinned instance's deployment sleeps |
 | `INSTANCE_NOT_RUNNING` | 503 | `server_error` | — | The pinned instance is not running |
 | `INSTANCE_OFFLINE` | 503 | `server_error` | — | The pinned instance's node is offline |
-| `MODEL_NOT_READY` | 503 | `server_error` | — | No instance is running yet; it may still be starting |
+| `MODEL_NOT_READY` | 503 | `server_error` | — | No running instance is reachable; check deployment status and node connectivity. This alone does not mean the engine is starting |
 | `DEPLOYMENT_START_FAILED` | 503 | `server_error` | — | The deployment stopped retrying its start; see the deployment list |
 | `DISTRIBUTED_NOT_READY` | 503 | `server_error` | — | No replica of the multi-node deployment has every rank running on an online node |
 | `DISTRIBUTED_LEADER_OFFLINE` | 503 | `server_error` | — | The node of the multi-node deployment's rank 0 is offline |
@@ -253,4 +253,4 @@ The gateway does not emulate all OpenAI product APIs. For the exact capabilities
 
 Streaming SSE and binary responses (such as WAV) are forwarded with their original content type without truncation.
 
-<!-- translation-source-sha256: ef8552ba1e2e3e6482ecff83361632dcd16e8af60afa77d6a694f1fd714fa64b -->
+<!-- translation-source-sha256: 5b9a471e47017cf05e902a479f0a64a6034c2c6d3c0b4556a2b76eaad27f26e8 -->

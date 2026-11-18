@@ -681,8 +681,8 @@ func TestSelectInstanceReturns503ForAsleepOrNonRoutableSingleInstance(t *testing
 		wantAsleep bool
 	}{
 		{name: "asleep", sleepLevel: 1, apiPort: 30001, wantMsg: "model is asleep", wantAsleep: true},
-		{name: "headless", apiPort: 30001, headless: true, wantMsg: "no running instance"},
-		{name: "no-api-port", apiPort: 0, wantMsg: "no running instance"},
+		{name: "headless", apiPort: 30001, headless: true, wantMsg: "no reachable running instance"},
+		{name: "no-api-port", apiPort: 0, wantMsg: "no reachable running instance"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, err := store.Open("file:proxy_single_readiness_"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared", bus.New())

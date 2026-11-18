@@ -163,10 +163,12 @@ func (s *Store) ListNodes() ([]Node, error) {
 }
 
 // ServerDialNodes returns nodes whose listening endpoint can be redialed by
-// the control plane after a restart or transient connection loss.
+// the control plane after a restart or transient connection loss. Persisted
+// online state survives a restart; the hub's live sessions decide which of
+// these nodes actually needs reconnecting.
 func (s *Store) ServerDialNodes() ([]Node, error) {
 	var nodes []Node
-	err := s.db.Where("connect_mode = ? AND server_dial_address <> '' AND state IN (?, ?)", "server_dial", NodeStateConnecting, NodeStateOffline).Order("id").Find(&nodes).Error
+	err := s.db.Where("connect_mode = ? AND server_dial_address <> ''", "server_dial").Order("id").Find(&nodes).Error
 	return nodes, err
 }
 
