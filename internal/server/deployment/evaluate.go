@@ -124,6 +124,10 @@ type evaluateState struct {
 	eligibleLoaded     bool
 	fleet              []*store.Node // the nodes the eligibility was read from
 
+	// recommend: the draft leaves a multi-node layout to the platform
+	// (needsDistributedRecommendation).
+	recommend bool
+
 	eng        deploy.Engine
 	model      *store.Model
 	servedName string
@@ -219,7 +223,7 @@ func distributedErrorField(err error) string {
 		switch productErr.Code() {
 		case messages.ErrorMasterPortInvalid:
 			return "master_port"
-		case messages.ErrorDistributedTPRequired, messages.ErrorDistributedGPUCount:
+		case messages.ErrorDistributedTPRequired, messages.ErrorDistributedGPUCount, messages.ErrorDistributedRecommendation:
 			return "placement.tp"
 		case messages.ErrorDistributedParallelIndivisible:
 			return "placement.pp"

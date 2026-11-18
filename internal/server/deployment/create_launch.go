@@ -1,6 +1,8 @@
 package deployment
 
 import (
+	"slices"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -18,7 +20,9 @@ func (c *createState) materializeLaunch() error {
 	if c.targetVendor == "" {
 		c.targetVendor = planning.RequirementVendor(c.reqs)
 	}
-	c.launch, err = c.s.materializeCreateLaunch(c.eng.Name(), c.req, c.selection, requestTargetCards(c.profileNode, c.req), c.s.requestEngineVersion(c.eng.Name(), c.req, c.selection, c.targetVendor, c.profileNode))
+	cards := requestTargetCards(c.profileNode, c.req)
+	version := c.s.requestEngineVersion(c.eng.Name(), c.req, c.selection, c.targetVendor, c.profileNode)
+	c.launch, err = c.s.materializeCreateLaunch(c.eng.Name(), c.req, c.selection, cards, version)
 	if err != nil {
 		return invalid(err)
 	}
@@ -27,15 +31,28 @@ func (c *createState) materializeLaunch() error {
 			return invalid(err)
 		}
 	}
-	// A multi-node group settles its nodes and parallelism first: an
-	// unstated TP and PP default from the nodes, and the launch preflight
-	// measures the result. Settling them persists nothing.
+	// Settle distributed parallelism before preflight and persistence.
 	c.dp, err = deploy.PlacementDataParallel(c.eng.Name(), c.launch.Quick.DP, c.launch.TemplateResidual, c.launch.UserResidual)
 	if err != nil {
 		return invalid(err)
 	}
 	if c.req.NNodes > 1 {
-		c.distNodes, err = c.s.PrepareDistributedDeployRequest(c.req, c.dp)
+		if needsDistributedRecommendation(c.req, c.unitsAuto) {
+			preview := c.selection
+			preview.previewWeights = true
+			preview.Components = slices.Clone(c.selection.Components)
+			model, resolveErr := c.s.resolveDeploymentModelFromTemplate(c.ctx, c.req.ModelID, &preview, c.req.TemplateID)
+			if resolveErr != nil {
+				return invalid(resolveErr)
+			}
+			candidateLaunch, launchErr := materializeDeployRequest(c.eng.Name(), c.req, preview, cards, version)
+			if launchErr != nil {
+				return invalid(launchErr)
+			}
+			c.distNodes, err = c.s.recommendDistributed(c.ctx, c.req, c.dp, c.eng, candidateLaunch, preview, model)
+		} else {
+			c.distNodes, err = c.s.PrepareDistributedDeployRequest(c.req, c.dp)
+		}
 		if err != nil {
 			return invalid(err)
 		}
