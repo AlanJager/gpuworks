@@ -32,6 +32,9 @@ type ExtensionDeps struct {
 	// Plugins manages the installed plugin packages (/api/v1/plugins); nil
 	// answers PLUGINS_UNAVAILABLE.
 	Plugins PluginAdmin
+	// Dynamic serves the installed plugin packages' routes under
+	// /api/v1/x/<id>/; nil serves none.
+	Dynamic *DynamicExtension
 }
 
 // Extension is a set of management routes a separately built server mounts.

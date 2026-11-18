@@ -34,6 +34,8 @@ type extensionSet struct {
 	closed   bool
 	// plugins is the plugin administration of the built-in plugins module.
 	plugins api.PluginAdmin
+	// routes serves the installed plugin packages' routes.
+	routes *api.DynamicExtension
 }
 
 // holdPassFloor is the least time between two passes of the scheduling
@@ -89,6 +91,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 	}
 	set.closed = true
 	set.plugins = pluginAdmin{plugins.bridge}
+	set.routes = newPluginRoutes(plugins.bridge).Dynamic()
 	if released, err := a.store.ReleaseUnownedHolds(); err != nil {
 		return fmt.Errorf("release scheduling holds no extension owns: %w", err)
 	} else if len(released) > 0 {
@@ -118,7 +121,8 @@ func (set *extensionSet) apiDeps() (api.ExtensionDeps, error) {
 	if err != nil {
 		return api.ExtensionDeps{}, err
 	}
-	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins}, nil
+	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins,
+		Dynamic: set.routes}, nil
 }
 
 // moduleService runs a module's Service on Run's context and logs an error it
