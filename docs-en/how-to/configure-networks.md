@@ -96,20 +96,20 @@ automatically by deployment and card tests once the network is attached.
 
 ### Attach to Nodes or Labels
 
-On the network details page, click **Attach**, select multiple nodes or switch to a node label and enter `key=value`, then click **Save**. Check the attachment results and node list. If individual nodes fail, address only those failures; you do not need to repeat successful attachments.
+In the network details, click **Attach nodes** in the node table toolbar, select one or more nodes, and click **Save**.
 
-The **Overview** tab lists the nodes of a dedicated network in a paginated table. **Loaded nodes** shows the total number of nodes in the table. The configured label count, **Manage labels** and **Attach nodes** appear below the heading. Each row shows the roles, attachment source and attachment time. For host RDMA networks, the summary shows the node’s resolved bootstrap IP for this network and its HCA port count. Accelerator networks show the bootstrap IP and card count. Use the button before the node name or click the row background to expand it. The expanded row shows the bootstrap interface, per-port addresses and configured overrides, and lets you add or remove HCAs. Ethernet rows show the interface and IP address.
+The **Overview** tab lists the nodes of a dedicated network in a paginated table. **Loaded nodes** shows the total number of nodes in the table. The configured label count and **Manage labels** appear below the heading. Each row shows the roles, attachment source and attachment time. For host RDMA networks, the summary shows the node’s resolved bootstrap IP for this network and its HCA port count. Accelerator networks show the bootstrap IP and card count. Use the button before the node name or click the row background to expand it. The expanded row shows the bootstrap interface, per-port addresses and configured overrides, and lets you add or remove HCAs. Ethernet rows show the interface and IP address.
 
 Search across pages by part of a node name, UUID, interface name, HCA name, IP address or node label (for example, `rack=east`). Use the row actions to edit or detach a direct node attachment, or edit the attachment label for a node attached by label. Changing an attachment label affects all nodes matched by that rule.
 
-Open **Manage labels** to search, add, edit or detach labels, including rules that currently match no nodes. Direct attachments that have not resolved to nodes can also be viewed and managed separately.
+Open **Manage labels**, enter a label key and value in the form, and click **Save** to add a rule. The same dialog lets you search and detach existing rules, including those that currently match no nodes. Click **Edit** on a rule to fill the form with its key and value, change the fields, and click **Save** to update that rule. Direct attachments that have not resolved to nodes can also be viewed and managed separately.
 
 A network can be attached to any number of nodes and node labels. Each node ultimately uses only one network for each role:
 
 1. Direct node attachments take precedence over label attachments.
 2. If multiple networks for the same role match at the same priority, the earliest attachment takes effect. The node details page and the node list on the network details page show an orange exclamation mark beside that node; hover over it to see which networks are not in effect.
 
-**Attach** lets you select multiple nodes at once. Failure for an individual node (for example, a deleted node) does not affect the others. Results are listed for each node, and nodes that are already attached count as successful.
+**Attach nodes** lets you select multiple nodes at once. Failure for an individual node (for example, a deleted node) does not affect the others. Results are listed for each node, and nodes that are already attached count as successful.
 
 When attaching a Host Ethernet network to a node, you can override the default selector by specifying an interface or IP. For Host RDMA, Accelerator RDMA, and Accelerator HCCS networks, you can specify a bootstrap interface or IP on the node (see the previous sections) and add or remove rails in the node list. Overrides are validated against the agent's reported network inventory; values absent from the inventory also show an orange exclamation mark. You can save even when the node is offline.
 
@@ -291,7 +291,7 @@ Click or press Enter to open a node pair: the full card matrix shows a source-ca
 <!-- translation-source-sha256: e29db6c90ea54bf69cc9862576dd61beb68a020bc9f3e886444f89f88ad7ef9a ### RDMA Networks: Automatic Bootstrap and HCA Inference -->
 <!-- translation-source-sha256: 6935e75bb6d73ecb608f2481c66a507cd625cd31b7dedc0bc184b2f8214b2e01 ### Accelerator RDMA Networks: Ports Built Into Accelerator Cards -->
 <!-- translation-source-sha256: 0fb560905054db1c05783b855f3deccc5bbc6f01dde86d695b7f4cb8d682a258 ### Accelerator HCCS Networks: A3/910C LingQu Fabric -->
-<!-- translation-source-sha256: 1bba148ef42070e2049ed65830a5558c3e30c48947a3f62e7655b959cd141ff5 ### Attach to Nodes or Labels -->
+<!-- translation-source-sha256: 9d50cc9bb89cefe9269300e4d5de997b6b7385d28b2f5acce0cdc7c051b97ef7 ### Attach to Nodes or Labels -->
 <!-- translation-source-sha256: f6bfe43f4ce1306cc5cb73d27db28f6000e49479849dd2190e9ad508617bc3dd ### Management Network -->
 <!-- translation-source-sha256: 9894ba3099a8fa0448bcef68e8ea1c90f3b25fe775a3b5d7d3a346116c678050 ### How Each Role Takes Effect -->
 <!-- translation-source-sha256: 5fbaa5d7f8afa3598722cfde78023df76f941e7c3728fcf3f0b96d9cd9b8adfe ## Node Proxies and Download Addresses -->

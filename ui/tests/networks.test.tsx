@@ -171,14 +171,22 @@ test("an old detail address opens the list's drawer on the tab it named", async 
 
 test("the overview shows attachment sources on Ethernet and keeps unmatched attachments in management", async () => {
   const attachments = [...detailFixture.attachments, { id: 99, target: "label", label_key: "rack", label_value: "unassigned", hcas: [], created_at: detailFixture.created_at }];
-  stub("network", async () => ({ ...detailFixture, type: "host_ethernet", attachments }));
+  const network = { ...detailFixture, type: "host_ethernet", attachments };
+  stub("network", async () => network);
+  const removed: number[] = [];
+  stub("detachNetwork", async (_id, attachmentID) => {
+    removed.push(attachmentID);
+    return { ...network, attachments: detailFixture.attachments };
+  });
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
   const manage = await screen.findByRole("button", { name: n.detail.manageLabels });
-  assert.equal(manage.getAttribute("aria-expanded"), "false");
+  assert.equal(screen.queryByRole("dialog", { name: n.detail.manageLabels }), null);
   const section = screen.getByRole("heading", { name: "Loaded nodes (2)" }).closest("section")!;
   assert.ok(within(section).getByText("2 labels"));
   assert.ok(within(section).getByRole("table"));
-  assert.ok(within(section).getByRole("button", { name: n.detail.attachNodes }));
+  const nodeToolbar = within(section).getByRole("searchbox", { name: n.detail.searchNodes }).closest(".resource-table-toolbar");
+  assert.ok(nodeToolbar);
+  assert.ok(within(nodeToolbar as HTMLElement).getByRole("button", { name: n.detail.attachNodes }));
   assert.equal(screen.queryByText("rack=unassigned"), null);
   assert.ok(screen.getByRole("columnheader", { name: n.nodeTable.source }));
   const direct = screen.getByRole("link", { name: "h20-07" }).closest("tr") as HTMLElement;
@@ -195,12 +203,27 @@ test("the overview shows attachment sources on Ethernet and keeps unmatched atta
   assert.ok(within(detailOf(byLabel)).getByText("bond0 · 10.20.1.15"));
 
   await userEvent.click(manage);
-  assert.equal(manage.getAttribute("aria-expanded"), "true");
-  const unmatched = screen.getByText("rack=unassigned").closest("tr") as HTMLElement;
-  assert.ok(within(unmatched).getByRole("button", { name: n.actions.detach }));
-  assert.ok(within(unmatched).getByRole("button", { name: n.actions.edit }));
-  await userEvent.click(manage);
-  assert.equal(screen.queryByText("rack=unassigned"), null);
+  const labels = await screen.findByRole("dialog", { name: n.detail.manageLabels });
+  const key = within(labels).getByRole("textbox", { name: n.attach.labelKey }) as HTMLInputElement;
+  const value = within(labels).getByRole("textbox", { name: n.attach.labelValue }) as HTMLInputElement;
+  assert.equal(key.value, "");
+  const unmatched = within(labels).getByText("rack=unassigned").closest("tr") as HTMLElement;
+  await userEvent.click(within(unmatched).getByRole("button", { name: n.actions.edit }));
+  assert.equal(key.value, "rack");
+  assert.equal(value.value, "unassigned");
+  assert.ok(within(labels).getByRole("button", { name: n.actions.save }));
+  await userEvent.click(within(unmatched).getByRole("button", { name: n.actions.detach }));
+  const popover = await waitFor(() => {
+    const element = document.querySelector<HTMLElement>('[data-slot="popover-content"]');
+    assert.ok(element);
+    return within(element);
+  });
+  await userEvent.click(popover.getByRole("button", { name: n.actions.detach }));
+  await waitFor(() => assert.deepEqual(removed, [99]));
+  assert.equal(within(labels).queryByText("rack=unassigned"), null);
+  assert.equal(key.value, "");
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: n.detail.manageLabels }), null));
 });
 
 test("detaching in the drawer reads the list again, so its attachments column follows", async () => {
@@ -572,6 +595,7 @@ test("attaching several nodes at once reports the ones that failed", async () =>
     await user.click(await screen.findByRole("button", { name: n.detail.attachNodes }));
     const dialog = await modalDialog();
     assert.ok(within(dialog).getByText(n.attach.rdmaInferred));
+    assert.equal(within(dialog).queryByText(n.attach.modeLabel), null);
     const picker = within(dialog).getByRole("combobox");
     await user.click(picker);
     await user.click(await screen.findByText("ascend-31"));
@@ -589,21 +613,25 @@ test("attaching several nodes at once reports the ones that failed", async () =>
   }
 });
 
-test("attaching to a label sends only the label target", async () => {
+test("the label manager can add the first label without switching modes", async () => {
   const bodies: unknown[] = [];
-  stub("network", async () => detailFixture);
-  stubNodes([]);
-  stub("attachNetwork", async (_id, body) => { bodies.push(body); return detailFixture; });
+  const network = { ...detailFixture, attachments: [], nodes: [] };
+  stub("network", async () => network);
+  stub("attachNetwork", async (_id, body) => {
+    bodies.push(body);
+    return { ...network, attachments: [{ ...detailFixture.attachments[0], ...body }] };
+  });
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await user.click(await screen.findByRole("button", { name: n.detail.attachNodes }));
-  const dialog = await modalDialog();
-  await user.click(within(dialog).getByText(n.attach.modeLabel));
+  await user.click(await screen.findByRole("button", { name: n.detail.manageLabels }));
+  const dialog = await screen.findByRole("dialog", { name: n.detail.manageLabels });
   await user.type(within(dialog).getByRole("textbox", { name: n.attach.labelKey }), "rack");
   await user.type(within(dialog).getByLabelText(n.attach.labelValue), "r3");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.equal(bodies.length, 1));
   assert.deepEqual(bodies[0], { label_key: "rack", label_value: "r3" });
+  assert.ok(await within(dialog).findByText("rack=r3"));
+  assert.equal((within(dialog).getByRole("textbox", { name: n.attach.labelKey }) as HTMLInputElement).value, "");
 });
 
 test("editing a label from its node row updates the original rule", async () => {
@@ -617,7 +645,7 @@ test("editing a label from its node row updates the original rule", async () => 
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
   const row = (await screen.findByRole("link", { name: "h20-05" })).closest("tr")!;
   await user.click(within(row).getByRole("button", { name: n.nodeTable.editSourceLabel }));
-  const dialog = await modalDialog();
+  const dialog = await screen.findByRole("dialog", { name: n.detail.manageLabels });
   assert.equal((within(dialog).getByRole("textbox", { name: n.attach.labelKey }) as HTMLInputElement).value, "pool");
   const value = within(dialog).getByLabelText(n.attach.labelValue) as HTMLInputElement;
   assert.equal(value.value, "h20-a");
@@ -625,8 +653,9 @@ test("editing a label from its node row updates the original rule", async () => 
   await user.type(value, "h20-b");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.deepEqual(calls, [[detailFixture.id, 1, { label_key: "pool", label_value: "h20-b" }]]));
-  await waitFor(() => assert.equal(screen.queryByRole("link", { name: "h20-05" }), null));
-  assert.ok(screen.getByRole("link", { name: "h20-07" }));
+  await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: n.detail.manageLabels }), null));
+  await screen.findByRole("link", { name: "h20-07" });
+  assert.equal(screen.queryByRole("link", { name: "h20-05" }), null);
 });
 
 test("editing a node attachment prefills and sends its overrides", async () => {
@@ -832,6 +861,6 @@ test("label target search retries errors and keeps returned labels editable", as
   assert.equal(tries, 2);
   fireEvent.change(input, { target: { value: "absent" } });
   await screen.findByText(n.detail.noMatchingAttachments);
-  // Resolved nodes are a separate search, with both rows still visible.
-  assert.ok(screen.getByRole("link", { name: "h20-05" }));
+  await userEvent.keyboard("{Escape}");
+  assert.ok(await screen.findByRole("link", { name: "h20-05" }));
 });

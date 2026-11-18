@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Descriptions, Typography } from "antd";
+import NetworkLabelsDialog from "./NetworkLabelsDialog";
 import NetworkLoadTargets from "./NetworkLoadTargets";
 import { Button } from "../../components/ui/button";
 import { ConfirmPopover } from "../../ui-kit/ConfirmPopover";
@@ -59,7 +60,6 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
   const { t } = useTranslation("networks");
   const [detail, setDetail] = useState<NetworkDetail | null>(null);
   const [error, setError] = useState<Error | null>(null);
-  const [attachmentMode, setAttachmentMode] = useState<"node" | "label">("node");
   const [attachOpen, setAttachOpen] = useState(false);
   const [editingAttachment, setEditingAttachment] = useState<NetworkAttachment | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -139,7 +139,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
               detail={current}
               description={current.description}
               onDetail={updated}
-              onAttach={(attachment, mode = "node") => { setAttachmentMode(mode); setEditingAttachment(attachment); setAttachOpen(true); }}
+              onAttach={(attachment) => { setEditingAttachment(attachment); setAttachOpen(true); }}
             />
           ),
         },
@@ -152,7 +152,6 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
           <AttachNetworkModal
             open={attachOpen}
             network={current}
-            initialMode={attachmentMode}
             attachment={editingAttachment}
             onClose={() => setAttachOpen(false)}
             onSaved={(d) => { setAttachOpen(false); updated(d); }}
@@ -177,10 +176,11 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
   detail: NetworkDetail;
   description?: string;
   onDetail: (detail: NetworkDetail) => void;
-  onAttach: (attachment: NetworkAttachment | null, mode?: "node" | "label") => void;
+  onAttach: (attachment: NetworkAttachment | null) => void;
 }) {
   const { t } = useTranslation("networks");
   const rails = usesRails(detail.type);
+  const [labelEditor, setLabelEditor] = useState<{ attachment?: NetworkAttachment } | null>(null);
   const attachments = useMemo(() => new Map(detail.attachments.map(a => [a.id, a])), [detail.attachments]);
   const detach = async (attachment: NetworkAttachment) => {
     try {
@@ -218,7 +218,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
       render: (_, node) => {
         const attachment = attachments.get(node.attachment_id);
         if (!attachment) return "—";
-        if (attachment.target === "label") return <Button variant="link" size="sm" onClick={() => onAttach(attachment)}>{t("nodeTable.editSourceLabel")}</Button>;
+        if (attachment.target === "label") return <Button variant="link" size="sm" onClick={() => setLabelEditor({ attachment })}>{t("nodeTable.editSourceLabel")}</Button>;
         return <span className="inline-flex items-center gap-2">
           <Button variant="link" size="sm" onClick={() => onAttach(attachment)}>{t("actions.edit")}</Button>
           <ConfirmPopover title={t("actions.confirmDetach")} onConfirm={() => detach(attachment)} confirmText={t("actions.detach")} cancelText={t("actions.cancel")} destructive trigger={<Button variant="link" size="sm" className="text-fg-danger">{t("actions.detach")}</Button>} />
@@ -280,8 +280,9 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           </Descriptions>
         )}
       </DetailSection>
-      <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach}>
+      <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach} onManageLabels={() => setLabelEditor({})}>
         <div className="network-overview-nodes"><NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
+          toolbarExtra={<Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("detail.attachNodes")}</Button>}
           tableId="network-resolved-nodes"
           rowKey="node_uuid"
           columns={nodeColumns}
@@ -290,6 +291,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           expandable={{ expandedRowRender, expandRowByClick: true }}
         /></div>
       </NetworkLoadTargets>
+      {labelEditor && <NetworkLabelsDialog open detail={detail} initialAttachment={labelEditor.attachment} onClose={() => setLabelEditor(null)} onDetail={onDetail} />}
     </>
   );
 }

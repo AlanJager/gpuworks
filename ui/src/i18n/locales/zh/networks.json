@@ -100,6 +100,8 @@
     "manageLabels": "管理标签",
     "addLabel": "加载标签",
     "editLabel": "编辑加载标签",
+    "labelRematchHint": "保存后，网络会按新的标签重新匹配节点。",
+    "labelChanged": "这个标签已更改或移除。请在列表中重新选择要编辑的标签。",
     "noLabels": "尚未加载标签",
     "unresolvedAttachments": "未解析的加载对象（{{count}}）",
     "unnamedAttachment": "节点加载项 #{{id}}",
