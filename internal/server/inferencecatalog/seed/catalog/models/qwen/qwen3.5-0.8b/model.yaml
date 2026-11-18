@@ -151,6 +151,7 @@ specs:
   - qwen3_coder
   - --reasoning-parser
   - qwen3
+  - --default-chat-template-kwargs.enable_thinking=false
   api:
     health_endpoint: /health
     operations:
@@ -185,6 +186,7 @@ specs:
   - qwen3_coder
   - --reasoning-parser
   - qwen3
+  - --default-chat-template-kwargs.enable_thinking=false
   api:
     health_endpoint: /health
     operations:
