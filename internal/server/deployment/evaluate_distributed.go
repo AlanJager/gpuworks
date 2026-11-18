@@ -32,7 +32,9 @@ func (r *evaluateState) prepareDistributed() bool {
 			return false
 		}
 		var nodes []*store.Node
-		if r.recommend {
+		// An invalid rank command still needs the engine draft that corrects
+		// it. The command error is attached once those ranks are previewed.
+		if r.recommend && checkManualCommandRanks(r.req) == nil {
 			nodes, err = r.s.recommendDistributed(r.ctx, &normalized, dp, r.eng, r.launch, r.selection, r.model)
 		} else {
 			nodes, err = r.s.PrepareDistributedDeployRequest(&normalized, dp)

@@ -221,6 +221,11 @@ func distributedErrorField(err error) string {
 	var productErr *messages.ProductError
 	if errors.As(err, &productErr) {
 		switch productErr.Code() {
+		case messages.ErrorDistributedDegreeInvalid:
+			if productErr.Params()["degree"] == "pp" {
+				return "placement.pp"
+			}
+			return "placement.tp"
 		case messages.ErrorMasterPortInvalid:
 			return "master_port"
 		case messages.ErrorDistributedTPRequired, messages.ErrorDistributedGPUCount, messages.ErrorDistributedRecommendation:
