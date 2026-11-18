@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,8 +24,8 @@ import (
 	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
 
-// StallsBeforeSwitch is how many consecutive stalls (download.ErrStalled)
-// one address may cost a file before the fetch moves to the next address.
+// StallsBeforeSwitch bounds consecutive file stalls (download.ErrStalled) or
+// listing timeouts before the fetch tries another address, when one remains.
 const StallsBeforeSwitch = 2
 
 // ListingRetry is the file name Config.OnRetry is given for a retry of the
@@ -134,6 +135,7 @@ func (f *Fetcher) List(ctx context.Context, revision string) ([]modelrepo.File, 
 		candidate := f.order[f.at]
 		maxAttempts := f.attempts()
 		delay := f.cfg.Retry.InitialBackoff
+		timeouts := 0
 		for attempt := 1; ; attempt++ {
 			client, err := f.cfg.Client(candidate.Base)
 			if err == nil {
@@ -148,7 +150,17 @@ func (f *Fetcher) List(ctx context.Context, revision string) ([]modelrepo.File, 
 				return nil, ctx.Err()
 			}
 			retryAfter, throttled := ThrottleWait(err)
-			if (!throttled && !IsTransient(err)) || attempt >= maxAttempts {
+			var timeout net.Error
+			if !throttled && (errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout())) {
+				timeouts++
+			} else {
+				timeouts = 0
+			}
+			// Each timeout has already consumed a request deadline. Keep one
+			// retry for a short interruption, then prefer an available fallback;
+			// the last source and explicit throttle waits retain their patience.
+			stalled := timeouts >= StallsBeforeSwitch && f.at < len(f.order)-1
+			if stalled || (!throttled && !IsTransient(err)) || attempt >= maxAttempts {
 				// Whatever else this address answered - a missing repository,
 				// an error status, a portal page that does not parse, no
 				// answer at all - another address may still list it.

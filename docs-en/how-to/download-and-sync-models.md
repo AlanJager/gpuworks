@@ -30,7 +30,7 @@ There is no task-level download deadline. Each HTTP request lasts at most 15 min
 
 Downloads first try replacement addresses from applicable site rules, then the original sites allowed by those rules. When retrieving the file list, an unreachable address, an HTTP error, or an unparseable list puts the current address into a 30-minute cooldown and triggers a switch to the next candidate; source rate limiting (429, 503) is instead waited out and retried at the same address, as for file downloads.
 
-During file listing, transient network failures and HTTP 408, 429, 500, 502, 503 and 504 are retried within the attempt limits and backoff policy below. Listing also honors bounded rate-limit waits for 429/503. Cancellation interrupts the wait. Authentication failures (401/403) and missing repositories or revisions are not retried repeatedly at the same address. After a final failure, fix the network or permissions and use **Download to…** again to retry the same model without deleting it. Retrying does not change its source or revision.
+During file listing, transient network failures and HTTP 408, 429, 500, 502, 503 and 504 are retried within the attempt limits and backoff policy below. If another candidate remains, two consecutive request timeouts switch sources early; recovery after one timeout keeps the current source. Listing also honors bounded rate-limit waits for 429/503. Cancellation interrupts the wait. Authentication failures (401/403) and missing repositories or revisions are not retried repeatedly at the same address. After a final failure, fix the network or permissions and use **Download to…** again to retry the same model without deleting it. Retrying does not change its source or revision.
 
 When downloading individual files, failures are handled by type:
 
@@ -99,4 +99,4 @@ After a public download fails, you can still transfer a complete copy from an on
 Failed peer sync operations can be retried, and ongoing sync operations can be canceled. Do not register partial files as a complete copy. Deleting a node-local copy requires administrator privileges. The API is
 `DELETE /api/v1/models/{id}/nodes/{uuid}`; a model used by an active deployment returns 409.
 
-<!-- translation-source-sha256: 13b3fe3dff34be504d92531dd059990ed5d559e9f3ca090b526de423fd1f1bfe -->
+<!-- translation-source-sha256: c23a5abae582925a62873b8b391ee207a508f48dcc76ceb4c8d973a6d8e632ff -->
