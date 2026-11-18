@@ -6,7 +6,8 @@ import { ConfirmPopover } from "../../ui-kit/ConfirmPopover";
 import { Notice } from "../../ui-kit/Notice";
 import { Spinner } from "../../ui-kit/Spinner";
 import { message } from "../../ui-kit/feedback";
-import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
+import NetworkTargetTable from "./NetworkTargetTable";
+import type { ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -133,6 +134,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
             </>
           ) : (
             <NetworkOverview
+              key={current.id}
               detail={current}
               description={current.description}
               onDetail={updated}
@@ -177,6 +179,10 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
 }) {
   const { t } = useTranslation("networks");
   const rails = usesRails(detail.type);
+  const [managing, setManaging] = useState(false);
+  const directNodes = detail.attachments.filter((a) => a.target === "node").length;
+  const labels = detail.attachments.length - directNodes;
+  const managementId = `network-${detail.id}-attachments`;
   const detach = async (attachment: NetworkAttachment) => {
     try {
       onDetail(await api.detachNetwork(detail.id, attachment.id));
@@ -186,9 +192,6 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
   };
   const overrideText = (a: NetworkAttachment) => [a.interface, a.ip, a.hcas.join(",")].filter(Boolean).join(" · ");
 
-  // The row keeps the node, the roles it carries and the address it uses;
-  // where that came from, and an RDMA network's bootstrap and HCAs (still
-  // editable), sit one step down so the row fits the 720px detail drawer.
   const nodeColumns: ResourceColumn<NetworkNode>[] = [
     {
       title: t("nodeTable.node"),
@@ -196,21 +199,32 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
       render: (_, n) => <span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span>,
     },
     { title: t("nodeTable.roles"), dataIndex: "roles", key: "roles", width: 230, render: (_, n) => <RoleTags roles={n.roles} /> },
-    rails
-      ? { title: t("nodeTable.source"), dataIndex: "source", key: "source", width: 220, render: (_, n) => sourceText(t, n) }
-      : { title: t("nodeTable.endpoint"), key: "endpoint", width: 220, render: (_, n) => <Endpoint iface={n.interface} ip={n.ip} /> },
+    {
+      title: t("nodeTable.source"), dataIndex: "source", key: "source", width: 220,
+      render: (_, n) => n.source === "node" ? t("detail.directNode") : sourceText(t, n),
+    },
   ];
-  const extraColumns = rails
-    ? [
-        { key: "bootstrap", title: t("nodeTable.bootstrap"), wide: true, render: (_: unknown, n: NetworkNode) => <BootstrapCell network={detail} node={n} onChanged={onDetail} /> },
-        {
-          key: "hcas",
-          wide: true,
-          title: <span>{t("nodeTable.hcaIPs")}<LinkLayerTag layer={detail.nodes[0]?.link_layer} /></span>,
-          render: (_: unknown, n: NetworkNode) => <RailsCell network={detail} node={n} onChanged={onDetail} />,
-        },
-      ]
-    : [{ key: "source", title: t("nodeTable.source"), render: (_: unknown, n: NetworkNode) => sourceText(t, n) }];
+  const expandedRowRender = (node: NetworkNode) => (
+    <dl className="ms-10 grid gap-3 border-s-2 border-border bg-muted px-4 py-3 text-body">
+      {rails ? (
+        <>
+          <div>
+            <dt className="mb-1 text-label text-fg-muted">{t("nodeTable.bootstrap")}</dt>
+            <dd><BootstrapCell network={detail} node={node} onChanged={onDetail} /></dd>
+          </div>
+          <div>
+            <dt className="mb-1 text-label text-fg-muted">{t("nodeTable.hcaIPs")}<LinkLayerTag layer={node.link_layer} /></dt>
+            <dd><RailsCell network={detail} node={node} onChanged={onDetail} /></dd>
+          </div>
+        </>
+      ) : (
+        <div>
+          <dt className="mb-1 text-label text-fg-muted">{t("nodeTable.endpoint")}</dt>
+          <dd><Endpoint iface={node.interface} ip={node.ip} /></dd>
+        </div>
+      )}
+    </dl>
+  );
 
   return (
     <>
@@ -233,50 +247,64 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           </Descriptions>
         )}
       </DetailSection>
-      <DetailSection title={t("detail.attachments")} extra={<Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("actions.attach")}</Button>}>
-        {detail.attachments.length === 0 ? (
-          <span className="text-fg-muted">{t("detail.noAttachments")}</span>
-        ) : (
-          <ResourceTable<NetworkAttachment>
-            tableId="network-attachments" columnSettings={false}
-            rowKey="id"
-            pagination={false}
-            data={detail.attachments}
-            columns={[
-              {
-                key: "target", title: t("detail.attachTarget"), width: 240,
-                render: (_, a) => (
-                  <span className="flex flex-col gap-1">
-                    <span>
-                      <Badge size="sm">{t(`source.${a.target}`)}</Badge>
-                      {a.target === "node" ? (a.node_name || a.node_uuid) : <span className="font-mono">{`${a.label_key}=${a.label_value ?? ""}`}</span>}
+      <DetailSection title={t("detail.attachments")}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-body text-fg-muted">
+            {detail.attachments.length
+              ? [t("table.attachmentNodes", { count: directNodes }), t("table.attachmentLabels", { count: labels })].join(" · ")
+              : t("detail.noAttachments")}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {detail.attachments.length > 0 && (
+              <Button variant="secondary" size="sm" aria-expanded={managing} aria-controls={managementId} onClick={() => setManaging(!managing)}>
+                {t(managing ? "detail.hideAttachments" : "detail.manageAttachments")}
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("actions.attach")}</Button>
+          </div>
+        </div>
+        <div id={managementId} className="mt-3" hidden={!managing || !detail.attachments.length}>
+          {managing && detail.attachments.length > 0 && (
+            <NetworkTargetTable<NetworkAttachment> networkId={detail.id} kind="attachments"
+              tableId="network-attachments" columnSettings={false}
+              rowKey="id"
+              data={detail.attachments}
+              columns={[
+                {
+                  key: "target", title: t("detail.attachTarget"), width: 240,
+                  render: (_, a) => (
+                    <span className="flex flex-col gap-1">
+                      <span>
+                        <Badge size="sm">{t(`source.${a.target}`)}</Badge>
+                        {a.target === "node" ? (a.node_name || a.node_uuid) : <span className="font-mono">{`${a.label_key}=${a.label_value ?? ""}`}</span>}
+                      </span>
+                      {overrideText(a) && <span className="text-fg-muted">{t("detail.overrides", { value: overrideText(a) })}</span>}
                     </span>
-                    {overrideText(a) && <span className="text-fg-muted">{t("detail.overrides", { value: overrideText(a) })}</span>}
-                  </span>
-                ),
-              },
-              { key: "time", title: t("detail.attachedTime"), width: 180, render: (_, a) => <span className="text-fg-muted">{formatTime(a.created_at)}</span> },
-              {
-                key: "actions", width: 150, role: "actions",
-                render: (_, a) => (
-                  <span className="inline-flex items-center gap-2">
-                    {a.target === "node" && <Button variant="link" size="sm" onClick={() => onAttach(a)}>{t("actions.edit")}</Button>}
-                    <ConfirmPopover title={t("actions.confirmDetach")} onConfirm={() => detach(a)} confirmText={t("actions.detach")} cancelText={t("actions.cancel")} destructive trigger={<Button variant="link" size="sm" className="text-fg-danger">{t("actions.detach")}</Button>} />
-                  </span>
-                ),
-              },
-            ]}
-          />
-        )}
+                  ),
+                },
+                { key: "time", title: t("detail.attachedTime"), width: 180, render: (_, a) => <span className="text-fg-muted">{formatTime(a.created_at)}</span> },
+                {
+                  key: "actions", width: 150, role: "actions",
+                  render: (_, a) => (
+                    <span className="inline-flex items-center gap-2">
+                      {a.target === "node" && <Button variant="link" size="sm" onClick={() => onAttach(a)}>{t("actions.edit")}</Button>}
+                      <ConfirmPopover title={t("actions.confirmDetach")} onConfirm={() => detach(a)} confirmText={t("actions.detach")} cancelText={t("actions.cancel")} destructive trigger={<Button variant="link" size="sm" className="text-fg-danger">{t("actions.detach")}</Button>} />
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
+        </div>
       </DetailSection>
       <DetailSection title={t("detail.resolved", { count: detail.nodes.length })}>
-        <ResourceTable<NetworkNode>
+        <NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
           tableId="network-resolved-nodes"
           rowKey="node_uuid"
           columns={nodeColumns}
           data={detail.nodes}
           emptyDescription={t("detail.noNodes")}
-          expandable={{ expandedRowRender: (n) => <dl className="grid gap-3 text-body">{extraColumns.map(column => <div key={column.key}><dt className="mb-1 text-label text-fg-muted">{column.title}</dt><dd className="min-w-0 break-words">{column.render(undefined, n)}</dd></div>)}</dl>, expandRowByClick: true }}
+          expandable={{ expandedRowRender, expandRowByClick: true }}
         />
       </DetailSection>
     </>

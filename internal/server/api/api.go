@@ -352,6 +352,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/networks", a.listNetworks)
 			r.With(a.managementAdmin).Post("/networks", a.createNetwork)
 			r.Get("/networks/{id}", a.getNetwork)
+			r.Get("/networks/{id}/search", a.searchNetworkTargets)
 			r.With(a.managementAdmin).Put("/networks/{id}", a.updateNetwork)
 			r.With(a.managementAdmin).Delete("/networks/{id}", a.deleteNetwork)
 			r.With(a.managementAdmin).Post("/networks/{id}/attachments", a.createNetworkAttachment)

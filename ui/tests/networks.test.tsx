@@ -169,12 +169,38 @@ test("an old detail address opens the list's drawer on the tab it named", async 
   await waitFor(() => assert.equal(tab.getAttribute("aria-selected"), "true"));
 });
 
+test("the overview shows attachment sources on Ethernet and keeps unmatched attachments in management", async () => {
+  const attachments = [...detailFixture.attachments, { id: 99, target: "label", label_key: "rack", label_value: "unassigned", hcas: [], created_at: detailFixture.created_at }];
+  stub("network", async () => ({ ...detailFixture, type: "host_ethernet", attachments }));
+  renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
+  const manage = await screen.findByRole("button", { name: n.detail.manageAttachments });
+  assert.equal(manage.getAttribute("aria-expanded"), "false");
+  assert.ok(screen.getByText("1 node · 2 labels"));
+  assert.equal(screen.queryByText("rack=unassigned"), null);
+  assert.ok(screen.getByRole("columnheader", { name: n.nodeTable.source }));
+  const direct = screen.getByRole("link", { name: "h20-07" }).closest("tr") as HTMLElement;
+  assert.ok(within(direct).getByText(n.detail.directNode));
+  const byLabel = screen.getByRole("link", { name: "h20-05" }).closest("tr") as HTMLElement;
+  assert.ok(within(byLabel).getByText("Label pool=h20-a"));
+  await userEvent.click(within(byLabel).getByRole("button", { name: /Show details|Expand row/ }));
+  assert.ok(within(detailOf(byLabel)).getByText("bond0 · 10.20.1.15"));
+
+  await userEvent.click(manage);
+  assert.equal(manage.getAttribute("aria-expanded"), "true");
+  const unmatched = screen.getByText("rack=unassigned").closest("tr") as HTMLElement;
+  assert.ok(within(unmatched).getByRole("button", { name: n.actions.detach }));
+  assert.equal(within(unmatched).queryByRole("button", { name: n.actions.edit }), null);
+  await userEvent.click(screen.getByRole("button", { name: n.detail.hideAttachments }));
+  assert.equal(screen.queryByText("rack=unassigned"), null);
+});
+
 test("detaching in the drawer reads the list again, so its attachments column follows", async () => {
   let listReads = 0;
   stub("networks", async () => { listReads++; return { items: [listItem()], roles: ["storage_sync", "compute", "serving"], types: ["host_ethernet", "host_rdma", "accelerator_rdma"], type_roles: typeRoles }; });
   stub("network", async () => detailFixture);
   stub("detachNetwork", async () => ({ ...detailFixture, attachments: detailFixture.attachments.slice(1) }));
   renderAt(`/networks?network=${detailFixture.id}`, <NetworksPage />, "/networks");
+  await userEvent.click(await screen.findByRole("button", { name: n.detail.manageAttachments }));
   const detach = (await screen.findAllByRole("button", { name: n.actions.detach }))[0];
   const before = listReads;
   fireEvent.click(detach);
@@ -400,7 +426,7 @@ test("network detail lists each node's bootstrap and HCAs with their IPs", async
   assert.ok(within(resolved.previousElementSibling as HTMLElement).getByRole("img", { name: "Override mlx5_9:1 (hca) is not in the node's last reported inventory." }));
   assert.ok(within(resolved).getByRole("img", { name: n.rail.gap.unknown }));
   assert.equal(within(resolved).getAllByText(n.rail.manual).length, 2);
-  assert.ok(screen.getByText("Overrides: bond0 · mlx5_0,mlx5_9:1"));
+  assert.equal(screen.queryByText("Overrides: bond0 · mlx5_0,mlx5_9:1"), null, "attachment configuration stays in management");
 });
 
 test("removing an HCA asks whether it leaves every node or one", async () => {
@@ -576,6 +602,7 @@ test("editing a node attachment prefills and sends its overrides", async () => {
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
   await waitFor(() => assert.ok(screen.getByText("Resolved nodes (2)")));
+  await user.click(screen.getByRole("button", { name: n.detail.manageAttachments }));
   const attachmentRow = screen.getByText("Overrides: bond0 · mlx5_0,mlx5_9:1").closest("tr") as HTMLElement;
   await user.click(within(attachmentRow).getByRole("button", { name: n.actions.edit }));
   const dialog = await modalDialog();
@@ -697,3 +724,75 @@ for (const language of ["en", "zh"]) {
     });
   }
 }
+
+test("overview searches resolved nodes by server IDs, resets paging and cancels superseded searches", async () => {
+  const nodes = Array.from({ length: 45 }, (_, i) => ({
+    ...detailFixture.nodes[0], node_uuid: `u${i}`, node_name: `worker-${String(i + 1).padStart(2, "0")}`,
+  }));
+  let detailReads = 0;
+  const calls: string[] = [];
+  let staleSignal: AbortSignal | undefined;
+  let finishStale: (() => void) | undefined;
+  stub("network", async () => { detailReads++; return { ...detailFixture, nodes }; });
+  stub("searchNetworkTargets", async (id, kind, q, signal) => {
+    assert.equal(id, detailFixture.id);
+    assert.equal(kind, "nodes");
+    calls.push(q);
+    if (q === "old") {
+      staleSignal = signal;
+      return new Promise(resolve => { finishStale = () => resolve({ ids: ["u44"] }); });
+    }
+    return { ids: q === "mlx5" ? nodes.slice(0, 30).map(node => node.node_uuid) : [] };
+  });
+  renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
+  const input = await screen.findByRole("searchbox", { name: n.detail.searchNodes });
+  assert.deepEqual(calls, []);
+  await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+  assert.equal(screen.queryByRole("link", { name: "worker-01" }), null);
+  fireEvent.change(input, { target: { value: "s" } });
+  fireEvent.change(input, { target: { value: "old" } });
+  await waitFor(() => assert.equal(typeof finishStale, "function"));
+  fireEvent.change(input, { target: { value: "  mlx5  " } });
+  assert.equal(staleSignal?.aborted, true);
+  await screen.findByRole("link", { name: "worker-01" });
+  finishStale?.();
+  await waitFor(() => assert.ok(screen.getByText("30 items")));
+  assert.equal(screen.queryByRole("link", { name: "worker-45" }), null);
+  assert.deepEqual(calls, ["old", "mlx5"]);
+  fireEvent.change(input, { target: { value: "nothing" } });
+  await screen.findByText(n.detail.noMatchingNodes);
+  fireEvent.change(input, { target: { value: "mlx5" } });
+  await screen.findByRole("link", { name: "worker-01" });
+  assert.deepEqual(calls, ["old", "mlx5", "nothing"]);
+  fireEvent.change(input, { target: { value: "" } });
+  await screen.findByText("45 items");
+  assert.equal(detailReads, 1);
+});
+
+test("attachment target search retries errors and keeps returned targets editable", async () => {
+  let tries = 0;
+  stub("network", async () => detailFixture);
+  stub("searchNetworkTargets", async (_id, kind, q) => {
+    assert.equal(kind, "attachments");
+    if (q === "absent") return { ids: [] };
+    assert.equal(q, "bond0");
+    if (++tries === 1) throw new Error("temporarily unavailable");
+    return { ids: ["3"] };
+  });
+  renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
+  assert.equal(screen.queryByRole("searchbox", { name: n.detail.searchAttachments }), null);
+  await userEvent.click(await screen.findByRole("button", { name: n.detail.manageAttachments }));
+  const input = await screen.findByRole("searchbox", { name: n.detail.searchAttachments });
+  fireEvent.change(input, { target: { value: "bond0" } });
+  const error = await screen.findByRole("alert");
+  assert.match(error.textContent ?? "", /temporarily unavailable/);
+  assert.equal(screen.queryByText(n.detail.noMatchingAttachments), null);
+  await userEvent.click(within(error).getByRole("button", { name: "Retry" }));
+  const target = await screen.findByRole("cell", { name: /Node.*h20-07/i });
+  assert.ok(within(target.closest("tr")!).getByRole("button", { name: n.actions.edit }));
+  assert.equal(tries, 2);
+  fireEvent.change(input, { target: { value: "absent" } });
+  await screen.findByText(n.detail.noMatchingAttachments);
+  // Resolved nodes are a separate search, with both rows still visible.
+  assert.ok(screen.getByRole("link", { name: "h20-05" }));
+});

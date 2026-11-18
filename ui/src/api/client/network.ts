@@ -3,6 +3,8 @@ import { getJSON, sendJSON } from "../http";
 
 export const networkApi = {
   networks: () => getJSON<NetworkList>("/api/v1/networks"),
+  searchNetworkTargets: (id: number, kind: "nodes" | "attachments", q: string, signal?: AbortSignal) =>
+    getJSON<{ ids: string[] }>(`/api/v1/networks/${id}/search?${new URLSearchParams({ kind, q })}`, signal),
   network: (id: number) => getJSON<NetworkDetail>(`/api/v1/networks/${id}`),
   createNetwork: (body: NetworkRequest) =>
     sendJSON<NetworkDetail>("POST", "/api/v1/networks", body),

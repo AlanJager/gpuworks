@@ -1858,6 +1858,7 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 | GET | `/api/v1/networks` | Network list (including attachments, resolved node count, and count of nodes with notices) and role/type dictionaries (`types`: `host_ethernet` / `host_rdma` / `accelerator_rdma` / `accelerator_hccs`; `type_roles`: roles each type can serve). The first entry is the management network (`id` 0, `builtin: true`) | JWT |
 | POST | `/api/v1/networks` | Create a network (name, role, type, CIDR, and interface name wildcard). Accelerator RDMA can serve only the compute role; otherwise, returns `NETWORK_TYPE_ROLE_INVALID` | JWT(admin) |
 | GET | `/api/v1/networks/{id}` | Network details: attachments, resolved nodes (interfaces/IPs/HCAs/hints and the nodes' user-defined `labels`), and the latest internal test. `id` 0 is the management network, whose nodes include `roles_off`; it cannot be modified, deleted, or attached (returns 404), but internal tests can be started | JWT |
+| GET | `/api/v1/networks/{id}/search` | Search a network's resolved nodes (`kind=nodes`) or configured attachment targets (`kind=attachments`). Optional `q` matches a case-insensitive substring. Returns `{"ids":[...]}` with node UUIDs or attachment IDs as strings. An empty query returns all IDs in the selected set. | JWT |
 | PATCH | `/api/v1/nodes/management-roles` | Batch-update management network roles: `{"node_uuids":[...],"allow":[...],"deny":[...]}`. Changes only the listed roles, with all nodes in one transaction; returns `{"updated":N}` (the number of nodes actually changed). Returns 404 `MANAGEMENT_ROLES_NODE_NOT_FOUND` if a node does not exist | JWT(admin) |
 | PUT | `/api/v1/nodes/{uuid}/management-roles` | Set the roles that this node's management network does not serve (`{"roles_off":[...]}`); returns the node's network view. Applies only to new instances | JWT(admin) |
 | PUT | `/api/v1/networks/{id}` | Modify a network | JWT(admin) |
@@ -2485,7 +2486,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 943c135b4dd17cb7a5163ff1ef96f31bfe4cc8daf3b1332d2dae254d1ff3a973 ### Provider Connection Test -->
 <!-- translation-source-sha256: 4a41e54a2a7691fc464f2c3bff6c62ff401cee25b2e8ede1d1511164ab86791e ### Cloud Instance Installation and Restart Confirmation -->
 <!-- translation-source-sha256: dff84f5e2e143ca7701c66cd40683e1ca6428f5d803325e20c3a4e6b759a19ae ## Web Terminal -->
-<!-- translation-source-sha256: cf36c85bb356ed97c04ff3d7f2a72e283033383a2ee5f5e8c6dc9a7bfd9b976e ## Networks -->
+<!-- translation-source-sha256: f453880f0863138913f85d6b115e1c823848bd1504e83892f2d1c5b3081cdd9f ## Networks -->
 <!-- translation-source-sha256: 23278f685c8092e9eda5b2df89185ce71d0b220772a857e5a313072115e7fed2 ## Settings / Network Presets -->
 <!-- translation-source-sha256: 0d6096536d010c9fb3e99a7c9823f000f224ee23f15072817338937928739331 ### Update Check Results -->
 <!-- translation-source-sha256: 0e96eaf91ec4ceaa489e42f4bc76c90f1ae38793c3dc6f511af1e5a915929772 ### Server Upgrade Restrictions -->

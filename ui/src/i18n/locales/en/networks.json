@@ -88,8 +88,15 @@
     "typeHelp": "Sets transport and device injection. $t(type.host_ethernet): TCP. $t(type.host_rdma): IB/RoCE. $t(type.accelerator_rdma): on-card RoCE. $t(type.accelerator_hccs): A3/910C HCCS/HIXL with vNICs."
   },
   "detail": {
+    "searchNodes": "Search by node name, IP, HCA or label",
+    "searchAttachments": "Search by node, label or override",
+    "noMatchingNodes": "No nodes match this search.",
+    "noMatchingAttachments": "No attachment targets match this search.",
     "selector": "Default selector",
-    "attachments": "Attached to",
+    "attachments": "Attachments",
+    "manageAttachments": "Manage attachments",
+    "hideAttachments": "Hide attachments",
+    "directNode": "Direct attachment",
     "resolved": "Resolved nodes ({{count}})",
     "noAttachments": "Not attached yet",
     "noNodes": "No node resolves to this network yet",
@@ -108,7 +115,7 @@
   "nodeTable": {
     "node": "Node",
     "roles": "Roles",
-    "source": "Source",
+    "source": "Attachment source",
     "endpoint": "Interface / IP",
     "hcas": "HCA",
     "bootstrap": "Bootstrap IP",

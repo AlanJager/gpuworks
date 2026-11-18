@@ -19,7 +19,7 @@ Changing `listen.agent` affects **already installed** agents: they only dial the
 
 Open **Network guide** under **Compute → Networks** for example topologies of a simple deployment and a deployment with dedicated networks. Hover over a numbered item or its table row to highlight the corresponding path and see where to configure it and what it controls. To inspect interfaces, addresses, and connectivity in your environment, open a network from the resource list.
 
-The Attached to column shows names for up to five attachments. For larger sets, it shows separate counts for directly attached nodes and labels. Select the counts to open the full list. The resolved node count includes nodes matched by labels.
+The Attached to column shows names for up to five attachments. For larger sets, it shows separate counts for directly attached nodes and labels. Select the counts to open the network overview. The resolved node count includes nodes matched by labels.
 
 ## Networks
 
@@ -49,7 +49,7 @@ After nodes are attached, values are inferred for each node from the network inv
 | HCA | Select ACTIVE ports. If the node has InfiniBand ports, select only InfiniBand; otherwise, select RoCE. RoCE ports require an IPv4 address on their interface. Keep only the group with the highest speed (use interface speed for RoCE), excluding, for example, 1G management ports. |
 | Bootstrap | Select in this order: the bootstrap specified on the node; if a bootstrap CIDR is set on the network, an interface whose address falls within it (leave it empty and warn if none matches; do not fall back); the address of the first HCA's interface; for InfiniBand without IPoIB, the management network address. |
 
-The node list on the network details page shows each node's bootstrap IP and grouped HCAs with HCA IPs, marked **Auto** or **Manual**:
+Expand a node in the network overview. The indented details show that node’s bootstrap IP, HCAs, and HCA IPs, marked **Auto** or **Manual**:
 
 - Click ✕ next to an HCA to remove it. By default, this removes it from **every** node on the network that uses it (HCAs on each node must be paired one to one). You can select the option to remove it from this node only. **Add HCA** lets you select from the ports reported by that node; unavailable ports show the reason (inactive or no IPv4 address on the interface). After the first addition or removal, the node's HCA list is fixed to the list at that moment (**Manual**) and no longer changes with the inventory. **Back to auto** restores inference. You cannot remove a node's last HCA; detach the node if you no longer need it on the network.
 - **Change** next to bootstrap lets you select an interface on that node that has an address; **Back to auto** clears the override.
@@ -97,6 +97,10 @@ automatically by deployment and card tests once the network is attached.
 ### Attach to Nodes or Labels
 
 On the network details page, click **Attach**, select multiple nodes or switch to a node label and enter `key=value`, then click **Save**. Check the attachment results and node list. If individual nodes fail, address only those failures; you do not need to repeat successful attachments.
+
+The **Overview** tab for a dedicated network lists its resolved nodes in one table, with each row showing whether the node was attached directly or through a label. Counts above the table show the numbers of direct node attachments and label attachments. To find the port a node uses, search for part of a node name, UUID, interface name, HCA name, IP address, or node label (such as `rack=east`), then expand the matching row. Ethernet rows show the resolved interface and IP address; RDMA rows show bootstrap and HCA details.
+
+To check attachment rules, open **Manage attachments** to expand the configuration list. Search by node name, UUID, label, or an interface, IP, or HCA override. A label that currently matches no nodes can still be found and removed in this view.
 
 A network can be attached to any number of nodes and node labels. Each node ultimately uses only one network for each role:
 
@@ -280,12 +284,12 @@ If most node pairs have the same shape, the results give the corresponding concl
 Click or press Enter to open a node pair: the full card matrix shows a source-card × target-card grid, while same-named cards shows a list of individual pairs. Hover to see both addresses, RTT, or the failure reason. When testing only one node pair, this grid is shown directly.
 
 <!-- translation-source-sha256: 51bfbaa0eaf8df0684e8466c9fe4f5b46218c11fcba5b700eacd9ddf07af8e52 # Configure Node Networks -->
-<!-- translation-source-sha256: 7b5b4feabae436805c1bab30ae7bb08b947b8fb85ff92fde6309f513603a6b8a ## Listen Addresses and How Others Connect -->
+<!-- translation-source-sha256: 87da0dcda82bf17a5b4c55f56d6365e68bb937e3db156e9b7f16883a19f80cf5 ## Listen Addresses and How Others Connect -->
 <!-- translation-source-sha256: 122f3ee7f865413c75fa818965a19469e6408d3d5f56954de59fd76e43d9453c ## Networks -->
-<!-- translation-source-sha256: 4f525482177fab50c69fd8a3abef52e78cc5382caf74e0729962592d8791915e ### RDMA Networks: Automatic Bootstrap and HCA Inference -->
+<!-- translation-source-sha256: e29db6c90ea54bf69cc9862576dd61beb68a020bc9f3e886444f89f88ad7ef9a ### RDMA Networks: Automatic Bootstrap and HCA Inference -->
 <!-- translation-source-sha256: 6935e75bb6d73ecb608f2481c66a507cd625cd31b7dedc0bc184b2f8214b2e01 ### Accelerator RDMA Networks: Ports Built Into Accelerator Cards -->
 <!-- translation-source-sha256: 0fb560905054db1c05783b855f3deccc5bbc6f01dde86d695b7f4cb8d682a258 ### Accelerator HCCS Networks: A3/910C LingQu Fabric -->
-<!-- translation-source-sha256: 9a841d3882e5ecfdf15a779eb95c9d0635b93fa25a7d5a3aa34ca0d995d0082d ### Attach to Nodes or Labels -->
+<!-- translation-source-sha256: 84cedba19ea433f18810d10907703c46c27f542788957a8a8c840172402c4d35 ### Attach to Nodes or Labels -->
 <!-- translation-source-sha256: f6bfe43f4ce1306cc5cb73d27db28f6000e49479849dd2190e9ad508617bc3dd ### Management Network -->
 <!-- translation-source-sha256: 9894ba3099a8fa0448bcef68e8ea1c90f3b25fe775a3b5d7d3a346116c678050 ### How Each Role Takes Effect -->
 <!-- translation-source-sha256: 5fbaa5d7f8afa3598722cfde78023df76f941e7c3728fcf3f0b96d9cd9b8adfe ## Node Proxies and Download Addresses -->

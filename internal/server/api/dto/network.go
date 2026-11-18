@@ -99,6 +99,11 @@ type NetworkRail struct {
 	Gap string `json:"gap,omitempty"`
 }
 
+// NetworkTargetMatches identifies matching rows of a network detail table.
+type NetworkTargetMatches struct {
+	IDs []string `json:"ids"`
+}
+
 // NetworkDetail is one network with the nodes it resolved to.
 type NetworkDetail struct {
 	Network
