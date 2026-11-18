@@ -418,6 +418,7 @@ check-time-policy:
 ## check-architecture: enforce scripts/arch-constraints.txt (ratcheting grep/go list
 ## budgets) and the package dependency-direction rules. See scripts/arch-constraints.md.
 check-architecture:
+	python3 -B -m unittest discover -s scripts -p test_check_architecture.py
 	./scripts/check_architecture.sh
 
 ## check-change-record: a contract or decision path in the diff needs a record.

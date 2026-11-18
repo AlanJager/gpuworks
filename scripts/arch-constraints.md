@@ -7,6 +7,10 @@
 规则来自 `artifacts/archive/2026-09-09-architecture-cleanup/plan.md` §3 P0 与 §6：
 
 - 超限即失败（exit 1）。
+- 统计命令执行失败、返回空结果或非负整数以外的结果，也必须失败，不能按零处理。
+  `UNKNOWN`、`NOTFOUND` 和 `EXTERNAL` 保留各自的处理规则。
+- 完整检查需要 Go 与 Node。GitLab 的 `core-test` 复用 `ui-check` 的固定版本、校验和 Node 安装步骤；
+  两端 CI 都通过 `make check-architecture` 先运行失败传播回归测试，再执行完整门禁。
 - `max` 键实测**严格低于**限额时打印 WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值。
 - 误报以**修模式为先**，不以调预算为先。每条排除项都记录在本文；改脚本时必须同步本文。
 - **上调（`max` 变大、`min` 变小）必须带理由**：`check_architecture.sh` 把本文件与基线版本

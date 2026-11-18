@@ -148,7 +148,7 @@ jobs:
           name: webui-dist
           path: internal/server/webui/dist/
       - run: ./scripts/check_time_policy.sh
-      - run: ./scripts/check_architecture.sh
+      - run: make check-architecture
       - run: ./scripts/check_ci_yaml.sh
       - run: CGO_ENABLED=0 go run ./scripts/artifactsindex
       - run: make test-e2e-coverage-check

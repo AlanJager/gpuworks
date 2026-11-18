@@ -543,7 +543,11 @@ while IFS= read -r line || [ -n "$line" ]; do
     failures=$((failures + 1))
     continue
   fi
-  measured=$(measure "$key" | tr -d '[:space:]')
+  if ! measured=$(measure "$key"); then
+    echo "  FAIL: $key measurement failed" >&2
+    exit 1
+  fi
+  measured=$(printf '%s' "$measured" | tr -d '[:space:]')
   if [ "$measured" = "UNKNOWN" ]; then
     echo "  FAIL: unknown budget key '$key'; add a measurement to check_architecture.sh" >&2
     failures=$((failures + 1))
@@ -558,7 +562,12 @@ while IFS= read -r line || [ -n "$line" ]; do
     echo "  $key -/$limit ($direction; measured by scripts/check_ui_bundle_size.sh)"
     continue
   fi
-  [ -n "$measured" ] || measured=0
+  case "$measured" in
+  '' | *[!0-9]*)
+    echo "  FAIL: $key measurement must be a non-negative integer (got '$measured')" >&2
+    exit 1
+    ;;
+  esac
   echo "  $key $measured/$limit ($direction)"
   if [ "$key" = "ui_antd_import_files" ] && [ "$measured" -eq 0 ]; then
     echo "WARNING: antd 已清零：请在 scripts/arch-constraints.txt 加上 ui_raw_color / ui_raw_radius 计数规则，见 docs/dev/ui.md 的迁移收尾清单"
