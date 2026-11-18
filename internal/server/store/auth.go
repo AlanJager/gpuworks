@@ -100,6 +100,24 @@ func (s *Store) ListAPIKeys() ([]APIKey, error) {
 	return ks, err
 }
 
+// UserAPIKeys lists only the recorded user's keys, revoked keys included.
+func (s *Store) UserAPIKeys(userID uint) ([]APIKey, error) {
+	var keys []APIKey
+	err := s.reader().Where("user_id = ?", userID).Order("id desc").Find(&keys).Error
+	return keys, err
+}
+
+// APIKeyOwner returns a key's immutable owner, including a revoked key so
+// its owner may repeat a revoke. It never loads the secret hash.
+func (s *Store) APIKeyOwner(prefix string) (uint, error) {
+	var key APIKey
+	err := s.reader().Select("user_id").Where("prefix = ?", prefix).First(&key).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrNotFound
+	}
+	return key.UserID, err
+}
+
 // RevokeAPIKey stops a key authenticating, keeping its row (and so its name
 // in the usage it has). An unknown prefix returns ErrNotFound; an already
 // revoked key remains a no-op.

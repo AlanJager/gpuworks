@@ -17,15 +17,20 @@ var (
 	ErrBatchTerminal = errors.New("the batch has finished")
 )
 
-// BatchOwnerFilter narrows a listing to the rows of one user; nil lists every
-// user's rows (the console's administrators).
+// BatchOwnerFilter narrows a listing to a user, and to its original API key
+// for historical rows of user zero. An empty filter lists every user's rows
+// (the console's administrators).
 type BatchOwnerFilter struct {
-	UserID *uint
+	UserID   *uint
+	APIKeyID *uint
 }
 
 func (f BatchOwnerFilter) apply(db *gorm.DB) *gorm.DB {
 	if f.UserID != nil {
-		return db.Where("user_id = ?", *f.UserID)
+		db = db.Where("user_id = ?", *f.UserID)
+	}
+	if f.APIKeyID != nil {
+		db = db.Where("api_key_id = ?", *f.APIKeyID)
 	}
 	return db
 }

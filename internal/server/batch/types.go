@@ -106,8 +106,11 @@ type Owner struct {
 	PriorityClass string
 }
 
-// Sees reports whether the owner may see a row created by userID.
-func (o Owner) Sees(userID uint) bool { return o.All || o.UserID == userID }
+// Sees reports whether the owner may see a row. A historical key with no
+// recorded user shares only its own rows, not every row of user zero.
+func (o Owner) Sees(userID, keyID uint) bool {
+	return o.All || (o.UserID == userID && (userID != 0 || o.APIKeyID == keyID))
+}
 
 // File is a stored file's metadata.
 type File struct {

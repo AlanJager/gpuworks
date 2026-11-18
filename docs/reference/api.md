@@ -1647,6 +1647,10 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 ## API Keys（网关密钥）
 
+新建的推理令牌属于当前登录用户，所属用户不由请求体指定。普通用户只能列出、修改调用范围或吊销自己的令牌；管理员保留全部令牌的管理权限。列表中的 `user_id` 是记录的所属用户，`0` 明确表示未记录用户归属的历史令牌，不会自动归到管理员名下。
+
+历史令牌可继续按原调用范围推理，并只能读取由原令牌创建的历史零用户批处理资源。需要个人令牌时，使用现有创建操作重新发放，再由管理员显式吊销旧令牌；旧批次不会随重发自动转移，管理员仍可在控制台管理它们。部署调用范围只限制推理执行；同用户批处理历史的可见性遵循[批处理的用户归属](../how-to/batch-api.md#范围与限制)。
+
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/apikeys` | API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段。`all_deployments` 为 true 时可调用全部模型服务；为 false 时只能调用 `deployments`（`[{id,name,served_name}]`）中的部署，这些部署全被删除后列表为空、key 什么都调用不了。`priority` 是 key 的请求优先级绑定 `{class, ceiling, policy}`：`class` 为空表示使用默认优先级，`ceiling` 为空表示上限等于自身优先级，`policy` 为 `within_ceiling`（默认）、`fixed` 或 `down_only`，见[请求优先级](../explanation/request-priority.md) | JWT |

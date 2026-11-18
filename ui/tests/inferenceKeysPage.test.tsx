@@ -42,6 +42,17 @@ function setup(items: import("../src/api.ts").ApiKey[] = []) {
 afterEach(() => { cleanup(); Object.assign(api, original); analyticsApi.keyUsage = originalKeyUsage; });
 after(() => closeChannels());
 
+test("legacy ownership explains explicit reissue without assigning historical keys to the current user", async () => {
+  const { user } = setup([
+    { name: "historical", prefix: "gw-legacy000", user_id: 0, created_at: "2026-10-01T00:00:00Z", ...all },
+    { name: "personal", prefix: "gw-personal0", user_id: 7, created_at: "2026-11-18T00:00:00Z", ...all },
+  ]);
+  const help = await screen.findByRole("button", { name: "Legacy token ownership" });
+  assert.equal(screen.getAllByRole("button", { name: "Legacy token ownership" }).length, 1);
+  await user.hover(help);
+  assert.ok(await screen.findByText("This token has no recorded user. Create a personal replacement, then ask an administrator to revoke the old token. Its old batches stay with the old token."));
+});
+
 test("inference usage example declares JSON while preserving its authentication and request body", async () => {
   setup();
   const command = screen.getByText((_, element) => element?.tagName === "PRE" && !!element.textContent?.includes("/v1/chat/completions")).textContent ?? "";

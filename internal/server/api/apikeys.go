@@ -57,8 +57,15 @@ func writeAPIKeyScopeError(w http.ResponseWriter, err error) {
 	}
 }
 
-func (a *apiHandlers) apiKeyDTOs() ([]dto.APIKey, error) {
-	keys, err := a.d.Store.ListAPIKeys()
+func (a *apiHandlers) apiKeyDTOs(r *http.Request) ([]dto.APIKey, error) {
+	claims, _ := a.claimsFromRequest(r)
+	var keys []store.APIKey
+	var err error
+	if claims.Role == "admin" {
+		keys, err = a.d.Store.ListAPIKeys()
+	} else {
+		keys, err = a.d.Store.UserAPIKeys(claims.UserID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +88,8 @@ func (a *apiHandlers) apiKeyDTOs() ([]dto.APIKey, error) {
 			deployments = append(deployments, dto.APIKeyDeployment{ID: g.DeploymentID, Name: g.Name, ServedName: g.ServedName})
 		}
 		out = append(out, dto.APIKey{
-			Name: k.Name, Prefix: k.Prefix, LastUsed: utcTimePtr(k.LastUsed), Created: utcTime(k.CreatedAt), Revoked: utcTimePtr(k.RevokedAt),
+			UserID: k.UserID,
+			Name:   k.Name, Prefix: k.Prefix, LastUsed: utcTimePtr(k.LastUsed), Created: utcTime(k.CreatedAt), Revoked: utcTimePtr(k.RevokedAt),
 			AllDeployments: !k.Restricted, Deployments: deployments, Priority: apiKeyPriorityDTO(k, names),
 		})
 	}
@@ -89,7 +97,7 @@ func (a *apiHandlers) apiKeyDTOs() ([]dto.APIKey, error) {
 }
 
 func (a *apiHandlers) listAPIKeys(w http.ResponseWriter, r *http.Request) {
-	out, err := a.apiKeyDTOs()
+	out, err := a.apiKeyDTOs(r)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -154,7 +162,8 @@ func (a *apiHandlers) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		}
 		binding = &parsed
 	}
-	full, err := a.d.Store.CreateScopedAPIKey(req.Name, 0, scope)
+	claims, _ := a.claimsFromRequest(r)
+	full, err := a.d.Store.CreateScopedAPIKey(req.Name, claims.UserID, scope)
 	if err != nil {
 		writeAPIKeyScopeError(w, err)
 		return
@@ -188,11 +197,14 @@ func (a *apiHandlers) setAPIKeyScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prefix := chi.URLParam(r, "prefix")
+	if !a.requireAPIKeyOwner(w, r, prefix) {
+		return
+	}
 	if err := a.d.Store.SetAPIKeyScope(prefix, scope); err != nil {
 		writeAPIKeyScopeError(w, err)
 		return
 	}
-	keys, err := a.apiKeyDTOs()
+	keys, err := a.apiKeyDTOs(r)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -207,7 +219,11 @@ func (a *apiHandlers) setAPIKeyScope(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	if err := a.d.Store.RevokeAPIKey(chi.URLParam(r, "prefix")); err != nil {
+	prefix := chi.URLParam(r, "prefix")
+	if !a.requireAPIKeyOwner(w, r, prefix) {
+		return
+	}
+	if err := a.d.Store.RevokeAPIKey(prefix); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeProductError(w, http.StatusNotFound, ErrorAPIKeyNotFound, "no API key has this prefix", nil)
 			return
@@ -216,4 +232,22 @@ func (a *apiHandlers) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+}
+
+// requireAPIKeyOwner checks management access. Ownership never changes, so
+// the following scope/revoke transaction can safely recheck the key's state.
+func (a *apiHandlers) requireAPIKeyOwner(w http.ResponseWriter, r *http.Request, prefix string) bool {
+	claims, _ := a.claimsFromRequest(r)
+	if claims.Role == "admin" {
+		return true
+	}
+	owner, err := a.d.Store.APIKeyOwner(prefix)
+	if err == nil && (owner == 0 || owner != claims.UserID) {
+		err = store.ErrNotFound
+	}
+	if err != nil {
+		writeAPIKeyScopeError(w, err)
+		return false
+	}
+	return true
 }

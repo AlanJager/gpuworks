@@ -27,6 +27,7 @@ import PlatformTokensCard from "./apikeys/PlatformTokensCard";
 import { ALL_DEPLOYMENTS, KeyScopeCell, KeyScopeInput, KeyScopeModal, scopeRequest, scopeRule } from "./apikeys/KeyScope";
 import SecretModal from "./apikeys/SecretModal";
 import { KeyPriorityCell, usePriorityClasses } from "./apikeys/KeyPriority";
+import { HelpTip } from "../ui-kit/HelpTip";
 
 const { Paragraph, Text } = Typography;
 
@@ -64,7 +65,10 @@ export default function APIKeysPage() {
 
   // A token has no detail of its own, so its name is plain text rather than a link.
   const columns: ResourceColumn<ApiKey>[] = [
-    { key: "name", role: "name", title: t("table.name"), width: 220, sortValue: (k) => k.name, render: (_: unknown, k: ApiKey) => k.name || "—" },
+    { key: "name", role: "name", title: t("table.name"), width: 220, sortValue: (k) => k.name, render: (_: unknown, k: ApiKey) => <span className="inline-flex items-center gap-1">
+      {k.name || "—"}
+      {k.user_id === 0 && <HelpTip label={t("ownership.legacyLabel")} content={t("ownership.legacyHelp")} />}
+    </span> },
     { key: "prefix", title: t("table.prefix"), width: 180, render: (_: unknown, k: ApiKey) => <Text code>{k.prefix}</Text> },
     {
       key: "status",

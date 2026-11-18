@@ -117,7 +117,7 @@ func (m *memRepo) ListFiles(owner Owner, purpose, after string, limit int) ([]Fi
 	defer m.mu.Unlock()
 	var all []File
 	for _, f := range m.files {
-		if owner.Sees(f.UserID) && (purpose == "" || f.Purpose == purpose) {
+		if owner.Sees(f.UserID, f.APIKeyID) && (purpose == "" || f.Purpose == purpose) {
 			all = append(all, f)
 		}
 	}
@@ -178,7 +178,7 @@ func (m *memRepo) GetBatch(id string) (Batch, error) {
 func (m *memRepo) sortedBatches(owner Owner, statuses []string) []Batch {
 	var all []Batch
 	for _, b := range m.batches {
-		if owner.Sees(b.UserID) && (len(statuses) == 0 || slices.Contains(statuses, b.Status)) {
+		if owner.Sees(b.UserID, b.APIKeyID) && (len(statuses) == 0 || slices.Contains(statuses, b.Status)) {
 			all = append(all, b)
 		}
 	}
