@@ -89,3 +89,9 @@ func TestReservedTableKindsArePrivilegedAndUndefined(t *testing.T) {
 		t.Fatal("PrivilegedTableKinds returned the package's own slice")
 	}
 }
+
+func TestPermCryptoDeriveKeyIsInTheVocabulary(t *testing.T) {
+	if c, ok := PermissionCapability(PermCryptoDeriveKey); !ok || c != CapHostDeriveKey {
+		t.Fatalf("PermissionCapability(%q) = %q, %v", PermCryptoDeriveKey, c, ok)
+	}
+}

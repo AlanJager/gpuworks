@@ -7,13 +7,10 @@ import (
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
-// permDeriveKey is the permission of POST /host/v1/derive-key.
-const permDeriveKey = "crypto:derive_key"
-
 // deriveKey answers POST /host/v1/derive-key with a key bound to the caller's
 // package and the label.
 func (h *hostConn) deriveKey(w http.ResponseWriter, r *http.Request) {
-	owner := h.callOwner(w, r, h.svc != nil && h.svc.keys != nil, extapi.CapHostDeriveKey, needsPermission(permDeriveKey))
+	owner := h.callOwner(w, r, h.svc != nil && h.svc.keys != nil, extapi.CapHostDeriveKey, needsPermission(extapi.PermCryptoDeriveKey))
 	if owner == nil {
 		return
 	}

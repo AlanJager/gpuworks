@@ -96,7 +96,7 @@ func callBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	}
 	if len(raw) > extapi.MaxHostCallBytes {
 		e := Refuse(extapi.ReasonInvalidArgument, messages.ErrorRequestTooLarge, "the request is larger than the server reads",
-			map[string]any{"max": extapi.MaxHostCallBytes})
+			map[string]any{"max_bytes": extapi.MaxHostCallBytes})
 		e.Status = http.StatusRequestEntityTooLarge
 		writeWire(w, e)
 		return nil, false
@@ -192,7 +192,7 @@ func (h *hostConn) ownState(w http.ResponseWriter, r *http.Request, kind string)
 	if owner == nil {
 		return
 	}
-	if probe := (extapi.PushedState{Kind: kind}); probe.Validate() != nil {
+	if !slices.Contains(extapi.TableKinds(), kind) {
 		writeWire(w, Refuse(extapi.ReasonInvalidArgument, messages.ErrorPluginHostArgumentInvalid, "the path names no table kind",
 			map[string]any{"id": owner.ID, "field": "kind"}))
 		return

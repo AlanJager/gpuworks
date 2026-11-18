@@ -126,6 +126,12 @@ func TestPushedStateReadsBackTheOwnTable(t *testing.T) {
 	if none, err := p.PushedState(ctx, extapi.KindNodeHolds); err != nil || none.Held() {
 		t.Fatalf("not pushed = %+v, %v", none, err)
 	}
+	// A kind this protocol does not define is refused, as the server does,
+	// rather than answered as not held.
+	_, err = p.PushedState(ctx, "foo")
+	if e := wireErr(t, err); e.Status != 400 || e.Wire.Code != "PLUGIN_HOST_ARGUMENT_INVALID" || e.Wire.Params["field"] != "kind" {
+		t.Fatalf("unknown kind = %+v", e)
+	}
 }
 
 // A call whose capability the handshake did not settle on fails in the

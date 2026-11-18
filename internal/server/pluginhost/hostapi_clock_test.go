@@ -153,7 +153,7 @@ func TestClockCorrectionNeedsTheRoleAndTheCapability(t *testing.T) {
 	st, _, w = raw(t, h, http.MethodPost, extapi.PathHostClockCorrect, `{"reason":"x","to":"2027-01-15T00:00:00Z","by":"root"}`)
 	wantRefusal(t, "unknown field", st, w, 400, extapi.ErrorWireUnknownField, nil)
 	st, _, w = raw(t, h, http.MethodPost, extapi.PathHostClockCorrect, `{"reason":"`+strings.Repeat("a", extapi.MaxHostCallBytes)+`","to":"2027-01-15T00:00:00Z"}`)
-	wantRefusal(t, "oversized", st, w, 413, messages.ErrorRequestTooLarge, map[string]any{"max": int64(extapi.MaxHostCallBytes)})
+	wantRefusal(t, "oversized", st, w, 413, messages.ErrorRequestTooLarge, map[string]any{"max_bytes": int64(extapi.MaxHostCallBytes)})
 	st, _, w = raw(t, h, http.MethodGet, extapi.PathHostClockCorrect, "")
 	wantRefusal(t, "GET", st, w, 501, messages.ErrorPluginHostRouteUnknown, nil)
 
@@ -238,6 +238,8 @@ func TestOwnStateReadsTheConnectionsOwnTables(t *testing.T) {
 	}
 	st, _, w = raw(t, h, http.MethodGet, extapi.PathHostState+"Banners", "")
 	wantRefusal(t, "bad kind", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": "kind"})
+	st, _, w = raw(t, h, http.MethodGet, extapi.PathHostState+"foo", "")
+	wantRefusal(t, "unknown kind", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": "kind"})
 	noCap := authority()
 	noCap.Use = map[string]int{}
 	st, _, w = raw(t, servicesConn(t, f, noCap), http.MethodGet, extapi.PathHostState+"banners", "")

@@ -22,7 +22,6 @@ const (
 	hostCodeRoleRequired     = "PLUGIN_ROLE_REQUIRED"
 	hostCodeRequestTooLarge  = "REQUEST_TOO_LARGE"
 	hostCodeCorrectionTooFar = "PLUGIN_CLOCK_CORRECTION_TOO_LARGE"
-	hostPermDeriveKey        = "crypto:derive_key"
 	// maxCorrectionDays is the server's bound on one clock correction.
 	maxCorrectionDays = 366
 )
@@ -139,7 +138,7 @@ func hostCallBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 		return raw, true
 	}
 	writeJSON(w, http.StatusRequestEntityTooLarge, extapi.WireError{Code: hostCodeRequestTooLarge, Message: "the request is larger than the server reads",
-		Params: extapi.Params{"max": extapi.MaxHostCallBytes}, Reason: extapi.ReasonInvalidArgument})
+		Params: extapi.Params{"max_bytes": extapi.MaxHostCallBytes}, Reason: extapi.ReasonInvalidArgument})
 	return nil, false
 }
 
@@ -191,7 +190,7 @@ func (h *fakeHost) correct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *fakeHost) deriveKey(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.caller(w, hostPermDeriveKey, "", extapi.CapHostDeriveKey)
+	id, ok := h.caller(w, extapi.PermCryptoDeriveKey, "", extapi.CapHostDeriveKey)
 	if !ok {
 		return
 	}
@@ -217,7 +216,7 @@ func (h *fakeHost) ownState(w http.ResponseWriter, kind string) {
 	if !ok {
 		return
 	}
-	if probe := (extapi.PushedState{Kind: kind}); probe.Validate() != nil {
+	if !slices.Contains(extapi.TableKinds(), kind) {
 		writeRefusal(w, extapi.WireError{Code: hostCodeArgumentInvalid, Message: "the path names no table kind",
 			Params: extapi.Params{"id": id, "field": "kind"}, Reason: extapi.ReasonInvalidArgument})
 		return
