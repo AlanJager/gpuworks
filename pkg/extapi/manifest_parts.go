@@ -74,7 +74,7 @@ func (m *Manifest) validateRoutes() *fieldError {
 				return f
 			}
 		}
-		key := r.Method + " " + r.Pattern
+		key := r.Method + " " + routeShape(r.Pattern)
 		if seen[key] {
 			return &fieldError{field: joinPath(at, "pattern"), rule: RuleDuplicate}
 		}
@@ -216,6 +216,19 @@ func checkRouteSegments(path, pattern string) *fieldError {
 		}
 	}
 	return nil
+}
+
+// routeShape is the pattern with every parameter name dropped: two routes
+// of one method whose shapes are equal match exactly the same paths, so
+// the server's router and the plugin's own could pick different ones.
+func routeShape(pattern string) string {
+	segs := strings.Split(pattern, "/")
+	for i, seg := range segs {
+		if strings.HasPrefix(seg, "{") {
+			segs[i] = "{}"
+		}
+	}
+	return strings.Join(segs, "/")
 }
 
 // listed reports a member a part names but Files does not list.

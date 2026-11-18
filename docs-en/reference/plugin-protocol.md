@@ -118,14 +118,14 @@ Routes are served at `/api/v1/x/<id><pattern>`:
 | Field | Rules |
 |---|---|
 | `method` | `GET`, `POST`, `PUT`, `PATCH` or `DELETE`; `method` plus `pattern` is unique |
-| `pattern` | Starts with `/` and has only literal segments (lowercase letters, digits, `_`, `.` and `-`) and parameters `{name}` without a regular expression; `/` alone is the package's root. Regular-expression parameters (such as `{id:[0-9]+}`), empty segments, `.` and `..` segments, percent-escapes and a parameter named twice are refused, so the server and the plugin's own router never match a path differently |
+| `pattern` | Starts with `/` and has only literal segments (lowercase letters, digits, `_`, `.` and `-`) and parameters `{name}` without a regular expression; `/` alone is the package's root. Regular-expression parameters (such as `{id:[0-9]+}`), empty segments, `.` and `..` segments, percent-escapes and a parameter named twice are refused; two patterns of one `method` that differ only in parameter names (such as `/jobs/{id}` and `/jobs/{name}`) match the same paths and count as duplicates. So the server and the plugin's own router never match a path differently |
 | `action` | `<package id>.<verb>`, the action name an authorizer grants |
 | `access` | `admin` (administrators, by session or platform token), `admin_session` (administrator sessions only), `member` (any signed-in user or platform token), `public` (no authentication) |
 | `feature` / `ungated` | Exactly one is set; `feature` must be a key this manifest declares |
 | `write_when_read_only` | Lets this non-GET write through while the feature is read-only (a write that only removes or relaxes); needs `feature` |
 | `max_body` | Request body limit; 0 means 1 MiB, at most 1 GiB; above 1 MiB the package needs the permission `http:uploads` |
 | `timeout_s` | 0 means 60 seconds, at most 600 |
-| `stream` / `websocket` | A streamed response / a WebSocket upgrade (GET only, not together with `stream`); `websocket` also needs `routes.websocket` in `requires` or `uses`, so a server that offers only `routes` never accepts it as a plain route |
+| `stream` / `websocket` | A streamed response / a WebSocket upgrade (GET only, not together with `stream`); `websocket` also needs `routes.websocket` in `requires` or `uses`. On a server that offers only `routes`, a package that has it in `requires` is incompatible; one that has it only in `uses` installs as usual, but that route is not served |
 | `html` | Lets the route answer `text/html`; only `public`, `admin` and `admin_session` routes may set it |
 | `ai_readable` | The assistant and MCP may read it; GET only |
 | `cookies` / `rate` | `public` routes only: may set cookies (a single sign-on callback) / a token bucket per client address `{per_minute, burst}`, each 1–100000 |
@@ -185,7 +185,7 @@ Each permission names the capability that serves it. A manifest that holds a per
 
 Beyond the manifest, the server applies its own policy after the capability check and before the site policy. It applies on install and on every recheck, so an installed package is refused on recheck as well:
 
-- A package with routes must hold `http:routes`, and one with a `public` route also `http:public`; otherwise `PLUGIN_POLICY_REFUSED`, with the missing permission as `rule` and the route (such as `routes.0`) as `value` and `field`.
+- A package with routes must hold `http:routes`, and one with a `public` route also `http:public`; otherwise `PLUGIN_POLICY_REFUSED`, with the missing permission as `rule` and the route (such as `routes.0`) as `value`.
 - An `on_demand` package is not running most of the time, so it may hold no `push:` permission and declare no feature (no one would answer for its keys while it is stopped); otherwise `PLUGIN_STATE_ON_DEMAND` with `id` and `permission` or `feature`.
 
 ## Publisher certificate
@@ -497,4 +497,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: e298e4dec627ab832a8d39a1b80289e0aadb0fa76c2c058a407d7bf769ad59ed -->
+<!-- translation-source-sha256: b04283c308a7e753e1008f0498ba843106933f57a9a36f4a2612a2827d0dc0b8 -->

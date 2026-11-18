@@ -50,7 +50,7 @@ const (
 	// ErrorPluginPolicyRefused: plugin policy refuses the package ({rule},
 	// {value}): the site's policy in server.yaml (rule is the policy key),
 	// or this server's own policy on routes (rule is the permission the
-	// route needs, value and field the route).
+	// route needs, value the route).
 	ErrorPluginPolicyRefused = "PLUGIN_POLICY_REFUSED"
 	// ErrorPluginIsolationUnavailable: package {id} needs {isolation} and
 	// this host cannot confine it so.

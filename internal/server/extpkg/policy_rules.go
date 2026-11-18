@@ -54,9 +54,9 @@ func checkServerPolicy(m *extapi.Manifest) error {
 }
 
 // routePermissionMissing refuses a route whose permission the manifest
-// does not ask for: rule is the permission, value and field the route.
+// does not ask for: rule is the permission, value the route.
 func routePermissionMissing(perm, field string) error {
 	return messages.NewProductError(messages.ErrorPluginPolicyRefused,
 		fmt.Sprintf("%s needs the permission %s", field, perm),
-		map[string]any{"rule": perm, "value": field, "field": field})
+		map[string]any{"rule": perm, "value": field})
 }

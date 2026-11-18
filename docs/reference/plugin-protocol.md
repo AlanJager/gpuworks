@@ -118,14 +118,14 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | 字段 | 规则 |
 |---|---|
 | `method` | `GET`、`POST`、`PUT`、`PATCH` 或 `DELETE`；`method` 加 `pattern` 不重复 |
-| `pattern` | 以 `/` 开头，只由字面段（小写字母、数字、`_`、`.`、`-`）与不带正则的参数 `{name}` 组成；单独的 `/` 是包的根。拒绝正则参数（如 `{id:[0-9]+}`）、空段、`.` 与 `..` 段、百分号转义和同名的两个参数，这样 server 与插件自己的路由器对同一路径的匹配不会不同 |
+| `pattern` | 以 `/` 开头，只由字面段（小写字母、数字、`_`、`.`、`-`）与不带正则的参数 `{name}` 组成；单独的 `/` 是包的根。拒绝正则参数（如 `{id:[0-9]+}`）、空段、`.` 与 `..` 段、百分号转义和同名的两个参数；同一 `method` 下只差参数名的两个 `pattern`（如 `/jobs/{id}` 与 `/jobs/{name}`）匹配同样的路径，算作重复。这样 server 与插件自己的路由器对同一路径的匹配不会不同 |
 | `action` | `<包 id>.<动词>`，授权时用的动作名 |
 | `access` | `admin`（管理员，会话或平台 token）、`admin_session`（仅管理员会话）、`member`（任何登录用户或平台 token）、`public`（不认证） |
 | `feature` / `ungated` | 二者恰好设一个；`feature` 必须是本清单声明的键 |
 | `write_when_read_only` | 功能只读时仍放行这个非 GET 写入（只做删除或放宽的写）；要求有 `feature` |
 | `max_body` | 请求体上限，0 为 1 MiB，最大 1 GiB；超过 1 MiB 需要权限 `http:uploads` |
 | `timeout_s` | 0 为 60 秒，最大 600 |
-| `stream` / `websocket` | 流式响应 / WebSocket 升级（仅 GET，且不与 `stream` 同时）；`websocket` 还要求 `requires` 或 `uses` 列出 `routes.websocket`，只提供 `routes` 的 server 因而不会把它当普通路由接收 |
+| `stream` / `websocket` | 流式响应 / WebSocket 升级（仅 GET，且不与 `stream` 同时）；`websocket` 还要求 `requires` 或 `uses` 列出 `routes.websocket`：只提供 `routes` 的 server 上，`requires` 时不提供则不兼容；只在 `uses` 时包照常安装，但该路由不被服务 |
 | `html` | 允许返回 `text/html`；只有 `public`、`admin` 与 `admin_session` 路由可以设 |
 | `ai_readable` | AI 助手与 MCP 可读，仅 GET |
 | `cookies` / `rate` | 仅 `public` 路由：允许设置 cookie（单点登录回调）/ 按客户端地址的令牌桶 `{per_minute, burst}`，各 1–100000 |
@@ -185,7 +185,7 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 
 清单之外，server 在能力检查之后、站点策略之前还执行自己的策略。安装时与每次重新校验时都执行，所以已安装的包在重新校验时同样会被拒绝：
 
-- 有路由的包必须持有 `http:routes`，`public` 路由还要 `http:public`；缺了回 `PLUGIN_POLICY_REFUSED`，`rule` 是缺的权限，`value` 与 `field` 是路由（如 `routes.0`）。
+- 有路由的包必须持有 `http:routes`，`public` 路由还要 `http:public`；缺了回 `PLUGIN_POLICY_REFUSED`，`rule` 是缺的权限，`value` 是路由（如 `routes.0`）。
 - `on_demand` 的包大部分时间不在运行，所以不能持有 `push:` 权限，也不能声明功能（它作答的键在它停止时无人作答）；违反时回 `PLUGIN_STATE_ON_DEMAND`，参数 `id` 加 `permission` 或 `feature`。
 
 ## 发布者证书

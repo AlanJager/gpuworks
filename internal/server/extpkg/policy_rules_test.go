@@ -35,12 +35,12 @@ func TestVerifyAppliesTheServerPolicy(t *testing.T) {
 		{name: "routes without http:routes", edit: func(s *extsign.Spec) {
 			s.Manifest.Requires = map[string]int{"routes": 1}
 			s.Manifest.Routes = []extapi.RouteDecl{routeDecl("/jobs", extapi.RouteAdmin)}
-		}, code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": "http:routes", "value": "routes.0", "field": "routes.0"}},
+		}, code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": "http:routes", "value": "routes.0"}},
 		{name: "public route without http:public", edit: func(s *extsign.Spec) {
 			s.Manifest.Requires = map[string]int{"routes": 1}
 			s.Manifest.Permissions = []string{"http:routes"}
 			s.Manifest.Routes = []extapi.RouteDecl{routeDecl("/jobs", extapi.RouteAdmin), routeDecl("/hooks", extapi.RoutePublic)}
-		}, code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": "http:public", "field": "routes.1"}},
+		}, code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": "http:public", "value": "routes.1"}},
 		{name: "read surface this server does not offer", offer: extpkg.Capabilities(), edit: func(s *extsign.Spec) {
 			s.Manifest.Permissions = []string{"read:node_identity"}
 			s.Manifest.Requires = map[string]int{"host.node_identity": 1}

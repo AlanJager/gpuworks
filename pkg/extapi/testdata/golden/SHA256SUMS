@@ -285,3 +285,4 @@ ab72624a0466c3e3187c72376bb5ba3e59e616093926f60da883666bca2e8802  manifest/v1/in
 d85ed122ca70893a89a492c7e736556c764f7f6735f3997f2f951be32d400fd0  manifest/v1/invalid/PLUGIN_WIRE_INVALID/settings.1.key--duplicate.json
 0f90754e1344c5f5ef20b1018a35f14432290b504ce82f2590ff094f5f1ec9da  manifest/v1/invalid/PLUGIN_WIRE_UNKNOWN_FIELD/settings.0.default--unknown.json
 1ec63ae11e7ca227d3dd9da308397c5ff99e6e9de59b894545968c30d2caa4fd  manifest/v1/valid/vocabulary.json
+0c475d3c46083372baf8b07b0377c313ccdd239b9965dc8af93980406129e311  manifest/v1/invalid/PLUGIN_WIRE_INVALID/routes.1.pattern--duplicate--param_renamed.json
