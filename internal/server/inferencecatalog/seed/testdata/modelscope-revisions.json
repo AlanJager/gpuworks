@@ -1,0 +1,345 @@
+[
+  {
+    "repo": "OpenOneRec/OneRec-1.7B",
+    "invalid_revision": "cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b",
+    "file": {
+      "Path": ".gitattributes",
+      "Size": 2285,
+      "Type": "blob",
+      "Revision": "96ded8b50e52c2f0ad0f8b6555ac632636792496",
+      "CommittedDate": 1782903790
+    },
+    "latest_committer": {
+      "CommittedDate": 1782903790,
+      "ShortId": "96ded8b5"
+    },
+    "valid_revisions": [
+      "96ded8b50e52c2f0ad0f8b6555ac632636792496"
+    ]
+  },
+  {
+    "repo": "ibm-granite/granite-4.1-3b",
+    "invalid_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+    "file": {
+      "Path": "README.md",
+      "Size": 32480,
+      "Type": "blob",
+      "Revision": "4352bf8648e5deeeb23321792b6deca341e55bb2",
+      "CommittedDate": 1778009977
+    },
+    "latest_committer": {
+      "CommittedDate": 1778009977,
+      "ShortId": "4352bf86"
+    },
+    "valid_revisions": [
+      "4352bf8648e5deeeb23321792b6deca341e55bb2"
+    ]
+  },
+  {
+    "repo": "ibm-granite/granite-4.2-3b",
+    "invalid_revision": "b7e947307dd2efb3ad3b853b0e8a7e75f8ad4ac2",
+    "file": {
+      "Path": "model.safetensors.index.json",
+      "Size": 29893,
+      "Type": "blob",
+      "Revision": "4d3e9a45c12dbee99f24a7cbb02e46a865979a0a",
+      "CommittedDate": 1792597336
+    },
+    "latest_committer": {
+      "CommittedDate": 1792597336,
+      "ShortId": "4d3e9a45"
+    },
+    "valid_revisions": [
+      "4d3e9a45c12dbee99f24a7cbb02e46a865979a0a"
+    ]
+  },
+  {
+    "repo": "HuggingFaceTB/SmolLM-135M-Instruct",
+    "invalid_revision": "fcc320f490e08fdb4b99d935b2c58d40bf35b0d0",
+    "file": {
+      "Path": ".gitattributes",
+      "Size": 2029,
+      "Type": "blob",
+      "Revision": "89e86e700a070e77373fb7bda7b02ddded846b41",
+      "CommittedDate": 1730425049
+    },
+    "latest_committer": {
+      "CommittedDate": 1730425049,
+      "ShortId": "89e86e70"
+    },
+    "valid_revisions": [
+      "89e86e700a070e77373fb7bda7b02ddded846b41"
+    ]
+  },
+  {
+    "repo": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+    "invalid_revision": "31b70e2e869a7173562077fd711b654946d38674",
+    "file": {
+      "Path": "tokenizer_config.json",
+      "Size": 3764,
+      "Type": "blob",
+      "Revision": "f53636d9e1fe68433c9f910d3cab51c1b5783610",
+      "CommittedDate": 1736307625
+    },
+    "latest_committer": {
+      "CommittedDate": 1736307625,
+      "ShortId": "f53636d9"
+    },
+    "valid_revisions": [
+      "f53636d9e1fe68433c9f910d3cab51c1b5783610"
+    ]
+  },
+  {
+    "repo": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "invalid_revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+    "file": {
+      "Path": ".gitattributes",
+      "Size": 1519,
+      "Type": "blob",
+      "Revision": "41afc025e05a12e7348c12b49cf1896a4a44722f",
+      "CommittedDate": 1736267525
+    },
+    "latest_committer": {
+      "CommittedDate": 1736267525,
+      "ShortId": "41afc025"
+    },
+    "valid_revisions": [
+      "41afc025e05a12e7348c12b49cf1896a4a44722f"
+    ]
+  },
+  {
+    "repo": "google/gemma-4-E2B-it-qat-w4a16-ct",
+    "invalid_revision": "971342c08f607aa7779983f6b5289778b5d271a7",
+    "file": {
+      "Path": "README.md",
+      "Size": 29372,
+      "Type": "blob",
+      "Revision": "5bdbf89b944c027915fd322913a00f6be6476309",
+      "CommittedDate": 1784610749
+    },
+    "latest_committer": {
+      "CommittedDate": 1784610749,
+      "ShortId": "5bdbf89b"
+    },
+    "valid_revisions": [
+      "5bdbf89b944c027915fd322913a00f6be6476309"
+    ]
+  },
+  {
+    "repo": "jinaai/jina-embeddings-v5-text-small-clustering",
+    "invalid_revision": "4ab9d9d3c5cca288d9ab38c1dc5228124fdf3271",
+    "file": {
+      "Path": "README.md",
+      "Size": 10719,
+      "Type": "blob",
+      "Revision": "c5d44078ac5945f35450d3aa36f410e86542f793",
+      "CommittedDate": 1776283027
+    },
+    "latest_committer": {
+      "CommittedDate": 1776283027,
+      "ShortId": "c5d44078"
+    },
+    "valid_revisions": [
+      "c5d44078ac5945f35450d3aa36f410e86542f793"
+    ]
+  },
+  {
+    "repo": "mistralai/Shieldstral-1.0-3B",
+    "invalid_revision": "003ec7e2b0bab5f0e6307edbaf186fa5822b76f5",
+    "file": {
+      "Path": "README.md",
+      "Size": 23152,
+      "Type": "blob",
+      "Revision": "97ce4caee72d064e5bc25437cd223c15234e1baa",
+      "CommittedDate": 1785931968
+    },
+    "latest_committer": {
+      "CommittedDate": 1785931968,
+      "ShortId": "97ce4cae"
+    },
+    "valid_revisions": [
+      "97ce4caee72d064e5bc25437cd223c15234e1baa"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen2.5-1.5B",
+    "invalid_revision": "8faed761d45a263340a0528343f099c05c9a4323",
+    "file": {
+      "Path": "config.json",
+      "Size": 684,
+      "Type": "blob",
+      "Revision": "8f8c715740f4d6e253f43b41939da5c5bb28e4c0",
+      "CommittedDate": 1728415437
+    },
+    "latest_committer": {
+      "CommittedDate": 1728415437,
+      "ShortId": "8f8c7157"
+    },
+    "valid_revisions": [
+      "8f8c715740f4d6e253f43b41939da5c5bb28e4c0"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen2-1.5B-Instruct",
+    "invalid_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+    "file": {
+      "Path": "README.md",
+      "Size": 3537,
+      "Type": "blob",
+      "Revision": "61a82dc36296ad54589051679de0b6fd45ed4f41",
+      "CommittedDate": 1740572237
+    },
+    "latest_committer": {
+      "CommittedDate": 1740572237,
+      "ShortId": "61a82dc3"
+    },
+    "valid_revisions": [
+      "61a82dc36296ad54589051679de0b6fd45ed4f41"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen3-VL-Embedding-2B",
+    "invalid_revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+    "file": {
+      "Path": "1_Pooling/config.json",
+      "Size": 96,
+      "Type": "blob",
+      "Revision": "c35dddf20620fe32745cb3d01f87ba64ae316313",
+      "CommittedDate": 1786091341
+    },
+    "latest_committer": {
+      "CommittedDate": 1786091341,
+      "ShortId": "c35dddf2"
+    },
+    "valid_revisions": [
+      "c35dddf20620fe32745cb3d01f87ba64ae316313"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen2-0.5B",
+    "invalid_revision": "91d2aff3f957f99e4c74c962f2f408dcc88a18d8",
+    "file": {
+      "Path": "README.md",
+      "Size": 4026,
+      "Type": "blob",
+      "Revision": "64c24a46f4b9bed1f6b918e328cd1e4554784ce7",
+      "CommittedDate": 1745447730
+    },
+    "latest_committer": {
+      "CommittedDate": 1745447730,
+      "ShortId": "64c24a46"
+    },
+    "valid_revisions": [
+      "64c24a46f4b9bed1f6b918e328cd1e4554784ce7"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen1.5-0.5B-Chat",
+    "invalid_revision": "4d14e384a4b037942bb3f3016665157c8bcb70ea",
+    "file": {
+      "Path": "README.md",
+      "Size": 4284,
+      "Type": "blob",
+      "Revision": "c31b505140cbc58830e0cb52d150df41a0fee22a",
+      "CommittedDate": 1740572268
+    },
+    "latest_committer": {
+      "CommittedDate": 1740572268,
+      "ShortId": "c31b5051"
+    },
+    "valid_revisions": [
+      "c31b505140cbc58830e0cb52d150df41a0fee22a"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen2-0.5B-Instruct",
+    "invalid_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "file": {
+      "Path": "README.md",
+      "Size": 3565,
+      "Type": "blob",
+      "Revision": "c94da76a2f73a969a507a92bf54fac783524df4d",
+      "CommittedDate": 1740572146
+    },
+    "latest_committer": {
+      "CommittedDate": 1740572146,
+      "ShortId": "c94da76a"
+    },
+    "valid_revisions": [
+      "c94da76a2f73a969a507a92bf54fac783524df4d"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen3.5-122B-A10B-GPTQ-Int4",
+    "invalid_revision": "30cd92cba9707a9aba09d1e490ed4b66b78e9606",
+    "file": {
+      "Path": "README.md",
+      "Size": 92257,
+      "Type": "blob",
+      "Revision": "ab2d478962e7317a45f6cad4f8eaa4a7dc5f52fe",
+      "CommittedDate": 1777010384
+    },
+    "latest_committer": {
+      "CommittedDate": 1777010384,
+      "ShortId": "ab2d4789"
+    },
+    "valid_revisions": [
+      "ab2d478962e7317a45f6cad4f8eaa4a7dc5f52fe"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+    "invalid_revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
+    "file": {
+      "Path": "README.md",
+      "Size": 5023,
+      "Type": "blob",
+      "Revision": "62789576f47d1d43f192fe05a95773ab3ab9e9c6",
+      "CommittedDate": 1740593748
+    },
+    "latest_committer": {
+      "CommittedDate": 1740593748,
+      "ShortId": "62789576"
+    },
+    "valid_revisions": [
+      "62789576f47d1d43f192fe05a95773ab3ab9e9c6"
+    ]
+  },
+  {
+    "repo": "Qwen/Qwen3-1.7B-Base",
+    "invalid_revision": "ea980cb0a6c2ae4b936e82123acc929f1cec04c1",
+    "file": {
+      "Path": "LICENSE",
+      "Size": 11343,
+      "Type": "blob",
+      "Revision": "b0786a09cd6ee101cd8c90e30a5727beb8230544",
+      "CommittedDate": 1753546359
+    },
+    "latest_committer": {
+      "CommittedDate": 1753546359,
+      "ShortId": "b0786a09"
+    },
+    "valid_revisions": [
+      "b0786a09cd6ee101cd8c90e30a5727beb8230544"
+    ]
+  },
+  {
+    "repo": "WeiboAI/VibeThinker-3B",
+    "invalid_revision": "77bd2cced09193c8b9a59a32bd8577bbd1f3e01c",
+    "file": {
+      "Path": "README.md",
+      "Size": 8034,
+      "Type": "blob",
+      "Revision": "8fd2dc39599ee346211397159c51d640a4dc35f7",
+      "CommittedDate": 1781594222
+    },
+    "latest_committer": {
+      "CommittedDate": 1781594222,
+      "ShortId": "8fd2dc39"
+    },
+    "valid_revisions": [
+      "8fd2dc39599ee346211397159c51d640a4dc35f7",
+      "fd738379de73e4ac7aea26e8dbbb6573aac00713"
+    ]
+  }
+]
