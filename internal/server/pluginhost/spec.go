@@ -156,6 +156,9 @@ type Config struct {
 	Clock func() extapi.Clock
 	// State applies pushes; nil refuses every push as an unknown route.
 	State StateHost
+	// Reads answers the host API's reads of core facts; nil answers each
+	// of them as an unknown route.
+	Reads Reads
 	// Log receives supervision events and the plugins' stderr.
 	Log *slog.Logger
 	// OnState is called after every change of a plugin's status, outside
@@ -186,6 +189,29 @@ type StateHost interface {
 	// refusal is an *Error, or an *extapi.Error for a body that breaks
 	// the wire rules; anything else answers PLUGIN_HOST_FAILED.
 	Push(ctx context.Context, owner Owner, method string, push *extapi.StatePush) (*extapi.StateAck, error)
+}
+
+// Reads answers a plugin's reads of core facts. The host API has already
+// checked the caller's permission and capability and the arguments'
+// bounds (at most extapi.MaxNodeRead nodes); each call is one pinned read,
+// never a scan of the fleet. A failure answers PLUGIN_HOST_FAILED unless it
+// is an *Error.
+type Reads interface {
+	// NodeIdentity is the salted identity of each named node that exists,
+	// in ascending id order; key is IdentityKey(owner, salt).
+	NodeIdentity(ctx context.Context, ids []uint64, key []byte) ([]extapi.NodeIdentity, error)
+	// NodeInventory is the page of nodes after the node whose id is cursor
+	// (0 for the first page), at most limit; next is 0 on the last page.
+	NodeInventory(ctx context.Context, cursor uint64, limit int) (nodes []extapi.InventoryNode, next uint64, err error)
+}
+
+// IdentityKey is the key a plugin's node identity digests are made with:
+// its salt bound to its package id, so two packages that pick the same
+// salt get unrelated digests, and one package gets the same digests on
+// every server. It is at most 256 bytes for a salt within
+// extapi.MaxNodeIdentitySalt.
+func IdentityKey(id, salt string) []byte {
+	return []byte("pkg\x00" + id + "\x00" + salt)
 }
 
 // Owner is the package a host API connection belongs to, as accepted at

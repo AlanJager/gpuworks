@@ -18,7 +18,7 @@ func testHostConn(t *testing.T, state StateHost, lifecycle string) *hostConn {
 	t.Helper()
 	spec := testSpec(t, "acme_backup")
 	spec.Lifecycle = lifecycle
-	return newHostConn(&spec, state, slog.New(slog.DiscardHandler))
+	return newHostConn(&spec, state, nil, slog.New(slog.DiscardHandler))
 }
 
 func owner() Owner {

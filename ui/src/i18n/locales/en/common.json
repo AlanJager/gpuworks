@@ -986,6 +986,8 @@
     "PLUGIN_HOST_ROUTE_UNKNOWN": "The server's plugin interface has no {{method}} {{path}}.",
     "PLUGIN_HOST_FAILED": "The server could not handle the plugin's request: {{detail}}",
     "PLUGIN_STATE_ON_DEMAND": "Plugin {{id}} starts on demand, so it may not push state or declare features.",
+    "PLUGIN_HOST_NOT_PERMITTED": "Plugin {{id}} was not granted {{permission}}.",
+    "PLUGIN_HOST_ARGUMENT_INVALID": "Invalid {{field}} in a host request from plugin {{id}}.",
     "PLUGIN_STATE_NOT_PERMITTED": "The plugin may not push {{kind}} state: it needs {{needs}}.",
     "PLUGIN_STATE_NOT_OWNER": "The plugin pushed {{kind}} state it does not answer for: {{field}} ({{row}}).",
     "PLUGIN_STATE_CONNECTION_REPLACED": "Plugin {{id}} pushed {{kind}} state over the connection of a process or package version the server has since replaced.",

@@ -71,6 +71,13 @@ const (
 	// Install time only: a refused install also names the {permission} or
 	// {feature}; a refused push carries {id} alone.
 	ErrorPluginStateOnDemand = "PLUGIN_STATE_ON_DEMAND"
+	// ErrorPluginHostNotPermitted: plugin {id} called a host API read
+	// whose {permission} its administrator did not approve.
+	ErrorPluginHostNotPermitted = "PLUGIN_HOST_NOT_PERMITTED"
+	// ErrorPluginHostArgumentInvalid: a host API request from plugin {id}
+	// names an invalid {field} (a node batch, a salt, a cursor or a page
+	// limit out of bounds).
+	ErrorPluginHostArgumentInvalid = "PLUGIN_HOST_ARGUMENT_INVALID"
 )
 
 // PluginHostErrorCodes lists the codes above, for the check that the
@@ -82,6 +89,6 @@ func PluginHostErrorCodes() []string {
 		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginKilled, ErrorPluginCrashloop, ErrorPluginUnhealthy,
 		ErrorPluginMemoryExceeded,
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,
-		ErrorPluginStateOnDemand,
+		ErrorPluginStateOnDemand, ErrorPluginHostNotPermitted, ErrorPluginHostArgumentInvalid,
 	}
 }

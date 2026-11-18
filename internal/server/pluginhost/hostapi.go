@@ -16,10 +16,13 @@ import (
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
-// Host API rate limits per plugin (docs/dev/extensions.md).
+// Host API rate limits per plugin (docs/dev/extensions.md): every call,
+// and inventory pages on top.
 const (
-	hostRatePerSecond = 20
-	hostRateBurst     = 100
+	hostRatePerSecond  = 20
+	hostRateBurst      = 100
+	hostPagesPerSecond = 2
+	hostPagesBurst     = 4
 )
 
 // hostConn serves the host API on one plugin's host connection. Everything
@@ -29,8 +32,12 @@ type hostConn struct {
 	id        string
 	lifecycle string
 	state     StateHost
+	reads     Reads
 	log       *slog.Logger
 	limiter   *tokenBucket
+	// pages bounds inventory pages on top of limiter, so a plugin cannot
+	// page through a large fleet over and over.
+	pages *tokenBucket
 	// owner is set and ready closed when the handshake is accepted;
 	// refused is set and ready closed when it is not.
 	owner   atomic.Pointer[Owner]
@@ -39,9 +46,10 @@ type hostConn struct {
 	settle  sync.Once
 }
 
-func newHostConn(spec *Spec, state StateHost, log *slog.Logger) *hostConn {
-	return &hostConn{id: spec.ID, lifecycle: spec.Lifecycle, state: state, log: log,
-		limiter: newTokenBucket(hostRatePerSecond, hostRateBurst, time.Now), ready: make(chan struct{})}
+func newHostConn(spec *Spec, state StateHost, reads Reads, log *slog.Logger) *hostConn {
+	return &hostConn{id: spec.ID, lifecycle: spec.Lifecycle, state: state, reads: reads, log: log,
+		limiter: newTokenBucket(hostRatePerSecond, hostRateBurst, time.Now),
+		pages:   newTokenBucket(hostPagesPerSecond, hostPagesBurst, time.Now), ready: make(chan struct{})}
 }
 
 // accept binds the owner once the handshake is accepted; reject makes
@@ -75,6 +83,18 @@ func (h *hostConn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.push(w, r, strings.TrimPrefix(r.URL.Path, extapi.PathHostState))
+	case r.URL.Path == extapi.PathHostNodeIdentity:
+		if r.Method != http.MethodPost {
+			writeWire(w, methodNotServed(r))
+			return
+		}
+		h.nodeIdentity(w, r)
+	case r.URL.Path == extapi.PathHostNodes:
+		if r.Method != http.MethodGet {
+			writeWire(w, methodNotServed(r))
+			return
+		}
+		h.nodes(w, r)
 	default:
 		writeWire(w, Refuse(extapi.ReasonNotFound, messages.ErrorPluginHostRouteUnknown, "the host API has no such endpoint",
 			map[string]any{"method": r.Method, "path": r.URL.Path}))

@@ -82,7 +82,8 @@ func TestSetEnabled(t *testing.T) {
 	}
 }
 
-// The server offers every pushed table kind at its newest schema.
+// The server offers every pushed table kind at its newest schema, and the
+// node reads of the host API.
 func TestCapabilitiesOfferThePushedTables(t *testing.T) {
 	caps, offer := extpkg.Capabilities(), extpkg.Offer()
 	for _, kind := range extapi.TableKinds() {
@@ -92,7 +93,12 @@ func TestCapabilitiesOfferThePushedTables(t *testing.T) {
 			t.Fatalf("%s: capabilities %d, offer %+v", name, caps[name], offer[name])
 		}
 	}
-	if len(caps) != len(extapi.TableKinds()) || len(offer) != len(caps) {
+	for _, name := range []string{extapi.CapHostNodeIdentity, extapi.CapHostNodes} {
+		if caps[name] != 1 || offer[name] != (extapi.Range{Min: 1, Max: 1}) {
+			t.Fatalf("%s: capabilities %d, offer %+v", name, caps[name], offer[name])
+		}
+	}
+	if len(caps) != len(extapi.TableKinds())+2 || len(offer) != len(caps) {
 		t.Fatalf("capabilities = %v", caps)
 	}
 }

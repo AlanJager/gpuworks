@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/pkg/extapi"
 	"gpuworks.ai/gpuworks/pkg/pluginsdk"
@@ -26,12 +27,22 @@ type refusalSeen struct {
 // holds before the first call.
 func fakeHostRefusals(t *testing.T, held []extapi.HeldState, calls []hostCall) []refusalSeen {
 	t.Helper()
+	return fakeHostAnswers(t, held, nil, nil, calls)
+}
+
+// fakeHostAnswers is fakeHostRefusals for a plugin granted perms that also
+// uses the capabilities uses.
+func fakeHostAnswers(t *testing.T, held []extapi.HeldState, perms []string, uses map[string]extapi.Range, calls []hostCall) []refusalSeen {
+	t.Helper()
 	cfg := sdkConfig("acme_backup")
+	cfg.Uses = uses
 	ready := make(chan *pluginsdk.Plugin, 1)
 	cfg.Start = func(_ context.Context, p *pluginsdk.Plugin) error { ready <- p; return nil }
 	h := plugintest.Start(t, cfg)
 	h.SetHeld(held...)
-	if _, err := h.Initialize(h.Request()); err != nil {
+	req := h.Request()
+	req.Plugin.PermissionsGranted = perms
+	if _, err := h.Initialize(req); err != nil {
 		t.Fatal(err)
 	}
 	p := <-ready
@@ -82,5 +93,63 @@ func TestPlugintestRefusesRoutesAsTheHostAPIDoes(t *testing.T) {
 		if real.code == "" || fake[i] != real {
 			t.Errorf("%s %s: plugintest answers %+v, the host API %+v", c.method, c.path, fake[i], real)
 		}
+	}
+}
+
+// plugintest's fake host checks the node reads as the host API does: the
+// permission, then the negotiated capability, then the arguments, each
+// refused with the same status, code and reason.
+func TestPlugintestRefusesReadsAsTheHostAPIDoes(t *testing.T) {
+	reads := map[string]extapi.Range{extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1}}
+	argCalls := []hostCall{
+		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":""}`},
+		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":"` + strings.Repeat("s", extapi.MaxNodeIdentitySalt+1) + `"}`},
+		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[],"salt":"s"}`},
+		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[3,3],"salt":"s"}`},
+		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":"s","by":"x"}`},
+		{http.MethodPost, extapi.PathHostNodeIdentity, `{`},
+		{http.MethodGet, extapi.PathHostNodeIdentity, ""},
+		{http.MethodPut, extapi.PathHostNodes, ""},
+		{http.MethodGet, extapi.PathHostNodes + "?cursor=abc", ""},
+		{http.MethodGet, extapi.PathHostNodes + "?cursor=0", ""},
+		{http.MethodGet, extapi.PathHostNodes + "?limit=501", ""},
+		{http.MethodGet, extapi.PathHostNodes + "?after=3", ""},
+	}
+	gateCalls := []hostCall{
+		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":"s"}`},
+		{http.MethodGet, extapi.PathHostNodes, ""},
+	}
+	all := []string{"read:node_identity", "read:node_inventory"}
+	cases := []struct {
+		name  string
+		perms []string
+		uses  map[string]extapi.Range
+		calls []hostCall
+	}{
+		{"arguments", all, reads, argCalls},
+		{"not permitted", nil, reads, gateCalls},
+		{"not negotiated", all, nil, gateCalls},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o := readerOwner(extapi.LifecycleResident, c.perms...)
+			o.Use = map[string]int{"table.banners": 1}
+			for name := range c.uses {
+				o.Use[name] = 1
+			}
+			h := readerConn(t, &fakeReads{n: 3}, o)
+			h.pages = newTokenBucket(1000, 1000, time.Now)
+			fake := fakeHostAnswers(t, nil, c.perms, c.uses, c.calls)
+			for i, call := range c.calls {
+				a := readHost(t, h, call.method, call.path, call.body)
+				real := refusalSeen{status: a.status}
+				if a.wire != nil {
+					real.code, real.reason = a.wire.Code, a.wire.Reason
+				}
+				if real.code == "" || fake[i] != real {
+					t.Errorf("%s %s %s: plugintest answers %+v, the host API %+v", call.method, call.path, call.body, fake[i], real)
+				}
+			}
+		})
 	}
 }
