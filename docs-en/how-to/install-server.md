@@ -175,6 +175,8 @@ On Kubernetes, upgrade by replacing the image; do not use console upgrades.
 
 To repair the service or switch between systemd and nohup, run `./gpuworks install` again from the release package directory and specify the original installation directory. This replaces the binary, recreates the service, and restarts it while preserving existing configuration, the database, master key, and admin account. Only explicitly specified parameters override their corresponding settings.
 
+If the control plane is installed directly in the agent's shared root `/opt/gpuworks` and web settings fail with a `server.yaml.tmp` permission error, run `./gpuworks install --dir /opt/gpuworks` using a new release package containing the repair. This moves the configuration into a dedicated writable directory and recreates the service. Do not recursively change ownership or relax permissions on the entire shared root. The default `/opt/gpuworks/server` installation needs no such migration; see the [installation layout](../reference/install-layout.md#control-plane-installed-in-the-agents-shared-root).
+
 `--password` does not change an existing account's password. To change versions, use the upgrade procedure below. Reinstalling does not provide upgrade backups or rollback.
 
 ## Upgrade
@@ -328,7 +330,7 @@ The page waits only 5 minutes, less than the server's confirmation window. You m
 
 </details>
 
-<!-- translation-source-sha256: 80b4f013ac8eafd43fa4be1a5d8d419fb7aa2787e0e91a78dc8800ab19cee5ca -->
+<!-- translation-source-sha256: 3c4e7cf63e09dcc1ae9b4c3ab268f927686d9116ac9b10ec281a5c714172102e -->
 <!-- translation-localized-code-block: 5846ca9eedd24f71306cab5c0c641ac91d93017a204a10590d0da44869aca60c d30b290861df40db339879702ea834f9a0133c1811b5c3e1b4315db3810ae76b Translate the editorial arrow annotation for the password prompt; actual CLI prompt text unchanged. -->
 <!-- translation-localized-code-block: 5e39ad4e967ab522280dcf50bf738ec0bda0ead57e8cc62bfb507186fc142032 3b97e82a02b8ad42b870dad3ff601553828968e7146d828efc110fde90a6eea5 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: a2a7d849742d4bc1b49eee629e9d586337d74603ea8592f6d24f2d3add8c1044 a51c2a29d1d5cfacb1af2136ca8e39aa3fcad8ea6674d3de2abc2c7c8f624e7b Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
