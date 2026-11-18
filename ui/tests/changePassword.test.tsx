@@ -71,9 +71,9 @@ async function openForm(onLogout: () => void = () => {}) {
 }
 
 async function fill(user: ReturnType<typeof userEvent.setup>, current: string, next: string, confirm = next) {
-  await user.type(screen.getByLabelText(auth.current), current);
-  await user.type(screen.getByLabelText(auth.next), next);
-  await user.type(screen.getByLabelText(auth.confirm), confirm);
+  await user.type(screen.getByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), current);
+  await user.type(screen.getByLabelText(auth.next, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), next);
+  await user.type(screen.getByLabelText(auth.confirm, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), confirm);
   await user.click(screen.getByRole("button", { name: auth.submit }));
 }
 
@@ -120,8 +120,8 @@ test("server rejections land on the field they concern", async () => {
   await fill(user, "wrong-password", "Tiger#Lake9");
   await waitFor(() => assert.deepEqual(fieldErrors(), [locale("common").apiError.CURRENT_PASSWORD_INVALID]));
   answer(400, { code: "PASSWORD_LENGTH", error: "use 8 to 128 characters", params: { min: 8, max: 128 } }, sent);
-  await user.clear(screen.getByLabelText(auth.current));
-  await user.type(screen.getByLabelText(auth.current), "old-password-1");
+  await user.clear(screen.getByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }));
+  await user.type(screen.getByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "old-password-1");
   await user.click(screen.getByRole("button", { name: auth.submit }));
   await waitFor(() => assert.deepEqual(fieldErrors(), ["The password must have 8–128 characters. Choose another."]));
   assert.equal(signedOut, 0);
@@ -151,8 +151,8 @@ test("a server rejection clears once the field is edited, and the next answer re
   await waitFor(() => assert.deepEqual(fieldErrors(), [locale("common").apiError.PASSWORD_GUESSABLE]));
   answer(400, { code: "CURRENT_PASSWORD_INVALID", error: "wrong" }, sent);
   for (const label of [auth.next, auth.confirm]) {
-    await user.clear(screen.getByLabelText(label));
-    await user.type(screen.getByLabelText(label), "Tiger#Lake9");
+    await user.clear(screen.getByLabelText(label, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }));
+    await user.type(screen.getByLabelText(label, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "Tiger#Lake9");
   }
   await waitFor(() => assert.deepEqual(fieldErrors(), []));
   await user.click(screen.getByRole("button", { name: auth.submit }));
@@ -179,11 +179,59 @@ test("a throttled change says so in the form's own words", async () => {
 
 test("the password toggle shows and hides what was typed", async () => {
   const user = await openForm();
-  const input = screen.getByLabelText(auth.current) as HTMLInputElement;
+  const input = screen.getByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }) as HTMLInputElement;
   assert.equal(input.type, "password");
   const [show] = screen.getAllByRole("button", { name: locale("common").actions.showPassword });
   await user.click(show);
   assert.equal(input.type, "text");
   await user.click(screen.getByRole("button", { name: locale("common").actions.hidePassword }));
   assert.equal(input.type, "password");
+});
+
+test("all password fields show required markers and announce required semantics", async () => {
+  await openForm();
+  for (const label of [auth.current, auth.next, auth.confirm]) {
+    const input = screen.getByLabelText(label, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() });
+    assert.equal(input.getAttribute("aria-required"), "true", `${label} must announce required`);
+    const fieldLabel = document.querySelector(`label[for="${input.id}"]`);
+    assert.equal(fieldLabel?.querySelector('[aria-hidden="true"]')?.textContent?.trim(), "*", `${label} must show a required marker`);
+  }
+});
+
+test("empty submission shows all required errors without sending a request", async () => {
+  const sent: Sent[] = [];
+  answer(200, {}, sent);
+  const user = await openForm();
+  await user.click(screen.getByRole("button", { name: auth.submit }));
+  await waitFor(() => assert.deepEqual(fieldErrors(), [auth.currentRequired, auth.nextRequired, auth.confirmRequired]));
+  assert.equal(sent.length, 0);
+});
+
+for (const dismiss of ["cancel", "close", "escape"] as const) {
+  test(`password form ${dismiss} clears the draft and sends no request`, async () => {
+    const sent: Sent[] = [];
+    answer(200, {}, sent);
+    const user = await openForm();
+    await user.type(screen.getByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "private-draft");
+    if (dismiss === "escape") await user.keyboard("{Escape}");
+    else await user.click(screen.getByRole("button", { name: locale("common").actions[dismiss] }));
+    await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+    await user.click(screen.getByRole("button", { name: "Account: admin" }));
+    await user.click(await screen.findByText("Change password"));
+    assert.equal((await screen.findByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }) as HTMLInputElement).value, "");
+    assert.equal(sent.length, 0);
+  });
+}
+
+test("keyboard submission changes the password", async () => {
+  const sent: Sent[] = [];
+  answer(200, { status: "password_changed" }, sent);
+  let signedOut = 0;
+  const user = await openForm(() => { signedOut++; });
+  await user.type(screen.getByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "old-password-1");
+  await user.type(screen.getByLabelText(auth.next, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "Tiger#Lake9");
+  await user.type(screen.getByLabelText(auth.confirm, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "Tiger#Lake9");
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.equal(signedOut, 1));
+  assert.equal(sent.length, 1);
 });

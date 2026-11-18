@@ -179,17 +179,18 @@ export function installPullFake(
   define("createPullProxy", (body: PullProxyRequest) => {
     checkProxy(body);
     const proxy = proxyFrom(++nextId, body, body.password ?? "");
-    fake.proxies.push(proxy); renumberProxies();
+    proxy.position = Math.max(-1, ...fake.proxies.map(item => item.position)) + 1;
+    fake.proxies.push(proxy);
     return publicProxy(proxy);
   });
   define("updatePullProxy", (id: number, body: PullProxyRequest) => {
     const index = fake.proxies.findIndex((proxy) => proxy.id === id);
     if (index < 0) throw new Error("not found");
     checkProxy(body);
-    fake.proxies[index] = proxyFrom(id, body, body.password === undefined ? fake.proxies[index].password : body.password); renumberProxies();
+    fake.proxies[index] = { ...proxyFrom(id, body, body.password === undefined ? fake.proxies[index].password : body.password), position: fake.proxies[index].position };
     return publicProxy(fake.proxies[index]);
   });
-  define("deletePullProxy", (id: number) => { fake.proxies = fake.proxies.filter((proxy) => proxy.id !== id); renumberProxies(); });
+  define("deletePullProxy", (id: number) => { fake.proxies = fake.proxies.filter((proxy) => proxy.id !== id); });
   define("orderPullProxies", (ids: number[]) => {
     const known = fake.proxies.map((proxy) => proxy.id).sort();
     if (JSON.stringify([...ids].sort()) !== JSON.stringify(known)) throw invalid("order", "ids must name every proxy exactly once");

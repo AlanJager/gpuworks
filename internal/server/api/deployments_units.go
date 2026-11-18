@@ -28,8 +28,9 @@ type replicaView struct {
 	deployment.ReplicaView
 	// names is each deployment node's display name, by UUID; ordered is the
 	// node UUIDs in the deployment's stored order.
-	names   map[string]string
-	ordered []string
+	names    map[string]string
+	ordered  []string
+	previous map[string]bool
 }
 
 func newReplicaView(rows deployment.Rows, d *store.Deployment, insts []store.Instance) (replicaView, error) {
@@ -42,6 +43,7 @@ func newReplicaView(rows deployment.Rows, d *store.Deployment, insts []store.Ins
 	}
 	var err error
 	view.ReplicaView, err = deployment.NewReplicaView(rows, d, insts)
+	view.previous = deployment.PreviousAttempts(view.Match)
 	return view, err
 }
 

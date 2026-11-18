@@ -418,3 +418,26 @@ test("without a session the frame is not shown, only the sign-in form", async ()
   assert.ok(screen.queryByRole("complementary", { name: common.header.navigation }) === null);
   assert.ok(screen.queryByRole("banner") === null);
 });
+
+test("a successful password change keeps its notice visible after the shell signs out", async () => {
+  const auth = locale.auth.changePassword;
+  const sent: string[] = [];
+  serve({
+    "/api/v1/auth/password": () => { sent.push("password"); return Response.json({ status: "password_changed" }); },
+    "/api/v1/auth/logout": () => { sent.push("logout"); return Response.json({ ok: true }); },
+  });
+  await mountApp("/nodes/does-not-exist");
+  const user = userEvent.setup({ delay: null });
+  await user.click(screen.getByRole("button", { name: "Account: admin" }));
+  await user.click(await screen.findByText(common.header.changePassword));
+  await user.type(await screen.findByLabelText(auth.current, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "old-password-1");
+  await user.type(screen.getByLabelText(auth.next, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "Tiger#Lake9");
+  await user.type(screen.getByLabelText(auth.confirm, { normalizer: (text) => text.replace(/\s*\*$/, "").trim() }), "Tiger#Lake9");
+  await user.keyboard("{Enter}");
+  await screen.findByRole("textbox", { name: locale.auth.username });
+  assert.equal(screen.queryByRole("banner"), null, "the authenticated shell unmounted");
+  assert.deepEqual(sent, ["password", "logout"]);
+  assert.ok(await screen.findByText(auth.done, {}, { timeout: 3000 }), "password success notice survives logout");
+  const { message } = await import("../src/ui-kit/feedback/index.tsx");
+  message.destroy();
+});

@@ -70,18 +70,13 @@ func (c *Controller) sourceRules(dep *store.Deployment) (store.SourceRules, erro
 // peer or the public source serves.
 func (c *Controller) acquireLocalModel(ctx context.Context, node *store.Node, dep *store.Deployment, storage *store.Storage, model *store.Model, mf *store.ModelFile, pinned []uint) error {
 	if mf == nil {
-		created, err := c.store.UpsertModelFile(&store.ModelFile{
+		created, err := c.store.EnsureModelAcquisition(store.FileRef{
 			ModelID: model.ID, StorageID: storage.ID, NodeID: node.ID,
-			Path: relModelPath(model), State: proto.MFPending, Acquisition: proto.ModelAcquireAuto,
-		})
+		}, relModelPath(model), dep.ID)
 		if err != nil {
 			return err
 		}
 		mf = created
-		if err := c.store.SetDownloadDeployment(mf.ID, mf.TransferID, dep.ID); err != nil {
-			return err
-		}
-		mf.DownloadDeploymentID = dep.ID
 	}
 	handled, refused := c.syncModelWithin(ctx, node, model, mf, pinned)
 	if !handled {

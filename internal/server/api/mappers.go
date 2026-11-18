@@ -202,7 +202,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows deployment.Rows, d *store.Deploymen
 			item := a.instanceDTOFrom(rows, &insts[i])
 			item.Notes = notes[insts[i].UUID]
 			if viewErr == nil {
-				replicaFields(&item, d, view.Match, &insts[i])
+				replicaFields(&item, d, view, &insts[i])
 			}
 			if quickErr == nil {
 				if id, label, ok := deploy.KVOffloadBackendOn(d.Engine, quick, insts[i].Role); ok {
@@ -309,7 +309,7 @@ func (a *apiHandlers) instanceDTOs(rows deployment.Rows, insts []store.Instance)
 				views[dep.ID] = view
 			}
 			if view != nil {
-				replicaFields(&item, dep, view.Match, &insts[i])
+				replicaFields(&item, dep, *view, &insts[i])
 			}
 		}
 		out = append(out, item)
@@ -320,7 +320,9 @@ func (a *apiHandlers) instanceDTOs(rows deployment.Rows, insts []store.Instance)
 // replicaFields fills what an instance is to its deployment's replicas, as
 // the server decides it: the replica it fills and whether it takes a sleep
 // or wake order of its own (planning.InstanceSleepRefusal).
-func replicaFields(out *dto.Instance, dep *store.Deployment, match planning.UnitMatch, in *store.Instance) {
+func replicaFields(out *dto.Instance, dep *store.Deployment, view replicaView, in *store.Instance) {
+	match := view.Match
+	out.PreviousAttempt = view.previous[in.UUID]
 	if slot := match.SlotOf(in.UUID); slot != nil {
 		out.Replica = &dto.InstanceReplica{Role: slot.Unit.Role, Index: slot.Unit.Index}
 	}

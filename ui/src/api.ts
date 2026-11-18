@@ -2110,6 +2110,8 @@ export interface Instance {
   // a request does not wake it.
   sleep_held?: boolean;
   replica?: { role?: string; index: number };
+  // A retained failed attempt superseded by a later failure or a filled replica.
+  previous_attempt?: boolean;
   can_sleep_alone?: boolean;
   can_wake_alone?: boolean;
   // A rank of a multi-node replica: rank 0 leads and serves, the rest are
