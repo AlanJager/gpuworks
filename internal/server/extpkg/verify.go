@@ -297,7 +297,7 @@ func checkCapabilities(m *extapi.Manifest, offered map[string]int) error {
 	for _, name := range names {
 		if offered[name] < m.Requires[name] {
 			return refuse(messages.ErrorPluginIncompatible, fmt.Sprintf("package requires %s@%d, this server offers %d", name, m.Requires[name], offered[name]),
-				map[string]any{"capability": name, "version": m.Requires[name], "offered": offered[name], "min_core_hint": m.MinCoreHint})
+				map[string]any{"id": m.ID, "capability": name, "version": m.Requires[name], "offered": offered[name], "min_core_hint": m.MinCoreHint})
 		}
 	}
 	return nil

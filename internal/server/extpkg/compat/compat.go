@@ -115,7 +115,7 @@ func Check(stored []extapi.Marker, core, offered map[string]int, pkgs []Package)
 		for _, c := range caps {
 			if want := p.Manifest.Requires[c]; offered[c] < want {
 				r.Packages = append(r.Packages, Finding{Subject: p.ID, Code: messages.ErrorPluginIncompatible,
-					Params:  map[string]any{"capability": c, "version": want, "offered": offered[c], "min_core_hint": p.Manifest.MinCoreHint},
+					Params:  map[string]any{"id": p.ID, "capability": c, "version": want, "offered": offered[c], "min_core_hint": p.Manifest.MinCoreHint},
 					Message: p.ID + " requires " + c + " at a version this server does not offer"})
 			}
 		}
