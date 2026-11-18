@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,15 +24,20 @@ const serverLockFile = "server.lock"
 // releases it when its process exits. Tests shorten it.
 var serverLockWait = 10 * time.Second
 
-// serverRunningError is a refusal because a server holds the data
-// directory's lock. PID is 0 when the lock file names no process.
-type serverRunningError struct{ PID int }
+// serverRunningError is a refusal because another process holds the data
+// directory's lock. PID is the live server the lock file names, 0 when it
+// names none that is alive: then the holder may as well be another
+// maintenance command, and the refusal names the lock file (Path) instead.
+type serverRunningError struct {
+	PID  int
+	Path string
+}
 
 func (e *serverRunningError) Error() string {
 	if e.PID > 0 {
 		return fmt.Sprintf("the server (pid %d) is running; stop it first", e.PID)
 	}
-	return "the server is running; stop it first"
+	return fmt.Sprintf("another gpuworks process holds %s; stop the server or wait for the command to finish", e.Path)
 }
 
 // errServerLockHeld is what tryLock reports for a lock another open file
@@ -48,9 +54,15 @@ func takeServerLock(dataDir string, wait time.Duration) (func(), error) {
 	}
 	path := filepath.Join(dataDir, serverLockFile)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	if errors.Is(err, fs.ErrPermission) {
+		// A file another account left behind: flock needs only a read
+		// descriptor, and the refusal message just loses this pid.
+		f, err = os.OpenFile(path, os.O_RDONLY, 0)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("open the server lock %s: %w", path, err)
 	}
+	ownLikeDataDir(f, dataDir)
 	deadline := time.Now().Add(wait)
 	for {
 		err = tryLock(f)
@@ -60,7 +72,10 @@ func takeServerLock(dataDir string, wait time.Duration) (func(), error) {
 		if !errors.Is(err, errServerLockHeld) || !time.Now().Before(deadline) {
 			f.Close()
 			if errors.Is(err, errServerLockHeld) {
-				return nil, fmt.Errorf("another gpuworks server (pid %d) is running on %s", lockHolder(path), dataDir)
+				if pid := lockHolder(path); pid > 0 {
+					return nil, fmt.Errorf("another gpuworks server (pid %d) is running on %s", pid, dataDir)
+				}
+				return nil, fmt.Errorf("another gpuworks process holds %s", path)
 			}
 			return nil, err
 		}
@@ -80,14 +95,15 @@ func takeServerLock(dataDir string, wait time.Duration) (func(), error) {
 // would hold in memory. It refuses with *serverRunningError when a server
 // holds the lock. The returned function releases the lock.
 func requireServerStopped(dataDir string) (func(), error) {
-	f, err := openServerLock(dataDir)
+	f, err := openServerLock(dataDir, true)
 	if err != nil {
 		return nil, err
 	}
 	if err := tryLock(f); err != nil {
 		f.Close()
 		if errors.Is(err, errServerLockHeld) {
-			return nil, &serverRunningError{PID: lockHolder(filepath.Join(dataDir, serverLockFile))}
+			path := filepath.Join(dataDir, serverLockFile)
+			return nil, &serverRunningError{PID: lockHolder(path), Path: path}
 		}
 		return nil, err
 	}
@@ -97,30 +113,34 @@ func requireServerStopped(dataDir string) (func(), error) {
 	}, nil
 }
 
-// serverRunning reports the pid of the server that holds dataDir's lock, for
-// read-only commands that only mention it; 0 when none does. A lock that
-// cannot be examined counts as not held: the caller only words its output.
+// serverRunning reports whether some process holds dataDir's lock and the
+// pid of the live server the lock file names (0 when it names none), for
+// read-only commands that only mention it. It never creates the file: a
+// missing one is held by nobody. A lock that cannot be examined counts as
+// not held: the caller only words its output.
 func serverRunning(dataDir string) (bool, int) {
-	release, err := requireServerStopped(dataDir)
-	if err == nil {
-		release()
+	f, err := openServerLock(dataDir, false)
+	if err != nil {
 		return false, 0
 	}
-	var running *serverRunningError
-	if errors.As(err, &running) {
-		return true, running.PID
+	defer f.Close()
+	if err := tryLock(f); err != nil {
+		return errors.Is(err, errServerLockHeld), lockHolder(f.Name())
 	}
+	_ = unlock(f)
 	return false, 0
 }
 
-// lockHolder is the pid the lock file names, 0 when it names none.
+// lockHolder is the pid the lock file names when that process is alive, 0
+// otherwise. Only serve writes the file, so a pid that is gone belongs to a
+// server that has exited, and whoever holds the lock now is another command.
 func lockHolder(path string) int {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return 0
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
-	if err != nil || pid <= 0 {
+	if err != nil || pid <= 0 || !processAlive(pid) {
 		return 0
 	}
 	return pid

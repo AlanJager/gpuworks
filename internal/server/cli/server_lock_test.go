@@ -144,3 +144,70 @@ func TestServeHoldsTheServerLockForItsLife(t *testing.T) {
 	}
 	stop()
 }
+
+// deadPID is the pid of a process that has exited.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd.Process.Pid
+}
+
+// The lock file keeps the pid of the last server after it exits. When a
+// maintenance command holds the lock, nobody names that dead pid as a
+// running server.
+func TestServerLockNamesNoServerThatHasExited(t *testing.T) {
+	data := t.TempDir()
+	path := filepath.Join(data, serverLockFile)
+	if err := os.WriteFile(path, []byte(strconv.Itoa(deadPID(t))+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stop, err := requireServerStopped(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	_, err = requireServerStopped(data)
+	var running *serverRunningError
+	want := "another gpuworks process holds " + path + "; stop the server or wait for the command to finish"
+	if !errors.As(err, &running) || running.PID != 0 || err.Error() != want {
+		t.Fatalf("second command = %v", err)
+	}
+	if _, err := takeServerLock(data, 0); err == nil || err.Error() != "another gpuworks process holds "+path {
+		t.Fatalf("server = %v", err)
+	}
+	if held, pid := serverRunning(data); !held || pid != 0 {
+		t.Fatalf("serverRunning = %t %d", held, pid)
+	}
+}
+
+// A lock file serve cannot open for writing (another account made it) still
+// locks: flock needs only a read descriptor.
+func TestServerLockTakesAFileItCannotWrite(t *testing.T) {
+	data := t.TempDir()
+	path := filepath.Join(data, serverLockFile)
+	if err := os.WriteFile(path, []byte("1\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	release, err := takeServerLock(data, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := requireServerStopped(data); err == nil {
+		t.Fatal("a maintenance command took the lock serve holds")
+	}
+	release()
+}
+
+// The read-only commands look for a server without creating the file.
+func TestServerRunningCreatesNoLockFile(t *testing.T) {
+	data := t.TempDir()
+	if held, pid := serverRunning(data); held || pid != 0 {
+		t.Fatalf("serverRunning = %t %d", held, pid)
+	}
+	if _, err := os.Stat(filepath.Join(data, serverLockFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("server.lock = %v", err)
+	}
+}

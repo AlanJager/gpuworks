@@ -177,8 +177,11 @@ func recheck(h *extpkg.Host, id string) (*extpkg.Verified, error) {
 		err = errors.New("its signature is revoked")
 	}
 	if err != nil {
-		return nil, messages.WrapProductError(messages.ErrorPluginBroken,
-			fmt.Sprintf("plugin %s no longer verifies: %v (%s)", id, err, codeText(err)), map[string]any{"id": id}, err)
+		text := fmt.Sprintf("plugin %s no longer verifies: %v", id, err)
+		if code := codeText(err); code != err.Error() {
+			text += " (" + code + ")"
+		}
+		return nil, messages.WrapProductError(messages.ErrorPluginBroken, text, map[string]any{"id": id}, err)
 	}
 	return v, nil
 }

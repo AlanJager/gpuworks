@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"text/tabwriter"
 	"time"
@@ -80,8 +81,10 @@ func (o Options) pluginState(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if running, pid := serverRunning(p.data); running {
+	if held, pid := serverRunning(p.data); pid > 0 {
 		fmt.Fprintf(stdout, "the server (pid %d) is running: these rows may be up to one tick behind it\n", pid)
+	} else if held {
+		fmt.Fprintf(stdout, "another gpuworks process holds %s: if it is the server, these rows may be up to one tick behind it\n", filepath.Join(p.data, serverLockFile))
 	}
 	own := ownerState(snap, id)
 	if own.empty() {
@@ -147,6 +150,9 @@ func printOwnedState(w io.Writer, s ownedState) error {
 	for _, a := range r.Attestations {
 		fmt.Fprintf(w, "attestation %s: feature %s format %s, %d bytes\n", a.Name, a.Feature, a.Format, len(a.Blob))
 	}
+	for _, n := range r.Params {
+		fmt.Fprintf(w, "notice param %s %s %s %s: %s\n", n.Kind, n.Entry, n.Slot, n.Key, paramValue(n))
+	}
 	for _, d := range s.Down {
 		fmt.Fprintf(w, "down since %s\n", stamp(d.SinceMS))
 	}
@@ -154,4 +160,17 @@ func printOwnedState(w io.Writer, s ownedState) error {
 		fmt.Fprintf(w, "override %d: %s %s %s value %s by user %d at %s: %s\n", o.ID, o.Action, o.Kind, o.EntryKey, optInt(o.Value), o.ByUser, stamp(o.AtMS), o.Reason)
 	}
 	return nil
+}
+
+// paramValue is the one value a notice parameter carries.
+func paramValue(n pstate.NoticeParam) string {
+	switch {
+	case n.Str != nil:
+		return strconv.Quote(*n.Str)
+	case n.Int != nil:
+		return strconv.FormatInt(*n.Int, 10)
+	case n.Bool != nil:
+		return strconv.FormatBool(*n.Bool)
+	}
+	return "-"
 }
