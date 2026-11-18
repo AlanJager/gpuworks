@@ -234,7 +234,8 @@ func (h *Hub) CtrlDataPlaneStreamCount(uuid string) int64 {
 // the node token and requires the current ctrl SessionID, then acks and layers
 // the data-profile yamux session onto the live ctrl session. It writes exactly
 // one line before yamux in every case: a TDataAck envelope on success or a
-// TReject envelope on failure (a garbage/missing hello just closes).
+// TReject envelope for rejected credentials or sessions. An unreadable hello
+// or unavailable authentication store closes the lane without a rejection.
 func (h *Hub) serveDataLane(netConn net.Conn, c *websocket.Conn, remote string) {
 	line, err := readLine(netConn)
 	if err != nil {
@@ -252,6 +253,12 @@ func (h *Hub) serveDataLane(netConn net.Conn, c *websocket.Conn, remote string) 
 
 	n, err := h.authNodeToken(hello.NodeToken)
 	if err != nil {
+		if !errors.Is(err, errBadToken) {
+			h.log.Warn("data lane authentication unavailable", "err", err)
+			_ = netConn.Close()
+			_ = c.Close(websocket.StatusInternalError, "authentication unavailable")
+			return
+		}
 		h.recordReject(hello.NodeToken, proto.RejectBadToken, remote)
 		h.writeDataReject(netConn, c, proto.RejectBadToken)
 		return
