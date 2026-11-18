@@ -21,7 +21,7 @@ func uninstallCommand(ctx context.Context, args []string, opt Options) error {
 	return runUninstallCLI(ctx, args, selfinstall.NewIO(), func(ctx context.Context, layout selfinstall.Layout, req selfinstall.UninstallRequest, streams *selfinstall.IO) (selfinstall.UninstallReport, error) {
 		deps := opt.installDeps(streams.Err)
 		var removed []string
-		report, err := selfinstall.New(layout, deps, streams).WithHooks(opt.InstallHooks...).Uninstall(ctx, req, func(ctx context.Context, actual selfinstall.Layout) error {
+		report, err := selfinstall.New(layout, deps, streams).WithHooks(opt.installHooks(layout)...).Uninstall(ctx, req, func(ctx context.Context, actual selfinstall.Layout) error {
 			var closeErr error
 			removed, closeErr = uninstallExpose(ctx, actual, deps.Run, streams, actual.UnitDir)
 			return closeErr
