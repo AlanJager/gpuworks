@@ -170,10 +170,11 @@ func (t *RouteTable) List() []Route {
 	return out
 }
 
-// compileRoutes builds the table: an enabled package that verifies serves
-// its routes; one that is revoked, or no longer verifies, keeps the routes
-// it last verified with (known, for this same version) and answers them as
-// down; a disabled package has none.
+// compileRoutes builds the table: a disabled package has none, whatever
+// else is wrong with it; an enabled package that verifies serves its
+// routes; one that is revoked, or no longer verifies, keeps the routes it
+// last verified with (known, for this same version) and answers them as
+// down.
 func compileRoutes(entries map[string]extpkg.Entry, known map[string]knownRoutes) *RouteTable {
 	t := &RouteTable{plugins: map[string]*pluginRoutes{}}
 	for _, id := range slices.Sorted(maps.Keys(entries)) {
@@ -181,6 +182,8 @@ func compileRoutes(entries map[string]extpkg.Entry, known map[string]knownRoutes
 		var decls []extapi.RouteDecl
 		version, down := e.Version, ""
 		switch {
+		case !e.Control.Enabled:
+			continue
 		case e.Err != nil || e.Verified == nil:
 			k, ok := known[id]
 			if !ok || k.version != e.Version {
@@ -189,8 +192,6 @@ func compileRoutes(entries map[string]extpkg.Entry, known map[string]knownRoutes
 			decls, down = k.decls, StateBroken
 		case e.Verified.Revoked != nil:
 			decls, down = e.Verified.Manifest.Routes, StateRevoked
-		case !e.Control.Enabled:
-			continue
 		default:
 			decls = e.Verified.Manifest.Routes
 		}

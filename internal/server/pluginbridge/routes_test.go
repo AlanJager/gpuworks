@@ -130,6 +130,9 @@ func TestRouteTableFollowsPackageState(t *testing.T) {
 	broken := extpkg.Entry{ID: "acme_broken", Version: "2.0.0", Control: layout.Control{Enabled: true}, Err: errors.New("a file changed")}
 	upgraded := extpkg.Entry{ID: "acme_upgraded", Version: "3.0.0", Control: layout.Control{Enabled: true}, Err: errors.New("a file changed")}
 	unknown := extpkg.Entry{ID: "acme_unknown", Version: "1.0.0", Control: layout.Control{Enabled: true}, Err: errors.New("a file changed")}
+	offRevoked := entryWith("acme_offrevoked", "1.0.0", false, route("GET", "/r"))
+	offRevoked.Verified.Revoked = &extapi.Revocation{}
+	offBroken := extpkg.Entry{ID: "acme_offbroken", Version: "2.0.0", Err: errors.New("a file changed")}
 	entries := map[string]extpkg.Entry{
 		"acme_on":       entryWith("acme_on", "1.0.0", true, route("GET", "/r")),
 		"acme_off":      entryWith("acme_off", "1.0.0", false, route("GET", "/r")),
@@ -138,14 +141,18 @@ func TestRouteTableFollowsPackageState(t *testing.T) {
 		"acme_broken":   broken,
 		"acme_upgraded": upgraded,
 		"acme_unknown":  unknown,
+		// Disabled wins over revoked and broken: absent either way.
+		"acme_offrevoked": offRevoked,
+		"acme_offbroken":  offBroken,
 	}
 	known := map[string]knownRoutes{
-		"acme_broken":   {version: "2.0.0", decls: []extapi.RouteDecl{route("GET", "/r")}},
-		"acme_upgraded": {version: "2.0.0", decls: []extapi.RouteDecl{route("GET", "/r")}},
+		"acme_broken":    {version: "2.0.0", decls: []extapi.RouteDecl{route("GET", "/r")}},
+		"acme_upgraded":  {version: "2.0.0", decls: []extapi.RouteDecl{route("GET", "/r")}},
+		"acme_offbroken": {version: "2.0.0", decls: []extapi.RouteDecl{route("GET", "/r")}},
 	}
 	tbl := compileRoutes(entries, known)
 	want := map[string]string{"acme_on": "", "acme_revoked": StateRevoked, "acme_broken": StateBroken}
-	for _, id := range []string{"acme_on", "acme_off", "acme_none", "acme_revoked", "acme_broken", "acme_upgraded", "acme_unknown"} {
+	for _, id := range []string{"acme_on", "acme_off", "acme_none", "acme_revoked", "acme_broken", "acme_upgraded", "acme_unknown", "acme_offrevoked", "acme_offbroken"} {
 		r, _, res := tbl.Match("GET", "/"+id+"/r")
 		down, present := want[id]
 		switch {
