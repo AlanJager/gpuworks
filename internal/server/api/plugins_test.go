@@ -188,6 +188,7 @@ func TestPluginRoutesMapRefusals(t *testing.T) {
 		{messages.NewProductError("PLUGIN_STATE_TOO_NEW", "too new", map[string]any{"marker": "plugin.acme_backup.data"}), 409},
 		{messages.NewProductError(messages.ErrorPluginPackageTooLarge, "large", map[string]any{"member": "bin/x", "max": 1}), 413},
 		{messages.NewProductError(messages.ErrorPluginCertRevoked, "revoked", map[string]any{"publisher": "acme"}), 422},
+		{messages.NewProductError(messages.ErrorPluginHostSetupUnsupported, "unsupported", map[string]any{"id": "acme_key"}), 422},
 		{errors.New("disk on fire"), 500},
 	} {
 		rig := newPluginRig(t, &fakePlugins{err: tc.err})

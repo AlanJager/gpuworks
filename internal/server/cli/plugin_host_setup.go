@@ -48,9 +48,15 @@ func (r rootRunner) Run(ctx context.Context, c hostsetup.Cmd) error {
 	return r.run.Run(ctx, cmd)
 }
 
+// hostSetupUnsupported refuses host setup off Linux; id, the package, is
+// left out of the params when no package was named.
 func hostSetupUnsupported(id string) error {
+	var params map[string]any
+	if id != "" {
+		params = map[string]any{"id": id}
+	}
 	return messages.NewProductError(messages.ErrorPluginHostSetupUnsupported,
-		"host setup steps are not supported on "+hostSetupGOOS, map[string]any{"id": id})
+		"host setup steps are not supported on "+hostSetupGOOS, params)
 }
 
 // wantedHostSetup is the host setup steps of every installed package that
@@ -169,13 +175,18 @@ func hostSetupLeftover(id string) string {
 	return fmt.Sprintf("the host setup of %s stays on this host until you run: %s", id, hostsetup.PruneCommand)
 }
 
-// hostSetupHook is the core install hook: install and upgrade apply the
-// host setup of every installed package (verified under the installation's
-// server.yaml) and remove what no installed package declares; uninstall
-// removes all of it. The device group stays.
+// hostSetupHook is the core install hook: install and upgrade create the
+// device group, apply the host setup of every installed package (verified
+// under the installation's server.yaml) and remove what no installed
+// package declares; uninstall removes all of it. The device group stays.
+// The service gets the group as its unit's SupplementaryGroups=
+// (ServiceGroups), so the hook leaves the account itself alone.
 type hostSetupHook struct{ opt Options }
 
-func (k hostSetupHook) Install(ctx context.Context, run selfinstall.Runner, l selfinstall.Layout, serviceUser string) error {
+// ServiceGroups is the device group the service runs with.
+func (hostSetupHook) ServiceGroups() []string { return []string{hostsetup.Group} }
+
+func (k hostSetupHook) Install(ctx context.Context, run selfinstall.Runner, l selfinstall.Layout, _ string) error {
 	want := hostsetup.Want{}
 	if declaresHostSetup(l.DataDir) {
 		p := &pluginPaths{data: l.DataDir}
@@ -192,7 +203,11 @@ func (k hostSetupHook) Install(ctx context.Context, run selfinstall.Runner, l se
 			return fmt.Errorf("plugin host setup: %w", err)
 		}
 	}
-	_, err := newHostSetupHost(run).Apply(ctx, want, serviceUser, true)
+	host := newHostSetupHost(run)
+	if _, err := host.EnsureGroup(ctx); err != nil {
+		return err
+	}
+	_, err := host.Apply(ctx, want, "", true)
 	return err
 }
 

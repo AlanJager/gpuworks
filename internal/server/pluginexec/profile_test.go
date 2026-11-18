@@ -31,8 +31,9 @@ func TestProfileRoundTripsAndRefusesBadInput(t *testing.T) {
 	withDirs := validProfile()
 	withDirs.Landlock = &Landlock{DeviceDirs: []string{"/dev"}, Read: []string{"/sys/devices"}}
 	enc, _ := withDirs.Encode()
-	if back, err := DecodeProfile(enc); err != nil || !slices.Equal(back.Landlock.DeviceDirs, []string{"/dev"}) ||
-		!strings.Contains(enc, `"device_dirs":["/dev"]`) {
+	const wantDirs = `{"id":"acme_backup","parent_pid":1,"dir":"/var/lib/gpuworks/plugins/acme_backup/data","nice":5,"nofile":4096,` +
+		`"landlock":{"read":["/sys/devices"],"device_dirs":["/dev"]}}`
+	if back, err := DecodeProfile(enc); err != nil || !slices.Equal(back.Landlock.DeviceDirs, []string{"/dev"}) || enc != wantDirs {
 		t.Fatalf("device_dirs round trip: %s, %+v, %v", enc, back, err)
 	}
 	enc, _ = validProfile().Encode()

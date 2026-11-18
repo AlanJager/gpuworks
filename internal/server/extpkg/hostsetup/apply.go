@@ -181,6 +181,17 @@ func (h Host) reload(ctx context.Context) error {
 	return h.Run.Run(ctx, Cmd{Path: "udevadm", Args: []string{"trigger", "--action=change", "--subsystem-match=usb", "--subsystem-match=hidraw"}})
 }
 
+// EnsureGroup creates Group when it is missing. The installer calls it
+// before it names the group in the service unit, which systemd refuses to
+// start with a group that does not exist.
+func (h Host) EnsureGroup(ctx context.Context) (Report, error) {
+	var rep Report
+	if h.Run == nil {
+		return rep, errors.New("hostsetup: no runner")
+	}
+	return rep, h.ensureGroup(ctx, "", &rep)
+}
+
 // ensureGroup creates Group when it is missing and adds serviceUser to it.
 func (h Host) ensureGroup(ctx context.Context, serviceUser string, rep *Report) error {
 	exists, in := h.GroupExists, h.InGroup

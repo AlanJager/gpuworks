@@ -166,8 +166,12 @@ func TestPluginHostSetupRefusals(t *testing.T) {
 	old := hostSetupGOOS
 	hostSetupGOOS = "darwin"
 	t.Cleanup(func() { hostSetupGOOS = old })
-	if _, err := e.run("host-setup"); productCode(err) != messages.ErrorPluginHostSetupUnsupported {
+	var pe *messages.ProductError
+	if _, err := e.run("host-setup"); !errors.As(err, &pe) || pe.Code() != messages.ErrorPluginHostSetupUnsupported || len(pe.Params()) != 0 {
 		t.Fatalf("on darwin = %v", err)
+	}
+	if _, err := e.run("host-setup", "--id", "acme_backup"); !errors.As(err, &pe) || pe.Code() != messages.ErrorPluginHostSetupUnsupported || pe.Params()["id"] != "acme_backup" {
+		t.Fatalf("on darwin with --id = %v", err)
 	}
 	if hooks := e.opt.installHooks(selfinstall.Layout{DataDir: e.data}); len(hooks) != 0 {
 		t.Fatalf("darwin hooks = %v", hooks)
@@ -175,10 +179,19 @@ func TestPluginHostSetupRefusals(t *testing.T) {
 }
 
 // The install hook joins install, upgrade and uninstall only on a host with
-// host setup to apply or remove; it applies every installed package's
-// steps through the installer's runner and removes them all on uninstall.
+// host setup to apply or remove; it creates the device group, asks for it
+// as the unit's supplementary group instead of changing the service
+// account, applies every installed package's steps through the installer's
+// runner and removes them all on uninstall.
 func TestHostSetupInstallHook(t *testing.T) {
 	run, _, records := fakeHostSetup(t)
+	withFiles := newHostSetupHost
+	newHostSetupHost = func(r selfinstall.Runner) hostsetup.Host {
+		h := withFiles(r)
+		h.GroupExists = func(string) (bool, error) { return false, nil }
+		h.InGroup = func(string, string) (bool, error) { return false, nil }
+		return h
+	}
 	e := newPluginEnv(t, testPluginSite)
 	l := selfinstall.Layout{Dir: filepath.Dir(e.config), DataDir: e.data}
 	if hooks := e.opt.installHooks(l); len(hooks) != 0 {
@@ -194,6 +207,13 @@ func TestHostSetupInstallHook(t *testing.T) {
 	}
 	if ok, _ := records.Matches("acme_backup", []extapi.HostSetupStep{usbKey}); !ok || len(run.cmds) == 0 {
 		t.Fatalf("install hook applied nothing: %q", run.cmds)
+	}
+	if !slices.Contains(run.cmds, "groupadd --system "+hostsetup.Group) ||
+		slices.ContainsFunc(run.cmds, func(c string) bool { return strings.HasPrefix(c, "usermod") }) {
+		t.Fatalf("install hook group commands = %q", run.cmds)
+	}
+	if g, ok := hooks[0].(selfinstall.ServiceGroups); !ok || !slices.Equal(g.ServiceGroups(), []string{hostsetup.Group}) {
+		t.Fatalf("install hook service groups = %v", hooks[0])
 	}
 	if err := hooks[0].Uninstall(context.Background(), nil, l); err != nil {
 		t.Fatal(err)
