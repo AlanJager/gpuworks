@@ -1688,11 +1688,12 @@ The management API of installed signed plugin packages (`.gwpkg`); see [Extensio
 
 | Method | Path | Description | Authentication |
 |---|---|---|---|
-| GET | `/api/v1/plugins` | Installed packages: `{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`, sorted by `id`; `permissions` is `[{name, risk}]`, sorted by `name`, where `risk` is `low`, `elevated` or `high` as the server classifies it ([Permissions](plugin-protocol.md#permissions)) | `JWT(admin)` |
+| GET | `/api/v1/plugins` | Installed packages: `{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}], check}`, sorted by `id`; `check` is the `plugins` diagnostics check, `{id, status, code, params, message?}`; `permissions` is `[{name, risk}]`, sorted by `name`, where `risk` is `low`, `elevated` or `high` as the server classifies it ([Permissions](plugin-protocol.md#permissions)) | `JWT(admin)` |
 | POST | `/api/v1/plugins/install?approve=<approval>&enable=<bool>` | The request body is the `.gwpkg` itself (`application/octet-stream`). Without `approve`, or with a wrong one, it answers 409 `PLUGIN_APPROVAL_REQUIRED` whose `params` give `id`, `version`, `approve_hash` and the `permissions` and `roles` it covers (comma-separated), plus the diff from the installed version (from nothing on a first install): `from_version`; `permissions_added`/`permissions_removed` (`permission=risk`); an `_added`/`_removed` pair each for `roles`, `capabilities` (`name@version`), `features`, `routes` (`METHOD pattern access`), `host_setup` (`type vendor_id:product_id`) and `devices`; and `ui_mode` and `isolation` (`old->new` only when changed). Every key is present, empty when there is nothing to list. It installs nothing; with the right one it returns `{plugin, previous?, unchanged}`. `enable` defaults to `false`; installing over an enabled version keeps it enabled | Management session, admin |
 | POST | `/api/v1/plugins/{id}/enable` | Enable and start the server part, returning the package; a package that no longer verifies answers 409 `PLUGIN_BROKEN` | Management session, admin |
 | POST | `/api/v1/plugins/{id}/disable` | Stop it and keep it from starting, returning the package; its pushed tables stay enforced and its grace runs as for a down plugin | Management session, admin |
 | DELETE | `/api/v1/plugins/{id}?purge=<bool>` | Stop and uninstall, delete everything it pushed and reapply the holds; returns 204. `purge=true` moves its data directory to `.trash/` too | Management session, admin |
+| GET | `/api/v1/metrics/plugins` | The installed plugins' `gpuworks_plugin_*` metrics in the Prometheus text format (`text/plain; version=0.0.4`), for a Prometheus scrape; the metrics are in [Extension Points](../dev/extensions.md#health-banners-the-diagnostics-check-and-metrics) | `JWT(admin)` |
 
 Fields:
 
@@ -1701,6 +1702,7 @@ Fields:
 - `since`: when it entered its current process state, absent when not supervised; `restarts`: how many processes were started after the first.
 - `parts`: the parts it carries, `server`, `node`, `ui`, `store`; `isolation`: `landlock` or `none`.
 - `actions`: the actions available now, computed by the server: `enable`, `disable`, `uninstall`.
+- `check`: `status` is `fail` (`CHECK_PLUGINS_FAILING`: an enabled package is crashlooping, `failed`, `broken` or revoked), `warn` (`CHECK_PLUGINS_INCOMPATIBLE`: an enabled package needs a capability this server does not offer) or `pass` (`CHECK_PLUGINS_OK`); `params.ids` is the package ids, comma-separated.
 
 The codes of a failed plugin call (`PLUGIN_UNAVAILABLE`, `PLUGIN_BUSY`, `PLUGIN_TIMEOUT`, `PLUGIN_ROUTE_FAILED`) are in [Extension Points](../dev/extensions.md#calls-and-the-route-table).
 
@@ -2310,4 +2312,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: b293a4b68dbe222db839995ef9a064ca8259efe9bc3cdb604ee1c8f3895ac411 -->
+<!-- translation-source-sha256: 06e718b9fe63fc78fc945ca73bd7a270d95fa2d78933d9d1b167698941d754b1 -->

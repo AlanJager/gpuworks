@@ -254,7 +254,8 @@ When a package declares `storage`, its data carries a version marker `plugin.<id
 
 | Method and path | Who may call it | What it does |
 |---|---|---|
-| `GET /api/v1/plugins` | administrators (session or token) | installed packages with their state, reason and the actions available (server-computed) |
+| `GET /api/v1/plugins` | administrators (session or token) | installed packages with their state, reason and the actions available (server-computed), and the `plugins` diagnostics check (see "Health: banners, the diagnostics check and metrics" below) |
+| `GET /api/v1/metrics/plugins` | administrators (session or token) | plugin metrics, in the Prometheus text format |
 | `POST /api/v1/plugins/install?approve=<approval>&enable=true` | an administrator's login session | the request body is the `.gwpkg`; without the approval, or with a wrong one, it answers 409 `PLUGIN_APPROVAL_REQUIRED` with the approval and the permissions and roles it covers in its params, and installs nothing |
 | `POST /api/v1/plugins/{id}/enable`, `/disable` | an administrator's login session | enable and start; stop and keep from starting (its pushed tables stay enforced and it counts as down) |
 | `DELETE /api/v1/plugins/{id}?purge=true` | an administrator's login session | stop and uninstall (`purge` moves the data to `.trash/` too), delete everything it pushed in one commit and reapply the holds; a retry finishes an uninstall that failed halfway |
@@ -317,6 +318,25 @@ The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `mast
 
 A `resident` plugin starts as soon as it is added; an `on_demand` plugin starts on its first call (calls arriving together start it once and all wait for it), stops after 10 idle minutes (it first refuses new calls in the same step, so a call arriving at that moment waits for the next start instead of being refused), is refused at once while crashlooping, and may not push state (`PLUGIN_STATE_ON_DEMAND`); on install and on recheck, an `on_demand` package that holds a `push:` permission or declares features is refused with the same code. Only `running` and `degraded` count as up; every other state (`starting`, `backoff`, `crashloop`, `stopping`, `stopped`, `idle`, `failed`) counts as down; this is reported to pushed state for `resident` plugins only. A plugin that refuses the handshake for a reason retrying cannot change (such as `PLUGIN_CAPABILITY_MISSING`), answers for another build (`PLUGIN_HANDSHAKE_MISMATCH`) or picks a capability version that was not offered or approved (`PLUGIN_CAPABILITY_NOT_OFFERED`) enters `failed` and is not restarted until it is started again.
 
+### Health: banners, the diagnostics check and metrics
+
+The plugin host module judges every installed package again whenever a plugin's state changes or the installed packages change (install, enable, disable, uninstall, recheck). The result is held in memory only; it adds no persisted fact. Only enabled packages are judged: a package an administrator disabled reports nothing.
+
+- **Banners**: for administrators only, carried in the console manifest; when they change, the console is told on the `feature` topic to read the manifest again. A crashlooping package raises `plugins.crashloop.<id>` (`PLUGIN_CRASHLOOP`, with its status params: `id`, `crashes`, `window_s`, `retry_s`); a revoked package raises `plugins.revoked.<id>` (`PLUGIN_REVOKED{id}`), both `danger`. A package that stopped verifying because it needs a capability this server does not offer raises `plugins.incompatible.<id>` (`PLUGIN_INCOMPATIBLE`, with the params of the install refusal: `id`, `capability`, `version`, `offered`, `min_core_hint`), a `warning`. A banner goes away as soon as the plugin runs again, is disabled or is uninstalled. Pushed state's own down banner (`PLUGIN_DOWN`) stays as it is.
+- **Diagnostics check `plugins`**: carried as `check` in `GET /api/v1/plugins`, with a `proto.Check*` status. It is `fail` (`CHECK_PLUGINS_FAILING{ids}`) while an enabled package is crashlooping, `failed`, `broken` or revoked; otherwise `warn` (`CHECK_PLUGINS_INCOMPATIBLE{ids}`) while one is incompatible; otherwise `pass` (`CHECK_PLUGINS_OK`). `ids` lists the package ids, sorted and comma-separated.
+- **Metrics**: `GET /api/v1/metrics/plugins` answers them in the Prometheus text format (0.0.4), scraped by administrators with a login session or a token (a read token too); the assistant cannot read it. The `id` label takes only installed packages, and a package's series end when it is uninstalled:
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `gpuworks_plugin_up{id}` | gauge | Whether the plugin serves calls now (`running` or `degraded`) |
+| `gpuworks_plugin_restarts_total{id}` | counter | Restarts after a crash or failed health checks; the first start and an `on_demand` plugin's start on demand are not counted |
+| `gpuworks_plugin_state{id,state}` | gauge | One series per state, 1 for the current state and 0 for the others; the state is the list's `state` |
+| `gpuworks_plugin_calls_total{id,class,outcome}` | counter | Calls through the host; `class` is `member`, `admin`, `member_stream` or `admin_stream`, `outcome` is `ok` (the plugin answered, its own refusals included), `unavailable`, `busy`, `timeout` or `failed` (`PLUGIN_UNAVAILABLE`, `PLUGIN_BUSY`, `PLUGIN_TIMEOUT` and `PLUGIN_ROUTE_FAILED` respectively) |
+| `gpuworks_plugin_call_seconds{id,class}` | histogram | Time from a call's start until the response headers or the refusal; bucket bounds 0.005, 0.025, 0.1, 0.25, 1, 2.5, 10, 30 and 60 seconds |
+| `gpuworks_plugin_push_rows_total{id,kind}` | counter | Entries in committed pushes: `availability` rows, `node_holds` nodes, `banners` banners, `attestations` statements, and 1 per `fleet_capacity` push; a refused push or one a newer push superseded is not counted |
+
+Counting on the call path is an atomic add to a fixed slot and allocates nothing; the counters survive a plugin's restarts, disable and enable, and are dropped when it is uninstalled.
+
 ### Calls and the route table
 
 The plugin host module calls a plugin through `Bridge.Call` (no route or service uses it yet). Only a package that is installed, enabled and verified, with a server part, is called; any other is refused before any process starts: `PLUGIN_NOT_INSTALLED` when it is not installed, otherwise `PLUGIN_UNAVAILABLE` whose params carry the package's state (`disabled`, `broken`, `revoked`, `installed`, or `failed` when its start was refused). The caller gives the call's class: administrator calls (`admin` and `admin_session` routes) may use the reserved slots, and streamed calls use the stream pool. A failed call falls in one of four classes, which tell the caller whether it may retry:
@@ -374,4 +394,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 0d2af7c3b1084484b085b1820426a0a86ebccfe1be966bbf892ee2388afbf9f6 -->
+<!-- translation-source-sha256: 038f73f88f41113600dfc026e2aef451e532d65e07a999d696839e8e7208c5bf -->
