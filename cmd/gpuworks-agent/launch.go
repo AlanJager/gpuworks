@@ -88,6 +88,31 @@ func (l *launchFlags) resolve(getenv func(string) string) (conf agentconf.Config
 	return conf.Normalized(), stateDir, fromFile, nil
 }
 
+// resumeArgs preserves explicit overrides across upgrade's exec into run.
+// With a configuration file, the environment survives exec and its credentials
+// need not be promoted to arguments merely because the agent is restarting.
+func (l *launchFlags) resumeArgs(conf agentconf.Config, stateDir string, fromFile bool) []string {
+	if fromFile {
+		args := []string{"--state", stateDir}
+		l.fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "server", "token", "connect-mode", "listen", "driver":
+				args = append(args, "--"+f.Name, f.Value.String())
+			}
+		})
+		return args
+	}
+	// Legacy installations have no configuration file to reload.
+	args := []string{"--server", conf.Server, "--token", conf.Token, "--connect-mode", conf.Mode(), "--state", stateDir}
+	if conf.ServerDials() {
+		args = append(args, "--listen", conf.Listen)
+	}
+	if conf.RuntimeDriver != "" {
+		args = append(args, "--driver", conf.RuntimeDriver)
+	}
+	return args
+}
+
 // configure writes the state directory's configuration file, the one place
 // an install records how the agent connects; the token is read from stdin so
 // it is not an argument ps shows. The file is replaced whole.

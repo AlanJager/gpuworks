@@ -316,24 +316,7 @@ func upgrade(log *slog.Logger, args []string) error {
 	// The binary may be downloaded through a slow public tunnel; selfUpgrade
 	// applies the shared ten-minute operation budget.
 	ctx := context.Background()
-	return agentconn.UpgradeWithResumeArgs(ctx, conf.Server, conf.Token, resumeArgs(conf, stateDir, fromFile), log)
-}
-
-// resumeArgs are the run arguments the upgraded agent restarts with: the
-// state directory when the configuration is in its file, else (an agent
-// installed before the file) everything as flags.
-func resumeArgs(conf agentconf.Config, stateDir string, fromFile bool) []string {
-	if fromFile {
-		return []string{"--state", stateDir}
-	}
-	args := []string{"--server", conf.Server, "--token", conf.Token, "--connect-mode", conf.Mode(), "--state", stateDir}
-	if conf.ServerDials() {
-		args = append(args, "--listen", conf.Listen)
-	}
-	if conf.RuntimeDriver != "" {
-		args = append(args, "--driver", conf.RuntimeDriver)
-	}
-	return args
+	return agentconn.UpgradeWithResumeArgs(ctx, conf.Server, conf.Token, launch.resumeArgs(conf, stateDir, fromFile), log)
 }
 
 func envOr(key, fallback string) string {
