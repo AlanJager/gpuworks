@@ -279,10 +279,10 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 ### 尚未实现
 
-- 插件路由在 `/api/v1/x/<id>/` 下的动态挂载（下文「调用与路由表」的路由表已经编译，还没有路由用它）、本指南尚未列出的其他宿主接口。
+- 本指南尚未列出的其他宿主接口；插件路由的按动作授权与持久化审计记录（今天审计只写结构化日志）。
 - 卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
-- 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.host_identity`、`host.clock`、`host.state_read`、`host.derive_key` 与 `host.setup`（[主机配置](#主机配置)）以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
+- 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.host_identity`、`host.clock`、`host.state_read`、`host.derive_key` 、`host.setup`（[主机配置](#主机配置)）与 `routes`以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
 
@@ -344,7 +344,7 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 ### 调用与路由表
 
-插件宿主模块经 `Bridge.Call` 调用插件（目前还没有路由或服务用它）。只有已安装、已启用、通过校验且有服务端部分的包会被调用；其余在启动任何进程之前就被拒：未安装回 `PLUGIN_NOT_INSTALLED`，否则回 `PLUGIN_UNAVAILABLE`，参数带包的状态（`disabled`、`broken`、`revoked`、`installed`，启动被拒时为 `failed`）。调用方给出调用的类别：管理员调用（`admin`、`admin_session` 路由）可以用保留的名额，流式调用用流式名额池。调用失败分四类，调用方据此决定能否重试：
+插件宿主模块经 `Bridge.Call` 调用插件；插件路由经 `Bridge.Forward` 用它，并为接住调用的那个进程签上主体（见下文「插件路由」）。只有已安装、已启用、通过校验且有服务端部分的包会被调用；其余在启动任何进程之前就被拒：未安装回 `PLUGIN_NOT_INSTALLED`，否则回 `PLUGIN_UNAVAILABLE`，参数带包的状态（`disabled`、`broken`、`revoked`、`installed`，启动被拒时为 `failed`）。调用方给出调用的类别：管理员调用（`admin`、`admin_session` 路由）可以用保留的名额，流式调用用流式名额池。调用失败分四类，调用方据此决定能否重试：
 
 | 码 | 何时 | 能否重试 |
 |---|---|---|
@@ -369,6 +369,45 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 - **其他平台。** macOS 没有 udev 与 Landlock 设备规则，声明主机步骤的包安装时以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝。
 - **每台主机一个安装。** 规则文件与记录在全机路径、只按包 id 命名，`install`、`upgrade`、`uninstall` 与 `--prune` 会删掉同机另一个安装写的文件（见[安装布局](../reference/install-layout.md)）。
 - **卸载。** 规则文件与记录属于 root，离线 `gpuworks plugin uninstall` 删不掉，留着时打印 `sudo gpuworks plugin host-setup --prune`。
+
+### 插件路由
+
+已安装的包在清单里声明的路由挂在 `/api/v1/x/<包 id>/` 下（核心提供 `routes@1`；声明了 WebSocket 路由的包需要 `routes.websocket`，核心不提供，以 `PLUGIN_INCOMPATIBLE` 拒绝）。`/api/v1/x/*` 只有一个处理函数，它读上文的路由表，所以安装、启用、停用、卸载之后立即生效，不用重启。编译进 server 的扩展的命名空间优先：它们的路由先注册，落到这个命名空间却没有匹配的请求回核心的 405 或 404，不会交给插件；包 id 与编译模块（或它挂载的扩展）同名时安装以 409 `PLUGIN_ID_TAKEN{id}` 拒绝，启动时已安装的同名包记为 `broken`（带这个码），不运行也没有路由。
+
+每个请求按这个顺序处理，前一步拒绝就不再往下：
+
+1. **规范路径**：用原始路径（有 `RawPath` 时用它）。含 `.`、`..` 段、空段（`//`）、反斜杠，或转义的 `/`、反斜杠、`.`、`%`（`%2F`、`%5C`、`%2E`、`%25`，大小写不限）的请求回 400 `PLUGIN_ROUTE_PATH_INVALID`，不认证、不匹配、不调用插件。匹配和转发用同一个字符串，其他转义（如 `%20`）原样交给插件。
+2. **匹配**：没有这个路径回核心的 404（未登录时 401，与没有挂载时逐字节相同），有路径没有这个方法回核心的 405；插件都不会被调用。
+3. **认证**：按路由的 `access` 用核心的中间件：`admin` 要管理员（会话或平台令牌，读令牌只能读）、`admin_session` 要管理员的登录会话、`member` 要任意登录用户或平台令牌（读令牌只能读）；会话的跨站写入照常拒绝，会话照常续期。`public` 不认证，按客户端地址限流：每条路由、每个地址一个令牌桶（清单的 `rate`，未声明时每分钟 60 次、突发 30），地址按登录限流同样的规则取（只信任可信代理转发的地址，IPv6 按 /64 合并），桶表是至多 1 万个地址的 LRU；超出回 429 `TOO_MANY_REQUESTS` 并带 `Retry-After`。
+4. **授权**：认证之后的一个接口点，今天总是通过；以后的授权层放在这里，隐藏功能的 404 仍然先于禁止动作的 403。
+5. **功能门**：路由声明了 `feature` 时与编译扩展的路由同样处理：隐藏回 404，锁定回 403，只读时只放行读与 `write_when_read_only` 的写。`ungated` 路由不经过功能门。
+6. **助手与 MCP**：只能读声明了 `ai_readable` 的 GET 路由，其余回 404；助手的路由列表里只列出这些路由。
+7. **请求体上限**：`Content-Length` 超过 `max_body` 时在调用插件之前回 413 `REQUEST_TOO_LARGE{limit}`；没有长度的请求体读到超过上限时中止转发，同样回 413。
+8. **审计**：非 GET 请求结束后写一条 `audit=true` 的结构化日志：包、版本、动作、方法、路由、调用方种类与用户、状态码、请求 id、耗时。
+9. **截止时间**：普通路由整个请求以 `timeout_s` 为限；`stream` 路由的 `timeout_s` 只限制等待响应头的时间，之后插件每次写出都重新计时，1 分钟没有写出就断开连接。`on_demand` 插件的冷启动算在 `timeout_s` 里。
+10. **去掉入站头**：客户端发来的 `Gwx-*`、`X-Gpuworks-*`、`Authorization`、逐跳头（含 `Connection` 列出的头）和 `Cookie` 都不转发；`cookies: true` 的路由只转发不是核心名字（会话 cookie 与一切 `gpuworks` 开头的名字）、也不以 `__Host-` 开头的 cookie。合法的 `traceparent` 原样转发，否则生成一个新的。
+11. **签名转发**：插件宿主用接住这次调用的进程的主体密钥签上 `Gwx-Principal`、`Gwx-Principal-Mac` 与 `Gwx-Feature-Access`（主体带 `route_action` 与 `route`，有效期为 `timeout_s` 加 5 秒；过长或不可打印的请求 id 截到 128 字节或换成新的），转发到插件的 `/r<路由路径>`；`admin` 与 `admin_session` 路由按管理员调用计（可用保留名额），`stream` 路由用流式名额池。
+
+调用失败时的应答：
+
+| 情形 | 状态 |
+|---|---|
+| `PLUGIN_UNAVAILABLE`（请求没到插件，含 `broken`、`revoked` 包的路由） | 503，`Retry-After: 5` |
+| `PLUGIN_BUSY` | 503，`Retry-After: 1` |
+| `PLUGIN_TIMEOUT` | 504 |
+| `PLUGIN_ROUTE_FAILED` | 502，不带 `Retry-After` |
+| 公开路由超出速率 | 429 `TOO_MANY_REQUESTS` |
+| 没有匹配的路由 | 核心的 404，不调用插件 |
+
+插件的应答只按白名单传给客户端：
+
+- **头**：只保留 `Content-Type`、`Content-Length`、`Content-Encoding`、`Content-Disposition`、`Cache-Control`、`ETag`、`Last-Modified`、`Retry-After`；`Location` 只在仍指向 `/api/v1/x/<id>/` 之下的规范路径时保留；其余（`Access-Control-*`、逐跳头、插件自己的 `Content-Security-Policy` 等）一律丢弃。每个应答都带 `X-Content-Type-Options: nosniff` 与 `Content-Security-Policy: sandbox; default-src 'none'`。
+- **内容类型**：`text/html` 与 `application/xhtml+xml` 只允许声明了 `html: true` 的路由返回，否则回 502 `PLUGIN_ROUTE_RESPONSE_INVALID{id}`；没有内容类型时补成 `application/octet-stream`。
+- **Cookie**：只有 `public` 且 `cookies: true` 的路由能设 cookie，路径一律改成 `/api/v1/x/<id>/`、去掉 `Domain`；与核心 cookie 同名或以 `__Host-`、`__Secure-` 开头的被丢弃。过滤只针对插件的头，核心中间件已经写下的续期会话 cookie 照常发出。
+- **产品错误**：带 `Gwx-Product-Error` 的应答体必须是合法的 gwx/1 错误（至多 64 KiB）且状态为 4xx 或 5xx，按插件的状态、码与参数原样传给客户端；否则回 502 `PLUGIN_ROUTE_RESPONSE_INVALID`。
+- **应答体**：`stream` 路由逐块转发并立即刷新，其余至多 64 MiB。响应头发出之后才失败（插件中途断开、长度不符、超过上限、流式空闲超时）时中止连接，不留下被截断的 2xx。
+
+路由清单（`api.RouteInventory`）不为挂载本身输出任何行，每条插件路由一行：`METHOD /api/v1/x/<id><pattern> [access=<access>] [action=<动作>] [feature=<键>]`（未门控时为 `[ungated]`）`[x=<id>@<版本>]`。什么都没装时清单与没有挂载时逐字节相同；停用的包不出现，`broken`、`revoked` 的包照常出现。规模用例 `TestFleetPluginRouteLoad`（`GPUWORKS_TEST_PERF=1`）在 5 万个公开客户端地址下测每个请求的 server CPU 与内存，改动插件请求路径时要跑。
 
 ### gwx/1 连接与宿主接口
 
