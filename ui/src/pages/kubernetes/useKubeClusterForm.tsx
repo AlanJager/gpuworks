@@ -75,10 +75,17 @@ export function useKubeClusterForm({ open, onCreated, onEdited, onClose, prefill
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // Set when the server refused an edit that leaves out nodes still running instances: asked about, then resent.
   const [dropping, setDropping] = useState<{ drops: KubeSelectionDrops; values: FormValues } | null>(null);
+  const initializedFor = useRef<string | null>(null);
+  const editBaseline = useRef(edit);
 
-  // Each opening starts from the defaults (and the prefill or the entry), like a fresh form.
+  // A polling response replaces entry objects, not the edit session. Only an
+  // opening or a different resource starts a new draft and collapsed panel.
   useEffect(() => {
-    if (!open) return;
+    if (!open) { initializedFor.current = null; return; }
+    const identity = edit ? `edit:${edit.uuid}` : prefill ? `create:${prefill.provider_id}:${prefill.provider_cluster_id}` : "create";
+    if (initializedFor.current === identity) return;
+    initializedFor.current = identity;
+    editBaseline.current = edit;
     form.reset(defaultsOf(prefill, edit));
     setPoolIds(prefill?.pool_ids ?? []);
     setCreated(null);
@@ -97,7 +104,9 @@ export function useKubeClusterForm({ open, onCreated, onEdited, onClose, prefill
     setError(null);
     try {
       if (edit) {
-        const update = updateOf(values, edit, defaults);
+        // Untouched draft fields must not overwrite another writer's newer
+        // values merely because the page received a background refresh.
+        const update = updateOf(values, editBaseline.current ?? edit, defaults);
         if (Object.keys(update).length === 0) { onClose?.(); return; }
         if (confirmDropInstances) update.confirm_drop_instances = true;
         const result = await api.updateKubeCluster(edit.uuid, update);
