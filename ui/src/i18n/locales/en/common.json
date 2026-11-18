@@ -1,5 +1,10 @@
 {
-  "removedSetting": {"modelSource": "Setting “{{setting}}” has been removed; choose the model source explicitly when deploying.", "sourceRules": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure source rules.", "proxies": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure proxies and source rules.", "credentials": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure host credentials."},
+  "removedSetting": {
+    "modelSource": "Setting “{{setting}}” has been removed; choose the model source explicitly when deploying.",
+    "sourceRules": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure source rules.",
+    "proxies": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure proxies and source rules.",
+    "credentials": "Setting “{{setting}}” has been removed; use Settings → Image & model pulls to configure host credentials."
+  },
   "terminalPage": {
     "title": "Terminal · {{label}} — {{product}}",
     "loading": "Loading terminal…"
@@ -1026,7 +1031,23 @@
     "MODEL_DOWNLOAD_SOURCE_NOT_FOUND": "The model repository or requested revision was not found at this source. Check the repository, revision and access permissions, then register or select the correct model.",
     "MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED": "The model source refused access. Check repository permissions and the source login.",
     "MODEL_DOWNLOAD_SOURCE_THROTTLED": "The model source kept rate limiting the file listing. Wait and retry the download.",
-    "MODEL_DOWNLOAD_SOURCE_REJECTED": "The model source rejected the file listing request. Check the source address and repository settings."
+    "MODEL_DOWNLOAD_SOURCE_REJECTED": "The model source rejected the file listing request. Check the source address and repository settings.",
+    "SLURM_CLUSTER_INVALID": "The Slurm cluster's {{field}} cannot be used: {{reason}}.",
+    "SLURM_CLUSTER_NAME_TAKEN": "Another Slurm cluster is already named {{name}}.",
+    "SLURM_CLUSTER_HAS_NODES": "The Slurm cluster still has nodes. Remove them first, then delete the cluster.",
+    "SLURM_CLUSTER_SOURCE_TAKEN": "An entry for the cloud cluster {{cluster}} already exists.",
+    "SLURM_CLUSTER_NODES_ONLINE": "Deleting the cluster together with its nodes was refused: {{count}} of its nodes still have an agent connected. Uninstall the agents first; once they are offline the cluster can be deleted with its nodes.",
+    "SLURM_CLUSTER_NODES_HAVE_INSTANCES": "Deleting the cluster together with its nodes was refused: {{count}} of its nodes still run instances. Remove those deployments first.",
+    "SLURM_APPLY_NOT_APPLICABLE": "The platform cannot set this cluster up itself: {{reason}}",
+    "SLURM_APPLY_MANAGER_UNKNOWN": "The cloud did not say which instance is the cluster's Slurm manager node, so the platform has nowhere to run the setup. Run the setup command on the Slurm manager node by hand.",
+    "SLURM_APPLY_PERMISSION_MISSING": "The cloud account's key may not call {{permission}}. Allow it in the key's RAM policy and try again, or run the setup command on the Slurm manager node by hand.",
+    "SLURM_APPLY_FAILED": "The setup on the Slurm manager node did not finish ({{step}}): {{reason}}",
+    "SLURM_ENROLL_REFUSED": "The Slurm enrollment token was refused ({{reason}}).",
+    "PROVIDER_INSTANCE_IN_HPC_CLUSTER": "This instance is a compute node of HPC cluster {{cluster}}, whose queue adds and releases it: it cannot be powered, released or resized here. Change the cluster's queue in the vendor's console instead. It joins through its cluster's entry, and no agent is installed on it by itself.",
+    "CARD_LEASE_FAILED": "The node's scheduler did not give the instance its GPUs: {{detail}}",
+    "CARD_LEASE_REBIND_UNSUPPORTED": "The node's scheduler gave other GPUs ({{resource}}) and this server cannot move the instance to them; upgrade the server.",
+    "CARD_LEASE_CARD_MISMATCH": "The node's scheduler gave a different kind of GPU ({{resource}}): {{detail}}",
+    "CARD_LEASE_LOST": "The node's scheduler took the instance's GPUs back: {{detail}}"
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {
@@ -1655,5 +1676,51 @@
     "open": "Show options",
     "remove": "Remove {{name}}",
     "loading": "Loading…"
+  },
+  "slurmApplyStep": {
+    "cluster": "reading the cluster from the cloud",
+    "assistant": "reaching the Slurm manager node through the cloud's command channel",
+    "run": "running the script on the Slurm manager node",
+    "gres": "editing gres.conf",
+    "setup": "setting up the health check",
+    "resume": "resuming the nodes"
+  },
+  "slurmApplyReason": {
+    "not_root": "the script did not run as root",
+    "scontrol_not_found": "scontrol was not found on the Slurm manager node",
+    "slurmctld_unreachable": "slurmctld did not answer",
+    "no_cluster_name": "Slurm reported no ClusterName",
+    "conf_unreadable": "slurm.conf could not be read",
+    "conf_unterminated_block": "slurm.conf has an unterminated block",
+    "not_controller_conf": "the file is the copy a configless slurmd keeps, not the Slurm manager node's slurm.conf",
+    "not_slurmctld_host": "this machine does not run slurmctld",
+    "bad_arguments": "the script was given bad arguments",
+    "server_unreachable": "the Slurm manager node cannot reach the management node address. The cluster's nodes must reach it too: add a NAT gateway when the cluster's VPC has no public egress, or host gpuworks in the same VPC and enter its private address.",
+    "server_unreachable_at": "the Slurm manager node cannot reach the management node address {{url}} ({{kind}}). The cluster's nodes must reach it too: add a NAT gateway when the cluster's VPC has no public egress, or host gpuworks in the same VPC and enter its private address.",
+    "unknown": "no reason was given, see the output below",
+    "busy": "another setup is already running on the Slurm manager node",
+    "check_script_failed": "the check script could not be written",
+    "token_file_failed": "the token file could not be written",
+    "slurm_conf_failed": "slurm.conf could not be updated",
+    "reconfigure_failed": "Slurm's configuration could not be reloaded"
+  },
+  "slurmApplyKind": {
+    "dns": "name resolution failed",
+    "connect": "connection refused or no route",
+    "timeout": "connection timed out",
+    "tls": "TLS handshake or certificate error",
+    "http": "the server returned an error",
+    "no_curl": "curl is not installed",
+    "other": "the request failed"
+  },
+  "slurmApplyNotApplicable": {
+    "no_source": "the entry was not made from a cloud account's cluster.",
+    "no_provider": "the cloud account is no longer configured.",
+    "not_slurm_cluster": "the cloud cluster does not schedule with Slurm.",
+    "provider_unsupported": "the cloud account cannot run commands on the Slurm manager node.",
+    "revoked": "the entry's enrollment token is revoked.",
+    "cluster_unknown": "the last sync listed no node of the cluster and the cloud's listing does not have it: check the account or sync it.",
+    "cluster_listing_pending": "the cloud's cluster listing is still being read: try again in a moment.",
+    "cluster_listing_failed": "the cloud's cluster listing failed or is missing a region, so the cluster cannot be placed."
   }
 }

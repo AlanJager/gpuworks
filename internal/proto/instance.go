@@ -342,6 +342,11 @@ type InstanceStatus struct {
 	// the engine. Nil means the document was not read. An empty slice means the
 	// document listed no paths.
 	OpenAPIPaths *[]string `json:"openapi_paths,omitempty"`
+	// GPUIdents, when set, are the cards (accelerator.CardIdent) the instance
+	// actually runs on because the node's allocator chose them, in the order
+	// of the instance's device indexes. The server rebinds the instance to
+	// them; only a server advertising CapInstanceCardRebind is sent one.
+	GPUIdents []string `json:"gpu_idents,omitempty"`
 }
 
 const (

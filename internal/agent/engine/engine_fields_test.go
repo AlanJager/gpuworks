@@ -73,7 +73,7 @@ var notPerInstanceEngineFields = map[string]string{
 	"extractLibvgpu": "a dependency", "checkPorts": "a dependency",
 	"captureObservationConnection": "a dependency", "reportRuntimeObservation": "a dependency",
 	"networkInterfaceName": "a dependency", "networkConfig": "a dependency", "logDrain": "a dependency",
-	"puller": "a dependency", "otherRuntimes": "a dependency", "cardGate": "a dependency",
+	"puller": "a dependency", "otherRuntimes": "a dependency", "cardGate": "a dependency", "cardLeaser": "a dependency", "canRebind": "a dependency",
 	"owner":    "the agent's own identity, labelled on every container it launches",
 	"stateDir": "configuration", "hostRoot": "configuration", "residueSettle": "configuration",
 	"headlessProbeInterval": "configuration", "headlessStableChecks": "configuration",

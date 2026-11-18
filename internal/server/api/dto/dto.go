@@ -78,8 +78,8 @@ type Node struct {
 	// platform lifts only its own.
 	SchedulingBy string `json:"scheduling_by,omitempty"`
 	// CordonReason is why the platform holds the node out of scheduling
-	// now (runtime_gpu_blocked, card_needs_host_reboot, kube_unschedulable); absent unless
-	// SchedulingBy is platform. A client renders the code in its language.
+	// now (runtime_gpu_blocked, card_needs_host_reboot, kube_unschedulable,
+	// slurm_node_unavailable); absent unless SchedulingBy is platform. A client renders the code in its language.
 	CordonReason string `json:"cordon_reason,omitempty"`
 	// CordonMessage is why an extension holds the node out of scheduling
 	// (a scheduling holder, whose source SchedulingBy names once a report
@@ -141,6 +141,17 @@ type Node struct {
 	// shown as going against it. A client renders the code in its own
 	// language, naming the plugin from RuntimeGPUPlugin.
 	RuntimeGPUBlocked string `json:"runtime_gpu_blocked,omitempty"`
+	// SlurmNode is the node's name in Slurm, present while its agent borrows
+	// the node's cards from Slurm. SlurmUnavailable is the code for why Slurm
+	// will not start jobs on it (gres_missing, invalid_registration, down,
+	// drained), absent when it will; SlurmReason is Slurm's own Reason text
+	// for display as written. SlurmGresConf is, for gres_missing only, the
+	// gres.conf line the Slurm controller needs for this node's cards, built
+	// by the server so a client shows it rather than composing it.
+	SlurmNode        string `json:"slurm_node,omitempty"`
+	SlurmUnavailable string `json:"slurm_unavailable,omitempty"`
+	SlurmReason      string `json:"slurm_reason,omitempty"`
+	SlurmGresConf    string `json:"slurm_gres_conf,omitempty"`
 	// RuntimeFallbackFrom is the runtime the agent passed over (docker |
 	// nerdctl), and RuntimeFallbackReason why: gpu_plugin_missing or
 	// gpu_runtime_unconfigured when it cannot give a container this node's

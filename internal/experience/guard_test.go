@@ -96,6 +96,10 @@ func TestGuardPermitsAndRefuses(t *testing.T) {
 		{http.MethodGet, "/api/v1/images/community/browse"},
 		{http.MethodGet, "/api/v1/ssh-key"},
 		{http.MethodGet, "/api/v1/nodes/abc/ssh"},
+		// The commands and manifests of cluster entries carry their enrollment tokens.
+		{http.MethodGet, "/api/v1/kube/clusters/abc/manifest"},
+		{http.MethodGet, "/api/v1/slurm/clusters/abc/setup"},
+		{http.MethodGet, "/api/v1/slurm/clusters/abc/script"},
 		// A write no route answers.
 		{http.MethodPost, "/api/v1/no-such-route"},
 	}

@@ -27,10 +27,12 @@ type ProbeState =
  * network storage must pass a trial mount before it can be saved; a result
  * that is only readable saves as read-only (disabled).
  */
-export default function StorageFormModal({ open, storage, nodes, onClose, onSaved }: {
+export default function StorageFormModal({ open, storage, preset, nodes, onClose, onSaved }: {
   open: boolean;
   /** Set to edit that storage; absent to add one. */
   storage?: Storage | null;
+  /** What a new storage's form starts with, as another page suggests it (a Slurm cluster's NAS). */
+  preset?: Partial<StorageFormValues>;
   nodes: Node[];
   onClose: () => void;
   onSaved: (saved: Storage) => void;
@@ -63,7 +65,7 @@ export default function StorageFormModal({ open, storage, nodes, onClose, onSave
   const generation = useRef(0);
   useEffect(() => {
     if (!open) return;
-    const initial = storage ? formFromStorage(storage) : emptyForm();
+    const initial = storage ? formFromStorage(storage) : { ...emptyForm(preset?.type), ...preset };
     setValues(initial);
     setBaseline(initial);
     setBaselineUpdatedAt(storage?.updated_at);

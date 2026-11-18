@@ -127,7 +127,7 @@ func (s *Store) applyHoldTx(tx *gorm.DB, n *Node, hold SchedulingSource) (bool, 
 		for _, c := range cards {
 			infos = append(infos, proto.GPUInfo{Ownership: c.Ownership, HealthCode: c.HealthCode})
 		}
-		reason = PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, infos)
+		reason = PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, n.SlurmUnavailable, infos)
 	}
 	d := decideScheduling(n.Scheduling, n.SchedulingBy, reason, false, hold)
 	if !d.changed {

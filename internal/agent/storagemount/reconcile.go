@@ -114,13 +114,33 @@ func (m *Manager) reconcileShare(ctx context.Context, sp Spec) Status {
 }
 
 func (m *Manager) reconcileLocal(ctx context.Context, sp Spec, st Status) Status {
+	st.SharedFSType, st.SharedFSSource = "", ""
 	if err := m.call(ctx, storageKey(sp.ID), func() error { return os.MkdirAll(sp.Path, 0o755) }); err != nil {
 		return failErr(st, err, "create directory")
 	}
-	return m.finishReady(ctx, sp, st, sp.Path)
+	st = m.finishReady(ctx, sp, st, sp.Path)
+	if st.State != StateReady || !IsNetworkFS(st.fsMagic) {
+		return st
+	}
+	// The directory is on a shared filesystem: name it as mountinfo does.
+	// It stays ready; the platform warns about it.
+	st.SharedFSType = "network"
+	if entries, err := m.readMounts(); err == nil {
+		if e, ok := ContainingMount(entries, sp.Path); ok {
+			st.SharedFSType, st.SharedFSSource = e.FSType, e.Source
+		}
+	}
+	return st
 }
 
 func (m *Manager) reconcileDir(ctx context.Context, sp Spec, st Status) Status {
+	if sp.Type == TypeSharedDir {
+		if reason, msg, err := m.createOnShare(ctx, sp); err != nil {
+			return failErr(st, err, "create directory")
+		} else if reason != "" {
+			return failWith(st, reason, msg)
+		}
+	}
 	err := m.call(ctx, storageKey(sp.ID), func() error { return checkReadableDir(sp.Path) })
 	if err != nil {
 		return failErr(st, err, "check directory")
@@ -189,7 +209,7 @@ func (m *Manager) finishReady(ctx context.Context, sp Spec, st Status, writeDir 
 		return failErr(st, err, "statfs")
 	}
 	st.State, st.Reason, st.Message = StateReady, "", ""
-	st.TotalBytes, st.AvailableBytes = u.TotalBytes, u.AvailableBytes
+	st.TotalBytes, st.AvailableBytes, st.fsMagic = u.TotalBytes, u.AvailableBytes, u.FSType
 	w, err := m.writable(ctx, key, writeDir, writeDir != sp.Path)
 	if err != nil {
 		return failErr(st, err, "write probe")
@@ -295,4 +315,40 @@ func failErr(st Status, err error, what string) Status {
 		return failWith(st, ReasonPathMissing, what+": "+err.Error())
 	}
 	return failWith(st, ReasonOther, what+": "+err.Error())
+}
+
+// createOnShare creates a shared directory that does not exist yet (such as a
+// models directory suggested on a cluster's NAS) when its nearest existing
+// ancestor is on the share: a mount point, or on a network or FUSE
+// filesystem. An ancestor on the local disk means the share is not mounted,
+// and creating the directory there would write models to the local disk, so
+// it is answered as not mounted and nothing is created. A directory that
+// exists is left to the checks that follow.
+func (m *Manager) createOnShare(ctx context.Context, sp Spec) (reason, msg string, err error) {
+	key := storageKey(sp.ID)
+	var missing bool
+	if err := m.call(ctx, key, func() error {
+		_, statErr := os.Stat(sp.Path)
+		missing = errors.Is(statErr, fs.ErrNotExist)
+		return nil
+	}); err != nil || !missing {
+		return "", "", err
+	}
+	ancestor := sp
+	ancestor.Path = nearestExisting(sp.Path)
+	if reason, msg, err := m.checkBacking(ctx, ancestor, key); err != nil || reason != "" {
+		return reason, msg, err
+	}
+	return "", "", m.call(ctx, key, func() error { return os.MkdirAll(sp.Path, 0o755) })
+}
+
+// nearestExisting is path, or its nearest ancestor that exists.
+func nearestExisting(path string) string {
+	dir := path
+	for {
+		if _, err := os.Stat(dir); err == nil || dir == filepath.Dir(dir) {
+			return dir
+		}
+		dir = filepath.Dir(dir)
+	}
 }

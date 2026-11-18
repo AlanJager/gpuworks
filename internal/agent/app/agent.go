@@ -14,6 +14,7 @@ import (
 	goruntime "runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/backupexclude"
@@ -80,6 +81,15 @@ type Config struct {
 	// last instance on a kube node (the cluster's setting, from enrollment);
 	// negative keeps borrowed cards.
 	KubeIdleReturn time.Duration
+	// Slurm is set when a Slurm cluster entry's health check installed this
+	// agent: its node name and the entry's settings from enrollment. Server
+	// and Token are filled in by Run from the agent's own.
+	Slurm *SlurmEnrollment
+	// Reenroll trades the agent's enrollment token for the node token again.
+	// An agent that enrolled calls it when the server no longer knows its node
+	// token (the node was deleted or its token regenerated), so the node comes
+	// back by itself; nil for an agent that holds a node token of its own.
+	Reenroll func(ctx context.Context) (string, error)
 }
 
 // Agent owns the reconnect lifecycle.
@@ -166,6 +176,17 @@ func (a *Agent) Run(ctx context.Context) error {
 		// gets its own short-lived context instead of reusing it.
 		defer releaseUnselectedKubeCards(kd)
 	}
+	// What the server of the current connection accepts, for the Slurm
+	// rebinding of an instance to the cards Slurm gave.
+	var serverAccepts atomic.Pointer[func(string) bool]
+	if a.cfg.Driver == nil && goruntime.GOOS == "linux" {
+		// An injected driver means a test; the host's Slurm is not its own.
+		var enrolled *SlurmEnrollment
+		if a.cfg.Slurm != nil {
+			enrolled = bindSlurmEnrollment(*a.cfg.Slurm, serverURL, node.currentNodeToken, a.cfg.StateDir)
+		}
+		startSlurm(ctx, node, prober, &serverAccepts, os.Getenv, enrolled)
+	}
 	node.accelerator.preference = acceleratorPreference
 	node.accelerator.census = host
 	if host != nil && !prober.Available() {
@@ -239,6 +260,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		c := conn.New(creds, onReg, a.handlers(node), prober, connectionLog)
+		accepts := c.ServerAccepts
+		serverAccepts.Store(&accepts)
 		start := time.Now()
 		err := c.Run(ctx)
 		if ctx.Err() != nil {
@@ -248,6 +271,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			var reject *conn.RejectError
 			if errors.As(err, &reject) {
 				logConnectionFailure(a.log, c, true)
+				if token, ok := a.reenrollAfterReject(ctx, reject, nodeToken); ok {
+					nodeToken = token
+					node.SetNodeToken(token)
+					continue
+				}
 				d := 5 * time.Minute
 				c.RecordReconnect(d)
 				a.log.Info("reconnecting", "in", d.String())
@@ -276,6 +304,28 @@ func (a *Agent) Run(ctx context.Context) error {
 		case <-time.After(d):
 		}
 	}
+}
+
+// reenrollAfterReject answers a rejected node token for an agent that holds
+// an enrollment (Config.Reenroll): the server does not know the token, so the
+// node was deleted or its token regenerated, and enrolling again gives the
+// node it is now. It says whether the agent has a new token to connect with;
+// an agent whose enrollment gives the same token again waits as for any other
+// rejection, rather than asking in a tight loop.
+func (a *Agent) reenrollAfterReject(ctx context.Context, reject *conn.RejectError, rejected string) (string, bool) {
+	if a.cfg.Reenroll == nil || reject.Reason != "bad_token" {
+		return "", false
+	}
+	token, err := a.cfg.Reenroll(ctx)
+	if err != nil {
+		a.log.Warn("the server does not know this node's token and enrolling again failed", "err", err)
+		return "", false
+	}
+	if token == "" || token == rejected {
+		return "", false
+	}
+	a.log.Info("the server did not know this node's token; enrolled again and reconnecting")
+	return token, true
 }
 
 func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, nodeUUID *string, node *NodeRuntime, prober gpu.Prober, startBG func(string)) error {

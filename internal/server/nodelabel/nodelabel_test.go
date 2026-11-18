@@ -65,6 +65,7 @@ func TestSystemKeysAreRequirableButNeverWritable(t *testing.T) {
 		KeyComputeNetwork: "12", KeyStorageSyncNetwork: ManagementNetwork, KeyServingNetwork: "3",
 		KeyStorage: "2", KeyProvider: "runpod", KeyRegion: "US-VA-1",
 		KeyKubernetesCluster: "7c1b6f0e-uuid", KeyKubernetesNode: "worker-3",
+		KeySlurmCluster: "0b8d3a52-uuid", KeySlurmNode: "gpu003",
 	}
 	if len(valid) != len(SystemKeys()) {
 		t.Fatalf("test covers %d keys, SystemKeys has %d", len(valid), len(SystemKeys()))

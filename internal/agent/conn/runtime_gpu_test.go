@@ -174,3 +174,52 @@ func TestAVendorCLIWithNoCardToDescribeIsNotAProbeFailure(t *testing.T) {
 		}
 	}
 }
+
+type schedulerStateHandlers struct {
+	inboundHandlers
+	node, code, reason string
+}
+
+func (h *schedulerStateHandlers) SchedulerState(_ context.Context, sys *proto.SysInfo) {
+	sys.SlurmNode, sys.SlurmUnavailable, sys.SlurmReason = h.node, h.code, h.reason
+}
+
+// What the node's scheduler says reaches the status report under its own keys,
+// and none of them is on the wire for a node Slurm runs jobs on or does not
+// allocate, so an older server reads the report unchanged.
+func TestNodeStatusWireCarriesWhySlurmWillNotRunJobs(t *testing.T) {
+	h := &schedulerStateHandlers{}
+	c := New(Credentials{NodeUUID: "node-1"}, nil, h, &gpu.FixedProber{VendorName: "nvidia"}, slog.Default())
+	for _, tc := range []struct {
+		node, code, reason string
+		want               map[string]string
+	}{
+		{"", "", "", map[string]string{}},
+		{"gpu-1", "", "", map[string]string{"slurm_node": `"gpu-1"`}},
+		{"gpu-1", proto.SlurmNodeGRESMissing, "gres/gpu count reported lower than configured", map[string]string{
+			"slurm_node":        `"gpu-1"`,
+			"slurm_unavailable": `"gres_missing"`,
+			"slurm_reason":      `"gres/gpu count reported lower than configured"`,
+		}},
+	} {
+		h.node, h.code, h.reason = tc.node, tc.code, tc.reason
+		ctrl := &nopRWC{}
+		c.ctrl = ctrl
+		c.reportStatus(context.Background())
+		var env proto.Envelope
+		if err := json.NewDecoder(strings.NewReader(string(ctrl.BytesCopy()))).Decode(&env); err != nil {
+			t.Fatal(err)
+		}
+		var wire struct {
+			Sys map[string]json.RawMessage `json:"sys"`
+		}
+		if err := json.Unmarshal(env.D, &wire); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"slurm_node", "slurm_unavailable", "slurm_reason"} {
+			if got := string(wire.Sys[key]); got != tc.want[key] {
+				t.Fatalf("%s=%q, want %q in %s", key, got, tc.want[key], env.D)
+			}
+		}
+	}
+}

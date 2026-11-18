@@ -110,10 +110,22 @@ func TestReconcileSharedDirAndExisting(t *testing.T) {
 		t.Errorf("Existing must never mount, mount ran %d times", n)
 	}
 
-	st = one(t, m, Spec{ID: 3, Type: TypeSharedDir, Path: e.path("nope")})
-	wantState(t, st, StateFailed, ReasonPathMissing)
-	if _, err := os.Stat(e.path("nope")); err == nil {
-		t.Error("shared_dir must not create its directory")
+	// A shared directory that does not exist yet is created when its parent
+	// is on the share (the fake statfs says NFS), as for a models directory
+	// suggested on a cluster's NAS; under a parent on the local disk (the
+	// share is not mounted) it is not, so nothing is written to the disk.
+	st = one(t, m, Spec{ID: 3, Type: TypeSharedDir, Path: e.path("nas/gpuworks-models")})
+	wantState(t, st, StateReady, "")
+	if fi, err := os.Stat(e.path("nas/gpuworks-models")); err != nil || !fi.IsDir() {
+		t.Errorf("shared_dir on the share was not created: %v", err)
+	}
+	disk := e.path("disk")
+	os.MkdirAll(disk, 0o755)
+	e.sf.onLocalDisk(disk)
+	st = one(t, m, Spec{ID: 6, Type: TypeSharedDir, Path: filepath.Join(disk, "models")})
+	wantState(t, st, StateFailed, ReasonNotMounted)
+	if _, err := os.Stat(filepath.Join(disk, "models")); err == nil {
+		t.Error("shared_dir under the local disk was created")
 	}
 
 	f := e.path("afile")
@@ -733,5 +745,33 @@ func TestReconcileEmptyPathIsPathMissing(t *testing.T) {
 	}
 	if r := m.Probe(context.Background(), Spec{Type: TypeLocal}); r.OK || r.Reason != ReasonPathMissing {
 		t.Errorf("probe of a local storage without a directory: %+v", r)
+	}
+}
+
+// A local storage whose directory sits on a shared filesystem (an E-HPC
+// node's /opt is NAS) stays ready and names that filesystem as mountinfo
+// does; on a local disk it names none, and leaving the share clears it.
+func TestReconcileLocalOnASharedFilesystem(t *testing.T) {
+	e := newEnv(t)
+	m := e.manager()
+	opt := e.path("opt")
+	e.h.addForeign(opt, "10.0.0.5:/opt")
+	p := filepath.Join(opt, "gpuworks", "models")
+	e.sf.mu.Lock()
+	e.sf.fsType[p] = 0x6969
+	e.sf.mu.Unlock()
+	st := one(t, m, Spec{ID: 1, Name: "default", Type: TypeLocal, Path: p})
+	wantState(t, st, StateReady, "")
+	if st.SharedFSType != "nfs4" || st.SharedFSSource != "10.0.0.5:/opt" {
+		t.Fatalf("shared filesystem = %q %q; want nfs4 from 10.0.0.5:/opt", st.SharedFSType, st.SharedFSSource)
+	}
+	e.sf.onLocalDisk(p)
+	if st := one(t, m, Spec{ID: 1, Name: "default", Type: TypeLocal, Path: p}); st.SharedFSType != "" || st.SharedFSSource != "" {
+		t.Fatalf("on a local disk the status still names %q %q", st.SharedFSType, st.SharedFSSource)
+	}
+	local := e.path("var/models")
+	e.sf.onLocalDisk(local)
+	if st := one(t, m, Spec{ID: 2, Name: "disk", Type: TypeLocal, Path: local}); st.SharedFSType != "" {
+		t.Fatalf("a local disk is named %q", st.SharedFSType)
 	}
 }

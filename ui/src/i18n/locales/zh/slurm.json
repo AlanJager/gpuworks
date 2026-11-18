@@ -1,0 +1,370 @@
+{
+  "duration": {
+    "seconds": "{{count}} 秒",
+    "minutes": "{{count}} 分钟",
+    "hours": "{{count}} 小时"
+  },
+  "status": {
+    "active": "正常",
+    "revoked": "已吊销",
+    "pending": "未接入",
+    "pendingHint": "还没有节点从这个集群接入。",
+    "stalled": "长时间未接入",
+    "troubleshoot": "排查"
+  },
+  "stalled": {
+    "title": "还没有节点接入",
+    "intro": "集群已等了一阵，仍没有节点接入。先在 Slurm 管控节点上看 slurm.conf 里的设置，再在一台 GPU 节点上看检查脚本留下的东西：",
+    "introApplied": "集群已等了一阵，仍没有节点接入。先点「检查并应用」：gpuworks 经云助手在 Slurm 管控节点上检查并配置，不用自己登录。应用过之后仍没有，再在一台 GPU 节点上看检查脚本留下的东西：",
+    "on": {
+      "controller": "在 Slurm 管控节点上",
+      "node": "在一台 GPU 节点上"
+    },
+    "copy": "复制命令（{{where}}）",
+    "causes": "常见原因",
+    "notRun": "健康检查还没有运行：在 Slurm 管控节点上以 root 执行接入命令，再等一到一个半健康检查周期。",
+    "notRunApplied": "「检查并应用」还没有成功执行：点它，看过计划再应用，再等一到一个半健康检查周期。",
+    "script": "检查脚本在该节点上不可见：脚本目录不在共享存储上，接入命令也没能把脚本复制过去。",
+    "connect": "节点连不上管理节点接入地址：看安装目录里的 slurm-check.log。",
+    "conf": "集群在每个节点上各有一份 slurm.conf：把更新后的 slurm.conf 分发下去并重新加载。"
+  },
+  "actions": {
+    "edit": "编辑",
+    "apply": "检查并应用",
+    "copyCommand": "复制接入命令",
+    "commandCopied": "接入命令已复制",
+    "uninstall": "卸载",
+    "revoke": "吊销",
+    "revokeConfirm": "吊销 {{name}} 的接入令牌？",
+    "revokeHelp": "已接入的节点不受影响，新节点不能再用这个集群的令牌接入。",
+    "revoked": "集群 {{name}} 已吊销",
+    "delete": "删除",
+    "cancel": "取消",
+    "failed": "操作失败",
+    "script": "查看脚本"
+  },
+  "command": {
+    "copy": "复制：{{title}}",
+    "copyShort": "复制"
+  },
+  "setup": {
+    "command": "接入命令",
+    "runAsRoot": "在 Slurm 管控节点上以 root 执行一次。",
+    "does": "这条命令会：",
+    "step": {
+      "script": "把健康检查脚本写到脚本目录。",
+      "distribute": "脚本目录不在共享存储上时，把脚本分发到各 GPU 节点。",
+      "conf": "把健康检查加进 slurm.conf，集群原有的健康检查会保留。",
+      "reconfigure": "重新加载 Slurm 配置。"
+    },
+    "joins": "之后每台 GPU 节点会在一到一个半健康检查周期内自动接入（一个周期 {{interval}}）。",
+    "joinsUnknown": "之后每台 GPU 节点会在一到一个半健康检查周期内自动接入。",
+    "secret": "命令里含有接入令牌，请像密码一样保管。",
+    "checkCommand": "检查命令",
+    "checkHint": "只说明 setup 会做什么，不改动任何东西。"
+  },
+  "form": {
+    "title": "接入 Slurm 集群",
+    "editTitle": "编辑 Slurm 集群",
+    "name": "名称",
+    "nameRequired": "请输入集群名称",
+    "namePlaceholder": "slurm-prod",
+    "serverUrl": "管理节点接入地址",
+    "serverUrlHelp": "计算节点上的 agent 用这个地址连接 GPUWorks 的管理节点，须能从计算节点访问到。",
+    "serverUrlQuick": "这是平台自己的临时公网地址，连接器重建后会变，节点会因此连不上 server：请填各计算节点都访问得到的、这台 server 的固定地址。",
+    "serverUrlRequired": "请输入管理节点接入地址",
+    "serverUrlInvalid": "请输入 http:// 或 https:// 开头的地址",
+    "advanced": "高级",
+    "fixedAfterCreate": "集群创建后不能修改。",
+    "runAs": "运行账号",
+    "runAsHelp": "agent 在每个节点上以哪个账号运行，默认 root。其他账号有已知限制：configless 集群的卡序、本机 docker 组、目录权限。",
+    "accountUser": "占位作业记账账号",
+    "accountUserPlaceholder": "agent 自己的账号",
+    "accountUserHelp": "借卡的占位作业记在哪个账号下；以 root 运行的 agent 用 --uid 提交。留空用 agent 自己的账号。",
+    "installDir": "安装目录",
+    "installDirHelp": "agent 在每个节点上的安装与状态目录。",
+    "scriptDir": "脚本目录",
+    "scriptDirHelp": "存放健康检查脚本。各节点必须是同一路径，最好在共享存储上；接入命令会检查它是否共享，不共享时把脚本复制到各 GPU 节点。",
+    "sbatchArgs": "sbatch 参数",
+    "sbatchArgsPlaceholder": "-p gpu -A research",
+    "sbatchArgsHelp": "追加到 agent 提交的每个占位作业上，例如分区或账户。",
+    "idleReturn": "空闲归还",
+    "idleReturnHelp": "借来的卡空闲这么久后还给 Slurm。",
+    "idleReturnHelpRange": "借来的卡空闲这么久后还给 Slurm（{{min}} 到 {{max}} 秒）。",
+    "pendingTimeout": "排队超时",
+    "pendingTimeoutHelp": "占位作业在 Slurm 队列里排了这么久还没跑起来，就放弃。",
+    "pendingTimeoutHelpRange": "占位作业在 Slurm 队列里排了这么久还没跑起来，就放弃（{{min}} 到 {{max}} 秒）。",
+    "secondsUnit": "秒",
+    "defaultsFailed": "默认值没有加载成功",
+    "defaultsFailedHelp": "留空的字段仍然采用 server 的默认值；只是看不到提示。",
+    "fromSource": "来自 {{source}}",
+    "cancel": "取消",
+    "close": "关闭",
+    "submit": "接入",
+    "save": "保存"
+  },
+  "created": {
+    "title": "集群 {{name}} 已创建",
+    "note": "在 Slurm 管控节点上以 root 执行这条命令，GPU 节点会自动出现在节点列表。",
+    "noteSource": "接下来配置集群，二选一：",
+    "byGpuworks": "由 gpuworks 配置",
+    "byHand": "或者自己在 Slurm 管控节点上执行",
+    "byGpuworksHelp": "gpuworks 先让 Slurm 管控节点检查 setup 会做什么，检查不改动任何东西，确认后才应用。",
+    "applyNow": "检查并应用",
+    "applyBlocked": "gpuworks 不能代为设置这个集群"
+  },
+  "apply": {
+    "retry": "重试",
+    "running": "正在配置集群…",
+    "done": "集群已配置完成",
+    "doneHelp": "GPU 节点会在一到一个半健康检查周期内接入。",
+    "partial": "已配置，还有一些事需要手动处理",
+    "todoTitle": "待处理",
+    "todo": {
+      "distribute": "检查脚本没能复制到 {{nodes}}：请把脚本复制到这些节点的同一路径。",
+      "noGpuGres": "{{nodes}} 在 slurm.conf 里没有 gpu Gres，没有补 gres.conf：请先给它们的 NodeName 行加 Gres=gpu:<卡数>。",
+      "check_script": "检查脚本没能写入。",
+      "slurm_conf": "slurm.conf 没能完整更新：请在 Slurm 管控节点上检查。",
+      "reconfigure": "Slurm 配置没能重新加载：请在 Slurm 管控节点上执行 scontrol reconfigure。",
+      "resume": "有些节点没能恢复（{{nodes}}）：请用 sinfo 查看。",
+      "reach": "{{nodes}} 访问不到 {{url}}，那里的 agent 无法接入：换成它们访问得到的地址（不要用临时公网地址），或给 VPC 配 NAT 网关、改填内网地址，再应用一次。"
+    },
+    "steps": "步骤",
+    "status": {
+      "pass": "完成",
+      "warn": "需要留意",
+      "skip": "无需处理",
+      "fail": "失败"
+    },
+    "step": {
+      "gres": "计算节点的 gres.conf",
+      "check_script": "写入检查脚本",
+      "distribute": "让计算节点拿到脚本",
+      "slurm_conf": "把健康检查加进 slurm.conf",
+      "reconfigure": "重新加载 Slurm 配置",
+      "resume": "恢复被扣住的节点",
+      "reach": "各主机访问 server 地址"
+    },
+    "gresAdded": "已补 gres.conf 行的节点",
+    "gresPresent": "gres.conf 里已有（保持原样）的节点",
+    "gresNoGpu": "Slurm 里没有配 gpu Gres、未补行的节点",
+    "distributeShared": "脚本目录在共享存储上，无需复制。",
+    "distributeCopied": "脚本已复制到 {{count}} 个节点。",
+    "distributeFailed": "脚本没能复制到的节点",
+    "resumed": "已恢复的节点",
+    "resumeFailed": "没能恢复的节点",
+    "output": "Slurm 管控节点的输出"
+  },
+  "fact": {
+    "connectedBy": "接入方式",
+    "byCommand": "接入命令（自行执行）",
+    "clusterName": "Slurm ClusterName",
+    "notBound": "由第一台接入的节点确定",
+    "nodes": "已接入节点",
+    "serverUrl": "管理节点接入地址",
+    "runAs": "运行账号",
+    "accountUser": "占位作业记账账号",
+    "ownAccount": "agent 自己的账号",
+    "installDir": "安装目录",
+    "scriptDir": "脚本目录",
+    "sbatchArgs": "sbatch 参数",
+    "idleReturn": "空闲归还",
+    "pendingTimeout": "排队超时",
+    "createdAt": "创建时间"
+  },
+  "counts": {
+    "line": "GPU 节点 {{gpu}} 台，在线 {{online}} 台",
+    "lineAsOf": "GPU 节点 {{gpu}} 台（名单截至 {{time}}），在线 {{online}} 台",
+    "onlineOnly": "在线 {{count}} 台",
+    "offline": "，离线 {{count}} 台"
+  },
+  "detail": {
+    "waiting": "还没有节点接入。在 Slurm 管控节点上执行下面的命令，GPU 节点会在一到一个半健康检查周期内出现在节点列表。",
+    "revoked": "接入令牌已吊销，新节点不能再接入。",
+    "waitingApply": "还没有节点接入。点「检查并应用」配置集群，GPU 节点会在一到一个半健康检查周期内出现在节点列表。",
+    "applyHelp": "由 gpuworks 在集群的 Slurm 管控节点上执行：先检查，你确认后才应用。",
+    "manual": "手动执行",
+    "showCommands": "接入命令"
+  },
+  "waiting": {
+    "no_compute_nodes": "云厂商的集群里还没有计算节点：先添加 GPU 节点，它们开机后会通过健康检查自动接入。",
+    "not_applied": "还没有在这个集群上执行过接入，节点上什么都没装。",
+    "joining": "已配置，GPU 节点会在一到一个半健康检查周期内接入。",
+    "no_node_called": "接入已执行，但之后没有节点联系过 server：它们访问不到 {{url}}，或节点上没有脚本。",
+    "server_unreachable": "最近一次检查发现有主机访问不到 {{url}}：{{hosts}}。"
+  },
+  "reach": {
+    "title": "接入地址",
+    "failed": "{{role}} {{name}} 访问不到 {{url}}：{{reason}}",
+    "failedList": "访问不到 server 的主机",
+    "allReach_one": "{{count}} 台主机都能访问 {{url}}。",
+    "allReach_other": "{{count}} 台主机都能访问 {{url}}。",
+    "unasked": "没能询问的主机",
+    "role": {
+      "controller": "Slurm 管控节点",
+      "node": "计算节点"
+    },
+    "reason": {
+      "dns": "域名解析失败",
+      "connect": "连接被拒绝或没有路由",
+      "timeout": "连接超时",
+      "tls": "TLS 握手或证书错误",
+      "http": "server 返回了错误",
+      "no_curl": "没有安装 curl",
+      "other": "请求失败",
+      "not_asked": "没有办法在那里执行命令",
+      "node_not_running": "节点没有在运行",
+      "assistant_offline": "云助手不在线",
+      "command_failed": "命令没有执行完"
+    },
+    "unlisted": {
+      "permission_missing": "没能列出云厂商的计算节点来逐个询问：账号的密钥无权调用 {{permission}}。",
+      "failed": "没能列出云厂商的计算节点来逐个询问。"
+    }
+  },
+  "missing": {
+    "title_one": "{{count}} 台 GPU 节点没有在线的 agent",
+    "title_other": "{{count}} 台 GPU 节点没有在线的 agent",
+    "list": "没有 agent 的 GPU 节点",
+    "reason": {
+      "not_enrolled": "从未接入",
+      "offline": "已接入，agent 离线"
+    },
+    "slurmSays": "Slurm：{{state}}",
+    "truncated": "共 {{total}} 台，这里列出前 {{shown}} 台。",
+    "causesTitle": "常见原因",
+    "cause": {
+      "script": "检查脚本在该节点上不可见：脚本目录不是共享存储，也没有复制过去。",
+      "connect": "节点连不上管理节点接入地址。",
+      "drained": "节点在 Slurm 里被 drain 或 down，健康检查不会运行。"
+    },
+    "remove": "移除",
+    "removeTitle": "移除节点 {{name}}？",
+    "removeHelp": "只删除平台里的节点记录，不改动集群。节点仍在集群里时，下一次健康检查会让它重新接入。"
+  },
+  "edit": {
+    "savedTitle": "集群 {{name}} 已保存",
+    "savedHelp": "不会在集群上执行任何操作。agent 在下一次上报时取到修改，最迟 {{interval}} 内生效。",
+    "savedHelpUnknown": "不会在集群上执行任何操作。agent 在下一次上报时取到修改。",
+    "changed": "已修改",
+    "field": {
+      "name": "名称",
+      "account_user": "占位作业记账账号",
+      "sbatch_args": "sbatch 参数",
+      "idle_return_seconds": "空闲归还",
+      "pending_timeout_seconds": "排队超时"
+    }
+  },
+  "uninstall": {
+    "title": "从集群卸载 {{name}}",
+    "intro": "卸载分两步：先由每个节点的检查脚本卸载自己的 agent（卡还给 Slurm），再把健康检查从 slurm.conf 里取出，并恢复集群原有的健康检查。",
+    "byGpuworks": "由 gpuworks 执行",
+    "byGpuworksHelp": "gpuworks 通过云账号在集群的 Slurm 管控节点上逐步执行。",
+    "byHand": "或者自己在 Slurm 管控节点上执行命令",
+    "run": {
+      "uninstall_agents": "卸载 agent",
+      "remove_check": "移除健康检查"
+    },
+    "agentsSent": "正在卸载 agent：每个节点的检查脚本会在下一次运行时卸载自己的 agent。",
+    "waiting": "{{seconds}} 秒后可以继续。",
+    "removed": "健康检查已移除",
+    "removedHelp": "等节点都离线后，删除这个集群条目。",
+    "delete": "删除集群…",
+    "step1": "第 1 步：卸载 agent",
+    "step1Hint": "然后等一个健康检查周期（{{interval}}），让每个节点卸载自己的 agent。",
+    "step1HintUnknown": "然后等一个健康检查周期，让每个节点卸载自己的 agent。",
+    "step2": "第 2 步：移除健康检查",
+    "step2Hint": "把健康检查从 slurm.conf 里取出，并重新加载 Slurm。",
+    "next": "之后这些节点会离线。再连同节点一起删除这个集群条目。",
+    "close": "关闭"
+  },
+  "delete": {
+    "title": "删除集群 {{name}}？",
+    "help": "只删除这里的集群记录，节点上还装着的 agent 不会被卸载。",
+    "hasNodes_one": "这个集群下还有 {{count}} 个节点。",
+    "hasNodes_other": "这个集群下还有 {{count}} 个节点。",
+    "withNodes_one": "连同它的 {{count}} 个节点一起删除",
+    "withNodes_other": "连同它的 {{count}} 个节点一起删除",
+    "blocker": {
+      "online": "其中有节点的 agent 还在线。请先卸载 agent，等它们离线后再连同节点删除。",
+      "instances": "其中有节点上还有实例。请先移除这些部署。",
+      "unknown": "现在不能连同节点一起删除这个集群。"
+    },
+    "uninstall": "先卸载 agent…",
+    "cancel": "取消",
+    "confirm": "删除",
+    "deleted": "集群 {{name}} 已删除"
+  },
+  "hpc": {
+    "connect": "接入"
+  },
+  "blocked": {
+    "no_source": "这个条目不是从云账号的集群建的，gpuworks 进不了它：在 Slurm 管控节点上执行接入命令。",
+    "no_provider": "这个条目的来源云账号已经删除。",
+    "provider_unsupported": "这个云账号不能在集群的 Slurm 管控节点上执行命令。",
+    "cluster_unknown": "账号的集群列表里没有这个集群：检查账号及其权限，或先同步。",
+    "cluster_listing_pending": "云厂商的集群列表还在读取：稍后会再检查一次。",
+    "cluster_listing_failed": "云厂商的集群列表读取失败，或有地域没能读取，所以无法确定这个集群在哪：检查账号、权限和云厂商的状态。",
+    "not_slurm_cluster": "这个集群不用 Slurm 调度。",
+    "revoked": "接入令牌已吊销，不能再应用。"
+  },
+  "operation": {
+    "title": "检查并应用到集群 {{name}}",
+    "intro": "gpuworks 经账号 {{account}} 在集群 {{cluster}} 的 Slurm 管控节点上执行 setup。它先检查 setup 会做什么，检查不改动任何东西；你确认后才应用。",
+    "checking": "正在检查 setup 会做什么…",
+    "checked": "已检查，还没有改动任何东西。看过计划后再应用。",
+    "checkedPartial": "已检查，有需要你注意的地方。还没有改动任何东西。",
+    "confirm": "应用",
+    "checkAgain": "重新检查",
+    "cancel": "取消",
+    "close": "关闭"
+  },
+  "plan": {
+    "attention": "需要你注意",
+    "warning": {
+      "conf_include": "slurm.conf 包含 {{files}}：其中的健康检查设置，这次修改看不到，应用后会再核对结果。",
+      "program_not_in_conf": "slurmctld 在跑健康检查程序 {{program}}，而 slurm.conf 里没有写它（在被包含的文件里，或改了还没重新加载）：它会被接在后面调用，但被包含文件里的设置可能盖过我们的。",
+      "not_configless": "这个集群不是 configless：应用后要自己把 {{path}} 复制到各计算节点，否则健康检查在那里不生效。",
+      "no_gpu_gres": "{{nodes}} 在 slurm.conf 里没有 gpu Gres，所以不会为它们往 gres.conf 加行：先给它们的 NodeName 行加上 Gres=gpu:<数量>。",
+      "server_unreachable": "有主机访问不到 {{url}}，那里的 agent 无法接入：见下面的接入地址。"
+    },
+    "gres": {
+      "title": "gres.conf",
+      "none": "没有要加的行。",
+      "add": "要加的行",
+      "present": "已有对应的行（保持原样）",
+      "noGpu": "Slurm 认识但没有 gpu Gres，不会添加"
+    },
+    "script": {
+      "title": "健康检查脚本",
+      "write": "写入健康检查 {{path}} 和接入令牌文件 {{token}}（仅 root 可读）。",
+      "shared": "脚本目录在共享存储（{{fstype}}）上：不用复制。",
+      "copy": "把文件（{{files}}）复制到 {{count}} 个节点：{{nodes}}。",
+      "copyNone": "脚本目录在本地存储上，集群里也没有别的节点：没有要复制的。"
+    },
+    "conf": {
+      "title": "slurm.conf · {{path}}",
+      "add": "加入这一段（先做备份），间隔为 {{interval}} 秒：",
+      "block": "加进 slurm.conf 的段落",
+      "unchanged": "已经是 setup 会写成的样子：没有要改的。",
+      "commented": "集群原有的设置，原位保留为注释",
+      "line": "第 {{line}} 行",
+      "chained": "集群原有的健康检查 {{program}} 继续在我们之后运行，节点状态为 {{state}}。",
+      "configless": "集群是 configless：节点在重新加载时取到这次修改。",
+      "notConfigless": "集群不是 configless。"
+    },
+    "rearm": "之前武装的 agent 卸载会被取消，agent 会重新安装。",
+    "resume": "因缺 GPU 被保留、会被 resume 的节点"
+  },
+  "script": {
+    "title": "setup 脚本 · {{name}}",
+    "failed": "读不到脚本",
+    "tokenHidden": "这是 Slurm 管控节点拿到的脚本。接入令牌没有写在里面；命令里才有。",
+    "copy": "复制脚本",
+    "close": "关闭"
+  },
+  "sharedStorage": {
+    "line": "集群各节点共用 NAS：把 {{path}} 登记为模型存储后，所有节点共用一份模型，扩容的节点不用重新下载。",
+    "register": "登记为模型存储"
+  }
+}

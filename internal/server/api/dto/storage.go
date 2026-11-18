@@ -41,11 +41,14 @@ type StorageTarget struct {
 
 // StorageNodes summarizes a storage across the nodes it applies to. Problems
 // lists only the nodes that are not ready; All is filled on request.
+// OnSharedFS counts the nodes on which a local storage's directory sits on a
+// shared filesystem (their StorageNodeStatus.SharedFS).
 type StorageNodes struct {
-	Total    int                 `json:"total"`
-	Ready    int                 `json:"ready"`
-	Problems []StorageNodeStatus `json:"problems"`
-	All      []StorageNodeStatus `json:"all,omitempty"`
+	Total      int                 `json:"total"`
+	Ready      int                 `json:"ready"`
+	OnSharedFS int                 `json:"on_shared_fs"`
+	Problems   []StorageNodeStatus `json:"problems"`
+	All        []StorageNodeStatus `json:"all,omitempty"`
 }
 
 // StorageNodeStatus is one node's state for a storage.
@@ -69,6 +72,18 @@ type StorageNodeStatus struct {
 	// NeedsOwnDirectory says the node cannot use the storage's directory and
 	// needs a per-node one (store.NodeNeedsOwnDirectory).
 	NeedsOwnDirectory bool `json:"needs_own_directory,omitempty"`
+	// SharedFS is set when the storage is local and its directory sits on a
+	// shared filesystem on this node: every node on it writes the same
+	// files, while a local storage is taken as each node's own.
+	SharedFS *StorageSharedFS `json:"shared_fs,omitempty"`
+}
+
+// StorageSharedFS names a shared filesystem as the node's mountinfo does: the
+// type ("nfs4", "lustre"; "network" when mountinfo did not say) and source
+// ("10.0.0.5:/opt", empty when not known).
+type StorageSharedFS struct {
+	Type   string `json:"type"`
+	Source string `json:"source,omitempty"`
 }
 
 // StorageRequest creates or changes a storage. On a change, absent fields are

@@ -91,6 +91,13 @@ func (t *telemetry) serverAccepts() bool {
 	return caps != nil && slices.Contains(*caps, proto.CapTelemetryStream)
 }
 
+// ServerAccepts reports whether the server this connection last completed a
+// hello with advertised capability (proto.Cap*).
+func (c *Conn) ServerAccepts(capability string) bool {
+	caps := c.tel.serverCaps.Load()
+	return caps != nil && slices.Contains(*caps, capability)
+}
+
 // isTelemetry reports whether t is a batch the telemetry streams carry.
 func isTelemetry(t string) bool { return t == proto.TMetrics || t == proto.TLogs }
 

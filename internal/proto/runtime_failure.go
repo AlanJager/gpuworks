@@ -119,6 +119,22 @@ const (
 	// ErrorAcceleratorCardMissing: a card the instance is placed on is no
 	// longer present on the node (Resource is its identity).
 	ErrorAcceleratorCardMissing = "ACCELERATOR_CARD_MISSING"
+	// ErrorCardLeaseFailed: the node's own allocator (Slurm) did not give the
+	// instance its cards: the placeholder job could not be submitted, ended
+	// before it started, or waited past its timeout (Detail, with the
+	// allocator's reason).
+	ErrorCardLeaseFailed = "CARD_LEASE_FAILED"
+	// ErrorCardLeaseRebindUnsupported: the allocator gave other cards than
+	// the placed ones and the server cannot rebind the instance to them
+	// (Resource is the cards given).
+	ErrorCardLeaseRebindUnsupported = "CARD_LEASE_REBIND_UNSUPPORTED"
+	// ErrorCardLeaseCardMismatch: a card the allocator gave is another model
+	// or size than the one placed (Resource is the card given, Detail says
+	// what each is).
+	ErrorCardLeaseCardMismatch = "CARD_LEASE_CARD_MISMATCH"
+	// ErrorCardLeaseLost: the allocator took the instance's cards back while
+	// it ran (a Slurm job cancelled, timed out or preempted; Detail).
+	ErrorCardLeaseLost = "CARD_LEASE_LOST"
 	// ErrorDistributedNetworkUnavailable: no network interface could be
 	// chosen for a multi-node engine (Detail).
 	ErrorDistributedNetworkUnavailable = "DISTRIBUTED_NETWORK_UNAVAILABLE"

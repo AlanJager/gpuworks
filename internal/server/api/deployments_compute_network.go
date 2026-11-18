@@ -40,7 +40,7 @@ func (a *apiHandlers) fillResolvedNodeFields(nodes []store.Node, out []dto.Node,
 	if err != nil {
 		providers = nil
 	}
-	facts := planning.NodeFacts{Networks: resolved, Storages: storages, Providers: providers, KubeClusters: planning.LoadKubeClusters(a.d.Store, nodes)}
+	facts := planning.NodeFacts{Networks: resolved, Storages: storages, Providers: providers, KubeClusters: planning.LoadKubeClusters(a.d.Store, nodes), SlurmClusters: planning.LoadSlurmClusters(a.d.Store, nodes)}
 	// An unreadable source is said to be so, not shown as a node added by hand.
 	sourceUnknown := false
 	if sources == nil {
@@ -81,6 +81,9 @@ func nodeSourceDTO(source store.NodeSource) *dto.NodeSource {
 		ClusterUUID: source.ClusterUUID, ClusterName: source.ClusterName}
 	if source.ClusterUUID != "" {
 		out.Resource = string(provider.ResourceKubernetes)
+		if source.ClusterKind == store.NodeSourceSlurm {
+			out.Resource = string(provider.ResourceSlurm)
+		}
 	} else {
 		out.Resource = string(provider.InstanceResource(source.ProviderKind, source.InstanceKind))
 	}

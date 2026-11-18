@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, Button, Card, Space, Tooltip, Typography } from "antd";
 import { EditOutlined, PlusOutlined, ProfileOutlined, SettingOutlined } from "@ant-design/icons";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import PageHeader from "../components/PageHeader";
 import ResourceTable, { type ResourceColumn } from "../components/resourceTable/ResourceTable";
@@ -12,9 +12,11 @@ import { storageTypeLabel } from "../storageDisplay";
 import StorageCapacity from "./storage/StorageCapacity";
 import StorageDeleteButton from "./storage/StorageDeleteButton";
 import StorageFormModal from "./storage/StorageFormModal";
+import { storagePresetFromState } from "./storage/storagePreset";
 import StorageNodeHealth from "./storage/StorageNodeHealth";
 import StorageSettingsModal from "./storage/StorageSettingsModal";
 import StorageTags from "./storage/StorageTags";
+import { WarningMark } from "./networks/networkDisplay";
 import StorageDetailDrawer from "./storage/StorageDetailDrawer";
 import { storageDetailPath } from "./storage/storageLinks";
 import { numericDetailID, useDetailParam } from "../components/detail/useDetailParam";
@@ -43,7 +45,11 @@ export default function StoragePage() {
   const detail = useDetailParam("storage");
   const storages = usePolling<List<Storage>>(api.storages, 15000);
   const nodes = usePolling<List<Node>>(api.nodes, 0);
-  const [adding, setAdding] = useState(false);
+  // Another page may send a storage to add (a Slurm cluster's NAS): the form opens with it.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [preset] = useState(() => storagePresetFromState(location.state));
+  const [adding, setAdding] = useState(() => !!preset);
   const [editing, setEditing] = useState<Storage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const runner = useStorageRunner(() => void storages.refresh());
@@ -55,7 +61,7 @@ export default function StoragePage() {
       title: t("list.column.name"),
       width: 220,
       sortValue: (s) => s.name,
-      render: (_, s) => <Space size={4}><Link to={storageDetailPath(s.id)}>{s.name}</Link><StorageTags storage={s} /></Space>,
+      render: (_, s) => <Space size={4}><Link to={storageDetailPath(s.id)}>{s.name}</Link>{s.nodes.on_shared_fs > 0 && <WarningMark summary={t("sharedFS.someNodes", { count: s.nodes.on_shared_fs })} />}<StorageTags storage={s} /></Space>,
     },
     {
       key: "type",
@@ -122,8 +128,9 @@ export default function StoragePage() {
       <StorageFormModal
         open={adding || !!editing}
         storage={editing}
+        preset={adding ? preset : undefined}
         nodes={nodes.data?.items ?? []}
-        onClose={() => { setAdding(false); setEditing(null); }}
+        onClose={() => { setAdding(false); setEditing(null); if (preset) navigate(".", { replace: true, state: null }); }}
         onSaved={(saved) => {
           const created = adding;
           setAdding(false);

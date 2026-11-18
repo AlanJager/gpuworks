@@ -103,6 +103,14 @@ type Status struct {
 	CachePath                  string
 	CacheTotalBytes            int64
 	CacheAvailableBytes        int64
+	// SharedFSType and SharedFSSource name the shared filesystem a local
+	// storage's directory sits on (a network or FUSE one, such as an E-HPC
+	// node's /opt on NAS): every node that sees it writes the same files,
+	// while the platform takes a local storage as each node's own. Empty
+	// when the directory is on a local disk, and for other storage types.
+	SharedFSType, SharedFSSource string
+	// fsMagic is the statfs magic number of the filesystem holding Path.
+	fsMagic uint64
 }
 
 // Runner runs an external command without a shell and returns its combined output.

@@ -10,7 +10,9 @@ import {
   type ProviderKindInfo,
 } from "../api";
 import { localizedText } from "../i18n/localizedText";
+import { clusterFormKind, clusterCategoryOf } from "../platformClusters";
 import { useKubeClusterForm } from "../pages/kubernetes/useKubeClusterForm";
+import { useSlurmClusterForm } from "../pages/slurm/useSlurmClusterForm";
 import { PlatformResourceBadge } from "../pages/platforms/PlatformResourceBadge";
 import { FormField } from "../ui-kit/form/FormField";
 import { formSubmit } from "../ui-kit/form/submit";
@@ -37,10 +39,10 @@ type CredentialPath = "endpoint" | "api_key" | "public_key" | "private_key" | `e
 
 /**
  * Adds an external platform, or edits a cloud account. The platform type is
- * chosen first (public cloud, private cloud, a Kubernetes cluster), then the
- * vendor among that type's; a cloud vendor's account asks for its
- * credentials, and Kubernetes, which is no vendor's account, for the cluster
- * form, followed by the command to run in the cluster.
+ * chosen first (public cloud, private cloud, a Kubernetes cluster, a Slurm
+ * cluster), then the vendor among that type's; a cloud vendor's account asks
+ * for its credentials, and a cluster, which is no vendor's account, for its
+ * cluster form, followed by the command to run in the cluster.
  */
 export default function ProviderConfigModal({
   open,
@@ -64,7 +66,7 @@ export default function ProviderConfigModal({
   onClose: () => void;
   /** The account was saved; a new one is named, so its row can be opened. */
   onSaved: (added?: { id: number; kind: string }) => void;
-  /** Offers Kubernetes among the platforms: a cluster connected on its own, with kubectl. Making its enrollment token takes an administrator. */
+  /** Offers the clusters among the platforms: one connected on its own, with a command. Making its enrollment token takes an administrator. */
   canConnectCluster?: boolean;
   /** A cluster was connected from this dialog; it stays open on the command to run. */
   onClusterCreated?: () => void;
@@ -84,11 +86,16 @@ export default function ProviderConfigModal({
   const [loadedProviderID, setLoadedProviderID] = useState<number | null>(null);
   const [loadError, setLoadError] = useState(false);
   const editing = !!provider;
-  // Kubernetes is the one platform that is not a cloud vendor's account: its form is the cluster form, below the choice.
-  // It is offered as the platform type the server marks as added with the cluster form; its id is also the choice's.
-  const clusterCategory = canConnectCluster ? categories.find((category) => category.kube_cluster) : undefined;
-  const kubernetes = !provider && !!clusterCategory && kind === clusterCategory.id;
-  const cluster = useKubeClusterForm({ open: open && kubernetes, onCreated: () => onClusterCreated?.() });
+  // A cluster is not a cloud vendor's account: its form is the cluster form, below the choice. Each is offered as the
+  // platform type the server marks as added with a cluster form; its id is also the choice's.
+  const kubeCategory = canConnectCluster ? clusterCategoryOf(categories, "kubernetes") : undefined;
+  const slurmCategory = canConnectCluster ? clusterCategoryOf(categories, "slurm") : undefined;
+  const kubernetes = !provider && !!kubeCategory && kind === kubeCategory.id;
+  const slurm = !provider && !!slurmCategory && kind === slurmCategory.id;
+  const clusterChosen = kubernetes || slurm;
+  const kubeForm = useKubeClusterForm({ open: open && kubernetes, onCreated: () => onClusterCreated?.() });
+  const slurmForm = useSlurmClusterForm({ open: open && slurm, onCreated: () => onClusterCreated?.() });
+  const cluster = slurm ? slurmForm : kubeForm;
   const busy = submitting || cluster.saving;
   const close = () => {
     if (busy) return;
@@ -102,14 +109,14 @@ export default function ProviderConfigModal({
   const kindLabel = (k: string) => t(`kind.${k}`, { defaultValue: localizedText(kindInfos.find((info) => info.kind === k)?.label, language) || k });
   const selectedKind = kindInfos.find((k) => k.kind === kind);
   const requirement = t(`config.requirements.${provider?.kind ?? kind}`, { defaultValue: "" });
-  // What the chosen platform connects: the vendor's resources, or for Kubernetes the cluster itself.
-  const connects: KindResource[] = kubernetes ? clusterCategory?.resources ?? [] : selectedKind?.resources ?? [];
+  // What the chosen platform connects: the vendor's resources, or for a cluster the cluster itself.
+  const connects: KindResource[] = kubernetes ? kubeCategory?.resources ?? [] : slurm ? slurmCategory?.resources ?? [] : selectedKind?.resources ?? [];
   // The platform types to choose among, in the server's order, and the one the chosen platform is of.
   const groups = categories
-    .filter((category) => category.kube_cluster ? category === clusterCategory : category.kinds.length > 0)
-    .map((category) => ({ category: category.id, kubeCluster: !!category.kube_cluster, kinds: category.kube_cluster ? [category.id] : category.kinds }));
+    .filter((category) => clusterFormKind(category) ? category === kubeCategory || category === slurmCategory : category.kinds.length > 0)
+    .map((category) => ({ category: category.id, cluster: clusterFormKind(category), kinds: clusterFormKind(category) ? [category.id] : category.kinds }));
   const group = groups.find((g) => g.kinds.includes(kind)) ?? groups[0];
-  const groupLabel = (g: { category: string; kubeCluster: boolean }) => g.kubeCluster ? t("config.kubernetesGroup") : t(`category.${g.category}`, { defaultValue: t("config.otherCategory") });
+  const groupLabel = (g: { category: string; cluster: string | null }) => g.cluster === "kubernetes" ? t("config.kubernetesGroup") : g.cluster === "slurm" ? t("config.slurmGroup") : t(`category.${g.category}`, { defaultValue: t("config.otherCategory") });
 
   // The initial kind is applied once per open (and again when the provider or
   // the preselected kind changes), never in reaction to the user's own pick:
@@ -121,7 +128,7 @@ export default function ProviderConfigModal({
       seededRef.current = "";
       return;
     }
-    const forCluster = !provider && !!clusterCategory && defaultKind === clusterCategory.id;
+    const forCluster = !provider && [kubeCategory, slurmCategory].some((category) => !!category && defaultKind === category.id);
     // The cluster form needs nothing from the vendors' schema; every other choice waits for it.
     if (kindInfos.length === 0 && !forCluster) return;
     const seed = `${provider?.id ?? ""}|${provider?.kind ?? ""}|${defaultKind ?? ""}`;
@@ -140,7 +147,7 @@ export default function ProviderConfigModal({
     } else {
       form.reset({ ...BLANK, ...credentialDefaults(kindInfos.find((info) => info.kind === next)) });
     }
-  }, [open, provider, defaultKind, kindInfos, form, loadedProviderID, clusterCategory]);
+  }, [open, provider, defaultKind, kindInfos, form, loadedProviderID, kubeCategory, slurmCategory]);
 
   // Fetch on every edit opening so refreshes and other sessions cannot leave
   // stale overrides in the form. A closed/replaced dialog ignores late replies.
@@ -202,7 +209,7 @@ export default function ProviderConfigModal({
         <div className="-mx-1 flex min-h-0 flex-col gap-4 overflow-auto px-1 pb-1">
           {loadError && <Notice tone="danger" title={t("config.loadFailed")} />}
           {/* Once the cluster exists the dialog shows only what to run next. */}
-          {!(kubernetes && cluster.created) && (
+          {!(clusterChosen && cluster.created) && (
             <>
               {provider ? (
                 <Field>
@@ -211,7 +218,7 @@ export default function ProviderConfigModal({
                 </Field>
               ) : group && (
                 <Field>
-                  <FieldLabel htmlFor={kubernetes ? undefined : kindId}>{t("config.type")}</FieldLabel>
+                  <FieldLabel htmlFor={clusterChosen ? undefined : kindId}>{t("config.type")}</FieldLabel>
                   {/* The platform type first, as tabs; picking one moves to its first platform. */}
                   {/* On a tray, so the types not chosen read as choices too. */}
                   <Tabs
@@ -224,8 +231,8 @@ export default function ProviderConfigModal({
                       {groups.map((g) => <TabItem key={g.category} value={g.category} label={groupLabel(g)} disabled={busy} />)}
                     </TabsList>
                   </Tabs>
-                  {/* Then the vendor among that type's. Kubernetes is one platform: there is nothing more to pick. */}
-                  {!kubernetes && (
+                  {/* Then the vendor among that type's. A cluster is one platform: there is nothing more to pick. */}
+                  {!clusterChosen && (
                     // One select per platform type: a select whose options are swapped under it resets its value to
                     // one of the old options. It also reports only a platform of this type as the choice.
                     <Select key={group.category} value={kind} onValueChange={(next) => { if (group.kinds.includes(next)) chooseKind(next); }} disabled={busy}>
@@ -245,7 +252,7 @@ export default function ProviderConfigModal({
                     {connects.map((resource) => (
                       <li key={resource.type} className="flex items-baseline gap-2">
                         <span className="flex-none"><PlatformResourceBadge resource={resource} /></span>
-                        <span>{t(kubernetes ? "config.howOwnCluster" : `config.how.${resource.type}`, { defaultValue: "" })}</span>
+                        <span>{t(kubernetes ? "config.howOwnCluster" : slurm ? "config.howSlurmCluster" : `config.how.${resource.type}`, { defaultValue: "" })}</span>
                       </li>
                     ))}
                   </ul>
@@ -253,7 +260,7 @@ export default function ProviderConfigModal({
               )}
             </>
           )}
-          {kubernetes ? cluster.body : (
+          {clusterChosen ? cluster.body : (
             <form id={formId} ref={formRef} noValidate onSubmit={formSubmit(form, () => formRef.current, submit)} className="flex flex-col gap-4">
               {requirement && <Notice tone="info" title={requirement} />}
               <FormField control={form.control} name="name" label={t("config.name")} required rules={{ validate: (value) => value.trim() !== "" || t("config.nameRequired") }}>
@@ -275,7 +282,7 @@ export default function ProviderConfigModal({
         {/* The cluster form brings its own buttons: Connect, then Close once the command is shown. */}
         <DialogFooter className="mt-2">
           <div ref={footerRef} className="contents">
-            {kubernetes ? cluster.footer(close) : (
+            {clusterChosen ? cluster.footer(close) : (
               <>
                 <Button variant="ghost" onClick={close} disabled={submitting}>{t("config.cancel")}</Button>
                 <Button type="submit" form={formId} variant="primary" loading={submitting || (editing && !editReady && !loadError)} disabled={!editReady || loadError}>

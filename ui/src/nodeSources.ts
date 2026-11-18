@@ -17,10 +17,14 @@ export const platformNodesPath = (providerID: number) => nodesPath(providerSourc
 /** The node list filtered to the nodes that joined through one cluster entry. */
 export const kubeClusterNodesPath = (clusterUUID: string) => nodesPath(clusterSource(clusterUUID));
 
-/** The external platforms list with one row opened: an account (with one of its clusters brought into view) or a cluster connected on its own. */
-export function platformPath(row: { provider_id?: number; cluster_uuid?: string }): string {
+/** The same for a Slurm cluster entry: entries of both kinds share the filter. */
+export const slurmClusterNodesPath = kubeClusterNodesPath;
+
+/** The external platforms list with one row opened: an account (with one of its clusters brought into view) or a cluster connected on its own (a Kubernetes one, or a Slurm one when the node's resource says so). */
+export function platformPath(row: { provider_id?: number; cluster_uuid?: string; resource?: string }): string {
   if (row.provider_id) return `/providers?open=p${row.provider_id}${row.cluster_uuid ? `&cluster=${encodeURIComponent(row.cluster_uuid)}` : ""}`;
-  return row.cluster_uuid ? `/providers?open=k${row.cluster_uuid}` : "/providers";
+  if (!row.cluster_uuid) return "/providers";
+  return `/providers?open=${row.resource === "slurm" ? "s" : "k"}${row.cluster_uuid}`;
 }
 
 /** The sources a node list address asks for (?source=a,b), as written: which values are valid is the server's to say (it answers 400 with the value it refused). */

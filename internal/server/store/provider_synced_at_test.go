@@ -118,8 +118,9 @@ func TestASyncRecordsWhenTheAccountWasListed(t *testing.T) {
 }
 
 // The platform list counts every account's own instances, and those carrying a
-// node, in one grouped query; a managed cluster's nodes are not instances.
-func TestAccountInstancesLeaveOutManagedClusterNodes(t *testing.T) {
+// node, in one grouped query; the nodes of a managed Kubernetes cluster and the
+// compute nodes of an HPC cluster are not instances.
+func TestAccountInstancesLeaveOutClusterNodes(t *testing.T) {
 	st := openKubeStore(t)
 	a, _ := st.CreateProvider(&Provider{Name: "a", Kind: "aliyun", CredsCipher: "c", State: "valid"})
 	b, _ := st.CreateProvider(&Provider{Name: "b", Kind: "runpod", CredsCipher: "c", State: "valid"})
@@ -128,8 +129,10 @@ func TestAccountInstancesLeaveOutManagedClusterNodes(t *testing.T) {
 		{ProviderID: a.ID, ExternalID: "i-1", NodeID: 7},
 		{ProviderID: a.ID, ExternalID: "i-2"},
 		{ProviderID: a.ID, ExternalID: "i-3", ManagedCluster: "c-1", NodeID: 8},
+		{ProviderID: a.ID, ExternalID: "i-4", HPCClusterID: "ehpc-1", NodeID: 10},
 		{ProviderID: b.ID, ExternalID: "p-1", NodeID: 9},
 		{ProviderID: empty.ID, ExternalID: "n-1", ManagedCluster: "c-2"},
+		{ProviderID: empty.ID, ExternalID: "n-2", HPCClusterID: "ehpc-2"},
 	} {
 		pi := pi
 		if err := st.UpsertProviderInstance(&pi); err != nil {
@@ -141,7 +144,7 @@ func TestAccountInstancesLeaveOutManagedClusterNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 2 || got[a.ID] != 2 || got[b.ID] != 1 {
-		t.Fatalf("counts = %v, want a:2 b:1 (an account of cluster nodes only is absent)", got)
+		t.Fatalf("counts = %v, want a:2 b:1 (an account of cluster nodes only is absent, E-HPC nodes included)", got)
 	}
 	// The list an account shows is the one it counts.
 	for _, want := range []struct {

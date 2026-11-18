@@ -769,6 +769,11 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 			updates["image_digest_id"] = imageID
 		}
 	}
+	if len(st.GPUIdents) > 0 {
+		if err := s.rebindReportedCards(inst, st.GPUIdents, updates); err != nil {
+			return err
+		}
+	}
 	if len(updates) == 0 {
 		return nil
 	}
@@ -848,7 +853,8 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 	}
 	// The change is announced below, after more writes; a reader that trusts
 	// the instance generation must stop trusting it now (Bus.Advance).
-	if rolledBack || (st.State != "" && (prev != st.State || prevPhase != st.Phase || st.SleepLevel != prevSleep)) {
+	_, rebound := updates["GPUIdents"]
+	if rebound || rolledBack || (st.State != "" && (prev != st.State || prevPhase != st.Phase || st.SleepLevel != prevSleep)) {
 		s.Bus.Advance("instance")
 	}
 	if sleepLevelChanged {

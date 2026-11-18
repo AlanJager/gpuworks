@@ -541,6 +541,9 @@ func (s *Store) DeleteNode(uuid string) error {
 		if err := rememberDeletedNode(tx, n, time.Now().UTC()); err != nil {
 			return err
 		}
+		if err := forgetSlurmListedNode(tx, n); err != nil {
+			return err
+		}
 		if err := tx.Delete(&Node{}, n.ID).Error; err != nil {
 			return err
 		}

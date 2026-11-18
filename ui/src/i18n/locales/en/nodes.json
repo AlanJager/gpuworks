@@ -61,7 +61,8 @@
     "cluster": "Cluster {{name}}",
     "clusterOf": "Cluster {{name}} ({{provider}})",
     "standaloneCluster": "Kubernetes cluster",
-    "selected": "The chosen source"
+    "selected": "The chosen source",
+    "standaloneSlurm": "Slurm cluster"
   },
   "column": {
     "source": "Source",
@@ -599,7 +600,8 @@
     },
     "cordonReason": {
       "card_needs_host_reboot": "Stopped by the platform: a card reports that only a host reboot or power cycle recovers it, and the other cards sit behind the same driver.",
-      "kube_unschedulable": "Stopped by the platform: Kubernetes stopped scheduling onto this node (kubectl cordon or drain, or the node is being replaced)."
+      "kube_unschedulable": "Stopped by the platform: Kubernetes stopped scheduling onto this node (kubectl cordon or drain, or the node is being replaced).",
+      "slurm_node_unavailable": "Stopped by the platform: Slurm will not start jobs on this node, and the platform's cards are borrowed with Slurm jobs, so a deployment placed here would wait out the pending timeout and fail."
     }
   },
   "systemLabels": {
@@ -616,7 +618,9 @@
       "serving-network": "Serving network",
       "storage": "Storage",
       "kubernetes-cluster": "Kubernetes cluster",
-      "kubernetes-node": "Kubernetes node"
+      "kubernetes-node": "Kubernetes node",
+      "slurm-cluster": "Slurm cluster",
+      "slurm-node": "Slurm node"
     }
   },
   "diskUsage": {
@@ -1398,5 +1402,27 @@
       "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "This node has no ready dGPU partition backend; the setting has no effect until it has one.",
       "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "Upgrade this node's agent to track processes outside the platform on shared cards; the setting has no effect until then."
     }
+  },
+  "slurm": {
+    "unavailable": {
+      "gres_missing": "Slurm registered node {{node}} without its GPUs: slurmd found fewer GPUs than the Slurm manager node expects (usually no gres.conf), so Slurm drained the node and will not start the jobs that borrow its cards.",
+      "invalid_registration": "Slurm refused the registration of node {{node}}, so it will not start the jobs that borrow its cards.",
+      "down": "Slurm has node {{node}} down or not responding, so it will not start the jobs that borrow its cards.",
+      "drained": "Slurm has node {{node}} drained or draining, so it will not start the jobs that borrow its cards.",
+      "other": "Slurm will not start jobs on this node ({{code}})."
+    },
+    "says": "Slurm says: {{reason}}",
+    "howToFix": "To bring the node back:",
+    "step": {
+      "gresConf": "On the Slurm manager node (and on this node too, if it keeps its own Slurm config files), add this line to gres.conf:",
+      "reconfigure": "On the Slurm manager node, reload the configuration; the node registers again with its GPUs:",
+      "restartSlurmd": "If the node still shows invalid after that, restart slurmd on this node:",
+      "resume": "On the Slurm manager node, put node {{node}} back in service:",
+      "resumeDrained": "Once the reason Slurm gives is dealt with, put node {{node}} back in service on the Slurm manager node:",
+      "checkSlurmd": "On this node, check that slurmd is running and read its log:"
+    },
+    "copy": "Copy command",
+    "copied": "Command copied",
+    "manualCopyTitle": "Copy command"
   }
 }

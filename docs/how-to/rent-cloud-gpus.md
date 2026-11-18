@@ -1,6 +1,6 @@
 # 租用云 GPU
 
-把阿里云、RunPod、优云智算 CompShare、AutoDL 或 Vast.ai 的 GPU 实例接入 GPUWorks，并在用完后停止或释放云资源。先在厂商控制台租机，再在本平台同步和安装 agent；支持的 REST API 创建方式也在本文列出。
+把阿里云、RunPod、优云智算 CompShare、AutoDL 或 Vast.ai 的 GPU 实例接入 GPUWorks，并在用完后停止或释放云资源；阿里云账号下的 ACK 托管 Kubernetes 集群和 E-HPC（Slurm）集群也在账号里整体接入，不逐台装 agent。先在厂商控制台租机，再在本平台同步和安装 agent；支持的 REST API 创建方式也在本文列出。
 
 **前置条件**：
 
@@ -44,7 +44,7 @@ RunPod 只支持 Secure Cloud 的 Pod，不支持 Community Cloud（添加账号
 ## 同步实例并确认机型、区域和价格
 
 1. 在“已接入的外部平台”列表里点某个账号的“同步”（或列表工具栏最左侧的“同步全部”，一次同步所有支持同步的外部平台；旁边的“最近一次同步：<时间>”是所有账号里最新的一次）。列表的“厂商”列显示厂商（如阿里云、RunPod），“平台类型”列为公有云。完成后提示“同步完成，发现 N 个实例”。
-2. 点开该账号所在行左侧的展开箭头，看实例表。有托管 Kubernetes 的厂商（阿里云、DigitalOcean）展开后是一张分组的表，账号自己的实例在“独立实例”组里，后面每个托管集群一组（见[接入公有云托管 Kubernetes](connect-managed-kubernetes.md)）；其他厂商展开后只有实例，不分组。实例先显示 10 台，更多的点表格末尾的“再显示 N 台”：
+2. 点开该账号所在行左侧的展开箭头，看实例表。有托管 Kubernetes 或 HPC 集群的厂商（阿里云：ACK、E-HPC；DigitalOcean：DOKS）展开后是一张分组的表，账号自己的实例在“独立实例”组里，后面是每个 E-HPC 集群一组（见[接入 Slurm 集群](connect-slurm-nodes.md#阿里云-e-hpc)）和每个托管集群一组（见[接入公有云托管 Kubernetes](connect-managed-kubernetes.md)）；其他厂商展开后只有实例，不分组。集群的节点不在“独立实例”里，也不计入账号的实例数。实例先显示 10 台，更多的点表格末尾的“再显示 N 台”：
 
    | 列 | 含义 |
    |---|---|
@@ -150,8 +150,8 @@ SSH 安装默认使用平台密钥，通常不用手填密码。各厂商的准�
 **列表里账号显示“异常”，或点“同步”报“同步失败”**
 同步会真实调用云厂商接口，失败即标“异常”。先按失败信息排查凭据是否被吊销、账户是否欠费，再点“同步”；成功后状态自动回到“有效”。
 
-**实例表是空的（“未同步到实例，请点击上方‘同步’后重试”）**
-还没同步，或云厂商账号下确实没有实例。先点“同步”。
+**实例表是空的**
+写着“还没有同步过实例，请点击上方‘同步’”：还没同步，先点“同步”。写着“上次同步没有找到实例”：刚同步过，云厂商账号下（所选地域里）确实没有实例，不用再点“同步”；账号下有实例却没出现时，检查凭据权限和所选地域。
 
 **点“一键装 Agent”失败**
 
@@ -217,6 +217,9 @@ GPUWORKS 不会自动释放云实例，删除云账号也不会。到云厂商�
 | `ecs:DescribeSecurityGroupAttribute` | Server 发起连接时读取入站安全组规则；不使用此检查时可不授予 |
 | `cs:DescribeClustersV1`、`cs:DescribeClusterNodePools`、`ecs:DescribeInstanceTypes` | 展开账号后列出 ACK 集群及其 GPU 节点池；不接入 ACK 可以去掉 |
 | `cs:DescribeClusterUserKubeconfig` | 由 GPUWORKS 把接入 manifest 应用到 ACK 集群时签发 15 分钟有效的 kubeconfig；只用 kubectl 接入可以去掉 |
+| `ehpc:ListClusters` | 逐个地域列出账号下的 E-HPC 集群（名称、调度器、状态），集群里还没有 GPU 节点也列出；没有它读不到 E-HPC 集群，列表顶部安静地提示要放行这个权限（不是报错），已有的条目仍单独列出。没有 E-HPC 可以去掉 |
+| `ehpc:ListRegions` | 问 E-HPC 在哪些地域有服务，只列这些地域的集群；没有它也能列出，只是改为逐个询问每个地域。没有 E-HPC 可以去掉 |
+| `ehpc:GetCluster` | E-HPC 集群条目的「检查并应用」和平台代为执行的卸载用它查集群的 Slurm 管控节点的实例 ID，再经云助手（上面的 `ecs:DescribeCloudAssistantStatus`、`ecs:RunCommand`、`ecs:DescribeInvocationResults`）在 Slurm 管控节点上执行接入脚本并补 `gres.conf`（见[接入 Slurm 集群](connect-slurm-nodes.md#阿里云-e-hpc)）；不用这个功能可以去掉 |
 
 ```json
 {
@@ -235,7 +238,10 @@ GPUWORKS 不会自动释放云实例，删除云账号也不会。到云厂商�
         "ecs:DescribeInstanceTypes",
         "cs:DescribeClustersV1",
         "cs:DescribeClusterNodePools",
-        "cs:DescribeClusterUserKubeconfig"
+        "cs:DescribeClusterUserKubeconfig",
+        "ehpc:ListRegions",
+        "ehpc:ListClusters",
+        "ehpc:GetCluster"
       ],
       "Resource": "*"
     }
@@ -255,7 +261,7 @@ GPUWORKS 不在阿里云上创建或释放实例，不需要这两类权限。
 **用命令行创建**（[阿里云 CLI](https://help.aliyun.com/zh/cli/)，用有 RAM 管理权限的身份执行）：
 
 ```bash
-POLICY='{"Version":"1","Statement":[{"Effect":"Allow","Action":["ecs:DescribeRegions","ecs:DescribeInstances","ecs:DescribeCloudAssistantStatus","ecs:RunCommand","ecs:DescribeInvocationResults","ecs:StartInstance","ecs:StopInstance","ecs:DescribeInstanceTypes","cs:DescribeClustersV1","cs:DescribeClusterNodePools","cs:DescribeClusterUserKubeconfig"],"Resource":"*"}]}'
+POLICY='{"Version":"1","Statement":[{"Effect":"Allow","Action":["ecs:DescribeRegions","ecs:DescribeInstances","ecs:DescribeCloudAssistantStatus","ecs:RunCommand","ecs:DescribeInvocationResults","ecs:StartInstance","ecs:StopInstance","ecs:DescribeInstanceTypes","cs:DescribeClustersV1","cs:DescribeClusterNodePools","cs:DescribeClusterUserKubeconfig","ehpc:ListRegions","ehpc:ListClusters","ehpc:GetCluster"],"Resource":"*"}]}'
 aliyun ram CreatePolicy --PolicyName gpuworks-ecs --PolicyDocument "$POLICY"
 aliyun ram CreateUser --UserName gpuworks
 aliyun ram AttachPolicyToUser --PolicyType Custom --PolicyName gpuworks-ecs --UserName gpuworks
@@ -303,6 +309,8 @@ server 调用 `RunCommand`，让实例以 root 执行与**添加节点**相同�
 **ACK 集群**：账号展开后，「独立实例」组下面实时列出账号下的 ACK 集群（Serverless 与 ACS 集群的 Pod 跑在虚拟节点上，不能运行 agent 的 DaemonSet，不列出），每个集群一组，组内列出它的 GPU 节点池等信息：节点池的实例规格都带同一型号的 GPU 才算，自动模式节点池（不指定规格）不列出。点集群组头的「接入」，在打开的抽屉里选定节点池（默认全选，不要的移除，移除的可以从「添加节点池」加回）后接入，会建一个 Kubernetes 集群条目，agent 只在所选节点池的节点上运行（按节点标签 `alibabacloud.com/nodepool-id` 选中），之后可以由 GPUWORKS 应用 manifest，也可以自己执行 kubectl，见[接入公有云托管 Kubernetes](connect-managed-kubernetes.md)。ACK 集群的节点本身也是 GPU 实例，但不出现在「独立实例」组里，也不在集群的分组里逐台列出，随集群接入，不能单独安装 agent。
 
 由 GPUWORKS 应用 manifest 需要：集群的 API Server 有公网地址（创建集群时勾选「使用 EIP 暴露 API Server」，没有的显示「仅内网可访问」，只能用 kubectl 接入）；用 RAM 子账号时，这个子账号还要在 ACK 控制台「授权管理」里获得该集群的管理员（或能创建 Namespace、RBAC、DaemonSet、PriorityClass 的）RBAC 权限，否则签发出的 kubeconfig 会被集群拒绝，GPUWORKS 会把集群的拒绝原因原样显示出来。
+
+**E-HPC 集群**：账号展开后，「独立实例」组之后实时列出账号下的 E-HPC 集群（与 ACK 并列、各自读取，集群里还没有 GPU 节点或还没同步过也照样列出），每个集群一组，组头显示集群名、调度器版本和状态，组内是集群 ID、地域、调度器、状态、GPU 节点数等信息；计算节点由集群的队列扩缩，不在组里逐台列出，也不能在这里开关机、释放或逐台安装 agent。Slurm 集群的组头有「接入」：整个集群作为一个条目接入，先创建条目，再「检查并应用」——平台先经云助手让 Slurm 管控节点做一次不改动任何东西的检查、列出计划，你确认后才真正执行，计算节点自动装上 agent；其他调度器的集群不能接入。步骤、平台做了什么以及与线下 Slurm 集群的异同见[接入 Slurm 集群 · 阿里云 E-HPC](connect-slurm-nodes.md#阿里云-e-hpc)。
 
 **开关机**：关机使用“普通停机”（继续计费），保留实例的 GPU、固定公网 IP 等资源；“节省停机模式”会释放这些资源，再开机时可能没有库存，GPUWORKS 不使用它。
 

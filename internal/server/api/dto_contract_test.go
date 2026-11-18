@@ -321,6 +321,38 @@ func TestNodeWireCarriesTheRuntimeGPUReasonAsACodeAndOmitsItWhenThereIsNone(t *t
 	assertJSONKeysAbsent(t, marshalJSONObject(t, dto.Node{UUID: "node-1", State: "online"}), "runtime_gpu_blocked")
 }
 
+// Why Slurm will not run jobs on a node travels by exact key (the code, Slurm's
+// own words, the line the server composed), round-trips, and is absent when
+// there is none.
+func TestNodeWireCarriesWhySlurmWillNotRunJobs(t *testing.T) {
+	raw, err := json.Marshal(dto.Node{
+		UUID: "node-1", Scheduling: "cordoned", SchedulingBy: "platform", CordonReason: "slurm_node_unavailable",
+		SlurmNode: "gpu-1", SlurmUnavailable: "gres_missing",
+		SlurmReason:   "gres/gpu count reported lower than configured (0 < 2)",
+		SlurmGresConf: "NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]",
+		Labels:        map[string]string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// encoding/json escapes "<" as \u003c.
+	want := `{"uuid":"node-1","scheduling":"cordoned","scheduling_by":"platform","cordon_reason":"slurm_node_unavailable",` +
+		`"state":"","hostname":"","os":"","kernel":"","arch":"","cpu_model":"","cpu_cores":0,"mem_total_gib":0,"disk_total_gib":0,"gpu_count":0,` +
+		`"slurm_node":"gpu-1","slurm_unavailable":"gres_missing","slurm_reason":"gres/gpu count reported lower than configured (0 \u003c 2)",` +
+		`"slurm_gres_conf":"NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]","labels":{},"has_ssh_credential":false,"created_at":"0001-01-01T00:00:00Z","gpus":null}`
+	if string(raw) != want {
+		t.Fatalf("node wire JSON\n got %s\nwant %s", raw, want)
+	}
+	var back dto.Node
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.SlurmNode != "gpu-1" || back.SlurmUnavailable != "gres_missing" || back.SlurmGresConf != "NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]" {
+		t.Fatalf("round trip = %+v", back)
+	}
+	assertJSONKeysAbsent(t, marshalJSONObject(t, dto.Node{UUID: "node-1", State: "online"}), "slurm_node", "slurm_unavailable", "slurm_reason", "slurm_gres_conf")
+}
+
 // The runtime a node passed over travels by exact key with its reason and
 // the plugin it needs, round-trips, and is absent when there is none.
 func TestNodeWireCarriesTheRuntimePassedOver(t *testing.T) {

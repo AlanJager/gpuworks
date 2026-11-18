@@ -48,15 +48,25 @@ const (
 	// own replicas do not land on a node about to go. Lifted once
 	// Kubernetes lifts it.
 	CordonKubeUnschedulable = "kube_unschedulable"
+	// CordonSlurmNodeUnavailable: Slurm will not start jobs on the node (it
+	// is drained, down, or registered without its GPUs), and the node's
+	// agent borrows cards with placeholder jobs, so every deployment placed
+	// here would wait out the pending timeout and fail. Lifted once Slurm
+	// runs jobs there again.
+	CordonSlurmNodeUnavailable = "slurm_node_unavailable"
 )
 
 // PlatformCordonReason is why the platform would hold this node out of
 // scheduling right now, or "" when it would not. cards are the node's cards
 // as the report describes them; kubeUnschedulable is a Kubernetes node's own
-// cordon.
-func PlatformCordonReason(runtimeGPUBlocked string, kubeUnschedulable bool, cards []proto.GPUInfo) string {
+// cordon and slurmUnavailable the code (proto.SlurmNode*) for why Slurm will
+// not start jobs on it, empty when it will.
+func PlatformCordonReason(runtimeGPUBlocked string, kubeUnschedulable bool, slurmUnavailable string, cards []proto.GPUInfo) string {
 	if kubeUnschedulable {
 		return CordonKubeUnschedulable
+	}
+	if slurmUnavailable != "" {
+		return CordonSlurmNodeUnavailable
 	}
 	if strings.TrimSpace(runtimeGPUBlocked) != "" {
 		return CordonRuntimeGPUBlocked
@@ -126,5 +136,5 @@ func (n *Node) CordonReason() string {
 	for _, g := range n.GPUs {
 		cards = append(cards, proto.GPUInfo{Ownership: g.Ownership, HealthCode: g.HealthCode})
 	}
-	return PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, cards)
+	return PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, n.SlurmUnavailable, cards)
 }

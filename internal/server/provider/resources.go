@@ -3,8 +3,9 @@ package provider
 import "gpuworks.ai/gpuworks/pkg/localization"
 
 // Resource is a kind of machine an external platform hands over to become
-// compute nodes: an instance an agent is installed on, or a Kubernetes
-// cluster whose GPU nodes join through a DaemonSet.
+// compute nodes: an instance an agent is installed on, a Kubernetes cluster
+// whose GPU nodes join through a DaemonSet, or a Slurm cluster whose GPU nodes
+// join through a health check.
 type Resource string
 
 const (
@@ -12,10 +13,13 @@ const (
 	ResourceContainer  Resource = "container"
 	ResourceHost       Resource = "host"
 	ResourceKubernetes Resource = "kubernetes"
+	// ResourceSlurm is a Slurm cluster whose GPU nodes join through its
+	// health check.
+	ResourceSlurm Resource = "slurm"
 )
 
 // KindResource is one resource a provider kind connects, with the vendor's
-// own product name for it when it has one (ECS, ACK).
+// own product name for it when it has one (ECS, ACK, E-HPC).
 type KindResource struct {
 	Type    Resource `json:"type"`
 	Product string   `json:"product,omitempty"`
@@ -23,9 +27,11 @@ type KindResource struct {
 
 // kindResources is what each known kind connects, in the order the console
 // lists it: instances first, then clusters. A kind lists Kubernetes exactly
-// when its driver is a ClusterProvider.
+// when its driver is a ClusterProvider, and Slurm exactly when it is an
+// HPCClusterProvider (provider/all checks both against the registered
+// drivers).
 var kindResources = map[string][]KindResource{
-	"aliyun":       {{ResourceVM, "ECS"}, {ResourceKubernetes, "ACK"}},
+	"aliyun":       {{ResourceVM, "ECS"}, {ResourceKubernetes, "ACK"}, {ResourceSlurm, "E-HPC"}},
 	"autodl":       {{ResourceContainer, ""}},
 	"compshare":    {{ResourceVM, ""}, {ResourceContainer, ""}},
 	"digitalocean": {{ResourceVM, "Droplet"}, {ResourceKubernetes, "DOKS"}},
@@ -48,7 +54,7 @@ func InstanceResource(kind, instanceKind string) Resource {
 	var only Resource
 	instances := 0
 	for _, r := range kindResources[kind] {
-		if r.Type == ResourceKubernetes {
+		if r.Type == ResourceKubernetes || r.Type == ResourceSlurm {
 			continue
 		}
 		if string(r.Type) == instanceKind {

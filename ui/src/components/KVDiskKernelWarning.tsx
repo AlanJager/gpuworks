@@ -3,6 +3,7 @@ import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import type { EngineProfile } from "../api";
 import { kvDiskKernelShortfall } from "../kernelSupport";
+import { colors } from "../theme/tokens";
 
 // KVDiskKernelWarning marks a node whose kernel is below the KV disk tier's
 // floor, which the engines state on /engines. Nothing is rendered when the node
@@ -15,7 +16,7 @@ export default function KVDiskKernelWarning({ kernel, engines }: { kernel?: stri
   const hint = t("detail.kvDiskKernelTooOld", { required: shortfall.required, current: shortfall.current });
   return (
     <Tooltip title={hint}>
-      <ExclamationCircleFilled role="img" aria-label={hint} style={{ color: "#faad14", marginLeft: 6 }} />
+      <ExclamationCircleFilled role="img" aria-label={hint} style={{ color: colors.warning, marginLeft: 6 }} />
     </Tooltip>
   );
 }

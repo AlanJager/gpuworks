@@ -8,7 +8,7 @@ import (
 )
 
 func TestEveryKnownKindDeclaresTheResourcesItConnects(t *testing.T) {
-	valid := map[Resource]bool{ResourceVM: true, ResourceContainer: true, ResourceHost: true, ResourceKubernetes: true}
+	valid := map[Resource]bool{ResourceVM: true, ResourceContainer: true, ResourceHost: true, ResourceKubernetes: true, ResourceSlurm: true}
 	for _, kind := range knownProviderKinds {
 		resources := ResourcesOf(kind)
 		if len(resources) == 0 {
@@ -20,9 +20,12 @@ func TestEveryKnownKindDeclaresTheResourcesItConnects(t *testing.T) {
 				t.Errorf("provider kind %q resource %q is unknown or repeated", kind, r.Type)
 			}
 			seen[r.Type] = true
-			// Instances come before clusters, the order the console lists them in.
-			if r.Type == ResourceKubernetes && i != len(resources)-1 {
-				t.Errorf("provider kind %q lists Kubernetes before an instance resource", kind)
+			// Instances come before clusters, Kubernetes before Slurm: the order the console lists them in.
+			if (r.Type == ResourceKubernetes || r.Type == ResourceSlurm) && i < clusterStart(resources) {
+				t.Errorf("provider kind %q lists %s before an instance resource", kind, r.Type)
+			}
+			if r.Type == ResourceKubernetes && seen[ResourceSlurm] {
+				t.Errorf("provider kind %q lists Slurm before Kubernetes", kind)
 			}
 		}
 	}
@@ -37,7 +40,7 @@ func TestEveryKnownKindDeclaresTheResourcesItConnects(t *testing.T) {
 	if again := ResourcesOf("aliyun"); again[0].Product != "ECS" {
 		t.Fatalf("ResourcesOf hands out the dictionary itself: %+v", again)
 	}
-	if raw, _ := json.Marshal(ResourcesOf("aliyun")); string(raw) != `[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"}]` {
+	if raw, _ := json.Marshal(ResourcesOf("aliyun")); string(raw) != `[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"},{"type":"slurm","product":"E-HPC"}]` {
 		t.Fatalf("aliyun resources on the wire = %s", raw)
 	}
 	if raw, _ := json.Marshal(ResourcesOf("zstack")); string(raw) != `[{"type":"host"}]` {
@@ -48,13 +51,24 @@ func TestEveryKnownKindDeclaresTheResourcesItConnects(t *testing.T) {
 	}
 }
 
+// clusterStart is where the cluster resources begin in a kind's list: the
+// first Kubernetes or Slurm one.
+func clusterStart(resources []KindResource) int {
+	for i, r := range resources {
+		if r.Type == ResourceKubernetes || r.Type == ResourceSlurm {
+			return i
+		}
+	}
+	return len(resources)
+}
+
 func TestInstanceResourceFollowsTheInstanceKindThenTheOnlyChoice(t *testing.T) {
 	for _, c := range []struct {
 		kind, instanceKind string
 		want               Resource
 	}{
 		{"aliyun", "vm", ResourceVM},
-		{"aliyun", "", ResourceVM}, // one instance resource: nothing to tell apart
+		{"aliyun", "", ResourceVM}, // one instance resource (ECS): ACK and E-HPC are clusters, not instances
 		{"compshare", "vm", ResourceVM},
 		{"compshare", "container", ResourceContainer},
 		{"compshare", "", ""}, // two instance resources and no word from the instance

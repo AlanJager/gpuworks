@@ -443,7 +443,7 @@ error_text_classification_hits() {
   grep -rnE 'strings\.(Contains|HasPrefix|HasSuffix|EqualFold|Index|LastIndex|Cut|CutPrefix)\((strings\.(ToLower|TrimSpace)\()?[A-Za-z_.]*([Ee]rr[A-Za-z]*|[Mm]sg|[Mm]essage|[Dd]etail|[Rr]eason|[Ss]tderr|[Oo]utput)\b|strings\.ToLower\([A-Za-z_.]*\.Error\(\)\)|\.Error\(\) *(==|!=)|switch [A-Za-z_.]*\.Error\(\)|MatchString\([^)]*\.Error\(\)' \
     internal pkg cmd --include='*.go' 2>/dev/null \
     | grep -v '_test\.go:' \
-    | grep -vE '^(internal/agent/modelfetch/retry\.go|internal/agent/runtime/docker/cli_answers\.go|internal/server/logstore/query\.go|internal/server/uxstore/query\.go|internal/server/provider/compshare/api_error\.go|internal/server/provider/vast/vast\.go|internal/testenv/cloudprovider/aliyun_api\.go|internal/testenv/cloudprovider/aliyun_infra\.go|internal/integrationtest/fleet/gateway\.go|internal/server/hub/benchmark_failure_code\.go|internal/server/store/instance_runtime_failure\.go|internal/server/provision/ssh_failure\.go|internal/server/provision/install_command\.go|internal/server/provision/probe\.go|internal/server/inferencecatalog/package_tolerant\.go):' || true
+    | grep -vE '^(internal/agent/modelfetch/retry\.go|internal/agent/slurm/node_state\.go|internal/agent/runtime/docker/cli_answers\.go|internal/server/logstore/query\.go|internal/server/uxstore/query\.go|internal/server/provider/compshare/api_error\.go|internal/server/provider/vast/vast\.go|internal/testenv/cloudprovider/aliyun_api\.go|internal/testenv/cloudprovider/aliyun_infra\.go|internal/integrationtest/fleet/gateway\.go|internal/server/hub/benchmark_failure_code\.go|internal/server/store/instance_runtime_failure\.go|internal/server/provision/ssh_failure\.go|internal/server/provision/install_command\.go|internal/server/provision/probe\.go|internal/server/inferencecatalog/package_tolerant\.go):' || true
 }
 instance_failed_without_reason_hits() {
   grep -rnE 'State: *proto\.InstFailed|SetInstanceState\([^)]*proto\.InstFailed|reportState(Progress)?\([^)]*proto\.InstFailed|"state": *proto\.InstFailed|Update(Column)?\("state", *proto\.InstFailed|IsEnginePortRefusal|HasPrefix\([^)]*EnginePort|EnginePort(Refused|InUse)\+":"' \
@@ -946,6 +946,7 @@ tree_forbids ./internal/agent/connbudget 'gpuworks/' 'connbudget imports nothing
 tree_forbids ./internal/server/mcp 'gpuworks/' 'mcp speaks the protocol only: it knows neither callers nor tools'
 tree_forbids ./internal/agent/gpu/cardsmoke 'gpuworks/' 'cardsmoke schedules attempts and knows no vendor'
 tree_forbids ./internal/agent/gpu/pcicards 'gpuworks/internal/agent' 'pcicards reads sysfs and knows nothing of the agent'
+tree_forbids ./internal/server/slurmboot 'gpuworks/' 'slurmboot imports nothing from this repository (a leaf: parameters in, script text out)'
 
 # --- public wire module ------------------------------------------------------
 # pkg/extapi is a module of its own: the wire formats plugins import without

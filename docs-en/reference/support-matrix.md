@@ -22,6 +22,8 @@ NVIDIA unified-memory cards (models named `GB10`, `RTX Spark …`, or `Thor`) sh
 
 Kubernetes nodes (see [Connect a Kubernetes Cluster](../how-to/connect-kubernetes.md)) support whole-card deployment for NVIDIA, Ascend, Hygon, PPU, AMD, and Kunlunxin; dGPU is available there for NVIDIA HAMi-core, Ascend vcann-rt, PPU ppu-slicing-shim, and AMD rocm-slicing-shim, while Hygon's native vdev remains unavailable on Kubernetes (whole-card deployment only).
 
+Slurm nodes (an on-premises Slurm cluster, or an Alibaba Cloud E-HPC cluster, see [Connect a Slurm Cluster](../how-to/connect-slurm-nodes.md)) currently support NVIDIA cards only: the cards stay Slurm's to allocate and a deployment borrows one with a placeholder job; a node without an NVIDIA GPU (a CPU queue) gets no agent and does not appear on the platform. HPC products of cloud vendors other than E-HPC, and schedulers other than Slurm (PBS and others), cannot be connected yet.
+
 
 ## dGPU Capability Comparison
 

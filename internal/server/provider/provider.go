@@ -48,6 +48,9 @@ type Instance struct {
 	// Cluster is the managed Kubernetes cluster (Cluster.ExternalID) the
 	// instance is a node of; such an instance joins through the cluster.
 	Cluster string `json:"cluster,omitempty"`
+	// HPC is the HPC cluster the instance is a compute node of; such an
+	// instance takes an agent of its own, but its lifecycle is the cluster's.
+	HPC *HPCCluster `json:"hpc,omitempty"`
 }
 
 // Zone describes a provider-supported region/availability zone pair.
@@ -109,6 +112,9 @@ type KindInfo struct {
 	// CanListClusters: the driver lists managed Kubernetes clusters
 	// (ClusterProvider).
 	CanListClusters bool `json:"can_list_clusters"`
+	// CanListHPCClusters: the driver lists HPC clusters a Slurm cluster entry
+	// can be made from (HPCClusterProvider).
+	CanListHPCClusters bool `json:"can_list_hpc_clusters"`
 	// Resources are what the kind connects, in the order to list them.
 	Resources []KindResource `json:"resources"`
 	// Category is the platform type the kind's accounts are filed under,
@@ -403,6 +409,7 @@ func KindInfos() []KindInfo {
 			ServerDialSupported:     ServerDialSupported(kind),
 			ServerDialAutoPort:      isPortMapper(drv),
 			CanListClusters:         isClusterProvider(drv),
+			CanListHPCClusters:      isHPCClusterProvider(drv),
 			Resources:               ResourcesOf(kind),
 			Category:                CategoryOf(kind),
 		})
@@ -420,15 +427,25 @@ const (
 	// CategoryKubernetes is a Kubernetes cluster connected on its own (with
 	// kubectl), not through a vendor's account: no kind belongs to it.
 	CategoryKubernetes Category = "kubernetes"
+	// CategorySlurm is a Slurm cluster connected on its own (with a health
+	// check in its slurm.conf), not through a vendor's account: no kind
+	// belongs to it.
+	CategorySlurm Category = "slurm"
 )
 
+// Kinds of cluster entry a category is added as (CategoryInfo.ClusterKind).
+const ClusterKindSlurm = "slurm"
+
 // CategoryInfo is a platform type as the console offers it: in this order,
-// what it connects, and whether it is added as a Kubernetes cluster entry
-// (the cluster form) rather than as a vendor's account.
+// what it connects, and whether it is added as a cluster entry (the cluster
+// form) rather than as a vendor's account: KubeCluster for a Kubernetes
+// cluster, ClusterKind (ClusterKindSlurm) for another kind of cluster. Both
+// are absent for a vendor's account.
 type CategoryInfo struct {
 	ID          Category       `json:"id"`
 	Resources   []KindResource `json:"resources,omitempty"`
 	KubeCluster bool           `json:"kube_cluster,omitempty"`
+	ClusterKind string         `json:"cluster_kind,omitempty"`
 }
 
 // Categories are every platform type, in the order the console lists them.
@@ -437,6 +454,7 @@ func Categories() []CategoryInfo {
 		{ID: CategoryPublicCloud},
 		{ID: CategoryPrivateCloud},
 		{ID: CategoryKubernetes, Resources: []KindResource{{Type: ResourceKubernetes}}, KubeCluster: true},
+		{ID: CategorySlurm, Resources: []KindResource{{Type: ResourceSlurm}}, ClusterKind: ClusterKindSlurm},
 	}
 }
 

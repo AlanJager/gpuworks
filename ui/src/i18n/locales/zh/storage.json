@@ -585,5 +585,10 @@
     "previewLoading": "正在读取节点缓存信息，容量影响尚未确定。",
     "previewFailed": "读取节点缓存信息失败，容量影响未知；请重试以查看预览。",
     "previewIncomplete": "响应未包含完整的节点缓存信息。"
+  },
+  "sharedFS": {
+    "someNodes_one": "发现在 {{count}} 台节点上：目录在共享文件系统；建议：添加为 NFS 或共享目录",
+    "someNodes_other": "发现在 {{count}} 台节点上：目录在共享文件系统；建议：添加为 NFS 或共享目录",
+    "node": "目录在共享文件系统上（{{type}}）"
   }
 }

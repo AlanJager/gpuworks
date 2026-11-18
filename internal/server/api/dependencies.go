@@ -312,6 +312,15 @@ type apiHandlers struct {
 	// aiAsks and mcpCalls count each user's questions and MCP tool calls
 	// in flight (ai.go, mcp.go).
 	aiAsks, mcpCalls inFlightLimiter
+	// slurmReports remembers the GPU node list each Slurm entry last stored,
+	// so a report that repeats it costs no read (slurm_report.go).
+	slurmReports slurmReportDigests
+	// slurmOnce are the one-time codes of the setup URL the platform hands a
+	// cloud cluster's manager node (slurm_once.go).
+	slurmOnce slurmOnceCodes
+	// slurmActivity is what the server saw of each Slurm entry's setup and
+	// nodes since it began watching (slurm_waiting.go).
+	slurmActivity slurmActivity
 }
 
 // orders is the server's order lock and placement hints: Deps.Orders, or for

@@ -46,13 +46,18 @@ func instanceRows(providerID uint, insts []Instance) ([]store.ProviderInstance, 
 		if err != nil {
 			return nil, fmt.Errorf("encode SSH connections for instance %s: %w", in.ExternalID, err)
 		}
-		rows = append(rows, store.ProviderInstance{
+		row := store.ProviderInstance{
 			ProviderID: providerID, ExternalID: in.ExternalID, Name: in.Name,
 			GPUModel: in.GPUModel, GPUCount: in.GPUCount, Power: string(in.Power),
 			PricePerHr: in.PricePerHr, Region: in.Region, PublicIP: in.PublicIP,
 			SSHPort: in.SSHPort, SSHUser: in.SSHUser, SSHConnections: string(connections), Kind: in.Kind,
 			ManagedCluster: in.Cluster,
-		})
+		}
+		if in.HPC != nil {
+			row.HPCClusterID, row.HPCClusterName = in.HPC.ID, in.HPC.Name
+			row.HPCScheduler, row.HPCSchedulerVersion = in.HPC.Scheduler, in.HPC.SchedulerVersion
+		}
+		rows = append(rows, row)
 	}
 	return rows, nil
 }

@@ -458,6 +458,10 @@ go list -e -f '{{join .Imports "\n"}}' ./internal/server/api \
 由纯叶子包 `internal/server/kubemanifest` 渲染（不依赖 store，参数进、YAML 出），api 直接依赖它返回 manifest；`api_deps_fields`
 不变（manifest 不经 Deps 注入）。
 
+2026-11-17：Slurm 集群接入。`api_fanout` 49→50：集群的 setup 与检查脚本由纯叶子包 `internal/server/slurmboot` 渲染
+（参数进、shell 文本出，不依赖本仓库任何包，`check_architecture.sh` 守护），api 直接在 `/slurm/setup.sh`、
+`/slurm/check.sh` 返回它们；脚本不经 Deps 注入，`api_deps_fields` 不变。
+
 2026-11-12：部署用例（用例层拆分的第一组）。创建与评估搬进 `internal/server/deployment`，api 改为依赖它（+1），不再直接依赖
 `acquisition` 与 `placement`（−2），`api_fanout` 49→48。
 
@@ -939,6 +943,7 @@ error 一律用 `errors.Is/As`。排除的是**调用外部系统的适配器**�
 |---|---|
 | `internal/agent/modelfetch/retry.go` | Go net/http 的 HTTP/2、TLS 错误（类型未导出） |
 | `internal/agent/runtime/docker/cli_answers.go` | docker CLI 的输出 |
+| `internal/agent/slurm/node_state.go` | `scontrol show node` 的 Reason 文本（Slurm 没有给「GPU 数少于配置」的结构化码），当场转成 `proto.SlurmNode*` |
 | `internal/server/logstore/query.go` | glebarez SQLite 驱动的 FTS5 语法错误（只给通用 SQLITE_ERROR） |
 | `internal/server/uxstore/query.go` | 同一驱动的 "no such table" |
 | `internal/server/provider/compshare/api_error.go` | CompShare（UCloud）API 的错误消息 |

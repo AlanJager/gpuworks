@@ -28,6 +28,14 @@ import (
 // injected into a public script. When the server dials the agent
 // (--connect-mode server_dial) there is no server address at all.
 //
+// A Slurm cluster's health check installs an agent with the cluster entry's
+// enrollment token instead of a node token (GPUWORKS_SLURM_ENROLL_TOKEN, or
+// --token, with --slurm-node or GPUWORKS_SLURM_NODE naming the node in Slurm):
+// the token is recorded as the agent's enrollment, which it trades for a node
+// token of its own on every start. --run-as USER (GPUWORKS_RUN_AS) runs the
+// agent's systemd unit as that existing account, owning the install and state
+// directories.
+//
 // --supervisor chooses what keeps a Linux agent running: systemd (the
 // gpuworks-agent unit when systemd runs and the install may write it, else
 // nohup), nohup (never touches the unit; several agents may run from their own
@@ -42,9 +50,12 @@ var Script = strings.NewReplacer(
 
 // The installer has already resolved environment defaults and explicit flags
 // into the configuration file. Do not let inherited launch overrides apply a
-// second time, including when the generated restart script is run later.
+// second time, including when the generated restart script is run later. The
+// Slurm enrollment is among them: the token is in the configuration file, and
+// must not stay in the environment of the agent (or of what it starts) either.
 const clearLaunchEnv = `unset GPUWORKS_SERVER GPUWORKS_TOKEN GPUWORKS_CONNECT_MODE GPUWORKS_SERVER_DIAL_LISTEN
-unset GPUWORKS_RUNTIME_DRIVER GPUWORKS_RUNTIME_MOUNT_ROOT GPUWORKS_UDOCKER_BUNDLE`
+unset GPUWORKS_RUNTIME_DRIVER GPUWORKS_RUNTIME_MOUNT_ROOT GPUWORKS_UDOCKER_BUNDLE
+unset GPUWORKS_SLURM_ENROLL_TOKEN GPUWORKS_SLURM_NODE`
 
 // MacInstallDirFuncs defines gw_mac_install_dir HOME [SYSTEM_DIR], which
 // prints where an install that names no directory puts a Mac's agent: where an
@@ -87,6 +98,9 @@ if [ "${GPUWORKS_NO_SYSTEMD:-0}" = "1" ]; then SUPERVISOR=nohup; fi
 # left.
 CLEAN_EXISTING=""
 STATE_DIR="${GPUWORKS_STATE_DIR:-}"
+# A Slurm node's agent holds its cluster entry's enrollment token (see above).
+SLURM_NODE="${GPUWORKS_SLURM_NODE:-}"
+RUN_AS="${GPUWORKS_RUN_AS:-}"
 # --no-sudo installs with the caller's own rights although sudo works: the SSH
 # onboarding passes it when sudo could not claim the install directory and it
 # fell back to one the user can write.
@@ -107,10 +121,21 @@ while [ $# -gt 0 ]; do
     --no-systemd) SUPERVISOR=nohup; shift ;;
     --clean-existing) CLEAN_EXISTING=1; shift ;;
     --no-sudo) NO_SUDO=1; shift ;;
+    --slurm-node) SLURM_NODE="$2"; shift 2 ;;
+    --run-as) RUN_AS="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
 SERVER_URL="${SERVER_URL%/}"
+# The enrollment token of a Slurm node's agent travels in the environment, not
+# in an argument list ps shows, and stands where the node token does.
+if [ -n "$SLURM_NODE" ] && [ -n "${GPUWORKS_SLURM_ENROLL_TOKEN:-}" ]; then TOKEN="$GPUWORKS_SLURM_ENROLL_TOKEN"; fi
+TOKEN_KEY=TOKEN
+if [ -n "$SLURM_NODE" ]; then TOKEN_KEY=SLURM_ENROLL_TOKEN; fi
+if [ "$RUN_AS" = root ]; then RUN_AS=""; fi
+case "$RUN_AS" in
+  *[!a-z0-9_-]*) echo "gpuworks: --run-as must be a login name (lower case letters, digits, _ and -)" >&2; exit 2 ;;
+esac
 
 # The home of the person installing: under sudo, the account sudo was run from.
 GW_HOME="${HOME:-}"
@@ -248,7 +273,7 @@ unit_installed() {
 # may run other agents (a unit for another node, nohup ones from other
 # directories) that an install or restart must leave alone.
 own_unit() {
-  unit_installed && [ "$(gw_unit_value TOKEN)" = "$TOKEN" ]
+  unit_installed && [ "$(gw_unit_value "$TOKEN_KEY")" = "$TOKEN" ]
 }
 
 # Decide how the agent runs, and whose agent this replaces, before the
@@ -259,6 +284,18 @@ if [ "$GOOS" = "linux" ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/sy
     systemd) USE_SYSTEMD=1 ;;
     keep) if own_unit || { ! unit_installed && [ ! -e "$STATE_DIR/agent-restart.sh" ]; }; then USE_SYSTEMD=1; fi ;;
   esac
+fi
+if [ -n "$RUN_AS" ]; then
+  # An agent that is not root needs the unit to say so, and an account the
+  # installer does not create: it is the cluster's own (NIS, LDAP or local).
+  if [ "$USE_SYSTEMD" != 1 ]; then
+    echo "gpuworks: --run-as needs the systemd supervisor and root rights to write the unit" >&2
+    exit 1
+  fi
+  if ! id -u "$RUN_AS" >/dev/null 2>&1; then
+    echo "gpuworks: --run-as account $RUN_AS does not exist on this host; create it first" >&2
+    exit 1
+  fi
 fi
 OLD_SERVER=""
 if [ "$USE_SYSTEMD" = 1 ] && unit_installed; then OLD_SERVER="$(gw_unit_value SERVER)"; fi
@@ -271,7 +308,14 @@ fi
 # "run --state". The token goes on stdin, not into an argument list ps shows.
 set -- --state "$STATE_DIR" --connect-mode "$CONNECT_MODE" --listen "$LISTEN_ADDR" --driver "$RUNTIME_DRIVER" --mount-root "$RUNTIME_MOUNT_ROOT" --udocker-bundle "$UDOCKER_BUNDLE"
 if [ -n "$SERVER_URL" ]; then set -- "$@" --server "$SERVER_URL"; fi
+if [ -n "$SLURM_NODE" ]; then set -- "$@" --slurm-node "$SLURM_NODE"; fi
 printf '%s\n' "$TOKEN" | "$BIN" configure "$@"
+if [ -n "$RUN_AS" ]; then
+  # The configuration is written as the installing user and holds a token the
+  # agent has to read: the account that runs the agent owns what the agent
+  # keeps, and the installation directory it replaces its binary in.
+  $SUDO chown -R "$RUN_AS" "$INSTALL_DIR" "$STATE_DIR"
+fi
 @CLEAR_LAUNCH_ENV@
 
 if [ "$GOOS" = "darwin" ]; then
@@ -312,6 +356,8 @@ if [ "$USE_SYSTEMD" = 1 ]; then
   # restart script, which also marks the host as a nohup install.
   stop_nohup_agent
   rm -f "$PID_FILE" "$STATE_DIR/agent-restart.sh"
+  UNIT_USER="# runs as root"
+  if [ -n "$RUN_AS" ]; then UNIT_USER="User=$RUN_AS"; fi
   cat <<GPUWORKS_AGENT_UNIT | $SUDO tee /etc/systemd/system/gpuworks-agent.service >/dev/null
 [Unit]
 Description=gpuworks agent
@@ -321,6 +367,7 @@ After=network-online.target docker.service containerd.service
 RequiresMountsFor=$INSTALL_DIR $STATE_DIR
 
 [Service]
+$UNIT_USER
 ExecStartPre=/usr/bin/test -x $BIN
 ExecStart=$BIN run --state $STATE_DIR
 # Keep inference containers alive when an agent reinstall restarts the service.

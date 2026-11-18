@@ -97,6 +97,16 @@ Nodes connected through a DaemonSet are upgraded in a batch like any other: the 
 
 See [Connect a Kubernetes Cluster](connect-kubernetes.md).
 
+### Nodes of a Slurm Cluster
+
+Nodes connected through a cluster entry (an on-premises Slurm cluster, or an E-HPC cluster under a cloud account) are upgraded in batches like other nodes: the agent lives in the node's install directory (`/var/lib/gpuworks` by default), and the upgrade replaces that program in place.
+
+- The health check script `check.sh` is independent of agent upgrades: each interval it only checks whether the agent service is there and installs it when it is not; a node that joins the cluster later first gets the server's current agent version.
+- After a server upgrade the connect script itself (the logic of `check.sh`, how it edits `slurm.conf`) may have changed: to put the cluster on the new script, run the connect command again (or “Check and apply” for a cloud account's cluster), which is idempotent; before that you can run the check command (`-s -- --check`) to see what it would change, which changes nothing. When the script directory is not on shared storage, the connect command copies the new script to the nodes.
+- Upgrading the server does not change `slurm.conf` and does not rerun the connect script.
+
+See [Connect a Slurm Cluster](connect-slurm-nodes.md).
+
 ### Rerun the Installation Script on the Node
 
 If you can sign in to the node, you can also rerun `/install.sh` to update the agent. Use this method if the node is offline or the old version does not support self-upgrade.

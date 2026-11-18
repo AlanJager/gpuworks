@@ -217,12 +217,22 @@ func TestProbeDirKinds(t *testing.T) {
 		t.Errorf("shared_dir: %+v", r)
 	}
 
-	r = m.Probe(context.Background(), Spec{Type: TypeSharedDir, Path: e.path("missing")})
-	if r.OK || r.Reason != ReasonPathMissing {
-		t.Errorf("missing shared_dir: %+v", r)
+	// A shared directory that does not exist yet is judged by its nearest
+	// existing parent, which must be on the share (the fake statfs says NFS);
+	// one on the local disk means the share is not mounted.
+	r = m.Probe(context.Background(), Spec{Type: TypeSharedDir, Path: e.path("missing/models")})
+	if !r.OK || !r.Writable {
+		t.Errorf("missing shared_dir on the share: %+v", r)
 	}
 	if _, err := os.Stat(e.path("missing")); err == nil {
 		t.Error("probe must not create directories")
+	}
+	local := e.path("disk")
+	os.MkdirAll(local, 0o755)
+	e.sf.onLocalDisk(local)
+	r = m.Probe(context.Background(), Spec{Type: TypeSharedDir, Path: filepath.Join(local, "models")})
+	if r.OK || r.Reason != ReasonNotMounted {
+		t.Errorf("missing shared_dir under the local disk: %+v", r)
 	}
 
 	// A local directory that does not exist yet is judged by its nearest existing parent.
