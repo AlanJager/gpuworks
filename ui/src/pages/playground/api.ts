@@ -181,7 +181,15 @@ export async function streamChat(
   let failed = false;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        // Transport failures belong to the stream, not an upstream API error.
+        if (signal.aborted) throw error;
+        throw new Error(STREAM_INTERRUPTED_ERROR);
+      }
+      const { done, value } = chunk;
       // Normalize after joining: CR and LF may arrive in different reads.
       buffer = (buffer + decoder.decode(value, { stream: !done })).replace(/\r\n/g, "\n");
       let boundary = buffer.indexOf("\n\n");
