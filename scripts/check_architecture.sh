@@ -403,12 +403,29 @@ measure() {
         | grep -v '\.test\.' || true
     } | grep -c . || true
     ;;
+  feature_key_literals_in_core)
+    # A feature key belongs to the package that declares it (a manifest's
+    # features, or a compiled module's declaration); core code never names
+    # one. Counts quoted key-shaped literals handed to the gate (Require,
+    # Admit, Access, Declared, Availability), converted to featuregate.Key,
+    # assigned to a featuregate.Key constant or set as a route's Feature.
+    feature_key_literal_hits | grep -c . || true
+    ;;
   *)
     # `measure` runs inside a command substitution, so exiting here would only
     # kill the subshell. Emit a sentinel the caller turns into a failure.
     echo "UNKNOWN"
     ;;
   esac
+}
+
+# feature_key_literal_hits prints one line per feature key named by a
+# literal in non-test core code (scripts/arch-constraints.md).
+feature_key_literal_hits() {
+  local key='"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,2}"'
+  grep -rnE "(featuregate\.Key\(|\.(Require|Admit|Access|Declared|Availability)\()${key}|featuregate\.Key[[:space:]]*=[[:space:]]*\"|Feature:[[:space:]]*${key}" \
+    internal cmd --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' || true
 }
 
 # ADR 0067 guards: failures and check results are codes, never prose that a

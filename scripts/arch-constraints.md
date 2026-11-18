@@ -858,6 +858,25 @@ find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort \
 
 ---
 
+### feature_key_literals_in_core（初值 0，2026-11-18）
+
+意图：功能键属于声明它的包（安装包清单里的 `features`，或单独构建的 server 编进去的模块声明），
+功能门本身不解释任何键（`internal/server/featuregate` 包注释）。核心代码一旦用字面量点名某个键
+（`Require("acme.backup", …)`），社区代码路径就开始依赖一个它并不拥有的功能，这正是“社区代码路径
+从不查询功能门”要防的。计数单位是**行数**。
+
+```sh
+key='"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,2}"'
+grep -rnE "(featuregate\.Key\(|\.(Require|Admit|Access|Declared|Availability)\()${key}|featuregate\.Key[[:space:]]*=[[:space:]]*\"|Feature:[[:space:]]*${key}" \
+  internal cmd --include='*.go' | grep -v '_test\.go:' | grep -c .
+```
+
+覆盖四种写法：把键形字面量直接交给功能门的方法、`featuregate.Key("…")` 转换、给
+`featuregate.Key` 常量赋字面量、路由或控制台入口的 `Feature: "…"`。排除：测试文件（功能门与
+推送状态的测试要构造键）。看不到的：先赋给普通 `string` 变量再转换的键；这种写法在评审里拦。
+
+---
+
 ## 依赖方向检查
 
 `check_architecture.sh` 除预算外还执行计划 §5.3 的依赖方向检查。这些**不是预算**，
