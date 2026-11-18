@@ -524,7 +524,7 @@ These calls are on the host API side (fd 4). The caller is the package bound to 
 | `GET /host/v1/state/{kind}` | capability `host.state_read` | `pushed_state` |
 | `POST /host/v1/derive-key` | permission `crypto:derive_key` and capability `host.derive_key` | `derived_key` |
 
-A call whose capability the handshake did not negotiate gets 412 `PLUGIN_CAPABILITY_NOT_OFFERED` (`id`, `capability`, `version`); a missing role 403 `PLUGIN_ROLE_REQUIRED` (`id`, `role`); a missing permission 403 `PLUGIN_HOST_NOT_PERMITTED` (`id`, `permission`); an argument that breaks a rule 400 `PLUGIN_HOST_ARGUMENT_INVALID` (`id`, `field`); a body over 4 KiB 413 `REQUEST_TOO_LARGE` (`max`).
+A call whose capability the handshake did not negotiate gets 412 `PLUGIN_CAPABILITY_NOT_OFFERED` (`id`, `capability`, `version`); a missing role 403 `PLUGIN_ROLE_REQUIRED` (`id`, `role`); a missing permission 403 `PLUGIN_HOST_NOT_PERMITTED` (`id`, `permission`); an argument that breaks a rule 400 `PLUGIN_HOST_ARGUMENT_INVALID` (`id`, `field`); a body over 4 KiB 413 `REQUEST_TOO_LARGE` (`max_bytes`).
 
 Meta: `version` is the server version (as in the handshake), and `boot_id` changes every time the server starts. `wall` is the wall clock, `extclock` the monotone clock timelines follow, and `hwm` the high-water mark the server last stored, absent before it stored one.
 
@@ -540,14 +540,14 @@ Clock correction: `to` is a time the plugin has verified (for example from a cor
 {"reason":"acme correction code 7F3A-22C1","to":"2027-01-15T00:00:00Z"}
 ```
 
-The answer is extclock before and after the correction:
+The answer is extclock before and after the correction as it took effect: extclock never runs behind the wall clock, so when `to` is earlier than the wall clock, the answer's and the audit line's `to` is the wall clock.
 
 <!-- golden: clock_corrected/v1/valid/back.json -->
 ```json
 {"from":"2027-03-01T00:00:00Z","to":"2027-01-15T00:00:00Z"}
 ```
 
-Ready: each down period's grants get a boot extension of 2 minutes after the grace. Once a plugin process calls `POST /host/v1/state/ready`, a later down period of that process gets no boot extension and tightens as soon as the grace ends. A second call from the same process, a call from an `on_demand` plugin, or one from a process that has been replaced changes nothing. It never changes the persisted down start, so it cannot renew the grace. The mark is not kept across a server restart: the boot extension is computed again from the persisted start, so it cannot stack.
+Ready: each down period's grants get a boot extension of 2 minutes after the grace. Once a plugin process calls `POST /host/v1/state/ready`, a later down period of that process gets no boot extension and tightens as soon as the grace ends. A second call from the same process, a call from an `on_demand` plugin, or one from a process that has been replaced changes nothing. It never changes the persisted down start, so it cannot renew the grace. A new process may call it before the server counts it up; that call applies only to the new process's own later down periods and does not shorten the boot extension of the previous process's down period. The mark is not kept across a server restart: the boot extension is computed again from the persisted start, so it cannot stack.
 
 Own state: `GET /host/v1/state/{kind}` answers with the committed table of that kind the server holds for the caller itself, so a restarted plugin can reconcile. It is read from memory and never returns another package's rows. `body` is the whole table as the server holds it (canonical JSON; `display` contents, which the server does not keep, are absent), `digest` the digest of the table as it was pushed, the same as the handshake's `held` reports, and `pushed_at` the extclock at which the push was accepted. When nothing is held, only `kind` is set:
 
@@ -683,4 +683,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: f5e0061c22e14087fcec50ab6d08326ee6f0575742bf5c50b9d89b6302aa05b5 -->
+<!-- translation-source-sha256: 067fe9ff85dfe5a76e905430d1b677fd70211b96b4945550437b04f4fe94a2af -->

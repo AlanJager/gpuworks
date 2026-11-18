@@ -1706,6 +1706,8 @@ The codes of a failed plugin call (`PLUGIN_UNAVAILABLE`, `PLUGIN_BUSY`, `PLUGIN_
 
 Errors: not installed 404 `PLUGIN_NOT_INSTALLED`; approval needed, a broken package, the same version with other contents (`PLUGIN_VERSION_CONFLICT`), a declared feature key a compiled module or another installed package already provides (`PLUGIN_FEATURE_TAKEN{id, feature, owner}`, checked before approval) or plugin data newer than the build (`PLUGIN_STATE_TOO_NEW`) 409; a package too large 413 `PLUGIN_PACKAGE_TOO_LARGE`; any other refused package 422, with the codes in [Plugin Protocol and Wire Formats](plugin-protocol.md); `enable` or `purge` not a boolean 400 `FIELD_INVALID`.
 
+The host API that plugin processes call is not under `/api/v1`; its error codes (such as `PLUGIN_ROLE_REQUIRED`, `PLUGIN_HOST_NOT_PERMITTED` and `PLUGIN_HOST_ARGUMENT_INVALID`) are in [Host API clock, readiness, own state and derived keys](plugin-protocol.md#host-api-clock-readiness-own-state-and-derived-keys).
+
 ## Providers (Cloud Instance Rental)
 
 | Method | Path | Description | Authentication |
@@ -2308,4 +2310,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 5bbdc07adb326534674f2c30ee2b74d5cf7bfb269e03de324ef03c40c1fd0a46 -->
+<!-- translation-source-sha256: 38cf97c2c5fd37bda97c336aaa9eeacaaa25f49b642b20eaa6959283fd35c43c -->

@@ -524,7 +524,7 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 | `GET /host/v1/state/{kind}` | 能力 `host.state_read` | `pushed_state` |
 | `POST /host/v1/derive-key` | 权限 `crypto:derive_key` 与能力 `host.derive_key` | `derived_key` |
 
-握手没有协商所需能力时回 412 `PLUGIN_CAPABILITY_NOT_OFFERED`（`id`、`capability`、`version`）；缺角色回 403 `PLUGIN_ROLE_REQUIRED`（`id`、`role`）；缺权限回 403 `PLUGIN_HOST_NOT_PERMITTED`（`id`、`permission`）；参数违反规则回 400 `PLUGIN_HOST_ARGUMENT_INVALID`（`id`、`field`）；请求体超过 4 KiB 回 413 `REQUEST_TOO_LARGE`（`max`）。
+握手没有协商所需能力时回 412 `PLUGIN_CAPABILITY_NOT_OFFERED`（`id`、`capability`、`version`）；缺角色回 403 `PLUGIN_ROLE_REQUIRED`（`id`、`role`）；缺权限回 403 `PLUGIN_HOST_NOT_PERMITTED`（`id`、`permission`）；参数违反规则回 400 `PLUGIN_HOST_ARGUMENT_INVALID`（`id`、`field`）；请求体超过 4 KiB 回 413 `REQUEST_TOO_LARGE`（`max_bytes`）。
 
 元信息：`version` 是 server 版本（同握手），`boot_id` 每次 server 启动都变；`wall` 是墙钟，`extclock` 是时间线遵循的单调时钟，`hwm` 是 server 最近保存的高水位，还没保存过时缺省。
 
@@ -540,14 +540,14 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 {"reason":"acme correction code 7F3A-22C1","to":"2027-01-15T00:00:00Z"}
 ```
 
-应答是校正前后的 extclock：
+应答是校正前后实际生效的 extclock：extclock 从不落后于墙钟，所以 `to` 早于墙钟时，应答与审计里的 `to` 是墙钟。
 
 <!-- golden: clock_corrected/v1/valid/back.json -->
 ```json
 {"from":"2027-03-01T00:00:00Z","to":"2027-01-15T00:00:00Z"}
 ```
 
-就绪：每段掉线的授权在宽限之后还有 2 分钟启动延长。插件进程调用 `POST /host/v1/state/ready` 之后，这个进程之后的掉线不再有启动延长，宽限一过即收紧。同一进程再调用、`on_demand` 插件调用，或已被替换的进程调用都什么也不改变；它从不改变持久化的掉线起点，所以不能续期宽限。server 重启时这个标记不保留，启动延长按持久化的起点重新计算，不会叠加。
+就绪：每段掉线的授权在宽限之后还有 2 分钟启动延长。插件进程调用 `POST /host/v1/state/ready` 之后，这个进程之后的掉线不再有启动延长，宽限一过即收紧。同一进程再调用、`on_demand` 插件调用，或已被替换的进程调用都什么也不改变；它从不改变持久化的掉线起点，所以不能续期宽限。新进程可能在 server 把它计为在线之前就调用就绪，这次调用只对它自己之后的掉线生效，不缩短上一个进程那段掉线的启动延长。server 重启时这个标记不保留，启动延长按持久化的起点重新计算，不会叠加。
 
 自有状态：`GET /host/v1/state/{kind}` 回 server 为调用者自己保存、已提交的那一种表，供重启后的插件核对；读的是内存，从不返回其他包的行。`body` 是 server 保存的整表（规范 JSON；server 不保存的 `display` 内容不在其中），`digest` 是推送时那张表的摘要，与握手里 `held` 的相同，`pushed_at` 是推送被接受时的 extclock。没有保存时只有 `kind`：
 
