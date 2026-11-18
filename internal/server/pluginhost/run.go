@@ -230,7 +230,20 @@ func (i *instance) serve(proc Process, run *procRun, mem *memoryWatch) outcome {
 				return o
 			}
 		case <-idle:
-			if len(run.conn.slots) == 0 && time.Since(time.Unix(0, run.lastCall.Load())) >= t.IdleStop {
+			if time.Since(time.Unix(0, run.lastCall.Load())) < t.IdleStop {
+				continue
+			}
+			// Refusing new calls and clearing the run is one step under
+			// the lock, so a call either got its slot before (and the
+			// plugin stays) or waits for the next start.
+			i.mu.Lock()
+			drained := run.conn.drainIfIdle()
+			if drained {
+				i.run, i.idling = nil, true
+			}
+			i.mu.Unlock()
+			if drained {
+				i.set(StateStopping, "", nil)
 				i.terminate(proc, run.conn)
 				return outcome{kind: outcomeIdle}
 			}

@@ -2,6 +2,7 @@ package pluginhost
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"sync"
 	"time"
@@ -17,9 +18,12 @@ type instance struct {
 	spec   Spec
 	stderr *ring
 
-	mu      sync.Mutex
-	status  Status
-	run     *procRun      // the accepted run, while there is one
+	mu     sync.Mutex
+	status Status
+	run    *procRun // the accepted run, while there is one
+	// idling is set while an idle on-demand plugin is being stopped: a
+	// call then waits for the next start instead of being refused.
+	idling  bool
 	changed chan struct{} // closed and replaced on every status change
 
 	stop     chan struct{}
@@ -100,6 +104,9 @@ func (i *instance) supervise() {
 	t := i.h.timing
 	for {
 		if i.spec.Lifecycle == extapi.LifecycleOnDemand {
+			i.mu.Lock()
+			i.idling = false
+			i.mu.Unlock()
 			i.set(StateIdle, "", nil)
 			select {
 			case <-i.wake:
@@ -153,19 +160,23 @@ func (i *instance) supervise() {
 }
 
 // runFor returns the running process for a call, starting an on-demand
-// plugin and waiting for it within ctx.
+// plugin and waiting for it within ctx. A plugin that cannot serve now is
+// refused at once (Unavailable): any resident plugin that is not up, and
+// an on-demand one that failed, is stopped or crashloops. ctx's end is
+// returned as its error, wrapped.
 func (i *instance) runFor(ctx context.Context) (*procRun, error) {
 	for {
 		i.mu.Lock()
-		r, st, changed := i.run, i.status.State, i.changed
+		r, st, idling, changed := i.run, i.status.State, i.idling, i.changed
 		i.mu.Unlock()
 		if r != nil && st.Up() {
 			return r, nil
 		}
-		if i.spec.Lifecycle != extapi.LifecycleOnDemand || st == StateFailed || st == StateStopped || st == StateStopping {
-			return nil, unavailable(i.spec.ID, nil)
-		}
-		if st == StateIdle {
+		switch {
+		case i.spec.Lifecycle != extapi.LifecycleOnDemand,
+			st == StateFailed, st == StateStopped, st == StateCrashloop, st == StateStopping && !idling:
+			return nil, Unavailable(i.spec.ID, string(st), nil)
+		case st == StateIdle:
 			// Asked only of an idle plugin, so a start already under way
 			// leaves no stale request to start it again after it idles.
 			select {
@@ -176,7 +187,7 @@ func (i *instance) runFor(ctx context.Context) (*procRun, error) {
 		select {
 		case <-changed:
 		case <-ctx.Done():
-			return nil, unavailable(i.spec.ID, ctx.Err())
+			return nil, fmt.Errorf("pluginhost: waiting for %s to start: %w", i.spec.ID, ctx.Err())
 		}
 	}
 }

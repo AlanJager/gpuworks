@@ -208,34 +208,91 @@ func (h *Host) Stderr(id string) []byte {
 	return i.stderr.Bytes()
 }
 
-// Do sends req to the plugin (a route or a service; only the method, path,
-// headers and body matter) with ctx's deadline. An on-demand plugin is
-// started first. It fails with a *messages.ProductError when the plugin is
-// not running (PLUGIN_UNAVAILABLE) or every call slot is taken
-// (PLUGIN_BUSY); a plugin's own refusal is a normal response.
-func (h *Host) Do(ctx context.Context, id string, req *http.Request) (*http.Response, error) {
-	i := h.get(id)
-	if i == nil {
-		return nil, unavailable(id, ErrUnknownPlugin)
-	}
-	r, err := i.runFor(ctx)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := r.conn.do(ctx, req)
-	r.touch()
-	switch {
-	case errors.Is(err, errBusy):
-		return nil, messages.NewProductError(messages.ErrorPluginBusy, "the plugin is busy",
-			map[string]any{"id": id, "limit": i.spec.MaxConcurrency})
-	case err != nil:
-		return nil, unavailable(id, err)
-	}
-	return resp, nil
+// Class is how a call counts against a plugin's slots; the caller says.
+type Class struct {
+	// Admin marks a call made for an administrator (a route of access
+	// admin or admin_session): it may take the slots reserved from member
+	// calls (AdminReserve), so members cannot starve an administrator.
+	Admin bool
+	// Stream marks a call whose response streams: it holds its slot until
+	// the body is closed and takes it from a pool of its own, so open
+	// streams never block short calls.
+	Stream bool
 }
 
-func unavailable(id string, cause error) error {
-	return messages.WrapProductError(messages.ErrorPluginUnavailable, "the plugin is not running", map[string]any{"plugin": id}, cause)
+// Do sends req to the plugin (a route or a service; only the method, path,
+// headers and body matter) within ctx's deadline, or CallTimeout without
+// one; an on-demand plugin is started first and its start counts against
+// that time. A refused call is a *messages.ProductError:
+//
+//   - PLUGIN_UNAVAILABLE{plugin, state}: the call never reached the plugin
+//     (not supervised, not running, crashlooping, or the connection failed
+//     before the request headers were written), so it is safe to retry;
+//   - PLUGIN_BUSY{id, limit}: every slot the call's class may take is in
+//     use;
+//   - PLUGIN_TIMEOUT{id, timeout_s, state}: the deadline passed while the
+//     plugin was starting (state starting) or answering (state running);
+//   - PLUGIN_ROUTE_FAILED{id}: the plugin had the request and the call
+//     failed, so it may have been partly applied; not retryable.
+//
+// A plugin's own refusal is a normal response.
+func (h *Host) Do(ctx context.Context, id string, req *http.Request, class Class) (*http.Response, error) {
+	i := h.get(id)
+	if i == nil {
+		return nil, Unavailable(id, string(StateStopped), ErrUnknownPlugin)
+	}
+	timeout := h.timing.CallTimeout
+	if d, ok := ctx.Deadline(); ok {
+		timeout = time.Until(d)
+	}
+	deadline := time.Now().Add(timeout)
+	wait, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	for {
+		r, err := i.runFor(wait)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, timedOut(id, timeout, StateStarting, err)
+			}
+			var pe *messages.ProductError
+			if errors.As(err, &pe) {
+				return nil, err
+			}
+			return nil, Unavailable(id, string(i.snapshot().State), err)
+		}
+		resp, err := r.conn.do(ctx, req, class, deadline, r.touch)
+		var busy *busyError
+		var failed *callError
+		switch {
+		case err == nil:
+			return resp, nil
+		case errors.Is(err, errDraining):
+			continue // stopping while idle; runFor waits for the next start
+		case errors.As(err, &busy):
+			return nil, messages.NewProductError(messages.ErrorPluginBusy, "the plugin is busy",
+				map[string]any{"id": id, "limit": busy.limit})
+		case errors.Is(err, context.DeadlineExceeded):
+			return nil, timedOut(id, timeout, StateRunning, err)
+		case errors.As(err, &failed) && failed.dispatched:
+			return nil, messages.WrapProductError(messages.ErrorPluginRouteFailed,
+				"the plugin failed while handling the request; it may have been partly applied", map[string]any{"id": id}, err)
+		default:
+			return nil, Unavailable(id, string(i.snapshot().State), err)
+		}
+	}
+}
+
+// Unavailable is the refusal of a call that never reached plugin id,
+// which is in state (a State, or a package state the caller knows).
+func Unavailable(id, state string, cause error) error {
+	return messages.WrapProductError(messages.ErrorPluginUnavailable, "the plugin is not running",
+		map[string]any{"plugin": id, "state": state}, cause)
+}
+
+func timedOut(id string, timeout time.Duration, state State, cause error) error {
+	secs := int((timeout + time.Second - 1) / time.Second)
+	return messages.WrapProductError(messages.ErrorPluginTimeout, "the plugin did not answer in time",
+		map[string]any{"id": id, "timeout_s": max(secs, 1), "state": string(state)}, cause)
 }
 
 func (h *Host) get(id string) *instance {

@@ -969,6 +969,8 @@
     "PLUGIN_CAPABILITY_MISSING": "服务器没有提供插件离不开的能力 {{capability}} 在 {{min}} 至 {{max}} 之间的版本。请安装适用于此服务器的插件版本，或升级服务器。",
     "PLUGIN_UNAVAILABLE": "插件 {{plugin}} 未在运行，它提供的功能在恢复运行前受限或不可用。",
     "PLUGIN_BUSY": "插件 {{id}} 正在处理 {{limit}} 个请求，已达上限。请稍后重试。",
+    "PLUGIN_TIMEOUT": "插件 {{id}} 未在 {{timeout_s}} 秒内响应。",
+    "PLUGIN_ROUTE_FAILED": "插件 {{id}} 处理请求时出错，请求可能已部分生效。",
     "PLUGIN_START_FAILED": "插件 {{id}} 无法启动：{{detail}}",
     "PLUGIN_HANDSHAKE_TIMEOUT": "插件 {{id}} 未在 {{timeout_s}} 秒内应答握手。",
     "PLUGIN_HANDSHAKE_REFUSED": "插件 {{id}} 拒绝启动：{{plugin_code}}（{{reason}}）。",

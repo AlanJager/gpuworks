@@ -7,8 +7,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -26,10 +28,12 @@ const maxLifecycleBody = 1 << 20
 // pluginConn is the host's HTTP/2 client on a plugin's serve connection.
 type pluginConn struct {
 	cc *http2.ClientConn
-	// slots bounds calls in flight (Spec.MaxConcurrency); lifecycle calls
-	// do not take one, so a saturated plugin still answers health.
-	slots       chan struct{}
-	callTimeout time.Duration
+	// plain and stream bound the calls in flight (Spec.MaxConcurrency
+	// each), so open streams never take the slots of short calls;
+	// lifecycle calls take no slot, so a saturated plugin still answers
+	// health.
+	plain, stream slotPool
+	callTimeout   time.Duration
 }
 
 func newPluginConn(c net.Conn, maxConcurrency int, callTimeout time.Duration) (*pluginConn, error) {
@@ -38,35 +42,145 @@ func newPluginConn(c net.Conn, maxConcurrency int, callTimeout time.Duration) (*
 		_ = c.Close()
 		return nil, err
 	}
-	return &pluginConn{cc: cc, slots: make(chan struct{}, maxConcurrency), callTimeout: callTimeout}, nil
+	reserve := AdminReserve(maxConcurrency)
+	return &pluginConn{cc: cc, plain: slotPool{limit: maxConcurrency, reserve: reserve},
+		stream: slotPool{limit: maxConcurrency, reserve: reserve}, callTimeout: callTimeout}, nil
 }
 
 func (c *pluginConn) close() { _ = c.cc.Close() }
 
-// errBusy is returned when every call slot is taken.
+// AdminReserve is the share of a pool's slots (Spec.MaxConcurrency) that
+// only admin calls may take: a quarter, at least one, and none when the
+// pool has a single slot, which members could otherwise never use.
+func AdminReserve(maxConcurrency int) int {
+	if maxConcurrency < 2 {
+		return 0
+	}
+	return max(1, maxConcurrency/4)
+}
+
+// errBusy is returned when every call slot the call's class may take is
+// in use.
 var errBusy = fmt.Errorf("pluginhost: every call slot is in use")
 
-// do sends a call that takes a slot; the slot is released when the body is
-// closed. A call without a deadline gets the default one.
-func (c *pluginConn) do(ctx context.Context, req *http.Request) (*http.Response, error) {
-	select {
-	case c.slots <- struct{}{}:
-	default:
-		return nil, errBusy
+// errDraining is returned once an idle on-demand plugin is being stopped:
+// the call was not sent and waits for the next start.
+var errDraining = fmt.Errorf("pluginhost: the plugin is stopping while idle")
+
+// slotPool bounds one kind of call in flight. Member calls may take all
+// but reserve of its limit; admin calls may take any slot.
+type slotPool struct {
+	limit, reserve int
+
+	mu       sync.Mutex
+	inUse    int
+	members  int
+	draining bool
+}
+
+// take claims a slot, or says why not (errBusy, errDraining). limit is
+// the bound that refused a busy call.
+func (p *slotPool) take(admin bool) (limit int, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch {
+	case p.draining:
+		return 0, errDraining
+	case p.inUse >= p.limit:
+		return p.limit, errBusy
+	case !admin && p.members >= p.limit-p.reserve:
+		return p.limit - p.reserve, errBusy
+	}
+	p.inUse++
+	if !admin {
+		p.members++
+	}
+	return 0, nil
+}
+
+func (p *slotPool) give(admin bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.inUse--
+	if !admin {
+		p.members--
+	}
+}
+
+// inFlight counts the calls holding a slot of either pool.
+func (c *pluginConn) inFlight() int {
+	c.plain.mu.Lock()
+	defer c.plain.mu.Unlock()
+	c.stream.mu.Lock()
+	defer c.stream.mu.Unlock()
+	return c.plain.inUse + c.stream.inUse
+}
+
+// drainIfIdle refuses every later call (errDraining) when no call holds a
+// slot, and reports whether it did; the check and the refusal are one
+// step, so no call slips in between.
+func (c *pluginConn) drainIfIdle() bool {
+	c.plain.mu.Lock()
+	defer c.plain.mu.Unlock()
+	c.stream.mu.Lock()
+	defer c.stream.mu.Unlock()
+	if c.plain.inUse+c.stream.inUse > 0 {
+		return false
+	}
+	c.plain.draining, c.stream.draining = true, true
+	return true
+}
+
+// callError is a call that failed after it took a slot: dispatched says
+// whether its request headers had been written to the plugin, so it may
+// have acted on it.
+type callError struct {
+	err        error
+	dispatched bool
+}
+
+func (e *callError) Error() string { return e.err.Error() }
+func (e *callError) Unwrap() error { return e.err }
+
+// do sends a call of class that takes a slot of its pool; the slot is
+// released when the body is closed. A call without a deadline gets
+// deadline, or the default one when that is zero. touch runs when the
+// slot is released. A failed round trip is a *callError.
+func (c *pluginConn) do(ctx context.Context, req *http.Request, class Class, deadline time.Time, touch func()) (*http.Response, error) {
+	pool := &c.plain
+	if class.Stream {
+		pool = &c.stream
+	}
+	if limit, err := pool.take(class.Admin); err != nil {
+		return nil, &busyError{err: err, limit: limit}
 	}
 	cancel := context.CancelFunc(func() {})
 	if _, ok := ctx.Deadline(); !ok {
-		ctx, cancel = context.WithTimeout(ctx, c.callTimeout)
+		if deadline.IsZero() {
+			deadline = time.Now().Add(c.callTimeout)
+		}
+		ctx, cancel = context.WithDeadline(ctx, deadline)
 	}
-	release := sync.OnceFunc(func() { cancel(); <-c.slots })
+	release := sync.OnceFunc(func() { cancel(); pool.give(class.Admin); touch() })
+	var dispatched atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteHeaders: func() { dispatched.Store(true) }})
 	resp, err := c.roundTrip(ctx, req)
 	if err != nil {
 		release()
-		return nil, err
+		return nil, &callError{err: err, dispatched: dispatched.Load()}
 	}
 	resp.Body = &releasingBody{ReadCloser: resp.Body, release: release}
 	return resp, nil
 }
+
+// busyError is a call refused before it took a slot.
+type busyError struct {
+	err   error
+	limit int
+}
+
+func (e *busyError) Error() string { return e.err.Error() }
+func (e *busyError) Unwrap() error { return e.err }
 
 func (c *pluginConn) roundTrip(ctx context.Context, req *http.Request) (*http.Response, error) {
 	req = req.Clone(ctx)

@@ -969,6 +969,8 @@
     "PLUGIN_CAPABILITY_MISSING": "The server offers no version of {{capability}} from {{min}} to {{max}}, which the plugin cannot run without. Install a plugin build for this server or upgrade the server.",
     "PLUGIN_UNAVAILABLE": "Plugin {{plugin}} is not running, so what it provides is limited or unavailable until it runs again.",
     "PLUGIN_BUSY": "Plugin {{id}} is already handling {{limit}} requests. Retry shortly.",
+    "PLUGIN_TIMEOUT": "Plugin {{id}} did not answer within {{timeout_s}} s.",
+    "PLUGIN_ROUTE_FAILED": "Plugin {{id}} failed while handling the request; it may have been partly applied.",
     "PLUGIN_START_FAILED": "Plugin {{id}} could not be started: {{detail}}",
     "PLUGIN_HANDSHAKE_TIMEOUT": "Plugin {{id}} did not answer the handshake within {{timeout_s}} seconds.",
     "PLUGIN_HANDSHAKE_REFUSED": "Plugin {{id}} refused to start: {{plugin_code}} ({{reason}}).",
