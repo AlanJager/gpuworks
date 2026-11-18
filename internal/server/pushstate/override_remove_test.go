@@ -151,3 +151,18 @@ func isCode(err error, code string) bool {
 	var pe *messages.ProductError
 	return errors.As(err, &pe) && pe.Code() == code
 }
+
+// An owner no longer installed whose rows are still stored (its uninstall
+// did not finish) keeps its restriction, and an administrator can release
+// it.
+func TestAnOwnerNoLongerInstalledCanStillBeOverridden(t *testing.T) {
+	h := newHarness(t, openStore(t, ""), newFakeClock("2026-12-01T00:00:00Z")).load().run()
+	h.push(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, opsHolds)
+	h.s.SetPackages([]Package{acmeAuthority, acmeBackup})
+	if _, err := h.s.Override(context.Background(), OverrideRequest{Owner: "acme_ops", Kind: extapi.KindNodeHolds, Entry: "9", Action: OverrideDelete, Reason: "left behind", ByUser: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if list := h.s.Overrides(); len(list) != 1 || list[0].Entry != "9" {
+		t.Fatalf("overrides = %+v", list)
+	}
+}

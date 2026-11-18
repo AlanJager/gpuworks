@@ -172,6 +172,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	}
 	stateCfg := cfg.State
 	stateCfg.Packages = b.statePackagesLocked()
+	stateCfg.Effects = b.auditedEffects(stateCfg.Effects)
 	if stateCfg.Log == nil {
 		stateCfg.Log = cfg.Log.With("component", "pushed_state")
 	}
