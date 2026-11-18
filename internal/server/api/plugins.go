@@ -21,7 +21,7 @@ import (
 type PluginAdmin interface {
 	List(ctx context.Context) []dto.Plugin
 	// Check is the plugins diagnostics check.
-	Check(ctx context.Context) dto.PluginsCheck
+	Check(ctx context.Context) dto.DiagnosticCheck
 	// WriteMetrics writes the installed plugins' metrics in the
 	// Prometheus text format.
 	WriteMetrics(w io.Writer) error

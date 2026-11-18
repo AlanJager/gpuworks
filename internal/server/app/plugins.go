@@ -163,9 +163,9 @@ func (p pluginAdmin) List(context.Context) []dto.Plugin {
 	return out
 }
 
-func (p pluginAdmin) Check(context.Context) dto.PluginsCheck {
+func (p pluginAdmin) Check(context.Context) dto.DiagnosticCheck {
 	c := p.b.Check()
-	return dto.PluginsCheck{ID: c.ID, Status: c.Status, Message: dto.ProductMessage{Code: c.Code, Params: c.Params, Message: c.Message}}
+	return dto.DiagnosticCheck{ID: c.ID, Status: c.Status, Message: dto.ProductMessage{Code: c.Code, Params: c.Params, Message: c.Message}}
 }
 
 func (p pluginAdmin) WriteMetrics(w io.Writer) error { return p.b.WriteMetrics(w) }

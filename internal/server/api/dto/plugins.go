@@ -48,20 +48,12 @@ type PluginPermission struct {
 // PluginList is GET /api/v1/plugins.
 type PluginList struct {
 	Items []Plugin `json:"items"`
-	// Check is the plugins diagnostics check over the installed packages;
-	// absent with nothing installed, so that list stays the community
-	// server's.
-	Check *PluginsCheck `json:"check,omitempty"`
-}
-
-// PluginsCheck is the plugins diagnostics check: status fail while an
-// enabled package is crashlooping, failed, broken or revoked, warn while
-// one is incompatible with this server, pass otherwise; the message's
-// code and params (ids) say which.
-type PluginsCheck struct {
-	ID      string         `json:"id"`
-	Status  string         `json:"status"`
-	Message ProductMessage `json:"message"`
+	// Check is the plugins diagnostics check over the installed packages:
+	// status fail while an enabled package is crashlooping, failed, broken
+	// or revoked, warn while one is incompatible with this server, pass
+	// otherwise; the message's code and params (ids) say which. Absent with
+	// nothing installed, so the list is what it was before plugins.
+	Check *DiagnosticCheck `json:"check,omitempty"`
 }
 
 // PluginInstalled answers POST /api/v1/plugins/install.

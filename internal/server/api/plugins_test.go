@@ -29,8 +29,8 @@ type fakePlugins struct {
 	none bool
 }
 
-func (f *fakePlugins) Check(context.Context) dto.PluginsCheck {
-	return dto.PluginsCheck{ID: "plugins", Status: "fail", Message: dto.ProductMessage{Code: messages.CheckPluginsFailing,
+func (f *fakePlugins) Check(context.Context) dto.DiagnosticCheck {
+	return dto.DiagnosticCheck{ID: "plugins", Status: "fail", Message: dto.ProductMessage{Code: messages.CheckPluginsFailing,
 		Params: map[string]any{"ids": "acme_backup"}, Message: "enabled plugins cannot run: acme_backup"}}
 }
 
@@ -276,8 +276,8 @@ func TestPluginMetricsRoute(t *testing.T) {
 	}
 }
 
-// With nothing installed the list carries no check: it stays the
-// community server's list.
+// With nothing installed the list carries no check: it is what it was
+// before plugins.
 func TestPluginListWithNothingInstalledCarriesNoCheck(t *testing.T) {
 	rig := newPluginRig(t, &fakePlugins{none: true})
 	if rec := rig.do(rig.session, "GET", "/api/v1/plugins", ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
