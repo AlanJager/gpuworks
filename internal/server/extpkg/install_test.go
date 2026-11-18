@@ -22,7 +22,9 @@ type memMarkers struct {
 	mu        sync.Mutex
 	markers   map[string]extapi.Marker
 	readErr   error
+	setErr    error
 	deleteErr error
+	sets      int
 }
 
 func (m *memMarkers) PluginMarkers() ([]extapi.Marker, error) {
@@ -36,6 +38,17 @@ func (m *memMarkers) PluginMarkers() ([]extapi.Marker, error) {
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+func (m *memMarkers) SetPluginMarker(v extapi.Marker) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.setErr != nil {
+		return m.setErr
+	}
+	m.sets++
+	m.markers[v.Name] = v
+	return nil
 }
 
 func (m *memMarkers) DeletePluginMarker(name string) error {
