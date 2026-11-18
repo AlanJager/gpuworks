@@ -21,7 +21,7 @@ Kubernetes 接入（[ADR 0052](0052-kubernetes-nodes.md)）已经给出同类问
    - **agent 默认以 root 运行**，可在条目里改成普通账号：agent 的全部功能只在 root 下充分验证，普通账号的已知限制（configless 的卡序、本机 docker 组、目录权限）在 root 下不存在，而 docker 组本身等同 root，降权收益有限。占位作业记在哪个账号单独设置：root 的 agent 用 `sbatch --uid=<账号>` 提交，记账与 `squeue` 里就是那个账号。
    - **否决的做法**：在每台节点上逐台安装（扩容的节点要再装一次，体验也不能对标 Kubernetes）；用 E-HPC 的集群后处理脚本在节点上装（试过，在我们的环境里没有执行）；平台定期同步集群并替新节点装 agent（产品负责人否决）。健康检查实测（E-HPC configless）：slurm.conf 在扩容、缩容、更新队列后不被 E-HPC 改写，新节点注册时就执行，由它拉起的服务不受 slurmd 重启影响。
    - **原有健康检查的语义保留**：我们的块要在任何节点状态下装 agent，所以 `HealthCheckNodeState` 是 `ANY`（原来有 `CYCLE` 时 `ANY,CYCLE`，继续错开各节点）；原来的程序、节点状态、周期取 slurmctld 正在用的值（`scontrol show config`，设置可能在 `Include` 的文件里），程序与状态记在脚本目录的 `chained`，`check.sh` 只在节点处于原来要求的状态时运行它（`IDLE`、`NONDRAINED_IDLE`、`ALLOC`、`MIXED`，按 `scontrol` 查到的本机状态；查不到时照常运行）。这是近似：Slurm 自己按状态挑节点，这里是节点运行时自查。reconfigure 之后再问一次 slurmctld 是否在用我们的程序，不是就标为「有要手工处理的」。setup 只在运行 slurmctld 的机器上执行，在 configless 的 slurmd 副本上不执行。
-   - **后台安装先随机等待最多半个周期**再向 server 请求，免得整个集群同时下载 agent；安装脚本下载到 root 专有的临时文件后运行，退出码如实记入日志。agent 以普通账号运行时，健康检查（root）不运行、不写穿该账号拥有的目录里的任何东西。
+   - **后台安装先随机等待最多半个周期（不超过 300 秒，安装进程限时 30 分钟）**再向 server 请求，免得整个集群同时下载 agent；安装脚本下载到 root 专有的临时文件后运行，退出码如实记入日志。agent 以普通账号运行时，健康检查（root）不运行、不写穿该账号拥有的目录里的任何东西。
    - 条目的节点名单按 `sinfo -a` 记全部节点、只有带 `gpu` GRES 的才要求 agent：没有 GRES 的 GPU 机器、隐藏分区里的节点仍在集群里，不会被当作离开了集群而清理；状态与原因的变化不重写整表。
    - 令牌放在脚本目录里仅 root 可读的文件中（健康检查脚本任何用户可读，不含令牌）。平台替 E-HPC 执行接入时，云助手的命令只带一次性地址，令牌只在下载到的脚本正文里。
 

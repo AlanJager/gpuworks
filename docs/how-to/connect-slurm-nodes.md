@@ -42,7 +42,7 @@
    ```
 
    命令输出每一步的结果，以 `Done.` 收尾，或者以 `Finished, but some steps above need your attention.` 收尾（做完了，但有要手工处理的，见下文）。可以重复执行。弹窗里命令的上面还有一条「检查命令」，是同一条命令加 `-s -- --check`，只说明会做什么、什么都不改，建议先执行它，见[先检查，再应用](#先检查再应用)。
-4. 等一到一个半健康检查周期（默认 300 秒，已有健康检查周期的集群沿用它的周期；节点在开始安装前随机等待最多半个周期，所以默认最多约 7 分半钟）。GPU 节点陆续出现在「计算节点」页，「来源」列写着这个 Slurm 集群，点来源筛选可以只看它的节点。
+4. 等一到一个半健康检查周期（默认 300 秒，已有健康检查周期的集群沿用它的周期；节点在开始安装前随机等待最多半个周期、且不超过 300 秒，所以默认最多约 7 分半钟）。GPU 节点陆续出现在「计算节点」页，「来源」列写着这个 Slurm 集群，点来源筛选可以只看它的节点。
 
 ### 接入命令做什么
 
@@ -74,7 +74,7 @@ slurmd 在节点注册时和之后每个健康检查周期运行 `check.sh`；`s
 
 - 本机没有 NVIDIA GPU：什么也不做（CPU 节点不登记）。
 - agent 服务已经在运行：什么也不做。
-- 否则在后台、加锁地安装：先随机等待最多半个健康检查周期，再读令牌文件，向 server 问令牌是否还有效（吊销了就不装），把 server 的 `install.sh` 下载到只有 root 能写的临时文件，以环境变量 `GPUWORKS_SLURM_ENROLL_TOKEN`、`GPUWORKS_SLURM_NODE` 把令牌和节点名交给它，它安装 agent（systemd 服务，`User=` 为所选账号），用令牌登记。下载或安装失败时日志写 curl 或安装脚本真实的退出码，下一次运行重试。输出在 `<安装目录>/slurm-check.log`（安装目录建不出来时在 `/tmp/gpuworks-slurm-check.log`；非 root 账号运行 agent 时在 `/var/log/gpuworks-slurm-check.log`，见下文）。
+- 否则在后台、加锁地安装：先随机等待最多半个健康检查周期（不超过 300 秒），再读令牌文件，向 server 问令牌是否还有效（吊销了就不装），把 server 的 `install.sh` 下载到只有 root 能写的临时文件，以环境变量 `GPUWORKS_SLURM_ENROLL_TOKEN`、`GPUWORKS_SLURM_NODE` 把令牌和节点名交给它，它安装 agent（systemd 服务，`User=` 为所选账号），用令牌登记。下载或安装失败时日志写 curl 或安装脚本真实的退出码，下一次运行重试。输出在 `<安装目录>/slurm-check.log`（安装目录建不出来时在 `/tmp/gpuworks-slurm-check.log`；非 root 账号运行 agent 时在 `/var/log/gpuworks-slurm-check.log`，见下文）。
 - 节点的 Slurm 名取 slurmd 启动时 `-N` 给的名字，没有则取 `scontrol` 认得的短主机名或全名。登记按「集群条目 + Slurm 节点名」幂等，重装 agent 得到的还是同一个平台节点。第一台登记的节点把令牌绑定到这个集群的 `ClusterName`，之后别的 Slurm 集群拿这个令牌登记会被拒绝；同一个 Slurm 集群里另一个条目在最近 15 分钟内持有这个节点名时也被拒绝，agent 停下并在日志里写原因。
 - 令牌所在目录若是 root 受限的共享存储（root squash），节点上的 root 读不到 `token`，节点什么也装不了，`slurm-check.log` 里会写 `cannot read the enrollment token`：再执行一次接入命令，或手工把 `token` 以 0600 复制到该节点。
 
@@ -197,7 +197,7 @@ Slurm 管控节点自己就取不到接入脚本时（检查或应用直接失�
 - **部署借卡**：占位作业名为 `gpuworks-hold-<实例 UUID>`，在 `squeue` 里可见，记在运行账号（或指定的记账账号、`-A` 的账户）名下。排队时实例进度显示 `waiting for Slurm job <作业号>: <原因>`，例如额度不够时的 `AssocGrpGRES`。
 - **借到的卡与调度时选的不同**：Slurm 只按数量给卡。agent 用 Slurm 给的卡启动，平台随之把实例改到这张卡上。卡的型号或显存不同时，这次启动失败。
 - **作业被结束**：管理员 `scancel`、时限或抢占结束了占位作业，用着这些卡的实例停止，消息写明作业号和 Slurm 给的状态，平台会重新调度。
-- **agent 重启**：按作业名找回自己的占位作业，运行中的实例不受影响。agent 把提交过占位作业的记账账号记在状态目录的 `slurm-submitters` 里，所以条目的记账账号改过之后，早先账号名下的占位作业重启后仍被认作自己的（继续刷新、到点归还），而不是当成别人的作业一直占着卡。
+- **agent 重启**：按作业名找回自己的占位作业（只认请求了本节点的作业：同一集群的 agent 用同一个账号提交，别的节点的作业留给它们自己的 agent），运行中的实例不受影响；重启后找回的作业在 10 分钟内不按空闲归还，因为 agent 要等 server 重新下发实例才知道哪些卡还在用，期间容器照常在这些卡上运行。agent 把提交过占位作业的记账账号记在状态目录的 `slurm-submitters` 里，所以条目的记账账号改过之后，早先账号名下的占位作业重启后仍被认作自己的（继续刷新、到点归还），而不是当成别人的作业一直占着卡。
 - **Slurm 不在这台节点上启动作业**：节点被 drain、down，或登记时没有 GPU 时，占位作业会一直排队，部署要等满排队超时才失败。agent 每次上报都读一遍节点状态，发现这种情况平台就停止向该节点调度（节点显示“已停止调度”，原因 `slurm_node_unavailable`），节点详情的运行时一栏显示 Slurm 自己给的原因和手工恢复的步骤（命令可以直接复制）：缺 `gres.conf` 的节点是在 Slurm 管控节点上补一行、`scontrol reconfigure`、`scontrol update nodename=<节点> state=resume`；被管理员 drain 的节点是处理掉原因后 `resume`；down 的节点先查 slurmd。Slurm 恢复后平台自动解除；运维手动设的停止调度不受影响。E-HPC 集群的缺行问题用「检查并应用」一并处理。
 
 ## 限制
