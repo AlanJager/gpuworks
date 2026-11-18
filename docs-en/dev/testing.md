@@ -35,6 +35,16 @@ Server and agent logs from `internal/testenv` are discarded by default. `GPUWORK
 write the inner dockerd log, the container list and each container's last lines to `failure-evidence/`, uploaded as job artifacts (capped at 10 MiB
 in total, kept 14 days), to diagnose intermittent failures that do not reproduce locally.
 
+## Fake Engine Generation Protocol
+
+[`test/fake-engine`](../../test/fake-engine/README.md) provides synchronous and SSE fixtures for
+chat and text completions, with optional chat reasoning content. Streaming usage returns final
+synthetic totals only when `include_usage: true`. `continuous_usage_stats` does not simulate
+intermediate cumulative counts or derive token/reasoning-token counts from chunks.
+Nonstream requests must omit `stream_options`; public HTTP benchmark-client regressions cover both request combinations.
+Real-binary environment tests and UI parser consumption do not constitute full browser, GPU, or deployed-image acceptance.
+A local build does not update public image tags; check the [publication record](../../test/fake-engine/IMAGES.md) before using a remote image.
+
 ## Load Tests (Outside the Default Suite)
 
 These tests measure elapsed time (wall-clock time) and resource consumption. They are excluded from the default test suite and explicitly enabled with `GPUWORKS_TEST_PERF=1`.
@@ -461,4 +471,4 @@ This guide documents testing methods. Put one-off run logs, screenshots, image d
 `artifacts/work/<YYYY-MM-DD>-<topic>/<topic>-<YYYY-MM-DD>.md` (move them with the topic into
 `artifacts/archive/` when the work is closed out). Current documentation only links to this evidence.
 
-<!-- translation-source-sha256: 72730b1d6b3e623c55255076539c355a4b0ee36805c9876be21488353b19716e -->
+<!-- translation-source-sha256: 8b1c2e03c0f27fb8c861357dda596edbd259714ea3baaef079cf72eab6f4458b -->
