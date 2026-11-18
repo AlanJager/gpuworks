@@ -58,6 +58,10 @@ CertGrants.tables []string
 CertGrants.ui_module bool
 Clock.extclock Time
 Clock.wall Time
+ClockCorrected.from Time
+ClockCorrected.to Time
+ClockCorrection.reason string
+ClockCorrection.to Time
 CoreInfo.arch string
 CoreInfo.ha_role string
 CoreInfo.install_id string
@@ -65,6 +69,7 @@ CoreInfo.offer map[string]Range
 CoreInfo.os string
 CoreInfo.version string
 Envelope.payload []uint8
+DerivedKey.key []uint8
 Envelope.signatures []Signature
 FeatureDecl.gate string
 FeatureDecl.key string
@@ -113,6 +118,11 @@ HandshakeResponse.services []string
 HandshakeResponse.use map[string]int
 HandshakeResponse.version string
 Health.code string
+HostMeta.boot_id string
+HostMeta.extclock Time
+HostMeta.hwm *Time
+HostMeta.version string
+HostMeta.wall Time
 Health.params Params
 Health.status string
 HeldState.digest Digest
@@ -127,6 +137,8 @@ Limit.max *int64
 Limit.unlimited bool
 Manifest.codes []string
 Manifest.created Time
+KeyRequest.label string
+KeyRequest.length int
 Manifest.display Display
 Manifest.features []FeatureDecl
 Manifest.files []FileEntry
@@ -174,6 +186,12 @@ Principal.route_action string
 Principal.scope_projects []string
 Principal.user_id uint64
 Principal.username string
+PushedState.body RawMessage
+PushedState.digest Digest
+PushedState.generation uint64
+PushedState.kind string
+PushedState.pushed_at *Time
+PushedState.schema int
 PublicKey.alg string
 PublicKey.keyid string
 PublicKey.public_key []uint8
@@ -284,6 +302,7 @@ var wireRoots = []any{
 	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Index{}, Envelope{}, PublicKey{},
 	HandshakeRequest{}, HandshakeResponse{}, Health{}, WireError{}, StatePush{}, StateAck{},
 	NodeIdentityRequest{}, NodeIdentityAnswer{}, NodesPage{},
+	ClockCorrection{}, ClockCorrected{}, HostMeta{}, PushedState{}, KeyRequest{}, DerivedKey{},
 	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{}, Principal{},
 }
 

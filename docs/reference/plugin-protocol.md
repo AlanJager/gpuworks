@@ -294,6 +294,11 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `GET /host/v1/health` | 宿主健康 | 插件探测宿主接口，应答是健康对象 |
 | `POST /host/v1/node-identity` | 节点身份 | 插件读取指定节点加盐的硬件身份，见[节点读取](#节点读取) |
 | `GET /host/v1/nodes` | 节点清单 | 插件按加入顺序分页读取节点清单 |
+| `GET /host/v1/state/{kind}` | 自有状态 | 插件读回 server 为它保存的一种表（见[宿主接口的时钟、就绪、自有状态与派生密钥](#宿主接口的时钟就绪自有状态与派生密钥)） |
+| `POST /host/v1/state/ready` | 就绪 | 插件告知已启动完毕 |
+| `GET /host/v1/meta` | 元信息 | server 版本、启动 id 与时钟 |
+| `POST /host/v1/clock/correct` | 时钟校正 | 持有 `clock_authority` 的包校正 extclock |
+| `POST /host/v1/derive-key` | 派生密钥 | 绑定到本包与标签的密钥 |
 | 请求头 `Gwx-Deadline-Ms` | Unix 毫秒 | 调用的截止时间 |
 | 响应头 `Gwx-Product-Error` | — | 标明插件路由的响应体是一个错误对象 |
 | `/r/<路径>` | 路由 | 对插件某条路由的请求（[路由请求](#路由请求与主体)） |
@@ -506,6 +511,69 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 | `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | 该 server 不提供读取，或方法不对 | `method`、`path` |
 
 请求体不是该对象（JSON 无效、未知字段）时保留线上格式的码，如 `PLUGIN_WIRE_UNKNOWN_FIELD`。
+
+## 宿主接口的时钟、就绪、自有状态与派生密钥
+
+这些调用都在宿主接口一侧（fd 4），调用者是这条连接在握手时绑定的包，请求里没有任何身份字段：
+
+| 调用 | 需要 | 应答 |
+|---|---|---|
+| `GET /host/v1/meta` | 能力 `host.clock` | `host_meta` |
+| `POST /host/v1/clock/correct` | 能力 `host.clock` 与角色 `clock_authority` | `clock_corrected` |
+| `POST /host/v1/state/ready` | 基础协议，不需要能力 | 204，无响应体 |
+| `GET /host/v1/state/{kind}` | 能力 `host.state_read` | `pushed_state` |
+| `POST /host/v1/derive-key` | 权限 `crypto:derive_key` 与能力 `host.derive_key` | `derived_key` |
+
+握手没有协商所需能力时回 412 `PLUGIN_CAPABILITY_NOT_OFFERED`（`id`、`capability`、`version`）；缺角色回 403 `PLUGIN_ROLE_REQUIRED`（`id`、`role`）；缺权限回 403 `PLUGIN_HOST_NOT_PERMITTED`（`id`、`permission`）；参数违反规则回 400 `PLUGIN_HOST_ARGUMENT_INVALID`（`id`、`field`）；请求体超过 4 KiB 回 413 `REQUEST_TOO_LARGE`（`max`）。
+
+元信息：`version` 是 server 版本（同握手），`boot_id` 每次 server 启动都变；`wall` 是墙钟，`extclock` 是时间线遵循的单调时钟，`hwm` 是 server 最近保存的高水位，还没保存过时缺省。
+
+<!-- golden: host_meta/v1/valid/stored.json -->
+```json
+{"boot_id":"5b0c9e7a41d24f3c8e6a0b1d2c3f4e5a","extclock":"2027-03-01T00:00:00Z","hwm":"2027-03-01T00:00:00Z","version":"v26.12.0","wall":"2027-01-15T00:00:00Z"}
+```
+
+时钟校正：`to` 是插件已验证过的时间（例如发布者签名的校正码），`reason` 是 1–256 字节、写进审计日志的说明。一次校正最多把 extclock 前后移动 366 天，超出时回 400 `PLUGIN_CLOCK_CORRECTION_TOO_LARGE`（`max_days`）。步骤不被消耗，所以往回校正会让 `to` 之后的步骤重新未生效；server 记审计日志并显示管理员横幅。
+
+<!-- golden: clock_correction/v1/valid/vendor_code.json -->
+```json
+{"reason":"acme correction code 7F3A-22C1","to":"2027-01-15T00:00:00Z"}
+```
+
+应答是校正前后的 extclock：
+
+<!-- golden: clock_corrected/v1/valid/back.json -->
+```json
+{"from":"2027-03-01T00:00:00Z","to":"2027-01-15T00:00:00Z"}
+```
+
+就绪：每段掉线的授权在宽限之后还有 2 分钟启动延长。插件进程调用 `POST /host/v1/state/ready` 之后，这个进程之后的掉线不再有启动延长，宽限一过即收紧。同一进程再调用、`on_demand` 插件调用，或已被替换的进程调用都什么也不改变；它从不改变持久化的掉线起点，所以不能续期宽限。server 重启时这个标记不保留，启动延长按持久化的起点重新计算，不会叠加。
+
+自有状态：`GET /host/v1/state/{kind}` 回 server 为调用者自己保存、已提交的那一种表，供重启后的插件核对；读的是内存，从不返回其他包的行。`body` 是 server 保存的整表（规范 JSON；server 不保存的 `display` 内容不在其中），`digest` 是推送时那张表的摘要，与握手里 `held` 的相同，`pushed_at` 是推送被接受时的 extclock。没有保存时只有 `kind`：
+
+<!-- golden: pushed_state/v1/valid/held.json -->
+```json
+{"body":{"nodes":{"9":{"code":"ACME_QUARANTINE"}}},"digest":"sha256:9d48b3877a0b899cd055d9b094a38a3499e96cdad91bbb965c227098d95b9053","generation":4,"kind":"node_holds","pushed_at":"2026-12-01T00:00:00Z","schema":1}
+```
+
+<!-- golden: pushed_state/v1/valid/not_held.json -->
+```json
+{"kind":"banners"}
+```
+
+派生密钥：`label` 为 1–64 个 `[a-z0-9._-]`，`length` 为 16–64 字节。
+
+<!-- golden: key_request/v1/valid/challenge.json -->
+```json
+{"label":"usb.challenge","length":32}
+```
+
+<!-- golden: derived_key/v1/valid/thirty_two.json -->
+```json
+{"key":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}
+```
+
+密钥是对 server 的 `master.key` 做 HKDF-SHA256（无盐），`info` 为 `"gpuworks plugin key"`、一个零字节、包 id、一个零字节、标签，取 `length` 字节。同一包同一标签在主密钥不变期间得到同一个密钥；不同的包或标签得到无关的密钥；插件看不到主密钥本身。
 
 ## 推送表
 
