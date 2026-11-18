@@ -45,6 +45,10 @@ type Effects struct {
 	OverrideSuperseded func(o Override)
 	// ClockCorrected reports a correction of extclock, for the audit log.
 	ClockCorrected func(from, to time.Time, by, reason string)
+	// Applied reports a push the writer committed: owner's table of kind,
+	// with entries entries (EntriesOf), for the plugin metrics. It is not
+	// called for a push that was refused or superseded.
+	Applied func(owner, kind string, entries int)
 }
 
 // Config builds a State.
