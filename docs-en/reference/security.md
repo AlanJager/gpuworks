@@ -24,7 +24,6 @@ Creating or changing an administrator password (install, first start, Change pas
 
 - 8–128 Unicode characters and at most 512 bytes; no mix of case, digits or symbols is required, and Chinese text or a phrase of a few words is accepted.
 - Whole passwords matching the blocklist (ignoring case and preserving digits, spaces and symbols), whole-value repetitions and sequences (such as `12345678` or `qwertyui`) are rejected. The list is short and is not a database of breached passwords.
-- The password cannot be the username (ignoring case, punctuation and leading or trailing digits).
 - Control characters are not allowed. Existing passwords are not affected and keep working.
 
 Changing and recovering:
@@ -84,4 +83,4 @@ Private files retain their own 0600 permissions.
 
 For security model tradeoffs (reliance on reverse proxy TLS, token visibility in target processes, and trust boundaries), see [Security Model](../explanation/security-model.md). Production deployments should also back up the database and master key, and rotate the admin password/API key.
 
-<!-- translation-source-sha256: 911c853b4e868f37a4c53b3fd3ef1cb8e556b40fc983435c114dfb88a0f96882 -->
+<!-- translation-source-sha256: 31a9ae3ef7f803493d7cb5fc697aa37ffe754b12f195ef788ec867dedc76e5b5 -->

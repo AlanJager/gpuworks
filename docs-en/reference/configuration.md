@@ -163,7 +163,7 @@ The following arguments have no configuration file keys. Their defaults are the 
   the same file. It is read only when creating the account; subsequent changes do not affect existing accounts. Unit files never carry passwords.
 - Master key: `<data>/master.key` (generated on first startup; permissions below), used to encrypt cloud provider credentials and other secrets; explicitly back it up in production.
 
-New or changed administrator passwords must contain 8–128 Unicode characters and at most 512 bytes, and must not be the username. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Without an explicit password, a 24-byte random value is encoded as hexadecimal. Existing accounts can still authenticate with their current passwords.
+New or changed administrator passwords must contain 8–128 Unicode characters and at most 512 bytes. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Without an explicit password, a 24-byte random value is encoded as hexadecimal. Existing accounts can still authenticate with their current passwords.
 
 Sensitive files default to owner-only access (`0600`). A Linux systemd installation explicitly bound to this binary and a non-root service account may use its trusted service group (`0660`); group membership grants access to platform credentials. macOS and standalone servers do not implicitly trust ordinary primary groups. Startup, install and upgrade harden existing credentials, databases and sidecars, and recognized backups; temporary database snapshots are owner-only. Failure to protect a file stops the operation: repair the reported owner/service-group permissions and retry. Generated passwords are not written to service logs.
 
@@ -408,6 +408,6 @@ The following names appear in the code but are not user-configurable settings. D
 - `GPUWORKS_PARTITION_PROBE_BACKEND`, `GPUWORKS_PARTITION_PROBE_QUOTA_MIB`: Inputs injected into the probe program when the agent starts a dGPU probe container; they are not configuration settings read by the agent.
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
-<!-- translation-source-sha256: f9d4dca05a46af2c4c03f6e6f4d30a7a5a517be27a40774b6fec5ea60dd12cac -->
+<!-- translation-source-sha256: 30266992fda08cb4a10d34e96072a21b7ec376e2e22babaa1c54e81be4e00035 -->
 <!-- translation-localized-code-block: 86f9f71f25c2b857ad0011486eb8c57eb9996ec1a4417ab035e24d7b4b1f898d dc1d5c5bc85efcc1eb7d1d72bc584329c53e7d9c636c376ad8a7ce5dc1d901cb Reviewed configuration comments; usage_report=false suppresses the daily report and node/GPU counts, while automatic checks retain installation ID and versions. Keys and values unchanged. -->
 <!-- translation-localized-code-block: 0819a5a012bfc474cb0b84d6429664f8b8067852afc5f3219925ddcf5cc73a47 d5522c5aa66b2fb473e2747a03b43e39be3a13e73c6672d57fdd557fea454dbe Reviewed the comments of the plugins example; keys and values unchanged. -->

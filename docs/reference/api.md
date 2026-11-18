@@ -178,7 +178,6 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | 当前密码错误 | `CURRENT_PASSWORD_INVALID` | 新密码同时不合规时，`params.new_password` 给出新密码的错误码 |
 | 新密码长度不在范围内 | `PASSWORD_LENGTH` | `params.min`、`params.max` 为长度上下限 |
 | 新密码是常见弱口令、整段重复或连续字符 | `PASSWORD_GUESSABLE` | |
-| 新密码与用户名相同 | `PASSWORD_USERNAME` | 忽略大小写、标点与首尾数字后比较 |
 | 新密码含控制字符或不是合法 UTF-8 | `PASSWORD_CHARACTERS` | |
 | 新密码与当前密码相同 | `PASSWORD_UNCHANGED` | 只在当前密码正确时判断 |
 

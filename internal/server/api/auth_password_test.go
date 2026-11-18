@@ -133,7 +133,7 @@ func TestChangePasswordRejections(t *testing.T) {
 	}
 }
 
-func TestChangePasswordRejectsTheUsernameForNamedAccounts(t *testing.T) {
+func TestChangePasswordAcceptsUsernameAndPreservesOtherAccountsSessions(t *testing.T) {
 	st, _, router := newSessionRouter(t)
 	hash, err := auth.HashPassword(testPassword)
 	if err != nil {
@@ -154,12 +154,9 @@ func TestChangePasswordRejectsTheUsernameForNamedAccounts(t *testing.T) {
 	if cookie == nil {
 		t.Fatalf("login: %d %s", login.Code, login.Body)
 	}
-	if rec := postPassword(router, cookie, passwordBody(testPassword, "ZhangSan2026")); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"`+ErrorPasswordUsername+`"`) {
-		t.Fatalf("%d %s", rec.Code, rec.Body)
-	}
 	// Changing one's own password leaves other accounts signed in.
 	admin, _ := sessionLogin(t, router, testPassword)
-	if rec := postPassword(router, cookie, passwordBody(testPassword, "Tiger#Lake9")); rec.Code != http.StatusOK {
+	if rec := postPassword(router, cookie, passwordBody(testPassword, "zhangsan")); rec.Code != http.StatusOK {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 	if rec := sessionRequest(router, http.MethodGet, "/api/v1/auth/me", admin, ""); rec.Code != http.StatusOK {

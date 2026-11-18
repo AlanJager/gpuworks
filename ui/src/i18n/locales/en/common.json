@@ -311,7 +311,6 @@
     "PASSWORD_LENGTH": "The password must have {{min}}–{{max}} characters. Choose another.",
     "PASSWORD_CHARACTERS": "The password cannot contain line breaks or tabs. Choose another.",
     "PASSWORD_GUESSABLE": "Weak password detected. Choose another.",
-    "PASSWORD_USERNAME": "The password cannot be the username. Choose another.",
     "PASSWORD_UNCHANGED": "The new password cannot be the current one. Choose another.",
     "CURRENT_PASSWORD_INVALID": "The current password is incorrect. Enter it again.",
     "MANAGEMENT_ORIGIN_REJECTED": "Cross-origin management requests are not allowed.",

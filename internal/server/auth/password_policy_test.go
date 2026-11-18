@@ -82,25 +82,3 @@ func TestManagementPasswordPolicyReasons(t *testing.T) {
 		}
 	}
 }
-
-func TestAccountPasswordRejectsTheUsername(t *testing.T) {
-	for _, tc := range []struct{ user, password string }{
-		{"zhangsan", "zhangsan"}, {"zhangsan", "ZhangSan2026"}, {"zhangsan", "zhang.san!"},
-		{"ops-team", "Ops Team 01"}, {"wang.wei", "wangwei@123"},
-	} {
-		var policy *PolicyError
-		if err := ValidateAccountPassword(tc.user, tc.password); !errors.As(err, &policy) || policy.Reason != PolicyUsername {
-			t.Errorf("%s/%q: got %v, want the username reason", tc.user, tc.password, err)
-		}
-	}
-	for _, tc := range []struct{ user, password string }{
-		{"zhangsan", "zhangsan likes tea"}, {"admin", "Tiger#Lake9"}, {"2026", "20261110"}, {"", "Tiger#Lake9"},
-	} {
-		if err := ValidateAccountPassword(tc.user, tc.password); err != nil {
-			t.Errorf("%s/%q rejected: %v", tc.user, tc.password, err)
-		}
-	}
-	if err := ValidateAccountPassword("zhangsan", "short"); !errors.Is(err, ErrPasswordPolicy) {
-		t.Fatalf("account policy skipped the shared policy: %v", err)
-	}
-}
