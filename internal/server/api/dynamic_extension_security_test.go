@@ -31,7 +31,7 @@ func TestDynamicRoutesRefuseNonCanonicalPaths(t *testing.T) {
 			req.URL.Path = unescaped
 		}
 		rec := serve(rig.h, req)
-		if rec.Code != http.StatusBadRequest || codeOfBody(rec) != "PLUGIN_ROUTE_PATH_INVALID" {
+		if rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != `{"code":"PLUGIN_ROUTE_PATH_INVALID","error":"the request path is not in canonical form"}` {
 			t.Errorf("%s = %d %s", path, rec.Code, rec.Body)
 		}
 	}
@@ -116,7 +116,8 @@ func TestDynamicRoutesFilterResponses(t *testing.T) {
 		_, _ = io.WriteString(w, "<b>hi</b>")
 	})
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/x/acme_fake/page", "")
-	if rec.Code != http.StatusBadGateway || codeOfBody(rec) != "PLUGIN_ROUTE_RESPONSE_INVALID" || !strings.Contains(rec.Body.String(), `"params":{"id":"acme_fake"}`) {
+	if rec.Code != http.StatusBadGateway || strings.TrimSpace(rec.Body.String()) !=
+		`{"code":"PLUGIN_ROUTE_RESPONSE_INVALID","error":"the plugin returned a response the server will not pass on: the route does not declare html","params":{"id":"acme_fake"}}` {
 		t.Fatalf("undeclared html = %d %s", rec.Code, rec.Body)
 	}
 	for path, ct := range map[string]string{"/html": "text/html; charset=utf-8", "/blob": "application/octet-stream"} {

@@ -242,7 +242,8 @@ func TestDynamicRoutesAuthenticateByAccess(t *testing.T) {
 	before := rig.dyn.calls.Load()
 	rig.do("", "GET", "/api/v1/x/acme_fake/hook", "")
 	rec := rig.do("", "GET", "/api/v1/x/acme_fake/hook", "")
-	if rec.Code != http.StatusTooManyRequests || codeOfBody(rec) != "TOO_MANY_REQUESTS" || rec.Header().Get("Retry-After") == "" || rig.dyn.calls.Load() != before+1 {
+	if rec.Code != http.StatusTooManyRequests || strings.TrimSpace(rec.Body.String()) != `{"code":"TOO_MANY_REQUESTS","error":"too many requests to this route; try again later"}` ||
+		rec.Header().Get("Retry-After") == "" || rig.dyn.calls.Load() != before+1 {
 		t.Fatalf("over the rate = %d %s %v", rec.Code, rec.Body, rec.Header())
 	}
 }
