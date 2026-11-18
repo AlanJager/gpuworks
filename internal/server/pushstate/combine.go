@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -291,6 +292,7 @@ func (s *State) combineBannersLocked(now int64, soon func(int64)) (all, admin []
 					map[string]any{"from": time.UnixMilli(cc.fromMS).UTC().Format(time.RFC3339), "to": time.UnixMilli(cc.toMS).UTC().Format(time.RFC3339), "by": cc.by})})
 		}
 	}
+	admin = s.supersededBannersLocked(admin, now, soon)
 	order := func(list []Banner) {
 		sort.SliceStable(list, func(i, j int) bool {
 			if a, b := severityRank[list[i].Severity], severityRank[list[j].Severity]; a != b {
@@ -302,6 +304,24 @@ func (s *State) combineBannersLocked(now int64, soon func(int64)) (all, admin []
 	order(all)
 	order(admin)
 	return all, admin
+}
+
+// supersededBannersLocked appends a banner for each override an owner's
+// push replaced within supersededBannerFor, and forgets the older ones.
+func (s *State) supersededBannersLocked(admin []Banner, now int64, soon func(int64)) []Banner {
+	for _, id := range slices.Sorted(maps.Keys(s.superseded)) {
+		so := s.superseded[id]
+		until := so.atMS + supersededBannerFor.Milliseconds()
+		if now >= until {
+			delete(s.superseded, id)
+			continue
+		}
+		soon(until)
+		admin = append(admin, Banner{ID: "plugins.override_superseded." + strconv.FormatInt(id, 10), Severity: extapi.SeverityWarning,
+			Notice: messages.NewProductError(messages.ErrorPluginOverrideSuperseded, "plugin "+so.o.Owner+" set its "+so.o.Kind+" entry "+so.o.Entry+" again, which replaced the override",
+				map[string]any{"plugin": so.o.Owner, "kind": so.o.Kind, "entry": so.o.Entry})})
+	}
+	return admin
 }
 
 func (s *State) clockBannerUntil() int64 { return s.corrected.toMS + clockBannerFor.Milliseconds() }

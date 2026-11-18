@@ -2,6 +2,7 @@ package pushstate
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -73,6 +74,13 @@ func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, er
 	idx := -1
 	err := s.enqueue(ctx, &op{
 		build: func(b *pstate.Batch) {
+			// The override it replaces goes in the same commit, so a
+			// restart never finds both.
+			for _, other := range s.overrides {
+				if other.Owner == o.Owner && other.Kind == o.Kind && other.Entry == o.Entry {
+					b.DropOverrides = append(b.DropOverrides, other.ID)
+				}
+			}
 			idx = len(b.Overrides)
 			b.Overrides = append(b.Overrides, pstate.Override{Owner: o.Owner, Kind: o.Kind, EntryKey: o.Entry, Generation: int64(o.Generation),
 				Action: o.Action, Value: copyInt(o.Value), ByUser: o.ByUser, AtMS: o.At.UnixMilli(), Reason: o.Reason})
@@ -85,11 +93,6 @@ func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, er
 				return
 			}
 			o.ID = res.OverrideIDs[idx]
-			for id, other := range s.overrides {
-				if other.Owner == o.Owner && other.Kind == o.Kind && other.Entry == o.Entry {
-					delete(s.overrides, id)
-				}
-			}
 			stored := o
 			s.overrides[o.ID] = &stored
 		},
@@ -98,6 +101,37 @@ func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, er
 		return Override{}, err
 	}
 	return o, nil
+}
+
+// RemoveOverride withdraws override id, so the owner's entry is enforced
+// again as the owner last pushed it. An id that is not in force is
+// PLUGIN_OVERRIDE_NOT_FOUND; a persistence failure is returned as it is and
+// leaves the override in force. The hold is reapplied after the commit.
+func (s *State) RemoveOverride(ctx context.Context, id int64) (Override, error) {
+	s.mu.Lock()
+	o, ok := s.overrides[id]
+	var removed Override
+	if ok {
+		removed = *o
+	}
+	s.mu.Unlock()
+	if !ok {
+		return Override{}, OverrideNotFound(id)
+	}
+	err := s.enqueue(ctx, &op{
+		build: func(b *pstate.Batch) { b.DropOverrides = append(b.DropOverrides, id) },
+		after: func(pstate.Result, error) {},
+	})
+	if err != nil {
+		return Override{}, err
+	}
+	return removed, nil
+}
+
+// OverrideNotFound is the refusal of an override id that is not in force.
+func OverrideNotFound(id int64) *messages.ProductError {
+	return messages.NewProductError(messages.ErrorPluginOverrideNotFound, fmt.Sprintf("override %d does not exist", id),
+		map[string]any{"id": id})
 }
 
 // checkOverrideLocked validates req against the owner's held table.

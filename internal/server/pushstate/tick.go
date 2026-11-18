@@ -281,6 +281,9 @@ func (s *State) applyLocked(b *pstate.Batch, w *tickWork, res pstate.Result, err
 	for _, id := range b.DropOverrides {
 		delete(s.overrides, id)
 	}
+	for _, o := range w.dropped {
+		s.superseded[o.ID] = supersededOverride{o: o, atMS: s.clock.nowMS()}
+	}
 	appliedAt := extapi.NewTime(time.UnixMilli(s.clock.nowMS()))
 	for _, pp := range w.pushes {
 		p := pp.part

@@ -41,4 +41,8 @@ const (
 	// again, so its new decision replaced the override ({plugin}, {kind},
 	// {entry}).
 	ErrorPluginOverrideSuperseded = "PLUGIN_OVERRIDE_SUPERSEDED"
+	// ErrorPluginOverrideNotFound: no override {id} is in force; it was
+	// removed, superseded by the plugin's own push, or dropped with the
+	// plugin's uninstall.
+	ErrorPluginOverrideNotFound = "PLUGIN_OVERRIDE_NOT_FOUND"
 )

@@ -83,16 +83,19 @@ type Config struct {
 
 // Defaults of the time rules (ADR 0071 decision 9).
 const (
-	DefaultDownGrace  = time.Hour
-	MinDownGrace      = extapi.MinDownGraceS * time.Second
-	MaxDownGrace      = extapi.MaxDownGraceS * time.Second
-	BootExtension     = 2 * time.Minute
-	downBannerAfter   = time.Minute
-	clockBannerFor    = 24 * time.Hour
-	hwmPersistEvery   = time.Minute
-	defaultTick       = time.Second
-	defaultSelectWait = 2 * time.Second
-	maxTimerWait      = time.Minute
+	DefaultDownGrace = time.Hour
+	MinDownGrace     = extapi.MinDownGraceS * time.Second
+	MaxDownGrace     = extapi.MaxDownGraceS * time.Second
+	BootExtension    = 2 * time.Minute
+	downBannerAfter  = time.Minute
+	clockBannerFor   = 24 * time.Hour
+	// supersededBannerFor is how long an administrator is told that an
+	// owner's push replaced an override.
+	supersededBannerFor = 24 * time.Hour
+	hwmPersistEvery     = time.Minute
+	defaultTick         = time.Second
+	defaultSelectWait   = 2 * time.Second
+	maxTimerWait        = time.Minute
 )
 
 type ownerKind struct{ owner, kind string }
@@ -116,6 +119,10 @@ type State struct {
 	down      map[string]int64
 	downDirty map[string]bool
 	overrides map[int64]*Override
+	// superseded are the overrides an owner's new push replaced, by id,
+	// with the extclock instant of the push: an administrator banner for
+	// supersededBannerFor, never persisted.
+	superseded map[int64]supersededOverride
 	corrected *clockCorrection
 	hwmSaved  int64
 	hwmDirty  bool
@@ -134,6 +141,11 @@ type State struct {
 	fleet      []fleetcap.Node
 	fleetDirty atomic.Bool
 	heldByCap  map[uint]bool
+}
+
+type supersededOverride struct {
+	o    Override
+	atMS int64
 }
 
 type clockCorrection struct {
@@ -168,7 +180,7 @@ func New(cfg Config) *State {
 		cfg: cfg, log: cfg.Log, wake: make(chan struct{}, 1),
 		reg: newRegistry(cfg.Packages), parts: map[ownerKind]*part{}, pending: map[ownerKind]*pendingPush{}, inflight: map[ownerKind]uint64{},
 		spawn: map[string]uint64{}, ready: map[string]uint64{}, down: map[string]int64{}, downDirty: map[string]bool{},
-		overrides: map[int64]*Override{}, heldByCap: map[uint]bool{},
+		overrides: map[int64]*Override{}, superseded: map[int64]supersededOverride{}, heldByCap: map[uint]bool{},
 	}
 	s.clock = newExtclock(cfg.Clock, 0)
 	s.sel = holdpass.New(s.selectPass, cfg.Log.With("component", "capacity_selection"), cfg.SelectFloor)

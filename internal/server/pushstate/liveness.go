@@ -100,6 +100,11 @@ func (s *State) Uninstall(ctx context.Context, owner string) error {
 					delete(s.overrides, id)
 				}
 			}
+			for id, so := range s.superseded {
+				if so.o.Owner == owner {
+					delete(s.superseded, id)
+				}
+			}
 			delete(s.down, owner)
 			delete(s.downDirty, owner)
 			delete(s.spawn, owner)
