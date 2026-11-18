@@ -12,6 +12,7 @@ import (
 // the item's path, so the manifest does not store them.
 const (
 	BundleItemServerDisk    = "server_disk"
+	BundleItemServerHost    = "server_host_identity"
 	BundleItemServerLog     = "server_log"
 	BundleItemDebugFile     = "debug_file"
 	BundleItemNode          = "node"
@@ -29,6 +30,8 @@ func (it BundleItem) ID() string {
 	switch {
 	case it.Path == "server/disk.json":
 		return BundleItemServerDisk
+	case it.Path == "server/host-identity.json":
+		return BundleItemServerHost
 	case it.Path == "server/gpuworks-server.log":
 		return BundleItemServerLog
 	case parts[0] == "debug":

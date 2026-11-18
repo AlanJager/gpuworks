@@ -1366,6 +1366,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 |---|---|
 | `manifest.json` | The collection's scope, the server version, and each part's check result: `pass` collected whole, `warn` cut at its size limit, `skip` not read (node offline, agent version without support), `fail` the read failed (with its error text) |
 | `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
+| `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#the-management-servers-host-identity) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
 | `instances/<uuid>.log` | The chosen deployments' instance logs |
@@ -1396,7 +1397,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: f96b9be7ff119f3c3bb55589bf57153e0e05fa711cc0e813299c439d0b32c214 -->
+<!-- translation-source-sha256: 31d3cfd3736d14e7b9a7906e6ed2f2acf7c1e23dd1df6fd7fb4c2eb9533faf94 -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

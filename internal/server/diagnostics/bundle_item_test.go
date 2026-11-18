@@ -94,7 +94,8 @@ func TestBundleItemManifestShapeRoundTrips(t *testing.T) {
 func TestBundleItemIDs(t *testing.T) {
 	for path, want := range map[string]string{
 		"server/disk.json": BundleItemServerDisk, "server/gpuworks-server.log": BundleItemServerLog,
-		"debug/s1/session.json": BundleItemDebugFile, "nodes/n1": BundleItemNode, "nodes/n1/agent.log": BundleItemNodeAgentLog,
+		"server/host-identity.json": BundleItemServerHost,
+		"debug/s1/session.json":     BundleItemDebugFile, "nodes/n1": BundleItemNode, "nodes/n1/agent.log": BundleItemNodeAgentLog,
 		"nodes/n1/doctor.json": BundleItemNodeDoctor, "nodes/n1/debug/s1.log": BundleItemNodeDebugFile,
 		"instances/i1.log": BundleItemInstanceLog, "db": BundleItemRecords, "db/nodes.json": BundleItemRecord,
 	} {

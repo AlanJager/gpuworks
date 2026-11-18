@@ -23,6 +23,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/hostidentity"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
@@ -103,6 +104,9 @@ type Manager struct {
 	now   func() time.Time
 
 	sources Sources
+	// hostFacts is this machine's host identity, salted into
+	// server/host-identity.json (hostidentity.Local).
+	hostFacts func() hostidentity.Facts
 	// bundleDir, when set, holds the collections instead of <dir>/bundles.
 	bundleDir string
 
@@ -129,7 +133,7 @@ type runningSession struct {
 
 // NewManager keeps sessions under dir (<data>/diagnostics).
 func NewManager(dir string, tee *debuglog.Tee, nodes Nodes, scope Scope, log *slog.Logger) *Manager {
-	return &Manager{dir: dir, tee: tee, nodes: nodes, scope: scope, log: log, now: time.Now}
+	return &Manager{dir: dir, tee: tee, nodes: nodes, scope: scope, log: log, now: time.Now, hostFacts: hostidentity.Local}
 }
 
 // DebugDir is where the sessions' files live.

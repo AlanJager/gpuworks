@@ -15,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/hwident"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/hostidentity"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
@@ -135,6 +137,9 @@ func TestBundleCollectsTheWindowRedactedAndSaysWhatItSkipped(t *testing.T) {
 		"n-old": nil, // an agent that predates the read: the stream closes empty
 	}}
 	m.SetSources(src)
+	m.hostFacts = func() hostidentity.Facts {
+		return hostidentity.Facts{V: 1, SystemUUID: "4c4c4544-0042-3510-8051-b4c04f4e3432", MachineID: strings.Repeat("ab", 16)}
+	}
 	// A debug session inside the window.
 	sessionDir := filepath.Join(m.DebugDir(), "s1")
 	_ = os.MkdirAll(filepath.Join(sessionDir, "requests"), 0o700)
@@ -187,6 +192,21 @@ func TestBundleCollectsTheWindowRedactedAndSaysWhatItSkipped(t *testing.T) {
 	if err := json.Unmarshal([]byte(files["server/disk.json"]), &disk); err != nil || len(disk.Dirs) != 1 || disk.Dirs[0].Path != dataDir ||
 		len(disk.Dirs[0].Entries) != 1 || disk.Dirs[0].Entries[0] != (ServerDirEntry{Name: "gpuworks.db-wal", Bytes: 4096}) {
 		t.Fatalf("server/disk.json = %s", files["server/disk.json"])
+	}
+	// The server machine's identity is salted with the fixed support key:
+	// digests and tails, never a raw value, and unknown facts left out.
+	hostDoc := files["server/host-identity.json"]
+	var host ServerHostIdentity
+	if err := json.Unmarshal([]byte(hostDoc), &host); err != nil || host.SystemUUID == nil || host.MachineID == nil ||
+		host.BoardSerial != nil || host.RootFSUUID != nil || host.SystemUUID.Tail != "3432" ||
+		host.SystemUUID.H != hwident.Part([]byte("core\x00support_bundle"), hwident.KindHost, "4c4c4544-0042-3510-8051-b4c04f4e3432").H {
+		t.Fatalf("server/host-identity.json = %s", hostDoc)
+	}
+	if strings.Contains(hostDoc, "4c4c4544") || strings.Contains(hostDoc, "abababab") {
+		t.Fatalf("a raw value reached the collection: %s", hostDoc)
+	}
+	if got := items["server/host-identity.json"]; got.Status != proto.CheckPass || got.ID() != BundleItemServerHost {
+		t.Fatalf("host identity item = %+v", got)
 	}
 	if !strings.Contains(files["instances/inst-1.log"], "engine started inst-1") {
 		t.Fatalf("instance log = %q", files["instances/inst-1.log"])

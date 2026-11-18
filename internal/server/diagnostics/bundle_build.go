@@ -72,6 +72,11 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 		return writeServerDisk(w, m.sources.ServerDirs())
 	})
 
+	// The server machine's identity, salted.
+	stage("server/host-identity.json", func(w io.Writer) (int64, bool, error) {
+		return writeServerHostIdentity(w, m.hostFacts())
+	})
+
 	// The server's log in the window.
 	stage("server/gpuworks-server.log", func(w io.Writer) (int64, bool, error) {
 		return m.serverLogWindow(w, b.From, b.To)
