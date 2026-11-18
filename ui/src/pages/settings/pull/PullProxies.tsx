@@ -61,13 +61,13 @@ export default function PullProxies() {
       title: t("pull.proxies.order"),
       key: "order",
       width: 120,
-      render: (_: unknown, _proxy, index) => (
+      render: (_: unknown, proxy, index) => (
         <Space size={4}>
-          <span>{index + 1}</span>
+          <span>{proxy.position + 1}</span>
           <Button
             size="small"
             type="text"
-            aria-label={t("pull.proxies.moveUp", { n: index + 1 })}
+            aria-label={t("pull.proxies.moveUp", { n: proxy.position + 1 })}
             icon={<ArrowUpOutlined aria-hidden />}
             disabled={ordering || index === 0}
             onClick={() => void reorder(index, -1)}
@@ -75,7 +75,7 @@ export default function PullProxies() {
           <Button
             size="small"
             type="text"
-            aria-label={t("pull.proxies.moveDown", { n: index + 1 })}
+            aria-label={t("pull.proxies.moveDown", { n: proxy.position + 1 })}
             icon={<ArrowDownOutlined aria-hidden />}
             disabled={ordering || index === proxies.length - 1}
             onClick={() => void reorder(index, 1)}
@@ -123,7 +123,7 @@ export default function PullProxies() {
       key: "actions",
       fixed: "right",
       width: 140,
-      render: (_: unknown, proxy, index) => (
+      render: (_: unknown, proxy) => (
         <Space size={4}>
           <Button size="small" type="link" onClick={() => setEditing(proxy)}>{t("pull.action.edit")}</Button>
           <Popconfirm
@@ -134,7 +134,7 @@ export default function PullProxies() {
             okButtonProps={{ danger: true }}
             onConfirm={() => remove(proxy)}
           >
-            <Button size="small" type="link" danger aria-label={t("pull.proxies.deleteProxy", { n: index + 1 })}>{t("pull.action.delete")}</Button>
+            <Button size="small" type="link" danger aria-label={t("pull.proxies.deleteProxy", { n: proxy.position + 1 })}>{t("pull.action.delete")}</Button>
           </Popconfirm>
         </Space>
       ),
