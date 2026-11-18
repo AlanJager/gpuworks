@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
@@ -25,7 +25,10 @@ type NodeT = import("../src/api.ts").Node;
 type UpgradeEventT = import("../src/agentUpgrade.ts").UpgradeEvent;
 type PendingUpgradeT = import("../src/agentUpgrade.ts").PendingUpgrade;
 
-afterEach(() => cleanup());
+const { api: upgradeAPI } = await import("../src/api.ts");
+const originalPreview = upgradeAPI.agentUpgradePreview;
+beforeEach(() => { upgradeAPI.agentUpgradePreview = async () => ({ target_version: "v2", manifest_fingerprint: "digest", node_uuids: ["a"], counts: { eligible: 1 }, nodes: [{ node_uuid: "a", name: "host-a", from_version: "v1", os: "linux", arch: "amd64", transport: "push", eligibility: "eligible" }] }); });
+afterEach(() => { cleanup(); upgradeAPI.agentUpgradePreview = originalPreview; });
 
 const T0 = Date.parse("2026-09-25T10:00:00Z");
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -137,10 +140,10 @@ test("an error left over from an earlier attempt does not fail a retry", async (
 });
 
 function renderButton(props: Partial<React.ComponentProps<typeof AgentUpgradeButton>> & { onUpgrade?: () => void }) {
-	return render(<I18nextProvider i18n={i18n}><AgentUpgradeButton online onUpgrade={() => {}} {...props} /></I18nextProvider>);
+	return render(<I18nextProvider i18n={i18n}><AgentUpgradeButton nodeUUID="a" online onUpgrade={() => {}} {...props} /></I18nextProvider>);
 }
 
-test("upgrade button is a focusable native button that only fires when idle", () => {
+test("upgrade button is a focusable native button that only fires when idle", async () => {
 	let clicks = 0;
 	const onUpgrade = () => { clicks += 1; };
 	const { rerender } = renderButton({ onUpgrade });
@@ -150,9 +153,9 @@ test("upgrade button is a focusable native button that only fires when idle", ()
 	button.focus();
 	assert.equal(document.activeElement, button);
 	fireEvent.click(button);
-	assert.equal(clicks, 1);
+	await waitFor(() => assert.equal(clicks, 1));
 
-	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton online phase="requesting" onUpgrade={onUpgrade} /></I18nextProvider>);
+	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton nodeUUID="a" online phase="requesting" onUpgrade={onUpgrade} /></I18nextProvider>);
 	fireEvent.click(screen.getByRole("button", { name: /升级 Agent/ }));
 	assert.equal(clicks, 1);
 });
@@ -163,11 +166,11 @@ test("upgrade button shows the waiting state and is disabled while waiting or of
 	assert.equal((waitingButton as HTMLButtonElement).disabled, true);
 	assert.ok(waitingButton.className.includes("ant-btn-loading"));
 
-	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton online phase="requesting" onUpgrade={() => {}} /></I18nextProvider>);
+	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton nodeUUID="a" online phase="requesting" onUpgrade={() => {}} /></I18nextProvider>);
 	const requesting = screen.getByRole("button", { name: /升级 Agent/ });
 	assert.ok(requesting.className.includes("ant-btn-loading"));
 
-	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton online={false} onUpgrade={() => {}} /></I18nextProvider>);
+	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton nodeUUID="a" online={false} onUpgrade={() => {}} /></I18nextProvider>);
 	assert.equal((screen.getByRole("button", { name: /升级 Agent/ }) as HTMLButtonElement).disabled, true);
 });
 

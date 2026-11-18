@@ -72,9 +72,8 @@ func (a *apiHandlers) setNodeScheduling(w http.ResponseWriter, r *http.Request) 
 }
 
 // setCardScheduling stops one card's scheduling, or makes it schedulable
-// again: an operator's stop holds until they lift it, and making a card the
-// platform judged unusable schedulable lets work onto it until the next
-// report judges it afresh (store.SetCardScheduling). The node comes back,
+// again. Both decisions persist until the operator changes them; reports
+// keep health facts current without revoking scheduling. The node comes back,
 // cards included, as GET /nodes/{uuid} returns it.
 func (a *apiHandlers) setCardScheduling(w http.ResponseWriter, r *http.Request) {
 	var req dto.CardSchedulingRequest

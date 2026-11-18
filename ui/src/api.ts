@@ -77,7 +77,7 @@ export interface GPU {
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
   /** An operator took the card out of scheduling; only they put it back. */
   scheduling_stopped?: boolean;
-  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  /** An operator enabled scheduling; this persists until disabled, across reports and restarts. */
   scheduling_allowed?: boolean;
   /** What an operator may do to the card now, decided by the server. */
   scheduling_actions?: CardScheduling[];
@@ -2657,6 +2657,8 @@ export interface MCPStatus {
 }
 
 export interface ApiKey {
+  /** Stable usage-analytics identifier; older servers omit it. */
+  id?: number;
   /** Recorded owner; zero is a historical unassigned key. Older servers omit it. */
   user_id?: number;
   name: string;
@@ -4267,7 +4269,7 @@ export interface PhysicalGPU {
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
   /** An operator took the card out of scheduling; only they put it back. */
   scheduling_stopped?: boolean;
-  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  /** An operator enabled scheduling; this persists until disabled, across reports and restarts. */
   scheduling_allowed?: boolean;
   /** What an operator may do to the card now, decided by the server. */
   scheduling_actions?: CardScheduling[];
@@ -5061,6 +5063,7 @@ export const api = {
     sendJSON<{ status: string }>("POST", "/api/v1/auth/password", { current_password: currentPassword, new_password: newPassword }),
   models: () => getJSON<List<Model>>("/api/v1/models"),
   modelsPage: (query: ListQuery) => getJSON<ModelPage>(`/api/v1/models?${listQueryString(query)}`),
+  modelPresence: (ids: number[]) => getJSON<Record<number, ModelPresenceSummary>>(`/api/v1/models/presence?ids=${ids.join(",")}`),
   model: (id: number) => getJSON<Model>(`/api/v1/models/${id}`),
   templateWeightModels: (templateID: number, specSource: string, specName: string) =>
     getJSON<TemplateWeightModels>(

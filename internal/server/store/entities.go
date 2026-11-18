@@ -398,10 +398,9 @@ type GPU struct {
 	// SchedulingStopped: the operator took the card out of scheduling. It
 	// holds until they put it back; nothing the platform sees lifts it.
 	SchedulingStopped bool `gorm:"not null;default:false"`
-	// SchedulingAllowedAt: when the operator let work onto a card the
-	// platform had judged unusable (a fault, or a process outside the
-	// platform). It holds until the first report at least
-	// cardAllowanceWindow later, which judges the card afresh.
+	// SchedulingAllowedAt records an explicit enable decision. Its presence
+	// persists until the operator disables scheduling; the timestamp is not
+	// an expiry. Reports never change this decision or hide health facts.
 	SchedulingAllowedAt *time.Time
 
 	CreatedAt time.Time

@@ -991,20 +991,19 @@
     "verifiedAt": "The previous attempt was later verified to have ended: {{at}}"
   },
   "cardScheduling": {
-    "stoppedTag": "Scheduling stopped",
-    "allowedTag": "Allowed for now",
+    "stoppedTag": "Scheduling disabled",
+    "allowedTag": "Scheduling enabled",
     "state": {
-      "stopped": "Stopped by an administrator; the platform never lifts it",
-      "allowed": "Allowed for now: the platform judged it unusable and judges it again on the next report (about a minute)",
+      "stopped": "Disabled by an administrator; remains disabled until enabled",
+      "allowed": "Enabled by an administrator; remains enabled until disabled",
       "schedulable": "Schedulable",
       "blocked": "Judged unusable by the platform"
     },
-    "stop": "Stop scheduling",
-    "resume": "Resume scheduling",
-    "allow": "Allow for now",
-    "allowConfirm": "The platform judged this card unusable. Once allowed it takes new deployments until the next report, about a minute later, judges it again. Allow it?",
+    "stop": "Disable scheduling",
+    "resume": "Enable scheduling",
+    "allowConfirm": "The platform judged this card unusable. Enabling scheduling permits new deployments until you disable it. Health and outside use remain visible. Enable scheduling?",
     "done": {
-      "stopped": "Scheduling stopped on this card",
+      "stopped": "Scheduling disabled on this card",
       "schedulable": "This card is schedulable"
     }
   },

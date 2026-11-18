@@ -101,7 +101,7 @@
 
 /* The expanded detail sits one step down from its row: a darker band,
    indented past the expand column, with a guide line on its left. */
-.detail-body .ant-table-expanded-row > td { background: #f5f7fa !important; padding: 12px 16px !important; }
+.detail-body .ant-table-expanded-row > td { background: var(--detail-expanded-row-background, #f5f7fa) !important; padding: 12px 16px !important; }
 .detail-extra {
   margin-left: 32px;
   padding: 2px 0 2px 14px;
@@ -126,7 +126,7 @@
 .detail-body .ant-table-content { scrollbar-width: auto; scrollbar-color: auto; }
 /* A table given no scroll prop has no overflow of its own and would push the
    drawer sideways; every detail table scrolls inside its box. */
-.detail-body .ant-table-content { overflow-x: auto; }
+.detail-body .ant-table-content { overflow-x: auto; container-type: var(--detail-table-container-type, normal); }
 /* The last header's resize handle hangs 4px past the table; it is not
    content and must not make the table scroll. */
 .detail-body .ant-table-thead > tr > th:last-child .resource-table-resizer { display: none; }
@@ -162,3 +162,17 @@
 /* A long identifier in a row (a node's name): capped with an ellipsis, the
    full text on hover, so it cannot push the row's switches out of view. */
 .detail-body .detail-name-cap { display: inline-block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+
+/* Expanded facts belong to the visible drawer, even when the row itself
+   needs horizontal scrolling for source pickers and actions. */
+.image-node-table { --detail-table-container-type: inline-size; --detail-expanded-row-background: var(--surface-raised); }
+.image-node-extra { position: sticky; left: 16px; width: calc(100cqw - 32px); min-width: 0; }
+.image-node-extra .detail-extra { grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); }
+.image-node-extra .detail-extra > div { min-width: 0; }
+.image-node-extra .detail-extra dd,
+.image-node-extra .detail-extra code { white-space: normal; word-break: normal; overflow-wrap: anywhere; }
+
+.image-node-extra .detail-extra dt { color: var(--fg-subtle); }
+.image-node-extra .detail-extra dd { color: var(--fg-default); }
+.image-node-extra .detail-extra,
+.image-node-extra .detail-extra-actions { border-color: var(--border-subtle); }

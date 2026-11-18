@@ -7,7 +7,7 @@ import (
 )
 
 func TestAPIKeyOwnershipWireKeepsAnExplicitZero(t *testing.T) {
-	const wire = `{"user_id":0,"name":"legacy","prefix":"gw-legacy000","created_at":"2026-11-18T00:00:00Z","all_deployments":true,"deployments":[],"priority":{"class":"","ceiling":"","policy":"within_ceiling"}}`
+	const wire = `{"id":81,"user_id":0,"name":"legacy","prefix":"gw-legacy000","created_at":"2026-11-18T00:00:00Z","all_deployments":true,"deployments":[],"priority":{"class":"","ceiling":"","policy":"within_ceiling"}}`
 	for _, value := range []string{wire, strings.Replace(wire, `"user_id":0`, `"user_id":7`, 1)} {
 		var key APIKey
 		if err := json.Unmarshal([]byte(value), &key); err != nil {

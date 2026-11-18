@@ -88,6 +88,7 @@ func (a *apiHandlers) apiKeyDTOs(r *http.Request) ([]dto.APIKey, error) {
 			deployments = append(deployments, dto.APIKeyDeployment{ID: g.DeploymentID, Name: g.Name, ServedName: g.ServedName})
 		}
 		out = append(out, dto.APIKey{
+			ID:     k.ID,
 			UserID: k.UserID,
 			Name:   k.Name, Prefix: k.Prefix, LastUsed: utcTimePtr(k.LastUsed), Created: utcTime(k.CreatedAt), Revoked: utcTimePtr(k.RevokedAt),
 			AllDeployments: !k.Restricted, Deployments: deployments, Priority: apiKeyPriorityDTO(k, names),
