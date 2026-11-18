@@ -34,6 +34,12 @@ if [ ! -f "$BUDGET_FILE" ]; then
   exit 1
 fi
 
+if command -v node >/dev/null 2>&1; then
+  ./scripts/check_ui_architecture.sh
+else
+  echo "NOTE: node not found; UI architecture checks run separately in the UI build"
+fi
+
 # Every import-graph measurement below reads `go list -e ... 2>/dev/null`. -e
 # keeps per-package errors (a missing webui dist) out of the exit status, but a
 # toolchain that cannot load the module at all — older than go.mod's go line
@@ -553,7 +559,6 @@ while IFS= read -r line || [ -n "$line" ]; do
     continue
   fi
   if [ "$measured" = "UI" ]; then
-    echo "  $key -/$limit ($direction; measured by ./scripts/check_ui_architecture.sh)"
     continue
   fi
   if [ "$measured" = "EXTERNAL" ]; then

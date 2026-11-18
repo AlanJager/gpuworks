@@ -9,6 +9,9 @@ check_max() {
   case "$limit" in ''|*[!0-9]*) echo "Missing or invalid max budget for $key" >&2; exit 1 ;; esac
   case "$count" in ''|*[!0-9]*) echo "Invalid count for $key: $count" >&2; exit 1 ;; esac
   echo "$key $count/$limit (max)"
+  if [ "$count" -lt "$limit" ]; then
+    echo "WARNING: $key is below its budget ($count < $limit); budget can be tightened" >&2
+  fi
   [ "$count" -le "$limit" ]
 }
 

@@ -23,7 +23,8 @@
   `EXTERNAL`，预算循环只打印并跳过，由专门脚本测量。
 
 文案长度、免责短语、覆盖层导入和逐文件 antd 检查由 `./scripts/check_ui_architecture.sh` 执行。
-GitLab 的 `core-ui`、GitHub 的 `ui` 和本地 `make ui` 共用这个入口。前三项预算仍由架构脚本对比基线。
+GitLab 的 `core-ui`、GitHub 的 `ui` 和本地 `make ui` 共用这个入口。`./scripts/check_architecture.sh`
+在有 Node 时也调用它；无 Node 时打印提示，由 UI 构建执行这四项检查。前三项预算仍由架构脚本对比基线。
 
 初值取 2026-09-09 `refactor/refactor-2` 分支上的实测结果，不是计划正文里的人工估算值。
 
