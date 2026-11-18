@@ -2,7 +2,7 @@
 
 The wire formats of plugin package manifests, publisher certificates, trust updates, revocation lists, package indexes, signature envelopes, the `gwx/1` handshake, health and error messages, and the tables plugins push are defined in a separate Go module, `pkg/extapi` (module path `gpuworks.ai/gpuworks/pkg/extapi`). It uses only the standard library, so a plugin depends on it and not on the server.
 
-These formats are frozen, and this page describes each of them. The server already verifies, installs and removes plugin packages and imports trust updates and revocation lists as this page describes (the `gpuworks plugin` subcommands, see [CLI Reference](cli.md)); the plugin host that starts plugin processes and enforces pushed tables is **not built yet**: the merge, grace and timeline semantics this page mentions are conventions of the formats that the future plugin host will enforce. The design and its trade-offs are in [ADR 0071](../adr/0071-installable-extensions.md); the contract for modules compiled into the server is in [Extension Points](../dev/extensions.md).
+These formats are frozen, and this page describes each of them. The server verifies, installs and removes plugin packages and imports trust updates and revocation lists as this page describes (the `gpuworks plugin` subcommands, see [CLI Reference](cli.md)); the plugin host starts and supervises plugin processes and takes and enforces pushed tables, including the merge, grace and timeline semantics this page mentions. What the plugin host does today and what is not built yet is in [Extension Points](../dev/extensions.md#installable-extensions); the design and its trade-offs are in [ADR 0071](../adr/0071-installable-extensions.md).
 
 The golden corpus `pkg/extapi/testdata/golden/` is the authority on the formats. Every JSON example on this page is byte-for-byte identical to a file in the corpus, named in a comment above the example in the page source, and a test in `pkg/extapi` (`TestReferencePageExamplesAreGoldenFiles`) compares each one. That is why the examples are canonical JSON (one line, sorted keys).
 
@@ -91,13 +91,14 @@ An example that uses every field is `manifest/v1/valid/full.json` in the corpus.
 | `requires` | Capabilities the package cannot run without → the lowest version it needs; a server that lacks one judges the package incompatible and names the capability |
 | `uses` | Optional capabilities → the highest version the package can use, negotiated down at run time; a capability cannot also appear in `requires` |
 | `roles` | Privileged roles the package claims, sorted; a claim counts only if the certificate grants it |
-| `permissions` | What the administrator approves, `<verb>:<object>`, sorted; the only verbs are `events`, `http`, `metrics`, `node`, `notify`, `push`, `read` and `svc` |
+| `permissions` | What the administrator approves, `<verb>:<object>`, sorted; the only verbs are `crypto`, `events`, `http`, `metrics`, `node`, `notify`, `push`, `read` and `svc`, and each verb's objects come from a closed vocabulary, see [Permissions](#permissions) |
 | `features` | Declared feature keys `{key, presentation, gate}`: `presentation` is `promote` (shown as locked) or `conceal` (hidden); `gate` is `none` (always full), `self` (this package answers) or `authority` (only the namespace authority answers) |
 | `routes` | The package's HTTP routes; see the table below |
 | `ui` | The console bundle: `mode` is `module` (a same-origin ES module, which needs the certificate grant) or `iframe`; `entry` is a member under `ui/`; `sdk` is the range of console SDK majors; `nav` are menu entries |
 | `node` | The node part: `app` is the application description under `node/`, `images` are image archives for offline sites under `node/images/` |
-| `runtime` | The server part: `lifecycle` is `resident` (started with the server) or `on_demand` (started on use, stopped when idle, owns no tables); `mem_mib`, `cpu_milli` and `max_concurrency` (≤1024) take defaults at 0; `devices` are device nodes under `/dev`, sorted |
+| `runtime` | The server part: `lifecycle` is `resident` (started with the server) or `on_demand` (started on use, stopped when idle; the server's policy lets it hold no `push:` permission and declare no feature, see [The server's install policy](#the-servers-install-policy)); `mem_mib`, `cpu_milli` and `max_concurrency` (≤1024) take defaults at 0; `devices` are device nodes under `/dev`, sorted |
 | `storage` | The data directory: `kind` is `sqlite` or `files`; `ha` is `shipped` (replicated with the server database) or `leader_local` (a rebuildable cache); `state_version` is the data format version this build writes (≥1); `cold_copy_safe` means the directory may be copied while the plugin is stopped |
+| `settings` | Values an administrator configures for the package, see [Settings](#settings) |
 | `host_setup` | Host steps from a closed vocabulary, never a script; today only `usb_device` (`vendor_id` and `product_id`, four lowercase hex digits each) |
 | `codes` | Every code the package can emit, sorted; each has en and zh text in the package's locales |
 | `files` | Every member except `manifest.json`, `manifest.sig` and `publisher.crt`, sorted by path: `{path, size, sha256, exec}`; paths are relative, every segment starts with a letter, digit or underscore (no `.`, `..` or hidden files), at most 512 bytes |
@@ -110,22 +111,82 @@ When a part of the manifest is present, `requires` must list its capability, so 
 | `ui` | `ui.bundle` |
 | `node` | `node.app` |
 | Non-empty `host_setup` | `host.setup` |
+| Non-empty `settings` | `host.config` |
 
 Routes are served at `/api/v1/x/<id><pattern>`:
 
 | Field | Rules |
 |---|---|
 | `method` | `GET`, `POST`, `PUT`, `PATCH` or `DELETE`; `method` plus `pattern` is unique |
-| `pattern` | Starts with `/`, chi syntax, parameters written `{name}` |
+| `pattern` | Starts with `/` and has only literal segments (lowercase letters, digits, `_`, `.` and `-`) and parameters `{name}` without a regular expression; `/` alone is the package's root. Regular-expression parameters (such as `{id:[0-9]+}`), empty segments, `.` and `..` segments, percent-escapes and a parameter named twice are refused, so the server and the plugin's own router never match a path differently |
 | `action` | `<package id>.<verb>`, the action name an authorizer grants |
 | `access` | `admin` (administrators, by session or platform token), `admin_session` (administrator sessions only), `member` (any signed-in user or platform token), `public` (no authentication) |
 | `feature` / `ungated` | Exactly one is set; `feature` must be a key this manifest declares |
 | `write_when_read_only` | Lets this non-GET write through while the feature is read-only (a write that only removes or relaxes); needs `feature` |
 | `max_body` | Request body limit; 0 means 1 MiB, at most 1 GiB; above 1 MiB the package needs the permission `http:uploads` |
 | `timeout_s` | 0 means 60 seconds, at most 600 |
-| `stream` / `websocket` | A streamed response / a WebSocket upgrade (GET only, not together with `stream`) |
+| `stream` / `websocket` | A streamed response / a WebSocket upgrade (GET only, not together with `stream`); `websocket` also needs `routes.websocket` in `requires` or `uses`, so a server that offers only `routes` never accepts it as a plain route |
+| `html` | Lets the route answer `text/html`; only `public`, `admin` and `admin_session` routes may set it |
 | `ai_readable` | The assistant and MCP may read it; GET only |
 | `cookies` / `rate` | `public` routes only: may set cookies (a single sign-on callback) / a token bucket per client address `{per_minute, burst}`, each 1–100000 |
+
+### Permissions
+
+Each permission names the capability that serves it. A manifest that holds a permission must list its capability in `requires` or `uses`: a server that does not offer a required capability refuses the package as incompatible (`PLUGIN_INCOMPATIBLE`); when only an optional one is missing, the package installs but does not get that service. An object outside the vocabulary (a misspelled read surface, an unknown table kind or event topic) makes the manifest invalid (`PLUGIN_WIRE_INVALID` with `rule` `enum`), a missing capability is `relation`, and `field` names the permission in both cases. The risk class comes from the server with [`GET /api/v1/plugins`](api.md); the console only shows it.
+
+| Permission | Capability | Risk |
+|---|---|---|
+| `read:features` | `host.features` | `low` |
+| `read:fleet` | `host.fleet` | `elevated` |
+| `read:node_clocks` | `host.node_clocks` | `low` |
+| `read:host_identity` | `host.host_identity` | `high` |
+| `read:directory` | `host.directory` | `high` |
+| `read:usage` | `host.usage` | `elevated` |
+| `read:audit` | `host.audit` | `high` |
+| `read:attestations` | `host.attestations` | `elevated` |
+| `read:node_identity` | `host.node_identity` | `high` |
+| `read:node_inventory` | `host.nodes` | `elevated` |
+| `push:availability` | `table.availability` | `high` |
+| `push:fleet_capacity` | `table.fleet_capacity` | `high` |
+| `push:node_holds` | `table.node_holds` | `high` |
+| `push:banners` | `table.banners` | `low` |
+| `push:attestations` | `table.attestations` | `low` |
+| `push:allowances`, `push:insert_caps`, `push:roles.core_actions` | `table.<kind>` | `high` |
+| `push:prices` | `table.prices` | `elevated` |
+| `events:node_fleet` | `host.fleet` | `elevated` |
+| `http:routes` | `routes` | `low` |
+| `http:public` | `routes` | `elevated` |
+| `http:uploads` | `routes` | `low` |
+| `node:workloads`, `node:jobs` | `node.app` | `high` |
+| `notify:raise` | `host.notify` | `low` |
+| `metrics:expose` | `metrics.expose` | `low` |
+| `crypto:derive_key` | `host.derive_key` | `elevated` |
+
+- The object of `push:` is a table kind this module defines, or a kind reserved for privileged tables: `allowances`, `insert_caps`, `prices` and `roles.core_actions` (no table schema yet; pushing them needs a certificate grant). `fleet_capacity` and the reserved kinds all need a certificate grant.
+- `events:` has only `node_fleet`: the change feed of the fleet read, so it shares `host.fleet` with `read:fleet`. `svc:` has no object yet. New objects arrive only with new capabilities.
+- A permission the server does not know is shown as `high`.
+
+### Settings
+
+`settings` declares the values an administrator configures for the package, at most 64, and needs `host.config`. The server validates a value against its declaration before storing it and hands the stored values to the plugin.
+
+| Field | Rules |
+|---|---|
+| `key` | lower_snake, unique in the manifest |
+| `type` | `string`, `integer`, `boolean` or `enum` |
+| `label_key` | The locale key of the label |
+| `required` | A configuration must set it |
+| `secret` | `string` only: the server stores it sealed, never shows it back and hands it only to this plugin |
+| `values` | `enum` only, and required there: the allowed values, lower_snake, sorted, at most 64 |
+| `min` / `max` | `integer` only: inclusive bounds, absent for none; `max` is not below `min` |
+| `max_length` | `string` only: a limit in bytes; 0 means 4096, at most 65536 |
+
+### The server's install policy
+
+Beyond the manifest, the server applies its own policy after the capability check and before the site policy. It applies on install and on every recheck, so an installed package is refused on recheck as well:
+
+- A package with routes must hold `http:routes`, and one with a `public` route also `http:public`; otherwise `PLUGIN_POLICY_REFUSED`, with the missing permission as `rule` and the route (such as `routes.0`) as `value` and `field`.
+- An `on_demand` package is not running most of the time, so it may hold no `push:` permission and declare no feature (no one would answer for its keys while it is stopped); otherwise `PLUGIN_STATE_ON_DEMAND` with `id` and `permission` or `feature`.
 
 ## Publisher certificate
 
@@ -436,4 +497,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 7eae169f98108679e8ccbcd00d2e700062195877ad0a9171304443a89f3e1475 -->
+<!-- translation-source-sha256: e298e4dec627ab832a8d39a1b80289e0aadb0fa76c2c058a407d7bf769ad59ed -->

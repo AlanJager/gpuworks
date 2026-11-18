@@ -1689,7 +1689,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/plugins` | 已安装的包：`{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`，按 `id` 排序 | `JWT(admin)` |
+| GET | `/api/v1/plugins` | 已安装的包：`{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`，按 `id` 排序；`permissions` 是 `[{name, risk}]`，按 `name` 排序，`risk` 为 server 给出的 `low`、`elevated` 或 `high`（[权限](plugin-protocol.md#权限)） | `JWT(admin)` |
 | POST | `/api/v1/plugins/install?approve=<批准值>&enable=<bool>` | 请求体是 `.gwpkg` 本身（`application/octet-stream`）。没带或带错 `approve` 时回 409 `PLUGIN_APPROVAL_REQUIRED`，`params` 给出 `id`、`version`、`approve_hash` 以及它涵盖的 `permissions`、`roles`（逗号分隔），什么都不装；带对了返回 `{plugin, previous?, unchanged}`。`enable` 缺省为 `false` | 管理会话，admin |
 | POST | `/api/v1/plugins/{id}/enable` | 启用并启动服务端部分，返回该包；不再通过校验的包回 409 `PLUGIN_BROKEN` | 管理会话，admin |
 | POST | `/api/v1/plugins/{id}/disable` | 停止并不再启动，返回该包；它推送的表照常执行，并按掉线计算宽限 | 管理会话，admin |

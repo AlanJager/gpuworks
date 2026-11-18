@@ -1675,7 +1675,7 @@ The management API of installed signed plugin packages (`.gwpkg`); see [Extensio
 
 | Method | Path | Description | Authentication |
 |---|---|---|---|
-| GET | `/api/v1/plugins` | Installed packages: `{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`, sorted by `id` | `JWT(admin)` |
+| GET | `/api/v1/plugins` | Installed packages: `{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`, sorted by `id`; `permissions` is `[{name, risk}]`, sorted by `name`, where `risk` is `low`, `elevated` or `high` as the server classifies it ([Permissions](plugin-protocol.md#permissions)) | `JWT(admin)` |
 | POST | `/api/v1/plugins/install?approve=<approval>&enable=<bool>` | The request body is the `.gwpkg` itself (`application/octet-stream`). Without `approve`, or with a wrong one, it answers 409 `PLUGIN_APPROVAL_REQUIRED` whose `params` give `id`, `version`, `approve_hash` and the `permissions` and `roles` it covers (comma-separated), and installs nothing; with the right one it returns `{plugin, previous?, unchanged}`. `enable` defaults to `false` | Management session, admin |
 | POST | `/api/v1/plugins/{id}/enable` | Enable and start the server part, returning the package; a package that no longer verifies answers 409 `PLUGIN_BROKEN` | Management session, admin |
 | POST | `/api/v1/plugins/{id}/disable` | Stop it and keep it from starting, returning the package; its pushed tables stay enforced and its grace runs as for a down plugin | Management session, admin |
@@ -2293,4 +2293,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 606a96d6107f0f05a4d197673607deda352376cb5942bf32cf4144d8aa35f13c -->
+<!-- translation-source-sha256: 9f96a67d2f8e8322771348213548273f4d62095bfef57b91fd261d7d6f12f0c1 -->

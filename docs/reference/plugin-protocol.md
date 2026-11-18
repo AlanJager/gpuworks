@@ -2,7 +2,7 @@
 
 插件包清单、发布者证书、信任更新、吊销列表、包索引、签名信封、`gwx/1` 的握手、健康与错误消息，以及插件推送的表，线上格式都定义在独立的 Go 模块 `pkg/extapi`（模块路径 `gpuworks.ai/gpuworks/pkg/extapi`）里。它只依赖标准库，插件只依赖它，不依赖 server。
 
-这些格式已经冻结，本页逐个说明。server 已经按本页校验、安装与移除插件包，导入信任更新与吊销列表（`gpuworks plugin` 子命令，见 [CLI 参考](cli.md)）；拉起插件进程、执行推送表的插件宿主**尚未实现**：本页写到的合并、宽限与时间线语义是这些格式的约定，由将来的插件宿主执行，设计与取舍见 [ADR 0071](../adr/0071-installable-extensions.md)；编译进 server 的模块契约见[扩展点](../dev/extensions.md)。
+这些格式已经冻结，本页逐个说明。server 按本页校验、安装与移除插件包，导入信任更新与吊销列表（`gpuworks plugin` 子命令，见 [CLI 参考](cli.md)）；插件宿主拉起并监管插件进程，接收并执行推送表，本页写到的合并、宽限与时间线语义由它执行。插件宿主的现状与尚未实现的部分见[扩展点](../dev/extensions.md#可安装扩展)，设计与取舍见 [ADR 0071](../adr/0071-installable-extensions.md)。
 
 格式以黄金文件语料 `pkg/extapi/testdata/golden/` 为准。本页的每个 JSON 示例都与语料里的一个文件逐字节相同，页面源文件里示例上方的注释写明是哪个文件，`pkg/extapi` 的测试（`TestReferencePageExamplesAreGoldenFiles`）逐个比对，所以示例都是规范 JSON（单行、键已排序）。
 
@@ -91,13 +91,14 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `requires` | 包离不开的能力 → 需要的最低版本；server 缺任何一项即判定不兼容并说明是哪项 |
 | `uses` | 可选能力 → 包能用的最高版本，运行时向下协商；同一能力不能同时出现在 `requires` 里 |
 | `roles` | 包声明的特权角色，已排序；证书授予了才生效 |
-| `permissions` | 管理员批准的权限 `<动词>:<对象>`，已排序；动词只有 `events`、`http`、`metrics`、`node`、`notify`、`push`、`read`、`svc` |
+| `permissions` | 管理员批准的权限 `<动词>:<对象>`，已排序；动词只有 `crypto`、`events`、`http`、`metrics`、`node`、`notify`、`push`、`read`、`svc`，对象来自每个动词的封闭词汇，见[权限](#权限) |
 | `features` | 声明的功能键 `{key, presentation, gate}`：`presentation` 为 `promote`（显示为锁定）或 `conceal`（隐藏）；`gate` 为 `none`（总是完整）、`self`（本包作答）或 `authority`（只由命名空间的权威作答） |
 | `routes` | 包的 HTTP 路由，见下表 |
 | `ui` | 控制台界面包：`mode` 为 `module`（同源 ES 模块，需证书授予）或 `iframe`；`entry` 是 `ui/` 下的成员；`sdk` 是控制台 SDK 主版本范围；`nav` 是菜单项 |
 | `node` | 节点部分：`app` 是 `node/` 下的应用描述，`images` 是 `node/images/` 下供离线站点用的镜像包 |
-| `runtime` | 服务端部分：`lifecycle` 为 `resident`（随 server 启动）或 `on_demand`（用时启动、空闲停止，不拥有表）；`mem_mib`、`cpu_milli`、`max_concurrency`（≤1024）为 0 时取默认；`devices` 是 `/dev` 下的设备节点，已排序 |
+| `runtime` | 服务端部分：`lifecycle` 为 `resident`（随 server 启动）或 `on_demand`（用时启动、空闲停止；server 的策略不许它持有 `push:` 权限或声明功能，见 [server 的安装策略](#server-的安装策略)）；`mem_mib`、`cpu_milli`、`max_concurrency`（≤1024）为 0 时取默认；`devices` 是 `/dev` 下的设备节点，已排序 |
 | `storage` | 数据目录：`kind` 为 `sqlite` 或 `files`；`ha` 为 `shipped`（随 server 数据库复制）或 `leader_local`（可重建的缓存）；`state_version` 是本构建写的数据格式版本（≥1）；`cold_copy_safe` 表示插件停止时可以直接复制 |
+| `settings` | 管理员为包配置的值，见[设置](#设置) |
 | `host_setup` | 封闭词汇里的主机步骤，从不是脚本；目前只有 `usb_device`（`vendor_id`、`product_id` 各 4 位小写十六进制） |
 | `codes` | 包可能产生的全部码，已排序；每个码在包的 locale 里有 en/zh 文案 |
 | `files` | 除 `manifest.json`、`manifest.sig`、`publisher.crt` 外的每个成员，按路径排序：`{path, size, sha256, exec}`；路径是相对路径，每段以字母、数字或下划线开头（没有 `.`、`..` 与隐藏文件），至多 512 字节 |
@@ -110,22 +111,82 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `ui` | `ui.bundle` |
 | `node` | `node.app` |
 | `host_setup` 非空 | `host.setup` |
+| `settings` 非空 | `host.config` |
 
 路由挂在 `/api/v1/x/<id><pattern>`：
 
 | 字段 | 规则 |
 |---|---|
 | `method` | `GET`、`POST`、`PUT`、`PATCH` 或 `DELETE`；`method` 加 `pattern` 不重复 |
-| `pattern` | 以 `/` 开头，chi 语法，参数写作 `{name}` |
+| `pattern` | 以 `/` 开头，只由字面段（小写字母、数字、`_`、`.`、`-`）与不带正则的参数 `{name}` 组成；单独的 `/` 是包的根。拒绝正则参数（如 `{id:[0-9]+}`）、空段、`.` 与 `..` 段、百分号转义和同名的两个参数，这样 server 与插件自己的路由器对同一路径的匹配不会不同 |
 | `action` | `<包 id>.<动词>`，授权时用的动作名 |
 | `access` | `admin`（管理员，会话或平台 token）、`admin_session`（仅管理员会话）、`member`（任何登录用户或平台 token）、`public`（不认证） |
 | `feature` / `ungated` | 二者恰好设一个；`feature` 必须是本清单声明的键 |
 | `write_when_read_only` | 功能只读时仍放行这个非 GET 写入（只做删除或放宽的写）；要求有 `feature` |
 | `max_body` | 请求体上限，0 为 1 MiB，最大 1 GiB；超过 1 MiB 需要权限 `http:uploads` |
 | `timeout_s` | 0 为 60 秒，最大 600 |
-| `stream` / `websocket` | 流式响应 / WebSocket 升级（仅 GET，且不与 `stream` 同时） |
+| `stream` / `websocket` | 流式响应 / WebSocket 升级（仅 GET，且不与 `stream` 同时）；`websocket` 还要求 `requires` 或 `uses` 列出 `routes.websocket`，只提供 `routes` 的 server 因而不会把它当普通路由接收 |
+| `html` | 允许返回 `text/html`；只有 `public`、`admin` 与 `admin_session` 路由可以设 |
 | `ai_readable` | AI 助手与 MCP 可读，仅 GET |
 | `cookies` / `rate` | 仅 `public` 路由：允许设置 cookie（单点登录回调）/ 按客户端地址的令牌桶 `{per_minute, burst}`，各 1–100000 |
+
+### 权限
+
+每个权限对应提供它的能力。清单持有一个权限，就必须在 `requires` 或 `uses` 里列出它的能力：server 不提供某个 `requires` 的能力时按不兼容拒绝（`PLUGIN_INCOMPATIBLE`），只在 `uses` 里的能力不提供时包照常安装，但得不到这项服务。词汇之外的对象（拼错的读取面、未知的表种类或事件主题）是无效清单（`PLUGIN_WIRE_INVALID`，`rule` 为 `enum`），缺能力是 `relation`，`field` 都指向那个权限。风险等级由 server 给出，随 [`GET /api/v1/plugins`](api.md) 下发，控制台只负责显示。
+
+| 权限 | 能力 | 风险 |
+|---|---|---|
+| `read:features` | `host.features` | `low` |
+| `read:fleet` | `host.fleet` | `elevated` |
+| `read:node_clocks` | `host.node_clocks` | `low` |
+| `read:host_identity` | `host.host_identity` | `high` |
+| `read:directory` | `host.directory` | `high` |
+| `read:usage` | `host.usage` | `elevated` |
+| `read:audit` | `host.audit` | `high` |
+| `read:attestations` | `host.attestations` | `elevated` |
+| `read:node_identity` | `host.node_identity` | `high` |
+| `read:node_inventory` | `host.nodes` | `elevated` |
+| `push:availability` | `table.availability` | `high` |
+| `push:fleet_capacity` | `table.fleet_capacity` | `high` |
+| `push:node_holds` | `table.node_holds` | `high` |
+| `push:banners` | `table.banners` | `low` |
+| `push:attestations` | `table.attestations` | `low` |
+| `push:allowances`、`push:insert_caps`、`push:roles.core_actions` | `table.<种类>` | `high` |
+| `push:prices` | `table.prices` | `elevated` |
+| `events:node_fleet` | `host.fleet` | `elevated` |
+| `http:routes` | `routes` | `low` |
+| `http:public` | `routes` | `elevated` |
+| `http:uploads` | `routes` | `low` |
+| `node:workloads`、`node:jobs` | `node.app` | `high` |
+| `notify:raise` | `host.notify` | `low` |
+| `metrics:expose` | `metrics.expose` | `low` |
+| `crypto:derive_key` | `host.derive_key` | `elevated` |
+
+- `push:` 的对象是本模块定义的表种类，或为特权表保留的种类 `allowances`、`insert_caps`、`prices`、`roles.core_actions`（还没有表 schema，证书授予才能推）。`fleet_capacity` 与这些保留种类都需要证书授予。
+- `events:` 只有 `node_fleet`：舰队读取的变更流，所以与 `read:fleet` 同属 `host.fleet`。`svc:` 目前没有对象。新的对象只随新的能力加入。
+- server 不认识的权限一律按 `high` 显示。
+
+### 设置
+
+`settings` 是管理员为包配置的值的声明，至多 64 项，需要 `host.config`。server 存值前按声明校验，再交给插件。
+
+| 字段 | 规则 |
+|---|---|
+| `key` | lower_snake，清单内不重复 |
+| `type` | `string`、`integer`、`boolean` 或 `enum` |
+| `label_key` | 标签的 locale 键 |
+| `required` | 配置里必须有这一项 |
+| `secret` | 仅 `string`：server 加密保存，从不回显，只交给这个插件 |
+| `values` | 仅 `enum`，且必填：允许的值，lower_snake，已排序，至多 64 个 |
+| `min` / `max` | 仅 `integer`：闭区间上下限，缺省不限；`max` 不小于 `min` |
+| `max_length` | 仅 `string`：字节上限，0 为 4096，最大 65536 |
+
+### server 的安装策略
+
+清单之外，server 在能力检查之后、站点策略之前还执行自己的策略。安装时与每次重新校验时都执行，所以已安装的包在重新校验时同样会被拒绝：
+
+- 有路由的包必须持有 `http:routes`，`public` 路由还要 `http:public`；缺了回 `PLUGIN_POLICY_REFUSED`，`rule` 是缺的权限，`value` 与 `field` 是路由（如 `routes.0`）。
+- `on_demand` 的包大部分时间不在运行，所以不能持有 `push:` 权限，也不能声明功能（它作答的键在它停止时无人作答）；违反时回 `PLUGIN_STATE_ON_DEMAND`，参数 `id` 加 `permission` 或 `feature`。
 
 ## 发布者证书
 

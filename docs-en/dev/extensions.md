@@ -1,6 +1,6 @@
 # Extension Points: The Module Contract and Installable Extensions
 
-Inside the core, the gpuworks server composes modules through one set of interfaces (`app.Module` and `app.Host`). Tests and forks use this contract today: another Go module can use the server as a library and compile it, together with its own modules, into a new server binary (a "separately built server" below); official builds carry no module. Official and third-party extensions are to be installed as signed plugin packages and connected through the same contract by a built-in plugin host module ([ADR 0071](../adr/0071-installable-extensions.md)). The plugin host is not built yet; see [Installable extensions](#installable-extensions).
+Inside the core, the gpuworks server composes modules through one set of interfaces (`app.Module` and `app.Host`). Tests and forks use this contract today: another Go module can use the server as a library and compile it, together with its own modules, into a new server binary (a "separately built server" below); official builds carry no module. Official and third-party extensions are installed as signed plugin packages and connected through the same contract by a built-in plugin host module ([ADR 0071](../adr/0071-installable-extensions.md)); what the plugin host does today and what is not built yet is in [Installable extensions](#installable-extensions).
 
 This page describes the interfaces the open-source code leaves, the thread each one is called on, the rules they must follow, and what the open-source code does not do. The irreversible decisions are in [ADR 0070](../adr/0070-extension-tiers-and-edition-boundary.md) and ADR 0071; the terms (extension module, feature key, feature availability, extension-held cordon, plugin package, pushed table) are defined in `CONTEXT.md`.
 
@@ -244,6 +244,7 @@ Every call writes a structured log record with `audit=true` saying who did what 
 - The management route for overrides (`State.Override` is built), the `users.local_admin` floor, the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
 - The ratchet on feature-key literals in core code.
+- No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes` and WebSocket routes (`routes.websocket`). A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
 
 ### Trampoline: `gpuworks plugin-exec`
 
@@ -277,7 +278,7 @@ A package that requires Landlock (certificate `min_isolation: landlock`) does no
 | Calls without a deadline | 60 seconds |
 | stderr | Forwarded to the server log with `plugin=<id>`, JSON lines keep their level; 50 lines a second with bursts of 500, the excess counted and reported; the last 1 MiB kept for diagnostics |
 
-A `resident` plugin starts as soon as it is added; an `on_demand` plugin starts on its first call, stops after 10 idle minutes and may not push state (`PLUGIN_STATE_ON_DEMAND`). Only `running` and `degraded` count as up; every other state (`starting`, `backoff`, `crashloop`, `stopping`, `stopped`, `idle`, `failed`) counts as down. A plugin that refuses the handshake for a reason retrying cannot change (such as `PLUGIN_CAPABILITY_MISSING`), answers for another build (`PLUGIN_HANDSHAKE_MISMATCH`) or picks a capability version that was not offered or approved (`PLUGIN_CAPABILITY_NOT_OFFERED`) enters `failed` and is not restarted until it is started again.
+A `resident` plugin starts as soon as it is added; an `on_demand` plugin starts on its first call, stops after 10 idle minutes and may not push state (`PLUGIN_STATE_ON_DEMAND`); on install and on recheck, an `on_demand` package that holds a `push:` permission or declares features is refused with the same code. Only `running` and `degraded` count as up; every other state (`starting`, `backoff`, `crashloop`, `stopping`, `stopped`, `idle`, `failed`) counts as down. A plugin that refuses the handshake for a reason retrying cannot change (such as `PLUGIN_CAPABILITY_MISSING`), answers for another build (`PLUGIN_HANDSHAKE_MISMATCH`) or picks a capability version that was not offered or approved (`PLUGIN_CAPABILITY_NOT_OFFERED`) enters `failed` and is not restarted until it is started again.
 
 ### gwx/1 connections and the host API
 
@@ -308,4 +309,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 3a5ec2bf8190eb7982146f4266767ad3069b032fffc216b9cedeeee6c292c16c -->
+<!-- translation-source-sha256: 9ad54a1582bb99f8ccf5708615d7f7262a46b119b20ac2d00828b54a2a7b37ca -->
