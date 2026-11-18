@@ -118,7 +118,7 @@ function PairResults({ network, run, onChanged }: { network: NetworkDetail; run:
             ? <PairList pairs={run.pairs} renderPair={renderPair} />
             : <NetworkPairMatrix run={run} renderPair={renderPair} />}
         </TabPanel>
-        <TabPanel value="issues" className="pt-3 pb-6">
+        <TabPanel value="issues" className="min-h-[240px] pt-3">
           {found.length === 0 ? <p className="text-fg-muted">{t("test.noProblems")}</p> : (
             <Table<Problem>
               rowKey="key"
