@@ -78,9 +78,9 @@ func (s *State) tickLoop(ctx context.Context) {
 	defer hwm.Stop()
 	for {
 		s.mu.Lock()
-		wait := time.Duration(s.next-s.clock.nowMS()) * time.Millisecond
+		wait := timerWait(s.next, s.clock.nowMS())
 		s.mu.Unlock()
-		timer := time.NewTimer(max(0, min(wait, maxTimerWait)))
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -111,6 +111,23 @@ func (s *State) tickLoop(ctx context.Context) {
 		}
 		timer.Stop()
 	}
+}
+
+// timerWait is how long the step timer sleeps before the step due at next
+// (extclock milliseconds; math.MaxInt64 when none is due), capped at
+// maxTimerWait. The difference is clamped in milliseconds before it becomes
+// a Duration: next-now for "no step" is ~9.2e18 ms, and converting that to
+// nanoseconds overflows, which once made an idle server spin on a zero
+// timer.
+func timerWait(next, now int64) time.Duration {
+	ms := next - now
+	if ms <= 0 {
+		return 0
+	}
+	if ms >= maxTimerWait.Milliseconds() {
+		return maxTimerWait
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 // shutdown commits what is pending, the high-water mark included, and
