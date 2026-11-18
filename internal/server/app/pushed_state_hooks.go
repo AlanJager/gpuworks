@@ -15,17 +15,18 @@ import (
 )
 
 // PushedStateHooks adapts pushed state (package pushstate, which does not
-// know the store or the API) to the hooks it feeds: the feature gate's
-// source, the node insert guard, the scheduling holder and the console
-// banners. The adapters only convert types; each still answers with one
-// atomic load and map lookups, without allocating (the banners convert once
-// per snapshot).
+// know the store or the API) to the hooks it feeds: the source of the
+// plugins' feature keys, the node insert guard, the scheduling holder and
+// the console banners. The adapters only convert types; each still answers
+// with one atomic load and map lookups, without allocating (the banners
+// convert once per snapshot).
 type PushedStateHooks struct{ state *pushstate.State }
 
 // NewPushedStateHooks wraps s.
 func NewPushedStateHooks(s *pushstate.State) PushedStateHooks { return PushedStateHooks{state: s} }
 
-// Features is the feature gate's source (Host.ProvideFeatures).
+// Features is the source of the feature keys installed packages declare,
+// the one the plugin host declares them with in the dynamic feature set.
 func (h PushedStateHooks) Features() featuregate.Source { return h.state }
 
 // GuardNode is the node insert guard (Host.GuardNodeInsert).

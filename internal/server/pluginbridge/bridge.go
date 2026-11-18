@@ -4,9 +4,10 @@
 // decide; it hands each what the others know.
 //
 // At boot it verifies every installed package, loads pushed state with
-// them before anything is served, and hands the server the evaluators to
-// register (featuregate.Source, the node insert guard, the scheduling
-// holder, the console banners). Run then starts the enabled resident
+// them before anything is served, declares their feature keys in the
+// server's dynamic feature set (again after every install, enable,
+// disable and uninstall), and hands the server the evaluators to register
+// (the node insert guard, the scheduling holder, the console banners). Run then starts the enabled resident
 // plugins, in parallel and without holding up the server, and tells pushed
 // state which owners are up. A push arriving on a plugin's host connection
 // is applied as the package bound to that connection, with the grants of
@@ -56,7 +57,13 @@ type Config struct {
 	Core extapi.CoreInfo
 	// RequireIsolation is the site's plugins.require_isolation.
 	RequireIsolation string
-	Log              *slog.Logger
+	// Features is the server's dynamic feature set: the keys installed
+	// packages declare, answered by pushed state. Nil declares none.
+	Features *featuregate.DynamicSet
+	// StaticFeatures name the module compiled into the server that
+	// declares each static feature key; no package may declare one.
+	StaticFeatures map[featuregate.Key]string
+	Log            *slog.Logger
 }
 
 // Bridge is the plugin host of one server.
@@ -66,8 +73,6 @@ type Bridge struct {
 	pkgs  *extpkg.Host
 	state *pushstate.State
 	host  *pluginhost.Host
-	// features are the feature keys declared at boot.
-	features []featuregate.Feature
 
 	// admin serializes the administration calls (install, enable,
 	// disable, uninstall) with each other and with Run's start.
@@ -124,7 +129,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if err := b.state.Load(ctx); err != nil {
 		return nil, err
 	}
-	b.features = b.state.Features()
+	b.logFeatureClashes()
+	b.declareFeatures()
 	hostCfg := cfg.Host
 	core := cfg.Core
 	core.Offer = extpkg.Offer()
@@ -145,11 +151,6 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 
 // State is the pushed state the server's hooks answer from.
 func (b *Bridge) State() *pushstate.State { return b.state }
-
-// Features are the feature keys installed packages declare, for the
-// feature gate. The gate is built once at boot, so keys of a package
-// installed later are declared at the next start.
-func (b *Bridge) Features() []featuregate.Feature { return slices.Clone(b.features) }
 
 // Run runs pushed state's writer tick, timelines and capacity selection,
 // starts every enabled resident plugin, and stops them all when ctx ends.
