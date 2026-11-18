@@ -11,8 +11,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 )
 
-// MaxNodeReadBatch is the most nodes one NodeIdentity call names and one
-// NodeInventory page holds: both are pinned reads sized for a page of a
+// MaxNodeReadBatch is the most nodes one NodeIdentity or NodeNamesByID call
+// names and one NodeInventory page holds: both are pinned reads sized for a page of a
 // console table, never a whole 1000-node fleet in one go.
 const MaxNodeReadBatch = 500
 
@@ -21,7 +21,8 @@ const MaxIdentitySalt = 256
 
 var (
 	// ErrNodeReadBatch: a NodeIdentity call named no node or more than
-	// MaxNodeReadBatch, or a NodeInventory limit outside 1..MaxNodeReadBatch.
+	// MaxNodeReadBatch, a NodeNamesByID call named more than MaxNodeReadBatch,
+	// or a NodeInventory limit outside 1..MaxNodeReadBatch.
 	ErrNodeReadBatch = errors.New("node read: between 1 and 500 nodes per call")
 	// ErrIdentitySalt: NodeIdentity's salt is empty or longer than
 	// MaxIdentitySalt. An empty salt would make the digests the same for

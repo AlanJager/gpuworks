@@ -208,6 +208,16 @@ func (h *Host) NodeInventory(ctx context.Context, cursor uint, limit int) (store
 	return h.st.NodeInventory(ctx, cursor, limit)
 }
 
+// NodeNamesByID is the display name of each named node that exists, keyed by
+// id (store.NodeNamesByID): the name an operator gave it, otherwise its
+// hostname. A node that does not exist is absent. No ids is an empty map
+// without a read; more than 500 distinct ids is store.ErrNodeReadBatch. It
+// is one read of the named nodes, for labelling a few nodes without paging
+// NodeInventory.
+func (h *Host) NodeNamesByID(ctx context.Context, ids []uint) (map[uint]string, error) {
+	return h.st.NodeNamesByID(ctx, ids)
+}
+
 func (h *Host) mustBeOpen(method string) {
 	if h.reg.closed {
 		panic(fmt.Sprintf("extension %s: %s: %v", h.name, method, ErrHostClosed))

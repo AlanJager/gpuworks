@@ -145,3 +145,35 @@ func TestAModulePagesTheNodeInventoryFromTheHost(t *testing.T) {
 		t.Fatalf("limit 501 = %v, want ErrNodeReadBatch", err)
 	}
 }
+
+// A module names a few nodes by id in one read: display names of the nodes
+// that exist, nothing for the rest, an empty answer for no ids, and too
+// many ids fail.
+func TestAModuleReadsNodeNamesByIDFromTheHost(t *testing.T) {
+	mod := &fakeModule{name: "fake"}
+	e := testenv.NewWithExtensions(t, app.Extensions{Modules: []app.Module{mod}}, nil)
+	a := identityNode(t, e, "a", "")
+	b := identityNode(t, e, "b", "")
+	gone := identityNode(t, e, "gone", "")
+	if err := e.Store().DeleteNode(gone.UUID); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	got, err := mod.host.NodeNamesByID(ctx, []uint{b.ID, gone.ID, a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[a.ID] != "a" || got[b.ID] != "b" {
+		t.Fatalf("names = %v, want a and b, the deleted node absent", got)
+	}
+	if empty, err := mod.host.NodeNamesByID(ctx, nil); err != nil || empty == nil || len(empty) != 0 {
+		t.Fatalf("no ids = %#v, %v; want an empty map", empty, err)
+	}
+	ids := make([]uint, store.MaxNodeReadBatch+1)
+	for i := range ids {
+		ids[i] = uint(i + 1)
+	}
+	if _, err := mod.host.NodeNamesByID(ctx, ids); !errors.Is(err, store.ErrNodeReadBatch) {
+		t.Fatalf("501 ids = %v, want ErrNodeReadBatch", err)
+	}
+}
