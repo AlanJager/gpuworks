@@ -303,9 +303,18 @@ func procRoot(t *testing.T) string {
 	return root
 }
 
-type fakeClock struct{ t time.Time }
+// fakeClock is safe for concurrent use: a borrow waits for its job without
+// holding the leaser, while the sweep runs.
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
 
-func (c *fakeClock) now() time.Time { return c.t }
+func (c *fakeClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
 
 func newTestLeaser(t *testing.T, f *fakeSlurm, cfg Config) (*Leaser, *fakeClock) {
 	t.Helper()
@@ -490,9 +499,9 @@ func TestLeasePendingReportsReasonAndGivesUp(t *testing.T) {
 	l.now = func() time.Time {
 		calls++
 		if calls > 3 {
-			clock.t = clock.t.Add(2 * time.Minute)
+			clock.advance(2 * time.Minute)
 		}
-		return clock.t
+		return clock.now()
 	}
 	_, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, func(m string) { progress = append(progress, m) })
 	if err == nil || !strings.Contains(err.Error(), "AssocGrpGRES") || !strings.Contains(err.Error(), "within 1m0s") {
@@ -561,12 +570,12 @@ func TestSweepReturnsIdleCardsAndReportsLostJobs(t *testing.T) {
 	// inst-a went away: its card is kept for IdleReturn, then returned.
 	delete(inUse, "inst-a")
 	_ = l.Sweep(ctx, inUse, onLost)
-	clock.t = clock.t.Add(30 * time.Second)
+	clock.advance(30 * time.Second)
 	_ = l.Sweep(ctx, inUse, onLost)
 	if f.called("scancel") != 0 {
 		t.Fatal("returned a card before its idle time")
 	}
-	clock.t = clock.t.Add(31 * time.Second)
+	clock.advance(31 * time.Second)
 	_ = l.Sweep(ctx, inUse, onLost)
 	if f.called("scancel 20") != 1 || f.called("scancel 21") != 0 {
 		t.Fatalf("scancel calls %v; want only inst-a's job 20 returned", f.calls)
@@ -850,5 +859,59 @@ func TestAnInstanceTakingWholeCardsNeverRunsOnAnotherInstancesCards(t *testing.T
 	}
 	if f.called("sbatch") != 2 {
 		t.Fatalf("%d jobs submitted; want one per instance", f.called("sbatch"))
+	}
+}
+
+// A borrow waits for its pending job without holding the leaser: the sweep
+// returns an idle job of this agent meanwhile, whose card the pending job
+// waits for, and the borrow then gets it (E-HPC, 2026-11-18: a retried
+// instance waited the whole pending timeout for its own agent's idle job).
+func TestABorrowWaitingForItsJobLetsTheSweepReturnAnIdleJob(t *testing.T) {
+	f := newFakeSlurm()
+	f.gpuCount = 1
+	l, clock := newTestLeaser(t, f, Config{IdleReturn: time.Minute, PendingTimeout: time.Hour})
+	// inst-old's start failed: its job holds the card, and no instance uses it.
+	if _, _, err := l.Lease(context.Background(), "inst-old", []string{card0}, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.pending = "Resources" // the card is taken: the next job pends
+	f.mu.Unlock()
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := l.Lease(context.Background(), "inst-new", []string{card0}, false, nil)
+		done <- err
+	}()
+	// The sweep runs while the borrow waits, sees inst-old's job idle, and returns it.
+	deadline := time.Now().Add(5 * time.Second)
+	for f.called("scancel 20") == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the sweep could not return the idle job while a borrow waited")
+		}
+		if err := l.Sweep(context.Background(), nil, func(string, string) {}); err != nil {
+			t.Fatal(err)
+		}
+		clock.advance(2 * time.Minute)
+		time.Sleep(5 * time.Millisecond)
+	}
+	// The card is free: Slurm starts the pending job.
+	f.mu.Lock()
+	f.pending = ""
+	for _, j := range f.jobs {
+		if j.state == "PENDING" {
+			j.state, j.idx = "RUNNING", []int{0}
+		}
+	}
+	f.mu.Unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("borrow = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the borrow did not get the card once it was free")
+	}
+	if n := f.called("scancel 21"); n != 0 {
+		t.Fatalf("the sweep cancelled the job a borrow waited for (%d)", n)
 	}
 }

@@ -178,7 +178,11 @@ func TestPositionsReadTheOrderFileFirst(t *testing.T) {
 	}
 }
 
-func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
 
 // A job submitted as an account the entry has since changed is still the
 // agent's own after the agent restarts: the accounts it submitted as are kept

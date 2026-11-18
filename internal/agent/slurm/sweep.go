@@ -42,9 +42,12 @@ func (l *Leaser) Sweep(ctx context.Context, inUse map[string][]string, lost func
 	}
 	now := l.now()
 	for id, j := range l.jobs {
+		if j.waiting {
+			continue // a borrow waits for it to start, and hands its cards on
+		}
 		if !j.running {
-			// Nothing waits for it: a borrow holds mu while it does. It is
-			// left over from before a restart, or its start gave up.
+			// Nothing waits for it: it is left over from before a restart,
+			// or its start gave up.
 			l.cancelLocked(ctx, id, "pending with nobody waiting")
 			continue
 		}

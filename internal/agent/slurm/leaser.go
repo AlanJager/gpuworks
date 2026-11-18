@@ -140,6 +140,9 @@ type holdJob struct {
 	// cards, so no other instance shares them; unknown (false) for a job
 	// found at start.
 	exclusive bool
+	// waiting: a borrow waits for the job to start, without holding mu, so
+	// the sweep leaves it alone (it is not "pending with nobody waiting").
+	waiting bool
 }
 
 type jobCards struct {
@@ -405,7 +408,12 @@ func inOrderOf(cards, want []string) []string {
 	return out
 }
 
-// borrowLocked submits a placeholder job for n cards and waits for it.
+// borrowLocked submits a placeholder job for n cards and waits for it. It is
+// called with mu held and holds it again when it returns, but lets it go
+// while Slurm is asked and while it waits: the cards a pending job waits for
+// may be the ones an idle job of this agent holds, which only the sweep
+// returns (seen on E-HPC, 2026-11-18: a retried instance waited the whole
+// pending timeout for its own agent's idle job).
 func (l *Leaser) borrowLocked(ctx context.Context, instance string, n int, progress func(string)) (*holdJob, error) {
 	cfg := l.settings()
 	args := []string{"--parsable", "-J", HoldPrefix + instance, "-w", cfg.Node, "-N", "1", "-n", "1",
@@ -441,18 +449,23 @@ func (l *Leaser) borrowLocked(ctx context.Context, instance string, n int, progr
 	if id == "" {
 		return nil, errors.New("sbatch printed no job id")
 	}
-	job := &holdJob{id: id, instance: instance}
+	job := &holdJob{id: id, instance: instance, waiting: true}
 	l.jobs[id] = job
+	defer func() { job.waiting = false }()
 	l.log.Info("submitted Slurm placeholder job", "job", id, "instance", instance, "gpus", n)
 	deadline := l.now().Add(cfg.PendingTimeout)
 	lastReason := ""
 	for {
+		l.mu.Unlock()
 		record, err := l.jobRecord(ctx, id)
+		l.mu.Lock()
 		if err == nil {
 			f := fields(record)
 			switch state := f["JobState"]; state {
 			case "RUNNING":
+				l.mu.Unlock()
 				cards, err := l.jobCardsOnNode(ctx, record)
+				l.mu.Lock()
 				if err == nil && len(cards) != n {
 					err = fmt.Errorf("Slurm job %s holds %d card(s) on %s, %d were asked for", id, len(cards), l.node, n)
 				}
@@ -476,12 +489,15 @@ func (l *Leaser) borrowLocked(ctx context.Context, instance string, n int, progr
 			l.cancelLocked(ctx, id, "pending timeout")
 			return nil, fmt.Errorf("Slurm did not start job %s within %s (%s)", id, cfg.PendingTimeout, lastReason)
 		}
+		l.mu.Unlock()
 		select {
 		case <-ctx.Done():
+			l.mu.Lock()
 			l.cancelLocked(context.Background(), id, "start cancelled")
 			return nil, ctx.Err()
 		case <-time.After(l.poll):
 		}
+		l.mu.Lock()
 	}
 }
 
