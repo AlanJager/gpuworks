@@ -44,7 +44,7 @@ type Effects struct {
 	// replaced, for the audit log and the administrator.
 	OverrideSuperseded func(o Override)
 	// ClockCorrected reports a correction of extclock, for the audit log.
-	ClockCorrected func(from, to time.Time, by string)
+	ClockCorrected func(from, to time.Time, by, reason string)
 }
 
 // Config builds a State.

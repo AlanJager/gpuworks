@@ -236,7 +236,7 @@ func TestClocksReportTheStoredHighWaterMark(t *testing.T) {
 	}
 	clk.setWall("2027-01-15T00:00:00Z")
 	to := time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC)
-	if err := h.s.CorrectClock(context.Background(), to, "acme_authority"); err != nil {
+	if _, _, err := h.s.CorrectClock(context.Background(), to, "acme_authority", "test"); err != nil {
 		t.Fatal(err)
 	}
 	r := h.s.Clocks()

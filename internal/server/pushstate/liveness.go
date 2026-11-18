@@ -113,18 +113,22 @@ func (s *State) Uninstall(ctx context.Context, owner string) error {
 // clock_authority role relaying a correction it verified. One correction
 // moves it at most MaxClockCorrection either way. Steps are re-evaluated at
 // the corrected time and are not consumed, so moving back un-fires the steps
-// after to. by names who corrected it, for the audit and the banner.
-func (s *State) CorrectClock(ctx context.Context, to time.Time, by string) error {
+// after to. by names who corrected it, for the audit and the banner, and
+// reason is what it gave, for the audit. It returns extclock before and
+// after the correction: after is to, or the wall clock when to is before
+// it, since extclock never runs behind the wall clock.
+func (s *State) CorrectClock(ctx context.Context, to time.Time, by, reason string) (from, after time.Time, err error) {
 	toMS := to.UnixMilli()
 	if d := time.Duration(toMS-s.clock.nowMS()) * time.Millisecond; d > MaxClockCorrection || d < -MaxClockCorrection {
-		return messages.NewProductError(messages.ErrorPluginClockCorrectionTooLarge,
+		return time.Time{}, time.Time{}, messages.NewProductError(messages.ErrorPluginClockCorrectionTooLarge,
 			fmt.Sprintf("a correction moves extclock by at most %d days", int(MaxClockCorrection/(24*time.Hour))),
 			map[string]any{"max_days": int(MaxClockCorrection / (24 * time.Hour))})
 	}
-	var fromMS int64
-	err := s.enqueue(ctx, &op{
+	var fromMS, afterMS int64
+	err = s.enqueue(ctx, &op{
 		build: func(b *pstate.Batch) {
 			fromMS = s.clock.correct(toMS)
+			afterMS = s.clock.nowMS()
 			b.Clock = &pstate.Clock{HWMMS: toMS}
 		},
 		after: func(_ pstate.Result, err error) {
@@ -132,14 +136,15 @@ func (s *State) CorrectClock(ctx context.Context, to time.Time, by string) error
 				s.clock.correct(fromMS) // not persisted: not applied
 				return
 			}
-			s.corrected = &clockCorrection{fromMS: fromMS, toMS: toMS, by: by}
+			s.corrected = &clockCorrection{fromMS: fromMS, toMS: afterMS, by: by}
 		},
 	})
 	if err != nil {
-		return err
+		return time.Time{}, time.Time{}, err
 	}
+	from, after = time.UnixMilli(fromMS).UTC(), time.UnixMilli(afterMS).UTC()
 	if f := s.cfg.Effects.ClockCorrected; f != nil {
-		f(time.UnixMilli(fromMS).UTC(), time.UnixMilli(toMS).UTC(), by)
+		f(from, after, by, reason)
 	}
-	return nil
+	return from, after, nil
 }

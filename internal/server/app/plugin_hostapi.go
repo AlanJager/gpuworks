@@ -28,9 +28,9 @@ func (k pluginKeys) DeriveKey(owner pluginhost.Owner, label string, length int) 
 
 // auditClockCorrection is pushed state's ClockCorrected effect: one audit
 // line per correction of extclock, whoever made it.
-func auditClockCorrection(log *slog.Logger) func(from, to time.Time, by string) {
-	return func(from, to time.Time, by string) {
+func auditClockCorrection(log *slog.Logger) func(from, to time.Time, by, reason string) {
+	return func(from, to time.Time, by, reason string) {
 		log.Info("extclock corrected", "audit", true, "by", by,
-			"from", from.Format(time.RFC3339), "to", to.Format(time.RFC3339))
+			"from", from.Format(time.RFC3339), "to", to.Format(time.RFC3339), "reason", reason)
 	}
 }

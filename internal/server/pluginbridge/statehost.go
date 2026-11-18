@@ -53,19 +53,19 @@ func (h stateHost) Clocks() (wall, ext, hwm time.Time) {
 }
 
 // Correct moves extclock for a package whose clock_authority role the host
-// API checked, through the same bounded, audited path as every correction.
+// API checked, through the same bounded, audited path as every correction:
+// pushed state's ClockCorrected effect writes the one audit line. It answers
+// extclock before and after the correction as it took effect.
 func (h stateHost) Correct(ctx context.Context, owner pluginhost.Owner, to time.Time, reason string) (time.Time, time.Time, error) {
-	from := h.b.state.Now()
-	if err := h.b.state.CorrectClock(ctx, to, owner.ID); err != nil {
+	from, after, err := h.b.state.CorrectClock(ctx, to, owner.ID, reason)
+	if err != nil {
 		var pe *messages.ProductError
 		if errors.As(err, &pe) {
 			return time.Time{}, time.Time{}, pluginhost.Refuse(extapi.ReasonInvalidArgument, pe.Code(), pe.Error(), pe.Params())
 		}
 		return time.Time{}, time.Time{}, err
 	}
-	h.b.log.Info("a plugin corrected extclock", "audit", true, "plugin", owner.ID, "version", owner.Version,
-		"from", from.Format(time.RFC3339), "to", to.UTC().Format(time.RFC3339), "reason", reason)
-	return from, to, nil
+	return from, after, nil
 }
 
 // Ready ends the boot extension of the plugin process the connection
