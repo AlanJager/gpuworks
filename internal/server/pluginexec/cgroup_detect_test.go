@@ -87,6 +87,15 @@ func TestPlacedNeedsThePidAndAMemoryLimit(t *testing.T) {
 	if Placed(c, "acme", 4242) {
 		t.Fatal("placed without memory.max: the memory controller is not enabled, nothing bounds the plugin")
 	}
+	// A failed write of the limit leaves the kernel default: no limit.
+	write("memory.max", "max\n")
+	if Placed(c, "acme", 4242) {
+		t.Fatal("placed with memory.max = max: nothing bounds the plugin")
+	}
+	write("memory.max", "268435456\n")
+	if Placed(c, "acme", 4242) {
+		t.Fatal("placed with a limit above the plugin's own")
+	}
 	write("memory.max", "134217728\n")
 	if !Placed(c, "acme", 4242) {
 		t.Fatal("the plugin is listed and limited but not reported placed")

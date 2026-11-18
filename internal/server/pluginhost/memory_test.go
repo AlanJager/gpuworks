@@ -117,6 +117,9 @@ func TestRSSWatchdogRestartsAPluginAboveOneAndAHalfTimesItsLimit(t *testing.T) {
 			if s.Params["id"] != "acme_backup" || s.Params["rss_mib"] != int64(193) || s.Params["limit_mib"] != 128 {
 				t.Fatalf("params = %#v", s.Params)
 			}
+			if s.RSSBytes != 0 || s.Cgroup != "" {
+				t.Fatalf("a plugin that no longer runs keeps its last run's memory: rss %d, cgroup %q", s.RSSBytes, s.Cgroup)
+			}
 			return
 		}
 	}
@@ -173,7 +176,7 @@ func TestRSSWatchdogLogsAReadFailureOnceAndKeepsThePlugin(t *testing.T) {
 
 // fakePluginCgroup lays out <root>/svc/plugins/<id> holding pid, with a
 // memory limit, as cgroupfs shows a plugin the trampoline moved.
-func fakePluginCgroup(t *testing.T, id string, pid int, limited bool) (root, dir string) {
+func fakePluginCgroup(t *testing.T, id string, pid int, memoryMax string) (root, dir string) {
 	t.Helper()
 	root = t.TempDir()
 	dir = filepath.Join(root, "svc", "plugins", id)
@@ -183,8 +186,8 @@ func fakePluginCgroup(t *testing.T, id string, pid int, limited bool) (root, dir
 	if err := os.WriteFile(filepath.Join(dir, "cgroup.procs"), []byte("1\n"+strconv.Itoa(pid)+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if limited {
-		if err := os.WriteFile(filepath.Join(dir, "memory.max"), []byte("134217728\n"), 0o644); err != nil {
+	if memoryMax != "" {
+		if err := os.WriteFile(filepath.Join(dir, "memory.max"), []byte(memoryMax+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -194,7 +197,7 @@ func fakePluginCgroup(t *testing.T, id string, pid int, limited bool) (root, dir
 func TestNoRSSWatchdogForAPluginInItsOwnCgroup(t *testing.T) {
 	mem := &fakeMemory{rss: 1 << 40}
 	sp := plainSpawner()
-	root, dir := fakePluginCgroup(t, "acme_backup", 1001, true) // the fake spawner's first pid
+	root, dir := fakePluginCgroup(t, "acme_backup", 1001, "134217728") // the fake spawner's first pid
 	h, _, _ := newMemoryHost(t, sp, Config{Memory: mem, CgroupRoot: root, CgroupParent: "svc"})
 	_ = h.Start(testSpec(t, "acme_backup"))
 	st := waitStatus(t, h, "acme_backup", inState(StateRunning))
@@ -231,12 +234,16 @@ func TestNoRSSWatchdogForAPluginInItsOwnCgroup(t *testing.T) {
 
 func TestRSSWatchdogRunsWhenTheCgroupMoveDidNotHappen(t *testing.T) {
 	for name, tc := range map[string]struct {
-		pid     int
-		limited bool
-	}{"not moved": {pid: 4242, limited: true}, "no memory controller": {pid: 1001, limited: false}} {
+		pid       int
+		memoryMax string
+	}{
+		"not moved":            {pid: 4242, memoryMax: "134217728"},
+		"no memory controller": {pid: 1001},
+		"limit not written":    {pid: 1001, memoryMax: "max"},
+	} {
 		t.Run(name, func(t *testing.T) {
 			mem := &fakeMemory{rss: 1 << 20}
-			root, _ := fakePluginCgroup(t, "acme_backup", tc.pid, tc.limited)
+			root, _ := fakePluginCgroup(t, "acme_backup", tc.pid, tc.memoryMax)
 			h, _, _ := newMemoryHost(t, plainSpawner(), Config{Memory: mem, CgroupRoot: root, CgroupParent: "svc"})
 			_ = h.Start(testSpec(t, "acme_backup"))
 			st := waitStatus(t, h, "acme_backup", func(s Status) bool { return s.State == StateRunning && s.RSSBytes == 1<<20 })

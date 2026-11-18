@@ -95,12 +95,19 @@ func RemoveCgroup(c *Cgroup, id string) error {
 const removeWait = time.Second
 
 // Placed reports whether pid runs in the plugin's own cgroup with a memory
-// limit: it is listed in the cgroup's cgroup.procs and the memory controller
-// is enabled there (memory.max exists). The trampoline moves the plugin on a
-// best-effort basis, so the server asks once the plugin runs.
+// limit: it is listed in the cgroup's cgroup.procs and memory.max holds a
+// limit no higher than c.MemoryMax (the kernel rounds it down to a page),
+// not "max", which a failed write of the limit leaves behind. The
+// trampoline moves the plugin on a best-effort basis, so the server asks
+// once the plugin runs.
 func Placed(c *Cgroup, id string, pid int) bool {
 	dir := c.Dir(id)
-	if _, err := os.Stat(filepath.Join(dir, "memory.max")); err != nil {
+	raw, err := os.ReadFile(filepath.Join(dir, "memory.max"))
+	if err != nil {
+		return false
+	}
+	limit, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
+	if err != nil || limit <= 0 || (c.MemoryMax > 0 && limit > c.MemoryMax) {
 		return false
 	}
 	procs, err := os.ReadFile(filepath.Join(dir, "cgroup.procs"))
