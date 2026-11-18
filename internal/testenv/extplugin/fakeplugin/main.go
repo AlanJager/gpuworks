@@ -140,7 +140,9 @@ func main() {
 			record(*oversize, 1, putRaw(ctx, p, *oversize, envelope))
 		}
 		if *pushEvery > 0 {
-			pushPeriodically(ctx, log, p, *pushEvery, *pushSize)
+			// Start's context ends at shutdown; pushing alongside lets
+			// --crash-after still fire.
+			go pushPeriodically(ctx, log, p, *pushEvery, *pushSize)
 		}
 		if *crashAfter >= 0 {
 			select {

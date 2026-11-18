@@ -408,7 +408,8 @@ measure() {
     # features, or a compiled module's declaration); core code never names
     # one. Counts quoted key-shaped literals handed to the gate (Require,
     # Admit, Access, Declared, Availability), converted to featuregate.Key,
-    # assigned to a featuregate.Key constant or set as a route's Feature.
+    # assigned to a featuregate.Key constant, set as a route's Feature, or
+    # given as a feature declaration's Key in a file importing featuregate.
     feature_key_literal_hits | grep -c . || true
     ;;
   *)
@@ -426,6 +427,12 @@ feature_key_literal_hits() {
   grep -rnE "(featuregate\.Key\(|\.(Require|Admit|Access|Declared|Availability)\()${key}|featuregate\.Key[[:space:]]*=[[:space:]]*\"|Feature:[[:space:]]*${key}" \
     internal cmd --include='*.go' 2>/dev/null \
     | grep -v '_test\.go:' || true
+  # A feature declared with a literal key (featuregate.Feature{Key: "…"}),
+  # in any file that imports featuregate, since the literal often sits on
+  # its own line.
+  grep -rlE '"gpuworks\.ai/gpuworks/internal/server/featuregate"' internal cmd --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go$' \
+    | xargs -r grep -nHE "(^|[^A-Za-z0-9_])Key:[[:space:]]*${key}" 2>/dev/null || true
 }
 
 # ADR 0067 guards: failures and check results are codes, never prose that a

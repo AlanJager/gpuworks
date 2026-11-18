@@ -867,12 +867,17 @@ find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' | sort \
 
 ```sh
 key='"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,2}"'
-grep -rnE "(featuregate\.Key\(|\.(Require|Admit|Access|Declared|Availability)\()${key}|featuregate\.Key[[:space:]]*=[[:space:]]*\"|Feature:[[:space:]]*${key}" \
-  internal cmd --include='*.go' | grep -v '_test\.go:' | grep -c .
+{ grep -rnE "(featuregate\.Key\(|\.(Require|Admit|Access|Declared|Availability)\()${key}|featuregate\.Key[[:space:]]*=[[:space:]]*\"|Feature:[[:space:]]*${key}" \
+    internal cmd --include='*.go' | grep -v '_test\.go:'
+  grep -rlE '"gpuworks\.ai/gpuworks/internal/server/featuregate"' internal cmd --include='*.go' | grep -v '_test\.go$' \
+    | xargs -r grep -nHE "(^|[^A-Za-z0-9_])Key:[[:space:]]*${key}"; } | grep -c .
 ```
 
-覆盖四种写法：把键形字面量直接交给功能门的方法、`featuregate.Key("…")` 转换、给
-`featuregate.Key` 常量赋字面量、路由或控制台入口的 `Feature: "…"`。排除：测试文件（功能门与
+覆盖五种写法：把键形字面量直接交给功能门的方法、`featuregate.Key("…")` 转换、给
+`featuregate.Key` 常量赋字面量、路由或控制台入口的 `Feature: "…"`，以及导入了 `featuregate` 的文件里
+功能声明的 `Key: "…"`（`featuregate.Feature{Key: …}`，字面量常单独成行，所以按文件而不按同一行匹配）。
+`Feature: "…"` 不限定所属结构体（多行字面量里看不到结构体名）：别的结构体的 `Feature` 字段若写了键形字面量也会计入，
+到时把该处改为常量或在此登记排除。排除：测试文件（功能门与
 推送状态的测试要构造键）。看不到的：先赋给普通 `string` 变量再转换的键；这种写法在评审里拦。
 
 ---
