@@ -61,6 +61,9 @@ type fakeSlurm struct {
 type fakeJob struct {
 	id, name, user, state, reason string
 	idx                           []int
+	// reqNode is the node the job asked for (sbatch -w), squeue's %n;
+	// empty for a job that asked for none, which add makes this node's.
+	reqNode string
 }
 
 func newFakeSlurm() *fakeSlurm {
@@ -71,7 +74,7 @@ func newFakeSlurm() *fakeSlurm {
 func (f *fakeSlurm) add(id, name, user string, idx ...int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.jobs[id] = &fakeJob{id: id, name: name, user: user, state: "RUNNING", idx: idx}
+	f.jobs[id] = &fakeJob{id: id, name: name, user: user, state: "RUNNING", idx: idx, reqNode: f.node}
 	f.order = append(f.order, id)
 }
 
@@ -182,7 +185,11 @@ func (f *fakeSlurm) run(ctx context.Context, name string, args ...string) ([]byt
 			if !me && users == nil && j.state != "RUNNING" {
 				continue
 			}
-			fmt.Fprintf(&b, "%s|%s|%s|%s\n", j.id, j.name, j.user, j.state)
+			if format := args[len(args)-1]; strings.HasSuffix(format, "|%n") {
+				fmt.Fprintf(&b, "%s|%s|%s|%s|%s\n", j.id, j.name, j.user, j.state, j.reqNode)
+			} else {
+				fmt.Fprintf(&b, "%s|%s|%s|%s\n", j.id, j.name, j.user, j.state)
+			}
 		}
 		return []byte(b.String()), nil
 	case name == "sbatch":
@@ -216,6 +223,11 @@ func (f *fakeSlurm) run(ctx context.Context, name string, args ...string) ([]byt
 		id := fmt.Sprint(f.nextID)
 		f.nextID++
 		j := &fakeJob{id: id, name: jobName, user: submitter, state: "RUNNING", reason: "None"}
+		for i, a := range args {
+			if a == "-w" && i+1 < len(args) {
+				j.reqNode = args[i+1]
+			}
+		}
 		if !slices.ContainsFunc(strings.Split(partition, ","), func(p string) bool { return slices.Contains(strings.Split(f.partitions, ","), p) }) {
 			j.state, j.reason = "PENDING", "PartitionConfig"
 		} else if f.pending != "" {
@@ -385,7 +397,7 @@ func TestLeaseTakesWhatSlurmGives(t *testing.T) {
 	f := newFakeSlurm()
 	f.add("19", "holder", "alice", 0) // Slurm will not give card 0
 	l, _ := newTestLeaser(t, f, Config{SbatchArgs: []string{"-A", "inference"}})
-	held, fresh, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil)
+	held, fresh, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +415,7 @@ func TestLeaseTakesWhatSlurmGives(t *testing.T) {
 func TestLeaseKeepsConfiguredResources(t *testing.T) {
 	f := newFakeSlurm()
 	l, _ := newTestLeaser(t, f, Config{SbatchArgs: []string{"--mem=64G", "-c", "8"}})
-	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil); err != nil {
+	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	submit := f.lastCall("sbatch")
@@ -417,7 +429,7 @@ func TestLeaseReusesCardsAlreadyHeld(t *testing.T) {
 	f.add("30", HoldPrefix+"inst-a", "root", 0)
 	l, _ := newTestLeaser(t, f, Config{})
 	// An instance sharing card 0 with inst-a (dGPU) borrows nothing.
-	held, fresh, err := l.Lease(context.Background(), "inst-b", []string{card0}, nil)
+	held, fresh, err := l.Lease(context.Background(), "inst-b", []string{card0}, true, nil)
 	if err != nil || fresh || !slices.Equal(held, []string{card0}) {
 		t.Fatalf("Lease = %v fresh=%v err=%v; want card 0 as held", held, fresh, err)
 	}
@@ -426,7 +438,7 @@ func TestLeaseReusesCardsAlreadyHeld(t *testing.T) {
 	}
 	// After a restart, inst-a finds its own job: not fresh, so its running
 	// container is adopted.
-	held, fresh, err = l.Lease(context.Background(), "inst-a", []string{card0}, nil)
+	held, fresh, err = l.Lease(context.Background(), "inst-a", []string{card0}, false, nil)
 	if err != nil || fresh || !slices.Equal(held, []string{card0}) {
 		t.Fatalf("restart: Lease = %v fresh=%v err=%v; want its own card, not fresh", held, fresh, err)
 	}
@@ -440,7 +452,7 @@ func TestLeaseKeepsTheInstancesOwnJobWhenTheSpecLags(t *testing.T) {
 	f := newFakeSlurm()
 	f.add("30", HoldPrefix+"inst-a", "root", 0)
 	l, _ := newTestLeaser(t, f, Config{})
-	held, fresh, err := l.Lease(context.Background(), "inst-a", []string{card1}, nil)
+	held, fresh, err := l.Lease(context.Background(), "inst-a", []string{card1}, false, nil)
 	if err != nil || fresh || !slices.Equal(held, []string{card0}) {
 		t.Fatalf("Lease = %v fresh=%v err=%v; want its own job's card 0, not fresh", held, fresh, err)
 	}
@@ -460,7 +472,7 @@ func TestLeaseMixesHeldAndBorrowedCards(t *testing.T) {
 	f.gpuCount = 2
 	f.add("30", HoldPrefix+"inst-a", "root", 1)
 	l, _ := newTestLeaser(t, f, Config{})
-	held, fresh, err := l.Lease(context.Background(), "inst-b", []string{card1, card0}, nil)
+	held, fresh, err := l.Lease(context.Background(), "inst-b", []string{card1, card0}, true, nil)
 	if err != nil || !fresh || !slices.Equal(held, []string{card1, card0}) {
 		t.Fatalf("Lease = %v fresh=%v err=%v; want [%s %s]", held, fresh, err, card1, card0)
 	}
@@ -482,7 +494,7 @@ func TestLeasePendingReportsReasonAndGivesUp(t *testing.T) {
 		}
 		return clock.t
 	}
-	_, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, func(m string) { progress = append(progress, m) })
+	_, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, func(m string) { progress = append(progress, m) })
 	if err == nil || !strings.Contains(err.Error(), "AssocGrpGRES") || !strings.Contains(err.Error(), "within 1m0s") {
 		t.Fatalf("err = %v; want a timeout naming the pending reason", err)
 	}
@@ -499,7 +511,7 @@ func TestLeaseCancelledWhileWaitingReturnsTheJob(t *testing.T) {
 	f.pending = "Resources"
 	l, _ := newTestLeaser(t, f, Config{})
 	ctx, cancel := context.WithCancel(context.Background())
-	_, _, err := l.Lease(ctx, "inst-a", []string{card0}, func(string) { cancel() })
+	_, _, err := l.Lease(ctx, "inst-a", []string{card0}, false, func(string) { cancel() })
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v; want context.Canceled", err)
 	}
@@ -512,7 +524,7 @@ func TestLeaseSubmitFailure(t *testing.T) {
 	f := newFakeSlurm()
 	f.failCmd = "sbatch"
 	l, _ := newTestLeaser(t, f, Config{})
-	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil); err == nil || !strings.Contains(err.Error(), "submit the Slurm job") {
+	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err == nil || !strings.Contains(err.Error(), "submit the Slurm job") {
 		t.Fatalf("err = %v; want the submit failure", err)
 	}
 }
@@ -521,7 +533,7 @@ func TestLeaseRejectsUnknownPosition(t *testing.T) {
 	f := newFakeSlurm()
 	f.nextIDX = []int{5}
 	l, _ := newTestLeaser(t, f, Config{})
-	_, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil)
+	_, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil)
 	if err == nil || !strings.Contains(err.Error(), "matches no card") {
 		t.Fatalf("err = %v; want an unmatched position", err)
 	}
@@ -534,10 +546,10 @@ func TestSweepReturnsIdleCardsAndReportsLostJobs(t *testing.T) {
 	f := newFakeSlurm()
 	l, clock := newTestLeaser(t, f, Config{IdleReturn: time.Minute})
 	ctx := context.Background()
-	if _, _, err := l.Lease(ctx, "inst-a", []string{card0}, nil); err != nil {
+	if _, _, err := l.Lease(ctx, "inst-a", []string{card0}, false, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := l.Lease(ctx, "inst-b", []string{card1}, nil); err != nil {
+	if _, _, err := l.Lease(ctx, "inst-b", []string{card1}, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	var lost []string
@@ -572,7 +584,7 @@ func TestSweepReturnsIdleCardsAndReportsLostJobs(t *testing.T) {
 func TestSweepCancelsOrphanPendingJobs(t *testing.T) {
 	f := newFakeSlurm()
 	f.mu.Lock()
-	f.jobs["40"] = &fakeJob{id: "40", name: HoldPrefix + "gone", user: "root", state: "PENDING", reason: "Priority"}
+	f.jobs["40"] = &fakeJob{id: "40", name: HoldPrefix + "gone", user: "root", state: "PENDING", reason: "Priority", reqNode: f.node}
 	f.order = append(f.order, "40")
 	f.mu.Unlock()
 	l, _ := newTestLeaser(t, f, Config{})
@@ -587,7 +599,7 @@ func TestSweepCancelsOrphanPendingJobs(t *testing.T) {
 func TestSweepKeepsJobsWhenSlurmCannotBeAsked(t *testing.T) {
 	f := newFakeSlurm()
 	l, _ := newTestLeaser(t, f, Config{})
-	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil); err != nil {
+	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	f.failCmd = "squeue"
@@ -746,7 +758,7 @@ func TestLeaseNamesTheNodesPartitions(t *testing.T) {
 	f := newFakeSlurm()
 	f.partitions, f.defaultPartition = "gpu,debug", "comp"
 	l, _ := newTestLeaser(t, f, Config{})
-	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil); err != nil {
+	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if submit := f.lastCall("sbatch"); !strings.Contains(submit, "-p gpu,debug") {
@@ -756,10 +768,87 @@ func TestLeaseNamesTheNodesPartitions(t *testing.T) {
 	f2 := newFakeSlurm()
 	f2.partitions, f2.defaultPartition = "gpu,serving", "comp"
 	l2, _ := newTestLeaser(t, f2, Config{SbatchArgs: []string{"--partition=serving"}})
-	if _, _, err := l2.Lease(context.Background(), "inst-a", []string{card0}, nil); err != nil {
+	if _, _, err := l2.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if submit := f2.lastCall("sbatch"); strings.Contains(submit, "-p ") || !strings.Contains(submit, "--partition=serving") {
 		t.Fatalf("sbatch call %q overrides the configured partition", submit)
+	}
+}
+
+// Every agent of a cluster submits as the same account, so squeue --me lists
+// the placeholder jobs of every node: an agent keeps to the ones that asked
+// for its node, and neither returns another node's running job as idle nor
+// cancels its pending one, nor uses its cards (2026-11-18 review).
+func TestAnotherNodesPlaceholderJobsAreLeftToItsAgent(t *testing.T) {
+	f := newFakeSlurm()
+	f.mu.Lock()
+	f.jobs["30"] = &fakeJob{id: "30", name: HoldPrefix + "inst-b", user: "root", state: "RUNNING", idx: []int{0}, reqNode: "gpu-other"}
+	f.jobs["31"] = &fakeJob{id: "31", name: HoldPrefix + "inst-c", user: "root", state: "PENDING", reason: "Resources", reqNode: "gpu-other"}
+	f.order = append(f.order, "30", "31")
+	f.mu.Unlock()
+	l, clock := newTestLeaser(t, f, Config{IdleReturn: time.Minute})
+	clock.advance(adoptedGrace + time.Hour)
+	for i := 0; i < 3; i++ {
+		if err := l.Sweep(context.Background(), nil, func(string, string) {}); err != nil {
+			t.Fatal(err)
+		}
+		clock.advance(2 * time.Minute)
+	}
+	if f.called("scancel 30") != 0 || f.called("scancel 31") != 0 {
+		t.Fatalf("another node's placeholder jobs were cancelled: %q", f.calls)
+	}
+	if len(l.jobs) != 0 {
+		t.Fatalf("this agent took another node's jobs as its own: %+v", l.jobs)
+	}
+}
+
+// After a restart the engine knows its instances only from the server's
+// first state sync; until then a job found running is not returned as
+// idle, or the cards go back to Slurm under containers still using them.
+func TestAJobFoundAtStartIsKeptForAGraceBeforeIdleReturn(t *testing.T) {
+	f := newFakeSlurm()
+	f.add("20", HoldPrefix+"inst-a", "root", 0)
+	l, clock := newTestLeaser(t, f, Config{IdleReturn: time.Minute})
+	sweep := func() {
+		t.Helper()
+		if err := l.Sweep(context.Background(), nil, func(string, string) {}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for elapsed := time.Duration(0); elapsed < adoptedGrace-2*time.Minute; elapsed += 2 * time.Minute {
+		sweep()
+		clock.advance(2 * time.Minute)
+	}
+	if f.called("scancel 20") != 0 {
+		t.Fatal("a job found at start was returned within the grace")
+	}
+	clock.advance(2 * time.Minute)
+	sweep()
+	clock.advance(2 * time.Minute)
+	sweep()
+	if f.called("scancel 20") != 1 {
+		t.Fatalf("after the grace the unused job was not returned: %q", f.calls)
+	}
+}
+
+// Two instances that take whole cards, placed on cards 0 and 1: inst-b
+// borrows first and Slurm gives it card 0. inst-a, placed on card 0, must
+// not run on inst-b's card; it borrows its own, and Slurm gives it card 1
+// (2026-11-18 review: both ran on card 0).
+func TestAnInstanceTakingWholeCardsNeverRunsOnAnotherInstancesCards(t *testing.T) {
+	f := newFakeSlurm()
+	f.gpuCount = 2
+	l, _ := newTestLeaser(t, f, Config{})
+	b, _, err := l.Lease(context.Background(), "inst-b", []string{card1}, false, nil)
+	if err != nil || !slices.Equal(b, []string{card0}) {
+		t.Fatalf("inst-b = %v %v; want card 0, the one Slurm gives first", b, err)
+	}
+	a, fresh, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil)
+	if err != nil || !fresh || !slices.Equal(a, []string{card1}) {
+		t.Fatalf("inst-a = %v fresh=%v %v; want a job of its own, on card 1", a, fresh, err)
+	}
+	if f.called("sbatch") != 2 {
+		t.Fatalf("%d jobs submitted; want one per instance", f.called("sbatch"))
 	}
 }

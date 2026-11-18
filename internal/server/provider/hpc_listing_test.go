@@ -245,3 +245,20 @@ func TestSlurmApplyTargetsReadsTheListingOnceForAllTheClusters(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A sync whose E-HPC read failed stores the cluster's nodes with no
+// scheduler: that is unknown, so the cloud's listing says it is Slurm, and
+// the cluster is not refused as "not a Slurm cluster" (2026-11-18 review).
+func TestSlurmApplyTargetAsksTheListingWhenTheSyncedSchedulerIsUnknown(t *testing.T) {
+	svc, providerID, drv := newHPCListingService(t, "hpc-target-unknown-scheduler")
+	drv.set(func(d *hpcListingDriver) {
+		d.instances = append(d.instances, computeNode("i-9", "ehpc-sz-9_gpu000", "ehpc-sz-9", "", 1))
+	})
+	if _, err := svc.Sync(t.Context(), providerID); err != nil {
+		t.Fatal(err)
+	}
+	target, err := svc.SlurmApplyTarget(t.Context(), providerID, "ehpc-sz-9", time.Minute)
+	if err != nil || target.Region != "cn-shenzhen" || len(target.ExpectGPU) != 1 {
+		t.Fatalf("target = %+v, %v; want the synced node's region and node, the listing's scheduler", target, err)
+	}
+}

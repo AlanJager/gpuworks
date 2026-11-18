@@ -77,10 +77,35 @@ func (a *apiHandlers) slurmApplyTarget(ctx context.Context, c store.SlurmCluster
 // OperationBlocked: whether the platform can set the entry up and take it out
 // of its cluster, and why not. A revoked entry takes no nodes, so it is not
 // applied, but its health check can still be removed.
-func (a *apiHandlers) slurmOperations(ctx context.Context, c store.SlurmCluster) (canApply, canRemove bool, blocked string) {
-	ctx, cancel := context.WithTimeout(ctx, slurmCloudListWait)
-	defer cancel()
-	_, err := a.slurmApplyTarget(ctx, c, slurmCloudListAge)
+//
+// accounts holds, for one listing of entries, each cloud account's targets
+// (provider.SlurmApplyTargets): one read of its instances and at most one of
+// its cloud listing answer every entry made from it, so a page of entries
+// costs the same whatever their number.
+func (a *apiHandlers) slurmOperations(ctx context.Context, c store.SlurmCluster, accounts map[uint]*slurmAccountTargets) (canApply, canRemove bool, blocked string) {
+	var err error
+	if c.ProviderID == nil || a.d.Providers == nil {
+		_, err = a.slurmApplyTarget(ctx, c, slurmCloudListAge)
+	} else {
+		at := accounts[*c.ProviderID]
+		if at == nil {
+			at = &slurmAccountTargets{}
+			providerID := *c.ProviderID
+			// The cloud listing is waited for once per account, not once
+			// per entry.
+			listCtx, cancel := context.WithTimeout(ctx, slurmCloudListWait)
+			at.cancel = cancel
+			at.targets, at.err = a.d.Providers.SlurmApplyTargets(providerID, func() (provider.HPCClusterList, error) {
+				return a.d.Providers.CachedHPCClusters(listCtx, providerID, slurmCloudListAge)
+			})
+			accounts[providerID] = at
+		}
+		if at.err != nil {
+			err = at.err
+		} else {
+			_, err = at.targets.For(c.ProviderClusterID)
+		}
+	}
 	var notApplicable *provider.SlurmApplyNotApplicableError
 	switch {
 	case errors.As(err, &notApplicable):
@@ -91,6 +116,14 @@ func (a *apiHandlers) slurmOperations(ctx context.Context, c store.SlurmCluster)
 		return false, true, messages.SlurmApplyReasonRevoked
 	}
 	return true, true, ""
+}
+
+// slurmAccountTargets is one cloud account's apply targets for a listing of
+// entries; cancel ends the wait for its cloud listing.
+type slurmAccountTargets struct {
+	targets *provider.SlurmApplyTargets
+	err     error
+	cancel  context.CancelFunc
 }
 
 // slurmOnceSetupURL is the URL the manager node fetches the entry's setup

@@ -183,3 +183,32 @@ func TestSetupBakesTheIntervalIntoTheCheckScript(t *testing.T) {
 		}
 	})
 }
+
+// A second run, once our block is in: slurmctld now reports our check, and
+// slurm.conf has no original line (the original lives in the included
+// file), so the program the first run chained is kept, not dropped
+// (2026-11-18 review: a re-run stopped the cluster's NHC).
+func TestSetupRerunKeepsAProgramChainedFromAnIncludedFile(t *testing.T) {
+	eachShell(t, func(t *testing.T, w *world) {
+		prog := w.program("nhc", 5)
+		w.controller("nfs", baseConf+"Include "+w.path("etc/slurm/health.conf")+"\n")
+		w.env["FAKE_ORIG_PROGRAM"] = prog
+		w.env["FAKE_ORIG_STATE"] = "IDLE,CYCLE"
+		w.env["FAKE_ORIG_INTERVAL"] = "120"
+		if r := w.runSetup(); r.code != 0 {
+			t.Fatalf("first run: exit %d\n%s", r.code, r.stdout)
+		}
+		w.env["FAKE_ORIG_PROGRAM"] = filepath.Join(w.p.ScriptDir, "check.sh")
+		w.env["FAKE_ORIG_STATE"] = "ANY,CYCLE"
+		r := w.runSetup()
+		if r.code != 0 {
+			t.Fatalf("second run: exit %d\n%s", r.code, r.stdout)
+		}
+		if got := w.read(filepath.Join(w.p.ScriptDir, "chained")); got != prog+"\nIDLE,CYCLE\n" {
+			t.Fatalf("after a re-run chained = %q; want the included program kept", got)
+		}
+		if m := marker(t, r.stdout, "chained"); m["program"] != prog {
+			t.Fatalf("chained marker = %v", m)
+		}
+	})
+}

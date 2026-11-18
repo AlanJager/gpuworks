@@ -775,3 +775,21 @@ func TestReconcileLocalOnASharedFilesystem(t *testing.T) {
 		t.Fatalf("a local disk is named %q", st.SharedFSType)
 	}
 }
+
+// A missing shared directory whose nearest existing parent is the root
+// filesystem: "/" is a mount point, but not a share, so neither the probe nor
+// the storage creates it there (2026-11-18 review).
+func TestAMissingSharedDirUnderTheRootFilesystemIsNotCreated(t *testing.T) {
+	e := newEnv(t)
+	m := e.manager()
+	e.sf.onLocalDisk("/")
+	path := "/gwks-missing-share-" + filepath.Base(t.TempDir()) + "/models"
+	if r := m.Probe(context.Background(), Spec{Type: TypeSharedDir, Path: path}); r.OK || r.Reason != ReasonNotMounted {
+		t.Fatalf("probe = %+v; want not mounted", r)
+	}
+	st := one(t, m, Spec{ID: 7, Type: TypeSharedDir, Path: path})
+	wantState(t, st, StateFailed, ReasonNotMounted)
+	if _, err := os.Stat(filepath.Dir(path)); err == nil {
+		t.Fatalf("%s was created on the root filesystem", filepath.Dir(path))
+	}
+}

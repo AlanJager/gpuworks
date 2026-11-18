@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/provider"
 )
@@ -34,6 +35,11 @@ const ehpcClusterTag = "ehpc.aliyun.com"
 
 // ehpcPageSize is the ListClusters page size.
 const ehpcPageSize = 50
+
+// ehpcRegionTimeout bounds the listing of one region's clusters, its retries
+// included, so a region whose endpoint does not answer fails alone within the
+// listing's own budget. A var so tests can shorten it.
+var ehpcRegionTimeout = 20 * time.Second
 
 type ehpcCluster struct {
 	ClusterID     string `json:"ClusterId"`
@@ -225,7 +231,11 @@ func (d *Driver) ListHPCClusters(ctx context.Context, creds provider.Credentials
 				return
 			}
 			defer func() { <-slots }()
-			list, err := d.listEHPCClusters(ctx, creds, region, true)
+			// Each region has its own budget: one whose endpoint does not
+			// answer is a failed region, not the end of the whole listing.
+			regionCtx, cancel := context.WithTimeout(ctx, ehpcRegionTimeout)
+			defer cancel()
+			list, err := d.listEHPCClusters(regionCtx, creds, region, true)
 			if err != nil {
 				switch {
 				case ctx.Err() != nil:
@@ -257,8 +267,20 @@ func (d *Driver) ListHPCClusters(ctx context.Context, creds provider.Credentials
 		}(i, region)
 	}
 	wg.Wait()
+	// The listing as a whole ran out of time: the regions that answered are
+	// kept, and those that did not are failed regions, as when one of them
+	// fails; with no region answered, the error is the answer.
 	if err := ctx.Err(); err != nil {
-		return provider.HPCClusterList{}, err
+		answeredAny := false
+		for i := range outcomes {
+			answeredAny = answeredAny || outcomes[i].answered
+			if !outcomes[i].answered && outcomes[i].failure == nil && outcomes[i].inactive == "" {
+				outcomes[i].failure = &provider.HPCRegionFailure{Region: regions[i], Message: err.Error()}
+			}
+		}
+		if !answeredAny {
+			return provider.HPCClusterList{}, err
+		}
 	}
 	var (
 		out      provider.HPCClusterList

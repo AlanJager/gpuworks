@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/provider"
 )
@@ -439,5 +440,42 @@ func TestListHPCClustersListsAClusterOnceWhenSeveralRegionsReturnIt(t *testing.T
 	list, err := d.ListHPCClusters(context.Background(), userCreds)
 	if err != nil || len(list.Clusters) != 1 || list.Clusters[0].Region != "ap-southeast-1" {
 		t.Fatalf("list = %+v, %v; want the cluster once, in the first region by name", list, err)
+	}
+}
+
+// A region whose endpoint does not answer fails alone within its own budget:
+// the clusters of the regions that answered are listed, and it is a failed
+// region (2026-11-18 review: one slow region emptied the whole listing).
+func TestListHPCClustersKeepsTheAnsweredRegionsWhenOneDoesNotAnswer(t *testing.T) {
+	old := ehpcRegionTimeout
+	ehpcRegionTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { ehpcRegionTimeout = old })
+	d, _ := hpcListFake(t, func(c fakeCall, region string) (int, any) {
+		switch region {
+		case "cn-shenzhen":
+			return 200, ehpcClustersBody(ehpcClusterJSON("ehpc-sz-1", "slurm-lab", "slurm", "22.05.8"))
+		case "cn-beijing":
+			time.Sleep(2 * time.Second)
+			return 200, ehpcClustersBody()
+		}
+		return ehpcDenied(1)
+	})
+	start := time.Now()
+	list, err := d.ListHPCClusters(context.Background(), userCreds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 1500*time.Millisecond {
+		t.Fatalf("the listing waited %s for the region that does not answer", time.Since(start))
+	}
+	if len(list.Clusters) != 1 || list.Clusters[0].ID != "ehpc-sz-1" || !list.Partial() {
+		t.Fatalf("list = %+v", list)
+	}
+	failed := false
+	for _, f := range list.Failed {
+		failed = failed || f.Region == "cn-beijing"
+	}
+	if !failed {
+		t.Fatalf("the region that did not answer is not a failed region: %+v", list.Failed)
 	}
 }

@@ -343,7 +343,10 @@ random_below() {
 # cluster boots together (or an administrator reconfigures at once) do not all
 # ask the server, and download the agent from it, in the same second.
 spread() {
+	# At most 300 s: the worker runs under a 30-minute timeout, and a
+	# cluster's own interval may be hours long.
 	max=$((INTERVAL / 2))
+	[ "$max" -le 300 ] || max=300
 	if [ -n "${GWKS_SPREAD_MAX:-}" ]; then
 		max=$GWKS_SPREAD_MAX
 	fi

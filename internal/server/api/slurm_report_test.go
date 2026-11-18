@@ -522,3 +522,45 @@ func TestRemovingASlurmNodeTakesItOffTheListUntilAReportBringsItBack(t *testing.
 		t.Fatalf("no agent online = %v", item)
 	}
 }
+
+// The sweep deletes a node without going through the API (so nothing resets
+// the report memory), and its row goes with it. The node is still in the
+// cluster, so the next report with the remembered digest stores the list
+// again and the row is back (2026-11-18 review: it stayed missing, and the
+// node was swept again on its next outage).
+func TestAReportAfterTheSweepDeletedANodeStoresTheListAgain(t *testing.T) {
+	rig := newTokenRig(t)
+	_, tokens := enrolledSlurmNode(t, rig, "gpu-1", "gpu-2")
+	if err := rig.st.DB().Model(&store.Node{}).Where("slurm_node = ?", "gpu-1").Update("state", store.NodeStateOnline).Error; err != nil {
+		t.Fatal(err)
+	}
+	full := `{"digest":"d1","nodes":[{"name":"gpu-1","state":"idle","gpus":1},{"name":"gpu-2","state":"idle","gpus":1}]}`
+	if rec := rig.do(tokens["gpu-1"], http.MethodPost, "/api/v1/slurm/gpu-nodes", full); rec.Code != http.StatusOK {
+		t.Fatalf("report = %d %s", rec.Code, rec.Body)
+	}
+	var gone store.Node
+	if err := rig.st.DB().Where("slurm_node = ?", "gpu-2").First(&gone).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := rig.st.DeleteNode(gone.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if item := slurmEntryItem(t, rig); item["slurm_gpu_nodes"] != float64(1) {
+		t.Fatalf("after the sweep's delete = %v", item)
+	}
+	rec := rig.do(tokens["gpu-1"], http.MethodPost, "/api/v1/slurm/gpu-nodes", `{"digest":"d1"}`)
+	if got := decodeMap(t, rec.Body.Bytes()); got["need_nodes"] != true {
+		t.Fatalf("the remembered digest after a row went = %v; want the nodes asked for", got)
+	}
+	if rec := rig.do(tokens["gpu-1"], http.MethodPost, "/api/v1/slurm/gpu-nodes", full); rec.Code != http.StatusOK {
+		t.Fatalf("report = %d %s", rec.Code, rec.Body)
+	}
+	if item := slurmEntryItem(t, rig); item["slurm_gpu_nodes"] != float64(2) {
+		t.Fatalf("after the next report = %v; want gpu-2 back on the list", item)
+	}
+	// And then nothing changes: the digest and the rows agree again.
+	rec = rig.do(tokens["gpu-1"], http.MethodPost, "/api/v1/slurm/gpu-nodes", `{"digest":"d1"}`)
+	if got := decodeMap(t, rec.Body.Bytes()); got["need_nodes"] != false && got["need_nodes"] != nil {
+		t.Fatalf("a steady report asked for the nodes again: %v", got)
+	}
+}

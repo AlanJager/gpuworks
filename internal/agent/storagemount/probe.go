@@ -75,7 +75,16 @@ func (m *Manager) probeDir(ctx context.Context, spec Spec) ProbeResult {
 		st := failErr(Status{}, err, "check directory")
 		return probeFail(reasonOrOther(st), st.Message, "")
 	}
-	if spec.Type != TypeLocal {
+	if spec.Type == TypeSharedDir && dir != filepath.Clean(spec.Path) {
+		// The directory does not exist yet: it is created on the share, so
+		// its parent must be on one.
+		if reason, msg, err := m.ancestorOnShare(ctx, key, dir); err != nil {
+			st := failErr(Status{}, err, "check mount")
+			return probeFail(reasonOrOther(st), st.Message, "")
+		} else if reason != "" {
+			return probeFail(reason, msg, "")
+		}
+	} else if spec.Type != TypeLocal {
 		backing := spec
 		backing.Path = dir
 		reason, msg, err := m.checkBacking(ctx, backing, key)

@@ -20,7 +20,7 @@ type fakeLeaser struct {
 	asked []string
 }
 
-func (f *fakeLeaser) Lease(_ context.Context, _ string, want []string, progress func(string)) ([]string, bool, error) {
+func (f *fakeLeaser) Lease(_ context.Context, _ string, want []string, _ bool, progress func(string)) ([]string, bool, error) {
 	f.asked = want
 	if progress != nil {
 		progress("waiting for Slurm job 20: Resources")

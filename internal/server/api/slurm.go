@@ -144,6 +144,12 @@ func (a *apiHandlers) slurmViews(ctx context.Context, rows []store.SlurmCluster)
 		return nil, err
 	}
 	accounts := a.slurmSourceAccounts(rows)
+	accountTargets := map[uint]*slurmAccountTargets{}
+	defer func() {
+		for _, at := range accountTargets {
+			at.cancel()
+		}
+	}()
 	cloudCtx, cancelCloud := context.WithTimeout(ctx, slurmCloudListWait)
 	defer cancelCloud()
 	cloud := &slurmCloudNodes{a: a, ctx: cloudCtx}
@@ -169,7 +175,7 @@ func (a *apiHandlers) slurmViews(ctx context.Context, rows []store.SlurmCluster)
 		if c.ProviderID != nil {
 			v.source = accounts[*c.ProviderID]
 		}
-		v.canApply, v.canRemove, v.blocked = a.slurmOperations(ctx, c)
+		v.canApply, v.canRemove, v.blocked = a.slurmOperations(ctx, c, accountTargets)
 		if hint, ok := planning.SlurmSharedStorageFor(c, v.source.Kind, v.nodes, withShared[c.ID]); ok {
 			v.sharedStorage = &dto.SlurmSharedStorageHint{Name: hint.Name, Type: proto.StorageSharedDir, Path: hint.Path, LabelKey: hint.LabelKey, LabelValue: hint.LabelValue}
 		}

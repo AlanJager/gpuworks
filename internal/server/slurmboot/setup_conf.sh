@@ -152,6 +152,14 @@ analyze_conf() {
 		cfg_interval=$(conf_value HealthCheckInterval | awk '{ print $1 }')
 		case "$cfg_interval" in '' | *[!0-9]*) ;; *) ORIG_INTERVAL=$cfg_interval ;; esac
 	fi
+	# Our block is in, and slurm.conf keeps no original line: the original
+	# lived where this file does not show it (an included file), and the
+	# earlier run recorded it in chained. Keep that, or a re-run would stop
+	# the cluster's own health check.
+	if [ "$(fact has_block)" = yes ] && [ -z "$ORIG_PROGRAM" ] && [ -s "$SCRIPT_DIR/chained" ]; then
+		ORIG_PROGRAM=$(sed -n 1p "$SCRIPT_DIR/chained" | tr -d '\r')
+		ORIG_STATE=$(sed -n 2p "$SCRIPT_DIR/chained" | tr -d '\r')
+	fi
 	INCLUDES=$(fact includes)
 	if [ -n "$INCLUDES" ]; then
 		say "WARNING: $CONF includes other files ($INCLUDES). Health check settings in them are not seen by the edit below;"

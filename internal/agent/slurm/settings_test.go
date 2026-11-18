@@ -18,7 +18,7 @@ func TestLeaseSubmitsAsTheAccountUserAndStillOwnsTheJob(t *testing.T) {
 	l, clock := newTestLeaser(t, f, Config{AccountUser: "svc", IdleReturn: time.Minute})
 	l.root = true
 	l.resetOwnAccounts()
-	held, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil)
+	held, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil)
 	if err != nil || len(held) != 1 {
 		t.Fatalf("Lease = %v, %v", held, err)
 	}
@@ -82,7 +82,7 @@ func TestLeaseSubmitsAsTheAgentUnlessItIsRootWithAnotherAccount(t *testing.T) {
 		l, _ := newTestLeaser(t, f, Config{AccountUser: tc.account})
 		l.root = tc.root
 		l.resetOwnAccounts()
-		if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil); err != nil {
+		if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		if got := strings.Contains(f.lastCall("sbatch"), "--uid="); got != tc.want {
@@ -101,7 +101,7 @@ func TestSetSettingsAppliesToTheNextJobAndKeepsEarlierOnesOwn(t *testing.T) {
 	l, _ := newTestLeaser(t, f, Config{SbatchArgs: []string{"-A", "old"}})
 	l.root = true
 	l.resetOwnAccounts()
-	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil); err != nil {
+	if _, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if submit := f.lastCall("sbatch"); !strings.Contains(submit, "-A old") || strings.Contains(submit, "--uid=") {
@@ -111,7 +111,7 @@ func TestSetSettingsAppliesToTheNextJobAndKeepsEarlierOnesOwn(t *testing.T) {
 	if cfg := l.settings(); !slices.Equal(cfg.SbatchArgs, []string{"-A", "new", "--time=1-0"}) || cfg.IdleReturn != 300*time.Second || cfg.PendingTimeout != 90*time.Second || cfg.Node != f.node {
 		t.Fatalf("settings = %+v", cfg)
 	}
-	if _, _, err := l.Lease(context.Background(), "inst-b", []string{card1}, nil); err != nil {
+	if _, _, err := l.Lease(context.Background(), "inst-b", []string{card1}, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if submit := f.lastCall("sbatch"); !strings.Contains(submit, "-A new --time=1-0") || strings.Contains(submit, "-A old") || !strings.Contains(submit, "--uid=svc") {
@@ -190,7 +190,7 @@ func TestRestartedAgentStillOwnsJobsOfAnEarlierAccountUser(t *testing.T) {
 	l, _ := newTestLeaser(t, f, Config{AccountUser: "svc-old", IdleReturn: time.Minute, SubmittersFile: file})
 	l.root = true
 	l.resetOwnAccounts()
-	held, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, nil)
+	held, _, err := l.Lease(context.Background(), "inst-a", []string{card0}, false, nil)
 	if err != nil || len(held) != 1 {
 		t.Fatalf("Lease = %v, %v", held, err)
 	}

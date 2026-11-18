@@ -319,11 +319,11 @@ func failErr(st Status, err error, what string) Status {
 
 // createOnShare creates a shared directory that does not exist yet (such as a
 // models directory suggested on a cluster's NAS) when its nearest existing
-// ancestor is on the share: a mount point, or on a network or FUSE
-// filesystem. An ancestor on the local disk means the share is not mounted,
-// and creating the directory there would write models to the local disk, so
-// it is answered as not mounted and nothing is created. A directory that
-// exists is left to the checks that follow.
+// ancestor is on a network or FUSE filesystem. Any other ancestor (the root
+// filesystem, or a local disk's mount point) means the share is not
+// mounted, and creating the directory there would write models to the local
+// disk, so it is answered as not mounted and nothing is created. A
+// directory that exists is left to the checks that follow.
 func (m *Manager) createOnShare(ctx context.Context, sp Spec) (reason, msg string, err error) {
 	key := storageKey(sp.ID)
 	var missing bool
@@ -334,12 +334,26 @@ func (m *Manager) createOnShare(ctx context.Context, sp Spec) (reason, msg strin
 	}); err != nil || !missing {
 		return "", "", err
 	}
-	ancestor := sp
-	ancestor.Path = nearestExisting(sp.Path)
-	if reason, msg, err := m.checkBacking(ctx, ancestor, key); err != nil || reason != "" {
+	if reason, msg, err := m.ancestorOnShare(ctx, key, nearestExisting(sp.Path)); err != nil || reason != "" {
 		return reason, msg, err
 	}
 	return "", "", m.call(ctx, key, func() error { return os.MkdirAll(sp.Path, 0o755) })
+}
+
+// ancestorOnShare says whether dir, the nearest existing ancestor of a
+// shared directory that does not exist yet, is on a network or FUSE
+// filesystem. Being a mount point is not enough here: the root filesystem
+// is one.
+func (m *Manager) ancestorOnShare(ctx context.Context, key, dir string) (reason, msg string, err error) {
+	u, err := m.statfs(ctx, key, dir)
+	if err != nil {
+		return "", "", err
+	}
+	if IsNetworkFS(u.FSType) {
+		return "", "", nil
+	}
+	return ReasonNotMounted, fmt.Sprintf("%s does not exist, and %s is not on a network filesystem; "+
+		"the share is not mounted there, and creating the directory would write to the local disk", dir, dir), nil
 }
 
 // nearestExisting is path, or its nearest ancestor that exists.

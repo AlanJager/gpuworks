@@ -223,7 +223,9 @@ func (t *SlurmApplyTargets) For(clusterID string) (SlurmApplyTarget, error) {
 	if c := t.synced[clusterID]; c != nil && c.region != "" {
 		target.Region, scheduler, target.ExpectGPU = c.region, c.scheduler, c.expectGPU
 	}
-	if target.Region == "" && t.canList {
+	// A sync whose E-HPC read failed names the cluster's region but not its
+	// scheduler: that is unknown, not "not Slurm", so the listing answers it.
+	if (target.Region == "" || scheduler == "") && t.canList {
 		if !t.listed {
 			t.list, t.listErr = t.listing()
 			t.listed = true
@@ -235,7 +237,10 @@ func (t *SlurmApplyTargets) For(clusterID string) (SlurmApplyTarget, error) {
 			return SlurmApplyTarget{}, notApplicable(messages.SlurmApplyReasonClusterListingFailed)
 		}
 		if c, ok := hpcListingOf(t.list.Clusters, clusterID); ok {
-			target.Region, scheduler = c.Region, c.Scheduler
+			if target.Region == "" {
+				target.Region = c.Region
+			}
+			scheduler = c.Scheduler
 		} else if t.list.Partial() {
 			// It may be in a region that could not be listed.
 			return SlurmApplyTarget{}, notApplicable(messages.SlurmApplyReasonClusterListingFailed)

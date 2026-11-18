@@ -45,6 +45,10 @@ const slurmStateWriteInterval = time.Minute
 type slurmReportMemory struct {
 	members, states string
 	wroteAt         time.Time
+	// rows is how many rows the stored list had when these digests were
+	// stored: a node deleted since (by hand or by the sweep) took its row
+	// with it, and the next report stores the list whole again.
+	rows int
 }
 
 // slurmReportDigests is the memory of each entry.
@@ -131,8 +135,21 @@ func (a *apiHandlers) slurmReportGPUNodes(w http.ResponseWriter, r *http.Request
 	out := dto.SlurmGPUNodeReportResponse{Settings: slurmAgentSettings(*cluster)}
 	mem := a.slurmReports.get(cluster.ID)
 	now := a.slurmReports.clock()
+	same := mem.members == req.Digest && mem.states == req.StateDigest
+	if same {
+		// The digests are the ones stored; the rows may not be, when a node
+		// was deleted since (one indexed count).
+		rows, err := a.d.Store.SlurmListRowCount(cluster.ID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		if rows != mem.rows {
+			same, mem.wroteAt = false, time.Time{}
+		}
+	}
 	switch {
-	case mem.members == req.Digest && mem.states == req.StateDigest:
+	case same:
 		// Nothing to store: this is the list the entry has.
 	case now.Sub(mem.wroteAt) < slurmStateWriteInterval:
 		// The entry's list was written a moment ago: a change waits for a
@@ -150,7 +167,7 @@ func (a *apiHandlers) slurmReportGPUNodes(w http.ResponseWriter, r *http.Request
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
-		next := slurmReportMemory{members: req.Digest, states: req.StateDigest, wroteAt: mem.wroteAt}
+		next := slurmReportMemory{members: req.Digest, states: req.StateDigest, wroteAt: mem.wroteAt, rows: len(rows)}
 		if change.Changed() {
 			next.wroteAt = now
 		}

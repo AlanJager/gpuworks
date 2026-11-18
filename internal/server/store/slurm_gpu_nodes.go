@@ -124,6 +124,14 @@ func (s *Store) SlurmGPUNodeCounts() (map[uint]int, error) {
 	return out, err
 }
 
+// SlurmListRowCount is how many rows the cluster's list has, GPU nodes and
+// listed-only ones, counted on the list's unique index.
+func (s *Store) SlurmListRowCount(clusterID uint) (int, error) {
+	var n int64
+	err := s.reader().Model(&SlurmGPUNode{}).Where("cluster_id = ?", clusterID).Count(&n).Error
+	return int(n), err
+}
+
 // SlurmGPUNodeNames lists the names of a cluster's listed nodes, by the
 // unique index.
 func (s *Store) SlurmGPUNodeNames(clusterID uint) ([]string, error) {

@@ -72,7 +72,13 @@ type Config struct {
 const (
 	defaultPendingTimeout = 10 * time.Minute
 	defaultIdleReturn     = 60 * time.Second
-	pollInterval          = 2 * time.Second
+	// adoptedGrace is how long after the agent starts a job it found is
+	// kept although no instance seems to use its cards: the engine learns
+	// its instances from the server's first state sync, which an
+	// unreachable or slow server delays, while their containers keep
+	// running on those cards.
+	adoptedGrace = 10 * time.Minute
+	pollInterval = 2 * time.Second
 )
 
 // Leaser borrows cards from Slurm with placeholder jobs (engine.CardLeaser)
@@ -100,6 +106,9 @@ type Leaser struct {
 	mu sync.Mutex // serializes borrowing and sweeping; guards jobs
 	// jobs are the placeholder jobs this agent knows, by job id.
 	jobs map[string]*holdJob
+	// startedAt is when this leaser first listed its jobs: jobs found then
+	// were submitted before a restart (adopted).
+	startedAt time.Time
 
 	// cardMu guards the card naming below. It is apart from mu so the
 	// ledger keeps reporting while a borrow waits for its job to start.
@@ -124,6 +133,13 @@ type holdJob struct {
 	cards    []string // card idents, set once the job runs
 	running  bool
 	idle     time.Time // when its cards were last seen unused; zero while used
+	// adopted: the job was found running, submitted before this agent
+	// started, so the instance on its cards may not be known yet.
+	adopted bool
+	// exclusive: the job was borrowed for an instance that takes whole
+	// cards, so no other instance shares them; unknown (false) for a job
+	// found at start.
+	exclusive bool
 }
 
 type jobCards struct {
@@ -245,20 +261,25 @@ func (l *Leaser) nodeJobs(ctx context.Context) ([]nodeJob, error) {
 func (l *Leaser) ownJobs(ctx context.Context) ([]nodeJob, error) {
 	// The agent's own account alone: squeue --me. A root agent that submits as
 	// another account lists the jobs of each account it has submitted as.
+	// Every agent of a cluster submits as the same accounts, so a job is
+	// this agent's only when it asked for this node (sbatch -w, squeue's
+	// %n), pending or running; another node's agent returns its own.
 	who := []string{"--me"}
 	if accounts := l.ownAccounts(); len(accounts) > 1 {
 		who = []string{"-u", strings.Join(accounts, ",")}
 	}
 	args := append([]string{"-h"}, who...)
-	out, err := l.run(ctx, "squeue", append(args, "-o", "%A|%j|%u|%T")...)
+	out, err := l.run(ctx, "squeue", append(args, "-o", "%A|%j|%u|%T|%n")...)
 	if err != nil {
 		return nil, err
 	}
 	var own []nodeJob
-	for _, j := range parseQueue(out) {
-		if strings.HasPrefix(j.name, HoldPrefix) {
-			own = append(own, j)
+	for _, line := range strings.Split(string(out), "\n") {
+		parts := strings.Split(strings.TrimSpace(line), "|")
+		if len(parts) != 5 || parts[0] == "" || !strings.HasPrefix(parts[1], HoldPrefix) || parts[4] != l.node {
+			continue
 		}
+		own = append(own, nodeJob{id: parts[0], name: parts[1], user: parts[2], state: parts[3]})
 	}
 	return own, nil
 }
@@ -294,11 +315,14 @@ func (l *Leaser) jobCardsOnNode(ctx context.Context, record string) ([]string, e
 }
 
 // Lease borrows the cards an instance needs (engine.CardLeaser). Cards this
-// agent already holds for the instance, or for another instance sharing
-// them (dGPU), are used as they are; the rest are asked for in one
-// placeholder job of that many cards, and the cards Slurm gives take the
-// places of the ones placement chose.
-func (l *Leaser) Lease(ctx context.Context, instance string, want []string, progress func(string)) ([]string, bool, error) {
+// agent already holds for the instance are used as they are, and so are
+// cards held for another instance when both share them (dGPU, shared); the
+// rest are asked for in one placeholder job of that many cards, and the
+// cards Slurm gives take the places of the ones placement chose. An
+// instance that takes whole cards never runs on another instance's cards:
+// Slurm may have given those to the other one in place of the cards
+// placement chose for it, and two instances would end up on one card.
+func (l *Leaser) Lease(ctx context.Context, instance string, want []string, shared bool, progress func(string)) ([]string, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if err := l.refreshOwnLocked(ctx); err != nil {
@@ -310,11 +334,13 @@ func (l *Leaser) Lease(ctx context.Context, instance string, want []string, prog
 		if !j.running {
 			continue
 		}
-		for _, c := range j.cards {
-			held[c] = true
-		}
 		if j.instance == instance {
 			mine = j
+		}
+		if j.instance == instance || (shared && !j.exclusive) {
+			for _, c := range j.cards {
+				held[c] = true
+			}
 		}
 	}
 	if mine != nil && len(mine.cards) == len(want) {
@@ -345,6 +371,7 @@ func (l *Leaser) Lease(ctx context.Context, instance string, want []string, prog
 	if err != nil {
 		return nil, false, err
 	}
+	job.exclusive = !shared
 	next := 0
 	for i := range out {
 		if out[i] == "" {
@@ -490,12 +517,16 @@ func (l *Leaser) refreshOwnLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	starting := l.startedAt.IsZero()
+	if starting {
+		l.startedAt = l.now()
+	}
 	live := map[string]bool{}
 	for _, j := range own {
 		live[j.id] = true
 		known, ok := l.jobs[j.id]
 		if !ok {
-			known = &holdJob{id: j.id, instance: strings.TrimPrefix(j.name, HoldPrefix)}
+			known = &holdJob{id: j.id, instance: strings.TrimPrefix(j.name, HoldPrefix), adopted: starting}
 			l.jobs[j.id] = known
 		}
 		if j.state == "RUNNING" && !known.running {

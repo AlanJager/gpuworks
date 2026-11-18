@@ -21,10 +21,14 @@ import (
 // (an agent restart adopting its running container) are the ones its
 // container runs on, newly taken ones may not be.
 //
+// shared says the instance shares its cards with others (dGPU, a memory
+// limit per card); one that takes whole cards never runs on cards held for
+// another instance.
+//
 // The leaser returns cards by itself once no instance holds them
 // (InstanceCards), so there is no release call to forget.
 type CardLeaser interface {
-	Lease(ctx context.Context, instance string, want []string, progress func(message string)) (held []string, fresh bool, err error)
+	Lease(ctx context.Context, instance string, want []string, shared bool, progress func(message string)) (held []string, fresh bool, err error)
 }
 
 // SetCardLeaser installs the node's card allocator. canRebind reports whether
@@ -69,7 +73,7 @@ func (e *Engine) leaseCards(ctx context.Context, spec *proto.InstanceDesiredStat
 		err := fmt.Errorf("the instance's cards are not all identified, so they cannot be borrowed from the node's allocator")
 		return false, withFailure(proto.RuntimeFailure{Code: proto.ErrorCardLeaseFailed, Detail: err.Error()}, err)
 	}
-	held, fresh, err := leaser.Lease(ctx, spec.UUID, spec.GPUIdents, func(message string) {
+	held, fresh, err := leaser.Lease(ctx, spec.UUID, spec.GPUIdents, spec.VRAMLimitBytes > 0, func(message string) {
 		e.reportStateProgress(*spec, proto.InstPending, "", "", message, proto.PhaseContainerPrepare, 0, 0, 0, 0)
 	})
 	if err != nil {
