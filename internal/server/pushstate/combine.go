@@ -81,7 +81,7 @@ func (s *State) sortedParts(kind string, verified bool) []*part {
 // recombineLocked builds the snapshot from every part at extclock now and
 // publishes it, keeping the capacity selection's last outcome. It reports
 // whether the explicit holds or what the console shows changed, and asks
-// the selection again when the caps changed. It also re-arms the step timer
+// the selection again when the caps or the kept nodes changed. It also re-arms the step timer
 // at the next instant anything changes on its own.
 func (s *State) recombineLocked() (holdsChanged, featuresChanged bool) {
 	now := s.clock.nowMS()
@@ -110,7 +110,7 @@ func (s *State) recombineLocked() (holdsChanged, featuresChanged bool) {
 	}
 	s.cur.Store(c)
 	s.next = next
-	if prev == nil || prev.caps != c.caps || !sameHolds(map[uint]Hold{0: prev.capHold}, map[uint]Hold{0: c.capHold}) {
+	if prev == nil || prev.caps != c.caps || !slices.Equal(prev.keep, c.keep) || !sameHolds(map[uint]Hold{0: prev.capHold}, map[uint]Hold{0: c.capHold}) {
 		s.sel.Request()
 	}
 	if prev == nil {
@@ -159,7 +159,13 @@ func (s *State) combineAvailabilityLocked(now int64, soon func(int64)) map[featu
 
 func (s *State) combineCapacityLocked(c *Combined, now int64, soon func(int64), overrides map[ownerKind]map[string]*Override) {
 	var holdN, holdC Hold
+	keep := map[uint]bool{}
 	for _, p := range s.sortedParts(extapi.KindFleetCapacity, false) {
+		// The owners' kept nodes are unioned, whether or not a cap of
+		// theirs is in force: keeping a node first never loosens a cap.
+		for _, id := range p.capacity.keep {
+			keep[id] = true
+		}
 		steps := p.capacity.steps
 		at := func(i int) int64 { return steps[i].at }
 		soon(nextAfter(len(steps), at, now))
@@ -185,6 +191,9 @@ func (s *State) combineCapacityLocked(c *Combined, now int64, soon func(int64), 
 	c.capHold = holdC
 	if c.caps.NodesWithCards.Limited {
 		c.capHold = holdN
+	}
+	if len(keep) > 0 {
+		c.keep = slices.Sorted(maps.Keys(keep))
 	}
 }
 

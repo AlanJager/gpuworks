@@ -51,7 +51,9 @@ type availStep struct {
 }
 
 type capacityPart struct {
-	steps      []capacityStep
+	steps []capacityStep
+	// keep are the node ids the table keeps first, ascending.
+	keep       []uint
 	refuseNode *messages.ProductError
 	refuseCard *messages.ProductError
 	hold       Hold
@@ -102,6 +104,9 @@ func normalize(t extapi.Table) extapi.Table {
 		out := &extapi.FleetCapacityV1{Select: t.Select, RefuseNode: *normNotice(&t.RefuseNode), RefuseCard: *normNotice(&t.RefuseCard), Hold: *normNotice(&t.Hold)}
 		for _, s := range t.Steps {
 			out.Steps = append(out.Steps, extapi.CapacityStep{At: normTime(s.At), MaxNodesWithCards: copyInt(s.MaxNodesWithCards), MaxCards: copyInt(s.MaxCards)})
+		}
+		if len(t.Keep) > 0 {
+			out.Keep = append([]int64(nil), t.Keep...)
 		}
 		return out
 	case *extapi.NodeHoldsV1:
@@ -259,6 +264,9 @@ func compileCapacity(owner string, t *extapi.FleetCapacityV1) *capacityPart {
 	}
 	for _, s := range t.Steps {
 		out.steps = append(out.steps, capacityStep{at: timeMS(s.At), caps: fleetcap.Caps{NodesWithCards: limitOf(s.MaxNodesWithCards), Cards: limitOf(s.MaxCards)}})
+	}
+	for _, id := range t.Keep {
+		out.keep = append(out.keep, uint(id))
 	}
 	return out
 }

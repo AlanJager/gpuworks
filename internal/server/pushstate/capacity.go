@@ -2,6 +2,7 @@ package pushstate
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/fleetcap"
@@ -13,9 +14,9 @@ const fleetReadTimeout = 30 * time.Second
 // selectPass is one pass of the core capacity selection (a holdpass apply,
 // so passes are coalesced and at least SelectFloor apart): it reads the
 // fleet again only after a fleet change and only while a cap is set, fits
-// it into the combined caps by enrollment order, publishes the outcome and
-// asks for a pass of the scheduling holds when the set of held nodes
-// changed. It never runs inside a hook.
+// it into the combined caps (kept nodes first, then enrollment order),
+// publishes the outcome and asks for a pass of the scheduling holds when the
+// set of held nodes changed. It never runs inside a hook.
 func (s *State) selectPass() (held, released []string, err error) {
 	if s.cfg.Fleet == nil {
 		return nil, nil, nil
@@ -34,15 +35,17 @@ func (s *State) selectPass() (held, released []string, err error) {
 	}
 	s.mu.Lock()
 	var prev fleetcap.Caps
+	var prevKeep []uint
 	if c := s.cur.Load().capacity; c != nil {
-		prev = c.caps
+		prev, prevKeep = c.caps, c.keep
 	}
 	held, released = s.placeLocked()
-	capsChanged := s.cur.Load().capacity.caps != prev
+	now := s.cur.Load().capacity
+	capsChanged := now.caps != prev || !slices.Equal(now.keep, prevKeep)
 	s.mu.Unlock()
-	// A changed cap changes the answer for nodes the selection has not
-	// placed yet too (Hold judges them against the room left), so it asks
-	// for a pass even when no placed node changed.
+	// A changed cap or kept set changes the answer for nodes the selection
+	// has not placed yet too (Hold judges them against the room left), so
+	// it asks for a pass even when no placed node changed.
 	if len(held) > 0 || len(released) > 0 || capsChanged {
 		s.effects(true, false)
 	}
@@ -54,10 +57,10 @@ func (s *State) selectPass() (held, released []string, err error) {
 // released since the last placement.
 func (s *State) placeLocked() (held, released []string) {
 	c := s.cur.Load()
-	snap := &capacitySnap{caps: c.caps, hold: c.capHold}
+	snap := &capacitySnap{caps: c.caps, keep: c.keep, hold: c.capHold}
 	next := map[uint]bool{}
 	if c.caps.Limited() {
-		sel := fleetcap.Select(c.caps, s.fleet, nil)
+		sel := fleetcap.Select(c.caps, s.fleet, c.keep)
 		snap.kept, snap.full = sel.Kept, sel.Full
 		for _, id := range sel.Held {
 			next[id] = true
