@@ -323,11 +323,11 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 ### gwx/1 连接与宿主接口
 
-每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`，以及节点读取 `POST /host/v1/node-identity`、`GET /host/v1/nodes`（`pluginhost.Reads`，由 app 以 store 实现；没有 `Reads` 时回 `PLUGIN_HOST_ROUTE_UNKNOWN`，未批准的权限回 `PLUGIN_HOST_NOT_PERMITTED`，未协商的能力回 `PLUGIN_CAPABILITY_NOT_OFFERED`，越界参数回 `PLUGIN_HOST_ARGUMENT_INVALID`）；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`），节点清单另有每秒 2 页、突发 4 页的桶。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
+每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`，以及节点读取 `POST /host/v1/node-identity`、`GET /host/v1/nodes`（`pluginhost.Reads`，由 app 以 store 实现；没有 `Reads` 时回 `PLUGIN_HOST_ROUTE_UNKNOWN`，未批准的权限回 `PLUGIN_HOST_NOT_PERMITTED`，未协商的能力回 `PLUGIN_CAPABILITY_NOT_OFFERED`，越界参数回 `PLUGIN_HOST_ARGUMENT_INVALID`），以及时钟、就绪、自有状态与派生密钥（`GET /host/v1/meta`、`POST /host/v1/clock/correct`、`POST /host/v1/state/ready`、`GET /host/v1/state/{kind}`、`POST /host/v1/derive-key`，各自需要的能力、角色与权限见[插件协议](../reference/plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)，由 `pluginbridge` 接到推送状态、由 `app` 从主密钥派生）；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`），节点清单另有每秒 2 页、突发 4 页的桶。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
 
 ### 插件 SDK：`pkg/pluginsdk`
 
-插件作者用 `pkg/pluginsdk`（与 `pkg/extapi` 一样是独立模块，只依赖标准库与 `pkg/extapi`）：`pluginsdk.Main(cfg)` 打开两个描述符、回答握手（协议与能力协商，拒绝时用 `PLUGIN_PROTOCOL_UNSUPPORTED` 或 `PLUGIN_CAPABILITY_MISSING`）、在握手被接受后运行 `Start`、回答健康、把其他调用交给插件的 `http.Handler`；收到 `shutdown`、server 一端关闭或父进程不在时退出。`PushState` 跳过 server 已持有且摘要相同的表，推送的代数取 `max(自己的计数, 持有的代数)+1`，所以存储被恢复或清空的插件不会因代数过期被拒。`pkg/pluginsdk/plugintest` 在进程内用真实 socketpair 扮演 server，供插件自己的测试使用。
+插件作者用 `pkg/pluginsdk`（与 `pkg/extapi` 一样是独立模块，只依赖标准库与 `pkg/extapi`）：`pluginsdk.Main(cfg)` 打开两个描述符、回答握手（协议与能力协商，拒绝时用 `PLUGIN_PROTOCOL_UNSUPPORTED` 或 `PLUGIN_CAPABILITY_MISSING`）、在握手被接受后运行 `Start`、回答健康、把其他调用交给插件的 `http.Handler`；收到 `shutdown`、server 一端关闭或父进程不在时退出。`PushState` 跳过 server 已持有且摘要相同的表，推送的代数取 `max(自己的计数, 持有的代数)+1`，所以存储被恢复或清空的插件不会因代数过期被拒。`Meta`、`CorrectClock`、`Ready`、`PushedState` 与 `DeriveKey` 对应上述宿主接口调用，握手没协商其能力时直接返回 `ErrNotNegotiated`。`pkg/pluginsdk/plugintest` 在进程内用真实 socketpair 扮演 server，供插件自己的测试使用；它按与 server 相同的码、理由与参数拒绝这些调用，派生密钥用固定的测试主密钥。
 
 ### 推送状态
 
