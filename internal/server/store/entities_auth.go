@@ -8,8 +8,15 @@ type User struct {
 	Username     string `gorm:"uniqueIndex;size:64"`
 	PasswordHash string `gorm:"size:256"` // argon2id
 	Role         string `gorm:"size:16"`  // admin | user
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// LocalAdmin marks the break-glass floor of the plugin host (ADR 0071,
+	// decision 11). It counts only while Role is admin and the request comes
+	// from a login session (auth.Claims.LocalAdmin): a demoted user loses it
+	// without a write, and a platform token never carries it. Migration 225
+	// set it for every administrator; EnsureAdmin and reset-password set it
+	// for theirs; users created later start without it.
+	LocalAdmin bool `gorm:"not null;default:false"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // APIKey authenticates data-plane (/v1) and API access. The prefix is stored in

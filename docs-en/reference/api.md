@@ -153,7 +153,8 @@ Success returns HTTP 200 and sets `gpuworks_session` through `Set-Cookie`. Examp
 `token` is the JWT for subsequent requests; `user` contains the user ID, username, and role (`admin` or `user`).
 For a complete request example, see [Set the Address and Log In](api-conventions.md#1-设置地址并登录).
 
-`auth/me` returns current user information and the length a new password must have, in the form `{"id":1,"username":"admin","role":"admin","password_policy":{"min_length":8,"max_length":128}}`.
+`auth/me` returns current user information and the length a new password must have, in the form `{"id":1,"username":"admin","role":"admin","local_admin":true,"password_policy":{"min_length":8,"max_length":128}}`.
+`local_admin` says whether this request has the plugin host's local administrator floor (see [Installable extensions](../dev/extensions.md#local-administrator-floor)): it is `true` only for a user whose role is `admin`, who is marked a local administrator in the database, and who calls with a login session; a platform API token always reads `false`. It is for display only.
 The Cookie is set to `HttpOnly` and `SameSite=Lax` and stores an opaque session credential, not a JWT.
 When a request includes both Bearer and Cookie credentials, Bearer takes precedence; an invalid Bearer does not fall back to the Cookie.
 
@@ -2294,4 +2295,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: c2b596a38f89e739dfe4e298c574b9ce342433e4d11dbe7fb05ecf5141b60307 -->
+<!-- translation-source-sha256: 55e91700b5771bb04963bdbde98da38491561feeb80eade93a30f36516ba7f87 -->

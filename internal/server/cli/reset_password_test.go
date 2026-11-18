@@ -255,3 +255,47 @@ func TestResetPasswordSucceedsWhenTheRecordCannotBeRead(t *testing.T) {
 		t.Fatalf("a damaged record was removed: %v", err)
 	}
 }
+
+// reset-password is the offline way back in: it restores the break-glass
+// floor of an administrator whose flag was cleared, and gives none to a user
+// who is not an administrator.
+func TestResetPasswordRestoresTheLocalAdministratorFloor(t *testing.T) {
+	data := t.TempDir()
+	db := seedAdmin(t, data)
+	st, err := store.Open(db, bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := auth.HashPassword("old-member-password-2026")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Create(&store.User{Username: "member", Role: "user", PasswordHash: hash}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Exec(`UPDATE users SET local_admin = 0`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []string{"admin", "member"} {
+		if err := (Options{}).resetPassword(discardLog(), []string{"--data", data, "--user", user, "--password", "new-" + user + "-password-2026"}); err != nil {
+			t.Fatalf("reset %s: %v", user, err)
+		}
+	}
+	st, err = store.Open(db, bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for user, want := range map[string]bool{"admin": true, "member": false} {
+		var u store.User
+		if err := st.DB().Where("username = ?", user).First(&u).Error; err != nil {
+			t.Fatal(err)
+		}
+		if u.LocalAdmin != want {
+			t.Errorf("%s local_admin after reset-password = %v, want %v", user, u.LocalAdmin, want)
+		}
+	}
+}

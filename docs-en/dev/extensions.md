@@ -237,11 +237,21 @@ The pusher's identity comes from the package verified when it was started: the s
 
 Every call writes a structured log record with `audit=true` saying who did what to which package and how it ended. States in the list: `disabled`, `installed` (no `resident` server part), `idle` (`on_demand`), `broken` (no longer verifies) or `revoked` when the server part does not run; otherwise the supervisor's process state. The fields are in the [API Reference](../reference/api.md).
 
+### Local administrator floor
+
+`users.local_admin` marks who can still recover the site when every plugin is down, removed or crashlooping (ADR 0071, decision 11):
+
+- Migration 225 sets it for every administrator the database already had; the administrator created at first start gets it; the offline `gpuworks reset-password` sets it again for an administrator (other users are unaffected). Users created later start without it, and changing one's own password in the console leaves it alone.
+- The effective value is computed each time a request reads its user: `local_admin && role == admin && login session`. A demoted user loses the floor at once, without a write; a platform API token never carries it; it is never signed into a JWT nor read from one. `local_admin` in `GET /api/v1/auth/me` reports this effective value, for display only.
+- The recovery surface is core routes: login, `/auth/me`, the password change and `/api/v1/plugins/*` pass no feature gate and ask nothing of plugin-fed sources (feature availability, banners). The contract test `TestContractLocalAdminDuringCrashloop` puts two plugins into crashloop (one holding every node, one pushing a fleet cap of zero cards), and the local administrator still signs in afresh, lists, disables and uninstalls each package, every call answering within 10 seconds.
+
+The evaluators of pushed constraints, admission holds and pushed roles do not exist yet, so nothing needs to exempt by this flag today; when they arrive, they check it first.
+
 ### Not built yet
 
 - Feature keys of a package installed while the server runs enter the feature gate at the next start (the gate is built once at boot); the restrictions, banners and holds it pushes apply at once.
 - Dynamic mounting of plugin routes under `/api/v1/x/<id>/`, on-demand starts of `on_demand` plugins, and host API endpoints other than state and health.
-- The management route for overrides (`State.Override` is built), the `users.local_admin` floor, the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
+- The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
 - The ratchet on feature-key literals in core code.
 - No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
@@ -309,4 +319,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 0a478c1ff633630c10a80f7cc36f5e551dc7c69ac05583bfbca234f4d8a0c70f -->
+<!-- translation-source-sha256: cb0bbe8df28e79466fc2673ac31b476d9986e453b9b796cd1ed7b6db4029191c -->

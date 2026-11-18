@@ -1356,6 +1356,7 @@ var migrations = []migration{
 	{Version: 222, Name: "plugin_trust", Apply: addPluginTrustTables},
 	{Version: 223, Name: "pushed_state_tables", Apply: createPushedStateTables},
 	{Version: 224, Name: "pushed_state_capacity_keep", Apply: createCapacityKeepTable},
+	{Version: 225, Name: "users_local_admin", Apply: addUserLocalAdmin},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

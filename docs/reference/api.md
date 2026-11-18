@@ -153,7 +153,8 @@ JSON 字段按 [API 规范](api-conventions.md) 使用 snake_case，例如 `node
 `token` 是后续请求使用的 JWT；`user` 包含用户 ID、用户名和角色（`admin` 或 `user`）。
 完整请求示例见[设置地址并登录](api-conventions.md#1-设置地址并登录)。
 
-`auth/me` 返回当前用户信息和新密码的长度要求，结构为 `{"id":1,"username":"admin","role":"admin","password_policy":{"min_length":8,"max_length":128}}`。
+`auth/me` 返回当前用户信息和新密码的长度要求，结构为 `{"id":1,"username":"admin","role":"admin","local_admin":true,"password_policy":{"min_length":8,"max_length":128}}`。
+`local_admin` 表示当前请求是否享有插件宿主的本地管理员兜底（见[可安装扩展](../dev/extensions.md#本地管理员兜底)）：只有角色为 `admin`、库里标记为本地管理员、且用登录会话访问时才为 `true`；平台 API Token 总是 `false`。它只用于显示。
 Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话凭证，不是 JWT。
 请求同时带 Bearer 与 Cookie 时优先使用 Bearer；无效 Bearer 不会回退到 Cookie。
 

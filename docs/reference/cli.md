@@ -271,6 +271,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 - 不给 `--data` 时依次取：二进制同目录 `server.yaml` 的 `data_dir`、默认安装（`/opt/gpuworks/server/server.yaml`，macOS 上 `~/gpuworks/server/server.yaml`）的 `data_dir`、`./data`，与当前工作目录无关地找到安装的数据库。
 - 数据库文件必须已存在：不存在时报出所用路径及其来源并退出，不会新建空库。
+- 用户是管理员时同时恢复它的本地管理员兜底（`users.local_admin`，见[可安装扩展](../dev/extensions.md#本地管理员兜底)），即使所有插件都掉线也能登录并管理插件；普通用户的标记不变。
 - 成功后，若数据库旁的 `initial-credentials` 记录的正是该用户，尝试删除它（其中的密码已失效）；删除失败只打告警，不影响重置结果。
 - 以操作员身份运行、不需要 `sudo`；数据库权限不足时按其自身的权限错误失败。
 - 密码和 key 不要写进 shell history 或日志。
