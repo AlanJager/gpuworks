@@ -65,17 +65,19 @@ import "./pages/playground/playground.css";
 
 export default function App() {
   return (
-    <SessionBoundary onLogout={signOutPlayground}>
-      {(logout) => <AppErrorBoundary>
-        <FeedbackHost />
-        <Routes>
-          <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-          {/* The terminal uses the full viewport and shares the session gate. */}
-          <Route path="/nodes/:uuid/terminal" element={<TerminalPage />} />
-          <Route path="*" element={<AuthenticatedShell onLogout={logout} />} />
-        </Routes>
-      </AppErrorBoundary>}
-    </SessionBoundary>
+    <>
+      <FeedbackHost />
+      <SessionBoundary onLogout={signOutPlayground}>
+        {(logout) => <AppErrorBoundary>
+          <Routes>
+            <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+            {/* The terminal uses the full viewport and shares the session gate. */}
+            <Route path="/nodes/:uuid/terminal" element={<TerminalPage />} />
+            <Route path="*" element={<AuthenticatedShell onLogout={logout} />} />
+          </Routes>
+        </AppErrorBoundary>}
+      </SessionBoundary>
+    </>
   );
 }
 
