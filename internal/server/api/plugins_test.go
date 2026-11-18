@@ -36,7 +36,7 @@ func (f *fakePlugins) List(context.Context) []dto.Plugin {
 	_ = f.record("list")
 	since := time.Date(2026, 11, 17, 8, 0, 0, 0, time.UTC)
 	return []dto.Plugin{{ID: "acme_backup", Version: "1.0.0", Publisher: "acme", Trust: "host", Enabled: true, State: "running",
-		Since: &since, Parts: []string{"server"}, Isolation: "landlock", Roles: []string{}, Permissions: []string{"push:banners"},
+		Since: &since, Parts: []string{"server"}, Isolation: "landlock", Roles: []string{}, Permissions: []dto.PluginPermission{{Name: "push:banners", Risk: "low"}},
 		ApproveHash: "sha256:00", Actions: []string{"disable", "uninstall"}}}
 }
 
@@ -48,7 +48,7 @@ func (f *fakePlugins) Install(_ context.Context, body io.Reader, approve string,
 	if err := f.record("install " + approve + " " + map[bool]string{true: "enable", false: "keep"}[enable] + " " + by); err != nil {
 		return dto.PluginInstalled{}, err
 	}
-	return dto.PluginInstalled{Plugin: dto.Plugin{ID: "acme_backup", Version: "1.0.0", State: "starting", Parts: []string{}, Roles: []string{}, Permissions: []string{}, Actions: []string{}}}, nil
+	return dto.PluginInstalled{Plugin: dto.Plugin{ID: "acme_backup", Version: "1.0.0", State: "starting", Parts: []string{}, Roles: []string{}, Permissions: []dto.PluginPermission{}, Actions: []string{}}}, nil
 }
 
 func (f *fakePlugins) Enable(_ context.Context, id, by string) (dto.Plugin, error) {
@@ -131,7 +131,7 @@ func TestPluginRoutesWire(t *testing.T) {
 	rig := newPluginRig(t, plugins)
 	rec := rig.do(rig.session, "GET", "/api/v1/plugins", "")
 	want := `{"items":[{"id":"acme_backup","version":"1.0.0","publisher":"acme","trust":"host","enabled":true,"state":"running",` +
-		`"since":"2026-11-17T08:00:00Z","restarts":0,"parts":["server"],"isolation":"landlock","roles":[],"permissions":["push:banners"],` +
+		`"since":"2026-11-17T08:00:00Z","restarts":0,"parts":["server"],"isolation":"landlock","roles":[],"permissions":[{"name":"push:banners","risk":"low"}],` +
 		`"approve_hash":"sha256:00","actions":["disable","uninstall"]}]}`
 	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("list: %d\n%s\nwant\n%s", rec.Code, rec.Body, want)
