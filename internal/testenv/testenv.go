@@ -266,6 +266,13 @@ func newEnvConfigured(t testing.TB, configure func(*serverapp.Config), modelEndp
 		cancel()
 		t.Fatalf("server app: %v", err)
 	}
+	// Registered before the per-Run cleanup so only final harness teardown
+	// releases the assembled resources; StopServer keeps them reusable.
+	t.Cleanup(func() {
+		if err := a.Close(); err != nil {
+			t.Errorf("server resources close: %v", err)
+		}
+	})
 	portStart, portEnd := chooseTestPortRange()
 	if portStart != 0 {
 		a.SetControllerEnginePorts(portStart, portEnd)

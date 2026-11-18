@@ -120,17 +120,29 @@ func (s *requestSource) KeyNames() map[uint]string {
 	return names
 }
 
-// closeRequestSinks flushes and closes ux.db and the trace exporter once the
-// gateway has stopped.
-func (a *App) closeRequestSinks() {
-	if a.telemetry != nil {
-		a.telemetry.exporter.Close()
+// flushRequestSinks makes a stopped Run's last requests visible while keeping
+// the databases and fixed adapters available for another Run.
+func (a *App) flushRequestSinks() {
+	if a.ops != nil {
+		a.ops.finalFlush()
 	}
-	a.ops.close()
-	if a.obs == nil || a.obs.UX() == nil {
-		return
+	if a.obs != nil && a.obs.UX() != nil {
+		if err := a.obs.UX().Sync(); err != nil {
+			a.log.Warn("request store flush failed", "err", err)
+		}
 	}
-	if err := a.obs.UX().Close(); err != nil {
-		a.log.Warn("request store close failed", "err", err)
+}
+
+// openRequestSinks registers ownership as each long-lived sink is opened, so
+// New's deferred Close also handles partial construction failures.
+func (a *App) openRequestSinks(readPrivateHosts func() []string) error {
+	a.telemetry = newTelemetryWithPrivateHosts(a.store, readPrivateHosts)
+	a.proxy.SetTraceSampler(a.telemetry.exporter.Sample)
+	var err error
+	a.ops, err = newOpsStats(a.cfg.DataDir, a.cfg.MetricsRetention, a.store, a.obs, a.log)
+	if err != nil {
+		return err
 	}
+	a.proxy.SetRequestSink(requestSink(a.obs.UX().Observe, a.ops.observeRequest, a.telemetry.exporter))
+	return nil
 }

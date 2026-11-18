@@ -54,13 +54,8 @@ type opsStats struct {
 	// rolledThrough is the latest day both stores are known to have rolled
 	// up; maintenance passes start after it. Only the loop touches it.
 	rolledThrough rollup.Day
-	// done closes when run has returned; started says run was called.
-	done     chan struct{}
-	doneOnce sync.Once
-	started  atomic.Bool
-
-	mu   sync.Mutex
-	last opsPasses
+	mu            sync.Mutex
+	last          opsPasses
 }
 
 // opsPasses are the last maintenance results the status reports.
@@ -97,7 +92,6 @@ func newOpsStats(dataDir string, metricsRetention time.Duration, st *store.Store
 		requests: rollup.NewRequests(), gpus: rollup.NewGPUs(), gpuTimes: rollup.NewGPUTimes(),
 		fallback: store.DefaultDataRetention(metricsRetention, serverTimeZone()),
 		kick:     make(chan struct{}, 1),
-		done:     make(chan struct{}),
 	}
 	current, created, err := st.EnsureDataRetention(o.fallback)
 	if err != nil {
@@ -375,9 +369,6 @@ func errText(err error) string {
 // run is the statistics' loop: flushes, card-time samples, day roll-ups and
 // retention, until ctx ends; then a last flush.
 func (o *opsStats) run(ctx context.Context) {
-	o.started.Store(true)
-	// Run may run again after a restart in place; done says the first ended.
-	defer o.doneOnce.Do(func() { close(o.done) })
 	usageTick := time.NewTicker(usageFlushEvery)
 	statsTick := time.NewTicker(statsFlushEvery)
 	gpuTick := time.NewTicker(gpuTimeEvery)
@@ -541,12 +532,6 @@ func (o *opsStats) retain(ctx context.Context) {
 func (o *opsStats) close() {
 	if o == nil || o.stats == nil {
 		return
-	}
-	if o.started.Load() {
-		select {
-		case <-o.done:
-		case <-time.After(opsStatsFlushTime):
-		}
 	}
 	o.finalFlush()
 	if err := o.stats.Close(); err != nil {

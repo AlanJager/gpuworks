@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ func TestRunFlushesFinalProxyAccountingBeforeReturning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = a.Close() })
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
@@ -68,5 +70,60 @@ func TestRunFlushesFinalProxyAccountingBeforeReturning(t *testing.T) {
 	}
 	if len(series) == 0 {
 		t.Fatal("the accountant's final flush (enqueued during shutdown) did not reach tsdb before Run returned")
+	}
+}
+
+func TestRunFlushesRequestsFinishedAfterHTTPGraceExpires(t *testing.T) {
+	a, _ := newTestApp(t, "gpuworks-test-password-2026")
+	const deploymentID = uint(4243)
+	entered := make(chan struct{})
+	// A real request finishes accounting only when the shutdown grace expires
+	// and its socket closes. Accounting must still be running at that point.
+	a.http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+		a.proxyAcct.RecordImmediate(deploymentID, 200, false)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for a.Addr() == "127.0.0.1:0" && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if a.Addr() == "127.0.0.1:0" {
+		t.Fatal("Run did not bind")
+	}
+	clientDone := make(chan struct{})
+	go func() {
+		response, _ := (&http.Client{Timeout: 10 * time.Second}).Get("http://" + a.Addr() + "/")
+		if response != nil {
+			response.Body.Close()
+		}
+		close(clientDone)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("HTTP request did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(12 * time.Second):
+		t.Fatal("Run did not finish")
+	}
+	<-clientDone
+	series, err := a.obs.TSDB().QueryRange("gpuworks_proxy_requests_total",
+		map[string]string{"deployment": "4243"}, 0, time.Now().UnixMilli()+1000, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series) != 1 || len(series[0].Points) == 0 || series[0].Points[len(series[0].Points)-1].Value != 1 {
+		t.Fatalf("request finishing during shutdown was not flushed: %+v", series)
 	}
 }

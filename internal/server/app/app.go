@@ -78,9 +78,9 @@ type App struct {
 	lns  []*trackingListener
 	// settings serves server.yaml to the API; restart cancels Run so the
 	// service manager starts the process again.
-	settings       *serverSettings
-	restartMu      sync.Mutex
-	stopForRestart context.CancelFunc
+	settings *serverSettings
+	// lifetime separates the assembled resources from one cancellable Run.
+	lifetime appLifetime
 	// selfLog captures the server's own error-level slog records into the
 	// logstore under source=server; nil disables the drain loop.
 	selfLog *selflog.Collector
@@ -111,11 +111,12 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { // The data file stays reserved to an open store: free it for the next New.
+	a = &App{cfg: cfg, log: log, store: st, bus: b, selfLog: cfg.SelfLog}
+	defer func(built *App) {
 		if err != nil {
-			_ = st.Close()
+			_ = built.Close()
 		}
-	}()
+	}(a)
 	// The node lists, the dashboard and the monitor share one snapshot of the
 	// fleet instead of each reading every node and card per request.
 	st.EnableFleetNodeSnapshot(nil)
@@ -194,6 +195,7 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	ctrl.SetNetworks(networks)
 	h.SetEnginePorts(ctrl.EnginePorts)
 	px := proxy.New(st, networks, h, log, cfg.ProxyMaxBodyBytes)
+	a.proxy = px
 	ctrl.SetDrainProbe(px)
 
 	// Credential encryption for cloud providers (master secret persisted in data dir).
@@ -224,6 +226,7 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	if err != nil {
 		return nil, err
 	}
+	a.obs = obs
 	diag := newDiagnostics(cfg, st, h, obs, px, log)
 	obs.SetDeploymentResolver(obsingest.WrapDeploymentLookup(func(instanceUUID string) (uint, error) {
 		inst, err := st.InstanceByUUID(instanceUUID)
@@ -244,16 +247,10 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	// 10s through the same ingest path agent-reported metrics use.
 	acct := proxy.NewAccountant(proxyMetricsSink(obs), log)
 	px.SetAccountant(acct)
-	// Every finished /v1 request's record goes to ux.db (ADR 0042), where
-	// the request view reads it back with the in-flight table, and to the
-	// trace exporter, which samples the traces the gateway starts (ADR 0046).
-	telemetry := newTelemetryWithPrivateHosts(st, readPrivateHosts)
-	px.SetTraceSampler(telemetry.exporter.Sample)
-	ops, err := newOpsStats(cfg.DataDir, cfg.MetricsRetention, st, obs, log)
-	if err != nil {
+	if err := a.openRequestSinks(readPrivateHosts); err != nil {
 		return nil, err
 	}
-	px.SetRequestSink(requestSink(obs.UX().Observe, ops.observeRequest, telemetry.exporter))
+	ops, telemetry := a.ops, a.telemetry
 
 	ai := newAIService(st, obs, box, h.Online)
 	ai.log = log
@@ -265,7 +262,7 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st, modelPreparation{h, ctrl}, lists}, PriorityClasses: priorityClassExists(st), Log: log})
 	monSvc := newMonitorAPIServiceOn(lists, st, obs.TSDB(), nil, newRequestSource(st, px.LiveRequests, obs.UX()), health.Health, modelPreparation{h, ctrl}, h.Online)
 
-	a = &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}
+	a.hub, a.ctrl, a.proxyAcct, a.health, a.batches = h, ctrl, acct, health, batches
 	var restart func()
 	if cfg.SelfRestart {
 		restart = a.requestRestart
@@ -401,6 +398,11 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 
 // Run starts the HTTP server and background loops, blocking until ctx is done.
 func (a *App) Run(ctx context.Context) error {
+	ctx, finish, err := a.lifetime.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer finish()
 	tlsConfig, err := a.cfg.listenerTLS()
 	if err != nil {
 		return err
@@ -421,19 +423,15 @@ func (a *App) Run(ctx context.Context) error {
 	// net/http marks a Server as permanently shut down after Shutdown. Build a
 	// fresh wrapper on every Run so a test harness (and an embeddable caller)
 	// can restart the same assembled app on its existing store and handler.
-	a.http = &http.Server{Handler: a.http.Handler, ConnContext: connFunctions, TLSConfig: tlsConfig}
+	handler := a.http.Handler
+	tracked, waitRequests := trackRunRequests(ctx, handler)
+	httpServer := &http.Server{Handler: tracked, ConnContext: connFunctions, TLSConfig: tlsConfig}
+	a.http = httpServer
+	defer func() { a.http.Handler = handler }()
 	a.lns = lns
 	a.lnMu.Unlock()
-	ctx, stopForRestart := context.WithCancel(ctx)
-	defer stopForRestart()
-	a.restartMu.Lock()
-	a.stopForRestart = stopForRestart
-	a.restartMu.Unlock()
+	a.hub.StartSessions()
 	a.proxy.Start()
-	// Deferred first so it runs last: the request store's final flush and
-	// the trace exporter's take the records of requests the proxy finished
-	// while closing.
-	defer a.closeRequestSinks()
 	defer a.proxy.Close()
 	defer func() {
 		closeAll(lns)
@@ -495,18 +493,21 @@ func (a *App) Run(ctx context.Context) error {
 	// confirms the accountant (and therefore its final enqueue) is done - see
 	// stopMetricsIngest.
 	metricsCtx, metricsCancel := context.WithCancel(context.Background())
-	// Guarantees metricsCancel is called on every return path (including the
-	// unexpected-listen-error path below, which does not itself wait on
-	// RunMetrics): the two ordinary shutdown paths already call it
-	// explicitly via stopMetricsIngest, and calling a context.CancelFunc more
-	// than once is a no-op, so this only matters for the path that doesn't.
+	logsCtx, logsCancel := context.WithCancel(context.Background())
+	defer logsCancel()
+	// Every stop path drains metrics explicitly; the defer also covers future
+	// early returns while bringing up the remaining loops.
 	defer metricsCancel()
 	metricsDone := make(chan struct{})
+	logsDone := make(chan struct{})
 	if a.obs != nil {
 		goBG(func() { a.ops.run(ctx) })
 		goBG(func() { a.ops.backfill(ctx) })
 		goBG(func() { a.ops.replayScheduling(ctx) })
-		goBG(func() { a.obs.RunLogs(ctx) })
+		go func() {
+			defer close(logsDone)
+			a.obs.RunLogs(logsCtx)
+		}()
 		go func() {
 			defer close(metricsDone)
 			a.obs.RunMetrics(metricsCtx)
@@ -517,77 +518,44 @@ func (a *App) Run(ctx context.Context) error {
 		goBG(func() { a.obs.RunSelfLogs(ctx, a.selfLog) })
 	} else {
 		close(metricsDone)
+		close(logsDone)
 	}
-	// Background: flush proxy request accounting to tsdb every 10s. acctDone
-	// closes once Run returns, so shutdown can wait (briefly) for the final
-	// flush to be fully enqueued into the metrics ingest queue before this
-	// App's caller is free to close the metrics store out from under it; see
-	// stopProxyAccounting. That enqueue reaching tsdb itself is a separate
-	// guarantee, provided by stopMetricsIngest running only after
-	// stopProxyAccounting returns.
+	// Accounting stops after requests have actually returned, including ones
+	// whose HTTP connection was force-closed. Its final enqueue then precedes
+	// the metrics loop's final drain (stopRun).
+	acctCtx, acctCancel := context.WithCancel(context.Background())
+	defer acctCancel()
 	acctDone := make(chan struct{})
 	go func() {
 		defer close(acctDone)
-		a.proxyAcct.Run(ctx)
+		a.proxyAcct.Run(acctCtx)
 	}()
 
 	errc := make(chan error, len(lns))
+	var serving backgroundGroup
+	defer serving.wait()
 	for _, ln := range lns {
-		go func() {
+		serving.start(func() {
 			a.log.Info("server listening", "addr", ln.Addr().String(), "functions", ln.functions)
 			var err error
 			if tlsConfig != nil && publicTLSListener(ln) {
-				err = a.http.ServeTLS(ln, "", "")
+				err = httpServer.ServeTLS(ln, "", "")
 			} else {
-				err = a.http.Serve(ln)
+				err = httpServer.Serve(ln)
 			}
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errc <- err
 			}
-		}()
+		})
 	}
 
 	select {
 	case <-ctx.Done():
 		a.log.Info("shutting down")
-		a.proxy.StopHolding() // held requests: a 503 to retry now, not a drop when the window ends
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := a.http.Shutdown(shutCtx); err != nil {
-			// Long-lived SSE or websocket clients may not close during the
-			// graceful window. Force-close those connections so shutdown does not
-			// report a false failure to service managers.
-			_ = a.http.Close()
-			closeConns(lns)
-			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-				a.log.Warn("forced HTTP shutdown", "err", err)
-			}
-			a.stopProxyAccounting(acctDone)
-			a.stopMetricsIngest(metricsCancel, metricsDone)
-			// ctx is already Done here, so every loop in bg is already
-			// unwinding; wait for all of them before the deferred
-			// a.proxy.Close() above runs.
-			bg.wait()
-			return nil
-		}
-		// Shutdown does not close hijacked websocket connections. Force-close
-		// anything still tracked after the graceful window (and also on a clean
-		// shutdown, where a websocket may otherwise keep an agent alive).
-		closeConns(lns)
-		a.stopProxyAccounting(acctDone)
-		a.stopMetricsIngest(metricsCancel, metricsDone)
-		bg.wait()
-		return nil
-	case err := <-errc:
-		// A listener's Serve failed on its own: nothing above has cancelled
-		// ctx (that otherwise only happens via the caller's ctx or a
-		// restart), so without cancelling it here every loop in bg - and the
-		// proxy accountant and metrics ingest, which also select on it -
-		// would keep running past this return.
-		stopForRestart()
-		a.stopProxyAccounting(acctDone)
-		a.stopMetricsIngest(metricsCancel, metricsDone)
-		bg.wait()
-		return err
+		err = nil
+	case err = <-errc:
 	}
+	a.lifetime.stop()
+	a.stopRun(lns, waitRequests, acctCancel, acctDone, metricsCancel, metricsDone, logsCancel, logsDone, &bg)
+	return err
 }

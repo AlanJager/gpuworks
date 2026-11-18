@@ -65,6 +65,16 @@ See [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md). Older agents and `--d
 After a disconnection, the agent reconnects and replays its state. The server drives long-lived lifecycles with desired state + watch, and uses RPC for short actions.
 `server_dial` is an exception that uses an HMAC challenge, allowing the server to initiate connections to managed nodes.
 
+## Server Resource and Run Lifetimes
+
+`app.New` owns the main database, observability stores, long-term statistics store and trace exporter it opens, and wires their fixed request sinks and readers.
+The same App can perform successive `Run` calls; each run owns listeners, HTTP/agent sessions and background loops. Stopping a run first refuses new requests and waits for existing requests and unauthenticated connections, then lets accounting enqueue its final batch before draining metrics, flushing statistics and synchronizing request history.
+An expired HTTP grace period closes connections but still waits for handlers to return, keeping their stores open.
+
+The caller finally invokes idempotent `App.Close`: it prevents another run, cancels and waits for the active run, and releases the resources created by `New`.
+The CLI and test environment call it at final exit; the test environment's `StopServer` only stops a run and permits a restart.
+Construction failures also release resources already opened. See [ADR 0072](../adr/0072-app-and-run-lifetimes.md).
+
 ## Deployment Lifecycle
 
 ```mermaid
@@ -117,6 +127,6 @@ inferenceapi provides stable chat, embeddings, rerank, audio, image, video, and 
 The scheduler runs filters, the GPU planner, and scorers in sequence and produces schedule_explain. The accelerator registry is
 the sole entry point for adding dGPU backends. See the [ADR Index](../adr/README.md) for more long-term tradeoffs, and [ADR 0030](../adr/0030-network-objects.md) for the node networking design.
 
-<!-- translation-source-sha256: 4e165fe15830db18f44b6bcc62f75d2c1ba553c42fb23dea3db5a3f3dae4bed9 -->
+<!-- translation-source-sha256: 4922a92dffca2264c797e3986e51c21122c2d8a426e6951bfb12f8e015febc98 -->
 <!-- translation-localized-code-block: 167d5e87ca7539da09ef0cc542067ff5dc3b07a9363c7ef5e316f2f81306eda7 7e010cf647f284e2567ec28a53a48d9decd79b9b10d63ce726a08d16b3c3ea31 根据同站security-model修正管理API认证标签，原JWT遗漏HttpOnly会话和平台API token -->
 <!-- translation-localized-code-block: 77869ca31e30f73fa69b7b1e7bd294c127c4a5ab1e2d5c77635e8b6d93feaa38 067be51fbe0918ef224453d2ab0dafbf7f688af4b3fcf3ca81cc3717bd301bc8 Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->

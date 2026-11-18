@@ -292,6 +292,11 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := a.Close(); err != nil {
+			log.Warn("server resources close failed", "err", err)
+		}
+	}()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if pending != nil {

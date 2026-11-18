@@ -30,12 +30,11 @@ func newTestApp(t *testing.T, adminPassword string) (*App, string) {
 	if err != nil {
 		t.Fatalf("app.New: %v", err)
 	}
-	// New starts the proxy's route-table refresh goroutine outside of Run (see
-	// Run's own defer a.proxy.Close()); this helper never calls Run, so it must
-	// stop that goroutine itself or it leaks for the rest of the test binary -
-	// ticking against this test's since-removed temp-dir database on every
-	// later test and -count iteration.
-	t.Cleanup(func() { application.proxy.Close() })
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Errorf("app.Close: %v", err)
+		}
+	})
 	return application, logs.String()
 }
 
