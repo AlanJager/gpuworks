@@ -33,6 +33,7 @@ The listen address uses the IP of the local default route's outbound interface a
 ├── logs/gpuworks-server.log[.1..20]
 └── data/
     ├── gpuworks.db(+ -wal / -shm)  # Main database
+    ├── server.lock                 # exclusive lock held while serve runs; holds its pid
     ├── master.key                  # Credential encryption key
     ├── initial-credentials         # Initial password record
     ├── install-history.jsonl       # Installation/upgrade audit log
@@ -41,6 +42,8 @@ The listen address uses the IP of the local default route's outbound interface a
 ```
 
 `gpuworks plugin` manages `data/plugins/`: a package is unpacked into `.incoming-*.partial/` and verified there, renamed to `<id>/pkg/<version>/` only when every check passes (files 0444, executables and directories 0555), and made current by replacing `<id>/pkg/current` with a rename; the previous version stays for rollback, and the `*.partial` an interruption leaves is removed by the next install. `<id>/data/`, `<id>/tmp/` and `<id>/snapshots/` are the plugin's own directories (0700), kept on uninstall; `--purge` moves the whole `<id>/` to `.trash/<id>-<time>/`. `.index/<publisher>/` holds imported package indexes.
+
+`gpuworks serve` holds an exclusive flock on `data/server.lock` for its whole life and writes its pid into it. A second server on the same data directory waits 10 seconds, then refuses to start and reports the holder's pid; offline commands whose effect a running server's in-memory state would quietly undo, such as `plugin uninstall`, `enable` and `disable`, refuse when they cannot take the lock (see [CLI Reference](cli.md#gpuworks-plugin)). The lock belongs to the process, so the kernel releases it when the process crashes; the file existing does not mean a server is running, and the pid in it may belong to a server that has exited: a pid is reported only when that process is alive, otherwise the message names the lock file. Only servers from this version on hold the lock: during a rolling upgrade, offline commands take it beside a server of an earlier version, so stop that server yourself first.
 
 `server.yaml` resides in the installation directory, rather than the data directory, so restoring the database to another machine does not carry over the old machine's listen address.
 
@@ -183,6 +186,6 @@ UDOCKER_BUNDLE=
 - `gpuworks-agent uninstall` also deletes this file.
 - When the installation script, SSH wizard preflight checks, or out-of-band recovery need to identify the server or token associated with an agent on a host, they read this file (and read the older agent's command line only if the file is missing). For the design rationale, see [ADR 0051](../adr/0051-agent-launch-configuration-file.md).
 
-<!-- translation-source-sha256: e8d95ea065266caf52da887d7e4d5170af6d5d05ac35eb53858c4710d52f27b1 -->
-<!-- translation-localized-code-block: fd368f003cabef2adfa1966748df08068867f71628c8b883c03b14cb9d28a4fc 12557a684f2a46adcac6e8db58ebfa6e9011ac941deb9a9e791d328515a3dc9a Reviewed localization of the directory annotations, including the plugins/ line; paths unchanged. -->
+<!-- translation-source-sha256: aedf2ee27526764d77a0ae6653c494a4d720a565404caa2665464ea5d36df399 -->
+<!-- translation-localized-code-block: cf0228b7f6dd01a33d1c0533f369be665aca051a5cd6897ffbf9ee07afc42ce0 63316e0dc2128d8d692b7aa4ea5e28a81d5c9405afd4799c5c37297248c76b5a Reviewed localization of the directory annotations, including the plugins/ and server.lock lines; paths unchanged. -->
 <!-- translation-localized-code-block: 0a0c78856b3bcc2f70519eaf27daec112ac8a20c1388e0ac5809fef7c3958d06 5126a8bc98f3780a7a6b25daeaa58a61a8cacb4075ece9e6bf89f05f91ec4fd7 Translate explanatory node-token placeholder -->
