@@ -222,14 +222,8 @@ measure() {
   ui_untested_shared_files)
     untested_shared_ui | grep -c . || true
     ;;
-  ui_copy_long_strings)
-    node scripts/ui_copy_audit.mjs long
-    ;;
-  ui_copy_caveat_strings)
-    node scripts/ui_copy_audit.mjs caveat
-    ;;
-  ee_ui_internal_imports)
-    node scripts/ui_overlay_imports.mjs | grep -c . || true
+  ui_copy_long_strings | ui_copy_caveat_strings | ee_ui_internal_imports)
+    echo "UI"
     ;;
   ui_bundle_gzip_kb)
     # Needs a fresh UI build; measured by scripts/check_ui_bundle_size.sh.
@@ -558,6 +552,10 @@ while IFS= read -r line || [ -n "$line" ]; do
     failures=$((failures + 1))
     continue
   fi
+  if [ "$measured" = "UI" ]; then
+    echo "  $key -/$limit ($direction; measured by ./scripts/check_ui_architecture.sh)"
+    continue
+  fi
   if [ "$measured" = "EXTERNAL" ]; then
     echo "  $key -/$limit ($direction; measured by scripts/check_ui_bundle_size.sh)"
     continue
@@ -608,24 +606,6 @@ while IFS= read -r line || [ -n "$line" ]; do
     ;;
   esac
 done < "$BUDGET_FILE"
-
-# --- antd per-file ratchet -------------------------------------------------
-# ui_antd_import_files only counts files; ui/antd-inventory.json records each
-# file's antd usage (sites, imported names, icons, .ant-* rules) and the
-# inventory fails when any file grew or a new file started using antd.
-# Shrinking passes; the snapshot is refreshed with --write in the same MR.
-echo "antd per-file ratchet (ui/antd-inventory.json):"
-if command -v node >/dev/null 2>&1; then
-  if inventory_out=$(node scripts/ui_antd_inventory.mjs --check ui/antd-inventory.json 2>&1); then
-    printf '%s\n' "$inventory_out" | sed 's/^/  /'
-  else
-    printf '%s\n' "$inventory_out" | sed 's/^/  /' >&2
-    echo "  FAIL: antd usage grew against ui/antd-inventory.json" >&2
-    failures=$((failures + 1))
-  fi
-else
-  echo "  NOTE: node not found; skipping the antd per-file ratchet"
-fi
 
 # --- budget regressions vs baseline -----------------------------------------
 # Part 1 above is a ratchet on THIS tree; it cannot by itself stop someone

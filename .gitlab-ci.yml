@@ -108,6 +108,7 @@ core-ui:
     paths:
       - .cache/npm/
   script:
+    - ./scripts/check_ui_architecture.sh
     - node scripts/i18n-check.mjs
     - cd ui
     # registry.npmmirror.com occasionally stalls mid-transfer from this runner
@@ -128,8 +129,6 @@ core-ui:
         sleep 15
       done
     - npm run lint:i18n
-    # Catch per-file antd regressions before publishing the UI artifact.
-    - node ../scripts/ui_antd_inventory.mjs --check
     - npm run build
     # Warns (never fails) when the compressed UI outgrows its budget.
     - (cd .. && ./scripts/check_ui_bundle_size.sh)
@@ -337,12 +336,11 @@ ui-check:
     - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 update
     - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 -o Dir::Cache::Archives="$CI_PROJECT_DIR/.cache/apt/archives" install -y --no-install-recommends chromium fonts-noto-cjk xz-utils >/dev/null
     - export CHROME_PATH=$(command -v chromium)
-    - &install_node |
-      node_tar=node-v22.16.0-linux-x64.tar.gz
+    - |
+      node_tar=node-v22.16.0-linux-x64.tar.xz
       curl -fsSL --retry 3 -o "/tmp/$node_tar" "https://registry.npmmirror.com/-/binary/node/v22.16.0/$node_tar"
-      echo "fb870226119d47378fa9c92c4535389c72dae14fcc7b47e6fdcc82c43de5a547  /tmp/$node_tar" | sha256sum -c -
-      tar -xzf "/tmp/$node_tar" -C /usr/local --strip-components=1
-      node --version
+      echo "f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e  /tmp/$node_tar" | sha256sum -c -
+      tar -xJf "/tmp/$node_tar" -C /usr/local --strip-components=1
     - (cd ui && npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund)
   script:
     - |
@@ -368,11 +366,9 @@ core-test:
   # hard-needs this job and gets skipped for the night. Persistent failures
   # still fail the pipeline; the retry only heals one-shot flakes.
   retry: 1
-  before_script:
-    - *install_node
   script:
     - ./scripts/check_time_policy.sh
-    - make check-architecture
+    - ./scripts/check_architecture.sh
     - ./scripts/check_ci_yaml.sh
     - CGO_ENABLED=0 go run ./scripts/artifactsindex
     - make test-e2e-coverage-check

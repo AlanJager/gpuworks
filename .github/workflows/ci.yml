@@ -55,6 +55,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
+      - run: ./scripts/check_ui_architecture.sh
       - run: node scripts/i18n-check.mjs
       - run: npm ci --no-audit --no-fund
         working-directory: ui
@@ -148,7 +149,7 @@ jobs:
           name: webui-dist
           path: internal/server/webui/dist/
       - run: ./scripts/check_time_policy.sh
-      - run: make check-architecture
+      - run: ./scripts/check_architecture.sh
       - run: ./scripts/check_ci_yaml.sh
       - run: CGO_ENABLED=0 go run ./scripts/artifactsindex
       - run: make test-e2e-coverage-check
