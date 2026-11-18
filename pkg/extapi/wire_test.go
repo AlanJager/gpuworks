@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +141,30 @@ func TestStateTooLarge(t *testing.T) {
 	}
 	if _, err := DecodeStatePush(make([]byte, MaxPushBytes+1)); CodeOf(err) != ErrorStateTooLarge {
 		t.Fatalf("oversized push: %v", err)
+	}
+}
+
+// A fleet capacity table keeps at most MaxNodeHolds nodes: the bound
+// itself decodes, one more is too large and names the field.
+func TestFleetCapacityKeepIsBounded(t *testing.T) {
+	keepBody := func(n int) []byte {
+		ids := make([]string, n)
+		for i := range ids {
+			ids[i] = strconv.Itoa(i + 1)
+		}
+		return []byte(`{"hold":{"code":"ACME_OVER_CAPACITY"},"keep":[` + strings.Join(ids, ",") + `],"refuse_card":{"code":"ACME_CARD_LIMIT"},"refuse_node":{"code":"ACME_NODE_LIMIT"},"select":"enrollment_order","steps":[{"max_nodes_with_cards":2}]}`)
+	}
+	tbl, err := DecodeTable(KindFleetCapacity, 1, keepBody(MaxNodeHolds))
+	if err != nil {
+		t.Fatalf("keep at the bound: %v", err)
+	}
+	if got := len(tbl.(*FleetCapacityV1).Keep); got != MaxNodeHolds {
+		t.Fatalf("decoded %d kept nodes", got)
+	}
+	_, err = DecodeTable(KindFleetCapacity, 1, keepBody(MaxNodeHolds+1))
+	e, ok := err.(*Error)
+	if !ok || e.Code != ErrorStateTooLarge || e.Params["field"] != "keep" || e.Params["max"] != MaxNodeHolds {
+		t.Fatalf("keep over the bound: %v", err)
 	}
 }
 

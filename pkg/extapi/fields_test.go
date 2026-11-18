@@ -74,6 +74,7 @@ FileEntry.path string
 FileEntry.sha256 string
 FileEntry.size int64
 FleetCapacityV1.hold Notice
+FleetCapacityV1.keep []int64
 FleetCapacityV1.refuse_card Notice
 FleetCapacityV1.refuse_node Notice
 FleetCapacityV1.select string

@@ -348,7 +348,7 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 
 ### `table.fleet_capacity@1`
 
-集群容量上限：server 在节点加入时拒绝超限的加入，并把超限的节点保持在调度之外。推送方只给上限，选哪些节点由 server 决定。
+集群容量上限：server 在节点加入时拒绝超限的加入，并把超限的节点保持在调度之外。推送方给上限，可选地给出优先保留的节点，选哪些节点仍由 server 决定。
 
 <!-- golden: fleet_capacity/v1/valid/authority.json -->
 ```json
@@ -356,6 +356,18 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 ```
 
 `select` 目前只有 `enrollment_order`（按加入顺序保留节点，满了以后保持其余节点）；`refuse_node`、`refuse_card` 是超限加入被拒时的说明，`hold` 是被保持节点上显示的原因；每一步的 `max_nodes_with_cards`、`max_cards` 缺省即不限。
+
+`keep` 可选，列出超限时优先保留在调度中的节点：
+
+<!-- golden: fleet_capacity/v1/valid/keep.json -->
+```json
+{"hold":{"code":"ACME_OVER_CAPACITY"},"keep":[3,7,12],"refuse_card":{"code":"ACME_CARD_LIMIT","params":{"max":64}},"refuse_node":{"code":"ACME_NODE_LIMIT","params":{"max":8}},"select":"enrollment_order","steps":[{"max_cards":64,"max_nodes_with_cards":8}]}
+```
+
+- `keep` 是 server 的节点 id（JSON 整数，≥1），严格递增、不重复，至多 10000 个；缺省或为空即不指定，按加入顺序选择。
+- 选择顺序：`keep` 里存在且有卡的节点（按 id 升序）在前，其余计入的节点按加入顺序在后；规则不变——两个上限都还容得下就保留，第一个容不下的节点及其后所有计入的节点都被保持。所以 `keep` 比上限多不算错，多出的被保持；不指向任何节点的 id 不匹配任何节点（同 `node_holds`）。
+- 多个所有者的 `keep` 取并集（上限仍取最紧的）。
+- 插件应只列它从集群读到的节点：先列入、后加入的节点在下一次选择之前和其他新节点一样判定，选择之后才排到前面，可能让一个更早的节点转为保持。
 
 ### `table.node_holds@1`
 

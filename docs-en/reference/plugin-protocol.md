@@ -348,7 +348,7 @@ The availability timeline of each feature key the pusher is the authority for (o
 
 ### `table.fleet_capacity@1`
 
-Fleet caps: the server refuses enrollments over a cap and holds over-cap nodes from scheduling. The pusher sends caps only; the server picks the nodes.
+Fleet caps: the server refuses enrollments over a cap and holds over-cap nodes from scheduling. The pusher sends caps and, optionally, the nodes to keep first; the server still picks the nodes.
 
 <!-- golden: fleet_capacity/v1/valid/authority.json -->
 ```json
@@ -356,6 +356,18 @@ Fleet caps: the server refuses enrollments over a cap and holds over-cap nodes f
 ```
 
 `select` is only `enrollment_order` today (keep nodes in the order they joined and hold the rest once a cap is full); `refuse_node` and `refuse_card` explain a refused enrollment, and `hold` is the reason shown on a held node; an absent `max_nodes_with_cards` or `max_cards` in a step means no cap.
+
+The optional `keep` lists the nodes to keep schedulable first when the fleet is over its caps:
+
+<!-- golden: fleet_capacity/v1/valid/keep.json -->
+```json
+{"hold":{"code":"ACME_OVER_CAPACITY"},"keep":[3,7,12],"refuse_card":{"code":"ACME_CARD_LIMIT","params":{"max":64}},"refuse_node":{"code":"ACME_NODE_LIMIT","params":{"max":8}},"select":"enrollment_order","steps":[{"max_cards":64,"max_nodes_with_cards":8}]}
+```
+
+- `keep` holds server node ids (JSON integers, at least 1), strictly ascending with no duplicates, at most 10000; absent or empty means no preference, and nodes are selected in enrollment order.
+- Selection order: the nodes in `keep` that exist and have cards (by ascending id) come first, then the other counted nodes in enrollment order; the rule is unchanged: a node is kept while both caps still fit, and the first node that does not fit and every counted node after it are held. A `keep` larger than the caps is therefore not an error, and its overflow is held; an id naming no node matches nothing (as in `node_holds`).
+- The `keep` lists of several owners are unioned (the caps still take the tightest).
+- A plugin should list only nodes it read from the fleet: a node listed before it joins is judged like any other new node until the next selection, and only then moves ahead, which may hold an earlier node.
 
 ### `table.node_holds@1`
 
@@ -424,4 +436,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: cbeedddd29e1fb802c807416a0ac37d0c34e5c3f60e294f299b21caded4b42f4 -->
+<!-- translation-source-sha256: e2d61b3a7929f4e38d7d15a5f7e06558c69b1907bb53dde1f5104234cf1a9f35 -->

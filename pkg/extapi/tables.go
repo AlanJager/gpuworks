@@ -197,14 +197,15 @@ func validateTimeline(path string, n int, at func(int) *Time) *fieldError {
 
 // Capacity selection rules.
 const (
-	// SelectEnrollmentOrder keeps nodes in the order they joined until a
-	// cap is full and holds the rest.
+	// SelectEnrollmentOrder keeps nodes in the order they joined, the
+	// table's kept nodes first, until a cap is full and holds the rest.
 	SelectEnrollmentOrder = "enrollment_order"
 )
 
 // FleetCapacityV1 is table.fleet_capacity@1: caps on the fleet the server
 // enforces at node enrollment and by holding over-cap nodes from
-// scheduling. The owner pushes caps only; the server selects the nodes.
+// scheduling. The owner pushes caps and, optionally, the nodes to keep
+// first; the server selects the nodes.
 type FleetCapacityV1 struct {
 	Select string `json:"select"`
 	// RefuseNode and RefuseCard refuse an enrollment over a cap; Hold is
@@ -213,6 +214,12 @@ type FleetCapacityV1 struct {
 	RefuseCard Notice         `json:"refuse_card"`
 	Hold       Notice         `json:"hold"`
 	Steps      []CapacityStep `json:"steps"`
+	// Keep lists server node ids, strictly ascending, that the selection
+	// considers before every other node; at most MaxNodeHolds. An id that
+	// names no node, or a node without cards, matches nothing. Keeping more
+	// than the caps allow is not an error: the overflow is held like any
+	// other node.
+	Keep []int64 `json:"keep,omitempty"`
 }
 
 // CapacityStep is the caps from At on; an absent cap is unlimited.
@@ -230,6 +237,9 @@ func (t *FleetCapacityV1) Validate() error {
 	if len(t.Steps) > MaxSteps {
 		return tooLarge(KindFleetCapacity, "steps", MaxSteps)
 	}
+	if len(t.Keep) > MaxNodeHolds {
+		return tooLarge(KindFleetCapacity, "keep", MaxNodeHolds)
+	}
 	f := first(
 		oneOf("select", t.Select, SelectEnrollmentOrder),
 		t.RefuseNode.validate("refuse_node"),
@@ -245,6 +255,17 @@ func (t *FleetCapacityV1) Validate() error {
 		}
 		if f == nil && s.MaxCards != nil {
 			f = inRange(joinPath(at, "max_cards"), *s.MaxCards, 0, maxSafeInteger)
+		}
+	}
+	for i := 0; f == nil && i < len(t.Keep); i++ {
+		at := joinPath("keep", strconv.Itoa(i))
+		f = inRange(at, t.Keep[i], 1, maxSafeInteger)
+		if f == nil && i > 0 && t.Keep[i-1] >= t.Keep[i] {
+			rule := RuleOrder
+			if t.Keep[i-1] == t.Keep[i] {
+				rule = RuleDuplicate
+			}
+			f = &fieldError{field: at, rule: rule}
 		}
 	}
 	if f != nil {
