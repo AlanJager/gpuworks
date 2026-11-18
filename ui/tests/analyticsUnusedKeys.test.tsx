@@ -46,7 +46,7 @@ test("unused all-model and scoped keys remain selectable beside historical usage
   const user = mount();
   const selector = await screen.findByRole("combobox", { name: locale.analytics.usage.filters.key });
   fireEvent.mouseDown(selector);
-  await user.click(await screen.findByText("unused-all-models", { selector: ".ant-select-item-option-content" }, { timeout: 2000 }));
+  await user.click(await screen.findByText("unused-all-models", { selector: ".ant-select-item-option-content" }));
   await waitFor(() => assert.ok(calls.some((url) => url.pathname.endsWith("/analytics/usage") && url.searchParams.get("key") === "81")));
   await screen.findByText(locale.analytics.state.empty);
   assert.equal(calls.filter((url) => url.pathname.endsWith("/apikeys")).length, 1, "the role-aware metadata list is fetched once, not per key or filter");
@@ -60,7 +60,7 @@ test("unused all-model and scoped keys remain selectable beside historical usage
 
 test("a prefix link resolves an unused authorized key without waiting for a usage row", async () => {
   mount("/analytics/usage?keyPrefix=gw-unusedall");
-  await waitFor(() => assert.ok(calls.some((url) => url.searchParams.get("key") === "81")), { timeout: 2000 });
+  await waitFor(() => assert.ok(calls.some((url) => url.searchParams.get("key") === "81")));
   await screen.findByText(locale.analytics.state.empty);
   assert.equal(screen.queryByText(i18n.t("analytics:usage.keyPrefixMissing", { prefix: "gw-unusedall" })), null);
 });
