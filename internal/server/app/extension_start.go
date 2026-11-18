@@ -108,6 +108,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 	if deps.Extensions, err = set.apiDeps(); err != nil {
 		return err
 	}
+	deps.Extensions.Dynamic = set.routes
 	a.ext = set
 	return nil
 }
@@ -121,8 +122,7 @@ func (set *extensionSet) apiDeps() (api.ExtensionDeps, error) {
 	if err != nil {
 		return api.ExtensionDeps{}, err
 	}
-	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins,
-		Dynamic: set.routes}, nil
+	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins}, nil
 }
 
 // moduleService runs a module's Service on Run's context and logs an error it
