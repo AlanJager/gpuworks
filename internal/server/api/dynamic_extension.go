@@ -103,6 +103,10 @@ type DynamicRoute struct {
 	// RatePerMinute and RateBurst bound a public route per client
 	// address; zero takes the default.
 	RatePerMinute, RateBurst int
+	// Codes are the product codes a response of the route may carry
+	// (Gwx-Product-Error): the package's own and those the plugin wire
+	// itself reports. Any other code is refused.
+	Codes []string
 	// Ref is the plugin host's own handle on the route, for Forward.
 	Ref any
 }
@@ -188,6 +192,11 @@ func (e *dynamicEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
 	}
 	rest, ok := strings.CutPrefix(path, "/api/v1"+extensionRoot)
+	if ok && (rest == "" || rest == "/" || strings.HasPrefix(rest, "//")) {
+		// No plugin id: no plugin's path, so the core's 404.
+		e.a.routingError(http.StatusNotFound)(w, r)
+		return
+	}
 	if !ok || !canonicalRoutePath(rest) {
 		writeProductError(w, http.StatusBadRequest, messages.ErrorPluginRoutePathInvalid, "the request path is not in canonical form", nil)
 		return

@@ -133,8 +133,10 @@ func TestRouteTableFollowsPackageState(t *testing.T) {
 	offRevoked := entryWith("acme_offrevoked", "1.0.0", false, route("GET", "/r"))
 	offRevoked.Verified.Revoked = &extapi.Revocation{}
 	offBroken := extpkg.Entry{ID: "acme_offbroken", Version: "2.0.0", Err: errors.New("a file changed")}
+	on := entryWith("acme_on", "1.0.0", true, route("GET", "/r"))
+	on.Verified.Manifest.Codes = []string{"ACME_ON_BUSY"}
 	entries := map[string]extpkg.Entry{
-		"acme_on":       entryWith("acme_on", "1.0.0", true, route("GET", "/r")),
+		"acme_on":       on,
 		"acme_off":      entryWith("acme_off", "1.0.0", false, route("GET", "/r")),
 		"acme_none":     entryWith("acme_none", "1.0.0", true),
 		"acme_revoked":  revoked,
@@ -160,6 +162,10 @@ func TestRouteTableFollowsPackageState(t *testing.T) {
 			t.Errorf("%s: %d %+v, want present and down %q", id, res, r, down)
 		case !present && res != MatchMiss:
 			t.Errorf("%s: %d, want absent", id, res)
+		case present && (down == "") != slices.Equal(r.Codes, []string{"ACME_ON_BUSY"}):
+			// A served route answers with its package's codes; a down
+			// one never reaches the plugin.
+			t.Errorf("%s: codes %v", id, r.Codes)
 		}
 	}
 	var listed []string

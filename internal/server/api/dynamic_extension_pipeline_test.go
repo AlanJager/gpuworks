@@ -97,7 +97,7 @@ func TestDynamicRouteRefusalsMapToStatuses(t *testing.T) {
 func TestDynamicRoutesCapTheBody(t *testing.T) {
 	rig := newDynamicRig(t, []DynamicRoute{dynRoute("POST", "/upload", DynamicAdmin, func(r *DynamicRoute) { r.MaxBody = 8 })})
 	rec := rig.do(rig.session, "POST", "/api/v1/x/acme_fake/upload", "0123456789")
-	want := `{"code":"REQUEST_TOO_LARGE","error":"the request body is larger than this route takes","params":{"limit":8}}`
+	want := `{"code":"REQUEST_TOO_LARGE","error":"the request body is larger than this route takes","params":{"max_bytes":8}}`
 	if rec.Code != http.StatusRequestEntityTooLarge || strings.TrimSpace(rec.Body.String()) != want || rig.dyn.calls.Load() != 0 {
 		t.Fatalf("declared length = %d %s, calls %d", rec.Code, rec.Body, rig.dyn.calls.Load())
 	}
@@ -118,7 +118,8 @@ func TestDynamicRoutesCapTheBody(t *testing.T) {
 // A plugin's product error passes with its code and params when it is
 // one; a malformed one is refused.
 func TestDynamicRoutesPassPluginProductErrors(t *testing.T) {
-	rig := newDynamicRig(t, []DynamicRoute{dynRoute("GET", "/ok", DynamicAdmin), dynRoute("GET", "/bad", DynamicAdmin), dynRoute("GET", "/success", DynamicAdmin)})
+	rig := newDynamicRig(t, []DynamicRoute{dynRoute("GET", "/ok", DynamicAdmin), dynRoute("GET", "/bad", DynamicAdmin), dynRoute("GET", "/success", DynamicAdmin),
+		dynRoute("GET", "/core", DynamicAdmin), dynRoute("GET", "/undeclared", DynamicAdmin)})
 	rig.dyn.serve(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Gwx-Product-Error", "1")
 		w.Header().Set("Retry-After", "7")
@@ -130,7 +131,11 @@ func TestDynamicRoutesPassPluginProductErrors(t *testing.T) {
 			w.WriteHeader(http.StatusConflict)
 			_, _ = io.WriteString(w, `{"message":"no code"}`)
 		case "/success":
-			_, _ = io.WriteString(w, `{"code":"ACME_X","message":"x","reason":"conflict"}`)
+			_, _ = io.WriteString(w, `{"code":"ACME_BACKUP_RUNNING","message":"x","reason":"conflict"}`)
+		case "/core", "/undeclared":
+			w.WriteHeader(http.StatusConflict)
+			code := map[string]string{"/core": "PLUGIN_ID_TAKEN", "/undeclared": "ACME_OTHER"}[r.URL.Path]
+			_, _ = io.WriteString(w, `{"code":"`+code+`","message":"x","params":{"id":"plugins"},"reason":"conflict"}`)
 		}
 	})
 	rec := rig.do(rig.session, "GET", "/api/v1/x/acme_fake/ok", "")
@@ -140,6 +145,15 @@ func TestDynamicRoutesPassPluginProductErrors(t *testing.T) {
 	for _, path := range []string{"/bad", "/success"} {
 		rec = rig.do(rig.session, "GET", "/api/v1/x/acme_fake"+path, "")
 		if rec.Code != http.StatusBadGateway || codeOfBody(rec) != "PLUGIN_ROUTE_RESPONSE_INVALID" {
+			t.Fatalf("%s = %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	// A code the package does not declare, the core's own above all, never
+	// passes: the console would show the core's text for the plugin's
+	// params.
+	for _, path := range []string{"/core", "/undeclared"} {
+		rec = rig.do(rig.session, "GET", "/api/v1/x/acme_fake"+path, "")
+		if want := `{"code":"PLUGIN_ROUTE_RESPONSE_INVALID","error":"the plugin returned a response the server will not pass on: the product error's code is not one the plugin declares","params":{"id":"acme_fake"}}`; rec.Code != http.StatusBadGateway || strings.TrimSpace(rec.Body.String()) != want {
 			t.Fatalf("%s = %d %s", path, rec.Code, rec.Body)
 		}
 	}
@@ -220,7 +234,8 @@ func TestDynamicRoutesAndTheAssistant(t *testing.T) {
 // the core 405 and an unknown path the core 404, never a plugin.
 func TestCompiledNamespacesKeepPriority(t *testing.T) {
 	ext := fakeExtension{name: "acme_fake", routes: []RouteSpec{{Method: http.MethodGet, Pattern: "/x/acme_fake/items", Community: true}}}
-	rig := newDynamicRig(t, []DynamicRoute{dynRoute("POST", "/items", DynamicAdmin), dynRoute("GET", "/other", DynamicAdmin)}, func(d *Deps) {
+	rig := newDynamicRig(t, []DynamicRoute{dynRoute("POST", "/items", DynamicAdmin), dynRoute("GET", "/other", DynamicAdmin),
+		dynRoute("POST", "/items", DynamicAdmin, func(r *DynamicRoute) { r.Plugin = "acme_other" })}, func(d *Deps) {
 		d.Extensions.Extensions = []Extension{ext}
 	})
 	for _, tc := range []struct {
@@ -236,10 +251,20 @@ func TestCompiledNamespacesKeepPriority(t *testing.T) {
 	}
 	// A miss and a wrong method in a plugin's own namespace are the core's
 	// answers too.
-	for path, status := range map[string]int{"/api/v1/x/acme_other/none": 404} {
-		if rec := rig.do(rig.session, "GET", path, ""); rec.Code != status || strings.TrimSpace(rec.Body.String()) != `{"code":"NOT_FOUND","error":"Not Found"}` {
-			t.Fatalf("%s = %d %s", path, rec.Code, rec.Body)
+	for _, tc := range []struct {
+		method, path string
+		status       int
+		body         string
+	}{
+		{"GET", "/api/v1/x/acme_other/none", 404, `{"code":"NOT_FOUND","error":"Not Found"}`},
+		{"DELETE", "/api/v1/x/acme_other/items", 405, `{"code":"METHOD_NOT_ALLOWED","error":"Method Not Allowed"}`},
+	} {
+		if rec := rig.do(rig.session, tc.method, tc.path, ""); rec.Code != tc.status || strings.TrimSpace(rec.Body.String()) != tc.body {
+			t.Fatalf("%s %s = %d %s", tc.method, tc.path, rec.Code, rec.Body)
 		}
+	}
+	if rig.dyn.calls.Load() != 0 {
+		t.Fatal("a miss or a wrong method reached a plugin")
 	}
 }
 
@@ -278,13 +303,14 @@ func TestDynamicRoutesInTheInventory(t *testing.T) {
 }
 
 // A write to a plugin route leaves an audit line naming the caller, the
-// route and the outcome; a read leaves none.
+// route and the outcome, a refused one too; a read leaves none.
 func TestDynamicRouteWritesAreAudited(t *testing.T) {
 	var logs bytes.Buffer
 	rig := newDynamicRig(t, []DynamicRoute{dynRoute("POST", "/jobs", DynamicAdmin, func(r *DynamicRoute) { r.Action = "acme_fake.jobs_create" }),
-		dynRoute("GET", "/jobs", DynamicAdmin)}, func(d *Deps) { d.Log = slog.New(slog.NewJSONHandler(&logs, nil)) })
+		dynRoute("GET", "/jobs", DynamicAdmin), dynRoute("POST", "/small", DynamicAdmin, func(r *DynamicRoute) { r.MaxBody = 4 })}, func(d *Deps) { d.Log = slog.New(slog.NewJSONHandler(&logs, nil)) })
 	rig.do(rig.session, "GET", "/api/v1/x/acme_fake/jobs", "")
 	rig.do(rig.session, "POST", "/api/v1/x/acme_fake/jobs", "")
+	rig.do(rig.session, "POST", "/api/v1/x/acme_fake/small", "0123456789")
 	var lines []map[string]any
 	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
 		var m map[string]any
@@ -292,7 +318,10 @@ func TestDynamicRouteWritesAreAudited(t *testing.T) {
 			lines = append(lines, m)
 		}
 	}
-	if len(lines) != 1 || lines[0]["audit"] != true || lines[0]["action"] != "acme_fake.jobs_create" || lines[0]["method"] != "POST" ||
+	if len(lines) != 2 || lines[1]["route"] != "/small" || lines[1]["status"] != float64(413) {
+		t.Fatalf("audit lines = %v", lines)
+	}
+	if lines[0]["audit"] != true || lines[0]["action"] != "acme_fake.jobs_create" || lines[0]["method"] != "POST" ||
 		lines[0]["user"] != "admin" || lines[0]["caller"] != "session" || lines[0]["status"] != float64(200) || lines[0]["plugin"] != "acme_fake" {
 		t.Fatalf("audit lines = %v", lines)
 	}

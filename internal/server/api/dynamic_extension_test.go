@@ -145,7 +145,7 @@ func fakeDecodeError(raw []byte) (*messages.ProductError, error) {
 
 func dynRoute(method, pattern string, access DynamicAccess, edit ...func(*DynamicRoute)) DynamicRoute {
 	r := DynamicRoute{Plugin: "acme_fake", Version: "1.0.0", Method: method, Pattern: pattern, Action: "acme_fake.x", Access: access,
-		MaxBody: 1 << 20, Timeout: 5 * time.Second}
+		MaxBody: 1 << 20, Timeout: 5 * time.Second, Codes: []string{"ACME_BACKUP_RUNNING"}}
 	for _, e := range edit {
 		e(&r)
 	}
@@ -277,5 +277,14 @@ func TestPublicLimiterIsBounded(t *testing.T) {
 	}
 	if l.size() != 100 {
 		t.Fatalf("limiter holds %d buckets", l.size())
+	}
+	// The scale cases read the mounted limiter's size through the router.
+	rig := newDynamicRig(t, []DynamicRoute{r})
+	if n := PublicLimiterSize(rig.h); n != 0 {
+		t.Fatalf("an unused limiter holds %d", n)
+	}
+	rig.do("", http.MethodGet, "/api/v1/x/acme_fake/hook", "")
+	if n := PublicLimiterSize(rig.h); n != 1 || PublicLimiterSize(http.NotFoundHandler()) != 0 {
+		t.Fatalf("after one public call the limiter holds %d", n)
 	}
 }

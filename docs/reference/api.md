@@ -1724,7 +1724,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 调用插件失败时的码（`PLUGIN_UNAVAILABLE`、`PLUGIN_BUSY`、`PLUGIN_TIMEOUT`、`PLUGIN_ROUTE_FAILED`）见[扩展点](../dev/extensions.md#调用与路由表)。
 
-已安装的包声明的路由挂在 `/api/v1/x/<id><pattern>`，鉴权按路由的 `access`（`admin`、`admin_session`、`member`，`public` 不鉴权、按客户端地址限流），见[扩展点](../dev/extensions.md#插件路由)。除上面四个码（分别回 503 带 `Retry-After: 5`、503 带 `Retry-After: 1`、504、502）外：路径不是规范形式 400 `PLUGIN_ROUTE_PATH_INVALID`；插件返回了不予转发的应答（未声明 `html` 的 HTML、不合法的产品错误）502 `PLUGIN_ROUTE_RESPONSE_INVALID{id}`；请求体超过路由上限 413 `REQUEST_TOO_LARGE{limit}`；公开路由超出速率 429 `TOO_MANY_REQUESTS`；没有匹配的路由是核心的 404 或 405。
+已安装的包声明的路由挂在 `/api/v1/x/<id><pattern>`，鉴权按路由的 `access`（`admin`、`admin_session`、`member`，`public` 不鉴权、按客户端地址限流），见[扩展点](../dev/extensions.md#插件路由)。除上面四个码（分别回 503 带 `Retry-After: 5`、503 带 `Retry-After: 1`、504、502）外：路径不是规范形式 400 `PLUGIN_ROUTE_PATH_INVALID`；插件返回了不予转发的应答（未声明 `html` 的 HTML、不合法的产品错误）502 `PLUGIN_ROUTE_RESPONSE_INVALID{id}`；请求体超过路由上限 413 `REQUEST_TOO_LARGE{max_bytes}`；公开路由超出速率 429 `TOO_MANY_REQUESTS`；没有匹配的路由是核心的 404 或 405。
 
 错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）、声明的功能键已由编译模块或另一个已安装的包提供（`PLUGIN_FEATURE_TAKEN{id, feature, owner}`，在要求批准之前检查）、包 id 与编译进 server 的模块同名（`PLUGIN_ID_TAKEN{id}`，同样在要求批准之前检查）或插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）409；在 Linux 以外的平台上安装声明了主机步骤的包 422 `PLUGIN_HOST_SETUP_UNSUPPORTED{id}`；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
 

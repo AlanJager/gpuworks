@@ -376,16 +376,16 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 每个请求按这个顺序处理，前一步拒绝就不再往下：
 
-1. **规范路径**：用原始路径（有 `RawPath` 时用它）。含 `.`、`..` 段、空段（`//`）、反斜杠，或转义的 `/`、反斜杠、`.`、`%`（`%2F`、`%5C`、`%2E`、`%25`，大小写不限）的请求回 400 `PLUGIN_ROUTE_PATH_INVALID`，不认证、不匹配、不调用插件。匹配和转发用同一个字符串，其他转义（如 `%20`）原样交给插件。
+1. **规范路径**：用原始路径（有 `RawPath` 时用它）。含 `.`、`..` 段、空段（`//`）、反斜杠，或转义的 `/`、反斜杠、`.`、`%`（`%2F`、`%5C`、`%2E`、`%25`，大小写不限）的请求回 400 `PLUGIN_ROUTE_PATH_INVALID`，不认证、不匹配、不调用插件。没有指明包的路径（`/api/v1/x`、`/api/v1/x/`，或以 `/api/v1/x//` 开头）不属于任何插件，回核心的 404，与没有挂载时相同。匹配和转发用同一个字符串，其他转义（如 `%20`）原样交给插件。
 2. **匹配**：没有这个路径回核心的 404（未登录时 401，与没有挂载时逐字节相同），有路径没有这个方法回核心的 405；插件都不会被调用。
 3. **认证**：按路由的 `access` 用核心的中间件：`admin` 要管理员（会话或平台令牌，读令牌只能读）、`admin_session` 要管理员的登录会话、`member` 要任意登录用户或平台令牌（读令牌只能读）；会话的跨站写入照常拒绝，会话照常续期。`public` 不认证，按客户端地址限流：每条路由、每个地址一个令牌桶（清单的 `rate`，未声明时每分钟 60 次、突发 30），地址按登录限流同样的规则取（只信任可信代理转发的地址，IPv6 按 /64 合并），桶表是至多 1 万个地址的 LRU；超出回 429 `TOO_MANY_REQUESTS` 并带 `Retry-After`。
 4. **授权**：认证之后的一个接口点，今天总是通过；以后的授权层放在这里，隐藏功能的 404 仍然先于禁止动作的 403。
 5. **功能门**：路由声明了 `feature` 时与编译扩展的路由同样处理：隐藏回 404，锁定回 403，只读时只放行读与 `write_when_read_only` 的写。`ungated` 路由不经过功能门。
 6. **助手与 MCP**：只能读声明了 `ai_readable` 的 GET 路由，其余回 404；助手的路由列表里只列出这些路由。
-7. **请求体上限**：`Content-Length` 超过 `max_body` 时在调用插件之前回 413 `REQUEST_TOO_LARGE{limit}`；没有长度的请求体读到超过上限时中止转发，同样回 413。
-8. **审计**：非 GET 请求结束后写一条 `audit=true` 的结构化日志：包、版本、动作、方法、路由、调用方种类与用户、状态码、请求 id、耗时。
+7. **请求体上限**：`Content-Length` 超过 `max_body` 时在调用插件之前回 413 `REQUEST_TOO_LARGE{max_bytes}`；没有长度的请求体读到超过上限时中止转发，同样回 413。
+8. **审计**：非 GET 请求结束后（包括被请求体上限拒绝的）写一条 `audit=true` 的结构化日志：包、版本、动作、方法、路由、调用方种类与用户、状态码、请求 id、耗时。
 9. **截止时间**：普通路由整个请求以 `timeout_s` 为限；`stream` 路由的 `timeout_s` 只限制等待响应头的时间，之后插件每次写出都重新计时，1 分钟没有写出就断开连接。`on_demand` 插件的冷启动算在 `timeout_s` 里。
-10. **去掉入站头**：客户端发来的 `Gwx-*`、`X-Gpuworks-*`、`Authorization`、逐跳头（含 `Connection` 列出的头）和 `Cookie` 都不转发；`cookies: true` 的路由只转发不是核心名字（会话 cookie 与一切 `gpuworks` 开头的名字）、也不以 `__Host-` 开头的 cookie。合法的 `traceparent` 原样转发，否则生成一个新的。
+10. **去掉入站头**：客户端发来的 `Gwx-*`、`X-Gpuworks-*`、`Authorization`、逐跳头（含 `Connection` 列出的头）、它自称的地址（`Forwarded`、`X-Forwarded-*`、`X-Real-Ip`）和 `Cookie` 都不转发；`cookies: true` 的路由只转发不是核心名字（会话 cookie 与一切 `gpuworks` 开头的名字）、也不以 `__Host-` 开头的 cookie。合法的 `traceparent` 原样转发，否则生成一个新的。
 11. **签名转发**：插件宿主用接住这次调用的进程的主体密钥签上 `Gwx-Principal`、`Gwx-Principal-Mac` 与 `Gwx-Feature-Access`（主体带 `route_action` 与 `route`，有效期为 `timeout_s` 加 5 秒；过长或不可打印的请求 id 截到 128 字节或换成新的），转发到插件的 `/r<路由路径>`；`admin` 与 `admin_session` 路由按管理员调用计（可用保留名额），`stream` 路由用流式名额池。
 
 调用失败时的应答：
@@ -402,9 +402,9 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 插件的应答只按白名单传给客户端：
 
 - **头**：只保留 `Content-Type`、`Content-Length`、`Content-Encoding`、`Content-Disposition`、`Cache-Control`、`ETag`、`Last-Modified`、`Retry-After`；`Location` 只在仍指向 `/api/v1/x/<id>/` 之下的规范路径时保留；其余（`Access-Control-*`、逐跳头、插件自己的 `Content-Security-Policy` 等）一律丢弃。每个应答都带 `X-Content-Type-Options: nosniff` 与 `Content-Security-Policy: sandbox; default-src 'none'`。
-- **内容类型**：`text/html` 与 `application/xhtml+xml` 只允许声明了 `html: true` 的路由返回，否则回 502 `PLUGIN_ROUTE_RESPONSE_INVALID{id}`；没有内容类型时补成 `application/octet-stream`。
+- **内容类型**：`text/html` 与 `application/xhtml+xml` 只允许声明了 `html: true` 的路由返回，否则回 502 `PLUGIN_ROUTE_RESPONSE_INVALID{id}`；没有内容类型时补成 `application/octet-stream`；不是单个媒体类型（如 `text/plain, text/html`，浏览器会取列表最后一项）同样回 502；其余按规范化形式发出。
 - **Cookie**：只有 `public` 且 `cookies: true` 的路由能设 cookie，路径一律改成 `/api/v1/x/<id>/`、去掉 `Domain`；与核心 cookie 同名或以 `__Host-`、`__Secure-` 开头的被丢弃。过滤只针对插件的头，核心中间件已经写下的续期会话 cookie 照常发出。
-- **产品错误**：带 `Gwx-Product-Error` 的应答体必须是合法的 gwx/1 错误（至多 64 KiB）且状态为 4xx 或 5xx，按插件的状态、码与参数原样传给客户端；否则回 502 `PLUGIN_ROUTE_RESPONSE_INVALID`。
+- **产品错误**：带 `Gwx-Product-Error` 的应答体必须是合法的 gwx/1 错误（至多 64 KiB）且状态为 4xx 或 5xx，码必须是包清单 `codes` 列出的码或线协议自己的 `PLUGIN_WIRE_*` 码（插件不能用核心或其他包的码作答），按插件的状态、码与参数原样传给客户端；否则回 502 `PLUGIN_ROUTE_RESPONSE_INVALID`。
 - **应答体**：`stream` 路由逐块转发并立即刷新，其余至多 64 MiB。响应头发出之后才失败（插件中途断开、长度不符、超过上限、流式空闲超时）时中止连接，不留下被截断的 2xx。
 
 路由清单（`api.RouteInventory`）不为挂载本身输出任何行，每条插件路由一行：`METHOD /api/v1/x/<id><pattern> [access=<access>] [action=<动作>] [feature=<键>]`（未门控时为 `[ungated]`）`[x=<id>@<版本>]`。什么都没装时清单与没有挂载时逐字节相同；停用的包不出现，`broken`、`revoked` 的包照常出现。规模用例 `TestFleetPluginRouteLoad`（`GPUWORKS_TEST_PERF=1`）在 5 万个公开客户端地址下测每个请求的 server CPU 与内存，改动插件请求路径时要跑。

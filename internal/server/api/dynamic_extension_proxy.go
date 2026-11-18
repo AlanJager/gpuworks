@@ -77,14 +77,15 @@ func (e *dynamicEndpoint) serve(w http.ResponseWriter, r *http.Request, c Dynami
 		writeProductError(w, http.StatusNotFound, messages.ErrorNotFound, "the assistant does not read this route", nil)
 		return
 	}
-	if r.ContentLength > route.MaxBody {
-		writeProductError(w, http.StatusRequestEntityTooLarge, messages.ErrorRequestTooLarge, "the request body is larger than this route takes", map[string]any{"limit": route.MaxBody})
-		return
-	}
 	status := 0
 	if write := !isReadMethod(r.Method); write {
 		start := time.Now()
 		defer func() { e.audit(r, route, c, &status, start) }()
+	}
+	if r.ContentLength > route.MaxBody {
+		status = http.StatusRequestEntityTooLarge
+		writeProductError(w, status, messages.ErrorRequestTooLarge, "the request body is larger than this route takes", map[string]any{"max_bytes": route.MaxBody})
+		return
 	}
 	// A stream's timeout bounds the wait for its headers (the plugin host
 	// holds it to that); its body runs until it goes idle.
@@ -107,6 +108,11 @@ func (e *dynamicEndpoint) serve(w http.ResponseWriter, r *http.Request, c Dynami
 	}
 	c.RequestID = middleware.GetReqID(r.Context())
 	resp, err := e.ext.Forward(ctx, route, out, c)
+	if err == nil && resp != nil {
+		// What the audit line records if the response aborts after its
+		// headers.
+		status = resp.StatusCode
+	}
 	status = e.respond(w, r, route, resp, err, body, cancel)
 }
 
@@ -174,11 +180,15 @@ func forwardRequest(ctx context.Context, r *http.Request, m *matchedRoute, body 
 // hopByHop are the headers that describe one connection, never forwarded.
 var hopByHop = []string{"Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Proxy-Connection", "Te", "Trailer", "Transfer-Encoding", "Upgrade", "Host"}
 
+// clientAddressHeaders claim the client's address; the core trusts them
+// only from its trusted proxies, so a plugin never sees them.
+var clientAddressHeaders = []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"}
+
 // forwardHeaders are r's headers without the ones only the server may set
 // (Gwx-*, X-Gpuworks-*), the client's credentials (Authorization, and
 // Cookie but for a cookies route's own cookies), the connection's own
-// headers and a trace context the server does not take; a fresh
-// traceparent replaces an invalid or missing one.
+// headers, the client's claimed address and a trace context the server
+// does not take; a fresh traceparent replaces an invalid or missing one.
 func forwardHeaders(r *http.Request, route *DynamicRoute, sessionCookie string) http.Header {
 	out := make(http.Header, len(r.Header)+1)
 	drop := map[string]bool{}
@@ -191,7 +201,7 @@ func forwardHeaders(r *http.Request, route *DynamicRoute, sessionCookie string) 
 		lower := strings.ToLower(k)
 		switch {
 		case strings.HasPrefix(lower, "gwx-"), strings.HasPrefix(lower, "x-gpuworks-"), lower == "authorization", lower == "cookie",
-			lower == "traceparent", lower == "tracestate", drop[k], slices.Contains(hopByHop, k):
+			lower == "traceparent", lower == "tracestate", drop[k], slices.Contains(hopByHop, k), slices.Contains(clientAddressHeaders, k):
 			continue
 		}
 		out[k] = slices.Clone(v)

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -27,11 +28,12 @@ func TestPluginRouteWireNamesMatchExtapi(t *testing.T) {
 func TestDynamicRouteCarriesTheDeclaration(t *testing.T) {
 	r := pluginbridge.Route{Plugin: "acme_sso", Version: "2.0.0", MaxBody: 4096, Timeout: 9 * time.Second, Decl: extapi.RouteDecl{
 		Method: "POST", Pattern: "/acs", Action: "acme_sso.acs", Access: extapi.RoutePublic, Ungated: true, Cookies: true, HTML: true,
-		Rate: &extapi.RouteRate{PerMinute: 30, Burst: 5}}}
-	d := dynamicRoute(r)
+		Rate: &extapi.RouteRate{PerMinute: 30, Burst: 5}}, Codes: []string{"ACME_SSO_DENIED"}}
+	d := dynamicRoute(r, answerCodes(r.Codes))
 	if d.Plugin != "acme_sso" || d.Version != "2.0.0" || d.Method != "POST" || d.Pattern != "/acs" || d.Action != "acme_sso.acs" ||
 		d.Access != api.DynamicPublic || d.Feature != "" || !d.Cookies || !d.HTML || d.MaxBody != 4096 || d.Timeout != 9*time.Second ||
-		d.RatePerMinute != 30 || d.RateBurst != 5 || d.Ref.(*pluginbridge.Route).Decl.Action != "acme_sso.acs" {
+		d.RatePerMinute != 30 || d.RateBurst != 5 || d.Ref.(*pluginbridge.Route).Decl.Action != "acme_sso.acs" ||
+		!slices.Equal(d.Codes, []string{"ACME_SSO_DENIED", "PLUGIN_WIRE_INVALID", "PLUGIN_WIRE_MALFORMED", "PLUGIN_WIRE_NOT_CANONICAL", "PLUGIN_WIRE_UNKNOWN_FIELD"}) {
 		t.Fatalf("dynamic route = %+v", d)
 	}
 	for access, want := range map[string]api.DynamicAccess{extapi.RouteAdmin: api.DynamicAdmin, extapi.RouteAdminSession: api.DynamicAdminSession,

@@ -3,8 +3,11 @@ package api
 import (
 	"container/list"
 	"net"
+	"net/http"
 	"sync"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -74,6 +77,24 @@ func (l *publicLimiter) size() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.order.Len()
+}
+
+// PublicLimiterSize is how many client buckets the public plugin route
+// limiter of h, a Router, holds now; 0 when h mounts no plugin routes.
+// Scale cases check it stays bounded however many addresses call.
+func PublicLimiterSize(h http.Handler) int {
+	routes, ok := h.(chi.Routes)
+	if !ok {
+		return 0
+	}
+	n := 0
+	_ = chi.Walk(routes, func(_, _ string, handler http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if d, ok := handler.(*dynamicEndpoint); ok {
+			n = d.limits.size()
+		}
+		return nil
+	})
+	return n
 }
 
 // clientGroup is the address a client is limited by: an IPv4 address

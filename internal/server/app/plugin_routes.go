@@ -53,8 +53,14 @@ func (p *pluginRoutes) current() *routeView {
 		return v
 	}
 	v := &routeView{table: t, byKey: map[routeKey]*api.DynamicRoute{}}
+	codes := map[string][]string{}
 	for _, r := range t.List() {
-		v.list = append(v.list, dynamicRoute(r))
+		c, ok := codes[r.Plugin]
+		if !ok {
+			c = answerCodes(r.Codes)
+			codes[r.Plugin] = c
+		}
+		v.list = append(v.list, dynamicRoute(r, c))
 	}
 	for i := range v.list {
 		r := &v.list[i]
@@ -101,12 +107,25 @@ func principalKind(kind string) string {
 	return extapi.PrincipalPublic
 }
 
-// dynamicRoute is r as the API serves it.
-func dynamicRoute(r pluginbridge.Route) api.DynamicRoute {
+// wireCodes are the codes the plugin wire itself reports on a route
+// response (pluginsdk refuses a request whose principal fails with them).
+var wireCodes = []string{extapi.ErrorWireInvalid, extapi.ErrorWireMalformed, extapi.ErrorWireNotCanonical, extapi.ErrorWireUnknownField}
+
+// answerCodes are the codes a package's route responses may carry: its
+// manifest's codes and the wire's own.
+func answerCodes(manifest []string) []string {
+	out := append(slices.Clone(manifest), wireCodes...)
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// dynamicRoute is r as the API serves it, answering with codes.
+func dynamicRoute(r pluginbridge.Route, codes []string) api.DynamicRoute {
 	d := r.Decl
 	out := api.DynamicRoute{Plugin: r.Plugin, Version: r.Version, Method: d.Method, Pattern: d.Pattern, Action: d.Action,
 		Access: dynamicAccess(d.Access), Feature: featuregate.Key(d.Feature), WriteWhenReadOnly: d.WriteWhenReadOnly,
-		AIReadable: d.AIReadable, Stream: d.Stream, HTML: d.HTML, Cookies: d.Cookies, MaxBody: r.MaxBody, Timeout: r.Timeout, Ref: &r}
+		AIReadable: d.AIReadable, Stream: d.Stream, HTML: d.HTML, Cookies: d.Cookies, MaxBody: r.MaxBody, Timeout: r.Timeout,
+		Codes: codes, Ref: &r}
 	if d.Rate != nil {
 		out.RatePerMinute, out.RateBurst = d.Rate.PerMinute, d.Rate.Burst
 	}

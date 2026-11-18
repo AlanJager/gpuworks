@@ -731,8 +731,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<<<<<<< HEAD
-<!-- translation-source-sha256: c7e054c01dd9bcf0bd93f5b4e0437018982cc78be5cc7d8efce6edba0a0adaf5 -->
-=======
-<!-- translation-source-sha256: 6294b5f0c59f28ef43f7dbad63ceab440e063b369cefe4879fdb2452c30d299d -->
->>>>>>> a6f977a88 (Document plugin routes: the request pipeline, statuses, header and cookie rules and the inventory)
+<!-- translation-source-sha256: 5b9480ba46fdfb62c0355fb918b6de91bbbfba282db68cdef874026f6984d7c9 -->

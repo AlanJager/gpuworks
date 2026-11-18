@@ -19,7 +19,6 @@ func TestDynamicRoutesRefuseNonCanonicalPaths(t *testing.T) {
 		"/api/v1/x/acme_fake/a/../b",
 		"/api/v1/x/acme_fake/./b",
 		"/api/v1/x/acme_fake//b",
-		"/api/v1/x//acme_fake/b",
 		"/api/v1/x/acme_fake/pub/%2e%2e",
 		"/api/v1/x/acme_fake/pub/a%5cb",
 		"/api/v1/x/acme_fake/pub/a\\b",
@@ -32,6 +31,17 @@ func TestDynamicRoutesRefuseNonCanonicalPaths(t *testing.T) {
 		}
 		rec := serve(rig.h, req)
 		if rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != `{"code":"PLUGIN_ROUTE_PATH_INVALID","error":"the request path is not in canonical form"}` {
+			t.Errorf("%s = %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	// A path that names no plugin is no plugin's path: the core's answer
+	// for an unknown path (401 unauthenticated, else 404), as with nothing
+	// installed.
+	for _, path := range []string{"/api/v1/x", "/api/v1/x/", "/api/v1/x//acme_fake/b"} {
+		if rec := rig.do("", http.MethodGet, path, ""); rec.Code != http.StatusUnauthorized {
+			t.Errorf("unauthenticated %s = %d %s", path, rec.Code, rec.Body)
+		}
+		if rec := rig.do(rig.session, http.MethodGet, path, ""); rec.Code != http.StatusNotFound || strings.TrimSpace(rec.Body.String()) != `{"code":"NOT_FOUND","error":"Not Found"}` {
 			t.Errorf("%s = %d %s", path, rec.Code, rec.Body)
 		}
 	}
@@ -60,14 +70,16 @@ func TestDynamicRoutesStripInboundHeaders(t *testing.T) {
 	rig := newDynamicRig(t, []DynamicRoute{dynRoute("GET", "/items", DynamicMember), dynRoute("GET", "/sso", DynamicPublic, func(r *DynamicRoute) { r.Cookies = true })})
 	req := httptestRequest(http.MethodGet, "/api/v1/x/acme_fake/items", rig.member)
 	for k, v := range map[string]string{"Gwx-Principal": "forged", "Gwx-Principal-Mac": "forged", "Gwx-Feature-Access": "acme.backup=full",
-		"X-Gpuworks-Usage-Error": "x", "Cookie": "gpuworks_session=abc; theme=dark", "Traceparent": "bogus", "Connection": "X-Secret", "X-Secret": "1", "X-Kept": "yes"} {
+		"X-Gpuworks-Usage-Error": "x", "Cookie": "gpuworks_session=abc; theme=dark", "Traceparent": "bogus", "Connection": "X-Secret", "X-Secret": "1", "X-Kept": "yes",
+		"X-Forwarded-For": "10.9.9.9", "X-Real-Ip": "10.9.9.9", "Forwarded": "for=10.9.9.9"} {
 		req.Header.Set(k, v)
 	}
 	if rec := serve(rig.h, req); rec.Code != http.StatusOK {
 		t.Fatalf("member read = %d %s", rec.Code, rec.Body)
 	}
 	h := rig.dyn.last.Load().header
-	for _, k := range []string{"Authorization", "Gwx-Principal", "Gwx-Principal-Mac", "Gwx-Feature-Access", "X-Gpuworks-Usage-Error", "Cookie", "X-Secret"} {
+	for _, k := range []string{"Authorization", "Gwx-Principal", "Gwx-Principal-Mac", "Gwx-Feature-Access", "X-Gpuworks-Usage-Error", "Cookie", "X-Secret",
+		"X-Forwarded-For", "X-Real-Ip", "Forwarded"} {
 		if h.Get(k) != "" {
 			t.Errorf("the plugin got %s: %q", k, h.Get(k))
 		}
@@ -98,6 +110,9 @@ func TestDynamicRoutesFilterResponses(t *testing.T) {
 		dynRoute("GET", "/page", DynamicAdmin),
 		dynRoute("GET", "/html", DynamicAdmin, func(r *DynamicRoute) { r.HTML = true }),
 		dynRoute("GET", "/blob", DynamicAdmin),
+		dynRoute("GET", "/text", DynamicAdmin),
+		dynRoute("GET", "/list", DynamicAdmin),
+		dynRoute("GET", "/comma", DynamicAdmin),
 	})
 	rig.dyn.serve(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -106,6 +121,12 @@ func TestDynamicRoutesFilterResponses(t *testing.T) {
 			h.Set("Content-Type", "text/html; charset=utf-8")
 		case "/blob":
 			h["Content-Type"] = nil
+		case "/text":
+			h.Set("Content-Type", "Text/Plain;charset=utf-8")
+		case "/list":
+			h.Set("Content-Type", "text/plain, text/html")
+		case "/comma":
+			h.Set("Content-Type", "text/html,")
 		}
 		h.Set("Access-Control-Allow-Origin", "*")
 		h.Set("Content-Security-Policy", "default-src *")
@@ -120,7 +141,16 @@ func TestDynamicRoutesFilterResponses(t *testing.T) {
 		`{"code":"PLUGIN_ROUTE_RESPONSE_INVALID","error":"the plugin returned a response the server will not pass on: the route does not declare html","params":{"id":"acme_fake"}}` {
 		t.Fatalf("undeclared html = %d %s", rec.Code, rec.Body)
 	}
-	for path, ct := range map[string]string{"/html": "text/html; charset=utf-8", "/blob": "application/octet-stream"} {
+	// A Content-Type that is not one media type could read as HTML in a
+	// browser, which takes the last entry of a list.
+	for _, path := range []string{"/list", "/comma"} {
+		rec = rig.do(rig.session, http.MethodGet, "/api/v1/x/acme_fake"+path, "")
+		if rec.Code != http.StatusBadGateway || strings.TrimSpace(rec.Body.String()) !=
+			`{"code":"PLUGIN_ROUTE_RESPONSE_INVALID","error":"the plugin returned a response the server will not pass on: the content type is malformed","params":{"id":"acme_fake"}}` {
+			t.Fatalf("%s = %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	for path, ct := range map[string]string{"/html": "text/html; charset=utf-8", "/blob": "application/octet-stream", "/text": "text/plain; charset=utf-8"} {
 		rec = rig.do(rig.session, http.MethodGet, "/api/v1/x/acme_fake"+path, "")
 		h := rec.Header()
 		if rec.Code != http.StatusOK || rec.Body.String() != "<b>hi</b>" || h.Get("Content-Type") != ct || h.Get("Cache-Control") != "no-store" {

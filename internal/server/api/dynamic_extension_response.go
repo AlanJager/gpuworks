@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,7 +48,7 @@ func (e *dynamicEndpoint) respond(w http.ResponseWriter, r *http.Request, route 
 	}
 	if err != nil {
 		if body.over.Load() {
-			writeProductError(w, http.StatusRequestEntityTooLarge, messages.ErrorRequestTooLarge, "the request body is larger than this route takes", map[string]any{"limit": route.MaxBody})
+			writeProductError(w, http.StatusRequestEntityTooLarge, messages.ErrorRequestTooLarge, "the request body is larger than this route takes", map[string]any{"max_bytes": route.MaxBody})
 			return http.StatusRequestEntityTooLarge
 		}
 		return e.callRefused(w, r, err)
@@ -59,9 +60,9 @@ func (e *dynamicEndpoint) respond(w http.ResponseWriter, r *http.Request, route 
 	if resp.Header.Get(PluginProductErrorHeader) != "" {
 		return e.passProductError(w, route, resp)
 	}
-	ct := resp.Header.Get("Content-Type")
-	if ct == "" {
-		ct = "application/octet-stream"
+	ct, ok := responseContentType(resp.Header.Get("Content-Type"))
+	if !ok {
+		return invalidResponse(w, route, "the content type is malformed")
 	}
 	if mt, _, _ := mime.ParseMediaType(ct); (mt == "text/html" || mt == "application/xhtml+xml") && !route.HTML {
 		return invalidResponse(w, route, "the route does not declare html")
@@ -93,6 +94,22 @@ func (e *dynamicEndpoint) respond(w http.ResponseWriter, r *http.Request, route 
 	return resp.StatusCode
 }
 
+// responseContentType is the Content-Type to send for a plugin's ct, in
+// normalized form: octet-stream when it has none, and not ok when it does
+// not parse as one media type (a browser could read a list such as
+// "text/plain, text/html" as its last entry).
+func responseContentType(ct string) (string, bool) {
+	if ct == "" {
+		return "application/octet-stream", true
+	}
+	mt, params, err := mime.ParseMediaType(ct)
+	if err != nil || mt == "" {
+		return "", false
+	}
+	out := mime.FormatMediaType(mt, params)
+	return out, out != ""
+}
+
 // callRefused maps a refused call: the plugin was not reached (503, retry
 // in 5 s), was busy (503, retry in 1 s), timed out (504), failed after it
 // had the request (502, no retry), or is gone (the core 404).
@@ -121,7 +138,9 @@ func (e *dynamicEndpoint) callRefused(w http.ResponseWriter, r *http.Request, er
 }
 
 // passProductError passes on a plugin's product error when its body is
-// one and its status a failure; anything else is refused.
+// one, its code one the route's plugin may answer with (route.Codes) and
+// its status a failure; anything else is refused, so a plugin never
+// answers with a code the core or another package owns.
 func (e *dynamicEndpoint) passProductError(w http.ResponseWriter, route *DynamicRoute, resp *http.Response) int {
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxPluginErrorBody+1))
 	if err != nil || len(raw) > maxPluginErrorBody || resp.StatusCode < 400 || resp.StatusCode > 599 || e.ext.DecodeError == nil {
@@ -130,6 +149,9 @@ func (e *dynamicEndpoint) passProductError(w http.ResponseWriter, route *Dynamic
 	pe, err := e.ext.DecodeError(raw)
 	if err != nil {
 		return invalidResponse(w, route, "the product error is malformed: "+err.Error())
+	}
+	if !slices.Contains(route.Codes, pe.Code()) {
+		return invalidResponse(w, route, "the product error's code is not one the plugin declares")
 	}
 	if v := resp.Header.Get("Retry-After"); v != "" {
 		w.Header().Set("Retry-After", v)
