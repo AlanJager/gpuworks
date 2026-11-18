@@ -4,6 +4,7 @@ package extplugin
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // recoveryBudget is how long each call of the recovery surface may take
@@ -43,6 +46,9 @@ func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 		}
 	}
 	waitFor(t, "every node held", func() bool { return heldByPlugins(t, st, a.UUID) && heldByPlugins(t, st, b.UUID) })
+	if code := enrollmentRefusal(t, st, "c"); code != "ACME_CARD_LIMIT" {
+		t.Fatalf("an enrollment under the zero cards cap = %q; want ACME_CARD_LIMIT", code)
+	}
 
 	// Both plugins now die at every start, from the next boot on.
 	sv.stop()
@@ -56,6 +62,9 @@ func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 	}
 	if !heldByPlugins(t, st, a.UUID) || !heldByPlugins(t, st, b.UUID) {
 		t.Fatal("the crashlooping plugins' holds were released")
+	}
+	if code := enrollmentRefusal(t, st, "c"); code != "ACME_CARD_LIMIT" {
+		t.Fatalf("an enrollment under the crashlooping plugin's zero cards cap = %q; want ACME_CARD_LIMIT", code)
 	}
 
 	timed := func(what string, method, path, body string) []byte {
@@ -93,13 +102,36 @@ func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 		t.Fatalf("plugin list = %s", out)
 	}
 	for _, id := range []string{"acme_fake", "acme_other"} {
-		timed("disable "+id, http.MethodPost, "/api/v1/plugins/"+id+"/disable", "")
+		var p dto.Plugin
+		if out := timed("disable "+id, http.MethodPost, "/api/v1/plugins/"+id+"/disable", ""); json.Unmarshal(out, &p) != nil || p.State != "disabled" {
+			t.Fatalf("disable %s answered %s", id, out)
+		}
 	}
 	for _, id := range []string{"acme_fake", "acme_other"} {
 		timed("uninstall "+id, http.MethodDelete, "/api/v1/plugins/"+id, "")
 	}
-	if p := sv.plugin("acme_fake"); p.State != "absent" {
-		t.Fatalf("acme_fake after uninstall = %+v", p)
+	for _, id := range []string{"acme_fake", "acme_other"} {
+		if p := sv.plugin(id); p.State != "absent" {
+			t.Fatalf("%s after uninstall = %+v", id, p)
+		}
 	}
 	waitFor(t, "every hold released", func() bool { return !heldByPlugins(t, st, a.UUID) && !heldByPlugins(t, st, b.UUID) })
+	if code := enrollmentRefusal(t, st, "c"); code != "" {
+		t.Fatalf("an enrollment after uninstall was refused with %q; the cards cap must be lifted", code)
+	}
+}
+
+// enrollmentRefusal tries to enroll a node and answers the refusal's code,
+// or "" when the node joined: the observable effect of the fleet cards cap.
+func enrollmentRefusal(t *testing.T, st *store.Store, name string) string {
+	t.Helper()
+	_, _, err := st.CreateNodePending(name)
+	if err == nil {
+		return ""
+	}
+	var refusal *messages.ProductError
+	if !errors.Is(err, store.ErrNodeEnrollmentRefused) || !errors.As(err, &refusal) {
+		t.Fatalf("enrolling %s = %v; want a refusal or success", name, err)
+	}
+	return refusal.Code()
 }

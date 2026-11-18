@@ -144,6 +144,7 @@ func TestRecoveryRoutesNeverConsultTheFeatureGateOrPlugins(t *testing.T) {
 	for _, step := range []struct{ method, path, body string }{
 		{http.MethodGet, "/api/v1/auth/me", ""},
 		{http.MethodGet, "/api/v1/plugins", ""},
+		{http.MethodPost, "/api/v1/plugins/install?approve=sha256:00", "the package bytes"},
 		{http.MethodPost, "/api/v1/plugins/acme_backup/disable", ""},
 		{http.MethodPost, "/api/v1/plugins/acme_backup/enable", ""},
 		{http.MethodDelete, "/api/v1/plugins/acme_backup", ""},
@@ -159,8 +160,7 @@ func TestRecoveryRoutesNeverConsultTheFeatureGateOrPlugins(t *testing.T) {
 	if n := banners.calls.Load(); n != 0 {
 		t.Fatalf("the recovery surface asked plugins for banners %d times", n)
 	}
-	if got := strings.Join(plugins.recorded(), "|"); got != "list|disable acme_backup admin|enable acme_backup admin|uninstall acme_backup keep admin" {
+	if got := strings.Join(plugins.recorded(), "|"); got != "list|install sha256:00 keep admin|disable acme_backup admin|enable acme_backup admin|uninstall acme_backup keep admin" {
 		t.Fatalf("plugin administration calls = %s", got)
 	}
-
 }
