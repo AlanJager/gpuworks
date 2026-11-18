@@ -164,7 +164,8 @@ type InstallRequest struct {
 	// Approve must be the package's approval hash; without it the install
 	// is refused with PLUGIN_APPROVAL_REQUIRED, which names it.
 	Approve extapi.Digest
-	// Enable starts the package's server part once installed.
+	// Enable starts the package's server part once installed. A package
+	// installed over an enabled version stays enabled either way.
 	Enable bool
 	// By names the administrator, for the audit record.
 	By string
@@ -201,7 +202,7 @@ func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (
 	id = in.Manifest.ID
 	st, supervised := b.host.Status(id)
 	// The same build installed again over its running process keeps it.
-	keep := in.Unchanged && req.Enable && supervised && st.State != pluginhost.StateStopped && st.State != pluginhost.StateFailed
+	keep := in.Unchanged && in.Enabled && supervised && st.State != pluginhost.StateStopped && st.State != pluginhost.StateFailed
 	if !keep {
 		if err := b.stop(ctx, id); err != nil {
 			return nil, err

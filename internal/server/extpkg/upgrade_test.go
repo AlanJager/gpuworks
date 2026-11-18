@@ -314,3 +314,60 @@ func TestHostConfigCarriesAutoApproval(t *testing.T) {
 		}
 	}
 }
+
+// Installing over an enabled version without Enable keeps it enabled, and
+// a disabled one stays disabled; a first install takes Enable as given.
+func TestInstallOverAnInstalledVersionKeepsEnabled(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprint("enabled=", enabled), func(t *testing.T) {
+			w := newWorld(t)
+			h := upgradeHost(t, w, false)
+			if _, err := h.Install(bytes.NewReader(pkg(t, w, "1.0.0", v1Asks)), extpkg.InstallOptions{Enable: enabled}); err != nil {
+				t.Fatal(err)
+			}
+			in, err := h.Install(bytes.NewReader(pkg(t, w, "2.0.0", v2Asks)), extpkg.InstallOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctl, _, _ := h.Dir.ReadControl("acme_backup")
+			if ctl.Enabled != enabled || in.Enabled != enabled {
+				t.Fatalf("control enabled = %v, installed enabled = %v, want %v", ctl.Enabled, in.Enabled, enabled)
+			}
+			// The same build again keeps it too.
+			if in, err = h.Install(bytes.NewReader(pkg(t, w, "2.0.0", v2Asks)), extpkg.InstallOptions{}); err != nil || !in.Unchanged {
+				t.Fatalf("reinstall = %+v, %v", in, err)
+			}
+			if ctl, _, _ := h.Dir.ReadControl("acme_backup"); ctl.Enabled != enabled {
+				t.Fatalf("control enabled = %v after the same build, want %v", ctl.Enabled, enabled)
+			}
+		})
+	}
+}
+
+// An install over an installed version is refused with the diff from that
+// version, the same diff an upgrade shows.
+func TestInstallOverAnInstalledVersionDiffsFromIt(t *testing.T) {
+	w := newWorld(t)
+	h := upgradeHost(t, w, false)
+	if _, err := h.Install(bytes.NewReader(pkg(t, w, "1.0.0", v1Asks)), extpkg.InstallOptions{Enable: true}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := h.Install(bytes.NewReader(pkg(t, w, "2.0.0", v2Asks)), extpkg.InstallOptions{RequireApproval: true})
+	params, need := approvalOf(t, err)
+	_, upErr := h.Upgrade(bytes.NewReader(pkg(t, w, "2.0.0", v2Asks)), extpkg.UpgradeOptions{})
+	upParams, upNeed := approvalOf(t, upErr)
+	wantDiff := upNeed.Diff
+	wantDiff.HashChanged = false // Install does not compare with the approved hash.
+	if !reflect.DeepEqual(need.Diff, wantDiff) || need.Diff.FromVersion != "1.0.0" {
+		t.Fatalf("install diff = %+v\nupgrade diff = %+v", need.Diff, upNeed.Diff)
+	}
+	if !reflect.DeepEqual(params, upParams) {
+		t.Fatalf("install params = %v\nupgrade params = %v", params, upParams)
+	}
+	if msg := need.Error(); msg != fmt.Sprintf("acme_backup 2.0.0 needs approval %s", need.Hash) {
+		t.Fatalf("cause = %q", msg)
+	}
+	if v, _ := h.Dir.Current("acme_backup"); v != "1.0.0" {
+		t.Fatalf("current = %q after a refused install", v)
+	}
+}

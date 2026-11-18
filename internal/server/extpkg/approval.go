@@ -33,7 +33,9 @@ type ApprovalDiff struct {
 	// ToVersion is the incoming one.
 	FromVersion, ToVersion string
 	// HashChanged reports that the incoming approval hash differs from the
-	// approved one: the package asks for something not yet approved.
+	// approved one: the package asks for something not yet approved. The
+	// hash covers host_setup steps in manifest order, so a version that
+	// only reorders them changes the hash with every list here empty.
 	HashChanged bool
 
 	PermissionsAdded, PermissionsRemoved []PermissionChange
@@ -172,12 +174,13 @@ func (d ApprovalDiff) Params() map[string]any {
 // ApprovalNeeded is the cause inside an ErrorPluginApprovalRequired
 // refusal, for a caller that shows the diff itself (errors.As).
 type ApprovalNeeded struct {
+	ID   string
 	Hash extapi.Digest
 	Diff ApprovalDiff
 }
 
 func (a *ApprovalNeeded) Error() string {
-	return fmt.Sprintf("%s needs approval %s", a.Diff.ToVersion, a.Hash)
+	return fmt.Sprintf("%s %s needs approval %s", a.ID, a.Diff.ToVersion, a.Hash)
 }
 
 // approvalRequired is the refusal that names what an install or upgrade
@@ -188,6 +191,13 @@ func approvalRequired(m *extapi.Manifest, hash extapi.Digest, diff ApprovalDiff)
 	params["id"], params["version"], params["approve_hash"] = m.ID, m.Version, string(hash)
 	params["permissions"], params["roles"] = strings.Join(m.Permissions, ","), strings.Join(m.Roles, ",")
 	return messages.WrapProductError(messages.ErrorPluginApprovalRequired,
-		fmt.Sprintf("installing %s %s needs approval %s", m.ID, m.Version, hash),
-		params, &ApprovalNeeded{Hash: hash, Diff: diff})
+		approvalFallback(m, hash, diff.FromVersion),
+		params, &ApprovalNeeded{ID: m.ID, Hash: hash, Diff: diff})
+}
+
+func approvalFallback(m *extapi.Manifest, hash extapi.Digest, from string) string {
+	if from == "" {
+		return fmt.Sprintf("installing %s %s needs approval %s", m.ID, m.Version, hash)
+	}
+	return fmt.Sprintf("replacing %s %s with %s needs approval %s", m.ID, from, m.Version, hash)
 }

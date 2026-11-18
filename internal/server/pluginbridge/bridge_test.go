@@ -229,6 +229,19 @@ func TestInstallEnableDisable(t *testing.T) {
 	}
 }
 
+// Installing over an enabled package without enable, the way the install
+// route replaces a version, leaves it enabled.
+func TestInstallOverAnEnabledPackageKeepsItEnabled(t *testing.T) {
+	w := newWorld(t, nil)
+	b := w.open()
+	install(t, b, w.pkg("acme_backup", "1.0.0", nil), true)
+	for _, version := range []string{"1.0.0", "1.1.0"} {
+		if v := install(t, b, w.pkg("acme_backup", version, nil), false).View; !v.Enabled || v.State == StateDisabled {
+			t.Fatalf("after installing %s without enable = %+v", version, v)
+		}
+	}
+}
+
 // A package whose files changed after install no longer verifies: it is
 // listed broken with the refusal, may only be uninstalled, cannot be
 // enabled, and pushed state keeps it installed but not verified.

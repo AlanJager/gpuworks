@@ -85,7 +85,11 @@ const (
 	// ErrorPluginApprovalRequired: installing {id} {version} needs the
 	// administrator's approval of what it asks for ({permissions},
 	// {roles}); the request must carry {approve_hash}. Nothing was
-	// installed.
+	// installed. The params also carry the diff from the installed version
+	// {from_version} (empty on a first install): {permissions_added} and
+	// {permissions_removed} (permission=risk), an _added/_removed pair for
+	// each of roles, capabilities, features, routes, host_setup and
+	// devices, and {ui_mode} and {isolation} (old->new when changed).
 	ErrorPluginApprovalRequired = "PLUGIN_APPROVAL_REQUIRED"
 	// ErrorPluginBroken: installed package {id} no longer verifies, so it
 	// cannot be enabled; see its state.

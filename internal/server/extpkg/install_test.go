@@ -123,12 +123,13 @@ func TestInstallSameBuildAgainIsUnchanged(t *testing.T) {
 	if _, err := h.Install(bytes.NewReader(raw), extpkg.InstallOptions{Enable: true}); err != nil {
 		t.Fatal(err)
 	}
-	in, err := h.Install(bytes.NewReader(raw), extpkg.InstallOptions{Enable: false})
+	in, err := h.Install(bytes.NewReader(raw), extpkg.InstallOptions{Enable: false, ApprovedBy: "ops"})
 	if err != nil || !in.Unchanged || in.Previous != "" {
 		t.Fatalf("reinstall = %+v %v", in, err)
 	}
-	if ctl, _, _ := h.Dir.ReadControl("acme_backup"); ctl.Enabled {
-		t.Fatal("reinstall did not apply the new control")
+	// The new control is applied, and the package stays enabled.
+	if ctl, _, _ := h.Dir.ReadControl("acme_backup"); ctl.ApprovedBy != "ops" || !ctl.Enabled {
+		t.Fatalf("control after reinstall = %+v", ctl)
 	}
 }
 

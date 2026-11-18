@@ -60,11 +60,15 @@ type Installed struct {
 	Unchanged bool
 	// ApprovalHash is what the installer approved.
 	ApprovalHash extapi.Digest
+	// Enabled reports whether the package may run now that it is placed.
+	Enabled bool
 }
 
 // InstallOptions are an install's choices.
 type InstallOptions struct {
 	// Enable starts the package's server part once a server runs it.
+	// Installing over an installed version that is enabled keeps it
+	// enabled either way.
 	Enable bool
 	// ApprovedBy names who approved the package's permissions.
 	ApprovedBy string
@@ -86,11 +90,39 @@ type InstallOptions struct {
 // different manifest is refused (ErrorPluginVersionConflict).
 func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	return h.place(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
-		if opt.RequireApproval && opt.Approve != hash {
-			return layout.Control{}, approvalRequired(v.Manifest, hash, DiffApproval(nil, v))
+		current, err := h.Dir.Current(v.Manifest.ID)
+		if err != nil {
+			return layout.Control{}, err
 		}
-		return layout.Control{Enabled: opt.Enable, ApprovedHash: string(hash), ApprovedBy: opt.ApprovedBy, At: h.now().UTC()}, nil
+		enabled := opt.Enable
+		if current != "" {
+			// Installing over an installed version keeps it enabled: an
+			// install without enable never turns a running package off. An
+			// unreadable control file does not block the reinstall that
+			// repairs it.
+			if ctl, _, err := h.Dir.ReadControl(v.Manifest.ID); err == nil {
+				enabled = enabled || ctl.Enabled
+			}
+		}
+		if opt.RequireApproval && opt.Approve != hash {
+			return layout.Control{}, approvalRequired(v.Manifest, hash, h.diffFromCurrent(v, current))
+		}
+		return layout.Control{Enabled: enabled, ApprovedHash: string(hash), ApprovedBy: opt.ApprovedBy, At: h.now().UTC()}, nil
 	})
+}
+
+// diffFromCurrent is what v asks for compared with installed version
+// current of its id, or with nothing when current is empty. An installed
+// version that no longer verifies is diffed as nothing: the administrator
+// sees everything the new one asks for.
+func (h *Host) diffFromCurrent(v *Verified, current string) ApprovalDiff {
+	if current == "" {
+		return DiffApproval(nil, v)
+	}
+	old, _ := h.Recheck(v.Manifest.ID, false)
+	d := DiffApproval(old, v)
+	d.FromVersion = current
+	return d
 }
 
 // UpgradeOptions are an upgrade's choices.
@@ -138,11 +170,7 @@ func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (*Upgraded, error) {
 		if err != nil {
 			return layout.Control{}, err
 		}
-		// An installed version that no longer verifies is diffed as
-		// nothing: the administrator sees everything the new one asks for.
-		old, _ := h.Recheck(m.ID, false)
-		up.Diff = DiffApproval(old, v)
-		up.Diff.FromVersion = current
+		up.Diff = h.diffFromCurrent(v, current)
 		up.Diff.HashChanged = string(hash) != ctl.ApprovedHash
 		up.AutoApproved = !up.Diff.HashChanged && h.Verifier.Policy.AutoApproveUnchanged
 		approvedBy := opt.ApprovedBy
@@ -209,7 +237,7 @@ func (h *Host) place(r io.Reader, features FeatureOwners, decide func(*Verified,
 	if err != nil {
 		return nil, err
 	}
-	out := &Installed{Verified: v, ApprovalHash: hash}
+	out := &Installed{Verified: v, ApprovalHash: hash, Enabled: ctl.Enabled}
 	switch existing, err := os.ReadFile(filepath.Join(h.Dir.Version(m.ID, m.Version), archive.ManifestMember)); {
 	case err == nil:
 		if !bytes.Equal(existing, c.Manifest) {
