@@ -39,6 +39,7 @@ gpuworks restarted (systemd)
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
 | | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、启停、卸载插件包，查看推送状态，导入信任与包索引，降级前检查兼容性 | 运维，server 停止时也能用；启停与卸载要求 server 已停止 |
+| | [`host-identity`](#gpuworks-host-identity) | 以 root 读出只有 root 能读的主机身份并写进 `/run/gpuworks/host-identity.json` | systemd 在每次启动 server 之前执行，不手工运行 |
 | | `version` | 打印版本 | 任何人 |
 | | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
 | | `console-upgrade-protocol` | 打印本版本支持的控制台升级协议号（当前 `1`）；控制台升级之前的版本没有这个子命令 | 控制台升级前，服务端对待装的新二进制调用 |
@@ -296,6 +297,17 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。`enable`、`disable`、`uninstall` 改动的是运行中 server 还留在内存里、会悄悄覆盖回去的状态，所以要求 server 已停止：它们拿不到 `<data>/server.lock`（见[控制面安装布局](install-layout.md)）时以 2 退出，提示 `the server (pid N) is running; stop it first`（锁文件里没有存活的 server pid 时，即持有者可能是另一条维护命令，改为点名锁文件：`another gpuworks process holds <data>/server.lock; …`），什么都不改；拿到锁后一直持有到命令结束，期间 server 启不来。数据目录必须已存在，不会新建。其余拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
 
 本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
+
+## gpuworks host-identity
+
+`gpuworks host-identity --write PATH [--group GROUP]` 读出 server 所在机器的身份事实，把内核只让 root 读的两项（系统 UUID、主板序列号）连同其余两项写进 `PATH`，供以服务账户运行的 server 补齐[主机身份](../dev/extensions.md#管理-server-的主机身份)。`install` 写的 systemd drop-in 让 systemd 在每次启动之前以 root 执行它（见[控制面安装布局](install-layout.md#systemd-单元)），不需要手工运行。
+
+| flag | 说明 |
+|---|---|
+| `--write PATH` | 必填，绝对且规整的路径，通常是 `/run/gpuworks/host-identity.json`；相对路径拒绝 |
+| `--group GROUP` | 能读这个文件的组（服务组）；不给时只有 root 能读 |
+
+只能以 root 运行，否则拒绝、什么都不写。`PATH` 所在目录必须由 root 所有、权限 0755：不存在时按这个样子创建，已存在但属主或权限不同时拒绝。文件先写进同目录下一个新建的临时文件（`O_CREAT|O_EXCL|O_NOFOLLOW`，预先放好的符号链接不会被跟随），经描述符设为 `root:<GROUP>`、0440 并落盘，再改名替换原文件；服务账户能读，但改不了权限、也换不掉它。
 
 ## gpuworks support-bundle
 

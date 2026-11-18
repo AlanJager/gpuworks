@@ -144,6 +144,7 @@ install 时的密码优先级：
 - `User=` 为 `--service-user` 指定的服务账户；`Restart=always`、`RestartSec=3`；`TimeoutStopSec=30`，给进行中的模型与镜像同步留出优雅退出时间。
 - `KillMode` 保持默认（control-group）：server 不拥有推理容器，子进程应随它一起退出（agent 的单元则相反）。
 - `Delegate=yes`：把单元的 cgroup 交给 server，server 把自己迁进其中的 `server` 子 cgroup，给每个插件建带内存、CPU 与进程数限制的 cgroup（[扩展点：跳板](../dev/extensions.md#跳板gpuworks-plugin-exec)）。`upgrade` 只在迁到 `server.yaml` 时重写单元，所以从不带这一行的单元升级上来的安装保留原单元，插件与 server 共用 cgroup、由 RSS 看门狗限制内存，直到下一次 `install`。
+- drop-in `/etc/systemd/system/gpuworks.service.d/host-identity.conf`（0644，`install` 与 `upgrade` 写入，`uninstall` 删除）：`ExecStartPre=-+<dir>/gpuworks host-identity --write /run/gpuworks/host-identity.json --group gpuworks`（服务账户为 root 时不带 `--group`）。`+` 让这一步以 root 运行，`-` 让它失败时 server 照常启动，只是读不到 root 才能读的两项。它写出的 `/run/gpuworks/` 目录为 `root:root`、0755，`host-identity.json` 为 `root:gpuworks`、0440：服务账户能读、不能改也不能替换；`/run` 是内存文件系统，每次开机重写。见 [`gpuworks host-identity`](cli.md#gpuworks-host-identity)。
 
 只有在有可用 root/`sudo`、`systemctl` 存在且 `/run/systemd/system` 真的存在（容器里装了 systemctl 但没有 systemd 不算）时才写单元；macOS 上只在 `--autostart`（或提问回答 `yes`、重装已有 launch daemon 的安装）时写下面的 launchd plist；都不满足时使用 nohup 后台进程加 PID 文件。
 
