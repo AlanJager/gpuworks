@@ -104,48 +104,35 @@ def cleanup(server, token, report, holder):
 
 
 def ready_drawers(page, detail, assistant):
-    # Both drawers settle by sliding in; the geometry below is only meaningful once the two
-    # boxes have stopped moving. Wait on the boxes themselves rather than on the animation
-    # list: the panel keeps a looping animation that never reports a finished state, so
-    # getAnimations() would never settle even long after the drawer is in place.
+    # A newly mounted drawer can stay still for two frames before its CSS
+    # transition starts. Require its final viewport boundary as well; inspect
+    # only the outer surfaces so a loading spinner does not block readiness.
     page.wait_for_function("""([detail, assistant]) => {
-      const box = e => { const r = e.getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom]; };
-      const now = [box(detail), box(assistant)];
-      const previous = window.__e2eDrawerBoxes;
-      window.__e2eDrawerBoxes = now;
-      if (!previous) return false;
-      return JSON.stringify(previous) === JSON.stringify(now);
+      const a = assistant.getBoundingClientRect(), d = detail.getBoundingClientRect();
+      const wrapper = assistant.closest('.ant-drawer-content-wrapper');
+      const moving = [wrapper, detail].some(e => e && e.getAnimations().some(
+        animation => animation.pending || animation.playState === 'running'));
+      const detailRight = innerWidth >= 1200 ? a.left : innerWidth;
+      return !moving && a.width > 0 && d.width > 0 &&
+        Math.abs(a.right - innerWidth) < 0.5 && Math.abs(d.right - detailRight) < 0.5;
     }""", arg=[detail.element_handle(), assistant.element_handle()], timeout=20000)
 
 
 def geometry(page, detail, assistant, report, label):
-    # The boxes of the previous pair are cleared first: this helper runs once per drawer
-    # pair, and a leftover snapshot would compare one layout against the next one's.
-    page.evaluate("() => { delete window.__e2eDrawerBoxes; }")
     ready_drawers(page, detail, assistant)
     result = page.evaluate("""([detail, assistant]) => {
       const rect = e => { const r=e.getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width}; };
       const input=assistant.querySelector('textarea'),r=input.getBoundingClientRect();
       const point={x:r.x+r.width/2,y:r.y+r.height/2};
       const hit=document.elementFromPoint(point.x,point.y);
-      // The node detail drawer has no mask, so its absence is a reading rather than an error.
-      const maskEl=detail.closest('.ant-drawer')?.querySelector('.ant-drawer-mask') ?? null;
+      // Both drawer implementations must leave the resident assistant reachable.
+      const maskEl=detail.closest('.ant-drawer')?.querySelector('.ant-drawer-mask') ?? detail.closest('[data-base-ui-portal]')?.querySelector('[data-slot=dialog-backdrop]') ?? null;
       return {detail:rect(detail),assistant:rect(assistant),mask:maskEl?rect(maskEl):null,
         point,hit:hit?.className,inputHit:hit===input,viewport:innerWidth};
     }""", arg=[detail.element_handle(), assistant.element_handle()])
     report.setdefault("geometry", []).append({"scenario": label, **result})
-    # The two surfaces coexist only where the detail surface is a non-modal drawer. Since the
-    # detail drawer moved to Zeron's Dialog (commit e9eb63ccf "Move the console shell and
-    # shared page parts to Zeron"; ui-kit/SideDrawer.tsx wraps ui/dialog.tsx), it renders a
-    # full-viewport backdrop that covers the assistant panel while it is open. That is a
-    # modal surface, so the panel is expected to be unreachable there; the coexistence this
-    # case is about is asserted on the deployment surface, which still uses antd's Drawer.
-    if result["mask"] is None:
-        checked(not result["inputHit"],
-                f"a modal detail drawer left the assistant input reachable: {result}")
-        report.setdefault("assistant_blocked_by_modal", []).append(label)
-    else:
-        checked(result["inputHit"], f"assistant input intercepted: {result}")
+    checked(result["inputHit"], f"assistant input intercepted: {result}")
+    checked(result["mask"] is not None, f"drawer backdrop missing: {result}")
     if result["mask"] is not None:
         checked(result["mask"]["right"] <= result["assistant"]["left"] + 1,
                 f"detail mask overlaps assistant: {result}")
@@ -155,7 +142,7 @@ def geometry(page, detail, assistant, report, label):
 
 
 def nested_confirmation(page, detail, assistant, dep, data, report):
-    detail.get_by_role("button").filter(has=page.get_by_text(dep["delete"]["button"], exact=True)).click()
+    button(detail, dep["delete"]["button"]).click()
     title = dep["delete"]["title"].replace("{{name}}", data["name"])
     modal = page.get_by_role("dialog", name=title, exact=True)
     expect(modal).to_be_visible()
@@ -176,18 +163,18 @@ def resize_and_toggle(page, detail, assistant, question, ai, report):
     page.set_viewport_size({"width": 1200, "height": 900})
     geometry(page, detail, assistant, report, "wide-breakpoint")
     # A deliberate layout-token perturbation verifies both consumers agree,
-    # and that a 720px detail can shrink into the remaining 600px workspace.
+    # and that the detail keeps the shared 32px outside-dismissal margin in the remaining 600px workspace.
     page.evaluate("document.documentElement.style.setProperty('--assistant-panel-width', '600px')")
     box = geometry(page, detail, assistant, report, "changed-assistant-width")
-    checked(abs(box["assistant"]["width"] - 600) < 1 and abs(box["detail"]["width"] - 600) < 1,
+    checked(abs(box["assistant"]["width"] - 600) < 1 and abs(box["detail"]["width"] - 568) < 1,
             f"shared width or detail clamp differs: {box}")
     question.click()
     expect(question).to_be_focused()
     page.evaluate("document.documentElement.style.removeProperty('--assistant-panel-width')")
     page.set_viewport_size({"width": 1199, "height": 900})
     ready_drawers(page, detail, assistant)
-    narrow = detail.evaluate("e => {const r=e.closest('.ant-drawer').getBoundingClientRect(); return {left:r.left,right:r.right};}")
-    checked(narrow == {"left": 0, "right": 1199}, f"narrow window lost overlapping layout: {narrow}")
+    narrow = detail.evaluate("e => {const r=e.getBoundingClientRect(); return {left:r.left,right:r.right};}")
+    checked(narrow == {"left": 367, "right": 1199}, f"narrow window lost overlapping layout: {narrow}")
     report["geometry"].append({"scenario": "narrow-breakpoint", "root": narrow})
     page.set_viewport_size({"width": 1440, "height": 900})
     geometry(page, detail, assistant, report, "resize-back")
@@ -195,27 +182,10 @@ def resize_and_toggle(page, detail, assistant, question, ai, report):
     expect(assistant).to_be_hidden()
     page.wait_for_function("!document.body.classList.contains('assistant-open')")
     restored = detail.evaluate("e => {const r=e.getBoundingClientRect(); return {left:r.left,right:r.right};}")
-    checked(restored == {"left": 720, "right": 1440}, f"detail did not reclaim assistant space: {restored}")
+    checked(restored == {"left": 608, "right": 1440}, f"detail did not reclaim assistant space: {restored}")
     page.keyboard.press("Control+i")
     expect(assistant).to_be_visible()
     geometry(page, detail, assistant, report, "assistant-reopened")
-
-
-def dismiss_modal_detail(page, detail, report):
-    """Close Zeron's modal detail drawer.
-
-    It is a Dialog (ui-kit/SideDrawer.tsx -> ui/dialog.tsx), so it has no
-    .ant-drawer-content-wrapper to watch and its backdrop intercepts every point outside the
-    panel; Escape is the dismissal the surface itself supports. The closing animation is
-    awaited through the dialog's own element rather than through antd's wrapper.
-    """
-    page.keyboard.press("Escape")
-    for _ in range(40):
-        if not detail.is_visible():
-            break
-        page.wait_for_timeout(100)
-    expect(detail).to_be_hidden()
-    report.setdefault("closing_hit_samples", []).append(0)
 
 
 def dismiss_detail(page, detail, assistant, report):
@@ -224,12 +194,11 @@ def dismiss_detail(page, detail, assistant, report):
     page.mouse.click(box["detail"]["left"] / 2, 450)
     # Check actual painted hit targets during the closing animation too.
     samples = page.evaluate("""([detail, assistant]) => new Promise((resolve, reject) => {
-      const wrapper=detail.closest('.ant-drawer-content-wrapper'), samples=[], start=performance.now();
+      const samples=[], start=performance.now();
       function sample() {
         const input=assistant.querySelector('textarea'), r=input.getBoundingClientRect();
         samples.push(document.elementFromPoint(r.x+2,r.y+r.height/2)===input);
-        const moving=wrapper.getAnimations().some(a=>a.pending || a.playState==='running');
-        if (!moving) resolve(samples);
+        if (!detail.isConnected || detail.getClientRects().length === 0) resolve(samples);
         else if (performance.now()-start>2000) reject(new Error('drawer close animation did not finish'));
         else requestAnimationFrame(sample);
       }
@@ -241,38 +210,68 @@ def dismiss_detail(page, detail, assistant, report):
     report.setdefault("closing_hit_samples", []).append(len(samples))
 
 
-def node_detail(page, server, ai, data, report):
-    report["step"] = "shared node detail drawer"
-    page.goto(server.base + "/nodes")
-    row = button(page, data["node_name"])
-    expect(row).to_be_visible()
-    button(page, ai["title"]).click()
-    # The panel is antd's Drawer whose content carries role=dialog. When the node/deployment
-    # detail drawer opens it is modal and antd marks the assistant panel aria-hidden, which
-    # Playwright's role engine skips, so the same element is matched through the CSS role
-    # attribute instead.
-    assistant = page.locator('.assistant-panel .ant-drawer-content[role="dialog"]')
-    expect(assistant).to_be_visible()
-    path = f"/api/v1/nodes/{data['node_uuid']}"
-    with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "GET") as read:
-        row.click()
-    checked(read.value.status == 200 and read.value.json()["name"] == data["node_name"], "browser node read differs")
-    detail = page.get_by_role("dialog", name=data["node_name"], exact=True)
-    expect(detail).to_be_visible()
-    geometry(page, detail, assistant, report, "shared-node-detail")
-    # The node detail surface is Zeron's modal Dialog, so its backdrop covers the assistant
-    # panel while it is open (ui-kit/SideDrawer.tsx -> ui/dialog.tsx backdrop). The panel is
-    # therefore exercised after the detail is dismissed, and the blocking is recorded as the
-    # measured shape rather than asserted away.
-    question = assistant.get_by_role("textbox", name=ai["panel"]["input"], exact=True)
-    dismiss_modal_detail(page, detail, report)
-    expect(detail).not_to_be_visible()
-    expect(question).to_be_visible()
-    question.click()
-    question.press_sequentially("Unsent node question")
-    expect(question).to_have_value("Unsent node question")
-    report["evidence"].append({"layer": "request", "node_get": path,
-                               "assistant_after_modal_detail": "reachable once dismissed"})
+def node_detail(page, server, ai, data, report, locale):
+    nodes = strings(locale, "nodes")
+    answer = f"The cluster overview reports 1 node(s); attention includes {data['node_name']}."
+    for assistant_first in (True, False):
+        report["step"] = f"node assistant-first={assistant_first}"
+        page.goto(server.base + "/nodes")
+        row = button(page, data["node_name"])
+        expect(row).to_be_visible()
+        if assistant_first:
+            button(page, ai["title"]).click()
+        assistant = page.locator(".assistant-panel").get_by_role("dialog")
+        path = f"/api/v1/nodes/{data['node_uuid']}"
+        with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "GET") as read:
+            row.click()
+        checked(read.value.status == 200 and read.value.json()["name"] == data["node_name"], "browser node read differs")
+        detail = page.get_by_role("dialog", name=data["node_name"], exact=True)
+        expect(detail).to_be_visible()
+        task = "ask" if assistant_first else "node.health"
+        if not assistant_first:
+            with page.expect_request(lambda r: urlsplit(r.url).path == "/api/v1/ai/ask" and r.method == "POST") as diagnosis:
+                button(detail, ai["task"]["node.health"]["action"]).click()
+            checked(diagnosis.value.post_data_json == {"task": task, "node_uuid": data["node_uuid"], "locale": locale}, "node diagnosis request differs")
+            expect(assistant.get_by_text(answer, exact=True)).to_be_visible()
+        expect(assistant).to_be_visible()
+        geometry(page, detail, assistant, report, report["step"])
+        question = assistant.get_by_role("textbox", name=ai["panel"]["input"], exact=True)
+        question.click()
+        question.press_sequentially("Summarize this node.")
+        expect(question).to_be_focused()
+        with page.expect_request(lambda r: urlsplit(r.url).path == "/api/v1/ai/ask" and r.method == "POST") as asked:
+            button(assistant, ai["panel"]["send"]).click()
+        expected = {"task": task, "node_uuid": data["node_uuid"], "locale": locale, "question": "Summarize this node."}
+        if not assistant_first:
+            expected["history"] = [{"role": "user", "content": ai["task"]["node.health"]["title"]}, {"role": "assistant", "content": answer}]
+        checked(asked.value.post_data_json == expected, f"node follow-up request differs: {asked.value.post_data_json}")
+        expect(assistant.get_by_text(answer, exact=True)).to_have_count(1 if assistant_first else 2)
+        expect(detail).to_be_visible()
+        # The sibling assistant must not close a nested antd edit dialog's parent.
+        button(detail, nodes["action"]["edit"]).first.click()
+        modal = page.get_by_role("dialog", name=nodes["rename"]["title"], exact=True)
+        expect(modal).to_be_visible()
+        modal.get_by_role("textbox").fill("Unsubmitted node name")
+        button(modal, nodes["action"]["cancel"]).click()
+        expect(modal).to_be_hidden()
+        expect(detail).to_be_visible()
+        question.click()
+        expect(question).to_be_focused()
+        page.set_viewport_size({"width": 820, "height": 900})
+        ready_drawers(page, detail, assistant)
+        question.click()
+        question.fill("Unsent narrow question")
+        expect(question).to_have_value("Unsent narrow question")
+        expect(question).to_be_focused()
+        button(assistant, ai["panel"]["close"]).click()
+        expect(assistant).to_be_hidden()
+        expect(detail).to_be_visible()
+        detail.locator("[data-slot=dialog-header] button").last.click()
+        expect(detail).to_be_hidden()
+        page.set_viewport_size({"width": 1440, "height": 900})
+        report["evidence"].append({"layer": "request", "node_get": path, "ask": expected,
+            "opening_order": "assistant-first" if assistant_first else "diagnosis-first",
+            "nested_rename_cancelled": True, "narrow_input_and_close": True})
 
 
 # Contract: gpuworks/assistant/drawer-layout
@@ -300,11 +299,7 @@ def test_assistant_drawer_layout(page, context, server, artifacts, report, local
         expect(detail).to_be_visible()
         if not assistant_first:
             page.keyboard.press("Control+i")
-        # The panel is antd's Drawer whose content carries role=dialog. When the node/deployment
-    # detail drawer opens it is modal and antd marks the assistant panel aria-hidden, which
-    # Playwright's role engine skips, so the same element is matched through the CSS role
-    # attribute instead.
-        assistant = page.locator('.assistant-panel .ant-drawer-content[role="dialog"]')
+        assistant = page.locator(".assistant-panel").get_by_role("dialog")
         expect(assistant).to_be_visible()
         geometry(page, detail, assistant, report, report["step"])
         question = assistant.get_by_role("textbox", name=ai["panel"]["input"], exact=True)
@@ -332,14 +327,16 @@ def test_assistant_drawer_layout(page, context, server, artifacts, report, local
             geometry(page, detail, assistant, report, "detail-reopened")
             dismiss_detail(page, detail, assistant, report)
         report["last_step"] = report["step"]
-    node_detail(page, server, ai, data, report)
+    node_detail(page, server, ai, data, report, locale)
     checked(not errors, f"page errors: {errors}")
     # Native interaction also renews the real login session (session.ts).
     business_writes = [r for r in writes if r != {"method": "POST", "path": "/api/v1/auth/activity"}]
-    checked(business_writes == [{"method": "POST", "path": "/api/v1/ai/ask"}] * 2, f"unexpected writes: {writes}")
+    checked(business_writes == [{"method": "POST", "path": "/api/v1/ai/ask"}] * 5, f"unexpected writes: {writes}")
     code, current = http(server.base, "GET", path, token)
     checked(code == 200 and current["name"] == data["name"] and current["desired_state"] == "stopped" and current.get("instances", []) == [],
             "assistant interaction changed the deployment")
+    code, current_node = http(server.base, "GET", f"/api/v1/nodes/{data['node_uuid']}", token)
+    checked(code == 200 and current_node["name"] == data["node_name"], "cancelled rename changed the node")
     report["evidence"].extend([
         {"layer": "ui", "geometry": report["geometry"], "opening_orders": 2, "native_input_and_send": True,
          "background_dismissal": True, "nested_confirmation_cancelled": True, "node_detail": True,
@@ -357,5 +354,5 @@ if __name__ == "__main__":
             "env_overrides": {"GPUWORKS_USAGE_REPORT": "off"}},
         helpers=("test/e2e/assistant_fixture.py", "test/e2e/image_catalog_runner.py",
                  "test/e2e/platform_token_read_revoke.py", "ui/src/assistant/AssistantPanel.tsx",
-                 "ui/src/styles.css", "ui/src/pages/DeploymentsPage.tsx",
+                 "ui/src/styles.css", "ui/src/theme/layers.css", "ui/src/ui-kit/SideDrawer.tsx", "ui/src/pages/DeploymentsPage.tsx",
                  "ui/src/components/detail/DetailDrawer.tsx", "ui/src/pages/nodes/NodeDetailDrawer.tsx")))

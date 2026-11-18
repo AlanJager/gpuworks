@@ -17,6 +17,8 @@ By the end, you can obtain evidence-based analysis for a specific object, then r
 
 The assistant stays in a right-hand sidebar that remains open when you switch pages. You can continue using the page while it is open. You do not need to write a prompt: each entry point maps to a task, and clicking it lets the server collect the relevant information automatically.
 
+Resource details and the assistant can stay open together: they appear side by side on wide screens, and the assistant appears over the detail on narrow screens. You can enter questions, send them, and view conversation history before returning to the detail. Closing the assistant keeps the detail open.
+
 | Task | Entry point |
 |---|---|
 | Diagnose instance failure | **AI Diagnosis** on the failed instance panel in deployment details |
@@ -100,4 +102,4 @@ To judge whether an analysis is useful, verify it against the original problem: 
 and after you act, does the instance become ready, do requests recover, or is the original scheduling constraint removed? Make configuration changes yourself on the corresponding page, then click **Analyze again** to view the new state.
 Receiving an answer or passing platform checks does not mean the failure is fixed. When evidence is insufficient, retain the uncertainty and continue checking logs or request records.
 
-<!-- translation-source-sha256: 7b2e3cdb20d5f53c0a2b5eb4f17386b6af371a1b3c621b79fc0539687d735058 -->
+<!-- translation-source-sha256: 0ad8deb65292830f2cbf670e8fdf3e3823cfd82c30a5c8b8df397f297ff63e20 -->

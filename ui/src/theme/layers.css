@@ -20,6 +20,12 @@
     right: var(--assistant-panel-width);
     max-width: calc(100vw - var(--assistant-panel-width) - 2rem);
   }
+  body.assistant-open .side-drawer {
+    --side-drawer-max-width: calc(100vw - var(--assistant-panel-width) - 2rem);
+  }
+  body.assistant-open .side-drawer-backdrop {
+    right: var(--assistant-panel-width);
+  }
 }
 
 /* Tailwind's preflight strips list markers; pages still written for antd
