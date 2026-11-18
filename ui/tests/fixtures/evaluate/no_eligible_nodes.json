@@ -3,9 +3,25 @@
   "start_timeout_source": "cluster",
   "engine_start_timeout_sec": 1770,
   "schema_version": 1,
+  "errors": [
+    {
+      "field": "",
+      "code": "DEPLOYMENT_NEVER_FITS",
+      "params": {
+        "detail": "",
+        "node": "fixture-peer",
+        "pool": 3,
+        "reason": "placement_rejected",
+        "reason_params": {
+          "detail": "H100: no matching spec"
+        },
+        "shapes": 2
+      }
+    }
+  ],
   "replicas": 1,
   "plan_scope": "per_replica",
-  "ok": true,
+  "ok": false,
   "template_spec_source": "upstream",
   "template_spec_name": "future-hardware",
   "template_match": "spec-name",

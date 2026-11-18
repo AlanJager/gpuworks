@@ -390,16 +390,6 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 				if resp.OK && !resp.Skipped {
 					resp.OK = true
 				}
-			} else {
-				candidateReq := cloneRequest(*req)
-				candidateReq.Image = resp.Image
-				mount, components := previewComponentMounts(s.d.Store, selection.Components, nil)
-				if err := s.checkPoolCanEverFit(ctx, &candidateReq, reqs, eng, model, automaticSelection, placement, quick, userExtraArgs, servedName, mount, components, requestOverrides); err != nil {
-					out.admissionErr = err
-					errs.add("", err)
-					writeFieldErrors()
-					return
-				}
 			}
 		}
 	}
@@ -534,6 +524,16 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			errs.add("", err)
 			writeFieldErrors()
 			return
+		}
+	}
+	if errs.empty() && IsAutomaticPlacement(req) && req.NNodes <= 1 && resp.SelectedNode == nil {
+		candidateReq := cloneRequest(*req)
+		candidateReq.Image = resp.Image
+		admissionSelection := selection
+		admissionSelection.ExtraArgs = launch.TemplateResidual
+		if err := s.checkPoolCanEverFit(ctx, &candidateReq, reqs, eng, model, admissionSelection, placement, quick, userExtraArgs, servedName, previewModelMount, previewMounts, requestOverrides); err != nil {
+			out.admissionErr = err
+			errs.add("", err)
 		}
 	}
 	if !errs.empty() {
