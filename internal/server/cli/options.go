@@ -49,7 +49,8 @@ type Options struct {
 	// passes its own.
 	PluginRoots []extapi.PublicKey
 	// InstallHooks are host steps install, upgrade and uninstall run, in this
-	// order (reversed on uninstall); see selfinstall.InstallHook.
+	// order (reversed on uninstall), after the core's own (the host
+	// identity drop-in); see selfinstall.InstallHook.
 	InstallHooks []selfinstall.InstallHook
 	// Commands are extra subcommands, dispatched after the built-in ones and
 	// listed in the usage after them, in this order. A name that a built-in

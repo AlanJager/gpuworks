@@ -233,11 +233,10 @@ func declaresHostSetup(dataDir string) bool {
 }
 
 // installHooks are the hooks install, upgrade and uninstall run on layout:
-// the core host setup hook first when this host has host setup to apply or
-// remove, then the build's own. A host without any keeps exactly the
-// build's hooks.
+// the core identity hook first, then the host setup hook when there is work
+// to apply or remove, followed by the build's own hooks.
 func (o Options) installHooks(l selfinstall.Layout) []selfinstall.InstallHook {
-	hooks := slices.Clone(o.InstallHooks)
+	hooks := append([]selfinstall.InstallHook{hostIdentityHook{}}, slices.Clone(o.InstallHooks)...)
 	if hostSetupGOOS != "linux" {
 		return hooks
 	}
@@ -245,5 +244,5 @@ func (o Options) installHooks(l selfinstall.Layout) []selfinstall.InstallHook {
 	if len(present) == 0 && !declaresHostSetup(l.DataDir) {
 		return hooks
 	}
-	return append([]selfinstall.InstallHook{hostSetupHook{opt: o}}, hooks...)
+	return append(hooks[:1:1], append([]selfinstall.InstallHook{hostSetupHook{opt: o}}, hooks[1:]...)...)
 }

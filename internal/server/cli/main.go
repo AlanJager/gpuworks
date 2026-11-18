@@ -11,6 +11,7 @@
 //	reset-password  change an admin password
 //	support-bundle  collect diagnostics without the server running
 //	migrate         apply database migrations and exit
+//	host-identity   write the host facts only root may read (run by systemd)
 //	plugin          install, verify, enable and uninstall plugin packages; import trust
 //	expose          publish this server through a Cloudflare quick tunnel
 //	version         print version
@@ -61,7 +62,7 @@ func Main(args []string, opt Options) int {
 var builtinCommands = []string{
 	"serve", "version", "-v", "--version", "database-migration", selfinstall.EditionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
 	"install", "upgrade", "uninstall", "restart", "stop", "support-bundle",
-	"reset-password", "migrate", "plugin", "expose", experiencelaunch.Command, pluginexec.Command,
+	"reset-password", "migrate", "plugin", "expose", hostIdentityCommand, experiencelaunch.Command, pluginexec.Command,
 	"help", "-h", "--help",
 }
 
@@ -148,6 +149,13 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 	case "expose":
 		if err := exposeCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("expose failed", "err", err)
+			return 1
+		}
+	case hostIdentityCommand:
+		// systemd runs this as root before every start (the host identity
+		// drop-in), never a person.
+		if err := runHostIdentity(rest, stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
+			log.Error("host identity failed", "err", err)
 			return 1
 		}
 	case pluginexec.Command:
