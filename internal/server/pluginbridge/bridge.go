@@ -84,15 +84,29 @@ type Bridge struct {
 	// pushers are the identities of the running plugins, by package id,
 	// bound when each is started.
 	pushers map[string]identity
+	// refusals are why an enabled package was not started (its data is
+	// newer than its build), by package id, until it is started, stopped
+	// or removed.
+	refusals map[string]error
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
 	running bool
+	// coreVersion is this server's version as the handshake names it; it
+	// signs the data markers the server records.
+	coreVersion string
 }
 
-// identity is who a plugin's pushes come from.
+// identity is who a plugin's pushes come from, and the data its build
+// writes: bound when the plugin is started, dropped when it is stopped.
 type identity struct {
 	version string
 	pusher  pushstate.Pusher
+	// stateVersion is the build's storage.state_version, 0 without
+	// storage.
+	stateVersion int
+	// marked is set once this start's first healthy run is recorded in
+	// the package's data marker.
+	marked bool
 }
 
 // Open verifies the installed packages (rehashing every file), removes
@@ -106,7 +120,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}}
+	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{}}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
@@ -137,6 +151,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if !coreVersionPattern.MatchString(core.Version) {
 		core.Version = devCoreVersion
 	}
+	b.coreVersion = core.Version
 	hostCfg.Core = func() extapi.CoreInfo { c := core; c.Offer = maps.Clone(core.Offer); return c }
 	hostCfg.State = stateHost{b}
 	hostCfg.OnState = b.onState
@@ -211,6 +226,9 @@ func (b *Bridge) stopAll() {
 func (b *Bridge) onState(st pluginhost.Status) {
 	if st.State.Up() {
 		b.state.OwnerUp(st.ID, st.Generation)
+		if st.State == pluginhost.StateRunning {
+			b.markData(st.ID)
+		}
 		return
 	}
 	b.state.OwnerDown(st.ID)

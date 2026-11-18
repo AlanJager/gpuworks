@@ -109,6 +109,14 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 		v.State = StateIdle
 		return v
 	}
+	b.mu.Lock()
+	refused := b.refusals[m.ID]
+	b.mu.Unlock()
+	if refused != nil {
+		v.State = string(pluginhost.StateFailed)
+		v.Code, v.Params, v.Message = codeOf(refused)
+		return v
+	}
 	st, ok := b.host.Status(m.ID)
 	if !ok {
 		v.State = string(pluginhost.StateStarting)
