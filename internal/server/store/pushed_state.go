@@ -22,6 +22,12 @@ func createPushedStateTables(db *gorm.DB) error {
 	return db.AutoMigrate(pstate.Models()...)
 }
 
+// createCapacityKeepTable creates the table of the nodes a fleet capacity
+// table keeps first, on a database whose pushed state tables predate it.
+func createCapacityKeepTable(db *gorm.DB) error {
+	return db.AutoMigrate(&pstate.CapacityKeep{})
+}
+
 // pushedBatchSize bounds the rows of one INSERT.
 const pushedBatchSize = 500
 
@@ -43,6 +49,7 @@ func (s *Store) LoadPushedState(ctx context.Context) (pstate.Snapshot, error) {
 			{&r.AvailabilityLimits, "owner, feature, step, dim"},
 			{&r.FleetCapacity, "owner"},
 			{&r.CapacitySteps, "owner, step"},
+			{&r.CapacityKeep, "owner, node_id"},
 			{&r.NodeHolds, "owner, node_id"},
 			{&r.Banners, "owner, banner_id"},
 			{&r.BannerSteps, "owner, banner_id, step"},
@@ -164,7 +171,7 @@ var kindTables = map[string][]struct {
 		{&pstate.AvailabilityRow{}, "feature"}, {&pstate.AvailabilityStep{}, "feature"},
 		{&pstate.AvailabilityLimit{}, "feature"}, {&pstate.AvailabilityTable{}, ""},
 	},
-	extapi.KindFleetCapacity: {{&pstate.FleetCapacity{}, ""}, {&pstate.CapacityStep{}, ""}},
+	extapi.KindFleetCapacity: {{&pstate.FleetCapacity{}, ""}, {&pstate.CapacityStep{}, ""}, {&pstate.CapacityKeep{}, ""}},
 	extapi.KindNodeHolds:     {{&pstate.NodeHold{}, "node_id"}},
 	extapi.KindBanners:       {{&pstate.Banner{}, "banner_id"}, {&pstate.BannerStep{}, "banner_id"}},
 	extapi.KindAttestations:  {{&pstate.Attestation{}, "name"}},
@@ -233,6 +240,7 @@ func insertPushedRows(tx *gorm.DB, r *pstate.Rows) error {
 		{len(r.AvailabilityLimits), &r.AvailabilityLimits},
 		{len(r.FleetCapacity), &r.FleetCapacity},
 		{len(r.CapacitySteps), &r.CapacitySteps},
+		{len(r.CapacityKeep), &r.CapacityKeep},
 		{len(r.NodeHolds), &r.NodeHolds},
 		{len(r.Banners), &r.Banners},
 		{len(r.BannerSteps), &r.BannerSteps},

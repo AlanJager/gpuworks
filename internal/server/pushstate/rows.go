@@ -151,6 +151,9 @@ func rowsOf(owner string, t extapi.Table, only map[string]bool) pstate.Rows {
 		for i, s := range t.Steps {
 			r.CapacitySteps = append(r.CapacitySteps, pstate.CapacityStep{Owner: owner, Step: i, AtMS: atMS(s.At), MaxNodesWithCards: copyInt(s.MaxNodesWithCards), MaxCards: copyInt(s.MaxCards)})
 		}
+		for _, id := range t.Keep {
+			r.CapacityKeep = append(r.CapacityKeep, pstate.CapacityKeep{Owner: owner, NodeID: id})
+		}
 	case *extapi.NodeHoldsV1:
 		ids := make([]string, 0, len(t.Nodes))
 		for id := range t.Nodes {
@@ -303,6 +306,11 @@ func tablesOf(snap *pstate.Snapshot) (map[ownerKind]extapi.Table, error) {
 	for _, s := range r.CapacitySteps {
 		if t, ok := out[ownerKind{s.Owner, extapi.KindFleetCapacity}].(*extapi.FleetCapacityV1); ok {
 			t.Steps = append(t.Steps, extapi.CapacityStep{At: timeOf(s.AtMS), MaxNodesWithCards: copyInt(s.MaxNodesWithCards), MaxCards: copyInt(s.MaxCards)})
+		}
+	}
+	for _, k := range r.CapacityKeep {
+		if t, ok := out[ownerKind{k.Owner, extapi.KindFleetCapacity}].(*extapi.FleetCapacityV1); ok {
+			t.Keep = append(t.Keep, k.NodeID)
 		}
 	}
 	for _, h := range r.NodeHolds {

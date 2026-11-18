@@ -37,7 +37,9 @@ type Combined struct {
 	avail  map[featuregate.Key]featuregate.Availability
 	absent featuregate.Availability
 
-	caps       fleetcap.Caps
+	caps fleetcap.Caps
+	// keep is the union of every owner's kept nodes, ascending.
+	keep       []uint
 	refuseNode *messages.ProductError
 	refuseCard *messages.ProductError
 	capHold    Hold
@@ -54,6 +56,7 @@ type Combined struct {
 // against the room left.
 type capacitySnap struct {
 	caps  fleetcap.Caps
+	keep  []uint
 	nodes map[uint]capacityNode
 	kept  fleetcap.Usage
 	full  bool

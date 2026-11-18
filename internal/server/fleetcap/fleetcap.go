@@ -1,9 +1,10 @@
 // Package fleetcap is the core's rule for fitting a fleet into capacity caps:
-// keep nodes in the order they joined until a cap is full, and hold the
-// rest from scheduling. Pushed fleet capacity (docs/reference/plugin-protocol.md,
-// table.fleet_capacity) gives the caps; the core, not the pusher, selects the
-// nodes, so nodes that join while the pusher is down are placed by the same
-// rule.
+// keep nodes in order until a cap is full, the nodes the pusher asked to keep
+// first and the rest in the order they joined, and hold the others from
+// scheduling. Pushed fleet capacity (docs/reference/plugin-protocol.md,
+// table.fleet_capacity) gives the caps and the nodes to keep first; the core,
+// not the pusher, selects the nodes, so nodes that join while the pusher is
+// down are placed by the same rule.
 //
 // It is a pure leaf: no I/O, no clock, no store.
 package fleetcap
@@ -78,17 +79,29 @@ type Selection struct {
 	Held []uint
 }
 
-// Select keeps counted nodes in enrollment order while both caps still fit.
-// The first node that does not fit and every counted node after it are held:
-// a later node never displaces an earlier one, even if it is smaller.
-func Select(c Caps, nodes []Node) Selection {
+// Select keeps counted nodes in order while both caps still fit. The order is
+// the kept nodes (keep lists node ids; an id naming no counted node matches
+// nothing) by ascending id, then every other counted node in enrollment
+// order. The first node that does not fit and every counted node after it
+// are held: a later node never displaces an earlier one, even if it is
+// smaller. Without keep the order is enrollment order alone.
+func Select(c Caps, nodes []Node, keep []uint) Selection {
+	kept := make(map[uint]bool, len(keep))
+	for _, id := range keep {
+		kept[id] = true
+	}
 	ordered := make([]Node, 0, len(nodes))
 	for _, n := range nodes {
 		if n.Cards > 0 {
 			ordered = append(ordered, n)
 		}
 	}
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID < ordered[j].ID })
+	sort.Slice(ordered, func(i, j int) bool {
+		if ki, kj := kept[ordered[i].ID], kept[ordered[j].ID]; ki != kj {
+			return ki
+		}
+		return ordered[i].ID < ordered[j].ID
+	})
 	var s Selection
 	for _, n := range ordered {
 		s.Used = s.Used.Plus(n.Cards)
@@ -99,5 +112,6 @@ func Select(c Caps, nodes []Node) Selection {
 		s.Full = true
 		s.Held = append(s.Held, n.ID)
 	}
+	sort.Slice(s.Held, func(i, j int) bool { return s.Held[i] < s.Held[j] })
 	return s
 }

@@ -20,6 +20,7 @@ type Rows struct {
 	AvailabilityLimits []AvailabilityLimit
 	FleetCapacity      []FleetCapacity
 	CapacitySteps      []CapacityStep
+	CapacityKeep       []CapacityKeep
 	NodeHolds          []NodeHold
 	Banners            []Banner
 	BannerSteps        []BannerStep

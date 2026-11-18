@@ -103,6 +103,16 @@ type CapacityStep struct {
 // TableName names the table.
 func (CapacityStep) TableName() string { return "pstate_fleet_capacity_step" }
 
+// CapacityKeep is one node an owner's fleet capacity table keeps first
+// (pstate_fleet_capacity_keep).
+type CapacityKeep struct {
+	Owner  string `gorm:"primaryKey;size:64"`
+	NodeID int64  `gorm:"primaryKey;autoIncrement:false"`
+}
+
+// TableName names the table.
+func (CapacityKeep) TableName() string { return "pstate_fleet_capacity_keep" }
+
 // NodeHold is one node an owner holds from scheduling (pstate_node_hold).
 type NodeHold struct {
 	Owner  string `gorm:"primaryKey;size:64"`
@@ -242,7 +252,7 @@ func (Marker) TableName() string { return "pstate_marker" }
 func Models() []any {
 	return []any{
 		&Owner{}, &AvailabilityTable{}, &AvailabilityRow{}, &AvailabilityStep{}, &AvailabilityLimit{},
-		&FleetCapacity{}, &CapacityStep{}, &NodeHold{}, &Banner{}, &BannerStep{}, &Attestation{},
+		&FleetCapacity{}, &CapacityStep{}, &CapacityKeep{}, &NodeHold{}, &Banner{}, &BannerStep{}, &Attestation{},
 		&NoticeParam{}, &Down{}, &Override{}, &Clock{}, &Marker{},
 	}
 }
