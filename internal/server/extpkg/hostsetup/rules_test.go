@@ -84,6 +84,34 @@ func TestRulesRefuseWhatIsNotAPackageOrAStep(t *testing.T) {
 	}
 }
 
+// The applied record of one and of two steps is the golden file byte for
+// byte: the SHA-256 of the documented canonical JSON
+// {"host_setup":[{"product_id","type","vendor_id"}...]}, whatever order the
+// manifest lists the steps in. Records on hosts outlive the build that
+// wrote them, so a change here sends every plugin back to needs_host_setup.
+func TestAppliedRecordGolden(t *testing.T) {
+	for _, c := range []struct {
+		golden string
+		steps  []extapi.HostSetupStep
+	}{
+		{"one_step.applied", []extapi.HostSetupStep{key}},
+		{"two_steps.applied", []extapi.HostSetupStep{key, second}},
+		{"two_steps.applied", []extapi.HostSetupStep{second, key}},
+	} {
+		d, err := Digest(c.steps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := os.ReadFile(filepath.Join("testdata", c.golden))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := Content(d); !bytes.Equal(got, want) {
+			t.Errorf("%s = %q, want %q", c.golden, got, want)
+		}
+	}
+}
+
 // The digest ignores order and duplicates and changes with any step.
 func TestDigestFollowsTheSteps(t *testing.T) {
 	a, _ := Digest([]extapi.HostSetupStep{key, second})
