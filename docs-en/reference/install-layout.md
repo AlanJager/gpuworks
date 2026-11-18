@@ -65,6 +65,8 @@ The shared root remains owned by root and unwritable by the ordinary service. On
 
 `upgrade --check` and upgrades without a version change do not migrate files. If the currently installed installer predates this repair, use the binary from a new release package to repair the original installation directory. The configuration archive member remains named `server.yaml`. Ordinary uninstall retains the configuration and compatibility alias; only `--purge` deletes the controlled configuration and alias, without recursively deleting the shared root.
 
+On macOS, if you choose this shared root for the control plane, configuration purge first verifies that the current process can restore files through native filesystem operations. If permissions are insufficient, it refuses the purge and asks you to run the entire uninstall command as root, avoiding an unsafe privileged link fallback.
+
 ## Permission Model
 
 The installation tree is a shared workspace for the service account and the operator:
@@ -194,6 +196,6 @@ UDOCKER_BUNDLE=
 - `gpuworks-agent uninstall` also deletes this file.
 - When the installation script, SSH wizard preflight checks, or out-of-band recovery need to identify the server or token associated with an agent on a host, they read this file (and read the older agent's command line only if the file is missing). For the design rationale, see [ADR 0051](../adr/0051-agent-launch-configuration-file.md).
 
-<!-- translation-source-sha256: 3b24c0ef0b26be34d0adfcf4ae0db5c012a6b4f06c7270ff1fbbff432e802d50 -->
+<!-- translation-source-sha256: f182a6470e37ccda58059897aa310e54ca30a5221ede80b6b6e0469eba77b8e4 -->
 <!-- translation-localized-code-block: cf0228b7f6dd01a33d1c0533f369be665aca051a5cd6897ffbf9ee07afc42ce0 63316e0dc2128d8d692b7aa4ea5e28a81d5c9405afd4799c5c37297248c76b5a Reviewed localization of the directory annotations, including the plugins/ and server.lock lines; paths unchanged. -->
 <!-- translation-localized-code-block: 0a0c78856b3bcc2f70519eaf27daec112ac8a20c1388e0ac5809fef7c3958d06 5126a8bc98f3780a7a6b25daeaa58a61a8cacb4075ece9e6bf89f05f91ec4fd7 Translate explanatory node-token placeholder -->
