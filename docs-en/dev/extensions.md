@@ -12,7 +12,7 @@ Extension docs, examples and tests describe each mechanism in its own terms; sam
 |---|---|---|
 | T0 Core | server, agent | Every general capability and every enforcement point: all decisions taken per request, insert, status report, claim or placement live here; the community edition itself, free by definition |
 | T1 Built-in module | inside the server process, in Go | Core-internal composition through `app.Module` / `app.Host`; `cli.Options.Extensions` stays for tests and forks and is not a distribution path for vendors or third parties |
-| T2 Package server part | a child process of the server | Decisions that need I/O, state, workflows or integrations, pushed as tables the core enforces (not built yet) |
+| T2 Package server part | a child process of the server | Decisions that need I/O, state, workflows or integrations, pushed as tables the core enforces (installation, supervision and pushed state are built, see [Installable extensions](#installable-extensions); the rest is under [Not built yet](#not-built-yet)) |
 | T3 Package node part | core workloads and jobs on nodes | Products that use GPUs; no plugin code runs in the agent (not built yet) |
 | T4 Policy part | inside the server | Reserved only, not built |
 
@@ -308,4 +308,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 0d76343769f19249073bc533a580827ac815449f2fb8cc096cb3a485324e4350 -->
+<!-- translation-source-sha256: 3a5ec2bf8190eb7982146f4266767ad3069b032fffc216b9cedeeee6c292c16c -->
