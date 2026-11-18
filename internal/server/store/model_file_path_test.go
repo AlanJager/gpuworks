@@ -38,7 +38,7 @@ func TestPrepareModelFileRejectsOccupiedSharedPath(t *testing.T) {
 				defer sub.Close()
 				for _, prepare := range []func(FileRef, string) (*ModelFile, error){f.st.PrepareModelDownload, f.st.PrepareModelCopy, f.st.PrepareModelPeerSync} {
 					_, err := prepare(ref, path)
-					want := fmt.Sprintf("shared storage %d path %q is occupied by model %d", f.nfs.ID, path, f.model.ID)
+					want := fmt.Sprintf("storage %d path %q is occupied by model %d", f.nfs.ID, path, f.model.ID)
 					if err == nil || err.Error() != want {
 						t.Fatalf("error=%v, want %s", err, want)
 					}

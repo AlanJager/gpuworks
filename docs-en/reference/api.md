@@ -502,6 +502,8 @@ A Kubernetes cluster joins as one DaemonSet: an administrator creates the cluste
 | POST | `/api/v1/models/{id}/nodes/{uuid}/sync/cancel` | Cancel peer sync | JWT |
 | DELETE | `/api/v1/models/{id}/nodes/{uuid}` | Evict model files from a node (local storage or node cache; `?storage_id=` specifies the storage). Rejects nodes occupied by an active deployment. Any download in progress at that path is canceled first, and the operation waits for it to end; you can download again immediately after the response | JWT(admin) |
 
+Automatic downloads, copies, and deployment acquisition keep different models in separate directories within the same storage and node. An empty `revision` still selects the source's default branch and remains distinct from explicit `main`. If another model owns the historical default directory, the new copy uses a `-model-<model ID>` suffix and retains it on retries. Ownership checks also recognize absolute paths reported by agents. If the suffixed directory is occupied too, writes are rejected; download, copy, and sync return 409 `MODEL_FILE_PATH_OCCUPIED` (`storage_id`, `path`, `model_id`). Existing copies are not moved automatically, and manual registration retains the caller's chosen directory. This check does not identify different storage definitions or symlinks that refer to the same physical directory.
+
 ### List Filtering and Presence Summary
 
 `GET /api/v1/models` without pagination parameters returns all models with presence details for each node and storage.
@@ -2292,4 +2294,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: f741d194e7f3f84a98a7ba9bdf83fbc4f635462d96cd3f5f83cc27aaef41682d -->
+<!-- translation-source-sha256: c2b596a38f89e739dfe4e298c574b9ce342433e4d11dbe7fb05ecf5141b60307 -->

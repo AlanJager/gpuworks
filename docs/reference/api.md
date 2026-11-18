@@ -503,6 +503,8 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/models/{id}/nodes/{uuid}/sync/cancel` | 取消节点间同步 | JWT |
 | DELETE | `/api/v1/models/{id}/nodes/{uuid}` | 驱逐节点上的模型文件（本地存储或节点缓存，`?storage_id=` 指定存储）（拒绝有活跃 deployment 占用的节点）；该路径上进行中的下载先被取消并等其结束，返回后可立即重新下载 | JWT(admin) |
 
+自动下载、复制及部署获取在同一存储、同一节点上为不同模型保留独立目录。空 `revision` 仍表示来源的默认分支，与显式 `main` 是不同身份；若历史默认目录已被另一模型占用，新副本使用带 `-model-<模型ID>` 后缀的目录，重试保留该目录。节点回报绝对路径后仍检查占用；后缀目录也被占用时拒绝写入，下载、复制和同步接口返回 409 `MODEL_FILE_PATH_OCCUPIED`（`storage_id`、`path`、`model_id`）。既有副本不会自动搬迁，手动登记仍使用调用方指定的目录；该检查不识别不同存储定义或符号链接指向同一物理目录的情况。
+
 ### 列表筛选与就位汇总
 
 `GET /api/v1/models` 不带分页参数时返回全部模型及逐节点、存储的就位明细。

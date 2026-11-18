@@ -156,7 +156,12 @@ func (a *apiHandlers) downloadModel(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if _, err := a.d.Store.PrepareModelDownload(ref, relPath(m)); err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
+			var occupied *store.ModelFilePathOccupiedError
+			if errors.As(err, &occupied) {
+				writeErr(w, http.StatusConflict, deployment.ModelFilePathProductError(err))
+			} else {
+				writeErr(w, http.StatusInternalServerError, err)
+			}
 			return
 		}
 		if a.d.NodeSync != nil {
