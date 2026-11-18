@@ -253,6 +253,26 @@ UIDecl.entry string
 UIDecl.mode string
 UIDecl.nav []NavDecl
 UIDecl.sdk Range
+IdentityPart.h string
+IdentityPart.tail string
+InventoryCard.index int
+InventoryCard.model string
+InventoryCard.serial bool
+InventoryNode.cards []InventoryCard
+InventoryNode.enrolled_at Time
+InventoryNode.host_reported bool
+InventoryNode.id uint64
+InventoryNode.name string
+InventoryNode.uuid string
+NodeIdentity.cards []IdentityPart
+NodeIdentity.cards_without_serial int
+NodeIdentity.host *IdentityPart
+NodeIdentity.node_id uint64
+NodeIdentityAnswer.nodes []NodeIdentity
+NodeIdentityRequest.node_ids []uint64
+NodeIdentityRequest.salt string
+NodesPage.next string
+NodesPage.nodes []InventoryNode
 WireError.code string
 WireError.message string
 WireError.params Params
@@ -263,6 +283,7 @@ WireError.retry_after_ms int64
 var wireRoots = []any{
 	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Index{}, Envelope{}, PublicKey{},
 	HandshakeRequest{}, HandshakeResponse{}, Health{}, WireError{}, StatePush{}, StateAck{},
+	NodeIdentityRequest{}, NodeIdentityAnswer{}, NodesPage{},
 	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{}, Principal{},
 }
 
