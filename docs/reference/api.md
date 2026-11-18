@@ -484,6 +484,7 @@ macOS 忽略 `no_systemd`。
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/models` | 模型列表；支持 `page`/`page_size`、`q`、`source`（`huggingface/modelscope/url/local`）、`operation`、`source_id`；后三项可用逗号分隔，`source_id` 整体匹配、不区分大小写。`sort` 为 `name/source/source_id/published_at/created_at/weight/presence`。分页返回 `presence{ready_nodes,cached_nodes,ready_storages,in_flight,in_flight_percent,failed}` 就位汇总及全量 `summary`；逐位置明细查模型详情。见[列表筛选与就位汇总](#列表筛选与就位汇总) | JWT |
+| GET | `/api/v1/models/presence?ids=1,2` | 只读取指定模型的就位摘要，用于下载进度更新。`ids` 必填，逗号分隔的正整数，最多 200 项，重复编号去重；返回以模型编号为键的对象，每项形状同列表的 `presence`。已知但无副本的模型各项为 0；不存在或已删除的编号省略。非法、空或超量参数返回 400，存储读取失败返回 500。普通进度事件只刷新当前页摘要，状态或模型变更继续刷新完整列表 | JWT |
 | GET | `/api/v1/models/catalog` | 在线模型目录。通过 `source`（`modelscope` 或 `huggingface`）和 `path` 请求公开模型列表、README 或 ModelScope 默认分支提交。管理节点按来源规则访问，返回源站正文；Hugging Face 续页信息在 `X-Catalog-Link`。 | JWT |
 | POST | `/api/v1/models` | 注册公共仓库模型（HF/ModelScope） | JWT |
 | POST | `/api/v1/models/preview-url` | 预览 HTTP 模型目录（`url`）；必须为带主机名的 http/https URL，不允许内嵌凭据。非法地址返回 400 `MODEL_SOURCE_URL_INVALID`，合法但不可读取的目录返回 502 `HTTP_DIRECTORY_UNREACHABLE` | JWT |

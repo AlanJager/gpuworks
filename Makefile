@@ -283,6 +283,11 @@ test-ui-agent-upgrade-results-layout:
 test-ui-template-catalog-layout:
 	python3 -B ui/tests/browser/template_catalog_layout.py
 
+.PHONY: test-ui-storage-image-layout
+## Real Chromium storage/image drawer geometry with production CSS, both themes.
+test-ui-storage-image-layout:
+	python3 -B ui/tests/browser/storage_image_layout.py
+
 .PHONY: ensure-bins
 ## ensure-bins: the E2E entry points need bin/gpuworks and bin/gpuworks-agent,
 ## but a full `make build` (UI bundle plus every cross-compiled agent) takes

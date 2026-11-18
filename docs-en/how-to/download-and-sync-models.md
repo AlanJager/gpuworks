@@ -19,6 +19,8 @@ In the model repository, open the online catalog, choose ModelScope or Hugging F
 3. Click **Download to…** in the model row and select a writable storage. For local storage, also select online target nodes; each node downloads its own copy. For shared storage, the model is downloaded only once. Select one online node with write access and access to the model source to perform the download. To change the node for an active download, cancel it first, then select a new node and restart the download.
 4. Click **Download** and view progress for the target storage or node in the model details. The target copy is usable as a complete downloaded copy only after its status becomes `present`. If a download fails, check the reason before retrying.
 
+During downloads, progress events update presence summaries and percentages for the current model page without repeatedly loading the full model list. Terminal states and model creation, changes or deletion still refresh the list. Background progress does not overwrite model fields being edited.
+
 A revision belongs to the selected source platform; a Hugging Face commit may not exist on ModelScope. Use a revision verified on that platform when pinning a version. Catalog updates do not rewrite a registered model's source or revision. If an existing model has an invalid revision, register the correct version and select that model when deploying.
 
 When you register a Hugging Face / ModelScope model, a metadata read failure may produce only a notice; registration does not mean the weights have been downloaded. **Download to…** explicitly downloads from the registered source. To use complete files on another node, use **Copy to…**.
@@ -99,4 +101,4 @@ After a public download fails, you can still transfer a complete copy from an on
 Failed peer sync operations can be retried, and ongoing sync operations can be canceled. Do not register partial files as a complete copy. Deleting a node-local copy requires administrator privileges. The API is
 `DELETE /api/v1/models/{id}/nodes/{uuid}`; a model used by an active deployment returns 409.
 
-<!-- translation-source-sha256: c23a5abae582925a62873b8b391ee207a508f48dcc76ceb4c8d973a6d8e632ff -->
+<!-- translation-source-sha256: 895dd1f0252d9e9b76df4029545b18c4052eb4abb7291f4f806085c2561be468 -->

@@ -484,6 +484,7 @@ A Kubernetes cluster joins as one DaemonSet: an administrator creates the cluste
 | Method | Path | Description | Authentication |
 |---|---|---|---|
 | GET | `/api/v1/models` | List models; supports `page`/`page_size`, `q`, `source` (`huggingface/modelscope/url/local`), `operation`, and `source_id`. The last three accept comma-separated values; `source_id` uses case-insensitive whole-value matching. `sort` accepts `name/source/source_id/published_at/created_at/weight/presence`. Paginated responses return a `presence{ready_nodes,cached_nodes,ready_storages,in_flight,in_flight_percent,failed}` presence summary and a `summary` for all models; query model details for per-location information. See [List Filtering and Presence Summary](#列表筛选与就位汇总) | JWT |
+| GET | `/api/v1/models/presence?ids=1,2` | Read only the requested models' presence summaries for download progress. `ids` is required: comma-separated positive integers, at most 200 entries, deduplicated. Returns an object keyed by model ID, with the same fields as list `presence`. Known models with no copies have zero counters; unknown/deleted IDs are omitted. Invalid, empty or excessive input returns 400; storage read failure returns 500. Progress events refresh current-page summaries; state/model changes still refresh the list | JWT |
 | POST | `/api/v1/models` | Register a model from a public repository (HF/ModelScope) | JWT |
 | POST | `/api/v1/models/preview-url` | Preview an HTTP model directory (`url`); requires an http/https URL with a hostname and no embedded credentials. Invalid URLs return 400 `MODEL_SOURCE_URL_INVALID`; valid but unreadable directories return 502 `HTTP_DIRECTORY_UNREACHABLE` | JWT |
 | POST | `/api/v1/models/register-url` | Register an HTTP model directory (`source_url`, optional `source_id` and `name`); URL validation is the same as preview-url. Returns 201 on successful registration | JWT |
@@ -2303,4 +2304,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 8e12e66e45db3f0cb59c1e5703ba14a441fe9d92f93d778935ba937a4b157db4 -->
+<!-- translation-source-sha256: 9e38a5b25c09fef0a0459a6d278ea8c062cad218910f0db2db1041a731a69ce6 -->
