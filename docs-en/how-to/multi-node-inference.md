@@ -116,7 +116,7 @@ The platform evaluates placement rank by rank using the deployment configuration
 - Automatic placement does not start some ranks while it waits for the rest: the ranks of a replica are created together or wait together.
 
 <!-- translation-source-sha256: 394fff9ffd2c8ec282986af25c4be5641d62af3f50d7b5c1cf2bc6dedd14fc26 # Multi-Node Inference -->
-<!-- translation-source-sha256: a86df90c6a132e381d8b48e5f774c407f57b1493483296a929df68fbc4614e3d ## Deploy a Multi-Node Replica -->
+<!-- translation-source-sha256: 3b84ae1c394ed295f8745619dc190c5716634d2f93eff8c560822ab7b6d8a33f ## Deploy a Multi-Node Replica -->
 <!-- translation-source-sha256: 2a0da34f13ef888e615d2253fc103bb1d8274dd46aef4108f2ba3030247880be ## Automatic and Manual Placement -->
 <!-- translation-source-sha256: e769f3df8aca9125650c9f869fa18aa84e6761aae7b8ad485cfc5dedb34e4841 ### How Nodes Are Chosen at Creation -->
 <!-- translation-source-sha256: 1190b04e9f68bc3368fe3c396bf8462ced3580f74f12555f461c67d9ed89978f ### Choosing Again When a Replica Starts -->
