@@ -49,8 +49,9 @@ func (s *Service) Evaluate(ctx context.Context, evaluateReq dto.EvaluateRequest)
 // stopped it before a preview meant anything. Each step that answers returns
 // right after it.
 type evaluation struct {
-	resp dto.EvaluateResponse
-	err  error
+	resp         dto.EvaluateResponse
+	err          error
+	admissionErr error
 }
 
 func (e *evaluation) answer(resp dto.EvaluateResponse) { e.resp = resp }
@@ -388,6 +389,16 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 				}
 				if resp.OK && !resp.Skipped {
 					resp.OK = true
+				}
+			} else {
+				candidateReq := cloneRequest(*req)
+				candidateReq.Image = resp.Image
+				mount, components := previewComponentMounts(s.d.Store, selection.Components, nil)
+				if err := s.checkPoolCanEverFit(ctx, &candidateReq, reqs, eng, model, automaticSelection, placement, quick, userExtraArgs, servedName, mount, components, requestOverrides); err != nil {
+					out.admissionErr = err
+					errs.add("", err)
+					writeFieldErrors()
+					return
 				}
 			}
 		}
