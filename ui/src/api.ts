@@ -2657,6 +2657,8 @@ export interface MCPStatus {
 }
 
 export interface ApiKey {
+  /** Stable usage-analytics identifier; older servers omit it. */
+  id?: number;
   /** Recorded owner; zero is a historical unassigned key. Older servers omit it. */
   user_id?: number;
   name: string;

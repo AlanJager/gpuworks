@@ -181,8 +181,9 @@ func TestEvaluateRequestSharesTheCreateBodyWireContract(t *testing.T) {
 
 func TestAPIKeyDTOContractCannotExposeSecret(t *testing.T) {
 	created := time.Date(2026, 8, 29, 8, 0, 0, 0, time.UTC)
-	object := marshalJSONObject(t, dto.APIKey{Name: "automation", Prefix: "gw_abcd", Created: created, AllDeployments: true, Deployments: []dto.APIKeyDeployment{}})
+	object := marshalJSONObject(t, dto.APIKey{ID: 17, Name: "automation", Prefix: "gw_abcd", Created: created, AllDeployments: true, Deployments: []dto.APIKeyDeployment{}})
 	want := map[string]any{
+		"id":              float64(17),
 		"user_id":         float64(0),
 		"name":            "automation",
 		"prefix":          "gw_abcd",

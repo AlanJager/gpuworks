@@ -4,6 +4,8 @@ import "time"
 
 // APIKey is the API view of a key (never includes the secret).
 type APIKey struct {
+	// ID correlates safe key metadata with usage analytics, including unused keys.
+	ID uint `json:"id"`
 	// UserID is the recorded owner; zero means a historical unassigned key.
 	UserID   uint       `json:"user_id"`
 	Name     string     `json:"name"`

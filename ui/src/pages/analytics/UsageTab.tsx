@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Select, Segmented, Space, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { analyticsApi, type UsageAnalytics, type UsageSource } from "../../analyticsApi";
+import { api } from "../../api";
+import { Notice } from "../../ui-kit/Notice";
 import BackfillNote, { leadingBackfilled } from "./backfill";
 import { SERIES_COLORS, stackedBarOption } from "./chartOptions";
 import { type CsvModel } from "./csv";
@@ -37,6 +39,7 @@ export default function UsageTab(props: TabProps) {
   const [mode, setMode] = useState<"in" | "out">("in");
   const [options, setOptions] = useState<KeyOption[]>([]);
   const [keyless, setKeyless] = useState(false);
+  const keyQuery = useAnalyticsData(() => api.apiKeys(), [reload]);
 
   const query = useAnalyticsData(
     (signal) => analyticsApi.usage({ from, to, granularity, deployment, key: key || undefined, source }, signal),
@@ -44,27 +47,37 @@ export default function UsageTab(props: TabProps) {
   );
   const data = query.data;
 
-  // The key filter lists the keys the unfiltered answer holds: a filtered
-  // answer only holds the chosen one, so it adds to the list instead of
-  // replacing it.
+  // Usage rows preserve historical/deleted identities; the role-aware key
+  // list also offers keys that have never made a request.
   useEffect(() => {
     if (!data) return;
     const fresh = keyOptions(data.rows);
+    for (const issued of keyQuery.data?.items ?? []) {
+      if (!issued.id) continue;
+      const existing = fresh.findIndex((o) => o.id === issued.id);
+      const option: KeyOption = { id: issued.id, info: {
+        id: issued.id, name: issued.name, prefix: issued.prefix,
+        revoked: !!issued.revoked_at, deleted: false, playground: false, userName: "",
+      } };
+      if (existing >= 0) fresh[existing] = option;
+      else fresh.push(option);
+    }
+    fresh.sort((a, b) => a.info.name.localeCompare(b.info.name));
     if (!key) {
       setOptions(fresh);
       setKeyless(hasKeylessRows(data.rows));
     } else {
-      setOptions((old) => [...old, ...fresh.filter((o) => !old.some((x) => x.id === o.id))]);
+      setOptions((old) => [...new Map([...old, ...fresh].map((o) => [o.id, o])).values()].sort((a, b) => a.info.name.localeCompare(b.info.name)));
     }
-  }, [data, key]);
+  }, [data, key, keyQuery.data]);
 
-  // A link from the API tokens page names the token by prefix: the filter takes
-  // the id, which is in the rows once the unfiltered answer is in.
-  const resolved = useMemo(() => (keyPrefix && data && !key ? data.rows.find((r) => r.api_key_prefix === keyPrefix) : undefined), [keyPrefix, data, key]);
+  // Token-page links use the public prefix. Resolve it through issued metadata
+  // as well as historical usage, so an unused key can open its empty range.
+  const resolved = useMemo(() => (keyPrefix && !key ? options.find((o) => o.info.prefix === keyPrefix) : undefined), [keyPrefix, options, key]);
   useEffect(() => {
-    if (resolved) setSearch({ key: String(resolved.api_key_id), keyPrefix: undefined });
+    if (resolved) setSearch({ key: String(resolved.id), keyPrefix: undefined });
   }, [resolved, setSearch]);
-  const prefixMissing = !!keyPrefix && !!data && !key && !resolved;
+  const prefixMissing = !!keyPrefix && !!data && !keyQuery.loading && !key && !resolved;
 
   const tree = useMemo(() => (data ? buildUsageTree(data.rows, group) : []), [data, group]);
 
@@ -155,6 +168,7 @@ export default function UsageTab(props: TabProps) {
           <Typography.Text type="secondary">{t("usage.filters.key")}</Typography.Text>
           <Select
             showSearch
+            loading={keyQuery.loading}
             optionFilterProp="label"
             style={{ minWidth: 200 }}
             aria-label={t("usage.filters.key")}
@@ -180,6 +194,7 @@ export default function UsageTab(props: TabProps) {
           />
         </Space>
       </Space>
+      {keyQuery.error && <Notice tone="warning" className="mb-4" title={t("state.loadFailed")}>{t("usage.filters.key")}</Notice>}
       {prefixMissing && <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t("usage.keyPrefixMissing", { prefix: keyPrefix })} />}
       <QueryState query={query} isEmpty={(d) => d.totals.requests === 0 && d.rows.length === 0}>
         {(d) => (
