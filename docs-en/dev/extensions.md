@@ -226,6 +226,12 @@ The module's service (run with the server's other background loops) starts pushe
 
 The pusher's identity comes from the package verified when it was started: the supervisor numbers every process (a generation rising across all of them), and a push on the host API is taken as the package bound to that connection, with its certificate grants (including the authority `server.yaml` configures for a host-trusted issuer), the permissions its administrator approved, its manifest's codes and that process's generation. A push over the connection of a package that was replaced or changed version is refused (`PLUGIN_STATE_CONNECTION_REPLACED`). The core offers the capabilities `table.<kind>@1` for the first five kinds; packages' `requires` are verified against them and plugins negotiate them in the handshake.
 
+When a package declares `storage`, its data carries a version marker `plugin.<id>.data` (in the core's `plugin_markers` table), which keeps a site from going back to an older build that cannot read that data:
+
+- **Write**: the first time a plugin reaches `running` (handshake accepted and healthy) after each start, the host writes the marker as `max(stored version, storage.state_version)` and records the server version that ran it; later returns to `running` within the same start read and write nothing. The marker is never lowered: an older build still running does not reduce it. A package without `storage` writes no marker, and neither does a package that has been uninstalled. A failed write is only logged and retried on the next healthy run.
+- **Check**: when the marker is newer than the package's `storage.state_version` (0 without `storage`), installing that build is refused with `PLUGIN_STATE_TOO_NEW` and nothing is installed; an installed build (for example an older build installed again after a newer one ran) is checked before every start as well. It is not started, and the list shows it `failed` with `PLUGIN_STATE_TOO_NEW` until a build with a recent enough `state_version` is installed. Before a downgrade, `gpuworks plugin compat` runs the same check.
+- **Lifetime**: a plain uninstall keeps the data and the marker, so reinstalling an older build is refused too; only `purge` deletes the marker, together with moving the data directory to `.trash/`.
+
 ### Management API
 
 `/api/v1/plugins` are core routes, never feature-gated, and work with every plugin down, crashlooping or removed; the assistant and MCP cannot read them (they are not among the routes the assistant reads, and the handlers refuse the assistant's in-process reads):
@@ -320,4 +326,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: a658f2af0c903b0f3435dca291bb0d574529782b6d0ee9f9a2d941d934013af5 -->
+<!-- translation-source-sha256: 6335c1a2d46b4c386a40bf2cdd231f0b79d2c92ef9459c669be98bc01177bf88 -->
