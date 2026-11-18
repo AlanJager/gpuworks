@@ -8,7 +8,6 @@ package hub
 
 import (
 	"context"
-	"crypto/hmac"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -573,19 +572,6 @@ func (h *Hub) deregister(s *Session) {
 		return
 	}
 	h.mu.Unlock()
-}
-
-// authNodeToken authenticates the current per-node token. The token itself is
-// the identity; a stale/unknown UUID cannot make a valid token fail.
-func (h *Hub) authNodeToken(token string) (*store.Node, error) {
-	n, err := h.store.NodeByTokenHash(store.HashToken(token))
-	if err != nil {
-		return nil, errBadToken
-	}
-	if !hmac.Equal([]byte(n.TokenHash), []byte(store.HashToken(token))) {
-		return nil, errBadToken
-	}
-	return n, nil
 }
 
 // serverHello builds the hello the server sends back to the agent.

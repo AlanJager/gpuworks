@@ -235,14 +235,12 @@ export default function ImageNodeTable({
         const done = row.transferred_bytes || 0;
         return (
           <Space direction="vertical" style={{ width: 108 }} size={2}>
-            <Progress
-              percent={
-                expected
-                  ? Math.min(100, Math.round((done / expected) * 100))
-                  : 0
-              }
-              size="small"
-            />
+            {expected > 0 && (
+              <Progress
+                percent={Math.min(100, Math.round((done / expected) * 100))}
+                size="small"
+              />
+            )}
             <Text type="secondary">
               {bytes(done)}{expected > 0 ? ` / ${bytes(expected)}` : ""}
               {row.rate_bps ? ` · ${bytes(row.rate_bps)}/s` : ""}

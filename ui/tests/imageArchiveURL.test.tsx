@@ -504,8 +504,8 @@ for (const state of ["present", "absent", "failed"]) {
 }
 
 for (const state of ["pulling", "syncing"]) {
-  for (const total of [0, 1_048_576]) {
-    test(`a ${state} row retains live progress with ${total ? "known" : "unknown"} total`, async () => {
+  for (const total of [undefined, 0, 1_048_576]) {
+    test(`a ${state} row retains live progress with ${total === undefined ? "missing" : total ? "known" : "zero"} total`, async () => {
       const version = catalogVersion({ nodes: [{ node_uuid: "node-1", node_name: "gpu-1", node_state: "online", state,
         size_bytes: total, transferred_bytes: 524_288, rate_bps: 1_048_576 }] });
       render(wrap(React.createElement(ImageNodeTable, {
@@ -513,11 +513,28 @@ for (const state of ["pulling", "syncing"]) {
         modeFor: () => "auto", setMode: () => {}, pullVersion: () => {},
         pullFromURL: async () => {}, inspectVersion: () => {}, cancelTransfer: () => {}, removeFromNode: () => {},
       })));
-      assert.equal(screen.getByRole("progressbar").getAttribute("aria-valuenow"), total ? "50" : "0");
+      if (total) {
+        assert.equal(screen.getByRole("progressbar").getAttribute("aria-valuenow"), "50");
+      } else {
+        assert.ok(!screen.queryByRole("progressbar"), "unknown total must not claim zero percent complete");
+        assert.ok(!screen.queryByText("0%"));
+      }
       assert.ok(screen.getByText(total ? "512 KiB / 1.0 MiB · 1.0 MiB/s" : "512 KiB · 1.0 MiB/s"));
     });
   }
 }
+
+test("a transfer uses the catalog total when its node has not reported a total", () => {
+  const version = catalogVersion({ size_bytes: 1_048_576, nodes: [{ node_uuid: "node-1", node_name: "gpu-1", node_state: "online", state: "syncing",
+    transferred_bytes: 524_288, rate_bps: 1_048_576 }] });
+  render(wrap(React.createElement(ImageNodeTable, {
+    selectedVersion: version, inspecting: null, availablePeer: () => false,
+    modeFor: () => "auto", setMode: () => {}, pullVersion: () => {},
+    pullFromURL: async () => {}, inspectVersion: () => {}, cancelTransfer: () => {}, removeFromNode: () => {},
+  })));
+  assert.equal(screen.getByRole("progressbar").getAttribute("aria-valuenow"), "50");
+  assert.ok(screen.getByText("512 KiB / 1.0 MiB · 1.0 MiB/s"));
+});
 
 test("polling speeds up only while something is moving", () => {
   const idle = catalogVersion({ nodes: [{ node_uuid: "node-1", node_name: "gpu-1", node_state: "online", state: "present" }] }) as never;

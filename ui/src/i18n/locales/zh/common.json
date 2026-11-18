@@ -913,7 +913,7 @@
     "INSTANCE_ASLEEP": "实例 {{instance}} 所属部署正在睡眠，不接受请求。请先唤醒。",
     "INSTANCE_NOT_RUNNING": "实例 {{instance}} 未处于唤醒运行状态。",
     "INSTANCE_OFFLINE": "实例 {{instance}} 已离线。",
-    "MODEL_NOT_READY": "{{model}} 还没有运行中的实例，可能仍在启动。",
+    "MODEL_NOT_READY": "{{model}} 没有可连接的运行实例，请检查部署状态和节点连接。",
     "DEPLOYMENT_START_FAILED": "{{model}} 的部署启动失败，请查看部署列表。",
     "PD_PLACEMENT_UNREADABLE": "无法读取该部署的 PD 放置信息。",
     "PD_PREFILL_UNAVAILABLE": "没有 prefill 实例能接收该请求（{{reason}}），请稍后重试。",

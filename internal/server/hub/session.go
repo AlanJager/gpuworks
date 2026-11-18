@@ -207,6 +207,11 @@ func (s *Session) handshake() error {
 	}
 	n, err := s.hub.authNodeToken(hello.NodeToken)
 	if err != nil {
+		// Storage failures are transient connection failures. A bad_token
+		// rejection would send the agent into its long credential backoff.
+		if !errors.Is(err, errBadToken) {
+			return err
+		}
 		s.hub.recordReject(hello.NodeToken, "bad_token", s.remote)
 		_ = s.send(proto.TReject, 0, proto.Reject{Reason: "bad_token", Detail: "node token was not recognized"})
 		prefix := strings.TrimSpace(hello.NodeToken)

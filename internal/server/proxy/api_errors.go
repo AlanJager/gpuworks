@@ -102,7 +102,7 @@ var gatewayErrors = map[string]gatewayError{
 	ErrorInstanceAsleep:           {http.StatusServiceUnavailable, typeServer, "", "instance {instance} does not take requests while its deployment sleeps; wake it first"},
 	ErrorInstanceNotRunning:       {http.StatusServiceUnavailable, typeServer, "", "instance {instance} is not awake and running"},
 	ErrorInstanceOffline:          {http.StatusServiceUnavailable, typeServer, "", "instance {instance} is offline"},
-	ErrorModelNotReady:            {http.StatusServiceUnavailable, typeServer, "", "no running instance for {model} (still starting?)"},
+	ErrorModelNotReady:            {http.StatusServiceUnavailable, typeServer, "", "no reachable running instance for {model}; check deployment status and node connectivity"},
 	ErrorDeploymentStartFailed:    {http.StatusServiceUnavailable, typeServer, "", "deployment for {model} failed to start; see the deployment list"},
 	ErrorPDPlacementUnreadable:    {http.StatusServiceUnavailable, typeServer, "", "the deployment's PD placement cannot be read"},
 	ErrorPDPrefillUnavailable:     {http.StatusServiceUnavailable, typeServer, "", "no prefill instance could take the request ({reason})"},
