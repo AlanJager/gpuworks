@@ -28,6 +28,10 @@
     "management": "Management"
   },
   "table": {
+    "attachmentNodes_one": "{{count}} node",
+    "attachmentNodes_other": "{{count}} nodes",
+    "attachmentLabels_one": "{{count}} label",
+    "attachmentLabels_other": "{{count}} labels",
     "name": "Name",
     "roles": "Roles",
     "type": "Type",
@@ -197,8 +201,30 @@
     "monitor": "Monitoring"
   },
   "test": {
+    "configuration": "Test configuration",
+    "rdmaHow": "Each pair runs ib_write_bw on its matched RDMA rails in parallel.",
+    "toolMissingGroup": "{{count}} nodes are missing ib_write_bw. Install perftest on those nodes and wait for their next report before testing.",
+    "noBootstrapGroup": "{{count}} nodes have no bootstrap address. Pairs involving those nodes will fail.",
+    "noAddressGroup": "{{count}} nodes have no address on this network. Pairs involving those nodes will fail.",
+    "noRailsGroup": "{{count}} nodes have no usable HCA. Pairs involving those nodes will fail.",
+    "viewNodes": "View affected nodes ({{count}})",
+    "overview": {
+      "title": "Latest test result",
+      "startedAt": "Started at",
+      "state": {
+        "running": "Running",
+        "done": "Completed",
+        "interrupted": "Interrupted"
+      },
+      "nodes": "Nodes tested",
+      "nodePairs": "Node pairs",
+      "directedPairs": "Directed pairs",
+      "passedRails": "Rails passed / total",
+      "cardPairs": "Card pairs",
+      "reachableCards": "Reachable card pairs"
+    },
     "start": "Start test",
-    "scope": "Nodes",
+    "scope": "Test scope",
     "scopeAll": "All nodes on this network",
     "scopeNodes": "Selected nodes",
     "scopeLabel": "Filter by label",
@@ -237,7 +263,7 @@
       "card_matrix": "Card reachability (full card matrix)"
     },
     "toolMissing": "These nodes have no ib_write_bw, so their pairs will fail: {{nodes}}. Install perftest (for example apt install perftest) and wait for the next node report.",
-    "toolReady": "Every node reported ib_write_bw. Each pair runs one ib_write_bw per rail in parallel and sums the rails.",
+    "toolReady": "All nodes reported ib_write_bw and can test their RDMA rails in parallel.",
     "pattern": "Pairs",
     "patternName": {
       "mesh": "All pairs",

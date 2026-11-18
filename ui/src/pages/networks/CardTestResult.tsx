@@ -1,11 +1,9 @@
 import { useMemo, useState } from "react";
-import { Alert, Button, Card, Descriptions, Modal, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Alert, Button, Descriptions, Modal, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useTranslation } from "react-i18next";
 import type { CardShape, NetworkTestPair, NetworkTestRail, NetworkTestRun } from "../../networkTypes";
-import { formatTime } from "../../i18n/datetime";
 import { cardOK } from "./cardTest";
-import { testScopeText } from "./networkDisplay";
 import { failureText } from "./testFailure";
 
 type T = (key: string, options?: Record<string, unknown>) => string;
@@ -41,17 +39,11 @@ export default function CardTestResult({ run }: { run: NetworkTestRun }) {
   const verdict = run.card_shape;
   const oddPairs = useMemo(() => (verdict ? run.pairs.filter((p) => shapeOf(p) !== verdict) : []), [run, verdict]);
   const matrix = run.kind === "card_matrix";
-  const summary = [
-    t("test.summary", { time: formatTime(run.started_at), scope: testScopeText(t, run) }),
-    t(`test.patternName.${run.pattern}`),
-    t("test.card.counts", { pairs: run.pairs.length, passed: run.rail_passed_count, total: run.rail_count }),
-    t("test.card.measuredAt"),
-  ].join(" · ");
   const odd = oddPairs.map((p) => `${p.source_name} ↔ ${p.target_name}`);
   const shown = odd.slice(0, 5).join(t("test.card.listSeparator"));
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Card title={`${t(`test.kindName.${run.kind}`)} · ${summary}`}>
+      <div>
         {verdict && (
           <Alert
             style={{ marginBottom: 16 }}
@@ -67,7 +59,8 @@ export default function CardTestResult({ run }: { run: NetworkTestRun }) {
             ? <ShapeList run={run} onOpen={setOpen} />
             : <ShapeOverview run={run} onOpen={setOpen} />}
         {run.pairs.length > 1 && <ShapeLegend matrix={matrix} />}
-      </Card>
+        <p className="mt-2 text-label text-fg-muted">{t("test.card.measuredAt")}</p>
+      </div>
       {open && (
         <Modal open title={`${open.source_name} ↔ ${open.target_name}`} onCancel={() => setOpen(null)} footer={null} width={860} destroyOnHidden>
           <CardPairView run={run} pair={open} />

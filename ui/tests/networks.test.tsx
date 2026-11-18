@@ -10,11 +10,12 @@ import { closeNodePicker, findNodeOption, unavailable } from "./helpers/nodePick
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot", "AbortController", "AbortSignal"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
 Object.defineProperty(dom.window, "matchMedia", { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) });
+Object.defineProperty(dom.window.Element.prototype, "getAnimations", { configurable: true, value: () => [] });
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub, configurable: true });
 // The list reads again on server events; this stands in for the shared
@@ -227,6 +228,20 @@ test("network list renders roles, type, selector, attachments and a warning summ
   const other = screen.getByRole("link", { name: "storage" }).closest("tr") as HTMLElement;
   assert.equal(within(other).queryByRole("img", { name: /warnings/ }), null, "no warning mark without warnings");
   assert.ok(within(other).getByText(n.selector.none));
+});
+
+test("large attachment lists show direct node and label counts separately", async () => {
+  const nodes = Array.from({ length: 64 }, (_, i) => ({ id: i + 1, target: "node", node_name: `worker-${i}` }));
+  const label = { id: 65, target: "label", label_key: "pool", label_value: "training" };
+  stub("networks", async () => ({
+    items: [listItem({ attachments: [...nodes, label], resolved_node_count: 100 })],
+    roles: ["compute"], types: ["host_rdma"], type_roles: typeRoles,
+  }));
+  renderAt("/networks", <NetworksPage />);
+  const summary = await screen.findByRole("link", { name: "64 nodes · 1 label" });
+  assert.equal(summary.getAttribute("href"), `/networks?network=${detailFixture.id}`);
+  assert.equal(screen.queryByText("worker-0"), null);
+  assert.ok(screen.getByText("100"));
 });
 
 test("creating a network sends the server dictionary values and opens the detail", async () => {

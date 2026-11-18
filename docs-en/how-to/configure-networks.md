@@ -19,6 +19,8 @@ Changing `listen.agent` affects **already installed** agents: they only dial the
 
 Open **Network guide** under **Compute → Networks** for example topologies of a simple deployment and a deployment with dedicated networks. Hover over a numbered item or its table row to highlight the corresponding path and see where to configure it and what it controls. To inspect interfaces, addresses, and connectivity in your environment, open a network from the resource list.
 
+The Attached to column shows names for up to five attachments. For larger sets, it shows separate counts for directly attached nodes and labels. Select the counts to open the full list. The resolved node count includes nodes matched by labels.
+
 ## Networks
 
 1. Open **Compute → Networks**, click **New network**, enter a name, select the roles and type, and configure selectors as described below. A network can carry multiple roles; Accelerator RDMA and Accelerator HCCS can only carry the Compute role.
@@ -249,11 +251,15 @@ Each network retains its 10 most recent results. Tests in progress when the serv
 
 ### View TCP and RDMA Bandwidth Results
 
-All pairs opens the **Global matrix** by default. Rows identify source nodes and columns identify targets. Each cell represents one direction. The headers stay visible as you scroll. Hover over a truncated name to see it in full. Filter by source name, target name, and one or more statuses together. For example, selecting only partial results shows RDMA pairs for which some rails passed and others failed in the same direction. Ring tests list the directed pairs that were tested.
+The results show the latest test start date and time in the browser’s time zone. Summary cards show the test scope and outcomes. Card connectivity tests report card-pair counts.
+
+All pairs opens the **Global matrix** by default. Rows identify source nodes and columns identify targets. Each cell represents one direction. The headers stay visible as you scroll. Hover over a truncated name to see it in full. Filter by source name, target name, and one or more statuses together. For example, selecting only partial results shows RDMA pairs for which some rails passed and others failed in the same direction. Ring tests list the directed pairs that were tested. Drag the horizontal scrollbar at the bottom of the matrix to inspect other target nodes, or focus a cell and use the arrow keys.
 
 **Average RDMA bandwidth** includes only the rails that passed. If three rails measure 90, 95, and 100 Gbps and the fourth fails, the pair shows 95 Gbps with 3/4 rails passed. A pair with no passing rails has no bandwidth reading. Click a result or press Enter to inspect the HCAs and IP addresses at both ends of each rail, its bandwidth, and any failure reason. TCP shows the measured throughput for that direction when throughput testing is enabled, or reachability when only connectivity was tested.
 
-The count on **Issue summary** is the number of distinct problems grouped by node, HCA, and reason. Expand a problem to see the affected directed pairs, then select a pair for details. For an HCA that should be excluded, click **Remove HCA** and rerun the test.
+The count on **Issue summary** is the number of distinct problems grouped by node, HCA, and reason. Expand a problem to see the affected directed pairs, then select a pair for details.
+
+An administrator can select **Remove HCA** on a failed rail to change the port selection for this network. By default, confirming removes the named port from every node attachment on this network that currently uses it. For an issue confined to one node, select the option to remove it from that node only. If any affected node would lose its last HCA, the entire operation is rejected. Check the resulting HCA lists in the network overview. The physical ports keep their settings and running instances continue to use their startup configuration. Existing test results retain their original measurements. Rerun the same scope to verify the new configuration.
 
 ### View Accelerator Card Reachability Results
 
@@ -274,7 +280,7 @@ If most node pairs have the same shape, the results give the corresponding concl
 Click or press Enter to open a node pair: the full card matrix shows a source-card × target-card grid, while same-named cards shows a list of individual pairs. Hover to see both addresses, RTT, or the failure reason. When testing only one node pair, this grid is shown directly.
 
 <!-- translation-source-sha256: 51bfbaa0eaf8df0684e8466c9fe4f5b46218c11fcba5b700eacd9ddf07af8e52 # Configure Node Networks -->
-<!-- translation-source-sha256: 734187e769d63a884d69c9429d3cf6a456c20bb130010c1354981487e2690b6f ## Listen Addresses and How Others Connect -->
+<!-- translation-source-sha256: 7b5b4feabae436805c1bab30ae7bb08b947b8fb85ff92fde6309f513603a6b8a ## Listen Addresses and How Others Connect -->
 <!-- translation-source-sha256: 122f3ee7f865413c75fa818965a19469e6408d3d5f56954de59fd76e43d9453c ## Networks -->
 <!-- translation-source-sha256: 4f525482177fab50c69fd8a3abef52e78cc5382caf74e0729962592d8791915e ### RDMA Networks: Automatic Bootstrap and HCA Inference -->
 <!-- translation-source-sha256: 6935e75bb6d73ecb608f2481c66a507cd625cd31b7dedc0bc184b2f8214b2e01 ### Accelerator RDMA Networks: Ports Built Into Accelerator Cards -->
@@ -288,5 +294,5 @@ Click or press Enter to open a node pair: the full card matrix shows a source-ca
 <!-- translation-source-sha256: 2fc0ec62b4c6a3be0ed677ccb932ec77b792f2a7acd690bd1242bee457a2641f ### Prepare TCP or Host RDMA Tests -->
 <!-- translation-source-sha256: 32a81b1ea984a99ce5e64583cb669bb526668b1b03d3ad4aaf0385913293f164 ### Prepare Accelerator RDMA Tests -->
 <!-- translation-source-sha256: 6e819baf37cc033ab44953d750e83cbb810249809470476402dae3eb094ec5b1 ### Start a Test -->
-<!-- translation-source-sha256: c006390c7ac068f8567f730bfb13438c198fc8e8427c4a9ae99a26828be9d122 ### View TCP and RDMA Bandwidth Results -->
+<!-- translation-source-sha256: e3d1fe28d0b35e820330c39f628e2dc6ace0adcb28a2ea1c6383e929acf5e5dd ### View TCP and RDMA Bandwidth Results -->
 <!-- translation-source-sha256: afcd2fda5c505c0e13a02d0e06059aa97cf7e801f8a1a2033e0e31635766d6a4 ### View Accelerator Card Reachability Results -->

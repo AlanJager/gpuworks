@@ -1,12 +1,12 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Alert, Button, Card, Descriptions, Modal, Space, Table, Tag, Typography } from "antd";
+import { Button, Descriptions, Modal, Space, Table, Tag, Typography } from "antd";
 import { Tabs, TabsList, TabItem, TabPanel } from "../../components/ui/tabs";
 import NetworkPairMatrix, { PairCell, pairBandwidth, railOK } from "./NetworkPairMatrix";
 import { useTranslation } from "react-i18next";
 import type { NetworkDetail, NetworkTestPair, NetworkTestRail, NetworkTestRun, NetworkTestStatus } from "../../networkTypes";
-import { formatTime } from "../../i18n/datetime";
+import NetworkTestOverview from "./NetworkTestOverview";
 import { RemoveHCAButton } from "./RDMAEndpoints";
-import { testScopeText, usesRails } from "./networkDisplay";
+import { usesRails } from "./networkDisplay";
 import CardTestResult from "./CardTestResult";
 import { isCardKind } from "./cardTest";
 import { failureText as failureTextOf } from "./testFailure";
@@ -78,27 +78,27 @@ export default function NetworkTestResult({ network, run, onChanged }: {
   onChanged: (detail: NetworkDetail) => void;
 }) {
   const { t } = useTranslation("networks");
+  if (!run) return <section className="grid gap-2">
+    <h3 className="text-body font-semibold">{t("test.overview.title")}</h3>
+    <p className="text-body text-fg-muted">{t("test.none")}</p>
+  </section>;
+  return <section className="min-w-0 space-y-4">
+    <NetworkTestOverview run={run} />
+    {run.status === "done" && (isCardKind(run.kind)
+      ? <CardTestResult run={run} />
+      : <PairResults key={run.id} network={network} run={run} onChanged={onChanged} />)}
+  </section>;
+}
+
+function PairResults({ network, run, onChanged }: { network: NetworkDetail; run: NetworkTestRun; onChanged: (detail: NetworkDetail) => void }) {
+  const { t } = useTranslation("networks");
   const [pair, setPair] = useState<NetworkTestPair | null>(null);
   const [open, setOpen] = useState(false);
   const openPair = (selected: NetworkTestPair) => { setPair(selected); setOpen(true); };
-  const found = useMemo(() => run?.status === "done" && !isCardKind(run.kind) ? problems(t, run) : [], [t, run]);
+  const found = useMemo(() => problems(t, run), [t, run]);
   // Pairs far below the fastest one usually cross a slower link; flag them so
   // a mixed fabric is visible at a glance.
-  const fastest = useMemo(() => run?.pairs.reduce((max, pair) => Math.max(max, pairBandwidth(run, pair) ?? 0), 0) ?? 0, [run]);
-  if (!run) return <Card><Typography.Text type="secondary">{t("test.none")}</Typography.Text></Card>;
-  if (run.status === "running") return <Card><Typography.Text>{t("test.running", { nodes: run.node_count, pairs: run.pair_count })}</Typography.Text></Card>;
-  if (run.status === "interrupted") return <Alert type="warning" showIcon message={t("test.interrupted", { time: formatTime(run.started_at) })} />;
-
-  if (isCardKind(run.kind)) return <CardTestResult run={run} />;
-
-  const rdma = run.kind === "rdma_tool";
-  const failed = run.pairs.length - run.passed_count - run.partial_count;
-  const summary = [
-    t("test.summary", { time: formatTime(run.started_at), scope: testScopeText(t, run) }),
-    t(`test.patternName.${run.pattern}`),
-    t("test.pairCounts", { passed: run.passed_count, partial: run.partial_count, failed }),
-    ...(rdma && run.rail_count > 0 ? [t("test.railCounts", { passed: run.rail_passed_count, total: run.rail_count })] : []),
-  ].join(" · ");
+  const fastest = useMemo(() => run.pairs.reduce((max, pair) => Math.max(max, pairBandwidth(run, pair) ?? 0), 0), [run]);
   const renderPair = (p: NetworkTestPair) => {
     const gbps = pairBandwidth(run, p);
     const slow = run.bandwidth && p.status === "passed" && gbps != null && gbps > 0 && gbps < fastest / 10;
@@ -107,10 +107,9 @@ export default function NetworkTestResult({ network, run, onChanged }: {
 
   return (
     <div className="min-w-0 space-y-4">
-      <h3 className="text-body font-medium">{t(`test.kindName.${run.kind}`)} · {summary}</h3>
-      {rdma && <p className="text-label text-fg-muted">{t("test.matrixMean")}</p>}
+      {run.kind === "rdma_tool" && <p className="text-label text-fg-muted">{t("test.matrixMean")}</p>}
       <Tabs key={run.id} defaultValue="pairs" variant="underline">
-        <TabsList aria-label={t("test.result")}>
+        <TabsList aria-label={t("test.result")} className="mx-0 max-w-full px-0">
           <TabItem value="pairs" label={t(run.pattern === "ring" ? "test.nodePairs" : "test.globalMatrix")} />
           <TabItem value="issues" label={t("test.problems")} badge={found.length} />
         </TabsList>
@@ -119,7 +118,7 @@ export default function NetworkTestResult({ network, run, onChanged }: {
             ? <PairList pairs={run.pairs} renderPair={renderPair} />
             : <NetworkPairMatrix run={run} renderPair={renderPair} />}
         </TabPanel>
-        <TabPanel value="issues" className="pt-3">
+        <TabPanel value="issues" className="pt-3 pb-6">
           {found.length === 0 ? <p className="text-fg-muted">{t("test.noProblems")}</p> : (
             <Table<Problem>
               rowKey="key"

@@ -12,7 +12,7 @@ pending_removal_literal	0	max
 deployment_state_literal	0	max
 engine_literal_server	2	max
 engine_literal_ui	4	max
-ui_antd_import_files	287	max
+ui_antd_import_files	286	max
 ui_antd_icon_import_files	91	warn
 ui_bundle_gzip_kb	2450	warn
 ui_untested_shared_files	0	max

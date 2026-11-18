@@ -9,11 +9,12 @@ import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot", "AbortController", "AbortSignal"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
 Object.defineProperty(dom.window, "matchMedia", { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) });
+Object.defineProperty(dom.window.Element.prototype, "getAnimations", { configurable: true, value: () => [] });
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub, configurable: true });
 
@@ -30,7 +31,7 @@ await i18n.use(initReactI18next).init({
 
 const { cleanup, render, screen } = await import("@testing-library/react");
 const NetworkTestResult = (await import("../src/pages/networks/NetworkTestResult.tsx")).default;
-const CardTestResult = (await import("../src/pages/networks/CardTestResult.tsx")).default;
+const { formatTime } = await import("../src/i18n/datetime.ts");
 const detailFixture = JSON.parse(fs.readFileSync(new URL("./fixtures/network-detail.json", import.meta.url), "utf8"));
 
 after(() => { closeChannels(); dom.window.close(); });
@@ -43,7 +44,7 @@ function finishedRun(kind: string, pattern: string, scope: Scope) {
   return {
     id: 7, status: "done", kind, pattern, ...scope, bandwidth: false, node_count: 2, pair_count: 0, passed_count: 0, partial_count: 0,
     rail_count: 0, rail_passed_count: 0, node_uuids: ["a", "b"], pairs: [], started_at: "2026-09-30T04:00:00Z", finished_at: "2026-09-30T04:00:10Z",
-  } as never;
+  } as import("../src/networkTypes.ts").NetworkTestRun;
 }
 
 const renderIn = (element: React.ReactElement) => render(<I18nextProvider i18n={i18n}>{element}</I18nextProvider>);
@@ -72,10 +73,23 @@ test("a network test result names the label it ran on, and nothing else for othe
 
 test("a card test result names the label it ran on, and nothing else for other scopes", () => {
   for (const { scope, shown } of scopes) {
-    const view = renderIn(<CardTestResult run={finishedRun("card_ping", "ring", scope)} />);
+    const view = renderIn(<NetworkTestResult network={detailFixture} run={finishedRun("card_ping", "ring", scope)} onChanged={() => {}} />);
     const title = summaryTitle(shown);
     assert.doesNotMatch(title, /undefined/);
     if (scope.scope !== "label") assert.doesNotMatch(title, /=/);
+    view.unmount();
+  }
+});
+
+test("latest test keeps its absolute start time and planned scope for every run state", () => {
+  for (const status of ["running", "interrupted", "done"] as const) {
+    const run = { ...finishedRun("tcp", "mesh", { scope: "all" }), status, pair_count: 2 };
+    const view = renderIn(<NetworkTestResult network={detailFixture} run={run} onChanged={() => {}} />);
+    const time = view.container.querySelector("time");
+    assert.equal(time?.getAttribute("datetime"), run.started_at);
+    assert.equal(time?.textContent, formatTime(run.started_at));
+    assert.ok(screen.getByText("Directed pairs"));
+    assert.equal(!!screen.queryByText("Failed", { selector: '[data-slot="metric-card-label"]' }), status === "done");
     view.unmount();
   }
 });
@@ -114,4 +128,30 @@ test("mesh filters combine the two node names with any selected test statuses, a
   fireEvent.click(failingPair);
   const details = await screen.findByRole("dialog");
   assert.ok(within(details).getByText("rail-b"));
+});
+
+test("a large mesh keeps both axes accessible without mounting every pair", async () => {
+  const { fireEvent, within } = await import("@testing-library/react");
+  const NetworkPairMatrix = (await import("../src/pages/networks/NetworkPairMatrix.tsx")).default;
+  const names = Array.from({ length: 64 }, (_, i) => `gpu-${String(i + 1).padStart(2, "0")}`);
+  const pairs = names.flatMap(source => names.filter(target => target !== source).map(target => ({
+    source_uuid: source, source_name: source, target_uuid: target, target_name: target, status: "passed",
+  })));
+  renderIn(<NetworkPairMatrix run={{ ...detailFixture.latest_test, pairs }} renderPair={p => <button>{p.source_name} → {p.target_name}</button>} />);
+  const table = screen.getByRole("table", { name: "Global matrix" });
+  const viewport = table.closest('[data-slot="scroll-area-viewport"]') as HTMLElement;
+  Object.defineProperties(viewport, { clientWidth: { value: 640 }, clientHeight: { value: 440 } });
+  assert.equal(table.getAttribute("aria-rowcount"), "65");
+  assert.equal(table.getAttribute("aria-colcount"), "65");
+  assert.ok(screen.getByText("4032 matching pairs"));
+  const active = () => within(table).getAllByRole("button");
+  assert.ok(active().length < 200);
+  viewport.scrollLeft = 64 * 108 + 124 - 640;
+  viewport.scrollTop = 64 * 44 + 32 - 440;
+  fireEvent.scroll(viewport);
+  assert.ok(active().length < 200);
+  assert.ok(within(table).getByRole("rowheader", { name: "gpu-64" }));
+  assert.ok(within(table).getByRole("columnheader", { name: "gpu-64" }));
+  assert.equal(within(table).queryByRole("rowheader", { name: "gpu-01" }), null);
+  assert.ok(within(table).getByRole("button", { name: "gpu-63 → gpu-64" }));
 });

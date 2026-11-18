@@ -28,6 +28,10 @@
     "management": "管理网"
   },
   "table": {
+    "attachmentNodes_one": "{{count}} 个节点",
+    "attachmentNodes_other": "{{count}} 个节点",
+    "attachmentLabels_one": "{{count}} 个标签",
+    "attachmentLabels_other": "{{count}} 个标签",
     "name": "名称",
     "roles": "角色",
     "type": "类型",
@@ -197,6 +201,28 @@
     "monitor": "监控"
   },
   "test": {
+    "configuration": "测试配置",
+    "rdmaHow": "每对节点在配对的 RDMA 链路上并行运行 ib_write_bw。",
+    "toolMissingGroup": "{{count}} 个节点缺少 ib_write_bw。请先在这些节点安装 perftest，再等待节点上报后测试。",
+    "noBootstrapGroup": "{{count}} 个节点没有 bootstrap 地址，涉及这些节点的测试会失败。",
+    "noAddressGroup": "{{count}} 个节点在该网络上没有地址，涉及这些节点的测试会失败。",
+    "noRailsGroup": "{{count}} 个节点没有可用的 HCA，涉及这些节点的测试会失败。",
+    "viewNodes": "查看节点名单（{{count}}）",
+    "overview": {
+      "title": "最近一次测试结果",
+      "startedAt": "开始时间",
+      "state": {
+        "running": "进行中",
+        "done": "已完成",
+        "interrupted": "已中断"
+      },
+      "nodes": "参测节点",
+      "nodePairs": "节点对",
+      "directedPairs": "有向节点对",
+      "passedRails": "通过链路 / 总数",
+      "cardPairs": "卡对数",
+      "reachableCards": "可达卡对"
+    },
     "start": "开始测试",
     "scope": "测试范围",
     "scopeAll": "网络上的全部节点",
@@ -237,7 +263,7 @@
       "card_matrix": "卡连通性（全卡矩阵）"
     },
     "toolMissing": "以下节点没有 ib_write_bw，涉及它们的节点对会失败：{{nodes}}。请安装 perftest（例如 apt install perftest），等节点下次上报后再测。",
-    "toolReady": "所有节点都上报了 ib_write_bw。每对节点按 rail 并行各跑一个 ib_write_bw，带宽为各 rail 之和。",
+    "toolReady": "所有节点均已上报 ib_write_bw，可并行测试各条 RDMA 链路。",
     "pattern": "测试哪些节点对",
     "patternName": {
       "mesh": "全互测",

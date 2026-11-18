@@ -19,6 +19,15 @@ export function AttachmentTags({ network }: { network: Network }) {
   const { t } = useTranslation("networks");
   if (network.builtin) return <Tag>{t("management.attachedTo")}</Tag>;
   if (network.attachments.length === 0) return <span>—</span>;
+  if (network.attachments.length > 5) {
+    const nodes = network.attachments.filter(a => a.target === "node").length;
+    const labels = network.attachments.length - nodes;
+    const summary = [
+      nodes > 0 && t("table.attachmentNodes", { count: nodes }),
+      labels > 0 && t("table.attachmentLabels", { count: labels }),
+    ].filter(Boolean).join(" · ");
+    return <Link to={networkDetailPath(network.id)}>{summary}</Link>;
+  }
   return (
     <Space size={4} wrap>
       {network.attachments.map((a) => (

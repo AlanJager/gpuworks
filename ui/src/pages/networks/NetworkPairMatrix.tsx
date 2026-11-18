@@ -1,9 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Input } from "../../components/ui/input";
 import { Checkbox } from "../../components/ui/checkbox";
 import type { NetworkTestPair, NetworkTestRun, NetworkTestStatus, NetworkTestRail } from "../../networkTypes";
+
+import NetworkMatrixViewport from "./NetworkMatrixViewport";
 
 const statuses: NetworkTestStatus[] = ["passed", "partial", "failed"];
 const tone = {
@@ -60,13 +62,6 @@ export default function NetworkPairMatrix({ run, renderPair }: Props) {
   const [source, setSource] = useState("");
   const [target, setTarget] = useState("");
   const [selected, setSelected] = useState(statuses);
-  const viewport = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (viewport.current) {
-      viewport.current.scrollTop = 0;
-      viewport.current.scrollLeft = 0;
-    }
-  }, [source, target, selected]);
   const filtered = useMemo(() => {
     const rows = new Map<string, string>();
     const cols = new Map<string, string>();
@@ -105,21 +100,6 @@ export default function NetworkPairMatrix({ run, renderPair }: Props) {
       <span className="ml-auto text-label text-fg-muted" aria-live="polite">{t("test.matchingPairs", { count: filtered.count })}</span>
     </div>
     {filtered.count === 0 ? <p className="text-fg-muted">{t("test.noMatchingPairs")}</p> :
-      <div ref={viewport} className="isolate max-h-[min(54vh,30rem)] max-w-full overflow-auto rounded-md border border-border">
-        <table aria-label={t("test.globalMatrix")} className="w-full border-separate border-spacing-0 text-label">
-          <thead><tr><th className="sticky top-0 left-0 z-20 whitespace-nowrap bg-surface-raised px-2 py-1">{t("test.matrix")}</th>
-            {filtered.cols.map(([id, name]) => <th scope="col" key={id} title={name} className="sticky top-0 z-10 bg-surface-raised px-1 py-1">
-              <span className="mx-auto block w-24 truncate">{name}</span>
-            </th>)}</tr></thead>
-          <tbody>{filtered.rows.map(([sourceID, name]) => <tr key={sourceID}>
-            <th scope="row" title={name} className="sticky left-0 z-10 bg-surface-raised px-2 py-1 text-left">
-              <span className="block max-w-28 truncate">{name}</span></th>
-            {filtered.cols.map(([targetID]) => {
-              const pair = filtered.pairs.get(sourceID)?.get(targetID);
-              return <td key={targetID} className="p-px text-center">{pair ? renderPair(pair) : sourceID === targetID ? "—" : null}</td>;
-            })}
-          </tr>)}</tbody>
-        </table>
-      </div>}
+      <NetworkMatrixViewport rows={filtered.rows} cols={filtered.cols} pairs={filtered.pairs} renderPair={renderPair} />}
   </div>;
 }
