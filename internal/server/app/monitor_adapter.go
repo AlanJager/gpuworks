@@ -31,21 +31,22 @@ type monitorInventoryAdapter struct {
 	store       *store.Store
 	preparation deployment.ModelPreparation
 	// lists is the server's list snapshot; nil reads the rows per request.
-	lists *deployment.Lists
+	lists  *deployment.Lists
+	online func(string) bool
 }
 
 // newMonitorAPIService builds the monitorapi.Service app.go wires into
 // api.Deps.Monitor. now defaults to time.Now (nil is only ever passed by
 // tests that want a fixed clock).
 func newMonitorAPIService(st *store.Store, ts tsdb.Store, now func() time.Time, requests monitorapi.RequestSource, health func(uint) healthcheck.Health, preparation deployment.ModelPreparation) *monitorapi.Service {
-	return newMonitorAPIServiceOn(nil, st, ts, now, requests, health, preparation)
+	return newMonitorAPIServiceOn(nil, st, ts, now, requests, health, preparation, nil)
 }
 
 // newMonitorAPIServiceOn is newMonitorAPIService reading its inventory from
 // lists, the server's snapshot of every deployment and instance; nil reads
 // them per request.
-func newMonitorAPIServiceOn(lists *deployment.Lists, st *store.Store, ts tsdb.Store, now func() time.Time, requests monitorapi.RequestSource, health func(uint) healthcheck.Health, preparation deployment.ModelPreparation) *monitorapi.Service {
-	a := &monitorInventoryAdapter{store: st, preparation: preparation, lists: lists}
+func newMonitorAPIServiceOn(lists *deployment.Lists, st *store.Store, ts tsdb.Store, now func() time.Time, requests monitorapi.RequestSource, health func(uint) healthcheck.Health, preparation deployment.ModelPreparation, online func(string) bool) *monitorapi.Service {
+	a := &monitorInventoryAdapter{store: st, preparation: preparation, lists: lists, online: online}
 	return monitorapi.New(monitorapi.Deps{
 		TSDB:             ts,
 		Inventory:        a.inventory,
@@ -93,6 +94,14 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 	online := make(map[uint]bool, len(nodes))
 	for _, node := range nodes {
 		online[node.ID] = node.State == store.NodeStateOnline
+		if a.online != nil {
+			// State and Ready use the same connection snapshot that Rows took.
+			if identity := rows.Node(node.ID); identity != nil {
+				online[node.ID] = identity.State == store.NodeStateOnline
+			} else {
+				online[node.ID] = node.ConnectionStateForSession(a.online(node.UUID)) == store.NodeStateOnline
+			}
+		}
 	}
 	instancesByDeployment := make(map[uint][]store.Instance)
 	for _, inst := range planning.OnlineInstances(instances, func(id uint) bool { return online[id] }) {
@@ -118,7 +127,11 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 		return monitor.Inventory{}, err
 	}
 	for i := range nodes {
-		n := &nodes[i]
+		view := nodes[i]
+		if a.online != nil {
+			view.State = view.ConnectionStateForSession(online[view.ID])
+		}
+		n := &view
 		inv.Nodes = append(inv.Nodes, nodeRef(n))
 		for _, gpu := range n.OwnedGPUs() {
 			alloc := allocations[n.ID][gpu.Index]
@@ -137,7 +150,7 @@ func (a *monitorInventoryAdapter) rows() (*deployment.ListRows, error) {
 	if a.lists != nil {
 		return a.lists.Rows()
 	}
-	return deployment.ReadListRows(a.store, a.preparation)
+	return deployment.ReadListRowsWithConnections(a.store, a.preparation, a.online)
 }
 
 // deploymentEvents adapts store.DeploymentTimeline's page (newest-first,

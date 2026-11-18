@@ -255,15 +255,15 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	}
 	px.SetRequestSink(requestSink(obs.UX().Observe, ops.observeRequest, telemetry.exporter))
 
-	ai := newAIService(st, obs, box)
+	ai := newAIService(st, obs, box, h.Online)
 	ai.log = log
 	ai.readPrivateHosts = readPrivateHosts
 	health := healthcheck.New(healthSource{store: st}, healthSender{proxy: px})
 	// The deployment and instance lists, the dashboard, the monitor and the
 	// batches' model list share one snapshot of every deployment and instance.
-	lists := deployment.NewLists(st, modelPreparation{h, ctrl}, nil)
+	lists := deployment.NewListsWithConnections(st, modelPreparation{h, ctrl}, nil, h.Online)
 	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st, modelPreparation{h, ctrl}, lists}, PriorityClasses: priorityClassExists(st), Log: log})
-	monSvc := newMonitorAPIServiceOn(lists, st, obs.TSDB(), nil, newRequestSource(st, px.LiveRequests, obs.UX()), health.Health, modelPreparation{h, ctrl})
+	monSvc := newMonitorAPIServiceOn(lists, st, obs.TSDB(), nil, newRequestSource(st, px.LiveRequests, obs.UX()), health.Health, modelPreparation{h, ctrl}, h.Online)
 
 	a = &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}
 	var restart func()
@@ -274,7 +274,7 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	a.settings.readPrivateHosts = readPrivateHosts
 	a.settings.installID = installIDOf(master)
 	outside := outsideSources(st, readPrivateHosts, cfg.Distribution)
-	a.usage, a.notices = newImprovementProgram(st, obs.UX(), a.settings, outside.Channel, log)
+	a.usage, a.notices = newImprovementProgram(st, obs.UX(), a.settings, outside.Channel, log, h.SessionCount)
 	h.SetUsageCounters(a.usage.Counters())
 	if a.cards, err = newCardHealth(log, st, h); err != nil {
 		return nil, err

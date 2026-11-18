@@ -63,6 +63,7 @@ func (a *apiHandlers) listNodes(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	nodes = a.nodeConnectionViews(nodes)
 	mode := r.URL.Query().Get("agent_upgrade")
 	if mode != "" && (!query.paged || !slices.Contains([]string{"all", "align", "upgrade", "downgrade", "different_build", "check"}, mode)) {
 		writeErr(w, http.StatusBadRequest, listFilterError("agent_upgrade", mode))
@@ -175,7 +176,8 @@ func (a *apiHandlers) filterNodes(nodes []store.Node, query listQuery, reqs map[
 func (a *apiHandlers) nodeDTOs(nodes []store.Node, sources map[uint]store.NodeSource) []dto.Node {
 	out := make([]dto.Node, 0, len(nodes))
 	for i := range nodes {
-		view := a.nodeView(&nodes[i])
+		// Filtering and ordering used this same connection snapshot.
+		view := nodeDTO(&nodes[i], false, a.nodeHold(&nodes[i]))
 		if a.d.NodeCaps != nil {
 			view.Caps = a.d.NodeCaps(nodes[i].UUID)
 		}

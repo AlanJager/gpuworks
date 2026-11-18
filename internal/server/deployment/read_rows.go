@@ -42,13 +42,14 @@ type Rows interface {
 // StoreRows asks the store for each row as it is needed. It suits a single
 // object; over a list it costs several queries per row.
 type StoreRows struct {
-	st *store.Store
+	st     *store.Store
+	online func(string) bool
 	PreparationReads
 }
 
 // NewStoreRows asks st for each row, and prep for model preparation.
 func NewStoreRows(st *store.Store, prep ModelPreparation) StoreRows {
-	return StoreRows{st, NewPreparationReads(prep)}
+	return StoreRows{st: st, PreparationReads: NewPreparationReads(prep)}
 }
 
 func (l StoreRows) Instances(deploymentID uint) []store.Instance {
@@ -68,6 +69,9 @@ func (l StoreRows) Node(id uint) *store.Node {
 	n, err := l.st.NodeByID(id)
 	if err != nil {
 		return nil
+	}
+	if l.online != nil {
+		n.State = n.ConnectionStateForSession(l.online(n.UUID))
 	}
 	return n
 }
@@ -157,6 +161,9 @@ func (l StoreRows) NodeByUUID(uuid string) *store.Node {
 	n, err := l.st.NodeByUUID(uuid)
 	if err != nil {
 		return nil
+	}
+	if l.online != nil {
+		n.State = n.ConnectionStateForSession(l.online(n.UUID))
 	}
 	return n
 }

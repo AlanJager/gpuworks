@@ -18,7 +18,7 @@ func (a *apiHandlers) listRows() (*deployment.ListRows, []store.Deployment, []st
 		}
 		return rows, rows.Deployments(), rows.AllInstances(), nil
 	}
-	rows, err := deployment.ReadListRows(a.d.Store, a.d.Preparation)
+	rows, err := deployment.ReadListRowsWithConnections(a.d.Store, a.d.Preparation, a.d.Online)
 	if err != nil {
 		return nil, nil, nil, err
 	}

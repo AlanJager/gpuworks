@@ -188,6 +188,9 @@ func (a *aiService) nodeContext(uuid string) (aihelper.NodeContext, error) {
 		RuntimeGPUBlocked: n.RuntimeGPUBlocked, GPUProbeError: n.GPUProbeError, LogLimit: 2 * seedNodeLogs,
 		RuntimeDriver: n.RuntimeDriver, RuntimeFallbackFrom: n.RuntimeFallbackFrom, RuntimeFallbackReason: n.RuntimeFallbackReason,
 	}
+	if a.online != nil {
+		c.State = n.ConnectionStateForSession(a.online(n.UUID))
+	}
 	if c.Scheduling == "" {
 		c.Scheduling = "schedulable"
 	}

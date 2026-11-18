@@ -15,11 +15,13 @@ const bytesPerGiB = 1024 * 1024 * 1024
 // nodeView is n as the API shows it, with the registered scheduling
 // holders' answer for it.
 func (a *apiHandlers) nodeView(n *store.Node) dto.Node {
-	return nodeDTO(n, false, a.nodeHold(n))
+	view := a.nodeConnectionView(*n)
+	return nodeDTO(&view, false, a.nodeHold(n))
 }
 
 func (a *apiHandlers) nodeViewWithToken(n *store.Node) dto.Node {
-	return nodeDTO(n, true, a.nodeHold(n))
+	view := a.nodeConnectionView(*n)
+	return nodeDTO(&view, true, a.nodeHold(n))
 }
 
 func (a *apiHandlers) nodeHold(n *store.Node) store.NodeHold {

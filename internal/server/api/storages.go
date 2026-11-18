@@ -82,7 +82,8 @@ func (a *apiHandlers) storageDTO(row *store.Storage, nodes []store.Node, all boo
 	}
 	out.Writable = row.Type == proto.StorageLocal
 	for i := range nodes {
-		node := &nodes[i]
+		view := a.nodeConnectionView(nodes[i])
+		node := &view
 		if !store.StorageAppliesTo(row, targets, node) {
 			continue
 		}
