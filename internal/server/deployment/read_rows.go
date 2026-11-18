@@ -12,6 +12,8 @@ import (
 // row is nil: the DTO simply leaves that field empty, exactly as it does when
 // the store reports not-found.
 type Rows interface {
+	// ImageTransferNodes is where this exact image is currently syncing or pulling.
+	ImageTransferNodes(image string) []uint
 	CachePhase(store.FileRef) string
 	PreparationNodes(*store.Deployment) []uint
 	ModelSource(uint, *store.Node, store.SourceRules) store.ModelSource
@@ -42,8 +44,9 @@ type Rows interface {
 // StoreRows asks the store for each row as it is needed. It suits a single
 // object; over a list it costs several queries per row.
 type StoreRows struct {
-	st     *store.Store
-	online func(string) bool
+	st             *store.Store
+	online         func(string) bool
+	imageTransfers map[string][]uint
 	PreparationReads
 }
 
@@ -200,6 +203,7 @@ type ListRows struct {
 	models                map[uint]*store.Model
 	modelFiles            map[modelNodeKey]*store.ModelFile
 	scheduleEvents        map[uint]store.InstanceEvent
+	imageTransfers        map[string][]uint
 	// gaveUp is which failed instances carry the controller's give-up
 	// record, read once for the whole list.
 	gaveUp  map[string]bool
@@ -317,6 +321,9 @@ func newListRows(st *store.Store, prep ModelPreparation, deployments []store.Dep
 		ids = append(ids, deployments[i].ID)
 	}
 	if l.latest, err = st.LatestScheduleEvents(); err != nil {
+		return nil, err
+	}
+	if err := l.loadImageTransfers(); err != nil {
 		return nil, err
 	}
 	all, err := st.DeploymentRequirementsFor(ids)

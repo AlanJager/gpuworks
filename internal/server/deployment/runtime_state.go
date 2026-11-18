@@ -17,7 +17,7 @@ func RuntimeState(rows Rows, d *store.Deployment, insts []store.Instance, progre
 
 // runtimeStateAt is RuntimeState with the pending timeout measured at now.
 func runtimeStateAt(rows Rows, d *store.Deployment, insts []store.Instance, progress []dto.ModelNodePresence, now time.Time) string {
-	state := DeriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d.ID, len(insts), now))
+	state := DeriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d, len(insts), now))
 	if state != "running" {
 		return state
 	}
@@ -48,15 +48,32 @@ func runtimeStateAt(rows Rows, d *store.Deployment, insts []store.Instance, prog
 // legitimately takes tens of minutes, and counting from creation would call a
 // perfectly healthy download a stall - the same confusion this whole mechanism
 // exists to remove.
-func scheduleStalled(rows Rows, deploymentID uint, instanceCount int, now time.Time) bool {
+func scheduleStalled(rows Rows, dep *store.Deployment, instanceCount int, now time.Time) bool {
 	if instanceCount > 0 {
 		return false
 	}
-	ev, found := rows.FirstScheduleEvent(deploymentID)
+	ev, found := rows.FirstScheduleEvent(dep.ID)
 	if !found {
 		return false
 	}
-	return !now.Before(scheduleStallDeadline(rows, ev))
+	if now.Before(scheduleStallDeadline(rows, ev)) {
+		return false
+	}
+	// A live image preparation is not a placement refusal. The latest reason
+	// must still be image delivery: an unrelated copy must not mask a real
+	// capacity/permission/network refusal, or a stale historical image wait.
+	latest, found := rows.LatestScheduleEvent(dep.ID)
+	if found && waitingForImage(latest) {
+		active := rows.ImageTransferNodes(dep.Image)
+		for _, target := range rows.PreparationNodes(dep) {
+			for _, nodeID := range active {
+				if target == nodeID {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // scheduleStallDeadline is when a deployment first refused at ev reads as
