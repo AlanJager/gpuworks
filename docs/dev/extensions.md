@@ -265,7 +265,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何；覆盖的调用同时记下管理员的用户 id 与用户名，以及原因。
 
-覆盖（ADR 0071 决策 10）只能放松限制类条目，看的是推送状态里有没有这条：所有者在运行、掉线、`broken`、`revoked`，或已卸载但行还留着（卸载没做完），都能覆盖，最需要救济的正是坏掉或被吊销的所有者。规则不满足时回 422 `PLUGIN_OVERRIDE_REJECTED`，`rule` 为 `not_restrict`、`no_entry`、`action`、`not_looser` 或 `reason`；撤回不存在的覆盖回 404 `PLUGIN_OVERRIDE_NOT_FOUND`。所有者活着时同样允许覆盖：它下次推送若改了这一条，以它的新决定为准，覆盖被取代并删除，管理员在 24 小时内看到横幅 `plugins.override_superseded.<覆盖 id>`（`PLUGIN_OVERRIDE_SUPERSEDED`，只存在内存里，重启后不再显示），审计日志另记一条；推送不改这一条时覆盖保留。同一条目的第二个覆盖替换第一个；卸载所有者时它的覆盖与横幅一起删除。扩展时钟被校正时同样记审计日志，并显示横幅 `plugins.clock_corrected`。列表里的状态：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）、`revoked` 或 `needs_host_setup`（见[主机配置](#主机配置)）；其余是监管的进程状态（`on_demand` 包空闲时是 `idle`）。字段见 [API 参考](../reference/api.md)。
+覆盖（ADR 0071 决策 10）只能放松限制类条目，看的是推送状态里有没有这条：所有者在运行、掉线、`broken`、`revoked`，或已卸载但行还留着（卸载没做完），都能覆盖，最需要救济的正是坏掉或被吊销的所有者。规则不满足时回 422 `PLUGIN_OVERRIDE_REJECTED`，`rule` 为 `not_restrict`、`no_entry`、`action`、`not_looser`、`reason`（理由超过 1024 字节；没填理由是 400 `FIELD_INVALID`），或 `superseded`（检查之后、覆盖落库之前所有者又推送改了这一条，以它的新决定为准）；撤回不存在（包括已被取代）的覆盖回 404 `PLUGIN_OVERRIDE_NOT_FOUND`。所有者活着时同样允许覆盖：它下次推送若改了这一条，以它的新决定为准，覆盖被取代并删除，管理员在扩展时钟的 24 小时内看到横幅 `plugins.override_superseded.<覆盖 id>`（`PLUGIN_OVERRIDE_SUPERSEDED`，只存在内存里，重启后不再显示），审计日志另记一条；推送不改这一条时覆盖保留。同一条目的第二个覆盖替换第一个；卸载所有者时它的覆盖与横幅一起删除。扩展时钟被校正时同样记审计日志，并显示横幅 `plugins.clock_corrected`。列表里的状态：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）、`revoked` 或 `needs_host_setup`（见[主机配置](#主机配置)）；其余是监管的进程状态（`on_demand` 包空闲时是 `idle`）。字段见 [API 参考](../reference/api.md)。
 
 ### 本地管理员兜底
 

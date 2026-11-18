@@ -3,6 +3,7 @@ package pushstate
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -61,19 +62,44 @@ func overrideRejected(req OverrideRequest, rule, format string) *messages.Produc
 
 // Override releases one restriction entry and returns the override as
 // persisted. A refusal is a *messages.ProductError (PLUGIN_OVERRIDE_REJECTED,
-// with rule not_restrict, no_entry, action or not_looser); a persistence
-// failure is returned as it is. The release takes effect after the commit
-// and a pass of the scheduling holds.
+// with rule not_restrict, no_entry, action, not_looser or superseded); a
+// persistence failure is returned as it is. The release takes effect after
+// the commit and a pass of the scheduling holds.
+//
+// The request is checked again in the tick that commits it: an owner's
+// push that changed the entry since the first check, committed or pending
+// in that tick, would supersede the override at once, so it is refused
+// with rule superseded instead of being stored against a decision the owner
+// no longer holds.
 func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, error) {
 	s.mu.Lock()
 	o, perr := s.checkOverrideLocked(req)
+	var want any
+	if perr == nil {
+		want = entryValue(s.parts[ownerKind{req.Owner, req.Kind}].table, req.Entry)
+	}
 	s.mu.Unlock()
 	if perr != nil {
 		return Override{}, perr
 	}
 	idx := -1
 	err := s.enqueue(ctx, &op{
-		build: func(b *pstate.Batch) {
+		build: func(b *pstate.Batch) error {
+			k := ownerKind{req.Owner, req.Kind}
+			p := s.parts[k]
+			if p == nil || !reflect.DeepEqual(entryValue(p.table, req.Entry), want) {
+				return overrideRejected(req, "superseded", "the plugin pushed that entry again")
+			}
+			if pp := s.pending[k]; pp != nil && !reflect.DeepEqual(entryValue(pp.part.table, req.Entry), want) {
+				return overrideRejected(req, "superseded", "the plugin pushed that entry again")
+			}
+			// Bind to the generation held now: a push since the first
+			// check that left the entry alone does not supersede it.
+			again, perr := s.checkOverrideLocked(req)
+			if perr != nil {
+				return perr
+			}
+			o.Generation = again.Generation
 			// The override it replaces goes in the same commit, so a
 			// restart never finds both.
 			for _, other := range s.overrides {
@@ -84,6 +110,7 @@ func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, er
 			idx = len(b.Overrides)
 			b.Overrides = append(b.Overrides, pstate.Override{Owner: o.Owner, Kind: o.Kind, EntryKey: o.Entry, Generation: int64(o.Generation),
 				Action: o.Action, Value: copyInt(o.Value), ByUser: o.ByUser, AtMS: o.At.UnixMilli(), Reason: o.Reason})
+			return nil
 		},
 		after: func(res pstate.Result, err error) {
 			if err != nil {
@@ -106,7 +133,9 @@ func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, er
 // RemoveOverride withdraws override id, so the owner's entry is enforced
 // again as the owner last pushed it. An id that is not in force is
 // PLUGIN_OVERRIDE_NOT_FOUND; a persistence failure is returned as it is and
-// leaves the override in force. The hold is reapplied after the commit.
+// leaves the override in force. The hold is reapplied after the commit. The
+// id is looked up again in the tick that commits the removal, so one a push
+// superseded meanwhile is PLUGIN_OVERRIDE_NOT_FOUND, not a removal.
 func (s *State) RemoveOverride(ctx context.Context, id int64) (Override, error) {
 	s.mu.Lock()
 	o, ok := s.overrides[id]
@@ -119,7 +148,13 @@ func (s *State) RemoveOverride(ctx context.Context, id int64) (Override, error) 
 		return Override{}, OverrideNotFound(id)
 	}
 	err := s.enqueue(ctx, &op{
-		build: func(b *pstate.Batch) { b.DropOverrides = append(b.DropOverrides, id) },
+		build: func(b *pstate.Batch) error {
+			if _, ok := s.overrides[id]; !ok {
+				return OverrideNotFound(id)
+			}
+			b.DropOverrides = append(b.DropOverrides, id)
+			return nil
+		},
 		after: func(pstate.Result, error) {},
 	})
 	if err != nil {

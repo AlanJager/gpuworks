@@ -34,8 +34,8 @@ const (
 	// further than one correction may ({max_days}).
 	ErrorPluginClockCorrectionTooLarge = "PLUGIN_CLOCK_CORRECTION_TOO_LARGE"
 	// ErrorPluginOverrideRejected: a restriction override cannot be applied
-	// ({plugin}, {kind}, {entry}, {rule}: not_restrict, no_entry, action or
-	// not_looser).
+	// ({plugin}, {kind}, {entry}, {rule}: not_restrict, no_entry, action,
+	// not_looser, reason or superseded).
 	ErrorPluginOverrideRejected = "PLUGIN_OVERRIDE_REJECTED"
 	// ErrorPluginOverrideSuperseded: the plugin pushed the overridden entry
 	// again, so its new decision replaced the override ({plugin}, {kind},

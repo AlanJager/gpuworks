@@ -3,6 +3,7 @@ package pushstate
 import (
 	"context"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -11,16 +12,22 @@ import (
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
-// op is a change other than a push that the writer tick commits: build adds
-// its rows to the batch, after applies it in memory once the batch
-// committed (err nil) or reports the failure. Both run under the lock.
+// op is a change other than a push that the writer tick commits: build
+// checks it against the state of the tick and adds its rows to the batch,
+// or refuses it and adds nothing; after applies it in memory once the batch
+// committed (err nil) or reports the failure, and is not called for a
+// refused op. Both run under the lock.
 type op struct {
-	build func(b *pstate.Batch)
-	after func(res pstate.Result, err error)
-	done  chan error
+	build   func(b *pstate.Batch) error
+	after   func(res pstate.Result, err error)
+	done    chan error
+	refused error
 }
 
-// enqueue queues o for the next tick and waits for its commit.
+// enqueue queues o for the next tick and waits for its commit. A ctx done
+// before a tick took o withdraws it; once a tick took it, enqueue waits for
+// that tick's answer, so the caller never reports a change as refused that
+// then commits.
 func (s *State) enqueue(ctx context.Context, o *op) error {
 	o.done = make(chan error, 1)
 	s.mu.Lock()
@@ -31,8 +38,15 @@ func (s *State) enqueue(ctx context.Context, o *op) error {
 	case err := <-o.done:
 		return err
 	case <-ctx.Done():
+	}
+	s.mu.Lock()
+	if i := slices.Index(s.ops, o); i >= 0 {
+		s.ops = slices.Delete(s.ops, i, i+1)
+		s.mu.Unlock()
 		return ctx.Err()
 	}
+	s.mu.Unlock()
+	return <-o.done
 }
 
 // Run runs the writer tick, the step timer and the capacity selection until
@@ -203,6 +217,10 @@ func (s *State) commit(ctx context.Context) {
 		pp.done <- r
 	}
 	for _, o := range w.ops {
+		if o.refused != nil {
+			o.done <- o.refused
+			continue
+		}
 		o.done <- err
 	}
 }
@@ -212,9 +230,15 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 	w := &tickWork{down: s.downDirty, hwm: s.hwmDirty}
 	s.downDirty, s.hwmDirty = map[string]bool{}, false
 	for _, o := range s.ops {
-		o.build(b)
+		o.refused = o.build(b)
 	}
 	w.ops, s.ops = s.ops, nil
+	// An override an op of this tick already drops (withdrawn or replaced)
+	// is not also superseded by a push of the same tick.
+	claimed := map[int64]bool{}
+	for _, id := range b.DropOverrides {
+		claimed[id] = true
+	}
 	uninstalled := map[string]bool{}
 	for _, id := range b.Uninstall {
 		uninstalled[id] = true
@@ -230,7 +254,7 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 		w.pushes = append(w.pushes, pp)
 		s.inflight[k] = pp.part.gen
 		for _, o := range s.overrides {
-			if o.Owner == k.owner && o.Kind == k.kind && old != nil &&
+			if !claimed[o.ID] && o.Owner == k.owner && o.Kind == k.kind && old != nil &&
 				!reflect.DeepEqual(entryValue(old.table, o.Entry), entryValue(pp.part.table, o.Entry)) {
 				b.DropOverrides = append(b.DropOverrides, o.ID)
 				w.dropped = append(w.dropped, *o)
@@ -257,7 +281,9 @@ func (s *State) applyLocked(b *pstate.Batch, w *tickWork, res pstate.Result, err
 		delete(s.inflight, ownerKind{pp.part.owner, pp.part.kind})
 	}
 	for _, o := range w.ops {
-		o.after(res, err)
+		if o.refused == nil {
+			o.after(res, err)
+		}
 	}
 	if err != nil {
 		s.log.Error("commit pushed state", "err", err, "pushes", len(w.pushes))
