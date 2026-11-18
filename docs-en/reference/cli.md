@@ -271,6 +271,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 - Without `--data`, the data directory is, in order: `data_dir` from the `server.yaml` next to the binary, `data_dir` from the default installation (`/opt/gpuworks/server/server.yaml`; `~/gpuworks/server/server.yaml` on macOS), then `./data`. The installation's database is therefore found regardless of the current working directory.
 - The database file must already exist: if it does not, the command reports the path it used and where that path came from, then exits without creating an empty database.
+- When the user is an administrator, the command also restores its local administrator floor (`users.local_admin`, see [Installable extensions](../dev/extensions.md#local-administrator-floor)), so it can sign in and manage plugins even with every plugin down; another user's flag is left as it was.
 - On success, if the `initial-credentials` beside the database records this user, the command tries to delete it, since its password no longer works; a failure only prints a warning and does not affect the reset.
 - Run as the operator; `sudo` is not required. If database permissions are insufficient, the operation fails with the database's own permission error.
 - Do not write passwords or keys to shell history or logs.
@@ -629,5 +630,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: 20b4315db156fe89950d7e402a221bef85ac0105a1c8668190f65a2289230f03 -->
+<!-- translation-source-sha256: 4d23ac0d7b6c9742b275e07e048d69015ba1bfa748a03c6a27c4a2e13540c84d -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

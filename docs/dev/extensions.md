@@ -237,11 +237,21 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不运行时是 `disabled`、`installed`（没有 `resident` 服务端部分）、`idle`（`on_demand`）、`broken`（不再通过校验）或 `revoked`；运行时是监管的进程状态。字段见 [API 参考](../reference/api.md)。
 
+### 本地管理员兜底
+
+`users.local_admin` 标记谁在所有插件掉线、被卸载或崩溃循环时仍能恢复站点（ADR 0071 决策 11）：
+
+- 迁移 225 给升级前已有的全部管理员设上；首次启动创建的管理员带上；离线的 `gpuworks reset-password` 给管理员重新设上（普通用户不受影响）。之后新建的用户默认没有，控制台里改自己的密码不改动它。
+- 生效值在每个请求读用户时计算：`local_admin && role == admin && 登录会话`。被降级的用户立即失去兜底，不需要写库；平台 API Token 永远不带；它不签进 JWT，也从不从 JWT 读取。`GET /api/v1/auth/me` 的 `local_admin` 返回这个生效值，只用于显示。
+- 恢复面是核心路由：登录、`/auth/me`、修改密码与 `/api/v1/plugins/*` 不经过功能门，也不向插件提供的来源（功能可用性、横幅）发问。契约测试 `TestContractLocalAdminDuringCrashloop` 让两个插件都进入崩溃循环（一个保持全部节点，一个把集群卡数上限推成 0），本地管理员仍能重新登录、列出、停用并卸载每个包，每次调用在 10 秒内返回。
+
+推送的约束、准入保持与推送角色的执行器还不存在，所以目前没有地方需要按这个标记豁免；它们出现时先查这个标记。
+
 ### 尚未实现
 
 - 运行中安装的包声明的功能键在下次启动时才进入功能门（功能门在启动时建立一次）；它推送的限制、横幅与保持立即生效。
 - 插件路由在 `/api/v1/x/<id>/` 下的动态挂载、`on_demand` 插件的按需启动、宿主接口里状态与健康之外的端点。
-- 覆盖的管理路由（`State.Override` 已实现）、`users.local_admin` 兜底、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `enable`、`disable`、`upgrade`、`rollback`、`clock reset` 子命令。
+- 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `enable`、`disable`、`upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、没有 cgroup 时的 RSS 看门狗、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
 - 核心代码功能键字面量的棘轮。
 - 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
