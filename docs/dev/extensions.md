@@ -203,14 +203,102 @@ SDK 带主版本号 `SDK_MAJOR`（当前为 1），只在删掉或改变某个�
 
 ## 可安装扩展
 
-ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，而不是编进二进制。这部分**尚未实现**，本节只说明它将如何接入本页的契约：
+ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，而不是编进二进制。插件宿主已经作为内置模块接入本页的契约：
 
-- 插件宿主是一个内置模块，经 `Host` 注册已有的钩子（功能来源、节点插入守卫、调度保持者、横幅），从插件推送、由核心校验并持久化的表作答；官方构建里它将是 `ProvideFeatures` 唯一的调用者。
-- 插件是 server 的子进程，经继承的 fd 用 `gwx/1` 与核心通信，从不进入热路径，也不拿 Store；它的路由挂在 `/api/v1/x/<id>/` 下，与编译模块同一个前缀。
+- 插件宿主是内置模块 `plugins`（`app/plugins.go`，实现在 `internal/server/pluginbridge`），经 `Host` 注册已有的钩子：节点插入守卫、调度保持者（来源 `plugins`）与横幅总是注册；已安装的包声明了功能键时它还是功能来源，从插件推送、由核心校验并持久化的表作答。编译模块不能再叫 `plugins`；编译模块已经调用 `ProvideFeatures` 而已安装的包又声明了功能键时，server 拒绝启动。
+- 插件是 server 的子进程，经继承的 fd 用 `gwx/1` 与核心通信，从不进入热路径，也不拿 Store。
 - 功能键是否受控由插件包自己声明；授权类的表只接受发布者证书指定的权威推送；插件掉线时限制继续执行，授权在有界宽限后降为只读，时间线按 extclock 照常生效。
 - 本页的钩子规则（写事务里的钩子是纯函数、保持者只停止调度不驱逐、运行中的负载不中断）对插件宿主同样适用。
 
-包清单、证书、信任更新、`gwx/1` 消息与推送表的线上格式已经冻结在 `pkg/extapi` 里，见[插件协议与线上格式](../reference/plugin-protocol.md)；安装、信任链的执行、进程生命周期与插件宿主的文档随实现补齐。
+包清单、证书、信任更新、`gwx/1` 消息与推送表的线上格式冻结在 `pkg/extapi` 里，见[插件协议与线上格式](../reference/plugin-protocol.md)；包的读取、校验、信任与 `gpuworks plugin` 子命令见 [CLI 参考](../reference/cli.md#gpuworks-plugin)与[安装布局](../reference/install-layout.md)。
+
+### 插件宿主模块
+
+启动顺序（`plugins` 模块的 `Init`，在路由建好之前）：
+
+1. 清掉中断的安装留下的目录，逐个重新校验已安装的包（这次全部重新哈希）；不再通过校验或已被吊销的包记为已安装但未校验：它推送的限制与横幅照常执行，授权被丢弃，它不会启动。
+2. 用这份包清单读入全部推送表（见下文「推送状态」），在 server 接受第一个请求之前、任何插件启动之前生效。
+3. 注册钩子；声明功能键（只取启动时已安装的包）。
+
+模块的服务（随 server 的其他后台循环运行）先启动推送状态的写入 tick、时间线与容量选择，再并行启动每个已启用、有 `resident` 服务端部分的包，不阻塞 `serve`；启动前只重新哈希变过的文件。插件的进程状态经监管回调推送状态：`running`、`degraded` 算在线，其余都算掉线。server 停止时先停插件，再停推送状态，所以每个插件掉线的时刻都被持久化，重启不会续期宽限。
+
+推送方身份来自启动它时校验通过的包：监管为每个进程编号（全局递增的代数），宿主接口的推送按这条连接所属的包认定，带证书授予（含 `server.yaml` 为主机信任的签发者配置的权威）、管理员批准的权限、清单的码和这个进程的代数；连接所属的包已被替换或换了版本时推送被拒（`PLUGIN_STATE_CONNECTION_REPLACED`）。核心提供首批五种表的能力 `table.<种类>@1`，包的 `requires` 据此校验，插件握手时也据此协商。
+
+### 管理接口
+
+`/api/v1/plugins` 是核心路由，不受功能门控，插件全部掉线、崩溃循环或被卸载时照常可用；助手与 MCP 读不到（不在助手可读的路由里，处理函数也拒绝助手的进程内读取）：
+
+| 方法与路径 | 谁可以调用 | 作用 |
+|---|---|---|
+| `GET /api/v1/plugins` | 管理员（会话或令牌） | 已安装的包与各自的状态、原因、可做的动作（服务端计算） |
+| `POST /api/v1/plugins/install?approve=<批准值>&enable=true` | 管理员登录会话 | 请求体就是 `.gwpkg`；不带或带错批准值时回 409 `PLUGIN_APPROVAL_REQUIRED`，参数里给出批准值和它涵盖的权限、角色，什么都不装 |
+| `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
+| `DELETE /api/v1/plugins/{id}?purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据一起移到 `.trash/`），在一次提交里删掉它推送的全部内容并重新应用保持；重试能完成一半失败的卸载 |
+
+每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不运行时是 `disabled`、`installed`（没有 `resident` 服务端部分）、`idle`（`on_demand`）、`broken`（不再通过校验）或 `revoked`；运行时是监管的进程状态。字段见 [API 参考](../reference/api.md)。
+
+### 尚未实现
+
+- 运行中安装的包声明的功能键在下次启动时才进入功能门（功能门在启动时建立一次）；它推送的限制、横幅与保持立即生效。
+- 插件路由在 `/api/v1/x/<id>/` 下的动态挂载、`on_demand` 插件的按需启动、宿主接口里状态与健康之外的端点。
+- 覆盖的管理路由（`State.Override` 已实现）、`users.local_admin` 兜底、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `enable`、`disable`、`upgrade`、`rollback`、`clock reset` 子命令。
+- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、没有 cgroup 时的 RSS 看门狗、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
+- 核心代码功能键字面量的棘轮。
+
+### 跳板：`gpuworks plugin-exec`
+
+server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile <json> -- <可执行文件> serve`（`internal/server/pluginexec`，不是给人用的子命令）。跳板以将来的插件进程身份施加沙箱，然后 `execve` 插件，所以沙箱由宿主施加，插件无法撤销：
+
+| 步骤 | Linux | macOS |
+|---|---|---|
+| 父进程死亡信号 | `PR_SET_PDEATHSIG(SIGKILL)`，并核对父进程仍是 server，否则不启动 | 无；SDK 靠 fd EOF 与轮询 `getppid` 退出 |
+| 权限 | `PR_SET_NO_NEW_PRIVS` | — |
+| 进程组 | 独立进程组，server 按组发信号 | 同左 |
+| 资源 | `RLIMIT_CORE=0`、`RLIMIT_NOFILE=4096`、nice 5；`RLIMIT_NPROC` 按用户计数，插件与 server 同一用户时不设，进程数由 cgroup 的 `pids.max` 限制 | 同左（无 cgroup） |
+| 描述符 | fd 3、4 必须是 socket；stdin、stdout 指向 `/dev/null`；stderr 是日志 | 同左 |
+| 环境变量 | 只保留 `PATH`、`TZ`、代理与 CA 变量，另设 `HOME`=数据目录、`TMPDIR`、`LANG=C.UTF-8` 与 `GWX_*`；代理变量原样传入，代理 URL 里的用户名密码因此也交给每个插件，代理凭据应只授予插件也可以用的权限 | 同左 |
+| cgroup | server 的 cgroup 已委派（`subtree_control` 可写）时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`、`memory.high`、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动 | — |
+| Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，批准的设备节点读写；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
+
+要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
+
+### 监管
+
+`internal/server/pluginhost` 为每个包运行一个监管者。拉起插件的 goroutine 在插件存活期间一直锁定在自己的 OS 线程上：Linux 的父进程死亡信号属于 fork 子进程的那个线程，而 Go 运行时会回收锁定线程的 goroutine 结束时的线程，不锁定的话别的 goroutine 结束时就可能把插件一起杀掉。
+
+| 项 | 默认值 |
+|---|---|
+| `initialize` 应答期限 | 10 秒 |
+| 健康探测 | 每 10 秒一次，单次 3 秒；连续 3 次未通过则杀掉重启（`PLUGIN_UNHEALTHY`） |
+| 崩溃重启 | 1 秒起翻倍，最长 5 分钟；连续健康运行 10 分钟后重新从 1 秒算 |
+| 崩溃循环 | 10 分钟内崩溃 5 次进入 `crashloop`（`PLUGIN_CRASHLOOP`），之后每 5 分钟重试一次，无人值守的离线站点能自己恢复 |
+| 停止 | `POST /gwx/v1/shutdown`，10 秒后向进程组发 SIGTERM，再 5 秒 SIGKILL |
+| 调用并发 | 每个插件同时至多 `max_concurrency`（默认 8）个调用，满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
+| 无截止时间的调用 | 60 秒 |
+| stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |
+
+`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动，空闲 10 分钟后停止，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+
+### gwx/1 连接与宿主接口
+
+每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`）。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
+
+### 插件 SDK：`pkg/pluginsdk`
+
+插件作者用 `pkg/pluginsdk`（与 `pkg/extapi` 一样是独立模块，只依赖标准库与 `pkg/extapi`）：`pluginsdk.Main(cfg)` 打开两个描述符、回答握手（协议与能力协商，拒绝时用 `PLUGIN_PROTOCOL_UNSUPPORTED` 或 `PLUGIN_CAPABILITY_MISSING`）、在握手被接受后运行 `Start`、回答健康、把其他调用交给插件的 `http.Handler`；收到 `shutdown`、server 一端关闭或父进程不在时退出。`PushState` 跳过 server 已持有且摘要相同的表，推送的代数取 `max(自己的计数, 持有的代数)+1`，所以存储被恢复或清空的插件不会因代数过期被拒。`pkg/pluginsdk/plugintest` 在进程内用真实 socketpair 扮演 server，供插件自己的测试使用。
+
+### 推送状态
+
+首批五种推送表（`availability`、`fleet_capacity`、`node_holds`、`banners`、`attestations`）在核心里的部分在 `internal/server/pushstate`，经上文的插件宿主模块接收插件的推送、在启动时读入并注册为钩子：
+
+- **接收**：`State.Push` 接收监管按连接认定的推送方身份（包 id、发布者、证书授予、批准的权限、清单的码、进程代数）和一份推送。`availability` 的每一行只接受该键的权威（`gate: authority` 时为声明它的发布者证书写明的 `authority_id`，`gate: self` 时为声明它的包），无前缀的键只接受项目发布者的包；`fleet_capacity` 要证书授予该特权表，`attestations` 要推送方是自己命名空间的权威，其余要批准的 `push:<种类>`；通知的码必须列在包的清单里。代数不高于已持有或待提交的被拒（`PLUGIN_STATE_STALE`）；被替换的进程的连接也被拒（`PLUGIN_STATE_CONNECTION_REPLACED`）。
+- **写入**：待写推送按所有者与种类合并（后到的取代先到的，先到的收到 `superseded_by`），每个 tick（至多 1 Hz）把全部所有者的改动放进一个写事务，再替换一个快照指针；写入失败则什么都不生效（`PLUGIN_STATE_NOT_SAVED`）。持久化用核心迁移建立的 `pstate_*` 带类型表：时间线是步骤行，通知是码列加带类型的参数行，没有 JSON 列；只用于显示的 `display` 不保存。按条目（功能键、节点 id、横幅 id、证明名）写差量。
+- **启动**：启动时在任何插件起来之前读入全部推送表；版本标记（`pstate.<种类>`）比本构建新则以 `PLUGIN_STATE_TOO_NEW` 拒绝启动，存储的限制解不开则拒绝启动而不放松，存储的授权解不开则略过（视为缺席）。
+- **执行**：功能来源、节点插入守卫、调度保持者（来源 `plugins`）与横幅各是一次原子读加查表，零分配。没有包作答的键为 `locked`，带 `FEATURE_PROVIDER_ABSENT`。`app.NewPushedStateHooks` 把它们适配成 `Host` 的钩子类型。
+- **时间**：时间线按 extclock（`max(墙钟, 高水位)`）在各自的时刻生效，插件死了也一样；高水位每分钟和关机时保存。`State.CorrectClock` 一次至多移动 366 天，回调审计并显示管理员横幅；步骤不被消耗，所以往回校正会让之后的步骤重新未生效。
+- **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能调低）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
+- **覆盖与卸载**：`State.Override` 对限制类条目（一个节点保持，或一项容量上限）只能放松，持久化，绑定所有者的代数；所有者再推同一条目时被取代并回调。`State.Uninstall` 在一次提交里删掉所有者的全部行，并请求一次保持的重新应用。
+- **容量选择**：`fleet_capacity` 只给上限，选哪些节点由核心按接入顺序决定（`internal/server/fleetcap`，满了以后后加入的节点一律保持）；它在节点集合主题的变化后合并读一次节点列表（间隔至少 2 秒），插件掉线时加入的节点同样按这条规则放置。还没放置的节点只有计入它会超过上限时才保持；上限一变（包括所有者被卸载），选择都会请求一次保持的重新应用，这样的节点也随之释放。
 
 ## 开源代码不做的事
 

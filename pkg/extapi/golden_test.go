@@ -32,6 +32,7 @@ var goldenDecoders = map[string]func([]byte) (any, error){
 	"publisher_cert":     func(b []byte) (any, error) { return DecodePublisherCert(b) },
 	"trust_update":       func(b []byte) (any, error) { return DecodeTrustUpdate(b) },
 	"crl":                func(b []byte) (any, error) { return DecodeCRL(b) },
+	"index":              func(b []byte) (any, error) { return DecodeIndex(b) },
 	"envelope":           func(b []byte) (any, error) { return DecodeEnvelope(b) },
 	"handshake_request":  func(b []byte) (any, error) { return DecodeHandshakeRequest(b) },
 	"handshake_response": func(b []byte) (any, error) { return DecodeHandshakeResponse(b) },

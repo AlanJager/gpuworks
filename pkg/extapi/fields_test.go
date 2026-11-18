@@ -88,6 +88,25 @@ HandshakeRequest.principal_key []uint8
 HandshakeRequest.protocol Range
 HandshakeResponse.id string
 HandshakeResponse.manifest_sha256 Digest
+Index.created Time
+Index.floors []Floor
+Index.format int
+Index.packages []IndexEntry
+Index.publisher string
+Index.revoked []Revocation
+Index.serial uint64
+IndexEntry.display Display
+IndexEntry.files []IndexFile
+IndexEntry.id string
+IndexEntry.manifest Digest
+IndexEntry.min_core_hint string
+IndexEntry.protocol Range
+IndexEntry.requires map[string]int
+IndexEntry.version string
+IndexFile.path string
+IndexFile.platform string
+IndexFile.sha256 string
+IndexFile.size int64
 HandshakeResponse.protocol int
 HandshakeResponse.services []string
 HandshakeResponse.use map[string]int
@@ -218,7 +237,7 @@ WireError.retry_after_ms int64
 `
 
 var wireRoots = []any{
-	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Envelope{}, PublicKey{},
+	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Index{}, Envelope{}, PublicKey{},
 	HandshakeRequest{}, HandshakeResponse{}, Health{}, WireError{}, StatePush{}, StateAck{},
 	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{},
 }

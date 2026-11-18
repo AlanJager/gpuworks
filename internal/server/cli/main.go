@@ -11,6 +11,7 @@
 //	reset-password  change an admin password
 //	support-bundle  collect diagnostics without the server running
 //	migrate         apply database migrations and exit
+//	plugin          install, list and remove plugin packages; import trust
 //	expose          publish this server through a Cloudflare quick tunnel
 //	version         print version
 //	edition         print the edition this binary was built as
@@ -41,6 +42,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
 	"gpuworks.ai/gpuworks/internal/server/installcred"
+	"gpuworks.ai/gpuworks/internal/server/pluginexec"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -59,7 +61,7 @@ func Main(args []string, opt Options) int {
 var builtinCommands = []string{
 	"serve", "version", "-v", "--version", "database-migration", selfinstall.EditionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
 	"install", "upgrade", "uninstall", "restart", "stop", "support-bundle",
-	"reset-password", "migrate", "expose", experiencelaunch.Command,
+	"reset-password", "migrate", "plugin", "expose", experiencelaunch.Command, pluginexec.Command,
 	"help", "-h", "--help",
 }
 
@@ -133,11 +135,20 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 			log.Error("migration failed", "err", err)
 			return 1
 		}
+	case "plugin":
+		if err := opt.pluginCommand(log, rest, os.Stdout); err != nil && !errors.Is(err, flag.ErrHelp) {
+			log.Error("plugin failed", "err", err, "code", codeText(err))
+			return 1
+		}
 	case "expose":
 		if err := exposeCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("expose failed", "err", err)
 			return 1
 		}
+	case pluginexec.Command:
+		// The server starts every plugin through this, never a person; on
+		// success the process becomes the plugin and this does not return.
+		return pluginexec.Main(rest)
 	case experiencelaunch.Command:
 		if err := experienceCommand(rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("experience environment exited", "err", err)
@@ -164,6 +175,7 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	cfg := app.DefaultConfig()
 	cfg.Distribution = opt.Distribution
 	cfg.Extensions = opt.Extensions
+	cfg.PluginRoots = opt.pluginRoots()
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "", "server.yaml; flags below override its values")
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "serve every function on this one address, replacing listen in server.yaml")
@@ -497,6 +509,9 @@ installation:
 
 public address:
 `+exposeUsage+`
+
+plugins:
+`+pluginUsage+`
 
 serve reads server.yaml (written by install) when --config names it; a flag
 given on the command line overrides the file. Without --config it serves every

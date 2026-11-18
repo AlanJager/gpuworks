@@ -20,6 +20,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/storagerules"
+	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
 // Config holds server runtime configuration. The cli package fills it from
@@ -48,6 +49,14 @@ type Config struct {
 	// Extensions are the modules and console a separately built server
 	// adds (extensions.go); the zero value is the community server.
 	Extensions Extensions
+	// Plugins is server.yaml's plugins section: the certificate issuers the
+	// operator trusts and the site policy (ADR 0071).
+	Plugins serverconfig.Plugins
+	// PluginRoots are the project roots plugin certificates chain to; nil
+	// trusts the build's own (trust.ProjectRoots).
+	PluginRoots []extapi.PublicKey
+	// PluginRuntime adjusts how plugins run, for tests (plugins.go).
+	PluginRuntime PluginRuntime
 	// ListenOverridden is set when --addr replaced the file's listen section,
 	// so the console shows it read-only.
 	ListenOverridden bool

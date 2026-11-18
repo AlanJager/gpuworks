@@ -28,6 +28,14 @@ const (
 	EnvProtocol = "GWX_PROTOCOL"
 	EnvServeFD  = "GWX_SERVE_FD"
 	EnvHostFD   = "GWX_HOST_FD"
+	// PathHostState prefixes the host API's push path: a plugin pushes
+	// one kind with PUT PathHostState+kind.
+	PathHostState = "/host/v1/state/"
+	// PathHostHealth answers a plugin that probes the host API; the body
+	// is a Health.
+	PathHostHealth = "/host/v1/health"
+	// ContentTypeJSON is the media type of every gwx/1 body.
+	ContentTypeJSON = "application/json"
 )
 
 // PrincipalKeyBytes is the length of the per-spawn principal key.

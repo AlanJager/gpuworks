@@ -62,6 +62,7 @@ func TestNewRefusesModulesThatCannotCompose(t *testing.T) {
 		"bad name":               {[]Module{namedModule("Bad")}, `"Bad" does not match`},
 		"one-letter name":        {[]Module{namedModule("a")}, `"a" does not match`},
 		"duplicate":              {[]Module{namedModule("dup"), namedModule("dup")}, `"dup" is registered twice`},
+		"the plugin host's name": {[]Module{namedModule("plugins")}, `"plugins" is the built-in plugin host's`},
 		"foreign namespace":      {[]Module{migratingModule{name: "mine", namespace: "theirs"}}, `use namespace "theirs"`},
 		"migrator with no steps": {[]Module{migratingModule{name: "x1", namespace: "x1"}}, ""},
 	}
@@ -107,11 +108,12 @@ func TestModuleListsFollowModuleOrder(t *testing.T) {
 }
 
 // The services loop starts the server's four independent loops, then each
-// module's Service, in module order.
+// module's Service, in module order, the built-in plugin host last, and the
+// pass of the scheduling holds the plugin host registers.
 func TestServicesAreTheCoreLoopsThenTheModules(t *testing.T) {
 	a, _ := newTestApp(t, "gpuworks-test-password-2026")
-	if n := len(a.services()); n != 4 {
-		t.Fatalf("community services = %d, want 4", n)
+	if n := len(a.services()); n != 6 {
+		t.Fatalf("community services = %d, want 6", n)
 	}
 	dir := t.TempDir()
 	cfg := Config{Addr: "127.0.0.1:0", DataDir: dir, DBPath: filepath.Join(dir, "gpuworks.db"), AdminUser: "admin", AdminPassword: "gpuworks-test-password-2026",
@@ -121,7 +123,7 @@ func TestServicesAreTheCoreLoopsThenTheModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { b.proxy.Close(); _ = b.store.Close() })
-	if n := len(b.services()); n != 6 {
-		t.Fatalf("services with two module services = %d, want 6", n)
+	if n := len(b.services()); n != 8 {
+		t.Fatalf("services with two module services = %d, want 8", n)
 	}
 }

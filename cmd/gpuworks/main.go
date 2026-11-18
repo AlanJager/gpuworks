@@ -11,6 +11,7 @@
 //	migrate         apply database migrations and exit
 //	expose          publish this server through a Cloudflare quick tunnel
 //	version         print version
+//	plugin-exec     start a plugin inside its sandbox (run by the server only)
 //
 // Running the binary without a subcommand prints the usage. The command line
 // itself lives in internal/server/cli.

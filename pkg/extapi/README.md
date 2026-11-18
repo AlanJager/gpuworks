@@ -14,6 +14,7 @@ What it defines:
 | Publisher certificate (`publisher.crt` holds one to four envelopes) | `PublisherCert` | `format: 1` |
 | Trust update | `TrustUpdate` | `format: 1` |
 | Revocation list | `CRL` | `format: 1` |
+| Package index (`plugins/index.json`) | `Index` | `format: 1` |
 | gwx/1 handshake (`POST /gwx/v1/initialize`) | `HandshakeRequest`, `HandshakeResponse` | protocol major 1 |
 | gwx/1 health and error bodies | `Health`, `WireError` | protocol major 1 |
 | State push and its acknowledgement | `StatePush`, `StateAck` | protocol major 1 |

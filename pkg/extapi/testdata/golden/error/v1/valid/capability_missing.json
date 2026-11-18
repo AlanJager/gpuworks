@@ -1,0 +1,1 @@
+{"code":"PLUGIN_CAPABILITY_MISSING","message":"the server offers no version of table.availability from 2 to 2","params":{"capability":"table.availability","max":2,"min":2},"reason":"unsupported"}

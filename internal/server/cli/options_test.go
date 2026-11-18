@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
+	"gpuworks.ai/gpuworks/internal/server/pluginexec"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 )
 
@@ -139,6 +140,7 @@ func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 		"selfinstall.ConsoleUpgradeProtocolCommand": selfinstall.ConsoleUpgradeProtocolCommand,
 		"experiencelaunch.Command":                  experiencelaunch.Command,
 		"selfinstall.EditionCommand":                selfinstall.EditionCommand,
+		"pluginexec.Command":                        pluginexec.Command,
 	}
 	var dispatched []string
 	for _, decl := range file.Decls {
@@ -183,5 +185,13 @@ func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 	got, want := slices.Sorted(slices.Values(builtinCommands)), slices.Sorted(slices.Values(dispatched))
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("builtinCommands = %q, the switch answers %q", got, want)
+	}
+}
+
+// The server starts plugins through its own binary; a bad command line is
+// a usage failure of the trampoline, not an unknown subcommand.
+func TestPluginExecIsDispatched(t *testing.T) {
+	if code := Run(discardLog(), []string{pluginexec.Command, "--profile"}, &bytes.Buffer{}, Options{}); code != pluginexec.ExitUsage {
+		t.Fatalf("exit %d, want the trampoline's usage code %d", code, pluginexec.ExitUsage)
 	}
 }

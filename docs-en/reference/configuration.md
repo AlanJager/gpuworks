@@ -70,6 +70,7 @@ usage_report: false        # No daily report or node counts/GPU models with auto
 | `update_channel` | Empty (follows the build: master builds use `nightly`, `v*` tag builds use `release`) | Release channel used for update checks, official catalog updates, and upgrades: `release` (stable releases) or `nightly` (rolling previews). Switching channels under "Version and updates" in Settings writes this key and takes effect immediately; `gpuworks upgrade` also reads it when `--channel` is omitted. Versions predating release channels do not recognize this key and refuse to start: delete this line before downgrading to those versions (a downgrade with `gpuworks upgrade --archive` automatically rolls back if the old version cannot start) | `gpuworks upgrade --channel` |
 | `auto_check_updates` | Empty (enabled) | Whether to check for new versions automatically: when enabled, opening the console triggers a check (and fetches publisher [notices](usage-report.md#发布方通知)); when `false`, the server does not check automatically and reads the version index and notices only when you click "Check for updates" in Settings. Automatic checks always include the installation identifier, server version, and agent version distribution to count installations and versions. Node counts and GPU models are included only when participating in the improvement program (`usage_report`); see "What update checks report" below. The toggle under "Version and updates" in Settings writes this key and takes effect immediately; enabling it removes the key. The key is written only when disabled; earlier versions do not recognize it and refuse to start, so delete this line before downgrading | — |
 | `usage_report` | Empty (participating) | Whether to join the [User Experience Improvement Program](usage-report.md): sends one anonymous daily report to the publisher and includes node counts and GPU models with automatic update checks (see "What update checks report" below). When `false`, daily reports stop and update checks omit node counts and GPU models. Automatic checks still include the installation identifier and versions; to stop sending this information entirely, also disable `auto_check_updates`. The "User experience improvement program" toggle in Settings writes this key and takes effect immediately; enabling it removes the key. **For private deployments, write `usage_report: false` before the server's first startup** (a report is sent immediately on first startup); the environment variable `GPUWORKS_USAGE_REPORT=off` also forces it off. The key is written only when disabled; earlier versions do not recognize it and refuse to start, so delete this line before downgrading | — |
+| `plugins` | Empty | Trust and site policy for plugin packages: certificate issuers the host trusts and a policy that can only narrow, see [Plugin Trust and Site Policy](#plugin-trust-and-site-policy) below. Edit the file only; the `gpuworks plugin` subcommands read it on every run. Earlier versions do not recognize the key and refuse to start, so remove the whole section before downgrading | `gpuworks plugin --config` |
 | `extensions.<name>` | Empty | Configuration for modules a separately built server adds: one section per module, keyed by the module name, which that module decodes strictly in its own format; every other top-level key is still refused when unknown. A section no module claims only logs a warning at startup and does not stop the server (this happens when a data directory moves between builds). The community build reads nothing in it; earlier versions do not recognize the `extensions` key and refuse to start, so remove the whole section before downgrading | — |
 
 ### Management Sessions
@@ -167,6 +168,33 @@ New or changed administrator passwords must contain 8–128 Unicode characters a
 Sensitive files default to owner-only access (`0600`). A Linux systemd installation explicitly bound to this binary and a non-root service account may use its trusted service group (`0660`); group membership grants access to platform credentials. macOS and standalone servers do not implicitly trust ordinary primary groups. Startup, install and upgrade harden existing credentials, databases and sidecars, and recognized backups; temporary database snapshots are owner-only. Failure to protect a file stops the operation: repair the reported owner/service-group permissions and retry. Generated passwords are not written to service logs.
 
 - Model download mirrors: configure site rules under Settings → Pull Settings; there is no longer a startup argument (`--model-endpoint` remains only for in-process test fixtures: one site rule per site, pointing to that endpoint, without origin fallback, for the management node).
+
+### Plugin Trust and Site Policy
+
+The `plugins` section is owned by the host's root like the rest of the file. It decides who, besides the project roots compiled into the server, may certify plugin packages, and which packages this site refuses on top ([ADR 0071](../adr/0071-installable-extensions.md)). The policy can only narrow: no setting lets in a package that verification would otherwise refuse.
+
+```yaml
+plugins:
+  publishers:                  # certificate issuers the host trusts
+    - keyid: acme-issuer-1     # may not start with gwroot- (the project roots)
+      alg: ed25519             # or ecdsa-p256-sha256
+      public_key: 0RZF/KSeB5I5emmRFX7vHLklBOUA2A8ot0mLncySqxs=
+      roles: [availability_authority]   # optional: privileged roles its packages may claim
+      tables: [fleet_capacity]          # optional: privileged tables its packages may push
+      authority: true          # optional: its certificates may name an authority package for the publisher's own namespace
+      unsandboxed: false       # optional: let a certificate's min_isolation: none stand
+  policy:
+    allow_publishers: [acme]   # when not empty, only these publishers' packages install
+    deny_packages: [acme_beta]
+    deny_permissions: [read:directory]
+    deny_roles: [key_wrap]
+  allow_unsandboxed: [acme_backup]  # third-party packages still allowed on a host without Landlock
+  require_isolation: landlock  # refuse every plugin process when Landlock is missing
+```
+
+- A host-trusted issuer grants nothing privileged by default: no privileged role, no privileged table, no authority, iframe-only console bundles, and Landlock required. `roles`, `tables`, `authority` and `unsandboxed` open each one, and only take effect when the certificate grants it too. Such an issuer can never certify the project publisher `gpuworks`, the bare feature namespace or same-origin console modules.
+- On a host without Landlock (Kylin V10 or UOS 20 on a 4.19 kernel, macOS), a third party's package with a server part installs only when its certificate says `min_isolation: none` (and the issuer allows `unsandboxed`) or it is listed in `allow_unsandboxed`; the signature is then the only defence.
+- A misspelt key, a malformed public key or key id, or an unknown `require_isolation` value makes the file fail to load.
 
 ## Pull Proxies and Outbound Access
 
@@ -380,5 +408,6 @@ The following names appear in the code but are not user-configurable settings. D
 - `GPUWORKS_PARTITION_PROBE_BACKEND`, `GPUWORKS_PARTITION_PROBE_QUOTA_MIB`: Inputs injected into the probe program when the agent starts a dGPU probe container; they are not configuration settings read by the agent.
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
-<!-- translation-source-sha256: 2468085eff26afcc8c0bedf08acdf619f2a6b78b3b17c69a8d4ce67bace56dfd -->
+<!-- translation-source-sha256: f9d4dca05a46af2c4c03f6e6f4d30a7a5a517be27a40774b6fec5ea60dd12cac -->
 <!-- translation-localized-code-block: 86f9f71f25c2b857ad0011486eb8c57eb9996ec1a4417ab035e24d7b4b1f898d dc1d5c5bc85efcc1eb7d1d72bc584329c53e7d9c636c376ad8a7ce5dc1d901cb Reviewed configuration comments; usage_report=false suppresses the daily report and node/GPU counts, while automatic checks retain installation ID and versions. Keys and values unchanged. -->
+<!-- translation-localized-code-block: 0819a5a012bfc474cb0b84d6429664f8b8067852afc5f3219925ddcf5cc73a47 d5522c5aa66b2fb473e2747a03b43e39be3a13e73c6672d57fdd557fea454dbe Reviewed the comments of the plugins example; keys and values unchanged. -->

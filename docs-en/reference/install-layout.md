@@ -36,8 +36,11 @@ The listen address uses the IP of the local default route's outbound interface a
     ├── master.key                  # Credential encryption key
     ├── initial-credentials         # Initial password record
     ├── install-history.jsonl       # Installation/upgrade audit log
+    ├── plugins/                    # plugin packages: <id>/pkg/<version>/ (read-only), <id>/pkg/current, <id>/control.json, <id>/data/ …
     └── logs.db / metrics.db / ux.db / images/ / catalog-packages/ …
 ```
+
+`gpuworks plugin` manages `data/plugins/`: a package is unpacked into `.incoming-*.partial/` and verified there, renamed to `<id>/pkg/<version>/` only when every check passes (files 0444, executables and directories 0555), and made current by replacing `<id>/pkg/current` with a rename; the previous version stays for rollback, and the `*.partial` an interruption leaves is removed by the next install. `<id>/data/`, `<id>/tmp/` and `<id>/snapshots/` are the plugin's own directories (0700), kept on uninstall; `--purge` moves the whole `<id>/` to `.trash/<id>-<time>/`. `.index/<publisher>/` holds imported package indexes.
 
 `server.yaml` resides in the installation directory, rather than the data directory, so restoring the database to another machine does not carry over the old machine's listen address.
 
@@ -180,6 +183,6 @@ UDOCKER_BUNDLE=
 - `gpuworks-agent uninstall` also deletes this file.
 - When the installation script, SSH wizard preflight checks, or out-of-band recovery need to identify the server or token associated with an agent on a host, they read this file (and read the older agent's command line only if the file is missing). For the design rationale, see [ADR 0051](../adr/0051-agent-launch-configuration-file.md).
 
-<!-- translation-source-sha256: a2e6bf1cd23aeab1753c43277b72ab5b00444066347045b8bd863ef6bf26e3a3 -->
-<!-- translation-localized-code-block: 1ca19a085af3173169e8a019ece928ec76960988ad2f598b8a566e4e2d832742 8c972d07f3dd0d39fd244e3fbb203038497d330e63dd4aad76c734e845e85399 Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->
+<!-- translation-source-sha256: e8d95ea065266caf52da887d7e4d5170af6d5d05ac35eb53858c4710d52f27b1 -->
+<!-- translation-localized-code-block: fd368f003cabef2adfa1966748df08068867f71628c8b883c03b14cb9d28a4fc 12557a684f2a46adcac6e8db58ebfa6e9011ac941deb9a9e791d328515a3dc9a Reviewed localization of the directory annotations, including the plugins/ line; paths unchanged. -->
 <!-- translation-localized-code-block: 0a0c78856b3bcc2f70519eaf27daec112ac8a20c1388e0ac5809fef7c3958d06 5126a8bc98f3780a7a6b25daeaa58a61a8cacb4075ece9e6bf89f05f91ec4fd7 Translate explanatory node-token placeholder -->

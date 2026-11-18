@@ -1679,6 +1679,28 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | POST | `/api/v1/platform-tokens` | 创建令牌：`{name, scope?: read\|write（默认 read）, expires_in_days?: 0–3650（0 不过期）}`，返回 201 `{token, item}`；`scope` 非法回 400 `PLATFORM_TOKEN_SCOPE_INVALID` | JWT（登录会话） |
 | DELETE | `/api/v1/platform-tokens/{id}` | 吊销（删除）自己的令牌，立即生效，返回 204；不存在或属于别人回 404 | JWT（登录会话） |
 
+## Plugins（插件）
+
+已安装的签名插件包（`.gwpkg`）的管理接口，见[扩展点](../dev/extensions.md#管理接口)。这些是核心路由：不受功能门控，插件全部掉线或被卸载时照常可用；AI 助手与 MCP 读不到；每次调用都记一条审计日志。server 没有运行插件宿主时，每条路由回 503 `PLUGINS_UNAVAILABLE`。
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | `/api/v1/plugins` | 已安装的包：`{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`，按 `id` 排序 | `JWT(admin)` |
+| POST | `/api/v1/plugins/install?approve=<批准值>&enable=<bool>` | 请求体是 `.gwpkg` 本身（`application/octet-stream`）。没带或带错 `approve` 时回 409 `PLUGIN_APPROVAL_REQUIRED`，`params` 给出 `id`、`version`、`approve_hash` 以及它涵盖的 `permissions`、`roles`（逗号分隔），什么都不装；带对了返回 `{plugin, previous?, unchanged}`。`enable` 缺省为 `false` | 管理会话，admin |
+| POST | `/api/v1/plugins/{id}/enable` | 启用并启动服务端部分，返回该包；不再通过校验的包回 409 `PLUGIN_BROKEN` | 管理会话，admin |
+| POST | `/api/v1/plugins/{id}/disable` | 停止并不再启动，返回该包；它推送的表照常执行，并按掉线计算宽限 | 管理会话，admin |
+| DELETE | `/api/v1/plugins/{id}?purge=<bool>` | 停止并卸载，删掉它推送的全部内容并重新应用保持，返回 204；`purge=true` 连数据目录一起移到 `.trash/` | 管理会话，admin |
+
+字段：
+
+- `trust`：`project`（项目根认证）或 `host`（`server.yaml` 信任的签发者认证）；包不再通过校验时缺省。
+- `state`：服务端部分不运行时是 `disabled`、`installed`（没有常驻服务端部分）、`idle`（按需启动的服务端部分）、`broken`（不再通过校验）或 `revoked`（构建或证书被吊销）；运行时是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`），没有可说的就缺省。
+- `since`：进入当前进程状态的时间，未受监管时缺省；`restarts`：第一次之后又启动了几个进程。
+- `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
+- `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。
+
+错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）或插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）409；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
+
 ## Providers（云厂商租机）
 
 | Method | Path | 说明 | 鉴权 |

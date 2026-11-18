@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
@@ -26,6 +27,8 @@ type extensionSet struct {
 	holds    *holdpass.Runner
 	services []func(context.Context)
 	closed   bool
+	// plugins is the plugin administration of the built-in plugins module.
+	plugins api.PluginAdmin
 }
 
 // holdPassFloor is the least time between two passes of the scheduling
@@ -49,7 +52,8 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 	}()
 	set := &extensionSet{holds: holdpass.New(a.store.ApplySchedulingHolds, a.log.With("component", "scheduling_holds"), holdPassFloor)}
 	section := serverconfig.File{Extensions: cfg.Sections}
-	for _, m := range cfg.Extensions.Modules {
+	plugins := &pluginsModule{cfg: cfg, st: a.store}
+	for _, m := range append(slices.Clip(cfg.Extensions.Modules), Module(plugins)) {
 		name := m.Name()
 		if svc, ok := m.(Service); ok {
 			set.services = append(set.services, moduleService(a, name, svc))
@@ -68,6 +72,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 		}
 	}
 	set.closed = true
+	set.plugins = pluginAdmin{plugins.bridge}
 	if released, err := a.store.ReleaseUnownedHolds(); err != nil {
 		return fmt.Errorf("release scheduling holds no extension owns: %w", err)
 	} else if len(released) > 0 {
@@ -96,7 +101,7 @@ func (set *extensionSet) apiDeps() (api.ExtensionDeps, error) {
 	if err != nil {
 		return api.ExtensionDeps{}, err
 	}
-	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition}, nil
+	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins}, nil
 }
 
 // moduleService runs a module's Service on Run's context and logs an error it

@@ -18,7 +18,7 @@ func TestServerCLIHelp(t *testing.T) {
 		os.Exit(Main(os.Args[1:], Options{}))
 		return
 	}
-	for _, sub := range []string{"serve", "install", "upgrade", "restart", "stop", "reset-password", "migrate", "expose", "expose up", "expose down", "expose rm", "expose logs", "expose status"} {
+	for _, sub := range []string{"serve", "install", "upgrade", "restart", "stop", "reset-password", "migrate", "plugin", "plugin install", "plugin list", "plugin remove", "plugin trust import", "plugin index import", "plugin compat", "expose", "expose up", "expose down", "expose rm", "expose logs", "expose status"} {
 		t.Run(sub, func(t *testing.T) {
 			args := append([]string{"-test.run=^TestServerCLIHelp$", "--"}, strings.Fields(sub)...)
 			cmd := exec.Command(os.Args[0], append(args, "--help")...)

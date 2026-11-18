@@ -38,6 +38,7 @@ To specify another installation directory, append `--dir /path/to/installation` 
 | | [`expose`](#gpuworks-expose) | Publish a public endpoint for the console | Operators, when the control plane is behind NAT |
 | | [`migrate`](#gpuworks-migrate) | Run migrations and seed the built-in catalog in the specified SQLite database, then exit | Operators/developers, for offline checks or database premigration |
 | | [`reset-password`](#gpuworks-reset-password) | Reset the administrator account password | Operators, when the password is forgotten |
+| | [`plugin`](#gpuworks-plugin) | Verify, install, list and remove plugin packages, import trust and package indexes, check compatibility before a downgrade | Operators; works with the server stopped |
 | | `version` | Print the version | Anyone |
 | | `edition` | Print the build edition (`community` for the community build); the `version` output does not include it | Anyone; to confirm which build is installed when troubleshooting |
 | | `console-upgrade-protocol` | Print the console upgrade protocol number supported by this version (currently `1`); versions predating console upgrades do not have this subcommand | Before a console upgrade, the server invokes it on the new binary to be installed |
@@ -147,7 +148,7 @@ Fetch the current version from a [release channel](../adr/0040-signed-multi-sour
 | `--source URL` | Three built-in public sources | Source in release channel format (`<URL>/<channel>/index.json`); repeatable, replaces the built-in sources; used for customer-hosted mirrors |
 | `--base-url URL` | Empty | Read from a release site instead (`<URL>/data/release.json` and `<URL>/downloads/`), such as one hosted on an internal network |
 | `--archive FILE` | Empty | Local release archive `gpuworks-<release_id>-<os>-<arch>.tar.gz`; makes no network requests |
-| `--version ID` | Empty | Release ID from the signed channel index. A release site or a local archive must carry the exact version specified |
+| `--version ID` | Empty | Expected release ID; error if it differs from the current channel/site version or the archive version, rather than silently upgrading to another version |
 | `--keep N` | `3` | Number of pre-upgrade backup sets to retain |
 | `--force` | `false` | Allow replacement of a local build without a release ID (`dev` / `-dirty`) |
 | `--allow-edition-change` | `false` | Allow installing a release of another edition than the installed one |
@@ -273,6 +274,23 @@ Reset a user's password by modifying the database directly, without going throug
 - On success, if the `initial-credentials` beside the database records this user, the command tries to delete it, since its password no longer works; a failure only prints a warning and does not affect the reset.
 - Run as the operator; `sudo` is not required. If database permissions are insufficient, the operation fails with the database's own permission error.
 - Do not write passwords or keys to shell history or logs.
+
+## gpuworks plugin
+
+Verifies, installs, lists and removes signed plugin packages, imports trust updates, revocation lists and package indexes offline, and checks compatibility before a downgrade. The formats and the verification order are in [Plugin Protocol and Wire Formats](plugin-protocol.md); the design is [ADR 0071](../adr/0071-installable-extensions.md). The plugin host that starts plugin processes is not built yet: an installed package is for now only verified and placed in the data directory.
+
+| Subcommand | Description |
+|---|---|
+| `install --file PKG.gwpkg [--disabled]` | Reads the package into a staging directory under `<data>/plugins/`, runs every step of the verification order there, and only when all pass moves it to `pkg/<version>/` and switches `current` atomically; the previous version is kept for rollback. Installing the same version with the same signed manifest again only rewrites the control file; the same version with other contents is refused (`PLUGIN_VERSION_CONFLICT`). A plugin data marker newer than the build's `storage.state_version` is refused (`PLUGIN_STATE_TOO_NEW`). Installing from the command line approves the package's permissions and enables it; `--disabled` installs without enabling |
+| `list` | Verifies every installed package again (rehashing only files whose size, modification time or inode changed) and lists its id, version, publisher, trust (`project` for a root-issued certificate, `host` for an issuer the host trusts), whether it is enabled, and its state: `ok`, `revoked` (revoked but never stopped by that alone), or `broken: <code>` |
+| `remove ID [--purge]` | Uninstalls: removes the package and its control file and keeps the plugin's data and its data marker; `--purge` moves the whole directory to `<data>/plugins/.trash/` and deletes the data marker. The package's floor always stays, so an older build cannot come back by reinstalling |
+| `trust import FILE [--cert publisher.crt]` | Imports a root-signed trust update, a root-signed revocation list, or a publisher's own revocation list (with that publisher's certificates given by `--cert`); a serial not newer than the one applied is refused (`PLUGIN_TRUST_REPLAYED`) |
+| `index import FILE --cert publisher.crt` | Imports a publisher's package index: applies its revocations and floors, saves it under `<data>/plugins/.index/`, and prints which version of each package would be installed and the newer versions this server cannot run (`PLUGIN_NEEDS_NEWER_CORE`) |
+| `compat` | Read-only check: without migrating or writing the database, reports the persisted version markers that would make this build refuse to start, and the packages that cannot run because their data marker is newer, they require a capability this server lacks, or their manifest cannot be read. Run it with the older binary before downgrading the server; it exits 1 when it finds anything |
+
+Every subcommand takes `--data DIR` (by default found the same way as for `reset-password`), `--db PATH` (default `<data>/gpuworks.db`) and `--config server.yaml` (default: the `server.yaml` next to the binary, then the default installation's; its `plugins` section applies, see [Configuration Reference](configuration.md#plugin-trust-and-site-policy)). They work with the server stopped: the database opens the way the other maintenance commands open it, and `<data>/plugins/` has its own lock. The data directory must already exist; it is never created. Every refusal carries a code (see [Error codes](plugin-protocol.md#error-codes) and the `PLUGIN_*` codes), which the log shows as `code=`.
+
+This build compiles in no project root, so for now only packages certified by an issuer trusted in `server.yaml` install; a fork puts in its own roots through `cli.Options.PluginRoots` in its build.
 
 ## gpuworks support-bundle
 
@@ -611,5 +629,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: 8b9f9f3c329de15e472e6d5459699555d6b66b93ea5a077b9ac0166545ecad50 -->
+<!-- translation-source-sha256: d1fffa2d5085be2cc0f29f893475c86e5c0708cbc8a77fa2e77a7dcf3faa3d1e -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

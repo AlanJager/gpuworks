@@ -49,6 +49,7 @@ var deniedRoutes = map[string]string{
 	"/api/v1/ssh-key":                             "the platform's SSH key",
 	"/api/v1/kube/clusters/{uuid}/manifest":       "carries the cluster's enrollment token",
 	"/api/v1/terminal/sessions":                   "terminal audit records, with client addresses",
+	"/api/v1/plugins":                             "plugin administration, for administrators in the console only",
 }
 
 // Readable reports whether the assistant may read a GET route pattern.

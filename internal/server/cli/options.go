@@ -15,9 +15,11 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/distribution"
+	"gpuworks.ai/gpuworks/internal/server/extpkg/trust"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/version"
+	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
 // editionName is the form an edition name takes.
@@ -41,6 +43,11 @@ type Options struct {
 	// checks, notices and catalog updates and the upgrade command read it.
 	// The zero value is distribution.Community().
 	Distribution distribution.Profile
+	// PluginRoots are the project roots plugin publisher certificates and
+	// trust updates chain to (key ids starting with "gwroot-"); nil is the
+	// roots compiled into this build (trust.ProjectRoots). A fork's build
+	// passes its own.
+	PluginRoots []extapi.PublicKey
 	// InstallHooks are host steps install, upgrade and uninstall run, in this
 	// order (reversed on uninstall); see selfinstall.InstallHook.
 	InstallHooks []selfinstall.InstallHook
@@ -85,6 +92,14 @@ func (e Env) OpenMaintenanceStore(dataDir, dbPath string) (*store.Store, error) 
 		return nil, err
 	}
 	return Options{Extensions: e.Extensions}.openMaintenanceStore(dbPath, policy)
+}
+
+// pluginRoots are the plugin roots of the build.
+func (o Options) pluginRoots() []extapi.PublicKey {
+	if o.PluginRoots != nil {
+		return o.PluginRoots
+	}
+	return trust.ProjectRoots()
 }
 
 // validate panics when an extra command cannot be dispatched unambiguously,

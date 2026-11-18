@@ -1,9 +1,12 @@
-"""Exercise the CI scheduler checks and Make's failure boundary offline."""
+"""Exercise CI scheduling, bounded test output and Make's failure boundary offline."""
 
+import os
 import pathlib
 import re
 import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 
 
@@ -22,6 +25,57 @@ def change_job_needs(text, name, needs):
 
 
 class CIGateTests(unittest.TestCase):
+    def core_test_command(self):
+        text = (ROOT / ".gitlab-ci.yml").read_text()
+        job = re.search(r"(?ms)^core-test:\n(.*?)(?=^[A-Za-z0-9_.-]+:|\Z)", text).group(1)
+        script = re.search(r"(?ms)^  script:\n(.*?)(?=^  [a-z_]+:|\Z)", job).group(1)
+        for item in re.findall(r"(?ms)^    - (.*?)(?=^    - |\Z)", script):
+            if "-coverprofile=coverage-core.out ./..." in item:
+                return textwrap.dedent(item[2:] if item.startswith("|\n") else item)
+        self.fail("core-test Go command not found")
+
+    def run_noisy_core_test(self, status):
+        with tempfile.TemporaryDirectory(prefix="gpuworks-ci-test-log-") as directory:
+            root = pathlib.Path(directory)
+            binary = root / "go"
+            binary.write_text("#!" + sys.executable + "\n" + textwrap.dedent("""\
+                import os, sys
+                status = int(os.environ['GPUWORKS_FIXTURE_GO_EXIT'])
+                if status:
+                    print('--- FAIL: TestEarlyFailure (0.00s)')
+                for _ in range(70000):
+                    print('verbose successful test output ' + 'x' * 50)
+                if status:
+                    print('--- FAIL: TestLateFailure (0.00s)')
+                    print('FAIL gpuworks.fixture/late')
+                else:
+                    print('PASS')
+                sys.exit(status)
+                """))
+            binary.chmod(0o755)
+            env = {**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                   "GPUWORKS_FIXTURE_GO_EXIT": str(status)}
+            command = self.core_test_command() + "\nprintf ready > next-step\n"
+            result = subprocess.run(["sh", "-e", "-c", command], cwd=root,
+                                    env=env, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, status, result.stderr)
+            self.assertEqual((root / "next-step").exists(), status == 0,
+                             "a successful test must continue to the build-tag checks; a failure must stop")
+            self.assertLess(len(result.stdout.encode()), 65536, "console output must fit below the runner's 4 MB cap")
+            log = (root / ".testlogs/core-test.log").read_text()
+            self.assertGreater(len(log.encode()), 4 * 1024 * 1024)
+            return result.stdout, log
+
+    def test_noisy_core_failure_keeps_early_and_late_failures_and_exit_status(self):
+        output, log = self.run_noisy_core_test(23)
+        for name in ("TestEarlyFailure", "TestLateFailure"):
+            self.assertIn(name, output)
+            self.assertIn(name, log)
+
+    def test_noisy_core_success_keeps_the_full_log_without_flooding_the_console(self):
+        output, _ = self.run_noisy_core_test(0)
+        self.assertIn("PASS", output)
+
     def check(self, text):
         with tempfile.TemporaryDirectory(prefix="gpuworks-ci-dag-") as directory:
             pathlib.Path(directory, ".gitlab-ci.yml").write_text(text)

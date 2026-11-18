@@ -51,6 +51,10 @@ const (
 	// this build knows; a downgraded server refuses to start rather than
 	// drop or rewrite it. Params: marker, version, known, needs.
 	ErrorStateTooNew = "PLUGIN_STATE_TOO_NEW"
+	// ErrorCapabilityMissing: a plugin refuses initialize because the
+	// server offers no version of a capability it cannot run without
+	// within the range it speaks. Params: capability, min, max.
+	ErrorCapabilityMissing = "PLUGIN_CAPABILITY_MISSING"
 )
 
 // Error is a coded failure. Code is stable; Params are the values a client

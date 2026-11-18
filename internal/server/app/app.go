@@ -51,6 +51,7 @@ import (
 // App holds the assembled server.
 type App struct {
 	cfg           Config
+	routes        http.Handler // the API router (RouteInventory)
 	log           *slog.Logger
 	store         *store.Store
 	bus           *bus.Bus
@@ -388,7 +389,7 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	if err := startExtensions(cfg, a, master, &apiDeps); err != nil {
 		return nil, err
 	}
-	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
+	handler := a.apiRouter(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
 	a.scaleReplicas = planning.Scaling{Store: st, Resolve: networks.Resolve, Online: h.Online, UCXNetlinkHang: h.UCXNetlinkHang}.ScaleScheduled
 	handler = api.WithSecurityHeaders(proxies, accessLogHandlerFor(log, cfg.DataDir, a.routeByFunction(cfg.experienceGuard(handler))))
 
