@@ -50,7 +50,7 @@ func (b *Bridge) refresh() error {
 	b.mu.Lock()
 	b.entries = make(map[string]extpkg.Entry, len(entries))
 	for _, e := range entries {
-		b.entries[e.ID] = e
+		b.entries[e.ID] = b.claimID(e)
 	}
 	for id := range b.refusals {
 		if _, ok := b.entries[id]; !ok {
@@ -284,4 +284,18 @@ func pusherOf(v *extpkg.Verified) pushstate.Pusher {
 	m := v.Manifest
 	return pushstate.Pusher{ID: m.ID, Publisher: m.Publisher, Grants: v.Grants,
 		Permissions: slices.Clone(m.Permissions), Codes: slices.Clone(m.Codes)}
+}
+
+// claimID turns an installed package whose id a compiled module has taken
+// (a module added in a later build) into one that does not verify
+// (PLUGIN_ID_TAKEN): it does not run and serves no route, and what it
+// restricted stays enforced.
+func (b *Bridge) claimID(e extpkg.Entry) extpkg.Entry {
+	if e.Err != nil {
+		return e
+	}
+	if err := extpkg.CheckIDFree(e.ID, b.cfg.CompiledModules); err != nil {
+		e.Err, e.Verified = err, nil
+	}
+	return e
 }

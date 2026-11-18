@@ -55,6 +55,8 @@ type world struct {
 	// records are the applied host setup records bridges read; zero is
 	// the host's own.
 	records hostsetup.Records
+	// compiled are the names of the modules compiled into the server.
+	compiled []string
 }
 
 // lockedBuffer is a log sink the bridge's goroutines may share.
@@ -140,7 +142,7 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 	b, err := Open(context.Background(), Config{Packages: pkgs,
 		State: pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) },
 			ClockCorrected: func(time.Time, time.Time, string, string) { w.corrected.Add(1) }}},
-		Features: dyn, StaticFeatures: owners, HostSetup: w.records,
+		Features: dyn, StaticFeatures: owners, CompiledModules: w.compiled, HostSetup: w.records,
 		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour},
 			CgroupRoot: w.cgroupRoot, CgroupParent: "svc"},
 		Core: extapi.CoreInfo{Version: "dev", InstallID: "inst_bridge_test", OS: "linux", Arch: "amd64", HARole: extapi.HARoleSingle},

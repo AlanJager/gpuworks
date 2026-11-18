@@ -84,7 +84,7 @@ func TestSetEnabled(t *testing.T) {
 
 // The server offers every pushed table kind at its newest schema, plus
 // node/host identity reads, clock/state/key calls and host setup at version 1.
-func TestCapabilitiesOfferThePushedTables(t *testing.T) {
+func TestCapabilitiesOfferRoutesAndThePushedTables(t *testing.T) {
 	caps, offer := extpkg.Capabilities(), extpkg.Offer()
 	for _, kind := range extapi.TableKinds() {
 		name := extapi.TableCapability(kind)
@@ -98,7 +98,10 @@ func TestCapabilitiesOfferThePushedTables(t *testing.T) {
 			t.Fatalf("%s: capabilities %d, offer %+v", name, caps[name], offer[name])
 		}
 	}
-	if len(caps) != len(extapi.TableKinds())+7 || len(offer) != len(caps) {
+	if caps[extapi.CapRoutes] != 1 || offer[extapi.CapRoutes] != (extapi.Range{Min: 1, Max: 1}) || caps[extapi.CapRoutesWebSocket] != 0 {
+		t.Fatalf("routes: capabilities %v", caps)
+	}
+	if len(caps) != len(extapi.TableKinds())+8 || len(offer) != len(caps) {
 		t.Fatalf("capabilities = %v", caps)
 	}
 }

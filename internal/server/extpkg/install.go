@@ -81,6 +81,10 @@ type InstallOptions struct {
 	// Features, when set, refuses a package declaring a feature key
 	// someone else provides (ErrorPluginFeatureTaken), before approval.
 	Features FeatureOwners
+	// ReservedIDs are ids no package may take: the names of the modules
+	// compiled into the server, whose routes live under the same
+	// /api/v1/x/<name>/ (ErrorPluginIDTaken), refused before approval.
+	ReservedIDs []string
 }
 
 // Install reads a package from r, verifies it in an incoming directory,
@@ -90,6 +94,9 @@ type InstallOptions struct {
 // different manifest is refused (ErrorPluginVersionConflict).
 func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	return h.place(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
+		if err := CheckIDFree(v.Manifest.ID, opt.ReservedIDs); err != nil {
+			return layout.Control{}, err
+		}
 		current, err := h.Dir.Current(v.Manifest.ID)
 		if err != nil {
 			return layout.Control{}, err

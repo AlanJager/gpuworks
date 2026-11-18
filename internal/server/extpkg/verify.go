@@ -349,3 +349,13 @@ func checkFeatureOwners(m *extapi.Manifest, owners FeatureOwners) error {
 	}
 	return nil
 }
+
+// CheckIDFree refuses package id when it is one of reserved, the names of
+// the modules compiled into the server (ErrorPluginIDTaken): the two would
+// share the route namespace /api/v1/x/<id>/.
+func CheckIDFree(id string, reserved []string) error {
+	if !slices.Contains(reserved, id) {
+		return nil
+	}
+	return refuse(messages.ErrorPluginIDTaken, "plugin id "+id+" is already used by a built-in module", map[string]any{"id": id})
+}

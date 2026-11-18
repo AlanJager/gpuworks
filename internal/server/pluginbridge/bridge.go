@@ -77,7 +77,11 @@ type Config struct {
 	// HealthChanged announces that the plugin health banners changed
 	// (HealthBanners), for the console to read its manifest again.
 	HealthChanged func()
-	Log           *slog.Logger
+	// CompiledModules are the names of the modules compiled into the
+	// server: their routes live under /api/v1/x/<name>/, so no package
+	// may have one as its id (PLUGIN_ID_TAKEN).
+	CompiledModules []string
+	Log             *slog.Logger
 }
 
 // Bridge is the plugin host of one server.
@@ -165,6 +169,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 		return nil, fmt.Errorf("plugins: list installed packages: %w", err)
 	}
 	for _, e := range entries {
+		e = b.claimID(e)
 		b.entries[e.ID] = e
 		if e.Err != nil {
 			b.log.Warn("installed plugin does not verify; what it restricted stays enforced and it does not run", "plugin", e.ID, "err", e.Err)

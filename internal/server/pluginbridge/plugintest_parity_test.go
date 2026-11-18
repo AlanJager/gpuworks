@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
@@ -99,8 +100,7 @@ func TestPlugintestRefusesPushesAsPushedStateDoes(t *testing.T) {
 
 // plugintest signs a route request's principal exactly as extapi does under
 // the key it hands the plugin in initialize, so a plugin's tests of
-// RequirePrincipal hold against the server's signature. The server's own
-// signer joins this comparison once it forwards routes.
+// RequirePrincipal hold against the server's signature.
 func TestPlugintestSignsThePrincipalAsExtapiDoes(t *testing.T) {
 	cfg := pluginsdk.Config{ID: "acme_backup", Version: "1.0.0", ManifestSHA256: extapi.Digest("sha256:" + strings.Repeat("a", 64))}
 	h := plugintest.Start(t, cfg)
@@ -122,5 +122,62 @@ func TestPlugintestSignsThePrincipalAsExtapiDoes(t *testing.T) {
 	if req.Header.Get(extapi.HeaderPrincipal) != hdr || req.Header.Get(extapi.HeaderPrincipalMac) != mac ||
 		req.Header.Get(extapi.HeaderFeatureAccess) != "acme.backup=read_only" {
 		t.Fatalf("plugintest headers %v differ from extapi's %s / %s", req.Header, hdr, mac)
+	}
+}
+
+// The server's signer, under the key a plugin got in initialize, signs a
+// principal the SDK accepts for the route's action, carrying the caller
+// and the feature access; a 4 KiB request id is clipped, not refused.
+func TestServerSignedRoutesVerifyInThePlugin(t *testing.T) {
+	cfg := pluginsdk.Config{ID: "acme_backup", Version: "1.0.0", ManifestSHA256: extapi.Digest("sha256:" + strings.Repeat("a", 64))}
+	got := make(chan *extapi.Principal, 1)
+	access := make(chan extapi.FeatureAccess, 1)
+	cfg.Handler = pluginsdk.RequirePrincipal("acme_backup.jobs_create", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got <- pluginsdk.PrincipalFrom(r)
+		access <- pluginsdk.FeatureAccessFrom(r)
+	}))
+	h := plugintest.Start(t, cfg)
+	if _, err := h.Initialize(h.Request()); err != nil {
+		t.Fatal(err)
+	}
+	decl := extapi.RouteDecl{Method: http.MethodPost, Pattern: "/jobs", Action: "acme_backup.jobs_create", Access: extapi.RouteAdminSession, Feature: "acme.backup"}
+	r := &Route{Plugin: "acme_backup", Version: "1.0.0", Decl: decl, Timeout: 60 * time.Second}
+	caller := Caller{Kind: extapi.PrincipalSession, UserID: 7, Username: "ada", Role: "admin", LocalAdmin: true,
+		RequestID: strings.Repeat("r", 4096), Access: extapi.AccessReadOnly}
+	req, err := http.NewRequest(http.MethodPost, "http://gwx-plugin:80"+extapi.PathRoutePrefix+"/jobs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := signerFor(r, caller)(h.PrincipalKey(), req.Header); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := h.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("server-signed route = %d", resp.StatusCode)
+	}
+	p := <-got
+	if p.Kind != "session" || p.UserID != 7 || p.Username != "ada" || !p.PlatformAdmin || !p.LocalAdmin ||
+		len(p.Roles) != 1 || p.Roles[0] != "admin" || p.RouteAction != decl.Action || p.Route != "/jobs" || p.RequestID != strings.Repeat("r", 128) {
+		t.Fatalf("principal = %+v", p)
+	}
+	if a := <-access; len(a) != 1 || a["acme.backup"] != extapi.AccessReadOnly {
+		t.Fatalf("feature access = %v", a)
+	}
+
+	// Under another spawn's key the plugin refuses it.
+	other := bytes.Repeat([]byte{9}, extapi.PrincipalKeyBytes)
+	req, _ = http.NewRequest(http.MethodPost, "http://gwx-plugin:80"+extapi.PathRoutePrefix+"/jobs", nil)
+	_ = signerFor(r, caller)(other, req.Header)
+	resp, err = h.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("another key's signature = %d", resp.StatusCode)
 	}
 }

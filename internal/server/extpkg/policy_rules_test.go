@@ -52,6 +52,13 @@ func TestVerifyAppliesTheServerPolicy(t *testing.T) {
 			r.WebSocket = true
 			s.Manifest.Routes = []extapi.RouteDecl{r}
 		}, code: messages.ErrorPluginIncompatible, params: map[string]any{"capability": "routes.websocket"}},
+		{name: "websocket route on this server", offer: extpkg.Capabilities(), edit: func(s *extsign.Spec) {
+			s.Manifest.Permissions = []string{"http:routes"}
+			s.Manifest.Requires = map[string]int{"routes": 1, "routes.websocket": 1}
+			r := routeDecl("/watch", extapi.RouteMember)
+			r.WebSocket = true
+			s.Manifest.Routes = []extapi.RouteDecl{r}
+		}, code: messages.ErrorPluginIncompatible, params: map[string]any{"capability": "routes.websocket", "offered": 0}},
 	}
 	for _, c := range cases {
 		for _, mode := range []extpkg.Mode{extpkg.Install, extpkg.Recheck} {
