@@ -136,7 +136,8 @@ type RouteDecl struct {
 	// HTML lets the route answer text/html; only a public, admin or
 	// admin_session route may.
 	HTML bool `json:"html,omitempty"`
-	// TimeoutS bounds a request in seconds; 0 is DefaultRouteTimeoutS.
+	// TimeoutS bounds a request in seconds; 0 is DefaultRouteTimeoutS. On a
+	// Stream route it bounds the wait for the first byte of the response.
 	TimeoutS int `json:"timeout_s,omitempty"`
 	// AIReadable lets the assistant and MCP read a GET route.
 	AIReadable bool `json:"ai_readable,omitempty"`

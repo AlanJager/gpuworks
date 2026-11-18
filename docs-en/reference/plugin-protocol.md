@@ -124,7 +124,7 @@ Routes are served at `/api/v1/x/<id><pattern>`:
 | `feature` / `ungated` | Exactly one is set; `feature` must be a key this manifest declares |
 | `write_when_read_only` | Lets this non-GET write through while the feature is read-only (a write that only removes or relaxes); needs `feature` |
 | `max_body` | Request body limit; 0 means 1 MiB, at most 1 GiB; above 1 MiB the package needs the permission `http:uploads` |
-| `timeout_s` | 0 means 60 seconds, at most 600 |
+| `timeout_s` | The request time limit in seconds: 0 means 60 seconds, at most 600; on a stream route it bounds the wait for the response's first byte |
 | `stream` / `websocket` | A streamed response / a WebSocket upgrade (GET only, not together with `stream`); `websocket` also needs `routes.websocket` in `requires` or `uses`. On a server that offers only `routes`, a package that has it in `requires` is incompatible; one that has it only in `uses` installs as usual, but that route is not served |
 | `html` | Lets the route answer `text/html`; only `public`, `admin` and `admin_session` routes may set it |
 | `ai_readable` | The assistant and MCP may read it; GET only |
@@ -294,6 +294,8 @@ Under ADR 0071, a plugin is a child process of the server and runs plaintext HTT
 | `GET /host/v1/health` | Host health | The plugin probes the host API; the answer is a health object |
 | Request header `Gwx-Deadline-Ms` | Unix milliseconds | The call's deadline |
 | Response header `Gwx-Product-Error` | — | Marks a plugin route's response body as an error object |
+| `/r/<path>` | Route | A request to one of the plugin's routes ([route requests](#route-requests-and-the-principal)) |
+| Request headers `Gwx-Principal`, `Gwx-Principal-Mac`, `Gwx-Feature-Access` | — | Who calls a route, and the access of its features |
 
 The handshake request:
 
@@ -319,6 +321,60 @@ The plugin's answer:
 ```
 
 `protocol` is the major the plugin chose from the server's range (only 1 today); `manifest_sha256` is the digest of the manifest the plugin was built with, by which the server refuses a binary that does not belong to its package; `use` maps each capability the plugin will use to the version it chose, which must lie within the server's `offer`; `services` are the optional services the plugin serves, sorted.
+
+## Route requests and the principal
+
+A plugin's routes live at `/api/v1/x/<id><pattern>`. Once the server has authenticated, matched and checked a request, it forwards it to `/r<path>` on the serve connection (for example `/api/v1/x/acme_backup/jobs` to `/r/jobs`). Before forwarding it strips any `Gwx-*` header the client sent, then sets three headers that tell the plugin who is calling and which route the server matched:
+
+| Header | Content |
+|---|---|
+| `Gwx-Principal` | The principal: canonical JSON, base64url-encoded without padding |
+| `Gwx-Principal-Mac` | `base64url(HMAC-SHA256(principal_key, <Gwx-Principal value> + "\n" + <Gwx-Feature-Access value>))`, without padding; the feature access is signed together with the principal |
+| `Gwx-Feature-Access` | The current access level of each feature the matched route declares; an ungated route sends an empty value |
+
+`principal_key` is the key the handshake request generates fresh for each spawn, so after a plugin restarts, headers signed for the previous spawn no longer verify. The server does not offer the `routes` capability or forward routes yet; this section freezes the format and the plugin-side check.
+
+The principal:
+
+<!-- golden: principal/v1/valid/admin_session.json -->
+```json
+{"exp":"2026-12-01T00:01:05Z","kind":"session","local_admin":true,"platform_admin":true,"request_id":"gw-01/9f2c4e7a-000042","roles":["admin"],"route":"/reports/{period}","route_action":"acme_reports.read","user_id":1,"username":"admin"}
+```
+
+| Field | Rule |
+|---|---|
+| `kind` | `session` (a console login session), `token` (a platform token, on behalf of its user) or `public` (a `public` route, no user) |
+| `user_id` / `username` | The user; absent for `public`, required otherwise |
+| `platform_admin` | The user is a platform administrator |
+| `local_admin` | The break-glass local administrator; can be true only for a platform administrator signed in with a session |
+| `roles` | The user's roles, sorted, at least one; currently the single core role |
+| `scope_projects` | Optional: the projects the user's readable data is limited to, sorted; empty means no limit |
+| `api_key_id` | The platform token's id; required when `kind` is `token`, absent otherwise |
+| `request_id` | The server's request id, for correlating logs, at most 128 bytes |
+| `route_action` | The `action` of the route the server matched (`<package id>.<verb>`) |
+| `route` | The manifest `pattern` of the route the server matched |
+| `exp` | The expiry: the route's `timeout_s` (default 60) plus 5 seconds, rounded up to the second; a stream route's `timeout_s` bounds its first byte, and the same rule applies |
+
+The `Gwx-Feature-Access` grammar is `<feature key>=<level>` entries joined by `,`, sorted by key, without spaces, where the level is `full`, `read_only` or `locked` (a route of a `hidden` feature answers 404 and never reaches the plugin). It lists only the keys the route declares, and has exactly one spelling.
+
+Signing the principal above with the handshake golden file's `principal_key` (bytes 0 to 31) and `Gwx-Feature-Access` set to `acme.reports=read_only` gives these three headers (the vectors under `principal/v1/signed/` are frozen with the golden files):
+
+<!-- golden: principal/v1/signed/admin_session.txt -->
+```text
+Gwx-Feature-Access: acme.reports=read_only
+Gwx-Principal: eyJleHAiOiIyMDI2LTEyLTAxVDAwOjAxOjA1WiIsImtpbmQiOiJzZXNzaW9uIiwibG9jYWxfYWRtaW4iOnRydWUsInBsYXRmb3JtX2FkbWluIjp0cnVlLCJyZXF1ZXN0X2lkIjoiZ3ctMDEvOWYyYzRlN2EtMDAwMDQyIiwicm9sZXMiOlsiYWRtaW4iXSwicm91dGUiOiIvcmVwb3J0cy97cGVyaW9kfSIsInJvdXRlX2FjdGlvbiI6ImFjbWVfcmVwb3J0cy5yZWFkIiwidXNlcl9pZCI6MSwidXNlcm5hbWUiOiJhZG1pbiJ9
+Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
+```
+
+`extapi.VerifyPrincipal(key, principal, MAC, feature access, now)` compares the MAC in constant time first and decodes only after it matches: strictly, requiring canonical JSON and refusing unknown fields, then checking the rules above. It refuses an `exp` before `now`, or later than `now` plus the longest route timeout (600 + 5 seconds). A missing header, a MAC mismatch and an expired principal are `ErrPrincipalMissing`, `ErrPrincipalMAC` and `ErrPrincipalExpired` (one too far ahead is `ErrPrincipalTooLong`); a malformed one is a coded `*extapi.Error`.
+
+A plugin built with the SDK wraps each route where it registers it with `pluginsdk.RequirePrincipal(action, h)`:
+
+```go
+mux.Handle("POST /r/jobs", pluginsdk.RequirePrincipal("acme_backup.jobs_create", createJob))
+```
+
+It verifies the three headers with this spawn's key and requires `route_action` to equal the `action` of the route the plugin's own router matched. If the server's router and the plugin's match the same path to different routes, the request is therefore refused rather than served under the other route's access level and feature checks. A request that fails gets 403 and an error object marked with `Gwx-Product-Error` (`reason` `permission_denied`, `object` `principal`; a `PLUGIN_WIRE_*` code; a MAC mismatch and a route other than the one the server matched are both `PLUGIN_WIRE_INVALID` with `rule` `relation`, `field` `_root` and `route_action` respectively), and the handler is not called. The handler reads the verified caller with `pluginsdk.PrincipalFrom(r)` and `pluginsdk.FeatureAccessFrom(r)`. `plugintest` signs with a fixed key (`Harness.PrincipalKey`): `Harness.Principal(action, route)` returns an administrator session principal, and `Harness.Sign(req, p, access)` sets the three headers as the server does.
 
 ## Health and errors
 
@@ -493,8 +549,9 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 - every file under `valid/` decodes, validates and re-encodes to the same bytes;
 - every file under `invalid/<CODE>/` fails with exactly that code; a name `<field>--<rule>[--note].json` also gives the failing field and rule, and `_root` means the object itself;
+- `principal/v1/signed/<name>.txt` holds the three headers `valid/<name>.json` signs to under the key of bytes 0 to 31, and `SignPrincipal` must give the same values byte for byte;
 - `testdata/golden/SHA256SUMS` may only grow: a released golden file is never edited or removed, which `make check-architecture` enforces against its baseline; a new version of an object gets its own `v2/` directory.
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 18979a57d633eea9bb6c79e587b91f59dd524723ebc21e613eedfe2ecc72d077 -->
+<!-- translation-source-sha256: ce61d535e8205e1cdd3720d145425086395f9e8cd92d6209eaff4c5ac63f01eb -->

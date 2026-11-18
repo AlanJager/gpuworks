@@ -1,7 +1,8 @@
 // Package extapi defines the wire formats shared by the GPUWorks server and
 // the plugins it runs: the package manifest, publisher certificates, trust
 // updates and revocation lists, the signature envelope, the gwx/1 handshake,
-// error and push envelopes, and the rows of the pushed tables.
+// error and push envelopes, the rows of the pushed tables, and the
+// principal a plugin route request carries.
 //
 // Plugins and the server both import this package, and neither may change
 // what it accepts once released, because a site may run a server that is

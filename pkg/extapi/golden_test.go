@@ -40,6 +40,7 @@ var goldenDecoders = map[string]func([]byte) (any, error){
 	"error":              func(b []byte) (any, error) { return DecodeWireError(b) },
 	"state_push":         func(b []byte) (any, error) { return DecodeStatePush(b) },
 	"state_ack":          func(b []byte) (any, error) { return DecodeStateAck(b) },
+	"principal":          func(b []byte) (any, error) { return DecodePrincipal(b) },
 	KindAvailability:     tableDecoder(KindAvailability),
 	KindFleetCapacity:    tableDecoder(KindFleetCapacity),
 	KindNodeHolds:        tableDecoder(KindNodeHolds),

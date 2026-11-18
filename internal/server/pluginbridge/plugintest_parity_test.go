@@ -1,6 +1,7 @@
 package pluginbridge
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -93,5 +94,33 @@ func TestPlugintestRefusesPushesAsPushedStateDoes(t *testing.T) {
 	}
 	if real[0].status != http.StatusOK || real[1].code == "" || real[2].code == "" || real[3].code == "" {
 		t.Fatalf("the real answers do not cover the refusals: %+v", real)
+	}
+}
+
+// plugintest signs a route request's principal exactly as extapi does under
+// the key it hands the plugin in initialize, so a plugin's tests of
+// RequirePrincipal hold against the server's signature. The server's own
+// signer joins this comparison once it forwards routes.
+func TestPlugintestSignsThePrincipalAsExtapiDoes(t *testing.T) {
+	cfg := pluginsdk.Config{ID: "acme_backup", Version: "1.0.0", ManifestSHA256: extapi.Digest("sha256:" + strings.Repeat("a", 64))}
+	h := plugintest.Start(t, cfg)
+	key := h.Request().PrincipalKey
+	if !bytes.Equal(key, h.PrincipalKey()) {
+		t.Fatal("the harness signs with a key other than the one initialize hands the plugin")
+	}
+	p := h.Principal("acme_backup.jobs_create", "/jobs")
+	access := extapi.FeatureAccess{"acme.backup": extapi.AccessReadOnly}
+	req, err := http.NewRequest(http.MethodPost, "http://gwx-plugin:80"+extapi.PathRoutePrefix+"/jobs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Sign(req, p, access)
+	hdr, mac, err := extapi.SignPrincipal(key, p, access.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Header.Get(extapi.HeaderPrincipal) != hdr || req.Header.Get(extapi.HeaderPrincipalMac) != mac ||
+		req.Header.Get(extapi.HeaderFeatureAccess) != "acme.backup=read_only" {
+		t.Fatalf("plugintest headers %v differ from extapi's %s / %s", req.Header, hdr, mac)
 	}
 }

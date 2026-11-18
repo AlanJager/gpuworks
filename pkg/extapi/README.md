@@ -19,6 +19,7 @@ What it defines:
 | gwx/1 health and error bodies | `Health`, `WireError` | protocol major 1 |
 | State push and its acknowledgement | `StatePush`, `StateAck` | protocol major 1 |
 | Pushed tables | `AvailabilityV1`, `FleetCapacityV1`, `NodeHoldsV1`, `BannersV1`, `AttestationsV1` | `table.<kind>@1` |
+| Route principal (`Gwx-Principal`, `Gwx-Principal-Mac`, `Gwx-Feature-Access`) | `Principal`, `FeatureAccess` | protocol major 1 |
 
 ## Building against it
 

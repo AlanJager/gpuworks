@@ -162,6 +162,18 @@ PluginGrant.id string
 PluginGrant.permissions_granted []string
 PluginGrant.roles_granted []string
 PluginGrant.version string
+Principal.api_key_id uint64
+Principal.exp Time
+Principal.kind string
+Principal.local_admin bool
+Principal.platform_admin bool
+Principal.request_id string
+Principal.roles []string
+Principal.route string
+Principal.route_action string
+Principal.scope_projects []string
+Principal.user_id uint64
+Principal.username string
 PublicKey.alg string
 PublicKey.keyid string
 PublicKey.public_key []uint8
@@ -251,7 +263,7 @@ WireError.retry_after_ms int64
 var wireRoots = []any{
 	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Index{}, Envelope{}, PublicKey{},
 	HandshakeRequest{}, HandshakeResponse{}, Health{}, WireError{}, StatePush{}, StateAck{},
-	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{},
+	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{}, Principal{},
 }
 
 func TestWireFieldsAreFrozen(t *testing.T) {
