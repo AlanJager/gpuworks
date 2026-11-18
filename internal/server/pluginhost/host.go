@@ -134,7 +134,8 @@ func (h *Host) cgroup(memMiB int) *pluginexec.Cgroup {
 		CPUWeight: pluginCPUWeight, PidsMax: pluginPidsMax}
 }
 
-// Close stops every plugin and refuses further starts.
+// Close stops every plugin, removes their cgroup directories and refuses
+// further starts.
 func (h *Host) Close(ctx context.Context) error {
 	h.mu.Lock()
 	h.closed = true
@@ -146,6 +147,7 @@ func (h *Host) Close(ctx context.Context) error {
 	for _, i := range all {
 		select {
 		case <-i.done:
+			h.removeCgroup(i.spec.ID)
 		case <-ctx.Done():
 			return ctx.Err()
 		}

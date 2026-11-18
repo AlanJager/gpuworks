@@ -71,7 +71,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		return err
 	}
 	rt := m.cfg.PluginRuntime
-	cgRoot, cgParent := pluginCgroups(h.Log())
+	cgRoot, cgParent := pluginCgroups(h.Log(), pluginexec.DetectCgroup, pluginexec.EnterServerLeaf)
 	bus := h.Bus()
 	h.reg.dynamic = featuregate.NewDynamicSet(h.reg.features)
 	b, err := pluginbridge.Open(ctx, pluginbridge.Config{
@@ -114,14 +114,16 @@ func (m *pluginsModule) Run(ctx context.Context) error { return m.bridge.Run(ctx
 // the server's unit cgroup to it (Delegate=yes, which install writes): the
 // server moves into a leaf beside the plugins' parent, as cgroup v2 asks.
 // Otherwise the plugins share the server's cgroup and the RSS watchdog
-// bounds their memory (docs/dev/extensions.md).
-func pluginCgroups(log *slog.Logger) (root, parent string) {
-	root, parent, ok := pluginexec.DetectCgroup(selfinstall.ServiceName + ".service")
+// bounds their memory (docs/dev/extensions.md). detect and enter are
+// pluginexec.DetectCgroup and pluginexec.EnterServerLeaf outside tests.
+func pluginCgroups(log *slog.Logger, detect func(unit string) (root, parent string, ok bool),
+	enter func(root, parent string, pid int) error) (root, parent string) {
+	root, parent, ok := detect(selfinstall.ServiceName + ".service")
 	if !ok {
 		log.Info("the server's cgroup is not delegated; plugins share it and the RSS watchdog bounds their memory")
 		return "", ""
 	}
-	if err := pluginexec.EnterServerLeaf(root, parent, os.Getpid()); err != nil {
+	if err := enter(root, parent, os.Getpid()); err != nil {
 		log.Warn("plugins share the server's cgroup", "err", err)
 		return "", ""
 	}

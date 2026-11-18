@@ -133,6 +133,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 		if prof.Cgroup != nil {
 			_ = pluginexec.RemoveCgroup(prof.Cgroup, spec.ID)
 		}
+		i.update(func(s *Status) { s.Cgroup, s.RSSBytes = "", 0 })
 	}()
 	if connErr != nil {
 		conn = nil

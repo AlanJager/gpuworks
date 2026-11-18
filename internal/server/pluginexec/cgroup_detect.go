@@ -57,7 +57,10 @@ func parseCgroupPlace(mountinfo, selfCgroup []byte) (root, parent string, ok boo
 	}
 	rel = strings.Trim(path.Clean("/"+rel), "/")
 	// A server that already moved into its leaf (a second start of the
-	// plugin host in the same process) places plugins beside it.
+	// plugin host in the same process) places plugins beside it. A server
+	// whose own cgroup merely ends in "server" gets a parent one level too
+	// high; DetectCgroup then finds that parent not delegated (it is
+	// neither the unit nor marked) and plugins fall back to the watchdog.
 	if path.Base(rel) == ServerLeaf {
 		rel = strings.Trim(path.Dir(rel), "/.")
 	}
