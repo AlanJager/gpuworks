@@ -117,14 +117,15 @@ func (b *Bridge) startIfEnabled(id string) {
 		time.AfterFunc(b.markerRetry, func() { b.retryStart(id, refused) })
 		return
 	}
-	if err := b.checkHostSetup(v.Manifest); err != nil {
+	sandbox, err := b.checkHostSetup(v.Manifest)
+	if err != nil {
 		b.log.Warn("plugin host setup is not applied; it is not started", "plugin", id, "err", err)
 		b.mu.Lock()
 		b.refusals[id] = err
 		b.mu.Unlock()
 		return
 	}
-	spec, err := b.specOf(v)
+	spec, err := b.specOf(v, sandbox)
 	if err != nil {
 		b.log.Error("plugin cannot be started", "plugin", id, "err", err)
 		return
@@ -145,18 +146,20 @@ func (b *Bridge) startIfEnabled(id string) {
 // checkHostSetup refuses to start a package whose host setup steps root
 // has not applied on this host, or applied for other steps (an upgrade
 // that changed them): PLUGIN_HOST_SETUP_REQUIRED names the command to run.
-// A record the service account could have written does not count.
-func (b *Bridge) checkHostSetup(m *extapi.Manifest) error {
+// A record the service account could have written does not count. The
+// sandbox it returns is what the applied steps grant, and the only way
+// specOf gets device directories.
+func (b *Bridge) checkHostSetup(m *extapi.Manifest) (hostsetup.Sandbox, error) {
 	ok, err := b.cfg.HostSetup.Matches(m.ID, m.HostSetup)
 	if ok {
-		return nil
+		return hostsetup.Landlock(m.HostSetup), nil
 	}
 	command := hostsetup.Command(m.ID)
 	text := fmt.Sprintf("plugin %s needs a root setup step: run %s", m.ID, command)
 	if err != nil {
 		text += fmt.Sprintf(" (the applied record is not usable: %v)", err)
 	}
-	return messages.NewProductError(messages.ErrorPluginHostSetupRequired, text, map[string]any{"id": m.ID, "command": command})
+	return hostsetup.Sandbox{}, messages.NewProductError(messages.ErrorPluginHostSetupRequired, text, map[string]any{"id": m.ID, "command": command})
 }
 
 // retryStart starts package id again after its data marker could not be
@@ -221,10 +224,9 @@ func (b *Bridge) stop(ctx context.Context, id string) error {
 // specOf is the plugin host's Spec for a verified package: its binary and
 // directories, what its administrator approved, and the capabilities it may
 // use (each required one at the version the server offers, each optional
-// one at most at the version the package names). The device directories
-// and read paths of its host setup are granted only here, after
-// checkHostSetup found its applied record.
-func (b *Bridge) specOf(v *extpkg.Verified) (pluginhost.Spec, error) {
+// one at most at the version the package names), with sandbox, what
+// checkHostSetup found applied.
+func (b *Bridge) specOf(v *extpkg.Verified, sandbox hostsetup.Sandbox) (pluginhost.Spec, error) {
 	m := v.Manifest
 	dir := b.pkgs.Dir.Version(m.ID, m.Version)
 	data, tmp := b.pkgs.Dir.Data(m.ID), b.pkgs.Dir.Tmp(m.ID)
@@ -244,7 +246,6 @@ func (b *Bridge) specOf(v *extpkg.Verified) (pluginhost.Spec, error) {
 		}
 	}
 	rt := m.Runtime
-	sandbox := hostsetup.Landlock(m.HostSetup)
 	return pluginhost.Spec{
 		ID: m.ID, Version: m.Version, ManifestSHA256: v.Digest,
 		Exe: filepath.Join(dir, filepath.FromSlash(v.Binary)), PackageDir: dir, DataDir: data, TmpDir: tmp,

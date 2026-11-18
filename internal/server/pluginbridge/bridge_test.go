@@ -347,7 +347,7 @@ func TestSpecOfAVerifiedPackage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := b.specOf(v)
+	spec, err := b.specOf(v, hostsetup.Sandbox{})
 	if err != nil {
 		t.Fatal(err)
 	}

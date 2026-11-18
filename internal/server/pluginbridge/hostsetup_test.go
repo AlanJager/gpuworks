@@ -37,8 +37,9 @@ func apply(t *testing.T, r hostsetup.Records, id string, steps ...extapi.HostSet
 // A package with host setup steps waits in needs_host_setup, naming the
 // command, and starts nothing until root has applied exactly its steps;
 // then it starts with the device directories and read paths of its
-// sandbox. An upgrade that changes the steps waits again, while one record
-// the service account could have written never counts.
+// sandbox. The view offers Enable as the way to check again once the
+// command ran. An upgrade that changes the steps waits again, while one
+// record the service account could have written never counts.
 func TestHostSetupGatesTheStart(t *testing.T) {
 	w := newWorld(t, nil)
 	w.records = hostsetup.Records{Dir: t.TempDir(), Owner: os.Getuid()}
@@ -49,7 +50,7 @@ func TestHostSetupGatesTheStart(t *testing.T) {
 	v := install(t, b, driverPkg(w, "1.0.0", key), true).View
 	if v.State != StateNeedsHostSetup || v.Code != messages.ErrorPluginHostSetupRequired ||
 		v.Params["id"] != "acme_driver" || v.Params["command"] != "sudo gpuworks plugin host-setup --id acme_driver" ||
-		!slices.Equal(v.Actions, []string{ActionDisable, ActionUninstall}) {
+		!slices.Equal(v.Actions, []string{ActionEnable, ActionDisable, ActionUninstall}) {
 		t.Fatalf("pending = %+v", v)
 	}
 	if got := sp.started(); len(got) != 0 {

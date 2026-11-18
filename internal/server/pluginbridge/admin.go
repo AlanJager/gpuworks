@@ -117,7 +117,9 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 		v.State = string(pluginhost.StateFailed)
 		v.Code, v.Params, v.Message = codeOf(refused)
 		if v.Code == messages.ErrorPluginHostSetupRequired {
-			v.State = StateNeedsHostSetup
+			// Enable checks the applied record again and starts the
+			// plugin once root has run the command.
+			v.State, v.Actions = StateNeedsHostSetup, []string{ActionEnable, ActionDisable, ActionUninstall}
 		}
 		return v
 	}
