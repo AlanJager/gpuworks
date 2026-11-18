@@ -49,7 +49,14 @@ test("the real platform-page poll preserves an open Kubernetes edit and saves on
   controlledPolling();
   const initial = kubeEntry({ runtime_class: "old-runtime", image_pull_secret: "old-secret", agent_image: "registry.example/agent:owned", agent_image_source: "quay" });
   const server = servePlatforms(api, { clusters: [initial] });
-  api.kubeDefaults = async () => ({ ...KUBE_DEFAULTS, agent_image_sources: [...KUBE_DEFAULTS.agent_image_sources, { id: "quay", image: "quay.io/gpuworks/gpuworks-agent:r1" }] });
+  api.kubeDefaults = async () => ({
+    ...KUBE_DEFAULTS, agent_image_source: "swr", agent_image: "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1",
+    agent_image_sources: [
+      { id: "swr", image: "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1" },
+      { id: "dockerhub", image: "gpuworks/gpuworks-agent:r1" },
+      { id: "quay", image: "quay.io/gpuworks/gpuworks-agent:r1" },
+    ],
+  });
   const readClusters = api.kubeClusters;
   api.kubeClusters = async () => JSON.parse(JSON.stringify(await readClusters()));
   const updates: Array<{ uuid: string; body: Update }> = [];
