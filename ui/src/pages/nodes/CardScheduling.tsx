@@ -16,7 +16,7 @@ export function CardSchedulingTag({ gpu }: { gpu: GPU }) {
 
 // CardSchedulingControl states where the card stands and offers what the
 // server says may be done to it. Letting work onto a card the platform judged
-// unusable is confirmed first: it lasts until the next report re-judges it.
+// unusable is confirmed first. The decision persists until disabled.
 export function CardSchedulingControl({ node, gpu, onUpdated }: { node: Node; gpu: GPU; onUpdated: (node: Node) => void }) {
   const { t } = useTranslation("nodes");
   const { t: tCommon } = useTranslation("common");
@@ -48,8 +48,8 @@ export function CardSchedulingControl({ node, gpu, onUpdated }: { node: Node; gp
             {t("cardScheduling.resume")}
           </Button>
         ) : (
-          <Popconfirm title={t("cardScheduling.allowConfirm")} okText={t("cardScheduling.allow")} onConfirm={() => set("schedulable")}>
-            <Button size="small" loading={busy === "schedulable"}>{t("cardScheduling.allow")}</Button>
+          <Popconfirm title={t("cardScheduling.allowConfirm")} okText={t("cardScheduling.resume")} onConfirm={() => set("schedulable")}>
+            <Button size="small" loading={busy === "schedulable"}>{t("cardScheduling.resume")}</Button>
           </Popconfirm>
         ))}
     </Space>

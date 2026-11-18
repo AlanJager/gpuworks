@@ -61,7 +61,7 @@ test("a schedulable card offers to stop it, and stopping sends its address and u
   let got: unknown = null;
   show(card({ scheduling_actions: ["stopped"] }), (n) => { got = n; });
   assert.ok(screen.getByText(cs.state.schedulable));
-  assert.equal(screen.queryByRole("button", { name: cs.allow }), null);
+  assert.equal(screen.queryByRole("button", { name: cs.resume }), null);
   await user.click(screen.getByRole("button", { name: cs.stop }));
   await waitFor(() => assert.equal(got, updated));
   assert.deepEqual(sent, [["n-1", { pcie_bdf: "0000:3f:00.0", uuid: "GPU-a" }, "stopped"]]);
@@ -87,11 +87,23 @@ test("letting work onto a card the platform judged unusable asks first, and a re
   };
   show(card({ schedulable: false, scheduling_actions: ["stopped", "schedulable"] }));
   assert.ok(screen.getByText(cs.state.blocked));
-  await user.click(screen.getByRole("button", { name: cs.allow }));
+  await user.click(screen.getByRole("button", { name: cs.resume }));
   assert.deepEqual(sent, [], "nothing is sent before the confirmation");
   await screen.findByText(cs.allowConfirm);
-  const confirm = screen.getAllByRole("button", { name: cs.allow }).at(-1)!;
+  const confirm = screen.getAllByRole("button", { name: cs.resume }).at(-1)!;
   await user.click(confirm);
   await waitFor(() => assert.deepEqual(sent, ["schedulable"]));
   await screen.findByText(read("common").apiError.CARD_NOT_OWNED);
+});
+
+test("explicit scheduling uses persistent enable/disable wording", async () => {
+  show(card({ scheduling_allowed: true, scheduling_actions: ["stopped"] }));
+  assert.ok(screen.getByText("Enabled by an administrator; remains enabled until disabled"));
+  assert.ok(screen.getByRole("button", { name: "Disable scheduling" }));
+  assert.equal(screen.queryByText(/for now|minute|next report/i), null);
+  cleanup();
+  show(card({ schedulable: false, scheduling_actions: ["schedulable"] }));
+  const user = userEvent.setup({ document: dom.window.document });
+  await user.click(screen.getByRole("button", { name: "Enable scheduling" }));
+  assert.ok(await screen.findByText("The platform judged this card unusable. Enabling scheduling permits new deployments until you disable it. Health and outside use remain visible. Enable scheduling?"));
 });

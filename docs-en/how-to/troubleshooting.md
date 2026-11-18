@@ -518,12 +518,12 @@ It ends after 30 minutes of passing, and a failure within them continues the sam
 Records are kept for 30 days (ongoing ones are never removed), cards are told apart by identity after a replacement, and on the node page a card no longer there is marked removed.
 After a server restart, ongoing records continue; counts from up to an hour before the restart may be missing.
 
-### Stopping or Temporarily Allowing a Card by Hand
+### Enabling or Disabling Scheduling on a Card by Hand
 
 Expand a card in the accelerator table of node details; its “Scheduling” entry can:
 
-- **Stop scheduling**: the card takes no new deployments; instances already on it are unaffected. It holds until lifted by hand, and the platform never lifts it. The card shows an orange “Scheduling stopped” tag next to its health tag.
-- **Allow for now**: for a card the platform judged unusable (a fault, or processes outside the platform) that you want to check yourself. Once allowed it takes new deployments as usual until the first report at least a minute later judges it again: if the problem remains it is stopped again, if it has recovered it stays usable. This is enough to deploy a model by hand and see whether the card really cannot serve. You are asked to confirm first, and the card shows a blue “Allowed for now” tag next to its health tag.
+- **Disable scheduling**: the card takes no new deployments; instances already on it are unaffected. The decision persists until enabled by hand. The card shows an orange “Scheduling disabled” tag next to its health tag.
+- **Enable scheduling**: explicitly allow new deployments until you disable scheduling. This decision persists across reports and server restarts with no expiry. If the platform judged the card unusable (a fault or outside use), confirmation is required. Health and outside-use facts remain visible. The card shows a blue “Scheduling enabled” tag next to its health tag. Cards without an explicit decision still follow automatic verdicts.
 
 A card passed through to a virtual machine or without a driver is not this node's to use and cannot be allowed (`CARD_NOT_OWNED`).
 
@@ -630,7 +630,7 @@ The reasons a card is unavailable are in its own `health_status`/`health_code`/`
 
 A problem the vendor tool reports (those in the Warning and Fault rows above that come from the vendor tool) clears only after 3 clean readings in a row (about 3 minutes); until then the card keeps its level,
 and its evidence carries a `Recovery` field (such as `1 of 3 clean readings`) showing the progress: a card whose counters flip back and forth would otherwise move in and out of scheduling with every report.
-To use the card meanwhile, “Allow for now” on it.
+To use the card meanwhile, enable scheduling on it; this decision persists until you disable it.
 
 Evidence fields for each vendor:
 
@@ -1395,7 +1395,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 3d053fbd94ffa63b4ceba61838200521ce75a08ec8c8e9ade69210b88339422f -->
+<!-- translation-source-sha256: 976606338d5c2352be8313d91d1d150961335ac5a1cb34784f64ae75af597c9a -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

@@ -991,20 +991,19 @@
     "verifiedAt": "后续已核实旧操作结束：{{at}}"
   },
   "cardScheduling": {
-    "stoppedTag": "停止调度",
-    "allowedTag": "临时放开",
+    "stoppedTag": "已禁用调度",
+    "allowedTag": "已启用调度",
     "state": {
-      "stopped": "管理员停止调度，平台不会自动解除",
-      "allowed": "已临时放开：平台判定不可用，下一次上报（约 1 分钟后）重新判定",
+      "stopped": "管理员已禁用调度，直到手动启用",
+      "allowed": "管理员已启用调度，直到手动禁用",
       "schedulable": "可调度",
       "blocked": "平台判定不可用"
     },
-    "stop": "停止调度",
-    "resume": "恢复调度",
-    "allow": "临时放开",
-    "allowConfirm": "平台判定这张卡不可用。放开后它会接受新部署，直到约 1 分钟后的下一次上报重新判定。确定放开？",
+    "stop": "禁用调度",
+    "resume": "启用调度",
+    "allowConfirm": "平台判定这张卡不可用。启用调度后将允许新部署，直到你禁用调度。健康状态和平台外占用仍会显示。确定启用调度？",
     "done": {
-      "stopped": "已停止这张卡的调度",
+      "stopped": "已禁用这张卡的调度",
       "schedulable": "这张卡已可调度"
     }
   },

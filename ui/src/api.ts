@@ -77,7 +77,7 @@ export interface GPU {
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
   /** An operator took the card out of scheduling; only they put it back. */
   scheduling_stopped?: boolean;
-  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  /** An operator enabled scheduling; this persists until disabled, across reports and restarts. */
   scheduling_allowed?: boolean;
   /** What an operator may do to the card now, decided by the server. */
   scheduling_actions?: CardScheduling[];
@@ -4267,7 +4267,7 @@ export interface PhysicalGPU {
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
   /** An operator took the card out of scheduling; only they put it back. */
   scheduling_stopped?: boolean;
-  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  /** An operator enabled scheduling; this persists until disabled, across reports and restarts. */
   scheduling_allowed?: boolean;
   /** What an operator may do to the card now, decided by the server. */
   scheduling_actions?: CardScheduling[];

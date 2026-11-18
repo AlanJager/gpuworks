@@ -11,22 +11,9 @@ import (
 
 // An operator's say over one card, the way NodeScheduling is over a node.
 //
-// Two decisions, both the operator's and both above the platform's verdict
-// (docs/adr/0060-card-health-from-hardware-facts.md):
-//
-//   - Stopping a card's scheduling holds until the operator says otherwise.
-//     Nothing the platform sees lifts it.
-//   - Putting a card the platform judged unusable (a fault, or a process
-//     outside the platform) back into scheduling lets work onto it until the
-//     next report at least cardAllowanceWindow later, which judges the card
-//     afresh. That is long enough to place a deployment by hand and see
-//     whether the card really cannot serve; a card still faulty is stopped
-//     again by that report, a card that recovered simply stays schedulable.
-
-// cardAllowanceWindow is the least time an operator's allowance lasts. A
-// report every minute would otherwise leave anything from a second to a
-// minute, depending on when the operator clicked.
-const cardAllowanceWindow = time.Minute
+// Both enabling and disabling scheduling persist until the operator changes
+// their decision. Reports keep health and outside-use facts current without
+// revoking that decision. Ownership remains a hard boundary.
 
 // ErrInvalidCardScheduling and ErrCardNotOwned are the refusals of
 // SetCardScheduling.
@@ -49,11 +36,9 @@ func (s CardScheduling) Valid() bool {
 }
 
 // SetCardScheduling records an operator's decision about one card of a node,
-// named by its identity (accelerator.CardIdent). Making it schedulable lifts
-// an operator's stop, and lets work onto a card the platform judged unusable
-// until a report re-judges it; a card the platform already considers usable
-// needs no allowance. A card that is not this node's to use (lent to a
-// virtual machine, left without a driver) cannot be allowed.
+// named by its identity (accelerator.CardIdent). Enabling it records explicit
+// intent even when it is healthy now, so later reports cannot revoke it.
+// A card that is not this node's to use cannot be enabled.
 func (s *Store) SetCardScheduling(nodeUUID, ident string, to CardScheduling) (*GPU, error) {
 	if !to.Valid() {
 		return nil, ErrInvalidCardScheduling
@@ -74,9 +59,7 @@ func (s *Store) SetCardScheduling(nodeUUID, ident string, to CardScheduling) (*G
 		if !accelerator.CardUsable(card.Ownership) {
 			return nil, ErrCardNotOwned
 		}
-		if !accelerator.CardSchedulable(card.Ownership, card.HealthStatus, card.HeldOutsidePlatform()) {
-			updates["scheduling_allowed_at"] = time.Now().UTC()
-		}
+		updates["scheduling_allowed_at"] = time.Now().UTC()
 	}
 	if err := s.db.Model(&GPU{}).Where("id = ?", card.ID).Updates(updates).Error; err != nil {
 		return nil, err
@@ -88,22 +71,6 @@ func (s *Store) SetCardScheduling(nodeUUID, ident string, to CardScheduling) (*G
 		return nil, err
 	}
 	return &card, nil
-}
-
-// expireCardAllowances clears the allowances a report outlives: the report
-// judges those cards afresh. It costs a write only on a node an operator
-// recently allowed a card on.
-func expireCardAllowances(tx *gorm.DB, cards []GPU, now time.Time) (expired bool, err error) {
-	var ids []uint
-	for _, c := range cards {
-		if c.SchedulingAllowedAt != nil && now.Sub(*c.SchedulingAllowedAt) >= cardAllowanceWindow {
-			ids = append(ids, c.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return false, nil
-	}
-	return true, tx.Model(&GPU{}).Where("id IN ?", ids).Update("scheduling_allowed_at", nil).Error
 }
 
 // SchedulingActions are what an operator may do to the card now: stop it

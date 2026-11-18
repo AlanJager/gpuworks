@@ -79,57 +79,8 @@ func TestAnOperatorsCardStopHoldsUntilTheyLiftIt(t *testing.T) {
 	if _, err := s.SetCardScheduling("n-stop", card40, CardSchedulingSchedulable); err != nil {
 		t.Fatal(err)
 	}
-	if c := cardOf(t, s, "n-stop", "0000:40:00.0"); !c.CanTakeWork() || c.SchedulingStopped || c.SchedulingAllowedAt != nil {
+	if c := cardOf(t, s, "n-stop", "0000:40:00.0"); !c.CanTakeWork() || c.SchedulingStopped {
 		t.Fatalf("after lifting: %+v", c)
-	}
-}
-
-// Making a card the platform judged unusable schedulable lets work onto it
-// until the first report at least a minute later, which judges it afresh:
-// still faulty, it is stopped again; recovered, it simply stays usable.
-func TestAnOperatorsAllowanceLastsUntilAReportAMinuteLater(t *testing.T) {
-	s := newTestStore(t)
-	report := cardNode(t, s, "n-allow")
-	report(accelerator.HealthRuntimeUnusable, false)
-	if c := cardOf(t, s, "n-allow", "0000:40:00.0"); c.CanTakeWork() || fmt.Sprint(c.SchedulingActions()) != "[stopped schedulable]" {
-		t.Fatalf("faulty card can=%v actions=%v", c.CanTakeWork(), c.SchedulingActions())
-	}
-	if _, err := s.SetCardScheduling("n-allow", card40, CardSchedulingSchedulable); err != nil {
-		t.Fatal(err)
-	}
-	c := cardOf(t, s, "n-allow", "0000:40:00.0")
-	if !c.CanTakeWork() || c.SchedulingAllowedAt == nil || c.HealthCode != accelerator.HealthRuntimeUnusable {
-		t.Fatalf("allowed card = %+v, want work allowed and the fault still shown", c)
-	}
-	// A report within the window keeps the allowance.
-	report(accelerator.HealthRuntimeUnusable, false)
-	if c := cardOf(t, s, "n-allow", "0000:40:00.0"); !c.CanTakeWork() {
-		t.Fatal("a report inside the window ended the allowance")
-	}
-	// One after it judges the card afresh.
-	if err := s.db.Model(&GPU{}).Where("ident = ?", card40).Update("scheduling_allowed_at", time.Now().Add(-2*cardAllowanceWindow)).Error; err != nil {
-		t.Fatal(err)
-	}
-	report(accelerator.HealthRuntimeUnusable, false)
-	if c := cardOf(t, s, "n-allow", "0000:40:00.0"); c.CanTakeWork() || c.SchedulingAllowedAt != nil {
-		t.Fatalf("after the window, still faulty = %+v, want unusable again", c)
-	}
-
-	// The same for a card held outside the platform.
-	report("", true)
-	if _, err := s.SetCardScheduling("n-allow", card40, CardSchedulingSchedulable); err != nil {
-		t.Fatal(err)
-	}
-	if c := cardOf(t, s, "n-allow", "0000:40:00.0"); !c.CanTakeWork() || !c.HeldOutsidePlatform() {
-		t.Fatalf("allowed foreign-held card = %+v", c)
-	}
-	// A card that is fine needs no allowance.
-	report("", false)
-	if _, err := s.SetCardScheduling("n-allow", card40, CardSchedulingSchedulable); err != nil {
-		t.Fatal(err)
-	}
-	if c := cardOf(t, s, "n-allow", "0000:40:00.0"); c.SchedulingAllowedAt != nil || !c.CanTakeWork() {
-		t.Fatalf("healthy card = %+v, want no allowance recorded", c)
 	}
 }
 
