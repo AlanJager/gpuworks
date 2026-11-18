@@ -1355,6 +1355,7 @@ var migrations = []migration{
 	{Version: 221, Name: "node_host_system_uuid", Apply: addNodeHostSystemUUID},
 	{Version: 222, Name: "plugin_trust", Apply: addPluginTrustTables},
 	{Version: 223, Name: "pushed_state_tables", Apply: createPushedStateTables},
+	{Version: 224, Name: "pushed_state_capacity_keep", Apply: createCapacityKeepTable},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
