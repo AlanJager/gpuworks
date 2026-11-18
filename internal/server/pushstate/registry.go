@@ -182,3 +182,13 @@ func (s *State) Features() []featuregate.Feature {
 	slices.SortFunc(out, func(a, b featuregate.Feature) int { return strings.Compare(string(a.Key), string(b.Key)) })
 	return out
 }
+
+// FeatureOwner is the installed package whose declaration of k pushed
+// state answers for; "" when none declares it. Two packages that both
+// declare a key (installed before installs refused that) keep the one of
+// lower id, the owner it has had since both were installed.
+func (s *State) FeatureOwner(k featuregate.Key) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reg.decls[k].pkg
+}

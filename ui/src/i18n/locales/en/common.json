@@ -963,6 +963,7 @@
     "PLUGIN_TRUST_CONFLICT": "The trust update adds root key {{keyid}}, but this server already knows a different key under that id.",
     "PLUGIN_NOT_INSTALLED": "No plugin {{id}} is installed.",
     "PLUGIN_VERSION_CONFLICT": "Version {{version}} of {{id}} is already installed with different contents. Publish the change under a new version.",
+    "PLUGIN_FEATURE_TAKEN": "Feature {{feature}} of plugin {{id}} is already provided by {{owner}}.",
     "PLUGIN_NEEDS_NEWER_CORE": "{{id}} {{version}} needs a newer server ({{min_core_hint}}): it requires {{capability}}.",
     "PLUGIN_CAPABILITY_MISSING": "The server offers no version of {{capability}} from {{min}} to {{max}}, which the plugin cannot run without. Install a plugin build for this server or upgrade the server.",
     "PLUGIN_UNAVAILABLE": "Plugin {{plugin}} is not running, so what it provides is limited or unavailable until it runs again.",

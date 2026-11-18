@@ -311,3 +311,28 @@ func checkFloor(m *extapi.Manifest, floor string) error {
 	}
 	return nil
 }
+
+// FeatureOwners names who already holds a feature key on this server. The
+// plugin host implements it from the modules compiled in and the packages
+// installed now.
+type FeatureOwners interface {
+	// FeatureOwner is who, other than package id, provides key: a compiled
+	// module's name or another installed package's id; "" when no one does.
+	FeatureOwner(id, key string) string
+}
+
+// checkFeatureOwners refuses a package that declares a feature key someone
+// else provides (ErrorPluginFeatureTaken), so installing a package never
+// moves a key from its owner. A nil owners checks nothing.
+func checkFeatureOwners(m *extapi.Manifest, owners FeatureOwners) error {
+	if owners == nil {
+		return nil
+	}
+	for _, f := range m.Features {
+		if owner := owners.FeatureOwner(m.ID, f.Key); owner != "" {
+			return refuse(messages.ErrorPluginFeatureTaken, fmt.Sprintf("feature %s of %s is already provided by %s", f.Key, m.ID, owner),
+				map[string]any{"id": m.ID, "feature": f.Key, "owner": owner})
+		}
+	}
+	return nil
+}

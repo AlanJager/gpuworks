@@ -37,8 +37,8 @@ func (b *Bridge) statePackagesLocked() []pushstate.Package {
 	return out
 }
 
-// refresh verifies the installed packages again and hands pushed state the
-// new set.
+// refresh verifies the installed packages again, hands pushed state the
+// new set and declares its feature keys.
 func (b *Bridge) refresh() error {
 	entries, err := b.pkgs.List()
 	if err != nil {
@@ -52,6 +52,7 @@ func (b *Bridge) refresh() error {
 	pkgs := b.statePackagesLocked()
 	b.mu.Unlock()
 	b.state.SetPackages(pkgs)
+	b.declareFeatures()
 	return nil
 }
 

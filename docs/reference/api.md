@@ -1705,7 +1705,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
 - `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。
 
-错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）或插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）409；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
+错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）、声明的功能键已由编译模块或另一个已安装的包提供（`PLUGIN_FEATURE_TAKEN{id, feature, owner}`，在要求批准之前检查）或插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）409；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
 
 ## Providers（云厂商租机）
 
@@ -2299,7 +2299,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | 字段 | 说明 |
 |---|---|
 | `edition` | 构建名称，仅用于展示 |
-| `features[]` | 已声明功能的当前可用性，按 `key` 排序：`{key, access, presentation, link?, message?, limits}`。`access` 为 `full` / `read_only` / `locked` / `hidden`；`presentation` 为 `promote`（不可用时显示为锁定并给出 `link`）或 `hidden`（不可用时完全隐藏，此时锁定按 `hidden` 返回）；`message` 是说明当前可用性的产品消息 `{code, params?, message}`；`limits` 为 `[{dim, max}]`，`max` 为 `null` 表示不限 |
+| `features[]` | 已声明功能（编译模块声明的与当前已安装插件包声明的合在一起，安装或卸载插件后立即变化）的当前可用性，按 `key` 排序：`{key, access, presentation, link?, message?, limits}`。`access` 为 `full` / `read_only` / `locked` / `hidden`；`presentation` 为 `promote`（不可用时显示为锁定并给出 `link`）或 `hidden`（不可用时完全隐藏，此时锁定按 `hidden` 返回）；`message` 是说明当前可用性的产品消息 `{code, params?, message}`；`limits` 为 `[{dim, max}]`，`max` 为 `null` 表示不限 |
 | `nav[]` | 扩展加入控制台菜单的入口 `{id, group, label_key, icon?, route, feature?}`；所属功能为 `hidden` 的入口不返回 |
 | `banners[]` | 显示在每个页面顶部的通知 `{id, severity, message, link?}`，`severity` 为 `info` / `warning` / `danger`（其他值按 `info` 返回），`message` 为产品消息 `{code, params?, message}` |
 

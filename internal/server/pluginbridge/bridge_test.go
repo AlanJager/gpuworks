@@ -10,12 +10,14 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/layout"
+	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
@@ -33,6 +35,32 @@ type world struct {
 	st   *store.Store
 	root *extsign.Key
 	pub  *extsign.Publisher
+	// static are the feature keys a compiled module (ops) declares.
+	static []featuregate.Feature
+	// gate is the feature gate of the last bridge opened, over its
+	// dynamic set; announced counts its feature announcements.
+	gate      *featuregate.Gate
+	announced atomic.Int32
+	// logs is what the bridges logged.
+	logs lockedBuffer
+}
+
+// lockedBuffer is a log sink the bridge's goroutines may share.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
 }
 
 func newWorld(t *testing.T, edit func(*extapi.PublisherCert)) *world {
@@ -86,10 +114,20 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 		w.t.Fatal(err)
 	}
 	sp := &refusingSpawner{}
-	b, err := Open(context.Background(), Config{Packages: pkgs, State: pushstate.Config{Store: w.st},
+	dyn := featuregate.NewDynamicSet(w.static)
+	owners := map[featuregate.Key]string{}
+	for _, f := range w.static {
+		owners[f.Key] = "ops"
+	}
+	if w.gate, err = featuregate.NewWithDynamic(w.static, nil, dyn); err != nil {
+		w.t.Fatal(err)
+	}
+	b, err := Open(context.Background(), Config{Packages: pkgs,
+		State:    pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) }}},
+		Features: dyn, StaticFeatures: owners,
 		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour}},
 		Core: extapi.CoreInfo{Version: "dev", InstallID: "inst_bridge_test", OS: "linux", Arch: "amd64", HARole: extapi.HARoleSingle},
-		Log:  slog.New(slog.DiscardHandler)})
+		Log:  slog.New(slog.NewTextHandler(&w.logs, nil))})
 	if err != nil {
 		w.t.Fatal(err)
 	}
@@ -135,9 +173,10 @@ func install(t *testing.T, b *Bridge, raw []byte, enable bool) *Installed {
 // With nothing installed the bridge lists nothing, declares no feature
 // and its hooks allow everything.
 func TestOpenWithNothingInstalled(t *testing.T) {
-	b := newWorld(t, nil).open()
-	if len(b.List()) != 0 || len(b.Features()) != 0 {
-		t.Fatalf("list %v features %v", b.List(), b.Features())
+	w := newWorld(t, nil)
+	b := w.open()
+	if len(b.List()) != 0 || len(w.gate.States()) != 0 {
+		t.Fatalf("list %v features %v", b.List(), w.gate.States())
 	}
 	s := b.State()
 	if s.GuardNode(1000, 8000) != nil || s.Hold(1, 8).Code != "" || len(s.Banners(true)) != 0 {
@@ -147,7 +186,8 @@ func TestOpenWithNothingInstalled(t *testing.T) {
 
 // An install is approved by hash, recorded disabled unless asked, listed
 // with the actions it allows, and enabling and disabling flip it. The
-// feature keys it declares are declared by the next bridge.
+// feature keys it declares are declared at once, and again by the next
+// bridge.
 func TestInstallEnableDisable(t *testing.T) {
 	w := newWorld(t, nil)
 	b := w.open()
@@ -162,8 +202,8 @@ func TestInstallEnableDisable(t *testing.T) {
 		!slices.Equal(v.Permissions, []string{"push:banners"}) || !slices.Equal(v.Parts, []string{"server"}) || v.ApproveHash == "" {
 		t.Fatalf("installed = %+v", v)
 	}
-	if len(b.Features()) != 0 {
-		t.Fatalf("features declared before the next start: %v", b.Features())
+	if !w.gate.Declared("acme.backup") || w.gate.Access("acme.backup") != featuregate.Locked {
+		t.Fatalf("acme.backup after install = declared %v, %v", w.gate.Declared("acme.backup"), w.gate.Access("acme.backup"))
 	}
 	v, err := b.Enable(context.Background(), "acme_backup", "admin")
 	if err != nil || !v.Enabled || !slices.Equal(v.Actions, []string{ActionDisable, ActionUninstall}) {
@@ -179,7 +219,8 @@ func TestInstallEnableDisable(t *testing.T) {
 	if _, err := b.Enable(context.Background(), "acme_nothing", "admin"); !isCode(err, messages.ErrorPluginNotInstalled) {
 		t.Fatalf("enable of nothing = %v", err)
 	}
-	if got := w.open().Features(); len(got) != 1 || got[0].Key != "acme.backup" {
+	w.open()
+	if got := w.gate.States(); len(got) != 1 || got[0].Key != "acme.backup" {
 		t.Fatalf("features after a reopen = %v", got)
 	}
 }

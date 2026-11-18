@@ -64,7 +64,7 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `Tables()` | The module's own tables (`store.ExtensionTables`); nil for a module without a migration set |
 | `DeriveKey(purpose)` | A 32-byte key derived from the master key with HKDF-SHA256 and bound to the module name |
 | `MountAPI(e)` | Mounts an `api.Extension`'s routes under `/api/v1/x/<name>/` |
-| `DeclareFeatures(...)` / `ProvideFeatures(src)` | Declares feature keys; provides the feature source (at most one across all modules) |
+| `DeclareFeatures(...)` / `ProvideFeatures(src)` | Declares feature keys; provides the feature source for the keys compiled modules declare (at most one across all modules; the keys plugin packages declare are answered by the plugin host, not by it) |
 | `AddBannerSource(b)` | Banners at the top of every console page |
 | `GuardNodeInsert(g)` | A guard on every new node's insert |
 | `HoldScheduling(h)` | A scheduling holder, keyed by its source; a repeated source is refused |
@@ -205,7 +205,9 @@ The edition checks below matter only to forks: official builds name no edition, 
 
 ADR 0071 decides that official and third-party extensions are installed as signed plugin packages (`.gwpkg`) instead of being compiled into the binary. The plugin host is connected to the contract on this page as a built-in module:
 
-- The plugin host is the built-in module `plugins` (`app/plugins.go`, implemented in `internal/server/pluginbridge`). It registers the existing hooks through the `Host`: the node insert guard, the scheduling holder (source `plugins`) and banners always; when installed packages declare feature keys it is also the feature source. It answers them from tables plugins push and the core validates and persists. A compiled module may no longer be named `plugins`; when a compiled module already calls `ProvideFeatures` and installed packages declare feature keys too, the server refuses to start.
+- The plugin host is the built-in module `plugins` (`app/plugins.go`, implemented in `internal/server/pluginbridge`). It registers the existing hooks through the `Host`: the node insert guard, the scheduling holder (source `plugins`) and banners. The feature keys installed packages declare go into the feature gate's dynamic set and are answered from tables plugins push and the core validates and persists; the keys compiled modules declare are still answered by the `ProvideFeatures` source, and the two coexist. A compiled module may no longer be named `plugins`.
+- Runtime feature declarations: after a package is installed, upgraded, enabled, disabled or uninstalled, the dynamic set is replaced as a whole by the keys the packages installed then declare. The feature gate and the console manifest see them at once, and the `feature` topic tells the console to read the manifest again; no restart is needed. A gate lookup checks the keys compiled modules declare first, then the dynamic set (one atomic load, no lock, no allocation); the `features` of `GET /api/v1/console/manifest` is both merged and sorted by key. With nothing installed the dynamic set is empty and the manifest is byte-identical to before.
+- A feature key has one owner: when a package declares a key a compiled module declares, or one another installed package declares (a package upgraded keeps its own keys), the install is refused with 409 `PLUGIN_FEATURE_TAKEN{id, feature, owner}` before approval is asked for, where `owner` is the module's name or that package's id, and nothing is installed. Clashing packages installed before this check still load at boot: the key stays with its earlier owner (the compiled module, or the package of lower id that has answered for it since both were installed), each clash is logged, and no key changes owner; such a package cannot be reinstalled or upgraded until a version drops the clashing key. An installed package that no longer verifies holds none of the keys it declares: while it is broken another package may install over such a key, and once it verifies again the key goes to the lower id of the two.
 - A plugin is a child process of the server that talks to the core over `gwx/1` on inherited fds, never enters a hot path and never gets the Store.
 - Whether a feature key is gated is declared by the plugin package itself; grant tables accept pushes only from the authority its publisher certificate names; while a plugin is down its restrictions stay enforced, its grants clamp to read-only after a bounded grace, and timelines keep firing on extclock.
 - The hook rules on this page (hooks inside the writer transaction are pure, holders cordon without draining, running workloads are never interrupted) apply to the plugin host as well.
@@ -218,7 +220,7 @@ Boot order (the `plugins` module's `Init`, before the router is built):
 
 1. Remove what interrupted installs left and verify every installed package again (rehashing every file this time). A package that no longer verifies or is revoked counts as installed but not verified: the restrictions and banners it pushed stay enforced, its grants are dropped, and it does not start.
 2. Load every pushed table with that package list (see "Pushed state" below), enforced before the server accepts its first request and before any plugin starts.
-3. Register the hooks and declare the feature keys (of the packages installed at boot only).
+3. Put the feature keys installed packages declare into the dynamic set (a key a compiled module declares is logged and left to the module), and register the hooks.
 
 The module's service (run with the server's other background loops) starts pushed state's writer tick, timelines and capacity selection, then starts every enabled package with a `resident` server part, in parallel and without holding up `serve`; only changed files are rehashed before a start. The supervisor tells pushed state each plugin's process state: `running` and `degraded` count as up, everything else as down. When the server stops, the plugins stop first and pushed state after, so the moment each plugin went down is persisted and a restart never renews its grace.
 
@@ -249,7 +251,6 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 
 ### Not built yet
 
-- Feature keys of a package installed while the server runs enter the feature gate at the next start (the gate is built once at boot); the restrictions, banners and holds it pushes apply at once.
 - Dynamic mounting of plugin routes under `/api/v1/x/<id>/`, on-demand starts of `on_demand` plugins, and host API endpoints other than state and health.
 - The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `enable`, `disable`, `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), the RSS watchdog for hosts without a cgroup, detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
@@ -319,4 +320,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: cb0bbe8df28e79466fc2673ac31b476d9986e453b9b796cd1ed7b6db4029191c -->
+<!-- translation-source-sha256: a658f2af0c903b0f3435dca291bb0d574529782b6d0ee9f9a2d941d934013af5 -->
