@@ -108,6 +108,7 @@ core-ui:
     paths:
       - .cache/npm/
   script:
+    - ./scripts/check_ui_architecture.sh
     - node scripts/i18n-check.mjs
     - cd ui
     # registry.npmmirror.com occasionally stalls mid-transfer from this runner
@@ -128,10 +129,6 @@ core-ui:
         sleep 15
       done
     - npm run lint:i18n
-    # Per-file antd ratchet (ui/antd-inventory.json): no file may use more antd
-    # than the snapshot records; core-test's architecture check runs without
-    # Node, so the check lives here.
-    - node ../scripts/ui_antd_inventory.mjs --check
     - npm run build
     # Warns (never fails) when the compressed UI outgrows its budget.
     - (cd .. && ./scripts/check_ui_bundle_size.sh)

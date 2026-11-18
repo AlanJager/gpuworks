@@ -157,6 +157,7 @@ cross: cross-agents
 
 ## ui: install or refresh deps when package-lock.json changed (ui/ensure-deps.mjs), then build the frontend into the embed dir
 ui: i18n-check
+	./scripts/check_ui_architecture.sh
 	./scripts/ui_overlay_guard.sh
 	@if [ -f secrets/i18n-llm.env ]; then echo "  i18n LLM config detected; run 'make i18n-translate' to fill new missing keys"; fi
 	@cd ui && node ensure-deps.mjs
