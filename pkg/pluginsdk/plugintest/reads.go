@@ -123,7 +123,7 @@ func readBody(w http.ResponseWriter, r *http.Request, max int) ([]byte, bool) {
 	if len(raw) > max {
 		writeJSON(w, http.StatusRequestEntityTooLarge, extapi.WireError{Code: codeRequestTooLarge,
 			Message: "the request is larger than the server reads",
-			Params:  extapi.Params{"max": max}, Reason: extapi.ReasonInvalidArgument})
+			Params:  extapi.Params{"max_bytes": max}, Reason: extapi.ReasonInvalidArgument})
 		return nil, false
 	}
 	return raw, true

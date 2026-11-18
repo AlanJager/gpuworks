@@ -610,7 +610,7 @@ Each part of the answer is `{h, tail}`; a part the server could not read is abse
 - `machine_id`: `/etc/machine-id`.
 - `root_fs_uuid`: the file system UUID of the block device mounted at `/`.
 
-`h` and `tail` mean what they mean for node identity. On Linux the kernel lets only root read the system UUID and the board serial, and the server runs as its service account: before every start of the server, systemd runs [`gpuworks host-identity`](cli.md#gpuworks-host-identity) as root, which writes those two to `/run/gpuworks/host-identity.json`. The server uses the file only to fill those two when it cannot read them itself; a value it reads directly always wins, and `machine_id` and `root_fs_uuid` come only from direct reads. Refusals are those of the [node reads](#rate-limits-and-refusals); a body over 4 KiB answers 413 `REQUEST_TOO_LARGE` (`max` 4096).
+`h` and `tail` mean what they mean for node identity. On Linux the kernel lets only root read the system UUID and the board serial, and the server runs as its service account: before every start of the server, systemd runs [`gpuworks host-identity`](cli.md#gpuworks-host-identity) as root, which writes those two to `/run/gpuworks/host-identity.json`. The server uses the file only to fill those two when it cannot read them itself; a value it reads directly always wins, and `machine_id` and `root_fs_uuid` come only from direct reads. Refusals are those of the [node reads](#rate-limits-and-refusals); a body over 4 KiB answers 413 `REQUEST_TOO_LARGE` (`max_bytes` 4096).
 
 ## Pushed tables
 
@@ -722,4 +722,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 1d02484f36c5aec253227efedb27ee7b45b2553e6e53525f61682c240e834d15 -->
+<!-- translation-source-sha256: 4fccf793f24448759ea1583d15288afff840b444d9c4443e3c0354c0a2de2e4d -->

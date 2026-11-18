@@ -96,7 +96,7 @@ func readBody(w http.ResponseWriter, r *http.Request, max int) ([]byte, bool) {
 	}
 	if len(raw) > max {
 		e := Refuse(extapi.ReasonInvalidArgument, messages.ErrorRequestTooLarge, "the request is larger than the server reads",
-			map[string]any{"max": max})
+			map[string]any{"max_bytes": max})
 		e.Status = http.StatusRequestEntityTooLarge
 		writeWire(w, e)
 		return nil, false

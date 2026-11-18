@@ -610,7 +610,7 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 - `machine_id`：`/etc/machine-id`。
 - `root_fs_uuid`：挂在 `/` 上的块设备的文件系统 UUID。
 
-`h` 与 `tail` 的含义同节点身份。Linux 上内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：systemd 每次启动 server 之前以 root 运行 [`gpuworks host-identity`](cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`，server 只用它补自己读不到的这两项，自己读到的值永远优先，`machine_id` 与 `root_fs_uuid` 只来自直接读取。拒绝与[节点读取](#限速与拒绝)相同；请求体超过 4 KiB 时回 413 `REQUEST_TOO_LARGE`（`max` 为 4096）。
+`h` 与 `tail` 的含义同节点身份。Linux 上内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：systemd 每次启动 server 之前以 root 运行 [`gpuworks host-identity`](cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`，server 只用它补自己读不到的这两项，自己读到的值永远优先，`machine_id` 与 `root_fs_uuid` 只来自直接读取。拒绝与[节点读取](#限速与拒绝)相同；请求体超过 4 KiB 时回 413 `REQUEST_TOO_LARGE`（`max_bytes` 为 4096）。
 
 ## 推送表
 

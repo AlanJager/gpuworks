@@ -72,7 +72,7 @@ func TestHostAPIHostIdentityRefusals(t *testing.T) {
 	wantRefusal(t, readHost(t, h, http.MethodPost, extapi.PathHostHostIdentity, `{`), 400, extapi.ErrorWireMalformed, nil)
 	huge := `{"salt":"` + strings.Repeat("s", extapi.MaxHostIdentityRequestBytes) + `"}`
 	wantRefusal(t, readHost(t, h, http.MethodPost, extapi.PathHostHostIdentity, huge), 413,
-		messages.ErrorRequestTooLarge, extapi.Params{"max": extapi.MaxHostIdentityRequestBytes})
+		messages.ErrorRequestTooLarge, extapi.Params{"max_bytes": extapi.MaxHostIdentityRequestBytes})
 	if n := len(reads.recorded()); n != 0 {
 		t.Fatalf("invalid reads reached the reads %d times", n)
 	}
