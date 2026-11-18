@@ -378,12 +378,12 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|---|
 | `--state DIR` | 同 `run` | 读配置文件的目录，也传给替换后的 `run` |
 | `--server URL` / `--token TOKEN` | 同 `run` 的取值顺序 | 必填（来自 flag、环境变量或配置文件） |
-| `--driver NAME`、`--connect-mode MODE`、`--listen ADDR` | 同 `run` | 只在没有配置文件的老 agent 上传给替换后的 `run`；有配置文件时它们已在文件里 |
+| `--driver NAME`、`--connect-mode MODE`、`--listen ADDR` | 同 `run` | 有配置文件时保留本次显式指定的 flag；未显式指定的值继续按环境变量、配置文件读取；无配置文件的老 agent 保留原传参方式 |
 
 - 仅支持 Linux；从 `<server>/dl/gpuworks-agent-linux-<arch>` 下载到 `<bin>.new`，10 秒内 `smoke` 通过后才把旧二进制改名 `<bin>.old` 并换上新版本，smoke 失败则旧二进制保持原样。
 - 该 state 目录已有 agent 在运行（systemd 或 nohup 常驻）时直接拒绝，下载前就退出：`upgrade` 换上的 `run` 不在原服务里，会和常驻 agent 共用节点身份、互相顶掉连接。常驻 agent 请在节点页「升级 Agent」。
 - `server_dial` 的 agent 不知道 server 地址，也无从下载：手工 `upgrade` 直接拒绝，提示它由 server 推送升级，在节点页「升级 Agent」操作。
-- 替换后的 `run` 在配置来自文件时只带 `--state <dir>`；没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--dcgm`、`--image-pull-max-connections`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM`、`--image-pull-max-connections` 可改用 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` 保留；`--data-lane` 没有对应环境变量，手工升级后恢复默认值 `true`。
+- 替换后的 `run` 在配置来自文件时带 `--state <dir>` 及本次显式传入的 `--server`、`--token`、`--driver`、`--connect-mode`、`--listen`；环境变量原样继承，不把文件或环境中的 token 提升成命令行参数，也不改写配置文件。没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--dcgm`、`--image-pull-max-connections`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM`、`--image-pull-max-connections` 可改用 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` 保留；`--data-lane` 没有对应环境变量，手工升级后恢复默认值 `true`。
 - 整个过程有 10 分钟预算；同一时刻只允许一个升级。替换后的进程同样要在确认期限内注册成功，否则回滚到 `<bin>.old`。节点页「升级 Agent」对支持推送的 agent 改由 server 经连接推送二进制，不经 `/dl/` 与 `smoke`，见[升级与版本兼容](../how-to/upgrade-and-compatibility.md)。
 
 ## gpuworks-agent doctor
