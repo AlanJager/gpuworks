@@ -2,7 +2,6 @@ package kube
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -64,16 +63,6 @@ type hamiNode struct {
 	cards     map[string]hamiCard // by card UUID, healthy ones
 }
 
-// hamiRegistered is one entry of the registration annotation.
-type hamiRegistered struct {
-	ID      string `json:"id"`
-	Count   int    `json:"count"`
-	Devmem  int    `json:"devmem"`
-	Devcore int    `json:"devcore"`
-	Type    string `json:"type"`
-	Health  bool   `json:"health"`
-}
-
 // hamiRegisterKeys are the node's HAMi registration annotations, sorted.
 func hamiRegisterKeys(node kubeapi.Node) []string {
 	var keys []string
@@ -101,8 +90,8 @@ func (p *cardPool) classifyHAMi(_ context.Context, node kubeapi.Node, capacity m
 		return refuse("HAMi registers cards of several kinds on this node (%s)", strings.Join(keys, ", "))
 	}
 	key := keys[0]
-	var entries []hamiRegistered
-	if err := json.Unmarshal([]byte(node.Metadata.Annotations[key]), &entries); err != nil {
+	entries, err := parseHAMiRegistration(node.Metadata.Annotations[key])
+	if err != nil {
 		return refuse("HAMi's card registration %s on this node cannot be read (%v)", key, err)
 	}
 	vendor := ""
@@ -131,6 +120,9 @@ func (p *cardPool) classifyHAMi(_ context.Context, node kubeapi.Node, capacity m
 	h := &hamiNode{vendor: vendor, scheduler: p.hamiScheduler, cards: map[string]hamiCard{}}
 	shares := 0
 	for _, e := range entries {
+		if e.Health && vendor == accelerator.VendorNVIDIA && e.Mode != "" && e.Mode != "hami-core" {
+			return refuse("HAMi registered card %s in %s mode, which the platform cannot borrow as a whole card", e.ID, e.Mode)
+		}
 		if e.Health && e.ID != "" {
 			h.cards[e.ID] = hamiCard{devmem: e.Devmem, devcore: e.Devcore, count: e.Count}
 			shares += e.Count

@@ -147,6 +147,8 @@ agent 改经宿主 root（`/proc/1/root`）预先在宿主机 `/dev/shm` 建好�
 否则退回并报原因。其他 Pod 占着卡的一部分时，它们在 gpuworks 里显示为外部占用（Pod 名、显存、算力）；占位 Pod 因此一直 Pending 时，
 借卡失败，错误里写调度器给的原因（例如 `CardInsufficientMemory`）和占着这张卡的 Pod。
 
+节点注册注解支持 HAMi 官方 JSON 和冒号分隔的旧 7/9 字段格式。无法完整解析、身份重复或健康卡缺少容量的注解仍保留未知占用原因，不会按空闲处理。兼容格式不会使 MIG、MPS 或 remote 模式变成可借整卡，真实外部 Pod 占用仍由原调度与借卡校验保护。
+
 - HAMi 调度器的名字默认是 `hami-scheduler`。集群里改过名时，给 agent 的 DaemonSet 设环境变量：
   `kubectl -n gpuworks-system set env ds/gpuworks-agent GPUWORKS_KUBE_HAMI_SCHEDULER=<调度器名>`。名字不对时占位 Pod 不会被任何调度器处理，借卡超时，错误里会提示这个变量。
 - 昇腾的 HAMi 按 HAMi 文档的形态实现（申请 `huawei.com/<型号>: 1` 且不带显存，注解 `hami.io/use-<型号>-uuid`），目前只用测试夹具验证过，没有在真机上验证。
