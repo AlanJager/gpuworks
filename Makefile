@@ -636,6 +636,10 @@ test-l4-gitee-ascend-partition-capability: cross-agents
 test-l4-gitee-ascend-deploy-chat: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,partition -run '^TestGiteeAscend(FullServerAgentDeployChatEndToEnd|ARM64ContainerInContainerDeployChatEndToEnd)$$' -timeout=125m ./test/l4
 
+.PHONY: test-l4-ppu-sglang-gateway-stability
+test-l4-ppu-sglang-gateway-stability:
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -count=1 -v -tags=cloudgpu,partition -run '^TestPPUSGLangGatewayStability$$' -timeout=40m ./test/l4
+
 ## test-l4-ascend-pool-partition-inference: treat the configured self-owned Ascend hosts as one
 ## capability-selected fixture pool. The platform test uploads the checked
 ## current arm64 agent, starts it under an isolated /tmp state directory, then

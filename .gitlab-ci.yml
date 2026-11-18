@@ -1145,6 +1145,19 @@ l4-gitee-ascend-partition-capability:
     # Nightly capability-only check: no business image, model download, or chat.
     - make test-l4-gitee-ascend-partition-capability
 
+l4-ppu-sglang-gateway-stability:
+  extends: .l4-acceptance
+  timeout: 45m
+  environment:
+    name: hardware-test/ppu-gateway
+    action: prepare
+  script:
+    - make test-l4-ppu-sglang-gateway-stability
+  rules:
+    - if: '$GPUWORKS_PPU_GATEWAY_URL && $GPUWORKS_PPU_GATEWAY_ADMIN_TOKEN && $GPUWORKS_PPU_GATEWAY_DEPLOYMENT_ID'
+      when: manual
+    - when: never
+
 # Full Gitee deployment/chat is intentionally opt-in. The capability job above
 # remains the nightly signal; this long, network-heavy acceptance is only
 # started explicitly from a web/API pipeline or an MR manual action.
