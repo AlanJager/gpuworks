@@ -1,8 +1,9 @@
 package deployment
 
 import (
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // NewListsWithConnections uses authenticated session facts for presentation.
