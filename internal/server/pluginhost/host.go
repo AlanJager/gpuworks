@@ -229,6 +229,10 @@ type Class struct {
 	// the body is closed and takes it from a pool of its own, so open
 	// streams never block short calls.
 	Stream bool
+	// Timeout bounds the call, the plugin's start included; for a Stream
+	// call, only until its response headers arrive. Zero leaves ctx's
+	// deadline, or CallTimeout without one; with both, the earlier holds.
+	Timeout time.Duration
 }
 
 // Do sends req to the plugin (a route or a service; only the method, path,
@@ -251,6 +255,18 @@ type Class struct {
 // timed until the response headers or the refusal
 // (gpuworks_plugin_call_seconds).
 func (h *Host) Do(ctx context.Context, id string, req *http.Request, class Class) (*http.Response, error) {
+	return h.DoSigned(ctx, id, req, class, nil)
+}
+
+// Signer sets the headers that authenticate a call to the process that
+// serves it, under that process's principal key (fresh per spawn). A call
+// that waits for an on-demand start is signed for the process it reaches.
+type Signer func(key []byte, header http.Header) error
+
+// DoSigned is Do with sign applied to a copy of req's headers just before
+// it is sent; nil signs nothing. A signing failure is the server's own and
+// is returned as it is, before anything is sent.
+func (h *Host) DoSigned(ctx context.Context, id string, req *http.Request, class Class, sign Signer) (*http.Response, error) {
 	i := h.get(id)
 	if i == nil {
 		return nil, Unavailable(id, string(StateStopped), ErrUnknownPlugin)
@@ -264,7 +280,10 @@ func (h *Host) Do(ctx context.Context, id string, req *http.Request, class Class
 func (h *Host) do(ctx context.Context, i *instance, req *http.Request, class Class) (*http.Response, CallOutcome, error) {
 	id := i.spec.ID
 	timeout := h.timing.CallTimeout
-	if d, ok := ctx.Deadline(); ok {
+	if class.Timeout > 0 {
+		timeout = class.Timeout
+	}
+	if d, ok := ctx.Deadline(); ok && (class.Timeout <= 0 || time.Until(d) < timeout) {
 		timeout = time.Until(d)
 	}
 	deadline := time.Now().Add(timeout)
@@ -283,7 +302,14 @@ func (h *Host) do(ctx context.Context, i *instance, req *http.Request, class Cla
 			}
 			return nil, CallUnavailable, Unavailable(id, string(i.snapshot().State), err)
 		}
-		resp, err := r.conn.do(ctx, req, class, deadline, r.touch)
+		send := req
+		if sign != nil {
+			send = req.Clone(req.Context())
+			if err := sign(r.key, send.Header); err != nil {
+				return nil, fmt.Errorf("plugin %s: sign the call: %w", id, err)
+			}
+		}
+		resp, err := r.conn.do(ctx, send, class, deadline, r.touch)
 		var busy *busyError
 		var failed *callError
 		switch {
