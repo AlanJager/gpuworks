@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"gpuworks.ai/gpuworks/internal/server/deployment"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/modelmeta"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -223,7 +224,7 @@ func (a *apiHandlers) syncModelToNode(w http.ResponseWriter, r *http.Request) {
 	}
 	mf, err := a.d.ModelTransfers.Sync(r.Context(), id, nodeUUID, req.SourceNode, rate)
 	if err != nil {
-		writeErr(w, http.StatusConflict, err)
+		writeErr(w, http.StatusConflict, deployment.ModelFilePathProductError(err))
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": mf.State, "transfer_id": mf.TransferID, "message": mf.Message})

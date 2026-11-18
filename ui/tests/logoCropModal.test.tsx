@@ -135,3 +135,27 @@ test("closing the dialog releases the image's object URL", async () => {
   await act(async () => {});
   assert.ok(revoked.slice(before).includes(url));
 });
+
+test("a damaged logo reports the read failure and a new file starts clean", async () => {
+  const s = setup();
+  fireEvent.error(screen.getByAltText(crop.image));
+  assert.ok(await screen.findByRole("alert"));
+  assert.ok(screen.getByText(locale.settings.branding.logoError.unreadable));
+  assert.equal(ok().disabled, true);
+  assert.equal(squareBox().disabled, true);
+  await s.user.click(ok());
+  assert.deepEqual(s.calls, []);
+  assert.deepEqual(s.confirmed, []);
+
+  s.view.rerender(<I18nextProvider i18n={i18n}><LogoCropModal
+    file={new File([new Uint8Array(10)], "replacement.png", { type: "image/png" })}
+    onCancel={() => {}}
+    onConfirm={(logo) => s.confirmed.push(logo)}
+    prepare={async () => "data:image/png;base64,REPLACEMENT"}
+  /></I18nextProvider>);
+  assert.equal(screen.queryByText(locale.settings.branding.logoError.unreadable), null);
+  assert.equal(ok().disabled, true);
+  s.load();
+  await s.user.click(ok());
+  await waitFor(() => assert.deepEqual(s.confirmed, ["data:image/png;base64,REPLACEMENT"]));
+});

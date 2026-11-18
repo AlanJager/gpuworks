@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import type { Deployment, Instance } from "../api";
 import { isModelFileReady } from "../storageTypes";
 import InstancePanel, { type InstanceView } from "./InstancePanel";
-import { distRank, previousAttempts, instanceStatusGroups, instanceSummaryState } from "./instanceGroups";
+import { distRank, instanceStatusGroups, instanceSummaryState } from "./instanceGroups";
 import { imageMismatch } from "./instanceImage";
 
 function readyModelAtLaunch(dep: Deployment, inst: Instance) {
@@ -145,7 +145,7 @@ export default function DeploymentInstances({ dep, focus, focusStartup, initialV
           readyModel={readyModelAtLaunch(dep, current)}
           sleepable={dep.sleepable}
           params={dep.quick_params}
-          previousAttempt={previousAttempts(instances, dep.replicas).has(current.uuid)}
+          previousAttempt={current.previous_attempt}
           rank={distRank(current, instances)}
           imageDiffers={differing.has(current.uuid)}
         />

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import ReactCrop, { type PercentCrop } from "react-image-crop";
 import { FULL_CROP, LogoError, prepareLogo, squareCrop, type LogoCrop } from "../../brandingLogo";
 import { LOGO_BOX } from "../../branding";
+import { Notice } from "../../ui-kit/Notice";
 
 const { Text } = Typography;
 
@@ -35,6 +36,7 @@ export default function LogoCropModal({ file, onCancel, onConfirm, prepare = pre
   const [crop, setCrop] = useState<PercentCrop>(toPercent(FULL_CROP));
   const [square, setSquare] = useState(false);
   const [size, setSize] = useState<{ width: number; height: number }>();
+  const [unreadable, setUnreadable] = useState(false);
   const [busy, setBusy] = useState(false);
   const url = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
@@ -43,6 +45,7 @@ export default function LogoCropModal({ file, onCancel, onConfirm, prepare = pre
     setCrop(toPercent(FULL_CROP));
     setSquare(false);
     setSize(undefined);
+    setUnreadable(false);
   }, [file]);
 
   const toggleSquare = (on: boolean) => {
@@ -82,6 +85,7 @@ export default function LogoCropModal({ file, onCancel, onConfirm, prepare = pre
     >
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <Text type="secondary">{t("branding.crop.help")}</Text>
+        {unreadable && <Notice tone="danger" role="alert" title={t("branding.logoError.unreadable")} />}
         <div className="logo-crop-stage">
           {url && (
             <ReactCrop
@@ -107,6 +111,10 @@ export default function LogoCropModal({ file, onCancel, onConfirm, prepare = pre
                 src={url}
                 alt={t("branding.crop.image")}
                 className="logo-crop-image"
+                onError={() => {
+                  setSize(undefined);
+                  setUnreadable(true);
+                }}
                 onLoad={(event) => {
                   const image = event.currentTarget;
                   setSize({ width: image.naturalWidth || 1, height: image.naturalHeight || 1 });

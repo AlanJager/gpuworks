@@ -92,7 +92,7 @@ function panelOf(uuid: string) {
 const cardIds = () => [...document.querySelectorAll("[id^=instance-]")].map((el) => el.id);
 
 test("a timed-out attempt listed first is still not the current instance", () => {
-  const failed = inst("failed-attempt", { state: "failed", message: timeout, schedule: unit("|[]") });
+  const failed = inst("failed-attempt", { state: "failed", message: timeout, previous_attempt: true, schedule: unit("|[]") });
   const running = inst("running-now", { state: "running", replica: { index: 0 }, schedule: unit("|[]") });
   renderInstances([failed, running]);
 
@@ -116,7 +116,7 @@ test("a failed instance with no error text still offers diagnosis alongside its 
 });
 
 test("a replacement that is still starting already owns the unit", () => {
-  const failed = inst("failed-attempt", { state: "failed", message: timeout, schedule: unit("|[]") });
+  const failed = inst("failed-attempt", { state: "failed", message: timeout, previous_attempt: true, schedule: unit("|[]") });
   const starting = inst("starting-now", { state: "starting", replica: { index: 0 }, schedule: unit("|[]") });
   renderInstances([failed, starting]);
 
@@ -126,7 +126,7 @@ test("a replacement that is still starting already owns the unit", () => {
 });
 
 test("one current replica without a unit key still demotes the timed-out attempt", () => {
-  const failed = inst("old-attempt", { state: "failed", message: timeout });
+  const failed = inst("old-attempt", { state: "failed", message: timeout, previous_attempt: true });
   const running = inst("running-now", { state: "running", replica: { index: 0 } });
   renderInstances([failed, running]);
 
@@ -158,7 +158,7 @@ test("an exhausted replica with no unit key stays current when another replica r
 });
 
 test("a failed ordinary attempt is previous once every replica is filled", () => {
-  const failed = inst("old-attempt", { state: "failed", message: timeout, schedule: unit("|[]") });
+  const failed = inst("old-attempt", { state: "failed", message: timeout, previous_attempt: true, schedule: unit("|[]") });
   const first = inst("replica-a", { state: "running", replica: { index: 0 }, schedule: unit("|[]") });
   const second = inst("replica-b", { state: "running", replica: { index: 1 }, schedule: unit("|[]") });
   renderInstances([failed, first, second], 2);
@@ -177,7 +177,7 @@ test("an exhausted multi-node unit stays a current failure beside a different ru
 });
 
 test("a replaced multi-node unit is a previous attempt before the other replica exists", () => {
-  const failed = inst("unit-0-failed", { state: "failed", message: timeout, schedule: unit("|node-a[]|node-b[]") });
+  const failed = inst("unit-0-failed", { state: "failed", message: timeout, previous_attempt: true, schedule: unit("|node-a[]|node-b[]") });
   const running = inst("unit-0-running", { state: "running", replica: { index: 0 }, schedule: unit("|node-a[]|node-b[]") });
   renderInstances([failed, running], 2);
 
@@ -192,4 +192,23 @@ test("two current replicas and no unit keys are not guessed into history", () =>
     inst("replica-b", { state: "running", replica: { index: 1 } }),
   ], 2);
   assert.equal(within(panelOf("old-attempt")).queryByText("Previous attempt"), null);
+});
+
+test("exhausted retries show the server's historical verdict for older failed attempts", () => {
+  const old = inst("old-exhausted", { state: "failed", message: timeout, schedule: unit("|[]"), previous_attempt: true });
+  const latest = inst("latest-exhausted", { state: "failed", message: timeout, schedule: unit("|[]") });
+  renderInstances([old, latest]);
+  assert.equal(within(panelOf("latest-exhausted")).queryByText("Previous attempt"), null);
+  assert.ok(within(panelOf("old-exhausted")).getByText("Previous attempt"));
+  assert.ok(within(panelOf("old-exhausted")).getByText(timeout));
+});
+
+// DTO verdicts are authoritative, including for interchangeable ordinary replicas.
+test("one healthy replica and three failed attempts retain only the current failure without a label", () => {
+  const failures = [0, 1, 2].map(n => inst(`attempt-${n}`, { state: "failed", message: timeout, previous_attempt: n < 2, schedule: unit("|[]") }));
+  renderInstances([inst("healthy", { replica: { index: 0 }, schedule: unit("|[]") }), ...failures], 2);
+  for (let n = 0; n < 3; n++) {
+    assert.equal(!!within(panelOf(`attempt-${n}`)).queryByText("Previous attempt"), n < 2);
+    assert.ok(within(panelOf(`attempt-${n}`)).getByText(timeout));
+  }
 });

@@ -256,7 +256,10 @@ function CreateModal({
     <Modal
       title={t("create.title")}
       open={open}
-      onCancel={onClose}
+      onCancel={() => {
+        form.resetFields();
+        onClose();
+      }}
       onOk={submit}
       confirmLoading={submitting}
       okText={t("actions.create")}

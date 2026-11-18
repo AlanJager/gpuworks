@@ -377,6 +377,9 @@ type Instance struct {
 	// Replica is the replica the instance fills (as its leader or a
 	// follower of its generation); absent when it fills none.
 	Replica *InstanceReplica `json:"replica,omitempty"`
+	// PreviousAttempt is a retained failed attempt superseded by a later
+	// failure or a filled replica; absent for the current failure.
+	PreviousAttempt bool `json:"previous_attempt,omitempty"`
 	// CanSleepAlone and CanWakeAlone say whether the instance takes a sleep
 	// or wake order of its own now (POST /instances/{uuid}/sleep|wake).
 	CanSleepAlone bool   `json:"can_sleep_alone"`

@@ -32,7 +32,7 @@ export default function DeploymentPolicyCard() {
       .catch((error) => setLoadError(apiErrorText(tCommon, error)));
   }, [tCommon]);
 
-  const valid = seconds != null && seconds >= minSeconds && seconds <= maxSeconds;
+  const valid = seconds != null && Number.isInteger(seconds) && seconds >= minSeconds && seconds <= maxSeconds;
   const save = async () => {
     if (!valid) return;
     setSaving(true);
@@ -60,14 +60,12 @@ export default function DeploymentPolicyCard() {
             htmlFor="deployment-start-timeout"
             extra={t("deployment.startTimeoutHelp", { min: minSeconds, max: maxSeconds })}
             validateStatus={seconds != null && !valid ? "error" : undefined}
+            help={seconds != null && !valid ? t("deployment.startTimeoutInvalid", { min: minSeconds, max: maxSeconds }) : undefined}
             style={{ marginBottom: 12 }}
           >
             <InputNumber
               id="deployment-start-timeout"
-              min={minSeconds}
-              max={maxSeconds}
               step={60}
-              precision={0}
               value={seconds}
               onChange={(value) => setSeconds(value == null ? null : Number(value))}
               suffix={t("deployment.seconds")}

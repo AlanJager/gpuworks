@@ -247,3 +247,42 @@ test("the node selector in the drawer narrows an entry and clears the default ma
   assert.deepEqual(body.node_requirements, { site: ["idc-a"] });
   assert.equal(body.control_plane, false);
 });
+
+// DELETE keeps surviving positions (TestPullProxiesCRUDWire).
+test("a refused proxy deletion preserves the current list numbers", async () => {
+  const { fake, user } = setup();
+  await waitFor(() => assert.equal(rows().length, 2));
+  fake.failNext("deletePullProxy", new Error("delete refused"));
+  await user.click(screen.getByRole("button", { name: fill(text.deleteProxy, { n: 1 }) }));
+  await user.click(await screen.findByRole("button", { name: action.delete, exact: true }));
+  await screen.findByText("delete refused");
+  assert.equal(fake.proxies.length, 2);
+  assert.match(rowText(rows()[1]), /^2/);
+});
+
+test("deleting an earlier proxy keeps list, preview and node card numbers consistent", async () => {
+  const { fake, user } = setup();
+  await waitFor(() => assert.equal(rows().length, 2));
+  const originalDelete = api.deletePullProxy;
+  let release!: () => void;
+  api.deletePullProxy = async (id) => { await new Promise<void>(resolve => { release = resolve; }); return originalDelete(id); };
+  try {
+    await user.click(screen.getByRole("button", { name: fill(text.deleteProxy, { n: 1 }) }));
+    await user.click(await screen.findByRole("button", { name: action.delete, exact: true }));
+    await waitFor(() => assert.ok(release));
+    assert.match(rowText(rows()[1]), /^2/, "a pending deletion preserves the surviving number");
+    release();
+    await waitFor(() => assert.equal(rows().length, 1));
+    assert.equal(fake.proxies[0].position, 1);
+    assert.match(rowText(rows()[0]), /^2/, "the list must use the server position after deletion");
+    assert.ok(within(rows()[0]).getByRole("button", { name: fill(text.deleteProxy, { n: 2 }) }));
+    assert.ok(within(rows()[0]).getByRole("button", { name: fill(text.moveUp, { n: 2 }) }));
+    await user.click(screen.getByRole("combobox", { name: text.previewPick }));
+    await user.click(await screen.findByText("gpu-b-01", { selector: ".ant-select-item-option-content" }));
+    await screen.findByText(fill(text.previewResult, { n: 2 }));
+    const { MemoryRouter } = await import("react-router-dom");
+    const NodePullProxy = (await import("../src/components/NodePullProxy.tsx")).default;
+    render(<MemoryRouter><I18nextProvider i18n={i18n}><NodePullProxy nodeUUID="gpu-b-01" /></I18nextProvider></MemoryRouter>);
+    await screen.findByText(i18n.t("pullProxy.entry", { ns: "nodes", n: 2 }));
+  } finally { api.deletePullProxy = originalDelete; }
+});

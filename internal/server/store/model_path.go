@@ -7,13 +7,13 @@ import (
 )
 
 // ModelArtifactPath is the node-relative directory a model's weights occupy.
-// It is the single definition of that layout: the deploy API, the download API
-// and the controller all derive a ModelFile.Path from it, so a model downloaded
-// through one path is recognized as present by the others.
+// The deploy API, download API and controller use this preferred layout. When
+// another identity already owns the directory, transfer preparation allocates
+// a stable model-specific suffix; callers use the returned ModelFile.Path.
 //
-// A repository pinned to no particular revision resolves to its default branch,
-// which both supported providers name "main"; spelling that explicitly keeps
-// the directory stable once a revision is later recorded. A sparse artifact
+// An empty revision retains the historical "main" directory spelling; that is
+// a layout convention, not a statement about the provider's default branch.
+// Revision identity remains separate from the preferred directory. A sparse artifact
 // (one subfolder of a larger repository) gets its own directory keyed by a
 // digest of the subfolder, so it never collides with the whole repository while
 // keeping the path short and free of nested separators.

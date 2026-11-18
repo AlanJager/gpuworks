@@ -244,3 +244,32 @@ test("a failed service list keeps all-services usable and says why the list is e
   await user.click(within(dialog).getByRole("radio", { name: k.scope.some }));
   assert.ok(await within(dialog).findByText(/list unavailable/));
 });
+
+for (const closeWith of ["cancel", "Escape"] as const) {
+  for (const draft of ["name", "validation"] as const) {
+    test(`closing inference token creation with ${closeWith} clears ${draft} before reopening`, async () => {
+      const { created, user } = setup();
+      await user.click(screen.getByRole("button", { name: k.create.button }));
+      const dialog = await screen.findByRole("dialog");
+      if (draft === "name") {
+        await user.type(within(dialog).getByRole("textbox"), "discarded-draft");
+      }
+      await user.click(within(dialog).getByRole("radio", { name: k.scope.some }));
+      await user.click(within(dialog).getByRole("button", { name: k.actions.create }));
+      assert.ok(await within(dialog).findByText(k.scope.required));
+      if (draft === "validation") assert.ok(await within(dialog).findByText(k.create.nameRequired));
+      if (closeWith === "cancel") {
+        await user.click(within(dialog).getByRole("button", { name: k.actions.cancel }));
+      } else {
+        fireEvent.keyDown(within(dialog).getByRole("textbox"), { key: "Escape", code: "Escape", keyCode: 27 });
+      }
+      await user.click(screen.getByRole("button", { name: k.create.button }));
+      const reopened = await screen.findByRole("dialog");
+      assert.equal((within(reopened).getByRole("textbox") as HTMLInputElement).value, "");
+      assert.ok(within(reopened).queryByText(k.create.nameRequired) === null, "name validation is cleared");
+      assert.ok(within(reopened).queryByText(k.scope.required) === null, "scope validation is cleared");
+      assert.equal((within(reopened).getByRole("radio", { name: k.scope.all }) as HTMLInputElement).checked, true);
+      assert.equal(created.length, 0);
+    });
+  }
+}

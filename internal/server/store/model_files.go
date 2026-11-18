@@ -407,6 +407,14 @@ func (s *Store) prepareModelFile(ref FileRef, path string, updates map[string]an
 	ref = s.resolveRef(ref)
 	var mf *ModelFile
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if updates["acquisition"] != proto.ModelAcquireRegistered {
+			var err error
+			path, err = localModelTransferPath(tx, ref, path)
+			if err != nil {
+				return err
+			}
+			updates["path"] = path
+		}
 		if err := sharedModelPathConflict(tx, ref, path); err != nil {
 			return err
 		}

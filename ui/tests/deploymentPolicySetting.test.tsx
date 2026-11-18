@@ -88,21 +88,34 @@ test("shows the stored start timeout and saves only that field", async () => {
   }
 });
 
-test("an out-of-range value cannot be saved", async () => {
-  const stub = stubAPI({ deployment: { start_timeout_sec: 1800 } });
-  try {
-    const card = renderCard();
-    await waitFor(() => assert.equal(card.input().value, "1800"));
-    const user = userEvent.setup({ document: dom.window.document });
-    await user.clear(card.input());
-    assert.equal(card.save().disabled, true, "an empty field is not a value to save");
-    await user.type(card.input(), "30");
-    await waitFor(() => assert.equal(card.save().disabled, true));
-    assert.equal(stub.puts.length, 0);
-  } finally {
-    stub.restore();
-  }
-});
+for (const value of ["30", "86401", "60.5"]) {
+  test(`an out-of-range timeout ${value} stays invalid after leaving the field`, async () => {
+    const stub = stubAPI({ deployment: { start_timeout_sec: 1800 } });
+    try {
+      const card = renderCard();
+      await waitFor(() => assert.equal(card.input().value, "1800"));
+      const user = userEvent.setup({ document: dom.window.document });
+      await user.clear(card.input());
+      assert.equal(card.save().disabled, true, "an empty field is not a value to save");
+      await user.type(card.input(), value);
+      await user.tab();
+      assert.equal(card.input().value, value, "blur must not silently replace the administrator's value");
+      assert.equal(card.save().disabled, true);
+      assert.ok(await screen.findByText("Enter a whole number between 60 and 86400 seconds."));
+      await user.click(card.save());
+      assert.equal(stub.puts.length, 0, "an invalid value never sends a settings mutation");
+      await user.clear(card.input());
+      await user.type(card.input(), "3600");
+      await user.tab();
+      assert.equal(card.save().disabled, false);
+      await waitFor(() => assert.ok(screen.queryByText("Enter a whole number between 60 and 86400 seconds.") === null, "correcting the value clears the validation message"));
+      await user.click(card.save());
+      await waitFor(() => assert.deepEqual(stub.puts, [{ key: "deployment", value: { start_timeout_sec: 3600 } }]));
+    } finally {
+      stub.restore();
+    }
+  });
+}
 
 test("a failed load says so and leaves nothing to save", async () => {
   const stub = stubAPI(new Error("settings unavailable"));

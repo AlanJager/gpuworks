@@ -88,15 +88,15 @@ export default function ChangePasswordModal({ open, policy, onClose, onChanged }
         </DialogHeader>
         <form ref={formRef} noValidate onSubmit={formSubmit(form, () => formRef.current, submit)} className="flex flex-col gap-4">
           {error && <Notice tone="danger" title={error} />}
-          <FormField control={form.control} name="current" label={t("changePassword.current")}>
+          <FormField control={form.control} name="current" required label={t("changePassword.current")}>
             {(binding) => <PasswordInput {...binding} autoComplete="current-password" disabled={saving}
               onChange={(event) => { binding.onChange(event); setError(""); }} />}
           </FormField>
-          <FormField control={form.control} name="next" label={t("changePassword.next")}
+          <FormField control={form.control} name="next" required label={t("changePassword.next")}
             description={policy ? t("changePassword.rule", { min: policy.min_length, max: policy.max_length }) : undefined}>
             {(binding) => <PasswordInput {...binding} autoComplete="new-password" disabled={saving} />}
           </FormField>
-          <FormField control={form.control} name="confirm" label={t("changePassword.confirm")}>
+          <FormField control={form.control} name="confirm" required label={t("changePassword.confirm")}>
             {(binding) => <PasswordInput {...binding} autoComplete="new-password" disabled={saving} />}
           </FormField>
           <DialogFooter>
