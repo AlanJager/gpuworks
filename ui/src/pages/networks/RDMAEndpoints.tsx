@@ -108,19 +108,13 @@ export function RailsCell({ network, node, onChanged }: { network: NetworkDetail
       label: [p.name, p.ip || "—", p.gap ? railGapText(t, p.gap) : ""].filter(Boolean).join(" · "),
     }));
   return (
-    <Space direction="vertical" size={2}>
-      {node.hcas.length === 0 && <Typography.Text type="secondary">—</Typography.Text>}
-      {node.hcas.map((rail) => (
-        <RailLine key={rail.name} rail={rail}>
-          <RemoveHCAButton network={network} hca={rail.name} nodeUUID={node.node_uuid} nodeName={node.node_name} onChanged={onChanged} />
-        </RailLine>
-      ))}
-      <Space size={4} wrap>
+    <div className="grid min-w-0 gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
         {adding ? (
           <Select
             autoFocus
             size="small"
-            style={{ minWidth: 260 }}
+            className="w-64 max-w-full"
             open
             loading={loading}
             placeholder={t(accelerator ? "rail.pickCard" : "rail.pick")}
@@ -133,8 +127,19 @@ export function RailsCell({ network, node, onChanged }: { network: NetworkDetail
           <Button size="small" type="dashed" icon={<PlusOutlined />} disabled={busy} onClick={() => { load(); setAdding(true); }}>{t("rail.add")}</Button>
         )}
         <SourceTag source={node.hca_source} busy={busy} onReset={() => edit({ op: "reset", node_uuid: node.node_uuid })} />
-      </Space>
-    </Space>
+      </div>
+      {node.hcas.length === 0 ? <Typography.Text type="secondary">—</Typography.Text> : (
+        <ul aria-label={t("nodeTable.hcaIPs")} className="m-0 grid max-h-60 list-none gap-1 overflow-y-auto p-0">
+          {node.hcas.map((rail) => (
+            <li key={rail.name}>
+              <RailLine rail={rail}>
+                <RemoveHCAButton network={network} hca={rail.name} nodeUUID={node.node_uuid} nodeName={node.node_name} onChanged={onChanged} />
+              </RailLine>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -143,7 +148,7 @@ export function RailLine({ rail, children }: { rail: NetworkRail; children?: Rea
   const { t } = useTranslation("networks");
   const gap = railGapText(t, rail.gap);
   return (
-    <Space size={6}>
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 [overflow-wrap:anywhere]">
       <Typography.Text code>{rail.name}</Typography.Text>
       <Typography.Text type="secondary">{rail.ip || "—"}</Typography.Text>
       {gap && (
@@ -152,7 +157,7 @@ export function RailLine({ rail, children }: { rail: NetworkRail; children?: Rea
         </Tooltip>
       )}
       {children}
-    </Space>
+    </div>
   );
 }
 

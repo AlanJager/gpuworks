@@ -20,6 +20,8 @@ export const networkApi = {
     sendJSON<NetworkDetail>("POST", `/api/v1/networks/${id}/hcas`, body),
   updateNetworkAttachment: (id: number, attachmentID: number, body: NetworkOverrideRequest) =>
     sendJSON<NetworkDetail>("PUT", `/api/v1/networks/${id}/attachments/${attachmentID}`, body),
+  updateNetworkLabel: (id: number, attachmentID: number, body: { label_key: string; label_value: string }) =>
+    sendJSON<NetworkDetail>("PUT", `/api/v1/networks/${id}/attachments/${attachmentID}/label`, body),
   detachNetwork: (id: number, attachmentID: number) =>
     sendJSON<NetworkDetail>("DELETE", `/api/v1/networks/${id}/attachments/${attachmentID}`),
   startNetworkTest: (id: number, body: NetworkTestRequest) =>

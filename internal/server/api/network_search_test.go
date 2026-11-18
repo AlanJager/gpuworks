@@ -1,10 +1,11 @@
 package api
 
 import (
-	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"net/http"
 	"reflect"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 )
 
 func TestSearchNetworkTargets(t *testing.T) {
@@ -39,5 +40,26 @@ func TestNetworkTargetSearchFields(t *testing.T) {
 	}
 	if ids := matchNetworkTargets(detail, "attachments", "=").IDs; len(ids) != 0 {
 		t.Fatalf("node matched empty label: %v", ids)
+	}
+}
+
+func TestNetworkNodeSearchIncludesOnlyItsOwnOverrides(t *testing.T) {
+	detail := dto.NetworkDetail{
+		Network: dto.Network{Attachments: []dto.NetworkAttachment{
+			{ID: 2, Target: "node", Interface: "bond7", IP: "192.0.2.101", HCAs: []string{"absent_rail:9"}},
+			{ID: 3, Target: "node", Interface: "unresolved-only"},
+		}},
+		Nodes: []dto.NetworkNode{
+			{NodeUUID: "node-a", AttachmentID: 2, Interface: "eth0"},
+			{NodeUUID: "node-b", AttachmentID: 4, Interface: "eth1"},
+		},
+	}
+	for _, q := range []string{"ETH0", "bond7", "192.0.2.101", "ABSENT_RAIL"} {
+		if ids := matchNetworkTargets(detail, "nodes", q).IDs; !reflect.DeepEqual(ids, []string{"node-a"}) {
+			t.Errorf("search %q: %v", q, ids)
+		}
+	}
+	if ids := matchNetworkTargets(detail, "nodes", "unresolved-only").IDs; len(ids) != 0 {
+		t.Errorf("unresolved override matched resolved nodes: %v", ids)
 	}
 }

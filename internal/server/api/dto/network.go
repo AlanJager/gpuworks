@@ -158,6 +158,12 @@ type NetworkAttachmentRequest struct {
 	HCAs       []string `json:"hcas"`
 }
 
+// NetworkLabelRequest changes a label attachment's matching selector.
+type NetworkLabelRequest struct {
+	LabelKey   string `json:"label_key"`
+	LabelValue string `json:"label_value"`
+}
+
 // NetworkOverrideRequest replaces a node attachment's overrides.
 type NetworkOverrideRequest struct {
 	Interface string   `json:"interface"`

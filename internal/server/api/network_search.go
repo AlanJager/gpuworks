@@ -55,17 +55,24 @@ func matchNetworkTargets(detail dto.NetworkDetail, kind, query string) dto.Netwo
 		return false
 	}
 	out := dto.NetworkTargetMatches{IDs: []string{}}
-	if kind == "attachments" {
-		for _, a := range detail.Attachments {
-			labelMatch := a.Target == netplan.SourceLabel && matches(a.LabelKey+"="+a.LabelValue)
-			if labelMatch || matches(a.NodeName, a.NodeUUID, a.Interface, a.IP) || matches(a.HCAs...) {
+	// An explicitly configured interface, IP or HCA can differ from what the
+	// node reported. Both belong to the same searchable overview row.
+	directMatches := make(map[uint]bool)
+	for _, a := range detail.Attachments {
+		labelMatch := a.Target == netplan.SourceLabel && matches(a.LabelKey+"="+a.LabelValue)
+		if labelMatch || matches(a.NodeName, a.NodeUUID, a.Interface, a.IP) || matches(a.HCAs...) {
+			if kind == "attachments" {
 				out.IDs = append(out.IDs, strconv.FormatUint(uint64(a.ID), 10))
+			} else if a.Target == netplan.SourceNode {
+				directMatches[a.ID] = true
 			}
 		}
+	}
+	if kind == "attachments" {
 		return out
 	}
 	for _, n := range detail.Nodes {
-		hit := matches(n.NodeName, n.NodeUUID, n.IP, n.Interface) ||
+		hit := directMatches[n.AttachmentID] || matches(n.NodeName, n.NodeUUID, n.IP, n.Interface) ||
 			(n.LabelKey != "" && matches(n.LabelKey+"="+n.LabelValue)) ||
 			slices.ContainsFunc(n.HCAs, func(rail dto.NetworkRail) bool {
 				return matches(rail.Name, rail.IP, rail.NetDev)

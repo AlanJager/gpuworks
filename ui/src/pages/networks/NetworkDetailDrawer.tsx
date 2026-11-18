@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Descriptions, Typography } from "antd";
-import { Badge } from "../../components/ui/badge";
+import NetworkLoadTargets from "./NetworkLoadTargets";
 import { Button } from "../../components/ui/button";
 import { ConfirmPopover } from "../../ui-kit/ConfirmPopover";
 import { Notice } from "../../ui-kit/Notice";
@@ -59,6 +59,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
   const { t } = useTranslation("networks");
   const [detail, setDetail] = useState<NetworkDetail | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [attachmentMode, setAttachmentMode] = useState<"node" | "label">("node");
   const [attachOpen, setAttachOpen] = useState(false);
   const [editingAttachment, setEditingAttachment] = useState<NetworkAttachment | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -138,7 +139,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
               detail={current}
               description={current.description}
               onDetail={updated}
-              onAttach={(attachment) => { setEditingAttachment(attachment); setAttachOpen(true); }}
+              onAttach={(attachment, mode = "node") => { setAttachmentMode(mode); setEditingAttachment(attachment); setAttachOpen(true); }}
             />
           ),
         },
@@ -151,6 +152,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
           <AttachNetworkModal
             open={attachOpen}
             network={current}
+            initialMode={attachmentMode}
             attachment={editingAttachment}
             onClose={() => setAttachOpen(false)}
             onSaved={(d) => { setAttachOpen(false); updated(d); }}
@@ -175,14 +177,11 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
   detail: NetworkDetail;
   description?: string;
   onDetail: (detail: NetworkDetail) => void;
-  onAttach: (attachment: NetworkAttachment | null) => void;
+  onAttach: (attachment: NetworkAttachment | null, mode?: "node" | "label") => void;
 }) {
   const { t } = useTranslation("networks");
   const rails = usesRails(detail.type);
-  const [managing, setManaging] = useState(false);
-  const directNodes = detail.attachments.filter((a) => a.target === "node").length;
-  const labels = detail.attachments.length - directNodes;
-  const managementId = `network-${detail.id}-attachments`;
+  const attachments = useMemo(() => new Map(detail.attachments.map(a => [a.id, a])), [detail.attachments]);
   const detach = async (attachment: NetworkAttachment) => {
     try {
       onDetail(await api.detachNetwork(detail.id, attachment.id));
@@ -190,22 +189,46 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
       message.error(t("message.failed", { detail: (e as Error).message }));
     }
   };
-  const overrideText = (a: NetworkAttachment) => [a.interface, a.ip, a.hcas.join(",")].filter(Boolean).join(" · ");
-
   const nodeColumns: ResourceColumn<NetworkNode>[] = [
     {
       title: t("nodeTable.node"),
-      dataIndex: "node_name", key: "node", width: 180, role: "name",
+      dataIndex: "node_name", key: "node", width: 140, role: "name",
       render: (_, n) => <span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span>,
     },
-    { title: t("nodeTable.roles"), dataIndex: "roles", key: "roles", width: 230, render: (_, n) => <RoleTags roles={n.roles} /> },
     {
-      title: t("nodeTable.source"), dataIndex: "source", key: "source", width: 220,
-      render: (_, n) => n.source === "node" ? t("detail.directNode") : sourceText(t, n),
+      key: "endpointSummary", title: t(rails ? "nodeTable.bootstrapPorts" : "nodeTable.endpoint"), width: 220,
+      render: (_, n) => rails
+        ? <span>{n.ip || t("rail.noBootstrap")} · {t(isAcceleratorRDMA(detail.type) ? "nodeTable.cardCount" : "nodeTable.portCount", { count: n.hcas.length })}</span>
+        : <Endpoint iface={n.interface} ip={n.ip} />,
+    },
+    { title: t("nodeTable.roles"), dataIndex: "roles", key: "roles", width: 130, render: (_, n) => <RoleTags roles={n.roles} /> },
+    {
+      title: t("nodeTable.source"), dataIndex: "source", key: "source", width: 150,
+      render: (_, n) => n.source === "node" ? t("detail.directNode") : <span title={sourceText(t, n)}>{sourceText(t, n)}</span>,
+    },
+    {
+      key: "time", title: t("detail.attachedTime"), width: 160,
+      render: (_, node) => {
+        const time = attachments.get(node.attachment_id)?.created_at;
+        return time ? formatTime(time) : "—";
+      },
+    },
+    {
+      key: "actions", role: "actions", title: t("table.actions"), width: 124,
+      render: (_, node) => {
+        const attachment = attachments.get(node.attachment_id);
+        if (!attachment) return "—";
+        if (attachment.target === "label") return <Button variant="link" size="sm" onClick={() => onAttach(attachment)}>{t("nodeTable.editSourceLabel")}</Button>;
+        return <span className="inline-flex items-center gap-2">
+          <Button variant="link" size="sm" onClick={() => onAttach(attachment)}>{t("actions.edit")}</Button>
+          <ConfirmPopover title={t("actions.confirmDetach")} onConfirm={() => detach(attachment)} confirmText={t("actions.detach")} cancelText={t("actions.cancel")} destructive trigger={<Button variant="link" size="sm" className="text-fg-danger">{t("actions.detach")}</Button>} />
+        </span>;
+      },
     },
   ];
-  const expandedRowRender = (node: NetworkNode) => (
-    <dl className="ms-10 grid gap-3 border-s-2 border-border bg-muted px-4 py-3 text-body">
+  const expandedRowRender = (node: NetworkNode) => {
+    const attachment = attachments.get(node.attachment_id);
+    return <dl className="ms-10 grid gap-3 border-s-2 border-border bg-muted px-4 py-3 text-body">
       {rails ? (
         <>
           <div>
@@ -223,8 +246,18 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           <dd><Endpoint iface={node.interface} ip={node.ip} /></dd>
         </div>
       )}
-    </dl>
-  );
+      {attachment && (attachment.interface || attachment.ip || attachment.hcas.length > 0) && (
+        <div className="min-w-0 whitespace-normal break-all">
+          <dt className="mb-1 text-label text-fg-muted">{t("attach.overrides")}</dt>
+          <dd className="max-h-40 overflow-y-auto">
+            {attachment.interface && <div>{t("attach.interface")} · {attachment.interface}</div>}
+            {attachment.ip && <div>IP · {attachment.ip}</div>}
+            {attachment.hcas.length > 0 && <div>HCA · {attachment.hcas.join(", ")}</div>}
+          </dd>
+        </div>
+      )}
+    </dl>;
+  };
 
   return (
     <>
@@ -247,65 +280,16 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           </Descriptions>
         )}
       </DetailSection>
-      <DetailSection title={t("detail.attachments")}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-body text-fg-muted">
-            {detail.attachments.length
-              ? [t("table.attachmentNodes", { count: directNodes }), t("table.attachmentLabels", { count: labels })].join(" · ")
-              : t("detail.noAttachments")}
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            {detail.attachments.length > 0 && (
-              <Button variant="secondary" size="sm" aria-expanded={managing} aria-controls={managementId} onClick={() => setManaging(!managing)}>
-                {t(managing ? "detail.hideAttachments" : "detail.manageAttachments")}
-              </Button>
-            )}
-            <Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("actions.attach")}</Button>
-          </div>
-        </div>
-        <div id={managementId} className="mt-3" hidden={!managing || !detail.attachments.length}>
-          {managing && detail.attachments.length > 0 && (
-            <NetworkTargetTable<NetworkAttachment> networkId={detail.id} kind="attachments"
-              tableId="network-attachments" columnSettings={false}
-              rowKey="id"
-              data={detail.attachments}
-              columns={[
-                {
-                  key: "target", title: t("detail.attachTarget"), width: 240,
-                  render: (_, a) => (
-                    <span className="flex flex-col gap-1">
-                      <span>
-                        <Badge size="sm">{t(`source.${a.target}`)}</Badge>
-                        {a.target === "node" ? (a.node_name || a.node_uuid) : <span className="font-mono">{`${a.label_key}=${a.label_value ?? ""}`}</span>}
-                      </span>
-                      {overrideText(a) && <span className="text-fg-muted">{t("detail.overrides", { value: overrideText(a) })}</span>}
-                    </span>
-                  ),
-                },
-                { key: "time", title: t("detail.attachedTime"), width: 180, render: (_, a) => <span className="text-fg-muted">{formatTime(a.created_at)}</span> },
-                {
-                  key: "actions", width: 150, role: "actions",
-                  render: (_, a) => (
-                    <span className="inline-flex items-center gap-2">
-                      {a.target === "node" && <Button variant="link" size="sm" onClick={() => onAttach(a)}>{t("actions.edit")}</Button>}
-                      <ConfirmPopover title={t("actions.confirmDetach")} onConfirm={() => detach(a)} confirmText={t("actions.detach")} cancelText={t("actions.cancel")} destructive trigger={<Button variant="link" size="sm" className="text-fg-danger">{t("actions.detach")}</Button>} />
-                    </span>
-                  ),
-                },
-              ]}
-            />
-          )}
-        </div>
-      </DetailSection>
+      <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach} />
       <DetailSection title={t("detail.resolved", { count: detail.nodes.length })}>
-        <NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
+        <div className="network-overview-nodes"><NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
           tableId="network-resolved-nodes"
           rowKey="node_uuid"
           columns={nodeColumns}
           data={detail.nodes}
           emptyDescription={t("detail.noNodes")}
           expandable={{ expandedRowRender, expandRowByClick: true }}
-        />
+        /></div>
       </DetailSection>
     </>
   );

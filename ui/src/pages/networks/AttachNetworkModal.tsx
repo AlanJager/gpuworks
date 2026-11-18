@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { apiErrorText } from "../../apiError";
 import NodePicker from "../../nodes/NodePicker";
 import { useNodeLookup } from "../../nodes/useNodeLookup";
 import { nodeDisplayName } from "../../nodeDisplay";
@@ -32,15 +33,17 @@ interface FormValues {
  * are edited in the node table, not here.
  */
 export default function AttachNetworkModal({
-  open, network, attachment, onClose, onSaved,
+  open, network, attachment, initialMode = "node", onClose, onSaved,
 }: {
   open: boolean;
   network: NetworkDetail;
   attachment?: NetworkAttachment | null;
+  initialMode?: FormValues["mode"];
   onClose: () => void;
   onSaved: (detail: NetworkDetail) => void;
 }) {
   const { t } = useTranslation("networks");
+  const { t: tCommon } = useTranslation("common");
   const form = useForm<FormValues>();
   const [inventory, setInventory] = useState<NodeNetworks | null>(null);
   const [saving, setSaving] = useState(false);
@@ -51,9 +54,9 @@ export default function AttachNetworkModal({
   useEffect(() => {
     if (!open) return;
     form.reset(attachment
-      ? { mode: "node", node_uuids: attachment.node_uuid ? [attachment.node_uuid] : [], interface: attachment.interface, ip: attachment.ip }
-      : { mode: "node", node_uuids: [] });
-  }, [open, attachment, form]);
+      ? { mode: attachment.target, label_key: attachment.label_key, label_value: attachment.label_value, node_uuids: attachment.node_uuid ? [attachment.node_uuid] : [], interface: attachment.interface, ip: attachment.ip }
+      : { mode: initialMode, node_uuids: [] });
+  }, [open, attachment, initialMode, form]);
 
   useEffect(() => {
     setInventory(null);
@@ -79,7 +82,10 @@ export default function AttachNetworkModal({
   const submit = form.handleSubmit(async (v) => {
     setSaving(true);
     try {
-      if (attachment) {
+      if (attachment?.target === "label") {
+        onSaved(await api.updateNetworkLabel(network.id, attachment.id, { label_key: v.label_key!.trim(), label_value: v.label_value?.trim() ?? "" }));
+        message.success(t("message.saved"));
+      } else if (attachment) {
         onSaved(await api.updateNetworkAttachment(network.id, attachment.id, { interface: v.interface?.trim() ?? "", ip: v.ip?.trim() ?? "", hcas: attachment.hcas }));
         message.success(t("message.saved"));
       } else if (v.mode === "node") {
@@ -99,7 +105,7 @@ export default function AttachNetworkModal({
         message.success(t("message.saved"));
       }
     } catch (e) {
-      message.error(t("message.failed", { detail: (e as Error).message }));
+      message.error(apiErrorText(tCommon, e));
     } finally {
       setSaving(false);
     }
@@ -108,7 +114,7 @@ export default function AttachNetworkModal({
   return <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) onClose(); }}>
     <DialogContent size="lg" className="max-h-[calc(100dvh-32px)] overflow-y-auto" closeButtonDisabled={saving} closeButtonLabel={t("actions.close", { ns: "common" })}>
       <form onSubmit={submit}>
-        <DialogHeader><DialogTitle>{editing ? t(rdma ? "attach.editBootstrapTitle" : "attach.editTitle") : t("attach.title", { name: network.name })}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{editing ? t(attachment.target === "label" ? "detail.editLabel" : rdma ? "attach.editBootstrapTitle" : "attach.editTitle") : t("attach.title", { name: network.name })}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-4">
           {!editing && <FormField control={form.control} name="mode" label={t("attach.mode")} description={t("attach.modeHint")}>{field => <Segmented label={t("attach.mode")} value={field.value} onChange={field.onChange} options={[{value:"node",label:t("attach.modeNode")},{value:"label",label:t("attach.modeLabel")}]} />}</FormField>}
           {mode === "label" ? <>
