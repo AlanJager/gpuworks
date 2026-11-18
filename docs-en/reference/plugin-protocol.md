@@ -124,7 +124,7 @@ Routes are served at `/api/v1/x/<id><pattern>`:
 | `feature` / `ungated` | Exactly one is set; `feature` must be a key this manifest declares |
 | `write_when_read_only` | Lets this non-GET write through while the feature is read-only (a write that only removes or relaxes); needs `feature` |
 | `max_body` | Request body limit; 0 means 1 MiB, at most 1 GiB; above 1 MiB the package needs the permission `http:uploads` |
-| `timeout_s` | 0 means 60 seconds, at most 600 |
+| `timeout_s` | The request time limit in seconds: 0 means 60 seconds, at most 600; on a stream route it bounds the wait for the response's first byte |
 | `stream` / `websocket` | A streamed response / a WebSocket upgrade (GET only, not together with `stream`); `websocket` also needs `routes.websocket` in `requires` or `uses`. On a server that offers only `routes`, a package that has it in `requires` is incompatible; one that has it only in `uses` installs as usual, but that route is not served |
 | `html` | Lets the route answer `text/html`; only `public`, `admin` and `admin_session` routes may set it |
 | `ai_readable` | The assistant and MCP may read it; GET only |
@@ -359,6 +359,7 @@ The `Gwx-Feature-Access` grammar is `<feature key>=<level>` entries joined by `,
 
 Signing the principal above with the handshake golden file's `principal_key` (bytes 0 to 31) and `Gwx-Feature-Access` set to `acme.reports=read_only` gives these three headers (the vectors under `principal/v1/signed/` are frozen with the golden files):
 
+<!-- golden: principal/v1/signed/admin_session.txt -->
 ```text
 Gwx-Feature-Access: acme.reports=read_only
 Gwx-Principal: eyJleHAiOiIyMDI2LTEyLTAxVDAwOjAxOjA1WiIsImtpbmQiOiJzZXNzaW9uIiwibG9jYWxfYWRtaW4iOnRydWUsInBsYXRmb3JtX2FkbWluIjp0cnVlLCJyZXF1ZXN0X2lkIjoiZ3ctMDEvOWYyYzRlN2EtMDAwMDQyIiwicm9sZXMiOlsiYWRtaW4iXSwicm91dGUiOiIvcmVwb3J0cy97cGVyaW9kfSIsInJvdXRlX2FjdGlvbiI6ImFjbWVfcmVwb3J0cy5yZWFkIiwidXNlcl9pZCI6MSwidXNlcm5hbWUiOiJhZG1pbiJ9
@@ -373,7 +374,7 @@ A plugin built with the SDK wraps each route where it registers it with `plugins
 mux.Handle("POST /r/jobs", pluginsdk.RequirePrincipal("acme_backup.jobs_create", createJob))
 ```
 
-It verifies the three headers with this spawn's key and requires `route_action` to equal the `action` of the route the plugin's own router matched. If the server's router and the plugin's match the same path to different routes, the request is therefore refused rather than served under the other route's access level and feature checks. A request that fails gets 403 and an error object marked with `Gwx-Product-Error` (`reason` `permission_denied`, `object` `principal`; `PLUGIN_SIGNATURE_INVALID` for a MAC mismatch, `PLUGIN_WIRE_*` otherwise), and the handler is not called. The handler reads the verified caller with `pluginsdk.PrincipalFrom(r)` and `pluginsdk.FeatureAccessFrom(r)`. `plugintest` signs with a fixed key (`Harness.PrincipalKey`): `Harness.Principal(action, route)` returns an administrator session principal, and `Harness.Sign(req, p, access)` sets the three headers as the server does.
+It verifies the three headers with this spawn's key and requires `route_action` to equal the `action` of the route the plugin's own router matched. If the server's router and the plugin's match the same path to different routes, the request is therefore refused rather than served under the other route's access level and feature checks. A request that fails gets 403 and an error object marked with `Gwx-Product-Error` (`reason` `permission_denied`, `object` `principal`; a `PLUGIN_WIRE_*` code; a MAC mismatch and a route other than the one the server matched are both `PLUGIN_WIRE_INVALID` with `rule` `relation`, `field` `_root` and `route_action` respectively), and the handler is not called. The handler reads the verified caller with `pluginsdk.PrincipalFrom(r)` and `pluginsdk.FeatureAccessFrom(r)`. `plugintest` signs with a fixed key (`Harness.PrincipalKey`): `Harness.Principal(action, route)` returns an administrator session principal, and `Harness.Sign(req, p, access)` sets the three headers as the server does.
 
 ## Health and errors
 
@@ -553,4 +554,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: c7e9c2ad36eae9657d58c6c84d488f7d59a9edf437a8b338aa46b291d846ab3f -->
+<!-- translation-source-sha256: ce61d535e8205e1cdd3720d145425086395f9e8cd92d6209eaff4c5ac63f01eb -->

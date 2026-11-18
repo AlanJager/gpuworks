@@ -158,6 +158,10 @@ NodeHoldsV1.nodes map[string]Notice
 Notice.code string
 Notice.params Params
 PluginGrant.authority_namespaces []string
+PluginGrant.id string
+PluginGrant.permissions_granted []string
+PluginGrant.roles_granted []string
+PluginGrant.version string
 Principal.api_key_id uint64
 Principal.exp Time
 Principal.kind string
@@ -170,10 +174,6 @@ Principal.route_action string
 Principal.scope_projects []string
 Principal.user_id uint64
 Principal.username string
-PluginGrant.id string
-PluginGrant.permissions_granted []string
-PluginGrant.roles_granted []string
-PluginGrant.version string
 PublicKey.alg string
 PublicKey.keyid string
 PublicKey.public_key []uint8

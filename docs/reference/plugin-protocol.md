@@ -124,7 +124,7 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `feature` / `ungated` | 二者恰好设一个；`feature` 必须是本清单声明的键 |
 | `write_when_read_only` | 功能只读时仍放行这个非 GET 写入（只做删除或放宽的写）；要求有 `feature` |
 | `max_body` | 请求体上限，0 为 1 MiB，最大 1 GiB；超过 1 MiB 需要权限 `http:uploads` |
-| `timeout_s` | 0 为 60 秒，最大 600 |
+| `timeout_s` | 请求时限（秒），0 为 60 秒，最大 600；流式路由限定的是等待响应首字节的时间 |
 | `stream` / `websocket` | 流式响应 / WebSocket 升级（仅 GET，且不与 `stream` 同时）；`websocket` 还要求 `requires` 或 `uses` 列出 `routes.websocket`：只提供 `routes` 的 server 上，`requires` 时不提供则不兼容；只在 `uses` 时包照常安装，但该路由不被服务 |
 | `html` | 允许返回 `text/html`；只有 `public`、`admin` 与 `admin_session` 路由可以设 |
 | `ai_readable` | AI 助手与 MCP 可读，仅 GET |
@@ -359,6 +359,7 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 
 以握手黄金文件里的 `principal_key`（字节 0 到 31）签上面的主体、`Gwx-Feature-Access` 为 `acme.reports=read_only` 时，三个请求头是（`principal/v1/signed/` 下的向量与黄金文件一同冻结）：
 
+<!-- golden: principal/v1/signed/admin_session.txt -->
 ```text
 Gwx-Feature-Access: acme.reports=read_only
 Gwx-Principal: eyJleHAiOiIyMDI2LTEyLTAxVDAwOjAxOjA1WiIsImtpbmQiOiJzZXNzaW9uIiwibG9jYWxfYWRtaW4iOnRydWUsInBsYXRmb3JtX2FkbWluIjp0cnVlLCJyZXF1ZXN0X2lkIjoiZ3ctMDEvOWYyYzRlN2EtMDAwMDQyIiwicm9sZXMiOlsiYWRtaW4iXSwicm91dGUiOiIvcmVwb3J0cy97cGVyaW9kfSIsInJvdXRlX2FjdGlvbiI6ImFjbWVfcmVwb3J0cy5yZWFkIiwidXNlcl9pZCI6MSwidXNlcm5hbWUiOiJhZG1pbiJ9
@@ -373,7 +374,7 @@ Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
 mux.Handle("POST /r/jobs", pluginsdk.RequirePrincipal("acme_backup.jobs_create", createJob))
 ```
 
-它用本次拉起的密钥校验三个请求头，并要求 `route_action` 等于插件自己的路由器匹配到的路由的 `action`。server 与插件的路由器把同一路径匹配到不同路由时，请求因此被拒绝，而不会套用另一条路由的访问级别与特性检查。不通过时回 403 与带 `Gwx-Product-Error` 的错误对象（`reason` 为 `permission_denied`，`object` 为 `principal`；MAC 不符为 `PLUGIN_SIGNATURE_INVALID`，其余为 `PLUGIN_WIRE_*`），处理函数不会被调用。处理函数用 `pluginsdk.PrincipalFrom(r)` 与 `pluginsdk.FeatureAccessFrom(r)` 读校验过的调用方。`plugintest` 用固定密钥（`Harness.PrincipalKey`）签名：`Harness.Principal(action, route)` 给出一个管理员会话的主体，`Harness.Sign(req, p, access)` 像 server 一样设好三个请求头。
+它用本次拉起的密钥校验三个请求头，并要求 `route_action` 等于插件自己的路由器匹配到的路由的 `action`。server 与插件的路由器把同一路径匹配到不同路由时，请求因此被拒绝，而不会套用另一条路由的访问级别与特性检查。不通过时回 403 与带 `Gwx-Product-Error` 的错误对象（`reason` 为 `permission_denied`，`object` 为 `principal`；码为 `PLUGIN_WIRE_*`；MAC 不符与 server 匹配的路由不同都是 `PLUGIN_WIRE_INVALID`，`rule` 为 `relation`，`field` 分别为 `_root` 与 `route_action`），处理函数不会被调用。处理函数用 `pluginsdk.PrincipalFrom(r)` 与 `pluginsdk.FeatureAccessFrom(r)` 读校验过的调用方。`plugintest` 用固定密钥（`Harness.PrincipalKey`）签名：`Harness.Principal(action, route)` 给出一个管理员会话的主体，`Harness.Sign(req, p, access)` 像 server 一样设好三个请求头。
 
 ## 健康与错误
 

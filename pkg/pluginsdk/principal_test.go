@@ -2,10 +2,14 @@ package pluginsdk_test
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,13 +96,34 @@ func TestRequirePrincipalRefuses(t *testing.T) {
 			r.Header.Set(extapi.HeaderPrincipalMac, mac)
 			r.Header.Set(extapi.HeaderFeatureAccess, access.String())
 			return r
-		}, extapi.ErrorSignatureInvalid, extapi.Params{"keyid": "principal_key"}},
+		}, extapi.ErrorWireInvalid, extapi.Params{"field": "_root", "rule": extapi.RuleRelation}},
 		{"feature access raised after signing", func() *http.Request {
 			r := mustRequest(t, http.MethodPost, "/r/jobs")
 			h.Sign(r, h.Principal("acme_backup.jobs_create", "/jobs"), extapi.FeatureAccess{"acme.backup": extapi.AccessReadOnly})
 			r.Header.Set(extapi.HeaderFeatureAccess, access.String())
 			return r
-		}, extapi.ErrorSignatureInvalid, extapi.Params{"keyid": "principal_key"}},
+		}, extapi.ErrorWireInvalid, extapi.Params{"field": "_root", "rule": extapi.RuleRelation}},
+		{"unknown field under a valid MAC", func() *http.Request {
+			return signedRaw(t, h, `{"delegation":"x","exp":"2099-01-01T00:00:00Z","kind":"public","request_id":"r","route":"/jobs","route_action":"acme_backup.jobs_create"}`, access)
+		}, extapi.ErrorWireUnknownField, extapi.Params{"field": "delegation"}},
+		{"not canonical under a valid MAC", func() *http.Request {
+			p := h.Principal("acme_backup.jobs_create", "/jobs")
+			raw, err := json.MarshalIndent(p, "", " ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return signedRaw(t, h, string(raw), access)
+		}, extapi.ErrorWireNotCanonical, nil},
+		{"longer than any principal", func() *http.Request {
+			return signedRaw(t, h, strings.Repeat(" ", extapi.MaxPrincipalBytes+1), access)
+		}, extapi.ErrorWireMalformed, extapi.Params{"rule": extapi.RuleRange}},
+		{"expiry beyond any route's timeout", func() *http.Request {
+			r := mustRequest(t, http.MethodPost, "/r/jobs")
+			p := h.Principal("acme_backup.jobs_create", "/jobs")
+			p.Exp = extapi.NewTime(time.Now().Add(time.Hour))
+			h.Sign(r, p, access)
+			return r
+		}, extapi.ErrorWireInvalid, extapi.Params{"field": "exp", "rule": extapi.RuleRange}},
 		{"expired", func() *http.Request {
 			r := mustRequest(t, http.MethodPost, "/r/jobs")
 			p := h.Principal("acme_backup.jobs_create", "/jobs")
@@ -146,5 +171,51 @@ func TestRequirePrincipalOutsideThePluginRefuses(t *testing.T) {
 	h.ServeHTTP(w, mustRequest(t, http.MethodPost, "/r/jobs"))
 	if served || w.Code != http.StatusInternalServerError {
 		t.Fatalf("served %v, status %d", served, w.Code)
+	}
+}
+
+// signedRaw is a request whose principal header is raw, as given, under a
+// MAC the harness key makes valid: what a server bug would send.
+func signedRaw(t *testing.T, h *plugintest.Harness, raw string, access extapi.FeatureAccess) *http.Request {
+	t.Helper()
+	r := mustRequest(t, http.MethodPost, "/r/jobs")
+	hdr := base64.RawURLEncoding.EncodeToString([]byte(raw))
+	m := hmac.New(sha256.New, h.PrincipalKey())
+	m.Write([]byte(hdr + "\n" + access.String()))
+	r.Header.Set(extapi.HeaderPrincipal, hdr)
+	r.Header.Set(extapi.HeaderPrincipalMac, base64.RawURLEncoding.EncodeToString(m.Sum(nil)))
+	r.Header.Set(extapi.HeaderFeatureAccess, access.String())
+	return r
+}
+
+// A public caller, a platform token's caller and a route with no feature
+// access all reach the handler as signed.
+func TestRequirePrincipalServesEveryKind(t *testing.T) {
+	h := routePlugin(t)
+	public := &extapi.Principal{Kind: extapi.PrincipalPublic, RequestID: "r1",
+		RouteAction: "acme_backup.jobs_create", Route: "/jobs", Exp: extapi.PrincipalExpiry(time.Now(), 0)}
+	token := h.Principal("acme_backup.jobs_create", "/jobs")
+	token.Kind, token.LocalAdmin, token.PlatformAdmin, token.Username = extapi.PrincipalToken, false, false, "member"
+	token.Roles, token.APIKeyID = []string{"member"}, 9
+	cases := []struct {
+		name   string
+		p      *extapi.Principal
+		access extapi.FeatureAccess
+		want   string
+	}{
+		{"public", public, extapi.FeatureAccess{"acme.backup": extapi.AccessLocked},
+			`{"access":"acme.backup=locked","action":"acme_backup.jobs_create","local_admin":false,"route":"/jobs","user":""}`},
+		{"token without feature access", token, nil,
+			`{"access":"","action":"acme_backup.jobs_create","local_admin":false,"route":"/jobs","user":"member"}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := mustRequest(t, http.MethodPost, "/r/jobs")
+			h.Sign(req, c.p, c.access)
+			status, _, body := send(t, h, req)
+			if status != http.StatusOK || string(body) != c.want+"\n" {
+				t.Fatalf("%d %s, want 200 %s", status, body, c.want)
+			}
+		})
 	}
 }

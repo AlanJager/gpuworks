@@ -324,8 +324,9 @@ func principalMAC(key []byte, header, featureAccess string) []byte {
 }
 
 // VerifyPrincipal checks the three header values of a request under key
-// and returns the principal and the feature access they carry. It checks
-// the MAC first, in constant time, and only then decodes: strictly, as
+// and returns the principal and the feature access they carry. After
+// refusing a header longer than any principal, it checks the MAC, in
+// constant time, and only then decodes: strictly, as
 // canonical JSON with no unknown field. A principal whose Exp is before now,
 // or further ahead of now than the longest route timeout, is refused.
 func VerifyPrincipal(key []byte, header, mac, featureAccess string, now time.Time) (*Principal, FeatureAccess, error) {
@@ -335,12 +336,12 @@ func VerifyPrincipal(key []byte, header, mac, featureAccess string, now time.Tim
 	if len(key) != PrincipalKeyBytes {
 		return nil, nil, ErrPrincipalMAC
 	}
+	if len(header) > b64url.EncodedLen(MaxPrincipalBytes) {
+		return nil, nil, malformed(objectPrincipal, &fieldError{rule: RuleRange})
+	}
 	got, err := b64url.DecodeString(mac)
 	if err != nil || !hmac.Equal(got, principalMAC(key, header, featureAccess)) {
 		return nil, nil, ErrPrincipalMAC
-	}
-	if len(header) > b64url.EncodedLen(MaxPrincipalBytes) {
-		return nil, nil, malformed(objectPrincipal, &fieldError{rule: RuleRange})
 	}
 	raw, err := b64url.DecodeString(header)
 	if err != nil {

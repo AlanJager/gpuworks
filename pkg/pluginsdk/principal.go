@@ -72,8 +72,8 @@ func principalRefusal(err error) *Error {
 	case errors.Is(err, extapi.ErrPrincipalMissing):
 		return Refuse(extapi.ReasonPermissionDenied, extapi.ErrorWireInvalid, err.Error(), params("_root", extapi.RuleRequired))
 	case errors.Is(err, extapi.ErrPrincipalMAC):
-		return Refuse(extapi.ReasonPermissionDenied, extapi.ErrorSignatureInvalid, err.Error(),
-			extapi.Params{"object": "principal", "keyid": "principal_key"})
+		// Not PLUGIN_SIGNATURE_INVALID: its text speaks of a changed file.
+		return Refuse(extapi.ReasonPermissionDenied, extapi.ErrorWireInvalid, err.Error(), params("_root", extapi.RuleRelation))
 	case errors.Is(err, extapi.ErrPrincipalExpired), errors.Is(err, extapi.ErrPrincipalTooLong):
 		return Refuse(extapi.ReasonPermissionDenied, extapi.ErrorWireInvalid, err.Error(), params("exp", extapi.RuleRange))
 	}
