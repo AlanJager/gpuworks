@@ -38,6 +38,8 @@ const (
 	CapUIBundle  = "ui.bundle"  // the package carries a console bundle
 	CapNodeApp   = "node.app"   // the package carries a node part
 	CapHostSetup = "host.setup" // the manifest declares host setup steps
+	// CapHostConfig (the manifest declares settings) is with the
+	// capabilities permissions name, in permission.go.
 )
 
 // tableSchemas lists, per kind, every schema version this package defines.

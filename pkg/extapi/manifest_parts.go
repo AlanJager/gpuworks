@@ -32,6 +32,9 @@ func (m *Manifest) validateRoutes() *fieldError {
 		); f != nil {
 			return f
 		}
+		if f := checkRouteSegments(joinPath(at, "pattern"), r.Pattern); f != nil {
+			return f
+		}
 		verb, ok := strings.CutPrefix(r.Action, m.ID+".")
 		if !ok || verb == "" {
 			return &fieldError{field: joinPath(at, "action"), rule: RuleRelation}
@@ -50,6 +53,9 @@ func (m *Manifest) validateRoutes() *fieldError {
 		}
 		if r.WebSocket && (r.Method != "GET" || r.Stream) {
 			return &fieldError{field: joinPath(at, "websocket"), rule: RuleRelation}
+		}
+		if r.HTML && r.Access == RouteMember {
+			return &fieldError{field: joinPath(at, "html"), rule: RuleRelation}
 		}
 		if r.Cookies && r.Access != RoutePublic {
 			return &fieldError{field: joinPath(at, "cookies"), rule: RuleRelation}
@@ -168,6 +174,7 @@ func (m *Manifest) validateRequiredParts() *fieldError {
 		{m.UI != nil, CapUIBundle},
 		{m.Node != nil, CapNodeApp},
 		{len(m.HostSetup) > 0, CapHostSetup},
+		{len(m.Settings) > 0, CapHostConfig},
 	}
 	for _, n := range needs {
 		if n.has && m.Requires[n.cap] == 0 {
@@ -177,6 +184,35 @@ func (m *Manifest) validateRequiredParts() *fieldError {
 	for name := range m.Uses {
 		if m.Requires[name] != 0 {
 			return &fieldError{field: joinPath("uses", name), rule: RuleExclusive}
+		}
+	}
+	// A WebSocket route needs its own capability: a server that serves
+	// routes but not upgrades must not accept the package as if it did.
+	for i, r := range m.Routes {
+		if r.WebSocket && m.Requires[CapRoutesWebSocket] == 0 && m.Uses[CapRoutesWebSocket] == 0 {
+			return &fieldError{field: joinPath(joinPath("routes", strconv.Itoa(i)), "websocket"), rule: RuleRelation}
+		}
+	}
+	return nil
+}
+
+// checkRouteSegments refuses what the route grammar lets through but a
+// router could match differently: an empty, "." or ".." segment, and a
+// parameter named twice.
+func checkRouteSegments(path, pattern string) *fieldError {
+	if pattern == "/" {
+		return nil
+	}
+	var params []string
+	for seg := range strings.SplitSeq(pattern[1:], "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return &fieldError{field: path, rule: RuleGrammar}
+		}
+		if name, ok := strings.CutPrefix(seg, "{"); ok {
+			if slices.Contains(params, name) {
+				return &fieldError{field: path, rule: RuleDuplicate}
+			}
+			params = append(params, name)
 		}
 	}
 	return nil

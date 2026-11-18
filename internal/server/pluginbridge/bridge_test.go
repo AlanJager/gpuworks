@@ -153,6 +153,7 @@ func TestInstallEnableDisable(t *testing.T) {
 	b := w.open()
 	raw := w.pkg("acme_backup", "1.0.0", func(s *extsign.Spec) {
 		s.Manifest.Permissions = []string{"push:banners"}
+		s.Manifest.Uses = map[string]int{"table.banners": 1}
 		s.Manifest.Features = []extapi.FeatureDecl{{Key: "acme.backup", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf}}
 	})
 	in := install(t, b, raw, false)
