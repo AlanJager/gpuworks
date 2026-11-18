@@ -57,7 +57,7 @@ func (s *State) placeLocked() (held, released []string) {
 	snap := &capacitySnap{caps: c.caps, hold: c.capHold}
 	next := map[uint]bool{}
 	if c.caps.Limited() {
-		sel := fleetcap.Select(c.caps, s.fleet)
+		sel := fleetcap.Select(c.caps, s.fleet, nil)
 		snap.kept, snap.full = sel.Kept, sel.Full
 		for _, id := range sel.Held {
 			next[id] = true
