@@ -231,8 +231,12 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	if command, err := effectiveRequestCommand(req, selection); err == nil && command.InterpretEngineDialect && !sameStoredExtraArgs(eng.Name(), submittedExtra, storedArgs) {
 		resp.Warnings = append(resp.Warnings, deploy.ExtraArgsEngineWarnings(eng.Name(), userExtraArgs)...)
 	}
-	priority := PrioritySchedulingOf(eng.Name(), targetVendor, placementPD(req) != nil, launch.TemplateResidual, userExtraArgs)
+	priority := requestPriorityScheduling(req, eng.Name(), targetVendor, placementPD(req) != nil, launch.TemplateResidual, userExtraArgs, selection.Entrypoint)
 	resp.PriorityScheduling = &priority
+	if _, priorityErr := ResolvePriorityScheduling(req.PriorityScheduling, priority); errs.add("priority_scheduling", priorityErr) {
+		writeFieldErrors()
+		return
+	}
 	resp.EffectiveParams = launchConfigMap(quick)
 	// FormValues is the same configuration read as a display instruction: the
 	// effective values plus the argument text after the moved flags left it.

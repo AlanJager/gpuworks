@@ -354,7 +354,7 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 	next.TokenizeDisabled = req.TokenizeEnabled != nil && !*req.TokenizeEnabled
 	// An edit that says nothing keeps the deployment's switch, as far as the
 	// edited launch still allows it; turning it on is asked for explicitly.
-	priority := deployment.PrioritySchedulingOf(engine.Name(), req.TargetVendor, shape == deploymentShapePD, launch.TemplateResidual, launch.UserResidual)
+	priority := deployment.PrioritySchedulingForCommand(engine.Name(), req.TargetVendor, shape == deploymentShapePD, launch.TemplateResidual, launch.UserResidual, overrides, snapshot.Entrypoint)
 	requested := req.PriorityScheduling
 	if requested == nil {
 		kept := dep.PriorityScheduling && priority.OK

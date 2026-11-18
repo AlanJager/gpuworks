@@ -384,6 +384,7 @@
     "FEATURE_PROVIDER_ABSENT": "{{feature}} 无法使用：此服务器上没有组件报告它是否可用。",
     "FEATURE_LIMIT_REACHED": "{{feature}} 最多允许 {{max}} 个 {{dim}}，已使用 {{used}} 个。",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
+    "PRIORITY_SCHEDULING_LAUNCH_UNSUPPORTED": "此 {{engine}} 启动入口或流水线尚未验证支持请求优先级调度。请关闭优先级调度，或选择受支持的 LLM 启动入口。",
     "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED": "{{engine}} 引擎不支持请求优先级调度，此部署不区分优先级。",
     "PRIORITY_SCHEDULING_TARGET_UNVERIFIED": "{{vendor}} 上的引擎尚未验证请求优先级调度，此部署不区分优先级。",
     "PRIORITY_SCHEDULING_PD_UNSUPPORTED": "PD 分离部署暂不支持请求优先级调度，此部署不区分优先级。",
