@@ -187,6 +187,19 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 
 - 有路由的包必须持有 `http:routes`，`public` 路由还要 `http:public`；缺了回 `PLUGIN_POLICY_REFUSED`，`rule` 是缺的权限，`value` 是路由（如 `routes.0`）。
 - `on_demand` 的包大部分时间不在运行，所以不能持有 `push:` 权限，也不能声明功能（它作答的键在它停止时无人作答）；违反时回 `PLUGIN_STATE_ON_DEMAND`，参数 `id` 加 `permission` 或 `feature`。
+- 只有 Linux 能执行主机步骤：其他平台上声明了 `host_setup` 的包回 `PLUGIN_HOST_SETUP_UNSUPPORTED`，参数 `id`。
+
+### 主机配置（`host.setup@1`）
+
+server 在 Linux 上提供 `host.setup@1`：清单的 `host_setup` 只是声明，不是脚本，由 root 运行 `gpuworks plugin host-setup`（或 `gpuworks install`、`upgrade`）按下面的规则渲染。`usb_device` 步骤的含义：
+
+| 产物 | 规则 |
+|---|---|
+| udev 规则 | 每包一个文件；每个步骤两行，按 `vendor_id`、`product_id` 匹配，分别命中设备的 `usb_device` 节点（libusb 用的 `/dev/bus/usb/<总线>/<设备>`）与它的 hidraw 节点，只设 `GROUP="gpuworks-usb"`、`MODE="0660"`；不写 `SYMLINK`、`RUN`、`OWNER` |
+| 已应用记录 | root 所有的文件，内容是步骤的摘要：`{"host_setup":[{"type","vendor_id","product_id"}...]}` 的规范 JSON 的 SHA-256，列表按类型、厂商、产品排序并去重，所以步骤的顺序不影响它；升级不改步骤就不需要再执行 root 步骤 |
+| 沙箱 | 记录与当前步骤一致时，插件的 Landlock 规则另授 `/dev` 下设备节点的读写与 ioctl（也可列目录），并只读 `/sys/bus/usb`、`/sys/class/hidraw`、`/sys/devices`、`/run/udev/data` 以发现设备 |
+
+记录缺失、不一致或可能被服务账号写过（不属 root、组或其他用户可写）时，插件不启动，状态 `needs_host_setup`，原因 `PLUGIN_HOST_SETUP_REQUIRED`，参数 `id` 与 `command`（要执行的命令）。设备之间的边界是节点的文件权限：沙箱授予的是目录，因为设备插上之后才出现、名字事先不知道。
 
 ## 发布者证书
 
@@ -667,6 +680,8 @@ server 存储并转交给同一发布者其他包的不透明声明，server 从
 | `PLUGIN_STATE_TOO_LARGE` | 推送表超过该种类的大小上限 | `kind`、`field`、`max` |
 | `PLUGIN_STATE_TOO_NEW` | 持久化状态的版本标记比本构建认识的新 | `marker`、`version`、`known`、`needs`、`count` |
 | `PLUGIN_CAPABILITY_MISSING` | 插件拒绝握手：server 没有提供它离不开的能力在它支持范围内的版本 | `capability`、`min`、`max` |
+| `PLUGIN_HOST_SETUP_REQUIRED` | 包的主机步骤还没由 root 在本机应用（或应用的是别的步骤），服务端部分不启动 | `id`、`command` |
+| `PLUGIN_HOST_SETUP_UNSUPPORTED` | 本平台不能执行主机步骤，包没有安装 | `id` |
 
 `rule` 取值：`required`（缺失或为空）、`grammar`（不符合文法）、`range`（数值或长度越界）、`enum`（不在封闭集合内）、`duplicate`、`order`（应排序的列表未排序）、`exclusive`（设了互斥的字段）、`relation`（与同一对象的另一字段矛盾）、`syntax`、`type`、`number`（非整数或越出安全范围）、`trailing`。`field` 是点分路径，列表元素用下标，例如 `routes.0.feature`。
 

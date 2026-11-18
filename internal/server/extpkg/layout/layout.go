@@ -323,7 +323,9 @@ type Control struct {
 	ApprovedHash string    `json:"approved_hash,omitempty"`
 	ApprovedBy   string    `json:"approved_by,omitempty"`
 	At           time.Time `json:"at"`
-	// HostSetupApplied records that the package's host setup steps ran.
+	// HostSetupApplied is not read: whether a package's host setup is
+	// applied is the root-owned record of package hostsetup, which the
+	// service account, owning this file, could not forge.
 	HostSetupApplied bool `json:"host_setup_applied,omitempty"`
 }
 

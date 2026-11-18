@@ -248,7 +248,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 | `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
 | `DELETE /api/v1/plugins/{id}?purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据一起移到 `.trash/`），在一次提交里删掉它推送的全部内容并重新应用保持；重试能完成一半失败的卸载 |
 
-每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）或 `revoked`；其余是监管的进程状态（`on_demand` 包空闲时是 `idle`）。字段见 [API 参考](../reference/api.md)。
+每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）、`revoked` 或 `needs_host_setup`（见[主机配置](#主机配置)）；其余是监管的进程状态（`on_demand` 包空闲时是 `idle`）。字段见 [API 参考](../reference/api.md)。
 
 ### 本地管理员兜底
 
@@ -265,7 +265,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 - 插件路由在 `/api/v1/x/<id>/` 下的动态挂载（下文「调用与路由表」的路由表已经编译，还没有路由用它）、宿主接口里状态与健康之外的端点。
 - 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
-- 清单词汇里除 `table.<种类>`、`host.node_identity` 与 `host.nodes` 以外的能力都还不提供：其余读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
+- 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.clock`、`host.state_read`、`host.derive_key` 与 `host.setup`（[主机配置](#主机配置)）以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
 
@@ -280,7 +280,7 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | 描述符 | fd 3、4 必须是 socket；stdin、stdout 指向 `/dev/null`；stderr 是日志 | 同左 |
 | 环境变量 | 只保留 `PATH`、`TZ`、代理与 CA 变量，另设 `HOME`=数据目录、`TMPDIR`、`LANG=C.UTF-8` 与 `GWX_*`；代理变量原样传入，代理 URL 里的用户名密码因此也交给每个插件，代理凭据应只授予插件也可以用的权限 | 同左 |
 | cgroup | server 的 cgroup 已委派时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`（`mem_mib`）、`memory.high`（其 90%）、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动，由 RSS 看门狗限制内存（见[监管](#监管)） | — |
-| Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，批准的设备节点读写；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
+| Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，清单 `devices` 里的设备节点读写；[主机配置](#主机配置)已应用时另授设备目录下节点的读写、ioctl 与列目录，以及设备发现要读的 sysfs 与 udev 路径；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
 
 server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 可写，并且满足其一：systemd 在该 cgroup 上标了委派属性（`user.delegate` 或 `trusted.delegate`，systemd 251 起），或 server 以非 root 用户运行在自己的单元 `gpuworks.service` 的 cgroup 里（systemd 只在 `Delegate=yes` 时把单元的 cgroup 交给 `User=`）。root 能写任何 cgroup，桌面会话的 scope 也归其用户所有，所以光是可写不算委派。`gpuworks install` 写的单元带 `Delegate=yes`（[安装布局](../reference/install-layout.md#systemd-单元)）。已委派时，server 启动插件宿主前先把自己迁进 `<服务 cgroup>/server`：cgroup v2 只允许没有进程的 cgroup 给子 cgroup 开控制器。插件停止或卸载时删除它的 cgroup 目录，插件绕开进程组留下的进程经 `cgroup.kill` 一并结束。插件运行后，server 核对它确实在自己的 cgroup 里、且内存控制器已启用，才算有 cgroup，否则改用 RSS 看门狗。
 
@@ -320,6 +320,18 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 请求头写出之后才失败的写入算作已送达，宁可报「可能已部分生效」也不让调用方盲目重试。插件自己的拒绝是正常的应答。
 
 路由表由已安装包的清单编译：已启用且通过校验的包，它的路由照常服务；停用的包没有路由（404，也不进路由清单），即使它同时被吊销或不再通过校验；被吊销的包，以及不再通过校验、但同一版本此前校验通过过的包，路由仍在，回 503 `PLUGIN_UNAVAILABLE`，不调用插件（启动时就坏了的包在重新通过校验之前没有路由）。每次安装、启用、停用、卸载或重新校验之后整表重编并原子替换；匹配不加锁，按路径段逐级查找，字面段优先于 `{name}` 参数段，只为参数分配一次；请求一直用它开始时取到的那张表。
+
+### 主机配置
+
+插件永不以 root 运行；需要 root 的主机步骤只来自清单封闭的 `host_setup` 词汇（目前只有 `usb_device`），由核心渲染（`internal/server/extpkg/hostsetup`，只依赖 `pkg/extapi`），规则见[插件协议](../reference/plugin-protocol.md#主机配置hostsetup1)。
+
+- **谁执行。** `sudo gpuworks plugin host-setup [--id ID | --prune]`（[CLI 参考](../reference/cli.md#gpuworks-plugin)）；`gpuworks install`、`upgrade` 与 `uninstall` 的核心安装钩子在主机上有包声明主机步骤、或已有本功能写的文件时也执行：安装与升级应用全部已安装包的步骤并清掉不再需要的，卸载全部删除（设备组保留）。没有这类包的主机上钩子不加入，安装流程与之前完全一样。
+- **顺序。** 建组并加入服务账号 → 写规则文件 → `udevadm control --reload-rules` 与 `udevadm trigger --action=change`（usb、hidraw）→ 最后写记录。中途失败就没有记录，包继续等待，下次执行重做；什么都没变时不执行任何命令。
+- **记录。** `/etc/gpuworks/plugins/<id>.applied` 属主 root、0644，内容是步骤摘要（不是批准值：只改权限的升级不需要再执行 root 步骤）。`control.json` 由服务账号拥有，所以不在那里记录；server 只认 root 所有、组与其他用户不可写的记录。
+- **启动门。** 包有主机步骤而记录缺失或不一致时，插件宿主不拉起它：状态 `needs_host_setup`，`PLUGIN_HOST_SETUP_REQUIRED{id, command}`。执行命令后再次启用该包或重启 server 即启动；升级改了步骤又回到 `needs_host_setup`。记录一致时才把设备目录与读取路径写进沙箱。
+- **边界。** 设备插上后才出现、名字事先不知道（`/dev/hidrawN`、`/dev/bus/usb/<总线>/<设备>`），所以沙箱授予目录 `/dev` 而不是节点；设备之间的边界是文件权限：规则只把匹配设备的节点设为组 `gpuworks-usb`、0660，其他节点保持自己的属主与模式。不建符号链接，因为 Landlock 检查的是路径解析到的 inode，链接什么也不多授。`TestDeviceDirGrantsNodesCreatedLater` 证明：沙箱生效后在授予目录里新建的节点能打开，授予目录之外指向它的符号链接也能打开，兄弟目录里的节点 `EACCES`。
+- **其他平台。** macOS 没有 udev 与 Landlock 设备规则，声明主机步骤的包安装时以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝。
+- **卸载。** 规则文件与记录属于 root，离线 `gpuworks plugin uninstall` 删不掉，留着时打印 `sudo gpuworks plugin host-setup --prune`。
 
 ### gwx/1 连接与宿主接口
 
