@@ -638,6 +638,7 @@
     "CATALOG_SHM_BYTES_INVALID": "Spec “{{spec}}” of {{model}} states shm_bytes {{shm_bytes}}; it must be between 1 and {{max_bytes}} bytes (16 TiB).",
     "INFERENCE_SPEC_TARGET_REQUIRED": "Both the owning model_id and the spec name are required to delete a user spec.",
     "INFERENCE_TEMPLATE_MODEL_REQUIRED": "Specify the template with model_id.",
+    "DEPLOYMENT_TEMPLATE_SELECTION_GONE": "The selected inference template or spec was deleted. Refresh the template list and select another.",
     "INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE": "Deployments still use this template: {{deployments}}. Remove those deployments before retrying.",
     "INFERENCE_TEMPLATE_COMPONENT_REFERENCE": "Spec “{{spec}}” in “{{owner}}” still uses this template as a component. Remove that reference before retrying.",
     "INFERENCE_TEMPLATE_SPEC_SOURCE_INVALID": "spec_source “{{spec_source}}” is not valid; use user or upstream.",

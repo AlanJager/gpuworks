@@ -25,6 +25,9 @@ const (
 )
 
 var (
+	// The catalog selection resolved during deployment preparation disappeared
+	// before the deployment row could pin it.
+	ErrDeploymentTemplateSelectionGone = errors.New("selected inference template or spec no longer exists")
 	// ErrInferenceSpecNotFound: no user spec with that name on that model.
 	ErrInferenceSpecNotFound = errors.New("inference catalog user spec not found")
 	// ErrInferenceSpecInUse: a deployment outside "deleting" still pins the

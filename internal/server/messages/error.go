@@ -88,7 +88,8 @@ const (
 	ErrorCatalogShmBytesInvalid = "CATALOG_SHM_BYTES_INVALID"
 	// ErrorInferenceSpecTargetRequired reports a delete-spec request that did
 	// not name both the owning model_id and the user spec to retire.
-	ErrorInferenceSpecTargetRequired = "INFERENCE_SPEC_TARGET_REQUIRED"
+	ErrorInferenceSpecTargetRequired     = "INFERENCE_SPEC_TARGET_REQUIRED"
+	ErrorDeploymentTemplateSelectionGone = "DEPLOYMENT_TEMPLATE_SELECTION_GONE"
 	// A delete is blocked while a deployment pins its target or another
 	// template mounts the model as a component.
 	ErrorInferenceTemplateDeploymentReference = "INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE"

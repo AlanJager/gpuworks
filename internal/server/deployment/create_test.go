@@ -13,6 +13,13 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
+func TestCreateRowErrorForDeletedCatalogSelection(t *testing.T) {
+	err := CreateRowError(store.ErrDeploymentTemplateSelectionGone)
+	if KindOf(err) != KindConflict || !containsProductCode(err, messages.ErrorDeploymentTemplateSelectionGone) {
+		t.Fatalf("stale catalog selection should return an actionable conflict: %v", err)
+	}
+}
+
 // createFixture is one node with an H100 and a model that fits it, the
 // smallest cluster a create can succeed on.
 func createFixture(t *testing.T) (*Service, *store.Store, uint) {

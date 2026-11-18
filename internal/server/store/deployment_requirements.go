@@ -102,6 +102,21 @@ func (s *Store) createDeploymentWithRequirements(d *Deployment, reqs nodelabel.R
 		if err := servedNameFree(tx, d.ServedName); err != nil {
 			return err
 		}
+		// Current catalog selections carry all three identity fields. Older
+		// snapshot-only deployments may lack the spec source when cloned.
+		if d.TemplateID != 0 && d.TemplateSpecSource != "" && d.TemplateSpecName != "" {
+			var count int64
+			err := tx.Model(&InferenceSpecRow{}).
+				Joins("JOIN inference_models ON inference_models.id = inference_specs.model_id").
+				Where("inference_specs.model_id = ? AND inference_specs.source = ? AND inference_specs.name = ?", d.TemplateID, d.TemplateSpecSource, d.TemplateSpecName).
+				Count(&count).Error
+			if err != nil {
+				return err
+			}
+			if count == 0 {
+				return ErrDeploymentTemplateSelectionGone
+			}
+		}
 		if err := tx.Create(d).Error; err != nil {
 			return err
 		}

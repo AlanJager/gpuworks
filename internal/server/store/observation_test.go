@@ -97,6 +97,42 @@ func TestCatalogWritesPublishTheChangedTemplates(t *testing.T) {
 	}
 }
 
+// Simulate a create paused after resolving its catalog selection, then
+// resumed after a delete commits. Both create paths share the same row guard.
+func TestDeploymentCannotPinDeletedCatalogSelection(t *testing.T) {
+	for _, target := range []string{"spec", "template"} {
+		t.Run(target, func(t *testing.T) {
+			st := openObservationStore(t)
+			model := observationModel("org/custom", "")
+			second := model.Specs[0]
+			second.Name = "other"
+			model.Specs = append(model.Specs, second)
+			if err := st.ImportUserInferenceCatalog([]InferenceModel{model}, false); err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := st.InferenceModelByModelID(model.ModelID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dep := &Deployment{TemplateID: resolved.ID, TemplateSpecName: "general", TemplateSpecSource: "user", ServedName: "stale"}
+			if target == "template" {
+				err = st.DeleteUserInferenceTemplate(model.ModelID)
+			} else {
+				_, err = st.DeleteUserInferenceSpec(model.ModelID, dep.TemplateSpecName)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.CreateDeployment(dep); !errors.Is(err, ErrDeploymentTemplateSelectionGone) {
+				t.Fatalf("create from deleted selection: %v", err)
+			}
+			if rows, err := st.ListDeployments(); err != nil || len(rows) != 0 {
+				t.Fatalf("rejected create left deployments: %+v, %v", rows, err)
+			}
+		})
+	}
+}
+
 func TestTemplateSpecAPIContractReadsOneSpecByIdentity(t *testing.T) {
 	st := openObservationStore(t)
 	contract := `{"operations":[{"type":"openai.chat"}],"metrics":{"map":{"x":"requests_running"}}}`
