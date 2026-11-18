@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/pkg/extapi"
 	"gpuworks.ai/gpuworks/pkg/pluginsdk"
 )
 
@@ -49,7 +50,7 @@ func TestAPipeReaderThatStopsIsDetected(t *testing.T) {
 		wrote <- err
 	}()
 	deadline := time.Now().Add(5 * time.Second)
-	for m.writers.Load() != 1 {
+	for m.writing.Load() == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("the write never started")
 		}
@@ -70,8 +71,8 @@ func TestAPipeReaderThatStopsIsDetected(t *testing.T) {
 	if err := <-wrote; err != nil {
 		t.Fatal(err)
 	}
-	if d, stalled := m.stalled(time.Second); stalled || d != 0 || m.writers.Load() != 0 {
-		t.Fatalf("after the reader resumed = %v, %v (writers %d)", d, stalled, m.writers.Load())
+	if d, stalled := m.stalled(time.Second); stalled || d != 0 || m.writing.Load() != 0 {
+		t.Fatalf("after the reader resumed = %v, %v (writing %d)", d, stalled, m.writing.Load())
 	}
 }
 
@@ -115,7 +116,7 @@ func TestPendingBodyBytesWithoutProgressStall(t *testing.T) {
 	m := newStallMeter(clock.now)
 	conn := &meteredConn{Conn: discardConn{}, m: m, scan: newFrameScan()}
 	_, _ = conn.Write([]byte(http2.ClientPreface))
-	b := &meteredBody{src: io.NopCloser(bytes.NewReader(make([]byte, 64))), m: m}
+	b := newMeteredBody(io.NopCloser(bytes.NewReader(make([]byte, 64))), -1, m)
 
 	p := make([]byte, 16)
 	if n, _ := b.Read(p); n != 16 || m.unsent.Load() != 16 {
@@ -149,7 +150,7 @@ func TestPendingBodyBytesWithoutProgressStall(t *testing.T) {
 	// Written out: nothing pending, however long nothing is written.
 	b.finish(true)
 	clock.advance(time.Hour)
-	if d, stalled := m.stalled(2*time.Second); stalled || m.unsent.Load() != 0 || d != 0 {
+	if d, stalled := m.stalled(2 * time.Second); stalled || m.unsent.Load() != 0 || d != 0 {
 		t.Fatalf("after finish = %v, %v, unsent %d", d, stalled, m.unsent.Load())
 	}
 	if n, _ := b.Read(p); n != 16 || m.unsent.Load() != 0 {
@@ -157,10 +158,33 @@ func TestPendingBodyBytesWithoutProgressStall(t *testing.T) {
 	}
 
 	// A body abandoned by Close gives back what it held.
-	other := &meteredBody{src: io.NopCloser(bytes.NewReader(make([]byte, 64))), m: m}
+	other := newMeteredBody(io.NopCloser(bytes.NewReader(make([]byte, 64))), -1, m)
 	_, _ = other.Read(p)
 	if err := other.Close(); err != nil || m.unsent.Load() != 0 {
 		t.Fatalf("close = %v, unsent %d", err, m.unsent.Load())
+	}
+}
+
+// Bytes that become pending after none were start their wait at a time
+// read before they are counted, so a check running alongside never pairs
+// them with an older progress time, however old (or unset) it is.
+func TestHeldBytesNeverPairWithAnOldProgressTime(t *testing.T) {
+	for _, old := range []int64{0, time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC).UnixNano()} {
+		clock := newFakeClock()
+		var m *stallMeter
+		var unsentAtClock []int64
+		m = newStallMeter(func() time.Time {
+			unsentAtClock = append(unsentAtClock, m.unsent.Load())
+			return clock.now()
+		})
+		m.progress.Store(old)
+		m.hold(16)
+		if len(unsentAtClock) != 1 || unsentAtClock[0] != 0 {
+			t.Fatalf("progress %d: the wait's start was read with %v bytes already counted", old, unsentAtClock)
+		}
+		if d, stalled := m.stalled(time.Second); stalled || d != 0 {
+			t.Fatalf("progress %d: fresh held bytes = %v, %v", old, d, stalled)
+		}
 	}
 }
 
@@ -173,7 +197,7 @@ func TestStallCountersDoNotAllocate(t *testing.T) {
 	data := frame.Bytes()
 	_, _ = conn.Write([]byte(http2.ClientPreface))
 	src := &endless{}
-	b := &meteredBody{src: src, m: m}
+	b := newMeteredBody(src, -1, m)
 	p := make([]byte, 256)
 	allocs := testing.AllocsPerRun(1000, func() {
 		_, _ = conn.Write(data)
@@ -210,10 +234,22 @@ func postBody(ctx context.Context, h *Host, id string, size int) (*http.Response
 // (they would otherwise have restarted it with PLUGIN_UNHEALTHY first);
 // the call it stalled fails, and its next process serves.
 func TestAPluginWithUnreadBodiesIsRestartedWhileItsHealthPasses(t *testing.T) {
+	// Probes the stalled process answered while it held the body.
+	var stuck atomic.Bool
+	var probesWhileStuck atomic.Int32
 	sp := &fakeSpawner{config: func(n int) pluginsdk.Config {
 		c := sdkConfig("acme_upload")
+		if n == 1 {
+			c.Health = func(context.Context) extapi.Health {
+				if stuck.Load() {
+					probesWhileStuck.Add(1)
+				}
+				return extapi.Health{Status: extapi.HealthOK}
+			}
+		}
 		c.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if n == 1 {
+				stuck.Store(true)
 				<-r.Context().Done() // never reads the body
 				return
 			}
@@ -254,6 +290,9 @@ func TestAPluginWithUnreadBodiesIsRestartedWhileItsHealthPasses(t *testing.T) {
 	if stalled == nil || stalled.Params["id"] != "acme_upload" || stalled.Params["stalled_s"] != 1 {
 		t.Fatalf("no backoff named PLUGIN_STALLED{id, stalled_s: 1}: %+v", stalled)
 	}
+	if n := probesWhileStuck.Load(); n < 2 {
+		t.Fatalf("the stalled plugin answered %d health probes while it held the body", n)
+	}
 
 	resp, err := postBody(context.Background(), h, "acme_upload", 8<<20)
 	if err != nil {
@@ -264,6 +303,56 @@ func TestAPluginWithUnreadBodiesIsRestartedWhileItsHealthPasses(t *testing.T) {
 	if string(body) != "ok" {
 		t.Fatalf("the restarted plugin answered %q", body)
 	}
+}
+
+// Small bodies the plugin never reads fill the connection's window too:
+// each fits in one chunk the client reads whole (it checks for the end
+// with one more read before it waits for flow control), so the last
+// chunk read stays pending until it is written, and the next call's body
+// stalls the connection.
+func TestSmallUnreadBodiesThatFillTheWindowStall(t *testing.T) {
+	sp := &fakeSpawner{config: func(n int) pluginsdk.Config {
+		c := sdkConfig("acme_upload")
+		c.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if n == 1 {
+				<-r.Context().Done() // never reads the body
+				return
+			}
+			_, _ = io.Copy(io.Discard, r.Body)
+			_, _ = io.WriteString(w, "ok")
+		})
+		return c
+	}}
+	h, log := newTestHost(t, sp, nil, stallTiming())
+	spec := testSpec(t, "acme_upload")
+	spec.MaxConcurrency = 64
+	if err := h.Start(spec); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, h, "acme_upload", inState(StateRunning))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var wg sync.WaitGroup
+	for range 21 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if resp, err := postBody(ctx, h, "acme_upload", 100<<10); err == nil {
+				_ = resp.Body.Close()
+			}
+		}()
+	}
+	waitStatus(t, h, "acme_upload", func(s Status) bool { return s.Starts == 2 })
+	cancel()
+	wg.Wait()
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	for _, s := range log.all {
+		if s.State == StateBackoff && s.Code == messages.ErrorPluginStalled {
+			return
+		}
+	}
+	t.Fatalf("no backoff named PLUGIN_STALLED: %+v", log.all)
 }
 
 // A plugin that reads a large body slowly, but keeps reading, is never

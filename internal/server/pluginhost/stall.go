@@ -22,10 +22,10 @@ import (
 // atomic word so the per-call and per-write paths never allocate or take
 // a lock shared across calls.
 type stallMeter struct {
-	// writing is when the connection writes in progress started (unix
-	// nanoseconds), zero when none is; writers counts them.
+	// writing is when the write in progress started (unix nanoseconds),
+	// zero when none is. The HTTP/2 client serializes its writes to the
+	// connection (under its write lock), so at most one is in progress.
 	writing atomic.Int64
-	writers atomic.Int32
 	// unsent is the request body bytes the HTTP/2 client has read from
 	// callers' bodies and not yet written (it holds them while it waits
 	// for flow control); progress is when body bytes were last written
@@ -45,24 +45,20 @@ func newStallMeter(now func() time.Time) *stallMeter {
 
 func (m *stallMeter) nanos() int64 { return m.now().UnixNano() }
 
-// writeStarted and writeDone bracket one write to the connection.
-func (m *stallMeter) writeStarted() {
-	if m.writers.Add(1) == 1 {
-		m.writing.Store(m.nanos())
-	}
-}
+// writeStarted and writeDone bracket one write to the connection; writes
+// do not overlap.
+func (m *stallMeter) writeStarted() { m.writing.Store(m.nanos()) }
 
-func (m *stallMeter) writeDone() {
-	if m.writers.Add(-1) == 0 {
-		m.writing.Store(0)
-	}
-}
+func (m *stallMeter) writeDone() { m.writing.Store(0) }
 
-// hold notes n body bytes the client read and has yet to write.
+// hold notes n body bytes the client read and has yet to write. When none
+// were pending, the wait starts now: the time is stored before the count,
+// so a check that sees the bytes never pairs them with an older time.
 func (m *stallMeter) hold(n int64) {
-	if m.unsent.Add(n) == n {
+	if m.unsent.Load() == 0 {
 		m.progress.Store(m.nanos())
 	}
+	m.unsent.Add(n)
 }
 
 // sent notes that n held bytes were written; dropped that they were
@@ -158,19 +154,38 @@ func (s *frameScan) data(p []byte) int {
 // meteredBody is a call's request body as the HTTP/2 client reads it. The
 // client reads a chunk, then writes all of it (waiting for flow control
 // as needed) before it reads again, so the chunk last read is held until
-// the next read starts or the body is written out (finish).
+// the next read starts or the body is written out (finish). One read is
+// the exception: once a body of known length has been read whole, the
+// client reads once more to see its end before it writes the last chunk,
+// so that read releases nothing.
 type meteredBody struct {
 	src io.ReadCloser
 	m   *stallMeter
+	// size is the body's declared length, -1 when unknown; read counts the
+	// bytes read so far. Only the client's single body reader uses them.
+	size int64
+	read int64
 
 	mu       sync.Mutex
 	held     int64
 	finished bool
 }
 
+// newMeteredBody meters src, whose declared length is size (an outgoing
+// request's ContentLength: 0 with a body means unknown).
+func newMeteredBody(src io.ReadCloser, size int64, m *stallMeter) *meteredBody {
+	if size <= 0 {
+		size = -1
+	}
+	return &meteredBody{src: src, m: m, size: size}
+}
+
 func (b *meteredBody) Read(p []byte) (int, error) {
-	b.release(true)
+	if b.size < 0 || b.read < b.size {
+		b.release(true)
+	}
 	n, err := b.src.Read(p)
+	b.read += int64(n)
 	if n > 0 {
 		b.mu.Lock()
 		if !b.finished {

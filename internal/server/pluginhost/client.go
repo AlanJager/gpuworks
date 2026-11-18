@@ -166,7 +166,7 @@ func (c *pluginConn) do(ctx context.Context, req *http.Request, class Class, dea
 	// stops reading bodies is noticed (stall.go).
 	var body *meteredBody
 	if req.Body != nil && req.Body != http.NoBody {
-		body = &meteredBody{src: req.Body, m: c.meter}
+		body = newMeteredBody(req.Body, req.ContentLength, c.meter)
 	}
 	release := sync.OnceFunc(func() {
 		cancel()

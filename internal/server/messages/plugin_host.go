@@ -56,7 +56,7 @@ const (
 	// watchdog allows for its {limit_mib} MiB limit, and was killed; it is
 	// restarted after a backoff.
 	ErrorPluginMemoryExceeded = "PLUGIN_MEMORY_EXCEEDED"
-	// ErrorPluginStalled: the plugin stopped reading the server's calls
+	// ErrorPluginStalled: the plugin {id} stopped reading the server's calls
 	// (its connection made no progress for {stalled_s} seconds while
 	// request bodies waited) and is restarted, even if it still answered
 	// health probes.

@@ -194,7 +194,8 @@ func TestContractPluginRouteResponsesAtRuntime(t *testing.T) {
 
 // A real plugin process that stops reading a route's request body is
 // restarted with PLUGIN_STALLED once its connection has made no progress
-// for StallAfter, though it keeps answering health probes; the stuck call
+// for StallAfter, before its health probes fail (they would name
+// PLUGIN_UNHEALTHY instead); the stuck call
 // answers 502 PLUGIN_ROUTE_FAILED at once instead of waiting out the
 // route's timeout.
 func TestContractPluginThatStopsReadingBodiesIsRestarted(t *testing.T) {
@@ -230,7 +231,9 @@ func TestContractPluginThatStopsReadingBodiesIsRestarted(t *testing.T) {
 	p := sv.waitPlugin("acme_fake", "restarted for a stall", func(p dto.Plugin) bool {
 		return p.State == "backoff" && p.Message != nil && p.Message.Code == "PLUGIN_STALLED"
 	})
-	if p.Message.Params["id"] != "acme_fake" || p.Message.Params["stalled_s"] != float64(1) {
+	// The check runs every quarter of StallAfter, so a loaded runner may
+	// first see the stall a little late.
+	if secs, _ := p.Message.Params["stalled_s"].(float64); p.Message.Params["id"] != "acme_fake" || secs < 1 || secs > 5 || secs != float64(int(secs)) {
 		t.Fatalf("stall message = %+v", p.Message)
 	}
 	a := <-answered
