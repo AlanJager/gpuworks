@@ -104,10 +104,12 @@ func (i *instance) supervise() {
 	t := i.h.timing
 	for {
 		if i.spec.Lifecycle == extapi.LifecycleOnDemand {
-			i.mu.Lock()
-			i.idling = false
-			i.mu.Unlock()
-			i.set(StateIdle, "", nil)
+			// One step: a call that sees the stop finished must see Idle,
+			// never Stopping without idling, which it would refuse.
+			i.update(func(s *Status) {
+				s.State, s.Code, s.Params = StateIdle, "", nil
+				i.idling = false
+			})
 			select {
 			case <-i.wake:
 			case <-i.stop:

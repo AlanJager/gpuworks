@@ -283,8 +283,8 @@ func TestCallRefusesWhatMayNotRunWithoutStartingIt(t *testing.T) {
 	}
 }
 
-// Disabling a package during a call ends the call, and the next call is
-// refused without starting the plugin again.
+// Disabling a package during a call ends the call as failed after
+// dispatch, and the next call is refused without starting the plugin again.
 func TestDisableDuringACall(t *testing.T) {
 	w := newWorld(t, nil)
 	entered, release := make(chan struct{}, 1), make(chan struct{})
@@ -313,7 +313,12 @@ func TestDisableDuringACall(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case <-called:
+	case err := <-called:
+		// The plugin had the request, so the call may have been partly
+		// applied.
+		if !isCode(err, messages.ErrorPluginRouteFailed) {
+			t.Fatalf("call in flight at the disable = %v, want PLUGIN_ROUTE_FAILED", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the call outlived the disable")
 	}

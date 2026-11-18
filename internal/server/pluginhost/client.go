@@ -107,15 +107,6 @@ func (p *slotPool) give(admin bool) {
 	}
 }
 
-// inFlight counts the calls holding a slot of either pool.
-func (c *pluginConn) inFlight() int {
-	c.plain.mu.Lock()
-	defer c.plain.mu.Unlock()
-	c.stream.mu.Lock()
-	defer c.stream.mu.Unlock()
-	return c.plain.inUse + c.stream.inUse
-}
-
 // drainIfIdle refuses every later call (errDraining) when no call holds a
 // slot, and reports whether it did; the check and the refusal are one
 // step, so no call slips in between.
