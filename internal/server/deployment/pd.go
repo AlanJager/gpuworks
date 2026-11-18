@@ -102,7 +102,11 @@ func (s *Service) pdGroup(p *pdRequest) (netplan.Group, []messages.Warning, erro
 		return group, nil, err
 	}
 	warnings, err := s.checkPDUCXNetlink(p, group)
-	return group, warnings, err
+	if err != nil {
+		return group, nil, err
+	}
+	cards, err := s.checkPDCardNetwork(p, group)
+	return group, append(warnings, cards...), err
 }
 
 // checkEngine rejects a PD request whose engine, settled only after the

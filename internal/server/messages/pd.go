@@ -93,5 +93,7 @@ const (
 	// WarningPDUCXNetlinkHangRDMA: the same node fact as WarningPDUCXNetlinkHang
 	// on a host RDMA network, where UCX is held to RDMA transports and may not
 	// run the route check; it is not refused, the node may still hang.
-	WarningPDUCXNetlinkHangRDMA = "PD_UCX_NETLINK_HANG_RDMA"
+	WarningPDUCXNetlinkHangRDMA     = "PD_UCX_NETLINK_HANG_RDMA"
+	WarningPDCardNetworkUnreachable = "PD_CARD_NETWORK_UNREACHABLE"
+	WarningPDCardNetworkUntested    = "PD_CARD_NETWORK_UNTESTED"
 )

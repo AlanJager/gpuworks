@@ -111,6 +111,17 @@ func (s *Store) FinishNetworkTestRun(id uint, pairsJSON string, pairCount, passe
 	return nil
 }
 
+// LatestNetworkCardTestRun ignores host TCP/RDMA tests: they cannot prove
+// that the accelerator ports selected for a placement can reach each other.
+func (s *Store) LatestNetworkCardTestRun(networkID uint) (*NetworkTestRun, error) {
+	var run NetworkTestRun
+	err := s.db.Where("network_id = ? AND kind IN ?", networkID, []string{"card_ping", "card_matrix"}).Order("id desc").First(&run).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return &run, err
+}
+
 // LatestNetworkTestRun is the newest run of a network, if any.
 func (s *Store) LatestNetworkTestRun(networkID uint) (*NetworkTestRun, error) {
 	var run NetworkTestRun
