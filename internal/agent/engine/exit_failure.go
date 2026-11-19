@@ -38,7 +38,10 @@ type exitOutput struct {
 	waiting []string
 }
 
-func (e *Engine) readExitOutput(ctx context.Context, id string) (exitOutput, bool) {
+// readExitOutput reads it for an instance whose dGPU memory limit is
+// vramLimitBytes (0: a whole GPU): under a limit, the engine's own report of
+// running out of memory on a device as large as the limit is the limit.
+func (e *Engine) readExitOutput(ctx context.Context, id string, vramLimitBytes int64) (exitOutput, bool) {
 	rc, err := e.Driver().Logs(ctx, id, false, exitTailLines)
 	if err != nil {
 		return exitOutput{}, false
@@ -48,7 +51,7 @@ func (e *Engine) readExitOutput(ctx context.Context, id string) (exitOutput, boo
 	if err != nil {
 		return exitOutput{}, false
 	}
-	out := exitOutput{causes: enginelog.Classify(text), root: commandlog.Redact(enginelog.RootCause(text))}
+	out := exitOutput{causes: enginelog.ClassifyWithLimit(text, vramLimitBytes), root: commandlog.Redact(enginelog.RootCause(text))}
 	// These lines are whatever the container printed last, not lines chosen
 	// for naming an error: a launch script tracing its commands ends on a
 	// command line, and what it passed as a credential is not for the
@@ -98,8 +101,10 @@ func (o exitOutput) attach(failure *proto.RuntimeFailure) {
 	for _, c := range o.causes {
 		cause := proto.FailureCause{Code: c.Code, Evidence: c.Lines(), GLIBC: c.GLIBC}
 		if c.Code == enginelog.CodeDGPUMemoryLimit {
-			device := c.Device
-			cause.Device, cause.NeededBytes, cause.LimitBytes = &device, c.NeededBytes, c.LimitBytes
+			cause.NeededBytes, cause.LimitBytes = c.NeededBytes, c.LimitBytes
+			if device := c.Device; device >= 0 {
+				cause.Device = &device
+			}
 		}
 		failure.Causes = append(failure.Causes, cause)
 	}
@@ -113,14 +118,18 @@ func (o exitOutput) attach(failure *proto.RuntimeFailure) {
 
 // message is the English fallback for an exit: a missing glibc replaces it
 // (the exit status says nothing more), a dGPU limit refusal or the root-cause
-// line is added to base, a startup exit that named no error adds its last
-// line, and an exit that printed nothing says so, which a full disk also
-// produces.
+// line is added to base (a limit the output gave no numbers for keeps the
+// engine's own line beside it: an error code is then all there is to go on),
+// a startup exit that named no error adds its last line, and an exit that
+// printed nothing says so, which a full disk also produces.
 func (o exitOutput) message(base string) string {
 	if c, ok := o.cause(enginelog.CodeGLIBCTooOld); ok {
 		return c.Fallback()
 	}
 	if c, ok := o.cause(enginelog.CodeDGPUMemoryLimit); ok {
+		if c.NeededBytes <= 0 && o.root != "" {
+			return base + ": " + c.Fallback() + " (" + o.root + ")"
+		}
 		return base + ": " + c.Fallback()
 	}
 	if o.root != "" {
@@ -147,15 +156,16 @@ func (o exitOutput) cause(code string) (enginelog.Cause, bool) {
 // exitedFailure is the reason a container that stopped on its own stopped,
 // in phase: killed for memory (oomMessage is the fallback) or exited
 // (exitBase is the fallback the output's reason is added to). Either way the
-// output's known failures and root cause go with it.
-func (e *Engine) exitedFailure(ctx context.Context, id string, st runtime.Status, phase, oomMessage, exitBase string) (proto.RuntimeFailure, string) {
+// output's known failures and root cause go with it, read against the
+// instance's dGPU memory limit.
+func (e *Engine) exitedFailure(ctx context.Context, id string, st runtime.Status, vramLimitBytes int64, phase, oomMessage, exitBase string) (proto.RuntimeFailure, string) {
 	exitCode := st.ExitCode
 	failure := proto.RuntimeFailure{Code: proto.ErrorContainerExited, Phase: phase, ExitCode: &exitCode}
 	oom := e.detectOOM(ctx, id, st)
 	if oom {
 		failure.Code, failure.OOMKilled = proto.ErrorContainerOOMKilled, true
 	}
-	out, _ := e.readExitOutput(ctx, id)
+	out, _ := e.readExitOutput(ctx, id, vramLimitBytes)
 	if oom || phase == proto.PhaseServing || len(out.causes) > 0 {
 		// A kill for memory and a known failure are their own reason (the
 		// known failure carries its lines as its evidence), and an engine
@@ -179,8 +189,8 @@ func (e *Engine) exitedFailure(ctx context.Context, id string, st runtime.Status
 // joins the message. A startup that timedOut and showed no known failure and
 // no error line still carries its last lines as evidence: they are all there
 // is to say where it hung.
-func (e *Engine) attachOutput(ctx context.Context, id string, failure *proto.RuntimeFailure, timedOut bool) {
-	out, read := e.readExitOutput(ctx, id)
+func (e *Engine) attachOutput(ctx context.Context, id string, vramLimitBytes int64, failure *proto.RuntimeFailure, timedOut bool) {
+	out, read := e.readExitOutput(ctx, id, vramLimitBytes)
 	if !read {
 		return
 	}

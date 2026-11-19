@@ -330,6 +330,6 @@ func (e *Engine) startMakesNoProgress(ctx context.Context, spec proto.InstanceDe
 		return proto.RuntimeFailure{}, "", false
 	}
 	failure = proto.RuntimeFailure{Code: proto.ErrorEngineStartStalled, Phase: proto.PhaseHealthCheck, Detail: stall.detail(now)}
-	e.attachOutput(ctx, id, &failure, true)
+	e.attachOutput(ctx, id, spec.VRAMLimitBytes, &failure, true)
 	return failure, fmt.Sprintf("engine start stalled: %s", failure.Detail), true
 }
