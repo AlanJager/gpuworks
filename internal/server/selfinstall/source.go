@@ -31,8 +31,8 @@ type upgradeSource struct {
 	stage func(ctx context.Context) (string, error)
 }
 
-// stagedBinary is where the new binary waits until it replaces the installed
-// one.
+// stagedBinary is where a console upgrade's new binary waits until it replaces
+// the installed one; a command-line upgrade stages in upgradeStagingDirectory.
 func (i *Installer) stagedBinary() string {
 	return filepath.Join(i.layout.TmpDir(), binaryName+".new")
 }
@@ -65,20 +65,17 @@ func (i *Installer) siteSource(ctx context.Context, baseURL string) (upgradeSour
 			if err != nil {
 				return "", err
 			}
-			if err := mkdirAll(i.layout.TmpDir(), dirMode); err != nil {
+			dir, err := i.upgradeStagingDirectory()
+			if err != nil {
 				return "", err
 			}
 			i.io.Say("downloading %s", asset.Name)
-			archive, err := i.downloadAsset(ctx, endpoint, asset, i.layout.TmpDir())
+			archive, err := i.downloadAsset(ctx, endpoint, asset, dir)
 			if err != nil {
 				return "", err
 			}
 			defer func() { _ = os.Remove(archive) }()
-			staged := i.stagedBinary()
-			if err := extractBinary(archive, staged); err != nil {
-				return "", err
-			}
-			return staged, nil
+			return i.stageUpgradeBinary(archive)
 		},
 	}, nil
 }
@@ -99,12 +96,9 @@ func (i *Installer) archiveSource(ctx context.Context, archive string) (upgradeS
 	} else if !info.Mode().IsRegular() {
 		return upgradeSource{}, fmt.Errorf("--archive %s is not a file", path)
 	}
-	if err := mkdirAll(i.layout.TmpDir(), dirMode); err != nil {
-		return upgradeSource{}, err
-	}
 	i.io.Say("unpacking %s", path)
-	staged := i.stagedBinary()
-	if err := extractBinary(path, staged); err != nil {
+	staged, err := i.stageUpgradeBinary(path)
+	if err != nil {
 		return upgradeSource{}, err
 	}
 	goos, goarch := currentPlatform()

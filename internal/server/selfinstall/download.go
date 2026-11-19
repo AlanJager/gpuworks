@@ -64,69 +64,82 @@ func (i *Installer) downloadAsset(ctx context.Context, endpoint string, want Rel
 // considered, and it is written by base name, so nothing in the archive can
 // choose where it lands.
 func extractBinary(archive, dest string) error {
+	_, err := extractBinarySum(archive, dest)
+	return err
+}
+
+// extractBinarySum is extractBinary that also returns the sha256 of the bytes
+// it read from the archive, so what lands at dest can be checked later against
+// what the archive held rather than against the file itself.
+func extractBinarySum(archive, dest string) (string, error) {
 	f, err := os.Open(archive)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		return fmt.Errorf("%s: %w", filepath.Base(archive), err)
+		return "", fmt.Errorf("%s: %w", filepath.Base(archive), err)
 	}
 	defer gz.Close()
 
 	reader := tar.NewReader(gz)
 	found := false
+	var sum string
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("%s: %w", filepath.Base(archive), err)
+			return "", fmt.Errorf("%s: %w", filepath.Base(archive), err)
 		}
 		if header.Typeflag != tar.TypeReg || filepath.Base(header.Name) != binaryName {
 			continue
 		}
 		if found {
-			return fmt.Errorf("%s contains more than one %s", filepath.Base(archive), binaryName)
+			return "", fmt.Errorf("%s contains more than one %s", filepath.Base(archive), binaryName)
 		}
 		found = true
-		if err := writeExtracted(reader, dest, header.Size); err != nil {
-			return err
+		if sum, err = writeExtracted(reader, dest, header.Size); err != nil {
+			return "", err
 		}
 	}
 	if !found {
-		return fmt.Errorf("%s does not contain a %s binary", filepath.Base(archive), binaryName)
+		return "", fmt.Errorf("%s does not contain a %s binary", filepath.Base(archive), binaryName)
 	}
-	return nil
+	return sum, nil
 }
 
-func writeExtracted(reader io.Reader, dest string, size int64) error {
+func writeExtracted(reader io.Reader, dest string, size int64) (string, error) {
 	if size > maxExtractedBinaryBytes {
-		return fmt.Errorf("the %s binary in the archive is %d bytes, beyond the %d byte limit", binaryName, size, int64(maxExtractedBinaryBytes))
+		return "", fmt.Errorf("the %s binary in the archive is %d bytes, beyond the %d byte limit", binaryName, size, int64(maxExtractedBinaryBytes))
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(dest), filepath.Base(dest)+".new*")
 	if err != nil {
-		return err
+		return "", err
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	written, err := io.Copy(tmp, io.LimitReader(reader, maxExtractedBinaryBytes))
+	hasher := sha256.New()
+	written, err := io.Copy(io.MultiWriter(tmp, hasher), io.LimitReader(reader, maxExtractedBinaryBytes))
 	if err != nil {
 		tmp.Close()
-		return err
+		return "", err
 	}
 	if size > 0 && written != size {
 		tmp.Close()
-		return fmt.Errorf("the %s binary is truncated: %d of %d bytes", binaryName, written, size)
+		return "", fmt.Errorf("the %s binary is truncated: %d of %d bytes", binaryName, written, size)
 	}
 	if err := tmp.Chmod(binaryMode); err != nil {
 		tmp.Close()
-		return err
+		return "", err
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		return "", err
 	}
-	return os.Rename(tmpName, dest)
+	if err := os.Rename(tmpName, dest); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }

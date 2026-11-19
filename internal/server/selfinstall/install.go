@@ -131,9 +131,15 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 			return InstallReport{}, err
 		}
 		if i.installedInSharedRoot() {
+			// The agent is named only when something besides the server
+			// lives in the root; a server-only root is still the shared one.
+			shared := "is the shared application root"
+			if other, err := i.otherEntries(); err == nil && len(other) > 0 {
+				shared = "is shared with the node agent"
+			}
 			pf.Warnings = append(pf.Warnings, fmt.Sprintf(
-				"%s is shared with the node agent and stays owned by root: the console cannot replace the binary there, so upgrade with `sudo %s upgrade`, or reinstall into a dedicated directory",
-				sharedApplicationRoot, i.layout.Binary()))
+				"%s %s and stays owned by root: the console cannot replace the binary there, so upgrade with `sudo %s upgrade`, or reinstall into a dedicated directory",
+				sharedApplicationRoot, shared, i.layout.Binary()))
 		}
 	}
 	if err := i.preflightSensitiveFiles(ctx); err != nil {
