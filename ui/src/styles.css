@@ -1550,8 +1550,11 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
 .deployment-detail-tabs #deployment-instances > section { flex: 1; }
 .deployment-detail-tabs #deployment-instances :is(.instance-startup-progress, [tabindex="-1"]) { scroll-margin-top: 8px; }
 
-/* Most vendor marks are dark artwork on a transparent canvas, so they need a
-   light plate only on the dark theme; Kunlunxin's mark is white and always
-   sits on its dark plate. */
-.vendor-logo-kunlunxin { background: var(--vendor-logo-dark); padding: 2px 4px; border-radius: var(--radius-sm); }
-[data-theme="dark"] .vendor-logo:not(.vendor-logo-kunlunxin) { background: var(--vendor-logo-light); padding: 2px 4px; border-radius: var(--radius-sm); }
+/* A vendor mark's plate follows its declared ink tone (VENDOR_LOGO_INK in
+   components/vendorAssets.ts), never the vendor: dark ink needs the light
+   plate on the dark theme only, light ink the dark plate on both themes. The
+   padding is exposed as variables so a fixed box can leave room for it. */
+.vendor-mark { display: inline-flex; flex: none; align-items: center; }
+.vendor-mark-ink-light, [data-theme="dark"] .vendor-mark-ink-dark { --vendor-mark-pad-x: 4px; --vendor-mark-pad-y: 2px; padding: var(--vendor-mark-pad-y) var(--vendor-mark-pad-x); border-radius: var(--radius-sm); }
+.vendor-mark-ink-light { background: var(--vendor-logo-dark); }
+[data-theme="dark"] .vendor-mark-ink-dark { background: var(--vendor-logo-light); }

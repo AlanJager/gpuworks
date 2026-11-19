@@ -3,7 +3,6 @@ package uiassets
 import (
 	"bytes"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -97,16 +96,22 @@ func TestVendorAssetsMatchLogoFiles(t *testing.T) {
 }
 
 func vendorAssetRefs(src []byte) (map[string]string, error) {
-	block := regexp.MustCompile(`(?s)export const VENDOR_ASSETS\b[^=]*=\s*\{(.*?)\n\};`).FindSubmatch(src)
+	return tsStringRecord(src, "VENDOR_ASSETS")
+}
+
+// tsStringRecord reads `export const NAME: ... = { key: "value", ... };`
+// from ui/src/components/vendorAssets.ts.
+func tsStringRecord(src []byte, name string) (map[string]string, error) {
+	block := regexp.MustCompile(`(?s)export const ` + regexp.QuoteMeta(name) + `\b[^=]*=\s*\{(.*?)\n\};`).FindSubmatch(src)
 	if block == nil {
-		return nil, errors.New("ui/src/components/vendorAssets.ts declares no VENDOR_ASSETS map")
+		return nil, fmt.Errorf("ui/src/components/vendorAssets.ts declares no %s map", name)
 	}
 	refs := map[string]string{}
 	for _, m := range regexp.MustCompile(`(?m)^\s*"?([A-Za-z0-9_-]+)"?\s*:\s*"([^"]*)"`).FindAllSubmatch(block[1], -1) {
 		refs[string(m[1])] = string(m[2])
 	}
 	if len(refs) == 0 {
-		return nil, errors.New("ui/src/components/vendorAssets.ts: VENDOR_ASSETS has no entries")
+		return nil, fmt.Errorf("ui/src/components/vendorAssets.ts: %s has no entries", name)
 	}
 	return refs, nil
 }
@@ -224,13 +229,9 @@ func checkSVGLogo(name string, data []byte) []string {
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	var (
 		problems []string
-		stack    []svgPaint
+		tree     svgPaintTree
 		viewBox  *svgBox
-		depth    int
 		inStyle  bool
-		// depth of the outermost element whose children are never drawn
-		// directly (defs, clipPath, ...); 0 when outside all of them
-		hiddenAt int
 	)
 	for {
 		tok, err := dec.Token()
@@ -242,14 +243,11 @@ func checkSVGLogo(name string, data []byte) []string {
 		}
 		switch el := tok.(type) {
 		case xml.StartElement:
-			depth++
-			attrs := map[string]string{}
-			for _, a := range el.Attr {
-				attrs[a.Name.Local] = a.Value
-			}
+			attrs := attrMap(el)
 			style := parseStyle(attrs["style"])
 			tag := el.Name.Local
-			if depth == 1 {
+			paint, drawn := tree.enter(tag, attrs, style)
+			if tree.depth == 1 {
 				if tag != "svg" {
 					return []string{fmt.Sprintf("%s: root element is <%s>, not <svg>; fix: re-export the mark as a plain SVG", name, tag)}
 				}
@@ -276,25 +274,7 @@ func checkSVGLogo(name string, data []byte) []string {
 			case "style":
 				inStyle = true
 			}
-			if hiddenAt == 0 && svgUndrawnContainers[tag] {
-				hiddenAt = depth
-			}
-			paint := svgPaint{fill: "black", opacity: 1}
-			if len(stack) > 0 {
-				paint = stack[len(stack)-1]
-			}
-			if v, ok := pick(attrs, style, "fill"); ok && v != "inherit" {
-				paint.fill = v
-			}
-			for _, k := range []string{"opacity", "fill-opacity"} {
-				if v, ok := pick(attrs, style, k); ok {
-					if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-						paint.opacity *= f
-					}
-				}
-			}
-			stack = append(stack, paint)
-			if viewBox != nil && hiddenAt == 0 && painted(paint) {
+			if viewBox != nil && drawn && painted(paint) {
 				if box, ok := shapeBox(tag, attrs, *viewBox); ok {
 					if c := coverage(box, *viewBox); c >= svgBackgroundCoverage {
 						problems = append(problems, fmt.Sprintf("%s: <%s> with fill %q covers %.0f%% of the viewBox (limit %.0f%%), so it is a background plate, not artwork; %s", name, tag, paint.fill, 100*c, 100*svgBackgroundCoverage, fixSVG))
@@ -302,13 +282,7 @@ func checkSVGLogo(name string, data []byte) []string {
 				}
 			}
 		case xml.EndElement:
-			if hiddenAt == depth {
-				hiddenAt = 0
-			}
-			depth--
-			if len(stack) > 0 {
-				stack = stack[:len(stack)-1]
-			}
+			tree.leave()
 			if el.Name.Local == "style" {
 				inStyle = false
 			}
@@ -318,10 +292,63 @@ func checkSVGLogo(name string, data []byte) []string {
 			}
 		}
 	}
-	if depth != 0 || viewBox == nil && len(problems) == 0 {
+	if tree.depth != 0 || viewBox == nil && len(problems) == 0 {
 		problems = append(problems, fmt.Sprintf("%s: no root <svg> element; fix: re-export the mark as a plain SVG", name))
 	}
 	return problems
+}
+
+// svgPaintTree follows an SVG token by token: the fill and opacity each
+// element inherits, and whether it sits inside a container whose shapes are
+// never drawn directly (svgUndrawnContainers).
+type svgPaintTree struct {
+	stack []svgPaint
+	depth int
+	// depth of the outermost undrawn container; 0 when outside all of them
+	hiddenAt int
+}
+
+// enter records a start element and returns its paint and whether it is drawn.
+func (t *svgPaintTree) enter(tag string, attrs, style map[string]string) (svgPaint, bool) {
+	t.depth++
+	if t.hiddenAt == 0 && svgUndrawnContainers[tag] {
+		t.hiddenAt = t.depth
+	}
+	paint := svgPaint{fill: "black", opacity: 1}
+	if len(t.stack) > 0 {
+		paint = t.stack[len(t.stack)-1]
+	}
+	if v, ok := pick(attrs, style, "fill"); ok && v != "inherit" {
+		paint.fill = v
+	}
+	for _, k := range []string{"opacity", "fill-opacity"} {
+		if v, ok := pick(attrs, style, k); ok {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+				paint.opacity *= f
+			}
+		}
+	}
+	t.stack = append(t.stack, paint)
+	return paint, t.hiddenAt == 0
+}
+
+// leave records the matching end element.
+func (t *svgPaintTree) leave() {
+	if t.hiddenAt == t.depth {
+		t.hiddenAt = 0
+	}
+	t.depth--
+	if len(t.stack) > 0 {
+		t.stack = t.stack[:len(t.stack)-1]
+	}
+}
+
+func attrMap(el xml.StartElement) map[string]string {
+	attrs := map[string]string{}
+	for _, a := range el.Attr {
+		attrs[a.Name.Local] = a.Value
+	}
+	return attrs
 }
 
 func parseStyle(s string) map[string]string {
@@ -446,26 +473,16 @@ func shapeBox(tag string, a map[string]string, vb svgBox) (svgBox, bool) {
 	return svgBox{}, false
 }
 
-var pathTokenRE = regexp.MustCompile(`[A-Za-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?`)
-
-// pathCurveArity is how many numbers each curve and arc command takes.
-var pathCurveArity = map[byte]int{'c': 6, 's': 4, 'q': 4, 't': 2, 'a': 7}
-
 // pathRectangle returns the largest subpath of d that is an axis-aligned
 // rectangle: built only from M, L, H, V and Z (absolute or relative), with
 // every vertex on a corner of the subpath's own bounds and no diagonal edge.
 // A subpath with a curve or arc is artwork; so is a whole path the parser
 // cannot follow (compressed arc flags, unknown commands).
 func pathRectangle(d string) (svgBox, bool) {
-	toks := pathTokenRE.FindAllString(d, -1)
 	var (
 		best     svgBox
 		found    bool
-		x, y     float64
-		startX   float64
-		startY   float64
 		pts      [][2]float64
-		cmd      byte
 		bestArea float64
 	)
 	curved := false // the current subpath has a curve or arc
@@ -492,84 +509,17 @@ func pathRectangle(d string) (svgBox, bool) {
 		}
 		pts = pts[:0]
 	}
-	num := func(i *int) (float64, bool) {
-		if *i >= len(toks) {
-			return 0, false
-		}
-		f, err := strconv.ParseFloat(toks[*i], 64)
-		if err != nil {
-			return 0, false
-		}
-		*i++
-		return f, true
-	}
-	for i := 0; i < len(toks); {
-		if c := toks[i][0]; (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-			cmd = c
-			i++
-		}
-		rel := cmd >= 'a'
-		switch cmd {
-		case 'M', 'm', 'L', 'l':
-			nx, ok1 := num(&i)
-			ny, ok2 := num(&i)
-			if !ok1 || !ok2 {
-				return svgBox{}, false
-			}
-			if rel {
-				nx, ny = x+nx, y+ny
-			}
-			if cmd == 'M' || cmd == 'm' {
-				flush()
-				startX, startY = nx, ny
-				cmd = map[byte]byte{'M': 'L', 'm': 'l'}[cmd] // coordinates after a moveto are linetos
-			}
-			x, y = nx, ny
-			pts = append(pts, [2]float64{x, y})
-		case 'H', 'h':
-			nx, ok := num(&i)
-			if !ok {
-				return svgBox{}, false
-			}
-			if rel {
-				nx += x
-			}
-			x = nx
-			pts = append(pts, [2]float64{x, y})
-		case 'V', 'v':
-			ny, ok := num(&i)
-			if !ok {
-				return svgBox{}, false
-			}
-			if rel {
-				ny += y
-			}
-			y = ny
-			pts = append(pts, [2]float64{x, y})
-		case 'Z', 'z':
-			x, y = startX, startY
+	ok := walkPath(d, func(step pathStep, x, y float64) {
+		switch step {
+		case pathMove, pathClose: // a lineto after Z starts at the subpath start
 			flush()
-			pts = append(pts, [2]float64{x, y}) // a lineto after Z starts here
-			cmd = 0                             // Z takes no numbers; a stray one ends the parse
-		default:
-			n, ok := pathCurveArity[cmd|0x20]
-			if !ok {
-				return svgBox{}, false
-			}
-			var args [7]float64
-			for k := 0; k < n; k++ {
-				if args[k], ok = num(&i); !ok {
-					return svgBox{}, false
-				}
-			}
-			if rel {
-				x, y = x+args[n-2], y+args[n-1]
-			} else {
-				x, y = args[n-2], args[n-1]
-			}
+		case pathCurve:
 			curved = true
-			pts = append(pts, [2]float64{x, y})
 		}
+		pts = append(pts, [2]float64{x, y})
+	})
+	if !ok {
+		return svgBox{}, false
 	}
 	flush()
 	return best, found
