@@ -1672,6 +1672,9 @@ export interface InferenceProfileSummary {
   weight_repo_ids?: string[];
   gpus: GPUPredicate;
 }
+export interface InferenceTemplateDetail extends InferenceTemplate {
+  can_delete: boolean;
+}
 export interface InferenceTemplate {
   detected_support?: { preferred_engine: string; warnings: Array<{ reason: string; quantization?: string; alternative_available: boolean }> };
   id: number;
@@ -5078,7 +5081,7 @@ export const api = {
       `/api/v1/inference-templates/organizations${query}`,
     ),
   inferenceTemplate: (modelID: string) =>
-    getJSON<InferenceTemplate>(
+    getJSON<InferenceTemplateDetail>(
       `/api/v1/inference-templates/model/${modelID.split("/").map(encodeURIComponent).join("/")}`,
     ),
   // The flat YAML the template editor shows. The server writes it from the

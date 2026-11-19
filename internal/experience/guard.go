@@ -54,9 +54,11 @@ var allowedWrites = map[string]bool{
 	"PATCH /api/v1/models/{id}":                  true,
 	"PATCH /api/v1/models/{id}/inference-config": true,
 	"POST /api/v1/models/{id}/metadata/refresh":  true,
-	"DELETE /api/v1/inference-templates":         true, // custom templates in the isolated catalog only
-	"POST /api/v1/inference-templates/clone":     true,
-	"POST /api/v1/inference-templates/evaluate":  true,
+	// Both delete handlers only remove user-authored data from the isolated catalog.
+	"DELETE /api/v1/inference-templates":        true,
+	"DELETE /api/v1/inference-templates/spec":   true,
+	"POST /api/v1/inference-templates/clone":    true,
+	"POST /api/v1/inference-templates/evaluate": true,
 
 	"POST /api/v1/deployments/preflight":            true,
 	"POST /api/v1/deployments":                      true, // preloaded models only (deployable)

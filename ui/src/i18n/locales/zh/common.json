@@ -640,6 +640,8 @@
     "INFERENCE_TEMPLATE_MODEL_REQUIRED": "请用 model_id 指明模板。",
     "DEPLOYMENT_TEMPLATE_SELECTION_GONE": "所选推理模板或档位已被删除。请刷新模板列表并重新选择。",
     "INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE": "部署 {{deployments}} 仍在使用此模板。请先移除这些部署，再重试删除。",
+    "INFERENCE_SPEC_DEPLOYMENT_REFERENCE": "部署 {{deployments}} 仍在使用档位「{{spec}}」。请先移除这些部署，再重试删除。",
+    "INFERENCE_TEMPLATE_MIXED_SOURCES": "模板「{{model}}」包含其他来源的档位。可单独删除其中的自定义档位。",
     "INFERENCE_TEMPLATE_COMPONENT_REFERENCE": "模板「{{owner}}」的档位「{{spec}}」仍在引用此模板作为组件。请先解除该引用，再重试删除。",
     "INFERENCE_TEMPLATE_SPEC_SOURCE_INVALID": "spec_source “{{spec_source}}” 无效，只能是 user 或 upstream。",
     "HTTP_DIRECTORY_UNREACHABLE": "无法读取该 HTTP 目录。请检查地址，并确认服务端会返回目录列表。",

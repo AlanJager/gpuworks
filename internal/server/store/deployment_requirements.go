@@ -76,11 +76,11 @@ func (s *Store) CreateDeploymentWithRequirements(d *Deployment, reqs nodelabel.R
 	return s.createDeploymentWithRequirements(d, reqs, nil)
 }
 
-// CreateDeploymentWithTemplateInferenceConfig also initializes the model's
-// template contract in the deployment transaction. A served-name conflict or a
-// contract write failure therefore leaves neither a partial deployment nor a
-// contract changed by a create that did not happen.
-func (s *Store) CreateDeploymentWithTemplateInferenceConfig(d *Deployment, reqs nodelabel.Requirements, modelID uint, operations, inputModalities string) (*Deployment, error) {
+// CreateDeploymentFromTemplate checks a freshly resolved spec before inserting
+// the deployment that pins it. A nonzero modelID also initializes the model's
+// template contract in the same transaction. Cloning a deployment instead
+// copies its frozen snapshot through CreateDeploymentWithRequirements.
+func (s *Store) CreateDeploymentFromTemplate(d *Deployment, reqs nodelabel.Requirements, modelID uint, operations, inputModalities string) (*Deployment, error) {
 	return s.createDeploymentWithRequirements(d, reqs, &templateInferenceConfig{
 		modelID: modelID, operations: operations, inputModalities: inputModalities,
 	})
@@ -102,9 +102,7 @@ func (s *Store) createDeploymentWithRequirements(d *Deployment, reqs nodelabel.R
 		if err := servedNameFree(tx, d.ServedName); err != nil {
 			return err
 		}
-		// Current catalog selections carry all three identity fields. Older
-		// snapshot-only deployments may lack the spec source when cloned.
-		if d.TemplateID != 0 && d.TemplateSpecSource != "" && d.TemplateSpecName != "" {
+		if config != nil && d.TemplateID != 0 {
 			var count int64
 			err := tx.Model(&InferenceSpecRow{}).
 				Joins("JOIN inference_models ON inference_models.id = inference_specs.model_id").
@@ -126,7 +124,7 @@ func (s *Store) createDeploymentWithRequirements(d *Deployment, reqs nodelabel.R
 				return err
 			}
 		}
-		if config == nil {
+		if config == nil || config.modelID == 0 {
 			return nil
 		}
 		var err error

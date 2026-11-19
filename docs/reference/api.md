@@ -644,7 +644,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/inference-templates/summary` | 模板统计摘要 | JWT |
 | GET | `/api/v1/inference-templates/weight-models` | 某个 spec 声明的权重来源对应的已登记模型（`template_id`、`spec_source`、`spec_name` 必填，缺一 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`，spec 不存在 404）：`models` 为服务任一来源的模型（按 repo id 不区分大小写匹配，完整仓库可服务子目录请求，新的在前，各一次，行格式同分页列表）；`sources` 按声明顺序列出各来源，`reuse_model_id` 是选择该来源时复用的同 provider 最新模型 | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | 按内容摘要导出可执行模板包 | JWT(admin) |
-| GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情（通配路径） | JWT |
+| GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情。`can_delete` 表示当前调用方有权请求删除整个模板，引用检查在删除时执行。 | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |
 | GET | `/api/v1/inference-templates/schema` | 平铺 YAML 编辑器的字典：字段的补全、悬停说明与客户端首轮校验所需的约束（权威校验仍在导入时）；可选 `spec.gpus.arch_id` 必须非空且与已报告架构 ID 精确匹配（忽略大小写，缺失时不匹配） | JWT |
 | POST | `/api/v1/inference-templates/clone` | 克隆模板为可编辑的用户 spec | JWT(admin) |
@@ -686,7 +686,7 @@ macOS 忽略 `no_systemd`。
 | PUT | `/api/v1/deployments/{id}/health-check` | 开关部署的健康检查并设阈值：`{"enabled": true, "threshold_sec": 60}`（`threshold_sec` 1–600，省略或 0 保持当前）。开启要求模型提供 chat、completions、embedding 或 System One 决策，否则 400 `FIELD_INVALID`（`params.field` 为 `health_check`）；阈值越界 400 `FIELD_INVALID`；不重启实例，下一轮检查即按新设置。返回部署详情 | JWT |
 | PUT | `/api/v1/deployments/{id}/tokenize` | 开关网关对该部署的分词转发（`/v1/tokenize`、`/v1/detokenize`）：`{"enabled": false}`。`enabled` 必填，缺省 400 `FIELD_INVALID`（`params.field` 为 `enabled`），不是布尔 400；部署不存在 404。不重启实例，网关路由表随变更事件重建后生效。返回部署详情（带 `tokenize_enabled`） | JWT |
 | GET | `/api/v1/deployments/{id}/events` | 部署事件时间线（最新优先、游标分页、读取时折叠） | JWT |
-| POST | `/api/v1/deployments/{id}/clone` | 克隆部署配置，节点条件与放置策略一并复制。副本的对外模型名为原名加 `-` 和 4 位随机小写字母或数字；请求体 `{"name": ...}` 同时设定部署名与对外模型名，被占用时 409 `SERVED_NAME_IN_USE` | JWT |
+| POST | `/api/v1/deployments/{id}/clone` | 克隆已保存的部署配置，包括节点条件与放置策略。即使上游目录已移除原模板或档位，也可从部署快照克隆。副本的对外模型名为原名加 `-` 和 4 位随机小写字母或数字；请求体 `{"name": ...}` 同时设定部署名与对外模型名，被占用时 409 `SERVED_NAME_IN_USE` | JWT |
 | POST | `/api/v1/deployments/{id}/catalog-template` | 把运行中的部署写成推理模板：先对 chat、completions、embeddings、System One 决策等低成本操作各发一个最小请求，再按部署实际运行的启动参数、权重 commit 与 GPU 生成平铺 YAML，不写入目录。见[另存为推理模板](#另存为推理模板) | JWT |
 | POST | `/api/v1/deployments/{id}/stop` | 停止部署：删除全部实例，保留配置 | JWT |
 | POST | `/api/v1/deployments/{id}/start` | 启动已停止的部署，按保留的配置重新调度（每个副本的重试次数重新计）；已在运行则不做任何事；删除中的部署 409 `DEPLOYMENT_DELETING` | JWT |

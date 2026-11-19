@@ -6,10 +6,9 @@ import { ArrowLeftOutlined, CloseCircleOutlined, CopyOutlined, DeleteOutlined, E
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { api, type EvaluateResponse, type InferenceSpec, type InferenceTemplate, type InferenceTemplateIssue } from "../api";
+import { api, type EvaluateResponse, type InferenceSpec, type InferenceTemplate, type InferenceTemplateDetail, type InferenceTemplateIssue } from "../api";
 import { apiErrorText } from "../apiError";
 import { Button as ActionButton } from "../components/ui/button";
-import { useIsAdmin } from "../components/useIsAdmin";
 import { ConsoleIcon } from "../ui-kit/consoleIcons";
 import { confirm, message as feedback } from "../ui-kit/feedback";
 import TemplateWarnings from "../components/TemplateWarnings";
@@ -53,8 +52,7 @@ export default function InferenceTemplateDetailPage() {
   const fromList = search.get("from");
   const listURL = `/inference-templates${fromList ? `?${fromList}` : ""}`;
   const modelID = params["*"] || "";
-  const [model, setModel] = useState<InferenceTemplate>();
-  const isAdmin = useIsAdmin(model?.source === "user");
+  const [model, setModel] = useState<InferenceTemplateDetail>();
   // The route model_id `model` was fetched for. Clone navigates in place, so
   // right after it `model` is still the source template; its YAML must not be
   // loaded into the copy's editor.
@@ -244,7 +242,7 @@ export default function InferenceTemplateDetailPage() {
 
   return <div className="resource-page inference-template-detail-page">
     <PageHeader title={model.display_title || model.model_id} description={compactModelMetadata(model)} parents={[<Link key="list" to={listURL}>{t("breadcrumb.templates")}</Link>]} extra={<Space wrap><Button icon={<ArrowLeftOutlined />} onClick={() => navigate(listURL)}>{t("detail.back")}</Button><Button icon={<CopyOutlined />} onClick={() => void clone()}>{t("detail.clone")}</Button>{model.specs.some((spec) => spec.source === "user") && <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>{t("flat.edit")}</Button>}
-      {isAdmin && model.source === "user" && (
+      {model.can_delete && (
         <ActionButton variant="tertiary" className="text-fg-danger" leadingIcon={ConsoleIcon.delete} onClick={() => confirmTemplateDeletion(model)}>
           {t("editor.deleteTemplate")}
         </ActionButton>

@@ -403,10 +403,10 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	}
 	dep.SetPolicy(yieldPolicy)
 	var created *store.Deployment
-	if templateConfig.modelID == 0 {
+	if selection.Model == nil {
 		created, err = s.d.Store.CreateDeploymentWithRequirements(dep, reqs)
 	} else {
-		created, err = s.d.Store.CreateDeploymentWithTemplateInferenceConfig(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
+		created, err = s.d.Store.CreateDeploymentFromTemplate(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
 	}
 	if err != nil {
 		return nil, CreateRowError(err)

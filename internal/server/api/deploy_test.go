@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -172,7 +173,7 @@ func TestCloneDeploymentPreservesConfigurationWithNewIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.ImportUserInferenceCatalog([]store.InferenceModel{flatAPIFixture("acme/clone", "latency-fp8")}, false); err != nil {
+	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{flatAPIFixture("acme/clone", "latency-fp8")}); err != nil {
 		t.Fatal(err)
 	}
 	template, err := st.InferenceModelByModelID("acme/clone")
@@ -185,7 +186,7 @@ func TestCloneDeploymentPreservesConfigurationWithNewIdentity(t *testing.T) {
 		ServedName:               "source-api",
 		ModelID:                  model.ID,
 		TemplateID:               template.ID,
-		TemplateSpecSource:       "user",
+		TemplateSpecSource:       "upstream",
 		TemplateSpecName:         "latency-fp8",
 		TemplateScenario:         "latency",
 		TemplateDeviated:         true,
@@ -216,6 +217,14 @@ func TestCloneDeploymentPreservesConfigurationWithNewIdentity(t *testing.T) {
 	}, requirements)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The upstream catalog no longer includes this template. Cloning must
+	// preserve the original deployment's recorded launch configuration.
+	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{flatAPIFixture("acme/replacement", "balanced")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InferenceModelByID(template.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("refresh should remove the original template: %v", err)
 	}
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", strconv.FormatUint(uint64(original.ID), 10))

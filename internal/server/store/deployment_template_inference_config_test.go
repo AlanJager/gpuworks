@@ -26,7 +26,7 @@ func TestCreateDeploymentWithTemplateInferenceConfigRollsBackThenCommits(t *test
 		t.Fatal(err)
 	}
 	reqs := nodelabel.Requirements{"pool": {"b", "a", "b"}}
-	_, err = st.CreateDeploymentWithTemplateInferenceConfig(
+	_, err = st.CreateDeploymentFromTemplate(
 		&Deployment{Name: "atomic", ServedName: "atomic", ModelID: model.ID}, reqs, model.ID,
 		`[{"type":"openai.embeddings"}]`, `["text"]`,
 	)
@@ -56,7 +56,7 @@ func TestCreateDeploymentWithTemplateInferenceConfigRollsBackThenCommits(t *test
 	if err := st.db.Exec(`DROP TRIGGER fail_template_modalities`).Error; err != nil {
 		t.Fatal(err)
 	}
-	created, err := st.CreateDeploymentWithTemplateInferenceConfig(
+	created, err := st.CreateDeploymentFromTemplate(
 		&Deployment{Name: "atomic", ServedName: "atomic", ModelID: model.ID}, reqs, model.ID,
 		`[{"type":"openai.embeddings"}]`, `["text"]`,
 	)
@@ -115,7 +115,7 @@ func TestCreateDeploymentWithTemplateInferenceConfigKeepsUserEdit(t *testing.T) 
 	}
 	sub := st.Bus.Subscribe(4, "model", "deployment")
 	defer sub.Close()
-	created, err := st.CreateDeploymentWithTemplateInferenceConfig(
+	created, err := st.CreateDeploymentFromTemplate(
 		&Deployment{Name: "edited", ServedName: "edited", ModelID: model.ID}, nil, model.ID,
 		`[{"type":"openai.embeddings"}]`, `["image"]`,
 	)

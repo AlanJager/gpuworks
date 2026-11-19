@@ -98,7 +98,7 @@ func TestCatalogWritesPublishTheChangedTemplates(t *testing.T) {
 }
 
 // Simulate a create paused after resolving its catalog selection, then
-// resumed after a delete commits. Both create paths share the same row guard.
+// resumed after a delete commits, with no model contract to initialize.
 func TestDeploymentCannotPinDeletedCatalogSelection(t *testing.T) {
 	for _, target := range []string{"spec", "template"} {
 		t.Run(target, func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestDeploymentCannotPinDeletedCatalogSelection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := st.CreateDeployment(dep); !errors.Is(err, ErrDeploymentTemplateSelectionGone) {
+			if _, err := st.CreateDeploymentFromTemplate(dep, nil, 0, "", ""); !errors.Is(err, ErrDeploymentTemplateSelectionGone) {
 				t.Fatalf("create from deleted selection: %v", err)
 			}
 			if rows, err := st.ListDeployments(); err != nil || len(rows) != 0 {

@@ -22,6 +22,13 @@ type InferenceDetectedWarning struct {
 	AlternativeAvailable bool   `json:"alternative_available"`
 }
 
+// InferenceTemplateDetail carries the authenticated caller's available actions.
+// The delete transaction still checks live references when the action runs.
+type InferenceTemplateDetail struct {
+	InferenceTemplate
+	CanDelete bool `json:"can_delete"`
+}
+
 type InferenceTemplate struct {
 	DetectedSupport   *InferenceDetectedSupport `json:"detected_support,omitempty"`
 	ID                uint                      `json:"id"`

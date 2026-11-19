@@ -43,7 +43,6 @@ const { default: InferenceTemplateDetailPage } = await import("../src/pages/Infe
 const { default: TemplateWarnings } = await import("../src/components/TemplateWarnings.tsx");
 
 const original = {
-  me: api.me,
   inferenceTemplates: api.inferenceTemplates,
   inferenceTemplate: api.inferenceTemplate,
   inferenceTemplateYAML: api.inferenceTemplateYAML,
@@ -868,8 +867,7 @@ test("user specs expose an in-place delete that removes the spec or the whole te
 });
 
 test("whole custom template deletion requires confirmation", async () => {
-  api.me = (async () => ({ role: "admin" })) as never;
-  const model = { ...upstreamModel, source: "user", model_id: "custom/model", specs: [{ ...h100Spec, source: "user" }] };
+  const model = { ...upstreamModel, can_delete: true, source: "user", model_id: "custom/model", specs: [{ ...h100Spec, source: "user" }] };
   api.inferenceTemplate = (async () => model) as never;
   const deleted: string[] = [];
   api.deleteInferenceTemplate = async id => {
@@ -895,20 +893,15 @@ test("whole custom template deletion requires confirmation", async () => {
   assert.deepEqual(deleted, ["custom/model", "custom/model"]);
 });
 
-test("whole-template deletion is hidden for non-admins and built-in templates with user specs", async () => {
-  let accountRead = false;
-  api.me = (async () => { accountRead = true; return { role: "member" }; }) as never;
-  const userSpec = { ...h100Spec, source: "user" };
-  api.inferenceTemplate = (async () => ({ ...upstreamModel, source: "user", specs: [userSpec] })) as never;
-  renderDetail();
-  await waitFor(() => assert.equal(accountRead, true));
-  assert.equal(screen.queryByRole("button", { name: "Delete template" }), null);
-  cleanup();
-  api.me = (async () => ({ role: "admin" })) as never;
-  api.inferenceTemplate = (async () => ({ ...upstreamModel, specs: [h100Spec, { ...userSpec, name: "tuned" }] })) as never;
-  renderDetail();
-  await screen.findByRole("button", { name: "Delete user spec tuned" });
-  assert.equal(screen.queryByRole("button", { name: "Delete template" }), null);
+test("whole-template deletion is hidden unless the detail response grants it", async () => {
+  const userSpec = { ...h100Spec, source: "user", name: "tuned" };
+  for (const permission of [{ can_delete: false }, {}]) {
+    api.inferenceTemplate = (async () => ({ ...upstreamModel, source: "user", specs: [userSpec], ...permission })) as never;
+    renderDetail();
+    await screen.findByRole("button", { name: "Delete user spec tuned" });
+    assert.equal(screen.queryByRole("button", { name: "Delete template" }), null);
+    cleanup();
+  }
 });
 
 test("clone opens the editor without a remount via edit=1", async () => {

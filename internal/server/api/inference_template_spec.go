@@ -80,7 +80,7 @@ func (a *apiHandlers) finishInferenceTemplateDelete(w http.ResponseWriter, model
 		switch {
 		case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrInferenceSpecNotFound):
 			writeErr(w, http.StatusNotFound, err)
-		case errors.Is(err, store.ErrInferenceSpecInUse), errors.Is(err, store.ErrInferenceModelReferenced):
+		case errors.Is(err, store.ErrInferenceSpecInUse), errors.Is(err, store.ErrInferenceModelReferenced), errors.Is(err, store.ErrInferenceTemplateMixedSources):
 			writeErr(w, http.StatusConflict, err)
 		default:
 			writeErr(w, http.StatusInternalServerError, err)

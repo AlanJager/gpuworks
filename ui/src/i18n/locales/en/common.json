@@ -640,6 +640,8 @@
     "INFERENCE_TEMPLATE_MODEL_REQUIRED": "Specify the template with model_id.",
     "DEPLOYMENT_TEMPLATE_SELECTION_GONE": "The selected inference template or spec was deleted. Refresh the template list and select another.",
     "INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE": "Deployments still use this template: {{deployments}}. Remove those deployments before retrying.",
+    "INFERENCE_SPEC_DEPLOYMENT_REFERENCE": "Deployments {{deployments}} still use spec “{{spec}}”. Remove those deployments before retrying.",
+    "INFERENCE_TEMPLATE_MIXED_SOURCES": "Template “{{model}}” contains specs from another source. Only its custom specs can be deleted individually.",
     "INFERENCE_TEMPLATE_COMPONENT_REFERENCE": "Spec “{{spec}}” in “{{owner}}” still uses this template as a component. Remove that reference before retrying.",
     "INFERENCE_TEMPLATE_SPEC_SOURCE_INVALID": "spec_source “{{spec_source}}” is not valid; use user or upstream.",
     "HTTP_DIRECTORY_UNREACHABLE": "The HTTP directory could not be read. Check the address, and that the server returns a directory listing.",

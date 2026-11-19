@@ -12,6 +12,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
+var ErrInferenceTemplateMixedSources = errors.New("template contains non-user specs")
+
 // DeleteUserInferenceSpec retires one user-authored spec. Imports are additive
 // (specs absent from an import are preserved), so an explicit delete is the
 // only way to remove a user spec. Deleting the last remaining spec of a user
@@ -43,8 +45,7 @@ func (s *Store) DeleteUserInferenceSpec(modelID, specName string) (modelDeleted 
 		if target < 0 {
 			return ErrInferenceSpecNotFound
 		}
-		pins := tx.Where("template_spec_source = ? AND template_spec_name = ?", "user", specName)
-		if err := refusePinnedInferenceTemplate(pins, model.ID); err != nil {
+		if err := refusePinnedInferenceTemplate(tx, model.ID, specName); err != nil {
 			return err
 		}
 		if err := tx.Delete(&InferenceSpecRow{}, model.Specs[target].ID).Error; err != nil {
@@ -76,7 +77,7 @@ func (s *Store) DeleteUserInferenceTemplate(modelID string) error {
 		if err != nil {
 			return err
 		}
-		if err := refusePinnedInferenceTemplate(tx, model.ID); err != nil {
+		if err := refusePinnedInferenceTemplate(tx, model.ID, ""); err != nil {
 			return err
 		}
 		if err := refuseDanglingComponentReference(tx, model.ID, model.ModelID); err != nil {
@@ -90,7 +91,9 @@ func (s *Store) DeleteUserInferenceTemplate(modelID string) error {
 			return err
 		}
 		if remaining != 0 {
-			return ErrNotFound
+			return messages.WrapProductError(messages.ErrorInferenceTemplateMixedSources,
+				fmt.Sprintf("template %s contains non-user specs and cannot be deleted as a whole", model.ModelID),
+				map[string]any{"model": model.ModelID}, ErrInferenceTemplateMixedSources)
 		}
 		return tx.Delete(&model).Error
 	})
@@ -100,8 +103,11 @@ func (s *Store) DeleteUserInferenceTemplate(modelID string) error {
 	return err
 }
 
-// query can be narrowed to a single spec when the other specs will survive.
-func refusePinnedInferenceTemplate(query *gorm.DB, modelID uint) error {
+// An empty specName checks every deployment that pins the template.
+func refusePinnedInferenceTemplate(query *gorm.DB, modelID uint, specName string) error {
+	if specName != "" {
+		query = query.Where("template_spec_source = ? AND template_spec_name = ?", "user", specName)
+	}
 	var names []string
 	if err := query.Model(&Deployment{}).Where("template_id = ? AND desired_state <> ?", modelID, string(DeployDeleting)).
 		Order("name").Pluck("name", &names).Error; err != nil {
@@ -111,8 +117,13 @@ func refusePinnedInferenceTemplate(query *gorm.DB, modelID uint) error {
 		return nil
 	}
 	deployments := strings.Join(names, ", ")
+	if specName != "" {
+		return messages.WrapProductError(messages.ErrorInferenceSpecDeploymentReference,
+			fmt.Sprintf("deployments %s still use spec %s", deployments, specName),
+			map[string]any{"deployments": deployments, "spec": specName}, ErrInferenceSpecInUse)
+	}
 	return messages.WrapProductError(messages.ErrorInferenceTemplateDeploymentReference,
-		fmt.Sprintf("%s: %s", ErrInferenceSpecInUse, deployments),
+		fmt.Sprintf("deployments %s still use this template", deployments),
 		map[string]any{"deployments": deployments}, ErrInferenceSpecInUse)
 }
 
