@@ -18,7 +18,12 @@ import (
 // committed (err nil) or reports the failure, and is not called for a
 // refused op. Both run under the lock.
 type op struct {
-	build   func(b *pstate.Batch) error
+	build func(b *pstate.Batch) error
+	// clear is the table a ClearTable op removes. buildLocked puts it in
+	// the batch before any op of the tick builds, so an override of that
+	// table built in the same tick sees it and is refused rather than
+	// inserted after the clear.
+	clear   *pstate.OwnerKind
 	after   func(res pstate.Result, err error)
 	done    chan error
 	refused error
@@ -230,6 +235,11 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 	w := &tickWork{down: s.downDirty, hwm: s.hwmDirty}
 	s.downDirty, s.hwmDirty = map[string]bool{}, false
 	for _, o := range s.ops {
+		if o.clear != nil {
+			b.Clear = append(b.Clear, *o.clear)
+		}
+	}
+	for _, o := range s.ops {
 		o.refused = o.build(b)
 	}
 	w.ops, s.ops = s.ops, nil
@@ -243,6 +253,10 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 	for _, id := range b.Uninstall {
 		uninstalled[id] = true
 	}
+	cleared := map[ownerKind]bool{}
+	for _, c := range b.Clear {
+		cleared[ownerKind{c.Owner, c.Kind}] = true
+	}
 	for k, pp := range s.pending {
 		delete(s.pending, k)
 		if uninstalled[k.owner] {
@@ -250,6 +264,11 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 			continue
 		}
 		old := s.parts[k]
+		if cleared[k] {
+			// The clear of this tick commits first: the push is a whole
+			// table, and the cleared table's overrides go with the clear.
+			old = nil
+		}
 		b.Tables = append(b.Tables, tableWrite(old, pp.part))
 		w.pushes = append(w.pushes, pp)
 		s.inflight[k] = pp.part.gen

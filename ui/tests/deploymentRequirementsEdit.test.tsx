@@ -16,7 +16,7 @@ import { I18nextProvider, initReactI18next } from "react-i18next";
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot", "File", "Blob", "HTMLBodyElement"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot", "File", "Blob", "HTMLBodyElement"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
@@ -116,9 +116,8 @@ test("the editor opens on the stored requirements, counts matches live and saves
   assert.ok(await within(modal).findByText(edit.noMatch));
 
   // Unpin: the node select's clear control, then binpack from the keyboard.
-  const nodeSelect = (await within(modal).findByText("gpu-b")).closest(".ant-select") as HTMLElement;
-  await user.hover(nodeSelect);
-  await user.click(nodeSelect.querySelector(".ant-select-clear") as HTMLElement);
+  await within(modal).findByText("gpu-b");
+  await user.click(within(modal).getByRole("button", { name: i18n.t("picker.clear", { ns: "common" }) }));
   await waitFor(() => assert.ok(within(modal).getByText(i18n.t("detail.placement.edit.matches", { count: 1, total: 3 }))));
   const binpack = within(modal).getByRole("radio", { name: i18n.t("detail.placement.strategy.binpack") });
   binpack.focus();

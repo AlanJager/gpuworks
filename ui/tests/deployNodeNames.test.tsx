@@ -6,10 +6,11 @@ import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import { nodeOptions, openNodePicker, unavailable } from "./helpers/nodePicker.ts";
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
@@ -97,11 +98,10 @@ function renderSection(values: Record<string, unknown>, modelReady = true) {
 
 test("the multi-node picker names nodes and accepts compute-network ranks", async () => {
   renderSection({ node_selection_mode: "multi", target_vendor: "nvidia", nnodes: 2, units_placement: "manual" });
-  assert.ok(screen.getByText(node.multiPlaceholder));
-  const picker = screen.getByText(node.multiPlaceholder).closest(".ant-select") as HTMLElement;
-  fireEvent.mouseDown(picker.querySelector(".ant-select-selector") as HTMLElement);
-  await waitFor(() => assert.ok(document.querySelectorAll(".ant-select-item-option").length >= 3));
-  const labels = [...document.querySelectorAll(".ant-select-item-option")].map((el) => ({ text: el.textContent, disabled: el.classList.contains("ant-select-item-option-disabled"), title: el.getAttribute("title") }));
+  const picker = screen.getByPlaceholderText(node.multiPlaceholder);
+  await openNodePicker(picker);
+  await waitFor(() => assert.ok(nodeOptions().length >= 3));
+  const labels = nodeOptions().map((el) => ({ text: el.textContent, disabled: unavailable(el), title: el.getAttribute("title") }));
   assert.deepEqual(labels.map((l) => [l.text, l.disabled]), [
     ["nebius-h200-1 · 8 GPU", false],
     ["pd-h200-2 · 8 GPU", false],

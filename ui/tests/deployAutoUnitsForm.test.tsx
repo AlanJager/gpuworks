@@ -12,6 +12,7 @@ import { fixturePdModes } from "./helpers/engineFixture.ts";
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 import { list } from "./helpers/listPage.ts";
+import { pickNodes } from "./helpers/nodePicker.ts";
 register(
   pathToFileURL(
     new URL("./deploySleepableCssHook.mjs", import.meta.url).pathname,
@@ -39,6 +40,7 @@ for (const name of [
   "Element",
   "Node",
   "MutationObserver",
+  "NodeFilter",
   "ShadowRoot",
 ] as const) {
   Object.defineProperty(globalThis, name, {
@@ -235,16 +237,7 @@ const selected = (label: string) => segment(label).classList.contains("ant-segme
 const node = deployLocale.workbench.node;
 
 async function selectOption(combobox: HTMLElement, label: string) {
-  const selector = combobox.closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement;
-  fireEvent.mouseDown(selector);
-  let option: Element | undefined;
-  await waitFor(() => {
-    const dropdowns = document.querySelectorAll(".ant-select-dropdown");
-    const dropdown = dropdowns[dropdowns.length - 1];
-    option = [...(dropdown?.querySelectorAll(".ant-select-item-option") ?? [])].find((el) => el.textContent === label);
-    if (!option) throw new Error(`option not found: ${label}`);
-  });
-  fireEvent.click(option!);
+  await pickNodes(combobox, label);
 }
 
 type Body = {
@@ -370,7 +363,7 @@ test("a multi-node draft opens on automatic: only the node count and TP are stat
   await screen.findByText(node.multiAutoTitle);
   assert.ok(selected(node.auto));
   assert.ok(screen.getByText(node.autoUnitsDescription));
-  assert.equal(screen.queryByText(node.multiPlaceholder), null, "no per-rank node picker");
+  assert.equal(screen.queryByPlaceholderText(node.multiPlaceholder), null, "no per-rank node picker");
   assert.ok(screen.getByText(deployLocale.workbench.parallel.tpRequiredAuto), "automatic placement asks for a TP");
   await userEvent.setup({ document: dom.window.document }).type(screen.getByLabelText(deployLocale.workbench.resource.tp), "4");
   await waitFor(() => {
@@ -404,7 +397,7 @@ test("the automatic multi-node preview lists the server's ranks as a read-only p
   assert.ok(preview.getByText("Master"));
   assert.ok(preview.getByText("Worker"));
   assert.ok(screen.getByText(node.previewTitle));
-  assert.equal(document.querySelector("[data-testid=auto-group-preview] .ant-select"), null, "nothing to pick in a preview");
+  assert.equal(document.querySelector('[data-testid=auto-group-preview] [role="combobox"]'), null, "nothing to pick in a preview");
 });
 
 test("a multi-node draft that cannot be placed shows the server's reason, in the user's words", async () => {
@@ -433,7 +426,7 @@ test("switching a multi-node draft to manual shows the node picker and states th
   await chooseTopology("multi");
   await screen.findByText(node.multiAutoTitle);
   fireEvent.click(segment(node.manual));
-  const picker = (await screen.findByText(node.multiPlaceholder)).closest(".ant-select") as HTMLElement;
+  const picker = await screen.findByPlaceholderText(node.multiPlaceholder);
   assert.ok(screen.getByText(node.manualUnitsDescription));
   await selectOption(picker, "GPU Node 1 · 2 GPU");
   await selectOption(picker, "GPU Node 2 · 2 GPU");
@@ -512,7 +505,7 @@ test("a clone of a multi-node deployment the platform places opens on automatic 
   await openFrom(storedMulti, { ...storedDeployment, placement_mode: "auto" });
   await waitFor(() => assert.ok(selected(node.auto)));
   assert.ok(screen.getByText(node.autoUnitsDescription));
-  assert.equal(screen.queryByText(node.multiPlaceholder), null);
+  assert.equal(screen.queryByPlaceholderText(node.multiPlaceholder), null);
 });
 
 test("a stored draft that does not say who places it reads as manual, with its nodes", async () => {

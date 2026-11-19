@@ -225,7 +225,7 @@ export function ModelFilesSection({ model, onChanged }: { model: Model; onChange
       columns={columns}
       data={rows}
       columnSettings={false}
-      pagination={rows.length > FILE_PAGE_SIZE ? { pageSize: FILE_PAGE_SIZE, size: "small", showSizeChanger: false } : false}
+      pagination={rows.length > FILE_PAGE_SIZE ? { pageSize: FILE_PAGE_SIZE } : false}
       emptyDescription={t("files.empty")}
       expandable={detailExpandable((row) => <FileDetails row={row} />, {
         expand: tStorage("detail.expand"), collapse: tStorage("detail.collapse"),

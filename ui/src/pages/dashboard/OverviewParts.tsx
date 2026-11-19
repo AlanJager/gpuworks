@@ -11,7 +11,8 @@ import { ArrowRightOutlined, DatabaseOutlined, InfoCircleOutlined } from "@ant-d
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { GPUListResponse, SchedulingCardSummary } from "../../api";
-import { VENDOR_ASSETS, VENDOR_LOGO_HEIGHT } from "../../components/vendorAssets";
+import { VENDOR_LOGO_HEIGHT } from "../../components/vendorAssets";
+import { VendorMarkImage, hasVendorMark, vendorMarkKey } from "../../components/VendorLogo";
 import { compareVendors, vendorForFramework } from "../../vendors";
 import { storageDetailPath } from "../storage/storageLinks";
 
@@ -155,8 +156,7 @@ export function vendorGroups(gpus: GPUListResponse, unknownModel: string): Vendo
 function VendorMark({ vendor }: { vendor: string }) {
   const { t } = useTranslation("common");
   const name = vendor === "amd" ? "AMD" : t(`vendor.${vendor}`, { defaultValue: vendor.toUpperCase() });
-  const asset = VENDOR_ASSETS[vendor === "ppu" ? "thead" : vendor];
-  return <span className="dashboard-vendor-mark" title={name}>{asset ? <img src={asset} alt={name} style={{ height: VENDOR_LOGO_HEIGHT[vendor === "ppu" ? "thead" : vendor] ?? 14 }} /> : <span>{name}</span>}</span>;
+  return <span className="dashboard-vendor-mark" title={name}>{hasVendorMark(vendor) ? <VendorMarkImage vendor={vendor} alt={name} style={{ height: VENDOR_LOGO_HEIGHT[vendorMarkKey(vendor)] ?? 14 }} /> : <span>{name}</span>}</span>;
 }
 
 export function ModelComposition({ groups }: { groups: VendorGroup[] }) {

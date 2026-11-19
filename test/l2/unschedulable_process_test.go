@@ -174,6 +174,33 @@ func TestUnschedulableDeploymentBecomesDiagnosable(t *testing.T) {
 	if resp, data := deploy(2); resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(data), "DEPLOYMENT_NEVER_FITS") {
 		t.Fatalf("never-fitting create status=%d body=%s", resp.StatusCode, data)
 	}
+	// Automatic placement must give the same permanent refusal before it can
+	// pick a node, and the preview must block submission with that same code.
+	automaticBody, err := json.Marshal(map[string]any{
+		"model_id": model.ID, "placement_mode": "auto", "served_name": "never-auto",
+		"engine": "vllm", "image": "gpuworks/fake-engine:test",
+		"quick_params": map[string]any{"max_model_len": 128},
+		"placement":    map[string]any{"tp": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evalResp, evalData := authedDo(t, http.MethodPost, base, adminToken, "/api/v1/evaluate", automaticBody)
+	var preview struct {
+		OK     bool `json:"ok"`
+		Errors []struct {
+			Code string `json:"code"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(evalData, &preview); err != nil {
+		t.Fatal(err)
+	}
+	if evalResp.StatusCode != http.StatusOK || preview.OK || len(preview.Errors) != 1 || preview.Errors[0].Code != "DEPLOYMENT_NEVER_FITS" {
+		t.Fatalf("never-fitting automatic preview status=%d body=%s", evalResp.StatusCode, evalData)
+	}
+	if resp, data := authedDo(t, http.MethodPost, base, adminToken, "/api/v1/deployments", automaticBody); resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(data), "DEPLOYMENT_NEVER_FITS") {
+		t.Fatalf("never-fitting automatic create status=%d body=%s", resp.StatusCode, data)
+	}
 	// One GPU fits the node, which is offline: that only has to wait, so the
 	// deployment is created and the wait must be diagnosable.
 	stopProcess(agent)

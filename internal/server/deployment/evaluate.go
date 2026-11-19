@@ -49,8 +49,9 @@ func (s *Service) Evaluate(ctx context.Context, evaluateReq dto.EvaluateRequest)
 // stopped it before a preview meant anything. Each step that answers returns
 // right after it.
 type evaluation struct {
-	resp dto.EvaluateResponse
-	err  error
+	resp         dto.EvaluateResponse
+	err          error
+	admissionErr error
 }
 
 func (e *evaluation) answer(resp dto.EvaluateResponse) { e.resp = resp }
@@ -492,6 +493,16 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 		if errs.add("", s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp, base)) {
 			writeFieldErrors()
 			return
+		}
+	}
+	if errs.empty() && IsAutomaticPlacement(req) && req.NNodes <= 1 && resp.SelectedNode == nil {
+		candidateReq := cloneRequest(*req)
+		candidateReq.Image = resp.Image
+		admissionSelection := selection
+		admissionSelection.ExtraArgs = launch.TemplateResidual
+		if err := s.checkPoolCanEverFit(ctx, &candidateReq, reqs, eng, model, admissionSelection, placement, quick, userExtraArgs, servedName, previewModelMount, previewMounts, requestOverrides); err != nil {
+			out.admissionErr = err
+			errs.add("", err)
 		}
 	}
 	if !errs.empty() {

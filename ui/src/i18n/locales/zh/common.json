@@ -1001,6 +1001,7 @@
     "PLUGIN_DOWN": "插件 {{plugin}} 自 {{since}} 起掉线，它设定的内容继续生效。",
     "PLUGIN_CLOCK_CORRECTED": "插件时钟已由 {{by}} 从 {{from}} 校正为 {{to}}。",
     "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "一次时钟校正最多只能调整 {{max_days}} 天。",
+    "PLUGIN_MAINTENANCE_FAILED": "离线维护操作（{{op}}）未能应用：{{code}}。",
     "PLUGIN_OVERRIDE_REJECTED": "无法覆盖插件 {{plugin}} 的 {{kind}} 条目 {{entry}}（{{rule}}）。",
     "PLUGIN_OVERRIDE_SUPERSEDED": "插件 {{plugin}} 重新设定了 {{kind}} 条目 {{entry}}，你的覆盖已被取代。",
     "PLUGIN_OVERRIDE_NOT_FOUND": "覆盖 {{id}} 不存在。",
@@ -1631,6 +1632,12 @@
       "learnMore": "了解更多",
       "badge": "未开放"
     },
+    "loading": "加载中…"
+  },
+  "picker": {
+    "clear": "清除",
+    "open": "展开选项",
+    "remove": "移除 {{name}}",
     "loading": "加载中…"
   }
 }

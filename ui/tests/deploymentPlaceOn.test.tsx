@@ -4,6 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { installFleet } from "./helpers/fakeFleet.ts";
+import { findNodeOption, nodeOption, pickNodes, unavailable } from "./helpers/nodePicker.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
 // Growing a single-node deployment may name the nodes the new replicas start
@@ -57,16 +58,8 @@ function setCount(value: string) {
 const picker = () => screen.getByRole("combobox", { name: r.placeOn.label });
 const apply = () => screen.getByText(r.apply).closest("button") as HTMLButtonElement;
 
-// optionOf finds an offered option of the open picker by its node name.
-const optionOf = (name: string) => [...document.querySelectorAll<HTMLElement>(".ant-select-item-option")].find((el) => el.textContent === name);
-
 async function choose(...names: string[]) {
-  for (const name of names) {
-    // A multiple select stays open after a pick; opening it again would close it.
-    if (!optionOf(name)) fireEvent.mouseDown(picker().closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement);
-    await waitFor(() => assert.ok(optionOf(name), `option ${name} offered`));
-    fireEvent.click(optionOf(name)!);
-  }
+  await pickNodes(picker(), ...names);
 }
 
 afterEach(() => { cleanup(); Object.assign(api, original); });
@@ -82,9 +75,9 @@ test("the node choice appears only while growing, limited to the replicas added"
   assert.equal(screen.queryByRole("combobox", { name: r.placeOn.label }), null);
   setCount("3");
   assert.ok(picker());
-  assert.ok(screen.getByText(i18n.t("deployments:replica.placeOn.placeholder", { count: 1 })));
+  assert.ok(screen.getByPlaceholderText(i18n.t("deployments:replica.placeOn.placeholder", { count: 1 })));
   setCount("5");
-  assert.ok(screen.getByText(i18n.t("deployments:replica.placeOn.placeholder", { count: 3 })));
+  assert.ok(screen.getByPlaceholderText(i18n.t("deployments:replica.placeOn.placeholder", { count: 3 })));
   assert.ok(screen.getByText(r.placeOn.hint));
 });
 
@@ -116,9 +109,8 @@ test("no more nodes than replicas added can be chosen, and a node that is offlin
   mount();
   setCount("2");
   await choose("node-b");
-  await waitFor(() => assert.ok(optionOf("node-c")));
-  assert.ok(optionOf("node-c")!.classList.contains("ant-select-item-option-disabled"));
-  assert.ok(optionOf("node-off")!.classList.contains("ant-select-item-option-disabled"));
+  assert.ok(unavailable(await findNodeOption(picker(), "node-c")));
+  assert.ok(unavailable(nodeOption("node-off")));
 });
 
 test("choices beyond a count lowered afterwards are dropped from the order", async () => {

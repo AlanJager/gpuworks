@@ -167,9 +167,19 @@ Accelerator vendor marks (NVIDIA, AMD, Ascend, ...) live in
 `ui/public/vendor-logos/` and are mapped by `VENDOR_ASSETS` in
 `ui/src/components/vendorAssets.ts`. A mark is a horizontal wordmark on a
 transparent canvas: SVG (preferred) or PNG with an alpha channel, with no
-padding box, plate or background colour of its own, so it reads on the light
-page, the dark page and the light plate the dark theme puts behind dark
-artwork. Check a new mark in both themes before adding it.
+padding box, plate or background colour of its own.
+
+Each mark declares the tone of its ink in `VENDOR_LOGO_INK` (`"dark"` or
+`"light"`), and the plate behind it follows from that, never from the vendor:
+dark ink sits on the light theme's page as is and on the `--vendor-logo-light`
+plate in the dark theme; light ink (Kunlunxin's white wordmark) sits on the
+`--vendor-logo-dark` plate in both themes. The two plate colours are tokens in
+`ui/src/styles.css`, and the `.vendor-mark-ink-*` rules there apply them. Draw
+a mark only with `VendorMarkImage` from `ui/src/components/VendorLogo.tsx`
+(`VendorLogo` and the dashboard's hardware panel both do): it wraps the image
+in the ink class, and the caller keeps its own sizing on the image. A plated
+mark gains 4px of padding left and right and 2px above and below, exposed as
+`--vendor-mark-pad-x` and `--vendor-mark-pad-y` for a box that must fit it.
 
 The test-only package `internal/uiassets` enforces this in plain
 `go test ./...`. `TestVendorLogosHaveTransparentBackgrounds` allows only
@@ -181,11 +191,33 @@ similar containers are not drawn and are not measured. A PNG has alpha, fully
 transparent corners, a border ring at least half transparent, and fewer than
 60% of its pixels at alpha 240/255 or above (shipped marks measure 10-31%).
 `TestVendorAssetsMatchLogoFiles` requires every file to be mapped and every
-mapping to name a file. Run them with `go test ./internal/uiassets/`.
+mapping to name a file. `TestVendorLogoInkIsDeclared` requires every mapped
+mark to declare its ink and every declaration to name a mapped mark.
+`TestVendorMarksAreDrawnThroughTheComponent` fails any `.ts`/`.tsx` file
+under `ui/src` (tests aside) other than `vendorAssets.ts` and `VendorLogo.tsx`
+that names `VENDOR_ASSETS` or a `/vendor-logos/` path.
 
-The SVG check reads attributes, not a rendered image: it does not apply
+`TestVendorLogoInkReadsOnItsSurfaces` measures each mark with WCAG 2
+relative luminance and contrast against the surface its tone puts it on: dark
+ink against `--vendor-logo-light`, which is both the dark theme's plate and
+the light theme's page (taken to be white; the light theme's surfaces run
+`#F0F3F8` to `#fff`, within about 10% of white's contrast), and light ink
+against `--vendor-logo-dark`. A PNG's ink is every pixel at alpha 128/255 or
+more, weighted by alpha and composited over the surface; an SVG's ink is each
+drawn, filled shape's colour, weighted by the area of the shape's bounding
+box (for a path, the box around its command end points; curve control points
+are ignored). The measured tone is whichever plate most of the ink weight
+reads better on, and it must match the declaration. At least half the ink
+weight must reach 3:1 (the colour accents keep Kunlunxin and NVIDIA near
+60%); no SVG fill may fall below 1.5:1, and at most 2% of a PNG's ink may.
+The test logs each mark's numbers; run
+`go test ./internal/uiassets/ -v -run TestVendorLogoInk` to see them.
+
+The SVG checks read attributes, not a rendered image: they do not apply
 `transform`, follow `<use>`, read fills set by `<style>` classes, or measure
-strokes. A plate built that way gets through, so review new SVGs by eye too.
+strokes, and bounding boxes overstate thin or hollow shapes. A filled
+`<text>` or `<use>`, a gradient or a `currentColor` fill fails the ink check
+because it cannot be measured. Review new marks by eye in both themes too.
 
 ## Copy on the page
 

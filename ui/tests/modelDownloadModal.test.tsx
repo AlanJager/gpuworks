@@ -5,6 +5,7 @@ import React from "react";
 import { installFleet } from "./helpers/fakeFleet.ts";
 import { I18nextProvider } from "react-i18next";
 import { list } from "./helpers/listPage.ts";
+import { findNodeOption, pickNodes, unavailable } from "./helpers/nodePicker.ts";
 
 const { i18n, locale } = await createI18n(["models"]);
 const models = locale.models;
@@ -43,6 +44,9 @@ async function pick(name: string, option: string | RegExp) {
   fireEvent.mouseDown(await screen.findByRole("combobox", { name }));
   fireEvent.click(await screen.findByText(option));
 }
+async function pickNode(name: string, option: string | RegExp) {
+  await pickNodes(await screen.findByRole("combobox", { name }), option);
+}
 
 beforeEach(() => { installFleet(api as never, nodes.map((n) => ({ ...(n as object), system_labels: [{key:"gpuworks.ai/storage",value:"3"}] })) as never); });
 
@@ -56,8 +60,8 @@ test("with a single writable local storage only the nodes are asked, and several
   const ok = screen.getByRole("button", { name: models.download.action }) as HTMLButtonElement;
   assert.equal(ok.disabled, true, "no node picked yet");
 
-  await pick(models.download.nodes, /gpu3/);
-  await pick(models.download.nodes, /node-01/);
+  await pickNode(models.download.nodes, /gpu3/);
+  await pickNode(models.download.nodes, /node-01/);
   fireEvent.click(screen.getByRole("button", { name: models.download.action }));
   await waitFor(() => assert.equal(calls.length, 1));
   assert.deepEqual(calls[0], [9, { storage_id: 1, node_uuids: ["n1", "n2"] }]);
@@ -95,7 +99,7 @@ test("a shared storage requires one chosen writer and sends that exact node", as
   await pick(models.download.storage, /archive/);
   assert.ok(await screen.findByText(models.download.sharedHint));
   assert.equal((screen.getByRole("button", { name: models.download.action }) as HTMLButtonElement).disabled, true);
-  await pick(models.download.writer, /node-01/);
+  await pickNode(models.download.writer, /node-01/);
   fireEvent.click(screen.getByRole("button", { name: models.download.action }));
   await waitFor(() => assert.equal(calls.length, 1));
   assert.deepEqual(calls[0], [9, { storage_id: 3, node_uuids: ["n2"] }]);
@@ -148,7 +152,7 @@ test("a failed download keeps the dialog open and reports the error", async () =
   api.downloadModelToStorage = (async () => { throw new Error("STORAGE_DISABLED"); }) as never;
   let done = 0;
   renderModal(() => { done += 1; });
-  await pick(models.download.nodes, /gpu3/);
+  await pickNode(models.download.nodes, /gpu3/);
   fireEvent.click(screen.getByRole("button", { name: models.download.action }));
   assert.ok(await screen.findByText(/Download failed: STORAGE_DISABLED/));
   assert.equal(done, 0);
@@ -173,14 +177,14 @@ test("where the model already is cannot be chosen again, and a no-op answer says
   // The local storage (preselected, the default): the node that has it is
   // shown but cannot be picked.
   fireEvent.keyDown(storageBox, { key: "Escape" });
-  fireEvent.mouseDown(await screen.findByRole("combobox", { name: models.download.nodes }));
-  const gpu3 = (await screen.findByText(`gpu3 · 8 GPU ${models.download.storageHasIt}`)).closest(".ant-select-item") as HTMLElement;
-  assert.ok(gpu3.className.includes("ant-select-item-option-disabled"));
+  const gpu3 = await findNodeOption(await screen.findByRole("combobox", { name: models.download.nodes }), `gpu3 · 8 GPU ${models.download.storageHasIt}`);
+  assert.ok(unavailable(gpu3));
+  fireEvent.keyDown(screen.getByRole("combobox", { name: models.download.nodes }), { key: "Escape" });
 
   // A storage without it downloads; if the server finds it there after all, the
   // user is told it is already present.
   await pick(models.download.storage, /^scratch-nfs/);
-  await pick(models.download.writer, /node-01/);
+  await pickNode(models.download.writer, /node-01/);
   fireEvent.click(screen.getByRole("button", { name: models.download.action }));
   await waitFor(() => assert.equal(calls.length, 1));
   assert.deepEqual(calls[0], [9, { storage_id: 3, node_uuids: ["n2"] }]);
@@ -192,7 +196,7 @@ test("a failed download shows the server's error in the person's language, not i
   api.downloadModelToStorage = (async () => { throw new APIError("STORAGE_EXPORT_ALREADY_REGISTERED", undefined, "english fallback from the server", 409); }) as never;
   renderModal();
   await screen.findByRole("combobox", { name: models.download.nodes });
-  await pick(models.download.nodes, /gpu3/);
+  await pickNode(models.download.nodes, /gpu3/);
   fireEvent.click(screen.getByRole("button", { name: models.download.action }));
   const translated = locale.common.apiError.STORAGE_EXPORT_ALREADY_REGISTERED as string;
   assert.ok(await screen.findByText(models.download.failed.replace("{{detail}}", translated)));

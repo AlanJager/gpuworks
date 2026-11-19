@@ -1001,6 +1001,7 @@
     "PLUGIN_DOWN": "Plugin {{plugin}} has been down since {{since}}. What it set up stays in force.",
     "PLUGIN_CLOCK_CORRECTED": "The plugin clock was corrected from {{from}} to {{to}} by {{by}}.",
     "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "A clock correction may move the plugin clock by at most {{max_days}} days.",
+    "PLUGIN_MAINTENANCE_FAILED": "An offline maintenance step ({{op}}) could not be applied: {{code}}.",
     "PLUGIN_OVERRIDE_REJECTED": "The override of {{kind}} entry {{entry}} from plugin {{plugin}} cannot be applied ({{rule}}).",
     "PLUGIN_OVERRIDE_SUPERSEDED": "Plugin {{plugin}} set {{kind}} entry {{entry}} again, which replaced your override.",
     "PLUGIN_OVERRIDE_NOT_FOUND": "Override {{id}} does not exist.",
@@ -1631,6 +1632,12 @@
       "learnMore": "Learn more",
       "badge": "Locked"
     },
+    "loading": "Loading…"
+  },
+  "picker": {
+    "clear": "Clear",
+    "open": "Show options",
+    "remove": "Remove {{name}}",
     "loading": "Loading…"
   }
 }

@@ -280,8 +280,8 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 ### 尚未实现
 
 - 本指南尚未列出的其他宿主接口；插件路由的按动作授权与持久化审计记录（今天审计只写结构化日志）。
-- 卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
-- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、高可用下只在 leader 上运行插件。
+- 卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback` 子命令。
+- 高可用下只在 leader 上运行插件。
 - 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.host_identity`、`host.clock`、`host.state_read`、`host.derive_key`、`host.setup`（[主机配置](#主机配置)）与 `routes` 以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
@@ -429,7 +429,8 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 - **启动**：启动时在任何插件起来之前读入全部推送表；版本标记（`pstate.<种类>`）比本构建新则以 `PLUGIN_STATE_TOO_NEW` 拒绝启动，存储的限制解不开则拒绝启动而不放松，存储的授权解不开则略过（视为缺席）。
 - **执行**：功能来源、节点插入守卫、调度保持者（来源 `plugins`）与横幅各是一次原子读加查表，零分配。没有包作答的键为 `locked`，带 `FEATURE_PROVIDER_ABSENT`。四者都是接口 `pushstate.Evaluator` 的方法，`app.NewPushedStateHooks` 只经这个接口把它们适配成 `Host` 的钩子类型；`TestHooksDoNotAllocate` 逐个方法测分配，`TestEveryEvaluatorIsMeasured` 用反射读出接口的全部方法，核对每个都有用例，新增的热路径应答因此不会漏测。
 - **时间**：时间线按 extclock（`max(墙钟, 高水位)`）在各自的时刻生效，插件死了也一样；高水位每分钟和关机时保存。`State.CorrectClock` 一次至多移动 366 天，回调审计并显示管理员横幅；步骤不被消耗，所以往回校正会让之后的步骤重新未生效。持有根授予的 `clock_authority` 角色的插件经宿主接口 `POST /host/v1/clock/correct` 走同一条路径（见[插件协议](../reference/plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)），`GET /host/v1/meta` 读墙钟、extclock 与已保存的高水位。
-- **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能调低）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线；进程调用过 `POST /host/v1/state/ready` 的，`State.Ready` 让它之后的掉线不再加启动延长，这个标记不持久化，从不改动掉线起点）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
+- **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能经 `server.yaml` 的 `plugins.policy.max_down_grace` 调低，见[配置参考](../reference/configuration.md#插件的信任与站点策略)）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线；从持久化的掉线起点算，server 或插件重启都不再叠加一次；进程调用过 `POST /host/v1/state/ready` 的，`State.Ready` 让它之后的掉线不再加启动延长，这个标记不持久化，从不改动掉线起点）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
+- **离线维护**：root 在 server 停止时执行的 `gpuworks plugin clock reset` 与 `gpuworks plugin pstate clear` 只往 `<data>/plugins/maintenance.jsonl` 追加记录（`pluginbridge.MaintenanceEntry`）；下次启动时 `pluginbridge` 在 `Load` 之后、拉起任何插件之前按顺序应用：时钟校正走 `State.CorrectClock`（同样的上限、审计与横幅，插件经 `GET /host/v1/meta` 读到新的高水位），清除走 `State.ClearTable`（一次提交里删除该所有者的一张限制表与它的覆盖，并请求一次保持的重新应用；授权类不能清除）。每条应用后写 `audit=true` 日志；失败的记录与其后的记录留到下次启动，并显示 `PLUGIN_MAINTENANCE_FAILED` 横幅（见 [CLI 参考](../reference/cli.md#维护日志)）。
 - **覆盖与卸载**：`State.Override` 对限制类条目（一个节点保持，或一项容量上限）只能放松，持久化，绑定所有者的代数，同一条目的旧覆盖在同一次提交里删除；所有者再推并改了同一条目时被取代、回调并显示 24 小时的管理员横幅。`State.RemoveOverride` 在一次提交里撤回一个覆盖并请求一次保持的重新应用。`State.Uninstall` 在一次提交里删掉所有者的全部行，并请求一次保持的重新应用。
 - **容量选择**：`fleet_capacity` 给上限和可选的优先保留节点 `keep`（多个所有者取并集），选哪些节点由核心决定：`keep` 里的节点在前，其余按接入顺序（`internal/server/fleetcap`，满了以后排在后面的节点一律保持），`keep` 一变也会重新选择；它在节点集合主题的变化后合并读一次节点列表（间隔至少 2 秒），插件掉线时加入的节点同样按这条规则放置。还没放置的节点只有计入它会超过上限时才保持；上限一变（包括所有者被卸载），选择都会请求一次保持的重新应用，这样的节点也随之释放。
 
