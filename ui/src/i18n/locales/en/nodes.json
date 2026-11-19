@@ -1414,12 +1414,12 @@
     "says": "Slurm says: {{reason}}",
     "howToFix": "To bring the node back:",
     "step": {
-      "gresConf": "On the Slurm manager node (and on this node too, if it keeps its own Slurm config files), add this line to gres.conf:",
+      "gres_conf": "On the Slurm manager node (and on this node too, if it keeps its own Slurm config files), add this line to gres.conf:",
       "reconfigure": "On the Slurm manager node, reload the configuration; the node registers again with its GPUs:",
-      "restartSlurmd": "If the node still shows invalid after that, restart slurmd on this node:",
+      "restart_slurmd": "If the node still shows invalid after that, restart slurmd on this node:",
       "resume": "On the Slurm manager node, put node {{node}} back in service:",
-      "resumeDrained": "Once the reason Slurm gives is dealt with, put node {{node}} back in service on the Slurm manager node:",
-      "checkSlurmd": "On this node, check that slurmd is running and read its log:"
+      "resume_drained": "Once the reason Slurm gives is dealt with, put node {{node}} back in service on the Slurm manager node:",
+      "check_slurmd": "On this node, check that slurmd is running and read its log:"
     },
     "copy": "Copy command",
     "copied": "Command copied",

@@ -229,6 +229,12 @@ export interface RuntimeSocketDenial {
   command?: string;
 }
 
+/** One step that brings a Slurm node back to running jobs (dto.NodeSlurmFix). */
+export interface NodeSlurmFix {
+  code: string;
+  commands: string[];
+}
+
 export interface Node {
   uuid: string;
   // scheduling is whether the node takes new replicas: cordoned takes none,
@@ -258,11 +264,11 @@ export interface Node {
   /** The node's name in Slurm, while its agent borrows the node's cards from Slurm. */
   slurm_node?: string;
   /** Why Slurm will not start jobs on the node; absent when it will. */
-  slurm_unavailable?: "gres_missing" | "invalid_registration" | "down" | "drained";
+  slurm_unavailable?: string;
   /** Slurm's own Reason text for that state, shown as written. */
   slurm_reason?: string;
-  /** For gres_missing: the gres.conf line for this node's cards, composed by the server. */
-  slurm_gres_conf?: string;
+  /** The steps that bring the node back, in order, built by the server: text by code, commands as written. */
+  slurm_fixes?: NodeSlurmFix[];
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back

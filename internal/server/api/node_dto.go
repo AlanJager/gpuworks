@@ -108,7 +108,7 @@ func nodeDTO(n *store.Node, includeToken bool, hold store.NodeHold) dto.Node {
 		d.RuntimeFallbackSocket = runtimeSocketDenialDTO(n.RuntimeSocketDenial())
 	}
 	d.SlurmNode, d.SlurmUnavailable, d.SlurmReason = n.SlurmNode, n.SlurmUnavailable, n.SlurmReason
-	d.SlurmGresConf = slurmGresConf(n)
+	d.SlurmFixes = slurmFixes(n)
 	d.AcceleratorPreference = n.AcceleratorPreference
 	d.AcceleratorVendors = acceleratorChoices(n)
 	d.GPUProbeError = n.GPUProbeError

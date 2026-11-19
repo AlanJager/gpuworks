@@ -1414,12 +1414,12 @@
     "says": "Slurm 给出的原因：{{reason}}",
     "howToFix": "让节点恢复的步骤：",
     "step": {
-      "gresConf": "在 Slurm 管控节点上（如果这台节点自己保存了 Slurm 配置文件，也在这台节点上），把这一行加进 gres.conf：",
+      "gres_conf": "在 Slurm 管控节点上（如果这台节点自己保存了 Slurm 配置文件，也在这台节点上），把这一行加进 gres.conf：",
       "reconfigure": "在 Slurm 管控节点上，重新加载配置；节点会带着 GPU 重新登记：",
-      "restartSlurmd": "如果之后节点仍显示 invalid，在这台节点上重启 slurmd：",
+      "restart_slurmd": "如果之后节点仍显示 invalid，在这台节点上重启 slurmd：",
       "resume": "在 Slurm 管控节点上，让节点 {{node}} 恢复服务：",
-      "resumeDrained": "处理掉 Slurm 给出的原因后，在 Slurm 管控节点上让节点 {{node}} 恢复服务：",
-      "checkSlurmd": "在这台节点上，确认 slurmd 在运行并查看它的日志："
+      "resume_drained": "处理掉 Slurm 给出的原因后，在 Slurm 管控节点上让节点 {{node}} 恢复服务：",
+      "check_slurmd": "在这台节点上，确认 slurmd 在运行并查看它的日志："
     },
     "copy": "复制命令",
     "copied": "命令已复制",

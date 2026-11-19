@@ -145,13 +145,14 @@ type Node struct {
 	// the node's cards from Slurm. SlurmUnavailable is the code for why Slurm
 	// will not start jobs on it (gres_missing, invalid_registration, down,
 	// drained), absent when it will; SlurmReason is Slurm's own Reason text
-	// for display as written. SlurmGresConf is, for gres_missing only, the
-	// gres.conf line the Slurm controller needs for this node's cards, built
-	// by the server so a client shows it rather than composing it.
-	SlurmNode        string `json:"slurm_node,omitempty"`
-	SlurmUnavailable string `json:"slurm_unavailable,omitempty"`
-	SlurmReason      string `json:"slurm_reason,omitempty"`
-	SlurmGresConf    string `json:"slurm_gres_conf,omitempty"`
+	// for display as written. SlurmFixes are the steps that bring the node
+	// back, in order, built by the server for the code; a client shows the
+	// text for each step's Code in its own language and the commands as
+	// they are.
+	SlurmNode        string         `json:"slurm_node,omitempty"`
+	SlurmUnavailable string         `json:"slurm_unavailable,omitempty"`
+	SlurmReason      string         `json:"slurm_reason,omitempty"`
+	SlurmFixes       []NodeSlurmFix `json:"slurm_fixes,omitempty"`
 	// RuntimeFallbackFrom is the runtime the agent passed over (docker |
 	// nerdctl), and RuntimeFallbackReason why: gpu_plugin_missing or
 	// gpu_runtime_unconfigured when it cannot give a container this node's
@@ -375,3 +376,14 @@ const (
 	// RuntimeSocketCauseUnknown: the agent could not read the socket's group.
 	RuntimeSocketCauseUnknown = "unknown"
 )
+
+// NodeSlurmFix is one step that brings a Slurm node back to running jobs.
+type NodeSlurmFix struct {
+	// Code names the step: gres_conf (add the line to gres.conf on the Slurm
+	// manager node), reconfigure, resume, restart_slurmd (on the node),
+	// resume_drained (once the drain's cause is dealt with), check_slurmd (on
+	// the node).
+	Code string `json:"code"`
+	// Commands are run in order, as written, where the step's text says.
+	Commands []string `json:"commands"`
+}

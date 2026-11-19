@@ -234,19 +234,37 @@ func TestANodeSaysWhySlurmWillNotRunJobsOnTheWire(t *testing.T) {
 	assertJSONValues(t, get("gres-two"), map[string]any{
 		"scheduling": "cordoned", "scheduling_by": "platform", "cordon_reason": "slurm_node_unavailable",
 		"slurm_node": "gpu-1", "slurm_unavailable": "gres_missing",
-		"slurm_reason":    "gres/gpu count reported lower than configured (0 < 2)",
-		"slurm_gres_conf": "NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]",
+		"slurm_reason": "gres/gpu count reported lower than configured (0 < 2)",
+		"slurm_fixes": fixes(
+			"gres_conf", []any{"NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]"},
+			"reconfigure", []any{"scontrol reconfigure"},
+			"resume", []any{"scontrol update nodename=gpu-1 state=resume"},
+			"restart_slurmd", []any{"sudo systemctl restart slurmd"}),
 	})
 	assertJSONValues(t, get("gres-one"), map[string]any{
-		"cordon_reason": "slurm_node_unavailable", "slurm_gres_conf": "NodeName=gpu-2 Name=gpu File=/dev/nvidia0",
+		"cordon_reason": "slurm_node_unavailable",
+		"slurm_fixes": fixes(
+			"gres_conf", []any{"NodeName=gpu-2 Name=gpu File=/dev/nvidia0"},
+			"reconfigure", []any{"scontrol reconfigure"},
+			"resume", []any{"scontrol update nodename=gpu-2 state=resume"},
+			"restart_slurmd", []any{"sudo systemctl restart slurmd"}),
 	})
 	drained := get("drained")
 	assertJSONValues(t, drained, map[string]any{
 		"cordon_reason": "slurm_node_unavailable", "slurm_node": "gpu-3", "slurm_unavailable": "drained", "slurm_reason": "maintenance",
+		"slurm_fixes": fixes("resume_drained", []any{"scontrol update nodename=gpu-3 state=resume"}),
 	})
-	assertJSONKeysAbsent(t, drained, "slurm_gres_conf")
 	running := get("running")
 	assertJSONValues(t, running, map[string]any{"scheduling": "schedulable", "slurm_node": "gpu-4"})
-	assertJSONKeysAbsent(t, running, "slurm_unavailable", "slurm_reason", "slurm_gres_conf", "cordon_reason")
-	assertJSONKeysAbsent(t, get("plain"), "slurm_node", "slurm_unavailable", "slurm_reason", "slurm_gres_conf")
+	assertJSONKeysAbsent(t, running, "slurm_unavailable", "slurm_reason", "slurm_fixes", "cordon_reason")
+	assertJSONKeysAbsent(t, get("plain"), "slurm_node", "slurm_unavailable", "slurm_reason", "slurm_fixes")
+}
+
+// fixes is the wire form of slurm_fixes from code, commands pairs.
+func fixes(pairs ...any) []any {
+	var out []any
+	for i := 0; i < len(pairs); i += 2 {
+		out = append(out, map[string]any{"code": pairs[i], "commands": pairs[i+1]})
+	}
+	return out
 }

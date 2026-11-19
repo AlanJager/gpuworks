@@ -53,22 +53,26 @@ test("nothing is shown while Slurm runs jobs on the node, or on a node outside S
   }
 });
 
-test("a missing gres.conf shows Slurm's words and the server's line, then the steps in order", async () => {
+const fix = (code: string, ...commands: string[]) => ({ code, commands });
+const resume = fix("resume", "scontrol update nodename=gpu000 state=resume");
+const gresFixes = [
+  fix("gres_conf", "NodeName=gpu000 Name=gpu File=/dev/nvidia[0-1]"),
+  fix("reconfigure", "scontrol reconfigure"),
+  resume,
+  fix("restart_slurmd", "sudo systemctl restart slurmd"),
+];
+
+test("a missing gres.conf shows Slurm's words, then the server's steps in order, each command copyable", async () => {
   let copied = "";
   Object.defineProperty(globalThis.navigator, "clipboard", { value: { writeText: async (text: string) => { copied = text; } }, configurable: true });
-  renderNotice({ slurm_node: "gpu000", slurm_unavailable: "gres_missing", slurm_reason: gresReason, slurm_gres_conf: "NodeName=gpu000 Name=gpu File=/dev/nvidia[0-1]" });
+  renderNotice({ slurm_node: "gpu000", slurm_unavailable: "gres_missing", slurm_reason: gresReason, slurm_fixes: gresFixes });
   const alert = screen.getByRole("alert");
   assert.match(alert.textContent ?? "", /registered node gpu000 without its GPUs/);
   assert.match(alert.textContent ?? "", new RegExp(`Slurm says: ${gresReason.replace(/[()]/g, "\\$&")}`));
+  assert.match(alert.textContent ?? "", /add this line to gres.conf/);
+  assert.match(alert.textContent ?? "", /restart slurmd on this node/);
   const commands = Array.from(alert.querySelectorAll("code")).map(code => code.textContent);
-  assert.deepEqual(commands, [
-    "NodeName=gpu000 Name=gpu File=/dev/nvidia[0-1]",
-    "scontrol reconfigure",
-    "scontrol update nodename=gpu000 state=resume",
-    "sudo systemctl restart slurmd",
-  ]);
-  // The AutoDetect=nvml route is not offered: not every Slurm build has the plugin.
-  assert.doesNotMatch(alert.textContent ?? "", /nvml/i);
+  assert.deepEqual(commands, gresFixes.flatMap(f => f.commands));
   const buttons = screen.getAllByRole("button", { name: "Copy command" });
   assert.equal(buttons.length, 4);
   fireEvent.click(buttons[0]);
@@ -76,33 +80,31 @@ test("a missing gres.conf shows Slurm's words and the server's line, then the st
   assert.equal(copied, "NodeName=gpu000 Name=gpu File=/dev/nvidia[0-1]");
 });
 
-test("a drained node is put back with resume once the cause is dealt with", () => {
-  renderNotice({ slurm_node: "gpu000", slurm_unavailable: "drained", slurm_reason: "maintenance" });
+test("each step's text comes from its code, with the node's name", () => {
+  renderNotice({ slurm_node: "gpu000", slurm_unavailable: "drained", slurm_reason: "maintenance", slurm_fixes: [{ ...resume, code: "resume_drained" }] });
   const alert = screen.getByRole("alert");
   assert.match(alert.textContent ?? "", /drained or draining/);
   assert.match(alert.textContent ?? "", /Slurm says: maintenance/);
+  assert.match(alert.textContent ?? "", /Once the reason Slurm gives is dealt with, put node gpu000 back in service/);
   assert.deepEqual(Array.from(alert.querySelectorAll("code")).map(code => code.textContent), ["scontrol update nodename=gpu000 state=resume"]);
 });
 
-test("a down or refused node is checked on the node first, then resumed", () => {
-  for (const code of ["down", "invalid_registration"] as const) {
-    const { unmount } = renderNotice({ slurm_node: "gpu000", slurm_unavailable: code });
-    const alert = screen.getByRole("alert");
-    assert.deepEqual(Array.from(alert.querySelectorAll("code")).map(c => c.textContent), [
-      "systemctl status slurmd",
-      "sudo journalctl -u slurmd -n 100 --no-pager",
-      "scontrol update nodename=gpu000 state=resume",
-    ]);
-    assert.doesNotMatch(alert.textContent ?? "", /Slurm says/);
-    unmount();
-  }
+test("the commands are the server's, whatever they are", () => {
+  renderNotice({ slurm_node: "gpu000", slurm_unavailable: "down", slurm_fixes: [fix("check_slurmd", "systemctl status slurmd", "sudo journalctl -u slurmd -n 100 --no-pager"), resume] });
+  const alert = screen.getByRole("alert");
+  assert.deepEqual(Array.from(alert.querySelectorAll("code")).map(c => c.textContent), [
+    "systemctl status slurmd",
+    "sudo journalctl -u slurmd -n 100 --no-pager",
+    "scontrol update nodename=gpu000 state=resume",
+  ]);
+  assert.doesNotMatch(alert.textContent ?? "", /Slurm says/);
 });
 
-test("a gres_missing node without a composed line still lists the steps, without that command", () => {
-  renderNotice({ slurm_node: "gpu000", slurm_unavailable: "gres_missing" });
-  assert.deepEqual(Array.from(screen.getByRole("alert").querySelectorAll("code")).map(c => c.textContent), [
-    "scontrol reconfigure",
-    "scontrol update nodename=gpu000 state=resume",
-    "sudo systemctl restart slurmd",
-  ]);
+test("a code this client has no text for still says what Slurm reported, and no steps without the server's", () => {
+  renderNotice({ slurm_node: "gpu000", slurm_unavailable: "something_new", slurm_reason: "odd" });
+  const alert = screen.getByRole("alert");
+  assert.match(alert.textContent ?? "", /something_new/);
+  assert.match(alert.textContent ?? "", /Slurm says: odd/);
+  assert.equal(alert.querySelectorAll("code").length, 0);
+  assert.equal(alert.querySelectorAll("li").length, 0);
 });
