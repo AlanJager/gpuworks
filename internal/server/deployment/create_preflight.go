@@ -88,7 +88,7 @@ func (p launchPreflight) run(req *dto.DeployRequest, selection templateSelection
 func (s *Service) evaluateLaunchPreflight(eng deploy.Engine, req *dto.DeployRequest, selection templateSelection, targetVendor string, profileNode *store.Node, rankNodes []*store.Node, resp *dto.EvaluateResponse, base *editLaunchBase) error {
 	draft := cloneRequest(*req)
 	selection.APIContract = nil
-	launch, err := materializeDeployRequestWithBase(eng.Name(), &draft, selection, DeployTargetCards(profileNode, draft.Placement), s.requestEngineVersion(eng.Name(), &draft, selection, targetVendor, profileNode), base)
+	launch, err := materializeDeployRequestWithBase(eng.Name(), &draft, selection, requestTargetCards(profileNode, &draft), s.requestEngineVersion(eng.Name(), &draft, selection, targetVendor, profileNode), base)
 	if err != nil {
 		return err
 	}

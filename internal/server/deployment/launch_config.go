@@ -338,3 +338,15 @@ func StoredLaunchConfig(dep *store.Deployment) (deploy.LaunchConfig, error) {
 	err := json.Unmarshal([]byte(dep.QuickParams), &quick)
 	return quick, err
 }
+
+// requestTargetCards are the cards a request's defaults are measured against:
+// DeployTargetCards, read as the partition a sleepable Ascend request runs in
+// (deploy.SleepSliceCards). Evaluate and create both read them here, so the
+// share a preview shows is the share a create stores.
+func requestTargetCards(node *store.Node, req *dto.DeployRequest) []deploy.CardFacts {
+	cards := DeployTargetCards(node, req.Placement)
+	if node == nil {
+		return cards
+	}
+	return deploy.SleepSliceCards(node.GPUVendor, req.Sleepable, int64(req.VRAMLimitGiB*(1<<30)), cards)
+}

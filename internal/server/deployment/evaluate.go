@@ -214,7 +214,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// One materialization decides this deployment's launch configuration. The
 	// preview below, the estimate, and a create submitted from this form all
 	// read the same object.
-	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
+	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, requestTargetCards(profileNode, req), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
 	if errs.add(fieldExtraArgs, err) {
 		// ProductErrors that name a key land on that key's control; the
 		// extra-args parse error is the one that starts on the text box.
