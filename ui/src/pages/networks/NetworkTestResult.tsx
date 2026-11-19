@@ -127,7 +127,7 @@ function PairResults({ network, run, onChanged }: { network: NetworkDetail; run:
               dataSource={found}
               expandable={{ expandedRowRender: problem => <PairList pairs={problem.pairs} renderPair={renderPair} /> }}
               columns={[
-                { title: t("test.problemWhere"), key: "where", render: (_, p) => <span>{p.node}{p.hca && <Typography.Text code style={{ marginLeft: 6 }}>{p.hca}</Typography.Text>}</span> },
+                { title: t("test.problemWhere"), key: "where", render: (_, p) => <span>{p.node}{p.hca && <Typography.Text code className="ml-1.5 whitespace-nowrap">{p.hca}</Typography.Text>}</span> },
                 { title: t("test.problemPairs"), dataIndex: "pairs", render: (pairs: NetworkTestPair[]) => t("test.pairsAffected", { count: pairs.length }) },
                 { title: t("test.problemWhy"), dataIndex: "text" },
                 {
@@ -198,8 +198,8 @@ function PairDetail({ network, run, pair, open, onClose, afterClose, onChanged }
           dataSource={rails}
           scroll={{ x: true }}
           columns={[
-            { title: t("test.sourceHCA"), key: "source", render: (_, r) => (r.rail ? <Space size={6}><Typography.Text code>{r.rail}</Typography.Text><Typography.Text type="secondary">{r.source_ip || "—"}</Typography.Text></Space> : "—") },
-            { title: t("test.targetHCA"), key: "target", render: (_, r) => (r.target_rail ? <Space size={6}><Typography.Text code>{r.target_rail}</Typography.Text><Typography.Text type="secondary">{r.target_ip || "—"}</Typography.Text></Space> : "—") },
+            { title: t("test.sourceHCA"), key: "source", render: (_, r) => (r.rail ? <Space size={6}><Typography.Text code className="whitespace-nowrap">{r.rail}</Typography.Text><Typography.Text type="secondary">{r.source_ip || "—"}</Typography.Text></Space> : "—") },
+            { title: t("test.targetHCA"), key: "target", render: (_, r) => (r.target_rail ? <Space size={6}><Typography.Text code className="whitespace-nowrap">{r.target_rail}</Typography.Text><Typography.Text type="secondary">{r.target_ip || "—"}</Typography.Text></Space> : "—") },
             {
               title: t("test.result"),
               key: "result",

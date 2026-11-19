@@ -5,7 +5,6 @@ import { CloseOutlined, ExclamationCircleFilled, PlusOutlined } from "@ant-desig
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import type { NetworkDetail, NetworkNode, NetworkRail, NetworkType, NodeNetworks, RailGap } from "../../networkTypes";
-import { colors } from "../../theme/tokens";
 import { acceleratorFabric, isAcceleratorRDMA, railAddressTitle } from "./networkDisplay";
 
 type T = (key: string, options?: Record<string, unknown>) => string;
@@ -180,7 +179,7 @@ export function RailLine({ rail, type, children }: { rail: NetworkRail; type?: N
       <Typography.Text type="secondary">{rail.ip || "—"}</Typography.Text>
       {gap && (
         <Tooltip title={gap}>
-          <ExclamationCircleFilled role="img" aria-label={gap} tabIndex={0} style={{ color: colors.warning }} />
+          <ExclamationCircleFilled role="img" aria-label={gap} tabIndex={0} style={{ color: "var(--warning)" }} />
         </Tooltip>
       )}
       {children}

@@ -342,7 +342,7 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
           {expandable && <TableHead style={{ width: 36, position: "sticky", left: rowSelection ? 48 : 0, zIndex: 2, background: "var(--surface-raised)" }} />}
           {arranged.map((column, index) => {
             const control = table.getColumn(column.key)!;
-            return <TableHead key={column.key} style={{ ...pinnedStyle(column, index), ...(column.role === "name" || column.role === "actions" ? { backgroundColor: "var(--surface-raised)" } : {}) }} aria-label={labelOf(column)} aria-sort={control.getIsSorted() === "asc" ? "ascending" : control.getIsSorted() === "desc" ? "descending" : undefined}>
+            return <TableHead key={column.key} className={column.role === "name" ? "resource-table-name" : undefined} style={{ ...pinnedStyle(column, index), ...(column.role === "name" || column.role === "actions" ? { backgroundColor: "var(--surface-raised)" } : {}) }} aria-label={labelOf(column)} aria-sort={control.getIsSorted() === "asc" ? "ascending" : control.getIsSorted() === "desc" ? "descending" : undefined}>
               {/* A title longer than its column is cut with an ellipsis (full text on hover), never drawn over the next one. */}
               <div className="relative flex min-w-0 items-center gap-1">
                 {/* Sortable titles carry Zeron's up/down mark and its sort menu, so they read as controls (ui-guidelines 3). */}

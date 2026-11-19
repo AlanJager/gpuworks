@@ -15,6 +15,8 @@ const { notifySessionExpired, notifySessionAuthenticated, subscribeSessionChange
 
 class EventSourceFixture extends dom.window.EventTarget {
   static sources: EventSourceFixture[] = [];
+  static OPEN = 1;
+  readyState = 0;
   onerror: (() => void) | null = null;
   closeCount = 0;
   constructor(readonly url: string) {
@@ -243,5 +245,50 @@ test("a new login switches active worker subscriptions without an intervening ex
     stream.close();
     if (original) Object.defineProperty(globalThis, "SharedWorker", original);
     else Reflect.deleteProperty(globalThis, "SharedWorker");
+  }
+});
+
+test("two console tabs share one server connection and receive only their subscribed changes", async () => {
+  const worker = new dom.window.EventTarget();
+  const original = Object.getOwnPropertyDescriptor(globalThis, "self");
+  Object.defineProperty(globalThis, "self", { configurable: true, value: worker });
+  try {
+    await import("../src/events/sharedWorker.ts");
+    function connectTab() {
+      const messages: unknown[] = [];
+      const port = Object.assign(new dom.window.EventTarget(), {
+        postMessage(message: unknown) { messages.push(message); },
+        onmessage: null as null | ((event: { data: { topics?: string[]; close?: boolean } }) => void),
+        close() {},
+      });
+      worker.dispatchEvent(Object.assign(new dom.window.Event("connect"), { ports: [port] }));
+      assert.ok(port.onmessage);
+      return { messages, subscribe: (...topics: string[]) => port.onmessage!({ data: { topics } }),
+        close: () => port.onmessage!({ data: { close: true } }) };
+    }
+    const list = connectTab();
+    list.subscribe("network");
+    const source = EventSourceFixture.sources[0];
+    source.readyState = EventSourceFixture.OPEN;
+    const detail = connectTab();
+    detail.subscribe("network", "node");
+    assert.equal(EventSourceFixture.sources.length, 1);
+    assert.deepEqual(detail.messages, [{ topic: "node", data: '{"reason":"connected"}' }]);
+    source.emit("network", { id: 3 });
+    assert.deepEqual(list.messages, [{ topic: "network", data: '{"id":3}' }]);
+    assert.deepEqual(detail.messages.slice(1), list.messages);
+    detail.subscribe("node");
+    source.emit("network", { id: 4 });
+    assert.equal(detail.messages.length, 2);
+    list.close();
+    assert.equal(source.closeCount, 0);
+    source.emit("node", { id: 6 });
+    assert.deepEqual(detail.messages.at(-1), { topic: "node", data: '{"id":6}' });
+    assert.equal(list.messages.length, 2);
+    detail.close();
+    assert.equal(source.closeCount, 1);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "self", original);
+    else Reflect.deleteProperty(globalThis, "self");
   }
 });

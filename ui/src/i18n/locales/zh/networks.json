@@ -91,6 +91,7 @@
     "searchEthernetNodes": "搜索节点名称、IP、网卡或标签",
     "searchCardNodes": "搜索节点名称、IP、加速卡或标签",
     "searchNodes": "搜索节点名称、IP、HCA 或标签",
+    "searchLabels": "搜索标签键或标签值",
     "searchAttachments": "搜索节点、标签或覆盖配置",
     "noMatchingNodes": "没有匹配的节点。",
     "noMatchingAttachments": "没有匹配的加载对象。",

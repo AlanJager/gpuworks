@@ -30,7 +30,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { cleanup, render, screen } = await import("@testing-library/react");
-const NetworkTestResult = (await import("../src/pages/networks/NetworkTestResult.tsx")).default;
+const { default: NetworkTestResult, failureText } = await import("../src/pages/networks/NetworkTestResult.tsx");
 const { formatTime } = await import("../src/i18n/datetime.ts");
 const detailFixture = JSON.parse(fs.readFileSync(new URL("./fixtures/network-detail.json", import.meta.url), "utf8"));
 
@@ -168,4 +168,18 @@ test("a large mesh keeps both axes accessible without mounting every pair", asyn
   assert.ok(within(table).getByRole("columnheader", { name: "gpu-64" }));
   assert.equal(within(table).queryByRole("rowheader", { name: "gpu-01" }), null);
   assert.ok(within(table).getByRole("button", { name: "gpu-63 → gpu-64" }));
+});
+
+test("known failure reasons only introduce technical details when present", async () => {
+  for (const [locale, reason, withDetail] of [
+    ["en", "Connection failed", "Connection failed: timeout"],
+    ["zh", "连接失败", "连接失败：timeout"],
+  ] as const) {
+    const ns = JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${locale}/networks.json`, import.meta.url), "utf8"));
+    const translator = createInstance();
+    await translator.init({ lng: locale, resources: { [locale]: { networks: ns } }, defaultNS: "networks" });
+    const t = translator.getFixedT(locale, "networks");
+    assert.equal(failureText(t, { code: "probe_failed" }), reason);
+    assert.equal(failureText(t, { code: "probe_failed", error: "timeout" }), withDetail);
+  }
 });

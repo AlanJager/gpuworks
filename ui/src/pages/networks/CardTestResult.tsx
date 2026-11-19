@@ -194,9 +194,9 @@ function CardGrid({ pair }: { pair: NetworkTestPair }) {
   const targets = [...new Set(probed.map((r) => r.target_rail as string))];
   const byKey = new Map(probed.map((r) => [`${r.rail}>${r.target_rail}`, r]));
   const columns: ColumnsType<{ card: string }> = [
-    { title: `${pair.source_name} \\ ${pair.target_name}`, dataIndex: "card", fixed: "left", render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+    { title: `${pair.source_name} \\ ${pair.target_name}`, dataIndex: "card", fixed: "left", render: (v: string) => <Typography.Text code className="whitespace-nowrap">{v}</Typography.Text> },
     ...targets.map((target) => ({
-      title: <Typography.Text code>{target}</Typography.Text>,
+      title: <Typography.Text code className="whitespace-nowrap">{target}</Typography.Text>,
       key: target,
       align: "center" as const,
       render: (_: unknown, row: { card: string }) => <CardCell pair={pair} rail={byKey.get(`${row.card}>${target}`)} />,
@@ -215,8 +215,8 @@ function CardList({ pair }: { pair: NetworkTestPair }) {
       dataSource={pair.rails ?? []}
       scroll={{ x: true }}
       columns={[
-        { title: pair.source_name, key: "source", render: (_, r) => (r.rail ? <Space size={6}><Typography.Text code>{r.rail}</Typography.Text><Typography.Text type="secondary">{r.source_ip || "—"}</Typography.Text></Space> : "—") },
-        { title: pair.target_name, key: "target", render: (_, r) => (r.target_rail ? <Space size={6}><Typography.Text code>{r.target_rail}</Typography.Text><Typography.Text type="secondary">{r.target_ip || "—"}</Typography.Text></Space> : "—") },
+        { title: pair.source_name, key: "source", render: (_, r) => (r.rail ? <Space size={6}><Typography.Text code className="whitespace-nowrap">{r.rail}</Typography.Text><Typography.Text type="secondary">{r.source_ip || "—"}</Typography.Text></Space> : "—") },
+        { title: pair.target_name, key: "target", render: (_, r) => (r.target_rail ? <Space size={6}><Typography.Text code className="whitespace-nowrap">{r.target_rail}</Typography.Text><Typography.Text type="secondary">{r.target_ip || "—"}</Typography.Text></Space> : "—") },
         {
           title: t("test.result"),
           key: "result",

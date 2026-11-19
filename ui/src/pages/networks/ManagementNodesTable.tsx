@@ -82,7 +82,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
       const allowed = !(n.roles_off ?? []).includes(role);
       const key = `${n.node_uuid}/${role}`;
       return (
-        <div className="flex flex-col items-start gap-0.5" onClick={(event) => event.stopPropagation()}>
+        <div className="isolate flex flex-col items-start gap-0.5" onClick={(event) => event.stopPropagation()}>
           <Switch
             labelVisibility="sr-only"
             label={`${n.node_name} ${t(`management.roleSwitch.${role}`)}`}
@@ -111,7 +111,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
     <dl className="network-node-details text-body" data-selectable={isAdmin}>
       <div className="min-w-0">
         <dt className="text-fg-muted">{t("management.labels")}</dt>
-        <dd className="whitespace-normal break-all">{labelPairs(n.labels).join(", ") || "—"}</dd>
+        <dd>{labelPairs(n.labels).join(", ") || "—"}</dd>
       </div>
     </dl>
   );
@@ -121,7 +121,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
   const choiceOptions = (["keep", "allow", "deny"] as const).map((c) => ({ value: c, label: t(`management.bulk.${c}`) }));
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    <div className="network-management-nodes flex min-w-0 flex-col gap-3">
       <Notice title={t("management.switchIntro")}><span>{t("management.switchEffect")}</span></Notice>
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 w-60">

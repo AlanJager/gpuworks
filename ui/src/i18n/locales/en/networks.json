@@ -91,6 +91,7 @@
     "searchEthernetNodes": "Search by node name, IP, interface or label",
     "searchCardNodes": "Search by node name, IP, accelerator card or label",
     "searchNodes": "Search by node name, IP, HCA or label",
+    "searchLabels": "Search by label key or value",
     "searchAttachments": "Search by node, label or override",
     "noMatchingNodes": "No nodes match this search.",
     "noMatchingAttachments": "No attachment targets match this search.",

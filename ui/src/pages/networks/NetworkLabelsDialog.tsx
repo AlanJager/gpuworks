@@ -91,7 +91,7 @@ export default function NetworkLabelsDialog({ open, onClose, detail, onDetail }:
       </form>
       {labels.length === 0 ? <p className="text-label text-fg-muted">{t("detail.noLabels")}</p> :
         <NetworkTargetTable<NetworkAttachment> networkId={detail.id} kind="attachments" data={labels} rowKey="id"
-          tableId="network-attachment-labels" columnSettings={false} columns={[
+          searchLabel={t("detail.searchLabels")} tableId="network-attachment-labels" columnSettings={false} columns={[
             { key: "target", title: t("attach.modeLabel"), role: "name", width: 200,
               render: (_, a) => <span className="whitespace-normal break-all">{a.label_key}={a.label_value}</span> },
             { key: "time", title: t("detail.attachedTime"), width: 160, render: (_, a) => formatTime(a.created_at) },
