@@ -137,3 +137,29 @@ func TestResidueBytesPrefersAMeasurement(t *testing.T) {
 		t.Fatalf("no measurement = %d, want the estimate", got)
 	}
 }
+
+// The need is the pool plus the engine's own host memory, and it must leave
+// the headroom an L1 sleep leaves. The first case is the K100_AI start the
+// kernel killed (0.9 of 64 GiB on a 62.4 GiB host using 6.9 GiB); the second
+// is the 0.25 share that ran on the same host.
+func TestHostBackingNeed(t *testing.T) {
+	const g = int64(1) << 30
+	for _, tc := range []struct {
+		name                   string
+		pool, available, total int64
+		need                   int64
+		fits                   bool
+	}{
+		{"the killed start", 576 * g / 10, 555 * g / 10, 624 * g / 10, 656 * g / 10, false},
+		{"a quarter of the card", 16 * g, 555 * g / 10, 624 * g / 10, 24 * g, true},
+		{"exactly at the headroom", 43 * g, 55 * g, 62 * g, 51 * g, true},
+		{"one byte past the headroom", 43*g + 1, 55 * g, 62 * g, 51*g + 1, false},
+		{"a large host keeps 5%", 100 * g, 120 * g, 200 * g, 108 * g, true},
+		{"a large host short of its 5%", 103 * g, 120 * g, 200 * g, 111 * g, false},
+	} {
+		need, fits := HostBackingNeed(tc.pool, tc.available, tc.total)
+		if need != tc.need || fits != tc.fits {
+			t.Errorf("%s: need=%d fits=%v, want %d %v", tc.name, need, fits, tc.need, tc.fits)
+		}
+	}
+}

@@ -812,6 +812,7 @@
     "DEPLOYMENT_EDIT_APPLY_INVALID": "This change cannot be applied as {{apply}}; choose one of: {{options}}.",
     "WAKE_GPU_HELD_OUTSIDE": "GPU {{gpu_indexes}} on {{node}} is held by a process outside the platform, so the sleeping instance cannot take it back. Stop that process first.",
     "SLEEP_HOST_MEMORY_INSUFFICIENT": "{{node}} has {{available_gib}} GiB of host memory free, but L1 sleep needs {{need_gib}} GiB. Use deep sleep (L2) instead.",
+    "SLEEP_HOST_BACKING_INSUFFICIENT": "On {{vendor}}, an engine that can sleep keeps as much host memory as the GPU memory it takes: it needs {{need_gib}} GiB and {{node}} has {{available_gib}} GiB free. Lower the GPU memory utilization or the dGPU memory, or turn sleep off.",
     "SCHEDULE_INVALID": "The scheduled order is not valid ({{field}}): {{reason}}",
     "SCHEDULE_TIMEZONE_UNKNOWN": "The server does not know the time zone \"{{timezone}}\". Use an IANA name such as Asia/Shanghai.",
     "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "This multi-node or PD deployment's replicas are placed by hand, so a schedule cannot set their count; switch it to automatic placement first.",

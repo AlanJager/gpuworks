@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -97,4 +99,31 @@ func L1HostMemoryRefusal(st *store.Store, dep *store.Deployment, named []store.I
 		}
 	}
 	return nil
+}
+
+// SleepHostBackingRefusal is why a sleepable engine taking poolBytes of GPU
+// memory may not start on node, nil when it may: the node's accelerator keeps
+// host memory behind that GPU memory (accelerator.SleepPoolOnHostMemory) and
+// the host has less available than the engine needs (sleep.HostBackingNeed).
+// Started anyway, the kernel kills the engine while it allocates. A node with
+// no recent host memory observation is not refused, as for an L1 sleep.
+func SleepHostBackingRefusal(node *store.Node, poolBytes int64, host HostMemory) error {
+	if host == nil || node == nil || poolBytes <= 0 || !accelerator.SleepPoolOnHostMemory(node.GPUVendor) {
+		return nil
+	}
+	available, total, ok := host(node.UUID)
+	if !ok {
+		return nil
+	}
+	need, fits := sleep.HostBackingNeed(poolBytes, available, total)
+	if fits {
+		return nil
+	}
+	code := sleep.CodeHostBackingInsufficient
+	return messages.NewProductError(code, messages.SleepRefusalFallback(code), map[string]any{
+		"node":          node.DisplayName(),
+		"vendor":        accelerator.VendorBrand(node.GPUVendor),
+		"need_gib":      fmt.Sprintf("%.1f", float64(need)/(1<<30)),
+		"available_gib": fmt.Sprintf("%.1f", float64(available)/(1<<30)),
+	})
 }

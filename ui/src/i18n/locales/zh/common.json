@@ -812,6 +812,7 @@
     "DEPLOYMENT_EDIT_APPLY_INVALID": "这次变更不能以 {{apply}} 方式生效，可选：{{options}}。",
     "WAKE_GPU_HELD_OUTSIDE": "节点 {{node}} 的 GPU {{gpu_indexes}} 被平台外的进程占用，休眠实例无法唤醒。请先停掉该进程。",
     "SLEEP_HOST_MEMORY_INSUFFICIENT": "节点 {{node}} 的空闲主机内存只有 {{available_gib}} GiB，而 L1 休眠需要 {{need_gib}} GiB。请改用深度休眠（L2）。",
+    "SLEEP_HOST_BACKING_INSUFFICIENT": "{{vendor}}上可休眠的引擎占多少显存，就占同样多的主机内存：需要 {{need_gib}} GiB，节点 {{node}} 只空闲 {{available_gib}} GiB。请调低显存利用率或 dGPU 显存，或关闭“可休眠”。",
     "SCHEDULE_INVALID": "定时指令不合法（{{field}}）：{{reason}}",
     "SCHEDULE_TIMEZONE_UNKNOWN": "服务器不认识时区“{{timezone}}”。请使用 IANA 名称，如 Asia/Shanghai。",
     "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "多机或 PD 部署的副本由运维手动放置，不能按副本数定时调整；先把它切换为自动放置。",

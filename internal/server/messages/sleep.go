@@ -7,6 +7,10 @@ const (
 	// ErrorSleepHostMemoryInsufficient: the node's host memory cannot hold the
 	// weights an L1 sleep moves there.
 	ErrorSleepHostMemoryInsufficient = "SLEEP_HOST_MEMORY_INSUFFICIENT"
+	// ErrorSleepHostBackingInsufficient: a sleepable deployment on {vendor}
+	// keeps host memory behind the GPU memory its engine takes, and {node}
+	// has {available_gib} GiB available where {need_gib} GiB is needed.
+	ErrorSleepHostBackingInsufficient = "SLEEP_HOST_BACKING_INSUFFICIENT"
 )
 
 // SleepRefusalFallback is the English wire text for a refused sleep order or
@@ -23,6 +27,8 @@ func SleepRefusalFallback(code string) string {
 		return "the role cannot be left without an awake instance; sleep the whole deployment instead"
 	case ErrorSleepHostMemoryInsufficient:
 		return "the node's host memory cannot hold the weights an L1 sleep moves there; sleep at L2 instead"
+	case ErrorSleepHostBackingInsufficient:
+		return "the node's host memory cannot back the GPU memory a sleepable engine takes on this accelerator; lower gpu_memory_utilization or turn sleep off"
 	case ErrorPDNotPD:
 		return "deployment is not PD disaggregated"
 	case ErrorPDRoleUnknown:

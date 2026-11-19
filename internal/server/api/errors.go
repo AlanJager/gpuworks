@@ -120,6 +120,7 @@ const (
 	ErrorWakeInsufficientGPUMemory              = "WAKE_INSUFFICIENT_GPU_MEMORY"
 	ErrorWakeGPUHeldOutside                     = "WAKE_GPU_HELD_OUTSIDE"
 	ErrorSleepHostMemoryInsufficient            = messages.ErrorSleepHostMemoryInsufficient
+	ErrorSleepHostBackingInsufficient           = messages.ErrorSleepHostBackingInsufficient
 	ErrorNodeReplacementInvalid                 = "NODE_REPLACEMENT_INVALID"
 	ErrorReplicasPlaceOnTooMany                 = messages.ErrorReplicasPlaceOnTooMany
 	ErrorReplicasPlaceOnRefused                 = messages.ErrorReplicasPlaceOnRefused

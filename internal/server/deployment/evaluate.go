@@ -251,6 +251,13 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	resp.Moved = launch.Moved
 	resp.TemplateParams = launch.TemplateParams
 	resp.TemplateResidualArgs = launch.TemplateResidual
+	// The form values are already answered, so the deployer sees the share
+	// the refusal is about and can lower it. An edit is not asked: the
+	// deployment's own engine already holds the host memory in question.
+	if base == nil && errs.add("sleepable", s.sleepHostBacking(eng.Name(), req, quick, profileNode)) {
+		writeFieldErrors()
+		return
+	}
 	if requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides); overrideErr == nil && placement.PD == nil {
 		mount, components := previewComponentMounts(nil, selection.Components, nil)
 		draft := evaluationLaunchRequest(evaluatePlanEnv{request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, selection: selection, placement: placement, quick: quick, userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides, modelMount: mount, componentMounts: components, templateResidual: launch.TemplateResidual}, nil)
