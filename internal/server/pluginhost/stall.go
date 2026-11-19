@@ -16,13 +16,15 @@ import (
 // the socket's buffer is full even the frames of other calls block. Its
 // health probes may still pass (an SDK answers them from another
 // goroutine), so the supervisor watches the connection itself
-// (docs/dev/extensions.md, 监管).
+// (docs/dev/extensions.md, supervision).
 //
-// stallMeter is that watch for one serve connection. Every counter is an
-// atomic word so the per-call and per-write paths never allocate or take
-// a lock shared across calls.
+// stallMeter is that watch for one serve connection. The pending count and
+// its progress time change together under mu; all hot paths allocate nothing.
+// Atomic fields also let diagnostics sample individual counters.
 type stallMeter struct {
-	// writing is when the write in progress started (unix nanoseconds),
+	mu sync.Mutex
+
+	// writing is when the write in progress started (elapsed nanoseconds),
 	// zero when none is. The HTTP/2 client serializes its writes to the
 	// connection (under its write lock), so at most one is in progress.
 	writing atomic.Int64
@@ -33,17 +35,34 @@ type stallMeter struct {
 	// when bytes became pending after none were.
 	unsent   atomic.Int64
 	progress atomic.Int64
-	now      func() time.Time
+	now      func() int64
 }
 
-func newStallMeter(now func() time.Time) *stallMeter {
+// now, when supplied by a test, returns nonzero monotonic elapsed nanoseconds.
+func newStallMeter(now func() int64) *stallMeter {
 	if now == nil {
-		now = time.Now
+		origin := time.Now()
+		now = func() int64 { return time.Since(origin).Nanoseconds() + 1 }
 	}
 	return &stallMeter{now: now}
 }
 
-func (m *stallMeter) nanos() int64 { return m.now().UnixNano() }
+func (m *stallMeter) nanos() int64 { return m.now() }
+
+// Progress never moves backward when a caller sampled its time and was then
+// descheduled while another body made progress. Caller holds m.mu.
+func (m *stallMeter) progressAt(now int64) {
+	if now > m.progress.Load() {
+		m.progress.Store(now)
+	}
+}
+
+func (m *stallMeter) progressed() {
+	now := m.nanos()
+	m.mu.Lock()
+	m.progressAt(now)
+	m.mu.Unlock()
+}
 
 // writeStarted and writeDone bracket one write to the connection; writes
 // do not overlap.
@@ -55,26 +74,38 @@ func (m *stallMeter) writeDone() { m.writing.Store(0) }
 // were pending, the wait starts now: the time is stored before the count,
 // so a check that sees the bytes never pairs them with an older time.
 func (m *stallMeter) hold(n int64) {
+	now := m.nanos()
+	m.mu.Lock()
 	if m.unsent.Load() == 0 {
-		m.progress.Store(m.nanos())
+		m.progressAt(now)
 	}
 	m.unsent.Add(n)
+	m.mu.Unlock()
 }
 
 // sent notes that n held bytes were written; dropped that they were
 // abandoned (the call ended), which is not progress.
 func (m *stallMeter) sent(n int64) {
-	m.progress.Store(m.nanos())
+	now := m.nanos()
+	m.mu.Lock()
+	m.progressAt(now)
 	m.unsent.Add(-n)
+	m.mu.Unlock()
 }
 
-func (m *stallMeter) dropped(n int64) { m.unsent.Add(-n) }
+func (m *stallMeter) dropped(n int64) {
+	m.mu.Lock()
+	m.unsent.Add(-n)
+	m.mu.Unlock()
+}
 
 // stalled says whether the connection has made no progress for longer
 // than after, and for how long: a write blocked that long, or request
 // body bytes pending with none written that long.
 func (m *stallMeter) stalled(after time.Duration) (time.Duration, bool) {
 	now := m.nanos()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var worst time.Duration
 	if w := m.writing.Load(); w != 0 {
 		worst = time.Duration(now - w)
@@ -99,7 +130,7 @@ func (c *meteredConn) Write(p []byte) (int, error) {
 	n, err := c.Conn.Write(p)
 	c.m.writeDone()
 	if c.scan.data(p[:n]) > 0 {
-		c.m.progress.Store(c.m.nanos())
+		c.m.progressed()
 	}
 	return n, err
 }

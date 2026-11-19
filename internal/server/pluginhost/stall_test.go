@@ -21,16 +21,16 @@ import (
 	"gpuworks.ai/gpuworks/pkg/pluginsdk"
 )
 
-// fakeClock is a settable clock for the meter.
+// fakeClock is a settable monotonic elapsed clock for the meter.
 type fakeClock struct{ ns atomic.Int64 }
 
 func newFakeClock() *fakeClock {
 	c := &fakeClock{}
-	c.ns.Store(time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC).UnixNano())
+	c.ns.Store(time.Hour.Nanoseconds() + 1)
 	return c
 }
 
-func (c *fakeClock) now() time.Time          { return time.Unix(0, c.ns.Load()) }
+func (c *fakeClock) now() int64              { return c.ns.Load() }
 func (c *fakeClock) advance(d time.Duration) { c.ns.Add(int64(d)) }
 
 // A connection whose reader stops: the write blocks, and once it has been
@@ -169,11 +169,11 @@ func TestPendingBodyBytesWithoutProgressStall(t *testing.T) {
 // read before they are counted, so a check running alongside never pairs
 // them with an older progress time, however old (or unset) it is.
 func TestHeldBytesNeverPairWithAnOldProgressTime(t *testing.T) {
-	for _, old := range []int64{0, time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC).UnixNano()} {
+	for _, old := range []int64{0, 1} {
 		clock := newFakeClock()
 		var m *stallMeter
 		var unsentAtClock []int64
-		m = newStallMeter(func() time.Time {
+		m = newStallMeter(func() int64 {
 			unsentAtClock = append(unsentAtClock, m.unsent.Load())
 			return clock.now()
 		})
