@@ -34,7 +34,27 @@ const (
 	// LayoutChangeSharedConfigMoved is server.yaml moving beneath the private
 	// server-config directory, behind the installer's compatibility alias.
 	LayoutChangeSharedConfigMoved = "shared_config_moved"
+	// LayoutChangeForeignEntryKept is an entry of the shared root that is
+	// neither the server's nor root's. The migration leaves it as it is and
+	// records its owner and mode so the operator can check who created it.
+	LayoutChangeForeignEntryKept = "foreign_entry_kept"
 )
+
+// lstatOwned inspects paths whose owner decides whether they are trusted (the
+// shared application root and its entries); tests replace it to model
+// ownership they cannot create without root.
+var lstatOwned = os.Lstat
+
+// checkDirACL refuses a directory with extra ACL entries; a variable so tests
+// can model an ACL without setfacl.
+var checkDirACL = func(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	aclErr := securefile.CheckDirectoryACL(f)
+	return errors.Join(aclErr, f.Close())
+}
 
 // LayoutChange is one change an install or upgrade made to an installation's
 // layout, recorded in the install history.
@@ -42,7 +62,8 @@ type LayoutChange struct {
 	Kind string `json:"kind"`
 	Path string `json:"path"`
 	// FromUID, FromGID and FromMode describe the path before a change of
-	// ownership; ToUID, ToGID and ToMode after it. Mode is octal with the
+	// ownership (or, for a kept foreign entry, as it is); ToUID, ToGID and
+	// ToMode after it. Mode is octal with the
 	// setuid/setgid/sticky digit (2775).
 	FromUID  *uint32 `json:"from_uid,omitempty"`
 	FromGID  *uint32 `json:"from_gid,omitempty"`
@@ -121,6 +142,11 @@ func (i *Installer) migrateLegacySharedRoot(ctx context.Context, serviceUsers ..
 	if i.deps.Euid() != 0 && !i.deps.hasBinary("sudo") {
 		return legacy
 	}
+	// From here every command runs as root, directly or through sudo; whoever
+	// runs this can already do anything the migration does. The owner check
+	// below is about the root's history, not about the caller: an owner that
+	// is neither root nor an account this installation names means someone
+	// else changed the directory, which the operator should look at first.
 	dir := legacy.Dir
 	if !i.legacyRootOwner(legacy.UID, serviceUsers) {
 		return fmt.Errorf("refusing to migrate the shared application root %s: it is owned by uid %d, which is neither root nor the service account; check who changed it, then fix it with `sudo chown root:root %s && sudo chmod %04o %s`",
@@ -131,7 +157,7 @@ func (i *Installer) migrateLegacySharedRoot(ctx context.Context, serviceUsers ..
 	if _, err := trustedWriteParent(filepath.Dir(dir), 0); err != nil {
 		return fmt.Errorf("refusing to migrate the shared application root %s: %w", dir, err)
 	}
-	before, err := os.Lstat(dir)
+	before, err := lstatOwned(dir)
 	if err != nil {
 		return err
 	}
@@ -144,18 +170,21 @@ func (i *Installer) migrateLegacySharedRoot(ctx context.Context, serviceUsers ..
 		return fmt.Errorf("refusing to migrate the shared application root %s: %w", dir, err)
 	}
 	// -h never follows a symlink; the parent check above keeps the directory
-	// from being swapped for one before chmod.
+	// from being swapped for one before chmod. A failure after chown leaves a
+	// root-owned but still group-writable root, which is the older shape
+	// again: rerunning the command migrates it.
 	if err := i.deps.Run.Run(ctx, Command{Path: "chown", Args: []string{"-h", "0:0", dir}, Sudo: true}); err != nil {
-		return fmt.Errorf("migrate the shared application root %s: %w", dir, err)
+		return fmt.Errorf("migrate the shared application root %s: %w; nothing was changed, rerun the command to retry", dir, err)
 	}
 	if err := i.deps.Run.Run(ctx, Command{Path: "chmod", Args: []string{fmt.Sprintf("%04o", sharedRootMode), dir}, Sudo: true}); err != nil {
-		return fmt.Errorf("migrate the shared application root %s: %w", dir, err)
+		return fmt.Errorf("migrate the shared application root %s: %w; it is now owned by root but still writable by its group, rerun the command to finish", dir, err)
 	}
-	after, err := os.Lstat(dir)
+	i.sharedRootMigrated = true
+	after, err := lstatOwned(dir)
 	if err != nil {
 		return err
 	}
-	if !os.SameFile(before, after) {
+	if !sameInode(before, after) {
 		return fmt.Errorf("the shared application root %s changed during migration", dir)
 	}
 	if _, err := i.layout.sharedConfig(); err != nil {
@@ -168,22 +197,72 @@ func (i *Installer) migrateLegacySharedRoot(ctx context.Context, serviceUsers ..
 	i.layoutChanges = append(i.layoutChanges, change)
 	i.io.Say("migrated %s from uid %d gid %d mode %s to uid %d gid %d mode %s (older shared-root layout)",
 		dir, legacy.UID, legacy.GID, change.FromMode, stat.Uid, stat.Gid, change.ToMode)
+	// Listed only now: with the root no longer the account's, nothing new can
+	// appear in it.
+	i.noteForeignEntries()
 	return nil
+}
+
+// noteForeignEntries warns about, and records, entries of the migrated shared
+// root that are neither the server's nor owned by root. While the service
+// account owned the root it could create anything there; the migration does
+// not hand those entries to anyone, and does not delete what it cannot
+// attribute (an older installer also handed the node agent's files to the
+// service account).
+func (i *Installer) noteForeignEntries() {
+	entries, err := os.ReadDir(i.layout.Dir)
+	if err != nil {
+		i.io.Warn("warning: could not list %s for entries the service account left there: %v", i.layout.Dir, err)
+		return
+	}
+	known := map[string]bool{}
+	for _, path := range []string{i.layout.Binary(), serverconfig.Path(i.layout.Dir), i.layout.sharedConfigDir(),
+		filepath.Join(i.layout.Dir, installJSONFile), i.layout.PIDFile(), i.layout.LockPath(), i.layout.TmpDir(),
+		i.layout.BackupsDir, i.layout.DataDir, i.layout.LogsDir} {
+		known[filepath.Clean(path)] = true
+	}
+	for _, entry := range entries {
+		path := filepath.Join(i.layout.Dir, entry.Name())
+		if known[path] {
+			continue
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			continue
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid == 0 {
+			continue
+		}
+		i.layoutChanges = append(i.layoutChanges, LayoutChange{Kind: LayoutChangeForeignEntryKept, Path: path,
+			FromUID: ptr(stat.Uid), FromGID: ptr(stat.Gid), FromMode: octalMode(info.Mode())})
+		i.io.Warn("warning: %s is owned by uid %d, not root, and is not the server's; it was left as it is: check who created it, and remove it unless this host's node agent installed it",
+			path, stat.Uid)
+	}
+}
+
+// changedSoFar finishes a refusal message: "nothing was changed", unless this
+// run already migrated the shared root.
+func (i *Installer) changedSoFar() string {
+	if i.sharedRootMigrated {
+		return "only the shared application root " + i.layout.Dir + " was migrated to root ownership; nothing else was changed"
+	}
+	return "nothing was changed"
 }
 
 func ptr(v uint32) *uint32 { return &v }
 
-func checkDirACL(dir string) error {
-	f, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	aclErr := securefile.CheckDirectoryACL(f)
-	return errors.Join(aclErr, f.Close())
+// sameInode compares device and inode numbers from the stat data itself.
+func sameInode(a, b os.FileInfo) bool {
+	sa, okA := a.Sys().(*syscall.Stat_t)
+	sb, okB := b.Sys().(*syscall.Stat_t)
+	return okA && okB && sa.Dev == sb.Dev && sa.Ino == sb.Ino
 }
 
 // legacyRootOwner reports whether uid may own the older shared-root shape:
-// root, this operator, or a service account the installation names.
+// root, this operator, or a service account the installation names. The
+// operator is the real uid: under sudo that is root, and a service account
+// that runs this with sudo already has root.
 func (i *Installer) legacyRootOwner(uid uint32, serviceUsers []string) bool {
 	if uid == 0 || int(uid) == os.Getuid() {
 		return true

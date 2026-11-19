@@ -94,10 +94,24 @@ func TestLegacySharedRootUpgradeMigratesAndRollbackKeepsTheTrustedRoot(t *testin
 					t.Fatalf("%s lost group write: %v %v", dir, info.Mode(), err)
 				}
 			}
-			for _, entry := range []string{h.layout.Binary(), h.layout.sharedConfigDir(), h.layout.LockPath(), h.layout.TmpDir(), h.layout.BackupsDir} {
+			for _, entry := range []string{h.layout.sharedConfigDir(), h.layout.LockPath(), h.layout.TmpDir(), h.layout.BackupsDir} {
 				if !h.run.ran("sudo chown -R " + DefaultServiceUser + ":" + DefaultCredentialGroup + " " + entry) {
 					t.Fatalf("%s was not handed to the service account: %v", entry, h.run.executed())
 				}
+			}
+			// Root runs the binary (sudo upgrade, root supervisor hooks), so
+			// it stays root's: never handed over, made root's after the
+			// handoff and again after a rollback restores it.
+			bin := h.layout.Binary()
+			if h.run.ran("sudo chown -R " + DefaultServiceUser + ":" + DefaultCredentialGroup + " " + bin) {
+				t.Fatalf("the binary was handed to the service account: %v", h.run.executed())
+			}
+			if !h.run.ranInOrder("sudo chown -R "+DefaultServiceUser+":"+DefaultCredentialGroup+" "+h.layout.TmpDir(),
+				"sudo chown -h 0:0 "+bin, "sudo chmod 0755 "+bin, "sudo systemctl stop") {
+				t.Fatalf("the binary was not made root's after the handoff: %v", h.run.executed())
+			}
+			if failHealth && !h.run.ranInOrder("sudo systemctl stop", "sudo chown -h 0:0 "+bin) {
+				t.Fatalf("rollback did not make the restored binary root's: %v", h.run.executed())
 			}
 			if h.run.ran("sudo chown -R " + DefaultServiceUser + ":" + DefaultCredentialGroup + " " + root) {
 				t.Fatal("the shared root itself was handed back to the service account")
@@ -105,9 +119,23 @@ func TestLegacySharedRootUpgradeMigratesAndRollbackKeepsTheTrustedRoot(t *testin
 			if path := h.layout.ConfigPath(); path != h.layout.sharedConfigFile() {
 				t.Fatalf("config = %s, want the private path", path)
 			}
-			changes := layoutHistory(t, h)
+			changes, foreign := splitForeign(layoutHistory(t, h))
 			if len(changes) != 2 || changes[0].Kind != LayoutChangeSharedRootOwner || changes[1].Kind != LayoutChangeSharedConfigMoved {
 				t.Fatalf("layout history = %+v", changes)
+			}
+			// The agent's files from withSharedRoot belong to the suite's
+			// account, not root: kept, warned about and recorded.
+			for _, name := range []string{"bin", "partition", "probe-libs", "runveil", "models", "identity.json"} {
+				path := filepath.Join(root, name)
+				if c, ok := foreign[path]; !ok || c.FromUID == nil || c.FromMode == "" {
+					t.Fatalf("foreign entry %s not recorded: %+v", path, foreign)
+				}
+				if !strings.Contains(h.errOut.String(), path+" is owned by uid ") {
+					t.Fatalf("no warning names %s:\n%s", path, h.errOut.String())
+				}
+			}
+			if len(foreign) != 6 {
+				t.Fatalf("server entries recorded as foreign: %+v", foreign)
 			}
 			if c := changes[0]; c.Path != root || c.FromMode != "2775" || c.ToMode != "0755" || c.FromUID == nil || c.ToUID == nil {
 				t.Fatalf("root change = %+v", c)
@@ -135,6 +163,20 @@ func TestLegacySharedRootUpgradeMigratesAndRollbackKeepsTheTrustedRoot(t *testin
 			}
 		})
 	}
+}
+
+// splitForeign separates kept foreign entries from the other layout changes.
+func splitForeign(all []LayoutChange) ([]LayoutChange, map[string]LayoutChange) {
+	var changes []LayoutChange
+	foreign := map[string]LayoutChange{}
+	for _, c := range all {
+		if c.Kind == LayoutChangeForeignEntryKept {
+			foreign[c.Path] = c
+		} else {
+			changes = append(changes, c)
+		}
+	}
+	return changes, foreign
 }
 
 func TestLegacySharedRootReadOnlyUpgradeDoesNotMigrate(t *testing.T) {
@@ -192,7 +234,7 @@ func TestLegacySharedRootInstallRepairMigrates(t *testing.T) {
 	if info, _ := os.Lstat(root); octalMode(info.Mode()) != "0755" {
 		t.Fatalf("root mode = %s", octalMode(info.Mode()))
 	}
-	if changes := layoutHistory(t, h); len(changes) != 2 || changes[0].Kind != LayoutChangeSharedRootOwner {
+	if changes, _ := splitForeign(layoutHistory(t, h)); len(changes) != 2 || changes[0].Kind != LayoutChangeSharedRootOwner {
 		t.Fatalf("layout history = %+v", changes)
 	}
 }

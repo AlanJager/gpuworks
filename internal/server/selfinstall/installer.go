@@ -22,6 +22,9 @@ type Installer struct {
 	// layoutChanges are the layout migrations this run made, waiting to be
 	// recorded in the install history (see recordLayoutChanges).
 	layoutChanges []LayoutChange
+	// sharedRootMigrated says this run moved the shared root to root's
+	// ownership, so a later refusal cannot claim nothing was changed.
+	sharedRootMigrated bool
 }
 
 // New builds an installer for a layout.

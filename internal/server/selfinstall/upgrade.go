@@ -198,7 +198,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	// changed instead of producing a backup that cannot be restored and then
 	// re-keying the installation.
 	if err := i.checkSnapshotMembers(); err != nil {
-		return fmt.Errorf("%w; nothing was changed", err)
+		return fmt.Errorf("%w; %s", err, i.changedSoFar())
 	}
 	if err := i.preflightSensitiveFiles(ctx); err != nil {
 		return err
@@ -213,7 +213,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 		return err
 	}
 	if err := i.checkEdition(ctx, staged, report.To, req.AllowEditionChange, false); err != nil {
-		return fmt.Errorf("%w; nothing was changed", err)
+		return fmt.Errorf("%w; %s", err, i.changedSoFar())
 	}
 
 	// The service writes its log file and its database under the install tree;
@@ -269,7 +269,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 				i.io.Warn("warning: could not restart the service: %v", startErr)
 			}
 		}
-		return fmt.Errorf("%w; nothing was changed", err)
+		return fmt.Errorf("%w; %s", err, i.changedSoFar())
 	}
 	i.io.Say("backing up the database, master key and current binary")
 	backup, err := i.createBackup(ctx, report.From)

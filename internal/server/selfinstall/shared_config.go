@@ -57,7 +57,7 @@ func (l Layout) inspectSharedConfig(restoreMissingLeaf bool) (bool, error) {
 	if root != filepath.Clean(l.Dir) {
 		return false, fmt.Errorf("shared installation %s resolves through a symlink", l.Dir)
 	}
-	rootInfo, err := os.Lstat(l.Dir)
+	rootInfo, err := lstatOwned(l.Dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
@@ -161,6 +161,11 @@ func (i *Installer) isolateSharedConfig(ctx context.Context, initial []byte) (bo
 	original, originalErr := os.Lstat(old)
 	if originalErr != nil && !errors.Is(originalErr, os.ErrNotExist) {
 		return false, originalErr
+	}
+	// Copied as root into a directory the service account reads: a hard link
+	// to another file would publish that file's contents.
+	if originalErr == nil && linkCount(original) > 1 {
+		return false, fmt.Errorf("configuration %s has %d hard links; replace it with a copy before migrating it", old, linkCount(original))
 	}
 	mode := os.FileMode(0o664)
 	content, err := os.ReadFile(old)
