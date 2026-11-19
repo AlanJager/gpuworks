@@ -45,7 +45,9 @@ var wrapperCauses = []string{
 // then it is the last exception above it that is not a wrapper, which in a
 // multiprocess vLLM run is a worker's or the engine core's own exception.
 // Process tags and logger headers are removed and the line is bounded. With
-// no such exception, the wrapper is what there is.
+// no such exception, the generic application exception gives way to a known
+// failure (Match) the engine logged as an error; otherwise the wrapper is
+// what there is.
 func RootCause(logText string) string {
 	last := LastError(logText)
 	if last == "" || !isWrapperCause(last) {
@@ -59,7 +61,33 @@ func RootCause(logText string) string {
 			return bound(line)
 		}
 	}
+	// No exception stands above the wrapper. Under the generic application
+	// exception, a known failure the engine logged as an error still says
+	// more than the wrapper does: the most specific one's newest such line
+	// is the error. Lines of a lower severity (a warning the engine got
+	// past, an echo of its own arguments) are not a failure's own line, and
+	// the wrappers that name where their cause is are left as they are.
+	if genericApplicationExceptionRE.MatchString(last) {
+		for _, cause := range Match(lines[start:]) {
+			for i := len(cause.Evidence) - 1; i >= 0; i-- {
+				raw := cause.Evidence[i].Line
+				if line := stripLinePrefix(raw); line != "" && loggedAsError(raw) {
+					return bound(line)
+				}
+			}
+		}
+	}
 	return last
+}
+
+// errorSeverityRE is the severity a logger header states, after the process
+// tag: "ERROR 11-05 13:39:46 [...]" or "[ERROR] 2026-09-18-20:39:28".
+var errorSeverityRE = regexp.MustCompile(`^(?:\[(?:ERROR|CRITICAL)\]|(?:ERROR|CRITICAL)\b)`)
+
+// loggedAsError reports whether the engine printed line at error severity.
+func loggedAsError(line string) bool {
+	line = processTagRE.ReplaceAllString(strings.TrimSpace(line), "")
+	return errorSeverityRE.MatchString(line)
 }
 
 func stripLinePrefix(line string) string {
