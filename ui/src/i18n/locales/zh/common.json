@@ -877,6 +877,8 @@
     "CONTAINER_UNHEALTHY": "容器运行时报告工作进程不健康。",
     "ENGINE_HEALTH_ENDPOINT_INVALID": "引擎健康检查地址无效。",
     "ENGINE_HEALTH_TIMEOUT": "引擎在启动超时前未就绪。",
+    "ENGINE_START_STALLED": "引擎启动长时间没有任何进展，容器仍在运行：{{detail}}",
+    "ENGINE_START_ABORTED": "引擎在启动过程中报告其某个进程失败，容器仍在运行但始终未就绪。",
     "WORKER_READINESS_TIMEOUT": "无头工作进程在启动超时前未能稳定运行。",
     "ENGINE_UNRESPONSIVE": "运行中的引擎不再响应健康检查：{{detail}}",
     "CALLABLE_INIT_FAILED": "服务适配器初始化失败：{{detail}}",

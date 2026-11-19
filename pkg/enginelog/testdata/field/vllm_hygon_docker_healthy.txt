@@ -1,0 +1,202 @@
+(EngineCore pid=299) WARNING 11-20 00:01:48 [registry.py:911] Model architecture DeepSeekMTPModel is already registered, and will be overwritten by the new mode
+(EngineCore pid=299) WARNING 11-20 00:01:48 [registry.py:911] Model architecture GlmMoeDsaForCausalLM is already registered, and will be overwritten by the new
+(EngineCore pid=299) WARNING 11-20 00:01:48 [registry.py:911] Model architecture Glm4MoeForCausalLM is already registered, and will be overwritten by the new mo
+(EngineCore pid=299) INFO 11-20 00:01:48 [core.py:104] Initializing a V1 LLM engine (v0.18.1) with config: model='/model', speculative_config=None, tokenizer='/
+(EngineCore pid=299) `Qwen2VLImageProcessorFast` is deprecated. The `Fast` suffix for image processors has been removed; use `Qwen2VLImageProcessor` instead.
+(EngineCore pid=299) INFO 11-20 00:01:50 [parallel_state.py:1395] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://127.0.0.1:37781 backend=nccl
+(EngineCore pid=299) INFO 11-20 00:01:50 [parallel_state.py:1717] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank 0,
+(EngineCore pid=299) The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or
+(EngineCore pid=299) WARNING 11-20 00:02:00 [activation.py:643] [ROCm] PyTorch's native GELU with tanh approximation is unstable. Falling back to GELU(approxima
+(EngineCore pid=299) INFO 11-20 00:02:00 [mm_encoder_attention.py:230] Using AttentionBackendEnum.FLASH_ATTN for MMEncoderAttention.
+(EngineCore pid=299) INFO 11-20 00:02:00 [__init__.py:285] Selected TritonInt8ScaledMMLinearKernel for CompressedTensorsW8A8Int8
+(EngineCore pid=299) INFO 11-20 00:02:00 [qwen3_next.py:204] Using Triton/FLA GDN prefill kernel
+(EngineCore pid=299) WARNING 11-20 00:02:01 [compilation.py:1136] Op 'sparse_attn_indexer' not present in model, enabling with '+sparse_attn_indexer' has no eff
+Loading safetensors checkpoint shards:   0% Completed | 0/14 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards:   7% Completed | 1/14 [00:27<05:54, 27.25s/it]
+Loading safetensors checkpoint shards:  14% Completed | 2/14 [00:54<05:23, 27.00s/it]
+Loading safetensors checkpoint shards:  21% Completed | 3/14 [02:15<09:30, 51.90s/it]
+Loading safetensors checkpoint shards:  29% Completed | 4/14 [03:12<09:00, 54.04s/it]
+Loading safetensors checkpoint shards:  36% Completed | 5/14 [03:41<06:45, 45.01s/it]
+Loading safetensors checkpoint shards:  43% Completed | 6/14 [04:09<05:12, 39.11s/it]
+Loading safetensors checkpoint shards:  57% Completed | 8/14 [05:01<03:15, 32.64s/it]
+Loading safetensors checkpoint shards:  64% Completed | 9/14 [05:33<02:41, 32.36s/it]
+Loading safetensors checkpoint shards:  71% Completed | 10/14 [05:56<01:59, 29.87s/it]
+Loading safetensors checkpoint shards:  79% Completed | 11/14 [06:19<01:24, 28.02s/it]
+Loading safetensors checkpoint shards:  86% Completed | 12/14 [06:42<00:53, 26.66s/it]
+Loading safetensors checkpoint shards:  93% Completed | 13/14 [07:09<00:26, 26.74s/it]
+Loading safetensors checkpoint shards: 100% Completed | 14/14 [07:16<00:00, 21.04s/it]
+Loading safetensors checkpoint shards: 100% Completed | 14/14 [07:16<00:00, 31.21s/it]
+(EngineCore pid=299)
+(EngineCore pid=299) INFO 11-20 00:09:18 [default_loader.py:384] Loading weights took 436.99 seconds
+(EngineCore pid=299) INFO 11-20 00:07:51 [backends.py:988] Using cache directory: /root/.cache/vllm/torch_compile_cache/8662ca4077/rank_0_0/backbone for vLLM's
+(EngineCore pid=299) INFO 11-20 00:07:51 [backends.py:1048] Dynamo bytecode transform time: 17.19 s
+(EngineCore pid=299) INFO 11-20 00:10:20 [backends.py:371] Cache the graph of compile range (1, 2048) for later use
+(EngineCore pid=299) INFO 11-20 00:13:25 [backends.py:387] Compiling a graph for compile range (1, 2048) takes 215.48 s
+(EngineCore pid=299) INFO 11-20 00:13:31 [decorators.py:627] saved AOT compiled function to /root/.cache/vllm/torch_compile_cache/torch_aot_compile/685bc11e9e66
+(EngineCore pid=299) INFO 11-20 00:13:31 [monitor.py:48] torch.compile took 239.70 s in total
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(EngineCore pid=299) [aiter] chunk_gated_delta_rule_fwd_h config not found at /usr/local/lib/python3.10/dist-packages/aiter/ops/triton/configs/chunk_gated_delta
+(EngineCore pid=299) [aiter] chunk_fwd_o config not found at /usr/local/lib/python3.10/dist-packages/aiter/ops/triton/configs/chunk_fwd_o/chunk_fwd_o-gfx928.jso
+(EngineCore pid=299) WARNING 11-20 00:14:36 [fused_moe.py:1112] Using default MoE config. Performance might be sub-optimal! Config file not found at /usr/local/
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(EngineCore pid=299) INFO 11-20 00:14:41 [monitor.py:76] Initial profiling/warmup run took 69.48 s
+(EngineCore pid=299) INFO 11-20 00:14:49 [gpu_worker.py:456] Available KV cache memory: 19.51 GiB
+(EngineCore pid=299) INFO 11-20 00:14:49 [kv_cache_utils.py:1462] Auto-fit max_model_len: full model context length 262144 fits in available GPU memory
+(EngineCore pid=299) INFO 11-20 00:14:49 [kv_cache_utils.py:1330] GPU KV cache size: 255,552 tokens
+(EngineCore pid=299) INFO 11-20 00:14:49 [kv_cache_utils.py:1335] Maximum concurrency for 262,144 tokens per request: 3.84x
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 51/51 [00:29<00:00,  1.73it/s]
+Capturing CUDA graphs (decode, FULL):   0%|          | 0/35 [00:00<?, ?it/s][aiter] fused_recurrent_gated_delta_rule_packed_decode config not found at /usr/loca
+Capturing CUDA graphs (decode, FULL): 100%|██████████| 35/35 [00:21<00:00,  1.62it/s]
+(EngineCore pid=299) INFO 11-20 00:15:41 [core.py:282] init engine (profile, create kv cache, warmup model) took 382.87 seconds
+(EngineCore pid=299) INFO 11-20 00:15:42 [vllm.py:776] Asynchronous scheduling is enabled.
+(APIServer pid=1) INFO 11-20 00:15:42 [api_server.py:576] Supported tasks: ['generate']
+(APIServer pid=1) INFO 11-20 00:15:42 [parser_manager.py:202] "auto" tool choice has been enabled.
+(APIServer pid=1) WARNING 11-20 00:15:42 [model.py:1379] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'tempe
+(APIServer pid=1) INFO 11-20 00:15:42 [parser_manager.py:202] "auto" tool choice has been enabled.
+(APIServer pid=1) INFO 11-20 00:15:42 [parser_manager.py:202] "auto" tool choice has been enabled.
+(APIServer pid=1) INFO 11-20 00:15:45 [hf.py:320] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to over
+(APIServer pid=1) INFO 11-20 00:15:53 [base.py:216] Multi-modal warmup completed in 8.089s
+(APIServer pid=1) INFO 11-20 00:15:53 [parser_manager.py:202] "auto" tool choice has been enabled.
+(APIServer pid=1) INFO 11-20 00:15:53 [api_server.py:580] Starting vLLM server on http://127.0.0.1:30000
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:37] Available routes are:
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /openapi.json, Methods: HEAD, GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /docs, Methods: HEAD, GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /redoc, Methods: HEAD, GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=1) INFO 11-20 00:15:53 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=1) INFO:     Started server process [1]
+(APIServer pid=1) INFO:     Waiting for application startup.
+(APIServer pid=1) INFO:     Application startup complete.
+(APIServer pid=1) INFO:     127.0.0.1:55662 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:55662 - "GET /v1/models HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:55662 - "GET /openapi.json HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:55662 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:55662 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:41104 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:41104 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:38862 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:60264 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:60264 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) /usr/local/lib/python3.10/dist-packages/pydantic/_internal/_generate_schema.py:2274: UnsupportedFieldAttributeWarning: The 'deprecated' attrib
+(APIServer pid=1)   warnings.warn(
+(APIServer pid=1) WARNING 11-20 00:14:28 [utils.py:72] Received a request with trace context but tracing is disabled
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/torch/_dynamo/eval_frame.py:1181: UserWarning: Input tensor shape suggests potential format mismatc
+(EngineCore pid=299)   return fn(*args, **kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(APIServer pid=1) INFO:     127.0.0.1:43286 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:43286 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:34578 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:35930 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:35930 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:46428 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:46428 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:40746 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/torch/_dynamo/eval_frame.py:1181: UserWarning: Input tensor shape suggests potential format mismatc
+(EngineCore pid=299)   return fn(*args, **kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/torch/_dynamo/eval_frame.py:1181: UserWarning: Input tensor shape suggests potential format mismatc
+(EngineCore pid=299)   return fn(*args, **kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(APIServer pid=1) INFO:     127.0.0.1:60272 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:17:23 [loggers.py:259] Engine 000: Avg prompt throughput: 3.0 tokens/s, Avg generation throughput: 24.4 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:44750 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:44750 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/torch/_dynamo/eval_frame.py:1181: UserWarning: Input tensor shape suggests potential format mismatc
+(EngineCore pid=299)   return fn(*args, **kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(APIServer pid=1) INFO:     127.0.0.1:44764 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     192.0.2.1:0 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:17:33 [loggers.py:259] Engine 000: Avg prompt throughput: 3.0 tokens/s, Avg generation throughput: 45.4 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:48348 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:48348 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:17:43 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 46.2 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:57278 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:17:53 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 46.2 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:59910 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:59910 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     192.0.2.1:0 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:18:03 [loggers.py:259] Engine 000: Avg prompt throughput: 1.9 tokens/s, Avg generation throughput: 45.5 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:51910 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:51910 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:18:13 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 46.4 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:51798 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:18:23 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 46.1 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:44018 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:44018 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:44028 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     192.0.2.1:0 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     192.0.2.1:0 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:18:33 [loggers.py:259] Engine 000: Avg prompt throughput: 3.0 tokens/s, Avg generation throughput: 45.6 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:42636 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:42636 - "GET /health HTTP/1.1" 200 OK
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(APIServer pid=1) INFO:     192.0.2.1:0 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:18:43 [loggers.py:259] Engine 000: Avg prompt throughput: 4.0 tokens/s, Avg generation throughput: 45.3 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:49224 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     192.0.2.1:0 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:18:53 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 38.5 tokens/s, Running: 0 req
+(APIServer pid=1) INFO:     127.0.0.1:35836 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:35836 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:19:03 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 0 reqs
+(APIServer pid=1) INFO:     127.0.0.1:39746 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:39746 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:40372 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:51962 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:51962 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/torch/_dynamo/eval_frame.py:1181: UserWarning: Input tensor shape suggests potential format mismatc
+(EngineCore pid=299)   return fn(*args, **kwargs)
+(EngineCore pid=299) /usr/local/lib/python3.10/dist-packages/vllm/model_executor/layers/fla/ops/utils.py:113: UserWarning: Input tensor shape suggests potential
+(EngineCore pid=299)   return fn(*contiguous_args, **contiguous_kwargs)
+(APIServer pid=1) INFO:     127.0.0.1:51974 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:17:36 [loggers.py:259] Engine 000: Avg prompt throughput: 1.1 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs
+(APIServer pid=1) INFO:     127.0.0.1:34558 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:34558 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:17:46 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 0 reqs
+(APIServer pid=1) INFO:     127.0.0.1:40484 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:35372 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:35372 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:43012 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:43012 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:34340 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     192.0.2.1:0 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:20:23 [loggers.py:259] Engine 000: Avg prompt throughput: 1.1 tokens/s, Avg generation throughput: 29.8 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:58670 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:58670 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:58682 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:20:33 [loggers.py:259] Engine 000: Avg prompt throughput: 1.1 tokens/s, Avg generation throughput: 46.0 tokens/s, Running: 1 req
+(APIServer pid=1) INFO:     127.0.0.1:43040 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=1) INFO:     127.0.0.1:43040 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=1) INFO 11-20 00:20:43 [loggers.py:259] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 26.8 tokens/s, Running: 0 req
+(APIServer pid=1) INFO:     127.0.0.1:48594 - "GET /metrics HTTP/1.1" 200 OK

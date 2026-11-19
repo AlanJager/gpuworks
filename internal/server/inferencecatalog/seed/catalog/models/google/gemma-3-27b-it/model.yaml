@@ -60,6 +60,15 @@ specs:
   - --dtype
   - bfloat16
   - --enable-multimodal
+  # In graph mode the engine starts and its schedulers crash at the first
+  # generation on 910B4 ("Unsupport run graph with different stream"); the
+  # eager path came up and answered chat on four 910B4 cards (GWKS-354).
+  - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "In NPU graph mode Gemma 3 crashes at its first generation on 910B4 with the 910B SGLang runner; the eager path starts and answers chat on four 910B4 cards."
+    detail_zh: "910B SGLang 镜像上 Gemma 3 在 NPU 图模式下首次生成即崩溃；eager 路径在四张 910B4 上启动并完成对话。"
   env:
     GLOO_SOCKET_IFNAME: lo
     HCCL_SOCKET_IFNAME: lo

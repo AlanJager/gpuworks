@@ -182,6 +182,17 @@ const (
 	// ErrorEngineHealthTimeout: the engine did not become healthy within its
 	// start timeout (Detail is the last health result, if any).
 	ErrorEngineHealthTimeout = "ENGINE_HEALTH_TIMEOUT"
+	// ErrorEngineStartStalled: the start of a newly created container made
+	// no progress for a long time while the container kept running: nothing
+	// new in its output, nothing moving on its cards, its processes idle
+	// (Detail says how long each has been flat and what state the processes
+	// are in; Evidence is the output's last lines).
+	ErrorEngineStartStalled = "ENGINE_START_STALLED"
+	// ErrorEngineStartAborted: during the start of a newly created container
+	// the engine reported that one of its processes failed and that it was
+	// shutting down, and the container kept running without becoming
+	// healthy (Causes; Evidence is the exception the process raised).
+	ErrorEngineStartAborted = "ENGINE_START_ABORTED"
 	// ErrorWorkerReadinessTimeout: a headless worker did not stay up long
 	// enough within its start timeout.
 	ErrorWorkerReadinessTimeout = "WORKER_READINESS_TIMEOUT"

@@ -361,6 +361,14 @@ type Driver interface {
 	Exec(ctx context.Context, containerID string, cmd []string) ([]byte, error)
 }
 
+// ProcessRooter is optional: a driver that can name the host process a
+// container's processes descend from (its init, or the leader of its process
+// group). The engine reads their state from /proc while a start makes no
+// progress; a driver without it leaves that unknown.
+type ProcessRooter interface {
+	RootPID(ctx context.Context, containerID string) (int, error)
+}
+
 // PTYExecer is an optional runtime extension for opening a real terminal for
 // a container. The agent allocates the PTY and passes its slave to the
 // returned command; runtimes only provide the argv and own the runtime-specific

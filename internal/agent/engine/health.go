@@ -47,6 +47,17 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 	var loadResult <-chan string
 	var lastObservedAt time.Time
 	var lastTarget, lastResult string
+	// What ends the start of a newly created container before its timeout
+	// (start_stall.go): a stall, where its signals can be observed, and an
+	// engine that says it gave up. A container that is adopted, or one whose
+	// engine served and is being brought back, is not a start: its output
+	// holds what it logged while serving, and its quiet is not a hang.
+	var stall *stallWatch
+	var abortedBefore bool
+	nextStallSample := time.Now().Add(e.startStall.intervalOrDefault())
+	if fresh && e.watchesStartStall(spec) {
+		stall = e.startStall.watch()
+	}
 
 	for time.Now().Before(deadline) {
 		st, err := driver.Status(ctx, id)
@@ -158,6 +169,19 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 				return true
 			}
 		}
+		if now := time.Now(); fresh && !now.Before(nextStallSample) {
+			nextStallSample = now.Add(e.startStall.intervalOrDefault())
+			failure, message, failed := e.startMakesNoProgress(ctx, spec, id, stall, &abortedBefore)
+			if ctx.Err() != nil {
+				return false
+			}
+			if failed {
+				e.log.Warn("engine start failed before its timeout", "uuid", spec.UUID, "code", failure.Code, "detail", failure.Detail)
+				// No startup observation: its budget did not run out.
+				e.failAfterContainer(ctx, spec, failure, message)
+				return false
+			}
+		}
 		if loadResult != nil {
 			select {
 			case detail := <-loadResult:
@@ -187,6 +211,13 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 	if !lastObservedAt.IsZero() {
 		failure.Detail = healthDiagnosticDetail(lastTarget, lastResult)
 		message += ": " + failure.Detail + " observed_at=" + lastObservedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if stall != nil {
+		// What the container's processes were doing when the time ran out:
+		// a start that was slow short of a stall shows why here.
+		if processes := stall.processes(); processes != "" {
+			failure.Detail = strings.TrimPrefix(failure.Detail+"; "+processes, "; ")
+		}
 	}
 	if ctx.Err() != nil {
 		return false

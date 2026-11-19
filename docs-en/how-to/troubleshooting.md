@@ -1109,7 +1109,24 @@ For a multi-node follower, the corresponding message is `headless worker readine
 The budget applies while waiting for health checks after instance startup. Its value is determined when the instance is created; changes affect only instances started afterward.
 Exceeding the budget fails the startup attempt and triggers recreation according to the rules below.
 
+**Start stalled: `engine start stalled`**
 
+While it waits for the health check of a container it has just created, the agent observes three kinds of signal once a minute: the last lines of the container's output, memory in use and utilization of the cards the instance is on, and the CPU time, bytes read and written, page faults and set of the container's processes (without the process that traces the others, such as udocker's PRoot). When all three can be observed and none has changed for **20 minutes in a row**, the agent no longer waits for the start timeout: it fails the attempt with `ENGINE_START_STALLED` and the attempt is recreated by the retry rules. The reason says how long each signal has been flat and what state the processes are in, with the last lines of the output.
+
+No stall is declared in these cases, and the start timeout remains the limit:
+
+- **A signal cannot be observed**: an instance with no card; cards whose metrics cannot be read, lack memory or utilization, or whose memory is the host's pool (unified memory); runtimes that cannot name the container's processes (nerdctl, kube); processes whose read and write counters cannot be read (an agent that is not root while the container's processes are, or a kernel without task I/O accounting). So only single-node instances on docker and udocker are declared stalled.
+- **It may be waiting for someone else**: the ranks of a multi-node deployment; any time while another instance on the same node is being started or stopped.
+- **It is not a new start**: a container adopted after an agent restart, and an engine that was ready once and is recovering.
+- **Too few observations**: a verdict needs at least 10 observations in a row that found nothing moving, none more than 3 minutes after the one before; a longer gap starts the count over.
+- **It still advances, only extremely slowly**: for example, when udocker's PRoot is saturated by system calls the engine still prints a line every few minutes, which is not a stall. The start timeout's reason then carries the process state, for example `processes: 4 in tracing stop (…); tracer proot-arm64 running at 99% of a core`, to judge by.
+- On a card shared with another instance the figures are the whole card's, so that instance's activity reads as change.
+
+The quiet phases of a valid start (loading weights, compiling or capturing a graph) each change at least one of the signals and are not taken for a stall.
+
+**The engine reports that it gave up: `ENGINE_START_ABORTED`**
+
+When an SGLang scheduler process raises, it prints `Scheduler hit an exception` and has the main process end the whole process tree (`SIGQUIT received … one child failed`). Normally the container exits with it; when the main process does not exit, the HTTP process keeps answering the health check as not ready. The agent checks the output of a newly created container once a minute, and when it sees such output twice in a row while the container is still running it fails the attempt with `ENGINE_START_ABORTED`, with the exception the process raised. This applies on every runtime, to SGLang only, and to newly created containers only.
 
 Instance details show the **startup wait limit** separately from the **rough startup estimate**. For managed vLLM, an explicit final `VLLM_ENGINE_READY_TIMEOUT_S` receives 30 extra seconds for probing under the automatic policy, capped at 86400 seconds. When the variable is neither explicitly set nor removed, the platform coordinates the inner wait budget. Manual commands and replaced entrypoints do not have their internal timeout inferred. An explicit deployment budget takes priority even when shorter than the engine deadline; the page reports the conflict. Probe heartbeats do not establish model-loading progress.
 
@@ -1432,7 +1449,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 7997b814b088d01f9ff3b78220cb279ed497276b1f27d491174a4b027461f9b1 -->
+<!-- translation-source-sha256: 72202dd8e4fcc51fa3f040a5fcaa8493830a79384592bca0b399e7cf52539caf -->
 <!-- translation-localized-code-block: 5a54acf993d1267a588edaed6adb42fabe4eaa22a37d698098643916823bb39b 63b848b372a289196a7de991833e1e2e7e410a903f69538cc9e20e3119d7859f -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
