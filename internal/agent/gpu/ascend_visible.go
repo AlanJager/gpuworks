@@ -3,6 +3,7 @@ package gpu
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 // Rootless containers retain the host's DSMI inventory. Physical device IDs
 // can be sparse or remapped (for example by VM passthrough), so ACL must use
 // the logical IDs reported by the driver, not a compact container ordinal.
+// The result lists them in ascending order, whatever order indexes is in.
 func (p *AscendProber) rootlessVisibleDevices(indexes []int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -30,7 +32,7 @@ func (p *AscendProber) rootlessVisibleDevices(indexes []int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	visible := make([]string, 0, len(indexes))
+	visible := make([]int, 0, len(indexes))
 	seen := map[int]bool{}
 	for _, index := range indexes {
 		address, ok := physical[index]
@@ -45,9 +47,18 @@ func (p *AscendProber) rootlessVisibleDevices(indexes []int) (string, error) {
 			return "", fmt.Errorf("Ascend logical device %d maps to multiple selected devices", logical)
 		}
 		seen[logical] = true
-		visible = append(visible, strconv.Itoa(logical))
+		visible = append(visible, logical)
 	}
-	return strings.Join(visible, ","), nil
+	// The ACL runtime refuses a list that is not ascending (EE2002), and the
+	// driver's logical IDs need not follow the physical order the cards were
+	// selected in. The variable only names the set of dies; the process
+	// numbers them 0..N-1 in this order.
+	sort.Ints(visible)
+	ids := make([]string, len(visible))
+	for i, logical := range visible {
+		ids[i] = strconv.Itoa(logical)
+	}
+	return strings.Join(ids, ","), nil
 }
 
 func parseAscendLogicalMapping(out string) (map[[2]int]int, error) {
