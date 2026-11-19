@@ -47,8 +47,12 @@
 #   step=precheck status=ok cluster=<ClusterName>
 #   step=precheck status=failed reason=<not_root|scontrol_not_found|
 #                 slurmctld_unreachable|no_cluster_name|conf_unreadable|
-#                 not_controller_conf|not_slurmctld_host|
+#                 not_controller_conf|not_slurmctld_host|script_dir_unsafe|
 #                 bad_arguments|conf_unterminated_block>
+#   step=script_dir status=ok|plan|failed path=<dir> [action=tighten|tightened]
+#                 [owner=<uid> mode=<octal>]   (setup and check modes; failed
+#                 names the directory on the script directory's path that
+#                 others could write, before precheck failed)
 #   step=conf_source status=warn reason=program_not_in_conf program=<path>
 #                 (slurmctld runs a health check program slurm.conf does not
 #                 name: an included file, or an edit not yet reloaded)
@@ -186,10 +190,87 @@ precheck() {
 	if ! on_slurmctld_host; then
 		pre_fail not_slurmctld_host "this machine ($(hostname 2>/dev/null)) does not run slurmctld and is not one of the controller hosts ($(conf_value 'SlurmctldHost\[0\]')): run this on the machine that runs slurmctld."
 	fi
+	if [ "$MODE" = setup ]; then
+		check_script_dir
+	fi
 	WORK=$(mktemp -d "${TMPDIR:-/tmp}/gwks-setup.XXXXXX") || fail "cannot create a temporary directory"
 	trap 'rm -rf "$WORK"' EXIT
 	say "Slurm cluster '$CLUSTER', slurm.conf at $CONF."
 	mark "step=precheck status=ok cluster=$(clean "$CLUSTER")"
+}
+
+# check_script_dir refuses a script directory an account other than root
+# could write: slurmd runs check.sh from it as root on every node, so whoever
+# can change it, or a directory above it, runs code as root on all of them.
+# Every directory from the script directory up to / must be root's (a share
+# exported with root squash shows root's files as nobody's, and root cannot
+# read the token there either) and writable by neither group nor others;
+# above the script directory a sticky one (/tmp) is fine, since nobody else
+# can replace what root put in it. A script directory that does not exist yet
+# is made 0755 by root. One that already holds gpuworks's files and is only
+# too open is tightened (reported in check mode); any other is refused, as is
+# a directory whose owner or mode cannot be read.
+check_script_dir() {
+	allowed=${GWKS_OWNER_UID:-0}
+	dir=$SCRIPT_DIR
+	ours=no
+	if [ -f "$dir/check.sh" ] || [ -f "$dir/token" ] || [ -f "$dir/chained" ]; then
+		ours=yes
+	fi
+	first=yes
+	result="status=ok"
+	while :; do
+		if [ -e "$dir" ]; then
+			info=$(stat -L -c '%u %a' "$dir" 2>/dev/null) || info=''
+			uid=${info%% *}
+			mode=${info#* }
+			if [ -z "$info" ] || [ -z "$mode" ]; then
+				script_dir_unsafe "$dir" "?" "?" "its owner and mode cannot be read"
+			fi
+			if [ "$uid" != 0 ] && [ "$uid" != "$allowed" ]; then
+				script_dir_unsafe "$dir" "$uid" "$mode" "it is owned by uid $uid, not by root (a share exported with root squash shows root's files as nobody's)"
+			fi
+			bits=$(printf '%s' "$mode" | awk '{ m = $1; while (length(m) < 4) m = "0" m
+				s = substr(m, 1, 1) + 0; g = substr(m, 3, 1) + 0; o = substr(m, 4, 1) + 0
+				w = (g == 2 || g == 3 || g == 6 || g == 7 || o == 2 || o == 3 || o == 6 || o == 7)
+				t = (s == 1 || s == 3 || s == 5 || s == 7)
+				printf "%s%s", (w ? "w" : "-"), (t ? "t" : "-") }')
+			case "$bits" in
+			w*)
+				if [ "$first" = no ] && [ "$bits" = wt ]; then
+					: # a sticky directory above ours
+				elif [ "$first" = yes ] && [ "$ours" = yes ]; then
+					if [ "$CHECK_ONLY" = yes ]; then
+						say "The script directory $dir is writable by group or others ($mode); applying makes it not."
+						result="status=plan action=tighten mode=$(clean "$mode")"
+					elif chmod go-w "$dir"; then
+						say "The script directory $dir was writable by group or others ($mode): made it not."
+						result="status=ok action=tightened mode=$(clean "$mode")"
+					else
+						script_dir_unsafe "$dir" "$uid" "$mode" "it is writable by group or others and could not be changed"
+					fi
+				else
+					script_dir_unsafe "$dir" "$uid" "$mode" "it is writable by group or others"
+				fi
+				;;
+			esac
+		fi
+		[ "$dir" = / ] && break
+		parent=$(dirname "$dir")
+		[ "$parent" = "$dir" ] && break
+		dir=$parent
+		first=no
+	done
+	mark "step=script_dir $result path=$(clean "$SCRIPT_DIR")"
+}
+
+# script_dir_unsafe refuses the setup over a directory on the script
+# directory's path: $1 the directory, $2 its owner, $3 its mode, $4 why.
+script_dir_unsafe() {
+	say "slurmd runs $SCRIPT_DIR/check.sh as root on every node, so only root may be able to change it or any directory above it."
+	say "Make $1 owned by root and not writable by group or others (chown root $1; chmod go-w $1), or choose another script directory."
+	mark "step=script_dir status=failed path=$(clean "$1") owner=$(clean "$2") mode=$(clean "$3")"
+	pre_fail script_dir_unsafe "$1 is not safe for the health check: $4."
 }
 
 # on_slurmctld_host says whether this machine is a Slurm controller: a
@@ -226,7 +307,8 @@ on_slurmctld_host() {
 # install_check_script writes the health check next to its parameters: an
 # atomic replace, because slurmd may be running the old one right now.
 install_check_script() {
-	if ! mkdir -p "$SCRIPT_DIR"; then
+	# A directory made here is root's and 0755 (check_script_dir).
+	if ! (umask 022 && mkdir -p "$SCRIPT_DIR"); then
 		mark "step=check_script status=failed path=$(clean "$SCRIPT_DIR/check.sh")"
 		fail "cannot create $SCRIPT_DIR"
 	fi

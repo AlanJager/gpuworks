@@ -170,7 +170,9 @@ func (w *world) environ() []string {
 	env := []string{
 		"PATH=" + w.bin, "HOME=" + w.root, "TMPDIR=" + w.path("run"), "LC_ALL=C",
 		"GWKS_NO_PATH_EXTEND=1", "GWKS_FAKE_STATE=" + w.state,
-		"GWKS_DEV_DIR=" + w.path("dev"), "GWKS_PROC_DIR=" + w.path("proc"), "GWKS_LOCK_DIR=" + w.path("run"),
+		"GWKS_DEV_DIR=" + w.path("dev"), "GWKS_PROC_DIR=" + w.path("proc"),
+		// The test's directories are the test user's, not root's.
+		"GWKS_OWNER_UID=" + strconv.Itoa(os.Getuid()), "GWKS_LOCK_DIR=" + w.path("run"),
 		"GWKS_LOG_DIR=" + w.path("log"), "GWKS_UNIT_PATH=" + w.path("etc/gpuworks-agent.service"), "GWKS_SPREAD_MAX=0",
 	}
 	for k, v := range w.env {

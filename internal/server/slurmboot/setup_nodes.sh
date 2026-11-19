@@ -77,7 +77,7 @@ sync_nodes() {
 	fi
 	# The token file exists with mode 0600 before anything is copied into it:
 	# copying overwrites the contents and keeps that mode.
-	prep="mkdir -p '$SCRIPT_DIR' && (umask 077 && : > '$SCRIPT_DIR/token') && chmod 0600 '$SCRIPT_DIR/token'"
+	prep="(umask 022 && mkdir -p '$SCRIPT_DIR') && chmod 0755 '$SCRIPT_DIR' && (umask 077 && : > '$SCRIPT_DIR/token') && chmod 0600 '$SCRIPT_DIR/token'"
 	for f in $ABSENT; do
 		prep="$prep && rm -f '$SCRIPT_DIR/$f'"
 	done

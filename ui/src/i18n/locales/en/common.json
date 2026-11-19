@@ -1702,7 +1702,8 @@
     "check_script_failed": "the check script could not be written",
     "token_file_failed": "the token file could not be written",
     "slurm_conf_failed": "slurm.conf could not be updated",
-    "reconfigure_failed": "Slurm's configuration could not be reloaded"
+    "reconfigure_failed": "Slurm's configuration could not be reloaded",
+    "script_dir_unsafe": "the script directory, or a directory above it, is not owned by root or is writable by group or others (a share exported with root squash looks like this too). slurmd runs the health check in it as root on every node, so only root may change it: make it owned by root and not writable by group or others, or choose another script directory"
   },
   "slurmApplyKind": {
     "dns": "name resolution failed",
