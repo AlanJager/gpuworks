@@ -81,11 +81,11 @@ func conformancePackage(t *testing.T) string {
 	dir := t.TempDir()
 	m := &extapi.Manifest{
 		Schema: extapi.ManifestSchema, ID: "acme_fake", Publisher: "acme", Version: "1.0.0",
-		Created:  extapi.NewTime(time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)),
-		Protocol: extapi.Range{Min: 1, Max: 1},
-		Requires: map[string]int{extapi.CapRoutes: 1, extapi.TableCapability(extapi.KindBanners): 1},
+		Created:     extapi.NewTime(time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)),
+		Protocol:    extapi.Range{Min: 1, Max: 1},
+		Requires:    map[string]int{extapi.CapRoutes: 1, extapi.TableCapability(extapi.KindBanners): 1},
 		Permissions: []string{"http:public", "http:routes", "push:banners"},
-		Features: []extapi.FeatureDecl{{Key: "acme.tools", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf}},
+		Features:    []extapi.FeatureDecl{{Key: "acme.tools", Presentation: extapi.PresentationPromote, Gate: extapi.GateSelf}},
 		Routes: []extapi.RouteDecl{
 			{Method: "GET", Pattern: "/jobs/{id}", Action: "acme_fake.jobs_read", Access: extapi.RouteAdmin, Ungated: true},
 			{Method: "POST", Pattern: "/jobs", Action: "acme_fake.jobs_create", Access: extapi.RouteAdmin, Feature: "acme.tools"},
