@@ -90,7 +90,7 @@ func (h *fakeHost) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 	if len(raw) > extapi.MaxNodeIdentityRequestBytes {
 		writeJSON(w, http.StatusRequestEntityTooLarge, extapi.WireError{Code: codeRequestTooLarge,
 			Message: "the request is larger than the server reads",
-			Params:  extapi.Params{"max": extapi.MaxNodeIdentityRequestBytes}, Reason: extapi.ReasonInvalidArgument})
+			Params:  extapi.Params{"max_bytes": extapi.MaxNodeIdentityRequestBytes}, Reason: extapi.ReasonInvalidArgument})
 		return
 	}
 	req, err := extapi.DecodeNodeIdentityRequest(raw)

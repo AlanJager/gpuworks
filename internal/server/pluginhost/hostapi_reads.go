@@ -72,7 +72,7 @@ func (h *hostConn) nodeIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(raw) > extapi.MaxNodeIdentityRequestBytes {
 		e := Refuse(extapi.ReasonInvalidArgument, messages.ErrorRequestTooLarge, "the request is larger than the server reads",
-			map[string]any{"max": extapi.MaxNodeIdentityRequestBytes})
+			map[string]any{"max_bytes": extapi.MaxNodeIdentityRequestBytes})
 		e.Status = http.StatusRequestEntityTooLarge
 		writeWire(w, e)
 		return

@@ -507,7 +507,7 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 | `PLUGIN_HOST_NOT_PERMITTED` | 403 | 管理员没有批准该读取的权限 | `id`、`permission` |
 | `PLUGIN_CAPABILITY_NOT_OFFERED` | 412 | 插件握手时没有协商该能力 | `id`、`capability`、`version` |
 | `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | 盐、节点 id 列表、`cursor` 或 `limit` 越界或不合文法，在读取之前拒绝；被拒的清单查询不消耗页数 | `id`、`field` |
-| `REQUEST_TOO_LARGE` | 413 | 节点身份的请求体超过 32 KiB，在解码之前拒绝 | `max` |
+| `REQUEST_TOO_LARGE` | 413 | 节点身份的请求体超过 32 KiB，在解码之前拒绝 | `max_bytes` |
 | `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | 该 server 不提供读取，或方法不对 | `method`、`path` |
 
 请求体不是该对象（JSON 无效、未知字段）时保留线上格式的码，如 `PLUGIN_WIRE_UNKNOWN_FIELD`。

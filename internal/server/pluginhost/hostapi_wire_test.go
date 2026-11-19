@@ -41,3 +41,14 @@ func TestHostAPIRefusalsOnTheWire(t *testing.T) {
 		}
 	}
 }
+
+func TestNodeIdentitySizeRefusalOnTheWire(t *testing.T) {
+	h := readerConn(t, &fakeReads{}, readerOwner(extapi.LifecycleResident, readPermissions...))
+	rec := httptest.NewRecorder()
+	body := `{"node_ids":[1],"salt":"` + strings.Repeat("s", extapi.MaxNodeIdentityRequestBytes) + `"}`
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/host/v1/node-identity", strings.NewReader(body)))
+	want := `{"code":"REQUEST_TOO_LARGE","message":"the request is larger than the server reads","params":{"max_bytes":32768},"reason":"invalid_argument"}`
+	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusRequestEntityTooLarge || got != want {
+		t.Fatalf("%d\n%s\nwant 413\n%s", rec.Code, got, want)
+	}
+}
