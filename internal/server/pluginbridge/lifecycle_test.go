@@ -4,6 +4,7 @@ package pluginbridge
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/testenv/extsign"
@@ -186,6 +188,48 @@ func TestReportAndLogsOfAPackage(t *testing.T) {
 	} {
 		if err := call(); !isCode(err, messages.ErrorPluginNotInstalled) {
 			t.Fatalf("report of nothing = %v", err)
+		}
+	}
+}
+
+// Every state a view can take offers exactly its actions: removal always,
+// enable for a disabled or host-setup package, disable once enabled, and
+// restart only for an enabled server part that may run.
+func TestViewActionsPerState(t *testing.T) {
+	b := newWorld(t, nil).open()
+	server := func(id string) extpkg.Entry {
+		e := entryWith(id, "1.0.0", true)
+		e.Verified.Manifest.Runtime = &extapi.RuntimeDecl{}
+		e.Verified.Binary = "bin/" + id
+		return e
+	}
+	revoked := entryWith("acme_revoked", "1.0.0", true)
+	revoked.Verified.Revoked = &extapi.Revocation{}
+	b.mu.Lock()
+	b.refusals["acme_failed"] = messages.NewProductError(messages.ErrorPluginBinaryMissing, "no binary", map[string]any{"id": "acme_failed"})
+	b.refusals["acme_setup"] = messages.NewProductError(messages.ErrorPluginHostSetupRequired, "host setup", map[string]any{"id": "acme_setup"})
+	b.mu.Unlock()
+	removal := []string{ActionUninstall, ActionPurge}
+	for _, c := range []struct {
+		entry   extpkg.Entry
+		state   string
+		actions []string
+	}{
+		{extpkg.Entry{ID: "acme_broken", Version: "1.0.0", Err: errors.New("a file changed")}, StateBroken, removal},
+		{extpkg.Entry{ID: "acme_unverified", Version: "1.0.0"}, StateBroken, removal},
+		{revoked, StateRevoked, removal},
+		{entryWith("acme_off", "1.0.0", false), StateDisabled, append([]string{ActionEnable}, removal...)},
+		{entryWith("acme_ui", "1.0.0", true), StateInstalled, append([]string{ActionDisable}, removal...)},
+		{server("acme_failed"), string(pluginhost.StateFailed), append([]string{ActionDisable, ActionRestart}, removal...)},
+		{server("acme_setup"), StateNeedsHostSetup, append([]string{ActionEnable, ActionDisable}, removal...)},
+		{server("acme_new"), string(pluginhost.StateStarting), append([]string{ActionDisable, ActionRestart}, removal...)},
+	} {
+		v := b.viewOf(c.entry)
+		if v.State != c.state || !slices.Equal(v.Actions, c.actions) {
+			t.Errorf("%s: state %q actions %v, want %q %v", c.entry.ID, v.State, v.Actions, c.state, c.actions)
+		}
+		if slices.Contains(v.Actions, ActionUpgrade) || slices.Contains(v.Actions, ActionRollback) {
+			t.Errorf("%s offers a call this server does not serve: %v", c.entry.ID, v.Actions)
 		}
 	}
 }
