@@ -262,9 +262,13 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 // requires the five pushed tables; it may push node holds and banners,
 // claims the authority role, and declares acme.backup (answered by the
 // authority) and acme.tools (by itself).
-func (s *site) fakePackage(id, version string) []byte {
+func (s *site) fakePackage(id, version string, edit ...func(*extsign.Spec)) []byte {
 	s.t.Helper()
-	return s.fakePackageWith(id, version, nil)
+	return s.fakePackageWith(id, version, func(spec *extsign.Spec) {
+		for _, e := range edit {
+			e(spec)
+		}
+	})
 }
 
 // fakePackageWith is fakePackage with its spec changed by edit first.
@@ -333,6 +337,11 @@ type result struct {
 	Nodes      int    `json:"nodes"`
 	Identities int    `json:"identities"`
 	HostH      string `json:"host_h"`
+	// Route, User and Access are a served route's action, caller and
+	// feature access (Kind is the caller's kind).
+	Route  string `json:"route"`
+	User   string `json:"user"`
+	Access string `json:"access"`
 }
 
 func (s *site) results(id string) []result {

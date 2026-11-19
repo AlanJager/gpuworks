@@ -77,6 +77,11 @@ const (
 	// (its name) or another installed package (its id). A key keeps its
 	// owner; nothing was installed.
 	ErrorPluginFeatureTaken = "PLUGIN_FEATURE_TAKEN"
+	// ErrorPluginIDTaken: package id {id} is the name of a module compiled
+	// into this server, whose routes live under the same /api/v1/x/{id}/;
+	// the install is refused, and an installed package with that id does
+	// not run.
+	ErrorPluginIDTaken = "PLUGIN_ID_TAKEN"
 	// ErrorPluginNeedsNewerCore: an index offers {id} {version}, which needs
 	// a newer server ({min_core_hint}) because it requires {capability}.
 	ErrorPluginNeedsNewerCore = "PLUGIN_NEEDS_NEWER_CORE"

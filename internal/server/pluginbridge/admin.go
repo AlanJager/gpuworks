@@ -195,13 +195,15 @@ type Installed struct {
 // is stopped first. The feature keys it declares are declared at once,
 // and what it pushes is enforced as soon as it pushes. A package declaring
 // a key a compiled module or another installed package provides is
-// refused (PLUGIN_FEATURE_TAKEN).
+// refused (PLUGIN_FEATURE_TAKEN), and one whose id names a compiled module
+// (PLUGIN_ID_TAKEN).
 func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (out *Installed, err error) {
 	b.admin.Lock()
 	defer b.admin.Unlock()
 	id := ""
 	defer func() { b.audit("install", id, req.By, err) }()
-	in, err := b.pkgs.Install(r, extpkg.InstallOptions{Enable: req.Enable, ApprovedBy: req.By, RequireApproval: true, Approve: req.Approve, Features: b})
+	in, err := b.pkgs.Install(r, extpkg.InstallOptions{Enable: req.Enable, ApprovedBy: req.By, RequireApproval: true, Approve: req.Approve, Features: b,
+		ReservedIDs: b.cfg.CompiledModules})
 	if err != nil {
 		if code, params, _ := codeOf(err); code == messages.ErrorPluginApprovalRequired {
 			id, _ = params["id"].(string)

@@ -353,7 +353,16 @@ A plugin's routes live at `/api/v1/x/<id><pattern>`. Once the server has authent
 | `Gwx-Principal-Mac` | `base64url(HMAC-SHA256(principal_key, <Gwx-Principal value> + "\n" + <Gwx-Feature-Access value>))`, without padding; the feature access is signed together with the principal |
 | `Gwx-Feature-Access` | The current access level of each feature the matched route declares; an ungated route sends an empty value |
 
-`principal_key` is the key the handshake request generates fresh for each spawn, so after a plugin restarts, headers signed for the previous spawn no longer verify. The server does not offer the `routes` capability or forward routes yet; this section freezes the format and the plugin-side check.
+`principal_key` is the key the handshake request generates fresh for each spawn, so after a plugin restarts, headers signed for the previous spawn no longer verify; the server signs for the process that takes the call, including an `on_demand` plugin that this call starts.
+
+The server offers `routes@1`, not `routes.websocket`. A forwarded request: its path is the same canonical string the server matched (a request with a `.` or `..` segment, an empty segment, a backslash, or an escaped `/`, backslash, `.` or `%` is refused with 400 before matching; other escapes are kept as sent), with the original method, query and body; the client's `Gwx-*`, `X-Gpuworks-*`, `Authorization`, hop-by-hop headers and `Cookie` are removed (a `cookies` route keeps only cookies whose names are not the core's and do not start with `__Host-`), and `traceparent` is set, with `Gwx-Deadline-Ms` on a route that does not stream. The plugin's response:
+
+- Only a route that declares `html` may answer `text/html` or `application/xhtml+xml`; otherwise the server answers 502 `PLUGIN_ROUTE_RESPONSE_INVALID`. Every response gets `Content-Security-Policy: sandbox; default-src 'none'` and `X-Content-Type-Options: nosniff`.
+- Only a `public` route that declares `cookies` may set cookies: the path is forced to `/api/v1/x/<id>/`, and one named like a core cookie or starting with `__Host-` or `__Secure-` is dropped.
+- A body marked `Gwx-Product-Error` must be a gwx/1 error object under a 4xx or 5xx status; the server passes its code and params to the client.
+- Headers pass by an allowlist only, and `Location` only while it stays under the package's prefix.
+
+The order of the steps, the statuses and the timeouts of stream routes are in [Extension Points](../dev/extensions.md#plugin-routes).
 
 The principal:
 
@@ -722,4 +731,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: c7e054c01dd9bcf0bd93f5b4e0437018982cc78be5cc7d8efce6edba0a0adaf5 -->
+<!-- translation-source-sha256: 5b9480ba46fdfb62c0355fb918b6de91bbbfba282db68cdef874026f6984d7c9 -->

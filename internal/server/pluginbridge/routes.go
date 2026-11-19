@@ -24,6 +24,12 @@ type Route struct {
 	// answers 503 PLUGIN_UNAVAILABLE for without calling the plugin;
 	// empty when the route is served.
 	Down string
+	// Codes are the product codes the package's manifest lists (shared by
+	// its routes; nil for a route that is down).
+	Codes []string
+
+	// manifest binds authorization to the verified build that declared this route.
+	manifest extapi.Digest
 
 	// params names the pattern's {name} segments in order.
 	params []string
@@ -180,6 +186,7 @@ func compileRoutes(entries map[string]extpkg.Entry, known map[string]knownRoutes
 	for _, id := range slices.Sorted(maps.Keys(entries)) {
 		e := entries[id]
 		var decls []extapi.RouteDecl
+		var codes []string
 		version, down := e.Version, ""
 		switch {
 		case !e.Control.Enabled:
@@ -193,14 +200,17 @@ func compileRoutes(entries map[string]extpkg.Entry, known map[string]knownRoutes
 		case e.Verified.Revoked != nil:
 			decls, down = e.Verified.Manifest.Routes, StateRevoked
 		default:
-			decls = e.Verified.Manifest.Routes
+			decls, codes = e.Verified.Manifest.Routes, e.Verified.Manifest.Codes
 		}
 		if len(decls) == 0 {
 			continue
 		}
 		p := &pluginRoutes{}
 		for _, d := range decls {
-			r := &Route{Plugin: id, Version: version, Decl: d, MaxBody: d.MaxBody, Timeout: time.Duration(d.TimeoutS) * time.Second, Down: down}
+			r := &Route{Plugin: id, Version: version, Decl: d, MaxBody: d.MaxBody, Timeout: time.Duration(d.TimeoutS) * time.Second, Down: down, Codes: codes}
+			if e.Verified != nil {
+				r.manifest = e.Verified.Digest
+			}
 			if r.MaxBody == 0 {
 				r.MaxBody = extapi.DefaultRouteMaxBody
 			}

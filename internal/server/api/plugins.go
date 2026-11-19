@@ -195,7 +195,7 @@ func (a *apiHandlers) adminName(r *http.Request) string {
 
 // pluginErrorStatus maps a plugin administration refusal to its status:
 // not installed or no such override 404; a choice that conflicts with
-// what is installed (including a feature key another owner already
+// what is installed (including a feature key or an id another owner already
 // provides) or asks for approval 409; a package too large 413; any other
 // refused package or override (PLUGIN_OVERRIDE_REJECTED) 422; anything
 // else 500.
@@ -207,7 +207,7 @@ func pluginErrorStatus(err error) int {
 	switch pe.Code() {
 	case messages.ErrorPluginNotInstalled, messages.ErrorPluginOverrideNotFound:
 		return http.StatusNotFound
-	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, messages.ErrorPluginFeatureTaken, errorPluginStateTooNew:
+	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, messages.ErrorPluginFeatureTaken, messages.ErrorPluginIDTaken, errorPluginStateTooNew:
 		return http.StatusConflict
 	case messages.ErrorPluginPackageTooLarge:
 		return http.StatusRequestEntityTooLarge

@@ -353,7 +353,16 @@ server 总是提供 `host.setup@1`，但只有 Linux 能执行它，其他平台
 | `Gwx-Principal-Mac` | `base64url(HMAC-SHA256(principal_key, <Gwx-Principal 的值> + "\n" + <Gwx-Feature-Access 的值>))`，不带填充；特性访问级别与主体一起被签名 |
 | `Gwx-Feature-Access` | 所匹配路由声明的每个特性此刻的访问级别；不受特性限制的路由发空值 |
 
-`principal_key` 是握手请求里每次拉起新生成的密钥，所以插件重启后，上一次拉起时签的请求头不再通过校验。当前 server 还不提供 `routes` 能力，也不转发路由；本节冻结的是格式与插件一侧的校验。
+`principal_key` 是握手请求里每次拉起新生成的密钥，所以插件重启后，上一次拉起时签的请求头不再通过校验；server 为接住调用的那个进程签名，`on_demand` 插件被这次调用拉起时也一样。
+
+server 提供 `routes@1`，不提供 `routes.websocket`。转发的请求：路径是 server 匹配时用的同一个规范字符串（含 `.`、`..`、空段、反斜杠或转义的 `/`、反斜杠、`.`、`%` 的请求在匹配前就以 400 拒绝；其他转义原样保留），带原请求的方法、查询串与请求体；客户端的 `Gwx-*`、`X-Gpuworks-*`、`Authorization`、逐跳头与 `Cookie` 都被去掉（`cookies` 路由只留不是核心名字、也不以 `__Host-` 开头的 cookie），另设 `traceparent`，不是流式的路由还设 `Gwx-Deadline-Ms`。插件的应答：
+
+- 只有声明了 `html` 的路由能返回 `text/html` 或 `application/xhtml+xml`，否则 server 回 502 `PLUGIN_ROUTE_RESPONSE_INVALID`；每个应答都被加上 `Content-Security-Policy: sandbox; default-src 'none'` 与 `X-Content-Type-Options: nosniff`。
+- 只有 `public` 且声明 `cookies` 的路由能设 cookie：路径一律改为 `/api/v1/x/<id>/`，与核心 cookie 同名或以 `__Host-`、`__Secure-` 开头的被丢弃。
+- 带 `Gwx-Product-Error` 的应答体必须是 4xx 或 5xx 状态下的 gwx/1 错误对象，server 把码与参数传给客户端。
+- 头只按白名单传出，`Location` 只在仍指向本包前缀之下时保留。
+
+各步骤的顺序、状态码与流式路由的超时见[扩展点](../dev/extensions.md#插件路由)。
 
 主体：
 

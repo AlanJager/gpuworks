@@ -279,10 +279,10 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 
 ### Not built yet
 
-- Dynamic mounting of plugin routes under `/api/v1/x/<id>/` (the route table in "Calls and the route table" below is compiled, but no route uses it yet), and host API endpoints not listed in this guide.
+- Host API endpoints not listed in this guide; per-action authorization and persisted route audit records (today audit is a structured log line only).
 - The impact preview before an uninstall (a 409 from `DELETE` listing the impact first), automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
-- No capability of the manifest vocabulary other than `table.<kind>`, `host.node_identity`, `host.nodes`, `host.host_identity`, `host.clock`, `host.state_read`, `host.derive_key` and `host.setup` ([Host setup](#host-setup)) is offered yet: the other read surfaces (`host.*`), `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name) and `ui.bundle`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
+- No capability of the manifest vocabulary other than `table.<kind>`, `host.node_identity`, `host.nodes`, `host.host_identity`, `host.clock`, `host.state_read`, `host.derive_key`, `host.setup` ([Host setup](#host-setup)) and `routes` is offered yet: the other read surfaces (`host.*`), `host.notify`, `metrics.expose`, settings (`host.config`), WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name) and `ui.bundle`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
 
 ### Trampoline: `gpuworks plugin-exec`
 
@@ -344,7 +344,7 @@ Counting on the call path is an atomic add to a fixed slot and allocates nothing
 
 ### Calls and the route table
 
-The plugin host module calls a plugin through `Bridge.Call` (no route or service uses it yet). Only a package that is installed, enabled and verified, with a server part, is called; any other is refused before any process starts: `PLUGIN_NOT_INSTALLED` when it is not installed, otherwise `PLUGIN_UNAVAILABLE` whose params carry the package's state (`disabled`, `broken`, `revoked`, `installed`, or `failed` when its start was refused). The caller gives the call's class: administrator calls (`admin` and `admin_session` routes) may use the reserved slots, and streamed calls use the stream pool. A failed call falls in one of four classes, which tell the caller whether it may retry:
+The plugin host module calls a plugin through `Bridge.Call`; plugin routes use it through `Bridge.Forward`, which signs the principal for the process that takes the call (see "Plugin routes" below). Only a package that is installed, enabled and verified, with a server part, is called; any other is refused before any process starts: `PLUGIN_NOT_INSTALLED` when it is not installed, otherwise `PLUGIN_UNAVAILABLE` whose params carry the package's state (`disabled`, `broken`, `revoked`, `installed`, or `failed` when its start was refused). The caller gives the call's class: administrator calls (`admin` and `admin_session` routes) may use the reserved slots, and streamed calls use the stream pool. A failed call falls in one of four classes, which tell the caller whether it may retry:
 
 | Code | When | Retry |
 |---|---|---|
@@ -355,7 +355,7 @@ The plugin host module calls a plugin through `Bridge.Call` (no route or service
 
 A write that fails after the request headers were written counts as delivered: the caller is told the request may have been partly applied rather than led into a blind retry. A plugin's own refusal is a normal response.
 
-The route table is compiled from the installed packages' manifests: an enabled package that verifies serves its routes; a disabled package has none (404, and absent from the route inventory), even when it is also revoked or no longer verifies; a revoked package, and one that no longer verifies but verified earlier at the same version, keeps its routes and answers them with 503 `PLUGIN_UNAVAILABLE` without calling the plugin (a package already broken at boot has no routes until it verifies again). After every install, enable, disable, uninstall or recheck the whole table is compiled again and swapped atomically; matching takes no lock, walks one path segment at a time with literal segments tried before `{name}` parameters, and allocates once, for the parameters only; a request keeps the table it started with.
+The route table is compiled from the installed packages' manifests: an enabled package that verifies serves its routes; a disabled package has none (404, and absent from the route inventory), even when it is also revoked or no longer verifies; a revoked package, and one that no longer verifies but verified earlier at the same version, keeps its routes and answers them with 503 `PLUGIN_UNAVAILABLE` without calling the plugin (a package already broken at boot has no routes until it verifies again). After every install, enable, disable, uninstall or recheck the whole table is compiled again and swapped atomically; matching takes no lock, walks one path segment at a time with literal segments tried before `{name}` parameters, and allocates once, for the parameters only; a request keeps the table it started with. The authorization snapshot is bound to the verified manifest digest: if a different build is selected before forwarding, the request is refused with `PLUGIN_UNAVAILABLE` before signing or sending. A restart of the same build continues to work with its fresh process key.
 
 ### Host setup
 
@@ -369,6 +369,45 @@ Plugins never run as root. Host steps that need root come only from the manifest
 - **Other platforms.** macOS has neither udev nor Landlock device rules; a package that declares host steps is refused at install with `PLUGIN_HOST_SETUP_UNSUPPORTED`.
 - **One installation per host.** The rule files and records live at host-wide paths named by package id only, so `install`, `upgrade`, `uninstall` and `--prune` remove what another installation on the same host wrote (see [install layout](../reference/install-layout.md)).
 - **Uninstall.** The rule files and records belong to root, so an offline `gpuworks plugin uninstall` cannot remove them; when they remain it prints `sudo gpuworks plugin host-setup --prune`.
+
+### Plugin routes
+
+The routes an installed package declares in its manifest are mounted under `/api/v1/x/<package id>/` (the core offers `routes@1`; a package declaring a WebSocket route needs `routes.websocket`, which the core does not offer, and is refused with `PLUGIN_INCOMPATIBLE`). One handler serves `/api/v1/x/*` and reads the route table above, so an install, enable, disable or uninstall takes effect at once, without a restart. The namespaces of extensions compiled into the server keep priority: their routes are registered first, and a request in such a namespace that none matches answers the core's 405 or 404 and never reaches a plugin. A package whose id equals a compiled module's name (or that of an extension it mounts) is refused at install with 409 `PLUGIN_ID_TAKEN{id}`; one already installed under that id is `broken` with this code at boot, and neither runs nor has routes.
+
+Each request goes through these steps in order, and a step that refuses ends it:
+
+1. **Canonical path**: the raw path (`RawPath` when set). A request with a `.` or `..` segment, an empty segment (`//`), a backslash, or an escaped `/`, backslash, `.` or `%` (`%2F`, `%5C`, `%2E`, `%25`, in either case) answers 400 `PLUGIN_ROUTE_PATH_INVALID`, before authentication, matching or any call. A path that names no package (`/api/v1/x`, `/api/v1/x/`, or one that starts `/api/v1/x//`) is no plugin's: it answers the core's 404, as without the mount. Matching and forwarding use the same string, and other escapes (such as `%20`) reach the plugin as sent.
+2. **Match**: a path that no route has answers the core's 404 (401 when not signed in, byte for byte what the server answers without the mount), and a path with no route for the method the core's 405; neither calls the plugin.
+3. **Authentication**, with the core's middleware by the route's `access`: `admin` needs an administrator (session or platform token; a read token only reads), `admin_session` an administrator's login session, `member` any signed-in user or platform token (a read token only reads). A session's cross-site write is refused and the session renewed as on core routes. `public` skips authentication and is rate-limited by client address: a token bucket per route and address (the manifest's `rate`, or 60 a minute with a burst of 30), with the address taken as for login throttling (forwarded only by a trusted proxy, IPv6 grouped by /64), in an LRU of at most 10,000 addresses. Over the rate it answers 429 `TOO_MANY_REQUESTS` with `Retry-After`.
+4. **Authorization**: a seam right after authentication that passes every caller today; a later authorization layer goes here, so a hidden feature's 404 still comes before a forbidden action's 403.
+5. **Feature gate**, for a route that names a `feature`, as for compiled extension routes: hidden answers 404, locked 403, and read-only passes reads and `write_when_read_only` writes only. An `ungated` route skips it.
+6. **Assistant and MCP**: they read only GET routes marked `ai_readable`, any other answers 404; the assistant's route list names only those.
+7. **Body cap**: a `Content-Length` above `max_body` answers 413 `REQUEST_TOO_LARGE{max_bytes}` before the plugin is called; a body without a length that outgrows the cap ends the forward and answers 413 too.
+8. **Audit**: once a non-GET request ends, a write the body cap refused included, a structured log line with `audit=true`: package, version, action, method, route, the caller's kind and user, the status, the request id and the time taken.
+9. **Deadline**: a plain route's whole request is bounded by `timeout_s`; on a `stream` route `timeout_s` bounds only the wait for the response headers, after which every write the plugin makes restarts an idle timer and a minute without one cuts the connection. An `on_demand` plugin's cold start counts against `timeout_s`.
+10. **Inbound headers stripped**: a client's `Gwx-*`, `X-Gpuworks-*`, `Authorization`, hop-by-hop headers (including those `Connection` names), the address it claims (`Forwarded`, `X-Forwarded-*`, `X-Real-Ip`) and `Cookie` are not forwarded; a `cookies: true` route gets only the cookies whose names are not the core's (the session cookie and any name starting with `gpuworks`) and do not start with `__Host-`. A valid `traceparent` is forwarded as it is, otherwise a fresh one.
+11. **Signed forward**: the plugin host signs `Gwx-Principal`, `Gwx-Principal-Mac` and `Gwx-Feature-Access` with the principal key of the process that takes the call (the principal carries `route_action` and `route` and expires `timeout_s` plus 5 seconds after signing; a request id that is too long or not printable is clipped to 128 bytes or replaced), and forwards to the plugin's `/r<route path>`. `admin` and `admin_session` routes count as administrator calls (they may use the reserved slots), and `stream` routes use the stream pool.
+
+When the call fails:
+
+| Condition | Status |
+|---|---|
+| `PLUGIN_UNAVAILABLE` (the request never reached the plugin, including routes of `broken` and `revoked` packages) | 503 with `Retry-After: 5` |
+| `PLUGIN_BUSY` | 503 with `Retry-After: 1` |
+| `PLUGIN_TIMEOUT` | 504 |
+| `PLUGIN_ROUTE_FAILED` | 502, no `Retry-After` |
+| a public route over its rate | 429 `TOO_MANY_REQUESTS` |
+| no matching route | the core's 404; the plugin is never called |
+
+A plugin's response reaches the client only through an allowlist:
+
+- **Headers**: only `Content-Type`, `Content-Length`, `Content-Encoding`, `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified` and `Retry-After` pass; `Location` passes only while it is a canonical path under `/api/v1/x/<id>/`; everything else (`Access-Control-*`, hop-by-hop headers, the plugin's own `Content-Security-Policy` and so on) is dropped. Every response carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox; default-src 'none'`.
+- **Content type**: `text/html` and `application/xhtml+xml` pass only from a route that declares `html: true`, otherwise the answer is 502 `PLUGIN_ROUTE_RESPONSE_INVALID{id}`; a missing content type becomes `application/octet-stream`; one that is not a single media type (such as `text/plain, text/html`, whose last entry a browser takes) answers 502 too; any other is sent in normalized form.
+- **Cookies**: only a `public` route with `cookies: true` sets cookies, each with its path forced to `/api/v1/x/<id>/` and its `Domain` removed; one named like a core cookie, or starting with `__Host-` or `__Secure-`, is dropped. The filter applies to the plugin's headers only: a renewed session cookie the core middleware already wrote still reaches the client.
+- **Product errors**: a body marked `Gwx-Product-Error` must be a valid gwx/1 error (64 KiB at most) under a 4xx or 5xx status, with a code the package's manifest lists in `codes` or one of the wire's own `PLUGIN_WIRE_*` codes (a plugin never answers with a code the core or another package owns), and passes with the plugin's status, code and params; anything else answers 502 `PLUGIN_ROUTE_RESPONSE_INVALID`.
+- **Body**: a `stream` route's body is forwarded chunk by chunk and flushed at once, any other one up to 64 MiB. A failure after the headers are sent (the plugin hangs up, the length does not match, the cap is passed, a stream goes idle) aborts the connection rather than leave a truncated 2xx.
+
+The route inventory (`api.RouteInventory`) prints no line for the mount itself and one line per plugin route: `METHOD /api/v1/x/<id><pattern> [access=<access>] [action=<action>] [feature=<key>]` (`[ungated]` when ungated) `[x=<id>@<version>]`. With nothing installed the inventory is byte for byte what it is without the mount; a disabled package does not appear, a `broken` or `revoked` one does. The scale case `TestFleetPluginRouteLoad` (`GPUWORKS_TEST_PERF=1`) measures the server's CPU and memory per request under public traffic from 50,000 client addresses; run it after changing the plugin request path.
 
 ### gwx/1 connections and the host API
 
@@ -399,4 +438,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: ff887de6f59cbcb340b257e9861b3809ccfcaf171fde32d170144744d44ab488 -->
+<!-- translation-source-sha256: 68780acf2d8619ea5253281ed1e9b3e5d1868fb19002302d62925646ec4d15b0 -->

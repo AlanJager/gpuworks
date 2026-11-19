@@ -81,6 +81,15 @@ const (
 	// ErrorPluginRoleRequired: plugin {id} called a host API endpoint that
 	// only a package granted the privileged {role} may call.
 	ErrorPluginRoleRequired = "PLUGIN_ROLE_REQUIRED"
+	// ErrorPluginRouteResponseInvalid: plugin {id} answered a route with
+	// a response the server does not pass on (HTML on a route that does
+	// not declare html, or a malformed Gwx-Product-Error body).
+	ErrorPluginRouteResponseInvalid = "PLUGIN_ROUTE_RESPONSE_INVALID"
+	// ErrorPluginRoutePathInvalid: a request under /api/v1/x/ has a path
+	// that is not canonical (a "." or ".." segment, "//", a backslash, or
+	// an escaped "/", backslash, "." or "%"), so no plugin route matches
+	// it.
+	ErrorPluginRoutePathInvalid = "PLUGIN_ROUTE_PATH_INVALID"
 )
 
 // PluginHostErrorCodes lists the codes above, for the check that the
@@ -94,5 +103,6 @@ func PluginHostErrorCodes() []string {
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,
 		ErrorPluginStateOnDemand, ErrorPluginHostNotPermitted, ErrorPluginHostArgumentInvalid,
 		ErrorPluginRoleRequired,
+		ErrorPluginRouteResponseInvalid, ErrorPluginRoutePathInvalid,
 	}
 }
