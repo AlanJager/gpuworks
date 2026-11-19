@@ -1703,7 +1703,8 @@
     "token_file_failed": "the token file could not be written",
     "slurm_conf_failed": "slurm.conf could not be updated",
     "reconfigure_failed": "Slurm's configuration could not be reloaded",
-    "script_dir_unsafe": "the script directory or one above it is not root's or others can write it: chown it to root, chmod go-w, or use another"
+    "script_dir_unsafe": "the script directory or one above it is not root's or others can write it: chown it to root, chmod go-w, or use another",
+    "uninstall_agents_failed": "the health check is not installed on the Slurm manager node: run the setup command first"
   },
   "slurmApplyKind": {
     "dns": "name resolution failed",

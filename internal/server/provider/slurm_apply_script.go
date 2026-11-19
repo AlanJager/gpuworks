@@ -455,8 +455,11 @@ func ParseSlurmApply(mode, output, ended string) (SlurmApplyResult, error) {
 		return failed(messages.SlurmApplyStepRun, "")
 	}
 	if done := steps["done"]; done["status"] == "failed" || failedStep != "" {
+		// The reason is the precheck's, or "<step>_failed" for the step that
+		// failed (each has its text in the UI, tied by slurmboot's contract
+		// test); none when the script failed without saying where.
 		reason := steps["precheck"]["reason"]
-		if reason == "" {
+		if reason == "" && failedStep != "" {
 			reason = failedStep + "_failed"
 		}
 		return failed(messages.SlurmApplyStepSetup, reason)
