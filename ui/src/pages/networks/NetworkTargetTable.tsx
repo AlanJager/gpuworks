@@ -7,12 +7,13 @@ import { useNetworkTargetSearch, type NetworkSearchKind, type NetworkSearchTarge
 type Props<T extends NetworkSearchTarget> = Omit<ComponentProps<typeof ResourceTable<T>>, "data"> & {
   networkId: number;
   kind: NetworkSearchKind;
+  searchLabel?: string;
   data: T[];
 };
 
-export default function NetworkTargetTable<T extends NetworkSearchTarget>({ networkId, kind, data, emptyDescription, ...table }: Props<T>) {
+export default function NetworkTargetTable<T extends NetworkSearchTarget>({ networkId, kind, data, searchLabel, emptyDescription, ...table }: Props<T>) {
   const { t } = useTranslation("networks");
-  const label = t(kind === "nodes" ? "detail.searchNodes" : "detail.searchAttachments");
+  const label = searchLabel ?? t(kind === "nodes" ? "detail.searchNodes" : "detail.searchAttachments");
   const [filters, setFilters] = useState<NetworkNodeFilters>();
   const { visible, searchKey, query, searchBox, ...status } = useNetworkTargetSearch(networkId, kind, data, label, filters);
   return <ResourceTable<T> {...table} {...status} data={visible} pageResetKey={searchKey} toolbar={searchBox}

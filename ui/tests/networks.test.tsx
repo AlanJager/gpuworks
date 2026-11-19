@@ -184,7 +184,7 @@ test("the overview shows attachment sources on Ethernet and keeps unmatched atta
   const section = screen.getByRole("heading", { name: "Loaded nodes (2)" }).closest("section")!;
   assert.ok(within(section).getByText("2 labels"));
   assert.ok(within(section).getByRole("table"));
-  const nodeToolbar = within(section).getByRole("searchbox", { name: n.detail.searchNodes }).closest(".resource-table-toolbar");
+  const nodeToolbar = within(section).getByRole("searchbox", { name: n.detail.searchEthernetNodes }).closest(".resource-table-toolbar");
   assert.ok(nodeToolbar);
   assert.ok(within(nodeToolbar as HTMLElement).getByRole("button", { name: n.detail.attachNodes }));
   assert.equal(screen.queryByText("rack=unassigned"), null);
@@ -390,47 +390,64 @@ for (const networkType of ["accelerator_rdma", "accelerator_hccs"] as const) {
 
 }
 
-test("an accelerator network's rails are picked from the node's cards", async () => {
-  const calls: unknown[] = [];
-  const npu = {
-    ...detailFixture, type: "accelerator_rdma",
-    nodes: detailFixture.nodes.map((node: { node_name: string }, i: number) => ({
-      ...node, link_layer: "roce",
-      hcas: [{ name: "npu3", ip: i === 0 ? "203.0.113.59" : "203.0.113.82", netdev: "", link_layer: "roce", state: "UP", speed_gbps: 200 }],
-    })),
-  };
-  stub("network", async () => npu);
-  stub("nodeNetworks", async () => ({
-    networks: [], inventory_reported: true, interfaces: [], serving_forward: null, management: { interface: "", ip: "", roles_off: [], behind_nat: false },
-    rdma_ports: [{ device: "mlx5_0", port: 1, state: "ACTIVE", link_layer: "InfiniBand", rate_gbps: 400, netdev: "", ip: "" }],
-    accelerator_ports: [
-      { name: "npu3", index: 3, ip: "203.0.113.59", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
-      { name: "npu4", index: 4, ip: "203.0.113.60", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
-      { name: "npu6", index: 6, ip: "203.0.113.62", netmask: "255.255.0.0", state: "DOWN", speed_gbps: 0, gap: "inactive" },
-      { name: "npu7", index: 7, ip: "", netmask: "", state: "UP", speed_gbps: 200, gap: "no_ipv4" },
-    ],
-  }));
-  stub("editNetworkHCAs", async (id, body) => { calls.push([id, body]); return npu; });
-  const user = userEvent.setup();
-  renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
-  await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
-  assert.ok(screen.getByText(n.detail.acceleratorEditHint));
-  assert.equal(screen.queryByText(n.detail.acceleratorInferredHelp), null, "how rails are picked waits behind the help mark");
-  assert.ok(screen.getAllByText(n.type.accelerator_rdma).length > 0);
-  await expandNodeRows();
-  const row = screen.getByText("203.0.113.59").closest("tr") as HTMLElement;
-  await user.click(within(row).getByRole("button", { name: new RegExp(n.rail.add) }));
-  // Cards are offered, not the host's RDMA ports; the one in use is left out
-  // and a card that cannot work says why.
-  assert.ok(await screen.findByText("npu4 · 203.0.113.60"));
-  assert.ok(screen.getByText(`npu6 · 203.0.113.62 · ${n.rail.gap.inactive}`));
-  assert.ok(screen.getByText(`npu7 · — · ${n.rail.gap.no_ipv4}`));
-  assert.equal(screen.queryByText(/^npu3 ·/), null);
-  assert.equal(screen.queryByText(/^mlx5_0:1/), null);
-  await user.click(screen.getByText("npu4 · 203.0.113.60"));
-  await waitFor(() => assert.equal(calls.length, 1));
-  assert.deepEqual((calls[0] as [number, { op: string; hca: string }])[1].hca, "npu4");
-});
+for (const networkType of ["accelerator_rdma", "accelerator_hccs"] as const) {
+  test(`${networkType} shows the card IPs, diagnostics and actions for its fabric`, async () => {
+    const hccs = networkType === "accelerator_hccs";
+    const fabric = hccs ? "HCCS" : "RoCE";
+    const layer = hccs ? "hccs" : "roce";
+    const subnet = hccs ? "192.0.2" : "203.0.113";
+    const calls: unknown[] = [];
+    const npu = {
+      ...detailFixture, type: networkType,
+      attachments: detailFixture.attachments.map((a: { target: string }) => a.target === "node" ? { ...a, hcas: ["npu3"] } : a),
+      nodes: detailFixture.nodes.map((node: { node_name: string }, i: number) => ({
+        ...node, link_layer: layer,
+        warnings: [{ code: "hca_unusable", params: { value: "npu3" } }],
+        hcas: [{ name: "npu3", ip: `${subnet}.${i === 0 ? 59 : 82}`, netdev: "", link_layer: layer, state: "UP", speed_gbps: 200 }],
+      })),
+    };
+    stub("network", async () => npu);
+    stub("nodeNetworks", async () => ({
+      networks: [], inventory_reported: true, interfaces: [], serving_forward: null, management: { interface: "", ip: "", roles_off: [], behind_nat: false },
+      rdma_ports: [{ device: "mlx5_0", port: 1, state: "ACTIVE", link_layer: "InfiniBand", rate_gbps: 400, netdev: "", ip: "" }],
+      accelerator_ports: [
+        { name: "npu3", index: 3, ip: "203.0.113.59", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
+        { name: "npu4", index: 4, hccs_ip: "192.0.2.60", ip: "203.0.113.60", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
+        { name: "npu6", index: 6, hccs_ip: "192.0.2.62", hccs_gap: "inactive", ip: "203.0.113.62", netmask: "255.255.0.0", state: "DOWN", speed_gbps: 0, gap: "inactive" },
+        { name: "npu7", index: 7, hccs_gap: "no_ipv4", ip: hccs ? "203.0.113.63" : "", netmask: "", state: "UP", speed_gbps: 200, gap: "no_ipv4" },
+      ],
+    }));
+    stub("editNetworkHCAs", async (id, body) => { calls.push([id, body]); return npu; });
+    const user = userEvent.setup();
+    renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
+    await waitFor(() => assert.ok(screen.getByText("Loaded nodes (2)")));
+    assert.ok(screen.getByText(n.detail.acceleratorEditHint));
+    assert.equal(screen.queryByText(n.detail.acceleratorInferredHelp), null, "how rails are picked waits behind the help mark");
+    assert.ok(screen.getAllByText(n.type[networkType]).length > 0);
+    assert.ok(screen.getByRole("columnheader", { name: n.nodeTable.bootstrapCards }));
+    assert.ok(screen.getByRole("searchbox", { name: n.detail.searchCardNodes }));
+    const warning = i18n.t("networks:cardWarning.hca_unusable", { value: "npu3", fabric });
+    assert.ok(screen.getAllByRole("img", { name: warning }).length > 0);
+    await expandNodeRows();
+    const row = screen.getByText(`${subnet}.59`).closest("tr") as HTMLElement;
+    assert.ok(within(row).getByRole("list", { name: i18n.t("networks:nodeTable.cardAddresses", { fabric }) }));
+    assert.ok(screen.getByText(`${n.node.card.name} · npu3`));
+    await user.click(within(row).getByRole("button", { name: i18n.t("networks:rail.remove", { hca: "npu3" }) }));
+    assert.ok(await screen.findByText(i18n.t("networks:rail.removeCardTitle", { hca: "npu3" })));
+    await user.click(screen.getByRole("button", { name: n.actions.cancel }));
+    await user.click(within(row).getByRole("button", { name: new RegExp(n.rail.addCard) }));
+    // Cards are offered, not the host's RDMA ports; the one in use is left out
+    // and a card that cannot work says why.
+    assert.ok(await screen.findByText(`npu4 · ${subnet}.60`));
+    assert.ok(screen.getByText(`npu6 · ${subnet}.62 · ${n.rail.gap.inactive}`));
+    assert.ok(screen.getByText(`npu7 · — · ${i18n.t("networks:rail.cardMissingIP", { fabric })}`));
+    assert.equal(screen.queryByText(/^npu3 ·/), null);
+    assert.equal(screen.queryByText(/^mlx5_0:1/), null);
+    await user.click(screen.getByText(`npu4 · ${subnet}.60`));
+    await waitFor(() => assert.equal(calls.length, 1));
+    assert.deepEqual((calls[0] as [number, { op: string; hca: string }])[1].hca, "npu4");
+  });
+}
 
 test("network detail lists each node's bootstrap and HCAs with their IPs", async () => {
   stub("network", async () => detailFixture);

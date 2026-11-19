@@ -21,7 +21,7 @@ import NetworkFormModal from "./NetworkFormModal";
 import NetworkTestPanel from "./NetworkTestPanel";
 import NetworkMonitorPanel from "./NetworkMonitorPanel";
 import ManagementNodesTable from "./ManagementNodesTable";
-import { Endpoint, LinkLayerTag, RoleTags, TypeTag, WarningMark, isAcceleratorRDMA, usesRails, sourceText } from "./networkDisplay";
+import { Endpoint, LinkLayerTag, RoleTags, TypeTag, WarningMark, isAcceleratorRDMA, railAddressTitle, usesRails, sourceText } from "./networkDisplay";
 import { BootstrapCell, RailsCell } from "./RDMAEndpoints";
 import { HelpTip } from "../../ui-kit/HelpTip";
 
@@ -180,6 +180,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
 }) {
   const { t } = useTranslation("networks");
   const rails = usesRails(detail.type);
+  const cards = isAcceleratorRDMA(detail.type);
   const [labelEditor, setLabelEditor] = useState<{ attachment?: NetworkAttachment } | null>(null);
   const attachments = useMemo(() => new Map(detail.attachments.map(a => [a.id, a])), [detail.attachments]);
   const detach = async (attachment: NetworkAttachment) => {
@@ -189,17 +190,20 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
       message.error(t("message.failed", { detail: (e as Error).message }));
     }
   };
+  const ethernetEndpoint = (node: NetworkNode) => node.ip
+    ? <Endpoint iface={node.interface} ip={node.ip} />
+    : <span className="text-fg-muted">{node.interface && `${node.interface} · `}{t("nodeTable.noResolvedIP")}</span>;
   const nodeColumns: ResourceColumn<NetworkNode>[] = [
     {
       title: t("nodeTable.node"),
       dataIndex: "node_name", key: "node", width: 140, role: "name",
-      render: (_, n) => <span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span>,
+      render: (_, n) => <span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} type={detail.type} /></span>,
     },
     {
-      key: "endpointSummary", title: t(rails ? "nodeTable.bootstrapPorts" : "nodeTable.endpoint"), width: 220,
+      key: "endpointSummary", title: t(cards ? "nodeTable.bootstrapCards" : rails ? "nodeTable.bootstrapPorts" : "nodeTable.endpoint"), width: 220,
       render: (_, n) => rails
-        ? <span>{n.ip || t("rail.noBootstrap")} · {t(isAcceleratorRDMA(detail.type) ? "nodeTable.cardCount" : "nodeTable.portCount", { count: n.hcas.length })}</span>
-        : <Endpoint iface={n.interface} ip={n.ip} />,
+        ? <span>{n.ip || t("rail.noBootstrap")} · {t(cards ? "nodeTable.cardCount" : "nodeTable.portCount", { count: n.hcas.length })}</span>
+        : ethernetEndpoint(n),
     },
     {
       title: t("nodeTable.roles"), dataIndex: "roles", key: "roles", width: 130,
@@ -241,14 +245,14 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
             <dd><BootstrapCell network={detail} node={node} onChanged={onDetail} /></dd>
           </div>
           <div>
-            <dt className="mb-1 text-label text-fg-muted">{t("nodeTable.hcaIPs")}<LinkLayerTag layer={node.link_layer} /></dt>
+            <dt className="mb-1 text-label text-fg-muted">{railAddressTitle(t, detail.type)}<LinkLayerTag layer={node.link_layer} /></dt>
             <dd><RailsCell network={detail} node={node} onChanged={onDetail} /></dd>
           </div>
         </>
       ) : (
         <div>
           <dt className="mb-1 text-label text-fg-muted">{t("nodeTable.endpoint")}</dt>
-          <dd><Endpoint iface={node.interface} ip={node.ip} /></dd>
+          <dd>{ethernetEndpoint(node)}</dd>
         </div>
       )}
       {attachment && (attachment.interface || attachment.ip || attachment.hcas.length > 0) && (
@@ -256,8 +260,8 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           <dt className="mb-1 text-label text-fg-muted">{t("attach.overrides")}</dt>
           <dd className="max-h-40 overflow-y-auto">
             {attachment.interface && <div>{t("attach.interface")} · {attachment.interface}</div>}
-            {attachment.ip && <div>IP · {attachment.ip}</div>}
-            {attachment.hcas.length > 0 && <div>HCA · {attachment.hcas.join(", ")}</div>}
+            {attachment.ip && <div>{rails ? t("nodeTable.bootstrap") : "IP"} · {attachment.ip}</div>}
+            {attachment.hcas.length > 0 && <div>{t(cards ? "node.card.name" : "nodeTable.hcas")} · {attachment.hcas.join(", ")}</div>}
           </dd>
         </div>
       )}
@@ -274,8 +278,8 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
               <Descriptions.Item label={t("selector.bootstrapCidr")}>{detail.cidr || t("selector.inferredShort")}</Descriptions.Item>
             </Descriptions>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: "8px 0 0" }} className="flex items-center gap-1">
-              {t(isAcceleratorRDMA(detail.type) ? "detail.acceleratorEditHint" : "detail.rdmaEditHint")}
-              <HelpTip content={t(isAcceleratorRDMA(detail.type) ? "detail.acceleratorInferredHelp" : "detail.rdmaInferredHelp")} />
+              {t(cards ? "detail.acceleratorEditHint" : "detail.rdmaEditHint")}
+              <HelpTip content={t(cards ? "detail.acceleratorInferredHelp" : "detail.rdmaInferredHelp")} />
             </Typography.Paragraph>
           </>
         ) : (
@@ -287,6 +291,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
       </DetailSection>
       <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach} onManageLabels={() => setLabelEditor({})}>
         <div className="network-overview-nodes"><NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
+          searchLabel={t(!rails ? "detail.searchEthernetNodes" : cards ? "detail.searchCardNodes" : "detail.searchNodes")}
           toolbarExtra={<Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("detail.attachNodes")}</Button>}
           tableId="network-resolved-nodes"
           rowKey="node_uuid"

@@ -14,7 +14,7 @@ import NodePicker from "../../nodes/NodePicker";
 import { useNodeLookup } from "../../nodes/useNodeLookup";
 import { nodeDisplayName } from "../../nodeDisplay";
 import type { NetworkAttachment, NetworkDetail, NodeNetworks } from "../../networkTypes";
-import { usesRails } from "./networkDisplay";
+import { isAcceleratorRDMA, usesRails } from "./networkDisplay";
 
 interface FormValues {
   node_uuids?: string[];
@@ -104,7 +104,7 @@ export default function AttachNetworkModal({
       <form onSubmit={submit}>
         <DialogHeader><DialogTitle>{editing ? t(rdma ? "attach.editBootstrapTitle" : "attach.editTitle") : t("detail.attachNodes")}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-4">
-          <FormField control={form.control} name="node_uuids" label={t("attach.nodes")} description={!editing && rdma ? t("attach.rdmaInferred") : undefined} required rules={{ validate: value => !!value?.length || t("attach.nodeRequired") }}>{field => <NodePicker id={field.id} value={field.value ?? []} onChange={field.onChange} mode="multiple" disabled={editing} aria-label={t("attach.nodes")} optionDisabled={node => !editing && attached.has(node.uuid)} />}</FormField>
+          <FormField control={form.control} name="node_uuids" label={t("attach.nodes")} description={!editing && rdma ? t(isAcceleratorRDMA(network.type) ? "attach.cardInferred" : "attach.rdmaInferred") : undefined} required rules={{ validate: value => !!value?.length || t("attach.nodeRequired") }}>{field => <NodePicker id={field.id} value={field.value ?? []} onChange={field.onChange} mode="multiple" disabled={editing} aria-label={t("attach.nodes")} optionDisabled={node => !editing && attached.has(node.uuid)} />}</FormField>
           {editing && <>
             <h3 className="text-body font-semibold">{t(rdma ? "attach.bootstrapOverride" : "attach.overrides")}</h3>
             <FormField control={form.control} name="interface" label={t(rdma ? "attach.interfaceIB" : "attach.interface")}>{field => <Combobox items={interfaceOptions.map(option => option.value)} value={field.value ?? ""} inputValue={field.value ?? ""} onInputValueChange={field.onChange} onValueChange={value => { if (value !== null) field.onChange(value); }}>

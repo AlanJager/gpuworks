@@ -88,6 +88,8 @@
     "typeHelp": "Sets transport and device injection. $t(type.host_ethernet): TCP. $t(type.host_rdma): IB/RoCE. $t(type.accelerator_rdma): on-card RoCE. $t(type.accelerator_hccs): A3/910C HCCS/HIXL with vNICs."
   },
   "detail": {
+    "searchEthernetNodes": "Search by node name, IP, interface or label",
+    "searchCardNodes": "Search by node name, IP, accelerator card or label",
     "searchNodes": "Search by node name, IP, HCA or label",
     "searchAttachments": "Search by node, label or override",
     "noMatchingNodes": "No nodes match this search.",
@@ -124,6 +126,9 @@
     "acceleratorEditHint": "Add or remove cards, or change the bootstrap, per node in the table below."
   },
   "nodeTable": {
+    "noResolvedIP": "No IP resolved",
+    "bootstrapCards": "Bootstrap IP / accelerator cards",
+    "cardAddresses": "Accelerator cards and {{fabric}} IPs",
     "bootstrapPorts": "Bootstrap IP / HCA",
     "portCount_one": "{{count}} HCA port",
     "portCount_other": "{{count}} HCA ports",
@@ -158,8 +163,14 @@
     "rdmaInferred": "Each node's bootstrap IP and HCAs are inferred once attached.",
     "partial": "Attached {{ok}} nodes; failed: {{failed}}",
     "done": "Attached {{count}} nodes",
+    "cardInferred": "The bootstrap IP and accelerator cards are inferred for each attached node.",
     "editBootstrapTitle": "Set bootstrap",
     "bootstrapOverride": "Bootstrap (empty: inferred)"
+  },
+  "cardWarning": {
+    "rdma_no_hca": "No usable accelerator card. Check the {{fabric}} link state and IPv4 address on each card.",
+    "hca_unusable": "Card {{value}} is unavailable. Check its {{fabric}} link state and IPv4 address.",
+    "hca_mismatch": "This node uses {{count}} cards while other nodes use {{counts}}. Extra cards have no peer."
   },
   "warning": {
     "conflict": "Several {{role}} networks reach this node at the same rank. {{winner}} was attached first and is used; not used: {{losers}}. Attach one of them to this node directly to choose explicitly.",
@@ -644,7 +655,16 @@
     "auto": "Auto",
     "manual": "Manual",
     "reset": "Back to auto",
-    "removed": "Removed; run the test again to see the effect",
+    "removed": "Network configuration updated. Run the test again for new results.",
+    "inventoryReadFailed": "Could not load the node’s network inventory.",
+    "inventoryPending": "The node has not reported its network inventory yet. Retry after it reports.",
+    "inventoryLoading": "Loading network inventory…",
+    "noReportedPorts": "The inventory contains no ports for this network type.",
+    "allPortsUsed": "All reported ports of this type are already on this network.",
+    "noAddressedInterface": "The inventory contains no interfaces with an IP address.",
+    "removeCardTitle": "Remove card {{hca}}?",
+    "cardMissingIP": "The card has no {{fabric}} IPv4 address",
+    "addCard": "Add card",
     "removeTitle": "Remove HCA {{hca}}?",
     "onlyNode": "From {{node}} only (by default it is removed from every node)",
     "remove": "Remove {{hca}}",
