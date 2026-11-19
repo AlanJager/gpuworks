@@ -89,3 +89,21 @@ test("the form's id and validity land on the input, and the ref focuses it", asy
   ref.current!.focus();
   assert.equal(document.activeElement, box);
 });
+
+test("a new search over listed nodes says it is still loading until the server answers", async () => {
+  const fake = installFleet(api as never, fleet);
+  show({});
+  const box = screen.getByRole("combobox", { name: "Node" });
+  await openNodePicker(box);
+  await waitFor(() => assert.deepEqual(options(), ["gpu-a", "gpu-b", "cpu-c"]));
+  let answer!: () => void;
+  const listed = api.nodesPage;
+  api.nodesPage = (query) => new Promise((resolve) => { answer = () => resolve(listed(query)); });
+  fireEvent.change(box, { target: { value: "gpu-b" } });
+  assert.ok(await screen.findByText(picker.loading), "the open list shows the request is running");
+  assert.deepEqual(options(), ["gpu-a", "gpu-b", "cpu-c"], "the earlier results stay listed meanwhile");
+  answer();
+  await waitFor(() => assert.deepEqual(options(), ["gpu-b"]));
+  assert.equal(screen.queryByText(picker.loading), null);
+  assert.equal(fake.pages.at(-1)?.q, "gpu-b");
+});

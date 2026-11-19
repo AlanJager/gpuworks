@@ -104,6 +104,8 @@ const NodePicker = forwardRef<HTMLInputElement, Props>(function NodePicker({
   const list = <ComboboxContent anchor={mode === "multiple" ? anchor : undefined}>
     {/* Typing searches the server, so nothing filters here; an empty page says why. */}
     <ComboboxEmpty>{page.loading ? <Spinner label={t("picker.loading")} /> : notFoundContent ?? t("dataTable.empty")}</ComboboxEmpty>
+    {/* A new search over listed nodes keeps them shown and says it is still asking. */}
+    {page.loading && options.length > 0 && <div className="px-3 py-1.5 text-body" data-slot="node-picker-loading"><Spinner label={t("picker.loading")} /></div>}
     <ComboboxList>{(uuid: string) => {
       const option = byValue.get(uuid);
       return <ComboboxItem key={uuid} value={uuid} title={option?.title || undefined} disabled={option?.disabled || (full && !selected.includes(uuid))}>{labelOf(uuid)}</ComboboxItem>;
