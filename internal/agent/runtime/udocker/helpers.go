@@ -398,6 +398,15 @@ func (d *Driver) shellInvocation(full []string) string {
 
 func (d *Driver) pidOf(name string) (int, bool) { return d.procs().PID(name) }
 
+// RootPID is the leader of the workload's process group (runtime.ProcessRooter).
+func (d *Driver) RootPID(_ context.Context, id string) (int, error) {
+	pid, ok := d.pidOf(id)
+	if !ok {
+		return 0, fmt.Errorf("udocker workload %s has no recorded process", id)
+	}
+	return pid, nil
+}
+
 func processAlive(pid int) bool { return procgroup.Alive(pid) }
 
 func normalizeImage(image string) string {

@@ -440,6 +440,21 @@ func (d *Driver) Status(ctx context.Context, id string) (runtime.Status, error) 
 	return runtime.Status{Exists: true, Running: parts[0] == "true", ExitCode: exitCode, OOMKilled: parts[2] == "true", Health: parts[3]}, nil
 }
 
+// RootPID is the container's init process as the host numbers it
+// (runtime.ProcessRooter).
+func (d *Driver) RootPID(ctx context.Context, id string) (int, error) {
+	out, err := output(ctx, 10*time.Second, "inspect", "--format", "{{.State.Pid}}", id)
+	if err != nil {
+		return 0, err
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	pid, err := strconv.Atoi(strings.TrimSpace(lines[len(lines)-1]))
+	if err != nil || pid <= 0 {
+		return 0, fmt.Errorf("unexpected docker inspect output %q", out)
+	}
+	return pid, nil
+}
+
 // Logs returns the container's log stream.
 func (d *Driver) Logs(ctx context.Context, id string, follow bool, tail int) (io.ReadCloser, error) {
 	args := []string{"logs"}

@@ -30,7 +30,7 @@ const instanceFailureCodes = [
   "MODEL_PATH_UNAVAILABLE", "ENGINE_PORT_REFUSED", "ENGINE_PORT_IN_USE", "IMAGE_PULL_FAILED", "CONTAINER_RUNTIME_UNAVAILABLE",
   "RUNTIME_ASSET_PREPARE_FAILED", "PRE_START_PREPARE_FAILED", "KV_DISK_PREPARE_FAILED", "DGPU_PARTITION_FAILED", "CONTAINER_RUN_FAILED",
   "CONTAINER_DISAPPEARED", "CONTAINER_EXITED", "CONTAINER_OOM_KILLED", "CONTAINER_UNHEALTHY", "ENGINE_HEALTH_ENDPOINT_INVALID",
-  "ENGINE_HEALTH_TIMEOUT", "WORKER_READINESS_TIMEOUT", "ENGINE_UNRESPONSIVE", "CALLABLE_INIT_FAILED", "SLEEP_PREWARM_FAILED",
+  "ENGINE_HEALTH_TIMEOUT", "ENGINE_START_STALLED", "ENGINE_START_ABORTED", "WORKER_READINESS_TIMEOUT", "ENGINE_UNRESPONSIVE", "CALLABLE_INIT_FAILED", "SLEEP_PREWARM_FAILED",
   "SLEEP_STATE_UNCERTAIN", "SERVING_PATH_UNAVAILABLE", "UNIT_RANK_GONE", "UNIT_RANK_NODE_OFFLINE", "UNIT_RANK_FAILED",
 ];
 
@@ -92,6 +92,13 @@ for (const language of ["en", "zh"]) {
       const named = runtimeFailureText(t, { code, params: { ...wireParams, evidence: ["RuntimeError: CUDA out of memory"] }, message: "x" });
       assert.match(named, language === "en" ? /Last error: RuntimeError: CUDA out of memory$/ : /最后的错误：RuntimeError: CUDA out of memory$/, named);
     }
+    // A stalled start says what the agent saw and shows its last output.
+    const stalled = runtimeFailureText(t, { code: "ENGINE_START_STALLED", params: { ...wireParams, detail: "no progress: output flat 20m0s; processes: 2 in tracing stop (worker_a, worker_b)", evidence }, message: "x" });
+    assert.match(stalled, language === "en" ? /made no progress for a long time while its container kept running: no progress: output flat 20m0s; processes: 2 in tracing stop/ : /引擎启动长时间没有任何进展，容器仍在运行：no progress: output flat 20m0s/, stalled);
+    assert.match(stalled, language === "en" ? / Last output: \[Gloo\]/ : /最后的输出：\[Gloo\]/, stalled);
+    // An engine that gave up during its start shows the exception it raised.
+    const aborted = runtimeFailureText(t, { code: "ENGINE_START_ABORTED", params: { ...wireParams, evidence: ["RuntimeError: Unsupport run graph with different stream."] }, message: "x" });
+    assert.match(aborted, language === "en" ? /one of its processes failed.* Last error: RuntimeError: Unsupport run graph with different stream\.$/ : /某个进程失败.*最后的错误：RuntimeError: Unsupport run graph with different stream\.$/, aborted);
     // An exit that named no error shows the newest of its last lines, the
     // one the agent's message ends with, as output, not as an error.
     const exited = runtimeFailureText(t, { code: "CONTAINER_EXITED", params: { ...wireParams, evidence }, message: "x" });

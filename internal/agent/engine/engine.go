@@ -50,6 +50,9 @@ type Engine struct {
 	checkPorts func(proto.InstanceDesiredState) error
 	// owner is labelled on every launched container (workload_labels.go).
 	owner workloadOwnerSlot
+	// startStall configures the watch for a start that makes no progress
+	// (start_stall.go); the zero value uses its constants.
+	startStall startStall
 
 	mu          sync.Mutex
 	assetMu     sync.Mutex // serializes content-addressed cache publication
