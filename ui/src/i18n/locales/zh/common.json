@@ -1703,7 +1703,7 @@
     "token_file_failed": "令牌文件没能写入",
     "slurm_conf_failed": "slurm.conf 没能更新",
     "reconfigure_failed": "Slurm 配置没能重新加载",
-    "script_dir_unsafe": "脚本目录或它的某个上级目录不归 root 所有，或者组用户、其他用户可写（开了 root squash 的共享存储也会这样）。slurmd 在每台节点上以 root 运行其中的健康检查，所以只能由 root 修改：把它改为属于 root、组和其他人不可写，或者换一个脚本目录"
+    "script_dir_unsafe": "脚本目录或它的上级目录不归 root 所有，或组、其他人可写（root squash 的共享存储也算）。请改为属于 root、组和其他人不可写，或换一个脚本目录"
   },
   "slurmApplyKind": {
     "dns": "域名解析失败",
