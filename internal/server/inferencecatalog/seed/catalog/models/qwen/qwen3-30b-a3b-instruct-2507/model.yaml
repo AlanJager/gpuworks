@@ -76,6 +76,11 @@ specs:
   # BF16 graph capture did not reach healthy; the eager path completed
   # startup and a real chat request on four 910C dies.
   - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "BF16 graph capture did not reach healthy on 910C; the eager path completed startup and a real chat request on four dies."
+    detail_zh: "910C 上 BF16 图捕获无法进入健康状态；eager 路径在四个 die 上完成了启动和一次真实对话请求。"
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\

@@ -36,6 +36,7 @@
     "CATALOG_HEALTH_ENDPOINT_UNDECLARED": "Spec \"{{spec}}\" of {{model_id}} runs the callable engine but declares no api.health_endpoint, so its readiness is probed on the default /health.",
     "CATALOG_CALLABLE_SERVED_NAME_FIXED": "Spec \"{{spec}}\" of {{model_id}} runs the callable engine but hard-codes --served-model-name {{name}}, so an engine that checks the model name rejects gateway requests; use ${SERVED_MODEL_NAME} instead.",
     "CATALOG_DISPLAY_PROFILE_RETIRED": "Spec \"{{spec}}\" of {{model_id}} still sets the retired display_profile or gpus.display_target, which was ignored on import; use display_name_zh_cn and display_name_en instead.",
+    "CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT": "Spec \"{{spec}}\" of {{model_id}} states performance_tradeoffs. They were checked, but only the built-in templates' reasons are read, so the imported spec does not keep them.",
     "CATALOG_ARG_PASSED_THROUGH": "Spec \"{{spec}}\" of {{model_id}} passes {{flag}} {{value}}, which the platform parameter dictionary cannot read. It goes to the engine verbatim, but the deploy form and the memory estimate do not see it."
   },
   "detail": {

@@ -1363,6 +1363,11 @@ specs:
   # Graph capture fails on A3. --enforce-eager overrides the cudagraph mode
   # above; both flags are kept exactly as in the measured run.
   - --enforce-eager
+  performance_tradeoffs:
+  - param: --enforce-eager
+    reason: hardware_plugin_requires
+    detail_en: "Graph capture fails on A3; eager mode is the configuration of the measured run."
+    detail_zh: "A3 上图捕获失败；eager 模式是实测通过的配置。"
   placement:
     language: starlark
     resolver: |-

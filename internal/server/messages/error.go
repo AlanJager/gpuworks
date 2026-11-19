@@ -146,6 +146,11 @@ const (
 	// display_profile or gpus.display_target keys; they were ignored, and
 	// the spec should carry display_name_zh_cn / display_name_en instead.
 	WarningCatalogDisplayProfileRetired = "CATALOG_DISPLAY_PROFILE_RETIRED"
+	// WarningCatalogPerformanceTradeoffsNotKept: a spec states
+	// performance_tradeoffs. They were validated, but the platform reads these
+	// reasons only from its built-in catalog, so the imported spec does not
+	// keep them.
+	WarningCatalogPerformanceTradeoffsNotKept = "CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT"
 	// WarningCatalogArgPassedThrough: a spec gives a parameter the platform
 	// dictionary owns a value the dictionary cannot read (a newer engine
 	// choice, another type). It is passed to the engine verbatim; the form

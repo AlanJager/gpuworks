@@ -99,6 +99,11 @@ specs:
   - qwen3
   - --tool-call-parser
   - qwen3_coder
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "NPU graph capture stalled in the earlier BF16 run; the eager path completed startup plus text and real-image chat on four 910C dies."
+    detail_zh: "早先的 BF16 运行中 NPU 图捕获停滞；eager 路径在四个 910C die 上完成了启动以及文本与真实图片对话。"
   placement:
     language: starlark
     resolver: |-
@@ -714,6 +719,11 @@ specs:
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
   - --additional-config
   - '{"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":true,"enable_static_kernel":true,"enable_super_kernel":false}}'
+  performance_tradeoffs:
+  - param: --enforce-eager
+    reason: hardware_plugin_requires
+    detail_en: "vLLM 0.30 NPU graph compilation did not reach health within the validation window; eager mode completed startup and inference on 910C."
+    detail_zh: "vLLM 0.30 的 NPU 图编译在验证时限内无法进入健康状态；eager 模式在 910C 上完成了启动与推理。"
   env:
     VLLM_USE_MODELSCOPE: 'True'
     HCCL_BUFFSIZE: '1024'

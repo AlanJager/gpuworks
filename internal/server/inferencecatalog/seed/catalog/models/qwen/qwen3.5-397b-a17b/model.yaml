@@ -303,6 +303,15 @@ specs:
   - '{"method":"qwen3_5_mtp","num_speculative_tokens":3,"enforce_eager":true}'
   - --additional-config
   - '{"enable_cpu_binding":true,"enable_fused_mc2":1}'
+  performance_tradeoffs:
+  - param: --enforce-eager
+    reason: hardware_plugin_requires
+    detail_en: "This image's rc2 build lacks causal_conv1d_update_npu, and the PyTorch fallback stalls FULL_DECODE_ONLY graph capture (upstream issue #18978)."
+    detail_zh: "该镜像的 rc2 版本缺少 causal_conv1d_update_npu，PyTorch 回退实现会让 FULL_DECODE_ONLY 图捕获停滞（上游 issue #18978）。"
+  - param: --speculative-config.enforce_eager
+    reason: hardware_plugin_requires
+    detail_en: "The MTP drafter runs eager for the same reason as the target model: the rc2 build lacks causal_conv1d_update_npu and the fallback stalls graph capture."
+    detail_zh: "MTP 草稿模型与主模型同因使用 eager：rc2 版本缺少 causal_conv1d_update_npu，回退实现会让图捕获停滞。"
   env:
     HCCL_BUFFSIZE: '1024'
     HCCL_OP_EXPANSION_MODE: AIV
