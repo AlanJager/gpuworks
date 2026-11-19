@@ -1529,7 +1529,7 @@ The rules cover replica shape (`REPLICAS_NEGATIVE`/`REPLICAS_TOO_MANY`/`DISTRIBU
 node requirements (`NODE_REQUIREMENTS_INVALID`/`NODE_REQUIREMENTS_UNMET`), placement strategy (`PLACEMENT_STRATEGY_INVALID`),
 vendor (`TARGET_VENDOR_INVALID`), engine (`ENGINE_INVALID`),
 extra_args parsing (`EXTRA_ARGS_INVALID`), mounts (`MOUNT_CONTAINER_PATH`/`MOUNT_HOST_PATH`/
-`MOUNT_TARGET_DUPLICATE`/`MOUNT_TARGET_NESTED`), JSON parameters (`QUICK_PARAM_JSON_INVALID`),
+`MOUNT_TARGET_DUPLICATE`/`MOUNT_TARGET_NESTED`/`MOUNT_VOLUME_INVALID`), JSON parameters (`QUICK_PARAM_JSON_INVALID`),
 container path parameters (`QUICK_PARAM_PATH_INVALID`), Docker arguments that duplicate platform-managed settings or dedicated fields
 (`DOCKER_ARG_PLATFORM_MANAGED`/`DOCKER_ARG_USE_SHM_FIELD`/`DOCKER_ARG_USE_ENV_FIELD`/
 `DOCKER_ARG_USE_MOUNT_FIELD`/`DOCKER_ARG_USE_ENTRYPOINT_FIELD`), setting both shared memory size and `--ipc=host`
@@ -2357,4 +2357,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: b364436d0da79ef981f5bac1226b3ca2c3c05f5ec90e51c7474ef38da8d3176b -->
+<!-- translation-source-sha256: d0b5585bf249bb1732b81fb302ea2dccfd0b4246c2014adb3ff873dce09fc2e9 -->

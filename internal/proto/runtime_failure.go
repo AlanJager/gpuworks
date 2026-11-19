@@ -162,6 +162,15 @@ const (
 	ErrorRuntimeAssetPrepareFailed = "RUNTIME_ASSET_PREPARE_FAILED"
 	ErrorPreStartPrepareFailed     = "PRE_START_PREPARE_FAILED"
 	ErrorKVDiskPrepareFailed       = "KV_DISK_PREPARE_FAILED"
+	// ErrorMountVolumeUnsupported: a mount names a runtime-managed volume
+	// and the node's container runtime has no named volumes (Runtime is the
+	// driver, Resource the volume).
+	ErrorMountVolumeUnsupported = "MOUNT_VOLUME_UNSUPPORTED"
+	// ErrorMountVolumeInvalid: a mount's volume is not a runtime volume name
+	// (ValidVolumeName), or the mount states a host path as well (Resource is
+	// the volume). A volume starting with "/" would be a bind mount the host
+	// path rules never judged.
+	ErrorMountVolumeInvalid = "MOUNT_VOLUME_INVALID"
 	// ErrorDGPUPartitionFailed: the dGPU limit could not be applied (Detail).
 	ErrorDGPUPartitionFailed = "DGPU_PARTITION_FAILED"
 	// ErrorContainerRunFailed: the runtime refused to create or start the

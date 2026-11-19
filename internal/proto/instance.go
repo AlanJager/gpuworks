@@ -184,6 +184,11 @@ type RuntimeAsset struct {
 	Content       []byte `json:"content,omitempty"`
 }
 
+// MountSpec is one container mount. It mounts exactly one source: Source, a
+// host path, or Volume, a named volume the container runtime owns (created on
+// first use, kept across container restarts and removals). Only runtimes with
+// named volumes (docker, nerdctl) run a Volume mount; the others refuse the
+// launch with ErrorMountVolumeUnsupported.
 type MountSpec struct {
 	Source   string `json:"source,omitempty"`
 	Volume   string `json:"volume,omitempty"`

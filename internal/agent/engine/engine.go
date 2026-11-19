@@ -398,7 +398,7 @@ func toWorkloadSpec(spec proto.InstanceDesiredState, name string) runtime.Worklo
 		DockerArgs:  spec.DockerArgs,
 	}
 	for _, m := range spec.Mounts {
-		ws.Mounts = append(ws.Mounts, runtime.Mount{Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly})
+		ws.Mounts = append(ws.Mounts, runtime.Mount{Source: m.Source, Volume: m.Volume, Target: m.Target, ReadOnly: m.ReadOnly})
 	}
 	if spec.ModelPath != "" && spec.ModelMount != "" {
 		ws.Mounts = append(ws.Mounts, runtime.Mount{

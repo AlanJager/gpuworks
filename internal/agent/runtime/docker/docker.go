@@ -34,6 +34,9 @@ func New() *Driver { return &Driver{} }
 // Name implements runtime.Driver.
 func (d *Driver) Name() string { return "docker" }
 
+// NamedVolumes: docker creates a named volume on first use and keeps it.
+func (d *Driver) NamedVolumes() bool { return true }
+
 // Detect reports whether Docker is usable for workloads on this host. A
 // reachable remote daemon is deliberately rejected because bind mounts and
 // accelerator devices would resolve on the remote machine, not this node.
@@ -372,11 +375,7 @@ func buildRunArgs(spec runtime.WorkloadSpec) []string {
 		args = append(args, "-e", k+"="+v)
 	}
 	for _, m := range spec.Mounts {
-		mnt := m.Source + ":" + m.Target
-		if m.ReadOnly {
-			mnt += ":ro"
-		}
-		args = append(args, "-v", mnt)
+		args = append(args, "-v", m.VolumeArg())
 	}
 	if len(spec.Entrypoint) > 0 {
 		args = append(args, "--entrypoint", spec.Entrypoint[0])

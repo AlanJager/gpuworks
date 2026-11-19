@@ -136,6 +136,14 @@ func TestEvaluateCollectsFieldErrorsInsteadOfRejecting(t *testing.T) {
 			body: fmt.Sprintf(`{"model_id":%d,"node_uuid":"field-errors-node","engine":"vllm","container_overrides":{"extra_mounts":[{"host_path":"data","container_path":"/data"}]}}`, model.ID),
 			want: dto.FieldError{Field: deployment.FieldContainerMounts, Code: ErrorMountHostPath, Params: map[string]any{"source": "data"}},
 		},
+		"mount volume is a host path": {
+			body: fmt.Sprintf(`{"model_id":%d,"node_uuid":"field-errors-node","engine":"vllm","container_overrides":{"extra_mounts":[{"volume":"/etc","container_path":"/data"}]}}`, model.ID),
+			want: dto.FieldError{Field: deployment.FieldContainerMounts, Code: "MOUNT_VOLUME_INVALID", Params: map[string]any{"resource": "/etc"}},
+		},
+		"mount names a volume and a host path": {
+			body: fmt.Sprintf(`{"model_id":%d,"node_uuid":"field-errors-node","engine":"vllm","container_overrides":{"extra_mounts":[{"volume":"data","host_path":"/srv/data","container_path":"/data"}]}}`, model.ID),
+			want: dto.FieldError{Field: deployment.FieldContainerMounts, Code: ErrorFieldInvalid},
+		},
 		"mount duplicates the model mount": {
 			body: fmt.Sprintf(`{"model_id":%d,"node_uuid":"field-errors-node","engine":"vllm","container_overrides":{"extra_mounts":[{"host_path":"/elsewhere","container_path":"/model"}]}}`, model.ID),
 			want: dto.FieldError{Field: deployment.FieldContainerMounts, Code: "MOUNT_TARGET_DUPLICATE", Params: map[string]any{"target": "/model"}},
