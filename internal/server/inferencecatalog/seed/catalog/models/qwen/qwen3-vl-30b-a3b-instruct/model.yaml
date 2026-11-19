@@ -82,6 +82,11 @@ specs:
   # NPU graph capture stalled in the measured run; eager mode completed text
   # and real-image chat at TP4 on four 910C dies.
   - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "NPU graph capture stalled in the measured A3 run; eager mode completed text and real-image chat at TP4 on four 910C dies."
+    detail_zh: "实测 A3 运行中 NPU 图捕获停滞；eager 模式在四个 910C die 上以 TP4 完成文本与真实图片对话。"
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\

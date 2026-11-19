@@ -112,6 +112,11 @@ specs:
   # NPU graph capture hangs on Gemma 3; the eager path completes text and image
   # chat on four 910C dies with the A3 SGLang runner.
   - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "NPU graph capture hangs on Gemma 3 with the A3 SGLang runner; the eager path completes text and image chat on four 910C dies."
+    detail_zh: "A3 SGLang 镜像上 Gemma 3 的 NPU 图捕获会挂起；eager 路径在四个 910C die 上完成文本与图片对话。"
   env:
     GLOO_SOCKET_IFNAME: lo
     HCCL_SOCKET_IFNAME: lo

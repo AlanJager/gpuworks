@@ -175,6 +175,11 @@ specs:
   # NPU graph capture stalls across all eight ranks on the current A3 runner.
   # The eager path completed a real-image chat request at TP8.
   - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "NPU graph capture stalls across all eight ranks on the current A3 runner; the eager path completed a real-image chat request at TP8."
+    detail_zh: "当前 A3 镜像上 NPU 图捕获在全部八个 rank 上停滞；eager 路径以 TP8 完成了一次真实图片对话请求。"
   placement:
     language: starlark
     resolver: |-

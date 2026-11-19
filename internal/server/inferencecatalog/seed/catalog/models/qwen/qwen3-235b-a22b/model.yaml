@@ -168,6 +168,11 @@ specs:
   # Capturing the default ACL graphs across 16 ranks exhausts notify resources
   # (EE1023); eager mode completed health and chat on all 16 910C dies.
   - --enforce-eager
+  performance_tradeoffs:
+  - param: --enforce-eager
+    reason: hardware_plugin_requires
+    detail_en: "Capturing the default ACL graphs across 16 ranks exhausts notify resources (EE1023); eager mode completed health and chat on all 16 910C dies."
+    detail_zh: "16 个 rank 捕获默认 ACL 图会耗尽 notify 资源（EE1023）；eager 模式在全部 16 个 910C die 上通过健康检查并完成对话。"
   env:
     RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES: '1'
   placement:
