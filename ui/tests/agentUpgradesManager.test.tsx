@@ -344,15 +344,16 @@ test("viewers do not receive an empty result action column even when a row needs
 });
 
 test("an attempt the system settled shows why in the reader's language, and only an operator's release shows a note", async () => {
-  const state = backend([run({ state: "finished", counts: counts({ total: 2, processed: 2, unconfirmed: 2, active: 0, queued: 0 }) })]);
+  const state = backend([run({ state: "finished", counts: counts({ total: 3, processed: 3, unconfirmed: 3, active: 0, queued: 0 }) })]);
   state.items = [
-    item({ node_uuid: "node-a", name: "removed node", phase: "unconfirmed", reason: "node_removed", verified_at: "2026-10-29T01:00:00Z", verified_by: "system", verification_code: "node_removed" }),
+    item({ node_uuid: "node-a", name: "removed node", phase: "unconfirmed", reason: "confirmation_timeout", verified_at: "2026-10-29T01:00:00Z", verified_by: "system", verification_code: "node_removed", verification_note: "" }),
+    item({ node_uuid: "node-c", name: "failed node", phase: "unconfirmed", reason: "confirmation_timeout", verified_at: "2026-10-29T01:00:00Z", verified_by: "system", verification_code: "agent_failed", verification_note: "disk full while unpacking" }),
     item({ node_uuid: "node-b", name: "checked node", phase: "unconfirmed", reason: "confirmation_timeout", verified_at: "2026-10-29T01:00:00Z", verified_by: "admin", verification_code: "operator_verified", verification_note: "process gone, logs clean" }),
   ];
   mount(true, 7);
   await screen.findByText("removed node");
-  assert.ok(screen.getByText("The node was removed from the platform during its upgrade."));
   assert.ok(screen.getByText(/Verified by the system: the node was removed from the platform, so no upgrade can still be running\./));
   assert.ok(screen.getByText("Later verification: process gone, logs clean"));
+  assert.ok(screen.getByText("Later verification: disk full while unpacking"), "an agent's failure detail stays visible");
   assert.ok(!screen.queryByRole("button", { name: k.release }), "a settled attempt offers no release");
 });

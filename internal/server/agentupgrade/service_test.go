@@ -641,10 +641,12 @@ func TestRemovedNodeSettlesItsUnconfirmedAttempt(t *testing.T) {
 	f.create(t, "second", []string{"n2"}, 0)
 }
 
-// An attempt still in flight when its node is removed ends unconfirmed for
-// that reason and is settled at once; its run stays paused for an
-// administrator, as after any unconfirmed attempt, with the rest of its queue.
-func TestRemovedNodeSettlesItsAttemptInFlight(t *testing.T) {
+// An attempt still in flight when its node is removed is not settled early:
+// a deleted Kubernetes or Slurm node's agent keeps running and enrolls again,
+// and the upgrade it was given may still be applying. It waits out its
+// deadline like any attempt, and is settled then; its run stays paused for
+// an administrator with the rest of its queue.
+func TestRemovedNodeSettlesItsAttemptOnlyAfterTheDeadline(t *testing.T) {
 	f := newFixture(t, 3, true)
 	r := f.create(t, "first", []string{"n1", "n2"}, 0)
 	f.tick(t)
@@ -655,9 +657,17 @@ func TestRemovedNodeSettlesItsAttemptInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); !activePhase(i.Phase) || i.VerifiedAt != nil {
+		t.Fatalf("an attempt in flight was settled before its deadline: %+v", i)
+	}
+	if b, err := f.st.AgentUpgradeBlocker(); err != nil || b == nil {
+		t.Fatalf("the slot was freed before the deadline: %v", err)
+	}
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
 	i := f.item(t, r.Record.ID, "n1")
-	if i.Phase != "unconfirmed" || i.Reason != ReasonNodeRemoved || i.VerifiedAt == nil || i.VerificationCode != ReasonNodeRemoved {
-		t.Fatalf("in-flight attempt of a removed node = %+v", i)
+	if i.Phase != "unconfirmed" || i.Reason != "confirmation_timeout" || i.VerifiedAt == nil || i.VerificationCode != ReasonNodeRemoved {
+		t.Fatalf("after the deadline = %+v", i)
 	}
 	if n2 := f.item(t, r.Record.ID, "n2"); n2.Phase != "queued" {
 		t.Fatalf("the paused run went on to n2: %+v", n2)

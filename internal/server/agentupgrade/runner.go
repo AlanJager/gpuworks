@@ -279,19 +279,22 @@ func (s *Service) observeEvent(o Observation) error {
 	return nil
 }
 
-// settleRemovedNodes settles the attempts whose node the platform no longer
-// has (deleted by hand, or by a sweep once the cloud or the cluster dropped
-// it): no agent will come back to confirm or fail them, and there is no
-// machine left on which an upgrade could still be running, which is what an
-// unconfirmed attempt holds the slot to protect. An unconfirmed attempt is
-// verified as node_removed; one still in flight ends unconfirmed for that
-// reason and is verified at once. The run stays paused, as after any
-// unconfirmed attempt: the rest of its queue waits for an administrator to
-// continue it.
+// settleRemovedNodes settles the unconfirmed attempts whose node the
+// platform no longer has (deleted by hand, or by a sweep once the cloud or
+// the cluster dropped it): that node's agent will never come back to confirm
+// or fail them, so nothing else would end the hold on the slot. Only an
+// attempt past its deadline is settled, never one in flight: deleting a
+// Kubernetes or Slurm node, or forcing a deletion, leaves its agent running,
+// and it enrolls again under a new identity while the upgrade it was given
+// may still be applying; the deadline bounds that, as it does for any
+// attempt. The sweeps remove a node only after it has been gone longer than
+// the deadline, so their attempts are always unconfirmed by then. The run
+// stays paused, as after any unconfirmed attempt: the rest of its queue
+// waits for an administrator to continue it.
 func (s *Service) settleRemovedNodes(items []store.AgentUpgradeItem) error {
 	var uuids []string
 	for _, i := range items {
-		if activePhase(i.Phase) || (i.Phase == "unconfirmed" && i.VerifiedAt == nil) {
+		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
 			uuids = append(uuids, i.NodeUUID)
 		}
 	}
@@ -307,12 +310,6 @@ func (s *Service) settleRemovedNodes(items []store.AgentUpgradeItem) error {
 		if exists[i.NodeUUID] {
 			continue
 		}
-		if activePhase(i.Phase) {
-			if err := s.unconfirmed(*i, ReasonNodeRemoved, "the node was removed from the platform during its upgrade"); err != nil {
-				return err
-			}
-			i.Phase = "unconfirmed"
-		}
 		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
 			if _, err := s.st.VerifyAgentUpgrade(i.ID, s.now(), "system", ReasonNodeRemoved, ""); err != nil {
 				return err
@@ -326,6 +323,6 @@ func (s *Service) settleRemovedNodes(items []store.AgentUpgradeItem) error {
 	return nil
 }
 
-// ReasonNodeRemoved is the reason and verification code of an attempt whose
-// node was removed from the platform before it was confirmed.
+// ReasonNodeRemoved is the verification code of an unconfirmed attempt whose
+// node was removed from the platform.
 const ReasonNodeRemoved = "node_removed"
