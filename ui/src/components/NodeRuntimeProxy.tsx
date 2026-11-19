@@ -1,11 +1,16 @@
-import { WarningOutlined } from "@ant-design/icons";
-import { Alert, Button, Modal, Space, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type NetworkConfig, type NodeRuntime } from "../api";
 import { apiErrorText } from "../apiError";
 import CopyButton from "./CopyButton";
 import { useIsAdmin } from "./useIsAdmin";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { message } from "../ui-kit/feedback";
+import { Notice } from "../ui-kit/Notice";
+
+const DIALOG_STYLE = { width: "min(520px, calc(100vw - 32px))", maxWidth: "calc(100vw - 32px)" };
 
 /** The systemd drop-in through which the platform hands the proxy to dockerd. */
 export const DOCKER_PROXY_DROPIN_PATH = "/etc/systemd/system/docker.service.d/zz-gpuworks-proxy.conf";
@@ -34,12 +39,12 @@ export function dropInContent(effective: NetworkConfig): string {
 }
 
 function CodeBlock({ caption, text, copyLabel }: { caption: string; text: string; copyLabel: string }) {
-  return <div style={{ border: "1px solid var(--ant-color-border, #d9d9d9)", borderRadius: 6, overflow: "hidden" }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 8px", background: "var(--ant-color-fill-quaternary, #fafafa)" }}>
-      <Typography.Text type="secondary" code>{caption}</Typography.Text>
+  return <div className="overflow-hidden rounded-lg border border-border">
+    <div className="flex items-center justify-between bg-emphasis px-2 py-0.5">
+      <code className="font-mono text-label text-fg-muted">{caption}</code>
       <CopyButton text={text} label={copyLabel} size="small" />
     </div>
-    <pre tabIndex={0} style={{ margin: 0, padding: "8px 12px", overflowX: "auto" }}>{text}</pre>
+    <pre tabIndex={0} className="m-0 overflow-x-auto px-3 py-2">{text}</pre>
   </div>;
 }
 
@@ -101,14 +106,14 @@ export default function NodeRuntimeProxy({ nodeUUID, effective, runtime, onRunti
     }
   }, [nodeUUID, onRuntime, onRefresh, t, tCommon]);
 
-  const driverLine = <Typography.Text>{t("runtimeProxy.driver", { driver: driver || t("runtimeProxy.unknownDriver") })}</Typography.Text>;
+  const driverLine = <span>{t("runtimeProxy.driver", { driver: driver || t("runtimeProxy.unknownDriver") })}</span>;
 
   if (!proxy) {
     const note = driver && driver !== "docker" ? t("runtimeProxy.perPull") : t("runtimeProxy.unknownOffline");
-    return <Space direction="vertical" size={4} style={{ width: "100%" }}>
+    return <div className="flex w-full flex-col gap-1">
       {driverLine}
-      <Typography.Text type="secondary">{note}</Typography.Text>
-    </Space>;
+      <span className="text-fg-muted">{note}</span>
+    </div>;
   }
 
   const direct = t("runtimeProxy.direct");
@@ -124,71 +129,64 @@ export default function NodeRuntimeProxy({ nodeUUID, effective, runtime, onRunti
   const managed = Boolean(effective.http_proxy?.trim() || effective.https_proxy?.trim() || proxy.written_http_proxy || proxy.written_https_proxy || !proxy.applied);
   let status;
   if (!managed) {
-    status = <Typography.Text type="secondary">{t("runtimeProxy.unmanaged", { proxy: proxy.http_proxy || direct })}</Typography.Text>;
+    status = <span className="text-fg-muted">{t("runtimeProxy.unmanaged", { proxy: proxy.http_proxy || direct })}</span>;
   } else if (proxy.applied) {
     status = <>
-      <Tag color="green">{t("runtimeProxy.applied")}</Tag>
-      <Typography.Text type="secondary">{t("runtimeProxy.using", { proxy: proxy.written_http_proxy || proxy.http_proxy || direct })}</Typography.Text>
+      <Badge status="success">{t("runtimeProxy.applied")}</Badge>
+      <span className="text-fg-muted">{t("runtimeProxy.using", { proxy: proxy.written_http_proxy || proxy.http_proxy || direct })}</span>
     </>;
   } else {
     status = <>
-      <Tag color="orange" icon={<WarningOutlined />}>{t("runtimeProxy.notApplied")}</Tag>
-      <Typography.Text>{proxy.daemon_json_proxy ? t("runtimeProxy.daemonJsonWins") : t("runtimeProxy.stillUsing", { proxy: proxy.http_proxy || direct })}</Typography.Text>
+      <Badge status="warning">{t("runtimeProxy.notApplied")}</Badge>
+      <span>{proxy.daemon_json_proxy ? t("runtimeProxy.daemonJsonWins") : t("runtimeProxy.stillUsing", { proxy: proxy.http_proxy || direct })}</span>
     </>;
   }
 
-  return <Space direction="vertical" size={8} style={{ width: "100%" }}>
+  return <div className="flex w-full flex-col gap-2">
     {driverLine}
-    <div ref={statusRef} tabIndex={-1} aria-live="polite" style={{ outline: "none" }}>
-      <Space wrap size={4}>{status}</Space>
+    <div ref={statusRef} tabIndex={-1} aria-live="polite" className="outline-none">
+      <span className="inline-flex flex-wrap items-center gap-1">{status}</span>
     </div>
-    <Typography.Text type="secondary">
+    <span className="text-fg-muted">
       {[
         proxy.live_restore ? t("runtimeProxy.liveRestoreOn") : t("runtimeProxy.liveRestoreOff"),
         proxy.systemd ? t("runtimeProxy.systemd") : t("runtimeProxy.noSystemd"),
         privilegeText,
       ].join(" · ")}
-    </Typography.Text>
-    {proxy.error ? <Alert type="error" showIcon message={proxy.error} /> : null}
-    {restartError ? <Alert type="error" showIcon role="alert" message={t("runtimeProxy.restartFailed")} description={restartError} /> : null}
+    </span>
+    {proxy.error ? <Notice tone="danger" title={proxy.error} /> : null}
+    {restartError ? <Notice tone="danger" role="alert" title={t("runtimeProxy.restartFailed")}>{restartError}</Notice> : null}
 
     {canRestart ? <div>
-      <Button onClick={() => { setRestartError(""); setConfirmOpen(true); }}>{t("runtimeProxy.restart")}</Button>
+      <Button variant="tertiary" onClick={() => { setRestartError(""); setConfirmOpen(true); }}>{t("runtimeProxy.restart")}</Button>
     </div> : null}
 
-    {!proxy.applied && !proxy.daemon_json_proxy && !proxy.systemd ? <Alert type="info" showIcon message={t("runtimeProxy.noSystemdNote")} /> : null}
+    {!proxy.applied && !proxy.daemon_json_proxy && !proxy.systemd ? <Notice tone="info" title={t("runtimeProxy.noSystemdNote")} /> : null}
 
-    {manualSteps ? <Alert
-      type="warning"
-      showIcon
-      message={t("runtimeProxy.noPrivilege")}
-      description={<Space direction="vertical" size={8} style={{ width: "100%" }}>
-        <Typography.Text type="secondary">{t("runtimeProxy.fileHint")}</Typography.Text>
+    {manualSteps ? <Notice tone="warning" title={t("runtimeProxy.noPrivilege")}>
+      <div className="flex w-full flex-col gap-2">
+        <span className="text-fg-muted">{t("runtimeProxy.fileHint")}</span>
         <CodeBlock caption={DOCKER_PROXY_DROPIN_PATH} text={dropInContent(effective)} copyLabel={t("runtimeProxy.copyFile")} />
-        <Typography.Text type="secondary">{t("runtimeProxy.fileAuthority")}</Typography.Text>
+        <span className="text-fg-muted">{t("runtimeProxy.fileAuthority")}</span>
         {DOCKER_MANUAL_COMMANDS.map((command) => <CodeBlock key={command} caption="shell" text={command} copyLabel={t("runtimeProxy.copyCommand", { command })} />)}
-        <Space>
-          <Typography.Text type="secondary">{t("runtimeProxy.autoRefresh")}</Typography.Text>
-          <Button size="small" onClick={() => void onRefresh()}>{t("runtimeProxy.refresh")}</Button>
-        </Space>
-      </Space>}
-    /> : null}
+        <span className="inline-flex items-center gap-2">
+          <span className="text-fg-muted">{t("runtimeProxy.autoRefresh")}</span>
+          <Button variant="tertiary" size="sm" onClick={() => void onRefresh()}>{t("runtimeProxy.refresh")}</Button>
+        </span>
+      </div>
+    </Notice> : null}
 
-    <Modal
-      open={confirmOpen}
-      title={t("runtimeProxy.confirmTitle")}
-      okText={t("runtimeProxy.confirmOk")}
-      cancelText={t("action.cancel")}
-      okButtonProps={{ danger: !proxy.live_restore }}
-      cancelButtonProps={{ autoFocus: true, disabled: restarting }}
-      confirmLoading={restarting}
-      closable={!restarting}
-      maskClosable={false}
-      keyboard={!restarting}
-      onOk={() => void restart()}
-      onCancel={() => { if (!restarting) setConfirmOpen(false); }}
-    >
-      <Typography.Paragraph>{proxy.live_restore ? t("runtimeProxy.confirmLive") : t("runtimeProxy.confirmNoLive")}</Typography.Paragraph>
-    </Modal>
-  </Space>;
+    <Dialog open={confirmOpen} disablePointerDismissal onOpenChange={(next) => { if (!next && !restarting) setConfirmOpen(false); }}>
+      <DialogContent closeButtonLabel={tCommon("actions.close")} closeButtonDisabled={restarting} style={DIALOG_STYLE}>
+        <DialogHeader>
+          <DialogTitle>{t("runtimeProxy.confirmTitle")}</DialogTitle>
+          <DialogDescription>{proxy.live_restore ? t("runtimeProxy.confirmLive") : t("runtimeProxy.confirmNoLive")}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" autoFocus disabled={restarting} onClick={() => setConfirmOpen(false)}>{t("action.cancel")}</Button>
+          <Button variant={proxy.live_restore ? "primary" : "destructive"} loading={restarting} onClick={() => void restart()}>{t("runtimeProxy.confirmOk")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }

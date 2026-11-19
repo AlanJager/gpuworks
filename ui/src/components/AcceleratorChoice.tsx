@@ -1,9 +1,10 @@
 import { vendorName } from "../vendorName";
 import { ExclamationCircleFilled, InfoCircleFilled } from "@ant-design/icons";
-import { Select, Space, Typography, message } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type AcceleratorPresence, type Node } from "../api";
+import { message } from "../ui-kit/feedback";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select";
 
 type AcceleratorNode = Pick<Node, "uuid" | "gpu_vendor" | "accelerator_preference" | "accelerator_vendors">;
 
@@ -54,40 +55,34 @@ export default function AcceleratorChoice({ node, onUpdated }: { node: Accelerat
     }
   };
 
+  const options = [
+    { value: "auto", label: t("accelerator.autoCurrent", { vendor: vendorName(managed) }) },
+    ...vendors.map((v) => ({ value: v.vendor, label: describe(v) })),
+  ];
   return (
-    <Space direction="vertical" size={4}>
-      <Select
-        size="small"
-        aria-label={t("detail.accelerator")}
-        value={preference}
-        loading={loading}
-        disabled={loading}
-        onChange={(value: string) => void choose(value)}
-        style={{ minWidth: 220 }}
-        // A model name such as "AD102 [GeForce RTX 4090]" is longer than the
-        // select; the list grows to fit it instead of cutting it off.
-        popupMatchSelectWidth={false}
-        options={[
-          { value: "auto", label: t("accelerator.autoCurrent", { vendor: vendorName(managed) }) },
-          ...vendors.map((v) => ({ value: v.vendor, label: describe(v) })),
-        ]}
-      />
+    <div className="flex flex-col items-start gap-1">
+      <Select size="sm" value={preference} disabled={loading} onValueChange={(value) => void choose(value)}>
+        {/* A model name such as "AD102 [GeForce RTX 4090]" is longer than the
+            select; the list grows to fit it instead of cutting it off. */}
+        <SelectTrigger aria-label={t("detail.accelerator")} aria-busy={loading || undefined} className="min-w-[220px]" />
+        <SelectContent>
+          {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
       {switching ? (
-        <Space size={4} align="start" role="status">
-          <InfoCircleFilled style={{ color: "#1677ff" }} />
-          <Typography.Text>{t("accelerator.switching", { vendor: vendorName(preference) })}</Typography.Text>
-        </Space>
+        <span className="inline-flex items-start gap-1" role="status">
+          <InfoCircleFilled className="mt-1 text-fg-brand" />
+          <span>{t("accelerator.switching", { vendor: vendorName(preference) })}</span>
+        </span>
       ) : (
         preference === "auto" &&
         unmanaged.length > 0 && (
-          <Space size={4} align="start" role="alert">
-            <ExclamationCircleFilled style={{ color: "#fa8c16" }} />
-            <Typography.Text style={{ color: "#fa8c16" }}>
-              {t("accelerator.unmanaged", { cards: unmanaged.map(describe).join(t("accelerator.separator")) })}
-            </Typography.Text>
-          </Space>
+          <span className="inline-flex items-start gap-1 text-fg-warning" role="alert">
+            <ExclamationCircleFilled className="mt-1" />
+            <span>{t("accelerator.unmanaged", { cards: unmanaged.map(describe).join(t("accelerator.separator")) })}</span>
+          </span>
         )
       )}
-    </Space>
+    </div>
   );
 }

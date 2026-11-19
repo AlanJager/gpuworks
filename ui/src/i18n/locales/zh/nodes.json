@@ -374,6 +374,7 @@
     "port": "端口",
     "user": "用户",
     "userRequired": "请输入 SSH 用户",
+    "portRequired": "请输入 SSH 端口",
     "probeAfterSave": "保存后立即探测一次",
     "existingAuth": "已保存凭据：{{method}}。出于安全原因，凭证不会回显；保存时需重新输入。",
     "savedPasswordHelp": "恢复连接时，已保存的密码可通过密码认证或键盘交互认证尝试登录。",

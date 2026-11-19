@@ -1,42 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { readFileSync } from "node:fs";
-import { JSDOM } from "jsdom";
 import React from "react";
-import { createInstance } from "i18next";
-import { I18nextProvider, initReactI18next } from "react-i18next";
+import { I18nextProvider } from "react-i18next";
+import { createI18n } from "./helpers/dom.ts";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of [
-  "window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "SVGElement", "Element", "Node",
-  "MutationObserver", "ShadowRoot", "getComputedStyle", "matchMedia", "requestAnimationFrame",
-] as const) {
-  if (dom.window[name] === undefined) continue;
-  Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
-}
-Object.defineProperty(dom.window, "matchMedia", {
-  configurable: true,
-  value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }),
-});
-class ResizeObserverStub {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub, configurable: true });
-
-const load = (ns: string) => JSON.parse(readFileSync(new URL(`../src/i18n/locales/en/${ns}.json`, import.meta.url), "utf8"));
-const common = load("common");
-const providers = load("providers");
-
-const i18n = createInstance();
-await i18n.use(initReactI18next).init({
-  lng: "en",
-  fallbackLng: "en",
-  defaultNS: "common",
-  resources: { en: { common, providers } },
-  interpolation: { escapeValue: false },
-});
+// The shared jsdom setup paces animation frames, which the dialog's exit motion waits on.
+const { i18n, locale } = await createI18n(["providers"], "en");
+const common = locale.common;
+const providers = locale.providers;
 
 const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 const { default: ProviderInstallModal } = await import("../src/components/ProviderInstallModal");
@@ -139,9 +110,11 @@ test("a precheck warning is a note on a finished install, not a failure", async 
   // The summary row names the warning only, in words from its code; the
   // passing items are one click away.
   assert.ok(screen.getByText("1 of 2 precheck items need attention: install_dir_space."));
-  assert.equal(screen.queryByText("Linux x86_64"), null);
+  // A collapsed section keeps its rows mounted but hidden.
+  const shown = (text: string) => { const row = screen.queryByText(text); return !!row && !row.closest("[hidden]"); };
+  assert.equal(shown("Linux x86_64"), false);
   fireEvent.click(screen.getByText(providers.install.precheckDetails));
-  await waitFor(() => assert.ok(screen.getByText("Linux x86_64")));
+  await waitFor(() => assert.ok(shown("Linux x86_64")));
   assert.ok(screen.getByText("20.0 GiB free of 80.0 GiB; engine images and model weights need about 50.0 GiB or more."));
   assert.ok(screen.getByText(common.onboardingCheck.install_dir_space));
   press(providers.install.done);

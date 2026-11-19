@@ -5,13 +5,16 @@ import { createI18n } from "./helpers/dom.ts";
 import { I18nextProvider } from "react-i18next";
 
 const { i18n } = await createI18n(["nodes"]);
-const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+const { cleanup, render, screen, waitFor } = await import("@testing-library/react");
 const { api } = await import("../src/api.ts");
 const { default: AcceleratorChoice, hasAcceleratorChoice } = await import("../src/components/AcceleratorChoice.tsx");
+const { FeedbackHost, message } = await import("../src/ui-kit/feedback");
+const { openSelect, chooseOption: chooseInSelect } = await import("./helpers/zeronSelect.ts");
 import type { Node } from "../src/api";
 
 const realUpdate = api.updateNodeAccelerator;
 afterEach(() => {
+  message.destroy();
   cleanup();
   api.updateNodeAccelerator = realUpdate;
 });
@@ -27,17 +30,11 @@ const mixed = {
 };
 
 const renderChoice = (node: Parameters<typeof AcceleratorChoice>[0]["node"], onUpdated?: (node: Node) => void) =>
-  render(<I18nextProvider i18n={i18n}><AcceleratorChoice node={node} onUpdated={onUpdated} /></I18nextProvider>);
+  render(<I18nextProvider i18n={i18n}><FeedbackHost /><AcceleratorChoice node={node} onUpdated={onUpdated} /></I18nextProvider>);
 
-async function chooseOption(label: string) {
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Accelerator" }));
-  let option: Element | undefined;
-  await waitFor(() => {
-    option = [...document.querySelectorAll(".ant-select-item-option")].find((el) => el.textContent === label);
-    if (!option) throw new Error(`option ${label} not offered`);
-  });
-  fireEvent.click(option!);
-}
+const select = () => screen.getByRole("combobox", { name: "Accelerator" });
+const offered = () => openSelect(select());
+const chooseOption = (label: string) => chooseInSelect(select(), label);
 
 test("the choice exists only on a host with cards of more than one vendor", () => {
   assert.equal(hasAcceleratorChoice({}), false);
@@ -54,14 +51,12 @@ test("the choice exists only on a host with cards of more than one vendor", () =
 
 test("automatic says which vendor it picked and which cards it leaves unmanaged", async () => {
   renderChoice(mixed);
-  assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "Auto (now Ascend)");
+  assert.equal(select().textContent, "Auto (now Ascend)");
   const alert = screen.getByRole("alert");
   assert.equal(alert.textContent, "This machine also has NVIDIA ×1 (AD102 [GeForce RTX 4090]), not managed by this node; you can switch. A node manages one vendor's cards at a time.");
   assert.equal(screen.queryByRole("status") === null, true);
 
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Accelerator" }));
-  await waitFor(() => assert.equal(document.querySelectorAll(".ant-select-item-option").length, 3));
-  assert.deepEqual([...document.querySelectorAll(".ant-select-item-option")].map((el) => el.textContent), [
+  assert.deepEqual(await offered(), [
     "Auto (now Ascend)", "Ascend ×1 (310P3)", "NVIDIA ×1 (AD102 [GeForce RTX 4090])",
   ]);
 });
@@ -77,7 +72,7 @@ test("a card without a model name is named by its vendor alone, and every other 
 
 test("a chosen vendor that the node manages shows no warning", () => {
   renderChoice({ ...mixed, gpu_vendor: "nvidia", accelerator_preference: "nvidia" });
-  assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "NVIDIA ×1 (AD102 [GeForce RTX 4090])");
+  assert.equal(select().textContent, "NVIDIA ×1 (AD102 [GeForce RTX 4090])");
   assert.equal(screen.queryByRole("alert") === null, true);
   assert.equal(screen.queryByRole("status") === null, true);
 });
@@ -100,12 +95,12 @@ test("choosing the other vendor asks the server and hands back the updated node"
   await chooseOption("NVIDIA ×1 (AD102 [GeForce RTX 4090])");
   assert.deepEqual(calls, ["mixed-node nvidia"]);
   // Busy while the request is out: no second request can start.
-  await waitFor(() => assert.ok(document.querySelector(".ant-select-disabled")));
+  await waitFor(() => assert.equal((select() as HTMLButtonElement).disabled, true));
   resolve({ ...mixed, accelerator_preference: "nvidia" } as unknown as Node);
   await waitFor(() => assert.equal(updated.length, 1));
   assert.equal(updated[0].accelerator_preference, "nvidia");
   await screen.findByText("Switched. The agent is restarting; the new cards appear shortly");
-  await waitFor(() => assert.equal(document.querySelector(".ant-select-disabled") === null, true));
+  await waitFor(() => assert.equal((select() as HTMLButtonElement).disabled, false));
 });
 
 test("choosing what is already chosen sends nothing", async () => {
@@ -125,7 +120,7 @@ test("a refused switch says why and leaves the choice as it was", async () => {
   await chooseOption("NVIDIA ×1 (AD102 [GeForce RTX 4090])");
   await screen.findByText("Could not switch accelerators: 1 instance(s) still run on this node; stop or move them before switching accelerators.");
   assert.equal(updated.length, 0);
-  assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "Auto (now Ascend)");
+  assert.equal(select().textContent, "Auto (now Ascend)");
 });
 
 
@@ -133,8 +128,8 @@ test("AMD is named consistently when selecting a mixed-vendor node", async () =>
   renderChoice({ uuid: "amd-mixed", gpu_vendor: "amd", accelerator_vendors: [
     { vendor: "amd", cards: 1, model: "AMD395" }, { vendor: "nvidia", cards: 1, model: "RTX 4090" },
   ] });
-  assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "Auto (now AMD)");
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Accelerator" }));
-  await waitFor(() => assert.equal(document.querySelectorAll(".ant-select-item-option").length, 3));
-  assert.equal([...document.querySelectorAll(".ant-select-item-option")].some((el) => el.textContent === "AMD ×1 (AMD395)"), true);
+  assert.equal(select().textContent, "Auto (now AMD)");
+  const options = await offered();
+  assert.equal(options.length, 3);
+  assert.equal(options.includes("AMD ×1 (AMD395)"), true);
 });
