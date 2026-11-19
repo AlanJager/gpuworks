@@ -129,7 +129,7 @@ func TestPluginHostSetupAppliesAndPrunes(t *testing.T) {
 		t.Fatalf("again = %q, %v, ran %q", out, err, run.cmds)
 	}
 
-	out, err = e.run("uninstall", "acme_backup")
+	out, err = e.run("uninstall", "acme_backup", "--yes")
 	if err != nil || !strings.Contains(out, "stays on this host until you run: "+hostsetup.PruneCommand) {
 		t.Fatalf("uninstall = %q, %v", out, err)
 	}
@@ -160,7 +160,7 @@ func TestPluginHostSetupRefusals(t *testing.T) {
 	if _, err := e.run("host-setup", "--id", "acme_backup", "--prune"); err == nil {
 		t.Fatal("--id with --prune accepted")
 	}
-	if out, _ := e.run("uninstall", "acme_backup"); strings.Contains(out, hostsetup.PruneCommand) {
+	if out, _ := e.run("uninstall", "acme_backup", "--yes"); strings.Contains(out, hostsetup.PruneCommand) {
 		t.Fatalf("an uninstall without host setup files named the prune command:\n%s", out)
 	}
 	old := hostSetupGOOS

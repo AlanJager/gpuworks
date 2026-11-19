@@ -170,7 +170,16 @@ func TestPluginUninstallReleasesWhatItPushedAndAReinstallStartsClean(t *testing.
 	if strings.Contains(out, "is running") {
 		t.Fatalf("state reports a server that is not running:\n%s", out)
 	}
+	// Without --yes it prints what it would change and changes nothing.
 	out, err = e.run("uninstall", "acme_backup")
+	if want := "uninstalling acme_backup 1.0.0 deletes 1 tables and releases 0 held nodes, lifts 0 fleet caps, drops the availability of 0 features and removes 0 banners and 1 overrides"; err == nil ||
+		!strings.Contains(err.Error(), "--yes") || !strings.Contains(out, want) || strings.Contains(out, "uninstalled") {
+		t.Fatalf("uninstall without --yes = %q %v", out, err)
+	}
+	if own := e.owned("acme_backup"); len(own.Owners) != 1 || e.enabled() == "" {
+		t.Fatalf("an unconfirmed uninstall changed something: %+v", own)
+	}
+	out, err = e.run("uninstall", "acme_backup", "--yes")
 	if err != nil || !strings.Contains(out, "uninstalled acme_backup") || !strings.Contains(out, "1 tables, 1 node holds, 1 overrides") {
 		t.Fatalf("uninstall = %q %v", out, err)
 	}
@@ -186,7 +195,7 @@ func TestPluginUninstallReleasesWhatItPushedAndAReinstallStartsClean(t *testing.
 	}
 	// remove is the earlier name and does the same.
 	e.push("acme_backup")
-	if out, err := e.run("remove", "acme_backup", "--purge"); err != nil || !strings.Contains(out, "uninstalled acme_backup") {
+	if out, err := e.run("remove", "acme_backup", "--purge", "--yes"); err != nil || !strings.Contains(out, "uninstalled acme_backup") {
 		t.Fatalf("remove = %q %v", out, err)
 	}
 	if own := e.owned("acme_backup"); !own.empty() {
@@ -198,14 +207,15 @@ func TestPluginUninstallFinishesRowsWhosePackageIsGone(t *testing.T) {
 	e := newPluginEnv(t, testPluginSite)
 	// An uninstall that removed the package and failed before its rows.
 	e.push("acme_backup")
-	out, err := e.run("uninstall", "acme_backup")
-	if err != nil || strings.Contains(out, "uninstalled") || !strings.Contains(out, "released what acme_backup pushed: 1 tables") {
+	out, err := e.run("uninstall", "acme_backup", "--yes")
+	if err != nil || strings.Contains(out, "uninstalled") || !strings.Contains(out, "released what acme_backup pushed: 1 tables") ||
+		!strings.Contains(out, "uninstalling acme_backup deletes 1 tables and releases 1 held nodes (7)") {
 		t.Fatalf("retry = %q %v", out, err)
 	}
 	if own := e.owned("acme_backup"); !own.empty() {
 		t.Fatalf("rows left: %+v", own)
 	}
-	if _, err := e.run("uninstall", "acme_backup"); productCode(err) != messages.ErrorPluginNotInstalled {
+	if _, err := e.run("uninstall", "acme_backup", "--yes"); productCode(err) != messages.ErrorPluginNotInstalled {
 		t.Fatalf("nothing left to uninstall = %v", err)
 	}
 	if _, err := e.run("uninstall"); err == nil {

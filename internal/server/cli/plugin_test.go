@@ -124,13 +124,13 @@ func TestPluginInstallListRemoveWithTheServerStopped(t *testing.T) {
 		t.Fatalf("broken package not shown:\n%s", out)
 	}
 
-	if _, err := e.run("remove", "acme_backup"); err != nil {
+	if _, err := e.run("remove", "acme_backup", "--yes"); err != nil {
 		t.Fatal(err)
 	}
 	if out, _ := e.run("list"); !strings.Contains(out, "no plugin installed") {
 		t.Fatalf("after remove:\n%s", out)
 	}
-	if _, err := e.run("remove", "acme_backup"); productCode(err) != messages.ErrorPluginNotInstalled {
+	if _, err := e.run("remove", "acme_backup", "--yes"); productCode(err) != messages.ErrorPluginNotInstalled {
 		t.Fatalf("second remove = %v", err)
 	}
 	if _, err := e.run("install"); err == nil {
