@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Result, Button } from "antd";
+import { Button } from "./ui/button";
+import { Result } from "../ui-kit/Result";
 import { withTranslation, type WithTranslation } from "react-i18next";
 
 class AppErrorBoundary extends Component<{ children: ReactNode } & WithTranslation, { failed: boolean }> {
@@ -9,7 +10,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode } & WithTranslati
   render() {
     if (this.state.failed) {
       const { t } = this.props;
-      return <Result status="error" title={t("errorBoundary.title")} subTitle={t("errorBoundary.description")} extra={<Button type="primary" onClick={() => location.reload()}>{t("actions.refresh")}</Button>} />;
+      return <Result title={t("errorBoundary.title")} description={t("errorBoundary.description")} actions={<Button variant="primary" onClick={() => location.reload()}>{t("actions.refresh")}</Button>} />;
     }
     return this.props.children;
   }

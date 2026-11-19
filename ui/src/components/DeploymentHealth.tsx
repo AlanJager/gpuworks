@@ -1,19 +1,18 @@
-import { InfoCircleOutlined } from "@ant-design/icons";
-import { Badge, Tooltip } from "antd";
-import type { BadgeProps } from "antd";
 import { useTranslation } from "react-i18next";
 import type { DeploymentHealth, HealthProbe, HealthStatus } from "../api";
 import { agoText } from "../format";
 import { formatMS } from "../pages/monitor/requestShape";
 import { colors } from "../theme/tokens";
 import { detailBadgeTone } from "../pages/state";
-import { Badge as StatusBadge } from "./ui/badge";
+import { Badge } from "./ui/badge";
+import { Tooltip } from "./ui/tooltip";
+import { HelpTip } from "../ui-kit/HelpTip";
 
 // The server's health check of a deployment (dto/deployment_health.go): a
 // minimal request through the gateway every minute. These pieces show it the
 // same way on the deployment list, its detail and the service monitor.
 
-const BADGE: Record<HealthStatus, BadgeProps["status"]> = {
+const BADGE: Record<HealthStatus, keyof typeof detailBadgeTone> = {
   ok: "success",
   timeout: "warning",
   failed: "error",
@@ -31,25 +30,7 @@ export const PROBE_COLOR: Record<HealthProbe["status"], string> = {
 // HealthCheckHelp is the question mark that says how the check works.
 export function HealthCheckHelp() {
   const { t } = useTranslation("common");
-  return (
-    <Tooltip
-      title={<div style={{ maxWidth: 360 }}>{t("healthCheck.help")}</div>}
-      trigger={["hover", "focus"]}
-    >
-      <InfoCircleOutlined
-        role="img"
-        aria-label={t("healthCheck.helpLabel")}
-        title={t("healthCheck.helpLabel")}
-        tabIndex={0}
-        style={{
-          color: colors.muted,
-          fontSize: 13,
-          marginLeft: 6,
-          cursor: "help",
-        }}
-      />
-    </Tooltip>
-  );
+  return <HelpTip className="ml-1.5" label={t("healthCheck.helpLabel")} content={t("healthCheck.help")} />;
 }
 
 // probeLines describe one check: when, how long, who answered, why it failed.
@@ -106,13 +87,11 @@ export function HealthTag({
       ? `${text} · ${formatMS(health.last.latency_ms)}`
       : text;
   const status = BADGE[health.status] ?? "default";
-  const badge = detail
-    ? <StatusBadge variant="plain" size="sm" status={detailBadgeTone[status]}>{label}</StatusBadge>
-    : <Badge status={status} text={label} />;
+  const badge = <Badge variant="plain" size={detail ? "sm" : "lg"} status={detailBadgeTone[status]}>{label}</Badge>;
   if (health.status === "off" || health.status === "pending") return badge;
   return (
     <Tooltip
-      title={
+      content={
         <div
           style={{
             display: "flex",
@@ -147,7 +126,7 @@ export function HealthTag({
         </div>
       }
     >
-      <span tabIndex={0}>{badge}</span>
+      <span tabIndex={0} className="inline-flex">{badge}</span>
     </Tooltip>
   );
 }

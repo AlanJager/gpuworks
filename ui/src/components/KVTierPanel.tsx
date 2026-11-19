@@ -1,5 +1,4 @@
 import { Notice } from "../ui-kit/Notice";
-import { Typography } from "antd";
 import { Progress } from "../pages/DeploymentControls";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -57,17 +56,17 @@ export default function KVTierPanel({ params, instanceUuid, backend }: { params?
 
   return (
     <div style={{ marginTop: 12 }}>
-      <Typography.Text strong style={{ display: "block", marginBottom: 6 }}>{t("kvTier.title")}</Typography.Text>
+      <span className="block mb-1.5 font-semibold">{t("kvTier.title")}</span>
       {error && <Notice tone="danger" title={t("metrics.loadFailed")}>{error.message}</Notice>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
         <Tier title={t("kvTier.gpu")}>
-          <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>{t("kvTier.gpuDetail")}</Typography.Text>
+          <span className="text-fg-muted text-label">{t("kvTier.gpuDetail")}</span>
         </Tier>
 
         <Tier title={t("kvTier.memory")}>
           {memoryGiB > 0 ? (
             <>
-              <Typography.Text>{t("kvTier.capacityGiB", { gib: memoryGiB })}</Typography.Text>
+              <span>{t("kvTier.capacityGiB", { gib: memoryGiB })}</span>
               <HitRate rate={memoryHitRate} t={t} />
             </>
           ) : (
@@ -78,7 +77,7 @@ export default function KVTierPanel({ params, instanceUuid, backend }: { params?
         <Tier title={t("kvTier.disk")}>
           {diskEnabled ? (
             <>
-              <Typography.Text style={{ fontSize: "var(--font-size-label)", wordBreak: "break-all" }}>{diskDir}</Typography.Text>
+              <span className="text-label break-all">{diskDir}</span>
               {usedBytes != null && limitBytes != null && limitBytes > 0 ? (
                 <>
                   <Progress
@@ -87,18 +86,18 @@ export default function KVTierPanel({ params, instanceUuid, backend }: { params?
                     showInfo={false}
                     aria-label={t("kvTier.usage")}
                   />
-                  <Typography.Text style={{ fontSize: "var(--font-size-label)" }}>
+                  <span className="text-label">
                     {t("kvTier.usage")}: {formatSize(usedBytes)} / {formatSize(limitBytes)}
-                  </Typography.Text>
+                  </span>
                 </>
               ) : (
-                <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>{t("kvTier.awaitingAgent")}</Typography.Text>
+                <span className="text-fg-muted text-label">{t("kvTier.awaitingAgent")}</span>
               )}
               <HitRate rate={diskHitRate} t={t} />
               {failures > 0 && (
-                <Typography.Text style={{ color: colors.danger, fontSize: "var(--font-size-label)" }} role="alert">
+                <span className="text-fg-danger text-label" role="alert">
                   {t("kvTier.writeFailures", { count: failures })}
-                </Typography.Text>
+                </span>
               )}
             </>
           ) : (
@@ -111,13 +110,13 @@ export default function KVTierPanel({ params, instanceUuid, backend }: { params?
 }
 
 function TierOff({ backendLabel, t }: { backendLabel: string; t: (key: string, options?: Record<string, unknown>) => string }) {
-  return <Typography.Text type="secondary">{backendLabel ? t("kvTier.managedBy", { label: backendLabel }) : t("kvTier.disabled")}</Typography.Text>;
+  return <span className="text-fg-muted">{backendLabel ? t("kvTier.managedBy", { label: backendLabel }) : t("kvTier.disabled")}</span>;
 }
 
 function Tier({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: "var(--radius-panel)", padding: 12, background: colors.white }}>
-      <Typography.Text type="secondary" style={{ display: "block", fontSize: "var(--font-size-label)", marginBottom: 4 }}>{title}</Typography.Text>
+      <span className="text-fg-muted block text-label mb-1">{title}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{children}</div>
     </div>
   );
@@ -125,9 +124,9 @@ function Tier({ title, children }: { title: string; children: React.ReactNode })
 
 function HitRate({ rate, t }: { rate?: number; t: (key: string, options?: Record<string, unknown>) => string }) {
   if (rate == null) {
-    return <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>{t("kvTier.hitRate")}: {t("kvTier.engineSilent")}</Typography.Text>;
+    return <span className="text-fg-muted text-label">{t("kvTier.hitRate")}: {t("kvTier.engineSilent")}</span>;
   }
-  return <Typography.Text style={{ fontSize: "var(--font-size-label)" }}>{t("kvTier.hitRate")}: {(rate * 100).toFixed(1)}%</Typography.Text>;
+  return <span className="text-label">{t("kvTier.hitRate")}: {(rate * 100).toFixed(1)}%</span>;
 }
 
 // useHitRate reuses the window-ratio derivation the inference metrics panel

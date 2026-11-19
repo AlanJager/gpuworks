@@ -1,11 +1,12 @@
-import { Badge, Space, Tooltip } from "antd";
+import { Badge } from "./ui/badge";
+import { Tooltip } from "./ui/tooltip";
 import { ExclamationCircleFilled } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
 import type { Node } from "../api";
 import { nodeConnection } from "../nodes/connectionState";
 import { recoveryErrorText } from "../nodes/recoveryError";
-import { colors } from "../theme/tokens";
+import { detailBadgeTone } from "../pages/state";
 import { formatTime } from "../i18n/datetime";
 
 type ConnectionNode = Pick<Node, "state" | "recovery_phase" | "last_recovery_error" | "last_recovery_code" | "last_seen_at" | "last_probe_at" | "recovery_attempts">;
@@ -21,18 +22,16 @@ export function NodeConnectionBadge({ node }: { node: ConnectionNode }) {
   const note = connection.noteKey ? t(connection.noteKey) : "";
   const detail = [note, recoveryErrorText(t, node.last_recovery_code, node.last_recovery_error)].filter(Boolean).join("\n");
   return (
-    <Tooltip trigger={["hover", "focus"]} title={<ConnectionHistory node={node} detail={detail} />}>
-      <span tabIndex={0} aria-label={t(connection.labelKey) + " · " + (detail || t("connectionDiagnostics.historyTitle"))}>
-        <Space size={4}>
-          <Badge status={connection.badge} text={t(connection.labelKey)} />
-          {detail && (
-            <ExclamationCircleFilled
-              role="img"
-              aria-label={detail}
-              style={{ color: colors.warning, cursor: "help" }}
-            />
-          )}
-        </Space>
+    <Tooltip content={<ConnectionHistory node={node} detail={detail} />}>
+      <span tabIndex={0} className="inline-flex items-center gap-1" aria-label={t(connection.labelKey) + " · " + (detail || t("connectionDiagnostics.historyTitle"))}>
+        <Badge variant="plain" size="lg" status={detailBadgeTone[connection.badge]}>{t(connection.labelKey)}</Badge>
+        {detail && (
+          <ExclamationCircleFilled
+            role="img"
+            aria-label={detail}
+            className="cursor-help text-fg-warning"
+          />
+        )}
       </span>
     </Tooltip>
   );
