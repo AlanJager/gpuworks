@@ -32,22 +32,21 @@ var vllmFallbackEnv = map[string]struct{}{
 func scanVLLM(argv []string, env map[string]string) []PerformanceFinding {
 	var findings []PerformanceFinding
 	compilation, speculative := map[string]any{}, map[string]any{}
+	level := ""
 	for i := 0; i < len(argv); i++ {
 		token := strings.TrimSpace(argv[i])
 		name, inline, hasInline := strings.Cut(token, "=")
-		if level, ok := optimizationLevel(name, inline, hasInline, argv, &i); ok {
-			if level == "0" {
-				findings = append(findings, PerformanceFinding{Cost: CostGraphDisabled, Level: LevelGuarded, Param: "-O", Value: level})
-			}
+		if value, ok := optimizationLevel(name, inline, hasInline, argv, &i); ok {
+			level = value
 			continue
 		}
 		if mergeConfig(compilationSpellings, compilation, name, inline, hasInline, argv, &i) ||
 			mergeConfig(speculativeSpellings, speculative, name, inline, hasInline, argv, &i) {
 			continue
 		}
-		findings = append(findings, scanFlag(vllmFlagRules, argv, &i)...)
+		findings = append(findings, scanFlag(vllmFlagRules, true, argv, &i)...)
 	}
-	findings = append(findings, compilationFindings(compilation)...)
+	findings = append(findings, compilationFindings(compilation, level)...)
 	findings = append(findings, speculativeFindings(speculative)...)
 	return append(findings, vllmEnvFindings(env)...)
 }
@@ -116,7 +115,9 @@ func dottedValue(raw string) any {
 	return raw
 }
 
-func compilationFindings(config map[string]any) []PerformanceFinding {
+// compilationFindings grades the merged compilation config and the last
+// optimization level written (empty when none).
+func compilationFindings(config map[string]any, level string) []PerformanceFinding {
 	param := func(key string) string { return compilationConfigFlag + "." + key }
 	var findings []PerformanceFinding
 	mode, hasMode := configString(config, "cudagraph_mode")
@@ -131,9 +132,13 @@ func compilationFindings(config map[string]any) []PerformanceFinding {
 		hasMode = true
 	}
 	// Without a graph mode, vLLM derives NONE from a compilation mode other
-	// than VLLM_COMPILE (3). A "backend" of "eager" is only the torch.compile
-	// backend and does not stop graph replay.
+	// than VLLM_COMPILE (3); -O0 is that mode 0 and likewise still replays
+	// graphs when a graph mode is set. A "backend" of "eager" is only the
+	// torch.compile backend and does not stop graph replay.
 	if !hasMode {
+		if level == "0" {
+			findings = append(findings, PerformanceFinding{Cost: CostGraphDisabled, Level: LevelGuarded, Param: "-O", Value: level})
+		}
 		for _, key := range []string{"mode", "level"} {
 			if n, ok := config[key].(float64); ok && n == 0 {
 				findings = append(findings, PerformanceFinding{Cost: CostGraphDisabled, Level: LevelGuarded, Param: param(key), Value: "0"})

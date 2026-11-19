@@ -106,7 +106,9 @@ type PerformanceFinding struct {
 }
 
 // ScanPerformanceCosts reports the tradeoffs in one engine launch: argv (the
-// engine arguments, flags written either "--flag value" or "--flag=value")
+// engine arguments, flags written either "--flag value" or "--flag=value",
+// and for vLLM, whose parser also accepts underscores, --max_num_seqs; the
+// finding names the dashed spelling)
 // and the container environment. Plain flags come in argv order, then the
 // findings of vLLM's JSON-valued compilation and speculative configs (each
 // merged across its JSON and dotted spellings, later values winning, as vLLM
@@ -119,7 +121,7 @@ func ScanPerformanceCosts(engine string, argv []string, env map[string]string) [
 	case SGLang:
 		var findings []PerformanceFinding
 		for i := 0; i < len(argv); i++ {
-			findings = append(findings, scanFlag(sglangFlagRules, argv, &i)...)
+			findings = append(findings, scanFlag(sglangFlagRules, false, argv, &i)...)
 		}
 		return findings
 	default:
@@ -129,12 +131,16 @@ func ScanPerformanceCosts(engine string, argv []string, env map[string]string) [
 
 // scanFlag grades argv[i] by rules, consuming the flag's value when the rule
 // takes one, and returns nothing for a token no rule names.
-func scanFlag(rules map[string]flagRule, argv []string, i *int) []PerformanceFinding {
+// With underscores, an underscore spelling of a flag counts as the dashed one.
+func scanFlag(rules map[string]flagRule, underscores bool, argv []string, i *int) []PerformanceFinding {
 	token := strings.TrimSpace(argv[*i])
 	if !strings.HasPrefix(token, "-") {
 		return nil
 	}
 	name, inline, hasInline := strings.Cut(token, "=")
+	if underscores {
+		name = strings.ReplaceAll(name, "_", "-")
+	}
 	rule, ok := rules[name]
 	if !ok {
 		return nil

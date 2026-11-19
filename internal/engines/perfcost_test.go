@@ -59,6 +59,27 @@ func TestScanPerformanceCostsGradesEachEngineSpelling(t *testing.T) {
 		{name: "optimization level zero", engine: VLLM, argv: []string{"-O0"}, want: []PerformanceFinding{guarded(CostGraphDisabled, "-O", "0")}},
 		{name: "optimization level zero spaced", engine: VLLM, argv: []string{"-O", "0", "--max-num-seqs", "64"}, want: []PerformanceFinding{guarded(CostGraphDisabled, "-O", "0")}},
 		{name: "optimization level three", engine: VLLM, argv: []string{"-O3"}},
+		// -O0 is compilation mode 0: an explicit graph mode keeps graphs.
+		{name: "optimization level zero with decode graphs", engine: VLLM, argv: []string{"-O0", "--compilation-config", `{"cudagraph_mode":"FULL_DECODE_ONLY"}`}, want: []PerformanceFinding{info(CostGraphCaptureNarrow, "--compilation-config.cudagraph_mode", "FULL_DECODE_ONLY")}},
+		{name: "level zero with graph mode", engine: VLLM, argv: []string{"--compilation-config", `{"level":0,"cudagraph_mode":"PIECEWISE"}`}},
+		{name: "level zero without graph mode", engine: VLLM, argv: []string{"--compilation-config", `{"level":0}`}, want: []PerformanceFinding{guarded(CostGraphDisabled, "--compilation-config.level", "0")}},
+		{name: "use cudagraph false", engine: VLLM, argv: []string{"--compilation-config", `{"use_cudagraph":false}`}, want: []PerformanceFinding{guarded(CostGraphDisabled, "--compilation-config.use_cudagraph", "false")}},
+		{name: "use cudagraph false overrides mode zero", engine: VLLM, argv: []string{"--compilation-config", `{"mode":0,"use_cudagraph":false}`}, want: []PerformanceFinding{guarded(CostGraphDisabled, "--compilation-config.use_cudagraph", "false")}},
+		{name: "narrow max capture size", engine: VLLM, argv: []string{"--compilation-config.max_cudagraph_capture_size", "8"}, want: []PerformanceFinding{info(CostGraphCaptureNarrow, "--compilation-config.max_cudagraph_capture_size", "8")}},
+		{name: "wide max capture size", engine: VLLM, argv: []string{"--compilation-config", `{"max_cudagraph_capture_size":16}`}},
+		{name: "chunked prefill sglang inline", engine: SGLang, argv: []string{"--chunked-prefill-size=-1"}, want: []PerformanceFinding{guarded(CostChunkedPrefillDisabled, "--chunked-prefill-size", "-1")}},
+		{name: "chunked prefill sglang then flag", engine: SGLang, argv: []string{"--chunked-prefill-size", "-1", "--disable-radix-cache"}, want: []PerformanceFinding{
+			guarded(CostChunkedPrefillDisabled, "--chunked-prefill-size", "-1"),
+			guarded(CostPrefixCacheDisabled, "--disable-radix-cache", ""),
+		}},
+		{name: "triton attention env", engine: VLLM, env: map[string]string{"VLLM_ATTENTION_BACKEND": "TRITON_ATTN"}, want: []PerformanceFinding{info(CostKernelFallback, "env:VLLM_ATTENTION_BACKEND", "TRITON_ATTN")}},
+		{name: "flash attention env", engine: VLLM, env: map[string]string{"VLLM_ATTENTION_BACKEND": "FLASH_ATTN"}},
+		// vLLM's parser takes underscores; the finding names the dashed flag.
+		{name: "vllm underscore spelling", engine: VLLM, argv: []string{"--enforce_eager", "--max_num_seqs=2"}, want: []PerformanceFinding{
+			guarded(CostGraphDisabled, "--enforce-eager", ""),
+			guarded(CostConcurrencyCapped, "--max-num-seqs", "2"),
+		}},
+		{name: "sglang underscore spelling is not a flag", engine: SGLang, argv: []string{"--disable_cuda_graph"}},
 		{name: "narrow capture sizes", engine: VLLM, argv: []string{"--compilation-config", `{"cudagraph_mode":"PIECEWISE","cudagraph_capture_sizes":[1,2,4]}`}, want: []PerformanceFinding{info(CostGraphCaptureNarrow, "--compilation-config.cudagraph_capture_sizes", "[1,2,4]")}},
 		{name: "wide capture sizes", engine: VLLM, argv: []string{"--compilation-config", `{"cudagraph_capture_sizes":[1,2,4,8,16]}`}},
 		{name: "speculative eager", engine: VLLM, argv: []string{"--speculative-config", `{"method":"mtp","enforce_eager":true}`}, want: []PerformanceFinding{guarded(CostGraphDisabled, "--speculative-config.enforce_eager", "true")}},
