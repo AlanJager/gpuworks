@@ -88,7 +88,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 				},
 				FeaturesChanged: func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
 			}},
-		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing, CgroupRoot: cgRoot, CgroupParent: cgParent},
+		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing, CgroupRoot: cgRoot, CgroupParent: cgParent, Reads: PluginReads(m.st)},
 		Core:             extapi.CoreInfo{Version: version.Version, InstallID: h.InstallID(), OS: runtime.GOOS, Arch: runtime.GOARCH, HARole: extapi.HARoleSingle},
 		RequireIsolation: m.cfg.Plugins.RequireIsolation,
 		Features:         h.reg.dynamic,

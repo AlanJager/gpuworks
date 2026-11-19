@@ -42,9 +42,9 @@ func TestVerifyAppliesTheServerPolicy(t *testing.T) {
 			s.Manifest.Routes = []extapi.RouteDecl{routeDecl("/jobs", extapi.RouteAdmin), routeDecl("/hooks", extapi.RoutePublic)}
 		}, code: messages.ErrorPluginPolicyRefused, params: map[string]any{"rule": "http:public", "value": "routes.1"}},
 		{name: "read surface this server does not offer", offer: extpkg.Capabilities(), edit: func(s *extsign.Spec) {
-			s.Manifest.Permissions = []string{"read:node_identity"}
-			s.Manifest.Requires = map[string]int{"host.node_identity": 1}
-		}, code: messages.ErrorPluginIncompatible, params: map[string]any{"capability": "host.node_identity", "offered": 0}},
+			s.Manifest.Permissions = []string{"read:fleet"}
+			s.Manifest.Requires = map[string]int{"host.fleet": 1}
+		}, code: messages.ErrorPluginIncompatible, params: map[string]any{"capability": "host.fleet", "offered": 0}},
 		{name: "websocket route on a server without upgrades", edit: func(s *extsign.Spec) {
 			s.Manifest.Permissions = []string{"http:routes"}
 			s.Manifest.Requires = map[string]int{"routes": 1, "routes.websocket": 1}
@@ -93,8 +93,8 @@ func TestVerifyAcceptsWhatTheServerPolicyAsksFor(t *testing.T) {
 			s.Manifest.Routes = []extapi.RouteDecl{routeDecl("/jobs", extapi.RouteMember), routeDecl("/hooks", extapi.RoutePublic)}
 		},
 		"optional read surface this server does not offer": func(s *extsign.Spec) {
-			s.Manifest.Permissions = []string{"read:node_identity"}
-			s.Manifest.Uses = map[string]int{"host.node_identity": 1}
+			s.Manifest.Permissions = []string{"read:fleet"}
+			s.Manifest.Uses = map[string]int{"host.fleet": 1}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -105,6 +105,21 @@ func TestVerifyAcceptsWhatTheServerPolicyAsksFor(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// This server offers the node reads, and an on-demand package may require
+// them: reads are not pushes.
+func TestVerifyAcceptsAnOnDemandPackageRequiringTheNodeReads(t *testing.T) {
+	w := newWorld(t)
+	spec := extsign.Minimal("acme", "acme_backup", "1.0.0")
+	spec.Manifest.Runtime.Lifecycle = extapi.LifecycleOnDemand
+	spec.Manifest.Permissions = []string{"read:node_identity", "read:node_inventory"}
+	spec.Manifest.Requires = map[string]int{"host.node_identity": 1, "host.nodes": 1}
+	v := w.verifier()
+	v.Offered = extpkg.Capabilities()
+	if _, err := v.Verify(contents(t, extsign.Build(t, w.pub, spec)), extpkg.Install); err != nil {
+		t.Fatal(err)
 	}
 }
 

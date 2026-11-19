@@ -34,9 +34,10 @@ const (
 	// ErrorPluginHandshakeMismatch: the binary answered for another package
 	// build than the installed one ({field}: {want}, got {got}).
 	ErrorPluginHandshakeMismatch = "PLUGIN_HANDSHAKE_MISMATCH"
-	// ErrorPluginCapabilityNotOffered: the plugin chose a capability
-	// version ({capability}@{version}) this server did not offer or the
-	// package was not approved for.
+	// ErrorPluginCapabilityNotOffered: the plugin cannot use a capability
+	// version ({capability}@{version}): it chose one this server did not
+	// offer or the package was not approved for, or it calls a read whose
+	// capability it did not negotiate at its handshake.
 	ErrorPluginCapabilityNotOffered = "PLUGIN_CAPABILITY_NOT_OFFERED"
 	// ErrorPluginCrashed: the plugin process exited unexpectedly with
 	// {exit_code}; it is restarted after a backoff.
@@ -58,8 +59,8 @@ const (
 	// ErrorPluginHostNotReady: the plugin called the host API before its
 	// handshake was accepted.
 	ErrorPluginHostNotReady = "PLUGIN_HOST_NOT_READY"
-	// ErrorPluginHostRateLimited: the plugin calls the host API faster than
-	// {limit} requests a second.
+	// ErrorPluginHostRateLimited: the plugin calls the host API, or reads
+	// inventory pages, faster than {limit} a second.
 	ErrorPluginHostRateLimited = "PLUGIN_HOST_RATE_LIMITED"
 	// ErrorPluginHostRouteUnknown: the host API serves no {method} {path}.
 	ErrorPluginHostRouteUnknown = "PLUGIN_HOST_ROUTE_UNKNOWN"
@@ -71,6 +72,13 @@ const (
 	// Install time only: a refused install also names the {permission} or
 	// {feature}; a refused push carries {id} alone.
 	ErrorPluginStateOnDemand = "PLUGIN_STATE_ON_DEMAND"
+	// ErrorPluginHostNotPermitted: plugin {id} called a host API read
+	// whose {permission} its administrator did not approve.
+	ErrorPluginHostNotPermitted = "PLUGIN_HOST_NOT_PERMITTED"
+	// ErrorPluginHostArgumentInvalid: a host API request from plugin {id}
+	// names an invalid {field} (a node batch, a salt, a cursor or a page
+	// limit out of bounds).
+	ErrorPluginHostArgumentInvalid = "PLUGIN_HOST_ARGUMENT_INVALID"
 )
 
 // PluginHostErrorCodes lists the codes above, for the check that the
@@ -82,6 +90,6 @@ func PluginHostErrorCodes() []string {
 		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginKilled, ErrorPluginCrashloop, ErrorPluginUnhealthy,
 		ErrorPluginMemoryExceeded,
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,
-		ErrorPluginStateOnDemand,
+		ErrorPluginStateOnDemand, ErrorPluginHostNotPermitted, ErrorPluginHostArgumentInvalid,
 	}
 }

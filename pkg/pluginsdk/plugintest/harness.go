@@ -14,8 +14,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -83,10 +85,14 @@ func Start(t testing.TB, cfg pluginsdk.Config) *Harness {
 }
 
 // Request is a valid initialize request for cfg's package: this server's
-// offer of every table kind at every schema extapi defines plus routes@1,
-// and the tables the fake host currently holds.
+// offer of every table kind at every schema extapi defines plus routes@1
+// and the node reads (host.node_identity@1, host.nodes@1), and the tables
+// the fake host currently holds. It grants no permission; a test of the
+// reads sets Plugin.PermissionsGranted, as an administrator's approval
+// does.
 func (h *Harness) Request() *extapi.HandshakeRequest {
-	offer := map[string]extapi.Range{extapi.CapRoutes: {Min: 1, Max: 1}}
+	offer := map[string]extapi.Range{extapi.CapRoutes: {Min: 1, Max: 1},
+		extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1}}
 	for _, kind := range extapi.TableKinds() {
 		s := extapi.TableSchemas(kind)
 		offer[extapi.TableCapability(kind)] = extapi.Range{Min: s[0], Max: s[len(s)-1]}
@@ -141,7 +147,14 @@ func (h *Harness) Initialize(req *extapi.HandshakeRequest) (*extapi.HandshakeRes
 	if err != nil {
 		return nil, err
 	}
-	return extapi.DecodeHandshakeResponse(raw)
+	resp, err := extapi.DecodeHandshakeResponse(raw)
+	if err != nil {
+		return nil, err
+	}
+	h.host.mu.Lock()
+	h.host.handshake = handshake{id: req.Plugin.ID, granted: slices.Clone(req.Plugin.PermissionsGranted), use: maps.Clone(resp.Use)}
+	h.host.mu.Unlock()
+	return resp, nil
 }
 
 // Health probes the plugin.

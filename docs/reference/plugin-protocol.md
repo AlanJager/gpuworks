@@ -292,6 +292,8 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `GET /gwx/v1/health` | 健康 | server 的周期探测 |
 | `PUT /host/v1/state/{kind}` | 推送 | 插件推送一种表的整表 |
 | `GET /host/v1/health` | 宿主健康 | 插件探测宿主接口，应答是健康对象 |
+| `POST /host/v1/node-identity` | 节点身份 | 插件读取指定节点加盐的硬件身份，见[节点读取](#节点读取) |
+| `GET /host/v1/nodes` | 节点清单 | 插件按加入顺序分页读取节点清单 |
 | 请求头 `Gwx-Deadline-Ms` | Unix 毫秒 | 调用的截止时间 |
 | 响应头 `Gwx-Product-Error` | — | 标明插件路由的响应体是一个错误对象 |
 | `/r/<路径>` | 路由 | 对插件某条路由的请求（[路由请求](#路由请求与主体)） |
@@ -445,6 +447,65 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 | 授权（Grant） | `availability` | 只来自命名空间的权威（`gate: self` 的键来自声明它的包），所有者掉线超过宽限后收紧 |
 | 显示（Display） | `banners` | 只显示，从不参与执行 |
 | 不透明（Opaque） | `attestations` | 只存储与转交，从不解释 |
+
+## 节点读取
+
+插件经宿主接口读取节点身份与节点清单，读的是核心的钉住读（一次至多 500 个节点），从不扫描整个集群。每个读取都要求管理员批准的权限与握手协商好的能力：
+
+| 端点 | 权限 | 能力 |
+|---|---|---|
+| `POST /host/v1/node-identity` | `read:node_identity` | `host.node_identity@1` |
+| `GET /host/v1/nodes?cursor=&limit=` | `read:node_inventory` | `host.nodes@1` |
+
+读取不是推送，所以 `on_demand` 的包也可以读。
+
+### 节点身份
+
+请求体给出盐与节点 id。用 POST 是为了让盐永远不出现在 URL 里：
+
+<!-- golden: node_identity_request/v1/valid/two_nodes.json -->
+```json
+{"node_ids":[3,7],"salt":"acme-quota-2026"}
+```
+
+- `salt`：1–219 字节。server 以「`pkg`、零字节、包 id、零字节、盐」为 HMAC 密钥，所以两个包用同一个盐得到互不相关的摘要，同一个包在任何 server 上得到相同的摘要；包 id 至多 32 字节，密钥因此不超过 256 字节。
+- `node_ids`：server 的节点 id，1–500 个，不重复。
+
+应答列出仍存在的指定节点，按 id 升序；不存在的节点（从未有过或已删除）不出现，调用方比对 id：
+
+<!-- golden: node_identity_answer/v1/valid/partial.json -->
+```json
+{"nodes":[{"cards":[{"h":"1b9e4d0a77c2f310","tail":"e7f8"},{"h":"c0a9e81f2b3d4e56","tail":"5555"}],"cards_without_serial":0,"host":{"h":"5f0c8e2a9d413b77","tail":"3432"},"node_id":3},{"cards":[],"cards_without_serial":8,"node_id":7}]}
+```
+
+- `host` 是机器的系统 UUID，agent 还没上报时缺省；同一台机器上的多个逻辑节点共用它。
+- `cards` 是本节点可用且带硬件序列号的卡，按 `h` 排序；标识是按槽位或序号编出来的卡只计入 `cards_without_serial`。
+- 每一项的 `h` 是对原始值做 HMAC-SHA256 的前 16 个十六进制字符；`tail` 是原始值的最后 4 个字符，不加盐，供人到机器上核对，原始值不足 8 个字符时缺省。原始序列号从不离开 server。
+
+### 节点清单
+
+`GET /host/v1/nodes` 返回一页节点，按 id（加入顺序）升序。第一页不带 `cursor`，之后原样传上一页的 `next`；`next` 缺省表示已是最后一页。`limit` 为 1–500，缺省为 500。节点 id 不复用，所以翻页之间加入或删除的节点不会让其余节点移位或重复。
+
+<!-- golden: nodes_page/v1/valid/first_page.json -->
+```json
+{"next":"7","nodes":[{"cards":[{"index":0,"model":"NVIDIA H800","serial":true},{"index":1,"model":"NVIDIA H800","serial":true}],"enrolled_at":"2026-11-02T08:15:00Z","host_reported":true,"id":3,"name":"gpu-a01","uuid":"6f1d2c3b-8a9e-4b7c-9d0e-1f2a3b4c5d6e"},{"cards":[{"index":0,"model":"Ascend 910B","serial":false}],"enrolled_at":"2026-11-05T10:00:00Z","host_reported":false,"id":7,"name":"npu-b02","uuid":"0b9c8d7e-6f5a-4b3c-2d1e-0f9a8b7c6d5e"}]}
+```
+
+每个节点给出 id、`uuid`、`name`（运维起的名字，否则主机名，至多 255 字节）、`enrolled_at`、`host_reported`（机器 UUID 是否已上报），以及本节点可用的卡 `{index, model, serial}`：`index` 是厂商 CLI 的设备序号（CLI 不列出时为 -1），`serial` 只说明这张卡有没有序列号、从而是否出现在节点身份里，不含序列号本身。
+
+### 限速与拒绝
+
+宿主接口对每个插件每秒 20 次、突发 100 次；节点清单另有每秒 2 页、突发 4 页的桶，超出时回 429 `PLUGIN_HOST_RATE_LIMITED`（`limit` 为 2，带 `retry_after_ms`）。按控制台一页显示的节点读取，不要在每个事件里把整个集群翻一遍。
+
+| 码 | 状态 | 含义 | 参数 |
+|---|---|---|---|
+| `PLUGIN_HOST_NOT_PERMITTED` | 403 | 管理员没有批准该读取的权限 | `id`、`permission` |
+| `PLUGIN_CAPABILITY_NOT_OFFERED` | 412 | 插件握手时没有协商该能力 | `id`、`capability`、`version` |
+| `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | 盐、节点 id 列表、`cursor` 或 `limit` 越界或不合文法，在读取之前拒绝；被拒的清单查询不消耗页数 | `id`、`field` |
+| `REQUEST_TOO_LARGE` | 413 | 节点身份的请求体超过 32 KiB，在解码之前拒绝 | `max` |
+| `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | 该 server 不提供读取，或方法不对 | `method`、`path` |
+
+请求体不是该对象（JSON 无效、未知字段）时保留线上格式的码，如 `PLUGIN_WIRE_UNKNOWN_FIELD`。
 
 ## 推送表
 

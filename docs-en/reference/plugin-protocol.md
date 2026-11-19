@@ -292,6 +292,8 @@ Under ADR 0071, a plugin is a child process of the server and runs plaintext HTT
 | `GET /gwx/v1/health` | Health | The server's periodic probe |
 | `PUT /host/v1/state/{kind}` | Push | The plugin pushes the whole table of one kind |
 | `GET /host/v1/health` | Host health | The plugin probes the host API; the answer is a health object |
+| `POST /host/v1/node-identity` | Node identity | The plugin reads the salted hardware identity of named nodes; see [Node reads](#node-reads) |
+| `GET /host/v1/nodes` | Node inventory | The plugin pages through the node inventory in enrollment order |
 | Request header `Gwx-Deadline-Ms` | Unix milliseconds | The call's deadline |
 | Response header `Gwx-Product-Error` | — | Marks a plugin route's response body as an error object |
 | `/r/<path>` | Route | A request to one of the plugin's routes ([route requests](#route-requests-and-the-principal)) |
@@ -446,6 +448,65 @@ Each kind belongs to a class, which decides how the server combines the rows of 
 | Display | `banners` | Shown, never enforced |
 | Opaque | `attestations` | Stored and relayed, never interpreted |
 
+## Node reads
+
+A plugin reads node identity and the node inventory through the host API. These are the core's pinned reads (at most 500 nodes at a time), never a scan of the whole fleet. Each read needs a permission the administrator approved and a capability negotiated at the handshake:
+
+| Endpoint | Permission | Capability |
+|---|---|---|
+| `POST /host/v1/node-identity` | `read:node_identity` | `host.node_identity@1` |
+| `GET /host/v1/nodes?cursor=&limit=` | `read:node_inventory` | `host.nodes@1` |
+
+Reads are not pushes, so an `on_demand` package may read too.
+
+### Node identity
+
+The body names a salt and node ids. It is a POST so the salt never appears in a URL:
+
+<!-- golden: node_identity_request/v1/valid/two_nodes.json -->
+```json
+{"node_ids":[3,7],"salt":"acme-quota-2026"}
+```
+
+- `salt`: 1–219 bytes. The server keys the HMAC with "`pkg`, a zero byte, the package id, a zero byte, the salt", so two packages with the same salt get unrelated digests, and one package gets the same digests on every server; a package id is at most 32 bytes, so the key never exceeds 256 bytes.
+- `node_ids`: the server's node ids, 1–500, without repeats.
+
+The answer lists the named nodes that exist, in ascending id order; a node that does not exist (never did, or was deleted) is left out, and the caller compares ids:
+
+<!-- golden: node_identity_answer/v1/valid/partial.json -->
+```json
+{"nodes":[{"cards":[{"h":"1b9e4d0a77c2f310","tail":"e7f8"},{"h":"c0a9e81f2b3d4e56","tail":"5555"}],"cards_without_serial":0,"host":{"h":"5f0c8e2a9d413b77","tail":"3432"},"node_id":3},{"cards":[],"cards_without_serial":8,"node_id":7}]}
+```
+
+- `host` is the machine's system UUID, absent until the agent reports one; logical nodes on one machine share it.
+- `cards` are the cards the node may use that carry a hardware serial, ordered by `h`; cards whose id the probe made up from a slot or an index are only counted in `cards_without_serial`.
+- Each `h` is the first 16 hex characters of an HMAC-SHA256 of the raw value; `tail` is the raw value's last four characters, unsalted, so a person can check it on the machine, and absent for a raw value shorter than eight characters. Raw serials never leave the server.
+
+### Node inventory
+
+`GET /host/v1/nodes` returns one page of nodes in ascending id (enrollment) order. The first page has no `cursor`; after that pass the previous page's `next` unchanged; an absent `next` means the last page. `limit` is 1–500 and defaults to 500. Node ids are never reused, so a node enrolled or deleted between pages neither shifts nor repeats the rest.
+
+<!-- golden: nodes_page/v1/valid/first_page.json -->
+```json
+{"next":"7","nodes":[{"cards":[{"index":0,"model":"NVIDIA H800","serial":true},{"index":1,"model":"NVIDIA H800","serial":true}],"enrolled_at":"2026-11-02T08:15:00Z","host_reported":true,"id":3,"name":"gpu-a01","uuid":"6f1d2c3b-8a9e-4b7c-9d0e-1f2a3b4c5d6e"},{"cards":[{"index":0,"model":"Ascend 910B","serial":false}],"enrolled_at":"2026-11-05T10:00:00Z","host_reported":false,"id":7,"name":"npu-b02","uuid":"0b9c8d7e-6f5a-4b3c-2d1e-0f9a8b7c6d5e"}]}
+```
+
+Each node gives its id, `uuid`, `name` (the name an operator gave it, otherwise its hostname; at most 255 bytes), `enrolled_at`, `host_reported` (whether the machine's UUID was reported), and the cards it may use as `{index, model, serial}`: `index` is the vendor CLI's device index (-1 when the CLI does not list the card), and `serial` only says whether the card has a serial, and so appears in the node's identity; it never holds the serial.
+
+### Rate limits and refusals
+
+The host API allows each plugin 20 calls a second with a burst of 100; the node inventory has its own bucket of 2 pages a second with a burst of 4, and answers 429 `PLUGIN_HOST_RATE_LIMITED` beyond it (`limit` 2, with `retry_after_ms`). Read the nodes a console page shows, not the whole fleet on every event.
+
+| Code | Status | Meaning | Params |
+|---|---|---|---|
+| `PLUGIN_HOST_NOT_PERMITTED` | 403 | The administrator did not approve the read's permission | `id`, `permission` |
+| `PLUGIN_CAPABILITY_NOT_OFFERED` | 412 | The plugin did not negotiate the capability at its handshake | `id`, `capability`, `version` |
+| `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | The salt, the node id list, `cursor` or `limit` is out of bounds or breaks its grammar; refused before any read, and a refused inventory query costs no page | `id`, `field` |
+| `REQUEST_TOO_LARGE` | 413 | The node identity request body is over 32 KiB; refused before decoding | `max` |
+| `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | The server offers no reads, or the method is wrong | `method`, `path` |
+
+A body that is not the object at all (invalid JSON, an unknown field) keeps its wire code, such as `PLUGIN_WIRE_UNKNOWN_FIELD`.
+
 ## Pushed tables
 
 A row's `notice` is a code with parameters, and the code must be listed in the pushing package's manifest `codes`. Timelines are made of steps: only the first step may omit `at` (it holds from the push), later `at` values strictly increase, and a timeline has 1–64 steps; the server follows the steps on its own clock, and they take effect even while the plugin is down.
@@ -554,4 +615,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: ce61d535e8205e1cdd3720d145425086395f9e8cd92d6209eaff4c5ac63f01eb -->
+<!-- translation-source-sha256: 61747ab5c5f19b793e4951380fa837741e48f1368c1721eaeaeeddea938a6d33 -->

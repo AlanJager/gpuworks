@@ -57,3 +57,12 @@ func processRSSMiB() float64 {
 	}
 	return pages * float64(os.Getpagesize()) / (1 << 20)
 }
+
+// processCPUSeconds is the user and system CPU time this process used.
+func processCPUSeconds() float64 {
+	var u syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &u); err != nil {
+		return 0
+	}
+	return float64(u.Utime.Nano()+u.Stime.Nano()) / 1e9
+}

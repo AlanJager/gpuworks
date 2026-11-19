@@ -121,6 +121,7 @@ type Service interface{ Run(ctx context.Context) error }
 - `NodeInventory(ctx, cursor, limit)` 按 id（加入顺序）返回一页 `store.NodeInventoryPage{Nodes, Next}`：每个节点的 id、UUID、显示名（运维起的名字，否则主机名）、加入时间、`HostReported`（主机 UUID 是否已知），以及本节点可用的卡 `{Index, Model, Serial}`，不含任何原始序列号。第一页 `cursor` 为 0，之后传上一页的 `Next`；`Next` 为 0 表示已是最后一页。`limit` 为 1 到 500，否则 `store.ErrNodeReadBatch`。节点 id 不复用，所以翻页之间加入或删除的节点不会让其余节点移位或重复。
 - `NodeNamesByID(ctx, ids)` 返回每个仍存在的指定节点的显示名（运维起的名字，否则主机名），以 id 为键；不存在的节点（从未有过或已删除）不在结果里，重复的 id 只算一次。只为少数节点打标签时用它，不必翻 `NodeInventory`。`ids` 为空时返回空 map、不查询；去重后超过 500 个返回 `store.ErrNodeReadBatch`，不会被截断。它是读池上一次按主键的查询。
 - 规模：`NodeIdentity` 与 `NodeInventory`都是钉住的读，在读池上各两次带索引的查询（节点按主键查找或按主键范围、卡走 `gpus` 的 `(node_id, ident)` 索引），一次最多 500 个节点。按页面上显示的节点调用 `NodeIdentity`，不要在每个事件里对整个节点集合调用。身份的变化（新的主机 UUID、换卡）不在 `store.NodeFleetTopic` 上发布；需要跟上它的模块在读页面时重新读。
+- 插件：已安装的插件经宿主接口读同样的两项（`POST /host/v1/node-identity`、`GET /host/v1/nodes`，线上格式见[插件协议](../reference/plugin-protocol.md#节点读取)），需要 `read:node_identity` / `read:node_inventory` 权限与 `host.node_identity@1` / `host.nodes@1` 能力。插件的盐由 `pluginhost.IdentityKey` 绑定到包 id（`"pkg\0"+id+"\0"+盐` 作为 HMAC 密钥，盐至多 219 字节），所以两个包用同一个盐得到不同的 `H`，同一个包在不同的 server 上得到相同的 `H`；不加盐的 `Tail` 对所有调用方相同，仍允许跨包的弱关联。`app.PluginReads` 把 store 的结果转成线上对象，名称与型号超过 255 字节时按字符边界截断。
 
 ## 表与迁移
 
@@ -264,7 +265,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 - 插件路由在 `/api/v1/x/<id>/` 下的动态挂载（下文「调用与路由表」的路由表已经编译，还没有路由用它）、宿主接口里状态与健康之外的端点。
 - 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
 - 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
-- 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
+- 清单词汇里除 `table.<种类>`、`host.node_identity` 与 `host.nodes` 以外的能力都还不提供：其余读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
 
@@ -322,7 +323,7 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 ### gwx/1 连接与宿主接口
 
-每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`）。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
+每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`，以及节点读取 `POST /host/v1/node-identity`、`GET /host/v1/nodes`（`pluginhost.Reads`，由 app 以 store 实现；没有 `Reads` 时回 `PLUGIN_HOST_ROUTE_UNKNOWN`，未批准的权限回 `PLUGIN_HOST_NOT_PERMITTED`，未协商的能力回 `PLUGIN_CAPABILITY_NOT_OFFERED`，越界参数回 `PLUGIN_HOST_ARGUMENT_INVALID`）；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`），节点清单另有每秒 2 页、突发 4 页的桶。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
 
 ### 插件 SDK：`pkg/pluginsdk`
 

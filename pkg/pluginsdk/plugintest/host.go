@@ -35,6 +35,11 @@ type fakeHost struct {
 	refuse  map[string]extapi.WireError
 	changed chan struct{}
 	now     func() time.Time
+	// handshake is set by Harness.Initialize; nodes and identities are
+	// the canned answers of the reads.
+	handshake  handshake
+	nodes      []extapi.InventoryNode
+	identities map[uint64]extapi.NodeIdentity
 }
 
 func newFakeHost() *fakeHost {
@@ -64,6 +69,18 @@ func (h *fakeHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.push(w, r, strings.TrimPrefix(r.URL.Path, extapi.PathHostState))
+	case r.URL.Path == extapi.PathHostNodeIdentity:
+		if r.Method != http.MethodPost {
+			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
+			return
+		}
+		h.nodeIdentity(w, r)
+	case r.URL.Path == extapi.PathHostNodes:
+		if r.Method != http.MethodGet {
+			writeRefusal(w, routeUnknown(r, extapi.ReasonUnsupported))
+			return
+		}
+		h.inventory(w, r)
 	default:
 		writeRefusal(w, routeUnknown(r, extapi.ReasonNotFound))
 	}
