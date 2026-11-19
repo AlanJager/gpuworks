@@ -8,6 +8,11 @@
 //	--push kind=<json>             push this table once initialized (repeatable)
 //	--crash-after d                exit 2 this long after initialize
 //	--exit-at-start n              exit n before serving anything
+//	--fail-version v               as version v of its package, write
+//	                               "<v> was here" to the file state in its
+//	                               data directory and exit 3 during the
+//	                               handshake (a new version that cannot
+//	                               open its store)
 //	--hang init|health             never answer initialize, or health
 //	--probe-open path              try to read path and write in its data
 //	                               directory, and report on stderr
@@ -107,6 +112,7 @@ func main() {
 	fs.Var(&push, "push", "kind=<json> to push once initialized")
 	crashAfter := fs.Duration("crash-after", -1, "exit 2 this long after initialize")
 	exitAtStart := fs.Int("exit-at-start", -1, "exit with this code before serving")
+	failVersion := fs.String("fail-version", "", "package version that exits during the handshake")
 	hang := fs.String("hang", "", "init or health")
 	probeOpen := fs.String("probe-open", "", "path to try to read")
 	probePID := fs.Int("probe-pid", 0, "another process to try to reach")
@@ -159,6 +165,14 @@ func main() {
 	if code, reason, ok := strings.Cut(*refuse, ":"); ok {
 		cfg.Init = func(context.Context, *pluginsdk.Plugin) error {
 			return pluginsdk.Refuse(reason, code, "refused on purpose", nil)
+		}
+	}
+	if *failVersion != "" && *failVersion == *version {
+		cfg.Init = func(context.Context, *pluginsdk.Plugin) error {
+			_ = os.WriteFile("state", []byte(*version+" was here"), 0o600)
+			log.Error("this version cannot open its store", "version", *version)
+			os.Exit(3)
+			return nil
 		}
 	}
 	if *hang == "init" {

@@ -3,6 +3,7 @@
 package extplugin
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,9 +27,12 @@ const recoveryBudget = 10 * time.Second
 // node and the other capping the fleet at zero cards, the local
 // administrator signs in afresh, is told it is one, lists the plugins,
 // overrides one node's hold so that node is schedulable, disables and
-// uninstalls each, and every call answers within the budget.
+// uninstalls each, and every call answers within the budget; the disables
+// run while the upgrade of a third, healthy package waits out its health
+// gate, which holds up only that package.
 func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 	s := newSite(t)
+	s.upgradeGate = 30 * time.Second
 	sv := s.boot()
 	st := sv.a.Store()
 	a, b := node(t, st, "a", 2), node(t, st, "b", 2)
@@ -123,6 +127,23 @@ func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 	if !heldByPlugins(t, st, b.UUID) {
 		t.Fatal("the override of node a released node b")
 	}
+	sv.install(s.fakePackage("acme_third", "1.0.0"), true)
+	sv.waitPlugin("acme_third", "running", func(p dto.Plugin) bool { return p.State == "running" })
+	third := s.fakePackage("acme_third", "2.0.0")
+	status, out := sv.do(http.MethodPost, "/api/v1/plugins/acme_third/upgrade", bytes.NewReader(third))
+	var approval struct {
+		Params map[string]any `json:"params"`
+	}
+	if status != http.StatusConflict || json.Unmarshal(out, &approval) != nil {
+		t.Fatalf("upgrade of acme_third without approval = %d %s", status, out)
+	}
+	upgraded := make(chan int, 1)
+	go func() {
+		status, _ := sv.do(http.MethodPost, "/api/v1/plugins/acme_third/upgrade?approve="+url.QueryEscape(fmt.Sprint(approval.Params["approve_hash"])),
+			bytes.NewReader(third))
+		upgraded <- status
+	}()
+	sv.waitPlugin("acme_third", "in its health gate", func(p dto.Plugin) bool { return p.Version == "2.0.0" && p.State == "running" })
 	for _, id := range []string{"acme_fake", "acme_other"} {
 		var p dto.Plugin
 		if out := timed("disable "+id, http.MethodPost, "/api/v1/plugins/"+id+"/disable", ""); json.Unmarshal(out, &p) != nil || p.State != "disabled" {
@@ -135,6 +156,14 @@ func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 			t.Fatalf("impact of %s answered %s", id, out)
 		}
 		timed("uninstall "+id, http.MethodDelete, "/api/v1/plugins/"+id+"?confirm="+url.QueryEscape(im.Confirm), "")
+	}
+	select {
+	case status := <-upgraded:
+		t.Fatalf("the upgrade of acme_third answered %d before its gate ended", status)
+	default:
+	}
+	if status := <-upgraded; status != http.StatusOK {
+		t.Fatalf("upgrade of acme_third = %d", status)
 	}
 	for _, id := range []string{"acme_fake", "acme_other"} {
 		if p := sv.plugin(id); p.State != "absent" {

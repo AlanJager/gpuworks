@@ -87,6 +87,9 @@ type site struct {
 	timing func(*pluginhost.Timing)
 	// policy is server.yaml's plugins.policy.
 	policy serverconfig.PluginPolicy
+	// upgradeGate is how long an upgraded plugin must stay up (two
+	// seconds when zero).
+	upgradeGate time.Duration
 }
 
 func newSite(t *testing.T) *site {
@@ -125,13 +128,18 @@ func (s *site) open() *app.App {
 	if s.timing != nil {
 		s.timing(&tm)
 	}
+	gate := s.upgradeGate
+	if gate == 0 {
+		gate = 2 * time.Second
+	}
 	cfg := app.Config{Addr: "127.0.0.1:0", DataDir: s.dir, DBPath: s.db, AdminUser: "admin", AdminPassword: adminPassword,
-		PluginRoots:   []extapi.PublicKey{s.root.Public},
-		PluginRuntime: app.PluginRuntime{Trampoline: self, Clock: s.clock.clock(), Timing: tm, TickInterval: 20 * time.Millisecond}}
+		PluginRoots: []extapi.PublicKey{s.root.Public},
+		PluginRuntime: app.PluginRuntime{Trampoline: self, Clock: s.clock.clock(), Timing: tm, TickInterval: 20 * time.Millisecond,
+			UpgradeGate: gate}}
 	// This test site explicitly permits its signed fixture packages when
 	// Landlock is unavailable. Available Landlock remains required by their
 	// certificates and the dedicated isolation tests still verify it.
-	cfg.Plugins = serverconfig.Plugins{AllowUnsandboxed: []string{"acme_fake", "acme_other"}, Policy: s.policy}
+	cfg.Plugins = serverconfig.Plugins{AllowUnsandboxed: []string{"acme_fake", "acme_other", "acme_third"}, Policy: s.policy}
 	cfg.Extensions.Modules = s.modules
 	a, err := app.New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
