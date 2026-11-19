@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { networkDetailPath } from "../pages/networks/networkLinks";
-import { Card, Descriptions, Empty, Space, Table, Tag, Tooltip, Typography } from "antd";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
@@ -8,6 +8,51 @@ import type { AcceleratorPort, NetInterface, NodeLoadedNetwork, NodeNetworks, RD
 import { formatTime } from "../i18n/datetime";
 import { Endpoint, HCAList, LinkRate, RoleTags, TypeTag, WarningMark, networkName, sourceText } from "../pages/networks/networkDisplay";
 import NodeManagementCard from "./NodeManagementCard";
+import EmptyState from "./EmptyState";
+import { Badge } from "./ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { DetailList, DetailListItem, DetailListLabel, DetailListValue } from "./ui/detail-list";
+import { Skeleton } from "./ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Tooltip } from "./ui/tooltip";
+
+const CODE = "rounded-sm bg-emphasis px-1 font-mono text-label";
+
+interface FactColumn<T> { key: string; title: string; render: (row: T) => ReactNode }
+
+/** A small fact table: every row shown, no paging or sorting, scrolling sideways when wide. */
+function FactTable<T>({ caption, rows, rowKey, columns }: { caption?: ReactNode; rows: T[]; rowKey: (row: T) => string; columns: FactColumn<T>[] }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      {caption && <div className="font-medium">{caption}</div>}
+      <Table size="md" containerClassName="overflow-x-auto">
+        <TableHeader>
+          <TableRow>{columns.map((c) => <TableHead key={c.key} className="whitespace-nowrap">{c.title}</TableHead>)}</TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={rowKey(row)}>{columns.map((c) => <TableCell key={c.key} className="whitespace-nowrap">{c.render(row)}</TableCell>)}</TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function Panel({ title, loading, children }: { title: ReactNode; loading?: boolean; children?: ReactNode }) {
+  return (
+    <Card className="border border-border-subtle" aria-busy={loading || undefined}>
+      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardContent className="pb-4">
+        {loading ? <div className="flex flex-col gap-2"><Skeleton className="h-4 w-2/5" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /></div> : children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function state(value: string, up: string) {
+  return <Badge size="sm" status={value === up ? "success" : "neutral"}>{value || "—"}</Badge>;
+}
 
 function speed(mbps: number) {
   if (!mbps) return "—";
@@ -28,135 +73,123 @@ export default function NodeNetworksCard({ nodeUUID }: { nodeUUID: string }) {
     return () => { cancelled = true; };
   }, [nodeUUID]);
 
-  if (error) return <Card size="small" title={t("node.loaded")}><Typography.Text type="danger">{error}</Typography.Text></Card>;
+  if (error) return <Panel title={t("node.loaded")}><span className="text-fg-danger">{error}</span></Panel>;
   // The inventory names its tables only when there is more than one; a lone
   // interface table under the card's own title needs no heading of its own.
   const inventoryTables = 1 + ((data?.rdma_ports.length ?? 0) > 0 ? 1 : 0) + ((data?.accelerator_ports?.length ?? 0) > 0 ? 1 : 0);
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%", display: "flex" }}>
-      <Card size="small" title={t("node.loaded")} loading={!data}>
+    <div className="flex w-full flex-col gap-4">
+      <Panel title={t("node.loaded")} loading={!data}>
         {data && data.networks.length === 0 ? (
-          <Typography.Text type="secondary">{t("node.none")}</Typography.Text>
+          <span className="text-fg-muted">{t("node.none")}</span>
         ) : (
-          <Table<NodeLoadedNetwork>
-            rowKey="role"
-            size="small"
-            pagination={false}
-            dataSource={data?.networks ?? []}
-            scroll={{ x: "max-content" }}
+          <FactTable<NodeLoadedNetwork>
+            rowKey={(n) => n.role}
+            rows={data?.networks ?? []}
             columns={[
-              { title: t("table.roles"), dataIndex: "role", render: (_, n) => <RoleTags roles={[n.role]} /> },
+              { key: "role", title: t("table.roles"), render: (n) => <RoleTags roles={[n.role]} /> },
               {
+                key: "name",
                 title: t("table.name"),
-                dataIndex: "network_name",
-                render: (_, n) => (
+                render: (n) => (
                   <span>
                     <Link to={networkDetailPath(n.network_id)}>{networkName(t, { name: n.network_name, builtin: n.source === "management" })}</Link>
                     <WarningMark warnings={n.warnings} />
                   </span>
                 ),
               },
-              { title: t("table.type"), dataIndex: "network_type", render: (_, n) => <TypeTag type={n.network_type} /> },
-              {
-                title: t("nodeTable.source"),
-                dataIndex: "source",
-                render: (_, n) => sourceText(t, n),
-              },
-              { title: t("nodeTable.endpoint"), key: "endpoint", render: (_, n) => <Endpoint iface={n.interface} ip={n.ip} /> },
-              { title: t("nodeTable.hcas"), key: "hcas", render: (_, n) => <HCAList hcas={n.hcas} linkLayer={n.link_layer} /> },
+              { key: "type", title: t("table.type"), render: (n) => <TypeTag type={n.network_type} /> },
+              { key: "source", title: t("nodeTable.source"), render: (n) => sourceText(t, n) },
+              { key: "endpoint", title: t("nodeTable.endpoint"), render: (n) => <Endpoint iface={n.interface} ip={n.ip} /> },
+              { key: "hcas", title: t("nodeTable.hcas"), render: (n) => <HCAList hcas={n.hcas} linkLayer={n.link_layer} /> },
             ]}
           />
         )}
-      </Card>
+      </Panel>
       {data?.management && <NodeManagementCard nodeUUID={nodeUUID} management={data.management} onChanged={setData} />}
       {data?.serving_forward && <ServingForwardCard forward={data.serving_forward} />}
-      <Card size="small" title={<span>{t("node.inventory")} <Typography.Text type="secondary" style={{ fontWeight: 400 }}>{t("node.inventoryHint")}</Typography.Text></span>} loading={!data}>
+      <Panel title={<span>{t("node.inventory")} <span className="font-normal text-fg-muted">{t("node.inventoryHint")}</span></span>} loading={!data}>
         {data && !data.inventory_reported ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("node.notReported")} />
+          <EmptyState compact description={t("node.notReported")} />
         ) : (
-          // A block, not antd's inline-flex: an inline box sits on a line box's
-          // baseline and opened a gap above the first table.
-          <Space direction="vertical" size={12} style={{ width: "100%", display: "flex" }}>
-            <Table<NetInterface>
-              rowKey="name"
-              size="small"
-              pagination={false}
-              title={inventoryTables > 1 ? () => t("node.interfaces") : undefined}
-              dataSource={data?.interfaces ?? []}
-              scroll={{ x: "max-content" }}
+          <div className="flex w-full flex-col gap-3">
+            <FactTable<NetInterface>
+              rowKey={(i) => i.name}
+              caption={inventoryTables > 1 ? t("node.interfaces") : undefined}
+              rows={data?.interfaces ?? []}
               columns={[
-                { title: t("node.iface.name"), dataIndex: "name", render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
-                { title: t("node.iface.addrs"), dataIndex: "addrs", render: (v: string[]) => v.length ? v.join(", ") : "—" },
-                { title: t("node.iface.state"), dataIndex: "state", render: (v: string) => <Tag color={v === "up" ? "green" : "default"}>{v || "—"}</Tag> },
-                { title: t("node.iface.speed"), dataIndex: "speed_mbps", render: (v: number) => speed(v) },
-                { title: t("node.iface.mtu"), dataIndex: "mtu", render: (v: number) => v || "—" },
-                { title: t("node.rate"), key: "rate", render: (_, i) => <LinkRate rx={i.rx_bytes_per_sec} tx={i.tx_bytes_per_sec} /> },
+                { key: "name", title: t("node.iface.name"), render: (i) => <code className={CODE}>{i.name}</code> },
+                { key: "addrs", title: t("node.iface.addrs"), render: (i) => i.addrs.length ? i.addrs.join(", ") : "—" },
+                { key: "state", title: t("node.iface.state"), render: (i) => state(i.state, "up") },
+                { key: "speed", title: t("node.iface.speed"), render: (i) => speed(i.speed_mbps) },
+                { key: "mtu", title: t("node.iface.mtu"), render: (i) => i.mtu || "—" },
+                { key: "rate", title: t("node.rate"), render: (i) => <LinkRate rx={i.rx_bytes_per_sec} tx={i.tx_bytes_per_sec} /> },
               ]}
             />
             {(data?.rdma_ports.length ?? 0) > 0 && (
-              <Table<RDMAPort>
+              <FactTable<RDMAPort>
                 rowKey={(p) => `${p.device}:${p.port}`}
-                size="small"
-                pagination={false}
-                title={() => t("node.rdma")}
-                dataSource={data?.rdma_ports ?? []}
-                scroll={{ x: "max-content" }}
+                caption={t("node.rdma")}
+                rows={data?.rdma_ports ?? []}
                 columns={[
-                  { title: t("node.port.device"), key: "device", render: (_, p) => <Typography.Text code>{`${p.device}:${p.port}`}</Typography.Text> },
-                  { title: t("node.port.state"), dataIndex: "state", render: (v: string) => <Tag color={v === "ACTIVE" ? "green" : "default"}>{v || "—"}</Tag> },
-                  { title: t("node.port.linkLayer"), dataIndex: "link_layer" },
-                  { title: t("node.port.rate"), dataIndex: "rate_gbps", render: (v: number) => v ? `${v}G` : "—" },
-                  { title: t("node.port.netdev"), dataIndex: "netdev", render: (v: string) => v || "—" },
-                  { title: t("node.port.ip"), dataIndex: "ip", render: (v: string) => v || "—" },
-                  { title: t("node.rate"), key: "rate", render: (_, p) => <LinkRate rx={p.rx_bytes_per_sec} tx={p.tx_bytes_per_sec} /> },
+                  { key: "device", title: t("node.port.device"), render: (p) => <code className={CODE}>{`${p.device}:${p.port}`}</code> },
+                  { key: "state", title: t("node.port.state"), render: (p) => state(p.state, "ACTIVE") },
+                  { key: "link_layer", title: t("node.port.linkLayer"), render: (p) => p.link_layer },
+                  { key: "rate_gbps", title: t("node.port.rate"), render: (p) => p.rate_gbps ? `${p.rate_gbps}G` : "—" },
+                  { key: "netdev", title: t("node.port.netdev"), render: (p) => p.netdev || "—" },
+                  { key: "ip", title: t("node.port.ip"), render: (p) => p.ip || "—" },
+                  { key: "rate", title: t("node.rate"), render: (p) => <LinkRate rx={p.rx_bytes_per_sec} tx={p.tx_bytes_per_sec} /> },
                 ]}
               />
             )}
             {(data?.accelerator_ports?.length ?? 0) > 0 && (
-              <Table<AcceleratorPort>
-                rowKey="name"
-                size="small"
-                pagination={false}
-                title={() => <span>{t("node.accelerator")} <Typography.Text type="secondary" style={{ fontWeight: 400 }}>{t("node.acceleratorHint")}</Typography.Text></span>}
-                dataSource={data?.accelerator_ports ?? []}
-                scroll={{ x: "max-content" }}
+              <FactTable<AcceleratorPort>
+                rowKey={(p) => p.name}
+                caption={<span>{t("node.accelerator")} <span className="font-normal text-fg-muted">{t("node.acceleratorHint")}</span></span>}
+                rows={data?.accelerator_ports ?? []}
                 columns={[
-                  { title: t("node.card.name"), dataIndex: "name", render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
-                  { title: t("node.card.ip"), key: "ip", render: (_, p) => p.ip ? `${p.ip}${p.netmask ? ` / ${p.netmask}` : ""}` : "—" },
-                  { title: t("node.card.state"), dataIndex: "state", render: (v: string) => <Tag color={v === "UP" ? "green" : "default"}>{v || "—"}</Tag> },
-                  { title: t("node.card.speed"), dataIndex: "speed_gbps", render: (v: number) => v ? `${v}G` : "—" },
+                  { key: "name", title: t("node.card.name"), render: (p) => <code className={CODE}>{p.name}</code> },
+                  { key: "ip", title: t("node.card.ip"), render: (p) => p.ip ? `${p.ip}${p.netmask ? ` / ${p.netmask}` : ""}` : "—" },
+                  { key: "state", title: t("node.card.state"), render: (p) => state(p.state, "UP") },
+                  { key: "speed", title: t("node.card.speed"), render: (p) => p.speed_gbps ? `${p.speed_gbps}G` : "—" },
                 ]}
               />
             )}
-          </Space>
+          </div>
         )}
-      </Card>
-    </Space>
+      </Panel>
+    </div>
   );
 }
 
 /** Whether the gateway reaches this node's instances over its serving network. */
 function ServingForwardCard({ forward }: { forward: ServingForward }) {
   const { t } = useTranslation("networks");
-  let status = <Tag>{t("node.forward.unused")}</Tag>;
-  if (forward.mode === "direct") status = <Tag color="green">{t("node.forward.direct")}</Tag>;
+  let status = <Badge size="sm" status="neutral">{t("node.forward.unused")}</Badge>;
+  if (forward.mode === "direct") status = <Badge size="sm" status="success">{t("node.forward.direct")}</Badge>;
   if (forward.mode === "unreachable") {
     status = (
-      <Tooltip trigger={["hover", "focus"]} title={forward.reason}>
-        <Tag tabIndex={0} color="red" aria-label={`${t("node.forward.unreachable")}: ${forward.reason ?? ""}`}>{t("node.forward.unreachable")}</Tag>
+      <Tooltip content={forward.reason}>
+        <Badge size="sm" tabIndex={0} status="danger" aria-label={`${t("node.forward.unreachable")}: ${forward.reason ?? ""}`}>{t("node.forward.unreachable")}</Badge>
       </Tooltip>
     );
   }
   return (
-    <Card size="small" title={t("node.forward.title")}>
-      <Descriptions column={1} size="small">
-        <Descriptions.Item label={t("node.forward.address")}><Typography.Text code>{forward.address}</Typography.Text></Descriptions.Item>
-        <Descriptions.Item label={t("node.forward.status")}>
-          <Space>{status}{forward.at && <Typography.Text type="secondary">{formatTime(forward.at)}</Typography.Text>}</Space>
-        </Descriptions.Item>
-      </Descriptions>
-      <Typography.Text type="secondary">{t("node.forward.hint")}</Typography.Text>
-    </Card>
+    <Panel title={t("node.forward.title")}>
+      <div className="flex flex-col gap-2">
+        <DetailList>
+          <DetailListItem>
+            <DetailListLabel>{t("node.forward.address")}</DetailListLabel>
+            <DetailListValue><code className={CODE}>{forward.address}</code></DetailListValue>
+          </DetailListItem>
+          <DetailListItem>
+            <DetailListLabel>{t("node.forward.status")}</DetailListLabel>
+            <DetailListValue><span className="inline-flex flex-wrap items-center justify-end gap-2">{status}{forward.at && <span className="text-fg-muted">{formatTime(forward.at)}</span>}</span></DetailListValue>
+          </DetailListItem>
+        </DetailList>
+        <span className="text-fg-muted">{t("node.forward.hint")}</span>
+      </div>
+    </Panel>
   );
 }

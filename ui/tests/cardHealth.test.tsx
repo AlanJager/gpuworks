@@ -246,3 +246,34 @@ test("a skipped run in the detail names why it did not run", async () => {
   assert.ok(screen.getAllByText(ch.skip.CARD_CHECK_SKIPPED_BUSY).length >= 1);
   assert.ok(screen.getAllByText(ch.state.skip).length >= 1);
 });
+
+const HealthRecords = (await import("../src/components/cardHealth/HealthRecords.tsx")).default;
+
+// The records list on its own: a placeholder while loading, the empty
+// sentence, a pager only past one server page, and each record's evidence
+// shown only once its section is opened.
+test("the records list shows loading, empty and paged states and opens evidence on demand", async () => {
+  const user = userEvent.setup({ document: dom.window.document });
+  const pages: number[] = [];
+  const view = show(<HealthRecords page={1} onPage={(p) => pages.push(p)} />);
+  assert.ok(document.querySelector("[aria-busy=\"true\"]"), "a loading placeholder shows first");
+  view.rerender(<I18nextProvider i18n={i18n}><HealthRecords data={records()} page={1} onPage={(p) => pages.push(p)} /></I18nextProvider>);
+  assert.ok(screen.getByText(fill(ch.records.empty, { days: 30 })));
+  assert.equal(screen.queryByRole("button", { name: "Next page" }), null, "no pager for a single page");
+
+  const second = { ...record, id: 8, first_evidence: [{ name: "Detail", value: "first read" }], latest_evidence: [{ name: "Detail", value: "latest read" }] };
+  view.rerender(<I18nextProvider i18n={i18n}><HealthRecords data={{ records: [second], total: 120, page: 1, page_size: 50, retention_days: 30 }} page={1} onPage={(p) => pages.push(p)} /></I18nextProvider>);
+  assert.equal(screen.queryByText("first read"), null, "evidence stays folded");
+  await user.click(screen.getByRole("button", { name: ch.records.first }));
+  await screen.findByText("first read");
+  assert.equal(screen.queryByText("latest read"), null);
+  screen.getByRole("button", { name: ch.records.latest }).focus();
+  await user.keyboard("{Enter}");
+  await screen.findByText("latest read");
+
+  assert.ok(screen.getByText("Page 1 of 3"));
+  assert.equal((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled, true);
+  await user.click(screen.getByRole("button", { name: "Next page" }));
+  await user.click(screen.getByRole("button", { name: "Last page" }));
+  assert.deepEqual(pages, [2, 3], "the pager reports one-based pages");
+});

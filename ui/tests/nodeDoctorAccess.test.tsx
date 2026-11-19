@@ -175,3 +175,14 @@ test("an SSH stage shows the SSH adapter's code in the reader's language", async
   assert.ok(screen.getByText("节点拒绝了 SSH 凭据。"));
   assert.equal(screen.queryByText("SSH_AUTH_FAILED"), null);
 });
+
+test("the raw agent report stays folded until opened from the keyboard", async () => {
+  const userEvent = (await import("@testing-library/user-event")).default;
+  const user = userEvent.setup();
+  render(<I18nextProvider i18n={zh}><NodeDoctorReport report={report} /></I18nextProvider>);
+  assert.equal(screen.queryByText("partial report"), null);
+  const toggle = screen.getByRole("button", { name: zh.t("doctor.rawToggle", { ns: "nodes" }) });
+  toggle.focus();
+  await user.keyboard("{Enter}");
+  assert.ok(await screen.findByText("partial report"));
+});

@@ -1,10 +1,15 @@
-import { Alert, Card, Skeleton, Space, Tag, Typography } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api, type NodePullProxy as NodePullProxyView, type NodeRuntime } from "../api";
 import { requirementChips } from "../pages/settings/pull/pullFormat";
 import NodeRuntimeProxy from "./NodeRuntimeProxy";
+import { Badge } from "./ui/badge";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Skeleton } from "./ui/skeleton";
+import { Notice } from "../ui-kit/Notice";
+
+const CODE = "rounded-sm bg-emphasis px-1 font-mono text-label";
 
 /**
  * NodePullProxy shows, read-only, which pull proxy entry this node goes out
@@ -40,31 +45,34 @@ export default function NodePullProxy({ nodeUUID, statusPollMs }: { nodeUUID: st
     setLoaded((current) => current && { ...current, runtime });
   }, []);
 
-  if (loadError) return <Alert type="error" showIcon message={t("pullProxy.loadFailed")} description={loadError.message} />;
-  if (!loaded) return <Card size="small" title={t("pullProxy.title")}><Skeleton active paragraph={{ rows: 2 }} title={false} /></Card>;
+  if (loadError) return <Notice tone="danger" title={t("pullProxy.loadFailed")}>{loadError.message}</Notice>;
+  if (!loaded) return <Card className="border border-border-subtle" aria-busy="true">
+    <CardHeader><CardTitle>{t("pullProxy.title")}</CardTitle></CardHeader>
+    <CardContent className="flex flex-col gap-2 pb-4"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/5" /></CardContent>
+  </Card>;
 
   const entry = loaded.proxy;
   const chips = requirementChips(entry?.node_requirements);
   const direct = t("pullProxy.direct");
-  return <Card
-    size="small"
-    title={<Space>{t("pullProxy.title")}<Tag color={entry ? "blue" : "default"}>{entry ? t("pullProxy.entry", { n: entry.position + 1 }) : t("pullProxy.none")}</Tag></Space>}
-    extra={<Link to="/settings#pull-settings">{t("pullProxy.settingsLink")}</Link>}
-  >
-    <Space direction="vertical" size={8} style={{ width: "100%" }}>
+  return <Card className="border border-border-subtle">
+    <CardHeader>
+      <CardTitle><span className="inline-flex items-center gap-2">{t("pullProxy.title")}<Badge size="sm" color={entry ? "blue" : "gray"}>{entry ? t("pullProxy.entry", { n: entry.position + 1 }) : t("pullProxy.none")}</Badge></span></CardTitle>
+      <CardAction><Link className="text-fg-brand hover:underline" to="/settings#pull-settings">{t("pullProxy.settingsLink")}</Link></CardAction>
+    </CardHeader>
+    <CardContent className="flex w-full flex-col gap-2 pb-4">
       {entry ? (
-        <Space direction="vertical" size={2}>
-          <Typography.Text>{t("pullProxy.httpProxy")}: <Typography.Text code>{entry.http_proxy || direct}</Typography.Text></Typography.Text>
-          <Typography.Text>{t("pullProxy.httpsProxy")}: <Typography.Text code>{entry.https_proxy || direct}</Typography.Text></Typography.Text>
-          {entry.no_proxy && <Typography.Text>NO_PROXY: <Typography.Text code>{entry.no_proxy}</Typography.Text></Typography.Text>}
-          {entry.username && <Typography.Text>{t("pullProxy.user", { user: entry.username })}</Typography.Text>}
-          <Space size={[4, 4]} wrap>
-            <Typography.Text type="secondary">{t("pullProxy.appliesTo")}</Typography.Text>
-            {chips.length === 0 ? <Tag>{t("pullProxy.allNodes")}</Tag> : chips.map((chip) => <Tag key={chip}>{chip}</Tag>)}
-          </Space>
-        </Space>
+        <div className="flex flex-col gap-0.5">
+          <span>{t("pullProxy.httpProxy")}: <code className={CODE}>{entry.http_proxy || direct}</code></span>
+          <span>{t("pullProxy.httpsProxy")}: <code className={CODE}>{entry.https_proxy || direct}</code></span>
+          {entry.no_proxy && <span>NO_PROXY: <code className={CODE}>{entry.no_proxy}</code></span>}
+          {entry.username && <span>{t("pullProxy.user", { user: entry.username })}</span>}
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <span className="text-fg-muted">{t("pullProxy.appliesTo")}</span>
+            {chips.length === 0 ? <Badge size="sm">{t("pullProxy.allNodes")}</Badge> : chips.map((chip) => <Badge size="sm" key={chip}>{chip}</Badge>)}
+          </span>
+        </div>
       ) : (
-        <Typography.Text type="secondary">{t("pullProxy.noneDetail")}</Typography.Text>
+        <span className="text-fg-muted">{t("pullProxy.noneDetail")}</span>
       )}
       <NodeRuntimeProxy
         nodeUUID={nodeUUID}
@@ -78,6 +86,6 @@ export default function NodePullProxy({ nodeUUID, statusPollMs }: { nodeUUID: st
         onRefresh={refreshStatus}
         statusPollMs={statusPollMs}
       />
-    </Space>
+    </CardContent>
   </Card>;
 }
