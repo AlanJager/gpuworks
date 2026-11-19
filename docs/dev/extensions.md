@@ -429,6 +429,37 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 插件作者用 `pkg/pluginsdk`（与 `pkg/extapi` 一样是独立模块，只依赖标准库与 `pkg/extapi`）：`pluginsdk.Main(cfg)` 打开两个描述符、回答握手（协议与能力协商，拒绝时用 `PLUGIN_PROTOCOL_UNSUPPORTED` 或 `PLUGIN_CAPABILITY_MISSING`）、在握手被接受后运行 `Start`、回答健康、把其他调用交给插件的 `http.Handler`；收到 `shutdown`、server 一端关闭或父进程不在时退出。`PushState` 跳过 server 已持有且摘要相同的表，推送的代数取 `max(自己的计数, 持有的代数)+1`，所以存储被恢复或清空的插件不会因代数过期被拒。`Meta`、`CorrectClock`、`Ready`、`PushedState` 与 `DeriveKey` 对应上述宿主接口调用，握手没协商其能力时直接返回 `ErrNotNegotiated`。`pkg/pluginsdk/plugintest` 在进程内用真实 socketpair 扮演 server，供插件自己的测试使用；它按与 server 相同的码、理由与参数拒绝这些调用，派生密钥用固定的测试主密钥。
 
+### 一致性检查：`pkg/pluginsdk/conformance`
+
+插件作者在插件自己模块的测试里，对将要打进包里的二进制运行一致性检查：
+
+```go
+func TestConformance(t *testing.T) {
+	conformance.Run(t, conformance.Config{
+		Binary:   "bin/linux_amd64/acme-backup",
+		Manifest: "manifest.json",
+	})
+}
+```
+
+`Run` 读清单（解码失败、没有 `runtime` 或二进制不可执行时直接失败），然后多次拉起二进制：像 server 一样把两条 socketpair 作为 fd 3、4 交给它，只给 server 也会给的环境变量（`PATH`、`TZ`、`HOME`、`TMPDIR`、`LANG` 与 gwx/1 变量；`Config.Env` 只用于作者自己的测试开关），不加沙箱，对面是 `plugintest` 的假 server（`plugintest.StartProcess`）。握手授予清单里的全部权限与角色，即管理员批准、证书授予之后的样子。每条规则是一个以规则命名的子测试（`conformance.Rules()`），失败时子测试名就是被违反的规则，并附上插件的 stderr：
+
+| 规则 | 检查 |
+|---|---|
+| `initialize_answers_as_the_installed_package` | `initialize` 在 10 秒内应答，`id`、`version`、`manifest_sha256` 与清单一致 |
+| `uses_only_declared_capabilities` | 应答的 `use` 只含清单 `requires` 与 `uses` 里的能力，版本在提供范围内且不超过清单允许的；运行期间没有宿主调用因未声明的能力、权限或角色被拒（`PLUGIN_CAPABILITY_NOT_OFFERED`、`PLUGIN_HOST_NOT_PERMITTED`、`PLUGIN_ROLE_REQUIRED`），也没有推送未协商的表 |
+| `health_answers_within_the_timeout` | 健康在 3 秒内应答 |
+| `shutdown_exits_within_the_deadline` | `shutdown` 之后 10 秒内以状态 0 退出，赶在 server 发 SIGTERM 之前 |
+| `unchanged_push_is_skipped` | 对已持有同摘要表的 server 重启后，不再推送这些表 |
+| `changed_push_is_applied` | 对持有不同表的 server 重启后，以高于持有代数的代数推送并被接受 |
+| `on_demand_package_does_not_push` | `on_demand` 的包不推送任何表 |
+| `routes_serve_a_valid_principal` | 每条声明的路由收到按 server 方式签名的请求时，不以主体为由回 403 |
+| `routes_refuse_a_missing_principal` | 不带主体的请求回 403 |
+| `routes_refuse_a_wrong_mac` | 主体用别的密钥签名的请求回 403 |
+| `routes_refuse_another_routes_action` | 主体的 `route_action` 是另一条路由的请求回 403（所有路由同一个动作时，用一个没有路由声明的动作） |
+
+推送两条规则先对什么都不持有的 server 运行一次，记下 `PushWait`（默认 2 秒）内被接受的每种表，再据此重启两次；插件在这段时间里什么都没推，或包是 `on_demand`，两条规则跳过。没有声明路由时路由规则跳过，`resident` 的包跳过 `on_demand` 规则。路由请求的路径参数都填 `conformance`，有请求体的方法发 `{}`；公开路由用 `public` 主体，其余用已登录的平台管理员，路由的功能键签为 `full`。三个时限默认取 server 的值，`Config` 可以改。仓库里的假插件（`internal/testenv/extplugin/fakeplugin`）在 CI 里跑这套检查，证明它对正确的二进制全部通过；它的故障开关 `--skip-principal-check`、`--ignore-route-action`、`--hang health` 与多声明的 `--requires` 各自只让对应的规则失败。
+
 ### 推送状态
 
 首批五种推送表（`availability`、`fleet_capacity`、`node_holds`、`banners`、`attestations`）在核心里的部分在 `internal/server/pushstate`，经上文的插件宿主模块接收插件的推送、在启动时读入并注册为钩子：
