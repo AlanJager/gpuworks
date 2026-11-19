@@ -1,3 +1,4 @@
+import { Button as ActionButton } from "../../components/ui/button";
 import { useState } from "react";
 import { Button, Checkbox, Popconfirm, Select, Space, Tag, Tooltip, Typography, message } from "antd";
 import { CloseOutlined, ExclamationCircleFilled, PlusOutlined } from "@ant-design/icons";
@@ -217,17 +218,17 @@ export function BootstrapCell({ network, node, onChanged }: { network: NetworkDe
     .filter((i) => i.addrs.length > 0)
     .map((i) => ({ value: i.name, label: [i.name, ...i.addrs].join(" · ") }));
   return (
-    <Space direction="vertical" size={2}>
-      {node.ip ? <Typography.Text code>{[node.interface, node.ip].filter(Boolean).join(" · ")}</Typography.Text> : <Typography.Text type="danger">{t("rail.noBootstrap")}</Typography.Text>}
-      <Space size={4} wrap>
-        {editing ? (
-          <InventoryPicker state={state} options={options} placeholder={t("rail.pickInterface")} emptyMessage={t("rail.noAddressedInterface")}
-            onClose={() => setEditing(false)} onSelect={save} />
-        ) : (
-          <Button size="small" type="link" disabled={busy} onClick={() => { load(); setEditing(true); }}>{t("rail.changeBootstrap")}</Button>
-        )}
-        <SourceTag source={node.bootstrap_source} busy={busy} onReset={attachment ? () => save("") : undefined} />
-      </Space>
-    </Space>
+    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-body">
+      {node.ip
+        ? <code className="min-w-0 font-mono text-body">{[node.interface, node.ip].filter(Boolean).join(" · ")}</code>
+        : <span className="text-fg-danger">{t("rail.noBootstrap")}</span>}
+      {editing ? (
+        <InventoryPicker state={state} options={options} placeholder={t("rail.pickInterface")} emptyMessage={t("rail.noAddressedInterface")}
+          onClose={() => setEditing(false)} onSelect={save} />
+      ) : (
+        <ActionButton size="sm" variant="link" className="text-body" disabled={busy} onClick={() => { load(); setEditing(true); }}>{t("rail.changeBootstrap")}</ActionButton>
+      )}
+      <SourceTag source={node.bootstrap_source} busy={busy} onReset={attachment ? () => save("") : undefined} />
+    </div>
   );
 }

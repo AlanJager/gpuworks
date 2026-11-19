@@ -110,7 +110,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
   const labelsOf = (n: NetworkNode) => (
     <dl className="network-node-details text-body" data-selectable={isAdmin}>
       <div className="min-w-0">
-        <dt className="mb-1 text-label text-fg-muted">{t("management.labels")}</dt>
+        <dt className="text-fg-muted">{t("management.labels")}</dt>
         <dd className="whitespace-normal break-all">{labelPairs(n.labels).join(", ") || "—"}</dd>
       </div>
     </dl>

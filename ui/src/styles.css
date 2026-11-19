@@ -1568,6 +1568,19 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
   padding: .75rem 1rem;
   border-inline-start: 2px solid var(--border);
 }
+.network-node-details > div {
+  display: grid;
+  grid-template-columns: minmax(0, min(30%, 10rem)) minmax(0, 1fr);
+  align-items: start;
+  column-gap: .75rem;
+}
+.network-node-details dt, .network-node-details dd {
+  min-width: 0;
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-body);
+}
 /* ResourceTable reserves a further 48px before the node name when selectable. */
 .network-node-details[data-selectable="true"] { margin-inline-start: calc(2.5rem + 48px); }
 .resource-table td[colspan]:has(.network-node-details) { background-color: var(--muted); }

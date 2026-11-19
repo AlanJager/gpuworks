@@ -240,23 +240,23 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
       {rails ? (
         <>
           <div>
-            <dt className="mb-1 text-label text-fg-muted">{t("nodeTable.bootstrap")}</dt>
+            <dt className="text-fg-muted">{t("nodeTable.bootstrap")}</dt>
             <dd><BootstrapCell network={detail} node={node} onChanged={onDetail} /></dd>
           </div>
           <div>
-            <dt className="mb-1 text-label text-fg-muted">{railAddressTitle(t, detail.type)}<LinkLayerTag layer={node.link_layer} /></dt>
+            <dt className="text-fg-muted">{railAddressTitle(t, detail.type)}<LinkLayerTag layer={node.link_layer} /></dt>
             <dd><RailsCell network={detail} node={node} onChanged={onDetail} /></dd>
           </div>
         </>
       ) : (
         <div>
-          <dt className="mb-1 text-label text-fg-muted">{t("nodeTable.endpoint")}</dt>
+          <dt className="text-fg-muted">{t("nodeTable.endpoint")}</dt>
           <dd>{ethernetEndpoint(node)}</dd>
         </div>
       )}
       {attachment && (attachment.interface || attachment.ip || attachment.hcas.length > 0) && (
         <div className="min-w-0 whitespace-normal break-all">
-          <dt className="mb-1 text-label text-fg-muted">{t("attach.overrides")}</dt>
+          <dt className="text-fg-muted">{t("attach.overrides")}</dt>
           <dd className="max-h-40 overflow-y-auto">
             {attachment.interface && <div>{t("attach.interface")} · {attachment.interface}</div>}
             {attachment.ip && <div>{rails ? t("nodeTable.bootstrap") : "IP"} · {attachment.ip}</div>}
