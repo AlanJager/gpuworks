@@ -127,6 +127,9 @@ type Bridge struct {
 	// (HealthBanners), held in memory only.
 	health  sync.Mutex
 	banners atomic.Pointer[[]pushstate.Banner]
+	// maintenance is the banner of an offline maintenance journal entry
+	// that did not apply at boot (applyMaintenance), nil when none failed.
+	maintenance atomic.Pointer[pushstate.Banner]
 }
 
 // identity is who a plugin's pushes come from, and the data its build
@@ -225,7 +228,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 func (b *Bridge) State() *pushstate.State { return b.state }
 
 // Run runs pushed state's writer tick, timelines and capacity selection,
-// starts every enabled resident plugin (an on-demand one waits for its
+// applies the offline maintenance journal (applyMaintenance), starts every
+// enabled resident plugin (an on-demand one waits for its
 // first call), and stops them all when ctx ends.
 // Pushed state stops after the plugins, so the moment each went down is
 // persisted and a restart of the server never renews its grace. It may
@@ -241,6 +245,9 @@ func (b *Bridge) Run(ctx context.Context) error {
 		}
 	}()
 	b.admin.Lock()
+	// What root left in the offline maintenance journal applies through
+	// pushed state's writer, which runs now, before any plugin starts.
+	b.applyMaintenance(stateCtx)
 	b.mu.Lock()
 	b.running = true
 	ids := slices.Sorted(maps.Keys(b.entries))

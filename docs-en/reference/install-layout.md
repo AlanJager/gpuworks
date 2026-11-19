@@ -41,7 +41,7 @@ The listen address uses the IP of the local default route's outbound interface a
     └── logs.db / metrics.db / ux.db / images/ / catalog-packages/ …
 ```
 
-`gpuworks plugin` manages `data/plugins/`: a package is unpacked into `.incoming-*.partial/` and verified there, renamed to `<id>/pkg/<version>/` only when every check passes (files 0444, executables and directories 0555), and made current by replacing `<id>/pkg/current` with a rename; the previous version stays for rollback, and the `*.partial` an interruption leaves is removed by the next install. `<id>/data/`, `<id>/tmp/` and `<id>/snapshots/` are the plugin's own directories (0700), kept on uninstall; `--purge` moves the whole `<id>/` to `.trash/<id>-<time>/`. `.index/<publisher>/` holds imported package indexes.
+`gpuworks plugin` manages `data/plugins/`: a package is unpacked into `.incoming-*.partial/` and verified there, renamed to `<id>/pkg/<version>/` only when every check passes (files 0444, executables and directories 0555), and made current by replacing `<id>/pkg/current` with a rename; the previous version stays for rollback, and the `*.partial` an interruption leaves is removed by the next install. `<id>/data/`, `<id>/tmp/` and `<id>/snapshots/` are the plugin's own directories (0700), kept on uninstall; `--purge` moves the whole `<id>/` to `.trash/<id>-<time>/`. `.index/<publisher>/` holds imported package indexes. `maintenance.jsonl` is the offline maintenance journal (0600, owned by the data directory's owner): `gpuworks plugin clock reset` and `pstate clear`, run by root with the server stopped, each append one line, which the server applies and empties at its next start; an entry that fails to apply stays until the start after that (see [CLI Reference](cli.md#maintenance-journal)).
 
 A package that declares `host_setup` also has files outside the data directory, written by root (see [host setup](../dev/extensions.md#host-setup)): `gpuworks plugin host-setup`, `gpuworks install` and `upgrade` write them, and `gpuworks uninstall` removes them:
 
@@ -208,6 +208,6 @@ UDOCKER_BUNDLE=
 - `gpuworks-agent uninstall` also deletes this file.
 - When the installation script, SSH wizard preflight checks, or out-of-band recovery need to identify the server or token associated with an agent on a host, they read this file (and read the older agent's command line only if the file is missing). For the design rationale, see [ADR 0051](../adr/0051-agent-launch-configuration-file.md).
 
-<!-- translation-source-sha256: f3e7513361a901ea85c7fe1ee136aba2e14ca1c08eb3e9f3738926a02b3910ba -->
+<!-- translation-source-sha256: 5a7b31f39a1986e8a883cb758645ef3bcb7a0ce938612e7d9641fc6a7c08d0d2 -->
 <!-- translation-localized-code-block: cf0228b7f6dd01a33d1c0533f369be665aca051a5cd6897ffbf9ee07afc42ce0 63316e0dc2128d8d692b7aa4ea5e28a81d5c9405afd4799c5c37297248c76b5a Reviewed localization of the directory annotations, including the plugins/ and server.lock lines; paths unchanged. -->
 <!-- translation-localized-code-block: 0a0c78856b3bcc2f70519eaf27daec112ac8a20c1388e0ac5809fef7c3958d06 5126a8bc98f3780a7a6b25daeaa58a61a8cacb4075ece9e6bf89f05f91ec4fd7 Translate explanatory node-token placeholder -->

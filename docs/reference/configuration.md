@@ -188,6 +188,7 @@ plugins:
     deny_permissions: [read:directory]
     deny_roles: [key_wrap]
     auto_approve_unchanged: false  # 升级时批准值不变就不再要批准，缺省 false
+    max_down_grace: 30m        # 可选：插件掉线后授权保持的宽限上限，0 或 60s–24h
   allow_unsandboxed: [acme_backup]  # 没有 Landlock 的主机上仍允许运行的第三方包
   require_isolation: landlock  # 没有 Landlock 时拒绝一切插件进程
 ```
@@ -195,7 +196,8 @@ plugins:
 - 主机信任的签发者默认什么特权都不给：没有特权角色、没有特权表、不能指定权威、界面只能用 iframe、必须在 Landlock 下运行；`roles`、`tables`、`authority`、`unsandboxed` 逐项放开，且只在证书本身也授予时生效。它永远不能签发项目发布者 `gpuworks`、无前缀的功能命名空间或同源界面模块。
 - 没有 Landlock 的主机（4.19 内核的麒麟 V10、UOS 20、macOS）上，带服务端部分的第三方包只有在证书写明 `min_isolation: none`（且签发者允许 `unsandboxed`）或列在 `allow_unsandboxed` 里时才能安装，此时签名是唯一的防护。
 - `auto_approve_unchanged` 只管升级时要不要再批准一次：新版本的批准值（权限、角色、特权表、设备、界面模式、隔离、主机设置算出的摘要）与已批准的相同时，为 `true` 就直接升级，为 `false`（缺省）时每次升级都要管理员批准。它不放进任何校验会拒绝的包。
-- 写错的键、不合法的公钥或 key id、不认识的 `require_isolation` 值都让文件读取失败。
+- `max_down_grace` 是 Go 时长（如 `30m`、`2h`），站点对插件掉线宽限的上限：插件随 `availability` 表推送的宽限（60 秒到 24 小时，没给时 1 小时）比它长时降到它，从不调高。空或 `0` 不设上限；其余值必须在 60 秒到 24 小时之间。server 启动时读取，改后重启生效（[推送状态](../dev/extensions.md#推送状态)）。
+- 写错的键、不合法的公钥或 key id、不认识的 `require_isolation` 值、超出范围的 `max_down_grace` 都让文件读取失败。
 
 ## 拉取代理与出站访问
 

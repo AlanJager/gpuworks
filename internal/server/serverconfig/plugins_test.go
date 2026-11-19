@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 const issuerKey = "0RZF/KSeB5I5emmRFX7vHLklBOUA2A8ot0mLncySqxs="
@@ -86,6 +87,37 @@ func TestLoadRefusesABadPluginsSection(t *testing.T) {
 		}
 		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("%s: err = %v, want it to mention %q", name, err, c.want)
+		}
+	}
+}
+
+// plugins.policy.max_down_grace is a duration of 0 or 60 s to 24 h, the
+// bounds of the grace a plugin may push; outside them the file does not
+// load.
+func TestMaxDownGraceIsBounded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	for value, want := range map[string]time.Duration{"": 0, "0": 0, "0s": 0, "60s": time.Minute, "30m": 30 * time.Minute, "24h": 24 * time.Hour} {
+		yaml := "plugins:\n  policy:\n    deny_roles: [key_wrap]\n"
+		if value != "" {
+			yaml += "    max_down_grace: \"" + value + "\"\n"
+		}
+		if err := os.WriteFile(path, []byte(yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, err := Load(path)
+		if err != nil {
+			t.Fatalf("max_down_grace %q: %v", value, err)
+		}
+		if got, err := f.Plugins.Policy.DownGraceCeiling(); err != nil || got != want {
+			t.Fatalf("max_down_grace %q = %v, %v; want %v", value, got, err, want)
+		}
+	}
+	for _, value := range []string{"59s", "24h0m1s", "-5m", "an hour", "3600"} {
+		if err := os.WriteFile(path, []byte("plugins:\n  policy:\n    max_down_grace: \""+value+"\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "plugins.policy.max_down_grace") {
+			t.Fatalf("max_down_grace %q: err = %v", value, err)
 		}
 	}
 }

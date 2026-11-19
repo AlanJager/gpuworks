@@ -70,7 +70,8 @@ func overrideRejected(req OverrideRequest, rule, format string) *messages.Produc
 // push that changed the entry since the first check, committed or pending
 // in that tick, would supersede the override at once, so it is refused
 // with rule superseded instead of being stored against a decision the owner
-// no longer holds.
+// no longer holds. An override of a table cleared in the same tick is
+// refused the same way.
 func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, error) {
 	s.mu.Lock()
 	o, perr := s.checkOverrideLocked(req)
@@ -86,6 +87,11 @@ func (s *State) Override(ctx context.Context, req OverrideRequest) (Override, er
 	err := s.enqueue(ctx, &op{
 		build: func(b *pstate.Batch) error {
 			k := ownerKind{req.Owner, req.Kind}
+			for _, c := range b.Clear {
+				if c.Owner == req.Owner && c.Kind == req.Kind {
+					return overrideRejected(req, "superseded", "the table is cleared in the same commit")
+				}
+			}
 			p := s.parts[k]
 			if p == nil || !reflect.DeepEqual(entryValue(p.table, req.Entry), want) {
 				return overrideRejected(req, "superseded", "the plugin pushed that entry again")

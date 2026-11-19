@@ -50,7 +50,11 @@ type Batch struct {
 	// Uninstall deletes every row of these owners (their overrides and
 	// down records included); markers and the clock are not an owner's.
 	Uninstall []string
-	Tables    []TableWrite
+	// Clear deletes an owner's table of one kind: its rows, its record and
+	// the overrides of it. It applies before Tables, so a push of the same
+	// tick lands on the cleared table.
+	Clear  []OwnerKind
+	Tables []TableWrite
 	// Down records owners as down since the given instant; Up deletes their
 	// down records.
 	Down []Down
@@ -64,7 +68,7 @@ type Batch struct {
 
 // Empty reports whether b writes nothing.
 func (b *Batch) Empty() bool {
-	return len(b.Uninstall) == 0 && len(b.Tables) == 0 && len(b.Down) == 0 && len(b.Up) == 0 &&
+	return len(b.Uninstall) == 0 && len(b.Clear) == 0 && len(b.Tables) == 0 && len(b.Down) == 0 && len(b.Up) == 0 &&
 		len(b.Overrides) == 0 && len(b.DropOverrides) == 0 && b.Clock == nil && len(b.Markers) == 0
 }
 
