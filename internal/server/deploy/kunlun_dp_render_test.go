@@ -66,7 +66,7 @@ func TestKunlunQwenSmallDPRender(t *testing.T) {
 			if !has("--tensor-parallel-size", "1") || !has("--data-parallel-size", "2") {
 				t.Fatalf("parallel argv: %v", argv)
 			}
-			if err := validateEngineTopology(vLLMEngine{}, launch, p); err != nil {
+			if err := validateEngineTopology(vLLMEngine{}, launch, p, true); err != nil {
 				t.Fatalf("topology: %v; argv=%v", err, argv)
 			}
 			if tc.nodes == 2 {

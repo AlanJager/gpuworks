@@ -334,7 +334,8 @@
     },
     "health": "健康检查",
     "tokenize": "分词 API",
-    "readyReplicas": "就绪 {{ready}}"
+    "readyReplicas": "就绪 {{ready}}",
+    "resourcePreparation": "资源准备"
   },
   "replica": {
     "sleep": "休眠副本（L1）",
@@ -1136,5 +1137,19 @@
   "instanceNote": {
     "INSTANCE_CARD_SHARED_OUTSIDE": "与平台外进程共用 GPU {{gpu_indexes}}（外部占用 {{foreign_gib}} GiB）。显存隔离，算力与带宽共享，推理可能因此变慢。",
     "INSTANCE_CARD_SHARED_OUTSIDE_UNKNOWN": "与平台外进程共用 GPU {{gpu_indexes}}，其显存用量未知。算力与带宽共享，推理可能因此变慢。"
+  },
+  "imagePreparation": {
+    "label": "镜像准备进度",
+    "progress": "镜像传输进度：{{node}}",
+    "loading": "正在读取进度",
+    "waiting": "等待进度上报",
+    "pulling": "下载镜像",
+    "syncing": "同步镜像",
+    "present": "镜像已就绪",
+    "failed": "镜像传输失败",
+    "canceled": "镜像传输已取消",
+    "unavailable": "暂时无法获取进度",
+    "transferred": "已传输 {{size}}",
+    "reload": "重新获取"
   }
 }

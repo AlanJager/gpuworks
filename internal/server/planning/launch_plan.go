@@ -42,6 +42,11 @@ type LaunchRequest struct {
 	AllowUnresolvedImage bool
 	// Unloaded previews the node as if nothing ran on it (Input.Unloaded).
 	Unloaded bool
+	// AsStored marks the launch, or the trial of a launch, of a deployment as
+	// it is stored (DeploymentLaunch). A request that is being written (a
+	// create, an evaluation, an edit's check) leaves it false and is judged
+	// whole (deploy.ResolveLaunchInput.StoredLaunch).
+	AsStored bool
 	// ExcludeDeploymentID previews the node without that deployment's
 	// instances (Input.ExcludeDeploymentID).
 	ExcludeDeploymentID uint

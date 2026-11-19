@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"path/filepath"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -30,9 +29,7 @@ func PrioritySchedulingCommandRefusal(engine, vendor string, pd bool, templateAr
 	} else {
 		// --omni selects a pipeline even when the executable is vllm serve.
 		allArgs := append(append([]string(nil), entry...), args...)
-		serve := len(entry) >= 2 && filepath.Base(entry[0]) == EngineVLLM && entry[1] == "serve"
-		apiServer := len(entry) >= 3 && strings.HasPrefix(filepath.Base(entry[0]), "python") && entry[1] == "-m" && entry[2] == "vllm.entrypoints.openai.api_server"
-		llm = !isVLLMOmniLaunch(allArgs) && (len(entry) == 0 || serve || apiServer)
+		llm = !isVLLMOmniLaunch(allArgs) && (len(entry) == 0 || isVLLMServeEntrypoint(entry) || isVLLMAPIServerEntrypoint(entry))
 	}
 	if !llm {
 		return unsupported()

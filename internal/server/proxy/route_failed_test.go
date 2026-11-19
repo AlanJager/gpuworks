@@ -19,12 +19,17 @@ func TestSelectInstanceSaysDeploymentFailedWhenRetriesStopped(t *testing.T) {
 		wantSub string
 		still   bool
 		offline bool
+		code    string
 	}{
 		{name: "all failed", states: []string{proto.InstFailed, proto.InstFailed}, wantSub: "failed to start"},
 		{name: "failed and stopped", states: []string{proto.InstFailed, proto.InstStopped}, wantSub: "failed to start"},
 		{name: "retry still starting", states: []string{proto.InstFailed, proto.InstStarting}, wantSub: "no reachable running instance", still: true},
 		{name: "no instance yet", states: nil, wantSub: "no reachable running instance", still: true},
-		{name: "running engine with disconnected node", states: []string{proto.InstRunning}, wantSub: "no reachable running instance", still: true, offline: true},
+		// The engine is up and the deployment shows nothing wrong: the refusal
+		// names the node's connection instead of sending the caller to wait
+		// for a start that already happened.
+		{name: "running engine with disconnected node", states: []string{proto.InstRunning}, wantSub: "no live agent connection", still: true, offline: true, code: "MODEL_NODE_OFFLINE"},
+		{name: "running engine with disconnected node beside a failed attempt", states: []string{proto.InstFailed, proto.InstRunning}, wantSub: "no live agent connection", still: true, offline: true, code: "MODEL_NODE_OFFLINE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, err := store.Open("file:proxy_gave_up_"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared", bus.New())
@@ -92,6 +97,9 @@ func TestSelectInstanceSaysDeploymentFailedWhenRetriesStopped(t *testing.T) {
 			wantCode := "DEPLOYMENT_START_FAILED"
 			if tc.still {
 				wantCode = "MODEL_NOT_READY"
+			}
+			if tc.code != "" {
+				wantCode = tc.code
 			}
 			if w.Code != http.StatusServiceUnavailable || body.Error.Code != wantCode || body.Error.Type != "server_error" || body.Error.Message != msg || strings.Contains(body.Error.Message, "still starting?") {
 				t.Fatalf("HTTP refusal = %d %s", w.Code, w.Body.String())

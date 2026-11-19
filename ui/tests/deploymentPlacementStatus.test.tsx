@@ -82,6 +82,14 @@ test("nothing is shown while every replica has a node", () => {
   assert.equal(screen.queryByText(/waiting for a node/), null);
 });
 
+test("image waiting no longer sends the reader away to the images page", () => {
+  show(deployment({ placement_status: { unscheduled: 1, reason: {
+    code: "image_delivery_waiting", params: { image: "registry/runner:v1", node: "gpu-target" },
+  } } }));
+  assert.ok(screen.getByText("Waiting for image registry/runner:v1 to arrive on node gpu-target."));
+  assert.equal(screen.queryByText(/images page|stalled peer transfer/i), null);
+});
+
 test("the waiting count, the controller's reason with its refusal rendered, and the closest nodes", () => {
   show();
   assert.ok(screen.getByText(i18n.t("detail.placement.waiting", { count: 2 })));

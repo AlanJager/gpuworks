@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,6 +24,16 @@ const (
 	ErrorDataParallelAttentionDivisor = "DATA_PARALLEL_ATTENTION_DIVISOR"
 )
 
+// topologyFlagError is a topology flag whose value cannot be read: missing,
+// not a positive integer, or stated twice with different values.
+type topologyFlagError struct{ message string }
+
+func (e *topologyFlagError) Error() string { return e.message }
+
+func topologyFlagErrorf(format string, args ...any) error {
+	return &topologyFlagError{message: fmt.Sprintf(format, args...)}
+}
+
 // dataParallelKey is the dictionary key that carries each engine's
 // data-parallel flag.
 const dataParallelKey = "data_parallel_size"
@@ -35,11 +46,31 @@ func dataParallelGPUCountError(engine string, dp, tp, pp, world int) error {
 		map[string]any{"key": dataParallelKey, "flag": flag, "dp": dp, "tp": tp, "pp": pp, "required": required, "assigned": world})
 }
 
-func validateEngineTopology(engine Engine, launch ResolvedLaunch, params Params) error {
-	if err := hooks(engine).ValidateTopology(launch, params); err != nil {
-		return fmt.Errorf("%s topology: %w", engine.Name(), err)
+// validateEngineTopology holds the command a launch runs to the GPUs placement
+// assigned. A manual command written as a shell script is judged by the one
+// command in it that starts the engine (manualScriptEngineCommand): the engine
+// reads the same flags whether the platform or the deployer wrote them, and a
+// script that states a smaller world leaves assigned cards idle with nothing
+// to show it. A script is the shell's, so only what that command states
+// unambiguously is judged: a flag the shell still expands is symbolic, and one
+// that cannot be read as a single value is left to the script. judgeScript is
+// false for the launch of a stored deployment (ResolveLaunchInput.StoredLaunch).
+func validateEngineTopology(engine Engine, launch ResolvedLaunch, params Params, judgeScript bool) error {
+	judged := launch
+	words, script := manualScriptEngineCommand(engine.Name(), launch)
+	script = script && judgeScript
+	if script {
+		judged.Entrypoint, judged.Argv = nil, words
 	}
-	return nil
+	err := hooks(engine).ValidateTopology(judged, params)
+	if err == nil {
+		return nil
+	}
+	var unreadable *topologyFlagError
+	if script && errors.As(err, &unreadable) {
+		return nil
+	}
+	return fmt.Errorf("%s topology: %w", engine.Name(), err)
 }
 
 func assignedWorldSize(params Params) int {
@@ -98,7 +129,7 @@ func topologySwitch(arguments []string, name string) (on, symbolic bool, err err
 			}
 			parsed, parseErr := strconv.ParseBool(strings.TrimSpace(raw))
 			if parseErr != nil {
-				return false, false, fmt.Errorf("%s takes no value or a boolean, got %q", name, raw)
+				return false, false, topologyFlagErrorf("%s takes no value or a boolean, got %q", name, raw)
 			}
 			on, symbolic = parsed, false
 		}
@@ -120,24 +151,24 @@ func topologyInteger(arguments []string, names ...string) (int, bool, bool, erro
 		}
 		if raw == "" {
 			if index+1 >= len(arguments) {
-				return 0, false, false, fmt.Errorf("%s requires a value", name)
+				return 0, false, false, topologyFlagErrorf("%s requires a value", name)
 			}
 			index++
 			raw = arguments[index]
 		}
 		if strings.Contains(raw, "$") {
 			if found && !symbolic {
-				return 0, false, false, fmt.Errorf("%s has conflicting concrete and symbolic values", name)
+				return 0, false, false, topologyFlagErrorf("%s has conflicting concrete and symbolic values", name)
 			}
 			found, symbolic = true, true
 			continue
 		}
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed <= 0 {
-			return 0, false, false, fmt.Errorf("%s requires a positive integer, got %q", name, raw)
+			return 0, false, false, topologyFlagErrorf("%s requires a positive integer, got %q", name, raw)
 		}
 		if found && (symbolic || parsed != value) {
-			return 0, false, false, fmt.Errorf("%s has conflicting values", name)
+			return 0, false, false, topologyFlagErrorf("%s has conflicting values", name)
 		}
 		value, found = parsed, true
 	}

@@ -218,6 +218,7 @@ PD 分离将输入提示词计算和后续生成交给不同实例。vLLM 顺序
 | `INSTANCE_NOT_RUNNING` | 503 | `server_error` | — | 固定的实例没有在运行 |
 | `INSTANCE_OFFLINE` | 503 | `server_error` | — | 固定的实例所在节点离线 |
 | `MODEL_NOT_READY` | 503 | `server_error` | — | 没有可连接的运行实例；检查部署状态和节点连接，不能仅据此判断引擎仍在启动 |
+| `MODEL_NODE_OFFLINE` | 503 | `server_error` | — | 实例在运行且未休眠，但所在节点的 agent 当前没有连接；检查节点连接，引擎本身无需重启 |
 | `DEPLOYMENT_START_FAILED` | 503 | `server_error` | — | 部署已停止重试启动，查看部署列表 |
 | `DISTRIBUTED_NOT_READY` | 503 | `server_error` | — | 多机部署没有副本的全部 rank 都在在线节点上运行 |
 | `DISTRIBUTED_LEADER_OFFLINE` | 503 | `server_error` | — | 多机部署的 rank 0 所在节点离线 |

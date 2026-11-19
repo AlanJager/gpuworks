@@ -8,6 +8,7 @@ package enginelog
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -168,6 +169,24 @@ func LastError(logText string) string {
 		}
 	}
 	return ""
+}
+
+// Tail is the last n non-empty lines of an engine's output, oldest first,
+// with terminal control sequences removed and each line bounded. It is what
+// an exit that named no error or exception still said last: a launch script
+// that refuses its arguments prints a plain sentence and exits non-zero. A
+// carriage return ends a line as a newline does, so a progress bar redrawn in
+// place is its states one by one and the last of them is the newest.
+func Tail(logText string, n int) []string {
+	lines := strings.FieldsFunc(ansiRE.ReplaceAllString(logText, ""), func(r rune) bool { return r == '\n' || r == '\r' })
+	var out []string
+	for i := len(lines) - 1; i >= 0 && len(out) < n; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			out = append(out, bound(line))
+		}
+	}
+	slices.Reverse(out)
+	return out
 }
 
 func bound(line string) string {

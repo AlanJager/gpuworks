@@ -411,3 +411,104 @@ func TestOwnModelsDir(t *testing.T) {
 		})
 	}
 }
+
+// The scan RPC pages to the end: each page's next_cursor resumes the walk
+// that page left unfinished, and nothing is reported twice.
+func TestStorageScanRPCContinuesThePageBefore(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared := t.TempDir()
+	for _, name := range []string{"m1", "m2", "m3"} {
+		writeModel(t, filepath.Join(shared, "org", name), "weights")
+	}
+	if err := os.MkdirAll(filepath.Join(shared, "org", "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.applyStorages([]proto.StorageTask{{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: shared}})
+	<-r.storage.trigger
+	r.checkStorages(context.Background(), true)
+
+	var found, skipped []string
+	cursor := ""
+	for page := 1; ; page++ {
+		raw, _ := json.Marshal(proto.StorageScanParams{StorageID: 2, Cursor: cursor, Limit: 1})
+		out, err := r.rpcStorageScan(context.Background(), raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scan := out.(proto.StorageScanResult)
+		for _, c := range scan.Candidates {
+			found = append(found, c.RelPath)
+		}
+		for _, s := range scan.Skipped {
+			skipped = append(skipped, s.RelPath+" "+s.Reason)
+		}
+		if scan.Complete {
+			break
+		}
+		if scan.NextCursor == cursor || page > 10 {
+			t.Fatalf("page %d did not advance from %q: %+v", page, cursor, scan)
+		}
+		cursor = scan.NextCursor
+	}
+	if strings.Join(found, ",") != "org/m1,org/m2,org/m3" || strings.Join(skipped, ",") != "org/empty empty" {
+		t.Fatalf("found %v, skipped %v", found, skipped)
+	}
+}
+
+// A storage removed from the node and defined again is not the tree an
+// unfinished scan of it was walking, even at the same path: the next page
+// walks it from the root instead of reporting the old listing.
+func TestStorageScanDoesNotContinueOverARedefinedStorage(t *testing.T) {
+	for name, redefine := range map[string]func(r *storageTestRuntime, task proto.StorageTask){
+		"removed and added again": func(r *storageTestRuntime, task proto.StorageTask) {
+			r.applyStorages([]proto.StorageTask{})
+			<-r.storage.trigger
+			r.applyStorages([]proto.StorageTask{task})
+		},
+		"defined anew under the same id": func(r *storageTestRuntime, task proto.StorageTask) {
+			task.Name = "archive-2"
+			r.applyStorages([]proto.StorageTask{task})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newStorageTestRuntime(t)
+			shared := t.TempDir()
+			for _, m := range []string{"m1", "m2", "m3"} {
+				writeModel(t, filepath.Join(shared, "org", m), "weights")
+			}
+			task := proto.StorageTask{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: shared}
+			r.applyStorages([]proto.StorageTask{task})
+			<-r.storage.trigger
+			r.checkStorages(context.Background(), true)
+			page := func(cursor string, limit int) proto.StorageScanResult {
+				raw, _ := json.Marshal(proto.StorageScanParams{StorageID: 2, Cursor: cursor, Limit: limit})
+				out, err := r.rpcStorageScan(context.Background(), raw)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return out.(proto.StorageScanResult)
+			}
+			first := page("", 1)
+			if first.Complete || first.NextCursor != "org/m1" {
+				t.Fatalf("first page = %+v", first)
+			}
+			// What is at the path changes with the storage: m3 is gone and
+			// m4 is new. The kept listing knows m3 and not m4.
+			if err := os.RemoveAll(filepath.Join(shared, "org", "m3")); err != nil {
+				t.Fatal(err)
+			}
+			writeModel(t, filepath.Join(shared, "org", "m4"), "weights")
+			redefine(r, task)
+			<-r.storage.trigger
+			r.checkStorages(context.Background(), true)
+			rest := page(first.NextCursor, 0)
+			var found []string
+			for _, c := range rest.Candidates {
+				found = append(found, c.RelPath)
+			}
+			if !rest.Complete || strings.Join(found, ",") != "org/m2,org/m4" || len(rest.Skipped) != 0 {
+				t.Fatalf("after the storage was redefined: found %v skipped %+v, want org/m2 and org/m4 from a walk of what is there now", found, rest.Skipped)
+			}
+		})
+	}
+}

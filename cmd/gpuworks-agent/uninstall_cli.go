@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -152,7 +153,7 @@ func runAgentUninstall(ctx context.Context, args []string, in io.Reader, out io.
 		return finish(nil)
 	}
 	if !ready {
-		return finish(errors.New("uninstall blocked: stop or migrate workloads and resolve unknown checks; --keep-resources explicitly retains them"))
+		return finish(errors.New("uninstall blocked by " + strings.Join(agentChecklistBlockers(r.Checklist, keep), ", ") + ": follow the action of each of these checks (stop or migrate workloads, resolve what is unknown); --keep-resources explicitly retains them"))
 	}
 	if !yes {
 		if !terminal || jsonOutput {
@@ -201,13 +202,20 @@ func runAgentUninstall(ctx context.Context, args []string, in io.Reader, out io.
 // idle GPUs and do not prevent removing a component whose workload inventory
 // is known. Runtime/configuration uncertainty remains a hard gate.
 func agentChecklistBlocking(items []uninstallcheck.Item, keep bool) bool {
+	return len(agentChecklistBlockers(items, keep)) > 0
+}
+
+// agentChecklistBlockers are the IDs of the checks that stop the uninstall,
+// so the refusal can name them instead of leaving the operator to find them.
+func agentChecklistBlockers(items []uninstallcheck.Item, keep bool) []string {
+	var ids []string
 	for _, item := range items {
 		if strings.HasPrefix(item.ID, "gpu.") || (keep && !strings.HasPrefix(item.ID, "agent.safety.")) {
 			continue
 		}
-		if uninstallcheck.Blocking([]uninstallcheck.Item{item}) {
-			return true
+		if uninstallcheck.Blocking([]uninstallcheck.Item{item}) && !slices.Contains(ids, item.ID) {
+			ids = append(ids, item.ID)
 		}
 	}
-	return false
+	return ids
 }
