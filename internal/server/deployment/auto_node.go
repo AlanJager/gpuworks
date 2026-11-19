@@ -19,8 +19,8 @@ func leavesNodeToServer(req *dto.DeployRequest) bool {
 // node that evaluation picked, so an API client need not evaluate first. The
 // create then re-validates the pick like any other, so a request that names
 // its evaluated node behaves exactly as before. When the evaluation picks no
-// node, the create is refused with AUTOMATIC_PLACEMENT_UNAVAILABLE and each
-// candidate's reason, the same reasons the evaluation lists.
+// node, a permanently impossible shape keeps the evaluation's admission
+// refusal; temporary unavailability reports each candidate's reason.
 func (s *Service) pickAutomaticNode(ctx context.Context, req *dto.DeployRequest) error {
 	if !leavesNodeToServer(req) {
 		return nil
@@ -30,6 +30,9 @@ func (s *Service) pickAutomaticNode(ctx context.Context, req *dto.DeployRequest)
 	evalReq := dto.EvaluateRequest{DeployRequest: cloneRequest(*req)}
 	out := &evaluation{}
 	s.evaluate(ctx, out, evalReq)
+	if out.admissionErr != nil {
+		return invalid(out.admissionErr)
+	}
 	if out.err != nil {
 		// The evaluation refused the request itself; the create's own checks
 		// below answer it with their usual error.
