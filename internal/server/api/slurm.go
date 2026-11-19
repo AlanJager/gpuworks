@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/go-chi/chi/v5"
@@ -18,6 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/provider"
 	"gpuworks.ai/gpuworks/internal/server/slurmboot"
+	"gpuworks.ai/gpuworks/internal/server/slurmcluster"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -91,55 +91,29 @@ func slurmClusterCategory() (string, []dto.PlatformResource) {
 	return "", []dto.PlatformResource{}
 }
 
-// slurmView is what an entry's DTO needs besides the row.
+// slurmView is what an entry's DTO needs besides the row: what the server
+// derives of it (slurmcluster.View) and what the handlers add from the cloud
+// account it was made from.
 type slurmView struct {
-	nodes, online, gpuNodes, missing int
-	listAsOf                         *time.Time
-	missingNodes                     []dto.SlurmMissingNode
-	blockers                         store.SlurmDeleteBlockers
-	canApply, canRemove              bool
-	blocked                          string
-	source                           store.Provider // the cloud account of the entry's source
-	waiting                          *dto.SlurmWaiting
-	sharedStorage                    *dto.SlurmSharedStorageHint
-	// joining: the setup was seen run within slurmJoinWindow, so an entry
-	// with no node yet is not stalled however old it is.
-	joining bool
+	slurmcluster.View
+	canApply, canRemove bool
+	blocked             string
+	source              store.Provider // the cloud account of the entry's source
+	sharedStorage       *dto.SlurmSharedStorageHint
 }
 
-// slurmViews reads, in four grouped queries however many entries and nodes
-// there are, what the DTOs of rows need: node counts, listed GPU nodes, and
-// the listed nodes without an agent online with the reason for each.
+// slurmViews derives the views of rows (slurmcluster.Memory.Views, grouped
+// queries however many entries and nodes there are) and adds each entry's
+// cloud account, the operations it allows, and the shared storage hint.
 func (a *apiHandlers) slurmViews(ctx context.Context, rows []store.SlurmCluster) (map[uint]slurmView, error) {
 	out := make(map[uint]slurmView, len(rows))
 	if len(rows) == 0 {
 		return out, nil
 	}
-	ids := make([]uint, len(rows))
-	for i, c := range rows {
-		ids[i] = c.ID
-	}
-	nodes, err := a.d.Store.SlurmClusterNodeCounts()
-	if err != nil {
-		return nil, err
-	}
-	listed, err := a.d.Store.SlurmGPUNodeCounts()
-	if err != nil {
-		return nil, err
-	}
-	unlisted, err := a.d.Store.SlurmUnlistedNodeCounts(time.Now().UTC().Add(-slurmListLag))
-	if err != nil {
-		return nil, err
-	}
-	missing, err := a.d.Store.SlurmMissingNodes(ids...)
-	if err != nil {
-		return nil, err
-	}
-	blockers, err := a.d.Store.SlurmClusterDeleteBlockers(ids...)
-	if err != nil {
-		return nil, err
-	}
-	withShared, err := a.d.Store.SlurmClustersWithSharedStorage()
+	cloudCtx, cancelCloud := context.WithTimeout(ctx, slurmCloudListWait)
+	defer cancelCloud()
+	cloud := &slurmCloudNodes{a: a, ctx: cloudCtx}
+	views, err := a.slurm.Views(a.d.Store, rows, cloud.of)
 	if err != nil {
 		return nil, err
 	}
@@ -150,54 +124,20 @@ func (a *apiHandlers) slurmViews(ctx context.Context, rows []store.SlurmCluster)
 			at.cancel()
 		}
 	}()
-	cloudCtx, cancelCloud := context.WithTimeout(ctx, slurmCloudListWait)
-	defer cancelCloud()
-	cloud := &slurmCloudNodes{a: a, ctx: cloudCtx}
 	for _, c := range rows {
-		// An agent is only installed on a node that has a GPU, so a node that
-		// enrolled is a GPU node of the entry even before the list shows it:
-		// the list the agents report is stored at most once a minute and each
-		// agent reports every report interval. Nodes that enrolled within that
-		// lag and are not on the list yet count with it; an older node the list
-		// leaves out has left the cluster (or has no gpu GRES) and does not.
-		v := slurmView{nodes: nodes[c.ID].Enrolled, online: nodes[c.ID].Online, gpuNodes: listed[c.ID] + unlisted[c.ID], missingNodes: []dto.SlurmMissingNode{}, blockers: blockers[c.ID]}
-		// With no agent online the list is the one from before they went:
-		// say how old it can be. Only such entries are read for it.
-		if v.nodes > 0 && v.online == 0 && listed[c.ID] > 0 {
-			seen, err := a.d.Store.SlurmClusterLastSeen(c.ID)
-			if err != nil {
-				return nil, err
-			}
-			if !seen.IsZero() {
-				v.listAsOf = &seen
-			}
-		}
+		v := slurmView{View: views[c.ID]}
 		if c.ProviderID != nil {
 			v.source = accounts[*c.ProviderID]
 		}
 		v.canApply, v.canRemove, v.blocked = a.slurmOperations(ctx, c, accountTargets)
-		if hint, ok := planning.SlurmSharedStorageFor(c, v.source.Kind, v.nodes, withShared[c.ID]); ok {
+		sharedDir := ""
+		if a.d.Providers != nil && c.ProviderID != nil {
+			sharedDir = a.d.Providers.HPCSharedModelDir(v.source.Kind)
+		}
+		if hint, ok := planning.SlurmSharedStorageFor(c, sharedDir, v.Nodes, v.HasSharedStorage); ok {
 			v.sharedStorage = &dto.SlurmSharedStorageHint{Name: hint.Name, Type: proto.StorageSharedDir, Path: hint.Path, LabelKey: hint.LabelKey, LabelValue: hint.LabelValue}
 		}
-		if c.RevokedAt == nil && v.nodes == 0 {
-			seen, covered := a.slurmActivity.seen(c)
-			now := a.slurmActivity.clock()
-			v.joining = covered && seen.joining(now)
-			v.waiting = slurmWaiting(slurmWaitingReason(seen, covered, cloud.of(c), now))
-		}
 		out[c.ID] = v
-	}
-	for _, m := range missing {
-		v := out[m.ClusterID]
-		v.missing++
-		if len(v.missingNodes) < slurmMissingNodesLimit {
-			missing := dto.SlurmMissingNode{Name: m.Name, Reason: "not_enrolled", SlurmState: m.State, SlurmReason: m.Reason}
-			if m.Enrolled {
-				missing.Reason, missing.NodeUUID = "offline", m.NodeUUID
-			}
-			v.missingNodes = append(v.missingNodes, missing)
-		}
-		out[m.ClusterID] = v
 	}
 	return out, nil
 }
@@ -207,28 +147,21 @@ func slurmClusterDTO(c store.SlurmCluster, v slurmView, admin bool) dto.SlurmClu
 		ID: c.ID, UUID: c.UUID, Name: c.Name, ServerURL: c.ServerURL, SlurmClusterName: c.SlurmClusterName,
 		RunAs: c.RunAs, AccountUser: c.AccountUser, InstallDir: c.InstallDir, ScriptDir: c.ScriptDir,
 		SbatchArgs: c.SbatchArgs, IdleReturnSeconds: c.IdleReturnSeconds, PendingTimeoutSeconds: c.PendingTimeoutSeconds,
-		Revoked: c.RevokedAt != nil, NodeCount: v.nodes, OnlineCount: v.online, ListAsOf: v.listAsOf, SlurmGPUNodes: v.gpuNodes, MissingCount: v.missing,
-		MissingNodes: v.missingNodes, CreatedAt: c.CreatedAt.UTC(),
-		Stalled: slurmClusterStalled(c, time.Now().UTC()) && !v.joining,
+		Revoked: c.RevokedAt != nil, NodeCount: v.Nodes, OnlineCount: v.Online, ListAsOf: v.ListAsOf, SlurmGPUNodes: v.GPUNodes, MissingCount: v.Missing,
+		MissingNodes: make([]dto.SlurmMissingNode, 0, len(v.MissingNodes)), CreatedAt: c.CreatedAt.UTC(),
+		Stalled: v.Stalled, State: v.State,
 	}
-	if out.MissingNodes == nil {
-		out.MissingNodes = []dto.SlurmMissingNode{}
+	for _, m := range v.MissingNodes {
+		out.MissingNodes = append(out.MissingNodes, dto.SlurmMissingNode{Name: m.Name, Reason: m.Reason, NodeUUID: m.NodeUUID, SlurmState: m.SlurmState, SlurmReason: m.SlurmReason})
 	}
-	out.State = slurmClusterState(c, out.Stalled)
 	out.Category, out.Resources = slurmClusterCategory()
 	if c.ProviderID != nil {
 		out.Source = &dto.SlurmClusterSource{ProviderID: *c.ProviderID, ProviderName: v.source.Name, ProviderKind: v.source.Kind, ProviderClusterID: c.ProviderClusterID}
 	}
 	out.CanApply, out.CanRemove, out.OperationBlocked = v.canApply, v.canRemove, v.blocked
-	out.Waiting = v.waiting
+	out.Waiting = slurmWaiting(v.Waiting)
 	out.SharedStorageHint = v.sharedStorage
-	out.DeleteWithNodesAllowed = v.blockers == (store.SlurmDeleteBlockers{})
-	switch {
-	case v.blockers.Online > 0:
-		out.DeleteWithNodesBlocker = "online"
-	case v.blockers.Instances > 0:
-		out.DeleteWithNodesBlocker = "instances"
-	}
+	out.DeleteWithNodesAllowed, out.DeleteWithNodesBlocker = v.DeleteAllowed, v.DeleteBlocker
 	if admin {
 		if c.RevokedAt == nil {
 			out.SetupCommand = slurmboot.SetupCommand(c.ServerURL, c.Token)
@@ -431,12 +364,12 @@ func (a *apiHandlers) slurmSetupByToken(w http.ResponseWriter, r *http.Request) 
 		checking := r.URL.Query().Get(slurmboot.CheckQuery) != ""
 		a.writeSlurmScript(w, r, slurmboot.SetupScript, func(c store.SlurmCluster) {
 			if !checking {
-				a.slurmActivity.setupRan(c.ID)
+				a.slurm.SetupRan(c.ID)
 			}
 		})
 		return
 	}
-	id, ok := a.slurmOnce.take(code)
+	id, ok := a.slurm.TakeSetupCode(code)
 	if !ok {
 		writeErr(w, http.StatusNotFound, store.ErrSlurmTokenUnknown)
 		return
@@ -491,6 +424,6 @@ func (a *apiHandlers) slurmEnroll(w http.ResponseWriter, r *http.Request) {
 	if a.d.Log != nil {
 		a.d.Log.Info("slurm node enrolled", "cluster", cluster.Name, "node", node.SlurmNode, "uuid", node.UUID)
 	}
-	a.slurmActivity.nodeAsked(cluster.ID)
+	a.slurm.NodeAsked(cluster.ID)
 	writeJSON(w, http.StatusOK, dto.SlurmEnrollResponse{NodeUUID: node.UUID, NodeToken: node.Token, Settings: slurmAgentSettings(*cluster)})
 }

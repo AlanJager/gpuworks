@@ -262,3 +262,15 @@ func TestSlurmApplyTargetAsksTheListingWhenTheSyncedSchedulerIsUnknown(t *testin
 		t.Fatalf("target = %+v, %v; want the synced node's region and node, the listing's scheduler", target, err)
 	}
 }
+
+// Only a driver that knows its clusters' shared directory names one; an
+// unknown kind names none.
+func TestHPCSharedModelDirIsTheDriversOwn(t *testing.T) {
+	svc, _, _ := newHPCListingService(t, "hpc-listing-shared")
+	if got := svc.HPCSharedModelDir("hpc-listing-shared"); got != "" {
+		t.Fatalf("a driver that names no shared directory gave %q", got)
+	}
+	if got := svc.HPCSharedModelDir("no-such-kind"); got != "" {
+		t.Fatalf("an unknown kind gave %q", got)
+	}
+}

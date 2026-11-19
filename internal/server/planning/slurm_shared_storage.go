@@ -7,11 +7,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// ehpcSharedModelDir is the directory suggested for models on an Alibaba
-// Cloud E-HPC cluster: E-HPC mounts /opt from the cluster's NAS on every
-// node, so one copy there serves them all.
-const ehpcSharedModelDir = "/opt/gpuworks-models"
-
 // SlurmSharedStorage is the model storage suggested for a Slurm cluster: a
 // mounted shared directory at Path, named Name, for the nodes labelled
 // LabelKey=LabelValue (the entry's nodes, including the ones the cluster
@@ -22,15 +17,15 @@ type SlurmSharedStorage struct {
 
 // SlurmSharedStorageFor says whether to suggest registering the cluster's
 // shared filesystem as model storage, and with what: only for an entry made
-// from an Alibaba Cloud (E-HPC) cluster, whose shared filesystem is known,
+// from a cloud cluster whose shared directory the cloud's driver knows
+// (sharedDir, provider.Service.HPCSharedModelDir; "" when it knows none),
 // that is not revoked, has joined nodes, and none of whose nodes has a
-// shared storage yet (hasShared). sourceKind is the kind of the cloud
-// account the entry was made from.
-func SlurmSharedStorageFor(entry store.SlurmCluster, sourceKind string, joined int, hasShared bool) (SlurmSharedStorage, bool) {
-	if entry.RevokedAt != nil || entry.ProviderID == nil || sourceKind != "aliyun" || joined == 0 || hasShared || entry.UUID == "" {
+// shared storage yet (hasShared).
+func SlurmSharedStorageFor(entry store.SlurmCluster, sharedDir string, joined int, hasShared bool) (SlurmSharedStorage, bool) {
+	if entry.RevokedAt != nil || entry.ProviderID == nil || sharedDir == "" || joined == 0 || hasShared || entry.UUID == "" {
 		return SlurmSharedStorage{}, false
 	}
-	return SlurmSharedStorage{Name: slurmStorageName(entry.Name), Path: ehpcSharedModelDir, LabelKey: nodelabel.KeySlurmCluster, LabelValue: entry.UUID}, true
+	return SlurmSharedStorage{Name: slurmStorageName(entry.Name), Path: sharedDir, LabelKey: nodelabel.KeySlurmCluster, LabelValue: entry.UUID}, true
 }
 
 // slurmStorageName is a storage name made from the entry's: lower case

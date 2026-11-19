@@ -70,6 +70,26 @@ type HPCClusterProvider interface {
 	ListHPCClusters(ctx context.Context, creds Credentials) (HPCClusterList, error)
 }
 
+// HPCSharedStorage is an HPC cluster provider whose clusters share a
+// filesystem across all their nodes at a path it knows: the directory where
+// one copy of a model serves every node of the cluster.
+type HPCSharedStorage interface {
+	HPCSharedModelDir() string
+}
+
+// HPCSharedModelDir is the directory the clusters of the provider kind share
+// across their nodes for models, "" when the kind does not say.
+func (s *Service) HPCSharedModelDir(kind string) string {
+	drv, ok := s.driver(kind)
+	if !ok {
+		return ""
+	}
+	if shared, ok := drv.(HPCSharedStorage); ok {
+		return shared.HPCSharedModelDir()
+	}
+	return ""
+}
+
 func isHPCClusterProvider(drv Driver) bool {
 	_, ok := drv.(HPCClusterProvider)
 	return ok

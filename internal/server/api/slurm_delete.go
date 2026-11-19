@@ -48,9 +48,7 @@ func (a *apiHandlers) deleteSlurmCluster(w http.ResponseWriter, r *http.Request)
 	}
 	switch err := a.d.Store.DeleteSlurmCluster(uuid); {
 	case err == nil:
-		a.slurmReports.forget(gone.ID)
-		a.slurmOnce.forget(gone.ID)
-		a.slurmActivity.forget(gone.ID)
+		a.slurm.Forget(gone.ID)
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, err)

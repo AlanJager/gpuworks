@@ -108,7 +108,7 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 	// stores the list whole again, even when it is the one remembered, so a
 	// node still in the cluster comes back on it.
 	if node.SlurmClusterID != 0 {
-		a.slurmReports.forget(node.SlurmClusterID)
+		a.slurm.ListChanged(node.SlurmClusterID)
 	}
 	if a.d.KickNode != nil {
 		a.d.KickNode(uuid)

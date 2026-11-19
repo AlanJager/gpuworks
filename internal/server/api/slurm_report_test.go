@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/slurmcluster"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -138,8 +139,8 @@ func TestSlurmGPUNodeReportsReconcileWithTheEnrolledNodes(t *testing.T) {
 // slurmReportHandler is the report handler with a clock the test moves.
 func slurmReportHandler(rig *tokenRig) (*apiHandlers, *time.Time) {
 	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
-	h := &apiHandlers{d: Deps{Store: rig.st}}
-	h.slurmReports.now = func() time.Time { return now }
+	h := &apiHandlers{d: Deps{Store: rig.st}, slurm: slurmcluster.New()}
+	h.slurm.SetClock(func() time.Time { return now })
 	return h, &now
 }
 
@@ -265,46 +266,6 @@ func TestSlurmClusterEdit(t *testing.T) {
 	}
 	if rec := rig.do(rig.session, http.MethodPut, "/api/v1/slurm/clusters/missing", `{"name":"x"}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("edit of a missing entry = %d", rec.Code)
-	}
-}
-
-// A stalled entry is one no node enrolled in for too long; enrolling or
-// revoking ends it.
-func TestSlurmClusterStates(t *testing.T) {
-	now := time.Now().UTC()
-	old := now.Add(-2 * slurmStalledAfter)
-	for _, tc := range []struct {
-		name  string
-		c     store.SlurmCluster
-		state string
-	}{
-		{"new", store.SlurmCluster{CreatedAt: now}, "pending"},
-		{"waiting too long", store.SlurmCluster{CreatedAt: old}, "stalled"},
-		{"enrolled", store.SlurmCluster{CreatedAt: old, SlurmClusterName: "demo"}, "active"},
-		{"revoked", store.SlurmCluster{CreatedAt: old, RevokedAt: &now}, "revoked"},
-	} {
-		stalled := slurmClusterStalled(tc.c, now)
-		if got := slurmClusterState(tc.c, stalled); got != tc.state {
-			t.Errorf("%s: state = %s, want %s", tc.name, got, tc.state)
-		}
-	}
-}
-
-// The digest an entry last stored is remembered per entry and goes with it.
-func TestSlurmReportDigestsAreRememberedPerEntryAndForgotten(t *testing.T) {
-	var d slurmReportDigests
-	if d.get(1) != (slurmReportMemory{}) {
-		t.Fatal("a digest nobody stored is remembered")
-	}
-	d.set(1, slurmReportMemory{members: "a"})
-	d.set(2, slurmReportMemory{members: "b"})
-	if d.get(1).members != "a" || d.get(2).members != "b" {
-		t.Fatalf("digests = %q %q", d.get(1).members, d.get(2).members)
-	}
-	d.forget(1)
-	d.forget(9) // an entry never remembered
-	if d.get(1).members != "" || d.get(2).members != "b" {
-		t.Fatalf("after forgetting entry 1: %q %q", d.get(1).members, d.get(2).members)
 	}
 }
 
@@ -442,7 +403,7 @@ func TestSlurmGPUNodeCountIncludesNodesThatEnrolledSinceTheLastList(t *testing.T
 	}
 	// Once the lag has passed, a list that leaves a node out means it has left.
 	send(`{"digest":"d3","state_digest":"s3","nodes":[{"name":"gpu-1","state":"idle","gpus":1}]}`)
-	if err := rig.st.DB().Model(&store.Node{}).Where("slurm_node = ?", "gpu-2").Update("created_at", time.Now().Add(-slurmListLag-time.Minute)).Error; err != nil {
+	if err := rig.st.DB().Model(&store.Node{}).Where("slurm_node = ?", "gpu-2").Update("created_at", time.Now().Add(-slurmcluster.ListLag-time.Minute)).Error; err != nil {
 		t.Fatal(err)
 	}
 	if gpu, joined := counts(); gpu != 1 || joined != 2 {

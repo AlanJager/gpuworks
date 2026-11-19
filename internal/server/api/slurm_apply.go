@@ -131,11 +131,11 @@ type slurmAccountTargets struct {
 // the cloud keeps a record of holds no long-lived secret (slurm_once.go).
 // done drops the code when the run ended without spending it.
 func (a *apiHandlers) slurmOnceSetupURL(c store.SlurmCluster) (string, func(), error) {
-	code, err := a.slurmOnce.issue(c.ID)
+	code, err := a.slurm.IssueSetupCode(c.ID)
 	if err != nil {
 		return "", nil, err
 	}
-	return strings.TrimRight(c.ServerURL, "/") + "/slurm/setup.sh?once=" + code, func() { a.slurmOnce.discard(code) }, nil
+	return strings.TrimRight(c.ServerURL, "/") + "/slurm/setup.sh?once=" + code, func() { a.slurm.DiscardSetupCode(code) }, nil
 }
 
 // slurmApplyOutcome is what the manager node did, as the API shows it.
@@ -223,9 +223,9 @@ func (a *apiHandlers) applySlurmCluster(w http.ResponseWriter, r *http.Request) 
 	}
 	// What the run found of the server's address is what the entry says it
 	// waits for, and a setup that ran is a setup the entry has seen.
-	a.slurmActivity.reached(c.ID, res.Reach)
+	a.slurm.Reached(c.ID, res.Reach)
 	if !*req.DryRun {
-		a.slurmActivity.setupRan(c.ID)
+		a.slurm.SetupRan(c.ID)
 	}
 	view, err := a.slurmClusterView(r.Context(), *c, true)
 	if err != nil {

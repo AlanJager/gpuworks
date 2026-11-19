@@ -21,10 +21,10 @@ func (a *apiHandlers) slurmTokenStatus(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil && c.RevokedAt != nil:
 		status = "revoked"
-		a.slurmActivity.nodeAsked(c.ID)
+		a.slurm.NodeAsked(c.ID)
 	case err == nil:
 		status = "active"
-		a.slurmActivity.nodeAsked(c.ID)
+		a.slurm.NodeAsked(c.ID)
 	case !errors.Is(err, store.ErrSlurmTokenUnknown):
 		writeErr(w, http.StatusInternalServerError, err)
 		return

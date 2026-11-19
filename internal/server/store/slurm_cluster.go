@@ -265,18 +265,25 @@ func (s *Store) SlurmClusterNodeCounts() (map[uint]SlurmNodeCounts, error) {
 	return out, err
 }
 
-// SlurmClusterLastSeen is when an agent of the entry was last seen: with no
-// agent online, the newest list of the entry's nodes is at most this new,
-// since only its agents report one. Zero when no node of it was ever seen.
-// It reads the newest of the entry's nodes by the partial slurm node index.
-func (s *Store) SlurmClusterLastSeen(clusterID uint) (time.Time, error) {
-	var nodes []Node
-	err := s.reader().Select("last_seen_at").Where("slurm_cluster_id = ? AND last_seen_at IS NOT NULL", clusterID).
-		Order("last_seen_at DESC").Limit(1).Find(&nodes).Error
-	if err != nil || len(nodes) == 0 || nodes[0].LastSeenAt == nil {
-		return time.Time{}, err
+// SlurmClustersLastSeen is when an agent of each entry was last seen, in
+// one query for all of them: with no agent online, the newest list of the
+// entry's nodes is at most this new, since only its agents report one. An
+// entry none of whose nodes was ever seen is absent. It reads the entries'
+// nodes by the slurm cluster index (the caller asks only for entries with no
+// agent online).
+func (s *Store) SlurmClustersLastSeen(clusterIDs ...uint) (map[uint]time.Time, error) {
+	out := make(map[uint]time.Time, len(clusterIDs))
+	if len(clusterIDs) == 0 {
+		return out, nil
 	}
-	return nodes[0].LastSeenAt.UTC(), nil
+	var nodes []Node
+	err := s.reader().Select("slurm_cluster_id", "last_seen_at").Where("slurm_cluster_id IN ? AND last_seen_at IS NOT NULL", clusterIDs).Find(&nodes).Error
+	for _, n := range nodes {
+		if seen := n.LastSeenAt.UTC(); seen.After(out[n.SlurmClusterID]) {
+			out[n.SlurmClusterID] = seen
+		}
+	}
+	return out, err
 }
 
 // SlurmUnlistedNodeCounts counts each entry's nodes that enrolled at or after
