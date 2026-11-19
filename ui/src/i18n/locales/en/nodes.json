@@ -374,6 +374,7 @@
     "port": "Port",
     "user": "User",
     "userRequired": "Enter the SSH user",
+    "portRequired": "Enter the SSH port",
     "probeAfterSave": "Run a probe immediately after saving",
     "existingAuth": "Saved credential: {{method}}. Credentials are never displayed for security reasons and must be entered again when saving.",
     "savedPasswordHelp": "During recovery, a saved password can be tried with password or keyboard-interactive authentication.",

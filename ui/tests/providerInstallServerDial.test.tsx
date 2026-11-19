@@ -8,6 +8,7 @@ import { kindCategories } from "./helpers/platformFixtures.ts";
 const { i18n } = await createI18n(["providers"], "en");
 const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 const { default: ProviderInstallModal } = await import("../src/components/ProviderInstallModal.tsx");
+const { FeedbackHost } = await import("../src/ui-kit/feedback");
 const { default: ProviderConfigModal } = await import("../src/components/ProviderConfigModal.tsx");
 const { api } = await import("../src/api.ts");
 type ProviderInstance = import("../src/api.ts").ProviderInstance;
@@ -151,6 +152,8 @@ test("a RunPod pod without a spare port is restarted only after the operator agr
   });
   render(
     <I18nextProvider i18n={i18n}>
+      {/* The restart question shows through the app's feedback host. */}
+      <FeedbackHost />
       <ProviderInstallModal providerId={1} providerKind="runpod" serverDialAutoPort inst={instance} onClose={() => {}} onDone={() => {}} />
     </I18nextProvider>,
   );
@@ -180,6 +183,8 @@ test("a RunPod pod without the platform key is restarted only after the operator
   });
   render(
     <I18nextProvider i18n={i18n}>
+      {/* The restart question shows through the app's feedback host. */}
+      <FeedbackHost />
       <ProviderInstallModal providerId={1} providerKind="runpod" serverDialAutoPort inst={instance} onClose={() => {}} onDone={() => {}} />
     </I18nextProvider>,
   );
