@@ -87,8 +87,9 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 					h.ReapplySchedulingHoldsFor(nodes)
 				},
 				FeaturesChanged: func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
+				ClockCorrected:  auditClockCorrection(h.Log()),
 			}},
-		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing, CgroupRoot: cgRoot, CgroupParent: cgParent, Reads: PluginReads(m.st)},
+		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing, CgroupRoot: cgRoot, CgroupParent: cgParent, Reads: PluginReads(m.st), Keys: pluginKeys{master: h.master}},
 		Core:             extapi.CoreInfo{Version: version.Version, InstallID: h.InstallID(), OS: runtime.GOOS, Arch: runtime.GOARCH, HARole: extapi.HARoleSingle},
 		RequireIsolation: m.cfg.Plugins.RequireIsolation,
 		Features:         h.reg.dynamic,

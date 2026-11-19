@@ -34,6 +34,10 @@ const (
 	CapRoutesWebSocket  = "routes.websocket" // a route that upgrades to WebSocket
 )
 
+// PermCryptoDeriveKey is the permission of the host API's key derivation
+// (PathHostDeriveKey); it names CapHostDeriveKey.
+const PermCryptoDeriveKey = "crypto:derive_key"
+
 // permissionObjects maps each verb except push to its closed set of
 // objects and the capability each one names. A verb whose set is empty
 // (svc) has no object yet: a later schema adds objects only beside a new

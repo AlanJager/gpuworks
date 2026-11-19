@@ -54,7 +54,9 @@ type Config struct {
 	Packages *extpkg.Host
 	// State builds pushed state; Open fills in Packages.
 	State pushstate.Config
-	// Host builds the plugin host; Open fills in Core, State and OnState.
+	// Host builds the plugin host; Open fills in Core, State, OnState, the
+	// clock, ready and own-state services and, unless set, the handshake's
+	// Clock. Keys (derived keys) is the caller's.
 	Host pluginhost.Config
 	// Core describes this server in the handshake; Open fills in Offer
 	// from the capabilities the server offers (extpkg.Offer).
@@ -168,6 +170,13 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	}
 	hostCfg.Core = func() extapi.CoreInfo { c := core; c.Offer = maps.Clone(core.Offer); return c }
 	hostCfg.State = stateHost{b}
+	hostCfg.ExtClock, hostCfg.Ready, hostCfg.OwnState = stateHost{b}, stateHost{b}, stateHost{b}
+	if hostCfg.Clock == nil {
+		hostCfg.Clock = func() extapi.Clock {
+			r := b.state.Clocks()
+			return extapi.Clock{Wall: extapi.NewTime(r.Wall), ExtClock: extapi.NewTime(r.ExtClock)}
+		}
+	}
 	hostCfg.OnState = b.onState
 	if hostCfg.Log == nil {
 		hostCfg.Log = cfg.Log.With("component", "plugins")

@@ -49,6 +49,12 @@ var goldenDecoders = map[string]func([]byte) (any, error){
 	KindBanners:             tableDecoder(KindBanners),
 	KindAttestations:        tableDecoder(KindAttestations),
 	"principal":             func(b []byte) (any, error) { return DecodePrincipal(b) },
+	"clock_correction":      func(b []byte) (any, error) { return DecodeClockCorrection(b) },
+	"clock_corrected":       func(b []byte) (any, error) { return DecodeClockCorrected(b) },
+	"host_meta":             func(b []byte) (any, error) { return DecodeHostMeta(b) },
+	"pushed_state":          func(b []byte) (any, error) { return DecodePushedState(b) },
+	"key_request":           func(b []byte) (any, error) { return DecodeKeyRequest(b) },
+	"derived_key":           func(b []byte) (any, error) { return DecodeDerivedKey(b) },
 }
 
 func tableDecoder(kind string) func([]byte) (any, error) {

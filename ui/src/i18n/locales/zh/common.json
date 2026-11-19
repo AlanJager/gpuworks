@@ -988,6 +988,7 @@
     "PLUGIN_STATE_ON_DEMAND": "插件 {{id}} 按需启动，不能推送状态，也不能声明功能。",
     "PLUGIN_HOST_NOT_PERMITTED": "插件 {{id}} 未获授权 {{permission}}。",
     "PLUGIN_HOST_ARGUMENT_INVALID": "插件 {{id}} 的宿主请求中 {{field}} 无效。",
+    "PLUGIN_ROLE_REQUIRED": "插件 {{id}} 需要 {{role}} 角色才能执行此请求。",
     "PLUGIN_STATE_NOT_PERMITTED": "该插件无权推送 {{kind}} 状态：需要 {{needs}}。",
     "PLUGIN_STATE_NOT_OWNER": "该插件推送了不归它负责的 {{kind}} 状态：{{field}}（{{row}}）。",
     "PLUGIN_STATE_CONNECTION_REPLACED": "插件 {{id}} 通过已被服务器替换的进程或包版本的连接推送了 {{kind}} 状态。",

@@ -294,6 +294,11 @@ Under ADR 0071, a plugin is a child process of the server and runs plaintext HTT
 | `GET /host/v1/health` | Host health | The plugin probes the host API; the answer is a health object |
 | `POST /host/v1/node-identity` | Node identity | The plugin reads the salted hardware identity of named nodes; see [Node reads](#node-reads) |
 | `GET /host/v1/nodes` | Node inventory | The plugin pages through the node inventory in enrollment order |
+| `GET /host/v1/state/{kind}` | Own state | The plugin reads back one table the server holds for it (see [Host API clock, readiness, own state and derived keys](#host-api-clock-readiness-own-state-and-derived-keys)) |
+| `POST /host/v1/state/ready` | Ready | The plugin reports that it has finished starting |
+| `GET /host/v1/meta` | Meta | The server version, boot id and clocks |
+| `POST /host/v1/clock/correct` | Clock correction | A package holding `clock_authority` corrects extclock |
+| `POST /host/v1/derive-key` | Derived key | A key bound to the package and a label |
 | Request header `Gwx-Deadline-Ms` | Unix milliseconds | The call's deadline |
 | Response header `Gwx-Product-Error` | — | Marks a plugin route's response body as an error object |
 | `/r/<path>` | Route | A request to one of the plugin's routes ([route requests](#route-requests-and-the-principal)) |
@@ -502,10 +507,73 @@ The host API allows each plugin 20 calls a second with a burst of 100; the node 
 | `PLUGIN_HOST_NOT_PERMITTED` | 403 | The administrator did not approve the read's permission | `id`, `permission` |
 | `PLUGIN_CAPABILITY_NOT_OFFERED` | 412 | The plugin did not negotiate the capability at its handshake | `id`, `capability`, `version` |
 | `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | The salt, the node id list, `cursor` or `limit` is out of bounds or breaks its grammar; refused before any read, and a refused inventory query costs no page | `id`, `field` |
-| `REQUEST_TOO_LARGE` | 413 | The node identity request body is over 32 KiB; refused before decoding | `max` |
+| `REQUEST_TOO_LARGE` | 413 | The node identity request body is over 32 KiB; refused before decoding | `max_bytes` |
 | `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | The server offers no reads, or the method is wrong | `method`, `path` |
 
 A body that is not the object at all (invalid JSON, an unknown field) keeps its wire code, such as `PLUGIN_WIRE_UNKNOWN_FIELD`.
+
+## Host API clock, readiness, own state and derived keys
+
+These calls are on the host API side (fd 4). The caller is the package bound to the connection at its handshake; no request carries an identity field:
+
+| Call | Needs | Answer |
+|---|---|---|
+| `GET /host/v1/meta` | capability `host.clock` | `host_meta` |
+| `POST /host/v1/clock/correct` | capability `host.clock` and role `clock_authority` | `clock_corrected` |
+| `POST /host/v1/state/ready` | the base protocol, no capability | 204, no body |
+| `GET /host/v1/state/{kind}` | capability `host.state_read` | `pushed_state` |
+| `POST /host/v1/derive-key` | permission `crypto:derive_key` and capability `host.derive_key` | `derived_key` |
+
+A call whose capability the handshake did not negotiate gets 412 `PLUGIN_CAPABILITY_NOT_OFFERED` (`id`, `capability`, `version`); a missing role 403 `PLUGIN_ROLE_REQUIRED` (`id`, `role`); a missing permission 403 `PLUGIN_HOST_NOT_PERMITTED` (`id`, `permission`); an argument that breaks a rule 400 `PLUGIN_HOST_ARGUMENT_INVALID` (`id`, `field`); a body over 4 KiB 413 `REQUEST_TOO_LARGE` (`max_bytes`).
+
+Meta: `version` is the server version (as in the handshake), and `boot_id` changes every time the server starts. `wall` is the wall clock, `extclock` the monotone clock timelines follow, and `hwm` the high-water mark the server last stored, absent before it stored one.
+
+<!-- golden: host_meta/v1/valid/stored.json -->
+```json
+{"boot_id":"5b0c9e7a41d24f3c8e6a0b1d2c3f4e5a","extclock":"2027-03-01T00:00:00Z","hwm":"2027-03-01T00:00:00Z","version":"v26.12.0","wall":"2027-01-15T00:00:00Z"}
+```
+
+Clock correction: `to` is a time the plugin has verified (for example from a correction code its publisher signed), and `reason` is 1–256 bytes of explanation for the audit log. One correction moves extclock at most 366 days either way; beyond that the answer is 400 `PLUGIN_CLOCK_CORRECTION_TOO_LARGE` (`max_days`). Steps are not consumed, so moving back un-fires the steps after `to`. The server writes an audit log line and shows an administrator banner.
+
+<!-- golden: clock_correction/v1/valid/vendor_code.json -->
+```json
+{"reason":"acme correction code 7F3A-22C1","to":"2027-01-15T00:00:00Z"}
+```
+
+The answer is extclock before and after the correction as it took effect: extclock never runs behind the wall clock, so when `to` is earlier than the wall clock, the answer's and the audit line's `to` is the wall clock.
+
+<!-- golden: clock_corrected/v1/valid/back.json -->
+```json
+{"from":"2027-03-01T00:00:00Z","to":"2027-01-15T00:00:00Z"}
+```
+
+Ready: each down period's grants get a boot extension of 2 minutes after the grace. Once a plugin process calls `POST /host/v1/state/ready`, a later down period of that process gets no boot extension and tightens as soon as the grace ends. A second call from the same process, a call from an `on_demand` plugin, or one from a process that has been replaced changes nothing. It never changes the persisted down start, so it cannot renew the grace. A new process may call it before the server counts it up; that call applies only to the new process's own later down periods and does not shorten the boot extension of the previous process's down period. The mark is not kept across a server restart: the boot extension is computed again from the persisted start, so it cannot stack.
+
+Own state: `GET /host/v1/state/{kind}` answers with the committed table of that kind the server holds for the caller itself, so a restarted plugin can reconcile. It is read from memory and never returns another package's rows. `body` is the whole table as the server holds it (canonical JSON; `display` contents, which the server does not keep, are absent), `digest` the digest of the table as it was pushed, the same as the handshake's `held` reports, and `pushed_at` the extclock at which the push was accepted. When nothing is held, only `kind` is set:
+
+<!-- golden: pushed_state/v1/valid/held.json -->
+```json
+{"body":{"nodes":{"9":{"code":"ACME_QUARANTINE"}}},"digest":"sha256:9d48b3877a0b899cd055d9b094a38a3499e96cdad91bbb965c227098d95b9053","generation":4,"kind":"node_holds","pushed_at":"2026-12-01T00:00:00Z","schema":1}
+```
+
+<!-- golden: pushed_state/v1/valid/not_held.json -->
+```json
+{"kind":"banners"}
+```
+
+Derived keys: `label` is 1–64 of `[a-z0-9._-]`, and `length` is 16–64 bytes.
+
+<!-- golden: key_request/v1/valid/challenge.json -->
+```json
+{"label":"usb.challenge","length":32}
+```
+
+<!-- golden: derived_key/v1/valid/thirty_two.json -->
+```json
+{"key":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}
+```
+
+The key is HKDF-SHA256 (no salt) of the server's `master.key`, with `info` being `"gpuworks plugin key"`, a zero byte, the package id, a zero byte and the label, taking `length` bytes. One package and label get the same key for the life of the master key; other packages or labels get unrelated keys; the plugin never sees the master key itself.
 
 ## Pushed tables
 
@@ -615,4 +683,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 61747ab5c5f19b793e4951380fa837741e48f1368c1721eaeaeeddea938a6d33 -->
+<!-- translation-source-sha256: feacccbf3f02626e236081f1a141dce5b704603b4a2a21e9fd22d52017b0d172 -->

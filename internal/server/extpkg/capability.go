@@ -20,11 +20,21 @@ var hostReads = map[string]int{
 	extapi.CapHostNodes:        1,
 }
 
+// hostCalls are the host API calls beside pushes this server answers
+// (package pluginhost), each at its version: the clock (meta and
+// correction), the plugin's own pushed tables and derived keys.
+var hostCalls = map[string]int{
+	extapi.CapHostClock:     1,
+	extapi.CapHostStateRead: 1,
+	extapi.CapHostDeriveKey: 1,
+}
+
 // coreCapabilities offers every pushed table kind the core validates and
 // enforces (package pushstate), at the newest schema pkg/extapi defines,
-// and the host API reads.
+// and the host API reads and calls.
 func coreCapabilities() map[string]int {
 	out := maps.Clone(hostReads)
+	maps.Copy(out, hostCalls)
 	for _, kind := range extapi.TableKinds() {
 		schemas := extapi.TableSchemas(kind)
 		out[extapi.TableCapability(kind)] = schemas[len(schemas)-1]

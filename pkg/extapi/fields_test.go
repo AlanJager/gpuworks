@@ -58,12 +58,17 @@ CertGrants.tables []string
 CertGrants.ui_module bool
 Clock.extclock Time
 Clock.wall Time
+ClockCorrected.from Time
+ClockCorrected.to Time
+ClockCorrection.reason string
+ClockCorrection.to Time
 CoreInfo.arch string
 CoreInfo.ha_role string
 CoreInfo.install_id string
 CoreInfo.offer map[string]Range
 CoreInfo.os string
 CoreInfo.version string
+DerivedKey.key []uint8
 Envelope.payload []uint8
 Envelope.signatures []Signature
 FeatureDecl.gate string
@@ -122,6 +127,13 @@ HeldState.schema int
 HostSetupStep.product_id string
 HostSetupStep.type string
 HostSetupStep.vendor_id string
+HostMeta.boot_id string
+HostMeta.extclock Time
+HostMeta.hwm *Time
+HostMeta.version string
+HostMeta.wall Time
+KeyRequest.label string
+KeyRequest.length int
 Limit.dim string
 Limit.max *int64
 Limit.unlimited bool
@@ -187,6 +199,12 @@ PublisherCert.not_before Time
 PublisherCert.public_key []uint8
 PublisherCert.publisher string
 PublisherCert.serial uint64
+PushedState.body RawMessage
+PushedState.digest Digest
+PushedState.generation uint64
+PushedState.kind string
+PushedState.pushed_at *Time
+PushedState.schema int
 Range.max int
 Range.min int
 Revocation.cert_serial uint64
@@ -284,6 +302,7 @@ var wireRoots = []any{
 	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Index{}, Envelope{}, PublicKey{},
 	HandshakeRequest{}, HandshakeResponse{}, Health{}, WireError{}, StatePush{}, StateAck{},
 	NodeIdentityRequest{}, NodeIdentityAnswer{}, NodesPage{},
+	ClockCorrection{}, ClockCorrected{}, HostMeta{}, PushedState{}, KeyRequest{}, DerivedKey{},
 	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{}, Principal{},
 }
 

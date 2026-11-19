@@ -24,6 +24,9 @@ type Host struct {
 	timing  Timing
 	spawner Spawner
 	log     *slog.Logger
+	// svc are the host API's services beside pushes, shared by every
+	// plugin's host connection.
+	svc *hostServices
 
 	// generation numbers every process the host starts, across plugins
 	// and restarts, so a later process always has a higher number.
@@ -60,6 +63,11 @@ func New(cfg Config) (*Host, error) {
 	if h.cfg.Memory == nil {
 		h.cfg.Memory = defaultMemoryReader()
 	}
+	svc, err := newHostServices(&h.cfg)
+	if err != nil {
+		return nil, err
+	}
+	h.svc = svc
 	return h, nil
 }
 

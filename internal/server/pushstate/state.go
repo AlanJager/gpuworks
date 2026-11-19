@@ -44,7 +44,7 @@ type Effects struct {
 	// replaced, for the audit log and the administrator.
 	OverrideSuperseded func(o Override)
 	// ClockCorrected reports a correction of extclock, for the audit log.
-	ClockCorrected func(from, to time.Time, by string)
+	ClockCorrected func(from, to time.Time, by, reason string)
 }
 
 // Config builds a State.
@@ -116,6 +116,11 @@ type State struct {
 	hwmDirty  bool
 	markers   []pstate.Marker
 	next      int64
+	// ready is, per owner, the process generation that declared it had
+	// finished starting ($/ready): a down period of that generation gets no
+	// boot extension. It is not persisted, so a restarted server computes
+	// the extension again from the persisted down start.
+	ready map[string]uint64
 	// holdsDirty marks the explicit holds for recombination: a commit, an
 	// installed package set or a load changed what they are built from.
 	holdsDirty bool
@@ -157,7 +162,7 @@ func New(cfg Config) *State {
 	s := &State{
 		cfg: cfg, log: cfg.Log, wake: make(chan struct{}, 1),
 		reg: newRegistry(cfg.Packages), parts: map[ownerKind]*part{}, pending: map[ownerKind]*pendingPush{}, inflight: map[ownerKind]uint64{},
-		spawn: map[string]uint64{}, down: map[string]int64{}, downDirty: map[string]bool{},
+		spawn: map[string]uint64{}, ready: map[string]uint64{}, down: map[string]int64{}, downDirty: map[string]bool{},
 		overrides: map[int64]*Override{}, heldByCap: map[uint]bool{},
 	}
 	s.clock = newExtclock(cfg.Clock, 0)

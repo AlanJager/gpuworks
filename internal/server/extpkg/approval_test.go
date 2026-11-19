@@ -83,7 +83,7 @@ func TestSetEnabled(t *testing.T) {
 }
 
 // The server offers every pushed table kind at its newest schema, and the
-// node reads of the host API.
+// node reads, clock, own-state and key calls of the host API.
 func TestCapabilitiesOfferThePushedTables(t *testing.T) {
 	caps, offer := extpkg.Capabilities(), extpkg.Offer()
 	for _, kind := range extapi.TableKinds() {
@@ -93,12 +93,12 @@ func TestCapabilitiesOfferThePushedTables(t *testing.T) {
 			t.Fatalf("%s: capabilities %d, offer %+v", name, caps[name], offer[name])
 		}
 	}
-	for _, name := range []string{extapi.CapHostNodeIdentity, extapi.CapHostNodes} {
+	for _, name := range []string{extapi.CapHostNodeIdentity, extapi.CapHostNodes, extapi.CapHostClock, extapi.CapHostStateRead, extapi.CapHostDeriveKey} {
 		if caps[name] != 1 || offer[name] != (extapi.Range{Min: 1, Max: 1}) {
 			t.Fatalf("%s: capabilities %d, offer %+v", name, caps[name], offer[name])
 		}
 	}
-	if len(caps) != len(extapi.TableKinds())+2 || len(offer) != len(caps) {
+	if len(caps) != len(extapi.TableKinds())+5 || len(offer) != len(caps) {
 		t.Fatalf("capabilities = %v", caps)
 	}
 }

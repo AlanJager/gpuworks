@@ -44,6 +44,9 @@ type hostConn struct {
 	refused atomic.Bool
 	ready   chan struct{}
 	settle  sync.Once
+	// svc serves the calls beside pushes; nil answers each of them as an
+	// unknown route and $/ready as a no-op.
+	svc *hostServices
 }
 
 func newHostConn(spec *Spec, state StateHost, reads Reads, log *slog.Logger) *hostConn {
@@ -77,12 +80,40 @@ func (h *hostConn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, extapi.Health{Status: extapi.HealthOK})
-	case strings.HasPrefix(r.URL.Path, extapi.PathHostState):
-		if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+	case r.URL.Path == extapi.PathHostReady:
+		if r.Method != http.MethodPost {
 			writeWire(w, methodNotServed(r))
 			return
 		}
-		h.push(w, r, strings.TrimPrefix(r.URL.Path, extapi.PathHostState))
+		h.declareReady(w, r)
+	case strings.HasPrefix(r.URL.Path, extapi.PathHostState):
+		kind := strings.TrimPrefix(r.URL.Path, extapi.PathHostState)
+		switch r.Method {
+		case http.MethodPut, http.MethodPatch:
+			h.push(w, r, kind)
+		case http.MethodGet:
+			h.ownState(w, r, kind)
+		default:
+			writeWire(w, methodNotServed(r))
+		}
+	case r.URL.Path == extapi.PathHostMeta:
+		if r.Method != http.MethodGet {
+			writeWire(w, methodNotServed(r))
+			return
+		}
+		h.meta(w, r)
+	case r.URL.Path == extapi.PathHostClockCorrect:
+		if r.Method != http.MethodPost {
+			writeWire(w, methodNotServed(r))
+			return
+		}
+		h.correctClock(w, r)
+	case r.URL.Path == extapi.PathHostDeriveKey:
+		if r.Method != http.MethodPost {
+			writeWire(w, methodNotServed(r))
+			return
+		}
+		h.deriveKey(w, r)
 	case r.URL.Path == extapi.PathHostNodeIdentity:
 		if r.Method != http.MethodPost {
 			writeWire(w, methodNotServed(r))

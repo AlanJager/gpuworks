@@ -92,7 +92,6 @@ func TestPlugintestRefusesRoutesAsTheHostAPIDoes(t *testing.T) {
 	calls := []hostCall{
 		{http.MethodGet, "/host/v1/nothing", ""},
 		{http.MethodPost, extapi.PathHostHealth, ""},
-		{http.MethodGet, extapi.PathHostState + "banners", ""},
 		{http.MethodDelete, extapi.PathHostState + "banners", ""},
 		{http.MethodPut, extapi.PathHostState + "node_holds", `{"body":{},"generation":9,"kind":"banners","schema":1}`},
 	}

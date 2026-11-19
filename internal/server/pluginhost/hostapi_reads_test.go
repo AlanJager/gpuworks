@@ -263,7 +263,7 @@ func TestHostAPIReadsRefuseInvalidArguments(t *testing.T) {
 	for _, n := range []int{extapi.MaxNodeIdentityRequestBytes, 1 << 20} {
 		huge := `{"node_ids":[1],"salt":"` + strings.Repeat("s", n) + `"}`
 		wantRefusal(t, readHost(t, h, http.MethodPost, extapi.PathHostNodeIdentity, huge), 413,
-			messages.ErrorRequestTooLarge, extapi.Params{"max": extapi.MaxNodeIdentityRequestBytes})
+			messages.ErrorRequestTooLarge, extapi.Params{"max_bytes": extapi.MaxNodeIdentityRequestBytes})
 	}
 
 	// Refused queries cost no page: a bucket with one page left still
