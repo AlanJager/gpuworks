@@ -64,7 +64,7 @@ var routeDocs = map[string]string{
 	"/api/v1/inference-templates/chips":          "模板声明支持的静态加速卡目录；可选 `arch_id` 表示模板需要的架构 ID，其他厂商字段保持原样",
 	"/api/v1/inference-templates/export/{}":      "按内容摘要导出可执行模板包",
 	"/api/v1/inference-templates/index":          "模板索引（轻量列表，用于选择器）",
-	"/api/v1/inference-templates/model/{}":       "按模型路径获取模板详情（通配路径）",
+	"/api/v1/inference-templates/model/{}":       "按模型路径获取模板详情。`can_delete` 表示当前调用方有权请求删除整个模板，引用检查在删除时执行。",
 	"/api/v1/inference-templates/my-chips":       "当前集群实际探测到的加速卡列表，含 `vendor`、`name`、可选 `cc` 和已报告的 `arch_id`；未报告架构时省略 `arch_id`",
 	"/api/v1/inference-templates/organizations":  "模板涉及的组织/发布方列表",
 	"/api/v1/inference-templates/schema":         "平铺 YAML 编辑器的字典：字段的补全、悬停说明与客户端首轮校验所需的约束（权威校验仍在导入时）；可选 `spec.gpus.arch_id` 必须非空且与已报告架构 ID 精确匹配（忽略大小写，缺失时不匹配）",
