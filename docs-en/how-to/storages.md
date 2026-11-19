@@ -230,4 +230,4 @@ Images are not stored in storage; they reside in each node's container runtime. 
   the engine is not started against an empty directory.
 - **The node model root directory** is now part of local storage. To switch disks, change the local storage path or add new local storage; it is no longer configured separately on the node.
 
-<!-- translation-source-sha256: 78e7addd48e2581bff5d27ffac39266a9c9c8836b565265ccc3f8b04d786e932 -->
+<!-- translation-source-sha256: b85ecdc6ad013e6db3ff26a9964aaea8b80072d2f0a5b3f43ba478404763c846 -->

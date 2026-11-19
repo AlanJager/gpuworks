@@ -177,4 +177,4 @@ Further reading: [Install and Upgrade the Control Plane](../how-to/install-serve
 
 Every action on a page uses a REST endpoint under `/api/v1`. See [Complete REST API Routes](api.md) for the full route list. For the fields and decision logic behind upgrade-related UI elements (the “Agent” column and “Upgrade available” badge on the node page), see [Upgrades and Version Compatibility](../how-to/upgrade-and-compatibility.md).
 
-<!-- translation-source-sha256: 2df65f64a80552c5c50429ecf0a741e17ed827e0e297bfb8850c408453215317 -->
+<!-- translation-source-sha256: 6f21baa0fba8bb0a4b9aa54cfa3f1604d95cc884b000d23fd59a3a9c5811bf3c -->

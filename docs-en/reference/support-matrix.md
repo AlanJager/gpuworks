@@ -121,4 +121,4 @@ Single-node device injection does not require XDR or RDMA. Multi-node TP require
 
 Container options follow the common administrator template contract. Scheduled device injection is not a security sandbox for arbitrary privileged options, images or host mounts. The agent injects container-logical `XPU_VISIBLE_DEVICES`, and `CUDA_VISIBLE_DEVICES` in the image entrypoint also uses container-logical indexes. Import suitable image and model specs explicitly; see [Kunlun P800 deployment](../how-to/kunlun-p800.md).
 
-<!-- translation-source-sha256: 584e819aae45e68d94026e35160135177dc069524e37ea05f2431cd9f7c698e9 -->
+<!-- translation-source-sha256: 48211d5f1f77a36c60877fc959b92b1b57188e970c3e8f9e6cbf26f60f04d1cd -->
