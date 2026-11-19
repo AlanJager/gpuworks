@@ -41,6 +41,10 @@
 //	                               (repeatable)
 //	--stall-bodies                 never read a route's request body: a
 //	                               call with one waits until it ends
+//	--skip-principal-check         serve routes without checking the
+//	                               principal (breaks a conformance rule)
+//	--ignore-route-action          check the principal's MAC but not its
+//	                               route action (breaks a conformance rule)
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -115,6 +119,8 @@ func main() {
 	routes := fs.Bool("routes", false, "serve the manifest's routes")
 	html := fs.Bool("html", false, "answer routes as text/html")
 	stallBodies := fs.Bool("stall-bodies", false, "never read route request bodies")
+	skipPrincipal := fs.Bool("skip-principal-check", false, "serve routes without checking the principal")
+	ignoreAction := fs.Bool("ignore-route-action", false, "check the principal's MAC but not its route action")
 	var cookies pushes
 	fs.Var(&cookies, "set-cookie", "Set-Cookie line to add to route answers")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
@@ -141,7 +147,14 @@ func main() {
 		}
 	}
 	if *routes {
-		cfg.Handler = routeHandler(*html, *stallBodies, cookies)
+		check := checkFull
+		switch {
+		case *skipPrincipal:
+			check = checkSkip
+		case *ignoreAction:
+			check = checkMACOnly
+		}
+		cfg.Handler = routeHandler(*html, *stallBodies, cookies, check)
 	}
 	if code, reason, ok := strings.Cut(*refuse, ":"); ok {
 		cfg.Init = func(context.Context, *pluginsdk.Plugin) error {

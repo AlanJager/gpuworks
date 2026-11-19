@@ -119,6 +119,10 @@ type Bridge struct {
 	// known are the routes each installed package last verified with, by
 	// package id, so one that breaks keeps answering them as down.
 	known map[string]knownRoutes
+	// pending are the newer builds the imported indexes offer for the
+	// installed packages (their versions), by package id, as the catalog
+	// last read them.
+	pending map[string]string
 
 	// routes is the route table compiled from entries on every refresh.
 	routes atomic.Pointer[RouteTable]
@@ -163,7 +167,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 		cfg.HostSetup = hostsetup.DefaultRecords()
 	}
 	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{}, crashloops: map[string]map[string]any{},
-		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}
+		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}, pending: map[string]string{}}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
@@ -220,6 +224,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if b.host, err = pluginhost.New(hostCfg); err != nil {
 		return nil, err
 	}
+	b.refreshPending()
 	b.refreshHealth()
 	return b, nil
 }

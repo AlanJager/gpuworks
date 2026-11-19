@@ -42,6 +42,8 @@ type fakeHost struct {
 	// keep.
 	calls        hostCalls
 	hostIdentity extapi.HostIdentityAnswer
+	// requests is every host API request, with its answer.
+	requests []HostCall
 }
 
 func newFakeHost() *fakeHost {
@@ -57,7 +59,66 @@ const (
 	codeStateStale   = "PLUGIN_STATE_STALE"
 )
 
+// HostCall is one host API request the fake host answered: its method and
+// path (with the query), the answer's status and, for a refusal, its code.
+type HostCall struct {
+	Method string
+	Path   string
+	Status int
+	Code   string
+}
+
+// HostCalls returns every host API request the plugin made so far, pushes
+// included, in the order they were answered.
+func (h *Harness) HostCalls() []HostCall {
+	h.host.mu.Lock()
+	defer h.host.mu.Unlock()
+	return append([]HostCall(nil), h.host.requests...)
+}
+
 func (h *fakeHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rec := &recordingWriter{ResponseWriter: w}
+	h.serve(rec, r)
+	call := HostCall{Method: r.Method, Path: r.URL.RequestURI(), Status: rec.status}
+	if call.Status == 0 {
+		call.Status = http.StatusOK
+	}
+	if call.Status/100 != 2 {
+		if e, err := extapi.DecodeWireError(rec.body); err == nil {
+			call.Code = e.Code
+		}
+	}
+	h.mu.Lock()
+	h.requests = append(h.requests, call)
+	h.mu.Unlock()
+}
+
+// recordingWriter keeps an answer's status, and the start of its body when
+// it is a refusal.
+type recordingWriter struct {
+	http.ResponseWriter
+	status int
+	body   []byte
+}
+
+func (w *recordingWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *recordingWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if w.status/100 != 2 && len(w.body) < 64<<10 {
+		w.body = append(w.body, b[:min(len(b), 64<<10-len(w.body))]...)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (h *fakeHost) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == extapi.PathHostHealth:
 		if r.Method != http.MethodGet {

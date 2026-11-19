@@ -11,9 +11,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -220,6 +222,28 @@ func (sv *server) install(raw []byte, enable bool) dto.PluginInstalled {
 		sv.t.Fatalf("install = %d %s", status, body)
 	}
 	return out
+}
+
+// uninstall uninstalls package id as the console does: DELETE without a
+// confirmation answers 409 with the impact, and DELETE again with its
+// digest removes the package. It returns the impact it confirmed.
+func (sv *server) uninstall(id string, purge bool) dto.PluginImpact {
+	sv.t.Helper()
+	path := "/api/v1/plugins/" + id + "?purge=" + strconv.FormatBool(purge)
+	status, body := sv.do(http.MethodDelete, path, nil)
+	var refusal struct {
+		Code   string           `json:"code"`
+		Impact dto.PluginImpact `json:"impact"`
+		Params map[string]any   `json:"params"`
+	}
+	if status != http.StatusConflict || json.Unmarshal(body, &refusal) != nil || refusal.Code != "PLUGIN_UNINSTALL_CONFIRM_REQUIRED" ||
+		refusal.Params["confirm"] != refusal.Impact.Confirm {
+		sv.t.Fatalf("uninstall of %s without confirmation = %d %s", id, status, body)
+	}
+	if status, body := sv.do(http.MethodDelete, path+"&confirm="+url.QueryEscape(refusal.Impact.Confirm), nil); status != http.StatusNoContent {
+		sv.t.Fatalf("uninstall of %s = %d %s", id, status, body)
+	}
+	return refusal.Impact
 }
 
 func (sv *server) plugin(id string) dto.Plugin {

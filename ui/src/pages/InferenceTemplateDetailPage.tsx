@@ -6,7 +6,11 @@ import { ArrowLeftOutlined, CloseCircleOutlined, CopyOutlined, DeleteOutlined, E
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { api, type EvaluateResponse, type InferenceSpec, type InferenceTemplate, type InferenceTemplateIssue } from "../api";
+import { api, type EvaluateResponse, type InferenceSpec, type InferenceTemplate, type InferenceTemplateDetail, type InferenceTemplateIssue } from "../api";
+import { apiErrorText } from "../apiError";
+import { Button as ActionButton } from "../components/ui/button";
+import { ConsoleIcon } from "../ui-kit/consoleIcons";
+import { confirm, message as feedback } from "../ui-kit/feedback";
 import TemplateWarnings from "../components/TemplateWarnings";
 import PageHeader from "../components/PageHeader";
 import MarkdownContent from "../components/MarkdownContent";
@@ -39,6 +43,7 @@ interface EditError { message: string; line?: number }
 
 export default function InferenceTemplateDetailPage() {
   const { t, i18n } = useTranslation("inferenceTemplates");
+  const { t: tCommon } = useTranslation("common");
   const navigate = useNavigate();
   const params = useParams();
   const [search, setSearch] = useSearchParams();
@@ -47,7 +52,7 @@ export default function InferenceTemplateDetailPage() {
   const fromList = search.get("from");
   const listURL = `/inference-templates${fromList ? `?${fromList}` : ""}`;
   const modelID = params["*"] || "";
-  const [model, setModel] = useState<InferenceTemplate>();
+  const [model, setModel] = useState<InferenceTemplateDetail>();
   // The route model_id `model` was fetched for. Clone navigates in place, so
   // right after it `model` is still the source template; its YAML must not be
   // loaded into the copy's editor.
@@ -202,6 +207,22 @@ export default function InferenceTemplateDetailPage() {
     } finally { setSaving(false); }
   };
   const resetEditor = () => { setYAML(savedYAML); setEditError(undefined); };
+  const confirmTemplateDeletion = (target: InferenceTemplate) => confirm({
+    title: t("editor.deleteTemplate"),
+    content: <p className="m-0 text-fg-muted">{t("editor.deleteTemplateBody", { name: target.model_id })}</p>,
+    okText: t("editor.deleteTemplate"),
+    cancelText: t("flat.cancel"),
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        await api.deleteInferenceTemplate(target.model_id);
+      } catch (reason) {
+        throw new Error(apiErrorText(tCommon, reason));
+      }
+      feedback.success(t("editor.templateDeleted", { name: target.model_id }));
+      navigate(listURL);
+    },
+  });
   const deleteSpec = async (spec: InferenceSpec) => {
     if (!model) return;
     try {
@@ -220,7 +241,13 @@ export default function InferenceTemplateDetailPage() {
   if (!model) return <Empty description={t("detail.notFound")} />;
 
   return <div className="resource-page inference-template-detail-page">
-    <PageHeader title={model.display_title || model.model_id} description={compactModelMetadata(model)} parents={[<Link key="list" to={listURL}>{t("breadcrumb.templates")}</Link>]} extra={<Space wrap><Button icon={<ArrowLeftOutlined />} onClick={() => navigate(listURL)}>{t("detail.back")}</Button><Button icon={<CopyOutlined />} onClick={() => void clone()}>{t("detail.clone")}</Button>{model.specs.some((spec) => spec.source === "user") && <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>{t("flat.edit")}</Button>}</Space>} />
+    <PageHeader title={model.display_title || model.model_id} description={compactModelMetadata(model)} parents={[<Link key="list" to={listURL}>{t("breadcrumb.templates")}</Link>]} extra={<Space wrap><Button icon={<ArrowLeftOutlined />} onClick={() => navigate(listURL)}>{t("detail.back")}</Button><Button icon={<CopyOutlined />} onClick={() => void clone()}>{t("detail.clone")}</Button>{model.specs.some((spec) => spec.source === "user") && <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>{t("flat.edit")}</Button>}
+      {model.can_delete && (
+        <ActionButton variant="tertiary" className="text-fg-danger" leadingIcon={ConsoleIcon.delete} onClick={() => confirmTemplateDeletion(model)}>
+          {t("editor.deleteTemplate")}
+        </ActionButton>
+      )}
+    </Space>} />
     <TemplateWarnings warnings={saveWarnings} onClose={() => setSaveWarnings([])} />
     <Descriptions bordered size="small" column={{ xs: 1, md: 4 }}><Descriptions.Item label={t("detail.modelID")}><Typography.Text copyable>{model.model_id}</Typography.Text></Descriptions.Item><Descriptions.Item label={t("detail.source")}><Tag color={model.source === "user" ? "purple" : "blue"}>{t(model.source === "user" ? "flat.userSource" : "flat.builtInSource")}</Tag></Descriptions.Item><Descriptions.Item label={t("flat.context")}>{model.context_length || "-"}</Descriptions.Item><Descriptions.Item label={t("flat.specCount")}>{model.specs.length}</Descriptions.Item><Descriptions.Item label={t("detail.operations")} span={2}>{operationTypesOf(model.specs.flatMap((spec) => spec.api?.operations ?? [])).map((value) => <Tag color="blue" key={value}>{t(operationLabelKey[value])}</Tag>)}</Descriptions.Item><Descriptions.Item label={t("detail.inputModalities")} span={2}>{inputModalitiesOf(model.input_modalities).map((value) => <Tag key={value}>{t(inputModalityLabelKey[value])}</Tag>)}</Descriptions.Item></Descriptions>
     {engines.length >= 2 && <Segmented className="template-engine-switch" value={engine} options={engines.map((value) => ({ value, label: engineOptionLabel(value) }))} onChange={(value) => setEngine(String(value))} />}

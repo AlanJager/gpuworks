@@ -31,7 +31,7 @@ func TestUninstallRemovesThePluginsCgroup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := b.Uninstall(context.Background(), "acme_backup", true, "admin"); err != nil {
+	if err := uninstallConfirmed(t, b, context.Background(), "acme_backup", true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {

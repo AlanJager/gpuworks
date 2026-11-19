@@ -193,10 +193,6 @@ func (p pluginAdmin) Disable(ctx context.Context, id, by string) (dto.Plugin, er
 	return pluginDTO(v), productErrorOf(err)
 }
 
-func (p pluginAdmin) Uninstall(ctx context.Context, id string, purge bool, by string) error {
-	return productErrorOf(p.b.Uninstall(ctx, id, purge, by))
-}
-
 // productErrorOf hands a wire refusal from pkg/extapi on as the product
 // error it is, so the API keeps its code and params.
 func productErrorOf(err error) error {
@@ -221,7 +217,14 @@ func pluginPermissions(names []string) []dto.PluginPermission {
 func pluginDTO(v pluginbridge.View) dto.Plugin {
 	out := dto.Plugin{ID: v.ID, Version: v.Version, Publisher: v.Publisher, Trust: v.Trust, Enabled: v.Enabled, State: v.State,
 		Restarts: v.Restarts, Parts: nonNil(v.Parts), Isolation: v.Isolation, Roles: nonNil(v.Roles), Permissions: pluginPermissions(v.Permissions),
-		ApproveHash: v.ApproveHash, Actions: nonNil(v.Actions)}
+		ApproveHash: v.ApproveHash, Previous: v.Previous, OnDemand: v.OnDemand, Features: make([]dto.PluginFeature, len(v.Features)),
+		Actions: nonNil(v.Actions)}
+	for i, f := range v.Features {
+		out.Features[i] = dto.PluginFeature{Key: f.Key, Availability: f.Access}
+	}
+	if v.Pending != "" {
+		out.Pending = &dto.PluginPending{Version: v.Pending}
+	}
 	if v.Code != "" {
 		out.Message = &dto.ProductMessage{Code: v.Code, Params: v.Params, Message: v.Message}
 	}

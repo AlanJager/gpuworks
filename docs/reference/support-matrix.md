@@ -18,6 +18,8 @@
 dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dGPU 条件的实例静默改成不限制显存的实例来启动。
 昇腾实测组合、CANN 和 runtime 细节见[昇腾矩阵](ascend-support-matrix.md)；PPU 未完成项见[开发台账](../dev/ledgers/ppu-support-gaps.md)。
 
+NVIDIA 统一内存卡（卡名为 `GB10`、`RTX Spark …`、`Thor` 的型号）与宿主机共用一个内存池，`nvidia-smi` 对其 `memory.total`、`memory.used` 可能回答 `[N/A]`。此时 agent 用宿主机 `/proc/meminfo` 补齐：容量取 `MemTotal`，已用量取 `MemTotal − MemAvailable`，即宿主机内存池的占用（含所有进程），不是 GPU 客户端单独的占用；驱动自己回答的数值不被覆盖。这类卡是片上 GPU，PCIe 链路宽度低于能力值不作为健康告警，链路降速仍会告警。Jetson Thor 目前只做到识别与上述容量、已用量、健康的处理，未在真机上验证；其上的引擎镜像、部署与 dGPU（HAMi 仅 x86_64）不在已验证范围内。
+
 Kubernetes 节点（见[接入 Kubernetes 集群](../how-to/connect-kubernetes.md)）支持 NVIDIA、昇腾、海光、PPU、AMD 与昆仑芯的整卡部署；dGPU 支持 NVIDIA HAMi-core、昇腾 vcann-rt、PPU ppu-slicing-shim 与 AMD rocm-slicing-shim，海光原生 vdev 在 Kubernetes 上不可用（仍只做整卡部署）。
 
 

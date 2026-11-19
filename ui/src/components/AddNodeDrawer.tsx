@@ -1,17 +1,30 @@
-import { useEffect, useRef, useState } from "react";
-import { CopyOutlined } from "@ant-design/icons";
-import { Alert, Button, Collapse, Drawer, Form, Input, Modal, Radio, Space, Switch, Tag, Typography, message } from "antd";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useForm } from "react-hook-form";
 import { api, type CheckResult, type SSHInstallReport, type SSHPrecheckReport } from "../api";
 import { APIError, apiErrorText } from "../apiError";
 import { buildInstallCommand } from "../nodeInstallCommand";
 import { DEFAULT_AGENT_LISTEN } from "../agentListen";
-import SSHCredentialFields, { type SSHAuthMode } from "./SSHCredentialFields";
+import SSHCredentialFields, { type SSHAuthMode, type SSHSecretValues } from "./SSHCredentialFields";
 import TemporaryAddressHint from "./TemporaryAddressHint";
 import { useCopy } from "./CopyButton";
 import OnboardingChecks, { countOnboardingChecks, type OnboardingCheckCounts } from "./OnboardingChecks";
 import { useTranslation } from "react-i18next";
+import { confirm, message } from "../ui-kit/feedback";
+import { FormField } from "../ui-kit/form/FormField";
+import { HelpTip } from "../ui-kit/HelpTip";
+import { Notice } from "../ui-kit/Notice";
+import { SideDrawer } from "../ui-kit/SideDrawer";
+import { ConsoleIcon } from "../ui-kit/consoleIcons";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Field, FieldDescription, FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
+import { RadioGroup, RadioItem } from "./ui/radio-group";
+import { Switch } from "./ui/switch";
 
-const { Paragraph, Text } = Typography;
+type SSHFormValues = SSHSecretValues & { target: string };
+const SSH_BLANK: SSHFormValues = { target: "", password: undefined, private_key_pem: undefined };
 
 // Install answers these when the host already has a gpuworks agent.
 const REPLACE_AGENT_CODES = new Set(["NODE_INSTALL_HOST_ALREADY_NODE", "NODE_INSTALL_EXISTING_AGENT", "NODE_INSTALL_EXISTING_AGENT_UNKNOWN", "NODE_INSTALL_EXISTING_AGENT_SELF", "NODE_INSTALL_EXISTING_AGENT_SAME_DIR"]);
@@ -33,7 +46,7 @@ export default function AddNodeDrawer({
   const { t: tCommon } = useTranslation("common");
   const [copy, copyHolder] = useCopy();
   const origin = window.location.origin;
-  const [form] = Form.useForm();
+  const form = useForm<SSHFormValues>({ shouldFocusError: false, defaultValues: SSH_BLANK });
   const [sshSupported, setSshSupported] = useState<"yes" | "no">("yes");
   const [connectMode, setConnectMode] = useState<"agent_dial" | "server_dial">("agent_dial");
   const [serverURL, setServerURL] = useState(origin);
@@ -72,7 +85,7 @@ export default function AddNodeDrawer({
   };
 
   const resetForm = () => {
-    form.resetFields();
+    form.reset(SSH_BLANK);
     resetResults();
     setSshSupported("yes");
     setConnectMode("agent_dial");
@@ -87,6 +100,12 @@ export default function AddNodeDrawer({
   };
 
   const handleClose = () => { resetForm(); onClose(); };
+
+  // Any edit of the SSH fields makes the precheck and install results stale.
+  useEffect(() => {
+    const subscription = form.watch((_, { type }) => { if (type === "change") resetResults(); });
+    return () => subscription.unsubscribe();
+  }, [form]);
 
   const previouslyOpen = useRef(open);
   useEffect(() => {
@@ -159,7 +178,7 @@ export default function AddNodeDrawer({
 
   const copyCommand = () => copy(cmd, { success: t("add.message.copied") });
 
-  const buildAuthPayload = (values: any) => ({
+  const buildAuthPayload = (values: SSHFormValues) => ({
     target: values.target,
     name: nodeName.trim() || undefined,
     auth_mode: authMode,
@@ -195,7 +214,7 @@ export default function AddNodeDrawer({
 
   const runPrecheck = async () => {
     const version = requestVersion.current;
-    const values = await form.validateFields().catch(() => null);
+    const values = (await form.trigger()) ? form.getValues() : null;
     if (!values || version !== requestVersion.current) return; // the form shows the field errors
     if (!requireHostAddress()) return;
     setChecking(true);
@@ -223,7 +242,7 @@ export default function AddNodeDrawer({
   const runInstall = async (replaceExistingAgent = false) => {
     if (installInFlight.current) return;
     const version = requestVersion.current;
-    const values = await form.validateFields().catch(() => null);
+    const values = (await form.trigger()) ? form.getValues() : null;
     if (!values || version !== requestVersion.current || installInFlight.current) return;
     if (!requireHostAddress()) return;
     // Invalidating form results does not cancel the remote operation. Keep
@@ -243,7 +262,7 @@ export default function AddNodeDrawer({
       if (version !== requestVersion.current) return;
       if (!replaceExistingAgent && e instanceof APIError && REPLACE_AGENT_CODES.has(e.code)) {
         // The host already has an agent: installing replaces it, so ask first.
-        Modal.confirm({
+        confirm({
           title: t("add.replaceAgent.title"),
           // A nohup install replaces only the agent in its own directory,
           // which the error already says; the others speak of the service.
@@ -265,120 +284,109 @@ export default function AddNodeDrawer({
   // Install directory and systemd apply whether the agent is installed over
   // SSH or by hand, so both branches render the same advanced section.
   const advanced = (
-    <Collapse
-      ghost
-      style={{ marginBottom: 16 }}
-      items={[
-        {
-          key: "advanced",
-          label: t("add.advanced"),
-          children: (
-            <>
-              <Form.Item label={t("add.installDir")} tooltip={t("add.installDirTooltip")} extra={t("add.installDirHelp")} style={{ marginBottom: 12 }}>
-                <Input value={installDir} onChange={(e) => { resetResults(); setInstallDir(e.target.value); }} placeholder={t("add.installDirPlaceholder")} />
-              </Form.Item>
-              <Form.Item label={t("add.useSystemd")} tooltip={t("add.useSystemdHelp")} extra={useSystemd ? undefined : t("add.useSystemdOff")} style={{ marginBottom: 0 }}>
-                <Switch checked={useSystemd} onChange={(checked) => { resetResults(); setUseSystemd(checked); }} aria-label={t("add.useSystemd")} />
-              </Form.Item>
-            </>
-          ),
-        },
-      ]}
-    />
+    <Accordion type="single" collapsible>
+      <AccordionItem value="advanced">
+        <AccordionTrigger>{t("add.advanced")}</AccordionTrigger>
+        <AccordionContent>
+          <div className="flex flex-col gap-3">
+            <Field>
+              <span className="inline-flex items-center gap-1"><FieldLabel>{t("add.installDir")}</FieldLabel><HelpTip content={t("add.installDirTooltip")} /></span>
+              <Input value={installDir} onChange={(e) => { resetResults(); setInstallDir(e.target.value); }} placeholder={t("add.installDirPlaceholder")} />
+              <FieldDescription>{t("add.installDirHelp")}</FieldDescription>
+            </Field>
+            <div className="flex flex-col gap-1.5">
+              <span className="inline-flex items-center gap-1">
+                <Switch checked={useSystemd} onCheckedChange={(checked) => { resetResults(); setUseSystemd(checked); }} label={t("add.useSystemd")} />
+                <HelpTip content={t("add.useSystemdHelp")} />
+              </span>
+              {!useSystemd && <span className="px-1.5 text-label text-fg-subtle">{t("add.useSystemdOff")}</span>}
+            </div>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 
   return (
-    <Drawer title={t("action.add")} open={open} onClose={handleClose} width={640} destroyOnHidden>
+    <SideDrawer title={t("action.add")} open={open} onClose={handleClose} width={640}>
       {copyHolder}
-      {pendingNodeUUID && <Alert type="info" showIcon message={t("add.waitingForConnection")} description={t("add.waitingForConnectionHelp")} style={{ marginBottom: 16 }} />}
-      <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <Form.Item label={t("add.sshSupportLabel")} style={{ marginBottom: 0 }}>
-          <Radio.Group value={sshSupported} onChange={(e) => { resetResults(); setSshSupported(e.target.value); }}>
-            <Radio.Button value="yes">{t("add.sshSupported")}</Radio.Button>
-            <Radio.Button value="no">{t("add.sshUnsupported")}</Radio.Button>
-          </Radio.Group>
-        </Form.Item>
+      <div className="flex w-full flex-col gap-4">
+        {pendingNodeUUID && <Notice tone="info" title={t("add.waitingForConnection")}>{t("add.waitingForConnectionHelp")}</Notice>}
+        <Choice label={t("add.sshSupportLabel")} value={sshSupported}
+          onChange={(value) => { resetResults(); setSshSupported(value as "yes" | "no"); }}
+          options={[{ value: "yes", label: t("add.sshSupported") }, { value: "no", label: t("add.sshUnsupported") }]} />
 
-        <Form.Item label={t("add.nodeNameOptional")} style={{ marginBottom: 0 }}>
+        <Field>
+          <FieldLabel>{t("add.nodeNameOptional")}</FieldLabel>
           <Input value={nodeName} onChange={(e) => { resetResults(); setNodeName(e.target.value); }} placeholder={t("add.nodeNamePlaceholder")} />
-        </Form.Item>
+        </Field>
 
-        <Form.Item label={t("add.connectionDirection")} style={{ marginBottom: 0 }}>
-          <Radio.Group value={connectMode} onChange={(e) => { resetResults(); setConnectMode(e.target.value); }}>
-            <Radio.Button value="agent_dial">{t("connection.agentDial")}</Radio.Button>
-            <Radio.Button value="server_dial">{t("connection.serverDial")}</Radio.Button>
-          </Radio.Group>
-        </Form.Item>
+        <Choice label={t("add.connectionDirection")} value={connectMode}
+          onChange={(value) => { resetResults(); setConnectMode(value as "agent_dial" | "server_dial"); }}
+          options={[{ value: "agent_dial", label: t("connection.agentDial") }, { value: "server_dial", label: t("connection.serverDial") }]} />
 
         {connectMode === "agent_dial" ? (
-          <Form.Item label={t("detail.serverExternalAddress")} style={{ marginBottom: 0 }}>
+          <Field>
+            <FieldLabel>{t("detail.serverExternalAddress")}</FieldLabel>
             <Input value={serverURL} onChange={(e) => { resetResults(); setServerURL(e.target.value); }} placeholder={origin} />
             {/* The hint belongs on the address the node will dial: it becomes
                 server_url and has to keep working after the connector restarts. */}
             <TemporaryAddressHint value={serverURL} />
-          </Form.Item>
+          </Field>
         ) : (
           <>
             {/* Where the agent listens comes first: the address below may name
                 another port when a platform maps it, and reading only that
                 one the agent would seem to listen there. */}
-            <Form.Item label={t("add.agentListenAddress")} help={t("add.agentListenAddressHelp")} style={{ marginBottom: 0 }}>
+            <Field>
+              <FieldLabel>{t("add.agentListenAddress")}</FieldLabel>
               <Input
                 aria-label={t("add.agentListenAddress")}
                 value={serverDialListen}
                 onChange={(e) => { resetResults(); setServerDialListen(e.target.value); }}
                 placeholder={DEFAULT_AGENT_LISTEN}
               />
-            </Form.Item>
-            <Form.Item
-              label={t("add.hostAddress")}
-              help={t("add.hostAddressHelp")}
-              required
-              style={{ marginBottom: 0 }}
-            >
+              <FieldDescription>{t("add.agentListenAddressHelp")}</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>{t("add.hostAddress")}<span aria-hidden="true"> *</span></FieldLabel>
               <Input
                 aria-label={t("add.hostAddress")}
+                aria-required
                 value={hostAddress}
                 onChange={(e) => { resetResults(); setHostAddress(e.target.value); }}
                 placeholder={t("add.hostAddressPlaceholder")}
               />
-            </Form.Item>
+              <FieldDescription>{t("add.hostAddressHelp")}</FieldDescription>
+            </Field>
           </>
         )}
 
         {sshSupported === "yes" ? (
           <>
-            <Form
-              form={form}
-              layout="vertical"
-              onValuesChange={() => resetResults()}
-            >
-              <Form.Item
-                label={t("add.target")}
-                name="target"
-                help={t("add.targetHelp")}
-                rules={[{ required: true, whitespace: true, message: t("add.targetRequired") }]}
-              >
-                <Input placeholder="root@192.0.2.10:22" />
-              </Form.Item>
-              <SSHCredentialFields authMode={authMode} onAuthModeChange={(mode) => { resetResults(); setAuthMode(mode); }} />
+            <form noValidate onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-4">
+              <FormField control={form.control} name="target" required label={t("add.target")} description={t("add.targetHelp")}
+                rules={{ validate: (value) => (value ?? "").trim() !== "" || t("add.targetRequired") }}>
+                {(binding) => <Input {...binding} placeholder="root@192.0.2.10:22" />}
+              </FormField>
+              <SSHCredentialFields control={form.control} authMode={authMode} onAuthModeChange={(mode) => { resetResults(); setAuthMode(mode); }} />
 
               {advanced}
 
-              <Space>
-                <Button type="primary" loading={checking} disabled={installing || !!pendingNodeUUID} onClick={runPrecheck}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="primary" loading={checking} disabled={installing || !!pendingNodeUUID} onClick={() => void runPrecheck()}>
                   {t("add.startPrecheck")}
                 </Button>
-                <Button loading={installing} disabled={installing || checking || !!pendingNodeUUID} onClick={() => void runInstall()}>
+                <Button type="button" variant="tertiary" loading={installing} disabled={installing || checking || !!pendingNodeUUID} onClick={() => void runInstall()}>
                   {t("add.installAgent")}
                 </Button>
                 {report?.host && (
-                  <Text type="secondary">
+                  <span className="text-fg-muted">
                     {report.user}@{report.host}:{report.port}
-                  </Text>
+                  </span>
                 )}
-              </Space>
-            </Form>
+              </div>
+            </form>
             {report && <SummaryStrip title={t("add.precheckSummary")} summary={precheckSummary} tone="info" />}
             {report && <ReportTable title={t("add.precheckResults")} checks={report.checks} />}
             {installReport && (
@@ -386,7 +394,7 @@ export default function AddNodeDrawer({
                 <SummaryStrip
                   title={t("add.installSummary")}
                   summary={installSummary}
-                  tone={installSummary.fail > 0 ? "error" : installSummary.warn > 0 || installSummary.skip > 0 ? "warning" : "success"}
+                  tone={installSummary.fail > 0 ? "danger" : installSummary.warn > 0 || installSummary.skip > 0 ? "warning" : "info"}
                 />
                 <ReportTable
                   title={t("add.installResults", { binary: installReport.binary_name, installDir: installReport.install_dir, address: installReport.server_dial_address ? ` · ${installReport.server_dial_address}` : "" })}
@@ -398,37 +406,41 @@ export default function AddNodeDrawer({
         ) : (
           <>
             {advanced}
-            <div>
-              <Paragraph>{t(connectMode === "server_dial" ? "add.offlineInstructions" : "add.manualInstructions")}</Paragraph>
+            <div className="flex flex-col gap-3">
+              <p className="m-0">{t(connectMode === "server_dial" ? "add.offlineInstructions" : "add.manualInstructions")}</p>
               {connectMode === "server_dial" && (
-                <Paragraph>
+                <p className="m-0">
                   <a href={OFFLINE_PACKAGE} download>{t("add.offlineDownload")}</a>
-                  {offlineChecksum && <Text type="secondary" style={{ display: "block" }}>{t("add.offlineChecksum", { sum: offlineChecksum })}</Text>}
-                </Paragraph>
+                  {offlineChecksum && <span className="block text-fg-muted">{t("add.offlineChecksum", { sum: offlineChecksum })}</span>}
+                </p>
               )}
-              {!pendingCommand && <Button type="primary" loading={creatingPending} onClick={createPendingNode}>{t("add.createCommand")}</Button>}
-              {pendingCommand && <Text type="secondary">{t("add.tokenSaved")}</Text>}
-              <pre
-                style={{
-                  background: "#0d1117",
-                  color: "#e6edf3",
-                  padding: 16,
-                  borderRadius: 2,
-                  overflowX: "auto",
-                }}
-              >
+              {!pendingCommand && <div><Button variant="primary" loading={creatingPending} onClick={() => void createPendingNode()}>{t("add.createCommand")}</Button></div>}
+              {pendingCommand && <span className="text-fg-muted">{t("add.tokenSaved")}</span>}
+              <pre className="m-0 overflow-x-auto rounded-lg bg-inverse-background p-4 text-fg-on-inverse">
                 {cmd}
               </pre>
-              <Space>
-                <Button icon={<CopyOutlined />} disabled={!pendingCommand} onClick={() => void copyCommand()}>
+              <div>
+                <Button variant="tertiary" leadingIcon={ConsoleIcon.copy} disabled={!pendingCommand} onClick={() => void copyCommand()}>
                   {t("add.copyCommand")}
                 </Button>
-              </Space>
+              </div>
             </div>
           </>
         )}
-      </Space>
-    </Drawer>
+      </div>
+    </SideDrawer>
+  );
+}
+
+// Choice is a labeled row of mutually exclusive options.
+function Choice({ label, value, onChange, options }: { label: ReactNode; value: string; onChange: (value: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="px-1.5 text-body font-medium text-fg-muted">{label}</span>
+      <RadioGroup aria-label={typeof label === "string" ? label : undefined} value={value} onValueChange={onChange} className="w-auto flex-row flex-wrap">
+        {options.map((option, index) => <RadioItem key={option.value} index={index} value={option.value} label={option.label} />)}
+      </RadioGroup>
+    </div>
   );
 }
 
@@ -439,35 +451,27 @@ function SummaryStrip({
 }: {
   title: string;
   summary: OnboardingCheckCounts;
-  tone: "info" | "success" | "warning" | "error";
+  tone: "info" | "warning" | "danger";
 }) {
   const { t } = useTranslation("nodes");
   return (
-    <Alert
-      type={tone}
-      showIcon
-      style={{ marginTop: 18, marginBottom: 12 }}
-      message={title}
-      description={
-        <Space wrap size={8}>
-          <Tag color="green">{t("add.check.okCount", { count: summary.pass })}</Tag>
-          <Tag color="gold">{t("add.check.warnCount", { count: summary.warn })}</Tag>
-          <Tag color="red">{t("add.check.errorCount", { count: summary.fail })}</Tag>
-          {summary.skip > 0 && <Tag>{t("add.check.skipCount", { count: summary.skip })}</Tag>}
-        </Space>
-      }
-    />
+    <Notice tone={tone} title={title}>
+      <span className="flex flex-wrap gap-2">
+        <Badge status="success">{t("add.check.okCount", { count: summary.pass })}</Badge>
+        <Badge status="warning">{t("add.check.warnCount", { count: summary.warn })}</Badge>
+        <Badge status="danger">{t("add.check.errorCount", { count: summary.fail })}</Badge>
+        {summary.skip > 0 && <Badge status="neutral">{t("add.check.skipCount", { count: summary.skip })}</Badge>}
+      </span>
+    </Notice>
   );
 }
 
 function ReportTable({ title, checks }: { title: string; checks: CheckResult[] }) {
   const { t } = useTranslation("nodes");
   return (
-    <>
-      <Typography.Title level={5} style={{ marginTop: 18 }}>
-        {title}
-      </Typography.Title>
+    <section className="flex flex-col gap-2">
+      <h3 className="m-0 text-body font-semibold text-fg-default">{title}</h3>
       <OnboardingChecks checks={checks} labels={{ item: t("add.check.item"), status: t("add.check.status"), detail: t("add.check.detail") }} />
-    </>
+    </section>
   );
 }

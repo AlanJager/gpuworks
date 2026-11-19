@@ -196,7 +196,7 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 		elapsed := time.Since(healthStarted).Seconds()
 		measured, _ = json.Marshal(enginelog.Measured{StartupTimeoutSeconds: &elapsed})
 	}
-	e.attachOutput(ctx, id, &failure)
+	e.attachOutput(ctx, id, &failure, true)
 	e.failAfterContainer(ctx, spec, failure, message, measured)
 	return false
 }
@@ -236,7 +236,7 @@ func (e *Engine) probeHeadlessAndReport(ctx context.Context, spec proto.Instance
 				var msg string
 				if st.Running && st.Health == "unhealthy" && !e.detectOOM(ctx, id, st) {
 					failure, msg = proto.RuntimeFailure{Code: proto.ErrorContainerUnhealthy, Phase: proto.PhaseHealthCheck}, "headless worker is unhealthy"
-					e.attachOutput(ctx, id, &failure)
+					e.attachOutput(ctx, id, &failure, false)
 				} else {
 					failure, msg = e.exitedFailure(ctx, id, st, proto.PhaseHealthCheck, "headless worker OOM-killed", fmt.Sprintf("headless worker exited (code %d)", st.ExitCode))
 				}
@@ -262,7 +262,7 @@ func (e *Engine) probeHeadlessAndReport(ctx context.Context, spec proto.Instance
 		}
 	}
 	failure := proto.RuntimeFailure{Code: proto.ErrorWorkerReadinessTimeout, Phase: proto.PhaseHealthCheck}
-	e.attachOutput(ctx, id, &failure)
+	e.attachOutput(ctx, id, &failure, true)
 	e.failAfterContainer(ctx, spec, failure, "headless worker readiness timed out")
 	return false
 }

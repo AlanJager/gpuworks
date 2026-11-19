@@ -23,6 +23,7 @@ func (m *Manager) Reconcile(ctx context.Context, specs []Spec) []Status {
 	m.recMu.Lock()
 	defer m.recMu.Unlock()
 
+	m.snapshotEligible()
 	out := make([]Status, len(specs))
 	var wg sync.WaitGroup
 	for i, sp := range specs {
@@ -35,6 +36,11 @@ func (m *Manager) Reconcile(ctx context.Context, specs []Spec) []Status {
 	wg.Wait()
 
 	keep := make(map[string]bool, len(specs))
+	listed := make(map[uint]bool, len(specs))
+	for _, sp := range specs {
+		listed[sp.ID] = true
+	}
+	m.forgetStuck(listed)
 	for _, sp := range specs {
 		p := filepath.Clean(sp.Path)
 		keep[p] = true
@@ -46,7 +52,28 @@ func (m *Manager) Reconcile(ctx context.Context, specs []Spec) []Status {
 	return out
 }
 
+// reconcileOne is reconcileSpec, plus what the agent does about a storage
+// that stopped answering (recoverStuck).
 func (m *Manager) reconcileOne(ctx context.Context, sp Spec) Status {
+	st, sharePath := m.reconcileSpec(ctx, sp)
+	if st.State != StateUnresponsive {
+		m.clearStuck(sp.ID)
+		return st
+	}
+	return m.recoverStuck(ctx, sp, st, sharePath)
+}
+
+// reconcileSpec makes one spec usable. sharePath reports that the status
+// was decided on the storage's own directory, not on its node cache.
+func (m *Manager) reconcileSpec(ctx context.Context, sp Spec) (st Status, sharePath bool) {
+	st = m.reconcileShare(ctx, sp)
+	if st.State == StateReady && sp.Type == TypeNFSCache {
+		return m.reconcileCache(ctx, sp, st), false
+	}
+	return st, true
+}
+
+func (m *Manager) reconcileShare(ctx context.Context, sp Spec) Status {
 	st := Status{ID: sp.ID, Path: sp.Path}
 	// The server always sends explicit directories; this package has no default of its own.
 	if strings.TrimSpace(sp.Path) == "" {
@@ -82,9 +109,6 @@ func (m *Manager) reconcileOne(ctx context.Context, sp Spec) Status {
 		st.State, st.Reason = StateUnsupported, ReasonOther
 		st.Message = fmt.Sprintf("storage type %q is not supported by this agent", sp.Type)
 		return st
-	}
-	if st.State == StateReady && sp.Type == TypeNFSCache {
-		st = m.reconcileCache(ctx, sp, st)
 	}
 	return st
 }

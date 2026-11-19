@@ -55,7 +55,10 @@ type RuntimeFailure struct {
 	// MaxFailureCauses.
 	Causes []FailureCause `json:"causes,omitempty"`
 	// Evidence is the line the engine's failure began with (its root cause),
-	// at most MaxFailureEvidence lines of MaxFailureEvidenceChars.
+	// or, when the output named no error, its last lines oldest first: of a
+	// startup exit, and of a startup that ran out of time while the process
+	// kept running. At most MaxFailureEvidence lines of
+	// MaxFailureEvidenceChars.
 	Evidence []string `json:"evidence,omitempty"`
 }
 

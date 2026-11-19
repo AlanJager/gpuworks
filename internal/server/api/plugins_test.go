@@ -27,6 +27,10 @@ type fakePlugins struct {
 	metricsErr error
 	// none lists no package.
 	none bool
+	// follow is closed by a test to wake a logs stream once; the read
+	// after it returns the second step of fakeLogs.
+	follow   chan struct{}
+	logReads int
 }
 
 func (f *fakePlugins) Check(context.Context) dto.DiagnosticCheck {
@@ -57,7 +61,8 @@ func (f *fakePlugins) List(context.Context) []dto.Plugin {
 	since := time.Date(2026, 11, 17, 8, 0, 0, 0, time.UTC)
 	return []dto.Plugin{{ID: "acme_backup", Version: "1.0.0", Publisher: "acme", Trust: "host", Enabled: true, State: "running",
 		Since: &since, Parts: []string{"server"}, Isolation: "landlock", Roles: []string{}, Permissions: []dto.PluginPermission{{Name: "push:banners", Risk: "low"}},
-		ApproveHash: "sha256:00", Actions: []string{"disable", "uninstall"}}}
+		ApproveHash: "sha256:00", Previous: "0.9.0", Pending: &dto.PluginPending{Version: "1.1.0"},
+		Features: []dto.PluginFeature{{Key: "acme.backup", Availability: "full"}}, Actions: []string{"disable", "restart", "uninstall", "purge"}}}
 }
 
 func (f *fakePlugins) Install(_ context.Context, body io.Reader, approve string, enable bool, by string) (dto.PluginInstalled, error) {
@@ -68,7 +73,8 @@ func (f *fakePlugins) Install(_ context.Context, body io.Reader, approve string,
 	if err := f.record("install " + approve + " " + map[bool]string{true: "enable", false: "keep"}[enable] + " " + by); err != nil {
 		return dto.PluginInstalled{}, err
 	}
-	return dto.PluginInstalled{Plugin: dto.Plugin{ID: "acme_backup", Version: "1.0.0", State: "starting", Parts: []string{}, Roles: []string{}, Permissions: []dto.PluginPermission{}, Actions: []string{}}}, nil
+	return dto.PluginInstalled{Plugin: dto.Plugin{ID: "acme_backup", Version: "1.0.0", State: "starting", Parts: []string{}, Roles: []string{}, Permissions: []dto.PluginPermission{},
+		Features: []dto.PluginFeature{}, Actions: []string{}}}, nil
 }
 
 func (f *fakePlugins) Enable(_ context.Context, id, by string) (dto.Plugin, error) {
@@ -79,8 +85,14 @@ func (f *fakePlugins) Disable(_ context.Context, id, by string) (dto.Plugin, err
 	return dto.Plugin{ID: id, State: "disabled"}, f.record("disable " + id + " " + by)
 }
 
-func (f *fakePlugins) Uninstall(_ context.Context, id string, purge bool, by string) error {
-	return f.record("uninstall " + id + " " + map[bool]string{true: "purge", false: "keep"}[purge] + " " + by)
+func (f *fakePlugins) Uninstall(_ context.Context, id string, purge bool, confirm, by string) (dto.PluginImpact, error) {
+	err := f.record("uninstall " + id + " " + map[bool]string{true: "purge", false: "keep"}[purge] + " " + confirm + " " + by)
+	im := fakeImpact(id)
+	if err == nil && confirm != im.Confirm {
+		err = messages.NewProductError(messages.ErrorPluginUninstallConfirmRequired, "confirm", map[string]any{"id": id, "confirm": im.Confirm,
+			"held_nodes": 1, "users_affected": 0, "caps_lifted": 1, "features_locked": 1, "banners": 0, "overrides": 0})
+	}
+	return im, err
 }
 
 func (f *fakePlugins) recorded() []string {
@@ -129,7 +141,13 @@ func TestPluginRoutesAccess(t *testing.T) {
 		{"POST", "/api/v1/plugins/install?approve=sha256:00", 403, 403, 403, 200},
 		{"POST", "/api/v1/plugins/acme_backup/enable", 403, 403, 403, 200},
 		{"POST", "/api/v1/plugins/acme_backup/disable", 403, 403, 403, 200},
-		{"DELETE", "/api/v1/plugins/acme_backup", 403, 403, 403, 204},
+		{"DELETE", "/api/v1/plugins/acme_backup?confirm=sha256:aa", 403, 403, 403, 204},
+		{"DELETE", "/api/v1/plugins/acme_backup", 403, 403, 403, 409},
+		{"POST", "/api/v1/plugins/acme_backup/restart", 403, 403, 403, 200},
+		{"GET", "/api/v1/plugins/catalog", 403, 200, 200, 200},
+		{"GET", "/api/v1/plugins/acme_backup/state", 403, 200, 200, 200},
+		{"GET", "/api/v1/plugins/acme_backup/impact", 403, 200, 200, 200},
+		{"GET", "/api/v1/plugins/acme_backup/logs", 403, 403, 403, 200},
 	} {
 		for _, who := range []struct {
 			name, token string
@@ -153,13 +171,14 @@ func TestPluginRoutesWire(t *testing.T) {
 	rec := rig.do(rig.session, "GET", "/api/v1/plugins", "")
 	want := `{"items":[{"id":"acme_backup","version":"1.0.0","publisher":"acme","trust":"host","enabled":true,"state":"running",` +
 		`"since":"2026-11-17T08:00:00Z","restarts":0,"parts":["server"],"isolation":"landlock","roles":[],"permissions":[{"name":"push:banners","risk":"low"}],` +
-		`"approve_hash":"sha256:00","actions":["disable","uninstall"]}],` +
+		`"approve_hash":"sha256:00","previous":"0.9.0","on_demand":false,"pending":{"version":"1.1.0"},` +
+		`"features":[{"key":"acme.backup","availability":"full"}],"actions":["disable","restart","uninstall","purge"]}],` +
 		`"check":{"id":"plugins","status":"fail","message":{"code":"CHECK_PLUGINS_FAILING","params":{"ids":"acme_backup"},"message":"enabled plugins cannot run: acme_backup"}}}`
 	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("list: %d\n%s\nwant\n%s", rec.Code, rec.Body, want)
 	}
 	rec = rig.do(rig.session, "POST", "/api/v1/plugins/install?approve=sha256:ab&enable=true", "the package bytes")
-	want = `{"plugin":{"id":"acme_backup","version":"1.0.0","enabled":false,"state":"starting","restarts":0,"parts":[],"isolation":"","roles":[],"permissions":[],"actions":[]},"unchanged":false}`
+	want = `{"plugin":{"id":"acme_backup","version":"1.0.0","enabled":false,"state":"starting","restarts":0,"parts":[],"isolation":"","roles":[],"permissions":[],"on_demand":false,"features":[],"actions":[]},"unchanged":false}`
 	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("install: %d\n%s\nwant\n%s", rec.Code, rec.Body, want)
 	}
@@ -168,11 +187,11 @@ func TestPluginRoutesWire(t *testing.T) {
 	}
 	rig.do(rig.session, "POST", "/api/v1/plugins/acme_backup/enable", "")
 	rig.do(rig.session, "POST", "/api/v1/plugins/acme_backup/disable", "")
-	if rec := rig.do(rig.session, "DELETE", "/api/v1/plugins/acme_backup?purge=true", ""); rec.Code != 204 || rec.Body.Len() != 0 {
+	if rec := rig.do(rig.session, "DELETE", "/api/v1/plugins/acme_backup?purge=true&confirm=sha256:aa", ""); rec.Code != 204 || rec.Body.Len() != 0 {
 		t.Fatalf("uninstall: %d %s", rec.Code, rec.Body)
 	}
 	got := strings.Join(plugins.recorded(), "|")
-	if got != "list|install sha256:ab enable admin|enable acme_backup admin|disable acme_backup admin|uninstall acme_backup purge admin" {
+	if got != "list|install sha256:ab enable admin|enable acme_backup admin|disable acme_backup admin|uninstall acme_backup purge sha256:aa admin" {
 		t.Fatalf("calls = %s", got)
 	}
 }

@@ -6,6 +6,8 @@
 //	h := plugintest.Start(t, cfg)
 //	resp, err := h.Initialize(h.Request())
 //	push := h.WaitPush(extapi.KindBanners, 5*time.Second)
+//
+// StartProcess runs a plugin binary instead, as the server starts it.
 package plugintest
 
 import (
@@ -38,6 +40,8 @@ type Harness struct {
 	// cursor is, per kind, the index after the last push WaitPush
 	// returned; guarded by host.mu.
 	cursor map[string]int
+	// kill ends the plugin process StartProcess started; nil in process.
+	kill func() error
 }
 
 // Start runs cfg's plugin in a goroutine on two socketpairs. It does not
@@ -53,10 +57,23 @@ func Start(t testing.TB, cfg pluginsdk.Config) *Harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &Harness{t: t, cfg: cfg, host: newFakeHost(), done: make(chan error, 1), cursor: map[string]int{},
-		conns: []net.Conn{coreServe, coreHost}}
+	h := newHarness(t, cfg, coreServe, coreHost)
 	go func() { h.done <- pluginsdk.Serve(context.Background(), cfg, pluginServe, pluginHost) }()
+	h.connect()
+	return h
+}
 
+// newHarness is a harness on the server's ends of both connections, before
+// the plugin runs on the other ends.
+func newHarness(t testing.TB, cfg pluginsdk.Config, coreServe, coreHost net.Conn) *Harness {
+	return &Harness{t: t, cfg: cfg, host: newFakeHost(), done: make(chan error, 1), cursor: map[string]int{},
+		conns: []net.Conn{coreServe, coreHost}}
+}
+
+// connect serves the host API on the host connection and opens the client
+// of the serve connection, once the plugin runs on the other ends.
+func (h *Harness) connect() {
+	coreServe, coreHost := h.conns[0], h.conns[1]
 	var p http.Protocols
 	p.SetUnencryptedHTTP2(true)
 	h.srv = &http.Server{Handler: h.host, Protocols: &p, ReadHeaderTimeout: 10 * time.Second}
@@ -71,15 +88,16 @@ func Start(t testing.TB, cfg pluginsdk.Config) *Harness {
 		}
 		return c, nil
 	}}
-	if h.cc, err = tr.NewClientConn(context.Background(), "http", "gwx-plugin:80"); err == nil {
+	cc, err := tr.NewClientConn(context.Background(), "http", "gwx-plugin:80")
+	if err == nil {
+		h.cc = cc
 		h.client = &http.Client{Transport: h.cc}
 	} else {
 		// The plugin hung up at once (a config it refuses); its calls fail
 		// with this, and Wait returns why.
 		h.client = &http.Client{Transport: failingTransport{err}}
 	}
-	t.Cleanup(func() { _ = h.Close() })
-	return h
+	h.t.Cleanup(func() { _ = h.Close() })
 }
 
 // Request is a valid initialize request for cfg's package: this server's
@@ -164,11 +182,22 @@ func (h *Harness) Health() (*extapi.Health, error) {
 }
 
 // Shutdown asks the plugin to stop and returns what its Serve returned.
-func (h *Harness) Shutdown() error {
-	if _, err := h.call(http.MethodPost, extapi.PathShutdown, nil); err != nil {
+func (h *Harness) Shutdown() error { return h.ShutdownWithin(10 * time.Second) }
+
+// ShutdownWithin asks the plugin to stop and returns what its Serve
+// returned (for a process, what its exit was), or an error wrapping
+// ErrStillRunning when it still runs timeout after the request was sent,
+// as the server counts its stop grace from sending shutdown. A plugin
+// that ends without answering is judged by how it ended.
+func (h *Harness) ShutdownWithin(timeout time.Duration) error {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	_, err := h.callCtx(ctx, http.MethodPost, extapi.PathShutdown, nil)
+	cancel()
+	if _, refused := errors.AsType[*pluginsdk.Error](err); refused {
 		return err
 	}
-	return h.Wait(10 * time.Second)
+	return h.Wait(max(timeout-time.Since(start), 0))
 }
 
 // Do sends req to the plugin (a route or a service); only its path, method,
@@ -181,11 +210,17 @@ func (h *Harness) Do(req *http.Request) (*http.Response, error) {
 func (h *Harness) call(method, path string, body []byte) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return h.callCtx(ctx, method, path, body)
+}
+
+// callCtx sends one lifecycle request, bounded by ctx.
+func (h *Harness) callCtx(ctx context.Context, method, path string, body []byte) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, "http://gwx-plugin:80"+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set(extapi.HeaderDeadline, fmt.Sprint(time.Now().Add(10*time.Second).UnixMilli()))
+	deadline, _ := ctx.Deadline()
+	req.Header.Set(extapi.HeaderDeadline, fmt.Sprint(deadline.UnixMilli()))
 	resp, err := h.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -271,15 +306,27 @@ func (h *Harness) RefuseNextPush(kind string, e extapi.WireError) {
 	h.host.refuse[kind] = e
 }
 
+// ErrStillRunning is the error Wait wraps when the plugin did not end in
+// time.
+var ErrStillRunning = errors.New("plugintest: the plugin still runs")
+
 // Wait returns what the plugin's Serve returned, or an error when it is
 // still running after timeout.
 func (h *Harness) Wait(timeout time.Duration) error {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
 	select {
 	case err := <-h.done:
 		h.done <- err // later calls see the same result
 		return err
-	case <-time.After(timeout):
-		return fmt.Errorf("plugintest: the plugin still runs after %s", timeout)
+	case <-t.C:
+		select { // an end that raced the timer still counts
+		case err := <-h.done:
+			h.done <- err
+			return err
+		default:
+		}
+		return fmt.Errorf("%w after %s", ErrStillRunning, timeout)
 	}
 }
 
@@ -292,6 +339,14 @@ func (h *Harness) Close() error {
 	_ = h.srv.Close()
 	for _, c := range h.conns {
 		_ = c.Close()
+	}
+	if h.kill != nil {
+		// A process gets a moment to notice, then is killed, so no test
+		// leaves one behind.
+		if err := h.Wait(closeWait); !errors.Is(err, ErrStillRunning) {
+			return err
+		}
+		_ = h.kill()
 	}
 	return h.Wait(10 * time.Second)
 }

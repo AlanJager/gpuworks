@@ -78,6 +78,30 @@ for (const language of ["en", "zh"]) {
     assert.doesNotMatch(text, /\{\{/);
   });
 
+  test(`a startup timeout shows the newest line it printed as its last output, not as an error, in ${language}`, async () => {
+    const t = await translator(language);
+    const evidence = ["No module named 'cutlass'", "loading", "[Gloo] Rank 0 is connected to 0 peer ranks."];
+    for (const code of ["ENGINE_HEALTH_TIMEOUT", "WORKER_READINESS_TIMEOUT"]) {
+      const text = runtimeFailureText(t, { code, params: { ...wireParams, evidence }, message: "health check timed out" });
+      assert.match(text, language === "en" ? / Last output: \[Gloo\] Rank 0 is connected to 0 peer ranks\.$/ : /最后的输出：\[Gloo\] Rank 0 is connected to 0 peer ranks\.$/, text);
+      assert.doesNotMatch(text, /Last error|最后的错误|cutlass|\{\{/, text);
+      assert.equal(runtimeFailureText(t, { code, params: wireParams, message: "x" }), runtimeFailureText(t, { code, params: { ...wireParams, evidence: [] }, message: "x" }));
+    }
+    // A start that timed out on an error line still calls it the last error.
+    for (const code of ["ENGINE_HEALTH_TIMEOUT", "WORKER_READINESS_TIMEOUT"]) {
+      const named = runtimeFailureText(t, { code, params: { ...wireParams, evidence: ["RuntimeError: CUDA out of memory"] }, message: "x" });
+      assert.match(named, language === "en" ? /Last error: RuntimeError: CUDA out of memory$/ : /最后的错误：RuntimeError: CUDA out of memory$/, named);
+    }
+    // An exit that named no error shows the newest of its last lines, the
+    // one the agent's message ends with, as output, not as an error.
+    const exited = runtimeFailureText(t, { code: "CONTAINER_EXITED", params: { ...wireParams, evidence }, message: "x" });
+    assert.match(exited, language === "en" ? / Last output: \[Gloo\] Rank 0 is connected to 0 peer ranks\.$/ : /最后的输出：\[Gloo\] Rank 0 is connected to 0 peer ranks\.$/, exited);
+    assert.doesNotMatch(exited, /Last error|最后的错误|cutlass/, exited);
+    // An exit whose evidence is its root-cause line keeps calling it an error.
+    const rooted = runtimeFailureText(t, { code: "CONTAINER_EXITED", params: { ...wireParams, evidence: ["ValueError: This recipe requires TP16"] }, message: "x" });
+    assert.match(rooted, language === "en" ? /Last error: ValueError: This recipe requires TP16$/ : /最后的错误：ValueError: This recipe requires TP16$/, rooted);
+  });
+
   test(`a rank's failure on a multi-node leader names the rank in ${language}`, async () => {
     const t = await translator(language);
     const text = runtimeFailureText(t, { code: "CONTAINER_OOM_KILLED", params: { exit_code: 137, rank: 1, node: "gpu-b", oom_killed: true }, message: "x" });

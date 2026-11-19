@@ -636,6 +636,7 @@ macOS 忽略 `no_systemd`。
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/inference-templates` | 推理模板列表。在线目录可同时传 `weight_provider`、`weight_repo`、`weight_revision`，仅返回权重来源、仓库 ID 和提交版本均匹配仓库根目录的规格。 | JWT |
+| DELETE | `/api/v1/inference-templates?model_id=…` | 按 model_id 删除自定义模板及全部档位。存在部署或其他模板引用时返回 409，并保留全部档位。 | JWT(admin) |
 | GET | `/api/v1/inference-templates/index` | 模板索引（轻量列表，用于选择器） | JWT |
 | GET | `/api/v1/inference-templates/organizations` | 模板涉及的组织/发布方列表 | JWT |
 | GET | `/api/v1/inference-templates/chips` | 模板声明支持的静态加速卡目录；可选 `arch_id` 表示模板需要的架构 ID，其他厂商字段保持原样 | JWT |
@@ -643,7 +644,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/inference-templates/summary` | 模板统计摘要 | JWT |
 | GET | `/api/v1/inference-templates/weight-models` | 某个 spec 声明的权重来源对应的已登记模型（`template_id`、`spec_source`、`spec_name` 必填，缺一 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`，spec 不存在 404）：`models` 为服务任一来源的模型（按 repo id 不区分大小写匹配，完整仓库可服务子目录请求，新的在前，各一次，行格式同分页列表）；`sources` 按声明顺序列出各来源，`reuse_model_id` 是选择该来源时复用的同 provider 最新模型 | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | 按内容摘要导出可执行模板包 | JWT(admin) |
-| GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情（通配路径） | JWT |
+| GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情。`can_delete` 表示当前调用方有权请求删除整个模板，引用检查在删除时执行。 | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |
 | GET | `/api/v1/inference-templates/schema` | 平铺 YAML 编辑器的字典：字段的补全、悬停说明与客户端首轮校验所需的约束（权威校验仍在导入时）；可选 `spec.gpus.arch_id` 必须非空且与已报告架构 ID 精确匹配（忽略大小写，缺失时不匹配） | JWT |
 | POST | `/api/v1/inference-templates/clone` | 克隆模板为可编辑的用户 spec | JWT(admin) |
@@ -685,7 +686,7 @@ macOS 忽略 `no_systemd`。
 | PUT | `/api/v1/deployments/{id}/health-check` | 开关部署的健康检查并设阈值：`{"enabled": true, "threshold_sec": 60}`（`threshold_sec` 1–600，省略或 0 保持当前）。开启要求模型提供 chat、completions、embedding 或 System One 决策，否则 400 `FIELD_INVALID`（`params.field` 为 `health_check`）；阈值越界 400 `FIELD_INVALID`；不重启实例，下一轮检查即按新设置。返回部署详情 | JWT |
 | PUT | `/api/v1/deployments/{id}/tokenize` | 开关网关对该部署的分词转发（`/v1/tokenize`、`/v1/detokenize`）：`{"enabled": false}`。`enabled` 必填，缺省 400 `FIELD_INVALID`（`params.field` 为 `enabled`），不是布尔 400；部署不存在 404。不重启实例，网关路由表随变更事件重建后生效。返回部署详情（带 `tokenize_enabled`） | JWT |
 | GET | `/api/v1/deployments/{id}/events` | 部署事件时间线（最新优先、游标分页、读取时折叠） | JWT |
-| POST | `/api/v1/deployments/{id}/clone` | 克隆部署配置，节点条件与放置策略一并复制。副本的对外模型名为原名加 `-` 和 4 位随机小写字母或数字；请求体 `{"name": ...}` 同时设定部署名与对外模型名，被占用时 409 `SERVED_NAME_IN_USE` | JWT |
+| POST | `/api/v1/deployments/{id}/clone` | 克隆已保存的部署配置，包括节点条件与放置策略。即使上游目录已移除原模板或档位，也可从部署快照克隆。副本的对外模型名为原名加 `-` 和 4 位随机小写字母或数字；请求体 `{"name": ...}` 同时设定部署名与对外模型名，被占用时 409 `SERVED_NAME_IN_USE` | JWT |
 | POST | `/api/v1/deployments/{id}/catalog-template` | 把运行中的部署写成推理模板：先对 chat、completions、embeddings、System One 决策等低成本操作各发一个最小请求，再按部署实际运行的启动参数、权重 commit 与 GPU 生成平铺 YAML，不写入目录。见[另存为推理模板](#另存为推理模板) | JWT |
 | POST | `/api/v1/deployments/{id}/stop` | 停止部署：删除全部实例，保留配置 | JWT |
 | POST | `/api/v1/deployments/{id}/start` | 启动已停止的部署，按保留的配置重新调度（每个副本的重试次数重新计）；已在运行则不做任何事；删除中的部署 409 `DEPLOYMENT_DELETING` | JWT |
@@ -1529,7 +1530,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 |---|---|
 | `form_values` | 表单应显示的完整值：生效配置（含字典默认与模板投影）及已将可识别参数转入结构化字段后的 `extra_args` 文本 |
 | `defaults` | 表单默认值：`model_mount`（`/model`）、`master_port`（29500）、`engine`（默认引擎） |
-| `eligible_nodes` | 每个节点按本草稿的节点条件（含厂商；手动选的那台节点本身不算条件，下拉正是用来选它的）/模板 GPU 谓词/在线状态判定，`eligible=false` 时 `reasons[]` 给原因（`node_offline`、`node_requirements_unmet`、`vendor_mismatch`、`chip_mismatch`；节点条件本身无效时每个节点都是 `node_requirements_invalid`，不会全部显示为合格）；节点下拉只渲染此列表 |
+| `eligible_nodes` | 每个节点按本草稿的节点条件（含厂商；手动选的那台节点本身不算条件，下拉正是用来选它的）/模板 GPU 谓词/在线状态判定，`eligible=false` 时 `reasons[]` 给原因（`node_offline`、`node_requirements_unmet`、`vendor_mismatch`、`chip_mismatch`；节点条件本身无效时每个节点都是 `node_requirements_invalid`，不会全部显示为合格）；没有显存限制的单机草稿里，空载也放不下一个副本的节点同样 `eligible=false`：卡数或单卡显存放不下时原因是调度器的 `no_fit`（带需要与可用的显存），所给的卡上启动命令解析不出来时是 `placement_rejected`（`params.detail` 为创建选它时返回的错误文本），模型比该节点上存储的缓存上限还大时是 `model_exceeds_cache_limit`。这个判定与放置模式、草稿当前选了哪台节点无关，只看节点本身，不看当前占用（卡被占、离线、磁盘满都不会因此标为不合格）。同一硬件规格且适用存储与缓存上限相同的节点合并判定一次，每次评估最多判定 16 种，超出的种类不判定、保持合格；某一种判定出错时该种节点同样保持合格。带显存限制的草稿、多机与 PD 草稿不做这项判定，所以 `eligible=true` 不保证创建一定成功；节点下拉只渲染此列表 |
 | `gpu_candidates` | 仅手动单机评估返回 `{node_uuid, items}`；每张卡包含 `index`、`available`，不可用时含结构化 `reason`。表示当前资源可用性，不表示单卡能承载模型，也不禁止选择资源不可用的卡；UI 仍按节点卡片的 `schedulable` 控制新增选择。字段缺失表示未评估，模型/多卡/拓扑可行性继续由 `plan` 判断。 |
 | `weight_sources` | 模板 spec 声明的权重来源（`provider`/`repo_id`/`revision`/`subfolder`）+ `suggested`（服务端建议）与 `registered`（本集群已有登记行，按 repo id 身份判定）；选定后仍由客户端调注册 API |
 | `preflight` | 仅 `nnodes>1`：请求级预检 `{ok, checks}`。`checks` 列出查过的每一项（通过的也列出）：`id` 为 `node_count`、`node_list`、`port_range`、`node_online`（每个节点一项，`params.node` 为节点）或 `shared_network`；`status` 只取 `pass`/`warn`/`fail`/`skip`/`na`；`code` 与 `params` 给出结果，`message` 为英文 fallback；因前面的检查失败而未执行的项为 `skip`、`code` 为 `PREFLIGHT_BLOCKED`，`blocked_by` 给出挡住它的检查 id；`evidence` 只在没有码能说明原因时带原始错误。没有 `fail` 时 `ok` 为 true。深度网络探测仍在独立预检 RPC（CLI 保留），前端不再编排 |
@@ -1702,11 +1703,16 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/plugins` | 已安装的包：`{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}], check}`，按 `id` 排序；`check` 是诊断检查 `plugins`：`{id, status, message:{code, params, message}}`，什么都没装时缺省；`permissions` 是 `[{name, risk}]`，按 `name` 排序，`risk` 为 server 给出的 `low`、`elevated` 或 `high`（[权限](plugin-protocol.md#权限)） | `JWT(admin)` |
+| GET | `/api/v1/plugins` | 已安装的包：`{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, previous?, on_demand, pending?, features, actions}], check}`，按 `id` 排序；`check` 是诊断检查 `plugins`：`{id, status, message:{code, params, message}}`，什么都没装时缺省；`permissions` 是 `[{name, risk}]`，按 `name` 排序，`risk` 为 server 给出的 `low`、`elevated` 或 `high`（[权限](plugin-protocol.md#权限)） | `JWT(admin)` |
 | POST | `/api/v1/plugins/install?approve=<批准值>&enable=<bool>` | 请求体是 `.gwpkg` 本身（`application/octet-stream`）。没带或带错 `approve` 时回 409 `PLUGIN_APPROVAL_REQUIRED`，`params` 给出 `id`、`version`、`approve_hash` 以及它涵盖的 `permissions`、`roles`（逗号分隔），另有它与当前已装版本相比的差异（首次安装时相对于空）：`from_version`，`permissions_added`/`permissions_removed`（`权限=风险等级`），`roles_*`、`capabilities_*`（`名称@版本`）、`features_*`、`routes_*`（`方法 路径 访问级别`）、`host_setup_*`（`类型 vendor_id:product_id`）、`devices_*` 各一对 `_added`/`_removed`，以及 `ui_mode`、`isolation`（变了才是 `旧->新`），每个键都在、没有内容时为空串；什么都不装；带对了返回 `{plugin, previous?, unchanged}`。`enable` 缺省为 `false`；装在已启用的版本之上时保持启用 | 管理会话，admin |
 | POST | `/api/v1/plugins/{id}/enable` | 启用并启动服务端部分，返回该包；不再通过校验的包回 409 `PLUGIN_BROKEN` | 管理会话，admin |
 | POST | `/api/v1/plugins/{id}/disable` | 停止并不再启动，返回该包；它推送的表照常执行，并按掉线计算宽限 | 管理会话，admin |
-| DELETE | `/api/v1/plugins/{id}?purge=<bool>` | 停止并卸载，删掉它推送的全部内容并重新应用保持，返回 204；`purge=true` 连数据目录一起移到 `.trash/` | 管理会话，admin |
+| POST | `/api/v1/plugins/{id}/restart` | 停止服务端部分并作为新实例重新启动，崩溃历史与退避从头算；按需启动的包回到 `idle`，等下一次调用。返回该包；已停用的包回 409 `PLUGIN_DISABLED{id}`，不再通过校验或被吊销的包回 409 `PLUGIN_BROKEN`，没有服务端部分的包回 422 `PLUGIN_UNAVAILABLE` | 管理会话，admin |
+| DELETE | `/api/v1/plugins/{id}?purge=<bool>&confirm=<影响摘要>` | 停止并卸载，删掉它推送的全部内容并重新应用保持，返回 204；`purge=true` 连数据目录（含快照）一起移到 `.trash/`，并删掉数据标记。`confirm` 必须是此刻卸载影响（`GET …/impact`）的 `confirm`：没带、带错，或预览之后影响变了（插件又推送了、换了版本），都回 409 `PLUGIN_UNINSTALL_CONFIRM_REQUIRED`，`params` 为 `{id, confirm, held_nodes, users_affected, caps_lifted, features_locked, banners, overrides}`（除 `id`、`confirm` 外都是计数），应答体另带 `impact`（与 `GET …/impact` 相同），什么都不删。不带 purge 卸载后包目录与数据仍在，此时再带 `purge=true` 卸载即清除它们 | 管理会话，admin |
+| GET | `/api/v1/plugins/{id}/impact` | 此刻卸载它会改变什么，只读内存、什么都不改：`{id, version?, confirm, tables:[{kind, entries}], nodes, features, caps, banners, overrides, users_affected}`。`tables` 是要删的表；`nodes` 是释放保持的节点 id（只有它保持的节点，以及没有上限剩下时为容量保持的节点；另一个上限仍在但放宽时，它会释放的节点不计入，`caps` 列出该上限）；`features` 是将变为 `locked` 的功能键；`caps` 是被取消或放宽的集群上限（`max_nodes_with_cards`、`max_cards`）；`banners` 是它此刻显示给管理员的横幅数；`overrides` 是随它删除的覆盖 id；`users_affected` 是它推送的角色或映射涉及的用户数（schema 1 没有这类表，为 0）；`confirm` 是这一切加上各表代数与摘要、包版本的摘要。包已卸载但推送行还在（卸载中途失败），或卸载时保留了数据目录，同样回答 | `JWT(admin)` |
+| GET | `/api/v1/plugins/{id}/state` | 推送状态里它的部分，读内存：`{id, installed, verified, now, down_since?, grace_s, clamp_at?, tables:[{kind, schema, generation, digest, entries, pushed_at, next_step?}], overrides}`。时刻都按插件时钟（extclock）；`down_since` 与 `clamp_at`（授予在此刻收窄）只在掉线时出现；`next_step` 是该表某条时间线下一步的时刻；`overrides` 同覆盖列表。包已卸载但行还在时 `installed` 为 `false` | `JWT(admin)` |
+| GET | `/api/v1/plugins/{id}/logs` | SSE 流：先发保留的全部内容（最近 256 条监管事件，每条一个 `state` 帧 `{seq, at, state, message?, truncated?}`；最近 1 MiB 的 stderr，一个 `stderr` 帧 `{offset, text, truncated?}`），之后每有新事件或输出就再发。`truncated` 表示这之前有内容已被丢弃。登录失效或失去管理员角色时流结束；助手读不到 | 管理会话，admin |
+| GET | `/api/v1/plugins/catalog` | 已导入的包索引与已安装的包合并：`{items:[{id, publisher?, installed?, best_version?, min_core_hint?, installable, reason?, refused:[{version, min_core_hint?, message}]}], errors:[{publisher, message}]}`，按 `id` 排序。`best_version` 是本 server 能装的最新构建；`installable` 表示它还没装上；`refused` 是比它新但本 server 不装的构建（如 `PLUGIN_NEEDS_NEWER_CORE`、`PLUGIN_PACKAGE_REVOKED`、`PLUGIN_BELOW_FLOOR`），由新到旧；没有可装的更新时 `reason` 是其中最新一个的拒绝原因；`errors` 是不再通过校验、被略过的索引 | `JWT(admin)` |
 | GET | `/api/v1/metrics/plugins` | 已安装插件的 `gpuworks_plugin_*` 指标，Prometheus 文本格式（`text/plain; version=0.0.4`），供外部 Prometheus 抓取，不写入内置时序库或历史指标目录；指标见[扩展点](../dev/extensions.md#健康横幅诊断检查与指标) | `JWT(admin)` |
 | GET | `/api/v1/plugins/overrides` | 生效中的覆盖：`{items:[{id, owner, kind, entry, generation, action, value?, by_user, at, reason}]}`，按 `id` 排序 | `JWT(admin)` |
 | POST | `/api/v1/plugins/overrides` | 请求体 `{owner, kind, entry, action, value?, reason}`：放松插件 `owner` 推送的一条限制，返回 201 与覆盖本身。`kind` 为 `node_holds`（`entry` 是十进制节点 id，`action` 只能是 `delete`）或 `fleet_capacity`（`entry` 是 `max_nodes_with_cards` 或 `max_cards`，`action` 为 `delete`，或带调高后上限 `value` 的 `loosen`）；`reason` 必填，最多 1024 字节。字段缺失或格式不对回 400 `FIELD_INVALID`；不满足覆盖规则回 422 `PLUGIN_OVERRIDE_REJECTED`（`params.rule`：`not_restrict`、`no_entry`、`action`、`not_looser`，`reason` 超过 1024 字节为 `reason`，提交前插件又推送改了这一条为 `superseded`） | 管理会话，admin |
@@ -1718,7 +1724,8 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 - `state`：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）、`revoked`（构建或证书被吊销）或 `needs_host_setup`（已启用，但 root 还没在本机应用它声明的主机步骤，或应用的是别的步骤；`message` 是 `PLUGIN_HOST_SETUP_REQUIRED{id, command}`，`command` 是要执行的命令）；其余是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`，按需启动的服务端部分没有运行时是 `idle`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`；没有自己 cgroup 的插件因内存超限被重启时是 `PLUGIN_MEMORY_EXCEEDED`，参数 `id`、`rss_mib`、`limit_mib`），没有可说的就缺省。 插件停止读取请求体被重启时为 `PLUGIN_STALLED{id, stalled_s}`，见[扩展点](../dev/extensions.md#监管)。
 - `since`：进入当前进程状态的时间，未受监管时缺省；`restarts`：第一次之后又启动了几个进程。
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
-- `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。
+- `previous`：比当前版本旧的最新已解包版本，留作回滚，没有时缺省；`on_demand`：服务端部分按需启动；`pending`：已导入的索引提供的更新构建 `{version}`，没有时缺省；`features`：包声明的功能键 `[{key, availability}]`，按 `key` 排序，`availability` 为此刻的 `full`、`read_only` 或 `locked`。
+- `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`restart`、`uninstall`、`purge`（带 `purge=true` 的卸载）。
 - `check`：`message` 是检查结果的码与参数；`status` 为 `fail`（`CHECK_PLUGINS_FAILING`：有已启用的包处于崩溃循环、`failed`、`broken`、被吊销或 `needs_host_setup`）、`warn`（`CHECK_PLUGINS_INCOMPATIBLE`：有已启用的包需要此服务器不提供的能力）或 `pass`（`CHECK_PLUGINS_OK`）；`message.params.ids` 是以逗号分隔的包 id。
 - 覆盖的 `generation`：建立覆盖时所有者该种类的代数；`by_user`：建立它的管理员的用户 id；`value`：`loosen` 调高后的上限，`delete` 时缺省。所有者之后的推送改了这一条时，覆盖被取代并删除，管理员看到 24 小时的横幅 `PLUGIN_OVERRIDE_SUPERSEDED`。
 
@@ -1726,7 +1733,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 已安装的包声明的路由挂在 `/api/v1/x/<id><pattern>`，鉴权按路由的 `access`（`admin`、`admin_session`、`member`，`public` 不鉴权、按客户端地址限流），见[扩展点](../dev/extensions.md#插件路由)。除上面四个码（分别回 503 带 `Retry-After: 5`、503 带 `Retry-After: 1`、504、502）外：路径不是规范形式 400 `PLUGIN_ROUTE_PATH_INVALID`；插件返回了不予转发的应答（未声明 `html` 的 HTML、不合法的产品错误）502 `PLUGIN_ROUTE_RESPONSE_INVALID{id}`；请求体超过路由上限 413 `REQUEST_TOO_LARGE{max_bytes}`；公开路由超出速率 429 `TOO_MANY_REQUESTS`；没有匹配的路由是核心的 404 或 405。
 
-错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）、声明的功能键已由编译模块或另一个已安装的包提供（`PLUGIN_FEATURE_TAKEN{id, feature, owner}`，在要求批准之前检查）、包 id 与编译进 server 的模块同名（`PLUGIN_ID_TAKEN{id}`，同样在要求批准之前检查）或插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）409；在 Linux 以外的平台上安装声明了主机步骤的包 422 `PLUGIN_HOST_SETUP_UNSUPPORTED{id}`；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
+错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）、声明的功能键已由编译模块或另一个已安装的包提供（`PLUGIN_FEATURE_TAKEN{id, feature, owner}`，在要求批准之前检查）、包 id 与编译进 server 的模块同名（`PLUGIN_ID_TAKEN{id}`，同样在要求批准之前检查）、插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）、重启已停用的包（`PLUGIN_DISABLED`）或卸载没带对影响摘要（`PLUGIN_UNINSTALL_CONFIRM_REQUIRED`）409；在 Linux 以外的平台上安装声明了主机步骤的包 422 `PLUGIN_HOST_SETUP_UNSUPPORTED{id}`；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
 
 插件进程调用的宿主接口不在 `/api/v1` 之下，它的错误码（如 `PLUGIN_ROLE_REQUIRED`、`PLUGIN_HOST_NOT_PERMITTED`、`PLUGIN_HOST_ARGUMENT_INVALID`）见[宿主接口的时钟、就绪、自有状态与派生密钥](plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)。
 

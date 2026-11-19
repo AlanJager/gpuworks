@@ -318,10 +318,21 @@ func sessionOnly(next http.Handler) http.Handler {
 	})
 }
 
+// canRequestAdminWrite projects the current management identity onto resource
+// action DTOs. Mutation routes still revalidate the identity at execution.
+func canRequestAdminWrite(r *http.Request) bool {
+	id, ok := r.Context().Value(identityKey{}).(identity)
+	return ok && id.claims.Role == "admin" && tokenAllowsWrite(id.token) && !isAssistantRead(r)
+}
+
+func tokenAllowsWrite(t *store.PlatformToken) bool {
+	return t == nil || t.Scope == store.PlatformTokenWrite
+}
+
 // readTokensRead lets a read token only read: GET, HEAD and OPTIONS.
 func readTokensRead(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if t := requestToken(r); t != nil && t.Scope != store.PlatformTokenWrite {
+		if t := requestToken(r); !tokenAllowsWrite(t) {
 			switch r.Method {
 			case http.MethodGet, http.MethodHead, http.MethodOptions:
 			default:

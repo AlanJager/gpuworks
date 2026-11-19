@@ -70,9 +70,7 @@ func TestContractRuntimeFeatureDeclarations(t *testing.T) {
 	if got := featureKeys(sv.manifest()); !slices.Equal(got, []string{"acme.backup", "acme.tools", "ops.audit"}) {
 		t.Fatalf("features after a restart = %v", got)
 	}
-	if status, body := sv.do(http.MethodDelete, "/api/v1/plugins/acme_fake", nil); status != http.StatusNoContent {
-		t.Fatalf("uninstall = %d %s", status, body)
-	}
+	sv.uninstall("acme_fake", false)
 	if got := featureKeys(sv.manifest()); !slices.Equal(got, []string{"ops.audit"}) {
 		t.Fatalf("features after uninstall = %v", got)
 	}

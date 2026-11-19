@@ -89,10 +89,11 @@ func pickWentStale(err error) bool {
 	return KindOf(err) == KindConflict && containsProductCode(err, messages.ErrorAutomaticPlacementStale)
 }
 
-// CreateRowError is a refused deployment row as its caller reads it: a served
-// name another deployment holds is a conflict, anything else the store's
-// failure.
+// CreateRowError reports conflicts detected while committing a deployment row.
 func CreateRowError(err error) error {
+	if errors.Is(err, store.ErrDeploymentTemplateSelectionGone) {
+		return conflict(wrapProductError(messages.ErrorDeploymentTemplateSelectionGone, err.Error(), nil, err))
+	}
 	var inUse *store.ServedNameInUseError
 	if errors.As(err, &inUse) {
 		return conflict(wrapProductError(messages.ErrorServedNameInUse, err.Error(), map[string]any{
@@ -402,10 +403,10 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	}
 	dep.SetPolicy(yieldPolicy)
 	var created *store.Deployment
-	if templateConfig.modelID == 0 {
+	if selection.Model == nil {
 		created, err = s.d.Store.CreateDeploymentWithRequirements(dep, reqs)
 	} else {
-		created, err = s.d.Store.CreateDeploymentWithTemplateInferenceConfig(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
+		created, err = s.d.Store.CreateDeploymentFromTemplate(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
 	}
 	if err != nil {
 		return nil, CreateRowError(err)

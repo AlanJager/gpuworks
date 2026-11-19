@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { Button, Modal, Tooltip, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { api, type Node } from "../api";
 import { nodeConnection } from "../nodes/connectionState";
 import { useRecoveryProbe } from "../nodes/recoveryProbe";
 import { useCopy } from "./CopyButton";
+import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Tooltip } from "./ui/tooltip";
+import { message } from "../ui-kit/feedback";
+
+const DIALOG_STYLE = { width: "min(520px, calc(100vw - 32px))", maxWidth: "calc(100vw - 32px)" };
 
 /**
  * Bringing a node's agent back, as one action wherever its connection is
@@ -19,6 +24,7 @@ export function NodeReconnectButton({ node, onUpdated, size = "small" }: {
   size?: "small" | "middle";
 }) {
   const { t } = useTranslation("nodes");
+  const { t: tCommon } = useTranslation("common");
   const { loading, probe } = useRecoveryProbe(node, onUpdated);
   const [command, setCommand] = useState<string | null>(null);
   const [copy, copyHolder] = useCopy();
@@ -45,32 +51,38 @@ export function NodeReconnectButton({ node, onUpdated, size = "small" }: {
   return (
     <>
       {copyHolder}
-      <Tooltip title={gone ? t("recovery.reconnectGone") : undefined}>
-        {/* A disabled button swallows hover; the span carries it. */}
-        <span style={{ display: "inline-block" }}>
-          <Button
-            size={size}
-            loading={loading}
-            disabled={gone}
-            onClick={node.has_ssh_credential ? probe : byHand}
-          >
-            {t("recovery.reconnect")}
-          </Button>
-        </span>
-      </Tooltip>
-      <Modal
-        open={command !== null}
-        title={t("recovery.manual.title")}
-        onCancel={() => setCommand(null)}
-        onOk={() => { if (command) void copy(command, { success: t("recovery.manual.copied") }); }}
-        okText={t("recovery.manual.copy")}
-        okButtonProps={{ disabled: !command }}
-      >
-        <Typography.Paragraph type="secondary">{t("recovery.manual.hint")}</Typography.Paragraph>
-        {command
-          ? <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}>{command}</pre>
-          : <Typography.Text type="warning">{t("recovery.manual.unavailable")}</Typography.Text>}
-      </Modal>
+      {(() => {
+        const button = (
+          // A disabled button swallows hover; the span carries it.
+          <span className="inline-block">
+            <Button
+              variant="tertiary"
+              size={size === "small" ? "sm" : "md"}
+              loading={loading}
+              disabled={gone}
+              onClick={node.has_ssh_credential ? probe : byHand}
+            >
+              {t("recovery.reconnect")}
+            </Button>
+          </span>
+        );
+        return gone ? <Tooltip content={t("recovery.reconnectGone")}>{button}</Tooltip> : button;
+      })()}
+      <Dialog open={command !== null} onOpenChange={(open) => { if (!open) setCommand(null); }}>
+        <DialogContent closeButtonLabel={tCommon("actions.close")} style={DIALOG_STYLE}>
+          <DialogHeader><DialogTitle>{t("recovery.manual.title")}</DialogTitle></DialogHeader>
+          <p className="mb-3 text-fg-muted">{t("recovery.manual.hint")}</p>
+          {command
+            ? <pre className="m-0 whitespace-pre-wrap break-all">{command}</pre>
+            : <p className="text-fg-warning">{t("recovery.manual.unavailable")}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCommand(null)}>{tCommon("actions.cancel")}</Button>
+            <Button variant="primary" disabled={!command} onClick={() => { if (command) void copy(command, { success: t("recovery.manual.copied") }); }}>
+              {t("recovery.manual.copy")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

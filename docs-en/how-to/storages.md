@@ -213,8 +213,19 @@ Images are not stored in storage; they reside in each node's container runtime. 
 
 - **NFS disconnection**: with a hard mount, instances that have finished loading weights can usually continue serving. Restarts and L2 wake-ups must read the weights again and may block or fail.
   Use **NFS with local cache** for deployments that must not depend on NFS.
+- **Recovery from an unresponsive NFS**: when a storage shows **Not responding** on a node, its detail states since when nothing answered and what the agent will do.
+  Once the NFS server answers again, the blocked call returns and the storage becomes available at the next check (every 30 seconds).
+  A storage that is only slow (every call returns, just later than its time limit) is never unmounted; it is retried and shown as answering too slowly.
+  When one single call has been blocked for 3 minutes, an NFS that the agent mounted itself is forced off (`umount -f -l`) and mounted again, and at most once every 3 minutes after that; there is no need to log in to the node or restart the agent. If the mount is already gone (someone unmounted it by hand, for example) while calls are still blocked, the agent gives those calls up and mounts it again.
+  In the following cases the agent only reports the reason and does not unmount:
+  - Something on the node uses the storage: an instance in any state (running, sleeping, starting, stopping), or a download, copy or peer transfer in progress; while the agent does not yet know which instances the node has, the storage also counts as in use. It is remounted automatically once they are stopped or removed.
+  - An NFS with **Use existing mount** selected, an **already mounted shared directory**, or a directory that holds something other than the export the agent recorded (including a second mount stacked on it): remount it on the node yourself.
+  - Another filesystem is mounted below the directory: a forced unmount would detach it too, so unmount what is below it on the node first.
+  - The same NFS server backs another mount on this node that still answers or is in use: a forced unmount could interrupt that one. The agent acts only when all of its mounts of that server on the node are stuck and unused; otherwise remount by hand on the node when the other mount can be interrupted.
+  - 8 calls the agent gave up are still blocked: it stops forcing the mount off; fix the NFS server or the mount, then restart the agent.
+  When the remount after a forced unmount fails, the storage shows as failed (server unreachable) and the mount is retried at every check; no task writes to the directory until it is available again.
 - **Pre-start check**: before creating a container, the agent checks whether the model directory exists, with a 2-second time limit. If it does not exist, startup fails with `MODEL_PATH_UNAVAILABLE`;
   the engine is not started against an empty directory.
 - **The node model root directory** is now part of local storage. To switch disks, change the local storage path or add new local storage; it is no longer configured separately on the node.
 
-<!-- translation-source-sha256: e63c3268befa5c72eafecd1f7845faafc4511d8778f5c1fa7e372325fda0360c -->
+<!-- translation-source-sha256: 78e7addd48e2581bff5d27ffac39266a9c9c8836b565265ccc3f8b04d786e932 -->

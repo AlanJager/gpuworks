@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -129,7 +130,11 @@ func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 		}
 	}
 	for _, id := range []string{"acme_fake", "acme_other"} {
-		timed("uninstall "+id, http.MethodDelete, "/api/v1/plugins/"+id, "")
+		var im dto.PluginImpact
+		if out := timed("the uninstall impact of "+id, http.MethodGet, "/api/v1/plugins/"+id+"/impact", ""); json.Unmarshal(out, &im) != nil || im.Confirm == "" {
+			t.Fatalf("impact of %s answered %s", id, out)
+		}
+		timed("uninstall "+id, http.MethodDelete, "/api/v1/plugins/"+id+"?confirm="+url.QueryEscape(im.Confirm), "")
 	}
 	for _, id := range []string{"acme_fake", "acme_other"} {
 		if p := sv.plugin(id); p.State != "absent" {

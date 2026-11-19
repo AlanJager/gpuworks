@@ -62,6 +62,7 @@ func (b *Bridge) refresh() error {
 	b.mu.Unlock()
 	b.state.SetPackages(pkgs)
 	b.declareFeatures()
+	b.refreshPending()
 	b.refreshHealth()
 	return nil
 }

@@ -481,6 +481,40 @@ func (e *Engine) RunningSpecs() []proto.InstanceDesiredState {
 	return out
 }
 
+// StorageUsers returns every instance this agent holds that may have a
+// container (running, sleeping, starting, stopping or stopped until its
+// container is confirmed gone, an old generation still to be reclaimed), for
+// the question "does anything of the
+// platform have this directory mounted". settled is false when that cannot
+// be answered: the control plane has not sent the instances yet, or one is
+// being torn down whose mounts the agent no longer has on record.
+func (e *Engine) StorageUsers() (specs []proto.InstanceDesiredState, settled bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	settled = e.desiredKnown
+	for _, s := range e.desired {
+		// One wanted stopped has no container once its teardown is confirmed;
+		// until then it is listed below with what it had mounted.
+		if s.DesiredState != "stopped" {
+			specs = append(specs, s)
+		}
+	}
+	for _, s := range e.cleanupRequired {
+		specs = append(specs, s)
+		if s.ModelPath == "" && len(s.Mounts) == 0 {
+			settled = false // removed before this agent knew what it mounted
+		}
+	}
+	for uuid := range e.inFlight {
+		_, wanted := e.desired[uuid]
+		_, reclaiming := e.cleanupRequired[uuid]
+		if !wanted && !reclaiming {
+			settled = false
+		}
+	}
+	return specs, settled
+}
+
 // DesiredKnown reports whether the control plane has told this agent what
 // it should be running. Until it has, this agent knows nothing about its
 // own instances, which is not the same as having none.

@@ -41,10 +41,13 @@ const (
 // dGPU slice never fits before the quota is set, so the form gates its quota
 // on this instead. A draft that names its node reads the node's own, so the
 // per-node derivation is skipped for it.
-func (s *Service) evaluateEligibleNodes(selection templateSelection, reqs map[string][]string, reqsErr error, automatic bool, loadTargetRequests func(*store.Node) map[int]planning.TargetCardRequest) ([]dto.EligibleNode, *proto.PartitionCapability) {
+//
+// The third result is the nodes the answer was read from, with their cards,
+// in the order of the first.
+func (s *Service) evaluateEligibleNodes(selection templateSelection, reqs map[string][]string, reqsErr error, automatic bool, loadTargetRequests func(*store.Node) map[int]planning.TargetCardRequest) ([]dto.EligibleNode, *proto.PartitionCapability, []*store.Node) {
 	nodes, err := s.d.Store.ListNodes()
 	if err != nil || len(nodes) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var predicate *chipmatch.Predicate
 	var unsupported []chipmatch.Unsupported
@@ -139,7 +142,7 @@ func (s *Service) evaluateEligibleNodes(selection templateSelection, reqs map[st
 		}
 		out = append(out, entry)
 	}
-	return out, poolPartition
+	return out, poolPartition, all
 }
 
 // nodeMatchesChipPredicate answers whether any reported GPU satisfies the

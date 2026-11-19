@@ -46,7 +46,11 @@ const { NodeSSHAccess } = await import("../src/components/NodeRecoveryControls")
 const { default: PlatformSSHKeyCard } = await import("../src/pages/settings/PlatformSSHKeyCard");
 const { default: ProviderInstallModal } = await import("../src/components/ProviderInstallModal");
 const apiModule = await import("../src/api");
+// A required field's label ends in a visual "*" mark; match the label text without it.
+const required = { normalizer: (text: string) => text.replace(/\s*\*$/, "").trim() };
+
 const api = apiModule.api as Record<string, unknown>;
+const { FeedbackHost, message } = await import("../src/ui-kit/feedback");
 
 const key = {
   public_key: "ssh-ed25519 AAAAC3NzaPlatform gpuworks@server",
@@ -68,12 +72,14 @@ function stub(name: string, impl: (...args: any[]) => unknown) {
   return calls;
 }
 afterEach(() => {
+  message.destroy();
   cleanup();
   while (restores.length) restores.pop()!();
 });
 
 function wrap(node: React.ReactElement) {
-  return render(<I18nextProvider i18n={i18n}>{node}</I18nextProvider>);
+  // Toasts and confirmations show through the app's feedback host.
+  return render(<I18nextProvider i18n={i18n}><FeedbackHost />{node}</I18nextProvider>);
 }
 
 const sshNode = { uuid: "n1", hostname: "gpu-1", has_ssh_credential: true } as never;
@@ -109,7 +115,7 @@ test("saving a password reports that the platform key replaced it", async () => 
   fireEvent.click(screen.getByRole("button", { name: nodes.ssh.edit }));
   await waitFor(() => assert.ok(screen.getByRole("radio", { name: nodes.ssh.auth.password })));
   fireEvent.click(screen.getByRole("radio", { name: nodes.ssh.auth.password }));
-  fireEvent.change(screen.getByLabelText(nodes.ssh.password), { target: { value: "pw" } });
+  fireEvent.change(screen.getByLabelText(nodes.ssh.password, required), { target: { value: "pw" } });
   fireEvent.click(screen.getByRole("button", { name: nodes.ssh.save }));
   await waitFor(() => assert.equal(puts.length, 1));
   assert.equal(puts[0][1].auth_mode, "password");
@@ -134,7 +140,7 @@ test("the SSH editor selects keyboard-interactive for a saved password and sends
   fireEvent.click(screen.getByRole("radio", { name: nodes.ssh.auth.key }));
   fireEvent.change(screen.getByPlaceholderText("-----BEGIN OPENSSH PRIVATE KEY-----"), { target: { value: "EDITOR STALE KEY" } });
   fireEvent.click(screen.getByRole("radio", { name: "Keyboard-interactive" }));
-  const password = screen.getByLabelText(nodes.ssh.password) as HTMLInputElement;
+  const password = screen.getByLabelText(nodes.ssh.password, required) as HTMLInputElement;
   assert.equal(password.value, "", "stored passwords must never be returned to the editor");
   fireEvent.change(password, { target: { value: "new-keyboard-secret" } });
   fireEvent.click(screen.getByRole("button", { name: nodes.ssh.save }));
