@@ -116,7 +116,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 	}()
 	hc := newHostConn(spec, h.cfg.State, h.cfg.Reads, h.log)
 	hc.svc = h.svc
-	go (&http2.Server{MaxConcurrentStreams: hostStreams}).ServeConn(proc.Host(), &http2.ServeConnOpts{Handler: hc})
+	go (&http2.Server{MaxConcurrentStreams: hostStreams}).ServeConn(proc.Host(), &http2.ServeConnOpts{Handler: hc}) //nolint:staticcheck // SA1019: the plugin connection is an HTTP/2 conversation on an already-open socket pair; moving to net/http's ClientConn and Server is a change of its own.
 	conn, connErr := newPluginConn(proc.Serve(), spec.MaxConcurrency, h.timing.CallTimeout)
 	defer func() {
 		hc.reject()
