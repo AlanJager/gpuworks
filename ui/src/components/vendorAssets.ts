@@ -6,16 +6,22 @@
 // - AMD: Wikimedia Commons "File:AMD Logo.svg" (public domain text logo).
 // - Ascend: the header logo of hiascend.com, Huawei's Ascend site.
 // - T-Head: the header logo of t-head.cn, T-Head's site.
-// - Hygon: its reviewed horizontal WebP.
+// - Hygon: its reviewed horizontal mark, converted losslessly from WebP to PNG.
 // - Apple publishes no horizontal mark, so ours sets the Simple Icons glyph
 //   (simple-icons 16.35.0, CC0-1.0) beside "Apple" outlined from Liberation
 //   Sans Bold, in Apple's near-black, to sit with the other wordmarks.
+// Every mark is a horizontal wordmark on a transparent canvas: SVG (preferred)
+// or PNG with alpha, no padding box or background of its own, readable in the
+// light and dark themes. The Go tests in internal/uiassets
+// (TestVendorLogosHaveTransparentBackgrounds, TestVendorAssetsMatchLogoFiles)
+// enforce this and that this map and the directory match (docs/dev/ui.md,
+// "Vendor marks").
 export const VENDOR_ASSETS: Record<string, string> = {
   nvidia: "/vendor-logos/nvidia.svg",
   amd: "/vendor-logos/amd.svg",
   ascend: "/vendor-logos/ascend.svg",
   thead: "/vendor-logos/thead.png",
-  hygon: "/vendor-logos/hygon.webp",
+  hygon: "/vendor-logos/hygon.png",
   // Official company site: https://www.kunlunxin.com/wp-content/uploads/2023/01/logo-quan.png
   kunlunxin: "/vendor-logos/kunlunxin.png",
   apple: "/vendor-logos/apple.svg",

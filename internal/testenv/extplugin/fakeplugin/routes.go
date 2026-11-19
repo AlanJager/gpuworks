@@ -16,8 +16,10 @@ import (
 // so a request the server signed for another route is refused. Each call
 // it serves is appended to results.jsonl ({"route": action, "kind",
 // "user", "access"}) and answered with the same as JSON, or as text/html
-// with html; setCookie adds a Set-Cookie line to every answer.
-func routeHandler(html bool, setCookie []string) http.Handler {
+// with html; setCookie adds a Set-Cookie line to every answer. With
+// stallBodies it never reads a request body: a call with one waits until
+// it ends, then is recorded.
+func routeHandler(html, stallBodies bool, setCookie []string) http.Handler {
 	mux := http.NewServeMux()
 	for _, r := range manifestRoutes() {
 		pattern := r.Method + " " + extapi.PathRoutePrefix + r.Pattern
@@ -26,7 +28,11 @@ func routeHandler(html bool, setCookie []string) http.Handler {
 		}
 		action := r.Action
 		mux.Handle(pattern, pluginsdk.RequirePrincipal(action, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			_, _ = io.Copy(io.Discard, req.Body)
+			if stallBodies && req.ContentLength != 0 {
+				<-req.Context().Done()
+			} else {
+				_, _ = io.Copy(io.Discard, req.Body)
+			}
 			p := pluginsdk.PrincipalFrom(req)
 			line := map[string]any{"route": action, "kind": p.Kind, "user": p.Username, "access": pluginsdk.FeatureAccessFrom(req).String()}
 			appendResult(line)

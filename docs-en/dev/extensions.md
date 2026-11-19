@@ -281,7 +281,7 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 
 - Host API endpoints not listed in this guide; per-action authorization and persisted route audit records (today audit is a structured log line only).
 - The impact preview before an uninstall (a 409 from `DELETE` listing the impact first), automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
-- The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
+- The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), and running plugins on the leader only under high availability.
 - No capability of the manifest vocabulary other than `table.<kind>`, `host.node_identity`, `host.nodes`, `host.host_identity`, `host.clock`, `host.state_read`, `host.derive_key`, `host.setup` ([Host setup](#host-setup)) and `routes` is offered yet: the other read surfaces (`host.*`), `host.notify`, `metrics.expose`, settings (`host.config`), WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name) and `ui.bundle`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
 
 ### Trampoline: `gpuworks plugin-exec`
@@ -313,6 +313,7 @@ The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `mast
 |---|---|
 | `initialize` deadline | 10 seconds |
 | Health probe | Every 10 seconds, 3 seconds each; after 3 misses in a row the plugin is killed and restarted (`PLUGIN_UNHEALTHY`) |
+| Stall detection | The fd 3 connection is checked every second: a write blocked longer than 10 seconds, or request body bytes waiting to be sent while no request body data (DATA frames) has been written for 10 seconds, kills and restarts the plugin (`PLUGIN_STALLED{id, stalled_s}`), whether or not its health probes pass |
 | Crash restart | From 1 second, doubling, up to 5 minutes; 10 minutes of healthy running starts again from 1 second |
 | Crashloop | 5 crashes within 10 minutes enter `crashloop` (`PLUGIN_CRASHLOOP`), retried every 5 minutes after that, so unattended offline sites recover by themselves |
 | Stop | `POST /gwx/v1/shutdown`, SIGTERM to the process group 10 seconds later, SIGKILL 5 seconds after that |
@@ -354,6 +355,8 @@ The plugin host module calls a plugin through `Bridge.Call`; plugin routes use i
 | `PLUGIN_ROUTE_FAILED{id}` | The call failed after the plugin had the request (it crashed or hung up), so the request may have been partly applied | No |
 
 A write that fails after the request headers were written counts as delivered: the caller is told the request may have been partly applied rather than led into a blind retry. A plugin's own refusal is a normal response.
+
+When a plugin stops reading request bodies, the unread bodies fill HTTP/2's connection-level flow-control window, so the bodies of other calls on the same connection cannot be sent either, while the health probes the SDK answers on another goroutine still pass. The host therefore meters progress per connection: while request body bytes wait on flow control in the HTTP/2 client, any DATA frame written on the connection counts as progress, so a plugin that reads slowly but keeps reading is not affected; a body small enough to fit the windows leaves no bytes waiting, so a handler that reads it later is not a stall. A stalled plugin is killed and restarted (`PLUGIN_STALLED`), and the stuck call answers `PLUGIN_ROUTE_FAILED`. The pending-byte count and progress timestamp change together under a connection-local lock, with no allocations per request or write. Stall durations use monotonic elapsed time, so host wall-clock corrections do not consume the budget. A delayed body reader cannot overwrite more recent DATA progress; cancellation clears its pending bytes.
 
 The route table is compiled from the installed packages' manifests: an enabled package that verifies serves its routes; a disabled package has none (404, and absent from the route inventory), even when it is also revoked or no longer verifies; a revoked package, and one that no longer verifies but verified earlier at the same version, keeps its routes and answers them with 503 `PLUGIN_UNAVAILABLE` without calling the plugin (a package already broken at boot has no routes until it verifies again). After every install, enable, disable, uninstall or recheck the whole table is compiled again and swapped atomically; matching takes no lock, walks one path segment at a time with literal segments tried before `{name}` parameters, and allocates once, for the parameters only; a request keeps the table it started with. The authorization snapshot is bound to the verified manifest digest: if a different build is selected before forwarding, the request is refused with `PLUGIN_UNAVAILABLE` before signing or sending. A restart of the same build continues to work with its fresh process key.
 
@@ -438,4 +441,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 68780acf2d8619ea5253281ed1e9b3e5d1868fb19002302d62925646ec4d15b0 -->
+<!-- translation-source-sha256: aece67a9996b214dbb82dc4ca6dd3ef1825d9dbac7d764b7632d5b57530aaac8 -->

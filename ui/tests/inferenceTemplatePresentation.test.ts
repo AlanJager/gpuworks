@@ -65,10 +65,9 @@ test("every reviewed organization icon is a 96 by 96 WebP", async () => {
   }
 });
 
-test("Hygon compute vendor uses the reviewed horizontal WebP logo", async () => {
-  const data = await readFile(new URL("../public/vendor-logos/hygon.webp", import.meta.url));
-  assert.equal(data.subarray(0, 4).toString("ascii"), "RIFF");
-  assert.equal(data.subarray(8, 12).toString("ascii"), "WEBP");
+test("Hygon compute vendor uses the reviewed horizontal PNG logo", async () => {
+  const data = await readFile(new URL("../public/vendor-logos/hygon.png", import.meta.url));
+  assert.equal(data.subarray(1, 4).toString("ascii"), "PNG");
 });
 
 test("organization fallback colors are stable and varied across missing-logo organizations", () => {

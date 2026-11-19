@@ -165,6 +165,32 @@ Confirmed 2026-11-06. Check every migrated page against this, by screenshot.
 | Overlays | While antd and Zeron coexist, both libraries' overlays sit on one 1000 layer (`src/theme/layers.css`): the one opened last is on top. Right-side drawers of either library open beside the AI assistant. |
 | Status words | Show a state as Zeron `Badge` with `status`, not as coloured text: dark success text reads as black. |
 
+## Vendor marks
+
+Accelerator vendor marks (NVIDIA, AMD, Ascend, ...) live in
+`ui/public/vendor-logos/` and are mapped by `VENDOR_ASSETS` in
+`ui/src/components/vendorAssets.ts`. A mark is a horizontal wordmark on a
+transparent canvas: SVG (preferred) or PNG with an alpha channel, with no
+padding box, plate or background colour of its own, so it reads on the light
+page, the dark page and the light plate the dark theme puts behind dark
+artwork. Check a new mark in both themes before adding it.
+
+The test-only package `internal/uiassets` enforces this in plain
+`go test ./...`. `TestVendorLogosHaveTransparentBackgrounds` allows only
+`.svg` and `.png`. An SVG needs a viewBox and has no background style, no
+embedded `<image>` or `<foreignObject>`, and no filled rect, circle, ellipse,
+polygon, polyline or straight-edged rectangular path covering 90% of the
+viewBox; shapes inside `<defs>`, `<clipPath>`, `<mask>`, `<symbol>` and
+similar containers are not drawn and are not measured. A PNG has alpha, fully
+transparent corners, a border ring at least half transparent, and fewer than
+60% of its pixels at alpha 240/255 or above (shipped marks measure 10-31%).
+`TestVendorAssetsMatchLogoFiles` requires every file to be mapped and every
+mapping to name a file. Run them with `go test ./internal/uiassets/`.
+
+The SVG check reads attributes, not a rendered image: it does not apply
+`transform`, follow `<use>`, read fills set by `<style>` classes, or measure
+strokes. A plate built that way gets through, so review new SVGs by eye too.
+
 ## Copy on the page
 
 Confirmed 2026-11-13. A page states facts and what to do next. How a number
@@ -239,4 +265,4 @@ Resource names that open a drawer use the native link button variant (`variant="
 
 `tests/tableNameAffordance.test.ts` runs in the normal UI test gate and scans name-column renderers across product pages. `ui-check` also runs `tests/browser/table-link-rules.mjs` against every visited page/drawer, including full-page details reached from a list: visible table text links and clickable resource names must resolve to the theme color, including nested text. Its unit tests exercise failures and exclusions; real computed colors require the browser job. When changing shared navigation, test breadcrumbs through the current page and click the parent link; use heading roles when the resource name also appears in the breadcrumb.
 
-<!-- translation-source-sha256: fc4f787023f4d95a4a7c0c9835b3c3c0ff77ba4c6d379fcc338aa113ac0864d3 -->
+<!-- translation-source-sha256: 05fb347a6e488ff528590e7194b1f497dde7edb39369b8743367599ac6766ffc -->
