@@ -47,7 +47,7 @@ type Plugin struct {
 	Features []PluginFeature `json:"features"`
 	// Actions are what an administrator may do with it now, computed by the
 	// server: enable, disable, restart, uninstall, purge (uninstall with
-	// ?purge=true).
+	// ?purge=true), upgrade, rollback (with a previous version).
 	Actions []string `json:"actions"`
 }
 
@@ -88,6 +88,20 @@ type PluginInstalled struct {
 	// install.
 	Previous string `json:"previous,omitempty"`
 	// Unchanged reports that this exact build was already installed.
+	Unchanged bool `json:"unchanged"`
+}
+
+// PluginUpgraded answers POST /api/v1/plugins/{id}/upgrade once the new
+// version passed its health gate.
+type PluginUpgraded struct {
+	Plugin Plugin `json:"plugin"`
+	// Previous is the version that was current before, kept for rollback
+	// with a snapshot of its data.
+	Previous string `json:"previous"`
+	// AutoApproved reports that the approval hash did not change and the
+	// site policy applied the upgrade without a new approval.
+	AutoApproved bool `json:"auto_approved"`
+	// Unchanged reports that this exact build was already unpacked.
 	Unchanged bool `json:"unchanged"`
 }
 

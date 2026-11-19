@@ -395,6 +395,8 @@ POST /api/v1/plugins/overrides
 POST /api/v1/plugins/{id}/disable
 POST /api/v1/plugins/{id}/enable
 POST /api/v1/plugins/{id}/restart
+POST /api/v1/plugins/{id}/rollback
+POST /api/v1/plugins/{id}/upgrade
 POST /api/v1/priority-classes
 POST /api/v1/providers
 POST /api/v1/providers/{id}/install
