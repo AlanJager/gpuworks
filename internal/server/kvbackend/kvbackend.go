@@ -22,6 +22,9 @@ import (
 // the row an empty selection resolves to.
 const Native = "native"
 
+// LMCache is the id of the external LMCache MP KV offload backend for vLLM.
+const LMCache = "lmcache"
+
 // Topology bounds the launches a backend runs in. MaxNNodes zero is
 // unbounded; PP and DP say whether pipeline and data parallelism are allowed.
 type Topology struct {
@@ -85,19 +88,30 @@ func (b Backend) clone() Backend {
 // Registry is an immutable, validated set of rows.
 type Registry struct{ rows []Backend }
 
-// Builtin is the catalog the product ships. Only the engine's own offload is
-// in it today; a third-party backend joins as a row here plus a renderer in
-// the engine adapter.
+// Builtin is the catalog the product ships. Each entry is a compiled-in
+// descriptor row paired with a renderer in the engine adapter.
 func Builtin() Registry {
-	registry, err := New(Backend{
-		ID: Native, Engine: engines.VLLM, Label: "vLLM", Default: true,
-		Vendors:  []string{accelerator.VendorNVIDIA, accelerator.VendorAMD, accelerator.VendorPPU, accelerator.VendorHygon, accelerator.VendorApple, accelerator.VendorKunlunxin},
-		PDRoles:  []string{pdmode.RolePrefill},
-		Topology: Topology{PP: true, DP: true},
-	})
+	registry, err := New(
+		Backend{
+			ID: Native, Engine: engines.VLLM, Label: "vLLM", Default: true,
+			Vendors:  []string{accelerator.VendorNVIDIA, accelerator.VendorAMD, accelerator.VendorPPU, accelerator.VendorHygon, accelerator.VendorApple, accelerator.VendorKunlunxin},
+			PDRoles:  []string{pdmode.RolePrefill},
+			Topology: Topology{PP: true, DP: true},
+		},
+		Backend{
+			ID: LMCache, Engine: engines.VLLM, Label: "LMCache", External: true,
+			Vendors: []string{accelerator.VendorNVIDIA, accelerator.VendorAscend},
+			Replaces: []string{
+				"kv_offloading_size", "kv_disk_offload", "shared_kv_dir",
+				"kv_disk_limit_gib", "kv_offload_read_threads", "kv_offload_write_threads",
+				"kv_offload_block_size",
+			},
+			PDRoles:  []string{pdmode.RolePrefill},
+			Topology: Topology{MaxNNodes: 1, PP: true, DP: true},
+		},
+	)
 	if err != nil {
-		// The table is a literal; TestBuiltinIsValidAndHoldsOnlyTheNativeRow
-		// keeps this unreachable.
+		// The table is a literal; TestBuiltinIsValid keeps this unreachable.
 		panic(err)
 	}
 	return registry

@@ -19,7 +19,7 @@ const profiles = JSON.parse(fs.readFileSync(new URL("./fixtures/engines.json", i
 const vllm = profiles.find((profile) => profile.name === "vllm")!;
 const sglang = profiles.find((profile) => profile.name === "sglang")!;
 const sglangKeys = new Set(sglang.param_specs!.map((spec) => spec.key));
-const exclusive = vllm.param_specs!.filter((spec) => !sglangKeys.has(spec.key));
+const exclusive = vllm.param_specs!.filter((spec) => !sglangKeys.has(spec.key) && spec.key !== "kv_offload_backend");
 const modalities = ["text", "image"];
 
 // Literal saved choices supply independent expected values. The real endpoint
@@ -211,7 +211,7 @@ const backend: KVBackendProfile = {
 };
 const withBackend: EngineProfile = {
   ...vllm, kv_backends: [backend],
-  param_specs: [...vllm.param_specs!, {
+  param_specs: [...vllm.param_specs!.filter((spec) => spec.key !== "kv_offload_backend"), {
     key: "kv_offload_backend", flag: "", type: "enum", control: "select",
     label: { en: "KV backend" }, enum: [backend.id], options: [{ value: backend.id, label: { en: backend.label } }],
   }],

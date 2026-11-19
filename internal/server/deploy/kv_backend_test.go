@@ -44,9 +44,22 @@ func selectTestExternal() LaunchConfig {
 	return LaunchConfig{KVOffloadBackend: testExternalKVBackend}
 }
 
-// While only the native row ships, nothing publishes the selector and every
-// stated selection is dropped, as it always was.
+// An engine without selectable rows never publishes the selector and drops any
+// stated selection, matching releases before external backends existed.
 func TestKVBackendSelectorUnpublishedWithoutSelectableRows(t *testing.T) {
+	t.Setenv("GPUWORKS_TEST_KV_BACKENDS_SWAPPED", "1")
+	native, ok := kvbackend.Builtin().Resolve(EngineVLLM, "")
+	if !ok {
+		t.Fatal("no native vLLM row")
+	}
+	onlyNative, err := kvbackend.New(native)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := kvBackends
+	kvBackends = kvBackendSet{registry: onlyNative}
+	t.Cleanup(func() { kvBackends = previous })
+
 	for _, engine := range []string{EngineVLLM, EngineSGLang} {
 		if _, published := engineParams(engine)[paramKVOffloadBackend]; published {
 			t.Fatalf("%s publishes %s with only the native row", engine, paramKVOffloadBackend)

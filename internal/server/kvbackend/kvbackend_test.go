@@ -23,14 +23,14 @@ func externalRow() Backend {
 	}
 }
 
-func TestBuiltinIsValidAndHoldsOnlyTheNativeRow(t *testing.T) {
+func TestBuiltinIsValid(t *testing.T) {
 	registry := Builtin()
 	if _, err := New(registry.rows...); err != nil {
 		t.Fatalf("Builtin rows fail New: %v", err)
 	}
 	rows := registry.ForEngine(engines.VLLM)
-	if len(rows) != 1 || rows[0].ID != Native || !rows[0].Default || rows[0].External {
-		t.Fatalf("vLLM rows = %+v, want the native default row only", rows)
+	if len(rows) != 2 || rows[0].ID != Native || !rows[0].Default || rows[0].External {
+		t.Fatalf("vLLM rows = %+v, want native default + lmcache", rows)
 	}
 	if !slices.Equal(rows[0].PDRoles, []string{pdmode.RolePrefill}) {
 		t.Fatalf("native PDRoles = %v, want [prefill]", rows[0].PDRoles)
@@ -38,13 +38,28 @@ func TestBuiltinIsValidAndHoldsOnlyTheNativeRow(t *testing.T) {
 	if !rows[0].TopologyAllows(4, true, true) {
 		t.Fatal("native row must allow every topology")
 	}
+	lm := rows[1]
+	if lm.ID != LMCache || lm.Default || !lm.External || lm.Label != "LMCache" {
+		t.Fatalf("lmcache row = %+v", lm)
+	}
+	if !lm.Supports(accelerator.VendorNVIDIA) || !lm.Supports(accelerator.VendorAscend) || lm.Supports(accelerator.VendorApple) {
+		t.Fatalf("lmcache vendors = %v", lm.Vendors)
+	}
+	if !slices.Equal(lm.PDRoles, []string{pdmode.RolePrefill}) {
+		t.Fatalf("lmcache PDRoles = %v, want [prefill]", lm.PDRoles)
+	}
+	if !lm.TopologyAllows(1, true, true) || lm.TopologyAllows(2, false, false) {
+		t.Fatalf("lmcache topology = %+v", lm.Topology)
+	}
 	if got := registry.ForEngine(engines.SGLang); len(got) != 0 {
 		t.Fatalf("SGLang rows = %+v, want none", got)
 	}
-	for _, engine := range engines.DialectNames() {
-		if got := registry.Selectable(engine); len(got) != 0 {
-			t.Fatalf("%s selectable rows = %+v, want none while only native ships", engine, got)
-		}
+	selectable := registry.Selectable(engines.VLLM)
+	if len(selectable) != 1 || selectable[0].ID != LMCache {
+		t.Fatalf("vLLM selectable rows = %+v, want [lmcache]", selectable)
+	}
+	if got := registry.Selectable(engines.SGLang); len(got) != 0 {
+		t.Fatalf("SGLang selectable rows = %+v, want none", got)
 	}
 }
 
