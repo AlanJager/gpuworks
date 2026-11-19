@@ -74,7 +74,7 @@ export default function DeploymentDetailOverview(props: Props) {
         </div>
       </DetailSection>
       {dep.pd && <DeploymentPdPanel key={dep.id} dep={dep} onChanged={onChanged} />}
-      <DeploymentPreparation rows={dep.model_progress} onChanged={onChanged} />
+      <DeploymentPreparation dep={dep} rows={dep.model_progress} onChanged={onChanged} />
     </div>
   );
 }
