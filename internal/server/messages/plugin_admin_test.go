@@ -18,6 +18,8 @@ func TestPluginAdminCodesHaveClientText(t *testing.T) {
 		ErrorPluginNoPreviousVersion: {"id"},
 		ErrorPluginSnapshotMissing:   {"id", "version"},
 		ErrorPluginUpgradeInProgress: {"id"},
+		ErrorPluginUpgradeIDMismatch: {"id", "package_id"},
+		ErrorPluginUpgradeCancelled:  {"id"},
 	}
 	if len(params) != len(PluginAdminCodes()) {
 		t.Fatalf("PluginAdminCodes lists %v", PluginAdminCodes())
