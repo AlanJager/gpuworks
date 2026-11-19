@@ -31,7 +31,7 @@ var checkTemplate string
 //go:embed setup.sh
 var setupTemplate string
 
-// The setup script is assembled from five files to keep each readable.
+// The setup script is assembled from six files to keep each readable.
 //
 //go:embed setup_conf.sh
 var setupConfPart string
@@ -45,6 +45,9 @@ var setupReachPart string
 //go:embed setup_check.sh
 var setupCheckPart string
 
+//go:embed setup_dir.sh
+var setupDirPart string
+
 const (
 	paramsMarker = "# @@PARAMS@@"
 	checkMarker  = "@@CHECK_SCRIPT@@"
@@ -52,6 +55,7 @@ const (
 	nodesMarker  = "# @@NODE_FUNCTIONS@@\n"
 	reachFuncs   = "# @@REACH_FUNCTIONS@@\n"
 	checkFuncs   = "# @@CHECK_FUNCTIONS@@\n"
+	dirFuncs     = "# @@DIR_FUNCTIONS@@\n"
 )
 
 // Params are one cluster entry's script parameters.
@@ -203,7 +207,8 @@ func setupSource() string {
 	s := strings.Replace(setupTemplate, confMarker, setupConfPart, 1)
 	s = strings.Replace(s, nodesMarker, setupNodesPart, 1)
 	s = strings.Replace(s, reachFuncs, setupReachPart, 1)
-	return strings.Replace(s, checkFuncs, setupCheckPart, 1)
+	s = strings.Replace(s, checkFuncs, setupCheckPart, 1)
+	return strings.Replace(s, dirFuncs, setupDirPart, 1)
 }
 
 func scriptURL(serverURL, token string) string {

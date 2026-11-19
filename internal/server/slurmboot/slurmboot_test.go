@@ -232,7 +232,7 @@ func TestScriptsParseUnderEveryShell(t *testing.T) {
 }
 
 func TestFilesStayUnderTheLengthLimit(t *testing.T) {
-	for name, s := range map[string]string{"check.sh": checkTemplate, "setup.sh": setupTemplate, "setup_conf.sh": setupConfPart, "setup_nodes.sh": setupNodesPart} {
+	for name, s := range map[string]string{"check.sh": checkTemplate, "setup.sh": setupTemplate, "setup_conf.sh": setupConfPart, "setup_nodes.sh": setupNodesPart, "setup_dir.sh": setupDirPart} {
 		if n := strings.Count(s, "\n"); n > 600 {
 			t.Errorf("%s has %d lines", name, n)
 		}

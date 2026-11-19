@@ -112,4 +112,3 @@ func modeOf(t *testing.T, path string) os.FileMode {
 	}
 	return fi.Mode().Perm()
 }
-

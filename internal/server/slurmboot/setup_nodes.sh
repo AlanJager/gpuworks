@@ -75,17 +75,48 @@ sync_nodes() {
 		mark "step=distribute_summary ok=0 failed=none"
 		return 0
 	fi
-	# The token file exists with mode 0600 before anything is copied into it:
-	# copying overwrites the contents and keeps that mode.
-	prep="(umask 022 && mkdir -p '$SCRIPT_DIR') && chmod 0755 '$SCRIPT_DIR' && (umask 077 && : > '$SCRIPT_DIR/token') && chmod 0600 '$SCRIPT_DIR/token'"
+	# Each node's script directory is checked as the controller's is
+	# (gwks_dir_unsafe, sent along), before anything is copied there: a node
+	# where another account could change it gets nothing, the token
+	# included. Copying writes into the files there, so on a node the
+	# directory being itself too open is unsafe too. A missing directory is
+	# made root's with umask 022 and checked again once made; an existing one
+	# keeps its mode. The token file exists with mode 0600 before anything is
+	# copied into it: copying overwrites the contents and keeps that mode.
+	nodecheck="$DIR_CHECK
+r=\$(gwks_dir_unsafe '$SCRIPT_DIR'); if [ -z \"\$r\" ]; then echo GWKS_SAFE; else echo \"GWKS_UNSAFE \$r\"; fi"
+	# prep checks again itself (ssh has no separate pass, and the directory
+	# may be made by it): an unsafe one prints GWKS_UNSAFE and stops.
+	prep="$DIR_CHECK
+gwks_safe() { r=\$(gwks_dir_unsafe '$SCRIPT_DIR'); [ -z \"\$r\" ] && return 0; echo \"GWKS_UNSAFE \$r\"; exit 1; }
+gwks_safe && (umask 022 && mkdir -p '$SCRIPT_DIR') && gwks_safe && (umask 077 && : > '$SCRIPT_DIR/token') && chmod 0600 '$SCRIPT_DIR/token'"
 	for f in $ABSENT; do
 		prep="$prep && rm -f '$SCRIPT_DIR/$f'"
 	done
 	fin="chmod 0755 '$SCRIPT_DIR/check.sh' && chmod 0600 '$SCRIPT_DIR/token'"
-	probe="test -x '$SCRIPT_DIR/check.sh' && test -s '$SCRIPT_DIR/token' && echo GWKS_OK"
-	csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
+	probe="$DIR_CHECK
+[ -z \"\$(gwks_dir_unsafe '$SCRIPT_DIR')\" ] && test -x '$SCRIPT_DIR/check.sh' && test -s '$SCRIPT_DIR/token' && echo GWKS_OK"
 	mkdir -p "$WORK/dist"
-	if have clush; then
+	if have clush || { have pdsh && have pdcp; }; then
+		# One pass over every node first: only safe nodes are copied to.
+		tool=pdsh
+		have clush && tool=clush
+		csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
+		checked=$(budgeted "$tool" -w "$csv" "$nodecheck" </dev/null 2>/dev/null)
+		safe=''
+		for n in $NODES; do
+			if printf '%s\n' "$checked" | grep -Fxq "$n: GWKS_SAFE"; then
+				safe="$safe $n"
+			elif line=$(printf '%s\n' "$checked" | grep -F "$n: GWKS_UNSAFE " | head -n 1) && [ -n "$line" ]; then
+				echo failed unsafe >"$WORK/dist/$(clean "$n")"
+				printf '%s\n' "${line#*GWKS_UNSAFE }" >"$WORK/dist/$(clean "$n").why"
+			else
+				echo failed unreachable >"$WORK/dist/$(clean "$n")"
+			fi
+		done
+		csv=$(printf '%s\n' $safe | tr '\n' ',' | sed 's/,$//')
+	fi
+	if [ -n "${csv:-}" ] && have clush; then
 		say "Copying with clush to: $csv"
 		budgeted clush -w "$csv" "$prep" </dev/null >/dev/null 2>&1
 		for f in $FILES; do
@@ -93,10 +124,10 @@ sync_nodes() {
 		done
 		budgeted clush -w "$csv" "$fin" </dev/null >/dev/null 2>&1
 		verified=$(budgeted clush -w "$csv" "$probe" </dev/null 2>/dev/null)
-		for n in $NODES; do
+		for n in $safe; do
 			if printf '%s\n' "$verified" | grep -Fxq "$n: GWKS_OK"; then echo ok >"$WORK/dist/$(clean "$n")"; else echo failed unreachable >"$WORK/dist/$(clean "$n")"; fi
 		done
-	elif have pdsh && have pdcp; then
+	elif [ -n "${csv:-}" ] && have pdsh && have pdcp; then
 		say "Copying with pdsh/pdcp to: $csv"
 		budgeted pdsh -w "$csv" "$prep" </dev/null >/dev/null 2>&1
 		for f in $FILES; do
@@ -104,10 +135,11 @@ sync_nodes() {
 		done
 		budgeted pdsh -w "$csv" "$fin" </dev/null >/dev/null 2>&1
 		verified=$(budgeted pdsh -w "$csv" "$probe" </dev/null 2>/dev/null)
-		for n in $NODES; do
+		for n in $safe; do
 			if printf '%s\n' "$verified" | grep -Fxq "$n: GWKS_OK"; then echo ok >"$WORK/dist/$(clean "$n")"; else echo failed unreachable >"$WORK/dist/$(clean "$n")"; fi
 		done
-	else
+	elif ! have clush && ! { have pdsh && have pdcp; }; then
+		csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
 		ssh_opts="-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 		say "Copying with ssh to: $csv (at most $DIST_JOBS at a time)"
 		started=$(date +%s)
@@ -138,9 +170,13 @@ sync_nodes() {
 			;;
 		*)
 			reason=${result#failed }
-			case "$reason" in unreachable | copy | time_cap | verify) ;; *) reason=unreachable ;; esac
+			case "$reason" in unreachable | copy | time_cap | verify | unsafe) ;; *) reason=unreachable ;; esac
 			failed="$failed $n"
 			say "  $n: FAILED ($reason)"
+			if [ "$reason" = unsafe ] && why=$(cat "$WORK/dist/$(clean "$n").why" 2>/dev/null); then
+				rest=${why#*|}
+				say "    ${rest%%|*} is not safe for the health check there: ${why##*|}. Make it owned by root and not writable by group or others."
+			fi
 			mark "step=distribute node=$(clean "$n") status=failed reason=$reason"
 			;;
 		esac
@@ -177,8 +213,14 @@ sync_node_ssh() {
 	n=$1
 	out="$WORK/dist/$(clean "$n")"
 	# shellcheck disable=SC2086
-	if ! node_bounded ssh $ssh_opts "$n" "$prep" </dev/null >/dev/null 2>&1; then
-		echo failed unreachable >"$out"
+	if ! said=$(node_bounded ssh $ssh_opts "$n" "$prep" </dev/null 2>/dev/null); then
+		case "$said" in
+		*"GWKS_UNSAFE "*)
+			echo failed unsafe >"$out"
+			printf '%s\n' "$said" | sed -n 's/^GWKS_UNSAFE //p' | head -n 1 >"$out.why"
+			;;
+		*) echo failed unreachable >"$out" ;;
+		esac
 		return 0
 	fi
 	for f in $FILES; do

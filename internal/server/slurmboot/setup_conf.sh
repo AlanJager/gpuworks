@@ -178,7 +178,7 @@ analyze_conf() {
 plan_chain() {
 	settle_chain
 	if [ -n "$CHAINED" ]; then
-		tmp="$SCRIPT_DIR/.chained.$$"
+		tmp=$(mktemp "$SCRIPT_DIR/.chained.XXXXXX") || fail "cannot write in $SCRIPT_DIR"
 		if printf '%s\n%s\n' "$CHAINED" "$ORIG_STATE" >"$tmp" && mv -f "$tmp" "$SCRIPT_DIR/chained"; then
 			say "The existing health check program $CHAINED will run after ours and keep its exit status,"
 			say "on nodes in the states it asked for ($ORIG_STATE), as before."
