@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"time"
 
@@ -52,7 +53,10 @@ func (b *Bridge) Forward(ctx context.Context, r *Route, req *http.Request, c Cal
 // timeout plus extapi.PrincipalExpirySlackS after it is signed.
 func signerFor(r *Route, c Caller) pluginhost.Signer {
 	p, access := principalFor(r, c)
-	return func(key []byte, h http.Header) error {
+	return func(manifest extapi.Digest, key []byte, h http.Header) error {
+		if manifest != r.manifest {
+			return pluginhost.Unavailable(r.Plugin, string(pluginhost.StateRunning), errors.New("plugin build changed since the route was matched"))
+		}
 		signed := *p
 		signed.Exp = extapi.PrincipalExpiry(time.Now(), r.Decl.TimeoutS)
 		hdr, mac, err := extapi.SignPrincipal(key, &signed, access)

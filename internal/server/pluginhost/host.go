@@ -261,7 +261,9 @@ func (h *Host) Do(ctx context.Context, id string, req *http.Request, class Class
 // Signer sets the headers that authenticate a call to the process that
 // serves it, under that process's principal key (fresh per spawn). A call
 // that waits for an on-demand start is signed for the process it reaches.
-type Signer func(key []byte, header http.Header) error
+// manifest identifies the verified build selected for that process, so the
+// signer can refuse authorization from an earlier route snapshot.
+type Signer func(manifest extapi.Digest, key []byte, header http.Header) error
 
 // DoSigned is Do with sign applied to a copy of req's headers just before
 // it is sent; nil signs nothing. A signing failure is the server's own and
@@ -272,12 +274,12 @@ func (h *Host) DoSigned(ctx context.Context, id string, req *http.Request, class
 		return nil, Unavailable(id, string(StateStopped), ErrUnknownPlugin)
 	}
 	start := time.Now()
-	resp, outcome, err := h.do(ctx, i, req, class)
+	resp, outcome, err := h.do(ctx, i, req, class, sign)
 	i.metrics.observeCall(class, outcome, time.Since(start))
 	return resp, err
 }
 
-func (h *Host) do(ctx context.Context, i *instance, req *http.Request, class Class) (*http.Response, CallOutcome, error) {
+func (h *Host) do(ctx context.Context, i *instance, req *http.Request, class Class, sign Signer) (*http.Response, CallOutcome, error) {
 	id := i.spec.ID
 	timeout := h.timing.CallTimeout
 	if class.Timeout > 0 {
@@ -305,8 +307,8 @@ func (h *Host) do(ctx context.Context, i *instance, req *http.Request, class Cla
 		send := req
 		if sign != nil {
 			send = req.Clone(req.Context())
-			if err := sign(r.key, send.Header); err != nil {
-				return nil, fmt.Errorf("plugin %s: sign the call: %w", id, err)
+			if err := sign(i.spec.ManifestSHA256, r.key, send.Header); err != nil {
+				return nil, CallUnavailable, fmt.Errorf("plugin %s: sign the call: %w", id, err)
 			}
 		}
 		resp, err := r.conn.do(ctx, send, class, deadline, r.touch)

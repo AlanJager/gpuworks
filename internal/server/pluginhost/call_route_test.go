@@ -15,7 +15,7 @@ import (
 // signWith signs a principal for route action under the key DoSigned
 // hands it, and records each key.
 func signWith(action string, keys *[][]byte) Signer {
-	return func(key []byte, h http.Header) error {
+	return func(_ extapi.Digest, key []byte, h http.Header) error {
 		*keys = append(*keys, append([]byte(nil), key...))
 		p := &extapi.Principal{Kind: extapi.PrincipalPublic, RequestID: "req-1", RouteAction: action, Route: "/x",
 			Exp: extapi.PrincipalExpiry(time.Now(), 0)}
@@ -81,7 +81,7 @@ func TestSignedCallsUseTheKeyOfTheProcessThatServesThem(t *testing.T) {
 		t.Fatalf("a principal for another route = %d", resp.StatusCode)
 	}
 	broken := errors.New("no principal")
-	_, err = h.DoSigned(ctx, "acme_driver", req, Class{}, func([]byte, http.Header) error { return broken })
+	_, err = h.DoSigned(ctx, "acme_driver", req, Class{}, func(extapi.Digest, []byte, http.Header) error { return broken })
 	if !errors.Is(err, broken) {
 		t.Fatalf("a signing failure = %v", err)
 	}

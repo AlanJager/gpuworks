@@ -141,14 +141,14 @@ func TestServerSignedRoutesVerifyInThePlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	decl := extapi.RouteDecl{Method: http.MethodPost, Pattern: "/jobs", Action: "acme_backup.jobs_create", Access: extapi.RouteAdminSession, Feature: "acme.backup"}
-	r := &Route{Plugin: "acme_backup", Version: "1.0.0", Decl: decl, Timeout: 60 * time.Second}
+	r := &Route{Plugin: "acme_backup", Version: "1.0.0", Decl: decl, Timeout: 60 * time.Second, manifest: cfg.ManifestSHA256}
 	caller := Caller{Kind: extapi.PrincipalSession, UserID: 7, Username: "ada", Role: "admin", LocalAdmin: true,
 		RequestID: strings.Repeat("r", 4096), Access: extapi.AccessReadOnly}
 	req, err := http.NewRequest(http.MethodPost, "http://gwx-plugin:80"+extapi.PathRoutePrefix+"/jobs", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := signerFor(r, caller)(h.PrincipalKey(), req.Header); err != nil {
+	if err := signerFor(r, caller)(cfg.ManifestSHA256, h.PrincipalKey(), req.Header); err != nil {
 		t.Fatal(err)
 	}
 	resp, err := h.Do(req)
@@ -171,7 +171,7 @@ func TestServerSignedRoutesVerifyInThePlugin(t *testing.T) {
 	// Under another spawn's key the plugin refuses it.
 	other := bytes.Repeat([]byte{9}, extapi.PrincipalKeyBytes)
 	req, _ = http.NewRequest(http.MethodPost, "http://gwx-plugin:80"+extapi.PathRoutePrefix+"/jobs", nil)
-	_ = signerFor(r, caller)(other, req.Header)
+	_ = signerFor(r, caller)(cfg.ManifestSHA256, other, req.Header)
 	resp, err = h.Do(req)
 	if err != nil {
 		t.Fatal(err)
