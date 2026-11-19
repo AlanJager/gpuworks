@@ -184,16 +184,35 @@ func TestDebugSessionEndsAtItsDeadline(t *testing.T) {
 	m.mu.Lock()
 	m.current.timer.Reset(time.Millisecond)
 	m.mu.Unlock()
+	waitDebugSessionEnded(t, m, s.ID, "deadline")
+}
+
+// Public closed status precedes the final manifest rename. Wait for both
+// observations before TempDir cleanup so the asynchronous publisher has
+// finished its last filesystem operation for this exact session.
+func waitDebugSessionEnded(t *testing.T, m *Manager, id, reason string) {
+	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
+	var readErr error
+	var manifest DebugSession
 	for {
-		if st, _ := m.DebugStatus(); !st.Open {
-			if st.ID != s.ID || st.Ended != "deadline" {
+		if st, ok := m.DebugStatus(); ok && !st.Open {
+			if st.ID != id || st.Ended != reason || st.EndedAt == nil {
 				t.Fatalf("ended = %+v", st)
 			}
-			return
+			raw, err := os.ReadFile(filepath.Join(m.DebugDir(), id, "session.json"))
+			readErr = err
+			if err == nil {
+				manifest = DebugSession{}
+				readErr = json.Unmarshal(raw, &manifest)
+				if readErr == nil && manifest.ID == id && !manifest.Open && manifest.Ended == reason &&
+					manifest.EndedAt != nil && manifest.EndedAt.Equal(*st.EndedAt) {
+					return
+				}
+			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the deadline did not end the session")
+			t.Fatalf("session %s did not publish its final %s manifest: %+v (read: %v)", id, reason, manifest, readErr)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -203,7 +222,8 @@ func TestDebugSessionEndsAtItsDeadline(t *testing.T) {
 // bytes reach its size.
 func TestDebugSessionBounds(t *testing.T) {
 	m, _, _ := newManager(t)
-	if _, err := m.StartDebug(context.Background(), DebugRequest{DeploymentIDs: []uint{7}, MaxBytes: 20 << 20}); err != nil {
+	s, err := m.StartDebug(context.Background(), DebugRequest{DeploymentIDs: []uint{7}, MaxBytes: 20 << 20})
+	if err != nil {
 		t.Fatal(err)
 	}
 	big := make([]byte, 1<<20)
@@ -221,17 +241,5 @@ func TestDebugSessionBounds(t *testing.T) {
 		_, _ = w.Write(big)
 	}
 	_ = w.Close()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if st, _ := m.DebugStatus(); !st.Open {
-			if st.Ended != "size_limit" {
-				t.Fatalf("ended = %+v", st)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the size did not end the session")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitDebugSessionEnded(t, m, s.ID, "size_limit")
 }

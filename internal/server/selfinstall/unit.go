@@ -120,6 +120,10 @@ func systemdQuote(value string) string {
 	return b.String()
 }
 
+// SystemdCommandLine is args as an Exec*= line of a unit or drop-in, each
+// argument quoted the way the server's own ExecStart is.
+func SystemdCommandLine(args []string) string { return systemdArgs(args) }
+
 func systemdArgs(args []string) string {
 	quoted := make([]string, 0, len(args))
 	for _, arg := range args {

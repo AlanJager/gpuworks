@@ -39,6 +39,7 @@ To specify another installation directory, append `--dir /path/to/installation` 
 | | [`migrate`](#gpuworks-migrate) | Run migrations and seed the built-in catalog in the specified SQLite database, then exit | Operators/developers, for offline checks or database premigration |
 | | [`reset-password`](#gpuworks-reset-password) | Reset the administrator account password | Operators, when the password is forgotten |
 | | [`plugin`](#gpuworks-plugin) | Verify, install, list, enable, disable and uninstall plugin packages, show pushed state, import trust and package indexes, check compatibility before a downgrade | Operators; works with the server stopped; enable, disable and uninstall require it |
+| | [`host-identity`](#gpuworks-host-identity) | As root, read the host identity facts only root may read and write them to `/run/gpuworks/host-identity.json` | systemd runs it before every start of the server; not run by hand |
 | | `version` | Print the version | Anyone |
 | | `edition` | Print the build edition (`community` for the community build); the `version` output does not include it | Anyone; to confirm which build is installed when troubleshooting |
 | | `console-upgrade-protocol` | Print the console upgrade protocol number supported by this version (currently `1`); versions predating console upgrades do not have this subcommand | Before a console upgrade, the server invokes it on the new binary to be installed |
@@ -296,6 +297,17 @@ Verifies, installs, lists, enables, disables and uninstalls signed plugin packag
 Every subcommand takes `--data DIR` (by default found the same way as for `reset-password`), `--db PATH` (default `<data>/gpuworks.db`) and `--config server.yaml` (default: the `server.yaml` next to the binary, then the default installation's; its `plugins` section applies, see [Configuration Reference](configuration.md#plugin-trust-and-site-policy)). They work with the server stopped: the database opens the way the other maintenance commands open it, and `<data>/plugins/` has its own lock. `enable`, `disable` and `uninstall` change state that a running server still holds in memory and would quietly undo, so they require the server to be stopped: when they cannot take `<data>/server.lock` (see [Control Plane Installation Layout](install-layout.md)) they exit 2 with `the server (pid N) is running; stop it first` (when the lock file names no live server, so the holder may be another maintenance command, the message names the lock file instead: `another gpuworks process holds <data>/server.lock; …`) and change nothing; once taken, they hold it until they finish, so no server starts meanwhile. The data directory must already exist; it is never created. Every other refusal carries a code (see [Error codes](plugin-protocol.md#error-codes) and the `PLUGIN_*` codes), which the log shows as `code=`.
 
 This build compiles in no project root, so for now only packages certified by an issuer trusted in `server.yaml` install; a fork puts in its own roots through `cli.Options.PluginRoots` in its build.
+
+## gpuworks host-identity
+
+`gpuworks host-identity --write PATH [--group GROUP]` reads the facts that name the server's machine and writes the two the kernel lets only root read (the system UUID and the board serial), with the other two, to `PATH`, so that a server running as its service account can complete its [host identity](../dev/extensions.md#the-management-servers-host-identity). The systemd drop-in that the command-line `gpuworks install` and `gpuworks upgrade` write as root in systemd mode has systemd run it as root before every start (a console upgrade does not write the drop-in) (see [Control plane installation layout](install-layout.md#systemd-unit)); it is not run by hand. Root uses the protected `host-identity-exec` copy in the systemd unit directory; the main program remains service-writable for console upgrades. Only explicit command-line install/upgrade refreshes that copy. A console upgrade never copies the writable main program into the root execution path.
+
+| flag | Description |
+|---|---|
+| `--write PATH` | Required; an absolute, clean path, normally `/run/gpuworks/host-identity.json`; a relative path is refused |
+| `--group GROUP` | The group that may read the file (the service group); without it only root can read it |
+
+It runs only as root, and otherwise refuses and writes nothing. The directory of `PATH` must be owned by root with mode 0755: a missing one is created that way, and an existing one with another owner or mode is refused. The file is first written to a new temporary file in that directory (`O_CREAT|O_EXCL|O_NOFOLLOW`, so a planted symlink is never followed), given `root:<GROUP>` and mode 0440 through its descriptor and synced, then renamed over the old file; the service account can read it but can neither change its mode nor replace it.
 
 ## gpuworks support-bundle
 
@@ -634,5 +646,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: db33357c2e8ff8f9608a057acffe68388430423a51fc1dd38745bc4e1ec50aa0 -->
+<!-- translation-source-sha256: ca2603b0b6741f3c034cac89a8e558f8364aa91c2c4b41810e2d2c1082a8f2fd -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

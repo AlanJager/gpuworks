@@ -77,18 +77,31 @@ func (f *fakeReads) NodeInventory(_ context.Context, cursor uint64, limit int) (
 	return out, next, nil
 }
 
+func (f *fakeReads) HostIdentity(_ context.Context, key []byte) (extapi.HostIdentityAnswer, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, readCall{what: "host", key: key})
+	if f.err != nil {
+		return extapi.HostIdentityAnswer{}, f.err
+	}
+	if f.broken {
+		return extapi.HostIdentityAnswer{MachineID: &extapi.IdentityPart{H: "not-hex"}}, nil
+	}
+	return extapi.HostIdentityAnswer{SystemUUID: &extapi.IdentityPart{H: "5f0c8e2a9d413b77", Tail: "3432"}}, nil
+}
+
 func (f *fakeReads) recorded() []readCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]readCall(nil), f.calls...)
 }
 
-var readPermissions = []string{"read:node_identity", "read:node_inventory"}
+var readPermissions = []string{"read:host_identity", "read:node_identity", "read:node_inventory"}
 
 func readerOwner(lifecycle string, perms ...string) Owner {
 	return Owner{ID: "acme_backup", Version: "1.0.0", Lifecycle: lifecycle,
 		Grant: extapi.PluginGrant{ID: "acme_backup", Version: "1.0.0", PermissionsGranted: perms},
-		Use:   map[string]int{extapi.CapHostNodeIdentity: 1, extapi.CapHostNodes: 1}}
+		Use:   map[string]int{extapi.CapHostNodeIdentity: 1, extapi.CapHostNodes: 1, extapi.CapHostHostIdentity: 1}}
 }
 
 func readerConn(t *testing.T, reads Reads, o Owner) *hostConn {

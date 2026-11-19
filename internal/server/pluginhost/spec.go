@@ -224,6 +224,9 @@ type Reads interface {
 	// NodeInventory is the page of nodes after the node whose id is cursor
 	// (0 for the first page), at most limit; next is 0 on the last page.
 	NodeInventory(ctx context.Context, cursor uint64, limit int) (nodes []extapi.InventoryNode, next uint64, err error)
+	// HostIdentity is the salted identity of the management server's
+	// machine; key is IdentityKey(owner, salt).
+	HostIdentity(ctx context.Context, key []byte) (extapi.HostIdentityAnswer, error)
 }
 
 // IdentityKey is the key a plugin's node identity digests are made with:

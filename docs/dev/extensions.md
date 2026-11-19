@@ -40,7 +40,7 @@ func main() {
 - `Extensions.Modules` 交给 `serve`；`migrate`、`reset-password`、`support-bundle` 与追加子命令打开数据库时也带上模块的迁移（追加子命令用 `cli.Env.OpenMaintenanceStore`）。
 - `Extensions.UI` 替换内嵌的社区版控制台，布局与 `internal/server/webui/dist` 相同；为空时服务内嵌构建。
 - `Distribution` 是该构建自己的发布通道：版本检查、通知、目录更新与升级都读它，签名索引里的版本名不符即拒绝。它的版本名必须与 `Edition` 相同，否则启动即 panic。
-- `InstallHooks` 在 `install`、`upgrade` 时依次执行，`uninstall` 时倒序执行，用于设备权限之类必须由 root 完成的主机步骤。
+- `InstallHooks` 在 `install`、`upgrade` 时依次执行，`uninstall` 时倒序执行，用于设备权限之类必须由 root 完成的主机步骤。核心自己的钩子（[主机身份](#管理-server-的主机身份)的 systemd drop-in）排在它们之前，所以安装时先执行、卸载时最后执行。钩子拿到的 `Layout.UnitDir` 只在 systemd 模式下非空，没有它时主机身份钩子什么也不做；控制台升级不执行钩子。
 
 官方构建传零值。`Edition` 与 `Distribution` 的按版本名作用域只服务分叉构建，官方发布流程不再扩展它们（ADR 0071）。
 
@@ -74,8 +74,9 @@ type Service interface{ Run(ctx context.Context) error }
 | `NodeIdentity(ctx, ids, salt)` | 指定节点的加盐硬件身份（`store.NodeIdentity`），原始序列号不出核心，见[节点身份与节点清单](#节点身份与节点清单) |
 | `NodeInventory(ctx, cursor, limit)` | 按加入顺序分页的节点清单（`store.NodeInventoryPage`）：名称、加入时间、自己的卡（序号、型号、有无序列号） |
 | `NodeNamesByID(ctx, ids)` | 指定节点的显示名，以 id 为键（`map[uint]string`），读池上一次查询 |
+| `HostIdentity(salt)` | 管理 server 所在机器的加盐身份（`hostidentity.Salted`），见[管理 server 的主机身份](#管理-server-的主机身份) |
 
-`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`ReapplySchedulingHoldsFor`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 与 `NodeNamesByID` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
+`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`ReapplySchedulingHoldsFor`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 、`NodeNamesByID` 与 `HostIdentity` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
 扩展路由挂在 `/api/v1/x/<名>/` 下：`api.RouteSpec.Pattern` 相对 `/api/v1`，是 `/x/<名>` 或以 `/x/<名>/` 开头，且是规整的路径（没有 `.`、`..`、`//` 与结尾的 `/`）；越出自己的命名空间、路径不规整，或同一方法下两个模式只差参数名（`{id}` 与 `{name}`），都在路由构建时 panic。核心不在 `/api/v1/x/` 下注册任何路由，所以模块名可以与核心路径段同名（如 `nodes`），也不会与核心将来新增的路径冲突。
 
@@ -122,6 +123,16 @@ type Service interface{ Run(ctx context.Context) error }
 - `NodeNamesByID(ctx, ids)` 返回每个仍存在的指定节点的显示名（运维起的名字，否则主机名），以 id 为键；不存在的节点（从未有过或已删除）不在结果里，重复的 id 只算一次。只为少数节点打标签时用它，不必翻 `NodeInventory`。`ids` 为空时返回空 map、不查询；去重后超过 500 个返回 `store.ErrNodeReadBatch`，不会被截断。它是读池上一次按主键的查询。
 - 规模：`NodeIdentity` 与 `NodeInventory`都是钉住的读，在读池上各两次带索引的查询（节点按主键查找或按主键范围、卡走 `gpus` 的 `(node_id, ident)` 索引），一次最多 500 个节点。按页面上显示的节点调用 `NodeIdentity`，不要在每个事件里对整个节点集合调用。身份的变化（新的主机 UUID、换卡）不在 `store.NodeFleetTopic` 上发布；需要跟上它的模块在读页面时重新读。
 - 插件：已安装的插件经宿主接口读同样的两项（`POST /host/v1/node-identity`、`GET /host/v1/nodes`，线上格式见[插件协议](../reference/plugin-protocol.md#节点读取)），需要 `read:node_identity` / `read:node_inventory` 权限与 `host.node_identity@1` / `host.nodes@1` 能力。插件的盐由 `pluginhost.IdentityKey` 绑定到包 id（`"pkg\0"+id+"\0"+盐` 作为 HMAC 密钥，盐至多 219 字节），所以两个包用同一个盐得到不同的 `H`，同一个包在不同的 server 上得到相同的 `H`；不加盐的 `Tail` 对所有调用方相同，仍允许跨包的弱关联。`app.PluginReads` 把 store 的结果转成线上对象，名称与型号超过 255 字节时按字符边界截断。
+
+### 管理 server 的主机身份
+
+`HostIdentity(salt)` 返回 server 自己这台机器的加盐身份 `hostidentity.Salted{SystemUUID, BoardSerial, MachineID, RootFSUUID}`，每一项是 `hwident.IdentityPart`（与节点身份同一种摘要与尾部，读不到时为零值）。系统 UUID 按节点 `Host` 的同一种类（`hwident.KindHost`）做摘要，所以同一个盐下它等于运行在 server 这台机器上的节点的 `Host.H`。盐为 1 到 256 字节，否则 `store.ErrIdentitySalt`。事实每个进程只读一次（`hostidentity.Local`）。
+
+- 来源（`internal/server/hostidentity`）：Linux 上读 `/sys/class/dmi/id/product_uuid`、`board_serial`、`/etc/machine-id`，并按 `/proc/self/mountinfo` 与 `/dev/disk/by-uuid` 找出 `/` 的文件系统 UUID；macOS 上用 `ioreg` 读 `IOPlatformUUID` 与整机序列号。空值、固件占位值、全 0 或全 F 视为未知。
+- 内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：核心安装钩子在 systemd 模式下（以 root 运行的命令行 `install`、`upgrade`；控制台升级不执行安装钩子，独立运行模式下钩子拿到的 `Layout.UnitDir` 为空）写 systemd drop-in，让 systemd 每次启动前以 root 执行 [`gpuworks host-identity`](../reference/cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`（`root:<服务组>`，0440，所在目录 root 所有、0755）。`hostidentity.Load` 只用这个文件补自己读不到的这两项，直接读到的值永远优先，`MachineID` 与 `RootFSUUID` 只来自直接读取；文件缺失、超过 4 KiB 或不合格式时什么也不补。`/run` 是内存文件系统，把数据目录拷到另一台机器不会带走原来那台的身份。
+- root 启动前步骤只执行单元目录中受保护的 `host-identity-exec`，不执行服务账户可写的主程序。命令行安装/升级从正在运行的安装器映像发布副本并检查整个路径的所有者、权限和 ACL；控制台升级保留既有副本。副本写出的身份文件格式必须与后续 server 版本保持兼容。
+- 插件经宿主接口 `POST /host/v1/host-identity` 读同样的事实（线上格式见[插件协议](../reference/plugin-protocol.md#主机身份)），需要 `read:host_identity` 权限与 `host.host_identity@1` 能力；盐与节点读取一样由 `pluginhost.IdentityKey` 绑定到包 id。
+- 诊断信息收集（控制台与 `gpuworks support-bundle`）带上 `server/host-identity.json`：用固定的密钥 `core\0support_bundle` 加盐的同一组事实，所以同一台机器在不同的收集里摘要相同，原始值不进压缩包。
 
 ## 表与迁移
 
@@ -336,7 +347,7 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 ### gwx/1 连接与宿主接口
 
-每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`，以及节点读取 `POST /host/v1/node-identity`、`GET /host/v1/nodes`（`pluginhost.Reads`，由 app 以 store 实现；没有 `Reads` 时回 `PLUGIN_HOST_ROUTE_UNKNOWN`，未批准的权限回 `PLUGIN_HOST_NOT_PERMITTED`，未协商的能力回 `PLUGIN_CAPABILITY_NOT_OFFERED`，越界参数回 `PLUGIN_HOST_ARGUMENT_INVALID`），以及时钟、就绪、自有状态与派生密钥（`GET /host/v1/meta`、`POST /host/v1/clock/correct`、`POST /host/v1/state/ready`、`GET /host/v1/state/{kind}`、`POST /host/v1/derive-key`，各自需要的能力、角色与权限见[插件协议](../reference/plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)，由 `pluginbridge` 接到推送状态、由 `app` 从主密钥派生）；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`），节点清单另有每秒 2 页、突发 4 页的桶。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
+每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`，以及读取 `POST /host/v1/node-identity`、`GET /host/v1/nodes`、`POST /host/v1/host-identity`（`pluginhost.Reads`，由 app 以 store 与本机的主机身份实现；没有 `Reads` 时回 `PLUGIN_HOST_ROUTE_UNKNOWN`，未批准的权限回 `PLUGIN_HOST_NOT_PERMITTED`，未协商的能力回 `PLUGIN_CAPABILITY_NOT_OFFERED`，越界参数回 `PLUGIN_HOST_ARGUMENT_INVALID`），以及时钟、就绪、自有状态与派生密钥（`GET /host/v1/meta`、`POST /host/v1/clock/correct`、`POST /host/v1/state/ready`、`GET /host/v1/state/{kind}`、`POST /host/v1/derive-key`，各自需要的能力、角色与权限见[插件协议](../reference/plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)，由 `pluginbridge` 接到推送状态、由 `app` 从主密钥派生）；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`），节点清单另有每秒 2 页、突发 4 页的桶。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
 
 ### 插件 SDK：`pkg/pluginsdk`
 

@@ -312,6 +312,7 @@ server 总是提供 `host.setup@1`，但只有 Linux 能执行它，其他平台
 | `GET /host/v1/meta` | 元信息 | server 版本、启动 id 与时钟 |
 | `POST /host/v1/clock/correct` | 时钟校正 | 持有 `clock_authority` 的包校正 extclock |
 | `POST /host/v1/derive-key` | 派生密钥 | 绑定到本包与标签的密钥 |
+| `POST /host/v1/host-identity` | 主机身份 | 插件读取管理 server 所在机器加盐的身份，见[主机身份](#主机身份) |
 | 请求头 `Gwx-Deadline-Ms` | Unix 毫秒 | 调用的截止时间 |
 | 响应头 `Gwx-Product-Error` | — | 标明插件路由的响应体是一个错误对象 |
 | `/r/<路径>` | 路由 | 对插件某条路由的请求（[路由请求](#路由请求与主体)） |
@@ -587,6 +588,29 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 ```
 
 密钥是对 server 的 `master.key` 做 HKDF-SHA256（无盐），`info` 为 `"gpuworks plugin key"`、一个零字节、包 id、一个零字节、标签，取 `length` 字节。同一包同一标签在主密钥不变期间得到同一个密钥；不同的包或标签得到无关的密钥；插件看不到主密钥本身。
+
+## 主机身份
+
+`POST /host/v1/host-identity` 返回管理 server 所在机器加盐的身份，需要 `read:host_identity` 权限与 `host.host_identity@1` 能力；`on_demand` 的包也可以读。请求体只有盐，规则与密钥绑定同[节点身份](#节点身份)（1–219 字节，绑定到包 id），所以同一个包用同一个盐在两种读取里得到同一套摘要：
+
+<!-- golden: host_identity_request/v1/valid/salt.json -->
+```json
+{"salt":"acme-quota-2026"}
+```
+
+应答的每一项都是 `{h, tail}`，读不到的项缺省（固件占位值、容器里、根文件系统没有 UUID 时），什么都读不到时是 `{}`：
+
+<!-- golden: host_identity_answer/v1/valid/linux_server.json -->
+```json
+{"board_serial":{"h":"9e1c0b7a4d2f6e83","tail":"BC9X"},"machine_id":{"h":"03b5d7f91a2c4e68","tail":"cdef"},"root_fs_uuid":{"h":"7a1f3c5e9b0d2486","tail":"0a2b"},"system_uuid":{"h":"5f0c8e2a9d413b77","tail":"3432"}}
+```
+
+- `system_uuid`：固件的系统 UUID（Linux 的 SMBIOS `product_uuid`，macOS 的 `IOPlatformUUID`），按节点 `host` 的同一种类做摘要，所以同一个盐下它等于运行在 server 这台机器上的节点的 `host`。
+- `board_serial`：主板序列号（macOS 为整机序列号）。
+- `machine_id`：`/etc/machine-id`。
+- `root_fs_uuid`：挂在 `/` 上的块设备的文件系统 UUID。
+
+`h` 与 `tail` 的含义同节点身份。Linux 上内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：systemd 每次启动 server 之前以 root 运行受保护副本的 [`gpuworks host-identity`](cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`，server 只用它补自己读不到的这两项，自己读到的值永远优先，`machine_id` 与 `root_fs_uuid` 只来自直接读取。拒绝与[节点读取](#限速与拒绝)相同；请求体超过 4 KiB 时回 413 `REQUEST_TOO_LARGE`（`max_bytes` 为 4096）。
 
 ## 推送表
 

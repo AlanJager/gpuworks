@@ -312,6 +312,7 @@ Under ADR 0071, a plugin is a child process of the server and runs plaintext HTT
 | `GET /host/v1/meta` | Meta | The server version, boot id and clocks |
 | `POST /host/v1/clock/correct` | Clock correction | A package holding `clock_authority` corrects extclock |
 | `POST /host/v1/derive-key` | Derived key | A key bound to the package and a label |
+| `POST /host/v1/host-identity` | Host identity | The plugin reads the salted identity of the management server's machine; see [Host identity](#host-identity) |
 | Request header `Gwx-Deadline-Ms` | Unix milliseconds | The call's deadline |
 | Response header `Gwx-Product-Error` | — | Marks a plugin route's response body as an error object |
 | `/r/<path>` | Route | A request to one of the plugin's routes ([route requests](#route-requests-and-the-principal)) |
@@ -588,6 +589,29 @@ Derived keys: `label` is 1–64 of `[a-z0-9._-]`, and `length` is 16–64 bytes.
 
 The key is HKDF-SHA256 (no salt) of the server's `master.key`, with `info` being `"gpuworks plugin key"`, a zero byte, the package id, a zero byte and the label, taking `length` bytes. One package and label get the same key for the life of the master key; other packages or labels get unrelated keys; the plugin never sees the master key itself.
 
+## Host identity
+
+`POST /host/v1/host-identity` returns the salted identity of the machine the management server runs on. It needs the `read:host_identity` permission and the `host.host_identity@1` capability; an `on_demand` package may read it too. The body holds only the salt, with the rules and package binding of [Node identity](#node-identity) (1–219 bytes, bound to the package id), so one package with one salt gets one set of digests from both reads:
+
+<!-- golden: host_identity_request/v1/valid/salt.json -->
+```json
+{"salt":"acme-quota-2026"}
+```
+
+Each part of the answer is `{h, tail}`; a part the server could not read is absent (a firmware placeholder, a container, a root file system without a UUID), and when it reads nothing the answer is `{}`:
+
+<!-- golden: host_identity_answer/v1/valid/linux_server.json -->
+```json
+{"board_serial":{"h":"9e1c0b7a4d2f6e83","tail":"BC9X"},"machine_id":{"h":"03b5d7f91a2c4e68","tail":"cdef"},"root_fs_uuid":{"h":"7a1f3c5e9b0d2486","tail":"0a2b"},"system_uuid":{"h":"5f0c8e2a9d413b77","tail":"3432"}}
+```
+
+- `system_uuid`: the firmware system UUID (SMBIOS `product_uuid` on Linux, `IOPlatformUUID` on macOS), digested as the same kind as a node's `host`, so under one salt it equals the `host` of each node on the server's machine.
+- `board_serial`: the mainboard serial (the machine's serial number on macOS).
+- `machine_id`: `/etc/machine-id`.
+- `root_fs_uuid`: the file system UUID of the block device mounted at `/`.
+
+`h` and `tail` mean what they mean for node identity. On Linux the kernel lets only root read the system UUID and the board serial, and the server runs as its service account: before every start of the server, systemd runs [`gpuworks host-identity`](cli.md#gpuworks-host-identity) as root from the protected executable copy, which writes those two to `/run/gpuworks/host-identity.json`. The server uses the file only to fill those two when it cannot read them itself; a value it reads directly always wins, and `machine_id` and `root_fs_uuid` come only from direct reads. Refusals are those of the [node reads](#rate-limits-and-refusals); a body over 4 KiB answers 413 `REQUEST_TOO_LARGE` (`max_bytes` 4096).
+
 ## Pushed tables
 
 A row's `notice` is a code with parameters, and the code must be listed in the pushing package's manifest `codes`. Timelines are made of steps: only the first step may omit `at` (it holds from the push), later `at` values strictly increase, and a timeline has 1–64 steps; the server follows the steps on its own clock, and they take effect even while the plugin is down.
@@ -698,4 +722,4 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: a917b59f6f5003afb385432bfa0a5bc2a6feb548f66849576c6e36afaa8d3e6a -->
+<!-- translation-source-sha256: c7e054c01dd9bcf0bd93f5b4e0437018982cc78be5cc7d8efce6edba0a0adaf5 -->

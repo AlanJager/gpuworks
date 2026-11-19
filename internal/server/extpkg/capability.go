@@ -18,6 +18,7 @@ var offered = coreCapabilities()
 var hostReads = map[string]int{
 	extapi.CapHostNodeIdentity: 1,
 	extapi.CapHostNodes:        1,
+	extapi.CapHostHostIdentity: 1,
 }
 
 // hostCalls are the host API calls beside pushes this server answers

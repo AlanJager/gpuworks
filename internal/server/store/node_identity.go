@@ -2,13 +2,11 @@ package store
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"sort"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/hwident"
 )
 
 // MaxNodeReadBatch is the most nodes one NodeIdentity or NodeNamesByID call
@@ -30,20 +28,10 @@ var (
 	ErrIdentitySalt = errors.New("node identity: the salt must be 1 to 256 bytes")
 )
 
-// IdentityPart is one salted hardware identity: H, the first 16 hex
-// characters (8 bytes) of HMAC-SHA256 keyed with the caller's salt over
-// kind, a zero byte and the raw value (kind "host" for the host system
-// UUID, "card" for a card's serial); and Tail, the raw value's last four
-// characters, so a person can check it against the machine. Tail is empty
-// for a raw value shorter than eight characters, so it never is the whole
-// value. The zero IdentityPart means the value is unknown.
-type IdentityPart struct {
-	H    string
-	Tail string
-}
-
-// Known reports whether the part names a value.
-func (p IdentityPart) Known() bool { return p.H != "" }
+// IdentityPart is one salted hardware identity (hwident.IdentityPart):
+// a 16-hex-digit digest keyed with the caller's salt and the raw value's
+// last four characters. The zero IdentityPart means the value is unknown.
+type IdentityPart = hwident.IdentityPart
 
 // NodeIdentity is what identifies one node's hardware, salted: the machine
 // it runs on and the cards it owns. Raw serials never leave the server;
@@ -93,14 +81,14 @@ func (s *Store) NodeIdentity(ctx context.Context, ids []uint, salt []byte) ([]No
 	}
 	out := make([]NodeIdentity, len(hosts))
 	for i, h := range hosts {
-		id := NodeIdentity{NodeID: h.ID, Host: identityPart(salt, "host", h.HostSystemUUID), Cards: []IdentityPart{}}
+		id := NodeIdentity{NodeID: h.ID, Host: hwident.Part(salt, hwident.KindHost, h.HostSystemUUID), Cards: []IdentityPart{}}
 		for _, c := range cards[h.ID] {
 			serial, ok := accelerator.CardSerial(c.UUID)
 			if !ok {
 				id.CardsWithoutSerial++
 				continue
 			}
-			id.Cards = append(id.Cards, identityPart(salt, "card", serial))
+			id.Cards = append(id.Cards, hwident.Part(salt, hwident.KindCard, serial))
 		}
 		sort.Slice(id.Cards, func(a, b int) bool { return id.Cards[a].H < id.Cards[b].H })
 		out[i] = id
@@ -148,21 +136,6 @@ func (s *Store) ownedCards(ctx context.Context, nodeIDs []uint) (map[uint][]owne
 		})
 	}
 	return out, nil
-}
-
-func identityPart(salt []byte, kind, raw string) IdentityPart {
-	if raw == "" {
-		return IdentityPart{}
-	}
-	mac := hmac.New(sha256.New, salt)
-	mac.Write([]byte(kind))
-	mac.Write([]byte{0})
-	mac.Write([]byte(raw))
-	p := IdentityPart{H: hex.EncodeToString(mac.Sum(nil)[:8])}
-	if r := []rune(raw); len(r) >= 8 {
-		p.Tail = string(r[len(r)-4:])
-	}
-	return p
 }
 
 func uniqueIDs(ids []uint) []uint {

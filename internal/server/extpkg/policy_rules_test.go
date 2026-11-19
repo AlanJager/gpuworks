@@ -108,14 +108,14 @@ func TestVerifyAcceptsWhatTheServerPolicyAsksFor(t *testing.T) {
 	}
 }
 
-// This server offers the node reads, and an on-demand package may require
-// them: reads are not pushes.
+// This server offers the node and host-identity reads, and an on-demand
+// package may require them: reads are not pushes.
 func TestVerifyAcceptsAnOnDemandPackageRequiringTheNodeReads(t *testing.T) {
 	w := newWorld(t)
 	spec := extsign.Minimal("acme", "acme_backup", "1.0.0")
 	spec.Manifest.Runtime.Lifecycle = extapi.LifecycleOnDemand
-	spec.Manifest.Permissions = []string{"read:node_identity", "read:node_inventory"}
-	spec.Manifest.Requires = map[string]int{"host.node_identity": 1, "host.nodes": 1}
+	spec.Manifest.Permissions = []string{"read:host_identity", "read:node_identity", "read:node_inventory"}
+	spec.Manifest.Requires = map[string]int{"host.host_identity": 1, "host.node_identity": 1, "host.nodes": 1}
 	v := w.verifier()
 	v.Offered = extpkg.Capabilities()
 	if _, err := v.Verify(contents(t, extsign.Build(t, w.pub, spec)), extpkg.Install); err != nil {

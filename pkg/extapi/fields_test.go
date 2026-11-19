@@ -271,6 +271,11 @@ UIDecl.entry string
 UIDecl.mode string
 UIDecl.nav []NavDecl
 UIDecl.sdk Range
+HostIdentityAnswer.board_serial *IdentityPart
+HostIdentityAnswer.machine_id *IdentityPart
+HostIdentityAnswer.root_fs_uuid *IdentityPart
+HostIdentityAnswer.system_uuid *IdentityPart
+HostIdentityRequest.salt string
 IdentityPart.h string
 IdentityPart.tail string
 InventoryCard.index int
@@ -301,7 +306,7 @@ WireError.retry_after_ms int64
 var wireRoots = []any{
 	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Index{}, Envelope{}, PublicKey{},
 	HandshakeRequest{}, HandshakeResponse{}, Health{}, WireError{}, StatePush{}, StateAck{},
-	NodeIdentityRequest{}, NodeIdentityAnswer{}, NodesPage{},
+	NodeIdentityRequest{}, NodeIdentityAnswer{}, NodesPage{}, HostIdentityRequest{}, HostIdentityAnswer{},
 	ClockCorrection{}, ClockCorrected{}, HostMeta{}, PushedState{}, KeyRequest{}, DerivedKey{},
 	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{}, Principal{},
 }

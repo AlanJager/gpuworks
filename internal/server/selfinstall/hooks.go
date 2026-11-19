@@ -33,7 +33,9 @@ import (
 // So both methods must be idempotent. They act on the host through run, which
 // escalates a Command with Sudo, and must not assume they run as root.
 // serviceUser is the account the service runs as; it is empty when the
-// service runs as whoever starts it (the detached mode).
+// service runs as whoever starts it (the detached mode). layout.UnitDir is
+// empty unless the service runs under systemd, so a hook that writes beside
+// the unit (WriteDropIn) does nothing for a detached or launchd install.
 type InstallHook interface {
 	Install(ctx context.Context, run Runner, layout Layout, serviceUser string) error
 	Uninstall(ctx context.Context, run Runner, layout Layout) error
@@ -53,11 +55,22 @@ func (i *Installer) WithHooks(hooks ...InstallHook) *Installer {
 	return i
 }
 
+// hookLayout is the layout the hooks see for an installation in mode: the
+// installer's, with UnitDir cleared unless systemd supervises the service.
+func (i *Installer) hookLayout(mode string) Layout {
+	layout := i.layout
+	if mode != ModeSystemd {
+		layout.UnitDir = ""
+	}
+	return layout
+}
+
 // runInstallHooks runs every hook's Install in order, stopping at the first
 // failure.
-func (i *Installer) runInstallHooks(ctx context.Context, serviceUser string) error {
+func (i *Installer) runInstallHooks(ctx context.Context, mode, serviceUser string) error {
+	layout := i.hookLayout(mode)
 	for n, hook := range i.hooks {
-		if err := hook.Install(ctx, i.deps.Run, i.layout, serviceUser); err != nil {
+		if err := hook.Install(ctx, i.deps.Run, layout, serviceUser); err != nil {
 			return fmt.Errorf("install step %d (%T): %w", n+1, hook, err)
 		}
 	}
@@ -66,9 +79,10 @@ func (i *Installer) runInstallHooks(ctx context.Context, serviceUser string) err
 
 // runUninstallHooks runs every hook's Uninstall in reverse order, stopping at
 // the first failure.
-func (i *Installer) runUninstallHooks(ctx context.Context) error {
+func (i *Installer) runUninstallHooks(ctx context.Context, mode string) error {
+	layout := i.hookLayout(mode)
 	for n := len(i.hooks) - 1; n >= 0; n-- {
-		if err := i.hooks[n].Uninstall(ctx, i.deps.Run, i.layout); err != nil {
+		if err := i.hooks[n].Uninstall(ctx, i.deps.Run, layout); err != nil {
 			return fmt.Errorf("undo install step %d (%T): %w", n+1, i.hooks[n], err)
 		}
 	}
@@ -76,13 +90,17 @@ func (i *Installer) runUninstallHooks(ctx context.Context) error {
 }
 
 // reapplyInstallHooks is upgrade's part: the hooks again, and the systemd
-// unit rewritten so its groups match them. Without hooks it does nothing, so
-// an upgrade without them leaves the unit as install wrote it.
+// unit rewritten so its groups match them; writing the unit reloads systemd,
+// which is what makes a drop-in a hook wrote take effect at the restart. The
+// server's own build always has a hook (the host identity drop-in), so a CLI
+// upgrade under systemd always renders the unit again and replaces any hand
+// edit to it (an override belongs in a drop-in of its own). An installer
+// without hooks does nothing here.
 func (i *Installer) reapplyInstallHooks(ctx context.Context, svc Service) error {
 	if len(i.hooks) == 0 {
 		return nil
 	}
-	if err := i.runInstallHooks(ctx, svc.Cfg.ServiceUser); err != nil {
+	if err := i.runInstallHooks(ctx, svc.Mode, svc.Cfg.ServiceUser); err != nil {
 		return err
 	}
 	if svc.Mode != ModeSystemd {
@@ -121,10 +139,14 @@ func (l Layout) DropInPath(name string) string {
 // WriteDropIn writes the systemd drop-in name (lowercase letters, digits, "-"
 // and "_") for the server's unit through run, escalating as needed. systemd
 // reads it at the next daemon-reload, which install and upgrade do after the
-// hooks when they write the unit.
+// hooks when they write the unit. Without a UnitDir (the service is not
+// under systemd) it does nothing.
 func WriteDropIn(ctx context.Context, run Runner, layout Layout, name, content string) error {
 	if !dropInName.MatchString(name) {
 		return fmt.Errorf("drop-in name %q must be lowercase letters, digits, - and _", name)
+	}
+	if layout.UnitDir == "" {
+		return nil
 	}
 	path := layout.DropInPath(name)
 	if err := run.Run(ctx, Command{Path: "mkdir", Args: []string{"-p", filepath.Dir(path)}, Sudo: true}); err != nil {
@@ -137,9 +159,13 @@ func WriteDropIn(ctx context.Context, run Runner, layout Layout, name, content s
 }
 
 // RemoveDropIn deletes the drop-in name; a missing one is not an error.
+// Without a UnitDir it does nothing.
 func RemoveDropIn(ctx context.Context, run Runner, layout Layout, name string) error {
 	if !dropInName.MatchString(name) {
 		return fmt.Errorf("drop-in name %q must be lowercase letters, digits, - and _", name)
+	}
+	if layout.UnitDir == "" {
+		return nil
 	}
 	return run.Run(ctx, Command{Path: "rm", Args: []string{"-f", layout.DropInPath(name)}, Sudo: true})
 }

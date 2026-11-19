@@ -12,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
+	"gpuworks.ai/gpuworks/internal/server/hostidentity"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -215,6 +216,22 @@ func (h *Host) NodeIdentity(ctx context.Context, ids []uint, salt []byte) ([]sto
 // (store.ErrNodeReadBatch).
 func (h *Host) NodeInventory(ctx context.Context, cursor uint, limit int) (store.NodeInventoryPage, error) {
 	return h.st.NodeInventory(ctx, cursor, limit)
+}
+
+// HostIdentity is the salted identity of the machine this server runs on
+// (hostidentity.Facts.Salted): its system UUID, digested as a node's host
+// is so that under one salt it equals the host of each node on this
+// machine, the board serial, the machine id and the root file system
+// UUID, each a 16-hex-digit HMAC-SHA256 keyed with salt plus the raw
+// value's last four characters, the zero part when unknown. On Linux the
+// two root-only values come from the file systemd has root write before
+// the server starts (hostidentity.RunFile). The facts are read once per
+// process. salt is 1 to 256 bytes, else store.ErrIdentitySalt.
+func (h *Host) HostIdentity(salt []byte) (hostidentity.Salted, error) {
+	if len(salt) == 0 || len(salt) > store.MaxIdentitySalt {
+		return hostidentity.Salted{}, store.ErrIdentitySalt
+	}
+	return hostidentity.Local().Salted(salt), nil
 }
 
 // NodeNamesByID is the display name of each named node that exists, keyed by

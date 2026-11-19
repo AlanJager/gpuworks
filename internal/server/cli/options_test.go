@@ -141,6 +141,7 @@ func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 		"experiencelaunch.Command":                  experiencelaunch.Command,
 		"selfinstall.EditionCommand":                selfinstall.EditionCommand,
 		"pluginexec.Command":                        pluginexec.Command,
+		"hostIdentityCommand":                       hostIdentityCommand,
 	}
 	var dispatched []string
 	for _, decl := range file.Decls {

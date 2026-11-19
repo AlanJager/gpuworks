@@ -111,7 +111,8 @@ func TestPlugintestRefusesRoutesAsTheHostAPIDoes(t *testing.T) {
 // permission, then the negotiated capability, then the arguments, each
 // refused with the same status, code, reason and parameters.
 func TestPlugintestRefusesReadsAsTheHostAPIDoes(t *testing.T) {
-	reads := map[string]extapi.Range{extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1}}
+	reads := map[string]extapi.Range{extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1},
+		extapi.CapHostHostIdentity: {Min: 1, Max: 1}}
 	argCalls := []hostCall{
 		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":""}`},
 		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":"` + strings.Repeat("s", extapi.MaxNodeIdentitySalt+1) + `"}`},
@@ -126,12 +127,19 @@ func TestPlugintestRefusesReadsAsTheHostAPIDoes(t *testing.T) {
 		{http.MethodGet, extapi.PathHostNodes + "?cursor=0", ""},
 		{http.MethodGet, extapi.PathHostNodes + "?limit=501", ""},
 		{http.MethodGet, extapi.PathHostNodes + "?after=3", ""},
+		{http.MethodPost, extapi.PathHostHostIdentity, `{"salt":""}`},
+		{http.MethodPost, extapi.PathHostHostIdentity, `{"salt":"` + strings.Repeat("s", extapi.MaxNodeIdentitySalt+1) + `"}`},
+		{http.MethodPost, extapi.PathHostHostIdentity, `{"node_ids":[1],"salt":"s"}`},
+		{http.MethodPost, extapi.PathHostHostIdentity, `{`},
+		{http.MethodPost, extapi.PathHostHostIdentity, `{"salt":"` + strings.Repeat("s", extapi.MaxHostIdentityRequestBytes) + `"}`},
+		{http.MethodGet, extapi.PathHostHostIdentity, ""},
 	}
 	gateCalls := []hostCall{
 		{http.MethodPost, extapi.PathHostNodeIdentity, `{"node_ids":[1],"salt":"s"}`},
 		{http.MethodGet, extapi.PathHostNodes, ""},
+		{http.MethodPost, extapi.PathHostHostIdentity, `{"salt":"s"}`},
 	}
-	all := []string{"read:node_identity", "read:node_inventory"}
+	all := []string{"read:host_identity", "read:node_identity", "read:node_inventory"}
 	cases := []struct {
 		name  string
 		perms []string
