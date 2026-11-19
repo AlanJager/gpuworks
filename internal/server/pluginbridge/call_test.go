@@ -179,10 +179,9 @@ func onDemand(s *extsign.Spec) { s.Manifest.Runtime.Lifecycle = extapi.Lifecycle
 
 func get(t *testing.T, b *Bridge, id string) (*http.Response, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	req, _ := http.NewRequest(http.MethodGet, "/r/x", nil)
-	return b.Call(ctx, id, req, pluginhost.Class{})
+	// The host applies callTiming's deadline and retains it until Body.Close.
+	return b.Call(context.Background(), id, req, pluginhost.Class{})
 }
 
 func waitState(t *testing.T, b *Bridge, id, state string) View {
@@ -210,6 +209,48 @@ func unavailableState(t *testing.T, err error) string {
 	return s
 }
 
+func TestOnDemandCallKeepsItsBodyReadableAfterHeaders(t *testing.T) {
+	w := newWorld(t, nil)
+	bodyReady := make(chan struct{})
+	requestStarted := make(chan context.Context, 1)
+	sp := &sdkSpawner{handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestStarted <- r.Context()
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		select {
+		case <-bodyReady:
+			_, _ = io.WriteString(w, "ok")
+		case <-r.Context().Done():
+		}
+	})}
+	timing := callTiming()
+	b, _ := w.openWith(sp, timing)
+	install(t, b, w.pkg("acme_driver", "1.0.0", onDemand), true)
+	resp, err := get(t, b, "acme_driver")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	requestCtx := <-requestStarted
+	select {
+	case <-requestCtx.Done():
+		t.Fatalf("request canceled with its response body still pending: %v", requestCtx.Err())
+	case <-time.After(2 * timing.IdleStop):
+	}
+	close(bodyReady)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || string(body) != "ok" {
+		t.Fatalf("body after headers = %q, err = %v", body, err)
+	}
+	if v := b.view("acme_driver"); v.State != string(pluginhost.StateRunning) {
+		t.Fatalf("state %s with the response body still open", v.State)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, b, "acme_driver", StateIdle)
+}
+
 // An enabled on-demand package is idle until called, runs for the call,
 // and goes back to idle when idle long enough; five such cycles leave no
 // down record behind, because an on-demand plugin is never reported down.
@@ -227,13 +268,19 @@ func TestOnDemandPackageStartsOnCallAndIdlesWithoutDownRecords(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cycle %d: %v", n, err)
 		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("cycle %d: reading body: %v", n, err)
+		}
 		if string(body) != "ok" || sp.count() != n {
 			t.Fatalf("cycle %d: body %q after %d spawns", n, body, sp.count())
 		}
 		if v := b.view("acme_driver"); v.State != string(pluginhost.StateRunning) {
 			t.Fatalf("cycle %d: state %s while serving", n, v.State)
+		}
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("cycle %d: closing body: %v", n, err)
 		}
 		waitState(t, b, "acme_driver", StateIdle)
 	}
