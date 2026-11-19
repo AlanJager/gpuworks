@@ -48,7 +48,7 @@ func (n *NodeRuntime) rpcStorageScan(ctx context.Context, raw json.RawMessage) (
 	}
 	var res modelscan.Result
 	err = n.storageDo(p.StorageID, "scan", timeout+n.storageTimeouts().scanGrace, func() error {
-		page, err := modelscan.Scan(ctx, root, modelscan.Options{MaxDepth: p.MaxDepth, Limit: p.Limit, Cursor: p.Cursor, Deadline: time.Now().Add(timeout)})
+		page, err := n.storage.scans.Scan(ctx, root, modelscan.Options{MaxDepth: p.MaxDepth, Limit: p.Limit, Cursor: p.Cursor, Deadline: time.Now().Add(timeout)})
 		res = page
 		return err
 	})

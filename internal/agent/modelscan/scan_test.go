@@ -312,16 +312,16 @@ func TestScanDeadlineAndCancel(t *testing.T) {
 	if err != nil || res.Complete || len(res.Candidates) != 0 || res.NextCursor != "" {
 		t.Fatalf("deadline: %+v err=%v", res, err)
 	}
-	// Resuming keeps the caller's cursor when nothing was processed.
+	// Only a page that got to no directory at all keeps the caller's cursor.
 	res, err = Scan(context.Background(), root, Options{Cursor: "Qwen/Qwen3-8B", Deadline: time.Now().Add(-time.Second)})
-	if err != nil || res.Complete || res.NextCursor != "Qwen/Qwen3-8B" {
+	if err != nil || res.Complete || res.NextCursor != "Qwen/Qwen3-8B" || len(res.Skipped) != 0 {
 		t.Fatalf("deadline with cursor: %+v err=%v", res, err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	res, err = Scan(ctx, root, Options{})
-	if err != nil || res.Complete {
+	if err != nil || res.Complete || res.NextCursor != "" || len(res.Candidates)+len(res.Skipped) != 0 {
 		t.Fatalf("cancel: %+v err=%v", res, err)
 	}
 }
