@@ -134,9 +134,11 @@ func (e *callError) Error() string { return e.err.Error() }
 func (e *callError) Unwrap() error { return e.err }
 
 // do sends a call of class that takes a slot of its pool; the slot is
-// released when the body is closed. A call without a deadline gets
-// deadline, or the default one when that is zero. touch runs when the
-// slot is released. A failed round trip is a *callError.
+// released when the body is closed. A call is held to deadline (ctx's
+// own when earlier), or the default one when that is zero; a stream call is held
+// to deadline only until its response headers arrive, and its body runs
+// until ctx ends or the body is closed. touch runs when the slot is
+// released. A failed round trip is a *callError.
 func (c *pluginConn) do(ctx context.Context, req *http.Request, class Class, deadline time.Time, touch func()) (*http.Response, error) {
 	pool := &c.plain
 	if class.Stream {
@@ -145,17 +147,29 @@ func (c *pluginConn) do(ctx context.Context, req *http.Request, class Class, dea
 	if limit, err := pool.take(class.Admin); err != nil {
 		return nil, &busyError{err: err, limit: limit}
 	}
-	cancel := context.CancelFunc(func() {})
-	if _, ok := ctx.Deadline(); !ok {
-		if deadline.IsZero() {
-			deadline = time.Now().Add(c.callTimeout)
-		}
+	if deadline.IsZero() {
+		deadline = time.Now().Add(c.callTimeout)
+	}
+	var cancel context.CancelFunc
+	var headers *time.Timer
+	if class.Stream {
+		ctx, cancel = context.WithCancel(ctx)
+		headers = time.AfterFunc(time.Until(deadline), cancel)
+	} else {
 		ctx, cancel = context.WithDeadline(ctx, deadline)
 	}
 	release := sync.OnceFunc(func() { cancel(); pool.give(class.Admin); touch() })
 	var dispatched atomic.Bool
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteHeaders: func() { dispatched.Store(true) }})
 	resp, err := c.roundTrip(ctx, req)
+	if headers != nil && !headers.Stop() {
+		// The headers came too late, or not at all.
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+		release()
+		return nil, &callError{err: fmt.Errorf("%w: no response headers in time", context.DeadlineExceeded), dispatched: dispatched.Load()}
+	}
 	if err != nil {
 		release()
 		return nil, &callError{err: err, dispatched: dispatched.Load()}

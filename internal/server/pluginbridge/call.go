@@ -15,6 +15,12 @@ import (
 // broken, revoked, installed, or failed when its start was refused). An
 // on-demand server part is started by the call.
 func (b *Bridge) Call(ctx context.Context, id string, req *http.Request, class pluginhost.Class) (*http.Response, error) {
+	return b.CallSigned(ctx, id, req, class, nil)
+}
+
+// CallSigned is Call with sign applied for the process that serves the
+// call (pluginhost.Host.DoSigned).
+func (b *Bridge) CallSigned(ctx context.Context, id string, req *http.Request, class pluginhost.Class, sign pluginhost.Signer) (*http.Response, error) {
 	e, err := b.entry(id)
 	if err != nil {
 		return nil, err
@@ -34,5 +40,5 @@ func (b *Bridge) Call(ctx context.Context, id string, req *http.Request, class p
 	case refused != nil:
 		return nil, pluginhost.Unavailable(id, string(pluginhost.StateFailed), refused)
 	}
-	return b.host.Do(ctx, id, req, class)
+	return b.host.DoSigned(ctx, id, req, class, sign)
 }

@@ -234,6 +234,17 @@ func TestPluginRoutesMapRefusals(t *testing.T) {
 	}
 }
 
+// A package whose id a compiled module has is a conflict, with the id in
+// the literal body.
+func TestPluginInstallRefusesACompiledModulesID(t *testing.T) {
+	rig := newPluginRig(t, &fakePlugins{err: messages.NewProductError(messages.ErrorPluginIDTaken, "plugin id acme_backup is already used by a built-in module", map[string]any{"id": "acme_backup"})})
+	rec := rig.do(rig.session, "POST", "/api/v1/plugins/install", "pkg")
+	want := `{"code":"PLUGIN_ID_TAKEN","error":"plugin id acme_backup is already used by a built-in module","params":{"id":"acme_backup"}}`
+	if rec.Code != http.StatusConflict || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("install = %d %s", rec.Code, rec.Body)
+	}
+}
+
 // Without a plugin host the routes still exist and say so; the assistant
 // reads none of them.
 func TestPluginRoutesWithoutAHostAndForTheAssistant(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -47,7 +48,11 @@ func (o Options) pluginInstall(log *slog.Logger, args []string, stdout io.Writer
 	if err != nil {
 		return err
 	}
-	in, err := h.Install(f, extpkg.InstallOptions{Enable: !*disabled, ApprovedBy: "command line", Features: owners})
+	// The modules compiled into this build keep their names; an API
+	// extension a module mounts under another name is only known once the
+	// server starts, which turns a package on it broken (PLUGIN_ID_TAKEN).
+	in, err := h.Install(f, extpkg.InstallOptions{Enable: !*disabled, ApprovedBy: "command line", Features: owners,
+		ReservedIDs: app.ModuleNames(o.Extensions)})
 	if err != nil {
 		return err
 	}

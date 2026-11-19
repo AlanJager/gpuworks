@@ -96,6 +96,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		Features:         h.reg.dynamic,
 		StaticFeatures:   maps.Clone(h.reg.featureBy),
 		HealthChanged:    func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
+		CompiledModules:  compiledNames(m.cfg.Extensions.Modules, h.reg.apis),
 		Log:              h.Log(),
 	})
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -143,7 +144,16 @@ func (c *capturedResponse) Write(b []byte) (int, error) {
 // read, once: an extension route only when it is marked AIReadable.
 func (a *apiHandlers) getRoutes() []string {
 	a.walkRoutes()
-	return a.routes
+	if a.dynamic == nil {
+		return a.routes
+	}
+	extra := a.dynamic.aiRoutes()
+	if len(extra) == 0 {
+		return a.routes
+	}
+	out := append(slices.Clone(a.routes), extra...)
+	sort.Strings(out)
+	return out
 }
 
 // aiDenied reports whether pattern is an extension GET route the assistant
@@ -167,6 +177,11 @@ func (a *apiHandlers) walkRoutes() {
 				a.unreadable[route] = true
 				return nil
 			}
+			if _, ok := h.(*dynamicEndpoint); ok {
+				// Listed route by route (getRoutes); the endpoint refuses
+				// the assistant's read of a route not marked ai_readable.
+				return nil
+			}
 			a.routes = append(a.routes, route)
 			return nil
 		})
@@ -179,5 +194,8 @@ func (a *apiHandlers) walkRoutes() {
 type routesState struct {
 	routesOnce sync.Once
 	routes     []string
+	// dynamic serves the plugin routes (dynamic_extension.go); nil when
+	// the server mounts none.
+	dynamic    *dynamicEndpoint
 	unreadable map[string]bool
 }
