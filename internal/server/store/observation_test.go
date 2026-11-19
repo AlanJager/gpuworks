@@ -85,6 +85,52 @@ func TestCatalogWritesPublishTheChangedTemplates(t *testing.T) {
 		t.Fatalf("event after a refused import: %+v", ev)
 	case <-time.After(100 * time.Millisecond):
 	}
+
+	if err := st.DeleteUserInferenceTemplate(model.ModelID); err != nil {
+		t.Fatal(err)
+	}
+	if key := waitTemplateEvent(t, sub); key != strconv.FormatUint(uint64(model.ID), 10) {
+		t.Fatalf("delete key = %q, want the row %d", key, model.ID)
+	}
+	if _, err := st.TemplateSpecAPIContract(model.ID, "user", spec.Name); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted spec still exists: %v", err)
+	}
+}
+
+// Simulate a create paused after resolving its catalog selection, then
+// resumed after a delete commits, with no model contract to initialize.
+func TestDeploymentCannotPinDeletedCatalogSelection(t *testing.T) {
+	for _, target := range []string{"spec", "template"} {
+		t.Run(target, func(t *testing.T) {
+			st := openObservationStore(t)
+			model := observationModel("org/custom", "")
+			second := model.Specs[0]
+			second.Name = "other"
+			model.Specs = append(model.Specs, second)
+			if err := st.ImportUserInferenceCatalog([]InferenceModel{model}, false); err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := st.InferenceModelByModelID(model.ModelID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dep := &Deployment{TemplateID: resolved.ID, TemplateSpecName: "general", TemplateSpecSource: "user", ServedName: "stale"}
+			if target == "template" {
+				err = st.DeleteUserInferenceTemplate(model.ModelID)
+			} else {
+				_, err = st.DeleteUserInferenceSpec(model.ModelID, dep.TemplateSpecName)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.CreateDeploymentFromTemplate(dep, nil, 0, "", ""); !errors.Is(err, ErrDeploymentTemplateSelectionGone) {
+				t.Fatalf("create from deleted selection: %v", err)
+			}
+			if rows, err := st.ListDeployments(); err != nil || len(rows) != 0 {
+				t.Fatalf("rejected create left deployments: %+v, %v", rows, err)
+			}
+		})
+	}
 }
 
 func TestTemplateSpecAPIContractReadsOneSpecByIdentity(t *testing.T) {

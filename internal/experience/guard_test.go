@@ -60,6 +60,8 @@ func TestGuardPermitsAndRefuses(t *testing.T) {
 		{http.MethodPost, "/api/v1/models"},
 		{http.MethodPut, "/api/v1/deployments/4/replicas"},
 		{http.MethodDelete, "/api/v1/apikeys/abc"},
+		{http.MethodDelete, "/api/v1/inference-templates?model_id=demo%2Fcustom"},
+		{http.MethodDelete, "/api/v1/inference-templates/spec?model_id=demo%2Fcustom&spec=tuned"},
 		{http.MethodPost, "/api/v1/playground/v1/chat/completions"},
 		{http.MethodPost, "/v1/chat/completions"},
 		{http.MethodGet, "/api/v1/agent/connect"},

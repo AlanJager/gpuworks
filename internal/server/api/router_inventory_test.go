@@ -83,6 +83,7 @@ DELETE /api/v1/diagnostics/debug-session
 DELETE /api/v1/image-series/{id}
 DELETE /api/v1/images/{id}
 DELETE /api/v1/images/{id}/nodes/{uuid}
+DELETE /api/v1/inference-templates
 DELETE /api/v1/inference-templates/spec
 DELETE /api/v1/kube/clusters/{uuid}
 DELETE /api/v1/models/{id}

@@ -177,7 +177,10 @@ func (a *apiHandlers) getInferenceTemplate(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
-	view := inferenceTemplateView(*model)
+	view := dto.InferenceTemplateDetail{
+		InferenceTemplate: inferenceTemplateView(*model),
+		CanDelete:         model.Source == "user" && canRequestAdminWrite(r),
+	}
 	detected, err := a.d.Store.ListDistinctDetectedGPUs()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -195,22 +198,8 @@ func (a *apiHandlers) getInferenceTemplate(w http.ResponseWriter, r *http.Reques
 	view.DetectedSupport = &support
 	view.ReadmeZHCNContent = a.readInferenceTemplateDocumentation(*model, model.ReadmeZHCN)
 	view.ReadmeENContent = a.readInferenceTemplateDocumentation(*model, model.ReadmeEN)
+	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, view)
-}
-
-func (a *apiHandlers) readInferenceTemplateDocumentation(model store.InferenceModel, file string) string {
-	if strings.TrimSpace(file) == "" {
-		return ""
-	}
-	var data []byte
-	var err error
-	if a.d.CatalogPackages != nil && model.PackageDigest != "" {
-		data, err = a.d.CatalogPackages.ReadDocumentation(model.PackageDigest, model.ModelID, file)
-	}
-	if err != nil || len(data) > 512*1024 {
-		return ""
-	}
-	return string(data)
 }
 
 func (a *apiHandlers) cloneInferenceTemplate(w http.ResponseWriter, r *http.Request) {

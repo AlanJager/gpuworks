@@ -193,3 +193,21 @@ func TestInferenceTemplateCloneRequiresAdministrator(t *testing.T) {
 		t.Fatalf("admin clone = %d %s, want the handler to answer", code, resp)
 	}
 }
+
+func TestInferenceTemplateDeleteRequiresAdministrator(t *testing.T) {
+	router, member, admin := catalogTemplateRouter(t, nil)
+	const path = "/api/v1/inference-templates?model_id=no%2Fsuch-model"
+	for _, tc := range []struct {
+		role, token string
+		status      int
+	}{
+		{"anonymous", "", http.StatusUnauthorized},
+		{"member", member, http.StatusForbidden},
+		{"admin", admin, http.StatusNotFound},
+	} {
+		code, body := callRouter(t, router, tc.token, http.MethodDelete, path, "")
+		if code != tc.status {
+			t.Errorf("%s delete = %d %s, want %d", tc.role, code, body, tc.status)
+		}
+	}
+}

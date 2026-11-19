@@ -121,8 +121,6 @@ func testBenchmarkGGUFTokenizerViaAPI(t *testing.T, tc ggufTokenizerCase) {
 		if err := f.admission.store.ReconcileInferenceCatalog([]store.InferenceModel{*template}); err != nil {
 			t.Fatal(err)
 		}
-	case "spec name":
-		selection.SpecName = "a-different-spec"
 	case "catalog unpinned tokenizer":
 		var contract map[string]any
 		if err := json.Unmarshal([]byte(spec.APIContract), &contract); err != nil {
@@ -159,6 +157,16 @@ func testBenchmarkGGUFTokenizerViaAPI(t *testing.T, tc ggufTokenizerCase) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if tc.mismatch == "spec name" {
+		// The deployment selected an existing spec. A later upstream refresh
+		// renamed it; a matching weight in the replacement spec must not
+		// supply a tokenizer declaration for the old snapshot.
+		template.Specs[0].Name = "a-different-spec"
+		template.Specs[0].ID = 0
+		if err := f.admission.store.ReconcileInferenceCatalog([]store.InferenceModel{*template}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if tc.removeCatalog {
 		if err := f.admission.store.ReconcileInferenceCatalog([]store.InferenceModel{deploymentFlatFixture()}); err != nil {

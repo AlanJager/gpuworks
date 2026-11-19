@@ -224,6 +224,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Post("/inference-templates/clone", a.cloneInferenceTemplate)
 			r.With(a.managementAdmin).Post("/inference-templates/import", a.importInferenceTemplates)
 			r.With(a.managementAdmin).Post("/inference-templates/evaluate", a.evaluateInferenceTemplates)
+			r.With(a.managementAdmin).Delete("/inference-templates", a.deleteInferenceTemplate)
 			r.With(a.managementAdmin).Delete("/inference-templates/spec", a.deleteInferenceTemplateSpec)
 			r.With(a.managementAdmin).Post("/inference-templates/sync", a.syncInferenceTemplates)
 			r.With(a.managementAdmin).Post("/inference-templates/official", a.uploadOfficialInferenceCatalog)
