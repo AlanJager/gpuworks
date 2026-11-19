@@ -40,7 +40,8 @@ func (f *fakePlugins) Upgrade(_ context.Context, id string, body io.Reader, appr
 
 func (f *fakePlugins) Rollback(_ context.Context, id string, restoreState bool, by string) (dto.Plugin, error) {
 	err := f.record("rollback " + id + " " + map[bool]string{true: "restore", false: "keep"}[restoreState] + " " + by)
-	return dto.Plugin{ID: id, Version: "1.0.0", State: "starting"}, err
+	return dto.Plugin{ID: id, Version: "1.0.0", State: "starting", Parts: []string{}, Roles: []string{}, Permissions: []dto.PluginPermission{},
+		Features: []dto.PluginFeature{}, Actions: []string{"upgrade", "restart"}}, err
 }
 
 // An upgrade without approval answers 409 with the literal diff params; with
@@ -67,9 +68,11 @@ func TestPluginUpgradeRouteWire(t *testing.T) {
 	if plugins.body != "v2 bytes" {
 		t.Fatalf("the package reached the host as %q", plugins.body)
 	}
-	if rec := rig.do(rig.session, "POST", "/api/v1/plugins/acme_backup/rollback?restore_state=true", ""); rec.Code != http.StatusOK ||
-		!strings.Contains(rec.Body.String(), `"version":"1.0.0"`) {
-		t.Fatalf("rollback: %d %s", rec.Code, rec.Body)
+	rec = rig.do(rig.session, "POST", "/api/v1/plugins/acme_backup/rollback?restore_state=true", "")
+	want = `{"id":"acme_backup","version":"1.0.0","enabled":false,"state":"starting","restarts":0,"parts":[],"isolation":"","roles":[],` +
+		`"permissions":[],"on_demand":false,"features":[],"actions":["upgrade","restart"]}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("rollback: %d\n%s\nwant\n%s", rec.Code, rec.Body, want)
 	}
 	rig.do(rig.session, "POST", "/api/v1/plugins/acme_backup/rollback", "")
 	got := strings.Join(plugins.recorded(), "|")
@@ -116,8 +119,9 @@ func TestPluginUpgradeRefusals(t *testing.T) {
 		status int
 		body   string
 	}{
-		{"upgrade", messages.NewProductError(messages.ErrorPluginManifestMismatch, "the package is acme_other, not acme_backup", map[string]any{}), 422,
-			`{"code":"PLUGIN_MANIFEST_MISMATCH","error":"the package is acme_other, not acme_backup"}`},
+		{"upgrade", messages.NewProductError(messages.ErrorPluginUpgradeIDMismatch, "the package is acme_other, not acme_backup",
+			map[string]any{"id": "acme_backup", "package_id": "acme_other"}), 422,
+			`{"code":"PLUGIN_UPGRADE_ID_MISMATCH","error":"the package is acme_other, not acme_backup","params":{"id":"acme_backup","package_id":"acme_other"}}`},
 		{"upgrade", messages.NewProductError(messages.ErrorPluginUpgradeRolledBack, "rolled back", map[string]any{"id": "acme_backup", "version": "2.0.0",
 			"previous": "1.0.0", "cause_code": "PLUGIN_CRASHED"}), 422,
 			`{"code":"PLUGIN_UPGRADE_ROLLED_BACK","error":"rolled back","params":{"cause_code":"PLUGIN_CRASHED","id":"acme_backup","previous":"1.0.0","version":"2.0.0"}}`},

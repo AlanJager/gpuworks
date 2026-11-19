@@ -9,10 +9,11 @@ import (
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
-// snapshotLocked copies package id's data, recording its data marker, as
-// snapshot name of version from. The caller holds the directory's lock and
-// has stopped the plugin.
-func (h *Host) snapshotLocked(id, from, name string) (layout.Snapshot, error) {
+// snapshot copies package id's data, recording its data marker, as
+// snapshot name of version from. The caller has stopped the plugin and
+// written its upgrade marker, which keeps Cleanup off the partial copy; it
+// need not hold the directory's lock.
+func (h *Host) snapshot(id, from, name string) (layout.Snapshot, error) {
 	own, _, err := h.dataMarker(id)
 	if err == nil {
 		var s layout.Snapshot
@@ -34,6 +35,36 @@ func (h *Host) FinishUpgrade(id string) error {
 	}
 	defer func() { _ = unlock() }()
 	return h.Dir.RemoveUpgrade(id)
+}
+
+// ApproveCurrent records current version's own approval hash in package
+// id's control file when version is current and the file holds another
+// hash, naming by as the approver: a rollback that was stopped after it
+// made version current and before it wrote that approval is finished so.
+// It changes nothing when another version is current.
+func (h *Host) ApproveCurrent(id, version, by string) error {
+	unlock, err := h.Dir.Lock()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unlock() }()
+	if current, err := h.Dir.Current(id); err != nil || current != version {
+		return err
+	}
+	v, err := h.recheckVersion(id, version, true)
+	if err != nil {
+		return err
+	}
+	hash, err := ApprovalHash(v)
+	if err != nil {
+		return err
+	}
+	ctl, _, err := h.Dir.ReadControl(id)
+	if err != nil || ctl.ApprovedHash == string(hash) {
+		return err
+	}
+	ctl.ApprovedHash, ctl.ApprovedBy, ctl.At = string(hash), by, h.now().UTC()
+	return h.Dir.WriteControl(id, ctl)
 }
 
 // RollbackOptions are a rollback's choices.

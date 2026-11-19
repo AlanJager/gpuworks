@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -222,8 +223,10 @@ func TestUpgradeThatFailsItsGateRollsBack(t *testing.T) {
 	if len(lapses) > 0 {
 		t.Fatalf("pushed state lapsed during the upgrade: %v", lapses[0])
 	}
-	if len(downs) > 1 {
-		t.Fatalf("the down record was renewed during the upgrade: %v", downs)
+	// One down record, written when the upgrade stopped 1.0.0 (DownSince
+	// may be truncated to the second).
+	if len(downs) != 1 || downs[0].Before(start.Truncate(time.Second)) {
+		t.Fatalf("down records during the upgrade = %v (upgrade started %v), want one from the stop", downs, start)
 	}
 	if lines := auditLines(w, "upgrade"); len(lines) != 2 || !strings.Contains(lines[1], "code=PLUGIN_UPGRADE_ROLLED_BACK") {
 		t.Fatalf("audit = %v", lines)
@@ -278,7 +281,7 @@ func TestRefusedUpgradesLeaveTheRunningVersion(t *testing.T) {
 		raw  []byte
 		code string
 	}{
-		{"acme_backup", w.pkg("acme_driver", "2.0.0", nil), messages.ErrorPluginManifestMismatch},
+		{"acme_backup", w.pkg("acme_driver", "2.0.0", nil), messages.ErrorPluginUpgradeIDMismatch},
 		{"acme_backup", w.pkg("acme_backup", "2.0.0", nil), messages.ErrorPluginApprovalRequired},
 		{"acme_driver", w.pkg("acme_driver", "2.0.0", nil), messages.ErrorPluginNotInstalled},
 	} {
@@ -420,8 +423,12 @@ func TestGateHoldsOnlyItsOwnPackage(t *testing.T) {
 	}
 	err = <-result
 	var pe *messages.ProductError
-	if !errors.As(err, &pe) || pe.Code() != messages.ErrorPluginUpgradeRolledBack || pe.Params()["cause_code"] != causeCancelled {
+	if !errors.As(err, &pe) || pe.Code() != messages.ErrorPluginUpgradeRolledBack {
 		t.Fatalf("upgrade = %v", err)
+	}
+	want := map[string]any{"id": "acme_backup", "version": "2.0.0", "previous": "1.0.0", "cause_code": messages.ErrorPluginUpgradeCancelled}
+	if !maps.Equal(pe.Params(), want) {
+		t.Fatalf("params = %v, want %v", pe.Params(), want)
 	}
 	noUpgradeMarker(t, w, "acme_backup")
 }

@@ -42,9 +42,14 @@ type Installed struct {
 // (PLUGIN_ID_TAKEN).
 func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (out *Installed, err error) {
 	id := ""
+	unlock := func() {}
+	defer func() { unlock() }()
 	defer func() { b.audit("install", id, req.By, err) }()
+	// The package is unpacked under the plugins directory's lock (refused
+	// while an upgrade of it is under way), and made current and its
+	// process changed under the lock of its id.
 	in, err := b.pkgs.Install(r, extpkg.InstallOptions{Enable: req.Enable, ApprovedBy: req.By, RequireApproval: true, Approve: req.Approve, Features: b,
-		ReservedIDs: b.cfg.CompiledModules})
+		ReservedIDs: b.cfg.CompiledModules, Claim: func(pid string) { id, unlock = pid, b.locks.lock(pid) }})
 	if err != nil {
 		if code, params, _ := codeOf(err); code == messages.ErrorPluginApprovalRequired {
 			id, _ = params["id"].(string)
@@ -52,10 +57,6 @@ func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (
 		return nil, err
 	}
 	id = in.Manifest.ID
-	// The package is placed under the plugins directory's lock (refused
-	// while an upgrade of it is under way); its process changes under the
-	// lock of its id.
-	defer b.locks.lock(id)()
 	st, supervised := b.host.Status(id)
 	// The same build installed again over its running process keeps it.
 	keep := in.Unchanged && in.Enabled && supervised && st.State != pluginhost.StateStopped && st.State != pluginhost.StateFailed

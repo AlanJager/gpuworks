@@ -53,16 +53,20 @@ func (d Dir) ReadUpgrade(id string) (u Upgrade, ok bool, err error) {
 	return u, true, nil
 }
 
-// RemoveUpgrade removes package id's upgrade marker, if any.
+// RemoveUpgrade removes package id's upgrade marker, if any, and then
+// the partial snapshots the marker kept Cleanup off.
 func (d Dir) RemoveUpgrade(id string) error {
 	err := os.Remove(filepath.Join(d.Package(id), upgradeFile))
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil
+		return d.removePartialSnapshots(id)
 	}
 	if err != nil {
 		return err
 	}
-	return syncDir(d.Package(id))
+	if err := syncDir(d.Package(id)); err != nil {
+		return err
+	}
+	return d.removePartialSnapshots(id)
 }
 
 // Upgrading returns the ids that have an upgrade marker, sorted.

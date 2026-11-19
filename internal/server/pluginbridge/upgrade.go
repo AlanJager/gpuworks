@@ -21,10 +21,6 @@ const DefaultUpgradeGate = 60 * time.Second
 // to come up at all (its handshake, a slow first start).
 const gateStartSlack = 20 * time.Second
 
-// causeCancelled is the cause_code of an upgrade whose health gate a
-// disable or uninstall of the package ended.
-const causeCancelled = "cancelled"
-
 // UpgradeRequest is one upgrade through the API.
 type UpgradeRequest struct {
 	// Approve must be the new version's approval hash, unless it is the
@@ -52,7 +48,7 @@ type Upgraded struct {
 
 // Upgrade replaces installed package id with the package read from r
 // (docs/dev/extensions.md): verified and approved first (a package of
-// another id is PLUGIN_MANIFEST_MISMATCH), then the upgrade marker is
+// another id is PLUGIN_UPGRADE_ID_MISMATCH), then the upgrade marker is
 // written, the running version stopped, its data copied (a copy that fails
 // is PLUGIN_SNAPSHOT_FAILED and the old version starts again), the new
 // version made current and started, and it must come up and stay up for
@@ -67,7 +63,14 @@ type Upgraded struct {
 // its gate.
 func (b *Bridge) Upgrade(ctx context.Context, id string, r io.Reader, req UpgradeRequest) (out *Upgraded, err error) {
 	ctx = context.WithoutCancel(ctx)
+	b.mu.Lock()
+	if b.stopping {
+		b.mu.Unlock()
+		return nil, messages.NewProductError(messages.ErrorPluginUnavailable, "the server is stopping", map[string]any{"id": id})
+	}
+	// Under mu, so that no upgrade is added once Run waits for them.
 	b.upgrades.Add(1)
+	b.mu.Unlock()
 	defer b.upgrades.Done()
 	defer b.locks.lock(id)()
 	defer func() { b.audit("upgrade", id, req.By, err) }()
@@ -84,15 +87,22 @@ func (b *Bridge) Upgrade(ctx context.Context, id string, r io.Reader, req Upgrad
 			return b.stop(stopCtx, id)
 		}})
 	if err != nil {
+		if up != nil && up.Activated {
+			// The new version became current before the failure: the
+			// marker stays, and the upgrade is undone like a failed gate.
+			b.log.Error("plugin upgrade failed after the new version became current", "plugin", id, "err", err)
+			return nil, b.rollBack(ctx, id, up, causeOf(err))
+		}
 		if quiesced {
-			// Nothing changed on disk: the version that ran runs again.
+			// The version that ran is still current: it runs again.
 			b.startIfEnabled(id)
 		}
 		return nil, err
 	}
-	out = &Upgraded{Previous: up.Diff.FromVersion, Diff: up.Diff, AutoApproved: up.AutoApproved, Unchanged: up.Unchanged}
+	out = &Upgraded{Previous: up.From, Diff: up.Diff, AutoApproved: up.AutoApproved, Unchanged: up.Unchanged}
 	if err := b.refresh(); err != nil {
-		return nil, b.rollBack(ctx, id, up, err.Error())
+		b.log.Error("plugin packages not read again after an upgrade", "plugin", id, "err", err)
+		return nil, b.rollBack(ctx, id, up, causeOf(err))
 	}
 	if cause := b.gate(ctx, id); cause != "" {
 		return nil, b.rollBack(ctx, id, up, cause)
@@ -105,7 +115,8 @@ func (b *Bridge) Upgrade(ctx context.Context, id string, r io.Reader, req Upgrad
 }
 
 // gate starts the new version of package id and waits out its health
-// gate. It returns why it failed (a code, or causeCancelled), empty once
+// gate. It returns the code of why it failed (PLUGIN_UPGRADE_CANCELLED
+// when a disable, an uninstall or the server's stop ended it), empty once
 // the version passed or has nothing to gate: disabled, without a server
 // part, or waiting for root's host setup, which an administrator approved
 // with the upgrade.
@@ -135,12 +146,19 @@ func (b *Bridge) gate(ctx context.Context, id string) string {
 	gctx, cancel := context.WithTimeout(ctx, b.upgradeGate+gateStartSlack)
 	defer cancel()
 	defer b.locks.gate(id, cancel)()
+	// A server that began stopping before the gate was registered did not
+	// cancel it.
+	b.mu.Lock()
+	if b.stopping {
+		cancel()
+	}
+	b.mu.Unlock()
 	err = b.host.AwaitHealthy(gctx, id, b.upgradeGate)
 	if err == nil {
 		return ""
 	}
 	if errors.Is(gctx.Err(), context.Canceled) {
-		return causeCancelled
+		return messages.ErrorPluginUpgradeCancelled
 	}
 	var ue *pluginhost.UnhealthyError
 	if errors.As(err, &ue) {
@@ -155,7 +173,7 @@ func (b *Bridge) gate(ctx context.Context, id string) string {
 // the rollback itself fails, that error (the upgrade marker stays, so the
 // next boot tries again).
 func (b *Bridge) rollBack(ctx context.Context, id string, up *extpkg.Upgraded, cause string) error {
-	from, to := up.Snapshot.From, up.Manifest.Version
+	from, to := up.From, up.Manifest.Version
 	stopCtx, cancel := context.WithTimeout(ctx, stopWait)
 	err := b.stop(stopCtx, id)
 	cancel()
@@ -220,6 +238,13 @@ func (b *Bridge) Rollback(ctx context.Context, id string, req RollbackRequest) (
 	}
 	b.startIfEnabled(id)
 	return b.view(id), nil
+}
+
+// causeOf is the code of err as a cause_code, PLUGIN_UNAVAILABLE when it
+// carries none.
+func causeOf(err error) string {
+	code, _, _ := codeOf(err)
+	return orCode(code, messages.ErrorPluginUnavailable)
 }
 
 func orCode(code, fallback string) string {

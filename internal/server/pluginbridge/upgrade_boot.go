@@ -1,6 +1,8 @@
 package pluginbridge
 
 import (
+	"errors"
+
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
 )
 
@@ -41,8 +43,10 @@ func (b *Bridge) recoverUpgrade(id string) {
 	}
 	if current == "" || (current == u.From && (u.From != u.To || !restore)) {
 		// Not installed any more, or the new version never became
-		// current: its data was never touched.
-		err := b.pkgs.FinishUpgrade(id)
+		// current: its data was never touched. A restoring rollback
+		// stopped right after it made From current has not yet recorded
+		// From's approval.
+		err := errors.Join(b.pkgs.ApproveCurrent(id, u.From, "boot recovery"), b.pkgs.FinishUpgrade(id))
 		b.log.Info("plugin upgrade interrupted before the new version became current; nothing to roll back", "audit", true,
 			"plugin", id, "from", u.From, "to", u.To, "current", current, "err", err)
 		return

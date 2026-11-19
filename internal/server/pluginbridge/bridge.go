@@ -124,6 +124,8 @@ type Bridge struct {
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
 	running bool
+	// stopping is set once Run begins to stop: no upgrade starts after it.
+	stopping bool
 	// markerRetry is how long a start waits to be tried again when the
 	// package's data marker could not be read.
 	markerRetry time.Duration
@@ -272,7 +274,7 @@ func (b *Bridge) Run(ctx context.Context) error {
 	// pushed state's writer, which runs now, before any plugin starts.
 	b.applyMaintenance(stateCtx)
 	b.mu.Lock()
-	b.running = true
+	b.running, b.stopping = true, false
 	ids := slices.Sorted(maps.Keys(b.entries))
 	b.mu.Unlock()
 	for _, id := range ids {
@@ -283,7 +285,7 @@ func (b *Bridge) Run(ctx context.Context) error {
 
 	<-ctx.Done()
 	b.mu.Lock()
-	b.running = false
+	b.running, b.stopping = false, true
 	b.mu.Unlock()
 	// An upgrade waiting out its health gate rolls back now; it starts
 	// nothing, since Run no longer runs.

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -50,7 +51,7 @@ func SnapshotName(from string, t time.Time) string {
 // (SnapshotName of s.From and s.Taken when s.Name is empty). The copy is
 // written to a .partial directory and renamed into place once complete, so
 // a snapshot that exists is whole; then all but the newest KeepSnapshots
-// are removed. Regular files, directories and symbolic links are copied
+// are removed (one that cannot be is tried again the next time). Regular files, directories and symbolic links are copied
 // (links as links, never followed); sockets and other special files are
 // left out. The plugin must not be running.
 func (d Dir) TakeSnapshot(id string, s Snapshot) (Snapshot, error) {
@@ -95,7 +96,10 @@ func (d Dir) TakeSnapshot(id string, s Snapshot) (Snapshot, error) {
 	if err := syncDir(root); err != nil {
 		return s, err
 	}
-	return s, d.pruneSnapshots(id)
+	// The snapshot is whole: an older one that cannot be removed now is
+	// removed after the next snapshot.
+	_ = d.pruneSnapshots(id)
+	return s, nil
 }
 
 // pruneSnapshots removes all but the newest KeepSnapshots snapshots.
@@ -200,10 +204,17 @@ func (d Dir) Restore(id, name string) error {
 }
 
 // cleanupSnapshots removes partial snapshots and restore copies, and moves
-// back data a restore displaced but did not replace.
+// back data a restore displaced but did not replace. The partial snapshots
+// of a package with an upgrade marker are left alone: an upgrade may be
+// copying its data without the directory's lock, and RemoveUpgrade
+// removes them once the upgrade ends.
 func (d Dir) cleanupSnapshots() error {
 	var errs []error
 	partial, _ := filepath.Glob(filepath.Join(d.Root, "*", "snapshots", "*"+partialExt))
+	partial = slices.DeleteFunc(partial, func(p string) bool {
+		_, err := os.Lstat(filepath.Join(filepath.Dir(filepath.Dir(p)), upgradeFile))
+		return err == nil
+	})
 	building, _ := filepath.Glob(filepath.Join(d.Root, "*", restoreDir))
 	for _, p := range append(partial, building...) {
 		errs = append(errs, RemoveAll(p))
@@ -215,6 +226,16 @@ func (d Dir) cleanupSnapshots() error {
 			errs = append(errs, os.Rename(p, data))
 			continue
 		}
+		errs = append(errs, RemoveAll(p))
+	}
+	return errors.Join(errs...)
+}
+
+// removePartialSnapshots removes the partial snapshots of package id.
+func (d Dir) removePartialSnapshots(id string) error {
+	partial, _ := filepath.Glob(filepath.Join(d.Snapshots(id), "*"+partialExt))
+	var errs []error
+	for _, p := range partial {
 		errs = append(errs, RemoveAll(p))
 	}
 	return errors.Join(errs...)
