@@ -189,6 +189,7 @@ plugins:
     deny_permissions: [read:directory]
     deny_roles: [key_wrap]
     auto_approve_unchanged: false  # an upgrade with an unchanged approval needs no new approval; default false
+    max_down_grace: 30m        # optional: the ceiling on a down plugin's grace for its grants, 0 or 60s–24h
   allow_unsandboxed: [acme_backup]  # third-party packages still allowed on a host without Landlock
   require_isolation: landlock  # refuse every plugin process when Landlock is missing
 ```
@@ -196,7 +197,8 @@ plugins:
 - A host-trusted issuer grants nothing privileged by default: no privileged role, no privileged table, no authority, iframe-only console bundles, and Landlock required. `roles`, `tables`, `authority` and `unsandboxed` open each one, and only take effect when the certificate grants it too. Such an issuer can never certify the project publisher `gpuworks`, the bare feature namespace or same-origin console modules.
 - On a host without Landlock (Kylin V10 or UOS 20 on a 4.19 kernel, macOS), a third party's package with a server part installs only when its certificate says `min_isolation: none` (and the issuer allows `unsandboxed`) or it is listed in `allow_unsandboxed`; the signature is then the only defence.
 - `auto_approve_unchanged` only decides whether an upgrade needs approving again: when the new version's approval (the digest of its permissions, roles, privileged tables, devices, console mode, isolation and host setup) equals the approved one, `true` upgrades straight away and `false` (the default) asks an administrator to approve every upgrade. It lets in no package that verification refuses.
-- A misspelt key, a malformed public key or key id, or an unknown `require_isolation` value makes the file fail to load.
+- `max_down_grace`, a Go duration (`30m`, `2h`), is the site's ceiling on a plugin's down grace: a grace the plugin pushes with its `availability` table (60 seconds to 24 hours, one hour when it gives none) that is longer is lowered to it, never raised. Empty or `0` sets no ceiling; any other value must lie between 60 seconds and 24 hours. The server reads it at start, so a change takes effect on restart ([Pushed state](../dev/extensions.md#pushed-state)).
+- A misspelt key, a malformed public key or key id, an unknown `require_isolation` value, or a `max_down_grace` out of range makes the file fail to load.
 
 ## Pull Proxies and Outbound Access
 
@@ -410,6 +412,6 @@ The following names appear in the code but are not user-configurable settings. D
 - `GPUWORKS_PARTITION_PROBE_BACKEND`, `GPUWORKS_PARTITION_PROBE_QUOTA_MIB`: Inputs injected into the probe program when the agent starts a dGPU probe container; they are not configuration settings read by the agent.
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
-<!-- translation-source-sha256: 8811d6a3b0af8229ecc539bdcf8d61fc6a1ed7bd077a03d5fd6a52e54fe87bac -->
+<!-- translation-source-sha256: 6ae460bd32da382bcfa69266effcf7aa405845148753deae33f2f667404dd478 -->
 <!-- translation-localized-code-block: 86f9f71f25c2b857ad0011486eb8c57eb9996ec1a4417ab035e24d7b4b1f898d dc1d5c5bc85efcc1eb7d1d72bc584329c53e7d9c636c376ad8a7ce5dc1d901cb Reviewed configuration comments; usage_report=false suppresses the daily report and node/GPU counts, while automatic checks retain installation ID and versions. Keys and values unchanged. -->
-<!-- translation-localized-code-block: 32c8ce45f02c4b20b6a65d2016869790b34cb000921abb1e931af4bbff4dbc50 63098adb72c61de6786216aad6aac314b8e9ae242fb140494afed12936666106 Reviewed the comments of the plugins example; keys and values unchanged. -->
+<!-- translation-localized-code-block: 2a636013886e3274f9549d011376c48f05c387773ed46b7bf2ba8e5018147ee9 dcf0c95e55438a724e2ae70bef18a40f8ba32a257bab9f5a81a715cb374fc0e3 Reviewed the comments of the plugins example, including max_down_grace; keys and values unchanged. -->

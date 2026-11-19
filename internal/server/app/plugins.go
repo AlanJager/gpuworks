@@ -72,13 +72,17 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		return err
 	}
 	rt := m.cfg.PluginRuntime
+	maxGrace, err := m.cfg.Plugins.Policy.DownGraceCeiling()
+	if err != nil {
+		return err
+	}
 	cgRoot, cgParent := pluginCgroups(h.Log(), pluginexec.DetectCgroup, pluginexec.EnterServerLeaf)
 	bus := h.Bus()
 	h.reg.dynamic = featuregate.NewDynamicSet(h.reg.features)
 	b, err := pluginbridge.Open(ctx, pluginbridge.Config{
 		Packages: pkgs,
 		State: pushstate.Config{Store: m.st, Fleet: PushedStateFleet(m.st), Bus: bus, FleetTopic: store.NodeFleetTopic,
-			CoreVersion: version.Version, Clock: rt.Clock, TickInterval: rt.TickInterval,
+			CoreVersion: version.Version, Clock: rt.Clock, TickInterval: rt.TickInterval, MaxDownGrace: maxGrace,
 			Effects: pushstate.Effects{
 				ReapplyHolds: func(nodes []uint) {
 					if nodes == nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
@@ -60,6 +61,31 @@ type PluginPolicy struct {
 	// approved one go ahead without a new approval. It lets in nothing that
 	// verification refuses. Default false: every upgrade is approved.
 	AutoApproveUnchanged bool `yaml:"auto_approve_unchanged,omitempty"`
+	// MaxDownGrace, a Go duration ("30m", "2h"), is the site's ceiling on
+	// how long a plugin's grants keep their access after it went down
+	// (ADR 0071 decision 9): a plugin's own grace above it is lowered to it.
+	// Empty or "0" leaves the plugins' own; otherwise it is 60 s to 24 h.
+	MaxDownGrace string `yaml:"max_down_grace,omitempty"`
+}
+
+// Bounds of plugins.policy.max_down_grace: those of the grace a plugin may
+// push (pkg/extapi MinDownGraceS and MaxDownGraceS).
+const (
+	minDownGraceCeiling = extapi.MinDownGraceS * time.Second
+	maxDownGraceCeiling = extapi.MaxDownGraceS * time.Second
+)
+
+// DownGraceCeiling is plugins.policy.max_down_grace, zero when it is not
+// set; Validate refuses a value outside its bounds.
+func (p PluginPolicy) DownGraceCeiling() (time.Duration, error) {
+	if p.MaxDownGrace == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(p.MaxDownGrace)
+	if err != nil || d != 0 && (d < minDownGraceCeiling || d > maxDownGraceCeiling) {
+		return 0, fmt.Errorf("plugins.policy.max_down_grace %q is neither 0 nor a duration from %v to %v", p.MaxDownGrace, minDownGraceCeiling, maxDownGraceCeiling)
+	}
+	return d, nil
 }
 
 // Key returns the issuer's key in wire form.
@@ -99,6 +125,9 @@ func (p Plugins) Validate() error {
 		if !extapi.ValidPackageID(id) {
 			return fmt.Errorf("plugins: %q is not a package id", id)
 		}
+	}
+	if _, err := p.Policy.DownGraceCeiling(); err != nil {
+		return err
 	}
 	for _, pub := range p.Policy.AllowPublishers {
 		if !extapi.ValidPublisher(pub) {
