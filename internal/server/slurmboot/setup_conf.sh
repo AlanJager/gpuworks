@@ -109,6 +109,7 @@ backup_conf() {
 		i=$((i + 1))
 	done
 	if ! cp -p "$CONF" "$BACKUP"; then
+		mark "step=slurm_conf status=failed path=$(clean "$CONF")"
 		fail "cannot back up $CONF"
 	fi
 }
@@ -119,6 +120,7 @@ store_conf() {
 	backup_conf
 	if ! cat "$1" >"$CONF"; then
 		say "ERROR: writing $CONF failed; the backup is $BACKUP."
+		mark "step=slurm_conf status=failed path=$(clean "$CONF")"
 		fail "cannot write $CONF"
 	fi
 }

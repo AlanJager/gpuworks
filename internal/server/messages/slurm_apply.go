@@ -52,6 +52,17 @@ const (
 	SlurmApplyStepResume = "resume"
 )
 
+// Slurm apply reasons the server gives itself, the reason param of
+// ErrorSlurmApplyFailed; the setup script's own are its precheck codes and
+// "<step>_failed" (slurmboot ties them all to the UI's text).
+const (
+	// SlurmApplyReasonBusy: another setup is running on the manager node.
+	SlurmApplyReasonBusy = "busy"
+	// SlurmApplyReasonServerUnreachable: the manager node could not fetch the
+	// script from the platform's address.
+	SlurmApplyReasonServerUnreachable = "server_unreachable"
+)
+
 // Why applying is not applicable, the reason param of
 // ErrorSlurmApplyNotApplicable.
 const (

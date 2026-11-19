@@ -615,6 +615,9 @@ func TestParseSlurmApplyFailures(t *testing.T) {
 		{"setup stopped halfway", SlurmModeSetup, "GWKS_SLURM step=precheck status=ok cluster=demo\nGWKS_SLURM step=check_script status=ok path=x\nkilled\n", "", messages.SlurmApplyStepRun, "", "killed"},
 		{"reconfigure failed", SlurmModeSetup, "GWKS_SLURM step=precheck status=ok cluster=demo\nGWKS_SLURM step=reconfigure status=failed\nGWKS_SLURM step=done status=failed\n", "", messages.SlurmApplyStepSetup, "reconfigure_failed", ""},
 		{"token file", SlurmModeSetup, "GWKS_SLURM step=precheck status=ok cluster=demo\nGWKS_SLURM step=token_file status=failed path=x\nGWKS_SLURM step=done status=failed\n", "", messages.SlurmApplyStepSetup, "token_file_failed", ""},
+		// A plain fail names no step: no reason (the UI says unknown), never "_failed".
+		{"failed without naming a step", SlurmModeSetup, "GWKS_SLURM step=precheck status=ok cluster=demo\nERROR: cannot write in /opt/gwks\nGWKS_SLURM step=done status=failed\n", "", messages.SlurmApplyStepSetup, "", "cannot write"},
+		{"slurm.conf not written", SlurmModeSetup, "GWKS_SLURM step=precheck status=ok cluster=demo\nGWKS_SLURM step=slurm_conf status=failed path=/etc/slurm/slurm.conf\nGWKS_SLURM step=done status=failed\n", "", messages.SlurmApplyStepSetup, "slurm_conf_failed", ""},
 		{"not root", SlurmModeSetup, "GWKS_SLURM step=precheck status=failed reason=not_root\nGWKS_SLURM step=done status=failed\n", "", messages.SlurmApplyStepSetup, "not_root", ""},
 		{"gres error", SlurmModeSetup, "GWKS_APPLY gres=error\ncannot write /etc/slurm/gres.conf\n", "", messages.SlurmApplyStepGres, "", "cannot write"},
 		{"uninstall without its marker", SlurmModeUninstallAgents, "GWKS_SLURM step=precheck status=ok cluster=demo\nGWKS_SLURM step=done status=ok\n", "", messages.SlurmApplyStepRun, "", ""},

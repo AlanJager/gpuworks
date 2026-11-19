@@ -1,7 +1,11 @@
 package api
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -41,10 +45,40 @@ func TestSlurmFixesForEachCode(t *testing.T) {
 		{"running jobs", store.Node{SlurmNode: "gpu7"}, nil},
 		{"unknown code", store.Node{SlurmNode: "gpu7", SlurmUnavailable: "something_new"}, nil},
 		{"outside Slurm", store.Node{SlurmUnavailable: proto.SlurmNodeDrained}, nil},
+		{"a name no Slurm gives, in a command run as root", store.Node{SlurmNode: "gpu7;reboot", SlurmUnavailable: proto.SlurmNodeGRESMissing, GPUVendor: accelerator.VendorNVIDIA, GPUCount: 1}, nil},
 	}
 	for _, tc := range cases {
 		if got := slurmFixes(&tc.node); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s:\n got %+v\nwant %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Every step code the server sends has its text in both UI languages, and
+// the UI has text for no code the server never sends.
+func TestSlurmFixCodesHaveText(t *testing.T) {
+	want := append([]string(nil), slurmFixCodes...)
+	sort.Strings(want)
+	for _, lang := range []string{"en", "zh"} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "..", "ui", "src", "i18n", "locales", lang, "nodes.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Slurm struct {
+				Step map[string]string `json:"step"`
+			} `json:"slurm"`
+		}
+		if err := json.Unmarshal(b, &doc); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for k := range doc.Slurm.Step {
+			got = append(got, k)
+		}
+		sort.Strings(got)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s slurm.step keys = %v, want the server's codes %v", lang, got, want)
 		}
 	}
 }

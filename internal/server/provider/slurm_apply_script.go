@@ -438,11 +438,11 @@ func ParseSlurmApply(mode, output, ended string) (SlurmApplyResult, error) {
 	}
 	switch {
 	case busy:
-		return failed(messages.SlurmApplyStepRun, "busy")
+		return failed(messages.SlurmApplyStepRun, messages.SlurmApplyReasonBusy)
 	case gresError:
 		return failed(messages.SlurmApplyStepGres, "")
 	case fetchFailed:
-		_, err := failed(messages.SlurmApplyStepSetup, "server_unreachable")
+		_, err := failed(messages.SlurmApplyStepSetup, messages.SlurmApplyReasonServerUnreachable)
 		var ferr *SlurmApplyFailedError
 		if errors.As(err, &ferr) {
 			ferr.Kind = slurmReachReason(fetchRC)
@@ -456,8 +456,9 @@ func ParseSlurmApply(mode, output, ended string) (SlurmApplyResult, error) {
 	}
 	if done := steps["done"]; done["status"] == "failed" || failedStep != "" {
 		// The reason is the precheck's, or "<step>_failed" for the step that
-		// failed (each has its text in the UI, tied by slurmboot's contract
-		// test); none when the script failed without saying where.
+		// failed (slurmboot's contract test ties each the scripts can produce
+		// to its text in the UI); none when the script failed without saying
+		// where, which the UI shows as unknown.
 		reason := steps["precheck"]["reason"]
 		if reason == "" && failedStep != "" {
 			reason = failedStep + "_failed"

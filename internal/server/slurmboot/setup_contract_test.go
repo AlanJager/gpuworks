@@ -5,10 +5,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
+	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/provider"
 )
 
@@ -45,9 +48,23 @@ func TestTheParserReadsWhatTheScriptDid(t *testing.T) {
 		if ferr != nil || res.Plan == nil {
 			t.Fatalf("check: %+v %v", res, ferr)
 		}
+		if p := res.Plan; !p.Shared || p.ConfPath != w.confPath() || !p.ConfChanged || p.Interval <= 0 || p.SlurmCluster == "" {
+			t.Fatalf("check plan: %+v", *p)
+		}
 		res, ferr = w.parsed(t, provider.SlurmModeSetup)
-		if ferr != nil || res.Done != "ok" || len(res.Steps) == 0 || !res.Shared {
+		if ferr != nil || res.Done != "ok" || !res.Shared {
 			t.Fatalf("setup: %+v %v", res, ferr)
+		}
+		var ids []string
+		for _, step := range res.Steps {
+			ids = append(ids, step.ID)
+			if step.Status == "" {
+				t.Errorf("setup step %s has no status", step.ID)
+			}
+		}
+		want := []string{provider.SlurmApplyIDGres, provider.SlurmApplyIDCheckScript, provider.SlurmApplyIDDistribute, provider.SlurmApplyIDSlurmConf, provider.SlurmApplyIDReconfigure, provider.SlurmApplyIDResume}
+		if !reflect.DeepEqual(ids, want) {
+			t.Fatalf("setup steps = %v, want %v", ids, want)
 		}
 		res, ferr = w.parsed(t, provider.SlurmModeUninstallAgents, "--uninstall-agents")
 		if ferr != nil || res.IntervalSeconds <= 0 {
@@ -67,7 +84,7 @@ func TestTheParserReadsWhatTheScriptDid(t *testing.T) {
 // A failure parses to the reason the UI has text for: a precheck code, or
 // the step that failed.
 func TestTheParserReadsWhyTheScriptFailed(t *testing.T) {
-	keys := applyReasonKeys(t)
+	keys := uiKeys(t, "slurmApplyReason")
 	eachShell(t, func(t *testing.T, w *world) {
 		w.controller("nfs", baseConf)
 		_, ferr := w.parsed(t, provider.SlurmModeUninstallAgents, "--uninstall-agents")
@@ -90,51 +107,102 @@ func TestTheParserReadsWhyTheScriptFailed(t *testing.T) {
 	})
 }
 
-// Every failure reason the scripts can produce has text in both languages:
-// each precheck code (pre_fail <code>, reason=<code>) and "<step>_failed" for
-// each step that marks itself failed. The precheck's own step and the script
-// directory's (always followed by pre_fail script_dir_unsafe) carry a code
-// instead; done, distribute and server_reach are not failures of the run
-// (provider.ParseSlurmApply passes over them).
-func TestEveryScriptFailureHasText(t *testing.T) {
-	codes := map[string]bool{}
+// scriptFailures reads every failure reason the scripts can produce from
+// their marker lines, as provider.ParseSlurmApply reads them: each precheck
+// code (pre_fail <code>, reason=<code>) and "<step>_failed" for each other
+// step that marks itself failed, whatever the order of its keys. The script
+// directory's step is always followed by pre_fail script_dir_unsafe; done,
+// distribute and server_reach are not failures of the run (the parser passes
+// over them). It also returns every step the markers name.
+func scriptFailures(t *testing.T) (codes, steps map[string]bool) {
+	t.Helper()
+	codes, steps = map[string]bool{}, map[string]bool{}
 	preFail := regexp.MustCompile(`pre_fail ([a-z_]+) "`)
-	precheck := regexp.MustCompile(`step=precheck status=failed reason=([a-z_]+)`)
-	stepFailed := regexp.MustCompile(`step=([a-z_]+) status=failed`)
+	markLine := regexp.MustCompile(`mark "([^"]*)"`)
 	for _, s := range []string{setupTemplate, setupConfPart, setupNodesPart, setupReachPart, setupCheckPart, setupDirPart} {
 		for _, m := range preFail.FindAllStringSubmatch(s, -1) {
 			codes[m[1]] = true
 		}
-		for _, m := range precheck.FindAllStringSubmatch(s, -1) {
-			codes[m[1]] = true
-		}
-		for _, m := range stepFailed.FindAllStringSubmatch(s, -1) {
-			switch m[1] {
-			case "precheck", "script_dir", "done", "distribute", "server_reach":
+		for _, m := range markLine.FindAllStringSubmatch(s, -1) {
+			kv := map[string]string{}
+			for _, field := range strings.Fields(m[1]) {
+				if k, v, ok := strings.Cut(field, "="); ok {
+					kv[k] = v
+				}
+			}
+			step := kv["step"]
+			if step == "" || strings.ContainsAny(step, "$") {
+				continue
+			}
+			steps[step] = true
+			if kv["status"] != "failed" {
+				continue
+			}
+			switch step {
+			case "precheck":
+				if r := kv["reason"]; r != "" && !strings.ContainsAny(r, "$") {
+					codes[r] = true
+				}
+			case "script_dir", "done", "distribute", "server_reach":
 			default:
-				codes[m[1]+"_failed"] = true
+				codes[step+"_failed"] = true
 			}
 		}
 	}
-	if len(codes) < 10 {
-		t.Fatalf("found only %d failure codes in the scripts: the patterns no longer match", len(codes))
+	if len(codes) < 10 || len(steps) < 15 {
+		t.Fatalf("found only %d failure codes and %d steps in the scripts: the patterns no longer match", len(codes), len(steps))
 	}
-	var missing []string
-	for lang, k := range applyReasonKeys(t) {
+	return codes, steps
+}
+
+// Every failure reason the scripts can produce has text in both languages,
+// and every "<step>_failed" text is for a failure some marker can produce
+// (a step the scripts name that never marks itself failed would show
+// unknown instead: seen with slurm_conf).
+func TestEveryScriptFailureHasText(t *testing.T) {
+	codes, steps := scriptFailures(t)
+	var missing, dead []string
+	for lang, k := range uiKeys(t, "slurmApplyReason") {
 		for c := range codes {
 			if !k[c] {
 				missing = append(missing, lang+": "+c)
 			}
 		}
+		for key := range k {
+			if step, ok := strings.CutSuffix(key, "_failed"); ok && steps[step] && !codes[key] {
+				dead = append(dead, lang+": "+key)
+			}
+		}
 	}
 	sort.Strings(missing)
+	sort.Strings(dead)
 	if len(missing) > 0 {
-		t.Fatalf("failure reasons with no text under slurmApplyReason: %v", missing)
+		t.Errorf("failure reasons with no text under slurmApplyReason: %v", missing)
+	}
+	if len(dead) > 0 {
+		t.Errorf("texts for step failures no marker produces (the failure shows as unknown): %v", dead)
 	}
 }
 
-// applyReasonKeys reads the slurmApplyReason keys of each UI language.
-func applyReasonKeys(t *testing.T) map[string]map[string]bool {
+// The reasons and steps the server adds itself have their text too.
+func TestServerSideApplyReasonsHaveText(t *testing.T) {
+	reasons, stepTexts := uiKeys(t, "slurmApplyReason"), uiKeys(t, "slurmApplyStep")
+	for _, lang := range []string{"en", "zh"} {
+		for _, r := range []string{messages.SlurmApplyReasonBusy, messages.SlurmApplyReasonServerUnreachable, messages.SlurmApplyReasonServerUnreachable + "_at", "unknown"} {
+			if !reasons[lang][r] {
+				t.Errorf("%s has no slurmApplyReason text for %s", lang, r)
+			}
+		}
+		for _, s := range []string{messages.SlurmApplyStepCluster, messages.SlurmApplyStepAssistant, messages.SlurmApplyStepRun, messages.SlurmApplyStepGres, messages.SlurmApplyStepSetup, messages.SlurmApplyStepResume} {
+			if !stepTexts[lang][s] {
+				t.Errorf("%s has no slurmApplyStep text for %s", lang, s)
+			}
+		}
+	}
+}
+
+// uiKeys reads the keys of one section of common.json in each UI language.
+func uiKeys(t *testing.T, section string) map[string]map[string]bool {
 	t.Helper()
 	out := map[string]map[string]bool{}
 	for _, lang := range []string{"en", "zh"} {
@@ -142,14 +210,16 @@ func applyReasonKeys(t *testing.T) map[string]map[string]bool {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var doc struct {
-			Reasons map[string]string `json:"slurmApplyReason"`
-		}
+		var doc map[string]json.RawMessage
 		if err := json.Unmarshal(b, &doc); err != nil {
 			t.Fatal(err)
 		}
+		var keys map[string]string
+		if err := json.Unmarshal(doc[section], &keys); err != nil {
+			t.Fatalf("%s %s: %v", lang, section, err)
+		}
 		out[lang] = map[string]bool{}
-		for k := range doc.Reasons {
+		for k := range keys {
 			out[lang][k] = true
 		}
 	}

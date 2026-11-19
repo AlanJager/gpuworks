@@ -44,6 +44,10 @@ type SlurmManagerRun struct {
 // slurmNodeName is what Slurm names nodes, as far as the scripts carry them.
 var slurmNodeName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
+// ValidSlurmNodeName says whether name is a Slurm node name safe to put in a
+// command line as is (letters, digits, dot, underscore, hyphen).
+func ValidSlurmNodeName(name string) bool { return slurmNodeName.MatchString(name) }
+
 // SlurmApplyTarget is where an entry's setup goes: the cloud account, the
 // HPC cluster and its region. ExpectGPU are the Slurm names of the compute
 // nodes the account's last sync listed with a card, which only lets a setup
@@ -95,7 +99,7 @@ func (e *SlurmApplyPermissionError) Unwrap() error { return e.Err }
 type SlurmApplyFailedError struct{ Step, Reason, Output, URL, Kind string }
 
 func (e *SlurmApplyFailedError) Error() string {
-	if e.Reason == "server_unreachable" && e.URL != "" {
+	if e.Reason == messages.SlurmApplyReasonServerUnreachable && e.URL != "" {
 		s := "the Slurm manager node cannot reach the management node address " + e.URL
 		if e.Kind != "" {
 			s += " (" + e.Kind + ")"
@@ -317,7 +321,7 @@ func (s *Service) RunSlurmSetup(ctx context.Context, target SlurmApplyTarget, re
 	res, err := ParseSlurmApply(req.Mode, run.Output, run.Ended)
 	if err != nil {
 		var failed *SlurmApplyFailedError
-		if errors.As(err, &failed) && failed.Reason == "server_unreachable" {
+		if errors.As(err, &failed) && failed.Reason == messages.SlurmApplyReasonServerUnreachable {
 			failed.URL = slurmServerBase(req)
 		}
 		return SlurmApplyResult{}, err
