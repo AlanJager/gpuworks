@@ -173,3 +173,74 @@ func TestPoolingSpecsAreExemptOnlyFromDecodeCosts(t *testing.T) {
 		t.Fatal("a spec without a declared contract is not pooling-only")
 	}
 }
+
+// A JSON compilation config quoted with spaces inside a shell string reads as
+// one value, and a quoted nested command (sh -c '...') is read word by word.
+func TestShellStringLaunchInputsReadQuotedConfigs(t *testing.T) {
+	spec := InferenceSpec{
+		Engine:        engines.VLLM,
+		Entrypoint:    []string{`sh -c 'vllm serve /model --compilation-config "{\"cudagraph_mode\": \"NONE\"}" --max_num_seqs 2'`},
+		ManualCommand: `vllm serve /model --speculative-config '{"method": "mtp", "enforce_eager": true}' -O0`,
+	}
+	var got []string
+	for _, finding := range UnexplainedPerformanceFindings(spec) {
+		got = append(got, finding.Where+" "+finding.Param+"="+finding.Value)
+	}
+	want := []string{
+		"entrypoint --max-num-seqs=2",
+		"entrypoint --compilation-config.cudagraph_mode=NONE",
+		"manual_command -O=0",
+		"manual_command --speculative-config.enforce_eager=true",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexplained = %q\nwant %q", got, want)
+	}
+}
+
+func TestShellWordsQuoting(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{`a  b`, "a|b"},
+		{`'a b' c`, "a|b|c"},
+		{`--x '{"k": 1}'`, `--x|{"k": 1}`},
+		// A quoted word with spaces is a nested command and is split again.
+		{`"say \"hi\"" d\ e`, "say|hi|d|e"},
+		{`--y '[1, 2]'`, "--y|[1, 2]"},
+		{`'unterminated {`, "unterminated|{"},
+	} {
+		if got := strings.Join(shellWords(tc.in), "|"); got != tc.want {
+			t.Errorf("shellWords(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// An imported spec's reasons are checked but not kept, and the import says so
+// instead of dropping them silently.
+func TestImportedPerformanceTradeoffsWarnThatTheyAreNotKept(t *testing.T) {
+	catalog, err := ParseYAML(perfTradeoffYAML(`        performance_tradeoffs:
+          - param: --enforce-eager
+            reason: hardware_plugin_requires
+            detail_en: Graph capture hangs on this runner.
+            detail_zh: 该镜像上图捕获会挂起。
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, warning := range CatalogWarnings(catalog) {
+		if warning.Code() == "CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT" {
+			got = append(got, warning.Params()["model_id"].(string)+"/"+warning.Params()["spec"].(string))
+		}
+	}
+	if strings.Join(got, ",") != "org/model/bf16-eager" {
+		t.Fatalf("not-kept warnings = %q", got)
+	}
+	catalog, err = ParseYAML(perfTradeoffYAML(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, warning := range CatalogWarnings(catalog) {
+		if warning.Code() == "CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT" {
+			t.Fatalf("a spec without performance_tradeoffs warned: %v", warning)
+		}
+	}
+}

@@ -32,6 +32,13 @@ func specWarnings(modelID string, spec InferenceSpec) []*messages.ProductError {
 			"Spec "+spec.Name+" of "+modelID+" sets display_profile or gpus.display_target, which are no longer used and were ignored; name the spec with display_name_zh_cn and display_name_en.",
 			params()))
 	}
+	// The database projection has no place for performance_tradeoffs: the
+	// platform reads the reasons of built-in specs from the embedded catalog.
+	if len(spec.PerformanceTradeoffs) > 0 {
+		warnings = append(warnings, messages.NewProductError(messages.WarningCatalogPerformanceTradeoffsNotKept,
+			"Spec "+spec.Name+" of "+modelID+" states performance_tradeoffs; they were checked, but only the built-in catalog's reasons are read, so the imported spec does not keep them.",
+			params()))
+	}
 	// A value the parameter dictionary cannot read never blocks a template:
 	// the dictionary trails the engines, and the author's recipe is what the
 	// engine gets. The token reaches the engine verbatim (deploy.ReverseArgs

@@ -190,8 +190,9 @@ func TestFullTemplateFixtureStatesEveryCatalogField(t *testing.T) {
 	retired := map[string]bool{"GPUSelector.RetiredDisplayTarget": true, "InferenceSpec.RetiredDisplayProfile": true}
 	// A spec's performance_tradeoffs is validated on import but is catalog
 	// content only: the database projection does not store it, so the server
-	// reads the reasons of built-in specs from the embedded catalog and an
-	// editor round trip cannot carry them.
+	// reads the reasons of built-in specs from the embedded catalog, an
+	// editor round trip cannot carry them, and the import says so with
+	// CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT.
 	for _, name := range []string{
 		"InferenceSpec.PerformanceTradeoffs", "PerformanceTradeoff.Param", "PerformanceTradeoff.Reason",
 		"PerformanceTradeoff.DetailEN", "PerformanceTradeoff.DetailZH", "PerformanceTradeoff.Link",

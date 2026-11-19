@@ -614,7 +614,7 @@ Some settings let an engine run on a given piece of hardware or a given model at
 
 | Cost | vLLM spelling | SGLang spelling | Level |
 |---|---|---|---|
-| `graph_disabled` | `--enforce-eager`, `-O0`, `cudagraph_mode: NONE` in `--compilation-config` (or `mode: 0` without `cudagraph_mode`), `enforce_eager: true` in `--speculative-config` | `--disable-cuda-graph` | Must be explained |
+| `graph_disabled` | `--enforce-eager`, `cudagraph_mode: NONE` in `--compilation-config`, `-O0` or `mode: 0` (both only without `cudagraph_mode`), `enforce_eager: true` in `--speculative-config` | `--disable-cuda-graph` | Must be explained |
 | `prefix_cache_disabled` | `--no-enable-prefix-caching` | `--disable-radix-cache` | Must be explained |
 | `concurrency_capped` | `--max-num-seqs` | `--max-running-requests` | ≤ 4 must be explained; 5–8 shown only |
 | `chunked_prefill_disabled` | `--no-enable-chunked-prefill` | `--chunked-prefill-size -1` | Must be explained |
@@ -624,7 +624,7 @@ Some settings let an engine run on a given piece of hardware or a given model at
 | `graph_capture_narrow` | `cudagraph_mode: FULL_DECODE_ONLY`, largest `cudagraph_capture_sizes` entry < 16 | `--cuda-graph-max-bs` < 16 | Shown only |
 | `kernel_fallback` | `--attention-backend TRITON_ATTN`, environment switches that turn a fast kernel off such as `VLLM_USE_DEEP_GEMM=0` | — | Shown only |
 
-The registry reads `args`, `env`, and the flags in `entrypoint`, `pre_start_argv` and `manual_command` split on whitespace. `backend: eager` in `--compilation-config` is only the torch.compile backend; it does not stop graph replay and is not `graph_disabled`.
+The registry reads `args`, `env`, and the flags in `entrypoint`, `pre_start_argv` and `manual_command` split by shell quoting rules: a quoted JSON value with spaces is one value, and the command inside `sh -c '…'` is read word by word. Each input is read on its own, so a `--compilation-config` written across two inputs is not merged. vLLM's underscore spelling (`--max_num_seqs`) counts as the dashed one, and the reported `param` is the dashed form. `backend: eager` in `--compilation-config` is only the torch.compile backend; it does not stop graph replay and is not `graph_disabled`.
 
 A spec states its reasons in `performance_tradeoffs`, one entry per setting:
 
@@ -657,9 +657,9 @@ performance_tradeoffs:
 | `task_type` | A task without a decode phase (embeddings, rerank) |
 | `upstream_bug` | A known upstream defect; `link` is required |
 
-A spec whose `api.operations` are all `openai.embeddings` / `openai.rerank` gets `task_type` for `graph_disabled`, `prefix_cache_disabled` and `concurrency_capped` without writing it. Import, saving in the template editor and catalog package loading all validate the field. It is not stored in the database projection, so a template exported from the database or saved again from the editor does not carry it.
+A spec whose `api.operations` are all `openai.embeddings` / `openai.rerank` gets `task_type` for `graph_disabled`, `prefix_cache_disabled` and `concurrency_capped` without writing it. Import, saving in the template editor and catalog package loading all validate the field. It is not stored in the database projection, and the platform reads these reasons only from the built-in catalog, so a template exported from the database or saved again from the editor does not carry it; importing a spec that sets the field raises the `CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT` warning.
 
-`TestBuiltinPerformanceCostsAreExplained` in `internal/server/inferencecatalog/seed` guards the built-in catalog: every must-be-explained setting in a built-in spec needs a `performance_tradeoffs` entry, the automatic exemption above, or a line in `testdata/perf_tradeoff_budget.txt`; otherwise the test fails and its message gives the YAML to add. The budget file only shrinks: once a setting gains a reason or is removed, the same change must delete its line, or the test fails as well; a new line needs a `# raised: <reason>` comment above it and a reviewer's agreement.
+`TestBuiltinPerformanceCostsAreExplained` in `internal/server/inferencecatalog/seed` guards the built-in catalog: every must-be-explained setting in a built-in spec needs a `performance_tradeoffs` entry, the automatic exemption above, or a line in `testdata/perf_tradeoff_budget.txt`; otherwise the test fails and its message gives the YAML to add. The budget file only shrinks: once a setting gains a reason or is removed, the same change must delete its line, or the test fails as well. The line count is pinned to the test constant `perfTradeoffBudgetLines`, and the test fails when the file disagrees: deleting a line means lowering it; a new performance-costing setting should get a `performance_tradeoffs` entry, and a line that really must be added means raising the constant and writing `# raised: <reason>` above the line, so review sees it in the change.
 
 ## Pre-Import Checks and Warnings
 
@@ -679,6 +679,7 @@ Warnings do not block import. A successful import response includes the same `wa
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` without `api.health_endpoint` | Readiness probes use the default `/health`; no warning is shown for `vllm` / `sglang`, whose engines provide `/health` natively |
 | `CATALOG_ARG_PASSED_THROUGH` | A dictionary parameter in `args` carries a value the dictionary cannot read (`params.flag` / `value` / `key`) | Passed to the engine verbatim; the deploy form and the memory estimate do not see the value |
 | `CATALOG_DISPLAY_PROFILE_RETIRED` | The spec still sets `display_profile` or `gpus.display_target` | Both are ignored; the UI shows `display_name_zh_cn` / `display_name_en` (or `name` when there is neither) |
+| `CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT` | The spec sets `performance_tradeoffs` | Validated but not kept: the platform reads these reasons only from the built-in catalog (see [performance_tradeoffs](#performance_tradeoffs-reasons-for-performance-costing-settings)) |
 | `CATALOG_CALLABLE_SERVED_NAME_FIXED` | In an `engine: callable` spec, the `--served-model-name` value in `args` / `entrypoint` does not use `${SERVED_MODEL_NAME}` (`params.name` is the literal) | An engine that checks the model accepts only that literal, so requests and health checks return 404 whenever the deployment's served name differs; ignore it if the adapter ignores the model or the name is pinned on purpose |
 
 ## Validation Entry Points and Tools
@@ -693,7 +694,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 6841ea8d5e8b9bb7e13bfe403bab5c7e72a48cbfc87b8df6bfdeda3898d9b73b -->
+<!-- translation-source-sha256: 30b1b4de87e0446a9a7cc3837cd3d4171f7ce3d00880d7d525ec29badbefd7b9 -->
 <!-- translation-localized-code-block: 26b59d93b4900f054e9c78c569388285db977d8a1a29c7231646a264e33074f3 d2ac202220acef0f04a4a5bdf2d4ffd3695b808693b508f83ea49253037b2d2d Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->

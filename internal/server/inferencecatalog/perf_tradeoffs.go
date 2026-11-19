@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"unicode"
 
 	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
@@ -65,8 +66,10 @@ type PerformanceFinding struct {
 
 // SpecPerformanceFindings grades every launch input the spec states: its
 // engine args and environment, and the flags written inside its entrypoint,
-// pre-start argv and manual command (split on whitespace, so a JSON value
-// with spaces inside a shell string is not read).
+// pre-start argv and manual command, split into words the way a POSIX shell
+// quotes them (so a JSON config quoted with spaces inside reads as one
+// value). Each input is graded on its own: a vLLM compilation config split
+// across two of them is not merged.
 func SpecPerformanceFindings(spec InferenceSpec) []PerformanceFinding {
 	var findings []PerformanceFinding
 	add := func(where string, found []engines.PerformanceFinding) {
@@ -82,14 +85,69 @@ func SpecPerformanceFindings(spec InferenceSpec) []PerformanceFinding {
 	return findings
 }
 
+// shellWords splits each value into words as a POSIX shell would quote them:
+// whitespace separates words outside quotes, single quotes keep everything,
+// double quotes keep everything but a backslash before " \ $ or `, and a
+// backslash outside quotes keeps the next character. An unterminated quote
+// runs to the end of the value. Expansions are not performed. A quoted word
+// with whitespace inside that is not a JSON object or list is a nested
+// command (sh -c '...'), and its words are returned in its place.
 func shellWords(values ...string) []string {
 	var words []string
 	for _, value := range values {
-		for _, word := range strings.Fields(value) {
-			words = append(words, strings.Trim(word, `'"`))
+		var word strings.Builder
+		inWord := false
+		var quote rune
+		runes := []rune(value)
+		for i := 0; i < len(runes); i++ {
+			r := runes[i]
+			switch {
+			case quote == '\'':
+				if r == '\'' {
+					quote = 0
+				} else {
+					word.WriteRune(r)
+				}
+			case quote == '"':
+				if r == '"' {
+					quote = 0
+				} else if r == '\\' && i+1 < len(runes) && strings.ContainsRune(`"\$`+"`", runes[i+1]) {
+					i++
+					word.WriteRune(runes[i])
+				} else {
+					word.WriteRune(r)
+				}
+			case r == '\'' || r == '"':
+				quote, inWord = r, true
+			case r == '\\' && i+1 < len(runes):
+				i++
+				word.WriteRune(runes[i])
+				inWord = true
+			case unicode.IsSpace(r):
+				if inWord {
+					words = append(words, word.String())
+					word.Reset()
+					inWord = false
+				}
+			default:
+				word.WriteRune(r)
+				inWord = true
+			}
+		}
+		if inWord {
+			words = append(words, word.String())
 		}
 	}
-	return words
+	expanded := make([]string, 0, len(words))
+	for _, word := range words {
+		trimmed := strings.TrimSpace(word)
+		if strings.IndexFunc(trimmed, unicode.IsSpace) >= 0 && !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "[") {
+			expanded = append(expanded, shellWords(trimmed)...)
+			continue
+		}
+		expanded = append(expanded, word)
+	}
+	return expanded
 }
 
 // PoolingOnly reports whether every operation the spec serves is a pooling
@@ -199,7 +257,7 @@ func performanceTradeoffsSchema() map[string]any {
 	}
 	return map[string]any{
 		"type":        "array",
-		"description": "Why the spec keeps settings the engine registry grades as performance costs (such as --enforce-eager). Each param must be one the spec's launch sets.",
+		"description": "Why the spec keeps settings the engine registry grades as performance costs (such as --enforce-eager). Each param must be one the spec's launch sets. Only the built-in catalog's reasons are read: an imported spec's entries are checked, then not kept (warning CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT).",
 		"items": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
