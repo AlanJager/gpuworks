@@ -31,6 +31,7 @@ for (const name of [
   "Element",
   "Node",
   "MutationObserver",
+  "NodeFilter",
   "ShadowRoot",
 ] as const) {
   Object.defineProperty(globalThis, name, {
@@ -348,7 +349,7 @@ test("switching to manual starts from an empty pick, not the automatic placement
   // Switch to manual: the server's placement is not inherited.
   await user.click(screen.getByText(deployLocale.workbench.node.manual));
   await waitFor(
-    () => assert.ok(screen.getByText(deployLocale.workbench.node.placeholder)),
+    () => assert.ok(screen.getByPlaceholderText(deployLocale.workbench.node.placeholder)),
   );
   await waitFor(
     () => {

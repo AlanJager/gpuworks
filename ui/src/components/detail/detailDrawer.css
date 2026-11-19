@@ -2,14 +2,17 @@
    one line, expanded rows, hints. See DetailDrawer.tsx. */
 
 :where(:not(.deployment-overview-groups, .deployment-instance-groups)) > .detail-section + .detail-section { margin-top: 24px; }
-.detail-section > h5.ant-typography {
+.detail-section > h5 {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0 0 10px !important;
   font-size: 14px !important;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--fg-default);
 }
-.detail-section > h5.ant-typography::before,
+.detail-section > h5::before,
 .deployment-detail-tabs :is(.deployment-card-header > h5, .deployment-card-disclosure, .deployment-section-title)::before {
   content: var(--detail-section-marker, "");
   width: 3px;
@@ -153,7 +156,7 @@
 .status-tag { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 /* A table whose rows expand opens them on a click anywhere in the row. */
 .detail-expandable .ant-table-row { cursor: pointer; }
-.detail-section > h5.ant-typography .detail-section-extra { margin-left: auto; font-size: 12px; font-weight: 400; }
+.detail-section > h5 .detail-section-extra { margin-left: auto; font-size: 12px; font-weight: 400; }
 
 /* Points inside a detail's alert: one fact per line, tight to the title. */
 .detail-body .detail-points { margin: 0; padding-left: 16px; }

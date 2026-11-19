@@ -213,11 +213,11 @@ test("the preview names the entry a node uses, or says it uses none", async () =
   assert.ok(screen.getByText(text.previewTitle));
   const picker = screen.getByRole("combobox", { name: text.previewPick });
   await user.click(picker);
-  await user.click(await screen.findByText("gpu-a-01", { selector: ".ant-select-item-option-content" }));
+  await user.click(await screen.findByRole("option", { name: "gpu-a-01" }));
   await screen.findByText(fill(text.previewResult, { n: 1 }));
   assert.deepEqual(fake.calls.find((call) => call.method === "nodePullProxy")?.args, ["gpu-a-01"]);
   await user.click(picker);
-  await user.click(await screen.findByText("gpu-b-01", { selector: ".ant-select-item-option-content" }));
+  await user.click(await screen.findByRole("option", { name: "gpu-b-01" }));
   await screen.findByText(text.previewNone);
   assert.equal(screen.queryByText(fill(text.previewResult, { n: 1 })), null);
 });
@@ -227,7 +227,7 @@ test("a failed preview says so", async () => {
   await screen.findByText(text.empty);
   fake.failNext("nodePullProxy", new Error("node gone"));
   await user.click(screen.getByRole("combobox", { name: text.previewPick }));
-  await user.click(await screen.findByText("gpu-a-01", { selector: ".ant-select-item-option-content" }));
+  await user.click(await screen.findByRole("option", { name: "gpu-a-01" }));
   await screen.findByText(fill(text.previewFailed, { detail: "node gone" }));
 });
 
@@ -278,7 +278,7 @@ test("deleting an earlier proxy keeps list, preview and node card numbers consis
     assert.ok(within(rows()[0]).getByRole("button", { name: fill(text.deleteProxy, { n: 2 }) }));
     assert.ok(within(rows()[0]).getByRole("button", { name: fill(text.moveUp, { n: 2 }) }));
     await user.click(screen.getByRole("combobox", { name: text.previewPick }));
-    await user.click(await screen.findByText("gpu-b-01", { selector: ".ant-select-item-option-content" }));
+    await user.click(await screen.findByRole("option", { name: "gpu-b-01" }));
     await screen.findByText(fill(text.previewResult, { n: 2 }));
     const { MemoryRouter } = await import("react-router-dom");
     const NodePullProxy = (await import("../src/components/NodePullProxy.tsx")).default;

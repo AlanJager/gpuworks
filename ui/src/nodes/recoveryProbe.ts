@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { message } from "antd";
+import { message } from "../ui-kit/feedback";
 import { useTranslation } from "react-i18next";
 
 import { api, type Node } from "../api";

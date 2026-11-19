@@ -1,5 +1,4 @@
 import { forwardRef, type ComponentPropsWithoutRef } from "react";
-import type { RefSelectProps } from "antd";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { EligibleNode, Node } from "../../api";
@@ -42,9 +41,9 @@ type Props = {
  * (rankAddress) must also advertise an address the group can reach - its
  * compute network's IP, else its direct address.
  *
- * It works as an antd Form control.
+ * It works as a form control.
  */
-const EligibleNodePicker = forwardRef<RefSelectProps, Props>(function EligibleNodePicker({
+const EligibleNodePicker = forwardRef<HTMLInputElement, Props>(function EligibleNodePicker({
   eligibleNodes,
   rankAddress,
   ...control

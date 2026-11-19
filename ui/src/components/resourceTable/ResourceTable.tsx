@@ -1,6 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode, type Key } from "react";
-import type { TableProps } from "antd";
-import type { ColumnType, TablePaginationConfig } from "antd/es/table/interface";
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type HTMLAttributes, type MouseEvent, type ReactNode, type Key } from "react";
 import { type ColumnDef, type ColumnFiltersState, type SortingState, type RowSelectionState, type ExpandedState } from "@tanstack/react-table";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
@@ -21,6 +19,80 @@ import { formatClock, formatTime } from "../../i18n/datetime";
 import ColumnSettingsDrawer from "./ColumnSettingsDrawer";
 import { PAGE_SIZE_OPTIONS, arrangeColumns, defaultColumnPrefs, loadColumnPrefs, minWidthOf, saveColumnPrefs, widthOf, type ColumnPrefs } from "./columnPrefs";
 export type SortValue = string | number | null | undefined;
+
+// The table contract ResourceTable and the detail tables accept: the fields
+// their callers pass today, named after the old antd ones so a column, a
+// pager or an expand config reads the same while pages move off antd.
+
+/** One choice in a column's filter menu. */
+export interface ResourceColumnFilter {
+  text: ReactNode;
+  value: Key | boolean;
+}
+
+export type ResourceFilterValue = (Key | boolean)[];
+
+/** A column before ResourceTable adds its own key, width, role and sort fields. */
+export interface ResourceColumnBase<T> {
+  title?: ReactNode | ((props: unknown) => ReactNode);
+  /** A field of the row, or a path into it. */
+  dataIndex?: string | number | readonly (string | number)[];
+  // Method syntax: a caller narrows the value to the field it renders.
+  render?(value: any, record: T, index: number): ReactNode;
+  align?: "left" | "right" | "center";
+  /** Cells already end in an ellipsis on one line; true only restates it. */
+  ellipsis?: boolean;
+  className?: string;
+  filters?: ResourceColumnFilter[];
+  onFilter?(value: Key | boolean, record: T): boolean;
+  filterMultiple?: boolean;
+  /** Shows a search box above a long filter menu. */
+  filterSearch?: boolean;
+  /** Controlled filter values; null clears them. */
+  filteredValue?: ResourceFilterValue | null;
+  defaultFilteredValue?: ResourceFilterValue | null;
+}
+
+/** A server-paged list's position: page numbers start at 1. */
+export interface ResourcePagination {
+  current?: number;
+  pageSize?: number;
+  total?: number;
+  onChange?: (page: number, pageSize: number) => void;
+}
+
+export type ResourceRowKey<T> = string | keyof T | ((record: T, index?: number) => Key);
+
+export interface ResourceRowSelection<T> {
+  selectedRowKeys?: Key[];
+  /** Chosen keys off the current page or filtered out are always kept; true only restates it. */
+  preserveSelectedRowKeys?: boolean;
+  onChange?: (keys: Key[], rows: T[], info: { type: "multiple" }) => void;
+  getCheckboxProps?: (record: T) => { disabled?: boolean; title?: string; "aria-label"?: string; name?: string };
+}
+
+export interface ResourceExpandIconProps<T> {
+  prefixCls: string;
+  expanded: boolean;
+  expandable: boolean;
+  record: T;
+  onExpand: (record: T, event: MouseEvent<HTMLElement>) => void;
+}
+
+export interface ResourceExpandable<T> {
+  expandedRowRender?: (record: T, index: number, indent: number, expanded: boolean) => ReactNode;
+  rowExpandable?: (record: T) => boolean;
+  /** Clicking anywhere on the row (not on a button, link or checkbox) toggles it. */
+  expandRowByClick?: boolean;
+  expandIcon?: (props: ResourceExpandIconProps<T>) => ReactNode;
+  columnWidth?: number;
+  defaultExpandedRowKeys?: readonly Key[];
+  expandedRowKeys?: readonly Key[];
+  onExpand?: (expanded: boolean, record: T) => void;
+  onExpandedRowsChange?: (keys: readonly Key[]) => void;
+}
+
+export type ResourceRowProps = HTMLAttributes<HTMLTableRowElement> & { [data: `data-${string}`]: string | undefined };
 
 let measureContext: CanvasRenderingContext2D | null | undefined;
 // Measured titles, by label and marks: reading the body font forces a style
@@ -48,7 +120,7 @@ function titleWidth(label: string, sortable: boolean, filterable: boolean) {
  * name column leads and freezes left, the actions column trails and freezes
  * right, and neither hides nor moves.
  */
-export type ResourceColumn<T> = Omit<ColumnType<T>, "key" | "width" | "fixed" | "sorter" | "sortOrder"> & {
+export type ResourceColumn<T> = ResourceColumnBase<T> & {
   key: string;
   width: number;
   minWidth?: number;
@@ -97,14 +169,14 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   toolbar, toolbarExtra, pagination, sort, onSortChange, onFiltersChange, onFilterStateChange, rowSelection, expandable, onRow,
   emptyDescription, emptyKind = "data", emptyAction, filteredEmptyDescription, columnSettings = true, extraFilters = EMPTY_FILTERS,
 }: {
-  tableId: string; columns: ResourceColumn<T>[]; data?: T[]; rowKey: TableProps<T>["rowKey"];
+  tableId: string; columns: ResourceColumn<T>[]; data?: T[]; rowKey: ResourceRowKey<T>;
   loading?: boolean; error?: Error | null; onRefresh?: () => void; updatedAt?: Date | null;
-  toolbar?: ReactNode; toolbarExtra?: ReactNode; pagination?: TablePaginationConfig | false;
+  toolbar?: ReactNode; toolbarExtra?: ReactNode; pagination?: ResourcePagination | false;
   sort?: ServerSort | null; onSortChange?: (sort: ServerSort | null) => void;
   onFiltersChange?: (filters: Record<string, string[]>) => void;
   /** Observe local filters without opting into server-side filtering. */
   onFilterStateChange?: (filters: Record<string, string[]>) => void;
-  rowSelection?: TableProps<T>["rowSelection"]; expandable?: TableProps<T>["expandable"]; onRow?: TableProps<T>["onRow"];
+  rowSelection?: ResourceRowSelection<T>; expandable?: ResourceExpandable<T>; onRow?: (record: T, index?: number) => ResourceRowProps;
   emptyDescription?: string; emptyKind?: EmptyStateKind; emptyAction?: ReactNode;
   /** What an empty list says when column filters are in effect: nothing matches them, with a way to clear them. A list
    *  without it keeps emptyDescription, which its owner may already word for filtering. */
@@ -126,7 +198,7 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   useEffect(() => { setPrefs(loadColumnPrefs(tableId, columns)); }, [tableId, columnKeys]);
   const update = (next: ColumnPrefs) => { setPrefs(next); saveColumnPrefs(tableId, next); };
   const arranged = useMemo(() => arrangeColumns(columns, prefs), [columns, prefs]);
-  const keyOf = (record: T, index: number): Key => typeof rowKey === "function" ? rowKey(record, index) : (record as Record<string, Key>)[String(rowKey ?? "key")];
+  const keyOf = (record: T, index: number): Key => typeof rowKey === "function" ? rowKey(record, index) : (record as Record<string, Key>)[String(rowKey)];
   const selectedKeys = rowSelection?.selectedRowKeys;
   const selection = selectedKeys ? Object.fromEntries(selectedKeys.map((key) => [String(key), true])) : localSelection;
   const controlledFilters = columns.filter((column) => column.filteredValue != null).map((column) => ({ id: column.key, value: column.filteredValue }));
@@ -293,7 +365,7 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
         <TableBody>
           {table.getRowModel().rows.map((row, index) => {
             const props = onRow?.(row.original, row.index) ?? {};
-            const checkboxProps = rowSelection?.getCheckboxProps?.(row.original) as { title?: string; "aria-label"?: string } | undefined;
+            const checkboxProps = rowSelection?.getCheckboxProps?.(row.original);
             const expand = () => { expandable?.onExpand?.(!row.getIsExpanded(), row.original); row.toggleExpanded(); };
             return <Fragment key={row.id}><TableRow {...props} className={[props.className, "border-b-0"].filter(Boolean).join(" ")} index={index} data-row-key={row.id} data-state={row.getIsSelected() ? "selected" : undefined}
               onClick={(event) => { props.onClick?.(event); if (expandable?.expandRowByClick && row.getCanExpand() && !(event.target as HTMLElement).closest("button,a,input,[role=checkbox]")) expand(); }}>

@@ -6,10 +6,11 @@ import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import { closeNodePicker, findNodeOption, unavailable } from "./helpers/nodePicker.ts";
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
@@ -510,12 +511,13 @@ test("attaching several nodes at once reports the ones that failed", async () =>
     await user.click(await screen.findByRole("button", { name: n.actions.attach }));
     const dialog = await modalDialog();
     assert.ok(within(dialog).getByText(n.attach.rdmaInferred));
-    await user.click(within(dialog).getByRole("combobox"));
+    const picker = within(dialog).getByRole("combobox");
+    await user.click(picker);
     await user.click(await screen.findByText("ascend-31"));
     await user.click(await screen.findByText("ascend-32"));
     // A node already attached directly cannot be picked again.
-    const attached = screen.getAllByText("h20-07").find((el) => el.closest(".ant-select-item-option")) as HTMLElement;
-    assert.ok(attached.closest(".ant-select-item-option-disabled"));
+    assert.ok(unavailable(await findNodeOption(picker, "h20-07")));
+    await closeNodePicker(picker);
     await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
     await waitFor(() => assert.equal(calls.length, 1));
     assert.deepEqual(calls[0], [1, ["uuid-a", "uuid-b"]]);

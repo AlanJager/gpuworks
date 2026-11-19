@@ -1632,5 +1632,11 @@
       "badge": "未开放"
     },
     "loading": "加载中…"
+  },
+  "picker": {
+    "clear": "清除",
+    "open": "展开选项",
+    "remove": "移除 {{name}}",
+    "loading": "加载中…"
   }
 }

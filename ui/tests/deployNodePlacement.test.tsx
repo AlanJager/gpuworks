@@ -6,6 +6,7 @@ import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import { findNodeOption, nodeOptions, openNodePicker, pickNodes } from "./helpers/nodePicker.ts";
 
 // The deploy form's node section separates the replica's shape (single node,
 // multi-node, PD) from where it runs: for a single-node replica, automatic
@@ -16,7 +17,7 @@ import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
@@ -155,21 +156,17 @@ test("the payload states labels and hardware as node requirements, and the strat
 
 test("automatic candidates can be limited to listed nodes of the target vendor; a pinned draft cannot", async () => {
   const form = await renderSection({ node_selection_mode: "auto", target_vendor: "nvidia" });
-  const control = screen.getByText(node.poolNodesPlaceholder).closest(".ant-select") as HTMLElement;
-  fireEvent.mouseDown(control.querySelector(".ant-select-selector") as HTMLElement);
-  await waitFor(() => assert.ok(document.querySelectorAll(".ant-select-item-option").length > 0));
-  const dropdown = [...document.querySelectorAll(".ant-select-dropdown")].at(-1) as HTMLElement;
+  const pool = screen.getByPlaceholderText(node.poolNodesPlaceholder);
+  await findNodeOption(pool, "a100-1");
   // Every node here is NVIDIA; the vendor filter keeps all three.
-  assert.deepEqual([...dropdown.querySelectorAll(".ant-select-item-option")].map((el) => el.textContent), ["a100-1", "a100-2", "h100-1"]);
-  fireEvent.click(within(dropdown).getByText("a100-1"));
-  fireEvent.click(within(dropdown).getByText("h100-1"));
+  await waitFor(() => assert.deepEqual(nodeOptions().map((el) => el.textContent), ["a100-1", "a100-2", "h100-1"]));
+  await pickNodes(pool, "a100-1", "h100-1");
   assert.deepEqual(form().getFieldValue("pool_nodes"), ["a", "c"]);
   cleanup();
   await renderSection({ node_selection_mode: "auto", target_vendor: "ascend" });
-  const other = screen.getByText(node.poolNodesPlaceholder).closest(".ant-select") as HTMLElement;
-  fireEvent.mouseDown(other.querySelector(".ant-select-selector") as HTMLElement);
-  await waitFor(() => assert.ok(document.querySelector(".ant-select-dropdown .ant-empty, .ant-select-dropdown .ant-select-item-empty")));
-  assert.equal(document.querySelectorAll(".ant-select-dropdown .ant-select-item-option").length, 0, "no NVIDIA node is offered to an Ascend draft");
+  await openNodePicker(screen.getByPlaceholderText(node.poolNodesPlaceholder));
+  await waitFor(() => assert.ok(document.querySelector('[data-slot="combobox-empty"]')?.textContent, "the empty list says so"));
+  assert.equal(nodeOptions().length, 0, "no NVIDIA node is offered to an Ascend draft");
   cleanup();
   await renderSection({ node_selection_mode: "manual", target_vendor: "nvidia" });
   assert.equal(screen.queryByText(node.poolNodes), null, "a pinned draft names its one node");

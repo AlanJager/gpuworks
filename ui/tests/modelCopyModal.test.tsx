@@ -13,6 +13,7 @@ const userEventModule = await import("@testing-library/user-event");
 const userEvent = userEventModule.default ?? userEventModule;
 const apiModule = await import("../src/api.ts");
 const { ModelCopyModal } = await import("../src/pages/models/ModelCopyModal.tsx");
+const { nodeOptions, openNodePicker, unavailable } = await import("./helpers/nodePicker.ts");
 
 const api = apiModule.api;
 const original = { storages: api.storages, copyModel: api.copyModel, nodesPage: api.nodesPage, nodes: api.nodes };
@@ -80,13 +81,13 @@ test("copying between two local storages sends source and target locations and o
   // The first source (storage default on gpu3) and the default target storage are preselected.
   await screen.findByRole("combobox", { name: models.copy.targetNode });
   assert.ok(await screen.findByText("default · gpu3"));
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: models.copy.targetNode }));
+  await openNodePicker(screen.getByRole("combobox", { name: models.copy.targetNode }));
   // The picker asks the server for nodes with a live agent: off-01 (offline) is never offered.
   await waitFor(() => assert.ok(fleet.pages.some((query) => JSON.stringify(query.state) === JSON.stringify(["online"]))));
   // gpu3 is the source and node-01 already holds the files: listed, but not choosable.
-  await waitFor(() => assert.deepEqual(visibleOptions().map((o) => o.textContent), ["gpu3", "node-01", "cloud-01"]));
-  assert.deepEqual(visibleOptions().map((o) => o.className.includes("ant-select-item-option-disabled")), [true, true, false]);
-  fireEvent.click(await screen.findByText("cloud-01"));
+  await waitFor(() => assert.deepEqual(nodeOptions().map((o) => o.textContent), ["gpu3", "node-01", "cloud-01"]));
+  assert.deepEqual(nodeOptions().map(unavailable), [true, true, false]);
+  fireEvent.click(await screen.findByRole("option", { name: "cloud-01" }));
   assert.ok(screen.getByText(models.copy.wayDirect));
   fireEvent.click(screen.getByRole("button", { name: models.copy.start }));
   await waitFor(() => assert.equal(calls.length, 1));
@@ -177,10 +178,10 @@ test("an explicit copy can retry a disk-space target without changing either loc
     nodes: [row({}), row({ node_uuid: "n2", node_name: "node-01", state: "insufficient_disk_space", downloaded: 0, progress: 0, message: "insufficient disk space at /data" })],
     storages: [],
   });
-  fireEvent.mouseDown(await screen.findByRole("combobox", { name: models.copy.targetNode }));
-  await waitFor(() => assert.deepEqual(visibleOptions().map((option) => option.textContent), ["gpu3", "node-01", "cloud-01"]));
-  const target = visibleOptions().find((option) => option.textContent === "node-01")!;
-  assert.equal(target.className.includes("ant-select-item-option-disabled"), false, "a disk-space failure must not count as an existing usable copy");
+  await openNodePicker(await screen.findByRole("combobox", { name: models.copy.targetNode }));
+  await waitFor(() => assert.deepEqual(nodeOptions().map((option) => option.textContent), ["gpu3", "node-01", "cloud-01"]));
+  const target = nodeOptions().find((option) => option.textContent === "node-01")!;
+  assert.equal(unavailable(target), false, "a disk-space failure must not count as an existing usable copy");
   fireEvent.click(target);
   fireEvent.click(screen.getByRole("button", { name: models.copy.start }));
   await waitFor(() => assert.equal(calls.length, 1));

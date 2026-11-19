@@ -12,6 +12,7 @@ import { fixturePdModes } from "./helpers/engineFixture.ts";
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 import { list } from "./helpers/listPage.ts";
+import { pickNodes } from "./helpers/nodePicker.ts";
 register(
   pathToFileURL(
     new URL("./deploySleepableCssHook.mjs", import.meta.url).pathname,
@@ -39,6 +40,7 @@ for (const name of [
   "Element",
   "Node",
   "MutationObserver",
+  "NodeFilter",
   "ShadowRoot",
 ] as const) {
   Object.defineProperty(globalThis, name, {
@@ -205,22 +207,9 @@ const baseAnswer = {
   acquisition: { image: { image: "runner:vllm", cached: true } },
 };
 
-function selectOption(combobox: HTMLElement, label: string) {
-  const selector = combobox.closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement;
-  fireEvent.mouseDown(selector);
-  // antd keeps a closed select's dropdown mounted (destroyPopupOnHide
-  // defaults to false, and its hide transition never completes under
-  // jsdom), so an earlier select's stale, still-visible dropdown can still
-  // match a query by text. Each select's own dropdown portal is appended to
-  // the document the first time it opens, so the most recently opened one -
-  // the one this call just triggered - is always the last such node.
-  const dropdowns = document.querySelectorAll(".ant-select-dropdown");
-  const dropdown = dropdowns[dropdowns.length - 1];
-  if (!dropdown) throw new Error("no dropdown opened");
-  const options = [...dropdown.querySelectorAll(".ant-select-item-option")];
-  const option = options.find((el) => el.textContent === label);
-  if (!option) throw new Error(`option not found: ${label} (saw ${options.map((el) => el.textContent)})`);
-  fireEvent.click(option);
+// The node picker lists a server search's nodes once it opens.
+async function selectOption(combobox: HTMLElement, label: string) {
+  await pickNodes(combobox, label);
 }
 
 const { buildPayload } = await import("../src/pages/deploy/deployHelpers.ts");
@@ -288,10 +277,10 @@ test("selecting a PD spec with a layout opens the PD form with its roles, TP/PP,
   assert.equal(screen.queryByRole("combobox", { name: nodeBox("prefill", 1, 1) }), null);
 
   // Pick the nodes the form left empty: the request carries tp/pp, node_uuid and followers.
-  selectOption(screen.getByRole("combobox", { name: nodeBox("decode", 1) }), "GPU Node 1 · 2 GPU");
-  selectOption(screen.getByRole("combobox", { name: nodeBox("decode", 1, 1) }), "GPU Node 2 · 2 GPU");
-  selectOption(screen.getByRole("combobox", { name: nodeBox("prefill", 1) }), "GPU Node 1 · 2 GPU");
-  selectOption(screen.getByRole("combobox", { name: nodeBox("prefill", 2) }), "GPU Node 2 · 2 GPU");
+  await selectOption(screen.getByRole("combobox", { name: nodeBox("decode", 1) }), "GPU Node 1 · 2 GPU");
+  await selectOption(screen.getByRole("combobox", { name: nodeBox("decode", 1, 1) }), "GPU Node 2 · 2 GPU");
+  await selectOption(screen.getByRole("combobox", { name: nodeBox("prefill", 1) }), "GPU Node 1 · 2 GPU");
+  await selectOption(screen.getByRole("combobox", { name: nodeBox("prefill", 2) }), "GPU Node 2 · 2 GPU");
   await waitFor(() => {
     const last = payloads.at(-1) as { placement_mode?: string; placement?: { pd?: Record<string, unknown> } };
     // Manual placement is the absence of placement_mode on the wire.
