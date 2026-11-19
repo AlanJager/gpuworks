@@ -42,7 +42,8 @@ type SlurmEnrollResponse struct {
 // (the node names, which of them have a GPU GRES and how many GPUs; opaque to
 // the server, which only compares it with the one it stored), StateDigest the
 // state and reason of the GPU nodes. An agent sends the two digests alone
-// first (Nodes nil, null on the wire), and the nodes only when the server
+// first (Nodes nil: null on the wire, absent from earlier agents; the server
+// reads both as no list), and the nodes only when the server
 // asks for them (NeedNodes): then a cluster with none sends an empty list,
 // which is a list, not its absence.
 type SlurmGPUNodeReport struct {

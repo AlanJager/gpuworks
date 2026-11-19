@@ -71,8 +71,8 @@ type Config struct {
 
 const (
 	// DefaultPendingTimeout and DefaultIdleReturn apply when the entry
-	// gives none; they are the entry's own defaults too (store.SlurmDefault*,
-	// tied by internal/integrationtest/slurm).
+	// gives none; the server's entries default to the same (a test in
+	// internal/integrationtest/slurm ties them).
 	DefaultPendingTimeout = 10 * time.Minute
 	DefaultIdleReturn     = 60 * time.Second
 	// adoptedGrace is how long after the agent starts a job it found is

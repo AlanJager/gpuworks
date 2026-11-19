@@ -4,8 +4,11 @@
 package slurm
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -20,7 +23,7 @@ import (
 
 // The agent falls back to the entry's own defaults when an answer gives no
 // duration, so an entry left at its defaults and an agent told nothing behave
-// alike. The report interval is one constant both sides take from proto.
+// alike.
 func TestTheAgentsDefaultsAreTheEntrysDefaults(t *testing.T) {
 	if agentslurm.DefaultIdleReturn != store.SlurmDefaultIdleReturnSeconds*time.Second {
 		t.Errorf("agent idle return %v, entry default %d s", agentslurm.DefaultIdleReturn, store.SlurmDefaultIdleReturnSeconds)
@@ -28,9 +31,35 @@ func TestTheAgentsDefaultsAreTheEntrysDefaults(t *testing.T) {
 	if agentslurm.DefaultPendingTimeout != store.SlurmDefaultPendingTimeoutSeconds*time.Second {
 		t.Errorf("agent pending timeout %v, entry default %d s", agentslurm.DefaultPendingTimeout, store.SlurmDefaultPendingTimeoutSeconds)
 	}
-	if agentslurm.ReportInterval != proto.SlurmReportIntervalSeconds*time.Second {
-		t.Errorf("agent report interval %v, proto %d s", agentslurm.ReportInterval, proto.SlurmReportIntervalSeconds)
+}
+
+// recorder keeps the bodies of the requests the agent sends.
+type recorder struct {
+	mu     sync.Mutex
+	bodies []string
+}
+
+func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Body != nil {
+		b, _ := io.ReadAll(req.Body)
+		req.Body = io.NopCloser(bytes.NewReader(b))
+		r.mu.Lock()
+		r.bodies = append(r.bodies, string(b))
+		r.mu.Unlock()
 	}
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+func (r *recorder) since(n int) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.bodies[n:]...)
+}
+
+func (r *recorder) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.bodies)
 }
 
 // sinfo prints a fixed cluster: two GPU nodes and one without GPUs.
@@ -79,8 +108,10 @@ func TestASlurmNodeEnrollsAndReportsThroughTheRealServer(t *testing.T) {
 	var mu sync.Mutex
 	cluster := "gpu0|idle|gpu:2|none\ngpu1|mixed|gpu:a100:1(S:0)|\ncpu0|idle|(null)|\n"
 	var applied []agentslurm.Settings
+	sent := &recorder{}
 	r := &agentslurm.Reporter{
 		Server: env.URL(), Token: func() string { return id.NodeToken }, Command: sinfo(&cluster, &mu),
+		HTTP:  &http.Client{Transport: sent, Timeout: 30 * time.Second},
 		Apply: func(s agentslurm.Settings) { applied = append(applied, s) },
 	}
 	if err := r.Once(ctx); err != nil {
@@ -94,14 +125,16 @@ func TestASlurmNodeEnrollsAndReportsThroughTheRealServer(t *testing.T) {
 		t.Fatalf("settings applied = %+v", applied)
 	}
 
-	// The same cluster again: the server already has it and stores nothing.
-	before, _ := env.Store().SlurmClusterByID(entry.ID)
+	// The first report sent the digests, was asked for the nodes, and sent
+	// them; the same cluster again is one request with the digests alone.
+	if n := sent.count(); n != 2 || !strings.Contains(sent.since(0)[0], `"nodes":null`) || !strings.Contains(sent.since(1)[0], `"name":"gpu0"`) {
+		t.Fatalf("first report sent %v", sent.since(0))
+	}
 	if err := r.Once(ctx); err != nil {
 		t.Fatalf("second report: %v", err)
 	}
-	after, _ := env.Store().SlurmClusterByID(entry.ID)
-	if !reflect.DeepEqual(before, after) {
-		t.Errorf("an unchanged report changed the entry:\n%+v\n%+v", before, after)
+	if again := sent.since(2); len(again) != 1 || !strings.Contains(again[0], `"nodes":null`) {
+		t.Fatalf("an unchanged cluster sent %v; want the digests alone, once", again)
 	}
 
 	// A node gone from Slurm, and an edit of the settings. The list was
