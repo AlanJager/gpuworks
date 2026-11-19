@@ -70,8 +70,11 @@ type Config struct {
 }
 
 const (
-	defaultPendingTimeout = 10 * time.Minute
-	defaultIdleReturn     = 60 * time.Second
+	// DefaultPendingTimeout and DefaultIdleReturn apply when the entry
+	// gives none; they are the entry's own defaults too (store.SlurmDefault*,
+	// tied by internal/integrationtest/slurm).
+	DefaultPendingTimeout = 10 * time.Minute
+	DefaultIdleReturn     = 60 * time.Second
 	// adoptedGrace is how long after the agent starts a job it found is
 	// kept although no instance seems to use its cards, until the first
 	// Lease: the engine learns its instances from the server's first state
@@ -160,10 +163,10 @@ type jobCards struct {
 // agent's prober); procRoot is where the host's /proc is ("/proc").
 func New(cfg Config, run Runner, probe func(context.Context) ([]proto.GPUInfo, error), procRoot string, log *slog.Logger) *Leaser {
 	if cfg.PendingTimeout <= 0 {
-		cfg.PendingTimeout = defaultPendingTimeout
+		cfg.PendingTimeout = DefaultPendingTimeout
 	}
 	if cfg.IdleReturn <= 0 {
-		cfg.IdleReturn = defaultIdleReturn
+		cfg.IdleReturn = DefaultIdleReturn
 	}
 	if run == nil {
 		run = ExecRunner

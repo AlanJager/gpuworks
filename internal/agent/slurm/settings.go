@@ -12,9 +12,10 @@ import (
 // leaser's use of it: settings that change while the leaser runs, and the
 // accounts whose placeholder jobs are the agent's own.
 
-// config is base with the settings applied; a timeout of zero is no setting
-// and leaves the one base has.
-func (s Settings) config(base Config) Config {
+// ConfigWith is base with the entry's settings applied: the sbatch arguments,
+// the pending timeout, the idle return and the accounting user. A timeout of
+// zero is no setting and leaves the one base has.
+func ConfigWith(base Config, s Settings) Config {
 	base.SbatchArgs = strings.Fields(s.SbatchArgs)
 	if s.PendingTimeoutSeconds > 0 {
 		base.PendingTimeout = time.Duration(s.PendingTimeoutSeconds) * time.Second
@@ -25,10 +26,6 @@ func (s Settings) config(base Config) Config {
 	base.AccountUser = strings.TrimSpace(s.AccountUser)
 	return base
 }
-
-// ConfigWith is base with the entry's settings applied: the sbatch arguments,
-// the pending timeout, the idle return and the accounting user.
-func ConfigWith(base Config, s Settings) Config { return s.config(base) }
 
 // resetOwnAccounts starts the accounts other than the agent's own whose
 // placeholder jobs are its own with the ones it submitted as before (the
@@ -124,12 +121,12 @@ func (l *Leaser) settings() Config {
 func (l *Leaser) SetSettings(s Settings) {
 	l.cfgMu.Lock()
 	defer l.cfgMu.Unlock()
-	next := s.config(l.cfg)
+	next := ConfigWith(l.cfg, s)
 	if next.PendingTimeout <= 0 {
-		next.PendingTimeout = defaultPendingTimeout
+		next.PendingTimeout = DefaultPendingTimeout
 	}
 	if next.IdleReturn <= 0 {
-		next.IdleReturn = defaultIdleReturn
+		next.IdleReturn = DefaultIdleReturn
 	}
 	l.cfg = next
 	if u := l.submitAs(); u != "" {

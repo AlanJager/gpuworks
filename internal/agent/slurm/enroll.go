@@ -29,17 +29,9 @@ import (
 // state directory.
 const IdentityFile = "slurm-node-token.json"
 
-// Settings are the entry's settings an agent applies to its placeholder jobs
-// (the wire shape of the server's dto.SlurmAgentSettings): the enrollment
-// answer carries them and so does every report's.
-type Settings struct {
-	SbatchArgs            string `json:"sbatch_args"`
-	IdleReturnSeconds     int    `json:"idle_return_seconds"`
-	PendingTimeoutSeconds int    `json:"pending_timeout_seconds"`
-	// AccountUser is the account placeholder jobs are submitted as when the
-	// agent runs as root; empty submits as the agent's own account.
-	AccountUser string `json:"account_user"`
-}
+// Settings are the entry's settings an agent applies to its placeholder jobs:
+// the enrollment answer carries them and so does every report's.
+type Settings = proto.SlurmAgentSettings
 
 // Identity is what enrollment gives a Slurm node.
 type Identity struct {
@@ -143,7 +135,7 @@ func Enroll(ctx context.Context, httpc *http.Client, serverURL, enrollToken, slu
 }
 
 func enroll(ctx context.Context, httpc *http.Client, serverURL, enrollToken, slurmCluster, nodeName string) (Identity, error) {
-	body, _ := json.Marshal(map[string]string{"token": enrollToken, "slurm_cluster_name": slurmCluster, "node_name": nodeName})
+	body, _ := json.Marshal(proto.SlurmEnrollRequest{Token: enrollToken, SlurmClusterName: slurmCluster, NodeName: nodeName})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(serverURL, "/")+"/api/v1/slurm/enroll", bytes.NewReader(body))
 	if err != nil {
 		return Identity{}, err
@@ -164,11 +156,11 @@ func enroll(ctx context.Context, httpc *http.Client, serverURL, enrollToken, slu
 	if resp.StatusCode != http.StatusOK {
 		return Identity{}, fmt.Errorf("enroll with %s: HTTP %d: %s", serverURL, resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
-	var id Identity
-	if err := json.Unmarshal(raw, &id); err != nil || id.NodeToken == "" {
+	var answer proto.SlurmEnrollResponse
+	if err := json.Unmarshal(raw, &answer); err != nil || answer.NodeToken == "" {
 		return Identity{}, fmt.Errorf("enroll with %s: unexpected answer %q", serverURL, raw)
 	}
-	return id, nil
+	return Identity{NodeUUID: answer.NodeUUID, NodeToken: answer.NodeToken, Settings: answer.Settings}, nil
 }
 
 func readIdentity(path string) (Identity, error) {
