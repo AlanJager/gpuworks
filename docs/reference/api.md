@@ -1715,7 +1715,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 字段：
 
 - `trust`：`project`（项目根认证）或 `host`（`server.yaml` 信任的签发者认证）；包不再通过校验时缺省。
-- `state`：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）、`revoked`（构建或证书被吊销）或 `needs_host_setup`（已启用，但 root 还没在本机应用它声明的主机步骤，或应用的是别的步骤；`message` 是 `PLUGIN_HOST_SETUP_REQUIRED{id, command}`，`command` 是要执行的命令）；其余是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`，按需启动的服务端部分没有运行时是 `idle`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`；没有自己 cgroup 的插件因内存超限被重启时是 `PLUGIN_MEMORY_EXCEEDED`，参数 `id`、`rss_mib`、`limit_mib`），没有可说的就缺省。
+- `state`：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）、`revoked`（构建或证书被吊销）或 `needs_host_setup`（已启用，但 root 还没在本机应用它声明的主机步骤，或应用的是别的步骤；`message` 是 `PLUGIN_HOST_SETUP_REQUIRED{id, command}`，`command` 是要执行的命令）；其余是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`，按需启动的服务端部分没有运行时是 `idle`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`；没有自己 cgroup 的插件因内存超限被重启时是 `PLUGIN_MEMORY_EXCEEDED`，参数 `id`、`rss_mib`、`limit_mib`），没有可说的就缺省。 插件停止读取请求体被重启时为 `PLUGIN_STALLED{id, stalled_s}`，见[扩展点](../dev/extensions.md#监管)。
 - `since`：进入当前进程状态的时间，未受监管时缺省；`restarts`：第一次之后又启动了几个进程。
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
 - `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。

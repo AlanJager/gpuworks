@@ -56,6 +56,11 @@ const (
 	// watchdog allows for its {limit_mib} MiB limit, and was killed; it is
 	// restarted after a backoff.
 	ErrorPluginMemoryExceeded = "PLUGIN_MEMORY_EXCEEDED"
+	// ErrorPluginStalled: the plugin {id} stopped reading the server's calls
+	// (its connection made no progress for {stalled_s} seconds while
+	// request bodies waited) and is restarted, even if it still answered
+	// health probes.
+	ErrorPluginStalled = "PLUGIN_STALLED"
 	// ErrorPluginHostNotReady: the plugin called the host API before its
 	// handshake was accepted.
 	ErrorPluginHostNotReady = "PLUGIN_HOST_NOT_READY"
@@ -99,7 +104,7 @@ func PluginHostErrorCodes() []string {
 		ErrorPluginUnavailable, ErrorPluginTimeout, ErrorPluginRouteFailed, ErrorPluginBusy, ErrorPluginStartFailed,
 		ErrorPluginHandshakeTimeout, ErrorPluginHandshakeRefused, ErrorPluginHandshakeMismatch,
 		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginKilled, ErrorPluginCrashloop, ErrorPluginUnhealthy,
-		ErrorPluginMemoryExceeded,
+		ErrorPluginMemoryExceeded, ErrorPluginStalled,
 		ErrorPluginHostNotReady, ErrorPluginHostRateLimited, ErrorPluginHostRouteUnknown, ErrorPluginHostFailed,
 		ErrorPluginStateOnDemand, ErrorPluginHostNotPermitted, ErrorPluginHostArgumentInvalid,
 		ErrorPluginRoleRequired,

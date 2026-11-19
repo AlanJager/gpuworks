@@ -212,6 +212,8 @@ func (i *instance) serve(proc Process, run *procRun, mem *memoryWatch) outcome {
 		defer tick.Stop()
 		memTick = tick.C
 	}
+	stall := time.NewTicker(stallCheckEvery(t.StallAfter))
+	defer stall.Stop()
 	var idle <-chan time.Time
 	if spec.Lifecycle == extapi.LifecycleOnDemand {
 		tick := time.NewTicker(max(t.IdleStop/4, 10*time.Millisecond))
@@ -249,6 +251,10 @@ func (i *instance) serve(proc Process, run *procRun, mem *memoryWatch) outcome {
 				i.terminate(proc, run.conn)
 				return outcome{kind: outcomeIdle}
 			}
+		case <-stall.C:
+			if o, stalled := i.checkStall(proc, run.conn); stalled {
+				return o
+			}
 		case <-health.C:
 			hres, err := i.probe(run.conn)
 			if err != nil {
@@ -274,6 +280,27 @@ func (i *instance) serve(proc Process, run *procRun, mem *memoryWatch) outcome {
 			})
 		}
 	}
+}
+
+// stallCheckEvery is how often the serve connection is checked for a
+// stall: every second, more often when StallAfter is short.
+func stallCheckEvery(after time.Duration) time.Duration {
+	return min(time.Second, max(after/4, 10*time.Millisecond))
+}
+
+// checkStall kills a plugin whose serve connection has made no progress
+// for longer than StallAfter, whatever its health probes say: its calls
+// cannot reach it.
+func (i *instance) checkStall(proc Process, c *pluginConn) (outcome, bool) {
+	d, stalled := c.meter.stalled(i.h.timing.StallAfter)
+	if !stalled {
+		return outcome{}, false
+	}
+	secs := max(int(d/time.Second), 1)
+	i.h.log.Warn("plugin stopped reading its connection; restarting it", "plugin", i.spec.ID, "stalled_s", secs)
+	_ = proc.Signal(syscall.SIGKILL)
+	<-proc.Done()
+	return outcome{kind: outcomeCrash, code: messages.ErrorPluginStalled, params: map[string]any{"id": i.spec.ID, "stalled_s": secs}}, true
 }
 
 func (i *instance) probe(c *pluginConn) (*extapi.Health, error) {

@@ -36,6 +36,8 @@
 //	--html                         answer routes as text/html
 //	--set-cookie line              add this Set-Cookie to route answers
 //	                               (repeatable)
+//	--stall-bodies                 never read a route's request body: a
+//	                               call with one waits until it ends
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -108,6 +110,7 @@ func main() {
 	probeDevs := fs.String("probe-devices", "", "comma-separated paths to wait for and open")
 	routes := fs.Bool("routes", false, "serve the manifest's routes")
 	html := fs.Bool("html", false, "answer routes as text/html")
+	stallBodies := fs.Bool("stall-bodies", false, "never read route request bodies")
 	var cookies pushes
 	fs.Var(&cookies, "set-cookie", "Set-Cookie line to add to route answers")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
@@ -134,7 +137,7 @@ func main() {
 		}
 	}
 	if *routes {
-		cfg.Handler = routeHandler(*html, cookies)
+		cfg.Handler = routeHandler(*html, *stallBodies, cookies)
 	}
 	if code, reason, ok := strings.Cut(*refuse, ":"); ok {
 		cfg.Init = func(context.Context, *pluginsdk.Plugin) error {

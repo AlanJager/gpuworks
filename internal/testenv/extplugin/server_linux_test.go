@@ -23,6 +23,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/layout"
+	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -73,6 +74,8 @@ type site struct {
 	clock *fakeClock
 	// modules are compiled into the server beside the plugin host.
 	modules []app.Module
+	// timing, when set, adjusts the supervisor's intervals of timing().
+	timing func(*pluginhost.Timing)
 }
 
 func newSite(t *testing.T) *site {
@@ -107,9 +110,13 @@ func (s *site) open() *app.App {
 	if err != nil {
 		s.t.Fatal(err)
 	}
+	tm := timing()
+	if s.timing != nil {
+		s.timing(&tm)
+	}
 	cfg := app.Config{Addr: "127.0.0.1:0", DataDir: s.dir, DBPath: s.db, AdminUser: "admin", AdminPassword: adminPassword,
 		PluginRoots:   []extapi.PublicKey{s.root.Public},
-		PluginRuntime: app.PluginRuntime{Trampoline: self, Clock: s.clock.clock(), Timing: timing(), TickInterval: 20 * time.Millisecond}}
+		PluginRuntime: app.PluginRuntime{Trampoline: self, Clock: s.clock.clock(), Timing: tm, TickInterval: 20 * time.Millisecond}}
 	// This test site explicitly permits its signed fixture packages when
 	// Landlock is unavailable. Available Landlock remains required by their
 	// certificates and the dedicated isolation tests still verify it.

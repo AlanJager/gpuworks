@@ -984,6 +984,7 @@
     "PLUGIN_CRASHLOOP": "插件 {{id}} 在 {{window_s}} 秒内崩溃了 {{crashes}} 次，此后每 {{retry_s}} 秒重试一次。",
     "PLUGIN_UNHEALTHY": "插件 {{id}} 连续 {{misses}} 次健康检查未通过，正在重启。",
     "PLUGIN_MEMORY_EXCEEDED": "插件 {{id}} 占用 {{rss_mib}} MiB，超过上限 {{limit_mib}} MiB，已重启。",
+    "PLUGIN_STALLED": "插件 {{id}} 已 {{stalled_s}} 秒未读取请求，已重启。",
     "PLUGIN_HOST_NOT_READY": "插件在握手被接受之前调用了服务器。",
     "PLUGIN_HOST_RATE_LIMITED": "插件调用服务器超过了每秒 {{limit}} 次的上限。请稍后重试。",
     "PLUGIN_HOST_ROUTE_UNKNOWN": "服务器的插件接口没有 {{method}} {{path}}。",
