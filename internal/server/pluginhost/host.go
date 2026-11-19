@@ -38,7 +38,7 @@ type Host struct {
 	// until ForgetMetrics.
 	metrics map[string]*pluginMetrics
 	// logs are each package's supervision events and stderr output, kept
-	// across its processes until ForgetLogs.
+	// across its processes until Forget.
 	logs   map[string]*pluginLogs
 	closed bool
 }
@@ -215,7 +215,7 @@ func (h *Host) Session(id string) (Session, bool) {
 }
 
 // Stderr returns the plugin's recent stderr output (up to 1 MiB, across
-// its processes and restarts until ForgetLogs).
+// its processes and restarts until Forget).
 func (h *Host) Stderr(id string) []byte {
 	h.mu.Lock()
 	l := h.logs[id]

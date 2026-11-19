@@ -153,9 +153,7 @@ func TestContractOverrideOfAPluginsHold(t *testing.T) {
 	waitFor(t, "node b schedulable", func() bool { return !heldByPlugins(t, st, b.UUID) })
 
 	// Uninstall drops the override with everything the package pushed.
-	if status, body := sv.do(http.MethodDelete, "/api/v1/plugins/acme_fake", nil); status != http.StatusNoContent {
-		t.Fatalf("uninstall = %d %s", status, body)
-	}
+	sv.uninstall("acme_fake", false)
 	if list := sv.overrides(); len(list) != 0 {
 		t.Fatalf("overrides after uninstall = %+v", list)
 	}

@@ -65,8 +65,8 @@ func TestEventRingWrapsAndReportsTruncation(t *testing.T) {
 }
 
 // A package's events and stderr outlive its process and a stop and start
-// (a restart); a follower is woken by the next event; ForgetLogs drops
-// them, and a later start begins new ones.
+// (a restart); a follower is woken by the next event; Forget drops
+// them with the stopped instance, and a later start begins new ones.
 func TestLogsOutliveRestartsUntilForgotten(t *testing.T) {
 	sp := &fakeSpawner{config: func(n int) pluginsdk.Config {
 		c := sdkConfig("acme_backup")
@@ -120,9 +120,12 @@ func TestLogsOutliveRestartsUntilForgotten(t *testing.T) {
 	if err := h.Stop(ctx, "acme_backup"); err != nil {
 		t.Fatal(err)
 	}
-	h.ForgetLogs("acme_backup")
+	h.Forget("acme_backup")
 	if _, ok := h.Logs("acme_backup", LogCursor{}); ok || h.Stderr("acme_backup") != nil {
 		t.Fatal("forgotten logs are still kept")
+	}
+	if _, ok := h.Status("acme_backup"); ok {
+		t.Fatal("the forgotten package's stopped instance is still kept")
 	}
 	_ = h.Start(testSpec(t, "acme_backup"))
 	waitStatus(t, h, "acme_backup", inState(StateRunning))
@@ -150,4 +153,3 @@ func waitLogs(t *testing.T, h *Host, want string) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
-

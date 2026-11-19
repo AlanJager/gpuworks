@@ -237,7 +237,7 @@ func TestInstallEnableDisable(t *testing.T) {
 	})
 	in := install(t, b, raw, false)
 	v := in.View
-	if v.State != StateDisabled || v.Enabled || v.Trust != extpkg.TrustProject || !slices.Equal(v.Actions, []string{ActionEnable, ActionUninstall}) ||
+	if v.State != StateDisabled || v.Enabled || v.Trust != extpkg.TrustProject || !slices.Equal(v.Actions, []string{ActionEnable, ActionUninstall, ActionPurge}) ||
 		!slices.Equal(v.Permissions, []string{"push:banners"}) || !slices.Equal(v.Parts, []string{"server"}) || v.ApproveHash == "" {
 		t.Fatalf("installed = %+v", v)
 	}
@@ -245,7 +245,7 @@ func TestInstallEnableDisable(t *testing.T) {
 		t.Fatalf("acme.backup after install = declared %v, %v", w.gate.Declared("acme.backup"), w.gate.Access("acme.backup"))
 	}
 	v, err := b.Enable(context.Background(), "acme_backup", "admin")
-	if err != nil || !v.Enabled || !slices.Equal(v.Actions, []string{ActionDisable, ActionUninstall}) {
+	if err != nil || !v.Enabled || !slices.Equal(v.Actions, []string{ActionDisable, ActionRestart, ActionUninstall, ActionPurge}) {
 		t.Fatalf("enabled = %+v, %v", v, err)
 	}
 	waitView(t, b, "acme_backup", func(v View) bool {
@@ -293,19 +293,19 @@ func TestABrokenPackageIsListedAndNeverEnabled(t *testing.T) {
 	}
 	b = w.open()
 	v := b.List()[0]
-	if v.State != StateBroken || v.Code != messages.ErrorPluginFileMismatch || !slices.Equal(v.Actions, []string{ActionUninstall}) {
+	if v.State != StateBroken || v.Code != messages.ErrorPluginFileMismatch || !slices.Equal(v.Actions, []string{ActionUninstall, ActionPurge}) {
 		t.Fatalf("broken = %+v", v)
 	}
 	if _, err := b.Enable(context.Background(), "acme_backup", "admin"); !isCode(err, messages.ErrorPluginBroken) {
 		t.Fatalf("enable of a broken package = %v", err)
 	}
-	if err := b.Uninstall(context.Background(), "acme_backup", false, "admin"); err != nil {
+	if err := uninstallConfirmed(t, b, context.Background(), "acme_backup", false); err != nil {
 		t.Fatal(err)
 	}
 	if len(b.List()) != 0 {
 		t.Fatalf("after uninstall: %+v", b.List())
 	}
-	if err := b.Uninstall(context.Background(), "acme_backup", false, "admin"); !isCode(err, messages.ErrorPluginNotInstalled) {
+	if err := uninstallConfirmed(t, b, context.Background(), "acme_backup", false); !isCode(err, messages.ErrorPluginNotInstalled) {
 		t.Fatalf("second uninstall = %v", err)
 	}
 }

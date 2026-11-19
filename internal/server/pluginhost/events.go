@@ -25,7 +25,7 @@ type Event struct {
 
 // pluginLogs are one package's supervision events and stderr output. Like
 // its metrics they outlive its processes, its restarts and its disable and
-// enable; ForgetLogs drops them when it is uninstalled.
+// enable; Forget drops them when it is uninstalled.
 type pluginLogs struct {
 	stderr *ring
 
@@ -143,12 +143,18 @@ func (h *Host) Changed(id string) <-chan struct{} {
 	return l.changed
 }
 
-// ForgetLogs drops package id's events and stderr output; the bridge calls
-// it when the package is uninstalled, so nothing of it stays in memory. A
-// supervised plugin keeps writing to the logs it started with until it
-// stops; its next start begins new ones.
-func (h *Host) ForgetLogs(id string) {
+// Forget drops everything the host keeps of package id once it is no
+// longer supervised: its stopped instance (whose status Status reported),
+// its counters and its logs. The bridge calls it when the package is
+// uninstalled, so nothing of it stays in memory. A plugin still running
+// keeps its instance and the counters and logs it started with until it
+// stops.
+func (h *Host) Forget(id string) {
 	h.mu.Lock()
+	if i := h.plugins[id]; i != nil && i.finished() {
+		delete(h.plugins, id)
+	}
+	delete(h.metrics, id)
 	delete(h.logs, id)
 	h.mu.Unlock()
 }

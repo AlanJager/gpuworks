@@ -34,7 +34,12 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 // there reads like one from the API.
 func WriteError(w http.ResponseWriter, status int, err error) { writeErr(w, status, err) }
 
-func writeErr(w http.ResponseWriter, code int, err error) {
+func writeErr(w http.ResponseWriter, code int, err error) { writeErrWith(w, code, err, nil) }
+
+// writeErrWith is writeErr with extra top-level fields beside the code,
+// text and params, for a refusal that carries what the client needs to
+// show (the impact of an unconfirmed plugin uninstall).
+func writeErrWith(w http.ResponseWriter, code int, err error, extra map[string]any) {
 	var productErr *messages.ProductError
 	if !errors.As(err, &productErr) && store.IsStorageFull(err) {
 		// Which write it was matters less than where the room ran out: the
@@ -62,6 +67,9 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 			noted[key] = value
 		}
 		noted["diagnostics"] = summary
+	}
+	for key, value := range extra {
+		response[key] = value
 	}
 	noteProductError(w, errorCode, noted)
 	writeJSON(w, code, response)
