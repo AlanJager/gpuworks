@@ -527,7 +527,7 @@ test("original transfer details and reported startup stages are separate from se
   ]));
   await openDetail();
   const overview = within(drawer()).getByRole("heading", { name: locale.detail.serviceOverview }).closest("section")!;
-  const preparation = within(drawer()).getByRole("heading", { name: locale.detail.modelPreparation }).closest("section")!;
+  const preparation = within(drawer()).getByRole("heading", { name: locale.detail.resourcePreparation }).closest("section")!;
   assert.ok(preparation.querySelector('svg[data-status="active"]'));
   assert.ok(!overview.contains(preparation));
   const refresh = (overrides: Record<string, unknown>) => {

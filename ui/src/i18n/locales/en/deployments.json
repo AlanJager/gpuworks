@@ -334,7 +334,8 @@
     },
     "health": "Health check",
     "tokenize": "Tokenize API",
-    "readyReplicas": "Ready {{ready}}"
+    "readyReplicas": "Ready {{ready}}",
+    "resourcePreparation": "Resource preparation"
   },
   "replica": {
     "sleep": "Sleep replica (L1)",
@@ -1136,5 +1137,19 @@
   "instanceNote": {
     "INSTANCE_CARD_SHARED_OUTSIDE": "Shares GPU {{gpu_indexes}} with processes outside the platform ({{foreign_gib}} GiB). Memory is isolated; compute and bandwidth are shared, which can slow inference.",
     "INSTANCE_CARD_SHARED_OUTSIDE_UNKNOWN": "Shares GPU {{gpu_indexes}} with processes outside the platform whose memory is not known. Compute and bandwidth are shared, which can slow inference."
+  },
+  "imagePreparation": {
+    "label": "Image preparation progress",
+    "progress": "Image transfer progress: {{node}}",
+    "loading": "Loading progress",
+    "waiting": "Waiting for progress",
+    "pulling": "Downloading image",
+    "syncing": "Syncing image",
+    "present": "Image ready",
+    "failed": "Image transfer failed",
+    "canceled": "Image transfer canceled",
+    "unavailable": "Progress unavailable",
+    "transferred": "Transferred {{size}}",
+    "reload": "Reload"
   }
 }
