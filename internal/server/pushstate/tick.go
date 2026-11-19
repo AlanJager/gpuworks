@@ -243,6 +243,10 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 	for _, id := range b.Uninstall {
 		uninstalled[id] = true
 	}
+	cleared := map[ownerKind]bool{}
+	for _, c := range b.Clear {
+		cleared[ownerKind{c.Owner, c.Kind}] = true
+	}
 	for k, pp := range s.pending {
 		delete(s.pending, k)
 		if uninstalled[k.owner] {
@@ -250,6 +254,11 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 			continue
 		}
 		old := s.parts[k]
+		if cleared[k] {
+			// The clear of this tick commits first: the push is a whole
+			// table, and the cleared table's overrides go with the clear.
+			old = nil
+		}
 		b.Tables = append(b.Tables, tableWrite(old, pp.part))
 		w.pushes = append(w.pushes, pp)
 		s.inflight[k] = pp.part.gen

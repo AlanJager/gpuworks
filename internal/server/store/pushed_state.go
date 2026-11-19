@@ -90,6 +90,11 @@ func (s *Store) WritePushedState(ctx context.Context, b *pstate.Batch) (pstate.R
 				return err
 			}
 		}
+		for _, k := range b.Clear {
+			if err := clearPushedTable(tx, k.Owner, k.Kind); err != nil {
+				return err
+			}
+		}
 		for i := range b.Tables {
 			stale, err := writePushedTable(tx, &b.Tables[i])
 			if err != nil {
@@ -255,6 +260,22 @@ func insertPushedRows(tx *gorm.DB, r *pstate.Rows) error {
 		}
 	}
 	return nil
+}
+
+// clearPushedTable deletes owner's table of kind in tx: its rows, its
+// owner record and the administrator's overrides of it, so the table is
+// absent as if never pushed and the owner's next push of any generation is
+// accepted. Clearing a table that is not there deletes nothing. Package
+// pushstate calls it through WritePushedState (pstate.Batch.Clear), in the
+// transaction of one writer tick.
+func clearPushedTable(tx *gorm.DB, owner, kind string) error {
+	if err := deleteKindRows(tx, owner, kind, true, nil); err != nil {
+		return err
+	}
+	if err := tx.Where("owner = ? AND kind = ?", owner, kind).Delete(&pstate.Owner{}).Error; err != nil {
+		return err
+	}
+	return tx.Where("owner = ? AND kind = ?", owner, kind).Delete(&pstate.Override{}).Error
 }
 
 // deleteOwnerRows deletes every row an owner has in pushed state.
