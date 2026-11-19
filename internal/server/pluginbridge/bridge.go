@@ -9,7 +9,9 @@
 // disable and uninstall), and hands the server the evaluators to register
 // (the node insert guard, the scheduling holder, the console banners). Run
 // then starts the enabled resident plugins, in parallel and without holding
-// up the server, and tells pushed state which owners are up. A push arriving on a plugin's host connection
+// up the server, supervises the enabled on-demand ones until a call starts
+// them (Call), and tells pushed state which resident owners are up. Routes
+// is the table of plugin routes, compiled again on every change. A push arriving on a plugin's host connection
 // is applied as the package bound to that connection, with the grants of
 // the certificate it verified under and the permissions its administrator
 // approved. See docs/dev/extensions.md and ADR 0071.
@@ -24,6 +26,7 @@ import (
 	"regexp"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
@@ -95,13 +98,22 @@ type Bridge struct {
 	// markerRetry is how long a start waits to be tried again when the
 	// package's data marker could not be read.
 	markerRetry time.Duration
+	// known are the routes each installed package last verified with, by
+	// package id, so one that breaks keeps answering them as down.
+	known map[string]knownRoutes
+
+	// routes is the route table compiled from entries on every refresh.
+	routes atomic.Pointer[RouteTable]
 }
 
 // identity is who a plugin's pushes come from, and the data its build
 // writes: bound when the plugin is started, dropped when it is stopped.
 type identity struct {
 	version string
-	pusher  pushstate.Pusher
+	// onDemand marks a build whose server part starts on its first call:
+	// its idle cycles are not reported as down and up.
+	onDemand bool
+	pusher   pushstate.Pusher
 	// stateVersion is the build's storage.state_version, 0 without
 	// storage.
 	stateVersion int
@@ -122,7 +134,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 		cfg.Log = slog.Default()
 	}
 	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{},
-		markerRetry: 30 * time.Second}
+		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
@@ -147,6 +159,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	}
 	b.logFeatureClashes()
 	b.declareFeatures()
+	b.compileRoutesLocked()
 	hostCfg := cfg.Host
 	core := cfg.Core
 	core.Offer = extpkg.Offer()
@@ -169,7 +182,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 func (b *Bridge) State() *pushstate.State { return b.state }
 
 // Run runs pushed state's writer tick, timelines and capacity selection,
-// starts every enabled resident plugin, and stops them all when ctx ends.
+// starts every enabled resident plugin (an on-demand one waits for its
+// first call), and stops them all when ctx ends.
 // Pushed state stops after the plugins, so the moment each went down is
 // persisted and a restart of the server never renews its grace. It may
 // run again after it returned.
@@ -223,8 +237,19 @@ func (b *Bridge) stopAll() {
 }
 
 // onState tells pushed state whether a plugin is up: running and degraded
-// count as up, every other state as down (ADR 0071, decision 9).
+// count as up, every other state as down (ADR 0071, decision 9). An
+// on-demand plugin is not reported either way: it may not push state, and
+// its idle cycles would otherwise write a down record each time.
 func (b *Bridge) onState(st pluginhost.Status) {
+	b.mu.Lock()
+	ident, bound := b.pushers[st.ID]
+	b.mu.Unlock()
+	if bound && ident.onDemand {
+		if st.State == pluginhost.StateRunning {
+			b.markData(st.ID)
+		}
+		return
+	}
 	if st.State.Up() {
 		b.state.OwnerUp(st.ID, st.Generation)
 		if st.State == pluginhost.StateRunning {

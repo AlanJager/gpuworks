@@ -82,7 +82,7 @@ func TestResidentPluginRunsAndPushes(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, "/r/jobs", nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	resp, err := h.Do(ctx, "acme_backup", req)
+	resp, err := h.Do(ctx, "acme_backup", req, Class{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestResidentPluginRunsAndPushes(t *testing.T) {
 	if sent := sp.proc(1).sent(); len(sent) != 0 {
 		t.Fatalf("a plugin that obeyed shutdown was signalled: %v", sent)
 	}
-	if _, err := h.Do(ctx, "acme_backup", req); productCode(t, err) != messages.ErrorPluginUnavailable {
+	if _, err := h.Do(ctx, "acme_backup", req, Class{}); productCode(t, err) != messages.ErrorPluginUnavailable {
 		t.Fatalf("a call to a stopped plugin = %v", err)
 	}
 }
@@ -347,7 +347,7 @@ func TestOnDemand(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, _ := http.NewRequest(http.MethodPost, "/gwx/v1/svc/provider.list", nil)
-	resp, err := h.Do(ctx, "acme_driver", req)
+	resp, err := h.Do(ctx, "acme_driver", req, Class{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,13 +394,13 @@ func TestBusyPluginRefusesWithoutBlocking(t *testing.T) {
 	defer cancel()
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, "/r/slow", nil)
-		if resp, err := h.Do(ctx, "acme_backup", req); err == nil {
+		if resp, err := h.Do(ctx, "acme_backup", req, Class{}); err == nil {
 			resp.Body.Close()
 		}
 	}()
 	<-entered
 	req, _ := http.NewRequest(http.MethodGet, "/r/other", nil)
-	if _, err := h.Do(ctx, "acme_backup", req); productCode(t, err) != messages.ErrorPluginBusy {
+	if _, err := h.Do(ctx, "acme_backup", req, Class{}); productCode(t, err) != messages.ErrorPluginBusy {
 		t.Fatalf("second call = %v", err)
 	}
 	time.Sleep(100 * time.Millisecond) // several health periods

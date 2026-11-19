@@ -1711,10 +1711,12 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 字段：
 
 - `trust`：`project`（项目根认证）或 `host`（`server.yaml` 信任的签发者认证）；包不再通过校验时缺省。
-- `state`：服务端部分不运行时是 `disabled`、`installed`（没有常驻服务端部分）、`idle`（按需启动的服务端部分）、`broken`（不再通过校验）或 `revoked`（构建或证书被吊销）；运行时是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`；没有自己 cgroup 的插件因内存超限被重启时是 `PLUGIN_MEMORY_EXCEEDED`，参数 `id`、`rss_mib`、`limit_mib`），没有可说的就缺省。
+- `state`：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）或 `revoked`（构建或证书被吊销）；其余是进程状态 `starting`、`running`、`degraded`、`backoff`、`crashloop`、`stopping`、`stopped`、`failed`，按需启动的服务端部分没有运行时是 `idle`。`message` 是原因的码与参数（如 `PLUGIN_CRASHLOOP`、`PLUGIN_HANDSHAKE_REFUSED`、`PLUGIN_FILE_MISMATCH`；没有自己 cgroup 的插件因内存超限被重启时是 `PLUGIN_MEMORY_EXCEEDED`，参数 `id`、`rss_mib`、`limit_mib`），没有可说的就缺省。
 - `since`：进入当前进程状态的时间，未受监管时缺省；`restarts`：第一次之后又启动了几个进程。
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
 - `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。
+
+调用插件失败时的码（`PLUGIN_UNAVAILABLE`、`PLUGIN_BUSY`、`PLUGIN_TIMEOUT`、`PLUGIN_ROUTE_FAILED`）见[扩展点](../dev/extensions.md#调用与路由表)。
 
 错误：未安装 404 `PLUGIN_NOT_INSTALLED`；需要批准、包已损坏、同版本不同内容（`PLUGIN_VERSION_CONFLICT`）、声明的功能键已由编译模块或另一个已安装的包提供（`PLUGIN_FEATURE_TAKEN{id, feature, owner}`，在要求批准之前检查）或插件数据比该构建新（`PLUGIN_STATE_TOO_NEW`）409；包过大 413 `PLUGIN_PACKAGE_TOO_LARGE`；其余被拒的包 422，码见[插件协议与线上格式](plugin-protocol.md)；`enable`、`purge` 不是布尔值 400 `FIELD_INVALID`。
 

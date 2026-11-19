@@ -6,9 +6,19 @@ package messages
 // verification. The codes a plugin's wire objects fail with are pkg/extapi's.
 const (
 	// ErrorPluginUnavailable: plugin {plugin} is not running, so a call to
-	// it cannot be served now, or a feature it answers for ({feature}) is
-	// narrowed because it has been down longer than its grace.
+	// it cannot be served now (the call never reached it; params also carry
+	// its {state} for programs, which the text does not use), or a feature
+	// it answers for ({feature}) is narrowed because it has been down
+	// longer than its grace.
 	ErrorPluginUnavailable = "PLUGIN_UNAVAILABLE"
+	// ErrorPluginTimeout: plugin {id} did not answer within {timeout_s}
+	// seconds; {state} is starting when the deadline passed while an
+	// on-demand plugin was still starting, running otherwise.
+	ErrorPluginTimeout = "PLUGIN_TIMEOUT"
+	// ErrorPluginRouteFailed: plugin {id} had the request and the call
+	// failed (it crashed or hung up), so the request may have been partly
+	// applied; not retryable.
+	ErrorPluginRouteFailed = "PLUGIN_ROUTE_FAILED"
 	// ErrorPluginBusy: the plugin already serves as many server calls as it
 	// may ({limit}); retry shortly.
 	ErrorPluginBusy = "PLUGIN_BUSY"
@@ -67,7 +77,7 @@ const (
 // console carries text for each.
 func PluginHostErrorCodes() []string {
 	return []string{
-		ErrorPluginUnavailable, ErrorPluginBusy, ErrorPluginStartFailed,
+		ErrorPluginUnavailable, ErrorPluginTimeout, ErrorPluginRouteFailed, ErrorPluginBusy, ErrorPluginStartFailed,
 		ErrorPluginHandshakeTimeout, ErrorPluginHandshakeRefused, ErrorPluginHandshakeMismatch,
 		ErrorPluginCapabilityNotOffered, ErrorPluginCrashed, ErrorPluginKilled, ErrorPluginCrashloop, ErrorPluginUnhealthy,
 		ErrorPluginMemoryExceeded,

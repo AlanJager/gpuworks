@@ -56,6 +56,7 @@ func (b *Bridge) refresh() error {
 		}
 	}
 	pkgs := b.statePackagesLocked()
+	b.compileRoutesLocked()
 	b.mu.Unlock()
 	b.state.SetPackages(pkgs)
 	b.declareFeatures()
@@ -63,12 +64,11 @@ func (b *Bridge) refresh() error {
 }
 
 // runnable reports whether an entry's server part may run now: verified,
-// not revoked, enabled, with a resident server part. On-demand server parts
-// are started by their first call, which nothing makes yet.
+// not revoked, enabled, with a server part. The plugin host starts a
+// resident one at once and an on-demand one on its first call.
 func runnable(e extpkg.Entry) bool {
 	v := e.Verified
-	return e.Err == nil && v != nil && v.Revoked == nil && e.Control.Enabled && v.Binary != "" &&
-		v.Manifest.Runtime != nil && v.Manifest.Runtime.Lifecycle == extapi.LifecycleResident
+	return e.Err == nil && v != nil && v.Revoked == nil && e.Control.Enabled && v.Binary != "" && v.Manifest.Runtime != nil
 }
 
 // startIfEnabled starts package id's server part when it may run and Run
@@ -125,7 +125,8 @@ func (b *Bridge) startIfEnabled(id string) {
 		sv = s.StateVersion
 	}
 	b.mu.Lock()
-	b.pushers[id] = identity{version: v.Manifest.Version, pusher: pusherOf(v), stateVersion: sv}
+	b.pushers[id] = identity{version: v.Manifest.Version, onDemand: v.Manifest.Runtime.Lifecycle == extapi.LifecycleOnDemand,
+		pusher: pusherOf(v), stateVersion: sv}
 	b.mu.Unlock()
 	if err := b.host.Start(spec); err != nil {
 		b.log.Error("plugin cannot be started", "plugin", id, "err", err)

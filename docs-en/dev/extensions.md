@@ -226,7 +226,7 @@ Boot order (the `plugins` module's `Init`, before the router is built):
 2. Load every pushed table with that package list (see "Pushed state" below), enforced before the server accepts its first request and before any plugin starts.
 3. Put the feature keys installed packages declare into the dynamic set (a key a compiled module declares is logged and left to the module), and register the hooks.
 
-The module's service (run with the server's other background loops) starts pushed state's writer tick, timelines and capacity selection, then starts every enabled package with a `resident` server part, in parallel and without holding up `serve`; only changed files are rehashed before a start. The supervisor tells pushed state each plugin's process state: `running` and `degraded` count as up, everything else as down. When the server stops, the plugins stop first and pushed state after, so the moment each plugin went down is persisted and a restart never renews its grace.
+The module's service (run with the server's other background loops) starts pushed state's writer tick, timelines and capacity selection, then starts every enabled package with a `resident` server part, in parallel and without holding up `serve`; an enabled `on_demand` package is handed to the supervisor and stays `idle` until its first call starts it. Only changed files are rehashed before a start. The supervisor tells pushed state each `resident` plugin's process state: `running` and `degraded` count as up, everything else as down; an `on_demand` plugin pushes no state, so its state is not reported to pushed state and its idle-and-restart cycles write no down records. When the server stops, the plugins stop first and pushed state after, so the moment each plugin went down is persisted and a restart never renews its grace.
 
 The pusher's identity comes from the package verified when it was started: the supervisor numbers every process (a generation rising across all of them), and a push on the host API is taken as the package bound to that connection, with its certificate grants (including the authority `server.yaml` configures for a host-trusted issuer), the permissions its administrator approved, its manifest's codes and that process's generation. A push over the connection of a package that was replaced or changed version is refused (`PLUGIN_STATE_CONNECTION_REPLACED`). The core offers the capabilities `table.<kind>@1` for the first five kinds; packages' `requires` are verified against them and plugins negotiate them in the handshake.
 
@@ -247,7 +247,7 @@ When a package declares `storage`, its data carries a version marker `plugin.<id
 | `POST /api/v1/plugins/{id}/enable`, `/disable` | an administrator's login session | enable and start; stop and keep from starting (its pushed tables stay enforced and it counts as down) |
 | `DELETE /api/v1/plugins/{id}?purge=true` | an administrator's login session | stop and uninstall (`purge` moves the data to `.trash/` too), delete everything it pushed in one commit and reapply the holds; a retry finishes an uninstall that failed halfway |
 
-Every call writes a structured log record with `audit=true` saying who did what to which package and how it ended. States in the list: `disabled`, `installed` (no `resident` server part), `idle` (`on_demand`), `broken` (no longer verifies) or `revoked` when the server part does not run; otherwise the supervisor's process state. The fields are in the [API Reference](../reference/api.md).
+Every call writes a structured log record with `audit=true` saying who did what to which package and how it ended. States in the list: `disabled`, `installed` (no server part), `broken` (no longer verifies) or `revoked` when the server part cannot run; otherwise the supervisor's process state (`idle` for an `on_demand` package that is not running). The fields are in the [API Reference](../reference/api.md).
 
 ### Local administrator floor
 
@@ -261,7 +261,7 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 
 ### Not built yet
 
-- Dynamic mounting of plugin routes under `/api/v1/x/<id>/`, on-demand starts of `on_demand` plugins, and host API endpoints other than state and health.
+- Dynamic mounting of plugin routes under `/api/v1/x/<id>/` (the route table in "Calls and the route table" below is compiled, but no route uses it yet), and host API endpoints other than state and health.
 - The management route for overrides (`State.Override` is built), the impact preview before an uninstall (a 409 from `DELETE` listing the impact first), approval diffs and automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade`, `rollback` and `clock reset` subcommands of `gpuworks plugin`.
 - The site's ceiling on the grace (`pushstate.Config.MaxDownGrace` is built; `server.yaml` has no key for it yet), detecting a plugin hung on an exhausted HTTP/2 window, and running plugins on the leader only under high availability.
 - No capability of the manifest vocabulary other than `table.<kind>` is offered yet: the read surfaces (`host.*`), `host.derive_key`, `host.notify`, `metrics.expose`, settings (`host.config`), `routes`, WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name), `ui.bundle` and `host.setup`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
@@ -299,11 +299,26 @@ The Landlock cases in `internal/testenv/extplugin` (the plugin cannot read `mast
 | Crashloop | 5 crashes within 10 minutes enter `crashloop` (`PLUGIN_CRASHLOOP`), retried every 5 minutes after that, so unattended offline sites recover by themselves |
 | Stop | `POST /gwx/v1/shutdown`, SIGTERM to the process group 10 seconds later, SIGKILL 5 seconds after that |
 | Memory | A plugin with a cgroup of its own is bounded by `memory.max`. For one without, the RSS watchdog sums the resident memory of the plugin's whole process group every 10 seconds (from `/proc/<pid>/stat` on Linux, `ps` on macOS); above 1.5 × `mem_mib` (default 128 MiB) it sends SIGKILL to the group and restarts the plugin as a crash (`PLUGIN_MEMORY_EXCEEDED`). When the memory cannot be read it logs one warning and leaves the plugin running. A child that moved to a process group or session of its own is not counted |
-| Call concurrency | At most `max_concurrency` (default 8) calls per plugin at once; beyond that `PLUGIN_BUSY` at once, never queued; health probes take no slot |
-| Calls without a deadline | 60 seconds |
+| Call concurrency | One slot pool for plain calls and one for streamed calls, each of at most `max_concurrency` (default 8); a quarter of each (at least 1, none when there is a single slot) is kept for administrator calls; beyond that `PLUGIN_BUSY` at once, never queued; health probes take no slot |
+| Calls without a deadline | 60 seconds; an `on_demand` plugin's cold start counts against this time too |
 | stderr | Forwarded to the server log with `plugin=<id>`, JSON lines keep their level; 50 lines a second with bursts of 500, the excess counted and reported; the last 1 MiB kept for diagnostics |
 
-A `resident` plugin starts as soon as it is added; an `on_demand` plugin starts on its first call, stops after 10 idle minutes and may not push state (`PLUGIN_STATE_ON_DEMAND`); on install and on recheck, an `on_demand` package that holds a `push:` permission or declares features is refused with the same code. Only `running` and `degraded` count as up; every other state (`starting`, `backoff`, `crashloop`, `stopping`, `stopped`, `idle`, `failed`) counts as down. A plugin that refuses the handshake for a reason retrying cannot change (such as `PLUGIN_CAPABILITY_MISSING`), answers for another build (`PLUGIN_HANDSHAKE_MISMATCH`) or picks a capability version that was not offered or approved (`PLUGIN_CAPABILITY_NOT_OFFERED`) enters `failed` and is not restarted until it is started again.
+A `resident` plugin starts as soon as it is added; an `on_demand` plugin starts on its first call (calls arriving together start it once and all wait for it), stops after 10 idle minutes (it first refuses new calls in the same step, so a call arriving at that moment waits for the next start instead of being refused), is refused at once while crashlooping, and may not push state (`PLUGIN_STATE_ON_DEMAND`); on install and on recheck, an `on_demand` package that holds a `push:` permission or declares features is refused with the same code. Only `running` and `degraded` count as up; every other state (`starting`, `backoff`, `crashloop`, `stopping`, `stopped`, `idle`, `failed`) counts as down; this is reported to pushed state for `resident` plugins only. A plugin that refuses the handshake for a reason retrying cannot change (such as `PLUGIN_CAPABILITY_MISSING`), answers for another build (`PLUGIN_HANDSHAKE_MISMATCH`) or picks a capability version that was not offered or approved (`PLUGIN_CAPABILITY_NOT_OFFERED`) enters `failed` and is not restarted until it is started again.
+
+### Calls and the route table
+
+The plugin host module calls a plugin through `Bridge.Call` (no route or service uses it yet). Only a package that is installed, enabled and verified, with a server part, is called; any other is refused before any process starts: `PLUGIN_NOT_INSTALLED` when it is not installed, otherwise `PLUGIN_UNAVAILABLE` whose params carry the package's state (`disabled`, `broken`, `revoked`, `installed`, or `failed` when its start was refused). The caller gives the call's class: administrator calls (`admin` and `admin_session` routes) may use the reserved slots, and streamed calls use the stream pool. A failed call falls in one of four classes, which tell the caller whether it may retry:
+
+| Code | When | Retry |
+|---|---|---|
+| `PLUGIN_UNAVAILABLE{plugin, state}` | The request never reached the plugin: not supervised (`state` is `stopped`), not running, crashlooping, or the connection failed before the request headers were written. `state` is for programs only and the text does not interpolate it (pushed state's clamp banner uses the same code with only `plugin` and `feature`) | Yes |
+| `PLUGIN_BUSY{id, limit}` | Every slot the call's class may use is taken; `limit` is the bound that refused the call: the pool size for an administrator call, the pool size less the reserved slots for any other | Shortly |
+| `PLUGIN_TIMEOUT{id, timeout_s, state}` | The deadline passed: `state` is `starting` while an `on_demand` plugin was still cold starting, `running` while the plugin was handling the call | Depends on the call |
+| `PLUGIN_ROUTE_FAILED{id}` | The call failed after the plugin had the request (it crashed or hung up), so the request may have been partly applied | No |
+
+A write that fails after the request headers were written counts as delivered: the caller is told the request may have been partly applied rather than led into a blind retry. A plugin's own refusal is a normal response.
+
+The route table is compiled from the installed packages' manifests: an enabled package that verifies serves its routes; a disabled package has none (404, and absent from the route inventory), even when it is also revoked or no longer verifies; a revoked package, and one that no longer verifies but verified earlier at the same version, keeps its routes and answers them with 503 `PLUGIN_UNAVAILABLE` without calling the plugin (a package already broken at boot has no routes until it verifies again). After every install, enable, disable, uninstall or recheck the whole table is compiled again and swapped atomically; matching takes no lock, walks one path segment at a time with literal segments tried before `{name}` parameters, and allocates once, for the parameters only; a request keeps the table it started with.
 
 ### gwx/1 connections and the host API
 
@@ -334,4 +349,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: db3082b7f13eb35409739e9fad8a2980ae2ced8b41daeaf3f56599c5e3719bdb -->
+<!-- translation-source-sha256: 0fda37a1c561260a79fc56481b4e73845706bffe0ae08e8c63b94cd6f7ee1025 -->
