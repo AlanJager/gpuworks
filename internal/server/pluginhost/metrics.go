@@ -140,7 +140,7 @@ type MetricsRow struct {
 // PackageStates are the package states beside State a MetricsRow may carry
 // (pluginbridge reports them); gpuworks_plugin_state has a series for each
 // and for each State.
-var PackageStates = []string{"disabled", "installed", "broken", "revoked"}
+var PackageStates = []string{"disabled", "installed", "broken", "revoked", "needs_host_setup"}
 
 var processStates = []State{StateStarting, StateRunning, StateDegraded, StateBackoff, StateCrashloop,
 	StateStopping, StateStopped, StateIdle, StateFailed}

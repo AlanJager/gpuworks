@@ -16,6 +16,7 @@ gpuworks_plugin_state{id="acme_backup",state="disabled"} 0
 gpuworks_plugin_state{id="acme_backup",state="failed"} 0
 gpuworks_plugin_state{id="acme_backup",state="idle"} 0
 gpuworks_plugin_state{id="acme_backup",state="installed"} 0
+gpuworks_plugin_state{id="acme_backup",state="needs_host_setup"} 0
 gpuworks_plugin_state{id="acme_backup",state="revoked"} 0
 gpuworks_plugin_state{id="acme_backup",state="running"} 1
 gpuworks_plugin_state{id="acme_backup",state="starting"} 0
@@ -29,6 +30,7 @@ gpuworks_plugin_state{id="acme_off",state="disabled"} 1
 gpuworks_plugin_state{id="acme_off",state="failed"} 0
 gpuworks_plugin_state{id="acme_off",state="idle"} 0
 gpuworks_plugin_state{id="acme_off",state="installed"} 0
+gpuworks_plugin_state{id="acme_off",state="needs_host_setup"} 0
 gpuworks_plugin_state{id="acme_off",state="revoked"} 0
 gpuworks_plugin_state{id="acme_off",state="running"} 0
 gpuworks_plugin_state{id="acme_off",state="starting"} 0

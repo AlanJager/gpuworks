@@ -2,7 +2,7 @@ package messages
 
 // Health of the installed plugins: the administrator banners the plugin
 // host raises from the plugins' states, and the results of the plugins
-// diagnostics check (docs/dev/extensions.md, 监管). A crashlooping plugin's
+// diagnostics check (docs/dev/extensions.md, Supervision). A crashlooping plugin's
 // banner reuses PLUGIN_CRASHLOOP with the params its status carries, and an
 // incompatible package's banner reuses PLUGIN_INCOMPATIBLE with the params
 // of its refusal.
@@ -13,10 +13,10 @@ const (
 	// to install instead, empty when the revocation names none.
 	ErrorPluginRevoked = "PLUGIN_REVOKED"
 	// CheckPluginsOK: no enabled plugin is crashlooping, failed, broken,
-	// revoked or incompatible.
+	// revoked, incompatible or awaiting host setup.
 	CheckPluginsOK = "CHECK_PLUGINS_OK"
 	// CheckPluginsFailing: the enabled plugins {ids} (comma-separated)
-	// cannot run: crashlooping, failed, broken or revoked.
+	// cannot run: crashlooping, failed, broken, revoked or awaiting host setup.
 	CheckPluginsFailing = "CHECK_PLUGINS_FAILING"
 	// CheckPluginsIncompatible: the enabled plugins {ids}
 	// (comma-separated) need capabilities this server does not offer.

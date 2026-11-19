@@ -1716,7 +1716,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 - `since`：进入当前进程状态的时间，未受监管时缺省；`restarts`：第一次之后又启动了几个进程。
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
 - `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。
-- `check`：`message` 是检查结果的码与参数；`status` 为 `fail`（`CHECK_PLUGINS_FAILING`：有已启用的包处于崩溃循环、`failed`、`broken` 或被吊销）、`warn`（`CHECK_PLUGINS_INCOMPATIBLE`：有已启用的包需要此服务器不提供的能力）或 `pass`（`CHECK_PLUGINS_OK`）；`message.params.ids` 是以逗号分隔的包 id。
+- `check`：`message` 是检查结果的码与参数；`status` 为 `fail`（`CHECK_PLUGINS_FAILING`：有已启用的包处于崩溃循环、`failed`、`broken`、被吊销或 `needs_host_setup`）、`warn`（`CHECK_PLUGINS_INCOMPATIBLE`：有已启用的包需要此服务器不提供的能力）或 `pass`（`CHECK_PLUGINS_OK`）；`message.params.ids` 是以逗号分隔的包 id。
 
 调用插件失败时的码（`PLUGIN_UNAVAILABLE`、`PLUGIN_BUSY`、`PLUGIN_TIMEOUT`、`PLUGIN_ROUTE_FAILED`）见[扩展点](../dev/extensions.md#调用与路由表)。
 

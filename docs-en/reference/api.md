@@ -1702,7 +1702,7 @@ Fields:
 - `since`: when it entered its current process state, absent when not supervised; `restarts`: how many processes were started after the first.
 - `parts`: the parts it carries, `server`, `node`, `ui`, `store`; `isolation`: `landlock` or `none`.
 - `actions`: the actions available now, computed by the server: `enable`, `disable`, `uninstall`.
-- `check`: `message` is the result's code and params; `status` is `fail` (`CHECK_PLUGINS_FAILING`: an enabled package is crashlooping, `failed`, `broken` or revoked), `warn` (`CHECK_PLUGINS_INCOMPATIBLE`: an enabled package needs a capability this server does not offer) or `pass` (`CHECK_PLUGINS_OK`); `message.params.ids` is the package ids, comma-separated.
+- `check`: `message` is the result's code and params; `status` is `fail` (`CHECK_PLUGINS_FAILING`: an enabled package is crashlooping, `failed`, `broken`, revoked or `needs_host_setup`), `warn` (`CHECK_PLUGINS_INCOMPATIBLE`: an enabled package needs a capability this server does not offer) or `pass` (`CHECK_PLUGINS_OK`); `message.params.ids` is the package ids, comma-separated.
 
 The codes of a failed plugin call (`PLUGIN_UNAVAILABLE`, `PLUGIN_BUSY`, `PLUGIN_TIMEOUT`, `PLUGIN_ROUTE_FAILED`) are in [Extension Points](../dev/extensions.md#calls-and-the-route-table).
 
@@ -2312,4 +2312,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: d1f5068fc1d01d6dd06056cf52ef8de622eea32792e7fdbb3a8a0f68f37b4838 -->
+<!-- translation-source-sha256: f74ccbdc35a6f6b5d9430094a4cbdfc96196f6bf67674363e0100758cb36ccab -->

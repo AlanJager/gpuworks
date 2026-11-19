@@ -52,7 +52,7 @@ func healthOf(v View) health {
 				messages.NewProductError(messages.ErrorPluginIncompatible, v.Message, v.Params))}
 		}
 		return health{failing: true}
-	case string(pluginhost.StateFailed):
+	case string(pluginhost.StateFailed), StateNeedsHostSetup:
 		return health{failing: true}
 	}
 	return health{}
@@ -125,7 +125,7 @@ func (b *Bridge) HealthBanners() []pushstate.Banner {
 }
 
 // Check is the plugins diagnostics check: fail while any enabled package
-// is crashlooping, failed, broken or revoked (params: their ids), warn
+// is crashlooping, failed, needs host setup, broken or revoked (params: their ids), warn
 // while any is incompatible with this server (params: their ids), pass
 // otherwise.
 func (b *Bridge) Check() Check { return checkOf(b.healthViews()) }
@@ -186,7 +186,7 @@ func checkOf(views []View) Check {
 			Params: map[string]any{"ids": ids}, Message: "enabled plugins need capabilities this server does not offer: " + ids}
 	}
 	return Check{ID: CheckID, Status: proto.CheckPass, Code: messages.CheckPluginsOK, Params: map[string]any{},
-		Message: "no enabled plugin is crashlooping, failed, broken, revoked or incompatible"}
+		Message: "no enabled plugin is crashlooping, failed, awaiting host setup, broken, revoked or incompatible"}
 }
 
 // WriteMetrics writes the gpuworks_plugin_* metrics of every installed
