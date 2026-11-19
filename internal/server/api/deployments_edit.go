@@ -373,8 +373,11 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 	if shape == deploymentShapeSingle && (launchChanged || !sameRequirementSets(reqs, nextReqs) || next.Placement != dep.Placement ||
 		next.VRAMLimitBytes != dep.VRAMLimitBytes || next.PartitionBackend != dep.PartitionBackend || next.Sleepable != dep.Sleepable) {
 		if err := a.deployments().CheckStoredCanEverFit(ctx, &next, nextReqs); err != nil {
+			// A launch the edited configuration cannot resolve is the edit's
+			// to correct, as it is the request's on create.
 			var refused *messages.ProductError
-			if errors.As(err, &refused) {
+			var unresolved *planning.LaunchResolveError
+			if errors.As(err, &refused) || errors.As(err, &unresolved) {
 				return bad(err)
 			}
 			return internal(err)

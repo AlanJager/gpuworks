@@ -36,7 +36,7 @@ func ResolveAllocatedLaunch(req LaunchRequest, indexes []int, assigned int, para
 		Entrypoint: req.Selection.Entrypoint, PreStartArgv: req.Selection.PreStartArgv,
 		PreStartScript: req.Selection.PreStartScript, RuntimeAssets: req.Selection.RuntimeAssets,
 		ComponentMounts: req.ComponentMounts, ModelPaths: req.ModelPaths, TemplateShmBytes: req.Selection.ShmBytes, TemplateMemlockUnlimited: req.Selection.MemlockUnlimited, TemplateDockerArgs: req.Selection.DockerArgs,
-		APIContract: req.APIContract, PlacementVariables: variables, AllowUnresolved: unresolved,
+		APIContract: req.APIContract, PlacementVariables: variables, AllowUnresolved: unresolved, StoredLaunch: req.AsStored,
 		HealthPath: plan.Profile.HealthPath, ModelWeightBytes: weightBytes,
 	}
 	plan.Resolved, plan.Warnings, err = deploy.ResolveLaunchWithWarnings(plan.LaunchInput)

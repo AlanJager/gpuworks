@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/agent/modelscan"
 	"gpuworks.ai/gpuworks/internal/agent/storagemount"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -34,6 +35,9 @@ type storageRuntime struct {
 	// timeouts bound the calls into a share (storageDo); a test shortens its
 	// own runtime's.
 	timeouts storageTimeouts
+	// scans continues a storage scan from the page before it, so a page does
+	// not walk again what the earlier pages covered.
+	scans modelscan.Pager
 
 	mu        sync.RWMutex
 	tasks     map[uint]proto.StorageTask
@@ -110,9 +114,17 @@ func (n *NodeRuntime) applyStorages(tasks []proto.StorageTask) {
 	s := n.storage
 	s.mu.Lock()
 	s.known = true
+	previous := s.tasks
 	s.tasks = make(map[uint]proto.StorageTask, len(tasks))
 	for _, task := range tasks {
 		s.tasks[task.ID] = task
+	}
+	// A storage removed or defined anew is no longer the tree a scan of it
+	// was walking: the next page of that scan starts from the root.
+	for id, old := range previous {
+		if next, ok := s.tasks[id]; !ok || n.storageSpec(next) != n.storageSpec(old) {
+			s.scans.Drop(old.Path)
+		}
 	}
 	// A storage the server no longer lists takes its parked tasks with it:
 	// they would otherwise start writing the day the id comes back.
@@ -177,6 +189,11 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 	s.statuses = make(map[uint]storagemount.Status, len(statuses))
 	for _, st := range statuses {
 		s.statuses[st.ID] = st
+		if st.State != storagemount.StateReady {
+			// Unmounted or failing: what a scan listed there may not be
+			// what comes back.
+			s.scans.Drop(st.Path)
+		}
 	}
 	report := make([]proto.StorageStatus, 0, len(statuses))
 	for _, st := range statuses {

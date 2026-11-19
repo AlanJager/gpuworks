@@ -72,7 +72,13 @@ type ResolveLaunchInput struct {
 	// AllowUnresolved is set by a preview whose placement is not settled: the
 	// variables it cannot state yet stay symbolic instead of failing.
 	AllowUnresolved bool
-	HealthPath      string
+	// StoredLaunch is set by the launch of a deployment as it is stored and by
+	// every trial of that launch (the controller's, a scale or a failover's),
+	// never by a create, an evaluation or an edit. A manual script stored
+	// before scripts were held to the assigned GPUs still starts as it did;
+	// the mismatch is refused when the deployment is next written.
+	StoredLaunch bool
+	HealthPath   string
 	// ModelWeightBytes is the estimator's weight total for this deployment. It
 	// is the only input to the KV disk tier's automatic capacity ceiling, and
 	// nothing else reads it; a caller that has no estimate leaves it zero and
@@ -353,7 +359,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	// the concrete topology after scheduling; applying the temporary builder TP
 	// of one here would reject a valid multi-GPU template before placement.
 	if !(input.AllowUnresolved && params.AssignedGPUs <= 0 && params.TensorParallel <= 0) {
-		if err := validateEngineTopology(input.Engine, launch, params); err != nil {
+		if err := validateEngineTopology(input.Engine, launch, params, !input.StoredLaunch); err != nil {
 			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
 	}

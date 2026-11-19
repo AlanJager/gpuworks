@@ -2,6 +2,7 @@ package modelscan
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -56,6 +57,9 @@ type Options struct {
 	Limit    int       // max candidates per call, default 200
 	Cursor   string    // resume after this RelPath (exclusive); "" starts over
 	Deadline time.Time // zero means none
+
+	trace func(op, rel string) // tests: every directory listed or parsed
+	now   func() time.Time     // tests: the clock Deadline is read against
 }
 
 // Result is one page of a scan.
@@ -66,11 +70,22 @@ type Result struct {
 	Complete   bool
 }
 
+// errLeftRoot is a symlinked directory that no longer resolves inside the
+// root. It is reported as any directory that cannot be read.
+var errLeftRoot = errors.New("directory no longer resolves inside the scan root")
+
 type node struct {
 	rel     string
 	depth   int
 	scope   string
 	context modelmetadata.Context
+	// listLater marks a directory an earlier page reported whose children
+	// are not needed until the walk reaches their level.
+	listLater bool
+	// viaLink marks a directory reached through a symlink, its own or an
+	// ancestor's: it was inside the root when its parent was listed and is
+	// checked again when it is read.
+	viaLink bool
 }
 
 type scanner struct {
@@ -78,11 +93,19 @@ type scanner struct {
 	resolvedRoot string
 	maxDepth     int
 	cursor       string
+	cursorDepth  int
 	hasCursor    bool
 	res          Result
 	queue        []node
 	limit        int
 	full         bool
+	// last is the furthest directory this walk has reported on, in scan
+	// order: the resume point of the page being built.
+	last string
+	// born is when the walk's first page began (Pager's age limit).
+	born  time.Time
+	trace func(op, rel string)
+	now   func() time.Time
 }
 
 // Scan walks root breadth first (siblings in name order) and returns the model
@@ -92,69 +115,69 @@ type scanner struct {
 //
 // A call returns at most Options.Limit candidates; resume with NextCursor.
 // Cancellation and the deadline end the call early with Complete=false and no
-// error; only an unreadable root is an error.
+// error; only an unreadable root is an error. NextCursor is the last directory
+// the call finished with, whether or not it was a model, so a page that found
+// no model still moves the scan forward.
+//
+// Scan keeps nothing between calls: resuming lists again every directory
+// above the cursor's level. A Pager resumes from where the last page stopped.
 func Scan(ctx context.Context, root string, o Options) (Result, error) {
-	resolved, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return Result{}, err
-	}
-	rootEntries, err := os.ReadDir(resolved)
-	if err != nil {
-		return Result{}, err
-	}
-	s := &scanner{root: root, resolvedRoot: resolved, maxDepth: o.MaxDepth, limit: o.Limit}
-	if s.maxDepth <= 0 {
-		s.maxDepth = defaultMaxDepth
-	}
-	if s.limit <= 0 {
-		s.limit = defaultLimit
-	}
-	if c := strings.Trim(filepath.ToSlash(o.Cursor), "/"); c != "" {
-		s.cursor, s.hasCursor = c, true
+	return new(Pager).Scan(ctx, root, o)
+}
+
+func newScanner(root, resolved string, rootEntries []os.DirEntry, maxDepth int, cursor string) *scanner {
+	s := &scanner{root: root, resolvedRoot: resolved, maxDepth: maxDepth}
+	if cursor != "" {
+		s.cursor, s.hasCursor, s.last = cursor, true, cursor
+		s.cursorDepth = strings.Count(cursor, "/") + 1
 	}
 	ls := s.classifyEntries(root, rootEntries)
 	for _, name := range ls.dirs {
-		s.queue = append(s.queue, node{rel: name, depth: 1})
+		s.queue = append(s.queue, node{rel: name, depth: 1, viaLink: ls.links[name]})
 	}
+	return s
+}
 
+// page runs the walk until the page is full, the tree is exhausted or the
+// call is interrupted. It reports whether the walk can be continued later:
+// false when cancellation cut a directory short, which leaves the queue
+// without that directory's children.
+func (s *scanner) page(ctx context.Context, deadline time.Time) (resumable bool) {
 	interrupted := false
+	resumable = true
 	for len(s.queue) > 0 && !s.full {
-		if ctx.Err() != nil || (!o.Deadline.IsZero() && !time.Now().Before(o.Deadline)) {
+		if ctx.Err() != nil || (!deadline.IsZero() && !s.now().Before(deadline)) {
 			interrupted = true
 			break
 		}
 		n := s.queue[0]
+		s.queue[0] = node{}
 		s.queue = s.queue[1:]
-		s.visit(ctx, n)
-	}
-
-	if len(s.res.Candidates) > 0 {
-		s.res.NextCursor = s.res.Candidates[len(s.res.Candidates)-1].RelPath
-	} else if interrupted {
-		// Nothing new this call: keep the caller's resume point.
-		s.res.NextCursor = s.cursor
-	}
-	if interrupted {
-		// Skips after the resume point will be seen again on the next call.
-		kept := s.res.Skipped[:0]
-		for _, sk := range s.res.Skipped {
-			if s.res.NextCursor != "" && proto.ScanOrder(sk.RelPath, s.res.NextCursor) <= 0 {
-				kept = append(kept, sk)
-			}
+		candidates, skipped := len(s.res.Candidates), len(s.res.Skipped)
+		reported := s.visit(ctx, n)
+		if ctx.Err() != nil {
+			// A cancelled read looks like an unreadable directory. Nothing
+			// about this directory is known: the next page reports it.
+			s.res.Candidates, s.res.Skipped, s.full = s.res.Candidates[:candidates], s.res.Skipped[:skipped], false
+			interrupted, resumable = true, false
+			break
 		}
-		s.res.Skipped = kept
+		if reported {
+			s.last = n.rel
+		}
 	}
 	s.res.Complete = !interrupted && !s.full
-	if s.res.Complete {
-		s.res.NextCursor = ""
+	if !s.res.Complete {
+		s.res.NextCursor = s.last
 	}
-	return s.res, nil
+	return resumable
 }
 
 // dirListing is a directory's non-dot content.
 type dirListing struct {
-	dirs  []string // usable subdirectory names, in name order
-	files []string // regular files (and symlinks to them)
+	dirs  []string        // usable subdirectory names, in name order
+	files []string        // regular files (and symlinks to them)
+	links map[string]bool // the dirs that are symlinks
 }
 
 func (s *scanner) classifyEntries(dir string, entries []os.DirEntry) dirListing {
@@ -179,6 +202,10 @@ func (s *scanner) classifyEntries(dir string, entries []os.DirEntry) dirListing 
 				ls.files = append(ls.files, name)
 			} else if info.IsDir() && s.insideRoot(path) {
 				ls.dirs = append(ls.dirs, name)
+				if ls.links == nil {
+					ls.links = map[string]bool{}
+				}
+				ls.links[name] = true
 			}
 		}
 	}
@@ -198,33 +225,59 @@ func (s *scanner) skip(rel, reason string) {
 	s.res.Skipped = append(s.res.Skipped, Skipped{RelPath: rel, Reason: reason})
 }
 
-// visit classifies one directory. Directories at or before the cursor were
-// already reported by an earlier page: they are classified (so the traversal
-// stays identical) but nothing about them is reported.
-func (s *scanner) visit(ctx context.Context, n node) {
-	done := s.hasCursor && proto.ScanOrder(n.rel, s.cursor) <= 0
+func (s *scanner) note(op, rel string) {
+	if s.trace != nil {
+		s.trace(op, rel)
+	}
+}
+
+// visit classifies one directory and reports whether it belongs to this
+// page. Directories at or before the cursor were reported by an earlier page:
+// nothing about them is reported again, and they are read only as far as
+// their descendants need. One with no subdirectory to enter is not parsed,
+// and one on the cursor's own level is not even listed until the walk
+// reaches the level below it.
+func (s *scanner) visit(ctx context.Context, n node) bool {
+	done := n.listLater || (s.hasCursor && proto.ScanOrder(n.rel, s.cursor) <= 0)
+	if done && !n.listLater && n.depth == s.cursorDepth {
+		n.listLater = true
+		s.queue = append(s.queue, n)
+		return false
+	}
 	dir := filepath.Join(s.root, filepath.FromSlash(n.rel))
-	entries, err := os.ReadDir(dir)
+	s.note("list", n.rel)
+	var entries []os.DirEntry
+	err := errLeftRoot
+	// The link was inside the root when its parent was listed. A walk
+	// continued from an earlier page reads it much later, and whoever can
+	// write to the share can have pointed it elsewhere since.
+	if !n.viaLink || s.insideRoot(dir) {
+		entries, err = os.ReadDir(dir)
+	}
 	if err != nil {
 		if !done {
 			s.skip(n.rel, SkipUnreadable)
 		}
-		return
+		return !done
 	}
 	ls := s.classifyEntries(dir, entries)
+	if done && (len(ls.dirs) == 0 || n.depth >= s.maxDepth) {
+		return false
+	}
 
+	s.note("parse", n.rel)
 	report, err := s.parseNode(ctx, n)
 	if err != nil {
 		if !done {
 			s.skip(n.rel, SkipUnreadable)
 		}
-		return
+		return !done
 	}
 	if report.Prune {
 		if !done {
 			s.skip(n.rel, SkipHFHubCache)
 		}
-		return
+		return !done
 	}
 	if !done {
 		switch {
@@ -249,18 +302,24 @@ func (s *scanner) visit(ctx context.Context, n node) {
 	n.inheritMetadata(report)
 	if len(ls.dirs) > 0 {
 		if n.depth >= s.maxDepth {
-			if !done {
-				s.skip(n.rel, SkipTooDeep)
-			}
-			return
+			s.skip(n.rel, SkipTooDeep)
+			return true
 		}
+		children := make([]node, 0, len(ls.dirs))
 		for _, name := range ls.dirs {
-			s.queue = append(s.queue, node{rel: n.rel + "/" + name, depth: n.depth + 1, scope: n.scope, context: n.context})
+			children = append(children, node{rel: n.rel + "/" + name, depth: n.depth + 1, scope: n.scope, context: n.context, viaLink: n.viaLink || ls.links[name]})
 		}
-		return
+		if n.listLater {
+			// Its level is over: the children go ahead of those of the
+			// directories that followed it there.
+			s.queue = append(children, s.queue...)
+		} else {
+			s.queue = append(s.queue, children...)
+		}
+		return !done
 	}
 	if done || len(report.Entries) > 0 || report.Component || report.HasMetadataIssues() {
-		return
+		return !done
 	}
 	switch {
 	case len(ls.files) == 0:
@@ -270,6 +329,7 @@ func (s *scanner) visit(ctx context.Context, n node) {
 	default:
 		s.skip(n.rel, SkipUnrecognizedLayout)
 	}
+	return true
 }
 
 func (s *scanner) addCandidate(dir string, n node, report modelmetadata.Report) {

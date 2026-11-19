@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -41,6 +42,9 @@ const (
 	containerSmokeStartBudget = 30 * time.Second
 	// containerSmokeScriptBudget bounds the check inside it, as on the host.
 	containerSmokeScriptBudget = 45 * time.Second
+	// containerSmokeStaleAfter is how old a check container must be before
+	// any agent may take it for abandoned.
+	containerSmokeStaleAfter = engine.CardSmokeContainerStaleAfter
 )
 
 // cardSmokeBuilder builds the container a card is asked from (the engine's
@@ -66,6 +70,15 @@ type containerSmoke struct {
 	// would not remove it. Until they are gone no new container is started,
 	// so a card stuck in the driver gathers one container, not one a round.
 	leftovers map[string]bool
+	// inFlight are the names of the containers this agent's checks are
+	// running in right now. They are never taken for abandoned, whatever
+	// the clock says of their age.
+	inFlight map[string]bool
+	// watched is when this agent first saw another's check container still
+	// running, on the monotonic clock; now is that clock (time.Now unless a
+	// test sets it).
+	watched map[string]time.Time
+	now     func() time.Time
 }
 
 // clearLeftovers removes what it can of earlier attempts' containers and says
@@ -102,6 +115,93 @@ func containerGone(ctx context.Context, d runtime.Driver, id string) bool {
 	return err == nil && !st.Exists
 }
 
+// adoptStale takes over check containers nobody is waiting on any more. The
+// agent that started one removes it when the check ends, but an agent killed
+// or restarted in between (an upgrade is enough) forgets it, and the orphan
+// sweep that would find it is off unless the operator turned it on. Left
+// alone, an exited one stays in the runtime for good and a stuck one gathers a
+// new container every round.
+//
+// The name says that a container is a check's and when the check started,
+// but that start is wall-clock time and a clock stepped forward makes a check
+// in flight look old. So age alone removes nothing:
+//
+//   - a container this agent's own check is running in is never adopted;
+//   - one the runtime reports not running, past containerSmokeStaleAfter by
+//     its name, is finished business whichever agent started it;
+//   - one still running is adopted only once this agent has itself watched
+//     it run for containerSmokeStaleAfter, measured on the monotonic clock,
+//     which no check does.
+//
+// Younger ones may be another agent's check in flight and are not touched. A
+// list or an inspection that fails adopts nothing.
+func (c *containerSmoke) adoptStale(ctx context.Context, d runtime.Driver) {
+	names, err := d.ListContainers(ctx)
+	if err != nil {
+		return
+	}
+	now := time.Now
+	if c.now != nil {
+		now = c.now
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		started, ok := engine.CardSmokeContainerStarted(name)
+		if !ok || c.running(name) || now().Sub(started) < containerSmokeStaleAfter {
+			continue
+		}
+		st, err := d.Status(ctx, name)
+		if err != nil || !st.Exists {
+			continue
+		}
+		if st.Running {
+			seen[name] = true
+			c.mu.Lock()
+			first, known := c.watched[name]
+			if !known {
+				if c.watched == nil {
+					c.watched = map[string]time.Time{}
+				}
+				first = now()
+				c.watched[name] = first
+			}
+			c.mu.Unlock()
+			if now().Sub(first) < containerSmokeStaleAfter {
+				continue
+			}
+		}
+		c.leaveBehind(name)
+	}
+	c.mu.Lock()
+	for name := range c.watched {
+		if !seen[name] {
+			delete(c.watched, name)
+		}
+	}
+	c.mu.Unlock()
+}
+
+// running reports whether name is a container one of this agent's checks is
+// using now.
+func (c *containerSmoke) running(name string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.inFlight[name]
+}
+
+func (c *containerSmoke) setRunning(name string, on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !on {
+		delete(c.inFlight, name)
+		return
+	}
+	if c.inFlight == nil {
+		c.inFlight = map[string]bool{}
+	}
+	c.inFlight[name] = true
+}
+
 func (c *containerSmoke) leaveBehind(id string) {
 	c.mu.Lock()
 	if c.leftovers == nil {
@@ -120,6 +220,7 @@ func (c *containerSmoke) pick(ctx context.Context) string {
 	if !containerSmokeDrivers[d.Name()] {
 		return "the check from inside a runner image is not run on " + d.Name() + " nodes, where a container unpacks the whole image"
 	}
+	c.adoptStale(ctx, d)
 	if reason := c.clearLeftovers(ctx, d); reason != "" {
 		return reason
 	}
@@ -165,9 +266,9 @@ func (c *containerSmoke) try(ctx context.Context, visible string) (err error) {
 		return &gpu.HostRuntimeUnavailableError{Reason: "the runtime check container " + fmt.Sprintf(format, args...)}
 	}
 	// Unique per attempt: Doctor and the periodic round may ask the same
-	// card at once. One left behind by a killed agent carries the gpuworks-
-	// prefix and no desired instance's name, so the orphan sweep removes it.
-	name := fmt.Sprintf("gpuworks-card-smoke-%d-%s", index, strconv.FormatInt(time.Now().UnixNano(), 36))
+	// card at once. One left behind by a killed agent is removed by a later
+	// round's adoptStale, which reads the start time back from the name.
+	name := engine.CardSmokeContainerName(index, time.Now())
 	start, cancel := context.WithTimeout(ctx, containerSmokeStartBudget)
 	defer cancel()
 	if reason := c.clearLeftovers(start, d); reason != "" {
@@ -177,6 +278,8 @@ func (c *containerSmoke) try(ctx context.Context, visible string) (err error) {
 	if err != nil {
 		return unavailable("could not be built: %v", err)
 	}
+	c.setRunning(name, true)
+	defer c.setRunning(name, false)
 	id, err := d.Run(start, ws)
 	if err != nil {
 		return unavailable("did not start from %s: %v", image, err)

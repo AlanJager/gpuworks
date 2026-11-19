@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -30,6 +31,15 @@ type smokeRuntime struct {
 	unkillable bool
 	exitCode   int
 	logs       string
+	// listed are the containers already in the runtime when the agent
+	// looks: other agents' and those of this agent's earlier life.
+	listed  []string
+	listErr error
+	// stillRunning are listed containers whose check never ended: another
+	// agent's in flight, or one stuck in the driver.
+	stillRunning map[string]bool
+	// onStatus runs on every inspection, before it answers.
+	onStatus func()
 
 	mu      sync.Mutex
 	runs    []runtime.WorkloadSpec
@@ -43,8 +53,21 @@ func (r *smokeRuntime) Detect(context.Context) (bool, error) { return true, nil 
 func (r *smokeRuntime) PullImage(context.Context, string, func(string)) error {
 	return errors.New("the runtime check must never pull")
 }
-func (r *smokeRuntime) Prepare(context.Context, runtime.WorkloadSpec) error    { return nil }
-func (r *smokeRuntime) ListContainers(context.Context) ([]string, error)       { return nil, nil }
+func (r *smokeRuntime) Prepare(context.Context, runtime.WorkloadSpec) error { return nil }
+func (r *smokeRuntime) ListContainers(context.Context) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+	var names []string
+	for _, name := range r.listed {
+		if !r.gone[name] {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
 func (r *smokeRuntime) RunningContainers(context.Context) ([]string, error)    { return nil, nil }
 func (r *smokeRuntime) Stop(context.Context, string) error                     { return nil }
 func (r *smokeRuntime) Exec(context.Context, string, []string) ([]byte, error) { return nil, nil }
@@ -77,6 +100,9 @@ func (r *smokeRuntime) Remove(_ context.Context, id string) error {
 	return nil
 }
 func (r *smokeRuntime) Status(_ context.Context, id string) (runtime.Status, error) {
+	if r.onStatus != nil {
+		r.onStatus()
+	}
 	if r.statusErr != nil {
 		return runtime.Status{}, r.statusErr
 	}
@@ -85,7 +111,7 @@ func (r *smokeRuntime) Status(_ context.Context, id string) (runtime.Status, err
 	if r.gone[id] {
 		return runtime.Status{}, nil
 	}
-	return runtime.Status{Exists: true, Running: r.hang, ExitCode: r.exitCode}, nil
+	return runtime.Status{Exists: true, Running: r.hang || r.stillRunning[id], ExitCode: r.exitCode}, nil
 }
 func (r *smokeRuntime) Logs(context.Context, string, bool, int) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader(r.logs)), nil
@@ -303,5 +329,130 @@ func TestComposedCheckForAVendorWithoutAHostRuntime(t *testing.T) {
 	}
 	if _, ok := check.Visible(proto.GPUInfo{Index: -1}); ok {
 		t.Fatal("a card without a device index was named")
+	}
+}
+
+// An agent killed or restarted in the middle of a check forgets the container
+// it started. The next round finds it by the name and age of the check, not
+// by memory, and removes it; containers that are not a check's, and a check
+// young enough to be another agent's in flight, are not touched.
+func TestAStaleCheckContainerOfAnEarlierAgentIsRemoved(t *testing.T) {
+	stale := engine.CardSmokeContainerName(1, time.Now().Add(-72*time.Hour))
+	young := engine.CardSmokeContainerName(3, time.Now().Add(-5*time.Second))
+	instance := "gpuworks-59e3b54200d29e6e6bcce0911b550040"
+	r := &smokeRuntime{name: "docker", images: map[string]bool{ppuImage: true}, logs: "CUDA_RUNTIME_SMOKE_OK\n",
+		listed: []string{stale, young, instance, "gpuworks-card-smoke-notes", "unrelated"}}
+	c := newPPUSmoke(r, ppuImage)
+	if reason := c.pick(t.Context()); reason != "" {
+		t.Fatal(reason)
+	}
+	if len(r.removed) != 1 || r.removed[0] != stale || !r.gone[stale] {
+		t.Fatalf("removed %v, want only the stale check container %s", r.removed, stale)
+	}
+	if err := c.try(t.Context(), "2"); err != nil {
+		t.Fatal(err)
+	}
+	if left, _ := r.ListContainers(t.Context()); len(left) != 4 {
+		t.Fatalf("containers left = %v, want the four that were not a stale check", left)
+	}
+}
+
+// One the runtime will not remove is stuck in the driver like any other
+// leftover: no new container joins it.
+func TestAStaleCheckContainerThatCannotBeRemovedBlocksNewOnes(t *testing.T) {
+	stale := engine.CardSmokeContainerName(1, time.Now().Add(-time.Hour))
+	r := &smokeRuntime{name: "docker", images: map[string]bool{ppuImage: true}, unkillable: true, listed: []string{stale}}
+	c := newPPUSmoke(r, ppuImage)
+	if reason := c.pick(t.Context()); !strings.Contains(reason, stale) || !strings.Contains(reason, "has not exited") {
+		t.Fatalf("pick = %q, want the round refused over %s", reason, stale)
+	}
+	if err := c.try(t.Context(), "2"); gpu.HostRuntimeUnavailable(err) == "" || len(r.runs) != 0 {
+		t.Fatalf("err = %v, runs = %d: want no container started", err, len(r.runs))
+	}
+}
+
+// A runtime that cannot list its containers adopts nothing and the check
+// goes on as before.
+func TestAFailedContainerListDoesNotStopTheCheck(t *testing.T) {
+	r := &smokeRuntime{name: "docker", images: map[string]bool{ppuImage: true}, logs: "CUDA_RUNTIME_SMOKE_OK\n",
+		listed: []string{engine.CardSmokeContainerName(1, time.Now().Add(-time.Hour))}, listErr: errors.New("docker ps: context deadline exceeded")}
+	c := newPPUSmoke(r, ppuImage)
+	if reason := c.pick(t.Context()); reason != "" {
+		t.Fatal(reason)
+	}
+	if err := c.try(t.Context(), "2"); err != nil || len(r.removed) != 1 || r.removed[0] != "id-"+r.runs[0].Name {
+		t.Fatalf("err = %v, removed = %v", err, r.removed)
+	}
+}
+
+// A check container still running is not abandoned because its name is old:
+// the name's time is the wall clock's, and a clock stepped forward makes a
+// check in flight look old. One of this agent's own checks is never adopted;
+// another agent's is adopted only after this agent has watched it run for
+// longer than any check does.
+func TestARunningCheckContainerIsNotAdoptedByItsAgeAlone(t *testing.T) {
+	own := engine.CardSmokeContainerName(0, time.Now().Add(-time.Hour))
+	other := engine.CardSmokeContainerName(1, time.Now().Add(-time.Hour))
+	r := &smokeRuntime{name: "docker", images: map[string]bool{ppuImage: true},
+		listed: []string{own, other}, stillRunning: map[string]bool{own: true, other: true}}
+	c := newPPUSmoke(r, ppuImage)
+	clock := time.Now()
+	c.now = func() time.Time { return clock }
+	c.setRunning(own, true)
+	for range 3 {
+		if reason := c.pick(t.Context()); reason != "" {
+			t.Fatal(reason)
+		}
+		clock = clock.Add(containerSmokeStaleAfter / 4)
+	}
+	if len(r.removed) != 0 {
+		t.Fatalf("removed %v after watching for less than a check container may be left", r.removed)
+	}
+	clock = clock.Add(containerSmokeStaleAfter)
+	if reason := c.pick(t.Context()); reason != "" {
+		t.Fatal(reason)
+	}
+	if len(r.removed) != 1 || r.removed[0] != other {
+		t.Fatalf("removed %v, want only the other agent's container watched past the limit; never this agent's own", r.removed)
+	}
+}
+
+// A container that stopped being listed and comes back is watched from the
+// start again, and an inspection that fails adopts nothing.
+func TestAdoptionNeedsTheRuntimesOwnAnswer(t *testing.T) {
+	stale := engine.CardSmokeContainerName(1, time.Now().Add(-time.Hour))
+	r := &smokeRuntime{name: "docker", images: map[string]bool{ppuImage: true}, listed: []string{stale}, statusErr: errors.New("docker inspect: context deadline exceeded")}
+	c := newPPUSmoke(r, ppuImage)
+	if reason := c.pick(t.Context()); reason != "" || len(r.removed) != 0 {
+		t.Fatalf("pick = %q, removed %v: an inspection that failed proves nothing", reason, r.removed)
+	}
+}
+
+// A check cancelled while its container runs (the agent shutting down, a
+// Doctor run abandoned) removes the container. This is the cleanup the check
+// always had, kept here beside the adoption cases because it is why a
+// leftover needs a killed agent to exist at all.
+func TestACancelledCheckRemovesItsContainer(t *testing.T) {
+	r := &smokeRuntime{name: "docker", images: map[string]bool{ppuImage: true}, hang: true}
+	c := newPPUSmoke(r, ppuImage)
+	if reason := c.pick(t.Context()); reason != "" {
+		t.Fatal(reason)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	// Cancelled once the check has seen its container running, not after a
+	// delay.
+	r.onStatus = func() {
+		if len(r.runs) == 1 {
+			cancel()
+		}
+	}
+	if err := c.try(ctx, "2"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want the cancellation", err)
+	}
+	if len(r.runs) != 1 || !r.gone["id-"+r.runs[0].Name] {
+		t.Fatalf("removed %v, want the cancelled check's container gone", r.removed)
+	}
+	if c.running(r.runs[0].Name) {
+		t.Fatal("the ended check's container is still counted as in flight")
 	}
 }

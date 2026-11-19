@@ -264,26 +264,60 @@ func TestProcessHangs(t *testing.T) {
 
 func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
+// startOnThreadThatExits starts cmd from a goroutine that locks its thread
+// and ends without unlocking, and returns that thread's id. The runtime
+// ends such a thread with its goroutine, with one exception: the process's
+// main thread is parked for good instead, since ending it would leave the
+// process an unwaitable zombie. A goroutine that finds itself there holds
+// the main thread until another goroutine, which then has to run elsewhere,
+// has started the child.
+func startOnThreadThatExits(cmd *exec.Cmd) (tid int, err error) {
+	type result struct {
+		tid int
+		err error
+	}
+	done := make(chan result)
+	go func() {
+		runtime.LockOSThread()
+		if unix.Gettid() == unix.Getpid() {
+			defer runtime.UnlockOSThread()
+			tid, err := startOnThreadThatExits(cmd)
+			done <- result{tid, err}
+			return
+		}
+		// Never unlocked: the thread exits with the goroutine.
+		done <- result{unix.Gettid(), cmd.Start()}
+	}()
+	r := <-done
+	return r.tid, r.err
+}
+
 // The parent-death signal follows the thread that forked the child: when
 // a goroutine that locked its thread spawns a child and ends, the runtime
-// retires the thread and the kernel kills the child. This is the hazard
+// ends the thread and the kernel kills the child. This is the hazard
 // the plugin host's spawning thread must avoid.
 func TestParentDeathSignalFollowsTheForkingThread(t *testing.T) {
 	self, _ := os.Executable()
 	cmd := exec.Command(self, "sleep")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
-	started := make(chan error)
-	go func() {
-		runtime.LockOSThread() // never unlocked: the thread exits with the goroutine
-		started <- cmd.Start()
-	}()
-	if err := <-started; err != nil {
+	tid, err := startOnThreadThatExits(cmd)
+	if err != nil {
 		t.Fatal(err)
 	}
-	err := cmd.Wait()
+	waited := make(chan error, 1)
+	go func() { waited <- cmd.Wait() }()
+	select {
+	case err = <-waited:
+	case <-time.After(10 * time.Second):
+		_, statErr := os.Stat(fmt.Sprintf("/proc/self/task/%d", tid))
+		_ = cmd.Process.Kill()
+		<-waited
+		t.Fatalf("child %d is alive 10s after the goroutine that forked it ended: thread %d should have exited with that goroutine and taken the child with it (thread still exists: %v, main thread is %d)",
+			cmd.Process.Pid, tid, statErr == nil, unix.Getpid())
+	}
 	ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	if !ok || !ws.Signaled() || ws.Signal() != syscall.SIGKILL {
-		t.Fatalf("the child of a retired thread ended with %v (%v), want SIGKILL", cmd.ProcessState, err)
+		t.Fatalf("the child forked by exited thread %d ended with %v (%v), want SIGKILL from the kernel", tid, cmd.ProcessState, err)
 	}
 }
 

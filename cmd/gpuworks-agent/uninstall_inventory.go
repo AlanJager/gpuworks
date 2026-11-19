@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	agentruntime "gpuworks.ai/gpuworks/internal/agent/runtime"
 	dockerdriver "gpuworks.ai/gpuworks/internal/agent/runtime/docker"
@@ -129,9 +130,7 @@ func agentRuntimeChecklist(ctx context.Context, state string) []uninstallcheck.I
 			continue
 		}
 		inspected++
-		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		items = append(items, inspectAgentRuntime(probeCtx, c.driver, c.shared))
-		cancel()
+		items = append(items, inspectAgentRuntime(ctx, c.driver, c.shared))
 	}
 	if inspected == 0 {
 		items = append(items, uninstallcheck.Item{ID: "runtime.inventory", Status: uninstallcheck.Unknown, Summary: "No workload runtime could be inventoried", Action: "Establish the actual backend; missing CLI tools do not prove that daemon workloads have stopped."})
@@ -146,16 +145,36 @@ func hasAgentState(state, name string) bool {
 	return err == nil || !os.IsNotExist(err)
 }
 
+// The runtime's lists get runtimeListBudget, and each candidate's inspection
+// its own runtimeInspectBudget: a node that gathered dozens of leftovers must
+// not have the later ones time out behind the earlier and stay unverified.
+// runtimeInspectTotal bounds them together.
+const (
+	runtimeListBudget    = 5 * time.Second
+	runtimeInspectBudget = 5 * time.Second
+	runtimeInspectTotal  = 2 * time.Minute
+)
+
 // A runtime name prefix identifies a candidate, never a particular agent owner.
+//
+// One kind of candidate needs no owner: a card runtime-check container. Its
+// name says what it is and when its check started, it never serves a
+// deployment, and once the runtime itself reports it not running, past the
+// time any check takes, it holds no card and no process, whichever agent
+// started it. Such a leftover is reported with the command that removes it and
+// does not stand in the way. Every other candidate on a shared runtime stays
+// unverified, and the action names it and what to do.
 func inspectAgentRuntime(ctx context.Context, d agentruntime.Driver, shared bool) uninstallcheck.Item {
-	item := uninstallcheck.Item{ID: "runtime." + d.Name(), Status: uninstallcheck.Pass, Summary: "Runtime inventory observed", Action: "Stop or migrate relevant workloads; never remove shared-daemon containers by name prefix."}
-	names, err := d.ListContainers(ctx)
+	item := uninstallcheck.Item{ID: "runtime." + d.Name(), Status: uninstallcheck.Pass, Summary: "Runtime inventory observed", Action: defaultRuntimeAction}
+	listCtx, cancelList := context.WithTimeout(ctx, runtimeListBudget)
+	defer cancelList()
+	names, err := d.ListContainers(listCtx)
 	if err != nil {
 		item.Status = uninstallcheck.Unknown
 		item.Summary = "Runtime inventory could not be read"
 		return item
 	}
-	running, err := d.RunningContainers(ctx)
+	running, err := d.RunningContainers(listCtx)
 	if err != nil {
 		item.Status = uninstallcheck.Unknown
 		item.Summary = "Running workload observation failed"
@@ -165,14 +184,40 @@ func inspectAgentRuntime(ctx context.Context, d agentruntime.Driver, shared bool
 	for _, name := range running {
 		alive[name] = true
 	}
+	inspectCtx, cancelInspect := context.WithTimeout(ctx, runtimeInspectTotal)
+	defer cancelInspect()
+	var finishedChecks, recentChecks, stopped, live []string
 	for _, name := range names {
 		if shared && !strings.HasPrefix(name, "gpuworks-") {
+			continue
+		}
+		check := notACardCheck
+		if shared && !alive[name] {
+			check = cardCheckState(inspectCtx, d, name)
+		}
+		switch check {
+		case cardCheckGone:
+			continue
+		case cardCheckFinished:
+			finishedChecks = append(finishedChecks, name)
+			if item.Status == uninstallcheck.Pass {
+				item.Status = uninstallcheck.Warn
+			}
+			item.Details = append(item.Details, name+": card runtime-check container that is not running (it exited or never started); it serves no deployment and holds no card")
+			continue
+		case cardCheckRecent:
+			recentChecks = append(recentChecks, name)
+			item.Status = uninstallcheck.Unknown
+			item.Details = append(item.Details, name+": card runtime-check container not running yet or just ended; another agent's check may be in flight")
 			continue
 		}
 		phase := "retained/stopped record"
 		if alive[name] {
 			phase = "reported running"
 			item.Status = uninstallcheck.Blocked
+			live = append(live, name)
+		} else {
+			stopped = append(stopped, name)
 		}
 		if shared {
 			phase += "; state ownership unknown"
@@ -194,6 +239,7 @@ func inspectAgentRuntime(ctx context.Context, d agentruntime.Driver, shared bool
 		}
 		item.Details = append(item.Details, safeWorkloadName(name)+": reported running; absent from inventory")
 		item.Status = uninstallcheck.Unknown
+		live = append(live, name)
 	}
 	if len(item.Details) == 0 {
 		item.Summary = "No GPUWorks-named workload candidates observed in this runtime"
@@ -202,7 +248,104 @@ func inspectAgentRuntime(ctx context.Context, d agentruntime.Driver, shared bool
 		item.Status = uninstallcheck.Unknown
 		item.Summary = "Local workload records remain; a stopped group leader does not prove all workers exited"
 	}
+	if shared {
+		item.Action = sharedRuntimeAction(d.Name(), finishedChecks, recentChecks, stopped, live)
+	}
 	return item
+}
+
+const defaultRuntimeAction = "Stop or migrate relevant workloads; never remove shared-daemon containers by name prefix."
+
+// What the runtime says of a candidate that may be a card runtime-check
+// container.
+const (
+	// notACardCheck: another kind of container, or one the runtime would
+	// not describe. An inspection that fails proves nothing, so the
+	// container stays an unverified candidate.
+	notACardCheck = iota
+	// cardCheckGone: its creator removed it since the list was read.
+	cardCheckGone
+	// cardCheckFinished: not running, and older by its name than any check
+	// lasts.
+	cardCheckFinished
+	// cardCheckRecent: not running, but young enough to be between another
+	// agent's create and start, or between its exit and its removal.
+	cardCheckRecent
+)
+
+func cardCheckState(ctx context.Context, d agentruntime.Driver, name string) int {
+	started, ok := engine.CardSmokeContainerStarted(name)
+	if !ok {
+		return notACardCheck
+	}
+	one, cancel := context.WithTimeout(ctx, runtimeInspectBudget)
+	defer cancel()
+	st, err := d.Status(one, name)
+	switch {
+	case err != nil || st.Running:
+		return notACardCheck
+	case !st.Exists:
+		return cardCheckGone
+	case time.Since(started) < engine.CardSmokeContainerStaleAfter:
+		return cardCheckRecent
+	}
+	return cardCheckFinished
+}
+
+// runtimeCLI is the command line an operator reaches driver's containers
+// with; nerdctl needs the namespace the agent pins every call to.
+func runtimeCLI(driver string) string {
+	if driver == "nerdctl" {
+		return "nerdctl -n " + nerdctl.Namespace
+	}
+	return driver
+}
+
+// sharedRuntimeAction says, per container, what to do. Names that are not
+// plain container names are left out of commands, and no command removes a
+// running container: on a shared runtime it may be another agent's live
+// instance.
+func sharedRuntimeAction(driver string, finishedChecks, recentChecks, stopped, live []string) string {
+	cli := runtimeCLI(driver)
+	labels := cli + " inspect --format '{{json .Config.Labels}}' "
+	var parts []string
+	if names := commandNames(finishedChecks); names != "" {
+		parts = append(parts, "Runtime-check containers that are not running do not block and can be removed: "+cli+" rm "+names+".")
+	}
+	if len(recentChecks) > 0 {
+		parts = append(parts, fmt.Sprintf("A runtime-check container younger than %s may be another agent's check in flight: run the uninstall again once it is gone or older.", engine.CardSmokeContainerStaleAfter))
+	}
+	if len(live) > 0 {
+		part := "Running: this may be a live instance of this agent or of another one sharing the runtime; stop or migrate its deployment in the control plane that manages it, which removes the container"
+		if names := commandNames(live); names != "" {
+			part += "; the agent state directory that owns it is in its labels: " + labels + names
+		}
+		parts = append(parts, part+".")
+	}
+	if len(stopped) > 0 {
+		part := "Stopped records could belong to this agent or to another one sharing the runtime"
+		if names := commandNames(stopped); names != "" {
+			part += "; check the owner with: " + labels + names + " and remove what no deployment needs with: " + cli + " rm " + names
+		}
+		parts = append(parts, part+".")
+	}
+	if len(live)+len(stopped) > 0 {
+		parts = append(parts, "Never remove shared-daemon containers by name prefix.")
+	}
+	if len(parts) == 0 {
+		return defaultRuntimeAction
+	}
+	return strings.Join(parts, " ")
+}
+
+func commandNames(names []string) string {
+	var safe []string
+	for _, name := range names {
+		if safeWorkloadName(name) == name {
+			safe = append(safe, name)
+		}
+	}
+	return strings.Join(safe, " ")
 }
 
 func agentGPUChecklist(ctx context.Context) []uninstallcheck.Item {
