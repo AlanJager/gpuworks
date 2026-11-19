@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { after, afterEach, test } from "node:test";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 import { engineProfiles } from "./helpers/engineFixture.ts";
+import { pickNodes } from "./helpers/nodePicker.ts";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
@@ -20,7 +21,7 @@ import { I18nextProvider, initReactI18next } from "react-i18next";
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot", "File", "Blob", "HTMLBodyElement", "HTMLHtmlElement"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot", "File", "Blob", "HTMLBodyElement", "HTMLHtmlElement"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "localStorage", { value: dom.window.localStorage, configurable: true });
@@ -152,6 +153,7 @@ function modalButton(modal: HTMLElement, name: string): HTMLElement {
 // selectOption opens a select and picks an option, waiting for it: a node
 // picker's options arrive from a server search after it opens.
 async function selectOption(combobox: HTMLElement, label: string) {
+  if (!combobox.closest(".ant-select")) return pickNodes(combobox, label);
   const selector = combobox.closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement;
   fireEvent.mouseDown(selector);
   let option: Element | undefined;

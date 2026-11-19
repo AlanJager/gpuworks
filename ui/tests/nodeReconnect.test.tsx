@@ -9,7 +9,7 @@ const { cleanup, render, screen, waitFor } = await import("@testing-library/reac
 const userEvent = (await import("@testing-library/user-event")).default;
 const { NodeReconnectButton } = await import("../src/components/NodeReconnectButton.tsx");
 const { api } = await import("../src/api.ts");
-const { message } = await import("antd");
+const { FeedbackHost, message } = await import("../src/ui-kit/feedback/index.tsx");
 type NodeT = import("../src/api.ts").Node;
 
 afterEach(() => cleanup());
@@ -91,10 +91,11 @@ test("a failed recovery probe leaves the reconnect action available", async (t) 
   api.probeNodeRecovery = (async () => ({ node_uuid: failed.uuid, action: "reconnect", recovered: false, phase: "probe_failed", error: "connection refused", probe: {} })) as never;
   api.node = (async () => failed) as never;
   try {
-    const view = render(<I18nextProvider i18n={i18n}><NodeReconnectButton node={failed} onUpdated={(n) => { updated = n; }} /></I18nextProvider>);
+    // The outcome is reported as a toast, which the app's feedback host shows.
+    const view = render(<I18nextProvider i18n={i18n}><NodeReconnectButton node={failed} onUpdated={(n) => { updated = n; }} /><FeedbackHost /></I18nextProvider>);
     await user.click(screen.getByRole("button", { name: /重\s*连/ }));
     await waitFor(() => assert.equal(updated?.state, "offline"));
-    view.rerender(<I18nextProvider i18n={i18n}><NodeReconnectButton node={updated!} onUpdated={() => {}} /></I18nextProvider>);
+    view.rerender(<I18nextProvider i18n={i18n}><NodeReconnectButton node={updated!} onUpdated={() => {}} /><FeedbackHost /></I18nextProvider>);
     assert.ok(screen.getByRole("button", { name: /重\s*连/ }));
     await screen.findByText("connection refused");
     assert.equal(success.mock.callCount(), 0, "failed recovery must not report success");

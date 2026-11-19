@@ -8,6 +8,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { installPullFake } from "./helpers/pullFake.ts";
 import { installFleet } from "./helpers/fakeFleet.ts";
+import { chosenNodes, findNodeOption, nodeOption, pickNodes as pickNodeNames, unavailable } from "./helpers/nodePicker.ts";
 
 const { i18n, locale } = await createI18n(["settings", "nodes", "common"]);
 const { cleanup, render, screen, waitFor, within, fireEvent } = await import("@testing-library/react");
@@ -51,12 +52,7 @@ async function openDrawer(ruleMatch: string) {
 }
 
 async function pickNodes(drawer: HTMLElement, names: string[]) {
-  const picker = within(drawer).getByRole("combobox", { name: test_.nodes });
-  for (const name of names) {
-    fireEvent.mouseDown(picker);
-    const option = await screen.findByText(name, { selector: ".ant-select-item-option-content" });
-    fireEvent.click(option);
-  }
+  await pickNodeNames(within(drawer).getByRole("combobox", { name: test_.nodes }), ...names);
 }
 const runButton = (drawer: HTMLElement) => within(drawer).getByRole("button", { name: new RegExp(`^(loading)?\\s*${test_.run}$`) }) as HTMLButtonElement;
 
@@ -167,10 +163,9 @@ test("an offline node reports itself and at most five nodes can be chosen", asyn
   const { drawer } = await openDrawer("huggingface.co");
   await pickNodes(drawer, ["gpu-a-01", "gpu-a-02", "gpu-a-03", "gpu-a-04", "gpu-a-05"]);
   const picker = within(drawer).getByRole("combobox", { name: test_.nodes });
-  fireEvent.mouseDown(picker);
-  const sixth = await screen.findByText("gpu-a-06", { selector: ".ant-select-item-option-content" });
-  assert.equal(sixth.closest(".ant-select-item")?.getAttribute("aria-selected"), "false");
+  const sixth = await findNodeOption(picker, "gpu-a-06");
+  assert.ok(unavailable(sixth), "a sixth node cannot be added");
   fireEvent.click(sixth);
-  assert.equal(drawer.querySelectorAll(".ant-select-selection-item").length, 5, "a sixth node is refused");
-  assert.equal(screen.queryByText("gpu-off", { selector: ".ant-select-item-option-content" }), null, "offline nodes are not offered");
+  assert.equal(chosenNodes(picker).length, 5, "a sixth node is refused");
+  assert.equal(nodeOption("gpu-off"), undefined, "offline nodes are not offered");
 });

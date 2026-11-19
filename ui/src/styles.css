@@ -1059,8 +1059,6 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
 .resource-table-settings-all .ant-checkbox-wrapper { margin-inline-start: 0; }
 @media (max-width: 640px) { .resource-table-settings-panes { grid-template-columns: 1fr; } }
 .resource-cell-tags { display: flex; flex-wrap: nowrap; gap: 4px; min-width: 0; overflow: hidden; }
-.resource-cell-tags .ant-tag { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; }
-.resource-cell-tags .ant-tag.resource-cell-tags-more { flex: 0 0 auto; }
 .resource-cell-tags-rest { max-height: 320px; overflow-y: auto; }
 .resource-table .ant-table-tbody .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 /* A served name with its own copy button: the name shrinks and truncates, the
@@ -1356,7 +1354,7 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
   border: 0;
   border-radius: 0;
 }
-.deployment-detail-tabs .detail-section > h5.ant-typography { margin: 0 0 8px !important; }
+.deployment-detail-tabs .detail-section > h5 { margin: 0 0 8px !important; }
 .deployment-detail-tabs .detail-section > :is(.deployment-paired-fields, .deployment-field-table),
 .deployment-detail-tabs .instance-launch-detail-body > .deployment-field-table {
   border: 1px solid var(--border-subtle);
@@ -1427,7 +1425,7 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
   gap: 4px 12px;
   margin-bottom: 6px;
 }
-.deployment-card-header > h5.ant-typography,
+.deployment-card-header > h5,
 .deployment-detail-content .deployment-card-disclosure {
   margin: 0;
   font-size: var(--deployment-heading-size);

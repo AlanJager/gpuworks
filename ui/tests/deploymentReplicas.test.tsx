@@ -5,6 +5,7 @@ import { listPage, cursorPage, list } from "./helpers/listPage.ts";
 import fs from "node:fs";
 import { after, afterEach, test } from "node:test";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import { pickNodes } from "./helpers/nodePicker.ts";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
@@ -327,15 +328,7 @@ function multiNodeDeployment(overrides: Record<string, unknown> = {}) {
 // chooseOption opens a select and picks an option, waiting for it: a node
 // picker's options arrive from a server search after it opens.
 async function chooseOption(select: HTMLElement, label: string) {
-  const selector = select.closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement;
-  fireEvent.mouseDown(selector);
-  let option: Element | undefined;
-  await waitFor(() => {
-    const dropdowns = document.querySelectorAll(".ant-select-dropdown");
-    option = [...dropdowns[dropdowns.length - 1].querySelectorAll(".ant-select-item-option")].find((el) => el.textContent === label);
-    if (!option) throw new Error(`option ${label} not offered`);
-  });
-  fireEvent.click(option!);
+  await pickNodes(select, label);
 }
 
 test("a multi-node deployment's replicas are listed and a new one is added with its nodes", async () => {

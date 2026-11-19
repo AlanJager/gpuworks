@@ -17,6 +17,7 @@ const NodeSection = (await import("../src/pages/deploy/DeployNodeSection.tsx")).
 const { default: useDeploySubmit } = await import("../src/pages/deploy/useDeploySubmit.ts");
 const { api } = await import("../src/api.ts");
 const { installFleet } = await import("./helpers/fakeFleet.ts");
+const { findNodeOption } = await import("./helpers/nodePicker.ts");
 type EvaluateResponse = import("../src/api.ts").EvaluateResponse;
 
 const apiOriginal = { ...api };
@@ -178,13 +179,7 @@ test("the manual node list titles a refused node with its localized reason", asy
       </Form>
     </I18nextProvider>,
   );
-  const { fireEvent } = await import("@testing-library/react");
-  fireEvent.mouseDown(document.querySelector(".ant-select-selector") as HTMLElement);
-  const option = await waitFor(() => {
-    const found = [...document.querySelectorAll(".ant-select-item-option")].find((el) => el.textContent?.includes("a40-150g"));
-    assert.ok(found, "the refused node is listed");
-    return found as HTMLElement;
-  });
+  const option = await findNodeOption(screen.getByRole("combobox", { name: "Node" }), /a40-150g/);
   assert.equal(option.getAttribute("title"), deploy.placementReason.node_cordoned);
-  assert.ok(option.className.includes("ant-select-item-option-disabled"));
+  assert.equal(option.getAttribute("aria-disabled"), "true", "the refused node is listed but cannot be chosen");
 });

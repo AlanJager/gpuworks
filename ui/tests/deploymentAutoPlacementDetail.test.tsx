@@ -7,6 +7,7 @@ import { installFleet } from "./helpers/fakeFleet.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 import { fixturePdModes } from "./helpers/engineFixture.ts";
 import { list } from "./helpers/listPage.ts";
+import { findNodeOption, pickNodes, unavailable } from "./helpers/nodePicker.ts";
 
 // The deployment detail of a multi-node or PD deployment shows who places it
 // and switches that (confirm, the API call, a refusal inside the dialog); an
@@ -66,16 +67,8 @@ function stubFleet() {
 afterEach(() => { cleanup(); Object.assign(api, original); });
 after(() => closeChannels());
 
-// antd keeps a closed select's dropdown mounted, so the options of the select
-// opened last are the ones in the last dropdown.
-const optionOf = (name: string) => {
-  const dropdowns = document.querySelectorAll<HTMLElement>(".ant-select-dropdown");
-  return [...(dropdowns[dropdowns.length - 1]?.querySelectorAll<HTMLElement>(".ant-select-item-option") ?? [])].find((el) => el.textContent === name);
-};
 async function pick(combobox: HTMLElement, name: string) {
-  fireEvent.mouseDown(combobox.closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement);
-  await waitFor(() => assert.ok(optionOf(name), `option ${name} offered`));
-  fireEvent.click(optionOf(name)!);
+  await pickNodes(combobox, name);
 }
 
 // ---- who places the deployment -------------------------------------------
@@ -222,15 +215,14 @@ test("a rank can be named only after the ranks before it, and clearing one clear
   stubScale();
   await openAuto();
   setCount("3");
-  assert.ok(slot(1, 2).closest(".ant-select")!.classList.contains("ant-select-disabled"), "rank 2 waits for rank 1");
-  assert.ok(slot(2, 1).closest(".ant-select")!.classList.contains("ant-select-disabled"));
+  assert.ok((slot(1, 2) as HTMLInputElement).disabled, "rank 2 waits for rank 1");
+  assert.ok((slot(2, 1) as HTMLInputElement).disabled);
   await pick(slot(1, 1), "node-c");
   await pick(slot(1, 2), "node-d");
-  assert.ok(!slot(2, 1).closest(".ant-select")!.classList.contains("ant-select-disabled"));
+  assert.ok(!(slot(2, 1) as HTMLInputElement).disabled);
   assert.equal(screen.getAllByText(up.scale.specified).length, 2);
   // Clearing rank 1 leaves nothing named after it.
-  fireEvent.mouseEnter(slot(1, 1).closest(".ant-select")!);
-  fireEvent.mouseDown(slot(1, 1).closest(".ant-select")!.querySelector(".ant-select-clear") as HTMLElement);
+  fireEvent.click(screen.getAllByRole("button", { name: locale.common.picker.clear })[0]);
   await waitFor(() => assert.equal(screen.queryAllByText(up.scale.specified).length, 0));
 });
 
@@ -254,9 +246,7 @@ test("an offline node cannot be named", async () => {
   stubScale();
   await openAuto();
   setCount("2");
-  fireEvent.mouseDown(slot(1, 1).closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement);
-  await waitFor(() => assert.ok(optionOf("node-off")));
-  assert.ok(optionOf("node-off")!.classList.contains("ant-select-item-option-disabled"));
+  assert.ok(unavailable(await findNodeOption(slot(1, 1), "node-off")));
 });
 
 test("a named node the server refuses is reported by node and reason inside the dialog", async () => {

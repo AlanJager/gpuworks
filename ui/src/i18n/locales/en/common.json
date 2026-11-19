@@ -1623,5 +1623,11 @@
       "badge": "Locked"
     },
     "loading": "Loading…"
+  },
+  "picker": {
+    "clear": "Clear",
+    "open": "Show options",
+    "remove": "Remove {{name}}",
+    "loading": "Loading…"
   }
 }
