@@ -18,7 +18,7 @@ export function nodeStatus(uuid: string, name: string, state: string, extra: Par
 export function localStorage(extra: Partial<Storage> = {}): Storage {
   return {
     id: 1, name: "default", type: "local", enabled: true, is_default: true, all_nodes: true, path: "/data/models",
-    targets: [], nodes: { total: 2, ready: 2, problems: [] }, writable: true, model_count: 3, deployment_ids: [], ...extra,
+    targets: [], nodes: { total: 2, ready: 2, on_shared_fs: 0, problems: [] }, writable: true, model_count: 3, deployment_ids: [], ...extra,
   };
 }
 

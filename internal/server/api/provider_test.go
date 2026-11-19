@@ -160,7 +160,7 @@ func TestProviderKindsEndpointReturnsSchema(t *testing.T) {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(body.Categories, &categories); err != nil || len(categories) < 3 ||
-		categories[0].ID != "public_cloud" || categories[1].ID != "private_cloud" || categories[len(categories)-1].ID != "kubernetes" {
+		categories[0].ID != "public_cloud" || categories[1].ID != "private_cloud" || categories[len(categories)-2].ID != "kubernetes" || categories[len(categories)-1].ID != "slurm" {
 		t.Fatalf("categories = %s", body.Categories)
 	}
 	var runpod *provider.KindInfo
@@ -654,18 +654,20 @@ func TestProviderCategoriesOfferTheKindsInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// In provider.Categories order whatever order the kinds come in; the kinds
-	// of no type under "other"; the Kubernetes cluster type, added as a
-	// cluster entry and naming no kind, last.
+	// of no type under "other"; the cluster types (Kubernetes, Slurm), added
+	// as cluster entries and naming no kind, last.
 	want := `[{"id":"public_cloud","kinds":["aliyun","runpod"]},` +
 		`{"id":"private_cloud","kinds":["zstack"]},` +
 		`{"id":"other","kinds":["custom"]},` +
-		`{"id":"kubernetes","resources":[{"type":"kubernetes"}],"kube_cluster":true,"kinds":[]}]`
+		`{"id":"kubernetes","resources":[{"type":"kubernetes"}],"kube_cluster":true,"kinds":[]},` +
+		`{"id":"slurm","resources":[{"type":"slurm"}],"cluster_kind":"slurm","kinds":[]}]`
 	if string(got) != want {
 		t.Fatalf("categories = %s\nwant %s", got, want)
 	}
-	// A type no kind is filed under is not offered; Kubernetes always is.
+	// A type no kind is filed under is not offered; the cluster types always are.
 	got, _ = json.Marshal(providerCategories(nil))
-	if string(got) != `[{"id":"kubernetes","resources":[{"type":"kubernetes"}],"kube_cluster":true,"kinds":[]}]` {
+	if string(got) != `[{"id":"kubernetes","resources":[{"type":"kubernetes"}],"kube_cluster":true,"kinds":[]},`+
+		`{"id":"slurm","resources":[{"type":"slurm"}],"cluster_kind":"slurm","kinds":[]}]` {
 		t.Fatalf("categories of no kinds = %s", got)
 	}
 }

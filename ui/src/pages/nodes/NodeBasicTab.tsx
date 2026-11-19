@@ -13,6 +13,7 @@ import NodePlacementPolicy from "../../components/NodePlacementPolicy";
 import NodePullProxy from "../../components/NodePullProxy";
 import { NodeSSHAccess } from "../../components/NodeRecoveryControls";
 import RuntimeFallbackNotice from "../../components/RuntimeFallbackNotice";
+import SlurmNodeNotice from "../../components/SlurmNodeNotice";
 import RuntimePluginStatus from "../../components/RuntimePluginStatus";
 import { SystemLabelTags } from "../../components/SystemLabelTags";
 import { formatTime } from "../../i18n/datetime";
@@ -131,6 +132,7 @@ export default function NodeBasicTab({
                 <span>{node.runtime_driver ? runtimeLabel(node.runtime_driver) : "—"}</span>
               )}
               <RuntimeFallbackNotice node={node} />
+              <SlurmNodeNotice node={node} />
               <GPUIsolationNotice node={node} />
               <UCXNetlinkHangNotice node={node} />
             </Space>

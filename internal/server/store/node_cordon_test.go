@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -77,11 +78,19 @@ func TestPlatformCordonReason(t *testing.T) {
 		// A card lent to a virtual machine is not this node's to judge.
 		{"", []proto.GPUInfo{lent}, ""},
 	} {
-		if got := PlatformCordonReason(tc.blocked, true, tc.cards); got != CordonKubeUnschedulable {
+		if got := PlatformCordonReason(tc.blocked, true, "", tc.cards); got != CordonKubeUnschedulable {
 			t.Errorf("PlatformCordonReason(%q, kube cordon, %+v) = %q, want %q", tc.blocked, tc.cards, got, CordonKubeUnschedulable)
 		}
-		if got := PlatformCordonReason(tc.blocked, false, tc.cards); got != tc.want {
+		if got := PlatformCordonReason(tc.blocked, false, "", tc.cards); got != tc.want {
 			t.Errorf("PlatformCordonReason(%q, %+v) = %q, want %q", tc.blocked, tc.cards, got, tc.want)
+		}
+		// Slurm not running jobs on the node is a reason of its own, ranked
+		// below Kubernetes' cordon and above the others.
+		if got := PlatformCordonReason(tc.blocked, false, proto.SlurmNodeDrained, tc.cards); got != CordonSlurmNodeUnavailable {
+			t.Errorf("PlatformCordonReason(%q, slurm drained, %+v) = %q, want %q", tc.blocked, tc.cards, got, CordonSlurmNodeUnavailable)
+		}
+		if got := PlatformCordonReason(tc.blocked, true, proto.SlurmNodeDrained, tc.cards); got != CordonKubeUnschedulable {
+			t.Errorf("PlatformCordonReason(%q, kube cordon and slurm drained, %+v) = %q, want %q", tc.blocked, tc.cards, got, CordonKubeUnschedulable)
 		}
 	}
 }
@@ -198,4 +207,74 @@ func TestNodeSchedulingSourceMigration(t *testing.T) {
 			t.Fatal("the column survived a failed migration")
 		}
 	})
+}
+
+// A Slurm node whose controller will not start jobs on it is cordoned by the
+// platform (every placeholder job would pend), shows Slurm's own words, and
+// comes back when Slurm runs jobs there again; an operator's cordon is never
+// lifted by it.
+func TestASlurmNodeSlurmWillNotRunJobsOnIsCordoned(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.RegisterNode("uuid-slurm", HashToken("t"), "slurm-host"); err != nil {
+		t.Fatal(err)
+	}
+	ok := true
+	const reason = "gres/gpu count reported lower than configured (0 < 2)"
+	report := func(code, why string) Node {
+		t.Helper()
+		sys := proto.SysInfo{RuntimeDriver: "docker", SlurmNode: "gpu-1", SlurmUnavailable: code, SlurmReason: why}
+		if err := s.UpdateNodeStatus("uuid-slurm", proto.NodeStatus{GPUProbeOK: &ok, Sys: sys}); err != nil {
+			t.Fatal(err)
+		}
+		node, err := s.NodeByUUID("uuid-slurm")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return *node
+	}
+	if n := report("", ""); n.Scheduling != NodeSchedulable || n.SlurmNode != "gpu-1" || n.SlurmUnavailable != "" {
+		t.Fatalf("a node Slurm runs jobs on = %q node=%q code=%q", n.Scheduling, n.SlurmNode, n.SlurmUnavailable)
+	}
+	n := report(proto.SlurmNodeGRESMissing, reason)
+	if n.Scheduling != NodeCordoned || n.SchedulingBy != SchedulingByPlatform || n.CordonReason() != CordonSlurmNodeUnavailable ||
+		n.SlurmUnavailable != proto.SlurmNodeGRESMissing || n.SlurmReason != reason {
+		t.Fatalf("a drained Slurm node = %q by %q for %q, code %q reason %q", n.Scheduling, n.SchedulingBy, n.CordonReason(), n.SlurmUnavailable, n.SlurmReason)
+	}
+	if n := report(proto.SlurmNodeDrained, "maintenance"); n.Scheduling != NodeCordoned || n.SlurmUnavailable != proto.SlurmNodeDrained || n.SlurmReason != "maintenance" {
+		t.Fatalf("the reason changed under the cordon: %q %q %q", n.Scheduling, n.SlurmUnavailable, n.SlurmReason)
+	}
+	n = report("", "")
+	if n.Scheduling != NodeSchedulable || n.SchedulingBy != SchedulingBySelf || n.CordonReason() != "" || n.SlurmUnavailable != "" || n.SlurmReason != "" {
+		t.Fatalf("after resume = %q by %q for %q code %q reason %q; want the platform's cordon lifted and Slurm's reason forgotten",
+			n.Scheduling, n.SchedulingBy, n.CordonReason(), n.SlurmUnavailable, n.SlurmReason)
+	}
+
+	// An operator's own cordon is neither replaced nor lifted.
+	if _, err := s.SetNodeScheduling("uuid-slurm", NodeCordoned); err != nil {
+		t.Fatal(err)
+	}
+	if n := report(proto.SlurmNodeDown, "Not responding"); n.Scheduling != NodeCordoned || n.SchedulingBy != SchedulingByOperator || n.CordonReason() != "" {
+		t.Fatalf("operator cordon under a Slurm reason = %q by %q for %q", n.Scheduling, n.SchedulingBy, n.CordonReason())
+	}
+	if n := report("", ""); n.Scheduling != NodeCordoned || n.SchedulingBy != SchedulingByOperator {
+		t.Fatalf("operator cordon after resume = %q by %q", n.Scheduling, n.SchedulingBy)
+	}
+}
+
+// What Slurm says is kept within its columns, so a long Reason cannot fail
+// the status write.
+func TestASlurmReasonIsTruncatedToItsColumn(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.RegisterNode("uuid-long", HashToken("t"), "long-host"); err != nil {
+		t.Fatal(err)
+	}
+	ok := true
+	sys := proto.SysInfo{RuntimeDriver: "docker", SlurmNode: "gpu-1", SlurmUnavailable: proto.SlurmNodeDrained, SlurmReason: strings.Repeat("x", 1000)}
+	if err := s.UpdateNodeStatus("uuid-long", proto.NodeStatus{GPUProbeOK: &ok, Sys: sys}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.NodeByUUID("uuid-long")
+	if err != nil || len(n.SlurmReason) != 256 {
+		t.Fatalf("reason length = %d (%v), want 256", len(n.SlurmReason), err)
+	}
 }

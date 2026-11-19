@@ -105,6 +105,11 @@ func (a *apiHandlers) installAgentOnInstance(w http.ResponseWriter, r *http.Requ
 		writeErr(w, http.StatusConflict, wrapProductError(ErrorProviderInstanceInCluster, err.Error(), map[string]any{"cluster": inCluster.Cluster}, err))
 		return
 	}
+	var inHPC *provider.InstanceInHPCClusterError
+	if errors.As(err, &inHPC) {
+		writeErr(w, http.StatusConflict, wrapProductError(ErrorProviderInstanceInHPCCluster, err.Error(), map[string]any{"cluster": inHPC.Cluster}, err))
+		return
+	}
 	if err != nil {
 		writeErr(w, statusProviderFailed, err)
 		return

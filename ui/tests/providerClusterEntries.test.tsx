@@ -320,7 +320,7 @@ test("an account that already holds an entry shows its clusters even when neithe
   const other = (await screen.findByText("Other", { selector: "td" })).closest("tr") as HTMLElement;
   await u.click(within(other).getByRole("button", { name: "Expand row" }));
   const detail = await detailOf("Other");
-  await waitFor(() => assert.equal(within(detail).getAllByText(p.instances.empty).length, 1));
+  await waitFor(() => assert.equal(within(detail).getAllByText(p.instances.emptyAfterSync).length, 1));
   assert.equal(within(detail).queryAllByRole("rowgroup", { name: "Standalone instances" }).length, 0, "its instances alone, ungrouped");
   assert.deepEqual(listings, [3], "and its clusters are not asked for");
 });

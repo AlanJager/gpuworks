@@ -1,0 +1,370 @@
+{
+  "duration": {
+    "seconds": "{{count}} s",
+    "minutes": "{{count}} min",
+    "hours": "{{count}} h"
+  },
+  "status": {
+    "active": "Active",
+    "revoked": "Revoked",
+    "pending": "Not connected yet",
+    "pendingHint": "No node has joined from this cluster yet.",
+    "stalled": "Not connected for long",
+    "troubleshoot": "Troubleshoot"
+  },
+  "stalled": {
+    "title": "No node has joined yet",
+    "intro": "The cluster has waited a while for its first node and none has joined. Check what slurm.conf holds on the Slurm manager node, then what the check left on a GPU node:",
+    "introApplied": "The cluster has waited a while for its first node and none has joined. Click Check and apply first: gpuworks checks and sets it up on the Slurm manager node through Cloud Assistant, so you need not log in. If none joins after it was applied, look at what the check left on a GPU node:",
+    "on": {
+      "controller": "On the Slurm manager node",
+      "node": "On a GPU node"
+    },
+    "copy": "Copy commands ({{where}})",
+    "causes": "Common causes",
+    "notRun": "The health check has not run yet: run the setup command as root on the Slurm manager node, then wait one to one and a half health-check intervals.",
+    "notRunApplied": "Check and apply has not succeeded yet: click it, read the plan, apply it, then wait one to one and a half health-check intervals.",
+    "script": "The check script is not visible on the node: the script directory is not on shared storage and the setup could not copy it there.",
+    "connect": "The node cannot reach the management node address: read slurm-check.log in the install directory.",
+    "conf": "The cluster keeps its own slurm.conf on every node: distribute the updated one and reload it."
+  },
+  "actions": {
+    "edit": "Edit",
+    "apply": "Check and apply",
+    "copyCommand": "Copy setup command",
+    "commandCopied": "Setup command copied",
+    "uninstall": "Uninstall",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke the enrollment token of {{name}}?",
+    "revokeHelp": "Nodes already connected keep working. New nodes can no longer join with this cluster's token.",
+    "revoked": "Cluster {{name}} revoked",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "failed": "The action failed",
+    "script": "View script"
+  },
+  "command": {
+    "copy": "Copy: {{title}}",
+    "copyShort": "Copy"
+  },
+  "setup": {
+    "command": "Setup command",
+    "runAsRoot": "Run it once as root on the Slurm manager node.",
+    "does": "What it does:",
+    "step": {
+      "script": "Writes the health-check script to the script directory.",
+      "distribute": "Distributes the script to the GPU nodes when the directory is not on shared storage.",
+      "conf": "Adds the health check to slurm.conf, keeping any health check the cluster already has.",
+      "reconfigure": "Reloads Slurm's configuration."
+    },
+    "joins": "Every GPU node then joins by itself within one to one and a half health-check intervals (an interval is {{interval}}).",
+    "joinsUnknown": "Every GPU node then joins by itself within one to one and a half health-check intervals.",
+    "secret": "The command contains the enrollment token. Treat it like a password.",
+    "checkCommand": "Check command",
+    "checkHint": "Says what the setup would do and changes nothing."
+  },
+  "form": {
+    "title": "Connect a Slurm cluster",
+    "editTitle": "Edit Slurm cluster",
+    "name": "Name",
+    "nameRequired": "Enter a name for the cluster",
+    "namePlaceholder": "slurm-prod",
+    "serverUrl": "Management node address",
+    "serverUrlHelp": "The address the agents on the compute nodes connect to the GPUWorks management node at. It must be reachable from the compute nodes.",
+    "serverUrlQuick": "This is the platform's own temporary public address. It changes when the connector is rebuilt, so the nodes lose the server: use an address of this server that every compute node can reach.",
+    "serverUrlRequired": "Enter the management node address",
+    "serverUrlInvalid": "Enter an http:// or https:// address",
+    "advanced": "Advanced",
+    "fixedAfterCreate": "Fixed once the cluster is created.",
+    "runAs": "Run as",
+    "runAsHelp": "The account the agents run as on every node. root is the default; other accounts have known limits (card order on configless clusters, the node's docker group, directory permissions).",
+    "accountUser": "Placeholder job account",
+    "accountUserPlaceholder": "The agent's own account",
+    "accountUserHelp": "The account that the placeholder jobs borrowing cards are billed to; an agent started as root submits them with --uid. Empty uses the agent's own account.",
+    "installDir": "Install directory",
+    "installDirHelp": "The agent's install and state directory on every node.",
+    "scriptDir": "Script directory",
+    "scriptDirHelp": "Holds the health-check script. It must be the same path on every node, ideally on shared storage; the setup command checks and, when it is not shared, copies the script to the GPU nodes.",
+    "sbatchArgs": "sbatch arguments",
+    "sbatchArgsPlaceholder": "-p gpu -A research",
+    "sbatchArgsHelp": "Added to every placeholder job the agents submit, for example a partition or an account.",
+    "idleReturn": "Idle return",
+    "idleReturnHelp": "A borrowed card goes back to Slurm after sitting idle this long.",
+    "idleReturnHelpRange": "A borrowed card goes back to Slurm after sitting idle this long ({{min}} to {{max}} seconds).",
+    "pendingTimeout": "Queue timeout",
+    "pendingTimeoutHelp": "A placeholder job that still waits in Slurm's queue after this long is given up.",
+    "pendingTimeoutHelpRange": "A placeholder job that still waits in Slurm's queue after this long is given up ({{min}} to {{max}} seconds).",
+    "secondsUnit": "s",
+    "defaultsFailed": "The defaults could not be loaded",
+    "defaultsFailedHelp": "Fields left empty still take the server's defaults; the hints are missing.",
+    "fromSource": "Made from {{source}}",
+    "cancel": "Cancel",
+    "close": "Close",
+    "submit": "Connect",
+    "save": "Save"
+  },
+  "created": {
+    "title": "Cluster {{name}} is ready",
+    "note": "Run this command as root on the Slurm manager node. The GPU nodes show up in the node list by themselves.",
+    "noteSource": "Next, set the cluster up, one way or the other:",
+    "byGpuworks": "Let gpuworks set it up",
+    "byHand": "Or run this on the Slurm manager node yourself",
+    "byGpuworksHelp": "gpuworks first has the Slurm manager node check what the setup would do, which changes nothing, and applies it only when you confirm.",
+    "applyNow": "Check and apply",
+    "applyBlocked": "gpuworks cannot set this cluster up for you"
+  },
+  "apply": {
+    "retry": "Try again",
+    "running": "Setting the cluster up…",
+    "done": "The cluster is set up",
+    "doneHelp": "The GPU nodes join within one to one and a half health-check intervals.",
+    "partial": "Set up, with something left to do by hand",
+    "todoTitle": "Left to do",
+    "todo": {
+      "distribute": "The check script could not be copied to {{nodes}}: copy it to the same path on each of them.",
+      "noGpuGres": "{{nodes}} have no gpu Gres in slurm.conf, so nothing was added to gres.conf: add Gres=gpu:<count> to their NodeName lines first.",
+      "check_script": "The check script could not be written.",
+      "slurm_conf": "slurm.conf could not be fully updated: check it on the Slurm manager node.",
+      "reconfigure": "Slurm's configuration could not be reloaded: run scontrol reconfigure on the Slurm manager node.",
+      "resume": "Some nodes could not be resumed ({{nodes}}): check them with sinfo.",
+      "reach": "{{nodes}} cannot reach {{url}}, so the agents cannot enroll from them: use an address they can reach (not a temporary public address), or give the VPC a NAT gateway or enter a private address; then apply again."
+    },
+    "steps": "Steps",
+    "status": {
+      "pass": "Done",
+      "warn": "Needs attention",
+      "skip": "Nothing to do",
+      "fail": "Failed"
+    },
+    "step": {
+      "gres": "gres.conf for the compute nodes",
+      "check_script": "Write the check script",
+      "distribute": "Reach the compute nodes with the script",
+      "slurm_conf": "Add the health check to slurm.conf",
+      "reconfigure": "Reload Slurm's configuration",
+      "resume": "Resume the held nodes",
+      "reach": "Reach the server's address from the hosts"
+    },
+    "gresAdded": "gres.conf lines added for",
+    "gresPresent": "Already in gres.conf (left as they are)",
+    "gresNoGpu": "Known to Slurm without a gpu Gres, nothing added for",
+    "distributeShared": "The script directory is on shared storage: nothing had to be copied.",
+    "distributeCopied": "The script was copied to {{count}} nodes.",
+    "distributeFailed": "Could not copy the script to",
+    "resumed": "Resumed nodes",
+    "resumeFailed": "Nodes that could not be resumed",
+    "output": "Output of the Slurm manager node"
+  },
+  "fact": {
+    "connectedBy": "Connected by",
+    "byCommand": "A setup command (run by you)",
+    "clusterName": "Slurm ClusterName",
+    "notBound": "Set by the first node that joins",
+    "nodes": "Nodes joined",
+    "serverUrl": "Management node address",
+    "runAs": "Run as",
+    "accountUser": "Placeholder job account",
+    "ownAccount": "The agent's own account",
+    "installDir": "Install directory",
+    "scriptDir": "Script directory",
+    "sbatchArgs": "sbatch arguments",
+    "idleReturn": "Idle return",
+    "pendingTimeout": "Queue timeout",
+    "createdAt": "Created"
+  },
+  "counts": {
+    "line": "GPU nodes {{gpu}}, online {{online}}",
+    "lineAsOf": "GPU nodes {{gpu}} (list as of {{time}}), online {{online}}",
+    "onlineOnly": "{{count}} online",
+    "offline": ", offline {{count}}"
+  },
+  "detail": {
+    "waiting": "No node has joined yet. Run the setup command below on the Slurm manager node; the GPU nodes appear in the node list within one to one and a half health-check intervals.",
+    "revoked": "The enrollment token is revoked: new nodes can no longer join.",
+    "waitingApply": "No node has joined yet. Check and apply sets the cluster up; the GPU nodes appear in the node list within one to one and a half health-check intervals.",
+    "applyHelp": "gpuworks runs the setup on the cluster's Slurm manager node: it checks first, and applies only when you confirm.",
+    "manual": "Run it by hand",
+    "showCommands": "Setup commands"
+  },
+  "waiting": {
+    "no_compute_nodes": "The cloud lists no compute nodes in this cluster yet: add GPU nodes first; they join through the health check once they are up.",
+    "not_applied": "The setup has not been run on this cluster yet, so nothing is installed on its nodes.",
+    "joining": "The setup is done; the GPU nodes join within one to one and a half health-check intervals.",
+    "no_node_called": "The setup has run, but no node has contacted the server since: they cannot reach {{url}}, or the script is not on them.",
+    "server_unreachable": "The last check found hosts that cannot reach {{url}}: {{hosts}}."
+  },
+  "reach": {
+    "title": "Server address",
+    "failed": "{{role}} {{name}} cannot reach {{url}}: {{reason}}",
+    "failedList": "Hosts that cannot reach the server",
+    "allReach_one": "{{count}} host reaches {{url}}.",
+    "allReach_other": "{{count}} hosts reach {{url}}.",
+    "unasked": "Could not be asked",
+    "role": {
+      "controller": "Slurm manager node",
+      "node": "Compute node"
+    },
+    "reason": {
+      "dns": "the address does not resolve",
+      "connect": "connection refused or no route",
+      "timeout": "timed out",
+      "tls": "TLS handshake or certificate error",
+      "http": "the server answered with an error",
+      "no_curl": "curl is not installed",
+      "other": "the request failed",
+      "not_asked": "no way to run a command there",
+      "node_not_running": "the node is not running",
+      "assistant_offline": "Cloud Assistant is offline",
+      "command_failed": "the command did not finish"
+    },
+    "unlisted": {
+      "permission_missing": "The cloud's compute nodes could not be listed to ask them: the account's key may not call {{permission}}.",
+      "failed": "The cloud's compute nodes could not be listed to ask them."
+    }
+  },
+  "missing": {
+    "title_one": "{{count}} GPU node has no agent online",
+    "title_other": "{{count}} GPU nodes have no agent online",
+    "list": "GPU nodes without an agent",
+    "reason": {
+      "not_enrolled": "never joined",
+      "offline": "joined, agent offline"
+    },
+    "slurmSays": "Slurm: {{state}}",
+    "truncated": "{{total}} in all; the first {{shown}} are listed.",
+    "causesTitle": "Usual causes",
+    "cause": {
+      "script": "The check script is not visible on that node: the script directory is not shared and was not copied there.",
+      "connect": "The node cannot reach the management node address.",
+      "drained": "The node is drained or down in Slurm, so its health check does not run."
+    },
+    "remove": "Remove",
+    "removeTitle": "Remove node {{name}}?",
+    "removeHelp": "Only the platform's record of the node is deleted; the cluster is not changed. A node still in the cluster joins again at its next health check."
+  },
+  "edit": {
+    "savedTitle": "Cluster {{name}} saved",
+    "savedHelp": "Nothing is run on the cluster. The agents pick the change up on their next report, within {{interval}}.",
+    "savedHelpUnknown": "Nothing is run on the cluster. The agents pick the change up on their next report.",
+    "changed": "Changed",
+    "field": {
+      "name": "Name",
+      "account_user": "Placeholder job account",
+      "sbatch_args": "sbatch arguments",
+      "idle_return_seconds": "Idle return",
+      "pending_timeout_seconds": "Queue timeout"
+    }
+  },
+  "uninstall": {
+    "title": "Uninstall from cluster {{name}}",
+    "intro": "Uninstalling is two steps: first every node's check removes its own agent (the cards go back to Slurm), then the health check is taken out of slurm.conf and any health check the cluster had before is restored.",
+    "byGpuworks": "Let gpuworks run the steps",
+    "byGpuworksHelp": "gpuworks runs each step on the cluster's Slurm manager node through the cloud account.",
+    "byHand": "Or run the commands on the Slurm manager node yourself",
+    "run": {
+      "uninstall_agents": "Uninstall the agents",
+      "remove_check": "Remove the health check"
+    },
+    "agentsSent": "The agents are being uninstalled: every node's check removes its own on its next run.",
+    "waiting": "You can continue in {{seconds}} s.",
+    "removed": "The health check is removed",
+    "removedHelp": "Once the nodes are offline, delete the cluster entry.",
+    "delete": "Delete the cluster…",
+    "step1": "Step 1: uninstall the agents",
+    "step1Hint": "Then wait one health-check interval ({{interval}}) while every node uninstalls its agent.",
+    "step1HintUnknown": "Then wait one health-check interval while every node uninstalls its agent.",
+    "step2": "Step 2: remove the health check",
+    "step2Hint": "Takes the health check out of slurm.conf and reloads Slurm.",
+    "next": "Afterwards the nodes go offline. Then delete this cluster entry together with its nodes.",
+    "close": "Close"
+  },
+  "delete": {
+    "title": "Delete cluster {{name}}?",
+    "help": "Only the cluster record here is removed; agents still installed on the nodes are not uninstalled.",
+    "hasNodes_one": "This cluster still has {{count}} node.",
+    "hasNodes_other": "This cluster still has {{count}} nodes.",
+    "withNodes_one": "Delete the cluster together with its {{count}} node",
+    "withNodes_other": "Delete the cluster together with its {{count}} nodes",
+    "blocker": {
+      "online": "Some of its agents are still connected. Uninstall them first; once they are offline the cluster can be deleted with its nodes.",
+      "instances": "Some of its nodes still run instances. Remove those deployments first.",
+      "unknown": "The cluster cannot be deleted with its nodes now."
+    },
+    "uninstall": "Uninstall the agents first…",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "deleted": "Cluster {{name}} deleted"
+  },
+  "hpc": {
+    "connect": "Connect"
+  },
+  "blocked": {
+    "no_source": "This entry was not made from a cloud account's cluster, so gpuworks has no way into it: run the setup command on the Slurm manager node.",
+    "no_provider": "The cloud account this entry was made from has been deleted.",
+    "provider_unsupported": "This cloud account cannot run commands on the cluster's Slurm manager node.",
+    "cluster_unknown": "The account's cluster listing does not have this cluster: check the account and its permissions, or sync it.",
+    "cluster_listing_pending": "The cloud's cluster listing is still being read: this is checked again in a moment.",
+    "cluster_listing_failed": "The cloud's cluster listing failed or could not be read for every region, so this cluster cannot be placed: check the account, its permissions and the cloud's status.",
+    "not_slurm_cluster": "This cluster does not schedule with Slurm.",
+    "revoked": "The enrollment token is revoked, so the setup is no longer applied."
+  },
+  "operation": {
+    "title": "Check and apply to cluster {{name}}",
+    "intro": "gpuworks runs the setup on the Slurm manager node of cluster {{cluster}} through the account {{account}}. It first checks what the setup would do, which changes nothing; you confirm before anything is applied.",
+    "checking": "Checking what the setup would do…",
+    "checked": "Checked, and nothing has been changed yet. Review the plan, then apply.",
+    "checkedPartial": "Checked, with points that need your attention. Nothing has been changed yet.",
+    "confirm": "Apply",
+    "checkAgain": "Check again",
+    "cancel": "Cancel",
+    "close": "Close"
+  },
+  "plan": {
+    "attention": "Needs your attention",
+    "warning": {
+      "conf_include": "slurm.conf includes {{files}}: health check settings in them are not seen by the edit, and the result is verified afterwards.",
+      "program_not_in_conf": "slurmctld runs the health check program {{program}}, which slurm.conf does not name (an included file, or an edit not yet reloaded): it is chained, but a setting in an included file may override ours.",
+      "not_configless": "This cluster is not configless: copy {{path}} to the compute nodes yourself after applying, or the health check does not take effect there.",
+      "no_gpu_gres": "{{nodes}} have no gpu Gres in slurm.conf, so nothing is added to gres.conf for them: add Gres=gpu:<count> to their NodeName lines first.",
+      "server_unreachable": "Some hosts cannot reach {{url}}, so the agents cannot enroll from them: see the server address below."
+    },
+    "gres": {
+      "title": "gres.conf",
+      "none": "No line to add.",
+      "add": "Lines to add",
+      "present": "Already covered (left as they are)",
+      "noGpu": "Known to Slurm without a gpu Gres, nothing added for"
+    },
+    "script": {
+      "title": "Health check script",
+      "write": "Writes the health check {{path}} and the enrollment token file {{token}} (root only).",
+      "shared": "The script directory is on shared storage ({{fstype}}): nothing is copied.",
+      "copy": "Copies the files ({{files}}) to {{count}} nodes: {{nodes}}.",
+      "copyNone": "The script directory is on local storage and the cluster lists no other node: nothing to copy."
+    },
+    "conf": {
+      "title": "slurm.conf · {{path}}",
+      "add": "Adds this block (a backup is made first); the interval is {{interval}} s:",
+      "block": "Block added to slurm.conf",
+      "unchanged": "Already as the setup would write it: nothing to change.",
+      "commented": "The cluster's own settings, kept as comments in place",
+      "line": "line {{line}}",
+      "chained": "The cluster's own health check {{program}} keeps running after ours, in the node states {{state}}.",
+      "configless": "The cluster is configless: the nodes pick the change up on reload.",
+      "notConfigless": "The cluster is not configless."
+    },
+    "rearm": "An uninstall of the agents that was armed before is undone, so the agents are installed again.",
+    "resume": "Nodes held for missing GPUs, resumed"
+  },
+  "script": {
+    "title": "Setup script · {{name}}",
+    "failed": "Cannot read the script",
+    "tokenHidden": "This is the script the Slurm manager node is served. The enrollment token is left out; the commands carry it.",
+    "copy": "Copy script",
+    "close": "Close"
+  },
+  "sharedStorage": {
+    "line": "The cluster's nodes share a NAS: register {{path}} as model storage and every node uses one copy of a model, so nodes the cluster adds need not download it again.",
+    "register": "Register as model storage"
+  }
+}

@@ -209,6 +209,7 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 			ID: st.ID, State: st.State, Reason: st.Reason, Message: st.Message, Path: st.Path, Writable: st.Writable,
 			TotalBytes: st.TotalBytes, AvailableBytes: st.AvailableBytes, CachePath: st.CachePath,
 			CacheTotalBytes: st.CacheTotalBytes, CacheAvailableBytes: st.CacheAvailableBytes,
+			SharedFSType: st.SharedFSType, SharedFSSource: st.SharedFSSource,
 		})
 	}
 	changed := force || storageReportChanged(s.reported, report)
@@ -256,6 +257,7 @@ func storageReportChanged(prev, next []proto.StorageStatus) bool {
 		old, ok := byID[st.ID]
 		if !ok || old.State != st.State || old.Reason != st.Reason || old.Message != st.Message ||
 			old.Path != st.Path || old.Writable != st.Writable || old.CachePath != st.CachePath ||
+			old.SharedFSType != st.SharedFSType || old.SharedFSSource != st.SharedFSSource ||
 			moved(old.AvailableBytes, st.AvailableBytes, st.TotalBytes) || moved(old.TotalBytes, st.TotalBytes, st.TotalBytes) ||
 			moved(old.CacheAvailableBytes, st.CacheAvailableBytes, st.CacheTotalBytes) {
 			return true

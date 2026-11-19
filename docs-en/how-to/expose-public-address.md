@@ -35,7 +35,7 @@ Each data directory manages **one endpoint**. The following provider is currentl
 
 3. When you finish, close the endpoint as described in [Common Commands](#常用命令). After a host restart, the default background mode requires you to run `expose up` again. On Linux, use `--systemd` if you need startup at boot.
 
-**Quick limitations**: The address changes when the connector is recreated; restarting the server itself does not recreate the connector. [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/) does not support SSE or provide availability guarantees. Do not use it to test streaming chat or live logs, or include its address in long-term configuration or node installation commands.
+**Quick limitations**: The address changes when the connector is recreated; restarting the server itself does not recreate the connector. [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/) does not support SSE or provide availability guarantees. Do not use it to test streaming chat or live logs, or include its address in long-term configuration or node installation commands. When connecting a Slurm cluster, the form warns if the "Management node address" is this address and suggests a stable one (it does not block it); the connect check also finds the nodes that cannot reach it, see [Connect a Slurm Cluster](connect-slurm-nodes.md).
 
 A command timeout or Ctrl-C only stops the wait; **the connector keeps running**. Use `status` to check progress. To cancel the endpoint, run `down`. If the status is `degraded`, follow [Network and Package Sources](#网络与包源), then check again from outside your network.
 
@@ -110,4 +110,4 @@ the UI warns you that a quick address is temporary if you enter one.
   cloudflared run as root.
 - After you close the endpoint (`expose down`), the service stops cloudflared and exits. In `--systemd` mode, `down` also removes the unit.
 
-<!-- translation-source-sha256: 28ae7c6a00d83533ef710aea253b401c61662ef50ce6e581cd751e540a0f6e5d -->
+<!-- translation-source-sha256: 64faa95269b0e1736f17a46e7c3d12cae7e0b29adee3e6b329354d562155f2cb -->

@@ -26,7 +26,7 @@ func InstanceProgressOnly(st proto.InstanceStatus) bool {
 	return st.Phase != proto.PhaseSleep && st.RuntimeFailure == nil && len(st.Ports) == 0 &&
 		len(st.Measured) == 0 && st.SleepLevel == 0 && st.SleepTarget == nil &&
 		st.SleepResidueBytes == 0 && !st.L1HostBufferHeld && len(st.RuntimeAssetDigests) == 0 &&
-		st.RuntimeObservation == nil && st.OpenAPIPaths == nil
+		st.RuntimeObservation == nil && st.OpenAPIPaths == nil && len(st.GPUIdents) == 0
 }
 
 // ApplyInstanceProgress writes progress-only reports (InstanceProgressOnly)

@@ -311,3 +311,17 @@ test("while the files load there is a spinner; a failed load says so and offers 
   release(list([modelFile()]));
   assert.ok(await screen.findByRole("link", { name: "Qwen3-8B" }));
 });
+
+test("a node on which the local directory is on a shared filesystem has an orange mark by its name naming it; a node on a local disk has none", async () => {
+  stubDetail({ storage: localStorage({ path: "/opt/gpuworks/models", nodes: { total: 2, ready: 2, on_shared_fs: 1, problems: [], all: [
+    nodeStatus("n1", "compute001", "ready", { path: "/opt/gpuworks/models", writable: true, shared_fs: { type: "nfs4", source: "10.0.0.5:/opt" } }),
+    nodeStatus("n2", "gpu-02", "ready", { path: "/opt/gpuworks/models", writable: true }),
+  ] } }) });
+  renderDetail("/storage/1?tab=nodes");
+  const row = async (name: string) => (await screen.findByText(name, { selector: "tbody a" })).closest("tr") as HTMLElement;
+  const text = s.sharedFS.node.replace("{{type}}", "nfs4");
+  const mark = within(await row("compute001")).getByRole("img", { name: text });
+  assert.equal(mark.style.color, "rgb(250, 136, 1)", "the mark is the warning colour (colors.warning)");
+  fireEvent.mouseEnter(mark);
+  assert.equal(within(await row("gpu-02")).queryAllByRole("img", { name: /shared filesystem/ }).length, 0);
+});

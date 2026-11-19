@@ -56,8 +56,8 @@ func TestUsersLocalAdminMigrationBackfillsAdministrators(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := migrationByName(t, "users_local_admin")
-	if m.Version != 225 || m.Version != LatestMigration() {
-		t.Fatalf("users_local_admin is migration %d, want 225 and the head (%d)", m.Version, LatestMigration())
+	if m.Version != 225 {
+		t.Fatalf("users_local_admin is migration %d, want 225", m.Version)
 	}
 	if err := migrateDB(db, []migration{m}); err != nil {
 		t.Fatal(err)

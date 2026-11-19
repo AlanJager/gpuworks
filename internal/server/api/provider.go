@@ -49,7 +49,7 @@ func (a *apiHandlers) providerKinds(w http.ResponseWriter, r *http.Request) {
 
 // providerCategories are the platform types in provider.Categories order,
 // keeping a vendor type only when one of kinds is filed under it, then one for
-// the kinds filed under none, and the Kubernetes cluster type last.
+// the kinds filed under none, and the cluster types (Kubernetes, Slurm) last.
 func providerCategories(kinds []provider.KindInfo) []providerCategoryDTO {
 	byCategory := map[provider.Category][]string{}
 	for _, k := range kinds {
@@ -62,7 +62,7 @@ func providerCategories(kinds []provider.KindInfo) []providerCategoryDTO {
 	out := []providerCategoryDTO{}
 	var clusters []providerCategoryDTO
 	for _, c := range provider.Categories() {
-		if c.KubeCluster {
+		if c.KubeCluster || c.ClusterKind != "" {
 			clusters = append(clusters, providerCategoryDTO{CategoryInfo: c, Kinds: []string{}})
 			continue
 		}
@@ -254,8 +254,10 @@ func (a *apiHandlers) syncProvider(w http.ResponseWriter, r *http.Request) {
 }
 
 // providerInstances lists the account's own instances. The nodes of its
-// managed Kubernetes clusters are left out: the vendor lists them as
-// instances too, but they join through their cluster and are the cluster's.
+// managed Kubernetes clusters and the compute nodes of its HPC clusters are
+// left out: the vendor lists them as instances too, but they join through
+// their cluster and are the cluster's (GET /providers/{id}/clusters and
+// /hpc-clusters).
 func (a *apiHandlers) providerInstances(w http.ResponseWriter, r *http.Request) {
 	id := parseUint(chi.URLParam(r, "id"))
 	pis, err := a.d.Store.AccountInstances(id)
@@ -297,7 +299,7 @@ func (a *apiHandlers) providerInstances(w http.ResponseWriter, r *http.Request) 
 			ExternalID: p.ExternalID, Name: p.Name, GPUModel: p.GPUModel, GPUCount: p.GPUCount,
 			Power: p.Power, PricePerHr: p.PricePerHr, Region: p.Region, PublicIP: p.PublicIP,
 			SSHPort: p.SSHPort, SSHUser: p.SSHUser, SSHConnections: connections, Kind: p.Kind, NodeID: p.NodeID,
-			Actions: provider.InstanceActions(caps, p.Power, p.NodeID, p.ManagedCluster),
+			Actions: provider.InstanceActions(caps, p.Power, p.NodeID, p.ManagedCluster, p.HPCClusterID),
 		})
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(out))
@@ -394,6 +396,11 @@ func writeProviderOpErr(w http.ResponseWriter, err error) {
 	var inCluster *provider.InstanceInClusterError
 	if errors.As(err, &inCluster) {
 		writeErr(w, http.StatusConflict, wrapProductError(ErrorProviderInstanceInCluster, err.Error(), map[string]any{"cluster": inCluster.Cluster}, err))
+		return
+	}
+	var inHPC *provider.InstanceInHPCClusterError
+	if errors.As(err, &inHPC) {
+		writeErr(w, http.StatusConflict, wrapProductError(ErrorProviderInstanceInHPCCluster, err.Error(), map[string]any{"cluster": inHPC.Cluster}, err))
 		return
 	}
 	if errors.Is(err, provider.ErrUnsupported) {

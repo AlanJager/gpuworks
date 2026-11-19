@@ -34,10 +34,10 @@ func ClassifyMountError(output string) string {
 }
 
 // IsNetworkFS reports whether a statfs filesystem magic number denotes a network or FUSE
-// filesystem: NFS, CIFS, SMB2, FUSE, Ceph or Lustre.
+// filesystem: NFS, CIFS, SMB2, FUSE, Ceph, Lustre, GPFS or BeeGFS.
 func IsNetworkFS(fsType uint64) bool {
 	switch fsType {
-	case 0x6969, 0xFF534D42, 0xFE534D42, 0x65735546, 0x00C36400, 0x0BD00BD0:
+	case 0x6969, 0xFF534D42, 0xFE534D42, 0x65735546, 0x00C36400, 0x0BD00BD0, 0x47504653, 0x19830326:
 		return true
 	}
 	return false

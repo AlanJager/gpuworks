@@ -1357,6 +1357,10 @@ var migrations = []migration{
 	{Version: 223, Name: "pushed_state_tables", Apply: createPushedStateTables},
 	{Version: 224, Name: "pushed_state_capacity_keep", Apply: createCapacityKeepTable},
 	{Version: 225, Name: "users_local_admin", Apply: addUserLocalAdmin},
+	{Version: 226, Name: "provider_instance_hpc_cluster", Apply: addProviderInstanceHPCCluster},
+	{Version: 227, Name: "node_slurm_state", Apply: addNodeSlurmState},
+	{Version: 228, Name: "slurm_clusters", Apply: createSlurmClusters},
+	{Version: 229, Name: "storage_node_shared_fs", Apply: addStorageNodeSharedFS},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

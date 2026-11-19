@@ -22,6 +22,8 @@ NVIDIA 统一内存卡（卡名为 `GB10`、`RTX Spark …`、`Thor` 的型号�
 
 Kubernetes 节点（见[接入 Kubernetes 集群](../how-to/connect-kubernetes.md)）支持 NVIDIA、昇腾、海光、PPU、AMD 与昆仑芯的整卡部署；dGPU 支持 NVIDIA HAMi-core、昇腾 vcann-rt、PPU ppu-slicing-shim 与 AMD rocm-slicing-shim，海光原生 vdev 在 Kubernetes 上不可用（仍只做整卡部署）。
 
+Slurm 节点（线下 Slurm 集群，或阿里云 E-HPC 集群，见[接入 Slurm 集群](../how-to/connect-slurm-nodes.md)）目前只支持 NVIDIA 卡：卡仍归 Slurm 分配，部署用占位作业借卡；没有 NVIDIA GPU 的节点（CPU 队列）不装 agent，也不会出现在平台。E-HPC 之外的云厂商 HPC 产品、非 Slurm 的调度器（PBS 等）还不能接入。
+
 
 ## dGPU 能力对比
 

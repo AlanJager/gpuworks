@@ -35,7 +35,7 @@
 
 3. 使用结束后，按[常用命令](#常用命令)关闭入口。机器重启后，默认后台方式需要重新执行 `expose up`；Linux 需要开机自启时可选择 `--systemd`。
 
-**quick 的限制**：连接器重建后地址会变，server 自身重启不会重建连接器。[Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/) 不支持 SSE，也不提供可用性保证；不要用它验证流式对话、实时日志，或写入长期配置和节点安装命令。
+**quick 的限制**：连接器重建后地址会变，server 自身重启不会重建连接器。[Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/) 不支持 SSE，也不提供可用性保证；不要用它验证流式对话、实时日志，或写入长期配置和节点安装命令。接入 Slurm 集群时，「管理节点接入地址」填成它，表单会提示换成固定地址（不阻止）；条目的接入检查也会发现节点访问不到它，见[接入 Slurm 集群](connect-slurm-nodes.md)。
 
 命令超时或按 Ctrl-C 只结束等待，**连接器仍会继续运行**。用 `status` 查看进展；要取消入口，执行 `down`。状态为 `degraded` 时按[网络与包源](#网络与包源)检查，再从外网复查。
 

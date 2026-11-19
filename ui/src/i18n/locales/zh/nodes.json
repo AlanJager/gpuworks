@@ -61,7 +61,8 @@
     "cluster": "集群 {{name}}",
     "clusterOf": "集群 {{name}}（{{provider}}）",
     "standaloneCluster": "Kubernetes 集群",
-    "selected": "所选来源"
+    "selected": "所选来源",
+    "standaloneSlurm": "Slurm 集群"
   },
   "column": {
     "source": "来源",
@@ -599,7 +600,8 @@
     },
     "cordonReason": {
       "card_needs_host_reboot": "平台停止调度：有卡报告需要重启主机或断电重启才能恢复，同一驱动下的其他卡也可能受影响。",
-      "kube_unschedulable": "平台停止调度：Kubernetes 已停止向该节点调度（kubectl cordon/drain 或节点替换）。"
+      "kube_unschedulable": "平台停止调度：Kubernetes 已停止向该节点调度（kubectl cordon/drain 或节点替换）。",
+      "slurm_node_unavailable": "平台停止调度：Slurm 不会在该节点上启动作业，而平台用 Slurm 作业借卡，放到这里的部署会一直等到排队超时后失败。"
     }
   },
   "systemLabels": {
@@ -616,7 +618,9 @@
       "serving-network": "服务网络",
       "storage": "存储",
       "kubernetes-cluster": "Kubernetes 集群",
-      "kubernetes-node": "Kubernetes 节点"
+      "kubernetes-node": "Kubernetes 节点",
+      "slurm-cluster": "Slurm 集群",
+      "slurm-node": "Slurm 节点"
     }
   },
   "diskUsage": {
@@ -1398,5 +1402,27 @@
       "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "此节点没有就绪的 dGPU 分区后端；在有之前此设置不生效。",
       "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "请升级此节点的 agent，使其在共用卡上持续跟踪平台外进程；在此之前此设置不生效。"
     }
+  },
+  "slurm": {
+    "unavailable": {
+      "gres_missing": "Slurm 登记节点 {{node}} 时没有 GPU：slurmd 发现的 GPU 比 Slurm 管控节点配置的少（通常是没有 gres.conf），Slurm 已把该节点 drain，不会启动借卡的作业。",
+      "invalid_registration": "Slurm 拒绝了节点 {{node}} 的登记，因此不会启动借卡的作业。",
+      "down": "Slurm 把节点 {{node}} 标为 down 或无响应，因此不会启动借卡的作业。",
+      "drained": "Slurm 把节点 {{node}} 标为 drained 或 draining，因此不会启动借卡的作业。",
+      "other": "Slurm 不会在该节点上启动作业（{{code}}）。"
+    },
+    "says": "Slurm 给出的原因：{{reason}}",
+    "howToFix": "让节点恢复的步骤：",
+    "step": {
+      "gres_conf": "在 Slurm 管控节点上（如果这台节点自己保存了 Slurm 配置文件，也在这台节点上），把这一行加进 gres.conf：",
+      "reconfigure": "在 Slurm 管控节点上，重新加载配置；节点会带着 GPU 重新登记：",
+      "restart_slurmd": "如果之后节点仍显示 invalid，在这台节点上重启 slurmd：",
+      "resume": "在 Slurm 管控节点上，让节点 {{node}} 恢复服务：",
+      "resume_drained": "处理掉 Slurm 给出的原因后，在 Slurm 管控节点上让节点 {{node}} 恢复服务：",
+      "check_slurmd": "在这台节点上，确认 slurmd 在运行并查看它的日志："
+    },
+    "copy": "复制命令",
+    "copied": "命令已复制",
+    "manualCopyTitle": "复制命令"
   }
 }

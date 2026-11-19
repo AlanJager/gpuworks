@@ -1,5 +1,10 @@
 {
-  "removedSetting": {"modelSource": "设置“{{setting}}”已移除；请在部署时显式选择模型来源。", "sourceRules": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置来源规则。", "proxies": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置代理和来源规则。", "credentials": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置主机凭据。"},
+  "removedSetting": {
+    "modelSource": "设置“{{setting}}”已移除；请在部署时显式选择模型来源。",
+    "sourceRules": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置来源规则。",
+    "proxies": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置代理和来源规则。",
+    "credentials": "设置“{{setting}}”已移除；请在 设置 → 镜像与模型拉取 中配置主机凭据。"
+  },
   "terminalPage": {
     "title": "终端 · {{label}} — {{product}}",
     "loading": "正在加载终端…"
@@ -1026,7 +1031,23 @@
     "MODEL_DOWNLOAD_SOURCE_NOT_FOUND": "该来源找不到模型仓库或指定版本。请核对仓库、版本和访问权限，并注册或选择正确的模型。",
     "MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED": "模型来源拒绝访问。请检查仓库访问权限和该来源的登录凭据。",
     "MODEL_DOWNLOAD_SOURCE_THROTTLED": "模型来源持续限制文件列表请求。请稍后重试下载。",
-    "MODEL_DOWNLOAD_SOURCE_REJECTED": "模型来源拒绝了文件列表请求。请检查来源地址和仓库设置。"
+    "MODEL_DOWNLOAD_SOURCE_REJECTED": "模型来源拒绝了文件列表请求。请检查来源地址和仓库设置。",
+    "SLURM_CLUSTER_INVALID": "Slurm 集群的 {{field}} 不可用：{{reason}}。",
+    "SLURM_CLUSTER_NAME_TAKEN": "已有名为 {{name}} 的 Slurm 集群。",
+    "SLURM_CLUSTER_HAS_NODES": "Slurm 集群里还有节点，先移除这些节点再删除集群。",
+    "SLURM_CLUSTER_SOURCE_TAKEN": "云集群 {{cluster}} 已经有接入条目。",
+    "SLURM_CLUSTER_NODES_ONLINE": "不能连同节点一起删除集群：它的 {{count}} 个节点上的 agent 还在线。请先卸载 agent，等节点都离线后再连同节点删除。",
+    "SLURM_CLUSTER_NODES_HAVE_INSTANCES": "不能连同节点一起删除集群：它的 {{count}} 个节点上还有实例。请先移除这些部署。",
+    "SLURM_APPLY_NOT_APPLICABLE": "平台不能代为配置这个集群：{{reason}}",
+    "SLURM_APPLY_MANAGER_UNKNOWN": "云平台没有告知哪台实例是集群的 Slurm 管控节点，平台无处执行配置。请在 Slurm 管控节点上手动执行接入命令。",
+    "SLURM_APPLY_PERMISSION_MISSING": "云账号的密钥无权调用 {{permission}}。请在该密钥的 RAM 策略里放行后重试，或在 Slurm 管控节点上手动执行接入命令。",
+    "SLURM_APPLY_FAILED": "配置没有完成（{{step}}）：{{reason}}",
+    "SLURM_ENROLL_REFUSED": "Slurm 接入令牌被拒绝（{{reason}}）。",
+    "PROVIDER_INSTANCE_IN_HPC_CLUSTER": "这台实例是 HPC 集群 {{cluster}} 的计算节点，由集群的队列扩缩：不能在这里开关机、释放或调整规格，请在云厂商控制台调整集群的队列。它通过集群的接入条目自动接入，不能单独安装 agent。",
+    "CARD_LEASE_FAILED": "节点的调度器没有把实例要的 GPU 分给它：{{detail}}",
+    "CARD_LEASE_REBIND_UNSUPPORTED": "节点的调度器分来了别的 GPU（{{resource}}），当前 server 不能把实例改到这些卡上，请升级 server。",
+    "CARD_LEASE_CARD_MISMATCH": "节点的调度器分来的 GPU 型号或显存不同（{{resource}}）：{{detail}}",
+    "CARD_LEASE_LOST": "节点的调度器收回了实例的 GPU：{{detail}}"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {
@@ -1655,5 +1676,53 @@
     "open": "展开选项",
     "remove": "移除 {{name}}",
     "loading": "加载中…"
+  },
+  "slurmApplyStep": {
+    "cluster": "读取云上的集群",
+    "assistant": "通过云平台的命令通道连接 Slurm 管控节点",
+    "run": "在 Slurm 管控节点上运行脚本",
+    "gres": "修改 gres.conf",
+    "setup": "配置健康检查",
+    "resume": "恢复节点"
+  },
+  "slurmApplyReason": {
+    "not_root": "脚本没有以 root 运行",
+    "scontrol_not_found": "Slurm 管控节点上找不到 scontrol",
+    "slurmctld_unreachable": "slurmctld 没有响应",
+    "no_cluster_name": "Slurm 没有报告 ClusterName",
+    "conf_unreadable": "读不了 slurm.conf",
+    "conf_unterminated_block": "slurm.conf 里有未结束的配置块",
+    "not_controller_conf": "这是无配置模式下 slurmd 自己的副本，不是 Slurm 管控节点的 slurm.conf",
+    "not_slurmctld_host": "这台机器不是运行 slurmctld 的 Slurm 管控节点",
+    "bad_arguments": "脚本收到了不正确的参数",
+    "server_unreachable": "Slurm 管控节点访问不到管理节点接入地址。节点要能访问这个地址：集群所在 VPC 没有公网出口时配置 NAT 网关，或把 gpuworks 部署在同一 VPC 内并填写内网地址。",
+    "server_unreachable_at": "Slurm 管控节点访问不到管理节点接入地址 {{url}}（{{kind}}）。节点要能访问这个地址：集群所在 VPC 没有公网出口时配置 NAT 网关，或把 gpuworks 部署在同一 VPC 内并填写内网地址。",
+    "unknown": "没有给出原因，见下面的输出",
+    "busy": "Slurm 管控节点上已经有另一次配置在执行",
+    "check_script_failed": "检查脚本没能写入",
+    "token_file_failed": "令牌文件没能写入",
+    "slurm_conf_failed": "slurm.conf 没能更新",
+    "reconfigure_failed": "Slurm 配置没能重新加载",
+    "script_dir_unsafe": "脚本目录或它的上级目录不归 root 所有，或组、其他人可写（root squash 的共享存储也算）。请改为属于 root、组和其他人不可写，或换一个脚本目录",
+    "uninstall_agents_failed": "Slurm 管控节点上还没有安装健康检查：先执行接入命令"
+  },
+  "slurmApplyKind": {
+    "dns": "域名解析失败",
+    "connect": "连接被拒绝或没有路由",
+    "timeout": "连接超时",
+    "tls": "TLS 握手或证书错误",
+    "http": "server 返回了错误",
+    "no_curl": "没有安装 curl",
+    "other": "请求失败"
+  },
+  "slurmApplyNotApplicable": {
+    "no_source": "这个条目不是从云账号的集群创建的。",
+    "no_provider": "这个云账号已经不在了。",
+    "not_slurm_cluster": "云上的这个集群不是用 Slurm 调度的。",
+    "provider_unsupported": "这个云账号不能在 Slurm 管控节点上执行命令。",
+    "revoked": "这个条目的接入令牌已吊销。",
+    "cluster_unknown": "上次同步没有列出这个集群的任何节点，云厂商的集群列表里也没有它：请检查账号或先同步。",
+    "cluster_listing_pending": "云厂商的集群列表还在读取：请稍后再试。",
+    "cluster_listing_failed": "云厂商的集群列表读取失败或缺少某个地域，无法确定这个集群在哪。"
   }
 }

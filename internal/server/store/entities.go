@@ -107,6 +107,24 @@ type Node struct {
 	// last reported it. While it is set the platform cordons the node too,
 	// and lifts that once Kubernetes does (store.UpdateNodeStatus).
 	KubeUnschedulable bool
+	// SlurmNode is the node's name in Slurm, as its agent last reported it
+	// while it borrows the node's cards from Slurm (ADR 0075); empty on any
+	// other node.
+	SlurmNode string `gorm:"size:64"`
+	// SlurmUnavailable is the agent's code (proto.SlurmNode*) for why Slurm
+	// will not start jobs on the node, and empty when it will. While it is
+	// set the platform cordons the node too: every placeholder job would
+	// pend until the pending timeout (store.UpdateNodeStatus).
+	SlurmUnavailable string `gorm:"size:32"`
+	// SlurmReason is Slurm's own Reason text for that state, truncated, shown
+	// to the operator as written; never parsed.
+	SlurmReason string `gorm:"size:256"`
+	// SlurmClusterID is the Slurm cluster entry (SlurmCluster) this node
+	// joined from; its Slurm node name is SlurmNode, which enrollment never
+	// lets an agent's report change. Zero for a node that joined any other
+	// way. Enrollment finds a returning node by the pair, held unique by the
+	// partial index idx_node_slurm (migration slurm_clusters).
+	SlurmClusterID    uint
 	LastRemoteAddr    string `gorm:"size:128"` // address observed by the control plane
 	RuntimeDriver     string `gorm:"size:16"`  // docker | nerdctl | udocker | host (detected)
 	RuntimePreference string `gorm:"size:16"`  // auto | docker | nerdctl | udocker (desired)

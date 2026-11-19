@@ -158,3 +158,53 @@ printf '%s|%s|%s|%s\n' "$(gw_line_value "$NEW" SERVER)" "$(gw_line_value "$NEW" 
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+// A Slurm node's file carries the enrollment token and the node's Slurm name
+// in place of a node token, and every other install's file stays as it was.
+func TestSlurmEnrollmentConfigurationRendersAndRoundTrips(t *testing.T) {
+	in := Config{Server: "https://gw.example:8800", SlurmEnrollToken: "enroll-tok", SlurmNode: "gpu-1"}
+	data, err := in.Render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := header + `SERVER=https://gw.example:8800
+TOKEN=
+CONNECT_MODE=agent_dial
+LISTEN=
+RUNTIME_DRIVER=
+MOUNT_ROOT=
+UDOCKER_BUNDLE=
+SLURM_ENROLL_TOKEN=enroll-tok
+SLURM_NODE=gpu-1
+`
+	if string(data) != want {
+		t.Fatalf("render =\n%s\nwant\n%s", data, want)
+	}
+	out, err := Parse(data)
+	if err != nil || out != in.Normalized() {
+		t.Fatalf("round trip = %+v, %v; want %+v", out, err, in.Normalized())
+	}
+	plain, err := Config{Server: "https://gw", Token: "tok"}.Render()
+	if err != nil || strings.Contains(string(plain), "SLURM_") {
+		t.Fatalf("an ordinary install's file mentions Slurm: %s %v", plain, err)
+	}
+}
+
+func TestValidateSlurmEnrollment(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		conf Config
+		want error
+	}{
+		{"enrolling node", Config{Server: "https://gw", SlurmEnrollToken: "e", SlurmNode: "gpu-1"}, nil},
+		{"token wins, no enrollment needed", Config{Server: "https://gw", Token: "t"}, nil},
+		{"no token at all", Config{Server: "https://gw"}, ErrTokenRequired},
+		{"enrollment without the node's name", Config{Server: "https://gw", SlurmEnrollToken: "e"}, ErrSlurmEnrollIncomplete},
+		{"a node the server dials cannot enroll", Config{SlurmEnrollToken: "e", SlurmNode: "gpu-1", ConnectMode: ServerDial}, ErrSlurmEnrollIncomplete},
+		{"enrollment still needs the server", Config{SlurmEnrollToken: "e", SlurmNode: "gpu-1"}, ErrServerRequired},
+	} {
+		if err := tc.conf.Validate(); !errors.Is(err, tc.want) && !(err == nil && tc.want == nil) {
+			t.Errorf("%s: Validate = %v, want %v", tc.name, err, tc.want)
+		}
+	}
+}

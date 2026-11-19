@@ -114,6 +114,10 @@ type Engine struct {
 	otherRuntimes func(ctx context.Context, active string) []runtime.LocalImageSource
 	// cardGate is what a start waits on before launching (SetCardGate).
 	cardGate func(ctx context.Context, idents []string, limit time.Duration) bool
+	// cardLeaser borrows cards from the node's own allocator (Slurm) before
+	// a start; nil on nodes whose cards are the platform's (card_lease.go).
+	cardLeaser CardLeaser
+	canRebind  func() bool
 }
 
 // WithNetworkConfig injects the node's network configuration reader. Its URL

@@ -12,12 +12,15 @@ const (
 // offers as they are and does not derive itself. A node of a managed
 // Kubernetes cluster allows none: it joins through the cluster and its
 // lifecycle is the cluster's node pool's (Service.refuseClusterNode refuses
-// them too). Otherwise: power off while the vendor says it runs, power on
+// them too). A compute node of an HPC cluster (hpcCluster non-empty) is
+// never powered or released here, its queue does that
+// (Service.refuseHPCNode), and joins through the cluster entry, so it allows
+// none either. Otherwise: power off while the vendor says it runs, power on
 // while it does not, when the kind controls power at all; installing the
 // agent until the instance has a node; releasing it when the kind can.
-func InstanceActions(caps Capabilities, power string, nodeID uint, managedCluster string) []string {
+func InstanceActions(caps Capabilities, power string, nodeID uint, managedCluster, hpcCluster string) []string {
 	actions := []string{}
-	if managedCluster != "" {
+	if managedCluster != "" || hpcCluster != "" {
 		return actions
 	}
 	if caps.CanPowerControl {

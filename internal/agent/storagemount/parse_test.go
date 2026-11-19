@@ -85,3 +85,23 @@ func TestSuperOptionAndMerge(t *testing.T) {
 		t.Errorf("merge = %q", got)
 	}
 }
+
+func TestContainingMount(t *testing.T) {
+	entries := []MountEntry{
+		{MountPoint: "/", FSType: "ext4"},
+		{MountPoint: "/opt", FSType: "nfs4", Source: "nas:/opt"},
+		{MountPoint: "/opt/fast", FSType: "lustre", Source: "mgs@tcp:/fs"},
+		{MountPoint: "/optical", FSType: "xfs"},
+	}
+	for path, want := range map[string]string{
+		"/opt/gpuworks/models": "nfs4", "/opt": "nfs4", "/opt/fast/x": "lustre",
+		"/optical/models": "xfs", "/var/lib/gpuworks": "ext4",
+	} {
+		if e, ok := ContainingMount(entries, path); !ok || e.FSType != want {
+			t.Errorf("%s: %+v %v; want %s", path, e, ok, want)
+		}
+	}
+	if _, ok := ContainingMount(nil, "/opt"); ok {
+		t.Error("no mounts found one")
+	}
+}

@@ -21,6 +21,9 @@ type NodeFacts struct {
 	// KubeClusters names the Kubernetes clusters nodes joined from, by
 	// cluster id: loaded once for a whole computation, never per node.
 	KubeClusters KubeClusters
+	// SlurmClusters names the Slurm cluster entries nodes joined from, the
+	// same way.
+	SlurmClusters SlurmClusters
 }
 
 // KubeClusterRef is what a node's Kubernetes cluster label is made of: the
@@ -60,6 +63,9 @@ func LoadNodeFacts(st *store.Store, resolve func([]store.Node) (netplan.Resoluti
 	}
 	if RequirementsNeedKubeClusters(reqs) {
 		facts.KubeClusters = LoadKubeClusters(st, nodes)
+	}
+	if RequirementsNeedSlurmClusters(reqs) {
+		facts.SlurmClusters = LoadSlurmClusters(st, nodes)
 	}
 	if RequirementsNeedStorages(reqs) {
 		ptrs := make([]*store.Node, len(nodes))

@@ -27,5 +27,6 @@ func (a *apiHandlers) deleteProvider(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	a.d.Providers.ForgetAccount(id)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

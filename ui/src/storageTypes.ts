@@ -84,11 +84,15 @@ export interface StorageNodeStatus {
   /** The node cannot use the storage's directory and needs one of its own (the server decides). */
   needs_own_directory?: boolean;
   cache?: StorageNodeCache;
+  /** A local storage's directory sits on a shared filesystem on this node, as its mountinfo names it (type "network" when it did not say). */
+  shared_fs?: { type: string; source?: string };
 }
 
 export interface StorageNodes {
   total: number;
   ready: number;
+  /** Nodes on which a local storage's directory sits on a shared filesystem. */
+  on_shared_fs: number;
   problems: StorageNodeStatus[];
   all?: StorageNodeStatus[];
 }

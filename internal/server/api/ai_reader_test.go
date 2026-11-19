@@ -77,7 +77,9 @@ func TestAIReaderReadsAsTheAskingUser(t *testing.T) {
 		t.Fatalf("anonymous read = %d %v", status, err)
 	}
 
-	for _, path := range []string{"/api/v1/apikeys", "/api/v1/ai/configs", "/api/v1/events", "/api/v1/no/such/route", "/install.sh"} {
+	for _, path := range []string{"/api/v1/apikeys", "/api/v1/ai/configs", "/api/v1/events", "/api/v1/no/such/route", "/install.sh",
+		// the cluster entries' commands and manifests carry their enrollment tokens
+		"/api/v1/slurm/clusters/abc/setup", "/api/v1/slurm/clusters/abc/script", "/api/v1/kube/clusters/abc/manifest"} {
 		if _, _, err := reader.Get(context.Background(), path, url.Values{}); err == nil {
 			t.Fatalf("read of %s was not refused", path)
 		}

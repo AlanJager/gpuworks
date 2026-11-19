@@ -19,9 +19,9 @@ const s = locale.storage;
 const originals = { ...api };
 afterEach(() => { cleanup(); Object.assign(api, originals); });
 
-const nfsCache = nfsStorage({ id: 3, name: "team-cache", type: "nfs_cache", cache_path: "/data/cache", cache_max_bytes: 200 * 1024 ** 3, is_default: false, deployment_ids: [], nodes: { total: 3, ready: 3, problems: [] }, model_count: 12 });
-const readOnly = nfsStorage({ id: 4, name: "library", enabled: false, writable: false, nodes: { total: 2, ready: 2, problems: [] }, deployment_ids: [] });
-const sharedDir = nfsStorage({ id: 5, name: "ceph", type: "shared_dir", export: undefined, path: "/mnt/ceph/models", total_bytes: 0, available_bytes: 0, nodes: { total: 0, ready: 0, problems: [] }, deployment_ids: [], all_nodes: false, targets: [{ node_uuid: "n1", node_name: "gpu-01" }, { label_key: "pool", label_value: "a" }] });
+const nfsCache = nfsStorage({ id: 3, name: "team-cache", type: "nfs_cache", cache_path: "/data/cache", cache_max_bytes: 200 * 1024 ** 3, is_default: false, deployment_ids: [], nodes: { total: 3, ready: 3, on_shared_fs: 0, problems: [] }, model_count: 12 });
+const readOnly = nfsStorage({ id: 4, name: "library", enabled: false, writable: false, nodes: { total: 2, ready: 2, on_shared_fs: 0, problems: [] }, deployment_ids: [] });
+const sharedDir = nfsStorage({ id: 5, name: "ceph", type: "shared_dir", export: undefined, path: "/mnt/ceph/models", total_bytes: 0, available_bytes: 0, nodes: { total: 0, ready: 0, on_shared_fs: 0, problems: [] }, deployment_ids: [], all_nodes: false, targets: [{ node_uuid: "n1", node_name: "gpu-01" }, { label_key: "pool", label_value: "a" }] });
 
 type Calls = Record<string, unknown[][]>;
 function stubApi(options: { storages?: unknown[] | Error; admin?: boolean } = {}) {
@@ -300,4 +300,33 @@ test("cancelled storage creation returns keyboard focus to Add storage without m
   await waitFor(() => assert.ok(!screen.queryByRole("dialog", { name: s.form.addTitle })));
   await waitFor(() => assert.ok(document.activeElement === trigger, "closing the modal must restore its trigger focus"));
   assert.equal(calls.createStorage, undefined);
+});
+
+test("a local storage whose directory is on a shared filesystem on some nodes has an orange mark by its name that says so on hover; one on local disks has none", async () => {
+  stubApi({ storages: [localStorage({ nodes: { total: 3, ready: 3, on_shared_fs: 2, problems: [] } }), localStorage({ id: 6, name: "scratch", is_default: false })] });
+  const { user } = renderPage();
+  const row = await rowOf("default");
+  const text = s.sharedFS.someNodes_other.replace("{{count}}", "2");
+  const mark = within(row).getByRole("img", { name: text });
+  assert.equal(mark.style.color, "rgb(250, 136, 1)", "the mark is the warning colour (colors.warning)");
+  await user.hover(mark);
+  assert.ok((await screen.findAllByText(text)).length > 0);
+  assert.equal(within(await rowOf("scratch")).queryAllByRole("img", { name: /shared filesystem/ }).length, 0);
+});
+
+test("a suggestion sent from another page (a Slurm cluster's NAS) opens the add form filled with it", async () => {
+  stubApi();
+  render(
+    <ConfigProvider theme={{ token: { motion: false } }}><I18nextProvider i18n={i18n}>
+      <MemoryRouter initialEntries={[{ pathname: "/storage", state: { addStorage: { name: "gpu-lab-models", type: "shared_dir", path: "/opt/gpuworks-models", label_key: "gpuworks.ai/slurm-cluster", label_value: "s-7" } } }]}>
+        <Routes><Route path="/storage" element={<StoragePage />} /></Routes>
+      </MemoryRouter>
+    </I18nextProvider></ConfigProvider>,
+  );
+  const dialog = await screen.findByRole("dialog");
+  assert.ok(within(dialog).getByText(s.form.addTitle));
+  assert.equal((within(dialog).getByLabelText(s.form.name) as HTMLInputElement).value, "gpu-lab-models");
+  assert.ok(within(dialog).getByDisplayValue("/opt/gpuworks-models"));
+  assert.ok(within(dialog).getByDisplayValue("gpuworks.ai/slurm-cluster"));
+  assert.ok(within(dialog).getByDisplayValue("s-7"));
 });

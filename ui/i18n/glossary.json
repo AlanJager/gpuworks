@@ -1107,6 +1107,12 @@
       }
     },
     {
+      "term_en": "Slurm Manager Node",
+      "translations": {
+        "zh": "Slurm 管控节点"
+      }
+    },
+    {
       "term_en": "Management Node Address",
       "translations": {
         "zh": "管理节点接入地址"

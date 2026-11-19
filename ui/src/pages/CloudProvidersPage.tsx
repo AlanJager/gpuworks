@@ -27,16 +27,21 @@ import type { TFunction } from "i18next";
 import type { LocalizedText } from "../i18n/localizedText";
 import { localizedText } from "../i18n/localizedText";
 import { kubeClusterNodesPath, platformNodesPath } from "../nodeSources";
+import { clusterCategoryOf } from "../platformClusters";
+import type { SlurmCluster } from "../slurmApi";
 import KubeEntryActions from "./kubernetes/KubeEntryActions";
 import KubeEntryStatus from "./kubernetes/KubeEntryStatus";
 import KubeNamespaceShared from "./kubernetes/KubeNamespaceShared";
+import SlurmEntryActions from "./slurm/SlurmEntryActions";
+import SlurmEntryStatus from "./slurm/SlurmEntryStatus";
 import { PlatformResourceBadges, resourceTypeLabel } from "./platforms/PlatformResourceBadge";
 import ProviderKindLogo from "./platforms/ProviderKindLogo";
 import ProviderResources from "./platforms/ProviderResources";
 import RowActions from "./platforms/RowActions";
 import StandaloneClusterDetail from "./platforms/StandaloneClusterDetail";
+import StandaloneSlurmDetail from "./platforms/StandaloneSlurmDetail";
 import {
-  platformRows, providerRowKey, rowCategory, rowKind, rowName, rowNodeCount, rowResources, rowState, rowUpdatedAt,
+  platformRows, providerRowKey, rowCategory, rowClusterUUID, rowKind, rowName, rowNodeCount, rowResources, rowState, rowUpdatedAt,
   type PlatformRow,
 } from "./platforms/platformRows";
 
@@ -44,8 +49,8 @@ const PROVIDER_STATES: Record<string, "success" | "danger"> = { valid: "success"
 
 // One list for everything that hands machines over: the accounts of cloud
 // vendors, each row carrying the category and resources the server derives
-// from its kind, and the Kubernetes clusters connected on their own. A
-// cluster connected from an account is listed under that account.
+// from its kind, and the Kubernetes and Slurm clusters connected on their own.
+// A cluster connected from an account is listed under that account.
 // ?category=<type> and ?resource=<type> open the list filtered, as the
 // overview's cloud counts and the old /zstack and /kubernetes addresses do;
 // ?open=<row> opens one row, with &cluster=<entry> bringing that cluster of
@@ -66,10 +71,11 @@ export default function CloudProvidersPage() {
   const language = i18n.resolvedLanguage || i18n.language;
   const { data: providers, refetch, loading, error } = usePolling<List<CloudProvider>>(api.providers, 15000);
   const clusters = usePolling<List<KubeCluster>>(api.kubeClusters, 15000);
+  const slurm = usePolling<List<SlurmCluster>>(api.slurmClusters, 15000);
   const data = providers?.items ?? [];
-  const rows = useMemo(() => platformRows(providers?.items ?? [], clusters.data?.items ?? []), [providers, clusters.data]);
+  const rows = useMemo(() => platformRows(providers?.items ?? [], clusters.data?.items ?? [], slurm.data?.items ?? []), [providers, clusters.data, slurm.data]);
   const entries = useMemo(() => Object.fromEntries((clusters.data?.items ?? []).map((cluster) => [cluster.uuid, cluster])), [clusters.data]);
-  const refetchAll = () => { void refetch(); void clusters.refetch(); };
+  const refetchAll = () => { void refetch(); void clusters.refetch(); void slurm.refetch(); };
   const [modalOpen, setModalOpen] = useState(false);
   const [defaultKind, setDefaultKind] = useState<string | null>(null);
   const [editingProvider, setEditingProvider] = useState<CloudProvider | null>(null);
@@ -78,8 +84,9 @@ export default function CloudProvidersPage() {
   const [instanceRefreshVersion, setInstanceRefreshVersion] = useState(0);
   const [kindInfos, setKindInfos] = useState<ProviderKindInfo[]>([]);
   const [categories, setCategories] = useState<ProviderCategoryInfo[]>([]);
-  // The platform type a cluster connected on its own is added as, as the server offers it.
-  const clusterCategory = categories.find((category) => category.kube_cluster);
+  // The platform types a cluster connected on its own is added as, as the server offers them.
+  const clusterCategory = clusterCategoryOf(categories, "kubernetes");
+  const slurmCategory = clusterCategoryOf(categories, "slurm");
 
   useEffect(() => {
     api
@@ -176,9 +183,11 @@ export default function CloudProvidersPage() {
     }
   };
   // Deleting an account says what becomes of what came through it: nothing in the cloud is released, and the
-  // clusters connected from it stay as entries made by hand (the server keeps them so, see DELETE /providers/{id}).
+  // Kubernetes and Slurm clusters connected from it stay as entries made by hand (the server keeps them so, see
+  // DELETE /providers/{id}).
   const confirmDelete = (provider: CloudProvider) => {
     const fromIt = (clusters.data?.items ?? []).filter((cluster) => cluster.source?.provider_id === provider.id).length;
+    const slurmFromIt = (slurm.data?.items ?? []).filter((entry) => entry.source?.provider_id === provider.id).length;
     confirm({
       title: t("table.deleteConfirm", { name: provider.name }),
       okText: t("table.delete"),
@@ -188,6 +197,7 @@ export default function CloudProvidersPage() {
         <div className="flex flex-col gap-2">
           <p className="m-0 text-fg-muted">{t("table.deleteConsequence")}</p>
           {fromIt > 0 && <p className="m-0 text-fg-muted">{t("table.deleteClusterConsequence", { count: fromIt })}</p>}
+          {slurmFromIt > 0 && <p className="m-0 text-fg-muted">{t("table.deleteSlurmConsequence", { count: slurmFromIt })}</p>}
         </div>
       ),
       onOk: () => deleteProvider(provider),
@@ -245,7 +255,7 @@ export default function CloudProvidersPage() {
         const count = rowNodeCount(row);
         if (count === 0) return "0";
         // A count that can be clicked reads as a number until the pointer is on it (ui-guidelines 7.2b).
-        return <Link className="text-inherit hover:text-fg-brand hover:underline" to={row.type === "provider" ? platformNodesPath(row.provider.id) : kubeClusterNodesPath(row.cluster.uuid)}>{count}</Link>;
+        return <Link className="text-inherit hover:text-fg-brand hover:underline" to={row.type === "provider" ? platformNodesPath(row.provider.id) : kubeClusterNodesPath(rowClusterUUID(row))}>{count}</Link>;
       },
     },
     { key: "updated_at", title: t("table.column.updatedAt"), width: 156, defaultHidden: true, sortValue: rowUpdatedAt, render: (_: unknown, row: PlatformRow) => formatTime(rowUpdatedAt(row)) },
@@ -257,6 +267,7 @@ export default function CloudProvidersPage() {
       onFilter: (value, row) => rowState(row) === value,
       render: (_: unknown, row: PlatformRow) => {
         if (row.type === "cluster") return <KubeEntryStatus cluster={row.cluster} />;
+        if (row.type === "slurm") return <SlurmEntryStatus cluster={row.slurm} />;
         const state = row.provider.state;
         return state ? <Badge status={PROVIDER_STATES[state] ?? "neutral"}>{t(`table.state.${state}`, { defaultValue: state })}</Badge> : "—";
       },
@@ -268,6 +279,7 @@ export default function CloudProvidersPage() {
       width: 120,
       render: (_: unknown, row: PlatformRow) => {
         if (row.type === "cluster") return isAdmin ? <KubeEntryActions cluster={row.cluster} onChanged={() => void clusters.refetch()} /> : null;
+        if (row.type === "slurm") return isAdmin ? <SlurmEntryActions cluster={row.slurm} onChanged={() => void slurm.refetch()} /> : null;
         const p = row.provider;
         const syncable = canSync(p.kind);
         return (
@@ -324,12 +336,13 @@ export default function CloudProvidersPage() {
         {kindInfos.length === 0 && !error && (
           <div className="mb-3"><Notice tone="info" title={t("page.schemaMissing")} children={t("page.schemaMissingDescription")} /></div>
         )}
-        {(kindInfos.length > 0 || (isAdmin && clusterCategory)) && (
+        {(kindInfos.length > 0 || (isAdmin && (clusterCategory || slurmCategory))) && (
           <Container className="rounded-2xl">
             <div className="provider-kind-grid">
               {kindInfos.map((kind) => kindCard(kind.kind, providerKindLabel(t, kind.kind, kind.label, language), kind.resources ?? [], () => openAdd(kind.kind), kind.homepage))}
               {/* Connecting a cluster makes an enrollment token, which only an administrator may. */}
               {isAdmin && clusterCategory && kindCard(clusterCategory.id, t("page.otherKubernetes"), clusterCategory.resources ?? [], () => openAdd(clusterCategory.id))}
+              {isAdmin && slurmCategory && kindCard(slurmCategory.id, t("page.otherSlurm"), slurmCategory.resources ?? [], () => openAdd(slurmCategory.id))}
             </div>
           </Container>
         )}
@@ -357,6 +370,12 @@ export default function CloudProvidersPage() {
                 action={<Button variant="secondary" size="sm" onClick={() => void clusters.refetch()}>{t("instances.retry")}</Button>} />
             </div>
           )}
+          {slurm.error && (
+            <div className="mb-3">
+              <Notice tone="warning" title={t("page.slurmClustersFailed")} children={slurm.error.message}
+                action={<Button variant="secondary" size="sm" onClick={() => void slurm.refetch()}>{t("instances.retry")}</Button>} />
+            </div>
+          )}
           <ResourceTable<PlatformRow>
             // A different filter or row in the address opens the list anew with it.
             key={`${openedCategory ?? ""}|${openedResource ?? ""}|${openedRow ?? ""}|${openedCluster ?? ""}`}
@@ -381,12 +400,15 @@ export default function CloudProvidersPage() {
               defaultExpandedRowKeys: openedRow ? [openedRow] : undefined,
               expandedRowRender: (row) => row.type === "cluster"
                 ? <StandaloneClusterDetail cluster={row.cluster} />
+                : row.type === "slurm"
+                ? <StandaloneSlurmDetail cluster={row.slurm} admin={isAdmin} onChanged={() => void slurm.refetch()} />
                 : (
                   <ProviderResources
                     provider={row.provider}
                     kindInfo={kindInfoOf(row.provider.kind)}
                     refreshKey={`${row.provider.updated_at}:${instanceRefreshVersion}`}
                     entries={entries}
+                    slurmEntries={slurm.data?.items ?? []}
                     onEntriesChanged={refetchAll}
                     admin={isAdmin}
                     focusCluster={row.key === openedRow ? openedCluster : null}
@@ -416,9 +438,9 @@ export default function CloudProvidersPage() {
           setSearchParams({ open: providerRowKey(added.id) }, { replace: true });
           if (canSync(added.kind)) void doSync(added.id);
         }}
-        // Kubernetes is offered among the platforms to whoever may make an enrollment token.
+        // Clusters are offered among the platforms to whoever may make an enrollment token.
         canConnectCluster={isAdmin}
-        onClusterCreated={() => void clusters.refetch()}
+        onClusterCreated={() => { void clusters.refetch(); void slurm.refetch(); }}
       />
     </>
   );
