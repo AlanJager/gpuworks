@@ -87,6 +87,11 @@ ui/src/components/vendorAssets.ts):
   amd.svg      Wikimedia Commons "File:AMD Logo.svg", public domain text logo.
   ascend.svg   Header logo of https://www.hiascend.com (Huawei).
   thead.png    Header logo of https://www.t-head.cn (T-Head).
+  hygon.png    Hygon horizontal wordmark. Its upstream source was not recorded
+               when it was added (2026-08, as hygon.webp); converted losslessly
+               to PNG (2026-11).
+  kunlunxin.png  Logo from Kunlunxin's site
+               (https://www.kunlunxin.com/wp-content/uploads/2023/01/logo-quan.png).
   apple.svg    Glyph from Simple Icons (https://simpleicons.org, CC0-1.0).
 
 Vendor, cloud provider and model organization names and logos shown in the UI
