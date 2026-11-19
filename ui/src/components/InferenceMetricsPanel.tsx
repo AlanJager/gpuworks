@@ -1,14 +1,12 @@
 import { MetricCard } from "./ui/metric-card";
-import { Tooltip, Typography } from "antd";
 import { Alert } from "../pages/DeploymentControls";
-import { InfoCircleOutlined } from "@ant-design/icons";
 import { Activity, useCallback, useMemo, useState, type ReactNode } from "react";
 import { type MetricPoint, type MetricSeries } from "../api";
 import TimeSeriesChart, { autoValueFmt, defaultSeriesName } from "./TimeSeriesChart";
 import { useInstanceMetricSeries, rateSeries } from "../instanceMetricSeries";
 import { StageCharts, useInstanceStages } from "./InstanceStagePanel";
 import { RangeHeader, useMetricRange, useMetricWindow } from "./MetricWindow";
-import { colors } from "../theme/tokens";
+import { HelpTip } from "../ui-kit/HelpTip";
 import { Tabs, TabsList, TabItem, TabPanel } from "./ui/tabs";
 import type { TimeRangeSelection } from "../timeRange";
 import { useTranslation } from "react-i18next";
@@ -108,7 +106,7 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
           message={(historical || selection.kind === "custom") && settled ? t("metrics.emptyWindow") : t("instanceMetrics.waiting")}
           description={historical || selection.kind === "custom" ? undefined : t("instanceMetrics.waitingDescription")} />}
       {(historical || selection.kind === "custom") && [runningNow, waitingNow, cacheNow, promptNow, generationNow].some(v => v != null) && (
-        <Typography.Text type="secondary">{t("instanceMetrics.lastInWindow")}</Typography.Text>
+        <span className="text-fg-muted">{t("instanceMetrics.lastInWindow")}</span>
       )}
       <div className="deployment-metrics-summary" role="region" aria-label={t("instance.tab.metrics")} tabIndex={0}>
         <MetricStat title={t("instanceMetrics.running")} value={runningNow} />
@@ -182,9 +180,9 @@ function RatioChart({ series, countersReported }: { series: MetricSeries[]; coun
   if (!hasPoints(series)) {
     return (
       <div style={{ height: 190, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Typography.Text type="secondary">
+        <span className="text-fg-muted">
           — {countersReported ? t("instanceMetrics.metricNoTraffic") : t("instanceMetrics.metricUnavailable")}
-        </Typography.Text>
+        </span>
       </div>
     );
   }
@@ -224,17 +222,13 @@ function ChartCard({
 }) {
   return (
     <div className="deployment-trend-card">
-      <Typography.Text strong>
+      <span className="font-semibold">
         {title}
-        {hint && (
-          <Tooltip title={hint} trigger={["hover", "focus"]}>
-            <InfoCircleOutlined tabIndex={0} style={{ marginLeft: 6, color: colors.muted }} aria-label={description} />
-          </Tooltip>
-        )}
-      </Typography.Text>
-      <Typography.Text type="secondary" style={{ display: "block", fontSize: "var(--font-size-label)", marginBottom: 8 }}>
+        {hint && <HelpTip className="ml-1.5" label={description} content={hint} />}
+      </span>
+      <span className="text-fg-muted block text-label mb-2">
         {description}
-      </Typography.Text>
+      </span>
       {children}
     </div>
   );

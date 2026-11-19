@@ -1,4 +1,3 @@
-import { Typography } from "antd";
 import { Alert } from "../pages/DeploymentControls";
 import { Select, SelectContent, SelectTrigger, SelectItem } from "./ui/select";
 import { useMemo, type ComponentProps } from "react";
@@ -163,10 +162,10 @@ async function loadMetricData(instances: Instance[], deploymentId: number | unde
 function ChartCard({ title, description, action, children }: { title: string; description: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="deployment-trend-card">
-      <div className="flex flex-wrap items-center justify-between gap-2"><Typography.Text strong>{title}</Typography.Text>{action}</div>
-      <Typography.Text type="secondary" style={{ display: "block", fontSize: "var(--font-size-label)", marginBottom: 8 }}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">{title}</span>{action}</div>
+      <span className="text-fg-muted block text-label mb-2">
         {description}
-      </Typography.Text>
+      </span>
       {children}
     </div>
   );

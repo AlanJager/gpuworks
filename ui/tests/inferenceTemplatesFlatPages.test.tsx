@@ -901,6 +901,19 @@ test("template warnings render localized text per code with params, and fall bac
   assert.equal(container.innerHTML, "");
 });
 
+test("template warnings close from their own button when the page lets them", async () => {
+  let closed = 0;
+  render(<I18nextProvider i18n={i18n}><TemplateWarnings warnings={[metricsWarning]} onClose={() => { closed++; }} /></I18nextProvider>);
+  const close = within(screen.getByRole("alert")).getByRole("button", { name: "Close" });
+  close.focus();
+  fireEvent.click(close);
+  assert.equal(closed, 1);
+  cleanup();
+  render(<I18nextProvider i18n={i18n}><TemplateWarnings warnings={[metricsWarning]} /></I18nextProvider>);
+  assert.equal(within(screen.getByRole("alert")).queryByRole("button"), null, "without onClose there is nothing to close");
+  cleanup();
+});
+
 test("template warnings read in Chinese with the same params", async () => {
   const zh = createInstance();
   await zh.use(initReactI18next).init({

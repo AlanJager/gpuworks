@@ -100,7 +100,7 @@ func (i *Installer) Upgrade(ctx context.Context, req UpgradeRequest) (UpgradeRep
 
 	// Whatever the source staged is never wanted once this returns: on success
 	// it has been moved into place, otherwise it must not linger.
-	defer func() { _ = os.Remove(i.stagedBinary()) }()
+	defer i.removeUpgradeStaging()
 	var src upgradeSource
 	switch {
 	case strings.TrimSpace(req.Archive) != "":
@@ -296,7 +296,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 // applyAndCheck replaces the binary, starts the service and waits for it to
 // answer as release want. It returns nil when the new version is running.
 func (i *Installer) applyAndCheck(ctx context.Context, svc Service, staged, addr, want string) error {
-	if err := replaceBinary(staged, i.layout.Binary()); err != nil {
+	if err := i.installStagedBinary(ctx, staged); err != nil {
 		return fmt.Errorf("replace the binary: %w", err)
 	}
 	if err := svc.Start(ctx); err != nil {

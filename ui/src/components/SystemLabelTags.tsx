@@ -1,4 +1,5 @@
-import { Space, Tag, Tooltip } from "antd";
+import { Badge } from "./ui/badge";
+import { Tooltip } from "./ui/tooltip";
 import { useTranslation } from "react-i18next";
 import type { SystemLabel } from "../api";
 
@@ -24,19 +25,19 @@ export function SystemLabelTags({
   const hidden = (labels ?? []).length - shown.length;
   if (shown.length === 0) return <>—</>;
   return (
-    <Space size={[4, 4]} wrap>
+    <span className="inline-flex flex-wrap items-center gap-1">
       {shown.map((label) => (
         <Tooltip
           key={`${label.key}=${label.value}`}
-          title={`${label.key}=${label.value}`}
+          content={`${label.key}=${label.value}`}
         >
-          <Tag>
+          <Badge size="sm" color="gray">
             {systemLabelName(label.key, t)}: {systemLabelValue(label, t)}
-          </Tag>
+          </Badge>
         </Tooltip>
       ))}
-      {hidden > 0 && <Tag>{t("systemLabels.more", { count: hidden })}</Tag>}
-    </Space>
+      {hidden > 0 && <Badge size="sm" color="gray">{t("systemLabels.more", { count: hidden })}</Badge>}
+    </span>
   );
 }
 

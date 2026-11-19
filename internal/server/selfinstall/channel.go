@@ -56,19 +56,20 @@ func (i *Installer) channelSource(ctx context.Context, sources []string, channel
 			return fmt.Errorf("--version %s is not what the %s channel offers: it is at %s", pin, channel, release.ReleaseID)
 		},
 		stage: func(ctx context.Context) (string, error) {
-			if err := mkdirAll(i.layout.TmpDir(), dirMode); err != nil {
+			dir, err := i.upgradeStagingDirectory()
+			if err != nil {
 				return "", err
 			}
 			name := path.Base(asset.Path)
-			archive := filepath.Join(i.layout.TmpDir(), name)
+			archive := filepath.Join(dir, name)
 			i.io.Say("downloading %s (%s) from %s", name, humanBytes(asset.Size), fetched.Source)
 			report := newProgressReport(i.io, fetched.Source)
 			if _, err := client.Download(ctx, fetched, asset.File, archive, report.update); err != nil {
 				return "", err
 			}
 			defer func() { _ = os.Remove(archive) }()
-			staged := i.stagedBinary()
-			if err := extractBinary(archive, staged); err != nil {
+			staged, err := i.stageUpgradeBinary(archive)
+			if err != nil {
 				return "", err
 			}
 			if pin != "" {

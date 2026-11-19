@@ -316,6 +316,7 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 					},
 				},
 			},
+			"performance_tradeoffs": performanceTradeoffsSchema(),
 		},
 	}
 }

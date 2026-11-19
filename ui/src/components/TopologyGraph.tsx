@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { Space, Tag, Typography } from "antd";
+import { Badge } from "./ui/badge";
 import type { GPU, Topology, TopoHighlight } from "../api";
 import { colors } from "../theme/tokens";
 import { useTranslation } from "react-i18next";
@@ -167,9 +167,9 @@ export default function TopologyGraph({
   const { t } = useTranslation("nodes");
   if (!topology || !(topology.gpus?.length)) {
     return (
-      <Typography.Text type="secondary" style={{ display: "block", padding: "16px 0" }}>
+      <span className="text-fg-muted block py-4">
         {t("topology.empty")}
-      </Typography.Text>
+      </span>
     );
   }
 
@@ -287,15 +287,15 @@ export default function TopologyGraph({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
-        <Space size={8} wrap>
-          <Tag color="blue">GPU {topology.gpus.length}</Tag>
-          <Tag color="geekblue">NUMA {groups.length}</Tag>
-          <Tag color="green">{t("topology.fastLinkCount", { count: countFastLinks(topology) })}</Tag>
-        </Space>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge color="blue">GPU {topology.gpus.length}</Badge>
+          <Badge color="indigo">NUMA {groups.length}</Badge>
+          <Badge color="green">{t("topology.fastLinkCount", { count: countFastLinks(topology) })}</Badge>
+        </div>
         {highlight && (highlight.gpus.length || highlight.links.length || highlight.numa.length) ? (
-          <Tag color="processing">{t("topology.scheduleHighlight")}</Tag>
+          <Badge status="info">{t("topology.scheduleHighlight")}</Badge>
         ) : (
-          <Tag>{t("topology.view")}</Tag>
+          <Badge>{t("topology.view")}</Badge>
         )}
       </div>
 
@@ -431,9 +431,9 @@ function Legend() {
       <svg width={22} height={10}>
         <line x1={0} y1={5} x2={22} y2={5} stroke={color} strokeWidth={w} strokeLinecap="round" />
       </svg>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+      <span className="text-fg-muted text-label">
         {text}
-      </Typography.Text>
+      </span>
     </span>
   );
 
@@ -442,9 +442,9 @@ function Legend() {
       {item(colors.success, 3.25, t("topology.legend.fast"))}
       {item(colors.border, 1.5, t("topology.legend.other"))}
       {item(colors.chartPrimary, 3.25, t("topology.legend.selected"))}
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+      <span className="text-fg-muted text-label">
         {t("topology.legend.cardDescription")}
-      </Typography.Text>
+      </span>
     </div>
   );
 }

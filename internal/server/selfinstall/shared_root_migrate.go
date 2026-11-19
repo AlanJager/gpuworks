@@ -21,10 +21,13 @@ import (
 // server's own entries (see sharedApplicationRoot). A privileged install or
 // upgrade migrates the older shape forward; nothing else may write to it.
 
-// sharedRootMode is what the shared application root becomes: root-owned and
-// writable by root only. It carries no setgid bit: the server's own entries get
-// their group from chownTree, not from inheritance.
-const sharedRootMode = 0o755
+// sharedRootChmod is the mode the shared application root becomes, as chmod is
+// given it: 0755, root-owned and writable by root only. It carries no setgid
+// bit: the server's own entries get their group from chownTree, not from
+// inheritance. GNU chmod keeps a directory's setuid and setgid bits for a
+// numeric mode of four digits or fewer (`chmod 0755` leaves an older root at
+// 2755); the fifth digit clears them, and BSD chmod reads it as the same mode.
+const sharedRootChmod = "00755"
 
 // Layout change kinds recorded in the install history.
 const (
@@ -88,8 +91,8 @@ type legacySharedRootError struct {
 
 func (e *legacySharedRootError) Error() string {
 	return fmt.Sprintf("shared application root %s still has an older installer's ownership (uid %d, gid %d, mode %s) and must become a root-owned directory that only root can write; "+
-		"rerun this command with sudo to migrate it (for example `sudo %s upgrade`), or migrate it by hand with `sudo chown root:root %s && sudo chmod %04o %s`",
-		e.Dir, e.UID, e.GID, octalMode(e.Mode), e.Binary, e.Dir, sharedRootMode, e.Dir)
+		"rerun this command with sudo to migrate it (for example `sudo %s upgrade`), or migrate it by hand with `sudo chown root:root %s && sudo chmod %s %s`",
+		e.Dir, e.UID, e.GID, octalMode(e.Mode), e.Binary, e.Dir, sharedRootChmod, e.Dir)
 }
 
 func isLegacySharedRoot(err error) bool {
@@ -149,8 +152,8 @@ func (i *Installer) migrateLegacySharedRoot(ctx context.Context, serviceUsers ..
 	// else changed the directory, which the operator should look at first.
 	dir := legacy.Dir
 	if !i.legacyRootOwner(legacy.UID, serviceUsers) {
-		return fmt.Errorf("refusing to migrate the shared application root %s: it is owned by uid %d, which is neither root nor the service account; check who changed it, then fix it with `sudo chown root:root %s && sudo chmod %04o %s`",
-			dir, legacy.UID, dir, sharedRootMode, dir)
+		return fmt.Errorf("refusing to migrate the shared application root %s: it is owned by uid %d, which is neither root nor the service account; check who changed it, then fix it with `sudo chown root:root %s && sudo chmod %s %s`",
+			dir, legacy.UID, dir, sharedRootChmod, dir)
 	}
 	// A parent another account can write could swap the directory for a
 	// symlink between this check and the commands below.
@@ -176,7 +179,7 @@ func (i *Installer) migrateLegacySharedRoot(ctx context.Context, serviceUsers ..
 	if err := i.deps.Run.Run(ctx, Command{Path: "chown", Args: []string{"-h", "0:0", dir}, Sudo: true}); err != nil {
 		return fmt.Errorf("migrate the shared application root %s: %w; nothing was changed, rerun the command to retry", dir, err)
 	}
-	if err := i.deps.Run.Run(ctx, Command{Path: "chmod", Args: []string{fmt.Sprintf("%04o", sharedRootMode), dir}, Sudo: true}); err != nil {
+	if err := i.deps.Run.Run(ctx, Command{Path: "chmod", Args: []string{sharedRootChmod, dir}, Sudo: true}); err != nil {
 		return fmt.Errorf("migrate the shared application root %s: %w; it is now owned by root but still writable by its group, rerun the command to finish", dir, err)
 	}
 	i.sharedRootMigrated = true
@@ -210,22 +213,12 @@ func (i *Installer) migrateLegacySharedRoot(ctx context.Context, serviceUsers ..
 // attribute (an older installer also handed the node agent's files to the
 // service account).
 func (i *Installer) noteForeignEntries() {
-	entries, err := os.ReadDir(i.layout.Dir)
+	paths, err := i.otherEntries()
 	if err != nil {
 		i.io.Warn("warning: could not list %s for entries the service account left there: %v", i.layout.Dir, err)
 		return
 	}
-	known := map[string]bool{}
-	for _, path := range []string{i.layout.Binary(), serverconfig.Path(i.layout.Dir), i.layout.sharedConfigDir(),
-		filepath.Join(i.layout.Dir, installJSONFile), i.layout.PIDFile(), i.layout.LockPath(), i.layout.TmpDir(),
-		i.layout.BackupsDir, i.layout.DataDir, i.layout.LogsDir} {
-		known[filepath.Clean(path)] = true
-	}
-	for _, entry := range entries {
-		path := filepath.Join(i.layout.Dir, entry.Name())
-		if known[path] {
-			continue
-		}
+	for _, path := range paths {
 		info, err := os.Lstat(path)
 		if err != nil {
 			continue
@@ -239,6 +232,29 @@ func (i *Installer) noteForeignEntries() {
 		i.io.Warn("warning: %s is owned by uid %d, not root, and is not the server's; it was left as it is: check who created it, and remove it unless this host's node agent installed it",
 			path, stat.Uid)
 	}
+}
+
+// otherEntries lists the install directory's entries that are not the
+// server's: in the shared application root, the node agent's files and
+// anything else another program put there.
+func (i *Installer) otherEntries() ([]string, error) {
+	entries, err := os.ReadDir(i.layout.Dir)
+	if err != nil {
+		return nil, err
+	}
+	known := map[string]bool{}
+	for _, path := range []string{i.layout.Binary(), serverconfig.Path(i.layout.Dir), i.layout.sharedConfigDir(),
+		filepath.Join(i.layout.Dir, installJSONFile), i.layout.PIDFile(), i.layout.LockPath(), i.layout.TmpDir(),
+		i.layout.BackupsDir, i.layout.DataDir, i.layout.LogsDir, i.layout.upgradeStagingDir()} {
+		known[filepath.Clean(path)] = true
+	}
+	var other []string
+	for _, entry := range entries {
+		if path := filepath.Join(i.layout.Dir, entry.Name()); !known[path] {
+			other = append(other, path)
+		}
+	}
+	return other, nil
 }
 
 // changedSoFar finishes a refusal message: "nothing was changed", unless this

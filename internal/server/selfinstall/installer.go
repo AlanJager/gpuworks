@@ -25,6 +25,9 @@ type Installer struct {
 	// sharedRootMigrated says this run moved the shared root to root's
 	// ownership, so a later refusal cannot claim nothing was changed.
 	sharedRootMigrated bool
+	// staging is where a command-line upgrade stages its release (see
+	// upgradeStaging); nil until the upgrade first needs it.
+	staging *upgradeStaging
 }
 
 // New builds an installer for a layout.

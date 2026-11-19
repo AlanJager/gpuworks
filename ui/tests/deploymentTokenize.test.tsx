@@ -87,7 +87,7 @@ test("the deploy form shows tokenize on for any engine, sends only what the oper
   assert.equal(other.disabled, false);
   screen.getByText(note);
 
-  fireEvent.mouseEnter(screen.getByRole("img", { name: "About the tokenize API" }));
+  fireEvent.focus(screen.getByRole("button", { name: "About the tokenize API" }));
   await waitFor(() => screen.getByText(/forwards POST \/v1\/tokenize and \/v1\/detokenize/));
 });
 

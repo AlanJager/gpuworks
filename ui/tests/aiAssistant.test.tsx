@@ -30,7 +30,7 @@ const { Drawer } = await import("antd");
 const { default: AIAssistant } = await import("../src/components/AIAssistant.tsx");
 const { default: AssistantPanel } = await import("../src/assistant/AssistantPanel.tsx");
 const { AssistantProvider, useAssistantSubjects } = await import("../src/assistant/AssistantContext.tsx");
-const { stepDetail, StepList, selfCorrectable } = await import("../src/components/AIAssistantParts.tsx");
+const { stepDetail, StepList, selfCorrectable, FindingCards, FitTable } = await import("../src/components/AIAssistantParts.tsx");
 type PageSubject = import("../src/assistant/AssistantContext.tsx").PageSubject;
 const originalFetch = globalThis.fetch;
 
@@ -411,6 +411,46 @@ test("the step list tells a self-correctable mistake from a failure", () => {
   assert.ok(!note.className.includes("danger"));
   assert.ok(screen.getByText("HTTP 500: database is locked").className.includes("danger"));
   assert.equal(screen.queryByText(jqError), null);
+});
+
+// The deterministic findings read as warnings with the matched log lines; no
+// finding says so in one line.
+test("finding cards show each matched failure with its evidence, or say there is none", () => {
+  render(<I18nextProvider i18n={i18n}><FindingCards findings={[{ code: "CUDA_OOM", evidence: [{ line: "torch.OutOfMemoryError: CUDA out of memory" }, { line: "Tried to allocate 2.00 GiB" }] }]} /></I18nextProvider>);
+  const card = screen.getByRole("alert");
+  assert.ok(within(card).getByText(i18n.t("finding.CUDA_OOM.title")));
+  assert.ok(within(card).getByText(i18n.t("finding.ruleTag")));
+  assert.equal(within(card).getByLabelText(i18n.t("finding.evidence")).textContent, "torch.OutOfMemoryError: CUDA out of memory\nTried to allocate 2.00 GiB");
+  assert.ok(screen.getByText(i18n.t("finding.verifyNote")));
+  cleanup();
+  render(<I18nextProvider i18n={i18n}><FindingCards findings={[]} /></I18nextProvider>);
+  assert.ok(screen.getByText(i18n.t("finding.none")));
+  assert.equal(screen.queryByRole("alert"), null);
+});
+
+// The estimator's fit is a small fact table: one row per card type with the
+// columns the server computed; no online card says so instead.
+test("the fit table lists each card type with whether the model runs on it", () => {
+  const gib = 1024 ** 3;
+  const row = { vendor: "nvidia", memory_bytes: 80 * gib, nodes: 2, max_cards_per_node: 8, dtype_supported: true, usable_bytes: 72 * gib };
+  render(<I18nextProvider i18n={i18n}><FitTable fit={{ model_id: 1, weight_bytes: 140 * gib, dtype: "bf16", gpu_memory_utilization: 0.9, rows: [
+    { ...row, name: "H100", cards: 16, unusable: 1, fast_link_cards: 8, fits: true, tp: 2, per_gpu_bytes: 70 * gib, headroom_bytes: 2 * gib },
+    { ...row, name: "L4", cards: 4, unusable: 0, fast_link_cards: 1, fits: false, tp: 0, per_gpu_bytes: 140 * gib, headroom_bytes: 0, dtype_supported: false, dtype_note: "no bf16" },
+  ] }} /></I18nextProvider>);
+  const table = screen.getByRole("table");
+  assert.deepEqual(within(table).getAllByRole("columnheader").map((h) => h.textContent), [i18n.t("fit.card"), i18n.t("fit.runs"), i18n.t("fit.link"), i18n.t("fit.perGPU"), i18n.t("fit.headroom")]);
+  const [, h100, l4] = within(table).getAllByRole("row");
+  assert.ok(within(h100).getByText(i18n.t("fit.yes", { tp: 2 })));
+  assert.ok(within(h100).getByText(i18n.t("fit.unusable", { count: 1 })));
+  assert.ok(within(h100).getByText(i18n.t("fit.fastLink", { count: 8 })));
+  assert.ok(within(l4).getByText(i18n.t("fit.no")));
+  assert.ok(within(l4).getByText(i18n.t("fit.pcieOnly")));
+  assert.ok(within(l4).getByText(i18n.t("fit.dtypeUnsupported", { dtype: "bf16" })));
+  assert.ok(screen.getByText(i18n.t("fit.note", { util: 90 })));
+  cleanup();
+  render(<I18nextProvider i18n={i18n}><FitTable fit={{ model_id: 1, weight_bytes: 0, gpu_memory_utilization: 0.9, rows: [] }} /></I18nextProvider>);
+  assert.ok(screen.getByText(i18n.t("fit.noNodes")));
+  assert.equal(screen.queryByRole("table"), null);
 });
 
 test("selfCorrectable covers only the model's own mistakes", () => {

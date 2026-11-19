@@ -1,5 +1,7 @@
-import { CopyOutlined, ExclamationCircleFilled } from "@ant-design/icons";
-import { Button, Space, Tooltip, Typography } from "antd";
+import { ExclamationCircleFilled } from "@ant-design/icons";
+import { Button } from "./ui/button";
+import { Tooltip } from "./ui/tooltip";
+import { ConsoleIcon } from "../ui-kit/consoleIcons";
 import { useTranslation } from "react-i18next";
 import type { Node } from "../api";
 import { runtimePluginBlocked } from "../nodes/runtimeGpuBlock";
@@ -84,19 +86,19 @@ export default function RuntimePluginStatus({ node }: { node: RuntimePluginNode 
 
   return (
     <>
-      <Space wrap>
-        <Tooltip title={t("runtime.pluginMissingHint")}>
-          <Space size={4} role="alert">
-            <ExclamationCircleFilled style={{ color: "#faad14" }} />
-            <Typography.Text type="warning">{pluginName ? `${pluginName} · ` : ""}{t("runtime.pluginNotInstalled")}</Typography.Text>
-          </Space>
+      <div className="flex flex-wrap items-center gap-2">
+        <Tooltip content={t("runtime.pluginMissingHint")}>
+          <span className="inline-flex items-center gap-1" role="alert">
+            <ExclamationCircleFilled className="text-fg-warning" />
+            <span className="text-fg-warning">{pluginName ? `${pluginName} · ` : ""}{t("runtime.pluginNotInstalled")}</span>
+          </span>
         </Tooltip>
         {command && (
-          <Button size="small" icon={<CopyOutlined />} onClick={() => void copyInstallCommand()}>
+          <Button size="xs" variant="tertiary" leadingIcon={ConsoleIcon.copy} onClick={() => void copyInstallCommand()}>
             {t("runtime.copyInstallCommand")}
           </Button>
         )}
-      </Space>
+      </div>
       {copyHolder}
     </>
   );

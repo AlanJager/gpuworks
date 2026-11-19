@@ -1,5 +1,4 @@
 import { Notice } from "../ui-kit/Notice";
-import { Typography } from "antd";
 import { Progress } from "../pages/DeploymentControls";
 import { useTranslation } from "react-i18next";
 import { api, usePolling, type MetricSeries } from "../api";
@@ -91,9 +90,9 @@ export default function InstanceGpuStrip({ nodeUuid, gpuIndexes, instanceUuid, v
         ))}
       </div>}
       {hasAnyMetric && gpuIndexes.length >= 2 && (
-        <Typography.Text type="secondary" style={{ display: "block", marginTop: 8, fontSize: "var(--font-size-label)" }}>
+        <span className="text-fg-muted block mt-2 text-label">
           {t("instanceGpu.groupSkew", { ratio: skew != null ? `${skew.toFixed(2)}x` : "—" })}
-        </Typography.Text>
+        </span>
       )}
     </div>
   );
@@ -126,32 +125,32 @@ function GpuTile({ index, snapshot, sliceLimit, historical, t }: { historical: b
     snapshot.memoryUsed != null && snapshot.memoryTotal
       ? Math.min(100, (snapshot.memoryUsed / snapshot.memoryTotal) * 100)
       : undefined;
-  const timestamp = snapshot.sampledAt != null && <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>{t("instanceGpu.lastSample", { time: formatTimeSec(snapshot.sampledAt) })}</Typography.Text>;
+  const timestamp = snapshot.sampledAt != null && <span className="text-fg-muted text-label">{t("instanceGpu.lastSample", { time: formatTimeSec(snapshot.sampledAt) })}</span>;
   if (sliceLimit) {
     const slicePct = snapshot.sliceMemoryUsed != null ? Math.min(100, (snapshot.sliceMemoryUsed / sliceLimit) * 100) : undefined;
     const smPct = snapshot.sliceSM != null ? Math.max(0, Math.min(100, snapshot.sliceSM)) : undefined;
     return (
       <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: "var(--radius-panel)", padding: "10px 12px", background: colors.white }}>
-        <Typography.Text strong style={{ display: "block", marginBottom: 6 }}>{t("instanceGpu.sliceTitle", { index, limit: (sliceLimit / GIB).toFixed(1) })}</Typography.Text>
+        <span className="block mb-1.5 font-semibold">{t("instanceGpu.sliceTitle", { index, limit: (sliceLimit / GIB).toFixed(1) })}</span>
         <TileBar
           label={t("instanceGpu.sliceVram")}
           percent={slicePct}
           value={snapshot.sliceMemoryUsed == null ? "—" : `${(snapshot.sliceMemoryUsed / GIB).toFixed(1)} / ${(sliceLimit / GIB).toFixed(1)} GiB`}
         />
         <TileBar label={t("instanceGpu.sliceSM")} percent={smPct} value={smPct == null ? "—" : `${smPct.toFixed(0)}%`} />
-        {!historical && <Typography.Text type="secondary" style={{ display: "block", marginTop: 6, fontSize: "var(--font-size-label)" }}>
+        {!historical && <span className="text-fg-muted block mt-1.5 text-label">
           {t("instanceGpu.wholeCard", {
             util: utilPct == null ? "—" : `${utilPct.toFixed(0)}%`,
             vram: snapshot.memoryUsed == null ? "—" : `${(snapshot.memoryUsed / GIB).toFixed(1)} / ${snapshot.memoryTotal ? (snapshot.memoryTotal / GIB).toFixed(0) : "—"} GiB`,
           })}
-        </Typography.Text>}
+        </span>}
         {timestamp}
       </div>
     );
   }
   return (
     <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: "var(--radius-panel)", padding: "10px 12px", background: colors.white }}>
-      <Typography.Text strong style={{ display: "block", marginBottom: 6 }}>GPU{index}</Typography.Text>
+      <span className="block mb-1.5 font-semibold">GPU{index}</span>
       <TileBar label={t("instanceGpu.utilization")} percent={utilPct} value={utilPct == null ? "—" : `${utilPct.toFixed(0)}%`} />
       <TileBar
         label={t("instanceGpu.vram")}
@@ -167,12 +166,12 @@ function GpuTile({ index, snapshot, sliceLimit, historical, t }: { historical: b
         }
       />
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-        <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>
+        <span className="text-fg-muted text-label">
           {t("instanceGpu.temperature")} {snapshot.temperature == null ? "—" : `${snapshot.temperature.toFixed(0)}C`}
-        </Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>
+        </span>
+        <span className="text-fg-muted text-label">
           {t("instanceGpu.power")} {snapshot.power == null ? "—" : `${snapshot.power.toFixed(0)}W`}
-        </Typography.Text>
+        </span>
       </div>
       {timestamp}
     </div>
@@ -183,8 +182,8 @@ function TileBar({ label, percent, value, hideBar }: { label: string; percent?: 
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-        <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>{label}</Typography.Text>
-        <Typography.Text style={{ fontSize: "var(--font-size-label)" }}>{value}</Typography.Text>
+        <span className="text-fg-muted text-label">{label}</span>
+        <span className="text-label">{value}</span>
       </div>
       {!hideBar && (
         <Progress label={label} style={{ visibility: percent == null ? "hidden" : undefined }} percent={percent ?? 0} size="small" showInfo={false} strokeColor={colors.chartPrimary} trailColor={colors.borderSoft} />

@@ -138,17 +138,22 @@ func (s *Store) SetNodeSSHCredential(uuid, host string, port int, user string, s
 	return &row, nil
 }
 
-// NodesWithSSHHost returns the nodes whose saved SSH endpoint is host, so the
-// access wizard can say a host is already a node here. It runs once per
-// precheck or install, not per node or event.
-func (s *Store) NodesWithSSHHost(host string) ([]Node, error) {
+// NodesWithSSHEndpoint returns the nodes whose saved SSH endpoint is
+// host:port, so the access wizard can say a host is already a node here. The
+// port is part of the endpoint: hosts behind one jump gateway or NAT share its
+// address and differ only by forwarded port. A port below 1 means 22. It runs
+// once per precheck or install, not per node or event.
+func (s *Store) NodesWithSSHEndpoint(host string, port int) ([]Node, error) {
 	host = strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(host), "]"), "[")
 	var nodes []Node
 	if host == "" {
 		return nodes, nil
 	}
+	if port < 1 {
+		port = 22
+	}
 	err := s.db.Joins("JOIN node_ssh_credential ON node_ssh_credential.node_id = nodes.id").
-		Where("node_ssh_credential.host = ?", host).Order("nodes.id").Find(&nodes).Error
+		Where("node_ssh_credential.host = ? AND node_ssh_credential.port = ?", host, port).Order("nodes.id").Find(&nodes).Error
 	return nodes, err
 }
 

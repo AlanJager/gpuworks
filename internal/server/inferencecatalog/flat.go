@@ -94,6 +94,10 @@ type InferenceSpec struct {
 	Placement          *Placement        `yaml:"placement,omitempty" json:"placement,omitempty"`
 	API                *APIContract      `yaml:"api,omitempty" json:"api,omitempty"`
 	Components         []Component       `yaml:"components,omitempty" json:"components,omitempty"`
+	// PerformanceTradeoffs states why the spec keeps settings the engine
+	// registry grades as performance costs (perf_tradeoffs.go). Catalog
+	// content only: the database projection does not store it.
+	PerformanceTradeoffs []PerformanceTradeoff `yaml:"performance_tradeoffs,omitempty" json:"performance_tradeoffs,omitempty"`
 	// PDMode marks a spec that exists for PD disaggregated deployment in that
 	// mode (a name from package pdmode): it may only be deployed as PD, and
 	// its args and env are what the model needs there (plan D15).
@@ -516,6 +520,9 @@ func validateSpec(modelID string, index int, spec *InferenceSpec, names map[stri
 		if strings.TrimSpace(key) == "" {
 			return fmt.Errorf("model %s spec %s has an empty env key", modelID, spec.Name)
 		}
+	}
+	if err := validatePerformanceTradeoffs(modelID, spec); err != nil {
+		return err
 	}
 	return validateExecutableContract(modelID, spec)
 }

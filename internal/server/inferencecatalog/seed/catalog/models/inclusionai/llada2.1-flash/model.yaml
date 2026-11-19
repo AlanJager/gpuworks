@@ -38,6 +38,11 @@ specs:
   - --attention-backend
   - flashinfer
   - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: memory_fit
+    detail_en: "SGLang's CUDA graph capture is oversized for this model on A100; the profile runs without it."
+    detail_zh: "该模型在 A100 上的 SGLang CUDA 图捕获占用过大，此规格不做图捕获。"
   api:
     health_endpoint: /health
     operations:

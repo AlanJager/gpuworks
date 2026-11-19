@@ -91,7 +91,7 @@ test("hovering a healthy node keeps unobserved times unknown and omitted zero at
   for (const recovery_attempts of [undefined, 0]) {
     show({ state: "online", recovery_attempts });
     assert.equal(screen.queryByRole("img"), null);
-    fireEvent.mouseOver(screen.getByLabelText(/^在线 · /));
+    fireEvent.focus(screen.getByLabelText(/^在线 · /));
     const history = await screen.findByRole("tooltip");
     assert.equal((history.textContent?.match(/未观测/g) ?? []).length, 2);
     assert.match(history.textContent ?? "", /已尝试恢复 0 次/);

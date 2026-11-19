@@ -292,9 +292,9 @@ const (
 	CheckExistingAgentUnreadable = "CHECK_EXISTING_AGENT_UNREADABLE"
 	// CheckExistingAgentReplaced: the install replaced {replaced} on request.
 	CheckExistingAgentReplaced = "CHECK_EXISTING_AGENT_REPLACED"
-	// CheckExistingNodeNone: no node here uses this SSH host.
+	// CheckExistingNodeNone: no node here uses this SSH address.
 	CheckExistingNodeNone = "CHECK_EXISTING_NODE_NONE"
-	// CheckExistingNodeFound: node {node} already uses this SSH host
+	// CheckExistingNodeFound: node {node} already uses this SSH address
 	// ({host}); its agent would be replaced.
 	CheckExistingNodeFound = "CHECK_EXISTING_NODE_FOUND"
 	// CheckExistingNodeUnknown: the nodes could not be looked up.
