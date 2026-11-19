@@ -281,6 +281,11 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 		}
 	}
 	for owner := range w.down {
+		// An owner uninstalled in this commit keeps no down record: the
+		// batch writes its down rows after its uninstall.
+		if uninstalled[owner] {
+			continue
+		}
 		if since, down := s.down[owner]; down {
 			b.Down = append(b.Down, pstate.Down{Owner: owner, SinceMS: since})
 		} else {

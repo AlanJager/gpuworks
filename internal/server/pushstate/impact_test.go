@@ -170,3 +170,36 @@ func TestOwnerReport(t *testing.T) {
 		t.Fatalf("report of an unknown owner = %+v", r)
 	}
 }
+
+// An owner that went down just before its uninstall, in the same commit of
+// the writer, keeps no down record: the uninstall's delete is not followed
+// by the down row.
+func TestAnUninstallInTheTickOfTheOwnersDownLeavesNoDownRecord(t *testing.T) {
+	st := openStore(t, "")
+	h := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z")).load().run()
+	h.push(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, opsHolds)
+	h.s.OwnerUp("acme_ops", 1)
+	h.stop()
+	h.s.OwnerDown("acme_ops")
+	h.s.SetPackages([]Package{acmeAuthority, acmeBackup})
+	done := make(chan error, 1)
+	go func() { done <- h.s.Uninstall(context.Background(), "acme_ops") }()
+	h.waitFor("the uninstall queued beside the down record", func() bool {
+		h.s.mu.Lock()
+		defer h.s.mu.Unlock()
+		return len(h.s.ops) == 1 && h.s.downDirty["acme_ops"]
+	})
+	h.run()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	snap, err := st.LoadPushedState(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range snap.Down {
+		if d.Owner == "acme_ops" {
+			t.Fatalf("the uninstall left the down record %+v", d)
+		}
+	}
+}
