@@ -78,8 +78,9 @@ type NodeRuntime struct {
 	// outside the schedule ends when the agent does.
 	cardSmokeCtx context.Context
 	// instanceCardIdents is a seam beside heldCards: the cards one
-	// instance was given, whatever state it reached.
-	instanceCardIdents func(uuid string) []string
+	// instance was given, whatever state it reached, and the cards the
+	// other instances are serving on (engine.ServingCardsBesides).
+	instanceCardIdents func(uuid string) ([]string, engine.HeldCards)
 	// heldCards overrides where cardsInUse reads this agent's own
 	// placements, so the card occupancy rules can be tested without an
 	// engine starting containers. Nil means ask the engine.

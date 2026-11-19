@@ -270,11 +270,11 @@ func TestAFailedInstanceMakesItsCardsAnswer(t *testing.T) {
 	bad := accelerator.CardIdent("GPU-40", "0000:40:00.0")
 	// Held for the instance, as the agent holds a card it placed work on.
 	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Idents: []string{bad}} }
-	n.instanceCardIdents = func(uuid string) []string {
+	n.instanceCardIdents = func(uuid string) ([]string, engine.HeldCards) {
 		if uuid == "inst-1" {
-			return []string{bad}
+			return []string{bad}, engine.HeldCards{}
 		}
-		return nil
+		return nil, engine.HeldCards{}
 	}
 	check := hostCheck(t, "nvidia")
 	answering := check
