@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CardHealthRecord, CardHealthRecords } from "../../api";
 import EmptyState from "../EmptyState";
+import { Pager } from "../../ui-kit/Pager";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { ListPagination } from "../ui/list-pagination";
 import { Skeleton } from "../ui/skeleton";
 import { cardName, checkName, codeText, durationText, localTime, statusName } from "./text";
 
@@ -28,7 +28,6 @@ export default function HealthRecords({
   showCard?: boolean;
 }) {
   const { t } = useTranslation("nodes");
-  const { t: tc } = useTranslation("common");
   const days = data?.retention_days ?? 30;
   return (
     <div className="card-health-records">
@@ -53,25 +52,7 @@ export default function HealthRecords({
         </ul>
       )}
       {data && data.total > data.page_size && (
-        <ListPagination
-          className="mt-2 border-t-0 px-0"
-          page={page - 1}
-          pageSize={data.page_size}
-          pageSizeOptions={[data.page_size]}
-          total={data.total}
-          onPageChange={(next) => onPage(next + 1)}
-          onPageSizeChange={() => {}}
-          labels={{
-            total: (count) => tc("resourceTable.total", { count }),
-            rowsPerPage: tc("resourceTable.rowsPerPage"),
-            pageSize: tc("resourceTable.rowsPerPage"),
-            pageSummary: (current, count) => tc("resourceTable.pageSummary", { current, count }),
-            firstPage: tc("resourceTable.firstPage"),
-            previousPage: tc("resourceTable.previousPage"),
-            nextPage: tc("resourceTable.nextPage"),
-            lastPage: tc("resourceTable.lastPage"),
-          }}
-        />
+        <Pager className="mt-2" page={page} pageSize={data.page_size} total={data.total} onChange={onPage} />
       )}
     </div>
   );

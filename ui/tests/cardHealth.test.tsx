@@ -272,6 +272,7 @@ test("the records list shows loading, empty and paged states and opens evidence 
   await screen.findByText("latest read");
 
   assert.ok(screen.getByText("Page 1 of 3"));
+  assert.equal(screen.queryByRole("combobox"), null, "the server fixes the page size, so there is no size select");
   assert.equal((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled, true);
   await user.click(screen.getByRole("button", { name: "Next page" }));
   await user.click(screen.getByRole("button", { name: "Last page" }));
