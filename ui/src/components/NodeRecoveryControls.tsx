@@ -132,8 +132,10 @@ export function NodeSSHAccess({ node, onUpdated }: { node: Node; onUpdated: Upda
         {node.has_ssh_credential ? <Badge status="success">{t("ssh.configured")}</Badge> : <span className="text-fg-muted">{t("ssh.notConfigured")}</span>}
         <Button variant="tertiary" size="sm" onClick={() => void openEditor()}>{t(node.has_ssh_credential ? "ssh.edit" : "ssh.configure")}</Button>
       </span>
-      <Dialog open={open} onOpenChange={(next) => { if (!next) setOpen(false); }}>
-        <DialogContent closeButtonLabel={tCommon("actions.close")} style={DIALOG_STYLE}>
+      {/* The dialog stays open while a save is in flight: its result (and the
+          probe's) is reported against what the operator just entered. */}
+      <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) setOpen(false); }}>
+        <DialogContent closeButtonLabel={tCommon("actions.close")} closeButtonDisabled={saving} style={DIALOG_STYLE}>
           <DialogHeader><DialogTitle>{t("ssh.title")}</DialogTitle></DialogHeader>
           <form ref={formRef} noValidate onSubmit={formSubmit(form, () => formRef.current, save)} className="flex flex-col gap-4">
             <FormField control={form.control} name="host" required label={t("ssh.host")} rules={required(t("ssh.hostRequired"))}>
@@ -162,7 +164,7 @@ export function NodeSSHAccess({ node, onUpdated }: { node: Node; onUpdated: Upda
               <span>{info && <ConfirmPopover title={t("ssh.clearConfirm")} destructive onConfirm={remove}
                 trigger={<Button type="button" variant="destructive" loading={deleting}>{t("ssh.clear")}</Button>} />}</span>
               <span className="flex gap-2">
-                <Button type="button" variant="ghost" onClick={() => setOpen(false)}>{t("ssh.cancel")}</Button>
+                <Button type="button" variant="ghost" disabled={saving} onClick={() => setOpen(false)}>{t("ssh.cancel")}</Button>
                 <Button type="submit" variant="primary" loading={saving}>{t("ssh.save")}</Button>
               </span>
             </DialogFooter>

@@ -82,6 +82,12 @@ function wrap(node: React.ReactElement) {
   return render(<I18nextProvider i18n={i18n}><FeedbackHost />{node}</I18nextProvider>);
 }
 
+// A closed dialog may stay mounted through its exit transition, which jsdom never finishes.
+const dialogClosed = () => {
+  const dialog = screen.queryByRole("dialog");
+  return !dialog || dialog.hasAttribute("data-closed") || dialog.hasAttribute("data-ending-style");
+};
+
 const sshNode = { uuid: "n1", hostname: "gpu-1", has_ssh_credential: true } as never;
 
 test("the SSH channel editor shows the stored mode and saves the platform key without secrets", async () => {
@@ -172,6 +178,46 @@ test("saving reports a gpuworks-agent service that belongs to another server", a
   const warning = nodes.ssh.message.savedProbeForeignAgent.replace("{{server}}", "http://192.0.2.156:8800");
   await waitFor(() => assert.ok(screen.getByText(warning)));
   assert.equal(screen.queryAllByText(nodes.ssh.message.saved).length, savedBefore);
+});
+
+test("the SSH editor stays open while a save is in flight and closes once it lands", async () => {
+  stub("platformSSHKey", () => key);
+  stub("nodeSSH", () => ({ host: "gpu.example", port: 22, user: "root", has_password: false, has_private_key: false, auth_mode: "platform_key" }));
+  let land!: (value: unknown) => void;
+  const puts = stub("putNodeSSH", () => new Promise((resolve) => { land = resolve; }));
+  stub("node", () => sshNode);
+  wrap(<NodeSSHAccess node={sshNode} onUpdated={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: nodes.ssh.edit }));
+  await waitFor(() => assert.ok(screen.getByText(key.authorize_command)));
+  fireEvent.click(screen.getByRole("button", { name: nodes.ssh.save }));
+  await waitFor(() => assert.equal(puts.length, 1));
+  const cancel = screen.getByRole("button", { name: nodes.ssh.cancel }) as HTMLButtonElement;
+  const close = screen.getByRole("button", { name: common.actions.close }) as HTMLButtonElement;
+  await waitFor(() => assert.ok(cancel.disabled, "Cancel is disabled while saving"));
+  assert.ok(close.disabled, "the close button is disabled while saving");
+  const dialog = screen.getByRole("dialog");
+  fireEvent.keyDown(dialog, { key: "Escape", keyCode: 27 });
+  assert.ok(!dialogClosed(), "Escape does not dismiss a dialog that is saving");
+  fireEvent.click(close);
+  assert.ok(!dialogClosed(), "the close button does not dismiss a dialog that is saving");
+  land({ host: "gpu.example", port: 22, user: "root", has_password: false, has_private_key: false, auth_mode: "platform_key" });
+  await waitFor(() => assert.ok(screen.getByText(nodes.ssh.message.saved)));
+  await waitFor(() => assert.ok(dialogClosed(), "the editor closes once the save lands"));
+});
+
+test("the SSH editor asks for a port and sends nothing without one", async () => {
+  stub("platformSSHKey", () => key);
+  stub("nodeSSH", () => ({ host: "gpu.example", port: 22, user: "root", has_password: false, has_private_key: false, auth_mode: "platform_key" }));
+  const puts = stub("putNodeSSH", () => ({ host: "gpu.example", port: 22, user: "root", has_password: false, has_private_key: false, auth_mode: "platform_key" }));
+  stub("node", () => sshNode);
+  wrap(<NodeSSHAccess node={sshNode} onUpdated={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: nodes.ssh.edit }));
+  await waitFor(() => assert.ok(screen.getByText(key.authorize_command)));
+  fireEvent.change(screen.getByLabelText(nodes.ssh.port, required), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: nodes.ssh.save }));
+  await waitFor(() => assert.ok(screen.getByText(nodes.ssh.portRequired)));
+  assert.equal(puts.length, 0);
+  assert.ok(screen.getByRole("dialog"), "the editor stays open on a validation error");
 });
 
 test("the settings card shows the key, imports one and regenerates after confirming", async () => {

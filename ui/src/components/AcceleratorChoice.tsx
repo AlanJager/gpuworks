@@ -63,9 +63,12 @@ export default function AcceleratorChoice({ node, onUpdated }: { node: Accelerat
     <div className="flex flex-col items-start gap-1">
       <Select size="sm" value={preference} disabled={loading} onValueChange={(value) => void choose(value)}>
         {/* A model name such as "AD102 [GeForce RTX 4090]" is longer than the
-            select; the list grows to fit it instead of cutting it off. */}
+            select. The list sizes to its longest option, so it grows past the
+            trigger, but no wider than the space the viewport leaves it: on a
+            phone a long option ends in an ellipsis instead of running off the
+            screen. */}
         <SelectTrigger aria-label={t("detail.accelerator")} aria-busy={loading || undefined} className="min-w-[220px]" />
-        <SelectContent>
+        <SelectContent className="max-w-[var(--available-width)]">
           {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
         </SelectContent>
       </Select>
