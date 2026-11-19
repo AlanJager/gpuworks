@@ -201,9 +201,14 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
         ? <span>{n.ip || t("rail.noBootstrap")} · {t(isAcceleratorRDMA(detail.type) ? "nodeTable.cardCount" : "nodeTable.portCount", { count: n.hcas.length })}</span>
         : <Endpoint iface={n.interface} ip={n.ip} />,
     },
-    { title: t("nodeTable.roles"), dataIndex: "roles", key: "roles", width: 130, render: (_, n) => <RoleTags roles={n.roles} /> },
+    {
+      title: t("nodeTable.roles"), dataIndex: "roles", key: "roles", width: 130,
+      filters: detail.roles.map(role => ({ value: role, text: t(`role.${role}`, { defaultValue: role }) })),
+      render: (_, n) => <RoleTags roles={n.roles} />,
+    },
     {
       title: t("nodeTable.source"), dataIndex: "source", key: "source", width: 150,
+      filters: [{ value: "node", text: t("detail.directNode") }, { value: "label", text: t("source.label") }],
       render: (_, n) => n.source === "node" ? t("detail.directNode") : <span title={sourceText(t, n)}>{sourceText(t, n)}</span>,
     },
     {
@@ -228,7 +233,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
   ];
   const expandedRowRender = (node: NetworkNode) => {
     const attachment = attachments.get(node.attachment_id);
-    return <dl className="ms-10 grid gap-3 border-s-2 border-border bg-muted px-4 py-3 text-body">
+    return <dl className="network-node-details ms-10 grid gap-3 border-s-2 border-border px-4 py-3 text-body">
       {rails ? (
         <>
           <div>

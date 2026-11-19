@@ -14,7 +14,8 @@ import (
 // searchNetworkTargets uses the same effective nodes and attachment fields as
 // the drawer. The latest test (potentially megabytes) is irrelevant to search.
 func (a *apiHandlers) searchNetworkTargets(w http.ResponseWriter, r *http.Request) {
-	kind := r.URL.Query().Get("kind")
+	params := r.URL.Query()
+	kind := params.Get("kind")
 	if kind != "nodes" && kind != "attachments" {
 		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "kind must be nodes or attachments", map[string]any{"field": "kind", "detail": "expected nodes or attachments"})
 		return
@@ -41,10 +42,10 @@ func (a *apiHandlers) searchNetworkTargets(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, matchNetworkTargets(detail, kind, r.URL.Query().Get("q")))
+	writeJSON(w, http.StatusOK, matchNetworkTargets(detail, kind, params.Get("q"), params["role"], params["source"]))
 }
 
-func matchNetworkTargets(detail dto.NetworkDetail, kind, query string) dto.NetworkTargetMatches {
+func matchNetworkTargets(detail dto.NetworkDetail, kind, query string, roles, sources []string) dto.NetworkTargetMatches {
 	q := strings.ToLower(strings.TrimSpace(query))
 	matches := func(fields ...string) bool {
 		for _, field := range fields {
@@ -72,6 +73,12 @@ func matchNetworkTargets(detail dto.NetworkDetail, kind, query string) dto.Netwo
 		return out
 	}
 	for _, n := range detail.Nodes {
+		if len(sources) > 0 && !slices.Contains(sources, n.Source) {
+			continue
+		}
+		if len(roles) > 0 && !slices.ContainsFunc(n.Roles, func(role string) bool { return slices.Contains(roles, role) }) {
+			continue
+		}
 		hit := directMatches[n.AttachmentID] || matches(n.NodeName, n.NodeUUID, n.IP, n.Interface) ||
 			(n.LabelKey != "" && matches(n.LabelKey+"="+n.LabelValue)) ||
 			slices.ContainsFunc(n.HCAs, func(rail dto.NetworkRail) bool {

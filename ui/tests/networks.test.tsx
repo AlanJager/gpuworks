@@ -864,3 +864,37 @@ test("label target search retries errors and keeps returned labels editable", as
   await userEvent.keyboard("{Escape}");
   assert.ok(await screen.findByRole("link", { name: "h20-05" }));
 });
+
+test("role and attachment-source filters send multi-select values with the search across pages", async () => {
+  const nodes = Array.from({ length: 42 }, (_, index) => ({
+    ...detailFixture.nodes[0], node_uuid: `u-${index}`, node_name: `worker-${index}`,
+  }));
+  stub("network", async () => ({ ...detailFixture, roles: ["compute", "serving"], nodes }));
+  const requests: unknown[] = [];
+  stub("searchNetworkTargets", async (_id, kind, q, _signal, filters) => {
+    assert.equal(kind, "nodes");
+    requests.push([q, filters?.roles, filters?.source]);
+    return { ids: ["u-41"] };
+  });
+  const user = userEvent.setup();
+  renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
+  const input = await screen.findByRole("searchbox", { name: n.detail.searchNodes });
+  await user.click(screen.getByRole("button", { name: "Next page" }));
+  const roleButton = screen.getByRole("button", { name: `Filter by ${n.nodeTable.roles}` });
+  await user.click(roleButton);
+  await user.click(await screen.findByRole("checkbox", { name: n.role.compute }));
+  await user.click(screen.getByRole("checkbox", { name: n.role.serving }));
+  await user.keyboard("{Escape}");
+  await screen.findByRole("link", { name: "worker-41" });
+  assert.deepEqual(requests.at(-1), ["", ["compute", "serving"], []]);
+  const sourceButton = screen.getByRole("button", { name: `Filter by ${n.nodeTable.source}` });
+  await user.click(sourceButton);
+  await user.click(await screen.findByRole("checkbox", { name: n.source.label }));
+  await user.keyboard("{Escape}");
+  fireEvent.change(input, { target: { value: "mlx5" } });
+  await waitFor(() => assert.deepEqual(requests.at(-1), ["mlx5", ["compute", "serving"], ["label"]]));
+  await user.click(screen.getByRole("button", { name: "Clear filters" }));
+  await waitFor(() => assert.deepEqual(requests.at(-1), ["mlx5", [], []]));
+  fireEvent.change(input, { target: { value: "" } });
+  assert.ok(await screen.findByRole("link", { name: "worker-0" }));
+});

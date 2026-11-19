@@ -1,10 +1,14 @@
-import type { NetworkAttachBatchResult, NetworkAttachmentRequest, NetworkDetail, NetworkHCARequest, NetworkList, NetworkOverrideRequest, NetworkRequest, NetworkTestEstimate, NetworkTestRequest, NetworkTestRun } from "../../networkTypes";
+import type { NetworkAttachBatchResult, NetworkAttachmentRequest, NetworkDetail, NetworkHCARequest, NetworkList, NetworkNodeFilters, NetworkOverrideRequest, NetworkRequest, NetworkTestEstimate, NetworkTestRequest, NetworkTestRun } from "../../networkTypes";
 import { getJSON, sendJSON } from "../http";
 
 export const networkApi = {
   networks: () => getJSON<NetworkList>("/api/v1/networks"),
-  searchNetworkTargets: (id: number, kind: "nodes" | "attachments", q: string, signal?: AbortSignal) =>
-    getJSON<{ ids: string[] }>(`/api/v1/networks/${id}/search?${new URLSearchParams({ kind, q })}`, signal),
+  searchNetworkTargets: (id: number, kind: "nodes" | "attachments", q: string, signal?: AbortSignal, filters?: NetworkNodeFilters) => {
+    const params = new URLSearchParams({ kind, q });
+    for (const role of filters?.roles ?? []) params.append("role", role);
+    for (const source of filters?.source ?? []) params.append("source", source);
+    return getJSON<{ ids: string[] }>(`/api/v1/networks/${id}/search?${params}`, signal);
+  },
   network: (id: number) => getJSON<NetworkDetail>(`/api/v1/networks/${id}`),
   createNetwork: (body: NetworkRequest) =>
     sendJSON<NetworkDetail>("POST", "/api/v1/networks", body),

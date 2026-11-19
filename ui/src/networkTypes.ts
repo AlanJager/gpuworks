@@ -5,6 +5,11 @@ export type NetworkRole = "storage_sync" | "compute" | "serving";
 export type NetworkType = "host_ethernet" | "host_rdma" | "accelerator_rdma" | "accelerator_hccs";
 export type LinkLayer = "infiniband" | "roce" | "hccs";
 
+export interface NetworkNodeFilters {
+  roles?: string[];
+  source?: string[];
+}
+
 export interface NetworkWarning {
   code: "conflict" | "override_missing" | "link_layer_mismatch" | "rdma_no_hca" | "bootstrap_missing" | "hca_unusable" | "hca_mismatch" | string;
   params?: Record<string, string>;

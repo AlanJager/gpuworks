@@ -1559,3 +1559,6 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
 [data-theme="dark"] .vendor-mark-ink-dark { background: var(--vendor-logo-light); }
 .network-overview-nodes td:has(> button[aria-expanded]) { padding-inline: 0; }
 .network-overview-nodes td:first-child button[aria-expanded] { width: 36px; min-height: 36px; }
+
+/* Paint the full expanded cell, including the indentation and horizontal scroll area. */
+.network-overview-nodes td[colspan]:has(.network-node-details) { background-color: var(--muted); }
