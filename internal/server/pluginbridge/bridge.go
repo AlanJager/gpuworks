@@ -74,7 +74,10 @@ type Config struct {
 	// StaticFeatures name the module compiled into the server that
 	// declares each static feature key; no package may declare one.
 	StaticFeatures map[featuregate.Key]string
-	Log            *slog.Logger
+	// HealthChanged announces that the plugin health banners changed
+	// (HealthBanners), for the console to read its manifest again.
+	HealthChanged func()
+	Log           *slog.Logger
 }
 
 // Bridge is the plugin host of one server.
@@ -100,6 +103,9 @@ type Bridge struct {
 	// setup is not applied), by package id, until it is started, stopped
 	// or removed.
 	refusals map[string]error
+	// crashloops are the status params of each plugin that entered
+	// crashloop and has not run since (latchCrashloop), by package id.
+	crashloops map[string]map[string]any
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
 	running bool
@@ -112,6 +118,11 @@ type Bridge struct {
 
 	// routes is the route table compiled from entries on every refresh.
 	routes atomic.Pointer[RouteTable]
+
+	// health serializes refreshHealth; banners is its last judgement
+	// (HealthBanners), held in memory only.
+	health  sync.Mutex
+	banners atomic.Pointer[[]pushstate.Banner]
 }
 
 // identity is who a plugin's pushes come from, and the data its build
@@ -144,7 +155,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if cfg.HostSetup.Dir == "" {
 		cfg.HostSetup = hostsetup.DefaultRecords()
 	}
-	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{},
+	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{}, crashloops: map[string]map[string]any{},
 		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
@@ -163,6 +174,13 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	stateCfg.Packages = b.statePackagesLocked()
 	if stateCfg.Log == nil {
 		stateCfg.Log = cfg.Log.With("component", "pushed_state")
+	}
+	applied := stateCfg.Effects.Applied
+	stateCfg.Effects.Applied = func(owner, kind string, entries int) {
+		if applied != nil {
+			applied(owner, kind, entries)
+		}
+		b.countApplied(owner, kind, entries)
 	}
 	b.state = pushstate.New(stateCfg)
 	if err := b.state.Load(ctx); err != nil {
@@ -193,6 +211,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if b.host, err = pluginhost.New(hostCfg); err != nil {
 		return nil, err
 	}
+	b.refreshHealth()
 	return b, nil
 }
 
@@ -259,6 +278,8 @@ func (b *Bridge) stopAll() {
 // on-demand plugin is not reported either way: it may not push state, and
 // its idle cycles would otherwise write a down record each time.
 func (b *Bridge) onState(st pluginhost.Status) {
+	b.latchCrashloop(st)
+	defer b.refreshHealth()
 	b.mu.Lock()
 	ident, bound := b.pushers[st.ID]
 	b.mu.Unlock()

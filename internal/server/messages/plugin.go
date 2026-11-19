@@ -43,9 +43,11 @@ const (
 	// ErrorPluginBinaryMissing: the package has a server part but not
 	// exactly one executable for {os}/{arch} ({count} found).
 	ErrorPluginBinaryMissing = "PLUGIN_BINARY_MISSING"
-	// ErrorPluginIncompatible: the package requires {capability} at version
-	// {version}, and this server offers {offered} (0: not at all);
+	// ErrorPluginIncompatible: package {id} requires {capability} at
+	// version {version}, and this server offers {offered} (0: not at all);
 	// {min_core_hint} names the server release the package was built for.
+	// It is also the administrator banner of an enabled package that stopped
+	// verifying for this reason.
 	ErrorPluginIncompatible = "PLUGIN_INCOMPATIBLE"
 	// ErrorPluginPolicyRefused: plugin policy refuses the package ({rule},
 	// {value}): the site's policy in server.yaml (rule is the policy key),

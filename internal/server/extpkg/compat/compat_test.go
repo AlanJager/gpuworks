@@ -65,7 +65,7 @@ func TestCheckReportsEveryFinding(t *testing.T) {
 			t.Fatalf("finding %d = %+v, want %v", i, r.Packages[i], w)
 		}
 	}
-	if r.Packages[1].Params["capability"] != "node.app" {
+	if r.Packages[1].Params["capability"] != "node.app" || r.Packages[1].Params["id"] != "acme_b" {
 		t.Fatalf("incompatible params = %v", r.Packages[1].Params)
 	}
 	if ok := Check(nil, nil, nil, nil); !ok.OK() {

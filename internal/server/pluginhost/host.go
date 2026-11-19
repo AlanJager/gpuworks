@@ -34,6 +34,9 @@ type Host struct {
 
 	mu      sync.Mutex
 	plugins map[string]*instance
+	// metrics are each package's counters, kept across its processes
+	// until ForgetMetrics.
+	metrics map[string]*pluginMetrics
 	closed  bool
 }
 
@@ -42,7 +45,7 @@ func New(cfg Config) (*Host, error) {
 	if cfg.Core == nil {
 		return nil, errors.New("pluginhost: Config.Core is required")
 	}
-	h := &Host{cfg: cfg, timing: cfg.Timing.withDefaults(), spawner: cfg.Spawner, log: cfg.Log, plugins: map[string]*instance{}}
+	h := &Host{cfg: cfg, timing: cfg.Timing.withDefaults(), spawner: cfg.Spawner, log: cfg.Log, plugins: map[string]*instance{}, metrics: map[string]*pluginMetrics{}}
 	if h.log == nil {
 		h.log = slog.Default()
 	}
@@ -92,7 +95,7 @@ func (h *Host) Start(spec Spec) error {
 	if i, ok := h.plugins[spec.ID]; ok && !i.finished() {
 		return fmt.Errorf("pluginhost: %s is already supervised", spec.ID)
 	}
-	i := newInstance(h, spec)
+	i := newInstance(h, spec, h.metricsLocked(spec.ID))
 	h.plugins[spec.ID] = i
 	go i.supervise()
 	return nil
@@ -243,12 +246,23 @@ type Class struct {
 //   - PLUGIN_ROUTE_FAILED{id}: the plugin had the request and the call
 //     failed, so it may have been partly applied; not retryable.
 //
-// A plugin's own refusal is a normal response.
+// A plugin's own refusal is a normal response. Each call of a supervised
+// plugin is counted by class and outcome (gpuworks_plugin_calls_total) and
+// timed until the response headers or the refusal
+// (gpuworks_plugin_call_seconds).
 func (h *Host) Do(ctx context.Context, id string, req *http.Request, class Class) (*http.Response, error) {
 	i := h.get(id)
 	if i == nil {
 		return nil, Unavailable(id, string(StateStopped), ErrUnknownPlugin)
 	}
+	start := time.Now()
+	resp, outcome, err := h.do(ctx, i, req, class)
+	i.metrics.observeCall(class, outcome, time.Since(start))
+	return resp, err
+}
+
+func (h *Host) do(ctx context.Context, i *instance, req *http.Request, class Class) (*http.Response, CallOutcome, error) {
+	id := i.spec.ID
 	timeout := h.timing.CallTimeout
 	if d, ok := ctx.Deadline(); ok {
 		timeout = time.Until(d)
@@ -260,32 +274,33 @@ func (h *Host) Do(ctx context.Context, id string, req *http.Request, class Class
 		r, err := i.runFor(wait)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				return nil, timedOut(id, timeout, StateStarting, err)
+				return nil, CallTimeout, timedOut(id, timeout, StateStarting, err)
 			}
+			// runFor's own refusal is PLUGIN_UNAVAILABLE.
 			var pe *messages.ProductError
 			if errors.As(err, &pe) {
-				return nil, err
+				return nil, CallUnavailable, err
 			}
-			return nil, Unavailable(id, string(i.snapshot().State), err)
+			return nil, CallUnavailable, Unavailable(id, string(i.snapshot().State), err)
 		}
 		resp, err := r.conn.do(ctx, req, class, deadline, r.touch)
 		var busy *busyError
 		var failed *callError
 		switch {
 		case err == nil:
-			return resp, nil
+			return resp, CallOK, nil
 		case errors.Is(err, errDraining):
 			continue // stopping while idle; runFor waits for the next start
 		case errors.As(err, &busy):
-			return nil, messages.NewProductError(messages.ErrorPluginBusy, "the plugin is busy",
+			return nil, CallBusy, messages.NewProductError(messages.ErrorPluginBusy, "the plugin is busy",
 				map[string]any{"id": id, "limit": busy.limit})
 		case errors.Is(err, context.DeadlineExceeded):
-			return nil, timedOut(id, timeout, StateRunning, err)
+			return nil, CallTimeout, timedOut(id, timeout, StateRunning, err)
 		case errors.As(err, &failed) && failed.dispatched:
-			return nil, messages.WrapProductError(messages.ErrorPluginRouteFailed,
+			return nil, CallFailed, messages.WrapProductError(messages.ErrorPluginRouteFailed,
 				"the plugin failed while handling the request; it may have been partly applied", map[string]any{"id": id}, err)
 		default:
-			return nil, Unavailable(id, string(i.snapshot().State), err)
+			return nil, CallUnavailable, Unavailable(id, string(i.snapshot().State), err)
 		}
 	}
 }

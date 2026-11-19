@@ -3,7 +3,8 @@
 // disk tier, benchmark points and the gateway's operational counters. It sits
 // beside inferencemetrics, which names what engines and the gateway report
 // about inference; together they are every series the server stores and the
-// catalog GET /api/v1/monitor/metrics answers.
+// catalog GET /api/v1/monitor/metrics answers. ExportedDefinitions separately
+// names scrape-only families that are not ingested into that stored catalog.
 //
 // Like inferencemetrics it is a leaf: the agent's collectors and the server
 // share it, so it imports nothing from the rest of the repository. A series
@@ -25,17 +26,20 @@ const (
 	SourceBenchmark    Source = "benchmark"     // benchmark points, written by the server
 	SourcePeerTransfer Source = "peer_transfer" // server-coordinated peer transfers
 	SourceGateway      Source = "gateway"       // the gateway's operational counters
+	SourcePlugin       Source = "plugin"        // the plugin host's scrape-only operational metrics
 )
 
 // Kind is how a value behaves over time.
 type Kind string
 
 const (
-	Gauge   Kind = "gauge"   // a level, read as is
-	Counter Kind = "counter" // monotonically increasing; read as a rate
+	Gauge     Kind = "gauge"     // a level, read as is
+	Counter   Kind = "counter"   // monotonically increasing; read as a rate
+	Histogram Kind = "histogram" // a Prometheus histogram family with bucket, sum and count samples
 )
 
-// Definition is one stored series.
+// Definition is one stored series or exported Prometheus family. Definitions
+// lists stored series; ExportedDefinitions lists scrape-only families.
 type Definition struct {
 	Series string
 	Source Source
@@ -44,7 +48,8 @@ type Definition struct {
 	Unit string
 	// Labels are the label keys every sample carries (some samples carry
 	// more, such as deployment on per-instance series). Series the server
-	// writes itself carry node="server".
+	// stores itself carry node="server"; scrape-only families declare their
+	// actual labels and need not have a node label.
 	Labels []string
 	// Description says what the value measures, in English.
 	Description string

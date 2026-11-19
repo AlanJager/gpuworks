@@ -17,6 +17,9 @@ type instance struct {
 	h      *Host
 	spec   Spec
 	stderr *ring
+	// metrics are the package's counters, shared with the instances
+	// before and after this one.
+	metrics *pluginMetrics
 
 	mu     sync.Mutex
 	status Status
@@ -36,8 +39,8 @@ type instance struct {
 	consecutive int
 }
 
-func newInstance(h *Host, spec Spec) *instance {
-	return &instance{h: h, spec: spec, stderr: newRing(stderrRingBytes),
+func newInstance(h *Host, spec Spec, m *pluginMetrics) *instance {
+	return &instance{h: h, spec: spec, stderr: newRing(stderrRingBytes), metrics: m,
 		status:  Status{ID: spec.ID, State: StateStarting, Since: time.Now(), Isolation: "none"},
 		changed: make(chan struct{}), stop: make(chan struct{}), wake: make(chan struct{}, 1), done: make(chan struct{})}
 }
@@ -153,6 +156,11 @@ func (i *instance) supervise() {
 		timer := time.NewTimer(delay)
 		select {
 		case <-timer.C:
+			// An on-demand plugin goes idle now; its next start waits
+			// for a call and is not a restart.
+			if i.spec.Lifecycle != extapi.LifecycleOnDemand {
+				i.metrics.restarts.Add(1)
+			}
 		case <-i.stop:
 			timer.Stop()
 			i.set(StateStopped, "", nil)

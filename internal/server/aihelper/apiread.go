@@ -50,6 +50,7 @@ var deniedRoutes = map[string]string{
 	"/api/v1/kube/clusters/{uuid}/manifest":       "carries the cluster's enrollment token",
 	"/api/v1/terminal/sessions":                   "terminal audit records, with client addresses",
 	"/api/v1/plugins":                             "plugin administration, for administrators in the console only",
+	"/api/v1/metrics/plugins":                     "plugin metrics for a Prometheus scrape by administrators",
 }
 
 // Readable reports whether the assistant may read a GET route pattern.

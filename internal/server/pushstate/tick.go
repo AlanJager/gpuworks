@@ -195,6 +195,11 @@ func (s *State) commit(ctx context.Context) {
 	}
 	s.effects(holds, false, features)
 	for pp, r := range results {
+		// Counted here, not by the waiter: a push is committed whether
+		// or not its caller still waits for the ack.
+		if f := s.cfg.Effects.Applied; f != nil && r.ack != nil && r.ack.AppliedAt != nil {
+			f(pp.part.owner, pp.part.kind, EntriesOf(pp.part.table))
+		}
 		pp.done <- r
 	}
 	for _, o := range w.ops {
