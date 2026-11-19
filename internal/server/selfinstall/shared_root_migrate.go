@@ -21,15 +21,12 @@ import (
 // server's own entries (see sharedApplicationRoot). A privileged install or
 // upgrade migrates the older shape forward; nothing else may write to it.
 
-// sharedRootMode is what the shared application root becomes: root-owned and
-// writable by root only. It carries no setgid bit: the server's own entries get
-// their group from chownTree, not from inheritance.
-const sharedRootMode = 0o755
-
-// sharedRootChmod is sharedRootMode as chmod is given it. GNU chmod keeps a
-// directory's setuid and setgid bits for a numeric mode of four digits or
-// fewer (`chmod 0755` leaves an older root at 2755); the fifth digit clears
-// them, and BSD chmod reads it as the same mode.
+// sharedRootChmod is the mode the shared application root becomes, as chmod is
+// given it: 0755, root-owned and writable by root only. It carries no setgid
+// bit: the server's own entries get their group from chownTree, not from
+// inheritance. GNU chmod keeps a directory's setuid and setgid bits for a
+// numeric mode of four digits or fewer (`chmod 0755` leaves an older root at
+// 2755); the fifth digit clears them, and BSD chmod reads it as the same mode.
 const sharedRootChmod = "00755"
 
 // Layout change kinds recorded in the install history.
