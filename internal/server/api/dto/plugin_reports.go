@@ -50,7 +50,9 @@ type PluginImpact struct {
 	Confirm string `json:"confirm"`
 	// Tables are the tables the uninstall deletes, by kind.
 	Tables []PluginImpactTable `json:"tables"`
-	// Nodes are the ids of the nodes whose hold it releases, ascending.
+	// Nodes are the ids of the nodes whose hold it releases, ascending:
+	// the nodes only it holds, and the nodes held for capacity when no cap
+	// is left. A cap that stays but loosens frees nodes not counted here.
 	Nodes []uint `json:"nodes"`
 	// Features are the feature keys that become locked.
 	Features []string `json:"features"`

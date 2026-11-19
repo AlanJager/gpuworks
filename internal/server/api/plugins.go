@@ -228,10 +228,10 @@ func (a *apiHandlers) adminName(r *http.Request) string {
 
 // pluginErrorStatus maps a plugin administration refusal to its status:
 // not installed or no such override 404; a choice that conflicts with
-// what is installed (including a feature key or an id another owner already
-// provides), asks for approval or confirmation, or a disabled package 409; a package too large 413; any other
-// refused package or override (PLUGIN_OVERRIDE_REJECTED) 422; anything
-// else 500.
+// what is installed (including a feature key or an id another owner
+// already provides), asks for approval or confirmation, or a disabled
+// package 409; a package too large 413; any other refused package or
+// override (PLUGIN_OVERRIDE_REJECTED) 422; anything else 500.
 func pluginErrorStatus(err error) int {
 	var pe *messages.ProductError
 	if !errors.As(err, &pe) {

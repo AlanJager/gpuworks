@@ -22,7 +22,9 @@ type Impact struct {
 	Tables []ImpactTable
 	// Nodes are the nodes whose hold the uninstall releases, ascending: the
 	// owner's explicit holds no other owner also holds, and the nodes held
-	// for capacity when no cap is left.
+	// for capacity when no cap is left. When another owner's cap stays but
+	// loosens, the nodes it would free are not counted here; Caps names
+	// the loosened cap.
 	Nodes []uint
 	// Features are the feature keys that become locked, sorted.
 	Features []string

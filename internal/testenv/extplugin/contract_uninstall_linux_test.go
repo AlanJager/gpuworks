@@ -120,8 +120,11 @@ func marked(t *testing.T, _ *site, sv *server, id string) string {
 // (pluginbridge.PerPackageArtifacts). Rows and files are read directly;
 // structures in memory through what the server serves from them (the
 // administration routes, the console manifest, the route inventory and
-// the metrics). pluginbridge's TestUninstallLeavesNothingInMemory reads
-// the structures themselves.
+// the metrics). Several memory entries (host.logs, state.spawn,
+// state.ready, bridge.pushers, bridge.refusals) can only be seen here
+// through the package no longer being listed, which cannot fail on the
+// structure itself; pluginbridge's TestUninstallLeavesNothingInMemory
+// reads every structure directly and is their real check.
 var perPackageChecks = map[string]artifactCheck{
 	"db:plugin_markers":     marked,
 	"file:pkg":              underPackage("pkg"),
@@ -167,7 +170,7 @@ func leftovers(t *testing.T, s *site, sv *server, id string, afterPurge bool) []
 
 // D3: a package that uses every per-package feature (every table kind,
 // routes, a feature key, storage with its data marker, an override of its
-// hold, a crash in its logs) is uninstalled, then purged; each artifact in
+// hold) is uninstalled, then purged; each artifact in
 // pluginbridge.PerPackageArtifacts is checked to be gone: the rows and
 // overrides at the uninstall, the data directory and data marker at the
 // purge.
