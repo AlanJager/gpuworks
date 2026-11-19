@@ -46,6 +46,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -401,7 +402,7 @@ func grow(log *slog.Logger, mib int) {
 		log.Error("starting the growing child", "err", err)
 	}
 	held = touched(mib)
-	log.Info("holding memory", "mib", mib)
+	log.Info("holding memory", "mib", len(held)>>20)
 }
 
 // growChild holds mib MiB until it is killed.
@@ -413,6 +414,7 @@ func growChild(mib string) {
 	held = touched(n)
 	for {
 		time.Sleep(time.Hour)
+		runtime.KeepAlive(held)
 	}
 }
 
