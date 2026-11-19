@@ -107,7 +107,7 @@ func TestReconcileSharedDirStuckStatfsIsUnresponsive(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	release := e.sf.blockPath(dir)
 	defer close(release)
-	wantState(t, one(t, e.manager(), Spec{ID: 1, Type: TypeSharedDir, Path: dir}), StateUnresponsive, "")
+	wantState(t, one(t, e.manager(), Spec{ID: 1, Type: TypeSharedDir, Path: dir}), StateUnresponsive, ReasonUnresponsiveRetrying)
 }
 
 func TestProbeRefusesWhatReconcileWouldRefuse(t *testing.T) {

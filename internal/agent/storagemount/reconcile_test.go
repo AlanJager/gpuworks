@@ -382,7 +382,7 @@ func TestReconcileUnresponsiveStatfs(t *testing.T) {
 	release := e.sf.blockPath(sp.Path)
 	start := time.Now()
 	st := one(t, m, sp)
-	wantState(t, st, StateUnresponsive, "")
+	wantState(t, st, StateUnresponsive, ReasonUnresponsiveRetrying)
 	if d := time.Since(start); d > time.Second {
 		t.Fatalf("reconcile took %s with a 300ms call timeout", d)
 	}
@@ -391,7 +391,7 @@ func TestReconcileUnresponsiveStatfs(t *testing.T) {
 	// While the first statfs is stuck nothing new is started, however often we reconcile.
 	for i := 0; i < 5; i++ {
 		begin := time.Now()
-		wantState(t, one(t, m, sp), StateUnresponsive, "")
+		wantState(t, one(t, m, sp), StateUnresponsive, ReasonUnresponsiveRetrying)
 		if time.Since(begin) > 100*time.Millisecond {
 			t.Fatal("repeat reconcile of a stuck storage must return immediately")
 		}
@@ -421,7 +421,7 @@ func TestReconcileStuckStorageDoesNotBlockOthers(t *testing.T) {
 	if d := time.Since(start); d > 1500*time.Millisecond {
 		t.Errorf("reconcile took %s", d)
 	}
-	wantState(t, got[0], StateUnresponsive, "")
+	wantState(t, got[0], StateUnresponsive, ReasonUnresponsiveRetrying)
 	wantState(t, got[1], StateReady, "")
 	wantState(t, got[2], StateReady, "")
 	if got[0].ID != 1 || got[1].ID != 2 || got[2].ID != 3 {
@@ -451,7 +451,7 @@ func TestReconcileHungMountIsTrackedWhenItFinishesLate(t *testing.T) {
 		t.Fatalf("mount ran %d times", n)
 	}
 	// Reconciling again while the mount is stuck does not start another mount.
-	wantState(t, one(t, m, sp), StateUnresponsive, "")
+	wantState(t, one(t, m, sp), StateUnresponsive, ReasonUnresponsiveRetrying)
 	if n := len(e.h.callsTo("mount")); n != 1 {
 		t.Fatalf("mount ran %d times while stuck", n)
 	}
