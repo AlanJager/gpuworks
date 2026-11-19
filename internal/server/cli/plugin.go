@@ -27,6 +27,8 @@ const pluginUsage = `  gpuworks plugin install --file PKG.gwpkg [--disabled]
   gpuworks plugin verify ID
   gpuworks plugin enable ID
   gpuworks plugin disable ID
+  gpuworks plugin upgrade --file PKG.gwpkg [--approve]   (server stopped)
+  gpuworks plugin rollback ID [--restore-state]          (server stopped)
   gpuworks plugin uninstall ID [--purge] [--yes]
   gpuworks plugin state ID
   gpuworks plugin trust import FILE [--cert publisher.crt]
@@ -43,8 +45,8 @@ var errCompatFindings = errors.New("this server build cannot run everything in t
 // pluginCommand runs `gpuworks plugin ...`. Every subcommand works with the
 // server stopped: it opens the database the way the other maintenance
 // commands do, and the plugins directory under its own lock. enable,
-// disable and uninstall change what a running server keeps in memory, so
-// they also require it to be stopped (requireServerStopped), as do the
+// disable, upgrade, rollback and uninstall change what a running server
+// keeps in memory, so they also require it to be stopped (requireServerStopped), as do the
 // root-only clock reset and pstate clear, which record offline maintenance
 // for the next boot to apply.
 func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer) error {
@@ -62,6 +64,10 @@ func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer
 		return o.pluginVerify(rest, stdout)
 	case "enable", "disable":
 		return o.pluginSetEnabled(log, sub, rest, stdout)
+	case "upgrade":
+		return o.pluginUpgrade(log, rest, stdout)
+	case "rollback":
+		return o.pluginRollback(log, rest, stdout)
 	case "uninstall", "remove": // remove is the earlier name, kept as an alias
 		return o.pluginUninstall(log, sub, rest, stdout)
 	case "state":
