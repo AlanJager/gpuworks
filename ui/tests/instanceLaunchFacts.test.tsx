@@ -36,13 +36,16 @@ const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 const { api } = await import("../src/api.ts");
 const { default: InstancePanel } = await import("../src/pages/InstancePanel.tsx");
+const { lastWakeSeconds } = await import("../src/pages/instanceWake.ts");
 const originalFetch = globalThis.fetch;
 const originalInstanceEvents = api.instanceEvents;
+const originalDeploymentEvents = api.deploymentEvents;
 
 afterEach(() => {
   cleanup();
   globalThis.fetch = originalFetch;
   api.instanceEvents = originalInstanceEvents;
+  api.deploymentEvents = originalDeploymentEvents;
 });
 
 const base = {
@@ -76,21 +79,79 @@ test("a whole-card instance shows a scheduling exception only when the selected 
   assert.ok(screen.getByText(/node adds dGPU/));
 });
 
-test("the L1 wake estimate appears for a sleepable running service but does not describe whole-card usage or deep sleep", () => {
+// The ticket's instance: Qwen3-0.6B (about 1.4 GiB of weights) on a 24 GiB
+// card under an 8 GiB dGPU limit, whose wakes took 25 s and more while the
+// panel printed a 0.1 s estimate worked out from the weight size alone.
+const smallModel = {
+  ...(base as object), uuid: "wake-a", deployment_id: 1641, vram_limit_bytes: 8 * 1024 ** 3,
+  schedule: { breakdown: { weight_bytes: 1.5e9, tensor_parallel: 1 } },
+};
+const sleepResult = (id: number, at: string, level: number) =>
+  ({ id, kind: "sleep", code: "INSTANCE_SLEEP_RESULT", params: { result: "applied", level }, created_at: at });
+
+test("the sleep row reports the wake measured on the instance and no figure before one is recorded", async () => {
   api.instanceEvents = async () => cursorPage([]);
   globalThis.fetch = (async () => response([])) as typeof fetch;
-  const inst = { ...(base as object), schedule: { breakdown: { weight_bytes: 14e9, tensor_parallel: 1 } } };
-  const active = renderPanel(inst);
-  assert.equal(screen.queryByText(i18n.t("instance.wakeEstimate", { seconds: 1 })), null);
-  active.unmount();
+  const asked: number[] = [];
+  let events: object[] = [];
+  api.deploymentEvents = (async (id: number) => { asked.push(id); return cursorPage(events as never[]); }) as typeof api.deploymentEvents;
 
-  const sleepable = renderPanel(inst, true);
-  assert.ok(screen.getByText(i18n.t("instance.wakeEstimate", { seconds: 1 })));
-  sleepable.unmount();
+  // Not sleepable: the timeline is not read at all.
+  const plain = renderPanel(smallModel);
+  assert.equal(screen.queryByText("Sleep"), null);
+  assert.deepEqual(asked, []);
+  plain.unmount();
 
-  renderPanel({ ...inst, sleep_level: 2, desired_sleep: 2, asleep: true }, true);
-  assert.equal(screen.queryByText(i18n.t("instance.wakeEstimate", { seconds: 1 })), null);
-  assert.ok(screen.getByText(i18n.t("instance.sleepWeight", { storage: i18n.t("instance.disk"), gib: (14e9 / 1024 ** 3).toFixed(1) })));
+  // Sleepable, never woken: the weight size alone yields no wake figure.
+  const fresh = renderPanel(smallModel, true);
+  await waitFor(() => assert.deepEqual(asked, [1641]));
+  assert.equal(screen.queryByText(/wake took|wake time|0\.1 s/), null);
+  fresh.unmount();
+
+  // A request woke it at 17:52:10 and the engine reported awake 25.4 s later.
+  events = [
+    sleepResult(14, "2026-11-19T09:52:35.400Z", 0),
+    { id: 13, kind: "automation", code: "AUTO_WAKE", params: { trigger: "request", instances: ["wake-a"] }, created_at: "2026-11-19T09:52:10Z" },
+    sleepResult(12, "2026-11-19T09:51:00Z", 1),
+    { id: 11, kind: "lifecycle", code: "SLEEP_ORDERED", params: { level: 1, instances: ["wake-a"] }, created_at: "2026-11-19T09:50:58Z" },
+  ];
+  const awake = renderPanel(smallModel, true);
+  assert.ok(await screen.findByText("Last wake took about 25 s"));
+  awake.unmount();
+
+  // Asleep again at L2: the same measurement stands beside the level.
+  renderPanel({ ...smallModel, sleep_level: 2, desired_sleep: 2, asleep: true }, true);
+  assert.ok(await screen.findByText("Last wake took about 25 s"));
+  assert.ok(screen.getByText(i18n.t("instance.sleepWeight", { storage: i18n.t("instance.disk"), gib: (1.5e9 / 1024 ** 3).toFixed(1) })));
+});
+
+test("a wake is measured from the order that named the instance to its own awake report", () => {
+  const order = (id: number, at: string, code: string, instances: string[]) => ({ id, kind: "automation", code, params: { instances }, created_at: at });
+  const at = (seconds: number) => new Date(Date.UTC(2026, 10, 19, 9, 0, seconds)).toISOString();
+
+  // An operator's wake of one replica, 1.7 s.
+  assert.equal(lastWakeSeconds([sleepResult(3, "2026-11-19T09:00:01.700Z", 0), order(2, at(0), "WAKE_ORDERED", ["a"])] as never[], [], "a"), 1.7);
+  // No order on record, an order for another replica, or no report yet.
+  assert.equal(lastWakeSeconds([sleepResult(3, at(2), 0)] as never[], [], "a"), undefined);
+  assert.equal(lastWakeSeconds([sleepResult(3, at(2), 0), order(2, at(0), "AUTO_WAKE", ["b"])] as never[], [], "a"), undefined);
+  assert.equal(lastWakeSeconds([order(2, at(0), "AUTO_WAKE", ["a"])] as never[], [], "a"), undefined);
+  // A sleep reported after the order is not the wake's result.
+  assert.equal(lastWakeSeconds([sleepResult(3, at(2), 1), order(2, at(0), "AUTO_WAKE", ["a"])] as never[], [], "a"), undefined);
+  // The failed wake's rollback is not a wake either.
+  const failed = { id: 3, kind: "sleep", code: "INSTANCE_SLEEP_RESULT", params: { result: "failed_rollback", target: 0, actual: 1 }, created_at: at(2) };
+  assert.equal(lastWakeSeconds([failed, order(2, at(0), "AUTO_WAKE", ["a"])] as never[], [], "a"), undefined);
+
+  // Two replicas woken by one order: each one's report is told apart by its
+  // own timeline, and without that neither is claimed.
+  const both = [sleepResult(5, at(30), 0), sleepResult(4, at(3), 0), order(2, at(0), "AUTO_WAKE", ["a", "b"])] as never[];
+  assert.equal(lastWakeSeconds(both, [sleepResult(5, at(30), 0)] as never[], "a"), 30);
+  assert.equal(lastWakeSeconds(both, [sleepResult(4, at(3), 0)] as never[], "b"), 3);
+  assert.equal(lastWakeSeconds(both, [], "a"), undefined);
+
+  // A report that follows a later order may answer that one.
+  assert.equal(lastWakeSeconds([sleepResult(5, at(9), 0), order(4, at(8), "WAKE_ORDERED", ["b"]), order(2, at(0), "AUTO_WAKE", ["a"])] as never[], [], "a"), undefined);
+  // Only the latest wake counts.
+  assert.equal(lastWakeSeconds([sleepResult(9, at(26), 0), order(8, at(0), "AUTO_WAKE", ["a"]), sleepResult(3, "2026-11-19T08:00:02Z", 0), order(2, "2026-11-19T08:00:00Z", "AUTO_WAKE", ["a"])] as never[], [], "a"), 26);
 });
 
 test("launch facts keeps loading and transport error states distinct", async () => {

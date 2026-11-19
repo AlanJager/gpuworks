@@ -583,7 +583,7 @@
     "commandMode": {
       "manual": "Manual command"
     },
-    "wakeEstimate": "Estimated L1 wake time: about {{seconds}} s",
+    "lastWake": "Last wake took about {{seconds}} s",
     "sleepWeight": "Estimated weight size in {{storage}}: {{gib}} GiB",
     "hostMemory": "host memory",
     "selectedGpu": "Scheduled GPUs",

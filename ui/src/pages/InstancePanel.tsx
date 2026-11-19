@@ -24,6 +24,7 @@ import TimeRangePicker, { type TimeRangeValue } from "../components/TimeRangePic
 import InstanceProgressLine from "./InstanceProgressLine";
 import InstanceStartupStatus from "./InstanceStartupStatus";
 import { useInstanceEvents } from "./useInstanceEvents";
+import { useLastWakeSeconds } from "./instanceWake";
 import { LogStream } from "./InstanceLogStream";
 import InstanceMetricsTab from "./InstanceMetricsTab";
 import InstanceLaunchDetails from "./InstanceLaunchDetails";
@@ -84,9 +85,6 @@ export default function InstancePanel({ inst, readyModel, sleepable, params, ran
   const sleepOrder = inst.desired_sleep ?? 0;
   const bd = schedule?.breakdown;
   const weightGib = bd?.weight_bytes ? bd.weight_bytes / 1024 ** 3 : undefined;
-  const tp = bd?.tensor_parallel && bd.tensor_parallel > 0 ? bd.tensor_parallel : 1;
-  const showL1Wake = sleepLevel === 1 || (sleepable && inst.state === "running" && sleepLevel === 0 && sleepOrder !== 2);
-  const wakeSecs = showL1Wake && bd?.weight_bytes ? bd.weight_bytes / tp / 14e9 : undefined;
   const hasProgress = inst.state === "pulling" || inst.state === "starting" || inst.state === "optimizing";
   const terminalURL = inst.node_uuid && inst.container_id
     ? `/nodes/${encodeURIComponent(inst.node_uuid)}/terminal?target=container&ref=${encodeURIComponent(inst.container_id)}`
@@ -95,6 +93,10 @@ export default function InstancePanel({ inst, readyModel, sleepable, params, ran
   // merged system lines, and it is refreshed by the shared SSE stream rather
   // than by every phase change.
   const timeline = useInstanceEvents(inst.uuid);
+  // What a wake costs is shown as measured on this instance: it depends on the
+  // node and the engine far more than on the weight size, so no figure is
+  // shown before a wake has been recorded.
+  const wakeSecs = useLastWakeSeconds(inst, timeline.events, Boolean(inst.asleep || (sleepable && inst.state === "running")));
   const completed = inst.state === "running" || timeline.events.some(event =>
     event.code === "INSTANCE_STATUS_UPDATED" && (event.params?.state === "running" || event.params?.prev_state === "running"));
   const failure = inst.state === "failed" && !completed
@@ -170,7 +172,7 @@ export default function InstancePanel({ inst, readyModel, sleepable, params, ran
                         </Tag>
                       )}
                       {inst.asleep && inst.sleep_held && <Typography.Text type="secondary">{t("instance.held")}</Typography.Text>}
-                      {wakeSecs != null && t("instance.wakeEstimate", { seconds: wakeSecs < 1 ? wakeSecs.toFixed(1) : Math.round(wakeSecs) })}
+                      {wakeSecs != null && t("instance.lastWake", { seconds: wakeSecs < 10 ? wakeSecs.toFixed(1) : Math.round(wakeSecs) })}
                       {sleepLevel > 0 && weightGib != null && t("instance.sleepWeight", { storage: sleepLevel === 1 ? t("instance.hostMemory") : t("instance.disk"), gib: weightGib.toFixed(1) })}
                     </Space>
                   </DeploymentInfoField>
