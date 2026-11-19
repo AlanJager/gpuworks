@@ -23,7 +23,7 @@ func TestSlurmSweepRemovesOnlyNodesTheirClusterNoLongerLists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	enroll := func(name, state string, seen time.Time) store.Node {
 		n, _, err := st.EnrollSlurmNode(c.Token, "demo", name)
 		if err != nil {
@@ -113,7 +113,7 @@ func TestSweepRemovesTheLastNodeOfACloudEntryTheCloudNoLongerHas(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	now := time.Now()
+	now := time.Now().UTC()
 	enrollIn := func(name string) (store.SlurmCluster, store.Node) {
 		c, err := st.CreateSlurmCluster(store.SlurmCluster{Name: name})
 		if err != nil {

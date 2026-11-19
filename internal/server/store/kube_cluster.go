@@ -437,10 +437,11 @@ func kubeNodeHolder(tx *gorm.DB, cluster KubeCluster, nodeName string, now time.
 
 // OfflineKubeNodes lists the Kubernetes nodes whose agents have been gone
 // since before cutoff: the candidates for having left their cluster. Offline
-// nodes are few, and the state column is indexed.
+// nodes are few, and the state column is indexed. cutoff is compared in UTC,
+// the zone last_seen_at is written in (SQLite compares times as text).
 func (s *Store) OfflineKubeNodes(cutoff time.Time) ([]Node, error) {
 	var nodes []Node
-	err := s.reader().Where("state = ? AND kube_cluster_id > 0 AND (last_seen_at IS NULL OR last_seen_at < ?)", NodeStateOffline, cutoff).
+	err := s.reader().Where("state = ? AND kube_cluster_id > 0 AND (last_seen_at IS NULL OR last_seen_at < ?)", NodeStateOffline, cutoff.UTC()).
 		Order("id").Find(&nodes).Error
 	return nodes, err
 }

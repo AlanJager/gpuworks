@@ -296,7 +296,8 @@ func (s *Store) SlurmClustersLastSeen(clusterIDs ...uint) (map[uint]time.Time, e
 // as a listed-only node), in one query: the nodes whose enrollment a report
 // may simply not have caught up with. A node that enrolled earlier and is
 // still not named has been left out by a list reported since, so it is not
-// among them.
+// among them. since is compared in UTC, the zone created_at is written in
+// (SQLite compares times as text).
 func (s *Store) SlurmUnlistedNodeCounts(since time.Time) (map[uint]int, error) {
 	var rows []struct {
 		SlurmClusterID uint
@@ -305,7 +306,7 @@ func (s *Store) SlurmUnlistedNodeCounts(since time.Time) (map[uint]int, error) {
 	err := s.reader().Raw(`SELECT n.slurm_cluster_id AS slurm_cluster_id, count(*) AS n FROM nodes n
 		WHERE n.slurm_cluster_id > 0 AND n.created_at >= ?
 		AND NOT EXISTS (SELECT 1 FROM slurm_gpu_nodes g WHERE g.cluster_id = n.slurm_cluster_id AND g.name = n.slurm_node)
-		GROUP BY n.slurm_cluster_id`, since).Scan(&rows).Error
+		GROUP BY n.slurm_cluster_id`, since.UTC()).Scan(&rows).Error
 	out := map[uint]int{}
 	for _, r := range rows {
 		out[r.SlurmClusterID] = r.N
