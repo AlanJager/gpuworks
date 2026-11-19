@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { VENDOR_ASSETS } from "./vendorAssets";
+import { VENDOR_ASSETS, VENDOR_LOGO_INK } from "./vendorAssets";
 import { useTranslation } from "react-i18next";
 import { vendorForFramework, type Vendor } from "../vendors";
 
@@ -14,6 +14,33 @@ const META: Record<Vendor, { label?: string; labelKey?: string; color: string; m
   unknown: { labelKey: "vendor.unknown", color: "#8c8c8c", mark: "?" },
 };
 export { vendorForFramework };
+
+// The key a vendor's mark is filed under: T-Head PPU cards use T-Head's mark.
+export function vendorMarkKey(vendor: string) {
+  return vendor === "ppu" ? "thead" : vendor;
+}
+
+export function hasVendorMark(vendor: string) {
+  return Boolean(VENDOR_ASSETS[vendorMarkKey(vendor)]);
+}
+
+// VendorMarkImage is the one way the console draws a vendor mark. The wrapper
+// carries the mark's ink class, and styles.css puts the plate that ink needs
+// behind it on each theme (VENDOR_LOGO_INK; internal/uiassets enforces that
+// no other file draws a mark). Sizing stays with the caller's img style; a
+// plated wrapper adds its padding outside it and exposes the padding as
+// --vendor-mark-pad-x/-y for callers that must fit a fixed box.
+export function VendorMarkImage({ vendor, alt, style }: { vendor: string; alt: string; style?: CSSProperties }) {
+  const key = vendorMarkKey(vendor);
+  const src = VENDOR_ASSETS[key];
+  if (!src) return null;
+  return (
+    <span className={`vendor-mark vendor-mark-ink-${VENDOR_LOGO_INK[key] ?? "dark"}`}>
+      <img src={src} alt={alt} style={style} />
+    </span>
+  );
+}
+
 export default function VendorLogo({
   vendor: vendorName,
   framework,
@@ -29,16 +56,15 @@ export default function VendorLogo({
   const vendor = vendorForFramework(vendorName ?? framework);
   const meta = META[vendor];
   const label = meta.label || t(meta.labelKey!);
-  const asset = VENDOR_ASSETS[vendor === "ppu" ? "thead" : vendor];
   return (
     <span
       className={`vendor-logo vendor-logo-${vendor}`}
       title={`${label} · ${(vendorName || framework || t("vendor.unknownFramework")).toUpperCase()}`}
       style={{ display: "inline-flex", alignItems: "center", gap: 6, ...style }}
     >
-      {asset ? (
-        <img
-          src={asset}
+      {hasVendorMark(vendor) ? (
+        <VendorMarkImage
+          vendor={vendor}
           alt={label}
           style={{
             width: size * 2.5,

@@ -198,3 +198,199 @@ export const VENDOR_LOGO_HEIGHT: Record<string, number> = {
 		t.Error("source without VENDOR_ASSETS accepted")
 	}
 }
+
+// bar is a 40x10 transparent canvas with a 32x4 bar of c.
+func bar(c color.NRGBA) *image.NRGBA {
+	img := image.NewNRGBA(image.Rect(0, 0, 40, 10))
+	for y := 3; y < 7; y++ {
+		for x := 4; x < 36; x++ {
+			img.SetNRGBA(x, y, c)
+		}
+	}
+	return img
+}
+
+var testPlates = vendorPlates{light: rgb{1, 1, 1}, dark: rgb{0x25 / 255.0, 0x2d / 255.0, 0x3c / 255.0}}
+
+// TestVendorInkCheckRejectsIllegibleMarks: each fixture breaks the rule its
+// message must name, and the message says how to fix it.
+func TestVendorInkCheckRejectsIllegibleMarks(t *testing.T) {
+	faint := bar(color.NRGBA{0, 0, 0, 0xff})
+	for y := 0; y < 3; y++ { // a pale band above the black bar: 43% of the ink
+		for x := 4; x < 36; x++ {
+			faint.SetNRGBA(x, y, color.NRGBA{0xf2, 0xf2, 0xf2, 0xff})
+		}
+	}
+	cases := []struct {
+		name, file, tone string
+		data             []byte
+		want             []string
+	}{
+		{"dark mark declared light", "dark.png", "light", encodePNG(t, bar(color.NRGBA{0x10, 0x10, 0x10, 0xff})), []string{`declared "light" ink`, "100% of its ink weight is dark", `declare it "dark"`, "on --vendor-logo-dark"}},
+		{"light mark declared dark", "light.png", "dark", encodePNG(t, bar(color.NRGBA{0xff, 0xff, 0xff, 0xff})), []string{`declared "dark" ink`, "is light", `declare it "light"`, "below 1.5:1 contrast on --vendor-logo-light"}},
+		{"low-contrast grey mark", "grey.png", "dark", encodePNG(t, bar(color.NRGBA{0xa0, 0xa0, 0xa0, 0xff})), []string{"only 0% of its ink weight reaches 3:1 contrast on --vendor-logo-light", "weighted median 2.6"}},
+		{"faint share of a png", "faint.png", "dark", encodePNG(t, faint), []string{"of its ink weight is below 1.5:1", "at most 2% may be"}},
+		{"near-white svg declared dark", "pale.svg", "dark", []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20"><path fill="#f4f4f4" d="M0 0C50 5 50 5 100 0V20H0Z"/><path fill="#000" d="M10 5l5 5l-5 5z"/></svg>`), []string{`declared "dark" ink`, `fill "#f4f4f4" is 1.10:1`, "every painted colour must reach 1.5:1"}},
+		{"svg gradient fill", "grad.svg", "dark", []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path fill="url(#g)" d="M0 0L9 9H0z"/><path d="M1 1l3 3l-3 3z"/></svg>`), []string{`fill "url(#g)" is not a colour the check can read`}},
+		{"svg text", "text.svg", "dark", []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text>X</text><path d="M1 1l3 3l-3 3z"/></svg>`), []string{"a filled <text>", "outlined paths"}},
+		{"svg with nothing drawn", "empty.svg", "dark", []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><path d="M0 0L9 9H0z"/></defs></svg>`), []string{"no ink the check can measure"}},
+		{"transparent png", "clear.png", "dark", encodePNG(t, image.NewNRGBA(image.Rect(0, 0, 4, 4))), []string{"no ink the check can measure"}},
+		{"broken png", "broken.png", "dark", []byte("not a png"), []string{"not a decodable PNG"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, problems := checkVendorInk(tc.file, tc.data, tc.tone, testPlates)
+			if len(problems) == 0 {
+				t.Fatalf("%s passed, want rejection", tc.file)
+			}
+			joined := strings.Join(problems, "\n")
+			for _, w := range tc.want {
+				if !strings.Contains(joined, w) {
+					t.Errorf("problems for %s lack %q:\n%s", tc.file, w, joined)
+				}
+			}
+			for _, p := range problems {
+				if !strings.HasPrefix(p, tc.file+": ") || !strings.Contains(p, "fix:") {
+					t.Errorf("message must start with the file and say how to fix: %q", p)
+				}
+			}
+		})
+	}
+}
+
+func TestVendorInkCheckAcceptsLegibleMarks(t *testing.T) {
+	// NVIDIA's shape: black wordmark plus a green accent under 3:1 on white.
+	mixed := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 30"><path fill="#000" fill-rule="evenodd" d="M40 5h110v20H40z"/><g fill="#76b900"><path d="M0 0c10 5 20 5 30 0v30H0z"/></g><rect x="150" y="0" width="5" height="5" fill="#000" opacity=".9"/></svg>`
+	whiteOnDark := encodePNG(t, bar(color.NRGBA{0xff, 0xff, 0xff, 0xff}))
+	cases := []struct {
+		file, tone string
+		data       []byte
+		dark       bool
+	}{
+		{"mixed.svg", "dark", []byte(mixed), true},
+		{"black.png", "dark", encodePNG(t, transparentMark()), true},
+		{"white.png", "light", whiteOnDark, false},
+		{"named.svg", "light", []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g style="fill:white"><circle cx="5" cy="5" r="4"/></g></svg>`), false},
+	}
+	for _, tc := range cases {
+		m, problems := checkVendorInk(tc.file, tc.data, tc.tone, testPlates)
+		if len(problems) != 0 {
+			t.Errorf("%s rejected:\n%s", tc.file, strings.Join(problems, "\n"))
+		}
+		if (m.tone() == "dark") != tc.dark {
+			t.Errorf("%s measured %s ink", tc.file, m.tone())
+		}
+	}
+	m, _ := checkVendorInk("mixed.svg", []byte(mixed), "dark", testPlates)
+	// the black path is 110x20, the green one 30x30, the small rect 5x5
+	if want := (2200.0 + 25) / (2200 + 900 + 25); m.shareAt3 < want-1e-9 || m.shareAt3 > want+1e-9 || m.lowestAt != "#76b900" {
+		t.Errorf("mixed.svg: shareAt3 = %v (want %v), lowest at %q", m.shareAt3, want, m.lowestAt)
+	}
+}
+
+func TestVendorInkDeclarationProblems(t *testing.T) {
+	refs := map[string]string{"nvidia": "/vendor-logos/nvidia.svg", "amd": "/vendor-logos/amd.svg", "odd": "/vendor-logos/odd.svg"}
+	ink := map[string]string{"nvidia": "dark", "odd": "grey", "gone": "dark"}
+	got := strings.Join(vendorInkDeclarationProblems(refs, ink), "\n")
+	for _, w := range []string{
+		"VENDOR_ASSETS.amd has no VENDOR_LOGO_INK entry",
+		"VENDOR_LOGO_INK.gone names no mark in VENDOR_ASSETS",
+		`VENDOR_LOGO_INK.odd = "grey"; fix: use "dark" or "light"`,
+	} {
+		if !strings.Contains(got, w) {
+			t.Errorf("problems lack %q:\n%s", w, got)
+		}
+	}
+	if strings.Contains(got, "nvidia") {
+		t.Errorf("a declared mark was reported:\n%s", got)
+	}
+	src := []byte("export const VENDOR_LOGO_INK: Record<string, \"dark\" | \"light\"> = {\n  nvidia: \"dark\",\n  kunlunxin: \"light\",\n};\n")
+	if got, err := tsStringRecord(src, "VENDOR_LOGO_INK"); err != nil || got["kunlunxin"] != "light" || len(got) != 2 {
+		t.Errorf("tsStringRecord = %v, %v", got, err)
+	}
+}
+
+func TestVendorMarkDrawerProblems(t *testing.T) {
+	files := map[string]string{
+		"src/components/vendorAssets.ts":   `export const VENDOR_ASSETS = { nvidia: "/vendor-logos/nvidia.svg" };`,
+		"src/components/VendorLogo.tsx":    `import { VENDOR_ASSETS } from "./vendorAssets";`,
+		"src/pages/dashboard/Overview.tsx": `import { VENDOR_ASSETS } from "../../components/vendorAssets";`,
+		"src/pages/Raw.tsx":                `<img src="/vendor-logos/amd.svg" />`,
+		"src/pages/Height.tsx":             `import { VENDOR_LOGO_HEIGHT } from "../components/vendorAssets";`,
+		"src/pages/Overview.test.tsx":      `VENDOR_ASSETS`,
+		"src/pages/__tests__/fixture.ts":   `"/vendor-logos/x.svg"`,
+		"src/pages/NotTheMap.tsx":          `const MY_VENDOR_ASSETS_X = 1;`,
+	}
+	problems := vendorMarkDrawerProblems(files)
+	got := strings.Join(problems, "\n")
+	for _, w := range []string{
+		"ui/src/pages/dashboard/Overview.tsx: uses VENDOR_ASSETS directly",
+		"ui/src/pages/Raw.tsx: names a /vendor-logos/ file directly",
+		"VendorMarkImage",
+	} {
+		if !strings.Contains(got, w) {
+			t.Errorf("problems lack %q:\n%s", w, got)
+		}
+	}
+	if len(problems) != 2 {
+		t.Errorf("want exactly 2 problems, got:\n%s", got)
+	}
+	for _, p := range problems {
+		if !strings.Contains(p, "fix:") {
+			t.Errorf("message lacks a fix: %q", p)
+		}
+	}
+}
+
+func TestParseVendorPlates(t *testing.T) {
+	p, err := parseVendorPlates([]byte(":root {\n  --vendor-logo-light: #fff;\n  --vendor-logo-dark: #252d3c;\n}"))
+	if err != nil || p != testPlates {
+		t.Fatalf("plates = %v, %v", p, err)
+	}
+	_, err = parseVendorPlates([]byte(":root { --vendor-logo-light: #fff; --vendor-logo-dark: var(--x); }"))
+	if err == nil || !strings.Contains(err.Error(), "no --vendor-logo-dark") || !strings.Contains(err.Error(), "fix:") {
+		t.Fatalf("missing dark plate: %v", err)
+	}
+}
+
+func TestColourAndContrast(t *testing.T) {
+	for in, want := range map[string]rgb{
+		"#fff": {1, 1, 1}, "black": {0, 0, 0}, "#FF0000": {1, 0, 0},
+		"rgb(0, 255, 0)": {0, 1, 0}, "rgba(0%,0%,100%,.5)": {0, 0, 1}, "#00ff0080": {0, 1, 0},
+	} {
+		if got, _, ok := parseColour(in); !ok || got != want {
+			t.Errorf("parseColour(%q) = %v, %v; want %v", in, got, ok, want)
+		}
+	}
+	if _, a, _ := parseColour("#00ff0080"); a < 0.50 || a > 0.51 {
+		t.Errorf("alpha of #00ff0080 = %v", a)
+	}
+	for _, bad := range []string{"currentColor", "url(#g)", "#12", "hsl(0,0%,0%)"} {
+		if _, _, ok := parseColour(bad); ok {
+			t.Errorf("parseColour(%q) accepted", bad)
+		}
+	}
+	if c := contrast(rgb{1, 1, 1}, rgb{0, 0, 0}); c < 20.99 || c > 21.01 {
+		t.Errorf("white on black = %v, want 21", c)
+	}
+	if c := contrast(rgb{0x76 / 255.0, 0xb9 / 255.0, 0}, rgb{1, 1, 1}); c < 2.40 || c > 2.43 {
+		t.Errorf("#76b900 on white = %v, want about 2.41", c)
+	}
+	half := over(inkSample{colour: rgb{0, 0, 0}, alpha: 0.5}, rgb{1, 1, 1})
+	if half != (rgb{0.5, 0.5, 0.5}) {
+		t.Errorf("half black over white = %v", half)
+	}
+}
+
+func TestPathBounds(t *testing.T) {
+	b, ok := pathBounds("M10 10c5 -20 15 -20 20 0l5 5H2V30z m1 1h1")
+	if !ok || b != (svgBox{2, 10, 35, 30}) {
+		t.Errorf("bounds = %v, %v", b, ok)
+	}
+	if _, ok := pathBounds("M0 0 X 5"); ok {
+		t.Error("an unknown command was followed")
+	}
+	if _, ok := pathBounds("M0 0h10"); ok {
+		t.Error("a zero-height path has bounds")
+	}
+}
