@@ -32,12 +32,14 @@ var (
 type vendorQuery struct {
 	running chan struct{} // closed when the current run ends; nil while idle
 
-	out string    // the last completed run
-	err error     // ...its error
-	at  time.Time // ...when it completed
+	out   string    // the last completed run
+	err   error     // ...its error
+	began time.Time // ...when it started
+	at    time.Time // ...when it completed
 
-	okOut string    // the last successful run
-	okAt  time.Time // ...when it completed
+	okOut   string    // the last successful run
+	okBegan time.Time // ...when it started
+	okAt    time.Time // ...when it completed
 }
 
 // vendorBinary is what the queries of one CLI share.
@@ -80,9 +82,9 @@ func vendorCLISlowLocked(name string) bool {
 // vendorQueryMaxAge, and ErrCLIUnresponsive after that. A completed run's
 // own failure is returned as is.
 func QueryVendorCLI(ctx context.Context, name string, args ...string) (string, error) {
-	out, at, err := queryVendorCLI(ctx, name, args...)
+	out, began, at, err := queryVendorCLI(ctx, name, args...)
 	if err == nil {
-		RecordResultTime(ctx, at)
+		RecordResultSpan(ctx, began, at)
 	}
 	return out, err
 }
@@ -100,18 +102,21 @@ func queryLogged(ctx context.Context, vendor, name string, args ...string) (stri
 // QueryVendorCLIStdout keeps stderr diagnostics out of structured stdout.
 // It shares the per-binary process slot, but never a combined-output cache entry.
 func QueryVendorCLIStdout(ctx context.Context, name string, args ...string) (string, error) {
-	out, at, err := queryVendorCLIOutput(ctx, true, name, args...)
+	out, began, at, err := queryVendorCLIOutput(ctx, true, name, args...)
 	if err == nil {
-		RecordResultTime(ctx, at)
+		RecordResultSpan(ctx, began, at)
 	}
 	return out, err
 }
 
-func queryVendorCLI(ctx context.Context, name string, args ...string) (string, time.Time, error) {
+func queryVendorCLI(ctx context.Context, name string, args ...string) (out string, began, at time.Time, err error) {
 	return queryVendorCLIOutput(ctx, false, name, args...)
 }
 
-func queryVendorCLIOutput(ctx context.Context, stdoutOnly bool, name string, args ...string) (string, time.Time, error) {
+// queryVendorCLIOutput also returns when the run that produced the answer
+// started and when it completed: what the answer shows was read from the
+// driver somewhere between the two.
+func queryVendorCLIOutput(ctx context.Context, stdoutOnly bool, name string, args ...string) (out string, began, at time.Time, err error) {
 	key := name + "\x00" + strings.Join(args, "\x00")
 	if stdoutOnly {
 		key = "stdout\x00" + key
@@ -135,9 +140,9 @@ func queryVendorCLIOutput(ctx context.Context, stdoutOnly bool, name string, arg
 	// A slow CLI's earlier answer is served at once: waiting would only
 	// spend the caller's time on a query that will not finish in it.
 	if vendorCLISlowLocked(name) && fresh(q.okAt) {
-		out, at := q.okOut, q.okAt
+		out, began, at := q.okOut, q.okBegan, q.okAt
 		vendorQueries.Unlock()
-		return out, at, nil
+		return out, began, at, nil
 	}
 	vendorQueries.Unlock()
 
@@ -147,18 +152,18 @@ func queryVendorCLIOutput(ctx context.Context, stdoutOnly bool, name string, arg
 	case <-running:
 		vendorQueries.Lock()
 		defer vendorQueries.Unlock()
-		return q.out, q.at, q.err
+		return q.out, q.began, q.at, q.err
 	case <-ctx.Done():
-		return "", time.Time{}, ctx.Err()
+		return "", time.Time{}, time.Time{}, ctx.Err()
 	case <-wait.C:
 	}
 	vendorQueries.Lock()
-	okOut, okAt := q.okOut, q.okAt
+	okOut, okBegan, okAt := q.okOut, q.okBegan, q.okAt
 	vendorQueries.Unlock()
 	if fresh(okAt) {
-		return okOut, okAt, nil
+		return okOut, okBegan, okAt, nil
 	}
-	return "", time.Time{}, fmt.Errorf("%s: no answer within %s: %w", name, vendorCLITimeout, ErrCLIUnresponsive)
+	return "", time.Time{}, time.Time{}, fmt.Errorf("%s: no answer within %s: %w", name, vendorCLITimeout, ErrCLIUnresponsive)
 }
 
 func fresh(at time.Time) bool { return !at.IsZero() && time.Since(at) <= vendorQueryMaxAge }
@@ -200,9 +205,9 @@ func runVendorQuery(q *vendorQuery, b *vendorBinary, done chan struct{}, name st
 
 	now := time.Now()
 	vendorQueries.Lock()
-	q.out, q.err, q.at = buf.String(), err, now
+	q.out, q.err, q.began, q.at = buf.String(), err, start, now
 	if err == nil {
-		q.okOut, q.okAt = q.out, now
+		q.okOut, q.okBegan, q.okAt = q.out, start, now
 	}
 	q.running = nil
 	b.runningSince, b.lastTook = time.Time{}, took
@@ -214,6 +219,7 @@ func runVendorQuery(q *vendorQuery, b *vendorBinary, done chan struct{}, name st
 type ResultTime struct {
 	mu     sync.Mutex
 	oldest time.Time
+	began  time.Time
 }
 
 type resultTimeKey struct{}
@@ -232,6 +238,33 @@ func (rt *ResultTime) Oldest() time.Time {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	return rt.oldest
+}
+
+// Began is when the earliest run behind the answers used started; zero when
+// no vendor query answered. A slow tool takes tens of seconds over one
+// answer, and what it shows may have been read at any point of that: a
+// caller asking whether an answer can know of something that happened since
+// (a container removed, a check ended) compares against this, not Oldest.
+func (rt *ResultTime) Began() time.Time {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.began
+}
+
+// RecordResultSpan notes, under a WithResultTime context, that an answer was
+// used whose run started at began and completed at at. QueryVendorCLI calls
+// it; a prober that gets its answers elsewhere may too.
+func RecordResultSpan(ctx context.Context, began, at time.Time) {
+	RecordResultTime(ctx, at)
+	rt, _ := ctx.Value(resultTimeKey{}).(*ResultTime)
+	if rt == nil || began.IsZero() {
+		return
+	}
+	rt.mu.Lock()
+	if rt.began.IsZero() || began.Before(rt.began) {
+		rt.began = began
+	}
+	rt.mu.Unlock()
 }
 
 // RecordResultTime notes, under a WithResultTime context, that an answer
