@@ -189,7 +189,7 @@ export function NodeRecoveryStatus({ node, onUpdated }: { node: Node; onUpdated:
   const label = recoveryLabel[node.recovery_phase];
   return (
     <section className="mb-4" aria-label={t("recovery.title")}>
-      <h3 className="mb-2 text-body font-semibold text-fg-default">{t("recovery.title")}</h3>
+      <h5 className="mb-2 text-body font-semibold text-fg-default">{t("recovery.title")}</h5>
       <DetailList>
         <DetailListItem><DetailListLabel>{t("recovery.currentPhase")}</DetailListLabel><DetailListValue><Badge {...phaseBadge(label?.color)}>{label ? t(label.key) : node.recovery_phase}</Badge></DetailListValue></DetailListItem>
         <DetailListItem><DetailListLabel>{t("recovery.attempts")}</DetailListLabel><DetailListValue>{node.recovery_attempts ?? 0}</DetailListValue></DetailListItem>
