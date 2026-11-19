@@ -914,6 +914,7 @@
     "INSTANCE_NOT_RUNNING": "Instance {{instance}} is not awake and running.",
     "INSTANCE_OFFLINE": "Instance {{instance}} is offline.",
     "MODEL_NOT_READY": "No running instance of {{model}} is reachable. Check the deployment and node connection.",
+    "MODEL_NODE_OFFLINE": "{{model}} has a running instance, but its node has no live agent connection. Check the node.",
     "DEPLOYMENT_START_FAILED": "The deployment for {{model}} failed to start. See the deployment list.",
     "PD_PLACEMENT_UNREADABLE": "The deployment's PD placement cannot be read.",
     "PD_PREFILL_UNAVAILABLE": "No prefill instance could take the request ({{reason}}). Retry shortly.",

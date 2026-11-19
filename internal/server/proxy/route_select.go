@@ -123,6 +123,9 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	}
 	candidates := make([]candidate, 0, len(insts))
 	anyAsleep := false
+	// nodeOffline: an engine reports running and awake, and the only thing
+	// between it and the request is its node's agent connection.
+	nodeOffline := false
 	pd, err := pdRouteFor(dep)
 	if err != nil {
 		p.log.Warn("PD deployment not routed: placement cannot be read", "dep", dep.ID, "err", err)
@@ -145,6 +148,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 				continue
 			}
 			if !p.hub.Online(node.UUID) {
+				nodeOffline = true
 				continue
 			}
 			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: instanceModelName(dep, &in, planning.HostTranslatesModelPaths(node.RuntimeDriver)), uuidHash: fnv64([]byte(in.UUID))}
@@ -186,6 +190,11 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	}
 	if instancesGaveUp(insts) {
 		return target{}, refuse(ErrorDeploymentStartFailed, map[string]any{"model": modelName}), false
+	}
+	// The engine is up: telling the caller it may still be starting would
+	// send them to the deployment, which shows nothing wrong.
+	if nodeOffline && len(candidates) == 0 {
+		return target{}, refuse(ErrorModelNodeOffline, map[string]any{"model": modelName}), false
 	}
 	return target{}, refuse(ErrorModelNotReady, map[string]any{"model": modelName}), false
 }

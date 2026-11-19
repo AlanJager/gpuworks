@@ -1164,7 +1164,8 @@ The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"
 | 404 | `MODEL_ROUTE_NOT_EXPOSED` | Only the playground (`/api/v1/playground/v1/*`) performs contract checks and returns this error: the deployment's API contract does not include this endpoint (for example, calling `/v1/embeddings` on a Chat model). Use `GET /api/v1/playground/openapi.json` to view its declared endpoints. The public `/v1` does not perform this check; it forwards the request unchanged to the engine, which returns its own 404 or other response |
 | 404 | `ROUTE_NOT_FOUND` | The listener you accessed does not serve the inference API. Check `listen.gateway` |
 | 503 | `MODEL_ASLEEP` | No awake replica is available to serve requests. Wake it in the console or call `POST /api/v1/deployments/{id}/wake`; a schedule or a waiting wake also wakes it, see the [Scheduling Analysis](scheduling-center.md). Once sleep intent is issued, selected instances stop accepting new requests |
-| 503 | `MODEL_NOT_READY`, `DEPLOYMENT_START_FAILED` | No running replica: it is still starting, has failed, has been stopped, or its node is offline. Check instance status |
+| 503 | `MODEL_NOT_READY`, `DEPLOYMENT_START_FAILED` | No running replica: it is still starting, has failed, or has been stopped. Check instance status |
+| 503 | `MODEL_NODE_OFFLINE` | A replica is running, but its node's agent is not connected. Check the node's connection state |
 | 503 | `DISTRIBUTED_NOT_READY`, `DISTRIBUTED_LEADER_OFFLINE` | A rank or the leader in a multi-node deployment is not ready |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `did not reattach within 5s`) | The node data lane did not reconnect within 5 seconds of disconnecting. **Retryable**; there is no fallback to the control lane |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `data lane closed under an open stream`) | The data lane disconnected after the request reached the node but before a response arrived. **Retryable**. If it disconnects after the response starts, the client receives a truncated response |
@@ -1397,7 +1398,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 31d3cfd3736d14e7b9a7906e6ed2f2acf7c1e23dd1df6fd7fb4c2eb9533faf94 -->
+<!-- translation-source-sha256: e3a3639101dbedcb3c705550cee2a7b45010a85c0591b801874f9ac1ee4d361e -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
