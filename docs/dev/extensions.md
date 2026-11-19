@@ -324,7 +324,7 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 - **横幅**：只给管理员看，随控制台清单下发，变化时在 `feature` 主题上通知控制台重读清单。崩溃循环的包是 `plugins.crashloop.<id>`（`PLUGIN_CRASHLOOP`，参数与它的状态相同：`id`、`crashes`、`window_s`、`retry_s`）；被吊销的包是 `plugins.revoked.<id>`（`PLUGIN_REVOKED`，参数与它的列表行相同：`id`、`version`、`replacement`，没有指定替代版本时 `replacement` 为空），两者都是 `danger`；因为需要此服务器不提供的能力而不再通过校验的包是 `plugins.incompatible.<id>`（`PLUGIN_INCOMPATIBLE`，参数与安装时的拒绝相同：`id`、`capability`、`version`、`offered`、`min_core_hint`），是 `warning`。插件恢复运行、被停用或卸载后横幅随即消失。推送状态自己的掉线横幅（`PLUGIN_DOWN`）照常存在。
 - **诊断检查 `plugins`**：随 `GET /api/v1/plugins` 的 `check` 下发（什么都没装时缺省，列表与原来逐字节相同），状态取 `proto.Check*`。有已启用的包处于崩溃循环、`failed`、`broken`、被吊销或 `needs_host_setup`时为 `fail`（`CHECK_PLUGINS_FAILING{ids}`）；否则有不兼容的包时为 `warn`（`CHECK_PLUGINS_INCOMPATIBLE{ids}`）；其余为 `pass`（`CHECK_PLUGINS_OK`）。`ids` 是按 id 排序、以逗号分隔的包 id。
-- **指标**：`GET /api/v1/metrics/plugins` 以 Prometheus 文本格式（0.0.4）给出，管理员用登录会话或令牌（只读令牌也可以）抓取，助手读不到。标签 `id` 只取已安装的包，卸载后它的序列随之消失：
+- **指标**：`GET /api/v1/metrics/plugins` 以 Prometheus 文本格式（0.0.4）给出，管理员用登录会话或令牌（只读令牌也可以）抓取，助手读不到。这些指标供外部采集，不写入内置时序库，也不列入监控历史指标目录；调用延迟导出为直方图 bucket、sum 和 count，不生成内部 quantile 序列。标签 `id` 只取已安装的包，卸载后它的序列随之消失：
 
 | 指标 | 类型 | 含义 |
 |---|---|---|

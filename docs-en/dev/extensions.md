@@ -324,7 +324,7 @@ The plugin host module judges every installed package again whenever a plugin's 
 
 - **Banners**: for administrators only, carried in the console manifest; when they change, the console is told on the `feature` topic to read the manifest again. A crashlooping package raises `plugins.crashloop.<id>` (`PLUGIN_CRASHLOOP`, with its status params: `id`, `crashes`, `window_s`, `retry_s`); a revoked package raises `plugins.revoked.<id>` (`PLUGIN_REVOKED`, with the params of its list row: `id`, `version` and `replacement`, which is empty when no replacement is named), both `danger`. A package that stopped verifying because it needs a capability this server does not offer raises `plugins.incompatible.<id>` (`PLUGIN_INCOMPATIBLE`, with the params of the install refusal: `id`, `capability`, `version`, `offered`, `min_core_hint`), a `warning`. A banner goes away as soon as the plugin runs again, is disabled or is uninstalled. Pushed state's own down banner (`PLUGIN_DOWN`) stays as it is.
 - **Diagnostics check `plugins`**: carried as `check` in `GET /api/v1/plugins` (absent with nothing installed, so that list is byte-identical to before), with a `proto.Check*` status. It is `fail` (`CHECK_PLUGINS_FAILING{ids}`) while an enabled package is crashlooping, `failed`, `broken`, revoked or `needs_host_setup`; otherwise `warn` (`CHECK_PLUGINS_INCOMPATIBLE{ids}`) while one is incompatible; otherwise `pass` (`CHECK_PLUGINS_OK`). `ids` lists the package ids, sorted and comma-separated.
-- **Metrics**: `GET /api/v1/metrics/plugins` answers them in the Prometheus text format (0.0.4), scraped by administrators with a login session or a token (a read token too); the assistant cannot read it. The `id` label takes only installed packages, and a package's series end when it is uninstalled:
+- **Metrics**: `GET /api/v1/metrics/plugins` answers them in the Prometheus text format (0.0.4), scraped by administrators with a login session or a token (a read token too); the assistant cannot read it. These metrics are for external collection, are not persisted in the internal time-series store and are absent from the stored-metric catalog. Call latency exports histogram buckets, sum and count, with no stored quantile series. The `id` label takes only installed packages, and a package's series end when it is uninstalled:
 
 | Metric | Type | Meaning |
 |---|---|---|
@@ -394,4 +394,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 5f23abcb47ceb25b90ab26b6b837792cbe3cc3619123e6c15133deb92cee04fe -->
+<!-- translation-source-sha256: 0378a109aee23915dca945e6c2f06a928c1a0ef6d3f94cb70ddaa4f4154ea8fc -->

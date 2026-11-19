@@ -1707,7 +1707,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | POST | `/api/v1/plugins/{id}/enable` | 启用并启动服务端部分，返回该包；不再通过校验的包回 409 `PLUGIN_BROKEN` | 管理会话，admin |
 | POST | `/api/v1/plugins/{id}/disable` | 停止并不再启动，返回该包；它推送的表照常执行，并按掉线计算宽限 | 管理会话，admin |
 | DELETE | `/api/v1/plugins/{id}?purge=<bool>` | 停止并卸载，删掉它推送的全部内容并重新应用保持，返回 204；`purge=true` 连数据目录一起移到 `.trash/` | 管理会话，admin |
-| GET | `/api/v1/metrics/plugins` | 已安装插件的 `gpuworks_plugin_*` 指标，Prometheus 文本格式（`text/plain; version=0.0.4`），供 Prometheus 抓取；指标见[扩展点](../dev/extensions.md#健康横幅诊断检查与指标) | `JWT(admin)` |
+| GET | `/api/v1/metrics/plugins` | 已安装插件的 `gpuworks_plugin_*` 指标，Prometheus 文本格式（`text/plain; version=0.0.4`），供外部 Prometheus 抓取，不写入内置时序库或历史指标目录；指标见[扩展点](../dev/extensions.md#健康横幅诊断检查与指标) | `JWT(admin)` |
 
 字段：
 

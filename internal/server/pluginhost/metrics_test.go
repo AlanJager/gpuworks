@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/platformmetrics"
 	"gpuworks.ai/gpuworks/pkg/pluginsdk"
 )
 
@@ -83,6 +85,82 @@ func TestMetricsExpositionGolden(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "acme_gone") {
 		t.Fatal("a package not in the rows was exposed")
+	}
+	assertExportedMetricsVocabulary(t, buf.String())
+}
+
+// Compare the actual public exposition with the leaf vocabulary. Neither
+// TYPE nor label names are taken from this registry by the producer, so a
+// mismatch catches independently changed wire output or metadata.
+func assertExportedMetricsVocabulary(t *testing.T, text string) {
+	t.Helper()
+	families := map[string]platformmetrics.Definition{}
+	for _, d := range platformmetrics.ExportedDefinitions() {
+		if d.Source == platformmetrics.SourcePlugin {
+			families[d.Series] = d
+		}
+	}
+	seenTypes, seenSamples := map[string]bool{}, map[string]bool{}
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" || strings.HasPrefix(line, "# HELP ") {
+			continue
+		}
+		if strings.HasPrefix(line, "# TYPE ") {
+			fields := strings.Fields(line)
+			if len(fields) != 4 {
+				t.Fatalf("invalid TYPE line: %s", line)
+			}
+			d, ok := families[fields[2]]
+			if !ok || string(d.Kind) != fields[3] || seenTypes[d.Series] {
+				t.Fatalf("TYPE is absent, repeated, or mismatches its exported definition: %s", line)
+			}
+			seenTypes[d.Series] = true
+			continue
+		}
+		name, rest, ok := strings.Cut(line, "{")
+		if !ok {
+			t.Fatalf("invalid sample: %s", line)
+		}
+		d, found := families[name]
+		bucket := false
+		if !found {
+			for _, suffix := range []string{"_bucket", "_sum", "_count"} {
+				if family, matched := strings.CutSuffix(name, suffix); matched {
+					d, found = families[family]
+					found = found && d.Kind == platformmetrics.Histogram
+					bucket = suffix == "_bucket"
+					break
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("sample has no exported definition: %s", name)
+		}
+		labels, _, ok := strings.Cut(rest, "} ")
+		if !ok {
+			t.Fatalf("invalid sample labels: %s", line)
+		}
+		var got []string
+		for _, label := range strings.Split(labels, ",") {
+			key, _, ok := strings.Cut(label, "=")
+			if !ok {
+				t.Fatalf("invalid label: %s", label)
+			}
+			got = append(got, key)
+		}
+		want := slices.Clone(d.Labels)
+		if bucket {
+			want = append(want, "le")
+		}
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Fatalf("%s labels = %v, registry says %v", name, got, want)
+		}
+		seenSamples[d.Series] = true
+	}
+	if len(seenTypes) != len(families) || len(seenSamples) != len(families) {
+		t.Fatalf("exported families differ from actual TYPE/sample sets: %d definitions, %d types, %d sampled", len(families), len(seenTypes), len(seenSamples))
 	}
 }
 

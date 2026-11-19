@@ -1693,7 +1693,7 @@ The management API of installed signed plugin packages (`.gwpkg`); see [Extensio
 | POST | `/api/v1/plugins/{id}/enable` | Enable and start the server part, returning the package; a package that no longer verifies answers 409 `PLUGIN_BROKEN` | Management session, admin |
 | POST | `/api/v1/plugins/{id}/disable` | Stop it and keep it from starting, returning the package; its pushed tables stay enforced and its grace runs as for a down plugin | Management session, admin |
 | DELETE | `/api/v1/plugins/{id}?purge=<bool>` | Stop and uninstall, delete everything it pushed and reapply the holds; returns 204. `purge=true` moves its data directory to `.trash/` too | Management session, admin |
-| GET | `/api/v1/metrics/plugins` | The installed plugins' `gpuworks_plugin_*` metrics in the Prometheus text format (`text/plain; version=0.0.4`), for a Prometheus scrape; the metrics are in [Extension Points](../dev/extensions.md#health-banners-the-diagnostics-check-and-metrics) | `JWT(admin)` |
+| GET | `/api/v1/metrics/plugins` | The installed plugins' `gpuworks_plugin_*` metrics in the Prometheus text format (`text/plain; version=0.0.4`), for external Prometheus collection, without internal time-series persistence or stored-catalog entries; the metrics are in [Extension Points](../dev/extensions.md#health-banners-the-diagnostics-check-and-metrics) | `JWT(admin)` |
 
 Fields:
 
@@ -2312,4 +2312,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: f74ccbdc35a6f6b5d9430094a4cbdfc96196f6bf67674363e0100758cb36ccab -->
+<!-- translation-source-sha256: a4df1e75ab7b025d848f46f5268b4aa4f3635e5fe5c58d3809e576348658075e -->
