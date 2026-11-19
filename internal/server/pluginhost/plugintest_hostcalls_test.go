@@ -2,7 +2,6 @@ package pluginhost
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,29 +13,24 @@ import (
 	"gpuworks.ai/gpuworks/pkg/pluginsdk/plugintest"
 )
 
-// callSeen is what a plugin observes of one host call: the status, and for
-// a refusal its code, reason and params.
-type callSeen struct {
-	status               int
-	code, reason, params string
-}
-
-func seen(status int, raw []byte) callSeen {
-	s := callSeen{status: status}
+// hostCallSeen uses the shared canonical refusal observed by a plugin.
+func hostCallSeen(t *testing.T, status int, raw []byte) refusalSeen {
+	t.Helper()
+	var wire *extapi.WireError
 	if status/100 != 2 {
-		if w, err := extapi.DecodeWireError(raw); err == nil {
-			s.code, s.reason, s.params = w.Code, w.Reason, fmt.Sprint(w.Params)
-		} else {
-			s.code = "undecodable: " + err.Error()
+		var err error
+		wire, err = extapi.DecodeWireError(raw)
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
-	return s
+	return seen(t, status, wire)
 }
 
 // plugintestCalls makes calls on plugintest's fake host from a plugin that
 // uses uses and was granted grant, and returns what each answered with the
 // owner the real host API would bind for the same handshake.
-func plugintestCalls(t *testing.T, uses map[string]extapi.Range, grant extapi.PluginGrant, calls []hostCall) ([]callSeen, Owner) {
+func plugintestCalls(t *testing.T, uses map[string]extapi.Range, grant extapi.PluginGrant, calls []hostCall) ([]refusalSeen, Owner) {
 	t.Helper()
 	cfg := sdkConfig("acme_quota")
 	cfg.Uses = uses
@@ -50,7 +44,7 @@ func plugintestCalls(t *testing.T, uses map[string]extapi.Range, grant extapi.Pl
 		t.Fatal(err)
 	}
 	p := <-ready
-	out := make([]callSeen, len(calls))
+	out := make([]refusalSeen, len(calls))
 	for i, c := range calls {
 		r, err := http.NewRequest(c.method, "http://gwx-host:80"+c.path, strings.NewReader(c.body))
 		if err != nil {
@@ -62,7 +56,7 @@ func plugintestCalls(t *testing.T, uses map[string]extapi.Range, grant extapi.Pl
 		}
 		raw, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		out[i] = seen(res.StatusCode, raw)
+		out[i] = hostCallSeen(t, res.StatusCode, raw)
 	}
 	grant.ID, grant.Version = cfg.ID, cfg.Version
 	return out, Owner{ID: cfg.ID, Version: cfg.Version, Lifecycle: extapi.LifecycleResident, Grant: grant, Use: resp.Use, Generation: 1}
@@ -114,7 +108,7 @@ func TestPlugintestAnswersTheHostCallsAsTheHostAPIDoes(t *testing.T) {
 			for i, c := range tc.calls {
 				rec := httptest.NewRecorder()
 				h.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, strings.NewReader(c.body)))
-				real := seen(rec.Code, rec.Body.Bytes())
+				real := hostCallSeen(t, rec.Code, rec.Body.Bytes())
 				if fake[i] != real {
 					t.Errorf("%s %s %.40s: plugintest answers %+v, the host API %+v", c.method, c.path, c.body, fake[i], real)
 				}

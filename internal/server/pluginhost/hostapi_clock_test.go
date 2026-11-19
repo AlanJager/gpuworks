@@ -108,7 +108,7 @@ func raw(t *testing.T, h *hostConn, method, path, body string) (int, []byte, *ex
 	return rec.Code, nil, w
 }
 
-func wantRefusal(t *testing.T, what string, status int, w *extapi.WireError, wantStatus int, code string, params map[string]any) {
+func wantHostCallRefusal(t *testing.T, what string, status int, w *extapi.WireError, wantStatus int, code string, params map[string]any) {
 	t.Helper()
 	if w == nil || status != wantStatus || w.Code != code {
 		t.Fatalf("%s: %d %+v, want %d %s", what, status, w, wantStatus, code)
@@ -127,14 +127,14 @@ func TestClockCorrectionNeedsTheRoleAndTheCapability(t *testing.T) {
 	noRole := authority()
 	noRole.Grant.RolesGranted = []string{"availability_authority"}
 	st, _, w := raw(t, servicesConn(t, f, noRole), http.MethodPost, extapi.PathHostClockCorrect, correctBody)
-	wantRefusal(t, "without the role", st, w, 403, messages.ErrorPluginRoleRequired, map[string]any{"id": "acme_quota", "role": "clock_authority"})
+	wantHostCallRefusal(t, "without the role", st, w, 403, messages.ErrorPluginRoleRequired, map[string]any{"id": "acme_quota", "role": "clock_authority"})
 	if w.Reason != extapi.ReasonPermissionDenied {
 		t.Fatalf("reason %s", w.Reason)
 	}
 	noCap := authority()
 	noCap.Use = map[string]int{}
 	st, _, w = raw(t, servicesConn(t, f, noCap), http.MethodPost, extapi.PathHostClockCorrect, correctBody)
-	wantRefusal(t, "without host.clock", st, w, 412, messages.ErrorPluginCapabilityNotOffered, map[string]any{"capability": "host.clock"})
+	wantHostCallRefusal(t, "without host.clock", st, w, 412, messages.ErrorPluginCapabilityNotOffered, map[string]any{"capability": "host.clock"})
 	if len(f.corrected) != 0 {
 		t.Fatalf("a refused correction reached the clock: %v", f.corrected)
 	}
@@ -149,19 +149,19 @@ func TestClockCorrectionNeedsTheRoleAndTheCapability(t *testing.T) {
 	}
 
 	st, _, w = raw(t, h, http.MethodPost, extapi.PathHostClockCorrect, `{"reason":"x"}`)
-	wantRefusal(t, "no time", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"id": "acme_quota", "field": "to"})
+	wantHostCallRefusal(t, "no time", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"id": "acme_quota", "field": "to"})
 	st, _, w = raw(t, h, http.MethodPost, extapi.PathHostClockCorrect, `{"reason":"x","to":"2027-01-15T00:00:00Z","by":"root"}`)
-	wantRefusal(t, "unknown field", st, w, 400, extapi.ErrorWireUnknownField, nil)
+	wantHostCallRefusal(t, "unknown field", st, w, 400, extapi.ErrorWireUnknownField, nil)
 	st, _, w = raw(t, h, http.MethodPost, extapi.PathHostClockCorrect, `{"reason":"`+strings.Repeat("a", extapi.MaxHostCallBytes)+`","to":"2027-01-15T00:00:00Z"}`)
-	wantRefusal(t, "oversized", st, w, 413, messages.ErrorRequestTooLarge, map[string]any{"max_bytes": int64(extapi.MaxHostCallBytes)})
+	wantHostCallRefusal(t, "oversized", st, w, 413, messages.ErrorRequestTooLarge, map[string]any{"max_bytes": int64(extapi.MaxHostCallBytes)})
 	st, _, w = raw(t, h, http.MethodGet, extapi.PathHostClockCorrect, "")
-	wantRefusal(t, "GET", st, w, 501, messages.ErrorPluginHostRouteUnknown, nil)
+	wantHostCallRefusal(t, "GET", st, w, 501, messages.ErrorPluginHostRouteUnknown, nil)
 
 	// The clock's own refusal (a correction beyond the bound) is answered
 	// as it is.
 	f.refuse = Refuse(extapi.ReasonInvalidArgument, messages.ErrorPluginClockCorrectionTooLarge, "too far", map[string]any{"max_days": 366})
 	st, _, w = raw(t, h, http.MethodPost, extapi.PathHostClockCorrect, correctBody)
-	wantRefusal(t, "too far", st, w, 400, messages.ErrorPluginClockCorrectionTooLarge, map[string]any{"max_days": int64(366)})
+	wantHostCallRefusal(t, "too far", st, w, 400, messages.ErrorPluginClockCorrectionTooLarge, map[string]any{"max_days": int64(366)})
 }
 
 func TestMetaAnswersTheServerAndItsClocks(t *testing.T) {
@@ -185,11 +185,11 @@ func TestMetaAnswersTheServerAndItsClocks(t *testing.T) {
 	noCap := authority()
 	delete(noCap.Use, extapi.CapHostClock)
 	st, _, w = raw(t, servicesConn(t, &fakeServices{}, noCap), http.MethodGet, extapi.PathHostMeta, "")
-	wantRefusal(t, "without host.clock", st, w, 412, messages.ErrorPluginCapabilityNotOffered, nil)
+	wantHostCallRefusal(t, "without host.clock", st, w, 412, messages.ErrorPluginCapabilityNotOffered, nil)
 	bare := testHostConn(t, &fakeState{}, extapi.LifecycleResident)
 	bare.accept(authority())
 	st, _, w = raw(t, bare, http.MethodGet, extapi.PathHostMeta, "")
-	wantRefusal(t, "without a clock", st, w, 404, messages.ErrorPluginHostRouteUnknown, nil)
+	wantHostCallRefusal(t, "without a clock", st, w, 404, messages.ErrorPluginHostRouteUnknown, nil)
 }
 
 // Ready is answered 204 and reaches the ready host with the connection's
@@ -212,11 +212,11 @@ func TestReadyReachesTheReadyHostWithTheProcessGeneration(t *testing.T) {
 		t.Fatalf("on-demand ready = %d, readies %v", st, f.readies)
 	}
 	st, _, w := raw(t, h, http.MethodGet, extapi.PathHostReady, "")
-	wantRefusal(t, "GET ready", st, w, 501, messages.ErrorPluginHostRouteUnknown, nil)
+	wantHostCallRefusal(t, "GET ready", st, w, 501, messages.ErrorPluginHostRouteUnknown, nil)
 	rejected := testHostConn(t, &fakeState{}, extapi.LifecycleResident)
 	rejected.reject()
 	st, _, w = raw(t, rejected, http.MethodPost, extapi.PathHostReady, "")
-	wantRefusal(t, "ready on a refused connection", st, w, 412, messages.ErrorPluginHostNotReady, nil)
+	wantHostCallRefusal(t, "ready on a refused connection", st, w, 412, messages.ErrorPluginHostNotReady, nil)
 	bare := testHostConn(t, &fakeState{}, extapi.LifecycleResident)
 	bare.accept(authority())
 	if st, _, _ := raw(t, bare, http.MethodPost, extapi.PathHostReady, ""); st != 204 {
@@ -237,16 +237,16 @@ func TestOwnStateReadsTheConnectionsOwnTables(t *testing.T) {
 		t.Fatalf("read for %v", f.ownedFor)
 	}
 	st, _, w = raw(t, h, http.MethodGet, extapi.PathHostState+"Banners", "")
-	wantRefusal(t, "bad kind", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": "kind"})
+	wantHostCallRefusal(t, "bad kind", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": "kind"})
 	st, _, w = raw(t, h, http.MethodGet, extapi.PathHostState+"foo", "")
-	wantRefusal(t, "unknown kind", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": "kind"})
+	wantHostCallRefusal(t, "unknown kind", st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": "kind"})
 	noCap := authority()
 	noCap.Use = map[string]int{}
 	st, _, w = raw(t, servicesConn(t, f, noCap), http.MethodGet, extapi.PathHostState+"banners", "")
-	wantRefusal(t, "without host.state_read", st, w, 412, messages.ErrorPluginCapabilityNotOffered, map[string]any{"capability": "host.state_read"})
+	wantHostCallRefusal(t, "without host.state_read", st, w, 412, messages.ErrorPluginCapabilityNotOffered, map[string]any{"capability": "host.state_read"})
 	f.refuse = Refuse(extapi.ReasonInternal, messages.ErrorPluginHostFailed, "broken", map[string]any{"detail": "x"})
 	st, _, w = raw(t, h, http.MethodGet, extapi.PathHostState+"banners", "")
-	wantRefusal(t, "a failing read", st, w, 500, messages.ErrorPluginHostFailed, nil)
+	wantHostCallRefusal(t, "a failing read", st, w, 500, messages.ErrorPluginHostFailed, nil)
 	if len(f.ownedFor) != 2 {
 		t.Fatalf("refused reads reached the state: %v", f.ownedFor)
 	}
@@ -257,11 +257,11 @@ func TestDeriveKeyNeedsThePermissionAndBoundedArguments(t *testing.T) {
 	noPerm := authority()
 	noPerm.Grant.PermissionsGranted = nil
 	st, _, w := raw(t, servicesConn(t, f, noPerm), http.MethodPost, extapi.PathHostDeriveKey, `{"label":"usb.challenge","length":32}`)
-	wantRefusal(t, "without the permission", st, w, 403, messages.ErrorPluginHostNotPermitted, map[string]any{"id": "acme_quota", "permission": "crypto:derive_key"})
+	wantHostCallRefusal(t, "without the permission", st, w, 403, messages.ErrorPluginHostNotPermitted, map[string]any{"id": "acme_quota", "permission": "crypto:derive_key"})
 	noCap := authority()
 	noCap.Use = map[string]int{}
 	st, _, w = raw(t, servicesConn(t, f, noCap), http.MethodPost, extapi.PathHostDeriveKey, `{"label":"usb.challenge","length":32}`)
-	wantRefusal(t, "without host.derive_key", st, w, 412, messages.ErrorPluginCapabilityNotOffered, map[string]any{"capability": "host.derive_key"})
+	wantHostCallRefusal(t, "without host.derive_key", st, w, 412, messages.ErrorPluginCapabilityNotOffered, map[string]any{"capability": "host.derive_key"})
 
 	h := servicesConn(t, f, authority())
 	for _, tc := range []struct{ body, field string }{
@@ -271,7 +271,7 @@ func TestDeriveKeyNeedsThePermissionAndBoundedArguments(t *testing.T) {
 		{`{"label":"usb","length":65}`, "length"},
 	} {
 		st, _, w := raw(t, h, http.MethodPost, extapi.PathHostDeriveKey, tc.body)
-		wantRefusal(t, tc.body, st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": tc.field})
+		wantHostCallRefusal(t, tc.body, st, w, 400, messages.ErrorPluginHostArgumentInvalid, map[string]any{"field": tc.field})
 	}
 	if len(f.keysFor) != 0 {
 		t.Fatalf("refused requests reached the deriver: %v", f.keysFor)
@@ -286,5 +286,5 @@ func TestDeriveKeyNeedsThePermissionAndBoundedArguments(t *testing.T) {
 	}
 	f.keyLength = 20
 	st, _, w = raw(t, h, http.MethodPost, extapi.PathHostDeriveKey, `{"label":"usb.challenge","length":16}`)
-	wantRefusal(t, "a key of another length", st, w, 500, messages.ErrorPluginHostFailed, nil)
+	wantHostCallRefusal(t, "a key of another length", st, w, 500, messages.ErrorPluginHostFailed, nil)
 }
