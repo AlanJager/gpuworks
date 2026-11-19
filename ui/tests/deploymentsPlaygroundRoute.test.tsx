@@ -36,7 +36,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
-const { act, cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 
@@ -210,9 +210,12 @@ test("deployment detail renders server-owned routing policies and muted help", a
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments?deployment=44"]}><Routes><Route path="/deployments" element={<DeploymentsPage />} /></Routes></MemoryRouter></I18nextProvider>);
   assert.ok(await screen.findByText("Prefix affinity"));
   const combo = screen.getByLabelText(i18n.t("deployments:detail.routingPolicy"));
-  const help = screen.getByRole("img", { name: "Explain routing policies" });
-  assert.equal(help.getAttribute("title"), "Explain routing policies");
-  assert.notEqual(help.getAttribute("style")?.includes("orange"), true);
+  const help = screen.getByRole("button", { name: "Explain routing policies" });
+  fireEvent.focus(help);
+  const tip = await screen.findByRole("tooltip");
+  assert.match(tip.textContent ?? "", /Prefix affinity: Reuse prefix/);
+  assert.match(tip.textContent ?? "", /Failover: Use backup/);
+  fireEvent.blur(help);
   await userEvent.setup().click(combo);
   assert.ok(await screen.findByText("Failover"));
 });

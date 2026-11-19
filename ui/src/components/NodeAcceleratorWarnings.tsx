@@ -1,4 +1,5 @@
-import { Tag, Tooltip } from "antd";
+import { Badge } from "./ui/badge";
+import { Tooltip } from "./ui/tooltip";
 import { useTranslation } from "react-i18next";
 
 import type { Node } from "../api";
@@ -16,10 +17,10 @@ export function GPUProbeFailedTag({ node }: { node: Pick<Node, "gpu_probe_error"
     detail: node.gpu_probe_error,
   });
   return (
-    <Tooltip trigger={["hover", "focus"]} title={detail}>
-      <Tag color="orange" tabIndex={0} aria-label={detail} style={{ cursor: "help" }}>
+    <Tooltip content={detail}>
+      <Badge color="orange" tabIndex={0} aria-label={detail} className="cursor-help">
         {t("gpuProbeFailed.tag")}
-      </Tag>
+      </Badge>
     </Tooltip>
   );
 }

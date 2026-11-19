@@ -1,4 +1,4 @@
-import { Button } from "antd";
+import { Button } from "./ui/button";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
@@ -58,9 +58,10 @@ export default function AgentUpgradeButton({
     }
   };
   return <>
-    <Button size="small" type="primary"
+    <Button size="xs" variant="primary"
       disabled={!online || !!phase || checking || unavailable}
       loading={!!phase || checking}
+      aria-busy={!!phase || checking}
       title={unavailable ? t(`batchUpgrade.reason.${status}`, { defaultValue: t("batchUpgrade.eligibility.unavailable") }) : undefined}
       onClick={() => void upgrade()}>
       {t(phase === "waiting" ? "upgrade.waitingReconnect" : status === "already_current" ? "batchUpgrade.eligibility.already_current" : "upgrade.action")}

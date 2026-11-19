@@ -1,4 +1,4 @@
-import { Tooltip, Typography } from "antd";
+import { Tooltip } from "./ui/tooltip";
 import { useTranslation } from "react-i18next";
 import type { PhysicalGPU } from "../api";
 import { colors } from "../theme/tokens";
@@ -77,7 +77,7 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
     <div className="gpu-memory-composition">
       <div className="gpu-memory-composition-bar" role="img" aria-label={t("composition.aria")}>
         {segments.map((segment) => (
-          <Tooltip key={segment.key} title={`${segment.label} · ${fmtGiB(segment.bytes)}`}>
+          <Tooltip key={segment.key} content={`${segment.label} · ${fmtGiB(segment.bytes)}`}>
             <span
               className={segment.overhead ? "is-overhead" : undefined}
               style={{ width: `${(segment.bytes / total) * 100}%`, background: segment.color }}
@@ -85,7 +85,7 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
           </Tooltip>
         ))}
         {used != null && (
-          <Tooltip title={t("composition.used", { used: fmtGiB(used) })}>
+          <Tooltip content={t("composition.used", { used: fmtGiB(used) })}>
             <i style={{ left: `${Math.min(100, (used / total) * 100)}%` }} />
           </Tooltip>
         )}
@@ -94,19 +94,19 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
         {segments.map((segment) => (
           <li key={segment.key}>
             <span className={`gpu-memory-swatch${segment.overhead ? " is-overhead" : ""}`} style={{ background: segment.color }} />
-            <Typography.Text>{segment.label}</Typography.Text>
-            <Typography.Text type="secondary">{fmtGiB(segment.bytes)}</Typography.Text>
+            <span className="min-w-0 truncate">{segment.label}</span>
+            <span className="ml-auto flex-none tabular-nums text-fg-muted">{fmtGiB(segment.bytes)}</span>
           </li>
         ))}
         {used != null && (
           <li>
             <span className="gpu-memory-swatch is-marker" />
-            <Typography.Text>{t("composition.usedLegend")}</Typography.Text>
-            <Typography.Text type="secondary">{fmtGiB(used)}</Typography.Text>
+            <span className="min-w-0 truncate">{t("composition.usedLegend")}</span>
+            <span className="ml-auto flex-none tabular-nums text-fg-muted">{fmtGiB(used)}</span>
           </li>
         )}
       </ul>
-      <Typography.Text type="secondary" className="gpu-memory-composition-note">{t("composition.note")}</Typography.Text>
+      <span className="text-fg-muted gpu-memory-composition-note">{t("composition.note")}</span>
     </div>
   );
 }

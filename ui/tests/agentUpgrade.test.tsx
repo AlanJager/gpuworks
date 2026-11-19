@@ -164,11 +164,11 @@ test("upgrade button shows the waiting state and is disabled while waiting or of
 	const { rerender } = renderButton({ phase: "waiting" });
 	const waitingButton = screen.getByRole("button", { name: /等待重连/ });
 	assert.equal((waitingButton as HTMLButtonElement).disabled, true);
-	assert.ok(waitingButton.className.includes("ant-btn-loading"));
+	assert.equal(waitingButton.getAttribute("aria-busy"), "true", "the button says it is busy while waiting");
 
 	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton nodeUUID="a" online phase="requesting" onUpgrade={() => {}} /></I18nextProvider>);
 	const requesting = screen.getByRole("button", { name: /升级 Agent/ });
-	assert.ok(requesting.className.includes("ant-btn-loading"));
+	assert.equal(requesting.getAttribute("aria-busy"), "true", "the button says it is busy while requesting");
 
 	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton nodeUUID="a" online={false} onUpgrade={() => {}} /></I18nextProvider>);
 	assert.equal((screen.getByRole("button", { name: /升级 Agent/ }) as HTMLButtonElement).disabled, true);

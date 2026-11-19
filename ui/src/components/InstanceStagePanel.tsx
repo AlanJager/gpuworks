@@ -1,5 +1,4 @@
 import { Notice } from "../ui-kit/Notice";
-import { Typography } from "antd";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -80,7 +79,7 @@ function hasPoints(series?: MetricSeries[] | null): boolean {
 function NotCollected({ text }: { text: string }) {
   return (
     <div style={{ height: 190, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <Typography.Text type="secondary">— {text}</Typography.Text>
+      <span className="text-fg-muted">— {text}</span>
     </div>
   );
 }
@@ -88,8 +87,8 @@ function NotCollected({ text }: { text: string }) {
 function StageCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
     <div className="deployment-trend-card">
-      <Typography.Text strong>{title}</Typography.Text>
-      <Typography.Text type="secondary" style={{ display: "block", fontSize: "var(--font-size-label)", marginBottom: 8 }}>{description}</Typography.Text>
+      <span className="font-semibold">{title}</span>
+      <span className="text-fg-muted block text-label mb-2">{description}</span>
       {children}
     </div>
   );

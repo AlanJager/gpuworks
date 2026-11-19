@@ -1,5 +1,6 @@
-import { CopyOutlined, ExclamationCircleFilled, InfoCircleFilled } from "@ant-design/icons";
-import { Button, Space, Typography } from "antd";
+import { ExclamationCircleFilled, InfoCircleFilled } from "@ant-design/icons";
+import { Button } from "./ui/button";
+import { ConsoleIcon } from "../ui-kit/consoleIcons";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { Node, RuntimeSocketDenial } from "../api";
@@ -71,15 +72,15 @@ export default function RuntimeFallbackNotice({ node }: { node: RuntimeFallbackN
 
   return (
     <>
-      <Space size={4} align="start" role={ready ? "status" : "alert"}>
-        {ready ? <InfoCircleFilled style={{ color: "#1677ff" }} /> : <ExclamationCircleFilled style={{ color: "#fa8c16" }} />}
-        <Typography.Text type={ready ? undefined : "warning"} style={ready ? undefined : { color: "#fa8c16" }}>
+      <div className="flex items-start gap-1" role={ready ? "status" : "alert"}>
+        {ready ? <InfoCircleFilled className="mt-[3px] text-fg-info" /> : <ExclamationCircleFilled className="mt-[3px] text-fg-warning" />}
+        <span className={ready ? undefined : "text-fg-warning"}>
           {text}
-        </Typography.Text>
-      </Space>
+        </span>
+      </div>
       {command && (
         <div>
-          <Button size="small" icon={<CopyOutlined />} onClick={() => void copyCommand()}>
+          <Button size="xs" variant="tertiary" leadingIcon={ConsoleIcon.copy} onClick={() => void copyCommand()}>
             {t(socket ? "runtime.copySocketCommand" : install ? "runtime.copyInstallCommand" : "runtime.copyConfigureCommand")}
           </Button>
         </div>

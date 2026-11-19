@@ -1,9 +1,11 @@
-import { Alert, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Badge } from "./ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Tooltip } from "./ui/tooltip";
+import { Notice } from "../ui-kit/Notice";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AIFinding, AIModelFit, AIStreamEvent } from "../api";
 import { formatBytes } from "../format";
-
-const { Text } = Typography;
 
 // The deterministic half of the assistant: what the server knows without an
 // LLM, shown before the answer and on its own when no AI service is set up.
@@ -12,33 +14,32 @@ const { Text } = Typography;
 export function FindingCards({ findings }: { findings: AIFinding[] }) {
   const { t } = useTranslation("ai");
   if (findings.length === 0) {
-    return <Text type="secondary" style={{ fontSize: 12 }}>{t("finding.none")}</Text>;
+    return <span className="text-fg-muted text-label">{t("finding.none")}</span>;
   }
   return (
-    <Space direction="vertical" size={8} style={{ width: "100%" }}>
+    <div className="flex w-full flex-col gap-2">
       {findings.map((f) => (
-        <Alert
+        <Notice
           key={f.code}
-          type="warning"
-          showIcon
-          message={
-            <Space size={6} wrap>
+          tone="warning"
+          role="alert"
+          title={
+            <span className="inline-flex flex-wrap items-center gap-1.5">
               <span>{t(`finding.${f.code}.title`, { defaultValue: f.code })}</span>
-              <Tag color="gold">{t("finding.ruleTag")}</Tag>
-            </Space>
+              <Badge size="sm" color="amber">{t("finding.ruleTag")}</Badge>
+            </span>
           }
-          description={
-            <Space direction="vertical" size={6} style={{ width: "100%" }}>
-              <span>{t(`finding.${f.code}.fix`, { defaultValue: "" })}</span>
-              <pre aria-label={t("finding.evidence")} style={{ margin: 0, fontSize: "var(--font-size-body)", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "rgba(0,0,0,0.04)", padding: "6px 8px", borderRadius: 4 }}>
-                {f.evidence.map((e) => e.line).join("\n")}
-              </pre>
-            </Space>
-          }
-        />
+        >
+          <div className="flex w-full flex-col gap-1.5">
+            <span>{t(`finding.${f.code}.fix`, { defaultValue: "" })}</span>
+            <pre aria-label={t("finding.evidence")} className="m-0 whitespace-pre-wrap break-all rounded-sm bg-emphasis px-2 py-1.5 text-body">
+              {f.evidence.map((e) => e.line).join("\n")}
+            </pre>
+          </div>
+        </Notice>
       ))}
-      <Text type="secondary" style={{ fontSize: 12 }}>{t("finding.verifyNote")}</Text>
-    </Space>
+      <span className="text-fg-muted text-label">{t("finding.verifyNote")}</span>
+    </div>
   );
 }
 
@@ -46,46 +47,50 @@ export function FindingCards({ findings }: { findings: AIFinding[] }) {
 export function FitTable({ fit }: { fit: AIModelFit }) {
   const { t } = useTranslation("ai");
   if (fit.rows.length === 0) {
-    return <Text type="secondary" style={{ fontSize: 12 }}>{t("fit.noNodes")}</Text>;
+    return <span className="text-fg-muted text-label">{t("fit.noNodes")}</span>;
   }
   const gib = (v: number) => formatBytes(v, { minUnit: "GiB", maxUnit: "GiB" });
+  const columns: { key: string; title: string; render: (r: AIModelFit["rows"][number]) => ReactNode }[] = [
+    {
+      key: "card", title: t("fit.card"), render: (r) => (
+        <div className="flex flex-col">
+          <span>{r.name} <span className="text-fg-muted">×{r.cards} · {t("fit.nodes", { count: r.nodes })}</span></span>
+          {r.unusable > 0 && <span className="text-fg-danger text-label">{t("fit.unusable", { count: r.unusable })}</span>}
+        </div>
+      ),
+    },
+    {
+      key: "fits", title: t("fit.runs"), render: (r) => (
+        <div className="flex flex-col">
+          {r.fits ? <span className="text-fg-success">{t("fit.yes", { tp: r.tp })}</span> : <span className="text-fg-danger">{t("fit.no")}</span>}
+          {!r.dtype_supported && <Tooltip content={r.dtype_note}><span className="w-fit text-fg-warning text-label">{t("fit.dtypeUnsupported", { dtype: fit.dtype || "" })}</span></Tooltip>}
+        </div>
+      ),
+    },
+    { key: "link", title: t("fit.link"), render: (r) => (r.fast_link_cards > 1 ? t("fit.fastLink", { count: r.fast_link_cards }) : r.fast_link_cards === 1 ? t("fit.pcieOnly") : "—") },
+    { key: "need", title: t("fit.perGPU"), render: (r) => `${gib(r.per_gpu_bytes)} / ${gib(r.usable_bytes)}` },
+    { key: "headroom", title: t("fit.headroom"), render: (r) => (r.fits ? gib(r.headroom_bytes) : "—") },
+  ];
   return (
-    <Space direction="vertical" size={6} style={{ width: "100%" }}>
-      <Space size={6}>
-        <Text strong style={{ fontSize: 13 }}>{t("fit.title")}</Text>
-        <Tag color="blue">{t("fit.estimatorTag")}</Tag>
-      </Space>
-      <Table
-        size="small"
-        pagination={false}
-        rowKey={(r) => `${r.vendor}/${r.name}`}
-        dataSource={fit.rows}
-        columns={[
-          {
-            title: t("fit.card"), key: "card", render: (_, r) => (
-              <Space direction="vertical" size={0}>
-                <span>{r.name} <Text type="secondary">×{r.cards} · {t("fit.nodes", { count: r.nodes })}</Text></span>
-                {r.unusable > 0 && <Text type="danger" style={{ fontSize: 12 }}>{t("fit.unusable", { count: r.unusable })}</Text>}
-              </Space>
-            ),
-          },
-          {
-            title: t("fit.runs"), key: "fits", render: (_, r) => (
-              <Space direction="vertical" size={0}>
-                {r.fits ? <Text type="success">{t("fit.yes", { tp: r.tp })}</Text> : <Text type="danger">{t("fit.no")}</Text>}
-                {!r.dtype_supported && <Tooltip title={r.dtype_note}><Text type="warning" style={{ fontSize: 12 }}>{t("fit.dtypeUnsupported", { dtype: fit.dtype || "" })}</Text></Tooltip>}
-              </Space>
-            ),
-          },
-          { title: t("fit.link"), key: "link", render: (_, r) => (r.fast_link_cards > 1 ? t("fit.fastLink", { count: r.fast_link_cards }) : r.fast_link_cards === 1 ? t("fit.pcieOnly") : "—") },
-          { title: t("fit.perGPU"), key: "need", render: (_, r) => `${gib(r.per_gpu_bytes)} / ${gib(r.usable_bytes)}` },
-          { title: t("fit.headroom"), key: "headroom", render: (_, r) => (r.fits ? gib(r.headroom_bytes) : "—") },
-        ]}
-      />
-      <Text type="secondary" style={{ fontSize: 12 }}>
+    <div className="flex w-full flex-col gap-1.5">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="font-semibold">{t("fit.title")}</span>
+        <Badge size="sm" color="blue">{t("fit.estimatorTag")}</Badge>
+      </span>
+      <Table size="sm">
+        <TableHeader>
+          <TableRow>{columns.map((c) => <TableHead key={c.key}>{c.title}</TableHead>)}</TableRow>
+        </TableHeader>
+        <TableBody>
+          {fit.rows.map((r) => (
+            <TableRow key={`${r.vendor}/${r.name}`}>{columns.map((c) => <TableCell key={c.key}>{c.render(r)}</TableCell>)}</TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <span className="text-fg-muted text-label">
         {t("fit.note", { util: Math.round(fit.gpu_memory_utilization * 100) })}
-      </Text>
-    </Space>
+      </span>
+    </div>
   );
 }
 
@@ -143,15 +148,15 @@ export function StepList({ steps }: { steps: LiveStep[] }) {
               own line below, so it cannot squeeze the row. */}
           <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0 }}>
             <span aria-hidden style={{ width: 14, flex: "none" }}>{s.status === "running" ? "…" : s.status === "done" ? "✓" : s.error && selfCorrectable(s.error) ? "↻" : "✗"}</span>
-            <Text code style={{ flex: "none", whiteSpace: "nowrap" }}>{t(`tool.${s.tool}`, { defaultValue: s.tool })}</Text>
-            <Text type="secondary" ellipsis={{ tooltip: s.args }} style={{ flex: 1, minWidth: 0 }}>{stepDetail(s.tool, s.args)}</Text>
-            <Text type="secondary" style={{ flex: "none", whiteSpace: "nowrap" }}>{s.status === "running" ? t("trace.running") : `${s.ms} ms`}</Text>
+            <code className="flex-none whitespace-nowrap rounded-sm bg-emphasis px-1 font-mono text-label">{t(`tool.${s.tool}`, { defaultValue: s.tool })}</code>
+            <Tooltip content={s.args}><span className="text-fg-muted flex-1 min-w-0 truncate">{stepDetail(s.tool, s.args)}</span></Tooltip>
+            <span className="text-fg-muted flex-none whitespace-nowrap">{s.status === "running" ? t("trace.running") : `${s.ms} ms`}</span>
           </div>
           {s.error && (
             <div style={{ paddingLeft: 20 }}>
               {selfCorrectable(s.error)
-                ? <Text type="secondary" title={s.error} style={{ fontSize: 12 }}>{t("trace.selfCorrect")}</Text>
-                : <Text type="danger" style={{ fontSize: 12, wordBreak: "break-word" }}>{s.error}</Text>}
+                ? <span className="text-fg-muted text-label" title={s.error}>{t("trace.selfCorrect")}</span>
+                : <span className="text-fg-danger text-label break-words">{s.error}</span>}
             </div>
           )}
         </li>
@@ -165,13 +170,13 @@ export function AnswerSummary({ done, tools }: { done: Pick<AIStreamEvent & { ty
   const { t } = useTranslation("ai");
   const seconds = (ms: number) => (ms / 1000).toFixed(1);
   return (
-    <Text type="secondary" style={{ fontSize: 12 }}>
+    <span className="text-fg-muted text-label">
       {t("trace.summary", {
         first: seconds(done.first_text_ms), total: seconds(done.total_ms), tools, calls: done.calls,
         tokens: done.usage.prompt_tokens + done.usage.completion_tokens,
       })}
       {tools === 0 && ` · ${t("trace.noTools")}`}
-    </Text>
+    </span>
   );
 }
 

@@ -1,5 +1,4 @@
 import { MetricStat } from "./InferenceMetricsPanel";
-import { Col, Row } from "antd";
 import { Alert } from "../pages/DeploymentControls";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -57,12 +56,12 @@ export default function GatewayMetricsNotice({ data }: { data: MonitorDeployment
         }
         style={{ marginBottom: 12 }}
       />
-      <Row gutter={[12, 12]}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat title={t("metrics.gatewayTTFT")} value={ttft} suffix="ms" />
         <Stat title={t("metrics.gatewayE2E")} value={e2e} suffix="ms" />
         <Stat title={t("metrics.totalGenerationThroughput")} value={generation} suffix="tok/s" precision={1} />
         <Stat title={t("metrics.gatewayInflight")} value={inflight} />
-      </Row>
+      </div>
     </div>
   );
 }
@@ -85,9 +84,7 @@ export function monitorRangeCovering(sinceMS: number): MonitorRange {
 
 function Stat({ title, value, suffix, precision = 0 }: { title: string; value?: number; suffix?: string; precision?: number }) {
   return (
-    <Col xs={24} sm={12} xl={6}>
-      <MetricStat title={title} value={value} precision={precision} suffix={suffix} />
-    </Col>
+    <MetricStat title={title} value={value} precision={precision} suffix={suffix} />
   );
 }
 
