@@ -106,6 +106,9 @@ func (s *Service) CheckStoredCanEverFit(ctx context.Context, dep *store.Deployme
 		if err != nil {
 			return launch, layer, err
 		}
+		// The configuration is being written, so it is judged as a create's
+		// is; only a launch of what is already stored runs as written.
+		launch.AsStored = false
 		launch.Topology, err = planning.RankTopology(node, nil, planning.GroupRank{Ranks: 1})
 		return launch, layer, err
 	})
