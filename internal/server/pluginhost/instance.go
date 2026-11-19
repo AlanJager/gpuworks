@@ -14,12 +14,13 @@ import (
 // instance supervises one package's plugin: its status, its current run
 // and its crash history live and die together.
 type instance struct {
-	h      *Host
-	spec   Spec
-	stderr *ring
-	// metrics are the package's counters, shared with the instances
-	// before and after this one.
+	h    *Host
+	spec Spec
+	// metrics are the package's counters and logs its supervision events
+	// and stderr output, shared with the instances before and after this
+	// one.
 	metrics *pluginMetrics
+	logs    *pluginLogs
 
 	mu     sync.Mutex
 	status Status
@@ -39,8 +40,8 @@ type instance struct {
 	consecutive int
 }
 
-func newInstance(h *Host, spec Spec, m *pluginMetrics) *instance {
-	return &instance{h: h, spec: spec, stderr: newRing(stderrRingBytes), metrics: m,
+func newInstance(h *Host, spec Spec, m *pluginMetrics, logs *pluginLogs) *instance {
+	return &instance{h: h, spec: spec, metrics: m, logs: logs,
 		status:  Status{ID: spec.ID, State: StateStarting, Since: time.Now(), Isolation: "none"},
 		changed: make(chan struct{}), stop: make(chan struct{}), wake: make(chan struct{}, 1), done: make(chan struct{})}
 }
@@ -85,6 +86,7 @@ func (i *instance) update(f func(*Status)) {
 	i.changed = make(chan struct{})
 	i.mu.Unlock()
 	if st.State != before {
+		i.logs.record(st)
 		level := i.h.log.Info
 		switch st.State {
 		case StateBackoff, StateCrashloop, StateFailed:
