@@ -108,6 +108,11 @@ func TestSlurmGPUNodeReportsReconcileWithTheEnrolledNodes(t *testing.T) {
 	// A changed list replaces the stored one (a minute after the last write).
 	*clock = clock.Add(2 * time.Minute)
 	changed := `{"digest":"d2","nodes":[{"name":"gpu-1","state":"idle","gpus":2}]}`
+	// A new digest, as an agent sends it alone: with "nodes": null (this
+	// version) the same as with no nodes key (earlier agents).
+	if code, out := report(tokens["gpu-1"], `{"digest":"d2","state_digest":"","nodes":null}`); code != http.StatusOK || out["need_nodes"] != true {
+		t.Fatalf("new digest, nodes null = %d %v", code, out)
+	}
 	if code, out := report(tokens["gpu-1"], `{"digest":"d2"}`); code != http.StatusOK || out["need_nodes"] != true {
 		t.Fatalf("new digest = %d %v", code, out)
 	}

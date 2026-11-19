@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/slurmboot"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -40,10 +41,10 @@ const (
 )
 
 // slurmReportInterval is how often an agent reports the cluster's GPU nodes
-// and, with the answer, picks up an edit of its entry's settings. It is what
-// the agent runs on (internal/agent/slurm.ReportInterval); the console shows it
-// as how long an edit takes to reach the nodes.
-const slurmReportInterval = 10 * time.Minute
+// and, with the answer, picks up an edit of its entry's settings: the one
+// interval both sides take from proto. The console shows it as how long an
+// edit takes to reach the nodes.
+const slurmReportInterval = proto.SlurmReportIntervalSeconds * time.Second
 
 // slurmMissingNodesLimit bounds the missing nodes a cluster's DTO lists; the
 // count is of all of them.

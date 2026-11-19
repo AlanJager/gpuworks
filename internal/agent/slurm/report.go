@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // An enrolled agent tells the server which nodes its Slurm cluster has
@@ -28,8 +30,8 @@ import (
 // states change all the time and must not make the server store the list.
 
 // ReportInterval is how often an agent reports, and so the longest an edit of
-// the entry's settings takes to reach it (the server's report_interval_seconds).
-const ReportInterval = 10 * time.Minute
+// the entry's settings takes to reach it (proto.SlurmReportIntervalSeconds).
+const ReportInterval = proto.SlurmReportIntervalSeconds * time.Second
 
 // reportRetry is the wait after a report that failed.
 const reportRetry = 2 * time.Minute
@@ -38,13 +40,7 @@ const reportRetry = 2 * time.Minute
 // has gpu is a GPU node, with its state, reason and GPU count; every other
 // node (no GRES, or one without gpu) is listed by name alone: the server must
 // know Slurm still has it, but expects no agent there.
-type ClusterNode struct {
-	Name       string `json:"name"`
-	ListedOnly bool   `json:"listed_only,omitempty"`
-	State      string `json:"state"`
-	Reason     string `json:"reason,omitempty"`
-	GPUs       int    `json:"gpus"`
-}
+type ClusterNode = proto.SlurmGPUNodeEntry
 
 // sinfoFormat prints a node's name, long state, GRES and reason; the reason,
 // which holds spaces and may hold the separator, goes last.
@@ -134,11 +130,6 @@ type Reporter struct {
 	Wait func(context.Context, time.Duration) bool
 }
 
-type reportAnswer struct {
-	NeedNodes bool     `json:"need_nodes"`
-	Settings  Settings `json:"settings"`
-}
-
 // Once lists the nodes and reports them: the digests first, the nodes when the
 // server wants that list. The answer's settings are applied.
 func (r *Reporter) Once(ctx context.Context) error {
@@ -148,14 +139,14 @@ func (r *Reporter) Once(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list the cluster's nodes: %w", err)
 	}
-	digests := map[string]any{"digest": Digest(nodes), "state_digest": StateDigest(nodes)}
-	answer, err := r.post(ctx, digests)
+	report := proto.SlurmGPUNodeReport{Digest: Digest(nodes), StateDigest: StateDigest(nodes)}
+	answer, err := r.post(ctx, report)
 	if err != nil {
 		return err
 	}
 	if answer.NeedNodes {
-		digests["nodes"] = nodes
-		if answer, err = r.post(ctx, digests); err != nil {
+		report.Nodes = nodes
+		if answer, err = r.post(ctx, report); err != nil {
 			return err
 		}
 	}
@@ -165,11 +156,11 @@ func (r *Reporter) Once(ctx context.Context) error {
 	return nil
 }
 
-func (r *Reporter) post(ctx context.Context, body map[string]any) (reportAnswer, error) {
+func (r *Reporter) post(ctx context.Context, body proto.SlurmGPUNodeReport) (proto.SlurmGPUNodeReportResponse, error) {
 	raw, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(r.Server, "/")+"/api/v1/slurm/gpu-nodes", bytes.NewReader(raw))
 	if err != nil {
-		return reportAnswer{}, err
+		return proto.SlurmGPUNodeReportResponse{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	token := ""
@@ -183,16 +174,16 @@ func (r *Reporter) post(ctx context.Context, body map[string]any) (reportAnswer,
 	}
 	resp, err := httpc.Do(req)
 	if err != nil {
-		return reportAnswer{}, fmt.Errorf("report to %s: %w", r.Server, err)
+		return proto.SlurmGPUNodeReportResponse{}, fmt.Errorf("report to %s: %w", r.Server, err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return reportAnswer{}, fmt.Errorf("report to %s: HTTP %d: %s", r.Server, resp.StatusCode, strings.TrimSpace(string(data)))
+		return proto.SlurmGPUNodeReportResponse{}, fmt.Errorf("report to %s: HTTP %d: %s", r.Server, resp.StatusCode, strings.TrimSpace(string(data)))
 	}
-	var answer reportAnswer
+	var answer proto.SlurmGPUNodeReportResponse
 	if err := json.Unmarshal(data, &answer); err != nil {
-		return reportAnswer{}, fmt.Errorf("report to %s: unexpected answer %q", r.Server, data)
+		return proto.SlurmGPUNodeReportResponse{}, fmt.Errorf("report to %s: unexpected answer %q", r.Server, data)
 	}
 	return answer, nil
 }

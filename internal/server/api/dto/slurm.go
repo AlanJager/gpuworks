@@ -1,6 +1,10 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+)
 
 // SlurmCluster is a Slurm cluster whose GPU nodes join through a health check
 // the administrator puts in slurm.conf. The three commands carry the
@@ -204,63 +208,17 @@ type SlurmSetup struct {
 	DefaultIntervalSeconds int `json:"default_interval_seconds"`
 }
 
-// SlurmEnrollRequest is what the agent a Slurm node's health check installed
-// sends to trade the enrollment token for its node token.
-type SlurmEnrollRequest struct {
-	Token            string `json:"token"`
-	SlurmClusterName string `json:"slurm_cluster_name"`
-	NodeName         string `json:"node_name"`
-}
-
-// SlurmAgentSettings are the entry settings an agent applies to its
-// placeholder jobs: in the enrollment answer and in every report's answer.
-type SlurmAgentSettings struct {
-	SbatchArgs            string `json:"sbatch_args"`
-	IdleReturnSeconds     int    `json:"idle_return_seconds"`
-	PendingTimeoutSeconds int    `json:"pending_timeout_seconds"`
-	// AccountUser is the account placeholder jobs are submitted as when the
-	// agent runs as root; empty submits as the agent's own account.
-	AccountUser string `json:"account_user"`
-}
-
-// SlurmEnrollResponse is the node the agent now is.
-type SlurmEnrollResponse struct {
-	NodeUUID  string             `json:"node_uuid"`
-	NodeToken string             `json:"node_token"`
-	Settings  SlurmAgentSettings `json:"settings"`
-}
-
-// SlurmGPUNodeReport is an agent's list of the cluster's nodes, from sinfo
-// (every partition, hidden ones too). Digest identifies the list's membership
-// (the node names, which of them have a GPU GRES and how many GPUs; opaque to
-// the server, which only compares it with the one it stored), StateDigest the
-// state and reason of the GPU nodes. An agent that knows the server has the
-// list sends the two digests alone, and the server asks for the nodes only
-// when one of them differs from what it stored and it is time to store it.
-type SlurmGPUNodeReport struct {
-	Digest      string              `json:"digest"`
-	StateDigest string              `json:"state_digest"`
-	Nodes       []SlurmGPUNodeEntry `json:"nodes"`
-}
-
-// SlurmGPUNodeEntry is one node of a report. ListedOnly: the node has no gpu
-// GRES; it is listed so that the platform knows Slurm still has it, and has no
-// state, reason or GPUs here.
-type SlurmGPUNodeEntry struct {
-	Name       string `json:"name"`
-	ListedOnly bool   `json:"listed_only,omitempty"`
-	State      string `json:"state"`
-	Reason     string `json:"reason,omitempty"`
-	GPUs       int    `json:"gpus"`
-}
-
-// SlurmGPUNodeReportResponse answers a report: NeedNodes says the server wants
-// the list the digests name (send it), Settings the entry's current agent
-// settings.
-type SlurmGPUNodeReportResponse struct {
-	NeedNodes bool               `json:"need_nodes"`
-	Settings  SlurmAgentSettings `json:"settings"`
-}
+// The agent-facing Slurm exchange (enrollment and the cluster's node report)
+// is shared with the agent, which cannot import the server: its shapes are
+// defined in proto, and these are those types.
+type (
+	SlurmEnrollRequest         = proto.SlurmEnrollRequest
+	SlurmAgentSettings         = proto.SlurmAgentSettings
+	SlurmEnrollResponse        = proto.SlurmEnrollResponse
+	SlurmGPUNodeReport         = proto.SlurmGPUNodeReport
+	SlurmGPUNodeEntry          = proto.SlurmGPUNodeEntry
+	SlurmGPUNodeReportResponse = proto.SlurmGPUNodeReportResponse
+)
 
 // SlurmTokenStatus answers GET /slurm/token-status?token=: whether the
 // enrollment token is "active", "revoked" or "unknown". It is what the health
