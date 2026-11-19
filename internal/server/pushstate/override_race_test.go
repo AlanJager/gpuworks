@@ -30,7 +30,10 @@ func (h *harness) queued(ops, pushes int) {
 func seedOverride(t *testing.T, h *harness) Override {
 	t.Helper()
 	pushed := make(chan *extapi.WireError, 1)
-	go func() { _, w := h.try(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, opsHolds); pushed <- w }()
+	go func() {
+		_, w := h.try(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, opsHolds)
+		pushed <- w
+	}()
 	h.queued(0, 1)
 	h.s.commit(context.Background())
 	if w := <-pushed; w != nil {

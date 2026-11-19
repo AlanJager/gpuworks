@@ -123,11 +123,11 @@ type State struct {
 	// with the extclock instant of the push: an administrator banner for
 	// supersededBannerFor, never persisted.
 	superseded map[int64]supersededOverride
-	corrected *clockCorrection
-	hwmSaved  int64
-	hwmDirty  bool
-	markers   []pstate.Marker
-	next      int64
+	corrected  *clockCorrection
+	hwmSaved   int64
+	hwmDirty   bool
+	markers    []pstate.Marker
+	next       int64
 	// ready is, per owner, the process generation that declared it had
 	// finished starting ($/ready): a down period of that generation gets no
 	// boot extension. It is not persisted, so a restarted server computes

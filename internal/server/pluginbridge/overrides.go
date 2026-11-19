@@ -3,7 +3,6 @@ package pluginbridge
 import (
 	"context"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -94,23 +93,16 @@ func (b *Bridge) auditOverride(action, owner, kind, entry string, id int64, reas
 	b.log.Info("plugin override", attrs...)
 }
 
-// auditedEffects wraps pushed state's effects so a superseded override and
-// a clock correction each leave an audit line before the server's own
-// effect runs.
+// auditedEffects adds the override audit before forwarding its existing
+// effect. Clock corrections retain their configured reason-bearing auditor;
+// wrapping that effect here would duplicate the application's audit line.
 func (b *Bridge) auditedEffects(e pushstate.Effects) pushstate.Effects {
-	superseded, corrected := e.OverrideSuperseded, e.ClockCorrected
+	superseded := e.OverrideSuperseded
 	e.OverrideSuperseded = func(o pushstate.Override) {
 		b.log.Info("plugin override", "audit", true, "action", "override_superseded", "plugin", o.Owner, "kind", o.Kind, "entry", o.Entry,
 			"override", o.ID, "by_user", o.ByUser, "outcome", "ok", "code", messages.ErrorPluginOverrideSuperseded)
 		if superseded != nil {
 			superseded(o)
-		}
-	}
-	e.ClockCorrected = func(from, to time.Time, by string) {
-		b.log.Info("plugin clock corrected", "audit", true, "action", "clock_corrected", "from", from.Format(time.RFC3339),
-			"to", to.Format(time.RFC3339), "by", by, "code", messages.ErrorPluginClockCorrected)
-		if corrected != nil {
-			corrected(from, to, by)
 		}
 	}
 	return e

@@ -3,6 +3,7 @@ package pluginbridge
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,25 +154,42 @@ func TestABrokenPackagesHoldCanBeOverridden(t *testing.T) {
 	}
 }
 
-// A correction of extclock leaves an audit line, the server's own effect
-// still runs, and administrators see the banner.
+// A correction of extclock uses the configured auditor exactly once, with
+// the reason and effective time; the bridge must not write a second audit.
+// Administrators still see the clock-corrected banner.
 func TestAClockCorrectionIsAudited(t *testing.T) {
 	w := newWorld(t, nil)
-	b := w.open()
-	to := b.State().Now().Add(-time.Hour).Truncate(time.Second)
-	if err := b.State().CorrectClock(context.Background(), to, "root"); err != nil {
-		t.Fatal(err)
+	ahead := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	right := time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC)
+	clk := &settableClock{wall: ahead}
+	log := slog.New(slog.NewTextHandler(&w.logs, nil))
+	b, _ := openOnClock(t, w, clk, func(from, to time.Time, by, reason string) {
+		w.corrected.Add(1)
+		log.Info("extclock corrected", "audit", true, "from", from.Format(time.RFC3339),
+			"to", to.Format(time.RFC3339), "by", by, "reason", reason)
+	})
+	clk.set(right)
+	from, to, err := b.State().CorrectClock(context.Background(), right.Add(-time.Minute), "root", "verified clock code 7F3A-22C1")
+	if err != nil || !from.Equal(ahead) || !to.Equal(right) {
+		t.Fatalf("effective correction = %v > %v, %v; want %v > %v", from, to, err, ahead, right)
 	}
-	lines := auditLines(w, "clock_corrected")
-	if len(lines) != 1 || !strings.Contains(lines[0], "to="+to.UTC().Format(time.RFC3339)) || !strings.Contains(lines[0], "by=root") ||
-		!strings.Contains(lines[0], "code="+messages.ErrorPluginClockCorrected) {
+	var lines []string
+	for _, line := range strings.Split(w.logs.String(), "\n") {
+		if strings.Contains(line, "audit=true") {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "from=2027-03-01T00:00:00Z") ||
+		!strings.Contains(lines[0], "to=2027-01-15T00:00:00Z") || !strings.Contains(lines[0], "by=root") ||
+		!strings.Contains(lines[0], `reason="verified clock code 7F3A-22C1"`) {
 		t.Fatalf("clock audit = %q", lines)
 	}
 	if w.corrected.Load() != 1 {
 		t.Fatal("the server's own clock effect did not run")
 	}
 	admin := b.State().Banners(true)
-	if len(admin) != 1 || admin[0].Notice.Code() != messages.ErrorPluginClockCorrected {
+	if len(admin) != 1 || admin[0].Notice.Code() != messages.ErrorPluginClockCorrected ||
+		admin[0].Notice.Params()["to"] != "2027-01-15T00:00:00Z" {
 		t.Fatalf("banners = %+v", admin)
 	}
 }
