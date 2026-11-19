@@ -77,7 +77,7 @@ function show(statusPollMs?: number) {
 }
 const loaded = () => waitFor(() => {
   assert.ok(screen.getByText(locale.nodes.pullProxy.title));
-  assert.equal(dom.window.document.querySelector(".ant-skeleton") === null, true, "still loading");
+  assert.equal(dom.window.document.querySelector("[aria-busy=\"true\"]") === null, true, "still loading");
 });
 const driverLine = (driver: string) => fill(rt.driver, { driver });
 const restartButton = () => screen.queryByRole("button", { name: rt.restart });

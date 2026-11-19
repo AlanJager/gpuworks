@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Space, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { terminalOptions } from "../theme/terminalTheme";
 import { Terminal } from "@xterm/xterm";
@@ -15,6 +14,12 @@ import {
 import { useTranslation } from "react-i18next";
 import { apiErrorText } from "../apiError";
 import { terminalPreflightReason } from "../terminalMessages";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Notice } from "../ui-kit/Notice";
+import { fromAntd } from "../ui-kit/antdIcon";
+
+const ReloadIcon = fromAntd(ReloadOutlined);
 
 // This module is loaded lazily so xterm (~250 KB) stays out of the main bundle;
 // only operators who actually open a terminal download it.
@@ -150,36 +155,36 @@ export default function NodeTerminal({ nodeUUID, hostname, target = "host", ref_
   return (
     <div className="node-terminal" style={{ background: terminalOptions.theme.background }}>
       <div className="node-terminal-bar">
-        <Space size={8} wrap>
-          <Typography.Text strong style={{ color: "#e6edf5" }}>
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className="font-semibold" style={{ color: "#e6edf5" }}>
             {t(target === "container" ? "terminalView.container" : "terminalView.host")} · {label}
-          </Typography.Text>
-          {status.kind === "connecting" && <Tag color="processing">{t("terminalView.status.connecting")}</Tag>}
-          {status.kind === "open" && <Tag color="green">{t("terminalView.status.open")}</Tag>}
-          {status.kind === "exited" && <Tag color="default">{t("terminalView.status.exited")}</Tag>}
-          {status.kind === "error" && <Tag color="red">{t("terminalView.status.error")}</Tag>}
+          </span>
+          {status.kind === "connecting" && <Badge status="info">{t("terminalView.status.connecting")}</Badge>}
+          {status.kind === "open" && <Badge status="success">{t("terminalView.status.open")}</Badge>}
+          {status.kind === "exited" && <Badge status="neutral">{t("terminalView.status.exited")}</Badge>}
+          {status.kind === "error" && <Badge status="danger">{t("terminalView.status.error")}</Badge>}
           {info && (
             // The agent runs as root under systemd but as the installing user via
             // the nohup fallback, so the real account is shown rather than assumed.
-            <Tag color={info.uid === 0 ? "volcano" : "blue"}>
+            <Badge color={info.uid === 0 ? "orange" : "blue"}>
               {info.user}
               {info.uid >= 0 ? ` (uid ${info.uid})` : ""}
-            </Tag>
+            </Badge>
           )}
-          {info?.shell && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{info.shell}</Typography.Text>}
-        </Space>
+          {info?.shell && <span className="text-label text-fg-subtle">{info.shell}</span>}
+        </span>
         {closed && (
-          <Button size="small" icon={<ReloadOutlined />} onClick={() => { setInfo(null); setStatus({ kind: "connecting" }); setAttempt((n) => n + 1); }}>
+          <Button size="sm" variant="tertiary" leadingIcon={ReloadIcon} onClick={() => { setInfo(null); setStatus({ kind: "connecting" }); setAttempt((n) => n + 1); }}>
             {t("terminalView.reconnect")}
           </Button>
         )}
       </div>
 
       {status.kind === "error" && (
-        <Alert type="error" showIcon banner message={status.message} style={{ margin: 0 }} />
+        <Notice tone="danger" className="rounded-none" title={status.message} />
       )}
       {target === "container" && containerRuntime === "udocker" && status.kind !== "error" && (
-        <Alert type="info" showIcon banner message={t("terminalView.runveilShell")} style={{ margin: 0 }} />
+        <Notice tone="info" role="alert" className="rounded-none" title={t("terminalView.runveilShell")} />
       )}
 
       <div className="node-terminal-surface" ref={holder} />

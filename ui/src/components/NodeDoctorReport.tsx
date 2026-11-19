@@ -1,10 +1,14 @@
-import { Alert, Collapse, Descriptions, Space, Table, Tag, Typography } from "antd";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { DoctorDisk, DoctorFact, DoctorFinding, DoctorMount, DoctorRunIdentity, DoctorTarget, NodeDoctorReport as Report } from "../api";
 import { GPUHealthDetail, GPUHealthSummary, HealthCommand, HealthEvidence, gpuHealthLabel } from "./GPUHealth";
 import NodeDoctorChecks from "./NodeDoctorChecks";
-import { Badge } from "./ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { Badge, type BadgeStatus } from "./ui/badge";
+import { DetailList, DetailListItem, DetailListLabel, DetailListValue } from "./ui/detail-list";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Notice } from "../ui-kit/Notice";
 import { runtimeLabel } from "../nodeDisplay";
 
 const rawStyle = {
@@ -18,7 +22,15 @@ const rawStyle = {
   margin: 0,
 } as const;
 
-const healthColor: Record<string, string> = { OK: "green", Warning: "orange", Error: "red" };
+const healthStatus: Record<string, BadgeStatus> = { OK: "success", Warning: "warning", Error: "danger" };
+
+function Fact({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return <DetailListItem><DetailListLabel>{label}</DetailListLabel><DetailListValue>{children}</DetailListValue></DetailListItem>;
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h3 className="mb-2 text-body font-semibold">{children}</h3>;
+}
 
 function gib(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
@@ -33,7 +45,7 @@ function FindingTarget({ finding, target, status }: { finding: DoctorFinding; ta
   const resettable = !!target.actions?.length;
   return (
     <div className="node-doctor-target">
-      <Typography.Text strong>{t("doctor.card", { index: target.index, bdf: target.pcie_bdf || "—" })}</Typography.Text>
+      <span className="font-semibold">{t("doctor.card", { index: target.index, bdf: target.pcie_bdf || "—" })}</span>
       <GPUHealthDetail
         status={status}
         code={finding.code}
@@ -41,11 +53,11 @@ function FindingTarget({ finding, target, status }: { finding: DoctorFinding; ta
         guide={target.probe ? { probe: target.probe, recheck: target.recheck, actions: target.actions } : undefined}
         commandsOnly
         extraAction={resettable && (
-          <Space direction="vertical" size={2} style={{ display: "flex" }}>
+          <div className="flex flex-col gap-0.5">
             {target.processes?.map((proc) => (
-              <Typography.Text key={proc.pid} type="danger">{t("doctor.runningProcess", { pid: proc.pid, name: proc.name })}</Typography.Text>
+              <span key={proc.pid} className="text-fg-danger">{t("doctor.runningProcess", { pid: proc.pid, name: proc.name })}</span>
             ))}
-          </Space>
+          </div>
         )}
       />
     </div>
@@ -58,15 +70,13 @@ function AcceleratorFinding({ finding }: { finding: DoctorFinding }) {
   const status = finding.status === "fail" ? "Error" : "Warning";
   const targets = finding.targets ?? [];
   return (
-    <div className="node-doctor-finding">
-      <Space direction="vertical" size={8} style={{ display: "flex" }}>
-        <Space wrap>
-          <Tag color={status === "Error" ? "red" : "orange"}>{gpuHealthLabel(tc, status, finding.code)}</Tag>
-          <Typography.Text>{t("doctor.cards", { count: targets.length, indexes: targets.map((target) => target.index).join(", ") })}</Typography.Text>
-        </Space>
-        <GPUHealthSummary status={status} code={finding.code} withAction />
-        {targets.map((target) => <FindingTarget key={target.index} finding={finding} target={target} status={status} />)}
-      </Space>
+    <div className="node-doctor-finding flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge status={status === "Error" ? "danger" : "warning"}>{gpuHealthLabel(tc, status, finding.code)}</Badge>
+        <span>{t("doctor.cards", { count: targets.length, indexes: targets.map((target) => target.index).join(", ") })}</span>
+      </div>
+      <GPUHealthSummary status={status} code={finding.code} withAction />
+      {targets.map((target) => <FindingTarget key={target.index} finding={finding} target={target} status={status} />)}
     </div>
   );
 }
@@ -80,7 +90,7 @@ const nodeFindingCodes = new Set([
   "CARD_UNADDRESSABLE",
 ]);
 
-const findingColor: Record<DoctorFinding["status"], string> = { fail: "red", warn: "orange", skip: "default" };
+const findingStatus: Record<DoctorFinding["status"], BadgeStatus> = { fail: "danger", warn: "warning", skip: "neutral" };
 
 /** A finding's name in the reader's language: the node finding, a card check's skip reason, or an accelerator health code. */
 export function doctorFindingLabel(t: TFunction<"nodes">, tc: TFunction<"common">, finding: DoctorFinding): string {
@@ -122,8 +132,8 @@ function MountTags({ mount }: { mount?: DoctorMount }) {
   ].filter((flag): flag is string => !!flag);
   return (
     <>
-      <Typography.Text type="secondary">{mount.fs_type}</Typography.Text>
-      {flags.map((flag) => <Tag key={flag} color={flag === "network" ? "blue" : "orange"}>{t(`doctor.mountFlag.${flag}`)}</Tag>)}
+      <span className="text-fg-muted">{mount.fs_type}</span>
+      {flags.map((flag) => <Badge size="sm" key={flag} color={flag === "network" ? "blue" : "orange"}>{t(`doctor.mountFlag.${flag}`)}</Badge>)}
     </>
   );
 }
@@ -150,37 +160,35 @@ function NodeFinding({ finding }: { finding: DoctorFinding }) {
   const impact = key ? t(`${key}.impact`, { ...evidenceParams(finding), defaultValue: "" }) : "";
   const disk = finding.disk;
   return (
-    <div className="node-doctor-finding">
-      <Space direction="vertical" size={8} style={{ display: "flex" }}>
-        <Tag color={findingColor[finding.status] ?? "red"} style={{ alignSelf: "flex-start" }}>
-          {key ? t(`${key}.label`) : finding.code}
-        </Tag>
-        {key && (
-          <Typography.Text>
-            {t(`${key}.summary`, disk ? {
-              path: disk.path, avail: gib(disk.avail_bytes), total: gib(disk.total_bytes), percent: percent(disk.avail_bytes, disk.total_bytes),
-              fstype: disk.mount?.fs_type ?? "", point: disk.mount?.point ?? "",
-            } : evidenceParams(finding))}
-          </Typography.Text>
-        )}
-        {impact && (
-          <div className="gpu-health-section">
-            <Typography.Text type="secondary" strong>{t("doctor.impact")}</Typography.Text>
-            <Typography.Text>{impact}</Typography.Text>
-          </div>
-        )}
-        {(finding.probe || !!finding.evidence?.length) && (
-          <div className="gpu-health-section">
-            <Typography.Text type="secondary" strong>{t("doctor.evidence")}</Typography.Text>
-            {finding.probe && <HealthCommand command={finding.probe} />}
-            <HealthEvidence fields={finding.evidence} />
-          </div>
-        )}
+    <div className="node-doctor-finding flex flex-col gap-2">
+      <Badge status={findingStatus[finding.status] ?? "danger"}>
+        {key ? t(`${key}.label`) : finding.code}
+      </Badge>
+      {key && (
+        <span>
+          {t(`${key}.summary`, disk ? {
+            path: disk.path, avail: gib(disk.avail_bytes), total: gib(disk.total_bytes), percent: percent(disk.avail_bytes, disk.total_bytes),
+            fstype: disk.mount?.fs_type ?? "", point: disk.mount?.point ?? "",
+          } : evidenceParams(finding))}
+        </span>
+      )}
+      {impact && (
         <div className="gpu-health-section">
-          <Typography.Text type="secondary" strong>{t("doctor.recheck")}</Typography.Text>
-          {finding.recheck ? <HealthCommand command={finding.recheck} /> : <Typography.Text>{t("doctor.rerun")}</Typography.Text>}
+          <span className="font-semibold text-fg-muted">{t("doctor.impact")}</span>
+          <span>{impact}</span>
         </div>
-      </Space>
+      )}
+      {(finding.probe || !!finding.evidence?.length) && (
+        <div className="gpu-health-section">
+          <span className="font-semibold text-fg-muted">{t("doctor.evidence")}</span>
+          {finding.probe && <HealthCommand command={finding.probe} />}
+          <HealthEvidence fields={finding.evidence} />
+        </div>
+      )}
+      <div className="gpu-health-section">
+        <span className="font-semibold text-fg-muted">{t("doctor.recheck")}</span>
+        {finding.recheck ? <HealthCommand command={finding.recheck} /> : <span>{t("doctor.rerun")}</span>}
+      </div>
     </div>
   );
 }
@@ -209,6 +217,19 @@ function networkFilesystemText(t: TFunction<"nodes">, disks: DoctorDisk[]): stri
   });
 }
 
+/** The agent's raw text, rendered only while expanded: it can be long. */
+function RawReport({ text, label }: { text: string; label: string }) {
+  const [open, setOpen] = useState("");
+  return (
+    <Accordion value={open} onValueChange={(value: string) => setOpen(value)}>
+      <AccordionItem value="raw">
+        <AccordionTrigger>{label}</AccordionTrigger>
+        <AccordionContent>{open === "raw" && <pre style={rawStyle}>{text}</pre>}</AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
+}
+
 /**
  * NodeDoctorReport renders the unified check list and hardware details.
  * Reports from older Servers still render their original findings or text.
@@ -218,10 +239,10 @@ export default function NodeDoctorReport({ report }: { report: Report }) {
   const { t: tc } = useTranslation("common");
   if (!report.host && !report.checks) {
     return (
-      <Space direction="vertical" style={{ display: "flex" }}>
-        <Alert type="info" showIcon message={t("doctor.legacy")} />
+      <div className="flex flex-col gap-2">
+        <Notice tone="info" title={t("doctor.legacy")} />
         <pre style={rawStyle}>{report.report}</pre>
-      </Space>
+      </div>
     );
   }
   const host = report.host;
@@ -230,104 +251,110 @@ export default function NodeDoctorReport({ report }: { report: Report }) {
   const counts: Record<string, number> = { OK: 0, Warning: 0, Error: 0 };
   for (const gpu of accel?.gpus ?? []) counts[gpu.health_status] = (counts[gpu.health_status] ?? 0) + 1;
   return (
-    <Space direction="vertical" size={16} style={{ display: "flex" }}>
+    <div className="flex flex-col gap-4">
       {report.checks && <NodeDoctorChecks report={report} renderFinding={(finding) => <DoctorFindingView finding={finding} />}
         findingLabel={(finding) => doctorFindingLabel(t, tc, finding)} />}
       {host && <section aria-label={t("doctor.overview")}>
-        <Typography.Title level={5}>{t("doctor.overview")}</Typography.Title>
-        <Descriptions size="small" column={1} bordered>
-          <Descriptions.Item label={t("doctor.host")}>{`${host.hostname} · ${host.os}/${host.arch} · kernel ${host.kernel}`}</Descriptions.Item>
-          <Descriptions.Item label={t("doctor.cpu")}>{`${host.cpu_model} × ${host.cpu_cores}`}</Descriptions.Item>
-          <Descriptions.Item label={t("doctor.memory")}>{t("doctor.memoryValue", { total: gib(host.mem_total_bytes), avail: gib(host.mem_avail_bytes) })}</Descriptions.Item>
-          <Descriptions.Item label={t("doctor.disk")}>
-            <Space direction="vertical" size={0}>
+        <SectionTitle>{t("doctor.overview")}</SectionTitle>
+        <DetailList>
+          <Fact label={t("doctor.host")}>{`${host.hostname} · ${host.os}/${host.arch} · kernel ${host.kernel}`}</Fact>
+          <Fact label={t("doctor.cpu")}>{`${host.cpu_model} × ${host.cpu_cores}`}</Fact>
+          <Fact label={t("doctor.memory")}>{t("doctor.memoryValue", { total: gib(host.mem_total_bytes), avail: gib(host.mem_avail_bytes) })}</Fact>
+          <Fact label={t("doctor.disk")}>
+            <div className="flex flex-col items-end">
               {host.disks.map((disk) => (
-                <Space key={`${disk.kind}-${disk.path}`} size={4} wrap>
-                  <Typography.Text>
+                <span key={`${disk.kind}-${disk.path}`} className="inline-flex flex-wrap items-center justify-end gap-1">
+                  <span>
                     {t("doctor.diskValue", { path: disk.path, total: gib(disk.total_bytes), avail: gib(disk.avail_bytes), percent: percent(disk.avail_bytes, disk.total_bytes) })}
-                  </Typography.Text>
+                  </span>
                   <MountTags mount={disk.mount} />
-                </Space>
+                </span>
               ))}
-            </Space>
-          </Descriptions.Item>
-        </Descriptions>
+            </div>
+          </Fact>
+        </DetailList>
       </section>}
 
       {(host || report.runtimes?.length) && <section aria-label={t("doctor.runtimes")}>
-        <Typography.Title level={5}>{t("doctor.runtimes")}</Typography.Title>
-        <Descriptions size="small" column={1} bordered>
+        <SectionTitle>{t("doctor.runtimes")}</SectionTitle>
+        <DetailList>
           {(report.runtimes ?? []).map((runtime) => (
-            <Descriptions.Item key={runtime.name} label={runtimeLabel(runtime.name)}>
-              <Space>
-                <Typography.Text type={runtime.status === "ok" ? undefined : "secondary"}>
+            <Fact key={runtime.name} label={runtimeLabel(runtime.name)}>
+              <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                <span className={runtime.status === "ok" ? undefined : "text-fg-muted"}>
                   {runtime.status === "not_found" ? t("doctor.runtimeNotFound") : runtime.status === "query_failed" ? t("doctor.runtimeQueryFailed") : runtime.version || "—"}
-                </Typography.Text>
-                {runtime.selected && <Tag color="blue">{t("doctor.runtimeSelected")}</Tag>}
-              </Space>
-            </Descriptions.Item>
+                </span>
+                {runtime.selected && <Badge size="sm" color="blue">{t("doctor.runtimeSelected")}</Badge>}
+              </span>
+            </Fact>
           ))}
-        </Descriptions>
+        </DetailList>
       </section>}
 
       {(host || accel) && <section aria-label={t("doctor.accelerators")}>
-        <Typography.Title level={5}>{t("doctor.accelerators")}</Typography.Title>
+        <SectionTitle>{t("doctor.accelerators")}</SectionTitle>
         {!accel ? (
-          <Typography.Text type="secondary">{t("doctor.noAccelerator")}</Typography.Text>
+          <span className="text-fg-muted">{t("doctor.noAccelerator")}</span>
         ) : (
-          <Space direction="vertical" style={{ display: "flex" }}>
-            <Typography.Text>
+          <div className="flex flex-col gap-2">
+            <span>
               {t("doctor.acceleratorSummary", { vendor: accel.vendor, driver: accel.driver || "—", total: accel.gpus.length, ok: counts.OK, warning: counts.Warning, error: counts.Error })}
-            </Typography.Text>
-            <Table
-              size="small"
-              pagination={false}
-              rowKey="index"
-              dataSource={accel.gpus}
-              columns={[
-                { title: t("doctor.column.index"), dataIndex: "index", width: 48 },
-                { title: t("doctor.column.name"), dataIndex: "name" },
-                { title: t("doctor.column.memory"), dataIndex: "memory_bytes", render: (bytes: number) => gib(bytes) },
-                { title: t("doctor.column.bdf"), dataIndex: "pcie_bdf", render: (bdf?: string) => bdf || "—" },
-                { title: t("doctor.column.numa"), dataIndex: "numa_node" },
-                {
-                  title: t("doctor.column.health"),
-                  key: "health",
-                  render: (_: unknown, gpu: NonNullable<Report["accelerators"]>["gpus"][number]) => (
-                    <Tag color={healthColor[gpu.health_status] ?? "red"}>{gpuHealthLabel(tc, gpu.health_status in healthColor ? gpu.health_status : "Error", gpu.health_code)}</Tag>
-                  ),
-                },
-              ]}
-            />
-          </Space>
+            </span>
+            <Table containerClassName="overflow-x-auto">
+              <TableHeader>
+                <TableRow>
+                  <TableHead style={{ width: 48 }}>{t("doctor.column.index")}</TableHead>
+                  <TableHead>{t("doctor.column.name")}</TableHead>
+                  <TableHead>{t("doctor.column.memory")}</TableHead>
+                  <TableHead>{t("doctor.column.bdf")}</TableHead>
+                  <TableHead>{t("doctor.column.numa")}</TableHead>
+                  <TableHead>{t("doctor.column.health")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {accel.gpus.map((gpu) => (
+                  <TableRow key={gpu.index}>
+                    <TableCell>{gpu.index}</TableCell>
+                    <TableCell>{gpu.name}</TableCell>
+                    <TableCell>{gib(gpu.memory_bytes)}</TableCell>
+                    <TableCell>{gpu.pcie_bdf || "—"}</TableCell>
+                    <TableCell>{gpu.numa_node}</TableCell>
+                    <TableCell>
+                      <Badge status={healthStatus[gpu.health_status] ?? "danger"}>{gpuHealthLabel(tc, gpu.health_status in healthStatus ? gpu.health_status : "Error", gpu.health_code)}</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
       </section>}
 
       {!report.checks && <section aria-label={t("doctor.findings")}>
-        <Typography.Title level={5}>{t("doctor.findings")}</Typography.Title>
+        <SectionTitle>{t("doctor.findings")}</SectionTitle>
         {findings.length === 0 ? (
-          <Typography.Text type="secondary">{t("doctor.noFindings")}</Typography.Text>
+          <span className="text-fg-muted">{t("doctor.noFindings")}</span>
         ) : (
-          <Space direction="vertical" size={12} style={{ display: "flex" }}>
+          <div className="flex flex-col gap-3">
             {findings.map((finding, i) => <DoctorFindingView key={`${finding.code}-${i}`} finding={finding} />)}
-          </Space>
+          </div>
         )}
       </section>}
 
       {!!report.facts?.length && (
         <section aria-label={t("doctor.facts")}>
-          <Typography.Title level={5}>{t("doctor.facts")}</Typography.Title>
-          <Descriptions size="small" column={1} bordered>
+          <SectionTitle>{t("doctor.facts")}</SectionTitle>
+          <DetailList>
             {report.facts.map((fact, i) => (
-              <Descriptions.Item key={`${fact.code}-${i}`} label={t(`doctor.fact.${fact.code}`, { defaultValue: fact.code })}>
-                <Typography.Text style={{ whiteSpace: "pre-wrap" }}>{factValue(t, fact)}</Typography.Text>
-              </Descriptions.Item>
+              <Fact key={`${fact.code}-${i}`} label={t(`doctor.fact.${fact.code}`, { defaultValue: fact.code })}>
+                <span className="whitespace-pre-wrap">{factValue(t, fact)}</span>
+              </Fact>
             ))}
-          </Descriptions>
+          </DetailList>
         </section>
       )}
 
-      <Collapse size="small" items={[{ key: "raw", label: t("doctor.rawToggle"), children: <pre style={rawStyle}>{report.report}</pre> }]} />
-    </Space>
+      <RawReport text={report.report} label={t("doctor.rawToggle")} />
+    </div>
   );
 }

@@ -1,5 +1,4 @@
-import { Alert, Button, Card, Descriptions, Space, Typography } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeDoctorReport } from "../api";
 import { formatTime } from "../i18n/datetime";
@@ -7,6 +6,10 @@ import { nodeConnectionApi, type NodeConnectionCheck, type NodeConnectionDiagnos
 import { recoveryLabel } from "../nodes/recoveryPhase";
 import { recoveryErrorText } from "../nodes/recoveryError";
 import { useIsAdmin } from "./useIsAdmin";
+import { Button } from "./ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { DetailList, DetailListItem, DetailListLabel, DetailListSection, DetailListSectionLabel, DetailListValue } from "./ui/detail-list";
+import { Notice } from "../ui-kit/Notice";
 
 const outcomes = new Set(["runtime_snapshot", "offline", "unsupported", "credentials_unavailable", "credential_error", "unavailable", "not_checked", "not_applicable", "invalid_address", "unverified_identity", "ssh_failed", "cancelled", "timeout", "connected", "command_failed", "invalid_response", "snapshot", "tool_missing", "http_error", "http_ok", "dns", "connect", "tls", "transport"]);
 const exposureStates = new Set(["ready", "starting", "awaiting_route", "degraded", "disabled", "failed"]);
@@ -48,6 +51,20 @@ function displayTime(value: string): string {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u.test(value) && Number.isFinite(Date.parse(value)) ? formatTime(value) : "";
 }
 
+function Fact({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return <DetailListItem><DetailListLabel>{label}</DetailListLabel><DetailListValue>{children}</DetailListValue></DetailListItem>;
+}
+
+/** A titled group of facts; the title names the group for assistive technology. */
+function FactGroup({ title, children }: { title: ReactNode; children: ReactNode }) {
+  const id = useId();
+  return <DetailList><DetailListSection aria-labelledby={id}><DetailListSectionLabel id={id}>{title}</DetailListSectionLabel>{children}</DetailListSection></DetailList>;
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h3 className="mb-2 text-body font-semibold">{children}</h3>;
+}
+
 function RuntimeSnapshot({ report }: { report: NodeDoctorReport }) {
   const { t } = useTranslation("nodes");
   if (fact(report, "source") !== "agent_runtime" || !displayTime(fact(report, "checked_at"))) return null;
@@ -59,19 +76,19 @@ function RuntimeSnapshot({ report }: { report: NodeDoctorReport }) {
     return displayURL(value, name === "proxy_url") || unknown;
   };
   return <>
-    <Descriptions column={1} size="small" bordered>
-      {runtimeFields.map((name) => <Descriptions.Item key={name} label={t(`connectionDiagnostics.runtime.field.${name}`)}>{text(name)}</Descriptions.Item>)}
-    </Descriptions>
+    <DetailList>
+      {runtimeFields.map((name) => <Fact key={name} label={t(`connectionDiagnostics.runtime.field.${name}`)}>{text(name)}</Fact>)}
+    </DetailList>
     {runtimeStages.map((stage) => {
       const phase = fact(report, `phase.${stage}`);
       const elapsed = fact(report, `elapsed_ms.${stage}`);
       const observed = fact(report, `observed_at.${stage}`);
       if (!phase && !elapsed && !observed) return null;
-      return <Descriptions key={stage} column={1} size="small" bordered title={t(`connectionDiagnostics.runtime.stage.${stage}`)}>
-        <Descriptions.Item label={t("connectionDiagnostics.result")}>{phases.has(phase) ? t(`connectionDiagnostics.runtime.phase.${phase}`) : unknown}</Descriptions.Item>
-        <Descriptions.Item label={t("connectionDiagnostics.runtime.elapsed")}>{/^\d+$/u.test(elapsed) && Number(elapsed) <= 86400000 ? t("connectionDiagnostics.runtime.milliseconds", { count: Number(elapsed) }) : unknown}</Descriptions.Item>
-        <Descriptions.Item label={t("connectionDiagnostics.observedAt")}>{displayTime(observed) || unknown}</Descriptions.Item>
-      </Descriptions>;
+      return <FactGroup key={stage} title={t(`connectionDiagnostics.runtime.stage.${stage}`)}>
+        <Fact label={t("connectionDiagnostics.result")}>{phases.has(phase) ? t(`connectionDiagnostics.runtime.phase.${phase}`) : unknown}</Fact>
+        <Fact label={t("connectionDiagnostics.runtime.elapsed")}>{/^\d+$/u.test(elapsed) && Number(elapsed) <= 86400000 ? t("connectionDiagnostics.runtime.milliseconds", { count: Number(elapsed) }) : unknown}</Fact>
+        <Fact label={t("connectionDiagnostics.observedAt")}>{displayTime(observed) || unknown}</Fact>
+      </FactGroup>;
     })}
   </>;
 }
@@ -82,13 +99,13 @@ function ConnectionCheck({ check }: { check: NodeConnectionCheck }) {
   const location = ["control_plane", "node"].includes(check.vantage) ? check.vantage : "unknown";
   const source = check.source && ["state_file", "legacy_arguments"].includes(check.source) ? check.source : "";
   const status = Number.isInteger(check.http_status) && check.http_status! >= 100 && check.http_status! <= 599 ? check.http_status : undefined;
-  return <Descriptions column={1} size="small" bordered title={t(`connectionDiagnostics.stage.${check.stage}`)}>
-    <Descriptions.Item label={t("connectionDiagnostics.result")}>{t(`connectionDiagnostics.outcome.${outcomes.has(check.outcome) ? check.outcome : "unknown"}`)}{status ? ` · HTTP ${status}` : ""}</Descriptions.Item>
-    <Descriptions.Item label={t("connectionDiagnostics.vantage")}>{t(`connectionDiagnostics.location.${location}`)}</Descriptions.Item>
-    {check.stage !== "agent_control" && <Descriptions.Item label={t("connectionDiagnostics.target")}>{displayURL(check.target ?? "") || t("connectionDiagnostics.unknown")}</Descriptions.Item>}
-    {source && <Descriptions.Item label={t("connectionDiagnostics.source")}>{t(`connectionDiagnostics.sourceName.${source}`)}</Descriptions.Item>}
-    <Descriptions.Item label={t("connectionDiagnostics.observedAt")}>{displayTime(check.observed_at ?? "") || t("connectionDiagnostics.unknown")}</Descriptions.Item>
-  </Descriptions>;
+  return <FactGroup title={t(`connectionDiagnostics.stage.${check.stage}`)}>
+    <Fact label={t("connectionDiagnostics.result")}>{t(`connectionDiagnostics.outcome.${outcomes.has(check.outcome) ? check.outcome : "unknown"}`)}{status ? ` · HTTP ${status}` : ""}</Fact>
+    <Fact label={t("connectionDiagnostics.vantage")}>{t(`connectionDiagnostics.location.${location}`)}</Fact>
+    {check.stage !== "agent_control" && <Fact label={t("connectionDiagnostics.target")}>{displayURL(check.target ?? "") || t("connectionDiagnostics.unknown")}</Fact>}
+    {source && <Fact label={t("connectionDiagnostics.source")}>{t(`connectionDiagnostics.sourceName.${source}`)}</Fact>}
+    <Fact label={t("connectionDiagnostics.observedAt")}>{displayTime(check.observed_at ?? "") || t("connectionDiagnostics.unknown")}</Fact>
+  </FactGroup>;
 }
 
 export default function NodeConnectionDiagnostics({ nodeUUID }: { nodeUUID: string }) {
@@ -133,47 +150,51 @@ export default function NodeConnectionDiagnostics({ nodeUUID }: { nodeUUID: stri
   };
 
   if (!admin) return null;
-  return <Card size="small" title={t("connectionDiagnostics.title")} extra={<Button aria-label={t("connectionDiagnostics.run")} loading={loading} onClick={run}>{t("connectionDiagnostics.run")}</Button>}>
-    <Space direction="vertical" size={12} style={{ width: "100%", overflowWrap: "anywhere" }}>
-      <Typography.Text type="secondary">{t("connectionDiagnostics.scope")}</Typography.Text>
-      {!report && !loading && !error && <Typography.Text>{t("connectionDiagnostics.empty")}</Typography.Text>}
-      {loading && <Typography.Text role="status">{t("connectionDiagnostics.loading")}</Typography.Text>}
-      {error && <Alert type="error" showIcon message={t("connectionDiagnostics.failed")} />}
+  return <Card className="border border-border-subtle">
+    <CardHeader>
+      <CardTitle>{t("connectionDiagnostics.title")}</CardTitle>
+      <CardAction><Button variant="tertiary" size="sm" aria-label={t("connectionDiagnostics.run")} loading={loading} onClick={run}>{t("connectionDiagnostics.run")}</Button></CardAction>
+    </CardHeader>
+    <CardContent className="flex w-full flex-col gap-3 pb-4 [overflow-wrap:anywhere]">
+      <span className="text-fg-muted">{t("connectionDiagnostics.scope")}</span>
+      {!report && !loading && !error && <span>{t("connectionDiagnostics.empty")}</span>}
+      {loading && <span role="status">{t("connectionDiagnostics.loading")}</span>}
+      {error && <Notice tone="danger" title={t("connectionDiagnostics.failed")} />}
       {report && <>
-        <section aria-label={t("connectionDiagnostics.currentTitle")} style={{ width: "100%" }}>
-          <Typography.Title level={5}>{t("connectionDiagnostics.currentTitle")}</Typography.Title>
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
-            <Descriptions column={1} size="small" bordered><Descriptions.Item label={t("connectionDiagnostics.checkedAt")}>{displayTime(report.checked_at) || t("connectionDiagnostics.unknown")}</Descriptions.Item></Descriptions>
+        <section aria-label={t("connectionDiagnostics.currentTitle")} className="w-full">
+          <SectionTitle>{t("connectionDiagnostics.currentTitle")}</SectionTitle>
+          <div className="flex w-full flex-col gap-3">
+            <DetailList><Fact label={t("connectionDiagnostics.checkedAt")}>{displayTime(report.checked_at) || t("connectionDiagnostics.unknown")}</Fact></DetailList>
             {report.checks.filter((check) => check.stage === "agent_control").map((check) => <ConnectionCheck key={check.stage} check={check} />)}
             {report.agent_report && <RuntimeSnapshot report={report.agent_report} />}
-            <Typography.Text type="secondary">{t("connectionDiagnostics.runtime.scope")}</Typography.Text>
-          </Space>
+            <span className="text-fg-muted">{t("connectionDiagnostics.runtime.scope")}</span>
+          </div>
         </section>
-        <section aria-label={t("connectionDiagnostics.historyTitle")} style={{ width: "100%" }}>
-          <Typography.Title level={5}>{t("connectionDiagnostics.historyTitle")}</Typography.Title>
-          <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label={t("connectionDiagnostics.savedAddress")}>{displayURL(report.saved_server_url) || t("connectionDiagnostics.unknown")}</Descriptions.Item>
-            <Descriptions.Item label={t("connectionDiagnostics.lastSeen")}>{report.last_seen_at ? formatTime(report.last_seen_at) : t("connectionDiagnostics.unknown")}</Descriptions.Item>
-            <Descriptions.Item label={t("connectionDiagnostics.recoveryPhase")}>{recoveryLabel[report.recovery_phase] ? t(recoveryLabel[report.recovery_phase].key) : t("connectionDiagnostics.unknown")}</Descriptions.Item>
-            <Descriptions.Item label={t("connectionDiagnostics.lastRecovery")}>{report.last_probe_at ? formatTime(report.last_probe_at) : t("connectionDiagnostics.unknown")} · {t("connectionDiagnostics.attempts", { count: report.recovery_attempts })}</Descriptions.Item>
-            {report.last_recovery_error && <Descriptions.Item label={t("connectionDiagnostics.recoveryError")}><span style={{ whiteSpace: "pre-line" }}>{recoveryErrorText(t, report.last_recovery_code, report.last_recovery_error)}</span></Descriptions.Item>}
-            {report.last_reject_reason && rejectReasons.has(report.last_reject_reason) && <Descriptions.Item label={t("connectionDiagnostics.lastReject")}>{t(`connectionDiagnostics.runtime.value.reason.${report.last_reject_reason}`)}{report.last_reject_at ? ` · ${displayTime(report.last_reject_at)}` : ""}</Descriptions.Item>}
-            <Descriptions.Item label={t("connectionDiagnostics.exposure")}>
-              {report.exposure ? <Space direction="vertical" size={0}><span>{displayURL(report.exposure.url) || t("connectionDiagnostics.unknown")}</span><span>{t(`connectionDiagnostics.exposureState.${exposureStates.has(report.exposure.state) ? report.exposure.state : "unknown"}`)}</span><Typography.Text type="secondary">{t("connectionDiagnostics.lastObserved", { time: displayTime(report.exposure.observed_at) || t("connectionDiagnostics.unknown") })}</Typography.Text></Space> : t("connectionDiagnostics.unknown")}
-            </Descriptions.Item>
-          </Descriptions>
+        <section aria-label={t("connectionDiagnostics.historyTitle")} className="w-full">
+          <SectionTitle>{t("connectionDiagnostics.historyTitle")}</SectionTitle>
+          <DetailList>
+            <Fact label={t("connectionDiagnostics.savedAddress")}>{displayURL(report.saved_server_url) || t("connectionDiagnostics.unknown")}</Fact>
+            <Fact label={t("connectionDiagnostics.lastSeen")}>{report.last_seen_at ? formatTime(report.last_seen_at) : t("connectionDiagnostics.unknown")}</Fact>
+            <Fact label={t("connectionDiagnostics.recoveryPhase")}>{recoveryLabel[report.recovery_phase] ? t(recoveryLabel[report.recovery_phase].key) : t("connectionDiagnostics.unknown")}</Fact>
+            <Fact label={t("connectionDiagnostics.lastRecovery")}>{report.last_probe_at ? formatTime(report.last_probe_at) : t("connectionDiagnostics.unknown")} · {t("connectionDiagnostics.attempts", { count: report.recovery_attempts })}</Fact>
+            {report.last_recovery_error && <Fact label={t("connectionDiagnostics.recoveryError")}><span className="whitespace-pre-line">{recoveryErrorText(t, report.last_recovery_code, report.last_recovery_error)}</span></Fact>}
+            {report.last_reject_reason && rejectReasons.has(report.last_reject_reason) && <Fact label={t("connectionDiagnostics.lastReject")}>{t(`connectionDiagnostics.runtime.value.reason.${report.last_reject_reason}`)}{report.last_reject_at ? ` · ${displayTime(report.last_reject_at)}` : ""}</Fact>}
+            <Fact label={t("connectionDiagnostics.exposure")}>
+              {report.exposure ? <span className="flex flex-col"><span>{displayURL(report.exposure.url) || t("connectionDiagnostics.unknown")}</span><span>{t(`connectionDiagnostics.exposureState.${exposureStates.has(report.exposure.state) ? report.exposure.state : "unknown"}`)}</span><span className="text-fg-muted">{t("connectionDiagnostics.lastObserved", { time: displayTime(report.exposure.observed_at) || t("connectionDiagnostics.unknown") })}</span></span> : t("connectionDiagnostics.unknown")}
+            </Fact>
+          </DetailList>
         </section>
-        <section aria-label={t("connectionDiagnostics.sshTitle")} style={{ width: "100%" }}>
-          <Typography.Title level={5}>{t("connectionDiagnostics.sshTitle")}</Typography.Title>
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>{report.checks.filter((check) => check.stage !== "agent_control").map((check) => <ConnectionCheck key={check.stage} check={check} />)}</Space>
+        <section aria-label={t("connectionDiagnostics.sshTitle")} className="w-full">
+          <SectionTitle>{t("connectionDiagnostics.sshTitle")}</SectionTitle>
+          <div className="flex w-full flex-col gap-3">{report.checks.filter((check) => check.stage !== "agent_control").map((check) => <ConnectionCheck key={check.stage} check={check} />)}</div>
         </section>
-        <section aria-label={t("connectionDiagnostics.cliTitle")} style={{ width: "100%" }}>
-          <Typography.Title level={5}>{t("connectionDiagnostics.cliTitle")}</Typography.Title>
-          <Typography.Paragraph>{t("connectionDiagnostics.cliScope")}</Typography.Paragraph>
-          <Typography.Paragraph code style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{t("connectionDiagnostics.cliCommand")}</Typography.Paragraph>
+        <section aria-label={t("connectionDiagnostics.cliTitle")} className="w-full">
+          <SectionTitle>{t("connectionDiagnostics.cliTitle")}</SectionTitle>
+          <p className="mb-2">{t("connectionDiagnostics.cliScope")}</p>
+          <p className="m-0"><code className="whitespace-pre-wrap rounded-sm bg-emphasis px-1 font-mono text-label [overflow-wrap:anywhere]">{t("connectionDiagnostics.cliCommand")}</code></p>
         </section>
-        {report.guidance.filter((code) => guidance.has(code)).map((code) => <Alert key={code} type="info" showIcon message={t(`connectionDiagnostics.guidance.${code}`)} />)}
+        {report.guidance.filter((code) => guidance.has(code)).map((code) => <Notice key={code} tone="info" title={t(`connectionDiagnostics.guidance.${code}`)} />)}
       </>}
-    </Space>
+    </CardContent>
   </Card>;
 }
