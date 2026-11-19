@@ -19,6 +19,9 @@ type Installer struct {
 	self string
 	// hooks are the build's install steps (see InstallHook).
 	hooks []InstallHook
+	// layoutChanges are the layout migrations this run made, waiting to be
+	// recorded in the install history (see recordLayoutChanges).
+	layoutChanges []LayoutChange
 }
 
 // New builds an installer for a layout.

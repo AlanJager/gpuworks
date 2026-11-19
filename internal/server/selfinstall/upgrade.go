@@ -173,6 +173,10 @@ func checkLocalVersion(local string) error {
 // runUpgrade performs the replacement, rolling back when the new binary does
 // not come up.
 func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst installation, src upgradeSource, report *UpgradeReport) error {
+	if err := i.migrateLegacySharedRoot(ctx, inst.ServiceUser); err != nil {
+		return err
+	}
+	i.recordLayoutChanges(ctx, inst.Mode)
 	if i.layout.inSharedRoot() {
 		roots, err := i.permissionRoots()
 		if err != nil {
@@ -219,8 +223,10 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	if err := i.prepareDirs(ctx); err != nil {
 		return err
 	}
-	if _, err := i.isolateSharedConfig(ctx, nil); err != nil {
+	if moved, err := i.isolateSharedConfig(ctx, nil); err != nil {
 		return err
+	} else if moved {
+		i.noteSharedConfigMove()
 	}
 	if migrated, err := i.layout.sharedConfig(); err != nil {
 		return err
@@ -240,6 +246,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	if err := i.createHistory(ctx, i.layout.HistoryPath(), 0o600); err != nil {
 		i.io.Warn("warning: could not create the install history: %v", err)
 	}
+	i.recordLayoutChanges(ctx, inst.Mode)
 	if err := i.reapplyInstallHooks(ctx, svc); err != nil {
 		return fmt.Errorf("%w; the installed binary was not replaced", err)
 	}

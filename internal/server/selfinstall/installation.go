@@ -47,7 +47,9 @@ var ErrNotInstalled = errors.New("no gpuworks installation found")
 
 // readInstallation loads the installation in the layout's directory.
 func (i *Installer) readInstallation(ctx context.Context) (installation, error) {
-	if _, err := i.layout.sharedConfig(); err != nil {
+	// Reading tolerates the older shared-root shape: the configuration is
+	// still at its legacy path, and a mutating run migrates it first.
+	if _, err := i.layout.sharedConfig(); err != nil && !isLegacySharedRoot(err) {
 		return installation{}, err
 	}
 	inst := installation{Mode: ModeNohup}

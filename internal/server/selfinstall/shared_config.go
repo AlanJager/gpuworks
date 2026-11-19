@@ -65,6 +65,11 @@ func (l Layout) inspectSharedConfig(restoreMissingLeaf bool) (bool, error) {
 		return false, err
 	}
 	if !rootInfo.IsDir() || !trustedWriteOwner(rootInfo) || rootInfo.Mode().Perm()&0o022 != 0 {
+		// The older installer's shape gets an actionable error that a
+		// privileged install or upgrade migrates (migrateLegacySharedRoot).
+		if legacy := legacySharedRoot(l.Dir, rootInfo); legacy != nil {
+			return false, legacy
+		}
 		return false, fmt.Errorf("shared application root %s must remain a trusted non-writable directory (mode %04o)", l.Dir, rootInfo.Mode().Perm())
 	}
 	rootFile, err := os.Open(l.Dir)
