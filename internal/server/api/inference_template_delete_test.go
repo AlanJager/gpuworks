@@ -134,13 +134,33 @@ func TestInferenceTemplateDeleteUserSpecScenarios(t *testing.T) {
 	if rec := call("acme/builtin", "general"); rec.Code != http.StatusNotFound {
 		t.Fatalf("upstream spec status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	// deleting one user spec beside another leaves the model with the survivor
+	// Historical deployments can pin only the parent template. They allow
+	// removing an individual spec while another spec keeps the parent alive.
+	parent, err := st.InferenceModelByModelID("acme/useronly")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := st.CreateDeployment(&store.Deployment{Name: "legacy-pin", TemplateID: parent.ID, State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if rec := call("acme/useronly", "extra"); rec.Code != http.StatusOK {
 		t.Fatalf("delete user spec status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	model, err := st.InferenceModelByModelID("acme/useronly")
 	if err != nil || len(model.Specs) != 1 || model.Specs[0].Name != "solo" {
 		t.Fatalf("after delete model=%+v err=%v", model, err)
+	}
+	// Removing the final spec would remove that pinned template as well.
+	rec := call("acme/useronly", "solo")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE"`) || !strings.Contains(rec.Body.String(), `"deployments":"legacy-pin"`) {
+		t.Fatalf("last spec with legacy pin: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if survivor, err := st.InferenceModelByModelID("acme/useronly"); err != nil || len(survivor.Specs) != 1 || survivor.Specs[0].ID != model.Specs[0].ID {
+		t.Fatalf("blocked delete must preserve the parent and final spec: %+v, %v", survivor, err)
+	}
+	if err := st.SetDeploymentState(legacy.ID, store.DeployDeleting); err != nil {
+		t.Fatal(err)
 	}
 	// deleting the last user spec drops the whole user model
 	if rec := call("acme/useronly", "solo"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"model_deleted":true`) {

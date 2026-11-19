@@ -57,6 +57,11 @@ func (s *Store) DeleteUserInferenceSpec(modelID, specName string) (modelDeleted 
 		if model.Source != "user" {
 			return fmt.Errorf("model %s would be left without specs", model.ModelID)
 		}
+		// Older deployment snapshots may pin only the parent template. A
+		// conflict here rolls back deletion of its final spec.
+		if err := refusePinnedInferenceTemplate(tx, model.ID, ""); err != nil {
+			return err
+		}
 		if err := refuseDanglingComponentReference(tx, model.ID, model.ModelID); err != nil {
 			return err
 		}
