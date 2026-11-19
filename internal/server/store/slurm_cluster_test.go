@@ -631,11 +631,8 @@ func TestSlurmClusterOnlineCountsAndLastSeen(t *testing.T) {
 	if err != nil || counts[c.ID] != (SlurmNodeCounts{Enrolled: 2, Online: 1}) {
 		t.Fatalf("counts = %v, %v", counts, err)
 	}
-	seen, err := s.SlurmClusterLastSeen(c.ID)
-	if err != nil || !seen.Equal(newer) {
-		t.Fatalf("last seen = %v, %v; want %v", seen, err, newer)
-	}
-	if seen, err := s.SlurmClusterLastSeen(c.ID + 1); err != nil || !seen.IsZero() {
-		t.Fatalf("an entry without nodes was seen at %v, %v", seen, err)
+	seen, err := s.SlurmClustersLastSeen(c.ID, c.ID+1)
+	if err != nil || !seen[c.ID].Equal(newer) || len(seen) != 1 {
+		t.Fatalf("last seen = %v, %v; want %v for the entry and nothing for one without nodes", seen, err, newer)
 	}
 }

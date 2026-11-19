@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/provider"
 	"gpuworks.ai/gpuworks/internal/server/provision"
+	"gpuworks.ai/gpuworks/internal/server/slurmcluster"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -120,64 +121,6 @@ func TestSlurmEntryOfAClusterWithoutComputeNodesSaysSo(t *testing.T) {
 	// A listing that does not count the nodes says nothing about them.
 	if got := waitingOf(t, rig.tokenRig, "ehpc-ehpc-sz-8"); got["reason"] != "not_applied" {
 		t.Fatalf("cluster with an unknown count = %v", got)
-	}
-}
-
-func TestSlurmWaitingReasonOrder(t *testing.T) {
-	now := time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
-	ran := now.Add(-time.Minute)
-	down := []provider.SlurmReachHost{{Role: "node", Name: "gpu000", Status: "failed", Reason: "timeout"}}
-	for _, tc := range []struct {
-		name    string
-		seen    slurmSeen
-		covered bool
-		nodes   *int
-		want    string
-	}{
-		{"nothing seen", slurmSeen{}, true, nil, "not_applied"},
-		{"setup seen a minute ago", slurmSeen{setupAt: ran}, true, nil, "joining"},
-		{"setup seen long ago", slurmSeen{setupAt: now.Add(-slurmJoinWindow)}, true, nil, "no_node_called"},
-		{"a node called", slurmSeen{setupAt: ran, nodeCalled: true}, true, nil, ""},
-		{"no compute nodes outranks the rest", slurmSeen{setupAt: ran, unreachable: down}, true, intp(0), "no_compute_nodes"},
-		{"unreachable outranks no node called", slurmSeen{setupAt: ran, unreachable: down}, true, intp(2), "server_unreachable"},
-		{"unreachable is a finding, not a guess", slurmSeen{unreachable: down}, false, nil, "server_unreachable"},
-		{"before the server watched nothing is claimed", slurmSeen{}, false, nil, ""},
-		{"before the server watched, a setup is not guessed either", slurmSeen{setupAt: ran}, false, intp(1), ""},
-	} {
-		if got, _ := slurmWaitingReason(tc.seen, tc.covered, tc.nodes, now); got != tc.want {
-			t.Errorf("%s: reason = %q, want %q", tc.name, got, tc.want)
-		}
-	}
-}
-
-// An entry created before the server began watching is not claimed to have
-// had no setup run; one created after is.
-func TestSlurmActivityCoversOnlyEntriesCreatedAfterItBegan(t *testing.T) {
-	now := time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
-	var s slurmActivity
-	s.now = func() time.Time { return now }
-	s.begin()
-	older := store.SlurmCluster{ID: 1, CreatedAt: now.Add(-time.Hour)}
-	newer := store.SlurmCluster{ID: 2, CreatedAt: now.Add(time.Minute)}
-	if _, covered := s.seen(older); covered {
-		t.Fatal("an entry from before the server began is covered")
-	}
-	if _, covered := s.seen(newer); !covered {
-		t.Fatal("an entry from after the server began is not covered")
-	}
-	s.setupRan(2)
-	s.reached(2, provider.SlurmReach{Hosts: []provider.SlurmReachHost{{Role: "node", Name: "n", Status: "failed", Reason: "dns"}}})
-	seen, _ := s.seen(newer)
-	if !seen.setupSeen() || len(seen.unreachable) != 1 {
-		t.Fatalf("seen = %+v", seen)
-	}
-	s.reached(2, provider.SlurmReach{Hosts: []provider.SlurmReachHost{{Role: "node", Name: "n", Status: "ok"}}})
-	if seen, _ := s.seen(newer); len(seen.unreachable) != 0 {
-		t.Fatalf("a later run that reached the server left %v", seen.unreachable)
-	}
-	s.forget(2)
-	if seen, _ := s.seen(newer); seen.setupSeen() {
-		t.Fatal("a deleted entry is remembered")
 	}
 }
 
@@ -355,7 +298,7 @@ func TestSlurmDefaultsSayTheQuickTunnelAddress(t *testing.T) {
 }
 
 // oldSlurmEntry is an entry created an hour ago, so older than
-// slurmStalledAfter, and the handlers reading it with the clock of what the
+// slurmcluster.StalledAfter, and the handlers reading it with the clock of what the
 // server saw in the returned time, which a test moves. watchedFrom is when the
 // server began watching relative to now.
 func oldSlurmEntry(t *testing.T, watchedFrom time.Duration) (*apiHandlers, *store.SlurmCluster, *time.Time) {
@@ -368,9 +311,9 @@ func oldSlurmEntry(t *testing.T, watchedFrom time.Duration) (*apiHandlers, *stor
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	h := &apiHandlers{d: Deps{Store: rig.st}}
-	h.slurmActivity.now = func() time.Time { return now }
-	h.slurmActivity.started = now.Add(watchedFrom)
+	h := &apiHandlers{d: Deps{Store: rig.st}, slurm: slurmcluster.New()}
+	h.slurm.SetClock(func() time.Time { return now })
+	h.slurm.SetWatchedSince(now.Add(watchedFrom))
 	if err := rig.st.DB().Model(&store.SlurmCluster{}).Where("id = ?", created.ID).Update("created_at", now.Add(-time.Hour)).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -399,8 +342,8 @@ func TestSlurmEntryJoiningWindowHoldsBackNoNodeCalledAndStalled(t *testing.T) {
 	if got := view(); got.State != "stalled" || got.Waiting == nil || got.Waiting.Reason != "not_applied" {
 		t.Fatalf("an old entry never set up = %s %+v", got.State, got.Waiting)
 	}
-	h.slurmActivity.setupRan(c.ID)
-	for _, after := range []time.Duration{0, time.Minute, slurmJoinWindow - time.Minute - time.Second} {
+	h.slurm.SetupRan(c.ID)
+	for _, after := range []time.Duration{0, time.Minute, slurmcluster.JoinWindow - time.Minute - time.Second} {
 		*now = now.Add(after)
 		got := view()
 		if got.Stalled || got.State != "pending" || got.Waiting == nil || got.Waiting.Reason != "joining" {
@@ -412,12 +355,12 @@ func TestSlurmEntryJoiningWindowHoldsBackNoNodeCalledAndStalled(t *testing.T) {
 		t.Fatalf("after the window = stalled %v, state %s, waiting %+v", got.Stalled, got.State, got.Waiting)
 	}
 	// Running the setup again starts the window again.
-	h.slurmActivity.setupRan(c.ID)
+	h.slurm.SetupRan(c.ID)
 	if got := view(); got.Stalled || got.Waiting == nil || got.Waiting.Reason != "joining" {
 		t.Fatalf("after a second run = stalled %v, waiting %+v", got.Stalled, got.Waiting)
 	}
 	// A node that called ends the wait whatever the window says.
-	h.slurmActivity.nodeAsked(c.ID)
+	h.slurm.NodeAsked(c.ID)
 	if got := view(); got.Waiting != nil {
 		t.Fatalf("a node called = %+v", got.Waiting)
 	}
@@ -427,7 +370,7 @@ func TestSlurmEntryJoiningWindowHoldsBackNoNodeCalledAndStalled(t *testing.T) {
 // joining: nothing says when its setup ran.
 func TestSlurmEntryFromBeforeTheServerWatchedIsNotJoining(t *testing.T) {
 	h, c, _ := oldSlurmEntry(t, time.Hour)
-	h.slurmActivity.setupRan(c.ID)
+	h.slurm.SetupRan(c.ID)
 	if got := slurmEntryView(t, h, c); got.Waiting != nil || !got.Stalled {
 		t.Fatalf("an uncovered entry = stalled %v, waiting %+v", got.Stalled, got.Waiting)
 	}

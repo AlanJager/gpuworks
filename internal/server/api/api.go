@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/slurmcluster"
 )
 
 // Router builds the top-level HTTP handler.
@@ -17,7 +18,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 		policy = policies[0].Normalized()
 	}
 	a := &apiHandlers{d: d, sessionPolicy: policy, benchmarkExecutions: map[uint]*benchmarkExecution{}}
-	a.slurmActivity.begin()
+	a.slurm = slurmcluster.New()
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

@@ -29,6 +29,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/provider"
 	"gpuworks.ai/gpuworks/internal/server/provision"
 	"gpuworks.ai/gpuworks/internal/server/recovery"
+	"gpuworks.ai/gpuworks/internal/server/slurmcluster"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/webterm"
 )
@@ -312,15 +313,10 @@ type apiHandlers struct {
 	// aiAsks and mcpCalls count each user's questions and MCP tool calls
 	// in flight (ai.go, mcp.go).
 	aiAsks, mcpCalls inFlightLimiter
-	// slurmReports remembers the GPU node list each Slurm entry last stored,
-	// so a report that repeats it costs no read (slurm_report.go).
-	slurmReports slurmReportDigests
-	// slurmOnce are the one-time codes of the setup URL the platform hands a
-	// cloud cluster's manager node (slurm_once.go).
-	slurmOnce slurmOnceCodes
-	// slurmActivity is what the server saw of each Slurm entry's setup and
-	// nodes since it began watching (slurm_waiting.go).
-	slurmActivity slurmActivity
+	// slurm is what the server keeps of each Slurm entry in memory: its list
+	// digests, its one-time setup codes and what was seen of its setup
+	// (slurmcluster.Memory, one Forget for a deleted entry).
+	slurm *slurmcluster.Memory
 }
 
 // orders is the server's order lock and placement hints: Deps.Orders, or for

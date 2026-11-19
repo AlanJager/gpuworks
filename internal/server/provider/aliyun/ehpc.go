@@ -186,6 +186,10 @@ func (d *Driver) ehpcScanRegions(ctx context.Context, creds provider.Credentials
 
 var _ provider.HPCClusterProvider = (*Driver)(nil)
 
+// HPCSharedModelDir is where an E-HPC cluster's nodes share models: E-HPC
+// mounts /opt from the cluster's NAS on every node (provider.HPCSharedStorage).
+func (d *Driver) HPCSharedModelDir() string { return "/opt/gpuworks-models" }
+
 // ListHPCClusters implements provider.HPCClusterProvider: every E-HPC cluster
 // of the account in the regions in scope, whether or not a node of it is
 // listed as an instance (a cluster with no GPU node yet, or before a sync,

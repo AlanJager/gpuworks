@@ -16,6 +16,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/slurmcluster"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -549,7 +550,7 @@ func TestDeleteSlurmClusterWithNodesRevokesTheEntryBeforeDeletingNodes(t *testin
 	// A node with an instance refuses the deletion, and the entry stays usable.
 	holdInstance(t, rig.st, "gpu-2", "running")
 	var enrollErrs []error
-	a := &apiHandlers{d: Deps{Store: rig.st, KickNode: func(string) {
+	a := &apiHandlers{slurm: slurmcluster.New(), d: Deps{Store: rig.st, KickNode: func(string) {
 		// Called after each node is deleted, before the entry is.
 		_, _, err := rig.st.EnrollSlurmNode(cluster.Token, "demo", "gpu-9")
 		enrollErrs = append(enrollErrs, err)

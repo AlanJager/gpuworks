@@ -140,3 +140,12 @@ func TestEHPCClustersArePaged(t *testing.T) {
 		t.Fatalf("ListClusters called %d times", n)
 	}
 }
+
+// E-HPC mounts /opt from the cluster's NAS on every node, so models suggested
+// there are shared by the whole cluster.
+func TestEHPCSharesModelsUnderOpt(t *testing.T) {
+	var shared provider.HPCSharedStorage = &Driver{}
+	if got := shared.HPCSharedModelDir(); got != "/opt/gpuworks-models" {
+		t.Fatalf("E-HPC shared model directory = %q", got)
+	}
+}

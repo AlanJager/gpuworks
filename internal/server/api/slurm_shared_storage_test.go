@@ -11,20 +11,32 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// An entry made from an E-HPC cluster is offered to register the cluster's
-// NAS as model storage once a node has joined, with what the add-storage form
-// is filled with; the offer goes once a node of it has a shared storage.
+// sharingDriver is a cloud whose HPC clusters share a directory across their
+// nodes, as E-HPC does under /opt (provider.HPCSharedStorage).
+type sharingDriver struct{ *applyDriver }
+
+func (sharingDriver) Name() string              { return "api-slurm-sharing-provider" }
+func (sharingDriver) HPCSharedModelDir() string { return "/opt/gpuworks-models" }
+
+// enrollFirstNode enrolls compute001 with the rig's only entry.
+func enrollFirstNode(t *testing.T, rig *tokenRig) {
+	t.Helper()
+	token := regexp.MustCompile(`token=([0-9a-f]+)`).FindStringSubmatch(slurmEntryItem(t, rig)["setup_command"].(string))[1]
+	tok, _ := json.Marshal(token)
+	if rec := rig.do("", http.MethodPost, "/api/v1/slurm/enroll", `{"token":`+string(tok)+`,"slurm_cluster_name":"ehpc-1","node_name":"compute001"}`); rec.Code != http.StatusOK {
+		t.Fatalf("enroll = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// An entry made from a cloud cluster whose driver knows a shared directory
+// (E-HPC) is offered to register it as model storage once a node has
+// joined, with what the add-storage form is filled with; the offer goes once
+// a node of it has a shared storage. A cloud that knows none offers nothing.
 func TestAnEHPCEntryIsOfferedToRegisterItsNASAsModelStorage(t *testing.T) {
-	rig := newTokenRig(t)
-	acct := &store.Provider{Name: "ali", Kind: "aliyun"}
-	if err := rig.st.DB().Create(acct).Error; err != nil {
-		t.Fatal(err)
-	}
-	rec := rig.do(rig.session, http.MethodPost, "/api/v1/slurm/clusters", `{"name":"GPU Lab","server_url":"https://gw","provider_id":`+jsonUint(acct.ID)+`,"provider_cluster_id":"ehpc-1"}`)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create = %d %s", rec.Code, rec.Body)
-	}
-	uuid := decodeMap(t, rec.Body.Bytes())["uuid"].(string)
+	drv := &applyDriver{answer: okRun("")}
+	ar := newApplyRigFor(t, drv, sharingDriver{drv})
+	rig := ar.tokenRig
+	uuid, _ := ar.create("ehpc-sz-1")
 	hint := func() any {
 		t.Helper()
 		item := slurmEntryItem(t, rig)
@@ -33,12 +45,8 @@ func TestAnEHPCEntryIsOfferedToRegisterItsNASAsModelStorage(t *testing.T) {
 	if h := hint(); h != nil {
 		t.Fatalf("offered before any node joined: %v", h)
 	}
-	token := regexp.MustCompile(`token=([0-9a-f]+)`).FindStringSubmatch(slurmEntryItem(t, rig)["setup_command"].(string))[1]
-	tok, _ := json.Marshal(token)
-	if rec := rig.do("", http.MethodPost, "/api/v1/slurm/enroll", `{"token":`+string(tok)+`,"slurm_cluster_name":"ehpc-1","node_name":"compute001"}`); rec.Code != http.StatusOK {
-		t.Fatalf("enroll = %d %s", rec.Code, rec.Body)
-	}
-	want := map[string]any{"name": "gpu-lab-models", "type": "shared_dir", "path": "/opt/gpuworks-models", "label_key": "gpuworks.ai/slurm-cluster", "label_value": uuid}
+	enrollFirstNode(t, rig)
+	want := map[string]any{"name": "ehpc-ehpc-sz-1-models", "type": "shared_dir", "path": "/opt/gpuworks-models", "label_key": "gpuworks.ai/slurm-cluster", "label_value": uuid}
 	if h := hint(); !reflect.DeepEqual(h, want) {
 		t.Fatalf("hint = %v; want %v", h, want)
 	}
@@ -64,5 +72,14 @@ func TestAnEHPCEntryIsOfferedToRegisterItsNASAsModelStorage(t *testing.T) {
 	}
 	if h := hint(); h != nil {
 		t.Fatalf("still offered with a shared storage: %v", h)
+	}
+}
+
+func TestACloudThatKnowsNoSharedDirectoryOffersNoStorage(t *testing.T) {
+	rig := newApplyRig(t, okRun(""))
+	rig.create("ehpc-sz-1")
+	enrollFirstNode(t, rig.tokenRig)
+	if h := slurmEntryItem(t, rig.tokenRig)["shared_storage_hint"]; h != nil {
+		t.Fatalf("offered on a cloud that names no shared directory: %v", h)
 	}
 }
