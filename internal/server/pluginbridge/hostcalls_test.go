@@ -14,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
+	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
@@ -45,7 +46,12 @@ func (c *settableClock) set(at time.Time) {
 // follows clk and reports corrections to corrected; stop ends its run.
 func openOnClock(t *testing.T, w *world, clk *settableClock, corrected func(from, to time.Time, by, reason string)) (b *Bridge, stop func()) {
 	t.Helper()
-	pkgs, err := extpkg.NewHost(extpkg.Setup{DataDir: w.dir, Roots: []extapi.PublicKey{w.root.Public}, Store: w.st})
+	// The refusing spawner starts no process; match the existing world's
+	// named fixture policy while retaining the packages' signed grants.
+	pkgs, err := extpkg.NewHost(extpkg.Setup{
+		DataDir: w.dir, Roots: []extapi.PublicKey{w.root.Public}, Store: w.st,
+		Config: serverconfig.Plugins{AllowUnsandboxed: []string{"acme_backup", "acme_off", "acme_driver"}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
