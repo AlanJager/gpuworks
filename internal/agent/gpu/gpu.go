@@ -151,6 +151,11 @@ type Metric struct {
 	UUID   string
 	Vendor string
 	Values map[string]float64
+	// HostPoolMemory says the memory-used value is the host's memory pool in
+	// use, not a figure the device answered: a unified-memory card whose
+	// driver reports none (applyUnifiedMemoryMetrics). It counts every
+	// process on the host, so it is never one instance's own use.
+	HostPoolMemory bool
 }
 
 // Prober detects GPUs on the local host.

@@ -16,6 +16,25 @@ import (
 )
 
 func parseNVIDIAMetrics(out string) []Metric {
+	return withReadings(parseNVIDIAMetricRows(out))
+}
+
+// withReadings drops the cards that carry no reading at all.
+func withReadings(rows []Metric) []Metric {
+	var metrics []Metric
+	for _, m := range rows {
+		if len(m.Values) > 0 {
+			metrics = append(metrics, m)
+		}
+	}
+	return metrics
+}
+
+// parseNVIDIAMetricRows is one Metric per card the query listed, also for a
+// card every field of which came back unsupported: a unified-memory part can
+// answer [N/A] throughout, and its memory is filled from the host afterwards
+// (applyUnifiedMemoryMetrics).
+func parseNVIDIAMetricRows(out string) []Metric {
 	var metrics []Metric
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		f := splitCSV(line)
@@ -53,9 +72,7 @@ func parseNVIDIAMetrics(out string) []Metric {
 				m.Values["gpuworks_gpu_throttle_reasons"] = reasons
 			}
 		}
-		if len(m.Values) > 0 {
-			metrics = append(metrics, m)
-		}
+		metrics = append(metrics, m)
 	}
 	return metrics
 }
@@ -341,29 +358,91 @@ func applyUnifiedMemoryFallback(gpus []proto.GPUInfo, hostBytes func() int64) {
 	}
 }
 
+// applyUnifiedMemoryMetrics fills the memory readings a unified-memory part's
+// driver does not answer. nvidia-smi reports [N/A] for memory.used and
+// memory.total on these parts, so the card's used memory stayed absent and
+// the console showed 0 in use for good. The pool the GPU allocates from is
+// the host's, so both figures come from one read of the host's meminfo:
+// MemTotal, and MemTotal less MemAvailable. A figure the driver does answer
+// is kept, and a backfilled use never exceeds the card's total.
+//
+// unified are the cards (by UUID) the last probe recognized as unified
+// memory; host returns the host's total and available bytes, each 0 or
+// negative when unknown. A backfilled use is marked HostPoolMemory: it is
+// every process on the host, not what the GPU's own clients hold.
+func applyUnifiedMemoryMetrics(metrics []Metric, unified map[string]bool, host func() (total, available int64)) {
+	const usedKey, totalKey = "gpuworks_gpu_memory_used_bytes", "gpuworks_gpu_memory_total_bytes"
+	read := false
+	var hostTotal, hostAvailable int64
+	for i := range metrics {
+		m := &metrics[i]
+		if !unified[m.UUID] {
+			continue
+		}
+		_, hasUsed := m.Values[usedKey]
+		total, hasTotal := m.Values[totalKey]
+		if hasTotal && total <= 0 {
+			hasTotal = false
+		}
+		if hasUsed && hasTotal {
+			continue
+		}
+		if !read {
+			hostTotal, hostAvailable = host()
+			read = true
+		}
+		if hostTotal <= 0 {
+			continue
+		}
+		if !hasTotal {
+			total = float64(hostTotal)
+			m.Values[totalKey] = total
+		}
+		if !hasUsed && hostAvailable >= 0 && hostAvailable <= hostTotal {
+			m.Values[usedKey] = min(float64(hostTotal-hostAvailable), total)
+			m.HostPoolMemory = true
+		}
+	}
+}
+
 // hostMemoryBytes reports MemTotal from proc/meminfo under hostRoot (empty
 // means "/"); 0 when unavailable (non-Linux hosts have no fallback and keep
 // the parsed 0).
 func hostMemoryBytes(hostRoot string) int64 {
+	total, _ := hostMemory(hostRoot)
+	return total
+}
+
+// hostMemory reads MemTotal and MemAvailable, in bytes, from one read of
+// proc/meminfo under hostRoot. total is 0 when unavailable or malformed;
+// available is -1 when the kernel does not report it.
+func hostMemory(hostRoot string) (total, available int64) {
 	data, err := os.ReadFile(filepath.Join("/", hostRoot, "proc/meminfo"))
 	if err != nil {
-		return 0
+		return 0, -1
 	}
+	available = -1
 	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "MemTotal:") {
+		name, rest, ok := strings.Cut(line, ":")
+		if !ok || (name != "MemTotal" && name != "MemAvailable") {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return 0
+		fields := strings.Fields(rest)
+		if len(fields) < 1 {
+			continue
 		}
-		kb, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil || kb <= 0 {
-			return 0
+		kb, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			continue
 		}
-		return kb * 1024
+		switch {
+		case name == "MemTotal" && kb > 0:
+			total = kb * 1024
+		case name == "MemAvailable" && kb >= 0:
+			available = kb * 1024
+		}
 	}
-	return 0
+	return total, available
 }
 
 func nvidiaArchID(cc string) string {
