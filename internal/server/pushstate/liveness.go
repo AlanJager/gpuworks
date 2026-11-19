@@ -85,7 +85,10 @@ func (s *State) changed() {
 // from SetPackages, so it can push nothing more.
 func (s *State) Uninstall(ctx context.Context, owner string) error {
 	return s.enqueue(ctx, &op{
-		build: func(b *pstate.Batch) { b.Uninstall = append(b.Uninstall, owner) },
+		build: func(b *pstate.Batch) error {
+			b.Uninstall = append(b.Uninstall, owner)
+			return nil
+		},
 		after: func(_ pstate.Result, err error) {
 			if err != nil {
 				return
@@ -98,6 +101,11 @@ func (s *State) Uninstall(ctx context.Context, owner string) error {
 			for id, o := range s.overrides {
 				if o.Owner == owner {
 					delete(s.overrides, id)
+				}
+			}
+			for id, so := range s.superseded {
+				if so.o.Owner == owner {
+					delete(s.superseded, id)
 				}
 			}
 			delete(s.down, owner)
@@ -126,10 +134,11 @@ func (s *State) CorrectClock(ctx context.Context, to time.Time, by, reason strin
 	}
 	var fromMS, afterMS int64
 	err = s.enqueue(ctx, &op{
-		build: func(b *pstate.Batch) {
+		build: func(b *pstate.Batch) error {
 			fromMS = s.clock.correct(toMS)
 			afterMS = s.clock.nowMS()
 			b.Clock = &pstate.Clock{HWMMS: toMS}
+			return nil
 		},
 		after: func(_ pstate.Result, err error) {
 			if err != nil {

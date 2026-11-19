@@ -1708,6 +1708,9 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | POST | `/api/v1/plugins/{id}/disable` | 停止并不再启动，返回该包；它推送的表照常执行，并按掉线计算宽限 | 管理会话，admin |
 | DELETE | `/api/v1/plugins/{id}?purge=<bool>` | 停止并卸载，删掉它推送的全部内容并重新应用保持，返回 204；`purge=true` 连数据目录一起移到 `.trash/` | 管理会话，admin |
 | GET | `/api/v1/metrics/plugins` | 已安装插件的 `gpuworks_plugin_*` 指标，Prometheus 文本格式（`text/plain; version=0.0.4`），供外部 Prometheus 抓取，不写入内置时序库或历史指标目录；指标见[扩展点](../dev/extensions.md#健康横幅诊断检查与指标) | `JWT(admin)` |
+| GET | `/api/v1/plugins/overrides` | 生效中的覆盖：`{items:[{id, owner, kind, entry, generation, action, value?, by_user, at, reason}]}`，按 `id` 排序 | `JWT(admin)` |
+| POST | `/api/v1/plugins/overrides` | 请求体 `{owner, kind, entry, action, value?, reason}`：放松插件 `owner` 推送的一条限制，返回 201 与覆盖本身。`kind` 为 `node_holds`（`entry` 是十进制节点 id，`action` 只能是 `delete`）或 `fleet_capacity`（`entry` 是 `max_nodes_with_cards` 或 `max_cards`，`action` 为 `delete`，或带调高后上限 `value` 的 `loosen`）；`reason` 必填，最多 1024 字节。字段缺失或格式不对回 400 `FIELD_INVALID`；不满足覆盖规则回 422 `PLUGIN_OVERRIDE_REJECTED`（`params.rule`：`not_restrict`、`no_entry`、`action`、`not_looser`，`reason` 超过 1024 字节为 `reason`，提交前插件又推送改了这一条为 `superseded`） | 管理会话，admin |
+| DELETE | `/api/v1/plugins/overrides/{oid}` | 撤回覆盖，所有者最后推送的限制重新生效，返回 204；不存在回 404 `PLUGIN_OVERRIDE_NOT_FOUND` | 管理会话，admin |
 
 字段：
 
@@ -1717,6 +1720,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 - `parts`：包含的部分 `server`、`node`、`ui`、`store`；`isolation`：`landlock` 或 `none`。
 - `actions`：服务端算出的当前可做的动作 `enable`、`disable`、`uninstall`。
 - `check`：`message` 是检查结果的码与参数；`status` 为 `fail`（`CHECK_PLUGINS_FAILING`：有已启用的包处于崩溃循环、`failed`、`broken`、被吊销或 `needs_host_setup`）、`warn`（`CHECK_PLUGINS_INCOMPATIBLE`：有已启用的包需要此服务器不提供的能力）或 `pass`（`CHECK_PLUGINS_OK`）；`message.params.ids` 是以逗号分隔的包 id。
+- 覆盖的 `generation`：建立覆盖时所有者该种类的代数；`by_user`：建立它的管理员的用户 id；`value`：`loosen` 调高后的上限，`delete` 时缺省。所有者之后的推送改了这一条时，覆盖被取代并删除，管理员看到 24 小时的横幅 `PLUGIN_OVERRIDE_SUPERSEDED`。
 
 调用插件失败时的码（`PLUGIN_UNAVAILABLE`、`PLUGIN_BUSY`、`PLUGIN_TIMEOUT`、`PLUGIN_ROUTE_FAILED`）见[扩展点](../dev/extensions.md#调用与路由表)。
 

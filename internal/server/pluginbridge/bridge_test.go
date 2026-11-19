@@ -45,6 +45,8 @@ type world struct {
 	// dynamic set; announced counts its feature announcements.
 	gate      *featuregate.Gate
 	announced atomic.Int32
+	// corrected counts the server's own clock correction effect.
+	corrected atomic.Int32
 	// logs is what the bridges logged.
 	logs lockedBuffer
 	// cgroupRoot, when set, is the cgroup mount the bridges' plugin host
@@ -136,7 +138,8 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 		w.t.Fatal(err)
 	}
 	b, err := Open(context.Background(), Config{Packages: pkgs,
-		State:    pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) }}},
+		State: pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) },
+			ClockCorrected: func(time.Time, time.Time, string, string) { w.corrected.Add(1) }}},
 		Features: dyn, StaticFeatures: owners, HostSetup: w.records,
 		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour},
 			CgroupRoot: w.cgroupRoot, CgroupParent: "svc"},
@@ -154,7 +157,27 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 			w.t.Errorf("run: %v", err)
 		}
 	})
+	waitBridgeRunning(w.t, b)
 	return b, sp
+}
+
+// Fixtures that promise a running bridge must wait until Run is active before
+// installing packages or calling them. Register cleanup before waiting here.
+func waitBridgeRunning(t *testing.T, b *Bridge) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		b.mu.Lock()
+		running := b.running
+		b.mu.Unlock()
+		if running {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the bridge did not enter its running state")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 func (w *world) pkg(id, version string, edit func(*extsign.Spec)) []byte {

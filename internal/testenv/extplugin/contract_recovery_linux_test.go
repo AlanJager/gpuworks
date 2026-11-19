@@ -24,7 +24,8 @@ const recoveryBudget = 10 * time.Second
 // I7: with every installed plugin crashlooping, one of them holding every
 // node and the other capping the fleet at zero cards, the local
 // administrator signs in afresh, is told it is one, lists the plugins,
-// disables and uninstalls each, and every call answers within the budget.
+// overrides one node's hold so that node is schedulable, disables and
+// uninstalls each, and every call answers within the budget.
 func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 	s := newSite(t)
 	sv := s.boot()
@@ -100,6 +101,26 @@ func TestContractLocalAdminDuringCrashloop(t *testing.T) {
 	var list dto.PluginList
 	if out := timed("the plugin list", http.MethodGet, "/api/v1/plugins", ""); json.Unmarshal(out, &list) != nil || len(list.Items) != 2 {
 		t.Fatalf("plugin list = %s", out)
+	}
+	// The local administrator raises the crashlooping plugin's zero cards
+	// cap and releases node a from the other's hold, and the node is
+	// schedulable within the budget.
+	start := time.Now()
+	for what, req := range map[string]string{
+		"loosen of the cards cap": `{"owner":"acme_fake","kind":"fleet_capacity","entry":"max_cards","action":"loosen","value":4,"reason":"recovering the site"}`,
+		"override of node a":      fmt.Sprintf(`{"owner":"acme_other","kind":"node_holds","entry":"%d","action":"delete","reason":"recovering the site"}`, a.ID),
+	} {
+		var o dto.PluginOverride
+		if out := timed(what, http.MethodPost, "/api/v1/plugins/overrides", req); json.Unmarshal(out, &o) != nil || o.ID == 0 {
+			t.Fatalf("%s answered %s", what, out)
+		}
+	}
+	waitFor(t, "node a schedulable", func() bool { return !heldByPlugins(t, st, a.UUID) })
+	if took := time.Since(start); took >= recoveryBudget {
+		t.Fatalf("node a was released after %s; want within %s", took, recoveryBudget)
+	}
+	if !heldByPlugins(t, st, b.UUID) {
+		t.Fatal("the override of node a released node b")
 	}
 	for _, id := range []string{"acme_fake", "acme_other"} {
 		var p dto.Plugin

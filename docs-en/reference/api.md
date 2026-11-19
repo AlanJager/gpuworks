@@ -1694,6 +1694,9 @@ The management API of installed signed plugin packages (`.gwpkg`); see [Extensio
 | POST | `/api/v1/plugins/{id}/disable` | Stop it and keep it from starting, returning the package; its pushed tables stay enforced and its grace runs as for a down plugin | Management session, admin |
 | DELETE | `/api/v1/plugins/{id}?purge=<bool>` | Stop and uninstall, delete everything it pushed and reapply the holds; returns 204. `purge=true` moves its data directory to `.trash/` too | Management session, admin |
 | GET | `/api/v1/metrics/plugins` | The installed plugins' `gpuworks_plugin_*` metrics in the Prometheus text format (`text/plain; version=0.0.4`), for external Prometheus collection, without internal time-series persistence or stored-catalog entries; the metrics are in [Extension Points](../dev/extensions.md#health-banners-the-diagnostics-check-and-metrics) | `JWT(admin)` |
+| GET | `/api/v1/plugins/overrides` | The overrides in force: `{items:[{id, owner, kind, entry, generation, action, value?, by_user, at, reason}]}`, sorted by `id` | `JWT(admin)` |
+| POST | `/api/v1/plugins/overrides` | Body `{owner, kind, entry, action, value?, reason}`: loosen one restriction plugin `owner` pushed; returns 201 with the override. `kind` is `node_holds` (`entry` is a node id in decimal, and `action` can only be `delete`) or `fleet_capacity` (`entry` is `max_nodes_with_cards` or `max_cards`, and `action` is `delete`, or `loosen` with the raised cap in `value`); `reason` is required, at most 1024 bytes. A missing or malformed field answers 400 `FIELD_INVALID`; an override that breaks a rule answers 422 `PLUGIN_OVERRIDE_REJECTED` (`params.rule`: `not_restrict`, `no_entry`, `action`, `not_looser`; `reason` for a reason over 1024 bytes; `superseded` when the plugin pushed that entry again before the override was stored) | Management session, admin |
+| DELETE | `/api/v1/plugins/overrides/{oid}` | Withdraw an override, so the restriction its owner last pushed is enforced again; returns 204, or 404 `PLUGIN_OVERRIDE_NOT_FOUND` when none exists | Management session, admin |
 
 Fields:
 
@@ -1703,6 +1706,7 @@ Fields:
 - `parts`: the parts it carries, `server`, `node`, `ui`, `store`; `isolation`: `landlock` or `none`.
 - `actions`: the actions available now, computed by the server: `enable`, `disable`, `uninstall`.
 - `check`: `message` is the result's code and params; `status` is `fail` (`CHECK_PLUGINS_FAILING`: an enabled package is crashlooping, `failed`, `broken`, revoked or `needs_host_setup`), `warn` (`CHECK_PLUGINS_INCOMPATIBLE`: an enabled package needs a capability this server does not offer) or `pass` (`CHECK_PLUGINS_OK`); `message.params.ids` is the package ids, comma-separated.
+- An override's `generation`: the owner's generation of the kind when the override was made; `by_user`: the user id of the administrator who made it; `value`: the raised cap of a `loosen`, absent for a `delete`. When a later push of the owner changes the entry, the override is superseded and deleted, and administrators see the banner `PLUGIN_OVERRIDE_SUPERSEDED` for 24 hours.
 
 The codes of a failed plugin call (`PLUGIN_UNAVAILABLE`, `PLUGIN_BUSY`, `PLUGIN_TIMEOUT`, `PLUGIN_ROUTE_FAILED`) are in [Extension Points](../dev/extensions.md#calls-and-the-route-table).
 
@@ -2315,4 +2319,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 5b3e4e28fe184e6bf7edb728b343034925fa91dc267fa5a22591894e752704f1 -->
+<!-- translation-source-sha256: ab6e5242d2dae7a73ba1d352a8121740570a5dfbfe66055a7c4a238c11605015 -->
