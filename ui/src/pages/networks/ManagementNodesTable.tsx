@@ -108,10 +108,10 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
   // A node's labels sit one step down: the row keeps the node, its address
   // and the role switches, which is what fits the 720px detail drawer.
   const labelsOf = (n: NetworkNode) => (
-    <dl className="grid gap-2 text-body">
-      <div style={{ gridColumn: "1 / -1" }}>
-        <dt className="text-fg-muted">{t("management.labels")}</dt>
-        <dd className="break-words">{labelPairs(n.labels).join(", ") || "—"}</dd>
+    <dl className="network-node-details text-body" data-selectable={isAdmin}>
+      <div className="min-w-0">
+        <dt className="mb-1 text-label text-fg-muted">{t("management.labels")}</dt>
+        <dd className="whitespace-normal break-all">{labelPairs(n.labels).join(", ") || "—"}</dd>
       </div>
     </dl>
   );

@@ -237,7 +237,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
   ];
   const expandedRowRender = (node: NetworkNode) => {
     const attachment = attachments.get(node.attachment_id);
-    return <dl className="network-node-details ms-10 grid gap-3 border-s-2 border-border px-4 py-3 text-body">
+    return <dl className="network-node-details text-body">
       {rails ? (
         <>
           <div>
