@@ -269,10 +269,27 @@ func (o Options) pluginUninstall(log *slog.Logger, name string, args []string, s
 	if err != nil {
 		return err
 	}
-	if version != "" || !own.empty() {
-		fmt.Fprintln(stdout, uninstallImpact(id, version, own, snap))
+	// A purge of a package already uninstalled without one still removes
+	// its data, so it asks for --yes like any other uninstall.
+	keptData := false
+	if version == "" && *purge {
+		if _, err := os.Stat(h.Dir.Package(id)); err == nil {
+			keptData = true
+		}
+	}
+	if version != "" || !own.empty() || keptData {
+		if version != "" || !own.empty() {
+			fmt.Fprintln(stdout, uninstallImpact(id, version, own, snap))
+		}
+		if keptData {
+			fmt.Fprintf(stdout, "purging %s moves its data directory to the trash and deletes its data marker\n", id)
+		}
 		if !*yes {
-			return fmt.Errorf("nothing was changed; run plugin %s %s --yes to uninstall it", name, id)
+			flags := "--yes"
+			if *purge {
+				flags = "--purge --yes"
+			}
+			return fmt.Errorf("nothing was changed; run plugin %s %s %s to uninstall it", name, id, flags)
 		}
 	}
 	removeErr := h.Remove(id, *purge)

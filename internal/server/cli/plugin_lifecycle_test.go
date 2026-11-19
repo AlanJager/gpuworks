@@ -201,6 +201,28 @@ func TestPluginUninstallReleasesWhatItPushedAndAReinstallStartsClean(t *testing.
 	if own := e.owned("acme_backup"); !own.empty() {
 		t.Fatalf("rows left after remove: %+v", own)
 	}
+	// A purge of a package uninstalled earlier without one still asks.
+	e.install("1.0.0")
+	if _, err := e.run("uninstall", "acme_backup", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	pkgDir := filepath.Join(e.data, "plugins", "acme_backup")
+	if _, err := os.Stat(pkgDir); err != nil {
+		t.Fatalf("an uninstall without purge dropped the data: %v", err)
+	}
+	out, err = e.run("uninstall", "acme_backup", "--purge")
+	if err == nil || !strings.Contains(err.Error(), "--purge --yes") || !strings.Contains(out, "purging acme_backup moves its data directory to the trash") {
+		t.Fatalf("purge without --yes = %q %v", out, err)
+	}
+	if _, err := os.Stat(pkgDir); err != nil {
+		t.Fatalf("an unconfirmed purge moved the data: %v", err)
+	}
+	if out, err := e.run("uninstall", "acme_backup", "--purge", "--yes"); err != nil {
+		t.Fatalf("confirmed purge = %q %v", out, err)
+	}
+	if _, err := os.Stat(pkgDir); !os.IsNotExist(err) {
+		t.Fatalf("data left after a confirmed purge: %v", err)
+	}
 }
 
 func TestPluginUninstallFinishesRowsWhosePackageIsGone(t *testing.T) {
