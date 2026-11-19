@@ -118,24 +118,24 @@ export function VersionDrawer({ open, canInstall, blocker, channel, server, init
           {visibleRows.map(row => {
             const latest = row.latest ?? (row === rows[0]);
             const blocked = row.reason;
+            const unavailable = blocked && blocked !== "installed" && blocked !== "older";
+            const disabled = Boolean(blocked) || !canInstall;
             const noteId = `gw-version-note-${row.version}`;
-            return <label key={row.version} className={`gw-version${selected === row.version ? " is-selected" : ""}`}>
-              <RadioGroupItem value={row.version} aria-label={row.version} aria-describedby={blocked || latest ? `${noteId}-meta ${noteId}` : `${noteId}-meta`} disabled={Boolean(blocked) || !canInstall} />
+            return <label key={row.version} data-disabled={disabled || undefined} className={`gw-version${selected === row.version ? " is-selected" : ""}`}>
+              <RadioGroupItem value={row.version} aria-label={row.version} aria-describedby={blocked || latest ? `${noteId}-meta ${noteId}` : `${noteId}-meta`} disabled={disabled} />
               <span className="gw-version-main"><strong>{row.version}</strong><small id={`${noteId}-meta`}>{formatTime(row.built_at)} · {platform}</small>
                 {search && row.commit && !row.version.toLowerCase().includes(search) && <small>{row.commit}</small>}
               </span>
               <span className="gw-version-note inline-flex flex-wrap gap-1" id={noteId}>
                 {latest && <Badge size="sm" status="info">{t("versionPicker.latest")}</Badge>}
-                {blocked && <Badge size="sm" status="neutral">{t(`versionPicker.reasons.${blocked}`, { platform })}</Badge>}
+                {blocked && (unavailable
+                  ? <span className="text-label text-fg-muted">{t(`versionPicker.reasons.${blocked}`, { platform })}</span>
+                  : <Badge size="sm" status="neutral">{t(`versionPicker.reasons.${blocked}`, { platform })}</Badge>)}
               </span>
             </label>;
           })}
         </RadioGroup>}
       </section>
-      {rows.some(row => row.reason === "backup") && <details>
-        <summary>{t("versionPicker.recoveryTitle")}</summary>
-        <p>{t("versionPicker.recoveryHelp")}</p>
-      </details>}
     </div>
   </SideDrawer>;
 }

@@ -13,6 +13,8 @@ for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElemen
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
 Object.defineProperty(dom.window, "matchMedia", { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) });
+Object.defineProperty(dom.window.HTMLElement.prototype, "setPointerCapture", { value() {}, configurable: true });
+Object.defineProperty(dom.window.HTMLElement.prototype, "releasePointerCapture", { value() {}, configurable: true });
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub, configurable: true });
 const closeChannels = trackMessageChannels();
@@ -323,6 +325,52 @@ test("long histories keep the preferred target visible and filter by release or 
   }
 });
 
+test("the existing backup reason stays disabled without promising a restore operation", async () => {
+  const s = stubServerUpgrade([statusFixture({ server: selfUpgradable })], []);
+  apiModule.api.serverVersions = async channel => ({ channel, platform: "linux/arm64", versions: [
+    { version: "legacy", built_at: "2026-11-01", sha256: "three", reason: "backup" },
+  ] });
+  try {
+    renderCard();
+    await userEvent.click(await readyServerUpgrade());
+    const drawer = within(await screen.findByRole("dialog"));
+    const radio = await drawer.findByRole("radio", { name: "legacy" }) as HTMLButtonElement;
+    assert.equal(radio.getAttribute("aria-disabled"), "true");
+    assert.equal(radio.closest("label")?.getAttribute("data-disabled"), "true");
+    assert.ok(drawer.getByText(picker.reasons.backup));
+    assert.equal((drawer.getByRole("button", { name: picker.upgradeTo.replace("{{version}}", picker.selectedTarget) }) as HTMLButtonElement).disabled, true);
+    assert.doesNotMatch(screen.getByRole("dialog").textContent ?? "", /restore|backup/i);
+    assert.deepEqual(s.calls, []);
+  } finally { s.restore(); }
+});
+
+for (const runningChannel of ["release", "nightly", undefined]) {
+  test(`only a known cross-channel installation warns before confirmation (${runningChannel ?? "unknown"})`, async () => {
+    const s = stubServerUpgrade([statusFixture({ server: { ...selfUpgradable,
+      current_build: runningChannel ? { version: selfUpgradable.current, kind: "prerelease", build_channel: runningChannel } : undefined,
+    } })], []);
+    try {
+      renderCard();
+      await userEvent.click(await readyServerUpgrade());
+      const drawer = within(await screen.findByRole("dialog"));
+      await userEvent.click(await drawer.findByRole("radio", { name: "f90e474e" }));
+      assert.equal(screen.queryByText(picker.crossChannelWarning), null);
+      await userEvent.click(drawer.getByRole("button", { name: picker.upgradeTo.replace("{{version}}", "f90e474e") }));
+      const dialog = within(await screen.findByRole("dialog", { name: picker.confirmTitle.replace("{{version}}", "f90e474e") }));
+      assert.equal(Boolean(dialog.queryByText(picker.crossChannelWarning)), runningChannel === "release");
+      if (runningChannel === "release") {
+        assert.ok(dialog.getByText(picker.crossChannelWarning).compareDocumentPosition(dialog.getByText(u.serverConfirm)) & Node.DOCUMENT_POSITION_FOLLOWING,
+          "the cross-channel warning appears before the upgrade explanation");
+      }
+      assert.deepEqual(s.calls, [], "selecting a version does not install it");
+      await userEvent.click(dialog.getByRole("button", { name: picker.back }));
+      await screen.findByRole("dialog", { name: picker.title });
+      assert.equal(screen.queryByText(picker.crossChannelWarning), null);
+      assert.deepEqual(s.calls, [], "returning to the picker does not install it");
+    } finally { s.restore(); }
+  });
+}
+
 test("the console upgrades the server after confirming and waits for the new version", async () => {
   const after = statusFixture({ server: { ...selfUpgradable, current: "f90e474e", update_available: false } });
   const s = stubServerUpgrade([statusFixture({ server: selfUpgradable }), after], ["f90e474e"]);
@@ -360,7 +408,7 @@ test("the console upgrades the server after confirming and waits for the new ver
   }
 });
 
-test("a current server locks only the picker and can still switch to an earlier release on another channel", async () => {
+test("a current server keeps the picker locked for an earlier release on another channel", async () => {
   const server = { ...selfUpgradable, current: selfUpgradable.latest, update_available: false,
     current_build: { version: selfUpgradable.latest, kind: "prerelease" as const, build_channel: "nightly" } };
   const current = statusFixture({ server });
@@ -378,8 +426,11 @@ test("a current server locks only the picker and can still switch to an earlier 
 
     await userEvent.click(screen.getByRole("combobox"));
     await userEvent.click(await screen.findByRole("option", { name: u.channelRelease }));
-    await readyServerUpgrade();
-    assert.ok(within(row(u.server)).getByText(u.differentChannelVersion));
+    await waitFor(() => assert.ok(within(row(u.server)).getByText("v26.11.0")));
+    assert.equal((within(row(u.server)).getByRole("button", { name: picker.title }) as HTMLButtonElement).disabled, true);
+    assert.equal((within(row(u.server)).getByRole("button", { name: u.uploadServer }) as HTMLButtonElement).disabled, false);
+    assert.equal(screen.queryByText(picker.crossChannelWarning), null, "saving the channel does not confirm an installation");
+    assert.ok(within(row(u.server)).getByText(u.upToDate));
   } finally {
     s.restore();
   }

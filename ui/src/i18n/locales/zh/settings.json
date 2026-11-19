@@ -36,8 +36,7 @@
     "lookupFailed": "版本清单读取失败，请重新检查。",
     "cannotInstall": "无法通过控制台升级服务端",
     "useHost": "请在主机上执行升级。",
-    "recoveryTitle": "如何恢复历史版本",
-    "recoveryHelp": "使用目标版本的升级前备份恢复数据库、配置和二进制，再核对服务端运行版本。",
+    "crossChannelWarning": "切换后，可能无法通过控制台返回当前版本。是否继续？",
     "confirmTitle": "确认升级到 {{version}}？",
     "back": "返回选择",
     "confirm": "确认升级",
@@ -58,7 +57,7 @@
       "installed": "已安装",
       "arch": "无 {{platform}} 安装包",
       "older": "早于当前版本",
-      "backup": "需恢复对应版本备份"
+      "backup": "无法直接安装此版本"
     },
     "failed": "未能安装 {{version}}，可重新检查并选择版本。"
   },

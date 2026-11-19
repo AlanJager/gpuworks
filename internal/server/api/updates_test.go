@@ -121,7 +121,7 @@ func (c *testChannel) sign() {
 		c.t.Fatal(err)
 	}
 	c.mu.Lock()
-	c.objects["nightly/index.json"] = envelope
+	c.objects[c.index.Channel+"/index.json"] = envelope
 	c.mu.Unlock()
 }
 

@@ -39,22 +39,6 @@ func readUpgradeSelection(body io.Reader) (dto.ServerUpgradeSelection, bool) {
 	return target, distribution.KnownChannel(target.Channel) && target.Version != "" && len(target.Attempt) <= 64
 }
 
-func upgradeCompatibility(release distribution.ServerRelease, channel string, migration int) string {
-	if release.DatabaseMigration > 0 && release.DatabaseMigration < migration {
-		return "backup"
-	}
-	if release.NewerThan(version.Version, version.BuildDate) {
-		return ""
-	}
-	if channel == version.Channel {
-		return "older"
-	}
-	if release.DatabaseMigration == 0 {
-		return "backup"
-	}
-	return ""
-}
-
 func (a *apiHandlers) matchChannel(w http.ResponseWriter, channel string) bool {
 	if channel == a.channelName() {
 		return true
@@ -84,14 +68,9 @@ func (a *apiHandlers) serverVersionChoices(w http.ResponseWriter, r *http.Reques
 	if !a.matchChannel(w, channel) {
 		return
 	}
-	migration, err := a.d.Store.CurrentMigration()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
 	for index, release := range fetched.Index.Servers() {
 		installed := release.ReleaseID == version.Version
-		if channel == version.Channel && !installed && !release.NewerThan(version.Version, version.BuildDate) {
+		if !installed && !release.NewerThan(version.Version, version.BuildDate) {
 			continue
 		}
 		choice := dto.ServerVersionChoice{Version: release.ReleaseID, Commit: release.Commit, BuiltAt: release.BuiltAt, Latest: index == 0}
@@ -103,7 +82,6 @@ func (a *apiHandlers) serverVersionChoices(w http.ResponseWriter, r *http.Reques
 			choice.Reason = "arch"
 		default:
 			choice.SHA256 = asset.SHA256
-			choice.Reason = upgradeCompatibility(release, channel, migration)
 		}
 		result.Versions = append(result.Versions, choice)
 	}

@@ -1821,7 +1821,7 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | GET | `/api/v1/notices` | 页头通知铃铛 `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`：发布方签名发布的、适用于本安装的通知（`kind` 为 `security` / `release` / `event`，`title`/`body` 按语言给出纯文本）；按紧急程度、再按时间排序，`read` 与 `unread` 按调用者计算 | JWT |
 | POST | `/api/v1/notices/read` | 把通知标为已读 `{"ids": [...]}`（1–128 个，每个 ≤64 字节，否则 400 `NOTICE_IDS_INVALID`）；只记调用者自己的已读，重复标记无副作用，204 | JWT |
 | GET | `/api/v1/console/manifest` | 控制台外壳在自身页面之外显示的内容 `{edition, features, nav, banners}`，全部由 server 决定，控制台只负责渲染，见[控制台清单与扩展路由](#控制台清单与扩展路由)。社区版服务端固定返回 `{"edition":"community","features":[],"nav":[],"banners":[]}` | JWT |
-| GET | `/api/v1/updates/server/versions` | 传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列。同渠道排除早于当前的构建，跨渠道保留目标渠道记录；`latest` 标识渠道索引的最新构建。 | JWT(admin) |
+| GET | `/api/v1/updates/server/versions` | 传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建；`latest` 标识渠道索引的最新构建。 | JWT(admin) |
 | GET | `/api/v1/updates/server/result` | 传入本次升级的 `attempt` 或已接受响应的 `backup`，核对下载、等待重启、失败或已确认回滚。无匹配证据时返回 `unknown`。 | JWT(admin) |
 | POST | `/api/v1/updates/server` | 可传入 `{channel,version,sha256,attempt}` 精确选择包。无选择时沿用渠道最新版本。下载发布包，备份并替换服务端后重启；接受返回 202 `{from,to,backup}`，下一次启动确认或回滚；见[服务端升级限制](#服务端升级限制) | JWT(admin) |
 | POST | `/api/v1/updates/server/upload` | 同上，但请求体是上传的发布压缩包（上限 512 MiB）；不是可用的发布包时 400 `SERVER_UPGRADE_ARCHIVE_INVALID`（含控制台升级之前的版本：它们不会确认或回滚自己的启动，`detail` 提示改用 `gpuworks upgrade --archive`） | JWT(admin) |
@@ -1883,8 +1883,10 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 
 `POST /api/v1/updates/server` 下载本平台发布包，按签名索引校验，备份替换后重启。返回 202 `{from,to,backup}`，下次启动确认或回滚。
 
+在线更新检查、候选列表与安装请求使用同一排序规则，不因跨渠道而放行旧版本。两边都是正式版本号 `vX.Y.Z` 时比较版本号，否则比较构建时间；时间无法解析时沿用原有更新检测行为，将不同版本视为可更新。签名索引中的数据库迁移编号不作为在线安装门槛。上传发布包保持原有验证方式，不受这项在线排序限制。
+
 - 409 `SERVER_UPGRADE_UNAVAILABLE`：不能自升级，`reason` 为 `no_service_manager`、`not_installed`、`not_installed_binary` 或 `not_writable`。
-- 409 `SERVER_ALREADY_AT_RELEASE`：已是目标版本；409 `SERVER_NEWER_THAN_RELEASE`：当前构建比渠道版本新。
+- 409 `SERVER_ALREADY_AT_RELEASE`：已是目标版本；409 `SERVER_NEWER_THAN_RELEASE`：目标构建不比当前版本更新。
 - 404 `UPDATE_NOT_PUBLISHED`：渠道没有本平台的包。
 - 502 `UPDATE_DOWNLOAD_FAILED`：无来源能提供与索引大小、SHA-256 一致的包。`file` 指出文件，`detail` 给出各源原因；不会替换运行中的服务。
 

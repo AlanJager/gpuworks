@@ -1808,6 +1808,7 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 | POST | `/api/v1/notices/read` | Mark notices as read with `{"ids": [...]}` (1–128 IDs, each ≤64 bytes; otherwise, 400 `NOTICE_IDS_INVALID`). Records only the caller's own read status; repeated marking has no side effects. Returns 204 | JWT |
 | GET | `/api/v1/console/manifest` | What the console shell shows beyond its own pages, `{edition, features, nav, banners}`. The server decides every value and the console only renders it; see [Console manifest and extension routes](#console-manifest-and-extension-routes). A community server always returns `{"edition":"community","features":[],"nav":[],"banners":[]}` | JWT |
 | POST | `/api/v1/updates/server` | Download a release package, back up and replace the server, and restart. On acceptance, returns 202 `{from,to,backup}`; confirms or rolls back on the next startup. See [Server Upgrade Restrictions](#服务端升级限制) | JWT(admin) |
+| GET | `/api/v1/updates/server/versions` | Pass the saved `channel` to receive verified server versions, the host platform, Git commits when available, package digests and reasons a version cannot be installed. Records retain publication order; both same-channel and cross-channel lists keep only the current version and newer builds. `latest` marks the channel head. | JWT(admin) |
 | POST | `/api/v1/updates/server/upload` | Same as above, but the request body is an uploaded release archive (512 MiB limit). Returns 400 `SERVER_UPGRADE_ARCHIVE_INVALID` if it is not a usable release package (including versions predating console upgrades: they cannot confirm or roll back their own startup, so `detail` advises using `gpuworks upgrade --archive` instead) | JWT(admin) |
 | GET | `/api/v1/settings` | Current values of all settings (excluding `telemetry_export` and `branding`, which are read and written only through their dedicated endpoints) | JWT |
 | PUT | `/api/v1/settings/{key}` | Modify a single setting; `telemetry_export`, `branding`, and `security` return 400 `SETTING_HAS_OWN_ROUTE` (`security` goes through `PATCH /api/v1/security/settings`, since a whole-object replace would silently clear switches the body does not name). Only administrators can modify `deployment` (pending scheduling timeout, instance startup timeout, and event retention; otherwise, 403 `ADMINISTRATOR_REQUIRED`). The request body overlays the current values and changes only the keys it contains. If the merged values are out of range, returns 400 `FIELD_INVALID` without writing | JWT(admin) |
@@ -1867,8 +1868,10 @@ When no source is available, the response is still 200 with `available=false`; `
 
 `POST /api/v1/updates/server` downloads the release package for the current platform, validates it against the signed index, backs up and replaces the server, and restarts. Returns 202 `{from,to,backup}`; confirms or rolls back on the next startup.
 
+Online update checks, version choices and installation requests use the same ordering rule; changing channels does not permit older versions. When both IDs are formal `vX.Y.Z` versions, compare version numbers; otherwise compare build times. Unreadable times retain the original update-check behavior: a different version is treated as an update. The database migration number in the signed index is not an online installation requirement. Uploaded packages keep their existing validation and are not subject to this online ordering restriction.
+
 - 409 `SERVER_UPGRADE_UNAVAILABLE`: self-upgrade is unavailable; `reason` is `no_service_manager`, `not_installed`, `not_installed_binary`, or `not_writable`.
-- 409 `SERVER_ALREADY_AT_RELEASE`: already at the target version; 409 `SERVER_NEWER_THAN_RELEASE`: the current build is newer than the channel version.
+- 409 `SERVER_ALREADY_AT_RELEASE`: already at the target version; 409 `SERVER_NEWER_THAN_RELEASE`: the target build is not newer than the current version.
 - 404 `UPDATE_NOT_PUBLISHED`: the channel has no package for the current platform.
 - 502 `UPDATE_DOWNLOAD_FAILED`: no source provides a package matching the size and SHA-256 in the index. `file` identifies the file, and `detail` gives each source's failure reason; the running service is not replaced.
 
@@ -2318,4 +2321,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: e6029e0ff9508605c9be3ec077fef8e846333cec7e140a76cb918c93cfc1cb2f -->
+<!-- translation-source-sha256: 142e6833dd17d93f1a073eaf0ca3a8dc30b5a926a4d9308f517d4d80eec9706e -->

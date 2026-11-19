@@ -100,6 +100,13 @@ test("a different channel offers a manual version choice without triggering a se
   assert.equal(noticeModule.hasUpdate(value), true);
 });
 
+test("changing channels does not turn an older target into an update", () => {
+  const value = status({ server: { current: "v26.11.4", latest: "abc12345", update_available: false, installable: true,
+    current_build: { version: "v26.11.4", kind: "stable", build_channel: "release" } } });
+  assert.equal(noticeModule.serverUpdateState(value), "upToDate");
+  assert.equal(noticeModule.hasUpdate(value), false);
+});
+
 test("the notice follows a check made on the settings page", async () => {
   apiModule.api.updates = async () => status({ image_catalog: { current: "x", latest: "y", update_available: true, compatible: true } });
   renderNotice();

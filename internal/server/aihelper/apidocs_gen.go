@@ -157,7 +157,7 @@ var routeDocs = map[string]string{
 	"/api/v1/terminal/sessions":                  "终端会话审计记录（仅元数据，不留终端内容）",
 	"/api/v1/updates":                            "检查 server、镜像目录和模板目录的更新；`refresh=true` 强制重查，未强制且 `auto_check=false` 时只读上次结果。返回 `update_available`，server 另有 `self_upgrade`、`self_upgrade_blocker`。无可用源仍返回 200、`available=false`，`unavailable_reason` 为 `unpublished/invalid/unreachable`。见[更新检查结果](#更新检查结果)",
 	"/api/v1/updates/server/result":              "传入本次升级的 `attempt` 或已接受响应的 `backup`，核对下载、等待重启、失败或已确认回滚。无匹配证据时返回 `unknown`。",
-	"/api/v1/updates/server/versions":            "传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列。同渠道排除早于当前的构建，跨渠道保留目标渠道记录；`latest` 标识渠道索引的最新构建。",
+	"/api/v1/updates/server/versions":            "传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建；`latest` 标识渠道索引的最新构建。",
 	"/api/v1/usage-report":                       "用户体验改进计划状态 `{enabled, editable, last_day?, last_attempt?: {at, day, ok, error?}, next_due_at?}`：是否加入（`server.yaml` 的 `usage_report`）、能否在控制台修改、最近一份送达的报告覆盖的 UTC 日、本进程最近一次投递、下一份报告的预计时间（[用户体验改进计划](usage-report.md)）",
 	"/api/v1/usage-report/preview":               "下一份报告的原文（`application/json`，与实际发送的字节相同，不取走进程内计数）；未接入改进计划的服务端 404 `USAGE_REPORT_UNAVAILABLE`",
 }
