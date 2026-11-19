@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -39,12 +40,40 @@ func withLegacySharedRoot(t *testing.T) (*harness, string) {
 	// already trusted.
 	h.run.on = func(cmd Command) {
 		if cmd.Path == "chmod" && len(cmd.Args) == 2 && cmd.Args[1] == root {
-			if err := os.Chmod(root, 0o755); err != nil {
+			if err := gnuChmod(root, cmd.Args[0]); err != nil {
 				t.Error(err)
 			}
 		}
 	}
 	return h, root
+}
+
+// gnuChmod applies a numeric chmod the way GNU chmod does: on a directory a
+// mode of four digits or fewer keeps the setuid and setgid bits, and only a
+// fifth (leading) digit clears them.
+func gnuChmod(path, arg string) error {
+	bits, err := strconv.ParseUint(arg, 8, 32)
+	if err != nil {
+		return err
+	}
+	mode := os.FileMode(bits & 0o777)
+	if bits&0o4000 != 0 {
+		mode |= os.ModeSetuid
+	}
+	if bits&0o2000 != 0 {
+		mode |= os.ModeSetgid
+	}
+	if bits&0o1000 != 0 {
+		mode |= os.ModeSticky
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() && len(arg) <= 4 {
+		mode |= info.Mode() & (os.ModeSetuid | os.ModeSetgid)
+	}
+	return os.Chmod(path, mode)
 }
 
 func layoutHistory(t *testing.T, h *harness) []LayoutChange {
@@ -79,7 +108,7 @@ func TestLegacySharedRootUpgradeMigratesAndRollbackKeepsTheTrustedRoot(t *testin
 			if (err != nil) != failHealth || report.RolledBack != failHealth {
 				t.Fatalf("report=%+v err=%v", report, err)
 			}
-			if !h.run.ranInOrder("sudo chown -h 0:0 "+root, "sudo chmod 0755 "+root, "sudo systemctl stop") {
+			if !h.run.ranInOrder("sudo chown -h 0:0 "+root, "sudo chmod 00755 "+root, "sudo systemctl stop") {
 				t.Fatalf("migration did not run before the service stopped: %v", h.run.executed())
 			}
 			info, err := os.Lstat(root)
@@ -227,7 +256,7 @@ func TestLegacySharedRootWithoutPrivilegeRefusesWithTheCommand(t *testing.T) {
 		"shared application root " + root + " still has an older installer's ownership",
 		"mode 2775",
 		"`sudo " + filepath.Join(root, "gpuworks") + " upgrade`",
-		"`sudo chown root:root " + root + " && sudo chmod 0755 " + root + "`",
+		"`sudo chown root:root " + root + " && sudo chmod 00755 " + root + "`",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q does not contain %q", err, want)

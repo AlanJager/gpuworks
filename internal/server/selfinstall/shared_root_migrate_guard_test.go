@@ -88,7 +88,7 @@ func TestLegacySharedRootOwnedByTheServiceAccountMigrates(t *testing.T) {
 			if err := h.installer.migrateLegacySharedRoot(t.Context(), DefaultServiceUser); err != nil {
 				t.Fatal(err)
 			}
-			if !h.run.ranInOrder("sudo chown -h 0:0 "+root, "sudo chmod 0755 "+root) {
+			if !h.run.ranInOrder("sudo chown -h 0:0 "+root, "sudo chmod 00755 "+root) {
 				t.Fatalf("commands = %v", h.run.executed())
 			}
 			if c := h.installer.layoutChanges[0]; c.Kind != LayoutChangeSharedRootOwner || *c.FromUID != 4242 {
@@ -174,7 +174,7 @@ func TestLegacySharedRootMigrationFailingHalfwayIsFinishedByARerun(t *testing.T)
 			chmod(cmd)
 		}
 	}
-	h.run.fail["sudo chmod 0755 "+root] = errors.New("chmod: interrupted")
+	h.run.fail["sudo chmod 00755 "+root] = errors.New("chmod: interrupted")
 	h.useSite("v2.0.0", []byte("new binary"))
 	_, err := h.installer.Upgrade(t.Context(), h.upgradeReq())
 	if err == nil || !strings.Contains(err.Error(), "still writable by its group, rerun the command to finish") {
@@ -184,7 +184,7 @@ func TestLegacySharedRootMigrationFailingHalfwayIsFinishedByARerun(t *testing.T)
 		t.Fatalf("the failed migration went on: %v", h.run.executed())
 	}
 	failing = false
-	delete(h.run.fail, "sudo chmod 0755 "+root)
+	delete(h.run.fail, "sudo chmod 00755 "+root)
 	if _, err := h.installer.Upgrade(t.Context(), h.upgradeReq()); err != nil {
 		t.Fatalf("rerun: %v", err)
 	}
