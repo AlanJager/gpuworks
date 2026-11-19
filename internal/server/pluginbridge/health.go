@@ -218,8 +218,8 @@ func (b *Bridge) countApplied(owner, kind string, entries int) {
 }
 
 // forgetHealth drops what the bridge keeps in memory for an uninstalled
-// package: its crashloop latch and its counters. Its banners went with its
-// entry.
+// package: its crashloop latch, and the plugin host's stopped instance,
+// counters and logs of it. Its banners went with its entry.
 func (b *Bridge) forgetHealth(id string) {
 	b.mu.Lock()
 	_, installed := b.entries[id]
@@ -228,6 +228,6 @@ func (b *Bridge) forgetHealth(id string) {
 	}
 	b.mu.Unlock()
 	if !installed {
-		b.host.ForgetMetrics(id)
+		b.host.Forget(id)
 	}
 }

@@ -223,7 +223,11 @@ GET /api/v1/platform-tokens
 GET /api/v1/playground/models
 GET /api/v1/playground/openapi.json
 GET /api/v1/plugins
+GET /api/v1/plugins/catalog
 GET /api/v1/plugins/overrides
+GET /api/v1/plugins/{id}/impact
+GET /api/v1/plugins/{id}/logs
+GET /api/v1/plugins/{id}/state
 GET /api/v1/priority-classes
 GET /api/v1/providers
 GET /api/v1/providers/kinds
@@ -380,6 +384,7 @@ POST /api/v1/plugins/install
 POST /api/v1/plugins/overrides
 POST /api/v1/plugins/{id}/disable
 POST /api/v1/plugins/{id}/enable
+POST /api/v1/plugins/{id}/restart
 POST /api/v1/priority-classes
 POST /api/v1/providers
 POST /api/v1/providers/{id}/install

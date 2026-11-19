@@ -27,7 +27,7 @@ const pluginUsage = `  gpuworks plugin install --file PKG.gwpkg [--disabled]
   gpuworks plugin verify ID
   gpuworks plugin enable ID
   gpuworks plugin disable ID
-  gpuworks plugin uninstall ID [--purge]
+  gpuworks plugin uninstall ID [--purge] [--yes]
   gpuworks plugin state ID
   gpuworks plugin trust import FILE [--cert publisher.crt]
   gpuworks plugin index import FILE --cert publisher.crt

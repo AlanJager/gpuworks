@@ -1,15 +1,15 @@
 package pluginbridge
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
+	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -29,12 +29,24 @@ const (
 	StateNeedsHostSetup = "needs_host_setup"
 )
 
-// Actions a View offers its administrator.
+// Actions a View offers its administrator. Purge is the uninstall that
+// also removes the package's data (DELETE ?purge=true).
 const (
 	ActionEnable    = "enable"
 	ActionDisable   = "disable"
+	ActionRestart   = "restart"
 	ActionUninstall = "uninstall"
+	ActionPurge     = "purge"
+	// ActionUpgrade and ActionRollback name the upgrade and rollback of an
+	// installed package; a View offers them once this server serves those
+	// calls, and none does yet.
+	ActionUpgrade  = "upgrade"
+	ActionRollback = "rollback"
 )
+
+// removal is what every installed package offers: uninstall, with or
+// without its data.
+var removal = []string{ActionUninstall, ActionPurge}
 
 // View is one installed package as its administrator sees it.
 type View struct {
@@ -64,8 +76,25 @@ type View struct {
 	Permissions []string
 	// ApproveHash is the approval the administrator gave.
 	ApproveHash string
+	// Previous is the newest unpacked version older than Version, kept for
+	// rollback; empty when there is none.
+	Previous string
+	// OnDemand marks a server part that starts on its first call.
+	OnDemand bool
+	// Pending is the newer build the imported indexes offer for it (its
+	// version); empty when none does.
+	Pending string
+	// Features are the feature keys it declares with the access each has
+	// now, by key.
+	Features []FeatureView
 	// Actions are what the administrator may do with it now.
 	Actions []string
+}
+
+// FeatureView is one declared feature key and its access now (full,
+// read_only or locked).
+type FeatureView struct {
+	Key, Access string
 }
 
 // List is every installed package, sorted by id.
@@ -81,35 +110,44 @@ func (b *Bridge) List() []View {
 }
 
 func (b *Bridge) viewOf(e extpkg.Entry) View {
-	v := View{ID: e.ID, Version: e.Version, Enabled: e.Control.Enabled, ApproveHash: e.Control.ApprovedHash, Isolation: extpkg.HostIsolation()}
+	v := View{ID: e.ID, Version: e.Version, Enabled: e.Control.Enabled, ApproveHash: e.Control.ApprovedHash, Isolation: extpkg.HostIsolation(),
+		Previous: previousOf(e.Version, e.Versions)}
+	b.mu.Lock()
+	v.Pending = b.pending[e.ID]
+	b.mu.Unlock()
 	switch {
 	case e.Err != nil:
-		v.State, v.Actions = StateBroken, []string{ActionUninstall}
+		v.State, v.Actions = StateBroken, actions(removal)
 		v.Code, v.Params, v.Message = codeOf(e.Err)
 		return v
 	case e.Verified == nil:
-		v.State, v.Actions = StateBroken, []string{ActionUninstall}
+		v.State, v.Actions = StateBroken, actions(removal)
 		return v
 	}
 	ver := e.Verified
 	m := ver.Manifest
 	v.Publisher, v.Trust, v.Roles, v.Permissions, v.Parts = m.Publisher, ver.Trust, slices.Clone(m.Roles), slices.Clone(m.Permissions), partsOf(m)
+	v.OnDemand = m.Runtime != nil && m.Runtime.Lifecycle == extapi.LifecycleOnDemand
+	for _, f := range m.Features {
+		v.Features = append(v.Features, FeatureView{Key: f.Key, Access: b.state.Availability(featuregate.Key(f.Key)).Access.String()})
+	}
+	slices.SortFunc(v.Features, func(a, b FeatureView) int { return strings.Compare(a.Key, b.Key) })
 	switch {
 	case ver.Revoked != nil:
-		v.State, v.Actions = StateRevoked, []string{ActionUninstall}
+		v.State, v.Actions = StateRevoked, actions(removal)
 		v.Code, v.Params = messages.ErrorPluginPackageRevoked, map[string]any{"id": m.ID, "version": m.Version, "replacement": ver.Revoked.Replacement}
 		v.Message = fmt.Sprintf("%s %s is revoked", m.ID, m.Version)
 		return v
 	case !e.Control.Enabled:
-		v.State, v.Actions = StateDisabled, []string{ActionEnable, ActionUninstall}
+		v.State, v.Actions = StateDisabled, actions([]string{ActionEnable}, removal)
 		return v
 	}
-	v.Actions = []string{ActionDisable, ActionUninstall}
 	switch {
 	case m.Runtime == nil || ver.Binary == "":
-		v.State = StateInstalled
+		v.State, v.Actions = StateInstalled, actions([]string{ActionDisable}, removal)
 		return v
 	}
+	v.Actions = actions([]string{ActionDisable, ActionRestart}, removal)
 	b.mu.Lock()
 	refused := b.refusals[m.ID]
 	b.mu.Unlock()
@@ -119,7 +157,7 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 		if v.Code == messages.ErrorPluginHostSetupRequired {
 			// Enable checks the applied record again and starts the
 			// plugin once root has run the command.
-			v.State, v.Actions = StateNeedsHostSetup, []string{ActionEnable, ActionDisable, ActionUninstall}
+			v.State, v.Actions = StateNeedsHostSetup, actions([]string{ActionEnable, ActionDisable}, removal)
 		}
 		return v
 	}
@@ -134,6 +172,9 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 	}
 	return v
 }
+
+// actions joins lists of actions into a list of its own.
+func actions(lists ...[]string) []string { return slices.Concat(lists...) }
 
 func partsOf(m *extapi.Manifest) []string {
 	var parts []string
@@ -166,142 +207,6 @@ func codeOf(err error) (string, map[string]any, string) {
 		return xe.Code, xe.Params, xe.Message
 	}
 	return "", nil, err.Error()
-}
-
-// InstallRequest is one install through the API.
-type InstallRequest struct {
-	// Approve must be the package's approval hash; without it the install
-	// is refused with PLUGIN_APPROVAL_REQUIRED, which names it.
-	Approve extapi.Digest
-	// Enable starts the package's server part once installed. A package
-	// installed over an enabled version stays enabled either way.
-	Enable bool
-	// By names the administrator, for the audit record.
-	By string
-}
-
-// Installed is the outcome of an install.
-type Installed struct {
-	View View
-	// Previous is the version that was current before; empty for a first
-	// install.
-	Previous string
-	// Unchanged reports that this exact build was already installed.
-	Unchanged bool
-}
-
-// Install installs the package read from r, as approved, and starts its
-// server part when it is enabled and Run is running; a version it replaces
-// is stopped first. The feature keys it declares are declared at once,
-// and what it pushes is enforced as soon as it pushes. A package declaring
-// a key a compiled module or another installed package provides is
-// refused (PLUGIN_FEATURE_TAKEN), and one whose id names a compiled module
-// (PLUGIN_ID_TAKEN).
-func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (out *Installed, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
-	id := ""
-	defer func() { b.audit("install", id, req.By, err) }()
-	in, err := b.pkgs.Install(r, extpkg.InstallOptions{Enable: req.Enable, ApprovedBy: req.By, RequireApproval: true, Approve: req.Approve, Features: b,
-		ReservedIDs: b.cfg.CompiledModules})
-	if err != nil {
-		if code, params, _ := codeOf(err); code == messages.ErrorPluginApprovalRequired {
-			id, _ = params["id"].(string)
-		}
-		return nil, err
-	}
-	id = in.Manifest.ID
-	st, supervised := b.host.Status(id)
-	// The same build installed again over its running process keeps it.
-	keep := in.Unchanged && in.Enabled && supervised && st.State != pluginhost.StateStopped && st.State != pluginhost.StateFailed
-	if !keep {
-		if err := b.stop(ctx, id); err != nil {
-			return nil, err
-		}
-	}
-	if err := b.refresh(); err != nil {
-		return nil, err
-	}
-	if !keep {
-		b.startIfEnabled(id)
-	}
-	return &Installed{View: b.view(id), Previous: in.Previous, Unchanged: in.Unchanged}, nil
-}
-
-// Enable lets package id run and starts its server part. A package that
-// no longer verifies is refused (PLUGIN_BROKEN).
-func (b *Bridge) Enable(ctx context.Context, id, by string) (v View, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
-	defer func() { b.audit("enable", id, by, err) }()
-	e, err := b.entry(id)
-	if err != nil {
-		return View{}, err
-	}
-	if e.Err != nil || e.Verified == nil || e.Verified.Revoked != nil {
-		return View{}, messages.WrapProductError(messages.ErrorPluginBroken, "plugin "+id+" no longer verifies", map[string]any{"id": id}, e.Err)
-	}
-	if err := b.pkgs.SetEnabled(id, true); err != nil {
-		return View{}, err
-	}
-	if err := b.refresh(); err != nil {
-		return View{}, err
-	}
-	if st, ok := b.host.Status(id); !ok || st.State == pluginhost.StateStopped || st.State == pluginhost.StateFailed {
-		b.startIfEnabled(id)
-	}
-	return b.view(id), nil
-}
-
-// Disable stops package id's server part and keeps it from starting.
-// What it pushed stays enforced, and it counts as down, so its grants
-// narrow once its grace has passed.
-func (b *Bridge) Disable(ctx context.Context, id, by string) (v View, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
-	defer func() { b.audit("disable", id, by, err) }()
-	if _, err := b.entry(id); err != nil {
-		return View{}, err
-	}
-	if err := b.pkgs.SetEnabled(id, false); err != nil {
-		return View{}, err
-	}
-	if err := b.stop(ctx, id); err != nil {
-		return View{}, err
-	}
-	if err := b.refresh(); err != nil {
-		return View{}, err
-	}
-	return b.view(id), nil
-}
-
-// Uninstall stops package id, removes it (with its data when purge is
-// set) and removes everything it pushed, releasing its holds in one pass;
-// running work is never stopped. Retrying finishes an uninstall that
-// failed after the package was removed.
-func (b *Bridge) Uninstall(ctx context.Context, id string, purge bool, by string) (err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
-	defer func() { b.audit("uninstall", id, by, err) }()
-	if !extapi.ValidPackageID(id) {
-		return notInstalled(id)
-	}
-	if err := b.stop(ctx, id); err != nil {
-		return err
-	}
-	removeErr := b.pkgs.Remove(id, purge)
-	if code, _, _ := codeOf(removeErr); removeErr != nil && code != messages.ErrorPluginNotInstalled {
-		return removeErr
-	}
-	if err := b.refresh(); err != nil {
-		return err
-	}
-	b.forgetHealth(id)
-	held := len(b.state.Held(id)) > 0
-	if removeErr != nil && !held {
-		return removeErr
-	}
-	return b.state.Uninstall(ctx, id)
 }
 
 func (b *Bridge) entry(id string) (extpkg.Entry, error) {

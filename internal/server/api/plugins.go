@@ -31,9 +31,24 @@ type PluginAdmin interface {
 	Install(ctx context.Context, body io.Reader, approve string, enable bool, by string) (dto.PluginInstalled, error)
 	Enable(ctx context.Context, id, by string) (dto.Plugin, error)
 	Disable(ctx context.Context, id, by string) (dto.Plugin, error)
+	// Restart stops the package's server part and starts it as a new
+	// instance; PLUGIN_DISABLED for a disabled package.
+	Restart(ctx context.Context, id, by string) (dto.Plugin, error)
 	// Uninstall stops and removes the package (and its data with purge)
-	// and releases what it pushed.
-	Uninstall(ctx context.Context, id string, purge bool, by string) error
+	// and releases what it pushed, once confirm is the digest of its impact
+	// now; otherwise it refuses with PLUGIN_UNINSTALL_CONFIRM_REQUIRED and
+	// returns that impact.
+	Uninstall(ctx context.Context, id string, purge bool, confirm, by string) (dto.PluginImpact, error)
+	// Impact is what uninstalling the package would change now.
+	Impact(ctx context.Context, id string) (dto.PluginImpact, error)
+	// State is what pushed state holds for the package.
+	State(ctx context.Context, id string) (dto.PluginState, error)
+	// Catalog is the imported indexes joined with the installed packages.
+	Catalog(ctx context.Context) (dto.PluginCatalog, error)
+	// Logs are the package's supervision events and stderr after from,
+	// with a channel closed at its next event or output (nil when it has
+	// none to follow).
+	Logs(ctx context.Context, id string, from PluginLogCursor) (PluginLogs, <-chan struct{}, error)
 	// Overrides are the restriction overrides in force, by id.
 	Overrides(ctx context.Context) []dto.PluginOverride
 	// Override releases one restriction entry a plugin pushed, for any
@@ -52,10 +67,20 @@ func (a *apiHandlers) pluginRoutes(r chi.Router) {
 	r.With(a.managementAuth, readTokensRead, a.managementAdmin, compressJSON).Get("/plugins", a.listPlugins)
 	r.With(a.managementAuth, readTokensRead, a.managementAdmin).Get("/metrics/plugins", a.pluginMetrics)
 	r.Group(func(r chi.Router) {
+		r.Use(a.managementAuth, readTokensRead, a.managementAdmin)
+		// The catalog is registered before the {id} routes, so no package
+		// id can shadow it.
+		r.With(compressJSON).Get("/plugins/catalog", a.pluginCatalog)
+		r.Get("/plugins/{id}/state", a.pluginState)
+		r.Get("/plugins/{id}/impact", a.pluginImpact)
+	})
+	r.Group(func(r chi.Router) {
 		r.Use(a.managementAuth, sessionOnly, a.managementAdmin)
 		r.Post("/plugins/install", a.installPlugin)
 		r.Post("/plugins/{id}/enable", a.enablePlugin)
 		r.Post("/plugins/{id}/disable", a.disablePlugin)
+		r.Post("/plugins/{id}/restart", a.restartPlugin)
+		r.Get("/plugins/{id}/logs", a.pluginLogs)
 		r.Delete("/plugins/{id}", a.uninstallPlugin)
 	})
 	a.pluginOverrideRoutes(r)
@@ -166,14 +191,17 @@ func (a *apiHandlers) setPluginEnabled(w http.ResponseWriter, r *http.Request, e
 	writeJSON(w, http.StatusOK, out)
 }
 
-// uninstallPlugin takes ?purge=true to remove the plugin's data too.
+// uninstallPlugin takes ?purge=true to remove the plugin's data too, and
+// ?confirm=<digest> of the impact the administrator saw; until it matches
+// the impact now, the refusal carries that impact.
 func (a *apiHandlers) uninstallPlugin(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.pluginAdmin(w, r)
 	if !ok {
 		return
 	}
+	q := r.URL.Query()
 	purge := false
-	if v := r.URL.Query().Get("purge"); v != "" {
+	if v := q.Get("purge"); v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
 			writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "purge must be true or false", map[string]any{"field": "purge", "detail": "purge must be true or false"})
@@ -181,7 +209,12 @@ func (a *apiHandlers) uninstallPlugin(w http.ResponseWriter, r *http.Request) {
 		}
 		purge = b
 	}
-	if err := p.Uninstall(r.Context(), chi.URLParam(r, "id"), purge, a.adminName(r)); err != nil {
+	impact, err := p.Uninstall(r.Context(), chi.URLParam(r, "id"), purge, q.Get("confirm"), a.adminName(r))
+	if containsProductCode(err, messages.ErrorPluginUninstallConfirmRequired) {
+		writeErrWith(w, http.StatusConflict, err, map[string]any{"impact": impact})
+		return
+	}
+	if err != nil {
 		writePluginError(w, err)
 		return
 	}
@@ -195,10 +228,10 @@ func (a *apiHandlers) adminName(r *http.Request) string {
 
 // pluginErrorStatus maps a plugin administration refusal to its status:
 // not installed or no such override 404; a choice that conflicts with
-// what is installed (including a feature key or an id another owner already
-// provides) or asks for approval 409; a package too large 413; any other
-// refused package or override (PLUGIN_OVERRIDE_REJECTED) 422; anything
-// else 500.
+// what is installed (including a feature key or an id another owner
+// already provides), asks for approval or confirmation, or a disabled
+// package 409; a package too large 413; any other refused package or
+// override (PLUGIN_OVERRIDE_REJECTED) 422; anything else 500.
 func pluginErrorStatus(err error) int {
 	var pe *messages.ProductError
 	if !errors.As(err, &pe) {
@@ -207,7 +240,8 @@ func pluginErrorStatus(err error) int {
 	switch pe.Code() {
 	case messages.ErrorPluginNotInstalled, messages.ErrorPluginOverrideNotFound:
 		return http.StatusNotFound
-	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, messages.ErrorPluginFeatureTaken, messages.ErrorPluginIDTaken, errorPluginStateTooNew:
+	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, messages.ErrorPluginFeatureTaken, messages.ErrorPluginIDTaken, errorPluginStateTooNew,
+		messages.ErrorPluginDisabled, messages.ErrorPluginUninstallConfirmRequired:
 		return http.StatusConflict
 	case messages.ErrorPluginPackageTooLarge:
 		return http.StatusRequestEntityTooLarge
