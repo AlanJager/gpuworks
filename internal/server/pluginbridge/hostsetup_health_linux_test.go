@@ -35,7 +35,7 @@ func TestHostSetupBlockedPackageCheckAndMetrics(t *testing.T) {
 	if v.ID != "acme_driver" || !v.Enabled || v.State != StateNeedsHostSetup ||
 		v.Code != messages.ErrorPluginHostSetupRequired || v.Params["id"] != "acme_driver" ||
 		v.Params["command"] != "sudo gpuworks plugin host-setup --id acme_driver" ||
-		!slices.Equal(v.Actions, []string{ActionEnable, ActionDisable, ActionUninstall, ActionPurge}) {
+		!slices.Equal(v.Actions, []string{ActionEnable, ActionDisable, ActionUninstall, ActionPurge, ActionUpgrade}) {
 		t.Fatalf("missing setup did not reach the expected public refusal: %+v", v)
 	}
 	if started := sp.started(); len(started) != 0 {

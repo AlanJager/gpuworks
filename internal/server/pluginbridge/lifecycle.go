@@ -41,8 +41,6 @@ type Installed struct {
 // refused (PLUGIN_FEATURE_TAKEN), and one whose id names a compiled module
 // (PLUGIN_ID_TAKEN).
 func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (out *Installed, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
 	id := ""
 	defer func() { b.audit("install", id, req.By, err) }()
 	in, err := b.pkgs.Install(r, extpkg.InstallOptions{Enable: req.Enable, ApprovedBy: req.By, RequireApproval: true, Approve: req.Approve, Features: b,
@@ -54,6 +52,10 @@ func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (
 		return nil, err
 	}
 	id = in.Manifest.ID
+	// The package is placed under the plugins directory's lock (refused
+	// while an upgrade of it is under way); its process changes under the
+	// lock of its id.
+	defer b.locks.lock(id)()
 	st, supervised := b.host.Status(id)
 	// The same build installed again over its running process keeps it.
 	keep := in.Unchanged && in.Enabled && supervised && st.State != pluginhost.StateStopped && st.State != pluginhost.StateFailed
@@ -74,8 +76,7 @@ func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (
 // Enable lets package id run and starts its server part. A package that
 // no longer verifies is refused (PLUGIN_BROKEN).
 func (b *Bridge) Enable(ctx context.Context, id, by string) (v View, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
+	defer b.locks.lock(id)()
 	defer func() { b.audit("enable", id, by, err) }()
 	e, err := b.entry(id)
 	if err != nil {
@@ -100,8 +101,8 @@ func (b *Bridge) Enable(ctx context.Context, id, by string) (v View, err error) 
 // What it pushed stays enforced, and it counts as down, so its grants
 // narrow once its grace has passed.
 func (b *Bridge) Disable(ctx context.Context, id, by string) (v View, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
+	// An upgrade of id in its health gate is rolled back after 10 s.
+	defer b.locks.lockCancelling(id, b.cancelWait)()
 	defer func() { b.audit("disable", id, by, err) }()
 	if _, err := b.entry(id); err != nil {
 		return View{}, err
@@ -139,8 +140,8 @@ type UninstallRequest struct {
 // count it. Retrying finishes an uninstall that failed after the package
 // was removed: its impact is then that of the rows left.
 func (b *Bridge) Uninstall(ctx context.Context, id string, req UninstallRequest) (im pushstate.Impact, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
+	// An upgrade of id in its health gate is rolled back after 10 s.
+	defer b.locks.lockCancelling(id, b.cancelWait)()
 	defer func() { b.audit("uninstall", id, req.By, err) }()
 	im, err = b.impactLocked(id)
 	if err != nil {
@@ -174,8 +175,7 @@ func (b *Bridge) Uninstall(ctx context.Context, id string, req UninstallRequest)
 // too (PLUGIN_BROKEN: Recheck happens on enable), and one without a server
 // part has nothing to restart (PLUGIN_UNAVAILABLE).
 func (b *Bridge) Restart(ctx context.Context, id, by string) (v View, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
+	defer b.locks.lock(id)()
 	defer func() { b.audit("restart", id, by, err) }()
 	e, err := b.entry(id)
 	if err != nil {

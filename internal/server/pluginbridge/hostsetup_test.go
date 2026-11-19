@@ -50,7 +50,7 @@ func TestHostSetupGatesTheStart(t *testing.T) {
 	v := install(t, b, driverPkg(w, "1.0.0", key), true).View
 	if v.State != StateNeedsHostSetup || v.Code != messages.ErrorPluginHostSetupRequired ||
 		v.Params["id"] != "acme_driver" || v.Params["command"] != "sudo gpuworks plugin host-setup --id acme_driver" ||
-		!slices.Equal(v.Actions, []string{ActionEnable, ActionDisable, ActionUninstall, ActionPurge}) {
+		!slices.Equal(v.Actions, []string{ActionEnable, ActionDisable, ActionUninstall, ActionPurge, ActionUpgrade}) {
 		t.Fatalf("pending = %+v", v)
 	}
 	if got := sp.started(); len(got) != 0 {

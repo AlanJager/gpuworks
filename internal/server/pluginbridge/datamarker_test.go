@@ -185,7 +185,7 @@ func TestABuildOlderThanItsDataIsNotStarted(t *testing.T) {
 	b2, sp := w.openRunning()
 	v := waitView(t, b2, "acme_backup", func(v View) bool { return v.State == string(pluginhost.StateFailed) })
 	if v.Code != extapi.ErrorStateTooNew || v.Params["needs"] != "v27.1.0" || v.Params["known"] != 1 || v.Params["version"] != 2 ||
-		!slices.Equal(v.Actions, []string{ActionDisable, ActionRestart, ActionUninstall, ActionPurge}) {
+		!slices.Equal(v.Actions, []string{ActionDisable, ActionRestart, ActionUninstall, ActionPurge, ActionUpgrade}) {
 		t.Fatalf("view = %+v", v)
 	}
 	for _, s := range sp.started() {

@@ -32,6 +32,7 @@ var memoryFields = map[string]string{
 	"Bridge.routes":     "memory:bridge.routes",
 	"Bridge.banners":    "memory:bridge.banners",
 	"Bridge.cfg":        "memory:features",
+	"Bridge.locks":      "- an id's entry exists only while a call holds or waits for its lock",
 
 	"Host.plugins": "memory:host.plugins",
 	"Host.metrics": "memory:host.metrics",

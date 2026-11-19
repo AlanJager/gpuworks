@@ -44,12 +44,11 @@ func (b *Bridge) Logs(id string, from pluginhost.LogCursor) (pluginhost.Logs, <-
 // purge kept (for the purge that removes it); any other id that is not
 // installed is PLUGIN_NOT_INSTALLED.
 func (b *Bridge) Impact(id string) (pushstate.Impact, error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
+	defer b.locks.lock(id)()
 	return b.impactLocked(id)
 }
 
-// impactLocked is Impact with admin held, so no install, upgrade or
+// impactLocked is Impact with the lock of id held, so no install, upgrade or
 // uninstall changes the package between the preview and the uninstall
 // that compares it.
 func (b *Bridge) impactLocked(id string) (pushstate.Impact, error) {
