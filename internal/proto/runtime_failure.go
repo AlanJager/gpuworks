@@ -158,7 +158,10 @@ const (
 	ErrorContainerRuntimeUnavailable = "CONTAINER_RUNTIME_UNAVAILABLE"
 	// ErrorRuntimeAssetPrepareFailed, ErrorPreStartPrepareFailed and
 	// ErrorKVDiskPrepareFailed: a host-side preparation of the container's
-	// mounts failed (Detail).
+	// mounts failed (Detail). For pre-start that is installing the wrapper
+	// (writing /gpuworks/pre-start.sh, or a launch it cannot wrap); the
+	// preparation itself runs inside the container, and its failure is the
+	// container exiting (ErrorContainerExited).
 	ErrorRuntimeAssetPrepareFailed = "RUNTIME_ASSET_PREPARE_FAILED"
 	ErrorPreStartPrepareFailed     = "PRE_START_PREPARE_FAILED"
 	ErrorKVDiskPrepareFailed       = "KV_DISK_PREPARE_FAILED"

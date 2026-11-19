@@ -59,12 +59,19 @@ type ResolvedLaunch struct {
 	CommandMode               string             `json:"command_mode,omitempty"`
 	Entrypoint                []string           `json:"entrypoint,omitempty"`
 	Argv                      []string           `json:"argv"`
-	PreStartArgv              []string           `json:"pre_start_argv,omitempty"`
-	PreStartScript            string             `json:"pre_start_script,omitempty"`
-	RuntimeAssets             []RuntimeAsset     `json:"runtime_assets,omitempty"`
-	Env                       map[string]string  `json:"env,omitempty"`
-	EnvLayers                 LaunchEnvLayers    `json:"env_layers,omitempty"`
-	DockerArgs                []string           `json:"docker_args,omitempty"`
+	// PreStartArgv or PreStartScript (never both) is the launch's
+	// preparation. The agent writes it into a wrapper it mounts read-only at
+	// /gpuworks/pre-start.sh and makes the container's entrypoint, so it runs
+	// inside the container on every container start, under /bin/sh -eu with
+	// the container's environment, before exec'ing the engine command; a
+	// failing step exits the container before the engine runs. It needs an
+	// explicit Entrypoint, which the engine adapter or the template supplies.
+	PreStartArgv   []string          `json:"pre_start_argv,omitempty"`
+	PreStartScript string            `json:"pre_start_script,omitempty"`
+	RuntimeAssets  []RuntimeAsset    `json:"runtime_assets,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	EnvLayers      LaunchEnvLayers   `json:"env_layers,omitempty"`
+	DockerArgs     []string          `json:"docker_args,omitempty"`
 	// ShmBytes is the size of the container's /dev/shm tmpfs, not a memory
 	// reservation or limit: pages count against the host only once written.
 	// It is ineffective under --ipc=host, which shares the host's /dev/shm.

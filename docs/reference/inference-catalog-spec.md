@@ -122,7 +122,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `pd_mode` | 可选，PD 模式名（`internal/server/pdmode` 的名字，如 `sglang-mooncake`）；模式的引擎必须与 `engine` 相同 | 声明后该 spec 只能以这个模式的 PD 分离部署，其 `args` 与 `env` 是模型在 PD 下需要的配置。模式见 [PD 分离部署](../how-to/pd-disaggregation.md) |
 | `pd_roles` | 可选，按角色写版式；必须同时写 `pd_mode`。每个角色：`tp`（必填，≥ 1）、`pp`、`nodes`（一个实例跨几台节点）、`units`（初始实例数），后三项缺省为 1 | PD 部署表单据此预填角色与实例。见 [PD 版式与手工命令](#pd-版式与手工命令) |
 | `manual_command` | 可选字符串，shell 脚本（不是 JSON argv），≤ 64 KiB | 部署默认使用的手工命令。PD spec 的脚本必须引用 `${GPUWORKS_PD_ROLE}`。见 [PD 版式与手工命令](#pd-版式与手工命令) |
-| `pre_start_argv` / `pre_start_script` | **二选一**；argv 项非空；script ≤ 64 KiB | 引擎启动前在容器内执行 |
+| `pre_start_argv` / `pre_start_script` | **二选一**；argv 项非空；script ≤ 64 KiB | 在**容器内**（不是宿主机）执行，**每次容器启动**都跑一遍，跑完才启动引擎：agent 把它写进 `/gpuworks/pre-start.sh`（`/bin/sh`、`set -eu`，最后 `exec` 引擎命令）并设为 entrypoint。能用容器的全部环境变量：spec 与部署的 `env`，以及 agent 注入的加速卡变量；`${GPUWORKS_*}` 变量由服务端在部署时[展开](#变量展开)。任何一步失败（非零退出、未定义变量）都让容器在引擎启动前退出，实例以容器退出失败，输出作为证据；包装脚本本身写不出时实例以 `PRE_START_PREPARE_FAILED` 失败 |
 | `assets[]` | 见下 | 随包分发的小文件 |
 | `entrypoint` | 项非空 | 见下文专节 |
 | `placement` | 见下 | 拓扑推导 |
