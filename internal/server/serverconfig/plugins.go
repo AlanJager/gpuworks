@@ -45,7 +45,8 @@ type PluginPublisher struct {
 	Unsandboxed bool `yaml:"unsandboxed,omitempty"`
 }
 
-// PluginPolicy narrows which packages install.
+// PluginPolicy narrows which packages install, and says whether an
+// upgrade asking for nothing new needs approving again.
 type PluginPolicy struct {
 	// AllowPublishers, when not empty, are the only publishers whose
 	// packages install.
@@ -55,6 +56,10 @@ type PluginPolicy struct {
 	DenyPackages    []string `yaml:"deny_packages,omitempty"`
 	DenyPermissions []string `yaml:"deny_permissions,omitempty"`
 	DenyRoles       []string `yaml:"deny_roles,omitempty"`
+	// AutoApproveUnchanged lets an upgrade whose approval hash equals the
+	// approved one go ahead without a new approval. It lets in nothing that
+	// verification refuses. Default false: every upgrade is approved.
+	AutoApproveUnchanged bool `yaml:"auto_approve_unchanged,omitempty"`
 }
 
 // Key returns the issuer's key in wire form.

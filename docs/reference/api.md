@@ -1703,7 +1703,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/plugins` | 已安装的包：`{items:[{id, version, publisher, trust, enabled, state, message?, since?, restarts, parts, isolation, roles, permissions, approve_hash, actions}]}`，按 `id` 排序；`permissions` 是 `[{name, risk}]`，按 `name` 排序，`risk` 为 server 给出的 `low`、`elevated` 或 `high`（[权限](plugin-protocol.md#权限)） | `JWT(admin)` |
-| POST | `/api/v1/plugins/install?approve=<批准值>&enable=<bool>` | 请求体是 `.gwpkg` 本身（`application/octet-stream`）。没带或带错 `approve` 时回 409 `PLUGIN_APPROVAL_REQUIRED`，`params` 给出 `id`、`version`、`approve_hash` 以及它涵盖的 `permissions`、`roles`（逗号分隔），什么都不装；带对了返回 `{plugin, previous?, unchanged}`。`enable` 缺省为 `false` | 管理会话，admin |
+| POST | `/api/v1/plugins/install?approve=<批准值>&enable=<bool>` | 请求体是 `.gwpkg` 本身（`application/octet-stream`）。没带或带错 `approve` 时回 409 `PLUGIN_APPROVAL_REQUIRED`，`params` 给出 `id`、`version`、`approve_hash` 以及它涵盖的 `permissions`、`roles`（逗号分隔），另有它与当前已装版本相比的差异（首次安装时相对于空）：`from_version`，`permissions_added`/`permissions_removed`（`权限=风险等级`），`roles_*`、`capabilities_*`（`名称@版本`）、`features_*`、`routes_*`（`方法 路径 访问级别`）、`host_setup_*`（`类型 vendor_id:product_id`）、`devices_*` 各一对 `_added`/`_removed`，以及 `ui_mode`、`isolation`（变了才是 `旧->新`），每个键都在、没有内容时为空串；什么都不装；带对了返回 `{plugin, previous?, unchanged}`。`enable` 缺省为 `false`；装在已启用的版本之上时保持启用 | 管理会话，admin |
 | POST | `/api/v1/plugins/{id}/enable` | 启用并启动服务端部分，返回该包；不再通过校验的包回 409 `PLUGIN_BROKEN` | 管理会话，admin |
 | POST | `/api/v1/plugins/{id}/disable` | 停止并不再启动，返回该包；它推送的表照常执行，并按掉线计算宽限 | 管理会话，admin |
 | DELETE | `/api/v1/plugins/{id}?purge=<bool>` | 停止并卸载，删掉它推送的全部内容并重新应用保持，返回 204；`purge=true` 连数据目录一起移到 `.trash/` | 管理会话，admin |
