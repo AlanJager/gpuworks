@@ -978,6 +978,7 @@
     "PLUGIN_KILLED": "Plugin {{id}} was ended by signal {{signal}}. It restarts after a short wait.",
     "PLUGIN_CRASHLOOP": "Plugin {{id}} crashed {{crashes}} times within {{window_s}} seconds. It is retried every {{retry_s}} seconds.",
     "PLUGIN_UNHEALTHY": "Plugin {{id}} missed {{misses}} health checks in a row and is being restarted.",
+    "PLUGIN_MEMORY_EXCEEDED": "Plugin {{id}} used {{rss_mib}} MiB, above its {{limit_mib}} MiB limit, and was restarted.",
     "PLUGIN_HOST_NOT_READY": "The plugin called the server before its handshake was accepted.",
     "PLUGIN_HOST_RATE_LIMITED": "The plugin calls the server faster than {{limit}} requests a second. Retry shortly.",
     "PLUGIN_HOST_ROUTE_UNKNOWN": "The server's plugin interface has no {{method}} {{path}}.",

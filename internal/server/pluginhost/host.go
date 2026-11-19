@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/pluginexec"
+	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
 // Host supervises every plugin the server runs.
@@ -55,6 +57,9 @@ func New(cfg Config) (*Host, error) {
 	if h.cfg.Environ == nil {
 		h.cfg.Environ = os.Environ()
 	}
+	if h.cfg.Memory == nil {
+		h.cfg.Memory = defaultMemoryReader()
+	}
 	return h, nil
 }
 
@@ -87,22 +92,50 @@ func (h *Host) Start(spec Spec) error {
 
 // Stop stops a plugin gracefully (shutdown, then SIGTERM, then SIGKILL to
 // its process group) and waits until it has exited or ctx ends. Its
-// status stays readable as stopped.
+// status stays readable as stopped. The plugin's cgroup directory is
+// removed with it, also when a previous removal failed or the plugin is
+// not supervised now, so stopping before an uninstall leaves none behind.
 func (h *Host) Stop(ctx context.Context, id string) error {
 	i := h.get(id)
 	if i == nil {
+		h.removeCgroup(id)
 		return ErrUnknownPlugin
 	}
 	i.requestStop()
 	select {
 	case <-i.done:
+		h.removeCgroup(id)
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 
-// Close stops every plugin and refuses further starts.
+// removeCgroup removes package id's cgroup directory, if plugins get
+// cgroups here and the directory exists.
+func (h *Host) removeCgroup(id string) {
+	c := h.cgroup(0)
+	if c == nil || !extapi.ValidPackageID(id) {
+		return
+	}
+	if err := pluginexec.RemoveCgroup(c, id); err != nil {
+		h.log.Warn("plugin cgroup not removed", "plugin", id, "err", err)
+	}
+}
+
+// cgroup is where plugins with memMiB get their cgroups; nil when the
+// server places none.
+func (h *Host) cgroup(memMiB int) *pluginexec.Cgroup {
+	if h.cfg.CgroupRoot == "" {
+		return nil
+	}
+	mem := int64(memMiB) << 20
+	return &pluginexec.Cgroup{Root: h.cfg.CgroupRoot, Parent: h.cfg.CgroupParent, MemoryMax: mem, MemoryHigh: mem / 10 * 9,
+		CPUWeight: pluginCPUWeight, PidsMax: pluginPidsMax}
+}
+
+// Close stops every plugin, removes their cgroup directories and refuses
+// further starts.
 func (h *Host) Close(ctx context.Context) error {
 	h.mu.Lock()
 	h.closed = true
@@ -114,6 +147,7 @@ func (h *Host) Close(ctx context.Context) error {
 	for _, i := range all {
 		select {
 		case <-i.done:
+			h.removeCgroup(i.spec.ID)
 		case <-ctx.Done():
 			return ctx.Err()
 		}

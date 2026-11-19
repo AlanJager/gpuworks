@@ -263,7 +263,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 - 插件路由在 `/api/v1/x/<id>/` 下的动态挂载、`on_demand` 插件的按需启动、宿主接口里状态与健康之外的端点。
 - 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
-- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、没有 cgroup 时的 RSS 看门狗、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
+- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
 - 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
@@ -278,8 +278,10 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | 资源 | `RLIMIT_CORE=0`、`RLIMIT_NOFILE=4096`、nice 5；`RLIMIT_NPROC` 按用户计数，插件与 server 同一用户时不设，进程数由 cgroup 的 `pids.max` 限制 | 同左（无 cgroup） |
 | 描述符 | fd 3、4 必须是 socket；stdin、stdout 指向 `/dev/null`；stderr 是日志 | 同左 |
 | 环境变量 | 只保留 `PATH`、`TZ`、代理与 CA 变量，另设 `HOME`=数据目录、`TMPDIR`、`LANG=C.UTF-8` 与 `GWX_*`；代理变量原样传入，代理 URL 里的用户名密码因此也交给每个插件，代理凭据应只授予插件也可以用的权限 | 同左 |
-| cgroup | server 的 cgroup 已委派（`subtree_control` 可写）时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`、`memory.high`、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动 | — |
+| cgroup | server 的 cgroup 已委派时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`（`mem_mib`）、`memory.high`（其 90%）、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动，由 RSS 看门狗限制内存（见[监管](#监管)） | — |
 | Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，批准的设备节点读写；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
+
+server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 可写，并且满足其一：systemd 在该 cgroup 上标了委派属性（`user.delegate` 或 `trusted.delegate`，systemd 251 起），或 server 以非 root 用户运行在自己的单元 `gpuworks.service` 的 cgroup 里（systemd 只在 `Delegate=yes` 时把单元的 cgroup 交给 `User=`）。root 能写任何 cgroup，桌面会话的 scope 也归其用户所有，所以光是可写不算委派。`gpuworks install` 写的单元带 `Delegate=yes`（[安装布局](../reference/install-layout.md#systemd-单元)）。已委派时，server 启动插件宿主前先把自己迁进 `<服务 cgroup>/server`：cgroup v2 只允许没有进程的 cgroup 给子 cgroup 开控制器。插件停止或卸载时删除它的 cgroup 目录，插件绕开进程组留下的进程经 `cgroup.kill` 一并结束。插件运行后，server 核对它确实在自己的 cgroup 里、且内存控制器已启用，才算有 cgroup，否则改用 RSS 看门狗。
 
 要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
 
@@ -296,6 +298,7 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | 崩溃重启 | 1 秒起翻倍，最长 5 分钟；连续健康运行 10 分钟后重新从 1 秒算 |
 | 崩溃循环 | 10 分钟内崩溃 5 次进入 `crashloop`（`PLUGIN_CRASHLOOP`），之后每 5 分钟重试一次，无人值守的离线站点能自己恢复 |
 | 停止 | `POST /gwx/v1/shutdown`，10 秒后向进程组发 SIGTERM，再 5 秒 SIGKILL |
+| 内存 | 有自己 cgroup 的插件由 `memory.max` 限制；没有的由 RSS 看门狗每 10 秒汇总插件整个进程组的常驻内存（Linux 读 `/proc/<pid>/stat`，macOS 用 `ps`），超过 1.5 × `mem_mib`（默认 128 MiB）就向进程组发 SIGKILL 并按崩溃重启（`PLUGIN_MEMORY_EXCEEDED`）；读不到内存只记一条告警，不停插件。自己另起进程组或会话的子进程不计入 |
 | 调用并发 | 每个插件同时至多 `max_concurrency`（默认 8）个调用，满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
 | 无截止时间的调用 | 60 秒 |
 | stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |

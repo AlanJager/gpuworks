@@ -96,6 +96,7 @@ ExecStartPre=/usr/bin/test -x /opt/gpuworks/server/gpuworks
 Restart=always
 RestartSec=3
 TimeoutStopSec=30
+Delegate=yes
 
 [Install]
 WantedBy=multi-user.target

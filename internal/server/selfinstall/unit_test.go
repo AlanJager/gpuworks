@@ -42,6 +42,11 @@ func TestRenderUnitQuotesEverythingThatNeedsIt(t *testing.T) {
 	if strings.Contains(unit, "KillMode") {
 		t.Fatalf("the server unit must keep the default KillMode:\n%s", unit)
 	}
+	// The server places its plugins in cgroups of their own, which systemd
+	// allows only in a delegated unit cgroup.
+	if !strings.Contains(unit, "\nDelegate=yes\n") {
+		t.Fatalf("the unit does not delegate its cgroup to the server:\n%s", unit)
+	}
 	// What the unit starts reads back as this installation.
 	if !unitRuns([]byte(unit), cfg.Binary) || unitUser([]byte(unit)) != "gpuworks" {
 		t.Fatalf("the unit does not read back: runs=%v user=%q", unitRuns([]byte(unit), cfg.Binary), unitUser([]byte(unit)))
@@ -230,5 +235,22 @@ func TestServiceActiveChecksBothSupervisionModes(t *testing.T) {
 	h.run.fail["sudo systemctl is-active --quiet gpuworks"] = os.ErrProcessDone
 	if h.installer.serviceActive(context.Background()) {
 		t.Fatal("a dead pid file and an inactive unit must not count as running")
+	}
+}
+
+// An installation upgraded from a unit without Delegate=yes keeps that unit:
+// upgrade rewrites the unit only to move an installation onto server.yaml,
+// so its plugins stay bounded by the RSS watchdog until the next install.
+func TestUpgradeKeepsAUnitWithoutDelegation(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	h.writeExistingInstall("v1.0.0")
+	old := strings.Replace(readFile(t, h.layout.UnitPath()), "Delegate=yes\n", "", 1)
+	writeFile(t, h.layout.UnitPath(), old, 0o644)
+	h.useSite("v2.0.0", []byte("new binary"))
+	if _, err := h.installer.Upgrade(context.Background(), h.upgradeReq()); err != nil {
+		t.Fatalf("upgrade: %v (stderr: %s)", err, h.errOut.String())
+	}
+	if got := readFile(t, h.layout.UnitPath()); got != old || strings.Contains(got, "Delegate") {
+		t.Fatalf("upgrade rewrote the unit:\n%s", got)
 	}
 }

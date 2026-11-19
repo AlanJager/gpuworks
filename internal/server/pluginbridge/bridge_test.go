@@ -43,6 +43,9 @@ type world struct {
 	announced atomic.Int32
 	// logs is what the bridges logged.
 	logs lockedBuffer
+	// cgroupRoot, when set, is the cgroup mount the bridges' plugin host
+	// places plugins under (parent "svc").
+	cgroupRoot string
 }
 
 // lockedBuffer is a log sink the bridge's goroutines may share.
@@ -125,7 +128,8 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 	b, err := Open(context.Background(), Config{Packages: pkgs,
 		State:    pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) }}},
 		Features: dyn, StaticFeatures: owners,
-		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour}},
+		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour},
+			CgroupRoot: w.cgroupRoot, CgroupParent: "svc"},
 		Core: extapi.CoreInfo{Version: "dev", InstallID: "inst_bridge_test", OS: "linux", Arch: "amd64", HARole: extapi.HARoleSingle},
 		Log:  slog.New(slog.NewTextHandler(&w.logs, nil))})
 	if err != nil {

@@ -121,7 +121,7 @@ Implemented:
 - The plugin host (the wiring of decisions 6, 8, 9 and 21): the built-in module `plugins` (`internal/server/pluginbridge`) verifies the installed packages before the router is built, loads pushed state and registers the feature source, the node insert guard, the scheduling holder and the banners, and starts the enabled resident plugins in parallel while the server runs; the pusher's identity comes from the package verified when it was started and the process generation; the core routes `/api/v1/plugins` (list, install with the approval, enable, disable, uninstall; audited, never feature-gated, not readable by the assistant; see the [API Reference](../reference/api.md#plugins)); end-to-end contract tests against a real server with the fake plugin as a package.
 - The ratchet on feature-key literals in core code (the architecture budget `feature_key_literals_in_core = 0`).
 
-Decided but not implemented yet: dynamic route mounting, on-demand starts of on-demand plugins, the management route for overrides, the impact preview before an uninstall, the remaining `gpuworks plugin` subcommands (upgrade, rollback, the offline `clock reset`, ...), the site's ceiling on the grace, the memory watchdog for hosts without a cgroup, a KMS plugin wrapping the credential data key (decision 14), and running plugins on the leader only under high availability. The edition-scoped release machinery is still in the code (until the cleanup in decision 17). Each part is added to `docs/` with its code.
+Decided but not implemented yet: dynamic route mounting, on-demand starts of on-demand plugins, the management route for overrides, the impact preview before an uninstall, the remaining `gpuworks plugin` subcommands (upgrade, rollback, the offline `clock reset`, ...), the site's ceiling on the grace, a KMS plugin wrapping the credential data key (decision 14), and running plugins on the leader only under high availability. The edition-scoped release machinery is still in the code (until the cleanup in decision 17). Each part is added to `docs/` with its code.
 
 ## Trade-offs
 
@@ -139,4 +139,4 @@ Decided but not implemented yet: dynamic route mounting, on-demand starts of on-
 - The existing way of building a separate server (`cli.Options`, extension migrations, the build-time console overlay) stays valid for forks and tests, but it is not a distribution path for official or third-party extensions.
 - Contract and operating details are in [Extension Points](../dev/extensions.md); the wire formats are in [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md).
 
-<!-- translation-source-sha256: 5b81e34ec1d77656b93e8391bff4569f9db726eb858bbf7413391c5306392b8b -->
+<!-- translation-source-sha256: 131f96b1e7aac8f9ef9ba6b57501273a1b9e58d228b65c284d1b751050a9e3ed -->

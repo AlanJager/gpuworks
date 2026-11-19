@@ -21,6 +21,9 @@
 //	                               authority plugin refreshing its state does
 //	--push-size n                  hold nodes 1..n in that table (default
 //	                               100); each push changes 1% of them
+//	--grow-rss MiB                 once initialized, hold this much more
+//	                               resident memory, and start a child (in
+//	                               its process group) that holds as much
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -41,7 +44,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -56,7 +61,14 @@ type pushes []string
 func (p *pushes) String() string     { return strings.Join(*p, ",") }
 func (p *pushes) Set(v string) error { *p = append(*p, v); return nil }
 
+// held keeps --grow-rss's memory reachable.
+var held []byte
+
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "grow" {
+		growChild(os.Args[2])
+		return
+	}
 	if len(os.Args) < 2 || os.Args[1] != "serve" {
 		fmt.Fprintln(os.Stderr, "usage: fakeplugin serve [flags]")
 		os.Exit(64)
@@ -79,6 +91,7 @@ func main() {
 	probePID := fs.Int("probe-pid", 0, "another process to try to reach")
 	pushEvery := fs.Duration("push-every", 0, "push a node_holds table this often")
 	pushSize := fs.Int("push-size", 100, "nodes held by each periodic push")
+	growRSS := fs.Int("grow-rss", 0, "MiB of resident memory to hold, in this process and a child")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
 	fillFromPackage(id, version, manifest)
 
@@ -116,6 +129,9 @@ func main() {
 	cfg.Start = func(ctx context.Context, p *pluginsdk.Plugin) error {
 		if *probeOpen != "" {
 			probeFiles(log, *probeOpen)
+		}
+		if *growRSS > 0 {
+			grow(log, *growRSS)
 		}
 		for _, kv := range push {
 			kind, body, _ := strings.Cut(kv, "=")
@@ -366,4 +382,48 @@ func probeSibling(log *slog.Logger, pid int) {
 	signalErr := syscall.Kill(pid, 0)
 	log.Info("probe", "probe", "sibling", "pid", pid, "opened", strings.Join(open, ","),
 		"signal", errName(signalErr), "sockets", strings.Join(inodes, ","))
+}
+
+// grow starts a child that holds mib MiB, then holds as much itself, and
+// records the child's pid in results.jsonl.
+func grow(log *slog.Logger, mib int) {
+	exe, err := os.Executable()
+	if err == nil {
+		cmd := exec.Command(exe, "grow", strconv.Itoa(mib))
+		// The sandbox denies opening /dev/null, so the child inherits the
+		// descriptors the trampoline already pointed there.
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err = cmd.Start(); err == nil {
+			appendResult(map[string]any{"probe": "grow", "child": cmd.Process.Pid})
+			go func() { _ = cmd.Wait() }()
+		}
+	}
+	if err != nil {
+		log.Error("starting the growing child", "err", err)
+	}
+	held = touched(mib)
+	log.Info("holding memory", "mib", len(held)>>20)
+}
+
+// growChild holds mib MiB until it is killed.
+func growChild(mib string) {
+	n, err := strconv.Atoi(mib)
+	if err != nil {
+		os.Exit(64)
+	}
+	held = touched(n)
+	for {
+		time.Sleep(time.Hour)
+		runtime.KeepAlive(held)
+	}
+}
+
+// touched allocates mib MiB and writes every page, so all of it is
+// resident.
+func touched(mib int) []byte {
+	b := make([]byte, mib<<20)
+	for i := 0; i < len(b); i += 4096 {
+		b[i] = 1
+	}
+	return b
 }

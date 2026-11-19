@@ -1697,7 +1697,7 @@ The management API of installed signed plugin packages (`.gwpkg`); see [Extensio
 Fields:
 
 - `trust`: `project` (certified by a project root) or `host` (by an issuer `server.yaml` trusts); absent when the package no longer verifies.
-- `state`: when the server part does not run, `disabled`, `installed` (no resident server part), `idle` (an on-demand server part), `broken` (no longer verifies) or `revoked` (its build or certificate is revoked); otherwise the process state `starting`, `running`, `degraded`, `backoff`, `crashloop`, `stopping`, `stopped` or `failed`. `message` is the reason's code and params (such as `PLUGIN_CRASHLOOP`, `PLUGIN_HANDSHAKE_REFUSED` or `PLUGIN_FILE_MISMATCH`), absent when nothing needs saying.
+- `state`: when the server part does not run, `disabled`, `installed` (no resident server part), `idle` (an on-demand server part), `broken` (no longer verifies) or `revoked` (its build or certificate is revoked); otherwise the process state `starting`, `running`, `degraded`, `backoff`, `crashloop`, `stopping`, `stopped` or `failed`. `message` is the reason's code and params (such as `PLUGIN_CRASHLOOP`, `PLUGIN_HANDSHAKE_REFUSED` or `PLUGIN_FILE_MISMATCH`; `PLUGIN_MEMORY_EXCEEDED` with `id`, `rss_mib` and `limit_mib` when a plugin without a cgroup of its own was restarted for its memory), absent when nothing needs saying.
 - `since`: when it entered its current process state, absent when not supervised; `restarts`: how many processes were started after the first.
 - `parts`: the parts it carries, `server`, `node`, `ui`, `store`; `isolation`: `landlock` or `none`.
 - `actions`: the actions available now, computed by the server: `enable`, `disable`, `uninstall`.
@@ -2306,4 +2306,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 756a9b9260de7c8d5634b5a15bc69402217d8d754da241281395f7d4b78496b9 -->
+<!-- translation-source-sha256: f6520c6040666b596702df0fdcf9650aa7a23a06bc1738d496a7da6d404adf59 -->

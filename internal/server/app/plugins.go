@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"maps"
+	"os"
 	"runtime"
 	"time"
 
@@ -15,8 +17,10 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginbridge"
+	"gpuworks.ai/gpuworks/internal/server/pluginexec"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
+	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/version"
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -67,6 +71,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		return err
 	}
 	rt := m.cfg.PluginRuntime
+	cgRoot, cgParent := pluginCgroups(h.Log(), pluginexec.DetectCgroup, pluginexec.EnterServerLeaf)
 	bus := h.Bus()
 	h.reg.dynamic = featuregate.NewDynamicSet(h.reg.features)
 	b, err := pluginbridge.Open(ctx, pluginbridge.Config{
@@ -83,7 +88,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 				},
 				FeaturesChanged: func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
 			}},
-		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing},
+		Host:             pluginhost.Config{Trampoline: rt.Trampoline, Timing: rt.Timing, CgroupRoot: cgRoot, CgroupParent: cgParent},
 		Core:             extapi.CoreInfo{Version: version.Version, InstallID: h.InstallID(), OS: runtime.GOOS, Arch: runtime.GOARCH, HARole: extapi.HARoleSingle},
 		RequireIsolation: m.cfg.Plugins.RequireIsolation,
 		Features:         h.reg.dynamic,
@@ -104,6 +109,27 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 }
 
 func (m *pluginsModule) Run(ctx context.Context) error { return m.bridge.Run(ctx) }
+
+// pluginCgroups gives plugins cgroups of their own when systemd delegates
+// the server's unit cgroup to it (Delegate=yes, which install writes): the
+// server moves into a leaf beside the plugins' parent, as cgroup v2 asks.
+// Otherwise the plugins share the server's cgroup and the RSS watchdog
+// bounds their memory (docs/dev/extensions.md). detect and enter are
+// pluginexec.DetectCgroup and pluginexec.EnterServerLeaf outside tests.
+func pluginCgroups(log *slog.Logger, detect func(unit string) (root, parent string, ok bool),
+	enter func(root, parent string, pid int) error) (root, parent string) {
+	root, parent, ok := detect(selfinstall.ServiceName + ".service")
+	if !ok {
+		log.Info("the server's cgroup is not delegated; plugins share it and the RSS watchdog bounds their memory")
+		return "", ""
+	}
+	if err := enter(root, parent, os.Getpid()); err != nil {
+		log.Warn("plugins share the server's cgroup", "err", err)
+		return "", ""
+	}
+	log.Info("plugins run in cgroups of their own", "cgroup", parent)
+	return root, parent
+}
 
 // pluginAdmin adapts the bridge to the API's plugin administration.
 type pluginAdmin struct{ b *pluginbridge.Bridge }
