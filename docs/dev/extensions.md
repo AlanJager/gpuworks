@@ -286,7 +286,7 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 
 要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
 
-`internal/testenv/extplugin` 里验证 Landlock 的用例（插件读不到 `master.key` 与包外路径；Landlock ABI 6 及以上还验证不能向兄弟进程发信号）在进程无法使用 Landlock 时，普通测试会跳过。`make test-plugin-landlock` 则以 `GPUWORKS_TEST_STRICT=1` 运行三个指定用例，要求每项明确报告 PASS，且不得有 SKIP；无法使用 Landlock 会失败。CI 的必跑任务 `core-plugin-sandbox` 使用带有 `gpuworks-l3` 与 `gpuworks-plugin-sandbox` 两个标签的专用 runner，在默认 seccomp 配置和非 root Go 容器中运行此门禁（普通 L3 runner 池包含不支持 Landlock 的旧内核），不改变 L2/L3 或生产插件的隔离策略。无论成功失败，任务都保存内核版本、可见的 Seccomp/NoNewPrivs 状态与完整测试日志；测试还记录 ABI 探测的原始返回值和 errno，供区分内核能力与过滤策略问题，不能仅凭“Landlock 不可用”认定具体原因。
+`internal/testenv/extplugin` 里验证 Landlock 的用例（插件读不到 `master.key` 与包外路径；Landlock ABI 6 及以上还验证不能向兄弟进程发信号）在进程无法使用 Landlock 时，普通测试会跳过。`make test-plugin-landlock` 则以 `GPUWORKS_TEST_STRICT=1` 运行四个指定用例，要求每项明确报告 PASS，且不得有 SKIP；无法使用 Landlock 会失败。CI 的必跑任务 `core-plugin-sandbox` 使用带有 `gpuworks-l3` 与 `gpuworks-plugin-sandbox` 两个标签的专用 runner，在默认 seccomp 配置和非 root Go 容器中运行此门禁（普通 L3 runner 池包含不支持 Landlock 的旧内核），不改变 L2/L3 或生产插件的隔离策略。无论成功失败，任务都保存内核版本、可见的 Seccomp/NoNewPrivs 状态与完整测试日志；测试还记录 ABI 探测的原始返回值和 errno，供区分内核能力与过滤策略问题，不能仅凭“Landlock 不可用”认定具体原因。
 
 ### 监管
 

@@ -502,10 +502,15 @@ func TestSpecValidation(t *testing.T) {
 func TestProfileCarriesTheHostSetupSandbox(t *testing.T) {
 	s := testSpec(t, "acme_key")
 	s.DeviceDirs, s.ReadPaths = []string{"/dev"}, []string{"/sys/devices"}
-	i := &instance{h: &Host{}, spec: s}
+	s.MemMiB = 48
+	root := t.TempDir()
+	i := &instance{h: &Host{cfg: Config{CgroupRoot: root, CgroupParent: "svc"}}, spec: s}
 	p := i.profile()
 	if l := p.Landlock; !slices.Equal(l.DeviceDirs, []string{"/dev"}) || l.Read[len(l.Read)-1] != "/sys/devices" ||
 		len(l.Read) != len(systemReadPaths)+1 || len(systemReadPaths) == 0 || systemReadPaths[len(systemReadPaths)-1] == "/sys/devices" {
 		t.Fatalf("landlock = %+v", p.Landlock)
+	}
+	if c := p.Cgroup; c == nil || c.Root != root || c.Parent != "svc" || c.MemoryMax != 48<<20 || c.MemoryHigh <= 0 || c.MemoryHigh >= c.MemoryMax {
+		t.Fatalf("cgroup alongside device grants = %+v", c)
 	}
 }
