@@ -41,7 +41,7 @@ func (r *evaluateState) prepareDistributed() bool {
 			nodes, err = r.s.PrepareDistributedDeployRequest(&normalized, dp)
 		}
 		if err != nil {
-			field := distributedErrorField(err)
+			field := distributedErrorField(err, r.placement)
 			r.errs.add(field, err)
 			if !isParallelismField(field) {
 				r.writeFieldErrors()
