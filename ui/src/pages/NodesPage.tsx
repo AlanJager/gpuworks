@@ -35,6 +35,7 @@ import { NodeSchedulingModal } from "../components/NodeSchedulingModal";
 import { labelPair } from "../nodeLabels";
 import { useIsAdmin } from "../components/useIsAdmin";
 import AgentFleetNotice from "../components/agentUpgrades/AgentFleetNotice";
+import RejectedAgentsNotice from "../components/RejectedAgentsNotice";
 import AgentUpgradeManager from "../components/agentUpgrades/AgentUpgradeManager";
 import {
   useAgentUpgrades,
@@ -239,6 +240,7 @@ export default function NodesPage() {
           </Space>
         }
       />
+      <div className="empty:hidden mb-4"><RejectedAgentsNotice onAddNode={isAdmin ? () => setAddOpen(true) : undefined} /></div>
       {!error && <div className="empty:hidden mb-4"><AgentFleetNotice summary={data?.agent_fleet} failed={!!data && !data.agent_fleet} retry={refetch} fleetSearch={fleetSearch} /></div>}
       <Card>
         <ResourceTable<Node>

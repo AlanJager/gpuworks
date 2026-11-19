@@ -181,7 +181,10 @@
     }
   },
   "rejects": {
-    "title": "最近 Agent 握手拒绝",
+    "refused": "{{count}} 个 Agent 使用本服务端不认识的凭据连接，已被拒绝",
+    "refusedHelp": "服务端看到列出的主机上有 Agent 用它没有记录的节点凭据连接。常见原因：节点被移除或重新添加后旧 Agent 仍在运行；该主机另一个状态目录里还有一个 Agent；服务端记录变了（如恢复过备份）。这台主机应当是节点就重新添加；是残留的 Agent 就只卸载它：gpuworks-agent uninstall --state <它的状态目录>。只列最近 30 分钟的来源。",
+    "source": "{{host}} · 凭据 {{prefix}}… · {{count}} 次 · 首次 {{first}} · 最近 {{last}}",
+    "more": "另有 {{count}} 个未显示",
     "emptyToken": "（空）",
     "unknownAddress": "未知地址"
   },

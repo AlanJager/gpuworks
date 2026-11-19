@@ -181,7 +181,10 @@
     }
   },
   "rejects": {
-    "title": "Recent Agent handshake rejections",
+    "refused": "Agents refused for a credential this server does not know: {{count}}",
+    "refusedHelp": "The server saw an Agent on each listed host connect with a node credential it has no record of. Usual causes: the node was removed or added again while its old Agent kept running, a second Agent runs from another state directory, or the server's records changed (a restored backup). Add the host again if it should be a node; remove a leftover Agent with gpuworks-agent uninstall --state <its directory>. Sources of the last 30 minutes are listed.",
+    "source": "{{host}} · credential {{prefix}}… · {{count}} attempts · first {{first}} · last {{last}}",
+    "more": "{{count}} more not shown",
     "emptyToken": "(empty)",
     "unknownAddress": "Unknown address"
   },
