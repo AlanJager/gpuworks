@@ -282,7 +282,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 | 子命令 | 说明 |
 |---|---|
-| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。包声明的功能键已由另一个已安装的包声明时拒绝（`PLUGIN_FEATURE_TAKEN`）；server 停止时编译模块不加载，命令行只对照已安装的包，与编译模块冲突的键启动时仍归编译模块。从命令行安装即视为批准其权限，默认启用，`--disabled` 只安装不启用 |
+| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。包声明的功能键已由另一个已安装的包声明时拒绝（`PLUGIN_FEATURE_TAKEN`）；server 停止时编译模块不加载，命令行只对照已安装的包，与编译模块冲突的键启动时仍归编译模块。从命令行安装即视为批准其权限，默认启用，`--disabled` 不主动启用；替换或重装已启用的包仍保持启用，停用需显式执行 `disable ID` |
 | `list` | 重新校验每个已安装的包（只重新哈希大小、修改时间或 inode 变了的文件），列出 id、版本、发布者、信任来源（`project` 根签发或 `host` 主机信任的签发者）、是否启用与状态：`ok`、`revoked`（已吊销但不自动停止），或 `broken: <码>` |
 | `verify ID` | 重新校验已安装的包（重新哈希全部文件）并打印结果；不再通过校验或已吊销时以 `PLUGIN_BROKEN` 拒绝，没装时 `PLUGIN_NOT_INSTALLED`。只读，server 运行时也能用 |
 | `enable ID` / `disable ID` | 允许或禁止包的 server 部分运行，下次启动 server 时生效。`enable` 先像 `verify` 一样重新校验，校验不过就拒绝（`PLUGIN_BROKEN`），不改开关。要求 server 已停止 |

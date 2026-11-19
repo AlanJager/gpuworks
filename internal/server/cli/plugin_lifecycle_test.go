@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -85,6 +86,28 @@ func (e *pluginEnv) enabled() string {
 	}
 	e.t.Fatalf("acme_backup not listed:\n%s", out)
 	return ""
+}
+
+func TestPluginInstallLogMatchesTheEnabledStateAfterReplacement(t *testing.T) {
+	e := newPluginEnv(t, testPluginSite)
+	e.install("1.0.0")
+	path := e.writePackage("v2.gwpkg", extsign.Package(t, e.pub, extsign.Minimal("acme", "acme_backup", "1.1.0")))
+	var logs, out bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logs, nil))
+	err := e.opt.pluginCommand(log, []string{"install", "--disabled", "--file", path, "--data", e.data, "--config", e.config}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.enabled(); got != "true" {
+		t.Fatalf("replacement changed an enabled package to %s", got)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+		t.Fatalf("install log %q: %v", logs.String(), err)
+	}
+	if record["msg"] != "plugin installed" || record["id"] != "acme_backup" || record["version"] != "1.1.0" || record["enabled"] != true {
+		t.Fatalf("install log disagrees with the enabled replacement: %s", logs.String())
+	}
 }
 
 func TestPluginLifecycleRefusesWhileTheServerRuns(t *testing.T) {
