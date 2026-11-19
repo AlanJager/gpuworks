@@ -181,7 +181,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
   const { t } = useTranslation("networks");
   const rails = usesRails(detail.type);
   const cards = isAcceleratorRDMA(detail.type);
-  const [labelEditor, setLabelEditor] = useState<{ attachment?: NetworkAttachment } | null>(null);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const attachments = useMemo(() => new Map(detail.attachments.map(a => [a.id, a])), [detail.attachments]);
   const detach = async (attachment: NetworkAttachment) => {
     try {
@@ -226,8 +226,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
       key: "actions", role: "actions", title: t("table.actions"), width: 124,
       render: (_, node) => {
         const attachment = attachments.get(node.attachment_id);
-        if (!attachment) return "—";
-        if (attachment.target === "label") return <Button variant="link" size="sm" onClick={() => setLabelEditor({ attachment })}>{t("nodeTable.editSourceLabel")}</Button>;
+        if (attachment?.target !== "node") return "—";
         return <span className="inline-flex items-center gap-2">
           <Button variant="link" size="sm" onClick={() => onAttach(attachment)}>{t("actions.edit")}</Button>
           <ConfirmPopover title={t("actions.confirmDetach")} onConfirm={() => detach(attachment)} confirmText={t("actions.detach")} cancelText={t("actions.cancel")} destructive trigger={<Button variant="link" size="sm" className="text-fg-danger">{t("actions.detach")}</Button>} />
@@ -289,7 +288,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           </Descriptions>
         )}
       </DetailSection>
-      <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach} onManageLabels={() => setLabelEditor({})}>
+      <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach} onManageLabels={() => setLabelsOpen(true)}>
         <div className="network-overview-nodes"><NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
           searchLabel={t(!rails ? "detail.searchEthernetNodes" : cards ? "detail.searchCardNodes" : "detail.searchNodes")}
           toolbarExtra={<Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("detail.attachNodes")}</Button>}
@@ -301,7 +300,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           expandable={{ expandedRowRender, expandRowByClick: true }}
         /></div>
       </NetworkLoadTargets>
-      {labelEditor && <NetworkLabelsDialog open detail={detail} initialAttachment={labelEditor.attachment} onClose={() => setLabelEditor(null)} onDetail={onDetail} />}
+      {labelsOpen && <NetworkLabelsDialog open detail={detail} onClose={() => setLabelsOpen(false)} onDetail={onDetail} />}
     </>
   );
 }

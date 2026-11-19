@@ -651,7 +651,7 @@ test("the label manager can add the first label without switching modes", async 
   assert.equal((within(dialog).getByRole("textbox", { name: n.attach.labelKey }) as HTMLInputElement).value, "");
 });
 
-test("editing a label from its node row updates the original rule", async () => {
+test("network label rules can only be edited from the label manager", async () => {
   stub("network", async () => detailFixture);
   const calls: unknown[] = [];
   stub("updateNetworkLabel", async (id, attachmentID, body) => {
@@ -661,8 +661,11 @@ test("editing a label from its node row updates the original rule", async () => 
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
   const row = (await screen.findByRole("link", { name: "h20-05" })).closest("tr")!;
-  await user.click(within(row).getByRole("button", { name: n.nodeTable.editSourceLabel }));
+  assert.equal(row.lastElementChild?.textContent, "—");
+  await user.click(screen.getByRole("button", { name: n.detail.manageLabels }));
   const dialog = await screen.findByRole("dialog", { name: n.detail.manageLabels });
+  const rule = within(dialog).getByText("pool=h20-a").closest("tr")!;
+  await user.click(within(rule).getByRole("button", { name: n.actions.edit }));
   assert.equal((within(dialog).getByRole("textbox", { name: n.attach.labelKey }) as HTMLInputElement).value, "pool");
   const value = within(dialog).getByLabelText(n.attach.labelValue) as HTMLInputElement;
   assert.equal(value.value, "h20-a");
@@ -670,6 +673,7 @@ test("editing a label from its node row updates the original rule", async () => 
   await user.type(value, "h20-b");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.deepEqual(calls, [[detailFixture.id, 1, { label_key: "pool", label_value: "h20-b" }]]));
+  await user.keyboard("{Escape}");
   await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: n.detail.manageLabels }), null));
   await screen.findByRole("link", { name: "h20-07" });
   assert.equal(screen.queryByRole("link", { name: "h20-05" }), null);

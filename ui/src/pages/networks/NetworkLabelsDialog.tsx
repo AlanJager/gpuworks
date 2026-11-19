@@ -17,7 +17,6 @@ type Props = {
   open: boolean;
   onClose: () => void;
   detail: NetworkDetail;
-  initialAttachment?: NetworkAttachment | null;
   onDetail: (detail: NetworkDetail) => void;
 };
 
@@ -26,15 +25,15 @@ const fieldsFor = (a?: NetworkAttachment | null) => ({
   label_value: a?.label_value ?? "",
 });
 
-export default function NetworkLabelsDialog({ open, onClose, detail, initialAttachment, onDetail }: Props) {
+export default function NetworkLabelsDialog({ open, onClose, detail, onDetail }: Props) {
   const { t } = useTranslation("networks");
   const { t: common } = useTranslation("common");
   const labels = useMemo(() => detail.attachments.filter(a => a.target === "label"), [detail.attachments]);
-  const [editing, setEditing] = useState(initialAttachment ?? null);
+  const [editing, setEditing] = useState<NetworkAttachment | null>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [error, setError] = useState("");
-  const form = useForm({ defaultValues: fieldsFor(initialAttachment) });
+  const form = useForm({ defaultValues: fieldsFor(null) });
   const current = editing && labels.find(a => a.id === editing.id);
   const changed = !!editing && (!current || current.label_key !== editing.label_key || current.label_value !== editing.label_value);
 
@@ -65,7 +64,7 @@ export default function NetworkLabelsDialog({ open, onClose, detail, initialAtta
     if (changed) return;
     const body = { label_key: values.label_key.trim(), label_value: values.label_value.trim() };
     return change(() => editing ? api.updateNetworkLabel(detail.id, editing.id, body) : api.attachNetwork(detail.id, body),
-      () => { select(null); if (initialAttachment) onClose(); });
+      () => select(null));
   });
 
   return <Dialog open={open} onOpenChange={next => { if (!next && !pending.current) onClose(); }}>
@@ -86,7 +85,7 @@ export default function NetworkLabelsDialog({ open, onClose, detail, initialAtta
         {changed && <p role="alert" className="text-label text-fg-danger">{t("detail.labelChanged")}</p>}
         {error && <p role="alert" className="text-label text-fg-danger">{error}</p>}
         <div className="flex justify-end gap-2">
-          {editing && <Button variant="secondary" size="sm" disabled={busy} onClick={() => initialAttachment ? onClose() : select(null)}>{t("actions.cancel")}</Button>}
+          {editing && <Button variant="secondary" size="sm" disabled={busy} onClick={() => select(null)}>{t("actions.cancel")}</Button>}
           <Button type="submit" size="sm" disabled={busy || changed}>{t("actions.save")}</Button>
         </div>
       </form>

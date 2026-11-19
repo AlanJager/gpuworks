@@ -134,7 +134,6 @@
     "portCount_other": "{{count}} HCA ports",
     "cardCount_one": "{{count}} card",
     "cardCount_other": "{{count}} cards",
-    "editSourceLabel": "Edit label",
     "node": "Node",
     "roles": "Roles",
     "source": "Attachment source",
