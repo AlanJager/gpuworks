@@ -77,6 +77,7 @@ func openOnClock(t *testing.T, w *world, clk *settableClock, corrected func(from
 		})
 	}
 	t.Cleanup(stop)
+	waitBridgeRunning(t, b)
 	return b, stop
 }
 

@@ -167,6 +167,7 @@ func (w *world) openWith(sp pluginhost.Spawner, timing pluginhost.Timing) (b *Br
 		}
 	})
 	w.t.Cleanup(stop)
+	waitBridgeRunning(w.t, b)
 	return b, stop
 }
 
