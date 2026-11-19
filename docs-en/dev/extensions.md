@@ -429,6 +429,37 @@ Each plugin gets two socketpairs. On fd 3 the server is the HTTP/2 client: first
 
 Plugin authors use `pkg/pluginsdk` (a module of its own like `pkg/extapi`, depending only on the standard library and `pkg/extapi`): `pluginsdk.Main(cfg)` opens the two descriptors, answers the handshake (protocol and capability negotiation, refusing with `PLUGIN_PROTOCOL_UNSUPPORTED` or `PLUGIN_CAPABILITY_MISSING`), runs `Start` once the handshake is accepted, answers health, and hands every other call to the plugin's `http.Handler`; it exits on `shutdown`, when the server's end closes, or when its parent is gone. `PushState` skips a table the server already holds with the same digest and numbers pushes `max(own counter, held generation)+1`, so a plugin whose storage was restored or wiped is never refused as stale. `Meta`, `CorrectClock`, `Ready`, `PushedState` and `DeriveKey` make the host API calls above, and return `ErrNotNegotiated` at once when the handshake did not negotiate their capability. `pkg/pluginsdk/plugintest` plays the server in process over real socketpairs, for a plugin's own tests; it refuses these calls with the server's codes, reasons and params, and derives keys from a fixed test master key.
 
+### Conformance suite: `pkg/pluginsdk/conformance`
+
+A plugin author runs the conformance suite from a test in the plugin's own module, against the binary that goes into the package:
+
+```go
+func TestConformance(t *testing.T) {
+	conformance.Run(t, conformance.Config{
+		Binary:   "bin/linux_amd64/acme-backup",
+		Manifest: "manifest.json",
+	})
+}
+```
+
+`Run` reads the manifest (it fails at once when the manifest does not decode, declares no `runtime`, or the binary is not executable), then starts the binary several times: as the server does, it hands the binary two socketpairs as fds 3 and 4 and only the environment the server gives (`PATH`, `TZ`, `HOME`, `TMPDIR`, `LANG` and the gwx/1 variables; `Config.Env` is only for the author's own test switches), without the sandbox, against `plugintest`'s fake server (`plugintest.StartProcess`). The handshake grants every permission and role the manifest declares, as after an administrator's approval and a certificate's grant. Each rule is a subtest named after it (`conformance.Rules()`), so a failing subtest names the broken rule, with the plugin's stderr attached:
+
+| Rule | Check |
+|---|---|
+| `initialize_answers_as_the_installed_package` | `initialize` is answered within 10 s, with the manifest's `id`, `version` and `manifest_sha256` |
+| `uses_only_declared_capabilities` | the answer's `use` holds only capabilities from the manifest's `requires` and `uses`, at offered versions no higher than the manifest allows; while the plugin runs, no host call is refused for an undeclared capability, permission or role (`PLUGIN_CAPABILITY_NOT_OFFERED`, `PLUGIN_HOST_NOT_PERMITTED`, `PLUGIN_ROLE_REQUIRED`), and no table it did not negotiate is pushed |
+| `health_answers_within_the_timeout` | health is answered within 3 s |
+| `shutdown_exits_within_the_deadline` | after `shutdown` the process exits with status 0 within 10 s, before the server would send SIGTERM |
+| `unchanged_push_is_skipped` | restarted against a server that holds its tables with the same digests, the plugin pushes none of them again |
+| `changed_push_is_applied` | restarted against a server that holds different tables, the plugin pushes each above the held generation and the push is applied |
+| `on_demand_package_does_not_push` | an `on_demand` package pushes no table |
+| `routes_serve_a_valid_principal` | each declared route, sent a request signed as the server signs it, does not answer 403 for the principal |
+| `routes_refuse_a_missing_principal` | a request without a principal gets 403 |
+| `routes_refuse_a_wrong_mac` | a request whose principal was signed under another key gets 403 |
+| `routes_refuse_another_routes_action` | a request whose principal's `route_action` is another route's gets 403 (an action no route declares when every route shares one action) |
+
+The two push rules first run the binary against a server that holds nothing and record each table applied within `PushWait` (2 s by default), then restart it twice from that; when the plugin pushed nothing in that time, or the package is `on_demand`, both rules are skipped. The route rules are skipped when no route is declared, and a `resident` package skips the `on_demand` rule. Route requests fill every path parameter with `conformance` and send `{}` for methods with a body; a public route gets a `public` principal, every other one a signed-in platform administrator, with the route's feature signed as `full`. The three time limits default to the server's and can be changed in `Config`. The in-repo fake plugin (`internal/testenv/extplugin/fakeplugin`) runs the suite in CI, which proves that a correct binary passes every rule; its fault switches `--skip-principal-check`, `--ignore-route-action`, `--hang health` and an extra `--requires` each fail only the matching rules.
+
 ### Pushed state
 
 The core's part of the first five pushed tables (`availability`, `fleet_capacity`, `node_holds`, `banners`, `attestations`) is in `internal/server/pushstate`; through the plugin host module above it takes plugins' pushes, is loaded at boot and is registered as the hooks:
@@ -451,4 +482,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 972501da362193bd2a40ce35bb3eb85d3a37d71ecec160e7e123807167091edc -->
+<!-- translation-source-sha256: 1ae4dfa19ba24b15183039f9613c6268125aa93f1a1a3396306b6e45badedc81 -->
