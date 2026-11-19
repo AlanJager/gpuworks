@@ -27,11 +27,20 @@ var notMetrics = map[string]string{
 }
 
 // knownSeries is every series name the two vocabularies define, with the
-// histogram families' stored _sum, _count and _bucket series.
+// histogram families' exact _sum, _count and _bucket series, including
+// scrape-only exports separately from the stored monitor catalog.
 func knownSeries() map[string]bool {
 	known := map[string]bool{}
 	for _, d := range Definitions() {
 		known[d.Series] = true
+	}
+	for _, d := range ExportedDefinitions() {
+		known[d.Series] = true
+		if d.Kind == Histogram {
+			for _, suffix := range []string{"_sum", "_count", "_bucket"} {
+				known[d.Series+suffix] = true
+			}
+		}
 	}
 	histogram := func(series string, kind inferencemetrics.Kind) {
 		known[series] = true
@@ -52,8 +61,8 @@ func knownSeries() map[string]bool {
 
 // TestEveryMetricLiteralIsRegistered reads every series name the code spells
 // out - in the agent's producers, the server's writers and queries, and the
-// UI's charts - and requires it in a vocabulary, so the catalog the API
-// answers lists everything that can be stored or asked for.
+// UI's charts - and requires it in a stored or scrape-only vocabulary.
+// The monitor catalog still contains only the stored definitions.
 func TestEveryMetricLiteralIsRegistered(t *testing.T) {
 	root := repoRoot(t)
 	known := knownSeries()
@@ -94,6 +103,27 @@ func TestDefinitionsAreComplete(t *testing.T) {
 	}
 	if _, ok := Lookup("gpuworks_gpu_no_such_series"); ok {
 		t.Fatal("Lookup found an unknown series")
+	}
+}
+
+func TestExportedDefinitionsAreCompleteAndSeparateFromStoredSeries(t *testing.T) {
+	seen := map[string]bool{}
+	for _, d := range ExportedDefinitions() {
+		if seen[d.Series] || !metricLiteral.MatchString(d.Series) || d.Source == "" ||
+			d.Unit == "" || d.Description == "" || len(d.Labels) == 0 ||
+			(d.Kind != Gauge && d.Kind != Counter && d.Kind != Histogram) {
+			t.Fatalf("incomplete or duplicate exported definition: %+v", d)
+		}
+		seen[d.Series] = true
+		if _, stored := Lookup(d.Series); stored {
+			t.Fatalf("scrape-only family %s was added to the stored catalog", d.Series)
+		}
+	}
+	known := knownSeries()
+	for _, unknown := range []string{"gpuworks_plugin_undeclared", "gpuworks_plugin_call_seconds_quantile", "gpuworks_plugin_call_seconds_undeclared"} {
+		if known[unknown] {
+			t.Fatalf("registration guard accepted undeclared export %s", unknown)
+		}
 	}
 }
 

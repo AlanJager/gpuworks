@@ -62,6 +62,7 @@ func (b *Bridge) refresh() error {
 	b.mu.Unlock()
 	b.state.SetPackages(pkgs)
 	b.declareFeatures()
+	b.refreshHealth()
 	return nil
 }
 
@@ -104,6 +105,7 @@ func (b *Bridge) startIfEnabled(id string) {
 			b.mu.Lock()
 			b.refusals[id] = err
 			b.mu.Unlock()
+			b.refreshHealth()
 			return
 		}
 		// The marker could not be read: neither start a build that may
@@ -114,6 +116,7 @@ func (b *Bridge) startIfEnabled(id string) {
 		b.mu.Lock()
 		b.refusals[id] = refused
 		b.mu.Unlock()
+		b.refreshHealth()
 		time.AfterFunc(b.markerRetry, func() { b.retryStart(id, refused) })
 		return
 	}

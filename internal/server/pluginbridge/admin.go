@@ -294,6 +294,7 @@ func (b *Bridge) Uninstall(ctx context.Context, id string, purge bool, by string
 	if err := b.refresh(); err != nil {
 		return err
 	}
+	b.forgetHealth(id)
 	held := len(b.state.Held(id)) > 0
 	if removeErr != nil && !held {
 		return removeErr

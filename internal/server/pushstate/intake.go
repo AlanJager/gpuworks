@@ -96,6 +96,25 @@ func (s *State) Push(ctx context.Context, pusher Pusher, push *extapi.StatePush)
 	}
 }
 
+// EntriesOf is the number of entries in a pushed table: the units its
+// rows are replaced in (availability rows, held nodes, banners,
+// attestations), and one for the whole fleet capacity table.
+func EntriesOf(t extapi.Table) int {
+	switch t := t.(type) {
+	case *extapi.AvailabilityV1:
+		return len(t.Rows)
+	case *extapi.NodeHoldsV1:
+		return len(t.Nodes)
+	case *extapi.BannersV1:
+		return len(t.Banners)
+	case *extapi.AttestationsV1:
+		return len(t.Attestations)
+	case *extapi.FleetCapacityV1:
+		return 1
+	}
+	return 0
+}
+
 // poke wakes the writer tick.
 func (s *State) poke() {
 	select {

@@ -254,7 +254,8 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 | 方法与路径 | 谁可以调用 | 作用 |
 |---|---|---|
-| `GET /api/v1/plugins` | 管理员（会话或令牌） | 已安装的包与各自的状态、原因、可做的动作（服务端计算） |
+| `GET /api/v1/plugins` | 管理员（会话或令牌） | 已安装的包与各自的状态、原因、可做的动作（服务端计算），以及诊断检查 `plugins`（见下文「健康：横幅、诊断检查与指标」） |
+| `GET /api/v1/metrics/plugins` | 管理员（会话或令牌） | 插件指标，Prometheus 文本格式 |
 | `POST /api/v1/plugins/install?approve=<批准值>&enable=true` | 管理员登录会话 | 请求体就是 `.gwpkg`；不带或带错批准值时回 409 `PLUGIN_APPROVAL_REQUIRED`，参数里给出批准值和它涵盖的权限、角色，什么都不装 |
 | `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
 | `DELETE /api/v1/plugins/{id}?purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据一起移到 `.trash/`），在一次提交里删掉它推送的全部内容并重新应用保持；重试能完成一半失败的卸载 |
@@ -316,6 +317,25 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 | stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |
 
 `resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动（同时到达的调用只拉起一次，都等它就绪），空闲 10 分钟后停止（停止前先在同一步里拒收新调用，赶上这一刻的调用等下一次启动，不会被拒），崩溃循环时调用立即被拒，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）；安装与重新校验时，持有 `push:` 权限或声明功能的 `on_demand` 包同样以这个码拒绝。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线；这只对 `resident` 插件报给推送状态。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+
+### 健康：横幅、诊断检查与指标
+
+插件宿主模块每当插件的状态变化或已安装的包变化（安装、启用、停用、卸载、重新校验）时重新判断每个已安装的包，结果只保存在内存里，不新增持久化的事实。只有已启用的包参与判断：管理员停用的包不报任何问题。
+
+- **横幅**：只给管理员看，随控制台清单下发，变化时在 `feature` 主题上通知控制台重读清单。崩溃循环的包是 `plugins.crashloop.<id>`（`PLUGIN_CRASHLOOP`，参数与它的状态相同：`id`、`crashes`、`window_s`、`retry_s`）；被吊销的包是 `plugins.revoked.<id>`（`PLUGIN_REVOKED`，参数与它的列表行相同：`id`、`version`、`replacement`，没有指定替代版本时 `replacement` 为空），两者都是 `danger`；因为需要此服务器不提供的能力而不再通过校验的包是 `plugins.incompatible.<id>`（`PLUGIN_INCOMPATIBLE`，参数与安装时的拒绝相同：`id`、`capability`、`version`、`offered`、`min_core_hint`），是 `warning`。插件恢复运行、被停用或卸载后横幅随即消失。推送状态自己的掉线横幅（`PLUGIN_DOWN`）照常存在。
+- **诊断检查 `plugins`**：随 `GET /api/v1/plugins` 的 `check` 下发（什么都没装时缺省，列表与原来逐字节相同），状态取 `proto.Check*`。有已启用的包处于崩溃循环、`failed`、`broken`、被吊销或 `needs_host_setup`时为 `fail`（`CHECK_PLUGINS_FAILING{ids}`）；否则有不兼容的包时为 `warn`（`CHECK_PLUGINS_INCOMPATIBLE{ids}`）；其余为 `pass`（`CHECK_PLUGINS_OK`）。`ids` 是按 id 排序、以逗号分隔的包 id。
+- **指标**：`GET /api/v1/metrics/plugins` 以 Prometheus 文本格式（0.0.4）给出，管理员用登录会话或令牌（只读令牌也可以）抓取，助手读不到。这些指标供外部采集，不写入内置时序库，也不列入监控历史指标目录；调用延迟导出为直方图 bucket、sum 和 count，不生成内部 quantile 序列。标签 `id` 只取已安装的包，卸载后它的序列随之消失：
+
+| 指标 | 类型 | 含义 |
+|---|---|---|
+| `gpuworks_plugin_up{id}` | gauge | 插件现在是否在服务调用（`running` 或 `degraded`） |
+| `gpuworks_plugin_restarts_total{id}` | counter | 崩溃或健康检查失败之后的重启次数；第一次启动与 `on_demand` 插件的按需启动不计 |
+| `gpuworks_plugin_state{id,state}` | gauge | 每个状态一条序列，当前状态为 1，其余为 0；状态取列表里的 `state`，包括 `needs_host_setup`，包括尚未完成主机配置的 `needs_host_setup` |
+| `gpuworks_plugin_calls_total{id,class,outcome}` | counter | 经宿主的调用；`class` 为 `member`、`admin`、`member_stream`、`admin_stream`，`outcome` 为 `ok`（插件给出了应答，插件自己的拒绝也算）、`unavailable`、`busy`、`timeout`、`failed`（依次对应 `PLUGIN_UNAVAILABLE`、`PLUGIN_BUSY`、`PLUGIN_TIMEOUT`、`PLUGIN_ROUTE_FAILED`） |
+| `gpuworks_plugin_call_seconds{id,class}` | histogram | 从调用开始到收到应答头或被拒的时间；桶上限 0.005、0.025、0.1、0.25、1、2.5、10、30、60 秒 |
+| `gpuworks_plugin_push_rows_total{id,kind}` | counter | 已提交的推送里的条目数：`availability` 的行、`node_holds` 的节点、`banners` 的横幅、`attestations` 的声明，`fleet_capacity` 每次记 1；被拒或被更新的推送取代的不计 |
+
+计数在调用路径上只做固定位置的原子加，不分配内存；计数器跨越插件的重启、停用与启用，卸载时丢弃。
 
 ### 调用与路由表
 

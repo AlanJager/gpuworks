@@ -230,7 +230,7 @@ func TestVerifyRefusesInOrder(t *testing.T) {
 		{name: "10 required capability missing", build: withSpec(func(s *extsign.Spec) {
 			s.Manifest.Requires = map[string]int{"table.availability": 2}
 			s.Manifest.MinCoreHint = "v27.3"
-		}), code: messages.ErrorPluginIncompatible, params: map[string]any{"capability": "table.availability", "version": 2, "offered": 1, "min_core_hint": "v27.3"}},
+		}), code: messages.ErrorPluginIncompatible, params: map[string]any{"id": "acme_backup", "capability": "table.availability", "version": 2, "offered": 1, "min_core_hint": "v27.3"}},
 		{name: "10 protocol not spoken", build: withSpec(func(s *extsign.Spec) { s.Manifest.Protocol = extapi.Range{Min: 2, Max: 3} }),
 			code: extapi.ErrorProtocolUnsupported},
 		{name: "11 publisher not allowed", build: minimal, edit: func(w *world, v *extpkg.Verifier) { v.Policy.AllowPublishers = []string{"beta"} },

@@ -50,14 +50,28 @@ func (p pushedHolder) Hold(f store.NodeHoldFacts) store.NodeHold {
 	return store.NodeHold(p.state.Hold(f.ID, f.OwnedCards))
 }
 
-// pushedBanners converts a snapshot's banners once per snapshot and
-// audience and answers the converted list until the snapshot changes. A
-// snapshot is never modified after it is published, so the address of its
-// first banner identifies the list; the cache keeps that list alive, so the
-// address is not reused while it is cached.
+// pushedBanners answers pushed state's banners for one viewer.
 type pushedBanners struct {
 	state        pushstate.Evaluator
-	admin, other atomic.Pointer[convertedBanners]
+	admin, other bannerCache
+}
+
+// adminRole is the role that sees administrator banners.
+const adminRole = "admin"
+
+func (b *pushedBanners) Banners(_ context.Context, viewer auth.Claims) []dto.ConsoleBanner {
+	if viewer.Role == adminRole {
+		return b.admin.convert(b.state.Banners(true))
+	}
+	return b.other.convert(b.state.Banners(false))
+}
+
+// bannerCache converts a banner list once and answers the converted list
+// until the list changes. A list is never modified after it is published,
+// so the address of its first banner identifies it; the cache keeps that
+// list alive, so the address is not reused while it is cached.
+type bannerCache struct {
+	last atomic.Pointer[convertedBanners]
 }
 
 type convertedBanners struct {
@@ -65,28 +79,19 @@ type convertedBanners struct {
 	out []dto.ConsoleBanner
 }
 
-// adminRole is the role that sees administrator banners.
-const adminRole = "admin"
-
-func (b *pushedBanners) Banners(_ context.Context, viewer auth.Claims) []dto.ConsoleBanner {
-	admin := viewer.Role == adminRole
-	list := b.state.Banners(admin)
+func (c *bannerCache) convert(list []pushstate.Banner) []dto.ConsoleBanner {
 	if len(list) == 0 {
 		return nil
 	}
-	cache := &b.other
-	if admin {
-		cache = &b.admin
-	}
-	if c := cache.Load(); c != nil && c.src == &list[0] {
-		return c.out
+	if cur := c.last.Load(); cur != nil && cur.src == &list[0] {
+		return cur.out
 	}
 	out := make([]dto.ConsoleBanner, 0, len(list))
 	for _, banner := range list {
 		out = append(out, dto.ConsoleBanner{ID: banner.ID, Severity: banner.Severity, Link: banner.Link,
 			Message: dto.ProductMessage{Code: banner.Notice.Code(), Params: banner.Notice.Params(), Message: banner.Notice.Error()}})
 	}
-	cache.Store(&convertedBanners{src: &list[0], out: out})
+	c.last.Store(&convertedBanners{src: &list[0], out: out})
 	return out
 }
 

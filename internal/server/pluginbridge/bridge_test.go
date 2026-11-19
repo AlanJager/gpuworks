@@ -38,6 +38,9 @@ type world struct {
 	pub  *extsign.Publisher
 	// static are the feature keys a compiled module (ops) declares.
 	static []featuregate.Feature
+	// offered, when set, replaces the capabilities the next bridge
+	// opened by openRunning offers, as a server that offers less would.
+	offered map[string]int
 	// gate is the feature gate of the last bridge opened, over its
 	// dynamic set; announced counts its feature announcements.
 	gate      *featuregate.Gate
@@ -119,6 +122,9 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 	})
 	if err != nil {
 		w.t.Fatal(err)
+	}
+	if w.offered != nil {
+		pkgs.Verifier.Offered = w.offered
 	}
 	sp := &refusingSpawner{}
 	dyn := featuregate.NewDynamicSet(w.static)

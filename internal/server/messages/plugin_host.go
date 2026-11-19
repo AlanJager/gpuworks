@@ -45,7 +45,7 @@ const (
 	// ErrorPluginKilled: the plugin process was ended by {signal}; it is
 	// restarted after a backoff.
 	ErrorPluginKilled = "PLUGIN_KILLED"
-	// ErrorPluginCrashloop: the plugin crashed {crashes} times within
+	// ErrorPluginCrashloop: plugin {id} crashed {crashes} times within
 	// {window_s} seconds; it is retried every {retry_s} seconds.
 	ErrorPluginCrashloop = "PLUGIN_CRASHLOOP"
 	// ErrorPluginUnhealthy: the plugin missed {misses} health probes in a
