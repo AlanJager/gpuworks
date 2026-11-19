@@ -201,3 +201,47 @@ test("terminal preflight propagates management expiry while retaining non-authen
 });
 
 after(() => { globalThis.EventSource = originalEventSource; });
+
+test("a new login switches active worker subscriptions without an intervening expiry, and worker failure keeps topics live", async () => {
+  const { openChangeStream } = await import("../src/events/changeStream.ts");
+  class WorkerFixture {
+    static all: WorkerFixture[] = [];
+    onerror: (() => void) | null = null;
+    sent: { topics?: string[]; close?: boolean }[] = [];
+    closed = false;
+    port = {
+      onmessage: null as ((event: { data: unknown }) => void) | null,
+      postMessage: (msg: { topics?: string[]; close?: boolean }) => this.sent.push(msg),
+      close: () => { this.closed = true; },
+    };
+    constructor(_url: URL, readonly options: { name: string }) { WorkerFixture.all.push(this); }
+  }
+  const original = Object.getOwnPropertyDescriptor(globalThis, "SharedWorker");
+  Object.defineProperty(globalThis, "SharedWorker", { configurable: true, value: WorkerFixture });
+  let errors = 0;
+  const stream = openChangeStream(() => { errors++; });
+  try {
+    const seen: string[] = [];
+    stream.addEventListener("node", event => seen.push((event as MessageEvent<string>).data));
+    stream.addEventListener("deployment", event => seen.push((event as MessageEvent<string>).data));
+    const first = WorkerFixture.all[0];
+    assert.deepEqual(first.sent.at(-1), { topics: ["node", "deployment"] });
+    first.port.onmessage?.({ data: { topic: "node", data: "before" } });
+    notifySessionAuthenticated();
+    const current = WorkerFixture.all.at(-1)!;
+    assert.ok(first.closed);
+    assert.notEqual(current.options.name, first.options.name);
+    assert.deepEqual(current.sent.at(-1), { topics: ["node", "deployment"] });
+    first.port.onmessage?.({ data: { topic: "node", data: "stale" } });
+    current.port.onmessage?.({ data: { topic: "deployment", data: "after" } });
+    current.port.onmessage?.({ data: { error: true } });
+    assert.equal(errors, 1);
+    current.onerror?.();
+    EventSourceFixture.sources.at(-1)!.emit("node", { key: "native" });
+    assert.deepEqual(seen, ["before", "after", '{"key":"native"}']);
+  } finally {
+    stream.close();
+    if (original) Object.defineProperty(globalThis, "SharedWorker", original);
+    else Reflect.deleteProperty(globalThis, "SharedWorker");
+  }
+});
