@@ -32,6 +32,10 @@ type exitOutput struct {
 	// error: what the container said before it gave up is then the reason
 	// there is.
 	tail []string
+	// waiting is the last lines with a line repeated in a row counted once,
+	// for a startup that timed out without naming an error: a process that
+	// hangs repeats one line, and what it printed before is where it stopped.
+	waiting []string
 }
 
 func (e *Engine) readExitOutput(ctx context.Context, id string) (exitOutput, bool) {
@@ -51,6 +55,9 @@ func (e *Engine) readExitOutput(ctx context.Context, id string) (exitOutput, boo
 	// failure message, the timeline or anything read from them.
 	for _, line := range enginelog.Tail(text, proto.MaxFailureEvidence) {
 		out.tail = append(out.tail, commandlog.Redact(line))
+	}
+	for _, line := range enginelog.TailDistinct(text, proto.MaxFailureEvidence) {
+		out.waiting = append(out.waiting, commandlog.Redact(line))
 	}
 	return out, true
 }
@@ -167,7 +174,12 @@ func (e *Engine) exitedFailure(ctx context.Context, id string, st runtime.Status
 // reason it is failed for (a startup that timed out, an unhealthy worker):
 // it is reclaimed next, and its output with it. Silence from a process that
 // is still running is not the exit without output CodeNoOutput names.
-func (e *Engine) attachOutput(ctx context.Context, id string, failure *proto.RuntimeFailure) {
+//
+// The process has not exited, so its last line is not a reason and never
+// joins the message. A startup that timedOut and showed no known failure and
+// no error line still carries its last lines as evidence: they are all there
+// is to say where it hung.
+func (e *Engine) attachOutput(ctx context.Context, id string, failure *proto.RuntimeFailure, timedOut bool) {
 	out, read := e.readExitOutput(ctx, id)
 	if !read {
 		return
@@ -175,6 +187,9 @@ func (e *Engine) attachOutput(ctx context.Context, id string, failure *proto.Run
 	if _, silent := out.cause(enginelog.CodeNoOutput); silent {
 		out.causes = nil
 	}
-	out.tail = nil // the process has not exited: its last line is not a reason
+	out.tail = nil
+	if timedOut && len(out.causes) == 0 {
+		out.tail = out.waiting
+	}
 	out.attach(failure)
 }

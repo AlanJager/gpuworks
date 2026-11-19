@@ -1638,6 +1638,7 @@
   "runtimeFailure": {
     "rank": "Rank {{rank}} on {{node}}: {{text}}",
     "evidence": "{{text}} Last error: {{evidence}}",
+    "lastOutput": "{{text}} Last output: {{evidence}}",
     "causes": "{{text}} Output shows: {{causes, list}}."
   },
   "consoleExtension": {

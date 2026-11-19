@@ -1638,6 +1638,7 @@
   "runtimeFailure": {
     "rank": "{{node}} 上的 rank {{rank}}：{{text}}",
     "evidence": "{{text}}最后的错误：{{evidence}}",
+    "lastOutput": "{{text}}最后的输出：{{evidence}}",
     "causes": "{{text}}输出显示：{{causes, list}}。"
   },
   "consoleExtension": {

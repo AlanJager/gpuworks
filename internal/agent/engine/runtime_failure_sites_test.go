@@ -373,10 +373,10 @@ func TestOrdinaryLastLinesAreNotAReasonOutsideAStartupExit(t *testing.T) {
 	if oom.Code != proto.ErrorContainerOOMKilled || oom.Evidence != nil || msg != "headless worker OOM-killed" {
 		t.Fatalf("oom exit: %+v, message %q", oom, msg)
 	}
-	timeout := proto.RuntimeFailure{Code: proto.ErrorWorkerReadinessTimeout, Phase: proto.PhaseHealthCheck}
-	e.attachOutput(t.Context(), "c", &timeout)
-	if timeout.Evidence != nil {
-		t.Fatalf("running container: evidence %q", timeout.Evidence)
+	unhealthy := proto.RuntimeFailure{Code: proto.ErrorContainerUnhealthy, Phase: proto.PhaseHealthCheck}
+	e.attachOutput(t.Context(), "c", &unhealthy, false)
+	if unhealthy.Evidence != nil {
+		t.Fatalf("running container: evidence %q", unhealthy.Evidence)
 	}
 }
 
