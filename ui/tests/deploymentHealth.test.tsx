@@ -125,7 +125,7 @@ test("the health tag names each status, with the last time when it answered", as
       <HealthTag health={health({ status: "failed", last: { at_ms: at, status: "failed", latency_ms: 30, http_status: 503, instance_uuid: "abcdef0123456789", message: "engine overloaded" }, recent: [{ at_ms: at, status: "failed", latency_ms: 30 }] })} />
     </I18nextProvider>,
   );
-  fireEvent.mouseEnter(screen.getByText("Failed"));
+  fireEvent.focus(screen.getByText("Failed").closest("[tabindex]")!);
   await waitFor(() => screen.getByText("Reason: engine overloaded"));
   screen.getByText("Last check: Failed · 30 ms · 2 min ago");
   screen.getByText("Answered by abcdef01");

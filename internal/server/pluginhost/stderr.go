@@ -21,19 +21,34 @@ const (
 	stderrRingBytes   = 1 << 20
 )
 
-// ring keeps the last n bytes written to it.
+// ring keeps the last n bytes written to it, and counts every byte ever
+// written (total), so a reader resumes at an offset and learns what it
+// missed when the ring wrapped past it.
 type ring struct {
-	mu   sync.Mutex
-	buf  []byte
-	next int
-	full bool
+	mu    sync.Mutex
+	buf   []byte
+	next  int
+	full  bool
+	total uint64
+	// onWrite is called after every write, outside the lock; nil calls
+	// nothing.
+	onWrite func()
 }
 
 func newRing(n int) *ring { return &ring{buf: make([]byte, n)} }
 
 func (r *ring) Write(p []byte) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.write(p)
+	r.total += uint64(len(p))
+	notify := r.onWrite
+	r.mu.Unlock()
+	if notify != nil && len(p) > 0 {
+		notify()
+	}
+}
+
+func (r *ring) write(p []byte) {
 	if len(p) >= len(r.buf) {
 		copy(r.buf, p[len(p)-len(r.buf):])
 		r.next, r.full = 0, true
@@ -54,10 +69,33 @@ func (r *ring) Write(p []byte) {
 func (r *ring) Bytes() []byte {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.keptLocked()
+}
+
+func (r *ring) keptLocked() []byte {
 	if !r.full {
 		return append([]byte(nil), r.buf[:r.next]...)
 	}
 	return append(append([]byte(nil), r.buf[r.next:]...), r.buf[:r.next]...)
+}
+
+// Since returns the output written from byte offset off on (offsets count
+// every byte ever written), the offset after it, and whether the ring had
+// already dropped some of it, in which case data starts at the oldest byte
+// kept (from). An offset past the end is one of logs since forgotten: it
+// reads the whole ring, as truncated.
+func (r *ring) Since(off uint64) (data []byte, from, next uint64, truncated bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	kept := r.keptLocked()
+	oldest := r.total - uint64(len(kept))
+	switch {
+	case off == r.total:
+		return nil, r.total, r.total, false
+	case off < oldest || off > r.total:
+		return kept, oldest, r.total, true
+	}
+	return kept[off-oldest:], off, r.total, false
 }
 
 // forwardStderr copies a plugin's stderr into the ring and, within the

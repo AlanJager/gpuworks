@@ -11,11 +11,12 @@
 //   (simple-icons 16.35.0, CC0-1.0) beside "Apple" outlined from Liberation
 //   Sans Bold, in Apple's near-black, to sit with the other wordmarks.
 // Every mark is a horizontal wordmark on a transparent canvas: SVG (preferred)
-// or PNG with alpha, no padding box or background of its own, readable in the
-// light and dark themes. The Go tests in internal/uiassets
-// (TestVendorLogosHaveTransparentBackgrounds, TestVendorAssetsMatchLogoFiles)
-// enforce this and that this map and the directory match (docs/dev/ui.md,
-// "Vendor marks").
+// or PNG with alpha, no padding box or background of its own. Draw a mark only
+// with VendorMarkImage (VendorLogo.tsx), which gives it the plate its ink tone
+// (VENDOR_LOGO_INK) needs on each theme. The Go tests in internal/uiassets
+// enforce the canvas, that this map and the directory match, that every mark
+// declares an ink tone its artwork measures up to, and that no other file
+// draws a mark (docs/dev/ui.md, "Vendor marks").
 export const VENDOR_ASSETS: Record<string, string> = {
   nvidia: "/vendor-logos/nvidia.svg",
   amd: "/vendor-logos/amd.svg",
@@ -25,6 +26,21 @@ export const VENDOR_ASSETS: Record<string, string> = {
   // Official company site: https://www.kunlunxin.com/wp-content/uploads/2023/01/logo-quan.png
   kunlunxin: "/vendor-logos/kunlunxin.png",
   apple: "/vendor-logos/apple.svg",
+};
+
+// The tone of each mark's ink, which decides its plate. Dark ink sits on the
+// light theme's page as is and on the --vendor-logo-light plate in the dark
+// theme; light ink sits on the --vendor-logo-dark plate in both themes.
+// TestVendorLogoInkReadsOnItsSurfaces measures the artwork against the
+// declared tone, so a wrong entry fails the build.
+export const VENDOR_LOGO_INK: Record<string, "dark" | "light"> = {
+  nvidia: "dark",
+  amd: "dark",
+  ascend: "dark",
+  thead: "dark",
+  hygon: "dark",
+  kunlunxin: "light",
+  apple: "dark",
 };
 
 // The height each mark is shown at when marks sit side by side. One box does

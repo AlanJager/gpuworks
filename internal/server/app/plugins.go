@@ -72,13 +72,17 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		return err
 	}
 	rt := m.cfg.PluginRuntime
+	maxGrace, err := m.cfg.Plugins.Policy.DownGraceCeiling()
+	if err != nil {
+		return err
+	}
 	cgRoot, cgParent := pluginCgroups(h.Log(), pluginexec.DetectCgroup, pluginexec.EnterServerLeaf)
 	bus := h.Bus()
 	h.reg.dynamic = featuregate.NewDynamicSet(h.reg.features)
 	b, err := pluginbridge.Open(ctx, pluginbridge.Config{
 		Packages: pkgs,
 		State: pushstate.Config{Store: m.st, Fleet: PushedStateFleet(m.st), Bus: bus, FleetTopic: store.NodeFleetTopic,
-			CoreVersion: version.Version, Clock: rt.Clock, TickInterval: rt.TickInterval,
+			CoreVersion: version.Version, Clock: rt.Clock, TickInterval: rt.TickInterval, MaxDownGrace: maxGrace,
 			Effects: pushstate.Effects{
 				ReapplyHolds: func(nodes []uint) {
 					if nodes == nil {
@@ -189,10 +193,6 @@ func (p pluginAdmin) Disable(ctx context.Context, id, by string) (dto.Plugin, er
 	return pluginDTO(v), productErrorOf(err)
 }
 
-func (p pluginAdmin) Uninstall(ctx context.Context, id string, purge bool, by string) error {
-	return productErrorOf(p.b.Uninstall(ctx, id, purge, by))
-}
-
 // productErrorOf hands a wire refusal from pkg/extapi on as the product
 // error it is, so the API keeps its code and params.
 func productErrorOf(err error) error {
@@ -217,7 +217,14 @@ func pluginPermissions(names []string) []dto.PluginPermission {
 func pluginDTO(v pluginbridge.View) dto.Plugin {
 	out := dto.Plugin{ID: v.ID, Version: v.Version, Publisher: v.Publisher, Trust: v.Trust, Enabled: v.Enabled, State: v.State,
 		Restarts: v.Restarts, Parts: nonNil(v.Parts), Isolation: v.Isolation, Roles: nonNil(v.Roles), Permissions: pluginPermissions(v.Permissions),
-		ApproveHash: v.ApproveHash, Actions: nonNil(v.Actions)}
+		ApproveHash: v.ApproveHash, Previous: v.Previous, OnDemand: v.OnDemand, Features: make([]dto.PluginFeature, len(v.Features)),
+		Actions: nonNil(v.Actions)}
+	for i, f := range v.Features {
+		out.Features[i] = dto.PluginFeature{Key: f.Key, Availability: f.Access}
+	}
+	if v.Pending != "" {
+		out.Pending = &dto.PluginPending{Version: v.Pending}
+	}
 	if v.Code != "" {
 		out.Message = &dto.ProductMessage{Code: v.Code, Params: v.Params, Message: v.Message}
 	}

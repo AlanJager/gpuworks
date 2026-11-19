@@ -1,7 +1,7 @@
 import { RightOutlined } from "@ant-design/icons";
 import { SideDrawer } from "../../ui-kit/SideDrawer";
 import { Tabs, TabsList, TabItem, TabPanel } from "../ui/tabs";
-import type { TableProps } from "antd";
+import type { ResourceExpandable } from "../resourceTable/ResourceTable";
 import { useEffect, useState, type ReactNode } from "react";
 
 export const DETAIL_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
@@ -87,7 +87,7 @@ export function detailExpandable<T>(
   render: (record: T) => ReactNode,
   labels: { expand: string; collapse: string },
   options: { rowExpandable?: (record: T) => boolean; rowClick?: boolean } = {},
-): NonNullable<TableProps<T>["expandable"]> {
+): ResourceExpandable<T> {
   const { rowExpandable, rowClick = true } = options;
   return {
     expandRowByClick: rowClick,

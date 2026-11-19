@@ -38,7 +38,7 @@ gpuworks restarted (systemd)
 | | [`expose`](#gpuworks-expose) | 给控制台发布一个公网入口 | 运维，控制面在 NAT 后面时 |
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
-| | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、启停、卸载插件包，查看推送状态，导入信任与包索引，降级前检查兼容性 | 运维，server 停止时也能用；启停与卸载要求 server 已停止 |
+| | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、启停、卸载插件包，查看推送状态，导入信任与包索引，降级前检查兼容性，离线校正插件时钟与释放限制表 | 运维，server 停止时也能用；启停、卸载、时钟校正与清除表要求 server 已停止 |
 | | [`host-identity`](#gpuworks-host-identity) | 以 root 读出只有 root 能读的主机身份并写进 `/run/gpuworks/host-identity.json` | systemd 在每次启动 server 之前执行，不手工运行 |
 | | `version` | 打印版本 | 任何人 |
 | | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
@@ -287,14 +287,22 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `list` | 重新校验每个已安装的包（只重新哈希大小、修改时间或 inode 变了的文件），列出 id、版本、发布者、信任来源（`project` 根签发或 `host` 主机信任的签发者）、是否启用与状态：`ok`、`revoked`（已吊销但不自动停止），或 `broken: <码>` |
 | `verify ID` | 重新校验已安装的包（重新哈希全部文件）并打印结果；不再通过校验或已吊销时以 `PLUGIN_BROKEN` 拒绝，没装时 `PLUGIN_NOT_INSTALLED`。只读，server 运行时也能用 |
 | `enable ID` / `disable ID` | 允许或禁止包的 server 部分运行，下次启动 server 时生效。`enable` 先像 `verify` 一样重新校验，校验不过就拒绝（`PLUGIN_BROKEN`），不改开关。要求 server 已停止 |
-| `uninstall ID [--purge]` | 卸载：删除包与控制文件，并删除它推送的全部状态（各类推送表、停机记录与管理员覆盖），释放它占住的节点，之后重装同一 id 从空状态开始。保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包已不在而推送状态还在时（上次卸载中途失败），再运行一次会补删并以 0 退出。包的主机配置文件属于 root，服务账号删不掉：还留在主机上时，命令最后打印 `sudo gpuworks plugin host-setup --prune`。包的最低版本永远保留，旧构建不能靠重装回来。`remove` 是它的旧名，仍可用。要求 server 已停止 |
+| `uninstall ID [--purge] [--yes]` | 先从数据库算出并打印卸载会改变什么（删几张表、释放哪些只由它保持的节点、取消哪些集群上限、去掉几个功能的可用性行、几个横幅与覆盖）；不带 `--yes` 时到此为止，什么都不改并以非 0 退出，带 `--yes` 才卸载。卸载：删除包与控制文件，并删除它推送的全部状态（各类推送表、停机记录与管理员覆盖），释放它占住的节点，之后重装同一 id 从空状态开始。保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记；对已经不带 `--purge` 卸载过、数据还在的包再带 `--purge` 运行，同样先打印要清除的数据，没有 `--yes` 不动。包已不在而推送状态还在时（上次卸载中途失败），再运行一次会补删并以 0 退出。包的主机配置文件属于 root，服务账号删不掉：还留在主机上时，命令最后打印 `sudo gpuworks plugin host-setup --prune`。包的最低版本永远保留，旧构建不能靠重装回来。`remove` 是它的旧名，仍可用。要求 server 已停止 |
 | `state ID` | 从数据库打印该 id 推送的状态：每张表的 schema、代数、推送时间与摘要，以及其中的行、停机记录与覆盖。只读；server 运行时会先提示这些行最多比它晚一个写入周期 |
 | `trust import FILE [--cert publisher.crt]` | 导入根签名的信任更新、根签名的吊销列表，或发布者自己的吊销列表（需 `--cert` 给出该发布者的证书）；序号不比已应用的新时拒绝（`PLUGIN_TRUST_REPLAYED`） |
 | `index import FILE --cert publisher.crt` | 导入发布者的包索引：应用其中的吊销与最低版本，保存到 `<data>/plugins/.index/`，并打印每个包会装哪个版本，以及更新而本 server 运行不了的版本（`PLUGIN_NEEDS_NEWER_CORE`） |
 | `compat` | 只读检查：不迁移、不写数据库，报告会让本构建拒绝启动的持久化版本标记，以及因数据标记过新、需要本 server 没有的能力或清单读不了而不能运行的包。降级 server 之前用旧版本的二进制运行它；有问题时以 1 退出 |
 | `host-setup [--id ID \| --prune] [--service-user USER]` | 以 root 执行（需要时经 `sudo` 提权）已安装的包声明的[主机配置](../dev/extensions.md#主机配置)：建系统组 `gpuworks-usb` 并把服务账号加进去，为每个包写 udev 规则文件，让 udev 重新加载并对已插入的设备重新执行规则，最后写 root 所有的已应用记录。只采用通过校验且未吊销的包的步骤；`--id` 只处理这一个包（没装 `PLUGIN_NOT_INSTALLED`，不再通过校验 `PLUGIN_BROKEN`，没有主机步骤则报错）；`--prune` 处理全部包，并删除已卸载或不再声明步骤的包留下的规则文件与记录。服务账号默认是数据目录的所有者，新加进组后要重启 server 才生效；等待主机配置的插件在再次启用或重启 server 时启动。再运行一次什么都不改。不写数据目录，server 运行时也能用；Linux 以外的平台以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝 |
+| `clock reset --to RFC3339 --reason TEXT` | 以 root 执行，要求 server 已停止：记下一次插件时钟（extclock）校正，供墙钟曾被拨快、高水位因此被带到将来的站点使用。数据库里保存的高水位必须比墙钟靠前（否则没有可校正的，拒绝）；`--to` 不能早于墙钟（先把墙钟改对），不能晚于高水位（这条命令只往回拨），也不能比高水位早 366 天以上（`PLUGIN_CLOCK_CORRECTION_TOO_LARGE`）。命令只往[维护日志](#维护日志)追加一条记录，不改数据库；server 下次启动时按运行中的校正路径应用：写审计日志、显示 `PLUGIN_CLOCK_CORRECTED` 横幅（`by` 为执行者），插件经 `GET /host/v1/meta` 读到校正后的高水位，之后的步骤重新未生效 |
+| `pstate clear ID KIND --reason TEXT` | 以 root 执行，要求 server 已停止：记下释放一个包推送的一张限制表（`node_holds` 或 `fleet_capacity`）及管理员对它的覆盖，供插件自己释放不了时使用。授权、横幅与证明不能这样清除（`BAD_REQUEST`），只能由插件再推或卸载。命令打印该包现在持有的行数，只往[维护日志](#维护日志)追加一条记录，不改数据库；server 下次启动时在一次提交里删除该表与它的覆盖并重新应用调度保持。该表已不存在时什么都不改，所以重复执行无害 |
 
-每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。`enable`、`disable`、`uninstall` 改动的是运行中 server 还留在内存里、会悄悄覆盖回去的状态，所以要求 server 已停止：它们拿不到 `<data>/server.lock`（见[控制面安装布局](install-layout.md)）时以 2 退出，提示 `the server (pid N) is running; stop it first`（锁文件里没有存活的 server pid 时，即持有者可能是另一条维护命令，改为点名锁文件：`another gpuworks process holds <data>/server.lock; …`），什么都不改；拿到锁后一直持有到命令结束，期间 server 启不来。数据目录必须已存在，不会新建。其余拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
+每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。`enable`、`disable`、`uninstall` 改动的是运行中 server 还留在内存里、会悄悄覆盖回去的状态，所以要求 server 已停止（`clock reset` 与 `pstate clear` 同样要求）：它们拿不到 `<data>/server.lock`（见[控制面安装布局](install-layout.md)）时以 2 退出，提示 `the server (pid N) is running; stop it first`（锁文件里没有存活的 server pid 时，即持有者可能是另一条维护命令，改为点名锁文件：`another gpuworks process holds <data>/server.lock; …`），什么都不改；拿到锁后一直持有到命令结束，期间 server 启不来。数据目录必须已存在，不会新建。其余拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
+
+### 维护日志
+
+`clock reset` 与 `pstate clear` 各往 `<data>/plugins/maintenance.jsonl`（0600，属主为数据目录的所有者，写入后 fsync）追加一行 JSON：`v`（版本，1）、`op`（`clock_reset` 或 `pstate_clear`）、`at`（执行时的墙钟）、`by`（经 `sudo` 执行时为调用 `sudo` 的账号，否则为当前账号）、`owner` 与 `kind`（清除的表）、`to`（校正到的时刻）与 `reason`。命令本身不改数据库，所以运行中的 server 不可能把它覆盖回去。
+
+server 每次启动时，在读入推送状态之后、拉起任何插件之前，按顺序经运行中的同一条路径应用每一条：时钟校正走 `State.CorrectClock`，清除走 `State.ClearTable`；每条应用后写一行 `audit=true` 的日志，带 `op`、`by` 与 `reason`。全部应用后清空日志。某一条应用失败时，停在这一条：它与之后的记录留在日志里，下次启动再试，之前已应用的记录从日志里删掉；同时显示管理员横幅 `PLUGIN_MAINTENANCE_FAILED`（`op` 与失败的码：`op` 为该条的 `clock_reset` 或 `pstate_clear`，日志本身读不出来时为 `journal`，某行解不开或写的是本版本不认识的操作时为 `unknown`；读不懂的记录码为 `BAD_REQUEST`），直到下次启动。
 
 本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
 

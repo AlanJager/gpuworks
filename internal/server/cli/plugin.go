@@ -27,12 +27,14 @@ const pluginUsage = `  gpuworks plugin install --file PKG.gwpkg [--disabled]
   gpuworks plugin verify ID
   gpuworks plugin enable ID
   gpuworks plugin disable ID
-  gpuworks plugin uninstall ID [--purge]
+  gpuworks plugin uninstall ID [--purge] [--yes]
   gpuworks plugin state ID
   gpuworks plugin trust import FILE [--cert publisher.crt]
   gpuworks plugin index import FILE --cert publisher.crt
   gpuworks plugin compat
   gpuworks plugin host-setup [--id ID | --prune] [--service-user USER]   (as root)
+  gpuworks plugin clock reset --to RFC3339 --reason TEXT   (as root, server stopped)
+  gpuworks plugin pstate clear ID KIND --reason TEXT       (as root, server stopped)
                  (each also takes [--data DIR] [--db PATH] [--config server.yaml])`
 
 // errCompatFindings is returned by plugin compat when it printed findings.
@@ -42,7 +44,9 @@ var errCompatFindings = errors.New("this server build cannot run everything in t
 // server stopped: it opens the database the way the other maintenance
 // commands do, and the plugins directory under its own lock. enable,
 // disable and uninstall change what a running server keeps in memory, so
-// they also require it to be stopped (requireServerStopped).
+// they also require it to be stopped (requireServerStopped), as do the
+// root-only clock reset and pstate clear, which record offline maintenance
+// for the next boot to apply.
 func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		fmt.Fprintln(stdout, "usage:\n"+pluginUsage)
@@ -78,6 +82,10 @@ func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer
 		return o.pluginCompat(rest, stdout)
 	case "host-setup":
 		return o.pluginHostSetup(log, rest, stdout)
+	case "clock":
+		return o.pluginClock(log, rest, stdout)
+	case "pstate":
+		return o.pluginPstate(log, rest, stdout)
 	case "help", "-h", "--help":
 		fmt.Fprintln(stdout, "usage:\n"+pluginUsage)
 		return nil

@@ -38,6 +38,7 @@ const (
 	ErrorInstanceNotRunning          = "INSTANCE_NOT_RUNNING"
 	ErrorInstanceOffline             = "INSTANCE_OFFLINE"
 	ErrorModelNotReady               = "MODEL_NOT_READY"
+	ErrorModelNodeOffline            = "MODEL_NODE_OFFLINE"
 	ErrorDeploymentStartFailed       = "DEPLOYMENT_START_FAILED"
 	ErrorPDPlacementUnreadable       = "PD_PLACEMENT_UNREADABLE"
 	ErrorPDPrefillUnavailable        = "PD_PREFILL_UNAVAILABLE"
@@ -103,6 +104,7 @@ var gatewayErrors = map[string]gatewayError{
 	ErrorInstanceNotRunning:       {http.StatusServiceUnavailable, typeServer, "", "instance {instance} is not awake and running"},
 	ErrorInstanceOffline:          {http.StatusServiceUnavailable, typeServer, "", "instance {instance} is offline"},
 	ErrorModelNotReady:            {http.StatusServiceUnavailable, typeServer, "", "no reachable running instance for {model}; check deployment status and node connectivity"},
+	ErrorModelNodeOffline:         {http.StatusServiceUnavailable, typeServer, "", "{model} has a running instance, but its node has no live agent connection; check the node"},
 	ErrorDeploymentStartFailed:    {http.StatusServiceUnavailable, typeServer, "", "deployment for {model} failed to start; see the deployment list"},
 	ErrorPDPlacementUnreadable:    {http.StatusServiceUnavailable, typeServer, "", "the deployment's PD placement cannot be read"},
 	ErrorPDPrefillUnavailable:     {http.StatusServiceUnavailable, typeServer, "", "no prefill instance could take the request ({reason})"},

@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/commandlog"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/pkg/enginelog"
 )
@@ -15,6 +16,10 @@ import (
 // can sit a few hundred lines above the end.
 const exitTailLines = 1000
 
+// exitTailBytes bounds how much of those lines is kept: their end, since the
+// reason a container stopped is the last thing it printed.
+const exitTailBytes = 512 * 1024
+
 // exitOutput is what a stopped container's output says about why it
 // stopped: the known failures it shows (enginelog.Classify) and the error the
 // engine's failure began with (enginelog.RootCause, which looks past "See
@@ -23,6 +28,10 @@ const exitTailLines = 1000
 type exitOutput struct {
 	causes []enginelog.Cause
 	root   string
+	// tail is the output's last lines, for a startup exit that named no
+	// error: what the container said before it gave up is then the reason
+	// there is.
+	tail []string
 }
 
 func (e *Engine) readExitOutput(ctx context.Context, id string) (exitOutput, bool) {
@@ -31,12 +40,50 @@ func (e *Engine) readExitOutput(ctx context.Context, id string) (exitOutput, boo
 		return exitOutput{}, false
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, 512*1024))
+	text, err := readEnd(rc, exitTailBytes)
 	if err != nil {
 		return exitOutput{}, false
 	}
-	text := string(data)
-	return exitOutput{causes: enginelog.Classify(text), root: enginelog.RootCause(text)}, true
+	out := exitOutput{causes: enginelog.Classify(text), root: commandlog.Redact(enginelog.RootCause(text))}
+	// These lines are whatever the container printed last, not lines chosen
+	// for naming an error: a launch script tracing its commands ends on a
+	// command line, and what it passed as a credential is not for the
+	// failure message, the timeline or anything read from them.
+	for _, line := range enginelog.Tail(text, proto.MaxFailureEvidence) {
+		out.tail = append(out.tail, commandlog.Redact(line))
+	}
+	return out, true
+}
+
+// readEnd reads r to its end and returns the last limit bytes of it, from
+// the start of a line when the output was longer than that.
+func readEnd(r io.Reader, limit int) (string, error) {
+	kept := make([]byte, 0, limit)
+	buf := make([]byte, 32*1024)
+	cut := false
+	for {
+		n, err := r.Read(buf)
+		kept = append(kept, buf[:n]...)
+		if over := len(kept) - limit; over > 0 {
+			kept = append(kept[:0], kept[over:]...)
+			cut = true
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	if cut {
+		for i, b := range kept {
+			if b == '\n' || b == '\r' {
+				kept = kept[i+1:]
+				break
+			}
+		}
+	}
+	return string(kept), nil
 }
 
 // attach puts the output's causes and root-cause line on failure.
@@ -49,15 +96,19 @@ func (o exitOutput) attach(failure *proto.RuntimeFailure) {
 		}
 		failure.Causes = append(failure.Causes, cause)
 	}
-	if o.root != "" {
+	switch {
+	case o.root != "":
 		failure.Evidence = []string{o.root}
+	case len(o.tail) > 0:
+		failure.Evidence = o.tail
 	}
 }
 
 // message is the English fallback for an exit: a missing glibc replaces it
 // (the exit status says nothing more), a dGPU limit refusal or the root-cause
-// line is added to base, and an exit that printed nothing says so, which a
-// full disk also produces.
+// line is added to base, a startup exit that named no error adds its last
+// line, and an exit that printed nothing says so, which a full disk also
+// produces.
 func (o exitOutput) message(base string) string {
 	if c, ok := o.cause(enginelog.CodeGLIBCTooOld); ok {
 		return c.Fallback()
@@ -67,6 +118,9 @@ func (o exitOutput) message(base string) string {
 	}
 	if o.root != "" {
 		return base + ": " + o.root
+	}
+	if len(o.tail) > 0 {
+		return base + ": " + o.tail[len(o.tail)-1]
 	}
 	if _, ok := o.cause(enginelog.CodeNoOutput); ok {
 		return base + " with no output"
@@ -95,6 +149,13 @@ func (e *Engine) exitedFailure(ctx context.Context, id string, st runtime.Status
 		failure.Code, failure.OOMKilled = proto.ErrorContainerOOMKilled, true
 	}
 	out, _ := e.readExitOutput(ctx, id)
+	if oom || phase == proto.PhaseServing || len(out.causes) > 0 {
+		// A kill for memory and a known failure are their own reason (the
+		// known failure carries its lines as its evidence), and an engine
+		// that stopped while serving ends on ordinary lines that say nothing
+		// about why.
+		out.tail = nil
+	}
 	out.attach(&failure)
 	if oom {
 		return failure, oomMessage
@@ -114,5 +175,6 @@ func (e *Engine) attachOutput(ctx context.Context, id string, failure *proto.Run
 	if _, silent := out.cause(enginelog.CodeNoOutput); silent {
 		out.causes = nil
 	}
+	out.tail = nil // the process has not exited: its last line is not a reason
 	out.attach(failure)
 }

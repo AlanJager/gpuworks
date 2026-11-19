@@ -70,6 +70,9 @@ func (b *Bridge) refreshHealth() {
 	b.health.Lock()
 	defer b.health.Unlock()
 	list := bannersOf(b.healthViews())
+	if m := b.maintenance.Load(); m != nil {
+		list = sortBanners(append(list, *m))
+	}
 	if cur := b.banners.Load(); (cur == nil && len(list) == 0) || (cur != nil && sameHealthBanners(*cur, list)) {
 		b.banners.Store(&list)
 		return
@@ -88,6 +91,11 @@ func bannersOf(views []View) []pushstate.Banner {
 			list = append(list, *h.banner)
 		}
 	}
+	return sortBanners(list)
+}
+
+// sortBanners orders list danger first, then by id.
+func sortBanners(list []pushstate.Banner) []pushstate.Banner {
 	slices.SortStableFunc(list, func(x, y pushstate.Banner) int {
 		if rank(x.Severity) != rank(y.Severity) {
 			return rank(x.Severity) - rank(y.Severity)
@@ -113,8 +121,9 @@ func sameHealthBanners(a, b []pushstate.Banner) bool {
 
 // HealthBanners are the administrator banners of the installed plugins'
 // health: a crashlooping (PLUGIN_CRASHLOOP), revoked (PLUGIN_REVOKED) or
-// incompatible (PLUGIN_INCOMPATIBLE) enabled package, danger first, then by
-// id. The list is held in memory, never persisted, and never modified
+// incompatible (PLUGIN_INCOMPATIBLE) enabled package, and an offline
+// maintenance journal entry that did not apply (PLUGIN_MAINTENANCE_FAILED),
+// danger first, then by id. The list is held in memory, never persisted, and never modified
 // after it is returned, so a caller may cache what it derives from it by
 // its first element's address.
 func (b *Bridge) HealthBanners() []pushstate.Banner {
@@ -209,8 +218,8 @@ func (b *Bridge) countApplied(owner, kind string, entries int) {
 }
 
 // forgetHealth drops what the bridge keeps in memory for an uninstalled
-// package: its crashloop latch and its counters. Its banners went with its
-// entry.
+// package: its crashloop latch, and the plugin host's stopped instance,
+// counters and logs of it. Its banners went with its entry.
 func (b *Bridge) forgetHealth(id string) {
 	b.mu.Lock()
 	_, installed := b.entries[id]
@@ -219,6 +228,6 @@ func (b *Bridge) forgetHealth(id string) {
 	}
 	b.mu.Unlock()
 	if !installed {
-		b.host.ForgetMetrics(id)
+		b.host.Forget(id)
 	}
 }

@@ -1,5 +1,5 @@
-import { Alert } from "antd";
 import { useTranslation } from "react-i18next";
+import { Notice } from "../ui-kit/Notice";
 
 // Quick-tunnel hostnames are assigned per connector run, so a node saved with
 // one stops being able to reach the server as soon as the connector restarts.
@@ -30,11 +30,8 @@ export default function TemporaryAddressHint({ value }: { value: string }) {
     return null;
   }
   return (
-    <Alert
-      type="warning"
-      showIcon
-      message={t("temporaryAddress.message")}
-      description={t("temporaryAddress.detail")}
-    />
+    <Notice tone="warning" role="alert" title={t("temporaryAddress.message")}>
+      {t("temporaryAddress.detail")}
+    </Notice>
   );
 }

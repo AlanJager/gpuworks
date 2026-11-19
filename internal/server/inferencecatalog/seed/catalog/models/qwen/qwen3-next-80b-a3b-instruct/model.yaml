@@ -230,6 +230,11 @@ specs:
   # NPU graph capture stalls in NCCL wait on the current A3 runner. The eager
   # path completed health and chat at TP4 on four 910C dies.
   - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "NPU graph capture stalls in NCCL wait on the current A3 runner; the eager path completed health and chat at TP4 on four 910C dies."
+    detail_zh: "当前 A3 镜像上 NPU 图捕获卡在 NCCL 等待；eager 路径在四个 910C die 上以 TP4 通过健康检查并完成对话。"
   env:
     GDN_ATTN_BACKEND_TRITON: '1'
   placement:

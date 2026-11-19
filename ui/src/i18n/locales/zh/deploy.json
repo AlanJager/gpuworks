@@ -180,7 +180,7 @@
     "does_not_wait_for_yield": "{{node}} 的 GPU {{gpus}} 被 {{occupants}}占用；本部署不自动出让，不会等占卡的部署让卡。为本部署开启休眠并选择能共卡的出让策略，即可等 {{yielders}} 按出让策略让卡。",
     "held_by_non_yielding": "{{node}} 的 GPU {{gpus}} 被 {{occupants}}占用；{{blockers}} 不自动出让，不会把卡让给本部署。可以换一张卡，或为 {{blockers}} 开启休眠并选择能共卡的出让策略。",
     "model_unavailable": "模型 {{model}} 在节点 {{node}} 上获取失败或在等待选择来源，副本不会在这台节点上启动；请在模型页为该节点重试同步或改用公网下载。",
-    "image_delivery_waiting": "正在等待镜像 {{image}} 到达节点 {{node}}。可在镜像页查看传输进度；停滞的节点间传输会被取消，以便重试。",
+    "image_delivery_waiting": "正在等待镜像 {{image}} 到达节点 {{node}}。",
     "image_delivery_failed": "镜像 {{image}} 在节点 {{node}} 上预拉取失败，多机部署因此无法启动；平台会继续重试，也可在镜像页查看原因或检查拉取设置。",
     "image_source_forbidden": "节点 {{node}} 适用的来源规则禁止了镜像 {{image}} 的所有来源（没有替代地址又关闭了回源），副本无法启动；请在设置 → 拉取设置 → 来源规则里调整。",
     "weights_fetch_forbidden": "来源规则禁止了节点 {{node}} 下载模型 {{model}} 的所有地址，也没有可复制的节点或共享存储；请在设置 → 拉取设置 → 来源规则里调整，或在已有该模型的节点上登记路径、放进共享存储。",

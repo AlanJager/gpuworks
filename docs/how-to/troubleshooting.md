@@ -1166,7 +1166,8 @@ SGLang 默认的 `/health` 会向调度器提交一个只生成 1 个 token 的�
 | 404 | `MODEL_ROUTE_NOT_EXPOSED` | 只有试验场（`/api/v1/playground/v1/*`）会做 contract 检查并返回它：该部署的 API contract 不包含这个接口（比如对 Chat 模型调 `/v1/embeddings`）；`GET /api/v1/playground/openapi.json` 可查看它声明了哪些接口。公网 `/v1` 不做这项检查，请求原样转给引擎，由引擎自己返回 404 等 |
 | 404 | `ROUTE_NOT_FOUND` | 访问的监听地址不承载推理 API，检查 `listen.gateway` |
 | 503 | `MODEL_ASLEEP` | 没有可服务的清醒副本；在控制台或调用 `POST /api/v1/deployments/{id}/wake` 唤醒，定时计划或等位中的唤醒也会唤醒它，见[调度分析](scheduling-center.md)。休眠意图发出后，所选实例即不再接收新请求 |
-| 503 | `MODEL_NOT_READY`、`DEPLOYMENT_START_FAILED` | 没有 running 副本：还在启动、失败、被停止或节点离线；看实例状态 |
+| 503 | `MODEL_NOT_READY`、`DEPLOYMENT_START_FAILED` | 没有 running 副本：还在启动、失败或被停止；看实例状态 |
+| 503 | `MODEL_NODE_OFFLINE` | 副本在运行，但所在节点的 agent 没有连接；看节点连接状态 |
 | 503 | `DISTRIBUTED_NOT_READY`、`DISTRIBUTED_LEADER_OFFLINE` | 多机部署的 rank 或 leader 没就绪 |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `did not reattach within 5s`） | 节点数据通道断开后 5 秒内没重连；**可重试**，不会回落到控制通道 |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `data lane closed under an open stream`） | 请求已经发到节点、还没收到响应时数据通道断开；**可重试**。响应开始返回之后才断开的，客户端看到的是被截断的响应 |

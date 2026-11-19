@@ -119,6 +119,10 @@ type Bridge struct {
 	// known are the routes each installed package last verified with, by
 	// package id, so one that breaks keeps answering them as down.
 	known map[string]knownRoutes
+	// pending are the newer builds the imported indexes offer for the
+	// installed packages (their versions), by package id, as the catalog
+	// last read them.
+	pending map[string]string
 
 	// routes is the route table compiled from entries on every refresh.
 	routes atomic.Pointer[RouteTable]
@@ -127,6 +131,9 @@ type Bridge struct {
 	// (HealthBanners), held in memory only.
 	health  sync.Mutex
 	banners atomic.Pointer[[]pushstate.Banner]
+	// maintenance is the banner of an offline maintenance journal entry
+	// that did not apply at boot (applyMaintenance), nil when none failed.
+	maintenance atomic.Pointer[pushstate.Banner]
 }
 
 // identity is who a plugin's pushes come from, and the data its build
@@ -160,7 +167,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 		cfg.HostSetup = hostsetup.DefaultRecords()
 	}
 	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{}, crashloops: map[string]map[string]any{},
-		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}
+		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}, pending: map[string]string{}}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
@@ -217,6 +224,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if b.host, err = pluginhost.New(hostCfg); err != nil {
 		return nil, err
 	}
+	b.refreshPending()
 	b.refreshHealth()
 	return b, nil
 }
@@ -225,7 +233,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 func (b *Bridge) State() *pushstate.State { return b.state }
 
 // Run runs pushed state's writer tick, timelines and capacity selection,
-// starts every enabled resident plugin (an on-demand one waits for its
+// applies the offline maintenance journal (applyMaintenance), starts every
+// enabled resident plugin (an on-demand one waits for its
 // first call), and stops them all when ctx ends.
 // Pushed state stops after the plugins, so the moment each went down is
 // persisted and a restart of the server never renews its grace. It may
@@ -241,6 +250,9 @@ func (b *Bridge) Run(ctx context.Context) error {
 		}
 	}()
 	b.admin.Lock()
+	// What root left in the offline maintenance journal applies through
+	// pushed state's writer, which runs now, before any plugin starts.
+	b.applyMaintenance(stateCtx)
 	b.mu.Lock()
 	b.running = true
 	ids := slices.Sorted(maps.Keys(b.entries))

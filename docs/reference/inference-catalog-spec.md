@@ -128,6 +128,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `placement` | 见下 | 拓扑推导 |
 | `api` | 见下 | 对外 HTTP 契约 |
 | `components[]` | 见下 | 多权重组合（投机解码等） |
+| `performance_tradeoffs[]` | 见下；每项的 `param` 必须是本 spec 启动参数里确实带着的降速参数 | 说明本 spec 为什么带着降速参数（如 `--enforce-eager`），见 [performance_tradeoffs](#performance_tradeoffs降速参数的理由) |
 
 ### args：字典内拆进字段，字典外逐字透传
 
@@ -608,6 +609,59 @@ pre_start / env）引用，否则校验失败——挂了不用或拼错路径�
 - **克隆或编辑带说明文档、资产的模板**：生成的目录包会把引用的组件模型一并带上，这些条目不含 spec 和文档。
 - **上传目录包**：包内仍须自带它引用的组件模型。
 
+## performance_tradeoffs：降速参数的理由
+
+有些参数能让引擎在某种硬件或模型上跑起来，代价是吞吐或延迟，例如关掉图捕获、关掉前缀缓存、把并发压到个位数。`internal/engines` 里有一张按引擎区分写法的登记表（`engines.ScanPerformanceCosts`），识别 spec 启动参数里的这类参数并分级：
+
+| 代价（cost） | vLLM 写法 | SGLang 写法 | 级别 |
+|---|---|---|---|
+| `graph_disabled` | `--enforce-eager`、`--compilation-config` 里 `cudagraph_mode: NONE`、`-O0` 或 `mode: 0`（都只在没写 `cudagraph_mode` 时）、`--speculative-config` 里 `enforce_eager: true` | `--disable-cuda-graph` | 必须说明 |
+| `prefix_cache_disabled` | `--no-enable-prefix-caching` | `--disable-radix-cache` | 必须说明 |
+| `concurrency_capped` | `--max-num-seqs` | `--max-running-requests` | ≤ 4 必须说明；5–8 只提示 |
+| `chunked_prefill_disabled` | `--no-enable-chunked-prefill` | `--chunked-prefill-size -1` | 必须说明 |
+| `overlap_schedule_disabled` | — | `--disable-overlap-schedule` | 必须说明 |
+| `prefill_batch_small` | `--max-num-batched-tokens` < 2048 | `--chunked-prefill-size` < 2048 | 只提示 |
+| `kv_memory_reduced` | `--gpu-memory-utilization` < 0.8 | `--mem-fraction-static` < 0.7 | 只提示 |
+| `graph_capture_narrow` | `cudagraph_mode: FULL_DECODE_ONLY`、`cudagraph_capture_sizes` 最大值 < 16 | `--cuda-graph-max-bs` < 16 | 只提示 |
+| `kernel_fallback` | `--attention-backend TRITON_ATTN`，环境变量 `VLLM_USE_DEEP_GEMM=0` 等关掉快速内核的开关 | — | 只提示 |
+
+登记表读 `args`、`env`，以及 `entrypoint`、`pre_start_argv`、`manual_command` 里按 shell 引号规则切开的参数：引号里带空格的 JSON 值算一个值，`sh -c '…'` 里的命令逐词读。每个输入单独读，写在两个输入里的 `--compilation-config` 不合并。vLLM 的下划线写法（`--max_num_seqs`）等同连字符写法，报出的 `param` 是连字符形式。`--compilation-config` 的 `backend: eager` 只是 torch.compile 的后端，不关图回放，不算 `graph_disabled`。
+
+spec 用 `performance_tradeoffs` 写明理由，每项对应一个参数：
+
+```yaml
+performance_tradeoffs:
+- param: --disable-cuda-graph
+  reason: hardware_plugin_requires
+  detail_en: "NPU graph capture hangs on this runner; the eager path completes chat."
+  detail_zh: "该镜像上 NPU 图捕获会挂起；eager 路径能完成对话。"
+- param: --speculative-config.enforce_eager
+  reason: upstream_bug
+  detail_en: "The drafter's graph capture crashes in this engine version."
+  detail_zh: "该引擎版本中草稿模型的图捕获会崩溃。"
+  link: https://example.com/upstream-issue
+```
+
+| 字段 | 约束 |
+|---|---|
+| `param` | 必填，同一 spec 内不重复；写登记表报出的名字：开关写参数本身（`--enforce-eager`），JSON 值里的键写 `<参数>.<键>`（`--compilation-config.cudagraph_mode`、`--speculative-config.enforce_eager`），环境变量写 `env:<名字>`，`-O0` 写 `-O`。启动参数里已经没有这个降速参数时导入失败——理由不能比参数活得久 |
+| `reason` | 必填，取值见下表 |
+| `detail_en` / `detail_zh` | 都必填，写清楚快的那条路在哪一步、以什么方式失败；这是模板内容，和显示名一样由作者撰写 |
+| `link` | `reason: upstream_bug` 时必填，其余可选；必须是 http(s) URL |
+
+| reason | 含义 |
+|---|---|
+| `hardware_plugin_requires` | 厂商插件、运行时或驱动不支持更快的路径（图捕获、前缀缓存、某个内核） |
+| `model_architecture_requires` | 该引擎版本对这种模型结构不支持更快的路径 |
+| `accuracy` | 走更快的路径会输出错误或精度下降 |
+| `memory_fit` | 为放进这张卡或这个切片，让出显存或并发 |
+| `task_type` | 没有解码阶段的任务（embedding、rerank） |
+| `upstream_bug` | 上游已知缺陷，必须给 `link` |
+
+`api.operations` 全部是 `openai.embeddings` / `openai.rerank` 的 spec 自动按 `task_type` 处理 `graph_disabled`、`prefix_cache_disabled` 与 `concurrency_capped`，不用写。导入、模板编辑器保存和目录包加载都会校验这个字段；它不写入数据库投影，平台只从内置目录读取这些理由，所以从数据库导出或在编辑器里另存的模板不带它；导入带这个字段的 spec 会收到 `CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT` 警告。
+
+内置目录由 `internal/server/inferencecatalog/seed` 的 `TestBuiltinPerformanceCostsAreExplained` 守护：每个内置 spec 里“必须说明”级别的降速参数，要么有 `performance_tradeoffs` 条目，要么属于上述自动豁免，要么列在 `testdata/perf_tradeoff_budget.txt` 里，否则测试失败，失败信息里给出应补的 YAML。预算文件只减不增：某个参数补上理由或被去掉后，必须在同一个改动里删掉对应那一行，否则测试同样失败。行数钉在测试常量 `perfTradeoffBudgetLines` 上，与文件不符就失败：删行时同时调低它；新的降速参数应写 `performance_tradeoffs`，确需新增一行就得调高这个常量并在该行上方写 `# raised: <原因>`，评审在改动里看得到。
+
 ## 导入前检查与警告
 
 `POST /api/v1/inference-templates/evaluate` 对同一份请求体（平铺 YAML 或 `.gpuworks-catalog.tar.gz` 目录包，需要管理员）做导入会做的解析与校验，但不写任何东西，返回
@@ -626,6 +680,7 @@ pre_start / env）引用，否则校验失败——挂了不用或拼错路径�
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` 且没有 `api.health_endpoint` | 就绪探测用默认的 `/health`；`vllm` / `sglang` 的 `/health` 是引擎自带的，不提示 |
 | `CATALOG_ARG_PASSED_THROUGH` | `args` 里某个字典参数的值字典读不出来（`params.flag` / `value` / `key`） | 原样传给引擎；部署表单和显存估算看不到这个值 |
 | `CATALOG_DISPLAY_PROFILE_RETIRED` | spec 还写着 `display_profile` 或 `gpus.display_target` | 这两个字段已被忽略，界面显示的是 `display_name_zh_cn` / `display_name_en`（都没有时显示 `name`） |
+| `CATALOG_PERFORMANCE_TRADEOFFS_NOT_KEPT` | spec 写了 `performance_tradeoffs` | 已校验但不保留：平台只读取内置目录里的理由（见 [performance_tradeoffs](#performance_tradeoffs降速参数的理由)） |
 | `CATALOG_CALLABLE_SERVED_NAME_FIXED` | `engine: callable` 的 `args` / `entrypoint` 里 `--served-model-name` 的值没有用 `${SERVED_MODEL_NAME}`（`params.name` 是写死的值） | 会校验模型名的引擎只认这个写死的名字，部署的服务名与它不同时请求和健康检查都会 404；adapter 不看模型名或作者有意固定时可以忽略 |
 
 ## 校验入口与工具

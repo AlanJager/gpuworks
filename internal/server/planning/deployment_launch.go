@@ -194,6 +194,7 @@ func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *sto
 		served = model.Name
 	}
 	return LaunchRequest{
+		AsStored:        true,
 		StartTimeoutSec: dep.StartTimeoutSec,
 		Engine:          dep.Engine, Model: model, Node: node,
 		Selection: templateLayer, Placement: placement,

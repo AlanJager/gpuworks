@@ -139,7 +139,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 		return nil, invalid(err)
 	}
 	if err := s.pickAutomaticNode(ctx, &req); err != nil {
-		return nil, conflict(err)
+		return nil, err
 	}
 	reqs, strategy, err := s.RequestPlacement(&req)
 	if err != nil {

@@ -53,15 +53,14 @@ func TestAutomaticCreateWithoutANodePicksTheEvaluatedNode(t *testing.T) {
 	}
 }
 
-// When no node can take the deployment, the create says so with each
-// candidate's reason instead of a field error about a node it never asked for.
+// A pool that cannot hold the weights even when empty is permanently refused.
 func TestAutomaticCreateWithoutANodeReportsWhyNoneFits(t *testing.T) {
 	h, st := automaticPlacementFixture(t)
 	modelID := automaticPlacementModel(t, st)
 	body := fmt.Sprintf(`{"name":"nofit","model_id":%d,"engine":"vllm","image":"example/vllm:test","placement_mode":"auto","node_requirements":{"gpuworks.ai/node":["auto-small"]},"quick_params":{}}`, modelID)
 	rec := httptest.NewRecorder()
 	h.createDeployment(rec, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)))
-	if rec.Code != http.StatusConflict {
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	var got struct {
@@ -71,18 +70,8 @@ func TestAutomaticCreateWithoutANodeReportsWhyNoneFits(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	// Every node is a candidate: the two outside the requirement say so, and
-	// the one inside cannot fit the weights.
-	reasons, _ := got.Params["reasons"].([]any)
-	if got.Code != ErrorAutomaticPlacementUnavailable || got.Params["candidates"] != float64(3) || len(reasons) != 3 {
-		t.Fatalf("body = %s, want %s with three candidates", rec.Body.String(), ErrorAutomaticPlacementUnavailable)
-	}
-	counts := map[any]int{}
-	for _, reason := range reasons {
-		counts[reason]++
-	}
-	if counts["node_requirements_unmet"] != 2 || counts["no_fit"] != 1 {
-		t.Fatalf("reasons = %v, want two requirement misses and one no_fit", reasons)
+	if got.Code != ErrorDeploymentNeverFits || got.Params["pool"] != float64(1) || got.Params["shapes"] != float64(1) || got.Params["node"] != "auto-small" || got.Params["reason"] != "no_fit" {
+		t.Fatalf("body = %s, want the one-node pool's permanent capacity refusal", rec.Body.String())
 	}
 	if deps, err := st.ListDeployments(); err != nil || len(deps) != 0 {
 		t.Fatalf("a refused create stored %d deployments (%v)", len(deps), err)

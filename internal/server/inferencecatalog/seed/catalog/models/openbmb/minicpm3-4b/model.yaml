@@ -76,6 +76,11 @@ specs:
   # MiniCPM3's graph capture aborts the SGLang child process on 910C.
   # The eager path completed model startup and a real chat request.
   - --disable-cuda-graph
+  performance_tradeoffs:
+  - param: --disable-cuda-graph
+    reason: hardware_plugin_requires
+    detail_en: "MiniCPM3's graph capture aborts the SGLang child process on 910C; the eager path completed startup and a real chat request."
+    detail_zh: "910C 上 MiniCPM3 的图捕获会使 SGLang 子进程中止；eager 路径完成了启动和一次真实对话请求。"
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\

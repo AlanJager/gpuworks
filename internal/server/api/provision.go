@@ -43,14 +43,14 @@ func (a *apiHandlers) precheckNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.d.Store != nil {
-		if nodes, err := a.d.Store.NodesWithSSHHost(report.Host); err != nil {
-			report.Checks = append(report.Checks, provision.SkipCheck(provision.CheckIDExistingNode, messages.CheckExistingNodeUnknown, "the nodes with this SSH host could not be looked up", nil))
+		if nodes, err := a.d.Store.NodesWithSSHEndpoint(report.Host, report.Port); err != nil {
+			report.Checks = append(report.Checks, provision.SkipCheck(provision.CheckIDExistingNode, messages.CheckExistingNodeUnknown, "the nodes with this SSH address could not be looked up", nil))
 		} else if len(nodes) > 0 {
 			report.Checks = append(report.Checks, provision.WarnCheck(provision.CheckIDExistingNode, messages.CheckExistingNodeFound,
 				"this host is already added here as "+nodeNames(nodes)+"; installing again replaces its agent and that node goes offline",
 				map[string]any{"node": nodeNames(nodes), "host": report.Host}))
 		} else {
-			report.Checks = append(report.Checks, provision.PassCheck(provision.CheckIDExistingNode, messages.CheckExistingNodeNone, "no node here uses this SSH host", nil))
+			report.Checks = append(report.Checks, provision.PassCheck(provision.CheckIDExistingNode, messages.CheckExistingNodeNone, "no node here uses this SSH address", nil))
 		}
 	}
 	writeJSON(w, http.StatusOK, report)
@@ -102,14 +102,16 @@ func (a *apiHandlers) installNode(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusServiceUnavailable, ErrorNodeStoreUnavailable, "node store is not configured", nil)
 		return
 	}
-	// Installing onto a host that is already a node, or that runs another
-	// agent, replaces that agent: ask the caller to confirm first.
+	// Installing onto an SSH address (host and port) that is already a node,
+	// or onto a host that runs another agent, replaces that agent: ask the
+	// caller to confirm first. Hosts behind one jump gateway share its address
+	// and differ only by the forwarded port, so the port is part of the match.
 	// A nohup install runs beside the agents a host already has, so a host
 	// that is already a node may take another; InstallSSH still asks before
 	// replacing an agent running from the same directory.
 	if !req.ReplaceExistingAgent && !req.NoSystemd {
-		if _, host, _, parseErr := provision.ParseTarget(req.Target, req.User, req.Port); parseErr == nil {
-			nodes, err := a.d.Store.NodesWithSSHHost(host)
+		if _, host, port, parseErr := provision.ParseTarget(req.Target, req.User, req.Port); parseErr == nil {
+			nodes, err := a.d.Store.NodesWithSSHEndpoint(host, port)
 			if err != nil {
 				writeErr(w, http.StatusInternalServerError, err)
 				return

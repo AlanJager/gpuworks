@@ -12,6 +12,7 @@ import { fixturePdModes } from "./helpers/engineFixture.ts";
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 import { list } from "./helpers/listPage.ts";
+import { pickNodes } from "./helpers/nodePicker.ts";
 register(
   pathToFileURL(
     new URL("./deploySleepableCssHook.mjs", import.meta.url).pathname,
@@ -39,6 +40,7 @@ for (const name of [
   "Element",
   "Node",
   "MutationObserver",
+  "NodeFilter",
   "ShadowRoot",
 ] as const) {
   Object.defineProperty(globalThis, name, {
@@ -321,29 +323,16 @@ async function choosePdTopology(placement: "auto" | "manual" = "manual") {
   }
 }
 
-function selectOption(combobox: HTMLElement, label: string) {
-  const selector = combobox.closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement;
-  fireEvent.mouseDown(selector);
-  // antd keeps a closed select's dropdown mounted (destroyPopupOnHide
-  // defaults to false, and its hide transition never completes under
-  // jsdom), so an earlier select's stale, still-visible dropdown can still
-  // match a query by text. Each select's own dropdown portal is appended to
-  // the document the first time it opens, so the most recently opened one -
-  // the one this call just triggered - is always the last such node.
-  const dropdowns = document.querySelectorAll(".ant-select-dropdown");
-  const dropdown = dropdowns[dropdowns.length - 1];
-  if (!dropdown) throw new Error("no dropdown opened");
-  const options = [...dropdown.querySelectorAll(".ant-select-item-option")];
-  const option = options.find((el) => el.textContent === label);
-  if (!option) throw new Error(`option not found: ${label} (saw ${options.map((el) => el.textContent)})`);
-  fireEvent.click(option);
+// The node picker lists a server search's nodes once it opens.
+async function selectOption(combobox: HTMLElement, label: string) {
+  await pickNodes(combobox, label);
 }
 
 // pickPdNode picks the node of a PD instance row (or, with a follower index,
 // of one of its extra nodes) by the option's visible label.
-function pickPdNode(role: "decode" | "prefill", label: string, follower?: number) {
+async function pickPdNode(role: "decode" | "prefill", label: string, follower?: number) {
   const suffix = follower ? ` ${follower}` : "";
-  selectOption(
+  await selectOption(
     screen.getByRole("combobox", { name: new RegExp(`^${deployLocale.pd.role[role]} instance 1 node${suffix}$`) }),
     label,
   );
@@ -368,11 +357,11 @@ test("choosing PD disaggregation builds placement.pd from the role sections, and
   const decodeNode = screen.getByRole("combobox", {
     name: new RegExp(`^${deployLocale.pd.role.decode} instance 1 node$`),
   });
-  selectOption(decodeNode, "GPU Node 1 · 2 GPU");
+  await selectOption(decodeNode, "GPU Node 1 · 2 GPU");
   const prefillNode = screen.getByRole("combobox", {
     name: new RegExp(`^${deployLocale.pd.role.prefill} instance 1 node$`),
   });
-  selectOption(prefillNode, "GPU Node 2 · 2 GPU");
+  await selectOption(prefillNode, "GPU Node 2 · 2 GPU");
 
   await waitFor(() => {
     const last = payloads.at(-1) as { placement?: { pd?: Record<string, unknown> } };
@@ -449,7 +438,7 @@ test("setting a role's PP and adding a node to a unit sends both in placement.pd
   const decodeNode = screen.getByRole("combobox", {
     name: new RegExp(`^${deployLocale.pd.role.decode} instance 1 node$`),
   });
-  selectOption(decodeNode, "GPU Node 1 · 2 GPU");
+  await selectOption(decodeNode, "GPU Node 1 · 2 GPU");
 
   const ppInput = screen.getByRole("spinbutton", {
     name: deployLocale.pd.ppAria.replace("{{role}}", deployLocale.pd.role.decode),
@@ -466,7 +455,7 @@ test("setting a role's PP and adding a node to a unit sends both in placement.pd
   const followerNode = screen.getByRole("combobox", {
     name: new RegExp(`^${deployLocale.pd.role.decode} instance 1 node 1$`),
   });
-  selectOption(followerNode, "GPU Node 2 · 2 GPU");
+  await selectOption(followerNode, "GPU Node 2 · 2 GPU");
 
   await waitFor(() => {
     const last = payloads.at(-1) as { placement?: { pd?: { roles: Record<string, { pp?: number; units: Array<{ followers?: unknown[] }> }> } } };
@@ -497,7 +486,7 @@ test("a field error the server attributes to placement.pd renders beside the PD 
   const decodeNode = screen.getByRole("combobox", {
     name: new RegExp(`^${deployLocale.pd.role.decode} instance 1 node$`),
   });
-  selectOption(decodeNode, "GPU Node 1 · 2 GPU");
+  await selectOption(decodeNode, "GPU Node 1 · 2 GPU");
 
   const message = errorText("PD_GPU_OVERLAP", overlapParams);
   await waitFor(() => assert.ok(screen.getByText(message)));
@@ -518,8 +507,8 @@ test("evaluate's PD preview shows a fitting and a non-fitting unit, each with it
   ]));
   await openDeployPage();
   await choosePdTopology();
-  pickPdNode("decode", "GPU Node 1 · 2 GPU");
-  pickPdNode("prefill", "GPU Node 2 · 2 GPU");
+  await pickPdNode("decode", "GPU Node 1 · 2 GPU");
+  await pickPdNode("prefill", "GPU Node 2 · 2 GPU");
 
   const preview = within(await screen.findByTestId("pd-preview"));
   await preview.findByText(deployLocale.pd.unitFits);
@@ -547,8 +536,8 @@ test("a re-evaluation withholds the previous PD preview until its own answer lan
   ));
   await openDeployPage();
   await choosePdTopology();
-  pickPdNode("decode", "GPU Node 1 · 2 GPU");
-  pickPdNode("prefill", "GPU Node 2 · 2 GPU");
+  await pickPdNode("decode", "GPU Node 1 · 2 GPU");
+  await pickPdNode("prefill", "GPU Node 2 · 2 GPU");
   const preview = within(await screen.findByTestId("pd-preview"));
   await preview.findByText("vllm serve /model --role decode");
 
@@ -576,7 +565,7 @@ test("evaluate's PD preview shows a role's PP and lists a unit's followers, each
   ]));
   await openDeployPage();
   await choosePdTopology();
-  pickPdNode("decode", "GPU Node 1 · 2 GPU");
+  await pickPdNode("decode", "GPU Node 1 · 2 GPU");
   await userEvent.setup({ document: dom.window.document }).type(
     screen.getByRole("spinbutton", { name: deployLocale.pd.ppAria.replace("{{role}}", deployLocale.pd.role.decode) }),
     "2",
@@ -586,8 +575,8 @@ test("evaluate's PD preview shows a role's PP and lists a unit's followers, each
     .replace("{{index}}", "1");
   fireEvent.click((await screen.findByText(addNodeText)).closest("button") as HTMLElement);
   await screen.findByText(deployLocale.pd.multiNodeTpHint.replace("{{role}}", deployLocale.pd.role.decode));
-  pickPdNode("decode", "GPU Node 2 · 2 GPU", 1);
-  pickPdNode("prefill", "GPU Node 2 · 2 GPU");
+  await pickPdNode("decode", "GPU Node 2 · 2 GPU", 1);
+  await pickPdNode("prefill", "GPU Node 2 · 2 GPU");
 
   const preview = within(await screen.findByTestId("pd-preview"));
   await preview.findByText(`${deployLocale.pd.role.decode} · TP 1 · PP 2`);

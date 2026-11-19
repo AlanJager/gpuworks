@@ -45,4 +45,11 @@ const (
 	// removed, superseded by the plugin's own push, or dropped with the
 	// plugin's uninstall.
 	ErrorPluginOverrideNotFound = "PLUGIN_OVERRIDE_NOT_FOUND"
+	// ErrorPluginMaintenanceFailed: an administrator banner while an entry
+	// of the offline maintenance journal (`gpuworks plugin clock reset`,
+	// `gpuworks plugin pstate clear`) could not be applied at boot; it stays
+	// in the journal for the next boot ({op}: clock_reset or pstate_clear,
+	// journal when the journal cannot be read, or unknown for a line that
+	// names no operation this build knows; {code}: the code of the failure).
+	ErrorPluginMaintenanceFailed = "PLUGIN_MAINTENANCE_FAILED"
 )

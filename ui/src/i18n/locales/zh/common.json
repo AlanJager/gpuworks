@@ -173,9 +173,9 @@
     "CHECK_EXISTING_AGENT_OTHERS": "其他 server（{{servers}}）的 agent 在 gpuworks-agent 服务之外运行，安装不影响它们。",
     "CHECK_EXISTING_AGENT_UNREADABLE": "无法在主机上查找已有 agent，此项未检查。",
     "CHECK_EXISTING_AGENT_REPLACED": "已按要求替换：{{replaced}}。",
-    "CHECK_EXISTING_NODE_NONE": "没有节点使用这个 SSH 主机。",
+    "CHECK_EXISTING_NODE_NONE": "没有节点使用这个 SSH 地址（主机和端口）。",
     "CHECK_EXISTING_NODE_FOUND": "该主机已作为 {{node}} 接入，再次安装会替换其 agent，该节点将离线。",
-    "CHECK_EXISTING_NODE_UNKNOWN": "无法查询使用该 SSH 主机的节点，此项未检查。",
+    "CHECK_EXISTING_NODE_UNKNOWN": "无法查询使用该 SSH 地址的节点，此项未检查。",
     "CHECK_PRIVILEGE_SUDO": "非 root 用户，安装使用免密 sudo。",
     "CHECK_PRIVILEGE_DIRECT_FALLBACK": "sudo 无法接管 {{dir}}；该用户可写入，安装不使用 sudo 继续。",
     "CHECK_PRIVILEGE_DIR_NOT_WRITABLE": "无法写入所选安装目录 {{dir}}。",
@@ -919,6 +919,7 @@
     "INSTANCE_NOT_RUNNING": "实例 {{instance}} 未处于唤醒运行状态。",
     "INSTANCE_OFFLINE": "实例 {{instance}} 已离线。",
     "MODEL_NOT_READY": "{{model}} 没有可连接的运行实例，请检查部署状态和节点连接。",
+    "MODEL_NODE_OFFLINE": "{{model}} 的实例正在运行，但所在节点的 agent 当前未连接，请检查节点。",
     "DEPLOYMENT_START_FAILED": "{{model}} 的部署启动失败，请查看部署列表。",
     "PD_PLACEMENT_UNREADABLE": "无法读取该部署的 PD 放置信息。",
     "PD_PREFILL_UNAVAILABLE": "没有 prefill 实例能接收该请求（{{reason}}），请稍后重试。",
@@ -1006,13 +1007,16 @@
     "PLUGIN_DOWN": "插件 {{plugin}} 自 {{since}} 起掉线，它设定的内容继续生效。",
     "PLUGIN_CLOCK_CORRECTED": "插件时钟已由 {{by}} 从 {{from}} 校正为 {{to}}。",
     "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "一次时钟校正最多只能调整 {{max_days}} 天。",
+    "PLUGIN_MAINTENANCE_FAILED": "离线维护操作（{{op}}）未能应用：{{code}}。",
     "PLUGIN_OVERRIDE_REJECTED": "无法覆盖插件 {{plugin}} 的 {{kind}} 条目 {{entry}}（{{rule}}）。",
     "PLUGIN_OVERRIDE_SUPERSEDED": "插件 {{plugin}} 重新设定了 {{kind}} 条目 {{entry}}，你的覆盖已被取代。",
     "PLUGIN_OVERRIDE_NOT_FOUND": "覆盖 {{id}} 不存在。",
     "PLUGIN_APPROVAL_REQUIRED": "安装 {{id}} {{version}} 需要你批准它申请的内容（权限：{{permissions}}；角色：{{roles}}）。尚未安装任何内容；请带上批准值 {{approve_hash}} 重新上传。",
     "PLUGIN_HOST_SETUP_REQUIRED": "插件 {{id}} 需要 root 执行主机配置：{{command}}。",
     "PLUGIN_HOST_SETUP_UNSUPPORTED": "当前平台不支持主机配置步骤。",
-    "PLUGIN_BROKEN": "插件 {{id}} 已无法通过校验，不能启用。请重新安装或卸载它。",
+    "PLUGIN_BROKEN": "插件 {{id}} 已无法通过校验，不能运行。请重新安装或卸载它。",
+    "PLUGIN_DISABLED": "插件 {{id}} 已停用。",
+    "PLUGIN_UNINSTALL_CONFIRM_REQUIRED": "卸载 {{id}} 将释放 {{held_nodes}} 个保留节点，影响 {{users_affected}} 个用户，并锁定 {{features_locked}} 个功能，请确认后继续。",
     "PLUGINS_UNAVAILABLE": "此服务器没有运行插件宿主，无法在这里管理插件。",
     "PLUGIN_REVOKED": "插件 {{id}} {{version}} 已被吊销，不再运行。它施加的限制仍然生效；请卸载它，或安装未被吊销的构建。",
     "CHECK_PLUGINS_OK": "没有已启用的插件处于崩溃循环、启动失败、校验失败、已吊销或不兼容的状态。",
@@ -1636,6 +1640,12 @@
       "learnMore": "了解更多",
       "badge": "未开放"
     },
+    "loading": "加载中…"
+  },
+  "picker": {
+    "clear": "清除",
+    "open": "展开选项",
+    "remove": "移除 {{name}}",
     "loading": "加载中…"
   }
 }

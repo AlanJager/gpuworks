@@ -1,0 +1,87 @@
+# Built-in specs whose guarded performance costs carry no stated reason yet
+# (TestBuiltinPerformanceCostsAreExplained). One line per gap:
+# model<TAB>spec<TAB>param, with the param as the engine registry reports it
+# (engines.ScanPerformanceCosts).
+#
+# This list only shrinks. Explain a gap with the spec's performance_tradeoffs
+# entry, or drop the setting, then delete its line and lower
+# perfTradeoffBudgetLines in perf_tradeoff_test.go in the same change: the test
+# fails while a line names a gap that is gone or the count disagrees. A new
+# unexplained setting gets a performance_tradeoffs entry, not a line here;
+# adding a line means raising perfTradeoffBudgetLines, with a
+# "# raised: <why>" comment above the line for the reviewer.
+ath-maas/ovis2.5-9b-ppu	bf16-vllm-ppu-d73b2283-alias	--max-num-seqs
+baidu/ernie-4.5-300b-a47b-pt	bf16-300b-vllm-nvidia-a100	--enforce-eager
+baidu/unlimited-ocr	bf16-sglang-nvidia-general	--disable-radix-cache
+bytedance-seed/seed-oss-36b-instruct-ppu	bf16-vllm-ppu-497f1dca-alias	--enforce-eager
+bytedance-seed/seed-oss-36b-instruct-ppu	bf16-vllm-ppu-497f1dca-alias	--max-num-seqs
+deepseek-ai/deepseek-v4-flash-0731	int8-vllm-ascend-a3-dspark-3977f56e	--speculative-config.enforce_eager
+google/gemma-3-4b-it	bf16-vllm-ppu-093f9f38	--max-num-seqs
+google/gemma-4-26b-a4b-it	fp8-vllm-nvidia-rtx-5090	--max-num-seqs
+google/gemma-4-26b-a4b-it	fp8-vllm-nvidia-rtx-5090-speculative-draft	--max-num-seqs
+google/gemma-4-26b-a4b-it	nvfp4-nvfp4-vllm-nvidia-rtx-5090	--max-num-seqs
+google/gemma-4-26b-a4b-it	nvfp4-nvfp4-vllm-nvidia-rtx-5090-speculative-draft	--max-num-seqs
+google/gemma-4-31b-it-qat-w4a16-ct	bf16-vllm-ppu-52f3f65b	--max-num-seqs
+huggingfacetb/smollm-135m-instruct-ppu	bf16-vllm-ppu-fcc320f4-alias	--enforce-eager
+huggingfacetb/smollm-135m-instruct-ppu	bf16-vllm-ppu-fcc320f4-alias	--max-num-seqs
+huggingfacetb/smollm2-360m-instruct-ppu	bf16-vllm-ppu-a10cc151-alias	--enforce-eager
+huggingfacetb/smollm2-360m-instruct-ppu	bf16-vllm-ppu-a10cc151-alias	--max-num-seqs
+lgai-exaone/exaone-3.5-7.8b-instruct-ppu	bf16-vllm-ppu-553ea250-alias	--max-num-seqs
+lmsys/gpt-oss-120b-bf16	bf16-vllm-ppu-3609e677	--max-num-seqs
+lmsys/gpt-oss-20b-bf16	bf16-vllm-ppu-8de8d3df	--max-num-seqs
+microsoft/phi-4-mini-reasoning	bf16-vllm-ppu-0e3b1e2d	--enforce-eager
+minimaxai/minimax-h3	bf16-vllm-nvidia-1x-turbo4	--enforce-eager
+minimaxai/minimax-h3	bf16-vllm-nvidia-2x-turbo4	--enforce-eager
+minimaxai/minimax-h3	bf16-vllm-nvidia-general	--enforce-eager
+minimaxai/minimax-h3	bf16-vllm-nvidia-rtx-4090-2x	--enforce-eager
+minimaxai/minimax-h3	bf16-vllm-nvidia-rtx-5090-2x	--enforce-eager
+minimaxai/minimax-h3	nvfp4-vllm-nvidia-blackwell-fasth3-omni-1x	--enforce-eager
+mistralai/devstral-small-2-24b-instruct-2512	fp8-vllm-nvidia-a100	--enforce-eager
+mistralai/ministral-3-14b-instruct-2512	fp8-14b-vllm-nvidia-a100	--enforce-eager
+mistralai/ministral-3-8b-instruct-2512	fp8-8b-vllm-nvidia-a100	--enforce-eager
+mistralai/mistral-small-4-119b-2603	fp8-vllm-nvidia-a100	--enforce-eager
+mistralai/voxtral-mini-4b-realtime-2602	bf16-vllm-ppu-2769294d	--enforce-eager
+moonshotai/kimi-k2.6	w4a8-vllm-ascend-a3-2de1ec2b	--max-num-seqs
+moonshotai/kimi-k2.6	w4a8-vllm-ascend-a3-2de1ec2b	--no-enable-prefix-caching
+moonshotai/kimi-k3.1-pro	mxfp4-sglang-amd-mi355x-tp8	--max-running-requests
+moonshotai/kimi-k3.1-pro	mxfp4-vllm-ppu-810e-tp32-ep-multinode	--no-enable-prefix-caching
+moonshotai/kimi-k3.1-pro	mxfp4-vllm-ppu-m890-tp8-dp-multinode	--no-enable-prefix-caching
+openai/gpt-oss-20b	bf16-vllm-ascend-a3-gptoss20	--enforce-eager
+openai/whisper-large-v3	bf16-vllm-ppu-06f233fe	--max-num-seqs
+openbmb/minicpm-v-4_5	int4-sglang-ascend-a3-8fe71b3c	--disable-cuda-graph
+openmoss-team/moss-soundeffect	bf16-vllm-nvidia-general	--enforce-eager
+openmoss-team/moss-tts	bf16-vllm-nvidia-general	--enforce-eager
+openmoss-team/moss-voicegenerator	bf16-vllm-nvidia-general	--enforce-eager
+pfnet/plamo-2-translate	bf16-vllm-ppu-cae8da34	--enforce-eager
+poolside/laguna-s-2.1-int4	int4-vllm-ppu-a6977d07	--max-num-seqs
+qwen/qwen2.5-vl-72b-instruct-awq-ppu	awq-vllm-ppu-c8b87d4b	--max-num-seqs
+qwen/qwen2.5-vl-72b-instruct	bf16-vllm-ppu-89c86200	--max-num-seqs
+qwen/qwen2.5-vl-7b-instruct-awq-ppu	awq-vllm-ppu-536a3579	--max-num-seqs
+qwen/qwen2.5-vl-7b-instruct	bf16-vllm-ppu-cc594898	--max-num-seqs
+qwen/qwen3-0.6b	bf16-vllm-kunlun-p800-xre502146	--enforce-eager
+qwen/qwen3-0.6b	bf16-vllm-kunlun-p800-xre502146	--max-num-seqs
+qwen/qwen3-0.6b	bf16-vllm-kunlun-p800-xre502146	--no-enable-prefix-caching
+qwen/qwen3-14b-gguf	fp16-sglang-ascend-a3-41226ec8	--disable-cuda-graph
+qwen/qwen3-30b-a3b	int8-vllm-ascend-19874a22	--no-enable-prefix-caching
+qwen/qwen3-30b-a3b	int8-vllm-ascend-a3-19874a22	--no-enable-prefix-caching
+qwen/qwen3.5-397b-a17b-gptq-int4-ppu	gptq-vllm-ppu-df333de3	--max-num-seqs
+qwen/qwen3.8-27b	bf16-vllm-kunlun-p800-xre502146	--max-num-seqs
+qwen/qwen3.8-27b	bf16-vllm-kunlun-p800-xre502146	--no-enable-prefix-caching
+qwen/qwen3.8-27b	int8-vllm-ascend-950pr-0a447e8a	--speculative-config.enforce_eager
+qwen/qwen3.8-flash-next	int8-vllm-ascend-a3-tp8	--speculative-config.enforce_eager
+qwen/qwen3-coder-next	bf16-vllm-ppu-a7fbcb5c	--enforce-eager
+qwen/qwen3-tts-12hz-1.7b-voicedesign	bf16-vllm-ppu-5ecdb673	--enforce-eager
+qwen/qwen3-vl-30b-a3b-instruct	bf16-vllm-ascend-0639f696	--no-enable-prefix-caching
+qwen/qwen3-vl-30b-a3b-instruct	bf16-vllm-ascend-a3-0639f696	--no-enable-prefix-caching
+qwen/qwen3-vl-8b-instruct	bf16-vllm-ascend-4eac0a8b	--no-enable-prefix-caching
+qwen/qwen3-vl-8b-instruct	bf16-vllm-ascend-a3-4eac0a8b	--no-enable-prefix-caching
+qwen/qwen3-vl-reranker-2b	bf16-vllm-ppu-4bd860ac	--enforce-eager
+qwen/qwq-32b	int8-vllm-ascend-a3-qwq32b	--enforce-eager
+tencent-hunyuan/hy-mt2-1.8b	bf16-vllm-nvidia-general	--enforce-eager
+tencent/hunyuanocr	bf16-vllm-nvidia-general	--enforce-eager
+tencent/hunyuanocr	bf16-vllm-nvidia-turing	--enforce-eager
+zai-org/glm-4-9b-hf	bf16-vllm-ppu-b44e98fc	--enforce-eager
+zai-org/glm-5.2	mxfp4-vllm-ascend-950dt-1e0da06c	--enforce-eager
+zai-org/glm-5.3-flash	w8a8-vllm-910c-dflash5-16npu	--max-num-seqs
+zai-org/glm-5.3-flash	w8a8-vllm-910c-stock-graph-16npu	--max-num-seqs
+zai-org/glm-5.3-flash	w8a8-vllm-910c-stock-graph-8npu	--max-num-seqs

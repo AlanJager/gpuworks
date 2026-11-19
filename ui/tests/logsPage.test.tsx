@@ -4,9 +4,10 @@ import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
+import { findNodeOption, nodeOption } from "./helpers/nodePicker.ts";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLTextAreaElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLTextAreaElement", "SVGElement", "Element", "Node", "MutationObserver", "NodeFilter", "ShadowRoot"] as const) {
 	Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
@@ -308,10 +309,9 @@ test("the node filter searches nodes on the server and filters the logs by the o
 	assert.ok(nodeCalls.every((url) => url.includes("page=1") && url.includes("page_size=50")), `the node list was fetched whole: ${nodeCalls}`);
 	fireEvent.change(picker, { target: { value: "beta" } });
 	await waitFor(() => assert.ok(nodeCalls.at(-1)!.includes("q=beta")));
-	let option: Element | null = null;
-	await waitFor(() => assert.ok((option = document.querySelector('.ant-select-item-option[title="gpu-beta"]'))));
-	assert.equal(document.querySelector('.ant-select-item-option[title="gpu-alpha"]'), null);
-	fireEvent.click(option!);
+	const option = await findNodeOption(picker, "gpu-beta");
+	assert.equal(nodeOption("gpu-alpha"), undefined);
+	fireEvent.click(option);
 	await waitFor(() => assert.ok(searchCalls.at(-1)!.includes("node=n2"), `expected the node filter in ${searchCalls.at(-1)}`));
 });
 

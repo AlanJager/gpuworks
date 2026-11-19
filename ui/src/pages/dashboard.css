@@ -115,8 +115,10 @@ a.dashboard-figure:hover, a.dashboard-figure:hover b { color: var(--brand); text
 .dashboard-secondary { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--border-subtle); color: var(--fg-muted); font-size: 12px; }
 .dashboard-models { display: flex; flex-direction: column; }
 .dashboard-vendor-mark { display: block; width: 80px; height: 20px; flex: none; overflow: hidden; color: var(--fg-default); font-size: 12px; font-weight: 700; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
-.dashboard-vendor-mark:has(img) { display: flex; align-items: center; }
-.dashboard-vendor-mark img { max-width: 80px; width: auto; object-fit: contain; object-position: left center; }
+/* A plated mark (see .vendor-mark in styles.css) keeps inside the 80px column
+   and may spill its 2px vertical padding into the row's own padding. */
+.dashboard-vendor-mark:has(img) { display: flex; align-items: center; overflow: visible; }
+.dashboard-vendor-mark img { max-width: calc(80px - 2 * var(--vendor-mark-pad-x, 0px)); width: auto; object-fit: contain; object-position: left center; }
 .dashboard-model-row { display: grid; grid-template-columns: 80px minmax(0, 1fr) max-content max-content; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--border-subtle); color: var(--fg-default); font-size: 12.5px; }
 .dashboard-model-row:last-child { border-bottom: 0; }
 .dashboard-model-row.is-model { grid-template-columns: minmax(0, 1fr) max-content max-content; }

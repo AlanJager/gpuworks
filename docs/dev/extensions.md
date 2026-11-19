@@ -258,10 +258,19 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 | `GET /api/v1/metrics/plugins` | 管理员（会话或令牌） | 插件指标，Prometheus 文本格式 |
 | `POST /api/v1/plugins/install?approve=<批准值>&enable=true` | 管理员登录会话 | 请求体就是 `.gwpkg`；不带或带错批准值时回 409 `PLUGIN_APPROVAL_REQUIRED`，参数里给出批准值和它涵盖的权限、角色，什么都不装 |
 | `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
-| `DELETE /api/v1/plugins/{id}?purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据一起移到 `.trash/`），在一次提交里删掉它推送的全部内容并重新应用保持；重试能完成一半失败的卸载 |
+| `POST /api/v1/plugins/{id}/restart` | 管理员登录会话 | 停止并作为新实例重新启动，崩溃历史与退避从头算；`on_demand` 包回到 `idle`；已停用的包回 409 `PLUGIN_DISABLED` |
+| `GET /api/v1/plugins/{id}/impact` | 管理员（会话或令牌） | 卸载的影响预览：要删的表、释放保持的节点、变为 `locked` 的功能、取消或放宽的上限、横幅与覆盖，以及确认用的摘要 `confirm` |
+| `DELETE /api/v1/plugins/{id}?confirm=<摘要>&purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据与快照一起移到 `.trash/`，并删掉数据标记），在一次提交里删掉它推送的全部内容并重新应用保持；`confirm` 不是此刻影响的摘要时回 409 `PLUGIN_UNINSTALL_CONFIRM_REQUIRED`，应答带上影响，什么都不删；重试能完成一半失败的卸载 |
+| `GET /api/v1/plugins/{id}/state` | 管理员（会话或令牌） | 推送状态里它的部分：各表的代数、条目数、推送时刻与下一步，掉线时刻与宽限，覆盖 |
+| `GET /api/v1/plugins/{id}/logs` | 管理员登录会话 | SSE：监管事件（`state` 帧，最近 256 条）与 stderr（`stderr` 帧，最近 1 MiB），先发保留的，再跟随新的 |
+| `GET /api/v1/plugins/catalog` | 管理员（会话或令牌） | 已导入的包索引与已安装的包：每个包本 server 能装的最新构建、是否可装，以及不装的更新构建与原因 |
 | `GET /api/v1/plugins/overrides` | 管理员（会话或令牌） | 生效中的覆盖，按 `id` 排序 |
 | `POST /api/v1/plugins/overrides` | 管理员登录会话 | 放松插件推送的一条限制：删掉一个节点保持，或删掉、调高一项集群容量上限；必须写原因 |
 | `DELETE /api/v1/plugins/overrides/{oid}` | 管理员登录会话 | 撤回覆盖，插件最后推送的那条限制重新生效 |
+
+卸载前先预览影响：`DELETE` 没带 `confirm`，或带的摘要与此刻的影响不符（预览之后插件又推送了、换了版本），都回 409，什么都不删；控制台把影响给管理员看，确认后带上它的 `confirm` 再发一次。影响只读内存，把推送状态在不含该所有者的情况下重新组合一遍再丢掉。卸载不带 `purge` 时保留数据目录与数据标记（`plugin.<id>.data`），重装不会读到旧构建写的数据之外的东西；带 `purge` 的卸载（对已卸载、只剩数据目录的包同样可以）把目录连数据与快照移到 `.trash/` 并删掉数据标记。每个包在服务端留下的东西列在 `pluginbridge.PerPackageArtifacts`（推送状态的各张表、数据标记、包目录下的文件、内存里按包 id 记的结构），契约测试 `TestUninstallLeavesNothingUnderThePackageID` 装一个用到全部的包，卸载、再清除，逐项确认都不在了；新增按包记的状态要在同一改动里加进这份清单。
+
+监管事件与 stderr 按包保留，跨进程、重启与停用启用，直到卸载；重启（`restart`）换一个新实例，崩溃历史从头算，事件不丢。
 
 每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何；覆盖的调用同时记下管理员的用户 id 与用户名，以及原因。
 
@@ -280,8 +289,8 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 ### 尚未实现
 
 - 本指南尚未列出的其他宿主接口；插件路由的按动作授权与持久化审计记录（今天审计只写结构化日志）。
-- 卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
-- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、高可用下只在 leader 上运行插件。
+- 升级与回滚的路由和 `gpuworks plugin` 的 `upgrade`、`rollback` 子命令，以及升级自动回滚（列表的 `actions` 里还没有 `upgrade`、`rollback`）；目录里的内置包。
+- 高可用下只在 leader 上运行插件。
 - 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.host_identity`、`host.clock`、`host.state_read`、`host.derive_key`、`host.setup`（[主机配置](#主机配置)）与 `routes` 以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
@@ -429,7 +438,8 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 - **启动**：启动时在任何插件起来之前读入全部推送表；版本标记（`pstate.<种类>`）比本构建新则以 `PLUGIN_STATE_TOO_NEW` 拒绝启动，存储的限制解不开则拒绝启动而不放松，存储的授权解不开则略过（视为缺席）。
 - **执行**：功能来源、节点插入守卫、调度保持者（来源 `plugins`）与横幅各是一次原子读加查表，零分配。没有包作答的键为 `locked`，带 `FEATURE_PROVIDER_ABSENT`。四者都是接口 `pushstate.Evaluator` 的方法，`app.NewPushedStateHooks` 只经这个接口把它们适配成 `Host` 的钩子类型；`TestHooksDoNotAllocate` 逐个方法测分配，`TestEveryEvaluatorIsMeasured` 用反射读出接口的全部方法，核对每个都有用例，新增的热路径应答因此不会漏测。
 - **时间**：时间线按 extclock（`max(墙钟, 高水位)`）在各自的时刻生效，插件死了也一样；高水位每分钟和关机时保存。`State.CorrectClock` 一次至多移动 366 天，回调审计并显示管理员横幅；步骤不被消耗，所以往回校正会让之后的步骤重新未生效。持有根授予的 `clock_authority` 角色的插件经宿主接口 `POST /host/v1/clock/correct` 走同一条路径（见[插件协议](../reference/plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)），`GET /host/v1/meta` 读墙钟、extclock 与已保存的高水位。
-- **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能调低）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线；进程调用过 `POST /host/v1/state/ready` 的，`State.Ready` 让它之后的掉线不再加启动延长，这个标记不持久化，从不改动掉线起点）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
+- **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能经 `server.yaml` 的 `plugins.policy.max_down_grace` 调低，见[配置参考](../reference/configuration.md#插件的信任与站点策略)）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线；从持久化的掉线起点算，server 或插件重启都不再叠加一次；进程调用过 `POST /host/v1/state/ready` 的，`State.Ready` 让它之后的掉线不再加启动延长，这个标记不持久化，从不改动掉线起点）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
+- **离线维护**：root 在 server 停止时执行的 `gpuworks plugin clock reset` 与 `gpuworks plugin pstate clear` 只往 `<data>/plugins/maintenance.jsonl` 追加记录（`pluginbridge.MaintenanceEntry`）；下次启动时 `pluginbridge` 在 `Load` 之后、拉起任何插件之前按顺序应用：时钟校正走 `State.CorrectClock`（同样的上限、审计与横幅，插件经 `GET /host/v1/meta` 读到新的高水位），清除走 `State.ClearTable`（一次提交里删除该所有者的一张限制表与它的覆盖，并请求一次保持的重新应用；授权类不能清除）。每条应用后写 `audit=true` 日志；失败的记录与其后的记录留到下次启动，并显示 `PLUGIN_MAINTENANCE_FAILED` 横幅（见 [CLI 参考](../reference/cli.md#维护日志)）。
 - **覆盖与卸载**：`State.Override` 对限制类条目（一个节点保持，或一项容量上限）只能放松，持久化，绑定所有者的代数，同一条目的旧覆盖在同一次提交里删除；所有者再推并改了同一条目时被取代、回调并显示 24 小时的管理员横幅。`State.RemoveOverride` 在一次提交里撤回一个覆盖并请求一次保持的重新应用。`State.Uninstall` 在一次提交里删掉所有者的全部行，并请求一次保持的重新应用。
 - **容量选择**：`fleet_capacity` 给上限和可选的优先保留节点 `keep`（多个所有者取并集），选哪些节点由核心决定：`keep` 里的节点在前，其余按接入顺序（`internal/server/fleetcap`，满了以后排在后面的节点一律保持），`keep` 一变也会重新选择；它在节点集合主题的变化后合并读一次节点列表（间隔至少 2 秒），插件掉线时加入的节点同样按这条规则放置。还没放置的节点只有计入它会超过上限时才保持；上限一变（包括所有者被卸载），选择都会请求一次保持的重新应用，这样的节点也随之释放。
 

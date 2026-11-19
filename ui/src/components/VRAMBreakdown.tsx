@@ -1,7 +1,6 @@
 import DetailSection from "./detail/DetailSection";
-import { Space, Tag, Typography } from "antd";
 import type { Breakdown, Measured } from "../api";
-import { Badge } from "./ui/badge";
+import { Badge, type BadgeColor } from "./ui/badge";
 import { colors } from "../theme/tokens";
 import { formatVRAMFitSummary } from "../pages/deploy/vramDisplay";
 import { useTranslation } from "react-i18next";
@@ -10,6 +9,9 @@ import { useTranslation } from "react-i18next";
 // optional measured bar beneath for estimate-vs-actual comparison.
 
 const GIB = 1024 ** 3;
+
+// The text colour for each tone the fit summary and concurrency line report.
+const textTone = { success: "text-fg-success", danger: "text-fg-danger", secondary: "text-fg-muted" } as const;
 const toGiB = (bytes: number) => bytes / GIB;
 
 const COLORS = {
@@ -39,11 +41,11 @@ export default function VRAMBreakdown({
   measured?: Measured;
 }) {
   const { t } = useTranslation("deploy");
-  const gradeMap: Record<string, { text: string; color: string }> = {
+  const gradeMap: Record<string, { text: string; color: BadgeColor }> = {
     measured: { text: t("vram.grade.measured"), color: "green" },
     rough_upper: { text: t("vram.grade.rough"), color: "orange" },
     // A model that keeps no KV cache is answered, not unanswered.
-    not_applicable: { text: t("vram.grade.notApplicable"), color: "default" },
+    not_applicable: { text: t("vram.grade.notApplicable"), color: "gray" },
   };
   const tp = breakdown.tensor_parallel > 0 ? breakdown.tensor_parallel : 1;
   const fixedSegs: Seg[] = [
@@ -63,7 +65,7 @@ export default function VRAMBreakdown({
   const denom = capacityGiB && capacityGiB > estTotal ? capacityGiB : estTotal || 1;
 
 	const confidenceKey = breakdown.kv_estimate_confidence || breakdown.grade;
-  const grade = gradeMap[confidenceKey] ?? { text: confidenceKey || "—", color: "default" };
+  const grade = gradeMap[confidenceKey] ?? { text: confidenceKey || "—", color: "gray" as BadgeColor };
 	const fitSummary = formatVRAMFitSummary(breakdown, t);
 	const showEstimated = breakdown.source !== "measured";
 
@@ -83,31 +85,31 @@ export default function VRAMBreakdown({
   function allocationTag(label: string, calibrated = false) {
     return measuredOnly
       ? <Badge size="sm" status={calibrated ? "success" : undefined}>{label}</Badge>
-      : <Tag color={calibrated ? "green" : undefined}>{label}</Tag>;
+      : <Badge color={calibrated ? "green" : "gray"}>{label}</Badge>;
   }
   const metadata = (
     <>
       {breakdown.source === "measured" && allocationTag(t("vram.measuredCalibration"), true)}
-      {showEstimated && <Tag color={grade.color}>{t("vram.confidence", { value: grade.text })}</Tag>}
+      {showEstimated && <Badge color={grade.color}>{t("vram.confidence", { value: grade.text })}</Badge>}
       {breakdown.tensor_parallel > 1 && allocationTag(`tp=${breakdown.tensor_parallel}`)}
       {!!breakdown.vram_limit_bytes && breakdown.vram_limit_bytes > 0 && allocationTag(t("vram.partitionCapacity", { value: toGiB(breakdown.vram_limit_bytes).toFixed(1) }))}
       {breakdown.max_model_len > 0 && (
-        <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>
+        <span className="text-fg-muted text-label">
           {t("vram.context", { value: breakdown.max_model_len })}
-        </Typography.Text>
+        </span>
       )}
     </>
   );
 
   const body = (
     <>
-      {showEstimated && <Typography.Text type={fitSummary.tone} strong style={{ display: "block", marginBottom: 8 }}>
+      {showEstimated && <span className={`block mb-2 font-semibold ${textTone[fitSummary.tone]}`}>
 		  {fitSummary.text}
-		</Typography.Text>}
+		</span>}
       {showEstimated && typeof breakdown.max_concurrency === "number" && (
-        <Typography.Text type={breakdown.max_concurrency < 1 ? "danger" : "secondary"} style={{ display: "block", marginBottom: 8 }}>
+        <span className={`block mb-2 ${textTone[breakdown.max_concurrency < 1 ? "danger" : "secondary"]}`}>
           {t("vram.maxConcurrency", { value: breakdown.max_concurrency })}
-        </Typography.Text>
+        </span>
       )}
 
       {showEstimated && <Bar label={t("vram.estimated")} segs={estSegs} denom={denom} total={displayEstimateTotal} capacity={capacityGiB} />}
@@ -134,19 +136,19 @@ export default function VRAMBreakdown({
               <span
                 style={{ width: 12, height: 12, borderRadius: "var(--radius-sm)", background: s.color, display: "inline-block" }}
               />
-              <Typography.Text style={{ fontSize: "var(--font-size-label)" }}>
+              <span className="text-label">
                 {s.label} {s.gib.toFixed(1)} GiB
-              </Typography.Text>
+              </span>
             </span>
           ))}
       </div>}
       {!measuredOnly && measuredKvSummary && (
-        <Typography.Text type="secondary" style={{ display: "block", marginTop: 6 }}>
+        <span className="text-fg-muted block mt-1.5">
           {measuredKvSummary}
-        </Typography.Text>
+        </span>
       )}
       {showEstimated && (breakdown.kv_pool_bytes != null || breakdown.estimated_kv_tokens != null) && (
-        <Typography.Text type="secondary" style={{ display: "block", marginTop: 6 }}>
+        <span className="text-fg-muted block mt-1.5">
           {breakdown.estimated_kv_tokens != null && breakdown.estimated_kv_tokens > 0
             ? t("vram.kvPoolSummary", { value: toGiB(breakdown.kv_pool_bytes || 0).toFixed(1), tokens: breakdown.estimated_kv_tokens.toLocaleString() })
             : breakdown.kv_estimate_confidence === "not_applicable"
@@ -160,20 +162,20 @@ export default function VRAMBreakdown({
                     defaultValue: t("vram.kvReason.unknown"),
                   }),
                 })}
-        </Typography.Text>
+        </span>
       )}
-      {showEstimated && <Typography.Text type="secondary" style={{ display: "block", marginTop: 4 }}>{t("vram.startupMinimum", { value: startupMinimumGiB.toFixed(1) })}</Typography.Text>}
+      {showEstimated && <span className="text-fg-muted block mt-1">{t("vram.startupMinimum", { value: startupMinimumGiB.toFixed(1) })}</span>}
     </>
   );
   if (inDetailCard) return (
-    <DetailSection title={t("vram.title")} controls={<Space wrap size={[8, 2]}>{metadata}</Space>}>
+    <DetailSection title={t("vram.title")} controls={<div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">{metadata}</div>}>
       {body}
     </DetailSection>
   );
   return <div>
-    <Space wrap size={measuredOnly ? [8, 2] : "middle"} style={{ marginBottom: measuredOnly ? 3 : 8 }}>
-      <Typography.Text strong>{t("vram.title")}</Typography.Text>{metadata}
-    </Space>
+    <div className={measuredOnly ? "mb-[3px] flex flex-wrap items-center gap-x-2 gap-y-0.5" : "mb-2 flex flex-wrap items-center gap-4"}>
+      <span className="font-semibold">{t("vram.title")}</span>{metadata}
+    </div>
     {body}
   </div>;
 }
@@ -201,11 +203,11 @@ function Bar({
   return (
     <div style={{ marginBottom: compact ? 0 : 8 }}>
       {!compact && <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "2px 8px", marginBottom: 3 }}>
-        <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>{label}</Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: "var(--font-size-label)" }}>
+        <span className="text-fg-muted text-label">{label}</span>
+        <span className="text-fg-muted text-label">
           {amount} GiB
           {util != null && t("vram.utilization", { value: util.toFixed(0) })}
-        </Typography.Text>
+        </span>
       </div>}
       <div
         className={compact ? "flex h-2 w-full overflow-hidden rounded-full bg-emphasis" : undefined}

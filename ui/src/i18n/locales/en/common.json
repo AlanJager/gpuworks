@@ -173,9 +173,9 @@
     "CHECK_EXISTING_AGENT_OTHERS": "Agents for other servers ({{servers}}) run outside the gpuworks-agent service; installing leaves them running.",
     "CHECK_EXISTING_AGENT_UNREADABLE": "The host could not be searched for an existing agent, so this was not checked.",
     "CHECK_EXISTING_AGENT_REPLACED": "Replaced on request: {{replaced}}.",
-    "CHECK_EXISTING_NODE_NONE": "No node here uses this SSH host.",
+    "CHECK_EXISTING_NODE_NONE": "No node here uses this SSH address (host and port).",
     "CHECK_EXISTING_NODE_FOUND": "This host is already added as {{node}}; installing again replaces its agent and that node goes offline.",
-    "CHECK_EXISTING_NODE_UNKNOWN": "The nodes using this SSH host could not be looked up, so this was not checked.",
+    "CHECK_EXISTING_NODE_UNKNOWN": "The nodes using this SSH address could not be looked up, so this was not checked.",
     "CHECK_PRIVILEGE_SUDO": "Non-root user; the install uses passwordless sudo.",
     "CHECK_PRIVILEGE_DIRECT_FALLBACK": "sudo could not claim {{dir}}; the user can write it, so the install goes on without sudo.",
     "CHECK_PRIVILEGE_DIR_NOT_WRITABLE": "The chosen install directory {{dir}} cannot be written.",
@@ -919,6 +919,7 @@
     "INSTANCE_NOT_RUNNING": "Instance {{instance}} is not awake and running.",
     "INSTANCE_OFFLINE": "Instance {{instance}} is offline.",
     "MODEL_NOT_READY": "No running instance of {{model}} is reachable. Check the deployment and node connection.",
+    "MODEL_NODE_OFFLINE": "{{model}} has a running instance, but its node has no live agent connection. Check the node.",
     "DEPLOYMENT_START_FAILED": "The deployment for {{model}} failed to start. See the deployment list.",
     "PD_PLACEMENT_UNREADABLE": "The deployment's PD placement cannot be read.",
     "PD_PREFILL_UNAVAILABLE": "No prefill instance could take the request ({{reason}}). Retry shortly.",
@@ -1006,13 +1007,16 @@
     "PLUGIN_DOWN": "Plugin {{plugin}} has been down since {{since}}. What it set up stays in force.",
     "PLUGIN_CLOCK_CORRECTED": "The plugin clock was corrected from {{from}} to {{to}} by {{by}}.",
     "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "A clock correction may move the plugin clock by at most {{max_days}} days.",
+    "PLUGIN_MAINTENANCE_FAILED": "An offline maintenance step ({{op}}) could not be applied: {{code}}.",
     "PLUGIN_OVERRIDE_REJECTED": "The override of {{kind}} entry {{entry}} from plugin {{plugin}} cannot be applied ({{rule}}).",
     "PLUGIN_OVERRIDE_SUPERSEDED": "Plugin {{plugin}} set {{kind}} entry {{entry}} again, which replaced your override.",
     "PLUGIN_OVERRIDE_NOT_FOUND": "Override {{id}} does not exist.",
     "PLUGIN_APPROVAL_REQUIRED": "Installing {{id}} {{version}} needs your approval of what it asks for (permissions: {{permissions}}; roles: {{roles}}). Nothing was installed; send the upload again with approval {{approve_hash}}.",
     "PLUGIN_HOST_SETUP_REQUIRED": "Plugin {{id}} needs a root setup step: run {{command}}.",
     "PLUGIN_HOST_SETUP_UNSUPPORTED": "Host setup steps are not supported on this platform.",
-    "PLUGIN_BROKEN": "Plugin {{id}} no longer verifies, so it cannot be enabled. Reinstall it or remove it.",
+    "PLUGIN_BROKEN": "Plugin {{id}} no longer verifies, so it cannot run. Reinstall it or remove it.",
+    "PLUGIN_DISABLED": "Plugin {{id}} is disabled.",
+    "PLUGIN_UNINSTALL_CONFIRM_REQUIRED": "Uninstalling {{id}} releases {{held_nodes}} held nodes, affects {{users_affected}} users and locks {{features_locked}} features. Confirm to continue.",
     "PLUGINS_UNAVAILABLE": "This server runs no plugin host, so plugins cannot be managed here.",
     "PLUGIN_REVOKED": "Plugin {{id}} {{version}} is revoked and no longer runs. What it restricted stays in force; remove it or install a build that is not revoked.",
     "CHECK_PLUGINS_OK": "No enabled plugin is crashlooping, failed, broken, revoked or incompatible.",
@@ -1636,6 +1640,12 @@
       "learnMore": "Learn more",
       "badge": "Locked"
     },
+    "loading": "Loading…"
+  },
+  "picker": {
+    "clear": "Clear",
+    "open": "Show options",
+    "remove": "Remove {{name}}",
     "loading": "Loading…"
   }
 }

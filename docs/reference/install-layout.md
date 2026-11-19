@@ -41,7 +41,7 @@
     └── logs.db / metrics.db / ux.db / images/ / catalog-packages/ …
 ```
 
-`data/plugins/` 由 `gpuworks plugin` 管理：包先解到 `.incoming-*.partial/` 里校验，全部通过才改名为 `<id>/pkg/<版本>/`（文件 0444、可执行文件与目录 0555），再以改名替换 `<id>/pkg/current` 切换版本，上一个版本保留以便回滚；中断留下的 `*.partial` 在下次安装时清掉。`<id>/data/`、`<id>/tmp/`、`<id>/snapshots/` 是插件自己的目录（0700），卸载时保留，`--purge` 时整个 `<id>/` 移到 `.trash/<id>-<时间>/`；`.index/<发布者>/` 存导入的包索引。
+`data/plugins/` 由 `gpuworks plugin` 管理：包先解到 `.incoming-*.partial/` 里校验，全部通过才改名为 `<id>/pkg/<版本>/`（文件 0444、可执行文件与目录 0555），再以改名替换 `<id>/pkg/current` 切换版本，上一个版本保留以便回滚；中断留下的 `*.partial` 在下次安装时清掉。`<id>/data/`、`<id>/tmp/`、`<id>/snapshots/` 是插件自己的目录（0700），卸载时保留，`--purge` 时整个 `<id>/` 移到 `.trash/<id>-<时间>/`；`.index/<发布者>/` 存导入的包索引。`maintenance.jsonl` 是离线维护日志（0600，属主为数据目录的所有者）：root 在 server 停止时执行 `gpuworks plugin clock reset` 或 `pstate clear` 各追加一行，server 下次启动时应用并清空，应用失败的记录留到再下次启动（见 [CLI 参考](cli.md#维护日志)）。
 
 声明了 `host_setup` 的包在数据目录之外还有 root 写的文件（见[扩展点的主机配置](../dev/extensions.md#主机配置)），由 `gpuworks plugin host-setup`、`gpuworks install`/`upgrade` 写入，`gpuworks uninstall` 删除：
 
@@ -72,6 +72,12 @@
 默认独立目录不变。既有控制面若直接装在 `/opt/gpuworks`，修复安装或执行实际升级时，将配置迁移到 `/opt/gpuworks/server-config/server.yaml`，并保留 `/opt/gpuworks/server.yaml` 指向它的受控相对链接。服务使用实际配置路径；二进制、PID、升级锁、备份和相对路径的工作目录仍属于原安装目录。
 
 共享根目录保持 root 所有且普通服务不可写；只把专用配置目录交给控制面服务，网页设置仍以临时文件加原子替换保存，不向服务开放 agent 的二进制、辅助库或缓存目录。迁移保留既有配置注释和未管理的键。任意链接、冲突的私有文件或悬空链接会被拒绝，不会当作迁移入口。
+
+旧版安装器曾把整个 `/opt/gpuworks` 交给服务账户（属主 `gpuworks:gpuworks`、`2775`）。以 root 或可用 `sudo` 执行修复安装或实际升级时，先把这个目录本身改为 `root:root`、`0755`（不带 setgid），每项改动打印一行，并在安装历史中记一条 `action: layout` 记录（`layout_changes` 列出路径及改动前后的 uid、gid 和模式，配置迁移另记一项）。迁移只改共享根目录本身：`server-config/`、升级锁、`tmp/`、`backups/`、数据和日志目录照常交给服务账户；共享根目录中的二进制由 root 所有、模式 `0755`（root 会执行它：`sudo gpuworks upgrade` 和服务启动前以 root 运行的钩子），不交给服务账户。迁移前服务账户可以替换目录里的任何条目，所以递归改权限之前逐项检查服务的条目：不是 root 或当前操作员创建的符号链接（数据或日志目录可以是 root 建的、指向别的磁盘的链接）、类型不对的条目，以及硬链接数大于 1 的文件都会被拒绝，报错指出路径；`server.yaml` 是任意链接或硬链接时同样拒绝迁移。既不属于服务、也不归 root 的其他条目保持原样，每项打印一条警告并记入同一条 `action: layout` 记录（`foreign_entry_kept`，带属主和模式），由操作员确认来源；旧安装器也曾把同机 agent 的文件交给服务账户。目录属主须为 root、当前操作员或安装的服务账户，且其他用户不可写，路径不能是符号链接，父目录须可信，带额外 ACL 时拒绝；不满足时只报错不改。没有 root 也没有 `sudo` 时拒绝执行，报错给出具体命令：以 `sudo /opt/gpuworks/gpuworks upgrade` 重试，或手工执行 `sudo chown root:root /opt/gpuworks && sudo chmod 00755 /opt/gpuworks`（GNU `chmod` 对目录只在多写一位前导 0 时清除 setgid，`chmod 0755` 会留下 `2755`）。`upgrade --check` 和没有版本变更的升级只读，不迁移。升级失败回滚时恢复旧二进制、数据库和配置，目录保持迁移后的形态，旧版本在此形态下照常运行；回滚不会把目录改回 `2775`，那样会重新让服务账户控制 root 执行的文件。迁移中途失败（例如属主已改为 root、模式仍是 `2775`）时重新执行同一命令即可完成。
+
+迁移后服务账户不能在共享根目录中替换二进制，控制台升级显示为不可用（`not_writable`），升级改用命令行 `sudo /opt/gpuworks/gpuworks upgrade`。
+
+在共享根目录中，命令行升级不经过服务账户的 `tmp/` 暂存新版本：下载包和解出的二进制放在只有执行升级的账户可进入的 `/opt/gpuworks/.upgrade-staging/`（`0700`）中。移动到位前核对暂存目录仍是本次创建的私有目录、二进制仍是解包时的内容（SHA-256），不符时拒绝替换并回滚；随后先把它改为 `root:root`、`0755`，移动后对安装的二进制再设一次，然后才启动服务。暂存目录在升级结束时删除；若它已存在且不是 root 或当前操作员的私有目录，升级拒绝执行。非 root 账户不能在 root 所有的共享根目录中创建暂存目录，因此这里的命令行升级须以 root 执行。
 
 `upgrade --check` 和没有版本变更的升级不迁移文件。若当前运行的旧安装器尚不包含此修复，应使用新发布包里的二进制对原目录执行修复安装。备份包中的配置成员仍叫 `server.yaml`；普通卸载保留配置和兼容链接，只有 `--purge` 删除受控配置及链接，不递归删除共享根目录。
 

@@ -98,8 +98,8 @@ const (
 	// each of roles, capabilities, features, routes, host_setup and
 	// devices, and {ui_mode} and {isolation} (old->new when changed).
 	ErrorPluginApprovalRequired = "PLUGIN_APPROVAL_REQUIRED"
-	// ErrorPluginBroken: installed package {id} no longer verifies, so it
-	// cannot be enabled; see its state.
+	// ErrorPluginBroken: installed package {id} no longer verifies (or is
+	// revoked), so it cannot be enabled or restarted; see its state.
 	ErrorPluginBroken = "PLUGIN_BROKEN"
 	// ErrorPluginsUnavailable: this server runs no plugin host, so plugins
 	// cannot be managed here.

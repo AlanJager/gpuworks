@@ -100,7 +100,7 @@ func (i *Installer) Upgrade(ctx context.Context, req UpgradeRequest) (UpgradeRep
 
 	// Whatever the source staged is never wanted once this returns: on success
 	// it has been moved into place, otherwise it must not linger.
-	defer func() { _ = os.Remove(i.stagedBinary()) }()
+	defer i.removeUpgradeStaging()
 	var src upgradeSource
 	switch {
 	case strings.TrimSpace(req.Archive) != "":
@@ -173,6 +173,10 @@ func checkLocalVersion(local string) error {
 // runUpgrade performs the replacement, rolling back when the new binary does
 // not come up.
 func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst installation, src upgradeSource, report *UpgradeReport) error {
+	if err := i.migrateLegacySharedRoot(ctx, inst.ServiceUser); err != nil {
+		return err
+	}
+	i.recordLayoutChanges(ctx, inst.Mode)
 	if i.layout.inSharedRoot() {
 		roots, err := i.permissionRoots()
 		if err != nil {
@@ -194,7 +198,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	// changed instead of producing a backup that cannot be restored and then
 	// re-keying the installation.
 	if err := i.checkSnapshotMembers(); err != nil {
-		return fmt.Errorf("%w; nothing was changed", err)
+		return fmt.Errorf("%w; %s", err, i.changedSoFar())
 	}
 	if err := i.preflightSensitiveFiles(ctx); err != nil {
 		return err
@@ -209,7 +213,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 		return err
 	}
 	if err := i.checkEdition(ctx, staged, report.To, req.AllowEditionChange, false); err != nil {
-		return fmt.Errorf("%w; nothing was changed", err)
+		return fmt.Errorf("%w; %s", err, i.changedSoFar())
 	}
 
 	// The service writes its log file and its database under the install tree;
@@ -219,8 +223,10 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	if err := i.prepareDirs(ctx); err != nil {
 		return err
 	}
-	if _, err := i.isolateSharedConfig(ctx, nil); err != nil {
+	if moved, err := i.isolateSharedConfig(ctx, nil); err != nil {
 		return err
+	} else if moved {
+		i.noteSharedConfigMove()
 	}
 	if migrated, err := i.layout.sharedConfig(); err != nil {
 		return err
@@ -240,6 +246,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	if err := i.createHistory(ctx, i.layout.HistoryPath(), 0o600); err != nil {
 		i.io.Warn("warning: could not create the install history: %v", err)
 	}
+	i.recordLayoutChanges(ctx, inst.Mode)
 	if err := i.reapplyInstallHooks(ctx, svc); err != nil {
 		return fmt.Errorf("%w; the installed binary was not replaced", err)
 	}
@@ -262,7 +269,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 				i.io.Warn("warning: could not restart the service: %v", startErr)
 			}
 		}
-		return fmt.Errorf("%w; nothing was changed", err)
+		return fmt.Errorf("%w; %s", err, i.changedSoFar())
 	}
 	i.io.Say("backing up the database, master key and current binary")
 	backup, err := i.createBackup(ctx, report.From)
@@ -289,7 +296,7 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 // applyAndCheck replaces the binary, starts the service and waits for it to
 // answer as release want. It returns nil when the new version is running.
 func (i *Installer) applyAndCheck(ctx context.Context, svc Service, staged, addr, want string) error {
-	if err := replaceBinary(staged, i.layout.Binary()); err != nil {
+	if err := i.installStagedBinary(ctx, staged); err != nil {
 		return fmt.Errorf("replace the binary: %w", err)
 	}
 	if err := svc.Start(ctx); err != nil {

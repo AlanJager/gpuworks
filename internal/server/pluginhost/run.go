@@ -111,7 +111,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 	i.update(func(s *Status) { s.PID = proc.PID() })
 	stderrDone := make(chan struct{})
 	go func() {
-		forwardStderr(proc.Stderr(), spec.ID, h.log, i.stderr, time.Now)
+		forwardStderr(proc.Stderr(), spec.ID, h.log, i.logs.stderr, time.Now)
 		close(stderrDone)
 	}()
 	hc := newHostConn(spec, h.cfg.State, h.cfg.Reads, h.log)

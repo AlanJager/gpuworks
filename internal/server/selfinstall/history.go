@@ -17,6 +17,8 @@ const (
 	ActionInstall  = "install"
 	ActionUpgrade  = "upgrade"
 	ActionRollback = "rollback"
+	// ActionLayout records layout migrations an install or upgrade made.
+	ActionLayout = "layout"
 )
 
 // HistoryEntry is one line of <data>/install-history.jsonl: an append-only
@@ -33,6 +35,8 @@ type HistoryEntry struct {
 	By                string `json:"by,omitempty"`
 	At                string `json:"at"`
 	Error             string `json:"error,omitempty"`
+	// LayoutChanges lists what an ActionLayout entry changed.
+	LayoutChanges []LayoutChange `json:"layout_changes,omitempty"`
 }
 
 // stampNow formats an audit timestamp.

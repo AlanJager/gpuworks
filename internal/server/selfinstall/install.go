@@ -93,7 +93,7 @@ type InstallReport struct {
 // it again on an existing installation repairs the binary and the service
 // definition around the data that is already there.
 func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallReport, error) {
-	if _, err := i.layout.sharedConfig(); err != nil {
+	if _, err := i.layout.sharedConfig(); err != nil && !isLegacySharedRoot(err) {
 		return InstallReport{}, err
 	}
 	req = req.withDefaults()
@@ -103,6 +103,10 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 		// named somewhere else on this command line.
 		i.adoptLayout(previous.Config, req.DataDirSet, req.LogsDirSet)
 	}
+	if err := i.migrateLegacySharedRoot(ctx, req.ServiceUser, previous.ServiceUser); err != nil {
+		return InstallReport{}, err
+	}
+	i.recordLayoutChanges(ctx, previous.Mode)
 	// Adoption is about this layout: server.yaml or a stray binary here means
 	// an installation exists and its data must be left alone.
 	adopted := hasPrevious || fileExists(i.layout.Binary())
@@ -127,9 +131,15 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 			return InstallReport{}, err
 		}
 		if i.installedInSharedRoot() {
+			// The agent is named only when something besides the server
+			// lives in the root; a server-only root is still the shared one.
+			shared := "is the shared application root"
+			if other, err := i.otherEntries(); err == nil && len(other) > 0 {
+				shared = "is shared with the node agent"
+			}
 			pf.Warnings = append(pf.Warnings, fmt.Sprintf(
-				"%s is shared with the node agent and stays owned by root: the console cannot replace the binary there, so upgrade with `sudo %s upgrade`, or reinstall into a dedicated directory",
-				sharedApplicationRoot, i.layout.Binary()))
+				"%s %s and stays owned by root: the console cannot replace the binary there, so upgrade with `sudo %s upgrade`, or reinstall into a dedicated directory",
+				sharedApplicationRoot, shared, i.layout.Binary()))
 		}
 	}
 	if err := i.preflightSensitiveFiles(ctx); err != nil {
@@ -174,9 +184,12 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 	if err != nil {
 		return InstallReport{}, err
 	}
-	if _, err := i.isolateSharedConfig(ctx, payload); err != nil {
+	if moved, err := i.isolateSharedConfig(ctx, payload); err != nil {
 		return InstallReport{}, err
+	} else if moved {
+		i.noteSharedConfigMove()
 	}
+	i.recordLayoutChanges(ctx, pf.Mode)
 	if err := i.copyInstalled(ctx, self, i.layout.Binary(), binaryMode); err != nil {
 		return InstallReport{}, fmt.Errorf("install %s: %w", i.layout.Binary(), err)
 	}

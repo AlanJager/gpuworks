@@ -3,11 +3,12 @@ import StartupStatusIcon, { type StartupStatus } from "./StartupStatusIcon";
 import { Space, Tooltip, Typography, message } from "antd";
 import { Button, Progress } from "../pages/DeploymentControls";
 import { storageDetailPath } from "./storage/storageLinks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiErrorText } from "../apiError";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { api, type ModelNodePresence } from "../api";
+import { api, type Deployment, type ModelNodePresence } from "../api";
+import DeploymentImageProgress from "./DeploymentImageProgress";
 import { formatBytes } from "../format";
 import { isModelFileReady } from "../storageTypes";
 import { rateLabel, transferOrigin } from "./models/modelPresenceDisplay";
@@ -19,7 +20,8 @@ import { HelpTip } from "../ui-kit/HelpTip";
 export function PreparationLabel({ item }: { item: ModelNodePresence }) {
   const { t } = useTranslation("deployments");
   const view = item.preparation;
-  const key = view?.reason ? `preparation.reason.${view.reason}` : `preparation.phase.${view?.phase ?? item.state}`;
+  const key = isModelFileReady(item.state) ? "preparation.phase.ready"
+    : view?.reason ? `preparation.reason.${view.reason}` : `preparation.phase.${view?.phase ?? item.state}`;
   return <>{t(key, { defaultValue: t("preparation.phase.waiting") })}</>;
 }
 
@@ -46,10 +48,27 @@ function transferStatus(item: ModelNodePresence): StartupStatus {
   return "active";
 }
 
-export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePresence[]; onChanged?: () => void }) {
+export function DeploymentPreparation({ dep, rows, onChanged }: { dep?: Deployment; rows?: ModelNodePresence[]; onChanged?: () => void }) {
   const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
   const [busy, setBusy] = useState<string | null>(null);
+  const status = dep?.placement_status;
+  const reason = status?.reason;
+  const imageWait = status?.unscheduled && reason?.code === "image_delivery_waiting"
+    && typeof reason.params?.image === "string" && typeof reason.params?.node === "string"
+    ? { imageRef: reason.params.image, node: reason.params.node,
+      nodeUUID: typeof reason.params.node_uuid === "string" ? reason.params.node_uuid : undefined } : null;
+  const owner = `${dep?.id}:${dep?.image}:${dep?.node_uuid}`;
+  const [lastImage, setLastImage] = useState<{ owner: string; target: NonNullable<typeof imageWait> } | null>(null);
+  const retainCompleted = (rows ?? []).some(item => !isModelFileReady(item.state)) || Boolean(imageWait)
+    || Boolean(dep?.placement_status?.unscheduled)
+    || Boolean(dep && dep.state === "pending" && !dep.instances?.length);
+  const imageRef = imageWait?.imageRef, imageNode = imageWait?.node, imageNodeUUID = imageWait?.nodeUUID;
+  useEffect(() => {
+    if (imageRef && imageNode) setLastImage({ owner, target: { imageRef, node: imageNode, nodeUUID: imageNodeUUID } });
+    else if (!retainCompleted) setLastImage(null);
+  }, [owner, imageRef, imageNode, imageNodeUUID, retainCompleted]);
+  const imageTarget = imageWait ?? (retainCompleted && lastImage?.owner === owner ? lastImage.target : null);
   const retry = async (item: ModelNodePresence) => {
     if (!item.model_id || !item.storage_id) return;
     setBusy(`${item.node_uuid}:${item.model_id}:${item.storage_id}`);
@@ -59,23 +78,25 @@ export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePre
   };
   const sharedDownloads = new Set<string>();
   const visible = (rows ?? []).filter(item => {
-    if (isModelFileReady(item.state)) return false;
+    const ready = isModelFileReady(item.state);
+    if (ready && !retainCompleted) return false;
     const downloading = isDownloading(item);
     const shared = ["nfs", "nfs_cache", "shared_dir"].includes(item.storage_type ?? "");
-    if (!shared || !downloading || !item.storage_id || !item.model_id) return true;
+    if (!shared || (!downloading && !ready) || !item.storage_id || !item.model_id) return true;
     const key = `${item.storage_id}:${item.model_id}:${item.transfer_id ?? ""}`;
     if (sharedDownloads.has(key)) return false;
     sharedDownloads.add(key);
     return true;
   });
-  if (!visible.length) return null;
-  return <DetailSection title={t("detail.modelPreparation")}>
+  if (!visible.length && !imageTarget) return null;
+  return <DetailSection title={t("detail.resourcePreparation")}>
     {visible.map((item) => {
       const key = `${item.node_uuid}:${item.model_id}:${item.storage_id}`;
       const view = item.preparation;
+      const ready = isModelFileReady(item.state);
       const phase = view?.phase ?? item.state;
-      const downloading = isDownloading(item);
-      const compact = phase === "syncing" || phase === "copying";
+      const downloading = !ready && isDownloading(item);
+      const compact = !ready && (phase === "syncing" || phase === "copying");
       const measurable = (view?.total_known ?? item.size_bytes > 0) && item.size_bytes > 0;
       const percent = Math.min(100, Math.max(0, Math.round(item.downloaded / item.size_bytes * 100)));
       const transmitted = item.transferred_bytes || item.downloaded || 0;
@@ -87,10 +108,11 @@ export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePre
       const diskFull = view?.reason === "MODEL_CACHE_DISK_FULL";
       return <div key={key} className="mt-2 first:mt-0">
         <Space wrap>
-          <StartupStatusIcon status={transferStatus(item)} />
+          <StartupStatusIcon status={ready ? "done" : transferStatus(item)} />
           <Typography.Text strong>{sharedDownload ? item.storage_name || t("preparation.storage") : item.node_name || item.node_uuid.slice(0, 12)}</Typography.Text>
           {item.model_name && <Typography.Text>{item.model_name}</Typography.Text>}
-          <Typography.Text type={view?.reason && view.reason !== "MODEL_PREPARATION_WAITING" ? "warning" : "secondary"}><PreparationLabel item={item} /></Typography.Text>
+          <Typography.Text type={ready ? "success" : view?.reason && view.reason !== "MODEL_PREPARATION_WAITING" ? "warning" : "secondary"}><PreparationLabel item={item} /></Typography.Text>
+          {ready && item.size_bytes > 0 && <span className="text-fg-muted">{formatBytes(item.size_bytes)}</span>}
           {compact && <Typography.Text type="secondary">{measurable ? `${percent}%` : t("detailLayout.transferred", { size: formatBytes(transmitted) })}</Typography.Text>}
           {!sharedDownload && item.storage_id && <Link to={storageDetailPath(item.storage_id)}>{item.storage_name || t("preparation.storage")}</Link>}
         </Space>
@@ -101,15 +123,17 @@ export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePre
           {item.rate_bps > 0 ? ` · ${rateLabel(item.rate_bps)}` : ""}
           {view?.eta_seconds ? ` · ${t("preparation.eta", { seconds: view.eta_seconds })}` : ""}
         </Typography.Text></div>}
-        {view?.retryable && <Space wrap>
+        {!ready && view?.retryable && <Space wrap>
           <Button aria-label={t("preparation.retry")} size="small" loading={busy === `${item.node_uuid}:${item.model_id}:${item.storage_id}`} disabled={busy !== null} onClick={() => void retry(item)}>{t("preparation.retry")}</Button>
           <RetryHint />
         </Space>}
-        {failed && !view?.retryable && <Typography.Text type="secondary">{t("preparation.retryUnavailable")}</Typography.Text>}
-        {item.message && ((!compact && !origin) || failed || diskFull) && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
-        {view?.reason === "MODEL_COPY_STALLED" && <Typography.Paragraph className="flex items-center gap-1">{t("preparation.idle", { seconds: view.idle_seconds })} · {t("preparation.waitForIO")}<HelpTip content={t("preparation.waitForIOHelp")} /></Typography.Paragraph>}
+        {!ready && failed && !view?.retryable && <Typography.Text type="secondary">{t("preparation.retryUnavailable")}</Typography.Text>}
+        {!ready && item.message && ((!compact && !origin) || failed || diskFull) && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
+        {!ready && view?.reason === "MODEL_COPY_STALLED" && <Typography.Paragraph className="flex items-center gap-1">{t("preparation.idle", { seconds: view.idle_seconds })} · {t("preparation.waitForIO")}<HelpTip content={t("preparation.waitForIOHelp")} /></Typography.Paragraph>}
       </div>;
     })}
+    {imageTarget && <div className="mt-2 first:mt-0"><DeploymentImageProgress
+      key={`${owner}:${imageTarget.imageRef}:${imageTarget.nodeUUID ?? imageTarget.node}`} {...imageTarget} /></div>}
   </DetailSection>;
 }
 
