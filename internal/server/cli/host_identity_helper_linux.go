@@ -107,12 +107,14 @@ func hostIdentityHelperAt(root *os.File, unitDir, group string, remove bool, sou
 	if err != nil {
 		return err
 	}
-	defer unix.Unlinkat(fd, exeTmp, 0)
+	// A successful rename consumes the temporary name. Cleanup is best
+	// effort on an earlier failure and must preserve the publication error.
+	defer func() { _ = unix.Unlinkat(fd, exeTmp, 0) }()
 	confTmp, err := stageIdentityFile(dir, strings.NewReader(content), 0o644, int(st.Uid), int64(len(content)))
 	if err != nil {
 		return err
 	}
-	defer unix.Unlinkat(fd, confTmp, 0)
+	defer func() { _ = unix.Unlinkat(fd, confTmp, 0) }()
 	if err := unix.Renameat(fd, exeTmp, fd, hostIdentityExecutable); err != nil {
 		return err
 	}
