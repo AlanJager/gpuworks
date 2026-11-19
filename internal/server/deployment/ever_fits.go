@@ -35,6 +35,14 @@ func (s *Service) checkPoolCanEverFit(ctx context.Context, req *dto.DeployReques
 	}
 	previewSelection := snapshotTemplateSelection(selection, req.Image)
 	return s.checkEverFits(ctx, reqs, func(node *store.Node) (planning.LaunchRequest, deploy.CatalogSelection, error) {
+		// A memory-limited request that names no dGPU backend takes the one
+		// the node it lands on offers, as the trial of that node settles it
+		// (evaluateAutomaticPlacement). A node that offers none keeps the
+		// request's and is refused for it.
+		partitionBackend := req.PartitionBackend
+		if settled, err := ResolvePartitionBackend(node, req.VRAMLimitGiB, req.PartitionBackend); err == nil {
+			partitionBackend = settled
+		}
 		return planning.LaunchRequest{
 			StartTimeoutSec: req.StartTimeoutSec,
 			Engine:          engine.Name(), Model: model, Node: node,
@@ -43,7 +51,7 @@ func (s *Service) checkPoolCanEverFit(ctx context.Context, req *dto.DeployReques
 			Source:     planning.LaunchSourceFromRequest(req.Image, overrides),
 			ModelMount: modelMount, ComponentMounts: componentMounts,
 			ServedName: servedName, Sleepable: req.Sleepable, PriorityScheduling: requestsPriorityScheduling(req), YieldPolicy: requestYield(req.YieldPolicy),
-			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
+			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: partitionBackend,
 			APIContract: previewSelection.APIContract,
 			// A model larger than the storage's cache cap never fits; the
 			// storage's other refusals only wait (planning.Input.Unloaded).
