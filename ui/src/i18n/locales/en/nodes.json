@@ -990,13 +990,20 @@
       "agent_failed": "The Agent reported an upgrade failure.",
       "artifact_unavailable": "The fixed target artifact is unavailable.",
       "confirmation_timeout": "The target version was not confirmed within the observation window.",
-      "target_registered": "A new Agent session confirmed the target version."
+      "target_registered": "A new Agent session confirmed the target version.",
+      "node_removed": "The node was removed from the platform during its upgrade."
     },
     "activeBlock": "{{name}} is part of an active upgrade batch. Wait for it to finish or view its progress.",
     "activeHelp": "The execution slot remains reserved until the current attempt is confirmed. Other batches cannot start in parallel.",
     "startedAt": "Started: {{at}}",
     "finishedAt": "Finished: {{at}}",
-    "verifiedAt": "The previous attempt was later verified to have ended: {{at}}"
+    "verifiedAt": "The previous attempt was later verified to have ended: {{at}}",
+    "verification": {
+      "target_registered": "Verified by the system: the node later reconnected on the target version.",
+      "agent_failed": "Verified by the system: the Agent later reported the upgrade failed.",
+      "rolled_back": "Verified by the system: the Agent later reported a rollback.",
+      "node_removed": "Verified by the system: the node was removed from the platform, so no upgrade can still be running."
+    }
   },
   "cardScheduling": {
     "stoppedTag": "Scheduling disabled",

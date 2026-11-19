@@ -612,3 +612,63 @@ func TestMixedBatchSkipsNodesAlignedBeforePreviewOrWhileQueued(t *testing.T) {
 		t.Fatalf("dispatches=%d result=%+v err=%v", f.tr.count(), done.Counts, err)
 	}
 }
+
+// A node the platform no longer has cannot confirm or fail its attempt, and
+// no upgrade can still be running on it: an unconfirmed attempt is settled
+// as node_removed by the system, the slot is free for other nodes, and the
+// history keeps the timeout. A node that is merely offline keeps blocking.
+func TestRemovedNodeSettlesItsUnconfirmedAttempt(t *testing.T) {
+	f := newFixture(t, 2, true)
+	r := f.create(t, "first", []string{"n1"}, 0)
+	f.tick(t)
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	f.tr.mu.Lock()
+	delete(f.tr.connections, "n1") // gone offline
+	f.tr.mu.Unlock()
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); i.Phase != "unconfirmed" || i.VerifiedAt != nil {
+		t.Fatalf("an offline node's attempt was settled: %+v", i)
+	}
+	if err := f.st.DeleteNode("n1"); err != nil {
+		t.Fatal(err)
+	}
+	f.tick(t)
+	i := f.item(t, r.Record.ID, "n1")
+	if i.Phase != "unconfirmed" || i.Reason != "confirmation_timeout" || i.VerifiedAt == nil || i.VerifiedBy != "system" || i.VerificationCode != ReasonNodeRemoved {
+		t.Fatalf("removed node's attempt = %+v", i)
+	}
+	f.create(t, "second", []string{"n2"}, 0)
+}
+
+// An attempt still in flight when its node is removed ends unconfirmed for
+// that reason and is settled at once; its run stays paused for an
+// administrator, as after any unconfirmed attempt, with the rest of its queue.
+func TestRemovedNodeSettlesItsAttemptInFlight(t *testing.T) {
+	f := newFixture(t, 3, true)
+	r := f.create(t, "first", []string{"n1", "n2"}, 0)
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); !activePhase(i.Phase) {
+		t.Fatalf("n1 not in flight: %+v", i)
+	}
+	if err := f.st.DeleteNode("n1"); err != nil {
+		t.Fatal(err)
+	}
+	f.tick(t)
+	i := f.item(t, r.Record.ID, "n1")
+	if i.Phase != "unconfirmed" || i.Reason != ReasonNodeRemoved || i.VerifiedAt == nil || i.VerificationCode != ReasonNodeRemoved {
+		t.Fatalf("in-flight attempt of a removed node = %+v", i)
+	}
+	if n2 := f.item(t, r.Record.ID, "n2"); n2.Phase != "queued" {
+		t.Fatalf("the paused run went on to n2: %+v", n2)
+	}
+	run, err := f.st.AgentUpgradeRun(r.Record.ID)
+	if err != nil || run.PauseReason != "confirmation_required" {
+		t.Fatalf("run = %+v, %v; want paused for an administrator", run, err)
+	}
+	// Nothing unconfirmed holds the slot any more: what is left is the paused
+	// run's own queue, which continuing or stopping it settles.
+	if b, err := f.st.AgentUpgradeBlocker(); err != nil || b != nil {
+		t.Fatalf("still blocked by %+v, %v", b, err)
+	}
+}

@@ -63,6 +63,9 @@ func (s *Service) reconcile(ctx context.Context) error {
 			i.Phase = "unconfirmed"
 		}
 	}
+	if err := s.settleRemovedNodes(items); err != nil {
+		return err
+	}
 	for _, i := range items {
 		if activePhase(i.Phase) || (i.Phase == "unconfirmed" && i.VerifiedAt == nil) {
 			if err := s.observeConnection(i); err != nil {
@@ -275,3 +278,54 @@ func (s *Service) observeEvent(o Observation) error {
 	}
 	return nil
 }
+
+// settleRemovedNodes settles the attempts whose node the platform no longer
+// has (deleted by hand, or by a sweep once the cloud or the cluster dropped
+// it): no agent will come back to confirm or fail them, and there is no
+// machine left on which an upgrade could still be running, which is what an
+// unconfirmed attempt holds the slot to protect. An unconfirmed attempt is
+// verified as node_removed; one still in flight ends unconfirmed for that
+// reason and is verified at once. The run stays paused, as after any
+// unconfirmed attempt: the rest of its queue waits for an administrator to
+// continue it.
+func (s *Service) settleRemovedNodes(items []store.AgentUpgradeItem) error {
+	var uuids []string
+	for _, i := range items {
+		if activePhase(i.Phase) || (i.Phase == "unconfirmed" && i.VerifiedAt == nil) {
+			uuids = append(uuids, i.NodeUUID)
+		}
+	}
+	if len(uuids) == 0 {
+		return nil
+	}
+	exists, err := s.st.ExistingNodeUUIDs(uuids)
+	if err != nil {
+		return err
+	}
+	for index := range items {
+		i := &items[index]
+		if exists[i.NodeUUID] {
+			continue
+		}
+		if activePhase(i.Phase) {
+			if err := s.unconfirmed(*i, ReasonNodeRemoved, "the node was removed from the platform during its upgrade"); err != nil {
+				return err
+			}
+			i.Phase = "unconfirmed"
+		}
+		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
+			if _, err := s.st.VerifyAgentUpgrade(i.ID, s.now(), "system", ReasonNodeRemoved, ""); err != nil {
+				return err
+			}
+			now := s.now()
+			i.VerifiedAt = &now
+			s.notify()
+			s.cfg.Logger.Info("agent upgrade attempt settled: its node was removed", "run", i.RunID, "node", i.NodeUUID)
+		}
+	}
+	return nil
+}
+
+// ReasonNodeRemoved is the reason and verification code of an attempt whose
+// node was removed from the platform before it was confirmed.
+const ReasonNodeRemoved = "node_removed"

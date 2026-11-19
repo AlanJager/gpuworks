@@ -87,8 +87,8 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
               {!item.reason && !item.error && !item.verified_at && !item.verification_note && "—"}
               {item.reason && <Typography.Text>{t(`batchUpgrade.reason.${item.reason}`, { defaultValue: t("batchUpgrade.reason.unavailable") })}</Typography.Text>}
               {item.error && <Typography.Text type="danger">{item.error}</Typography.Text>}
-              {item.verified_at && <Typography.Text>{t("batchUpgrade.verifiedAt", { at: formatTimeSec(item.verified_at) })}</Typography.Text>}
-              {item.verification_note && <Typography.Text>{t("batchUpgrade.verified", { note: item.verification_note })}</Typography.Text>}
+              {item.verified_at && <Typography.Text>{[t("batchUpgrade.verifiedAt", { at: formatTimeSec(item.verified_at) }), item.verification_code && item.verification_code !== "operator_verified" ? t(`batchUpgrade.verification.${item.verification_code}`, { defaultValue: "" }) : ""].filter(Boolean).join(" ")}</Typography.Text>}
+              {item.verification_note && (!item.verification_code || item.verification_code === "operator_verified") && <Typography.Text>{t("batchUpgrade.verified", { note: item.verification_note })}</Typography.Text>}
             </Space> },
             { title: t("batchUpgrade.columns.time"), key: "time", width: 220, render: (_, item) => <Space direction="vertical" size={0} style={{ whiteSpace: "nowrap" }}>
               <Typography.Text>{t("batchUpgrade.startedAt", { at: formatTimeSec(item.started_at) })}</Typography.Text>
