@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -9,6 +10,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -33,8 +35,16 @@ func (s *Service) checkPoolCanEverFit(ctx context.Context, req *dto.DeployReques
 	if _, pinned := planning.PinnedNode(reqs); !pinned {
 		placement.GPUIndexes = nil // the pool's scheduler picks cards
 	}
+	return s.checkEverFits(ctx, reqs, s.poolLaunch(req, engine, model, selection, placement, quick, userExtraArgs, servedName, modelMount, componentMounts, overrides))
+}
+
+// poolLaunch is the launch a single-node request would run on a node of its
+// pool: what the create's refusal (checkPoolCanEverFit) and the evaluation's
+// node list (markNeverFitting) plan unloaded, so both judge "could this ever
+// fit" on one request.
+func (s *Service) poolLaunch(req *dto.DeployRequest, engine deploy.Engine, model *store.Model, selection templateSelection, placement planning.Placement, quick deploy.LaunchConfig, userExtraArgs []string, servedName, modelMount string, componentMounts []proto.MountSpec, overrides deploy.ContainerOverrides) func(*store.Node) (planning.LaunchRequest, deploy.CatalogSelection, error) {
 	previewSelection := snapshotTemplateSelection(selection, req.Image)
-	return s.checkEverFits(ctx, reqs, func(node *store.Node) (planning.LaunchRequest, deploy.CatalogSelection, error) {
+	return func(node *store.Node) (planning.LaunchRequest, deploy.CatalogSelection, error) {
 		// A memory-limited request that names no dGPU backend takes the one
 		// the node it lands on offers, as the trial of that node settles it
 		// (evaluateAutomaticPlacement). A node that offers none keeps the
@@ -57,7 +67,67 @@ func (s *Service) checkPoolCanEverFit(ctx context.Context, req *dto.DeployReques
 			// storage's other refusals only wait (planning.Input.Unloaded).
 			ModelRules: store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, node)},
 		}, previewSelection, nil
+	}
+}
+
+// markNeverFitting turns the eligible nodes that could not run build's launch
+// even with nothing else on them ineligible, each with the reason a create
+// naming it is refused for (checkPoolCanEverFit), so the node list does not
+// offer a node the create refuses. fleet is the nodes eligible was read from
+// (evaluateEligibleNodes), so no node is read again. Nodes are judged by kind
+// (planning.NeverFitting): one unloaded plan per hardware shape and set of
+// storages, at most planning.NeverFittingBudget of them; what is not judged
+// stays on offer. fits reports that some node judged could run the launch,
+// which is all the pool's own check (checkPoolCanEverFit) would establish.
+func (s *Service) markNeverFitting(ctx context.Context, eligible []dto.EligibleNode, fleet []*store.Node, build func(*store.Node) (planning.LaunchRequest, deploy.CatalogSelection, error)) (fits bool) {
+	offered := make(map[string]bool, len(eligible))
+	for _, entry := range eligible {
+		offered[entry.UUID] = entry.Eligible
+	}
+	nodes := make([]*store.Node, 0, len(fleet))
+	for _, node := range fleet {
+		if offered[node.UUID] {
+			nodes = append(nodes, node)
+		}
+	}
+	if len(nodes) == 0 {
+		return false
+	}
+	// The storages that apply to a node, and the cache cap each has there,
+	// are the node's own: a model larger than a cap never fits that node,
+	// whatever a node of the same hardware answers.
+	storages, err := s.d.Store.EffectiveStorages(nodes)
+	if err != nil {
+		if s.d.Log != nil {
+			s.d.Log.Warn("evaluate left the node list unjudged: the nodes' storages could not be read", "err", err)
+		}
+		return false
+	}
+	ownStorages := func(node *store.Node) string {
+		var key strings.Builder
+		for _, storage := range storages[node.ID] {
+			fmt.Fprintf(&key, "%d:%d;", storage.Storage.ID, storage.CacheMaxBytes)
+		}
+		return key.String()
+	}
+	never, fits, failed := planning.NeverFitting(ctx, s.networks(), nodes, ownStorages, func(node *store.Node) (*scheduler.Reason, error) {
+		launch, layer, err := build(node)
+		if err != nil {
+			return nil, err
+		}
+		plan, refusal, err := planning.PlanTemplateLaunch(ctx, s.d.Store, s.networks(), node, launch.UnloadedPreview(), layer)
+		return planning.UnloadedRefusal(node, launch, plan, refusal, err)
 	})
+	if failed != nil && ctx.Err() == nil && s.d.Log != nil {
+		s.d.Log.Warn("evaluate left some nodes unjudged: their launch could not be planned", "err", failed)
+	}
+	for i := range eligible {
+		if refusal, ok := never[eligible[i].UUID]; ok {
+			eligible[i].Eligible = false
+			eligible[i].Reasons = append(eligible[i].Reasons, dto.ScheduleReason{Code: refusal.Code, Params: refusal.Params, Message: refusal.Message})
+		}
+	}
+	return fits
 }
 
 // checkEverFits is planning.EverFits over every node, as the product error a

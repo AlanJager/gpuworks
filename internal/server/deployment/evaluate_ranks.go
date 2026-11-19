@@ -157,6 +157,13 @@ func (s *Service) evaluateRankFallback(env evaluateRankEnv) bool {
 	if err != nil || perNode < 1 {
 		perNode = 1
 	}
+	if dynamicTPPreview && allowUnresolvedPlacement && len(env.placement.GPUIndexes) == 0 {
+		// Nothing says how many cards this draft gets: it states no degree,
+		// names no card and has no node to schedule on. The preview is
+		// assembled with no count, so a template that states its own degree
+		// is not held to the count of one nobody chose.
+		perNode, parallel.TP = 0, 0
+	}
 	params := deploy.Params{
 		ModelPath: modelMount, ServedName: servedName, APIPort: planning.PreviewAPIPort,
 		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, PriorityScheduling: requestsPriorityScheduling(req), Quick: quick, TemplateArgs: templateArgs,

@@ -751,7 +751,6 @@
       "strategySpreadHelp": "副本优先启动在本部署副本最少的候选节点上",
       "strategyBinpack": "集中",
       "strategyBinpackHelp": "优先填满剩余资源最少的候选节点，把其他节点留空",
-      "chipMismatchSuffix": " · 芯片不匹配",
       "auto": "自动选择",
       "autoDescription": "按显存与拓扑匹配",
       "manual": "手动指定",
