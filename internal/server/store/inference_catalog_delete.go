@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
