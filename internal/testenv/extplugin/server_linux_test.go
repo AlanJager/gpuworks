@@ -55,6 +55,13 @@ func (c *fakeClock) clock() pushstate.Clock {
 	}
 }
 
+// set moves the wall clock alone, as an operator putting it right does.
+func (c *fakeClock) set(wall time.Time) {
+	c.mu.Lock()
+	c.wall = wall
+	c.mu.Unlock()
+}
+
 func (c *fakeClock) advance(d time.Duration) {
 	c.mu.Lock()
 	c.wall, c.mono = c.wall.Add(d), c.mono+d
@@ -76,6 +83,8 @@ type site struct {
 	modules []app.Module
 	// timing, when set, adjusts the supervisor's intervals of timing().
 	timing func(*pluginhost.Timing)
+	// policy is server.yaml's plugins.policy.
+	policy serverconfig.PluginPolicy
 }
 
 func newSite(t *testing.T) *site {
@@ -120,7 +129,7 @@ func (s *site) open() *app.App {
 	// This test site explicitly permits its signed fixture packages when
 	// Landlock is unavailable. Available Landlock remains required by their
 	// certificates and the dedicated isolation tests still verify it.
-	cfg.Plugins = serverconfig.Plugins{AllowUnsandboxed: []string{"acme_fake", "acme_other"}}
+	cfg.Plugins = serverconfig.Plugins{AllowUnsandboxed: []string{"acme_fake", "acme_other"}, Policy: s.policy}
 	cfg.Extensions.Modules = s.modules
 	a, err := app.New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -344,6 +353,9 @@ type result struct {
 	Nodes      int    `json:"nodes"`
 	Identities int    `json:"identities"`
 	HostH      string `json:"host_h"`
+	// ExtClock and HWM are a meta outcome.
+	ExtClock string `json:"extclock"`
+	HWM      string `json:"hwm"`
 	// Route, User and Access are a served route's action, caller and
 	// feature access (Kind is the caller's kind).
 	Route  string `json:"route"`

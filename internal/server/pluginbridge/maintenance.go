@@ -41,6 +41,14 @@ const (
 	MaintenancePstateClear = "pstate_clear"
 )
 
+// The op of the PLUGIN_MAINTENANCE_FAILED banner besides the two above:
+// the journal cannot be read, or one of its lines names no operation this
+// build knows.
+const (
+	maintenanceOpJournal = "journal"
+	maintenanceOpUnknown = "unknown"
+)
+
 // maintenanceApplyWait bounds how long boot waits for one entry's commit.
 const maintenanceApplyWait = 30 * time.Second
 
@@ -72,6 +80,8 @@ func (e MaintenanceEntry) Check() error {
 	switch {
 	case e.V != MaintenanceVersion:
 		return bad("version %d is not %d", e.V, MaintenanceVersion)
+	case e.At.IsZero():
+		return bad("names no time it ran")
 	case e.By == "":
 		return bad("names nobody who ran it")
 	case e.Reason == "":
@@ -194,7 +204,7 @@ func (b *Bridge) applyMaintenance(ctx context.Context) {
 	lines, err := readJournal(path)
 	if err != nil {
 		b.log.Error("offline maintenance journal cannot be read; nothing in it is applied", "path", path, "err", err)
-		b.failMaintenance("journal", failureCode(err))
+		b.failMaintenance(maintenanceOpJournal, failureCode(err))
 		return
 	}
 	if len(lines) == 0 {
@@ -207,8 +217,10 @@ func (b *Bridge) applyMaintenance(ctx context.Context) {
 		}
 		if err != nil {
 			op := l.entry.Op
-			if op == "" {
-				op = "unknown"
+			if op != MaintenanceClockReset && op != MaintenancePstateClear {
+				// A line that does not decode, or an operation this build
+				// does not know: the banner names no op it cannot say.
+				op = maintenanceOpUnknown
 			}
 			b.log.Error("offline maintenance not applied; it stays in the journal for the next boot", "op", op, "code", failureCode(err),
 				"by", l.entry.By, "reason", l.entry.Reason, "err", err)

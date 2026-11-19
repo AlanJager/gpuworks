@@ -49,6 +49,7 @@ const (
 	// of the offline maintenance journal (`gpuworks plugin clock reset`,
 	// `gpuworks plugin pstate clear`) could not be applied at boot; it stays
 	// in the journal for the next boot ({op}: clock_reset or pstate_clear,
-	// {code}: the code of the failure).
+	// journal when the journal cannot be read, or unknown for a line that
+	// names no operation this build knows; {code}: the code of the failure).
 	ErrorPluginMaintenanceFailed = "PLUGIN_MAINTENANCE_FAILED"
 )

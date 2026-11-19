@@ -209,6 +209,21 @@ func TestAFailedMaintenanceEntryStaysAndRaisesTheBanner(t *testing.T) {
 	if text := w.journalText(); text != `{"v":2,"op":"clock_reset"}`+"\n"+lines[2] {
 		t.Fatalf("journal after an unreadable entry = %q", text)
 	}
+
+	// An operation this build does not know, and a line that does not
+	// decode, are named unknown: the banner says no op it cannot render.
+	for _, line := range []string{
+		`{"v":1,"op":"suspend","at":"2027-01-15T00:00:00Z","by":"root","reason":"r"}`,
+		`{"op":`,
+	} {
+		if err := os.WriteFile(w.journal(), []byte(line+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		b, _ = openOnClock(t, w, clk, nil)
+		if bn = maintenanceBanner(b); bn == nil || bn.Notice.Params()["op"] != "unknown" || bn.Notice.Params()["code"] != messages.ErrorBadRequest {
+			t.Fatalf("banner of %s = %+v", line, bn)
+		}
+	}
 }
 
 // AppendMaintenance writes only entries a boot can apply.
@@ -218,6 +233,7 @@ func TestAppendMaintenanceRefusesWhatABootCannotApply(t *testing.T) {
 	for name, e := range map[string]MaintenanceEntry{
 		"version":     {V: 2, Op: MaintenanceClockReset, At: at, By: "root", To: at, Reason: "r"},
 		"nobody":      {V: 1, Op: MaintenanceClockReset, At: at, To: at, Reason: "r"},
+		"no run time": {V: 1, Op: MaintenanceClockReset, By: "root", To: at, Reason: "r"},
 		"no reason":   {V: 1, Op: MaintenanceClockReset, At: at, By: "root", To: at},
 		"no time":     {V: 1, Op: MaintenanceClockReset, At: at, By: "root", Reason: "r"},
 		"a grant":     {V: 1, Op: MaintenancePstateClear, At: at, By: "root", Owner: "acme_quota", Kind: extapi.KindAvailability, Reason: "r"},

@@ -30,6 +30,9 @@
 //	--read-nodes salt              read the first inventory page and the
 //	                               identity of its nodes with salt, and
 //	                               record the outcome as kind "read_nodes"
+//	--read-meta                    read the host API's meta once
+//	                               initialized and record its extclock and
+//	                               high-water mark as kind "meta"
 //	--routes                       serve the manifest's routes, each
 //	                               behind RequirePrincipal, recording
 //	                               every call in results.jsonl
@@ -107,6 +110,7 @@ func main() {
 	pushSize := fs.Int("push-size", 100, "nodes held by each periodic push")
 	growRSS := fs.Int("grow-rss", 0, "MiB of resident memory to hold, in this process and a child")
 	readNodes := fs.String("read-nodes", "", "salt to read the node inventory and identity with")
+	readMeta := fs.Bool("read-meta", false, "read the host API's meta once initialized")
 	probeDevs := fs.String("probe-devices", "", "comma-separated paths to wait for and open")
 	routes := fs.Bool("routes", false, "serve the manifest's routes")
 	html := fs.Bool("html", false, "answer routes as text/html")
@@ -179,6 +183,9 @@ func main() {
 		}
 		if *readNodes != "" {
 			readNodesOnce(ctx, p, *readNodes)
+		}
+		if *readMeta {
+			readMetaOnce(ctx, p)
 		}
 		if *oversize != "" {
 			pad := strings.Repeat("x", extapi.MaxPushBytes)
@@ -313,6 +320,21 @@ func putRaw(ctx context.Context, p *pluginsdk.Plugin, kind string, envelope []by
 	var w extapi.WireError
 	_ = json.NewDecoder(resp.Body).Decode(&w)
 	return &pluginsdk.Error{Status: resp.StatusCode, Wire: w}
+}
+
+// readMetaOnce reads the host API's meta and records its extclock and
+// high-water mark, or why it was refused.
+func readMetaOnce(ctx context.Context, p *pluginsdk.Plugin) {
+	m, err := p.Meta(ctx)
+	if err != nil {
+		record("meta", 0, err)
+		return
+	}
+	line := map[string]any{"kind": "meta", "ok": true, "extclock": m.ExtClock.UTC().Format(time.RFC3339)}
+	if m.HWM != nil {
+		line["hwm"] = m.HWM.UTC().Format(time.RFC3339)
+	}
+	appendResult(line)
 }
 
 // readNodesOnce reads the first inventory page and the identity of its

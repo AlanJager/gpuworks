@@ -302,7 +302,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 `clock reset` 与 `pstate clear` 各往 `<data>/plugins/maintenance.jsonl`（0600，属主为数据目录的所有者，写入后 fsync）追加一行 JSON：`v`（版本，1）、`op`（`clock_reset` 或 `pstate_clear`）、`at`（执行时的墙钟）、`by`（经 `sudo` 执行时为调用 `sudo` 的账号，否则为当前账号）、`owner` 与 `kind`（清除的表）、`to`（校正到的时刻）与 `reason`。命令本身不改数据库，所以运行中的 server 不可能把它覆盖回去。
 
-server 每次启动时，在读入推送状态之后、拉起任何插件之前，按顺序经运行中的同一条路径应用每一条：时钟校正走 `State.CorrectClock`，清除走 `State.ClearTable`；每条应用后写一行 `audit=true` 的日志，带 `op`、`by` 与 `reason`。全部应用后清空日志。某一条应用失败时，停在这一条：它与之后的记录留在日志里，下次启动再试，之前已应用的记录从日志里删掉；同时显示管理员横幅 `PLUGIN_MAINTENANCE_FAILED`（`op` 与失败的码；读不懂的记录为 `BAD_REQUEST`），直到下次启动。
+server 每次启动时，在读入推送状态之后、拉起任何插件之前，按顺序经运行中的同一条路径应用每一条：时钟校正走 `State.CorrectClock`，清除走 `State.ClearTable`；每条应用后写一行 `audit=true` 的日志，带 `op`、`by` 与 `reason`。全部应用后清空日志。某一条应用失败时，停在这一条：它与之后的记录留在日志里，下次启动再试，之前已应用的记录从日志里删掉；同时显示管理员横幅 `PLUGIN_MAINTENANCE_FAILED`（`op` 与失败的码：`op` 为该条的 `clock_reset` 或 `pstate_clear`，日志本身读不出来时为 `journal`，某行解不开或写的是本版本不认识的操作时为 `unknown`；读不懂的记录码为 `BAD_REQUEST`），直到下次启动。
 
 本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
 
