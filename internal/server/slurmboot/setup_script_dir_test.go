@@ -27,7 +27,9 @@ func TestSetupRefusesAScriptDirectoryOthersCanWrite(t *testing.T) {
 		}},
 		{"it is not root's", "", func(w *world) {
 			mustMkdir(t, w.p.ScriptDir, 0o755)
-			w.env["GWKS_OWNER_UID"] = "4242" // the test user is not the owner the script allows
+			// stat reports another account as its owner, whoever runs the test
+			// (as root in CI, where any directory the test makes is root's)
+			w.foreign(w.t, w.p.ScriptDir)
 		}},
 	}
 	for _, tc := range cases {
