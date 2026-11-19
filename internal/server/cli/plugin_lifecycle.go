@@ -271,6 +271,9 @@ func (o Options) pluginUninstall(log *slog.Logger, name string, args []string, s
 	}
 	fmt.Fprintf(stdout, "released what %s pushed: %d tables, %d node holds, %d overrides\n",
 		id, len(own.Owners), len(own.Rows.NodeHolds), len(own.Overrides))
+	if left := hostSetupLeftover(id); left != "" {
+		fmt.Fprintln(stdout, left)
+	}
 	log.Info("plugin uninstalled", "id", id, "purge", *purge, "data", p.data, "tables", len(own.Owners))
 	return nil
 }

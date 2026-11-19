@@ -29,6 +29,9 @@ const (
 	accessFile = unix.LANDLOCK_ACCESS_FS_EXECUTE | unix.LANDLOCK_ACCESS_FS_WRITE_FILE |
 		unix.LANDLOCK_ACCESS_FS_READ_FILE | unix.LANDLOCK_ACCESS_FS_TRUNCATE | unix.LANDLOCK_ACCESS_FS_IOCTL_DEV
 	accessDevice = unix.LANDLOCK_ACCESS_FS_READ_FILE | unix.LANDLOCK_ACCESS_FS_WRITE_FILE | unix.LANDLOCK_ACCESS_FS_IOCTL_DEV
+	// accessDeviceDir is accessDevice beneath a directory, which may also
+	// be listed to find the nodes.
+	accessDeviceDir = accessDevice | unix.LANDLOCK_ACCESS_FS_READ_DIR
 )
 
 // handledAccess is every filesystem right the kernel's ABI knows: all of
@@ -74,6 +77,7 @@ func applyLandlock(l *Landlock, abi int) error {
 		{l.ReadWrite, handled},
 		{l.Read, accessRead},
 		{l.Devices, accessDevice},
+		{l.DeviceDirs, accessDeviceDir},
 	} {
 		for _, path := range group.paths {
 			if err := addPathRule(ruleset, path, group.access&handled); err != nil {

@@ -166,7 +166,9 @@ func TestARunningPluginPastTheDeadlineTimesOut(t *testing.T) {
 // refuses it as unavailable, safe to retry.
 func TestCrashBeforeAndAfterTheRequestWasSent(t *testing.T) {
 	entered := make(chan struct{}, 1)
-	sp := &fakeSpawner{config: func(int) pluginsdk.Config {
+	// Closing only the serve connection must not also exit the fake
+	// process; SIGKILL in the first half still ends it explicitly.
+	sp := &fakeSpawner{linger: true, config: func(int) pluginsdk.Config {
 		c := sdkConfig("acme_backup")
 		c.Handler = http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			entered <- struct{}{}

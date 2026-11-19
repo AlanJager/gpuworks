@@ -1697,14 +1697,14 @@ The management API of installed signed plugin packages (`.gwpkg`); see [Extensio
 Fields:
 
 - `trust`: `project` (certified by a project root) or `host` (by an issuer `server.yaml` trusts); absent when the package no longer verifies.
-- `state`: when the server part cannot run, `disabled`, `installed` (no server part), `broken` (no longer verifies) or `revoked` (its build or certificate is revoked); otherwise the process state `starting`, `running`, `degraded`, `backoff`, `crashloop`, `stopping`, `stopped` or `failed`, and `idle` for an on-demand server part that is not running. `message` is the reason's code and params (such as `PLUGIN_CRASHLOOP`, `PLUGIN_HANDSHAKE_REFUSED` or `PLUGIN_FILE_MISMATCH`; `PLUGIN_MEMORY_EXCEEDED` with `id`, `rss_mib` and `limit_mib` when a plugin without a cgroup of its own was restarted for its memory), absent when nothing needs saying.
+- `state`: when the server part cannot run, `disabled`, `installed` (no server part), `broken` (no longer verifies), `revoked` (its build or certificate is revoked) or `needs_host_setup` (enabled, but root has not applied the host steps it declares on this host, or applied other steps; `message` is `PLUGIN_HOST_SETUP_REQUIRED{id, command}`, where `command` is what to run); otherwise the process state `starting`, `running`, `degraded`, `backoff`, `crashloop`, `stopping`, `stopped` or `failed`, and `idle` for an on-demand server part that is not running. `message` is the reason's code and params (such as `PLUGIN_CRASHLOOP`, `PLUGIN_HANDSHAKE_REFUSED` or `PLUGIN_FILE_MISMATCH`; `PLUGIN_MEMORY_EXCEEDED` with `id`, `rss_mib` and `limit_mib` when a plugin without a cgroup of its own was restarted for its memory), absent when nothing needs saying.
 - `since`: when it entered its current process state, absent when not supervised; `restarts`: how many processes were started after the first.
 - `parts`: the parts it carries, `server`, `node`, `ui`, `store`; `isolation`: `landlock` or `none`.
 - `actions`: the actions available now, computed by the server: `enable`, `disable`, `uninstall`.
 
 The codes of a failed plugin call (`PLUGIN_UNAVAILABLE`, `PLUGIN_BUSY`, `PLUGIN_TIMEOUT`, `PLUGIN_ROUTE_FAILED`) are in [Extension Points](../dev/extensions.md#calls-and-the-route-table).
 
-Errors: not installed 404 `PLUGIN_NOT_INSTALLED`; approval needed, a broken package, the same version with other contents (`PLUGIN_VERSION_CONFLICT`), a declared feature key a compiled module or another installed package already provides (`PLUGIN_FEATURE_TAKEN{id, feature, owner}`, checked before approval) or plugin data newer than the build (`PLUGIN_STATE_TOO_NEW`) 409; a package too large 413 `PLUGIN_PACKAGE_TOO_LARGE`; any other refused package 422, with the codes in [Plugin Protocol and Wire Formats](plugin-protocol.md); `enable` or `purge` not a boolean 400 `FIELD_INVALID`.
+Errors: not installed 404 `PLUGIN_NOT_INSTALLED`; approval needed, a broken package, the same version with other contents (`PLUGIN_VERSION_CONFLICT`), a declared feature key a compiled module or another installed package already provides (`PLUGIN_FEATURE_TAKEN{id, feature, owner}`, checked before approval) or plugin data newer than the build (`PLUGIN_STATE_TOO_NEW`) 409; installing a package that declares host steps on a platform other than Linux 422 `PLUGIN_HOST_SETUP_UNSUPPORTED{id}`; a package too large 413 `PLUGIN_PACKAGE_TOO_LARGE`; any other refused package 422, with the codes in [Plugin Protocol and Wire Formats](plugin-protocol.md); `enable` or `purge` not a boolean 400 `FIELD_INVALID`.
 
 The host API that plugin processes call is not under `/api/v1`; its error codes (such as `PLUGIN_ROLE_REQUIRED`, `PLUGIN_HOST_NOT_PERMITTED` and `PLUGIN_HOST_ARGUMENT_INVALID`) are in [Host API clock, readiness, own state and derived keys](plugin-protocol.md#host-api-clock-readiness-own-state-and-derived-keys).
 
@@ -2310,4 +2310,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 8f3c3161830c4eccd97765ab31f6aff7719450b563fa892189e1501e74c6425b -->
+<!-- translation-source-sha256: 9e86e07ec034e2fb7bbf3ad259aa838d2ded64bcff0b826eb4d5b01e6aaa8475 -->

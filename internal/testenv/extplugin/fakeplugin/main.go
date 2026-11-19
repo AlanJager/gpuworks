@@ -13,6 +13,9 @@
 //	                               directory, and report on stderr
 //	--probe-pid pid                try to reach another process's sockets
 //	                               and signal it, and report on stderr
+//	--probe-devices p1,p2,...      wait until every path exists, open each
+//	                               for reading and writing, and report on
+//	                               stderr
 //	--push-raw kind@gen=<json>     push this body at this generation with a
 //	                               bare host API request, past the SDK's
 //	                               own generation counter (repeatable)
@@ -96,6 +99,7 @@ func main() {
 	pushSize := fs.Int("push-size", 100, "nodes held by each periodic push")
 	growRSS := fs.Int("grow-rss", 0, "MiB of resident memory to hold, in this process and a child")
 	readNodes := fs.String("read-nodes", "", "salt to read the node inventory and identity with")
+	probeDevs := fs.String("probe-devices", "", "comma-separated paths to wait for and open")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
 	fillFromPackage(id, version, manifest)
 
@@ -136,6 +140,9 @@ func main() {
 		}
 		if *growRSS > 0 {
 			grow(log, *growRSS)
+		}
+		if *probeDevs != "" {
+			go probeDevices(log, strings.Split(*probeDevs, ","))
 		}
 		for _, kv := range push {
 			kind, body, _ := strings.Cut(kv, "=")
@@ -393,6 +400,31 @@ func probeFiles(log *slog.Logger, path string) {
 	writeErr := os.WriteFile(filepath.Join(wd, "probe.txt"), []byte("ok"), 0o600)
 	log.Info("probe", "probe", "files", "path", path, "read", errName(readErr), "write", errName(writeErr))
 	appendResult(map[string]any{"probe": "files", "path": path, "read": errName(readErr), "write": errName(writeErr)})
+}
+
+// probeDevices waits until every path exists (lstat is outside what
+// Landlock checks, so the wait itself grants nothing), then opens each for
+// reading and writing and reports the outcome per path. The paths are
+// created after the sandbox is applied, as a plugged-in device's are.
+func probeDevices(log *slog.Logger, paths []string) {
+	deadline := time.Now().Add(20 * time.Second)
+	for _, p := range paths {
+		for {
+			if _, err := os.Lstat(p); err == nil || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	opened := map[string]string{}
+	for _, p := range paths {
+		f, err := os.OpenFile(p, os.O_RDWR, 0)
+		if err == nil {
+			f.Close()
+		}
+		opened[p] = errName(err)
+	}
+	log.Info("probe", "probe", "devices", "opened", opened)
 }
 
 // probeSibling tries to reach another process: open its socket

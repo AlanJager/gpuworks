@@ -23,6 +23,10 @@ const (
 	StateIdle      = string(pluginhost.StateIdle) // enabled, an on-demand server part not running now
 	StateBroken    = "broken"                     // installed, but no longer verifies; it does not run
 	StateRevoked   = "revoked"                    // its build or its certificate is revoked; it does not run
+	// StateNeedsHostSetup: enabled, but root has not applied its host
+	// setup steps on this host (PLUGIN_HOST_SETUP_REQUIRED names the
+	// command); it does not start until they are.
+	StateNeedsHostSetup = "needs_host_setup"
 )
 
 // Actions a View offers its administrator.
@@ -112,6 +116,11 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 	if refused != nil {
 		v.State = string(pluginhost.StateFailed)
 		v.Code, v.Params, v.Message = codeOf(refused)
+		if v.Code == messages.ErrorPluginHostSetupRequired {
+			// Enable checks the applied record again and starts the
+			// plugin once root has run the command.
+			v.State, v.Actions = StateNeedsHostSetup, []string{ActionEnable, ActionDisable, ActionUninstall}
+		}
 		return v
 	}
 	st, ok := b.host.Status(m.ID)

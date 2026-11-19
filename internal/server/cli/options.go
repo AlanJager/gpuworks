@@ -149,9 +149,10 @@ func (o Options) installDeps(stderr io.Writer) selfinstall.Deps {
 }
 
 // installer is the installer install and upgrade run: the build's profile
-// and install hooks over the production dependencies.
+// and install hooks, after the core's own (installHooks), over the
+// production dependencies.
 func (o Options) installer(layout selfinstall.Layout, stderr io.Writer, streams *selfinstall.IO) *selfinstall.Installer {
-	return selfinstall.New(layout, o.installDeps(stderr), streams).WithHooks(o.InstallHooks...)
+	return selfinstall.New(layout, o.installDeps(stderr), streams).WithHooks(o.installHooks(layout)...)
 }
 
 // command is the extra command named name, or nil.

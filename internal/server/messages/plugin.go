@@ -98,3 +98,22 @@ const (
 	// cannot be managed here.
 	ErrorPluginsUnavailable = "PLUGINS_UNAVAILABLE"
 )
+
+// Host setup: the root steps a package's host_setup declares
+// (docs/dev/extensions.md).
+const (
+	// ErrorPluginHostSetupRequired: package {id} declares host setup steps
+	// that root has not applied on this host, or applied for other steps;
+	// its server part does not start until an administrator runs
+	// {command}.
+	ErrorPluginHostSetupRequired = "PLUGIN_HOST_SETUP_REQUIRED"
+	// ErrorPluginHostSetupUnsupported: package {id} declares host setup
+	// steps, which this platform cannot apply; nothing was installed.
+	ErrorPluginHostSetupUnsupported = "PLUGIN_HOST_SETUP_UNSUPPORTED"
+)
+
+// PluginHostSetupErrorCodes lists the host setup codes, for the check that
+// the console carries text for each.
+func PluginHostSetupErrorCodes() []string {
+	return []string{ErrorPluginHostSetupRequired, ErrorPluginHostSetupUnsupported}
+}

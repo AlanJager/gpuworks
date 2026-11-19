@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"maps"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -57,6 +58,11 @@ type Spec struct {
 	MemMiB int
 	// Devices are device nodes the plugin may open.
 	Devices []string
+	// DeviceDirs are directories whose device nodes the plugin may open
+	// and list, and ReadPaths paths it may read, both from its applied
+	// host setup (package hostsetup).
+	DeviceDirs []string
+	ReadPaths  []string
 	// RequireLandlock refuses to run the plugin without a Landlock
 	// sandbox (the certificate's min_isolation).
 	RequireLandlock bool
@@ -83,12 +89,19 @@ func (s *Spec) validate() error {
 	case s.MaxConcurrency < 0 || s.MaxConcurrency > 1024 || s.MemMiB < 0:
 		return fmt.Errorf("pluginhost: %s: resource limits out of range", s.ID)
 	}
+	for _, p := range append(slices.Clone(s.DeviceDirs), s.ReadPaths...) {
+		if !filepath.IsAbs(p) {
+			return fmt.Errorf("pluginhost: %s: sandbox path %q is not absolute", s.ID, p)
+		}
+	}
 	return nil
 }
 
 func (s Spec) clone() Spec {
 	s.Args = append([]string(nil), s.Args...)
 	s.Devices = append([]string(nil), s.Devices...)
+	s.DeviceDirs = append([]string(nil), s.DeviceDirs...)
+	s.ReadPaths = append([]string(nil), s.ReadPaths...)
 	s.Approved = maps.Clone(s.Approved)
 	return s
 }

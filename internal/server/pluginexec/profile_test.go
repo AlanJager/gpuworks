@@ -28,7 +28,15 @@ func TestProfileRoundTripsAndRefusesBadInput(t *testing.T) {
 	if p.ID != "acme_backup" || p.NoFile != 4096 || !slices.Equal(argv, []string{"/pkg/bin/acme", "serve"}) {
 		t.Fatalf("parsed %+v %v", p, argv)
 	}
-	enc, _ := validProfile().Encode()
+	withDirs := validProfile()
+	withDirs.Landlock = &Landlock{DeviceDirs: []string{"/dev"}, Read: []string{"/sys/devices"}}
+	enc, _ := withDirs.Encode()
+	const wantDirs = `{"id":"acme_backup","parent_pid":1,"dir":"/var/lib/gpuworks/plugins/acme_backup/data","nice":5,"nofile":4096,` +
+		`"landlock":{"read":["/sys/devices"],"device_dirs":["/dev"]}}`
+	if back, err := DecodeProfile(enc); err != nil || !slices.Equal(back.Landlock.DeviceDirs, []string{"/dev"}) || enc != wantDirs {
+		t.Fatalf("device_dirs round trip: %s, %+v, %v", enc, back, err)
+	}
+	enc, _ = validProfile().Encode()
 	for name, a := range map[string][]string{
 		"short":          {"--profile", enc},
 		"no separator":   {"--profile", enc, "x", "/bin/true"},
@@ -40,6 +48,7 @@ func TestProfileRoundTripsAndRefusesBadInput(t *testing.T) {
 		"id with a path": {"--profile", `{"id":"../a","parent_pid":1,"dir":"/d"}`, "--", "/bin/true"},
 		"nice":           {"--profile", `{"id":"a","parent_pid":1,"dir":"/d","nice":20}`, "--", "/bin/true"},
 		"landlock path":  {"--profile", `{"id":"a","parent_pid":1,"dir":"/d","landlock":{"read":["etc"]}}`, "--", "/bin/true"},
+		"device dir":     {"--profile", `{"id":"a","parent_pid":1,"dir":"/d","landlock":{"device_dirs":["dev"]}}`, "--", "/bin/true"},
 		"cgroup escape":  {"--profile", `{"id":"a","parent_pid":1,"dir":"/d","cgroup":{"root":"/sys/fs/cgroup","parent":"../x"}}`, "--", "/bin/true"},
 	} {
 		if _, _, err := ParseArgs(a); err == nil {

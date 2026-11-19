@@ -220,7 +220,7 @@ test-pluginsdk:
 
 ## test-plugin-landlock: require real sandbox denials, each named PASS and no
 ## skipped cases. Keep environment and test logs for both passing and failed CI.
-PLUGIN_LANDLOCK_CASES := TestContractLandlockKeepsThePluginFromTheMasterKey TestLandlockDeniesPathsOutsideThePlugin TestSiblingCannotReachAnotherPluginsSockets
+PLUGIN_LANDLOCK_CASES := TestContractLandlockKeepsThePluginFromTheMasterKey TestLandlockDeniesPathsOutsideThePlugin TestSiblingCannotReachAnotherPluginsSockets TestDeviceDirGrantsNodesCreatedLater
 .PHONY: test-plugin-landlock
 test-plugin-landlock:
 	@mkdir -p .testlogs

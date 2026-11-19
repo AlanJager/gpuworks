@@ -1000,6 +1000,8 @@
     "PLUGIN_OVERRIDE_REJECTED": "无法覆盖插件 {{plugin}} 的 {{kind}} 条目 {{entry}}（{{rule}}）。",
     "PLUGIN_OVERRIDE_SUPERSEDED": "插件 {{plugin}} 重新设定了 {{kind}} 条目 {{entry}}，你的覆盖已被取代。",
     "PLUGIN_APPROVAL_REQUIRED": "安装 {{id}} {{version}} 需要你批准它申请的内容（权限：{{permissions}}；角色：{{roles}}）。尚未安装任何内容；请带上批准值 {{approve_hash}} 重新上传。",
+    "PLUGIN_HOST_SETUP_REQUIRED": "插件 {{id}} 需要 root 执行主机配置：{{command}}。",
+    "PLUGIN_HOST_SETUP_UNSUPPORTED": "当前平台不支持主机配置步骤。",
     "PLUGIN_BROKEN": "插件 {{id}} 已无法通过校验，不能启用。请重新安装或卸载它。",
     "PLUGINS_UNAVAILABLE": "此服务器没有运行插件宿主，无法在这里管理插件。",
     "MODEL_DOWNLOAD_NETWORK_EXHAUSTED": "多次重试后仍因临时网络或上游服务故障无法获取模型文件列表。请检查网络后重试下载。",
