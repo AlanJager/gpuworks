@@ -268,16 +268,21 @@ func (s *Store) SlurmClusterNodeCounts() (map[uint]SlurmNodeCounts, error) {
 // SlurmClustersLastSeen is when an agent of each entry was last seen, in
 // one query for all of them: with no agent online, the newest list of the
 // entry's nodes is at most this new, since only its agents report one. An
-// entry none of whose nodes was ever seen is absent. It reads the entries'
-// nodes by the slurm cluster index (the caller asks only for entries with no
-// agent online).
+// entry none of whose nodes was ever seen is absent. It reads one row per
+// entry, by the partial slurm node index (hence slurm_cluster_id > 0).
 func (s *Store) SlurmClustersLastSeen(clusterIDs ...uint) (map[uint]time.Time, error) {
 	out := make(map[uint]time.Time, len(clusterIDs))
 	if len(clusterIDs) == 0 {
 		return out, nil
 	}
+	// SQLite gives a bare column of an aggregate query the row the MAX came
+	// from, so last_seen_at is that row's, read with its own column type (a
+	// MAX(...) column would come back as text).
 	var nodes []Node
-	err := s.reader().Select("slurm_cluster_id", "last_seen_at").Where("slurm_cluster_id IN ? AND last_seen_at IS NOT NULL", clusterIDs).Find(&nodes).Error
+	err := s.reader().Select("slurm_cluster_id", "last_seen_at", "MAX(last_seen_at) AS newest_seen").
+		Where("slurm_cluster_id > 0 AND slurm_cluster_id IN ? AND last_seen_at IS NOT NULL", clusterIDs).
+		Group("slurm_cluster_id").
+		Find(&nodes).Error
 	for _, n := range nodes {
 		if seen := n.LastSeenAt.UTC(); seen.After(out[n.SlurmClusterID]) {
 			out[n.SlurmClusterID] = seen
