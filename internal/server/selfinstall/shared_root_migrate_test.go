@@ -69,6 +69,8 @@ func TestLegacySharedRootUpgradeMigratesAndRollbackKeepsTheTrustedRoot(t *testin
 	for _, failHealth := range []bool{false, true} {
 		t.Run(map[bool]string{false: "upgrade", true: "rollback"}[failHealth], func(t *testing.T) {
 			h, root := withLegacySharedRoot(t)
+			agentEntries := []string{"bin", "partition", "probe-libs", "runveil", "models", "identity.json"}
+			notRootOwned(t, root, agentEntries)
 			h.useSite("v2.0.0", []byte("new binary"))
 			if failHealth {
 				h.healthErr = errors.New("new version unhealthy")
@@ -123,9 +125,9 @@ func TestLegacySharedRootUpgradeMigratesAndRollbackKeepsTheTrustedRoot(t *testin
 			if len(changes) != 2 || changes[0].Kind != LayoutChangeSharedRootOwner || changes[1].Kind != LayoutChangeSharedConfigMoved {
 				t.Fatalf("layout history = %+v", changes)
 			}
-			// The agent's files from withSharedRoot belong to the suite's
-			// account, not root: kept, warned about and recorded.
-			for _, name := range []string{"bin", "partition", "probe-libs", "runveil", "models", "identity.json"} {
+			// The agent's files from withSharedRoot do not belong to root
+			// (notRootOwned): kept, warned about and recorded.
+			for _, name := range agentEntries {
 				path := filepath.Join(root, name)
 				if c, ok := foreign[path]; !ok || c.FromUID == nil || c.FromMode == "" {
 					t.Fatalf("foreign entry %s not recorded: %+v", path, foreign)
@@ -162,6 +164,23 @@ func TestLegacySharedRootUpgradeMigratesAndRollbackKeepsTheTrustedRoot(t *testin
 				t.Fatalf("layout after migration: %v", err)
 			}
 		})
+	}
+}
+
+// notRootOwned makes sure the named entries of root are not owned by uid 0,
+// as the node agent's files in a shared root are not. They are created by the
+// suite's own account, which is already the case unless the suite runs as
+// root (CI does); root hands them to an unprivileged uid.
+func notRootOwned(t *testing.T, root string, names []string) {
+	t.Helper()
+	if os.Getuid() != 0 {
+		return
+	}
+	const unprivileged = 65534
+	for _, name := range names {
+		if err := os.Lchown(filepath.Join(root, name), unprivileged, unprivileged); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
