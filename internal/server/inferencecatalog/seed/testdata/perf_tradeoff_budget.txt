@@ -4,10 +4,12 @@
 # (engines.ScanPerformanceCosts).
 #
 # This list only shrinks. Explain a gap with the spec's performance_tradeoffs
-# entry, or drop the setting, and delete its line in the same change: the test
-# fails while a line names a gap that is gone. Adding a line needs a
-# "# raised: <why>" comment above it and a reviewer's agreement, as in
-# scripts/arch-constraints.txt.
+# entry, or drop the setting, then delete its line and lower
+# perfTradeoffBudgetLines in perf_tradeoff_test.go in the same change: the test
+# fails while a line names a gap that is gone or the count disagrees. A new
+# unexplained setting gets a performance_tradeoffs entry, not a line here;
+# adding a line means raising perfTradeoffBudgetLines, with a
+# "# raised: <why>" comment above the line for the reviewer.
 ath-maas/ovis2.5-9b-ppu	bf16-vllm-ppu-d73b2283-alias	--max-num-seqs
 baidu/ernie-4.5-300b-a47b-pt	bf16-300b-vllm-nvidia-a100	--enforce-eager
 baidu/unlimited-ocr	bf16-sglang-nvidia-general	--disable-radix-cache

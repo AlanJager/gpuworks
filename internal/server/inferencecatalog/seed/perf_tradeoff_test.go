@@ -13,11 +13,18 @@ import (
 // carry no stated reason yet. It only shrinks: see the file's header.
 const perfTradeoffBudget = "testdata/perf_tradeoff_budget.txt"
 
+// perfTradeoffBudgetLines is how many gaps the budget may list. The test
+// fails when the file lists more, so a change that adds a gap must also raise
+// this number, where review sees it; and when it lists fewer, so the number
+// follows every gap closed and cannot keep room for a new one.
+const perfTradeoffBudgetLines = 75
+
 // Every guarded performance cost a built-in spec sets (the engine registry,
 // engines.ScanPerformanceCosts) must say why in the spec's
 // performance_tradeoffs, be exempt as a pooling task, or be one of the gaps
-// the budget file still lists. A budget line whose gap is gone fails too, so
-// the budget cannot keep room for a new unexplained setting.
+// the budget file still lists. A budget line whose gap is gone fails too, and
+// the file's line count is pinned (perfTradeoffBudgetLines), so the budget
+// cannot keep room for a new unexplained setting nor grow unseen.
 //
 //	go test ./internal/server/inferencecatalog/seed/ -run TestBuiltinPerformanceCostsAreExplained
 func TestBuiltinPerformanceCostsAreExplained(t *testing.T) {
@@ -26,6 +33,12 @@ func TestBuiltinPerformanceCostsAreExplained(t *testing.T) {
 		t.Fatal(err)
 	}
 	budget := readPerfTradeoffBudget(t)
+	switch {
+	case len(budget) > perfTradeoffBudgetLines:
+		t.Errorf("%s lists %d gaps, more than perfTradeoffBudgetLines (%d): explain the new setting in the spec's performance_tradeoffs instead", perfTradeoffBudget, len(budget), perfTradeoffBudgetLines)
+	case len(budget) < perfTradeoffBudgetLines:
+		t.Errorf("%s lists %d gaps: lower perfTradeoffBudgetLines from %d to %d", perfTradeoffBudget, len(budget), perfTradeoffBudgetLines, len(budget))
+	}
 	used := make(map[string]bool, len(budget))
 	for _, model := range catalog.Models {
 		for _, spec := range model.Specs {
