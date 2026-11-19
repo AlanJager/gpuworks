@@ -93,6 +93,7 @@ DELETE /api/v1/networks/{id}/attachments/{attachmentID}
 DELETE /api/v1/nodes/{uuid}
 DELETE /api/v1/nodes/{uuid}/ssh
 DELETE /api/v1/platform-tokens/{id}
+DELETE /api/v1/plugins/overrides/{oid}
 DELETE /api/v1/plugins/{id}
 DELETE /api/v1/priority-classes/{name}
 DELETE /api/v1/providers/{id}
@@ -222,6 +223,7 @@ GET /api/v1/platform-tokens
 GET /api/v1/playground/models
 GET /api/v1/playground/openapi.json
 GET /api/v1/plugins
+GET /api/v1/plugins/overrides
 GET /api/v1/priority-classes
 GET /api/v1/providers
 GET /api/v1/providers/kinds
@@ -375,6 +377,7 @@ POST /api/v1/nodes/{uuid}/upgrade
 POST /api/v1/notices/read
 POST /api/v1/platform-tokens
 POST /api/v1/plugins/install
+POST /api/v1/plugins/overrides
 POST /api/v1/plugins/{id}/disable
 POST /api/v1/plugins/{id}/enable
 POST /api/v1/priority-classes

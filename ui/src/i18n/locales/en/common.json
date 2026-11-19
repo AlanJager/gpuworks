@@ -999,6 +999,7 @@
     "PLUGIN_CLOCK_CORRECTION_TOO_LARGE": "A clock correction may move the plugin clock by at most {{max_days}} days.",
     "PLUGIN_OVERRIDE_REJECTED": "The override of {{kind}} entry {{entry}} from plugin {{plugin}} cannot be applied ({{rule}}).",
     "PLUGIN_OVERRIDE_SUPERSEDED": "Plugin {{plugin}} set {{kind}} entry {{entry}} again, which replaced your override.",
+    "PLUGIN_OVERRIDE_NOT_FOUND": "Override {{id}} does not exist.",
     "PLUGIN_APPROVAL_REQUIRED": "Installing {{id}} {{version}} needs your approval of what it asks for (permissions: {{permissions}}; roles: {{roles}}). Nothing was installed; send the upload again with approval {{approve_hash}}.",
     "PLUGIN_HOST_SETUP_REQUIRED": "Plugin {{id}} needs a root setup step: run {{command}}.",
     "PLUGIN_HOST_SETUP_UNSUPPORTED": "Host setup steps are not supported on this platform.",
