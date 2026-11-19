@@ -410,7 +410,9 @@ for node in $nodes; do
 		rc=1
 		continue
 	fi
-	cmd=$(printf '%s' "$*" | sed "s|$FAKE_SCRIPT_DIR|$S/remote/$node$FAKE_SCRIPT_DIR|g")
+	# like pdsh, expand %u (remote user), %h (host), %n (rank) and %%
+	cmd=$(printf '%s' "$*" | sed "s/%%/@GWKS_PCT@/g; s/%u/root/g; s/%h/$node/g; s/%n/0/g; s/@GWKS_PCT@/%/g")
+	cmd=$(printf '%s' "$cmd" | sed "s|$FAKE_SCRIPT_DIR|$S/remote/$node$FAKE_SCRIPT_DIR|g")
 	FAKE_NODE=$node sh -c "$cmd" 2>&1 | sed "s|^|$node: |"
 done
 exit $rc

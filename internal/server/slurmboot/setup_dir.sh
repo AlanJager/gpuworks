@@ -5,36 +5,51 @@
 # root could change a directory, or a directory above it: slurmd runs
 # check.sh from the script directory as root on every node, so whoever can
 # change it runs code as root on all of them. It is text, run here with eval
-# and sent as is to the nodes the scripts are copied to, so both check alike.
+# and sent as is to the nodes the scripts are copied to, so both check alike;
+# it needs only a POSIX shell, stat and readlink, and what it cannot read
+# counts as unsafe.
 #
 # gwks_dir_unsafe <absolute dir> prints nothing when the directory is safe,
 # else "<kind>|<path>|<owner>|<mode>|<why>": kind is "open" when the only
 # problem is the directory itself being writable by group or others, else
-# "bad". Every directory on the path counts twice: as written (the parent of a
-# symbolic link is where the link can be replaced) and as it resolves (cd -P:
-# the directories the link leads through). Each must be owned by root and
-# writable by neither group nor others; above the directory itself a sticky
-# one (/tmp) is fine, since nobody else can replace what root put in it. A
-# missing tail is fine (root makes it); a dangling symbolic link is not. A
+# "bad". The path is followed one name at a time, as the kernel does: every
+# directory passed through must be owned by root and writable by neither
+# group nor others, except that above the directory itself a sticky one
+# (/tmp) is fine, since nobody else can replace what root has there; every
+# symbolic link passed through must be root's too (a link in a sticky
+# directory belongs to whoever made it), and is followed in turn, at most 40
+# of them. A missing tail is fine (root makes it); a dangling link is not. A
 # share exported with root squash shows root's files as nobody's.
 # GWKS_OWNER_UID stands in for root's uid in tests.
 DIR_CHECK='
 gwks_dir_bits() {
-	printf "%s" "$1" | awk "{ m = \$1; while (length(m) < 4) m = \"0\" m
-		s = substr(m, 1, 1) + 0; g = substr(m, 3, 1) + 0; o = substr(m, 4, 1) + 0
-		w = (g == 2 || g == 3 || g == 6 || g == 7 || o == 2 || o == 3 || o == 6 || o == 7)
-		t = (s == 1 || s == 3 || s == 5 || s == 7)
-		printf \"%s%s\", (w ? \"w\" : \"-\"), (t ? \"t\" : \"-\") }"
+	gw_b=$1
+	while [ ${#gw_b} -lt 4 ]; do gw_b=0$gw_b; done
+	case $gw_b in
+	[0-7][0-7][0-7][0-7]) ;;
+	*) printf "w-"; return 0 ;;
+	esac
+	case $gw_b in
+	??[2367]? | ???[2367]) printf w ;;
+	*) printf - ;;
+	esac
+	case $gw_b in
+	[1357]???) printf t ;;
+	*) printf - ;;
+	esac
+}
+gwks_root_uid() {
+	[ "$1" = 0 ] || [ "$1" = "${GWKS_OWNER_UID:-0}" ]
 }
 gwks_dir_one() {
 	gw_i=$(stat -L -c "%u %a" "$1" 2>/dev/null) || gw_i=""
 	gw_u=${gw_i%% *}
 	gw_m=${gw_i#* }
-	if [ -z "$gw_i" ] || [ -z "$gw_m" ]; then
+	if [ -z "$gw_i" ] || [ -z "$gw_m" ] || [ "$gw_u" = "$gw_i" ]; then
 		printf "bad|%s|?|?|its owner and mode cannot be read\n" "$1"
 		return 0
 	fi
-	if [ "$gw_u" != 0 ] && [ "$gw_u" != "${GWKS_OWNER_UID:-0}" ]; then
+	if ! gwks_root_uid "$gw_u"; then
 		printf "bad|%s|%s|%s|it is owned by uid %s, not by root\n" "$1" "$gw_u" "$gw_m" "$gw_u"
 		return 0
 	fi
@@ -49,39 +64,53 @@ gwks_dir_unsafe() {
 	/*) ;;
 	*) printf "bad|%s|?|?|it is not an absolute path\n" "$1"; return 0 ;;
 	esac
-	gw_e=$1
-	while [ ! -e "$gw_e" ] && [ ! -L "$gw_e" ]; do gw_e=$(dirname "$gw_e"); done
-	if [ -L "$gw_e" ] && [ ! -e "$gw_e" ]; then
-		printf "bad|%s|?|?|it is a dangling symbolic link\n" "$gw_e"
-		return 0
-	fi
-	gw_p=$(cd -P "$gw_e" 2>/dev/null && pwd -P) || gw_p=""
-	if [ -z "$gw_p" ]; then
-		printf "bad|%s|?|?|it cannot be resolved\n" "$gw_e"
-		return 0
-	fi
-	gw_bad=""
-	for gw_d in "$gw_e" "$gw_p"; do
-		gw_leaf=no
-		[ "$gw_e" = "$1" ] && gw_leaf=yes
-		while :; do
-			if [ ! -L "$gw_d" ]; then
-				if [ "$gw_leaf" = yes ]; then
-					gw_r=$(gwks_dir_one "$gw_d" open)
-				else
-					gw_r=$(gwks_dir_one "$gw_d" bad)
-				fi
-				case $gw_r in
-				bad*) printf "%s\n" "$gw_r"; return 0 ;;
-				open*) gw_bad=$gw_r ;;
-				esac
+	gw_r=$(gwks_dir_one / bad)
+	if [ -n "$gw_r" ]; then printf "%s\n" "$gw_r"; return 0; fi
+	gw_cur=""
+	gw_rest=${1#/}
+	gw_hops=0
+	gw_open=""
+	while [ -n "$gw_rest" ]; do
+		gw_c=${gw_rest%%/*}
+		case $gw_rest in */*) gw_rest=${gw_rest#*/} ;; *) gw_rest="" ;; esac
+		case $gw_c in
+		"" | .) continue ;;
+		..) gw_cur=${gw_cur%/*}; continue ;;
+		esac
+		gw_n=$gw_cur/$gw_c
+		if [ -L "$gw_n" ]; then
+			gw_hops=$((gw_hops + 1))
+			gw_u=$(stat -c %u "$gw_n" 2>/dev/null) || gw_u=""
+			gw_t=$(readlink "$gw_n" 2>/dev/null) || gw_t=""
+			if [ "$gw_hops" -gt 40 ] || [ -z "$gw_t" ] || [ -z "$gw_u" ]; then
+				printf "bad|%s|?|?|its symbolic links cannot be followed\n" "$gw_n"
+				return 0
 			fi
-			gw_leaf=no
-			[ "$gw_d" = / ] && break
-			gw_d=$(dirname "$gw_d")
-		done
+			if ! gwks_root_uid "$gw_u"; then
+				printf "bad|%s|%s|?|it is a symbolic link owned by uid %s, not by root\n" "$gw_n" "$gw_u" "$gw_u"
+				return 0
+			fi
+			if [ ! -e "$gw_n" ]; then
+				printf "bad|%s|?|?|it is a dangling symbolic link\n" "$gw_n"
+				return 0
+			fi
+			case $gw_t in /*) gw_cur="" ;; esac
+			gw_rest=${gw_t#/}${gw_rest:+/$gw_rest}
+			continue
+		fi
+		[ -e "$gw_n" ] || return 0
+		if [ -n "$gw_rest" ]; then
+			gw_r=$(gwks_dir_one "$gw_n" bad)
+		else
+			gw_r=$(gwks_dir_one "$gw_n" open)
+		fi
+		case $gw_r in
+		bad*) printf "%s\n" "$gw_r"; return 0 ;;
+		open*) gw_open=$gw_r ;;
+		esac
+		gw_cur=$gw_n
 	done
-	[ -n "$gw_bad" ] && printf "%s\n" "$gw_bad"
+	[ -n "$gw_open" ] && printf "%s\n" "$gw_open"
 	return 0
 }
 '
@@ -119,12 +148,14 @@ check_script_dir() {
 			mark "step=script_dir status=plan action=tighten path=$(clean "$path") mode=$(clean "$mode")"
 			return 0
 		fi
-		if chmod go-w "$path" && [ -z "$(gwks_dir_unsafe "$SCRIPT_DIR")" ]; then
+		# Checked again once closed: something put there before the chmod
+		# went through is caught now, as nothing can be added after it.
+		if chmod go-w "$path" && own_script_dir && [ -z "$(gwks_dir_unsafe "$SCRIPT_DIR")" ]; then
 			say "The script directory $path was writable by group or others ($mode): made it not."
 			mark "step=script_dir status=ok action=tightened path=$(clean "$path") mode=$(clean "$mode")"
 			return 0
 		fi
-		why="it is writable by group or others and could not be changed"
+		why="it was writable by group or others, and closing it did not leave only root's files"
 	fi
 	script_dir_unsafe "$path" "$owner" "$mode" "$why"
 }

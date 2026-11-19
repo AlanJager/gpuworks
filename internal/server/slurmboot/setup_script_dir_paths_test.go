@@ -2,6 +2,7 @@ package slurmboot
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -157,6 +158,103 @@ func TestSetupCopiesNothingToANodeWithAnUnsafeScriptDirectory(t *testing.T) {
 				}
 				if !strings.Contains(r.stdout, "is not safe for the health check there") {
 					t.Fatalf("no reason in the output:\n%s", r.stdout)
+				}
+			})
+		})
+	}
+}
+
+// foreign makes stat report the given paths (the path itself, not where a
+// link leads, when that is what is asked) as owned by uid 4242, an account
+// other than root: the test cannot make files of another account.
+func (w *world) foreign(t *testing.T, paths ...string) {
+	t.Helper()
+	real, err := exec.LookPath("stat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(w.bin, "stat")
+	if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	w.writeExec(link, `#!/bin/sh
+out=$(`+real+` "$@") || exit $?
+for a in "$@"; do last=$a; done
+for f in $FAKE_STAT_FOREIGN; do
+	if [ "$f" = "$last" ]; then
+		case $out in *" "*) out="4242 ${out#* }" ;; *) out=4242 ;; esac
+	fi
+done
+printf '%s\n' "$out"
+`)
+	w.env["FAKE_STAT_FOREIGN"] = strings.Join(paths, " ")
+}
+
+// A link passed through counts as much as a directory: one another account
+// owns (in a sticky directory anyone can make one) is refused, and so is a
+// chain of links that passes through a directory others can write, even when
+// it ends somewhere safe.
+func TestSetupChecksEveryLinkOnTheWay(t *testing.T) {
+	t.Run("a link of another account in a sticky directory", func(t *testing.T) {
+		eachShell(t, func(t *testing.T, w *world) {
+			w.controller("nfs", baseConf)
+			mustMkdir(t, w.path("ok/a/gw"), 0o755)
+			mustMkdir(t, w.path("stk"), 0o755)
+			mustChmod(t, w.path("stk"), os.ModeSticky|0o777)
+			mustMkdir(t, w.path("opt"), 0o755)
+			for _, l := range [][2]string{{w.path("ok/a"), w.path("stk/lnk")}, {w.path("stk/lnk/gw"), w.p.ScriptDir}} {
+				if err := os.Symlink(l[0], l[1]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if r := w.runSetup("--check"); r.code != 0 {
+				t.Fatalf("a root link in a sticky directory: exit %d\n%s", r.code, r.stdout)
+			}
+			w.foreign(t, w.path("stk/lnk"))
+			m := w.refusedOverScriptDir(t, w.path("stk/lnk"))
+			if m["owner"] != "4242" {
+				t.Fatalf("script_dir = %v", m)
+			}
+		})
+	})
+	t.Run("a chain through an open directory", func(t *testing.T) {
+		eachShell(t, func(t *testing.T, w *world) {
+			w.controller("nfs", baseConf)
+			mustMkdir(t, w.path("ok/a/gw"), 0o755)
+			mustMkdir(t, w.path("safe"), 0o755)
+			mustMkdir(t, w.path("open"), 0o755)
+			mustChmod(t, w.path("open"), 0o777)
+			mustMkdir(t, w.path("opt"), 0o755)
+			for _, l := range [][2]string{{"../ok/a", w.path("open/l2")}, {"../open/l2", w.path("safe/one")}, {w.path("safe/one/gw"), w.p.ScriptDir}} {
+				if err := os.Symlink(l[0], l[1]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w.refusedOverScriptDir(t, w.path("open"))
+		})
+	})
+}
+
+// Nodes are told apart by their whole name: an unreachable n1 is not
+// reported with what gn1 said.
+func TestSetupDoesNotMixUpNodesWhoseNamesEndAlike(t *testing.T) {
+	for _, tools := range [][]string{{"pdsh", "pdcp"}, {"clush"}} {
+		t.Run(tools[0], func(t *testing.T) {
+			eachShell(t, func(t *testing.T, w *world) {
+				w.controller("ext4", baseConf)
+				w.onlyRemoteTools(tools...)
+				w.write(w.state+"/sinfo", "n1\ngn1\nctl\n")
+				w.env["FAKE_FAIL_NODES"] = "n1"
+				remote := filepath.Join(w.state, "remote", "gn1") + w.p.ScriptDir
+				mustMkdir(t, remote, 0o755)
+				mustChmod(t, filepath.Dir(remote), 0o777)
+				r := w.runSetup()
+				byNode := map[string]string{}
+				for _, m := range markers(t, r.stdout, "distribute") {
+					byNode[m["node"]] = m["status"] + "/" + m["reason"]
+				}
+				if byNode["n1"] != "failed/unreachable" || byNode["gn1"] != "failed/unsafe" {
+					t.Fatalf("per node = %v\n%s", byNode, r.stdout)
 				}
 			})
 		})

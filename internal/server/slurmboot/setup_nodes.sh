@@ -76,69 +76,63 @@ sync_nodes() {
 		return 0
 	fi
 	# Each node's script directory is checked as the controller's is
-	# (gwks_dir_unsafe, sent along), before anything is copied there: a node
-	# where another account could change it gets nothing, the token
-	# included. Copying writes into the files there, so on a node the
-	# directory being itself too open is unsafe too. A missing directory is
-	# made root's with umask 022 and checked again once made; an existing one
-	# keeps its mode. The token file exists with mode 0600 before anything is
-	# copied into it: copying overwrites the contents and keeps that mode.
-	nodecheck="$DIR_CHECK
-r=\$(gwks_dir_unsafe '$SCRIPT_DIR'); if [ -z \"\$r\" ]; then echo GWKS_SAFE; else echo \"GWKS_UNSAFE \$r\"; fi"
-	# prep checks again itself (ssh has no separate pass, and the directory
-	# may be made by it): an unsafe one prints GWKS_UNSAFE and stops.
+	# (gwks_dir_unsafe, sent along) by prep, before anything is copied there:
+	# a node where another account could change it prints GWKS_UNSAFE and
+	# gets nothing, the token included, and only a node that printed
+	# GWKS_PREPPED is copied to. Copying writes into the files there, so on a
+	# node the directory being itself too open is unsafe too. A missing
+	# directory is made root's with umask 022 and checked again once made; an
+	# existing one keeps its mode. The token file exists with mode 0600 before
+	# anything is copied into it: copying overwrites the contents and keeps
+	# that mode. The text needs a POSIX login shell for root on the nodes.
 	prep="$DIR_CHECK
 gwks_safe() { r=\$(gwks_dir_unsafe '$SCRIPT_DIR'); [ -z \"\$r\" ] && return 0; echo \"GWKS_UNSAFE \$r\"; exit 1; }
 gwks_safe && (umask 022 && mkdir -p '$SCRIPT_DIR') && gwks_safe && (umask 077 && : > '$SCRIPT_DIR/token') && chmod 0600 '$SCRIPT_DIR/token'"
 	for f in $ABSENT; do
 		prep="$prep && rm -f '$SCRIPT_DIR/$f'"
 	done
+	prep="$prep && echo GWKS_PREPPED"
 	fin="chmod 0755 '$SCRIPT_DIR/check.sh' && chmod 0600 '$SCRIPT_DIR/token'"
 	probe="$DIR_CHECK
 [ -z \"\$(gwks_dir_unsafe '$SCRIPT_DIR')\" ] && test -x '$SCRIPT_DIR/check.sh' && test -s '$SCRIPT_DIR/token' && echo GWKS_OK"
 	mkdir -p "$WORK/dist"
-	if have clush || { have pdsh && have pdcp; }; then
-		# One pass over every node first: only safe nodes are copied to.
+	tool=''
+	if have clush; then
+		tool=clush
+	elif have pdsh && have pdcp; then
 		tool=pdsh
-		have clush && tool=clush
+	fi
+	if [ -n "$tool" ]; then
 		csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
-		checked=$(budgeted "$tool" -w "$csv" "$nodecheck" </dev/null 2>/dev/null)
+		say "Copying with $tool to: $csv"
+		said=$(fanout "$csv" "$prep")
 		safe=''
 		for n in $NODES; do
-			if printf '%s\n' "$checked" | grep -Fxq "$n: GWKS_SAFE"; then
+			if node_said "$said" "$n" GWKS_PREPPED >/dev/null; then
 				safe="$safe $n"
-			elif line=$(printf '%s\n' "$checked" | grep -F "$n: GWKS_UNSAFE " | head -n 1) && [ -n "$line" ]; then
+			elif why=$(node_said "$said" "$n" GWKS_UNSAFE); then
 				echo failed unsafe >"$WORK/dist/$(clean "$n")"
-				printf '%s\n' "${line#*GWKS_UNSAFE }" >"$WORK/dist/$(clean "$n").why"
+				printf '%s\n' "$why" >"$WORK/dist/$(clean "$n").why"
 			else
 				echo failed unreachable >"$WORK/dist/$(clean "$n")"
 			fi
 		done
 		csv=$(printf '%s\n' $safe | tr '\n' ',' | sed 's/,$//')
-	fi
-	if [ -n "${csv:-}" ] && have clush; then
-		say "Copying with clush to: $csv"
-		budgeted clush -w "$csv" "$prep" </dev/null >/dev/null 2>&1
-		for f in $FILES; do
-			budgeted clush -w "$csv" --copy "$SCRIPT_DIR/$f" --dest "$SCRIPT_DIR/" </dev/null >/dev/null 2>&1
-		done
-		budgeted clush -w "$csv" "$fin" </dev/null >/dev/null 2>&1
-		verified=$(budgeted clush -w "$csv" "$probe" </dev/null 2>/dev/null)
-		for n in $safe; do
-			if printf '%s\n' "$verified" | grep -Fxq "$n: GWKS_OK"; then echo ok >"$WORK/dist/$(clean "$n")"; else echo failed unreachable >"$WORK/dist/$(clean "$n")"; fi
-		done
-	elif [ -n "${csv:-}" ] && have pdsh && have pdcp; then
-		say "Copying with pdsh/pdcp to: $csv"
-		budgeted pdsh -w "$csv" "$prep" </dev/null >/dev/null 2>&1
-		for f in $FILES; do
-			budgeted pdcp -w "$csv" "$SCRIPT_DIR/$f" "$SCRIPT_DIR/" </dev/null >/dev/null 2>&1
-		done
-		budgeted pdsh -w "$csv" "$fin" </dev/null >/dev/null 2>&1
-		verified=$(budgeted pdsh -w "$csv" "$probe" </dev/null 2>/dev/null)
-		for n in $safe; do
-			if printf '%s\n' "$verified" | grep -Fxq "$n: GWKS_OK"; then echo ok >"$WORK/dist/$(clean "$n")"; else echo failed unreachable >"$WORK/dist/$(clean "$n")"; fi
-		done
-	elif ! have clush && ! { have pdsh && have pdcp; }; then
+		if [ -n "$csv" ]; then
+			for f in $FILES; do
+				if [ "$tool" = clush ]; then
+					budgeted clush -w "$csv" --copy "$SCRIPT_DIR/$f" --dest "$SCRIPT_DIR/" </dev/null >/dev/null 2>&1
+				else
+					budgeted pdcp -w "$csv" "$SCRIPT_DIR/$f" "$SCRIPT_DIR/" </dev/null >/dev/null 2>&1
+				fi
+			done
+			fanout "$csv" "$fin" >/dev/null
+			verified=$(fanout "$csv" "$probe")
+			for n in $safe; do
+				if node_said "$verified" "$n" GWKS_OK >/dev/null; then echo ok >"$WORK/dist/$(clean "$n")"; else echo failed verify >"$WORK/dist/$(clean "$n")"; fi
+			done
+		fi
+	else
 		csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
 		ssh_opts="-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 		say "Copying with ssh to: $csv (at most $DIST_JOBS at a time)"
@@ -185,7 +179,7 @@ gwks_safe && (umask 022 && mkdir -p '$SCRIPT_DIR') && gwks_safe && (umask 077 &&
 	mark "step=distribute_summary ok=$nok failed=${failed:-none}"
 	if [ -n "$failed" ]; then
 		PARTIAL=1
-		say "These nodes did not get the scripts (no passwordless ssh as root, or not done within ${DIST_BUDGET} s): $failed"
+		say "These nodes did not get the scripts (the reason is on each line above: no passwordless ssh as root, not done within ${DIST_BUDGET} s, or an unsafe script directory there): $failed"
 		say "Copy these files to the same path on each of them, mode 0755 for check.sh and 0600 for token:"
 		for f in $FILES; do
 			say "  $SCRIPT_DIR/$f"
@@ -205,6 +199,24 @@ budgeted() {
 	else
 		"$@"
 	fi
+}
+
+# fanout runs a command on the nodes in $1 with clush or pdsh ($tool) and
+# prints what they said, each line as "<node>: <line>". pdsh expands %h, %u
+# and %n in the command, so its % signs are doubled.
+fanout() {
+	if [ "$tool" = clush ]; then
+		budgeted clush -w "$1" "$2" </dev/null 2>/dev/null
+	else
+		budgeted pdsh -w "$1" "$(printf '%s' "$2" | sed 's/%/%%/g')" </dev/null 2>/dev/null
+	fi
+}
+
+# node_said finds the line node $2 said starting with word $3 in output $1
+# and prints the rest of it; it fails when the node said no such line. The
+# node name is matched whole, so cn1 is not gcn1.
+node_said() {
+	printf '%s\n' "$1" | awk -v p="$2: $3" 'index($0, p) == 1 && (length($0) == length(p) || substr($0, length(p) + 1, 1) == " ") { print substr($0, length(p) + 2); found = 1; exit } END { exit !found }'
 }
 
 # sync_node_ssh does one node with ssh and scp and leaves "ok" or "failed
