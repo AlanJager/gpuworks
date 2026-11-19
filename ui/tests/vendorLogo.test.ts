@@ -10,7 +10,7 @@ test("all accelerator vendors resolve through the shared logo asset map", () => 
   assert.equal(vendorForFramework("xre"), "kunlunxin");
   assert.equal(vendorForFramework("KUNLUNXIN"), "kunlunxin");
   assert.equal(vendorForFramework("HYGON"), "hygon");
-  assert.equal(VENDOR_ASSETS.hygon, "/vendor-logos/hygon.webp");
+  assert.equal(VENDOR_ASSETS.hygon, "/vendor-logos/hygon.png");
   assert.equal(VENDOR_ASSETS.kunlunxin, "/vendor-logos/kunlunxin.png");
   assert.equal(vendorForFramework("hggc"), "ppu");
   assert.ok(VENDOR_ASSETS.thead);
@@ -25,7 +25,7 @@ test("Apple silicon resolves from its metal framework to the Apple mark", () => 
 test("every vendor mark is a file shipped under public/vendor-logos", async () => {
   for (const vendor of Object.keys(VENDOR_ASSETS)) {
     const asset = VENDOR_ASSETS[vendor];
-    assert.match(asset, /^\/vendor-logos\/[a-z]+\.(svg|png|webp)$/, vendor);
+    assert.match(asset, /^\/vendor-logos\/[a-z]+\.(svg|png)$/, vendor);
     await access(new URL(`../public${asset}`, import.meta.url));
   }
 });
