@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 
@@ -28,10 +29,18 @@ func runHostIdentity(args []string, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	path := fs.String("write", "", "absolute path of the file to write (normally "+hostidentity.RunFile+")")
 	group := fs.String("group", "", "group that may read the file (the service group); empty is root's")
+	install := fs.String("install-helper", "", "internal: publish the protected systemd helper in this unit directory")
+	remove := fs.String("remove-helper", "", "internal: remove this installation's protected systemd helper")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *path == "" || fs.NArg() > 0 {
+	if fs.NArg() > 0 || (*install != "" && *remove != "") || (*path != "" && (*install != "" || *remove != "")) {
+		return errors.New("usage: gpuworks " + hostIdentityCommand + " --write PATH [--group GROUP]")
+	}
+	if *install != "" || *remove != "" {
+		return manageHostIdentityHelper(*install, *remove, *group)
+	}
+	if *path == "" {
 		return errors.New("usage: gpuworks " + hostIdentityCommand + " --write PATH [--group GROUP]")
 	}
 	return hostidentity.Write(*path, *group)
@@ -39,13 +48,14 @@ func runHostIdentity(args []string, stderr io.Writer) error {
 
 // hostIdentityHook is the core install hook: a drop-in for the server's
 // systemd unit that runs `host-identity --write` as root before every
-// start ("+" gives that step full privileges whatever account the service
-// runs as; "-" lets the server start when the step fails, for instance
-// after a rollback to a release without the subcommand, and read what it
-// can itself). The file is readable by the service group the unit runs
+// start, using a root-protected copy of this installer, never the service's
+// writable main binary. Console upgrades leave that copy in place; its v1
+// facts format must remain readable until the next privileged CLI upgrade.
+// "-" lets the server start when the optional identity read fails.
+// The facts file is readable by the service group the unit runs
 // with. Without a systemd unit directory (selfinstall clears it unless
 // systemd supervises the service), or off Linux, it does nothing.
-// Uninstall removes the drop-in.
+// Uninstall removes only our drop-in and protected executable.
 type hostIdentityHook struct{}
 
 var _ selfinstall.InstallHook = hostIdentityHook{}
@@ -63,19 +73,21 @@ func (hostIdentityHook) Install(ctx context.Context, run selfinstall.Runner, lay
 	if !hostIdentityHookApplies(layout) {
 		return nil
 	}
-	content, err := hostIdentityDropInContent(layout.Binary(), serviceGroupOf(serviceUser))
-	if err != nil {
-		return err
-	}
-	return selfinstall.WriteDropIn(ctx, run, layout, hostIdentityDropIn, content)
+	return run.Run(ctx, selfinstall.Command{Path: liveHostIdentityInstaller(),
+		Args: []string{hostIdentityCommand, "--install-helper", layout.UnitDir, "--group", serviceGroupOf(serviceUser)}, Sudo: true})
 }
 
 func (hostIdentityHook) Uninstall(ctx context.Context, run selfinstall.Runner, layout selfinstall.Layout) error {
 	if !hostIdentityHookApplies(layout) {
 		return nil
 	}
-	return selfinstall.RemoveDropIn(ctx, run, layout, hostIdentityDropIn)
+	return run.Run(ctx, selfinstall.Command{Path: liveHostIdentityInstaller(),
+		Args: []string{hostIdentityCommand, "--remove-helper", layout.UnitDir}, Sudo: true})
 }
+
+// The synchronous child executes the live installer's inode even if the
+// service has already replaced its pathname. The child copies /proc/self/exe.
+func liveHostIdentityInstaller() string { return fmt.Sprintf("/proc/%d/exe", os.Getpid()) }
 
 // serviceGroupOf is the group the unit runs a service account under
 // (selfinstall.DefaultCredentialGroup); root and the detached mode need

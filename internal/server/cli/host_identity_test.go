@@ -9,21 +9,17 @@ import (
 	"strings"
 	"testing"
 
-	"gpuworks.ai/gpuworks/internal/server/hostidentity"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 )
 
-// dropInRunner is a selfinstall.Runner that keeps the files tee writes and
-// rm removes, as a host would, and records each command line.
+// dropInRunner records only the two exact privileged maintenance operations.
+// The Linux filesystem tests exercise their actual publication behavior.
 type dropInRunner struct {
-	files map[string]string
 	lines []string
 	fail  map[string]error
 }
 
-func newDropInRunner() *dropInRunner {
-	return &dropInRunner{files: map[string]string{}, fail: map[string]error{}}
-}
+func newDropInRunner() *dropInRunner { return &dropInRunner{fail: map[string]error{}} }
 
 func (r *dropInRunner) Run(_ context.Context, c selfinstall.Command) error {
 	line := strings.TrimSpace(fmt.Sprintf("%s %s", c.Path, strings.Join(c.Args, " ")))
@@ -34,18 +30,23 @@ func (r *dropInRunner) Run(_ context.Context, c selfinstall.Command) error {
 	if err := r.fail[line]; err != nil {
 		return err
 	}
-	switch c.Path {
-	case "tee":
-		data, _ := io.ReadAll(c.Stdin)
-		r.files[c.Args[0]] = string(data)
-	case "rm":
-		delete(r.files, c.Args[len(c.Args)-1])
+	if c.Path != liveHostIdentityInstaller() || !c.Sudo || len(c.Args) < 3 || c.Args[0] != "host-identity" {
+		return fmt.Errorf("unexpected command: %s", line)
 	}
-	return nil
+	switch c.Args[1] {
+	case "--install-helper":
+		if len(c.Args) == 5 && c.Args[3] == "--group" {
+			return nil
+		}
+	case "--remove-helper":
+		if len(c.Args) == 3 {
+			return nil
+		}
+	}
+	return fmt.Errorf("unexpected maintenance arguments: %s", line)
 }
-
-func (r *dropInRunner) Output(ctx context.Context, c selfinstall.Command) (string, error) {
-	return "", r.Run(ctx, c)
+func (r *dropInRunner) Output(context.Context, selfinstall.Command) (string, error) {
+	return "", errors.New("no output command is part of the identity hook")
 }
 
 func linuxHook(t *testing.T) {
@@ -62,8 +63,8 @@ func testLayout(t *testing.T) selfinstall.Layout {
 	return l
 }
 
-// The hook writes this drop-in, root-only and escalated through the runner,
-// for a service account; for root it names no group.
+// Privileged maintenance always executes the live installer inode. The
+// service's writable main binary is never selected as root executable.
 func TestHostIdentityDropInGolden(t *testing.T) {
 	linuxHook(t)
 	layout := testLayout(t)
@@ -71,50 +72,22 @@ func TestHostIdentityDropInGolden(t *testing.T) {
 	if err := (hostIdentityHook{}).Install(context.Background(), run, layout, "gpuworks"); err != nil {
 		t.Fatal(err)
 	}
-	path := "/etc/systemd/system/gpuworks.service.d/host-identity.conf"
-	want := "# Written by gpuworks install: reads the host identity facts only root may read.\n" +
-		"[Service]\n" +
-		"ExecStartPre=-+/opt/gpuworks/gpuworks host-identity --write /run/gpuworks/host-identity.json --group gpuworks\n"
-	if got := run.files[path]; got != want {
-		t.Fatalf("drop-in =\n%s\nwant\n%s", got, want)
+	want := "sudo " + liveHostIdentityInstaller() + " host-identity --install-helper /etc/systemd/system --group gpuworks"
+	if len(run.lines) != 1 || run.lines[0] != want {
+		t.Fatalf("commands = %q, want %s", run.lines, want)
 	}
-	wantLines := []string{"sudo mkdir -p /etc/systemd/system/gpuworks.service.d", "sudo tee " + path, "sudo chmod 0644 " + path}
-	if strings.Join(run.lines, "\n") != strings.Join(wantLines, "\n") {
-		t.Fatalf("commands = %q", run.lines)
-	}
-	if err := (hostIdentityHook{}).Install(context.Background(), run, layout, "root"); err != nil {
-		t.Fatal(err)
-	}
-	if got := run.files[path]; strings.Contains(got, "--group") || !strings.Contains(got, "--write "+hostidentity.RunFile+"\n") {
-		t.Fatalf("root drop-in = %s", got)
+	if strings.Contains(run.lines[0], layout.Binary()) {
+		t.Fatal("root runs the service-writable executable")
 	}
 }
 
-// Install twice is one drop-in; uninstall removes it, and again is no error.
-func TestHostIdentityHookIsIdempotent(t *testing.T) {
+func TestHostIdentityHookPropagatesMaintenanceFailure(t *testing.T) {
 	linuxHook(t)
 	layout := testLayout(t)
 	run := newDropInRunner()
-	ctx := context.Background()
-	for range 2 {
-		if err := (hostIdentityHook{}).Install(ctx, run, layout, "gpuworks"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if len(run.files) != 1 {
-		t.Fatalf("files = %v", run.files)
-	}
-	for range 2 {
-		if err := (hostIdentityHook{}).Uninstall(ctx, run, layout); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if len(run.files) != 0 {
-		t.Fatalf("files after uninstall = %v", run.files)
-	}
-	// A runner failure is the hook's failure.
-	run.fail["sudo rm -f "+layout.DropInPath(hostIdentityDropIn)] = errors.New("read-only file system")
-	if err := (hostIdentityHook{}).Uninstall(ctx, run, layout); err == nil || !strings.Contains(err.Error(), "read-only") {
+	line := "sudo " + liveHostIdentityInstaller() + " host-identity --remove-helper /etc/systemd/system"
+	run.fail[line] = errors.New("read-only file system")
+	if err := (hostIdentityHook{}).Uninstall(context.Background(), run, layout); err == nil || !strings.Contains(err.Error(), "read-only") {
 		t.Fatalf("failing uninstall = %v", err)
 	}
 }
@@ -170,14 +143,14 @@ func TestHostIdentityDropInRefusesUnsafePaths(t *testing.T) {
 // The core hook runs before the build's on install and after them on
 // uninstall.
 func TestCoreInstallHookComesFirst(t *testing.T) {
-	hooks := Options{InstallHooks: []selfinstall.InstallHook{nopHook{}}}.installHooks()
+	hooks := Options{InstallHooks: []selfinstall.InstallHook{nopHook{}}}.installHooks(testLayout(t))
 	if len(hooks) != 2 {
 		t.Fatalf("hooks = %#v", hooks)
 	}
 	if _, ok := hooks[0].(hostIdentityHook); !ok {
 		t.Fatalf("first hook = %T", hooks[0])
 	}
-	if _, ok := (Options{}).installHooks()[0].(hostIdentityHook); !ok {
+	if _, ok := (Options{}).installHooks(testLayout(t))[0].(hostIdentityHook); !ok {
 		t.Fatal("the community build lacks the core hook")
 	}
 }

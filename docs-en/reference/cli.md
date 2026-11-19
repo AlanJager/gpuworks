@@ -300,7 +300,7 @@ This build compiles in no project root, so for now only packages certified by an
 
 ## gpuworks host-identity
 
-`gpuworks host-identity --write PATH [--group GROUP]` reads the facts that name the server's machine and writes the two the kernel lets only root read (the system UUID and the board serial), with the other two, to `PATH`, so that a server running as its service account can complete its [host identity](../dev/extensions.md#the-management-servers-host-identity). The systemd drop-in that the command-line `gpuworks install` and `gpuworks upgrade` write as root in systemd mode has systemd run it as root before every start (a console upgrade does not write the drop-in) (see [Control plane installation layout](install-layout.md#systemd-unit)); it is not run by hand.
+`gpuworks host-identity --write PATH [--group GROUP]` reads the facts that name the server's machine and writes the two the kernel lets only root read (the system UUID and the board serial), with the other two, to `PATH`, so that a server running as its service account can complete its [host identity](../dev/extensions.md#the-management-servers-host-identity). The systemd drop-in that the command-line `gpuworks install` and `gpuworks upgrade` write as root in systemd mode has systemd run it as root before every start (a console upgrade does not write the drop-in) (see [Control plane installation layout](install-layout.md#systemd-unit)); it is not run by hand. Root uses the protected `host-identity-exec` copy in the systemd unit directory; the main program remains service-writable for console upgrades. Only explicit command-line install/upgrade refreshes that copy. A console upgrade never copies the writable main program into the root execution path.
 
 | flag | Description |
 |---|---|
@@ -646,5 +646,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: 060fb74e667d227d1ef866a1dc30541b7acc13ed9ff08da9269f99fe3df8a17d -->
+<!-- translation-source-sha256: ca2603b0b6741f3c034cac89a8e558f8364aa91c2c4b41810e2d2c1082a8f2fd -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->
