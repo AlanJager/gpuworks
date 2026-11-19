@@ -35,12 +35,12 @@ type fakeHost struct {
 	refuse  map[string]extapi.WireError
 	changed chan struct{}
 	now     func() time.Time
-	// nodes and identities are the canned answers of the reads.
+	// Node and server identities and inventory are canned read answers.
 	nodes      []extapi.InventoryNode
 	identities map[uint64]extapi.NodeIdentity
 	// calls is what the clock, ready, own-state and key calls see and
 	// keep.
-	calls hostCalls
+	calls        hostCalls
 	hostIdentity extapi.HostIdentityAnswer
 }
 

@@ -173,7 +173,7 @@ func TestPluginHostSetupRefusals(t *testing.T) {
 	if _, err := e.run("host-setup", "--id", "acme_backup"); !errors.As(err, &pe) || pe.Code() != messages.ErrorPluginHostSetupUnsupported || pe.Params()["id"] != "acme_backup" {
 		t.Fatalf("on darwin with --id = %v", err)
 	}
-	if hooks := e.opt.installHooks(selfinstall.Layout{DataDir: e.data}); len(hooks) != 0 {
+	if hooks := e.opt.installHooks(selfinstall.Layout{DataDir: e.data}); len(hooks) != 1 {
 		t.Fatalf("darwin hooks = %v", hooks)
 	}
 }
@@ -194,15 +194,15 @@ func TestHostSetupInstallHook(t *testing.T) {
 	}
 	e := newPluginEnv(t, testPluginSite)
 	l := selfinstall.Layout{Dir: filepath.Dir(e.config), DataDir: e.data}
-	if hooks := e.opt.installHooks(l); len(hooks) != 0 {
+	if hooks := e.opt.installHooks(l); len(hooks) != 1 {
 		t.Fatalf("hooks with nothing to set up = %v", hooks)
 	}
 	e.installWithHostSetup("1.0.0", usbKey)
 	hooks := e.opt.installHooks(l)
-	if len(hooks) != 1 {
+	if len(hooks) != 2 {
 		t.Fatalf("hooks = %v", hooks)
 	}
-	if err := hooks[0].Install(context.Background(), nil, l, "gpuworks"); err != nil {
+	if err := hooks[1].Install(context.Background(), nil, l, "gpuworks"); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := records.Matches("acme_backup", []extapi.HostSetupStep{usbKey}); !ok || len(run.cmds) == 0 {
@@ -212,10 +212,10 @@ func TestHostSetupInstallHook(t *testing.T) {
 		slices.ContainsFunc(run.cmds, func(c string) bool { return strings.HasPrefix(c, "usermod") }) {
 		t.Fatalf("install hook group commands = %q", run.cmds)
 	}
-	if g, ok := hooks[0].(selfinstall.ServiceGroups); !ok || !slices.Equal(g.ServiceGroups(), []string{hostsetup.Group}) {
-		t.Fatalf("install hook service groups = %v", hooks[0])
+	if g, ok := hooks[1].(selfinstall.ServiceGroups); !ok || !slices.Equal(g.ServiceGroups(), []string{hostsetup.Group}) {
+		t.Fatalf("install hook service groups = %v", hooks[1])
 	}
-	if err := hooks[0].Uninstall(context.Background(), nil, l); err != nil {
+	if err := hooks[1].Uninstall(context.Background(), nil, l); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := records.Read("acme_backup"); !errors.Is(err, hostsetup.ErrNotApplied) {
