@@ -44,6 +44,8 @@ export { Button } from "../components/ui/button";
 export { Badge } from "../components/ui/badge";
 export { Input } from "../components/ui/input";
 export { Switch } from "../components/ui/switch";
+export { Checkbox } from "../components/ui/checkbox";
+export { Textarea } from "../components/ui/textarea";
 export { Tooltip } from "../components/ui/tooltip";
 export { TabItem, TabPanel, Tabs, TabsList } from "../components/ui/tabs";
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
@@ -52,6 +54,9 @@ export { Field, FieldDescription, FieldError, FieldLabel } from "../components/u
 export { Container, ContainerBody, ContainerHeader } from "../components/ui/container";
 export { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 export { MetricCard } from "../components/ui/metric-card";
+export { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
+export { DetailList, DetailListItem, DetailListLabel, DetailListSection, DetailListSectionLabel, DetailListSeparator, DetailListValue } from "../components/ui/detail-list";
+export { Alert, AlertAction, AlertDescription, AlertIcon, AlertTitle } from "../components/ui/alert";
 export { FileUpload } from "../ui-kit/FileUpload";
 // Copy to the clipboard, falling back to a dialog with the text selected when the browser refuses.
 export { default as CopyButton, useCopy } from "../components/CopyButton";
