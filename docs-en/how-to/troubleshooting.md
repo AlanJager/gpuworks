@@ -1432,7 +1432,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: e3a3639101dbedcb3c705550cee2a7b45010a85c0591b801874f9ac1ee4d361e -->
+<!-- translation-source-sha256: 7997b814b088d01f9ff3b78220cb279ed497276b1f27d491174a4b027461f9b1 -->
 <!-- translation-localized-code-block: 5a54acf993d1267a588edaed6adb42fabe4eaa22a37d698098643916823bb39b 63b848b372a289196a7de991833e1e2e7e410a903f69538cc9e20e3119d7859f -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

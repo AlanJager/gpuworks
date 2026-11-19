@@ -178,6 +178,6 @@ Run the following commands in the actual installation directory on the control p
 
 For options and backup layout, see the [CLI Reference](../reference/cli.md#gpuworks-upgrade) and [Installation Layout](../reference/install-layout.md). For the connection mechanism, see [Architecture](../explanation/architecture.md#连接与流).
 
-<!-- translation-source-sha256: 1516407da481d2587d5dbb60b163d5b8c95fe77729764a486a94b910a6c757c2 -->
+<!-- translation-source-sha256: 30aa78ad07c941333bb9d4c09761d8980437cfbb3af75a29270219cd9767383d -->
 <!-- translation-localized-code-block: 3922c94b253dd971ff8ee6ae0ddcc7cfd4f7c28127fe2cdc7a322efe51808c1c 4afd6537a965876c65d49343fb5e1f684063bc8ac4f4c50eda0eac4ed077140b Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: a55f0c19bcc94075a6148de522ad5e9559f13d4ecac8b070a5d0483f303608ab 853eb242efd6c57c33a48c52b2dee9bb32684441a0c5dd7ebbe8746ce3a92f39 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
