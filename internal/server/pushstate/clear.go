@@ -46,10 +46,8 @@ func (s *State) ClearTable(ctx context.Context, owner, kind string) error {
 	}
 	k := ownerKind{owner, kind}
 	return s.enqueue(ctx, &op{
-		build: func(b *pstate.Batch) error {
-			b.Clear = append(b.Clear, pstate.OwnerKind{Owner: owner, Kind: kind})
-			return nil
-		},
+		clear: &pstate.OwnerKind{Owner: owner, Kind: kind},
+		build: func(*pstate.Batch) error { return nil },
 		after: func(_ pstate.Result, err error) {
 			if err != nil {
 				return

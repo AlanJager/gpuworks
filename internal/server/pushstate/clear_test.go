@@ -110,3 +110,46 @@ func TestAClearWhoseCommitFailsKeepsTheTable(t *testing.T) {
 		t.Fatal("a clear whose commit failed was applied")
 	}
 }
+
+// An override queued before a clear of its table, in one tick, is refused:
+// the clear commits first, so storing the override would leave a row the
+// next load brings back for a table that is gone.
+func TestAnOverrideAndAClearOfItsTableInOneTickRefuseTheOverride(t *testing.T) {
+	st := openStore(t, "")
+	h := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z")).load()
+	pushed := make(chan *extapi.WireError, 1)
+	go func() {
+		_, w := h.try(pusherOf(acmeOps, "push:node_holds"), extapi.KindNodeHolds, 1, opsHolds)
+		pushed <- w
+	}()
+	h.queued(0, 1)
+	h.s.commit(context.Background())
+	if w := <-pushed; w != nil {
+		t.Fatalf("push = %+v", w)
+	}
+
+	overridden := make(chan error, 1)
+	go func() {
+		_, err := h.s.Override(context.Background(), OverrideRequest{Owner: "acme_ops", Kind: extapi.KindNodeHolds, Entry: "12", Action: OverrideDelete, Reason: "r", ByUser: 1})
+		overridden <- err
+	}()
+	h.queued(1, 0)
+	cleared := make(chan error, 1)
+	go func() { cleared <- h.s.ClearTable(context.Background(), "acme_ops", extapi.KindNodeHolds) }()
+	h.queued(2, 0)
+	h.s.commit(context.Background())
+
+	if err := <-overridden; !isCode(err, messages.ErrorPluginOverrideRejected) || paramOf(err, "rule") != "superseded" {
+		t.Fatalf("override = %v; want PLUGIN_OVERRIDE_REJECTED rule superseded", err)
+	}
+	if err := <-cleared; err != nil {
+		t.Fatalf("clear = %v", err)
+	}
+	if list := h.s.Overrides(); len(list) != 0 {
+		t.Fatalf("overrides after the tick = %+v", list)
+	}
+	h2 := newHarness(t, st, newFakeClock("2026-12-01T00:00:00Z")).load()
+	if list := h2.s.Overrides(); len(list) != 0 || len(h2.s.Held("acme_ops")) != 0 {
+		t.Fatalf("after a restart: overrides %+v, held %+v", list, h2.s.Held("acme_ops"))
+	}
+}

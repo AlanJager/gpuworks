@@ -18,7 +18,12 @@ import (
 // committed (err nil) or reports the failure, and is not called for a
 // refused op. Both run under the lock.
 type op struct {
-	build   func(b *pstate.Batch) error
+	build func(b *pstate.Batch) error
+	// clear is the table a ClearTable op removes. buildLocked puts it in
+	// the batch before any op of the tick builds, so an override of that
+	// table built in the same tick sees it and is refused rather than
+	// inserted after the clear.
+	clear   *pstate.OwnerKind
 	after   func(res pstate.Result, err error)
 	done    chan error
 	refused error
@@ -229,6 +234,11 @@ func (s *State) buildLocked() (*pstate.Batch, *tickWork) {
 	b := &pstate.Batch{}
 	w := &tickWork{down: s.downDirty, hwm: s.hwmDirty}
 	s.downDirty, s.hwmDirty = map[string]bool{}, false
+	for _, o := range s.ops {
+		if o.clear != nil {
+			b.Clear = append(b.Clear, *o.clear)
+		}
+	}
 	for _, o := range s.ops {
 		o.refused = o.build(b)
 	}
