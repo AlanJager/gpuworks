@@ -86,7 +86,7 @@ func TestEvaluateEligibleNodesFilterAMDFeatureRequirements(t *testing.T) {
 		t.Fatal(err)
 	}
 	features := []accelerator.Feature{accelerator.FeatureMultiNode, accelerator.FeaturePD, accelerator.FeatureDataParallel}
-	nodes, _ := h.evaluateEligibleNodes(templateSelection{}, nil, nil, true, func(node *store.Node) map[int]planning.TargetCardRequest {
+	nodes, _, _ := h.evaluateEligibleNodes(templateSelection{}, nil, nil, true, func(node *store.Node) map[int]planning.TargetCardRequest {
 		return eligibleRequestsForTest(node, planning.TargetRequest{Features: features, CommandKnown: true})
 	})
 	byUUID := make(map[string]struct {

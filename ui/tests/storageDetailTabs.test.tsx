@@ -104,6 +104,30 @@ test("a node that cannot use the local storage's directory is told to get one of
   assert.ok(within(detailOf(await row("gpu-01"))).queryByText(s.nodes.ownDirectoryHint) === null, "Expected the element to be absent");
 });
 
+test("a node whose mount stopped answering says since when and what the agent will do about it", async () => {
+  const since = "statfs: filesystem did not respond; no answer since 2026-11-17T09:50:27Z";
+  stubDetail({ storage: nfsStorage({ id: 3, name: "models-nfs", nodes: { total: 7, ready: 0, problems: [], all: [
+    nodeStatus("n1", "agent-mounted", "unresponsive", { path: "/mnt/gpuworks/models-nfs", reason: "stuck_will_remount", message: since }),
+    nodeStatus("n2", "serving", "unresponsive", { path: "/mnt/gpuworks/models-nfs", reason: "stuck_in_use", message: since }),
+    nodeStatus("n3", "operator-mounted", "unresponsive", { path: "/mnt/gpuworks/models-nfs", reason: "stuck_not_managed", message: since }),
+    nodeStatus("n4", "slow", "unresponsive", { path: "/mnt/gpuworks/models-nfs", reason: "unresponsive_retrying", message: since }),
+    nodeStatus("n5", "nested", "unresponsive", { path: "/mnt/gpuworks/models-nfs", reason: "stuck_nested_mount", message: since }),
+    nodeStatus("n6", "shared-server", "unresponsive", { path: "/mnt/gpuworks/models-nfs", reason: "stuck_shared_server", message: since }),
+    nodeStatus("n7", "given-up", "unresponsive", { path: "/mnt/gpuworks/models-nfs", reason: "stuck_restart_needed", message: since }),
+  ] } }) });
+  renderDetail("/storage/3?tab=nodes");
+  const row = async (name: string) => (await screen.findByText(name, { selector: "tbody a" })).closest("tr") as HTMLElement;
+  for (const [name, reason] of [
+    ["agent-mounted", "stuck_will_remount"], ["serving", "stuck_in_use"], ["operator-mounted", "stuck_not_managed"], ["slow", "unresponsive_retrying"],
+    ["nested", "stuck_nested_mount"], ["shared-server", "stuck_shared_server"], ["given-up", "stuck_restart_needed"],
+  ] as const) {
+    const node = await row(name);
+    assert.ok(within(node).getByText(locale.common.storageNodeState.unresponsive));
+    const text = `${locale.common.storageReason[reason]} · ${since}`;
+    assert.ok(within(detailOf(node)).getByText(text), `${name} shows: ${text}`);
+  }
+});
+
 test("the files tab shows the shared copy and node caches with model link, place, path, size, state, source, last use and deployments", async () => {
   stubDetail({ storage: cacheStorage, files: cacheFiles });
   renderDetail("/storage/3?tab=files");

@@ -95,7 +95,10 @@ func (n *NodeRuntime) applyPCIeFindings(gpus []proto.GPUInfo, busy map[string]bo
 			continue
 		}
 		bdf := accelerator.NormalizeBDF(card.PCIeBDF)
-		link := w.linkFinding(ident, bdf, busy[ident])
+		// A unified-memory part is the SoC's own GPU: its on-chip link trains
+		// narrower than its capability by design (x1 of x16 on Jetson Thor),
+		// which is not a seating or riser fault. Its speed is still judged.
+		link := w.linkFinding(ident, bdf, busy[ident], !accelerator.UnifiedMemory(card.Name))
 		aer := w.aerFinding(ident, bdf, now, passedSince)
 		found[ident] = pcieCardFindings{link: link, aer: aer}
 		code, evidence := link.code, link.evidence
@@ -111,7 +114,8 @@ func (n *NodeRuntime) applyPCIeFindings(gpus []proto.GPUInfo, busy map[string]bo
 }
 
 // linkFinding debounces this round's link reading into a finding.
-func (w *pcieWatch) linkFinding(ident, bdf string, judgeSpeed bool) finding {
+// judgeSpeed and judgeWidth say which shortfalls count for this card.
+func (w *pcieWatch) linkFinding(ident, bdf string, judgeSpeed, judgeWidth bool) finding {
 	links, err := w.reader.Links(bdf, w.virtual)
 	if err != nil || len(links) == 0 {
 		// Unknown is not degraded, and does not move the count either way.
@@ -122,7 +126,7 @@ func (w *pcieWatch) linkFinding(ident, bdf string, judgeSpeed bool) finding {
 	}
 	var evidence []accelerator.HealthField
 	for _, l := range links {
-		if l.Narrow() || (judgeSpeed && l.Slow()) {
+		if (judgeWidth && l.Narrow()) || (judgeSpeed && l.Slow()) {
 			evidence = append(evidence, accelerator.HealthField{
 				Name:  accelerator.PCIeLinkField + l.BDF,
 				Value: fmt.Sprintf("x%d of x%d, %.1f of %.1f GT/s", l.Width, l.ExpectedWidth, l.Speed, l.ExpectedSpeed),

@@ -154,7 +154,11 @@ func (p *SMIProber) Metrics(ctx context.Context) ([]Metric, error) {
 	if err != nil {
 		return nil, err
 	}
-	metrics := parseNVIDIAMetrics(out)
+	metrics := parseNVIDIAMetricRows(out)
+	if unified := p.unifiedMemoryCards(); len(unified) > 0 {
+		applyUnifiedMemoryMetrics(metrics, unified, func() (int64, int64) { return hostMemory(p.hostRoot) })
+	}
+	metrics = withReadings(metrics)
 	if p.slow() || !p.pcieDue() {
 		return metrics, nil
 	}

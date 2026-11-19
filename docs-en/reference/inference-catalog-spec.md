@@ -349,8 +349,7 @@ Authoring conventions:
   The sglang spec for `qwen3-asr-1.7b` in the catalog correctly omits entrypoint.
 - **vLLM does not need an override**: `vllm serve` is the unified entrypoint, and no vLLM
   video/image/audio spec in the built-in catalog declares entrypoint.
-- If a vendor-built image has a different entrypoint, declare it for each spec (for example, the hygon build of
-  `qwen3-tts-12hz-1.7b-voicedesign`).
+- If a vendor-built image has a different entrypoint, declare it for each spec.
 - An override changes only the entrypoint, not the arguments. The diffusion argument parser does not recognize LLM arguments such as `--mem-fraction-static`
   and `--context-length`; `--enable-cache-report` requires 0.5.18, and `--enable-metrics`
   requires 0.5.21 or later (versions before 0.5.18 also do not recognize `--served-model-name`). For specs with `--model-type diffusion`
@@ -694,7 +693,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 30b1b4de87e0446a9a7cc3837cd3d4171f7ce3d00880d7d525ec29badbefd7b9 -->
+<!-- translation-source-sha256: 109a2604bde481543686a1d4e11e73e09af72230a44b0fd1f1e30e6477300d40 -->
 <!-- translation-localized-code-block: 26b59d93b4900f054e9c78c569388285db977d8a1a29c7231646a264e33074f3 d2ac202220acef0f04a4a5bdf2d4ffd3695b808693b508f83ea49253037b2d2d Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->

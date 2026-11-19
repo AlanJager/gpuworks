@@ -76,6 +76,42 @@ func (s *Store) StorageScopes(nodes []*Node) (map[uint][]Storage, error) {
 	return out, nil
 }
 
+// EffectiveStorages is StoragesForNode for each of nodes, by node id, reading
+// the storages and their targets once.
+func (s *Store) EffectiveStorages(nodes []*Node) (map[uint][]EffectiveStorage, error) {
+	out := map[uint][]EffectiveStorage{}
+	if len(nodes) == 0 {
+		return out, nil
+	}
+	storages, err := s.ListStorages()
+	if err != nil {
+		return nil, err
+	}
+	var targets []StorageNode
+	if err := s.reader().Order("id asc").Find(&targets).Error; err != nil {
+		return nil, err
+	}
+	byStorage := map[uint][]StorageNode{}
+	for _, target := range targets {
+		byStorage[target.StorageID] = append(byStorage[target.StorageID], target)
+	}
+	for id, own := range byStorage {
+		byStorage[id] = canonicalStorageNodes(own)
+	}
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		labels, _ := NodeLabels(node.Labels)
+		for _, storage := range storages {
+			if eff, ok := effectiveStorage(storage, byStorage[storage.ID], node.ID, labels); ok {
+				out[node.ID] = append(out[node.ID], eff)
+			}
+		}
+	}
+	return out, nil
+}
+
 // EffectiveStorageForNode is StoragesForNode for one storage; ok is false when
 // the storage does not apply to the node.
 func (s *Store) EffectiveStorageForNode(storage *Storage, node *Node) (EffectiveStorage, bool, error) {

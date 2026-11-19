@@ -9,7 +9,7 @@ import (
 )
 
 func TestGuardReturnsResultAndError(t *testing.T) {
-	g := newGuard()
+	g := newGuard(nil)
 	if err := g.run(context.Background(), "k", time.Second, func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestGuardReturnsResultAndError(t *testing.T) {
 }
 
 func TestGuardTimeoutThenSingleFlight(t *testing.T) {
-	g := newGuard()
+	g := newGuard(nil)
 	release := make(chan struct{})
 	var started atomic.Int32
 	stuck := func() error { started.Add(1); <-release; return nil }
@@ -67,7 +67,7 @@ func TestGuardTimeoutThenSingleFlight(t *testing.T) {
 }
 
 func TestGuardContextCancel(t *testing.T) {
-	g := newGuard()
+	g := newGuard(nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	release := make(chan struct{})
 	defer close(release)

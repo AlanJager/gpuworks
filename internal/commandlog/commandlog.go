@@ -21,7 +21,17 @@ var (
 	urlUserinfo   = regexp.MustCompile(`(?i)(https?://)[^/@\s]+@`)
 	authHeader    = regexp.MustCompile(`(?i)(authorization:\s*(?:bearer|basic)\s+)[^\s'"]+`)
 	jsonSecretKey = regexp.MustCompile(`(?i)"[^"]*(?:token|password|secret|api[-_]?key|access[-_]?key|private[-_]?key)[^"]*"\s*:`)
-	scriptSecret  = regexp.MustCompile(`(?im)(?:^|[;\s])(?:export\s+)?[A-Z0-9_]*(?:TOKEN|PASSWORD|SECRET|API_KEY|ACCESS_KEY|PRIVATE_KEY)\s*=`)
+	// A program that prints its own configuration writes a credential as a
+	// quoted key and its value (a Python dict, JSON) or as name=value with the
+	// value a list or a quoted string (an argparse Namespace). The key is
+	// captured so only a name that is a credential's (sensitiveName) is
+	// redacted: "max_tokens" keeps its value. Only a quoted or list value is
+	// taken, so prose that merely names a key is left as it is.
+	quotedKeyValue = regexp.MustCompile(`((?:'([^'\n]{1,64})'|"([^"\n]{1,64})")\s*:\s*)(\[[^\]\n]*\]|'[^'\n]*'|"[^"\n]*")`)
+	namedListValue = regexp.MustCompile(`(\b([A-Za-z][A-Za-z0-9_.-]{0,63})=)(\[[^\]\n]*\]|'[^'\n]*'|"[^"\n]*")`)
+	// Tokens recognisable by their own shape wherever they appear.
+	knownTokenShape = regexp.MustCompile(`\b(?:hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{16,})`)
+	scriptSecret    = regexp.MustCompile(`(?im)(?:^|[;\s])(?:export\s+)?[A-Z0-9_]*(?:TOKEN|PASSWORD|SECRET|API_KEY|ACCESS_KEY|PRIVATE_KEY)\s*=`)
 )
 
 const redactedValue = "<redacted>"
@@ -55,11 +65,40 @@ func (e *Execution) Finish(output string, err error) {
 }
 
 func Redact(command string) string {
+	command = redactNamed(quotedKeyValue, command)
+	command = redactNamed(namedListValue, command)
+	command = knownTokenShape.ReplaceAllString(command, redactedValue)
 	command = sensitiveFlag.ReplaceAllString(command, `${1}<redacted>`)
-	command = sensitiveEnv.ReplaceAllString(command, `${1}<redacted>`)
+	command = sensitiveEnv.ReplaceAllStringFunc(command, func(match string) string {
+		name, value, _ := strings.Cut(match, "=")
+		if strings.HasPrefix(value, redactedValue) {
+			return match // already redacted as a list or quoted value above
+		}
+		return name + "=" + redactedValue
+	})
 	command = sensitiveURL.ReplaceAllString(command, `${1}<redacted>`)
 	command = urlUserinfo.ReplaceAllString(command, `${1}<redacted>@`)
 	return authHeader.ReplaceAllString(command, `${1}<redacted>`)
+}
+
+// redactNamed replaces the value of every "name value" pair pattern finds
+// whose name is a credential's. The pattern's first group is everything up to
+// the value; the name is its first non-empty group after that.
+func redactNamed(pattern *regexp.Regexp, text string) string {
+	return pattern.ReplaceAllStringFunc(text, func(match string) string {
+		groups := pattern.FindStringSubmatch(match)
+		name := ""
+		for _, group := range groups[2 : len(groups)-1] {
+			if group != "" {
+				name = group
+				break
+			}
+		}
+		if !sensitiveName(name) {
+			return match
+		}
+		return groups[1] + redactedValue
+	})
 }
 
 // RedactArgv removes credentials without flattening argv into a command line.

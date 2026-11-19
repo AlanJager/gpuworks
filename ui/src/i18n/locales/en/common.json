@@ -1218,6 +1218,13 @@
     "path_missing": "This storage has no directory set for this node.",
     "not_mounted": "Nothing is mounted on this directory: with the share gone it is only an empty directory on the local disk, so nothing is written there.",
     "other": "Another reason; see the details.",
+    "unresponsive_retrying": "The storage answers too slowly, or has only just stopped answering. The agent keeps checking and unmounts nothing; it comes back when the filesystem answers in time.",
+    "stuck_will_remount": "A call on the mount has not returned. Once it has been blocked for 3 minutes the agent forces the mount off and mounts it again; nothing needs to be done.",
+    "stuck_in_use": "A call on the mount has not returned, and something on this node uses the storage (an instance in any state, a download, a copy or a peer transfer), so the agent leaves it alone. It comes back when the NFS server answers; or stop or remove what uses it on this node and the agent will remount it.",
+    "stuck_not_managed": "The storage stopped answering. The agent did not mount what is on this directory and will not unmount it; it comes back when the filesystem answers, or remount it on the node.",
+    "stuck_nested_mount": "A call on the mount has not returned, and another filesystem is mounted below this directory, which a forced unmount would detach too, so the agent leaves it alone. Unmount what is below it on the node, or wait for the NFS server.",
+    "stuck_shared_server": "A call on the mount has not returned, and the same NFS server backs another mount on this node that still answers or is in use; forcing this one off could break that one, so the agent leaves it alone. It comes back when the NFS server answers; otherwise remount it on the node when the other mount can be interrupted.",
+    "stuck_restart_needed": "The mount still does not answer after the agent forced it off several times, and the calls given up are still blocked. The agent stops retrying; fix the NFS server or the mount on the node, then restart the agent.",
     "storage_not_on_node": "The storage does not apply to this node.",
     "storage_unavailable": "The storage is not ready on this node.",
     "model_missing_in_storage": "The storage has no complete copy of the model.",
@@ -1631,6 +1638,7 @@
   "runtimeFailure": {
     "rank": "Rank {{rank}} on {{node}}: {{text}}",
     "evidence": "{{text}} Last error: {{evidence}}",
+    "lastOutput": "{{text}} Last output: {{evidence}}",
     "causes": "{{text}} Output shows: {{causes, list}}."
   },
   "consoleExtension": {

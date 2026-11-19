@@ -13,11 +13,12 @@ const ONLINE = { state: ["online"] };
 // node counts as eligible.
 function eligibility(t: TFunction<"deploy">, eligibleNodes: EligibleNode[] | undefined, node: Node) {
   const judged = eligibleNodes?.find((item) => item.uuid === node.uuid);
-  const reasons = (judged?.reasons ?? [])
+  const texts = (judged?.reasons ?? [])
     .map((reason) => placementRefusalText(t, reason))
-    .filter(Boolean)
-    .join(" · ");
-  return { eligible: judged ? judged.eligible : true, reasons };
+    .filter(Boolean);
+  // first is why the node is turned down, as the option itself says it: the
+  // reason the server gave, not a guess at its kind.
+  return { eligible: judged ? judged.eligible : true, reasons: texts.join(" · "), first: texts[0] ?? "" };
 }
 
 type Props = {
@@ -37,7 +38,8 @@ type Props = {
 /**
  * EligibleNodePicker picks online nodes for a deployment draft, searched on
  * the server, rendering evaluate's eligibility answer: an ineligible node is
- * listed but disabled, its reasons in the option's title. A multi-node rank
+ * listed but disabled, with the first reason it was turned down for beside
+ * its name and all of them in the option's title. A multi-node rank
  * (rankAddress) must also advertise an address the group can reach - its
  * compute network's IP, else its direct address.
  *
@@ -57,8 +59,8 @@ const EligibleNodePicker = forwardRef<HTMLInputElement, Props>(function Eligible
       onChange={(value) => control.onChange?.(value)}
       filter={ONLINE}
       optionLabel={(node) => {
-        const { eligible } = eligibility(t, eligibleNodes, node);
-        const label = `${nodeDisplayName(node)} · ${node.gpu_count} GPU${eligible ? "" : t("workbench.node.chipMismatchSuffix")}`;
+        const { eligible, first } = eligibility(t, eligibleNodes, node);
+        const label = `${nodeDisplayName(node)} · ${node.gpu_count} GPU${eligible || !first ? "" : ` · ${first}`}`;
         return reachable(node) ? label : `${label} · ${rankAddress!.suffix}`;
       }}
       optionDisabled={(node) => !eligibility(t, eligibleNodes, node).eligible || !reachable(node)}

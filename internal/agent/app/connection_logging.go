@@ -90,8 +90,23 @@ func logConnectionFailure(log *slog.Logger, c *conn.Conn, rejected bool) {
 		reason = "transport"
 	}
 	if rejected {
-		log.Error("server rejected connection", "reason", reason)
+		if next := rejectionNextStep(reason); next != "" {
+			log.Error("server rejected connection", "reason", reason, "next", next)
+		} else {
+			log.Error("server rejected connection", "reason", reason)
+		}
 	} else {
 		log.Warn("connection ended", "reason", reason)
 	}
+}
+
+// rejectionNextStep tells whoever reads the log on this host what to do about
+// a refusal that retrying alone does not fix. The agent keeps retrying, so a
+// node token the server learns again later still connects; until then the
+// server refuses every attempt.
+func rejectionNextStep(reason string) string {
+	if reason == proto.RejectBadToken {
+		return "the server does not know this agent's node token: if the node was removed or added again, uninstall this agent (gpuworks-agent uninstall) or reinstall it with the node's current install command; if another agent already serves this host, stop this one"
+	}
+	return ""
 }

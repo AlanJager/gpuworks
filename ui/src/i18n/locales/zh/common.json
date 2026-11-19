@@ -1218,6 +1218,13 @@
     "path_missing": "这台节点上还没有给这个存储设目录。",
     "not_mounted": "这个目录没有挂载：共享存储掉线后它只是本地盘上的空目录，平台不会往里写。",
     "other": "其他原因，见详细信息。",
+    "unresponsive_retrying": "存储响应过慢，或刚刚停止响应。agent 会继续检查，不会卸载；文件系统按时响应后自动恢复。",
+    "stuck_will_remount": "挂载上有调用一直没有返回。阻塞满 3 分钟后 agent 会强制卸载并重新挂载，不需要处理。",
+    "stuck_in_use": "挂载上有调用一直没有返回，且这台节点上有东西在用这个存储（任意状态的实例、下载、复制或节点间传输），agent 不会动这个挂载。NFS 服务器恢复后会自己恢复；也可以停掉或移除节点上用到它的东西，agent 随后会重新挂载。",
+    "stuck_not_managed": "存储不再响应。这个目录上挂的不是 agent 挂载的，agent 不会卸载它；文件系统恢复后会自己恢复，或在节点上重新挂载。",
+    "stuck_nested_mount": "挂载上有调用一直没有返回，而这个目录下面还挂着别的文件系统，强制卸载会把它一起卸掉，所以 agent 不会动这个挂载。请在节点上先卸载下面的挂载，或等 NFS 服务器恢复。",
+    "stuck_shared_server": "挂载上有调用一直没有返回，而同一台 NFS 服务器在这台节点上还有别的挂载仍在响应或正在使用；强制卸载这一个可能打断那一个，所以 agent 不会动它。NFS 服务器恢复后会自己恢复；否则请在可以打断另一个挂载时到节点上重新挂载。",
+    "stuck_restart_needed": "agent 已多次强制卸载，挂载仍不响应，被放弃的调用也还卡着。agent 不再重试；请修复 NFS 服务器或节点上的挂载，然后重启 agent。",
     "storage_not_on_node": "该存储不用在这台节点上。",
     "storage_unavailable": "该存储在这台节点上还没就绪。",
     "model_missing_in_storage": "该存储里没有完整的模型文件。",
@@ -1631,6 +1638,7 @@
   "runtimeFailure": {
     "rank": "{{node}} 上的 rank {{rank}}：{{text}}",
     "evidence": "{{text}}最后的错误：{{evidence}}",
+    "lastOutput": "{{text}}最后的输出：{{evidence}}",
     "causes": "{{text}}输出显示：{{causes, list}}。"
   },
   "consoleExtension": {

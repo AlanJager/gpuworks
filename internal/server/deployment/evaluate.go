@@ -136,11 +136,12 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	pool, poolErr := requestPool(req)
 	placement := evaluationPlacement(req)
 	eligibleLoaded := false
+	var fleet []*store.Node // the nodes the eligibility was read from
 	loadEligible := func(requests func(*store.Node) map[int]planning.TargetCardRequest) {
 		if eligibleLoaded {
 			return
 		}
-		resp.EligibleNodes, resp.PoolPartitionCapability = s.evaluateEligibleNodes(selection, pool, poolErr, IsAutomaticPlacement(req) && req.NNodes <= 1, requests)
+		resp.EligibleNodes, resp.PoolPartitionCapability, fleet = s.evaluateEligibleNodes(selection, pool, poolErr, IsAutomaticPlacement(req) && req.NNodes <= 1, requests)
 		eligibleLoaded = true
 	}
 	writeFieldErrors := func() {
@@ -369,6 +370,23 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			}
 		}
 	}
+	// The node list offers no node a create naming it refuses for never
+	// fitting. It is judged before the draft's own node is planned, so the
+	// list is the same whichever node the draft has, in either placement
+	// mode. Automatic placement has ranked and listed its candidates by now:
+	// what it lists is what it trialled, as before. A memory-limited draft is
+	// left to its node's dGPU checks.
+	poolFits := false
+	if requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides); overrideErr == nil && req.NNodes <= 1 && req.VRAMLimitGiB <= 0 {
+		candidateReq := cloneRequest(*req)
+		candidateReq.Image = resp.Image
+		admissionSelection := selection
+		admissionSelection.ExtraArgs = launch.TemplateResidual
+		anyCards := placement
+		anyCards.GPUIndexes = nil // each node's scheduler picks its cards
+		mount, components := previewComponentMounts(s.d.Store, selection.Components, nil)
+		poolFits = s.markNeverFitting(ctx, resp.EligibleNodes, fleet, s.poolLaunch(&candidateReq, eng, model, admissionSelection, anyCards, quick, userExtraArgs, servedName, mount, components, requestOverrides))
+	}
 	// Computed after automatic placement so the weight networks, peers and
 	// local-path facts are the selected node's, not the unnamed request's.
 	weightFacts, weightFactsErr := s.evaluateWeightFacts(model, selection, profileNode)
@@ -495,7 +513,9 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			return
 		}
 	}
-	if errs.empty() && IsAutomaticPlacement(req) && req.NNodes <= 1 && resp.SelectedNode == nil {
+	// An automatic draft with no node is refused when no node of its pool
+	// could ever run it. A node the list above found to fit settles that.
+	if errs.empty() && req.NNodes <= 1 && placement.PD == nil && IsAutomaticPlacement(req) && resp.SelectedNode == nil && !poolFits {
 		candidateReq := cloneRequest(*req)
 		candidateReq.Image = resp.Image
 		admissionSelection := selection
