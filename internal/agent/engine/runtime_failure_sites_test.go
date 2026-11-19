@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -260,6 +261,122 @@ func TestExitWithUnreadableOutputStillCarriesTheExitCode(t *testing.T) {
 	}
 	if st.Message != "headless worker exited (code 3)" {
 		t.Fatalf("message = %q", st.Message)
+	}
+}
+
+// A launch script that refuses its arguments prints a plain sentence and
+// exits non-zero: no line names an error or exception, so the reason is what
+// the container said last (GWKS-342). Both streams reach Logs interleaved,
+// as docker and nerdctl deliver them.
+func TestStartupExitWithoutAnErrorLineReportsItsLastOutput(t *testing.T) {
+	long := strings.Repeat("x", 2*proto.MaxFailureEvidenceChars)
+	cases := map[string]struct {
+		logs         string
+		wantMessage  string
+		wantEvidence []string
+	}{
+		"one stderr line": {
+			logs:         "This recipe requires TP16 across two nodes, with eight NPUs per node.\n",
+			wantMessage:  "headless worker exited (code 1): This recipe requires TP16 across two nodes, with eight NPUs per node.",
+			wantEvidence: []string{"This recipe requires TP16 across two nodes, with eight NPUs per node."},
+		},
+		"stdout banner then stderr reason": {
+			logs:         "+ set -e\n\x1b[32mstarting worker rank 1\x1b[0m\n\nchecking topology\nloading recipe\nThis recipe requires TP16 across two nodes, with eight NPUs per node.\n\n",
+			wantMessage:  "headless worker exited (code 1): This recipe requires TP16 across two nodes, with eight NPUs per node.",
+			wantEvidence: []string{"checking topology", "loading recipe", "This recipe requires TP16 across two nodes, with eight NPUs per node."},
+		},
+		"an error line still wins over the tail": {
+			logs:         "ValueError: bad tensor parallel size\ncleaning up\nbye\n",
+			wantMessage:  "headless worker exited (code 1): ValueError: bad tensor parallel size",
+			wantEvidence: []string{"ValueError: bad tensor parallel size"},
+		},
+		"a long last line is bounded": {
+			logs:         long + "\n",
+			wantMessage:  "headless worker exited (code 1): " + strings.Repeat("x", 300) + "…",
+			wantEvidence: nil, // checked below: one line within the wire bound
+		},
+		"a traced launch script's credentials are not repeated": {
+			logs:         "+ export HF_TOKEN=hf_abcdefSECRET\n+ curl -fsS -H 'Authorization: Bearer eyJhbGciSECRET' http://registry.local/recipe\n+ vllm serve /model --api-key sk-liveSECRET --port 8000\n",
+			wantMessage:  "headless worker exited (code 1): + vllm serve /model --api-key <redacted> --port 8000",
+			wantEvidence: []string{"+ export HF_TOKEN=<redacted>", "+ curl -fsS -H 'Authorization: Bearer <redacted>' http://registry.local/recipe", "+ vllm serve /model --api-key <redacted> --port 8000"},
+		},
+		"a progress bar redrawn in place gives its newest state": {
+			logs:         "Loading weights:  10%|#\rLoading weights:  20%|##\rLoading weights:  30%|###\n",
+			wantMessage:  "headless worker exited (code 1): Loading weights:  30%|###",
+			wantEvidence: []string{"Loading weights:  10%|#", "Loading weights:  20%|##", "Loading weights:  30%|###"},
+		},
+		"output longer than what is kept is read to its end": {
+			logs:         strings.Repeat(strings.Repeat("w", 4096)+"\n", 200) + "This recipe requires TP16 across two nodes, with eight NPUs per node.\n",
+			wantMessage:  "headless worker exited (code 1): This recipe requires TP16 across two nodes, with eight NPUs per node.",
+			wantEvidence: nil, // checked below: the last line is the last evidence
+		},
+		"no output": {
+			logs:         "",
+			wantMessage:  "headless worker exited (code 1) with no output",
+			wantEvidence: nil,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			driver := &loggingHeadlessDriver{headlessTestDriver: &headlessTestDriver{status: runtime.Status{Exists: true, ExitCode: 1}}, logs: tc.logs}
+			var statuses []proto.InstanceStatus
+			e := newHermeticEngine(driver, func(st proto.InstanceStatus) { statuses = append(statuses, st) }, slog.Default(), t.TempDir())
+			e.headlessProbeInterval = time.Millisecond
+			e.probeAndReport(t.Context(), proto.InstanceDesiredState{UUID: "worker-plain", Headless: true, NodeRank: 1, StartTimeout: 1}, "worker")
+			st := failedReport(t, statuses)
+			f := st.RuntimeFailure
+			if f.Code != proto.ErrorContainerExited || f.Phase != proto.PhaseHealthCheck || f.ExitCode == nil || *f.ExitCode != 1 {
+				t.Fatalf("reason = %+v", f)
+			}
+			if st.Message != tc.wantMessage {
+				t.Fatalf("message = %q, want %q", st.Message, tc.wantMessage)
+			}
+			if st.Phase != "" {
+				t.Fatalf("failed report keeps progress phase %q", st.Phase)
+			}
+			if name == "a long last line is bounded" {
+				if len(f.Evidence) != 1 || len(f.Evidence[0]) > proto.MaxFailureEvidenceChars {
+					t.Fatalf("evidence = %d lines, first %d bytes", len(f.Evidence), len(f.Evidence[0]))
+				}
+				return
+			}
+			if name == "output longer than what is kept is read to its end" {
+				if len(f.Evidence) != proto.MaxFailureEvidence || f.Evidence[len(f.Evidence)-1] != "This recipe requires TP16 across two nodes, with eight NPUs per node." {
+					t.Fatalf("evidence = %.80q", f.Evidence)
+				}
+				return
+			}
+			if !slices.Equal(f.Evidence, tc.wantEvidence) {
+				t.Fatalf("evidence = %q, want %q", f.Evidence, tc.wantEvidence)
+			}
+			for _, text := range append([]string{st.Message}, f.Evidence...) {
+				if strings.Contains(text, "SECRET") {
+					t.Fatalf("a credential is repeated in %q", text)
+				}
+			}
+		})
+	}
+}
+
+// An engine that stops while serving, a worker killed for memory and a
+// container that is still running end on ordinary lines: they are not the
+// reason, so none of them is reported as one.
+func TestOrdinaryLastLinesAreNotAReasonOutsideAStartupExit(t *testing.T) {
+	const logs = "INFO:     127.0.0.1:53210 - \"POST /v1/chat/completions HTTP/1.1\" 200 OK\n"
+	e := newHermeticEngine(&loggingHeadlessDriver{headlessTestDriver: &headlessTestDriver{}, logs: logs}, func(proto.InstanceStatus) {}, slog.Default(), t.TempDir())
+
+	serving, msg := e.exitedFailure(t.Context(), "c", runtime.Status{Exists: true, ExitCode: 9}, proto.PhaseServing, "oom", "container exited while running (code 9)")
+	if serving.Evidence != nil || msg != "container exited while running (code 9)" {
+		t.Fatalf("serving exit: evidence %q, message %q", serving.Evidence, msg)
+	}
+	oom, msg := e.exitedFailure(t.Context(), "c", runtime.Status{Exists: true, ExitCode: 137, OOMKilled: true}, proto.PhaseHealthCheck, "headless worker OOM-killed", "headless worker exited (code 137)")
+	if oom.Code != proto.ErrorContainerOOMKilled || oom.Evidence != nil || msg != "headless worker OOM-killed" {
+		t.Fatalf("oom exit: %+v, message %q", oom, msg)
+	}
+	timeout := proto.RuntimeFailure{Code: proto.ErrorWorkerReadinessTimeout, Phase: proto.PhaseHealthCheck}
+	e.attachOutput(t.Context(), "c", &timeout)
+	if timeout.Evidence != nil {
+		t.Fatalf("running container: evidence %q", timeout.Evidence)
 	}
 }
 

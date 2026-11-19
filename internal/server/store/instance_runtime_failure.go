@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"gorm.io/gorm"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -122,12 +124,39 @@ func (s *Store) setInstanceState(uuid, state, message string, failure *proto.Run
 	if err != nil {
 		return err
 	}
-	if err := s.db.Model(&Instance{}).Where("id = ?", inst.ID).
-		Updates(map[string]any{"state": state, "message": message, "runtime_failure": storedRuntimeFailure(failure)}).Error; err != nil {
+	updates := map[string]any{"state": state, "message": message, "runtime_failure": storedRuntimeFailure(failure)}
+	cleared := false
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&Instance{}).Where("id = ?", inst.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		if failure == nil {
+			return nil
+		}
+		// The row's phase is the progress of a start that is over. Left on a
+		// row the server fails for another reason (a peer rank's exit), it
+		// reads as where this failure happened; the failure names its own
+		// phase. A failed sleep keeps its phase: it is what holds the GPU
+		// claim until the agent confirms the engine is gone. The row decides
+		// that as it is when it is written, not as it was read above, so a
+		// sleep reported in between keeps its claim.
+		res := tx.Model(&Instance{}).Where("id = ? AND phase <> ?", inst.ID, proto.PhaseSleep).Updates(map[string]any{
+			"phase": "", "progress": 0, "bytes_done": 0, "bytes_total": 0, "rate_bps": 0,
+		})
+		cleared = res.RowsAffected > 0
+		return res.Error
+	}); err != nil {
 		return err
 	}
 	s.Bus.Advance("instance") // announced after the event row; see Bus.Advance
-	s.AddInstanceEventCode(inst, "state", instanceEventStateChanged, withEventFailure(map[string]any{"state": state, "detail": message}, failure))
+	params := withEventFailure(map[string]any{"state": state, "detail": message}, failure)
+	if cleared && inst.Phase != "" && inst.Phase != proto.PhaseSleep {
+		// The phase this failure ends is gone from the row, so the report
+		// that later ends the row has nothing to summarize: its summary goes
+		// on this event.
+		s.addPhaseSummary(params, inst, inst.State, inst.Phase)
+	}
+	s.AddInstanceEventCode(inst, "state", instanceEventStateChanged, params)
 	s.Bus.PublishChange("instance", uuid, state)
 	return nil
 }
