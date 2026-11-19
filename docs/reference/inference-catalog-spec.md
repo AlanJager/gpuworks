@@ -350,8 +350,7 @@ server 组装期，不接受运行时对 checkpoint 布局的探测改写（该�
   目录里 `qwen3-asr-1.7b` 的 sglang spec 不声明 entrypoint 是正确的。
 - **vLLM 不需要覆盖**：`vllm serve` 是统一入口，内置目录里所有 vLLM
   video/image/audio spec 均未声明 entrypoint。
-- 厂商构建镜像入口不同时逐 spec 声明（例：hygon 构建的
-  `qwen3-tts-12hz-1.7b-voicedesign`）。
+- 厂商构建镜像入口不同时逐 spec 声明。
 - 覆盖只换入口不换参数。diffusion 的参数解析器不认 `--mem-fraction-static`、
   `--context-length` 等 LLM 参数，`--enable-cache-report` 要 0.5.18、`--enable-metrics`
   要 0.5.21 起才认（0.5.18 之前也不认 `--served-model-name`）；`--model-type diffusion`
