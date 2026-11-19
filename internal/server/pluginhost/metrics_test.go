@@ -18,6 +18,29 @@ import (
 
 var updateGolden = flag.Bool("update", false, "rewrite the golden files")
 
+func TestMetricsPropagatesOutputFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rows []MetricsRow
+	}{
+		{name: "empty report"},
+		{name: "full report", rows: []MetricsRow{{ID: "acme_backup", State: string(StateRunning)}, {ID: "acme_off", State: "disabled"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestHost(t, &fakeSpawner{}, nil, fastTiming())
+			reader, writer := io.Pipe()
+			t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+			failure := errors.New("metrics connection closed")
+			if err := reader.CloseWithError(failure); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.WriteMetrics(writer, tc.rows); !errors.Is(err, failure) {
+				t.Fatalf("output failure was lost: %v", err)
+			}
+		})
+	}
+}
+
 // The exposition carries exactly the installed packages it is given, in
 // id order, with zero counters for one never started; every state has a
 // series, the histogram is cumulative, and an unknown table kind is not

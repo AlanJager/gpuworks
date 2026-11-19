@@ -177,11 +177,13 @@ func (h *Host) WriteMetrics(w io.Writer, rows []MetricsRow) error {
 	slices.Sort(states)
 
 	bw := bufio.NewWriter(w)
+	// The buffered writer retains the first write error. Flush below returns
+	// it whether it happened during a sample or during the final flush.
 	family := func(name, typ, help string) {
-		bw.WriteString("# HELP " + name + " " + help + "\n# TYPE " + name + " " + typ + "\n")
+		_, _ = bw.WriteString("# HELP " + name + " " + help + "\n# TYPE " + name + " " + typ + "\n")
 	}
 	sample := func(name, labels string, v uint64) {
-		bw.WriteString(name + "{" + labels + "} " + strconv.FormatUint(v, 10) + "\n")
+		_, _ = bw.WriteString(name + "{" + labels + "} " + strconv.FormatUint(v, 10) + "\n")
 	}
 	id := func(r MetricsRow) string { return `id="` + r.ID + `"` }
 
@@ -226,7 +228,7 @@ func (h *Host) WriteMetrics(w io.Writer, rows []MetricsRow) error {
 			}
 			cum += ms[i].buckets[c][len(callSecondsBounds)].Load()
 			sample("gpuworks_plugin_call_seconds_bucket", labels+`,le="+Inf"`, cum)
-			bw.WriteString("gpuworks_plugin_call_seconds_sum{" + labels + "} " +
+			_, _ = bw.WriteString("gpuworks_plugin_call_seconds_sum{" + labels + "} " +
 				strconv.FormatFloat(time.Duration(ms[i].sumNanos[c].Load()).Seconds(), 'g', -1, 64) + "\n")
 			sample("gpuworks_plugin_call_seconds_count", labels, cum)
 		}
