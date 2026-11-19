@@ -41,7 +41,7 @@
     └── logs.db / metrics.db / ux.db / images/ / catalog-packages/ …
 ```
 
-`data/plugins/` 由 `gpuworks plugin` 管理：包先解到 `.incoming-*.partial/` 里校验，全部通过才改名为 `<id>/pkg/<版本>/`（文件 0444、可执行文件与目录 0555），再以改名替换 `<id>/pkg/current` 切换版本，上一个版本保留以便回滚；中断留下的 `*.partial` 在下次安装时清掉。`<id>/data/`、`<id>/tmp/`、`<id>/snapshots/` 是插件自己的目录（0700），卸载时保留，`--purge` 时整个 `<id>/` 移到 `.trash/<id>-<时间>/`；`.index/<发布者>/` 存导入的包索引。`maintenance.jsonl` 是离线维护日志（0600，属主为数据目录的所有者）：root 在 server 停止时执行 `gpuworks plugin clock reset` 或 `pstate clear` 各追加一行，server 下次启动时应用并清空，应用失败的记录留到再下次启动（见 [CLI 参考](cli.md#维护日志)）。
+`data/plugins/` 由 `gpuworks plugin` 管理：包先解到 `.incoming-*.partial/` 里校验，全部通过才改名为 `<id>/pkg/<版本>/`（文件 0444、可执行文件与目录 0555），再以改名替换 `<id>/pkg/current` 切换版本，上一个版本保留以便回滚；中断留下的 `*.partial` 在下次安装时清掉。`<id>/data/`、`<id>/tmp/`、`<id>/snapshots/` 是插件自己的目录（0700），卸载时保留，`--purge` 时整个 `<id>/` 移到 `.trash/<id>-<时间>/`；升级前插件停止后，数据目录复制到 `<id>/snapshots/<时间>-<版本>/`（`data/` 与 `snapshot.json`：来源版本与当时的数据标记），先写成 `.partial` 再改名，只保留最近 2 个，清除时随 `<id>/` 一起移走；升级进行中有 `<id>/upgrade.json`（`from`、`to`、`snapshot`、`started`，0600），升级通过健康门或回滚后删除，启动时还在就先回滚到 `from`（见[扩展点](../dev/extensions.md#管理接口)），卸载时删除。`.index/<发布者>/` 存导入的包索引。`maintenance.jsonl` 是离线维护日志（0600，属主为数据目录的所有者）：root 在 server 停止时执行 `gpuworks plugin clock reset` 或 `pstate clear` 各追加一行，server 下次启动时应用并清空，应用失败的记录留到再下次启动（见 [CLI 参考](cli.md#维护日志)）。
 
 声明了 `host_setup` 的包在数据目录之外还有 root 写的文件（见[扩展点的主机配置](../dev/extensions.md#主机配置)），由 `gpuworks plugin host-setup`、`gpuworks install`/`upgrade` 写入，`gpuworks uninstall` 删除：
 

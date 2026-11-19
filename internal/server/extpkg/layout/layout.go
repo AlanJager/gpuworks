@@ -6,7 +6,8 @@
 //	  <id>/pkg/current          the active version, replaced by rename
 //	  <id>/control.json         Control
 //	  <id>/data/  <id>/tmp/     the plugin's storage and temporary files
-//	  <id>/snapshots/           snapshots taken before upgrades
+//	  <id>/snapshots/           snapshots taken before upgrades (the last 2)
+//	  <id>/upgrade.json         Upgrade, while an upgrade is in progress
 //	  .trash/<id>-<time>/       where a purged package goes
 //	  .incoming-*.partial/      a package being verified, removed at boot
 //
@@ -119,9 +120,10 @@ func (d Dir) Versions(id string) ([]string, error) {
 }
 
 // Cleanup removes what an interrupted install left behind: incoming
-// directories and partial versions. The server runs it at boot.
+// directories and partial versions; and what an interrupted snapshot or
+// restore left (cleanupSnapshots). The server runs it at boot.
 func (d Dir) Cleanup() error {
-	var errs []error
+	errs := []error{d.cleanupSnapshots()}
 	incoming, _ := filepath.Glob(filepath.Join(d.Root, incomingGlob))
 	partial, _ := filepath.Glob(filepath.Join(d.Root, "*", pkgDir, "*"+partialExt))
 	for _, p := range append(incoming, partial...) {
@@ -273,8 +275,9 @@ func (d Dir) Activate(id, version string) (previous string, err error) {
 	return previous, errors.Join(errs...)
 }
 
-// Remove uninstalls package id. Without purge it removes the package and
-// its control file and keeps the plugin's data; with purge it moves the
+// Remove uninstalls package id. Without purge it removes the package, its
+// control file and any upgrade marker and keeps the plugin's data and
+// snapshots; with purge it moves the
 // whole package directory to .trash.
 func (d Dir) Remove(id string, purge bool, now time.Time) error {
 	if purge {
@@ -298,6 +301,9 @@ func (d Dir) Remove(id string, purge bool, now time.Time) error {
 		return err
 	}
 	if err := os.Remove(filepath.Join(d.Root, id, controlFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := d.RemoveUpgrade(id); err != nil {
 		return err
 	}
 	return RemoveAll(filepath.Join(d.Root, id, pkgDir))

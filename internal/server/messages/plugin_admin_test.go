@@ -13,6 +13,13 @@ func TestPluginAdminCodesHaveClientText(t *testing.T) {
 		ErrorPluginDisabled: {"id"},
 		ErrorPluginUninstallConfirmRequired: {"id", "confirm", "held_nodes", "users_affected", "caps_lifted", "features_locked",
 			"banners", "overrides"},
+		ErrorPluginUpgradeRolledBack: {"id", "version", "previous", "cause_code"},
+		ErrorPluginSnapshotFailed:    {"id"},
+		ErrorPluginNoPreviousVersion: {"id"},
+		ErrorPluginSnapshotMissing:   {"id", "version"},
+		ErrorPluginUpgradeInProgress: {"id"},
+		ErrorPluginUpgradeIDMismatch: {"id", "package_id"},
+		ErrorPluginUpgradeCancelled:  {"id"},
 	}
 	if len(params) != len(PluginAdminCodes()) {
 		t.Fatalf("PluginAdminCodes lists %v", PluginAdminCodes())

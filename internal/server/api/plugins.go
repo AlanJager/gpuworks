@@ -34,6 +34,15 @@ type PluginAdmin interface {
 	// Restart stops the package's server part and starts it as a new
 	// instance; PLUGIN_DISABLED for a disabled package.
 	Restart(ctx context.Context, id, by string) (dto.Plugin, error)
+	// Upgrade replaces installed package id with the package read from
+	// body once approve is its approval hash (or the site auto-approves an
+	// unchanged one), snapshots its data, and rolls back unless the new
+	// version passes its health gate (PLUGIN_UPGRADE_ROLLED_BACK). Without
+	// approval the refusal's params carry the diff.
+	Upgrade(ctx context.Context, id string, body io.Reader, approve, by string) (dto.PluginUpgraded, error)
+	// Rollback makes the package's previous version current again, with
+	// the data from its snapshot when restoreState is set.
+	Rollback(ctx context.Context, id string, restoreState bool, by string) (dto.Plugin, error)
 	// Uninstall stops and removes the package (and its data with purge)
 	// and releases what it pushed, once confirm is the digest of its impact
 	// now; otherwise it refuses with PLUGIN_UNINSTALL_CONFIRM_REQUIRED and
@@ -80,6 +89,8 @@ func (a *apiHandlers) pluginRoutes(r chi.Router) {
 		r.Post("/plugins/{id}/enable", a.enablePlugin)
 		r.Post("/plugins/{id}/disable", a.disablePlugin)
 		r.Post("/plugins/{id}/restart", a.restartPlugin)
+		r.Post("/plugins/{id}/upgrade", a.upgradePlugin)
+		r.Post("/plugins/{id}/rollback", a.rollbackPlugin)
 		r.Get("/plugins/{id}/logs", a.pluginLogs)
 		r.Delete("/plugins/{id}", a.uninstallPlugin)
 	})
@@ -229,8 +240,10 @@ func (a *apiHandlers) adminName(r *http.Request) string {
 // pluginErrorStatus maps a plugin administration refusal to its status:
 // not installed or no such override 404; a choice that conflicts with
 // what is installed (including a feature key or an id another owner
-// already provides), asks for approval or confirmation, or a disabled
-// package 409; a package too large 413; any other refused package or
+// already provides, an upgrade in progress, nothing to roll back to or
+// no snapshot to restore), asks for approval or confirmation, or a
+// disabled package 409; a package too large 413; a snapshot that could
+// not be written 500; any other refused package, upgrade rolled back or
 // override (PLUGIN_OVERRIDE_REJECTED) 422; anything else 500.
 func pluginErrorStatus(err error) int {
 	var pe *messages.ProductError
@@ -241,10 +254,13 @@ func pluginErrorStatus(err error) int {
 	case messages.ErrorPluginNotInstalled, messages.ErrorPluginOverrideNotFound:
 		return http.StatusNotFound
 	case messages.ErrorPluginApprovalRequired, messages.ErrorPluginBroken, messages.ErrorPluginVersionConflict, messages.ErrorPluginFeatureTaken, messages.ErrorPluginIDTaken, errorPluginStateTooNew,
-		messages.ErrorPluginDisabled, messages.ErrorPluginUninstallConfirmRequired:
+		messages.ErrorPluginDisabled, messages.ErrorPluginUninstallConfirmRequired, messages.ErrorPluginUpgradeInProgress,
+		messages.ErrorPluginNoPreviousVersion, messages.ErrorPluginSnapshotMissing:
 		return http.StatusConflict
 	case messages.ErrorPluginPackageTooLarge:
 		return http.StatusRequestEntityTooLarge
+	case messages.ErrorPluginSnapshotFailed:
+		return http.StatusInternalServerError
 	}
 	return http.StatusUnprocessableEntity
 }

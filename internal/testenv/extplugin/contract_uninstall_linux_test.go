@@ -129,6 +129,7 @@ var perPackageChecks = map[string]artifactCheck{
 	"db:plugin_markers":     marked,
 	"file:pkg":              underPackage("pkg"),
 	"file:control.json":     underPackage("control.json"),
+	"file:upgrade.json":     underPackage("upgrade.json"),
 	"file:data":             underPackage("data"),
 	"file:tmp":              underPackage("tmp"),
 	"file:snapshots":        underPackage("snapshots"),

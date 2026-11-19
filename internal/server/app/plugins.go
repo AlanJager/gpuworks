@@ -40,6 +40,9 @@ type PluginRuntime struct {
 	// TickInterval is the least time between two writer ticks of pushed
 	// state (one second when zero).
 	TickInterval time.Duration
+	// UpgradeGate is how long a new version must stay up after an
+	// upgrade (pluginbridge.DefaultUpgradeGate when zero).
+	UpgradeGate time.Duration
 }
 
 // pluginsModuleName is the built-in module's name; no compiled module may
@@ -101,6 +104,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		StaticFeatures:   maps.Clone(h.reg.featureBy),
 		HealthChanged:    func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
 		CompiledModules:  compiledNames(m.cfg.Extensions.Modules, h.reg.apis),
+		UpgradeGate:      rt.UpgradeGate,
 		Log:              h.Log(),
 	})
 	if err != nil {

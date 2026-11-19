@@ -33,7 +33,7 @@ func TestRestartStartsANewInstance(t *testing.T) {
 	b := w.openHealth(sp, timing, &changed)
 	install(t, b, w.pkg("acme_backup", "1.0.0", nil), true)
 	v := waitState(t, b, "acme_backup", string(pluginhost.StateCrashloop))
-	if v.Restarts == 0 || !slices.Equal(v.Actions, []string{ActionDisable, ActionRestart, ActionUninstall, ActionPurge}) {
+	if v.Restarts == 0 || !slices.Equal(v.Actions, []string{ActionDisable, ActionRestart, ActionUninstall, ActionPurge, ActionUpgrade}) {
 		t.Fatalf("crashlooping view = %+v", v)
 	}
 	before, _ := b.host.Logs("acme_backup", pluginhost.LogCursor{})
@@ -192,9 +192,10 @@ func TestReportAndLogsOfAPackage(t *testing.T) {
 	}
 }
 
-// Every state a view can take offers exactly its actions: removal always,
-// enable for a disabled or host-setup package, disable once enabled, and
-// restart only for an enabled server part that may run.
+// Every state a view can take offers exactly its actions: removal and
+// upgrade always, rollback with a previous version, enable for a disabled
+// or host-setup package, disable once enabled, and restart only for an
+// enabled server part that may run.
 func TestViewActionsPerState(t *testing.T) {
 	b := newWorld(t, nil).open()
 	server := func(id string) extpkg.Entry {
@@ -209,7 +210,9 @@ func TestViewActionsPerState(t *testing.T) {
 	b.refusals["acme_failed"] = messages.NewProductError(messages.ErrorPluginBinaryMissing, "no binary", map[string]any{"id": "acme_failed"})
 	b.refusals["acme_setup"] = messages.NewProductError(messages.ErrorPluginHostSetupRequired, "host setup", map[string]any{"id": "acme_setup"})
 	b.mu.Unlock()
-	removal := []string{ActionUninstall, ActionPurge}
+	removal := []string{ActionUninstall, ActionPurge, ActionUpgrade}
+	rollback := entryWith("acme_old", "2.0.0", false)
+	rollback.Versions = []string{"1.0.0", "2.0.0"}
 	for _, c := range []struct {
 		entry   extpkg.Entry
 		state   string
@@ -223,13 +226,11 @@ func TestViewActionsPerState(t *testing.T) {
 		{server("acme_failed"), string(pluginhost.StateFailed), append([]string{ActionDisable, ActionRestart}, removal...)},
 		{server("acme_setup"), StateNeedsHostSetup, append([]string{ActionEnable, ActionDisable}, removal...)},
 		{server("acme_new"), string(pluginhost.StateStarting), append([]string{ActionDisable, ActionRestart}, removal...)},
+		{rollback, StateDisabled, append(append([]string{ActionEnable}, removal...), ActionRollback)},
 	} {
 		v := b.viewOf(c.entry)
 		if v.State != c.state || !slices.Equal(v.Actions, c.actions) {
 			t.Errorf("%s: state %q actions %v, want %q %v", c.entry.ID, v.State, v.Actions, c.state, c.actions)
-		}
-		if slices.Contains(v.Actions, ActionUpgrade) || slices.Contains(v.Actions, ActionRollback) {
-			t.Errorf("%s offers a call this server does not serve: %v", c.entry.ID, v.Actions)
 		}
 	}
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -17,6 +18,19 @@ import (
 
 func (p pluginAdmin) Restart(ctx context.Context, id, by string) (dto.Plugin, error) {
 	v, err := p.b.Restart(ctx, id, by)
+	return pluginDTO(v), productErrorOf(err)
+}
+
+func (p pluginAdmin) Upgrade(ctx context.Context, id string, body io.Reader, approve, by string) (dto.PluginUpgraded, error) {
+	up, err := p.b.Upgrade(ctx, id, body, pluginbridge.UpgradeRequest{Approve: extapi.Digest(approve), By: by})
+	if err != nil {
+		return dto.PluginUpgraded{}, productErrorOf(err)
+	}
+	return dto.PluginUpgraded{Plugin: pluginDTO(up.View), Previous: up.Previous, AutoApproved: up.AutoApproved, Unchanged: up.Unchanged}, nil
+}
+
+func (p pluginAdmin) Rollback(ctx context.Context, id string, restoreState bool, by string) (dto.Plugin, error) {
+	v, err := p.b.Rollback(ctx, id, pluginbridge.RollbackRequest{RestoreState: restoreState, By: by})
 	return pluginDTO(v), productErrorOf(err)
 }
 

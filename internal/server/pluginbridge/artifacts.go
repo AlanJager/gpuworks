@@ -47,11 +47,13 @@ var PerPackageArtifacts = []Artifact{
 	// The data marker plugin.<id>.data (Q14: purge only).
 	{Name: "db:plugin_markers", Where: ArtifactDB, Purge: true},
 
-	// Under <data>/plugins/<id>/: the unpacked versions and the control
-	// file go with the uninstall; data, tmp and snapshots with a purge,
-	// which moves the whole directory to .trash/.
+	// Under <data>/plugins/<id>/: the unpacked versions, the control file
+	// and the marker of an upgrade in progress go with the uninstall;
+	// data, tmp and snapshots with a purge, which moves the whole
+	// directory to .trash/.
 	{Name: "file:pkg", Where: ArtifactFile},
 	{Name: "file:control.json", Where: ArtifactFile},
+	{Name: "file:upgrade.json", Where: ArtifactFile},
 	{Name: "file:data", Where: ArtifactFile, Purge: true},
 	{Name: "file:tmp", Where: ArtifactFile, Purge: true},
 	{Name: "file:snapshots", Where: ArtifactFile, Purge: true},

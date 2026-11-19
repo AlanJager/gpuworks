@@ -37,9 +37,9 @@ const (
 	ActionRestart   = "restart"
 	ActionUninstall = "uninstall"
 	ActionPurge     = "purge"
-	// ActionUpgrade and ActionRollback name the upgrade and rollback of an
-	// installed package; a View offers them once this server serves those
-	// calls, and none does yet.
+	// ActionUpgrade (POST /plugins/{id}/upgrade) is offered for every
+	// installed package, ActionRollback (POST /plugins/{id}/rollback) for
+	// one with a previous version.
 	ActionUpgrade  = "upgrade"
 	ActionRollback = "rollback"
 )
@@ -110,6 +110,16 @@ func (b *Bridge) List() []View {
 }
 
 func (b *Bridge) viewOf(e extpkg.Entry) View {
+	v := b.stateOf(e)
+	v.Actions = append(v.Actions, ActionUpgrade)
+	if v.Previous != "" {
+		v.Actions = append(v.Actions, ActionRollback)
+	}
+	return v
+}
+
+// stateOf is viewOf without the upgrade actions every state offers.
+func (b *Bridge) stateOf(e extpkg.Entry) View {
 	v := View{ID: e.ID, Version: e.Version, Enabled: e.Control.Enabled, ApproveHash: e.Control.ApprovedHash, Isolation: extpkg.HostIsolation(),
 		Previous: previousOf(e.Version, e.Versions)}
 	b.mu.Lock()

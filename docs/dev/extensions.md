@@ -259,6 +259,8 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 | `POST /api/v1/plugins/install?approve=<批准值>&enable=true` | 管理员登录会话 | 请求体就是 `.gwpkg`；不带或带错批准值时回 409 `PLUGIN_APPROVAL_REQUIRED`，参数里给出批准值和它涵盖的权限、角色，什么都不装 |
 | `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
 | `POST /api/v1/plugins/{id}/restart` | 管理员登录会话 | 停止并作为新实例重新启动，崩溃历史与退避从头算；`on_demand` 包回到 `idle`；已停用的包回 409 `PLUGIN_DISABLED` |
+| `POST /api/v1/plugins/{id}/upgrade?approve=<批准值>` | 管理员登录会话 | 请求体是新版本的 `.gwpkg`；快照数据、切换版本并等待健康门，新版本没通过就自动回滚（见下文）；不带或带错批准值时回 409 `PLUGIN_APPROVAL_REQUIRED`，参数里带上与已安装版本的差异，什么都不变；包的 id 不是路径里的 id 时回 422 `PLUGIN_UPGRADE_ID_MISMATCH{id, package_id}` |
+| `POST /api/v1/plugins/{id}/rollback?restore_state=true` | 管理员登录会话 | 回到上一版本（列表的 `previous`）；`restore_state` 同时从该版本的快照恢复数据与数据标记；没有上一版本回 409 `PLUGIN_NO_PREVIOUS_VERSION` |
 | `GET /api/v1/plugins/{id}/impact` | 管理员（会话或令牌） | 卸载的影响预览：要删的表、释放保持的节点、变为 `locked` 的功能、取消或放宽的上限、横幅与覆盖，以及确认用的摘要 `confirm` |
 | `DELETE /api/v1/plugins/{id}?confirm=<摘要>&purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据与快照一起移到 `.trash/`，并删掉数据标记），在一次提交里删掉它推送的全部内容并重新应用保持；`confirm` 不是此刻影响的摘要时回 409 `PLUGIN_UNINSTALL_CONFIRM_REQUIRED`，应答带上影响，什么都不删；重试能完成一半失败的卸载 |
 | `GET /api/v1/plugins/{id}/state` | 管理员（会话或令牌） | 推送状态里它的部分：各表的代数、条目数、推送时刻与下一步，掉线时刻与宽限，覆盖 |
@@ -269,6 +271,10 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 | `DELETE /api/v1/plugins/overrides/{oid}` | 管理员登录会话 | 撤回覆盖，插件最后推送的那条限制重新生效 |
 
 卸载前先预览影响：`DELETE` 没带 `confirm`，或带的摘要与此刻的影响不符（预览之后插件又推送了、换了版本），都回 409，什么都不删；控制台把影响给管理员看，确认后带上它的 `confirm` 再发一次。影响只读内存，把推送状态在不含该所有者的情况下重新组合一遍再丢掉。卸载不带 `purge` 时保留数据目录与数据标记（`plugin.<id>.data`），重装不会读到旧构建写的数据之外的东西；带 `purge` 的卸载（对已卸载、只剩数据目录的包同样可以）把目录连数据与快照移到 `.trash/` 并删掉数据标记。每个包在服务端留下的东西列在 `pluginbridge.PerPackageArtifacts`（推送状态的各张表、数据标记、包目录下的文件、内存里按包 id 记的结构），契约测试 `TestUninstallLeavesNothingUnderThePackageID` 装一个用到全部的包，卸载、再清除，逐项确认都不在了；新增按包记的状态要在同一改动里加进这份清单。
+
+升级（先停旧版本再做快照，复制时数据不会再变）：校验、批准并解包新包之后（同一版本号已解包而内容不同的，此时就以 409 `PLUGIN_VERSION_CONFLICT` 拒绝，旧版本不受影响），先写升级标记 `<id>/upgrade.json`（`from`、`to`、`snapshot`、`started`），停止正在运行的版本，把数据目录复制成快照（失败回 500 `PLUGIN_SNAPSHOT_FAILED`，旧版本重新启动，什么都不变），再让新版本成为当前版本并启动；切换之后的任何失败都按健康门失败处理并回滚。新版本必须在健康门内起来并一直在线 60 秒、期间不换进程；崩溃、握手失败、被拒或停止都立即判为失败：停止新版本，回到旧版本并从快照恢复数据与数据标记，重新启动旧版本，回 422 `PLUGIN_UPGRADE_ROLLED_BACK{id, version, previous, cause_code}`。已停用或没有服务端部分的包没有健康门；升级新增主机步骤的包停在 `needs_host_setup`，不算失败。整个过程中推送的表照常执行，包从停止旧版本起按掉线计，直到某个版本重新在线，中间的重启不重算宽限。请求同步返回（最长约 80 秒），客户端断开也会做完。server 启动时若发现残留的升级标记（升级中途被停止），在校验、加载推送状态和启动任何插件之前回到 `from` 并用快照恢复数据，以 `audit=true` 记录；新版本还没成为当前版本的，只删掉标记（恢复型回滚停在切换版本之后、记录批准之前的，补记旧版本自己的批准值）。快照写成 `.partial` 再改名，只保留最近 2 个，卸载时保留、清除时随数据一起删除。手动回滚不带 `restore_state` 时数据保持新版本留下的样子，旧版本比数据标记旧就回 409 `PLUGIN_STATE_TOO_NEW`；带上时从该版本的快照恢复（没有快照回 409 `PLUGIN_SNAPSHOT_MISSING`）。升级进行中，同一个 id 的安装回 409 `PLUGIN_UPGRADE_IN_PROGRESS`。
+
+管理调用按包 id 加锁：一个包升级等待健康门时只挡住它自己，另一个包的停用、卸载照常返回；同一个包的停用或卸载最多等 10 秒（旧版本仍在停止或数据仍在复制时，等到健康门开始），然后结束健康门（升级随即回滚）再继续。停止旧版本和复制数据时不持有插件目录的锁，别的包的安装、启停照常进行。`gpuworks plugin upgrade` 与 `rollback` 在 server 停止时离线执行（快照照做，没有健康门，新版本随下一次启动运行），server 运行时拒绝并给出对应的 API 路由。
 
 监管事件与 stderr 按包保留，跨进程、重启与停用启用，直到卸载；重启（`restart`）换一个新实例，崩溃历史从头算，事件不丢。
 
@@ -289,7 +295,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 ### 尚未实现
 
 - 本指南尚未列出的其他宿主接口；插件路由的按动作授权与持久化审计记录（今天审计只写结构化日志）。
-- 升级与回滚的路由和 `gpuworks plugin` 的 `upgrade`、`rollback` 子命令，以及升级自动回滚（列表的 `actions` 里还没有 `upgrade`、`rollback`）；目录里的内置包。
+- 目录里的内置包。
 - 高可用下只在 leader 上运行插件。
 - 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.host_identity`、`host.clock`、`host.state_read`、`host.derive_key`、`host.setup`（[主机配置](#主机配置)）与 `routes` 以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
@@ -328,6 +334,7 @@ server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 
 | 停止 | `POST /gwx/v1/shutdown`，10 秒后向进程组发 SIGTERM，再 5 秒 SIGKILL |
 | 内存 | 有自己 cgroup 的插件由 `memory.max` 限制；没有的由 RSS 看门狗每 10 秒汇总插件整个进程组的常驻内存（Linux 读 `/proc/<pid>/stat`，macOS 用 `ps`），超过 1.5 × `mem_mib`（默认 128 MiB）就向进程组发 SIGKILL 并按崩溃重启（`PLUGIN_MEMORY_EXCEEDED`）；读不到内存只记一条告警，不停插件。自己另起进程组或会话的子进程不计入 |
 | 调用并发 | 普通调用与流式调用各一个名额池，每个池至多 `max_concurrency`（默认 8）个；其中四分之一（至少 1 个，只有 1 个名额时不留）留给管理员调用；满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
+| 升级健康门 | 新版本 80 秒内起来并在线满 60 秒（`AwaitHealthy`）；`on_demand` 插件由健康门拉起一次 |
 | 无截止时间的调用 | 60 秒；`on_demand` 插件的冷启动也算在这个时间里 |
 | stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |
 

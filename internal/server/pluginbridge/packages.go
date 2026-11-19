@@ -43,6 +43,8 @@ func (b *Bridge) statePackagesLocked() []pushstate.Package {
 // refresh verifies the installed packages again, hands pushed state the
 // new set and declares its feature keys.
 func (b *Bridge) refresh() error {
+	b.table.Lock()
+	defer b.table.Unlock()
 	entries, err := b.pkgs.List()
 	if err != nil {
 		return err
@@ -79,7 +81,7 @@ func runnable(e extpkg.Entry) bool {
 // is running: verified again first (only changed files are rehashed) and
 // refused when its data is newer than its build (PLUGIN_STATE_TOO_NEW, which
 // its view then shows), then handed to the plugin host, which does not wait
-// for it. The caller holds admin.
+// for it. The caller holds the lock of id.
 func (b *Bridge) startIfEnabled(id string) {
 	b.mu.Lock()
 	e, ok := b.entries[id]
@@ -170,8 +172,7 @@ func (b *Bridge) checkHostSetup(m *extapi.Manifest) (hostsetup.Sandbox, error) {
 // read, unless something else (a start, stop or removal) has dealt with
 // it since.
 func (b *Bridge) retryStart(id string, refused error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
+	defer b.locks.lock(id)()
 	b.mu.Lock()
 	same := b.refusals[id] == refused
 	b.mu.Unlock()
@@ -212,7 +213,7 @@ func (b *Bridge) markData(id string) {
 }
 
 // stop stops package id's server part, if it runs, and forgets its
-// identity. The caller holds admin.
+// identity. The caller holds the lock of id.
 func (b *Bridge) stop(ctx context.Context, id string) error {
 	err := b.host.Stop(ctx, id)
 	b.mu.Lock()
