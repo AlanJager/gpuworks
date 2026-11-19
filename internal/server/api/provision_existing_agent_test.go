@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,11 @@ import (
 
 func existingNodeStore(t *testing.T, name string, sshHost string) *store.Store {
 	t.Helper()
+	return existingNodeStoreAt(t, name, sshHost, 22)
+}
+
+func existingNodeStoreAt(t *testing.T, name string, sshHost string, sshPort int) *store.Store {
+	t.Helper()
 	st, err := store.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +32,7 @@ func existingNodeStore(t *testing.T, name string, sshHost string) *store.Store {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := st.SetNodeSSHCredential(n.UUID, sshHost, 22, "root", store.NodeSSHSecrets{}); err != nil {
+		if _, err := st.SetNodeSSHCredential(n.UUID, sshHost, sshPort, "root", store.NodeSSHSecrets{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -44,13 +50,17 @@ func nodeCount(t *testing.T, st *store.Store) int {
 
 func TestPrecheckNamesTheNodeThatAlreadyUsesTheHost(t *testing.T) {
 	for _, tc := range []struct {
-		name, sshHost, status, detail string
+		name, sshHost  string
+		sshPort        int
+		status, detail string
 	}{
-		{name: "same-host", sshHost: "example.com", status: "warn", detail: "already added here as ppu-210"},
-		{name: "other-host", sshHost: "other.example.com", status: "pass", detail: "no node here uses this SSH host"},
+		{name: "same-host", sshHost: "example.com", sshPort: 22, status: "warn", detail: "already added here as ppu-210"},
+		{name: "other-host", sshHost: "other.example.com", sshPort: 22, status: "pass", detail: "no node here uses this SSH address"},
+		// A jump gateway forwards one port per host behind it.
+		{name: "same-host-other-port", sshHost: "example.com", sshPort: 39911, status: "pass", detail: "no node here uses this SSH address"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := apiHandlers{d: Deps{NodePrecheck: &fakePrechecker{}, Store: existingNodeStore(t, "ppu-210", tc.sshHost)}}
+			h := apiHandlers{d: Deps{NodePrecheck: &fakePrechecker{}, Store: existingNodeStoreAt(t, "ppu-210", tc.sshHost, tc.sshPort)}}
 			rec := httptest.NewRecorder()
 			h.precheckNode(rec, httptest.NewRequest(http.MethodPost, "/api/v1/nodes/precheck", strings.NewReader(`{"target":"root@example.com","password":"secret"}`)))
 			if rec.Code != http.StatusOK {
@@ -88,6 +98,37 @@ func TestInstallOntoAHostThatIsAlreadyANodeAsksForConfirmation(t *testing.T) {
 	h.installNode(rec, httptest.NewRequest(http.MethodPost, "/api/v1/nodes/install", strings.NewReader(confirmed)))
 	if rec.Code != http.StatusOK || !fake.req.ReplaceExistingAgent || !fake.req.GuardExistingAgent {
 		t.Fatalf("confirmed install status = %d req=%+v body=%s", rec.Code, fake.req, rec.Body.String())
+	}
+}
+
+// Hosts behind one jump gateway share its address and differ only by the
+// forwarded port; only the same host:port is the node already added.
+func TestInstallBehindAGatewayOnlyAsksForTheSameEndpoint(t *testing.T) {
+	fake := &fakeInstaller{}
+	st := existingNodeStoreAt(t, "gb10-1", "gateway.example.com", 39911)
+	h := apiHandlers{d: Deps{NodeInstaller: fake, Store: st}}
+	install := func(port int) *httptest.ResponseRecorder {
+		body := fmt.Sprintf(`{"target":"sparker@gateway.example.com","port":%d,"password":"secret","server_url":"http://gpuworks.example","connect_mode":"agent_dial"}`, port)
+		rec := httptest.NewRecorder()
+		h.installNode(rec, httptest.NewRequest(http.MethodPost, "/api/v1/nodes/install", strings.NewReader(body)))
+		return rec
+	}
+
+	rec := install(39911)
+	want := `{"code":"NODE_INSTALL_HOST_ALREADY_NODE","error":"this host is already added as gb10-1; installing again replaces its agent","params":{"nodes":"gb10-1"}}` + "\n"
+	if rec.Code != http.StatusConflict || rec.Body.String() != want {
+		t.Fatalf("same endpoint status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if fake.req.Target != "" || nodeCount(t, st) != 1 {
+		t.Fatalf("unconfirmed install reached the host or left a node: req=%+v nodes=%d", fake.req, nodeCount(t, st))
+	}
+
+	rec = install(39912)
+	if rec.Code != http.StatusOK || fake.req.Port != 39912 || fake.req.ReplaceExistingAgent || !fake.req.GuardExistingAgent {
+		t.Fatalf("other port status = %d req=%+v body=%s", rec.Code, fake.req, rec.Body.String())
+	}
+	if nodeCount(t, st) != 2 {
+		t.Fatalf("nodes = %d, want the existing node and the new one", nodeCount(t, st))
 	}
 }
 

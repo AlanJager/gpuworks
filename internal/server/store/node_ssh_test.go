@@ -175,3 +175,60 @@ func TestNodeSSHCredentialWithoutSecretsUsesServerDefaultKeys(t *testing.T) {
 		t.Fatalf("credential flag node=%+v err=%v", loaded, err)
 	}
 }
+
+// Hosts behind one jump gateway share its address; the forwarded port is what
+// tells them apart, and a missing port means OpenSSH's 22.
+func TestNodesWithSSHEndpointMatchesHostAndPort(t *testing.T) {
+	st, err := Open("file:node_ssh_endpoint_match?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	box, err := auth.NewSecretbox("node-ssh-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.SetSecretbox(box)
+	for _, c := range []struct {
+		name string
+		port int
+	}{{"gw-a", 39911}, {"gw-b", 39912}, {"plain", 22}} {
+		node, _, err := st.CreateNodePending(c.name, "agent_dial")
+		if err != nil {
+			t.Fatal(err)
+		}
+		host := "gateway.example"
+		if c.name == "plain" {
+			host = "plain.example"
+		}
+		if _, err := st.SetNodeSSHCredential(node.UUID, host, c.port, "sparker", NodeSSHSecrets{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		host string
+		port int
+		want string
+	}{
+		{"gateway.example", 39911, "gw-a"},
+		{"gateway.example", 39912, "gw-b"},
+		{"gateway.example", 39913, ""},
+		{"gateway.example", 22, ""},
+		{"plain.example", 0, "plain"},
+		{" [plain.example] ", 22, "plain"},
+		{"plain.example", 2222, ""},
+		{"", 22, ""},
+	} {
+		nodes, err := st.NodesWithSSHEndpoint(tc.host, tc.port)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, n := range nodes {
+			names = append(names, n.Name)
+		}
+		if got := strings.Join(names, ","); got != tc.want {
+			t.Errorf("NodesWithSSHEndpoint(%q, %d) = %q, want %q", tc.host, tc.port, got, tc.want)
+		}
+	}
+}
