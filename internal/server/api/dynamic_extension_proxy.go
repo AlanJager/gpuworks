@@ -42,7 +42,7 @@ func (e *dynamicEndpoint) serveMatched(w http.ResponseWriter, r *http.Request) {
 // servePublic serves a public route without authentication, within its
 // rate per client address.
 func (e *dynamicEndpoint) servePublic(w http.ResponseWriter, r *http.Request) {
-	if wait := e.limits.take(matchedFrom(r).route, e.a.loginClientIP(r), time.Now()); wait > 0 {
+	if wait := e.limits.take(matchedFrom(r).route, e.a.loginClientIP(r), time.Now().UTC()); wait > 0 {
 		retryAfter(w, int((wait+time.Second-1)/time.Second))
 		writeProductError(w, http.StatusTooManyRequests, messages.ErrorTooManyRequests, "too many requests to this route; try again later", nil)
 		return
@@ -79,7 +79,7 @@ func (e *dynamicEndpoint) serve(w http.ResponseWriter, r *http.Request, c Dynami
 	}
 	status := 0
 	if write := !isReadMethod(r.Method); write {
-		start := time.Now()
+		start := time.Now().UTC()
 		defer func() { e.audit(r, route, c, &status, start) }()
 	}
 	if r.ContentLength > route.MaxBody {

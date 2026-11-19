@@ -150,7 +150,7 @@ func (c *pluginConn) do(ctx context.Context, req *http.Request, class Class, dea
 	if deadline.IsZero() {
 		deadline = time.Now().Add(c.callTimeout)
 	}
-	cancel := context.CancelFunc(func() {})
+	var cancel context.CancelFunc
 	var headers *time.Timer
 	if class.Stream {
 		ctx, cancel = context.WithCancel(ctx)
