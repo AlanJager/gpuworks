@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -103,12 +104,19 @@ func (p pluginAdmin) Logs(_ context.Context, id string, from api.PluginLogCursor
 	out := api.PluginLogs{Events: make([]dto.PluginEvent, len(logs.Events)), EventsTruncated: logs.EventsTruncated, Stderr: logs.Stderr,
 		StderrFrom: logs.StderrFrom, StderrTruncated: logs.StderrTruncated, Next: api.PluginLogCursor{Event: logs.Next.Event, Stderr: logs.Next.Stderr}}
 	for i, e := range logs.Events {
-		out.Events[i] = dto.PluginEvent{Seq: e.Seq, At: e.At.UTC(), State: string(e.State)}
-		if e.Code != "" {
-			out.Events[i].Message = &dto.ProductMessage{Code: e.Code, Params: e.Params}
-		}
+		out.Events[i] = pluginEventDTO(id, e)
 	}
 	return out, changed, nil
+}
+
+// pluginEventDTO is one supervision event; a coded one carries an English
+// fallback naming the state, as every product message does.
+func pluginEventDTO(id string, e pluginhost.Event) dto.PluginEvent {
+	out := dto.PluginEvent{Seq: e.Seq, At: e.At.UTC(), State: string(e.State)}
+	if e.Code != "" {
+		out.Message = &dto.ProductMessage{Code: e.Code, Params: e.Params, Message: fmt.Sprintf("plugin %s is %s", id, e.State)}
+	}
+	return out
 }
 
 // emptyIfNil is l, or an empty list for nil, so the wire shows [].

@@ -11,6 +11,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginbridge"
+	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
@@ -78,5 +79,19 @@ func TestPluginCgroupsFallBackToTheServersCgroup(t *testing.T) {
 	notDelegated := func(string) (string, string, bool) { return "", "", false }
 	if root, parent := pluginCgroups(log, notDelegated, enter); root != "" || parent != "" || len(entered) != 1 {
 		t.Fatalf("not delegated: %q %q, entered %v", root, parent, entered)
+	}
+}
+
+// A coded supervision event carries an English fallback beside its code;
+// an uncoded one carries no message.
+func TestPluginEventsCarryAFallbackWithTheirCode(t *testing.T) {
+	at := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	got := pluginEventDTO("acme_backup", pluginhost.Event{Seq: 3, At: at, State: pluginhost.StateBackoff, Code: messages.ErrorPluginCrashed, Params: map[string]any{"id": "acme_backup"}})
+	want := dto.PluginEvent{Seq: 3, At: at, State: "backoff", Message: &dto.ProductMessage{Code: messages.ErrorPluginCrashed, Params: map[string]any{"id": "acme_backup"}, Message: "plugin acme_backup is backoff"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("coded event = %+v", got)
+	}
+	if got := pluginEventDTO("acme_backup", pluginhost.Event{Seq: 4, At: at, State: pluginhost.StateRunning}); got.Message != nil {
+		t.Fatalf("uncoded event = %+v", got)
 	}
 }

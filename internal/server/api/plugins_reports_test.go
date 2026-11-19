@@ -57,7 +57,7 @@ func (f *fakePlugins) Logs(_ context.Context, id string, from PluginLogCursor) (
 	if from != (PluginLogCursor{Event: 8, Stderr: 16}) {
 		return PluginLogs{}, nil, messages.NewProductError(messages.ErrorPluginNotInstalled, "bad cursor", map[string]any{"id": id})
 	}
-	return PluginLogs{Events: []dto.PluginEvent{{Seq: 9, At: at, State: "backoff", Message: &dto.ProductMessage{Code: messages.ErrorPluginCrashed}}},
+	return PluginLogs{Events: []dto.PluginEvent{{Seq: 9, At: at, State: "backoff", Message: &dto.ProductMessage{Code: messages.ErrorPluginCrashed, Message: "plugin acme_backup is backoff"}}},
 		Next: PluginLogCursor{Event: 9, Stderr: 16}}, nil, nil
 }
 
@@ -200,7 +200,7 @@ func TestPluginLogsStreamBacklogThenFollows(t *testing.T) {
 		}
 	}
 	close(plugins.follow)
-	if got, want := next(), "event: state\ndata: {\"seq\":9,\"at\":\"2026-12-01T00:00:00Z\",\"state\":\"backoff\",\"message\":{\"code\":\"PLUGIN_CRASHED\",\"message\":\"\"}}"; got != want {
+	if got, want := next(), "event: state\ndata: {\"seq\":9,\"at\":\"2026-12-01T00:00:00Z\",\"state\":\"backoff\",\"message\":{\"code\":\"PLUGIN_CRASHED\",\"message\":\"plugin acme_backup is backoff\"}}"; got != want {
 		t.Fatalf("follow frame = %q\nwant %q", got, want)
 	}
 	// Revoked as another process would (reset-password): the stream's
