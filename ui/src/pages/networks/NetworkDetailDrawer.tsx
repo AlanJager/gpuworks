@@ -21,7 +21,7 @@ import NetworkFormModal from "./NetworkFormModal";
 import NetworkTestPanel from "./NetworkTestPanel";
 import NetworkMonitorPanel from "./NetworkMonitorPanel";
 import ManagementNodesTable from "./ManagementNodesTable";
-import { Endpoint, LinkLayerTag, RoleTags, TypeTag, WarningMark, isAcceleratorRDMA, railAddressTitle, usesRails, sourceText } from "./networkDisplay";
+import { Endpoint, acceleratorFabric, RoleTags, TypeTag, WarningMark, isAcceleratorRDMA, railAddressTitle, usesRails, sourceText } from "./networkDisplay";
 import { BootstrapCell, RailsCell } from "./RDMAEndpoints";
 import { HelpTip } from "../../ui-kit/HelpTip";
 
@@ -236,6 +236,8 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
   ];
   const expandedRowRender = (node: NetworkNode) => {
     const attachment = attachments.get(node.attachment_id);
+    const layer = node.link_layer;
+    const showLayer = layer && layer !== acceleratorFabric(detail.type)?.toLowerCase();
     return <dl className="network-node-details text-body">
       {rails ? (
         <>
@@ -244,9 +246,13 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
             <dd><BootstrapCell network={detail} node={node} onChanged={onDetail} /></dd>
           </div>
           <div>
-            <dt className="text-fg-muted">{railAddressTitle(t, detail.type)}<LinkLayerTag layer={node.link_layer} /></dt>
+            <dt className="text-fg-muted">{railAddressTitle(t, detail.type)}</dt>
             <dd><RailsCell network={detail} node={node} onChanged={onDetail} /></dd>
           </div>
+          {showLayer && <div>
+            <dt className="text-fg-muted">{t("node.port.linkLayer")}</dt>
+            <dd>{t(`linkLayer.${layer}`, { defaultValue: layer })}</dd>
+          </div>}
         </>
       ) : (
         <div>
@@ -255,8 +261,8 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
         </div>
       )}
       {attachment && (attachment.interface || attachment.ip || attachment.hcas.length > 0) && (
-        <div className="min-w-0 whitespace-normal break-all">
-          <dt className="text-fg-muted">{t("attach.overrides")}</dt>
+        <div className="min-w-0 whitespace-normal">
+          <dt className="text-fg-muted">{t("nodeTable.configuredOverrides")}</dt>
           <dd className="max-h-40 overflow-y-auto">
             {attachment.interface && <div>{t("attach.interface")} · {attachment.interface}</div>}
             {attachment.ip && <div>{rails ? t("nodeTable.bootstrap") : "IP"} · {attachment.ip}</div>}

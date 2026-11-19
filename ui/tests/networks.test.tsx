@@ -431,6 +431,7 @@ for (const networkType of ["accelerator_rdma", "accelerator_hccs"] as const) {
     await expandNodeRows();
     const row = screen.getByText(`${subnet}.59`).closest("tr") as HTMLElement;
     assert.ok(within(row).getByRole("list", { name: i18n.t("networks:nodeTable.cardAddresses", { fabric }) }));
+    assert.equal(within(row).queryByText(fabric, { exact: true }), null, "the field label already names the fabric");
     assert.ok(screen.getByText(`${n.node.card.name} · npu3`));
     await user.click(within(row).getByRole("button", { name: i18n.t("networks:rail.remove", { hca: "npu3" }) }));
     assert.ok(await screen.findByText(i18n.t("networks:rail.removeCardTitle", { hca: "npu3" })));
@@ -804,7 +805,10 @@ for (const language of ["en", "zh"]) {
       const dialog = await screen.findByRole("dialog", { name: title });
       const expand = i18n.t("networks:detail.expand");
       for (const button of await within(dialog).findAllByRole("button", { name: new RegExp(`${expand}|Expand row|展开行`) })) fireEvent.click(button);
-      await waitFor(() => assert.ok(within(dialog).queryAllByText(layer === "hccs" ? "HCCS" : layer).length > 0, "the HCA heading must name the actual link layer"));
+      const addressTitle = i18n.t("networks:nodeTable.cardAddresses", { fabric: "HCCS" });
+      assert.ok(within(dialog).getAllByText(addressTitle, { selector: "dt" }).length > 0);
+      if (layer === "hccs") assert.equal(within(dialog).queryByText("HCCS", { exact: true }), null);
+      else assert.ok(within(dialog).getAllByText(layer, { selector: "dd" }).length > 0);
       assert.doesNotMatch(dialog.textContent ?? "", /linkLayer\./, "a future protocol must retain its raw label instead of a translation key");
     });
   }

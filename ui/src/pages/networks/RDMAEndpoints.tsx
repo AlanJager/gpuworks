@@ -22,7 +22,7 @@ function SourceTag({ source, onReset, busy }: { source?: string; onReset?: () =>
   const { t } = useTranslation("networks");
   if (source !== "manual") return <Tag>{t("rail.auto")}</Tag>;
   return (
-    <Space size={0}>
+    <Space size={0} wrap>
       <Tag color="blue">{t("rail.manual")}</Tag>
       {onReset && <Button type="link" size="small" loading={busy} onClick={onReset}>{t("rail.reset")}</Button>}
     </Space>

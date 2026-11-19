@@ -126,6 +126,7 @@
     "acceleratorEditHint": "可以在下表逐个节点增删加速卡或改 bootstrap。"
   },
   "nodeTable": {
+    "configuredOverrides": "覆盖配置",
     "noResolvedIP": "未解析出 IP",
     "bootstrapCards": "Bootstrap IP / 加速卡",
     "cardAddresses": "加速卡与 {{fabric}} IP",

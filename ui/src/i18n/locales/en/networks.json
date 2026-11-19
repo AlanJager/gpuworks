@@ -126,6 +126,7 @@
     "acceleratorEditHint": "Add or remove cards, or change the bootstrap, per node in the table below."
   },
   "nodeTable": {
+    "configuredOverrides": "Overrides",
     "noResolvedIP": "No IP resolved",
     "bootstrapCards": "Bootstrap IP / accelerator cards",
     "cardAddresses": "Accelerator cards and {{fabric}} IPs",
