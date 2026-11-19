@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 
+	"gpuworks.ai/gpuworks/internal/server/extpkg"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/catalog"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
@@ -136,20 +137,7 @@ func installable(best *extapi.IndexEntry, installed string) bool {
 }
 
 // previousOf is the newest unpacked version older than current, kept for
-// rollback; empty when there is none.
+// rollback; empty when there is none. It is the version Rollback goes to.
 func previousOf(current string, versions []string) string {
-	prev := ""
-	for _, v := range versions {
-		if c, err := extapi.CompareVersions(v, current); err != nil || c >= 0 {
-			continue
-		}
-		if prev == "" {
-			prev = v
-			continue
-		}
-		if c, err := extapi.CompareVersions(v, prev); err == nil && c > 0 {
-			prev = v
-		}
-	}
-	return prev
+	return extpkg.PreviousVersion(current, versions)
 }

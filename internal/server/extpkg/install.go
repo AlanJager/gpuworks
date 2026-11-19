@@ -97,6 +97,9 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 		if err := CheckIDFree(v.Manifest.ID, opt.ReservedIDs); err != nil {
 			return layout.Control{}, err
 		}
+		if err := h.checkNotUpgrading(v.Manifest.ID); err != nil {
+			return layout.Control{}, err
+		}
 		current, err := h.Dir.Current(v.Manifest.ID)
 		if err != nil {
 			return layout.Control{}, err
@@ -142,6 +145,23 @@ type UpgradeOptions struct {
 	// Features, when set, refuses a package declaring a feature key
 	// someone else provides (ErrorPluginFeatureTaken), before approval.
 	Features FeatureOwners
+	// ID, when set, is the package the upgrade is for: a package of
+	// another id is refused (ErrorPluginManifestMismatch) before approval.
+	ID string
+	// Marker writes the upgrade marker (layout.Upgrade) once the package
+	// is verified and approved, before Quiesce; the caller removes it
+	// once the new version is healthy (FinishUpgrade) or rolls back. Any
+	// refusal after it was written removes it again.
+	Marker bool
+	// Quiesce, when set, runs after the marker is written and before the
+	// data is snapshot or anything else changes on disk: the server stops
+	// the running version there. When the upgrade fails after it ran, the
+	// caller starts that version again.
+	Quiesce func() error
+	// Snapshot copies the plugin's data, with its data marker, before the
+	// new version is made current (layout.TakeSnapshot); a copy that fails
+	// refuses the upgrade (ErrorPluginSnapshotFailed).
+	Snapshot bool
 }
 
 // Upgraded is the outcome of an upgrade.
@@ -152,6 +172,9 @@ type Upgraded struct {
 	// AutoApproved reports that the approval hash was unchanged and the
 	// site policy applied the upgrade without a new approval.
 	AutoApproved bool
+	// Snapshot is the copy of the data taken before the new version was
+	// made current; zero without UpgradeOptions.Snapshot.
+	Snapshot layout.Snapshot
 }
 
 // Upgrade replaces installed package id with the package read from r, the
@@ -162,10 +185,47 @@ type Upgraded struct {
 // holds it too), and nothing changes. An approval hash equal to the
 // approved one counts as approved when the site policy auto-approves
 // unchanged upgrades.
-func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (*Upgraded, error) {
+func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (_ *Upgraded, err error) {
 	up := &Upgraded{}
-	in, err := h.place(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
+	from, marked := "", false
+	defer func() {
+		if err != nil && marked {
+			_ = h.Dir.RemoveUpgrade(opt.ID)
+		}
+	}()
+	prepare := func(v *Verified) error {
 		m := v.Manifest
+		name := layout.SnapshotName(from, h.now())
+		if opt.Marker {
+			if err := h.Dir.WriteUpgrade(m.ID, layout.Upgrade{From: from, To: m.Version, Snapshot: name, Started: h.now().UTC()}); err != nil {
+				return err
+			}
+			marked = true
+		}
+		if opt.Quiesce != nil {
+			if err := opt.Quiesce(); err != nil {
+				return err
+			}
+		}
+		if opt.Snapshot {
+			s, err := h.snapshotLocked(m.ID, from, name)
+			if err != nil {
+				return err
+			}
+			up.Snapshot = s
+		}
+		return nil
+	}
+	in, err := h.placeWith(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
+		m := v.Manifest
+		if opt.ID != "" && m.ID != opt.ID {
+			return layout.Control{}, messages.NewProductError(messages.ErrorPluginManifestMismatch,
+				fmt.Sprintf("the package is %s, not %s", m.ID, opt.ID), map[string]any{})
+		}
+		opt.ID = m.ID
+		if err := h.checkNotUpgrading(m.ID); err != nil {
+			return layout.Control{}, err
+		}
 		current, err := h.Dir.Current(m.ID)
 		if err != nil {
 			return layout.Control{}, err
@@ -173,6 +233,7 @@ func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (*Upgraded, error) {
 		if current == "" {
 			return layout.Control{}, notInstalled(m.ID)
 		}
+		from = current
 		ctl, _, err := h.Dir.ReadControl(m.ID)
 		if err != nil {
 			return layout.Control{}, err
@@ -194,7 +255,7 @@ func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (*Upgraded, error) {
 			// new version asks for one more.
 			HostSetupApplied: ctl.HostSetupApplied && len(up.Diff.HostSetupAdded) == 0,
 		}, nil
-	})
+	}, prepare)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +267,14 @@ func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (*Upgraded, error) {
 // lock. decide runs after verification, before anything is moved into
 // place: it refuses the package or returns the control file to write.
 func (h *Host) place(r io.Reader, features FeatureOwners, decide func(*Verified, extapi.Digest) (layout.Control, error)) (*Installed, error) {
+	return h.placeWith(r, features, decide, nil)
+}
+
+// placeWith is place with prepare, which runs once decide accepted the
+// package and before anything is moved into place; an error from it
+// refuses the package.
+func (h *Host) placeWith(r io.Reader, features FeatureOwners, decide func(*Verified, extapi.Digest) (layout.Control, error),
+	prepare func(*Verified) error) (*Installed, error) {
 	unlock, err := h.Dir.Lock()
 	if err != nil {
 		return nil, err
@@ -243,6 +312,11 @@ func (h *Host) place(r io.Reader, features FeatureOwners, decide func(*Verified,
 	ctl, err := decide(v, hash)
 	if err != nil {
 		return nil, err
+	}
+	if prepare != nil {
+		if err := prepare(v); err != nil {
+			return nil, err
+		}
 	}
 	out := &Installed{Verified: v, ApprovalHash: hash, Enabled: ctl.Enabled}
 	switch existing, err := os.ReadFile(filepath.Join(h.Dir.Version(m.ID, m.Version), archive.ManifestMember)); {
@@ -367,6 +441,12 @@ func (h *Host) Recheck(id string, full bool) (*Verified, error) {
 	if version == "" {
 		return nil, notInstalled(id)
 	}
+	return h.recheckVersion(id, version, full)
+}
+
+// recheckVersion verifies unpacked version of package id again, whether
+// it is current or not.
+func (h *Host) recheckVersion(id, version string, full bool) (*Verified, error) {
 	c, err := layout.ReadInstalled(h.Dir.Version(id, version), h.hasher(), full)
 	if err != nil {
 		return nil, err
