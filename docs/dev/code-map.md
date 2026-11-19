@@ -51,7 +51,7 @@
   估算器负责产生数值；OpenAI 兼容 LLM 在预组装上下文上跑只读工具 agent 循环。未配置 LLM 时，规则命中与适配表仍可用。
 
   同一套工具经 MCP 对外提供：协议在叶子包 `mcp`（JSON-RPC、版本协商、方法分发，不认识调用者与工具），`api/mcp.go` 只做开关、限流并以调用者身份运行工具（`aihelper.Tool.Run`，与助手的 agent 循环同一份调用、报错与截断）。鉴权用平台 API 令牌（`api/platform_tokens.go`）：`managementAuth` 识别会话或令牌，令牌范围由路由声明（`sessionOnly`、`readTokensRead`，见 `api/auth.go`）；校验结果在 `store` 里短时缓存，吊销即失效。
-- `provider` / `provision`：云厂商（aliyun/digitalocean/runpod/compshare/autodl/vast/zstack）租机与 SSH 预检查/安装接入。`provider/hpc_cluster.go` 是云上 HPC 集群计算节点的规则（节点经集群条目接入、平台不开关机、不计入账号的实例，ADR 0069），`provider/hpc_listing.go` 是账号下 HPC 集群的实时列表（`HPCClusterProvider`，与托管 Kubernetes 的 `ClusterProvider` 并列，`GET /providers/{id}/hpc-clusters`）；阿里云 E-HPC 的识别和列出在 `provider/aliyun/ehpc.go`。`slurmboot` 渲染接入脚本，`setup.sh --check` 与 `provider/slurm_apply_plan.go` 是只检查不改动的那一遍。
+- `provider` / `provision`：云厂商（aliyun/digitalocean/runpod/compshare/autodl/vast/zstack）租机与 SSH 预检查/安装接入。`provider/hpc_cluster.go` 是云上 HPC 集群计算节点的规则（节点经集群条目接入、平台不开关机、不计入账号的实例，ADR 0075），`provider/hpc_listing.go` 是账号下 HPC 集群的实时列表（`HPCClusterProvider`，与托管 Kubernetes 的 `ClusterProvider` 并列，`GET /providers/{id}/hpc-clusters`）；阿里云 E-HPC 的识别和列出在 `provider/aliyun/ehpc.go`。`slurmboot` 渲染接入脚本，`setup.sh --check` 与 `provider/slurm_apply_plan.go` 是只检查不改动的那一遍。
 
   阿里云签 V3 请求、经云助手（`provider.ConnectionCloudAssistant`，一种不走 SSH 的连接方式）安装；`provision/connectivity.go` 是预检查里节点↔server 双向连通判断的唯一实现。SSH 安装（Linux 与 Mac）都是上传 agent 与 `installscript.Script` 后运行它（`provision/install_script.go`，`install_command.go` 生成 curl 与离线包两种手工安装命令），启动配置由脚本经 `gpuworks-agent configure` 记下，不在 provision 里另拼 systemd/nohup 启动命令。
 

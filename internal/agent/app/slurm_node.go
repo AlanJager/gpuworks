@@ -33,6 +33,9 @@ import (
 //	GPUWORKS_SLURM_SBATCH_ARGS      extra placeholder job options, e.g. "-A inference --time=7-0"
 //	GPUWORKS_SLURM_PENDING_TIMEOUT  how long a placeholder job may wait to start (default 10m)
 //	GPUWORKS_SLURM_IDLE_RETURN      how long an unused card is kept (default 60s)
+
+// slurmSweepInterval is how often the leaser reads the node's jobs: it
+// returns idle cards and notices placeholder jobs ended from outside.
 const slurmSweepInterval = 15 * time.Second
 
 // SlurmOrderFile is the file in the state directory where the health check
