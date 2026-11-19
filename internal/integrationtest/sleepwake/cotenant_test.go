@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -209,13 +210,48 @@ func TestDeepSleepWakesWithReloadedWeights(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer res.Body.Close()
-		raw, _ := io.ReadAll(res.Body)
+		raw, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
 		return res.StatusCode, string(raw)
+	}
+	stableAnswer := func(raw string) map[string]any {
+		t.Helper()
+		decoder := json.NewDecoder(strings.NewReader(raw))
+		decoder.UseNumber()
+		var reply map[string]any
+		if err := decoder.Decode(&reply); err != nil || reply == nil {
+			t.Fatalf("invalid completion object %q: %v", raw, err)
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			t.Fatalf("trailing completion data %q: %v", raw, err)
+		}
+		created, ok := reply["created"].(json.Number)
+		if !ok {
+			t.Fatalf("missing or invalid completion timestamp: %s", raw)
+		}
+		if _, err := created.Int64(); err != nil {
+			t.Fatalf("invalid completion timestamp %q: %v", created, err)
+		}
+		for _, field := range []string{"id", "model", "object"} {
+			if value, ok := reply[field].(string); !ok || value == "" {
+				t.Fatalf("missing or invalid completion %s: %s", field, raw)
+			}
+		}
+		if choices, ok := reply["choices"].([]any); !ok || len(choices) == 0 {
+			t.Fatalf("missing or invalid completion choices: %s", raw)
+		}
+		// Every response has its own creation instant. Keep all remaining
+		// fields, including nested choices and usage, in the reload assertion.
+		delete(reply, "created")
+		return reply
 	}
 	code, before := answer()
 	if code != http.StatusOK {
 		t.Fatalf("awake chat: %d %s", code, before)
 	}
+	beforeReply := stableAnswer(before)
 
 	sleep, err := api.PostJSON("/api/v1/deployments/"+itoa(dep.ID)+"/sleep?level=2", nil)
 	if err != nil || sleep.StatusCode != http.StatusOK {
@@ -234,7 +270,7 @@ func TestDeepSleepWakesWithReloadedWeights(t *testing.T) {
 	wake.Body.Close()
 	env.Eventually(t, 45*time.Second, level(0))
 	code, after := answer()
-	if code != http.StatusOK || after != before {
+	if code != http.StatusOK || !reflect.DeepEqual(stableAnswer(after), beforeReply) {
 		t.Fatalf("answer after deep wake differs:\nbefore: %s\nafter:  %d %s", before, code, after)
 	}
 }

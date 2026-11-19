@@ -305,11 +305,7 @@ func reconcileGPUs(tx *gorm.DB, nodeID uint, gpus []proto.GPUInfo, adopt cardAdo
 			changed = true
 		}
 	}
-	expired, err := expireCardAllowances(tx, current, time.Now().UTC())
-	if err != nil {
-		return false, false, err
-	}
-	return renumbered, changed || expired, nil
+	return renumbered, changed, nil
 }
 
 // sameCardRow reports whether writing row over old would change any column

@@ -85,7 +85,11 @@ const (
 	// ErrorPluginApprovalRequired: installing {id} {version} needs the
 	// administrator's approval of what it asks for ({permissions},
 	// {roles}); the request must carry {approve_hash}. Nothing was
-	// installed.
+	// installed. The params also carry the diff from the installed version
+	// {from_version} (empty on a first install): {permissions_added} and
+	// {permissions_removed} (permission=risk), an _added/_removed pair for
+	// each of roles, capabilities, features, routes, host_setup and
+	// devices, and {ui_mode} and {isolation} (old->new when changed).
 	ErrorPluginApprovalRequired = "PLUGIN_APPROVAL_REQUIRED"
 	// ErrorPluginBroken: installed package {id} no longer verifies, so it
 	// cannot be enabled; see its state.
@@ -94,3 +98,22 @@ const (
 	// cannot be managed here.
 	ErrorPluginsUnavailable = "PLUGINS_UNAVAILABLE"
 )
+
+// Host setup: the root steps a package's host_setup declares
+// (docs/dev/extensions.md).
+const (
+	// ErrorPluginHostSetupRequired: package {id} declares host setup steps
+	// that root has not applied on this host, or applied for other steps;
+	// its server part does not start until an administrator runs
+	// {command}.
+	ErrorPluginHostSetupRequired = "PLUGIN_HOST_SETUP_REQUIRED"
+	// ErrorPluginHostSetupUnsupported: package {id} declares host setup
+	// steps, which this platform cannot apply; nothing was installed.
+	ErrorPluginHostSetupUnsupported = "PLUGIN_HOST_SETUP_UNSUPPORTED"
+)
+
+// PluginHostSetupErrorCodes lists the host setup codes, for the check that
+// the console carries text for each.
+func PluginHostSetupErrorCodes() []string {
+	return []string{ErrorPluginHostSetupRequired, ErrorPluginHostSetupUnsupported}
+}

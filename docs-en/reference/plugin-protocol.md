@@ -124,7 +124,7 @@ Routes are served at `/api/v1/x/<id><pattern>`:
 | `feature` / `ungated` | Exactly one is set; `feature` must be a key this manifest declares |
 | `write_when_read_only` | Lets this non-GET write through while the feature is read-only (a write that only removes or relaxes); needs `feature` |
 | `max_body` | Request body limit; 0 means 1 MiB, at most 1 GiB; above 1 MiB the package needs the permission `http:uploads` |
-| `timeout_s` | 0 means 60 seconds, at most 600 |
+| `timeout_s` | The request time limit in seconds: 0 means 60 seconds, at most 600; on a stream route it bounds the wait for the response's first byte |
 | `stream` / `websocket` | A streamed response / a WebSocket upgrade (GET only, not together with `stream`); `websocket` also needs `routes.websocket` in `requires` or `uses`. On a server that offers only `routes`, a package that has it in `requires` is incompatible; one that has it only in `uses` installs as usual, but that route is not served |
 | `html` | Lets the route answer `text/html`; only `public`, `admin` and `admin_session` routes may set it |
 | `ai_readable` | The assistant and MCP may read it; GET only |
@@ -187,6 +187,19 @@ Beyond the manifest, the server applies its own policy after the capability chec
 
 - A package with routes must hold `http:routes`, and one with a `public` route also `http:public`; otherwise `PLUGIN_POLICY_REFUSED`, with the missing permission as `rule` and the route (such as `routes.0`) as `value`.
 - An `on_demand` package is not running most of the time, so it may hold no `push:` permission and declare no feature (no one would answer for its keys while it is stopped); otherwise `PLUGIN_STATE_ON_DEMAND` with `id` and `permission` or `feature`.
+- Only Linux can apply host steps: on any other platform a package that declares `host_setup` gets `PLUGIN_HOST_SETUP_UNSUPPORTED` with `id`.
+
+### Host setup (`host.setup@1`)
+
+The server always offers `host.setup@1`, but only Linux can apply it; elsewhere install is refused with `PLUGIN_HOST_SETUP_UNSUPPORTED`. The manifest's `host_setup` is a declaration, never a script; root renders it by running `gpuworks plugin host-setup` (or `gpuworks install` or `upgrade`) under these rules. What a `usb_device` step means:
+
+| Product | Rule |
+|---|---|
+| udev rules | One file per package; two lines per step, matching `vendor_id` and `product_id`, one hitting the device's `usb_device` node (libusb's `/dev/bus/usb/<bus>/<device>`) and one its hidraw nodes, setting only `GROUP="gpuworks-usb"` and `MODE="0660"`; no `SYMLINK`, `RUN` or `OWNER` |
+| Applied record | A root-owned file holding the digest of the steps: the SHA-256 of the canonical JSON `{"host_setup":[{"type","vendor_id","product_id"}...]}`, the list sorted by type, vendor and product with duplicates removed, so the order of the steps does not change it; an upgrade that keeps the steps needs no new root step |
+| Sandbox | When the record matches the current steps, the plugin's Landlock rules also grant read, write and ioctl on device nodes under `/dev` (and listing it), and read-only `/sys/bus/usb`, `/sys/class/hidraw`, `/sys/devices` and `/run/udev/data` for device discovery |
+
+When the record is missing, differs, or could have been written by the service account (not owned by root, or writable by group or others), the plugin does not start: its state is `needs_host_setup` with reason `PLUGIN_HOST_SETUP_REQUIRED`, params `id` and `command` (what to run). The boundary between devices is the nodes' file permissions: the sandbox grants a directory, because a device's nodes appear only once it is plugged in, under names nobody knows in advance. So the plugin can open every node under `/dev` the service account can already open, not only the matched USB devices.
 
 ## Publisher certificate
 
@@ -292,8 +305,18 @@ Under ADR 0071, a plugin is a child process of the server and runs plaintext HTT
 | `GET /gwx/v1/health` | Health | The server's periodic probe |
 | `PUT /host/v1/state/{kind}` | Push | The plugin pushes the whole table of one kind |
 | `GET /host/v1/health` | Host health | The plugin probes the host API; the answer is a health object |
+| `POST /host/v1/node-identity` | Node identity | The plugin reads the salted hardware identity of named nodes; see [Node reads](#node-reads) |
+| `GET /host/v1/nodes` | Node inventory | The plugin pages through the node inventory in enrollment order |
+| `GET /host/v1/state/{kind}` | Own state | The plugin reads back one table the server holds for it (see [Host API clock, readiness, own state and derived keys](#host-api-clock-readiness-own-state-and-derived-keys)) |
+| `POST /host/v1/state/ready` | Ready | The plugin reports that it has finished starting |
+| `GET /host/v1/meta` | Meta | The server version, boot id and clocks |
+| `POST /host/v1/clock/correct` | Clock correction | A package holding `clock_authority` corrects extclock |
+| `POST /host/v1/derive-key` | Derived key | A key bound to the package and a label |
+| `POST /host/v1/host-identity` | Host identity | The plugin reads the salted identity of the management server's machine; see [Host identity](#host-identity) |
 | Request header `Gwx-Deadline-Ms` | Unix milliseconds | The call's deadline |
 | Response header `Gwx-Product-Error` | — | Marks a plugin route's response body as an error object |
+| `/r/<path>` | Route | A request to one of the plugin's routes ([route requests](#route-requests-and-the-principal)) |
+| Request headers `Gwx-Principal`, `Gwx-Principal-Mac`, `Gwx-Feature-Access` | — | Who calls a route, and the access of its features |
 
 The handshake request:
 
@@ -319,6 +342,60 @@ The plugin's answer:
 ```
 
 `protocol` is the major the plugin chose from the server's range (only 1 today); `manifest_sha256` is the digest of the manifest the plugin was built with, by which the server refuses a binary that does not belong to its package; `use` maps each capability the plugin will use to the version it chose, which must lie within the server's `offer`; `services` are the optional services the plugin serves, sorted.
+
+## Route requests and the principal
+
+A plugin's routes live at `/api/v1/x/<id><pattern>`. Once the server has authenticated, matched and checked a request, it forwards it to `/r<path>` on the serve connection (for example `/api/v1/x/acme_backup/jobs` to `/r/jobs`). Before forwarding it strips any `Gwx-*` header the client sent, then sets three headers that tell the plugin who is calling and which route the server matched:
+
+| Header | Content |
+|---|---|
+| `Gwx-Principal` | The principal: canonical JSON, base64url-encoded without padding |
+| `Gwx-Principal-Mac` | `base64url(HMAC-SHA256(principal_key, <Gwx-Principal value> + "\n" + <Gwx-Feature-Access value>))`, without padding; the feature access is signed together with the principal |
+| `Gwx-Feature-Access` | The current access level of each feature the matched route declares; an ungated route sends an empty value |
+
+`principal_key` is the key the handshake request generates fresh for each spawn, so after a plugin restarts, headers signed for the previous spawn no longer verify. The server does not offer the `routes` capability or forward routes yet; this section freezes the format and the plugin-side check.
+
+The principal:
+
+<!-- golden: principal/v1/valid/admin_session.json -->
+```json
+{"exp":"2026-12-01T00:01:05Z","kind":"session","local_admin":true,"platform_admin":true,"request_id":"gw-01/9f2c4e7a-000042","roles":["admin"],"route":"/reports/{period}","route_action":"acme_reports.read","user_id":1,"username":"admin"}
+```
+
+| Field | Rule |
+|---|---|
+| `kind` | `session` (a console login session), `token` (a platform token, on behalf of its user) or `public` (a `public` route, no user) |
+| `user_id` / `username` | The user; absent for `public`, required otherwise |
+| `platform_admin` | The user is a platform administrator |
+| `local_admin` | The break-glass local administrator; can be true only for a platform administrator signed in with a session |
+| `roles` | The user's roles, sorted, at least one; currently the single core role |
+| `scope_projects` | Optional: the projects the user's readable data is limited to, sorted; empty means no limit |
+| `api_key_id` | The platform token's id; required when `kind` is `token`, absent otherwise |
+| `request_id` | The server's request id, for correlating logs, at most 128 bytes |
+| `route_action` | The `action` of the route the server matched (`<package id>.<verb>`) |
+| `route` | The manifest `pattern` of the route the server matched |
+| `exp` | The expiry: the route's `timeout_s` (default 60) plus 5 seconds, rounded up to the second; a stream route's `timeout_s` bounds its first byte, and the same rule applies |
+
+The `Gwx-Feature-Access` grammar is `<feature key>=<level>` entries joined by `,`, sorted by key, without spaces, where the level is `full`, `read_only` or `locked` (a route of a `hidden` feature answers 404 and never reaches the plugin). It lists only the keys the route declares, and has exactly one spelling.
+
+Signing the principal above with the handshake golden file's `principal_key` (bytes 0 to 31) and `Gwx-Feature-Access` set to `acme.reports=read_only` gives these three headers (the vectors under `principal/v1/signed/` are frozen with the golden files):
+
+<!-- golden: principal/v1/signed/admin_session.txt -->
+```text
+Gwx-Feature-Access: acme.reports=read_only
+Gwx-Principal: eyJleHAiOiIyMDI2LTEyLTAxVDAwOjAxOjA1WiIsImtpbmQiOiJzZXNzaW9uIiwibG9jYWxfYWRtaW4iOnRydWUsInBsYXRmb3JtX2FkbWluIjp0cnVlLCJyZXF1ZXN0X2lkIjoiZ3ctMDEvOWYyYzRlN2EtMDAwMDQyIiwicm9sZXMiOlsiYWRtaW4iXSwicm91dGUiOiIvcmVwb3J0cy97cGVyaW9kfSIsInJvdXRlX2FjdGlvbiI6ImFjbWVfcmVwb3J0cy5yZWFkIiwidXNlcl9pZCI6MSwidXNlcm5hbWUiOiJhZG1pbiJ9
+Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
+```
+
+`extapi.VerifyPrincipal(key, principal, MAC, feature access, now)` compares the MAC in constant time first and decodes only after it matches: strictly, requiring canonical JSON and refusing unknown fields, then checking the rules above. It refuses an `exp` before `now`, or later than `now` plus the longest route timeout (600 + 5 seconds). A missing header, a MAC mismatch and an expired principal are `ErrPrincipalMissing`, `ErrPrincipalMAC` and `ErrPrincipalExpired` (one too far ahead is `ErrPrincipalTooLong`); a malformed one is a coded `*extapi.Error`.
+
+A plugin built with the SDK wraps each route where it registers it with `pluginsdk.RequirePrincipal(action, h)`:
+
+```go
+mux.Handle("POST /r/jobs", pluginsdk.RequirePrincipal("acme_backup.jobs_create", createJob))
+```
+
+It verifies the three headers with this spawn's key and requires `route_action` to equal the `action` of the route the plugin's own router matched. If the server's router and the plugin's match the same path to different routes, the request is therefore refused rather than served under the other route's access level and feature checks. A request that fails gets 403 and an error object marked with `Gwx-Product-Error` (`reason` `permission_denied`, `object` `principal`; a `PLUGIN_WIRE_*` code; a MAC mismatch and a route other than the one the server matched are both `PLUGIN_WIRE_INVALID` with `rule` `relation`, `field` `_root` and `route_action` respectively), and the handler is not called. The handler reads the verified caller with `pluginsdk.PrincipalFrom(r)` and `pluginsdk.FeatureAccessFrom(r)`. `plugintest` signs with a fixed key (`Harness.PrincipalKey`): `Harness.Principal(action, route)` returns an administrator session principal, and `Harness.Sign(req, p, access)` sets the three headers as the server does.
 
 ## Health and errors
 
@@ -389,6 +466,151 @@ Each kind belongs to a class, which decides how the server combines the rows of 
 | Grant | `availability` | Only from the namespace authority (or, for `gate: self` keys, the declaring package); tightens once the owner has been down longer than the grace |
 | Display | `banners` | Shown, never enforced |
 | Opaque | `attestations` | Stored and relayed, never interpreted |
+
+## Node reads
+
+A plugin reads node identity and the node inventory through the host API. These are the core's pinned reads (at most 500 nodes at a time), never a scan of the whole fleet. Each read needs a permission the administrator approved and a capability negotiated at the handshake:
+
+| Endpoint | Permission | Capability |
+|---|---|---|
+| `POST /host/v1/node-identity` | `read:node_identity` | `host.node_identity@1` |
+| `GET /host/v1/nodes?cursor=&limit=` | `read:node_inventory` | `host.nodes@1` |
+
+Reads are not pushes, so an `on_demand` package may read too.
+
+### Node identity
+
+The body names a salt and node ids. It is a POST so the salt never appears in a URL:
+
+<!-- golden: node_identity_request/v1/valid/two_nodes.json -->
+```json
+{"node_ids":[3,7],"salt":"acme-quota-2026"}
+```
+
+- `salt`: 1–219 bytes. The server keys the HMAC with "`pkg`, a zero byte, the package id, a zero byte, the salt", so two packages with the same salt get unrelated digests, and one package gets the same digests on every server; a package id is at most 32 bytes, so the key never exceeds 256 bytes.
+- `node_ids`: the server's node ids, 1–500, without repeats.
+
+The answer lists the named nodes that exist, in ascending id order; a node that does not exist (never did, or was deleted) is left out, and the caller compares ids:
+
+<!-- golden: node_identity_answer/v1/valid/partial.json -->
+```json
+{"nodes":[{"cards":[{"h":"1b9e4d0a77c2f310","tail":"e7f8"},{"h":"c0a9e81f2b3d4e56","tail":"5555"}],"cards_without_serial":0,"host":{"h":"5f0c8e2a9d413b77","tail":"3432"},"node_id":3},{"cards":[],"cards_without_serial":8,"node_id":7}]}
+```
+
+- `host` is the machine's system UUID, absent until the agent reports one; logical nodes on one machine share it.
+- `cards` are the cards the node may use that carry a hardware serial, ordered by `h`; cards whose id the probe made up from a slot or an index are only counted in `cards_without_serial`.
+- Each `h` is the first 16 hex characters of an HMAC-SHA256 of the raw value; `tail` is the raw value's last four characters, unsalted, so a person can check it on the machine, and absent for a raw value shorter than eight characters. Raw serials never leave the server.
+
+### Node inventory
+
+`GET /host/v1/nodes` returns one page of nodes in ascending id (enrollment) order. The first page has no `cursor`; after that pass the previous page's `next` unchanged; an absent `next` means the last page. `limit` is 1–500 and defaults to 500. Node ids are never reused, so a node enrolled or deleted between pages neither shifts nor repeats the rest.
+
+<!-- golden: nodes_page/v1/valid/first_page.json -->
+```json
+{"next":"7","nodes":[{"cards":[{"index":0,"model":"NVIDIA H800","serial":true},{"index":1,"model":"NVIDIA H800","serial":true}],"enrolled_at":"2026-11-02T08:15:00Z","host_reported":true,"id":3,"name":"gpu-a01","uuid":"6f1d2c3b-8a9e-4b7c-9d0e-1f2a3b4c5d6e"},{"cards":[{"index":0,"model":"Ascend 910B","serial":false}],"enrolled_at":"2026-11-05T10:00:00Z","host_reported":false,"id":7,"name":"npu-b02","uuid":"0b9c8d7e-6f5a-4b3c-2d1e-0f9a8b7c6d5e"}]}
+```
+
+Each node gives its id, `uuid`, `name` (the name an operator gave it, otherwise its hostname; at most 255 bytes), `enrolled_at`, `host_reported` (whether the machine's UUID was reported), and the cards it may use as `{index, model, serial}`: `index` is the vendor CLI's device index (-1 when the CLI does not list the card), and `serial` only says whether the card has a serial, and so appears in the node's identity; it never holds the serial.
+
+### Rate limits and refusals
+
+The host API allows each plugin 20 calls a second with a burst of 100; the node inventory has its own bucket of 2 pages a second with a burst of 4, and answers 429 `PLUGIN_HOST_RATE_LIMITED` beyond it (`limit` 2, with `retry_after_ms`). Read the nodes a console page shows, not the whole fleet on every event.
+
+| Code | Status | Meaning | Params |
+|---|---|---|---|
+| `PLUGIN_HOST_NOT_PERMITTED` | 403 | The administrator did not approve the read's permission | `id`, `permission` |
+| `PLUGIN_CAPABILITY_NOT_OFFERED` | 412 | The plugin did not negotiate the capability at its handshake | `id`, `capability`, `version` |
+| `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | The salt, the node id list, `cursor` or `limit` is out of bounds or breaks its grammar; refused before any read, and a refused inventory query costs no page | `id`, `field` |
+| `REQUEST_TOO_LARGE` | 413 | The node identity request body is over 32 KiB; refused before decoding | `max_bytes` |
+| `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | The server offers no reads, or the method is wrong | `method`, `path` |
+
+A body that is not the object at all (invalid JSON, an unknown field) keeps its wire code, such as `PLUGIN_WIRE_UNKNOWN_FIELD`.
+
+## Host API clock, readiness, own state and derived keys
+
+These calls are on the host API side (fd 4). The caller is the package bound to the connection at its handshake; no request carries an identity field:
+
+| Call | Needs | Answer |
+|---|---|---|
+| `GET /host/v1/meta` | capability `host.clock` | `host_meta` |
+| `POST /host/v1/clock/correct` | capability `host.clock` and role `clock_authority` | `clock_corrected` |
+| `POST /host/v1/state/ready` | the base protocol, no capability | 204, no body |
+| `GET /host/v1/state/{kind}` | capability `host.state_read` | `pushed_state` |
+| `POST /host/v1/derive-key` | permission `crypto:derive_key` and capability `host.derive_key` | `derived_key` |
+
+A call whose capability the handshake did not negotiate gets 412 `PLUGIN_CAPABILITY_NOT_OFFERED` (`id`, `capability`, `version`); a missing role 403 `PLUGIN_ROLE_REQUIRED` (`id`, `role`); a missing permission 403 `PLUGIN_HOST_NOT_PERMITTED` (`id`, `permission`); an argument that breaks a rule 400 `PLUGIN_HOST_ARGUMENT_INVALID` (`id`, `field`); a body over 4 KiB 413 `REQUEST_TOO_LARGE` (`max_bytes`).
+
+Meta: `version` is the server version (as in the handshake), and `boot_id` changes every time the server starts. `wall` is the wall clock, `extclock` the monotone clock timelines follow, and `hwm` the high-water mark the server last stored, absent before it stored one.
+
+<!-- golden: host_meta/v1/valid/stored.json -->
+```json
+{"boot_id":"5b0c9e7a41d24f3c8e6a0b1d2c3f4e5a","extclock":"2027-03-01T00:00:00Z","hwm":"2027-03-01T00:00:00Z","version":"v26.12.0","wall":"2027-01-15T00:00:00Z"}
+```
+
+Clock correction: `to` is a time the plugin has verified (for example from a correction code its publisher signed), and `reason` is 1–256 bytes of explanation for the audit log. One correction moves extclock at most 366 days either way; beyond that the answer is 400 `PLUGIN_CLOCK_CORRECTION_TOO_LARGE` (`max_days`). Steps are not consumed, so moving back un-fires the steps after `to`. The server writes an audit log line and shows an administrator banner.
+
+<!-- golden: clock_correction/v1/valid/vendor_code.json -->
+```json
+{"reason":"acme correction code 7F3A-22C1","to":"2027-01-15T00:00:00Z"}
+```
+
+The answer is extclock before and after the correction as it took effect: extclock never runs behind the wall clock, so when `to` is earlier than the wall clock, the answer's and the audit line's `to` is the wall clock.
+
+<!-- golden: clock_corrected/v1/valid/back.json -->
+```json
+{"from":"2027-03-01T00:00:00Z","to":"2027-01-15T00:00:00Z"}
+```
+
+Ready: each down period's grants get a boot extension of 2 minutes after the grace. Once a plugin process calls `POST /host/v1/state/ready`, a later down period of that process gets no boot extension and tightens as soon as the grace ends. A second call from the same process, a call from an `on_demand` plugin, or one from a process that has been replaced changes nothing. It never changes the persisted down start, so it cannot renew the grace. A new process may call it before the server counts it up; that call applies only to the new process's own later down periods and does not shorten the boot extension of the previous process's down period. The mark is not kept across a server restart: the boot extension is computed again from the persisted start, so it cannot stack.
+
+Own state: `GET /host/v1/state/{kind}` answers with the committed table of that kind the server holds for the caller itself, so a restarted plugin can reconcile. It is read from memory and never returns another package's rows. `body` is the whole table as the server holds it (canonical JSON; `display` contents, which the server does not keep, are absent), `digest` the digest of the table as it was pushed, the same as the handshake's `held` reports, and `pushed_at` the extclock at which the push was accepted. When nothing is held, only `kind` is set:
+
+<!-- golden: pushed_state/v1/valid/held.json -->
+```json
+{"body":{"nodes":{"9":{"code":"ACME_QUARANTINE"}}},"digest":"sha256:9d48b3877a0b899cd055d9b094a38a3499e96cdad91bbb965c227098d95b9053","generation":4,"kind":"node_holds","pushed_at":"2026-12-01T00:00:00Z","schema":1}
+```
+
+<!-- golden: pushed_state/v1/valid/not_held.json -->
+```json
+{"kind":"banners"}
+```
+
+Derived keys: `label` is 1–64 of `[a-z0-9._-]`, and `length` is 16–64 bytes.
+
+<!-- golden: key_request/v1/valid/challenge.json -->
+```json
+{"label":"usb.challenge","length":32}
+```
+
+<!-- golden: derived_key/v1/valid/thirty_two.json -->
+```json
+{"key":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}
+```
+
+The key is HKDF-SHA256 (no salt) of the server's `master.key`, with `info` being `"gpuworks plugin key"`, a zero byte, the package id, a zero byte and the label, taking `length` bytes. One package and label get the same key for the life of the master key; other packages or labels get unrelated keys; the plugin never sees the master key itself.
+
+## Host identity
+
+`POST /host/v1/host-identity` returns the salted identity of the machine the management server runs on. It needs the `read:host_identity` permission and the `host.host_identity@1` capability; an `on_demand` package may read it too. The body holds only the salt, with the rules and package binding of [Node identity](#node-identity) (1–219 bytes, bound to the package id), so one package with one salt gets one set of digests from both reads:
+
+<!-- golden: host_identity_request/v1/valid/salt.json -->
+```json
+{"salt":"acme-quota-2026"}
+```
+
+Each part of the answer is `{h, tail}`; a part the server could not read is absent (a firmware placeholder, a container, a root file system without a UUID), and when it reads nothing the answer is `{}`:
+
+<!-- golden: host_identity_answer/v1/valid/linux_server.json -->
+```json
+{"board_serial":{"h":"9e1c0b7a4d2f6e83","tail":"BC9X"},"machine_id":{"h":"03b5d7f91a2c4e68","tail":"cdef"},"root_fs_uuid":{"h":"7a1f3c5e9b0d2486","tail":"0a2b"},"system_uuid":{"h":"5f0c8e2a9d413b77","tail":"3432"}}
+```
+
+- `system_uuid`: the firmware system UUID (SMBIOS `product_uuid` on Linux, `IOPlatformUUID` on macOS), digested as the same kind as a node's `host`, so under one salt it equals the `host` of each node on the server's machine.
+- `board_serial`: the mainboard serial (the machine's serial number on macOS).
+- `machine_id`: `/etc/machine-id`.
+- `root_fs_uuid`: the file system UUID of the block device mounted at `/`.
+
+`h` and `tail` mean what they mean for node identity. On Linux the kernel lets only root read the system UUID and the board serial, and the server runs as its service account: before every start of the server, systemd runs [`gpuworks host-identity`](cli.md#gpuworks-host-identity) as root from the protected executable copy, which writes those two to `/run/gpuworks/host-identity.json`. The server uses the file only to fill those two when it cannot read them itself; a value it reads directly always wins, and `machine_id` and `root_fs_uuid` come only from direct reads. Refusals are those of the [node reads](#rate-limits-and-refusals); a body over 4 KiB answers 413 `REQUEST_TOO_LARGE` (`max_bytes` 4096).
 
 ## Pushed tables
 
@@ -482,6 +704,8 @@ Every decoding, validation and verification failure is an error with a stable co
 | `PLUGIN_STATE_TOO_LARGE` | A pushed table exceeds a size limit of its kind | `kind`, `field`, `max` |
 | `PLUGIN_STATE_TOO_NEW` | A persisted version marker is newer than this build knows | `marker`, `version`, `known`, `needs`, `count` |
 | `PLUGIN_CAPABILITY_MISSING` | The plugin refuses the handshake: the server offers no version of a capability it cannot run without within the range it speaks | `capability`, `min`, `max` |
+| `PLUGIN_HOST_SETUP_REQUIRED` | Root has not applied the package's host steps on this host (or applied other steps), so its server part does not start | `id`, `command` |
+| `PLUGIN_HOST_SETUP_UNSUPPORTED` | This platform cannot apply host steps; the package was not installed | `id` |
 
 Values of `rule`: `required` (missing or empty), `grammar` (does not match its grammar), `range` (a number or length out of bounds), `enum` (not in the closed set), `duplicate`, `order` (a list that must be sorted is not), `exclusive` (sets fields that exclude each other), `relation` (contradicts another field of the object), `syntax`, `type`, `number` (not an integer, or outside the safe range) and `trailing`. `field` is a dotted path with list indexes, for example `routes.0.feature`.
 
@@ -493,8 +717,9 @@ Values of `rule`: `required` (missing or empty), `grammar` (does not match its g
 
 - every file under `valid/` decodes, validates and re-encodes to the same bytes;
 - every file under `invalid/<CODE>/` fails with exactly that code; a name `<field>--<rule>[--note].json` also gives the failing field and rule, and `_root` means the object itself;
+- `principal/v1/signed/<name>.txt` holds the three headers `valid/<name>.json` signs to under the key of bytes 0 to 31, and `SignPrincipal` must give the same values byte for byte;
 - `testdata/golden/SHA256SUMS` may only grow: a released golden file is never edited or removed, which `make check-architecture` enforces against its baseline; a new version of an object gets its own `v2/` directory.
 
 From the repository root, `make test-extapi` runs the format check, vet and tests of this module; `make test` includes it.
 
-<!-- translation-source-sha256: 18979a57d633eea9bb6c79e587b91f59dd524723ebc21e613eedfe2ecc72d077 -->
+<!-- translation-source-sha256: c7e054c01dd9bcf0bd93f5b4e0437018982cc78be5cc7d8efce6edba0a0adaf5 -->

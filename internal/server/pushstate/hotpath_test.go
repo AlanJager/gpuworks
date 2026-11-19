@@ -1,12 +1,14 @@
 package pushstate
 
 import (
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/fleetcap"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
@@ -40,37 +42,79 @@ func hotState(t testing.TB) *harness {
 	return h
 }
 
-func TestHooksDoNotAllocate(t *testing.T) {
-	h := hotState(t)
-	s := h.s
-	// Typed sinks: assigning to an interface would itself allocate.
+// hookCases are the calls TestHooksDoNotAllocate measures, keyed
+// "<Evaluator method>, <case>". Every method of Evaluator has at least one
+// (TestEveryEvaluatorIsMeasured). The results go to typed sinks: assigning
+// to an interface would itself allocate.
+func hookCases(s *State) map[string]func() {
 	var (
 		av      featuregate.Availability
 		hold    Hold
 		banners []Banner
-		refusal any
+		refusal *messages.ProductError
 	)
-	for name, fn := range map[string]func(){
-		"availability, full":             func() { av = s.Availability("acme.backup") },
-		"availability, locked":           func() { av = s.Availability("acme.reports") },
-		"availability, absent":           func() { av = s.Availability("acme.unknown") },
-		"guard, room left":               func() { refusal = s.GuardNode(10, 80) },
-		"guard, refused":                 func() { refusal = s.GuardNode(900, 80) },
-		"hold, kept node":                func() { hold = s.Hold(5, 8) },
-		"hold, capacity-held node":       func() { hold = s.Hold(950, 8) },
-		"hold, explicit hold":            func() { hold = s.Hold(3000, 8) },
-		"hold, unplaced node":            func() { hold = s.Hold(5000, 8) },
-		"hold, node whose cards changed": func() { hold = s.Hold(7, 16) },
-		"banners, admin":                 func() { banners = s.Banners(true) },
-		"banners, member":                func() { banners = s.Banners(false) },
-	} {
+	return map[string]func(){
+		"Availability, full":             func() { av = s.Availability("acme.backup") },
+		"Availability, locked":           func() { av = s.Availability("acme.reports") },
+		"Availability, absent":           func() { av = s.Availability("acme.unknown") },
+		"GuardNode, room left":           func() { refusal = s.GuardNode(10, 80) },
+		"GuardNode, refused":             func() { refusal = s.GuardNode(900, 80) },
+		"Hold, kept node":                func() { hold = s.Hold(5, 8) },
+		"Hold, capacity-held node":       func() { hold = s.Hold(950, 8) },
+		"Hold, explicit hold":            func() { hold = s.Hold(3000, 8) },
+		"Hold, unplaced node":            func() { hold = s.Hold(5000, 8) },
+		"Hold, node whose cards changed": func() { hold = s.Hold(7, 16) },
+		"Banners, admin":                 func() { banners = s.Banners(true) },
+		"Banners, member":                func() { banners = s.Banners(false) },
+		// Keeps the sinks used without measuring anything.
+		"": func() { _, _, _, _ = av, hold, banners, refusal },
+	}
+}
+
+func TestHooksDoNotAllocate(t *testing.T) {
+	h := hotState(t)
+	s := h.s
+	for name, fn := range hookCases(s) {
+		if name == "" {
+			continue
+		}
 		if n := testing.AllocsPerRun(1000, fn); n != 0 {
 			t.Errorf("%s: %v allocations per call", name, n)
 		}
 	}
-	_, _, _, _ = av, hold, banners, refusal
 	if s.Availability("acme.backup").Access != featuregate.Full || !s.Hold(950, 8).held() || !s.Hold(3000, 8).held() || s.Hold(5, 8).held() || s.GuardNode(900, 0) == nil {
 		t.Fatal("the hot state is not what the test measures")
+	}
+}
+
+// The allocation test covers every evaluator: the methods are read from
+// the Evaluator interface (which *State implements and the app's hooks are
+// typed against), not from a list kept by hand, and every case names one
+// of them.
+func TestEveryEvaluatorIsMeasured(t *testing.T) {
+	methods := map[string]bool{}
+	iface := reflect.TypeFor[Evaluator]()
+	for i := range iface.NumMethod() {
+		methods[iface.Method(i).Name] = false
+	}
+	if len(methods) < 4 {
+		t.Fatalf("Evaluator lists %d methods; the reflection reads the wrong type", len(methods))
+	}
+	for name := range hookCases(&State{}) {
+		if name == "" {
+			continue
+		}
+		method, _, ok := strings.Cut(name, ", ")
+		if _, known := methods[method]; !ok || !known {
+			t.Errorf("case %q does not name an Evaluator method", name)
+			continue
+		}
+		methods[method] = true
+	}
+	for method, measured := range methods {
+		if !measured {
+			t.Errorf("Evaluator.%s has no case in TestHooksDoNotAllocate", method)
+		}
 	}
 }
 

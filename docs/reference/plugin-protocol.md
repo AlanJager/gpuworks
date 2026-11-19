@@ -124,7 +124,7 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `feature` / `ungated` | 二者恰好设一个；`feature` 必须是本清单声明的键 |
 | `write_when_read_only` | 功能只读时仍放行这个非 GET 写入（只做删除或放宽的写）；要求有 `feature` |
 | `max_body` | 请求体上限，0 为 1 MiB，最大 1 GiB；超过 1 MiB 需要权限 `http:uploads` |
-| `timeout_s` | 0 为 60 秒，最大 600 |
+| `timeout_s` | 请求时限（秒），0 为 60 秒，最大 600；流式路由限定的是等待响应首字节的时间 |
 | `stream` / `websocket` | 流式响应 / WebSocket 升级（仅 GET，且不与 `stream` 同时）；`websocket` 还要求 `requires` 或 `uses` 列出 `routes.websocket`：只提供 `routes` 的 server 上，`requires` 时不提供则不兼容；只在 `uses` 时包照常安装，但该路由不被服务 |
 | `html` | 允许返回 `text/html`；只有 `public`、`admin` 与 `admin_session` 路由可以设 |
 | `ai_readable` | AI 助手与 MCP 可读，仅 GET |
@@ -187,6 +187,19 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 
 - 有路由的包必须持有 `http:routes`，`public` 路由还要 `http:public`；缺了回 `PLUGIN_POLICY_REFUSED`，`rule` 是缺的权限，`value` 是路由（如 `routes.0`）。
 - `on_demand` 的包大部分时间不在运行，所以不能持有 `push:` 权限，也不能声明功能（它作答的键在它停止时无人作答）；违反时回 `PLUGIN_STATE_ON_DEMAND`，参数 `id` 加 `permission` 或 `feature`。
+- 只有 Linux 能执行主机步骤：其他平台上声明了 `host_setup` 的包回 `PLUGIN_HOST_SETUP_UNSUPPORTED`，参数 `id`。
+
+### 主机配置（`host.setup@1`）
+
+server 总是提供 `host.setup@1`，但只有 Linux 能执行它，其他平台上安装以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝：清单的 `host_setup` 只是声明，不是脚本，由 root 运行 `gpuworks plugin host-setup`（或 `gpuworks install`、`upgrade`）按下面的规则渲染。`usb_device` 步骤的含义：
+
+| 产物 | 规则 |
+|---|---|
+| udev 规则 | 每包一个文件；每个步骤两行，按 `vendor_id`、`product_id` 匹配，分别命中设备的 `usb_device` 节点（libusb 用的 `/dev/bus/usb/<总线>/<设备>`）与它的 hidraw 节点，只设 `GROUP="gpuworks-usb"`、`MODE="0660"`；不写 `SYMLINK`、`RUN`、`OWNER` |
+| 已应用记录 | root 所有的文件，内容是步骤的摘要：`{"host_setup":[{"type","vendor_id","product_id"}...]}` 的规范 JSON 的 SHA-256，列表按类型、厂商、产品排序并去重，所以步骤的顺序不影响它；升级不改步骤就不需要再执行 root 步骤 |
+| 沙箱 | 记录与当前步骤一致时，插件的 Landlock 规则另授 `/dev` 下设备节点的读写与 ioctl（也可列目录），并只读 `/sys/bus/usb`、`/sys/class/hidraw`、`/sys/devices`、`/run/udev/data` 以发现设备 |
+
+记录缺失、不一致或可能被服务账号写过（不属 root、组或其他用户可写）时，插件不启动，状态 `needs_host_setup`，原因 `PLUGIN_HOST_SETUP_REQUIRED`，参数 `id` 与 `command`（要执行的命令）。设备之间的边界是节点的文件权限：沙箱授予的是目录，因为设备插上之后才出现、名字事先不知道。所以插件能打开 `/dev` 下服务账号本来就能打开的每个节点，不只是匹配的 USB 设备。
 
 ## 发布者证书
 
@@ -292,8 +305,18 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 | `GET /gwx/v1/health` | 健康 | server 的周期探测 |
 | `PUT /host/v1/state/{kind}` | 推送 | 插件推送一种表的整表 |
 | `GET /host/v1/health` | 宿主健康 | 插件探测宿主接口，应答是健康对象 |
+| `POST /host/v1/node-identity` | 节点身份 | 插件读取指定节点加盐的硬件身份，见[节点读取](#节点读取) |
+| `GET /host/v1/nodes` | 节点清单 | 插件按加入顺序分页读取节点清单 |
+| `GET /host/v1/state/{kind}` | 自有状态 | 插件读回 server 为它保存的一种表（见[宿主接口的时钟、就绪、自有状态与派生密钥](#宿主接口的时钟就绪自有状态与派生密钥)） |
+| `POST /host/v1/state/ready` | 就绪 | 插件告知已启动完毕 |
+| `GET /host/v1/meta` | 元信息 | server 版本、启动 id 与时钟 |
+| `POST /host/v1/clock/correct` | 时钟校正 | 持有 `clock_authority` 的包校正 extclock |
+| `POST /host/v1/derive-key` | 派生密钥 | 绑定到本包与标签的密钥 |
+| `POST /host/v1/host-identity` | 主机身份 | 插件读取管理 server 所在机器加盐的身份，见[主机身份](#主机身份) |
 | 请求头 `Gwx-Deadline-Ms` | Unix 毫秒 | 调用的截止时间 |
 | 响应头 `Gwx-Product-Error` | — | 标明插件路由的响应体是一个错误对象 |
+| `/r/<路径>` | 路由 | 对插件某条路由的请求（[路由请求](#路由请求与主体)） |
+| 请求头 `Gwx-Principal`、`Gwx-Principal-Mac`、`Gwx-Feature-Access` | — | 谁在调用路由，以及路由所声明特性的访问级别 |
 
 握手请求：
 
@@ -319,6 +342,60 @@ key id 符合 `^[a-z0-9][a-z0-9._-]{1,63}$`，永远只指一把密钥，从不�
 ```
 
 `protocol` 是插件从 server 的范围里选的主版本（目前只能是 1）；`manifest_sha256` 是插件构建时所带清单的摘要，server 据此拒绝不属于该包的可执行文件；`use` 是每种要用的能力 → 选定的版本，必须落在 server 的 `offer` 里；`services` 是插件提供的可选服务，已排序。
+
+## 路由请求与主体
+
+插件的路由挂在 `/api/v1/x/<id><pattern>`；server 认证、匹配并检查完请求后，把它转发到 serve 连接上的 `/r<路径>`（例如 `/api/v1/x/acme_backup/jobs` 到 `/r/jobs`）。转发前先剥掉客户端发来的 `Gwx-*` 请求头，再设三个请求头，插件据此知道是谁在调用、server 匹配的是哪条路由：
+
+| 请求头 | 内容 |
+|---|---|
+| `Gwx-Principal` | 主体：规范 JSON，用不带填充的 base64url 编码 |
+| `Gwx-Principal-Mac` | `base64url(HMAC-SHA256(principal_key, <Gwx-Principal 的值> + "\n" + <Gwx-Feature-Access 的值>))`，不带填充；特性访问级别与主体一起被签名 |
+| `Gwx-Feature-Access` | 所匹配路由声明的每个特性此刻的访问级别；不受特性限制的路由发空值 |
+
+`principal_key` 是握手请求里每次拉起新生成的密钥，所以插件重启后，上一次拉起时签的请求头不再通过校验。当前 server 还不提供 `routes` 能力，也不转发路由；本节冻结的是格式与插件一侧的校验。
+
+主体：
+
+<!-- golden: principal/v1/valid/admin_session.json -->
+```json
+{"exp":"2026-12-01T00:01:05Z","kind":"session","local_admin":true,"platform_admin":true,"request_id":"gw-01/9f2c4e7a-000042","roles":["admin"],"route":"/reports/{period}","route_action":"acme_reports.read","user_id":1,"username":"admin"}
+```
+
+| 字段 | 规则 |
+|---|---|
+| `kind` | `session`（控制台登录会话）、`token`（平台令牌，代表其用户）或 `public`（`public` 路由，没有用户） |
+| `user_id` / `username` | 用户；`public` 不带，其余必填 |
+| `platform_admin` | 用户是平台管理员 |
+| `local_admin` | 应急本地管理员；只有以会话登录的平台管理员才可能为真 |
+| `roles` | 用户的角色，已排序，至少一个；当前只有核心角色一个 |
+| `scope_projects` | 可选：用户能读的数据所限的项目，已排序；为空表示不限 |
+| `api_key_id` | 平台令牌的 id；`kind` 为 `token` 时必填，其余不带 |
+| `request_id` | server 的请求 id，用来关联日志，至多 128 字节 |
+| `route_action` | server 匹配到的路由的 `action`（`<包 id>.<动词>`） |
+| `route` | server 匹配到的路由在清单里的 `pattern` |
+| `exp` | 过期时间：路由的 `timeout_s`（默认 60）加 5 秒，向上取整到秒；流式路由的 `timeout_s` 限定的是首字节，规则相同 |
+
+`Gwx-Feature-Access` 的文法是 `<特性键>=<级别>` 用 `,` 连接、按键排序、不含空格，级别为 `full`、`read_only` 或 `locked`（`hidden` 的特性的路由回 404，不会到达插件）；只列路由声明的键，只有这一种写法。
+
+以握手黄金文件里的 `principal_key`（字节 0 到 31）签上面的主体、`Gwx-Feature-Access` 为 `acme.reports=read_only` 时，三个请求头是（`principal/v1/signed/` 下的向量与黄金文件一同冻结）：
+
+<!-- golden: principal/v1/signed/admin_session.txt -->
+```text
+Gwx-Feature-Access: acme.reports=read_only
+Gwx-Principal: eyJleHAiOiIyMDI2LTEyLTAxVDAwOjAxOjA1WiIsImtpbmQiOiJzZXNzaW9uIiwibG9jYWxfYWRtaW4iOnRydWUsInBsYXRmb3JtX2FkbWluIjp0cnVlLCJyZXF1ZXN0X2lkIjoiZ3ctMDEvOWYyYzRlN2EtMDAwMDQyIiwicm9sZXMiOlsiYWRtaW4iXSwicm91dGUiOiIvcmVwb3J0cy97cGVyaW9kfSIsInJvdXRlX2FjdGlvbiI6ImFjbWVfcmVwb3J0cy5yZWFkIiwidXNlcl9pZCI6MSwidXNlcm5hbWUiOiJhZG1pbiJ9
+Gwx-Principal-Mac: P6RhOXLT3lxJuvyWlcXPsyKVm5hEWHTalujCg6k7XYw
+```
+
+`extapi.VerifyPrincipal(key, 主体, MAC, 特性访问, now)` 先以常数时间比较 MAC，通过后才解码：严格解码，要求规范 JSON、拒绝未知字段，再校验上表的规则；`exp` 早于 `now`，或晚于 `now` 加最长路由超时（600 + 5 秒）时拒绝。缺请求头、MAC 不符、过期分别是 `ErrPrincipalMissing`、`ErrPrincipalMAC`、`ErrPrincipalExpired`（过远是 `ErrPrincipalTooLong`），格式错误是带码的 `*extapi.Error`。
+
+插件用 SDK 时在注册路由处包一层 `pluginsdk.RequirePrincipal(action, h)`：
+
+```go
+mux.Handle("POST /r/jobs", pluginsdk.RequirePrincipal("acme_backup.jobs_create", createJob))
+```
+
+它用本次拉起的密钥校验三个请求头，并要求 `route_action` 等于插件自己的路由器匹配到的路由的 `action`。server 与插件的路由器把同一路径匹配到不同路由时，请求因此被拒绝，而不会套用另一条路由的访问级别与特性检查。不通过时回 403 与带 `Gwx-Product-Error` 的错误对象（`reason` 为 `permission_denied`，`object` 为 `principal`；码为 `PLUGIN_WIRE_*`；MAC 不符与 server 匹配的路由不同都是 `PLUGIN_WIRE_INVALID`，`rule` 为 `relation`，`field` 分别为 `_root` 与 `route_action`），处理函数不会被调用。处理函数用 `pluginsdk.PrincipalFrom(r)` 与 `pluginsdk.FeatureAccessFrom(r)` 读校验过的调用方。`plugintest` 用固定密钥（`Harness.PrincipalKey`）签名：`Harness.Principal(action, route)` 给出一个管理员会话的主体，`Harness.Sign(req, p, access)` 像 server 一样设好三个请求头。
 
 ## 健康与错误
 
@@ -389,6 +466,151 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 | 授权（Grant） | `availability` | 只来自命名空间的权威（`gate: self` 的键来自声明它的包），所有者掉线超过宽限后收紧 |
 | 显示（Display） | `banners` | 只显示，从不参与执行 |
 | 不透明（Opaque） | `attestations` | 只存储与转交，从不解释 |
+
+## 节点读取
+
+插件经宿主接口读取节点身份与节点清单，读的是核心的钉住读（一次至多 500 个节点），从不扫描整个集群。每个读取都要求管理员批准的权限与握手协商好的能力：
+
+| 端点 | 权限 | 能力 |
+|---|---|---|
+| `POST /host/v1/node-identity` | `read:node_identity` | `host.node_identity@1` |
+| `GET /host/v1/nodes?cursor=&limit=` | `read:node_inventory` | `host.nodes@1` |
+
+读取不是推送，所以 `on_demand` 的包也可以读。
+
+### 节点身份
+
+请求体给出盐与节点 id。用 POST 是为了让盐永远不出现在 URL 里：
+
+<!-- golden: node_identity_request/v1/valid/two_nodes.json -->
+```json
+{"node_ids":[3,7],"salt":"acme-quota-2026"}
+```
+
+- `salt`：1–219 字节。server 以「`pkg`、零字节、包 id、零字节、盐」为 HMAC 密钥，所以两个包用同一个盐得到互不相关的摘要，同一个包在任何 server 上得到相同的摘要；包 id 至多 32 字节，密钥因此不超过 256 字节。
+- `node_ids`：server 的节点 id，1–500 个，不重复。
+
+应答列出仍存在的指定节点，按 id 升序；不存在的节点（从未有过或已删除）不出现，调用方比对 id：
+
+<!-- golden: node_identity_answer/v1/valid/partial.json -->
+```json
+{"nodes":[{"cards":[{"h":"1b9e4d0a77c2f310","tail":"e7f8"},{"h":"c0a9e81f2b3d4e56","tail":"5555"}],"cards_without_serial":0,"host":{"h":"5f0c8e2a9d413b77","tail":"3432"},"node_id":3},{"cards":[],"cards_without_serial":8,"node_id":7}]}
+```
+
+- `host` 是机器的系统 UUID，agent 还没上报时缺省；同一台机器上的多个逻辑节点共用它。
+- `cards` 是本节点可用且带硬件序列号的卡，按 `h` 排序；标识是按槽位或序号编出来的卡只计入 `cards_without_serial`。
+- 每一项的 `h` 是对原始值做 HMAC-SHA256 的前 16 个十六进制字符；`tail` 是原始值的最后 4 个字符，不加盐，供人到机器上核对，原始值不足 8 个字符时缺省。原始序列号从不离开 server。
+
+### 节点清单
+
+`GET /host/v1/nodes` 返回一页节点，按 id（加入顺序）升序。第一页不带 `cursor`，之后原样传上一页的 `next`；`next` 缺省表示已是最后一页。`limit` 为 1–500，缺省为 500。节点 id 不复用，所以翻页之间加入或删除的节点不会让其余节点移位或重复。
+
+<!-- golden: nodes_page/v1/valid/first_page.json -->
+```json
+{"next":"7","nodes":[{"cards":[{"index":0,"model":"NVIDIA H800","serial":true},{"index":1,"model":"NVIDIA H800","serial":true}],"enrolled_at":"2026-11-02T08:15:00Z","host_reported":true,"id":3,"name":"gpu-a01","uuid":"6f1d2c3b-8a9e-4b7c-9d0e-1f2a3b4c5d6e"},{"cards":[{"index":0,"model":"Ascend 910B","serial":false}],"enrolled_at":"2026-11-05T10:00:00Z","host_reported":false,"id":7,"name":"npu-b02","uuid":"0b9c8d7e-6f5a-4b3c-2d1e-0f9a8b7c6d5e"}]}
+```
+
+每个节点给出 id、`uuid`、`name`（运维起的名字，否则主机名，至多 255 字节）、`enrolled_at`、`host_reported`（机器 UUID 是否已上报），以及本节点可用的卡 `{index, model, serial}`：`index` 是厂商 CLI 的设备序号（CLI 不列出时为 -1），`serial` 只说明这张卡有没有序列号、从而是否出现在节点身份里，不含序列号本身。
+
+### 限速与拒绝
+
+宿主接口对每个插件每秒 20 次、突发 100 次；节点清单另有每秒 2 页、突发 4 页的桶，超出时回 429 `PLUGIN_HOST_RATE_LIMITED`（`limit` 为 2，带 `retry_after_ms`）。按控制台一页显示的节点读取，不要在每个事件里把整个集群翻一遍。
+
+| 码 | 状态 | 含义 | 参数 |
+|---|---|---|---|
+| `PLUGIN_HOST_NOT_PERMITTED` | 403 | 管理员没有批准该读取的权限 | `id`、`permission` |
+| `PLUGIN_CAPABILITY_NOT_OFFERED` | 412 | 插件握手时没有协商该能力 | `id`、`capability`、`version` |
+| `PLUGIN_HOST_ARGUMENT_INVALID` | 400 | 盐、节点 id 列表、`cursor` 或 `limit` 越界或不合文法，在读取之前拒绝；被拒的清单查询不消耗页数 | `id`、`field` |
+| `REQUEST_TOO_LARGE` | 413 | 节点身份的请求体超过 32 KiB，在解码之前拒绝 | `max_bytes` |
+| `PLUGIN_HOST_ROUTE_UNKNOWN` | 404 / 501 | 该 server 不提供读取，或方法不对 | `method`、`path` |
+
+请求体不是该对象（JSON 无效、未知字段）时保留线上格式的码，如 `PLUGIN_WIRE_UNKNOWN_FIELD`。
+
+## 宿主接口的时钟、就绪、自有状态与派生密钥
+
+这些调用都在宿主接口一侧（fd 4），调用者是这条连接在握手时绑定的包，请求里没有任何身份字段：
+
+| 调用 | 需要 | 应答 |
+|---|---|---|
+| `GET /host/v1/meta` | 能力 `host.clock` | `host_meta` |
+| `POST /host/v1/clock/correct` | 能力 `host.clock` 与角色 `clock_authority` | `clock_corrected` |
+| `POST /host/v1/state/ready` | 基础协议，不需要能力 | 204，无响应体 |
+| `GET /host/v1/state/{kind}` | 能力 `host.state_read` | `pushed_state` |
+| `POST /host/v1/derive-key` | 权限 `crypto:derive_key` 与能力 `host.derive_key` | `derived_key` |
+
+握手没有协商所需能力时回 412 `PLUGIN_CAPABILITY_NOT_OFFERED`（`id`、`capability`、`version`）；缺角色回 403 `PLUGIN_ROLE_REQUIRED`（`id`、`role`）；缺权限回 403 `PLUGIN_HOST_NOT_PERMITTED`（`id`、`permission`）；参数违反规则回 400 `PLUGIN_HOST_ARGUMENT_INVALID`（`id`、`field`）；请求体超过 4 KiB 回 413 `REQUEST_TOO_LARGE`（`max_bytes`）。
+
+元信息：`version` 是 server 版本（同握手），`boot_id` 每次 server 启动都变；`wall` 是墙钟，`extclock` 是时间线遵循的单调时钟，`hwm` 是 server 最近保存的高水位，还没保存过时缺省。
+
+<!-- golden: host_meta/v1/valid/stored.json -->
+```json
+{"boot_id":"5b0c9e7a41d24f3c8e6a0b1d2c3f4e5a","extclock":"2027-03-01T00:00:00Z","hwm":"2027-03-01T00:00:00Z","version":"v26.12.0","wall":"2027-01-15T00:00:00Z"}
+```
+
+时钟校正：`to` 是插件已验证过的时间（例如发布者签名的校正码），`reason` 是 1–256 字节、写进审计日志的说明。一次校正最多把 extclock 前后移动 366 天，超出时回 400 `PLUGIN_CLOCK_CORRECTION_TOO_LARGE`（`max_days`）。步骤不被消耗，所以往回校正会让 `to` 之后的步骤重新未生效；server 记审计日志并显示管理员横幅。
+
+<!-- golden: clock_correction/v1/valid/vendor_code.json -->
+```json
+{"reason":"acme correction code 7F3A-22C1","to":"2027-01-15T00:00:00Z"}
+```
+
+应答是校正前后实际生效的 extclock：extclock 从不落后于墙钟，所以 `to` 早于墙钟时，应答与审计里的 `to` 是墙钟。
+
+<!-- golden: clock_corrected/v1/valid/back.json -->
+```json
+{"from":"2027-03-01T00:00:00Z","to":"2027-01-15T00:00:00Z"}
+```
+
+就绪：每段掉线的授权在宽限之后还有 2 分钟启动延长。插件进程调用 `POST /host/v1/state/ready` 之后，这个进程之后的掉线不再有启动延长，宽限一过即收紧。同一进程再调用、`on_demand` 插件调用，或已被替换的进程调用都什么也不改变；它从不改变持久化的掉线起点，所以不能续期宽限。新进程可能在 server 把它计为在线之前就调用就绪，这次调用只对它自己之后的掉线生效，不缩短上一个进程那段掉线的启动延长。server 重启时这个标记不保留，启动延长按持久化的起点重新计算，不会叠加。
+
+自有状态：`GET /host/v1/state/{kind}` 回 server 为调用者自己保存、已提交的那一种表，供重启后的插件核对；读的是内存，从不返回其他包的行。`body` 是 server 保存的整表（规范 JSON；server 不保存的 `display` 内容不在其中），`digest` 是推送时那张表的摘要，与握手里 `held` 的相同，`pushed_at` 是推送被接受时的 extclock。没有保存时只有 `kind`：
+
+<!-- golden: pushed_state/v1/valid/held.json -->
+```json
+{"body":{"nodes":{"9":{"code":"ACME_QUARANTINE"}}},"digest":"sha256:9d48b3877a0b899cd055d9b094a38a3499e96cdad91bbb965c227098d95b9053","generation":4,"kind":"node_holds","pushed_at":"2026-12-01T00:00:00Z","schema":1}
+```
+
+<!-- golden: pushed_state/v1/valid/not_held.json -->
+```json
+{"kind":"banners"}
+```
+
+派生密钥：`label` 为 1–64 个 `[a-z0-9._-]`，`length` 为 16–64 字节。
+
+<!-- golden: key_request/v1/valid/challenge.json -->
+```json
+{"label":"usb.challenge","length":32}
+```
+
+<!-- golden: derived_key/v1/valid/thirty_two.json -->
+```json
+{"key":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}
+```
+
+密钥是对 server 的 `master.key` 做 HKDF-SHA256（无盐），`info` 为 `"gpuworks plugin key"`、一个零字节、包 id、一个零字节、标签，取 `length` 字节。同一包同一标签在主密钥不变期间得到同一个密钥；不同的包或标签得到无关的密钥；插件看不到主密钥本身。
+
+## 主机身份
+
+`POST /host/v1/host-identity` 返回管理 server 所在机器加盐的身份，需要 `read:host_identity` 权限与 `host.host_identity@1` 能力；`on_demand` 的包也可以读。请求体只有盐，规则与密钥绑定同[节点身份](#节点身份)（1–219 字节，绑定到包 id），所以同一个包用同一个盐在两种读取里得到同一套摘要：
+
+<!-- golden: host_identity_request/v1/valid/salt.json -->
+```json
+{"salt":"acme-quota-2026"}
+```
+
+应答的每一项都是 `{h, tail}`，读不到的项缺省（固件占位值、容器里、根文件系统没有 UUID 时），什么都读不到时是 `{}`：
+
+<!-- golden: host_identity_answer/v1/valid/linux_server.json -->
+```json
+{"board_serial":{"h":"9e1c0b7a4d2f6e83","tail":"BC9X"},"machine_id":{"h":"03b5d7f91a2c4e68","tail":"cdef"},"root_fs_uuid":{"h":"7a1f3c5e9b0d2486","tail":"0a2b"},"system_uuid":{"h":"5f0c8e2a9d413b77","tail":"3432"}}
+```
+
+- `system_uuid`：固件的系统 UUID（Linux 的 SMBIOS `product_uuid`，macOS 的 `IOPlatformUUID`），按节点 `host` 的同一种类做摘要，所以同一个盐下它等于运行在 server 这台机器上的节点的 `host`。
+- `board_serial`：主板序列号（macOS 为整机序列号）。
+- `machine_id`：`/etc/machine-id`。
+- `root_fs_uuid`：挂在 `/` 上的块设备的文件系统 UUID。
+
+`h` 与 `tail` 的含义同节点身份。Linux 上内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：systemd 每次启动 server 之前以 root 运行受保护副本的 [`gpuworks host-identity`](cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`，server 只用它补自己读不到的这两项，自己读到的值永远优先，`machine_id` 与 `root_fs_uuid` 只来自直接读取。拒绝与[节点读取](#限速与拒绝)相同；请求体超过 4 KiB 时回 413 `REQUEST_TOO_LARGE`（`max_bytes` 为 4096）。
 
 ## 推送表
 
@@ -482,6 +704,8 @@ server 存储并转交给同一发布者其他包的不透明声明，server 从
 | `PLUGIN_STATE_TOO_LARGE` | 推送表超过该种类的大小上限 | `kind`、`field`、`max` |
 | `PLUGIN_STATE_TOO_NEW` | 持久化状态的版本标记比本构建认识的新 | `marker`、`version`、`known`、`needs`、`count` |
 | `PLUGIN_CAPABILITY_MISSING` | 插件拒绝握手：server 没有提供它离不开的能力在它支持范围内的版本 | `capability`、`min`、`max` |
+| `PLUGIN_HOST_SETUP_REQUIRED` | 包的主机步骤还没由 root 在本机应用（或应用的是别的步骤），服务端部分不启动 | `id`、`command` |
+| `PLUGIN_HOST_SETUP_UNSUPPORTED` | 本平台不能执行主机步骤，包没有安装 | `id` |
 
 `rule` 取值：`required`（缺失或为空）、`grammar`（不符合文法）、`range`（数值或长度越界）、`enum`（不在封闭集合内）、`duplicate`、`order`（应排序的列表未排序）、`exclusive`（设了互斥的字段）、`relation`（与同一对象的另一字段矛盾）、`syntax`、`type`、`number`（非整数或越出安全范围）、`trailing`。`field` 是点分路径，列表元素用下标，例如 `routes.0.feature`。
 
@@ -493,6 +717,7 @@ server 存储并转交给同一发布者其他包的不透明声明，server 从
 
 - `valid/` 下的每个文件都能解码、通过校验，并重新编码成相同的字节；
 - `invalid/<码>/` 下的每个文件都恰好以该码失败；文件名 `<字段>--<规则>[--说明].json` 同时给出失败的字段与规则，`_root` 表示对象本身；
+- `principal/v1/signed/<名字>.txt` 是 `valid/<名字>.json` 在字节 0 到 31 这把密钥下签出的三个请求头，`SignPrincipal` 必须逐字节给出同样的值；
 - `testdata/golden/SHA256SUMS` 只能追加：已发布的黄金文件永不修改或删除，`make check-architecture` 与基线比对强制这一点；对象的新版本放进自己的 `v2/` 目录。
 
 在仓库根目录用 `make test-extapi` 跑这个模块的格式检查、vet 与测试，`make test` 包含它。

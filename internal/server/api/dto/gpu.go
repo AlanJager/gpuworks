@@ -90,9 +90,9 @@ type PhysicalGPU struct {
 	// be false without anything ailing the card.
 	ForeignProcesses []proto.CardProcess `json:"foreign_processes,omitempty"`
 	// SchedulingStopped: an operator took the card out of scheduling; only
-	// they put it back. SchedulingAllowed: an operator let work onto it
-	// although the platform judged it unusable, until a report judges it
-	// afresh (about a minute). SchedulingActions are what an operator may do
+	// they put it back. SchedulingAllowed: an operator enabled scheduling;
+	// it persists until disabled, regardless of time or reports.
+	// SchedulingActions are what an operator may do
 	// to it now (stopped, schedulable), decided by the server.
 	SchedulingStopped bool     `json:"scheduling_stopped,omitempty"`
 	SchedulingAllowed bool     `json:"scheduling_allowed,omitempty"`

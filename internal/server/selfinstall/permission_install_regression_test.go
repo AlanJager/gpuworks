@@ -50,6 +50,11 @@ func TestPermissionRootsAcceptHistoricalApplicationRoot(t *testing.T) {
 func withSharedRoot(t *testing.T) (string, []string) {
 	t.Helper()
 	root := mustEvalSymlinks(t, t.TempDir())
+	// Model the historical root-owned 0755 application directory, rather
+	// than inheriting an arbitrary test temporary-directory mode.
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	previous := sharedApplicationRoot
 	sharedApplicationRoot = root
 	t.Cleanup(func() { sharedApplicationRoot = previous })
@@ -90,6 +95,9 @@ func TestInstallIntoSharedRootLeavesAgentStateWithRoot(t *testing.T) {
 		if target == root {
 			t.Errorf("%s changed the shared root itself: %s", cmd.Path, cmd)
 		}
+		if target == filepath.Join(root, "server.yaml") {
+			t.Errorf("%s must not hand off the compatibility alias: %s", cmd.Path, cmd)
+		}
 		for _, path := range agent {
 			if pathWithin(target, path) {
 				t.Errorf("%s reaches agent state %s: %s", cmd.Path, path, cmd)
@@ -99,7 +107,7 @@ func TestInstallIntoSharedRootLeavesAgentStateWithRoot(t *testing.T) {
 			got = append(got, target)
 		}
 	}
-	for _, want := range []string{h.layout.Binary(), h.layout.ConfigPath(), h.layout.DataDir,
+	for _, want := range []string{h.layout.Binary(), filepath.Join(root, "server-config"), h.layout.DataDir,
 		h.layout.LogsDir, h.layout.TmpDir(), h.layout.BackupsDir} {
 		if !slices.Contains(got, want) {
 			t.Errorf("chown targets = %v, missing server entry %s", got, want)

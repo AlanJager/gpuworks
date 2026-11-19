@@ -35,6 +35,15 @@ make test-coverage-report
 日志、容器列表与各容器最后几行写进 `failure-evidence/`，作为 job artifact 上传（总量封顶 10 MiB，保留 14 天），
 用来查本地复现不了的偶发失败。
 
+## Fake 引擎的生成协议
+
+[`test/fake-engine`](../../test/fake-engine/README.md) 提供 chat/completions 的非流式与 SSE 夹具，
+并支持显式配置 chat 思考内容。流式 usage 仅在 `include_usage: true` 时返回最终合成计数；
+`continuous_usage_stats` 不模拟中途累计值，也不从分块数推算 token 或思考 token。
+非流式请求必须省略 `stream_options`，评测客户端的公开 HTTP 回归同时锁定这两个请求组合。
+真实二进制环境变量测试与 UI parser 消费测试不等于完整浏览器、GPU 或线上镜像验收。
+本地构建不会更新公开镜像 tag；使用远端镜像前先核对[发布记录](../../test/fake-engine/IMAGES.md)。
+
 ## 负载用例（默认 suite 之外）
 
 这些用例测量实际经过的时间（墙钟时间）和资源消耗，默认测试集（suite）不跑，`GPUWORKS_TEST_PERF=1` 显式开启。

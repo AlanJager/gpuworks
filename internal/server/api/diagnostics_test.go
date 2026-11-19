@@ -251,6 +251,7 @@ func TestDiagnosticsBundleRoutes(t *testing.T) {
 func TestDiagnosticsBundleItemWire(t *testing.T) {
 	var b diagnostics.Bundle
 	manifest := `{"id":"b1","items":[{"path":"server/gpuworks-server.log","status":"pass","bytes":7},` +
+		`{"path":"server/host-identity.json","status":"pass","bytes":3},` +
 		`{"path":"nodes/n2","status":"skip","code":"DIAGNOSTICS_NODE_OFFLINE","bytes":0},` +
 		`{"path":"db","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","evidence":"database is locked","bytes":0},` +
 		// An item from a manifest written before items were checks.
@@ -263,6 +264,7 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `[{"id":"server_log","path":"server/gpuworks-server.log","status":"pass","bytes":7},` +
+		`{"id":"server_host_identity","path":"server/host-identity.json","status":"pass","bytes":3},` +
 		`{"id":"node","path":"nodes/n2","status":"skip","code":"DIAGNOSTICS_NODE_OFFLINE","params":{"path":"nodes/n2","node":"n2"},` +
 		`"message":"the node is offline; nodes/n2 was not collected","bytes":0},` +
 		`{"id":"records","path":"db","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","params":{"path":"db"},` +

@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -48,5 +50,31 @@ func TestPluginDTO(t *testing.T) {
 	bare := pluginDTO(pluginbridge.View{ID: "acme_x", State: "broken"})
 	if bare.Message != nil || bare.Since != nil || bare.Parts == nil || bare.Actions == nil || bare.Permissions == nil {
 		t.Fatalf("bare dto = %+v", bare)
+	}
+}
+
+// Plugins get cgroups only when the server's cgroup is delegated and the
+// server moved into its leaf; otherwise they share its cgroup.
+func TestPluginCgroupsFallBackToTheServersCgroup(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	detected := func(unit string) (string, string, bool) {
+		if unit != "gpuworks.service" {
+			t.Fatalf("detect asked for unit %q", unit)
+		}
+		return "/sys/fs/cgroup", "system.slice/gpuworks.service", true
+	}
+	var entered []string
+	enter := func(root, parent string, _ int) error { entered = append(entered, root+"/"+parent); return nil }
+	if root, parent := pluginCgroups(log, detected, enter); root != "/sys/fs/cgroup" || parent != "system.slice/gpuworks.service" ||
+		len(entered) != 1 || entered[0] != "/sys/fs/cgroup/system.slice/gpuworks.service" {
+		t.Fatalf("delegated: %q %q, entered %v", root, parent, entered)
+	}
+	refuse := func(string, string, int) error { return errors.New("cgroup.procs: permission denied") }
+	if root, parent := pluginCgroups(log, detected, refuse); root != "" || parent != "" {
+		t.Fatalf("the server could not enter its leaf yet plugins got cgroups: %q %q", root, parent)
+	}
+	notDelegated := func(string) (string, string, bool) { return "", "", false }
+	if root, parent := pluginCgroups(log, notDelegated, enter); root != "" || parent != "" || len(entered) != 1 {
+		t.Fatalf("not delegated: %q %q, entered %v", root, parent, entered)
 	}
 }

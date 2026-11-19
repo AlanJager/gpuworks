@@ -6,16 +6,19 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
-// PrioritySchedulingOf is whether a deployment of engine on vendor may run
-// with per-request priority scheduling, judged on the template and user
-// arguments the engine will receive. Evaluation reports it and create and
-// edit enforce it, so the form's switch and the stored deployment agree.
-func PrioritySchedulingOf(engine, vendor string, pd bool, templateArgs, userArgs []string) dto.PrioritySchedulingEligibility {
-	refusal := deploy.PrioritySchedulingRefusal(engine, vendor, pd, templateArgs, userArgs)
+// PrioritySchedulingForCommand applies the same final-command guard as launch
+// assembly, so evaluation, create and edit agree on the form switch.
+func PrioritySchedulingForCommand(engine, vendor string, pd bool, templateArgs, userArgs []string, overrides deploy.ContainerOverrides, entrypoint []string) dto.PrioritySchedulingEligibility {
+	refusal := deploy.PrioritySchedulingCommandRefusal(engine, vendor, pd, templateArgs, userArgs, overrides, entrypoint)
 	if refusal == nil {
 		return dto.PrioritySchedulingEligibility{OK: true}
 	}
 	return dto.PrioritySchedulingEligibility{Refusal: &messages.Warning{Code: refusal.Code, Params: refusal.Params}, FixArgs: refusal.FixArgs}
+}
+
+func requestPriorityScheduling(req *dto.DeployRequest, engine, vendor string, pd bool, templateArgs, userArgs, entrypoint []string) dto.PrioritySchedulingEligibility {
+	overrides, _ := RequestContainerOverrides(req.ContainerOverrides) // validated by materialization
+	return PrioritySchedulingForCommand(engine, vendor, pd, templateArgs, userArgs, overrides, entrypoint)
 }
 
 // ResolvePriorityScheduling is the switch a deployment is stored with: as

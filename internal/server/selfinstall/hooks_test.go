@@ -96,6 +96,7 @@ ExecStartPre=/usr/bin/test -x /opt/gpuworks/server/gpuworks
 Restart=always
 RestartSec=3
 TimeoutStopSec=30
+Delegate=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -240,7 +241,8 @@ func TestUpgradeStopsAtAFailingHookWithTheOldBinary(t *testing.T) {
 	}
 }
 
-// An upgrade without hooks leaves the unit as install wrote it.
+// An installer without hooks leaves the unit as install wrote it (the
+// server binary always has its own hook, so its upgrades rewrite the unit).
 func TestUpgradeWithoutHooksLeavesTheUnit(t *testing.T) {
 	h := newHarness(t, t.TempDir())
 	h.writeExistingInstall("v1.0.0")
@@ -250,7 +252,7 @@ func TestUpgradeWithoutHooksLeavesTheUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if h.run.ran("sudo systemctl daemon-reload") || h.run.ran("sudo systemctl enable gpuworks") {
-		t.Fatalf("a community upgrade rewrote the unit: %v", h.run.executed())
+		t.Fatalf("an upgrade without hooks rewrote the unit: %v", h.run.executed())
 	}
 }
 

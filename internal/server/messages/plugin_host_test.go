@@ -45,3 +45,27 @@ func TestPluginHostCodesHaveClientText(t *testing.T) {
 		}
 	}
 }
+
+// PLUGIN_UNAVAILABLE is raised by refused plugin calls (with {plugin,
+// state}) and by the clamp notice of pushed state (with {plugin,
+// feature}): its text may use only the param every site sets, so the
+// clamp banner renders whole.
+func TestPluginUnavailableTextUsesOnlyTheSharedParam(t *testing.T) {
+	for _, locale := range []string{"en", "zh"} {
+		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "ui", "src", "i18n", "locales", locale, "common.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			APIError map[string]string `json:"apiError"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatal(err)
+		}
+		text := doc.APIError[ErrorPluginUnavailable]
+		used := regexp.MustCompile(`{{(\w+)}}`).FindAllStringSubmatch(text, -1)
+		if len(used) != 1 || used[0][1] != "plugin" {
+			t.Errorf("%s text of %s = %q, want it to interpolate {{plugin}} alone", locale, ErrorPluginUnavailable, text)
+		}
+	}
+}

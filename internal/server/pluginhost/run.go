@@ -6,6 +6,8 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"path"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -75,13 +77,8 @@ func (i *instance) profile() *pluginexec.Profile {
 	s := &i.spec
 	p := &pluginexec.Profile{ID: s.ID, ParentPID: os.Getpid(), Dir: s.DataDir, Nice: pluginNice, NoFile: pluginNoFile,
 		Landlock: &pluginexec.Landlock{ReadExec: []string{s.PackageDir}, ReadWrite: []string{s.DataDir, s.TmpDir},
-			Read: systemReadPaths, Devices: s.Devices},
-		RequireLandlock: s.RequireLandlock}
-	if root := i.h.cfg.CgroupRoot; root != "" {
-		mem := int64(s.MemMiB) << 20
-		p.Cgroup = &pluginexec.Cgroup{Root: root, Parent: i.h.cfg.CgroupParent, MemoryMax: mem, MemoryHigh: mem / 10 * 9,
-			CPUWeight: pluginCPUWeight, PidsMax: pluginPidsMax}
-	}
+			Read: append(slices.Clone(systemReadPaths), s.ReadPaths...), Devices: s.Devices, DeviceDirs: s.DeviceDirs},
+		RequireLandlock: s.RequireLandlock, Cgroup: i.h.cgroup(s.MemMiB)}
 	return p
 }
 
@@ -97,6 +94,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 	gen := h.generation.Add(1)
 	i.update(func(s *Status) {
 		s.State, s.Code, s.Params, s.PID, s.Use, s.Isolation = StateStarting, "", nil, 0, nil, isolation
+		s.Cgroup, s.RSSBytes = "", 0
 		s.Starts++
 		s.Generation = gen
 	})
@@ -116,7 +114,8 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 		forwardStderr(proc.Stderr(), spec.ID, h.log, i.stderr, time.Now)
 		close(stderrDone)
 	}()
-	hc := newHostConn(spec, h.cfg.State, h.log)
+	hc := newHostConn(spec, h.cfg.State, h.cfg.Reads, h.log)
+	hc.svc = h.svc
 	go (&http2.Server{MaxConcurrentStreams: hostStreams}).ServeConn(proc.Host(), &http2.ServeConnOpts{Handler: hc})
 	conn, connErr := newPluginConn(proc.Serve(), spec.MaxConcurrency, h.timing.CallTimeout)
 	defer func() {
@@ -136,6 +135,7 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 		if prof.Cgroup != nil {
 			_ = pluginexec.RemoveCgroup(prof.Cgroup, spec.ID)
 		}
+		i.update(func(s *Status) { s.Cgroup, s.RSSBytes = "", 0 })
 	}()
 	if connErr != nil {
 		conn = nil
@@ -180,21 +180,38 @@ func (i *instance) runOnce() (o outcome, upSince time.Time) {
 	i.mu.Lock()
 	i.run = run
 	i.mu.Unlock()
-	i.update(func(s *Status) { s.State, s.Use = StateRunning, cloneUse(resp.Use) })
+	// The trampoline has executed the plugin by now, so its cgroup move
+	// (best effort) is settled either way.
+	cgroup := ""
+	if prof.Cgroup != nil && pluginexec.Placed(prof.Cgroup, spec.ID, proc.PID()) {
+		cgroup = path.Join(prof.Cgroup.Parent, "plugins", spec.ID)
+	}
+	i.update(func(s *Status) { s.State, s.Use, s.Cgroup = StateRunning, cloneUse(resp.Use), cgroup })
 	defer func() {
 		i.mu.Lock()
 		i.run = nil
 		i.mu.Unlock()
 	}()
-	return i.serve(proc, run), upSince
+	var mem *memoryWatch
+	if cgroup == "" {
+		mem = &memoryWatch{reader: h.cfg.Memory}
+	}
+	return i.serve(proc, run, mem), upSince
 }
 
-// serve watches an accepted process: its exit, a stop request, its health
-// and, for an on-demand plugin, idleness.
-func (i *instance) serve(proc Process, run *procRun) outcome {
+// serve watches an accepted process: its exit, a stop request, its health,
+// its memory when mem is set (the plugin has no cgroup of its own) and,
+// for an on-demand plugin, idleness.
+func (i *instance) serve(proc Process, run *procRun, mem *memoryWatch) outcome {
 	t, spec := i.h.timing, &i.spec
 	health := time.NewTicker(t.HealthEvery)
 	defer health.Stop()
+	var memTick <-chan time.Time
+	if mem != nil {
+		tick := time.NewTicker(t.MemoryEvery)
+		defer tick.Stop()
+		memTick = tick.C
+	}
 	var idle <-chan time.Time
 	if spec.Lifecycle == extapi.LifecycleOnDemand {
 		tick := time.NewTicker(max(t.IdleStop/4, 10*time.Millisecond))
@@ -210,8 +227,25 @@ func (i *instance) serve(proc Process, run *procRun) outcome {
 			i.set(StateStopping, "", nil)
 			i.terminate(proc, run.conn)
 			return outcome{kind: outcomeStopped}
+		case <-memTick:
+			if o, killed := i.checkMemory(proc, mem); killed {
+				return o
+			}
 		case <-idle:
-			if len(run.conn.slots) == 0 && time.Since(time.Unix(0, run.lastCall.Load())) >= t.IdleStop {
+			if time.Since(time.Unix(0, run.lastCall.Load())) < t.IdleStop {
+				continue
+			}
+			// Refusing new calls and clearing the run is one step under
+			// the lock, so a call either got its slot before (and the
+			// plugin stays) or waits for the next start.
+			i.mu.Lock()
+			drained := run.conn.drainIfIdle()
+			if drained {
+				i.run, i.idling = nil, true
+			}
+			i.mu.Unlock()
+			if drained {
+				i.set(StateStopping, "", nil)
 				i.terminate(proc, run.conn)
 				return outcome{kind: outcomeIdle}
 			}

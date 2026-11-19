@@ -172,6 +172,9 @@ func (v *Verifier) Verify(c *archive.Contents, mode Mode) (*Verified, error) {
 	if err := checkCapabilities(m, v.Offered); err != nil {
 		return nil, err
 	}
+	if err := checkHostSetupPlatform(m, v.Platform); err != nil {
+		return nil, err
+	}
 	if err := checkServerPolicy(m); err != nil {
 		return nil, err
 	}
@@ -298,6 +301,16 @@ func checkCapabilities(m *extapi.Manifest, offered map[string]int) error {
 		}
 	}
 	return nil
+}
+
+// checkHostSetupPlatform refuses host setup steps on a platform that
+// cannot apply them: only Linux has udev and Landlock device rules.
+func checkHostSetupPlatform(m *extapi.Manifest, p Platform) error {
+	if len(m.HostSetup) == 0 || p.OS == "linux" {
+		return nil
+	}
+	return refuse(messages.ErrorPluginHostSetupUnsupported,
+		fmt.Sprintf("%s declares host setup steps, which %s cannot apply", m.ID, p.OS), map[string]any{"id": m.ID})
 }
 
 func checkFloor(m *extapi.Manifest, floor string) error {

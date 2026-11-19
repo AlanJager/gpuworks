@@ -401,7 +401,7 @@ func TestStreamingChatEmitsOneDeltaPerConfiguredChunk(t *testing.T) {
 		chunks, want int
 	}{{0, 1}, {1, 1}, {5, 5}} {
 		server := httptest.NewServer(New(Options{Model: "fake-model", StreamChunks: tc.chunks}))
-		response := post(t, server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"fake-model","messages":[{"role":"user","content":"hi"}],"stream":true}`))
+		response := post(t, server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"fake-model","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`))
 		body, _ := io.ReadAll(response.Body)
 		response.Body.Close()
 		server.Close()

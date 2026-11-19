@@ -95,7 +95,7 @@ const privilegedStagePrefix = ".gpuworks-write."
 // Positional parameters are paths, mode and expected size; all content stays
 // on stdin. The empty file is private before cat starts, even with umask022.
 // A short/failed input must never replace the old destination.
-const privilegedWriteScript = `set -eu
+const privilegedStageContentScript = `set -eu
 umask 077
 cd "$1"
 trap 'rm -f -- content' EXIT
@@ -109,13 +109,22 @@ cat > content
 actual=$(wc -c < content)
 [ "$actual" -eq "$4" ]
 chmod "$3" content
-mv "$5" -- content "$2"
+`
+const privilegedWriteScript = privilegedStageContentScript + `mv "$5" -- content "$2"
 `
 
 // writePrivileged is intentionally limited to a tree writable only by root,
 // this operator, or the already authorized platform group. A private stage in
 // an untrusted writable parent could itself be renamed/replaced by a symlink.
-func (i *Installer) writePrivileged(ctx context.Context, path string, content io.Reader, size int64, mode os.FileMode) (result error) {
+func (i *Installer) writePrivileged(ctx context.Context, path string, content io.Reader, size int64, mode os.FileMode) error {
+	return i.withPrivilegedStage(ctx, path, func(stage, target, rename string) error {
+		return i.deps.Run.Run(ctx, Command{Path: "sh", Args: []string{"-c", privilegedWriteScript, "gpuworks-atomic-write", stage, target, fmt.Sprintf("%04o", mode.Perm()), strconv.FormatInt(size, 10), rename}, Sudo: true, Stdin: content})
+	})
+}
+
+// withPrivilegedStage protects a single atomic publication, whether its
+// content is a regular file or the installer's controlled config alias.
+func (i *Installer) withPrivilegedStage(ctx context.Context, path string, publish func(stage, target, rename string) error) (result error) {
 	if strings.ContainsAny(path, "\x00\r\n") {
 		return errors.New("privileged write path contains a control character")
 	}
@@ -188,7 +197,7 @@ func (i *Installer) writePrivileged(ctx context.Context, path string, content io
 	if runtime.GOOS == "darwin" {
 		rename = "-fh"
 	}
-	return i.deps.Run.Run(ctx, Command{Path: "sh", Args: []string{"-c", privilegedWriteScript, "gpuworks-atomic-write", stage, target, fmt.Sprintf("%04o", mode.Perm()), strconv.FormatInt(size, 10), rename}, Sudo: true, Stdin: content})
+	return publish(stage, target, rename)
 }
 
 func trustedWriteOwner(info os.FileInfo) bool {

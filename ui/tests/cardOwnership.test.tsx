@@ -28,7 +28,7 @@ test("a card owned elsewhere shows whose it is, not a health verdict", () => {
   cleanup();
 
   show(card({ ownership: "no_driver", pcie_bdf: "0000:1a:00.0", index: -1 }));
-  assert.ok(screen.getByText("未绑定驱动"));
+  assert.ok(screen.getByText("厂商驱动不可用"));
   assert.equal(screen.queryByText("故障"), null);
 });
 

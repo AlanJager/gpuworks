@@ -32,6 +32,7 @@ const pluginUsage = `  gpuworks plugin install --file PKG.gwpkg [--disabled]
   gpuworks plugin trust import FILE [--cert publisher.crt]
   gpuworks plugin index import FILE --cert publisher.crt
   gpuworks plugin compat
+  gpuworks plugin host-setup [--id ID | --prune] [--service-user USER]   (as root)
                  (each also takes [--data DIR] [--db PATH] [--config server.yaml])`
 
 // errCompatFindings is returned by plugin compat when it printed findings.
@@ -75,6 +76,8 @@ func (o Options) pluginCommand(log *slog.Logger, args []string, stdout io.Writer
 		return o.pluginIndexImport(log, rest[1:], stdout)
 	case "compat":
 		return o.pluginCompat(rest, stdout)
+	case "host-setup":
+		return o.pluginHostSetup(log, rest, stdout)
 	case "help", "-h", "--help":
 		fmt.Fprintln(stdout, "usage:\n"+pluginUsage)
 		return nil

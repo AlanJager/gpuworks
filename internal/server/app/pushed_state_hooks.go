@@ -19,11 +19,12 @@ import (
 // plugins' feature keys, the node insert guard, the scheduling holder and
 // the console banners. The adapters only convert types; each still answers
 // with one atomic load and map lookups, without allocating (the banners
-// convert once per snapshot).
-type PushedStateHooks struct{ state *pushstate.State }
+// convert once per snapshot). They read pushed state only through
+// pushstate.Evaluator, whose every method the allocation test measures.
+type PushedStateHooks struct{ state pushstate.Evaluator }
 
 // NewPushedStateHooks wraps s.
-func NewPushedStateHooks(s *pushstate.State) PushedStateHooks { return PushedStateHooks{state: s} }
+func NewPushedStateHooks(s pushstate.Evaluator) PushedStateHooks { return PushedStateHooks{state: s} }
 
 // Features is the source of the feature keys installed packages declare,
 // the one the plugin host declares them with in the dynamic feature set.
@@ -41,7 +42,7 @@ func (h PushedStateHooks) Holder() store.SchedulingHolder { return pushedHolder(
 // Banners is the console banner source (Host.AddBannerSource).
 func (h PushedStateHooks) Banners() api.BannerSource { return &pushedBanners{state: h.state} }
 
-type pushedHolder struct{ state *pushstate.State }
+type pushedHolder struct{ state pushstate.Evaluator }
 
 func (pushedHolder) Source() store.SchedulingSource { return pushstate.HoldSource }
 
@@ -55,7 +56,7 @@ func (p pushedHolder) Hold(f store.NodeHoldFacts) store.NodeHold {
 // first banner identifies the list; the cache keeps that list alive, so the
 // address is not reused while it is cached.
 type pushedBanners struct {
-	state        *pushstate.State
+	state        pushstate.Evaluator
 	admin, other atomic.Pointer[convertedBanners]
 }
 

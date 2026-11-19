@@ -1,0 +1,6 @@
+# Written by gpuworks plugin host-setup for plugin acme_key; do not edit.
+# Group gpuworks-usb may open these USB devices; the plugin's sandbox grants the device directories.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="096e", ATTR{idProduct}=="0201", GROUP="gpuworks-usb", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="096e", ATTRS{idProduct}=="0201", GROUP="gpuworks-usb", MODE="0660"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="1050", ATTR{idProduct}=="0407", GROUP="gpuworks-usb", MODE="0660"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1050", ATTRS{idProduct}=="0407", GROUP="gpuworks-usb", MODE="0660"

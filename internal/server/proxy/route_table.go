@@ -188,12 +188,16 @@ func (r *routeTable) run(sub *bus.Subscription, stop <-chan struct{}, done chan<
 // node's routine status report (every agent sends one a minute, a fleet
 // hundreds a second): what it can change, the node's serving address, the
 // periodic refresh picks up, while rebuilding on each kept a 1000-node
-// fleet's table rebuilding nonstop.
+// fleet's table rebuilding nonstop. Nor does a node's scheduling change (a
+// cordon, a drain, a hold placed or released, a card's scheduling): routing
+// reads no scheduling state, a cordon keeps running instances serving, and
+// the instances a drain moves announce themselves; a plugin refreshing its
+// holds would otherwise rebuild the table for every node it touched.
 func rebuildsOn(e bus.Event) bool {
 	if e.Reason == bus.ReasonProgress {
 		return false
 	}
-	return e.Topic != "node" || e.Reason != store.NodeChangeStatus
+	return e.Topic != "node" || (e.Reason != store.NodeChangeStatus && e.Reason != store.NodeChangeScheduling)
 }
 
 // urgentOn reports whether an event may change which instances route, and so

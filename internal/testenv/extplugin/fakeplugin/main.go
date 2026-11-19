@@ -13,10 +13,23 @@
 //	                               directory, and report on stderr
 //	--probe-pid pid                try to reach another process's sockets
 //	                               and signal it, and report on stderr
+//	--probe-devices p1,p2,...      wait until every path exists, open each
+//	                               for reading and writing, and report on
+//	                               stderr
 //	--push-raw kind@gen=<json>     push this body at this generation with a
 //	                               bare host API request, past the SDK's
 //	                               own generation counter (repeatable)
 //	--push-oversize kind           push an envelope over the size limit
+//	--push-every d                 push a node_holds table every d, as an
+//	                               authority plugin refreshing its state does
+//	--push-size n                  hold nodes 1..n in that table (default
+//	                               100); each push changes 1% of them
+//	--grow-rss MiB                 once initialized, hold this much more
+//	                               resident memory, and start a child (in
+//	                               its process group) that holds as much
+//	--read-nodes salt              read the first inventory page and the
+//	                               identity of its nodes with salt, and
+//	                               record the outcome as kind "read_nodes"
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -37,7 +50,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -52,7 +67,14 @@ type pushes []string
 func (p *pushes) String() string     { return strings.Join(*p, ",") }
 func (p *pushes) Set(v string) error { *p = append(*p, v); return nil }
 
+// held keeps --grow-rss's memory reachable.
+var held []byte
+
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "grow" {
+		growChild(os.Args[2])
+		return
+	}
 	if len(os.Args) < 2 || os.Args[1] != "serve" {
 		fmt.Fprintln(os.Stderr, "usage: fakeplugin serve [flags]")
 		os.Exit(64)
@@ -73,6 +95,11 @@ func main() {
 	hang := fs.String("hang", "", "init or health")
 	probeOpen := fs.String("probe-open", "", "path to try to read")
 	probePID := fs.Int("probe-pid", 0, "another process to try to reach")
+	pushEvery := fs.Duration("push-every", 0, "push a node_holds table this often")
+	pushSize := fs.Int("push-size", 100, "nodes held by each periodic push")
+	growRSS := fs.Int("grow-rss", 0, "MiB of resident memory to hold, in this process and a child")
+	readNodes := fs.String("read-nodes", "", "salt to read the node inventory and identity with")
+	probeDevs := fs.String("probe-devices", "", "comma-separated paths to wait for and open")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
 	fillFromPackage(id, version, manifest)
 
@@ -111,6 +138,12 @@ func main() {
 		if *probeOpen != "" {
 			probeFiles(log, *probeOpen)
 		}
+		if *growRSS > 0 {
+			grow(log, *growRSS)
+		}
+		if *probeDevs != "" {
+			go probeDevices(log, strings.Split(*probeDevs, ","))
+		}
 		for _, kv := range push {
 			kind, body, _ := strings.Cut(kv, "=")
 			r, err := p.PushState(ctx, kind, json.RawMessage(body))
@@ -128,10 +161,18 @@ func main() {
 			envelope, _ := json.Marshal(extapi.StatePush{Kind: kind, Schema: 1, Generation: gen, Body: json.RawMessage(body)})
 			record(kind, gen, putRaw(ctx, p, kind, envelope))
 		}
+		if *readNodes != "" {
+			readNodesOnce(ctx, p, *readNodes)
+		}
 		if *oversize != "" {
 			pad := strings.Repeat("x", extapi.MaxPushBytes)
 			envelope := []byte(`{"kind":"` + *oversize + `","schema":1,"generation":1,"body":{"pad":"` + pad + `"}}`)
 			record(*oversize, 1, putRaw(ctx, p, *oversize, envelope))
+		}
+		if *pushEvery > 0 {
+			// Start's context ends at shutdown; pushing alongside lets
+			// --crash-after still fire.
+			go pushPeriodically(ctx, log, p, *pushEvery, *pushSize)
 		}
 		if *crashAfter >= 0 {
 			select {
@@ -144,6 +185,51 @@ func main() {
 		return nil
 	}
 	pluginsdk.Main(cfg)
+}
+
+// pushPeriodically pushes a node_holds table holding nodes 1..size every
+// interval until ctx ends. Each push differs from the one before in 1% of
+// its entries (at least one), a different slice of them each time, so the
+// server writes a full replace whose difference from the stored table is
+// small.
+func pushPeriodically(ctx context.Context, log *slog.Logger, p *pluginsdk.Plugin, every time.Duration, size int) {
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for round := 0; ; round++ {
+		r, err := p.PushState(ctx, extapi.KindNodeHolds, holdsTable(size, round))
+		record(extapi.KindNodeHolds, r.Generation, err)
+		if err != nil && ctx.Err() == nil {
+			log.Error("periodic push refused", "err", err.Error())
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// holdsTable is round's table of size holds. The entries fall into slices
+// of 1% (at least one entry); round r flips the code of slice r modulo the
+// slice count between ACME_MAINTENANCE and ACME_QUARANTINE, so rounds r-1
+// and r differ in exactly that slice.
+func holdsTable(size, round int) *extapi.NodeHoldsV1 {
+	size = max(1, size)
+	per := max(1, size/100)
+	slices := (size + per - 1) / per
+	t := &extapi.NodeHoldsV1{Nodes: make(map[string]extapi.Notice, size)}
+	for i := 0; i < size; i++ {
+		flips := 0
+		if s := i / per; round >= s {
+			flips = (round-s)/slices + 1
+		}
+		code := "ACME_MAINTENANCE"
+		if flips%2 == 1 {
+			code = "ACME_QUARANTINE"
+		}
+		t.Nodes[strconv.Itoa(i+1)] = extapi.Notice{Code: code}
+	}
+	return t
 }
 
 // argsFile reads fakeplugin.args from the working directory (the data
@@ -211,6 +297,34 @@ func putRaw(ctx context.Context, p *pluginsdk.Plugin, kind string, envelope []by
 	var w extapi.WireError
 	_ = json.NewDecoder(resp.Body).Decode(&w)
 	return &pluginsdk.Error{Status: resp.StatusCode, Wire: w}
+}
+
+// readNodesOnce reads the first inventory page and the identity of its
+// nodes, and records how many nodes each answered and the first node's
+// host digest, or why it was refused.
+func readNodesOnce(ctx context.Context, p *pluginsdk.Plugin, salt string) {
+	page, err := p.Nodes(ctx, extapi.NodesQuery{})
+	if err != nil {
+		record("read_nodes", 0, err)
+		return
+	}
+	ids := make([]uint64, len(page.Nodes))
+	for i, n := range page.Nodes {
+		ids[i] = n.ID
+	}
+	line := map[string]any{"kind": "read_nodes", "ok": true, "nodes": len(page.Nodes)}
+	if len(ids) > 0 {
+		ans, err := p.NodeIdentity(ctx, salt, ids)
+		if err != nil {
+			record("read_nodes", 0, err)
+			return
+		}
+		line["identities"] = len(ans.Nodes)
+		if len(ans.Nodes) > 0 && ans.Nodes[0].Host != nil {
+			line["host_h"] = ans.Nodes[0].Host.H
+		}
+	}
+	appendResult(line)
 }
 
 // record appends a push's outcome to results.jsonl in the data directory.
@@ -288,6 +402,31 @@ func probeFiles(log *slog.Logger, path string) {
 	appendResult(map[string]any{"probe": "files", "path": path, "read": errName(readErr), "write": errName(writeErr)})
 }
 
+// probeDevices waits until every path exists (lstat is outside what
+// Landlock checks, so the wait itself grants nothing), then opens each for
+// reading and writing and reports the outcome per path. The paths are
+// created after the sandbox is applied, as a plugged-in device's are.
+func probeDevices(log *slog.Logger, paths []string) {
+	deadline := time.Now().Add(20 * time.Second)
+	for _, p := range paths {
+		for {
+			if _, err := os.Lstat(p); err == nil || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	opened := map[string]string{}
+	for _, p := range paths {
+		f, err := os.OpenFile(p, os.O_RDWR, 0)
+		if err == nil {
+			f.Close()
+		}
+		opened[p] = errName(err)
+	}
+	log.Info("probe", "probe", "devices", "opened", opened)
+}
+
 // probeSibling tries to reach another process: open its socket
 // descriptors through /proc and signal it. It also lists the socket
 // inodes this process holds.
@@ -310,4 +449,48 @@ func probeSibling(log *slog.Logger, pid int) {
 	signalErr := syscall.Kill(pid, 0)
 	log.Info("probe", "probe", "sibling", "pid", pid, "opened", strings.Join(open, ","),
 		"signal", errName(signalErr), "sockets", strings.Join(inodes, ","))
+}
+
+// grow starts a child that holds mib MiB, then holds as much itself, and
+// records the child's pid in results.jsonl.
+func grow(log *slog.Logger, mib int) {
+	exe, err := os.Executable()
+	if err == nil {
+		cmd := exec.Command(exe, "grow", strconv.Itoa(mib))
+		// The sandbox denies opening /dev/null, so the child inherits the
+		// descriptors the trampoline already pointed there.
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err = cmd.Start(); err == nil {
+			appendResult(map[string]any{"probe": "grow", "child": cmd.Process.Pid})
+			go func() { _ = cmd.Wait() }()
+		}
+	}
+	if err != nil {
+		log.Error("starting the growing child", "err", err)
+	}
+	held = touched(mib)
+	log.Info("holding memory", "mib", len(held)>>20)
+}
+
+// growChild holds mib MiB until it is killed.
+func growChild(mib string) {
+	n, err := strconv.Atoi(mib)
+	if err != nil {
+		os.Exit(64)
+	}
+	held = touched(n)
+	for {
+		time.Sleep(time.Hour)
+		runtime.KeepAlive(held)
+	}
+}
+
+// touched allocates mib MiB and writes every page, so all of it is
+// resident.
+func touched(mib int) []byte {
+	b := make([]byte, mib<<20)
+	for i := 0; i < len(b); i += 4096 {
+		b[i] = 1
+	}
+	return b
 }

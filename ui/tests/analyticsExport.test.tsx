@@ -43,6 +43,7 @@ function mount(path: string, data: { gpus?: GPUAnalytics; usage?: UsageAnalytics
     const responses: Record<string, unknown> = {
       "GET /api/v1/data-retention": fx.retentionView(),
       "GET /api/v1/deployments": fx.deployments,
+      "GET /api/v1/apikeys": { items: [], total: 0 },
       "GET /api/v1/nodes/facets": fx.nodeFacets,
       "GET /api/v1/analytics/gpus": data.gpus ?? fx.gpusToday(),
       "GET /api/v1/analytics/usage": data.usage ?? fx.usageToday(),

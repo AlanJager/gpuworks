@@ -83,10 +83,15 @@ func Start(t testing.TB, cfg pluginsdk.Config) *Harness {
 }
 
 // Request is a valid initialize request for cfg's package: this server's
-// offer of every table kind at every schema extapi defines plus routes@1,
-// and the tables the fake host currently holds.
+// offer of every table kind at every schema extapi defines plus routes@1
+// and node/host identity reads, clock, own-state and derived-key calls. It offers the
+// tables the fake host currently holds, but grants no permission or role;
+// tests set Plugin.PermissionsGranted or Plugin.RolesGranted as an
+// administrator's approval or a certificate does.
 func (h *Harness) Request() *extapi.HandshakeRequest {
-	offer := map[string]extapi.Range{extapi.CapRoutes: {Min: 1, Max: 1}}
+	offer := map[string]extapi.Range{extapi.CapRoutes: {Min: 1, Max: 1},
+		extapi.CapHostNodeIdentity: {Min: 1, Max: 1}, extapi.CapHostNodes: {Min: 1, Max: 1},
+		extapi.CapHostHostIdentity: {Min: 1, Max: 1}, extapi.CapHostClock: {Min: 1, Max: 1}, extapi.CapHostStateRead: {Min: 1, Max: 1}, extapi.CapHostDeriveKey: {Min: 1, Max: 1}}
 	for _, kind := range extapi.TableKinds() {
 		s := extapi.TableSchemas(kind)
 		offer[extapi.TableCapability(kind)] = extapi.Range{Min: s[0], Max: s[len(s)-1]}
@@ -99,8 +104,36 @@ func (h *Harness) Request() *extapi.HandshakeRequest {
 		Plugin:       extapi.PluginGrant{ID: h.cfg.ID, Version: h.cfg.Version},
 		Held:         h.Held(),
 		Clock:        extapi.Clock{Wall: now, ExtClock: now},
-		PrincipalKey: bytes.Repeat([]byte{7}, extapi.PrincipalKeyBytes),
+		PrincipalKey: h.PrincipalKey(),
 	}
+}
+
+// PrincipalKey is the fixed principal key Request hands the plugin, and
+// the key Sign signs with.
+func (h *Harness) PrincipalKey() []byte { return bytes.Repeat([]byte{7}, extapi.PrincipalKeyBytes) }
+
+// Principal is a principal for a route request the server matched to
+// action and route (the manifest's pattern): an administrator signed in
+// with a session, expiring after the default route timeout. Change its
+// fields for other callers before Sign.
+func (h *Harness) Principal(action, route string) *extapi.Principal {
+	return &extapi.Principal{Kind: extapi.PrincipalSession, UserID: 1, Username: "admin", PlatformAdmin: true,
+		LocalAdmin: true, Roles: []string{"admin"}, RequestID: "plugintest-request", RouteAction: action, Route: route,
+		Exp: extapi.PrincipalExpiry(time.Now(), 0)}
+}
+
+// Sign sets the principal headers on req as the server does for a route
+// request: p and access signed under PrincipalKey. It fails the test when
+// p or access is invalid. Send req with Do to a path under /r/.
+func (h *Harness) Sign(req *http.Request, p *extapi.Principal, access extapi.FeatureAccess) {
+	h.t.Helper()
+	hdr, mac, err := extapi.SignPrincipal(h.PrincipalKey(), p, access.String())
+	if err != nil {
+		h.t.Fatalf("plugintest: sign the principal: %v", err)
+	}
+	req.Header.Set(extapi.HeaderPrincipal, hdr)
+	req.Header.Set(extapi.HeaderPrincipalMac, mac)
+	req.Header.Set(extapi.HeaderFeatureAccess, access.String())
 }
 
 // Initialize sends req; a refusal is a *pluginsdk.Error.
@@ -113,7 +146,12 @@ func (h *Harness) Initialize(req *extapi.HandshakeRequest) (*extapi.HandshakeRes
 	if err != nil {
 		return nil, err
 	}
-	return extapi.DecodeHandshakeResponse(raw)
+	resp, err := extapi.DecodeHandshakeResponse(raw)
+	if err != nil {
+		return nil, err
+	}
+	h.host.acceptInit(req, resp)
+	return resp, nil
 }
 
 // Health probes the plugin.

@@ -1,5 +1,12 @@
 # Image publication record
 
+The source now supports text-completion streaming and optional
+`FAKE_ENGINE_REASONING_TEXT`. These additions have not been published to the
+registry tags recorded below. Build the current source with
+`make fake-engine-image` to exercise them; a local image ID is not a published
+manifest digest. `FAKE_ENGINE_RESPONSE_TEXT` is verified at the current binary
+boundary, which does not establish the behavior of an older registry image.
+
 ## Republished 2026-10-17
 
 `:test` on Docker Hub and Quay was rebuilt from `test/fake-engine` at `390127b8d`

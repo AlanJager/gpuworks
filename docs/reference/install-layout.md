@@ -43,6 +43,16 @@
 
 `data/plugins/` 由 `gpuworks plugin` 管理：包先解到 `.incoming-*.partial/` 里校验，全部通过才改名为 `<id>/pkg/<版本>/`（文件 0444、可执行文件与目录 0555），再以改名替换 `<id>/pkg/current` 切换版本，上一个版本保留以便回滚；中断留下的 `*.partial` 在下次安装时清掉。`<id>/data/`、`<id>/tmp/`、`<id>/snapshots/` 是插件自己的目录（0700），卸载时保留，`--purge` 时整个 `<id>/` 移到 `.trash/<id>-<时间>/`；`.index/<发布者>/` 存导入的包索引。
 
+声明了 `host_setup` 的包在数据目录之外还有 root 写的文件（见[扩展点的主机配置](../dev/extensions.md#主机配置)），由 `gpuworks plugin host-setup`、`gpuworks install`/`upgrade` 写入，`gpuworks uninstall` 删除：
+
+| 路径 | 内容 |
+|---|---|
+| `/etc/udev/rules.d/70-gpuworks-plugin-<id>.rules` | 每包一个 udev 规则文件（0644），按包声明的厂商与产品号匹配 USB 设备，把它的 `/dev/bus/usb` 节点与 hidraw 节点设为组 `gpuworks-usb`、模式 0660；不建符号链接 |
+| `/etc/gpuworks/plugins/<id>.applied` | 已应用记录（0644，属主 root）：root 应用的主机步骤的摘要。server 只认 root 所有、组与其他用户不可写的记录，服务账号拥有插件目录也伪造不了 |
+| 系统组 `gpuworks-usb` | 服务的设备组：`install`/`upgrade` 写进服务单元的 `SupplementaryGroups=`，`plugin host-setup` 把服务账号加进组；卸载时保留 |
+
+这些路径是全机的、只按包 id 命名：`install`、`upgrade`、`uninstall` 与 `--prune` 按本安装的数据目录对齐，会删掉同机另一个安装写的文件，所以一台主机只让一个安装应用主机配置。
+
 `data/server.lock` 由 `gpuworks serve` 在整个生命周期里持有排他 flock，并写入自己的 pid。同一数据目录上的第二个 server 等待 10 秒后拒绝启动并报出持有者的 pid；`plugin uninstall`、`enable`、`disable` 这类会被运行中 server 的内存状态悄悄覆盖的离线命令拿不到锁就拒绝（见 [CLI 参考](cli.md#gpuworks-plugin)）。锁随进程走，进程崩溃时内核自动释放；文件本身留着不代表 server 在运行，里面的 pid 也可能属于已退出的 server：报出 pid 前先确认该进程还活着，否则只点名锁文件。只有本版本起的 server 会持有这把锁，滚动升级时更早版本的 server 运行期间离线命令照样拿得到锁，须先自行停掉它。
 
 `server.yaml` 放在安装目录而不在数据目录：把数据库恢复到另一台机器时，不会带上旧机器的监听地址。
@@ -56,6 +66,16 @@
   - **当前版本号**：查询已安装的二进制。
 - 重复执行 `install` 时保留既有 `server.yaml` 的值，只有命令行显式给出对应参数才覆盖。
   install 只写监听地址、数据目录、日志文件、日志轮转和受信代理这几项；不管理的键（如 `ssh_proxy`、`metrics_retention`）原样保留。
+
+### 控制面装在 agent 共享根目录时
+
+默认独立目录不变。既有控制面若直接装在 `/opt/gpuworks`，修复安装或执行实际升级时，将配置迁移到 `/opt/gpuworks/server-config/server.yaml`，并保留 `/opt/gpuworks/server.yaml` 指向它的受控相对链接。服务使用实际配置路径；二进制、PID、升级锁、备份和相对路径的工作目录仍属于原安装目录。
+
+共享根目录保持 root 所有且普通服务不可写；只把专用配置目录交给控制面服务，网页设置仍以临时文件加原子替换保存，不向服务开放 agent 的二进制、辅助库或缓存目录。迁移保留既有配置注释和未管理的键。任意链接、冲突的私有文件或悬空链接会被拒绝，不会当作迁移入口。
+
+`upgrade --check` 和没有版本变更的升级不迁移文件。若当前运行的旧安装器尚不包含此修复，应使用新发布包里的二进制对原目录执行修复安装。备份包中的配置成员仍叫 `server.yaml`；普通卸载保留配置和兼容链接，只有 `--purge` 删除受控配置及链接，不递归删除共享根目录。
+
+macOS 若将控制面自定义安装到这个共享根目录，清理配置前会确认当前进程具有原生恢复文件的权限；权限不足时拒绝清理并提示以 root 执行整条卸载命令，避免不安全的提权链接恢复。
 
 ## 权限模型
 
@@ -123,6 +143,8 @@ install 时的密码优先级：
 - `ExecStart=<dir>/gpuworks serve --config <dir>/server.yaml`；nohup 模式跑的是同一条命令行，日志、数据和探活行为一致。
 - `User=` 为 `--service-user` 指定的服务账户；`Restart=always`、`RestartSec=3`；`TimeoutStopSec=30`，给进行中的模型与镜像同步留出优雅退出时间。
 - `KillMode` 保持默认（control-group）：server 不拥有推理容器，子进程应随它一起退出（agent 的单元则相反）。
+- `Delegate=yes`：把单元的 cgroup 交给 server，server 把自己迁进其中的 `server` 子 cgroup，给每个插件建带内存、CPU 与进程数限制的 cgroup（[扩展点：跳板](../dev/extensions.md#跳板gpuworks-plugin-exec)）。命令行 `install` 与带核心安装钩子的 `upgrade` 重写单元并保留这一行；控制台升级不重写单元，未委派 cgroup 时由 RSS 看门狗限制插件内存。
+- drop-in `/etc/systemd/system/gpuworks.service.d/host-identity.conf`（0644，只在 systemd 模式下由命令行 `gpuworks install`、`gpuworks upgrade` 写入，`uninstall` 删除；独立运行与 launchd 模式没有它）：`ExecStartPre=-+/etc/systemd/system/gpuworks.service.d/host-identity-exec host-identity --write /run/gpuworks/host-identity.json --group gpuworks`（服务账户为 root 时不带 `--group`）。`+` 让这一步以 root 运行，`-` 让它失败时 server 照常启动，只是读不到 root 才能读的两项。它写出的 `/run/gpuworks/` 目录为 `root:root`、0755，不允许额外的访问 ACL 或默认 ACL，`host-identity.json` 为 `root:gpuworks`、0440：服务账户能读、不能改也不能替换；该目录有额外访问或默认 ACL 时拒绝写入，避免 0440 激活继承的第三方读取权限；`/run` 是内存文件系统，每次开机重写。安装目录含空格或 `%` 时按单元 `ExecStart` 的同样规则加引号；含 `$` 或换行的路径拒绝。控制台升级以服务账户运行，不写 drop-in：只经控制台升级、从未以 root 执行过本版本命令行 `install`/`upgrade` 的安装没有这一步，系统 UUID 与主板序列号一直读不到，也不报错（`-` 忽略失败）；以 root 再执行一次 `gpuworks install`（重复安装）或下一次命令行 `gpuworks upgrade` 即补上。命令行升级因此每次都重写 `gpuworks.service` 并 `daemon-reload`，让新的 drop-in 在重启时生效，手工改动单元文件会被覆盖，自己的改动请另写 drop-in。见 [`gpuworks host-identity`](cli.md#gpuworks-host-identity)。 root 执行的是同目录中的 `host-identity-exec` 副本，不是服务账户可替换的主程序。命令行安装/升级从本次正在执行的安装器映像原子发布该副本；副本与全部路径祖先必须由 root 所有、不可被组或其他用户写入，且不允许符号链接或额外 ACL。控制台升级保留上次可信副本，不从主程序目录刷新；后续版本须兼容已有身份文件格式。卸载只删除本功能的副本和 drop-in，保留其他 drop-in。
 
 只有在有可用 root/`sudo`、`systemctl` 存在且 `/run/systemd/system` 真的存在（容器里装了 systemctl 但没有 systemd 不算）时才写单元；macOS 上只在 `--autostart`（或提问回答 `yes`、重装已有 launch daemon 的安装）时写下面的 launchd plist；都不满足时使用 nohup 后台进程加 PID 文件。
 

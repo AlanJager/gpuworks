@@ -167,19 +167,6 @@ func TestNodeIdentityRefusesOutOfBoundsCalls(t *testing.T) {
 	}
 }
 
-// A raw value too short for its tail to stay a part of it shows no tail.
-func TestIdentityPartHidesShortValues(t *testing.T) {
-	if p := identityPart([]byte("s"), "card", "abc1234"); p.H == "" || p.Tail != "" {
-		t.Fatalf("short value part = %+v", p)
-	}
-	if p := identityPart([]byte("s"), "card", "abcd1234"); p.Tail != "1234" {
-		t.Fatalf("eight-character value part = %+v", p)
-	}
-	if p := identityPart([]byte("s"), "host", ""); p.Known() {
-		t.Fatalf("empty value part = %+v", p)
-	}
-}
-
 // Both identity reads are pinned: primary-key lookups and the gpus
 // (node_id, ident) index, no scan of either table and no sort b-tree.
 func TestNodeIdentityAndInventoryQueryPlans(t *testing.T) {

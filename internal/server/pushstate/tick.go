@@ -102,7 +102,7 @@ func (s *State) tickLoop(ctx context.Context) {
 			s.mu.Lock()
 			holds, features := s.recombineLocked()
 			s.mu.Unlock()
-			s.effects(holds, features)
+			s.effects(holds, false, features)
 		case <-hwm.C:
 			s.mu.Lock()
 			s.hwmDirty = true
@@ -193,7 +193,7 @@ func (s *State) commit(ctx context.Context) {
 			}
 		}
 	}
-	s.effects(holds, features)
+	s.effects(holds, false, features)
 	for pp, r := range results {
 		pp.done <- r
 	}

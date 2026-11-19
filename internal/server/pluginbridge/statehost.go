@@ -2,7 +2,9 @@ package pluginbridge
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
@@ -42,4 +44,35 @@ func (h stateHost) Push(ctx context.Context, owner pluginhost.Owner, method stri
 		return nil, &pluginhost.Error{Status: extapi.StatusForReason(werr.Reason), Wire: *werr}
 	}
 	return ack, nil
+}
+
+// Clocks reads pushed state's clocks for the host API's meta.
+func (h stateHost) Clocks() (wall, ext, hwm time.Time) {
+	r := h.b.state.Clocks()
+	return r.Wall, r.ExtClock, r.HWM
+}
+
+// Correct moves extclock for a package whose clock_authority role the host
+// API checked, through the same bounded, audited path as every correction:
+// pushed state's ClockCorrected effect writes the one audit line. It answers
+// extclock before and after the correction as it took effect.
+func (h stateHost) Correct(ctx context.Context, owner pluginhost.Owner, to time.Time, reason string) (time.Time, time.Time, error) {
+	from, after, err := h.b.state.CorrectClock(ctx, to, owner.ID, reason)
+	if err != nil {
+		var pe *messages.ProductError
+		if errors.As(err, &pe) {
+			return time.Time{}, time.Time{}, pluginhost.Refuse(extapi.ReasonInvalidArgument, pe.Code(), pe.Error(), pe.Params())
+		}
+		return time.Time{}, time.Time{}, err
+	}
+	return from, after, nil
+}
+
+// Ready ends the boot extension of the plugin process the connection
+// belongs to.
+func (h stateHost) Ready(owner pluginhost.Owner) { h.b.state.Ready(owner.ID, owner.Generation) }
+
+// OwnRows reads back the connection's own package's table of kind.
+func (h stateHost) OwnRows(owner pluginhost.Owner, kind string) (extapi.PushedState, error) {
+	return h.b.state.OwnerRows(owner.ID, kind)
 }

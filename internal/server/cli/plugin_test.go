@@ -100,10 +100,17 @@ func TestPluginInstallListRemoveWithTheServerStopped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"ID", "acme_backup", "1.1.0", "acme", "project", "false", "ok"} {
+	for _, want := range []string{"ID", "acme_backup", "1.1.0", "acme", "project", "true", "ok"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("list lacks %q:\n%s", want, out)
 		}
+	}
+	// Installation preserves an enabled version; disabling is explicit.
+	if _, err := e.run("disable", "acme_backup"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.enabled(); got != "false" {
+		t.Fatalf("explicit disable left enabled = %s", got)
 	}
 	// A file changed in place shows as broken with its code.
 	locale := filepath.Join(e.data, "plugins", "acme_backup", "pkg", "1.1.0", "locales", "en.json")

@@ -136,7 +136,8 @@ type RouteDecl struct {
 	// HTML lets the route answer text/html; only a public, admin or
 	// admin_session route may.
 	HTML bool `json:"html,omitempty"`
-	// TimeoutS bounds a request in seconds; 0 is DefaultRouteTimeoutS.
+	// TimeoutS bounds a request in seconds; 0 is DefaultRouteTimeoutS. On a
+	// Stream route it bounds the wait for the first byte of the response.
 	TimeoutS int `json:"timeout_s,omitempty"`
 	// AIReadable lets the assistant and MCP read a GET route.
 	AIReadable bool `json:"ai_readable,omitempty"`
@@ -202,7 +203,8 @@ type RuntimeDecl struct {
 	// MemMiB and CPUMilli request resources; 0 takes the server's default.
 	MemMiB   int `json:"mem_mib,omitempty"`
 	CPUMilli int `json:"cpu_milli,omitempty"`
-	// MaxConcurrency bounds server-to-plugin calls in flight; 0 is default.
+	// MaxConcurrency bounds server-to-plugin calls in flight, per pool:
+	// plain calls and streamed calls each have their own; 0 is default.
 	MaxConcurrency int `json:"max_concurrency,omitempty"`
 	// Devices are device nodes the part needs, absolute paths under /dev,
 	// sorted; host setup steps make them available.

@@ -4,7 +4,7 @@ Request priority makes the engine queue requests by priority: higher-priority re
 
 ## The Switch on a Deployment
 
-The **Request priority** field of the deployment form is ticked by default. Evaluation judges whether it can be turned on from the arguments the engine finally receives (the inference template's arguments after the custom arguments override them), and create and edit check the same rule. When it is on, the platform adds to the engine:
+Supported LLM entrypoints enable **Request priority** by default. Evaluation checks the effective entrypoint and arguments after template and user overrides; create, edit and final launch assembly use the same rule. Unsupported or unverified entrypoints receive no automatic priority injection. An explicit request to enable it returns a reason on `priority_scheduling`. When it is on, the platform adds to the engine:
 
 | Engine | Arguments the platform injects | The engine's direction |
 |---|---|---|
@@ -19,6 +19,7 @@ It cannot be turned on in the following cases; the deployment form gives the rea
 |---|---|
 | The engine is not vLLM or SGLang | Other engines have no priority scheduling the platform can drive |
 | The engine build for the accelerator is unverified | Turned on for NVIDIA (vLLM, SGLang; measured), AMD (vLLM, SGLang) and Hygon (vLLM); the latter two run the same scheduler code as upstream, confirmed by source and not yet measured on a card. Ascend, PPU, Kunlunxin, Hygon SGLang and others stay off for now |
+| Unverified entrypoint or pipeline | No automatic injection for SGLang diffusion, `sglang serve` without an explicit LLM mode, vLLM omni/pipelines, custom or unknown image entrypoints, or a fully handwritten command; choose a supported LLM entrypoint or turn this switch off |
 | PD disaggregated deployment | Not supported yet |
 | Conflicting scheduling arguments | vLLM's `--scheduling-policy` is not `priority`; SGLang's `--schedule-policy` is not `fcfs` or `lof` (for example `lpm`), or `--schedule-low-priority-values-first` is set |
 
@@ -87,4 +88,4 @@ A class change applies to the next request on the server that made it; with seve
 - Priority only takes effect inside one replica; the gateway does not consider it when choosing among replicas.
 - Measured on a single NVIDIA card, turning it on changed throughput, time to first token and prefix-cache hit rate for same-priority load by no more than measurement noise.
 
-<!-- translation-source-sha256: 4db915372627d83b4700741dcf48c9002b2eafc29412b076194d34e5207a27f1 -->
+<!-- translation-source-sha256: 9a75824b27f16f67fb8f4960fe943337398ec68eae84e7cf30b3760fba7ae0b0 -->

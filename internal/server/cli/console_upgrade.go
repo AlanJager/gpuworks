@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/app"
@@ -26,7 +25,7 @@ func guardConsoleUpgrade(cfg app.Config, log *slog.Logger) (*selfinstall.Pending
 	if cfg.ConfigPath == "" {
 		return nil, selfinstall.Layout{}, nil
 	}
-	layout := selfinstall.NewLayout(filepath.Dir(cfg.ConfigPath), cfg.DataDir, "")
+	layout := selfinstall.NewLayout(selfinstall.DirOfConfig(cfg.ConfigPath), cfg.DataDir, "")
 	guard, err := selfinstall.GuardStart(layout, version.Version, serviceMode(), time.Now())
 	if err != nil {
 		log.Error("console upgrade guard", "error", err)

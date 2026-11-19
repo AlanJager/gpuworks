@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"maps"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"gpuworks.ai/gpuworks/pkg/extapi"
@@ -50,12 +51,18 @@ type Spec struct {
 	// requires and uses) to the highest version it may use; the plugin's
 	// handshake answer must stay within it and within the offer.
 	Approved map[string]int
-	// MaxConcurrency bounds server-to-plugin calls in flight (0: 8).
+	// MaxConcurrency bounds server-to-plugin calls in flight, per pool:
+	// plain calls and streamed calls each have their own (0: 8).
 	MaxConcurrency int
 	// MemMiB is the cgroup memory limit (0: 128).
 	MemMiB int
 	// Devices are device nodes the plugin may open.
 	Devices []string
+	// DeviceDirs are directories whose device nodes the plugin may open
+	// and list, and ReadPaths paths it may read, both from its applied
+	// host setup (package hostsetup).
+	DeviceDirs []string
+	ReadPaths  []string
 	// RequireLandlock refuses to run the plugin without a Landlock
 	// sandbox (the certificate's min_isolation).
 	RequireLandlock bool
@@ -82,12 +89,19 @@ func (s *Spec) validate() error {
 	case s.MaxConcurrency < 0 || s.MaxConcurrency > 1024 || s.MemMiB < 0:
 		return fmt.Errorf("pluginhost: %s: resource limits out of range", s.ID)
 	}
+	for _, p := range append(slices.Clone(s.DeviceDirs), s.ReadPaths...) {
+		if !filepath.IsAbs(p) {
+			return fmt.Errorf("pluginhost: %s: sandbox path %q is not absolute", s.ID, p)
+		}
+	}
 	return nil
 }
 
 func (s Spec) clone() Spec {
 	s.Args = append([]string(nil), s.Args...)
 	s.Devices = append([]string(nil), s.Devices...)
+	s.DeviceDirs = append([]string(nil), s.DeviceDirs...)
+	s.ReadPaths = append([]string(nil), s.ReadPaths...)
 	s.Approved = maps.Clone(s.Approved)
 	return s
 }
@@ -109,6 +123,7 @@ type Timing struct {
 	TermGrace       time.Duration // after SIGTERM, before SIGKILL (5 s)
 	IdleStop        time.Duration // an on-demand plugin idle this long stops (10 min)
 	CallTimeout     time.Duration // a call without a deadline gets this one (60 s)
+	MemoryEvery     time.Duration // between RSS watchdog samples (10 s)
 }
 
 func (t Timing) withDefaults() Timing {
@@ -129,6 +144,7 @@ func (t Timing) withDefaults() Timing {
 	def(&t.TermGrace, 5*time.Second)
 	def(&t.IdleStop, 10*time.Minute)
 	def(&t.CallTimeout, time.Minute)
+	def(&t.MemoryEvery, 10*time.Second)
 	if t.HealthMisses <= 0 {
 		t.HealthMisses = 3
 	}
@@ -153,6 +169,17 @@ type Config struct {
 	Clock func() extapi.Clock
 	// State applies pushes; nil refuses every push as an unknown route.
 	State StateHost
+	// Reads answers the host API's reads of core facts; nil answers each
+	// of them as an unknown route.
+	Reads Reads
+	// ExtClock answers the host API's meta and clock correction, Ready
+	// ends a process's boot extension, OwnState reads back a plugin's own
+	// tables and Keys derives its keys. A nil one answers its endpoints as
+	// an unknown route; a nil Ready makes $/ready a no-op.
+	ExtClock ClockHost
+	Ready    ReadyHost
+	OwnState OwnState
+	Keys     KeyDeriver
 	// Log receives supervision events and the plugins' stderr.
 	Log *slog.Logger
 	// OnState is called after every change of a plugin's status, outside
@@ -166,7 +193,11 @@ type Config struct {
 	// root leaves plugins in the server's cgroup.
 	CgroupRoot   string
 	CgroupParent string
-	Timing       Timing
+	// Memory reads a plugin's resident memory for the RSS watchdog, which
+	// runs for a plugin that did not get a cgroup of its own; nil reads
+	// the operating system's process table.
+	Memory MemoryReader
+	Timing Timing
 }
 
 // StateHost applies pushed state. The owner comes from the connection the
@@ -179,6 +210,63 @@ type StateHost interface {
 	// refusal is an *Error, or an *extapi.Error for a body that breaks
 	// the wire rules; anything else answers PLUGIN_HOST_FAILED.
 	Push(ctx context.Context, owner Owner, method string, push *extapi.StatePush) (*extapi.StateAck, error)
+}
+
+// Reads answers a plugin's reads of core facts. The host API has already
+// checked the caller's permission and capability and the arguments'
+// bounds (at most extapi.MaxNodeRead nodes); each call is one pinned read,
+// never a scan of the fleet. A failure answers PLUGIN_HOST_FAILED unless it
+// is an *Error.
+type Reads interface {
+	// NodeIdentity is the salted identity of each named node that exists,
+	// in ascending id order; key is IdentityKey(owner, salt).
+	NodeIdentity(ctx context.Context, ids []uint64, key []byte) ([]extapi.NodeIdentity, error)
+	// NodeInventory is the page of nodes after the node whose id is cursor
+	// (0 for the first page), at most limit; next is 0 on the last page.
+	NodeInventory(ctx context.Context, cursor uint64, limit int) (nodes []extapi.InventoryNode, next uint64, err error)
+	// HostIdentity is the salted identity of the management server's
+	// machine; key is IdentityKey(owner, salt).
+	HostIdentity(ctx context.Context, key []byte) (extapi.HostIdentityAnswer, error)
+}
+
+// IdentityKey is the key a plugin's node identity digests are made with:
+// its salt bound to its package id, so two packages that pick the same
+// salt get unrelated digests, and one package gets the same digests on
+// every server. It is at most 256 bytes for a salt within
+// extapi.MaxNodeIdentitySalt.
+func IdentityKey(id, salt string) []byte {
+	return []byte("pkg\x00" + id + "\x00" + salt)
+}
+
+// ClockHost serves the host API's clock from the clock pushed state's
+// timelines follow.
+type ClockHost interface {
+	// Clocks reads the wall clock, extclock and the stored high-water mark
+	// (zero before one is stored).
+	Clocks() (wall, ext, hwm time.Time)
+	// Correct moves extclock to to for owner, whose clock_authority role
+	// the host API has checked, records reason in the audit log, and
+	// returns extclock before and after. A refusal is an *Error.
+	Correct(ctx context.Context, owner Owner, to time.Time, reason string) (from, after time.Time, err error)
+}
+
+// ReadyHost hears a plugin process declare that it has finished starting
+// ($/ready); owner.Generation names the process.
+type ReadyHost interface {
+	Ready(owner Owner)
+}
+
+// OwnState reads back a plugin's own pushed tables, as the core holds them;
+// it never answers with another owner's.
+type OwnState interface {
+	OwnRows(owner Owner, kind string) (extapi.PushedState, error)
+}
+
+// KeyDeriver derives a plugin's keys from the server's master key, bound to
+// its package id and the label; the plugin never sees the master key. The
+// host API has checked the permission and the arguments' bounds.
+type KeyDeriver interface {
+	DeriveKey(owner Owner, label string, length int) ([]byte, error)
 }
 
 // Owner is the package a host API connection belongs to, as accepted at

@@ -311,6 +311,7 @@ export default function NodesPage() {
         />
       </Card>
       <NodeDetailDrawer
+        isAdmin={isAdmin}
         node={detail}
         engines={engines.data?.items}
         // The deep link's tab and highlight belong to the node it names, not to

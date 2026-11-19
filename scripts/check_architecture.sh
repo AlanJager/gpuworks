@@ -403,12 +403,36 @@ measure() {
         | grep -v '\.test\.' || true
     } | grep -c . || true
     ;;
+  feature_key_literals_in_core)
+    # A feature key belongs to the package that declares it (a manifest's
+    # features, or a compiled module's declaration); core code never names
+    # one. Counts quoted key-shaped literals handed to the gate (Require,
+    # Admit, Access, Declared, Availability), converted to featuregate.Key,
+    # assigned to a featuregate.Key constant, set as a route's Feature, or
+    # given as a feature declaration's Key in a file importing featuregate.
+    feature_key_literal_hits | grep -c . || true
+    ;;
   *)
     # `measure` runs inside a command substitution, so exiting here would only
     # kill the subshell. Emit a sentinel the caller turns into a failure.
     echo "UNKNOWN"
     ;;
   esac
+}
+
+# feature_key_literal_hits prints one line per feature key named by a
+# literal in non-test core code (scripts/arch-constraints.md).
+feature_key_literal_hits() {
+  local key='"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,2}"'
+  grep -rnE "(featuregate\.Key\(|\.(Require|Admit|Access|Declared|Availability)\()${key}|featuregate\.Key[[:space:]]*=[[:space:]]*\"|Feature:[[:space:]]*${key}" \
+    internal cmd --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go:' || true
+  # A feature declared with a literal key (featuregate.Feature{Key: "…"}),
+  # in any file that imports featuregate, since the literal often sits on
+  # its own line.
+  grep -rlE '"gpuworks\.ai/gpuworks/internal/server/featuregate"' internal cmd --include='*.go' 2>/dev/null \
+    | grep -v '_test\.go$' \
+    | xargs -r grep -nHE "(^|[^A-Za-z0-9_])Key:[[:space:]]*${key}" 2>/dev/null || true
 }
 
 # ADR 0067 guards: failures and check results are codes, never prose that a
@@ -451,7 +475,7 @@ legacy_check_vocabulary_hits() {
 }
 console_unlinked_code_package_links() {
   for main in ./cmd/gpuworks ./cmd/gpuworks-agent; do
-    CGO_ENABLED=0 go list -deps "$main" 2>/dev/null | grep -E '/internal/templateprobe$' || true
+    CGO_ENABLED=0 go list -deps "$main" 2>/dev/null | grep -E '/internal/(templateprobe|testenv/extplugin/fakeplugin)$' || true
   done
 }
 
@@ -917,6 +941,7 @@ tree_forbids ./internal/agent/... 'gpuworks/internal/server' 'agent does not imp
 tree_forbids ./internal/proto 'gpuworks/' 'proto has no in-repo imports'
 tree_forbids ./internal/platformmetrics 'gpuworks/' 'platformmetrics has no in-repo imports (agent and server share it)'
 tree_forbids ./internal/launchd 'gpuworks/' 'launchd has no in-repo imports (agent and server share it)'
+tree_forbids ./internal/hwident 'gpuworks/' 'hwident has no in-repo imports (agent and server share it)'
 tree_forbids ./internal/agent/connbudget 'gpuworks/' 'connbudget imports nothing from this repository (a leaf: image pulls and model downloads share it)'
 tree_forbids ./internal/server/mcp 'gpuworks/' 'mcp speaks the protocol only: it knows neither callers nor tools'
 tree_forbids ./internal/agent/gpu/cardsmoke 'gpuworks/' 'cardsmoke schedules attempts and knows no vendor'

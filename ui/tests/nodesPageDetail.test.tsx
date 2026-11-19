@@ -640,3 +640,29 @@ test("a node Kubernetes has cordoned carries the platform cordon, not a K8s badg
   await waitFor(() => assert.ok(screen.queryByRole("dialog")));
   assert.ok(within(screen.queryByRole("dialog") as HTMLElement).queryByText("K8s cordoned") === null);
 });
+
+test("the detail upgrade action uses refreshed server eligibility instead of stale list data", async () => {
+  stubApi([{ ...onlineNode, agent_eligibility: "eligible" }]);
+  api.node = async () => ({ ...onlineNode, agent_eligibility: "already_current" });
+  let previews = 0;
+  api.agentUpgradePreview = async () => { previews++; throw new Error("current node must not be upgraded"); };
+  renderPage();
+  await screen.findByRole("button", { name: "gpu-a100-node-01" });
+  fireEvent.click(screen.getByRole("button", { name: "gpu-a100-node-01" }));
+  const drawer = within(await screen.findByRole("dialog"));
+  const button = await drawer.findByRole("button", { name: /Already at target/ });
+  assert.equal((button as HTMLButtonElement).disabled, true);
+  fireEvent.click(button);
+  assert.equal(previews, 0);
+});
+
+test("a viewer has no single-node upgrade action", async () => {
+  stubApi([{ ...onlineNode, agent_eligibility: "eligible" }]);
+  api.me = async () => ({ role: "viewer" }) as never;
+  renderPage();
+  await screen.findByRole("button", { name: "gpu-a100-node-01" });
+  fireEvent.click(screen.getByRole("button", { name: "gpu-a100-node-01" }));
+  const drawer = within(await screen.findByRole("dialog"));
+  await drawer.findByRole("tab", { name: "Overview" });
+  assert.equal(drawer.queryByRole("button", { name: /Upgrade Agent/ }), null);
+});

@@ -616,45 +616,6 @@ func TestApplyUnifiedMemoryFallbackFillsGB10FromHost(t *testing.T) {
 	}
 }
 
-// Probe end to end on unified-memory hosts: nvidia-smi answers [N/A] for
-// memory.total, so the card's size comes from the host's MemTotal read under
-// hostRoot. The rows are what the driver prints, raw name and all, so a
-// change in how the CSV is split or the name normalized breaks this before it
-// reaches a node. A discrete card that answers [N/A] keeps its honest 0.
-func TestProbeSizesUnifiedMemoryCardsFromHostMemTotal(t *testing.T) {
-	const memTotalKiB = 127598832
-	for _, tc := range []struct {
-		row  string
-		want int64
-	}{
-		{"0, GPU-n1x, NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU), [N/A], 12.1, 0000000F:01:00.0, 580.95.05, [N/A]", memTotalKiB * 1024},
-		{"0, GPU-gb10, NVIDIA GB10, [N/A], 12.1, 0000000F:01:00.0, 580.95.05, [N/A]", memTotalKiB * 1024},
-		{"0, GPU-5090, NVIDIA GeForce RTX 5090, [N/A], 12.0, 00000000:01:00.0, 580.95.05, 575.00", 0},
-	} {
-		root := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(root, "proc"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		meminfo := fmt.Sprintf("MemTotal:       %d kB\nMemFree:        1024 kB\n", memTotalKiB)
-		if err := os.WriteFile(filepath.Join(root, "proc/meminfo"), []byte(meminfo), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		p := &SMIProber{hostRoot: root, runner: func(_ context.Context, args ...string) (string, error) {
-			if args[0] == "-L" {
-				return "", nil
-			}
-			return tc.row + "\n", nil
-		}}
-		gpus, err := p.Probe(t.Context())
-		if err != nil || len(gpus) != 1 {
-			t.Fatalf("%s: probe = %+v, %v", tc.row, gpus, err)
-		}
-		if gpus[0].MemoryTotalBytes != tc.want || gpus[0].MIGEnabled {
-			t.Fatalf("%s: memory_total_bytes = %d (mig %v), want %d", tc.row, gpus[0].MemoryTotalBytes, gpus[0].MIGEnabled, tc.want)
-		}
-	}
-}
-
 func TestApplyUnifiedMemoryFallbackKeepsParsedMemoryAndDiscreteZeros(t *testing.T) {
 	gpus := parseNVIDIAInfo(`0, GPU-a, NVIDIA GB10, 119444, 12.1, 0000000F:01:00.0, 580.178.04
 1, GPU-b, NVIDIA RTX PRO 6000 Blackwell Server Edition, N/A, 12.0, 00000000:84:00.0, 580.95

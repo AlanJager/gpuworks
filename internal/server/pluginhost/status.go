@@ -47,6 +47,14 @@ type Status struct {
 	Isolation string
 	// Use is the capability versions negotiated at the last handshake.
 	Use map[string]int
+	// Cgroup is the plugin's own cgroup, relative to the cgroup mount, when
+	// its process runs there with a memory limit; empty when it shares the
+	// server's cgroup and the RSS watchdog bounds it instead.
+	Cgroup string
+	// RSSBytes is the resident memory of the plugin's process group at the
+	// watchdog's last sample; 0 before the first sample and whenever the
+	// plugin runs in a cgroup of its own or not at all.
+	RSSBytes int64
 }
 
 func (s Status) clone() Status {

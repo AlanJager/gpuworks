@@ -23,6 +23,7 @@ func HostConfig(p serverconfig.Plugins) ([]trust.HostIssuer, Policy, error) {
 		AllowPublishers: p.Policy.AllowPublishers, DenyPackages: p.Policy.DenyPackages,
 		DenyPermissions: p.Policy.DenyPermissions, DenyRoles: p.Policy.DenyRoles,
 		RequireIsolation: p.RequireIsolation, AllowUnsandboxed: p.AllowUnsandboxed,
+		AutoApproveUnchanged: p.Policy.AutoApproveUnchanged,
 	}
 	return issuers, policy, nil
 }

@@ -1,0 +1,1 @@
+{"exp":"2026-12-01T00:01:05Z","kind":"session","local_admin":true,"platform_admin":true,"request_id":"gw-01/9f2c4e7a-000042","roles":["admin"],"route":"/reports/{period}","route_action":"acme_reports.read","user_id":1,"username":"admin"}

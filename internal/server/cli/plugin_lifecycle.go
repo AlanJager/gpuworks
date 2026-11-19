@@ -26,7 +26,7 @@ import (
 func (o Options) pluginInstall(log *slog.Logger, args []string, stdout io.Writer) error {
 	fs, p := pluginFlags("install")
 	file := fs.String("file", "", "the .gwpkg package to install")
-	disabled := fs.Bool("disabled", false, "install without enabling the package")
+	disabled := fs.Bool("disabled", false, "install without enabling; keep an already enabled package enabled")
 	if _, err := parseInterleaved(fs, args); err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (o Options) pluginInstall(log *slog.Logger, args []string, stdout io.Writer
 		fmt.Fprintf(stdout, "previous version %s kept for rollback\n", in.Previous)
 	}
 	fmt.Fprintf(stdout, "approved %s: permissions [%s] roles [%s]\n", in.ApprovalHash, strings.Join(m.Permissions, " "), strings.Join(m.Roles, " "))
-	log.Info("plugin installed", "id", m.ID, "version", m.Version, "data", p.data, "enabled", !*disabled)
+	log.Info("plugin installed", "id", m.ID, "version", m.Version, "data", p.data, "enabled", in.Enabled)
 	return nil
 }
 
@@ -271,6 +271,9 @@ func (o Options) pluginUninstall(log *slog.Logger, name string, args []string, s
 	}
 	fmt.Fprintf(stdout, "released what %s pushed: %d tables, %d node holds, %d overrides\n",
 		id, len(own.Owners), len(own.Rows.NodeHolds), len(own.Overrides))
+	if left := hostSetupLeftover(id); left != "" {
+		fmt.Fprintln(stdout, left)
+	}
 	log.Info("plugin uninstalled", "id", id, "purge", *purge, "data", p.data, "tables", len(own.Owners))
 	return nil
 }

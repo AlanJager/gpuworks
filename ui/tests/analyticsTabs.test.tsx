@@ -24,10 +24,11 @@ type Params = import("../src/analyticsApi.ts").AnalyticsParams;
 
 const a = locale.analytics;
 const originalAnalytics = { ...analyticsApi };
-const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments, nodeFacets: api.nodeFacets };
+const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments, nodeFacets: api.nodeFacets, apiKeys: api.apiKeys };
 const calls = { usage: [] as Params[], quality: [] as Params[], gpus: [] as Params[], gpuTime: [] as Params[] };
 
 function stub() {
+  api.apiKeys = async () => ({ items: [], total: 0 });
   for (const list of Object.values(calls)) list.length = 0;
   api.dataRetention = (async () => fx.retentionView()) as typeof api.dataRetention;
   api.deployments = (async () => fx.deployments) as unknown as typeof api.deployments;

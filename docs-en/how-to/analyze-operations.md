@@ -21,6 +21,8 @@ Periods backfilled from before the upgrade appear with a light background in cha
 
 CSV exports use the current range and filters and include a total row. Token usage exports one row per selected key, deployment, or model group, without repeating its expanded children; each group's hit rate uses only input whose cache usage was reported. GPU utilization totals use the range's overall statistics, rather than averaging group means. The total row leaves memory percentages, deployment ownership, and the low-load flag blank across cards.
 
+The API key filter combines issued keys you are authorized to view with historical usage identities, including unused keys that permit all models. Selecting a key with no requests in the current range shows an empty result without removing it from the filter. Filtering uses a read-only numeric ID and does not expose secrets.
+
 ## 2. View Each Key's Usage on the API Tokens Page
 
 The API tokens list includes **Tokens today** and **Tokens, last 7 days** columns. Click a number to open that key's details in Usage analytics.
@@ -29,4 +31,4 @@ The API tokens list includes **Tokens today** and **Tokens, last 7 days** column
 
 Under **Settings → Data retention**, configure hourly and daily retention separately for token usage and the other statistics (defaults: 31 days and 400 days). The three other statistics categories can each be disabled independently. When retention is shortened, excess data is deleted in batches in the background. The page also shows current space usage for each category. For the API, see the [API Reference](../reference/api.md#analytics用量分析).
 
-<!-- translation-source-sha256: 63476ab9ad8fa8ac78b7468add67de260a9e7837b18813f9110f57f7f2eadcab -->
+<!-- translation-source-sha256: 0480d5e1cfb4647306d17407a60a36631fb8fa757e8da83804de2ca04559a9cb -->

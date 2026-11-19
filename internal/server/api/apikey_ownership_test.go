@@ -87,6 +87,21 @@ func TestInferenceKeyManagementUsesTheAuthenticatedOwner(t *testing.T) {
 			t.Errorf("personal key list=%v, want only %s with owner %d", keys, row.name, row.owner)
 		}
 	}
+	// Analytics selects unused keys using only role-aware safe metadata.
+	for _, session := range []string{sessionA, sessionB, rig.session} {
+		for _, item := range list(session) {
+			if id, ok := item["id"].(float64); !ok || id <= 0 {
+				t.Errorf("safe key metadata needs its positive analytics id: %v", item)
+			}
+			for field := range item {
+				switch field {
+				case "id", "user_id", "name", "prefix", "last_used", "created_at", "revoked_at", "all_deployments", "deployments", "priority":
+				default:
+					t.Errorf("unexpected key metadata field %q", field)
+				}
+			}
+		}
+	}
 	adminKeys := list(rig.session)
 	if len(adminKeys) != 3 {
 		t.Errorf("admin key count=%d, want 3", len(adminKeys))

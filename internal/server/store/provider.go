@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	cloudstore "gpuworks.ai/gpuworks/internal/server/store/zstack/cloud"
 )
 
 // ---- providers ----
@@ -66,6 +67,9 @@ func (s *Store) DeleteProvider(id uint) error {
 			return err
 		}
 		if err := tx.Where("provider_id = ?", id).Delete(&ProviderBootstrapToken{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("provider_id = ?", id).Delete(&cloudstore.CloudHost{}).Error; err != nil {
 			return err
 		}
 		// Clusters made from the account stay, as entries made by hand.

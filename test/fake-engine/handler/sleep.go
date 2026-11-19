@@ -18,8 +18,9 @@ import (
 //     1 keeps the weights (in host RAM); level 2 discards them.
 //   - POST /wake_up brings an L1 sleeper back in one step. An L2 sleeper woken
 //     with the plain order comes back with weight buffers that hold nothing,
-//     and serves garbage - exactly as vLLM does - which is how a test catches
-//     a controller that forgot the reload.
+//     until reloaded. The fixture makes this observable through synthetic
+//     corrupt output, so a forgotten reload cannot pass a content check.
+//     The synthetic marker is not a real engine response or error text.
 //   - POST /wake_up?tags=weights, POST /collective_rpc {"method":"reload_weights"},
 //     POST /wake_up?tags=kv_cache is the L2 wake sequence.
 //   - Inference requests that arrive while the engine is asleep block until it
@@ -51,6 +52,14 @@ func (s *sleepState) sleeping() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.sleepingTags) > 0
+}
+
+// weightsAreValid snapshots the existing reload state for generation. Buffer
+// allocation alone is not evidence that discarded weight contents were restored.
+func (s *sleepState) weightsAreValid() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.weightsValid
 }
 
 // waitAwake blocks an inference request until the engine can serve or the
@@ -312,8 +321,8 @@ func registerSleep(mux *http.ServeMux, state *sleepState) {
 	})
 }
 
-// gateInference wraps the inference routes so that a request arriving while
-// the engine is asleep waits, and one served after a bad L2 wake gets garbage.
+// gateInference queues inference requests while the engine sleeps. Generation
+// separately reflects discarded, unreloaded weights in its synthetic output.
 func gateInference(next http.Handler, state *sleepState) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/v1/models" {

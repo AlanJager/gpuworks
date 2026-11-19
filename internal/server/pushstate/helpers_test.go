@@ -158,6 +158,19 @@ type harness struct {
 	done     chan struct{}
 	mu       sync.Mutex
 	dropped  []Override
+	// scopes are the ReapplyHolds requests in order; nil asked for the
+	// fleet.
+	scopes [][]uint
+}
+
+// lastScope is the scope of the latest ReapplyHolds request.
+func (h *harness) lastScope() []uint {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.scopes) == 0 {
+		h.t.Fatal("no pass of the scheduling holds was asked for")
+	}
+	return h.scopes[len(h.scopes)-1]
 }
 
 func newHarness(t testing.TB, st *faultyStore, clk *fakeClock, mutate ...func(*Config)) *harness {
@@ -174,7 +187,15 @@ func newHarness(t testing.TB, st *faultyStore, clk *fakeClock, mutate ...func(*C
 			return *h.fleet.Load(), nil
 		},
 		Effects: Effects{
-			ReapplyHolds:    func() { h.reapply.Add(1) },
+			ReapplyHolds: func(nodes []uint) {
+				if nodes != nil && len(nodes) == 0 {
+					h.t.Error("ReapplyHolds asked for an empty set of nodes")
+				}
+				h.mu.Lock()
+				h.scopes = append(h.scopes, nodes)
+				h.mu.Unlock()
+				h.reapply.Add(1)
+			},
 			FeaturesChanged: func() { h.features.Add(1) },
 			OverrideSuperseded: func(o Override) {
 				h.mu.Lock()
@@ -243,7 +264,7 @@ func (h *harness) recombine() {
 	h.s.mu.Lock()
 	holds, features := h.s.recombineLocked()
 	h.s.mu.Unlock()
-	h.s.effects(holds, features)
+	h.s.effects(holds, false, features)
 }
 
 // selectNow runs one capacity selection pass, as the selection runner does.

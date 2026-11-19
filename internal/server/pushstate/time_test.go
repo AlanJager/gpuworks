@@ -141,7 +141,7 @@ func TestACorrectionUnfiresStepsAndIsBounded(t *testing.T) {
 	clk := newFakeClock("2027-03-01T00:00:00Z")
 	var corrections []string
 	h := newHarness(t, st, clk, func(c *Config) {
-		c.Effects.ClockCorrected = func(from, to time.Time, by string) {
+		c.Effects.ClockCorrected = func(from, to time.Time, by, _ string) {
 			corrections = append(corrections, from.Format(time.RFC3339)+">"+to.Format(time.RFC3339)+" by "+by)
 		}
 	}).load().run()
@@ -152,19 +152,19 @@ func TestACorrectionUnfiresStepsAndIsBounded(t *testing.T) {
 		t.Fatal("the step should still be fired")
 	}
 	tooFar := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	if err := h.s.CorrectClock(context.Background(), tooFar, "root"); err == nil {
+	if _, _, err := h.s.CorrectClock(context.Background(), tooFar, "root", "test"); err == nil {
 		t.Fatal("a correction beyond the bound was applied")
 	} else if pe, ok := err.(*messages.ProductError); !ok || pe.Code() != messages.ErrorPluginClockCorrectionTooLarge {
 		t.Fatalf("too far = %v", err)
 	}
 	st.failWrites.Store(1)
-	if err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_authority"); err == nil {
+	if _, _, err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_authority", "test"); err == nil {
 		t.Fatal("a correction whose commit failed reported success")
 	}
 	if now := h.s.Now(); now.Before(time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)) || len(corrections) != 0 {
 		t.Fatalf("a correction whose commit failed moved extclock to %v", now)
 	}
-	if err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_authority"); err != nil {
+	if _, _, err := h.s.CorrectClock(context.Background(), time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), "acme_authority", "test"); err != nil {
 		t.Fatal(err)
 	}
 	if a := h.s.Availability("acme.backup"); a.Access != featuregate.Full {

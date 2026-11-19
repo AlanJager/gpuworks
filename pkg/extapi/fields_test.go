@@ -58,12 +58,17 @@ CertGrants.tables []string
 CertGrants.ui_module bool
 Clock.extclock Time
 Clock.wall Time
+ClockCorrected.from Time
+ClockCorrected.to Time
+ClockCorrection.reason string
+ClockCorrection.to Time
 CoreInfo.arch string
 CoreInfo.ha_role string
 CoreInfo.install_id string
 CoreInfo.offer map[string]Range
 CoreInfo.os string
 CoreInfo.version string
+DerivedKey.key []uint8
 Envelope.payload []uint8
 Envelope.signatures []Signature
 FeatureDecl.gate string
@@ -122,6 +127,13 @@ HeldState.schema int
 HostSetupStep.product_id string
 HostSetupStep.type string
 HostSetupStep.vendor_id string
+HostMeta.boot_id string
+HostMeta.extclock Time
+HostMeta.hwm *Time
+HostMeta.version string
+HostMeta.wall Time
+KeyRequest.label string
+KeyRequest.length int
 Limit.dim string
 Limit.max *int64
 Limit.unlimited bool
@@ -162,6 +174,18 @@ PluginGrant.id string
 PluginGrant.permissions_granted []string
 PluginGrant.roles_granted []string
 PluginGrant.version string
+Principal.api_key_id uint64
+Principal.exp Time
+Principal.kind string
+Principal.local_admin bool
+Principal.platform_admin bool
+Principal.request_id string
+Principal.roles []string
+Principal.route string
+Principal.route_action string
+Principal.scope_projects []string
+Principal.user_id uint64
+Principal.username string
 PublicKey.alg string
 PublicKey.keyid string
 PublicKey.public_key []uint8
@@ -175,6 +199,12 @@ PublisherCert.not_before Time
 PublisherCert.public_key []uint8
 PublisherCert.publisher string
 PublisherCert.serial uint64
+PushedState.body RawMessage
+PushedState.digest Digest
+PushedState.generation uint64
+PushedState.kind string
+PushedState.pushed_at *Time
+PushedState.schema int
 Range.max int
 Range.min int
 Revocation.cert_serial uint64
@@ -241,6 +271,31 @@ UIDecl.entry string
 UIDecl.mode string
 UIDecl.nav []NavDecl
 UIDecl.sdk Range
+HostIdentityAnswer.board_serial *IdentityPart
+HostIdentityAnswer.machine_id *IdentityPart
+HostIdentityAnswer.root_fs_uuid *IdentityPart
+HostIdentityAnswer.system_uuid *IdentityPart
+HostIdentityRequest.salt string
+IdentityPart.h string
+IdentityPart.tail string
+InventoryCard.index int
+InventoryCard.model string
+InventoryCard.serial bool
+InventoryNode.cards []InventoryCard
+InventoryNode.enrolled_at Time
+InventoryNode.host_reported bool
+InventoryNode.id uint64
+InventoryNode.name string
+InventoryNode.uuid string
+NodeIdentity.cards []IdentityPart
+NodeIdentity.cards_without_serial int
+NodeIdentity.host *IdentityPart
+NodeIdentity.node_id uint64
+NodeIdentityAnswer.nodes []NodeIdentity
+NodeIdentityRequest.node_ids []uint64
+NodeIdentityRequest.salt string
+NodesPage.next string
+NodesPage.nodes []InventoryNode
 WireError.code string
 WireError.message string
 WireError.params Params
@@ -251,7 +306,9 @@ WireError.retry_after_ms int64
 var wireRoots = []any{
 	Manifest{}, PublisherCert{}, TrustUpdate{}, CRL{}, Index{}, Envelope{}, PublicKey{},
 	HandshakeRequest{}, HandshakeResponse{}, Health{}, WireError{}, StatePush{}, StateAck{},
-	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{},
+	NodeIdentityRequest{}, NodeIdentityAnswer{}, NodesPage{}, HostIdentityRequest{}, HostIdentityAnswer{},
+	ClockCorrection{}, ClockCorrected{}, HostMeta{}, PushedState{}, KeyRequest{}, DerivedKey{},
+	AvailabilityV1{}, FleetCapacityV1{}, NodeHoldsV1{}, BannersV1{}, AttestationsV1{}, Principal{},
 }
 
 func TestWireFieldsAreFrozen(t *testing.T) {

@@ -265,7 +265,7 @@ For the CLI, run `gpuworks-agent doctor` on the node; its exit code is always `0
 | **Vendor tool did not answer**, `gpu probe failed` | Run the corresponding tool on the node and check its duration and errors; if it remains stuck, check driver logs. Do not treat stale GPU memory readings as current capacity |
 | **Runtime cannot use it**, **Driver init failed** | Check the diagnostic evidence for that card and the results for other cards; restore the driver first, then run diagnosis again |
 | **Not readable** | Check whether the vendor tool is executable and returns a result; do not conclude from this alone that the hardware is faulty |
-| **Passed through**, **No driver bound**, **Held by another driver** | First confirm the intended ownership of the cards; these cards do not participate in scheduling on this node, so do not immediately treat them as hardware failures |
+| **Passed through**, **Vendor driver unavailable**, **Held by another driver** | First confirm the intended ownership of the cards; these cards do not participate in scheduling on this node, so do not immediately treat them as hardware failures |
 | Host sees the card but container does not | Check **Runtime** or **Runtime plugin** messages; fix the plugin or the workload user's device permissions, then check whether scheduling resumes |
 | **In use outside the platform** | Check the displayed processes and GPU memory usage, and release them only after confirming they can be stopped; do not directly terminate unknown service processes |
 | `ACCELERATOR_UNRECOGNIZED` | Save the BDF, `vendor:device`, class, and driver information from the report so device recognition can be added |
@@ -478,10 +478,11 @@ nothing short of rebooting the host recovers the card, and the other cards behin
 an administrator may resume scheduling by hand to try a deployment, and while the cause remains the next report (about a minute later) stops it again;
 once the host has rebooted and the card is healthy, the first report resumes scheduling automatically. A fault that only needs a card reset (`RESET_REQUIRED`) stops only that card, not the whole node.
 
-### Card Is Passed Through, Has No Driver Bound, or Is Held by Another Driver
+### Card Is Passed Through, Has an Unavailable Vendor Driver, or Is Held by Another Driver
 
-Cards in the accelerator list marked “Passed through”, “No driver bound”, or “Held by another driver” are respectively bound to `vfio-pci`
-(for virtual machines), not bound to any driver, or bound to a non-vendor driver such as nouveau/pci-stub.
+“Passed through” means the card is bound to `vfio-pci` for a virtual machine. “Vendor driver unavailable” means the required compute driver is not bound,
+including an unbound device or an NVIDIA card using nouveau. “Held by another driver” means another consumer such as pci-stub or UIO.
+Nouveau does not provide the NVIDIA compute stack; check whether the vendor driver is installed and loaded. The binding alone does not establish whether its package is installed.
 
 None of these states is a fault. These cards do not count toward the node's GPU count or capacity and do not participate in scheduling, but they appear in the accelerator list. The card list comes from reading `/sys/bus/pci/devices` directly
 (with no dependency on the `lspci` command), for all four vendors. Cards listed by the vendor CLI are always in the list; PCI enumeration only adds
@@ -518,12 +519,12 @@ It ends after 30 minutes of passing, and a failure within them continues the sam
 Records are kept for 30 days (ongoing ones are never removed), cards are told apart by identity after a replacement, and on the node page a card no longer there is marked removed.
 After a server restart, ongoing records continue; counts from up to an hour before the restart may be missing.
 
-### Stopping or Temporarily Allowing a Card by Hand
+### Enabling or Disabling Scheduling on a Card by Hand
 
 Expand a card in the accelerator table of node details; its “Scheduling” entry can:
 
-- **Stop scheduling**: the card takes no new deployments; instances already on it are unaffected. It holds until lifted by hand, and the platform never lifts it. The card shows an orange “Scheduling stopped” tag next to its health tag.
-- **Allow for now**: for a card the platform judged unusable (a fault, or processes outside the platform) that you want to check yourself. Once allowed it takes new deployments as usual until the first report at least a minute later judges it again: if the problem remains it is stopped again, if it has recovered it stays usable. This is enough to deploy a model by hand and see whether the card really cannot serve. You are asked to confirm first, and the card shows a blue “Allowed for now” tag next to its health tag.
+- **Disable scheduling**: the card takes no new deployments; instances already on it are unaffected. The decision persists until enabled by hand. The card shows an orange “Scheduling disabled” tag next to its health tag.
+- **Enable scheduling**: explicitly allow new deployments until you disable scheduling. This decision persists across reports and server restarts with no expiry. If the platform judged the card unusable (a fault or outside use), confirmation is required. Health and outside-use facts remain visible. The card shows a blue “Scheduling enabled” tag next to its health tag. Cards without an explicit decision still follow automatic verdicts.
 
 A card passed through to a virtual machine or without a driver is not this node's to use and cannot be allowed (`CARD_NOT_OWNED`).
 
@@ -630,7 +631,7 @@ The reasons a card is unavailable are in its own `health_status`/`health_code`/`
 
 A problem the vendor tool reports (those in the Warning and Fault rows above that come from the vendor tool) clears only after 3 clean readings in a row (about 3 minutes); until then the card keeps its level,
 and its evidence carries a `Recovery` field (such as `1 of 3 clean readings`) showing the progress: a card whose counters flip back and forth would otherwise move in and out of scheduling with every report.
-To use the card meanwhile, “Allow for now” on it.
+To use the card meanwhile, enable scheduling on it; this decision persists until you disable it.
 
 Evidence fields for each vendor:
 
@@ -1000,7 +1001,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `held_by_non_yielding` | Deployment form preview only: it fits once the deployments holding its cards sleep, but those in `blockers` never yield and do not give their cards to this deployment; the parameters give `node`, `gpus`, `blockers` (each with `deployment` and `policy`) and `holders` (holders that do give way, with the terms of `waiting_for_yield` as well). Fix: pick another card, or turn on sleep for the deployments in `blockers` with a yield policy that can share cards |
 | `no_free_gpu` | No idle GPUs |
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
-| `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, unbound from drivers, or held by other drivers |
+| `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, lack an available vendor driver, or are held by other drivers |
 | `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards (the named ones, when the request names cards) are occupied by processes outside the platform, and this deployment cannot share them: it takes whole cards, the outside processes' memory is unknown, or the node's agent is older |
 | `held_outside_platform_sleep` | Only cards shared with processes outside the platform could take this memory-limited deployment, but it sleeps: while those processes run, it could not be woken on that card once asleep. Fix: turn off sleep for this deployment, or pick another card |
 | `held_outside_platform_not_allowed` | Cards that could take this memory-limited deployment are used by processes outside the platform, and the node's placement policy does not allow partitions beside them; params `setting` (the switch's key), `gpus`, `count`, `node`. Also reported when the node has a clean card that is busy or too small. Fix: turn the switch on in the node's placement policy, or pick the card yourself |
@@ -1365,6 +1366,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 |---|---|
 | `manifest.json` | The collection's scope, the server version, and each part's check result: `pass` collected whole, `warn` cut at its size limit, `skip` not read (node offline, agent version without support), `fail` the read failed (with its error text) |
 | `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
+| `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#the-management-servers-host-identity) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
 | `instances/<uuid>.log` | The chosen deployments' instance logs |
@@ -1395,7 +1397,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 3d053fbd94ffa63b4ceba61838200521ce75a08ec8c8e9ade69210b88339422f -->
+<!-- translation-source-sha256: 31d3cfd3736d14e7b9a7906e6ed2f2acf7c1e23dd1df6fd7fb4c2eb9533faf94 -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

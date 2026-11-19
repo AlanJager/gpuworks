@@ -128,7 +128,7 @@ export default function ImageNodeTable({
       ? productMessageText(common, { code: row.transfer_error_code, params: { reason: row.message ?? "" }, message: row.message ?? "" }) : row.message;
     const at = row.updated_at ? Date.parse(row.updated_at) : NaN;
     return (
-      <>
+      <div className="image-node-extra">
         <dl className="detail-extra">
           <div>
             <dt>{t("nodeTable.column.digest")}</dt>
@@ -199,7 +199,7 @@ export default function ImageNodeTable({
             </Popconfirm>
           ) : null}
         </Space>
-      </>
+      </div>
     );
   };
   const nodeColumns = [
@@ -380,7 +380,7 @@ export default function ImageNodeTable({
         dataSource={selectedVersion.nodes ?? []}
         loading={loading}
         columns={nodeColumns}
-        className="detail-expandable"
+        className="detail-expandable image-node-table"
         scroll={{ x: "max-content" }}
         expandable={detailExpandable<ImageNode>(renderExtra, { expand: t("nodeTable.expand"), collapse: t("nodeTable.collapse") })}
         // An image reaches every node of the fleet; the drawer pages them.

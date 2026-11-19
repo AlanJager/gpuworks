@@ -173,6 +173,15 @@ func checkLocalVersion(local string) error {
 // runUpgrade performs the replacement, rolling back when the new binary does
 // not come up.
 func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst installation, src upgradeSource, report *UpgradeReport) error {
+	if i.layout.inSharedRoot() {
+		roots, err := i.permissionRoots()
+		if err != nil {
+			return err
+		}
+		if err := i.checkGroupSharingACLs(roots); err != nil {
+			return err
+		}
+	}
 	// A host can carry more than one installation; naming the one this run
 	// acts on is what tells an operator they picked the wrong one.
 	i.io.Say("upgrading the installation at %s (%s, %s)", i.layout.Dir, report.From, inst.Mode)
@@ -209,6 +218,22 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	// back to the service account before the service is asked to use it.
 	if err := i.prepareDirs(ctx); err != nil {
 		return err
+	}
+	if _, err := i.isolateSharedConfig(ctx, nil); err != nil {
+		return err
+	}
+	if migrated, err := i.layout.sharedConfig(); err != nil {
+		return err
+	} else if migrated {
+		// The config archive member remains server.yaml, but both this
+		// supervisor and rollback must use the writable private path.
+		// Reapply even after an earlier attempt published the alias but
+		// failed to update or reload its supervisor definition.
+		cfg = i.unitConfig(inst.ServiceUser, inst.Mode)
+		svc = i.service(inst.Mode, inst.ServiceUser, cfg)
+		if err := svc.InstallUnit(ctx); err != nil {
+			return err
+		}
 	}
 	// So is a history removed by hand: recreated after the handoff by the
 	// audit line below, it would be root's again (see createHistory).

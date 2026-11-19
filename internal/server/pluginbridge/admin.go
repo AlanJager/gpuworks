@@ -18,11 +18,15 @@ import (
 // States a View reports beside the plugin host's (pluginhost.State):
 // installed packages whose server part does not run, and why.
 const (
-	StateDisabled  = "disabled"  // installed, not enabled
-	StateInstalled = "installed" // enabled, with no resident server part to run
-	StateIdle      = "idle"      // enabled, an on-demand server part not running now
-	StateBroken    = "broken"    // installed, but no longer verifies; it does not run
-	StateRevoked   = "revoked"   // its build or its certificate is revoked; it does not run
+	StateDisabled  = "disabled"                   // installed, not enabled
+	StateInstalled = "installed"                  // enabled, with no server part to run
+	StateIdle      = string(pluginhost.StateIdle) // enabled, an on-demand server part not running now
+	StateBroken    = "broken"                     // installed, but no longer verifies; it does not run
+	StateRevoked   = "revoked"                    // its build or its certificate is revoked; it does not run
+	// StateNeedsHostSetup: enabled, but root has not applied its host
+	// setup steps on this host (PLUGIN_HOST_SETUP_REQUIRED names the
+	// command); it does not start until they are.
+	StateNeedsHostSetup = "needs_host_setup"
 )
 
 // Actions a View offers its administrator.
@@ -105,9 +109,6 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 	case m.Runtime == nil || ver.Binary == "":
 		v.State = StateInstalled
 		return v
-	case m.Runtime.Lifecycle != extapi.LifecycleResident:
-		v.State = StateIdle
-		return v
 	}
 	b.mu.Lock()
 	refused := b.refusals[m.ID]
@@ -115,6 +116,11 @@ func (b *Bridge) viewOf(e extpkg.Entry) View {
 	if refused != nil {
 		v.State = string(pluginhost.StateFailed)
 		v.Code, v.Params, v.Message = codeOf(refused)
+		if v.Code == messages.ErrorPluginHostSetupRequired {
+			// Enable checks the applied record again and starts the
+			// plugin once root has run the command.
+			v.State, v.Actions = StateNeedsHostSetup, []string{ActionEnable, ActionDisable, ActionUninstall}
+		}
 		return v
 	}
 	st, ok := b.host.Status(m.ID)
@@ -167,7 +173,8 @@ type InstallRequest struct {
 	// Approve must be the package's approval hash; without it the install
 	// is refused with PLUGIN_APPROVAL_REQUIRED, which names it.
 	Approve extapi.Digest
-	// Enable starts the package's server part once installed.
+	// Enable starts the package's server part once installed. A package
+	// installed over an enabled version stays enabled either way.
 	Enable bool
 	// By names the administrator, for the audit record.
 	By string
@@ -204,7 +211,7 @@ func (b *Bridge) Install(ctx context.Context, r io.Reader, req InstallRequest) (
 	id = in.Manifest.ID
 	st, supervised := b.host.Status(id)
 	// The same build installed again over its running process keeps it.
-	keep := in.Unchanged && req.Enable && supervised && st.State != pluginhost.StateStopped && st.State != pluginhost.StateFailed
+	keep := in.Unchanged && in.Enabled && supervised && st.State != pluginhost.StateStopped && st.State != pluginhost.StateFailed
 	if !keep {
 		if err := b.stop(ctx, id); err != nil {
 			return nil, err

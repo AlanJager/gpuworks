@@ -218,6 +218,26 @@ test-pluginsdk:
 	cd pkg/pluginsdk && CGO_ENABLED=0 $(GO) vet ./...
 	cd pkg/pluginsdk && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 
+## test-plugin-landlock: require real sandbox denials, each named PASS and no
+## skipped cases. Keep environment and test logs for both passing and failed CI.
+PLUGIN_LANDLOCK_CASES := TestContractLandlockKeepsThePluginFromTheMasterKey TestLandlockDeniesPathsOutsideThePlugin TestSiblingCannotReachAnotherPluginsSockets TestDeviceDirGrantsNodesCreatedLater
+.PHONY: test-plugin-landlock
+test-plugin-landlock:
+	@mkdir -p .testlogs
+	@{ uname -sr; \
+		if [ -r /proc/self/status ]; then grep -E '^(NoNewPrivs|Seccomp|Seccomp_filters):' /proc/self/status || true; else echo '/proc/self/status unavailable'; fi; \
+		if [ -r /sys/kernel/security/lsm ]; then cat /sys/kernel/security/lsm; printf '\n'; else echo 'LSM list unavailable'; fi; \
+	} > .testlogs/landlock-environment.log
+	@cat .testlogs/landlock-environment.log
+	@GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test -v -count=1 -timeout 10m \
+		-run "^($$(echo $(PLUGIN_LANDLOCK_CASES) | tr ' ' '|'))$$" ./internal/testenv/extplugin/ \
+		> .testlogs/landlock-strict.log 2>&1 || { tail -n 80 .testlogs/landlock-strict.log; exit 1; }
+	@for c in $(PLUGIN_LANDLOCK_CASES); do \
+		grep -q -- "^--- PASS: $$c " .testlogs/landlock-strict.log || { echo "$$c did not pass"; tail -n 80 .testlogs/landlock-strict.log; exit 1; }; \
+	done
+	@if grep -q -- '--- SKIP' .testlogs/landlock-strict.log; then grep -- '--- SKIP' .testlogs/landlock-strict.log; exit 1; fi
+	@grep -E -- '--- (PASS|SKIP|FAIL)' .testlogs/landlock-strict.log
+
 ## test-host-env-adapters: the serve adapters macOS environment packages ship
 ## (build/host-envs/adapters); standard library only, so no install step
 test-host-env-adapters:
@@ -282,6 +302,11 @@ test-ui-agent-upgrade-results-layout:
 ## Real Chromium catalog geometry at 1280/1920, both themes; build UI first.
 test-ui-template-catalog-layout:
 	python3 -B ui/tests/browser/template_catalog_layout.py
+
+.PHONY: test-ui-storage-image-layout
+## Real Chromium storage/image drawer geometry with production CSS, both themes.
+test-ui-storage-image-layout:
+	python3 -B ui/tests/browser/storage_image_layout.py
 
 .PHONY: ensure-bins
 ## ensure-bins: the E2E entry points need bin/gpuworks and bin/gpuworks-agent,

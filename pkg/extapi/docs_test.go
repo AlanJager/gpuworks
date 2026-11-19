@@ -20,7 +20,7 @@ var referencePages = []string{
 	"../../docs-en/reference/plugin-protocol.md",
 }
 
-var goldenMarker = regexp.MustCompile(`^<!-- golden: ([a-z_]+/v[1-9][0-9]*/(valid|invalid/[A-Z_]+)/[a-z0-9_.-]+\.json) -->$`)
+var goldenMarker = regexp.MustCompile(`^<!-- golden: ([a-z_]+/v[1-9][0-9]*/(?:(?:valid|invalid/[A-Z_]+)/[a-z0-9_.-]+\.json|signed/[a-z0-9_.-]+\.txt)) -->$`)
 
 // embeddedExample is one JSON example on a reference page.
 type embeddedExample struct {
@@ -70,9 +70,9 @@ func TestReferencePageExamplesAreGoldenFiles(t *testing.T) {
 	}
 }
 
-// embeddedExamples reads the JSON examples of a page. A "```json" fence
+// embeddedExamples reads the golden examples of a page. A "```json" fence
 // must follow a golden marker line directly, and a marker must be followed
-// by such a fence.
+// by such a fence, or by a "```text" fence for a signed .txt vector.
 func embeddedExamples(t *testing.T, page string) []embeddedExample {
 	t.Helper()
 	raw, err := os.ReadFile(page)
@@ -93,8 +93,14 @@ func embeddedExamples(t *testing.T, page string) []embeddedExample {
 				t.Errorf("%s:%d: malformed golden marker %q", page, i+1, line)
 				continue
 			}
-			if i+1 >= len(lines) || lines[i+1] != "```json" {
-				t.Errorf("%s:%d: a golden marker must be followed directly by a ```json fence", page, i+1)
+			// A text golden file (signed headers) ends with a newline the
+			// fence does not show.
+			fence, tail := "```json", ""
+			if strings.HasSuffix(m[1], ".txt") {
+				fence, tail = "```text", "\n"
+			}
+			if i+1 >= len(lines) || lines[i+1] != fence {
+				t.Errorf("%s:%d: a golden marker must be followed directly by a %s fence", page, i+1, fence)
 				continue
 			}
 			end := i + 2
@@ -104,7 +110,7 @@ func embeddedExamples(t *testing.T, page string) []embeddedExample {
 			if end == len(lines) {
 				t.Fatalf("%s:%d: unclosed fence", page, i+2)
 			}
-			out = append(out, embeddedExample{golden: m[1], body: strings.Join(lines[i+2:end], "\n"), line: i + 1})
+			out = append(out, embeddedExample{golden: m[1], body: strings.Join(lines[i+2:end], "\n") + tail, line: i + 1})
 			i = end
 		}
 	}

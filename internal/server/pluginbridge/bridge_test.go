@@ -16,6 +16,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
+	"gpuworks.ai/gpuworks/internal/server/extpkg/hostsetup"
 	"gpuworks.ai/gpuworks/internal/server/extpkg/layout"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -43,6 +44,12 @@ type world struct {
 	announced atomic.Int32
 	// logs is what the bridges logged.
 	logs lockedBuffer
+	// cgroupRoot, when set, is the cgroup mount the bridges' plugin host
+	// places plugins under (parent "svc").
+	cgroupRoot string
+	// records are the applied host setup records bridges read; zero is
+	// the host's own.
+	records hostsetup.Records
 }
 
 // lockedBuffer is a log sink the bridge's goroutines may share.
@@ -124,8 +131,9 @@ func (w *world) openRunning() (*Bridge, *refusingSpawner) {
 	}
 	b, err := Open(context.Background(), Config{Packages: pkgs,
 		State:    pushstate.Config{Store: w.st, Effects: pushstate.Effects{FeaturesChanged: func() { w.announced.Add(1) }}},
-		Features: dyn, StaticFeatures: owners,
-		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour}},
+		Features: dyn, StaticFeatures: owners, HostSetup: w.records,
+		Host: pluginhost.Config{Spawner: sp, Timing: pluginhost.Timing{BackoffMin: time.Hour},
+			CgroupRoot: w.cgroupRoot, CgroupParent: "svc"},
 		Core: extapi.CoreInfo{Version: "dev", InstallID: "inst_bridge_test", OS: "linux", Arch: "amd64", HARole: extapi.HARoleSingle},
 		Log:  slog.New(slog.NewTextHandler(&w.logs, nil))})
 	if err != nil {
@@ -222,6 +230,19 @@ func TestInstallEnableDisable(t *testing.T) {
 	w.open()
 	if got := w.gate.States(); len(got) != 1 || got[0].Key != "acme.backup" {
 		t.Fatalf("features after a reopen = %v", got)
+	}
+}
+
+// Installing over an enabled package without enable, the way the install
+// route replaces a version, leaves it enabled.
+func TestInstallOverAnEnabledPackageKeepsItEnabled(t *testing.T) {
+	w := newWorld(t, nil)
+	b := w.open()
+	install(t, b, w.pkg("acme_backup", "1.0.0", nil), true)
+	for _, version := range []string{"1.0.0", "1.1.0"} {
+		if v := install(t, b, w.pkg("acme_backup", version, nil), false).View; !v.Enabled || v.State == StateDisabled {
+			t.Fatalf("after installing %s without enable = %+v", version, v)
+		}
 	}
 }
 
@@ -326,7 +347,7 @@ func TestSpecOfAVerifiedPackage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := b.specOf(v)
+	spec, err := b.specOf(v, hostsetup.Sandbox{})
 	if err != nil {
 		t.Fatal(err)
 	}

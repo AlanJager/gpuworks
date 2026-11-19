@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/server/bus"
@@ -52,7 +51,7 @@ func configuredInstallLayout(cfg Config, executable string) (selfinstall.Layout,
 	if cfg.ConfigPath == "" {
 		return selfinstall.Layout{}, "not_installed"
 	}
-	layout := selfinstall.NewLayout(filepath.Dir(cfg.ConfigPath), cfg.DataDir, "")
+	layout := selfinstall.NewLayout(selfinstall.DirOfConfig(cfg.ConfigPath), cfg.DataDir, "")
 	if !sameFile(executable, layout.Binary()) {
 		return selfinstall.Layout{}, "not_installed_binary"
 	}

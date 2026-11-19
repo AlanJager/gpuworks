@@ -14,3 +14,5 @@ func requireFileDescriptors(t *testing.T, want int) {
 }
 
 func processRSSMiB() float64 { return 0 }
+
+func processCPUSeconds() float64 { return 0 }

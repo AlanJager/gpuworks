@@ -12,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
+	"gpuworks.ai/gpuworks/internal/server/hostidentity"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -172,6 +173,15 @@ func (h *Host) HoldScheduling(holder store.SchedulingHolder) error {
 // nothing.
 func (h *Host) ReapplySchedulingHolds() { h.reg.holds.Request() }
 
+// ReapplySchedulingHoldsFor is ReapplySchedulingHolds for a module that
+// knows which nodes its answers changed for: the pass reads and writes
+// those nodes (store.ApplySchedulingHoldsFor) rather than the fleet, so a
+// module whose answers change often for a few nodes does not cost a fleet
+// pass each time. It coalesces with every other request; requests naming
+// more than holdpass.MaxScoped nodes between two passes make a fleet pass.
+// With no nodes it does nothing.
+func (h *Host) ReapplySchedulingHoldsFor(nodes []uint) { h.reg.holds.RequestNodes(nodes) }
+
 // NodeFleet is every node's hold facts, ordered by id (enrollment order),
 // read in one query on the read pool (store.NodeFleet). It is for a module
 // that derives its answers from the whole fleet: at boot, and for a
@@ -206,6 +216,32 @@ func (h *Host) NodeIdentity(ctx context.Context, ids []uint, salt []byte) ([]sto
 // (store.ErrNodeReadBatch).
 func (h *Host) NodeInventory(ctx context.Context, cursor uint, limit int) (store.NodeInventoryPage, error) {
 	return h.st.NodeInventory(ctx, cursor, limit)
+}
+
+// HostIdentity is the salted identity of the machine this server runs on
+// (hostidentity.Facts.Salted): its system UUID, digested as a node's host
+// is so that under one salt it equals the host of each node on this
+// machine, the board serial, the machine id and the root file system
+// UUID, each a 16-hex-digit HMAC-SHA256 keyed with salt plus the raw
+// value's last four characters, the zero part when unknown. On Linux the
+// two root-only values come from the file systemd has root write before
+// the server starts (hostidentity.RunFile). The facts are read once per
+// process. salt is 1 to 256 bytes, else store.ErrIdentitySalt.
+func (h *Host) HostIdentity(salt []byte) (hostidentity.Salted, error) {
+	if len(salt) == 0 || len(salt) > store.MaxIdentitySalt {
+		return hostidentity.Salted{}, store.ErrIdentitySalt
+	}
+	return hostidentity.Local().Salted(salt), nil
+}
+
+// NodeNamesByID is the display name of each named node that exists, keyed by
+// id (store.NodeNamesByID): the name an operator gave it, otherwise its
+// hostname. A node that does not exist is absent. No ids is an empty map
+// without a read; more than 500 distinct ids is store.ErrNodeReadBatch. It
+// is one read of the named nodes, for labelling a few nodes without paging
+// NodeInventory.
+func (h *Host) NodeNamesByID(ctx context.Context, ids []uint) (map[uint]string, error) {
+	return h.st.NodeNamesByID(ctx, ids)
 }
 
 func (h *Host) mustBeOpen(method string) {

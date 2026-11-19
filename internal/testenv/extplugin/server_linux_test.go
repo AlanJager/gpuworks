@@ -264,6 +264,12 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 // authority) and acme.tools (by itself).
 func (s *site) fakePackage(id, version string) []byte {
 	s.t.Helper()
+	return s.fakePackageWith(id, version, nil)
+}
+
+// fakePackageWith is fakePackage with its spec changed by edit first.
+func (s *site) fakePackageWith(id, version string, edit func(*extsign.Spec)) []byte {
+	s.t.Helper()
 	bin, err := os.ReadFile(fakeBin)
 	if err != nil {
 		s.t.Fatal(err)
@@ -296,6 +302,9 @@ func (s *site) fakePackage(id, version string) []byte {
 		spec.Manifest.Roles = nil
 		spec.Manifest.Features = nil
 	}
+	if edit != nil {
+		edit(&spec)
+	}
 	return extsign.Package(s.t, s.pub, spec)
 }
 
@@ -320,6 +329,10 @@ type result struct {
 	Probe      string `json:"probe"`
 	Read       string `json:"read"`
 	Write      string `json:"write"`
+	// Nodes, Identities and HostH are a read_nodes outcome.
+	Nodes      int    `json:"nodes"`
+	Identities int    `json:"identities"`
+	HostH      string `json:"host_h"`
 }
 
 func (s *site) results(id string) []result {

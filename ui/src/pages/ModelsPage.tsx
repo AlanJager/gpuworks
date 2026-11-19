@@ -7,7 +7,7 @@ import OnlineCatalog from "./models/discovery/OnlineCatalog";
 import type { Provider } from "./models/discovery/hubs";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabItem } from "../components/ui/tabs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Dropdown, Input, Modal, Pagination, Select, Space, Tooltip, Typography, message } from "antd";
 import { FilterChips } from "../ui-kit/FilterChips";
 import {
@@ -19,7 +19,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-import { api, useEvents, usePolling, type Model, type ModelCore, type ModelListItem } from "../api";
+import { api, useEvents, useEventPayload, usePolling, type Model, type ModelCore, type ModelListItem, type ModelPage, type ModelPresenceSummary as PresenceCounts } from "../api";
 import { usePagedList } from "../pagedList";
 import AIAssistant from "../components/AIAssistant";
 import ResourceTable, { storedPageSize, type ResourceColumn, type ServerSort } from "../components/resourceTable/ResourceTable";
@@ -85,24 +85,54 @@ export default function ModelsPage() {
   const openID = Number.isInteger(detailID) && detailID > 0 ? detailID : 0;
   const detail = usePolling<Model | null>(() => (openID ? api.model(openID) : Promise.resolve(null)), openID ? 15000 : 0, [openID]);
   const modelfileRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const presenceRequest = useRef(false);
+  const presenceVersion = useRef(0);
+  const presenceAlive = useRef(true);
+  const currentPage = useRef(data);
+  currentPage.current = data;
+  const [livePresence, setLivePresence] = useState<{ page: ModelPage | null; values: Record<number, PresenceCounts> }>({ page: null, values: {} });
+  const refreshModelState = () => {
+    presenceVersion.current += 1;
+    if (modelfileRefreshTimer.current != null) clearTimeout(modelfileRefreshTimer.current);
+    modelfileRefreshTimer.current = null;
+    void refresh();
+    if (openID) void detail.refresh();
+  };
   const scheduleModelfileRefresh = () => {
-    // Downloads can emit progress events several times per second. Coalesce
-    // them into a background refresh so the page remains usable and does not
-    // repeatedly enter the full-page loading state.
-    if (modelfileRefreshTimer.current != null) return;
-    modelfileRefreshTimer.current = setTimeout(() => {
+    // Progress changes counters, not list membership/order. Read only the
+    // visible presence, keeping list metadata and the editor's draft intact.
+    if (modelfileRefreshTimer.current != null || presenceRequest.current) return;
+    modelfileRefreshTimer.current = setTimeout(async () => {
       modelfileRefreshTimer.current = null;
-      void refresh();
       if (openID) void detail.refresh();
+      const page = currentPage.current;
+      if (!page?.items.length) return;
+      const version = presenceVersion.current;
+      presenceRequest.current = true;
+      try {
+        const values = await api.modelPresence(page.items.map((m) => m.id));
+        if (presenceAlive.current && currentPage.current === page && presenceVersion.current === version) setLivePresence({ page, values });
+      } catch {
+        // Preserve the last counters on a transient failure. Another event
+        // retries; ordinary list polling remains the fallback.
+      } finally {
+        presenceRequest.current = false;
+      }
     }, 500);
   };
-  useEvents("modelfile", scheduleModelfileRefresh);
-  useEffect(() => () => {
-    if (modelfileRefreshTimer.current != null) clearTimeout(modelfileRefreshTimer.current);
-  }, []);
-  useEvents("node", () => {
-    void refresh();
+  useEventPayload("modelfile", (event) => {
+    if (event.reason === "progress") scheduleModelfileRefresh();
+    else refreshModelState();
   });
+  useEvents("model", refreshModelState);
+  useEffect(() => {
+    presenceAlive.current = true;
+    return () => {
+      presenceAlive.current = false;
+      if (modelfileRefreshTimer.current != null) clearTimeout(modelfileRefreshTimer.current);
+    };
+  }, []);
+  useEvents("node", refreshModelState);
 
   const [onlineTab, setOnlineTab] = useState(false);
   const [bases, setBases] = useState<Partial<Record<Provider, string[]>>>({});
@@ -156,7 +186,8 @@ export default function ModelsPage() {
     api.model(row.id).then(open).catch((e: Error) => message.error(e.message));
   };
 
-  const rows = data?.items ?? [];
+  const rows = useMemo(() => (data?.items ?? []).map((m) => livePresence.page === data && livePresence.values[m.id]
+    ? { ...m, presence: livePresence.values[m.id] } : m), [data, livePresence]);
   const summary = data?.summary;
   const filtering = search !== "" || source !== "all" || modelOperation !== "all";
   const openDetail = (model: ModelCore) => {

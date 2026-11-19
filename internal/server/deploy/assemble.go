@@ -167,6 +167,11 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 		}
 	}
 
+	// The adapter cannot infer a later entrypoint override. Only inject its
+	// priority flags into a final command with a verified LLM contract.
+	if params.PriorityScheduling && PrioritySchedulingCommandRefusal(input.Engine.Name(), params.Vendor, params.PD != nil, params.TemplateArgs, params.ExtraArgs, overrides, entrypoint) != nil {
+		params.PriorityScheduling = false
+	}
 	built := input.Engine.Build(params)
 	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params)} {
 		if len(extra) == 0 {

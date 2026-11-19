@@ -19,9 +19,9 @@ func TestKubeDefaultsDictionaryOnTheWire(t *testing.T) {
 	rig := newTokenRig(t)
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/defaults", "")
 	want := `{"namespace":"gpuworks-system","state_dir":"/opt/gpuworks","engine_ports":"40000-42767",` +
-		`"idle_return_seconds":60,"idle_return_keep":-1,"agent_image":"gpuworks/gpuworks-agent:r1","stalled_after_seconds":300,` +
-		`"agent_image_source":"dockerhub","agent_image_sources":[{"id":"dockerhub","image":"gpuworks/gpuworks-agent:r1"},` +
-		`{"id":"swr","image":"swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1"},{"id":"quay","image":"quay.io/gpuworks/gpuworks-agent:r1"}],"priority":10000,"priority_max":1000000000,"allow_preemption":false}`
+		`"idle_return_seconds":60,"idle_return_keep":-1,"agent_image":"swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1","stalled_after_seconds":300,` +
+		`"agent_image_source":"swr","agent_image_sources":[{"id":"swr","image":"swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1"},` +
+		`{"id":"dockerhub","image":"gpuworks/gpuworks-agent:r1"},{"id":"quay","image":"quay.io/gpuworks/gpuworks-agent:r1"}],"priority":10000,"priority_max":1000000000,"allow_preemption":false}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("defaults = %d %s\nwant %s", rec.Code, rec.Body, want)
 	}
@@ -71,6 +71,57 @@ func TestKubeDefaultsAreWhatAnEmptyRequestTakes(t *testing.T) {
 	}
 	if vendors, ok := created["vendors"].([]any); !ok || len(vendors) != 0 {
 		t.Errorf("vendors of an entry no node joined = %v, want []", created["vendors"])
+	}
+}
+
+func TestNewKubeImagePreferencePreservesExplicitAndHistoricalChoices(t *testing.T) {
+	rig := newTokenRig(t)
+	t.Cleanup(func() { _ = rig.st.Close() })
+	for _, tc := range []struct{ name, source, image, wantSource, wantImage string }{
+		{"new-default", "", "", "swr", "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1"},
+		{"explicit-dockerhub", "dockerhub", "", "dockerhub", "gpuworks/gpuworks-agent:r1"},
+		{"explicit-quay", "quay", "", "quay", "quay.io/gpuworks/gpuworks-agent:r1"},
+		{"own-image", "", "private.example/team/agent:owned", "swr", "private.example/team/agent:owned"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"name":%q,"server_url":"https://gw.example","agent_image_source":%q,"agent_image":%q}`, tc.name, tc.source, tc.image)
+			rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", body)
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("create=%d %s", rec.Code, rec.Body)
+			}
+			entry := decodeKube[map[string]any](t, rec)
+			if entry["agent_image_source"] != tc.wantSource || entry["effective_agent_image"] != tc.wantImage {
+				t.Fatalf("new entry image choice=%v", entry)
+			}
+			path := "/api/v1/kube/clusters/" + entry["uuid"].(string)
+			rec = rig.do(rig.session, http.MethodPut, path, `{"runtime_class":"custom-runtime"}`)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("edit=%d %s", rec.Code, rec.Body)
+			}
+			updated := decodeKube[map[string]any](t, rec)["cluster"].(map[string]any)
+			if updated["agent_image_source"] != tc.wantSource || updated["effective_agent_image"] != tc.wantImage {
+				t.Fatalf("ordinary edit rewrote image choice=%v", updated)
+			}
+			manifest := rig.do(rig.session, http.MethodGet, path+"/manifest", "")
+			if manifest.Code != http.StatusOK || !strings.Contains(manifest.Body.String(), fmt.Sprintf("image: %q", tc.wantImage)) {
+				t.Fatalf("manifest=%d %s", manifest.Code, manifest.Body)
+			}
+		})
+	}
+	// Existing entries written before registry selection stored the empty
+	// source. Preserve its original Docker Hub meaning on read and edit.
+	legacy := decodeKube[map[string]any](t, rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"legacy","server_url":"https://gw.example","agent_image_source":"dockerhub"}`))
+	uuid := legacy["uuid"].(string)
+	if err := rig.st.DB().Model(&store.KubeCluster{}).Where("uuid = ?", uuid).Update("agent_image_source", "").Error; err != nil {
+		t.Fatal(err)
+	}
+	rec := rig.do(rig.session, http.MethodPut, "/api/v1/kube/clusters/"+uuid, `{"runtime_class":"legacy-runtime"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("legacy edit=%d %s", rec.Code, rec.Body)
+	}
+	updated := decodeKube[map[string]any](t, rec)["cluster"].(map[string]any)
+	if updated["agent_image_source"] != "dockerhub" || updated["effective_agent_image"] != "gpuworks/gpuworks-agent:r1" {
+		t.Fatalf("new-entry preference migrated historical meaning: %v", updated)
 	}
 }
 
@@ -243,7 +294,7 @@ func TestABareEntryRunsTheRuntimeRevisionAcrossServerVersions(t *testing.T) {
 	for _, tc := range []struct {
 		uuid, want string
 	}{
-		{created["uuid"].(string), `image: "gpuworks/gpuworks-agent:` + kubemanifest.AgentImageRevision + `"`},
+		{created["uuid"].(string), `image: "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:` + kubemanifest.AgentImageRevision + `"`},
 		{pinned["uuid"].(string), `image: "registry.example/gpuworks-agent:mine"`},
 	} {
 		rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+tc.uuid+"/manifest", "")

@@ -9,7 +9,9 @@
 // disable and uninstall), and hands the server the evaluators to register
 // (the node insert guard, the scheduling holder, the console banners). Run
 // then starts the enabled resident plugins, in parallel and without holding
-// up the server, and tells pushed state which owners are up. A push arriving on a plugin's host connection
+// up the server, supervises the enabled on-demand ones until a call starts
+// them (Call), and tells pushed state which resident owners are up. Routes
+// is the table of plugin routes, compiled again on every change. A push arriving on a plugin's host connection
 // is applied as the package bound to that connection, with the grants of
 // the certificate it verified under and the permissions its administrator
 // approved. See docs/dev/extensions.md and ADR 0071.
@@ -24,9 +26,11 @@ import (
 	"regexp"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg"
+	"gpuworks.ai/gpuworks/internal/server/extpkg/hostsetup"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/pluginhost"
 	"gpuworks.ai/gpuworks/internal/server/pushstate"
@@ -51,13 +55,19 @@ type Config struct {
 	Packages *extpkg.Host
 	// State builds pushed state; Open fills in Packages.
 	State pushstate.Config
-	// Host builds the plugin host; Open fills in Core, State and OnState.
+	// Host builds the plugin host; Open fills in Core, State, OnState, the
+	// clock, ready and own-state services and, unless set, the handshake's
+	// Clock. Keys (derived keys) is the caller's.
 	Host pluginhost.Config
 	// Core describes this server in the handshake; Open fills in Offer
 	// from the capabilities the server offers (extpkg.Offer).
 	Core extapi.CoreInfo
 	// RequireIsolation is the site's plugins.require_isolation.
 	RequireIsolation string
+	// HostSetup are the applied host setup records a package with
+	// host_setup steps must match before its server part starts; the zero
+	// value is hostsetup.DefaultRecords.
+	HostSetup hostsetup.Records
 	// Features is the server's dynamic feature set: the keys installed
 	// packages declare, answered by pushed state. Nil declares none.
 	Features *featuregate.DynamicSet
@@ -86,8 +96,9 @@ type Bridge struct {
 	// bound when each is started.
 	pushers map[string]identity
 	// refusals are why an enabled package was not started (its data is
-	// newer than its build, or its data marker could not be read), by
-	// package id, until it is started, stopped or removed.
+	// newer than its build, its data marker could not be read, or its host
+	// setup is not applied), by package id, until it is started, stopped
+	// or removed.
 	refusals map[string]error
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
@@ -95,13 +106,22 @@ type Bridge struct {
 	// markerRetry is how long a start waits to be tried again when the
 	// package's data marker could not be read.
 	markerRetry time.Duration
+	// known are the routes each installed package last verified with, by
+	// package id, so one that breaks keeps answering them as down.
+	known map[string]knownRoutes
+
+	// routes is the route table compiled from entries on every refresh.
+	routes atomic.Pointer[RouteTable]
 }
 
 // identity is who a plugin's pushes come from, and the data its build
 // writes: bound when the plugin is started, dropped when it is stopped.
 type identity struct {
 	version string
-	pusher  pushstate.Pusher
+	// onDemand marks a build whose server part starts on its first call:
+	// its idle cycles are not reported as down and up.
+	onDemand bool
+	pusher   pushstate.Pusher
 	// stateVersion is the build's storage.state_version, 0 without
 	// storage.
 	stateVersion int
@@ -121,8 +141,11 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
+	if cfg.HostSetup.Dir == "" {
+		cfg.HostSetup = hostsetup.DefaultRecords()
+	}
 	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{},
-		markerRetry: 30 * time.Second}
+		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
@@ -147,6 +170,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	}
 	b.logFeatureClashes()
 	b.declareFeatures()
+	b.compileRoutesLocked()
 	hostCfg := cfg.Host
 	core := cfg.Core
 	core.Offer = extpkg.Offer()
@@ -155,6 +179,13 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	}
 	hostCfg.Core = func() extapi.CoreInfo { c := core; c.Offer = maps.Clone(core.Offer); return c }
 	hostCfg.State = stateHost{b}
+	hostCfg.ExtClock, hostCfg.Ready, hostCfg.OwnState = stateHost{b}, stateHost{b}, stateHost{b}
+	if hostCfg.Clock == nil {
+		hostCfg.Clock = func() extapi.Clock {
+			r := b.state.Clocks()
+			return extapi.Clock{Wall: extapi.NewTime(r.Wall), ExtClock: extapi.NewTime(r.ExtClock)}
+		}
+	}
 	hostCfg.OnState = b.onState
 	if hostCfg.Log == nil {
 		hostCfg.Log = cfg.Log.With("component", "plugins")
@@ -169,7 +200,8 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 func (b *Bridge) State() *pushstate.State { return b.state }
 
 // Run runs pushed state's writer tick, timelines and capacity selection,
-// starts every enabled resident plugin, and stops them all when ctx ends.
+// starts every enabled resident plugin (an on-demand one waits for its
+// first call), and stops them all when ctx ends.
 // Pushed state stops after the plugins, so the moment each went down is
 // persisted and a restart of the server never renews its grace. It may
 // run again after it returned.
@@ -223,8 +255,19 @@ func (b *Bridge) stopAll() {
 }
 
 // onState tells pushed state whether a plugin is up: running and degraded
-// count as up, every other state as down (ADR 0071, decision 9).
+// count as up, every other state as down (ADR 0071, decision 9). An
+// on-demand plugin is not reported either way: it may not push state, and
+// its idle cycles would otherwise write a down record each time.
 func (b *Bridge) onState(st pluginhost.Status) {
+	b.mu.Lock()
+	ident, bound := b.pushers[st.ID]
+	b.mu.Unlock()
+	if bound && ident.onDemand {
+		if st.State == pluginhost.StateRunning {
+			b.markData(st.ID)
+		}
+		return
+	}
 	if st.State.Up() {
 		b.state.OwnerUp(st.ID, st.Generation)
 		if st.State == pluginhost.StateRunning {

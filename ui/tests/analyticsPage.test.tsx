@@ -20,12 +20,13 @@ type Params = import("../src/analyticsApi.ts").AnalyticsParams;
 
 const a = locale.analytics;
 const originalAnalytics = { ...analyticsApi };
-const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments, nodeFacets: api.nodeFacets };
+const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments, nodeFacets: api.nodeFacets, apiKeys: api.apiKeys };
 
 const calls = { usage: [] as Params[], quality: [] as Params[], gpus: [] as Params[], gpuTime: [] as Params[] };
 let retention = fx.retentionView();
 
 function stub() {
+  api.apiKeys = async () => ({ items: [], total: 0 });
   for (const list of Object.values(calls)) list.length = 0;
   retention = fx.retentionView();
   api.dataRetention = (async () => retention) as typeof api.dataRetention;

@@ -148,6 +148,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/models/preview-url", a.previewURLModel)
 			r.Post("/models/register-url", a.registerURLModel)
 			r.Get("/models/{id}/logo", a.getModelLogo)
+			r.Get("/models/presence", a.modelPresence)
 			r.Get("/models/{id}", a.getModel)
 			r.With(a.managementAdmin).Delete("/models/{id}", a.deleteModel)
 			r.Patch("/models/{id}", a.updateModel)

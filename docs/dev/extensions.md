@@ -40,7 +40,7 @@ func main() {
 - `Extensions.Modules` 交给 `serve`；`migrate`、`reset-password`、`support-bundle` 与追加子命令打开数据库时也带上模块的迁移（追加子命令用 `cli.Env.OpenMaintenanceStore`）。
 - `Extensions.UI` 替换内嵌的社区版控制台，布局与 `internal/server/webui/dist` 相同；为空时服务内嵌构建。
 - `Distribution` 是该构建自己的发布通道：版本检查、通知、目录更新与升级都读它，签名索引里的版本名不符即拒绝。它的版本名必须与 `Edition` 相同，否则启动即 panic。
-- `InstallHooks` 在 `install`、`upgrade` 时依次执行，`uninstall` 时倒序执行，用于设备权限之类必须由 root 完成的主机步骤。
+- `InstallHooks` 在 `install`、`upgrade` 时依次执行，`uninstall` 时倒序执行，用于设备权限之类必须由 root 完成的主机步骤。核心自己的钩子（[主机身份](#管理-server-的主机身份)的 systemd drop-in）排在它们之前，所以安装时先执行、卸载时最后执行。钩子拿到的 `Layout.UnitDir` 只在 systemd 模式下非空，没有它时主机身份钩子什么也不做；控制台升级不执行钩子。
 
 官方构建传零值。`Edition` 与 `Distribution` 的按版本名作用域只服务分叉构建，官方发布流程不再扩展它们（ADR 0071）。
 
@@ -69,11 +69,14 @@ type Service interface{ Run(ctx context.Context) error }
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
 | `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
+| `ReapplySchedulingHoldsFor(ids)` | 同上，但只对答案变了的那些节点（按节点 id）重新应用 |
 | `NodeFleet(ctx)` | 全部节点的保持事实（`store.NodeHoldFacts`），按 id（加入顺序）排序，读池上一次查询 |
 | `NodeIdentity(ctx, ids, salt)` | 指定节点的加盐硬件身份（`store.NodeIdentity`），原始序列号不出核心，见[节点身份与节点清单](#节点身份与节点清单) |
 | `NodeInventory(ctx, cursor, limit)` | 按加入顺序分页的节点清单（`store.NodeInventoryPage`）：名称、加入时间、自己的卡（序号、型号、有无序列号） |
+| `NodeNamesByID(ctx, ids)` | 指定节点的显示名，以 id 为键（`map[uint]string`），读池上一次查询 |
+| `HostIdentity(salt)` | 管理 server 所在机器的加盐身份（`hostidentity.Salted`），见[管理 server 的主机身份](#管理-server-的主机身份) |
 
-`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`NodeFleet`、`NodeIdentity` 与 `NodeInventory` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
+`Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`ReapplySchedulingHoldsFor`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 、`NodeNamesByID` 与 `HostIdentity` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。
 
 扩展路由挂在 `/api/v1/x/<名>/` 下：`api.RouteSpec.Pattern` 相对 `/api/v1`，是 `/x/<名>` 或以 `/x/<名>/` 开头，且是规整的路径（没有 `.`、`..`、`//` 与结尾的 `/`）；越出自己的命名空间、路径不规整，或同一方法下两个模式只差参数名（`{id}` 与 `{name}`），都在路由构建时 panic。核心不在 `/api/v1/x/` 下注册任何路由，所以模块名可以与核心路径段同名（如 `nodes`），也不会与核心将来新增的路径冲突。
 
@@ -85,6 +88,7 @@ type Service interface{ Run(ctx context.Context) error }
 
 - 不阻塞、不分配内存，可以在任何 goroutine 调用，**唯独不能在钩子里**（`SchedulingHolder.Hold`、插入守卫）：一次重新应用会再问一遍所有保持者，在 `Hold` 里请求就会让全部节点不停地重新应用。钩子里同样不请求任何其他重算。
 - 请求会合并：一次重新应用等待或执行期间的任意多次请求，最多再引起一次；两次之间至少隔 2 秒，所以答案来回抖动的保持者每 2 秒最多花一次全表写事务，不会变成每个事件一次。
+- 知道答案对哪些节点变了的模块调用 `ReapplySchedulingHoldsFor(ids)`：这次重新应用只读写这些节点（`ApplySchedulingHoldsFor`，`WHERE id IN`），频繁改动少数节点的保持者因此不会每次都花一遍全表事务。它与其他请求一样合并；两次重新应用之间点名的节点超过 `holdpass.MaxScoped`（512）个时改为全部节点，有人请求全部节点时也是全部节点。推送状态（插件推送的节点保持表）走这条路，只有容量上限变了才请求全部节点。
 - 重新应用在模块的 `Service` 所在的同一个 `services()` 循环里执行，不占调用方的 goroutine，随 server 停止；失败时记错误日志，从 2 秒起加倍退避（最长一分钟）重试。没有注册保持者时什么也不做。
 
 答案取决于整个节点集合的保持者（例如按加入顺序挑选节点），用下面两样了解集合，而不是在 `Hold` 里记下见过的节点：
@@ -116,7 +120,19 @@ type Service interface{ Run(ctx context.Context) error }
   - 部分答复：agent 还没上报主机 UUID 时 `Host` 是零值（`Known()` 为假）；不存在的节点（从未有过或已删除）不出现在结果里，调用方比对 id；重复的 id 只算一次。
   - `ids` 为 1 到 500 个节点，否则返回 `store.ErrNodeReadBatch`；盐为 1 到 256 字节，否则返回 `store.ErrIdentitySalt`。越界的调用被拒绝，不会被截断。
 - `NodeInventory(ctx, cursor, limit)` 按 id（加入顺序）返回一页 `store.NodeInventoryPage{Nodes, Next}`：每个节点的 id、UUID、显示名（运维起的名字，否则主机名）、加入时间、`HostReported`（主机 UUID 是否已知），以及本节点可用的卡 `{Index, Model, Serial}`，不含任何原始序列号。第一页 `cursor` 为 0，之后传上一页的 `Next`；`Next` 为 0 表示已是最后一页。`limit` 为 1 到 500，否则 `store.ErrNodeReadBatch`。节点 id 不复用，所以翻页之间加入或删除的节点不会让其余节点移位或重复。
-- 规模：两者都是钉住的读，在读池上各两次带索引的查询（节点按主键查找或按主键范围、卡走 `gpus` 的 `(node_id, ident)` 索引），一次最多 500 个节点。按页面上显示的节点调用 `NodeIdentity`，不要在每个事件里对整个节点集合调用。身份的变化（新的主机 UUID、换卡）不在 `store.NodeFleetTopic` 上发布；需要跟上它的模块在读页面时重新读。
+- `NodeNamesByID(ctx, ids)` 返回每个仍存在的指定节点的显示名（运维起的名字，否则主机名），以 id 为键；不存在的节点（从未有过或已删除）不在结果里，重复的 id 只算一次。只为少数节点打标签时用它，不必翻 `NodeInventory`。`ids` 为空时返回空 map、不查询；去重后超过 500 个返回 `store.ErrNodeReadBatch`，不会被截断。它是读池上一次按主键的查询。
+- 规模：`NodeIdentity` 与 `NodeInventory`都是钉住的读，在读池上各两次带索引的查询（节点按主键查找或按主键范围、卡走 `gpus` 的 `(node_id, ident)` 索引），一次最多 500 个节点。按页面上显示的节点调用 `NodeIdentity`，不要在每个事件里对整个节点集合调用。身份的变化（新的主机 UUID、换卡）不在 `store.NodeFleetTopic` 上发布；需要跟上它的模块在读页面时重新读。
+- 插件：已安装的插件经宿主接口读同样的两项（`POST /host/v1/node-identity`、`GET /host/v1/nodes`，线上格式见[插件协议](../reference/plugin-protocol.md#节点读取)），需要 `read:node_identity` / `read:node_inventory` 权限与 `host.node_identity@1` / `host.nodes@1` 能力。插件的盐由 `pluginhost.IdentityKey` 绑定到包 id（`"pkg\0"+id+"\0"+盐` 作为 HMAC 密钥，盐至多 219 字节），所以两个包用同一个盐得到不同的 `H`，同一个包在不同的 server 上得到相同的 `H`；不加盐的 `Tail` 对所有调用方相同，仍允许跨包的弱关联。`app.PluginReads` 把 store 的结果转成线上对象，名称与型号超过 255 字节时按字符边界截断。
+
+### 管理 server 的主机身份
+
+`HostIdentity(salt)` 返回 server 自己这台机器的加盐身份 `hostidentity.Salted{SystemUUID, BoardSerial, MachineID, RootFSUUID}`，每一项是 `hwident.IdentityPart`（与节点身份同一种摘要与尾部，读不到时为零值）。系统 UUID 按节点 `Host` 的同一种类（`hwident.KindHost`）做摘要，所以同一个盐下它等于运行在 server 这台机器上的节点的 `Host.H`。盐为 1 到 256 字节，否则 `store.ErrIdentitySalt`。事实每个进程只读一次（`hostidentity.Local`）。
+
+- 来源（`internal/server/hostidentity`）：Linux 上读 `/sys/class/dmi/id/product_uuid`、`board_serial`、`/etc/machine-id`，并按 `/proc/self/mountinfo` 与 `/dev/disk/by-uuid` 找出 `/` 的文件系统 UUID；macOS 上用 `ioreg` 读 `IOPlatformUUID` 与整机序列号。空值、固件占位值、全 0 或全 F 视为未知。
+- 内核只让 root 读系统 UUID 与主板序列号，而 server 以服务账户运行：核心安装钩子在 systemd 模式下（以 root 运行的命令行 `install`、`upgrade`；控制台升级不执行安装钩子，独立运行模式下钩子拿到的 `Layout.UnitDir` 为空）写 systemd drop-in，让 systemd 每次启动前以 root 执行 [`gpuworks host-identity`](../reference/cli.md#gpuworks-host-identity)，把这两项写进 `/run/gpuworks/host-identity.json`（`root:<服务组>`，0440，所在目录 root 所有、0755）。`hostidentity.Load` 只用这个文件补自己读不到的这两项，直接读到的值永远优先，`MachineID` 与 `RootFSUUID` 只来自直接读取；文件缺失、超过 4 KiB 或不合格式时什么也不补。`/run` 是内存文件系统，把数据目录拷到另一台机器不会带走原来那台的身份。
+- root 启动前步骤只执行单元目录中受保护的 `host-identity-exec`，不执行服务账户可写的主程序。命令行安装/升级从正在运行的安装器映像发布副本并检查整个路径的所有者、权限和 ACL；控制台升级保留既有副本。副本写出的身份文件格式必须与后续 server 版本保持兼容。
+- 插件经宿主接口 `POST /host/v1/host-identity` 读同样的事实（线上格式见[插件协议](../reference/plugin-protocol.md#主机身份)），需要 `read:host_identity` 权限与 `host.host_identity@1` 能力；盐与节点读取一样由 `pluginhost.IdentityKey` 绑定到包 id。
+- 诊断信息收集（控制台与 `gpuworks support-bundle`）带上 `server/host-identity.json`：用固定的密钥 `core\0support_bundle` 加盐的同一组事实，所以同一台机器在不同的收集里摘要相同，原始值不进压缩包。
 
 ## 表与迁移
 
@@ -136,7 +152,7 @@ type Service interface{ Run(ctx context.Context) error }
 | 钩子 | 在哪里被调用 | 频率 |
 |---|---|---|
 | `NodeEnrollmentGuard` | 三条节点插入路径（`CreateNodePending`、`EnrollKubeNode`、`RegisterNode`）的写事务内 | 每次插入新节点 |
-| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与每次 `ApplySchedulingHolds`（含模块请求的重新应用）时对全部节点 | 每节点每次上报 |
+| `SchedulingHolder.Hold` | 每次状态上报与调度变更的写事务内；启动时与每次 `ApplySchedulingHolds`（含模块请求的重新应用）时对全部节点，`ApplySchedulingHoldsFor` 时对点名的节点 | 每节点每次上报 |
 | `featuregate.Source.Availability` | 扩展路由的每个请求、每次控制台清单请求 | 每请求 |
 | `BannerSource.Banners` | 每次控制台清单请求 | 每请求 |
 | `Service.Run` | 后台循环 | 常驻 |
@@ -161,7 +177,7 @@ type Service interface{ Run(ctx context.Context) error }
 - 扩展路由（`api.RouteSpec`）要么指明 `Feature`，要么标记 `Community`，二者必居其一；路由清单（`api.RouteInventory`）打印每条扩展路由的访问级别、动作与功能。
 - 完整：放行。只读：放行读，以及标记 `WriteWhenReadOnly` 的写（只做删除或放宽的写）；其他写返回 403 `FEATURE_READ_ONLY`。锁定：403 `FEATURE_UNAVAILABLE`。隐藏，或声明为隐藏呈现的功能被锁定：404。功能来源给了自己的说明时，返回它的码。
 - 没有模块提供功能来源时，所有声明过的功能都是锁定（`FEATURE_PROVIDER_ABSENT`）。
-- 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。
+- 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。核心代码不以字面量点名功能键：交给功能门的键形字面量、`featuregate.Key("…")` 转换、赋给 `featuregate.Key` 常量的字面量、功能声明的 `Key: "…"`（`featuregate.Feature{Key: …}`）与路由的 `Feature: "…"`，在非测试代码里由架构预算 `feature_key_literals_in_core`（上限 0）守护。
 - 扩展 GET 路由默认不给 AI 助手与 MCP 读，除非标记 `AIReadable`。
 
 控制台按 `GET /api/v1/console/manifest` 渲染（字段见 [API 参考](../reference/api.md)），自己不推导可用性：完整照常显示；只读时组件收到 `readOnly`；锁定时菜单项带锁，页面显示锁定页和服务端给的链接；隐藏或清单里没有的功能键，什么都不显示。
@@ -222,7 +238,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 2. 用这份包清单读入全部推送表（见下文「推送状态」），在 server 接受第一个请求之前、任何插件启动之前生效。
 3. 把已安装的包声明的功能键放进动态集合（与编译模块的键冲突时记日志并留给模块），注册钩子。
 
-模块的服务（随 server 的其他后台循环运行）先启动推送状态的写入 tick、时间线与容量选择，再并行启动每个已启用、有 `resident` 服务端部分的包，不阻塞 `serve`；启动前只重新哈希变过的文件。插件的进程状态经监管回调推送状态：`running`、`degraded` 算在线，其余都算掉线。server 停止时先停插件，再停推送状态，所以每个插件掉线的时刻都被持久化，重启不会续期宽限。
+模块的服务（随 server 的其他后台循环运行）先启动推送状态的写入 tick、时间线与容量选择，再并行启动每个已启用、有 `resident` 服务端部分的包，不阻塞 `serve`；已启用的 `on_demand` 包交给监管、处于 `idle`，第一次调用时才启动。启动前只重新哈希变过的文件。`resident` 插件的进程状态经监管回调推送状态：`running`、`degraded` 算在线，其余都算掉线；`on_demand` 插件不推送状态，它的状态不报给推送状态，空闲停下再启动的循环也就不写掉线记录。server 停止时先停插件，再停推送状态，所以每个插件掉线的时刻都被持久化，重启不会续期宽限。
 
 推送方身份来自启动它时校验通过的包：监管为每个进程编号（全局递增的代数），宿主接口的推送按这条连接所属的包认定，带证书授予（含 `server.yaml` 为主机信任的签发者配置的权威）、管理员批准的权限、清单的码和这个进程的代数；连接所属的包已被替换或换了版本时推送被拒（`PLUGIN_STATE_CONNECTION_REPLACED`）。核心提供首批五种表的能力 `table.<种类>@1`，包的 `requires` 据此校验，插件握手时也据此协商。
 
@@ -243,7 +259,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 | `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
 | `DELETE /api/v1/plugins/{id}?purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据一起移到 `.trash/`），在一次提交里删掉它推送的全部内容并重新应用保持；重试能完成一半失败的卸载 |
 
-每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不运行时是 `disabled`、`installed`（没有 `resident` 服务端部分）、`idle`（`on_demand`）、`broken`（不再通过校验）或 `revoked`；运行时是监管的进程状态。字段见 [API 参考](../reference/api.md)。
+每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何。列表里的状态：服务端部分不能运行时是 `disabled`、`installed`（没有服务端部分）、`broken`（不再通过校验）、`revoked` 或 `needs_host_setup`（见[主机配置](#主机配置)）；其余是监管的进程状态（`on_demand` 包空闲时是 `idle`）。字段见 [API 参考](../reference/api.md)。
 
 ### 本地管理员兜底
 
@@ -257,11 +273,10 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 
 ### 尚未实现
 
-- 插件路由在 `/api/v1/x/<id>/` 下的动态挂载、`on_demand` 插件的按需启动、宿主接口里状态与健康之外的端点。
+- 插件路由在 `/api/v1/x/<id>/` 下的动态挂载（下文「调用与路由表」的路由表已经编译，还没有路由用它）、宿主接口里状态与健康之外的端点。
 - 覆盖的管理路由（`State.Override` 已实现）、卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级时的批准差异与自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback`、`clock reset` 子命令。
-- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、没有 cgroup 时的 RSS 看门狗、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
-- 核心代码功能键字面量的棘轮。
-- 清单词汇里除 `table.<种类>` 以外的能力都还不提供：读取面（`host.*`）、`host.derive_key`、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）、`ui.bundle` 与 `host.setup`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
+- 站点的宽限上限设置（`pushstate.Config.MaxDownGrace` 已实现，`server.yaml` 还没有对应的键）、HTTP/2 窗口耗尽的卡死检测、高可用下只在 leader 上运行插件。
+- 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.clock`、`host.state_read`、`host.derive_key` 与 `host.setup`（[主机配置](#主机配置)）以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、`routes` 与 WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 
 ### 跳板：`gpuworks plugin-exec`
 
@@ -275,10 +290,14 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | 资源 | `RLIMIT_CORE=0`、`RLIMIT_NOFILE=4096`、nice 5；`RLIMIT_NPROC` 按用户计数，插件与 server 同一用户时不设，进程数由 cgroup 的 `pids.max` 限制 | 同左（无 cgroup） |
 | 描述符 | fd 3、4 必须是 socket；stdin、stdout 指向 `/dev/null`；stderr 是日志 | 同左 |
 | 环境变量 | 只保留 `PATH`、`TZ`、代理与 CA 变量，另设 `HOME`=数据目录、`TMPDIR`、`LANG=C.UTF-8` 与 `GWX_*`；代理变量原样传入，代理 URL 里的用户名密码因此也交给每个插件，代理凭据应只授予插件也可以用的权限 | 同左 |
-| cgroup | server 的 cgroup 已委派（`subtree_control` 可写）时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`、`memory.high`、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动 | — |
-| Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，批准的设备节点读写；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
+| cgroup | server 的 cgroup 已委派时建 `<服务 cgroup>/plugins/<id>`，写 `memory.max`（`mem_mib`）、`memory.high`（其 90%）、`cpu.weight=50`、`pids.max=512` 并迁入；做不到只告警，插件照常启动，由 RSS 看门狗限制内存（见[监管](#监管)） | — |
+| Landlock | ABI ≥ 1：包目录可读可执行，数据与 tmp 目录全部权限，CA、`resolv.conf`、`hosts`、时区只读，清单 `devices` 里的设备节点读写；[主机配置](#主机配置)已应用时另授设备目录下节点的读写、ioctl 与列目录，以及设备发现要读的 sysfs 与 udev 路径；ABI ≥ 6 另禁止向域外进程发信号（server 与其他插件） | 无 |
+
+server 的 cgroup 算作已委派，要求 cgroup v2、`cgroup.subtree_control` 可写，并且满足其一：systemd 在该 cgroup 上标了委派属性（`user.delegate` 或 `trusted.delegate`，systemd 251 起），或 server 以非 root 用户运行在自己的单元 `gpuworks.service` 的 cgroup 里（systemd 只在 `Delegate=yes` 时把单元的 cgroup 交给 `User=`）。root 能写任何 cgroup，桌面会话的 scope 也归其用户所有，所以光是可写不算委派。`gpuworks install` 写的单元带 `Delegate=yes`（[安装布局](../reference/install-layout.md#systemd-单元)）。已委派时，server 启动插件宿主前先把自己迁进 `<服务 cgroup>/server`：cgroup v2 只允许没有进程的 cgroup 给子 cgroup 开控制器。插件停止或卸载时删除它的 cgroup 目录，插件绕开进程组留下的进程经 `cgroup.kill` 一并结束。插件运行后，server 核对它确实在自己的 cgroup 里、且内存控制器已启用，才算有 cgroup，否则改用 RSS 看门狗。
 
 要求 Landlock 的包（证书 `min_isolation: landlock`）在没有 Landlock 的主机上不启动：跳板以退出码 78 退出并在 stderr 写出 `PLUGIN_ISOLATION_UNAVAILABLE`。跳板自己的其他退出码：64 命令行有误，71 施加沙箱失败，127 无法执行插件。
+
+`internal/testenv/extplugin` 里验证 Landlock 的用例（插件读不到 `master.key` 与包外路径；Landlock ABI 6 及以上还验证不能向兄弟进程发信号）在进程无法使用 Landlock 时，普通测试会跳过。`make test-plugin-landlock` 则以 `GPUWORKS_TEST_STRICT=1` 运行四个指定用例，要求每项明确报告 PASS，且不得有 SKIP；无法使用 Landlock 会失败。CI 的必跑任务 `core-plugin-sandbox` 使用带有 `gpuworks-l3` 与 `gpuworks-plugin-sandbox` 两个标签的专用 runner，在默认 seccomp 配置和非 root Go 容器中运行此门禁（普通 L3 runner 池包含不支持 Landlock 的旧内核），不改变 L2/L3 或生产插件的隔离策略。无论成功失败，任务都保存内核版本、可见的 Seccomp/NoNewPrivs 状态与完整测试日志；测试还记录 ABI 探测的原始返回值和 errno，供区分内核能力与过滤策略问题，不能仅凭“Landlock 不可用”认定具体原因。
 
 ### 监管
 
@@ -291,19 +310,48 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 | 崩溃重启 | 1 秒起翻倍，最长 5 分钟；连续健康运行 10 分钟后重新从 1 秒算 |
 | 崩溃循环 | 10 分钟内崩溃 5 次进入 `crashloop`（`PLUGIN_CRASHLOOP`），之后每 5 分钟重试一次，无人值守的离线站点能自己恢复 |
 | 停止 | `POST /gwx/v1/shutdown`，10 秒后向进程组发 SIGTERM，再 5 秒 SIGKILL |
-| 调用并发 | 每个插件同时至多 `max_concurrency`（默认 8）个调用，满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
-| 无截止时间的调用 | 60 秒 |
+| 内存 | 有自己 cgroup 的插件由 `memory.max` 限制；没有的由 RSS 看门狗每 10 秒汇总插件整个进程组的常驻内存（Linux 读 `/proc/<pid>/stat`，macOS 用 `ps`），超过 1.5 × `mem_mib`（默认 128 MiB）就向进程组发 SIGKILL 并按崩溃重启（`PLUGIN_MEMORY_EXCEEDED`）；读不到内存只记一条告警，不停插件。自己另起进程组或会话的子进程不计入 |
+| 调用并发 | 普通调用与流式调用各一个名额池，每个池至多 `max_concurrency`（默认 8）个；其中四分之一（至少 1 个，只有 1 个名额时不留）留给管理员调用；满了立即回 `PLUGIN_BUSY`，不排队；健康探测不占名额 |
+| 无截止时间的调用 | 60 秒；`on_demand` 插件的冷启动也算在这个时间里 |
 | stderr | 转发到 server 日志并带 `plugin=<id>`，JSON 行保留级别；每秒 50 行、突发 500 行，超出的计数后告警；最近 1 MiB 保留供诊断 |
 
-`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动，空闲 10 分钟后停止，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）；安装与重新校验时，持有 `push:` 权限或声明功能的 `on_demand` 包同样以这个码拒绝。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+`resident` 插件在加入后立即启动；`on_demand` 插件在第一次调用时启动（同时到达的调用只拉起一次，都等它就绪），空闲 10 分钟后停止（停止前先在同一步里拒收新调用，赶上这一刻的调用等下一次启动，不会被拒），崩溃循环时调用立即被拒，且不能推送状态（`PLUGIN_STATE_ON_DEMAND`）；安装与重新校验时，持有 `push:` 权限或声明功能的 `on_demand` 包同样以这个码拒绝。状态只有 `running` 与 `degraded` 算在线，其余（`starting`、`backoff`、`crashloop`、`stopping`、`stopped`、`idle`、`failed`）都算掉线；这只对 `resident` 插件报给推送状态。插件以不可重试的理由拒绝握手（如 `PLUGIN_CAPABILITY_MISSING`）、应答属于别的构建（`PLUGIN_HANDSHAKE_MISMATCH`）或选了未提供、未批准的能力版本（`PLUGIN_CAPABILITY_NOT_OFFERED`）时进入 `failed`，不再重启，直到再次启动。
+
+### 调用与路由表
+
+插件宿主模块经 `Bridge.Call` 调用插件（目前还没有路由或服务用它）。只有已安装、已启用、通过校验且有服务端部分的包会被调用；其余在启动任何进程之前就被拒：未安装回 `PLUGIN_NOT_INSTALLED`，否则回 `PLUGIN_UNAVAILABLE`，参数带包的状态（`disabled`、`broken`、`revoked`、`installed`，启动被拒时为 `failed`）。调用方给出调用的类别：管理员调用（`admin`、`admin_session` 路由）可以用保留的名额，流式调用用流式名额池。调用失败分四类，调用方据此决定能否重试：
+
+| 码 | 何时 | 能否重试 |
+|---|---|---|
+| `PLUGIN_UNAVAILABLE{plugin, state}` | 请求没到插件：没在监管（`state` 为 `stopped`）、没在运行、崩溃循环，或连接在请求头写出之前就断了。`state` 只给程序用，文案不插它（推送状态的降级横幅用同一个码，只带 `plugin` 与 `feature`） | 能 |
+| `PLUGIN_BUSY{id, limit}` | 调用类别能用的名额都满了；`limit` 是拒绝这次调用的上限：管理员调用为池的大小，其余调用为池的大小减去保留名额 | 稍后能 |
+| `PLUGIN_TIMEOUT{id, timeout_s, state}` | 截止时间到了：`state` 为 `starting` 表示 `on_demand` 插件还在冷启动，`running` 表示插件在处理 | 视调用而定 |
+| `PLUGIN_ROUTE_FAILED{id}` | 插件已经拿到请求后调用失败（崩溃、断开），请求可能已部分生效 | 不能 |
+
+请求头写出之后才失败的写入算作已送达，宁可报「可能已部分生效」也不让调用方盲目重试。插件自己的拒绝是正常的应答。
+
+路由表由已安装包的清单编译：已启用且通过校验的包，它的路由照常服务；停用的包没有路由（404，也不进路由清单），即使它同时被吊销或不再通过校验；被吊销的包，以及不再通过校验、但同一版本此前校验通过过的包，路由仍在，回 503 `PLUGIN_UNAVAILABLE`，不调用插件（启动时就坏了的包在重新通过校验之前没有路由）。每次安装、启用、停用、卸载或重新校验之后整表重编并原子替换；匹配不加锁，按路径段逐级查找，字面段优先于 `{name}` 参数段，只为参数分配一次；请求一直用它开始时取到的那张表。
+
+### 主机配置
+
+插件永不以 root 运行；需要 root 的主机步骤只来自清单封闭的 `host_setup` 词汇（目前只有 `usb_device`），由核心渲染（`internal/server/extpkg/hostsetup`，只依赖 `pkg/extapi`），规则见[插件协议](../reference/plugin-protocol.md#主机配置hostsetup1)。
+
+- **谁执行。** `sudo gpuworks plugin host-setup [--id ID | --prune]`（[CLI 参考](../reference/cli.md#gpuworks-plugin)）；`gpuworks install`、`upgrade` 与 `uninstall` 的核心安装钩子在主机上有包声明主机步骤、或已有本功能写的文件时也执行：安装与升级应用全部已安装包的步骤并清掉不再需要的，卸载全部删除（设备组保留）。没有这类包的主机上钩子不加入，安装流程与之前完全一样。
+- **顺序。** 建组（`plugin host-setup` 还把服务账号加进组；安装钩子不改账号，把组写进服务单元的 `SupplementaryGroups=`）→ 写规则文件 → `udevadm control --reload-rules` 与 `udevadm trigger --action=change`（usb、hidraw）→ 最后写记录。中途失败就没有记录，包继续等待，下次执行重做；什么都没变时不执行任何命令。
+- **记录。** `/etc/gpuworks/plugins/<id>.applied` 属主 root、0644，内容是步骤摘要（不是批准值：只改权限的升级不需要再执行 root 步骤）。`control.json` 由服务账号拥有，所以不在那里记录；server 只认 root 所有、组与其他用户不可写的记录。
+- **启动门。** 包有主机步骤而记录缺失或不一致时，插件宿主不拉起它：状态 `needs_host_setup`，`PLUGIN_HOST_SETUP_REQUIRED{id, command}`。执行命令后在该状态下提供的「启用」重新检查记录并启动它，重启 server 也一样；升级改了步骤又回到 `needs_host_setup`。记录一致时才把设备目录与读取路径写进沙箱。
+- **边界。** 设备插上后才出现、名字事先不知道（`/dev/hidrawN`、`/dev/bus/usb/<总线>/<设备>`），所以沙箱授予目录 `/dev` 而不是节点；设备之间的边界是文件权限：规则只把匹配设备的节点设为组 `gpuworks-usb`、0660，其他节点保持自己的属主与模式。所以这个授予覆盖服务账号本来就能打开的 `/dev` 下每个节点，不只是匹配的 USB 设备：插件以服务账号运行，默认 0666 的节点（如 `/dev/nvidia*`、`/dev/fuse`、部分 `/dev/dri/renderD*`）以及 `/dev/shm`、`/dev/mqueue` 里已有的文件它都能打开；hidraw 节点直接在 `/dev` 下，Landlock 无法收窄到目录以下。不建符号链接，因为 Landlock 检查的是路径解析到的 inode，链接什么也不多授。`TestDeviceDirGrantsNodesCreatedLater` 证明：沙箱生效后在授予目录里新建的节点能打开，授予目录之外指向它的符号链接也能打开，兄弟目录里的节点 `EACCES`。
+- **其他平台。** macOS 没有 udev 与 Landlock 设备规则，声明主机步骤的包安装时以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝。
+- **每台主机一个安装。** 规则文件与记录在全机路径、只按包 id 命名，`install`、`upgrade`、`uninstall` 与 `--prune` 会删掉同机另一个安装写的文件（见[安装布局](../reference/install-layout.md)）。
+- **卸载。** 规则文件与记录属于 root，离线 `gpuworks plugin uninstall` 删不掉，留着时打印 `sudo gpuworks plugin host-setup --prune`。
 
 ### gwx/1 连接与宿主接口
 
-每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`）。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
+每个插件有两对 socketpair。fd 3 上 server 是 HTTP/2 客户端：先 `initialize`（server 的能力、批准的授权、已持有的表、每次拉起新生成的主体密钥），核对应答的 `id`、`version`、`manifest_sha256` 与包一致、`use` 落在提供且批准的范围内，然后探测健康、转发路由与服务调用，每个调用带 `Gwx-Deadline-Ms`。fd 4 上 server 提供宿主接口：`PUT`/`PATCH /host/v1/state/{kind}` 交给推送状态的实现（一个接口），`GET /host/v1/health`，以及读取 `POST /host/v1/node-identity`、`GET /host/v1/nodes`、`POST /host/v1/host-identity`（`pluginhost.Reads`，由 app 以 store 与本机的主机身份实现；没有 `Reads` 时回 `PLUGIN_HOST_ROUTE_UNKNOWN`，未批准的权限回 `PLUGIN_HOST_NOT_PERMITTED`，未协商的能力回 `PLUGIN_CAPABILITY_NOT_OFFERED`，越界参数回 `PLUGIN_HOST_ARGUMENT_INVALID`），以及时钟、就绪、自有状态与派生密钥（`GET /host/v1/meta`、`POST /host/v1/clock/correct`、`POST /host/v1/state/ready`、`GET /host/v1/state/{kind}`、`POST /host/v1/derive-key`，各自需要的能力、角色与权限见[插件协议](../reference/plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)，由 `pluginbridge` 接到推送状态、由 `app` 从主密钥派生）；每个插件每秒 20 次、突发 100 次（`PLUGIN_HOST_RATE_LIMITED`），节点清单另有每秒 2 页、突发 4 页的桶。所有者是这条连接在握手时绑定的包，推送里没有任何身份字段；握手被接受之前到达的推送等待握手结果，握手失败即回 `PLUGIN_HOST_NOT_READY`。
 
 ### 插件 SDK：`pkg/pluginsdk`
 
-插件作者用 `pkg/pluginsdk`（与 `pkg/extapi` 一样是独立模块，只依赖标准库与 `pkg/extapi`）：`pluginsdk.Main(cfg)` 打开两个描述符、回答握手（协议与能力协商，拒绝时用 `PLUGIN_PROTOCOL_UNSUPPORTED` 或 `PLUGIN_CAPABILITY_MISSING`）、在握手被接受后运行 `Start`、回答健康、把其他调用交给插件的 `http.Handler`；收到 `shutdown`、server 一端关闭或父进程不在时退出。`PushState` 跳过 server 已持有且摘要相同的表，推送的代数取 `max(自己的计数, 持有的代数)+1`，所以存储被恢复或清空的插件不会因代数过期被拒。`pkg/pluginsdk/plugintest` 在进程内用真实 socketpair 扮演 server，供插件自己的测试使用。
+插件作者用 `pkg/pluginsdk`（与 `pkg/extapi` 一样是独立模块，只依赖标准库与 `pkg/extapi`）：`pluginsdk.Main(cfg)` 打开两个描述符、回答握手（协议与能力协商，拒绝时用 `PLUGIN_PROTOCOL_UNSUPPORTED` 或 `PLUGIN_CAPABILITY_MISSING`）、在握手被接受后运行 `Start`、回答健康、把其他调用交给插件的 `http.Handler`；收到 `shutdown`、server 一端关闭或父进程不在时退出。`PushState` 跳过 server 已持有且摘要相同的表，推送的代数取 `max(自己的计数, 持有的代数)+1`，所以存储被恢复或清空的插件不会因代数过期被拒。`Meta`、`CorrectClock`、`Ready`、`PushedState` 与 `DeriveKey` 对应上述宿主接口调用，握手没协商其能力时直接返回 `ErrNotNegotiated`。`pkg/pluginsdk/plugintest` 在进程内用真实 socketpair 扮演 server，供插件自己的测试使用；它按与 server 相同的码、理由与参数拒绝这些调用，派生密钥用固定的测试主密钥。
 
 ### 推送状态
 
@@ -312,9 +360,9 @@ server 用自己的二进制拉起每个插件：`gpuworks plugin-exec --profile
 - **接收**：`State.Push` 接收监管按连接认定的推送方身份（包 id、发布者、证书授予、批准的权限、清单的码、进程代数）和一份推送。`availability` 的每一行只接受该键的权威（`gate: authority` 时为声明它的发布者证书写明的 `authority_id`，`gate: self` 时为声明它的包），无前缀的键只接受项目发布者的包；`fleet_capacity` 要证书授予该特权表，`attestations` 要推送方是自己命名空间的权威，其余要批准的 `push:<种类>`；通知的码必须列在包的清单里。代数不高于已持有或待提交的被拒（`PLUGIN_STATE_STALE`）；被替换的进程的连接也被拒（`PLUGIN_STATE_CONNECTION_REPLACED`）。
 - **写入**：待写推送按所有者与种类合并（后到的取代先到的，先到的收到 `superseded_by`），每个 tick（至多 1 Hz）把全部所有者的改动放进一个写事务，再替换一个快照指针；写入失败则什么都不生效（`PLUGIN_STATE_NOT_SAVED`）。持久化用核心迁移建立的 `pstate_*` 带类型表：时间线是步骤行，通知是码列加带类型的参数行，没有 JSON 列；只用于显示的 `display` 不保存。按条目（功能键、节点 id、横幅 id、证明名）写差量。
 - **启动**：启动时在任何插件起来之前读入全部推送表；版本标记（`pstate.<种类>`）比本构建新则以 `PLUGIN_STATE_TOO_NEW` 拒绝启动，存储的限制解不开则拒绝启动而不放松，存储的授权解不开则略过（视为缺席）。
-- **执行**：功能来源、节点插入守卫、调度保持者（来源 `plugins`）与横幅各是一次原子读加查表，零分配。没有包作答的键为 `locked`，带 `FEATURE_PROVIDER_ABSENT`。`app.NewPushedStateHooks` 把它们适配成 `Host` 的钩子类型。
-- **时间**：时间线按 extclock（`max(墙钟, 高水位)`）在各自的时刻生效，插件死了也一样；高水位每分钟和关机时保存。`State.CorrectClock` 一次至多移动 366 天，回调审计并显示管理员横幅；步骤不被消耗，所以往回校正会让之后的步骤重新未生效。
-- **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能调低）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
+- **执行**：功能来源、节点插入守卫、调度保持者（来源 `plugins`）与横幅各是一次原子读加查表，零分配。没有包作答的键为 `locked`，带 `FEATURE_PROVIDER_ABSENT`。四者都是接口 `pushstate.Evaluator` 的方法，`app.NewPushedStateHooks` 只经这个接口把它们适配成 `Host` 的钩子类型；`TestHooksDoNotAllocate` 逐个方法测分配，`TestEveryEvaluatorIsMeasured` 用反射读出接口的全部方法，核对每个都有用例，新增的热路径应答因此不会漏测。
+- **时间**：时间线按 extclock（`max(墙钟, 高水位)`）在各自的时刻生效，插件死了也一样；高水位每分钟和关机时保存。`State.CorrectClock` 一次至多移动 366 天，回调审计并显示管理员横幅；步骤不被消耗，所以往回校正会让之后的步骤重新未生效。持有根授予的 `clock_authority` 角色的插件经宿主接口 `POST /host/v1/clock/correct` 走同一条路径（见[插件协议](../reference/plugin-protocol.md#宿主接口的时钟就绪自有状态与派生密钥)），`GET /host/v1/meta` 读墙钟、extclock 与已保存的高水位。
+- **掉线**：`State.OwnerDown` 记下持久化的掉线起点（重启不续期），授权在宽限（默认 1 小时，插件可推 60 秒到 24 小时，站点只能调低）加 2 分钟启动延长（每段掉线都加，运行中崩溃的插件也一样，以免区分启动与运行中掉线；进程调用过 `POST /host/v1/state/ready` 的，`State.Ready` 让它之后的掉线不再加启动延长，这个标记不持久化，从不改动掉线起点）之后降为 `min(当前, down_access)`，带 `PLUGIN_UNAVAILABLE`；限制永不失效。已安装但不再通过校验的包保留限制与横幅，只丢弃授权。
 - **覆盖与卸载**：`State.Override` 对限制类条目（一个节点保持，或一项容量上限）只能放松，持久化，绑定所有者的代数；所有者再推同一条目时被取代并回调。`State.Uninstall` 在一次提交里删掉所有者的全部行，并请求一次保持的重新应用。
 - **容量选择**：`fleet_capacity` 给上限和可选的优先保留节点 `keep`（多个所有者取并集），选哪些节点由核心决定：`keep` 里的节点在前，其余按接入顺序（`internal/server/fleetcap`，满了以后排在后面的节点一律保持），`keep` 一变也会重新选择；它在节点集合主题的变化后合并读一次节点列表（间隔至少 2 秒），插件掉线时加入的节点同样按这条规则放置。还没放置的节点只有计入它会超过上限时才保持；上限一变（包括所有者被卸载），选择都会请求一次保持的重新应用，这样的节点也随之释放。
 

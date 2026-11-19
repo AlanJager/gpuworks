@@ -18,7 +18,7 @@ func testHostConn(t *testing.T, state StateHost, lifecycle string) *hostConn {
 	t.Helper()
 	spec := testSpec(t, "acme_backup")
 	spec.Lifecycle = lifecycle
-	return newHostConn(&spec, state, slog.New(slog.DiscardHandler))
+	return newHostConn(&spec, state, nil, slog.New(slog.DiscardHandler))
 }
 
 func owner() Owner {
@@ -94,7 +94,7 @@ func TestHostAPIAnswers(t *testing.T) {
 		{"malformed", http.MethodPut, extapi.PathHostState + "banners", `{"kind":`, 400, extapi.ErrorWireMalformed},
 		{"unknown field", http.MethodPut, extapi.PathHostState + "banners", `{"body":{},"generation":1,"kind":"banners","schema":1,"owner":"x"}`, 400, extapi.ErrorWireUnknownField},
 		{"unknown route", http.MethodGet, "/host/v1/directory/users", "", 404, messages.ErrorPluginHostRouteUnknown},
-		{"wrong method", http.MethodGet, extapi.PathHostState + "banners", "", 501, messages.ErrorPluginHostRouteUnknown},
+		{"wrong method", http.MethodDelete, extapi.PathHostState + "banners", "", 501, messages.ErrorPluginHostRouteUnknown},
 		{"wrong health method", http.MethodPost, extapi.PathHostHealth, "", 501, messages.ErrorPluginHostRouteUnknown},
 	}
 	for _, tc := range cases {

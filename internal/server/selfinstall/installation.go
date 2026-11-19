@@ -47,6 +47,9 @@ var ErrNotInstalled = errors.New("no gpuworks installation found")
 
 // readInstallation loads the installation in the layout's directory.
 func (i *Installer) readInstallation(ctx context.Context) (installation, error) {
+	if _, err := i.layout.sharedConfig(); err != nil {
+		return installation{}, err
+	}
 	inst := installation{Mode: ModeNohup}
 	cfg, err := serverconfig.Load(i.layout.ConfigPath())
 	if errors.Is(err, os.ErrNotExist) {

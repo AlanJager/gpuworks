@@ -33,6 +33,7 @@ export default function NodeDetailDrawer({
   initialTab,
   highlight,
   upgradePhase,
+  isAdmin,
   onUpgrade,
   onClose,
 }: {
@@ -41,6 +42,7 @@ export default function NodeDetailDrawer({
   initialTab?: NodeDetailTab;
   highlight?: TopoHighlight;
   upgradePhase?: UpgradePhase;
+  isAdmin: boolean;
   onUpgrade: (node: Node) => void;
   onClose: () => void;
 }) {
@@ -139,7 +141,7 @@ export default function NodeDetailDrawer({
               {doctor ? t("doctorChecks.rerun") : t("action.doctor")}
             </Button>
             <AIAssistant task="node.health" subject={{ kind: "node", uuid: node.uuid, label: nodeDisplayName(node) }} buttonSize="small" />
-            <AgentUpgradeButton online={node.state === "online"} phase={upgradePhase} onUpgrade={() => onUpgrade(node)} />
+            {isAdmin && <AgentUpgradeButton nodeUUID={node.uuid} online={shown?.state === "online"} eligibility={shown?.agent_eligibility} phase={upgradePhase} onUpgrade={() => onUpgrade(shown ?? node)} />}
           </Space>
         )
       }

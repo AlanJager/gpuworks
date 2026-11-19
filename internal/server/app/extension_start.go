@@ -42,6 +42,17 @@ type extensionSet struct {
 // per floor.
 const holdPassFloor = 2 * time.Second
 
+// applySchedulingHolds is a pass of the scheduling holds over nodes, or over
+// the fleet for nil.
+func applySchedulingHolds(st *store.Store) holdpass.ScopedApply {
+	return func(nodes []uint) ([]string, []string, error) {
+		if nodes == nil {
+			return st.ApplySchedulingHolds()
+		}
+		return st.ApplySchedulingHoldsFor(nodes)
+	}
+}
+
 // startExtensions runs every module's Init, applies the scheduling holds
 // they registered (and releases holds no module of this build owns), runs
 // the passes they ask for afterwards with the modules' services, and hands
@@ -55,7 +66,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 			a.proxy.Close()
 		}
 	}()
-	set := &extensionSet{holds: holdpass.New(a.store.ApplySchedulingHolds, a.log.With("component", "scheduling_holds"), holdPassFloor)}
+	set := &extensionSet{holds: holdpass.NewScoped(applySchedulingHolds(a.store), a.log.With("component", "scheduling_holds"), holdPassFloor)}
 	section := serverconfig.File{Extensions: cfg.Sections}
 	plugins := &pluginsModule{cfg: cfg, st: a.store}
 	for _, m := range append(slices.Clip(cfg.Extensions.Modules), Module(plugins)) {

@@ -40,14 +40,21 @@ func (s *State) graceLocked(owner string) time.Duration {
 
 // clampAtLocked is the extclock instant from which owner's grants clamp:
 // its persisted down start plus its grace plus the boot extension, all from
-// the persisted start, so neither a restart nor a crash loop renews it. It
-// is math.MaxInt64 while owner is up.
+// the persisted start, so neither a restart nor a crash loop renews it. The
+// boot extension is left out only when the process that went down, the
+// latest one counted up, had declared itself ready: a ready from a newer
+// process that is not counted up yet does not shorten its predecessor's
+// down period. It is math.MaxInt64 while owner is up.
 func (s *State) clampAtLocked(owner string) int64 {
 	since, down := s.down[owner]
 	if !down {
 		return math.MaxInt64
 	}
-	return since + (s.graceLocked(owner) + BootExtension).Milliseconds()
+	ext := BootExtension
+	if gen, ok := s.ready[owner]; ok && gen == s.spawn[owner] {
+		ext = 0
+	}
+	return since + (s.graceLocked(owner) + ext).Milliseconds()
 }
 
 // overridesLocked indexes the overrides by owner and kind, then entry.
@@ -80,10 +87,11 @@ func (s *State) sortedParts(kind string, verified bool) []*part {
 
 // recombineLocked builds the snapshot from every part at extclock now and
 // publishes it, keeping the capacity selection's last outcome. It reports
-// whether the explicit holds or what the console shows changed, and asks
+// the nodes whose explicit hold changed and whether what the console shows
+// changed, and asks
 // the selection again when the caps or the kept nodes changed. It also re-arms the step timer
 // at the next instant anything changes on its own.
-func (s *State) recombineLocked() (holdsChanged, featuresChanged bool) {
+func (s *State) recombineLocked() (holdsChanged []uint, featuresChanged bool) {
 	now := s.clock.nowMS()
 	next := int64(math.MaxInt64)
 	soon := func(at int64) {
@@ -114,9 +122,27 @@ func (s *State) recombineLocked() (holdsChanged, featuresChanged bool) {
 		s.sel.Request()
 	}
 	if prev == nil {
-		return len(c.holds) > 0, true
+		return changedHolds(nil, c.holds), true
 	}
-	return !sameHolds(prev.holds, c.holds), !sameAvailability(prev.avail, c.avail) || !sameBanners(prev.bannersAdmin, c.bannersAdmin)
+	return changedHolds(prev.holds, c.holds), !sameAvailability(prev.avail, c.avail) || !sameBanners(prev.bannersAdmin, c.bannersAdmin)
+}
+
+// changedHolds are the nodes whose explicit hold differs between a and b,
+// ascending; nil when none does.
+func changedHolds(a, b map[uint]Hold) []uint {
+	var out []uint
+	for id, h := range a {
+		if o, ok := b[id]; !ok || !sameHold(h, o) {
+			out = append(out, id)
+		}
+	}
+	for id := range b {
+		if _, ok := a[id]; !ok {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func (s *State) combineAvailabilityLocked(now int64, soon func(int64)) map[featuregate.Key]featuregate.Availability {
@@ -298,13 +324,14 @@ func sameHolds(a, b map[uint]Hold) bool {
 		return false
 	}
 	for id, h := range a {
-		o, ok := b[id]
-		if !ok || o.Code != h.Code || !reflect.DeepEqual(o.Params, h.Params) {
+		if o, ok := b[id]; !ok || !sameHold(h, o) {
 			return false
 		}
 	}
 	return true
 }
+
+func sameHold(a, b Hold) bool { return a.Code == b.Code && reflect.DeepEqual(a.Params, b.Params) }
 
 func sameNotice(a, b *messages.ProductError) bool {
 	if a == nil || b == nil {

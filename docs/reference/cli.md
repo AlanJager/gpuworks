@@ -39,6 +39,7 @@ gpuworks restarted (systemd)
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
 | | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、启停、卸载插件包，查看推送状态，导入信任与包索引，降级前检查兼容性 | 运维，server 停止时也能用；启停与卸载要求 server 已停止 |
+| | [`host-identity`](#gpuworks-host-identity) | 以 root 读出只有 root 能读的主机身份并写进 `/run/gpuworks/host-identity.json` | systemd 在每次启动 server 之前执行，不手工运行 |
 | | `version` | 打印版本 | 任何人 |
 | | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
 | | `console-upgrade-protocol` | 打印本版本支持的控制台升级协议号（当前 `1`）；控制台升级之前的版本没有这个子命令 | 控制台升级前，服务端对待装的新二进制调用 |
@@ -282,19 +283,31 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 | 子命令 | 说明 |
 |---|---|
-| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。包声明的功能键已由另一个已安装的包声明时拒绝（`PLUGIN_FEATURE_TAKEN`）；server 停止时编译模块不加载，命令行只对照已安装的包，与编译模块冲突的键启动时仍归编译模块。从命令行安装即视为批准其权限，默认启用，`--disabled` 只安装不启用 |
+| `install --file PKG.gwpkg [--disabled]` | 读入包，在 `<data>/plugins/` 下的暂存目录里按校验顺序逐项校验，全部通过才移到 `pkg/<版本>/` 并原子切换 `current`；上一个版本保留以便回滚。同一版本、同一签名清单再装一次只重写控制文件；同一版本换了内容拒绝（`PLUGIN_VERSION_CONFLICT`）。插件数据的版本标记比这个构建的 `storage.state_version` 新时拒绝（`PLUGIN_STATE_TOO_NEW`）。包声明的功能键已由另一个已安装的包声明时拒绝（`PLUGIN_FEATURE_TAKEN`）；server 停止时编译模块不加载，命令行只对照已安装的包，与编译模块冲突的键启动时仍归编译模块。从命令行安装即视为批准其权限，默认启用，`--disabled` 不主动启用；替换或重装已启用的包仍保持启用，停用需显式执行 `disable ID` |
 | `list` | 重新校验每个已安装的包（只重新哈希大小、修改时间或 inode 变了的文件），列出 id、版本、发布者、信任来源（`project` 根签发或 `host` 主机信任的签发者）、是否启用与状态：`ok`、`revoked`（已吊销但不自动停止），或 `broken: <码>` |
 | `verify ID` | 重新校验已安装的包（重新哈希全部文件）并打印结果；不再通过校验或已吊销时以 `PLUGIN_BROKEN` 拒绝，没装时 `PLUGIN_NOT_INSTALLED`。只读，server 运行时也能用 |
 | `enable ID` / `disable ID` | 允许或禁止包的 server 部分运行，下次启动 server 时生效。`enable` 先像 `verify` 一样重新校验，校验不过就拒绝（`PLUGIN_BROKEN`），不改开关。要求 server 已停止 |
-| `uninstall ID [--purge]` | 卸载：删除包与控制文件，并删除它推送的全部状态（各类推送表、停机记录与管理员覆盖），释放它占住的节点，之后重装同一 id 从空状态开始。保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包已不在而推送状态还在时（上次卸载中途失败），再运行一次会补删并以 0 退出。包的最低版本永远保留，旧构建不能靠重装回来。`remove` 是它的旧名，仍可用。要求 server 已停止 |
+| `uninstall ID [--purge]` | 卸载：删除包与控制文件，并删除它推送的全部状态（各类推送表、停机记录与管理员覆盖），释放它占住的节点，之后重装同一 id 从空状态开始。保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包已不在而推送状态还在时（上次卸载中途失败），再运行一次会补删并以 0 退出。包的主机配置文件属于 root，服务账号删不掉：还留在主机上时，命令最后打印 `sudo gpuworks plugin host-setup --prune`。包的最低版本永远保留，旧构建不能靠重装回来。`remove` 是它的旧名，仍可用。要求 server 已停止 |
 | `state ID` | 从数据库打印该 id 推送的状态：每张表的 schema、代数、推送时间与摘要，以及其中的行、停机记录与覆盖。只读；server 运行时会先提示这些行最多比它晚一个写入周期 |
 | `trust import FILE [--cert publisher.crt]` | 导入根签名的信任更新、根签名的吊销列表，或发布者自己的吊销列表（需 `--cert` 给出该发布者的证书）；序号不比已应用的新时拒绝（`PLUGIN_TRUST_REPLAYED`） |
 | `index import FILE --cert publisher.crt` | 导入发布者的包索引：应用其中的吊销与最低版本，保存到 `<data>/plugins/.index/`，并打印每个包会装哪个版本，以及更新而本 server 运行不了的版本（`PLUGIN_NEEDS_NEWER_CORE`） |
 | `compat` | 只读检查：不迁移、不写数据库，报告会让本构建拒绝启动的持久化版本标记，以及因数据标记过新、需要本 server 没有的能力或清单读不了而不能运行的包。降级 server 之前用旧版本的二进制运行它；有问题时以 1 退出 |
+| `host-setup [--id ID \| --prune] [--service-user USER]` | 以 root 执行（需要时经 `sudo` 提权）已安装的包声明的[主机配置](../dev/extensions.md#主机配置)：建系统组 `gpuworks-usb` 并把服务账号加进去，为每个包写 udev 规则文件，让 udev 重新加载并对已插入的设备重新执行规则，最后写 root 所有的已应用记录。只采用通过校验且未吊销的包的步骤；`--id` 只处理这一个包（没装 `PLUGIN_NOT_INSTALLED`，不再通过校验 `PLUGIN_BROKEN`，没有主机步骤则报错）；`--prune` 处理全部包，并删除已卸载或不再声明步骤的包留下的规则文件与记录。服务账号默认是数据目录的所有者，新加进组后要重启 server 才生效；等待主机配置的插件在再次启用或重启 server 时启动。再运行一次什么都不改。不写数据目录，server 运行时也能用；Linux 以外的平台以 `PLUGIN_HOST_SETUP_UNSUPPORTED` 拒绝 |
 
 每个子命令都接受 `--data DIR`（默认与 `reset-password` 相同的查找顺序）、`--db PATH`（默认 `<data>/gpuworks.db`）与 `--config server.yaml`（默认二进制同目录、再默认安装目录的 `server.yaml`，应用其中的 `plugins` 一节，见[配置参考](configuration.md#插件的信任与站点策略)）。server 停止时也能用：数据库按其他维护命令的方式打开，`<data>/plugins/` 有自己的锁。`enable`、`disable`、`uninstall` 改动的是运行中 server 还留在内存里、会悄悄覆盖回去的状态，所以要求 server 已停止：它们拿不到 `<data>/server.lock`（见[控制面安装布局](install-layout.md)）时以 2 退出，提示 `the server (pid N) is running; stop it first`（锁文件里没有存活的 server pid 时，即持有者可能是另一条维护命令，改为点名锁文件：`another gpuworks process holds <data>/server.lock; …`），什么都不改；拿到锁后一直持有到命令结束，期间 server 启不来。数据目录必须已存在，不会新建。其余拒绝都带码（见[错误码](plugin-protocol.md#错误码)与 `PLUGIN_*`），日志里的 `code=` 就是它。
 
 本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
+
+## gpuworks host-identity
+
+`gpuworks host-identity --write PATH [--group GROUP]` 读出 server 所在机器的身份事实，把内核只让 root 读的两项（系统 UUID、主板序列号）连同其余两项写进 `PATH`，供以服务账户运行的 server 补齐[主机身份](../dev/extensions.md#管理-server-的主机身份)。systemd 模式下以 root 运行的命令行 `gpuworks install`、`gpuworks upgrade` 写的 systemd drop-in 让 systemd 在每次启动之前以 root 执行它（控制台升级不写这个 drop-in）（见[控制面安装布局](install-layout.md#systemd-单元)），不需要手工运行。 root 使用的是 systemd 单元目录中受保护的 `host-identity-exec` 副本，主程序仍可由服务账户执行控制台升级。副本只随显式的命令行安装/升级刷新，控制台升级不会把可写的主程序复制成 root 执行文件。
+
+| flag | 说明 |
+|---|---|
+| `--write PATH` | 必填，绝对且规整的路径，通常是 `/run/gpuworks/host-identity.json`；相对路径拒绝 |
+| `--group GROUP` | 能读这个文件的组（服务组）；不给时只有 root 能读 |
+
+只能以 root 运行，否则拒绝、什么都不写。`PATH` 所在目录必须由 root 所有、权限 0755：不存在时按这个样子创建，已存在但属主或权限不同时拒绝。文件先写进同目录下一个新建的临时文件（`O_CREAT|O_EXCL|O_NOFOLLOW`，预先放好的符号链接不会被跟随），经描述符设为 `root:<GROUP>`、0440 并落盘，再改名替换原文件；服务账户能读，但改不了权限、也换不掉它。
 
 ## gpuworks support-bundle
 
@@ -378,12 +391,12 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|---|
 | `--state DIR` | 同 `run` | 读配置文件的目录，也传给替换后的 `run` |
 | `--server URL` / `--token TOKEN` | 同 `run` 的取值顺序 | 必填（来自 flag、环境变量或配置文件） |
-| `--driver NAME`、`--connect-mode MODE`、`--listen ADDR` | 同 `run` | 只在没有配置文件的老 agent 上传给替换后的 `run`；有配置文件时它们已在文件里 |
+| `--driver NAME`、`--connect-mode MODE`、`--listen ADDR` | 同 `run` | 有配置文件时保留本次显式指定的 flag；未显式指定的值继续按环境变量、配置文件读取；无配置文件的老 agent 保留原传参方式 |
 
 - 仅支持 Linux；从 `<server>/dl/gpuworks-agent-linux-<arch>` 下载到 `<bin>.new`，10 秒内 `smoke` 通过后才把旧二进制改名 `<bin>.old` 并换上新版本，smoke 失败则旧二进制保持原样。
 - 该 state 目录已有 agent 在运行（systemd 或 nohup 常驻）时直接拒绝，下载前就退出：`upgrade` 换上的 `run` 不在原服务里，会和常驻 agent 共用节点身份、互相顶掉连接。常驻 agent 请在节点页「升级 Agent」。
 - `server_dial` 的 agent 不知道 server 地址，也无从下载：手工 `upgrade` 直接拒绝，提示它由 server 推送升级，在节点页「升级 Agent」操作。
-- 替换后的 `run` 在配置来自文件时只带 `--state <dir>`；没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--dcgm`、`--image-pull-max-connections`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM`、`--image-pull-max-connections` 可改用 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` 保留；`--data-lane` 没有对应环境变量，手工升级后恢复默认值 `true`。
+- 替换后的 `run` 在配置来自文件时带 `--state <dir>` 及本次显式传入的 `--server`、`--token`、`--driver`、`--connect-mode`、`--listen`；环境变量原样继承，不把文件或环境中的 token 提升成命令行参数，也不改写配置文件。没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--dcgm`、`--image-pull-max-connections`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM`、`--image-pull-max-connections` 可改用 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` 保留；`--data-lane` 没有对应环境变量，手工升级后恢复默认值 `true`。
 - 整个过程有 10 分钟预算；同一时刻只允许一个升级。替换后的进程同样要在确认期限内注册成功，否则回滚到 `<bin>.old`。节点页「升级 Agent」对支持推送的 agent 改由 server 经连接推送二进制，不经 `/dl/` 与 `smoke`，见[升级与版本兼容](../how-to/upgrade-and-compatibility.md)。
 
 ## gpuworks-agent doctor

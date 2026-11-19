@@ -6,6 +6,9 @@ const (
 	// ErrorPrioritySchedulingEngineUnsupported: the engine ({engine}) has no
 	// per-request priority scheduling the platform drives.
 	ErrorPrioritySchedulingEngineUnsupported = "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED"
+	// ErrorPrioritySchedulingLaunchUnsupported: the effective entrypoint or
+	// pipeline for {engine} has no verified priority-scheduling contract.
+	ErrorPrioritySchedulingLaunchUnsupported = "PRIORITY_SCHEDULING_LAUNCH_UNSUPPORTED"
 	// ErrorPrioritySchedulingTargetUnverified: the engine's build for the
 	// accelerator ({vendor}) has not been verified with priority scheduling.
 	ErrorPrioritySchedulingTargetUnverified = "PRIORITY_SCHEDULING_TARGET_UNVERIFIED"
@@ -24,6 +27,8 @@ func PrioritySchedulingRefusalFallback(code string) string {
 	switch code {
 	case ErrorPrioritySchedulingEngineUnsupported:
 		return "the engine does not support per-request priority scheduling"
+	case ErrorPrioritySchedulingLaunchUnsupported:
+		return "priority scheduling has not been verified for this entrypoint or pipeline; turn it off or select a supported LLM entrypoint"
 	case ErrorPrioritySchedulingTargetUnverified:
 		return "priority scheduling has not been verified on this accelerator"
 	case ErrorPrioritySchedulingPDUnsupported:
