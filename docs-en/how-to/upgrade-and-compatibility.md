@@ -46,6 +46,8 @@ Run commands in the control plane host's **actual installation directory**, usin
 
 To change the update channel, use an internal release site, or constrain the target version, set the [CLI Options](../reference/cli.md#gpuworks-upgrade) and use the same options for both checking and upgrading. To downgrade from a release channel or replace a local build, explicitly use `--force`. Before downgrading, check [Version Compatibility](#版本不一致时会怎样) below.
 
+If an older installer put the control plane directly in `/opt/gpuworks` (the directory owned by the service account, mode `2775`), run the command-line upgrade as root (`sudo ./gpuworks upgrade`): it first makes that directory root-owned and not writable by its group or others, then continues. Without root privileges the command refuses and prints the command to run. See [Installation Layout](../reference/install-layout.md#控制面装在-agent-共享根目录时).
+
 ### Upgrade With an Offline Package
 
 1. On a machine with internet access, download a release package matching the control plane OS and architecture, along with `SHA256SUMS` for the same version. Verify the package's SHA-256.
@@ -166,6 +168,6 @@ Run the following commands in the actual installation directory on the control p
 
 For options and backup layout, see the [CLI Reference](../reference/cli.md#gpuworks-upgrade) and [Installation Layout](../reference/install-layout.md). For the connection mechanism, see [Architecture](../explanation/architecture.md#连接与流).
 
-<!-- translation-source-sha256: a88104ae50d3470288172ce35ae069bc3dfd4751f16d02a0d804f75df60963a5 -->
+<!-- translation-source-sha256: 1516407da481d2587d5dbb60b163d5b8c95fe77729764a486a94b910a6c757c2 -->
 <!-- translation-localized-code-block: 3922c94b253dd971ff8ee6ae0ddcc7cfd4f7c28127fe2cdc7a322efe51808c1c 4afd6537a965876c65d49343fb5e1f684063bc8ac4f4c50eda0eac4ed077140b Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: a55f0c19bcc94075a6148de522ad5e9559f13d4ecac8b070a5d0483f303608ab 853eb242efd6c57c33a48c52b2dee9bb32684441a0c5dd7ebbe8746ce3a92f39 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

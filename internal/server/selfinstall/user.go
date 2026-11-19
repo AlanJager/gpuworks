@@ -108,6 +108,9 @@ func (i *Installer) chownTree(ctx context.Context, name string) error {
 			return err
 		}
 	}
+	if err := i.rootOwnSharedBinary(ctx); err != nil {
+		return err
+	}
 	return i.hardenHandedOverFiles(ctx, policy)
 }
 
@@ -173,6 +176,11 @@ func (i *Installer) chownOwnerOnly(ctx context.Context, name string) error {
 			return err
 		}
 		if err := i.deps.Run.Run(ctx, Command{Path: "find", Args: []string{root, "-type", "d", "-exec", "chmod", "g-s", "{}", "+"}, Sudo: name != "" && name != "root"}); err != nil {
+			return err
+		}
+	}
+	if name != "" && name != "root" {
+		if err := i.rootOwnSharedBinary(ctx); err != nil {
 			return err
 		}
 	}
