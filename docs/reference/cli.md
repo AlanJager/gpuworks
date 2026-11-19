@@ -287,7 +287,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `list` | 重新校验每个已安装的包（只重新哈希大小、修改时间或 inode 变了的文件），列出 id、版本、发布者、信任来源（`project` 根签发或 `host` 主机信任的签发者）、是否启用与状态：`ok`、`revoked`（已吊销但不自动停止），或 `broken: <码>` |
 | `verify ID` | 重新校验已安装的包（重新哈希全部文件）并打印结果；不再通过校验或已吊销时以 `PLUGIN_BROKEN` 拒绝，没装时 `PLUGIN_NOT_INSTALLED`。只读，server 运行时也能用 |
 | `enable ID` / `disable ID` | 允许或禁止包的 server 部分运行，下次启动 server 时生效。`enable` 先像 `verify` 一样重新校验，校验不过就拒绝（`PLUGIN_BROKEN`），不改开关。要求 server 已停止 |
-| `uninstall ID [--purge]` | 卸载：删除包与控制文件，并删除它推送的全部状态（各类推送表、停机记录与管理员覆盖），释放它占住的节点，之后重装同一 id 从空状态开始。保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包已不在而推送状态还在时（上次卸载中途失败），再运行一次会补删并以 0 退出。包的主机配置文件属于 root，服务账号删不掉：还留在主机上时，命令最后打印 `sudo gpuworks plugin host-setup --prune`。包的最低版本永远保留，旧构建不能靠重装回来。`remove` 是它的旧名，仍可用。要求 server 已停止 |
+| `uninstall ID [--purge] [--yes]` | 先从数据库算出并打印卸载会改变什么（删几张表、释放哪些只由它保持的节点、取消哪些集群上限、去掉几个功能的可用性行、几个横幅与覆盖）；不带 `--yes` 时到此为止，什么都不改并以非 0 退出，带 `--yes` 才卸载。卸载：删除包与控制文件，并删除它推送的全部状态（各类推送表、停机记录与管理员覆盖），释放它占住的节点，之后重装同一 id 从空状态开始。保留插件数据与它的版本标记；`--purge` 把整个目录移到 `<data>/plugins/.trash/` 并删除数据标记。包已不在而推送状态还在时（上次卸载中途失败），再运行一次会补删并以 0 退出。包的主机配置文件属于 root，服务账号删不掉：还留在主机上时，命令最后打印 `sudo gpuworks plugin host-setup --prune`。包的最低版本永远保留，旧构建不能靠重装回来。`remove` 是它的旧名，仍可用。要求 server 已停止 |
 | `state ID` | 从数据库打印该 id 推送的状态：每张表的 schema、代数、推送时间与摘要，以及其中的行、停机记录与覆盖。只读；server 运行时会先提示这些行最多比它晚一个写入周期 |
 | `trust import FILE [--cert publisher.crt]` | 导入根签名的信任更新、根签名的吊销列表，或发布者自己的吊销列表（需 `--cert` 给出该发布者的证书）；序号不比已应用的新时拒绝（`PLUGIN_TRUST_REPLAYED`） |
 | `index import FILE --cert publisher.crt` | 导入发布者的包索引：应用其中的吊销与最低版本，保存到 `<data>/plugins/.index/`，并打印每个包会装哪个版本，以及更新而本 server 运行不了的版本（`PLUGIN_NEEDS_NEWER_CORE`） |

@@ -258,10 +258,19 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 | `GET /api/v1/metrics/plugins` | 管理员（会话或令牌） | 插件指标，Prometheus 文本格式 |
 | `POST /api/v1/plugins/install?approve=<批准值>&enable=true` | 管理员登录会话 | 请求体就是 `.gwpkg`；不带或带错批准值时回 409 `PLUGIN_APPROVAL_REQUIRED`，参数里给出批准值和它涵盖的权限、角色，什么都不装 |
 | `POST /api/v1/plugins/{id}/enable`、`/disable` | 管理员登录会话 | 启用并启动；停止并不再启动（推送的表照常执行，按掉线计） |
-| `DELETE /api/v1/plugins/{id}?purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据一起移到 `.trash/`），在一次提交里删掉它推送的全部内容并重新应用保持；重试能完成一半失败的卸载 |
+| `POST /api/v1/plugins/{id}/restart` | 管理员登录会话 | 停止并作为新实例重新启动，崩溃历史与退避从头算；`on_demand` 包回到 `idle`；已停用的包回 409 `PLUGIN_DISABLED` |
+| `GET /api/v1/plugins/{id}/impact` | 管理员（会话或令牌） | 卸载的影响预览：要删的表、释放保持的节点、变为 `locked` 的功能、取消或放宽的上限、横幅与覆盖，以及确认用的摘要 `confirm` |
+| `DELETE /api/v1/plugins/{id}?confirm=<摘要>&purge=true` | 管理员登录会话 | 停止、卸载（`purge` 连数据与快照一起移到 `.trash/`，并删掉数据标记），在一次提交里删掉它推送的全部内容并重新应用保持；`confirm` 不是此刻影响的摘要时回 409 `PLUGIN_UNINSTALL_CONFIRM_REQUIRED`，应答带上影响，什么都不删；重试能完成一半失败的卸载 |
+| `GET /api/v1/plugins/{id}/state` | 管理员（会话或令牌） | 推送状态里它的部分：各表的代数、条目数、推送时刻与下一步，掉线时刻与宽限，覆盖 |
+| `GET /api/v1/plugins/{id}/logs` | 管理员登录会话 | SSE：监管事件（`state` 帧，最近 256 条）与 stderr（`stderr` 帧，最近 1 MiB），先发保留的，再跟随新的 |
+| `GET /api/v1/plugins/catalog` | 管理员（会话或令牌） | 已导入的包索引与已安装的包：每个包本 server 能装的最新构建、是否可装，以及不装的更新构建与原因 |
 | `GET /api/v1/plugins/overrides` | 管理员（会话或令牌） | 生效中的覆盖，按 `id` 排序 |
 | `POST /api/v1/plugins/overrides` | 管理员登录会话 | 放松插件推送的一条限制：删掉一个节点保持，或删掉、调高一项集群容量上限；必须写原因 |
 | `DELETE /api/v1/plugins/overrides/{oid}` | 管理员登录会话 | 撤回覆盖，插件最后推送的那条限制重新生效 |
+
+卸载前先预览影响：`DELETE` 没带 `confirm`，或带的摘要与此刻的影响不符（预览之后插件又推送了、换了版本），都回 409，什么都不删；控制台把影响给管理员看，确认后带上它的 `confirm` 再发一次。影响只读内存，把推送状态在不含该所有者的情况下重新组合一遍再丢掉。卸载不带 `purge` 时保留数据目录与数据标记（`plugin.<id>.data`），重装不会读到旧构建写的数据之外的东西；带 `purge` 的卸载（对已卸载、只剩数据目录的包同样可以）把目录连数据与快照移到 `.trash/` 并删掉数据标记。每个包在服务端留下的东西列在 `pluginbridge.PerPackageArtifacts`（推送状态的各张表、数据标记、包目录下的文件、内存里按包 id 记的结构），契约测试 `TestUninstallLeavesNothingUnderThePackageID` 装一个用到全部的包，卸载、再清除，逐项确认都不在了；新增按包记的状态要在同一改动里加进这份清单。
+
+监管事件与 stderr 按包保留，跨进程、重启与停用启用，直到卸载；重启（`restart`）换一个新实例，崩溃历史从头算，事件不丢。
 
 每次调用以 `audit=true` 的结构化日志记录谁对哪个包做了什么、结果如何；覆盖的调用同时记下管理员的用户 id 与用户名，以及原因。
 
@@ -280,7 +289,7 @@ ADR 0071 决定官方与第三方扩展以签名插件包（`.gwpkg`）安装，
 ### 尚未实现
 
 - 本指南尚未列出的其他宿主接口；插件路由的按动作授权与持久化审计记录（今天审计只写结构化日志）。
-- 卸载前的影响预览（`DELETE` 先回 409 列出影响）、升级自动回滚、`restart`、`logs`、`state` 与目录路由、`gpuworks plugin` 的 `upgrade`、`rollback` 子命令。
+- 升级与回滚的路由和 `gpuworks plugin` 的 `upgrade`、`rollback` 子命令，以及升级自动回滚（列表的 `actions` 里还没有 `upgrade`、`rollback`）；目录里的内置包。
 - 高可用下只在 leader 上运行插件。
 - 清单词汇里除 `table.<种类>`、`host.node_identity`、`host.nodes`、`host.host_identity`、`host.clock`、`host.state_read`、`host.derive_key`、`host.setup`（[主机配置](#主机配置)）与 `routes` 以外的能力都还不提供：其余读取面（`host.*`）、`host.notify`、`metrics.expose`、设置（`host.config`）、WebSocket 路由（`routes.websocket`），以及部件能力 `node.app`（`node:workloads`、`node:jobs` 也依赖它）与 `ui.bundle`。`requires` 它们的包以 `PLUGIN_INCOMPATIBLE` 拒绝，只在 `uses` 里的照常安装但得不到服务（[权限](../reference/plugin-protocol.md#权限)）。
 

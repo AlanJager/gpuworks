@@ -258,10 +258,19 @@ When a package declares `storage`, its data carries a version marker `plugin.<id
 | `GET /api/v1/metrics/plugins` | administrators (session or token) | plugin metrics, in the Prometheus text format |
 | `POST /api/v1/plugins/install?approve=<approval>&enable=true` | an administrator's login session | the request body is the `.gwpkg`; without the approval, or with a wrong one, it answers 409 `PLUGIN_APPROVAL_REQUIRED` with the approval and the permissions and roles it covers in its params, and installs nothing |
 | `POST /api/v1/plugins/{id}/enable`, `/disable` | an administrator's login session | enable and start; stop and keep from starting (its pushed tables stay enforced and it counts as down) |
-| `DELETE /api/v1/plugins/{id}?purge=true` | an administrator's login session | stop and uninstall (`purge` moves the data to `.trash/` too), delete everything it pushed in one commit and reapply the holds; a retry finishes an uninstall that failed halfway |
+| `POST /api/v1/plugins/{id}/restart` | an administrator's login session | stop and start again as a new instance, so its crash history and backoff start afresh; an `on_demand` package goes back to `idle`; a disabled package answers 409 `PLUGIN_DISABLED` |
+| `GET /api/v1/plugins/{id}/impact` | administrators (session or token) | the uninstall impact preview: the tables deleted, the nodes whose hold is released, the features that become `locked`, the caps lifted or loosened, the banners and overrides, and the digest `confirm` to confirm it with |
+| `DELETE /api/v1/plugins/{id}?confirm=<digest>&purge=true` | an administrator's login session | stop and uninstall (`purge` moves the data and snapshots to `.trash/` too and deletes the data marker), delete everything it pushed in one commit and reapply the holds; when `confirm` is not the digest of the impact now it answers 409 `PLUGIN_UNINSTALL_CONFIRM_REQUIRED` carrying the impact and removes nothing; a retry finishes an uninstall that failed halfway |
+| `GET /api/v1/plugins/{id}/state` | administrators (session or token) | its part of pushed state: each table's generation, entries, push time and next step, when it went down and its grace, the overrides |
+| `GET /api/v1/plugins/{id}/logs` | an administrator's login session | SSE: supervision events (`state` frames, the last 256) and stderr (`stderr` frames, the last 1 MiB), what is kept first, then what follows |
+| `GET /api/v1/plugins/catalog` | administrators (session or token) | the imported package indexes and the installed packages: per package, the newest build this server can install, whether it is installable, and the newer builds it will not install with why |
 | `GET /api/v1/plugins/overrides` | administrators (session or token) | the overrides in force, sorted by `id` |
 | `POST /api/v1/plugins/overrides` | an administrator's login session | loosen one restriction a plugin pushed: delete a node hold, or delete or raise one fleet capacity cap; a reason is required |
 | `DELETE /api/v1/plugins/overrides/{oid}` | an administrator's login session | withdraw an override, so the restriction the plugin last pushed is enforced again |
+
+An uninstall is previewed first: a `DELETE` without `confirm`, or with a digest that does not match the impact now (the plugin pushed again, or another version was installed, after the preview), answers 409 and removes nothing; the console shows the administrator the impact and, once confirmed, sends the request again with its `confirm`. The impact reads memory only: pushed state is combined again without the owner and the result thrown away. An uninstall without `purge` keeps the data directory and the data marker (`plugin.<id>.data`), so a reinstall cannot load data an older build wrote; an uninstall with `purge` (also of a package already uninstalled whose data directory is all that is left) moves the directory, data and snapshots included, to `.trash/` and deletes the data marker. Everything the server keeps per package is listed in `pluginbridge.PerPackageArtifacts` (the pushed state tables, the data marker, the files under the package's directory, the in-memory structures keyed by package id); the contract test `TestUninstallLeavesNothingUnderThePackageID` installs a package that uses all of them, uninstalls it, then purges it, and checks each one is gone. New per-package state joins that list in the same change.
+
+Supervision events and stderr are kept per package, across processes, restarts and disable and enable, until the uninstall; a `restart` starts a new instance whose crash history starts afresh, and the events are kept.
 
 Every call writes a structured log record with `audit=true` saying who did what to which package and how it ended; an override call also records the administrator's user id and username, and the reason.
 
@@ -280,7 +289,7 @@ The evaluators of pushed constraints, admission holds and pushed roles do not ex
 ### Not built yet
 
 - Host API endpoints not listed in this guide; per-action authorization and persisted route audit records (today audit is a structured log line only).
-- The impact preview before an uninstall (a 409 from `DELETE` listing the impact first), automatic rollback on upgrade, the `restart`, `logs`, `state` and catalog routes, and the `upgrade` and `rollback` subcommands of `gpuworks plugin`.
+- The upgrade and rollback routes and the `upgrade` and `rollback` subcommands of `gpuworks plugin`, and automatic rollback on upgrade (the list's `actions` offer no `upgrade` or `rollback` yet); bundled packages in the catalog.
 - Running plugins on the leader only under high availability.
 - No capability of the manifest vocabulary other than `table.<kind>`, `host.node_identity`, `host.nodes`, `host.host_identity`, `host.clock`, `host.state_read`, `host.derive_key`, `host.setup` ([Host setup](#host-setup)) and `routes` is offered yet: the other read surfaces (`host.*`), `host.notify`, `metrics.expose`, settings (`host.config`), WebSocket routes (`routes.websocket`) and the part capabilities `node.app` (which `node:workloads` and `node:jobs` also name) and `ui.bundle`. A package that requires one is refused with `PLUGIN_INCOMPATIBLE`; one that only uses it installs but does not get the service ([Permissions](../reference/plugin-protocol.md#permissions)).
 
@@ -442,4 +451,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: 5c9687183ec614ff87ed0d20678fe255067d74149f5142fae1b97d13aa512603 -->
+<!-- translation-source-sha256: 972501da362193bd2a40ce35bb3eb85d3a37d71ecec160e7e123807167091edc -->
