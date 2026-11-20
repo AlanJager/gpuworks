@@ -6,6 +6,7 @@
 //
 //	serve           run the server
 //	install         install the server as a system service
+//	cluster         install or preflight a three-node control-plane cluster
 //	upgrade         replace the installed server with the published release
 //	restart         restart the installed server so server.yaml takes effect
 //	reset-password  change an admin password
@@ -63,6 +64,8 @@ var builtinCommands = []string{
 	"serve", "version", "-v", "--version", "database-migration", selfinstall.EditionCommand, selfinstall.ConsoleUpgradeProtocolCommand,
 	"install", "upgrade", "uninstall", "restart", "stop", "support-bundle",
 	"reset-password", "migrate", "plugin", "expose", hostIdentityCommand, experiencelaunch.Command, pluginexec.Command,
+	"cluster", "cluster-install", "cluster-check", "cluster-install-node", "cluster-check-node",
+	"cluster-init", "cluster-address", "cluster-join", "cluster-status", clusterInstallSupervisorCommand,
 	"help", "-h", "--help",
 }
 
@@ -121,6 +124,26 @@ func Run(log *slog.Logger, args []string, stderr io.Writer, opt Options) int {
 			log.Error("stop failed", "err", err)
 			return 1
 		}
+	case "cluster":
+		return runClusterCommand(log, rest, stderr)
+	case "cluster-install":
+		return clusterInstallExit(log, rest, stderr)
+	case "cluster-check":
+		return clusterCheckExit(log, rest, stderr)
+	case "cluster-install-node":
+		return clusterInstallNodeExit(log, rest, stderr)
+	case "cluster-check-node":
+		return clusterCheckNodeExit(log, rest, stderr)
+	case clusterInstallSupervisorCommand:
+		if len(rest) != 0 {
+			return 2
+		}
+		if err := clusterInstallSupervisorCommandRun(); err != nil {
+			log.Error("installation process supervisor failed; owned logs retained", "err", err)
+			return 1
+		}
+	case "cluster-init", "cluster-address", "cluster-join", "cluster-status":
+		return clusterNodeExit(log, args[0], rest, os.Stdout)
 	case "support-bundle":
 		if err := opt.supportBundle(cmdContext(), log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("support bundle failed", "err", err)
@@ -309,15 +332,16 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	if err != nil {
 		return err
 	}
+	if err := useRecordedStorageTier(cfg.DataDir); err != nil {
+		return err
+	}
 	a, err := app.New(cfg, log)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := a.Close(); err != nil {
-			log.Warn("server resources close failed", "err", err)
-		}
-	}()
+	// A failed close is the server's result too, so the log and the exit status
+	// both carry it.
+	defer func() { err = closeServerResources(err, a.Close) }()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if pending != nil {
@@ -532,6 +556,9 @@ usage:
 
 installation:
 `+installUsage+`
+
+cluster:
+`+clusterCommandUsage+`
 
 public address:
 `+exposeUsage+`

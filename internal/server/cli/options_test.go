@@ -142,6 +142,7 @@ func TestBuiltinCommandsMatchTheDispatch(t *testing.T) {
 		"selfinstall.EditionCommand":                selfinstall.EditionCommand,
 		"pluginexec.Command":                        pluginexec.Command,
 		"hostIdentityCommand":                       hostIdentityCommand,
+		"clusterInstallSupervisorCommand":           clusterInstallSupervisorCommand,
 	}
 	var dispatched []string
 	for _, decl := range file.Decls {
