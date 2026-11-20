@@ -122,6 +122,9 @@ func (o ContainerOverrides) Validate() error {
 		if hostPath == "" && strings.TrimSpace(mount.Volume) == "" {
 			return fmt.Errorf("container overrides mount %q needs host_path, volume or model_id", mount.ContainerPath)
 		}
+		if mount.Volume != "" && (hostPath != "" || !proto.ValidVolumeName(mount.Volume)) {
+			return fmt.Errorf("container overrides mount %q volume %q is not a volume name of its own", mount.ContainerPath, mount.Volume)
+		}
 		if hostPath == "/" || strings.Contains(mount.HostPath, "..") {
 			return fmt.Errorf("container overrides mount host_path %q is not allowed", mount.HostPath)
 		}

@@ -300,8 +300,11 @@ func (e *Engine) runtimeMountManager() *RuntimeMountManager {
 }
 
 // applyPreStart installs a per-instance wrapper inside the container. The
-// wrapper runs on every container start and then execs the engine command with
-// the original argument boundaries intact.
+// wrapper is written on the host and mounted read-only at preStartMountPath,
+// and becomes the entrypoint: it runs inside the container on every container
+// start, under /bin/sh with set -eu and the container's environment, and then
+// execs the engine command with the original argument boundaries intact. A
+// failing preparation step exits the container before the engine starts.
 func (e *Engine) applyPreStart(ws *runtime.WorkloadSpec, spec proto.InstanceDesiredState) error {
 	hasArgv := len(spec.PreStartArgv) > 0
 	hasScript := spec.PreStartScript != ""
@@ -398,7 +401,7 @@ func toWorkloadSpec(spec proto.InstanceDesiredState, name string) runtime.Worklo
 		DockerArgs:  spec.DockerArgs,
 	}
 	for _, m := range spec.Mounts {
-		ws.Mounts = append(ws.Mounts, runtime.Mount{Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly})
+		ws.Mounts = append(ws.Mounts, runtime.Mount{Source: m.Source, Volume: m.Volume, Target: m.Target, ReadOnly: m.ReadOnly})
 	}
 	if spec.ModelPath != "" && spec.ModelMount != "" {
 		ws.Mounts = append(ws.Mounts, runtime.Mount{

@@ -41,6 +41,10 @@ func TestContainerMountModelRowValidation(t *testing.T) {
 		{ContainerMount{ModelID: 7, Volume: "drafts", ContainerPath: "/draft"}, false, "states a model and"},
 		{ContainerMount{ModelID: 7, ContainerPath: "draft"}, false, "must be absolute"},
 		{ContainerMount{ContainerPath: "/draft"}, false, "needs host_path, volume or model_id"},
+		{ContainerMount{Volume: "drafts", ContainerPath: "/draft"}, true, ""},
+		{ContainerMount{Volume: "drafts", HostPath: "/srv/draft", ContainerPath: "/draft"}, false, "not a volume name of its own"},
+		{ContainerMount{Volume: "/srv/draft", ContainerPath: "/draft"}, false, "not a volume name of its own"},
+		{ContainerMount{Volume: "drafts:rw", ContainerPath: "/draft"}, false, "not a volume name of its own"},
 	} {
 		err := ContainerOverrides{ExtraMounts: []ContainerMount{tc.mount}}.Validate()
 		if tc.ok != (err == nil) || (err != nil && !strings.Contains(err.Error(), tc.want)) {

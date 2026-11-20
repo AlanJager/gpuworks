@@ -87,13 +87,18 @@ type InferenceSpec struct {
 	GPUs               GPUSelector       `yaml:"gpus" json:"gpus"`
 	Args               []string          `yaml:"args,omitempty" json:"args,omitempty"`
 	Env                map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
-	PreStartArgv       []string          `yaml:"pre_start_argv,omitempty" json:"pre_start_argv,omitempty"`
-	PreStartScript     string            `yaml:"pre_start_script,omitempty" json:"pre_start_script,omitempty"`
-	Assets             []Asset           `yaml:"assets,omitempty" json:"assets,omitempty"`
-	Entrypoint         []string          `yaml:"entrypoint,omitempty" json:"entrypoint,omitempty"`
-	Placement          *Placement        `yaml:"placement,omitempty" json:"placement,omitempty"`
-	API                *APIContract      `yaml:"api,omitempty" json:"api,omitempty"`
-	Components         []Component       `yaml:"components,omitempty" json:"components,omitempty"`
+	// PreStartArgv and PreStartScript (at most one) are the spec's
+	// preparation: run inside the container, every time it starts, before
+	// the engine command, by the agent's /gpuworks/pre-start.sh wrapper
+	// (agent/engine applyPreStart). It sees the container's environment; a
+	// failing step ends the container before the engine starts.
+	PreStartArgv   []string     `yaml:"pre_start_argv,omitempty" json:"pre_start_argv,omitempty"`
+	PreStartScript string       `yaml:"pre_start_script,omitempty" json:"pre_start_script,omitempty"`
+	Assets         []Asset      `yaml:"assets,omitempty" json:"assets,omitempty"`
+	Entrypoint     []string     `yaml:"entrypoint,omitempty" json:"entrypoint,omitempty"`
+	Placement      *Placement   `yaml:"placement,omitempty" json:"placement,omitempty"`
+	API            *APIContract `yaml:"api,omitempty" json:"api,omitempty"`
+	Components     []Component  `yaml:"components,omitempty" json:"components,omitempty"`
 	// PerformanceTradeoffs states why the spec keeps settings the engine
 	// registry grades as performance costs (perf_tradeoffs.go). Catalog
 	// content only: the database projection does not store it.

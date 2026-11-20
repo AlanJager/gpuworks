@@ -371,6 +371,10 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		e.reportInjectionFailure(spec, err)
 		return
 	}
+	if err := checkNamedVolumes(spec, driver); err != nil {
+		e.failLaunch(spec, err, proto.ErrorMountVolumeUnsupported, proto.PhaseContainerPrepare, err.Error())
+		return
+	}
 	// A model path that is not there must fail the launch, not reach the
 	// runtime: docker creates a missing bind-mount source as an empty
 	// directory, so an unmounted NFS would otherwise start the engine on an

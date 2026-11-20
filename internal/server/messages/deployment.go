@@ -1,5 +1,7 @@
 package messages
 
+import "gpuworks.ai/gpuworks/internal/proto"
+
 // Product error codes of the deployment use cases (internal/server/deployment):
 // creating and evaluating a deployment, and the placement, model, image and
 // storage checks they run. The API package aliases the ones its own handlers
@@ -60,6 +62,10 @@ const (
 	// ErrorMountModelNotFound answers an extra-mount row naming a model that
 	// is not registered (any more); model_id is the id the row states.
 	ErrorMountModelNotFound = "MOUNT_MODEL_NOT_FOUND"
+	// ErrorMountVolumeInvalid answers an extra-mount row whose volume is not
+	// a runtime volume name (proto.ValidVolumeName); resource is the volume.
+	// The agent refuses such a mount with the same code.
+	ErrorMountVolumeInvalid = proto.ErrorMountVolumeInvalid
 	// ErrorAutoPlacementTPRequired: an automatic multi-node request states no
 	// placement.tp, so how many free GPUs each node needs is unknown.
 	ErrorAutoPlacementTPRequired = "AUTO_PLACEMENT_TP_REQUIRED"
