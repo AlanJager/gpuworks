@@ -323,6 +323,29 @@ A sketch follows (the other required fields such as `image`, `weights` and `gpus
 So put `${GPUWORKS_SERVED_MODEL_NAME}` directly on the command line, unquoted, as in the example. Do not put it together with `--served-model-name` inside one double-quoted string
 (for example `bash -c "... --served-model-name ${GPUWORKS_SERVED_MODEL_NAME}"`): the single quotes the platform inserts stay as literal characters in the served name, or misalign the outer quotes.
 
+## What the Template Declares and What the Platform Provides
+
+A template declares only what it needs, and the platform provides it on every launch; the table below lists every in-container fact a template can declare or rely on. Facts outside the table (which card, which port, which network) are the platform's decision and a template cannot declare them.
+
+| Kind | The template writes | The container sees | Host side decided by | Lifetime |
+|---|---|---|---|---|
+| Launch variables | References to `${GPUWORKS_*}` in `args` / `env` / `entrypoint` / `pre_start_*`; see [Variable Expansion](#变量展开) | This launch's values | The platform | Every launch |
+| System-layer environment variables | Nothing; a key of the same name in `env` overrides it | The compute network's `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`; see [Environment Variable Layers](deployment-launch-sources.md#环境变量分层) | The platform | Every launch |
+| Primary weights | `weights` | Read-only at `${GPUWORKS_MODEL_PATH}` (default `/model`, or the primary component's `mount_path`) | The platform (model storage) | With the model |
+| Component weights | `components[].mount_path` | Read-only at that path | The platform (model storage) | With the model |
+| Assets | `assets[].unpack_to` | Read-only, unpacked to that path | The platform (template package) | With the template version |
+| KV disk tier | Cannot (a deployment parameter) | Read-write, at a path the platform picks | The platform (node-managed directory) | While an instance runs on the node; pruned to its limit |
+| Deployment mounts | Cannot (the deployment's `extra_mounts`) | As each row states | The operator | Not managed by the platform |
+| Compute network files | Nothing | Read-only host files the accelerator network needs (same path) | The platform | Every launch |
+| Platform files | Cannot; `/gpuworks` belongs to the platform | `/gpuworks/pre-start.sh` (with `pre_start_*`) | The platform | Rewritten on every container start |
+| Startup wait limit | `start_timeout_sec` | How long the engine health check is waited for | The platform; see [Startup Wait Limit](deployment-launch-sources.md#启动等待上限) | Fixed when the instance is created |
+
+Rules:
+
+- **One variable spelling**: documentation and examples always write the prefixed `${GPUWORKS_X}`; the older unprefixed spelling still expands as an alias in template fields, while a hand-written manual command recognizes only the prefixed one.
+- **One set of units**: sizes in a spec are always bytes (`*_bytes`), durations always seconds (`*_sec`), and container paths always absolute, clean paths (`mount_path`, `unpack_to`).
+- **One container path space**: no two mounts in the table (primary weights, components, assets, KV disk tier, deployment mounts, compute network files) may target the same path or nest inside each other; deployment evaluation and creation check them together, and two mounts on one target are reported as `MOUNT_TARGET_DUPLICATE`.
+
 ## entrypoint: The Sole Declaration Point for Entrypoint Overrides
 
 **Entrypoint forms come from only two sources**:
@@ -695,7 +718,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: d1d452f0d0e05a656f2105295e2beeb93b7e7930f8d1fab421eb61cf0b75190e -->
+<!-- translation-source-sha256: 3edf69606107c703a4551731f33072c5869a8fbcaa0d3d4f40377abfcaab6cd5 -->
 <!-- translation-localized-code-block: a580200df2b28bc011bb736a64288086932955375e5ae8897762ee97bd667e26 8e0792250b6c0eb3ec0dad5bfca28308dc0b1afeb27e9c33bb24ddb21e20ba07 -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->
