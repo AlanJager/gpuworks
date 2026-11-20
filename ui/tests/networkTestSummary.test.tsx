@@ -113,35 +113,52 @@ test("mesh filters combine the two node names with any selected test statuses, a
   const testPair = (source: string, target: string, status: string) => ({
     source_uuid: source, source_name: source, target_uuid: target, target_name: target,
     status, reachable: status !== "failed", passed: status === "passed",
-    gbps: status === "failed" ? 0 : 180, avg_rail_gbps: status === "failed" ? undefined : 90, rtt_ms_p50: 0, rtt_ms_p99: 0,
+    gbps: status === "failed" ? 0 : 180, avg_rail_gbps: status === "partial" ? 90 : undefined, rtt_ms_p50: 0, rtt_ms_p99: 0,
     ...(status === "failed" ? { code: "offline", side: "target" } : {}),
-    rails: status === "partial" ? [{ rail: "rail-a", gbps: 90 }, { rail: "rail-b", gbps: 0, code: "probe_failed" }] : [],
+    rails: status === "partial" ? [
+      { rail: "rail-a", gbps: 80 }, { rail: "rail-b", gbps: 100 },
+      { rail: "rail-c", gbps: 0, code: "probe_failed", side: "target", target_rail: "port-c" },
+    ] : [],
   });
-  const pairs = [testPair("gpu-a", "gpu-b", "passed"), testPair("gpu-a", "gpu-c", "partial"), testPair("gpu-b", "gpu-c", "failed")];
+  const pairs = [testPair("gpu-a", "gpu-b", "passed"), testPair("gpu-a", "gpu-c", "partial"),
+    testPair("gpu-b", "gpu-c", "partial"), testPair("gpu-b", "gpu-a", "failed")];
   const run = { ...detailFixture.latest_test, id: 10, kind: "rdma_tool", pattern: "mesh", bandwidth: true, pairs,
-    pair_count: 3, passed_count: 1, partial_count: 1, node_count: 3 };
+    pair_count: 4, passed_count: 1, partial_count: 2, node_count: 3, rail_count: 6, rail_passed_count: 4 };
   renderIn(<NetworkTestResult network={detailFixture} run={run} onChanged={() => {}} />);
   const matrix = () => screen.getByRole("table", { name: "Global matrix" });
   const cells = () => within(matrix()).getAllByRole("button");
-  assert.equal(cells().length, 3);
+  assert.ok(screen.getByText("4 / 6"));
+  assert.equal(cells().length, 4);
+  // A historical pair can have only the aggregate. Keep it in the passing
+  // filter without presenting the aggregate as a per-rail measurement.
+  assert.ok(within(matrix()).getByRole("button", { name: "gpu-a → gpu-b: —" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Failed", exact: true }));
-  assert.equal(cells().length, 2);
+  assert.equal(cells().length, 3);
   fireEvent.click(screen.getByRole("checkbox", { name: "All passed" }));
+  assert.equal(cells().length, 2);
+  const source = screen.getByRole("searchbox", { name: "Filter source nodes" });
+  fireEvent.change(source, { target: { value: "gpu-a" } });
   assert.equal(cells().length, 1);
   assert.equal(within(matrix()).getAllByRole("rowheader").length, 1);
   assert.equal(within(matrix()).getAllByRole("columnheader").length, 2);
   const target = screen.getByRole("searchbox", { name: "Filter target nodes" });
   fireEvent.change(target, { target: { value: "GPU-C" } });
-  assert.match(cells()[0].getAttribute("aria-label") ?? "", /gpu-a → gpu-c: 90.0 Gb\/s · 1\/2 rails passed/);
-  fireEvent.change(screen.getByRole("searchbox", { name: "Filter source nodes" }), { target: { value: "gpu-b" } });
+  assert.match(cells()[0].getAttribute("aria-label") ?? "", /gpu-a → gpu-c: 90.0 Gb\/s · 2\/3 rails passed/);
+  fireEvent.change(source, { target: { value: "absent" } });
   assert.ok(screen.getByText("No matching pairs. Adjust the node names or status filters."));
   fireEvent.click(screen.getByRole("tab", { name: /Issue summary.*2/ }));
-  const expand = await screen.findAllByRole("button", { name: /expand row/i });
-  fireEvent.click(expand[0]);
+  const issue = screen.getByText("port-c").closest("tr")!;
+  assert.ok(within(issue).getByText("2 pairs"));
+  assert.ok(screen.getByText("1 pair"));
+  fireEvent.click(within(issue).getByRole("button", { name: /expand row/i }));
   const failingPair = await screen.findByRole("button", { name: /gpu-a → gpu-c/ });
   fireEvent.click(failingPair);
   const details = await screen.findByRole("dialog");
-  assert.ok(within(details).getByText("rail-b"));
+  assert.ok(within(details).getByText("90.0 Gb/s"));
+  for (const rate of ["80.0 Gb/s", "100.0 Gb/s"]) assert.ok(within(details).getByText(rate));
+  const failedRail = within(details).getByText("rail-c").closest("tr")!;
+  assert.ok(within(failedRail).getByText("Failed"));
+  assert.equal(within(details).queryByText("180.0 Gb/s"), null);
 });
 
 test("a large mesh keeps both axes accessible without mounting every pair", async () => {

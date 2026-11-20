@@ -280,7 +280,7 @@ test("a partially failing RDMA run names the failing HCA and removes it", async 
   const why = "This RoCE port on ascend-32 has no IPv4 address on its interface, so no RoCE v2 connection";
   const row = screen.getByRole("cell", { name: why }).closest("tr") as HTMLElement;
   assert.ok(within(row).getByText("rocep189s0f0:1"));
-  assert.ok(within(row).getByText("1 pairs"));
+  assert.ok(within(row).getByText("1 pair"));
   await user.click(within(row).getByRole("button", { name: n.rail.removeShort }));
   await user.click(await screen.findByRole("button", { name: n.rail.confirm }));
   await waitFor(() => assert.equal(calls.length, 1));

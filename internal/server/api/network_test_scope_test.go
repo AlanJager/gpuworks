@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -137,19 +138,40 @@ func TestNetworkTestRunNodeUUIDsOfUnreadableRows(t *testing.T) {
 
 func TestNetworkTestPairAverageRailBandwidth(t *testing.T) {
 	for _, tc := range []struct {
-		kind, rails string
-		want        float64
+		name, kind, rails, status string
+		passed                    int
+		storedTotal, wantMean     float64
 	}{
-		{"rdma_tool", `[{"gbps":80},{"gbps":100},{"code":"no_peer_rail"}]`, 90},
-		{"rdma_tool", `[{"error":"unavailable"}]`, 0},
-		{"rdma_tool", `[]`, 0},
-		{"tcp", `[]`, 0},
-		{"card_ping", `[{"reachable":true}]`, 0},
+		{"mixed rates, error and zero", "rdma_tool", `[{"gbps":80},{"gbps":100},{"gbps":5,"error":"tool failed"},{"gbps":0}]`, "partial", 2, 185, 90},
+		{"all failed", "rdma_tool", `[{"gbps":0},{"code":"no_peer_rail"}]`, "failed", 0, 0, 0},
+		{"historic aggregate only", "rdma_tool", `[]`, "passed", 0, 180, 0},
+		{"TCP aggregate", "tcp", `[]`, "passed", 0, 33, 0},
+		{"card connectivity", "card_ping", `[{"rail":"npu0","target_rail":"npu0","reachable":true}]`, "passed", 1, 0, 0},
 	} {
-		run := &store.NetworkTestRun{Kind: tc.kind, Pairs: `[{"reachable":true,"gbps":180,"rails":` + tc.rails + `}]`}
-		pair := networkTestDTO(run, nil).Pairs[0]
-		if pair.AvgRailGbps != tc.want || pair.Gbps != 180 {
-			t.Errorf("%s %s: got mean %v and sum %v", tc.kind, tc.rails, pair.AvgRailGbps, pair.Gbps)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			stored := &store.NetworkTestRun{Kind: tc.kind, Bandwidth: tc.kind != "card_ping", Pairs: fmt.Sprintf(`[{"reachable":true,"gbps":%g,"rails":%s}]`, tc.storedTotal, tc.rails)}
+			run := networkTestDTO(stored, nil)
+			pair := run.Pairs[0]
+			if pair.Status != tc.status || run.RailPassedCount != tc.passed || run.RailCount != len(pair.Rails) {
+				t.Fatalf("status %q, passing rails %d/%d: %+v", pair.Status, run.RailPassedCount, run.RailCount, pair.Rails)
+			}
+			wantPartial := 0
+			if tc.status == "partial" {
+				wantPartial = 1
+			}
+			if run.PartialCount != wantPartial || pair.Passed != (tc.status == "passed") {
+				t.Fatalf("partial_count %d, passed %t, status %q", run.PartialCount, pair.Passed, tc.status)
+			}
+			if pair.AvgRailGbps != tc.wantMean || pair.Gbps != tc.storedTotal {
+				t.Fatalf("mean %v and stored aggregate %v", pair.AvgRailGbps, pair.Gbps)
+			}
+			raw, err := json.Marshal(pair)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(raw), `"avg_rail_gbps":`) != (tc.wantMean > 0) {
+				t.Fatalf("unexpected average field in %s", raw)
+			}
+		})
 	}
 }
