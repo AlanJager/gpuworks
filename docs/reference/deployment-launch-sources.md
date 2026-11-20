@@ -113,6 +113,7 @@ dtype 兼容矩阵只用于准入与告警，不改写 argv。
 | `api` | API 契约与健康检查路径 |
 | `shm_bytes` | 容器 `/dev/shm` 的下限，见「`/dev/shm` 大小」；随档位快照保存，之后改模板不影响已有部署 |
 | `memlock_unlimited` | 为 `true` 时容器带 `--ulimit memlock=-1:-1`，见「锁定内存」；随档位快照保存 |
+| `start_timeout_sec` | 实例启动健康检查预算，代替集群默认、被部署自己的 `start_timeout_sec` 覆盖，实例记录的来源为 `template`；随档位快照保存，之后改模板不影响已有部署 |
 | `docker_args` | 追加到 `docker run` 的最前面，排在部署自己的 `docker_args` 与平台追加的参数之前，见「docker run 参数的三层顺序」；随档位快照保存，之后改模板不影响已有部署 |
 | `image` | 部署使用的镜像；无需先在镜像目录登记 |
 

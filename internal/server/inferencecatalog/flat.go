@@ -126,6 +126,12 @@ type InferenceSpec struct {
 	// A memlock ulimit the deployment's docker_args state wins over it (see
 	// deploy.withMemlockDockerArgs).
 	MemlockUnlimited bool `yaml:"memlock_unlimited,omitempty" json:"memlock_unlimited,omitempty"`
+	// StartTimeoutSec is how long an instance of the spec may take to become
+	// healthy, for a recipe whose first start is long (weight conversion,
+	// cache warm-up). Zero states none and the cluster default applies; a
+	// deployment's own start_timeout_sec still wins over it (see
+	// deploy.resolveStartupBudget).
+	StartTimeoutSec int `yaml:"start_timeout_sec,omitempty" json:"start_timeout_sec,omitempty"`
 	// DockerArgs are extra docker run options the spec's engine needs (such as
 	// --cap-add=SYS_PTRACE), applied before the deployment's own docker args
 	// and the platform's (see deploy.launchDockerArgs). Validated the same way
@@ -486,6 +492,9 @@ func validateSpec(modelID string, index int, spec *InferenceSpec, names map[stri
 		return err
 	}
 	if err := validateShmBytes(modelID, spec); err != nil {
+		return err
+	}
+	if err := validateStartTimeout(modelID, spec); err != nil {
 		return err
 	}
 	if err := validateDockerArgs(modelID, spec); err != nil {

@@ -1744,6 +1744,8 @@ export interface InferenceSpec {
   shm_bytes?: number;
   /** The spec's container starts with unlimited locked memory (--ulimit memlock=-1:-1); absent when false. */
   memlock_unlimited?: boolean;
+  /** The instance start timeout in seconds the spec states; absent when none. */
+  start_timeout_sec?: number;
   /** Extra docker run options the spec's engine needs, applied before the deployment's own docker_args. */
   docker_args?: string[];
   gpus: GPUPredicate;
@@ -4035,6 +4037,10 @@ export interface PreflightSummary {
 
 export interface EvaluateResponse {
   gpu_candidates?: GPUCandidates;
+  /** The instance start timeout the draft resolves to, and where it came from
+   * (cluster, template, engine or deployment); absent when not resolved. */
+  start_timeout_sec?: number;
+  start_timeout_source?: string;
   schema_version?: number;
   diagnostics?: DiagnosticReport;
   request_id?: string;

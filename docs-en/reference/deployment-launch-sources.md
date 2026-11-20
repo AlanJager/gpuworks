@@ -113,6 +113,7 @@ For spec field syntax, see the [Inference Catalog model.yaml Syntax Reference](i
 | `api` | API contract and health check path |
 | `shm_bytes` | Minimum size for the container's `/dev/shm`; see "`/dev/shm` Size". Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `memlock_unlimited` | When `true`, the container receives `--ulimit memlock=-1:-1`; see "Locked Memory". Saved with the spec snapshot |
+| `start_timeout_sec` | Instance startup health check budget; replaces the cluster default and is overridden by the deployment's own `start_timeout_sec`; the instance records its source as `template`. Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `docker_args` | Appended to the front of `docker run`, before the deployment's own `docker_args` and the platform's appended arguments; see "The three-layer order of docker run arguments". Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `image` | Image used by the deployment; it need not be registered in the image catalog first |
 
@@ -312,5 +313,5 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 - [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Image Catalog and Inference Image Families](image-families.md)
 - [Deploy Models](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation](../how-to/pd-disaggregation.md)
 
-<!-- translation-source-sha256: a57082991f4e2632fd672244a862caeeaeef9c4f318df0dcb03e945644144f3c -->
+<!-- translation-source-sha256: e5935dabdb849d053610a261b75ebb409744236e3548f7b67d08994b6d32916c -->
 <!-- translation-localized-code-block: 87810a25cc9d7f6adbb697b3c419cb2727115525f01d20d8ba378215c02d16e7 9f5706e114d2dd907dd8185a9c7d45f2bdd0387155df33a59bb6930888f598f1 Translate explanatory comments and placeholders in runtime assembly illustration. -->

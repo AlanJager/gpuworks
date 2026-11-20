@@ -5,6 +5,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/inferencemetrics"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // JSONSchema returns the JSON Schema (Draft 2020-12) of the flat catalog
@@ -243,6 +244,12 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 				"minimum":     1,
 				"maximum":     MaxSpecShmBytes,
 				"description": "The /dev/shm size in bytes the engine needs (for example an engine that keeps large lookup tables in shared memory). The container gets at least this much; a larger engine default plus the CPU KV tier still applies, and the deployment's own shm_bytes overrides it.",
+			},
+			"start_timeout_sec": map[string]any{
+				"type":        "integer",
+				"minimum":     store.DeploymentStartTimeoutSecLo,
+				"maximum":     store.DeploymentStartTimeoutSecHi,
+				"description": "Seconds an instance of this spec may take to become healthy, for a recipe with a long first start. It replaces the cluster default; a deployment's own start_timeout_sec overrides it.",
 			},
 			"memlock_unlimited": map[string]any{
 				"type":        "boolean",

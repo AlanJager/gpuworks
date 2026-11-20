@@ -78,7 +78,7 @@ func ToFlatStoreModels(catalog FlatCatalog) ([]store.InferenceModel, error) {
 				WeightSources: string(weights), GPUs: string(gpus), Args: string(args),
 				Env: string(env), PreStartArgv: string(preStartArgv), PreStartScript: spec.PreStartScript,
 				Assets: string(assets), Entrypoint: string(entrypoint), Placement: string(placement),
-				APIContract: string(apiContract), Components: string(components), PDMode: spec.PDMode, PDRoles: EncodePDRoleShapes(spec.PDRoles), ManualCommand: spec.ManualCommand, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, DockerArgs: string(dockerArgs),
+				APIContract: string(apiContract), Components: string(components), PDMode: spec.PDMode, PDRoles: EncodePDRoleShapes(spec.PDRoles), ManualCommand: spec.ManualCommand, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, StartTimeoutSec: spec.StartTimeoutSec, DockerArgs: string(dockerArgs),
 			})
 		}
 		models = append(models, row)

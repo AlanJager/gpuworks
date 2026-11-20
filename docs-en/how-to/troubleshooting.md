@@ -1104,7 +1104,8 @@ The agent waits for the timed-out `run` to return and removes the container it c
 For a multi-node follower, the corresponding message is `headless worker readiness timed out`. If loading a large model, compiling kernels, or capturing CUDA graphs is slow, first check whether the logs show continued progress. If progress is normal, increase the startup health check budget:
 
 - Cluster default: **1800 seconds**. Change it under **Settings → Nodes & deployments → Deployments**.
-- Individual deployment: set `start_timeout_sec` under **Runtime environment → Start timeout** in the deployment form, in the range **60–86400 seconds**. Leave it blank for an automatic budget using the cluster default as a floor.
+- Inference template: a spec states `start_timeout_sec` (also 60–86400 seconds) to replace the cluster default, for a recipe with a long first start; see [Inference Catalog Syntax](../reference/inference-catalog-spec.md).
+- Individual deployment: set `start_timeout_sec` under **Runtime environment → Start timeout** in the deployment form, in the range **60–86400 seconds**; it takes precedence over the template and the cluster default. Leave it blank for an automatic budget (the template's value, otherwise the cluster default); the field's placeholder shows the value that will be used.
 
 The budget applies while waiting for health checks after instance startup. Its value is determined when the instance is created; changes affect only instances started afterward.
 Exceeding the budget fails the startup attempt and triggers recreation according to the rules below.
@@ -1449,7 +1450,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: 72202dd8e4fcc51fa3f040a5fcaa8493830a79384592bca0b399e7cf52539caf -->
+<!-- translation-source-sha256: bed7d368b397653bb6e67d8e0c8b01438b738d07e132f3893f5fe22b593b970f -->
 <!-- translation-localized-code-block: 5a54acf993d1267a588edaed6adb42fabe4eaa22a37d698098643916823bb39b 63b848b372a289196a7de991833e1e2e7e410a903f69538cc9e20e3119d7859f -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

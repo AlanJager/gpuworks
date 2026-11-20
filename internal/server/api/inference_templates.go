@@ -520,7 +520,7 @@ func inferenceTemplateView(model store.InferenceModel) dto.InferenceTemplate {
 	_ = json.Unmarshal([]byte(model.InputModalities), &out.InputModalities)
 	_ = json.Unmarshal([]byte(model.Unsupported), &out.Unsupported)
 	for _, spec := range model.Specs {
-		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode, ManualCommand: spec.ManualCommand}
+		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, StartTimeoutSec: spec.StartTimeoutSec, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode, ManualCommand: spec.ManualCommand}
 		view.PDRoles = pdRoleShapesView(spec.PDRoles)
 		if sources, _ := inferencecatalog.DecodeWeightSources(spec.WeightSources); sources != nil {
 			view.WeightSources = make([]dto.WeightSource, 0, len(sources))

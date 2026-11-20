@@ -169,10 +169,11 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
     [targetVendor],
   );
   const routingPolicies = usePolling(api.routingPolicies, 0);
-  // The cluster's instance start timeout is the placeholder of the form's own
-  // start timeout field: an empty field keeps following it.
+  // The timeout an empty start timeout field follows is its placeholder: the
+  // one the server resolved for the draft without a deployment value (the
+  // template's or the cluster's), else the cluster's own setting.
   const settings = usePolling(api.settings, 0);
-  const startTimeoutDefaultSec =
+  const clusterStartTimeoutSec =
     Number(settings.data?.deployment?.start_timeout_sec) > 0
       ? Number(settings.data?.deployment?.start_timeout_sec)
       : undefined;
@@ -266,6 +267,10 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
     applyFormValues: () => !opened || (opened.mode === "from" && touchedRef.current),
   });
   const { result: evalResult, error: evalErr, evaluating } = evaluation;
+  const startTimeoutDefaultSec =
+    evalResult?.start_timeout_source && evalResult.start_timeout_source !== "deployment" && Number(evalResult.start_timeout_sec) > 0
+      ? Number(evalResult.start_timeout_sec)
+      : clusterStartTimeoutSec;
   // The node whose facts the page renders: the form's pick in manual mode,
   // and in automatic mode the server's selection (the form field stays empty;
   // display only, the create confirms the selection explicitly).
