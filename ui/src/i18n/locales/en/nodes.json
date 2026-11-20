@@ -996,7 +996,13 @@
     "activeHelp": "The execution slot remains reserved until the current attempt is confirmed. Other batches cannot start in parallel.",
     "startedAt": "Started: {{at}}",
     "finishedAt": "Finished: {{at}}",
-    "verifiedAt": "The previous attempt was later verified to have ended: {{at}}"
+    "verifiedAt": "The previous attempt was later verified to have ended: {{at}}",
+    "verification": {
+      "target_registered": "Verified by the system: the node later reconnected on the target version.",
+      "agent_failed": "Verified by the system: the Agent later reported the upgrade failed.",
+      "rolled_back": "Verified by the system: the Agent later reported a rollback.",
+      "node_removed": "Verified by the system: the node was removed from the platform, so no upgrade can still be running."
+    }
   },
   "cardScheduling": {
     "stoppedTag": "Scheduling disabled",
