@@ -68,6 +68,7 @@
 
 | 短名 | 类型 | 单位 | 含义 |
 |---|---|---|---|
+| `cache_reported_prompt_tokens_total` | counter | tokens | 回复 `usage` 报了缓存命中数（0 也算）的那些请求的输入 token，网关缓存命中率的分母，见下 |
 | `cached_tokens_total` | counter | tokens | 回复 `usage` 里引擎报告的命中缓存的输入 token |
 | `completion_tokens_total` | counter | tokens | 回复 `usage` 里引擎报告的输出 token |
 | `prompt_tokens_total` | counter | tokens | 回复 `usage` 里引擎报告的输入 token |
@@ -111,6 +112,17 @@ callable 引擎不加这项请求参数；TensorFold、Strata 总是带 usage。
 - vLLM 开着 `--enable-prompt-tokens-details` 时，命中为 0 也照写。
 - 其他情况下，没有这个字段就是未知；请求不进「非缓存输入 × TTFT」分布。
 
+### 网关缓存命中率
+
+引擎没有导出前缀缓存指标时（callable 引擎，如 Strata），监控的 KV Cache 命中率由网关补：窗口内
+`cached_tokens_total` 的增量除以 `cache_reported_prompt_tokens_total` 的增量。
+
+- **分母只含报了缓存命中数的请求**：没有 `usage`、或 `usage` 里没有缓存字段（未知，不是 0）的回复，输入 token 计入
+  `prompt_tokens_total`，但不计入 `cache_reported_prompt_tokens_total`，不会被当成 0% 命中。回复明确报了 0 的，输入计入分母、命中为 0。
+- 窗口内没有任何请求报过缓存命中数时，没有命中率，面板显示「无数据」，不显示 0%；升级前写入的数据没有分母序列，同样没有值。
+- 引擎自己导出命中/查询计数或瞬时命中率时以引擎为准，不用网关的值。
+- 网关只有部署整体的数字：副本表的命中率列仍只显示引擎逐副本上报的值；KV Cache 图里的命中率线是一条部署整体的线，不分副本。
+
 ### 网关 TTFT 的统计口径
 
 **网关 TTFT（首 token 耗时）与引擎 `ttft_seconds` 口径不同**：网关从请求交给实例开始计时，包含排队和网络。
@@ -126,6 +138,8 @@ callable 引擎不加这项请求参数；TensorFold、Strata 总是带 usage。
 - callable 引擎（TensorFold、Strata 等）四项都记。
 
 `tpot_ms` 要求流式回复带 `usage` 且输出至少 2 个 token。它从网关看到的第一个生成 token 算到最后一个文本事件，含网络抖动；引擎一次发多个 token（投机解码）时，也按 token 数平均。
+
+缓存命中率走同一个来源机制，但不是直方图：见[网关缓存命中率](#网关缓存命中率)。
 
 `reported_*_ms` 把回复里引擎自报的数（[逐请求统计](#逐请求统计)）按部署汇总成分布；回复没带就不记。
 

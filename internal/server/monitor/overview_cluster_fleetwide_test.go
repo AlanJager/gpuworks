@@ -14,7 +14,7 @@ import (
 // query tsdb once per metric for the whole fleet, not once per metric per
 // deployment. A cluster of 1 deployment and one of 50 must therefore issue
 // exactly the same number of QueryRange calls. The total is also asserted
-// to be small (<= 28): the fixed per-snapshot metric count the phase2
+// to be small (<= 30): the fixed per-snapshot metric count the phase2
 // capacity review targets, regardless of fleet size.
 func TestBuildClusterQueryCountIsIndependentOfDeploymentCount(t *testing.T) {
 	countQueries := func(n int) int {
@@ -46,10 +46,11 @@ func TestBuildClusterQueryCountIsIndependentOfDeploymentCount(t *testing.T) {
 	}
 	// 15 engine series, 4 gateway request series and the cluster token-rate
 	// chart query, plus the 8 gateway series that stand in for an engine's
-	// (window_sources.go) = 28. This was 33 before the GPU temperature,
-	// utilization, memory-bandwidth and throttle-reason and node CPU window
-	// queries were removed together with the diagnosis rules that read them.
-	const maxQueries = 28
+	// (window_sources.go) and the 2 gateway cache counters that make its hit
+	// rate = 30. This was 33 before the GPU temperature, utilization,
+	// memory-bandwidth and throttle-reason and node CPU window queries were
+	// removed together with the diagnosis rules that read them.
+	const maxQueries = 30
 	if one > maxQueries {
 		t.Errorf("query count = %d, want <= %d fixed metrics per snapshot", one, maxQueries)
 	}
@@ -188,11 +189,11 @@ func TestBuildClusterPhase2SignalSparklinesComeFromAlreadyFetchedFleetData(t *te
 			t.Errorf("Signals.%s = empty, want a non-empty DiagnosisWindow-bucketed series", name)
 		}
 	}
-	// 28 fixed queries (see TestBuildClusterQueryCountIsIndependentOfDeploymentCount;
+	// 30 fixed queries (see TestBuildClusterQueryCountIsIndependentOfDeploymentCount;
 	// 33 before the GPU temperature/utilization/memory-bandwidth/throttle and
 	// node CPU window queries were removed with the diagnosis rules).
-	if queriesUsed > 28 {
-		t.Errorf("BuildCluster issued %d queries, want <= 28 (sparklines must cost zero extra queries)", queriesUsed)
+	if queriesUsed > 30 {
+		t.Errorf("BuildCluster issued %d queries, want <= 30 (sparklines must cost zero extra queries)", queriesUsed)
 	}
 	t.Logf("queries used = %d", queriesUsed)
 }

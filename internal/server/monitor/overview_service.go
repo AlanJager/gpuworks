@@ -269,7 +269,7 @@ func buildServiceCharts(store tsdb.Store, deploymentID uint, instances []Instanc
 	// The signals the gateway can stand in for are resolved exactly as the
 	// window resolves them (window_sources.go), over the chart's range.
 	resolved := WindowSeries{
-		Running: running, PromptTokens: promptTokens, GenTokens: genTokens, TTFT: ttft, E2E: e2e,
+		Running: running, KVQueries: kvQueries, KVHits: kvHits, KVInstant: kvInstant, PromptTokens: promptTokens, GenTokens: genTokens, TTFT: ttft, E2E: e2e,
 		TPOT: tpot, QueueTime: queueTime, PrefillTime: prefillTime, DecodeTime: decodeTime,
 	}
 	if resolved.ProxyInflight, err = store.QueryRange(metricProxyInflight, map[string]string{"deployment": depKey}, startMS, endMS, stepMS); err != nil {
@@ -280,6 +280,7 @@ func buildServiceCharts(store tsdb.Store, deploymentID uint, instances []Instanc
 	}
 	resolved.resolveSources()
 	running, promptTokens, genTokens, ttft, e2e = resolved.Running, resolved.PromptTokens, resolved.GenTokens, resolved.TTFT, resolved.E2E
+	kvQueries, kvHits = resolved.KVQueries, resolved.KVHits
 	tpot, queueTime, prefillTime, decodeTime = resolved.TPOT, resolved.QueueTime, resolved.PrefillTime, resolved.DecodeTime
 
 	charts := map[string][]ChartSeries{}

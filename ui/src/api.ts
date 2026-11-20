@@ -4681,7 +4681,8 @@ export type MonitorSignalSourceKey =
   | "tpot"
   | "queue_time"
   | "prefill_time"
-  | "decode_time";
+  | "decode_time"
+  | "kv_hit_rate";
 export type MonitorSignalSource = "engine" | "gateway";
 
 // engineReportsNoMetrics: every signal with data came from the gateway, so

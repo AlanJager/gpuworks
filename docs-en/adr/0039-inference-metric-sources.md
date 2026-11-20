@@ -42,8 +42,8 @@ Deployment snapshots freeze launch configuration, whereas metric mappings determ
 
 - Engines with changed prefixes, such as TensorFold, integrate with dashboards through template declarations. Engines retaining vLLM / SGLang naming provide data when deployed as callable even without a declaration.
 - After a template author changes a mapping, running deployments apply it on the next scrape (≤ 10 seconds), without a restart or redeployment.
-- The gateway measures TTFT, duration, and engine-reported usage token counts for every forwarded response (`gpuworks_proxy_*`, with names also registered in this vocabulary). Monitoring selects sources by signal: TTFT, end-to-end duration, input/output tokens, and running requests use engine values when reported, otherwise gateway values. The single decision point is the signal source catalog in `monitor` (`window_sources.go`). The UI does not label sources; differences in measurement definitions are documented in the monitoring documentation.
+- The gateway measures TTFT, duration, and engine-reported usage token counts for every forwarded response (`gpuworks_proxy_*`, with names also registered in this vocabulary). Monitoring selects sources by signal: TTFT, end-to-end duration, input/output tokens, running requests, and prefix cache hit rate use engine values when reported, otherwise gateway values. The single decision point is the signal source catalog in `monitor` (`window_sources.go`). The UI does not label sources; differences in measurement definitions are documented in the monitoring documentation.
 - Documentation: [Inference Metric Vocabulary](../reference/inference-metrics.md), [`api.metrics` Syntax](../reference/inference-catalog-spec.md#apimetrics引擎指标映射),
   [Declare Engine Metrics for an Inference Template](../how-to/declare-engine-metrics.md).
 
-<!-- translation-source-sha256: 0be33ce7528b2ad620f0e6a770d86e030d6a2440bfbf01959794935e20b6ab16 -->
+<!-- translation-source-sha256: 2bbc1b01c6cbcf110e3acb18916462869db50111f02cecbf87d9990e4cbef5af -->

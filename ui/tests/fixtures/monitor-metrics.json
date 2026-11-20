@@ -409,6 +409,14 @@
       "quantiles": false
     },
     {
+      "series": "gpuworks_proxy_cache_reported_prompt_tokens_total",
+      "name": "cache_reported_prompt_tokens_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
       "series": "gpuworks_proxy_cached_tokens_total",
       "name": "cached_tokens_total",
       "source": "gateway",
@@ -1349,5 +1357,5 @@
       "description": "Requests the gateway routed to each replica."
     }
   ],
-  "total": 131
+  "total": 132
 }
