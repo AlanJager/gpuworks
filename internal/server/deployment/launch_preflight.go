@@ -52,7 +52,9 @@ func preflightCreateRuntimes(base deploy.ResolveLaunchInput, rawOverrides map[st
 		input.Params.Headless = rank > 0
 		input.Params.NodeAddress = planning.RoutableHost(node)
 		if input.Params.Headless {
-			input.Params.APIPort = 0
+			// A headless rank serves no API and is reserved no metrics port
+			// either: it launches with both variables at zero, as it will.
+			input.Params.APIPort, input.Params.MetricsPort = 0, 0
 		}
 		if err := resolve(input, node, fmt.Sprintf("node %s rank %d", node.UUID, rank)); err != nil {
 			return err
@@ -111,7 +113,7 @@ func preflightCreatePDRuntimes(base deploy.ResolveLaunchInput, pdReq *pdRequest,
 				}
 				input.Params.APIPort = launch.APIPort
 				if input.Params.Headless {
-					input.Params.APIPort = 0
+					input.Params.APIPort, input.Params.MetricsPort = 0, 0
 				}
 				input.Params.MasterAddr = launch.MasterAddr
 				input.Params.MasterPort = launch.MasterPort
