@@ -740,9 +740,9 @@ specs:
   display_name_en: DGX Spark (GB10) ×4 · FP8 · pico TP4 · RoCE switch
   scenario: balanced
   engine: callable
-  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
+  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r7
   image_sources:
-  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r7
   weights:
     quantization: fp8
     sources:
@@ -813,6 +813,12 @@ specs:
         pico_session_store_usage_ratio: gpu_cache_usage_percent
         pico_spec_drafts_verified_total: spec_draft_tokens_total
         pico_spec_drafts_accepted_total: spec_accepted_tokens_total
+        pico_prompt_tokens_total: prompt_tokens_total
+        pico_generation_tokens_total: generation_tokens_total
+        pico_prefix_cache_queries_total: kv_queries_total
+        pico_prompt_cached_tokens_total: kv_hits_total
+        pico_requests_completed_total: requests_success_total
+        pico_time_to_first_token_seconds: ttft_seconds
     operations:
     - type: openai.chat
       endpoint: /v1/chat/completions
@@ -822,9 +828,9 @@ specs:
   display_name_en: DGX Spark (GB10) ×4 · FP8 · pico TP4 · switchless ring
   scenario: balanced
   engine: callable
-  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
+  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r7
   image_sources:
-  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r7
   weights:
     quantization: fp8
     sources:
@@ -897,6 +903,12 @@ specs:
         pico_session_store_usage_ratio: gpu_cache_usage_percent
         pico_spec_drafts_verified_total: spec_draft_tokens_total
         pico_spec_drafts_accepted_total: spec_accepted_tokens_total
+        pico_prompt_tokens_total: prompt_tokens_total
+        pico_generation_tokens_total: generation_tokens_total
+        pico_prefix_cache_queries_total: kv_queries_total
+        pico_prompt_cached_tokens_total: kv_hits_total
+        pico_requests_completed_total: requests_success_total
+        pico_time_to_first_token_seconds: ttft_seconds
     operations:
     - type: openai.chat
       endpoint: /v1/chat/completions
