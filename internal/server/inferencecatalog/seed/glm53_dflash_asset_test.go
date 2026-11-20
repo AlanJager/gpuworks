@@ -12,8 +12,14 @@ import (
 )
 
 // A recipe must not silently move to an image that its source overlay rejects.
-func TestGLM53DFlashAssetPinsItsRecipeImage(t *testing.T) {
-	_, spec := catalogSpec(t, "zai-org/glm-5.3-flash", "w8a8-vllm-910c-dflash5-16npu")
+func TestGLM53SourceOverlaysPinTheirRecipeImage(t *testing.T) {
+	for _, name := range []string{"w8a8-vllm-910c-dflash5-16npu", "w8a8-vllm-910b-graph-tp8"} {
+		t.Run(name, func(t *testing.T) { checkGLM53OverlayPinsImage(t, name) })
+	}
+}
+
+func checkGLM53OverlayPinsImage(t *testing.T, name string) {
+	_, spec := catalogSpec(t, "zai-org/glm-5.3-flash", name)
 	data, err := embeddedCatalog.ReadFile("catalog/models/zai-org/glm-5.3-flash/" + spec.Assets[0].File)
 	if err != nil {
 		t.Fatal(err)

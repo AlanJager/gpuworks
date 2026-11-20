@@ -1,0 +1,94 @@
+--- /dev/null
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/worker/runveil_threads.py
+@@ -0,0 +1,91 @@
++"""Keep native background polling from starving a single PRoot tracer."""
++import errno
++import fcntl
++import logging
++import os
++from pathlib import Path
++import tempfile
++
++logger = logging.getLogger(__name__)
++
++
++def _status(path):
++    return dict(line.split(":", 1) for line in path.read_text().splitlines() if ":" in line)
++
++
++def _tracees(proc, tracer, uid):
++    for entry in proc.iterdir():
++        if not entry.name.isdigit():
++            continue
++        try:
++            status = _status(entry / "status")
++            if int(status.get("TracerPid", "0")) != tracer:
++                continue
++            if int(status["Uid"].split()[1]) != uid:
++                raise RuntimeError("PRoot tracee ownership changed")
++            yield entry
++        except (FileNotFoundError, ProcessLookupError):
++            continue
++
++
++def _balance(proc, tracer, uid, own_only=False):
++    cpu = max(os.sched_getaffinity(tracer))
++    os.sched_setaffinity(tracer, {cpu})
++    changed = 0
++    processes = [proc / str(os.getpid())] if own_only else _tracees(proc, tracer, uid)
++    for process in processes:
++        try:
++            tasks = list((process / "task").iterdir())
++        except FileNotFoundError:
++            continue
++        for task in tasks:
++            tid = int(task.name)
++            if tid == int(process.name):
++                continue  # Preserve every foreground process thread.
++            try:
++                if os.getpriority(os.PRIO_PROCESS, tid) < 19:
++                    os.setpriority(os.PRIO_PROCESS, tid, 19)
++                os.sched_setaffinity(tid, {cpu})
++                changed += 1
++            except OSError as error:
++                if error.errno != errno.ESRCH:
++                    raise
++    return cpu, changed
++
++
++def balance_background_threads(stage, *, proc=Path("/proc")):
++    """Run at startup boundaries, outside any captured model computation.
++
++    Lowered priorities last for this deployment's lifetime. A container restart
++    restores normal priorities. No elevated capabilities are requested.
++    """
++    if os.environ.get("GPUWORKS_RUNVEIL_BG_THREAD_BALANCE") != "1":
++        return
++    status = _status(proc / "self/status")
++    tracer = int(status.get("TracerPid", "0"))
++    if not tracer:
++        return
++    owner = _status(proc / str(tracer) / "status")
++    command = (proc / str(tracer) / "comm").read_text().strip()
++    if not command.startswith("proot"):
++        return
++    uid = int(status["Uid"].split()[1])
++    if int(owner["Uid"].split()[1]) != uid:
++        raise RuntimeError("PRoot tracer ownership differs from this worker")
++    if stage not in {"profile", "capture", "ready"}:
++        raise ValueError("unknown startup scheduling boundary")
++    boundary = f"{stage}-{os.getpid()}" if stage == "ready" else stage
++    path = Path(tempfile.gettempdir()) / f"gpuworks-proot-threads-{tracer}-{boundary}.lock"
++    with path.open("a+") as lock:
++        try:
++            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
++        except BlockingIOError:
++            return
++        lock.seek(0)
++        if lock.read():
++            return
++        cpu, threads = _balance(proc, tracer, uid, own_only=stage == "ready")
++        lock.write("done\n")
++        lock.flush()
++        logger.info("PRoot startup thread balance: stage=%s tracer=%d cpu=%d background_threads=%d",
++                    stage, tracer, cpu, threads)

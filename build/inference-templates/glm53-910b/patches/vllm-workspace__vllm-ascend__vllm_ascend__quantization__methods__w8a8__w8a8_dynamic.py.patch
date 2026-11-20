@@ -1,0 +1,12 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/quantization/methods/w8a8/w8a8_dynamic.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/quantization/methods/w8a8/w8a8_dynamic.py
+@@ -161,6 +161,9 @@
+             vllm_config.use_v2_model_runner is True and vllm_config.parallel_config.enable_eplb is True
+         )
+         self.in_dtype = vllm_config.model_config.dtype
++        self.moe_all_to_all_group_name = ""
++        if not vllm_config.parallel_config.enable_expert_parallel:
++            return
+         try:
+             device_group = get_mc2_group().device_group
+             # TODO: Try local_rank = ep_group.rank_in_group

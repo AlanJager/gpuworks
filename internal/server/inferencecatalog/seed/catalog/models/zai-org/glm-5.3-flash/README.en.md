@@ -58,7 +58,7 @@ Vast container node, runveil runtime, `gpuworks-runner:cuda13.0-sglang0.5.21-r2`
 
 Startup to ready took ~13 minutes under runveil; the first batches of a new shape still compile kernels (the first two concurrency-16 rounds saw 5–10 s TTFT). 4× H200 has not been measured yet.
 
-Existing EXL3 TensorFold profiles remain under `mia-ailab/glm-5.3-flash`. Ascend coverage is limited to the 910C Docker case above; runveil has not passed. Hygon, PPU and Apple are not covered.
+Existing EXL3 TensorFold profiles remain under `mia-ailab/glm-5.3-flash`. Ascend covers the 910C Docker case above and the single-node 8-card 910B profile below; runveil has not passed on 910C. Hygon, PPU and Apple are not covered.
 
 ## Ascend 910C tuned recipes (Graph / DFlash)
 
@@ -111,3 +111,27 @@ The callable engine passes Ascend-specific INT8 KV options to vLLM. Profiles exp
 ### Historical DFlash results
 
 On the older image, 32 concurrent code-review requests with 131072 input and 4096 output tokens achieved **39.65 / 41.81 / 48.07** min/median/max decode TPS. The final prefix-retention configuration on mixed Chinese/English/code achieved **35.96 / 41.50 / 50.90 TPS**, with 21/32 requests reaching 40 TPS. Different workloads must be reported separately. Continuous closed-loop mixed traffic experienced prefill interference; single-wave decode rates do not establish sustained service performance.
+
+## Ascend 910B text-only profile (one node, 8 cards, TP8)
+
+`w8a8-vllm-910b-graph-tp8`: one node with eight 910B (A2) cards of at least 64 GiB each, TP8/DP1,
+ModelScope `Eco-Tech/GLM-5.3-Flash-w8a8` (the same pinned revision as the 910C profiles), on the
+official multi-arch vLLM Ascend image pinned by digest (the NJU quay mirror serves the same digest);
+no image is built. Each request has up to 133120 tokens of context, at most 32 sequences run at once,
+8192 tokens per batch, memory utilization 0.85. The target runs a decode-only ACL graph (captured at
+1/2/4/8/16/32) with async scheduling and shared-expert multistream overlap. Text only: no image or video input.
+
+The image's vLLM-Ascend has no 910B path for this model, so before start the template installs 21 checked
+modules from `assets/` (target hidden states, hybrid cache, text-only weight mapping, bounded indexer RoPE,
+container-local CANN extension load), warms the CANN extensions and self-tests the weight loader on tiny
+tensors; the launcher derives `--hf-overrides` from the mounted checkpoint's `text_config`. Every original and
+replacement file is checked by SHA-256 and a different image refuses to start. Patch sources and the rebuild
+procedure are in the repository's `build/inference-templates/glm53-910b/README.md`.
+
+Measured: on 2026-11-16, 8× 64 GiB 910B3 (ARM64, driver 26.0.RC1, udocker) deployed with the defaults; plain and
+streaming chat were correct and decode ACL graph replay was confirmed. Re-checked on the same node on 2026-11-19:
+plain chat (a Chinese answer plus arithmetic) and streaming were correct. The first start compiles the extensions
+and captures graphs, which makes it markedly slower than later starts; set the deployment start timeout to
+7200 seconds. This is a
+functional check only: no long-context, full-concurrency or performance runs. x86 910B was not run (the overlay is
+checked against the ARM64 image's sources and refuses to start on different ones).

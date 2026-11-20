@@ -21,6 +21,10 @@ var upstreamAscendImages = map[string]string{
 	// The kimi-k3.1-pro-a3 tag, which upstream publishes for Atlas 800I A3.
 	"quay.io/ascend/vllm-ascend@sha256:e7c67329d7a7390dd472437020531a4ef289daa4f7374d11042364f80ab596b7": "910C",
 	"quay.io/ascend/vllm-ascend:v0.30.0rc2-a3":                                                           "910C",
+	// v0.32.0rc1-openeuler, the release build for Atlas A2 (910B).
+	"quay.io/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188": "910B",
+	// The A2 build the GLM-5.3-Flash 910B source overlay is pinned to.
+	"quay.io/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a": "910B",
 }
 
 func TestBuiltinAscendSpecsRunReviewedImages(t *testing.T) {
