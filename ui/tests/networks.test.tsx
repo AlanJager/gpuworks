@@ -138,15 +138,17 @@ test("network list shows the empty state and the fallback note", async () => {
   await waitFor(() => assert.ok(screen.getByText(n.empty)));
 });
 
-test("an empty ?network= opens no detail, while ?network=0 is the management network", async () => {
+test("invalid network IDs open no detail, while zero opens the management network", async () => {
   const asked: number[] = [];
   stub("networks", async () => ({ items: [], roles: ["storage_sync", "compute", "serving"], types: ["host_ethernet", "host_rdma", "accelerator_rdma"], type_roles: typeRoles }));
   stub("network", async (id: number) => { asked.push(id); return { ...detailFixture, id }; });
-  renderAt("/networks?network=", <NetworksPage />, "/networks");
-  await waitFor(() => assert.ok(screen.getByText(n.empty)));
-  assert.deepEqual(asked, [], "an empty value is no network");
-  assert.equal(document.querySelector('[role="dialog"]'), null);
-  cleanup();
+  for (const raw of ["", " ", "invalid", "-1", "0x0", "1.5", "3e2", "9007199254740993"]) {
+    renderAt(`/networks?network=${encodeURIComponent(raw)}`, <NetworksPage />, "/networks");
+    await waitFor(() => assert.ok(screen.getByText(n.empty)));
+    assert.deepEqual(asked, [], `invalid id "${raw}" must not request a resource`);
+    assert.equal(screen.queryByRole("dialog"), null);
+    cleanup();
+  }
   renderAt("/networks?network=0", <NetworksPage />, "/networks");
   await waitFor(() => assert.deepEqual(asked, [0]));
 });
