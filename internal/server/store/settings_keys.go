@@ -1,5 +1,7 @@
 package store
 
+import "errors"
+
 // SettingKey is the identity of a platform setting row. GetSetting/SetSetting
 // take it rather than a plain string so a new key has to be declared here
 // instead of appearing as a literal at the call site.
@@ -108,3 +110,17 @@ func SettingKeys() []SettingKey {
 // String makes a SettingKey usable where a plain string is required (the
 // Setting row's primary key, event payloads, error messages).
 func (k SettingKey) String() string { return string(k) }
+
+// ErrInternalSchedulingSetting refuses a client write to a controller fencing fact.
+var ErrInternalSchedulingSetting = errors.New("setting is reserved for internal scheduling")
+
+// IsInternalSchedulingSetting identifies only the controller fencing facts.
+// Other keys, including operator-defined scheduling.* keys, remain public.
+func IsInternalSchedulingSetting(key SettingKey) bool {
+	switch string(key) {
+	case schedulingGenerationSetting, schedulingOwnerSetting, schedulingConfirmationSetting:
+		return true
+	default:
+		return false
+	}
+}

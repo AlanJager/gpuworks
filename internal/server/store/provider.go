@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/hmac"
 	"errors"
 	"fmt"
@@ -359,6 +360,40 @@ func (s *Store) SetSetting(key SettingKey, value string) error {
 	return err
 }
 
+// SetBusinessSetting applies an authenticated settings change under the local
+// member write admission, so a closed or ineligible member refuses it before
+// anything commits. Startup defaults and internal writers keep SetSetting.
+//
+// The owed notification is saved in the same transaction and stays unpublished
+// for the leader's scanner: the bus hint after the commit is process-local and
+// is not delivery, and a failure there never changes the committed result.
+func (s *Store) SetBusinessSetting(ctx context.Context, key SettingKey, value string) error {
+	if key == "" {
+		return errors.New("setting key is required")
+	}
+	if IsInternalSchedulingSetting(key) {
+		return ErrInternalSchedulingSetting
+	}
+	started := time.Now().UTC()
+	err := s.withBusinessWriteTx(ctx, func(tx *gorm.DB) error {
+		st := Setting{Key: string(key), Value: value, UpdatedAt: time.Now().UTC()}
+		if err := tx.Save(&st).Error; err != nil {
+			return err
+		}
+		return saveUnpublishedNotification(tx, CommittedNotification{
+			RequestKey: settingNotifyKey(string(key)), ResourceID: string(key), Topic: "setting", Reason: "updated",
+		})
+	})
+	s.logSettingWriteDiagnostic(ctx, "transaction_returned", started, err)
+	if err != nil || s.Bus == nil {
+		return err
+	}
+	started = time.Now().UTC()
+	s.Bus.PublishChange("setting", string(key), "updated")
+	s.logSettingWriteDiagnostic(ctx, "post_commit_notify_call_returned", started, nil)
+	return nil
+}
+
 // DeleteSetting removes a setting. Deleting an absent key succeeds, so callers
 // can clear a value without first checking whether it was ever set.
 func (s *Store) DeleteSetting(key SettingKey) error {
@@ -369,10 +404,11 @@ func (s *Store) DeleteSetting(key SettingKey) error {
 	return nil
 }
 
-// AllSettings returns every setting as a map.
+// AllSettings returns public configuration as a map. Controller fencing facts
+// share the table but are not JSON documents and are never listed.
 func (s *Store) AllSettings() (map[string]string, error) {
 	var all []Setting
-	if err := s.db.Find(&all).Error; err != nil {
+	if err := s.db.Where("key NOT IN ?", []string{schedulingGenerationSetting, schedulingOwnerSetting, schedulingConfirmationSetting}).Find(&all).Error; err != nil {
 		return nil, err
 	}
 	m := make(map[string]string, len(all))

@@ -105,3 +105,14 @@ func runEnrollmentGuards(guards []NodeEnrollmentGuard, c FleetCapacity) error {
 	}
 	return nil
 }
+
+// ReleaseNodeAdmission forgets every enrollment guard and scheduling holder.
+// A cluster member's store outlives the business generations assembled on
+// it; each generation's modules register again, and one that was withdrawn
+// must not keep answering for nodes or refuse its successor's holder.
+func (s *Store) ReleaseNodeAdmission() {
+	s.admission.mu.Lock()
+	defer s.admission.mu.Unlock()
+	s.admission.guards.Store(nil)
+	s.admission.holders.Store(nil)
+}

@@ -56,6 +56,12 @@ func TestDeploymentPolicyFallsBackOnCorruptValue(t *testing.T) {
 		if got := st.DeploymentPolicy(); got != DefaultDeploymentPolicy() {
 			t.Fatalf("raw %q gave %+v, want the shipped default", raw, got)
 		}
+		if got := DeploymentPolicyFromSetting(raw); got != DefaultDeploymentPolicy() {
+			t.Fatalf("raw %q parsed to %+v, want the shipped default", raw, got)
+		}
+	}
+	if got := DeploymentPolicyFromSetting("  "); got != DefaultDeploymentPolicy() {
+		t.Fatalf("an empty value parsed to %+v, want the shipped default", got)
 	}
 }
 
@@ -73,6 +79,9 @@ func TestDeploymentPolicyAcceptsValidValues(t *testing.T) {
 	}
 	if got := st.DeploymentPolicy(); got != want {
 		t.Fatalf("policy = %+v, want %+v", got, want)
+	}
+	if got := DeploymentPolicyFromSetting(" " + string(b) + "\n"); got != want {
+		t.Fatalf("parsed policy = %+v, want %+v", got, want)
 	}
 	if got := want.PendingTimeout(); got != 2*time.Minute {
 		t.Fatalf("PendingTimeout = %s, want 2m", got)

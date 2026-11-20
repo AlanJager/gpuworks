@@ -120,8 +120,15 @@ func (s *Store) EnsureDeploymentPolicy() error {
 // down, and must not silently widen a bound either, so an unreadable value
 // yields the shipped default rather than an unbounded one.
 func (s *Store) DeploymentPolicy() DeploymentPolicy {
+	return DeploymentPolicyFromSetting(s.GetSetting(SettingDeploymentPolicy))
+}
+
+// DeploymentPolicyFromSetting is the policy a stored deployment_policy value
+// stands for, with the same defaults as DeploymentPolicy. A caller that has
+// already read the settings uses it instead of reading the key again.
+func DeploymentPolicyFromSetting(raw string) DeploymentPolicy {
 	out := DefaultDeploymentPolicy()
-	raw := strings.TrimSpace(s.GetSetting(SettingDeploymentPolicy))
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return out
 	}
