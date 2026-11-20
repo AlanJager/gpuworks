@@ -122,6 +122,9 @@ jobs:
         with:
           name: webui-dist
           path: internal/server/webui/dist/
+      - name: Check the generated Slurm scripts with the required ShellCheck
+        if: matrix.shard == 1
+        run: ./scripts/test_slurmboot_shellcheck.sh
       - name: go test (shard ${{ matrix.shard }}/3)
         run: |
           packages=$(CGO_ENABLED=0 ./scripts/go_package_shard.sh ${{ matrix.shard }}/3 ./...)

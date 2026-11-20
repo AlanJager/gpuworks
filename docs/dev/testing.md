@@ -294,6 +294,10 @@ nightly）在 master 上运行，用来与 GitLab 同一提交的结果对比。
 `.gitlab-ci.yml` 与 GitHub workflow 各自从自己的内置变量赋值；不设时脚本退回本地的 `git` 与当前时间。
 `check_ci_yaml.sh` 对两边的 CI 定义都做 folded 标量注释检查，stage 顺序检查只针对 `.gitlab-ci.yml`。
 
+Slurm 接入脚本在两个 CI 中都跑 `scripts/test_slurmboot_shellcheck.sh`，要求 ShellCheck 0.9.0，并强制重跑生成脚本的 POSIX 检查。GitHub 在 Ubuntu 24.04 的第一个 Go 分片执行。GitLab 的 `core-test-image` 在 Docker runner 上构建预装工具的 Go 镜像并验证；没有配置镜像的项目或 fork 也走这条检查。
+
+受保护的默认分支合入镜像构建改动后，作业用 GitLab 自带的项目容器仓库发布镜像（需要启用 Container Registry），并在日志中列出摘要。将可供 runner 拉取的完整 `仓库路径@sha256:摘要` 设置为项目 CI/CD 变量 `GPUWORKS_CORE_TEST_IMAGE` 后，`core-test` 直接用这个镜像执行检查；镜像配方变动时验证新镜像，再更新该变量。其他 Go 作业沿用原镜像。
+
 - L2/L3 与 GitLab 的 `.docker-core` 同形：每个 job 一个 DinD daemon，暴露在专用的 `gpuworks-e2e` socket
   上，suite 跑在 golang 容器里。直接用 runner VM 的 Docker 不行：VM 有 systemd，console upgrade 用例会把它
   当成服务管理器；真实终端用例只接受专用 daemon。fixture 基础镜像在 suite 前预拉进 DinD。

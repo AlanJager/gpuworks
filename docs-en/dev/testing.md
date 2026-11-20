@@ -305,6 +305,10 @@ each set them from their own built-in variables; unset, the scripts fall back to
 time. `check_ci_yaml.sh` runs the folded-scalar comment check over both CI definitions; the stage-order check
 applies to `.gitlab-ci.yml` only.
 
+Both CI systems run `scripts/test_slurmboot_shellcheck.sh` for Slurm onboarding. It requires ShellCheck 0.9.0 and reruns the POSIX checks against the generated scripts. GitHub runs it on Ubuntu 24.04 in the first Go shard. GitLab's `core-test-image` builds and verifies a Go image with the tool installed on a Docker runner. Projects and forks without a configured image use this check too.
+
+When an image build change lands on the protected default branch, the job publishes to the project's GitLab Container Registry, if enabled, and prints the digest. Set the project CI/CD variable `GPUWORKS_CORE_TEST_IMAGE` to the full `repository@sha256:digest` the runner can pull. The `core-test` job then runs the check in that image. Verify the new image before updating the variable when its recipe changes. Other Go jobs keep using the original image.
+
 - L2/L3 take the shape of GitLab's `.docker-core`: one DinD daemon per job, exposed on a dedicated
   `gpuworks-e2e` socket, with the suite in a golang container. The runner VM's own Docker does not work: the
   VM has systemd, which the console upgrade cases take for a service manager, and the real terminal case
@@ -471,4 +475,4 @@ This guide documents testing methods. Put one-off run logs, screenshots, image d
 `artifacts/work/<YYYY-MM-DD>-<topic>/<topic>-<YYYY-MM-DD>.md` (move them with the topic into
 `artifacts/archive/` when the work is closed out). Current documentation only links to this evidence.
 
-<!-- translation-source-sha256: 8b1c2e03c0f27fb8c861357dda596edbd259714ea3baaef079cf72eab6f4458b -->
+<!-- translation-source-sha256: 175baf4cd47206c3f93cbfae0b4872ba5f23704b19fa18a9589b44c1902c59e7 -->
