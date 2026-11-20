@@ -630,6 +630,7 @@
         "deployment": "deployment setting",
         "cluster": "cluster setting",
         "engine": "engine configuration",
+        "template": "inference template",
         "harness": "test override",
         "unknown": "recorded budget"
       },

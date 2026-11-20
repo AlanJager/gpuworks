@@ -37,7 +37,7 @@ func FromFlatStoreModel(row store.InferenceModel) (InferenceModel, error) {
 			Name: stored.Name, DisplayNameZHCN: stored.DisplayNameZHCN, DisplayNameEN: stored.DisplayNameEN, Scenario: stored.Scenario,
 			Engine: stored.Engine, Image: stored.Image,
 			Weights: Weights{Quantization: stored.Quantization}, WeightBytes: stored.WeightBytes, RuntimeWeightBytes: stored.RuntimeWeightBytes,
-			PreStartScript: stored.PreStartScript, PDMode: stored.PDMode, ManualCommand: stored.ManualCommand, ShmBytes: stored.ShmBytes, MemlockUnlimited: stored.MemlockUnlimited,
+			PreStartScript: stored.PreStartScript, PDMode: stored.PDMode, ManualCommand: stored.ManualCommand, ShmBytes: stored.ShmBytes, MemlockUnlimited: stored.MemlockUnlimited, StartTimeoutSec: stored.StartTimeoutSec,
 		}
 		sources, err := DecodeWeightSources(stored.WeightSources)
 		if err != nil {

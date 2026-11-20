@@ -56,6 +56,15 @@ test("the budget and the estimate share one line and the formula waits behind th
   assert.equal(within(screen.getByRole("region", { name: "Startup timing" })).getAllByText(/./, { selector: "p" }).length, 1, "one line, not a stack");
 });
 
+test("a budget the inference template stated names the template as its source", async () => {
+  show(instance({ start_timeout_sec: 5400, start_timeout_source: "template" }));
+  assert.ok(screen.getByText("Startup wait limit 1 h 30 min 0 s (inference template)"));
+  cleanup();
+  await i18n.changeLanguage("zh");
+  show(instance({ start_timeout_sec: 5400, start_timeout_source: "template" }));
+  assert.ok(screen.getByText(/（推理模板）/));
+});
+
 test("an explicit shorter platform budget reports the retained engine timeout conflict", () => {
   show(instance({ start_timeout_sec: 1800, start_timeout_source: "deployment", engine_start_timeout_sec: 36000, start_timeout_conflict: true }));
   assert.ok(screen.getByText("Startup wait limit 30 min 0 s (deployment setting)"));

@@ -630,6 +630,7 @@
         "deployment": "部署设置",
         "cluster": "集群设置",
         "engine": "引擎配置",
+        "template": "推理模板",
         "harness": "测试覆盖值",
         "unknown": "已记录的上限"
       },

@@ -30,7 +30,7 @@ func ResolveAllocatedLaunch(req LaunchRequest, indexes []int, assigned int, para
 		return plan, err
 	}
 	plan.LaunchInput = deploy.ResolveLaunchInput{
-		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: req.DefaultStartTimeoutSec,
+		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: req.DefaultStartTimeoutSec, TemplateStartTimeoutSec: req.Selection.StartTimeoutSec,
 		Engine: engine, Params: plan.Params, Image: req.Source.Image, TargetValidation: deploy.ValidateAssignedTarget,
 		ContainerOverrides: req.Source.Overrides, ComponentModelMount: componentModelMount(req),
 		Entrypoint: req.Selection.Entrypoint, PreStartArgv: req.Selection.PreStartArgv,

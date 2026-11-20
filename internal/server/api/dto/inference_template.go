@@ -82,6 +82,7 @@ type InferenceSpecDTO struct {
 	RuntimeWeightBytes int64          `json:"runtime_weight_bytes,omitempty"`
 	ShmBytes           int64          `json:"shm_bytes,omitempty"`         // the /dev/shm size the engine needs; omitted when the spec states none
 	MemlockUnlimited   bool           `json:"memlock_unlimited,omitempty"` // the engine needs unlimited locked memory; omitted when false
+	StartTimeoutSec    int            `json:"start_timeout_sec,omitempty"` // the instance start timeout the spec states; omitted when none
 	// DockerArgs are extra docker run options the spec's engine needs, applied
 	// before the deployment's own docker_args. Omitted when none.
 	DockerArgs     []string          `json:"docker_args,omitempty"`

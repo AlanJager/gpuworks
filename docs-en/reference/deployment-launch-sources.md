@@ -113,6 +113,7 @@ For spec field syntax, see the [Inference Catalog model.yaml Syntax Reference](i
 | `api` | API contract and health check path |
 | `shm_bytes` | Minimum size for the container's `/dev/shm`; see "`/dev/shm` Size". Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `memlock_unlimited` | When `true`, the container receives `--ulimit memlock=-1:-1`; see "Locked Memory". Saved with the spec snapshot |
+| `start_timeout_sec` | The template step of the startup wait limit (source `template`); see "Startup Wait Limit". Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `docker_args` | Appended to the front of `docker run`, before the deployment's own `docker_args` and the platform's appended arguments; see "The three-layer order of docker run arguments". Saved with the spec snapshot; later template changes do not affect existing deployments |
 | `image` | Image used by the deployment; it need not be registered in the image catalog first |
 
@@ -224,6 +225,17 @@ The platform's own docker arguments (RDMA) are exempt from these restrictions; t
 The evaluation API attaches these errors to the docker arguments or shared memory control in the deployment form; the creation API returns 400. The udocker runtime only parses `--device` among these arguments.
 A template spec's `docker_args` that fails this validation is rejected on import, so it is never discovered only at deployment time.
 
+## Startup Wait Limit
+
+The longest time an instance waits after it starts for the engine health check to pass (`start_timeout_sec`, seconds, 60–86400) is decided in this order; the step that decided it is recorded as `start_timeout_source` in instance and evaluation responses:
+
+1. `cluster`: the cluster default, setting `deployment.start_timeout_sec` (factory default 1800).
+2. `template`: the selected inference template spec's `start_timeout_sec`, when it states one, replaces the previous step.
+3. `engine`: when the final environment of a managed vLLM launch states `VLLM_ENGINE_READY_TIMEOUT_S` explicitly and that plus a 30-second probe margin is longer than the previous step, the limit is raised to it (at most 86400).
+4. `deployment`: the deployment's own `start_timeout_sec` replaces all of the above and is not raised; when it is shorter than the engine deadline, only a conflict is reported (`start_timeout_conflict`).
+
+The template and the deployment use the same field name, unit and range; the template's value is saved with the spec snapshot, so later template changes do not affect existing deployments. The value is fixed when an instance is created; changes affect only instances started afterward.
+
 ## Environment Variable Layers
 
 `ResolvedLaunch.env_layers` records the source of each layer; `env` is the merged result:
@@ -312,5 +324,5 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 - [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Image Catalog and Inference Image Families](image-families.md)
 - [Deploy Models](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation](../how-to/pd-disaggregation.md)
 
-<!-- translation-source-sha256: a57082991f4e2632fd672244a862caeeaeef9c4f318df0dcb03e945644144f3c -->
+<!-- translation-source-sha256: 873c163a45cd819e07cc26a961dfde008aa783f4725a51d88ce624723ab8a98e -->
 <!-- translation-localized-code-block: 87810a25cc9d7f6adbb697b3c419cb2727115525f01d20d8ba378215c02d16e7 9f5706e114d2dd907dd8185a9c7d45f2bdd0387155df33a59bb6930888f598f1 Translate explanatory comments and placeholders in runtime assembly illustration. -->

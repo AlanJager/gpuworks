@@ -50,6 +50,12 @@ type ResolveLaunchInput struct {
 	Engine                 Engine
 	Params                 Params
 	ContainerOverrides     ContainerOverrides
+
+	// TemplateStartTimeoutSec is the selected template spec's
+	// start_timeout_sec: it replaces DefaultStartTimeoutSec, and an explicit
+	// StartTimeoutSec replaces it. Zero when the spec states none.
+	TemplateStartTimeoutSec int
+
 	// ComponentModelMount is the template component's primary mount; it
 	// replaces DefaultModelMount, and an override may not contradict it.
 	ComponentModelMount string

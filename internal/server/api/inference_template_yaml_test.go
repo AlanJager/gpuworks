@@ -106,6 +106,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 		ManualCommand:    "set -eu\ncase \"${GPUWORKS_PD_ROLE}/${GPUWORKS_NODE_RANK}\" in\n  *) exec vllm serve ${GPUWORKS_MODEL_PATH} --port ${GPUWORKS_API_PORT} ;;\nesac",
 		ShmBytes:         429_496_729_600,
 		MemlockUnlimited: true,
+		StartTimeoutSec:  5400,
 		DockerArgs:       []string{"--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"},
 	}
 	scripted := inferencecatalog.InferenceSpec{
@@ -301,7 +302,7 @@ func TestInferenceTemplateYAMLRoundTripsEveryFieldThroughImport(t *testing.T) {
 	text := response.Body.String()
 	for _, want := range []string{
 		"tokenizer_ref: ms://Acme/Tokenizer@0123456789abcdef0123456789abcdef01234567",
-		"runtime_weight_bytes: 70000000000", "pd_mode: vllm-nixl", "shm_bytes: 429496729600", "memlock_unlimited: true", "docker_args:", "--cap-add=SYS_PTRACE", "kv_bytes_per_token:", "model_config:", "unsupported:",
+		"runtime_weight_bytes: 70000000000", "pd_mode: vllm-nixl", "shm_bytes: 429496729600", "memlock_unlimited: true", "start_timeout_sec: 5400", "docker_args:", "--cap-add=SYS_PTRACE", "kv_bytes_per_token:", "model_config:", "unsupported:",
 		"arch_id: sm_90", "readme_zh_cn: README.zh-CN.md", "resolver: |", "pre_start_script: |", "request_defaults:", "format: json",
 	} {
 		if !strings.Contains(text, want) {
@@ -391,7 +392,7 @@ func TestInferenceTemplateYAMLWireContract(t *testing.T) {
 	row := store.InferenceModel{ModelID: "acme/wire", Source: "user", Unsupported: `[]`, Specs: []store.InferenceSpecRow{{
 		Source: "user", Name: "plain", Engine: "vllm", Image: "vllm:wire", Quantization: "bf16",
 		WeightSources: `[{"provider":"huggingface","repo_id":"acme/wire"}]`, GPUs: `{"vendor":"nvidia"}`, Args: `[]`, Env: `{}`, PreStartArgv: `[]`,
-		RuntimeWeightBytes: 12884901888, PDMode: "vllm-nixl", ShmBytes: 429496729600, MemlockUnlimited: true,
+		RuntimeWeightBytes: 12884901888, PDMode: "vllm-nixl", ShmBytes: 429496729600, MemlockUnlimited: true, StartTimeoutSec: 5400,
 		DockerArgs: `["--cap-add=SYS_PTRACE"]`,
 	}}}
 	if err := database.ImportUserInferenceCatalog([]store.InferenceModel{row}, false); err != nil {
@@ -417,6 +418,7 @@ func TestInferenceTemplateYAMLWireContract(t *testing.T) {
 		"        pd_mode: vllm-nixl\n" +
 		"        shm_bytes: 429496729600\n" +
 		"        memlock_unlimited: true\n" +
+		"        start_timeout_sec: 5400\n" +
 		"        docker_args:\n" +
 		"          - --cap-add=SYS_PTRACE\n"
 	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "application/yaml; charset=utf-8" || recorder.Body.String() != want {

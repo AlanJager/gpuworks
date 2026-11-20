@@ -54,6 +54,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
     weight_bytes: 28935653617
     shm_bytes: 429496729600   # 可选：引擎需要的 /dev/shm 字节数（这里是 400 GiB）
     memlock_unlimited: true   # 可选：容器不限锁定内存（--ulimit memlock=-1:-1）
+    start_timeout_sec: 5400   # 可选：实例启动超时（秒），首次启动很长的配方用
     docker_args: [--cap-add=SYS_PTRACE]   # 可选：引擎需要的额外 docker run 选项
     gpus:
       vendor: nvidia          # 必填
@@ -115,6 +116,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `weight_bytes` / `runtime_weight_bytes` | 非负；后者 ≤ 前者 | 调度与估算输入 |
 | `shm_bytes` | 可选整数，字节；> 0 且 ≤ 16 TiB（`1<<44`），否则报稳定错误码 `CATALOG_SHM_BYTES_INVALID`；显式写 `0` 等同于不写 | 引擎自己需要的容器 `/dev/shm` 大小，例如把大块查表数据放在共享内存里的引擎。部署不填共享内存大小时，容器得到「引擎基线 + CPU 内存层」与它之间较大的一个；部署自己填的值优先。详见 [容器 `/dev/shm` 大小](deployment-launch-sources.md#devshm-大小) |
 | `memlock_unlimited` | 可选布尔，缺省 `false`；写成非布尔值（数字、字符串等）会被拒绝 | 为 `true` 时该部署的容器带 `--ulimit memlock=-1:-1`（只对这个容器取消锁定内存上限），给要锁页大块主机内存的引擎用（例如 DeepInfer 用 `cudaHostRegister` 锁住约 197 GB）。部署自己的 `docker_args` 已写 `memlock` 时以部署为准，不重复追加；与主机 RDMA 网络注入的 `memlock` 合并为一条。详见 [锁定内存](deployment-launch-sources.md#锁定内存memlock) |
+| `start_timeout_sec` | 可选整数，秒；60–86400（与部署自己的 `start_timeout_sec` 同界），否则报稳定错误码 `CATALOG_START_TIMEOUT_INVALID`；显式写 `0` 等同于不写 | 该档位实例的启动健康检查预算，给首次启动要转换权重、预热缓存、耗时数十分钟的配方用。它是启动等待上限的模板一步（来源 `template`）：集群默认 → 模板 → 引擎等待上限抬高 → 部署的 `start_timeout_sec`，顺序与规则见 [启动等待上限](deployment-launch-sources.md#启动等待上限)。随档位快照保存，之后改模板不影响已有部署 |
 | `docker_args` | 可选字符串数组；每项 trim 后非空；校验与部署自己的 `container_overrides.docker_args` 完全一致（`deploy.ValidateDockerArgs`）：拒绝 `--privileged`、`--pid`、`-v /` 等交出主机控制权的选项，拒绝 `--name`、`--network`、`--gpus`、`--shm-size`、`-e`、`-v`、`--mount`、`--entrypoint` 等平台已管的选项，`--ipc=host` 与本 spec 自己的 `shm_bytes` 同时出现也拒绝 | 引擎需要的额外 `docker run` 选项（例如 `--cap-add=SYS_PTRACE`），是部署 `docker_args` 的模板层：先套用模板的，再套用部署自己的，最后是平台追加的（RDMA、memlock）。部署自己若没写 `--ipc=host` 但模板写了，部署自己的 `shm_bytes` 会被拒绝而不是静默失效，因为那个大小不会生效。详见 [docker run 参数的三层顺序](deployment-launch-sources.md#docker-run-参数的三层顺序) |
 | `gpus` | 必填 | 见下 |
 | `args` | 字符串数组 | 进入引擎命令行，支持 `${VAR}` [变量展开](#变量展开)；部署时按参数字典拆分（见下） |
@@ -321,6 +323,29 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
 **服务名的写法**：服务名是用户填的任意文本，手工命令里 `--served-model-name` 的值在展开后会被平台改写成已转义的单引号字符串。
 所以把 `${GPUWORKS_SERVED_MODEL_NAME}` 直接写在命令行上、不加引号，如上例。不要把它连同 `--served-model-name` 放进一个双引号字符串
 （例如 `bash -c "... --served-model-name ${GPUWORKS_SERVED_MODEL_NAME}"`）：平台插入的单引号会作为字面字符留在服务名里，或让外层引号错位。
+
+## 模板与平台的分工
+
+模板只声明自己要什么，平台在每次启动时提供；下表列出模板能声明或能依赖的全部容器内事实。表外的事实（选哪张卡、哪个端口、哪条网络）由平台决定，模板不能声明。
+
+| 类别 | 模板写 | 容器里看到 | 主机侧由谁定 | 生命周期 |
+|---|---|---|---|---|
+| 启动变量 | 在 `args` / `env` / `entrypoint` / `pre_start_*` 里引用 `${GPUWORKS_*}`，见[变量展开](#变量展开) | 本次启动的值 | 平台 | 每次启动 |
+| 系统层环境变量 | 不用写；`env` 里同名键覆盖它 | 计算网络的 `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`，见[环境变量分层](deployment-launch-sources.md#环境变量分层) | 平台 | 每次启动 |
+| 主权重 | `weights` | 只读，在 `${GPUWORKS_MODEL_PATH}`（缺省 `/model`，有 primary 组件时为它的 `mount_path`） | 平台（模型存储） | 随模型 |
+| 组件权重 | `components[].mount_path` | 只读，在该路径 | 平台（模型存储） | 随模型 |
+| 资产 | `assets[].unpack_to` | 只读，展开到该路径 | 平台（模板包） | 随模板版本 |
+| KV 磁盘层 | 不能写（部署参数） | 读写，平台选的路径 | 平台（节点托管目录） | 随节点上的实例，超限修剪 |
+| 部署挂载 | 不能写（部署的 `extra_mounts`） | 按行设置 | 运维 | 不由平台管理 |
+| 计算网络文件 | 不用写 | 只读，加速卡网络需要的主机文件（同路径） | 平台 | 每次启动 |
+| 平台文件 | 不能写；`/gpuworks` 归平台 | `/gpuworks/pre-start.sh`（有 `pre_start_*` 时） | 平台 | 每次容器启动重写 |
+| 启动等待上限 | `start_timeout_sec` | 引擎健康检查的等待时长 | 平台，见[启动等待上限](deployment-launch-sources.md#启动等待上限) | 实例创建时定下 |
+
+规则：
+
+- **一种变量写法**：文档与示例一律写带前缀的 `${GPUWORKS_X}`；不带前缀的旧写法在模板字段里作为别名同样展开，手写手工命令只认带前缀的。
+- **一套单位**：spec 里的大小一律是字节（`*_bytes`），时长一律是秒（`*_sec`），容器路径一律是绝对、规整的路径（`mount_path`、`unpack_to`）。
+- **一个容器路径空间**：表中所有挂载（主权重、组件、资产、KV 磁盘层、部署挂载、计算网络文件）两两不能指向同一路径或互相嵌套，部署评估与创建时统一检查，同一目标报 `MOUNT_TARGET_DUPLICATE`。
 
 ## entrypoint：入口覆盖的唯一声明处
 

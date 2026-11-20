@@ -641,6 +641,7 @@
     "CATALOG_REQUEST_STATS_NEGATIVE_SCALE": "api.request_stats entry “{{path}}” has a negative scale.",
     "CATALOG_REQUEST_STATS_DUPLICATE_PATH": "api.request_stats states the path “{{path}}” more than once.",
     "CATALOG_SHM_BYTES_INVALID": "Spec “{{spec}}” of {{model}} states shm_bytes {{shm_bytes}}; it must be between 1 and {{max_bytes}} bytes (16 TiB).",
+    "CATALOG_START_TIMEOUT_INVALID": "Spec “{{spec}}” of {{model}} states start_timeout_sec {{start_timeout_sec}}; it must be between {{min_sec}} and {{max_sec}} seconds.",
     "INFERENCE_SPEC_TARGET_REQUIRED": "Both the owning model_id and the spec name are required to delete a user spec.",
     "INFERENCE_TEMPLATE_MODEL_REQUIRED": "Specify the template with model_id.",
     "DEPLOYMENT_TEMPLATE_SELECTION_GONE": "The selected inference template or spec was deleted. Refresh the template list and select another.",

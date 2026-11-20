@@ -86,6 +86,10 @@ const (
 	// ErrorCatalogShmBytesInvalid reports a catalog spec whose shm_bytes is
 	// negative or above 16 TiB. Params: model, spec, shm_bytes, max_bytes.
 	ErrorCatalogShmBytesInvalid = "CATALOG_SHM_BYTES_INVALID"
+	// ErrorCatalogStartTimeoutInvalid reports a catalog spec whose
+	// start_timeout_sec is outside the deployment start timeout bounds.
+	// Params: model, spec, start_timeout_sec, min_sec, max_sec.
+	ErrorCatalogStartTimeoutInvalid = "CATALOG_START_TIMEOUT_INVALID"
 	// ErrorInferenceSpecTargetRequired reports a delete-spec request that did
 	// not name both the owning model_id and the user spec to retire.
 	ErrorInferenceSpecTargetRequired     = "INFERENCE_SPEC_TARGET_REQUIRED"

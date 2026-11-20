@@ -171,7 +171,7 @@ func (s *Service) evaluateRankFallback(env evaluateRankEnv) bool {
 		Arch: arch, ArchID: archID, Vendor: vendor, ModelType: model.Arch,
 	}
 	res, launchWarnings, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
-		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec,
+		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec, TemplateStartTimeoutSec: selection.startTimeoutSec(),
 		Engine: eng, Params: params, Image: env.rankSelection.Image,
 		Entrypoint:   templateEntrypoint,
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,

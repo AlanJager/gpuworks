@@ -59,7 +59,7 @@ func (s *Service) prepareLaunchPreflight(eng deploy.Engine, req *dto.DeployReque
 	}
 	pdReq.preflight(&params)
 	out.input = deploy.ResolveLaunchInput{
-		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec,
+		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec, TemplateStartTimeoutSec: selection.startTimeoutSec(),
 		Engine: eng, Params: params, Image: req.Image,
 		Entrypoint: selection.Entrypoint, PreStartArgv: selection.PreStartArgv,
 		PreStartScript: selection.PreStartScript, RuntimeAssets: selection.Assets,

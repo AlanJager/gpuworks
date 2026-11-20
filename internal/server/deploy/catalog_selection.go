@@ -71,6 +71,10 @@ type CatalogSelection struct {
 	// MemlockUnlimited asks for --ulimit memlock=-1:-1 unless the deployment's
 	// docker_args state a memlock ulimit.
 	MemlockUnlimited bool `json:"memlock_unlimited,omitempty"`
+	// StartTimeoutSec is the instance start timeout the template stated;
+	// zero states none. resolveStartupBudget takes it over the cluster
+	// default and under the deployment's own start_timeout_sec.
+	StartTimeoutSec int `json:"start_timeout_sec,omitempty"`
 	// DockerArgs are the template's own docker run options, applied before
 	// the deployment's own docker_args and the platform's
 	// (deploy.launchDockerArgs). A running deployment keeps the args it was
