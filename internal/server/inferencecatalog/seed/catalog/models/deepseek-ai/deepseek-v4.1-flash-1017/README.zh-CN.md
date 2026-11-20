@@ -5,7 +5,7 @@
 - **SGLang**：来自 [SGLang 官方文档](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1)，使用专用 `lmsysorg/sglang:dev-dsv41` 镜像（CUDA 13），不能替换成 V4 镜像或普通旧版 runner。
 - **vLLM（NVIDIA）**：来自 [vLLM 官方配方](https://github.com/vllm-project/recipes/blob/main/models/deepseek-ai/DeepSeek-V4.1-Flash.yaml)，需要 vLLM 0.31.0 及以上；昇腾使用下述独立 vLLM-Ascend 镜像。
 - **DeepInfer**：DeepSeek 开源的推理框架 [DeepInfer](https://github.com/deepseek-ai/DeepInfer)（commit `774ce24`）。镜像 `gpuworks/deepinfer:774ce24-r9` 在其上补了 OpenAI 兼容 HTTP 服务（协议层用 DeepSeek 的 deepseek-recipe）、单机 Engram 本机取数和多机请求中继；只服务文本输入，开源版不含 PD 分离。
-- **pico-dgx-ds4**：社区项目 [pico-dgx-ds4](https://github.com/Picom-code/pico-dgx-ds4)（MIT，v2.0 = commit `22a39ac`），在 4 台 DGX Spark（GB10）上以 TP4 跑这个模型，rank 之间走 RoCE。权重预先按 rank 转换，发布在 ModelScope `gpuworks/DeepSeek-V4.1-Flash-1017-pico-dgx-ds4-tp4`，每个 rank 一个子目录（约 128 GB），每个节点只下载自己那一份。镜像 `gpuworks/pico-dgx-ds4:v2.0-22a39ac-r3` 带 pico 的引擎与前端，以及一个启动器：读平台的 peers 文件生成 pico 的 fleet 配置、在容器里探测 RoCE GID，rank 0 另起 OpenAI 兼容前端。
+- **pico-dgx-ds4**：社区项目 [pico-dgx-ds4](https://github.com/Picom-code/pico-dgx-ds4)（MIT，v2.0 = commit `22a39ac`），在 4 台 DGX Spark（GB10）上以 TP4 跑这个模型，rank 之间走 RoCE。权重预先按 rank 转换，发布在 ModelScope `gpuworks/DeepSeek-V4.1-Flash-1017-pico-dgx-ds4-tp4`，每个 rank 一个子目录（约 128 GB），每个节点只下载自己那一份。镜像 `gpuworks/pico-dgx-ds4:v2.0-22a39ac-r5` 带 pico 的引擎与前端，以及一个启动器：读平台的 peers 文件生成 pico 的 fleet 配置（交换机组网或环形组网，见 `--topology`）、在容器里探测 RoCE GID，rank 0 另起 OpenAI 兼容前端。
 
 ## 配方
 
@@ -24,7 +24,8 @@
 | `fp4-deepinfer-nvidia-blackwell-ep` | B200/B300 × 4 或 8（单机） | 专家并行 = 卡数，注意力数据并行 = 卡数；自动放置时优先整机 8 卡；不需要 RDMA 网卡 |
 | `fp4-deepinfer-nvidia-blackwell-ep-multinode` | B200/B300，每节点 4 或 8 卡，2 节点及以上 | 专家并行跨节点；需要主机 RDMA 参数网络 |
 | `int8-vllm-ascend-a3-tp4-dp4` | A3/910C × 16 逻辑 die | 1017 W8A8，DP4 × TP4，150K 上下文，约 781.5 GB 权重；Engram 表放主机内存 |
-| `fp8-pico-nvidia-gb10-tp4` | DGX Spark（GB10）× 4，每节点 1 卡 | pico-dgx-ds4 v2.0，TP4，1M 上下文，16 个会话槽；投机解码、copy drafts 与 `prediction` 字段；需要主机 RDMA 参数网络 |
+| `fp8-pico-nvidia-gb10-tp4` | DGX Spark（GB10）× 4，每节点 1 卡，**RoCE 交换机** | pico-dgx-ds4 v2.0，TP4，1M 上下文，16 个会话槽；投机解码、copy drafts 与 `prediction` 字段；四台接在同一台 RoCE 交换机上（`--topology switch`） |
+| `fp8-pico-nvidia-gb10-tp4-ring` | DGX Spark（GB10）× 4，每节点 1 卡，**环形组网（无交换机）** | 同一引擎与权重，走 pico 的有线环形组网（`--topology ring`）：无交换机，4 根点对点线缆；不带引擎的两个仅交换机适用的开关（`DSGB10_RING_DIRECT`、`DSGB10_RING_RSBAL`）。已用 pico 自己的环形 fleet 文件做单元测试，**尚未在真机上验证** |
 
 H200 × 4 的两个 SGLang 配方是本平台补充的组合，所用开关均来自上游文档。
 
@@ -47,7 +48,9 @@ vLLM-Ascend v0.30.0rc2 A3 镜像。模板声明 512 GiB `/dev/shm` 和
 
 ## pico-dgx-ds4 的部署前提
 
-- **四台 DGX Spark 同一个主机 RDMA 参数网络**：每台两条 RoCE rail（两个 PCI 域上的 CX7 端口），节点之间经交换机一跳可达；平台把 rail 写进 peers 文件，启动器据此生成 fleet 配置。部署时 4 个节点、每节点 1 卡，rank 0 对外服务。
+- **四台 DGX Spark 同一个主机 RDMA 参数网络**：每台两条 RoCE rail（两个 PCI 域上的 CX7 端口），节点之间经交换机一跳可达（配方 `fp8-pico-nvidia-gb10-tp4`）；平台把 rail 写进 peers 文件，启动器据此生成 fleet 配置。部署时 4 个节点、每节点 1 卡，rank 0 对外服务。
+- **环形组网（无交换机）**（配方 `fp8-pico-nvidia-gb10-tp4-ring`）：没有交换机，4 根线缆首尾相接成环 0 → 1 → 2 → 3 → 0。每台的 ConnectX-7 端口 f0 接下一个 rank、端口 f1 接上一个 rank，共 4 根线缆；每个端口在两个 PCI 域上各有一个 RDMA 设备（f0 为 `rocep1s0f0`/`roceP2p1s0f0`，f1 为 `rocep1s0f1`/`roceP2p1s0f1`），每条链路每个域各占一个 /24 子网。每台的 4 个端口都必须接入部署的计算网络并带 IPv4 地址（各 rank 在每条链路上自己的地址；线缆两端同一个 /24，不同链路各用各的）。启动器按设备名生成 pico 的 fleet 文件；端口缺失、线缆两端不在同一子网、或各端口看起来像交换机网络时，启动失败并指明 rank、设备与子网。不支持开环的菊花链（缺 3 → 0 那根线）。环形配方已用 pico 自己的环形 fleet 文件（`homelab.conf`）做单元测试，**尚未在真机上验证**。
+- **Tokenizer**：按 rank 的权重仓库根目录没有 tokenizer，pico 前端也没有 `/v1/tokenize`，所以两个配方都声明了 `api.tokenizer_ref`（本模型自己的 ModelScope 仓库，固定到提交），供平台压测使用；不声明则压测会因 tokenizer 404 失败。
 - **按 rank 的权重与可写目录**：`subfolder: rank${GPUWORKS_NODE_RANK}` 让每个节点只下载自己的 rank；`dirs` 声明的 `/state`（64 GiB）放 fleet 配置、会话 spill 与引擎 socket，随部署保留。
 - **容器选项**：引擎用 io_uring 直读 Engram 分片，没有退路，而 Docker 默认 seccomp 拒绝 `io_uring_setup`，所以模板带 `--security-opt seccomp=unconfined`；另声明 `memlock_unlimited`。
 - **节点环境**（模板管不到）：GB10 是统一内存，页缓存会挤占引擎可用的内存，启动前宿主页缓存应尽量少，否则会话缓存可能分到 0 GiB；Engram 若放在 loop 设备上，loop 需要开 direct I/O。
