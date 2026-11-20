@@ -298,7 +298,7 @@ func (e *Engine) startAborted(ctx context.Context, spec proto.InstanceDesiredSta
 	if !aborted {
 		return proto.RuntimeFailure{}, "", false
 	}
-	out := exitOutput{causes: enginelog.Classify(text), root: commandlog.Redact(cause)}
+	out := exitOutput{causes: enginelog.ClassifyWithLimit(text, spec.VRAMLimitBytes), root: commandlog.Redact(cause)}
 	if out.root == "" {
 		out.root = commandlog.Redact(enginelog.RootCause(text))
 	}
@@ -330,6 +330,6 @@ func (e *Engine) startMakesNoProgress(ctx context.Context, spec proto.InstanceDe
 		return proto.RuntimeFailure{}, "", false
 	}
 	failure = proto.RuntimeFailure{Code: proto.ErrorEngineStartStalled, Phase: proto.PhaseHealthCheck, Detail: stall.detail(now)}
-	e.attachOutput(ctx, id, &failure, true)
+	e.attachOutput(ctx, id, spec.VRAMLimitBytes, &failure, true)
 	return failure, fmt.Sprintf("engine start stalled: %s", failure.Detail), true
 }

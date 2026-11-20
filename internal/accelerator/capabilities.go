@@ -44,6 +44,26 @@ func LiveMemoryLimit(b Backend) bool {
 	return false
 }
 
+// SliceUsageReporter is implemented by backends whose interposer keeps what
+// a slice holds in a region the agent can read, so each slice's own use can
+// be reported beside the card's.
+type SliceUsageReporter interface {
+	// SliceUsage reports which readings a slice running under the compute
+	// limit smLimitPct has: the memory it is charged, and its compute
+	// utilization.
+	SliceUsage(smLimitPct int) (memory, compute bool)
+}
+
+// SliceUsage reports which of a slice's own readings the backend provides. A
+// backend without the capability provides neither: the card's readings are
+// all there is.
+func SliceUsage(b Backend, smLimitPct int) (memory, compute bool) {
+	if r, ok := b.(SliceUsageReporter); ok {
+		return r.SliceUsage(smLimitPct)
+	}
+	return false, false
+}
+
 // RuntimeConstraint reports the runtime drivers the backend is limited to
 // when driver is not one of them, or nil when the backend can run under
 // driver. The caller turns the list into a reason code and its parameters.

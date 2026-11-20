@@ -112,7 +112,7 @@ func TestOutputOfAContainerThatIsStillRunning(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			e := newHermeticEngine(&loggingHeadlessDriver{headlessTestDriver: &headlessTestDriver{}, logs: tc.logs, logsErr: tc.logsErr}, func(proto.InstanceStatus) {}, slog.Default(), t.TempDir())
 			failure := proto.RuntimeFailure{Code: proto.ErrorEngineHealthTimeout, Phase: proto.PhaseHealthCheck}
-			e.attachOutput(t.Context(), "c", &failure, tc.timedOut)
+			e.attachOutput(t.Context(), "c", 0, &failure, tc.timedOut)
 			if !slices.Equal(failure.Evidence, tc.wantEvidence) {
 				t.Fatalf("evidence = %q, want %q", failure.Evidence, tc.wantEvidence)
 			}

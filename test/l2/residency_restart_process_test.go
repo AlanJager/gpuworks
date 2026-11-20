@@ -238,8 +238,10 @@ func TestProcessResidencyAcrossAServerStopAndKill(t *testing.T) {
 	if got := <-held; got.err == nil {
 		t.Fatalf("held request on a kill = %+v, want its connection dropped", got)
 	}
-	r.start()
+	// Idle time starts in the new server while the fixture is still waiting
+	// for readiness and the agent to reconnect.
 	restartedAt := time.Now()
+	r.start()
 	// H now yields once idle 15 s; idle counts from this process's start.
 	r.setYieldPolicy(t, h, `{"policy":"idle","idle_sec":15}`)
 	if got := r.chat(key.Key, "restart-a", 3*time.Minute); got.err != nil || got.status != http.StatusOK {

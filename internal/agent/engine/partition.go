@@ -43,6 +43,71 @@ type partitionInjector interface {
 	applyLimit(e *Engine, spec proto.InstanceDesiredState) (bool, error)
 }
 
+// partitionUsageReader is the injector of a backend whose interposer keeps
+// what a slice holds where the agent can read it (accelerator.SliceUsage).
+type partitionUsageReader interface {
+	// usage reads what the instance is charged on each of its cards, in
+	// spec.GPUIndexes order.
+	usage(e *Engine, spec proto.InstanceDesiredState) ([]dgpucache.DeviceUsage, error)
+}
+
+// DGPUUsage is what a partitioned instance's slice holds on each of its
+// cards, in spec.GPUIndexes order, as the partition backend's interposer
+// accounts it, and whether the figures carry a compute utilization. An
+// instance that is not partitioned, or whose backend keeps no such figure,
+// has none: nil without an error.
+func (e *Engine) DGPUUsage(spec proto.InstanceDesiredState) (devices []dgpucache.DeviceUsage, compute bool, err error) {
+	if spec.VRAMLimitBytes <= 0 || len(spec.GPUIndexes) == 0 {
+		return nil, false, nil
+	}
+	backendID := strings.TrimSpace(spec.PartitionBackend)
+	if backendID == "" { // desired state from an older server
+		backendID = accelerator.BackendNVIDIALogical
+	}
+	backend, known := accelerator.Lookup(backendID)
+	reader, ok := partitionInjectors[backendID].(partitionUsageReader)
+	if !known || !ok {
+		return nil, false, nil
+	}
+	if devices, err = reader.usage(e, spec); err != nil {
+		return nil, false, err
+	}
+	_, compute = accelerator.SliceUsage(backend, spec.SMLimitPct)
+	return devices, compute, nil
+}
+
+// freshUsageLedger replaces an instance's usage ledger file with an empty
+// one the workload's interposer sets up at its first allocation, writable by
+// whatever user the container runs as. A new file per start, never the last
+// start's truncated in place: a ledger charges processes by PID, and a new
+// container's PIDs repeat the old one's.
+func freshUsageLedger(path string) error {
+	// Only the mount exposes the file to the workload UID. Other users on
+	// the agent host must not be able to rewrite the quota ledger.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o666)
+	if err != nil {
+		return err
+	}
+	if err := f.Chmod(0o666); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// usageLedgerPath is the agent-host file an instance's usage ledger is kept
+// in, in the instance's partition state directory, which its teardown
+// removes.
+func (e *Engine) usageLedgerPath(uuid string) string {
+	return filepath.Join(e.stateDir, partitionStateRoot, "instances", sanitizeID(uuid), "usage", "ledger")
+}
+
 // errLiveLimitUnsupported: the backend reads its limit only when the
 // container starts.
 var errLiveLimitUnsupported = errors.New("the partition backend takes a new memory limit only at restart")

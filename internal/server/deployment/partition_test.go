@@ -71,7 +71,7 @@ func TestResolvePartitionBackend(t *testing.T) {
 
 	// Nothing ready: the refusal is the node's own backend's reason, not a
 	// complaint that NVIDIA's does not match an Ascend node.
-	ascend.PartitionProbes = "null"
+	ascend.PartitionProbes, ascend.PartitionSafetyProtocol = "null", 0
 	_, err := ResolvePartitionBackend(ascend, 8, "")
 	var product *messages.ProductError
 	if !errors.As(err, &product) || product.Code() != messages.ErrorPartitionAgentUpgradeRequired || !strings.Contains(err.Error(), accelerator.BackendAscendLogical) {

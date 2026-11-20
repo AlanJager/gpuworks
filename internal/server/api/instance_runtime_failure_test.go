@@ -118,6 +118,38 @@ func TestInstanceRuntimeFailureLiteralWire(t *testing.T) {
 	}
 }
 
+// A dGPU memory limit refusal that names no device (the Ascend interposer's)
+// carries its numbers without one, and a limit shown without what the engine
+// needed carries the limit alone, with a fallback that claims no number it
+// does not have.
+func TestFailureCauseWithoutDeviceLiteralWire(t *testing.T) {
+	wire, err := json.Marshal(failureCauseMessage(proto.FailureCause{
+		Code: "DGPU_MEMORY_LIMIT_EXCEEDED", NeededBytes: 8778678272, LimitBytes: 8589934592,
+		Evidence: []string{"[vCANN_RT] Out of memory! Request:312475648 B, accounted:8466202624 B, quota:8589934592 B."},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"code":"DGPU_MEMORY_LIMIT_EXCEEDED","params":{"evidence":["[vCANN_RT] Out of memory! Request:312475648 B, accounted:8466202624 B, quota:8589934592 B."],"limit_bytes":8589934592,"needed_bytes":8778678272},` +
+		`"message":"dGPU memory limit reached: the engine needed 8.2 GiB, its limit is 8.0 GiB"}`
+	if string(wire) != want {
+		t.Fatalf("wire = %s\nwant  %s", wire, want)
+	}
+	wire, _ = json.Marshal(failureCauseMessage(proto.FailureCause{Code: "DGPU_MEMORY_LIMIT_EXCEEDED", LimitBytes: 1073741824}))
+	want = `{"code":"DGPU_MEMORY_LIMIT_EXCEEDED","params":{"limit_bytes":1073741824},` +
+		`"message":"dGPU memory limit reached: the engine could not get the memory it needs within its 1.0 GiB limit"}`
+	if string(wire) != want {
+		t.Fatalf("wire = %s\nwant  %s", wire, want)
+	}
+	device := 0
+	wire, _ = json.Marshal(failureCauseMessage(proto.FailureCause{Code: "DGPU_MEMORY_LIMIT_EXCEEDED", Device: &device, NeededBytes: 1234803097, LimitBytes: 1073741824}))
+	want = `{"code":"DGPU_MEMORY_LIMIT_EXCEEDED","params":{"device":0,"limit_bytes":1073741824,"needed_bytes":1234803097},` +
+		`"message":"dGPU memory limit reached on GPU 0: the engine needed 1.1 GiB, its limit is 1.0 GiB"}`
+	if string(wire) != want {
+		t.Fatalf("wire = %s\nwant  %s", wire, want)
+	}
+}
+
 // Rows written before reasons were general: a failure from an older agent
 // has no runtime_failure (its message is all there is), and a stored code an
 // older agent spelled in lower case is read in the one spelling.

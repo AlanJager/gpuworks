@@ -126,6 +126,13 @@ func TestQueryVendorCLIServesTheLastAnswerOfASlowDriver(t *testing.T) {
 	if at := answered.Oldest(); at.IsZero() || at.After(firstDone) {
 		t.Fatalf("answer time = %s, want when the first query finished (by %s)", at, firstDone)
 	}
+	// The answer is also dated by when its run started: what a 0.4 s run
+	// shows may have been read at any point of it, so a caller asking
+	// whether the answer can know of something that happened meanwhile
+	// compares against the start.
+	if began, at := answered.Began(), answered.Oldest(); began.Before(start) || at.Sub(began) < 350*time.Millisecond {
+		t.Fatalf("answer run began %s and completed %s, want the first query's whole 0.4 s run from %s", began, at, start)
+	}
 	waitIdle(t, "gw-slow-q-smi")
 	if starts() != 2 {
 		t.Fatalf("starts = %d; five concurrent callers must share one new query", starts())

@@ -583,7 +583,7 @@
     "commandMode": {
       "manual": "手动命令"
     },
-    "wakeEstimate": "L1 唤醒预计约 {{seconds}} 秒",
+    "lastWake": "上次唤醒耗时约 {{seconds}} 秒",
     "sleepWeight": "权重占用{{storage}}约 {{gib}} GiB",
     "hostMemory": "宿主内存",
     "selectedGpu": "调度选中 GPU",

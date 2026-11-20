@@ -9,6 +9,7 @@ This guide explains how to put an entire deployment, selected replicas, or a PD 
 - The deployment uses vLLM and has **Sleep Capable** enabled at creation. Single-node and regular multi-node replicas are supported; SGLang is not.
 - A PD deployment can sleep when KV transfer uses Ethernet. If KV transfer uses host RDMA networking, sleep capability cannot be enabled (`PD_SLEEP_RDMA_UNSUPPORTED`). This restriction does not apply to regular multi-node deployments using RDMA for collective communication.
 - L1 requires enough host memory to hold the offloaded weights. If the available host memory minus headroom cannot hold them, the platform refuses L1 (409 `SLEEP_HOST_MEMORY_INSUFFICIENT`); choose L2 instead and ensure that the original model directory remains readable when waking.
+- On Hygon nodes, starting a sleep-capable vLLM deployment needs host memory to back the GPU memory pool. If the latest memory sample shows insufficient space, deployment evaluation explains why and creation returns 409 `SLEEP_HOST_BACKING_INSUFFICIENT`. Lower GPU memory utilization or the slice quota, or disable sleep capability.
 - For the complete procedure for deploying multiple models on the same GPU, see [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md). For boundaries such as custom images, see [Limitations](#限制).
 
 ## Two Levels
@@ -178,4 +179,4 @@ When one instance fails to sleep, only its own desired state and any still-activ
   Reassess this requirement if the deployment architecture changes.
 - Stopping an instance differs from sleep: stop actually stops and removes the running container. Click **Start** in deployment details (`POST /api/v1/deployments/{id}/start`) to recover.
 
-<!-- translation-source-sha256: bc3720fdb8244a90e7c3663f322b636f8090fbdc1bec40fedd7fbfe5cc013ee5 -->
+<!-- translation-source-sha256: 42fc0e40eea351b32e0db501841ef4f10fad3aab64ba6cc5b6cc5896190a8075 -->

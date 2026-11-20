@@ -67,3 +67,16 @@ func TestRequiresCollectiveInterface(t *testing.T) {
 		}
 	}
 }
+
+// Only Hygon was measured keeping host memory behind a sleepable engine's GPU
+// memory; a new vendor must be added on evidence, not by default.
+func TestSleepPoolOnHostMemoryIsHygonOnly(t *testing.T) {
+	for _, vendor := range KnownVendors() {
+		if got, want := SleepPoolOnHostMemory(vendor), vendor == VendorHygon; got != want {
+			t.Errorf("SleepPoolOnHostMemory(%q) = %v, want %v", vendor, got, want)
+		}
+	}
+	if !SleepPoolOnHostMemory(" Hygon ") || SleepPoolOnHostMemory("") {
+		t.Fatal("vendor spelling is normalized and an unknown vendor backs nothing")
+	}
+}

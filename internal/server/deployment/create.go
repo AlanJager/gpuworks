@@ -173,7 +173,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if targetVendor == "" {
 		targetVendor = planning.RequirementVendor(reqs)
 	}
-	launch, err := s.materializeCreateLaunch(eng.Name(), &req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	launch, err := s.materializeCreateLaunch(eng.Name(), &req, selection, requestTargetCards(profileNode, &req), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
 	if err != nil {
 		return nil, invalid(err)
 	}
@@ -221,7 +221,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if err != nil {
 		return nil, invalid(err)
 	}
-	launch, err = materializeDeployRequest(eng.Name(), &req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	launch, err = materializeDeployRequest(eng.Name(), &req, selection, requestTargetCards(profileNode, &req), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
 	if err != nil {
 		return nil, invalid(err)
 	}
@@ -295,6 +295,9 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 		return nil, invalid(err)
 	}
 	targets := append([]*store.Node{node}, distNodes...)
+	if err := s.sleepHostBacking(eng.Name(), &req, quick, targets...); err != nil {
+		return nil, conflict(err)
+	}
 	weightStorage, err := s.resolveSaveToStorage(req.ModelSource, model, targets)
 	if err != nil {
 		return nil, conflict(err)

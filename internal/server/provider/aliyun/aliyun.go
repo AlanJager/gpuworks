@@ -44,10 +44,11 @@ func (d *Driver) Capabilities() provider.Capabilities {
 }
 
 // ValidateCredentials lists the regions: it needs only ecs:DescribeRegions and
-// proves the key (and the role, when one is set) work.
+// proves the key (and the role, when one is set) work. A refusal of the
+// credentials comes back as a product error (see credentialError).
 func (d *Driver) ValidateCredentials(ctx context.Context, creds provider.Credentials) error {
 	_, err := d.regions(ctx, creds)
-	return err
+	return credentialError(err)
 }
 
 // PowerState implements provider.Driver.

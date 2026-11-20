@@ -197,3 +197,33 @@ func TestTheEnginesOwnDefaultIsNotACardDerivedOne(t *testing.T) {
 		t.Fatalf("vllm = %v after a capped materialization, want its own 0.9", got)
 	}
 }
+
+// A sleepable Ascend partition is measured against its memory limit; nothing
+// else is, and the caller's cards are left as they were.
+func TestSleepSliceCardsMeasuresOnlyASleepableAscendPartitionAgainstItsLimit(t *testing.T) {
+	cards := []CardFacts{{Name: "910B4", MemoryTotalBytes: 32 << 30}, {Name: "910B4"}}
+	limited := SleepSliceCards("Ascend", true, 8<<30, cards)
+	if limited[0].MemoryTotalBytes != 8<<30 || limited[1].MemoryTotalBytes != 0 {
+		t.Fatalf("limited = %+v, want the 8 GiB limit and the unmeasured card untouched", limited)
+	}
+	if cards[0].MemoryTotalBytes != 32<<30 {
+		t.Fatalf("the caller's cards were changed: %+v", cards)
+	}
+	out, err := Materialize(MaterializeInput{Engine: EngineVLLM, Cards: limited})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Quick.GPUMemUtil != 0.75 {
+		t.Fatalf("share = %v, want 0.75: 2 GiB of the 8 GiB limit held back", out.Quick.GPUMemUtil)
+	}
+	for name, got := range map[string][]CardFacts{
+		"awake":            SleepSliceCards("ascend", false, 8<<30, cards),
+		"whole card":       SleepSliceCards("ascend", true, 0, cards),
+		"another vendor":   SleepSliceCards("nvidia", true, 8<<30, cards),
+		"limit above card": SleepSliceCards("ascend", true, 64<<30, cards),
+	} {
+		if got[0].MemoryTotalBytes != 32<<30 {
+			t.Errorf("%s: cards = %+v, want the physical card", name, got)
+		}
+	}
+}

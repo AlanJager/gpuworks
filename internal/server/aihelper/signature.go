@@ -46,7 +46,7 @@ func Findings(failure *proto.RuntimeFailure, lines []string) []Finding {
 // CauseFallback is the English fallback sentence for a cause an agent
 // reported, for the product message the console renders from its code.
 func CauseFallback(c proto.FailureCause) string {
-	cause := enginelog.Cause{Code: c.Code, GLIBC: c.GLIBC, NeededBytes: c.NeededBytes, LimitBytes: c.LimitBytes}
+	cause := enginelog.Cause{Code: c.Code, GLIBC: c.GLIBC, Device: enginelog.DeviceUnknown, NeededBytes: c.NeededBytes, LimitBytes: c.LimitBytes}
 	if c.Device != nil {
 		cause.Device = *c.Device
 	}

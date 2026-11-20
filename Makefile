@@ -246,6 +246,7 @@ test-host-env-adapters:
 .PHONY: test-runner-image-scripts
 test-runner-image-scripts:
 	python3 -B build/runner-images/test_prebuilt.py
+	python3 -B build/runner-images/test_ascend_reload_patch.py
 
 .PHONY: test-inference-template-assets
 test-inference-template-assets:

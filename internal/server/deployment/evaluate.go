@@ -214,7 +214,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// One materialization decides this deployment's launch configuration. The
 	// preview below, the estimate, and a create submitted from this form all
 	// read the same object.
-	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
+	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, requestTargetCards(profileNode, req), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
 	if errs.add(fieldExtraArgs, err) {
 		// ProductErrors that name a key land on that key's control; the
 		// extra-args parse error is the one that starts on the text box.
@@ -251,6 +251,13 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	resp.Moved = launch.Moved
 	resp.TemplateParams = launch.TemplateParams
 	resp.TemplateResidualArgs = launch.TemplateResidual
+	// The form values are already answered, so the deployer sees the share
+	// the refusal is about and can lower it. An edit is not asked: the
+	// deployment's own engine already holds the host memory in question.
+	if base == nil && errs.add("sleepable", s.sleepHostBacking(eng.Name(), req, quick, profileNode)) {
+		writeFieldErrors()
+		return
+	}
 	if requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides); overrideErr == nil && placement.PD == nil {
 		mount, components := previewComponentMounts(nil, selection.Components, nil)
 		draft := evaluationLaunchRequest(evaluatePlanEnv{request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, selection: selection, placement: placement, quick: quick, userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides, modelMount: mount, componentMounts: components, templateResidual: launch.TemplateResidual}, nil)

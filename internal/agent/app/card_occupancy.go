@@ -69,6 +69,15 @@ type cardOccupancy struct {
 	// takes none of them as known either way (readSharedCard), and the state
 	// file keeps them without their PIDs (saveLocked).
 	guessed map[string]map[int]string
+	// engines is, on a card of ours that is not examined, the processes
+	// listed there, by PID with their names; once our instances have left
+	// it, the ones of them still listed (leavingEngines). In memory only.
+	engines map[string]map[int]string
+	// held is the cards our instances were last seen on: the zero time
+	// while they are, and from then on when a reading first found them
+	// gone (noteHeld), until a process list produced after that has
+	// examined the card. In memory only.
+	held map[string]time.Time
 	// path is where last is kept across restarts (cardOccupancyFile); empty
 	// keeps it in memory only.
 	path string
@@ -246,6 +255,7 @@ func (o *cardOccupancy) readSharedCard(ident string, known []proto.CardProcess, 
 		o.guessed = map[string]map[int]string{}
 	}
 	o.own[ident], o.shared[ident] = own, true
+	delete(o.engines, ident)
 	if guess != nil {
 		o.guessed[ident] = guess
 	} else {
@@ -350,7 +360,26 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		n.occupancy.restate(gpus)
 		return
 	}
-	procs, err := lister.ComputeProcesses(ctx)
+	// What this agent's instances held before the list was asked for, and
+	// how old what it shows may be: a slow vendor tool is answered from its
+	// last result (gpu.QueryVendorCLI), which may predate a teardown by
+	// minutes and still names the engine of an instance that has left. The
+	// list is dated by when the run behind it started: the tool may have
+	// read the cards at any point of a run that takes tens of seconds.
+	asked := time.Now()
+	before, _, beforeKnown := n.cardsInUse()
+	if beforeKnown {
+		n.occupancy.noteHeld(before, asked)
+	}
+	listCtx, produced := gpu.WithResultTime(ctx)
+	procs, err := lister.ComputeProcesses(listCtx)
+	listed := produced.Began()
+	if listed.IsZero() {
+		listed = produced.Oldest()
+	}
+	if listed.IsZero() || listed.After(asked) {
+		listed = asked
+	}
 	if err != nil {
 		// Not knowing is not the same as knowing a card is free.
 		slog.Debug("compute processes unavailable; card occupancy restated", "err", err)
@@ -374,7 +403,7 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		if !accelerator.CardUsable(card.Ownership) {
 			continue
 		}
-		if n.cardSmoke.Touched(ident, smokeOccupancyGrace) {
+		if n.cardSmoke.Touched(ident, smokeOccupancyGrace+asked.Sub(listed)) {
 			// The runtime check's own process is on the card, or was when
 			// the vendor tool listed it. The check only asks cards nobody
 			// uses, so the last answer stands for this round.
@@ -399,8 +428,24 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		if slots := ours[ident]; slots > 0 && !examine {
 			if known := n.occupancy.knownForeign(ident); len(known) > 0 || n.occupancy.readsShared(ident) || partitionsOnly[ident] {
 				card.ForeignProcesses = n.occupancy.readSharedCard(ident, known, slots, procs, card.PCIeBDF)
+			} else {
+				n.occupancy.noteEngines(ident, procs, card.PCIeBDF)
 			}
 			continue
+		}
+		if ours[ident] == 0 && (before[ident] > 0 || n.occupancy.listPredatesLeaving(ident, listed)) {
+			// Ours when the list was produced and let go since: the list
+			// may still name the engine that left. A list produced after
+			// the card was seen without our instances examines it.
+			n.occupancy.restateCard(card)
+			continue
+		}
+		var leaving map[int]string
+		if !examine {
+			// None of ours is here now. An engine of an instance that has
+			// just left may still be: it is reported while it holds the
+			// card, and the card is let go when it is gone (releaseLeft).
+			leaving = n.occupancy.leavingEngines(ident, procs, card.PCIeBDF)
 		}
 		n.occupancy.setOwn(ident, own, procs, card.PCIeBDF)
 		for _, proc := range procs {
@@ -410,6 +455,9 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 			card.ForeignProcesses = append(card.ForeignProcesses, proto.CardProcess{
 				PID: proc.PID, Name: proc.Name, MemoryBytes: proc.MemoryBytes,
 			})
+		}
+		if len(card.ForeignProcesses) == 0 && len(leaving) > 0 {
+			n.occupancy.releaseLeft(ident, leaving, card.PCIeBDF)
 		}
 	}
 	for _, card := range n.occupancy.remember(gpus) {
