@@ -15,13 +15,14 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// A refresh that used up its cycle can come back with the driver's own
-// account of the interruption instead of the context's deadline: go-dqlite
-// answers "no available leader" when its connect loop runs out of time. The
-// reached deadline still makes it a timed-out refresh, which keeps the proof.
-// A verdict, or an error nothing classifies, closes whether or not the
-// deadline was reached.
-func TestClosedTransportRefreshReachedDeadlineKeepsProofOnlyForInterruptions(t *testing.T) {
+// Only a verdict closes the member. A refresh that was interrupted, found the
+// writer taken, ran out of its cycle or got a database failure response keeps
+// the proof, whether the cycle is live or its deadline was reached: go-dqlite
+// answers "no available leader" when its connect loop runs out of time, and a
+// writer held through a commit stall comes back as busy just before the
+// deadline. A refusal, also one such error is joined to, and an error nothing
+// classifies close in either case.
+func TestClosedTransportRefreshClosesOnlyOnAVerdict(t *testing.T) {
 	unknown := errors.New("transport identity differs")
 	for _, tc := range []struct {
 		name     string
@@ -35,11 +36,21 @@ func TestClosedTransportRefreshReachedDeadlineKeepsProofOnlyForInterruptions(t *
 		{name: "reached_deadline_observation_timeout", failure: store.ErrClusterMembershipObservationTimeout, deadline: -time.Millisecond, keep: true},
 		{name: "reached_deadline_writer_busy", failure: dqlitedriver.Error{Code: dqlitedriver.ErrBusy, Message: "database is locked"}, deadline: -time.Millisecond, keep: true},
 		{name: "reached_deadline_wrapped_writer_busy", failure: errors.Join(errors.New("begin"), dqlitedriver.Error{Code: dqlitedriver.ErrBusySnapshot, Message: "database is locked"}), deadline: -time.Millisecond, keep: true},
-		{name: "live_cycle_writer_busy", failure: dqlitedriver.Error{Code: dqlitedriver.ErrBusy, Message: "database is locked"}, deadline: time.Minute},
-		{name: "reached_deadline_other_database_failure", failure: dqlitedriver.Error{Code: 19, Message: "constraint failed"}, deadline: -time.Millisecond},
+		{name: "live_cycle_writer_busy", failure: dqlitedriver.Error{Code: dqlitedriver.ErrBusy, Message: "database is locked"}, deadline: time.Minute, keep: true},
+		{name: "reached_deadline_other_database_failure", failure: dqlitedriver.Error{Code: 19, Message: "constraint failed"}, deadline: -time.Millisecond, keep: true},
 		{name: "reached_deadline_writer_busy_joined_with_rejection", failure: errors.Join(store.ErrClusterAdmissionRejected, dqlitedriver.Error{Code: dqlitedriver.ErrBusy, Message: "database is locked"}), deadline: -time.Millisecond},
-		{name: "live_cycle_no_leader", failure: dqlitedriver.ErrNoAvailableLeader, deadline: time.Minute},
-		{name: "live_cycle_dropped_stream", failure: io.ErrUnexpectedEOF, deadline: time.Minute},
+		{name: "live_cycle_no_leader", failure: dqlitedriver.ErrNoAvailableLeader, deadline: time.Minute, keep: true},
+		{name: "live_cycle_dropped_stream", failure: io.ErrUnexpectedEOF, deadline: time.Minute, keep: true},
+		{name: "live_cycle_interrupted_response", failure: dqlitedriver.Error{Code: 3, Message: "key"}, deadline: time.Minute, keep: true},
+		{name: "live_cycle_wrapped_interrupted_response", failure: errors.Join(errors.New("begin"), dqlitedriver.Error{Code: 1, Message: "EOF"}), deadline: time.Minute, keep: true},
+		{name: "live_cycle_bad_connection", failure: driver.ErrBadConn, deadline: time.Minute, keep: true},
+		{name: "live_cycle_observation_timeout", failure: store.ErrClusterMembershipObservationTimeout, deadline: time.Minute, keep: true},
+		{name: "live_cycle_admission_rejected", failure: store.ErrClusterAdmissionRejected, deadline: time.Minute},
+		{name: "live_cycle_identity_conflict", failure: store.ErrClusterIdentityConflict, deadline: time.Minute},
+		{name: "live_cycle_maintenance_not_serving", failure: store.ErrMaintenanceNotServing, deadline: time.Minute},
+		{name: "live_cycle_business_writes_closed", failure: store.ErrBusinessWritesClosed, deadline: time.Minute},
+		{name: "live_cycle_rejection_joined_with_interrupted_response", failure: errors.Join(store.ErrClusterAdmissionRejected, dqlitedriver.Error{Code: 3, Message: "key"}), deadline: time.Minute},
+		{name: "live_cycle_rejection_joined_with_bad_connection", failure: errors.Join(store.ErrClusterAdmissionRejected, driver.ErrBadConn), deadline: time.Minute},
 		{name: "reached_deadline_unknown_error", failure: unknown, deadline: -time.Millisecond},
 		{name: "live_cycle_unknown_error", failure: unknown, deadline: time.Minute},
 		{name: "reached_deadline_admission_rejected", failure: store.ErrClusterAdmissionRejected, deadline: -time.Millisecond},
