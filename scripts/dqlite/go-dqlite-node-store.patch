@@ -1,0 +1,105 @@
+--- a/client/store.go
++++ b/client/store.go
+@@ -1,10 +1,13 @@
+ package client
+ 
+ import (
++	"bytes"
+ 	"context"
++	"io"
+ 	"io/ioutil"
+ 	"os"
+ 	"sync"
++	"syscall"
+ 
+ 	"github.com/google/renameio"
+ 	"gopkg.in/yaml.v2"
+@@ -30,9 +33,10 @@
+ 
+ // Persists a list addresses of dqlite nodes in a YAML file.
+ type YamlNodeStore struct {
+-	path    string
+-	servers []NodeInfo
+-	mu      sync.RWMutex
++	path      string
++	servers   []NodeInfo
++	persisted os.FileInfo
++	mu        sync.RWMutex
+ }
+ 
+ // NewYamlNodeStore creates a new YamlNodeStore backed by the given YAML file.
+@@ -82,11 +86,73 @@
+ 		return err
+ 	}
+ 
++	// Startup reads are not confirmation of a write in this lifetime. Only a
++	// successful Set can suppress an identical subsequent replacement, and the
++	// current file must still contain exactly that ordered discovery snapshot.
++	if s.persisted != nil && sameNodes(s.servers, servers) && nodeStoreFileMatches(s.path, data, s.persisted) {
++		return nil
++	}
++	s.persisted = nil
+ 	if err := renameio.WriteFile(s.path, data, 0600); err != nil {
+ 		return err
+ 	}
+ 
+-	s.servers = servers
++	s.servers = append([]NodeInfo(nil), servers...)
++	// A failed observation only disables suppression; the write already succeeded.
++	s.persisted, _ = os.Lstat(s.path)
+ 
+ 	return nil
+ }
++
++func sameNodes(a, b []NodeInfo) bool {
++	if len(a) != len(b) {
++		return false
++	}
++	for i := range a {
++		if a[i] != b[i] {
++			return false
++		}
++	}
++	return true
++}
++
++// A missing, replaced, or damaged file must use the original write/error path.
++// Do not follow a symlink as evidence that this store's file is unchanged.
++func nodeStoreFileMatches(path string, expected []byte, persisted os.FileInfo) bool {
++	before, err := os.Lstat(path)
++	if err != nil || !privateNodeStoreFile(before) || !sameNodeStoreFileVersion(before, persisted) || before.Size() != int64(len(expected)) {
++		return false
++	}
++	// Never wait on a FIFO or follow a link swapped in after Lstat. This SDK
++	// is built for native Linux; a raced replacement uses the original writer.
++	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
++	if err != nil {
++		return false
++	}
++	file := os.NewFile(uintptr(fd), path)
++	opened, statErr := file.Stat()
++	if statErr != nil || !privateNodeStoreFile(opened) || !sameNodeStoreFileVersion(before, opened) {
++		file.Close()
++		return false
++	}
++	actual, readErr := io.ReadAll(io.LimitReader(file, int64(len(expected))+1))
++	closeErr := file.Close()
++	after, afterErr := os.Lstat(path)
++	return statErr == nil && readErr == nil && closeErr == nil && afterErr == nil &&
++		privateNodeStoreFile(after) &&
++		sameNodeStoreFileVersion(before, opened) && sameNodeStoreFileVersion(opened, after) && bytes.Equal(actual, expected)
++}
++
++// The native SDK targets Unix hosts; linked or permissive files need the normal
++// replacement so an unchanged Set cannot preserve an externally shared inode.
++func privateNodeStoreFile(info os.FileInfo) bool {
++	stat, ok := info.Sys().(*syscall.Stat_t)
++	return ok && info.Mode() == 0600 && stat.Nlink == 1
++}
++
++func sameNodeStoreFileVersion(a, b os.FileInfo) bool {
++	left, leftOK := a.Sys().(*syscall.Stat_t)
++	right, rightOK := b.Sys().(*syscall.Stat_t)
++	return leftOK && rightOK && os.SameFile(a, b) && a.Size() == b.Size() &&
++		a.ModTime().Equal(b.ModTime()) && left.Ctim == right.Ctim
++}

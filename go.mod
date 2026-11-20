@@ -25,6 +25,15 @@ require (
 )
 
 require (
+	github.com/Rican7/retry v0.3.1 // indirect
+	github.com/google/renameio v1.0.1 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
+)
+
+require (
+	github.com/canonical/go-dqlite/v3 v3.0.4
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect

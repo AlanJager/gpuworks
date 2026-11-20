@@ -1,0 +1,48 @@
+--- a/test/unit/test_conn.c
++++ b/test/unit/test_conn.c
+@@ -413,3 +413,34 @@
+ 	munit_assert_int(row->values[0].integer, ==, 123);
+ 	return MUNIT_OK;
+ }
++
++/* A client that drops its socket while a query is still yielding rows fails
++ * the ROWS_PART write. The cancelled query must still finish and close the
++ * gateway's leader, or db__close aborts on db->leaders at node shutdown. */
++TEST_CASE(query, client_drop_mid_rows_closes_leader, NULL)
++{
++	struct query_fixture *f = data;
++	struct db *db;
++	unsigned i;
++	int rv;
++	(void)params;
++	db = registry__get(&f->registry, "test");
++	munit_assert_ptr_not_null(db);
++	munit_assert_int(db->leaders, ==, 1);
++
++	/* Each row exceeds a buffer page, so the first batch is ROWS_PART. */
++	rv = clientSendQuerySQL(&f->client,
++				"WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL "
++				"SELECT x + 1 FROM c WHERE x < 4) "
++				"SELECT x, zeroblob(8192) FROM c",
++				NULL, 0, NULL);
++	munit_assert_int(rv, ==, 0);
++	clientClose(&f->client);
++
++	for (i = 0; i < 50 && !f->conn_test.closed; i++) {
++		test_uv_run(&f->loop, 1);
++	}
++	munit_assert_true(f->conn_test.closed);
++	munit_assert_int(db->leaders, ==, 0);
++	return MUNIT_OK;
++}
+--- a/test/lib/runner.h
++++ b/test/lib/runner.h
+@@ -106,7 +106,7 @@
+ 	 * provide a global `SIGABRT` hook that will also print a trace in    \
+ 	 * case an assert is triggered by another library (libuv, liblz4,     \
+ 	 * libsqlite3) and provide useful diagnostics there as well. */       \
+-	void dqlite_fail(const char *__assertion, const char *__file,         \
++	__attribute__((noreturn)) void dqlite_fail(const char *__assertion, const char *__file,         \
+ 			 unsigned int __line, const char *__function)         \
+ 	{                                                                     \
+ 		__assert_fail(__assertion, __file, __line, __function);       \

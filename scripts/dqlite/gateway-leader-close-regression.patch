@@ -1,0 +1,132 @@
+--- a/test/unit/test_gateway.c
++++ b/test/unit/test_gateway.c
+@@ -1470,6 +1470,37 @@
+ 	free(f);
+ }
+ 
++/* A failed exec allocation must not leave a request with no completion callback. */
++TEST_CASE(query, exec_allocation_failure_closes_leader, NULL)
++{
++	struct query_fixture *f = data;
++	(void)params;
++	uint64_t stmt_id;
++	PREPARE("SELECT n FROM test");
++	f->request.db_id = 0;
++	f->request.stmt_id = stmt_id;
++	ENCODE(&f->request, query);
++	struct db *db = registry__get(CLUSTER_REGISTRY(0), "test");
++	munit_assert_not_null(db);
++	munit_assert_int(db->leaders, ==, 1);
++
++	/* Request encoding and statement preparation are complete. The first
++	 * raft allocation in this request is the exec object. Fail only it. */
++	test_raft_heap_fault_config(0, 1);
++	test_raft_heap_fault_enable();
++	HANDLE_STATUS(DQLITE_REQUEST_QUERY, DQLITE_ERROR);
++	test_raft_heap_fault_config(-1, 0);
++	munit_assert_false(f->context->invoked);
++
++	/* Model the connection's error-close path without a transport fault. */
++	gateway__close(f->gateway, closeCb);
++	munit_assert_true(f->context->invoked);
++	munit_assert_null(f->gateway->req);
++	munit_assert_null(f->gateway->leader);
++	munit_assert_int(db->leaders, ==, 0);
++	return MUNIT_OK;
++}
++
+ /* Successfully query a simple statement with no parameters and yielding no
+  * rows. */
+ TEST_CASE(query, simple, NULL)
+@@ -2256,6 +2287,35 @@
+ 	struct exec_sql_fixture *f = data;
+ 	TEAR_DOWN;
+ 	free(f);
++}
++
++/* A failed exec allocation must not leave a request with no completion callback. */
++TEST_CASE(exec_sql, exec_allocation_failure_closes_leader, NULL)
++{
++	struct exec_sql_fixture *f = data;
++	(void)params;
++	f->request.db_id = 0;
++	f->request.sql = "CREATE TABLE allocation_probe (n INT)";
++	ENCODE(&f->request, exec_sql);
++	struct db *db = registry__get(CLUSTER_REGISTRY(0), "test");
++	munit_assert_not_null(db);
++	munit_assert_int(db->leaders, ==, 1);
++
++	/* Request encoding and statement preparation are complete. The first
++	 * raft allocation in this request is the exec object. Fail only it. */
++	test_raft_heap_fault_config(0, 1);
++	test_raft_heap_fault_enable();
++	HANDLE_STATUS(DQLITE_REQUEST_EXEC_SQL, DQLITE_NOMEM);
++	test_raft_heap_fault_config(-1, 0);
++	munit_assert_false(f->context->invoked);
++
++	/* Model the connection's error-close path without a transport fault. */
++	gateway__close(f->gateway, closeCb);
++	munit_assert_true(f->context->invoked);
++	munit_assert_null(f->gateway->req);
++	munit_assert_null(f->gateway->leader);
++	munit_assert_int(db->leaders, ==, 0);
++	return MUNIT_OK;
+ }
+ 
+ /* Exec a SQL text with a single query. */
+@@ -2534,6 +2594,35 @@
+ 	free(f);
+ }
+ 
++/* A failed exec allocation must not leave a request with no completion callback. */
++TEST_CASE(query_sql, exec_allocation_failure_closes_leader, NULL)
++{
++	struct query_sql_fixture *f = data;
++	(void)params;
++	f->request.db_id = 0;
++	f->request.sql = "SELECT n FROM test";
++	ENCODE(&f->request, query_sql);
++	struct db *db = registry__get(CLUSTER_REGISTRY(0), "test");
++	munit_assert_not_null(db);
++	munit_assert_int(db->leaders, ==, 1);
++
++	/* Request encoding and statement preparation are complete. The first
++	 * raft allocation in this request is the exec object. Fail only it. */
++	test_raft_heap_fault_config(0, 1);
++	test_raft_heap_fault_enable();
++	HANDLE_STATUS(DQLITE_REQUEST_QUERY_SQL, DQLITE_ERROR);
++	test_raft_heap_fault_config(-1, 0);
++	munit_assert_false(f->context->invoked);
++
++	/* Model the connection's error-close path without a transport fault. */
++	gateway__close(f->gateway, closeCb);
++	munit_assert_true(f->context->invoked);
++	munit_assert_null(f->gateway->req);
++	munit_assert_null(f->gateway->leader);
++	munit_assert_int(db->leaders, ==, 0);
++	return MUNIT_OK;
++}
++
+ /* Exec a SQL query whose result set fits in a page. */
+ TEST_CASE(query_sql, small, NULL)
+ {
+@@ -3149,7 +3238,7 @@
+ {
+ 	struct request_cluster_fixture *f = data;
+ 	(void)params;
+-	f->request.format = 2;
++	f->request.format = UINT64_MAX;
+ 	ENCODE(&f->request, cluster);
+ 	HANDLE(CLUSTER);
+ 	ASSERT_CALLBACK(DQLITE_PARSE, FAILURE);
+--- a/test/lib/runner.h
++++ b/test/lib/runner.h
+@@ -106,7 +106,7 @@
+ 	 * provide a global `SIGABRT` hook that will also print a trace in    \
+ 	 * case an assert is triggered by another library (libuv, liblz4,     \
+ 	 * libsqlite3) and provide useful diagnostics there as well. */       \
+-	void dqlite_fail(const char *__assertion, const char *__file,         \
++	__attribute__((noreturn)) void dqlite_fail(const char *__assertion, const char *__file,         \
+ 			 unsigned int __line, const char *__function)         \
+ 	{                                                                     \
+ 		__assert_fail(__assertion, __file, __line, __function);       \
