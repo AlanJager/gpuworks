@@ -740,9 +740,9 @@ specs:
   display_name_en: DGX Spark (GB10) ×4 · FP8 · pico TP4 · RoCE switch
   scenario: balanced
   engine: callable
-  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r5
+  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
   image_sources:
-  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r5
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
   weights:
     quantization: fp8
     sources:
@@ -786,6 +786,8 @@ specs:
   - ${GPUWORKS_API_PORT}
   - --served-name
   - ${GPUWORKS_SERVED_MODEL_NAME}
+  - --metrics-port
+  - ${GPUWORKS_METRICS_PORT}
   placement:
     language: starlark
     resolver: |
@@ -801,6 +803,16 @@ specs:
     # /v1/tokenize, so benchmarks take the tokenizer from the model's own repo.
     tokenizer_ref: ms://deepseek-ai/DeepSeek-V4.1-Flash-1017@888b859d15cc1ad368caf0e4899573d330212e30
     health_endpoint: /health
+    # The launcher exports engine metrics (dsfront's admin status and the
+    # engine's session-store and draft counters) on a second local port.
+    metrics:
+      port: separate
+      map:
+        pico_requests_running: requests_running
+        pico_requests_waiting: requests_waiting
+        pico_session_store_usage_ratio: gpu_cache_usage_percent
+        pico_spec_drafts_verified_total: spec_draft_tokens_total
+        pico_spec_drafts_accepted_total: spec_accepted_tokens_total
     operations:
     - type: openai.chat
       endpoint: /v1/chat/completions
@@ -810,9 +822,9 @@ specs:
   display_name_en: DGX Spark (GB10) ×4 · FP8 · pico TP4 · switchless ring
   scenario: balanced
   engine: callable
-  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r5
+  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
   image_sources:
-  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r5
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6
   weights:
     quantization: fp8
     sources:
@@ -856,6 +868,8 @@ specs:
   - ${GPUWORKS_API_PORT}
   - --served-name
   - ${GPUWORKS_SERVED_MODEL_NAME}
+  - --metrics-port
+  - ${GPUWORKS_METRICS_PORT}
   - --topology
   - ring
   placement:
@@ -873,6 +887,16 @@ specs:
     # /v1/tokenize, so benchmarks take the tokenizer from the model's own repo.
     tokenizer_ref: ms://deepseek-ai/DeepSeek-V4.1-Flash-1017@888b859d15cc1ad368caf0e4899573d330212e30
     health_endpoint: /health
+    # The launcher exports engine metrics (dsfront's admin status and the
+    # engine's session-store and draft counters) on a second local port.
+    metrics:
+      port: separate
+      map:
+        pico_requests_running: requests_running
+        pico_requests_waiting: requests_waiting
+        pico_session_store_usage_ratio: gpu_cache_usage_percent
+        pico_spec_drafts_verified_total: spec_draft_tokens_total
+        pico_spec_drafts_accepted_total: spec_accepted_tokens_total
     operations:
     - type: openai.chat
       endpoint: /v1/chat/completions
