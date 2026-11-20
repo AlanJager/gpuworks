@@ -411,6 +411,9 @@ func validRelativePath(value string) bool {
 	return value != "." && !path.IsAbs(value) && path.Clean(value) == value && !strings.HasPrefix(value, "../")
 }
 
+// validContainerPath is a container path a template may mount at: absolute
+// and clean, other than /. Where it may not be - another claim of the spec or
+// the platform's own directory - is validateContainerPaths'.
 func validContainerPath(value string) bool {
 	return strings.HasPrefix(value, "/") && path.Clean(value) == value && value != "/"
 }

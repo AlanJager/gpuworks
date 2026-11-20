@@ -352,8 +352,8 @@ A template declares only what it needs, and the platform provides it on every la
 
 | Kind | The template writes | The container sees | Host side decided by | Lifetime |
 |---|---|---|---|---|
-| Launch variables | References to `${GPUWORKS_*}` in `args` / `env` / `entrypoint` / `pre_start_*`, see [Variable Expansion](#变量展开); a weight `subfolder` may reference only `${GPUWORKS_NODE_RANK}` | This launch's values | The platform | Every launch |
-| System-layer environment variables | Nothing; a key of the same name in `env` overrides it | The compute network's `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`; see [Environment Variable Layers](deployment-launch-sources.md#环境变量分层) | The platform | Every launch |
+| Launch variables | References to `${GPUWORKS_*}` in `args` / `env` / `entrypoint` / `pre_start_*` (a multi-node rank's `${GPUWORKS_PEERS_FILE}` among them), see [Variable Expansion](#变量展开); a weight `subfolder` may reference only `${GPUWORKS_NODE_RANK}` | This launch's values | The platform | Every launch |
+| System-layer environment variables | Nothing; a key of the same name in `env` overrides it | The compute network's `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`, see [Environment Variable Layers](deployment-launch-sources.md#环境变量分层); a multi-node rank with a peers file also gets `GPUWORKS_PEERS_FILE` (the same value as the launch variable, for programs the recipe starts to read directly) | The platform | Every launch |
 | Primary weights | `weights`; `subfolder` may say `rank${GPUWORKS_NODE_RANK}`, see [Rank-Scoped Weights](#按-rank-拆分的权重) | Read-only at `${GPUWORKS_MODEL_PATH}` (default `/model`, or the primary component's `mount_path`); with rank-scoped weights each rank holds only its own subfolder | The platform (model storage) | With the model |
 | Component weights | `components[].mount_path` | Read-only at that path | The platform (model storage) | With the model |
 | Assets | `assets[].unpack_to` | Read-only, unpacked to that path | The platform (template package) | With the template version |
@@ -361,15 +361,15 @@ A template declares only what it needs, and the platform provides it on every la
 | KV disk tier | Cannot (a deployment parameter) | Read-write, at a path the platform picks | The platform (node-managed directory) | While an instance runs on the node; pruned to its limit |
 | Deployment mounts | Cannot (the deployment's `extra_mounts`) | As each row states | The operator | Not managed by the platform |
 | Compute network files | Nothing | Read-only host files the accelerator network needs (same path) | The platform | Every launch |
-| Platform files | Cannot; `/gpuworks` belongs to the platform | `/gpuworks/pre-start.sh` (with `pre_start_*`) | The platform | Rewritten on every container start |
+| Platform files | Cannot; `/gpuworks` belongs to the platform | `/gpuworks/pre-start.sh` (with `pre_start_*`); `/gpuworks/peers.json` (a multi-node rank, read-only, `proto.PeersFile` v1, see [Multi-Node Peers File](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file)) | The platform (the peers file needs the agent capability `launch.peers_file`) | Rewritten on every container start |
 | Startup wait limit | `start_timeout_sec` | How long the engine health check is waited for | The platform; see [Startup Wait Limit](deployment-launch-sources.md#启动等待上限) | Fixed when the instance is created |
 
 Rules:
 
 - **One variable spelling**: documentation and examples always write the prefixed `${GPUWORKS_X}`; the older unprefixed spelling still expands as an alias in template fields, while a hand-written manual command recognizes only the prefixed one.
 - **One set of units**: sizes in a spec are always bytes (`*_bytes`), durations always seconds (`*_sec`), and container paths always absolute, clean paths (`mount_path`, `unpack_to`).
-- **One container path space**: no two mounts in the table (primary weights, components, assets, dirs, KV disk tier, deployment mounts, compute network files) may target the same path or nest inside each other, by one rule (`proto.ContainerPathsOverlap`). The template's own paths (the model mount, component `mount_path`s, asset `unpack_to`s, dir `mount_path`s) are checked against each other on import and a conflict is `CATALOG_MOUNT_PATH_CONFLICT` (its parameters name both fields and paths; several assets may unpack into one directory); together with the deployment's own mounts and the platform's they are checked again on evaluation, creation and every launch, where one target is `MOUNT_TARGET_DUPLICATE` and nesting is `MOUNT_TARGET_NESTED`.
-- **Agent capability**: each facility only the node's agent can provide has one capability name; a launch that uses it goes only to nodes that announce the capability, and an older agent's node is refused with the scheduling reason `agent_capability_missing` (parameters `capability`, `node`), so the deployment waits for an upgrade or another node instead of starting a container that lacks what the template declared. Declaring `dirs` needs `mount.managed_dirs`.
+- **One container path space**: no two mounts in the table (primary weights, components, assets, dirs, KV disk tier, deployment mounts, compute network files) and the platform directory `/gpuworks` may target the same path or nest inside each other, by one rule (`proto.ContainerPathsOverlap`). The template's own paths (the model mount, component `mount_path`s, asset `unpack_to`s, dir `mount_path`s) are checked against each other on import and a conflict is `CATALOG_MOUNT_PATH_CONFLICT` (its parameters name both fields and paths; several assets may unpack into one directory); together with the deployment's own mounts and the platform's they are checked again on evaluation, creation and every launch, where one target is `MOUNT_TARGET_DUPLICATE`, nesting is `MOUNT_TARGET_NESTED` and a mount on `/gpuworks` is `MOUNT_TARGET_RESERVED` (a deployment restarted as stored keeps a mount it was created with, unless it would cover this launch's peers file).
+- **Agent capability**: each facility only the node's agent can provide has one capability name; a launch that uses it goes only to nodes that announce the capability, and an older agent's node is refused with the scheduling reason `agent_capability_missing` (parameters `capability`, `node`), so the deployment waits for an upgrade or another node instead of starting a container that lacks what the template declared. Declaring `dirs` needs `mount.managed_dirs`; referencing `${GPUWORKS_PEERS_FILE}` in a launch field needs `launch.peers_file`, while a multi-node launch that does not reference it starts on an older agent as before, only without the peers file and its environment variable.
 
 ## entrypoint: The Sole Declaration Point for Entrypoint Overrides
 
@@ -448,7 +448,7 @@ A text spec that relies on tensor parallelism alone, with no expert, data or pip
 Variable references in `args` / `env` / `entrypoint` / `pre_start_*` are expanded on every deployment, regardless of whether placement
 is present. The documented spelling carries the `GPUWORKS_` prefix, such as `${GPUWORKS_NODE_RANK}`; the older spelling without the prefix (`${NODE_RANK}`)
 remains an alias in these template fields and expands the same way. Available variables = resolver return values + platform facts for this launch (the sole sources are
-the vocabulary in `internal/server/placement/expand.go` and `internal/server/deploy/launch_variables.go`). The table lists the prefixed spelling:
+the vocabulary in `internal/server/placement/expand.go` and `internal/server/deploy/launch_variables.go`). The table lists the prefixed spelling (the environment variables and container files the platform provides are not launch variables; see [What the Template Declares and What the Platform Provides](#模板与平台的分工)):
 
 | Variable | Value | When Available |
 |---|---|---|
@@ -468,10 +468,11 @@ the vocabulary in `internal/server/placement/expand.go` and `internal/server/dep
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | Address this instance's KV side channel listens on | PD instances whose address is known |
 | `GPUWORKS_PD_SIDE_CHANNEL_PORT` | First port of this rank's extra port block, the KV side channel port; each rank of a multi-node instance has its own | PD instances whose port is allocated |
 | `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | The side channel port of this instance's leader: its own on the leader, the leader's on a follower. Use it where a follower meets the leader's side channel (such as SGLang's bootstrap server); commands the platform composes do not use it | PD instances whose port is allocated |
+| `GPUWORKS_PEERS_FILE` | The path of this rank's peers file, `/gpuworks/peers.json`, listing every rank of the group and its rails; see [Multi-Node Peers File](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file) | Multi-node only; a launch that references it goes only to nodes that announce `launch.peers_file` |
 
 Rules:
 
-- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_*`, `NNODES`, `NODE_RANK`, `HEADLESS`, `NODE_ADDR`, `MASTER_*`, or `PD_*`
+- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_*`, `NNODES`, `NODE_RANK`, `HEADLESS`, `NODE_ADDR`, `MASTER_*`, `PEERS_FILE`, or `PD_*`
   in resolver results causes an immediate error—the node, port, and rank are not yet available when the resolver runs.
 - **Missing variables cause failure**: unresolved names in args / env / entrypoint / `pre_start_argv` cause deployment errors. A spec without a resolver
   that references a name outside the vocabulary (such as the typo `${NODE_RNAK}` or `${PP_SIZE}` without a resolver) is rejected during import. A single-node deployment
@@ -767,7 +768,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 73e142cac710dc0d3e092dfba60cba8c1af8747418de65718c27c428810ad1c4 -->
+<!-- translation-source-sha256: 5bd8cd63dc62f673122248b8c1200ce3073c2412a1711dcef50e17f00f2e6c14 -->
 <!-- translation-localized-code-block: a580200df2b28bc011bb736a64288086932955375e5ae8897762ee97bd667e26 8e0792250b6c0eb3ec0dad5bfca28308dc0b1afeb27e9c33bb24ddb21e20ba07 -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 4cf9267c119973bda779b8e29a9ad818c097c803df34a09ac14492502ab9dce2 e78acb98a7a082fdad6d2080ea7754cc18152f1bec68f60c312e46e33f3bfd59 -->

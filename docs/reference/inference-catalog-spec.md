@@ -354,8 +354,8 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
 
 | 类别 | 模板写 | 容器里看到 | 主机侧由谁定 | 生命周期 |
 |---|---|---|---|---|
-| 启动变量 | 在 `args` / `env` / `entrypoint` / `pre_start_*` 里引用 `${GPUWORKS_*}`，见[变量展开](#变量展开)；权重 `subfolder` 只能引用 `${GPUWORKS_NODE_RANK}` | 本次启动的值 | 平台 | 每次启动 |
-| 系统层环境变量 | 不用写；`env` 里同名键覆盖它 | 计算网络的 `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`，见[环境变量分层](deployment-launch-sources.md#环境变量分层) | 平台 | 每次启动 |
+| 启动变量 | 在 `args` / `env` / `entrypoint` / `pre_start_*` 里引用 `${GPUWORKS_*}`（多机 rank 的 `${GPUWORKS_PEERS_FILE}` 也在其中），见[变量展开](#变量展开)；权重 `subfolder` 只能引用 `${GPUWORKS_NODE_RANK}` | 本次启动的值 | 平台 | 每次启动 |
+| 系统层环境变量 | 不用写；`env` 里同名键覆盖它 | 计算网络的 `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`，见[环境变量分层](deployment-launch-sources.md#环境变量分层)；多机 rank 有 peers 文件时还有 `GPUWORKS_PEERS_FILE`（与同名启动变量同值，给配方启动的程序直接读） | 平台 | 每次启动 |
 | 主权重 | `weights`；`subfolder` 可写 `rank${GPUWORKS_NODE_RANK}`，见[按 rank 拆分的权重](#按-rank-拆分的权重) | 只读，在 `${GPUWORKS_MODEL_PATH}`（缺省 `/model`，有 primary 组件时为它的 `mount_path`）；按 rank 拆分时每个 rank 只有自己的子目录 | 平台（模型存储） | 随模型 |
 | 组件权重 | `components[].mount_path` | 只读，在该路径 | 平台（模型存储） | 随模型 |
 | 资产 | `assets[].unpack_to` | 只读，展开到该路径 | 平台（模板包） | 随模板版本 |
@@ -363,15 +363,15 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
 | KV 磁盘层 | 不能写（部署参数） | 读写，平台选的路径 | 平台（节点托管目录） | 随节点上的实例，超限修剪 |
 | 部署挂载 | 不能写（部署的 `extra_mounts`） | 按行设置 | 运维 | 不由平台管理 |
 | 计算网络文件 | 不用写 | 只读，加速卡网络需要的主机文件（同路径） | 平台 | 每次启动 |
-| 平台文件 | 不能写；`/gpuworks` 归平台 | `/gpuworks/pre-start.sh`（有 `pre_start_*` 时） | 平台 | 每次容器启动重写 |
+| 平台文件 | 不能写；`/gpuworks` 归平台 | `/gpuworks/pre-start.sh`（有 `pre_start_*` 时）；`/gpuworks/peers.json`（多机 rank，只读，`proto.PeersFile` v1，见[多机 peers 文件](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file)） | 平台（peers 文件需 agent 能力 `launch.peers_file`） | 每次容器启动重写 |
 | 启动等待上限 | `start_timeout_sec` | 引擎健康检查的等待时长 | 平台，见[启动等待上限](deployment-launch-sources.md#启动等待上限) | 实例创建时定下 |
 
 规则：
 
 - **一种变量写法**：文档与示例一律写带前缀的 `${GPUWORKS_X}`；不带前缀的旧写法在模板字段里作为别名同样展开，手写手工命令只认带前缀的。
 - **一套单位**：spec 里的大小一律是字节（`*_bytes`），时长一律是秒（`*_sec`），容器路径一律是绝对、规整的路径（`mount_path`、`unpack_to`）。
-- **一个容器路径空间**：表中所有挂载（主权重、组件、资产、dirs、KV 磁盘层、部署挂载、计算网络文件）两两不能指向同一路径或互相嵌套，规则只有一条（`proto.ContainerPathsOverlap`）。模板自己的路径（主模型挂载点、组件 `mount_path`、资产 `unpack_to`、dir 的 `mount_path`）在导入时互查，冲突报 `CATALOG_MOUNT_PATH_CONFLICT`（参数带两边的字段与路径；多个资产可以展开到同一目录）；连同部署自己的挂载与平台的挂载，在部署评估、创建与每次启动时再查一遍，同一目标报 `MOUNT_TARGET_DUPLICATE`，嵌套报 `MOUNT_TARGET_NESTED`。
-- **agent 能力**：只有节点上的 agent 能提供的设施各有一个能力名；用到它的启动只放到宣告该能力的节点上，旧 agent 的节点以调度原因 `agent_capability_missing`（参数 `capability`、`node`）拒绝，部署等待升级或改选节点，而不是起一个缺了模板声明的容器。声明 `dirs` 需要 `mount.managed_dirs`。
+- **一个容器路径空间**：表中所有挂载（主权重、组件、资产、dirs、KV 磁盘层、部署挂载、计算网络文件）与平台目录 `/gpuworks` 两两不能指向同一路径或互相嵌套，规则只有一条（`proto.ContainerPathsOverlap`）。模板自己的路径（主模型挂载点、组件 `mount_path`、资产 `unpack_to`、dir 的 `mount_path`）在导入时互查，冲突报 `CATALOG_MOUNT_PATH_CONFLICT`（参数带两边的字段与路径；多个资产可以展开到同一目录）；连同部署自己的挂载与平台的挂载，在部署评估、创建与每次启动时再查一遍，同一目标报 `MOUNT_TARGET_DUPLICATE`，嵌套报 `MOUNT_TARGET_NESTED`，落在 `/gpuworks` 上报 `MOUNT_TARGET_RESERVED`（部署按原样重启时保留创建时已有的挂载，除非它会盖住这次的 peers 文件）。
+- **agent 能力**：只有节点上的 agent 能提供的设施各有一个能力名；用到它的启动只放到宣告该能力的节点上，旧 agent 的节点以调度原因 `agent_capability_missing`（参数 `capability`、`node`）拒绝，部署等待升级或改选节点，而不是起一个缺了模板声明的容器。声明 `dirs` 需要 `mount.managed_dirs`；在启动字段里引用 `${GPUWORKS_PEERS_FILE}` 需要 `launch.peers_file`，没有引用它的多机启动在旧 agent 上照常启动、只是没有 peers 文件与对应的环境变量。
 
 ## entrypoint：入口覆盖的唯一声明处
 
@@ -450,7 +450,7 @@ placement:
 `args` / `env` / `entrypoint` / `pre_start_*` 中的变量引用在每次部署时展开，与有没有 placement
 无关。规范写法带 `GPUWORKS_` 前缀，如 `${GPUWORKS_NODE_RANK}`；不带前缀的旧写法（`${NODE_RANK}`）在这些模板字段里
 作为别名同样展开。可用变量 = resolver 返回值 + 平台为这次启动给出的事实（唯一产地
-`internal/server/placement/expand.go` 的词表与 `internal/server/deploy/launch_variables.go`），下表按带前缀的写法列出：
+`internal/server/placement/expand.go` 的词表与 `internal/server/deploy/launch_variables.go`），下表按带前缀的写法列出（平台给的环境变量与容器内文件不是启动变量，见[模板与平台的分工](#模板与平台的分工)）：
 
 | 变量 | 值 | 何时存在 |
 |---|---|---|
@@ -470,10 +470,11 @@ placement:
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | 本实例 KV side channel 的监听地址 | PD 实例且地址已知 |
 | `GPUWORKS_PD_SIDE_CHANNEL_PORT` | 本 rank 额外端口段的首端口，即 KV side channel 端口；多机实例的各 rank 各有各的 | PD 实例且端口已分配 |
 | `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | 本实例 leader 的 side channel 端口：leader 上就是自己的，follower 上是 leader 的。follower 要连 leader 的 side channel（如 SGLang 的 bootstrap 服务）时用它；平台自己组装的命令不用 | PD 实例且端口已分配 |
+| `GPUWORKS_PEERS_FILE` | 本 rank 的 peers 文件路径 `/gpuworks/peers.json`，列出全组 rank 与 rail，见[多机 peers 文件](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file) | 仅多机；引用它的启动只放到宣告 `launch.peers_file` 的节点上 |
 
 规则：
 
-- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PD_*`
+- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PEERS_FILE`、`PD_*`
   出现在 resolver 结果里直接报错——resolver 运行时还没有节点、端口和 rank。
 - **缺变量即失败**：args / env / entrypoint / `pre_start_argv` 里未解析的名字在部署时报错；没有 resolver 的
   spec 引用词表外的名字（如拼错的 `${NODE_RNAK}`、无 resolver 的 `${PP_SIZE}`）在导入时就被拒绝。单机部署

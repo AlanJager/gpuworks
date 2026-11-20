@@ -106,8 +106,9 @@ func TestRankScopedTemplateMountsEachRanksOwnSubfolder(t *testing.T) {
 
 	for rank := range 2 {
 		spec := waitCapturedWorkload(t, runs[rank], fmt.Sprintf("rank %d", rank))
-		if len(spec.Mounts) != 1 || spec.Mounts[0].Source != dirs[rank] || spec.Mounts[0].Target != "/model" {
-			t.Fatalf("rank %d mounts %+v, want its own %s", rank, spec.Mounts, dirs[rank])
+		// Its own weights, and the group's peers file beside them.
+		if len(spec.Mounts) != 2 || spec.Mounts[0].Source != dirs[rank] || spec.Mounts[0].Target != "/model" || spec.Mounts[1].Target != proto.PeersFileMountPath {
+			t.Fatalf("rank %d mounts %+v, want its own %s and the peers file", rank, spec.Mounts, dirs[rank])
 		}
 	}
 	for rank, row := range rows {

@@ -59,6 +59,10 @@ const (
 	ErrorMountContainerPath = "MOUNT_CONTAINER_PATH"
 	ErrorMountHostPath      = "MOUNT_HOST_PATH"
 	ErrorMountTargetNested  = "MOUNT_TARGET_NESTED"
+	// ErrorMountTargetReserved answers a mount target that overlaps a path
+	// the platform mounts its own files at (/gpuworks: the peers file, the
+	// pre-start wrapper). Params: target, reserved.
+	ErrorMountTargetReserved = "MOUNT_TARGET_RESERVED"
 	// ErrorMountModelNotFound answers an extra-mount row naming a model that
 	// is not registered (any more); model_id is the id the row states.
 	ErrorMountModelNotFound = "MOUNT_MODEL_NOT_FOUND"

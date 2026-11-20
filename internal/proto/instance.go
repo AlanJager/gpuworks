@@ -81,6 +81,10 @@ type ResolvedLaunch struct {
 	HealthPath         string                 `json:"health_path,omitempty"`
 	APIContract        json.RawMessage        `json:"api_contract,omitempty"`
 	PlacementVariables map[string]interface{} `json:"placement_variables,omitempty"`
+
+	// Peers is the document the agent writes and mounts at
+	// PeersFileMountPath for a rank of a multi-node group; nil otherwise.
+	Peers *PeersFile `json:"peers,omitempty"`
 }
 
 // InstanceDesiredState is the desired state for one concrete inference instance. The

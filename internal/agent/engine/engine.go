@@ -234,6 +234,9 @@ func (e *Engine) reclaimInstance(ctx context.Context, uuid string) error {
 	if err := os.RemoveAll(e.preStartDir(uuid)); err != nil {
 		return fmt.Errorf("remove pre-start state: %w", err)
 	}
+	if err := os.RemoveAll(e.peersDir(uuid)); err != nil {
+		return fmt.Errorf("remove peers file: %w", err)
+	}
 	return nil
 }
 
@@ -282,7 +285,7 @@ func (e *Engine) removeContainer(ctx context.Context, uuid string) error {
 
 const (
 	maxPreStartScriptBytes = 64 << 10
-	preStartMountPath      = "/gpuworks/pre-start.sh"
+	preStartMountPath      = proto.PlatformFileDir + "/pre-start.sh"
 )
 
 func (e *Engine) preStartDir(uuid string) string {

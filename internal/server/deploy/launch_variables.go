@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	placementeval "gpuworks.ai/gpuworks/internal/server/placement"
 )
 
@@ -70,6 +71,13 @@ func launchVariables(engine Engine, params Params, modelMount string, placement 
 		if params.MasterPort > 0 {
 			variables[placementeval.VarMasterPort] = int64(params.MasterPort)
 		}
+		// The path is the same on every rank, so it is a fact of any
+		// multi-node launch, not only of one whose peers are already known:
+		// the deployment form's summary plan resolves the leader's command
+		// before the group's ranks are placed. Whether the file is mounted
+		// is the peers' business (peersFile); an agent that cannot write it
+		// is refused before launch (planning's agent capability rule).
+		variables[placementeval.VarPeersFile] = proto.PeersFileMountPath
 	}
 	if params.PD != nil {
 		variables[placementeval.VarPDRole] = params.PD.Role

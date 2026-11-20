@@ -138,6 +138,7 @@ func (c *Controller) launchGeneration(ctx context.Context, deployment *unitDeplo
 			return false, err
 		}
 		rank.Master = master
+		rank.Peers = planning.GroupPeers(nodes, group)
 	}
 	launches := make([]rankLaunch, 0, len(nodes))
 	for index, node := range nodes {

@@ -100,6 +100,12 @@ func TestDistributedDeploymentRunsThroughSchedulerAndTwoFakeAgents(t *testing.T)
 	assertDistributedDeploymentDTO(t, deployment, leader.UUID, follower.UUID, leaderAddress, followerAddress, masterPort)
 	assertDistributedWorkload(t, deployment.Instances[0], leaderSpec, leaderAddress, masterPort)
 	assertDistributedWorkload(t, deployment.Instances[1], followerSpec, followerAddress, masterPort)
+	peers := []proto.PeerRank{
+		{NodeRank: 0, NodeName: leader.Name, NodeUUID: leader.UUID, NodeAddr: leaderAddress},
+		{NodeRank: 1, NodeName: follower.Name, NodeUUID: follower.UUID, NodeAddr: followerAddress},
+	}
+	assertPeersFileMounted(t, leaderSpec, 0, leaderAddress, masterPort, peers)
+	assertPeersFileMounted(t, followerSpec, 1, leaderAddress, masterPort, peers)
 
 	key, err := env.Store().CreateAPIKey("distributed-fake", 0)
 	if err != nil {
@@ -237,7 +243,8 @@ func assertDistributedWorkload(t *testing.T, instance dto.Instance, spec runtime
 	if instance.NodeRank == 1 && !containsString(spec.Cmd, "--headless") {
 		t.Fatalf("follower command missing --headless: %v", spec.Cmd)
 	}
-	if len(spec.Mounts) != 1 || spec.Mounts[0].Target != "/model" || !spec.Mounts[0].ReadOnly {
+	// The model and the peers file (assertPeersFileMounted), nothing else.
+	if len(spec.Mounts) != 2 || spec.Mounts[0].Target != "/model" || !spec.Mounts[0].ReadOnly || spec.Mounts[1].Target != proto.PeersFileMountPath {
 		t.Fatalf("rank %d model mount=%+v", instance.NodeRank, spec.Mounts)
 	}
 }

@@ -191,7 +191,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 		params.PriorityScheduling = false
 	}
 	built := input.Engine.Build(params)
-	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params)} {
+	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params), peersEnv(params)} {
 		if len(extra) == 0 {
 			continue
 		}
@@ -334,7 +334,11 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	}
 	launch.Mounts = append(launch.Mounts, managedDirMounts(input.TemplateDirs, input.ManagedDirGroup)...)
 	launch.Mounts = append(launch.Mounts, computeNetworkMounts(params)...)
-	if err := validateResolvedMounts(launch.Mounts, modelMount); err != nil {
+	// The agent mounts the platform's own files (the peers file, the
+	// pre-start wrapper) under proto.PlatformFileDir, so no other mount may
+	// reach into it.
+	launch.Peers = peersFile(params)
+	if err := validateResolvedMounts(launch.Mounts, modelMount, platformFilePaths(launch.Peers != nil, input.StoredLaunch)); err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch mounts: %w", err)
 	}
 	launch.ModelMount = modelMount
@@ -429,14 +433,22 @@ func replaceManualServedName(command, servedName string) string {
 // components, assets, template dirs, the KV disk tier, the deployment's own
 // rows and the compute network's files - is a valid target, and no two are the
 // same path or nest. A template's own paths were already checked against each
-// other at import (inferencecatalog.validateContainerPaths).
-func validateResolvedMounts(mounts []proto.MountSpec, modelMount string) error {
+// other at import (inferencecatalog.validateContainerPaths). reserved are the
+// paths the agent mounts the platform's own files at (platformFilePaths): no
+// mount may overlap one.
+func validateResolvedMounts(mounts []proto.MountSpec, modelMount string, reserved []string) error {
 	modelMount = path.Clean(strings.TrimSpace(modelMount))
+	if err := reservedMountTarget(modelMount, reserved); err != nil {
+		return err
+	}
 	seen := []string{modelMount}
 	for _, mount := range mounts {
 		target := strings.TrimSpace(mount.Target)
 		if target == "" || !strings.HasPrefix(target, "/") || path.Clean(target) != target || target == "/" {
 			return fmt.Errorf("invalid target %q", mount.Target)
+		}
+		if err := reservedMountTarget(target, reserved); err != nil {
+			return err
 		}
 		for _, existing := range seen {
 			if existing == target {
@@ -455,6 +467,19 @@ func validateResolvedMounts(mounts []proto.MountSpec, modelMount string) error {
 			}
 		}
 		seen = append(seen, target)
+	}
+	return nil
+}
+
+// reservedMountTarget refuses a mount target that overlaps a path the
+// platform keeps for its own files, with MOUNT_TARGET_RESERVED.
+func reservedMountTarget(target string, reserved []string) error {
+	for _, keep := range reserved {
+		if proto.ContainerPathsOverlap(keep, target) {
+			return messages.NewProductError(messages.ErrorMountTargetReserved,
+				fmt.Sprintf("mount target %q overlaps %s, which the platform keeps for the files it provides", target, keep),
+				map[string]any{"target": target, "reserved": keep})
+		}
 	}
 	return nil
 }

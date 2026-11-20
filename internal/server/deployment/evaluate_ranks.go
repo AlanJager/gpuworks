@@ -3,6 +3,7 @@ package deployment
 import (
 	"context"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
@@ -63,11 +64,16 @@ func (s *Service) evaluateRanks(env evaluateRankEnv) bool {
 		resp.Warnings = append(resp.Warnings, computeFallbackWarning(group)...)
 	}
 	var draftInputs []deploy.ResolveLaunchInput
+	var peers []proto.PeerRank
+	if req.NNodes > 1 {
+		peers = planning.GroupPeers(rankNodes, group)
+	}
 	for rank, rankNode := range rankNodes {
 		modelMount, componentMounts := previewComponentMounts(s.d.Store, selection.Components, rankNode)
 		topology := planning.DistTopology{NNodes: req.NNodes, NodeRank: rank, Role: "standalone"}
 		if req.NNodes > 1 {
 			topology = planning.PreviewRankTopology(req.NNodes, rank, group.Ranks[rankNode.ID])
+			topology.Peers = peers
 		}
 		resolution := s.rankImage(eng.Name(), selection, req.Image, rankNode)
 		rankImage := resolution.Image

@@ -44,6 +44,7 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 	rank := planning.GroupRank{Ranks: len(nodes)}
 	if slot.Unit.MultiNode() {
 		rank.Group, rank.Attempt = fmt.Sprintf("pd-%d-%s", dep.ID, auth.NewUUID()[:8]), attempt
+		rank.Peers = planning.GroupPeers(nodes, pd.group)
 	}
 	sideSize := pd.mode.ExtraPorts(role, pd.placement.TP(role))
 
