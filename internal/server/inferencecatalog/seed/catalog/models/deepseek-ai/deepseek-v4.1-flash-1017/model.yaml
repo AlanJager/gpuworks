@@ -750,7 +750,7 @@ specs:
     # weight file, Engram shards, tokenizer and gate weights (~128 GB each).
     - modelscope:
         repo_id: gpuworks/DeepSeek-V4.1-Flash-1017-pico-dgx-ds4-tp4
-        revision: 7cd1d57fce27a565c7119df45ad6aef2b134b6c7
+        revision: 11e0d612ce01d0b1053460eecf9425c182513046
         subfolder: rank${GPUWORKS_NODE_RANK}
   weight_bytes: 128416123105
   gpus:
