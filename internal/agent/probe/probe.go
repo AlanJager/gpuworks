@@ -72,6 +72,8 @@ func (r *Runner) SetDriver(driver runtime.Driver) {
 
 // Results runs once per agent process and then returns a copy of the cached
 // snapshot. Refresh is used by install hooks or the explicit re-probe RPC.
+// Both return an empty list when no probe ran, so the wire report contains
+// [] and records that the agent found no probe results.
 func (r *Runner) Results(ctx context.Context, assetsFound []proto.AssetReport, gpus []proto.GPUInfo) []proto.PartitionProbeResult {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -79,7 +81,7 @@ func (r *Runner) Results(ctx context.Context, assetsFound []proto.AssetReport, g
 		r.results = r.runLocked(ctx, assetsFound, gpus)
 		r.ran = true
 	}
-	return append([]proto.PartitionProbeResult(nil), r.results...)
+	return append([]proto.PartitionProbeResult{}, r.results...)
 }
 
 // Cached returns the last snapshot without running anything; empty until a
@@ -96,7 +98,7 @@ func (r *Runner) Refresh(ctx context.Context, assetsFound []proto.AssetReport, g
 	defer r.mu.Unlock()
 	r.results = r.runLocked(ctx, assetsFound, gpus)
 	r.ran = true
-	return append([]proto.PartitionProbeResult(nil), r.results...)
+	return append([]proto.PartitionProbeResult{}, r.results...)
 }
 
 func (r *Runner) runLocked(ctx context.Context, assetsFound []proto.AssetReport, gpus []proto.GPUInfo) []proto.PartitionProbeResult {

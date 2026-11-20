@@ -124,18 +124,16 @@ func (r Reports) ForGPU(gpu *store.GPU) []proto.PartitionCapability {
 			continue
 		}
 		requiresProbe := !accelerator.SkipsBehaviorProbe(backend)
-		if !requiresProbe && node.PartitionSafetyProtocol < proto.PartitionSafetyOwnership {
+		if requiresProbe {
+			capability.CompatibilityNotes = compatibilityNotes(backend, node, gpu)
+		}
+		// An agent with the partition safety contract supports probe reporting.
+		// Some released agents send null when there are no results. Use the
+		// asset and per-card gates below to report what is still missing.
+		if node.PartitionSafetyProtocol < proto.PartitionSafetyOwnership && (!requiresProbe || !probesPresent) {
 			unavailable(&capability, messages.ErrorPartitionAgentUpgradeRequired, proto.PartitionReasonParams{})
 			out = append(out, capability)
 			continue
-		}
-		if requiresProbe {
-			capability.CompatibilityNotes = compatibilityNotes(backend, node, gpu)
-			if !probesPresent {
-				unavailable(&capability, messages.ErrorPartitionAgentUpgradeRequired, proto.PartitionReasonParams{})
-				out = append(out, capability)
-				continue
-			}
 		}
 		if !reportsPresent {
 			unavailable(&capability, messages.ErrorPartitionAssetsMissing, proto.PartitionReasonParams{MissingAssets: append([]string(nil), backend.RequiredAssets()...)})
