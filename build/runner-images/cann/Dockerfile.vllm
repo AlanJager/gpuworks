@@ -40,6 +40,8 @@ ARG PURGE_STUB_PKGS=
 # 矩阵显式声明「在本档 base 的 vllm_omni 上不适用」的 omni 补丁文件名（空格分隔），语义同 cuda 档的
 # PATCHES_NOT_APPLICABLE：声明过的记为 skipped，声明了却能应用同样失败。
 ARG OMNI_PATCHES_NOT_APPLICABLE=
+# Enable only for a new candidate revision of the affected vLLM-Ascend runner.
+ARG ASCEND_VLLM_RELOAD_CONFIG_PATCH=
 # 构建期镜像源：ARG 而非 ENV。写进 ENV 等于把构建期的国内镜像源烙进运行期镜像，
 # 用户在别的网络环境里 pip 装东西会莫名走阿里云。
 ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
@@ -131,6 +133,18 @@ RUN <<EOF
         find "${OMNI_ROOT}/vllm_omni" -name '*.rej' -o -name '*.orig' | head -50 | xargs -r rm -f
     fi
     rm -rf /tmp/patches-omni
+EOF
+
+## vLLM-Ascend quantized L2 wake needs the worker's config during weight reload.
+RUN --mount=type=bind,source=patches/vllm_ascend,target=/tmp/patches-ascend-vllm <<EOF
+    set -eux
+    if [ "${ASCEND_VLLM_RELOAD_CONFIG_PATCH}" = "1" ]; then
+        ASCEND_ROOT=$(python3 -c "import importlib.util as u, os; s = u.find_spec('vllm_ascend'); print(os.path.dirname(os.path.dirname(s.origin)))")
+        test -f "${ASCEND_ROOT}/vllm_ascend/worker/worker.py"
+        PATCH_DIR=/tmp/patches-ascend-vllm TARGET="${ASCEND_ROOT}" \
+            MANIFEST=/opt/gpuworks/patches-ascend-vllm.json EXPECT_ALL=1 \
+            bash /opt/gpuworks/shared/apply_patches.sh
+    fi
 EOF
 
 ## PURGE_STUB_PKGS：删掉 base 里 pip uninstall 留下的空壳包目录
