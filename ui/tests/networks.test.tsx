@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
+import type { NetworkNode } from "../src/networkTypes";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 import { closeNodePicker, findNodeOption, unavailable } from "./helpers/nodePicker.ts";
 
@@ -274,6 +275,70 @@ test("an unresolved direct attachment keeps its overrides and can be detached wi
   await waitFor(() => assert.equal(screen.queryByRole("button", { name: label }), null));
   assert.deepEqual(removed, [[detailFixture.id, orphan.id]]);
   assert.ok(screen.getByRole("heading", { name: "Loaded nodes (2)" }));
+  assert.ok(screen.getByRole("link", { name: "h20-07" }));
+});
+
+test("an older test poll cannot restore direct attachment actions after a label takes over", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const direct = detailFixture.attachments.find((a: { target: string }) => a.target === "node");
+  const label = detailFixture.attachments.find((a: { target: string }) => a.target === "label");
+  const running = { ...detailFixture, latest_test: { ...detailFixture.latest_test, status: "running" } };
+  const sourceByLabel = {
+    ...running,
+    attachments: [label],
+    nodes: running.nodes.map((node: NetworkNode) => node.node_uuid === direct.node_uuid
+      ? { ...node, source: "label", attachment_id: label.id, label_key: label.label_key, label_value: label.label_value }
+      : node),
+  };
+  const oldRead = Promise.withResolvers<typeof running>();
+  let reads = 0;
+  stub("network", async () => ++reads === 1 ? running : oldRead.promise);
+  const removed: number[][] = [];
+  stub("detachNetwork", async (id, attachmentID) => { removed.push([id, attachmentID]); return sourceByLabel; });
+
+  renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
+  const nodeRow = () => screen.getByRole("link", { name: direct.node_name }).closest("tr")!;
+  await screen.findByRole("link", { name: direct.node_name });
+  assert.ok(within(nodeRow()).getByText(n.detail.directNode));
+  act(() => t.mock.timers.tick(2000));
+  assert.equal(reads, 2, "the poll is in flight before the user removes the direct attachment");
+  await userEvent.click(within(nodeRow()).getByRole("button", { name: n.actions.detach }));
+  const confirm = (await screen.findByText(n.actions.confirmDetach)).closest<HTMLElement>('[data-slot="popover-content"]')!;
+  await userEvent.click(within(confirm).getByRole("button", { name: n.actions.detach }));
+  await within(nodeRow()).findByText("Label pool=h20-a");
+  await act(async () => oldRead.resolve(running));
+
+  assert.deepEqual(removed, [[running.id, direct.id]]);
+  assert.ok(within(nodeRow()).getByText("Label pool=h20-a"));
+  assert.equal(within(nodeRow()).queryByRole("button", { name: n.actions.edit }), null);
+  assert.equal(within(nodeRow()).queryByRole("button", { name: n.actions.detach }), null);
+  assert.ok(screen.getByRole("heading", { name: "Loaded nodes (2)" }));
+  await userEvent.click(screen.getByRole("button", { name: n.detail.manageLabels }));
+  const manager = await screen.findByRole("dialog", { name: n.detail.manageLabels });
+  assert.ok(within(manager).getByText("pool=h20-a"));
+});
+
+test("a delayed detach result belongs to the network where the action started", async () => {
+  const response = Promise.withResolvers<typeof detailFixture>();
+  const requested: number[] = [];
+  stub("network", async (id) => ({ ...detailFixture, id, name: `network-${id}` }));
+  stub("detachNetwork", async (id) => { requested.push(id); return response.promise; });
+  const user = userEvent.setup();
+  const drawer = (id: number) => (
+    <I18nextProvider i18n={i18n}><MemoryRouter>
+      <NetworkDetailDrawer id={id} onClose={() => {}} onChanged={() => {}} onTab={() => {}} />
+    </MemoryRouter></I18nextProvider>
+  );
+  const view = render(drawer(1));
+  const direct = (await screen.findByRole("link", { name: "h20-07" })).closest("tr")!;
+  await user.click(within(direct).getByRole("button", { name: n.actions.detach }));
+  const confirm = (await screen.findByText(n.actions.confirmDetach)).closest<HTMLElement>('[data-slot="popover-content"]')!;
+  await user.click(within(confirm).getByRole("button", { name: n.actions.detach }));
+  assert.deepEqual(requested, [1]);
+  view.rerender(drawer(2));
+  await screen.findByText("network-2");
+  await act(async () => response.resolve(detailFixture));
+  assert.ok(screen.getByText("network-2"));
   assert.ok(screen.getByRole("link", { name: "h20-07" }));
 });
 

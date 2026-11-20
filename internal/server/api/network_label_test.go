@@ -1,9 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestEditNetworkAttachmentLabel(t *testing.T) {
@@ -28,5 +31,48 @@ func TestEditNetworkAttachmentLabel(t *testing.T) {
 		if len(result) != 2 || !reflect.DeepEqual(result[0], original) {
 			t.Fatalf("label update changed attachment identity, precedence or metadata: %v", result)
 		}
+	}
+}
+
+func TestNetworkDetachDirectFallsBackToMatchingLabel(t *testing.T) {
+	n := newNetworkAPI(t)
+	const fabric = "/api/v1/networks/1"
+	const serving = "/api/v1/networks/2"
+	const uuid = "gpu-overlap"
+	if _, err := n.store.RegisterNode(uuid, store.HashToken("local"), uuid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.store.SetNodeLabels(uuid, map[string]string{"pool": "training"}); err != nil {
+		t.Fatal(err)
+	}
+	n.expect(n.admin, http.MethodPost, "/api/v1/networks", `{"name":"fabric","roles":["compute"],"type":"host_rdma"}`, http.StatusCreated)
+	n.expect(n.admin, http.MethodPost, "/api/v1/networks", `{"name":"serving","roles":["serving"],"type":"host_ethernet"}`, http.StatusCreated)
+	other := n.expect(n.admin, http.MethodPost, serving+"/attachments", `{"node_uuid":"gpu-overlap"}`, http.StatusCreated)
+	label := n.expect(n.admin, http.MethodPost, fabric+"/attachments", `{"label_key":"pool","label_value":"training"}`, http.StatusCreated)
+	both := n.expect(n.admin, http.MethodPost, fabric+"/attachments", `{"node_uuid":"gpu-overlap","ip":"192.0.2.19"}`, http.StatusCreated)
+
+	if both["resolved_node_count"] != float64(1) || len(both["nodes"].([]any)) != 1 {
+		t.Fatalf("direct and label matches must resolve to one node: %v", both["nodes"])
+	}
+	row := both["nodes"].([]any)[0].(map[string]any)
+	if row["node_uuid"] != uuid || row["source"] != "node" || row["ip"] != "192.0.2.19" || row["bootstrap_source"] != "manual" {
+		t.Fatalf("direct override did not win: %v", row)
+	}
+	attachment := fmt.Sprintf("/attachments/%.0f", row["attachment_id"])
+	n.expectCode(http.MethodDelete, serving+attachment, "", http.StatusNotFound, ErrorNetworkAttachmentNotFound)
+	result := n.expect(n.admin, http.MethodDelete, fabric+attachment, "", http.StatusOK)
+	if result["resolved_node_count"] != float64(1) || !reflect.DeepEqual(result["attachments"], label["attachments"]) || !reflect.DeepEqual(result["nodes"], label["nodes"]) {
+		t.Fatalf("expected original label and auto-resolved node after detach: attachments=%v nodes=%v", result["attachments"], result["nodes"])
+	}
+
+	for source, want := range map[string][]any{"node": {}, "label": {uuid}} {
+		ids := n.expect(n.member, http.MethodGet, fabric+"/search?kind=nodes&role=compute&source="+source, "", http.StatusOK)["ids"]
+		if !reflect.DeepEqual(ids, want) {
+			t.Errorf("persisted source %q matched %v, want %v", source, ids, want)
+		}
+	}
+	preserved := n.expect(n.member, http.MethodGet, serving, "", http.StatusOK)
+	if !reflect.DeepEqual(preserved["attachments"], other["attachments"]) || !reflect.DeepEqual(preserved["nodes"], other["nodes"]) {
+		t.Fatalf("detaching from fabric changed serving network: %v", preserved)
 	}
 }

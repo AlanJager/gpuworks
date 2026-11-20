@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Descriptions, Typography } from "antd";
 import NetworkLabelsDialog from "./NetworkLabelsDialog";
 import NetworkLoadTargets from "./NetworkLoadTargets";
@@ -53,7 +53,7 @@ export default function NetworkDetailDrawer(props: Props) {
   }, [props.id]);
   const id = props.id ?? shown;
   if (id == null) return <DetailDrawer open={false} onClose={props.onClose} title="" />;
-  return <OpenNetworkDetail {...props} id={id} open={props.id != null} />;
+  return <OpenNetworkDetail key={id} {...props} id={id} open={props.id != null} />;
 }
 
 function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged }: Omit<Props, "id"> & { id: number; open: boolean }) {
@@ -65,15 +65,27 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
   const [formOpen, setFormOpen] = useState(false);
   const tab = tabKeys.find((key) => key === requested) ?? "overview";
 
+  const pendingRead = useRef<Promise<NetworkDetail> | null>(null);
   const load = useCallback(() => {
-    api.network(id).then((d) => { setDetail(d); setError(null); }).catch((e: Error) => setError(e));
+    const request = api.network(id);
+    pendingRead.current = request;
+    request.then((next) => {
+      if (pendingRead.current !== request) return;
+      pendingRead.current = null;
+      setDetail(next);
+      setError(null);
+    }, (cause: Error) => {
+      if (pendingRead.current !== request) return;
+      pendingRead.current = null;
+      setError(cause);
+    });
   }, [id]);
   useEffect(load, [load]);
   // A running test finishes on the server; poll until its result arrives.
   const testRunning = detail?.latest_test?.status === "running";
   useEffect(() => {
     if (!testRunning) return;
-    const timer = setInterval(load, 2000);
+    const timer = setInterval(() => { if (!pendingRead.current) load(); }, 2000);
     return () => clearInterval(timer);
   }, [testRunning, load]);
 
@@ -88,8 +100,14 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
   const name = current.builtin ? t("management.name") : current.name;
   // A change made in the drawer can change what the list shows (a network's
   // attachments, its resolved nodes): the list reads again with it.
-  const updated = (next: NetworkDetail) => { setDetail(next); onChanged(); };
-  const testTab = { key: "test", label: t("tabs.test"), children: <NetworkTestPanel network={current} onStarted={load} onChanged={current.builtin ? () => load() : setDetail} /> };
+  const applyChange = (next: NetworkDetail) => {
+    // A read started before this write may still contain the old attachment and its actions.
+    pendingRead.current = null;
+    setDetail(next);
+    setError(null);
+  };
+  const updated = (next: NetworkDetail) => { applyChange(next); onChanged(); };
+  const testTab = { key: "test", label: t("tabs.test"), children: <NetworkTestPanel network={current} onStarted={load} onChanged={current.builtin ? load : applyChange} /> };
   const monitorTab = { key: "monitor", label: t("tabs.monitor"), children: <NetworkMonitorPanel network={current} /> };
 
   const remove = async () => {
