@@ -1362,6 +1362,7 @@ var migrations = []migration{
 	{Version: 228, Name: "slurm_clusters", Apply: createSlurmClusters},
 	{Version: 229, Name: "storage_node_shared_fs", Apply: addStorageNodeSharedFS},
 	{Version: 230, Name: "inference_spec_start_timeout", Apply: addInferenceSpecStartTimeout},
+	{Version: 231, Name: "inference_spec_dirs", Apply: addInferenceSpecDirs},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

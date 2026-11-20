@@ -37,3 +37,24 @@ func statAgentOwnedPath(kind, path string) proto.PathUsage {
 		probe = parent
 	}
 }
+
+// managedDirUsage measures the filesystem managed directories live on (ADR
+// 0076) and names the other measured paths on the same filesystem, so the
+// server charges a launch's image and weights against it only when they
+// share it (proto.PathUsage.SharesDiskWith).
+func managedDirUsage(root string, others []proto.PathUsage) proto.PathUsage {
+	usage := statAgentOwnedPath(proto.PathKindManagedDirs, root)
+	device, ok := doctorFilesystemOf(root)
+	if !ok || usage.TotalBytes <= 0 {
+		return usage
+	}
+	for _, other := range others {
+		if other.TotalBytes <= 0 {
+			continue
+		}
+		if otherDevice, known := doctorFilesystemOf(other.Path); known && otherDevice == device {
+			usage.SharesDiskWith = append(usage.SharesDiskWith, other.Kind)
+		}
+	}
+	return usage
+}

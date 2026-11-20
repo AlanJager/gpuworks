@@ -467,6 +467,7 @@ func (c *Controller) reconcileDeployment(ctx context.Context, id uint) error {
 			if err := c.store.DeleteDeployment(dep.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
+			c.releaseManagedDirs(dep)
 			c.forgetDeployment(dep.ID, true)
 		}
 		return nil

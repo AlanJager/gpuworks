@@ -34,7 +34,7 @@ func templateSpecFromSnapshot(selection deploy.CatalogSelection, image string) (
 		WeightBytes: selection.WeightBytes, RuntimeWeightBytes: selection.RuntimeWeightBytes,
 		Args: selection.ExtraArgs, Env: selection.Env,
 		Entrypoint: selection.Entrypoint, PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
-		PDMode: selection.PDMode, ShmBytes: selection.ShmBytes, MemlockUnlimited: selection.MemlockUnlimited, StartTimeoutSec: selection.StartTimeoutSec, DockerArgs: selection.DockerArgs,
+		PDMode: selection.PDMode, ShmBytes: selection.ShmBytes, MemlockUnlimited: selection.MemlockUnlimited, StartTimeoutSec: selection.StartTimeoutSec, DockerArgs: selection.DockerArgs, Dirs: selection.Dirs,
 	}
 	for _, field := range []struct {
 		raw json.RawMessage

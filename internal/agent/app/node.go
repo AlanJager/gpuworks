@@ -387,15 +387,6 @@ func (n *NodeRuntime) setModelsRoot(root string) {
 	n.modelsDirMu.Unlock()
 }
 
-// CachedRuntimeAssetDigests exposes the engine's validated content-addressed
-// cache to the connection handshake without coupling conn to engine internals.
-func (n *NodeRuntime) CachedRuntimeAssetDigests() []string {
-	if n.engine == nil {
-		return nil
-	}
-	return n.engine.CachedRuntimeAssetDigests()
-}
-
 // ContainerTerminalArgv exposes the runtime-specific PTY command to conn.
 // Docker returns a true exec argv; udocker returns a controlled shell argv
 // rebuilt from the tracked workload spec (it is a new proot process, not an

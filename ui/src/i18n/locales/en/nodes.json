@@ -643,7 +643,8 @@
       "udocker": "runveil",
       "host": "Environment packages",
       "storage": "Storage {{name}}",
-      "storageCache": "Cache of storage {{name}}"
+      "storageCache": "Cache of storage {{name}}",
+      "managedDirs": "Managed directories"
     }
   },
   "doctor": {
@@ -823,6 +824,7 @@
       "docker": "Docker",
       "storage": "storage",
       "storage_cache": "storage cache",
+      "managed_dirs": "managed directories",
       "agent": "agent"
     },
     "pluginNone": "None (gpuworks mounts the devices itself)",

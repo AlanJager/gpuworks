@@ -878,6 +878,7 @@
     "KV_DISK_PREPARE_FAILED": "KV Cache 磁盘层准备失败：{{detail}}",
     "MOUNT_VOLUME_UNSUPPORTED": "节点的 {{runtime}} 运行时没有命名卷，无法挂载卷 {{resource}}。请改为挂载宿主机目录，或部署到使用 docker 或 nerdctl 的节点。",
     "MOUNT_VOLUME_INVALID": "{{resource}} 不是卷名。卷名以字母或数字开头，只能包含字母、数字、_、. 和 -；要挂载宿主机目录，请使用宿主机路径行。",
+    "MANAGED_DIR_PREPARE_FAILED": "模板声明的可写目录无法在节点上准备：{{detail}}",
     "DGPU_PARTITION_FAILED": "无法应用 dGPU 限额：{{detail}}",
     "CONTAINER_RUN_FAILED": "容器启动失败：{{detail}}",
     "CONTAINER_DISAPPEARED": "容器在 agent 之外被删除。",

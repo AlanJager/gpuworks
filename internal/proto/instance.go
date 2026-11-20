@@ -203,6 +203,9 @@ type MountSpec struct {
 	ReadOnly bool   `json:"read_only,omitempty"`
 	SizeHint string `json:"size_hint,omitempty"`
 	Purpose  string `json:"purpose,omitempty"`
+	// ManagedDir names the template-declared directory a MountPurposeManagedDir
+	// mount is backed by; nil for every other purpose.
+	ManagedDir *ManagedDirRef `json:"managed_dir,omitempty"`
 }
 
 // MountPurposeComputeNetwork marks a read-only host file an instance needs
@@ -221,6 +224,16 @@ const MountPurposeComputeNetwork = "compute_network"
 // The constant lives here because both sides need the same word and neither may
 // import the other; the protocol is their only shared vocabulary.
 const MountPurposeKVDisk = "kv-disk"
+
+// MountPurposeManagedDir marks a writable directory an inference template
+// declares (spec dirs, ADR 0077): the server states the container path, the
+// declared ceiling in bytes (SizeHint) and which directory it is
+// (ManagedDir), and leaves Source empty; the agent prepares the host
+// directory and fills Source in. Unlike the KV disk the directory outlives
+// the instances that mount it: the agent removes it only when the server says
+// the deployment is gone (DesiredState.ReleasedDirGroups,
+// StateUpdate.ReleasedDirDeployments).
+const MountPurposeManagedDir = "managed-dir"
 
 // PhaseSleep marks a status report about sleep/wake reconciliation. A report in
 // this phase with a Message is a failed sleep or wake order; the server records

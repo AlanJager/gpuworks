@@ -1046,6 +1046,7 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `sleep_residue_blocks_startup` | 休眠实例的残留显存挡住了启动 |
 | `engine_ports_exhausted` | 节点引擎端口区间用尽 |
 | `insufficient_disk` / `insufficient_runtime_disk` | 权重盘 / 运行时盘不足 |
+| `insufficient_managed_dir_disk` | 节点存放托管目录的磁盘放不下模板 `dirs` 声明的上限加磁盘保留空间（同盘时含权重与镜像）；参数给出需要、可用、目录、保留与路径，见[托管的可写目录](../reference/inference-catalog-spec.md#dirs托管的可写目录) |
 | `RUNTIME_UNAVAILABLE` / `serving_unavailable` | 节点没有容器运行时 / 没有可承担服务流量的网络 |
 | `image_source_forbidden` | 节点适用的拉取来源规则让镜像无处可拉（参数 `node`、`image`），见[镜像拉取失败](#镜像拉取失败) |
 | `partition_unavailable` | 需要 dGPU 后端但节点没有就绪的，见 dGPU 一节 |

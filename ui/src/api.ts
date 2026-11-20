@@ -1748,6 +1748,8 @@ export interface InferenceSpec {
   start_timeout_sec?: number;
   /** Extra docker run options the spec's engine needs, applied before the deployment's own docker_args. */
   docker_args?: string[];
+  /** Writable host directories the platform keeps for a deployment of the spec on every node (ADR 0077); absent when none. */
+  dirs?: Array<{ name: string; mount_path: string; limit_bytes: number; retain: string }>;
   gpus: GPUPredicate;
   args?: string[];
   env?: Record<string, string>;
@@ -5588,7 +5590,7 @@ export const api = {
   // setDeploymentDGPUQuota sets the dGPU memory limit a deployment's replicas
   // run under, at once: running slices are held to it in place where that is
   // safe; the answer names the ones that take it at their next restart.
-  setDeploymentDGPUQuota: (id: number, body: { vram_limit_gib: number }) =>
+  setDeploymentDGPUQuota: (id: number, body: { vram_limit_bytes: number }) =>
     sendJSON<DGPUQuotaResult>("PUT", `/api/v1/deployments/${id}/dgpu`, body),
   // setDeploymentRequirements replaces where a single-node deployment's
   // replicas may run from now on; running replicas stay where they are. The

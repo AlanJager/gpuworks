@@ -89,7 +89,9 @@ func TestNodeRuntimeStateAndEmissionLifecycle(t *testing.T) {
 	if len(images) != 1 || images[0].ImageRef != "repo/image:tag" || images[0].Present {
 		t.Fatalf("image snapshot = %+v", images)
 	}
-	if len(paths) != 3 || paths[0].Kind != "models" {
+	// The models root, the two container data roots and the managed
+	// directories' disk (ADR 0077), which names the measured paths it shares.
+	if len(paths) != 4 || paths[0].Kind != "models" || paths[3].Kind != proto.PathKindManagedDirs {
 		t.Fatalf("path snapshot = %+v", paths)
 	}
 

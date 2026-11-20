@@ -210,7 +210,13 @@ func (c *Conn) handshake() error {
 		hello.Caps = append(hello.Caps, validatedContainerCaps(runtimeName(c.handlers), h.ContainerTerminalCapabilities())...)
 	}
 	hello.Caps = c.creds.Simulated.Capabilities(hello.Caps)
-	if h, ok := c.handlers.(runtimeAssetCache); ok {
+	if h, ok := c.handlers.(HelloInventory); ok {
+		var managedDirs bool
+		hello.RuntimeAssetDigests, hello.ManagedDirGroups, managedDirs = h.HelloInventory()
+		if managedDirs {
+			hello.Caps = append(hello.Caps, proto.CapManagedDirs)
+		}
+	} else if h, ok := c.handlers.(runtimeAssetCache); ok {
 		hello.RuntimeAssetDigests = h.CachedRuntimeAssetDigests()
 	}
 	if c.creds.NodeToken != "" {

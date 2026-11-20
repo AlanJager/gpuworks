@@ -16,6 +16,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/packages"
@@ -108,6 +109,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 		MemlockUnlimited: true,
 		StartTimeoutSec:  5400,
 		DockerArgs:       []string{"--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"},
+		Dirs:             []deploy.ManagedDir{{Name: "session-state", MountPath: "/state", LimitBytes: 400 << 30, Retain: deploy.ManagedDirRetainDeployment}},
 	}
 	scripted := inferencecatalog.InferenceSpec{
 		Name: "scripted", Engine: "vllm", Image: "gpuworks/vllm:test", Weights: weights(fullTemplateID),

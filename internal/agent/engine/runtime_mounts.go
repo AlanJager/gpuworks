@@ -24,6 +24,9 @@ var runtimeMountPurposes = map[string]struct{}{
 	// and the container writes into it, which the other four never do; see
 	// proto.MountPurposeKVDisk.
 	proto.MountPurposeKVDisk: {},
+	// Written by the container too, and unlike the KV disk kept across
+	// instances until the server releases it (managed_dirs.go).
+	proto.MountPurposeManagedDir: {},
 }
 
 // RuntimeMountManager owns the small part of agent state that is exposed as a

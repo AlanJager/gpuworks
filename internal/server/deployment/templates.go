@@ -31,7 +31,10 @@ type templateSelection struct {
 	ExtraArgs        []string
 	// DockerArgs are the selected spec's own docker run options, decoded from
 	// InferenceSpecRow.DockerArgs; nil when the spec states none.
-	DockerArgs     []string
+	DockerArgs []string
+	// Dirs are the selected spec's writable directories, decoded from
+	// InferenceSpecRow.Dirs; nil when the spec declares none.
+	Dirs           []deploy.ManagedDir
 	Env            map[string]string
 	PreStartArgv   []string
 	PreStartScript string
@@ -305,6 +308,9 @@ func (s *Service) applyTemplateDefaults(req *dto.DeployRequest, hardware templat
 			return selection, fmt.Errorf("inference spec %s docker_args: %w", spec.Name, err)
 		}
 	}
+	if selection.Dirs, err = deploy.DecodeManagedDirs(spec.Dirs); err != nil {
+		return selection, fmt.Errorf("inference spec %s: %w", spec.Name, err)
+	}
 	if strings.TrimSpace(spec.Env) != "" {
 		if err := json.Unmarshal([]byte(spec.Env), &selection.Env); err != nil {
 			return selection, fmt.Errorf("inference spec %s env: %w", spec.Name, err)
@@ -549,7 +555,7 @@ func snapshotTemplateSelection(selection templateSelection, image string) deploy
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, Entrypoint: selection.Entrypoint,
 		Placement: selection.Placement, APIContract: selection.APIContract,
-		Components: selection.Components, RankWeights: selection.RankWeights, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, StartTimeoutSec: selection.Spec.StartTimeoutSec, DockerArgs: selection.DockerArgs, ImageSources: templateImageSources(selection, image),
+		Components: selection.Components, RankWeights: selection.RankWeights, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, StartTimeoutSec: selection.Spec.StartTimeoutSec, DockerArgs: selection.DockerArgs, Dirs: selection.Dirs, ImageSources: templateImageSources(selection, image),
 		DeviatedFields: selection.Diff, MatchedBy: selection.MatchedBy,
 		ImageDigestWarning: strings.Contains(strings.ToLower(image), "@sha256:"),
 	}

@@ -105,6 +105,12 @@ type ResolveLaunchInput struct {
 	// memlock_unlimited take. Empty when the deployment has no template or the
 	// spec states none.
 	TemplateDockerArgs []string
+	// TemplateDirs are the selected template spec's writable directories
+	// (spec dirs); each becomes a managed mount (managedDirMounts).
+	TemplateDirs []ManagedDir
+	// ManagedDirGroup is the deployment's managed directory group key
+	// (proto.ManagedDirGroupKey); empty for a deployment not created yet.
+	ManagedDirGroup string
 }
 
 // ResolveLaunch is the only public path that merges catalog facts, image
@@ -326,6 +332,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	if mount, needed := kvDiskMount(params.Quick, input.ModelWeightBytes); needed {
 		launch.Mounts = append(launch.Mounts, mount)
 	}
+	launch.Mounts = append(launch.Mounts, managedDirMounts(input.TemplateDirs, input.ManagedDirGroup)...)
 	launch.Mounts = append(launch.Mounts, computeNetworkMounts(params)...)
 	if err := validateResolvedMounts(launch.Mounts, modelMount); err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch mounts: %w", err)

@@ -118,6 +118,7 @@ models:                       # FlatCatalog: a single top-level models list
 | `memlock_unlimited` | Optional Boolean, default `false`; non-Boolean values (numbers, strings, and so on) are rejected | When `true`, the deployment's container uses `--ulimit memlock=-1:-1` (removing the locked-memory limit only for this container), for engines that lock large amounts of host memory into RAM (for example, DeepInfer uses `cudaHostRegister` to lock about 197 GB). If the deployment's own `docker_args` already specifies `memlock`, that setting takes precedence and no duplicate is appended; this is merged with the `memlock` injected for host RDMA networking into a single entry. See [Locked Memory](deployment-launch-sources.md#锁定内存memlock) |
 | `start_timeout_sec` | Optional integer, seconds; 60–86400 (the same bounds as the deployment's own `start_timeout_sec`), otherwise the stable error code `CATALOG_START_TIMEOUT_INVALID` is reported; an explicit `0` is equivalent to omitting it | Startup health check budget for instances of this spec, for recipes whose first start converts weights or warms caches for tens of minutes. It is the template step of the startup wait limit (source `template`): cluster default → template → raised to the engine deadline → the deployment's `start_timeout_sec`; for the order and rules see [Startup Wait Limit](deployment-launch-sources.md#启动等待上限). Saved with the spec snapshot, so later template changes do not affect existing deployments |
 | `docker_args` | Optional string array; each item nonempty after trimming; validated exactly like the deployment's own `container_overrides.docker_args` (`deploy.ValidateDockerArgs`): options that hand the container the host (`--privileged`, `--pid`, `-v /`, and so on) are rejected, as are options the platform already manages (`--name`, `--network`, `--gpus`, `--shm-size`, `-e`, `-v`, `--mount`, `--entrypoint`, and so on); `--ipc=host` together with this same spec's own `shm_bytes` is also rejected | Extra `docker run` options the engine needs (for example `--cap-add=SYS_PTRACE`), the template layer of the deployment's own `docker_args`: the template's own args apply first, then the deployment's own, then the platform's (RDMA, memlock). If the deployment itself does not state `--ipc=host` but the selected template does, the deployment's own `shm_bytes` is rejected rather than silently having no effect, because it would never apply. See [the three-layer order of docker run arguments](deployment-launch-sources.md#docker-run-参数的三层顺序) |
+| `dirs[]` | Optional, at most 8 entries; `name` is 1–32 lower-case letters, digits or `-` (not starting or ending with `-`), unique within the spec; `mount_path` is an absolute, clean container path other than `/` that overlaps no other dir, the primary model mount, a component `mount_path` or an asset `unpack_to`; `limit_bytes` is a byte count, > 0 and ≤ 64 TiB (`1<<46`); `retain` may only be `deployment`, written back on import when omitted | Writable host directories the platform keeps for the deployment on every node it runs on; see [dirs: Managed Writable Directories](#dirs-managed-writable-directories) |
 | `gpus` | Required | See below |
 | `args` | String array | Included in the engine command line; supports `${VAR}` [variable expansion](#变量展开); split using the parameter dictionary at deployment time (see below) |
 | `env` | Nonempty keys | Container environment variables; values support `${VAR}` expansion |
@@ -653,6 +654,38 @@ A model referenced by `model_id` must be in the same document/catalog package or
   The server generates the template editor's YAML using the same catalog types; it contains only the current model, not the component models it references. Empty fields are omitted, and defaults are not added.
 - **Clone or edit a template with documentation and assets**: the generated catalog package also includes referenced component models; these entries contain no specs or documentation.
 - **Upload a catalog package**: the package must still include the component models it references.
+
+## dirs: Managed Writable Directories
+
+When an engine needs a host directory it can write, that survives its instances being recreated, and that is cleaned up when the deployment is deleted (a session store, a spill area, logs, or a compile cache or snapshot it derives at first start and reuses), the spec declares `dirs`:
+
+```yaml
+dirs:
+- name: pico-state
+  mount_path: /pico
+  limit_bytes: 429496729600
+  retain: deployment
+```
+
+Who provides what:
+
+| Declaration | Content | Access | Host source | Lifetime |
+|---|---|---|---|---|
+| `weights` / `components` | Model weights the platform downloads | Read-only | The platform (model storage) | The model's |
+| `assets` | Small files shipped with the template | Read-only | The platform (template package) | The template version's |
+| `dirs` | State the recipe writes | Read-write | The platform (the node's managed directory) | The deployment's |
+| KV disk tier (deployment parameter `shared_kv_dir`) | vLLM's KV cache | Read-write | The platform (the node's managed directory) | The instances' on the node, pruned past its ceiling |
+| Deployment `extra_mounts` | Host paths or volumes the operator names | Per row | The operator | Not managed by the platform |
+
+- **One per node**: on every node an instance of the deployment lands on, the agent creates `managed-dir/<deployment>-<creation second>/<name>` under the node's runtime mount root (`GPUWORKS_RUNTIME_MOUNT_ROOT`, by default `<state>/runtime-mounts`, `<state>` on docker nodes), owned by the runtime mount owner, and mounts it read-write at `mount_path`. docker, nerdctl, runveil (udocker), Kubernetes and host processes (paths rewritten to the host directory) treat it as any other mount. Instances of one deployment on one node share the directory; a recipe that needs them apart splits it into subdirectories itself with the existing `${GPUWORKS_NODE_RANK}`. There is no launch variable for the path: the recipe writes `mount_path` directly.
+- **One mechanism with the KV disk tier**: the KV disk tier is the same kind of managed directory, switched on by a deployment parameter and kept under `kv-disk/<deployment>`; it is a cache, removed once the last instance leaves the node and pruned past its ceiling by the sweeper. `dirs` is state, kept until the deployment is deleted and never pruned.
+- **Kept until the deployment is deleted**: stopping, restarting, failing over or re-forming a multi-node group leaves it alone, and an instance that returns to the same node sees what was written there. Once the deployment is deleted (its instances confirmed torn down, its row gone) the server tells every connected node to remove the deployment's directories; a node offline at the time lists the groups it holds in its next hello, the server's replay names those whose deployment no longer exists, and the node removes them then. A group a desired instance still mounts is kept. The group name carries the deployment's creation time, so after a database change (a reinstalled server, a restored backup) a new deployment with the same id does not get the old directory.
+- **Admitted on the declared size**: scheduling requires the disk the node keeps managed directories on (the agent reports its free space as `managed_dirs`) to hold every `limit_bytes`, the KV disk tier's ceiling and the disk reserve (the storage settings' reserve, else a tenth of that disk, at most 50 GiB); when the agent reports that disk is shared with the models root or the current runtime's image store, the weights to download and the image to unpack count there too. Otherwise the node is refused with `insufficient_managed_dir_disk`, and the reason states how much is needed, available, declared and reserved. A node that does not report the disk (an older agent) is not checked here. Admission does not subtract what a directory already holds, because that is already out of the free space.
+- **Not pruned or capped**: the directory holds state, not a cache, so the platform deletes nothing in it by size and sets no filesystem quota; staying within `limit_bytes` is the recipe's part.
+- **Path conflicts**: on import `mount_path` may not equal or nest with the primary model mount, a component `mount_path`, an asset `unpack_to` or another dir; at deployment it is checked with every other mount, `extra_mounts` and the KV disk tier included, and a shared target is `MOUNT_TARGET_DUPLICATE`.
+- **Unsupported agents**: the agent announces `mount.managed_dirs` in its hello; when a directory cannot be prepared the instance fails to start with `MANAGED_DIR_PREPARE_FAILED`.
+
+See [ADR 0077](../adr/0077-template-managed-writable-dirs.md) for the trade-offs.
 
 ## performance_tradeoffs: Reasons for Performance-Costing Settings
 

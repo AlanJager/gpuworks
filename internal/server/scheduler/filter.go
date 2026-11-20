@@ -50,6 +50,9 @@ func runFilters(req Request, node NodeSnapshot) (bool, Reason) {
 	if req.RuntimeDiskNeedBytes > 0 && node.RuntimeDiskAvailBytes > 0 && node.RuntimeDiskAvailBytes < req.RuntimeDiskNeedBytes {
 		return false, Reason{Code: ReasonInsufficientRuntimeDisk}
 	}
+	if req.ManagedDirNeedBytes > 0 && node.ManagedDirDiskAvailBytes > 0 && node.ManagedDirDiskAvailBytes < req.ManagedDirNeedBytes {
+		return false, Reason{Code: ReasonInsufficientManagedDirDisk}
+	}
 	if countTaking(gpus, req) == 0 {
 		return false, noSchedulableGPUReason(req, node.UUID, gpus)
 	}

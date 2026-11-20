@@ -155,6 +155,9 @@ type NodeSnapshot struct {
 	DtypeReason           string
 	DiskAvailBytes        int64
 	RuntimeDiskAvailBytes int64
+	// ManagedDirDiskAvailBytes is the free space of the disk the node keeps
+	// managed directories on; zero is unknown and checks nothing.
+	ManagedDirDiskAvailBytes int64
 	// ServingUnavailable marks a node with no network that may carry serving
 	// traffic: no serving network, and the management network may not.
 	ServingUnavailable bool
@@ -184,6 +187,11 @@ type Request struct {
 	ReserveBytes         int64
 	DiskNeedBytes        int64
 	RuntimeDiskNeedBytes int64
+	// ManagedDirNeedBytes is what the managed directories' disk must have
+	// free: the declared limits, the disk reserve, and the image and weights
+	// when they land on the same disk (planning works it out). Zero for a
+	// launch that declares no directories.
+	ManagedDirNeedBytes int64
 	// StorageRefusal is set when no storage the deployment may use can serve
 	// the node; planning works it out because the scheduler knows no storages.
 	StorageRefusal *Reason
@@ -280,6 +288,10 @@ const (
 	// deployment's KV offload backend (ADR 0069).
 	ReasonKVBackendUnsupportedOnNode = "kv_backend_unsupported_on_node"
 	ReasonInsufficientRuntimeDisk    = "insufficient_runtime_disk"
+	// ReasonInsufficientManagedDirDisk: the disk the node keeps managed
+	// directories on cannot hold the template's declared directories on top
+	// of the disk reserve (and the image and weights when they share it).
+	ReasonInsufficientManagedDirDisk = "insufficient_managed_dir_disk"
 	// No card takes work, and why, from the operator's side: the node has
 	// no card of its own (none at all, or all lent to virtual machines or
 	// held by another driver), its cards are held by processes outside the

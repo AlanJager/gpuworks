@@ -118,6 +118,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `memlock_unlimited` | 可选布尔，缺省 `false`；写成非布尔值（数字、字符串等）会被拒绝 | 为 `true` 时该部署的容器带 `--ulimit memlock=-1:-1`（只对这个容器取消锁定内存上限），给要锁页大块主机内存的引擎用（例如 DeepInfer 用 `cudaHostRegister` 锁住约 197 GB）。部署自己的 `docker_args` 已写 `memlock` 时以部署为准，不重复追加；与主机 RDMA 网络注入的 `memlock` 合并为一条。详见 [锁定内存](deployment-launch-sources.md#锁定内存memlock) |
 | `start_timeout_sec` | 可选整数，秒；60–86400（与部署自己的 `start_timeout_sec` 同界），否则报稳定错误码 `CATALOG_START_TIMEOUT_INVALID`；显式写 `0` 等同于不写 | 该档位实例的启动健康检查预算，给首次启动要转换权重、预热缓存、耗时数十分钟的配方用。它是启动等待上限的模板一步（来源 `template`）：集群默认 → 模板 → 引擎等待上限抬高 → 部署的 `start_timeout_sec`，顺序与规则见 [启动等待上限](deployment-launch-sources.md#启动等待上限)。随档位快照保存，之后改模板不影响已有部署 |
 | `docker_args` | 可选字符串数组；每项 trim 后非空；校验与部署自己的 `container_overrides.docker_args` 完全一致（`deploy.ValidateDockerArgs`）：拒绝 `--privileged`、`--pid`、`-v /` 等交出主机控制权的选项，拒绝 `--name`、`--network`、`--gpus`、`--shm-size`、`-e`、`-v`、`--mount`、`--entrypoint` 等平台已管的选项，`--ipc=host` 与本 spec 自己的 `shm_bytes` 同时出现也拒绝 | 引擎需要的额外 `docker run` 选项（例如 `--cap-add=SYS_PTRACE`），是部署 `docker_args` 的模板层：先套用模板的，再套用部署自己的，最后是平台追加的（RDMA、memlock）。部署自己若没写 `--ipc=host` 但模板写了，部署自己的 `shm_bytes` 会被拒绝而不是静默失效，因为那个大小不会生效。详见 [docker run 参数的三层顺序](deployment-launch-sources.md#docker-run-参数的三层顺序) |
+| `dirs[]` | 可选，至多 8 项；`name` 为 1–32 个小写字母、数字或 `-`（首尾不为 `-`），spec 内唯一；`mount_path` 为容器绝对路径、规整、不是 `/`，彼此不重叠，也不与主模型挂载点、组件 `mount_path`、资产 `unpack_to` 重叠；`limit_bytes` 为字节数，> 0 且 ≤ 64 TiB（`1<<46`）；`retain` 只能是 `deployment`，缺省时导入写回 | 平台为部署在它运行的每个节点上保留的可写主机目录，见 [dirs：托管的可写目录](#dirs托管的可写目录) |
 | `gpus` | 必填 | 见下 |
 | `args` | 字符串数组 | 进入引擎命令行，支持 `${VAR}` [变量展开](#变量展开)；部署时按参数字典拆分（见下） |
 | `env` | 键非空 | 容器环境变量，值支持 `${VAR}` 展开 |
@@ -655,6 +656,38 @@ pre_start / env）引用，否则校验失败——挂了不用或拼错路径�
   模板编辑器里的 YAML 由 server 用同一套目录类型写出，只含当前模型，不含它引用的组件模型；空字段不写，也不补默认值。
 - **克隆或编辑带说明文档、资产的模板**：生成的目录包会把引用的组件模型一并带上，这些条目不含 spec 和文档。
 - **上传目录包**：包内仍须自带它引用的组件模型。
+
+## dirs：托管的可写目录
+
+引擎要一块能写、能跨实例重建保留、随部署删除而清理的主机目录时（会话库、溢出区、日志，或首次启动时推导出来再复用的编译缓存与快照），在 spec 上声明 `dirs`：
+
+```yaml
+dirs:
+- name: pico-state
+  mount_path: /pico
+  limit_bytes: 429496729600
+  retain: deployment
+```
+
+各声明的分工：
+
+| 声明 | 内容 | 读写 | 主机来源 | 生命周期 |
+|---|---|---|---|---|
+| `weights` / `components` | 平台下载的模型权重 | 只读 | 平台（模型存储） | 随模型 |
+| `assets` | 模板自带的小文件 | 只读 | 平台（模板包） | 随模板版本 |
+| `dirs` | 配方写的状态 | 读写 | 平台（节点的托管目录） | 随部署 |
+| KV 磁盘层（部署参数 `shared_kv_dir`） | vLLM 的 KV 缓存 | 读写 | 平台（节点的托管目录） | 随节点上的实例，超限修剪 |
+| 部署的 `extra_mounts` | 运维指定的主机路径或卷 | 按行设置 | 运维 | 不由平台管理 |
+
+- **每个节点一份**：部署的实例落到哪个节点，agent 就在该节点的运行时挂载根（`GPUWORKS_RUNTIME_MOUNT_ROOT`，缺省 `<state>/runtime-mounts`，docker 节点为 `<state>`）下建 `managed-dir/<部署>-<创建秒>/<name>`，属主是运行时挂载的属主，以读写方式挂到 `mount_path`。docker、nerdctl、runveil（udocker）、Kubernetes 与主机进程（路径改写到主机目录）都按普通挂载处理。同一节点上同一部署的多个实例共用这份目录；需要各自隔离的配方用已有的 `${GPUWORKS_NODE_RANK}` 自己分子目录。目录路径不另设启动变量，配方直接写 `mount_path`。
+- **与 KV 磁盘层同一机制**：KV 磁盘层是同一种托管目录，由部署参数打开，放在 `kv-disk/<部署>` 下；它是缓存，节点上最后一个实例离开就删、超限由清扫器修剪。`dirs` 是状态，保留到部署删除、从不修剪。
+- **保留到部署删除**：实例停止、重启、故障转移、多机组重组都不动它，回到同一节点的实例看到上次写下的内容。部署删除后（实例确认拆除、部署行删掉之后），server 通知所有在线节点删除该部署的目录；当时离线的节点在下次连接时由 hello 上报自己持有的目录组，server 的重放点名其中部署已不存在的组，节点再删除。仍被期望实例挂载的组不删。目录组名带部署的创建时间，换了数据库（重装 server、恢复备份）后同号的新部署不会拿到旧目录。
+- **准入按声明的大小**：调度时节点存放托管目录的磁盘（agent 以 `managed_dirs` 上报其空闲空间）须放得下全部 `limit_bytes`、KV 磁盘层的上限与磁盘保留空间（存储设置里的保留值，未设时为该盘的 1/10、至多 50 GiB）；agent 报告这块盘与模型目录或当前运行时的镜像目录同盘时，待下载的权重与待解压的镜像也计在里面。不满足时以 `insufficient_managed_dir_disk` 拒绝，原因里带需要、可用、目录、保留各占多少。没有上报这块盘的节点（旧 agent）不做此项检查。准入不扣除目录里已经写下的数据，因为它已体现在空闲空间里。
+- **平台不修剪、不限额**：目录存的是状态，不是缓存，平台不按大小删除其中的文件，也不设文件系统配额；写不超过 `limit_bytes` 是配方自己的事。
+- **路径冲突**：导入时 `mount_path` 不能与主模型挂载点、组件 `mount_path`、资产 `unpack_to`、其他 dir 相同或嵌套；部署时与 `extra_mounts`、KV 磁盘层等全部挂载一起检查，同一目标报 `MOUNT_TARGET_DUPLICATE`。
+- **不支持的 agent**：agent 在 hello 里宣告 `mount.managed_dirs`；准备目录失败时实例以 `MANAGED_DIR_PREPARE_FAILED` 启动失败。
+
+设计取舍见 [ADR 0077](../adr/0077-template-managed-writable-dirs.md)。
 
 ## performance_tradeoffs：降速参数的理由
 
