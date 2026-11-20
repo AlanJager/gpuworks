@@ -8,7 +8,8 @@ unit suite.
 
 Verified behavior:
 - the deployment drawer shows the time-range select over the metrics panel;
-- quick ranges re-issue /api/v1/metrics/query with start/end/step for the window;
+- quick ranges re-issue the panel's /api/v1/monitor/deployments/{id}/signals query with
+  start/end/step for the window;
 - the custom range drives start/end through the RangePicker;
 - a range beyond retention surfaces the warning;
 - the instance log tab's range picker queries /api/v1/logs/search with bounds.
@@ -44,7 +45,7 @@ def metrics_window(page: Page, step: str):
         url = urlparse(request.url)
         params = parse_qs(url.query)
         return (
-            url.path == "/api/v1/metrics/query"
+            re.fullmatch(r"/api/v1/monitor/deployments/\d+/signals", url.path) is not None
             and params.get("step") == [step]
             and "start" in params and "end" in params
         )

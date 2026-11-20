@@ -4686,6 +4686,25 @@ export interface MonitorDeploymentCharts {
   preemptions: MonitorSeries[];
 }
 
+// GET /api/v1/monitor/deployments/{id}/signals: the series the deployment
+// drawer's metrics panel draws over a window it picked, each signal from the
+// engine or, when the engine has none, the gateway (ADR 0039). A series from
+// the engine carries an `instance` label; one from the gateway does not, as
+// the gateway measures the deployment, not its instances.
+export interface MonitorDeploymentSignals {
+  start_ms: number;
+  end_ms: number;
+  step_ms: number;
+  // Only running, prompt_tokens and generation_tokens; absent without data.
+  sources: Partial<Record<MonitorSignalSourceKey, MonitorSignalSource>>;
+  // labels.metric: running | waiting
+  concurrency: MonitorSeries[];
+  // labels.metric: usage_pct (a percentage)
+  kv: MonitorSeries[];
+  // labels.metric: prompt_tok_s | generation_tok_s (rates)
+  throughput: MonitorSeries[];
+}
+
 export type MonitorSignalSourceKey =
   | "ttft"
   | "e2e"
@@ -5957,6 +5976,10 @@ export const api = {
   monitorDeployment: (id: number, range: MonitorRange) =>
     getJSON<MonitorDeployment>(
       `/api/v1/monitor/deployments/${id}?${new URLSearchParams(rangeParams(range))}`,
+    ),
+  monitorDeploymentSignals: (id: number, window: { start: number; end: number; step: string }) =>
+    getJSON<MonitorDeploymentSignals>(
+      `/api/v1/monitor/deployments/${id}/signals?${new URLSearchParams({ start: String(window.start), end: String(window.end), step: window.step })}`,
     ),
   monitorRequests: (id: number, query: MonitorRequestsQuery, signal?: AbortSignal) =>
     getJSON<MonitorRequests>(monitorRequestsURL(id, query), signal),

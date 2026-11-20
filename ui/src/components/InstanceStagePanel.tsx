@@ -41,7 +41,7 @@ export function StageCharts({ queue, prefill, decode, preemptions }: ReturnType<
         {hasPoints(stageSeries) ? (
           <TimeSeriesChart height={190} series={stageSeries} seriesName={seriesName} unit="ms" valueFmt={(v) => v.toFixed(0)} />
         ) : (
-          <NotCollected text={t("instanceStages.notCollected")} />
+          <NotCollected text={t("instanceStages.notCollectedDeployment")} />
         )}
       </StageCard>
       <StageCard title={t("instanceStages.preemptTitle")} description={t("instanceStages.preemptDescription")}>
@@ -78,7 +78,7 @@ function hasPoints(series?: MetricSeries[] | null): boolean {
 
 function NotCollected({ text }: { text: string }) {
   return (
-    <div style={{ height: 190, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ height: 190, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
       <span className="text-fg-muted">— {text}</span>
     </div>
   );

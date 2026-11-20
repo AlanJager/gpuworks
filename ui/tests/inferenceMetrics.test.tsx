@@ -176,3 +176,39 @@ test("failed metric reads remain explicit and do not suppress the other diagnost
   assert.equal(screen.queryByText("Waiting for Inference Metrics"), null);
   assert.ok(screen.getByText("Stage Duration p95"));
 });
+
+// The gateway counts what a deployment served, not what each instance did, so
+// the instance page never borrows a deployment-wide figure for an instance:
+// where its engine reports nothing it says so and points to the deployment's
+// panel, which does show the gateway's numbers.
+test("an engine without token counters says the gateway cannot split them by instance", async () => {
+  stubMetrics({
+    gpuworks_infer_requests_running: series([[1000, 1]]),
+    gpuworks_infer_gpu_cache_usage_percent: series([[1000, 0.5]]),
+  });
+  render(<I18nextProvider i18n={i18n}><InferenceMetricsPanel instanceUuid="inst-1" /></I18nextProvider>);
+  await waitFor(() => assert.match(card("Token Throughput").textContent ?? "", /Engine did not report token counters\. The gateway counts per deployment, not per instance/));
+  assert.equal(card("Token Throughput").querySelector("canvas"), null);
+  assert.deepEqual([...summary().querySelectorAll("[data-slot='metric-card-value-row']")].slice(3).map(el => el.textContent), ["—", "—"], "no deployment-wide number is shown as this instance's throughput");
+});
+
+test("an engine that reports token counters draws them, with no unreported message", async () => {
+  stubMetrics({
+    gpuworks_infer_requests_running: series([[1000, 1]]),
+    gpuworks_infer_prompt_tokens_total: series([[1000, 0], [11000, 500]]),
+    gpuworks_infer_generation_tokens_total: series([[1000, 0], [11000, 2000]]),
+  });
+  render(<I18nextProvider i18n={i18n}><InferenceMetricsPanel instanceUuid="inst-1" /></I18nextProvider>);
+  await waitFor(() => assert.ok(card("Token Throughput").querySelector("canvas")));
+  assert.ok(!card("Token Throughput").textContent?.includes("did not report token counters"));
+  await waitFor(() => assert.deepEqual([...summary().querySelectorAll("[data-slot='metric-card-value-row']")].slice(3).map(el => el.textContent), ["50.0tok/s", "200.0tok/s"]));
+});
+
+test("an unreported prefix-cache hit rate and stage times point to the deployment, speculative decoding does not", async () => {
+  stubMetrics({ gpuworks_infer_requests_running: series([[1000, 1]]) });
+  render(<I18nextProvider i18n={i18n}><InferenceMetricsPanel instanceUuid="inst-1" /></I18nextProvider>);
+  await waitFor(() => assert.match(card("Stage Duration p95").textContent ?? "", /gateway summarizes stage times per deployment/));
+  fireEvent.click(screen.getByRole("tab", { name: "Cache & engine" }));
+  assert.match(card("KV Cache Hit Rate").textContent ?? "", /deployment-wide figure is in the deployment metrics/);
+  assert.ok(!card("Speculative Accept Rate").textContent?.includes("deployment"), "the gateway has no speculative-decoding figure");
+});

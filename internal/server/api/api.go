@@ -461,6 +461,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/monitor/requests/lookup", a.monitorRequestLookup)
 			r.Get("/monitor/distributions", a.monitorDistributions)
 			r.Get("/monitor/deployments/{id}/latency", a.monitorLatency)
+			r.Get("/monitor/deployments/{id}/signals", a.monitorSignals)
 			r.Get("/monitor/metrics", a.monitorMetrics)
 			r.Get("/monitor/series", a.monitorSeries)
 			r.Get("/gpus", a.listGPUs)

@@ -38,6 +38,10 @@ type MonitorService interface {
 	// Latency serves GET /monitor/deployments/{id}/latency
 	// (monitorapi/latency.go).
 	Latency(ctx context.Context, id uint, rng time.Duration) (dto.MonitorLatency, error)
+	// Signals serves GET /monitor/deployments/{id}/signals: the series the
+	// deployment drawer draws over a window it picked, each signal from the
+	// engine or the gateway (monitorapi/signals.go).
+	Signals(ctx context.Context, id uint, startMS, endMS int64, step time.Duration) (dto.MonitorDeploymentSignals, error)
 	// Health is a deployment's health check on the wire, given its own
 	// settings (monitorapi/health.go).
 	Health(id uint, enabled bool, thresholdSec int) dto.DeploymentHealth
@@ -193,6 +197,57 @@ func (a *apiHandlers) monitorDeployment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// monitorSignals serves GET /api/v1/monitor/deployments/{id}/signals. Its
+// window is start and end in Unix milliseconds (end defaults to now) and an
+// optional step; unlike the monitor center's fixed ranges it answers any
+// window the deployment drawer's time picker offers, and the step is raised
+// when the window would hold too many points.
+func (a *apiHandlers) monitorSignals(w http.ResponseWriter, r *http.Request) {
+	id := parseUint(chi.URLParam(r, "id"))
+	if id == 0 {
+		writeProductError(w, http.StatusBadRequest, ErrorDeploymentIDInvalid, "invalid deployment id", nil)
+		return
+	}
+	q := r.URL.Query()
+	invalid := func(detail string) {
+		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, detail, map[string]any{"detail": detail})
+	}
+	endMS := time.Now().UTC().UnixMilli()
+	if raw := q.Get("end"); raw != "" {
+		v, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || v <= 0 {
+			invalid("end is Unix milliseconds")
+			return
+		}
+		endMS = v
+	}
+	startMS, err := strconv.ParseInt(q.Get("start"), 10, 64)
+	if err != nil || startMS <= 0 || startMS >= endMS {
+		invalid("start is Unix milliseconds, before end")
+		return
+	}
+	step := time.Duration(0)
+	if raw := q.Get("step"); raw != "" {
+		if step, err = time.ParseDuration(raw); err != nil || step <= 0 {
+			invalid("step is a positive duration such as 30s")
+			return
+		}
+	}
+	if a.d.Monitor == nil {
+		writeErr(w, http.StatusNotFound, ErrMonitorDeploymentNotFound)
+		return
+	}
+	out, err := a.d.Monitor.Signals(r.Context(), id, startMS, endMS, step)
+	switch {
+	case errors.Is(err, ErrMonitorDeploymentNotFound):
+		a.writeMonitorDeploymentGone(w, id, err)
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, err)
+	default:
+		writeJSON(w, http.StatusOK, out)
+	}
 }
 
 // monitorSeries serves GET /api/v1/monitor/series.
