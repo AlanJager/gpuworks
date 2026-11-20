@@ -1003,7 +1003,8 @@
       "target_registered": "系统核实：节点之后以目标版本重新连上。",
       "agent_failed": "系统核实：Agent 之后报告升级失败。",
       "rolled_back": "系统核实：Agent 之后报告已回滚。",
-      "node_removed": "系统核实：节点已从平台删除，不会再有升级在进行。"
+      "node_removed": "系统核实：节点已从平台删除，不会再有升级在进行。",
+      "reconnected_old_version": "系统核实：节点之后以原版本重新连上，这次升级没有生效。"
     }
   },
   "cardScheduling": {
