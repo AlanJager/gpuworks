@@ -298,7 +298,7 @@ func (e *Engine) startAborted(ctx context.Context, spec proto.InstanceDesiredSta
 	if !aborted {
 		return proto.RuntimeFailure{}, "", false
 	}
-	out := exitOutput{causes: enginelog.Classify(text), root: commandlog.Redact(cause)}
+	out := exitOutput{causes: enginelog.ClassifyWithLimit(text, spec.VRAMLimitBytes), root: commandlog.Redact(cause)}
 	if out.root == "" {
 		out.root = commandlog.Redact(enginelog.RootCause(text))
 	}
