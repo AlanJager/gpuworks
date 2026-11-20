@@ -118,6 +118,21 @@ deadlock into a latency bound; a rotating cursor over the tracee list costs
 only 2.7% once amortized but does not equalize (served-count skew 82952 against
 the upstream 128971 in the harness).
 
+One tracer still has a saturation point, and the harness finds it. At 8 processes
+with 300 threads each (2200-2400 tracees, 480 of them busy) the shipped loop no
+longer equalizes: 6 of the 8 main threads fell below 100 iterations and the
+served gap reached 19.7 s, although setup still completed in 20.6 s. The
+upstream loop collapsed outright on the same run—all 8 mains at 0 iterations,
+setup never finishing inside the 120 s cap—and `PROOT_FAIR_ADAPTIVE=0` was no
+better (8 of 8 starved), so the back-off is not what limits it: the event rate
+from 480 continuously busy tracees exceeds what one tracer can serve. The same
+binary is perfectly fair at 4 processes with 150 threads each (600 tracees, 40
+busy: 2320 iterations minimum, 9 ms maximum gap). The harness load is synthetic,
+since its busy threads never stop calling `stat()`, where a real start-up is
+bursty: a 4-rank vLLM start-up on 910B creates about 510 threads and is fixed
+completely, matching the 4-process row. Measured on an 8 x 910B2C x86_64 host,
+128 cores, kernel 5.15, with the shipped binary.
+
 The thread-pool caps the server adds for SGLang on runveil nodes
 (`internal/server/deploy/runveil_env.go`) stay as they are: they reduce how
 many threads are created, which is useful whatever the tracer does.
