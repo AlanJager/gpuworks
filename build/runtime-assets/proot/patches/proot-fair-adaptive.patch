@@ -1,0 +1,271 @@
+diff --git a/src/tracee/event.c b/src/tracee/event.c
+index 64e3392..80442ca 100644
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -274,16 +274,88 @@ static void check_architecture(Tracee *tracee)
+ 		"A 64-bit version that supports 32-bit binaries is required");
+ }
+ 
++/* Caps and thresholds of the fair event collection in event_loop().  */
++#define DEFAULT_FAIR_BATCH 512
++#define MAX_FAIR_BATCH 4096
++#define MAX_DRAIN_INTERVAL 1024
++#define MIN_FAIR_YIELD 4
++/* How many collected events pay for one full scan of the children
++ * list; see the comment in event_loop().  */
++#define EVENTS_PER_SCAN 37
++
+ /**
+  * Wait then handle any event from any tracee.  This function returns
+  * the exit status of the last terminated program.
+  */
+ int event_loop()
+ {
++	/* One result of waitpid(2).  */
++	typedef struct {
++		pid_t pid;
++		int status;
++	} WaitEvent;
++
+ 	struct sigaction signal_action;
++	WaitEvent *batch;
++	size_t batch_size;
++	WaitEvent carry;
++	bool have_carry = false;
++	uint64_t round = 0;
++	uint64_t drain_interval = 1;
+ 	long status;
+ 	int signum;
+ 
++	/* Upstream serves one event per blocking waitpid(-1) round.  Linux
++	 * reports the most recently attached tracee first, so once the
++	 * tracees stop faster than this single tracer serves them,
++	 * waitpid(2) keeps handing back the newest busy threads while the
++	 * older ones stay in tracing-stop.  Measured with vLLM TP4 under
++	 * udocker, two of the four ranks spent 30x longer in warmup than
++	 * the other two for that reason, and start-up took 96 minutes
++	 * instead of 13.
++	 *
++	 * Collecting the events that are already pending and serving them
++	 * oldest-first fixes that, but it is not free: the WNOHANG call
++	 * that ends a collection has to walk the whole children list to
++	 * find nothing, which costs about 43 ns per tracee (measured: 18 us
++	 * at 500 tracees, 94 us at 2200, 136 us at 3000).  Paying that once
++	 * per event collapses throughput when few events are pending -
++	 * measured on 8 H200 with SGLang, an unconditional collection made
++	 * loading a 122B checkpoint take 615 s instead of 35 s, with the
++	 * tracer pinned at 100% system time and only ~15 threads stopped at
++	 * any time.
++	 *
++	 * So collect only when it pays for itself.  A collection is worth
++	 * one scan when it reorders enough events to matter, which is the
++	 * case once the yield clears nb_tracees/EVENTS_PER_SCAN; below that
++	 * the interval between collections doubles, up to
++	 * MAX_DRAIN_INTERVAL.  Phases with many threads in flight (warmup,
++	 * kernel compilation) collect on every round and get the fairness,
++	 * while phases with few (loading weights from storage) fall back to
++	 * the upstream loop and pay nothing.
++	 *
++	 * PROOT_FAIR_BATCH=n caps a collection at n events (n <= 1 restores
++	 * the upstream loop exactly); PROOT_FAIR_ADAPTIVE=0 collects on
++	 * every round whatever the yield, which is only useful to measure
++	 * the difference.  */
++
++	batch_size = DEFAULT_FAIR_BATCH;
++	if (getenv("PROOT_FAIR_BATCH") != NULL) {
++		long requested = strtol(getenv("PROOT_FAIR_BATCH"), NULL, 10);
++
++		batch_size = requested > 1
++			? (size_t) (requested < MAX_FAIR_BATCH ? requested : MAX_FAIR_BATCH)
++			: 1;
++	}
++	if (getenv("PROOT_FAIR_ADAPTIVE") != NULL
++	    && strcmp(getenv("PROOT_FAIR_ADAPTIVE"), "0") == 0)
++		drain_interval = 0; /* 0 means: never back off.  */
++	batch = talloc_array(NULL, WaitEvent, batch_size);
++	if (batch == NULL) {
++		note(NULL, ERROR, INTERNAL, "can't allocate the event batch");
++		return EXIT_FAILURE;
++	}
++
+ 	/* Kill all tracees when exiting.  */
+ 	status = atexit(kill_all_tracees);
+ 	if (status != 0)
+@@ -342,47 +414,102 @@ int event_loop()
+ 	}
+ 
+ 	while (1) {
+-		int tracee_status;
+-		Tracee *tracee;
+-		int signal;
+-		pid_t pid;
++		size_t count = 0;
++		size_t i;
++		bool collect;
+ 
+ 		/* This is the only safe place to free tracees.  */
+ 		free_terminated_tracees();
+ 
+ 		/* Wait for the next tracee's stop. */
+-		pid = waitpid(-1, &tracee_status, __WALL);
+-		if (pid < 0) {
+-			if (errno != ECHILD) {
+-				note(NULL, ERROR, SYSTEM, "waitpid()");
+-				return EXIT_FAILURE;
++		if (have_carry)
++			have_carry = false;
++		else {
++			carry.pid = waitpid(-1, &carry.status, __WALL);
++			if (carry.pid < 0) {
++				if (errno != ECHILD) {
++					note(NULL, ERROR, SYSTEM, "waitpid()");
++					TALLOC_FREE(batch);
++					return EXIT_FAILURE;
++				}
++				break;
+ 			}
+-			break;
+ 		}
+ 
+-		/* Get information about this tracee. */
+-		tracee = get_tracee(NULL, pid, true);
+-		assert(tracee != NULL);
++		round++;
++		collect = batch_size > 1
++			&& (drain_interval == 0 || round % drain_interval == 0);
+ 
+-		tracee->running = false;
++		batch[count++] = carry;
+ 
+-		VERBOSE(tracee, 6, "vpid %" PRIu64 ": got event %x",
+-			tracee->vpid, tracee_status);
++		/* Collect the events that are pending right now, up to the
++		 * batch size.  A stopped tracee is not reported again until
++		 * it is restarted, so each one is collected at most once per
++		 * round and this cannot spin.  */
++		while (collect && count < batch_size) {
++			carry.pid = waitpid(-1, &carry.status, __WALL | WNOHANG);
++			if (carry.pid <= 0)
++				break;
+ 
+-		status = notify_extensions(tracee, NEW_STATUS, tracee_status, 0);
+-		if (status != 0)
+-			continue;
++			/* A pid reaped earlier in this round and already
++			 * reused: serve what is collected so far, so the old
++			 * tracee is gone before the new one is looked up.  */
++			for (i = 0; i < count; i++) {
++				if (batch[i].pid == carry.pid) {
++					have_carry = true;
++					break;
++				}
++			}
++			if (have_carry)
++				break;
++			batch[count++] = carry;
++		}
+ 
+-		if (tracee->as_ptracee.ptracer != NULL) {
+-			bool keep_stopped = handle_ptracee_event(tracee, tracee_status);
+-			if (keep_stopped)
+-				continue;
++		if (collect && drain_interval != 0) {
++			size_t worth_a_scan = get_nb_tracees() / EVENTS_PER_SCAN;
++
++			if (worth_a_scan < MIN_FAIR_YIELD)
++				worth_a_scan = MIN_FAIR_YIELD;
++			if (count >= worth_a_scan)
++				drain_interval = 1;
++			else if (drain_interval < MAX_DRAIN_INTERVAL)
++				drain_interval *= 2;
+ 		}
+ 
+-		signal = handle_tracee_event(tracee, tracee_status);
+-		(void) restart_tracee(tracee, signal);
++		/* Serve the oldest tracees first; the kernel reported the
++		 * newest first.  Every collected tracee is restarted before
++		 * the next collection.  */
++		for (i = count; i-- > 0; ) {
++			int tracee_status = batch[i].status;
++			Tracee *tracee;
++			int signal;
++			pid_t pid = batch[i].pid;
++
++			/* Get information about this tracee. */
++			tracee = get_tracee(NULL, pid, true);
++			assert(tracee != NULL);
++
++			tracee->running = false;
++
++			VERBOSE(tracee, 6, "vpid %" PRIu64 ": got event %x",
++				tracee->vpid, tracee_status);
++
++			status = notify_extensions(tracee, NEW_STATUS, tracee_status, 0);
++			if (status != 0)
++				continue;
++
++			if (tracee->as_ptracee.ptracer != NULL) {
++				bool keep_stopped = handle_ptracee_event(tracee, tracee_status);
++				if (keep_stopped)
++					continue;
++			}
++
++			signal = handle_tracee_event(tracee, tracee_status);
++			(void) restart_tracee(tracee, signal);
++		}
+ 	}
+ 
++	TALLOC_FREE(batch);
+ 	return last_exit_status;
+ }
+ 
+diff --git a/src/tracee/tracee.c b/src/tracee/tracee.c
+index 2ab2a7a..13e2eda 100644
+--- a/src/tracee/tracee.c
++++ b/src/tracee/tracee.c
+@@ -64,6 +64,16 @@ typedef LIST_HEAD(tracee_bucket, tracee) TraceeBucket;
+ static TraceeBucket tracee_index[TRACEE_INDEX_SIZE];
+ static size_t nb_terminated_tracees;
+ 
++/* How many tracees are alive right now.  The event loop needs it to
++ * know how expensive a waitpid(2) scan of the whole children list has
++ * become.  */
++static size_t nb_tracees;
++
++size_t get_nb_tracees(void)
++{
++	return nb_tracees;
++}
++
+ static TraceeBucket *tracee_bucket(pid_t pid)
+ {
+ 	/* Knuth's multiplicative hash; pids are dense and the low bits
+@@ -135,6 +145,8 @@ static int remove_tracee(Tracee *tracee)
+ 
+ 	LIST_REMOVE(tracee, link);
+ 	unindex_tracee(tracee);
++	assert(nb_tracees > 0);
++	nb_tracees--;
+ 	if (tracee->terminated) {
+ 		assert(nb_terminated_tracees > 0);
+ 		nb_terminated_tracees--;
+@@ -276,6 +288,7 @@ static Tracee *new_tracee(pid_t pid)
+ 	tracee->vpid = next_vpid++;
+ 
+ 	LIST_INSERT_HEAD(&tracees, tracee, link);
++	nb_tracees++;
+ 
+ 	tracee->life_context = talloc_new(tracee);
+ 
+diff --git a/src/tracee/tracee.h b/src/tracee/tracee.h
+index 8818fd1..93d3fe9 100644
+--- a/src/tracee/tracee.h
++++ b/src/tracee/tracee.h
+@@ -281,6 +281,7 @@ typedef struct tracee {
+ 
+ extern Tracee *get_tracee(const Tracee *tracee, pid_t pid, bool create);
+ extern void set_tracee_pid(Tracee *tracee, pid_t pid);
++extern size_t get_nb_tracees(void);
+ extern Tracee *get_ptracee(const Tracee *ptracer, pid_t pid, bool only_stopped,
+ 			bool only_with_pevent, word_t wait_options);
+ extern Tracee *get_stopped_ptracee(const Tracee *ptracer, pid_t pid,

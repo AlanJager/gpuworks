@@ -1,11 +1,16 @@
 #!/bin/bash
 # Build auditable static PRoot nofd/full-no-socket A/B candidates.
+# Every variant carries the temp-noise, arm64-faccessat2, tracee-index and
+# fair-adaptive patches; see README.md for what each one is for.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCH_DIR="$HERE/patches"
-PROOT_REPOSITORY=https://github.com/proot-me/proot.git
+# The commit is pinned by sha below, so PROOT_REPOSITORY may point at a local
+# mirror or bundle when github is unreachable or flaky; the manifest records
+# whichever source was used.
+PROOT_REPOSITORY="${PROOT_REPOSITORY:-https://github.com/proot-me/proot.git}"
 PROOT_COMMIT=a0dc181e939c29d855f8a0fac12a484fd1014824
 TALLOC_VERSION=2.4.2
 TALLOC_URL="https://download.samba.org/pub/talloc/talloc-${TALLOC_VERSION}.tar.gz"
@@ -25,14 +30,36 @@ if [ -n "${PROOT_OUTPUT:-}" ] && [ "$VARIANT" = both ]; then
 fi
 mkdir -p "$OUTPUT_DIR"
 
-apt-get update -q
-apt-get install -y -q \
-	binutils ca-certificates curl file gcc git make patch pkg-config python3
+# Ubuntu is the reference host, but ARM64 machines with a kernel new enough for
+# the path-resolution gate are commonly RPM-based (openEuler on Ascend nodes),
+# so install with whichever package manager is present. The manifest records
+# the compiler either way.
+if command -v apt-get >/dev/null 2>&1; then
+	apt-get update -q
+	apt-get install -y -q \
+		binutils ca-certificates curl file gcc git make patch pkg-config python3
+elif command -v dnf >/dev/null 2>&1; then
+	# glibc-devel carries libc.a on openEuler; there is no glibc-static there.
+	dnf install -y -q \
+		binutils ca-certificates curl file gcc git make patch pkgconf-pkg-config \
+		python3 glibc-devel
+else
+	echo "need apt-get or dnf to install the build dependencies" >&2
+	exit 2
+fi
 
 git clone -q "$PROOT_REPOSITORY" "$BUILD_ROOT/proot-source"
 git -C "$BUILD_ROOT/proot-source" checkout -q "$PROOT_COMMIT"
 
-curl --fail --location --silent --show-error "$TALLOC_URL" -o "$BUILD_ROOT/talloc.tar.gz"
+# download.samba.org is not always reachable; PROOT_TALLOC_TARBALL accepts a
+# local copy instead. Either way the pinned hash is what is verified, so the
+# source of the bytes does not change the provenance (Ubuntu's
+# talloc_2.4.2.orig.tar.gz is the same tarball).
+if [ -n "${PROOT_TALLOC_TARBALL:-}" ]; then
+	cp "$PROOT_TALLOC_TARBALL" "$BUILD_ROOT/talloc.tar.gz"
+else
+	curl --fail --location --silent --show-error "$TALLOC_URL" -o "$BUILD_ROOT/talloc.tar.gz"
+fi
 echo "$TALLOC_SHA256  $BUILD_ROOT/talloc.tar.gz" | sha256sum --check --status
 tar xzf "$BUILD_ROOT/talloc.tar.gz" -C "$BUILD_ROOT"
 
@@ -115,6 +142,10 @@ build_variant() {
 	patch --batch --forward -p1 < "$patch_file"
 	patch --batch --forward -p1 < "$PATCH_DIR/proot-temp-noise.patch"
 	patch --batch --forward -p1 < "$PATCH_DIR/proot-arm64-faccessat2.patch"
+	# The event-loop patches apply in this order: the index adds
+	# set_tracee_pid() and the pid hash table the fair loop reads.
+	patch --batch --forward -p1 < "$PATCH_DIR/proot-tracee-index.patch"
+	patch --batch --forward -p1 < "$PATCH_DIR/proot-fair-adaptive.patch"
 	make -C src clean >/dev/null 2>&1 || true
 	PKG_CONFIG_PATH="$BUILD_ROOT/talloc/lib/pkgconfig" make -C src \
 		CFLAGS="-O2 -I$BUILD_ROOT/talloc/include" \
@@ -130,6 +161,9 @@ build_variant() {
 		-w / /usr/bin/python3 -c 'import math; print("ok")' | grep -qx ok
 
 	check_path_resolution "$output"
+	# The event loop is patched, so every artifact also has to pass the
+	# behaviour and fairness gate; see stress/gate_event_loop.sh.
+	bash "$HERE/stress/gate_event_loop.sh" "$output"
 	if check_unix_socket_isolation "$output" "$name"; then
 		isolation=pass
 	else
@@ -149,7 +183,10 @@ build_variant() {
 		echo "variant_patch_sha256=$(sha256sum "$patch_file" | awk '{print $1}')"
 		echo "temp_patch_sha256=$(sha256sum "$PATCH_DIR/proot-temp-noise.patch" | awk '{print $1}')"
 		echo "arm64_faccessat2_patch_sha256=$(sha256sum "$PATCH_DIR/proot-arm64-faccessat2.patch" | awk '{print $1}')"
+		echo "tracee_index_patch_sha256=$(sha256sum "$PATCH_DIR/proot-tracee-index.patch" | awk '{print $1}')"
+		echo "fair_adaptive_patch_sha256=$(sha256sum "$PATCH_DIR/proot-fair-adaptive.patch" | awk '{print $1}')"
 		echo "path_resolution_gate=pass"
+		echo "event_loop_gate=pass"
 		echo "compiler=$(gcc --version | head -n1)"
 		echo "python_k_6_8_gate=pass"
 		echo "af_unix_path_isolation=$isolation"
