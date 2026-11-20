@@ -18,7 +18,7 @@
     "ready": "{{ready}}/{{total}} ready",
     "starting": "{{count}} starting"
   },
-  "instanceNoMeasuredMemory": "No actual GPU memory data is available yet.",
+  "instanceNoMeasuredMemory": "No GPU memory breakdown (weights, KV cache, CUDA graphs) was parsed from the engine's startup log yet: startup has not finished, or the engine does not log it. The instance's overall GPU memory use is under \"{{tab}}\".",
   "templateAudit": {
     "reviewTitle": "Inference Template Manual Review",
     "blockedTitle": "Inference Template Automatically Disabled",
@@ -680,6 +680,8 @@
     "kvHitRateDescription": "Share of prompt tokens reused from the prefix cache",
     "kvHitRateScopeHint": "vLLM shows the windowed ratio of hit/query counters; SGLang reports an engine instantaneous value. The two scales differ and are not directly comparable.",
     "metricUnavailable": "Engine did not report this metric",
+    "metricUnavailableDeployment": "Engine did not report this metric. The gateway counts per deployment, not per instance; the deployment-wide figure is in the deployment metrics.",
+    "tokensUnavailable": "Engine did not report token counters. The gateway counts per deployment, not per instance; the deployment-wide throughput is in the deployment metrics.",
     "metricNoTraffic": "Counter reported; no qualifying traffic yet",
     "groupLabel": "Metric groups",
     "requestsGroup": "Requests & latency",
@@ -732,7 +734,8 @@
     "decode": "Decode",
     "preemptTitle": "Preemptions /s",
     "preemptDescription": "Requests preempted per second on this instance",
-    "notCollected": "No samples for this instance in the selected range"
+    "notCollected": "No samples for this instance in the selected range",
+    "notCollectedDeployment": "No samples for this instance in the selected range. The gateway summarizes stage times per deployment, not per instance; see the service monitor."
   },
   "metrics": {
     "emptyWindow": "No metric samples in the selected range",
@@ -754,7 +757,6 @@
     "runningInstances": "Running Instances",
     "peakCache": "Peak GPU Cache",
     "generationThroughput": "Generation Throughput",
-    "totalGenerationThroughput": "Total Generation Throughput",
     "concurrency": "Deployment Request Concurrency",
     "concurrencyDescription": "Sum of requests across all running instances",
     "tokenThroughput": "Token Throughput",
@@ -762,11 +764,8 @@
     "instanceCache": "Instance GPU Cache",
     "instanceCacheDescription": "Cache pressure by instance helps identify replica bottlenecks",
     "engineReportsNone": "The engine reports no inference metrics",
-    "engineReportsNoneDescription": "This engine has no Prometheus metrics to collect (or its template declares no metric mapping). Below is what the gateway measures of the requests it forwards: the first-token time includes queueing and the network, and token counts come from the usage in the engine's replies.",
+    "engineReportsNoneDescription": "This engine has no Prometheus metrics to collect (or its template declares no metric mapping). The signals it does not report are drawn from what the gateway measures of the requests it forwards: token counts come from the usage in the engine's replies. Latencies such as the first-token time, which includes queueing and the network, are in the service monitor.",
     "openServiceMonitor": "Open the service monitor",
-    "gatewayTTFT": "TTFT p95",
-    "gatewayE2E": "End-to-end latency p95",
-    "gatewayInflight": "In-flight requests",
     "noEngineNoTraffic": "No engine metrics, and no requests through the gateway in the selected range",
     "noEngineNoTrafficDescription": "This engine has no Prometheus metrics to collect (or its template declares no metric mapping), so only what the gateway measures of the requests it forwards can be shown; pick a range that contains requests, or look further back in the service monitor."
   },

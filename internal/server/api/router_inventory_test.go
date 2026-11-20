@@ -198,6 +198,7 @@ GET /api/v1/models/{id}/logo
 GET /api/v1/monitor/deployments/{id}
 GET /api/v1/monitor/deployments/{id}/latency
 GET /api/v1/monitor/deployments/{id}/requests
+GET /api/v1/monitor/deployments/{id}/signals
 GET /api/v1/monitor/distributions
 GET /api/v1/monitor/metrics
 GET /api/v1/monitor/overview

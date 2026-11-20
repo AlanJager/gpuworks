@@ -38,6 +38,10 @@ type fakeMonitorService struct {
 		rng time.Duration
 	}
 
+	signals     dto.MonitorDeploymentSignals
+	signalsErr  error
+	signalsArgs []signalsCall
+
 	series     []dto.MonitorSeries
 	seriesErr  error
 	seriesArgs []struct {
@@ -68,6 +72,17 @@ func (f *fakeMonitorService) Deployment(_ context.Context, id uint, rng time.Dur
 		rng time.Duration
 	}{id, rng})
 	return f.deployment, f.deploymentErr
+}
+
+type signalsCall struct {
+	id             uint
+	startMS, endMS int64
+	step           time.Duration
+}
+
+func (f *fakeMonitorService) Signals(_ context.Context, id uint, startMS, endMS int64, step time.Duration) (dto.MonitorDeploymentSignals, error) {
+	f.signalsArgs = append(f.signalsArgs, signalsCall{id, startMS, endMS, step})
+	return f.signals, f.signalsErr
 }
 
 func (f *fakeMonitorService) Series(_ context.Context, metric, by, fn string, rng, step time.Duration) ([]dto.MonitorSeries, error) {

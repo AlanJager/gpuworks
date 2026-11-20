@@ -1,6 +1,8 @@
 package monitor
 
 import (
+	"slices"
+
 	"gpuworks.ai/gpuworks/internal/inferencemetrics"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
 )
@@ -196,8 +198,18 @@ func queryFleetGatewaySeries(store tsdb.Store, startMS, endMS, stepMS int64) (Ga
 }
 
 func queryGatewayFields(store tsdb.Store, matcher map[string]string, startMS, endMS, stepMS int64) (GatewaySeries, error) {
+	return queryGatewaySubset(store, matcher, startMS, endMS, stepMS)
+}
+
+// queryGatewaySubset fetches only the named gateway series (all of them when
+// none is named), for a caller that draws a few signals and should not pay
+// for the rest on every poll.
+func queryGatewaySubset(store tsdb.Store, matcher map[string]string, startMS, endMS, stepMS int64, only ...string) (GatewaySeries, error) {
 	var out GatewaySeries
 	for _, f := range gatewayFields {
+		if len(only) > 0 && !slices.Contains(only, f.metric) {
+			continue
+		}
 		series, err := store.QueryRange(f.metric, matcher, startMS, endMS, stepMS)
 		if err != nil {
 			return GatewaySeries{}, err

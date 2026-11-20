@@ -261,7 +261,7 @@ export default function InstancePanel({ inst, readyModel, sleepable, params, ran
             <VRAMBreakdown inDetailCard breakdown={{ ...schedule.breakdown, source: "measured" }} measured={inst.measured} />
           ) : (
             <DetailSection title={t("vram.title", { ns: "deploy" })}>
-              <Typography.Text type="secondary">{t("instanceNoMeasuredMemory")}</Typography.Text>
+              <Typography.Text type="secondary">{t("instanceNoMeasuredMemory", { tab: t("instanceMetrics.gpuGroup") })}</Typography.Text>
             </DetailSection>
           ))}
           <section className="deployment-logs" aria-label={t("instance.tab.logs")}>

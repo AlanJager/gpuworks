@@ -35,7 +35,7 @@ Gateway TPOT is the time from the first generated token to the last text chunk d
 
 Gateway fallbacks for TPOT and stage durations are generated only for engines whose built-in mappings lack the corresponding metrics. Disabling vLLM / SGLang metrics collection does not generate these additional fallbacks. Restore engine collection if data is missing.
 
-Without engine metrics, the metrics panel in deployment details displays available gateway statistics instead. For the full list of metric names, sources, and units, see the [Inference Metrics Glossary](../reference/inference-metrics.md).
+The metrics panel in deployment details picks a source per signal, as the Monitor Center does: when the engine reports running requests and cache usage but no token counters, running requests and cache usage still use the engine's values and token throughput uses the gateway's. The metrics page of instance details shows only that instance's own engine data: the gateway counts per deployment, not per instance, so token throughput, prefix cache hit rate, and stage durations the engine does not report are shown empty on the instance page; for the deployment-wide gateway figures, see deployment details or the Monitor Center. For the full list of metric names, sources, and units, see the [Inference Metrics Glossary](../reference/inference-metrics.md).
 
 The service page's “KV Cache” chart plots two lines per replica: usage on the left axis and prefix cache hit rate on the right, both from 0–100%. For engines that export hit/query counts (vLLM), the hit rate at each point is hits divided by queries within that point's interval. For engines that report only an instantaneous hit rate (SGLang), that value is used directly. A point with no queries is left blank, rather than plotted as 0. When the engine exports no cache metrics (such as Strata), the gateway computes the rate from the cache hit counts in response `usage` instead: one deployment-wide line, not per replica, counting only requests that reported a hit count, and no line is drawn when none did.
 
@@ -230,4 +230,4 @@ The deployment command preview shows `SGLANG_LOGGING_CONFIG_PATH` and the pre-st
 
 For startup methods without automatic injection, reasons multi-GPU logs may still lack levels, and how to take over the full script yourself, see [SGLang Logging Injection: Behavior and Boundaries](../explanation/sglang-logging.md).
 
-<!-- translation-source-sha256: 59947a896ae0370ac6bd3b9876c477351858cd3e76c02fac0ceca001cbf9478d -->
+<!-- translation-source-sha256: 08b006e43201e67a14a8405ce4f903a9250f679a24752cac32f9d98f04b17fd6 -->

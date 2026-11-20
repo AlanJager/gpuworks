@@ -27,6 +27,7 @@ await i18n.use(initReactI18next).init({
   resources: { en: {
     deployments: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/deployments.json", import.meta.url), "utf8")),
     networks: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/networks.json", import.meta.url), "utf8")),
+    deploy: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/deploy.json", import.meta.url), "utf8")),
   } },
   defaultNS: "deployments",
   interpolation: { escapeValue: false },
@@ -256,4 +257,25 @@ test("an instance from before model files were recorded shows no model files row
   globalThis.fetch = (async () => response({})) as typeof fetch;
   renderPanel();
   assert.equal(screen.queryByText("Model files"), null);
+});
+
+// The allocation card is the engine's startup log (weights, KV cache, CUDA
+// graphs), not what nvidia-smi reports per process, so an engine that logs
+// none of it leaves the card without figures on any hardware, unified-memory
+// boards included. It says why and where the card-level memory use is.
+test("an instance whose engine log has no memory figures explains the empty allocation card", async () => {
+  api.instanceEvents = async () => cursorPage([]);
+  globalThis.fetch = (async () => response([])) as typeof fetch;
+  const breakdown = { weight_bytes: 1.5e9, per_gpu_bytes: 2e9, kv_pool_bytes: 1e9, tensor_parallel: 1, grade: "rough" };
+  const silent = renderPanel({ ...(base as object), uuid: "no-memory-log", schedule: { breakdown }, measured: { Found: false } });
+  assert.ok(screen.getByText(/No GPU memory breakdown \(weights, KV cache, CUDA graphs\) was parsed from the engine's startup log yet/));
+  assert.ok(screen.getByText(/overall GPU memory use is under "GPU & memory"/));
+  silent.unmount();
+
+  renderPanel({
+    ...(base as object), uuid: "with-memory-log", schedule: { breakdown },
+    measured: { Found: true, ModelWeightsGiB: 1.4, KVCacheGiB: 6, KVCacheTokens: 50000, GraphCaptureGiB: 0.5, MaxConcurrency: 4, NumGPUBlocks: 100 },
+  });
+  assert.equal(screen.queryByText(/No GPU memory breakdown/), null);
+  assert.ok(screen.getByText("KV pool 6.0 GiB · 50,000 tokens reported by the engine at startup"));
 });

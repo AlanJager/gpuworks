@@ -1,36 +1,16 @@
 import { Alert } from "../pages/DeploymentControls";
 import { Select, SelectContent, SelectTrigger, SelectItem } from "./ui/select";
 import { useMemo, type ComponentProps } from "react";
-import { api, usePolling, type Instance, type MetricPoint, type MetricSeries } from "../api";
+import { api, usePolling, type Instance, type MetricPoint, type MetricSeries, type MonitorDeploymentSignals } from "../api";
 import TimeSeriesChart, { autoValueFmt } from "./TimeSeriesChart";
 import EmptyState from "./EmptyState";
-import GatewayMetricsNotice, { useGatewayOnlyMetrics } from "./GatewayMetricsNotice";
+import EngineMetricsNotice from "./EngineMetricsNotice";
 import { RangeHeader, useMetricRange, useMetricWindow } from "./MetricWindow";
-import { rateSeries } from "../instanceMetricSeries";
-import { MetricStat, percentScaled } from "./InferenceMetricsPanel";
+import { MetricStat } from "./InferenceMetricsPanel";
 import { resolveRange, stepString, type TimeRangeSelection } from "../timeRange";
 import { useTranslation } from "react-i18next";
 
 const LIVE_STATES = new Set(["running", "starting", "optimizing"]);
-
-const METRICS = {
-  running: "gpuworks_infer_requests_running",
-  waiting: "gpuworks_infer_requests_waiting",
-  cache: "gpuworks_infer_gpu_cache_usage_percent",
-  promptTokens: "gpuworks_infer_prompt_tokens_total",
-  generationTokens: "gpuworks_infer_generation_tokens_total",
-} as const;
-
-type MetricKey = keyof typeof METRICS;
-type MetricData = Record<MetricKey, MetricSeries[]>;
-
-const EMPTY_DATA: MetricData = {
-  running: [],
-  waiting: [],
-  cache: [],
-  promptTokens: [],
-  generationTokens: [],
-};
 
 // One stable string per selection so polling restarts only when the window
 // really changes; a custom range never polls (pollMs 0 in resolveRange).
@@ -38,53 +18,50 @@ function selectionKey(selection: TimeRangeSelection): string {
   return selection.kind === "quick" ? selection.key : `custom-${selection.startMS}-${selection.endMS}`;
 }
 
-export default function DeploymentMetricsPanel({ instances, deploymentId, onSelectInstance }: { instances: Instance[]; deploymentId?: number; onSelectInstance?: (uuid: string) => void }) {
+// The panel draws what the server resolved for the deployment (the monitor
+// center's signal sources, ADR 0039): per signal, the engine's own series or,
+// where the engine reports none, the gateway's. It never decides a source.
+export default function DeploymentMetricsPanel({ instances, deploymentId, onSelectInstance }: { instances: Instance[]; deploymentId: number; onSelectInstance?: (uuid: string) => void }) {
   const { t } = useTranslation("deployments");
   const [selection, setSelection] = useMetricWindow();
   const liveInstances = useMemo(
     () => instances.filter((inst) => LIVE_STATES.has(inst.state)),
     [instances],
   );
-  const instanceKey = instances.map((inst) => inst.uuid).sort().join(",");
   const eff = useMetricRange(selection);
-  const queryKey = `${deploymentId}/${instanceKey}/${selectionKey(selection)}`;
-  const metrics = usePolling(async () => ({
-    queryKey, ...await loadMetricData(instances, deploymentId, selection),
-  }), eff.pollMs, [queryKey]);
-  const result = metrics.data?.queryKey === queryKey ? metrics.data : null;
-  const data = result?.data ?? EMPTY_DATA;
-  const hasAnyMetric = Object.values(data).some(hasPoints);
-  const gateway = useGatewayOnlyMetrics(
-    result && !result.error && selection.kind === "quick" && eff.beyondRetention === false && liveInstances.length > 0 && !hasAnyMetric ? deploymentId : undefined,
-    eff.endMS - eff.startMS,
-    eff.pollMs || 15000,
-    liveInstances.every((inst) => inst.state === "running"),
-  );
+  const queryKey = `${deploymentId}/${selectionKey(selection)}`;
+  const metrics = usePolling(async () => {
+    const { startMS, endMS, stepMS } = resolveRange(selection, Date.now());
+    return { queryKey, signals: await api.monitorDeploymentSignals(deploymentId, { start: startMS, end: endMS, step: stepString(stepMS) }) };
+  }, eff.pollMs, [queryKey]);
+  const signals: MonitorDeploymentSignals | null = metrics.data?.queryKey === queryKey ? metrics.data.signals : null;
+  const error = metrics.error;
 
   const rangeHeader = (
     <RangeHeader selection={selection} onChange={setSelection} beyondRetention={eff.beyondRetention}
       retentionHours={eff.retentionHours} retentionError={eff.retentionError} />
   );
-  if (gateway) return (
-    <div className="flex flex-col gap-3">
-      <GatewayMetricsNotice data={gateway} />
-      {rangeHeader}
-    </div>
-  );
 
-  const promptRate = rateSeries(data.promptTokens);
-  const generationRate = rateSeries(data.generationTokens);
-  const activeIds = new Set(liveInstances.map((inst) => inst.uuid));
-  const runningNow = liveCardValue(data.running, activeIds);
-  const waitingNow = liveCardValue(data.waiting, activeIds);
-  const cachePeak = liveCardValue(data.cache, activeIds, "max");
-  const liveGeneration = liveCardValue(data.generationTokens, activeIds, "rate");
+  const running = byMetric(signals?.concurrency, "running");
+  const waiting = byMetric(signals?.concurrency, "waiting");
+  const cache = byMetric(signals?.kv, "usage_pct");
+  const promptRate = byMetric(signals?.throughput, "prompt_tok_s");
+  const generationRate = byMetric(signals?.throughput, "generation_tok_s");
+  // A line with an instance counts while that instance is live; a line
+  // without one is the gateway's, the whole deployment's. A deployment with
+  // nothing live has no "now".
+  const live = (series: MetricSeries[]) =>
+    liveInstances.length === 0 ? [] : series.filter((item) => !item.labels.instance || liveInstances.some((inst) => inst.uuid === item.labels.instance));
+  const runningNow = readingsSum(live(running));
+  const waitingNow = readingsSum(live(waiting));
+  const cachePeak = readingsMax(live(cache));
+  const liveGeneration = readingsSum(live(generationRate));
   const promptNow = latestSum(promptRate);
   const generationNow = latestSum(generationRate);
 
   const concurrencySeries = [
-    aggregateSeries(data.running, { metric: t("metrics.totalRunningRequests") }),
-    aggregateSeries(data.waiting, { metric: t("metrics.totalWaitingRequests") }),
+    aggregateSeries(running, { metric: t("metrics.totalRunningRequests") }),
+    aggregateSeries(waiting, { metric: t("metrics.totalWaitingRequests") }),
   ];
   const tokenSeries = [
     aggregateSeries(promptRate, { metric: "Prompt tok/s" }),
@@ -92,28 +69,36 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
   ];
 
   const sampled = new Map<string, string>();
-  for (const series of Object.values(data).flat()) {
-    if (!series.points.length) continue;
+  for (const series of [...running, ...waiting, ...cache, ...promptRate, ...generationRate]) {
     const uuid = series.labels.instance;
+    if (!uuid || !series.points.length) continue;
     const role = instances.find((inst) => inst.uuid === uuid)?.role || series.labels.role;
     sampled.set(uuid, [role && t(`detail.pd.role.${role}`, { defaultValue: role }), uuid.slice(0, 12)].filter(Boolean).join(" · "));
   }
   const historical = selection.kind === "custom" || liveInstances.length === 0;
-  const empty = !hasPoints(concurrencySeries) && !hasPoints(tokenSeries) && !hasPoints(data.cache);
+  const empty = !hasPoints(concurrencySeries) && !hasPoints(tokenSeries) && !hasPoints(cache);
+  // Only the server's sources tell which signals the engine left empty.
+  const sources = Object.values(signals?.sources ?? {});
+  const gatewayOnly = sources.length > 0 && sources.every((source) => source === "gateway");
+  const noEngineNoTraffic = !!signals && empty && sources.length === 0 && !historical && eff.beyondRetention === false
+    && liveInstances.every((inst) => inst.state === "running");
   return (
     <div className="deployment-metric-panel">
-      {result?.error ? (
-        <Alert type="error" showIcon message={t("metrics.loadFailed")} description={result.error.message} style={{ marginBottom: 12 }} />
+      {error && !signals ? (
+        <Alert type="error" showIcon message={t("metrics.loadFailed")} description={error.message} style={{ marginBottom: 12 }} />
+      ) : noEngineNoTraffic ? (
+        <EngineMetricsNotice deploymentId={deploymentId} kind="noTraffic" />
       ) : empty && (
         <Alert type="info" role="status" showIcon
-          message={historical && result ? t("metrics.emptyWindow") : t("metrics.waiting")}
-          description={historical && result ? undefined : t("metrics.waitingDescription")} style={{ marginBottom: 12 }} />
+          message={historical && signals ? t("metrics.emptyWindow") : t("metrics.waiting")}
+          description={historical && signals ? undefined : t("metrics.waitingDescription")} style={{ marginBottom: 12 }} />
       )}
+      {gatewayOnly && <EngineMetricsNotice deploymentId={deploymentId} kind="gatewayOnly" />}
       <div className="deployment-metrics-summary" role="region" aria-label={t("detail.metrics")} tabIndex={0}>
         <MetricStat title={t("metrics.runningInstances")} value={liveInstances.length} />
         <MetricStat title={t("metrics.runningRequests")} value={runningNow} />
         <MetricStat title={t("metrics.waitingRequests")} value={waitingNow} />
-        <MetricStat title={t("metrics.peakCache")} value={cachePeak != null ? percentScaled(cachePeak) : undefined} suffix="%" />
+        <MetricStat title={t("metrics.peakCache")} value={cachePeak} suffix="%" />
         <MetricStat title={t("metrics.generationThroughput")} value={liveGeneration} suffix="tok/s" precision={1} />
       </div>
       {rangeHeader}
@@ -134,7 +119,7 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
               <SelectContent>{Array.from(sampled, ([uuid,label])=><SelectItem key={uuid} value={uuid}>{label}</SelectItem>)}</SelectContent>
             </Select>
           )}>
-          <MetricPlot series={data.cache} height={210} unit="%" valueFmt={v => percentScaled(v).toFixed(0)}
+          <MetricPlot series={cache} height={210} unit="%" valueFmt={v => v.toFixed(0)}
             onSeriesClick={onSelectInstance && (labels => onSelectInstance(labels.instance))} />
         </ChartCard>
       </div>
@@ -142,21 +127,8 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
   );
 }
 
-async function loadMetricData(instances: Instance[], deploymentId: number | undefined, selection: TimeRangeSelection) {
-  const eff = resolveRange(selection, Date.now());
-  const params = { start: eff.startMS, end: eff.endMS, step: stepString(eff.stepMS) };
-  const next: MetricData = { ...EMPTY_DATA };
-  const reads = await Promise.allSettled((Object.keys(METRICS) as MetricKey[]).map(async (key) => {
-    const groups = await Promise.all(instances.map(async ({ uuid }) => {
-      const { items } = await api.metricsQuery(METRICS[key], { ...params, instance: uuid });
-      return withInstanceLabel(items.filter(({ labels }) =>
-        (!labels.instance || labels.instance === uuid) &&
-        (!labels.deployment || deploymentId == null || labels.deployment === String(deploymentId))), uuid);
-    }));
-    next[key] = groups.flat();
-  }));
-  const failed = reads.find((read) => read.status === "rejected");
-  return { data: next, error: failed ? new Error(String(failed.reason?.message ?? failed.reason)) : null };
+function byMetric(series: MetricSeries[] | undefined, metric: string): MetricSeries[] {
+  return (series ?? []).filter((item) => item.labels.metric === metric).map((item) => ({ ...item, points: item.points ?? [] }));
 }
 
 function ChartCard({ title, description, action, children }: { title: string; description: string; action?: React.ReactNode; children: React.ReactNode }) {
@@ -178,41 +150,35 @@ function MetricPlot(chart: ComponentProps<typeof TimeSeriesChart>) {
   );
 }
 
-function withInstanceLabel(series: MetricSeries[], instanceUuid: string): MetricSeries[] {
-  return series.map((item) => ({
-    labels: { ...item.labels, instance: instanceUuid },
-    points: item.points ?? [],
-  }));
-}
-
 function hasPoints(series?: MetricSeries[] | null): boolean {
   return !!series?.some((item) => item.points?.length > 0);
 }
 
+// Each line's own newest reading, summed or maxed: an instance whose last
+// sample is a scrape older than another's still counts.
+function readings(series: MetricSeries[]): number[] {
+  return series.flatMap((item) => item.points?.slice(-1).map(([, value]) => value) ?? []);
+}
+
+function readingsSum(series: MetricSeries[]): number | undefined {
+  const values = readings(series);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : undefined;
+}
+
+function readingsMax(series: MetricSeries[]): number | undefined {
+  const values = readings(series);
+  return values.length ? Math.max(...values) : undefined;
+}
+
+// The readings that share the newest time, summed: the chart's "now".
 function latestSum(series: MetricSeries[]): number | undefined {
   const values = latestValues(series);
   return values.length ? values.reduce((sum, value) => sum + value, 0) : undefined;
 }
 
-function liveCardValue(series: MetricSeries[], activeIds: Set<string>, aggregation: "sum" | "max" | "rate" = "sum"): number | undefined {
-  const values: number[] = [];
-  for (const item of series) {
-    const last = item.points[item.points.length - 1];
-    if (!last || !activeIds.has(item.labels.instance)) continue;
-    if (aggregation === "rate") {
-      const previous = item.points[item.points.length - 2];
-      if (!previous || previous[0] >= last[0]) continue;
-      values.push(Math.max(0, last[1] - previous[1]) / ((last[0] - previous[0]) / 1000));
-    } else {
-      values.push(last[1]);
-    }
-  }
-  if (!values.length) return undefined;
-  return aggregation === "max" ? Math.max(...values) : values.reduce((sum, value) => sum + value, 0);
-}
-
 function latestValues(series: MetricSeries[]): number[] {
   const latest = series.flatMap((item) => item.points?.slice(-1) ?? []);
+  if (!latest.length) return [];
   const time = Math.max(...latest.map(([at]) => at));
   return latest.filter(([at]) => at === time).map(([, value]) => value);
 }

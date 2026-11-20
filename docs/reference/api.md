@@ -1988,6 +1988,7 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 | GET | `/api/v1/monitor/deployments/{id}/requests` | 逐请求视图：`view=live`（默认）或 `history`；`limit` 1–500（实时默认 50），可按 `key`、`instance` 筛选，历史还可按 `priority_class` 筛选。历史另支持 `range` 或成对 `from`+`to`（Unix 毫秒）、`cursor`、`min_ms/max_ms`；`results` 为 `completed/length/client_closed/interrupted/error`，多个值用逗号分隔。记录含 `result/segments/pd/trace_id`，以及 `priority_class`（网关给请求的优先级，启用前的记录和进行中的请求为空）；用 `next_cursor` 翻页。见[逐请求查询](#逐请求查询) | JWT |
 | GET | `/api/v1/monitor/requests/lookup` | 跨部署查已结束请求；`trace_id`（32 位十六进制）或 `request_id` 必须二选一。可成对传 `from`+`to`（Unix 毫秒，最多 24 小时），`limit` 1–500（默认 100）；返回 `requests/deployments/window`。未传时间时按网关 trace 时间定位或查最近 1 小时；抽样丢弃的请求查不到。见[跨部署查找请求](#跨部署查找请求) | JWT |
 | GET | `/api/v1/monitor/deployments/{id}/latency` | `range` 内完整回复的端到端延迟、阶段耗时与生成速度：`requests` 为数量，`end_to_end`、`segments` 含 `mean_ms/p50_ms/p95_ms`；`speeds` 含 `prefill_tok_s/thinking_tok_s/answering_tok_s/decode_tok_s`。不受日志抽样影响。见[延迟汇总口径](#延迟汇总口径) | JWT |
+| GET | `/api/v1/monitor/deployments/{id}/signals` | 部署详情指标面板的序列：`start`（Unix 毫秒，必填）、`end`（默认现在）、`step`（如 `30s`，可省略）。窗口不限于监控中枢的固定范围；窗口内点数超过 600 时 `step` 会被调大，实际值在 `step_ms`。返回 `{start_ms,end_ms,step_ms,sources,concurrency,kv,throughput}`，三组序列的 `labels.metric` 分别为 `running`/`waiting`、`usage_pct`、`prompt_tok_s`/`generation_tok_s`；`running`、`prompt_tokens`、`generation_tokens` 各自取引擎值，引擎没有数据时取网关值，`sources` 给出各取自谁，口径与服务监控的 `sources` 相同。引擎的序列带 `instance` 标签；网关按部署统计、不分实例，取自网关的序列不带该标签。`waiting` 与 `usage_pct` 只能由引擎提供。不缓存。`start`、`end`、`step` 非法时 400 `MONITOR_RANGE_INVALID`（`detail`）；未知或已删除的部署同服务监控 | JWT |
 | GET | `/api/v1/monitor/distributions` | `range` 内结束的请求分布：`input_output`（输入档 × 输出档）与 `uncached_ttft`（非缓存输入档 × 首 token 时间档）两个网格的 `{x, y, n}`，档位下界 `token_buckets` 与首 token 档上界 `ttft_bounds_ms`，`coverage` 给总请求数、带 usage 的数与报了缓存命中的数；`deployment` 可选，缺省为全集群，未知部署 404 | JWT |
 | GET | `/api/v1/monitor/metrics` | 指标目录，返回 `{items:[{series,name,source,kind,unit,quantiles,labels,description}],total}`。`source` 为 `engine`、`gateway`、`gpu`、`dgpu`、`node`、`network`、`kv_disk` 或 `benchmark`；推理直方图展开为分位数 gauge（`quantiles:true`）及 `_sum`、`_count`。字段口径见[推理指标词表](inference-metrics.md) | JWT |
 | GET | `/api/v1/monitor/series` | 指标浏览器（`metric` 必填，`range` ∈ `15m\|1h\|6h\|24h\|168h`，默认 `1h`，或 `from`+`to`（`step` 默认约 240 个点、取 10 秒整数倍）；`by` ∈ `node\|deployment\|instance\|gpu`，`fn` ∈ `avg\|sum\|max\|rate`，默认 `avg`；`step` 默认按 `range` 推导，且不会低于该推导值；结果超过序列/点数上限时返回 400；未知指标返回 `[]`）。带 `node` 标签的序列另带只用于显示的 `node_name`，带 `deployment` 标签的另带 `deployment_name`；节点或部署已删除时取删除时的名字，并带 `node_deleted` / `deployment_deleted` 为 `"true"`，两边都不认识的保持原样 | JWT |
@@ -2003,6 +2004,8 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 - `log_instances`：存活及窗口内近期停止的副本 UUID，最多 64 个，可用于 `/logs/search?instances=...`。
 - `sources`：`ttft`、`e2e`、`prompt_tokens`、`generation_tokens`、`running`、`tpot`、`queue_time`、`prefill_time`、`decode_time`、`kv_hit_rate`（前缀缓存命中率，网关值只统计报了缓存命中数的请求，见[网关缓存命中率](inference-metrics.md#网关缓存命中率)）各取自 `engine` 还是 `gateway`，没有数据的信号省略。口径见[推理指标](inference-metrics.md#网关指标)。
 - `health`：同部署详情的[健康检查](#健康检查)。
+
+部署详情的指标面板不读这个接口，而是读 `GET /api/v1/monitor/deployments/{id}/signals`（见上表），逐信号取来源，因此引擎只上报部分指标（例如有运行/等待请求数和缓存使用率、没有 token 计数）时，面板的 token 吞吐来自网关，与这里的 `charts` 一致。单个实例的面板（实例详情的指标页）只显示该实例引擎自己的序列：网关不按实例统计，不会把整个部署的网关数值当作某个实例的。
 
 PD 部署另返回 `pd`：
 

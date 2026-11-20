@@ -85,6 +85,10 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
   const kvCountersReported = hasPoints(kvHits.data?.items) || hasPoints(kvQueries.data?.items);
   const specCountersReported = hasPoints(specAcceptedTokens.data?.items) || hasPoints(specDraftTokens.data?.items);
   const stages = useInstanceStages(instanceUuid, selection);
+  // Token counters the engine does not export are not the gateway's to
+  // supply here: the gateway counts per deployment, not per instance, so
+  // the deployment-wide figure lives in the deployment's panel.
+  const tokensReported = hasPoints(promptTokens.data?.items) || hasPoints(generationTokens.data?.items);
   const queries = [running, waiting, cache, promptTokens, generationTokens, kvHits, kvQueries, kvHitRateInstant,
     specAcceptedTokens, specDraftTokens, specAcceptRateInstant];
   const error = queries.find((query) => query.error)?.error;
@@ -137,9 +141,13 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
             </ChartCard>
             <StageCharts {...stages} />
             <ChartCard title={t("metrics.tokenThroughput")} description={t("instanceMetrics.counterRate")}>
-              <TimeSeriesChart height={190} series={[...withMetricLabel(promptRate, "prompt"), ...withMetricLabel(generationRate, "generation")]}
-                seriesName={labels => t(labels.metric === "prompt" ? "instanceMetrics.promptThroughput" : "instanceMetrics.generationThroughput")}
-                unit="tok/s" valueFmt={autoValueFmt} />
+              {settled && !tokensReported ? (
+                <Unreported text={t("instanceMetrics.tokensUnavailable")} />
+              ) : (
+                <TimeSeriesChart height={190} series={[...withMetricLabel(promptRate, "prompt"), ...withMetricLabel(generationRate, "generation")]}
+                  seriesName={labels => t(labels.metric === "prompt" ? "instanceMetrics.promptThroughput" : "instanceMetrics.generationThroughput")}
+                  unit="tok/s" valueFmt={autoValueFmt} />
+              )}
             </ChartCard>
           </div>
         </TabPanel>
@@ -160,7 +168,7 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
               description={t("instanceMetrics.kvHitRateDescription")}
               hint={t("instanceMetrics.kvHitRateScopeHint")}
             >
-              <RatioChart series={kvCardSeries} countersReported={kvCountersReported} />
+              <RatioChart series={kvCardSeries} countersReported={kvCountersReported} gatewayCounts />
             </ChartCard>
           </div>
           {group === "cache" && cacheTiers}
@@ -175,16 +183,12 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
   );
 }
 
-function RatioChart({ series, countersReported }: { series: MetricSeries[]; countersReported: boolean }) {
+// gatewayCounts marks a signal the gateway also measures, per deployment: its
+// unreported message then points to the deployment's panel.
+function RatioChart({ series, countersReported, gatewayCounts = false }: { series: MetricSeries[]; countersReported: boolean; gatewayCounts?: boolean }) {
   const { t } = useTranslation("deployments");
   if (!hasPoints(series)) {
-    return (
-      <div style={{ height: 190, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span className="text-fg-muted">
-          — {countersReported ? t("instanceMetrics.metricNoTraffic") : t("instanceMetrics.metricUnavailable")}
-        </span>
-      </div>
-    );
+    return <Unreported text={countersReported ? t("instanceMetrics.metricNoTraffic") : t(gatewayCounts ? "instanceMetrics.metricUnavailableDeployment" : "instanceMetrics.metricUnavailable")} />;
   }
   return (
     <TimeSeriesChart
@@ -193,6 +197,14 @@ function RatioChart({ series, countersReported }: { series: MetricSeries[]; coun
       unit="%"
       valueFmt={(v) => percentScaled(v).toFixed(1)}
     />
+  );
+}
+
+function Unreported({ text }: { text: string }) {
+  return (
+    <div style={{ height: 190, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+      <span className="text-fg-muted">— {text}</span>
+    </div>
   );
 }
 

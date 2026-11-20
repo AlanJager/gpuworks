@@ -18,7 +18,7 @@
     "ready": "{{ready}}/{{total}} 就绪",
     "starting": "{{count}} 个启动中"
   },
-  "instanceNoMeasuredMemory": "暂无实际显存数据",
+  "instanceNoMeasuredMemory": "暂未从引擎启动日志解析到显存分配（权重、KV 缓存、CUDA 图）：启动尚未完成，或引擎不输出这些信息。实例所在 GPU 的整体显存占用见「{{tab}}」。",
   "templateAudit": {
     "reviewTitle": "推理模板人工复核",
     "blockedTitle": "推理模板自动下架",
@@ -680,6 +680,8 @@
     "kvHitRateDescription": "prompt token 从前缀缓存复用的比例",
     "kvHitRateScopeHint": "vLLM 为窗口内命中/查询计数器的比值；SGLang 为引擎上报的瞬时值。两者口径不同，不可直接比较。",
     "metricUnavailable": "引擎未上报该指标",
+    "metricUnavailableDeployment": "引擎未上报该指标。网关只按部署统计、不分实例，整个部署的数值见部署指标。",
+    "tokensUnavailable": "引擎未上报 token 计数。网关只按部署统计、不分实例，整个部署的吞吐见部署指标。",
     "metricNoTraffic": "已上报计数器，暂无相关流量",
     "groupLabel": "监控内容",
     "requestsGroup": "请求与延迟",
@@ -732,7 +734,8 @@
     "decode": "Decode",
     "preemptTitle": "抢占 /s",
     "preemptDescription": "所选实例每秒被抢占的请求次数",
-    "notCollected": "所选时段内暂无此实例的样本"
+    "notCollected": "所选时段内暂无此实例的样本",
+    "notCollectedDeployment": "所选时段内暂无此实例的样本。网关只按部署汇总阶段时长、不分实例，见服务监控。"
   },
   "metrics": {
     "emptyWindow": "所选时段没有指标样本",
@@ -754,7 +757,6 @@
     "runningInstances": "运行实例",
     "peakCache": "峰值 GPU cache",
     "generationThroughput": "生成吞吐",
-    "totalGenerationThroughput": "总生成吞吐",
     "concurrency": "部署请求并发",
     "concurrencyDescription": "所有运行实例的请求数求和",
     "tokenThroughput": "Token 吞吐",
@@ -762,11 +764,8 @@
     "instanceCache": "实例 GPU cache",
     "instanceCacheDescription": "按实例展示 cache 压力，便于发现单副本瓶颈",
     "engineReportsNone": "引擎没有上报推理指标",
-    "engineReportsNoneDescription": "这个引擎没有可采集的 Prometheus 指标（或模板没有声明指标映射），以下是网关对经过它的请求的统计：首 token 时间包含排队和网络，token 数来自引擎回复里的 usage。",
+    "engineReportsNoneDescription": "这个引擎没有可采集的 Prometheus 指标（或模板没有声明指标映射），它没有上报的信号取自网关对经过它的请求的统计：token 数来自引擎回复里的 usage；首 token 时间等延迟（含排队和网络）请在服务监控里看。",
     "openServiceMonitor": "查看服务监控",
-    "gatewayTTFT": "TTFT p95",
-    "gatewayE2E": "端到端延迟 p95",
-    "gatewayInflight": "在途请求",
     "noEngineNoTraffic": "没有收到引擎指标，所选时间范围内也没有经过网关的请求",
     "noEngineNoTrafficDescription": "这个引擎没有可采集的 Prometheus 指标（或模板没有声明指标映射），能看到的只有网关对经过它的请求的统计；选一个包含请求的时间范围，或在服务监控里查看更长的时间。"
   },
