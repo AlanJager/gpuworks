@@ -489,9 +489,10 @@ test("a field error the server attributes to placement.pd renders beside the PD 
   await selectOption(decodeNode, "GPU Node 1 · 2 GPU");
 
   const message = errorText("PD_GPU_OVERLAP", overlapParams);
-  await waitFor(() => assert.ok(screen.getByText(message)));
-  const pdSection = screen.getByTestId("pd-section");
-  assert.ok(pdSection.textContent?.includes(message), "the PD_GPU_OVERLAP text renders inside the PD section");
+  const pdSection = within(screen.getByTestId("pd-section"));
+  await waitFor(() => {
+    assert.ok(pdSection.queryAllByRole("alert").some((alert) => alert.textContent?.includes(message)));
+  });
 });
 
 test("evaluate's PD preview shows a fitting and a non-fitting unit, each with its command", async () => {
