@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,7 +95,11 @@ func TestSleepResidueIsUnmeasuredWhenTheReadingIsTheHostPool(t *testing.T) {
 	prober := newResidueProber(map[int]float64{0: 60 << 30})
 	prober.hostPool = true
 	prober.procs = []gpu.ComputeProcess{{PID: 41, Name: "VLLM::Worker", PCIeBDF: "00000000:3F:00.0", MemoryBytes: 1 << 30}}
-	e, reported := newResidueEngine(t, prober)
+	var logs bytes.Buffer
+	reported := make(chan proto.InstanceStatus, 16)
+	e := NewWithProber(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st },
+		slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})), t.TempDir(), prober)
+	e.residueSettle = 0
 	spec := residueSpec(h, t, "res-host-pool", 0)
 	e.desired[spec.UUID] = spec
 
@@ -101,6 +107,13 @@ func TestSleepResidueIsUnmeasuredWhenTheReadingIsTheHostPool(t *testing.T) {
 	e.reconcileSleep(context.Background(), spec)
 	if st := <-reported; st.SleepLevel != 1 || st.SleepResidueBytes != 0 {
 		t.Fatalf("report = level %d residue %d, want level 1 and no measured residue", st.SleepLevel, st.SleepResidueBytes)
+	}
+	logged := logs.String()
+	if !strings.Contains(logged, "the used figure is the host pool's") {
+		t.Fatalf("log is missing the host-pool skip reason: %s", logged)
+	}
+	if strings.Contains(logged, "no memory reading for card") {
+		t.Fatalf("the host-pool skip surfaced as a missing reading: %s", logged)
 	}
 }
 
