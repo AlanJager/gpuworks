@@ -5590,7 +5590,7 @@ export const api = {
   // setDeploymentDGPUQuota sets the dGPU memory limit a deployment's replicas
   // run under, at once: running slices are held to it in place where that is
   // safe; the answer names the ones that take it at their next restart.
-  setDeploymentDGPUQuota: (id: number, body: { vram_limit_bytes: number }) =>
+  setDeploymentDGPUQuota: (id: number, body: { vram_limit_gib: number }) =>
     sendJSON<DGPUQuotaResult>("PUT", `/api/v1/deployments/${id}/dgpu`, body),
   // setDeploymentRequirements replaces where a single-node deployment's
   // replicas may run from now on; running replicas stay where they are. The
