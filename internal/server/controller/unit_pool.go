@@ -269,7 +269,7 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 func (c *Controller) trialPoolNode(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model) (refusal *scheduler.Reason, yield *planning.LaunchYield, concessions []scheduler.Concession, err error) {
 	// A node where the model is stuck would take the replica and then hold
 	// it there; the pool passes it over until the model is sorted out.
-	if refusal, err := c.modelUnavailable(dep, node, model); refusal != nil || err != nil {
+	if refusal, err := c.modelUnavailable(dep, node, model, 0); refusal != nil || err != nil {
 		return refusal, nil, nil, err
 	}
 	req, templateLayer, _, err := c.launchRequest(dep, node, model, nil)

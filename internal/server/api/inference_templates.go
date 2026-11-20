@@ -455,7 +455,9 @@ func (a *apiHandlers) backfillInferenceCatalogWeightBytes(r *http.Request, catal
 			}
 			sources := append([]inferencecatalog.WeightSource(nil), spec.Weights.Sources...)
 			for _, source := range sources {
-				meta, err := a.deployments().FetchModelMeta(r.Context(), source.Provider, source.RepoID, source.Revision, source.Subfolder, "")
+				// A rank-scoped spec states one rank's size: rank 0's subfolder.
+				subfolder := deploy.ExpandRankSubfolder(source.Subfolder, 0)
+				meta, err := a.deployments().FetchModelMeta(r.Context(), source.Provider, source.RepoID, source.Revision, subfolder, "")
 				if err == nil && meta != nil && meta.WeightBytes > 0 {
 					spec.WeightBytes = meta.WeightBytes
 					break

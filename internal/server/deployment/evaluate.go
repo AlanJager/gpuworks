@@ -432,7 +432,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			resp.Acquisition.Nodes = s.evaluateNodeAcquisition(ctx, pinned, resp.Image, templateImageSources(selection, resp.Image), model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, known)
 		}
 	}
-	resp.Diagnostics, err = s.inspectDeploymentModel(ctx, model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes, false)
+	resp.Diagnostics, err = s.inspectWeights(ctx, selection, model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes)
 	if errs.add("model_id", err) {
 		writeFieldErrors()
 		return

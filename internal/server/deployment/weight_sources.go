@@ -7,6 +7,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/acquisition"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -89,6 +90,11 @@ func specDeclaresProvider(spec *store.InferenceSpecRow, provider string) bool {
 func modelArtifactSatisfiesSubfolder(actual, requested string) bool {
 	actual = strings.TrimSpace(actual)
 	requested = strings.TrimSpace(requested)
+	if deploy.RankScopedSubfolder(requested) {
+		// A rank's own subfolder serves that rank; the whole repository
+		// would hand every rank all of them (ADR 0076).
+		return deploy.RankSubfolderMatches(requested, actual)
+	}
 	return actual == requested || (actual == "" && requested != "")
 }
 
@@ -104,7 +110,7 @@ func (s *Service) resolveWeightRevision(source weightSource, nodeID uint) (weigh
 	if strings.TrimSpace(source.Revision) != "" {
 		return source, nil
 	}
-	model, err := s.d.Store.FindModelArtifactAnyRevision(source.RepoID, source.Provider, source.Subfolder, nodeID)
+	model, err := s.d.Store.FindModelArtifactAnyRevision(source.RepoID, source.Provider, lookupSource(source).Subfolder, nodeID)
 	if err == store.ErrNotFound {
 		return source, nil
 	}

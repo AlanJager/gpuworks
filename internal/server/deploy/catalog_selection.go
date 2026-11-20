@@ -63,6 +63,11 @@ type CatalogSelection struct {
 	Placement          json.RawMessage      `json:"placement,omitempty"`
 	APIContract        json.RawMessage      `json:"api,omitempty"`
 	Components         []ComponentBinding   `json:"components,omitempty"`
+	// RankWeights binds each rank of a deployment whose weight subfolder
+	// names the rank (WeightSubfolder keeps the template, such as
+	// "rank${NODE_RANK}") to the artifact that rank mounts; empty when the
+	// weights are the same on every rank (ADR 0076).
+	RankWeights []RankWeight `json:"rank_weights,omitempty"`
 	// PDMode is the PD mode a PD-only spec was written for.
 	PDMode string `json:"pd_mode,omitempty"`
 	// ShmBytes is the /dev/shm size the template's engine needs; zero states

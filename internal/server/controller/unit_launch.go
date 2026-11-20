@@ -266,12 +266,12 @@ func (c *Controller) persistGeneration(ctx context.Context, dep *store.Deploymen
 // now: refusal says why, or is nil while the rank's model is still arriving;
 // yield is what a refusal that waits for holders to yield waits for.
 func (c *Controller) planRank(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model, group netplan.Group, rank planning.GroupRank, unit *planning.UnitRecord) (*rankLaunch, *scheduler.Reason, *planning.LaunchYield, error) {
-	files, ready, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model)
+	files, ready, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model, rank.Rank)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if !ready {
-		refusal, err := c.modelUnavailable(dep, node, model)
+		refusal, err := c.modelUnavailable(dep, node, model, rank.Rank)
 		return nil, refusal, nil, err
 	}
 	req, templateLayer, modelHostPath, err := c.launchRequest(dep, node, model, &files)

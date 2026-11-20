@@ -541,8 +541,8 @@ func (c *Controller) unitNodes(ctx context.Context, dep *store.Deployment, deplo
 // image pulled onto every node ahead of the launch.
 func (c *Controller) generationReady(ctx context.Context, dep *store.Deployment, model *store.Model, nodes []*store.Node) (bool, error) {
 	ready := true
-	for _, node := range nodes {
-		_, present, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model)
+	for rank, node := range nodes {
+		_, present, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model, rank)
 		if err != nil {
 			return false, err
 		}

@@ -74,6 +74,14 @@ const (
 	// (repo_id@revision is the source the spec resolved). The server refuses
 	// the choice rather than substituting another model.
 	ErrorTemplateModelMismatch = "TEMPLATE_MODEL_MISMATCH"
+	// ErrorRankWeightsModelNotRankZero: the request names a model (model_id)
+	// for a spec with rank-scoped weights, and the model is not rank 0's
+	// subfolder (want) of the repository but subfolder: the named model is
+	// what rank 0 mounts.
+	ErrorRankWeightsModelNotRankZero = "RANK_WEIGHTS_MODEL_NOT_RANK_ZERO"
+	// ErrorRankWeightsPDUnsupported: a spec with rank-scoped weights is
+	// deployed as PD, whose roles' ranks do not number one group.
+	ErrorRankWeightsPDUnsupported = "RANK_WEIGHTS_PD_UNSUPPORTED"
 	// ErrorManualCommandRankBlind: a multi-node or PD request's manual
 	// command references none of the variables that tell its launches apart,
 	// so every rank would start as the same rank in the same role. missing

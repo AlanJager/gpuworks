@@ -35,18 +35,19 @@ func explainDiskRefusal(st *store.Store, in Input, req scheduler.Request, snap s
 				params["path"] = target
 			}
 		}
-	} else if _, hasStorage := result.Message.Params["storage_id"]; !hasStorage && st != nil && in.Node != nil && in.Model != nil && in.Model.ID != 0 {
-		if src, err := st.ModelSourceOn(in.Model.ID, in.Node, in.ModelRules); err == nil && src.Action == store.SourceAcquire {
+	} else if _, hasStorage := result.Message.Params["storage_id"]; !hasStorage && st != nil && in.Node != nil && in.Model != nil && in.storageModel().ID != 0 {
+		model := in.storageModel()
+		if src, err := st.ModelSourceOn(model.ID, in.Node, in.ModelRules); err == nil && src.Action == store.SourceAcquire {
 			primaryBytes := in.Model.WeightBytes
 			if primaryBytes <= 0 {
 				primaryBytes = in.SpecWeightBytes
 			}
 			// An aggregate that also budgets unidentified components cannot be
 			// attributed to this model's directory or registration action.
-			if modelDiskNeed(st, in.Model, in.Node, src.Location.Storage.ID, primaryBytes) == req.DiskNeedBytes {
-				if target := acquisitionTarget(st, in.Node, in.Model, src, snap.DiskAvailBytes); target != "" {
+			if modelDiskNeed(st, model, in.Node, src.Location.Storage.ID, primaryBytes) == req.DiskNeedBytes {
+				if target := acquisitionTarget(st, in.Node, model, src, snap.DiskAvailBytes); target != "" {
 					params["available_bytes"] = snap.DiskAvailBytes
-					params["model"], params["model_id"] = in.Model.DisplayName(), in.Model.ID
+					params["model"], params["model_id"] = model.DisplayName(), model.ID
 					params["storage"], params["storage_id"], params["storage_type"] = src.Location.Storage.Name, src.Location.Storage.ID, src.Location.Storage.Type
 					params["path"] = target
 				}

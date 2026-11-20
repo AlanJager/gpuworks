@@ -28,6 +28,11 @@ import (
 // Input is one placement evaluation.
 type Input struct {
 	Model *store.Model
+	// WeightModel and WeightRanks describe rank-scoped weights (ADR 0076):
+	// the artifact this rank's primary mount reads in place of Model's, and
+	// how many ranks share the model; zero for weights the same on every rank.
+	WeightModel *store.Model
+	WeightRanks int
 	// SpecWeightBytes is the authoritative catalog estimate when a legacy model
 	// row has not yet been hydrated with metadata.
 	SpecWeightBytes int64
@@ -199,6 +204,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 	if in.RuntimeWeightBytes > 0 {
 		weightBytes = in.RuntimeWeightBytes
 	}
+	weightBytes *= int64(max(in.WeightRanks, 1)) // one rank's share stated; the group holds every rank's
 	componentWeightBytes := in.ComponentWeightBytes
 	if componentWeightBytes < 0 {
 		componentWeightBytes = 0

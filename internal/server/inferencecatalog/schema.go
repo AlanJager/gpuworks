@@ -452,7 +452,7 @@ func weightSourcesSchema() map[string]any {
 				"properties": map[string]any{
 					"repo_id":   identity,
 					"revision":  map[string]any{"type": "string", "description": "Repository commit or registered local revision, when known."},
-					"subfolder": map[string]any{"type": "string", "description": "Repository subpath when weights are nested: a directory, or a single file when no directory has that name."},
+					"subfolder": map[string]any{"type": "string", "description": "Repository subpath when weights are nested: a directory, or a single file when no directory has that name. In the spec's own weights it may name the rank, as in rank${NODE_RANK}: each rank of a multi-node deployment then downloads and mounts only its own subfolder, and weight_bytes is one rank's size."},
 				},
 			},
 		}}
