@@ -1,0 +1,20 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/ops/rotary_embedding.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/ops/rotary_embedding.py
+@@ -255,6 +255,17 @@
+ 
+ 
+ class AscendRotaryEmbedding(RotaryEmbedding):
++    def _compute_cos_sin_cache(self):
++        if os.environ.get("GPUWORKS_RUNVEIL_WAITPID_WORKAROUND") != "1":
++            return super()._compute_cos_sin_cache()
++        original_max = self.max_position_embeddings
++        self.max_position_embeddings = min(original_max, get_current_vllm_config().model_config.max_model_len)
++        try:
++            with torch.device("cpu"):
++                return super()._compute_cos_sin_cache().to("npu")
++        finally:
++            self.max_position_embeddings = original_max
++
+     def __init__(
+         self,
+         head_size: int,

@@ -315,6 +315,248 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Ascend 910B (A2), four 64 GiB cards, TP4 with expert parallelism. The
+# arguments are a launch measured on 4x 910B4 64 GiB on 2026-11-19 (W4A8
+# weights, no MTP): 18.65 GiB of weights per card, a fixed 20 GiB KV pool,
+# ACL decode graphs, chat traffic served. The same arguments were written for
+# and run with the W8A8 weights. --engram-config keeps the 51B-parameter
+# per-layer embedding table in host memory: each rank maps its own 23.8 GiB
+# copy (dp_shared_memory false), so the node needs about 96 GiB of free RAM
+# on top of the page cache for the checkpoint. The image is vLLM-Ascend's
+# v0.32.0rc1 openEuler release, pinned by index digest; the NJU quay mirror
+# and the public gpuworks SWR copy serve the same digest (quay.io reached
+# 50-200 KB/s from a Gitee 910B rental). The MTP profiles add the checkpoints' own BF16 MTP
+# layer (method mtp, this image's name for the 910C recipe's deprecated
+# qwen3_5_mtp; three draft tokens as in that recipe) and
+# move the decode graph sizes to multiples of four (one target plus three
+# draft tokens per sequence).
+- name: int8-vllm-910b-tp4
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · 4 卡
+  display_name_en: 910B (A2) · INT8 W8A8 · 4 cards
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-Flash-Next-w8a8-mtp
+        revision: c76aa96a5e730de35211d1b0b3d05cc3c67efae5
+  weight_bytes: 245413330966
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args: &q38_910b_args
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --enable-expert-parallel
+  - --pipeline-parallel-size
+  - '1'
+  - --data-parallel-size
+  - '1'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '4'
+  - --max-num-batched-tokens
+  - '8192'
+  - --long-prefill-token-threshold
+  - '1024'
+  - --long-prefill-token-threshold-adaptive
+  - --gpu-memory-utilization
+  - '0.95'
+  - --kv-cache-memory-bytes
+  - '21474836480'
+  - --mamba-ssm-cache-dtype
+  - float32
+  - --enable-prefix-caching
+  - --mamba-cache-mode
+  - align
+  - --block-size
+  - '4096'
+  - --limit-mm-per-prompt
+  - '{"image":32,"video":0}'
+  - --mm-processor-kwargs
+  - '{"max_pixels":1048576,"min_pixels":786432}'
+  - --mm-encoder-tp-mode
+  - weights
+  - --reasoning-parser
+  - qwen3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --engram-config
+  - '{"cpu_offload":true,"dp_shared_memory":false}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,2,4],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":false,"ascend_compilation_config":{"fuse_norm_quant":false}}'
+  - --no-async-scheduling
+  performance_tradeoffs: &q38_910b_tradeoffs
+  - param: --max-num-seqs
+    reason: memory_fit
+    detail_en: "Four 64 GiB cards leave a fixed 20 GiB KV pool per card after the weights; at the full 262144-token context that pool holds about five sequences, and the decode graphs are captured for at most four."
+    detail_zh: "4 张 64 GiB 卡放下权重后每卡固定留 20 GiB KV 池；按 262144 token 满上下文约能容纳 5 条序列，decode 图最多只捕获到 4 条。"
+  env: &q38_910b_env
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    OMP_NUM_THREADS: '8'
+    HCCL_BUFFSIZE: '200'
+    TASK_QUEUE_ENABLE: '1'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement: &q38_910b_placement
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("the 910B recipe runs exactly 4 cards on one node")
+          if gpu.min_memory_gib < 64:
+              return reject("each card requires at least 64 GiB")
+          return {"GPU_COUNT": 4, "TP_SIZE": 4, "SP_DEGREE": 1}
+  api: &q38_910b_api
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  shm_bytes: 137438953472
+- name: int8-vllm-910b-tp4-mtp
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · 4 卡 · MTP 投机解码
+  display_name_en: 910B (A2) · INT8 W8A8 · 4 cards · MTP speculative
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-Flash-Next-w8a8-mtp
+        revision: c76aa96a5e730de35211d1b0b3d05cc3c67efae5
+  weight_bytes: 245413330966
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args: &q38_910b_mtp_args
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --enable-expert-parallel
+  - --pipeline-parallel-size
+  - '1'
+  - --data-parallel-size
+  - '1'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '4'
+  - --max-num-batched-tokens
+  - '8192'
+  - --long-prefill-token-threshold
+  - '1024'
+  - --long-prefill-token-threshold-adaptive
+  - --gpu-memory-utilization
+  - '0.95'
+  - --kv-cache-memory-bytes
+  - '21474836480'
+  - --mamba-ssm-cache-dtype
+  - float32
+  - --enable-prefix-caching
+  - --mamba-cache-mode
+  - align
+  - --block-size
+  - '4096'
+  - --limit-mm-per-prompt
+  - '{"image":32,"video":0}'
+  - --mm-processor-kwargs
+  - '{"max_pixels":1048576,"min_pixels":786432}'
+  - --mm-encoder-tp-mode
+  - weights
+  - --reasoning-parser
+  - qwen3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --engram-config
+  - '{"cpu_offload":true,"dp_shared_memory":false}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[4,8,12,16],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --speculative-config
+  - '{"method":"mtp","num_speculative_tokens":3,"enforce_eager":true}'
+  - --additional-config
+  - '{"enable_cpu_binding":false,"ascend_compilation_config":{"fuse_norm_quant":false}}'
+  - --no-async-scheduling
+  performance_tradeoffs: &q38_910b_mtp_tradeoffs
+  - param: --max-num-seqs
+    reason: memory_fit
+    detail_en: "Four 64 GiB cards leave a fixed 20 GiB KV pool per card after the weights; at the full 262144-token context that pool holds about five sequences, and the decode graphs are captured for at most four."
+    detail_zh: "4 张 64 GiB 卡放下权重后每卡固定留 20 GiB KV 池；按 262144 token 满上下文约能容纳 5 条序列，decode 图最多只捕获到 4 条。"
+  - param: --speculative-config.enforce_eager
+    reason: hardware_plugin_requires
+    detail_en: "The MTP drafter runs eager as in vLLM-Ascend's own Qwen3.8 MTP recipe; the target keeps its decode graph. This image falls back to the PyTorch causal_conv1d_update, which syncs per request."
+    detail_zh: "MTP 草稿层沿用 vLLM-Ascend 官方 Qwen3.8 MTP 配方的 eager 方式，主模型保留 decode 图；该镜像的 causal_conv1d_update 回退到逐请求同步的 PyTorch 实现。"
+  env: *q38_910b_env
+  placement: *q38_910b_placement
+  api: *q38_910b_api
+  shm_bytes: 137438953472
+- name: w4a8-vllm-910b-tp4
+  display_name_zh_cn: 910B (A2) · INT4 W4A8 · 4 卡
+  display_name_en: 910B (A2) · INT4 W4A8 · 4 cards
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  weights:
+    quantization: w4a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-Flash-Next-w4a8
+        revision: d75537fdf781e6a8e85bfb6bf091b987e3b0ab96
+  weight_bytes: 194325007155
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args: *q38_910b_args
+  performance_tradeoffs: *q38_910b_tradeoffs
+  env: *q38_910b_env
+  placement: *q38_910b_placement
+  api: *q38_910b_api
+  shm_bytes: 137438953472
+- name: w4a8-vllm-910b-tp4-mtp
+  display_name_zh_cn: 910B (A2) · INT4 W4A8 · 4 卡 · MTP 投机解码
+  display_name_en: 910B (A2) · INT4 W4A8 · 4 cards · MTP speculative
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  weights:
+    quantization: w4a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-Flash-Next-w4a8
+        revision: d75537fdf781e6a8e85bfb6bf091b987e3b0ab96
+  weight_bytes: 194325007155
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args: *q38_910b_mtp_args
+  performance_tradeoffs: *q38_910b_mtp_tradeoffs
+  env: *q38_910b_env
+  placement: *q38_910b_placement
+  api: *q38_910b_api
+  shm_bytes: 137438953472
 - name: fp8-sglang-ppu-m890p-tp8-256k
   display_name_zh_cn: PPU M890P · FP8 · 8 卡
   display_name_en: PPU M890P · FP8 · 8 GPUs

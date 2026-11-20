@@ -1,0 +1,54 @@
+--- /dev/null
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/prefix_checkpoint_lifetime.py
+@@ -0,0 +1,51 @@
++"""Experimental lifetime alignment for reused GLM Mamba/draft checkpoints.
++
++Keep an extra reference to locally reused checkpoints until request cleanup,
++matching the lifetime of the main attention prefix. No checkpoint bytes change.
++Only the standalone GLM experiment is qualified by the accompanying workflow.
++"""
++from vllm.v1.core.single_type_kv_cache_manager import MambaManager, SlidingWindowManager
++
++
++class _ReplayedPrefixLifetime:
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self._replayed_prefix_blocks = {}
++
++    def add_local_computed_blocks(self, request_id, new_computed_blocks,
++                                  num_local_computed_tokens, num_external_computed_tokens):
++        if num_external_computed_tokens or num_local_computed_tokens % self.block_size:
++            raise NotImplementedError('Prefix lifetime experiment requires local block-aligned hits')
++        super().add_local_computed_blocks(request_id, new_computed_blocks,
++                                         num_local_computed_tokens, num_external_computed_tokens)
++        if not self.enable_caching:
++            return
++        assert request_id not in self._replayed_prefix_blocks
++        # Use the actual attached subset after the manager trims skipped blocks.
++        blocks = [b for b in self.req_to_blocks[request_id]
++                  if not b.is_null and b.block_hash is not None]
++        if blocks:
++            self.block_pool.touch(blocks)
++            self._replayed_prefix_blocks[request_id] = blocks
++
++    def pop_blocks_for_free(self, request_id):
++        blocks = super().pop_blocks_for_free(request_id)
++        pinned = self._replayed_prefix_blocks.pop(request_id, [])
++        # The caller frees in reverse order. Release the extra references last,
++        # keeping reusable prefix states newer than this request's disposable tail.
++        # A block can appear twice: these are two owned references. The pinned
++        # vLLM BlockPool decrements and enqueues on transition to zero per entry.
++        return pinned + blocks
++
++
++class ReplayedPrefixMambaManager(_ReplayedPrefixLifetime, MambaManager):
++    pass
++
++
++class ReplayedPrefixSlidingWindowManager(_ReplayedPrefixLifetime, SlidingWindowManager):
++    pass
++
++
++def prefix_lifetime_manager_class(manager_class):
++    return {MambaManager: ReplayedPrefixMambaManager,
++            SlidingWindowManager: ReplayedPrefixSlidingWindowManager}.get(manager_class, manager_class)

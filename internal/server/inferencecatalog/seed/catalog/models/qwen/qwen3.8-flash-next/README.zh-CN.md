@@ -2,7 +2,7 @@
 
 [官方 SGLang 配方](https://docs.sglang.io/cookbook/autoregressive/Qwen/Qwen3.8-Flash-Next)。原始 FP8 权重约 185.5 GB；单节点 H200/H20 × 4 或 MI350X/MI355X × 8。使用配方专用镜像。NVIDIA 启用原生 MTP，AMD 使用 AITER 配方。
 
-现有 Apple GGUF 和 NVIDIA Strata 模板保持独立；NVIDIA H200 × 4 配方已在本平台实测（见下），AMD 配方尚未实测。昇腾档位使用 vLLM-Ascend 官方实验性 W8A8-MTP 配方：固定权重 revision `c76aa96a…`，8 个 64 GiB 的 A3 逻辑设备，TP8。不能使用本页 NVIDIA/AMD 的 FP8 模板代替。海光和 PPU 未核实可执行配方。
+现有 Apple GGUF 和 NVIDIA Strata 模板保持独立；NVIDIA H200 × 4 配方已在本平台实测（见下），AMD 配方尚未实测。昇腾档位使用 vLLM-Ascend 官方实验性 W8A8-MTP 配方：固定权重 revision `c76aa96a…`，8 个 64 GiB 的 A3 逻辑设备，TP8。910B（A2）另有单机 4 卡档，见下文。不能使用本页 NVIDIA/AMD 的 FP8 模板代替。海光和 PPU 未核实可执行配方。
 
 H20 的 96 GB 和 141 GB 版本共用 4 卡配方，资源准入使用节点上报的实际显存。以上指 SGLang 档；H20 的 SGLang 档尚未完成真机推理验证。
 
@@ -40,3 +40,38 @@ Vast 容器节点、runveil 运行时。对话、思考、工具调用通过；�
 digest 固定）。自动排布避开了 ACL 上下文检查失败的那张 die，用其余 8 张启动；部署
 达到 running，`/health`、`/v1/models` 和 OpenAI 兼容 chat 均返回 200，回答内容正确。
 未做吞吐与多并发压测。
+
+## 昇腾 910B（A2）· 4 卡 · TP4
+
+单节点 4 张、每张至少 64 GiB 的 910B，TP4 + 专家并行，vLLM-Ascend `v0.32.0rc1-openeuler`
+官方镜像（按多架构 index digest 固定；南大 quay 镜像站和 gpuworks 在华为 SWR 上的公开副本提供同一 digest，
+国内从 quay.io 拉取可能很慢）。共四档：
+
+| 档位 | 权重（ModelScope，固定 revision） | 仓库大小 | 投机解码 |
+| --- | --- | --- | --- |
+| `int8-vllm-910b-tp4` | `Eco-Tech/Qwen3.8-Flash-Next-w8a8-mtp` `c76aa96a…` | 约 245 GB | 无 |
+| `int8-vllm-910b-tp4-mtp` | 同上 | 约 245 GB | MTP，3 个草稿 token |
+| `w4a8-vllm-910b-tp4` | `Eco-Tech/Qwen3.8-Flash-Next-w4a8` `d75537fd…` | 约 194 GB | 无 |
+| `w4a8-vllm-910b-tp4-mtp` | 同上 | 约 194 GB | MTP，3 个草稿 token |
+
+两个仓库都自带 BF16 的 MTP 层，MTP 档不另外下载草稿模型。参数：256K 上下文、并发上限 4、单轮批处理
+8192 token、每卡固定 20 GiB KV 池（`--kv-cache-memory-bytes`，此时 vLLM 不按显存比例分 KV）、
+前缀缓存（`--mamba-cache-mode align`、`--block-size 4096`）、每请求最多 32 张图、Decode-only ACLGraph、
+关闭异步调度、`qwen3` 推理解析器和 `qwen3_xml` 工具解析器。MTP 档的 decode 图尺寸改为 4 的倍数
+（每条序列 1 个目标 token + 3 个草稿 token），草稿层按官方 910C 配方走 eager。
+
+**主机内存**：`--engram-config` 把 51B 参数的逐层嵌入表放在主机内存，且每个 rank 各映射一份
+（`dp_shared_memory=false`），4 个 rank 约需 96 GiB 空闲内存，另加权重文件的页缓存。
+
+实测（910B4 64 GiB × 4，ARM64，驱动 25.5.0，2026-11-19）：W4A8 不开 MTP，参数与本档一致（当时用手写命令启动）。
+每卡权重 18.65 GiB，KV 池 20 GiB（约 143 万 token，256K 请求可并发 5.48 条），decode 图捕获 83 s，
+从加载到就绪约 9.5 分钟，对话请求正常返回，单路解码约 25 token/s。W8A8 档用同一组参数也已在该机型上跑通（用户提供的运行记录）。
+
+MTP 实测（910B2 64 GiB × 4，ARM64，`w4a8-vllm-910b-tp4-mtp`，2026-11-20）：
+每卡权重 19.88 GiB、加载 172 s，`torch.compile` 91–106 s。对话与流式都正常，单路解码约 26 token/s
+（300 token 的回答 11.4 s）。投机解码按 `/metrics` 的 `vllm:spec_decode_num_{draft,accepted}_tokens_total`
+区间差值统计：普通文本接受率 47%–58%（每步出 2.4–2.8 个 token），高度可预测的内容（顺序数数）达 88%
+（每步 3.6 个）。`int8-vllm-910b-tp4-mtp` 与本档只差权重与量化方式，未单独实测。
+
+**首次请求较慢**：部分算子内核按实际张量形状在首个请求到达时即时编译，所以第一个请求明显慢于
+之后的请求，上表的吞吐是编译缓存就绪后的稳态值。编译结果缓存在容器内，容器重建后首个请求会再付一次。

@@ -2,7 +2,7 @@
 
 [Official SGLang recipe](https://docs.sglang.io/cookbook/autoregressive/Qwen/Qwen3.8-Flash-Next). Native FP8 weights (~185.5 GB), single-node 4 H200/H20 or 8 MI350X/MI355X GPUs. Uses the dedicated recipe images. NVIDIA enables native MTP; AMD uses AITER.
 
-Existing Apple GGUF and NVIDIA Strata profiles remain separate. The NVIDIA 4× H200 profile was measured on this platform (below); the AMD profile is untested. The Ascend profile uses vLLM-Ascend's experimental W8A8-MTP recipe: immutable revision `c76aa96a…`, eight 64 GiB A3 logical devices, TP8. The NVIDIA/AMD FP8 recipe is not a substitute. Hygon/PPU recipes remain unconfirmed.
+Existing Apple GGUF and NVIDIA Strata profiles remain separate. The NVIDIA 4× H200 profile was measured on this platform (below); the AMD profile is untested. The Ascend profile uses vLLM-Ascend's experimental W8A8-MTP recipe: immutable revision `c76aa96a…`, eight 64 GiB A3 logical devices, TP8. 910B (A2) has its own single-node 4-card profiles, below. The NVIDIA/AMD FP8 recipe is not a substitute. Hygon/PPU recipes remain unconfirmed.
 
 The 96 GB and 141 GB H20 variants share the 4-GPU profile; admission uses the capacity reported by the node. This describes the SGLang profile; H20 inference with SGLang has not been validated on hardware.
 
@@ -41,3 +41,46 @@ pinned here by digest. Automatic placement left out the die whose ACL context
 check fails and ran on the other eight. The deployment reached running;
 `/health`, `/v1/models` and an OpenAI-compatible chat request all returned
 HTTP 200 with a correct answer. No throughput or multi-concurrency run yet.
+
+## Ascend 910B (A2) · 4 cards · TP4
+
+One node with four 910B cards of at least 64 GiB each, TP4 with expert parallelism, on vLLM-Ascend's
+official `v0.32.0rc1-openeuler` image (pinned by its multi-arch index digest; the NJU quay mirror and the
+public gpuworks copy on Huawei SWR serve the same digest, since quay.io can be very slow from mainland China).
+Four profiles:
+
+| Profile | Weights (ModelScope, pinned revision) | Repository size | Speculative decoding |
+| --- | --- | --- | --- |
+| `int8-vllm-910b-tp4` | `Eco-Tech/Qwen3.8-Flash-Next-w8a8-mtp` `c76aa96a…` | about 245 GB | none |
+| `int8-vllm-910b-tp4-mtp` | same | about 245 GB | MTP, 3 draft tokens |
+| `w4a8-vllm-910b-tp4` | `Eco-Tech/Qwen3.8-Flash-Next-w4a8` `d75537fd…` | about 194 GB | none |
+| `w4a8-vllm-910b-tp4-mtp` | same | about 194 GB | MTP, 3 draft tokens |
+
+Both repositories carry their own BF16 MTP layer, so the MTP profiles download no separate draft. Arguments:
+256K context, at most 4 sequences, 8192 tokens per batch, a fixed 20 GiB KV pool per card
+(`--kv-cache-memory-bytes`; vLLM then ignores the memory fraction for KV), prefix caching
+(`--mamba-cache-mode align`, `--block-size 4096`), up to 32 images per request, a decode-only ACL graph,
+async scheduling off, the `qwen3` reasoning parser and the `qwen3_xml` tool parser. The MTP profiles capture
+decode graphs at multiples of four (one target plus three draft tokens per sequence) and run the drafter eager,
+as vLLM-Ascend's 910C recipe does.
+
+**Host memory**: `--engram-config` keeps the 51B-parameter per-layer embedding table in host memory, one
+mapping per rank (`dp_shared_memory=false`), so four ranks need about 96 GiB of free RAM on top of the page
+cache for the weight files.
+
+Measured (4× 910B4 64 GiB, ARM64, driver 25.5.0, 2026-11-19): W4A8 without MTP, with these arguments (launched
+then from a hand-written command). 18.65 GiB of weights per card, a 20 GiB KV pool (about 1.44M tokens, 5.48
+concurrent 256K requests), decode graph capture 83 s, about 9.5 minutes from load to ready; chat requests were
+answered, at about 25 tokens/s for one stream. The W8A8 profile's arguments were also run on the same card type
+(the user's run record).
+
+MTP measured (910B2 64 GiB x 4, ARM64, `w4a8-vllm-910b-tp4-mtp`, 2026-11-20): 19.88 GiB of
+weights per card loaded in 172 s, `torch.compile` 91-106 s. Chat and streaming both answered correctly, at
+about 26 tokens/s for one stream (a 300-token answer in 11.4 s). Speculative decoding, from the deltas of
+`vllm:spec_decode_num_{draft,accepted}_tokens_total` in `/metrics`: 47%-58% acceptance on ordinary prose
+(2.4-2.8 tokens per step), and 88% on highly predictable output such as counting (3.6 per step).
+`int8-vllm-910b-tp4-mtp` differs only in weights and quantization and was not measured separately.
+
+**The first request is slow.** Some kernels are compiled just in time for the tensor shapes a request actually
+uses, so the first request takes markedly longer than the ones after it; the throughput above is the steady
+state once that cache is warm. The cache lives inside the container, so a rebuilt container pays it again.

@@ -1,0 +1,117 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/worker/worker.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/worker/worker.py
+@@ -17,6 +17,7 @@
+ # Adapted from vllm-project/vllm/vllm/worker/gpu_worker.py
+ #
+ 
++import os
+ import copy
+ import gc
+ import logging
+@@ -598,17 +599,33 @@
+ 
+         # Execute a forward pass with dummy inputs to profile the memory usage
+         # of the model.
+-        with memory_profiling(
+-            self.init_snapshot,
+-            weights_memory=int(self.model_runner.model_memory_usage),
+-        ) as profile_result:
+-            self.model_runner.profile_run()
++        from vllm_ascend.worker.runveil_threads import balance_background_threads
+ 
+-            # Record torch peak INSIDE the context and BEFORE graph capture,
+-            # so that graph pool allocations don't inflate the activation peak.
+-            # The memory_profiling context will also compute torch_peak_increase
+-            # on exit, but we override it below with this pre-graph value.
+-            profile_torch_peak = torch.npu.memory_stats(self.device).get("allocated_bytes.all.peak", 0)
++        balance_background_threads("profile")
++        profile_stack = None
++        if os.environ.get("GPUWORKS_GLM_STARTUP_TRACE") == "1":
++            import faulthandler
++            profile_dir = os.environ.get("GPUWORKS_GLM_PROFILE_DIR", "/tmp")
++            profile_stack = open(f"{profile_dir}/gpuworks-glm-profile-rank{self.rank}.stack", "w")
++            faulthandler.dump_traceback_later(120, repeat=True, file=profile_stack)
++            print(f"GLM_PROFILE rank={self.rank} begin", flush=True)
++        try:
++            with memory_profiling(
++                self.init_snapshot,
++                weights_memory=int(self.model_runner.model_memory_usage),
++            ) as profile_result:
++                self.model_runner.profile_run()
++
++                # Record torch peak INSIDE the context and BEFORE graph capture,
++                # so that graph pool allocations don't inflate the activation peak.
++                # The memory_profiling context will also compute torch_peak_increase
++                # on exit, but we override it below with this pre-graph value.
++                profile_torch_peak = torch.npu.memory_stats(self.device).get("allocated_bytes.all.peak", 0)
++        finally:
++            if profile_stack is not None:
++                faulthandler.cancel_dump_traceback_later()
++                profile_stack.close()
++                print(f"GLM_PROFILE rank={self.rank} end", flush=True)
+ 
+         # Override torch_peak_increase with the pre-graph-capture value to
+         # avoid double-counting graph pool memory as activation memory.
+@@ -904,6 +921,9 @@
+ 
+         kernel_warmup(self)
+ 
++        from vllm_ascend.worker.runveil_threads import balance_background_threads
++
++        balance_background_threads("capture")
+         npugraph_memory_bytes = 0
+         if not self.model_config.enforce_eager:
+             npugraph_memory_bytes = self.model_runner.capture_model()
+@@ -970,6 +990,8 @@
+             except Exception as e:
+                 logger.warning("Bind cpus failed in rank%s: %s Skip binding cpu.", self.local_rank, e)
+ 
++        balance_background_threads("ready")
++
+         # Reset the seed to ensure that the random state is not affected by
+         # the model initialization and profiling.
+         set_random_seed(self.model_config.seed)
+@@ -1282,10 +1304,20 @@
+ 
+     def _init_worker_distributed_environment(self) -> None:
+         """Initialize the distributed environment."""
++        trace = os.environ.get("GPUWORKS_GLM_STARTUP_TRACE") == "1"
++        if trace:
++            import faulthandler
++            import signal
++            # @@ Register a diagnostic signal inside each worker, before HCCL.
++            faulthandler.register(signal.SIGUSR1, all_threads=True)
++            faulthandler.dump_traceback_later(180, repeat=True)
++            print(f"GLM_INIT rank={self.rank} begin distributed", flush=True)
+         init_batch_invariance()
+         init_distributed_environment(
+             self.parallel_config.world_size, self.rank, self.distributed_init_method, self.local_rank, "hccl"
+         )
++        if trace:
++            print(f"GLM_INIT rank={self.rank} global group ready", flush=True)
+         group_config = self.vllm_config
+         if group_config.engram_config is not None and self.parallel_config.prefill_context_parallel_size > 1:
+             # Skip upstream's DP-only Engram group so Ascend can create
+@@ -1293,6 +1325,8 @@
+             # the original Engram settings for Ascend and model initialization.
+             group_config = copy.copy(group_config)
+             group_config.engram_config = None
++        if trace:
++            print(f"GLM_INIT rank={self.rank} begin model parallel groups", flush=True)
+         with set_current_vllm_config(group_config):
+             ensure_model_parallel_initialized(
+                 self.parallel_config.tensor_parallel_size,
+@@ -1300,8 +1334,13 @@
+                 self.parallel_config.prefill_context_parallel_size,
+                 self.parallel_config.decode_context_parallel_size,
+             )
++        if trace:
++            print(f"GLM_INIT rank={self.rank} model parallel groups ready", flush=True)
+         init_ascend_model_parallel(self.parallel_config, self.vllm_config.engram_config)
+         ensure_ec_transfer_initialized(self.vllm_config)
++        if trace:
++            print(f"GLM_INIT rank={self.rank} distributed initialized", flush=True)
++            faulthandler.cancel_dump_traceback_later()
+ 
+     def get_supported_pooling_tasks(self):
+         return self.model_runner.get_supported_pooling_tasks()

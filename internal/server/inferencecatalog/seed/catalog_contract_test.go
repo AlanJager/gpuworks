@@ -341,6 +341,10 @@ var functionalArgsExempt = map[string]string{
 	"zai-org/glm-5.3-flash/w8a8-vllm-910c-stock-graph-16npu": "the 2026-10-25 910C runs had no tool/reasoning parsers; adding them needs a re-run on 910C",
 	"zai-org/glm-5.3-flash/w8a8-vllm-910c-stock-graph-8npu":  "the 2026-10-25 910C runs had no tool/reasoning parsers; adding them needs a re-run on 910C",
 	"zai-org/glm-5.3-flash/w8a8-vllm-910c-dflash5-16npu":     "the 2026-10-25 910C runs had no tool/reasoning parsers; adding them needs a re-run on 910C",
+	"qwen/qwen3.8-flash-next/int8-vllm-910b-tp4":             "vLLM-Ascend's Qwen3.8 recipe, run on 910B4, uses --tool-call-parser qwen3_xml; the vLLM recipe for NVIDIA uses qwen3_coder",
+	"qwen/qwen3.8-flash-next/int8-vllm-910b-tp4-mtp":         "vLLM-Ascend's Qwen3.8 recipe, run on 910B4, uses --tool-call-parser qwen3_xml; the vLLM recipe for NVIDIA uses qwen3_coder",
+	"qwen/qwen3.8-flash-next/w4a8-vllm-910b-tp4":             "vLLM-Ascend's Qwen3.8 recipe, run on 910B4, uses --tool-call-parser qwen3_xml; the vLLM recipe for NVIDIA uses qwen3_coder",
+	"qwen/qwen3.8-flash-next/w4a8-vllm-910b-tp4-mtp":         "vLLM-Ascend's Qwen3.8 recipe, run on 910B4, uses --tool-call-parser qwen3_xml; the vLLM recipe for NVIDIA uses qwen3_coder",
 }
 
 func TestNonNVIDIAChatSpecsInheritModelFunctionalArgs(t *testing.T) {

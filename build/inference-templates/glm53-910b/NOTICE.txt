@@ -1,0 +1,16 @@
+This template contains modified vLLM and vLLM Ascend modules, distributed
+under Apache License 2.0. Original copyright notices remain in the payload.
+See LICENSE.txt and the exact image/module hashes in manifest.json.
+
+Sources:
+https://github.com/vllm-project/vllm
+https://github.com/vllm-project/vllm-ascend
+
+The CANN extension builder retains its CANN Open Software License Agreement
+Version 2.0 notice. Its source is the pinned official image's
+cann_ops_transformer package. The modification supports importing prebuilt
+extensions under runveil; original operator implementations are unchanged.
+
+Adaptations cover target hidden-state capture, DFlash2 V1 integration and
+hybrid-cache handling, pure-text weight mapping, bounded indexer RoPE and
+container-local CANN extension initialization. No model weights are included.

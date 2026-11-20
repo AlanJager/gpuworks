@@ -1,0 +1,132 @@
+{
+  "image": "quay.io/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a",
+  "image_id": "sha256:61584d790fa3668e7c43f0eb50a3e3a86d94b3eed15bce5ac82391ed383df229",
+  "files": [
+    {
+      "path": "usr/local/Ascend/cann-9.2.1/python/site-packages/cann_ops_transformer/op_builder/builder.py",
+      "base_sha256": "4f87aea39abd9740756b2fa453df0317e423d7f25a4f6b716e194fa64a79aec4",
+      "sha256": "67ab8cdcc8b3c7276424b8815584778ee1ca8b390981f6e31b8d0dd0b26b40e3",
+      "patch": "patches/usr__local__Ascend__cann-9.2.1__python__site-packages__cann_ops_transformer__op_builder__builder.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/attention/attention_v1.py",
+      "base_sha256": "bea4e410f797557e29cedbb495024147606e74b0e056d725194760ca69296eba",
+      "sha256": "2b2bad830255831ac405db6bdab65503ed3b33bda33cd419873478f13cd843b4",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__attention__attention_v1.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/attention.py",
+      "base_sha256": "80a72cea4f614e8d0406043e51eb786b7e5adcce317d52b5739d2013adb8d781",
+      "sha256": "f9a358dec978916d88d03ae89da3705c0dc0886c515e3dd4d520004c2b812240",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__models__glm5next__attention.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/cache_config.py",
+      "base_sha256": "00559085edd75a1719254b3f52dedbcd4fb0ce93c511b17c06ab3d975ed2e1e4",
+      "sha256": "6b7a627d227f885f20373fb50f1080471dd1f1104b060d70b22b78232419d98d",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__models__glm5next__cache_config.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/cache_views.py",
+      "base_sha256": "fc1b5c82a35f7256375b2c74e90f3944250f82a1b8ff834f2a6dc830dd426da6",
+      "sha256": "c3c8e84f63feaef823d798dd8ed90ab1b37615aeebcb1640f4b55b3336058b1a",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__models__glm5next__cache_views.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/model.py",
+      "base_sha256": "2a9381fa5897578bf4922b4b2bef99635dbc58236cd0f31fe5f93664b7252bbe",
+      "sha256": "2a5c8ad20896d0ab0d131f7679430a8cbf3000a30560b6f1ed5f6393b3552e9c",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__models__glm5next__model.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/qwen3_dspark.py",
+      "base_sha256": "455174b03eafa3a3389fa7c17f3d228a3817fdd31ff5ec89eab1d60acad3835c",
+      "sha256": "c6e79b0e754fca39b5a63ce1b75058bbd486b688810fe527aeabb10e13c9e66f",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__models__qwen3_dspark.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/ops/rotary_embedding.py",
+      "base_sha256": "403e1d0c0cac58a82898fa2596b923b60f19392d23560f4609967e4dfc8a411a",
+      "sha256": "639db7e6cd30a1dd827621cdc7eb5c034a756ec1a6fabff1a20cf90fcc01987e",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__ops__rotary_embedding.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/ops/triton/glm5_next_lightning_indexer.py",
+      "base_sha256": "9b74018bcf5f41bc78f0b0099569d799540c6df424fd860a051f94876011bb81",
+      "sha256": "b2c81348a107496dd4d5e35d8f1f2e57df0dec44514df88095767c7e84d8ac85",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__ops__triton__glm5_next_lightning_indexer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/__init__.py",
+      "base_sha256": "64e4ae9c96beafb61fb19c40b868cd9673c5355a2e4624f3178bca8660fc2027",
+      "sha256": "6c14f29f6301bdccd0f760e66d9498d69b3d7c213644d4ed0a9ad6b9a41ea912",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__patch__platform____init__.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_kv_cache_coordinator.py",
+      "base_sha256": "828169b4c131a6e42f01be91ce87a36fd1b6025d9f6607eb75e68df9dbf17634",
+      "sha256": "67ff196bd640439eb81d046d0be6c6615fafce94387809ca53064c931ac6342b",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__patch__platform__patch_kv_cache_coordinator.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_v1_dflash2_support.py",
+      "base_sha256": null,
+      "sha256": "b08334f21224a2a2c804419d4351e274a11f03627a4fe43362c6861415bb9757",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__patch__platform__patch_v1_dflash2_support.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/prefix_checkpoint_lifetime.py",
+      "base_sha256": null,
+      "sha256": "dff5e809d6ed1cb9d6fcf596daf4254cd5c75bd30fb89d8db110560f9db94491",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__patch__platform__prefix_checkpoint_lifetime.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/quantization/methods/w8a8/w8a8_dynamic.py",
+      "base_sha256": "a67601ee596d9aa4ae72ea3638f67ff7236cd8df884564bcd19f33653a1e0910",
+      "sha256": "6a17665efdde96b387bcc439e5cda732c166c6168cc0ee314337d53ed1bca879",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__quantization__methods__w8a8__w8a8_dynamic.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/dflash2_proposer.py",
+      "base_sha256": "f46d9d2b2559c5771dc76328002b8d31933308ed1345ea937cf6d8a9f3996f7a",
+      "sha256": "b76d47cebf14c33b647b1f6fc4d8a48653d7b2478876a212918317dc78548539",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__spec_decode__dflash2_proposer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/dflash_proposer.py",
+      "base_sha256": "f3b736f44a59ec0831aa7f2849e2eae6d709951e955992b8016f49e772fce3ff",
+      "sha256": "00b6084abc80903afa45f8f1ea40949435d5a07f2f09fa93a849665b3848814a",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__spec_decode__dflash_proposer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/llm_base_proposer.py",
+      "base_sha256": "b4925648562de8cffd7bf678bf695d512c184d70484b949c42a40897793b8b07",
+      "sha256": "1e0607eb35ef526eeafeaf93e9f657e565e572fe52e279179e4bada5ee504d27",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__spec_decode__llm_base_proposer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py",
+      "base_sha256": "7fdd01b9e77c69a93282a7ca8e63bd80f30b3781e85a62369264efd5c312f75e",
+      "sha256": "dd6a969fab8e550d0ac89745a424258a4900616ac76feffe662745b7ee86a413",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__worker__model_runner_v1.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/worker/worker.py",
+      "base_sha256": "9d938de914cb6a8c6366a11ec63b3d3487204bf3d216884e307650e2e2d0c608",
+      "sha256": "f3ffa97f3e499781ced4b63f48392eeb61b20e15d730da3c7052ff0a79bde24d",
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__worker__worker.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm/vllm/v1/core/single_type_kv_cache_manager.py",
+      "base_sha256": "0233531d85aeced9e57a38c76d83db970519c92902b7e55484390cb2b64985bf",
+      "sha256": "3d406090330d00f19ce3ef946d5d07a99d681b65b5434c3b002ed651f22a5726",
+      "patch": "patches/vllm-workspace__vllm__vllm__v1__core__single_type_kv_cache_manager.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/worker/runveil_threads.py",
+      "base_sha256": null,
+      "patch": "patches/vllm-workspace__vllm-ascend__vllm_ascend__worker__runveil_threads.py.patch",
+      "sha256": "84587fa3ea90ac74d19c37eb869dc5de433b45abe39b5f21a1e7210b36adc3b8"
+    }
+  ]
+}

@@ -606,5 +606,129 @@ specs:
       endpoint: /metrics
       inherit: vllm
   shm_bytes: 137438953472
+# Ascend 910B (A2), eight 64 GiB cards, TP8, pure-text W8A8 with an ACL
+# decode graph. The image's vLLM-Ascend has no 910B path for this model, so
+# assets/runtime-910b.tar.gz carries a checked source overlay (target hidden
+# states, hybrid cache, text-only weight mapping, bounded indexer RoPE,
+# container-local CANN extension load); install.py verifies every module
+# against the pinned image before copying. serve.py derives --hf-overrides
+# from the mounted checkpoint's text_config, and warmup.py loads the CANN
+# extensions and checks the patched weight loader before vLLM starts.
+# Source and builder: build/inference-templates/glm53-910b/. The two
+# GPUWORKS_RUNVEIL_* switches are read only by that overlay, nothing else in
+# the platform: GPUWORKS_RUNVEIL_BG_THREAD_BALANCE detects the tracer and is
+# inert without one, while GPUWORKS_RUNVEIL_WAITPID_WORKAROUND acts whenever
+# it is set, taking the same build and RoPE paths in a native container. The
+# measured profile is this one, on udocker. First start compiles the
+# extensions and captures graphs, so allow a long start timeout.
+- name: w8a8-vllm-910b-graph-tp8
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · 8 卡 · 纯文本
+  display_name_en: 910B (A2) · INT8 W8A8 · 8 cards · text only
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a
+  weights:
+    quantization: w8a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+        revision: fce3173cef79062469745b520c6742883e60a166
+  weight_bytes: 331764803315
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args:
+  - --max-model-len
+  - '133120'
+  - --data-parallel-size
+  - '1'
+  - --data-parallel-size-local
+  - '1'
+  - --seed
+  - '1024'
+  - --safetensors-load-strategy
+  - prefetch
+  - --max-num-seqs
+  - '32'
+  - --max-num-batched-tokens
+  - '8192'
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --tool-call-parser
+  - glm47
+  - --reasoning-parser
+  - glm47
+  - --enable-auto-tool-choice
+  - --gpu-memory-utilization
+  - '0.85'
+  - --api-server-count
+  - '1'
+  - --cudagraph-metrics
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1,2,4,8,16,32]}'
+  - --async-scheduling
+  - --additional-config
+  - '{"multistream_overlap_shared_expert":true}'
+  - --enable-chunked-prefill
+  env:
+    GPUWORKS_RUNVEIL_BG_THREAD_BALANCE: '1'
+    GPUWORKS_RUNVEIL_WAITPID_WORKAROUND: '1'
+    HCCL_BUFFSIZE: '1024'
+    HCCL_CONNECT_TIMEOUT: '1200'
+    HCCL_EXEC_TIMEOUT: '3600'
+    HCCL_OP_EXPANSION_MODE: HOST
+    HCCL_SOCKET_IFNAME: lo
+    HF_HUB_OFFLINE: '1'
+    MAX_JOBS: '1'
+    OMP_NUM_THREADS: '1'
+    PYTHONFAULTHANDLER: '1'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    TASK_QUEUE_ENABLE: '0'
+    TORCHNPU_PRECOMPILE_THREADS: '4'
+    TP_SOCKET_IFNAME: lo
+    TRANSFORMERS_OFFLINE: '1'
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: '3000'
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+  entrypoint:
+  - /bin/bash
+  - -c
+  - source /usr/local/Ascend/ascend-toolkit/set_env.sh && source /usr/local/Ascend/cann-9.2.1/share/info/ascendnpu-ir/bin/set_env.sh && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec python /opt/gpuworks/glm53-910b/serve.py "$@"
+  - --
+  pre_start_argv:
+  - /bin/bash
+  - -c
+  - python /opt/gpuworks/glm53-910b/install.py && source /usr/local/Ascend/ascend-toolkit/set_env.sh && source /usr/local/Ascend/cann-9.2.1/share/info/ascendnpu-ir/bin/set_env.sh && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && python /opt/gpuworks/glm53-910b/warmup.py
+  assets:
+  - file: assets/runtime-910b.tar.gz
+    sha256: aa216d7ac8416063da8fed385250f3e391a5d5e54d07b67abb9b7f2198dbd8ae
+    size_bytes: 218450
+    unpack_to: /opt/gpuworks/glm53-910b
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 8:\n        return reject(\"requires exactly 8 logical 910B devices on one node\")\n    if gpu.min_memory_gib < 64:\n        return reject(\"requires at least 64 GiB per logical device\")\n    return accept(gpu_memory_mib_per_device=45056, variables={\"GPU_COUNT\": 8, \"TP_SIZE\": 8, \"SP_DEGREE\": 1})\n"
+  components:
+  - name: primary
+    role: primary
+    weights:
+      quantization: w8a8
+      sources:
+      - modelscope:
+          repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+          revision: fce3173cef79062469745b520c6742883e60a166
+    weight_bytes: 331764803315
+    mount_path: /model
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  shm_bytes: 536870912000
 readme_zh_cn: README.zh-CN.md
 readme_en: README.en.md

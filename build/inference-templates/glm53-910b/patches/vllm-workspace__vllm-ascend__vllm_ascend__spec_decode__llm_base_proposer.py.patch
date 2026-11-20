@@ -1,0 +1,44 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/llm_base_proposer.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/llm_base_proposer.py
+@@ -10,7 +10,13 @@
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+-from vllm.config import CUDAGraphMode, VllmConfig, get_layers_from_vllm_config, set_current_vllm_config
++from vllm.config import (
++    CUDAGraphMode,
++    CompilationMode,
++    VllmConfig,
++    get_layers_from_vllm_config,
++    set_current_vllm_config,
++)
+ from vllm.distributed.parallel_state import (
+     get_dcp_group,
+     get_pp_group,
+@@ -147,6 +153,13 @@
+         draft_vllm_config = copy.copy(draft_vllm_config)
+         draft_vllm_config.model_config = copy.copy(draft_vllm_config.model_config)
+         draft_vllm_config.model_config.runner_type = self.speculative_config.draft_model_config.runner_type
++        if self.speculative_config.enforce_eager:
++            # Graph suppression alone leaves the draft's AOT/FX path enabled.
++            # Keep this config separate so the target retains its decode graph.
++            draft_vllm_config.model_config.enforce_eager = True
++            draft_vllm_config.compilation_config = copy.copy(draft_vllm_config.compilation_config)
++            draft_vllm_config.compilation_config.mode = CompilationMode.NONE
++            draft_vllm_config.compilation_config.cudagraph_mode = CUDAGraphMode.NONE
+         return draft_vllm_config
+ 
+     @staticmethod
+@@ -246,7 +259,11 @@
+         # the target model's graph-mode setting untouched.
+         # TODO(lilinsiman): Remove this code segment after future versions of the GLM
+         # series models support graph input for speculative inference.
+-        if _is_glm_model(self.vllm_config.model_config) and not self._glm_draft_graph_supported:
++        if (
++            _is_glm_model(self.vllm_config.model_config)
++            and _is_glm_model(self.speculative_config.draft_model_config)
++            and not self._glm_draft_graph_supported
++        ):
+             if self.use_cuda_graph:
+                 logger.warning(
+                     "GLM series models with speculative decoding currently do "
