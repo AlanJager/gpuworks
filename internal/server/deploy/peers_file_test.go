@@ -238,3 +238,25 @@ func TestPlatformFileDirIsReserved(t *testing.T) {
 		}
 	}
 }
+
+// A multi-node launch resolved before its group is placed (the deployment
+// form's summary plan) has no peers yet; ${GPUWORKS_PEERS_FILE} still expands
+// to the path every rank will get, and nothing claims the file is mounted.
+func TestPeersFileVariableResolvesBeforeTheGroupIsPlaced(t *testing.T) {
+	params := peersParams(0)
+	params.Peers = nil
+	params.TemplateArgs = append(append([]string(nil), peersCallableArgs...), "--peers", "${GPUWORKS_PEERS_FILE}")
+	launch, err := callableLaunch(t, params, ResolveLaunchInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if launch.Argv[len(launch.Argv)-1] != proto.PeersFileMountPath {
+		t.Fatalf("argv = %q", launch.Argv)
+	}
+	if launch.Peers != nil {
+		t.Fatalf("peers = %+v, want none before the group is placed", launch.Peers)
+	}
+	if _, set := launch.Env[PeersFileEnv]; set {
+		t.Fatalf("env names a peers file: %v", launch.Env)
+	}
+}

@@ -131,7 +131,7 @@ sleep、LoRA、投机解码、KV 卸载等特性只在对应字典字段被声�
 
 ### 多机 peers 文件（`GPUWORKS_PEERS_FILE`）
 
-多机部署（`nnodes > 1`，含多机 PD 角色）的每个 rank 都带一份只读 JSON，列出同组全部 rank 的位置，配方据此写自己的 rendezvous 或 rank table（fleet.conf、HCCL rank table、Mooncake 配置等），不必自建发现。文件在 `/gpuworks/peers.json`：agent 把它写在实例自己的运行时挂载目录里并只读挂载到这里，容器每次启动重写，实例删除时一并删除。路径既是启动变量 `${GPUWORKS_PEERS_FILE}`（模板的 args、env、准备脚本与手写命令里都会展开），也以同名同值的系统层 env `GPUWORKS_PEERS_FILE` 出现在容器里。没有 peers 文件的启动（单机、agent 不支持）在模板字段里引用 `${GPUWORKS_PEERS_FILE}` 会报错，和单机引用 `${GPUWORKS_MASTER_ADDR}` 一样；手写命令里则与其他本次没有的变量一样留给 shell。`/gpuworks` 是平台放自己文件的目录，见[推理目录语法](inference-catalog-spec.md#变量展开)中的平台路径规则。
+多机部署（`nnodes > 1`，含多机 PD 角色）的每个 rank 都带一份只读 JSON，列出同组全部 rank 的位置，配方据此写自己的 rendezvous 或 rank table（fleet.conf、HCCL rank table、Mooncake 配置等），不必自建发现。文件在 `/gpuworks/peers.json`：agent 把它写在实例自己的运行时挂载目录里并只读挂载到这里，容器每次启动重写，实例删除时一并删除。路径既是启动变量 `${GPUWORKS_PEERS_FILE}`（模板的 args、env、准备脚本与手写命令里都会展开），也以同名同值的系统层 env `GPUWORKS_PEERS_FILE` 出现在容器里。多机启动里这个变量总展开为该路径，组内 rank 尚未放置时（如部署表单的汇总预览）也一样，文件是否挂载另由 peers 决定；单机启动在模板字段里引用 `${GPUWORKS_PEERS_FILE}` 会报错，和单机引用 `${GPUWORKS_MASTER_ADDR}` 一样；手写命令里则与其他本次没有的变量一样留给 shell。`/gpuworks` 是平台放自己文件的目录，见[推理目录语法](inference-catalog-spec.md#变量展开)中的平台路径规则。
 
 内容在组被放置时确定（对应 Go 类型 `proto.PeersFile`，决策见 [ADR 0078](../adr/0078-multi-node-peers-file.md)），各 rank 的文件只有 `node_rank` 不同。字段名沿用启动变量（`node_rank`、`nnodes`、`node_addr`、`master_addr`、`master_port`，即对应变量的小写）与网络接口的词汇（节点的 `interface`、`hcas`，每条 rail 的 `name`、`netdev`、`ip`）；凡是同时作为启动变量存在的值，在每个 rank 上都与该 rank 的启动变量相等：
 
