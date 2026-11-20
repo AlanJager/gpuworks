@@ -55,38 +55,6 @@ LINT_BIN := $(CURDIR)/$(BIN)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION)-$(LINT
 
 all: build
 
-# Clustered control plane. The server stays a pure Go binary; the replicated
-# database node runs in gpuworks-dqlite, the only cgo program. dqlite-deps
-# builds pinned static musl libraries and a patched go-dqlite copy into
-# DQLITE_PREFIX; nothing is installed on the host (scripts/dqlite/README.md).
-DQLITE_PREFIX ?= $(CURDIR)/tmp/dqlite/mainline-amd64
-DQLITE_CACHE  ?= $(CURDIR)/tmp/dqlite/cache
-DQLITE_JOBS   ?= 4
-DQLITE_FLAGS  ?=
-DQLITE_TAGS   := dqlite,nosqlite3
-# The recipe never downloads a toolchain, so hand it the one go.mod selects.
-DQLITE_GO     ?= $(shell $(GO) env GOROOT)/bin/go
-.PHONY: dqlite-deps dqlite-helper test-dqlite-helper server-linux-amd64-dqlite server-linux-amd64-dqlite-prebuilt-ui
-## dqlite-deps: build the pinned native dqlite libraries and Go SDK (Linux amd64)
-dqlite-deps:
-	GO="$(DQLITE_GO)" ./scripts/build_dqlite.sh --output "$(DQLITE_PREFIX)" --cache "$(DQLITE_CACHE)" --jobs $(DQLITE_JOBS) $(DQLITE_FLAGS)
-
-## dqlite-helper: build the static cgo database helper bin/gpuworks-dqlite-linux-amd64
-dqlite-helper: dqlite-deps
-	bash -c 'export GO="$(DQLITE_GO)" && source "$(DQLITE_PREFIX)/env.sh" && $(GO) build -buildvcs=false -trimpath -tags=$(DQLITE_TAGS) -ldflags="-s -w -linkmode external" -o $(BIN)/gpuworks-dqlite-linux-amd64 ./cmd/gpuworks-dqlite'
-	@if readelf -lW $(BIN)/gpuworks-dqlite-linux-amd64 | grep -q INTERP; then echo "gpuworks-dqlite must be statically linked" >&2; exit 1; fi
-
-## test-dqlite-helper: run the helper's process-level tests against the native libraries
-test-dqlite-helper: dqlite-deps
-	bash -c 'export GO="$(DQLITE_GO)" && source "$(DQLITE_PREFIX)/env.sh" && $(GO) test $(GO_TEST_FLAGS) -count=1 -tags=$(DQLITE_TAGS) -ldflags="-linkmode external" ./cmd/gpuworks-dqlite'
-
-## server-linux-amd64-dqlite: pure Go server with the clustered runtime, bin/gpuworks-linux-amd64-dqlite
-# The server uses the same patched go-dqlite copy as the helper (its client and
-# driver carry fixes), but no C code: only the SDK environment is sourced.
-server-linux-amd64-dqlite: dqlite-deps ui cross-agents server-linux-amd64-dqlite-prebuilt-ui
-server-linux-amd64-dqlite-prebuilt-ui:
-	bash -c 'export GO="$(DQLITE_GO)" && source "$(DQLITE_PREFIX)/go-sdk/env.sh" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -buildvcs=false -trimpath -tags=$(DQLITE_TAGS) -ldflags "$(LDFLAGS)" -o $(BIN)/gpuworks-linux-amd64-dqlite $(SERVER_PKG)'
-
 .PHONY: docs-pdf
 ## docs-pdf: build the bilingual site and print validated, versioned user handbooks
 docs-pdf: check-doc-links check-translations
@@ -296,11 +264,29 @@ test-sglang-video-cancel-assets:
 	python3 -B build/sglang-video-cancel/test_install.py
 	python3 -B build/sglang-video-cancel/build.py --check
 
+## test-dqlite-engine: the clustered engine's tests (-tags=dqlite,nosqlite3).
+## In that build every test that opens the store starts the database process,
+## which this repository does not build: GPUWORKS_DQLITE_BIN must name the
+## gpuworks-dqlite executable of a build that ships the cluster runtime.
+## Without it the suite is skipped, or fails under GPUWORKS_TEST_STRICT=1.
+## DQLITE_ENGINE_PKGS narrows the packages.
+DQLITE_ENGINE_PKGS ?= ./internal/server/... ./internal/testenv/...
+.PHONY: test-dqlite-engine
+test-dqlite-engine:
+	@if [ -n "$$GPUWORKS_DQLITE_BIN" ] && [ -f "$$GPUWORKS_DQLITE_BIN" ] && [ -x "$$GPUWORKS_DQLITE_BIN" ]; then \
+		CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) -count=1 -tags='dqlite,nosqlite3' $(DQLITE_ENGINE_PKGS); \
+	elif [ "$$GPUWORKS_TEST_STRICT" = 1 ]; then \
+		echo "test-dqlite-engine: GPUWORKS_DQLITE_BIN must name the gpuworks-dqlite executable" >&2; exit 1; \
+	else \
+		echo "test-dqlite-engine: SKIP, GPUWORKS_DQLITE_BIN does not name the gpuworks-dqlite executable; no clustered engine test ran"; \
+	fi
+
 ## check-tagged-build: compile every build-tag suite without running it, so a
 ## refactor cannot break an opt-in lane while the untagged suite stays green
 ## (core-test runs this too)
 check-tagged-build:
 	CGO_ENABLED=0 $(GO) test -tags='multiproc' ./test/l2 -run '^$$'
+	CGO_ENABLED=0 $(GO) vet -tags='dqlite,nosqlite3' ./internal/server/... ./internal/testenv/...
 	CGO_ENABLED=0 $(GO) test -tags='docker' ./test/l3 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='kind' ./test/l3kind -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,runpod' ./test/l4 -run '^$$'

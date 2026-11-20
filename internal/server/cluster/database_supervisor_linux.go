@@ -49,6 +49,8 @@ var helperDied = func(err error) {
 type helperIdentity struct {
 	ID      uint64 `json:"id"`
 	Address string `json:"address"`
+	// Protocol is the contract version the child speaks.
+	Protocol int `json:"protocol"`
 }
 
 type helperProcess struct {
@@ -163,6 +165,19 @@ func helperStartRetryable(err error) bool {
 	return strings.Contains(text, "lock is held by another process") || strings.Contains(text, "address already in use")
 }
 
+// checkHelperProtocol refuses a database process that speaks another version
+// of the contract. A process that states none predates the check.
+func checkHelperProtocol(reported int) error {
+	switch {
+	case reported == HelperProtocolVersion:
+		return nil
+	case reported == 0:
+		return fmt.Errorf("dqlite helper did not report a protocol version; this server supports version %d and the helper predates it, install the helper shipped with this server", HelperProtocolVersion)
+	default:
+		return fmt.Errorf("dqlite helper speaks protocol version %d; this server supports version %d, install the helper shipped with this server", reported, HelperProtocolVersion)
+	}
+}
+
 // startHelper starts the child and waits for its identity line. The child is
 // not bound to ctx after that: only stop ends it.
 func startHelper(ctx context.Context, args []string) (*helperProcess, helperIdentity, error) {
@@ -202,6 +217,8 @@ func startHelper(ctx context.Context, args []string) (*helperProcess, helperIden
 	case err := <-line:
 		if err != nil {
 			readErr = fmt.Errorf("dqlite helper did not report its address: %w", err)
+		} else if err := checkHelperProtocol(info.Protocol); err != nil {
+			readErr = err
 		} else if info.ID == 0 || info.Address == "" {
 			readErr = errors.New("dqlite helper reported an incomplete identity")
 		}

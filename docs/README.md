@@ -46,7 +46,6 @@
 - [接入 Slurm 集群（含阿里云 E-HPC）](how-to/connect-slurm-nodes.md)
 - [给控制台一个公网地址](how-to/expose-public-address.md)
 - [生产环境部署](how-to/deploy-production.md)
-- [安装三成员控制面集群](how-to/control-plane-cluster.md)
 - [配置节点网络](how-to/configure-networks.md)
 
 **模型与镜像**

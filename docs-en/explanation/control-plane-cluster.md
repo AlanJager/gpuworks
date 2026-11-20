@@ -1,6 +1,8 @@
 # Control-Plane Cluster Behaviour and Limits
 
-This page explains how a three-member control-plane cluster behaves when members fail, and what this release does not do. For installation, see [Install a three-member control-plane cluster](../how-to/control-plane-cluster.md).
+This page explains how a three-member control-plane cluster behaves when members fail, and what this release does not do.
+
+The community distribution carries neither the cluster runtime nor any cluster command: the cluster engine stays in this repository behind the `dqlite` build tag, and the default build leaves it out. The installation commands, the database helper `gpuworks-dqlite`, and its native build come with a distribution that ships the cluster runtime; see that distribution's documentation for the installation steps.
 
 ## Composition
 
@@ -24,8 +26,23 @@ These are limits of this release.
 - **In-flight streams are not resumed.** On a failover, streamed answers and image or model transfers that are already open end with the member that holds them; the client has to start again. A failure after a request has been forwarded is not retried.
 - **An agent is served by the member that holds its connection.** Members do not forward agent sessions to each other: an operation that needs the agent but arrives through another member is not guaranteed to work. After the agent reconnects through the entry, the new member serves it.
 - **Revoking a member key at run time applies to new database connections only.** Established connections are not cut.
-- **There is no recovery-time guarantee.** Writes resume after a leader election and after members reopen business; the time depends on the storage's synchronous write latency and on the network. It grows clearly on slow disks; no number of seconds is guaranteed here. The [storage tier](../how-to/control-plane-cluster.md#storage-tiers) settled at installation sets the election wait; what it lists is a recovery target, not a guarantee.
+- **There is no recovery-time guarantee.** Writes resume after a leader election and after members reopen business; the time depends on the storage's synchronous write latency and on the network. It grows clearly on slow disks; no number of seconds is guaranteed here. The [storage tier](#storage-tiers) settled at installation sets the election wait; what it lists is a recovery target, not a guarantee.
 - **The first start is slow.** Migrations on a new database commit one by one and are synchronized to the majority.
 - **Only Linux amd64 members are supported**; the helper is the only artifact that uses cgo.
 
-<!-- translation-source-sha256: a6ee751b76162798f7e8961c99308bdfe209045c28f1f0513d5ace5657b3dfce -->
+## Storage Tiers
+
+Every commit in the cluster waits for a majority of members to finish one synchronous write. The database holds a new election after it has not reached the leader for some time; the storage tier sets that time, and the three members must agree on it. The tier is settled at installation and recorded by the first node as `storage_tier` in `<data directory>/cluster-enrollment/config.json` (`standard` writes no key); the other members get it from the cluster when they join.
+
+| Tier | Wait before a follower starts an election | Suitable storage | Recovery target after the leader process is killed |
+|---|---|---|---|
+| `standard` | 150–300 ms | Synchronous writes never stall for 150 ms or more | 10 seconds |
+| `slow-storage` | 0.75–1.5 s | Synchronous writes stall for hundreds of milliseconds to seconds (such as shared network storage) | 6 seconds |
+
+The recovery targets come from a small measured sample and are no guarantee for other storage. When the storage of all three members stalls for seconds at once, requests fail in both tiers.
+
+## Protocol Version of the Database Helper
+
+When the server starts the helper it reads the helper's one-line ready announcement, in which `protocol` is the protocol version the helper implements. The server accepts only the version it supports; with a different version, or with no version in the announcement, it refuses to start the database and the error names both versions. Install the helper and the server as a pair.
+
+<!-- translation-source-sha256: 7e2fc92ac1b551eaea2a9f717471f71b37c82b89160ea2426b96e708f30f4c05 -->

@@ -445,6 +445,11 @@ func (a *App) Run(ctx context.Context) error {
 	stopMember, err := a.startMember(ctx, errc)
 	if err != nil {
 		a.hub.StopSessions()
+		// A stop that arrives while the member is starting is the ordinary
+		// end of Run, as it is once the server is listening.
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+			return nil
+		}
 		return err
 	}
 	defer stopMember()

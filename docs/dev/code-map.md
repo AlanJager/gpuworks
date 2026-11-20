@@ -94,7 +94,7 @@
 - `featuregate`：功能可用性的叶子包（只依赖 `messages`）：功能键、四种可用性（完整、只读、锁定、隐藏）与预先构造的拒绝；扩展路由与控制台清单经它询问扩展模块提供的功能来源，社区路径从不查询。
 - `holdpass`：扩展模块请求的调度保持重新应用（`Host.ReapplySchedulingHolds`）：合并请求，两次全表写事务之间有下限间隔，失败退避重试；只依赖标准库，由 app 接进 `services()` 循环。
 - `selfinstall` / `installcred`：`gpuworks install` / `upgrade` 的实现（复制二进制、写 service 定义、从发布通道或发布站拉发布件、带备份可回滚）、控制台升级的启动守卫、无 systemd 时的 `serve --supervise` 守护循环，与首启 bootstrap admin 凭据记录（叶子包，install 与 server 两端共用，不得反向依赖 server）。
-- `cluster`（+`cluster/identity`）：控制面集群的数据库成员。启动并监管 `gpuworks-dqlite` 子进程（父进程退出时子进程随之退出），经 go-dqlite 的纯 Go client/driver 提供应用与本地调度两个 SQL 池、写入者准入、法定人数证明与快照、成员探测；`identity` 是成员证书、传输策略（允许与吊销的成员密钥）及其 TLS 校验。集群文件在 `linux && dqlite` 下构建，其余平台是返回不可用的桩。
+- `cluster`（+`cluster/identity`）：控制面集群的数据库成员。启动并监管 `gpuworks-dqlite` 子进程（父进程退出时子进程随之退出；辅助程序不在本仓库构建，就绪声明里的协议版本须等于 `HelperProtocolVersion`），经 go-dqlite 的纯 Go client/driver 提供应用与本地调度两个 SQL 池、写入者准入、法定人数证明与快照、成员探测；`identity` 是成员证书、传输策略（允许与吊销的成员密钥）及其 TLS 校验。集群文件在 `linux && dqlite` 下构建，其余平台是返回不可用的桩。
 - `enrollment`：成员加入用的注册协议客户端与目录、成员关系的线上类型。成员生命周期（关闭态成员、业务代际、材料复制与证明、业务门）在 `app` 的 `dqlite` 标签文件里；成员侧命令与三成员安装器在 `cli`。
 - `distribution`：发布通道客户端（ADR 0040）：签名信封与索引 schema、同时请求所有发布源取第一个验签通过的索引、文件按 sha256 校验并换源续传；发布方通知 `notices.json` 的 schema、校验、本地匹配与拉取（`notices.go`，ADR 0054）；默认源与信任公钥是包内常量。只依赖标准库（`check-architecture` 守护），selfinstall 与 api 共用。
 - `diagnostics`：远程排查。调试采集（server 与所选节点的 debug 会话、所选部署请求原文的记录，一次一个、按时长与大小自动结束）与诊断信息收集（时间范围内的日志、调试采集文件、节点诊断与脱敏的数据库快照打包下载）；数据源由 `app/diagnostics_sources.go` 提供，`gpuworks support-bundle` 走同一套收集。
@@ -175,7 +175,6 @@
 
 ## 辅助 cmd
 
-- `cmd/gpuworks-dqlite`：控制面集群的数据库辅助程序，唯一使用 cgo 的制品（`linux && cgo && dqlite`，静态链接 musl）。服务模式承载一个 dqlite 节点并在每次握手时按传输策略文件校验对端成员密钥；另有 `id`、`describe-last`、`reconfigure`、`isolated`、`inspect` 几个一次性子命令供 server 的离线操作调用。构建配方在 `scripts/build_dqlite.sh` 与 `scripts/dqlite/`。
 - `cmd/gpuworks-dist`：发布通道目录树的生成与核对（`assemble` 签名索引、`verify` 逐源读回、`newer` 防乱序、`prune` 挑旧版本），由 `scripts/publish_dist.sh` / `make dist-publish` 与 CI `release-publish` 调用；上传用 rclone，本工具不持有存储凭据。
 - `cmd/gpuworks-image-manifest`：从 gpuworks-runner 构建矩阵生成系统镜像目录 manifest（即内嵌种子 `imagecatalog/catalog-seed.json`，随发布进入发布通道），由 `make image-manifest` / `make image-manifest-verify` 调用；每个版本的 `registry_sources` 由 pullref 出厂改写规则推出，镜像仓清单只在 `pullref` 定义。
 - `cmd/template-probe`：推理模板目录 L1/L2/L3 校验 CLI（`l1|l2-command|l3|classify|alignment|calibrate`），面向目录维护者与 CI。
@@ -185,7 +184,7 @@
 
 - `l2/`（`-tags=multiproc`，真实 server/agent 二进制多进程）、
 - `l3/`（`-tags=docker`，容器级）、
-- `l4/`（`-tags=cloudgpu,<provider>`，云/真机；`l4/cmd/` 含 `cleanup-leaked`、`prepare-compshare-golden`、`prepare-aliyun-golden`、`ascend-nerdctl-verify`、`ha-drill-client`（`-tags=dqlite,nosqlite3`，用成员证书直连数据库端口查看 leader 与成员、读写测试行、转移 leader，供控制面集群的故障演练使用））、
+- `l4/`（`-tags=cloudgpu,<provider>`，云/真机；`l4/cmd/` 含 `cleanup-leaked`、`prepare-compshare-golden`、`prepare-aliyun-golden`、`ascend-nerdctl-verify`）、
 - `fake-engine/` / `fake-model/`（fake 引擎镜像与 tiny 模型）、
 - `ocifixture`（确定性合成 OCI 镜像，覆盖硬链接/软链接/whiteout/opaque dir/大 layer 等 Dockerfile 表达不了的边界）、
 - `runtime-wrapper-*`（runtime 包装镜像）、

@@ -46,7 +46,6 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Connect a Slurm Cluster (Including Alibaba Cloud E-HPC)](how-to/connect-slurm-nodes.md)
 - [Give the Console a Public Address](how-to/expose-public-address.md)
 - [Production Deployment](how-to/deploy-production.md)
-- [Install a Three-Member Control-Plane Cluster](how-to/control-plane-cluster.md)
 - [Configure Node Networks](how-to/configure-networks.md)
 
 **Models and Images**
@@ -153,4 +152,4 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - Do not use M numbers or relative paths outside the repository in current documentation. External research repository paths in historical logs are retained only as source references.
 - `CLAUDE.md` is the sole authority for development conventions; `CONTEXT.md` is the complete glossary. Guides in this directory only expand on procedures and link to those files.
 
-<!-- translation-source-sha256: d3b05bac62d97f59249a4afbc5fbfb4f31d88220b06c82859850658714ada86f -->
+<!-- translation-source-sha256: 94c0b8f5d812aee6370ae333076fcbd03f4a006ce1fa7f1787c1f45505f754fc -->

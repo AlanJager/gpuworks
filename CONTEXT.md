@@ -609,7 +609,7 @@ _Avoid_: HA 模式、高可用版（它不是一个版本，也不是功能键�
 _Avoid_: 节点、副本（节点专指运行 agent 的 GPU 主机）
 
 **数据库辅助程序 — Database Helper**:
-`gpuworks-dqlite`，承载成员的数据库节点的子进程，唯一使用 cgo 的制品；由 server 启动，随 server 退出。
+`gpuworks-dqlite`，承载成员的数据库节点的子进程，唯一使用 cgo 的制品；由 server 启动，随 server 退出。它不在本仓库构建，由带集群运行时的构建随 server 一起提供；server 只启动协议版本与自己一致的辅助程序。
 _Avoid_: dqlite 服务、数据库服务
 
 **传输策略 — Transport Policy**:
