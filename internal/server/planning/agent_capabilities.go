@@ -5,6 +5,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -27,7 +28,51 @@ func launchAgentCapabilities(launch deploy.ResolvedLaunch) []string {
 			break
 		}
 	}
+	if launch.Peers != nil {
+		caps = append(caps, proto.CapPeersFile)
+	}
 	return caps
+}
+
+// peersForAgent is the peers a rank launches with. A template that references
+// ${GPUWORKS_PEERS_FILE} needs the file, so it keeps them and an agent that
+// does not write peers files is refused (agentCapabilityRefusal). Every other
+// multi-node rank is given the file where its agent writes one and goes
+// without it elsewhere, as a multi-node launch did before the file existed;
+// the group's list still names that rank.
+func peersForAgent(req LaunchRequest) []proto.PeerRank {
+	if len(req.Topology.Peers) == 0 || req.AgentCaps == nil || PeersFileSupported(req.AgentCaps) || referencesPeersFile(req) {
+		return req.Topology.Peers
+	}
+	return nil
+}
+
+// referencesPeersFile reports whether a launch names its peers file through
+// the launch variable: in the template's launch fields under either spelling
+// (placement.Canonical), or in a manual command, which expands only the
+// prefixed one. The system-layer env a program might read is not a
+// reference: a launch that only reads the env goes without the file on an
+// older agent, which it can test for.
+func referencesPeersFile(req LaunchRequest) bool {
+	selection := req.Selection
+	fields := append(append(append([]string{}, selection.ExtraArgs...), selection.Entrypoint...), selection.PreStartArgv...)
+	fields = append(fields, selection.PreStartScript)
+	for key, value := range selection.Env {
+		fields = append(fields, key, value)
+	}
+	for _, name := range placement.References(fields...) {
+		if placement.Canonical(name) == placement.VarPeersFile {
+			return true
+		}
+	}
+	if deploy.CommandMode(req.Source.Overrides.CommandMode) == deploy.CommandManual {
+		for _, name := range placement.References(req.Source.Overrides.CmdDisplay) {
+			if name == placement.VariablePrefix+placement.VarPeersFile {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // agentCapabilityRefusal refuses a launch on a node whose agent lacks a

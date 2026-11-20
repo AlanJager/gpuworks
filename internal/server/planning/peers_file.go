@@ -56,10 +56,9 @@ func rankAddress(node *store.Node, compute *netplan.Resolved) string {
 }
 
 // PeersFileSupported reports whether a node's agent writes a launch's peers
-// file (proto.CapPeersFile). caps is what the agent advertised, nil when it
-// is offline or unknown, which counts as an agent that does not: a launch
-// that names a file the agent never writes fails later and less clearly than
-// one that names none.
+// file (proto.CapPeersFile). caps is what the agent advertised; nil (an
+// agent not connected) does not contain it, and peersForAgent decides what a
+// launch for an unknown agent gets.
 func PeersFileSupported(caps []string) bool {
 	return slices.Contains(caps, proto.CapPeersFile)
 }

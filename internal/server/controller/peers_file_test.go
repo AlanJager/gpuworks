@@ -84,7 +84,7 @@ func TestMultiNodeRanksLaunchWithTheGroupsPeersFile(t *testing.T) {
 		online[uuid] = true
 		caps[uuid] = []string{proto.CapPeersFile}
 	}
-	caps["gb10-3"] = nil // an agent that predates peers files
+	caps["gb10-3"] = []string{proto.CapLaunchNameVerbatim} // a connected agent that predates peers files
 	hub := &peersCapsHub{distributedTestHub: &distributedTestHub{online: online, updates: map[string][]proto.StateUpdate{}}, caps: caps}
 	c := New(st, hub, nil)
 	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {

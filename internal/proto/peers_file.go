@@ -1,15 +1,11 @@
 package proto
 
-import (
-	"path"
-	"strings"
-)
-
 // PlatformFileDir is the container directory the platform keeps for the files
 // it provides to a launch: the pre-start wrapper (pre-start.sh) and the peers
-// file (peers.json). No mount a deployment or a template states may be it,
-// lie inside it or contain it (PlatformFilePath), so a platform file can never
-// be shadowed and a new one never collides with a recipe's own mount.
+// file (peers.json). It is one more claim in the one container path space: no
+// mount a deployment or a template states may overlap it
+// (ContainerPathsOverlap), so a platform file can never be shadowed and a new
+// one never collides with a recipe's own mount.
 const PlatformFileDir = "/gpuworks"
 
 // PeersFileMountPath is where the agent mounts a launch's peers file,
@@ -17,13 +13,6 @@ const PlatformFileDir = "/gpuworks"
 // (deploy.PeersFileEnv), only on a launch that has a peers file, so a recipe
 // can test for the variable.
 const PeersFileMountPath = PlatformFileDir + "/peers.json"
-
-// PlatformFilePath reports whether a container path overlaps PlatformFileDir:
-// is it, lies inside it, or contains it (only "/", which no mount may be).
-func PlatformFilePath(target string) bool {
-	target = path.Clean(strings.TrimSpace(target))
-	return target == PlatformFileDir || strings.HasPrefix(target, PlatformFileDir+"/") || target == "/"
-}
 
 // PeersFileVersion is the shape of PeersFile the server writes. A reader
 // checks it: a field whose meaning changes gets a new version, while a field

@@ -688,6 +688,7 @@
     "MOUNT_CONTAINER_PATH": "挂载的容器路径必须是非根目录的绝对路径（{{target}}）。",
     "MOUNT_HOST_PATH": "挂载的宿主机路径必须是非根目录的绝对路径（{{source}}）。",
     "MOUNT_TARGET_NESTED": "挂载的容器目标路径不能互相嵌套：{{parent}} 与 {{child}}。",
+    "MOUNT_TARGET_RESERVED": "挂载的容器目标路径 {{target}} 与 {{reserved}} 重叠，那里是平台挂载自有文件（多机 peers 文件、准备脚本 wrapper）的位置，请换一个容器路径。",
     "QUICK_PARAM_JSON_INVALID": "{{key}} 必须是合法 JSON。",
     "QUICK_PARAM_PATH_INVALID": "{{key}} 必须是容器内的绝对非根路径。",
     "NETWORK_NOT_FOUND": "网络不存在。",

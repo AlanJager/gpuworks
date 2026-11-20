@@ -172,6 +172,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if req.DefaultStartTimeoutSec <= 0 {
 		req.DefaultStartTimeoutSec = st.DeploymentPolicy().StartTimeoutSec
 	}
+	req.Topology.Peers = peersForAgent(req)
 	input, err := launchInput(st, req)
 	if err != nil {
 		return LaunchPlan{}, err

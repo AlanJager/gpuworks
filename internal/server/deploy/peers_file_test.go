@@ -2,12 +2,14 @@ package deploy
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 )
 
@@ -208,6 +210,12 @@ func TestPlatformFileDirIsReserved(t *testing.T) {
 				t.Fatalf("%s: mount at %s err = %v, want it refused", name, target, err)
 			}
 		}
+	}
+	_, err := callableLaunch(t, peersParams(0), mount("/gpuworks/cache"))
+	var product *messages.ProductError
+	if !errors.As(err, &product) || product.Code() != messages.ErrorMountTargetReserved ||
+		product.Params()["target"] != "/gpuworks/cache" || product.Params()["reserved"] != proto.PlatformFileDir {
+		t.Fatalf("reserved mount err = %v, want %s naming the target and %s", err, messages.ErrorMountTargetReserved, proto.PlatformFileDir)
 	}
 	if _, err := callableLaunch(t, peersParams(0), mount("/gpuworks-data")); err != nil {
 		t.Fatalf("a path beside the platform's directory was refused: %v", err)

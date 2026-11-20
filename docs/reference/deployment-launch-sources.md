@@ -187,7 +187,7 @@ sleep、LoRA、投机解码、KV 卸载等特性只在对应字典字段被声�
 | `ranks[].interface` | 承载组 bootstrap 流量的主机网卡；未解析出时省略 |
 | `ranks[].hcas[]` | 参数网络在该节点上的 rail，顺序与 `NCCL_IB_HCA` 相同：主机 RDMA 网络为 RDMA 端口，加速卡网络为卡的端口，以太网为空。`name` 是平台对 rail 的命名（RDMA 端口为 `设备:端口`，如 `rocep1s0f1:1`；卡为 `npu3`），`device`、`port` 是 RDMA rail 拆开的设备与端口（卡为空），`netdev` 是持有该 rail 地址的主机网卡（RoCE 下即 GID 表对应地址所在的网卡，可能是端口之上的 bridge、bond），`ip` 是 rail 自己的 IPv4 地址（RoCE 为经端口 GID 表核实的地址，否则取网卡地址；IPoIB 地址；卡的端口地址），未上报时省略 |
 
-文件只写平台放置时已知、或 agent 上报的事实；RoCE GID index 这类在容器里探测的值不写。agent 不支持 peers 文件（能力 `launch.peers_file`，旧版本 agent 不宣告）的节点上，该 rank 既没有文件也没有这个变量；单机部署没有 peers 文件。
+文件只写平台放置时已知、或 agent 上报的事实；RoCE GID index 这类在容器里探测的值不写。peers 文件由 agent 写，按[模板与平台的分工](inference-catalog-spec.md#模板与平台的分工)里统一的 agent 能力规则下发（能力 `launch.peers_file`，旧版本 agent 不宣告）：模板在启动字段里引用 `${GPUWORKS_PEERS_FILE}` 时，旧 agent 的节点以 `agent_capability_missing` 拒绝；没有引用时，旧 agent 上的 rank 照常启动，只是既没有文件也没有这个环境变量（同组其他 rank 的文件里仍列出它）。单机部署没有 peers 文件，引用该变量会像引用 `MASTER_ADDR` 一样在部署时报错。
 
 ## 用户输入与容器覆盖
 

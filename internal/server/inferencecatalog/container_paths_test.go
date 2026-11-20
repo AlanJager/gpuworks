@@ -17,7 +17,7 @@ func TestSpecContainerPathsShareOneOverlapRule(t *testing.T) {
 		return &InferenceSpec{
 			Name:   "tp4",
 			Assets: []Asset{{File: "assets/a.tar", UnpackTo: "/opt/kit"}, {File: "assets/b.tar", UnpackTo: "/opt/kit"}},
-			Dirs:   []deploy.ManagedDir{{Name: "state", MountPath: "/state", LimitBytes: 1}},
+			Dirs:   []deploy.ManagedDir{{Name: "state", MountPath: "/state", LimitBytes: 1}, {Name: "data", MountPath: "/gpuworks-data", LimitBytes: 1}},
 		}
 	}
 	if err := validateContainerPaths("Org/Model", base()); err != nil {
@@ -28,7 +28,14 @@ func TestSpecContainerPathsShareOneOverlapRule(t *testing.T) {
 		field, otherField string
 	}{
 		"asset inside the model mount": {func(s *InferenceSpec) { s.Assets[0].UnpackTo = "/model/kit" }, "asset assets/a.tar unpack_to", "the model mount"},
-		"dir around an asset":          {func(s *InferenceSpec) { s.Dirs[0].MountPath = "/opt" }, "dir state mount_path", "asset assets/a.tar unpack_to"},
+		// /gpuworks is the platform's (the peers file, the pre-start
+		// wrapper): one more claim, refused by the same rule.
+		"asset in the platform directory": {func(s *InferenceSpec) { s.Assets[1].UnpackTo = "/gpuworks/kit" }, "asset assets/b.tar unpack_to", "the platform directory"},
+		"dir on the platform directory":   {func(s *InferenceSpec) { s.Dirs[0].MountPath = "/gpuworks" }, "dir state mount_path", "the platform directory"},
+		"component on the peers file": {func(s *InferenceSpec) {
+			s.Components = []Component{{Name: "main", Role: "primary", MountPath: "/model"}, {Name: "draft", Role: "speculative_draft", MountPath: "/gpuworks/peers.json"}}
+		}, "component draft mount_path", "the platform directory"},
+		"dir around an asset": {func(s *InferenceSpec) { s.Dirs[0].MountPath = "/opt" }, "dir state mount_path", "asset assets/a.tar unpack_to"},
 		"dir on the primary component": {func(s *InferenceSpec) {
 			s.Components = []Component{{Name: "main", Role: "primary", MountPath: "/weights"}}
 			s.Dirs[0].MountPath = "/weights/cache"

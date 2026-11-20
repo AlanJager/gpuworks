@@ -187,7 +187,7 @@ The content is fixed when the group is placed (its Go type is `proto.PeersFile`;
 | `ranks[].interface` | The host interface carrying the group's bootstrap traffic; omitted when none was resolved |
 | `ranks[].hcas[]` | The compute network's rails on that node, in the order `NCCL_IB_HCA` names them: RDMA ports on a host RDMA network, the cards' ports on an accelerator network, empty on Ethernet. `name` is the platform's name for the rail (`device:port` for an RDMA port, such as `rocep1s0f1:1`; `npu3` for a card), `device` and `port` are an RDMA rail's device and port split out (empty for a card), `netdev` the host interface holding the rail's address (for RoCE the interface whose address the port's GID table carries, which can be a bridge or bond above the port), and `ip` the rail's own IPv4 address (for RoCE the address verified against the port's GID table, otherwise the interface's; the IPoIB address; the card port's address); omitted when not reported |
 
-The file states only facts known when the platform placed the group or reported by the agents; values a container probes for itself, such as the RoCE GID index, are not included. On a node whose agent does not support peers files (capability `launch.peers_file`, which older agents do not advertise), that rank has neither the file nor the variable; single-node deployments have no peers file.
+The file states only facts known when the platform placed the group or reported by the agents; values a container probes for itself, such as the RoCE GID index, are not included. The agent writes the peers file, so it follows the one agent capability rule in [What the Template Declares and What the Platform Provides](inference-catalog-spec.md#模板与平台的分工) (capability `launch.peers_file`, which older agents do not advertise): when the template references `${GPUWORKS_PEERS_FILE}` in a launch field, an older agent's node is refused with `agent_capability_missing`; when it does not, a rank on an older agent starts as before, only with neither the file nor the environment variable (the other ranks' files still list it). Single-node deployments have no peers file, and referencing the variable fails at deployment, as referencing `MASTER_ADDR` does.
 
 ## User Input and Container Overrides
 
@@ -386,5 +386,5 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 - [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Image Catalog and Inference Image Families](image-families.md)
 - [Deploy Models](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation](../how-to/pd-disaggregation.md)
 
-<!-- translation-source-sha256: 873c163a45cd819e07cc26a961dfde008aa783f4725a51d88ce624723ab8a98e -->
+<!-- translation-source-sha256: b1581303ef2921535cc96a1502cbad0d43eeae0e6a2e2faa6fc5a54095484cc7 -->
 <!-- translation-localized-code-block: 87810a25cc9d7f6adbb697b3c419cb2727115525f01d20d8ba378215c02d16e7 9f5706e114d2dd907dd8185a9c7d45f2bdd0387155df33a59bb6930888f598f1 Translate explanatory comments and placeholders in runtime assembly illustration. -->

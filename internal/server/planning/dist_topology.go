@@ -32,8 +32,8 @@ type DistTopology struct {
 	NetworkID   uint
 	NetworkName string
 	// Peers is every rank of the group (GroupPeers), which the launch writes
-	// to the rank's peers file; nil for a single rank, and for a rank whose
-	// agent does not write one (PeersFileSupported).
+	// to the rank's peers file; nil for a single rank. PlanLaunch drops it
+	// for an agent that does not write one (peersForAgent).
 	Peers []proto.PeerRank
 }
 

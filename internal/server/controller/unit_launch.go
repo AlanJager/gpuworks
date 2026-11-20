@@ -292,7 +292,6 @@ func (c *Controller) planRank(ctx context.Context, dep *store.Deployment, node *
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	topology.Peers = c.peersFor(node, topology.Peers)
 	port := 0
 	if !topology.Headless {
 		var rejected *scheduler.Reason

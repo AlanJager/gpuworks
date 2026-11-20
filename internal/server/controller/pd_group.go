@@ -139,7 +139,6 @@ func (c *Controller) planPDRank(ctx context.Context, deployment *unitDeployment,
 	if err != nil {
 		return nil, planning.PDRecord{}, nil, err
 	}
-	topology.Peers = c.peersFor(node, topology.Peers)
 	pd.placement.RankLaunch(pd.mode, launch.role, launch.unit, launch.rank.Rank, topology, launch.ports).Apply(&req)
 	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
 	if err != nil || refusal != nil {

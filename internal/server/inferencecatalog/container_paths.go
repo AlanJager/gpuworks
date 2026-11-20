@@ -16,16 +16,20 @@ type containerPathClaim struct {
 	asset bool
 }
 
-// specContainerPaths lists every container path the spec claims, in the order
-// the spec's fields are documented: the primary model mount, each other
-// component's mount_path, each asset's unpack_to, each dir's mount_path. It
-// runs after the components are normalized, because the primary mount is the
-// primary component's.
+// specContainerPaths lists every container path the spec claims, after the
+// one the platform keeps for its own files (proto.PlatformFileDir: the peers
+// file, the pre-start wrapper), in the order the spec's fields are
+// documented: the primary model mount, each other component's mount_path,
+// each asset's unpack_to, each dir's mount_path. It runs after the components
+// are normalized, because the primary mount is the primary component's.
 func specContainerPaths(spec *InferenceSpec) []containerPathClaim {
-	claims := []containerPathClaim{{field: "the model mount", path: deploy.DefaultModelMount}}
+	claims := []containerPathClaim{
+		{field: "the platform directory", path: proto.PlatformFileDir},
+		{field: "the model mount", path: deploy.DefaultModelMount},
+	}
 	for _, component := range spec.Components {
 		if component.Role == "primary" {
-			claims[0].path = component.MountPath
+			claims[1].path = component.MountPath
 			continue
 		}
 		claims = append(claims, containerPathClaim{field: "component " + component.Name + " mount_path", path: component.MountPath})

@@ -1,10 +1,6 @@
 package deploy
 
 import (
-	"fmt"
-	"path"
-	"strings"
-
 	"gpuworks.ai/gpuworks/internal/proto"
 	placementeval "gpuworks.ai/gpuworks/internal/server/placement"
 )
@@ -63,27 +59,19 @@ func peersEnv(p Params) map[string]string {
 	return map[string]string{PeersFileEnv: proto.PeersFileMountPath}
 }
 
-// validatePlatformFileMounts refuses a mount that would shadow, or be
-// shadowed by, a file the platform provides in proto.PlatformFileDir: a
-// deployment's own mount, a template component's or a template-declared
-// directory alike. A launch of a deployment as stored keeps a mount it was
-// created with unless it now collides with the peers file it gets.
-func validatePlatformFileMounts(mounts []proto.MountSpec, peers bool, stored bool) error {
-	for _, mount := range mounts {
-		if !proto.PlatformFilePath(mount.Target) {
-			continue
-		}
-		if stored && !(peers && overlaps(mount.Target, proto.PeersFileMountPath)) {
-			continue
-		}
-		return fmt.Errorf("mount target %q is inside %s, which the platform keeps for the files it provides (such as %s)", mount.Target, proto.PlatformFileDir, proto.PeersFileMountPath)
+// platformFilePaths are the container paths a launch's mounts must stay clear
+// of (validateResolvedMounts) because the agent mounts the platform's own
+// files there: all of proto.PlatformFileDir, whatever the mount comes from (a
+// deployment row, a template component, asset or dir). A launch of a
+// deployment as stored keeps a mount it was created with, before the
+// directory was the platform's, unless it now covers the peers file it gets.
+func platformFilePaths(peers, stored bool) []string {
+	switch {
+	case !stored:
+		return []string{proto.PlatformFileDir}
+	case peers:
+		return []string{proto.PeersFileMountPath}
+	default:
+		return nil
 	}
-	return nil
-}
-
-// overlaps reports whether a mount at target would cover file: target is
-// the file or one of its directories.
-func overlaps(target, file string) bool {
-	target = path.Clean(strings.TrimSpace(target))
-	return target == file || target == "/" || strings.HasPrefix(file, target+"/")
 }
