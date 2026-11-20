@@ -69,6 +69,9 @@ func TestSpecDirsMayNotOverlapTheSpecsOwnContainerPaths(t *testing.T) {
 		"parent of mount":   {"- {name: state, mount_path: /mnt, limit_bytes: 1}", "overlaps component draft mount_path"},
 		"component mount":   {"- {name: state, mount_path: /mnt/draft, limit_bytes: 1}", "overlaps component draft mount_path"},
 		"asset unpack":      {"- {name: state, mount_path: /opt/plugin, limit_bytes: 1}", "overlaps asset"},
+		"same as a dir":     {"- {name: a, mount_path: /a, limit_bytes: 1}\n    - {name: b, mount_path: /a, limit_bytes: 1}", `dir b mount_path "/a" overlaps dir a mount_path "/a"`},
+		"inside a dir":      {"- {name: a, mount_path: /a, limit_bytes: 1}\n    - {name: b, mount_path: /a/b, limit_bytes: 1}", "overlaps dir a mount_path"},
+		"around a dir":      {"- {name: a, mount_path: /a/b, limit_bytes: 1}\n    - {name: b, mount_path: /a, limit_bytes: 1}", "overlaps dir a mount_path"},
 		"declaration rules": {"- {name: State, mount_path: /state, limit_bytes: 1}", "name"},
 		"unknown field":     {"- {name: state, mount_path: /state, limit_bytes: 1, path: /x}", "path"},
 	} {

@@ -424,32 +424,39 @@ func replaceManualServedName(command, servedName string) string {
 	return manualCommandServedNamePattern.ReplaceAllString(command, "${1}--served-model-name "+quoted)
 }
 
+// validateResolvedMounts is the launch's half of the one container path rule
+// (proto.ContainerPathsOverlap): every mount the launch makes - the model,
+// components, assets, template dirs, the KV disk tier, the deployment's own
+// rows and the compute network's files - is a valid target, and no two are the
+// same path or nest. A template's own paths were already checked against each
+// other at import (inferencecatalog.validateContainerPaths).
 func validateResolvedMounts(mounts []proto.MountSpec, modelMount string) error {
 	modelMount = path.Clean(strings.TrimSpace(modelMount))
-	seen := map[string]struct{}{modelMount: {}}
+	seen := []string{modelMount}
 	for _, mount := range mounts {
 		target := strings.TrimSpace(mount.Target)
 		if target == "" || !strings.HasPrefix(target, "/") || path.Clean(target) != target || target == "/" {
 			return fmt.Errorf("invalid target %q", mount.Target)
 		}
-		if _, duplicate := seen[target]; duplicate {
-			return messages.NewProductError(messages.ErrorMountTargetDuplicate,
-				fmt.Sprintf("two mounts target %s inside the container", target),
-				map[string]any{"target": target})
-		}
-		for existing := range seen {
-			if mountPathContains(existing, target) || mountPathContains(target, existing) {
-				return fmt.Errorf("nested mount targets %q and %q overlap", existing, target)
+		for _, existing := range seen {
+			if existing == target {
+				return messages.NewProductError(messages.ErrorMountTargetDuplicate,
+					fmt.Sprintf("two mounts target %s inside the container", target),
+					map[string]any{"target": target})
+			}
+			if proto.ContainerPathsOverlap(existing, target) {
+				parent, child := existing, target
+				if len(child) < len(parent) {
+					parent, child = child, parent
+				}
+				return messages.NewProductError(messages.ErrorMountTargetNested,
+					fmt.Sprintf("nested mount targets %q and %q overlap", parent, child),
+					map[string]any{"parent": parent, "child": child})
 			}
 		}
-		seen[target] = struct{}{}
+		seen = append(seen, target)
 	}
 	return nil
-}
-
-func mountPathContains(parent, child string) bool {
-	parent, child = path.Clean(parent), path.Clean(child)
-	return parent != "." && parent != "/" && strings.HasPrefix(child, parent+"/")
 }
 
 func parseOptionalCommand(value string) ([]string, error) {

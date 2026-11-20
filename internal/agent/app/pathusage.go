@@ -39,7 +39,7 @@ func statAgentOwnedPath(kind, path string) proto.PathUsage {
 }
 
 // managedDirUsage measures the filesystem managed directories live on (ADR
-// 0076) and names the other measured paths on the same filesystem, so the
+// 0077) and names the other measured paths on the same filesystem, so the
 // server charges a launch's image and weights against it only when they
 // share it (proto.PathUsage.SharesDiskWith).
 func managedDirUsage(root string, others []proto.PathUsage) proto.PathUsage {

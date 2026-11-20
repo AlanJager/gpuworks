@@ -25,9 +25,9 @@ func TestInferenceSpecDirsMigration(t *testing.T) {
 		}
 		return db
 	}
-	m := migrationByVersion(t, 230)
+	m := migrationByVersion(t, 231)
 	if m.Name != "inference_spec_dirs" {
-		t.Fatalf("migration 230 = %q", m.Name)
+		t.Fatalf("migration 231 = %q", m.Name)
 	}
 
 	db := open("spec-dirs-migration")
@@ -41,7 +41,7 @@ func TestInferenceSpecDirsMigration(t *testing.T) {
 		t.Fatalf("existing specs not empty = %d err=%v", null, err)
 	}
 	var marker SchemaMigration
-	if err := db.First(&marker, 230).Error; err != nil || marker.Name != "inference_spec_dirs" {
+	if err := db.First(&marker, 231).Error; err != nil || marker.Name != "inference_spec_dirs" {
 		t.Fatalf("marker = %+v err=%v", marker, err)
 	}
 	if err := migrateDB(db, []migration{m}); err != nil {
@@ -66,7 +66,7 @@ func TestInferenceSpecDirsMigration(t *testing.T) {
 		t.Fatal("dirs survived the failed migration")
 	}
 	var count int64
-	if err := rollback.Model(&SchemaMigration{}).Where("version = ?", 230).Count(&count).Error; err != nil || count != 0 {
+	if err := rollback.Model(&SchemaMigration{}).Where("version = ?", 231).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("marker count = %d err=%v", count, err)
 	}
 	if err := migrateDB(rollback, []migration{m}); err != nil || !rollback.Migrator().HasColumn(&InferenceSpecRow{}, "Dirs") {

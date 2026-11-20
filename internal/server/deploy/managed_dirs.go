@@ -94,9 +94,10 @@ func EncodeManagedDirs(dirs []ManagedDir) (string, error) {
 }
 
 // NormalizeManagedDirs trims and checks a declaration in place and writes the
-// default retention back, so a stored declaration is always explicit. It
-// checks the directories against each other; whether they collide with the
-// spec's other container paths is the catalog's check.
+// default retention back, so a stored declaration is always explicit. Whether
+// a mount_path collides with another directory's or any other container path
+// of the spec is the catalog's one container path check
+// (inferencecatalog.validateContainerPaths).
 func NormalizeManagedDirs(dirs []ManagedDir) error {
 	if len(dirs) > MaxManagedDirs {
 		return fmt.Errorf("dirs declares %d directories; at most %d are allowed", len(dirs), MaxManagedDirs)
@@ -125,11 +126,6 @@ func NormalizeManagedDirs(dirs []ManagedDir) error {
 		}
 		if dir.Retain != ManagedDirRetainDeployment {
 			return fmt.Errorf("dir %s retain %q is not supported (only %q)", dir.Name, dir.Retain, ManagedDirRetainDeployment)
-		}
-		for _, other := range dirs[:index] {
-			if other.MountPath == dir.MountPath || mountPathContains(other.MountPath, dir.MountPath) || mountPathContains(dir.MountPath, other.MountPath) {
-				return fmt.Errorf("dirs %s and %s have overlapping mount_paths %q and %q", other.Name, dir.Name, other.MountPath, dir.MountPath)
-			}
 		}
 	}
 	return nil

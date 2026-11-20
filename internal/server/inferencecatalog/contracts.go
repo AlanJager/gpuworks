@@ -126,7 +126,10 @@ func validateExecutableContract(modelID string, spec *InferenceSpec) error {
 	if err := validateComponents(where, spec); err != nil {
 		return err
 	}
-	return validateManagedDirs(where, spec)
+	if err := validateManagedDirs(where, spec); err != nil {
+		return err
+	}
+	return validateContainerPaths(modelID, spec)
 }
 
 // validateTemplateVariables refuses, at import, a launch no deployment could

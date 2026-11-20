@@ -155,6 +155,7 @@
     "insufficient_disk": "The node does not have enough disk space for the model weights. Free some disk space or select another node.",
     "insufficient_runtime_disk": "The runtime filesystem does not have enough space to unpack the selected image. Free runtime storage or select another node.",
     "insufficient_managed_dir_disk": "The node's managed-directory disk cannot hold the template's writable directories on top of the disk reserve (and the image and weights when they share that disk). Free space there or select another node.",
+    "agent_capability_missing": "The agent on {{node}} is older than this launch needs: it does not provide {{capability}}, which the inference template uses. Upgrade the node's agent or select another node.",
     "sleep_unsupported_on_node": "{{vendor}} nodes cannot put an engine to sleep. Turn off sleep for this deployment or select another node.",
     "multi_node_unsupported_on_node": "{{vendor}} nodes cannot run ranks across several nodes. Deploy on a single node or select other nodes.",
     "pd_unsupported_on_node": "PD disaggregation is not supported on {{vendor}} nodes. Select other nodes.",

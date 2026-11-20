@@ -268,7 +268,7 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 					"properties": map[string]any{
 						"name":        map[string]any{"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$", "description": "Unique within the spec; names the directory on the node."},
 						"mount_path":  map[string]any{"type": "string", "pattern": "^/.+", "description": "Absolute container path; may not overlap the model mount, a component mount_path, an asset unpack_to or another dir."},
-						"limit_bytes": map[string]any{"type": "integer", "minimum": 1, "maximum": deploy.MaxManagedDirLimitBytes, "description": "Most the template writes there, in GiB: reserved on every node at admission. The platform does not prune or cap the directory; staying within it is the recipe's job."},
+						"limit_bytes": map[string]any{"type": "integer", "minimum": 1, "maximum": deploy.MaxManagedDirLimitBytes, "description": "Most the template writes there, in bytes like the spec's other sizes: reserved on every node at admission. The platform does not prune or cap the directory; staying within it is the recipe's job."},
 						"retain":      map[string]any{"type": "string", "enum": []string{deploy.ManagedDirRetainDeployment}, "description": "How long the directory lives; deployment (the default) keeps it until the deployment is deleted."},
 					},
 				},

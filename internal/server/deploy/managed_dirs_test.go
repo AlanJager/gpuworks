@@ -34,20 +34,17 @@ func TestNormalizeManagedDirsRefusesWhatNoNodeCouldKeep(t *testing.T) {
 		dirs []ManagedDir
 		want string
 	}{
-		"too many":         {many, "at most"},
-		"empty name":       {[]ManagedDir{{MountPath: "/a", LimitBytes: 1}}, "name"},
-		"upper-case name":  {[]ManagedDir{{Name: "State", MountPath: "/a", LimitBytes: 1}}, "name"},
-		"path in name":     {[]ManagedDir{{Name: "../etc", MountPath: "/a", LimitBytes: 1}}, "name"},
-		"duplicate name":   {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: 1}, {Name: "a", MountPath: "/b", LimitBytes: 1}}, "duplicate"},
-		"relative path":    {[]ManagedDir{{Name: "a", MountPath: "a", LimitBytes: 1}}, "mount_path"},
-		"unclean path":     {[]ManagedDir{{Name: "a", MountPath: "/a/../b", LimitBytes: 1}}, "mount_path"},
-		"root path":        {[]ManagedDir{{Name: "a", MountPath: "/", LimitBytes: 1}}, "mount_path"},
-		"no size":          {[]ManagedDir{{Name: "a", MountPath: "/a"}}, "limit_bytes"},
-		"oversized":        {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: MaxManagedDirLimitBytes + 1}}, "limit_bytes"},
-		"unknown retain":   {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: 1, Retain: "node"}}, "retain"},
-		"same mount path":  {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: 1}, {Name: "b", MountPath: "/a", LimitBytes: 1}}, "overlapping"},
-		"nested mount":     {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: 1}, {Name: "b", MountPath: "/a/b", LimitBytes: 1}}, "overlapping"},
-		"nested the other": {[]ManagedDir{{Name: "a", MountPath: "/a/b", LimitBytes: 1}, {Name: "b", MountPath: "/a", LimitBytes: 1}}, "overlapping"},
+		"too many":        {many, "at most"},
+		"empty name":      {[]ManagedDir{{MountPath: "/a", LimitBytes: 1}}, "name"},
+		"upper-case name": {[]ManagedDir{{Name: "State", MountPath: "/a", LimitBytes: 1}}, "name"},
+		"path in name":    {[]ManagedDir{{Name: "../etc", MountPath: "/a", LimitBytes: 1}}, "name"},
+		"duplicate name":  {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: 1}, {Name: "a", MountPath: "/b", LimitBytes: 1}}, "duplicate"},
+		"relative path":   {[]ManagedDir{{Name: "a", MountPath: "a", LimitBytes: 1}}, "mount_path"},
+		"unclean path":    {[]ManagedDir{{Name: "a", MountPath: "/a/../b", LimitBytes: 1}}, "mount_path"},
+		"root path":       {[]ManagedDir{{Name: "a", MountPath: "/", LimitBytes: 1}}, "mount_path"},
+		"no size":         {[]ManagedDir{{Name: "a", MountPath: "/a"}}, "limit_bytes"},
+		"oversized":       {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: MaxManagedDirLimitBytes + 1}}, "limit_bytes"},
+		"unknown retain":  {[]ManagedDir{{Name: "a", MountPath: "/a", LimitBytes: 1, Retain: "node"}}, "retain"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := NormalizeManagedDirs(test.dirs); err == nil || !strings.Contains(err.Error(), test.want) {

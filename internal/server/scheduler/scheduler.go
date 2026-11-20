@@ -292,6 +292,12 @@ const (
 	// directories on cannot hold the template's declared directories on top
 	// of the disk reserve (and the image and weights when they share it).
 	ReasonInsufficientManagedDirDisk = "insufficient_managed_dir_disk"
+	// ReasonAgentCapabilityMissing: the launch uses a platform facility only
+	// the node's agent provides (a template's dirs, the peers file a template
+	// references), and the agent does not announce it (Params capability,
+	// node): it is older than the facility. Planning decides it from the
+	// resolved launch (planning.agentCapabilityRefusal).
+	ReasonAgentCapabilityMissing = "agent_capability_missing"
 	// No card takes work, and why, from the operator's side: the node has
 	// no card of its own (none at all, or all lent to virtual machines or
 	// held by another driver), its cards are held by processes outside the

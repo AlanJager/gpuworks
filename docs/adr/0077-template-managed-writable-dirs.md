@@ -30,16 +30,10 @@
 
 ## 各声明的分工
 
-| 声明 | 内容 | 读写 | 谁提供主机来源 | 生命周期 |
-|---|---|---|---|---|
-| `weights` / `components` | 平台下载的模型权重；兄弟改动（ADR 0076）以 `subfolder: rank${NODE_RANK}` 支持按 rank 的权重 | 只读 | 平台（模型存储） | 随模型 |
-| `assets` | 模板自带的小文件 | 只读 | 平台（模板包） | 随模板版本 |
-| `dirs` | 配方写的状态 | 读写 | 平台（节点的托管目录） | 随部署 |
-| KV 磁盘层 | vLLM 的 KV 缓存 | 读写 | 平台（节点的托管目录） | 随节点上的实例 |
-| 部署的 `extra_mounts` | 运维指定的主机路径或卷 | 按行设置 | 运维 | 不由平台管理 |
-| `GPUWORKS_PEERS_FILE`（兄弟改动） | 多机各 rank 的地址与网卡 | 只读 | 平台生成 | 随部署的放置 |
+`dirs` 与权重、组件、资产、KV 磁盘层、部署的 `extra_mounts` 各管一种容器内事实：只读的权重与资产随模型或模板版本，可写的 `dirs` 随部署，KV 磁盘层随节点上的实例，`extra_mounts` 不由平台管理。完整的一张表（含启动变量、系统层环境变量与平台文件）在 [推理目录语法参考的「模板与平台的分工」](../reference/inference-catalog-spec.md#模板与平台的分工)，这里不再另列一份。
 
-导入时 `dirs` 与主模型挂载点、组件 `mount_path`、资产 `unpack_to`、其他 dir 不能相同或嵌套；启动解析时所有挂载（`extra_mounts`、组件、KV 磁盘层、计算网络文件、`dirs`，以及兄弟改动加入的 peers 文件挂载）再一起检查，同一目标报 `MOUNT_TARGET_DUPLICATE`，嵌套也拒绝。
+- **一个容器路径空间**：`dirs` 不另立路径规则。模板自己的容器路径（主模型挂载点、组件 `mount_path`、资产 `unpack_to`、dir 的 `mount_path`）在导入时用同一条重叠规则（`proto.ContainerPathsOverlap`）互查，冲突报 `CATALOG_MOUNT_PATH_CONFLICT`；启动解析时所有挂载（含 `extra_mounts`、KV 磁盘层、计算网络文件）再查一遍，同一目标报 `MOUNT_TARGET_DUPLICATE`、嵌套报 `MOUNT_TARGET_NESTED`。
+- **旧 agent 按能力拒绝**：托管目录只有节点上的 agent 能建，所以用到它的启动只放到宣告 `mount.managed_dirs` 的节点上；planning 从解析出的启动判断它用了哪些 agent 侧设施，旧 agent 的节点以 `agent_capability_missing`（参数 `capability`、`node`）拒绝，部署显示原因并等待。这是所有 agent 侧设施共用的规则，而不是让旧 agent 收到一个没有主机来源的挂载再启动失败。
 
 ## 取舍
 
@@ -54,7 +48,7 @@
 
 ## 后果
 
-- 新列 `inference_specs.dirs`（迁移 230），模板 DTO 的 `dirs`，部署快照的 `dirs`，评估预览的挂载里出现 `purpose: managed-dir`。
-- 协议：`MountSpec.managed_dir`、`Hello.managed_dir_groups`、`DesiredState.released_dir_groups`、`StateUpdate.released_dir_deployments`、`PathUsage.shares_disk_with`，agent 能力 `mount.managed_dirs`，失败码 `MANAGED_DIR_PREPARE_FAILED`，调度原因 `insufficient_managed_dir_disk`。
-- 旧 agent 收到托管目录挂载时没有主机路径，启动会失败；节点的 agent 要先升级。
+- 新列 `inference_specs.dirs`（迁移 231），模板 DTO 的 `dirs`，部署快照的 `dirs`，评估预览的挂载里出现 `purpose: managed-dir`。
+- 协议：`MountSpec.managed_dir`、`Hello.managed_dir_groups`、`DesiredState.released_dir_groups`、`StateUpdate.released_dir_deployments`、`PathUsage.shares_disk_with`，agent 能力 `mount.managed_dirs`，失败码 `MANAGED_DIR_PREPARE_FAILED`，调度原因 `insufficient_managed_dir_disk` 与 `agent_capability_missing`，导入错误码 `CATALOG_MOUNT_PATH_CONFLICT`。
+- 旧 agent 的节点不接声明了 `dirs` 的启动，节点的 agent 升级后才放得上。
 - 语法与行为见 [推理目录 model.yaml 语法参考](../reference/inference-catalog-spec.md#dirs托管的可写目录)。

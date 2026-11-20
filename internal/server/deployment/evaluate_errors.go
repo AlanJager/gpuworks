@@ -148,7 +148,7 @@ func validateMountRowRequest(req *dto.DeployRequest, reservedTargets []string) e
 			return productError(messages.ErrorMountTargetDuplicate, "two mounts target "+target+" inside the container", map[string]any{"target": target})
 		}
 		for _, existing := range targets {
-			if mountPathContains(existing, target) || mountPathContains(target, existing) {
+			if proto.ContainerPathsOverlap(existing, target) {
 				return productError(messages.ErrorMountTargetNested, "nested mount targets overlap", map[string]any{"parent": existing, "child": target})
 			}
 		}
@@ -237,10 +237,6 @@ func containsExact(values []string, want string) bool {
 		}
 	}
 	return false
-}
-
-func mountPathContains(parent, child string) bool {
-	return parent != "/" && strings.HasPrefix(child, path.Clean(strings.TrimSpace(parent))+"/")
 }
 
 // absoluteNonRoot reports whether value is an absolute path that survives

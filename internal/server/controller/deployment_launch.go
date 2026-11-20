@@ -246,6 +246,7 @@ func (c *Controller) launchRequest(dep *store.Deployment, node *store.Node, mode
 	}
 	req, templateLayer, modelHostPath, err := planning.DeploymentLaunch(dep, reqs, node, model, files.paths())
 	req.ImplicitServedName = c.translatesServedName(node)
+	req.AgentCaps = c.nodeCaps(node)
 	return req, templateLayer, modelHostPath, err
 }
 
