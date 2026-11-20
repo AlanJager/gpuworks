@@ -78,8 +78,13 @@ func (f *fakeAliyun) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	auth := r.Header.Get("Authorization")
 	keyID := strings.TrimPrefix(strings.SplitN(auth, ",", 2)[0], signAlgorithm+" Credential=")
 	secret, ok := f.secrets[keyID]
-	if !ok || sign(signedRequest{method: r.Method, host: r.Host, path: r.URL.Path, query: query, headers: headers}, keyID, secret) != auth {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"Code": "IncompleteSignature", "Message": "The request signature does not conform to Aliyun standards.", "RequestId": "req-sig"})
+	request := signedRequest{method: r.Method, host: r.Host, path: r.URL.Path, query: query, headers: headers}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, unknownAccessKeyBody(r.Host))
+		return
+	}
+	if sign(request, keyID, secret) != auth {
+		writeJSON(w, http.StatusBadRequest, signatureMismatchBody(request))
 		return
 	}
 	call := fakeCall{host: r.Host, action: headers["x-acs-action"], token: headers["x-acs-security-token"], method: r.Method, path: r.URL.Path, query: query}
@@ -310,7 +315,7 @@ func TestThrottlingIsRetriedAndOtherErrorsAreNot(t *testing.T) {
 func TestBadSecretIsRejectedBySignature(t *testing.T) {
 	d, _ := newFake(t, func(fakeCall) (int, any) { return 200, regionsBody("cn-shanghai") })
 	err := d.ValidateCredentials(context.Background(), provider.Credentials{PublicKey: "LTAIuser", PrivateKey: "wrong"})
-	if err == nil || !strings.Contains(err.Error(), "IncompleteSignature") {
+	if ErrorCode(err) != "IncompleteSignature" {
 		t.Fatalf("err = %v", err)
 	}
 	if err := d.ValidateCredentials(context.Background(), provider.Credentials{PublicKey: "LTAIuser"}); err == nil || !strings.Contains(err.Error(), "AccessKey Secret are required") {
