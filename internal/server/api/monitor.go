@@ -214,7 +214,7 @@ func (a *apiHandlers) monitorSignals(w http.ResponseWriter, r *http.Request) {
 	invalid := func(detail string) {
 		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, detail, map[string]any{"detail": detail})
 	}
-	endMS := time.Now().UnixMilli()
+	endMS := time.Now().UTC().UnixMilli()
 	if raw := q.Get("end"); raw != "" {
 		v, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || v <= 0 {
