@@ -16,6 +16,7 @@ First use the table below to decide whether you need to modify the template. Eve
 | `callable`, with metrics prefixed by `vllm:` or `sglang:` (a modified vLLM / SGLang engine or an adapter that wraps SGLang) | Scrapes `/metrics` and automatically applies the vLLM or SGLang mappings based on the detected prefix | Usually not |
 | `callable`, with the engine's own metric names (such as TensorFold's `tensorfold:`) | Scrapes `/metrics`, but no names match, so no engine metrics are produced | Yes |
 | The engine's metrics endpoint returns JSON (such as `/metrics` in Strata 0.1.38) | The Prometheus text parser cannot parse any lines | Declare `format: json`; see below |
+| The engine owns the API port, has no `/metrics` there, but a launcher in the image can export metrics on another local port | Scrapes `/metrics` on the API port and gets nothing | Declare `port: separate`; see [Metrics on another port](#metrics-on-another-port) below |
 | The engine has no metrics endpoint | Scrape failures are skipped | A declaration does not help; the gateway collects latency, token, and similar statistics |
 
 When a `callable` template does not declare `api.metrics`, importing it (or prechecking it with `POST /api/v1/inference-templates/evaluate`) returns the warning `CATALOG_CALLABLE_METRICS_UNDECLARED`. The UI lists this warning after import or save. It does not block import and can be ignored if the engine has no metrics endpoint or uses vLLM / SGLang metric names (see [Pre-import Checks and Warnings](../reference/inference-catalog-spec.md#导入前检查与警告)).
@@ -28,7 +29,7 @@ On the node hosting the instance, request the instance port directly (find the p
 curl --silent --show-error --include http://127.0.0.1:<instance-port>/metrics
 ```
 
-If the engine's endpoint is not `/metrics`, replace it with the actual path first. Confirm that the HTTP status indicates success, then inspect the response headers and body. Do not filter out `#` lines yet; you need `# TYPE` later to determine metric types.
+If the engine's endpoint is not `/metrics`, replace it with the actual path first; for a template that declares `port: separate`, the port is the one after the API port in the `ports` list of the instance detail, not the API port. Confirm that the HTTP status indicates success, then inspect the response headers and body. Do not filter out `#` lines yet; you need `# TYPE` later to determine metric types.
 
 For runveil nodes, also run the request on the host. If curl is available inside the container, you can instead run `gpuworks-agent runveil exec <container-name-prefix> curl --silent --show-error --include http://127.0.0.1:<instance-port>/metrics` (see the [CLI Reference](../reference/cli.md#gpuworks-agent-runveil)).
 
@@ -77,11 +78,35 @@ When you import YAML, upload a catalog package, or save in the template editor, 
 | `CATALOG_METRICS_NEGATIVE_SCALE` | The scale factor is negative |
 | `CATALOG_METRICS_SHADOWED_HISTOGRAM` | A `_bucket` / `_sum` / `_count` line is mapped from a histogram family that is already mapped |
 | `CATALOG_METRICS_DUPLICATE_SOURCE` | The same key appears twice (after trimming leading and trailing whitespace) |
+| `CATALOG_METRICS_PORT_INVALID` | `port` is neither `api` nor `separate` (the platform allocates port numbers; a concrete number cannot be written) |
+| `CATALOG_METRICS_PORT_UNDECLARED` | A launch field references `${GPUWORKS_METRICS_PORT}` but `port: separate` is not declared |
+| `CATALOG_METRICS_PORT_UNREFERENCED` | `port: separate` is declared but no launch field references `${GPUWORKS_METRICS_PORT}` |
 | `CATALOG_METRICS_FORMAT_INVALID` | `format` is neither `prometheus` nor `json` |
 | `CATALOG_METRICS_JSON_INHERIT` | `inherit` is specified with `format: json` |
 | `CATALOG_METRICS_JSON_PATH_INVALID` | A key is not a dot-separated key path with `format: json` |
 | `CATALOG_METRICS_JSON_HISTOGRAM` | A mapping targets a histogram with `format: json` (JSON endpoints support only counters and gauges) |
 | `CATALOG_METRICS_JSON_COMPARE_COUNTER` | A comparison expression (`path!=value`) maps to a counter with `format: json` |
+
+### Metrics on another port
+
+Some `callable` engines own the API port and serve only `/health`, `/v1/models` and `/v1/chat/completions`, with no `/metrics`. A launcher in the image can read metrics from the engine's admin interface or logs and export them on a second local port (it does not proxy requests). Have the platform reserve that port and scrape it:
+
+```yaml
+args: [--port, "${GPUWORKS_API_PORT}", --metrics-port, "${GPUWORKS_METRICS_PORT}"]
+api:
+  metrics:
+    port: separate
+    endpoint: /metrics       # Optional; the path on this port
+    map:
+      'engine:requests_running': requests_running
+```
+
+- With `port: separate` declared, the platform reserves one more port per instance and tells the launcher where to listen through `${GPUWORKS_METRICS_PORT}` (it can be referenced in `args`, `env`, `entrypoint` and `pre_start_*`); the agent scrapes `http://127.0.0.1:<that port><endpoint>` instead of the API port. The port number cannot be written in the template.
+- The variable and the declaration must appear as a pair; either alone is rejected at import (see `CATALOG_METRICS_PORT_*` in the table above).
+- In a multi-node instance only the rank that serves has this port; `${GPUWORKS_METRICS_PORT}` is `0` on a headless rank, so one command expands as usual.
+- The port is fixed with the template snapshot when the deployment is created; changing `port` in the template later does not affect existing instances.
+
+For the full semantics, see the [Inference Catalog model.yaml Syntax Reference](../reference/inference-catalog-spec.md#apimetrics引擎指标映射).
 
 ## 4. Verify That the Mappings Take Effect
 
@@ -183,6 +208,7 @@ metrics:
 | A gauge has the wrong value | The family has multiple lines, and only the first was used; select the required line with a selector |
 | The throughput chart stays at 0 and spikes when requests finish | The mapped counter increments only when requests finish (check whether `# HELP` says finished requests). Map a counter that includes in-flight requests instead. For example, use `tensorfold_health:completion_tokens_total` instead of `tensorfold:generation_tokens_total` for TensorFold |
 
-<!-- translation-source-sha256: be1fb8eef925f9a4b1fbc20d8dbf3bc4eef9ba3b4ddb4ebc98e0581ff0ca8a49 -->
+<!-- translation-source-sha256: 21a7f5865d234450d2044d35cb85e2e9d47885a541c98f93c87265199f9b806f -->
 <!-- translation-localized-code-block: efcf48e7f67274b8efe441b319eef5025b39ede13d8a161e1aec2d1f830e9ef4 61583f8a3fb80812b8068e4e06e936197cd8e6cc8a5b79258c5faa89422224c7 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: 9c2e5fe6142d1639ab7482aed29d76bdbf48a8066c12241135466638dc4111d2 ae6fd25a2a23dbeeecfc322e8af5ebf2d7fe7cedf6a2210f4dc9deaf5a495452 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-localized-code-block: 615324c25a0f9212a695ccbb296d80021adcc2baaf928315ed299c07e79f9500 a428cec71bf5d549bcf2bb996aa06b011b500991ae42ed928885ea69b8850bfa -->

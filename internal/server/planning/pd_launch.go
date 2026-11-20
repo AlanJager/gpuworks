@@ -11,6 +11,10 @@ type PDRankPorts struct {
 	// API is the serving port; zero on a follower, and in a preview, which
 	// then shows PreviewAPIPort.
 	API int
+	// Metrics is the leader's second port when the template declares
+	// api.metrics.port: separate; zero otherwise, on a follower, and in a
+	// preview, which then shows PreviewMetricsPort.
+	Metrics int
 	// SideChannel is the first port of the rank's extra block (NIXL side
 	// channels, a bootstrap server, a Mooncake kv_port band); zero when the
 	// mode needs none.
@@ -31,14 +35,15 @@ type PDRankPorts struct {
 // preview and the controller both take it from PDPlacement.RankLaunch and
 // supply only the ports, so what the form shows is what the controller runs.
 type PDRankLaunch struct {
-	Role       string
-	Topology   DistTopology
-	APIPort    int
-	GPUIndexes []int
-	TP, PP     int
-	MasterAddr string
-	MasterPort int
-	PD         *deploy.PDLaunch
+	Role        string
+	Topology    DistTopology
+	APIPort     int
+	MetricsPort int
+	GPUIndexes  []int
+	TP, PP      int
+	MasterAddr  string
+	MasterPort  int
+	PD          *deploy.PDLaunch
 }
 
 // RankLaunch derives the PD part of the launch of rank (an index into
@@ -47,7 +52,7 @@ type PDRankLaunch struct {
 func (p *PDPlacement) RankLaunch(mode pdmode.Mode, role string, unit PDUnit, rank int, topology DistTopology, ports PDRankPorts) PDRankLaunch {
 	spec := p.Parallelism(role, unit)
 	out := PDRankLaunch{
-		Role: role, Topology: topology, APIPort: ports.API,
+		Role: role, Topology: topology, APIPort: ports.API, MetricsPort: ports.Metrics,
 		TP: spec.TP, PP: spec.PP,
 		PD: &deploy.PDLaunch{
 			Mode: mode.Name, Role: role, KVLoadFailure: p.EffectiveKVLoadFailure(),
@@ -78,7 +83,7 @@ func (p *PDPlacement) RankLaunch(mode pdmode.Mode, role string, unit PDUnit, ran
 // nodes, never cards - so cards there are the operator's choice and consent
 // to sharing them as the top-level "gpus" does (Placement.OperatorPinned).
 func (l PDRankLaunch) Apply(req *LaunchRequest) {
-	req.Topology, req.APIPort = l.Topology, l.APIPort
+	req.Topology, req.APIPort, req.MetricsPort = l.Topology, l.APIPort, l.MetricsPort
 	req.Placement = Placement{GPUIndexes: l.GPUIndexes, TP: l.TP, PP: l.PP, operatorChose: len(l.GPUIndexes) > 0}
 	req.Quick = deploy.PDRoleLaunchConfig(req.Engine, req.Quick, l.Role)
 	req.MasterAddr, req.MasterPort = l.MasterAddr, l.MasterPort

@@ -33,8 +33,12 @@ type dcgmSampler interface {
 
 // RunningInstance identifies a live instance to scrape.
 type RunningInstance struct {
-	UUID         string
-	APIPort      int
+	UUID    string
+	APIPort int
+	// MetricsPort is where the engine serves its metrics when its template
+	// declared a port of its own for them (api.metrics.port: separate); zero
+	// scrapes the API port.
+	MetricsPort  int
 	Engine       string
 	MetricPath   string
 	MetricPrefix string
@@ -53,6 +57,15 @@ type RunningInstance struct {
 	// on every sample this instance produces, so the server-side monitor can
 	// group replicas of one deployment without a per-sample store lookup.
 	DeploymentID uint
+}
+
+// scrapePort is the local port the instance's metrics endpoint listens on: the
+// port of its own when it was launched with one, the API port otherwise.
+func (in RunningInstance) scrapePort() int {
+	if in.MetricsPort > 0 {
+		return in.MetricsPort
+	}
+	return in.APIPort
 }
 
 // Collector periodically collects and emits metrics.
@@ -314,7 +327,7 @@ func (c *Collector) inferSamples(ctx context.Context, now int64) []proto.MetricS
 		if !strings.HasPrefix(path, "/") {
 			path = "/" + path
 		}
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+strconv.Itoa(in.APIPort)+path, nil)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+strconv.Itoa(in.scrapePort())+path, nil)
 		resp, err := client.Do(req)
 		if err != nil {
 			continue

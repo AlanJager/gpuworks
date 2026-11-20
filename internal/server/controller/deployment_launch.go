@@ -317,6 +317,7 @@ func scheduledInstance(dep *store.Deployment, plan planning.LaunchPlan, port int
 		Ports:               ports,
 		ModelPath:           modelHostPath,
 		APIPort:             port,
+		MetricsPort:         plan.Params.MetricsPort,
 		StartTimeout:        startTimeout,
 		DistGroup:           topology.Group,
 		DistRole:            topology.Role,

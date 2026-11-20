@@ -361,7 +361,11 @@ func apiMetricsSchema() map[string]any {
 		"additionalProperties": false,
 		"description":          "The engine's metrics endpoint and how its metrics map onto platform inference metrics. Omit for vllm/sglang; an undeclared callable is matched against the vllm/sglang mappings by family prefix.",
 		"properties": map[string]any{
-			"endpoint": map[string]any{"type": "string", "description": "Metrics path on the API port; default /metrics."},
+			"endpoint": map[string]any{"type": "string", "description": "Metrics path on the metrics port; default /metrics."},
+			"port": map[string]any{
+				"type": "string", "enum": []any{"api", inferenceapi.MetricsPortSeparate},
+				"description": "api (default): the endpoint is on the API port. separate: the platform reserves a second port per instance, states it as ${GPUWORKS_METRICS_PORT}, and the agent scrapes that port; the launch must reference the variable.",
+			},
 			"format": map[string]any{
 				"type": "string", "enum": []any{string(inferencemetrics.FormatPrometheus), string(inferencemetrics.FormatJSON)},
 				"description": "prometheus (default): map keys are exposition families. json: the endpoint answers one JSON document and map keys are dotted paths of numbers in it, like totals.output_tokens, or a string compared as path==word / path!=word (1 or 0, gauges only); no inherit, counters and gauges only.",

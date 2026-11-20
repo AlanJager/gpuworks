@@ -72,6 +72,9 @@ const (
 	ErrorCatalogMetricsJSONPathInvalid    = "CATALOG_METRICS_JSON_PATH_INVALID"
 	ErrorCatalogMetricsJSONHistogram      = "CATALOG_METRICS_JSON_HISTOGRAM"
 	ErrorCatalogMetricsJSONCompareCounter = "CATALOG_METRICS_JSON_COMPARE_COUNTER"
+	ErrorCatalogMetricsPortInvalid        = "CATALOG_METRICS_PORT_INVALID"
+	ErrorCatalogMetricsPortUndeclared     = "CATALOG_METRICS_PORT_UNDECLARED"
+	ErrorCatalogMetricsPortUnreferenced   = "CATALOG_METRICS_PORT_UNREFERENCED"
 	// ErrorCatalogRequestStats* report an api.request_stats entry the gateway
 	// could not honour. Params carry the entry's reply path and target stat.
 	ErrorCatalogRequestStatsPathInvalid   = "CATALOG_REQUEST_STATS_PATH_INVALID"

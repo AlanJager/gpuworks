@@ -21,12 +21,15 @@ const (
 	VarServedModelName = "SERVED_MODEL_NAME"
 	VarAPIHost         = "API_HOST"
 	VarAPIPort         = "API_PORT"
-	VarNNodes          = "NNODES"
-	VarNodeRank        = "NODE_RANK"
-	VarHeadless        = "HEADLESS"
-	VarNodeAddr        = "NODE_ADDR"
-	VarMasterAddr      = "MASTER_ADDR"
-	VarMasterPort      = "MASTER_PORT"
+	// VarMetricsPort is the port a template that declares api.metrics.port:
+	// separate serves its metrics on. Only that launch states it.
+	VarMetricsPort = "METRICS_PORT"
+	VarNNodes      = "NNODES"
+	VarNodeRank    = "NODE_RANK"
+	VarHeadless    = "HEADLESS"
+	VarNodeAddr    = "NODE_ADDR"
+	VarMasterAddr  = "MASTER_ADDR"
+	VarMasterPort  = "MASTER_PORT"
 	// A PD disaggregated instance also states which role it plays and where
 	// its KV side channel listens (the first port of its extra port block),
 	// and, for every rank of a multi-node instance, the leader's side channel
@@ -83,7 +86,7 @@ func Lookup(variables map[string]any, name string) (any, bool) {
 // GPU_COUNT and TP_SIZE are not here: resolvers have always been allowed to
 // return them (TP_SIZE pins a degree, GPU_COUNT is overwritten by the count).
 var launchOwned = map[string]struct{}{
-	VarModelPath: {}, VarServedModelName: {}, VarAPIHost: {}, VarAPIPort: {}, VarNNodes: {}, VarNodeRank: {},
+	VarModelPath: {}, VarServedModelName: {}, VarAPIHost: {}, VarAPIPort: {}, VarMetricsPort: {}, VarNNodes: {}, VarNodeRank: {},
 	VarHeadless: {}, VarNodeAddr: {}, VarMasterAddr: {}, VarMasterPort: {},
 	VarPDRole: {}, VarPDSideChannelHost: {}, VarPDSideChannelPort: {}, VarPDLeaderSideChannelPort: {},
 	VarPeersFile: {},

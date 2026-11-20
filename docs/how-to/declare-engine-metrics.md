@@ -16,6 +16,7 @@
 | `callable`，引擎导出 `vllm:` 或 `sglang:` 开头的指标（vLLM / SGLang 的改版、包了一层 SGLang 的适配器） | 抓 `/metrics`，按抓到的前缀自动套用 vLLM 或 SGLang 的映射 | 一般不需要 |
 | `callable`，引擎用自己的名字（如 TensorFold 的 `tensorfold:`） | 抓 `/metrics`，但没有任何名字能对上，不出引擎指标 | 需要 |
 | 引擎的指标端点返回 JSON（如 Strata 0.1.38 的 `/metrics`） | 按 Prometheus 文本解析不出任何一行 | 需要声明 `format: json`，见下文 |
+| 引擎独占 API 端口、那里没有 `/metrics`，但镜像里的 launcher 能在另一个本机端口导出指标 | 抓 API 端口上的 `/metrics`，抓不到 | 需要声明 `port: separate`，见下文 [指标在另一个端口上](#指标在另一个端口上) |
 | 引擎没有任何指标端点 | 抓取失败被跳过 | 声明也没用；延迟、token 等由网关统计 |
 
 `callable` 模板没有声明 `api.metrics` 时，导入（以及 `POST /api/v1/inference-templates/evaluate` 预检）会返回警告 `CATALOG_CALLABLE_METRICS_UNDECLARED`，界面在导入或保存后列出它；警告不阻止导入，引擎确实没有指标端点或用的就是 vLLM / SGLang 的指标名时可以忽略（见[导入前检查与警告](../reference/inference-catalog-spec.md#导入前检查与警告)）。
@@ -28,7 +29,7 @@
 curl --silent --show-error --include http://127.0.0.1:<实例端口>/metrics
 ```
 
-如果引擎的端点不在 `/metrics`，先替换为它的实际路径。确认 HTTP 状态为成功，再查看响应头和正文；不要先过滤 `#` 行，后面需要用 `# TYPE` 判断指标类型。
+如果引擎的端点不在 `/metrics`，先替换为它的实际路径；声明了 `port: separate` 的模板，端口是实例详情 `ports` 列表里 API 端口之后的那个，不是 API 端口。确认 HTTP 状态为成功，再查看响应头和正文；不要先过滤 `#` 行，后面需要用 `# TYPE` 判断指标类型。
 
 runveil 节点也一样在宿主机上请求；容器里有 curl 时也可以 `gpuworks-agent runveil exec <容器名前缀> curl --silent --show-error --include http://127.0.0.1:<实例端口>/metrics`（见 [CLI 参考](../reference/cli.md#gpuworks-agent-runveil)）。
 
@@ -77,11 +78,35 @@ api:
 | `CATALOG_METRICS_NEGATIVE_SCALE` | 换算系数为负 |
 | `CATALOG_METRICS_SHADOWED_HISTOGRAM` | 映射了某个已映射直方图族的 `_bucket` / `_sum` / `_count` 行 |
 | `CATALOG_METRICS_DUPLICATE_SOURCE` | 同一个键（去掉首尾空白后）写了两次 |
+| `CATALOG_METRICS_PORT_INVALID` | `port` 不是 `api` 或 `separate`（端口号由平台分配，不能写具体数字） |
+| `CATALOG_METRICS_PORT_UNDECLARED` | 启动字段引用了 `${GPUWORKS_METRICS_PORT}`，但没有声明 `port: separate` |
+| `CATALOG_METRICS_PORT_UNREFERENCED` | 声明了 `port: separate`，启动字段里却没有引用 `${GPUWORKS_METRICS_PORT}` |
 | `CATALOG_METRICS_FORMAT_INVALID` | `format` 不是 `prometheus` 或 `json` |
 | `CATALOG_METRICS_JSON_INHERIT` | `format: json` 时写了 `inherit` |
 | `CATALOG_METRICS_JSON_PATH_INVALID` | `format: json` 时键不是用点连接的键路径 |
 | `CATALOG_METRICS_JSON_HISTOGRAM` | `format: json` 时映射到了直方图（JSON 端点只能填计数器和 gauge） |
 | `CATALOG_METRICS_JSON_COMPARE_COUNTER` | `format: json` 时把比较式（`路径!=词`）映射到了计数器 |
+
+### 指标在另一个端口上
+
+有的 `callable` 引擎独占 API 端口，只服务 `/health`、`/v1/models`、`/v1/chat/completions`，没有 `/metrics`。镜像里的 launcher 可以从引擎的管理接口或日志里读出指标，在第二个本机端口上导出（不代理请求）。让平台为它保留这个端口，并抓取它：
+
+```yaml
+args: [--port, "${GPUWORKS_API_PORT}", --metrics-port, "${GPUWORKS_METRICS_PORT}"]
+api:
+  metrics:
+    port: separate
+    endpoint: /metrics       # 可选，是这个端口上的路径
+    map:
+      'engine:requests_running': requests_running
+```
+
+- 声明 `port: separate` 后，平台给每个实例多保留一个端口，用 `${GPUWORKS_METRICS_PORT}`（`args`、`env`、`entrypoint`、`pre_start_*` 里都可以引用）告诉 launcher 监听哪里；agent 抓 `http://127.0.0.1:<该端口><endpoint>`，而不是 API 端口。端口号不能写进模板。
+- 变量和声明必须成对出现，缺一个导入就被拒绝（见上表的 `CATALOG_METRICS_PORT_*`）。
+- 多机实例里只有对外服务的 rank 有这个端口，headless rank 上 `${GPUWORKS_METRICS_PORT}` 为 `0`，同一份命令可以照常展开。
+- 端口在创建部署时随模板快照定下，之后改模板的 `port` 不影响已有实例。
+
+完整语义见[推理目录 model.yaml 语法参考](../reference/inference-catalog-spec.md#apimetrics引擎指标映射)。
 
 ## 4. 确认生效
 

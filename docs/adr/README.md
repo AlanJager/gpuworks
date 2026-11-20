@@ -82,5 +82,6 @@
 | [0076](0076-rank-scoped-weights.md) | 按 rank 拆分的权重：spec 权重来源的 `subfolder` 写 `${GPUWORKS_NODE_RANK}`，创建时解析成每个 rank 一个模型制品（rank 0 即部署模型，其余绑定记入快照），下载、挂载、磁盘准入都按 rank | 2026-11-19 | 已接受 |
 | [0077](0077-template-managed-writable-dirs.md) | 托管的可写目录：推理模板以 `dirs`（`limit_bytes`）声明，与 KV 磁盘层同一机制、两种生命周期；节点在运行时挂载根下按部署（id + 创建秒）持有，跨实例重建保留；部署删除后 server 广播释放，离线节点经 hello 上报、重放回答；准入按 dirs 与 KV 磁盘上限之和加磁盘保留 | 2026-11-19 | 已接受 |
 | [0078](0078-multi-node-peers-file.md) | 多机部署的每个 rank 带一份只读 peers 文件（`${GPUWORKS_PEERS_FILE}` 与同名 env，`proto.PeersFile`，字段沿用启动变量与网络词汇）：放置时由 server 生成、随期望状态保存，agent 写文件并只读挂载在归平台的 `/gpuworks` 下，按能力 `launch.peers_file` 下发 | 2026-11-19 | 已接受 |
+| [0079](0079-engine-metrics-on-a-separate-port.md) | 引擎指标可在 API 端口之外的第二个端口上：模板写 `api.metrics.port: separate`（不写端口号），平台与 API 端口一起保留并以 `${GPUWORKS_METRICS_PORT}` 给出；端口随期望状态（`metrics_port`）与实例 `ports` 存下，取部署快照，headless rank 为 0；agent 改抓该端口；声明与变量必须成对（`CATALOG_METRICS_PORT_*`） | 2026-11-20 | 已接受 |
 
 说明：0012–0014 原分别与 0004、0004、0006 撞号，2026-09-03 整理时按创建顺序重新编号；历史提交信息与 MR 描述中的旧编号不再准确。原 0024（节点网络对象）同理，因与数据面 lane 的 0024 撞号，2026-09-30 改为 0030；此前引用「ADR 0024」指网络对象的文字已随之更新，`CLAUDE.md` 与 `todo.md` 中的「ADR 0024」指数据面 lane。
