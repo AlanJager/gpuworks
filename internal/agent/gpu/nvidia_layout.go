@@ -77,9 +77,8 @@ func (p *SMIProber) rememberInventory(gpus []proto.GPUInfo) string {
 	// An empty roster is a driver hiccup as often as a real card removal, and
 	// the metrics rows it accompanies are empty anyway, so the previous
 	// judgment is kept: it can fill nothing that is not listed, and the next
-	// successful probe replaces it. Only a roster that lists cards replaces
-	// the set wholesale.
-	if len(gpus) > 0 || unified != nil {
+	// successful probe replaces it wholesale.
+	if len(gpus) > 0 {
 		p.layout.unified = unified
 	}
 	p.layout.mu.Unlock()
@@ -87,8 +86,8 @@ func (p *SMIProber) rememberInventory(gpus []proto.GPUInfo) string {
 }
 
 // unifiedMemoryCards are the cards the last non-empty probe recognized as
-// unified memory, by UUID; nil when nothing was probed yet or the last probe
-// that listed any cards listed none.
+// unified memory, by UUID; nil when nothing was probed yet or the last
+// non-empty roster had no unified-memory card.
 func (p *SMIProber) unifiedMemoryCards() map[string]bool {
 	p.layout.mu.Lock()
 	defer p.layout.mu.Unlock()
