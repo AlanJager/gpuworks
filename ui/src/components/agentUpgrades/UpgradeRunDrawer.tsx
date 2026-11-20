@@ -10,7 +10,7 @@ import { useAgentUpgradeAction } from "../../agentUpgrades";
 const phases = ["queued", "transferring", "waiting_registration", "observing_recovery", "succeeded", "failed", "skipped", "cancelled", "interrupted", "unconfirmed"];
 
 /** Verification codes whose note is the system's fixed English line, said by the code's own text instead; every other note (an operator's, an agent's failure detail) is shown. */
-const systemNoteCodes = new Set(["target_registered", "node_removed"]);
+const systemNoteCodes = new Set(["target_registered", "node_removed", "reconnected_old_version"]);
 
 export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, onChanged }: {
   runID: number;

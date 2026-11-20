@@ -1001,7 +1001,8 @@
       "target_registered": "Verified by the system: the node later reconnected on the target version.",
       "agent_failed": "Verified by the system: the Agent later reported the upgrade failed.",
       "rolled_back": "Verified by the system: the Agent later reported a rollback.",
-      "node_removed": "Verified by the system: the node was removed from the platform, so no upgrade can still be running."
+      "node_removed": "Verified by the system: the node was removed from the platform, so no upgrade can still be running.",
+      "reconnected_old_version": "Verified by the system: the node later reconnected on its previous version, so the upgrade did not take effect."
     }
   },
   "cardScheduling": {

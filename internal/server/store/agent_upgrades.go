@@ -96,13 +96,22 @@ func (s *Store) AgentUpgradeItem(runID uint, uuid string) (*AgentUpgradeItem, er
 	return &item, err
 }
 
-func upgradeOutstanding(q *gorm.DB) *gorm.DB {
-	return q.Where("phase IN ? OR (phase = ? AND verified_at IS NULL)", []string{"transferring", "waiting_registration", "observing_recovery"}, "unconfirmed")
+// upgradeOutstanding selects the attempts that hold the platform's single
+// upgrade slot: those in flight, and those unconfirmed at heldSince or later
+// and not verified since. An unconfirmed attempt holds it only for a while
+// (the caller's policy): its agent has settled by then, confirmed or rolled
+// back, so another node may go ahead; the attempt itself stays unverified
+// until its node says how it ended. The zero heldSince holds every
+// unverified one.
+func upgradeOutstanding(q *gorm.DB, heldSince time.Time) *gorm.DB {
+	return q.Where("phase IN ? OR (phase = ? AND verified_at IS NULL AND finished_at >= ?)", []string{"transferring", "waiting_registration", "observing_recovery"}, "unconfirmed", heldSince)
 }
 
-func (s *Store) AgentUpgradeBlocker() (*AgentUpgradeItem, error) {
+// AgentUpgradeBlocker is the first attempt that holds the slot
+// (upgradeOutstanding), nil when none does.
+func (s *Store) AgentUpgradeBlocker(heldSince time.Time) (*AgentUpgradeItem, error) {
 	var item AgentUpgradeItem
-	err := upgradeOutstanding(s.reader()).Order("id").First(&item).Error
+	err := upgradeOutstanding(s.reader(), heldSince).Order("id").First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -111,7 +120,8 @@ func (s *Store) AgentUpgradeBlocker() (*AgentUpgradeItem, error) {
 
 // CreateAgentUpgrade atomically reserves the global upgrade slot and, when
 // continuing a paused run, closes its old queue before creating the new one.
-func (s *Store) CreateAgentUpgrade(run *AgentUpgradeRun, items []AgentUpgradeItem, now time.Time) (*AgentUpgradeRun, error) {
+// heldSince is as for upgradeOutstanding.
+func (s *Store) CreateAgentUpgrade(run *AgentUpgradeRun, items []AgentUpgradeItem, now, heldSince time.Time) (*AgentUpgradeRun, error) {
 	var saved AgentUpgradeRun
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.Where("idempotency_key = ?", run.IdempotencyKey).First(&saved).Error
@@ -125,7 +135,7 @@ func (s *Store) CreateAgentUpgrade(run *AgentUpgradeRun, items []AgentUpgradeIte
 			return err
 		}
 		var count int64
-		if err := upgradeOutstanding(tx.Model(&AgentUpgradeItem{})).Count(&count).Error; err != nil {
+		if err := upgradeOutstanding(tx.Model(&AgentUpgradeItem{}), heldSince).Count(&count).Error; err != nil {
 			return err
 		}
 		if count != 0 {
@@ -187,7 +197,9 @@ func (s *Store) CreateAgentUpgrade(run *AgentUpgradeRun, items []AgentUpgradeIte
 	return &saved, err
 }
 
-func (s *Store) ClaimAgentUpgrade(itemID uint, session string, now, deadline time.Time) (bool, error) {
+// ClaimAgentUpgrade starts a queued attempt when nothing holds the slot
+// (heldSince as for upgradeOutstanding).
+func (s *Store) ClaimAgentUpgrade(itemID uint, session string, now, deadline, heldSince time.Time) (bool, error) {
 	claimed := false
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var item AgentUpgradeItem
@@ -202,7 +214,7 @@ func (s *Store) ClaimAgentUpgrade(itemID uint, session string, now, deadline tim
 			return nil
 		}
 		var count int64
-		if err := upgradeOutstanding(tx.Model(&AgentUpgradeItem{})).Count(&count).Error; err != nil {
+		if err := upgradeOutstanding(tx.Model(&AgentUpgradeItem{}), heldSince).Count(&count).Error; err != nil {
 			return err
 		}
 		if count != 0 {
