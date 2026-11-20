@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -25,6 +26,9 @@ type LaunchSource struct {
 	Image string
 	// Overrides is the deployment's own container override layer.
 	Overrides deploy.ContainerOverrides
+	// ManagedDirGroup names the deployment's managed directories on a node
+	// (proto.ManagedDirGroupKey); empty for a deployment not created yet.
+	ManagedDirGroup string
 }
 
 // LaunchSourceFromDeployment reads the source off a stored deployment row. It
@@ -34,6 +38,10 @@ func LaunchSourceFromDeployment(dep *store.Deployment) LaunchSource {
 		return LaunchSource{}
 	}
 	source := LaunchSource{DeploymentID: dep.ID, Image: strings.TrimSpace(dep.Image)}
+	if !dep.CreatedAt.IsZero() {
+		// A row that was never stored has no identity a directory could keep.
+		source.ManagedDirGroup = proto.ManagedDirGroupKey(dep.ID, dep.CreatedAt.Unix())
+	}
 	if strings.TrimSpace(dep.ContainerOverrides) != "" {
 		_ = json.Unmarshal([]byte(dep.ContainerOverrides), &source.Overrides)
 	}

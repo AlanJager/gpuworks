@@ -163,6 +163,10 @@ func (a *apiHandlers) deleteDeployment(w http.ResponseWriter, r *http.Request) {
 					"deployment", id, "node", uuid, "err", err)
 			}
 		}
+		// Its managed directories go the way an ordinary delete's do (ADR 0077).
+		if releaser, ok := a.d.NodeSync.(interface{ ReleaseDeploymentDirs(uint) int }); ok && deploy.SnapshotDeclaresManagedDirs(dep.CatalogSelectionSnapshot) {
+			releaser.ReleaseDeploymentDirs(id)
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 		return
 	}

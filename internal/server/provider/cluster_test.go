@@ -276,22 +276,26 @@ func TestAClusterNodeCannotBePoweredReleasedOrResized(t *testing.T) {
 func TestInstanceActionsFollowTheKindAndTheInstance(t *testing.T) {
 	full := Capabilities{CanPowerControl: true, CanDelete: true}
 	for _, tc := range []struct {
-		name    string
-		caps    Capabilities
-		power   string
-		nodeID  uint
-		cluster string
-		want    []string
+		name       string
+		caps       Capabilities
+		power      string
+		nodeID     uint
+		cluster    string
+		hpcCluster string
+		want       []string
 	}{
-		{"running, no node", full, "running", 0, "", []string{ActionPowerOff, ActionInstall, ActionDelete}},
-		{"stopped, no node", full, "stopped", 0, "", []string{ActionPowerOn, ActionInstall, ActionDelete}},
-		{"unknown power offers on", full, "unknown", 0, "", []string{ActionPowerOn, ActionInstall, ActionDelete}},
-		{"onboarded", full, "running", 7, "", []string{ActionPowerOff, ActionDelete}},
-		{"no power control", Capabilities{}, "running", 0, "", []string{ActionInstall}},
-		{"cluster node", full, "running", 0, "c-1", []string{}},
-		{"onboarded cluster node", full, "stopped", 7, "c-1", []string{}},
+		{"running, no node", full, "running", 0, "", "", []string{ActionPowerOff, ActionInstall, ActionDelete}},
+		{"stopped, no node", full, "stopped", 0, "", "", []string{ActionPowerOn, ActionInstall, ActionDelete}},
+		{"unknown power offers on", full, "unknown", 0, "", "", []string{ActionPowerOn, ActionInstall, ActionDelete}},
+		{"onboarded", full, "running", 7, "", "", []string{ActionPowerOff, ActionDelete}},
+		{"no power control", Capabilities{}, "running", 0, "", "", []string{ActionInstall}},
+		{"cluster node", full, "running", 0, "c-1", "", []string{}},
+		{"onboarded cluster node", full, "stopped", 7, "c-1", "", []string{}},
+		// An HPC compute node joins through its cluster's entry: no action, whatever its scheduler.
+		{"HPC compute node", full, "running", 0, "", "ehpc-1", []string{}},
+		{"onboarded HPC compute node", full, "stopped", 7, "", "ehpc-1", []string{}},
 	} {
-		got := InstanceActions(tc.caps, tc.power, tc.nodeID, tc.cluster)
+		got := InstanceActions(tc.caps, tc.power, tc.nodeID, tc.cluster, tc.hpcCluster)
 		if got == nil || strings.Join(got, ",") != strings.Join(tc.want, ",") {
 			t.Errorf("%s: actions = %#v, want %#v", tc.name, got, tc.want)
 		}

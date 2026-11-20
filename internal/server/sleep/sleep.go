@@ -70,3 +70,24 @@ const CodeHostMemoryInsufficient = "SLEEP_HOST_MEMORY_INSUFFICIENT"
 func HostMemoryHeadroom(totalBytes int64) int64 {
 	return max(totalBytes/20, 4*gib)
 }
+
+// CodeHostBackingInsufficient refuses a sleepable deployment whose engine
+// would keep more host memory behind its GPU memory than the node has
+// (accelerator.SleepPoolOnHostMemory).
+const CodeHostBackingInsufficient = messages.ErrorSleepHostBackingInsufficient
+
+// HostBackedEngineBytes is the host memory such an engine holds before it
+// takes its GPU memory: the server and engine processes, the loaded
+// libraries and the compiled graphs. The node of the measurement behind
+// accelerator.SleepPoolOnHostMemory used 5 to 7 GiB idle and 13 to 15.3 GiB
+// just before the engine allocated its pool, at each of three starts.
+const HostBackedEngineBytes = 8 * gib
+
+// HostBackingNeed is the host memory a sleepable engine needs on a node that
+// backs its GPU memory with host memory, for the poolBytes of GPU memory it
+// takes, and whether the node's available memory holds it with the headroom
+// an L1 sleep also keeps (HostMemoryHeadroom).
+func HostBackingNeed(poolBytes, availableBytes, totalBytes int64) (needBytes int64, fits bool) {
+	needBytes = poolBytes + HostBackedEngineBytes
+	return needBytes, needBytes <= availableBytes-HostMemoryHeadroom(totalBytes)
+}

@@ -119,7 +119,40 @@ func main() {
 		os.Exit(1)
 	}
 	defer stopSide()
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	// Every /metrics request is logged with the port it arrived on, so a
+	// process test can tell which port a collector scraped. An engine given
+	// --metrics-port owns its API port completely and serves its metrics on a
+	// port of its own (api.metrics.port: separate): the API port has no
+	// /metrics.
+	metricsPort := valueArg(args, "--metrics-port")
+	separate := metricsPort != "" && metricsPort != "0"
+	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" {
+			if separate {
+				logf("metrics requested on API port %s: not served", port)
+				http.NotFound(w, r)
+				return
+			}
+			logf("metrics scraped on port %s", port)
+		}
+		mux.ServeHTTP(w, r)
+	})
+	if separate {
+		logf("Serving /metrics only on port %s", metricsPort)
+		go func() {
+			err := http.ListenAndServe(":"+metricsPort, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/metrics" {
+					http.NotFound(w, r)
+					return
+				}
+				logf("metrics scraped on port %s", metricsPort)
+				mux.ServeHTTP(w, r)
+			}))
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}()
+	}
+	if err := http.ListenAndServe(":"+port, api); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

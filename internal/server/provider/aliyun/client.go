@@ -51,7 +51,10 @@ const (
 
 // apiError is the error body every Alibaba Cloud RPC API returns.
 type apiError struct {
-	Status    int    `json:"-"`
+	Status int `json:"-"`
+	// Action is the API call that was refused (RunCommand...), which is what
+	// a RAM policy has to allow; the error text does not carry it.
+	Action    string `json:"-"`
 	Code      string `json:"Code"`
 	Message   string `json:"Message"`
 	RequestID string `json:"RequestId"`
@@ -126,7 +129,23 @@ func (c *client) call(ctx context.Context, creds provider.Credentials, p product
 	return c.callWithKey(ctx, creds, key, p, region, action, params, out)
 }
 
+// callRegional is call without the central endpoint as a fallback: only the
+// region's own host answers. A listing that asks every region must use it,
+// because a central endpoint answers a region it does not serve with another
+// region's resources and the listing would claim them for the region asked.
+func (c *client) callRegional(ctx context.Context, creds provider.Credentials, p product, region, action string, params map[string]string, out any) error {
+	key, err := c.accessKey(ctx, creds)
+	if err != nil {
+		return err
+	}
+	return c.callHosts(ctx, creds, key, p, region, action, params, out, true)
+}
+
 func (c *client) callWithKey(ctx context.Context, creds provider.Credentials, key accessKey, p product, region, action string, params map[string]string, out any) error {
+	return c.callHosts(ctx, creds, key, p, region, action, params, out, false)
+}
+
+func (c *client) callHosts(ctx context.Context, creds provider.Credentials, key accessKey, p product, region, action string, params map[string]string, out any, regionalOnly bool) error {
 	query := map[string]string{}
 	for k, v := range params {
 		query[k] = v
@@ -135,6 +154,9 @@ func (c *client) callWithKey(ctx context.Context, creds provider.Credentials, ke
 		query["RegionId"] = region
 	}
 	bases := c.bases(creds, p, region)
+	if regionalOnly {
+		bases = bases[:1]
+	}
 	var lastErr, transportErr error
 	for i, base := range bases {
 		// A transport failure on a regional host goes to the next host rather
@@ -306,7 +328,7 @@ func (c *client) do(ctx context.Context, host string, base *url.URL, key accessK
 		return nil, fmt.Errorf("aliyun: %s %s: read response: %w", action, host, err)
 	}
 	if resp.StatusCode/100 != 2 {
-		apiErr := &apiError{Status: resp.StatusCode}
+		apiErr := &apiError{Status: resp.StatusCode, Action: action}
 		if json.Unmarshal(body, apiErr) != nil || apiErr.Code == "" {
 			apiErr.Code = http.StatusText(resp.StatusCode)
 			apiErr.Message = strings.TrimSpace(string(body))

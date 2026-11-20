@@ -43,6 +43,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Onboard ZStack Cloud](how-to/onboard-zstack-cloud.md)
 - [Connect a Kubernetes Cluster](how-to/connect-kubernetes.md)
 - [Connect Managed Kubernetes from a Public Cloud (Alibaba Cloud ACK, DigitalOcean, Nebius)](how-to/connect-managed-kubernetes.md)
+- [Connect a Slurm Cluster (Including Alibaba Cloud E-HPC)](how-to/connect-slurm-nodes.md)
 - [Give the Console a Public Address](how-to/expose-public-address.md)
 - [Production Deployment](how-to/deploy-production.md)
 - [Configure Node Networks](how-to/configure-networks.md)
@@ -150,4 +151,4 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - Do not use M numbers or relative paths outside the repository in current documentation. External research repository paths in historical logs are retained only as source references.
 - `CLAUDE.md` is the sole authority for development conventions; `CONTEXT.md` is the complete glossary. Guides in this directory only expand on procedures and link to those files.
 
-<!-- translation-source-sha256: b61a4dbdec36697d6814a72b548c498a7191e4536870a5d1f4249e2b79be5aac -->
+<!-- translation-source-sha256: 372845f5fdd52a707089183231c4d4a72a904395b2c83f294ab3a6426d3436c5 -->

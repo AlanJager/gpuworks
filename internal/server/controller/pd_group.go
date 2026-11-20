@@ -41,15 +41,23 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 		return false, fmt.Errorf("deployment %d: %s unit %d is not in the placement", dep.ID, role, slot.Unit.Index)
 	}
 	unit := units[slot.Unit.Index]
-	rank := planning.GroupRank{Ranks: len(nodes), Attempt: attempt}
+	rank := planning.GroupRank{Ranks: len(nodes)}
 	if slot.Unit.MultiNode() {
-		rank.Group = fmt.Sprintf("pd-%d-%s", dep.ID, auth.NewUUID()[:8])
+		rank.Group, rank.Attempt = fmt.Sprintf("pd-%d-%s", dep.ID, auth.NewUUID()[:8]), attempt
+		rank.Peers = planning.GroupPeers(nodes, pd.group)
 	}
 	sideSize := pd.mode.ExtraPorts(role, pd.placement.TP(role))
 
 	leader := pdRankLaunch{unit: unit, role: role, rank: rank, pd: planning.PDRecord{Role: role},
 		unitRecord: &planning.UnitRecord{Key: slot.Key, Followers: slot.Unit.FollowersKey()}}
+	// The leader's blocks, in the order they are picked: the API port, the
+	// metrics port of a template that declares api.metrics.port: separate,
+	// the side channel block, the port the unit's ranks meet on.
 	blocks := []int{1}
+	metrics := planning.DeploymentNeedsMetricsPort(dep)
+	if metrics {
+		blocks = append(blocks, 1)
+	}
 	if sideSize > 0 {
 		blocks = append(blocks, sideSize)
 	}
@@ -61,11 +69,17 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 		c.recordRankRefusal(dep, rejected, rank, nodes[0])
 		return false, nil
 	}
+	next := 1
 	leader.ports.API = ports[0]
 	leader.held = []int{ports[0]}
+	if metrics {
+		leader.ports.Metrics = ports[next]
+		leader.held = append(leader.held, ports[next])
+		next++
+	}
 	if sideSize > 0 {
-		leader.ports.SideChannel = ports[1]
-		leader.held = append(leader.held, portBlock(ports[1], sideSize)...)
+		leader.ports.SideChannel = ports[next]
+		leader.held = append(leader.held, portBlock(ports[next], sideSize)...)
 	}
 	if slot.Unit.MultiNode() {
 		leader.ports.Master = ports[len(ports)-1]
@@ -122,7 +136,7 @@ func portBlock(first, size int) []int {
 // with. A nil launch means the rank cannot start now (see planRank).
 func (c *Controller) planPDRank(ctx context.Context, deployment *unitDeployment, node *store.Node, model *store.Model, launch pdRankLaunch) (*rankLaunch, planning.PDRecord, *scheduler.Reason, error) {
 	dep, pd := deployment.dep, deployment.pd
-	files, ready, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model)
+	files, ready, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model, 0) // PD refuses rank-scoped weights
 	if err != nil || !ready {
 		return nil, planning.PDRecord{}, nil, err
 	}

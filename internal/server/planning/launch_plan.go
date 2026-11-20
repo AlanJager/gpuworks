@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/network"
@@ -26,6 +27,10 @@ import (
 // PreviewAPIPort is the placeholder a preview shows where a real launch has the
 // port the scheduler reserved for it.
 const PreviewAPIPort = 30000
+
+// PreviewMetricsPort is the placeholder for the metrics port of a template
+// that declares api.metrics.port: separate.
+const PreviewMetricsPort = PreviewAPIPort + 2
 
 // LaunchRequest is one launch assembly's input: the rows and choices the caller
 // owns. Both callers build it from what they have - the controller from stored
@@ -56,6 +61,10 @@ type LaunchRequest struct {
 	// APIPort is the reserved host port of a real launch; a preview passes zero
 	// and gets PreviewAPIPort.
 	APIPort int
+	// MetricsPort is the second reserved host port of a real launch whose
+	// template declares api.metrics.port: separate (NeedsMetricsPort); zero
+	// when it declares none. A preview passes zero and gets PreviewMetricsPort.
+	MetricsPort int
 
 	Engine    string
 	Model     *store.Model
@@ -80,7 +89,11 @@ type LaunchRequest struct {
 	// ImplicitServedName is deploy.Params.ImplicitServedName: the node's
 	// host-process agent would translate an explicit model name to a path.
 	ImplicitServedName bool
-	Sleepable          bool
+	// AgentCaps are the capabilities the node's agent announced; nil when it
+	// is not connected. A launch using a facility the agent lacks is refused
+	// (agentCapabilityRefusal).
+	AgentCaps []string
+	Sleepable bool
 	// PriorityScheduling is the deployment's ask for per-request priority
 	// scheduling (deploy.Params.PriorityScheduling).
 	PriorityScheduling bool
@@ -107,6 +120,23 @@ type LaunchRequest struct {
 	// the deployment's requirements limit it to and the one it saves into
 	// (store.ModelSourceOn).
 	ModelRules store.SourceRules
+}
+
+// NeedsMetricsPort reports whether the launch reserves a second port for the
+// instance's metrics endpoint: its template's api.metrics declares port:
+// separate. It reads the deployment's template snapshot (Selection), not
+// APIContract, which is the model's operations and carries no metrics. A
+// headless rank serves no API and has none either.
+func (r LaunchRequest) NeedsMetricsPort() bool {
+	return !r.Topology.Headless && inferenceapi.SeparateMetricsPort(r.Selection.APIContract)
+}
+
+// DeploymentNeedsMetricsPort is NeedsMetricsPort for a deployment's leader
+// before its launch request exists (a PD unit reserves every port of a rank in
+// one pass, ahead of assembling it).
+func DeploymentNeedsMetricsPort(dep *store.Deployment) bool {
+	layer, err := DeploymentTemplate(dep)
+	return err == nil && inferenceapi.SeparateMetricsPort(layer.APIContract)
 }
 
 // LaunchPlan is one assembled launch and everything it was built from, so the
@@ -168,6 +198,10 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if req.DefaultStartTimeoutSec <= 0 {
 		req.DefaultStartTimeoutSec = st.DeploymentPolicy().StartTimeoutSec
 	}
+	req.Topology.Peers = peersForAgent(req)
+	if req.Preview && req.NeedsMetricsPort() {
+		req.MetricsPort = PreviewMetricsPort
+	}
 	input, err := launchInput(st, req)
 	if err != nil {
 		return LaunchPlan{}, err
@@ -218,6 +252,9 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	plan.Params, plan.Profile, plan.LaunchInput = allocated.Params, allocated.Profile, allocated.LaunchInput
 	plan.Resolved, plan.Warnings = allocated.Resolved, allocated.Warnings
 	plan.Resolved.StartupEstimate = launchStartupEstimate(req, plan.Resolved)
+	if refusal := agentCapabilityRefusal(req.AgentCaps, req.Node, plan.Resolved); refusal != nil {
+		plan.Output.Result = scheduler.Result{OK: false, Message: *refusal, Explain: scheduler.Explain{Filters: []scheduler.Reason{*refusal}}}
+	}
 	return plan, nil
 }
 
@@ -232,7 +269,7 @@ func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel paral
 	}
 	arch := req.Node.ArchOf(gpu)
 	params := deploy.Params{
-		ModelPath: req.ModelMount, ServedName: req.ServedName, APIPort: apiPort,
+		ModelPath: req.ModelMount, ServedName: req.ServedName, APIPort: apiPort, MetricsPort: req.MetricsPort, MetricsPortSeparate: inferenceapi.SeparateMetricsPort(req.Selection.APIContract),
 		AssignedGPUs: assigned, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, DataParallel: parallel.DP,
 		Sleepable: req.Sleepable, PriorityScheduling: req.PriorityScheduling, Quick: req.Quick,
 		TemplateArgs: req.Selection.ExtraArgs, TemplateEnv: req.Selection.Env, ExtraArgs: req.ExtraArgs,
@@ -243,6 +280,7 @@ func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel paral
 		MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 		Headless: req.Topology.Headless, NodeAddress: req.Topology.NodeAddress,
 		ComputeNetwork:     req.Topology.Network,
+		Peers:              req.Topology.Peers,
 		PD:                 req.PD,
 		Host:               deploy.RuntimeBindHost(req.Node.RuntimeDriver),
 		ImplicitServedName: req.ImplicitServedName,
@@ -274,6 +312,9 @@ func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, erro
 	spec := req.Placement.Parallelism(req.Topology.NNodes)
 	spec.DP = dp
 	_, assigned, parallel := previewPlacement(req, Output{}, spec)
+	if req.NeedsMetricsPort() {
+		req.MetricsPort = PreviewMetricsPort
+	}
 	params := launchParams(req, gpu, assigned, parallel, PreviewAPIPort)
 	params.AssignedGPUs = 0
 	params.TensorParallel = 0
@@ -287,6 +328,7 @@ func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, erro
 		PreStartArgv: req.Selection.PreStartArgv, PreStartScript: req.Selection.PreStartScript,
 		RuntimeAssets: req.Selection.RuntimeAssets, ComponentMounts: req.ComponentMounts, ModelPaths: req.ModelPaths,
 		TemplateShmBytes: req.Selection.ShmBytes, TemplateMemlockUnlimited: req.Selection.MemlockUnlimited, TemplateDockerArgs: req.Selection.DockerArgs,
+		TemplateDirs: req.Selection.Dirs, ManagedDirGroup: req.Source.ManagedDirGroup,
 		APIContract: req.APIContract, AllowUnresolved: true, TargetValidation: deploy.CollectTargetCapabilities,
 	})
 	if err != nil {
@@ -311,8 +353,10 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 	}
 	parallel := req.Placement.Parallelism(req.Topology.NNodes)
 	parallel.DP = dp
+	weightModel, weightRanks := rankWeightModel(req.Selection, req.Model, req.Topology.NodeRank)
 	return Input{
 		Model: req.Model, Node: req.Node, Engine: req.Engine, Quick: req.Quick,
+		WeightModel: weightModel, WeightRanks: weightRanks,
 		SpecWeightBytes:      req.Selection.WeightBytes,
 		RuntimeWeightBytes:   req.Selection.RuntimeWeightBytes,
 		ComponentWeightBytes: componentWeightBytes,
@@ -320,6 +364,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		KVBytesPerToken:      catalogKVBytesPerTokenForSelection(st, req.Selection.TemplateID, req.Selection.ModelID, req.Model, req.Engine),
 		RuntimeImageBytes:    CatalogImageBytes(st, req.Source.Image),
 		RuntimeImageCached:   runtimeImageCached(st, req),
+		ManagedDirBytes:      deploy.ManagedDirBytes(req.Selection.Dirs),
 		Unloaded:             req.Unloaded,
 		ExcludeDeploymentID:  req.ExcludeDeploymentID,
 		ExcludeInstanceUUID:  req.ExcludeInstanceUUID,

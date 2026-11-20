@@ -77,13 +77,13 @@ for (const language of ["en", "zh"] as const) {
 // the console's word for its kind (Host, 物理机). The kind behind a product name is said when the tag is pointed at, and is what the filter offers.
 const resourceColumns = {
   en: {
-    resources: "Connects", nodes: "Nodes joined", ali: ["ECS", "ACK"], aliKinds: ["VM", "Kubernetes"], pods: ["Pod"], podsKinds: ["Container"], hosts: ["Host"],
-    plain: ["VM", "Container"], filter: "Filter by Connects", kinds: ["VM", "Kubernetes", "Container", "Host"],
+    resources: "Connects", nodes: "Nodes joined", ali: ["ECS", "ACK", "E-HPC"], aliKinds: ["VM", "Kubernetes", "Slurm"], pods: ["Pod"], podsKinds: ["Container"], hosts: ["Host"],
+    plain: ["VM", "Container"], filter: "Filter by Connects", kinds: ["VM", "Kubernetes", "Slurm", "Container", "Host"],
     resourcesHelp: /^The kinds of resource this external platform can hand over to GPUWorks\./, nodesHelp: /^Machines that joined through this external platform and are compute nodes now/,
   },
   zh: {
-    resources: "可接入资源", nodes: "已接入节点", ali: ["ECS", "ACK"], aliKinds: ["虚拟机", "Kubernetes"], pods: ["Pod"], podsKinds: ["容器实例"], hosts: ["物理机"],
-    plain: ["虚拟机", "容器实例"], filter: "按「可接入资源」筛选", kinds: ["虚拟机", "Kubernetes", "容器实例", "物理机"],
+    resources: "可接入资源", nodes: "已接入节点", ali: ["ECS", "ACK", "E-HPC"], aliKinds: ["虚拟机", "Kubernetes", "Slurm"], pods: ["Pod"], podsKinds: ["容器实例"], hosts: ["物理机"],
+    plain: ["虚拟机", "容器实例"], filter: "按「可接入资源」筛选", kinds: ["虚拟机", "Kubernetes", "Slurm", "容器实例", "物理机"],
     resourcesHelp: /^这个外部平台能交给 GPUWorks 的资源种类。/, nodesHelp: /^经这个外部平台接入、已经成为计算节点的机器数量/,
   },
 };
@@ -181,11 +181,15 @@ test("the resources filter offers the resources in the list and leaves the platf
   await screen.findByText("prod-gpu");
 
   const options = await filterOptions("Connects");
-  assert.deepEqual(names(options), ["VM", "Kubernetes", "Container", "Host"]);
+  assert.deepEqual(names(options), ["VM", "Kubernetes", "Slurm", "Container", "Host"]);
   fireEvent.click(options[1]);
   await waitFor(() => assert.deepEqual(listed(), ["ali-prod", "prod-gpu", "lab"]));
   fireEvent.click(options[1]);
-  fireEvent.click(options[3]);
+  // E-HPC is the account's Slurm: only the account connects it here.
+  fireEvent.click(options[2]);
+  await waitFor(() => assert.deepEqual(listed(), ["ali-prod"]));
+  fireEvent.click(options[2]);
+  fireEvent.click(options[4]);
   await waitFor(() => assert.deepEqual(listed(), ["Hosts"]));
 });
 

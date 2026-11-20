@@ -96,8 +96,8 @@ test("a vendor's card shows its name and logo and what it connects by product na
 
   // The vendor's own product names, in the server's order, without amounts: nothing is connected yet.
   const aliyun = cardOf(screen.getByRole("button", { name: "Add Alibaba Cloud" }));
-  assert.deepEqual(tags(aliyun), ["ECS", "ACK"]);
-  assert.deepEqual(tagTitles(aliyun), ["VM", "Kubernetes"]);
+  assert.deepEqual(tags(aliyun), ["ECS", "ACK", "E-HPC"]);
+  assert.deepEqual(tagTitles(aliyun), ["VM", "Kubernetes", "Slurm"]);
 
   // A kind without a bundled mark, a homepage or resources still renders, with its initial.
   const other = screen.getByRole("button", { name: "Add New Cloud" });
@@ -180,8 +180,8 @@ test("in zh a card's site link is named 打开官网 with the address, its tags 
   await user.hover(homepage);
   assert.equal((await screen.findByRole("tooltip")).textContent, "打开官网 www.aliyun.com");
   // A product name is the vendor's and is not translated; what it is, is.
-  assert.deepEqual(tags(cardOf(add)), ["ECS", "ACK"]);
-  assert.deepEqual(tagTitles(cardOf(add)), ["虚拟机", "Kubernetes"]);
+  assert.deepEqual(tags(cardOf(add)), ["ECS", "ACK", "E-HPC"]);
+  assert.deepEqual(tagTitles(cardOf(add)), ["虚拟机", "Kubernetes", "Slurm"]);
   const plain = cardOf(screen.getByRole("button", { name: "添加 朴素云" }));
   assert.deepEqual(tags(plain), ["虚拟机", "容器实例"]);
   assert.deepEqual(tagTitles(plain), [null, null]);

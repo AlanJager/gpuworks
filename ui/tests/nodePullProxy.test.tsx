@@ -33,7 +33,7 @@ test("the entry the node uses is shown with its addresses, user and node require
   }));
   try {
     show();
-    assert.ok(document.querySelector(".ant-skeleton"), "a loading placeholder shows first");
+    assert.ok(document.querySelector("[aria-busy=\"true\"]"), "a loading placeholder shows first");
     await screen.findByText(text.entry.replace("{{n}}", "2"));
     assert.ok(screen.getByText("http://proxy.corp:3128"));
     assert.ok(screen.getByText("http://proxy.corp:3129"));
@@ -68,7 +68,7 @@ test("a failed load shows the error and nothing else", async () => {
     await screen.findByText(text.loadFailed);
     await waitFor(() => assert.ok(screen.getByText("node unreachable")));
     assert.equal(screen.queryByText(text.noneDetail), null);
-    assert.equal(document.querySelector(".ant-skeleton"), null);
+    assert.equal(document.querySelector("[aria-busy=\"true\"]"), null);
   } finally {
     restore();
   }

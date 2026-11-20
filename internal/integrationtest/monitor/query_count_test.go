@@ -15,12 +15,14 @@ import (
 // window_fetch.go's doc comments: BuildCluster fetches every metric
 // fleet-wide exactly once (FetchFleetWindowSeries: one nil-matcher
 // QueryRange per metric name - 15 engine series, 4 proxy accounting series
-// and the 8 gateway series that stand in for engine ones) plus the cluster
+// and the 10 gateway series that stand in for engine ones: 8 histogram and
+// token series, plus the cached-token and cache-reported-prompt counters
+// whose ratio is the gateway's cache hit rate) plus the cluster
 // token-rate QueryRange and 4 QueryLatest probes (vramByNode's, and one
 // range-presence probe each for proxy requests, TTFT and TPOT) - a fixed
-// total of 32 independent of how many deployments the fleet has. The GPU
+// total of 34 independent of how many deployments the fleet has. The GPU
 // temperature, utilization, memory-bandwidth and throttle-reason and node
-// CPU window queries (5 more, 37 in total before) were removed together with
+// CPU window queries (5 more, 39 in total before) were removed together with
 // the diagnosis rules that read them. A regression that reintroduced a
 // per-deployment tsdb query (the O(deployments x metrics) shape the plan
 // explicitly rules out) would make this grow with N and fail here.
@@ -61,7 +63,7 @@ func TestClusterOverviewQueryCountStaysConstantAsDeploymentsScale(t *testing.T) 
 	if callsFor1 == 0 {
 		t.Fatal("expected at least one tsdb call for a single-deployment overview")
 	}
-	const wantCalls = 32 // 28 QueryRange + 4 QueryLatest, see the doc comment above
+	const wantCalls = 34 // 30 QueryRange + 4 QueryLatest, see the doc comment above
 	if callsFor1 != wantCalls {
 		t.Fatalf("tsdb query count for a 1-deployment overview = %d, want %d", callsFor1, wantCalls)
 	}

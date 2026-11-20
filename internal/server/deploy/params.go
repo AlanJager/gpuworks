@@ -359,6 +359,13 @@ type Params struct {
 	ServedName          string
 	Host                string // default 127.0.0.1
 	APIPort             int
+	// MetricsPort is the second port reserved for the instance's metrics
+	// endpoint, zero when none is. The launch states it as METRICS_PORT only
+	// when the template's api.metrics declares port: separate
+	// (MetricsPortSeparate, read by the caller from the deployment's template
+	// snapshot; the API contract of the launch is the model's and has none).
+	MetricsPort         int
+	MetricsPortSeparate bool
 	APIKey              string
 	// AssignedGPUs is the number of GPUs placement assigned to this node. It is
 	// a fact written by the scheduler (or the deployment preview), never by
@@ -406,6 +413,9 @@ type Params struct {
 	NodeAddress string
 	// ComputeNetwork is this rank's resolved compute network, if any.
 	ComputeNetwork ComputeNetwork
+	// Peers is every rank of this rank's multi-node group; the launch writes
+	// them to its peers file (peersFile). Nil when there is no file to write.
+	Peers []proto.PeerRank
 	// PD is set on a PD disaggregated instance (ADR 0028).
 	PD *PDLaunch
 	// RuntimeDriver is the container runtime the target node reports

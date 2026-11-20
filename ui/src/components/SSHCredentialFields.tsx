@@ -1,38 +1,62 @@
-import { useEffect, useState } from "react";
-import { Alert, Form, Input, Radio, Spin, Typography } from "antd";
+import { useEffect, useId, useState } from "react";
+import type { Control, FieldPath, FieldValues } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { api, type PlatformSSHKey, type SSHAuthMode } from "../api";
+import { FormField } from "../ui-kit/form/FormField";
+import { Notice } from "../ui-kit/Notice";
+import { PasswordInput } from "../ui-kit/PasswordInput";
+import { Spinner } from "../ui-kit/Spinner";
+import CopyButton from "./CopyButton";
+import { Field, FieldDescription, FieldLabel } from "./ui/field";
+import { RadioGroup, RadioItem } from "./ui/radio-group";
+import { Textarea } from "./ui/textarea";
 
 export type { SSHAuthMode };
 
-export default function SSHCredentialFields({
+/** The secret fields a form holding SSH credentials carries. */
+export type SSHSecretValues = { password?: string; private_key_pem?: string };
+
+const AUTH_MODES: { value: SSHAuthMode; label: string }[] = [
+  { value: "platform_key", label: "ssh.auth.platformKey" },
+  { value: "password", label: "ssh.auth.password" },
+  { value: "keyboard_interactive", label: "ssh.auth.keyboardInteractive" },
+  { value: "private_key", label: "ssh.auth.key" },
+];
+
+const required = (message: string) => ({ validate: (value: unknown) => (typeof value === "string" && value.trim() !== "") || message });
+
+export default function SSHCredentialFields<T extends FieldValues & SSHSecretValues>({
+  control,
   authMode,
   onAuthModeChange,
 }: {
+  control: Control<T>;
   authMode: SSHAuthMode;
   onAuthModeChange: (mode: SSHAuthMode) => void;
 }) {
   const { t } = useTranslation("nodes");
+  const modeLabel = useId();
   return (
     <>
-      <Form.Item label={t("ssh.auth.label")}>
-        <Radio.Group value={authMode} onChange={(event) => onAuthModeChange(event.target.value)}>
-          <Radio.Button value="platform_key">{t("ssh.auth.platformKey")}</Radio.Button>
-          <Radio.Button value="password">{t("ssh.auth.password")}</Radio.Button>
-          <Radio.Button value="keyboard_interactive">{t("ssh.auth.keyboardInteractive")}</Radio.Button>
-          <Radio.Button value="private_key">{t("ssh.auth.key")}</Radio.Button>
-        </Radio.Group>
-      </Form.Item>
+      <Field>
+        <FieldLabel id={modeLabel}>{t("ssh.auth.label")}</FieldLabel>
+        <RadioGroup aria-labelledby={modeLabel} value={authMode} onValueChange={(mode) => onAuthModeChange(mode as SSHAuthMode)}
+          className="w-auto flex-row flex-wrap">
+          {AUTH_MODES.map((mode, index) => <RadioItem key={mode.value} index={index} value={mode.value} label={t(mode.label)} />)}
+        </RadioGroup>
+      </Field>
       {authMode === "platform_key" && <PlatformKeyAuthorization />}
       {(authMode === "password" || authMode === "keyboard_interactive") && (
-        <Form.Item label={t("ssh.password")} name="password" extra={authMode === "keyboard_interactive" ? `${t("ssh.keyboardInteractiveHelp")} ${t("ssh.authorizesPlatformKey")}` : t("ssh.authorizesPlatformKey")} rules={[{ required: true, whitespace: true, message: t("ssh.passwordRequired") }]}>
-          <Input.Password autoComplete="off" />
-        </Form.Item>
+        <FormField control={control} name={"password" as FieldPath<T>} required label={t("ssh.password")} rules={required(t("ssh.passwordRequired"))}
+          description={authMode === "keyboard_interactive" ? `${t("ssh.keyboardInteractiveHelp")} ${t("ssh.authorizesPlatformKey")}` : t("ssh.authorizesPlatformKey")}>
+          {(binding) => <PasswordInput {...binding} value={binding.value ?? ""} autoComplete="off" />}
+        </FormField>
       )}
       {authMode === "private_key" && (
-        <Form.Item label={t("ssh.privateKey")} name="private_key_pem" extra={t("ssh.authorizesPlatformKey")} rules={[{ required: true, whitespace: true, message: t("ssh.privateKeyRequired") }]}>
-          <Input.TextArea rows={6} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
-        </Form.Item>
+        <FormField control={control} name={"private_key_pem" as FieldPath<T>} required label={t("ssh.privateKey")} rules={required(t("ssh.privateKeyRequired"))}
+          description={t("ssh.authorizesPlatformKey")}>
+          {(binding) => <Textarea {...binding} value={binding.value ?? ""} rows={6} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />}
+        </FormField>
       )}
     </>
   );
@@ -42,6 +66,7 @@ export default function SSHCredentialFields({
 // key on a target, which is all the platform_key mode asks of the operator.
 export function PlatformKeyAuthorization() {
   const { t } = useTranslation("nodes");
+  const { t: tCommon } = useTranslation("common");
   const [key, setKey] = useState<PlatformSSHKey | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -54,16 +79,19 @@ export function PlatformKeyAuthorization() {
     };
   }, []);
   if (error) {
-    return <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t("ssh.platformKey.unavailable", { detail: error })} />;
+    return <Notice tone="danger" title={t("ssh.platformKey.unavailable", { detail: error })} />;
   }
   if (!key) {
-    return <Spin size="small" style={{ display: "block", marginBottom: 16 }} />;
+    return <div><Spinner label={tCommon("picker.loading")} /></div>;
   }
   return (
-    <Form.Item label={t("ssh.platformKey.authorizeLabel")} extra={t("ssh.platformKey.authorizeHelp", { fingerprint: key.fingerprint })}>
-      <Typography.Paragraph copyable={{ text: key.authorize_command }} code style={{ marginBottom: 0, wordBreak: "break-all" }}>
-        {key.authorize_command}
-      </Typography.Paragraph>
-    </Form.Item>
+    <Field>
+      <FieldLabel>{t("ssh.platformKey.authorizeLabel")}</FieldLabel>
+      <div className="flex items-start gap-1 rounded-lg bg-emphasis px-3 py-2">
+        <code className="min-w-0 flex-1 break-all font-mono text-label">{key.authorize_command}</code>
+        <CopyButton text={key.authorize_command} label={t("add.copyCommand")} size="small" />
+      </div>
+      <FieldDescription>{t("ssh.platformKey.authorizeHelp", { fingerprint: key.fingerprint })}</FieldDescription>
+    </Field>
   );
 }

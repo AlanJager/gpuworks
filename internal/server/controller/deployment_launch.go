@@ -14,12 +14,21 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// deploymentModels is every model a deployment's instances read: its own,
-// then each distinct component model its template binds.
-func (c *Controller) deploymentModels(dep *store.Deployment, primary *store.Model) ([]*store.Model, error) {
-	ids, err := planning.DeploymentModelIDs(dep)
+// deploymentModels is every model one rank of a deployment reads: the one its
+// primary mount takes (the deployment's own, or the rank's own artifact for
+// rank-scoped weights), then each distinct component model its template
+// binds. The first model is the primary mount's.
+func (c *Controller) deploymentModels(dep *store.Deployment, primary *store.Model, rank int) ([]*store.Model, error) {
+	ids, err := planning.RankModelIDs(dep, rank)
 	if err != nil {
 		return nil, err
+	}
+	if ids[0] != primary.ID {
+		rankModel, err := c.store.GetModel(ids[0])
+		if err != nil {
+			return nil, fmt.Errorf("deployment %d rank %d model %d: %w", dep.ID, rank, ids[0], err)
+		}
+		primary = rankModel
 	}
 	models := []*store.Model{primary}
 	for _, id := range ids[1:] {
@@ -38,8 +47,8 @@ func (c *Controller) deploymentModels(dep *store.Deployment, primary *store.Mode
 // to pick a source. A model still arriving is not stuck and gives nil.
 // Without it a replica waiting on such a node shows no reason at all, and a
 // pool replica would keep picking that node.
-func (c *Controller) modelUnavailable(dep *store.Deployment, node *store.Node, primary *store.Model) (*scheduler.Reason, error) {
-	models, err := c.deploymentModels(dep, primary)
+func (c *Controller) modelUnavailable(dep *store.Deployment, node *store.Node, primary *store.Model, rank int) (*scheduler.Reason, error) {
+	models, err := c.deploymentModels(dep, primary, rank)
 	if err != nil {
 		return nil, err
 	}
@@ -237,6 +246,7 @@ func (c *Controller) launchRequest(dep *store.Deployment, node *store.Node, mode
 	}
 	req, templateLayer, modelHostPath, err := planning.DeploymentLaunch(dep, reqs, node, model, files.paths())
 	req.ImplicitServedName = c.translatesServedName(node)
+	req.AgentCaps = c.nodeCaps(node)
 	return req, templateLayer, modelHostPath, err
 }
 
@@ -307,6 +317,7 @@ func scheduledInstance(dep *store.Deployment, plan planning.LaunchPlan, port int
 		Ports:               ports,
 		ModelPath:           modelHostPath,
 		APIPort:             port,
+		MetricsPort:         plan.Params.MetricsPort,
 		StartTimeout:        startTimeout,
 		DistGroup:           topology.Group,
 		DistRole:            topology.Role,

@@ -21,9 +21,15 @@ import (
 // declaration is resolved into an instance's observation by
 // deploy.ResolveObservation (ADR 0039).
 type Metrics struct {
-	// Endpoint is the path of the metrics endpoint on the API port; empty
-	// means /metrics.
+	// Endpoint is the path of the metrics endpoint on the metrics port (the
+	// API port unless Port says otherwise); empty means /metrics.
 	Endpoint string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+	// Port says where the endpoint listens: empty (or "api") is the API port,
+	// MetricsPortSeparate is a second port the platform reserves for the
+	// instance and states as ${GPUWORKS_METRICS_PORT}. An engine that owns its
+	// API port completely, with no /metrics there, has a launcher in its image
+	// serve the metrics on that port instead.
+	Port string `yaml:"port,omitempty" json:"port,omitempty"`
 	// Format is the endpoint's encoding: empty (Prometheus text) or "json",
 	// whose map keys are dotted paths of numbers in the document.
 	Format string `yaml:"format,omitempty" json:"format,omitempty"`
@@ -32,6 +38,28 @@ type Metrics struct {
 	// Map is exposition family (optionally with a label selector) to platform
 	// metric short name, or to {to, scale}.
 	Map MetricMap `yaml:"map,omitempty" json:"map,omitempty"`
+}
+
+// MetricsPortSeparate is api.metrics.port for an endpoint on a port of its own.
+// The API port is the default and is stored as no value.
+const MetricsPortSeparate = "separate"
+
+// SeparateMetricsPort reports whether a contract's api.metrics asks for a port
+// of its own. The contract is the stored JSON an instance launched with, which
+// is what decides whether the launch reserves the port.
+func SeparateMetricsPort(contract json.RawMessage) bool {
+	if len(contract) == 0 {
+		return false
+	}
+	var declared struct {
+		Metrics *struct {
+			Port string `json:"port"`
+		} `json:"metrics"`
+	}
+	if json.Unmarshal(contract, &declared) != nil || declared.Metrics == nil {
+		return false
+	}
+	return declared.Metrics.Port == MetricsPortSeparate
 }
 
 // MetricMap maps exposition families to platform metrics.
@@ -126,6 +154,16 @@ func normalizeMetrics(metrics *Metrics) error {
 		return messages.NewProductError(messages.ErrorCatalogMetricsEndpointInvalid,
 			fmt.Sprintf("invalid api.metrics endpoint %q", metrics.Endpoint),
 			map[string]any{"endpoint": metrics.Endpoint})
+	}
+	switch strings.ToLower(strings.TrimSpace(metrics.Port)) {
+	case "", "api":
+		metrics.Port = ""
+	case MetricsPortSeparate:
+		metrics.Port = MetricsPortSeparate
+	default:
+		return messages.NewProductError(messages.ErrorCatalogMetricsPortInvalid,
+			fmt.Sprintf("api.metrics port %q is neither api nor %s", metrics.Port, MetricsPortSeparate),
+			map[string]any{"port": metrics.Port})
 	}
 	format, ok := inferencemetrics.ParseFormat(metrics.Format)
 	if !ok {

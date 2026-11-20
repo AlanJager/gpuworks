@@ -31,7 +31,10 @@ type templateSelection struct {
 	ExtraArgs        []string
 	// DockerArgs are the selected spec's own docker run options, decoded from
 	// InferenceSpecRow.DockerArgs; nil when the spec states none.
-	DockerArgs     []string
+	DockerArgs []string
+	// Dirs are the selected spec's writable directories, decoded from
+	// InferenceSpecRow.Dirs; nil when the spec declares none.
+	Dirs           []deploy.ManagedDir
 	Env            map[string]string
 	PreStartArgv   []string
 	PreStartScript string
@@ -54,28 +57,12 @@ type templateSelection struct {
 	// explicit provider moved, so resolving their model rows keeps that
 	// provider instead of falling back to a registered mirror of the repository.
 	ExplicitComponents map[string]bool
-}
 
-// shmBytes is the /dev/shm size the selected spec states, or zero when the
-// deployment has no template or the spec states none.
-func (s templateSelection) shmBytes() int64 {
-	if s.Spec == nil {
-		return 0
-	}
-	return s.Spec.ShmBytes
-}
-
-// memlockUnlimited reports whether the selected spec asks for unlimited locked
-// memory in its container.
-func (s templateSelection) memlockUnlimited() bool {
-	return s.Spec != nil && s.Spec.MemlockUnlimited
-}
-
-// dockerArgs is the selected spec's own docker run options, decoded once in
-// applyTemplateDefaults (DockerArgs); nil when the deployment has no template
-// or the spec states none.
-func (s templateSelection) dockerArgs() []string {
-	return s.DockerArgs
+	// WeightRanks is how many ranks the request runs, which is how many
+	// artifacts rank-scoped weights resolve to; RankWeights is what they
+	// resolved to (resolveRankWeights).
+	WeightRanks int
+	RankWeights []deploy.RankWeight
 }
 
 func (s *Service) resolveDeploymentModelFromTemplate(ctx context.Context, modelID uint, selection *templateSelection, templateID uint) (*store.Model, error) {
@@ -112,10 +99,13 @@ func (s *Service) resolveDeploymentModelFromTemplate(ctx context.Context, modelI
 				fmt.Sprintf("model_id %d conflicts with template model %s@%s", modelID, selection.Weight.RepoID, selection.Weight.Revision),
 				map[string]any{"model_id": modelID, "repo_id": selection.Weight.RepoID, "revision": selection.Weight.Revision})
 		}
+		if err := checkRankZeroModel(selection.Weight, requested); err != nil {
+			return nil, err
+		}
 		model = requested
 	}
 	if model == nil {
-		model, err = s.resolveTemplateWeightModelForNode(selection.Weight, selection.Model, selection.Spec.Engine, selection.Spec.Quantization, selection.Spec.WeightBytes, selection.NodeID, selection.StoragePins, selection.ExplicitProvider)
+		model, err = s.resolveWeightArtifact(lookupSource(selection.Weight), selection.Model, selection.Spec.Engine, selection.Spec.Quantization, selection.Spec.WeightBytes, selection.NodeID, selection.StoragePins, selection.rankScoped(), selection.ExplicitProvider)
 		if err != nil {
 			return nil, err
 		}
@@ -123,8 +113,16 @@ func (s *Service) resolveDeploymentModelFromTemplate(ctx context.Context, modelI
 	// Persist the artifact identity that will actually be mounted. This is
 	// important when a complete mirror from another provider satisfied the
 	// template source: the requested source is only a preference, not the
-	// runtime artifact identity.
+	// runtime artifact identity. A rank-scoped subfolder stays the template's:
+	// each rank's own artifact is bound in RankWeights.
+	template := selection.Weight.Subfolder
 	selection.Weight = weightSource{Provider: model.Source, RepoID: model.SourceID, Revision: model.Revision, Subfolder: model.ArtifactSubfolder}
+	if deploy.RankScopedSubfolder(template) {
+		selection.Weight.Subfolder = template
+	}
+	if err := s.resolveRankWeights(selection, model, template); err != nil {
+		return nil, err
+	}
 	if err := s.resolveTemplateComponentModels(selection, model); err != nil {
 		return nil, err
 	}
@@ -206,6 +204,12 @@ func applyCurrentModelAPIContract(selection *templateSelection, model *store.Mod
 	var templateContract inferenceapi.Contract
 	if json.Unmarshal(selection.APIContract, &templateContract) == nil {
 		contract.TokenizerRef = templateContract.TokenizerRef
+		// The template's metrics port is a launch fact (the instance reserves
+		// it and the launch states it), so it stays in the snapshot. The rest
+		// of api.metrics is read from the tier's current declaration.
+		if templateContract.Metrics != nil && templateContract.Metrics.Port != "" {
+			contract.Metrics = &inferenceapi.Metrics{Port: templateContract.Metrics.Port}
+		}
 	}
 	encoded, err := json.Marshal(contract)
 	if err == nil {
@@ -244,7 +248,7 @@ func (s *Service) resolveTemplateComponentModels(selection *templateSelection, f
 }
 
 func (s *Service) applyTemplateDefaults(req *dto.DeployRequest, hardware templateHardware) (templateSelection, error) {
-	selection := templateSelection{NodeID: hardware.NodeID, StoragePins: store.StoragePins(req.NodeRequirements)}
+	selection := templateSelection{NodeID: hardware.NodeID, StoragePins: store.StoragePins(req.NodeRequirements), WeightRanks: max(req.NNodes, 1)}
 	if req.TemplateID == 0 {
 		return selection, nil
 	}
@@ -278,6 +282,9 @@ func (s *Service) applyTemplateDefaults(req *dto.DeployRequest, hardware templat
 		if err := json.Unmarshal([]byte(spec.DockerArgs), &selection.DockerArgs); err != nil {
 			return selection, fmt.Errorf("inference spec %s docker_args: %w", spec.Name, err)
 		}
+	}
+	if selection.Dirs, err = deploy.DecodeManagedDirs(spec.Dirs); err != nil {
+		return selection, fmt.Errorf("inference spec %s: %w", spec.Name, err)
 	}
 	if strings.TrimSpace(spec.Env) != "" {
 		if err := json.Unmarshal([]byte(spec.Env), &selection.Env); err != nil {
@@ -453,7 +460,7 @@ func (s *Service) selectWeightSource(spec store.InferenceSpecRow, nodeID uint, p
 				if err != nil {
 					return weightSource{}, err
 				}
-				model := nodeReadyWeightModel(candidates, candidate, ready)
+				model := nodeReadyWeightModel(candidates, lookupSource(candidate), ready)
 				if model == nil {
 					continue
 				}
@@ -476,8 +483,11 @@ func (s *Service) selectWeightSource(spec store.InferenceSpecRow, nodeID uint, p
 // weightSourceVariants enumerates a declared source and, for a subfolder
 // source, the complete repository that also contains it. The variant that
 // matched decides what is mounted, so the subfolder variant is tried first.
+//
+// A rank-scoped source has no such variant: the whole repository is every
+// rank's weights, which is what naming the rank avoids.
 func weightSourceVariants(source weightSource) []weightSource {
-	if strings.TrimSpace(source.Subfolder) == "" {
+	if strings.TrimSpace(source.Subfolder) == "" || deploy.RankScopedSubfolder(source.Subfolder) {
 		return []weightSource{source}
 	}
 	whole := source
@@ -520,7 +530,7 @@ func snapshotTemplateSelection(selection templateSelection, image string) deploy
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, Entrypoint: selection.Entrypoint,
 		Placement: selection.Placement, APIContract: selection.APIContract,
-		Components: selection.Components, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, DockerArgs: selection.DockerArgs, ImageSources: templateImageSources(selection, image),
+		Components: selection.Components, RankWeights: selection.RankWeights, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, StartTimeoutSec: selection.Spec.StartTimeoutSec, DockerArgs: selection.DockerArgs, Dirs: selection.Dirs, ImageSources: templateImageSources(selection, image),
 		DeviatedFields: selection.Diff, MatchedBy: selection.MatchedBy,
 		ImageDigestWarning: strings.Contains(strings.ToLower(image), "@sha256:"),
 	}

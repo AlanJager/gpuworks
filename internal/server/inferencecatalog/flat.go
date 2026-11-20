@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 
 	"gopkg.in/yaml.v3"
@@ -87,13 +88,18 @@ type InferenceSpec struct {
 	GPUs               GPUSelector       `yaml:"gpus" json:"gpus"`
 	Args               []string          `yaml:"args,omitempty" json:"args,omitempty"`
 	Env                map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
-	PreStartArgv       []string          `yaml:"pre_start_argv,omitempty" json:"pre_start_argv,omitempty"`
-	PreStartScript     string            `yaml:"pre_start_script,omitempty" json:"pre_start_script,omitempty"`
-	Assets             []Asset           `yaml:"assets,omitempty" json:"assets,omitempty"`
-	Entrypoint         []string          `yaml:"entrypoint,omitempty" json:"entrypoint,omitempty"`
-	Placement          *Placement        `yaml:"placement,omitempty" json:"placement,omitempty"`
-	API                *APIContract      `yaml:"api,omitempty" json:"api,omitempty"`
-	Components         []Component       `yaml:"components,omitempty" json:"components,omitempty"`
+	// PreStartArgv and PreStartScript (at most one) are the spec's
+	// preparation: run inside the container, every time it starts, before
+	// the engine command, by the agent's /gpuworks/pre-start.sh wrapper
+	// (agent/engine applyPreStart). It sees the container's environment; a
+	// failing step ends the container before the engine starts.
+	PreStartArgv   []string     `yaml:"pre_start_argv,omitempty" json:"pre_start_argv,omitempty"`
+	PreStartScript string       `yaml:"pre_start_script,omitempty" json:"pre_start_script,omitempty"`
+	Assets         []Asset      `yaml:"assets,omitempty" json:"assets,omitempty"`
+	Entrypoint     []string     `yaml:"entrypoint,omitempty" json:"entrypoint,omitempty"`
+	Placement      *Placement   `yaml:"placement,omitempty" json:"placement,omitempty"`
+	API            *APIContract `yaml:"api,omitempty" json:"api,omitempty"`
+	Components     []Component  `yaml:"components,omitempty" json:"components,omitempty"`
 	// PerformanceTradeoffs states why the spec keeps settings the engine
 	// registry grades as performance costs (perf_tradeoffs.go). Catalog
 	// content only: the database projection does not store it.
@@ -121,6 +127,12 @@ type InferenceSpec struct {
 	// A memlock ulimit the deployment's docker_args state wins over it (see
 	// deploy.withMemlockDockerArgs).
 	MemlockUnlimited bool `yaml:"memlock_unlimited,omitempty" json:"memlock_unlimited,omitempty"`
+	// StartTimeoutSec is how long an instance of the spec may take to become
+	// healthy, for a recipe whose first start is long (weight conversion,
+	// cache warm-up). Zero states none and the cluster default applies; a
+	// deployment's own start_timeout_sec still wins over it (see
+	// deploy.resolveStartupBudget).
+	StartTimeoutSec int `yaml:"start_timeout_sec,omitempty" json:"start_timeout_sec,omitempty"`
 	// DockerArgs are extra docker run options the spec's engine needs (such as
 	// --cap-add=SYS_PTRACE), applied before the deployment's own docker args
 	// and the platform's (see deploy.launchDockerArgs). Validated the same way
@@ -128,6 +140,10 @@ type InferenceSpec struct {
 	// (deploy.ValidateDockerArgs): platform-managed options and options that
 	// would hand the container the host are refused.
 	DockerArgs []string `yaml:"docker_args,omitempty" json:"docker_args,omitempty"`
+	// Dirs are writable host directories the platform keeps for the
+	// deployment on every node it runs on, mounted at each mount_path and
+	// removed with the deployment (managed_dirs.go, ADR 0077).
+	Dirs []deploy.ManagedDir `yaml:"dirs,omitempty" json:"dirs,omitempty"`
 	// RetiredDisplayProfile is the display_profile key specs carried before
 	// display names. It is still read, so older YAML imports, but never
 	// stored; CatalogWarnings reports it.
@@ -483,6 +499,9 @@ func validateSpec(modelID string, index int, spec *InferenceSpec, names map[stri
 	if err := validateShmBytes(modelID, spec); err != nil {
 		return err
 	}
+	if err := validateStartTimeout(modelID, spec); err != nil {
+		return err
+	}
 	if err := validateDockerArgs(modelID, spec); err != nil {
 		return err
 	}
@@ -503,6 +522,9 @@ func validateSpec(modelID string, index int, spec *InferenceSpec, names map[stri
 		return err
 	}
 	if err := validateWeights(modelID, spec.Name, &spec.Weights); err != nil {
+		return err
+	}
+	if err := validateRankScopedWeights(modelID, spec); err != nil {
 		return err
 	}
 	if len(spec.PreStartArgv) > 0 && strings.TrimSpace(spec.PreStartScript) != "" {
@@ -555,6 +577,9 @@ func validateWeights(modelID, specName string, weights *Weights) error {
 		subfolder, err := modelrepo.NormalizeSubfolder(source.Subfolder)
 		if err != nil {
 			return fmt.Errorf("model %s spec %s has invalid %s subfolder: %w", modelID, specName, source.Provider, err)
+		}
+		if variable := deploy.UnknownSubfolderVariable(subfolder); variable != "" {
+			return fmt.Errorf("model %s spec %s %s subfolder may name only ${GPUWORKS_NODE_RANK}, not %s", modelID, specName, source.Provider, variable)
 		}
 		source.Subfolder = subfolder
 	}

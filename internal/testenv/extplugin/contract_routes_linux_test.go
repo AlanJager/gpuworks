@@ -150,9 +150,7 @@ func TestContractPluginRoutesAtRuntime(t *testing.T) {
 	}
 
 	// Uninstalled: the core's 404.
-	if status, body := sv.do(http.MethodDelete, "/api/v1/plugins/acme_fake", nil); status != http.StatusNoContent {
-		t.Fatalf("uninstall = %d %s", status, body)
-	}
+	sv.uninstall("acme_fake", false)
 	if status, _ := sv.do("GET", "/api/v1/x/acme_fake/jobs", nil); status != http.StatusNotFound || len(pluginLines(t, sv, "acme_fake")) != 0 {
 		t.Fatalf("an uninstalled plugin's route = %d", status)
 	}

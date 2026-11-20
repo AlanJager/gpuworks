@@ -149,3 +149,27 @@ test("More is named in Chinese in zh", async () => {
   renderRow(actions([{ key: "编辑", common: true }, { key: "A" }, { key: "B" }, { key: "C" }]).list, "zh");
   assert.deepEqual(shown(), ["编辑", "更多"]);
 });
+
+test("labelled actions are buttons that write their name beside their icon, in a row, the main step filled and More named too", async () => {
+  const picked: string[] = [];
+  const list: RowAction[] = [
+    { key: "edit", label: "Edit", icon: ConsoleIcon.edit, common: true, onSelect: () => picked.push("edit") },
+    { key: "apply", label: "Check and apply", icon: ConsoleIcon.upload, common: true, primary: true, onSelect: () => picked.push("apply") },
+    { key: "copy", label: "Copy command", icon: ConsoleIcon.copy, onSelect: () => picked.push("copy") },
+    { key: "delete", label: "Delete", icon: ConsoleIcon.delete, danger: true, onSelect: () => picked.push("delete") },
+  ];
+  const user = userEvent.setup({ document: dom.window.document });
+  render(<I18nextProvider i18n={en.i18n}><RowActions actions={list} label="Row actions" labeled /></I18nextProvider>);
+  const buttons = group().getAllByRole("button");
+  assert.deepEqual(buttons.map((each) => each.textContent), ["Edit", "Check and apply", MORE], "each button says its name, More's too");
+  for (const button of buttons) {
+    // The icon and the name are the two children of the button's one content row, not an icon stacked over loose text.
+    const content = button.querySelector("[data-slot=button-content]") as HTMLElement;
+    const kids = [...content.children].map((each) => each.getAttribute("data-slot"));
+    assert.deepEqual(kids, ["button-leading-icon", "button-label"], `${button.textContent}: the icon sits left of the name`);
+  }
+  assert.ok(group().getByRole("button", { name: "Check and apply" }).querySelector("[data-slot=button-background]")?.className.includes("bg-primary-action "), "the main step is the filled button");
+  assert.ok(!group().getByRole("button", { name: "Edit" }).querySelector("[data-slot=button-background]")?.className.includes("bg-primary-action "), "the others are not");
+  await user.click(group().getByRole("button", { name: "Check and apply" }));
+  assert.deepEqual(picked, ["apply"]);
+});

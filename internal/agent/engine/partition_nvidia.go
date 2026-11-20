@@ -93,6 +93,14 @@ func (nvidiaPartitionInjector) applyLimit(e *Engine, spec proto.InstanceDesiredS
 	return dgpucache.SetMemoryLimit(e.DGPUCachePath(spec.UUID), len(spec.GPUIndexes), spec.VRAMLimitBytes)
 }
 
+func (nvidiaPartitionInjector) usage(e *Engine, spec proto.InstanceDesiredState) ([]dgpucache.DeviceUsage, error) {
+	snapshot, err := dgpucache.ReadCache(e.DGPUCachePath(spec.UUID), len(spec.GPUIndexes))
+	if err != nil {
+		return nil, err
+	}
+	return snapshot.Devices, nil
+}
+
 // libvgpu keeps no per-instance host state outside the cache directory, which
 // is rebuilt on every start.
 func (nvidiaPartitionInjector) cleanupInstance(*Engine, string) error { return nil }

@@ -10,6 +10,7 @@ import { storageReasonText, storageStateLabel } from "../../storageDisplay";
 import { agoText, formatBytes } from "../../format";
 import { nodeRowName } from "../../nodeDisplay";
 import StorageCapacity from "./StorageCapacity";
+import { WarningMark } from "../networks/networkDisplay";
 import { cacheBytesByNode, cacheLimitOf } from "./storageFiles";
 
 const stateColor: Record<string, string> = { ready: "green", mounting: "blue", failed: "red", unresponsive: "orange", unsupported: "default", offline: "default" };
@@ -41,7 +42,7 @@ export default function StorageNodesTab({ storage, files }: { storage: Storage; 
       title: t("nodes.column.node"),
       width: 156,
       sortValue: (n) => nodeRowName(n),
-      render: (_, n) => <Link to="/nodes" state={{ nodeUUID: n.node_uuid }} onClick={(event) => event.stopPropagation()}>{nodeRowName(n)}</Link>,
+      render: (_, n) => <><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} onClick={(event) => event.stopPropagation()}>{nodeRowName(n)}</Link>{n.shared_fs && <WarningMark summary={t("sharedFS.node", { type: n.shared_fs.type })} />}</>,
     },
     {
       key: "state",

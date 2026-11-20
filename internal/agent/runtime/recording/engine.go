@@ -27,6 +27,9 @@ func (d *Driver) WithEngine(bin string) *Driver {
 var (
 	portFlag   = regexp.MustCompile(`--port[= ]+'?([0-9]+)`)
 	servedFlag = regexp.MustCompile(`--served-model-name[= ]+'?([^'\s]+)`)
+	// metricsFlag is the port a template that declares api.metrics.port:
+	// separate hands its engine for the metrics endpoint.
+	metricsFlag = regexp.MustCompile(`--metrics-port[= ]+'?([0-9]+)`)
 )
 
 // startEngineLocked starts the fake engine for a container. The command is
@@ -51,6 +54,9 @@ func (d *Driver) startEngineLocked(id string, spec runtime.WorkloadSpec) error {
 	args := []string{"--dialect", engines.SGLang, "launch_server", "--model-path", model, "--port", match[1]}
 	if served := servedFlag.FindStringSubmatch(command); served != nil {
 		args = append(args, "--served-model-name", served[1])
+	}
+	if metrics := metricsFlag.FindStringSubmatch(command); metrics != nil && metrics[1] != "0" {
+		args = append(args, "--metrics-port", metrics[1])
 	}
 	d.stopEngineLocked(id)
 	cmd := exec.Command(d.engineBin, args...)

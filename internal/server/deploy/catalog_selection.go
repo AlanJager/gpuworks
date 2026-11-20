@@ -63,6 +63,11 @@ type CatalogSelection struct {
 	Placement          json.RawMessage      `json:"placement,omitempty"`
 	APIContract        json.RawMessage      `json:"api,omitempty"`
 	Components         []ComponentBinding   `json:"components,omitempty"`
+	// RankWeights binds each rank of a deployment whose weight subfolder
+	// names the rank (WeightSubfolder keeps the template, such as
+	// "rank${NODE_RANK}") to the artifact that rank mounts; empty when the
+	// weights are the same on every rank (ADR 0076).
+	RankWeights []RankWeight `json:"rank_weights,omitempty"`
 	// PDMode is the PD mode a PD-only spec was written for.
 	PDMode string `json:"pd_mode,omitempty"`
 	// ShmBytes is the /dev/shm size the template's engine needs; zero states
@@ -71,15 +76,23 @@ type CatalogSelection struct {
 	// MemlockUnlimited asks for --ulimit memlock=-1:-1 unless the deployment's
 	// docker_args state a memlock ulimit.
 	MemlockUnlimited bool `json:"memlock_unlimited,omitempty"`
+	// StartTimeoutSec is the instance start timeout the template stated;
+	// zero states none. resolveStartupBudget takes it over the cluster
+	// default and under the deployment's own start_timeout_sec.
+	StartTimeoutSec int `json:"start_timeout_sec,omitempty"`
 	// DockerArgs are the template's own docker run options, applied before
 	// the deployment's own docker_args and the platform's
 	// (deploy.launchDockerArgs). A running deployment keeps the args it was
 	// created with: this snapshot, not a fresh catalog read, is what every
 	// later launch of the deployment resolves against.
-	DockerArgs         []string `json:"docker_args,omitempty"`
-	DeviatedFields     []string `json:"deviated_fields,omitempty"`
-	MatchedBy          string   `json:"matched_by"`
-	ImageDigestWarning bool     `json:"image_digest_warning,omitempty"`
+	DockerArgs []string `json:"docker_args,omitempty"`
+	// Dirs are the template's writable directories (spec dirs). A snapshot
+	// written before templates declared them has none, which is what it
+	// means.
+	Dirs               []ManagedDir `json:"dirs,omitempty"`
+	DeviatedFields     []string     `json:"deviated_fields,omitempty"`
+	MatchedBy          string       `json:"matched_by"`
+	ImageDigestWarning bool         `json:"image_digest_warning,omitempty"`
 	// Extra holds the document's fields this type does not name, verbatim. A
 	// field added by a newer server survives a decode/encode cycle here instead
 	// of being dropped on the next write.

@@ -38,6 +38,12 @@ type storageRuntime struct {
 	// scans continues a storage scan from the page before it, so a page does
 	// not walk again what the earlier pages covered.
 	scans modelscan.Pager
+	// users answer whether something on the node works under a directory,
+	// and reads are the directories a peer transfer is reading a model from
+	// right now: together, what keeps a hung mount from being forced off
+	// (storage_in_use.go).
+	users []func(dir string) bool
+	reads pathUses
 
 	mu        sync.RWMutex
 	tasks     map[uint]proto.StorageTask
@@ -65,24 +71,26 @@ type storageRuntime struct {
 	trigger chan bool // true forces a status report
 }
 
-func newStorageRuntime(stateDir string, busy func(string) bool, runner storagemount.Runner) *storageRuntime {
-	return &storageRuntime{
-		timeouts: defaultStorageTimeouts(),
-		manager: storagemount.New(storagemount.Options{
-			StateFile: filepath.Join(stateDir, "storage-mounts.json"),
-			// A probe answers through a control RPC with a time limit of its
-			// own; a mount that is still trying after 20 seconds is reported
-			// as an unreachable server inside that limit instead of a bare
-			// timeout.
-			MountTimeout: storageMountTimeout,
-			ProbeDir:     filepath.Join(stateDir, "probe-mounts"),
-			Busy:         busy,
-			Runner:       runner,
-		}),
+func newStorageRuntime(stateDir string, busy func(string) bool, users []func(dir string) bool, runner storagemount.Runner) *storageRuntime {
+	s := &storageRuntime{
+		timeouts: defaultStorageTimeouts(), users: users,
 		tasks: map[uint]proto.StorageTask{}, statuses: map[uint]storagemount.Status{},
 		heartbeat: map[uint]time.Time{}, hbInvalid: map[uint]bool{}, waiting: map[string]proto.ModelFileTask{},
 		writerWaiting: map[string]proto.ModelFileTask{}, incomingSwept: map[uint]bool{}, trigger: make(chan bool, 1),
 	}
+	s.manager = storagemount.New(storagemount.Options{
+		StateFile: filepath.Join(stateDir, "storage-mounts.json"),
+		// A probe answers through a control RPC with a time limit of its
+		// own; a mount that is still trying after 20 seconds is reported
+		// as an unreachable server inside that limit instead of a bare
+		// timeout.
+		MountTimeout: storageMountTimeout,
+		ProbeDir:     filepath.Join(stateDir, "probe-mounts"),
+		Busy:         busy,
+		InUse:        s.inUse,
+		Runner:       runner,
+	})
+	return s
 }
 
 // mountBusy reports whether a running instance mounts something under path,
@@ -201,6 +209,7 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 			ID: st.ID, State: st.State, Reason: st.Reason, Message: st.Message, Path: st.Path, Writable: st.Writable,
 			TotalBytes: st.TotalBytes, AvailableBytes: st.AvailableBytes, CachePath: st.CachePath,
 			CacheTotalBytes: st.CacheTotalBytes, CacheAvailableBytes: st.CacheAvailableBytes,
+			SharedFSType: st.SharedFSType, SharedFSSource: st.SharedFSSource,
 		})
 	}
 	changed := force || storageReportChanged(s.reported, report)
@@ -248,6 +257,7 @@ func storageReportChanged(prev, next []proto.StorageStatus) bool {
 		old, ok := byID[st.ID]
 		if !ok || old.State != st.State || old.Reason != st.Reason || old.Message != st.Message ||
 			old.Path != st.Path || old.Writable != st.Writable || old.CachePath != st.CachePath ||
+			old.SharedFSType != st.SharedFSType || old.SharedFSSource != st.SharedFSSource ||
 			moved(old.AvailableBytes, st.AvailableBytes, st.TotalBytes) || moved(old.TotalBytes, st.TotalBytes, st.TotalBytes) ||
 			moved(old.CacheAvailableBytes, st.CacheAvailableBytes, st.CacheTotalBytes) {
 			return true

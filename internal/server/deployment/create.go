@@ -89,10 +89,11 @@ func pickWentStale(err error) bool {
 	return KindOf(err) == KindConflict && containsProductCode(err, messages.ErrorAutomaticPlacementStale)
 }
 
-// CreateRowError is a refused deployment row as its caller reads it: a served
-// name another deployment holds is a conflict, anything else the store's
-// failure.
+// CreateRowError reports conflicts detected while committing a deployment row.
 func CreateRowError(err error) error {
+	if errors.Is(err, store.ErrDeploymentTemplateSelectionGone) {
+		return conflict(wrapProductError(messages.ErrorDeploymentTemplateSelectionGone, err.Error(), nil, err))
+	}
 	var inUse *store.ServedNameInUseError
 	if errors.As(err, &inUse) {
 		return conflict(wrapProductError(messages.ErrorServedNameInUse, err.Error(), map[string]any{
@@ -172,7 +173,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if targetVendor == "" {
 		targetVendor = planning.RequirementVendor(reqs)
 	}
-	launch, err := s.materializeCreateLaunch(eng.Name(), &req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	launch, err := s.materializeCreateLaunch(eng.Name(), &req, selection, requestTargetCards(profileNode, &req), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
 	if err != nil {
 		return nil, invalid(err)
 	}
@@ -220,7 +221,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if err != nil {
 		return nil, invalid(err)
 	}
-	launch, err = materializeDeployRequest(eng.Name(), &req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	launch, err = materializeDeployRequest(eng.Name(), &req, selection, requestTargetCards(profileNode, &req), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
 	if err != nil {
 		return nil, invalid(err)
 	}
@@ -294,9 +295,25 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 		return nil, invalid(err)
 	}
 	targets := append([]*store.Node{node}, distNodes...)
-	weightStorage, err := s.resolveSaveToStorage(req.ModelSource, model, targets)
+	if err := s.sleepHostBacking(eng.Name(), &req, quick, targets...); err != nil {
+		return nil, conflict(err)
+	}
+	var rankNodes []*store.Node
+	if req.NNodes > 1 && pdReq == nil {
+		rankNodes = distNodes
+	}
+	weights, err := s.weightTargets(selection, model, targets, rankNodes)
+	if err != nil {
+		return nil, internal(err)
+	}
+	weightStorage, err := s.resolveSaveToStorage(req.ModelSource, model, weights[0].nodes)
 	if err != nil {
 		return nil, conflict(err)
+	}
+	for _, weight := range weights[1:] {
+		if _, err := s.resolveSaveToStorage(req.ModelSource, weight.model, weight.nodes); err != nil {
+			return nil, conflict(err)
+		}
 	}
 	// What the request names is what the deployment keeps: 0 leaves where a
 	// node saves a model it must fetch to the default order.
@@ -305,12 +322,12 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if err != nil {
 		return nil, internal(err)
 	}
-	admitted := []*store.Model{model}
+	admitted := append([]weightTarget(nil), weights...)
 	for _, component := range components {
 		if _, err := s.resolveSaveToStorage(req.ModelSource, component.model, targets); err != nil {
 			return nil, conflict(err)
 		}
-		admitted = append(admitted, component.model)
+		admitted = append(admitted, weightTarget{model: component.model, nodes: targets})
 	}
 	// A template component no target can read yet follows the primary into
 	// the shared storage it already sits on, rather than into every node's
@@ -322,7 +339,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	}
 	rules := store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: saveTo}
 	for _, admitted := range admitted {
-		if err := s.admitDeploymentModel(ctx, admitted, rules, targets); err != nil {
+		if err := s.admitDeploymentModel(ctx, admitted.model, rules, admitted.nodes); err != nil {
 			return nil, conflict(err)
 		}
 	}
@@ -402,19 +419,21 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	}
 	dep.SetPolicy(yieldPolicy)
 	var created *store.Deployment
-	if templateConfig.modelID == 0 {
+	if selection.Model == nil {
 		created, err = s.d.Store.CreateDeploymentWithRequirements(dep, reqs)
 	} else {
-		created, err = s.d.Store.CreateDeploymentWithTemplateInferenceConfig(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
+		created, err = s.d.Store.CreateDeploymentFromTemplate(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
 	}
 	if err != nil {
 		return nil, CreateRowError(err)
 	}
 	// Start the download only after validation and persistence: a rejected
 	// create must not leave an unowned transfer running.
-	if err := s.startSharedModelDownload(model, weightStorage, targets, created.ID); err != nil {
-		_ = s.d.Store.DeleteDeployment(created.ID)
-		return nil, err
+	for _, weight := range weights {
+		if err := s.startSharedModelDownload(weight.model, weightStorage, weight.nodes, created.ID); err != nil {
+			_ = s.d.Store.DeleteDeployment(created.ID)
+			return nil, err
+		}
 	}
 	if err := s.startComponentDownloads(componentPlans, targets, created.ID); err != nil {
 		_ = s.d.Store.DeleteDeployment(created.ID)

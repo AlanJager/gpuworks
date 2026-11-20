@@ -97,6 +97,7 @@ test("a 4.18 kernel is marked with a warning that names the required and current
   assert.match(expected, /4\.18\.0-553/);
   const icon = screen.getByLabelText(expected);
   assert.equal(icon.getAttribute("role"), "img");
+  assert.equal(icon.style.color, "rgb(250, 136, 1)", "the mark is the warning colour (colors.warning), as on the storage page");
   assert.ok(container.querySelector("svg"), "the warning renders an icon, not bare text");
 });
 

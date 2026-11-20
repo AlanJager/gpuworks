@@ -42,6 +42,6 @@ callable 部署（TensorFold、包了一层 SGLang 的适配器、以 callable �
 
 - TensorFold 等改了前缀的引擎靠模板声明接入面板；沿用 vLLM / SGLang 命名的引擎以 callable 部署不写声明也有数据。
 - 模板作者改映射后，运行中的部署在下一轮抓取（≤ 10 秒）生效，无需重启或重新部署。
-- 网关测量每个转发回复的 TTFT、耗时与引擎报告的 usage token 数（`gpuworks_proxy_*`，名字同样登记在本词表）。监控按信号取来源：TTFT、端到端、输入/输出 token、运行请求在引擎上报时用引擎值，否则用网关值，唯一决定处是 `monitor` 的信号来源目录（`window_sources.go`）；界面不标注来源，口径差别写在监控文档。
+- 网关测量每个转发回复的 TTFT、耗时与引擎报告的 usage token 数（`gpuworks_proxy_*`，名字同样登记在本词表）。监控按信号取来源：TTFT、端到端、输入/输出 token、运行请求、前缀缓存命中率在引擎上报时用引擎值，否则用网关值，唯一决定处是 `monitor` 的信号来源目录（`window_sources.go`）；界面不标注来源，口径差别写在监控文档。
 - 文档：[推理指标词表](../reference/inference-metrics.md)、[`api.metrics` 语法](../reference/inference-catalog-spec.md#apimetrics引擎指标映射)、
   [为推理模板声明引擎指标](../how-to/declare-engine-metrics.md)。

@@ -9,7 +9,8 @@ import (
 // signal comes from the engine's own series when the engine reports them and
 // from the gateway's otherwise, so a deployment whose engine exports nothing
 // (Strata has no /metrics) still has a TTFT, an end-to-end latency, token
-// throughput and a concurrency, and one whose engine exports no TPOT or phase
+// throughput, a concurrency and a prefix-cache hit rate, and one whose engine
+// exports no TPOT or phase
 // times (TensorFold) gets the gateway's TPOT and the phase times its replies
 // report (inferencemetrics.GatewayFallbacksFor). This file is the one place that decides
 // which series provide which signal: once a WindowSeries is fetched,
@@ -35,6 +36,10 @@ const (
 	SignalQueueTime        Signal = "queue_time"
 	SignalPrefillTime      Signal = "prefill_time"
 	SignalDecodeTime       Signal = "decode_time"
+	// SignalKVHitRate is the prefix-cache hit rate: the engine's own
+	// counters or gauge, else cached prompt tokens over the prompt tokens of
+	// the replies that stated a cache figure (kvHitRateFromGateway).
+	SignalKVHitRate Signal = "kv_hit_rate"
 )
 
 // Source is where a signal's series came from.
@@ -54,6 +59,8 @@ var (
 	metricGatewayQueueTime        = inferencemetrics.Gateway("reported_queue_ms").Series()
 	metricGatewayPrefillTime      = inferencemetrics.Gateway("reported_prefill_ms").Series()
 	metricGatewayDecodeTime       = inferencemetrics.Gateway("reported_decode_ms").Series()
+	metricGatewayCachedTokens     = inferencemetrics.Gateway("cached_tokens_total").Series()
+	metricGatewayCacheReported    = inferencemetrics.Gateway("cache_reported_prompt_tokens_total").Series()
 )
 
 // GatewaySeries are the gateway's inference series of one deployment that
@@ -65,6 +72,10 @@ type GatewaySeries struct {
 	TPOT                           []tsdb.Series
 	QueueTime, PrefillTime         []tsdb.Series
 	DecodeTime                     []tsdb.Series
+	// CachedTokens and CacheReportedPrompt are counters: the cached prompt
+	// tokens and the prompt tokens of the replies that reported a cache
+	// figure, whose ratio is the gateway's hit rate.
+	CachedTokens, CacheReportedPrompt []tsdb.Series
 }
 
 // gatewayFields pairs each gateway series with its GatewaySeries field: the
@@ -81,6 +92,8 @@ var gatewayFields = []struct {
 	{metricGatewayQueueTime, func(g *GatewaySeries) *[]tsdb.Series { return &g.QueueTime }},
 	{metricGatewayPrefillTime, func(g *GatewaySeries) *[]tsdb.Series { return &g.PrefillTime }},
 	{metricGatewayDecodeTime, func(g *GatewaySeries) *[]tsdb.Series { return &g.DecodeTime }},
+	{metricGatewayCachedTokens, func(g *GatewaySeries) *[]tsdb.Series { return &g.CachedTokens }},
+	{metricGatewayCacheReported, func(g *GatewaySeries) *[]tsdb.Series { return &g.CacheReportedPrompt }},
 }
 
 // signalSource is one signal's candidates: the engine field it fills and the
@@ -120,6 +133,29 @@ func (ws *WindowSeries) resolveSources() {
 			*dst = scaleSeries(gateway, candidate.scale)
 			ws.Sources[candidate.signal] = SourceGateway
 		}
+	}
+	ws.resolveKVHitRate()
+}
+
+// resolveKVHitRate gives a deployment whose engine reports no prefix-cache
+// hit rate the gateway's. The hit rate is a ratio of two counters, so the
+// gateway's pair stands in for the engine's pair (KVHits, KVQueries) and the
+// window and the chart read it like the engine's. The engine wins whenever it
+// reports either the counters or the instant gauge.
+//
+// The denominator is the prompt tokens of the replies that stated a cache
+// figure, not every reply's: a reply without the figure is unknown, not a
+// miss. A window in which no reply stated one has no hit rate at all, and
+// no source is recorded for it.
+func (ws *WindowSeries) resolveKVHitRate() {
+	if hasPoints(ws.KVQueries) && hasPoints(ws.KVHits) || hasPoints(ws.KVInstant) {
+		ws.Sources[SignalKVHitRate] = SourceEngine
+		return
+	}
+	g := ws.Gateway
+	if SumSeriesDelta(g.CacheReportedPrompt) > 0 && hasPoints(g.CachedTokens) {
+		ws.KVQueries, ws.KVHits = g.CacheReportedPrompt, g.CachedTokens
+		ws.Sources[SignalKVHitRate] = SourceGateway
 	}
 }
 

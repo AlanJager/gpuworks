@@ -32,6 +32,7 @@ vLLM 的 KV 卸载目前只有平台原生的一种：内存层（`kv_offloading
 ## 后果
 
 - 新增 KV 卸载后端：在 `kvbackend` 加一行、在 `deploy` 加一个构造函数（需要时加读回函数）并补测试；目前只有 vLLM 有卸载适配器，其他引擎的行会被测试拒绝，直到该引擎有自己的渲染与读回；不得在其他 Go 或 `ui/src` 中写后端 id 字面量（`scripts/arch-constraints.txt` 的 `kv_backend_id_literals` 预算，基线 0）。
+- 首个接入的外部后端是 `vllm/lmcache`（`LMCacheMPConnector`，`lmcache_driven`，连接节点侧 `tcp://localhost:5555`）：厂商白名单为 NVIDIA 与 Ascend、单节点拓扑、PD 下仅保留在 prefill 角色，且在 PD 组合的 `MultiConnector` 外层通过 `wrapper` 显式指定上游 `vllm.distributed.kv_transfer.kv_connector.v1.multi_connector` 模块路径以绕开 `vllm-ascend 0.30.0` `AscendMultiConnector` 的冷请求空块表回归。外部 LMCache 守护进程仍由节点运维独立管理。
 - 降级：旧版本 server 用普通 JSON 解码会丢掉 `kv_offload_backend`，选了外部后端的部署在旧版本上重启会以无卸载运行，编辑或草稿往返会删除该选择。这是记录在案的行为，由测试钉住。
 - 混合厂商集群里调度器不按后端厂商白名单筛节点，不支持的厂商在落位后校验时被拒。
 - 术语见 [领域词汇表](../../CONTEXT.md)。

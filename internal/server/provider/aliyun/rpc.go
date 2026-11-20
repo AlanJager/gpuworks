@@ -27,7 +27,7 @@ type RPC struct{ c *client }
 // Credentials.Endpoint redirects every call to that URL (tests, gateways).
 func NewRPC() *RPC { return &RPC{c: newClient()} }
 
-// Call invokes action of the named product ("ecs" or "vpc") in region and
+// Call invokes action of the named product ("ecs", "vpc" or "ehpc") in region and
 // decodes the JSON response into out (nil discards it). Parameters travel in
 // the signed query string, so values must be short; RunInstances is fine.
 func (r *RPC) Call(ctx context.Context, creds provider.Credentials, productName, region, action string, params map[string]string, out any) error {
@@ -37,6 +37,8 @@ func (r *RPC) Call(ctx context.Context, creds provider.Credentials, productName,
 		p = ecsProduct
 	case "vpc":
 		p = vpcProduct
+	case "ehpc":
+		p = ehpcProduct
 	default:
 		return fmt.Errorf("aliyun: unsupported product %q", productName)
 	}

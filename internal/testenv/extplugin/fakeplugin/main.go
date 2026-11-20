@@ -8,6 +8,11 @@
 //	--push kind=<json>             push this table once initialized (repeatable)
 //	--crash-after d                exit 2 this long after initialize
 //	--exit-at-start n              exit n before serving anything
+//	--fail-version v               as version v of its package, write
+//	                               "<v> was here" to the file state in its
+//	                               data directory and exit 3 during the
+//	                               handshake (a new version that cannot
+//	                               open its store)
 //	--hang init|health             never answer initialize, or health
 //	--probe-open path              try to read path and write in its data
 //	                               directory, and report on stderr
@@ -41,6 +46,10 @@
 //	                               (repeatable)
 //	--stall-bodies                 never read a route's request body: a
 //	                               call with one waits until it ends
+//	--skip-principal-check         serve routes without checking the
+//	                               principal (breaks a conformance rule)
+//	--ignore-route-action          check the principal's MAC but not its
+//	                               route action (breaks a conformance rule)
 //
 // --requires takes a comma-separated list. Without --manifest, --id and
 // --version the plugin answers with its installed package's: the manifest
@@ -103,6 +112,7 @@ func main() {
 	fs.Var(&push, "push", "kind=<json> to push once initialized")
 	crashAfter := fs.Duration("crash-after", -1, "exit 2 this long after initialize")
 	exitAtStart := fs.Int("exit-at-start", -1, "exit with this code before serving")
+	failVersion := fs.String("fail-version", "", "package version that exits during the handshake")
 	hang := fs.String("hang", "", "init or health")
 	probeOpen := fs.String("probe-open", "", "path to try to read")
 	probePID := fs.Int("probe-pid", 0, "another process to try to reach")
@@ -115,6 +125,8 @@ func main() {
 	routes := fs.Bool("routes", false, "serve the manifest's routes")
 	html := fs.Bool("html", false, "answer routes as text/html")
 	stallBodies := fs.Bool("stall-bodies", false, "never read route request bodies")
+	skipPrincipal := fs.Bool("skip-principal-check", false, "serve routes without checking the principal")
+	ignoreAction := fs.Bool("ignore-route-action", false, "check the principal's MAC but not its route action")
 	var cookies pushes
 	fs.Var(&cookies, "set-cookie", "Set-Cookie line to add to route answers")
 	_ = fs.Parse(append(os.Args[2:], argsFile()...))
@@ -141,11 +153,26 @@ func main() {
 		}
 	}
 	if *routes {
-		cfg.Handler = routeHandler(*html, *stallBodies, cookies)
+		check := checkFull
+		switch {
+		case *skipPrincipal:
+			check = checkSkip
+		case *ignoreAction:
+			check = checkMACOnly
+		}
+		cfg.Handler = routeHandler(*html, *stallBodies, cookies, check)
 	}
 	if code, reason, ok := strings.Cut(*refuse, ":"); ok {
 		cfg.Init = func(context.Context, *pluginsdk.Plugin) error {
 			return pluginsdk.Refuse(reason, code, "refused on purpose", nil)
+		}
+	}
+	if *failVersion != "" && *failVersion == *version {
+		cfg.Init = func(context.Context, *pluginsdk.Plugin) error {
+			_ = os.WriteFile("state", []byte(*version+" was here"), 0o600)
+			log.Error("this version cannot open its store", "version", *version)
+			os.Exit(3)
+			return nil
 		}
 	}
 	if *hang == "init" {

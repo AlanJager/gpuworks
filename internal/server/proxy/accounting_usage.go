@@ -20,6 +20,7 @@ var (
 	metricPromptTokens     = inferencemetrics.Gateway("prompt_tokens_total").Series()
 	metricCompletionTokens = inferencemetrics.Gateway("completion_tokens_total").Series()
 	metricCachedTokens     = inferencemetrics.Gateway("cached_tokens_total").Series()
+	metricCacheReported    = inferencemetrics.Gateway("cache_reported_prompt_tokens_total").Series()
 	metricUsageMissing     = inferencemetrics.Gateway("usage_missing_total").Series()
 )
 
@@ -85,7 +86,10 @@ type responseCounters struct {
 	// only those get token series, so an image or audio deployment writes none.
 	usageSeen                  bool
 	prompt, completion, cached uint64
-	usageMissing               uint64
+	// cacheReported is the prompt tokens of the replies that stated a cache
+	// figure: cached/cacheReported is the hit rate over exactly those replies.
+	cacheReported uint64
+	usageMissing  uint64
 	// fallback holds the fallback histograms (accounting_fallback.go) by
 	// gateway metric name, created on a deployment's first observation.
 	fallback map[string]*histogram
@@ -111,6 +115,9 @@ func (r *responseCounters) record(duration time.Duration, stats responseStats, f
 	r.prompt += stats.prompt
 	r.completion += stats.completion
 	r.cached += stats.cached
+	if stats.cachedKnown {
+		r.cacheReported += stats.prompt
+	}
 }
 
 func (r *responseCounters) samples(dep string, tms int64) []tsdb.Sample {
@@ -128,6 +135,7 @@ func (r *responseCounters) samples(dep string, tms int64) []tsdb.Sample {
 			tsdb.Sample{Metric: metricPromptTokens, Labels: labels, Value: float64(r.prompt), TimeMS: tms},
 			tsdb.Sample{Metric: metricCompletionTokens, Labels: labels, Value: float64(r.completion), TimeMS: tms},
 			tsdb.Sample{Metric: metricCachedTokens, Labels: labels, Value: float64(r.cached), TimeMS: tms},
+			tsdb.Sample{Metric: metricCacheReported, Labels: labels, Value: float64(r.cacheReported), TimeMS: tms},
 			tsdb.Sample{Metric: metricUsageMissing, Labels: labels, Value: float64(r.usageMissing), TimeMS: tms},
 		)
 	}

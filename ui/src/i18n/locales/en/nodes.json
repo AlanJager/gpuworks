@@ -61,7 +61,8 @@
     "cluster": "Cluster {{name}}",
     "clusterOf": "Cluster {{name}} ({{provider}})",
     "standaloneCluster": "Kubernetes cluster",
-    "selected": "The chosen source"
+    "selected": "The chosen source",
+    "standaloneSlurm": "Slurm cluster"
   },
   "column": {
     "source": "Source",
@@ -181,7 +182,10 @@
     }
   },
   "rejects": {
-    "title": "Recent Agent handshake rejections",
+    "refused": "Agents refused for a credential this server does not know: {{count}}",
+    "refusedHelp": "The server saw an Agent on each listed host connect with a node credential it has no record of. Usual causes: the node was removed or added again while its old Agent kept running, a second Agent runs from another state directory, or the server's records changed (a restored backup). Add the host again if it should be a node; remove a leftover Agent with gpuworks-agent uninstall --state <its directory>. Sources of the last 30 minutes are listed.",
+    "source": "{{host}} · credential {{prefix}}… · {{count}} attempts · first {{first}} · last {{last}}",
+    "more": "{{count}} more not shown",
     "emptyToken": "(empty)",
     "unknownAddress": "Unknown address"
   },
@@ -374,6 +378,7 @@
     "port": "Port",
     "user": "User",
     "userRequired": "Enter the SSH user",
+    "portRequired": "Enter the SSH port",
     "probeAfterSave": "Run a probe immediately after saving",
     "existingAuth": "Saved credential: {{method}}. Credentials are never displayed for security reasons and must be entered again when saving.",
     "savedPasswordHelp": "During recovery, a saved password can be tried with password or keyboard-interactive authentication.",
@@ -595,7 +600,8 @@
     },
     "cordonReason": {
       "card_needs_host_reboot": "Stopped by the platform: a card reports that only a host reboot or power cycle recovers it, and the other cards sit behind the same driver.",
-      "kube_unschedulable": "Stopped by the platform: Kubernetes stopped scheduling onto this node (kubectl cordon or drain, or the node is being replaced)."
+      "kube_unschedulable": "Stopped by the platform: Kubernetes stopped scheduling onto this node (kubectl cordon or drain, or the node is being replaced).",
+      "slurm_node_unavailable": "Stopped by the platform: Slurm will not start jobs on this node, and the platform's cards are borrowed with Slurm jobs, so a deployment placed here would wait out the pending timeout and fail."
     }
   },
   "systemLabels": {
@@ -612,7 +618,9 @@
       "serving-network": "Serving network",
       "storage": "Storage",
       "kubernetes-cluster": "Kubernetes cluster",
-      "kubernetes-node": "Kubernetes node"
+      "kubernetes-node": "Kubernetes node",
+      "slurm-cluster": "Slurm cluster",
+      "slurm-node": "Slurm node"
     }
   },
   "diskUsage": {
@@ -635,7 +643,8 @@
       "udocker": "runveil",
       "host": "Environment packages",
       "storage": "Storage {{name}}",
-      "storageCache": "Cache of storage {{name}}"
+      "storageCache": "Cache of storage {{name}}",
+      "managedDirs": "Managed directories"
     }
   },
   "doctor": {
@@ -815,6 +824,7 @@
       "docker": "Docker",
       "storage": "storage",
       "storage_cache": "storage cache",
+      "managed_dirs": "managed directories",
       "agent": "agent"
     },
     "pluginNone": "None (gpuworks mounts the devices itself)",
@@ -988,7 +998,14 @@
     "activeHelp": "The execution slot remains reserved until the current attempt is confirmed. Other batches cannot start in parallel.",
     "startedAt": "Started: {{at}}",
     "finishedAt": "Finished: {{at}}",
-    "verifiedAt": "The previous attempt was later verified to have ended: {{at}}"
+    "verifiedAt": "The previous attempt was later verified to have ended: {{at}}",
+    "verification": {
+      "target_registered": "Verified by the system: the node later reconnected on the target version.",
+      "agent_failed": "Verified by the system: the Agent later reported the upgrade failed.",
+      "rolled_back": "Verified by the system: the Agent later reported a rollback.",
+      "node_removed": "Verified by the system: the node was removed from the platform, so no upgrade can still be running.",
+      "reconnected_old_version": "Verified by the system: the node later reconnected on its previous version, so the upgrade did not take effect."
+    }
   },
   "cardScheduling": {
     "stoppedTag": "Scheduling disabled",
@@ -1394,5 +1411,27 @@
       "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "This node has no ready dGPU partition backend; the setting has no effect until it has one.",
       "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "Upgrade this node's agent to track processes outside the platform on shared cards; the setting has no effect until then."
     }
+  },
+  "slurm": {
+    "unavailable": {
+      "gres_missing": "Slurm registered node {{node}} without its GPUs: slurmd found fewer GPUs than the Slurm manager node expects (usually no gres.conf), so Slurm drained the node and will not start the jobs that borrow its cards.",
+      "invalid_registration": "Slurm refused the registration of node {{node}}, so it will not start the jobs that borrow its cards.",
+      "down": "Slurm has node {{node}} down or not responding, so it will not start the jobs that borrow its cards.",
+      "drained": "Slurm has node {{node}} drained or draining, so it will not start the jobs that borrow its cards.",
+      "other": "Slurm will not start jobs on this node ({{code}})."
+    },
+    "says": "Slurm says: {{reason}}",
+    "howToFix": "To bring the node back:",
+    "step": {
+      "gres_conf": "On the Slurm manager node (and on this node too, if it keeps its own Slurm config files), add this line to gres.conf:",
+      "reconfigure": "On the Slurm manager node, reload the configuration; the node registers again with its GPUs:",
+      "restart_slurmd": "If the node still shows invalid after that, restart slurmd on this node:",
+      "resume": "On the Slurm manager node, put node {{node}} back in service:",
+      "resume_drained": "Once the reason Slurm gives is dealt with, put node {{node}} back in service on the Slurm manager node:",
+      "check_slurmd": "On this node, check that slurmd is running and read its log:"
+    },
+    "copy": "Copy command",
+    "copied": "Command copied",
+    "manualCopyTitle": "Copy command"
   }
 }

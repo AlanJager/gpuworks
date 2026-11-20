@@ -33,6 +33,11 @@ var gatewayDefinitions = []GatewayDefinition{
 	{Definition{"prompt_tokens_total", Counter, "tokens"}},
 	{Definition{"completion_tokens_total", Counter, "tokens"}},
 	{Definition{"cached_tokens_total", Counter, "tokens"}},
+	// The prompt tokens of the replies whose usage stated a cache figure
+	// (zero included): the denominator of the gateway's cache hit rate. A
+	// reply without the figure is unknown, not a miss, so it is in
+	// prompt_tokens_total but not here.
+	{Definition{"cache_reported_prompt_tokens_total", Counter, "tokens"}},
 	// Completed responses of an operation that reports usage that carried
 	// none: the tokens above undercount by these requests.
 	{Definition{"usage_missing_total", Counter, "requests"}},

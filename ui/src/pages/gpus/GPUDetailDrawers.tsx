@@ -14,6 +14,7 @@ import GPUHealthTag from "../../components/GPUHealth";
 import GPUMemoryComposition from "../../components/GPUMemoryComposition";
 import PartitionCapability from "../../components/PartitionCapability";
 import TimeSeriesChart from "../../components/TimeSeriesChart";
+import { HelpTip } from "../../ui-kit/HelpTip";
 import { cardHasDetail } from "../../nodes/cardIdentity";
 import { GIB, allocationLabels, dash, fmtGiB, fmtRate, gpuHeading, optionalPercent, shortID, vendorLabel } from "./gpuFormat";
 
@@ -144,13 +145,22 @@ export function DGPUDetail({ gpu, onClose }: { gpu: DGPU | null; onClose: () => 
   );
 }
 
+// A slice reading that is not there: still to come ("No data"), or one the
+// slice's dGPU backend never keeps, which says so instead of reading as a
+// report that is late.
+export function SliceReadingAbsent({ unsupported }: { unsupported?: boolean }) {
+  const { t } = useTranslation("gpus");
+  if (!unsupported) return <>{t("noData")}</>;
+  return <span className="inline-flex items-center gap-1" onClick={(event) => event.stopPropagation()}>{t("sliceReading.unsupported")}<HelpTip content={t("sliceReading.unsupportedHelp")} label={t("sliceReading.unsupportedLabel")} /></span>;
+}
+
 const reportsUse = (gpu: DGPU) => gpu.memory_used_bytes != null || gpu.sm_util_pct != null;
 
 function SliceUseTiles({ gpu }: { gpu: DGPU }) {
   const { t } = useTranslation("gpus");
   const items = [
-    { icon: <DatabaseOutlined />, label: t("column.actualVRAM"), value: gpu.memory_used_bytes == null ? "-" : `${fmtGiB(gpu.memory_used_bytes)} / ${fmtGiB(gpu.memory_limit_bytes)}` },
-    { icon: <DashboardOutlined />, label: t("column.smReference"), value: gpu.sm_util_pct == null ? "-" : `${gpu.sm_util_pct.toFixed(0)}%` },
+    { icon: <DatabaseOutlined />, label: t("column.actualVRAM"), value: gpu.memory_used_bytes == null ? <SliceReadingAbsent unsupported={gpu.memory_used_unsupported} /> : `${fmtGiB(gpu.memory_used_bytes)} / ${fmtGiB(gpu.memory_limit_bytes)}` },
+    { icon: <DashboardOutlined />, label: t("column.smReference"), value: gpu.sm_util_pct == null ? <SliceReadingAbsent unsupported={gpu.sm_util_unsupported} /> : `${gpu.sm_util_pct.toFixed(0)}%` },
   ];
   return <div className="gpu-load-grid">{items.map((item) => <div className="gpu-load-tile" key={item.label}><span>{item.icon}</span><div><Typography.Text type="secondary">{item.label}</Typography.Text><strong>{item.value}</strong></div></div>)}</div>;
 }
@@ -189,12 +199,14 @@ function GPUHistory({ node, gpu }: { node: string; gpu: number }) {
 function DGPUHistory({ gpu }: { gpu: DGPU }) {
   const { t } = useTranslation("gpus");
   const [range, setRange] = useState<keyof typeof ranges>("15m");
-  const charts = useMetricCharts([
+  const specs: ChartSpec[] = [
     [t("metric.sliceVRAM", { limit: fmtGiB(gpu.memory_limit_bytes) }), "gpuworks_dgpu_memory_used_bytes", "GiB", (value) => (value / GIB).toFixed(1), undefined, [0, gpu.memory_limit_bytes]],
     // HAMi samples which slice held the SMs at that instant, so two slices
     // sharing a card read 0 and 100 by turns; the trend is the average.
     [t("metric.smReferenceAvg"), "gpuworks_dgpu_sm_util", "%", (value) => value.toFixed(0), (series) => movingAverage(series, SM_AVERAGE_WINDOW_MS), PERCENT],
-  ], { node: gpu.node_uuid, gpu: String(gpu.gpu_index), instance: gpu.instance_uuid, range, step: steps[range] });
+  ];
+  // A backend that keeps no reading has no history of it to chart.
+  const charts = useMetricCharts(specs.filter(([, metric]) => !(metric === "gpuworks_dgpu_sm_util" ? gpu.sm_util_unsupported : gpu.memory_used_unsupported)), { node: gpu.node_uuid, gpu: String(gpu.gpu_index), instance: gpu.instance_uuid, range, step: steps[range] });
   return <><Segmented value={range} onChange={(value) => setRange(value as keyof typeof ranges)} options={Object.keys(ranges)} size="small" /><ChartGrid charts={charts} /></>;
 }
 

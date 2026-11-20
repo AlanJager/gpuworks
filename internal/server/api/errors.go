@@ -120,6 +120,7 @@ const (
 	ErrorWakeInsufficientGPUMemory              = "WAKE_INSUFFICIENT_GPU_MEMORY"
 	ErrorWakeGPUHeldOutside                     = "WAKE_GPU_HELD_OUTSIDE"
 	ErrorSleepHostMemoryInsufficient            = messages.ErrorSleepHostMemoryInsufficient
+	ErrorSleepHostBackingInsufficient           = messages.ErrorSleepHostBackingInsufficient
 	ErrorNodeReplacementInvalid                 = "NODE_REPLACEMENT_INVALID"
 	ErrorReplicasPlaceOnTooMany                 = messages.ErrorReplicasPlaceOnTooMany
 	ErrorReplicasPlaceOnRefused                 = messages.ErrorReplicasPlaceOnRefused
@@ -582,4 +583,9 @@ const (
 	// ErrorProviderInstanceInCluster: the instance is a node of the
 	// account's Kubernetes cluster {cluster}; connect the cluster instead.
 	ErrorProviderInstanceInCluster = "PROVIDER_INSTANCE_IN_CLUSTER"
+	// ErrorProviderInstanceInHPCCluster: the instance is a compute node of
+	// the account's HPC cluster {cluster}, whose queue powers and releases
+	// it and which is connected as a cluster, not node by node (no agent is
+	// installed on it by itself either).
+	ErrorProviderInstanceInHPCCluster = "PROVIDER_INSTANCE_IN_HPC_CLUSTER"
 )

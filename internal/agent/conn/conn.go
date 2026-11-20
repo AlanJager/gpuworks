@@ -254,7 +254,7 @@ func helloCapabilitiesForRuntime(prober gpu.Prober, runtimeDriver string) []stri
 		// name; the handler must provide the concrete PTY implementation.
 	}
 	caps = append(caps, proto.CapNetworkUpdate, proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapBenchRequestTimeout, proto.CapImagePullCandidates,
-		proto.CapStorageFiles, proto.CapCardChecks, proto.CapLaunchNameVerbatim)
+		proto.CapStorageFiles, proto.CapCardChecks, proto.CapLaunchNameVerbatim, proto.CapPeersFile)
 	if upgradeSupported() {
 		caps = append(caps, proto.CapUpgradePush)
 		if kubeboot.Running() {
@@ -420,9 +420,9 @@ func (c *Conn) reportStatus(ctx context.Context) {
 			sys.PeerMemory = h.PeerMemory()
 		}
 		if h, ok := c.handlers.(interface {
-			KubeUnschedulable(context.Context) bool
+			SchedulerState(context.Context, *proto.SysInfo)
 		}); ok {
-			sys.KubeUnschedulable = h.KubeUnschedulable(ctx)
+			h.SchedulerState(ctx, &sys)
 		}
 		if h, ok := c.handlers.(interface {
 			RuntimeFallback() (string, string, *proto.RuntimeSocketDenial)

@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -131,6 +132,12 @@ func validateMountRowRequest(req *dto.DeployRequest, reservedTargets []string) e
 		if row.ModelID != 0 && (strings.TrimSpace(row.HostPath) != "" || strings.TrimSpace(row.Volume) != "") {
 			return productError(messages.ErrorFieldInvalid, "a mount row names a model and a host path or volume", map[string]any{"detail": "a mount row mounts one source: a host path, a volume or a model"})
 		}
+		if row.Volume != "" && strings.TrimSpace(row.HostPath) != "" {
+			return productError(messages.ErrorFieldInvalid, "a mount row names a host path and a volume", map[string]any{"detail": "a mount row mounts one source: a host path, a volume or a model"})
+		}
+		if row.Volume != "" && !proto.ValidVolumeName(row.Volume) {
+			return productError(messages.ErrorMountVolumeInvalid, "a mount's volume is not a volume name", map[string]any{"resource": row.Volume})
+		}
 		if !absoluteNonRoot(target) {
 			return productError(messages.ErrorMountContainerPath, "a mount's container path must be an absolute non-root path", map[string]any{"target": row.ContainerPath})
 		}
@@ -141,7 +148,7 @@ func validateMountRowRequest(req *dto.DeployRequest, reservedTargets []string) e
 			return productError(messages.ErrorMountTargetDuplicate, "two mounts target "+target+" inside the container", map[string]any{"target": target})
 		}
 		for _, existing := range targets {
-			if mountPathContains(existing, target) || mountPathContains(target, existing) {
+			if proto.ContainerPathsOverlap(existing, target) {
 				return productError(messages.ErrorMountTargetNested, "nested mount targets overlap", map[string]any{"parent": existing, "child": target})
 			}
 		}
@@ -230,10 +237,6 @@ func containsExact(values []string, want string) bool {
 		}
 	}
 	return false
-}
-
-func mountPathContains(parent, child string) bool {
-	return parent != "/" && strings.HasPrefix(child, path.Clean(strings.TrimSpace(parent))+"/")
 }
 
 // absoluteNonRoot reports whether value is an absolute path that survives

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -37,7 +38,7 @@ func FromFlatStoreModel(row store.InferenceModel) (InferenceModel, error) {
 			Name: stored.Name, DisplayNameZHCN: stored.DisplayNameZHCN, DisplayNameEN: stored.DisplayNameEN, Scenario: stored.Scenario,
 			Engine: stored.Engine, Image: stored.Image,
 			Weights: Weights{Quantization: stored.Quantization}, WeightBytes: stored.WeightBytes, RuntimeWeightBytes: stored.RuntimeWeightBytes,
-			PreStartScript: stored.PreStartScript, PDMode: stored.PDMode, ManualCommand: stored.ManualCommand, ShmBytes: stored.ShmBytes, MemlockUnlimited: stored.MemlockUnlimited,
+			PreStartScript: stored.PreStartScript, PDMode: stored.PDMode, ManualCommand: stored.ManualCommand, ShmBytes: stored.ShmBytes, MemlockUnlimited: stored.MemlockUnlimited, StartTimeoutSec: stored.StartTimeoutSec,
 		}
 		sources, err := DecodeWeightSources(stored.WeightSources)
 		if err != nil {
@@ -52,6 +53,9 @@ func FromFlatStoreModel(row store.InferenceModel) (InferenceModel, error) {
 			return InferenceModel{}, fmt.Errorf("decode stored inference catalog %s/%s image_sources: %w", row.ModelID, stored.Name, err)
 		}
 		spec.ImageSources = imageSources
+		if spec.Dirs, err = deploy.DecodeManagedDirs(stored.Dirs); err != nil {
+			return InferenceModel{}, fmt.Errorf("decode stored inference catalog %s/%s: %w", row.ModelID, stored.Name, err)
+		}
 		fields := []struct {
 			name string
 			raw  string

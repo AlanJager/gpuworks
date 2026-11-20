@@ -11,27 +11,28 @@ import (
 
 // What a node that runs on Kubernetes (the kube runtime) adds to an agent.
 
-// KubeUnschedulable is whether this Kubernetes node is cordoned there; false
-// on any other runtime, and when the API server cannot be asked (the server
-// keeps the node as it was rather than act on a guess).
-func (n *NodeRuntime) KubeUnschedulable(ctx context.Context) bool {
-	d, ok := n.runtimeDriver().(interface {
+// SchedulerState adds to a status report what the node's own scheduler says
+// about taking work: a Kubernetes node's cordon (false on any other runtime,
+// and when the API server cannot be asked, so the server keeps the node as it
+// was rather than act on a guess) and, on a node whose cards Slurm allocates,
+// whether Slurm will start jobs there (slurm.Leaser.NodeState).
+func (n *NodeRuntime) SchedulerState(ctx context.Context, sys *proto.SysInfo) {
+	if d, ok := n.runtimeDriver().(interface {
 		Unschedulable(context.Context) (bool, error)
-	})
-	if !ok {
-		return false
-	}
-	v, err := d.Unschedulable(ctx)
-	if err != nil {
-		n.log.Debug("kubernetes node state unavailable", "err", err)
+	}); ok {
+		v, err := d.Unschedulable(ctx)
 		n.kubeCordon.mu.Lock()
-		defer n.kubeCordon.mu.Unlock()
-		return n.kubeCordon.last
+		if err != nil {
+			n.log.Debug("kubernetes node state unavailable", "err", err)
+			v = n.kubeCordon.last
+		}
+		n.kubeCordon.last = v
+		n.kubeCordon.mu.Unlock()
+		sys.KubeUnschedulable = v
 	}
-	n.kubeCordon.mu.Lock()
-	n.kubeCordon.last = v
-	n.kubeCordon.mu.Unlock()
-	return v
+	if l := n.occupancy.slurm.Load(); l != nil {
+		sys.SlurmNode, sys.SlurmUnavailable, sys.SlurmReason = l.NodeState(ctx)
+	}
 }
 
 // kubeRPC answers the RPCs only a Kubernetes node's agent can.

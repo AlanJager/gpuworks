@@ -1234,7 +1234,7 @@ func TestResolveLaunchMatchesFinalMountsAndOverrides(t *testing.T) {
 }
 
 func TestValidateResolvedMountsRejectsNestedTargets(t *testing.T) {
-	err := validateResolvedMounts([]proto.MountSpec{{Target: "/model/frontend"}}, "/model")
+	err := validateResolvedMounts([]proto.MountSpec{{Target: "/model/frontend"}}, "/model", nil)
 	if err == nil || !strings.Contains(err.Error(), "nested mount targets") {
 		t.Fatalf("nested mount validation error=%v", err)
 	}

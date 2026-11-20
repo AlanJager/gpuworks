@@ -93,6 +93,10 @@ func (a *apiHandlers) storageDTO(row *store.Storage, nodes []store.Node, all boo
 			updated := state.UpdatedAt
 			status.State, status.Reason, status.Message = state.State, state.Reason, state.Message
 			status.Path, status.CachePath, status.Writable, status.UpdatedAt = state.Path, state.CachePath, state.Writable, &updated
+			if row.Type == proto.StorageLocal && state.SharedFSType != "" {
+				status.SharedFS = &dto.StorageSharedFS{Type: state.SharedFSType, Source: state.SharedFSSource}
+				out.Nodes.OnSharedFS++
+			}
 			if state.State == proto.StorageStateReady && state.Writable {
 				out.Writable = true
 			}

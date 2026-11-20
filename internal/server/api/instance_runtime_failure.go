@@ -69,9 +69,15 @@ func failureCauseMessage(c proto.FailureCause) dto.ProductMessage {
 	if c.GLIBC != "" {
 		params["glibc"] = c.GLIBC
 	}
+	// A dGPU memory limit: the device and what the engine would have held
+	// are there when the output named them.
 	if c.Device != nil {
 		params["device"] = *c.Device
+	}
+	if c.Device != nil || c.NeededBytes > 0 {
 		params["needed_bytes"] = c.NeededBytes
+	}
+	if c.Device != nil || c.LimitBytes > 0 {
 		params["limit_bytes"] = c.LimitBytes
 	}
 	if len(c.Evidence) > 0 {

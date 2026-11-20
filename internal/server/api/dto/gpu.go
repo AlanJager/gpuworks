@@ -166,11 +166,19 @@ type DGPU struct {
 	// PendingLimit is the deployment's memory limit when the slice runs
 	// under another one: a change it could not take in place (its backend,
 	// or a lower limit than it holds) reaches it at its next restart.
-	PendingLimit int64      `json:"pending_limit_bytes,omitempty"`
-	SMLimitPct   int        `json:"sm_limit_pct,omitempty"`
-	MemoryUsed   *float64   `json:"memory_used_bytes,omitempty"`
-	SMUtilPct    *float64   `json:"sm_util_pct,omitempty"`
-	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+	PendingLimit int64 `json:"pending_limit_bytes,omitempty"`
+	SMLimitPct   int   `json:"sm_limit_pct,omitempty"`
+	// MemoryUsed and SMUtilPct are the slice's own readings, as its
+	// partition backend's interposer accounts them; absent until a report
+	// carries one.
+	MemoryUsed *float64   `json:"memory_used_bytes,omitempty"`
+	SMUtilPct  *float64   `json:"sm_util_pct,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+	// MemoryUsedUnsupported and SMUtilUnsupported say the slice's backend
+	// keeps no such reading (accelerator.SliceUsage), so its absence is not
+	// a report still to come.
+	MemoryUsedUnsupported bool `json:"memory_used_unsupported,omitempty"`
+	SMUtilUnsupported     bool `json:"sm_util_unsupported,omitempty"`
 }
 
 type DGPUListResponse struct {

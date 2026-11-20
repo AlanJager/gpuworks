@@ -19,10 +19,14 @@ import (
 )
 
 type Service struct {
-	st            *store.Store
-	cfg           Config
-	mu            sync.Mutex
-	maintenance   bool
+	st          *store.Store
+	cfg         Config
+	mu          sync.Mutex
+	maintenance bool
+	// oldVersion is, per unconfirmed attempt, the session its node came back
+	// on at its old version and when it was first seen (runner.go); only the
+	// reconcile loop touches it.
+	oldVersion    map[uint]oldVersionSession
 	wake          chan struct{}
 	events        chan Observation
 	running       atomic.Bool
@@ -48,6 +52,12 @@ func New(st *store.Store, cfg Config) (*Service, error) {
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = time.Second
 	}
+	if cfg.UnconfirmedHold <= 0 {
+		cfg.UnconfirmedHold = 5 * time.Minute
+	}
+	if cfg.OldVersionSettle <= 0 {
+		cfg.OldVersionSettle = 30 * time.Second
+	}
 	if err := os.MkdirAll(cfg.ArtifactDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -69,7 +79,7 @@ func (s *Service) notify() {
 }
 
 func (s *Service) blocker() (*Blocker, error) {
-	item, err := s.st.AgentUpgradeBlocker()
+	item, err := s.st.AgentUpgradeBlocker(s.heldSince())
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +221,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (RunView, error
 		}
 		items = append(items, item)
 	}
-	saved, err := s.st.CreateAgentUpgrade(run, items, s.now())
+	saved, err := s.st.CreateAgentUpgrade(run, items, s.now(), s.heldSince())
 	if errors.Is(err, store.ErrAgentUpgradeRequestChanged) {
 		return RunView{}, &Error{Code: "AGENT_UPGRADE_REQUEST_CHANGED", Detail: err.Error()}
 	}

@@ -4,7 +4,8 @@
 // its platform type and the resources it connects; a cluster entry carries
 // its pools and what the server allows on it; an instance carries the
 // actions the server allows on it, and a cloud's cluster its GPU node pools.
-import type { CloudProvider, KubeCluster, KubeClusterState, KubeDefaults, ProviderCapabilities, ProviderCategoryInfo, ProviderCluster, ProviderClusterPool, ProviderInstance, ProviderKindInfo, ProviderKindList, List } from "../../src/api";
+import type { CloudProvider, KubeCluster, KubeClusterState, KubeDefaults, ProviderCapabilities, ProviderCategoryInfo, ProviderCluster, ProviderClusterPool, ProviderHPCCluster, ProviderHPCClusterList, ProviderInstance, ProviderKindInfo, ProviderKindList, List } from "../../src/api";
+import type { SlurmCluster, SlurmClusterState, SlurmDefaults } from "../../src/slurmApi";
 import { list } from "./listPage.ts";
 
 export const capabilities: ProviderCapabilities = {
@@ -15,7 +16,8 @@ export const capabilities: ProviderCapabilities = {
 // GET /api/v1/providers/kinds: category follows provider.CategoryOf, resources provider.ResourcesOf.
 export const aliyunKind: ProviderKindInfo = {
   kind: "aliyun", label: { en: "Alibaba Cloud", zh: "阿里云" }, category: "public_cloud", homepage: "https://www.aliyun.com", capabilities, credential_fields: [],
-  server_dial_supported: false, can_list_clusters: true, resources: [{ type: "vm", product: "ECS" }, { type: "kubernetes", product: "ACK" }],
+  server_dial_supported: false, can_list_clusters: true, can_list_hpc_clusters: true,
+  resources: [{ type: "vm", product: "ECS" }, { type: "kubernetes", product: "ACK" }, { type: "slurm", product: "E-HPC" }],
 };
 export const runpodKind: ProviderKindInfo = {
   kind: "runpod", label: { en: "RunPod", zh: "RunPod" }, category: "public_cloud", homepage: "https://www.runpod.io", capabilities, credential_fields: [],
@@ -29,6 +31,9 @@ export const KINDS = [aliyunKind, runpodKind, zstackKind];
 
 /** The platform type a cluster connected on its own is added and listed as (provider.Categories' kube_cluster entry). */
 export const KUBERNETES_CATEGORY: ProviderCategoryInfo = { id: "kubernetes", resources: [{ type: "kubernetes" }], kube_cluster: true, kinds: [] };
+
+/** The platform type a Slurm cluster connected on its own is added and listed as (provider.Categories' slurm entry). */
+export const SLURM_CATEGORY: ProviderCategoryInfo = { id: "slurm", resources: [{ type: "slurm" }], cluster_kind: "slurm", kinds: [] };
 
 /**
  * The categories GET /api/v1/providers/kinds answers with, as
@@ -61,6 +66,11 @@ export function account(id: number, name: string, kind: string, overrides: Parti
     resources: info?.resources ?? [], node_count: 0, synced_at: "2026-11-10T07:55:00Z", created_at: "2026-11-01T08:00:00Z", updated_at: "2026-11-10T08:00:00Z", ...overrides,
   };
 }
+
+export const SETUP_COMMAND = "curl -fsSL 'https://gpuworks.example/slurm/setup.sh?token=secret-token' | sudo sh";
+export const CHECK_COMMAND = "curl -fsSL 'https://gpuworks.example/slurm/setup.sh?token=secret-token' | sudo sh -s -- --check";
+export const UNINSTALL_AGENTS_COMMAND = "curl -fsSL 'https://gpuworks.example/slurm/setup.sh?token=secret-token' | sudo sh -s -- --uninstall-agents";
+export const REMOVE_CHECK_COMMAND = "curl -fsSL 'https://gpuworks.example/slurm/setup.sh?token=secret-token' | sudo sh -s -- --remove";
 
 export const APPLY_COMMAND = "kubectl apply -f 'https://gpuworks.example/kube/manifest.yaml?token=secret-token'";
 
@@ -116,6 +126,40 @@ export function instance(overrides: Partial<ProviderInstance> = {}): ProviderIns
   };
 }
 
+/**
+ * An HPC cluster as GET /api/v1/providers/{id}/hpc-clusters lists it, read live: running, Slurm 22.05.8, two GPU nodes
+ * synced, no entry made from it. connectable and can_apply are the server's word, as it derives them (running, Slurm,
+ * no entry; and the driver runs commands on the manager node) unless given.
+ */
+export function hpcCluster(id: string, name: string, overrides: Partial<ProviderHPCCluster> = {}): ProviderHPCCluster {
+  const cluster: Omit<ProviderHPCCluster, "connectable" | "can_apply" | "state_tone" | "vendor_state"> = {
+    external_id: id, name, region: "cn-shenzhen", scheduler: "slurm", scheduler_version: "22.05.8", state: "running", running: true, gpu_nodes: 2, ...overrides,
+  };
+  const connectable = !cluster.entry && cluster.running && cluster.scheduler === "slurm";
+  // The server's tone for each state (internal/server/provider/hpc_state.go).
+  const tone = { running: "success", uninit: "info", creating: "info", initing: "info", exception: "danger" }[cluster.state as string] ?? "neutral";
+  const stateReason = {
+    uninit: "cluster_starting", creating: "cluster_starting", initing: "cluster_starting", pending: "cluster_pending", exception: "cluster_exception",
+    stopping: "cluster_stopped", stopped: "cluster_stopped", releasing: "cluster_releasing", unknown: "cluster_state_unknown",
+  }[cluster.state as string] as ProviderHPCCluster["not_connectable_reason"];
+  // The server says a cluster with no entry that does not schedule with Slurm cannot be connected at all (a cluster
+  // still being created may not name its scheduler yet: then its state says why), and one that is not running yet says why.
+  const schedulerKnown = cluster.scheduler !== "" || cluster.running;
+  const reasons = cluster.entry ? {}
+    : cluster.scheduler !== "slurm" && schedulerKnown ? { unsupported_reason: "scheduler_not_slurm" as const }
+      : !cluster.running ? { not_connectable_reason: stateReason } : {};
+  return { vendor_state: cluster.state, state_tone: tone as ProviderHPCCluster["state_tone"], ...cluster, ...reasons,
+    connectable: overrides.connectable ?? connectable, can_apply: overrides.can_apply ?? connectable };
+}
+
+/**
+ * GET /api/v1/providers/{id}/hpc-clusters as the server answers it: the clusters
+ * and how far the cloud let the account be listed (everything, by default).
+ */
+export function hpcClusterList(items: ProviderHPCCluster[], over: Partial<ProviderHPCClusterList> = {}): ProviderHPCClusterList {
+  return { ...list(items), access: "ok", partial: false, failed_regions: [], listed_at: "2026-11-18T08:00:00Z", refreshing: false, ...over };
+}
+
 /** A GPU node pool of a cloud's cluster, held by no entry. */
 export const l20Pool: ProviderClusterPool = { id: "np-l20", name: "l20", gpu_model: "NVIDIA L20", gpu_count: 1, nodes: 2, vendor: "nvidia", in_entry: false };
 
@@ -145,12 +189,58 @@ export const KUBE_DEFAULTS: KubeDefaults = {
   priority: 10000, priority_max: 1000000000, allow_preemption: false,
 };
 
+// GET /api/v1/slurm/defaults.
+export const SLURM_DEFAULTS: SlurmDefaults = {
+  run_as: "root", install_dir: "/var/lib/gpuworks", script_dir: "/opt/gpuworks-slurm",
+  idle_return_seconds: 300, idle_return_min_seconds: 1, idle_return_max_seconds: 86400,
+  pending_timeout_seconds: 600, pending_timeout_min_seconds: 30, pending_timeout_max_seconds: 86400,
+  health_check_interval_seconds: 300, stalled_after_seconds: 600, report_interval_seconds: 600, missing_nodes_limit: 100, quick_tunnel_url: "",
+};
+
+/** Where a Slurm entry stands, as slurmClusterState derives it: revoked, stalled, pending until a node enrolled, else active. */
+export function slurmState(entry: Pick<SlurmCluster, "revoked" | "stalled" | "slurm_cluster_name">): SlurmClusterState {
+  if (entry.revoked) return "revoked";
+  if (entry.stalled) return "stalled";
+  return entry.slurm_cluster_name ? "active" : "pending";
+}
+
+/**
+ * A Slurm entry as GET /api/v1/slurm/clusters lists it to an administrator:
+ * made by hand unless a source is given, with three joined nodes of four GPU
+ * nodes Slurm lists, the fourth never enrolled. The state is the server's,
+ * derived from the other fields unless given.
+ */
+export function slurmEntry(overrides: Partial<SlurmCluster> = {}): SlurmCluster {
+  const entry: Omit<SlurmCluster, "state"> = {
+    id: 1, uuid: "s-1", name: "hpc-lab", server_url: "https://gpuworks.example", slurm_cluster_name: "lab",
+    run_as: "root", account_user: "", install_dir: "/var/lib/gpuworks", script_dir: "/opt/gpuworks-slurm", sbatch_args: "-p gpu",
+    idle_return_seconds: 300, pending_timeout_seconds: 600, revoked: false, stalled: false,
+    node_count: 3, online_count: 3, slurm_gpu_nodes: 4, missing_count: 1,
+    missing_nodes: [{ name: "gpu003", reason: "not_enrolled", slurm_state: "idle" }],
+    category: SLURM_CATEGORY.id, resources: [{ type: "slurm" }], created_at: "2026-11-15T08:30:00Z",
+    can_apply: false, can_remove: false, operation_blocked: "no_source", delete_with_nodes_allowed: false, delete_with_nodes_blocker: "online",
+    setup_command: SETUP_COMMAND, check_command: CHECK_COMMAND, remove_command: REMOVE_CHECK_COMMAND, uninstall_agents_command: UNINSTALL_AGENTS_COMMAND, ...overrides,
+  };
+  return { ...entry, state: overrides.state ?? slurmState(entry) };
+}
+
+/** An entry made from an E-HPC cluster of an account: the platform may set it up itself. */
+export function ehpcEntry(overrides: Partial<SlurmCluster> = {}): SlurmCluster {
+  return slurmEntry({
+    id: 7, uuid: "s-7", name: "ehpc-lab", slurm_cluster_name: "", node_count: 0, slurm_gpu_nodes: 0, missing_count: 0, missing_nodes: [],
+    sbatch_args: "", can_apply: true, can_remove: true, operation_blocked: undefined, delete_with_nodes_allowed: true, delete_with_nodes_blocker: "",
+    source: { provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", provider_cluster_id: "ehpc-sz-1" }, ...overrides,
+  });
+}
+
 export interface PlatformServer {
   /** How often each list was read. */
   reads: { providers: number; clusters: number };
   /** What the lists answer; replace a list with an Error to fail its next reads. */
   providers: CloudProvider[] | Error;
   clusters: KubeCluster[] | Error;
+  /** The Slurm entries GET /api/v1/slurm/clusters answers. */
+  slurm: SlurmCluster[] | Error;
 }
 
 /**
@@ -160,9 +250,9 @@ export interface PlatformServer {
  * the next read answers with them. `api` is the client under test (imported
  * by the test after its DOM globals exist); the test restores it afterwards.
  */
-export function servePlatforms(api: object, options: { providers?: CloudProvider[] | Error; clusters?: KubeCluster[] | Error; kinds?: ProviderKindInfo[] | Error; categories?: ProviderCategoryInfo[]; admin?: boolean } = {}): PlatformServer {
+export function servePlatforms(api: object, options: { providers?: CloudProvider[] | Error; clusters?: KubeCluster[] | Error; slurm?: SlurmCluster[] | Error; kinds?: ProviderKindInfo[] | Error; categories?: ProviderCategoryInfo[]; admin?: boolean } = {}): PlatformServer {
   const admin = options.admin !== false;
-  const server: PlatformServer = { reads: { providers: 0, clusters: 0 }, providers: options.providers ?? [], clusters: options.clusters ?? [] };
+  const server: PlatformServer = { reads: { providers: 0, clusters: 0 }, providers: options.providers ?? [], clusters: options.clusters ?? [], slurm: options.slurm ?? [] };
   const kinds = options.kinds ?? KINDS;
   Object.assign(api, {
     me: async () => ({ id: 1, username: admin ? "admin" : "viewer", role: admin ? "admin" : "viewer" }),
@@ -176,6 +266,11 @@ export function servePlatforms(api: object, options: { providers?: CloudProvider
       if (server.clusters instanceof Error) throw server.clusters;
       return list(server.clusters.map((cluster) => admin ? cluster : { ...cluster, apply_command: undefined }));
     },
+    slurmClusters: async (): Promise<List<SlurmCluster>> => {
+      if (server.slurm instanceof Error) throw server.slurm;
+      return list(server.slurm.map((entry) => admin ? entry : { ...entry, setup_command: undefined, check_command: undefined, remove_command: undefined, uninstall_agents_command: undefined }));
+    },
+    slurmDefaults: async () => SLURM_DEFAULTS,
     providerKinds: async () => {
       if (kinds instanceof Error) throw kinds;
       return kindList(kinds, options.categories);
@@ -183,6 +278,7 @@ export function servePlatforms(api: object, options: { providers?: CloudProvider
     // What an opened account reads: no instance synchronized, no managed cluster in the cloud.
     providerInstances: async () => list([]),
     providerClusters: async () => list([]),
+    providerHPCClusters: async () => hpcClusterList([]),
     kubeDefaults: async () => KUBE_DEFAULTS,
   });
   return server;

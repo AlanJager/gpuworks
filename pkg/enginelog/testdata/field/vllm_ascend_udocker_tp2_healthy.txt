@@ -1,0 +1,197 @@
+INFO 11-19 16:14:08 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 16:14:08 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 16:14:08 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 16:14:08 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 16:14:08 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-19 16:14:32,236 - 2435990 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+INFO 11-19 16:14:34 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 16:14:34 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(APIServer pid=2435990) INFO 11-19 16:14:35 [api_utils.py:345]
+(APIServer pid=2435990) INFO 11-19 16:14:35 [api_utils.py:345]        █     █     █▄   ▄█
+(APIServer pid=2435990) INFO 11-19 16:14:35 [api_utils.py:345]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.26.0
+(APIServer pid=2435990) INFO 11-19 16:14:35 [api_utils.py:345]   █▄█▀ █     █     █     █  model   /model
+(APIServer pid=2435990) INFO 11-19 16:14:35 [api_utils.py:345]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=2435990) INFO 11-19 16:14:35 [api_utils.py:345]
+(APIServer pid=2435990) INFO 11-19 16:14:35 [api_utils.py:273] non-default args: {'model_tag': '/model', 'enable_prompt_tokens_details': True, 'enable_per_reque
+(APIServer pid=2435990) INFO 11-19 16:15:17 [model.py:623] Resolved architecture: Qwen3ForCausalLM
+(APIServer pid=2435990) INFO 11-19 16:15:17 [model.py:1788] Using max model len 40960
+(APIServer pid=2435990) INFO 11-19 16:15:17 [vllm.py:1109] Asynchronous scheduling is enabled.
+(APIServer pid=2435990) INFO 11-19 16:15:17 [kernel.py:295] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_
+(APIServer pid=2435990) WARNING 11-19 16:15:17 [platform.py:1061] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True,
+(APIServer pid=2435990) INFO 11-19 16:15:17 [ascend_config.py:921] Dynamic EPLB is False
+(APIServer pid=2435990) INFO 11-19 16:15:17 [ascend_config.py:922] The number of redundant experts is 0
+(APIServer pid=2435990) INFO 11-19 16:15:17 [utils.py:1275] Block size is set to 128 if prefix cache or chunked prefill is enabled.
+(APIServer pid=2435990) INFO 11-19 16:15:17 [platform.py:785] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(APIServer pid=2435990) INFO 11-19 16:15:17 [compilation.py:329] Enabled custom fusions: norm_quant, act_quant
+INFO 11-19 16:15:39 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 16:15:39 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 16:15:39 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 16:15:39 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 16:15:39 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+(EngineCore pid=2457454) 2026-11-19 16:16:03,859 - 2457454 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+(EngineCore pid=2457454) INFO 11-19 16:16:03 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElast
+(EngineCore pid=2457454) INFO 11-19 16:16:03 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>`
+(EngineCore pid=2457454) INFO 11-19 16:16:03 [core.py:116] Initializing a V1 LLM engine (v0.26.0) with config: model='/model', speculative_config=None, tokenize
+(EngineCore pid=2457454) INFO 11-19 16:16:03 [multiproc_executor.py:140] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=127.0.0.1, mq_connect_
+INFO 11-19 16:16:22 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 16:16:22 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 16:16:22 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 16:16:22 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 16:16:22 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+INFO 11-19 16:16:22 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 16:16:22 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 16:16:22 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 16:16:22 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 16:16:22 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-19 16:16:44,679 - 2468665 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+2026-11-19 16:16:45,350 - 2468664 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+INFO 11-19 16:16:47 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 16:16:47 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+INFO 11-19 16:16:48 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 16:16:48 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+INFO 11-19 16:17:10 [ascend_config.py:921] Dynamic EPLB is False
+INFO 11-19 16:17:10 [ascend_config.py:922] The number of redundant experts is 0
+INFO 11-19 16:17:10 [ascend_config.py:921] Dynamic EPLB is False
+INFO 11-19 16:17:10 [ascend_config.py:922] The number of redundant experts is 0
+(Worker pid=2468664) INFO 11-19 16:17:21 [parallel_state.py:1615] world_size=2 rank=0 local_rank=0 distributed_init_method=tcp://127.0.0.1:48667 backend=hccl
+(Worker pid=2468665) INFO 11-19 16:17:21 [parallel_state.py:1615] world_size=2 rank=1 local_rank=1 distributed_init_method=tcp://127.0.0.1:48667 backend=hccl
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+(Worker pid=2468664) INFO 11-19 16:17:21 [parallel_state.py:1946] rank 0 in world size 2 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[rank1]:[W1119 16:17:22.487274954 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with m
+[rank0]:[W1119 16:17:22.500144598 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with m
+(Worker_TP1 pid=2468665) INFO 11-19 16:17:22 [model_runner_v1.py:3614] Starting to load model /model...
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:22 [model_runner_v1.py:3614] Starting to load model /model...
+(Worker_TP1 pid=2468665) INFO 11-19 16:17:23 [modelslim_config.py:584] Applied hf_to_vllm_mapper to quant_description keys
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:23 [modelslim_config.py:584] Applied hf_to_vllm_mapper to quant_description keys
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:23 [modelslim_config.py:486] Using the vLLM Ascend modelslim Quantization now!
+(Worker_TP1 pid=2468665) INFO 11-19 16:17:23 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP1 pid=2468665) INFO 11-19 16:17:24 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:24 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:25 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:25 [weight_utils.py:869] Filesystem type for checkpoints: EXT4. Checkpoint size: 0.99 GiB. Available RAM: 399.17 GiB.
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:25 [weight_utils.py:892] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/L
+Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:01<00:00,  1.24s/it]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:01<00:00,  1.24s/it]
+(Worker_TP0 pid=2468664)
+(Worker_TP0 pid=2468664) INFO 11-19 16:17:26 [default_loader.py:430] Loading weights took 1.29 seconds
+INFO 11-19 16:17:48 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 16:17:48 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 16:17:48 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 16:17:48 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 16:17:48 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+INFO 11-19 16:17:56 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 16:17:56 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 16:17:56 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 16:17:56 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 16:17:56 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+(Worker_TP1 pid=2468665) INFO 11-19 16:18:24 [model_runner_v1.py:3710] Loading model weights took 0.3804 GB
+(Worker_TP1 pid=2468665) INFO 11-19 16:18:24 [model_runner_v1.py:3742] Model runner load_model total time: 61.44 seconds
+(Worker_TP0 pid=2468664) INFO 11-19 16:18:26 [model_runner_v1.py:3710] Loading model weights took 0.3804 GB
+(Worker_TP0 pid=2468664) INFO 11-19 16:18:26 [model_runner_v1.py:3742] Model runner load_model total time: 63.90 seconds
+(Worker_TP1 pid=2468665) /usr/local/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/impl/ops_legacy/dynamic/gelu_grad_v2.py:97: SyntaxWarning: invalid escape
+(Worker_TP1 pid=2468665)   gelu_grad_erf = erfc(-\hat{x}) / 2 + (1 /sqrt(Pi)) * (\hat{x}) * exp(-\hat{x}^2)
+(Worker_TP1 pid=2468665) /usr/local/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/impl/ops_legacy/dynamic/gelu_grad_v2.py:157: SyntaxWarning: invalid escap
+(Worker_TP1 pid=2468665)   gelu_grad_erf = erfc(-\hat{x}) / 2 + (1 /sqrt(Pi)) * (\hat{x}) * exp(-\hat{x}^2)
+(Worker_TP1 pid=2468665) INFO 11-19 16:18:44 [compiler_interface.py:248] AscendCompiler hash factors: {'torch_npu_version': '2.10.0.post4', 'enable_npugraph_ex'
+(Worker_TP0 pid=2468664) INFO 11-19 16:18:44 [compiler_interface.py:248] AscendCompiler hash factors: {'torch_npu_version': '2.10.0.post4', 'enable_npugraph_ex'
+(Worker_TP0 pid=2468664) INFO 11-19 16:18:44 [backends.py:1094] Using cache directory: /root/.cache/vllm/torch_compile_cache/fcd5e552b3/rank_0_0/backbone for vL
+(Worker_TP0 pid=2468664) INFO 11-19 16:18:44 [backends.py:1155] Dynamo bytecode transform time: 8.14 s
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:10 [backends.py:393] Compiling a graph for compile range (1, 2048) takes 15.63 s
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:23 [decorators.py:708] saved AOT compiled function to /root/.cache/vllm/torch_compile_cache/torch_aot_compile/6b3ba58c
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:23 [monitor.py:53] torch.compile took 46.86 s in total
+(EngineCore pid=2457454) INFO 11-19 16:19:28 [patch_shm_broadcast.py:74] No available shared memory broadcast block found in 60 seconds. This typically happens
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:36 [monitor.py:81] Initial profiling/warmup run took 12.33 s
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:38 [worker.py:598] Available KV cache memory: 25.55 GiB
+(EngineCore pid=2457454) INFO 11-19 16:19:38 [kv_cache_utils.py:1977] Auto-fit max_model_len: full model context length 40960 fits in available GPU memory
+(EngineCore pid=2457454) INFO 11-19 16:19:38 [kv_cache_utils.py:2177] GPU KV cache size: 478,336 tokens
+(EngineCore pid=2457454) INFO 11-19 16:19:38 [kv_cache_utils.py:2178] Maximum concurrency for 40,960 tokens per request: 11.68x
+(Worker_TP1 pid=2468665) INFO 11-19 16:19:39 [kernel_warmup.py:41] Starting Triton kernel warmup.
+(Worker_TP1 pid=2468665) INFO 11-19 16:19:39 [kernel_warmup.py:33] rejection_sampler Triton warmup complete in 0.000s.
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:39 [kernel_warmup.py:41] Starting Triton kernel warmup.
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:39 [kernel_warmup.py:33] rejection_sampler Triton warmup complete in 0.000s.
+(Worker_TP1 pid=2468665) [WARNING] AutoBlockify disabled for kernel 'token_bin_counts_and_mask_kernel'. Unsafe ops: atomic operations. Enabling may cause correc
+(Worker_TP1 pid=2468665) INFO 11-19 16:19:52 [kernel_warmup.py:33] penalties Triton warmup complete in 13.296s.
+(Worker_TP1 pid=2468665) INFO 11-19 16:19:52 [kernel_warmup.py:33] rms Triton warmup complete in 0.000s.
+(Worker_TP1 pid=2468665) INFO 11-19 16:19:52 [kernel_warmup.py:49] Triton kernel warmup finished in 13.297s.
+(Worker_TP0 pid=2468664) [WARNING] AutoBlockify disabled for kernel 'token_bin_counts_and_mask_kernel'. Unsafe ops: atomic operations. Enabling may cause correc
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:53 [kernel_warmup.py:33] penalties Triton warmup complete in 13.673s.
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:53 [kernel_warmup.py:33] rms Triton warmup complete in 0.000s.
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:53 [kernel_warmup.py:49] Triton kernel warmup finished in 13.683s.
+(Worker_TP0 pid=2468664) INFO 11-19 16:19:53 [gpu_model_runner.py:6798] Rank 0: Torch profiler disabled for CUDA graph capture
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 35/35 [00:28<00:00,  1.24it/s]
+Capturing CUDA graphs (decode, FULL): 100%|██████████| 35/35 [00:07<00:00,  4.40it/s]
+(Worker_TP0 pid=2468664) INFO 11-19 16:20:31 [gpu_model_runner.py:6844] Graph capturing finished in 38 secs, took 0.44 GiB
+(Worker_TP0 pid=2468664) INFO 11-19 16:20:31 [worker.py:819] Free memory on device (29.13/29.49 GiB) on startup. Desired GPU memory utilization is (0.9, 26.54 G
+(Worker_TP1 pid=2468665) INFO 11-19 16:20:32 [worker.py:819] Free memory on device (29.13/29.49 GiB) on startup. Desired GPU memory utilization is (0.9, 26.54 G
+(Worker_TP0 pid=2468664) INFO 11-19 16:20:36 [cpu_binding.py:543] [cpu_bind_mode] mode=topo_affinity rank=0 visible_npus=[0, 1]
+(Worker_TP0 pid=2468664) INFO 11-19 16:20:36 [cpu_binding.py:627] The CPU allocation plan is as follows:
+(Worker_TP0 pid=2468664) INFO 11-19 16:20:36 [cpu_binding.py:641] NPU0: main=[146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165]
+(Worker_TP1 pid=2468665) INFO 11-19 16:20:38 [cpu_binding.py:543] [cpu_bind_mode] mode=topo_affinity rank=1 visible_npus=[0, 1]
+(Worker_TP1 pid=2468665) INFO 11-19 16:20:38 [cpu_binding.py:627] The CPU allocation plan is as follows:
+(Worker_TP1 pid=2468665) INFO 11-19 16:20:38 [cpu_binding.py:641] NPU1: main=[170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189]
+(EngineCore pid=2457454) INFO 11-19 16:20:40 [patch_shm_broadcast.py:74] No available shared memory broadcast block found in 60 seconds. This typically happens
+(Worker_TP0 pid=2468664) INFO 11-19 16:20:42 [cpu_binding.py:667] [migrate] NPU:0 -> NUMA [6]
+(Worker_TP1 pid=2468665) INFO 11-19 16:20:44 [cpu_binding.py:667] [migrate] NPU:1 -> NUMA [7]
+(EngineCore pid=2457454) INFO 11-19 16:21:02 [core.py:340] init engine (profile, create kv cache, warmup model) took 155.70 s (compilation: 46.86 s)
+(EngineCore pid=2457454) INFO 11-19 16:21:04 [ascend_config.py:921] Dynamic EPLB is False
+(EngineCore pid=2457454) INFO 11-19 16:21:04 [ascend_config.py:922] The number of redundant experts is 0
+(EngineCore pid=2457454) INFO 11-19 16:21:04 [vllm.py:1109] Asynchronous scheduling is enabled.
+(EngineCore pid=2457454) INFO 11-19 16:21:04 [kernel.py:295] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused
+(EngineCore pid=2457454) INFO 11-19 16:21:04 [platform.py:785] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(EngineCore pid=2457454) INFO 11-19 16:21:04 [compilation.py:329] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=2435990) INFO 11-19 16:21:04 [api_server.py:673] Supported tasks: ['generate']
+(APIServer pid=2435990) WARNING 11-19 16:21:05 [model.py:1546] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{
+(APIServer pid=2435990) INFO 11-19 16:21:06 [hf.py:540] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` t
+(APIServer pid=2435990) INFO 11-19 16:21:06 [api_server.py:677] Starting vLLM server on http://127.0.0.1:30004
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:37] Available routes are:
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /openapi.json, Methods: HEAD, GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /docs, Methods: HEAD, GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /redoc, Methods: HEAD, GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/chat/completions/derender, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /v1/completions/derender, Methods: POST
+(APIServer pid=2435990) INFO 11-19 16:21:06 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=2435990) INFO:     Started server process [2435990]
+(APIServer pid=2435990) INFO:     Waiting for application startup.
+(APIServer pid=2435990) INFO:     Application startup complete.
+(APIServer pid=2435990) INFO:     127.0.0.1:39838 - "GET /v1/models HTTP/1.1" 200 OK
+(APIServer pid=2435990) WARNING 11-19 16:21:28 [utils.py:72] Received a request with trace context but tracing is disabled
+(Worker_TP0 pid=2468664) INFO 11-19 16:21:37 [acl_graph.py:249] Replaying aclgraph
+(APIServer pid=2435990) INFO:     127.0.0.1:36100 - "POST /v1/chat/completions HTTP/1.1" 200 OK

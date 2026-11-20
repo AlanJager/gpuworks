@@ -61,7 +61,8 @@
     "cluster": "集群 {{name}}",
     "clusterOf": "集群 {{name}}（{{provider}}）",
     "standaloneCluster": "Kubernetes 集群",
-    "selected": "所选来源"
+    "selected": "所选来源",
+    "standaloneSlurm": "Slurm 集群"
   },
   "column": {
     "source": "来源",
@@ -181,7 +182,10 @@
     }
   },
   "rejects": {
-    "title": "最近 Agent 握手拒绝",
+    "refused": "{{count}} 个 Agent 使用本服务端不认识的凭据连接，已被拒绝",
+    "refusedHelp": "服务端看到列出的主机上有 Agent 用它没有记录的节点凭据连接。常见原因：节点被移除或重新添加后旧 Agent 仍在运行；该主机另一个状态目录里还有一个 Agent；服务端记录变了（如恢复过备份）。这台主机应当是节点就重新添加；是残留的 Agent 就只卸载它：gpuworks-agent uninstall --state <它的状态目录>。只列最近 30 分钟的来源。",
+    "source": "{{host}} · 凭据 {{prefix}}… · {{count}} 次 · 首次 {{first}} · 最近 {{last}}",
+    "more": "另有 {{count}} 个未显示",
     "emptyToken": "（空）",
     "unknownAddress": "未知地址"
   },
@@ -374,6 +378,7 @@
     "port": "端口",
     "user": "用户",
     "userRequired": "请输入 SSH 用户",
+    "portRequired": "请输入 SSH 端口",
     "probeAfterSave": "保存后立即探测一次",
     "existingAuth": "已保存凭据：{{method}}。出于安全原因，凭证不会回显；保存时需重新输入。",
     "savedPasswordHelp": "恢复连接时，已保存的密码可通过密码认证或键盘交互认证尝试登录。",
@@ -595,7 +600,8 @@
     },
     "cordonReason": {
       "card_needs_host_reboot": "平台停止调度：有卡报告需要重启主机或断电重启才能恢复，同一驱动下的其他卡也可能受影响。",
-      "kube_unschedulable": "平台停止调度：Kubernetes 已停止向该节点调度（kubectl cordon/drain 或节点替换）。"
+      "kube_unschedulable": "平台停止调度：Kubernetes 已停止向该节点调度（kubectl cordon/drain 或节点替换）。",
+      "slurm_node_unavailable": "平台停止调度：Slurm 不会在该节点上启动作业，而平台用 Slurm 作业借卡，放到这里的部署会一直等到排队超时后失败。"
     }
   },
   "systemLabels": {
@@ -612,7 +618,9 @@
       "serving-network": "服务网络",
       "storage": "存储",
       "kubernetes-cluster": "Kubernetes 集群",
-      "kubernetes-node": "Kubernetes 节点"
+      "kubernetes-node": "Kubernetes 节点",
+      "slurm-cluster": "Slurm 集群",
+      "slurm-node": "Slurm 节点"
     }
   },
   "diskUsage": {
@@ -635,7 +643,8 @@
       "udocker": "runveil",
       "host": "环境包",
       "storage": "存储 {{name}}",
-      "storageCache": "存储 {{name}} 的缓存"
+      "storageCache": "存储 {{name}} 的缓存",
+      "managedDirs": "托管目录"
     }
   },
   "doctor": {
@@ -815,6 +824,7 @@
       "docker": "Docker",
       "storage": "存储",
       "storage_cache": "存储缓存",
+      "managed_dirs": "托管目录",
       "agent": "agent 目录"
     },
     "pluginNone": "无（由 gpuworks 直接挂载设备）",
@@ -988,7 +998,14 @@
     "activeHelp": "当前尝试确认结束前会保留执行名额，其他批次不能并行启动。",
     "startedAt": "开始：{{at}}",
     "finishedAt": "结束：{{at}}",
-    "verifiedAt": "后续已核实旧操作结束：{{at}}"
+    "verifiedAt": "后续已核实旧操作结束：{{at}}",
+    "verification": {
+      "target_registered": "系统核实：节点之后以目标版本重新连上。",
+      "agent_failed": "系统核实：Agent 之后报告升级失败。",
+      "rolled_back": "系统核实：Agent 之后报告已回滚。",
+      "node_removed": "系统核实：节点已从平台删除，不会再有升级在进行。",
+      "reconnected_old_version": "系统核实：节点之后以原版本重新连上，这次升级没有生效。"
+    }
   },
   "cardScheduling": {
     "stoppedTag": "已禁用调度",
@@ -1394,5 +1411,27 @@
       "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "此节点没有就绪的 dGPU 分区后端；在有之前此设置不生效。",
       "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "请升级此节点的 agent，使其在共用卡上持续跟踪平台外进程；在此之前此设置不生效。"
     }
+  },
+  "slurm": {
+    "unavailable": {
+      "gres_missing": "Slurm 登记节点 {{node}} 时没有 GPU：slurmd 发现的 GPU 比 Slurm 管控节点配置的少（通常是没有 gres.conf），Slurm 已把该节点 drain，不会启动借卡的作业。",
+      "invalid_registration": "Slurm 拒绝了节点 {{node}} 的登记，因此不会启动借卡的作业。",
+      "down": "Slurm 把节点 {{node}} 标为 down 或无响应，因此不会启动借卡的作业。",
+      "drained": "Slurm 把节点 {{node}} 标为 drained 或 draining，因此不会启动借卡的作业。",
+      "other": "Slurm 不会在该节点上启动作业（{{code}}）。"
+    },
+    "says": "Slurm 给出的原因：{{reason}}",
+    "howToFix": "让节点恢复的步骤：",
+    "step": {
+      "gres_conf": "在 Slurm 管控节点上（如果这台节点自己保存了 Slurm 配置文件，也在这台节点上），把这一行加进 gres.conf：",
+      "reconfigure": "在 Slurm 管控节点上，重新加载配置；节点会带着 GPU 重新登记：",
+      "restart_slurmd": "如果之后节点仍显示 invalid，在这台节点上重启 slurmd：",
+      "resume": "在 Slurm 管控节点上，让节点 {{node}} 恢复服务：",
+      "resume_drained": "处理掉 Slurm 给出的原因后，在 Slurm 管控节点上让节点 {{node}} 恢复服务：",
+      "check_slurmd": "在这台节点上，确认 slurmd 在运行并查看它的日志："
+    },
+    "copy": "复制命令",
+    "copied": "命令已复制",
+    "manualCopyTitle": "复制命令"
   }
 }

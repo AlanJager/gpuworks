@@ -68,6 +68,24 @@ func unescapeOctal(s string) string {
 
 func isOctal(c byte) bool { return c >= '0' && c <= '7' }
 
+// ContainingMount returns the entry of the filesystem path sits on: the one
+// with the longest mount point that is path or an ancestor of it (the last of
+// stacked mounts, as it is the one that is visible).
+func ContainingMount(entries []MountEntry, path string) (MountEntry, bool) {
+	want := filepath.Clean(path)
+	best, found := MountEntry{}, false
+	for _, e := range entries {
+		point := filepath.Clean(e.MountPoint)
+		if point != want && point != "/" && !strings.HasPrefix(want, point+"/") {
+			continue
+		}
+		if !found || len(point) >= len(filepath.Clean(best.MountPoint)) {
+			best, found = e, true
+		}
+	}
+	return best, found
+}
+
 // FindMount returns the entry whose mount point is exactly path. When mounts are stacked on the
 // same point the last entry wins, as it is the one that is visible.
 func FindMount(entries []MountEntry, path string) (MountEntry, bool) {

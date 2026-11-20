@@ -138,4 +138,30 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Apple silicon (macOS 15+, M1-M5): vllm-metal runs as a host process from the
+# gpuworks-runner metal package. weight_bytes is the measured safetensors total.
+- name: bf16-vllm-apple
+  display_name_zh_cn: Apple 芯片 · BF16
+  display_name_en: Apple silicon · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: HuggingFaceTB/SmolLM3-3B
+        revision: a07cc9a04f16550a088caea529712d1d335b0ac1
+    - modelscope:
+        repo_id: HuggingFaceTB/SmolLM3-3B
+        revision: c75dec6841a53b0c8690e22fe2ed3e226ec1c663
+  weight_bytes: 6150235008
+  gpus:
+    vendor: apple
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]

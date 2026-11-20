@@ -100,8 +100,8 @@ func TestPlatformListNamesWhatEachAccountConnectsAndCountsTheNodesThatJoined(t *
 	body := w.get(t, "/api/v1/providers", http.StatusOK)
 	for name, want := range map[string]string{
 		// Two instances of its own (ecs-2 is its cluster's); a node on ecs-1 and the two of the cluster connected from the account.
-		"ali":       fmt.Sprintf(`"id":%d,"name":"ali","kind":"aliyun","category":"public_cloud","state":"valid","instance_count":2,"resources":[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"}],"node_count":3,`, w.ali),
-		"ali-empty": `"name":"ali-empty","kind":"aliyun","category":"public_cloud","state":"valid","instance_count":0,"resources":[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"}],"node_count":0,`,
+		"ali":       fmt.Sprintf(`"id":%d,"name":"ali","kind":"aliyun","category":"public_cloud","state":"valid","instance_count":2,"resources":[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"},{"type":"slurm","product":"E-HPC"}],"node_count":3,`, w.ali),
+		"ali-empty": `"name":"ali-empty","kind":"aliyun","category":"public_cloud","state":"valid","instance_count":0,"resources":[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"},{"type":"slurm","product":"E-HPC"}],"node_count":0,`,
 		// One host, which has not joined yet.
 		"zs":   `"name":"zs","kind":"zstack","category":"private_cloud","state":"valid","instance_count":1,"resources":[{"type":"host"}],"node_count":0,`,
 		"pods": `"name":"pods","kind":"runpod","category":"public_cloud","state":"valid","instance_count":1,"resources":[{"type":"container","product":"Pod"}],"node_count":1,`,
@@ -120,7 +120,7 @@ func TestPlatformListNamesWhatEachAccountConnectsAndCountsTheNodesThatJoined(t *
 	if err := w.rig.st.LinkProviderInstanceNode(w.ali, "ecs-2", member.ID); err != nil {
 		t.Fatal(err)
 	}
-	if body := w.get(t, "/api/v1/providers", http.StatusOK); !strings.Contains(body, `"name":"ali","kind":"aliyun","category":"public_cloud","state":"valid","instance_count":2,"resources":[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"}],"node_count":3,`) {
+	if body := w.get(t, "/api/v1/providers", http.StatusOK); !strings.Contains(body, `"name":"ali","kind":"aliyun","category":"public_cloud","state":"valid","instance_count":2,"resources":[{"type":"vm","product":"ECS"},{"type":"kubernetes","product":"ACK"},{"type":"slurm","product":"E-HPC"}],"node_count":3,`) {
 		t.Fatalf("a cluster node's instance is counted twice: %s", body)
 	}
 	if page := w.get(t, fmt.Sprintf("/api/v1/nodes?source=provider:%d&page=1", w.ali), http.StatusOK); !strings.Contains(page, `"total":3,`) {

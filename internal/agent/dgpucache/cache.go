@@ -1,7 +1,9 @@
-// Package hami reads the HAMi-core (libvgpu.so) shared-usage cache that the
-// NVIDIA partition shim maintains per instance, for per-GPU memory and SM
-// utilization reporting. The injection itself lives in the agent engine's
-// NVIDIA partition injector; this package owns only the on-disk cache format.
+// Package dgpucache reads the per-instance usage regions the partition shims
+// maintain, for per-slice memory and compute utilization reporting: the
+// HAMi-core (libvgpu.so) shared cache of the NVIDIA backend (this file) and
+// the ledgers of the PPU and Ascend shims (ledger.go). The injection itself
+// lives in the agent engine's partition injectors; this package owns only the
+// on-disk formats.
 package dgpucache
 
 import (

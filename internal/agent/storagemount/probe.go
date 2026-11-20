@@ -48,7 +48,9 @@ func probeFail(reason, msg, output string) ProbeResult {
 }
 
 // probeDir checks an existing directory. A local directory that does not exist yet is judged by
-// its nearest existing ancestor, because it will be created when the storage is used.
+// its nearest existing ancestor, because it will be created when the storage is used; so is a
+// shared directory, whose ancestor must then be on the share (it is created there, see
+// reconcileDir).
 func (m *Manager) probeDir(ctx context.Context, spec Spec) ProbeResult {
 	if strings.TrimSpace(spec.Path) == "" {
 		return probeFail(ReasonPathMissing, "no directory was given", "")
@@ -58,13 +60,8 @@ func (m *Manager) probeDir(ctx context.Context, spec Spec) ProbeResult {
 	}
 	key := "p:" + spec.Path
 	dir := spec.Path
-	if spec.Type == TypeLocal {
-		for {
-			if _, err := os.Stat(dir); err == nil || dir == filepath.Dir(dir) {
-				break
-			}
-			dir = filepath.Dir(dir)
-		}
+	if spec.Type == TypeLocal || spec.Type == TypeSharedDir {
+		dir = nearestExisting(dir)
 	}
 	err := m.call(ctx, key, func() error {
 		// Require a canonical directory so a permitted root cannot be a
@@ -78,8 +75,19 @@ func (m *Manager) probeDir(ctx context.Context, spec Spec) ProbeResult {
 		st := failErr(Status{}, err, "check directory")
 		return probeFail(reasonOrOther(st), st.Message, "")
 	}
-	if spec.Type != TypeLocal {
-		reason, msg, err := m.checkBacking(ctx, spec, key)
+	if spec.Type == TypeSharedDir && dir != filepath.Clean(spec.Path) {
+		// The directory does not exist yet: it is created on the share, so
+		// its parent must be on one.
+		if reason, msg, err := m.ancestorOnShare(ctx, key, dir); err != nil {
+			st := failErr(Status{}, err, "check mount")
+			return probeFail(reasonOrOther(st), st.Message, "")
+		} else if reason != "" {
+			return probeFail(reason, msg, "")
+		}
+	} else if spec.Type != TypeLocal {
+		backing := spec
+		backing.Path = dir
+		reason, msg, err := m.checkBacking(ctx, backing, key)
 		if err != nil {
 			st := failErr(Status{}, err, "check mount")
 			return probeFail(reasonOrOther(st), st.Message, "")

@@ -3,6 +3,9 @@ package deployment
 import (
 	"context"
 
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
@@ -63,11 +66,16 @@ func (s *Service) evaluateRanks(env evaluateRankEnv) bool {
 		resp.Warnings = append(resp.Warnings, computeFallbackWarning(group)...)
 	}
 	var draftInputs []deploy.ResolveLaunchInput
+	var peers []proto.PeerRank
+	if req.NNodes > 1 {
+		peers = planning.GroupPeers(rankNodes, group)
+	}
 	for rank, rankNode := range rankNodes {
 		modelMount, componentMounts := previewComponentMounts(s.d.Store, selection.Components, rankNode)
 		topology := planning.DistTopology{NNodes: req.NNodes, NodeRank: rank, Role: "standalone"}
 		if req.NNodes > 1 {
 			topology = planning.PreviewRankTopology(req.NNodes, rank, group.Ranks[rankNode.ID])
+			topology.Peers = peers
 		}
 		resolution := s.rankImage(eng.Name(), selection, req.Image, rankNode)
 		rankImage := resolution.Image
@@ -157,20 +165,28 @@ func (s *Service) evaluateRankFallback(env evaluateRankEnv) bool {
 	if err != nil || perNode < 1 {
 		perNode = 1
 	}
+	if dynamicTPPreview && allowUnresolvedPlacement && len(env.placement.GPUIndexes) == 0 {
+		// Nothing says how many cards this draft gets: it states no degree,
+		// names no card and has no node to schedule on. The preview is
+		// assembled with no count, so a template that states its own degree
+		// is not held to the count of one nobody chose.
+		perNode, parallel.TP = 0, 0
+	}
 	params := deploy.Params{
-		ModelPath: modelMount, ServedName: servedName, APIPort: planning.PreviewAPIPort,
+		ModelPath: modelMount, ServedName: servedName, APIPort: planning.PreviewAPIPort, MetricsPort: planning.PreviewMetricsPort, MetricsPortSeparate: inferenceapi.SeparateMetricsPort(selection.APIContract),
 		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, PriorityScheduling: requestsPriorityScheduling(req), Quick: quick, TemplateArgs: templateArgs,
 		TemplateEnv: templateEnv, ExtraArgs: userExtraArgs,
 		Arch: arch, ArchID: archID, Vendor: vendor, ModelType: model.Arch,
 	}
 	res, launchWarnings, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
-		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec,
+		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec, TemplateStartTimeoutSec: selection.startTimeoutSec(),
 		Engine: eng, Params: params, Image: env.rankSelection.Image,
 		Entrypoint:   templateEntrypoint,
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, ComponentMounts: componentMounts, APIContract: selection.APIContract,
 		PlacementVariables: placementVariables, AllowUnresolved: allowUnresolvedPlacement,
 		ModelWeightBytes: modelWeightBytes, TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(), TemplateDockerArgs: selection.dockerArgs(),
+		TemplateDirs: selection.Dirs,
 	}, req.ContainerOverrides, selection.Components, modelMount)
 	if resolveErr != nil {
 		env.errs.add("", resolveErr)

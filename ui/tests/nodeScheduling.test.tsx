@@ -99,6 +99,10 @@ test("the tag says who stopped scheduling and, for the platform, why and that it
   assert.ok(reboot.includes(sched.by.platformLifts), reboot);
   assert.ok(!reboot.includes("card_needs_host_reboot"), "the raw code is not shown");
 
+  const slurm = await hoverText({ scheduling_by: "platform", cordon_reason: "slurm_node_unavailable" });
+  assert.ok(slurm.includes(sched.cordonReason.slurm_node_unavailable) && slurm.includes(sched.by.platformLifts), slurm);
+  assert.ok(!slurm.includes("slurm_node_unavailable"), "the raw code is not shown");
+
   const runtime = await hoverText({ scheduling_by: "platform", cordon_reason: "runtime_gpu_blocked", runtime_driver: "docker",
     runtime_gpu_blocked: "gpu_plugin_missing", runtime_gpu_plugin: "NVIDIA Container Toolkit" });
   assert.ok(runtime.includes("NVIDIA Container Toolkit") && runtime.includes(sched.by.platformLifts), runtime);

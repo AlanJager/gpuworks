@@ -238,14 +238,14 @@ for (const bundle of [en, zh]) {
     show(bundle); await userEvent.setup().click(await screen.findByRole("button", { name: text.run }));
     await screen.findByText(text.runtime.value.control.not_connected);
     assert.ok(screen.getByText(text.runtime.value.connect_mode.server_dial));
-    const dataRow = screen.getByText(text.runtime.field.data_lane).closest("tr")!;
+    const dataRow = screen.getByText(text.runtime.field.data_lane).closest("[role=listitem]")!;
     assert.ok(dataRow.textContent?.includes(text.runtime.value.data_lane.not_applicable));
     const heading = screen.getByText(text.runtime.stage.hello);
     assert.equal(heading.textContent, bundle.i18n.language === "en" ? "Identity handshake" : "身份握手");
-    const identityStage = heading.closest(".ant-descriptions")!;
+    const identityStage = screen.getByRole("group", { name: text.runtime.stage.hello });
     assert.ok(identityStage.textContent?.includes(text.runtime.phase.failed));
     for (const stage of outbound) {
-      const section = screen.getByText(text.runtime.stage[stage]).closest(".ant-descriptions")!;
+      const section = screen.getByRole("group", { name: text.runtime.stage[stage] });
       assert.ok(section.textContent?.includes(text.runtime.phase.not_applicable), stage);
       assert.equal(section.textContent?.includes(text.runtime.phase.failed), false, stage);
     }

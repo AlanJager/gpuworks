@@ -333,6 +333,9 @@ func (s *Service) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement, mod
 // checkPDSpec enforces a PD-only catalog spec (plan D15): it deploys only as
 // PD, in the mode it was written for. An ordinary spec may deploy either way.
 func checkPDSpec(selection templateSelection, pd *planning.PDPlacement) error {
+	if err := checkRankWeightsPD(selection, pd != nil); err != nil {
+		return err
+	}
 	if selection.Spec == nil || selection.Spec.PDMode == "" {
 		return nil
 	}

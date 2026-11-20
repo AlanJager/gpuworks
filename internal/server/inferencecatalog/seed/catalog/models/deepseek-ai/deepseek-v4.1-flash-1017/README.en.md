@@ -1,10 +1,11 @@
 # DeepSeek-V4.1-Flash-1017
 
-The mixed FP8/FP4 checkpoint is about 510.3 GB. This template carries recipes for three engines:
+The mixed FP8/FP4 checkpoint is about 510.3 GB. This template carries recipes for four engines:
 
 - **SGLang**, from the [SGLang cookbook](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1). It needs the dedicated `lmsysorg/sglang:dev-dsv41` image (CUDA 13); the V4 image or older runners will not work.
 - **vLLM (NVIDIA)**, from the [vLLM recipe](https://github.com/vllm-project/recipes/blob/main/models/deepseek-ai/DeepSeek-V4.1-Flash.yaml). It needs vLLM 0.31.0 or later; Ascend uses the separate vLLM-Ascend image below.
 - **DeepInfer**, DeepSeek's open-source inference framework [DeepInfer](https://github.com/deepseek-ai/DeepInfer) at commit `774ce24`. The image `gpuworks/deepinfer:774ce24-r9` adds an OpenAI-compatible HTTP server (DeepSeek's deepseek-recipe protocol layer), a single-node local Engram fetch and a multi-node request relay. It serves text input only; the open-source release has no prefill/decode disaggregation.
+- **pico-dgx-ds4**, the community project [pico-dgx-ds4](https://github.com/Picom-code/pico-dgx-ds4) (MIT, v2.0 = commit `22a39ac`), which runs this model TP4 on four DGX Spark (GB10) boxes with RoCE between the ranks. The weights are pre-converted per rank and published on ModelScope as `gpuworks/DeepSeek-V4.1-Flash-1017-pico-dgx-ds4-tp4`, one subfolder per rank (about 128 GB); each node downloads only its own. The image `gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6` carries pico's engine and front end plus a launcher that writes pico's fleet configuration from the platform's peers file (for a RoCE switch or for a cabled ring, see `--topology`), probes the RoCE GID in the container, and starts the OpenAI-compatible front end on rank 0.
 
 ## Profiles
 
@@ -23,6 +24,8 @@ The mixed FP8/FP4 checkpoint is about 510.3 GB. This template carries recipes fo
 | `fp4-deepinfer-nvidia-blackwell-ep` | 4 or 8× B200/B300 (one node) | Expert parallel and attention data parallel over every GPU; automatic placement prefers the whole 8-GPU node; no RDMA NIC needed |
 | `fp4-deepinfer-nvidia-blackwell-ep-multinode` | B200/B300, 4 or 8 per node, 2+ nodes | Expert parallel across nodes; needs a host-RDMA compute network |
 | `int8-vllm-ascend-a3-tp4-dp4` | A3/910C × 16 logical dies | 1017 W8A8, DP4 × TP4, 150K context, ~781.5 GB of weights; Engram tables in host memory |
+| `fp8-pico-nvidia-gb10-tp4` | DGX Spark (GB10) × 4, 1 GPU per node, **RoCE switch** | pico-dgx-ds4 v2.0, TP4, 1M context, 16 session slots; speculative decoding, copy drafts and the `prediction` field; all four boxes on one RoCE switch (`--topology switch`) |
+| `fp8-pico-nvidia-gb10-tp4-ring` | DGX Spark (GB10) × 4, 1 GPU per node, **switchless ring** | The same engine and weights over pico's cabled ring (`--topology ring`): no switch, four point-to-point cables; the engine's switch-only settings (`DSGB10_RING_DIRECT`, `DSGB10_RING_RSBAL`) are left out. Unit-tested against pico's own ring fleet file, **not yet validated on hardware** |
 
 The two 4× H200 SGLang profiles are platform additions; every switch they use comes from the upstream documentation.
 
@@ -44,7 +47,22 @@ request on 16× 910C with native Docker. That result does not extend to runveil.
 - **Multi-node**: every node sits on the same host-RDMA compute network with GPUDirect-capable NICs; the platform adds `/dev/infiniband`, `IPC_LOCK` and an unlimited memlock for that network, so no privileged mode is needed. Only rank 0 serves; the other nodes take requests over `MASTER_PORT+7`.
 - Both profiles declare `api.metrics`, so the monitoring center shows running/waiting requests, token counters and TTFT/TPOT distributions.
 
+## pico-dgx-ds4 prerequisites
+
+- **Four DGX Spark boxes on one host RDMA parameter network**: two RoCE rails per box (the CX7 ports on its two PCI domains), every box one switch hop from every other (profile `fp8-pico-nvidia-gb10-tp4`). The platform writes the rails into the peers file and the launcher builds the fleet configuration from it. Deploy on 4 nodes with 1 GPU each; rank 0 serves.
+- **Switchless ring** (profile `fp8-pico-nvidia-gb10-tp4-ring`): no switch, four cables closing a loop 0 → 1 → 2 → 3 → 0. On every box port f0 of the ConnectX-7 goes to the next rank and port f1 to the previous one: four cables, and the two PCI domains of each port (`rocep1s0f0`/`roceP2p1s0f0` for f0, `rocep1s0f1`/`roceP2p1s0f1` for f1) are each their own /24 per link. All four ports of every box must be attached to the deployment's compute network and have an IPv4 address (a rank's own address on each link; the two ends of a cable on one /24, different on every link). The launcher builds pico's fleet file by device name and stops with a message naming the rank, device and subnet if a port is missing, the two ends of a cable are not on one subnet, or the ports look like a switch fabric. An open daisy chain (a missing 3 → 0 cable) is not supported. The ring profile is unit-tested against pico's own ring fleet file (`homelab.conf`) but has not been validated on hardware yet.
+- **Tokenizer**: the per-rank weights repository has no root tokenizer and pico's front end has no `/v1/tokenize`, so both profiles declare `api.tokenizer_ref` (the model's own ModelScope repository at a pinned commit) for platform benchmarks; without it a benchmark fails with a tokenizer 404.
+- **Per-rank weights and a writable directory**: `subfolder: rank${GPUWORKS_NODE_RANK}` makes each node download only its own rank; the `dirs` entry `/state` (64 GiB) holds the fleet configuration, session spill and engine socket, and is kept with the deployment.
+- **Container options**: the engine reads its Engram shards with io_uring and has no fallback, and Docker's default seccomp profile refuses `io_uring_setup`, so the template passes `--security-opt seccomp=unconfined`; it also declares `memlock_unlimited`.
+- **Node environment** (outside the template): GB10 memory is unified, so the page cache competes with the engine; keep the host page cache small before a start, or the session cache may get 0 GiB. If Engram sits on a loop device, turn on direct I/O for it.
+- **Monitoring**: pico's front end has no `/metrics`; the launcher in the image exports engine metrics on a separate port the platform reserves (`api.metrics.port: separate`, `${GPUWORKS_METRICS_PORT}`): running and waiting requests (dsfront's admin status), session-cache usage, and speculative draft/accepted tokens. TTFT, TPOT, throughput and the prefix-cache hit rate come from the gateway. "Waiting" counts only requests held at dsfront's gate and is usually 0; session-cache usage is the fill of pico's session store, close to but not the same as a vLLM KV pool.
+- **Page cache before a start**: GB10 memory is unified, and a node that has just downloaded its weights has a large page cache; the engine sizes its session cache by the smallest free memory of the four ranks and can end up with tens of MB, which silently disables long-context and multi-turn reuse. Before the first deployment, drop the page cache on the nodes (`echo 3 | sudo tee /proc/sys/vm/drop_caches`).
+
 ## Measured
+
+### pico-dgx-ds4 v2.0 (2026-11-20, 4 × DGX Spark, RoCE switch)
+
+One-stream decode: chat 84.3 and code 131.3 tok/s (median of pico's own bench); 16 users with different prompts 353 tok/s in total. Random load (50–4000 tokens in, 64–1024 out) at 1/4/8/16 users: 94/148/175/212 tok/s in total, no errors. Cold prefill about 8.5–9.1K tok/s, first token of a 512K prompt after 66 s; four agentic sessions growing to 1M: all 113 requests succeeded, TTFT p50/p95 13.9/32.6 s. Deployed from this template, chat, long-context and concurrent requests through the gateway were verified.
 
 ### SGLang (2026-10-20, Vast 8× H200 SXM container node, runveil)
 

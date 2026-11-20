@@ -37,7 +37,10 @@ type Host struct {
 	// metrics are each package's counters, kept across its processes
 	// until ForgetMetrics.
 	metrics map[string]*pluginMetrics
-	closed  bool
+	// logs are each package's supervision events and stderr output, kept
+	// across its processes until Forget.
+	logs   map[string]*pluginLogs
+	closed bool
 }
 
 // New returns a host that runs nothing until Start.
@@ -45,7 +48,8 @@ func New(cfg Config) (*Host, error) {
 	if cfg.Core == nil {
 		return nil, errors.New("pluginhost: Config.Core is required")
 	}
-	h := &Host{cfg: cfg, timing: cfg.Timing.withDefaults(), spawner: cfg.Spawner, log: cfg.Log, plugins: map[string]*instance{}, metrics: map[string]*pluginMetrics{}}
+	h := &Host{cfg: cfg, timing: cfg.Timing.withDefaults(), spawner: cfg.Spawner, log: cfg.Log, plugins: map[string]*instance{}, metrics: map[string]*pluginMetrics{},
+		logs: map[string]*pluginLogs{}}
 	if h.log == nil {
 		h.log = slog.Default()
 	}
@@ -95,8 +99,9 @@ func (h *Host) Start(spec Spec) error {
 	if i, ok := h.plugins[spec.ID]; ok && !i.finished() {
 		return fmt.Errorf("pluginhost: %s is already supervised", spec.ID)
 	}
-	i := newInstance(h, spec, h.metricsLocked(spec.ID))
+	i := newInstance(h, spec, h.metricsLocked(spec.ID), h.logsLocked(spec.ID))
 	h.plugins[spec.ID] = i
+	i.logs.record(i.status)
 	go i.supervise()
 	return nil
 }
@@ -210,13 +215,15 @@ func (h *Host) Session(id string) (Session, bool) {
 }
 
 // Stderr returns the plugin's recent stderr output (up to 1 MiB, across
-// restarts).
+// its processes and restarts until Forget).
 func (h *Host) Stderr(id string) []byte {
-	i := h.get(id)
-	if i == nil {
+	h.mu.Lock()
+	l := h.logs[id]
+	h.mu.Unlock()
+	if l == nil {
 		return nil
 	}
-	return i.stderr.Bytes()
+	return l.stderr.Bytes()
 }
 
 // Class is how a call counts against a plugin's slots; the caller says.

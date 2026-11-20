@@ -173,9 +173,7 @@ func TestContractAuthorityPluginLifecycle(t *testing.T) {
 	if other[0].OK || other[0].Code != messages.ErrorPluginStateNotOwner || other[1].OK || other[1].Code != messages.ErrorPluginStateNotPermitted {
 		t.Fatalf("pushes of a non-authority package = %+v", other)
 	}
-	if status, _ := sv.do(http.MethodDelete, "/api/v1/plugins/acme_other?purge=true", nil); status != http.StatusNoContent {
-		t.Fatalf("uninstall of acme_other = %d", status)
-	}
+	sv.uninstall("acme_other", true)
 
 	// Kill the core; boot it again with the plugin unable to start.
 	sv.stop()
@@ -220,9 +218,7 @@ func TestContractAuthorityPluginLifecycle(t *testing.T) {
 	}
 
 	// Uninstall releases what it held; running work is untouched.
-	if status, body := sv.do(http.MethodDelete, "/api/v1/plugins/acme_fake", nil); status != http.StatusNoContent {
-		t.Fatalf("uninstall = %d %s", status, body)
-	}
+	sv.uninstall("acme_fake", false)
 	waitFor(t, "every hold released", func() bool { return !heldByPlugins(t, st, h.UUID) && !heldByPlugins(t, st, c.UUID) })
 	if _, _, err := st.CreateNodePending("d"); err != nil {
 		t.Fatalf("enrollment after uninstall = %v", err)

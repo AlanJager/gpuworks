@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { Card, Descriptions, Space, Switch, Tag, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { apiErrorText } from "../apiError";
 import type { NetworkRole, NodeManagement, NodeNetworks } from "../networkTypes";
 import { Endpoint } from "../pages/networks/networkDisplay";
+import { message } from "../ui-kit/feedback";
+import { Badge } from "./ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { DetailList, DetailListItem, DetailListLabel, DetailListValue } from "./ui/detail-list";
+import { Switch } from "./ui/switch";
 
 const ROLES: NetworkRole[] = ["serving", "storage_sync", "compute"];
 
@@ -42,38 +46,46 @@ export default function NodeManagementCard({ nodeUUID, management, onChanged }: 
   };
 
   return (
-    <Card size="small" title={t("management.title")}>
-      <Descriptions column={1} size="small">
-        <Descriptions.Item label={t("management.address")}>
-          {management.ip ? (
-            <Space size={4}>
-              <Endpoint iface={management.interface} ip={management.ip} />
-              {management.behind_nat && <Tag color="orange">{t("management.nat")}</Tag>}
-            </Space>
-          ) : <Typography.Text type="secondary">{t("management.notReported")}</Typography.Text>}
-        </Descriptions.Item>
-        {management.remote_addr && management.behind_nat && (
-          <Descriptions.Item label={t("management.remote")}><Typography.Text code>{management.remote_addr}</Typography.Text></Descriptions.Item>
-        )}
-        <Descriptions.Item label={t("management.canCarry")}>
-          <Space direction="vertical" size={4}>
-            {ROLES.map((role) => (
-              <Space key={role} size={8}>
+    <Card className="border border-border-subtle">
+      <CardHeader><CardTitle>{t("management.title")}</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-2 pb-4">
+        <DetailList>
+          <DetailListItem>
+            <DetailListLabel>{t("management.address")}</DetailListLabel>
+            <DetailListValue>
+              {management.ip ? (
+                <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                  <Endpoint iface={management.interface} ip={management.ip} />
+                  {management.behind_nat && <Badge size="sm" color="orange">{t("management.nat")}</Badge>}
+                </span>
+              ) : <span className="text-fg-muted">{t("management.notReported")}</span>}
+            </DetailListValue>
+          </DetailListItem>
+          {management.remote_addr && management.behind_nat && (
+            <DetailListItem>
+              <DetailListLabel>{t("management.remote")}</DetailListLabel>
+              <DetailListValue><code className="rounded-sm bg-emphasis px-1 font-mono text-label">{management.remote_addr}</code></DetailListValue>
+            </DetailListItem>
+          )}
+          <DetailListItem className="items-start">
+            <DetailListLabel>{t("management.canCarry")}</DetailListLabel>
+            <DetailListValue className="flex flex-col items-end">
+              {ROLES.map((role) => (
                 <Switch
-                  size="small"
-                  aria-label={t(`management.roleSwitch.${role}`)}
+                  key={role}
+                  className="px-0 py-1"
+                  label={t(`management.roleSwitch.${role}`)}
                   checked={!management.roles_off.includes(role)}
-                  disabled={!isAdmin || (saving !== null && saving !== role)}
-                  loading={saving === role}
-                  onChange={(on) => void toggle(role, on)}
+                  disabled={!isAdmin || saving !== null}
+                  aria-busy={saving === role || undefined}
+                  onCheckedChange={(on) => void toggle(role, on)}
                 />
-                <span>{t(`management.roleSwitch.${role}`)}</span>
-              </Space>
-            ))}
-          </Space>
-        </Descriptions.Item>
-      </Descriptions>
-      <Typography.Text type="secondary">{t("management.roleHint")}</Typography.Text>
+              ))}
+            </DetailListValue>
+          </DetailListItem>
+        </DetailList>
+        <span className="text-fg-muted">{t("management.roleHint")}</span>
+      </CardContent>
     </Card>
   );
 }

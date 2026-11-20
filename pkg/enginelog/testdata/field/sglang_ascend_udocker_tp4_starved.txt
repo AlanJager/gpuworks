@@ -1,0 +1,148 @@
+/sgl-workspace/sglang/python/sglang/launch_server.py:57: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+[2026-11-19 16:24:54] get env TRITON_CACHE_DIR = /root/.cache/sglang/triton
+[2026-11-19 16:24:56] get env TORCHINDUCTOR_CACHE_DIR = /root/.cache/sglang/inductor
+[2026-11-19 16:24:57] get env LD_LIBRARY_PATH = /usr/local/Ascend/cann-9.0.0/lib64:/usr/local/Ascend/cann-9.0.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.
+[2026-11-19 16:25:06] Disable hybrid SWA memory for Gemma3ForConditionalGeneration as it is not yet supported.
+[2026-11-19 16:25:13] server_args=ServerArgs(model_path='/mo
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:25:15] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:25:16] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:25:16] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:25:17] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.
+[2026-11-19 16:25:21] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:25:21] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:25:21] Ignore import error when loading sglang.srt.models.inkling: No module named 'cutlass'
+[2026-11-19 16:25:22] Ignore import error when loading sglang.srt.models.mindspore: No module named 'mindspore'
+[2026-11-19 16:25:22] Ignore import error when loading sglang.srt.models.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.srt.managers.mm
+[2026-11-19 16:25:22] Using default HuggingFace chat template with detected content format: openai
+[2026-11-19 16:25:27] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpey28aslp
+[2026-11-19 16:26:00] Restoring add_bos_token=True for /model (was False after v5 loading)
+[2026-11-19 16:26:04 TP3] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpey28aslp
+[2026-11-19 16:26:05] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpey28aslp
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:26:10 TP3] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:26:10 TP3] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:26:10 TP3] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:26:11 TP3] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+[2026-11-19 16:26:12 TP3] Init torch distributed begin.
+[2026-11-19 16:26:19 TP2] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpey28aslp
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:26:25 TP2] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:26:26 TP2] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:26:26 TP2] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:26:26 TP2] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+[2026-11-19 16:26:35 TP2] Init torch distributed begin.
+[2026-11-19 16:26:38 TP1] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpey28aslp
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:26:44 TP1] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:26:44 TP1] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:26:44 TP1] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:26:45 TP1] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+[2026-11-19 16:26:55 TP1] Init torch distributed begin.
+[2026-11-19 16:27:00 TP0] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpey28aslp
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:27:05 TP0] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:27:06 TP0] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:27:06 TP0] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:27:06 TP0] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+[2026-11-19 16:27:08 TP0] Init torch distributed begin.
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[2026-11-19 16:29:07 TP0] Init torch distributed ends. elapsed=119.20 s, mem usage=0.01 GB
+[2026-11-19 16:29:07 TP3] Init torch distributed ends. elapsed=175.04 s, mem usage=0.01 GB
+[2026-11-19 16:29:07 TP2] Init torch distributed ends. elapsed=152.17 s, mem usage=0.01 GB
+[2026-11-19 16:29:07 TP1] Init torch distributed ends. elapsed=132.65 s, mem usage=0.01 GB
+[2026-11-19 16:31:22 TP3] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:31:23 TP3] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:31:53 TP2] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:32:22 TP2] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:38:33 TP1] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:40:23 TP1] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:40:33 TP0] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:43:33 TP3] Ignore import error when loading sglang.srt.models.inkling: No module named 'cutlass'
+[2026-11-19 16:48:05 TP0] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:55:23 TP3] Ignore import error when loading sglang.srt.models.mindspore: No module named 'mindspore'

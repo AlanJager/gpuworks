@@ -57,7 +57,7 @@ func TestAgentUpgradeGlobalReservationIdempotencyAndCAS(t *testing.T) {
 	st := newTestStore(t)
 	now := time.Now().UTC()
 	create := func(key string) (*AgentUpgradeRun, error) {
-		return st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: key, RequestFingerprint: key, TargetVersion: "target"}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "queued"}}, now)
+		return st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: key, RequestFingerprint: key, TargetVersion: "target"}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "queued"}}, now, time.Time{})
 	}
 	r, err := create("first")
 	if err != nil {
@@ -71,11 +71,11 @@ func TestAgentUpgradeGlobalReservationIdempotencyAndCAS(t *testing.T) {
 		t.Fatalf("overlap=%v", err)
 	}
 	items, _ := st.AgentUpgradeItems(r.ID)
-	ok, err := st.ClaimAgentUpgrade(items[0].ID, "session", now, now.Add(time.Minute))
+	ok, err := st.ClaimAgentUpgrade(items[0].ID, "session", now, now.Add(time.Minute), time.Time{})
 	if err != nil || !ok {
 		t.Fatalf("claim=%v %v", ok, err)
 	}
-	ok, err = st.ClaimAgentUpgrade(items[0].ID, "another", now, now.Add(time.Minute))
+	ok, err = st.ClaimAgentUpgrade(items[0].ID, "another", now, now.Add(time.Minute), time.Time{})
 	if err != nil || ok {
 		t.Fatalf("double claim=%v %v", ok, err)
 	}
@@ -101,7 +101,7 @@ func TestAgentUpgradeGlobalReservationIdempotencyAndCAS(t *testing.T) {
 func TestAgentUpgradeContinueHandoffIsAtomic(t *testing.T) {
 	st := newTestStore(t)
 	now := time.Now().UTC()
-	old, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "old", RequestFingerprint: "old", TargetVersion: "target"}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "queued"}}, now)
+	old, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "old", RequestFingerprint: "old", TargetVersion: "target"}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "queued"}}, now, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestAgentUpgradeContinueHandoffIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := func(key string) (*AgentUpgradeRun, error) {
-		return st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: key, RequestFingerprint: key, TargetVersion: "target", SourceRunID: old.ID}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "queued"}}, now)
+		return st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: key, RequestFingerprint: key, TargetVersion: "target", SourceRunID: old.ID}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "queued"}}, now, time.Time{})
 	}
 	if _, err := req("new"); !errors.Is(err, failure) {
 		t.Fatalf("injection=%v", err)
@@ -136,7 +136,7 @@ func TestAgentUpgradeContinueHandoffIsAtomic(t *testing.T) {
 	if items[0].Phase != "cancelled" || items[0].Reason != "superseded" {
 		t.Fatalf("old=%+v", items)
 	}
-	if ok, err := st.ClaimAgentUpgrade(items[0].ID, "late", now, now.Add(time.Minute)); err != nil || ok {
+	if ok, err := st.ClaimAgentUpgrade(items[0].ID, "late", now, now.Add(time.Minute), time.Time{}); err != nil || ok {
 		t.Fatalf("old runner claimed after handoff: %v %v", ok, err)
 	}
 	nextItems, _ := st.AgentUpgradeItems(next.ID)
@@ -151,7 +151,7 @@ func TestAgentUpgradeCreationConcurrencyReservesOnlyOneRun(t *testing.T) {
 	results := make(chan error, 8)
 	for i := 0; i < 8; i++ {
 		go func(i int) {
-			_, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: fmt.Sprint(i), RequestFingerprint: fmt.Sprint(i)}, []AgentUpgradeItem{{NodeUUID: fmt.Sprint(i), Phase: "queued"}}, now)
+			_, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: fmt.Sprint(i), RequestFingerprint: fmt.Sprint(i)}, []AgentUpgradeItem{{NodeUUID: fmt.Sprint(i), Phase: "queued"}}, now, time.Time{})
 			results <- err
 		}(i)
 	}
@@ -177,7 +177,7 @@ func TestAgentUpgradeRetentionPreservesUnresolvedReservations(t *testing.T) {
 		if i == 0 {
 			phase = "unconfirmed"
 		}
-		_, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: fmt.Sprint(i), RequestFingerprint: fmt.Sprint(i)}, []AgentUpgradeItem{{NodeUUID: fmt.Sprint(i), Phase: phase, FinishedAt: &now}}, now)
+		_, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: fmt.Sprint(i), RequestFingerprint: fmt.Sprint(i)}, []AgentUpgradeItem{{NodeUUID: fmt.Sprint(i), Phase: phase, FinishedAt: &now}}, now, time.Time{})
 		if err != nil {
 			if i > 0 && errors.Is(err, ErrAgentUpgradeConflict) { // insert completed historical fixtures without bypassing a live operation
 				r := &AgentUpgradeRun{IdempotencyKey: fmt.Sprint(i), RequestFingerprint: fmt.Sprint(i)}
@@ -199,8 +199,27 @@ func TestAgentUpgradeRetentionPreservesUnresolvedReservations(t *testing.T) {
 	if err != nil || len(runs) != 21 {
 		t.Fatalf("runs=%d err=%v", len(runs), err)
 	}
-	blocker, err := st.AgentUpgradeBlocker()
+	blocker, err := st.AgentUpgradeBlocker(time.Time{})
 	if err != nil || blocker == nil || blocker.NodeUUID != "0" {
 		t.Fatalf("unresolved history removed=%+v %v", blocker, err)
+	}
+}
+
+// An unconfirmed attempt holds the slot from the time it became unconfirmed
+// to heldSince, and not after; a verified one never does.
+func TestUnconfirmedAttemptHoldsTheSlotFromHeldSince(t *testing.T) {
+	st := newTestStore(t)
+	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	if _, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "u", RequestFingerprint: "u", TargetVersion: "t"}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "unconfirmed", FinishedAt: &now}}, now, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := st.AgentUpgradeBlocker(now); err != nil || b == nil {
+		t.Fatalf("at the moment it became unconfirmed: %v, %v; want held", b, err)
+	}
+	if b, err := st.AgentUpgradeBlocker(now.Add(time.Second)); err != nil || b != nil {
+		t.Fatalf("after its hold: %+v, %v; want free", b, err)
+	}
+	if _, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "v", RequestFingerprint: "v", TargetVersion: "t"}, []AgentUpgradeItem{{NodeUUID: "n2", Phase: "queued"}}, now, now); err != ErrAgentUpgradeConflict {
+		t.Fatalf("create within the hold = %v; want a conflict", err)
 	}
 }

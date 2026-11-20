@@ -1,9 +1,17 @@
 import { ClockCircleOutlined, EllipsisOutlined, PauseOutlined } from "@ant-design/icons";
-import { Tooltip, theme } from "antd";
 import { useTranslation } from "react-i18next";
 import type { CardHealthCell } from "../../api";
 import { agoText } from "../../format";
+import { Tooltip } from "../ui/tooltip";
 import { checkName, codeText, statusName } from "./text";
+
+const fills: Record<string, string> = {
+  pass: "bg-success-strong",
+  warn: "bg-warning-strong",
+  fail: "bg-danger-strong",
+  skip: "bg-emphasis",
+  na: "bg-transparent",
+};
 
 // CheckCell is one check on one card: a coloured square for what it found,
 // grey with an icon for a check that did not run (paused), has not run yet
@@ -19,23 +27,16 @@ export default function CheckCell({
   onSelect?: () => void;
 }) {
   const { t } = useTranslation("nodes");
-  const { token } = theme.useToken();
-  const colors: Record<string, string> = {
-    pass: token.colorSuccess,
-    warn: token.colorWarning,
-    fail: token.colorError,
-    skip: token.colorFillSecondary,
-    na: "transparent",
-  };
   const notRunYet = cell.status === "skip" && cell.code === "CARD_CHECK_NOT_RUN_YET";
   const shown = cell.stale ? "stale" : cell.status;
-  const background = cell.stale ? token.colorFillSecondary : notRunYet ? token.colorFillQuaternary : colors[cell.status] ?? token.colorFillSecondary;
+  const background = cell.stale ? "bg-emphasis" : notRunYet ? "bg-hover" : fills[cell.status] ?? "bg-emphasis";
+  const border = cell.status === "na" ? "border border-dashed border-border" : selected ? "border-2 border-brand" : "border border-transparent";
   const icon = cell.stale ? <ClockCircleOutlined /> : notRunYet ? <EllipsisOutlined /> : cell.status === "skip" ? <PauseOutlined /> : null;
   const reason = codeText(t, cell.status, cell.code);
   const ago = cell.checked_at ? agoText(t, (Date.now() - new Date(cell.checked_at).getTime()) / 1000) : "";
   const label = [checkName(t, cell.check), statusName(t, shown), reason, ago && t("cardHealth.lastChecked", { ago })].filter(Boolean).join(" · ");
   return (
-    <Tooltip title={label}>
+    <Tooltip content={label}>
       <button
         type="button"
         aria-label={label}
@@ -43,20 +44,7 @@ export default function CheckCell({
         data-status={shown}
         disabled={cell.status === "na"}
         onClick={onSelect}
-        style={{
-          width: 24,
-          height: 24,
-          padding: 0,
-          borderRadius: 4,
-          cursor: cell.status === "na" ? "default" : "pointer",
-          background,
-          color: token.colorTextSecondary,
-          fontSize: 12,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: cell.status === "na" ? `1px dashed ${token.colorBorder}` : selected ? `2px solid ${token.colorPrimary}` : "1px solid transparent",
-        }}
+        className={`inline-flex size-6 items-center justify-center rounded p-0 text-label text-fg-muted ${background} ${border} ${cell.status === "na" ? "cursor-default" : "cursor-pointer"}`}
       >
         {icon}
       </button>

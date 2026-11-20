@@ -9,6 +9,7 @@ import TimeSeriesChart, { type RightAxis } from "../../components/TimeSeriesChar
 import AsOfCaption from "./AsOfCaption";
 import InfoTitle from "./InfoTitle";
 import { serviceSeriesName } from "./monitorSeries";
+import { formatPlacement } from "./placement";
 import PdCard from "./PdCard";
 import ReplicaTable from "./ReplicaTable";
 import LatencyBreakdown from "./LatencyBreakdown";
@@ -122,7 +123,7 @@ function ServiceMonitorPageContent() {
           data
             ? t("deployment.subtitle", {
                 engine: data.deployment.engine,
-                placement: data.deployment.placement,
+                placement: formatPlacement(t, data.deployment.placement),
                 ready: data.deployment.replicas.ready,
                 desired: data.deployment.replicas.desired,
                 id: data.deployment.id,

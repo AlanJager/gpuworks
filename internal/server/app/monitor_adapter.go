@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/deployment"
 	"gpuworks.ai/gpuworks/internal/server/healthcheck"
 
@@ -198,7 +199,7 @@ func deploymentRef(d *store.Deployment, instances []store.Instance) monitor.Depl
 	}
 	return monitor.DeploymentRef{
 		ID: d.ID, Name: d.Name, Engine: d.Engine, ReplicasDesired: desired, ReplicasReady: ready,
-		ServedName: d.ServedName, SleepDesired: d.DesiredSleep,
+		ServedName: d.ServedName, SleepDesired: d.DesiredSleep, TensorParallel: deploymentTensorParallel(d.Engine, instances),
 		PD: pd, PDTransferMetrics: transfer, HealthCheck: d.HealthCheck, HealthCheckThresholdSec: d.HealthCheckThresholdSec,
 		// NodeNames is left empty: DeploymentRef.NodeNames is only a
 		// hint override, and monitor.resolveNodeNames already falls back
@@ -206,6 +207,34 @@ func deploymentRef(d *store.Deployment, instances []store.Instance) monitor.Depl
 		// nodeRef below) when it is empty - which is the placement that
 		// actually matters once the deployment has replicas.
 	}
+}
+
+// deploymentTensorParallel is the tensor-parallel degree the deployment's
+// instances state in their launch commands (deploy.TensorParallelFromArgv),
+// or 0 when none states one or they disagree (PD roles may differ). An
+// instance whose command states none (a worker rank that runs no engine
+// server) is skipped, not counted as a disagreement.
+func deploymentTensorParallel(engine string, instances []store.Instance) int {
+	tp := 0
+	for i := range instances {
+		spec, ok := desiredState(instances[i].DesiredStateJSON)
+		if !ok {
+			continue
+		}
+		name := spec.Engine
+		if name == "" {
+			name = engine
+		}
+		got, stated := deploy.TensorParallelFromArgv(name, spec.Argv)
+		if !stated {
+			continue
+		}
+		if tp != 0 && tp != got {
+			return 0
+		}
+		tp = got
+	}
+	return tp
 }
 
 // instanceRef parses the JSON-encoded columns store.Instance keeps
@@ -219,6 +248,7 @@ func instanceRef(i *store.Instance, nodeUUIDByID map[uint]string) monitor.Instan
 	return monitor.InstanceRef{
 		UUID: i.UUID, DeploymentID: i.DeploymentID, NodeUUID: nodeUUIDByID[i.NodeID],
 		State: i.State, GPUIndexes: parseIntSliceJSON(i.GPUIndexes), SleepLevel: i.SleepLevel,
+		DistGroup: i.DistGroup, NodeRank: i.NodeRank, NNodes: i.NNodes,
 		// Asleep is the gateway's judgement, not the reported level: an
 		// instance under a sleep order it has not carried out is refused too.
 		Asleep:   planning.InstanceAsleep(i),

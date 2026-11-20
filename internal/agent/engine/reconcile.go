@@ -297,6 +297,13 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		e.failLaunch(spec, err, proto.ErrorAcceleratorCardMissing, proto.PhaseContainerPrepare, err.Error())
 		return
 	}
+	rebound, err := e.leaseCards(ctx, &spec)
+	if err != nil {
+		if ctx.Err() == nil {
+			e.failLaunch(spec, err, proto.ErrorCardLeaseFailed, proto.PhaseContainerPrepare, err.Error())
+		}
+		return
+	}
 	ws := e.instanceWorkloadSpec(spec, name)
 	if err := applyDistributedNetworkInterface(&ws, spec, e.proberVendor(), e.networkInterfaceName); err != nil {
 		e.failLaunch(spec, err, proto.ErrorDistributedNetworkUnavailable, proto.PhaseContainerPrepare, "distributed network interface selection failed: "+err.Error())
@@ -314,7 +321,9 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		}
 		var err error
 		st, err = driver.Status(ctx, name)
-		if err == nil && st.Exists && !st.Running {
+		// A container running on cards the instance does not hold any more
+		// (its allocator's job ended while the agent was away) is replaced.
+		if err == nil && st.Exists && (!st.Running || rebound) {
 			err = driver.Remove(ctx, name)
 			if err == nil {
 				st.Exists = false
@@ -362,6 +371,10 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		e.reportInjectionFailure(spec, err)
 		return
 	}
+	if err := checkNamedVolumes(spec, driver); err != nil {
+		e.failLaunch(spec, err, proto.ErrorMountVolumeUnsupported, proto.PhaseContainerPrepare, err.Error())
+		return
+	}
 	// A model path that is not there must fail the launch, not reach the
 	// runtime: docker creates a missing bind-mount source as an empty
 	// directory, so an unmounted NFS would otherwise start the engine on an
@@ -404,8 +417,17 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		return
 	}
 
+	if err := e.applyPeersFile(&ws, spec); err != nil {
+		e.failLaunch(spec, err, proto.ErrorPeersFilePrepareFailed, proto.PhaseContainerPrepare, "peers file preparation failed: "+err.Error())
+		return
+	}
+
 	if err := e.applyKVDiskMount(&ws, spec); err != nil {
 		e.failLaunch(spec, err, proto.ErrorKVDiskPrepareFailed, proto.PhaseContainerPrepare, "KV disk tier preparation failed: "+err.Error())
+		return
+	}
+	if err := e.applyManagedDirMounts(&ws, spec); err != nil {
+		e.failLaunch(spec, err, proto.ErrorManagedDirPrepareFailed, proto.PhaseContainerPrepare, "managed directory preparation failed: "+err.Error())
 		return
 	}
 

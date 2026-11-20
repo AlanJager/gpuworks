@@ -81,7 +81,7 @@ var backfilledCounters = []string{
 	"gpuworks_infer_ttft_seconds_", "gpuworks_infer_tpot_seconds_", "gpuworks_infer_e2e_seconds_",
 	"gpuworks_infer_queue_time_seconds_", "gpuworks_infer_prefill_time_seconds_", "gpuworks_infer_decode_time_seconds_",
 	"gpuworks_proxy_routed_total", "gpuworks_proxy_requests_total", "gpuworks_proxy_prompt_tokens_total",
-	"gpuworks_proxy_completion_tokens_total", "gpuworks_proxy_cached_tokens_total", "gpuworks_proxy_usage_missing_total",
+	"gpuworks_proxy_completion_tokens_total", "gpuworks_proxy_cached_tokens_total", "gpuworks_proxy_cache_reported_prompt_tokens_total", "gpuworks_proxy_usage_missing_total",
 	"gpuworks_proxy_ttft_ms_", "gpuworks_proxy_request_duration_ms_",
 }
 

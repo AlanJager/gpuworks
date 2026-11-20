@@ -153,6 +153,20 @@ test("renders the breadcrumb, subtitle, latency breakdown, health check, in-flig
   assert.ok(screen.getByText("5555eeee6666"));
 });
 
+test("the subtitle shows a multi-node deployment as nodes x cards in rank order, with no TP the server did not send", async () => {
+  api.monitorDeployment = async () => ({
+    ...deployment,
+    deployment: {
+      ...deployment.deployment, engine: "callable",
+      placement: { nodes: ["gb10-1", "gb10-2", "gb10-3", "gb10-4"], nnodes: 4, gpus_per_node: 1 },
+    },
+  });
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Qwen2.5-7B-Instruct" })));
+  assert.ok(screen.getByText(/callable · 4 nodes × 1 GPU · gb10-1, gb10-2, gb10-3, gb10-4 · /));
+  assert.equal(screen.queryByText(/TP\d/), null);
+});
+
 test("the merged log stream renders a filter chip for every replica", async () => {
   api.monitorDeployment = async () => deployment;
   api.logsSearch = async () => ({

@@ -54,6 +54,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
     weight_bytes: 28935653617
     shm_bytes: 429496729600   # 可选：引擎需要的 /dev/shm 字节数（这里是 400 GiB）
     memlock_unlimited: true   # 可选：容器不限锁定内存（--ulimit memlock=-1:-1）
+    start_timeout_sec: 5400   # 可选：实例启动超时（秒），首次启动很长的配方用
     docker_args: [--cap-add=SYS_PTRACE]   # 可选：引擎需要的额外 docker run 选项
     gpus:
       vendor: nvidia          # 必填
@@ -115,14 +116,16 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `weight_bytes` / `runtime_weight_bytes` | 非负；后者 ≤ 前者 | 调度与估算输入 |
 | `shm_bytes` | 可选整数，字节；> 0 且 ≤ 16 TiB（`1<<44`），否则报稳定错误码 `CATALOG_SHM_BYTES_INVALID`；显式写 `0` 等同于不写 | 引擎自己需要的容器 `/dev/shm` 大小，例如把大块查表数据放在共享内存里的引擎。部署不填共享内存大小时，容器得到「引擎基线 + CPU 内存层」与它之间较大的一个；部署自己填的值优先。详见 [容器 `/dev/shm` 大小](deployment-launch-sources.md#devshm-大小) |
 | `memlock_unlimited` | 可选布尔，缺省 `false`；写成非布尔值（数字、字符串等）会被拒绝 | 为 `true` 时该部署的容器带 `--ulimit memlock=-1:-1`（只对这个容器取消锁定内存上限），给要锁页大块主机内存的引擎用（例如 DeepInfer 用 `cudaHostRegister` 锁住约 197 GB）。部署自己的 `docker_args` 已写 `memlock` 时以部署为准，不重复追加；与主机 RDMA 网络注入的 `memlock` 合并为一条。详见 [锁定内存](deployment-launch-sources.md#锁定内存memlock) |
+| `start_timeout_sec` | 可选整数，秒；60–86400（与部署自己的 `start_timeout_sec` 同界），否则报稳定错误码 `CATALOG_START_TIMEOUT_INVALID`；显式写 `0` 等同于不写 | 该档位实例的启动健康检查预算，给首次启动要转换权重、预热缓存、耗时数十分钟的配方用。它是启动等待上限的模板一步（来源 `template`）：集群默认 → 模板 → 引擎等待上限抬高 → 部署的 `start_timeout_sec`，顺序与规则见 [启动等待上限](deployment-launch-sources.md#启动等待上限)。随档位快照保存，之后改模板不影响已有部署 |
 | `docker_args` | 可选字符串数组；每项 trim 后非空；校验与部署自己的 `container_overrides.docker_args` 完全一致（`deploy.ValidateDockerArgs`）：拒绝 `--privileged`、`--pid`、`-v /` 等交出主机控制权的选项，拒绝 `--name`、`--network`、`--gpus`、`--shm-size`、`-e`、`-v`、`--mount`、`--entrypoint` 等平台已管的选项，`--ipc=host` 与本 spec 自己的 `shm_bytes` 同时出现也拒绝 | 引擎需要的额外 `docker run` 选项（例如 `--cap-add=SYS_PTRACE`），是部署 `docker_args` 的模板层：先套用模板的，再套用部署自己的，最后是平台追加的（RDMA、memlock）。部署自己若没写 `--ipc=host` 但模板写了，部署自己的 `shm_bytes` 会被拒绝而不是静默失效，因为那个大小不会生效。详见 [docker run 参数的三层顺序](deployment-launch-sources.md#docker-run-参数的三层顺序) |
+| `dirs[]` | 可选，至多 8 项；`name` 为 1–32 个小写字母、数字或 `-`（首尾不为 `-`），spec 内唯一；`mount_path` 为容器绝对路径、规整、不是 `/`，与 spec 的其他容器路径不重叠（[一个容器路径空间](#模板与平台的分工)）；`limit_bytes` 为字节数，> 0 且 ≤ 64 TiB（`1<<46`）；`retain` 只能是 `deployment`，缺省时导入写回 | 平台为部署在它运行的每个节点上保留的可写主机目录，见 [dirs：托管的可写目录](#dirs托管的可写目录) |
 | `gpus` | 必填 | 见下 |
 | `args` | 字符串数组 | 进入引擎命令行，支持 `${VAR}` [变量展开](#变量展开)；部署时按参数字典拆分（见下） |
 | `env` | 键非空 | 容器环境变量，值支持 `${VAR}` 展开 |
 | `pd_mode` | 可选，PD 模式名（`internal/server/pdmode` 的名字，如 `sglang-mooncake`）；模式的引擎必须与 `engine` 相同 | 声明后该 spec 只能以这个模式的 PD 分离部署，其 `args` 与 `env` 是模型在 PD 下需要的配置。模式见 [PD 分离部署](../how-to/pd-disaggregation.md) |
 | `pd_roles` | 可选，按角色写版式；必须同时写 `pd_mode`。每个角色：`tp`（必填，≥ 1）、`pp`、`nodes`（一个实例跨几台节点）、`units`（初始实例数），后三项缺省为 1 | PD 部署表单据此预填角色与实例。见 [PD 版式与手工命令](#pd-版式与手工命令) |
 | `manual_command` | 可选字符串，shell 脚本（不是 JSON argv），≤ 64 KiB | 部署默认使用的手工命令。PD spec 的脚本必须引用 `${GPUWORKS_PD_ROLE}`。见 [PD 版式与手工命令](#pd-版式与手工命令) |
-| `pre_start_argv` / `pre_start_script` | **二选一**；argv 项非空；script ≤ 64 KiB | 引擎启动前在容器内执行 |
+| `pre_start_argv` / `pre_start_script` | **二选一**；argv 项非空；script ≤ 64 KiB | 在**容器内**（不是宿主机）执行，**每次容器启动**都跑一遍，跑完才启动引擎：agent 把它写进 `/gpuworks/pre-start.sh`（`/bin/sh`、`set -eu`，最后 `exec` 引擎命令）并设为 entrypoint。能用容器的全部环境变量：spec 与部署的 `env`，以及 agent 注入的加速卡变量；`${GPUWORKS_*}` 变量由服务端在部署时[展开](#变量展开)。任何一步失败（非零退出、未定义变量）都让容器在引擎启动前退出，实例以容器退出失败，输出作为证据；包装脚本本身写不出时实例以 `PRE_START_PREPARE_FAILED` 失败 |
 | `assets[]` | 见下 | 随包分发的小文件 |
 | `entrypoint` | 项非空 | 见下文专节 |
 | `placement` | 见下 | 拓扑推导 |
@@ -183,6 +186,30 @@ sources:
 ```
 
 `subfolder` 按目录前缀选取仓库里的一棵子树，下载后保留仓库内的相对路径。没有同名目录时，它也可以指向仓库里的单个文件，只下载这一个文件（例如从把多个 LoRA 平铺在根目录的仓库里取一个适配器）；同名目录与文件并存时选目录。
+
+#### 按 rank 拆分的权重
+
+多机配方预先把权重切成每个 rank 一份、放在同一仓库的不同子目录时，spec 自己的 `weights.sources`
+可以在 `subfolder` 里写 rank 变量 `${GPUWORKS_NODE_RANK}`（与模板字段一样，不带前缀的旧写法 `${NODE_RANK}` 是它的别名）：
+
+```yaml
+weight_bytes: 137438953472          # 一个 rank 的大小
+weights:
+  quantization: fp8
+  sources:
+  - modelscope:
+      repo_id: org/model-tp4
+      subfolder: rank${GPUWORKS_NODE_RANK}   # rank 0 读 rank0/，rank 3 读 rank3/
+```
+
+多机部署的每个 rank 只下载、只挂载自己那一份（决策见 [ADR 0076](../adr/0076-rank-scoped-weights.md)）：
+
+- 创建部署时按节点数把子目录展开成每个 rank 一个模型制品（来源、仓库、revision 相同，子目录不同）；rank 0 的制品就是部署的模型，其余 rank 的绑定记进部署快照，此后不再从目录重新解析。
+- revision 以模板现在写的为准：已登记的制品只要 revision 已知且与之不同，就不能代替（revision 为空表示未知，不算不同）。改写 revision 后重新导入，下次部署会为每个 rank 创建新 revision 的制品并下载，不会静默沿用旧 revision 的目录。部署页「使用已登记的模型」只列 rank 0 在该 revision 的制品（部署的模型就是它），其余 rank 的制品由平台创建与绑定，不作为选项。
+- 每个节点的下载任务、模型标记与本地模型身份都是它那个 rank 的子目录；准入、磁盘预算与准备进度也按 rank 计算：rank `r` 的节点只为 rank `r` 的制品留磁盘，已有该子目录的节点不再计下载。
+- 挂载仍保留仓库内的相对路径：rank `r` 的容器里权重在 `${GPUWORKS_MODEL_PATH}/rank<r>/…`，命令里写 `${GPUWORKS_MODEL_PATH}/rank${GPUWORKS_NODE_RANK}/…`。
+- `weight_bytes`（及 `runtime_weight_bytes`）写一个 rank 的大小；显存估算按"每个 rank 一份"乘回整组的权重。
+- 子目录里只能出现 rank 变量；同一 spec 的所有来源要么都写、要么都不写；不能与 `components`、`pd_mode` 一起用，也不能以 PD 方式部署（`RANK_WEIGHTS_PD_UNSUPPORTED`）。请求显式指定 `model_id` 时，它必须是 rank 0 的制品（`RANK_WEIGHTS_MODEL_NOT_RANK_ZERO`）。单机部署的 `${GPUWORKS_NODE_RANK}` 为 `0`（与变量表一致），只读 rank 0 那一份；子目录的份数由配方决定，平台不核对部署的节点数与之相符。
 
 同一 spec 多个来源表示"任一可拉"。部署的 `model_source.provider` 选定运行哪一家权重；节点怎么取到权重（已有、同步组内复制、从共享存储读取或下载）由[拉取设置](../how-to/configure-pull-settings.md)决定。
 
@@ -322,6 +349,32 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
 所以把 `${GPUWORKS_SERVED_MODEL_NAME}` 直接写在命令行上、不加引号，如上例。不要把它连同 `--served-model-name` 放进一个双引号字符串
 （例如 `bash -c "... --served-model-name ${GPUWORKS_SERVED_MODEL_NAME}"`）：平台插入的单引号会作为字面字符留在服务名里，或让外层引号错位。
 
+## 模板与平台的分工
+
+模板只声明自己要什么，平台在每次启动时提供；下表列出模板能声明或能依赖的全部容器内事实。表外的事实（选哪张卡、哪个端口、哪条网络）由平台决定，模板不能声明。
+
+| 类别 | 模板写 | 容器里看到 | 主机侧由谁定 | 生命周期 |
+|---|---|---|---|---|
+| 启动变量 | 在 `args` / `env` / `entrypoint` / `pre_start_*` 里引用 `${GPUWORKS_*}`（多机 rank 的 `${GPUWORKS_PEERS_FILE}` 也在其中），见[变量展开](#变量展开)；权重 `subfolder` 只能引用 `${GPUWORKS_NODE_RANK}` | 本次启动的值 | 平台 | 每次启动 |
+| 指标端口 | `api.metrics.port: separate`，并在启动字段里引用 `${GPUWORKS_METRICS_PORT}`，见 [api.metrics](#apimetrics引擎指标映射) | launcher 监听的本机端口（`${GPUWORKS_METRICS_PORT}`），不由模板指定数值 | 平台（与 API 端口一起保留） | 实例创建时定下，随实例保留 |
+| 系统层环境变量 | 不用写；`env` 里同名键覆盖它 | 计算网络的 `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`，见[环境变量分层](deployment-launch-sources.md#环境变量分层)；多机 rank 有 peers 文件时还有 `GPUWORKS_PEERS_FILE`（与同名启动变量同值，给配方启动的程序直接读） | 平台 | 每次启动 |
+| 主权重 | `weights`；`subfolder` 可写 `rank${GPUWORKS_NODE_RANK}`，见[按 rank 拆分的权重](#按-rank-拆分的权重) | 只读，在 `${GPUWORKS_MODEL_PATH}`（缺省 `/model`，有 primary 组件时为它的 `mount_path`）；按 rank 拆分时每个 rank 只有自己的子目录 | 平台（模型存储） | 随模型 |
+| 组件权重 | `components[].mount_path` | 只读，在该路径 | 平台（模型存储） | 随模型 |
+| 资产 | `assets[].unpack_to` | 只读，展开到该路径 | 平台（模板包） | 随模板版本 |
+| 可写目录 | `dirs[]`（`name`、`mount_path`、`limit_bytes`、`retain`），见 [dirs](#dirs托管的可写目录) | 读写，在 `mount_path`；每个节点一份 | 平台（节点托管目录，需 agent 能力 `mount.managed_dirs`） | 随部署，从不修剪 |
+| KV 磁盘层 | 不能写（部署参数） | 读写，平台选的路径 | 平台（节点托管目录） | 随节点上的实例，超限修剪 |
+| 部署挂载 | 不能写（部署的 `extra_mounts`） | 按行设置 | 运维 | 不由平台管理 |
+| 计算网络文件 | 不用写 | 只读，加速卡网络需要的主机文件（同路径） | 平台 | 每次启动 |
+| 平台文件 | 不能写；`/gpuworks` 归平台 | `/gpuworks/pre-start.sh`（有 `pre_start_*` 时）；`/gpuworks/peers.json`（多机 rank，只读，`proto.PeersFile` v1，见[多机 peers 文件](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file)） | 平台（peers 文件需 agent 能力 `launch.peers_file`） | 每次容器启动重写 |
+| 启动等待上限 | `start_timeout_sec` | 引擎健康检查的等待时长 | 平台，见[启动等待上限](deployment-launch-sources.md#启动等待上限) | 实例创建时定下 |
+
+规则：
+
+- **一种变量写法**：文档与示例一律写带前缀的 `${GPUWORKS_X}`；不带前缀的旧写法在模板字段里作为别名同样展开，手写手工命令只认带前缀的。
+- **一套单位**：spec 里的大小一律是字节（`*_bytes`），时长一律是秒（`*_sec`），容器路径一律是绝对、规整的路径（`mount_path`、`unpack_to`）。
+- **一个容器路径空间**：表中所有挂载（主权重、组件、资产、dirs、KV 磁盘层、部署挂载、计算网络文件）与平台目录 `/gpuworks` 两两不能指向同一路径或互相嵌套，规则只有一条（`proto.ContainerPathsOverlap`）。模板自己的路径（主模型挂载点、组件 `mount_path`、资产 `unpack_to`、dir 的 `mount_path`）在导入时互查，冲突报 `CATALOG_MOUNT_PATH_CONFLICT`（参数带两边的字段与路径；多个资产可以展开到同一目录）；连同部署自己的挂载与平台的挂载，在部署评估、创建与每次启动时再查一遍，同一目标报 `MOUNT_TARGET_DUPLICATE`，嵌套报 `MOUNT_TARGET_NESTED`，落在 `/gpuworks` 上报 `MOUNT_TARGET_RESERVED`（部署按原样重启时保留创建时已有的挂载，除非它会盖住这次的 peers 文件）。
+- **agent 能力**：只有节点上的 agent 能提供的设施各有一个能力名；用到它的启动只放到宣告该能力的节点上，旧 agent 的节点以调度原因 `agent_capability_missing`（参数 `capability`、`node`）拒绝，部署等待升级或改选节点，而不是起一个缺了模板声明的容器。声明 `dirs` 需要 `mount.managed_dirs`；在启动字段里引用 `${GPUWORKS_PEERS_FILE}` 需要 `launch.peers_file`，没有引用它的多机启动在旧 agent 上照常启动、只是没有 peers 文件与对应的环境变量。
+
 ## entrypoint：入口覆盖的唯一声明处
 
 **入口形式只有两个产地**：
@@ -350,8 +403,7 @@ server 组装期，不接受运行时对 checkpoint 布局的探测改写（该�
   目录里 `qwen3-asr-1.7b` 的 sglang spec 不声明 entrypoint 是正确的。
 - **vLLM 不需要覆盖**：`vllm serve` 是统一入口，内置目录里所有 vLLM
   video/image/audio spec 均未声明 entrypoint。
-- 厂商构建镜像入口不同时逐 spec 声明（例：hygon 构建的
-  `qwen3-tts-12hz-1.7b-voicedesign`）。
+- 厂商构建镜像入口不同时逐 spec 声明。
 - 覆盖只换入口不换参数。diffusion 的参数解析器不认 `--mem-fraction-static`、
   `--context-length` 等 LLM 参数，`--enable-cache-report` 要 0.5.18、`--enable-metrics`
   要 0.5.21 起才认（0.5.18 之前也不认 `--served-model-name`）；`--model-type diffusion`
@@ -400,7 +452,7 @@ placement:
 `args` / `env` / `entrypoint` / `pre_start_*` 中的变量引用在每次部署时展开，与有没有 placement
 无关。规范写法带 `GPUWORKS_` 前缀，如 `${GPUWORKS_NODE_RANK}`；不带前缀的旧写法（`${NODE_RANK}`）在这些模板字段里
 作为别名同样展开。可用变量 = resolver 返回值 + 平台为这次启动给出的事实（唯一产地
-`internal/server/placement/expand.go` 的词表与 `internal/server/deploy/launch_variables.go`），下表按带前缀的写法列出：
+`internal/server/placement/expand.go` 的词表与 `internal/server/deploy/launch_variables.go`），下表按带前缀的写法列出（平台给的环境变量与容器内文件不是启动变量，见[模板与平台的分工](#模板与平台的分工)）：
 
 | 变量 | 值 | 何时存在 |
 |---|---|---|
@@ -412,6 +464,7 @@ placement:
 | `GPUWORKS_SERVED_MODEL_NAME` | 部署的服务名，即网关与健康检查发给引擎的 `model` | 总是 |
 | `GPUWORKS_API_HOST` | 服务应绑定的地址：callable 为 `0.0.0.0`，其他引擎 `127.0.0.1` | 总是 |
 | `GPUWORKS_API_PORT` | 平台为本实例保留、网关与健康检查会访问的端口；headless rank 为 `0` | 总是 |
+| `GPUWORKS_METRICS_PORT` | 平台为本实例额外保留的指标端口，launcher 在这个端口上导出引擎指标，agent 抓取它（见 [api.metrics](#apimetrics引擎指标映射)）；headless rank 为 `0` | 仅模板声明了 `api.metrics.port: separate` |
 | `GPUWORKS_NNODES` / `GPUWORKS_NODE_RANK` | 节点数与本 rank 序号；单机为 `1` / `0` | 总是 |
 | `GPUWORKS_HEADLESS` | 本 rank 不对外服务时为 `1`，否则 `0` | 总是 |
 | `GPUWORKS_NODE_ADDR` | 本 rank 所在节点的可路由地址（不是 rank 0 的） | 仅多机 |
@@ -420,10 +473,11 @@ placement:
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | 本实例 KV side channel 的监听地址 | PD 实例且地址已知 |
 | `GPUWORKS_PD_SIDE_CHANNEL_PORT` | 本 rank 额外端口段的首端口，即 KV side channel 端口；多机实例的各 rank 各有各的 | PD 实例且端口已分配 |
 | `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | 本实例 leader 的 side channel 端口：leader 上就是自己的，follower 上是 leader 的。follower 要连 leader 的 side channel（如 SGLang 的 bootstrap 服务）时用它；平台自己组装的命令不用 | PD 实例且端口已分配 |
+| `GPUWORKS_PEERS_FILE` | 本 rank 的 peers 文件路径 `/gpuworks/peers.json`，列出全组 rank 与 rail，见[多机 peers 文件](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file) | 仅多机；引用它的启动只放到宣告 `launch.peers_file` 的节点上 |
 
 规则：
 
-- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PD_*`
+- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`METRICS_PORT`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PEERS_FILE`、`PD_*`
   出现在 resolver 结果里直接报错——resolver 运行时还没有节点、端口和 rank。
 - **缺变量即失败**：args / env / entrypoint / `pre_start_argv` 里未解析的名字在部署时报错；没有 resolver 的
   spec 引用词表外的名字（如拼错的 `${NODE_RNAK}`、无 resolver 的 `${PP_SIZE}`）在导入时就被拒绝。单机部署
@@ -543,6 +597,7 @@ api:
 api:
   metrics:
     endpoint: /metrics            # 可选，默认 /metrics；以 / 开头
+    port: api                     # 可选：api（默认，端点在 API 端口上）或 separate（平台另给一个端口）
     format: prometheus            # 可选：prometheus（默认，Prometheus 文本）或 json
     inherit: sglang               # 可选：vllm 或 sglang，先套用该引擎的内置映射
     map:                          # 引擎指标族（可带 {k="v"} 选择器）→ 词表短名
@@ -552,8 +607,14 @@ api:
 
 - **生效映射** = 继承的映射（`inherit` 指定的引擎，或 `vllm` / `sglang` 模板自身引擎的内置映射）逐条叠加 `map`，同一个键以 `map` 为准。
 - **`format: json`**：端点返回一个 JSON 文档（如 Strata 的 `/metrics`），`map` 的键写成用点连接的键路径（`totals.output_tokens`），取路径上的数字（布尔值记 1/0，取不到或不是数字则不出该指标）；字符串写成比较 `路径==词` / `路径!=词`（如 `live.state!=idle`），成立记 1、否则 0，只能映射到 gauge。只能映射计数器和 gauge，不能写 `inherit`，也不套用引擎内置映射；文档超过 1 MiB 或不是合法 JSON 时整份不读。
+- **`port: separate`**：引擎独占 API 端口、那里没有 `/metrics`（如只有 `/health`、`/v1/models`、`/v1/chat/completions` 的 Rust 前端）时，由镜像里的 launcher 在第二个本机端口上导出指标，不代理请求。声明后平台为每个实例**多保留一个端口**（与 API 端口一起分配，通常紧邻其后），在启动变量 `${GPUWORKS_METRICS_PORT}`（旧写法 `${METRICS_PORT}`）里给出，模板用它告诉 launcher 往哪里监听；agent 改为抓取 `http://127.0.0.1:<该端口><endpoint>`，不再抓 API 端口。只写 `api` 或不写则与过去一样，不保留端口、不产生该变量。
+  - **端口是启动的事实**：保留的端口随实例的期望状态存下（实例详情的 `ports` 列表里，API 端口之后），agent 重启或容器重启后沿用同一个端口；它取部署创建时的模板快照，之后改模板的 `port` 不影响已有实例，要换就是新一代实例。`endpoint`、`format`、`map` 仍按[运行中生效](#apimetrics引擎指标映射)取当前声明。
+  - **哪个 rank 有**：只有对外服务的 rank 有（单机实例，多机实例的 rank 0 / leader，PD 的每个 leader）；headless rank 与 API 端口一样没有，`${GPUWORKS_METRICS_PORT}` 在其上为 `0`，所以同一份命令可以在所有 rank 上展开。指标只从有端口的那个 rank 抓取。
+  - **预览**：部署评估里的命令用占位端口（与 API 端口的占位同理），创建部署时换成实际保留的端口。
+  - **两者必须配套**（导入、目录包上传、编辑器保存时检查）：声明了 `separate` 却没有在 `args` / `env` / `entrypoint` / `pre_start_*` / `manual_command` 里引用 `${GPUWORKS_METRICS_PORT}`，报 `CATALOG_METRICS_PORT_UNREFERENCED`（agent 抓的端口上没有服务）；引用了却没有声明，报 `CATALOG_METRICS_PORT_UNDECLARED`（平台不会保留这个端口；resolver 也不能返回同名变量）。`port` 写成别的值（包括具体端口号，端口由平台分配、模板不能指定）报 `CATALOG_METRICS_PORT_INVALID`。
+  - 较旧的 agent 不认识该端口，仍抓 API 端口，得到的只是没有引擎指标，不影响部署。
 - **不声明时**：`vllm` / `sglang` 用内置映射；`callable` 抓 `/metrics`，按抓到的 `vllm:` / `sglang:` 前缀自动套用对应映射，都没有则不出引擎指标。
-- **校验**（导入、目录包上传、编辑器保存）：目标必须是词表短名；直方图用族名映射、不带选择器、不换算；同一已映射直方图族的 `_bucket` / `_sum` / `_count` 行不能再映射；换算系数非负；`inherit` 只能是 `vllm` / `sglang`；`format` 只能是 `prometheus` / `json`，`json` 时键必须是键路径（可带 `==词` / `!=词` 比较）、目标不能是直方图、比较不能映射到计数器、不能写 `inherit`。错误码为 `CATALOG_METRICS_*`。
+- **校验**（导入、目录包上传、编辑器保存）：目标必须是词表短名；直方图用族名映射、不带选择器、不换算；同一已映射直方图族的 `_bucket` / `_sum` / `_count` 行不能再映射；换算系数非负；`inherit` 只能是 `vllm` / `sglang`；`format` 只能是 `prometheus` / `json`，`port` 只能是 `api` / `separate`，`json` 时键必须是键路径（可带 `==词` / `!=词` 比较）、目标不能是直方图、比较不能映射到计数器、不能写 `inherit`。错误码为 `CATALOG_METRICS_*`。
 - **运行中生效**：映射取部署所用档位的**当前**声明，不随部署快照冻结；模板保存或内置目录随 server 升级变化后，引用该档位的运行中实例原地更新、不重启（[ADR 0039](../adr/0039-inference-metric-sources.md)）。档位被删除的部署沿用快照里的 `api` 契约。`api.metrics` 不参与部署是否偏离模板的判断。
 
 ### api.request_stats：回复里的逐请求统计
@@ -608,6 +669,30 @@ pre_start / env）引用，否则校验失败——挂了不用或拼错路径�
   模板编辑器里的 YAML 由 server 用同一套目录类型写出，只含当前模型，不含它引用的组件模型；空字段不写，也不补默认值。
 - **克隆或编辑带说明文档、资产的模板**：生成的目录包会把引用的组件模型一并带上，这些条目不含 spec 和文档。
 - **上传目录包**：包内仍须自带它引用的组件模型。
+
+## dirs：托管的可写目录
+
+引擎要一块能写、能跨实例重建保留、随部署删除而清理的主机目录时（会话库、溢出区、日志，或首次启动时推导出来再复用的编译缓存与快照），在 spec 上声明 `dirs`：
+
+```yaml
+dirs:
+- name: pico-state
+  mount_path: /pico
+  limit_bytes: 429496729600
+  retain: deployment
+```
+
+它与权重、资产、KV 磁盘层、部署挂载的分工见[模板与平台的分工](#模板与平台的分工)。
+
+- **每个节点一份**：部署的实例落到哪个节点，agent 就在该节点的运行时挂载根（`GPUWORKS_RUNTIME_MOUNT_ROOT`，缺省 `<state>/runtime-mounts`，docker 节点为 `<state>`）下建 `managed-dir/<部署>-<创建秒>/<name>`，属主是运行时挂载的属主，以读写方式挂到 `mount_path`。docker、nerdctl、runveil（udocker）、Kubernetes 与主机进程（路径改写到主机目录）都按普通挂载处理。同一节点上同一部署的多个实例共用这份目录；需要各自隔离的配方用已有的 `${GPUWORKS_NODE_RANK}` 自己分子目录。目录路径不另设启动变量，配方直接写 `mount_path`。
+- **与 KV 磁盘层同一机制**：KV 磁盘层是同一种托管目录，由部署参数打开，放在 `kv-disk/<部署>` 下；它是缓存，节点上最后一个实例离开就删、超限由清扫器修剪。`dirs` 是状态，保留到部署删除、从不修剪。
+- **保留到部署删除**：实例停止、重启、故障转移、多机组重组都不动它，回到同一节点的实例看到上次写下的内容。部署删除后（实例确认拆除、部署行删掉之后），server 通知所有在线节点删除该部署的目录；当时离线的节点在下次连接时由 hello 上报自己持有的目录组，server 的重放点名其中部署已不存在的组，节点再删除。仍被期望实例挂载的组不删。目录组名带部署的创建时间，换了数据库（重装 server、恢复备份）后同号的新部署不会拿到旧目录。
+- **准入按声明的大小**：调度时节点存放托管目录的磁盘（agent 以 `managed_dirs` 上报其空闲空间）须放得下全部 `limit_bytes`、KV 磁盘层的上限与磁盘保留空间（存储设置里的保留值，未设时为该盘的 1/10、至多 50 GiB）；agent 报告这块盘与模型目录或当前运行时的镜像目录同盘时，待下载的权重与待解压的镜像也计在里面。不满足时以 `insufficient_managed_dir_disk` 拒绝，原因里带需要、可用、目录、保留各占多少。没有上报这块盘的节点（旧 agent）不做此项检查。准入不扣除目录里已经写下的数据，因为它已体现在空闲空间里。
+- **平台不修剪、不限额**：目录存的是状态，不是缓存，平台不按大小删除其中的文件，也不设文件系统配额；写不超过 `limit_bytes` 是配方自己的事。
+- **路径冲突**：`mount_path` 与其他所有挂载同在一个容器路径空间，规则见[模板与平台的分工](#模板与平台的分工)。
+- **agent 能力**：agent 在 hello 里宣告 `mount.managed_dirs`；声明了 `dirs` 的启动只放到宣告它的节点上，旧 agent 的节点以 `agent_capability_missing` 拒绝。准备目录失败时实例以 `MANAGED_DIR_PREPARE_FAILED` 启动失败。
+
+设计取舍见 [ADR 0077](../adr/0077-template-managed-writable-dirs.md)。
 
 ## performance_tradeoffs：降速参数的理由
 

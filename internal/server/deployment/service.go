@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/packages"
 	"gpuworks.ai/gpuworks/internal/server/modelmeta"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -51,6 +52,9 @@ type Deps struct {
 	// the controller will send that node (planning.TranslatesServedName); nil
 	// counts every agent as offline.
 	NodeCaps func(nodeUUID string) []string
+	// HostMemory is a node's host memory as its agent recently reported it
+	// (planning.RecentHostMemory); nil knows nothing and refuses nothing.
+	HostMemory planning.HostMemory
 }
 
 // Service runs the deployment use cases over Deps. It keeps no state of its

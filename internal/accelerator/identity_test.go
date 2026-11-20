@@ -174,6 +174,17 @@ func TestUnifiedMemoryMatchesTheWholeModelToken(t *testing.T) {
 		"RTX Spark N1X (6144-core Blackwell RTX GPU)":        true,
 		"RTX Spark":     true,
 		"rtx spark n1x": true,
+		// Jetson Thor: raw probe name, stored name; the word must lead and
+		// match whole.
+		"NVIDIA Thor":         true,
+		"Thor":                true,
+		"nvidia thor":         true,
+		"NVIDIA Thor (nvgpu)": true,
+		"NVIDIA Thorium":      false,
+		"NVIDIA Thor2":        false,
+		"NVIDIA RTX Thor":     false,
+		"NVIDIA GeForce Thor": false,
+		"Tesla Thor":          false,
 		// Every other RTX card stays discrete: the second token is the guard.
 		"RTX 5090":        false,
 		"RTX 4090":        false,

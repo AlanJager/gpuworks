@@ -409,6 +409,14 @@
       "quantiles": false
     },
     {
+      "series": "gpuworks_proxy_cache_reported_prompt_tokens_total",
+      "name": "cache_reported_prompt_tokens_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
       "series": "gpuworks_proxy_cached_tokens_total",
       "name": "cached_tokens_total",
       "source": "gateway",
@@ -779,7 +787,7 @@
         "gpu_uuid",
         "vendor"
       ],
-      "description": "Device memory the GPU has."
+      "description": "Device memory the GPU has. On a unified-memory GPU whose driver reports none, the host's memory."
     },
     {
       "series": "gpuworks_gpu_memory_used_bytes",
@@ -794,7 +802,7 @@
         "gpu_uuid",
         "vendor"
       ],
-      "description": "Device memory in use on the GPU, by every process."
+      "description": "Device memory in use on the GPU, by every process. On a unified-memory GPU whose driver reports none, the host memory in use."
     },
     {
       "series": "gpuworks_gpu_pcie_rx_bytes_per_sec",
@@ -1349,5 +1357,5 @@
       "description": "Requests the gateway routed to each replica."
     }
   ],
-  "total": 131
+  "total": 132
 }

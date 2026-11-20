@@ -56,6 +56,18 @@ func Supports(vendor string, feature Feature) bool {
 	return true
 }
 
+// SleepPoolOnHostMemory reports that an engine started with sleep mode keeps
+// host memory behind the GPU memory it takes, for as long as it runs. Hygon's
+// DTK does: vLLM's sleep allocator maps its pool through the CUDA
+// virtual-memory calls, and DTK backs every byte mapped that way with host
+// RAM. On a K100_AI (64 GiB) node with 62.4 GiB of RAM, host memory in use
+// rose from 13 GiB to 57.5 GiB while a sleepable vLLM 0.18.1 allocated its
+// 55 GiB KV cache, and the kernel killed the engine at each of three starts;
+// the same launch without sleep mode held no such memory.
+func SleepPoolOnHostMemory(vendor string) bool {
+	return NormalizeVendor(vendor) == VendorHygon
+}
+
 // SharedByMemory is an admission policy, not a description of physical UMA.
 // AMD continues to allocate whole cards even on hosts with shared system RAM.
 func SharedByMemory(vendor string) bool {

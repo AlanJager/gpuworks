@@ -44,7 +44,9 @@ type Cause struct {
 	// GLIBC is the missing glibc symbol version (CodeGLIBCTooOld).
 	GLIBC string
 	// Device, NeededBytes and LimitBytes are the CUDA device, the memory
-	// the engine would have held and its limit (CodeDGPUMemoryLimit).
+	// the engine would have held and its limit (CodeDGPUMemoryLimit). A
+	// line that showed the limit without them leaves Device DeviceUnknown
+	// and NeededBytes 0.
 	Device      int
 	NeededBytes int64
 	LimitBytes  int64
@@ -73,10 +75,23 @@ func (c Cause) Fallback() string {
 	case CodeGLIBCTooOld:
 		return "container glibc too old: missing " + c.GLIBC + "; Ascend dGPU images require glibc 2.33 or newer"
 	case CodeDGPUMemoryLimit:
-		const gib = 1 << 30
-		return "dGPU memory limit reached on GPU " + strconv.Itoa(c.Device) + ": the engine needed " +
-			strconv.FormatFloat(float64(c.NeededBytes)/gib, 'f', 1, 64) + " GiB, its limit is " +
-			strconv.FormatFloat(float64(c.LimitBytes)/gib, 'f', 1, 64) + " GiB"
+		// One decimal, two when one would print a need above the limit as
+		// equal to it.
+		decimals := 1
+		gib := func(bytes int64) string {
+			return strconv.FormatFloat(float64(bytes)/(1<<30), 'f', decimals, 64) + " GiB"
+		}
+		if c.NeededBytes != c.LimitBytes && gib(c.NeededBytes) == gib(c.LimitBytes) {
+			decimals = 2
+		}
+		text := "dGPU memory limit reached"
+		if c.Device >= 0 {
+			text += " on GPU " + strconv.Itoa(c.Device)
+		}
+		if c.NeededBytes <= 0 {
+			return text + ": the engine could not get the memory it needs within its " + gib(c.LimitBytes) + " limit"
+		}
+		return text + ": the engine needed " + gib(c.NeededBytes) + ", its limit is " + gib(c.LimitBytes)
 	}
 	return strings.ToLower(strings.ReplaceAll(c.Code, "_", " "))
 }
@@ -109,19 +124,29 @@ var signatures = []signature{
 		hypothesis: "The container's glibc is older than a library injected into it needs (the dynamic loader names the missing GLIBC_x.y). Ascend dGPU images require glibc 2.33 or newer; fixes are a newer base image or running without the dGPU limit.",
 	},
 	{
-		// The line HAMi-core (the NVIDIA dGPU interposer) prints when it
-		// refuses an allocation that would take the instance past its memory
-		// limit: "Device <cuda index> OOM <bytes it would hold> / <limit>".
-		// The engine's own report of the refusal is a generic error raised far
-		// from it, so without this the failure names a symptom, not the limit.
+		// The line a dGPU interposer prints when it refuses an allocation that
+		// would take the instance past its memory limit. HAMi-core (NVIDIA):
+		// "Device <cuda index> OOM <bytes it would hold> / <limit>". vCANN
+		// (Ascend): "Out of memory! Request:<bytes> B, accounted:<bytes held>
+		// B, quota:<limit> B.", which names no device. The engine's own report
+		// of the refusal is a generic error raised far from it (on Ascend an
+		// allocator error code), so without this the failure names a symptom,
+		// not the limit.
 		code:  CodeDGPUMemoryLimit,
-		match: regexp.MustCompile(`HAMI-core ERROR[^\n]*?Device (\d+) OOM (\d+) / (\d+)`),
+		match: regexp.MustCompile(`HAMI-core ERROR[^\n]*?Device (\d+) OOM (\d+) / (\d+)|\[vCANN_RT\][^\n]*?Out of memory! Request:(\d+) B, accounted:(\d+) B, quota:(\d+) B`),
 		params: func(m []string, c *Cause) {
+			if m[1] == "" {
+				request, _ := strconv.ParseInt(m[4], 10, 64)
+				accounted, _ := strconv.ParseInt(m[5], 10, 64)
+				c.Device, c.NeededBytes = DeviceUnknown, accounted+request
+				c.LimitBytes, _ = strconv.ParseInt(m[6], 10, 64)
+				return
+			}
 			c.Device, _ = strconv.Atoi(m[1])
 			c.NeededBytes, _ = strconv.ParseInt(m[2], 10, 64)
 			c.LimitBytes, _ = strconv.ParseInt(m[3], 10, 64)
 		},
-		hypothesis: "The engine ran into the instance's dGPU memory limit: the interposer refused an allocation past it. Compare the limit with the weights per GPU plus KV cache; fixes are a larger dGPU memory limit, a lower gpu_memory_utilization or max_model_len, or a whole GPU.",
+		hypothesis: "The engine ran into the instance's dGPU memory limit: the interposer refused an allocation past it, or the engine found less memory than it needs on a device the limit sizes. Compare the limit with the weights per GPU plus KV cache; fixes are a larger dGPU memory limit, a lower gpu_memory_utilization or max_model_len, or a whole GPU.",
 	},
 	{
 		code:       CodeKVCacheInsufficient,
@@ -251,9 +276,13 @@ func Match(lines []string) []Cause {
 // Classify reads the output a stopped container left: the known failures its
 // lines show, or CodeNoOutput when it printed nothing. Terminal control
 // sequences are removed first.
-func Classify(logText string) []Cause {
+func Classify(logText string) []Cause { return ClassifyWithLimit(logText, 0) }
+
+// ClassifyWithLimit is Classify for an instance whose dGPU memory limit is
+// limitBytes (0: none): see MatchWithLimit.
+func ClassifyWithLimit(logText string, limitBytes int64) []Cause {
 	if strings.TrimSpace(logText) == "" {
 		return []Cause{{Code: CodeNoOutput}}
 	}
-	return Match(strings.Split(ansiRE.ReplaceAllString(logText, ""), "\n"))
+	return MatchWithLimit(strings.Split(ansiRE.ReplaceAllString(logText, ""), "\n"), limitBytes)
 }

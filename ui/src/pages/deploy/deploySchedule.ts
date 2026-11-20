@@ -86,6 +86,7 @@ function scheduleNote(t: TFunction<"deploy">, value: Exclude<ScheduleMessageLike
   switch (value.code) {
     case "insufficient_disk":
     case "insufficient_runtime_disk":
+    case "insufficient_managed_dir_disk":
       return diskNote(t, value);
     // A card that hosts sleeping instances offers less than its utilization
     // share, and one shared with processes outside the platform less than its

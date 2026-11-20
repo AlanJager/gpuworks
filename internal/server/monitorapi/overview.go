@@ -270,7 +270,7 @@ func vramNodesDTO(nodes []monitor.VRAMNode, gpuCounts map[string]int) []dto.Moni
 // overview's wire row. row.HasRunning/RunningAvg come straight from
 // ServiceRow: BuildCluster already computed them from its Window, so this
 // never needs its own ComputeWindow call.
-func serviceRowDTO(row monitor.ServiceRow, placement, state string, health dto.DeploymentHealth) dto.MonitorServiceRow {
+func serviceRowDTO(row monitor.ServiceRow, placement dto.MonitorPlacement, state string, health dto.DeploymentHealth) dto.MonitorServiceRow {
 	return dto.MonitorServiceRow{
 		DeploymentID: row.DeploymentID, Name: row.Name, Engine: row.Engine, Placement: placement,
 		Replicas:       dto.MonitorReplicaCount{Ready: row.ReplicasReady, Desired: row.ReplicasDesired},

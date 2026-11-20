@@ -54,6 +54,7 @@ func (s *Store) ApplyStorageStatus(nodeID uint, report proto.StorageStatusReport
 				StorageID: st.ID, NodeID: nodeID, State: st.State, Reason: truncate(st.Reason, 32),
 				Message: truncate(st.Message, 512), Path: truncate(st.Path, 512),
 				CachePath: truncate(st.CachePath, 512), Writable: st.Writable,
+				SharedFSType: truncate(st.SharedFSType, 32), SharedFSSource: truncate(st.SharedFSSource, 256),
 			}
 			prev, ok := byID[st.ID]
 			var prevState *StorageNodeState
@@ -69,10 +70,12 @@ func (s *Store) ApplyStorageStatus(nodeID uint, report proto.StorageStatusReport
 				}
 				changed = append(changed, st.ID)
 			} else if prev.State != next.State || prev.Reason != next.Reason || prev.Message != next.Message ||
-				prev.Path != next.Path || prev.CachePath != next.CachePath || prev.Writable != next.Writable {
+				prev.Path != next.Path || prev.CachePath != next.CachePath || prev.Writable != next.Writable ||
+				prev.SharedFSType != next.SharedFSType || prev.SharedFSSource != next.SharedFSSource {
 				if err := tx.Model(&StorageNodeState{}).Where("id = ?", prev.ID).Updates(map[string]any{
 					"state": next.State, "reason": next.Reason, "message": next.Message, "path": next.Path,
-					"cache_path": next.CachePath, "writable": next.Writable, "updated_at": time.Now().UTC(),
+					"cache_path": next.CachePath, "writable": next.Writable,
+					"shared_fs_type": next.SharedFSType, "shared_fs_source": next.SharedFSSource, "updated_at": time.Now().UTC(),
 				}).Error; err != nil {
 					return err
 				}

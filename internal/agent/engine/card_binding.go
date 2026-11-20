@@ -182,3 +182,30 @@ func (e *Engine) CardIdentsOf(uuid string) []string {
 	}
 	return append([]string(nil), spec.GPUIdents...)
 }
+
+// ServingCardsBesides is what the instances serving right now occupy, leaving
+// out the one named. HeldCards cannot say this: it counts every instance the
+// node was told to run, the one that just failed to start among them. Serving
+// is the liveness monitor's own notion (servingEpoch): the attempt reported
+// the instance running and nothing has retired, removed or put it to sleep
+// since, so a card listed here is one work is running on at this moment.
+func (e *Engine) ServingCardsBesides(uuid string) HeldCards {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var serving HeldCards
+	for other, epoch := range e.servingEpoch {
+		if other == uuid {
+			continue
+		}
+		spec, ok := e.watchableLocked(other, epoch)
+		if !ok {
+			continue
+		}
+		if len(spec.GPUIdents) > 0 && len(spec.GPUIdents) == len(spec.GPUIndexes) {
+			serving.Idents = append(serving.Idents, spec.GPUIdents...)
+			continue
+		}
+		serving.Indexes = append(serving.Indexes, spec.GPUIndexes...)
+	}
+	return serving
+}

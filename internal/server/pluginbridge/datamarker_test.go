@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -184,7 +185,7 @@ func TestABuildOlderThanItsDataIsNotStarted(t *testing.T) {
 	b2, sp := w.openRunning()
 	v := waitView(t, b2, "acme_backup", func(v View) bool { return v.State == string(pluginhost.StateFailed) })
 	if v.Code != extapi.ErrorStateTooNew || v.Params["needs"] != "v27.1.0" || v.Params["known"] != 1 || v.Params["version"] != 2 ||
-		len(v.Actions) != 2 || v.Actions[0] != ActionDisable {
+		!slices.Equal(v.Actions, []string{ActionDisable, ActionRestart, ActionUninstall, ActionPurge, ActionUpgrade}) {
 		t.Fatalf("view = %+v", v)
 	}
 	for _, s := range sp.started() {
@@ -206,7 +207,7 @@ func TestABuildOlderThanItsDataIsNotStarted(t *testing.T) {
 	if v := b2.view("acme_backup"); v.State == string(pluginhost.StateFailed) && v.Code == extapi.ErrorStateTooNew {
 		t.Fatalf("the refusal outlived the fit build: %+v", v)
 	}
-	if err := b2.Uninstall(context.Background(), "acme_backup", false, "admin"); err != nil {
+	if err := uninstallConfirmed(t, b2, context.Background(), "acme_backup", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := w.dataMarker("acme_backup"); !ok {
@@ -216,7 +217,7 @@ func TestABuildOlderThanItsDataIsNotStarted(t *testing.T) {
 		t.Fatalf("uninstall left refusals %v pushers %v", b2.refusals, b2.pushers)
 	}
 	install(t, b2, w.pkg("acme_backup", "2.0.0", withStateVersion(2)), false)
-	if err := b2.Uninstall(context.Background(), "acme_backup", true, "admin"); err != nil {
+	if err := uninstallConfirmed(t, b2, context.Background(), "acme_backup", true); err != nil {
 		t.Fatal(err)
 	}
 	if m, ok := w.dataMarker("acme_backup"); ok {

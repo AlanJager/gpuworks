@@ -90,8 +90,8 @@ test("adding a platform lists what its kind connects, one tag per resource named
   const how = p.config.how;
   const user = mount({ defaultKind: "aliyun" });
   // The tag is the vendor's product name alone; what kind of resource that is, is said when it is pointed at.
-  await waitFor(() => assert.deepEqual(connects("It connects"), [["ECS", how.vm], ["ACK", how.kubernetes]]));
-  assert.deepEqual(tagTitles("It connects"), ["VM", "Kubernetes"]);
+  await waitFor(() => assert.deepEqual(connects("It connects"), [["ECS", how.vm], ["ACK", how.kubernetes], ["E-HPC", how.slurm]]));
+  assert.deepEqual(tagTitles("It connects"), ["VM", "Kubernetes", "Slurm"]);
 
   // A resource the vendor has no product name for is the console's word alone, with nothing more to say on hover.
   await choice.en.pickType(user, "Private cloud");
@@ -311,7 +311,7 @@ test("the platform type is chosen from the keyboard: one tab stop, the arrows mo
   assert.deepEqual(typeTabs(), [["Public cloud", true], ["Private cloud", false], ["Other", false], [K8S, false]]);
   assert.ok(document.activeElement === tab("Public cloud"), "the focus moves with the choice");
   assert.deepEqual(stops(), ["Public cloud"]);
-  assert.deepEqual(connects("It connects").map(([tag]) => tag), ["ECS", "ACK"], "the dialog follows the tab");
+  assert.deepEqual(connects("It connects").map(([tag]) => tag), ["ECS", "ACK", "E-HPC"], "the dialog follows the tab");
 
   await user.keyboard("{ArrowRight}{ArrowRight}");
   await waitFor(() => assert.equal(selectedLabel(), "New Cloud"));
@@ -418,7 +418,7 @@ test("the Kubernetes cluster tab puts the cluster form in place of the vendor's,
   assert.equal(selectedLabel(), "Alibaba Cloud");
   assert.deepEqual(footerButtons(), ["Cancel", "Add"]);
   assert.equal(dialog().querySelectorAll("form").length, 1);
-  assert.deepEqual(connects("It connects").map(([tag]) => tag), ["ECS", "ACK"]);
+  assert.deepEqual(connects("It connects").map(([tag]) => tag), ["ECS", "ACK", "E-HPC"]);
 });
 
 test("a Kubernetes cluster says only what it connects, in one line, whichever vendors the server knows", async () => {
@@ -453,9 +453,10 @@ test("in Chinese the platform types, their vendors and what Kubernetes connects 
   await waitFor(() => assert.deepEqual(connects("可以接入"), [
     ["ECS", "同步实例后，对选中的实例一键安装 agent。"],
     ["ACK", "列出账号下的托管集群，选择 GPU 节点池后接入，池里的节点自动成为计算节点。"],
+    ["E-HPC", "列出账号下的 E-HPC 集群（Slurm），接入后集群里的 GPU 计算节点自动成为计算节点，以后扩容的节点也一样。"],
   ]));
   // A virtual machine is 虚拟机 here, as everywhere else in the console.
-  assert.deepEqual(tagTitles("可以接入"), ["虚拟机", "Kubernetes"]);
+  assert.deepEqual(tagTitles("可以接入"), ["虚拟机", "Kubernetes", "Slurm"]);
   assert.equal(screen.getByRole("tablist").getAttribute("aria-label"), "平台类型");
   assert.deepEqual(typeTabs(), [["公有云", true], ["专有云", false], ["其他", false], [K8S_ZH, false]]);
   assert.equal(selectedLabel(), "阿里云");

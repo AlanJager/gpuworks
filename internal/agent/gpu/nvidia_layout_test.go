@@ -3,9 +3,14 @@ package gpu
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // layoutHost is an nvidia-smi whose cards, MIG listing and driver a test
@@ -139,5 +144,97 @@ func TestNVIDIAFrameworkIsAskedOncePerDriver(t *testing.T) {
 	p.Framework(t.Context())
 	if h.calls["smi"] != 2 {
 		t.Fatalf("framework queries = %d, want asked again for the new driver", h.calls["smi"])
+	}
+}
+
+// An empty roster is a driver hiccup as often as a real card removal: the
+// unified-memory judgment survives it (with no cards listed there are no
+// metric rows to fill anyway), and the next roster that lists cards replaces
+// it wholesale.
+func TestUnifiedJudgmentsSurviveAnEmptyRoster(t *testing.T) {
+	p := &SMIProber{}
+	p.rememberInventory([]proto.GPUInfo{{Index: 0, UUID: "GPU-thor", Name: "NVIDIA Thor", PCIeBDF: "0000:05:00.0"}})
+	if !p.unifiedMemoryCards()["GPU-thor"] {
+		t.Fatal("the Thor card was not remembered as unified memory")
+	}
+	p.rememberInventory(nil)
+	if !p.unifiedMemoryCards()["GPU-thor"] {
+		t.Fatal("an empty roster wiped the unified-memory judgment")
+	}
+	p.rememberInventory([]proto.GPUInfo{{Index: 0, UUID: "GPU-5090", Name: "NVIDIA GeForce RTX 5090", PCIeBDF: "0000:05:00.0"}})
+	if cards := p.unifiedMemoryCards(); len(cards) != 0 {
+		t.Fatalf("a roster of discrete cards left %v behind", cards)
+	}
+}
+
+// The failure the retention guards against reaches rememberInventory through
+// Probe: nvidia-smi exits 0 with no rows, and the next Metrics must still
+// backfill the Thor row from the host pool using the retained judgment.
+func TestMetricsBackfillSurvivesAnEmptyRosterProbe(t *testing.T) {
+	const (
+		uuid  = "GPU-e78d5a9c-a30c-482a-a004-123456789abc"
+		thor  = "NVIDIA Thor"
+		total = 127598832 * 1024
+		used  = (127598832 - 100000000) * 1024
+	)
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "proc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "proc/meminfo"), []byte("MemTotal:       127598832 kB\nMemAvailable:   100000000 kB\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const format = "--format=csv,noheader,nounits"
+	inventories := []string{
+		fmt.Sprintf("0, %s, %s, [N/A], 12.1, 0000000F:01:00.0, 595.78, [N/A], [N/A], [N/A], [N/A], [N/A], [N/A], [N/A]\n", uuid, thor),
+		"", // the hiccup: nvidia-smi exits 0 with no rows
+	}
+	calls := 0
+	p := &SMIProber{hostRoot: root, now: func() time.Time { return time.Now() }, runner: func(_ context.Context, args ...string) (string, error) {
+		switch joined := strings.Join(args, " "); {
+		case joined == nvidiaInventoryQueries[0]+" "+format:
+			calls++
+			if calls-1 < len(inventories) {
+				return inventories[calls-1], nil
+			}
+			return "", nil
+		case joined == metricsQueryEventReasons+" "+format:
+			return fmt.Sprintf("0, %s, [N/A], [N/A], [N/A], [N/A], [N/A], [N/A], [N/A], [N/A], [N/A], [N/A]\n", uuid), nil
+		case joined == "-L":
+			return fmt.Sprintf("GPU 0: %s (UUID: %s)\n", thor, uuid), nil
+		case joined == "dmon -c 1 -s t":
+			return "", fmt.Errorf("dmon is not supported on this platform")
+		default:
+			t.Errorf("unexpected nvidia-smi command: %q", joined)
+			return "", fmt.Errorf("unsupported nvidia-smi command: %q", joined)
+		}
+	}}
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !p.unifiedMemoryCards()[uuid] {
+		t.Fatal("the first probe did not record the Thor judgment")
+	}
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !p.unifiedMemoryCards()[uuid] {
+		t.Fatal("the empty roster wiped the unified-memory judgment")
+	}
+	metrics, err := p.Metrics(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics) != 1 || metrics[0].UUID != uuid {
+		t.Fatalf("metrics = %+v, want the Thor row", metrics)
+	}
+	if !metrics[0].HostPoolMemory {
+		t.Fatal("the backfilled row is not marked HostPoolMemory")
+	}
+	if got := metrics[0].Values["gpuworks_gpu_memory_used_bytes"]; got != used {
+		t.Fatalf("used = %v, want the host-pool backfill %v", got, used)
+	}
+	if got := metrics[0].Values["gpuworks_gpu_memory_total_bytes"]; got != total {
+		t.Fatalf("total = %v, want %v", got, total)
 	}
 }

@@ -48,10 +48,16 @@ var deniedRoutes = map[string]string{
 	"/api/v1/pull/registry-credentials":           "registry logins",
 	"/api/v1/ssh-key":                             "the platform's SSH key",
 	"/api/v1/kube/clusters/{uuid}/manifest":       "carries the cluster's enrollment token",
+	"/api/v1/slurm/clusters/{uuid}/setup":         "the setup, remove and uninstall commands and script URLs carry the entry's enrollment token",
+	"/api/v1/slurm/clusters/{uuid}/script":        "a 40 KB shell script, which the assistant has no use for (its enrollment token is redacted)",
 	"/api/v1/terminal/sessions":                   "terminal audit records, with client addresses",
 	"/api/v1/plugins":                             "plugin administration, for administrators in the console only",
 	"/api/v1/metrics/plugins":                     "plugin metrics for a Prometheus scrape by administrators",
 	"/api/v1/plugins/overrides":                   "restriction overrides, for administrators in the console only",
+	"/api/v1/plugins/catalog":                     "the plugin catalog, for administrators in the console only",
+	"/api/v1/plugins/{id}/state":                  "a plugin's pushed state, for administrators in the console only",
+	"/api/v1/plugins/{id}/impact":                 "a plugin's uninstall impact, for administrators in the console only",
+	"/api/v1/plugins/{id}/logs":                   "a plugin's log stream, for administrators in the console only",
 }
 
 // Readable reports whether the assistant may read a GET route pattern.

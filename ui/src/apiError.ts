@@ -73,6 +73,24 @@ export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
     params.field = t(`pullSettingField.${field}`, { defaultValue: field });
     params.detail = pullSettingErrorDetail(t, error);
   }
+  if (error.code === "SLURM_APPLY_FAILED") {
+    const step = t(`slurmApplyStep.${String(params.step ?? "")}`, { defaultValue: String(params.step ?? "") });
+    params.step = step;
+    // A reason is a stable word the console may not know yet: the step says where it failed.
+    const reason = String(params.reason ?? "");
+    if (reason === "server_unreachable" && typeof params.url === "string" && params.url) {
+      // The address the manager node could not reach, and why, when the server says.
+      const kind = String(params.kind ?? "") || "other";
+      params.kind = t(`slurmApplyKind.${kind}`, { defaultValue: kind });
+      params.reason = t("slurmApplyReason.server_unreachable_at", { url: params.url, kind: params.kind, defaultValue: step });
+    } else {
+      params.reason = reason ? t(`slurmApplyReason.${reason}`, { defaultValue: step }) : t("slurmApplyReason.unknown", {});
+    }
+  }
+  if (error.code === "SLURM_APPLY_NOT_APPLICABLE") {
+    const reason = String(params.reason ?? "");
+    params.reason = t(`slurmApplyNotApplicable.${reason}`, { defaultValue: reason });
+  }
   if (error.code === "ACCELERATOR_FEATURE_UNSUPPORTED") {
     return t("acceleratorFeature.unsupported", { ...acceleratorMessageParams(t, params), defaultValue: error.fallback || error.code });
   }

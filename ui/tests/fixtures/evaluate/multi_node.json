@@ -175,6 +175,7 @@
   ],
   "env": {
     "GLOO_SOCKET_IFNAME": "eth0",
+    "GPUWORKS_PEERS_FILE": "/gpuworks/peers.json",
     "HF_HUB_OFFLINE": "1",
     "NCCL_IB_DISABLE": "1",
     "NCCL_SOCKET_IFNAME": "eth0",
@@ -185,6 +186,7 @@
   "env_layers": {
     "system": {
       "GLOO_SOCKET_IFNAME": "eth0",
+      "GPUWORKS_PEERS_FILE": "/gpuworks/peers.json",
       "HF_HUB_OFFLINE": "1",
       "NCCL_IB_DISABLE": "1",
       "NCCL_SOCKET_IFNAME": "eth0",
@@ -271,6 +273,7 @@
       ],
       "env": {
         "GLOO_SOCKET_IFNAME": "eth0",
+        "GPUWORKS_PEERS_FILE": "/gpuworks/peers.json",
         "HF_HUB_OFFLINE": "1",
         "NCCL_IB_DISABLE": "1",
         "NCCL_SOCKET_IFNAME": "eth0",
@@ -284,6 +287,7 @@
       "env_layers": {
         "system": {
           "GLOO_SOCKET_IFNAME": "eth0",
+          "GPUWORKS_PEERS_FILE": "/gpuworks/peers.json",
           "HF_HUB_OFFLINE": "1",
           "NCCL_IB_DISABLE": "1",
           "NCCL_SOCKET_IFNAME": "eth0",
@@ -357,6 +361,7 @@
       ],
       "env": {
         "GLOO_SOCKET_IFNAME": "eth0",
+        "GPUWORKS_PEERS_FILE": "/gpuworks/peers.json",
         "HF_HUB_OFFLINE": "1",
         "NCCL_IB_DISABLE": "1",
         "NCCL_SOCKET_IFNAME": "eth0",
@@ -370,6 +375,7 @@
       "env_layers": {
         "system": {
           "GLOO_SOCKET_IFNAME": "eth0",
+          "GPUWORKS_PEERS_FILE": "/gpuworks/peers.json",
           "HF_HUB_OFFLINE": "1",
           "NCCL_IB_DISABLE": "1",
           "NCCL_SOCKET_IFNAME": "eth0",
@@ -679,6 +685,7 @@
     "GPUWORKS_NNODES",
     "GPUWORKS_NODE_ADDR",
     "GPUWORKS_NODE_RANK",
+    "GPUWORKS_PEERS_FILE",
     "GPUWORKS_TP_SIZE"
   ],
   "yield_policy_eligible": {

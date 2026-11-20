@@ -36,3 +36,21 @@ func TestTailKeepsTheLastNonEmptyLinesBounded(t *testing.T) {
 		})
 	}
 }
+
+// A line printed several times in a row is one line of a distinct tail; the
+// same line coming back after another is kept, and Tail itself still repeats.
+func TestTailDistinctCountsARepeatedLineOnce(t *testing.T) {
+	const out = "loading weights\nwaiting for peers\nwaiting for peers\n\nwaiting for peers\r\nstill here\nwaiting for peers\nwaiting for peers\n"
+	if got, want := enginelog.TailDistinct(out, 3), []string{"waiting for peers", "still here", "waiting for peers"}; !slices.Equal(got, want) {
+		t.Fatalf("distinct tail = %q, want %q", got, want)
+	}
+	if got, want := enginelog.TailDistinct(out, 10), []string{"loading weights", "waiting for peers", "still here", "waiting for peers"}; !slices.Equal(got, want) {
+		t.Fatalf("whole distinct tail = %q, want %q", got, want)
+	}
+	if got, want := enginelog.Tail(out, 3), []string{"still here", "waiting for peers", "waiting for peers"}; !slices.Equal(got, want) {
+		t.Fatalf("tail = %q, want %q", got, want)
+	}
+	if got := enginelog.TailDistinct("", 3); got != nil {
+		t.Fatalf("empty output = %q", got)
+	}
+}

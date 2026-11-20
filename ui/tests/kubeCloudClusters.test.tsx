@@ -622,7 +622,7 @@ test("reading the instances again keeps them listed; a read answered after a new
   await act(async () => reads[1].resolve(list([])));
   await settle();
   assert.ok(screen.getByText("train-02"), "the late answer of the earlier read is dropped");
-  assert.equal(screen.queryAllByText(p.instances.empty).length, 0);
+  assert.equal(screen.queryAllByText(p.instances.emptyAfterSync).length, 0);
 
   rerenderView({ refreshKey: "4" });
   await waitFor(() => assert.equal(reads.length, 4));
@@ -636,7 +636,7 @@ test("an account whose row does not say it connects Kubernetes is not asked for 
   const state = serveClusters([gpuCluster]);
   // The server leaves Kubernetes out of the account's resources (dto.CloudProvider resources); the kind schema still says ACK.
   mount({ provider: account(3, "ali-prod", "aliyun", { resources: [{ type: "vm", product: "ECS" }] }) });
-  assert.ok(await screen.findByText(p.instances.empty));
+  assert.ok(await screen.findByText(p.instances.emptyAfterSync));
   await settle();
   assert.equal(state.reads, 0);
   assert.equal(screen.queryAllByRole("rowgroup", { name: "ack-gpu" }).length, 0);

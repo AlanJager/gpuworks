@@ -83,6 +83,7 @@ DELETE /api/v1/diagnostics/debug-session
 DELETE /api/v1/image-series/{id}
 DELETE /api/v1/images/{id}
 DELETE /api/v1/images/{id}/nodes/{uuid}
+DELETE /api/v1/inference-templates
 DELETE /api/v1/inference-templates/spec
 DELETE /api/v1/kube/clusters/{uuid}
 DELETE /api/v1/models/{id}
@@ -103,6 +104,7 @@ DELETE /api/v1/pull/proxies/{id}
 DELETE /api/v1/pull/registry-credentials/{id}
 DELETE /api/v1/pull/source-rules/{id}
 DELETE /api/v1/pull/sync-groups/{id}
+DELETE /api/v1/slurm/clusters/{uuid}
 DELETE /api/v1/storages/{id}
 DELETE /api/v1/storages/{id}/cache
 DELETE /api/v1/storages/{id}/files
@@ -223,12 +225,17 @@ GET /api/v1/platform-tokens
 GET /api/v1/playground/models
 GET /api/v1/playground/openapi.json
 GET /api/v1/plugins
+GET /api/v1/plugins/catalog
 GET /api/v1/plugins/overrides
+GET /api/v1/plugins/{id}/impact
+GET /api/v1/plugins/{id}/logs
+GET /api/v1/plugins/{id}/state
 GET /api/v1/priority-classes
 GET /api/v1/providers
 GET /api/v1/providers/kinds
 GET /api/v1/providers/{id}
 GET /api/v1/providers/{id}/clusters
+GET /api/v1/providers/{id}/hpc-clusters
 GET /api/v1/providers/{id}/instances
 GET /api/v1/pull/credentials
 GET /api/v1/pull/metadata-sources
@@ -248,6 +255,10 @@ GET /api/v1/security/settings
 GET /api/v1/server/listen
 GET /api/v1/server/outbound-policy
 GET /api/v1/settings
+GET /api/v1/slurm/clusters
+GET /api/v1/slurm/clusters/{uuid}/script
+GET /api/v1/slurm/clusters/{uuid}/setup
+GET /api/v1/slurm/defaults
 GET /api/v1/ssh-key
 GET /api/v1/storages
 GET /api/v1/storages/settings
@@ -266,6 +277,9 @@ GET /api/v1/usage-report
 GET /api/v1/usage-report/preview
 GET /healthz
 GET /kube/manifest.yaml
+GET /slurm/check.sh
+GET /slurm/setup.sh
+GET /slurm/token-status
 PATCH /api/v1/ai/configs/{id}
 PATCH /api/v1/branding
 PATCH /api/v1/images/versions/{id}
@@ -380,6 +394,9 @@ POST /api/v1/plugins/install
 POST /api/v1/plugins/overrides
 POST /api/v1/plugins/{id}/disable
 POST /api/v1/plugins/{id}/enable
+POST /api/v1/plugins/{id}/restart
+POST /api/v1/plugins/{id}/rollback
+POST /api/v1/plugins/{id}/upgrade
 POST /api/v1/priority-classes
 POST /api/v1/providers
 POST /api/v1/providers/{id}/install
@@ -397,6 +414,12 @@ POST /api/v1/pull/source-rules/test
 POST /api/v1/pull/sync-groups
 POST /api/v1/server/outbound-policy/check
 POST /api/v1/server/restart
+POST /api/v1/slurm/clusters
+POST /api/v1/slurm/clusters/{uuid}/apply
+POST /api/v1/slurm/clusters/{uuid}/remove
+POST /api/v1/slurm/clusters/{uuid}/revoke
+POST /api/v1/slurm/enroll
+POST /api/v1/slurm/gpu-nodes
 POST /api/v1/ssh-key/rotate
 POST /api/v1/storages
 POST /api/v1/storages/probe
@@ -449,6 +472,7 @@ PUT /api/v1/pull/sync-groups/{id}
 PUT /api/v1/server/listen
 PUT /api/v1/server/outbound-policy
 PUT /api/v1/settings/{key}
+PUT /api/v1/slurm/clusters/{uuid}
 PUT /api/v1/ssh-key
 PUT /api/v1/storages/{id}/files/upload
 PUT /api/v1/telemetry/export

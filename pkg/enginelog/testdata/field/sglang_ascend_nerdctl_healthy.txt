@@ -1,0 +1,291 @@
+/sgl-workspace/sglang/python/sglang/launch_server.py:57: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+[1;33m'--disable-cuda-graph' is deprecated and will be removed in a future release. Use '--cuda-graph-backend-{decode,prefill}=disabled' instead.[0m
+[2026-11-19 16:08:43] get env TRITON_CACHE_DIR = /root/.cache/sglang/triton
+[2026-11-19 16:08:45] get env TORCHINDUCTOR_CACHE_DIR = /root/.cache/sglang/inductor
+[2026-11-19 16:08:45] get env LD_LIBRARY_PATH = /usr/local/Ascend/cann-9.0.0/lib64:/usr/local/Ascend/cann-9.0.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.
+[2026-11-19 16:08:47] Disable hybrid SWA memory for Gemma3ForConditionalGeneration as it is not yet supported.
+[2026-11-19 16:08:52] server_args=ServerArgs(model_path='/mo
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:08:53] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:08:54] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:08:54] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:08:54] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.
+[2026-11-19 16:08:58] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:08:58] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:08:58] Ignore import error when loading sglang.srt.models.inkling: No module named 'cutlass'
+[2026-11-19 16:08:58] Ignore import error when loading sglang.srt.models.mindspore: No module named 'mindspore'
+[2026-11-19 16:08:58] Ignore import error when loading sglang.srt.models.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.srt.managers.mm
+[2026-11-19 16:08:59] Using default HuggingFace chat template with detected content format: openai
+[2026-11-19 16:09:04] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpv5nmmjpx
+[2026-11-19 16:09:08 TP1] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpv5nmmjpx
+[2026-11-19 16:09:09 TP2] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpv5nmmjpx
+[2026-11-19 16:09:09 TP3] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpv5nmmjpx
+[2026-11-19 16:09:09 TP0] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpv5nmmjpx
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:09:12] Restoring add_bos_token=True for /model (was False after v5 loading)
+[2026-11-19 16:09:12 TP1] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:09:13 TP1] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:09:13 TP1] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:09:13 TP2] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:09:13 TP3] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:09:13 TP1] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:362: ImportWarning:
+    *************************************************************************************************************
+    The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+    The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+    The backend in torch.distributed.init_process_group set to hccl now..
+    The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+    The device parameters have been replaced with npu in the function below:
+    torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuf
+    *************************************************************************************************************
+
+  warnings.warn(msg, ImportWarning)
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/contrib/transfer_to_npu.py:291: RuntimeWarning: torch.jit.script and torch.jit.script_method wil
+  warnings.warn(msg, RuntimeWarning)
+[2026-11-19 16:09:13 TP2] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:09:13 TP2] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:09:13 TP3] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:09:13 TP3] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:09:13 TP2] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+[2026-11-19 16:09:14 TP3] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+[2026-11-19 16:09:14 TP0] Ignore import error when loading sglang.srt.multimodal.processors.inkling: No module named 'cutlass'
+[2026-11-19 16:09:14 TP1] Init torch distributed begin.
+[2026-11-19 16:09:14 TP0] torchcodec is not installed; audio inputs will fail at request time
+[2026-11-19 16:09:14 TP0] Ignore import error when loading sglang.srt.multimodal.processors.mimo_v2: No module named 'torchcodec'
+[2026-11-19 16:09:15 TP0] Ignore import error when loading sglang.srt.multimodal.processors.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sgl
+[2026-11-19 16:09:15 TP2] Init torch distributed begin.
+[2026-11-19 16:09:15 TP3] Init torch distributed begin.
+[2026-11-19 16:09:16 TP0] Init torch distributed begin.
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[2026-11-19 16:09:17 TP3] Init torch distributed ends. elapsed=2.37 s, mem usage=0.01 GB
+[2026-11-19 16:09:17 TP0] Init torch distributed ends. elapsed=1.16 s, mem usage=0.01 GB
+[2026-11-19 16:09:17 TP1] Init torch distributed ends. elapsed=2.82 s, mem usage=0.01 GB
+[2026-11-19 16:09:17 TP2] Init torch distributed ends. elapsed=2.43 s, mem usage=0.01 GB
+[2026-11-19 16:09:17 TP3] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:09:17 TP3] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:09:17 TP0] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:09:17 TP0] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:09:17 TP2] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:09:17 TP2] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:09:17 TP1] Ignore import error when loading sglang.srt.models.bailing_moe_linear: No module named 'vllm'
+[2026-11-19 16:09:17 TP1] Ignore import error when loading sglang.srt.models.bailing_moe_nextn: No module named 'vllm'
+[2026-11-19 16:09:17 TP3] Ignore import error when loading sglang.srt.models.inkling: No module named 'cutlass'
+[2026-11-19 16:09:17 TP2] Ignore import error when loading sglang.srt.models.inkling: No module named 'cutlass'
+[2026-11-19 16:09:17 TP1] Ignore import error when loading sglang.srt.models.inkling: No module named 'cutlass'
+[2026-11-19 16:09:17 TP0] Ignore import error when loading sglang.srt.models.inkling: No module named 'cutlass'
+[2026-11-19 16:09:18 TP3] Ignore import error when loading sglang.srt.models.mindspore: No module named 'mindspore'
+[2026-11-19 16:09:18] get env PROMETHEUS_MULTIPROC_DIR = /tmp/tmpv5nmmjpx
+[2026-11-19 16:09:18 TP2] Ignore import error when loading sglang.srt.models.mindspore: No module named 'mindspore'
+[2026-11-19 16:09:18 TP1] Ignore import error when loading sglang.srt.models.mindspore: No module named 'mindspore'
+[2026-11-19 16:09:18 TP0] Ignore import error when loading sglang.srt.models.mindspore: No module named 'mindspore'
+[2026-11-19 16:09:18 TP3] Ignore import error when loading sglang.srt.models.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.srt.manager
+[2026-11-19 16:09:18 TP2] Ignore import error when loading sglang.srt.models.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.srt.manager
+[2026-11-19 16:09:18 TP1] Ignore import error when loading sglang.srt.models.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.srt.manager
+[2026-11-19 16:09:18 TP3] Load weight begin. avail mem=29.13 GB
+[2026-11-19 16:09:18 TP0] Ignore import error when loading sglang.srt.models.sarashina2_vision: cannot import name 'MultimodalDataItem' from 'sglang.srt.manager
+[2026-11-19 16:09:18 TP2] Load weight begin. avail mem=29.13 GB
+[2026-11-19 16:09:18 TP1] Load weight begin. avail mem=29.13 GB
+[2026-11-19 16:09:18 TP3] Using ascend_attn as multimodal attention backend.
+[2026-11-19 16:09:18 TP0] Load weight begin. avail mem=29.08 GB
+[2026-11-19 16:09:18 TP2] Using ascend_attn as multimodal attention backend.
+[2026-11-19 16:09:18 TP1] Using ascend_attn as multimodal attention backend.
+[2026-11-19 16:09:18 TP0] Using ascend_attn as multimodal attention backend.
+Multi-thread loading shards: 100% Completed | 12/12 [00:29<00:00,  2.46s/it]
+[2026-11-19 16:09:49 TP1] Load weight end. elapsed=30.97 s, type=Gemma3ForConditionalGeneration, avail mem=14.13 GB, mem usage=15.00 GB.
+[2026-11-19 16:09:49 TP0] Load weight end. elapsed=31.08 s, type=Gemma3ForConditionalGeneration, avail mem=14.08 GB, mem usage=15.00 GB.
+[2026-11-19 16:09:49 TP2] Load weight end. elapsed=31.15 s, type=Gemma3ForConditionalGeneration, avail mem=14.13 GB, mem usage=15.00 GB.
+[2026-11-19 16:09:49 TP3] Load weight end. elapsed=31.20 s, type=Gemma3ForConditionalGeneration, avail mem=14.13 GB, mem usage=15.00 GB.
+/sgl-workspace/sglang/python/sglang/srt/utils/common.py:2415: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tens
+  tensor_data = torch.ByteTensor(
+[2026-11-19 16:09:52 TP0] Reserving 0.10 GB of the KV budget for post-sizing multimodal allocations (feature-transport pools + embedding cache).
+[2026-11-19 16:09:52 TP3] Reserving 0.10 GB of the KV budget for post-sizing multimodal allocations (feature-transport pools + embedding cache).
+[2026-11-19 16:09:52 TP2] Reserving 0.10 GB of the KV budget for post-sizing multimodal allocations (feature-transport pools + embedding cache).
+[2026-11-19 16:09:52 TP1] Reserving 0.10 GB of the KV budget for post-sizing multimodal allocations (feature-transport pools + embedding cache).
+[2026-11-19 16:09:53 TP3] KV Cache is allocated. dtype: torch.bfloat16, #tokens: 88064, K size: 5.21 GB, V size: 5.21 GB
+[2026-11-19 16:09:53 TP2] KV Cache is allocated. dtype: torch.bfloat16, #tokens: 88064, K size: 5.21 GB, V size: 5.21 GB
+[2026-11-19 16:09:53 TP1] KV Cache is allocated. dtype: torch.bfloat16, #tokens: 88064, K size: 5.21 GB, V size: 5.21 GB
+[2026-11-19 16:09:53 TP3] Memory pool end. avail mem=2.62 GB
+[2026-11-19 16:09:53 TP2] Memory pool end. avail mem=2.62 GB
+[2026-11-19 16:09:53 TP0] KV Cache is allocated. dtype: torch.bfloat16, #tokens: 88064, K size: 5.21 GB, V size: 5.21 GB
+[2026-11-19 16:09:53 TP1] Memory pool end. avail mem=2.63 GB
+[2026-11-19 16:09:53 TP0] Memory pool end. avail mem=2.57 GB
+[2026-11-19 16:09:53 TP3] Disable prefill CUDA graph because cuda_graph_config resolved prefill.backend='disabled' (e.g. via --cuda-graph-backend-prefill=disabl
+[2026-11-19 16:09:53 TP2] Disable prefill CUDA graph because cuda_graph_config resolved prefill.backend='disabled' (e.g. via --cuda-graph-backend-prefill=disabl
+[2026-11-19 16:09:53 TP3] Tree cache initialized: source=default impl=RadixCache hybrid_swa=False hybrid_ssm=False hicache_attached=False streaming_wrapped=Fals
+[2026-11-19 16:09:53 TP2] Tree cache initialized: source=default impl=RadixCache hybrid_swa=False hybrid_ssm=False hicache_attached=False streaming_wrapped=Fals
+[2026-11-19 16:09:53 TP1] Disable prefill CUDA graph because cuda_graph_config resolved prefill.backend='disabled' (e.g. via --cuda-graph-backend-prefill=disabl
+[2026-11-19 16:09:53 TP1] Tree cache initialized: source=default impl=RadixCache hybrid_swa=False hybrid_ssm=False hicache_attached=False streaming_wrapped=Fals
+[2026-11-19 16:09:53 TP0] Disable prefill CUDA graph because cuda_graph_config resolved prefill.backend='disabled' (e.g. via --cuda-graph-backend-prefill=disabl
+[2026-11-19 16:09:53 TP0] max_total_num_tokens=88064, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=2048, context_len=131072, availa
+[2026-11-19 16:09:53 TP0] Tree cache initialized: source=default impl=RadixCache hybrid_swa=False hybrid_ssm=False hicache_attached=False streaming_wrapped=Fals
+[2026-11-19 16:09:54] Engine startup timings (s): load_weight=31.20, kv_cache_allocation=0.29, scheduler_e2e=46.04, cuda_graph={prefill=0.00, decode=0.00, targe
+[2026-11-19 16:09:55] INFO:     Started server process [1]
+[2026-11-19 16:09:55] INFO:     Waiting for application startup.
+[2026-11-19 16:09:55] Using default chat sampling params from model generation config: {'top_k': 64, 'top_p': 0.95}
+[2026-11-19 16:09:55] INFO:     Application startup complete.
+[2026-11-19 16:09:55] INFO:     Uvicorn running on http://127.0.0.1:30000 (Press CTRL+C to quit)
+[2026-11-19 16:09:56] INFO:     127.0.0.1:43916 - "GET /model_info HTTP/1.1" 200 OK
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/openai/serving_chat.py:875: DeprecationWarning: max_tokens is deprecated in favor of the max_completion_toke
+  max_output_tokens = request.max_completion_tokens or request.max_tokens
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/openai/protocol.py:1035: DeprecationWarning: max_tokens is deprecated in favor of the max_completion_tokens
+  "max_new_tokens": self.max_completion_tokens or self.max_tokens,
+[transformers] Deprecated: `processor.image_token` will switch from returning `tokenizer.image_token` to `tokenizer.boi_token` in v5.11.
+[2026-11-19 16:10:26 TP3] get env ASCEND_OPP_PATH = /usr/local/Ascend/cann-9.0.0/opp
+[2026-11-19 16:10:26 TP2] get env ASCEND_OPP_PATH = /usr/local/Ascend/cann-9.0.0/opp
+[2026-11-19 16:10:27 TP1] get env ASCEND_OPP_PATH = /usr/local/Ascend/cann-9.0.0/opp
+[2026-11-19 16:10:27 TP0] get env ASCEND_OPP_PATH = /usr/local/Ascend/cann-9.0.0/opp
+[2026-11-19 16:10:40 TP3] get env HOME = /root
+[2026-11-19 16:10:40 TP3] get env TE_AUTO_RESTART_COUNTER = 0
+[2026-11-19 16:10:40 TP2] get env HOME = /root
+[2026-11-19 16:10:40 TP2] get env TE_AUTO_RESTART_COUNTER = 0
+[2026-11-19 16:10:41 TP1] get env HOME = /root
+[2026-11-19 16:10:41 TP1] get env TE_AUTO_RESTART_COUNTER = 0
+[2026-11-19 16:10:42 TP0] get env HOME = /root
+[2026-11-19 16:10:42 TP0] get env TE_AUTO_RESTART_COUNTER = 0
+[2026-11-19 16:10:51 TP3] get env PYTHONPATH = /usr/local/Ascend/ascend-toolkit/latest/python/site-packages:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in
+[2026-11-19 16:10:51 TP1] get env PYTHONPATH = /usr/local/Ascend/ascend-toolkit/latest/python/site-packages:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in
+[2026-11-19 16:10:51 TP2] get env PYTHONPATH = /usr/local/Ascend/ascend-toolkit/latest/python/site-packages:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in
+[2026-11-19 16:10:51 TP0] get env PYTHONPATH = /usr/local/Ascend/ascend-toolkit/latest/python/site-packages:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in
+[2026-11-19 16:10:59 TP2] multimem all-gather disabled (SymmetricMemory does not support device type cuda)
+[2026-11-19 16:10:59 TP1] multimem all-gather disabled (SymmetricMemory does not support device type cuda)
+[2026-11-19 16:10:59 TP3] multimem all-gather disabled (SymmetricMemory does not support device type cuda)
+[2026-11-19 16:10:59 TP0] multimem all-gather disabled (SymmetricMemory does not support device type cuda)
+[2026-11-19 16:11:01 TP0] Prefill batch, #new-seq: 1, #new-token: 384, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, n
+[2026-11-19 16:11:03] INFO:     127.0.0.1:43926 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-11-19 16:11:03] Freezing GC in Tokenizer Manager process. gen0: 905->0, gen1: 0->0, gen2: 969941->0
+[2026-11-19 16:11:03] INFO:     127.0.0.1:34362 - "POST /freeze_gc HTTP/1.1" 200 OK
+[2026-11-19 16:11:03] The server is fired up and ready to roll!
+[2026-11-19 16:11:03 TP2] Freezing GC in Scheduler process. gen0: 153->0, gen1: 126->0, gen2: 1141377->0
+[2026-11-19 16:11:03 TP3] Freezing GC in Scheduler process. gen0: 44->0, gen1: 200->0, gen2: 1141383->0
+[2026-11-19 16:11:03 TP0] Freezing GC in Scheduler process. gen0: 46->0, gen1: 209->0, gen2: 1140967->0
+[2026-11-19 16:11:03 TP1] Freezing GC in Scheduler process. gen0: 44->0, gen1: 200->0, gen2: 1141246->0
+[2026-11-19 16:11:03] Freezing GC in Detokenizer Manager process. gen0: 736->0, gen1: 990->0, gen2: 768531->0
+[2026-11-19 16:11:03] get env SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION = 0
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/http_server.py:451: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data dir
+  return await original_handler(ORJSONRequest(request.scope, request.receive))
+[2026-11-19 16:11:03] INFO:     127.0.0.1:43908 - "GET /v1/models HTTP/1.1" 200 OK
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID set_internal_state_set_internal_state_pu
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID generate_request_generate_put for functi
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID encode_request_encode_put for function e
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID classify_request_classify_put for functi
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID flush_cache_flush_cache_post for functio
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID clear_hicache_storage_backend_deprecated
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID start_profile_async_start_profile_post f
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID stop_profile_async_stop_profile_post for
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID set_trace_level_set_trace_level_post for
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID freeze_gc_async_freeze_gc_post for funct
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID start_expert_distribution_record_async_s
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID stop_expert_distribution_record_async_st
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID dump_expert_distribution_record_async_du
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID get_weights_by_name_get_weights_by_name_
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID release_memory_occupation_release_memory
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID resume_memory_occupation_resume_memory_o
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID check_weights_weights_checker_post for f
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID slow_down_slow_down_post for function sl
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID open_session_open_session_post for funct
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID close_session_close_session_post for fun
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID configure_logging_configure_logging_post
+  warnings.warn(message, stacklevel=1)
+/usr/local/python3.11.15/lib/python3.11/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID v1_rerank_request_v1_rerank_put for func
+  warnings.warn(message, stacklevel=1)
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/openai/serving_chat.py:875: DeprecationWarning: max_tokens is deprecated in favor of the max_completion_toke
+  max_output_tokens = request.max_completion_tokens or request.max_tokens
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/openai/protocol.py:1035: DeprecationWarning: max_tokens is deprecated in favor of the max_completion_tokens
+  "max_new_tokens": self.max_completion_tokens or self.max_tokens,
+[2026-11-19 16:11:31 TP0] Prefill batch, #new-seq: 1, #new-token: 128, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, n
+[2026-11-19 16:11:31] INFO:     127.0.0.1:47610 - "POST /v1/chat/completions HTTP/1.1" 200 OK

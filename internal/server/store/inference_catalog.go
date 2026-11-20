@@ -23,6 +23,9 @@ const (
 )
 
 var (
+	// The catalog selection resolved during deployment preparation disappeared
+	// before the deployment row could pin it.
+	ErrDeploymentTemplateSelectionGone = errors.New("selected inference template or spec no longer exists")
 	// ErrInferenceSpecNotFound: no user spec with that name on that model.
 	ErrInferenceSpecNotFound = errors.New("inference catalog user spec not found")
 	// ErrInferenceSpecInUse: a deployment outside "deleting" still pins the
@@ -154,104 +157,6 @@ func (s *Store) ImportUserInferenceCatalog(models []InferenceModel, overwrite bo
 		}
 	}
 	return err
-}
-
-// DeleteUserInferenceSpec retires one user-authored spec. Imports are additive
-// (specs absent from an import are preserved), so an explicit delete is the
-// only way to remove a user spec. Deleting the last remaining spec of a user
-// model drops the model row; upstream rows always keep their canonical specs
-// and never reach that branch. Deletion refuses while a deployment outside
-// "deleting" still pins the spec, or while another model mounts a
-// to-be-dropped model as a component.
-func (s *Store) DeleteUserInferenceSpec(modelID, specName string) (modelDeleted bool, err error) {
-	modelID = strings.ToLower(strings.TrimSpace(modelID))
-	specName = strings.TrimSpace(specName)
-	if modelID == "" || specName == "" {
-		return false, errors.New("model_id and spec are required")
-	}
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		var model InferenceModel
-		if err := tx.Preload("Specs").Where("model_id = ?", modelID).First(&model).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrNotFound
-			}
-			return err
-		}
-		target := -1
-		for i := range model.Specs {
-			if model.Specs[i].Source == "user" && model.Specs[i].Name == specName {
-				target = i
-				break
-			}
-		}
-		if target < 0 {
-			return ErrInferenceSpecNotFound
-		}
-		var pinnedBy []string
-		if err := tx.Model(&Deployment{}).
-			Where("template_id = ? AND template_spec_source = ? AND template_spec_name = ? AND desired_state <> ?",
-				model.ID, "user", specName, string(DeployDeleting)).
-			Pluck("name", &pinnedBy).Error; err != nil {
-			return err
-		}
-		if len(pinnedBy) > 0 {
-			return fmt.Errorf("%w: %s", ErrInferenceSpecInUse, strings.Join(pinnedBy, ", "))
-		}
-		if err := tx.Delete(&InferenceSpecRow{}, model.Specs[target].ID).Error; err != nil {
-			return err
-		}
-		if len(model.Specs) > 1 {
-			return nil
-		}
-		if model.Source != "user" {
-			return fmt.Errorf("model %s would be left without specs", model.ModelID)
-		}
-		if err := refuseDanglingComponentReference(tx, model.ID, model.ModelID); err != nil {
-			return err
-		}
-		modelDeleted = true
-		return tx.Delete(&InferenceModel{}, model.ID).Error
-	})
-	return modelDeleted, err
-}
-
-// refuseDanglingComponentReference mirrors
-// inferencecatalog.validateComponentReferences for the delete path: a model
-// row may not be dropped while any other spec still mounts it as a component.
-func refuseDanglingComponentReference(tx *gorm.DB, modelRowID uint, modelID string) error {
-	var rows []InferenceSpecRow
-	if err := tx.Where("components <> '' AND components <> '[]' AND components <> 'null'").Find(&rows).Error; err != nil {
-		return err
-	}
-	if len(rows) == 0 {
-		return nil
-	}
-	var owners []InferenceModel
-	if err := tx.Find(&owners).Error; err != nil {
-		return err
-	}
-	ownerIDs := make(map[uint]string, len(owners))
-	for _, owner := range owners {
-		ownerIDs[owner.ID] = owner.ModelID
-	}
-	type componentReference struct {
-		ModelID string `json:"model_id"`
-	}
-	for _, row := range rows {
-		if row.ModelID == modelRowID {
-			continue
-		}
-		var components []componentReference
-		if err := json.Unmarshal([]byte(row.Components), &components); err != nil || len(components) == 0 {
-			continue
-		}
-		for _, component := range components {
-			if strings.EqualFold(strings.TrimSpace(component.ModelID), modelID) {
-				return fmt.Errorf("%w: %s spec %s mounts %s", ErrInferenceModelReferenced, ownerIDs[row.ModelID], row.Name, modelID)
-			}
-		}
-	}
-	return nil
 }
 
 // catalogKeep maps a model ID to the upstream spec names a reconcile leaves
@@ -436,7 +341,7 @@ func validateCatalogJSON(spec *InferenceSpecRow) error {
 	}
 	for name, value := range map[string]string{
 		"assets": spec.Assets, "entrypoint": spec.Entrypoint, "placement": spec.Placement,
-		"api_contract": spec.APIContract, "components": spec.Components, "image_sources": spec.ImageSources, "docker_args": spec.DockerArgs,
+		"api_contract": spec.APIContract, "components": spec.Components, "image_sources": spec.ImageSources, "docker_args": spec.DockerArgs, "dirs": spec.Dirs,
 	} {
 		if strings.TrimSpace(value) == "" {
 			continue

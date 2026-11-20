@@ -87,6 +87,7 @@ A connector name, `kv_connector_module_path`, extra config and environment varia
 ## Consequences
 
 - To add a KV offload backend, add one row in `kvbackend` and one builder in `deploy` (with a reader when needed), with tests. Only vLLM has an offload adapter today; the tests refuse a row of another engine until that engine renders and reads it. Backend id literals must not appear in other Go code or in `ui/src`; this is enforced by the `kv_backend_id_literals` budget in `scripts/arch-constraints.txt`, with a baseline of 0.
+- The first external backend wired onto this seam is `vllm/lmcache` (`LMCacheMPConnector`, `lmcache_driven`, talking to a node-local daemon at `tcp://localhost:5555`): it targets NVIDIA and Ascend, runs within one node per instance, stays on the PD prefill role only, and supplies `"kv_connector_module_path": "vllm.distributed.kv_transfer.kv_connector.v1.multi_connector"` in its PD `wrapper` so `vllm-ascend 0.30.0`'s `AscendMultiConnector` override does not pass empty block tables on cold misses. The external LMCache daemon remains managed outside the control plane.
 - Downgrade: an older server decodes with plain JSON and drops `kv_offload_backend`.
   - A deployment that selected an external backend relaunches there with no offload.
   - An edit or draft round-trip removes the selection.
@@ -94,4 +95,4 @@ A connector name, `kv_connector_module_path`, extra config and environment varia
 - In a mixed-vendor cluster the scheduler does not filter nodes by a backend's vendor allow-list. An unsupported vendor is refused at assigned-target validation.
 - Terms: the domain glossary (`CONTEXT.md`).
 
-<!-- translation-source-sha256: 6a3a4ac8ea8427947f93fdd1e3325fafecc8ea6f13348def47f6f3a87684645c -->
+<!-- translation-source-sha256: 6a528095c9fecb5423972044e8e99aef2e98d3da8a90376eb0bd123a911098a5 -->

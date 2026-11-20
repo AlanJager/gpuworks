@@ -1931,6 +1931,36 @@
       "order": 25
     },
     {
+      "key": "kv_offload_backend",
+      "flag": "",
+      "label": {
+        "en": "KV Offload Backend",
+        "zh": "KV 卸载后端"
+      },
+      "type": "enum",
+      "control": "select",
+      "group": "performance",
+      "enum": [
+        "lmcache"
+      ],
+      "options": [
+        {
+          "value": "lmcache",
+          "label": {
+            "en": "LMCache",
+            "zh": "LMCache"
+          }
+        }
+      ],
+      "help": {
+        "en": "Which component keeps the KV cache beyond the GPU. Leave empty to use the engine's own memory and disk tiers; a backend replaces them.",
+        "zh": "由哪个组件在 GPU 之外保存 KV 缓存。留空则使用引擎自带的内存层与磁盘层；选择后端会取代它们。"
+      },
+      "engines": [
+        "vllm"
+      ]
+    },
+    {
       "key": "enforce_eager",
       "flag": "--enforce-eager",
       "label": {

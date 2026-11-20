@@ -107,6 +107,8 @@ func nodeDTO(n *store.Node, includeToken bool, hold store.NodeHold) dto.Node {
 		d.RuntimeFallbackPlugin = accelerator.RuntimeGPUPlugin(n.GPUVendor, n.RuntimeFallbackFrom)
 		d.RuntimeFallbackSocket = runtimeSocketDenialDTO(n.RuntimeSocketDenial())
 	}
+	d.SlurmNode, d.SlurmUnavailable, d.SlurmReason = n.SlurmNode, n.SlurmUnavailable, n.SlurmReason
+	d.SlurmFixes = slurmFixes(n)
 	d.AcceleratorPreference = n.AcceleratorPreference
 	d.AcceleratorVendors = acceleratorChoices(n)
 	d.GPUProbeError = n.GPUProbeError
@@ -221,7 +223,7 @@ func nodeUncordon(n *store.Node, hold store.NodeHold) string {
 	for _, g := range n.GPUs {
 		cards = append(cards, proto.GPUInfo{Ownership: g.Ownership, HealthCode: g.HealthCode})
 	}
-	if store.PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, cards) != "" {
+	if store.PlatformCordonReason(n.RuntimeGPUBlocked, n.KubeUnschedulable, n.SlurmUnavailable, cards) != "" {
 		return nodeUncordonConfirm
 	}
 	return nodeUncordonAllowed

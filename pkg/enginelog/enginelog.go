@@ -177,13 +177,24 @@ func LastError(logText string) string {
 // that refuses its arguments prints a plain sentence and exits non-zero. A
 // carriage return ends a line as a newline does, so a progress bar redrawn in
 // place is its states one by one and the last of them is the newest.
-func Tail(logText string, n int) []string {
+func Tail(logText string, n int) []string { return tail(logText, n, false) }
+
+// TailDistinct is Tail with a line printed several times in a row counted
+// once. An engine that hangs repeats one line while it waits; the lines
+// before it are what say where it stopped.
+func TailDistinct(logText string, n int) []string { return tail(logText, n, true) }
+
+func tail(logText string, n int, distinct bool) []string {
 	lines := strings.FieldsFunc(ansiRE.ReplaceAllString(logText, ""), func(r rune) bool { return r == '\n' || r == '\r' })
 	var out []string
+	last := ""
 	for i := len(lines) - 1; i >= 0 && len(out) < n; i-- {
-		if line := strings.TrimSpace(lines[i]); line != "" {
-			out = append(out, bound(line))
+		line := strings.TrimSpace(lines[i])
+		if line == "" || distinct && line == last {
+			continue
 		}
+		last = line
+		out = append(out, bound(line))
 	}
 	slices.Reverse(out)
 	return out

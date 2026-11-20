@@ -177,7 +177,10 @@ func (a *apiHandlers) getInferenceTemplate(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
-	view := inferenceTemplateView(*model)
+	view := dto.InferenceTemplateDetail{
+		InferenceTemplate: inferenceTemplateView(*model),
+		CanDelete:         model.Source == "user" && canRequestAdminWrite(r),
+	}
 	detected, err := a.d.Store.ListDistinctDetectedGPUs()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -195,22 +198,8 @@ func (a *apiHandlers) getInferenceTemplate(w http.ResponseWriter, r *http.Reques
 	view.DetectedSupport = &support
 	view.ReadmeZHCNContent = a.readInferenceTemplateDocumentation(*model, model.ReadmeZHCN)
 	view.ReadmeENContent = a.readInferenceTemplateDocumentation(*model, model.ReadmeEN)
+	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, view)
-}
-
-func (a *apiHandlers) readInferenceTemplateDocumentation(model store.InferenceModel, file string) string {
-	if strings.TrimSpace(file) == "" {
-		return ""
-	}
-	var data []byte
-	var err error
-	if a.d.CatalogPackages != nil && model.PackageDigest != "" {
-		data, err = a.d.CatalogPackages.ReadDocumentation(model.PackageDigest, model.ModelID, file)
-	}
-	if err != nil || len(data) > 512*1024 {
-		return ""
-	}
-	return string(data)
 }
 
 func (a *apiHandlers) cloneInferenceTemplate(w http.ResponseWriter, r *http.Request) {
@@ -466,7 +455,9 @@ func (a *apiHandlers) backfillInferenceCatalogWeightBytes(r *http.Request, catal
 			}
 			sources := append([]inferencecatalog.WeightSource(nil), spec.Weights.Sources...)
 			for _, source := range sources {
-				meta, err := a.deployments().FetchModelMeta(r.Context(), source.Provider, source.RepoID, source.Revision, source.Subfolder, "")
+				// A rank-scoped spec states one rank's size: rank 0's subfolder.
+				subfolder := deploy.ExpandRankSubfolder(source.Subfolder, 0)
+				meta, err := a.deployments().FetchModelMeta(r.Context(), source.Provider, source.RepoID, source.Revision, subfolder, "")
 				if err == nil && meta != nil && meta.WeightBytes > 0 {
 					spec.WeightBytes = meta.WeightBytes
 					break
@@ -531,7 +522,7 @@ func inferenceTemplateView(model store.InferenceModel) dto.InferenceTemplate {
 	_ = json.Unmarshal([]byte(model.InputModalities), &out.InputModalities)
 	_ = json.Unmarshal([]byte(model.Unsupported), &out.Unsupported)
 	for _, spec := range model.Specs {
-		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode, ManualCommand: spec.ManualCommand}
+		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, StartTimeoutSec: spec.StartTimeoutSec, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode, ManualCommand: spec.ManualCommand}
 		view.PDRoles = pdRoleShapesView(spec.PDRoles)
 		if sources, _ := inferencecatalog.DecodeWeightSources(spec.WeightSources); sources != nil {
 			view.WeightSources = make([]dto.WeightSource, 0, len(sources))
@@ -558,6 +549,7 @@ func inferenceTemplateView(model store.InferenceModel) dto.InferenceTemplate {
 			enrichTemplateAPIContract(view.API, raw)
 		}
 		_ = json.Unmarshal([]byte(spec.Components), &view.Components)
+		view.Dirs = managedDirsView(spec.Dirs)
 		out.Specs = append(out.Specs, view)
 	}
 	return out

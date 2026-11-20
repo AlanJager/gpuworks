@@ -32,7 +32,7 @@ type storageAdmission struct {
 // controller reports it.
 func admitStorage(st *store.Store, in Input, primaryBytes, componentBytes int64) storageAdmission {
 	if st == nil || in.Node == nil {
-		return storageAdmission{NeedBytes: modelDiskNeed(st, in.Model, in.Node, 0, primaryBytes) + componentDiskNeed(st, in.Node, 0, componentBytes, in.ComponentArtifacts)}
+		return storageAdmission{NeedBytes: modelDiskNeed(st, in.storageModel(), in.Node, 0, primaryBytes) + componentDiskNeed(st, in.Node, 0, componentBytes, in.ComponentArtifacts)}
 	}
 	type modelNeed struct {
 		id    uint
@@ -40,8 +40,8 @@ func admitStorage(st *store.Store, in Input, primaryBytes, componentBytes int64)
 	}
 	var out storageAdmission
 	var needs []modelNeed
-	if in.Model != nil && in.Model.ID != 0 {
-		needs = append(needs, modelNeed{in.Model.ID, primaryBytes})
+	if primary := in.storageModel(); primary != nil && primary.ID != 0 {
+		needs = append(needs, modelNeed{primary.ID, primaryBytes})
 	} else {
 		out.NeedBytes += max(primaryBytes, 0)
 	}

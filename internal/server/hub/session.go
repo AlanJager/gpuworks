@@ -100,6 +100,9 @@ type Session struct {
 	// reaches it through hub.session() under the hub mutex, so that pairing is
 	// the happens-before edge and no extra lock is needed here.
 	caps []string
+	// managedDirGroups are the managed directory groups the agent's hello
+	// listed (proto.Hello.ManagedDirGroups); written and read like caps.
+	managedDirGroups []string
 
 	assetMu      sync.RWMutex
 	assetDigests map[string]struct{}
@@ -198,6 +201,7 @@ func (s *Session) handshake() error {
 	}
 	s.proto = negotiated
 	s.caps = hello.Caps
+	s.managedDirGroups = hello.ManagedDirGroups
 	s.rememberAssetDigests(hello.RuntimeAssetDigests)
 
 	if strings.TrimSpace(hello.NodeToken) == "" {

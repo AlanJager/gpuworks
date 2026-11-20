@@ -73,6 +73,7 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Gemma-4-31B-IT | A3 TP4 BF16 vLLM | With the checkpoint's own chat template, the runner started and text plus real-image chat returned HTTP 200 |
 | Gemma-4-26B-A4B-IT | A3 TP4 BF16 vLLM, eager | With the checkpoint's own chat template and graph capture disabled, weight loading, KV cache and health passed. Text returned `Gemma426B-910C-ok`; a real 448×448 image request returned `White` with 258 image tokens |
 | Gemma-3-4B-IT / Gemma-3-27B-IT | A3 SGLang / vLLM for 4B; A3 SGLang for 27B | Both TP2 4B engines and the TP4 27B eager profile completed text and real-image chat; the SGLang templates disable NPU graph capture by default to avoid startup hangs |
+| Gemma-3-27B-IT (910B4) | 910B TP4 BF16 SGLang, eager; nerdctl | 2026-11-20: on the graph path the engine started and all four schedulers crashed at the first generation (`Unsupport run graph with different stream`); with `--disable-cuda-graph` it was running in 2 min 37 s and text chat answered correctly. Only text chat and nerdctl were tested; the same profile on a udocker node did not become ready with four cards (processes slowed under PRoot before weights were loaded), which the template arguments do not affect |
 | Kimi-K2.6-W4A8 | A3 TP4 × DP4, 16 dies; W4A8 + DFlash15 | All 147 files and 499.1 GiB passed full SHA-256 verification. With TP4 declared explicitly, preflight passed, the deployment reached running, and real chat returned the `Kimi-K2.6-910C-ok` marker |
 | Kimi-K3 | None | The upstream minimum recipe uses four A3 nodes; there is no catalog spec |
 
@@ -200,4 +201,4 @@ For 910C, Logic ID in `npu-smi info -m` equals Phy-ID and is not compacted when 
 All `/dev/davinci0..15` devices exist and map one-to-one to Phy-ID (`Phy-ID = 2 × NPU ID + Chip ID`).
 For 910B, NPU ID equals Phy-ID, so single-chip cards continue to use NPU ID.
 
-<!-- translation-source-sha256: e8dc90c7cfe5b6bcb1272c36ae52cb34e53016bc2a89a1be1159b13d9d53ab19 -->
+<!-- translation-source-sha256: 5c2401c3f77e598504cad447b580bd8f8d321ed4925546bffc8075f144199b44 -->

@@ -20,6 +20,21 @@ func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
 	return nodes, err
 }
 
+// ExistingNodeUUIDs says which of uuids name a node the platform still has,
+// reading the UUIDs alone.
+func (s *Store) ExistingNodeUUIDs(uuids []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(uuids))
+	if len(uuids) == 0 {
+		return out, nil
+	}
+	var found []string
+	err := s.reader().Model(&Node{}).Where("uuid IN ?", uuids).Pluck("uuid", &found).Error
+	for _, u := range found {
+		out[u] = true
+	}
+	return out, err
+}
+
 // CountNodes counts every node, whatever its state.
 // CountNodesUnseenSince counts the nodes whose agents have not reported since
 // at (or never have): after a server start, the ones still reconnecting.

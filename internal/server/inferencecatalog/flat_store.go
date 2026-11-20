@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -68,6 +69,10 @@ func ToFlatStoreModels(catalog FlatCatalog) ([]store.InferenceModel, error) {
 			placement, _ := json.Marshal(spec.Placement)
 			apiContract, _ := json.Marshal(spec.API)
 			components, _ := json.Marshal(spec.Components)
+			dirs, err := deploy.EncodeManagedDirs(spec.Dirs)
+			if err != nil {
+				return nil, fmt.Errorf("model %s spec %s: %w", model.ModelID, spec.Name, err)
+			}
 			imageSources, err := EncodeImageSources(spec.ImageSources)
 			if err != nil {
 				return nil, fmt.Errorf("model %s spec %s image_sources: %w", model.ModelID, spec.Name, err)
@@ -78,7 +83,7 @@ func ToFlatStoreModels(catalog FlatCatalog) ([]store.InferenceModel, error) {
 				WeightSources: string(weights), GPUs: string(gpus), Args: string(args),
 				Env: string(env), PreStartArgv: string(preStartArgv), PreStartScript: spec.PreStartScript,
 				Assets: string(assets), Entrypoint: string(entrypoint), Placement: string(placement),
-				APIContract: string(apiContract), Components: string(components), PDMode: spec.PDMode, PDRoles: EncodePDRoleShapes(spec.PDRoles), ManualCommand: spec.ManualCommand, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, DockerArgs: string(dockerArgs),
+				APIContract: string(apiContract), Components: string(components), PDMode: spec.PDMode, PDRoles: EncodePDRoleShapes(spec.PDRoles), ManualCommand: spec.ManualCommand, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, StartTimeoutSec: spec.StartTimeoutSec, DockerArgs: string(dockerArgs), Dirs: dirs,
 			})
 		}
 		models = append(models, row)

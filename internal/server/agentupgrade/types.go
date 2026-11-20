@@ -18,6 +18,11 @@ type Config struct {
 	TransferTimeout time.Duration
 	ConfirmTimeout  time.Duration
 	PollInterval    time.Duration
+	// UnconfirmedHold is how long an attempt that missed its deadline keeps
+	// holding the slot; OldVersionSettle how long a node back on its old
+	// version is watched before its attempt is settled (see runner.go).
+	UnconfirmedHold  time.Duration
+	OldVersionSettle time.Duration
 }
 
 type Candidate struct {

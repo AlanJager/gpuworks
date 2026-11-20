@@ -80,6 +80,14 @@
     "placement": "{{engine}} · {{placement}}",
     "signalFilter": "信号"
   },
+  "placement": {
+    "none": "尚未放置",
+    "tensorParallel": "TP{{count}}",
+    "gpus_one": "{{count}} 卡",
+    "gpus_other": "{{count}} 卡",
+    "multiNode_one": "{{nodes}} 节点 × {{count}} 卡",
+    "multiNode_other": "{{nodes}} 节点 × {{count}} 卡"
+  },
   "metricExplorer": {
     "title": "指标浏览器",
     "metric": "指标",

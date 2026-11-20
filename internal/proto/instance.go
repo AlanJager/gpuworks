@@ -59,12 +59,19 @@ type ResolvedLaunch struct {
 	CommandMode               string             `json:"command_mode,omitempty"`
 	Entrypoint                []string           `json:"entrypoint,omitempty"`
 	Argv                      []string           `json:"argv"`
-	PreStartArgv              []string           `json:"pre_start_argv,omitempty"`
-	PreStartScript            string             `json:"pre_start_script,omitempty"`
-	RuntimeAssets             []RuntimeAsset     `json:"runtime_assets,omitempty"`
-	Env                       map[string]string  `json:"env,omitempty"`
-	EnvLayers                 LaunchEnvLayers    `json:"env_layers,omitempty"`
-	DockerArgs                []string           `json:"docker_args,omitempty"`
+	// PreStartArgv or PreStartScript (never both) is the launch's
+	// preparation. The agent writes it into a wrapper it mounts read-only at
+	// /gpuworks/pre-start.sh and makes the container's entrypoint, so it runs
+	// inside the container on every container start, under /bin/sh -eu with
+	// the container's environment, before exec'ing the engine command; a
+	// failing step exits the container before the engine runs. It needs an
+	// explicit Entrypoint, which the engine adapter or the template supplies.
+	PreStartArgv   []string          `json:"pre_start_argv,omitempty"`
+	PreStartScript string            `json:"pre_start_script,omitempty"`
+	RuntimeAssets  []RuntimeAsset    `json:"runtime_assets,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	EnvLayers      LaunchEnvLayers   `json:"env_layers,omitempty"`
+	DockerArgs     []string          `json:"docker_args,omitempty"`
 	// ShmBytes is the size of the container's /dev/shm tmpfs, not a memory
 	// reservation or limit: pages count against the host only once written.
 	// It is ineffective under --ipc=host, which shares the host's /dev/shm.
@@ -74,6 +81,10 @@ type ResolvedLaunch struct {
 	HealthPath         string                 `json:"health_path,omitempty"`
 	APIContract        json.RawMessage        `json:"api_contract,omitempty"`
 	PlacementVariables map[string]interface{} `json:"placement_variables,omitempty"`
+
+	// Peers is the document the agent writes and mounts at
+	// PeersFileMountPath for a rank of a multi-node group; nil otherwise.
+	Peers *PeersFile `json:"peers,omitempty"`
 }
 
 // InstanceDesiredState is the desired state for one concrete inference instance. The
@@ -137,7 +148,13 @@ type InstanceDesiredState struct {
 	// The agent checks the engine on the API port answers under it.
 	ServedModelName string `json:"served_model_name,omitempty"`
 	APIPort         int    `json:"api_port"`
-	StartTimeout    int    `json:"start_timeout_seconds"`
+	// MetricsPort is the port the engine's metrics endpoint listens on when
+	// its template declared api.metrics.port: separate: reserved with the API
+	// port at launch and part of Ports, fixed for the instance's life. Zero
+	// means the endpoint is on the API port (and, from a server that predates
+	// the field, always).
+	MetricsPort  int `json:"metrics_port,omitempty"`
+	StartTimeout int `json:"start_timeout_seconds"`
 
 	// Distributed process metadata. Headless ranks participate in the engine's
 	// worker group but do not expose an HTTP endpoint of their own.
@@ -184,6 +201,11 @@ type RuntimeAsset struct {
 	Content       []byte `json:"content,omitempty"`
 }
 
+// MountSpec is one container mount. It mounts exactly one source: Source, a
+// host path, or Volume, a named volume the container runtime owns (created on
+// first use, kept across container restarts and removals). Only runtimes with
+// named volumes (docker, nerdctl) run a Volume mount; the others refuse the
+// launch with ErrorMountVolumeUnsupported.
 type MountSpec struct {
 	Source   string `json:"source,omitempty"`
 	Volume   string `json:"volume,omitempty"`
@@ -191,6 +213,9 @@ type MountSpec struct {
 	ReadOnly bool   `json:"read_only,omitempty"`
 	SizeHint string `json:"size_hint,omitempty"`
 	Purpose  string `json:"purpose,omitempty"`
+	// ManagedDir names the template-declared directory a MountPurposeManagedDir
+	// mount is backed by; nil for every other purpose.
+	ManagedDir *ManagedDirRef `json:"managed_dir,omitempty"`
 }
 
 // MountPurposeComputeNetwork marks a read-only host file an instance needs
@@ -209,6 +234,16 @@ const MountPurposeComputeNetwork = "compute_network"
 // The constant lives here because both sides need the same word and neither may
 // import the other; the protocol is their only shared vocabulary.
 const MountPurposeKVDisk = "kv-disk"
+
+// MountPurposeManagedDir marks a writable directory an inference template
+// declares (spec dirs, ADR 0077): the server states the container path, the
+// declared ceiling in bytes (SizeHint) and which directory it is
+// (ManagedDir), and leaves Source empty; the agent prepares the host
+// directory and fills Source in. Unlike the KV disk the directory outlives
+// the instances that mount it: the agent removes it only when the server says
+// the deployment is gone (DesiredState.ReleasedDirGroups,
+// StateUpdate.ReleasedDirDeployments).
+const MountPurposeManagedDir = "managed-dir"
 
 // PhaseSleep marks a status report about sleep/wake reconciliation. A report in
 // this phase with a Message is a failed sleep or wake order; the server records
@@ -342,6 +377,11 @@ type InstanceStatus struct {
 	// the engine. Nil means the document was not read. An empty slice means the
 	// document listed no paths.
 	OpenAPIPaths *[]string `json:"openapi_paths,omitempty"`
+	// GPUIdents, when set, are the cards (accelerator.CardIdent) the instance
+	// actually runs on because the node's allocator chose them, in the order
+	// of the instance's device indexes. The server rebinds the instance to
+	// them; only a server advertising CapInstanceCardRebind is sent one.
+	GPUIdents []string `json:"gpu_idents,omitempty"`
 }
 
 const (

@@ -41,8 +41,12 @@ await i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+const { default: userEvent } = await import("@testing-library/user-event");
 const { default: AddNodeDrawer } = await import("../src/components/AddNodeDrawer");
 const apiModule = await import("../src/api");
+// A required field's label ends in a visual "*" mark; match the label text without it.
+const required = { normalizer: (text: string) => text.replace(/\s*\*$/, "").trim() };
+
 
 const platformKey = {
   public_key: "ssh-ed25519 AAAAC3NzaPlatform gpuworks@server",
@@ -129,13 +133,15 @@ test("the removed connection notes are gone in both SSH branches", () => {
 });
 
 // The install directory is an advanced setting whether or not the host has SSH.
-test("the install directory sits under Advanced in both SSH branches", () => {
+test("the install directory sits under Advanced in both SSH branches", async () => {
   renderDrawer();
   for (const branch of [nodes.add.sshSupported, nodes.add.sshUnsupported]) {
     fireEvent.click(screen.getByRole("radio", { name: branch }));
-    assert.ok(screen.queryByPlaceholderText(nodes.add.installDirPlaceholder) === null, `${branch}: collapsed by default`);
+    // A collapsed section keeps its fields mounted but hidden.
+    const shown = () => { const field = screen.queryByPlaceholderText(nodes.add.installDirPlaceholder); return !!field && !field.closest("[hidden]"); };
+    assert.ok(!shown(), `${branch}: collapsed by default`);
     fireEvent.click(screen.getByText(nodes.add.advanced));
-    assert.ok(screen.getByPlaceholderText(nodes.add.installDirPlaceholder), `${branch}: shown once expanded`);
+    await waitFor(() => assert.ok(shown(), `${branch}: shown once expanded`));
     fireEvent.click(screen.getByText(nodes.add.advanced));
   }
 });
@@ -213,7 +219,7 @@ test("keyboard-interactive sends its password to precheck and install without a 
     fireEvent.click(screen.getByRole("radio", { name: nodes.ssh.auth.key }));
     fireEvent.change(screen.getByPlaceholderText("-----BEGIN OPENSSH PRIVATE KEY-----"), { target: { value: "STALE KEY" } });
     fireEvent.click(screen.getByRole("radio", { name: "Keyboard-interactive" }));
-    fireEvent.change(screen.getByLabelText(nodes.ssh.password), { target: { value: "keyboard-secret" } });
+    fireEvent.change(screen.getByLabelText(nodes.ssh.password, required), { target: { value: "keyboard-secret" } });
     fireEvent.click(screen.getByRole("button", { name: nodes.add.startPrecheck }));
     await waitFor(() => assert.equal(precheck.bodies.length, 1));
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
@@ -262,7 +268,7 @@ test("server-initiated installs send no server address", async () => {
     fireEvent.change(screen.getByPlaceholderText(nodes.add.hostAddressPlaceholder), { target: { value: "203.0.113.7" } });
     fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@203.0.113.7" } });
     fireEvent.click(screen.getByRole("radio", { name: nodes.ssh.auth.password }));
-    fireEvent.change(screen.getByLabelText(nodes.ssh.password), { target: { value: "pw" } });
+    fireEvent.change(screen.getByLabelText(nodes.ssh.password, required), { target: { value: "pw" } });
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
     await waitFor(() => assert.equal(install.bodies.length, 1));
     const body = install.bodies[0];
@@ -542,10 +548,11 @@ test("the install directory explains what it holds and where it may live", async
   renderDrawer();
   fireEvent.click(screen.getByText(nodes.add.advanced));
   assert.ok(screen.getByText(nodes.add.installDirHelp));
+  // The explanation sits behind the help mark beside the label.
   const label = screen.getByText(nodes.add.installDir).closest("label");
-  const icon = label?.querySelector(".anticon-question-circle");
-  assert.ok(icon, "the install directory label has no tooltip icon");
-  fireEvent.mouseEnter(icon!);
+  const icon = label?.parentElement?.querySelector<HTMLElement>(`button[aria-label="${common.helpTip.label}"]`);
+  assert.ok(icon, "the install directory label has no help mark");
+  fireEvent.focus(icon!);
   await screen.findByText(nodes.add.installDirTooltip);
 });
 
@@ -566,8 +573,7 @@ test("installing onto a host that already runs an agent asks before replacing it
     await waitFor(() => assert.ok(screen.getByText(platformKey.authorize_command)));
     fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@192.0.2.210" } });
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
-    // antd's confirm renders its title twice (heading and dialog label).
-    await waitFor(() => assert.ok(screen.getAllByText(nodes.add.replaceAgent.title).length > 0));
+    await screen.findByRole("dialog", { name: nodes.add.replaceAgent.title });
     const reason = common.apiError.NODE_INSTALL_EXISTING_AGENT.replace("{{server}}", "http://192.0.2.156:8800");
     assert.ok(screen.getAllByText(`${reason} ${nodes.add.replaceAgent.content}`).length > 0);
     assert.equal(bodies.length, 1);
@@ -749,7 +755,7 @@ for (const change of ["name", "credentials", "mode", "direction", "systemd"] as 
       if (change === "name") fireEvent.change(screen.getByPlaceholderText(nodes.add.nodeNamePlaceholder), { target: { value: "edited" } });
       else if (change === "credentials") {
         fireEvent.click(screen.getByRole("radio", { name: nodes.ssh.auth.password }));
-        fireEvent.change(screen.getByLabelText(nodes.ssh.password), { target: { value: "pw" } });
+        fireEvent.change(screen.getByLabelText(nodes.ssh.password, required), { target: { value: "pw" } });
       } else if (change === "systemd") {
         fireEvent.click(screen.getByText(nodes.add.advanced));
         fireEvent.click(screen.getByRole("switch", { name: nodes.add.useSystemd }));
@@ -787,9 +793,10 @@ test("starting via systemd is on by default and can be switched off", async () =
     await waitFor(() => assert.equal(install.bodies.length, 1));
     assert.equal(install.bodies[0].no_systemd, undefined);
 
-    // The switch works from the keyboard: the left arrow turns it off.
-    fireEvent.keyDown(toggle, { key: "ArrowLeft", keyCode: 37 });
-    assert.equal(toggle.getAttribute("aria-checked"), "false");
+    // The switch works from the keyboard: Space turns it off.
+    toggle.focus();
+    await userEvent.setup().keyboard(" ");
+    await waitFor(() => assert.equal(toggle.getAttribute("aria-checked"), "false"));
     assert.ok(screen.getByText(nodes.add.useSystemdOff));
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
     await waitFor(() => assert.equal(install.bodies.length, 2));
@@ -846,9 +853,7 @@ test("a nohup install into an agent's directory asks without mentioning the serv
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
     const reason = common.apiError.NODE_INSTALL_EXISTING_AGENT_SAME_DIR.replace("{{dir}}", "/opt/gpuworks");
     await waitFor(() => assert.ok(screen.getAllByText(reason).length > 0));
-    // An earlier test's confirm may still be leaving; read the newest one.
-    const dialogs = document.querySelectorAll(".ant-modal-confirm");
-    const confirm = dialogs[dialogs.length - 1]?.textContent ?? "";
+    const confirm = (await screen.findByRole("dialog", { name: nodes.add.replaceAgent.title })).textContent ?? "";
     assert.ok(confirm.includes(reason), `newest confirm: ${confirm}`);
     assert.ok(!confirm.includes(nodes.add.replaceAgent.content), `the confirm speaks of the service: ${confirm}`);
     fireEvent.click(screen.getByRole("button", { name: nodes.add.replaceAgent.confirm }));

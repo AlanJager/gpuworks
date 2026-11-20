@@ -206,7 +206,7 @@ func (e *Engine) servingExitFailure(ctx context.Context, spec proto.InstanceDesi
 	if !st.Exists {
 		return proto.RuntimeFailure{Code: proto.ErrorContainerDisappeared, Phase: proto.PhaseServing}, subject + " disappeared while running (removed outside the agent)"
 	}
-	return e.exitedFailure(ctx, name, st, proto.PhaseServing,
+	return e.exitedFailure(ctx, name, st, spec.VRAMLimitBytes, proto.PhaseServing,
 		fmt.Sprintf("%s OOM-killed while running (code %d)", subject, st.ExitCode),
 		fmt.Sprintf("%s exited while running (code %d)", subject, st.ExitCode))
 }

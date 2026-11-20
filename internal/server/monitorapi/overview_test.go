@@ -399,7 +399,7 @@ func TestServiceRowDTORoundsAllNumericFields(t *testing.T) {
 		HasKVHitRate: true, KVHitRate: 0.409999999999999,
 		HasTokens: true, PromptTokensPerSec: 3100.049999999999999, GenTokensPerSec: 1820.05000000000001,
 	}
-	got := serviceRowDTO(row, "", "running", dto.DeploymentHealth{Status: "ok"})
+	got := serviceRowDTO(row, dto.MonitorPlacement{Nodes: []string{}}, "running", dto.DeploymentHealth{Status: "ok"})
 	if got.RequestRate == nil || *got.RequestRate != 42.0 {
 		t.Fatalf("RequestRate = %v, want 42.0 (rounded)", got.RequestRate)
 	}

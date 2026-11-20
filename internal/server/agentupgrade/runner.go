@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sort"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -63,6 +64,10 @@ func (s *Service) reconcile(ctx context.Context) error {
 			i.Phase = "unconfirmed"
 		}
 	}
+	if err := s.settleRemovedNodes(items); err != nil {
+		return err
+	}
+	s.forgetSettled(items)
 	for _, i := range items {
 		if activePhase(i.Phase) || (i.Phase == "unconfirmed" && i.VerifiedAt == nil) {
 			if err := s.observeConnection(i); err != nil {
@@ -85,7 +90,14 @@ drained:
 	if err != nil {
 		return err
 	}
-	if b, err := s.st.AgentUpgradeBlocker(); err != nil || b != nil {
+	// After the events: a rolled-back agent's own report settles its attempt
+	// first, with its words.
+	for _, i := range items {
+		if err := s.backOnOldVersion(i); err != nil {
+			return err
+		}
+	}
+	if b, err := s.st.AgentUpgradeBlocker(s.heldSince()); err != nil || b != nil {
 		return err
 	}
 	runs, err := s.st.AgentUpgradeRuns()
@@ -143,7 +155,7 @@ func (s *Service) execute(ctx context.Context, run store.AgentUpgradeRun, item s
 		return skip("legacy_unverified", "this older server-dial agent cannot prove a download address")
 	}
 	deadline := now.Add(s.cfg.TransferTimeout + s.cfg.ConfirmTimeout)
-	claimed, err := s.st.ClaimAgentUpgrade(item.ID, conn.SessionID, now, deadline)
+	claimed, err := s.st.ClaimAgentUpgrade(item.ID, conn.SessionID, now, deadline, s.heldSince())
 	if err != nil || !claimed {
 		return err
 	}
@@ -237,6 +249,10 @@ func (s *Service) observeEvent(o Observation) error {
 	if err != nil {
 		return err
 	}
+	// A node can have an attempt in flight and an older one still
+	// unconfirmed (once the older stops holding the slot, the node may be
+	// upgraded again): a failure is the attempt in flight's first.
+	sort.SliceStable(items, func(a, b int) bool { return activePhase(items[a].Phase) && !activePhase(items[b].Phase) })
 	for _, i := range items {
 		if i.NodeUUID != o.NodeUUID || (!activePhase(i.Phase) && !(i.Phase == "unconfirmed" && i.VerifiedAt == nil)) || i.StartedAt == nil {
 			continue
@@ -275,3 +291,132 @@ func (s *Service) observeEvent(o Observation) error {
 	}
 	return nil
 }
+
+// settleRemovedNodes settles the unconfirmed attempts whose node the
+// platform no longer has (deleted by hand, or by a sweep once the cloud or
+// the cluster dropped it): that node's agent will never come back to confirm
+// or fail them, so nothing else would end the hold on the slot. Only an
+// attempt past its deadline is settled, never one in flight: deleting a
+// Kubernetes or Slurm node, or forcing a deletion, leaves its agent running,
+// and it enrolls again under a new identity while the upgrade it was given
+// may still be applying; the deadline bounds that, as it does for any
+// attempt. The sweeps remove a node only after it has been gone longer than
+// the deadline, so their attempts are always unconfirmed by then. The run
+// stays paused, as after any unconfirmed attempt: the rest of its queue
+// waits for an administrator to continue it.
+func (s *Service) settleRemovedNodes(items []store.AgentUpgradeItem) error {
+	var uuids []string
+	for _, i := range items {
+		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
+			uuids = append(uuids, i.NodeUUID)
+		}
+	}
+	if len(uuids) == 0 {
+		return nil
+	}
+	exists, err := s.st.ExistingNodeUUIDs(uuids)
+	if err != nil {
+		return err
+	}
+	for index := range items {
+		i := &items[index]
+		if exists[i.NodeUUID] {
+			continue
+		}
+		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
+			if _, err := s.st.VerifyAgentUpgrade(i.ID, s.now(), "system", ReasonNodeRemoved, ""); err != nil {
+				return err
+			}
+			now := s.now()
+			i.VerifiedAt = &now
+			s.notify()
+			s.cfg.Logger.Info("agent upgrade attempt settled: its node was removed", "run", i.RunID, "node", i.NodeUUID)
+		}
+	}
+	return nil
+}
+
+// ReasonNodeRemoved is the verification code of an unconfirmed attempt whose
+// node was removed from the platform.
+const ReasonNodeRemoved = "node_removed"
+
+// heldSince is the time from which an unconfirmed attempt still holds the
+// slot (store.upgradeOutstanding): one that missed its deadline longer than
+// UnconfirmedHold ago no longer does. By the deadline the agent has settled
+// the upgrade itself: a new binary that does not register within its own
+// confirmation window puts the previous one back, and one that was off then
+// does so as it starts. What is left is not knowing how it ended, which only
+// concerns that node, and that node is upgraded only once it is online again,
+// on a confirmed binary. UnconfirmedHold covers clock skew between node and
+// server and the legacy download path.
+func (s *Service) heldSince() time.Time { return s.now().Add(-s.cfg.UnconfirmedHold) }
+
+// oldVersionSession is a node seen back on a new session at a version other
+// than the target, and when.
+type oldVersionSession struct {
+	session string
+	at      time.Time
+}
+
+// backOnOldVersion settles an unconfirmed attempt whose node is back on a
+// new session at a version other than the target: the upgrade did not take
+// effect (it never arrived, or the agent rolled it back). A rolled-back agent
+// reports that just after it registers, which settles the attempt with the
+// agent's own words (observeEvent), so the node is watched for
+// OldVersionSettle before it is settled here, as reconnected_old_version. An
+// attempt still in flight is left to its deadline.
+func (s *Service) backOnOldVersion(i store.AgentUpgradeItem) error {
+	if i.Phase != "unconfirmed" || i.VerifiedAt != nil {
+		return nil
+	}
+	conn, ok := s.cfg.Transport.AgentUpgradeConnection(i.NodeUUID)
+	if !ok || !conn.Ready || conn.SessionID == "" || conn.SessionID == i.BaselineSessionID {
+		return nil
+	}
+	run, err := s.st.AgentUpgradeRun(i.RunID)
+	if err != nil {
+		return err
+	}
+	if conn.Version == run.TargetVersion {
+		return nil // observeConnection settles it as target_registered
+	}
+	if s.oldVersion == nil {
+		s.oldVersion = map[uint]oldVersionSession{}
+	}
+	seen, ok := s.oldVersion[i.ID]
+	if !ok || seen.session != conn.SessionID {
+		s.oldVersion[i.ID] = oldVersionSession{session: conn.SessionID, at: s.now()}
+		return nil
+	}
+	if s.now().Sub(seen.at) < s.cfg.OldVersionSettle {
+		return nil
+	}
+	delete(s.oldVersion, i.ID)
+	verified, err := s.st.VerifyAgentUpgrade(i.ID, s.now(), "system", ReasonReconnectedOldVersion, "")
+	if err != nil || !verified {
+		return err
+	}
+	s.notify()
+	s.cfg.Logger.Info("agent upgrade attempt settled: its node is back on its old version", "run", i.RunID, "node", i.NodeUUID, "version", conn.Version)
+	return nil
+}
+
+// forgetSettled drops what backOnOldVersion watched of attempts no longer
+// unconfirmed and unverified (settled since, by any path).
+func (s *Service) forgetSettled(items []store.AgentUpgradeItem) {
+	open := map[uint]bool{}
+	for _, i := range items {
+		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
+			open[i.ID] = true
+		}
+	}
+	for id := range s.oldVersion {
+		if !open[id] {
+			delete(s.oldVersion, id)
+		}
+	}
+}
+
+// ReasonReconnectedOldVersion is the verification code of an unconfirmed
+// attempt whose node came back on a version other than the target.
+const ReasonReconnectedOldVersion = "reconnected_old_version"

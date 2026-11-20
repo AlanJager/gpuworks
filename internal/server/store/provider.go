@@ -72,8 +72,12 @@ func (s *Store) DeleteProvider(id uint) error {
 		if err := tx.Where("provider_id = ?", id).Delete(&cloudstore.CloudHost{}).Error; err != nil {
 			return err
 		}
-		// Clusters made from the account stay, as entries made by hand.
+		// Clusters (Kubernetes and Slurm) made from the account stay, as entries
+		// made by hand.
 		if err := tx.Model(&KubeCluster{}).Where("provider_id = ?", id).Updates(map[string]any{"provider_id": nil, "provider_cluster_id": ""}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&SlurmCluster{}).Where("provider_id = ?", id).Updates(map[string]any{"provider_id": nil, "provider_cluster_id": ""}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&Provider{}, id).Error
@@ -87,6 +91,20 @@ func (s *Store) SetProviderState(id uint, state string) error {
 
 // ---- provider instances ----
 
+// An HPC cluster's compute node is an instance named "<cluster id>_<node
+// name>" (Alibaba Cloud E-HPC), where the node name is what the cluster's
+// scheduler calls the node.
+
+// HPCNodeName is the scheduler's name for the compute node whose instance is
+// called instanceName in cluster clusterID; false when the instance is not
+// named that way.
+func HPCNodeName(clusterID, instanceName string) (string, bool) {
+	return strings.CutPrefix(instanceName, clusterID+"_")
+}
+
+// HPCInstanceName is HPCNodeName's inverse.
+func HPCInstanceName(clusterID, nodeName string) string { return clusterID + "_" + nodeName }
+
 // UpsertProviderInstance records/updates a discovered instance.
 func (s *Store) UpsertProviderInstance(pi *ProviderInstance) error {
 	return upsertProviderInstance(s.db, pi)
@@ -98,13 +116,20 @@ func upsertProviderInstance(db *gorm.DB, pi *ProviderInstance) error {
 	if err == nil {
 		pi.ID = existing.ID
 		pi.NodeID = existing.NodeID // preserve linkage
+		if pi.NodeID == 0 {
+			pi.NodeID = slurmNodeOfInstance(db, pi)
+		}
 		return db.Model(&existing).Select(
 			"name", "gpu_model", "gpu_count", "power", "price_per_hr", "region", "public_ip",
-			"ssh_port", "ssh_user", "ssh_connections", "kind", "managed_cluster", "updated_at",
+			"ssh_port", "ssh_user", "ssh_connections", "kind", "managed_cluster",
+			"hpc_cluster_id", "hpc_cluster_name", "hpc_scheduler", "hpc_scheduler_version", "node_id", "updated_at",
 		).Updates(pi).Error
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
+	}
+	if pi.NodeID == 0 {
+		pi.NodeID = slurmNodeOfInstance(db, pi)
 	}
 	return db.Create(pi).Error
 }
@@ -391,11 +416,14 @@ func (s *Store) NodeProviders(nodeIDs []uint) (map[uint]NodeProvider, error) {
 }
 
 // accountInstances keeps the instances that are an account's own. A managed
-// Kubernetes cluster's node is listed by the vendor among the account's
-// instances, but it is the cluster's: it joins through the cluster, and its
-// lifecycle is the node pool's. This is the one place that rule is written.
+// Kubernetes cluster's node, and a compute node of an HPC cluster (E-HPC),
+// are listed by the vendor among the account's instances, but they are the
+// cluster's: they join through the cluster (its DaemonSet, its Slurm entry),
+// and their lifecycle is the node pool's or the queue's, so the user does not
+// count or manage them as instances. This is the one place that rule is
+// written.
 func accountInstances(db *gorm.DB) *gorm.DB {
-	return db.Where("managed_cluster = '' OR managed_cluster IS NULL")
+	return db.Where("(managed_cluster = '' OR managed_cluster IS NULL) AND (hpc_cluster_id = '' OR hpc_cluster_id IS NULL)")
 }
 
 // AccountInstances are an account's own instances, in id order: what its

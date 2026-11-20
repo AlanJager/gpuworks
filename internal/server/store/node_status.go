@@ -73,6 +73,14 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		runtimeFallbackSocketUpdates(updates, st.Sys)
 		updates["accelerator_vendors"] = encodeAcceleratorVendors(st.Sys.AcceleratorVendors)
 		updates["kube_unschedulable"] = st.Sys.KubeUnschedulable
+		if n.SlurmClusterID == 0 {
+			// An enrolled node's Slurm name is what enrollment found it by:
+			// a report that cannot say it (Slurm not asked yet) must not
+			// blank it, nor may one that says another.
+			updates["slurm_node"] = truncate(st.Sys.SlurmNode, 64)
+		}
+		updates["slurm_unavailable"] = truncate(st.Sys.SlurmUnavailable, 32)
+		updates["slurm_reason"] = truncate(st.Sys.SlurmReason, 256)
 		// The platform's and the holders' half of NodeScheduling: a holder
 		// cordons a node while it holds it, the platform while it has a
 		// reason of its own, and each lifts only the cordons it set
@@ -81,7 +89,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		// reason to let work onto the node, nor to take it off. Holds are
 		// decided on the facts this report writes, whatever the runtime.
 		runtimeKnown := st.Sys.RuntimeDriver != "" || st.Sys.RuntimeGPUBlocked != ""
-		cordonReason := PlatformCordonReason(st.Sys.RuntimeGPUBlocked, st.Sys.KubeUnschedulable, st.GPUs)
+		cordonReason := PlatformCordonReason(st.Sys.RuntimeGPUBlocked, st.Sys.KubeUnschedulable, st.Sys.SlurmUnavailable, st.GPUs)
 		facts := nodeHoldFacts(&n)
 		facts.GPUVendor = gpuVendor
 		if count, ok := updates["gpu_count"].(int); ok {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -34,7 +35,7 @@ func templateSpecFromSnapshot(selection deploy.CatalogSelection, image string) (
 		WeightBytes: selection.WeightBytes, RuntimeWeightBytes: selection.RuntimeWeightBytes,
 		Args: selection.ExtraArgs, Env: selection.Env,
 		Entrypoint: selection.Entrypoint, PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
-		PDMode: selection.PDMode, ShmBytes: selection.ShmBytes, MemlockUnlimited: selection.MemlockUnlimited, DockerArgs: selection.DockerArgs,
+		PDMode: selection.PDMode, ShmBytes: selection.ShmBytes, MemlockUnlimited: selection.MemlockUnlimited, StartTimeoutSec: selection.StartTimeoutSec, DockerArgs: selection.DockerArgs, Dirs: selection.Dirs,
 	}
 	for _, field := range []struct {
 		raw json.RawMessage
@@ -101,6 +102,7 @@ func verifyTemplateLaunch(dep *store.Deployment, instance store.Instance, node *
 	request.Source.Image = in.Image
 	request.ModelMount = desired.ModelMount
 	request.Topology.NNodes = 1
+	request.MetricsPort = desired.MetricsPort
 	request.Selection = selection
 	// Rebuild with the naming the captured launch used. An alias-less launch
 	// carries no --served-model-name when it predates naming such launches
@@ -138,6 +140,16 @@ func verifyTemplateLaunch(dep *store.Deployment, instance store.Instance, node *
 		if err := json.Unmarshal(actual.APIContract, &in.TemplateSpec.API); err != nil {
 			return err
 		}
+	}
+	// The launched contract is the model's operations and carries no metrics,
+	// but the arguments above reference ${GPUWORKS_METRICS_PORT} when the
+	// template reserved the port, and a spec that does without declaring it
+	// would not import.
+	if spec := in.TemplateSpec; spec != nil && spec.API != nil && inferenceapi.SeparateMetricsPort(selection.APIContract) {
+		if spec.API.Metrics == nil {
+			spec.API.Metrics = &inferenceapi.Metrics{}
+		}
+		spec.API.Metrics.Port = inferenceapi.MetricsPortSeparate
 	}
 	return nil
 }

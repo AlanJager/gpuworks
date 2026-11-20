@@ -2,6 +2,7 @@ package probe
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -366,5 +367,58 @@ func TestProbeBudgetAllowsForAPodOnKubernetes(t *testing.T) {
 	r = New(&namedDriver{name: "docker"}, nil, "ppu")
 	if got := r.probeTimeout(); got != 15*time.Second {
 		t.Fatalf("docker budget = %s, want 15s", got)
+	}
+}
+
+// An agent that found nothing to probe still reports an empty list on the
+// wire, so the server can distinguish it from an absent report.
+func TestRunnerReportsAnEmptyListWhenNoProbeRuns(t *testing.T) {
+	hygonGPUs := []proto.GPUInfo{{Index: 0, Vendor: "hygon", ArchID: "K100_AI"}, {Index: 1, Vendor: "hygon", ArchID: "K100_AI"}}
+	complete := []proto.AssetReport{{Backend: accelerator.BackendHygonLogical, Files: []string{"libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so", "gpuworks-hygon-vdev-helper"}}}
+	for _, tc := range []struct {
+		name   string
+		assets []proto.AssetReport
+		gpus   []proto.GPUInfo
+	}{
+		{"no assets observed", []proto.AssetReport{}, hygonGPUs},
+		{"helper not installed", []proto.AssetReport{{Backend: accelerator.BackendHygonLogical, Files: []string{"libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so"}}}, hygonGPUs},
+		{"no card of a supported model", complete, []proto.GPUInfo{{Index: 0, Vendor: "hygon", ArchID: "K100"}}},
+		{"no cards", complete, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			driver, builder := &fakeDriver{}, &fakeBuilder{}
+			runner := New(driver, builder, "hygon")
+			for call, got := range map[string][]proto.PartitionProbeResult{
+				"Results": runner.Results(context.Background(), tc.assets, tc.gpus),
+				"Refresh": runner.Refresh(context.Background(), tc.assets, tc.gpus),
+				"Cached":  runner.Cached(),
+			} {
+				if got == nil || len(got) != 0 {
+					t.Errorf("%s = %#v, want an empty non-nil list", call, got)
+				}
+				sys, err := json.Marshal(proto.SysInfo{PartitionProbes: got})
+				if err != nil || !strings.Contains(string(sys), `"partition_probes":[]`) {
+					t.Errorf("%s on the wire = %s (%v), want \"partition_probes\":[]", call, sys, err)
+				}
+			}
+			if len(driver.runs) != 0 || len(builder.built) != 0 {
+				t.Fatalf("runs=%d built=%v, want no probe", len(driver.runs), builder.built)
+			}
+		})
+	}
+}
+
+func TestRunnerProbesEveryK100AICardOnceAssetsAreComplete(t *testing.T) {
+	driver, builder := &fakeDriver{logs: "backend=hygon quota_enforced=true"}, &fakeBuilder{}
+	runner := New(driver, builder, "hygon")
+	assets := []proto.AssetReport{{Backend: accelerator.BackendHygonLogical, Files: []string{"libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so", "gpuworks-hygon-vdev-helper"}}}
+	got := runner.Results(context.Background(), assets, []proto.GPUInfo{{Index: 0, Vendor: "hygon", ArchID: "K100_AI"}, {Index: 1, Vendor: "hygon", ArchID: "K100_AI"}})
+	if len(got) != 2 {
+		t.Fatalf("K100_AI probe results = %+v, want two cards", got)
+	}
+	for index, result := range got {
+		if result.GPUIndex == nil || *result.GPUIndex != index || result.Status != proto.PartitionProbePassed || result.Backend != accelerator.BackendHygonLogical {
+			t.Errorf("K100_AI probe result for card %d = %+v", index, result)
+		}
 	}
 }

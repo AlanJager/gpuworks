@@ -57,6 +57,13 @@ type Config struct {
 	MountRoot string
 	// UdockerBundle is the directory of an offline udocker bundle.
 	UdockerBundle string
+	// SlurmEnrollToken and SlurmNode make this agent a node of a Slurm
+	// cluster entry: with no Token, the agent trades the entry's enrollment
+	// token for its own node token on every start (SlurmNode is the node's
+	// name in Slurm), the way a Kubernetes agent does. The installer a Slurm
+	// health check runs writes them in place of Token.
+	SlurmEnrollToken string
+	SlurmNode        string
 }
 
 // Errors Validate reports; callers that map them to their own codes (the
@@ -65,9 +72,12 @@ var (
 	ErrServerRequired = errors.New("the server URL is required when the agent dials the server")
 	ErrServerInvalid  = errors.New("the server URL is invalid")
 	ErrTokenRequired  = errors.New("the node token is required")
-	ErrModeInvalid    = errors.New("the connection direction must be agent_dial or server_dial")
-	ErrListenInvalid  = errors.New("the listen address must be host:port or :port with a port from 1 to 65535")
-	ErrValueInvalid   = errors.New("a value contains a line break or control character")
+	// ErrSlurmEnrollIncomplete: a Slurm enrollment token needs the node's
+	// Slurm name, and an agent the server dials cannot enroll.
+	ErrSlurmEnrollIncomplete = errors.New("a Slurm enrollment token needs the Slurm node name and an agent that dials the server")
+	ErrModeInvalid           = errors.New("the connection direction must be agent_dial or server_dial")
+	ErrListenInvalid         = errors.New("the listen address must be host:port or :port with a port from 1 to 65535")
+	ErrValueInvalid          = errors.New("a value contains a line break or control character")
 )
 
 // Mode is the connection direction with the default applied.
@@ -99,6 +109,8 @@ func (c Config) Normalized() Config {
 	c.RuntimeDriver = strings.TrimSpace(c.RuntimeDriver)
 	c.MountRoot = strings.TrimSpace(c.MountRoot)
 	c.UdockerBundle = strings.TrimSpace(c.UdockerBundle)
+	c.SlurmEnrollToken = strings.TrimSpace(c.SlurmEnrollToken)
+	c.SlurmNode = strings.TrimSpace(c.SlurmNode)
 	return c
 }
 
@@ -112,7 +124,8 @@ func NormalizeListen(listen string) string {
 }
 
 // Validate says whether the agent can start with c, by one rule shared by
-// the agent and the server: a token always; a server URL when the agent dials
+// the agent and the server: a token always (or, for a Slurm node, the
+// enrollment token it trades for one and the node's Slurm name); a server URL when the agent dials
 // the server (when given anyway it must still be one); a listen address when
 // the server dials the agent.
 func (c Config) Validate() error {
@@ -126,7 +139,12 @@ func (c Config) Validate() error {
 		return fmt.Errorf("%w (got %q)", ErrModeInvalid, c.ConnectMode)
 	}
 	if c.Token == "" {
-		return ErrTokenRequired
+		if c.SlurmEnrollToken == "" {
+			return ErrTokenRequired
+		}
+		if c.SlurmNode == "" || c.ConnectMode != AgentDial {
+			return ErrSlurmEnrollIncomplete
+		}
 	}
 	if c.Server == "" {
 		if c.ConnectMode == AgentDial {
@@ -176,16 +194,21 @@ func ListenPort(listen string) (int, error) {
 type field struct {
 	key string
 	ptr func(*Config) *string
+	// optional keys are written only when they have a value, so the file of
+	// an install that does not use them is what it always was.
+	optional bool
 }
 
 var fields = []field{
-	{"SERVER", func(c *Config) *string { return &c.Server }},
-	{"TOKEN", func(c *Config) *string { return &c.Token }},
-	{"CONNECT_MODE", func(c *Config) *string { return &c.ConnectMode }},
-	{"LISTEN", func(c *Config) *string { return &c.Listen }},
-	{"RUNTIME_DRIVER", func(c *Config) *string { return &c.RuntimeDriver }},
-	{"MOUNT_ROOT", func(c *Config) *string { return &c.MountRoot }},
-	{"UDOCKER_BUNDLE", func(c *Config) *string { return &c.UdockerBundle }},
+	{"SERVER", func(c *Config) *string { return &c.Server }, false},
+	{"TOKEN", func(c *Config) *string { return &c.Token }, false},
+	{"CONNECT_MODE", func(c *Config) *string { return &c.ConnectMode }, false},
+	{"LISTEN", func(c *Config) *string { return &c.Listen }, false},
+	{"RUNTIME_DRIVER", func(c *Config) *string { return &c.RuntimeDriver }, false},
+	{"MOUNT_ROOT", func(c *Config) *string { return &c.MountRoot }, false},
+	{"UDOCKER_BUNDLE", func(c *Config) *string { return &c.UdockerBundle }, false},
+	{"SLURM_ENROLL_TOKEN", func(c *Config) *string { return &c.SlurmEnrollToken }, true},
+	{"SLURM_NODE", func(c *Config) *string { return &c.SlurmNode }, true},
 }
 
 func (c Config) values() []string {
@@ -207,6 +230,9 @@ func (c Config) Render() ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString(header)
 	for _, f := range fields {
+		if f.optional && *f.ptr(&c) == "" {
+			continue // a key only some installs have: absent, not empty
+		}
 		fmt.Fprintf(&b, "%s=%s\n", f.key, *f.ptr(&c))
 	}
 	return b.Bytes(), nil

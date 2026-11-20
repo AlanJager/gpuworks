@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/slurmcluster"
 )
 
 // Router builds the top-level HTTP handler.
@@ -17,6 +18,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 		policy = policies[0].Normalized()
 	}
 	a := &apiHandlers{d: d, sessionPolicy: policy, benchmarkExecutions: map[uint]*benchmarkExecution{}}
+	a.slurm = slurmcluster.New()
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -40,6 +42,12 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 	// enrollment token in place of a login.
 	r.Get("/kube/manifest.yaml", a.kubeManifestByToken)
 
+	// Slurm health-check scripts, fetched by `curl … | sudo sh` and by the
+	// controller's setup, with the cluster's enrollment token in place of a login.
+	r.Get("/slurm/setup.sh", a.slurmSetupByToken)
+	r.Get("/slurm/check.sh", a.slurmCheckByToken)
+	r.Get("/slurm/token-status", a.slurmTokenStatus)
+
 	// Data plane: OpenAI-compatible /v1. ProxyV1 owns API-key auth for every
 	// endpoint, including /v1/models and the batch files.
 	if d.ProxyV1 != nil {
@@ -50,6 +58,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 		r.Post("/auth/login", a.login)
 		// A Kubernetes node's agent authenticates with the enrollment token.
 		r.Post("/kube/enroll", a.kubeEnroll)
+		// A Slurm node's agent authenticates with the enrollment token, and
+		// later reports its cluster's GPU nodes with its own node token.
+		r.Post("/slurm/enroll", a.slurmEnroll)
+		r.Post("/slurm/gpu-nodes", a.slurmReportGPUNodes)
 		r.Post("/auth/logout", a.logout)
 		// Open to the sign-in page; it reveals nothing (see prefetchUpdates).
 		r.Post("/updates/prefetch", a.prefetchUpdates)
@@ -89,6 +101,16 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Delete("/kube/clusters/{uuid}", a.deleteKubeCluster)
 			r.With(a.managementAdmin).Post("/kube/clusters/{uuid}/apply", a.applyKubeCluster)
 			r.With(a.managementAdmin).Post("/kube/clusters/{uuid}/remove", a.removeKubeCluster)
+			r.Get("/slurm/clusters", a.listSlurmClusters)
+			r.Get("/slurm/defaults", a.slurmDefaults)
+			r.With(a.managementAdmin).Post("/slurm/clusters", a.createSlurmCluster)
+			r.With(a.managementAdmin).Put("/slurm/clusters/{uuid}", a.updateSlurmCluster)
+			r.With(a.managementAdmin).Get("/slurm/clusters/{uuid}/setup", a.slurmClusterSetup)
+			r.With(a.managementAdmin).Get("/slurm/clusters/{uuid}/script", a.slurmClusterScript)
+			r.With(a.managementAdmin).Post("/slurm/clusters/{uuid}/revoke", a.revokeSlurmCluster)
+			r.With(a.managementAdmin).Delete("/slurm/clusters/{uuid}", a.deleteSlurmCluster)
+			r.With(a.managementAdmin).Post("/slurm/clusters/{uuid}/apply", a.applySlurmCluster)
+			r.With(a.managementAdmin).Post("/slurm/clusters/{uuid}/remove", a.removeSlurmCluster)
 			r.Get("/agent/rejects", a.listRejects)
 			r.Get("/agent/upgrade-errors", a.listUpgradeErrors)
 			r.With(a.managementAdmin).Post("/agent-upgrades/preview", a.previewAgentUpgrade)
@@ -224,6 +246,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Post("/inference-templates/clone", a.cloneInferenceTemplate)
 			r.With(a.managementAdmin).Post("/inference-templates/import", a.importInferenceTemplates)
 			r.With(a.managementAdmin).Post("/inference-templates/evaluate", a.evaluateInferenceTemplates)
+			r.With(a.managementAdmin).Delete("/inference-templates", a.deleteInferenceTemplate)
 			r.With(a.managementAdmin).Delete("/inference-templates/spec", a.deleteInferenceTemplateSpec)
 			r.With(a.managementAdmin).Post("/inference-templates/sync", a.syncInferenceTemplates)
 			r.With(a.managementAdmin).Post("/inference-templates/official", a.uploadOfficialInferenceCatalog)
@@ -315,6 +338,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Delete("/providers/{id}", a.deleteProvider)
 			r.Post("/providers/{id}/sync", a.syncProvider)
 			r.Get("/providers/{id}/clusters", a.providerClusters)
+			r.Get("/providers/{id}/hpc-clusters", a.providerHPCClusters)
 			r.Post("/providers/{id}/instances", a.createProviderInstance)
 			r.Get("/providers/{id}/instances", a.providerInstances)
 			r.Delete("/providers/{id}/instances/{externalID}", a.deleteProviderInstance)

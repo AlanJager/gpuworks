@@ -12,7 +12,7 @@ import (
 
 // Kubernetes nodes come and go with their cluster: a node scaled away or
 // replaced, or one its entry no longer selects (a changed node selector or
-// set of node pools), leaves its row offline here for good. kubeNodeLoop
+// set of node pools), leaves its row offline here for good. The sweep loop
 // asks another online agent of the same entry whether such a node still
 // exists there and runs one of the entry's agents, and removes the ones that
 // do not and run nothing. The server holds no cluster credentials, so the
@@ -25,7 +25,10 @@ const (
 	kubeNodeGoneAfter = 15 * time.Minute
 )
 
-func (a *App) kubeNodeLoop(ctx context.Context) {
+// clusterNodeLoop runs the sweeps of the nodes that left a cluster: the
+// Kubernetes one above, and the Slurm one (package slurmsweep), each with its
+// own memory of the nodes it found gone.
+func (a *App) clusterNodeLoop(ctx context.Context) {
 	t := time.NewTicker(kubeNodeSweepInterval)
 	defer t.Stop()
 	strikes := map[string]bool{}
@@ -34,7 +37,9 @@ func (a *App) kubeNodeLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			sweepGoneKubeNodes(ctx, a.log, a.store, a.hub.CallNode, a.hub.Kick, time.Now().Add(-kubeNodeGoneAfter), strikes)
+			cutoff := time.Now().UTC().Add(-kubeNodeGoneAfter)
+			sweepGoneKubeNodes(ctx, a.log, a.store, a.hub.CallNode, a.hub.Kick, cutoff, strikes)
+			a.slurmSweep.Sweep(ctx, cutoff)
 		}
 	}
 }

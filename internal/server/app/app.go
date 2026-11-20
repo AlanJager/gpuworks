@@ -43,6 +43,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/provision"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/recovery"
+	"gpuworks.ai/gpuworks/internal/server/slurmsweep"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/webterm"
 	"gpuworks.ai/gpuworks/internal/server/webui"
@@ -94,6 +95,9 @@ type App struct {
 	scaleReplicas func(deploymentID uint, role string, replicas int) error
 	// ext is what the extension modules registered (extension_start.go).
 	ext *extensionSet
+	// slurmSweep removes the Slurm nodes that left their cluster, asking the
+	// cloud about the nodes of entries made from a cloud cluster.
+	slurmSweep *slurmsweep.Sweeper
 }
 
 // New builds the server from config.
@@ -263,6 +267,7 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	monSvc := newMonitorAPIServiceOn(lists, st, obs.TSDB(), nil, newRequestSource(st, px.LiveRequests, obs.UX()), health.Health, modelPreparation{h, ctrl}, h.Online)
 
 	a.hub, a.ctrl, a.proxyAcct, a.health, a.batches = h, ctrl, acct, health, batches
+	a.slurmSweep = newSlurmSweep(log, st, provSvc, h.Kick)
 	var restart func()
 	if cfg.SelfRestart {
 		restart = a.requestRestart
@@ -448,7 +453,7 @@ func (a *App) Run(ctx context.Context) error {
 	// Background: flip stale-online nodes to offline as a safety net.
 	goBG(func() { a.staleLoop(ctx) })
 	goBG(func() { a.eventRetentionLoop(ctx) }) // Background: bound the deployment event timeline.
-	goBG(func() { a.kubeNodeLoop(ctx) })       // Background: remove Kubernetes nodes that left their cluster.
+	goBG(func() { a.clusterNodeLoop(ctx) })    // Background: remove Kubernetes and Slurm nodes that left their cluster.
 	// Background: reconnect nodes that listen for reverse server_dial sessions.
 	goBG(func() { a.hub.RunServerDialReconnect(ctx, a.cfg.ServerDialReconnectInterval) })
 	goBG(func() { a.hub.RunNodeQueues(ctx) }) // persist reports queued off the read loops

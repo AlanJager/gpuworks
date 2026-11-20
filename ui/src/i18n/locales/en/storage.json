@@ -585,5 +585,10 @@
     "previewLoading": "Loading node cache facts; capacity impact is not known yet.",
     "previewFailed": "Could not load node cache facts. Capacity impact is unknown; retry to preview it.",
     "previewIncomplete": "The response did not include all node cache facts."
+  },
+  "sharedFS": {
+    "someNodes_one": "Found on {{count}} node: the directory is on a shared filesystem; suggestion: add it as NFS or a shared directory",
+    "someNodes_other": "Found on {{count}} nodes: the directory is on a shared filesystem; suggestion: add it as NFS or a shared directory",
+    "node": "The directory is on a shared filesystem ({{type}})"
   }
 }

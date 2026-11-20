@@ -204,8 +204,7 @@ func statedEveryKey(t *testing.T, engine string) LaunchConfig {
 	t.Helper()
 	raw := map[string]any{}
 	for key, spec := range engineParams(engine) {
-		if spec.Platform {
-			// A platform parameter has no flag by construction (ADR 0021).
+		if spec.Platform || spec.Selector {
 			continue
 		}
 		raw[key] = exampleParameterValue(spec)

@@ -1,6 +1,7 @@
 import { Badge, type BadgeColor } from "../../components/ui/badge";
 import { Tooltip } from "../../components/ui/tooltip";
 import { ExclamationCircleFilled } from "@ant-design/icons";
+import { colors } from "../../theme/tokens";
 import { useTranslation } from "react-i18next";
 import type { Network, NetworkRail, NetworkRole, NetworkTestRun, NetworkType, NetworkWarning } from "../../networkTypes";
 
@@ -80,7 +81,8 @@ export function WarningMark({ warnings, summary }: { warnings?: NetworkWarning[]
         role="img"
         aria-label={text}
         tabIndex={0}
-        className="ml-1.5 cursor-help text-fg-warning"
+        className="ml-1.5 cursor-help"
+        style={{ color: colors.warning }}
       />
     </Tooltip>
   );

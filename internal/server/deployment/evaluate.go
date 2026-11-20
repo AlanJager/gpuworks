@@ -136,11 +136,12 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	pool, poolErr := requestPool(req)
 	placement := evaluationPlacement(req)
 	eligibleLoaded := false
+	var fleet []*store.Node // the nodes the eligibility was read from
 	loadEligible := func(requests func(*store.Node) map[int]planning.TargetCardRequest) {
 		if eligibleLoaded {
 			return
 		}
-		resp.EligibleNodes, resp.PoolPartitionCapability = s.evaluateEligibleNodes(selection, pool, poolErr, IsAutomaticPlacement(req) && req.NNodes <= 1, requests)
+		resp.EligibleNodes, resp.PoolPartitionCapability, fleet = s.evaluateEligibleNodes(selection, pool, poolErr, IsAutomaticPlacement(req) && req.NNodes <= 1, requests)
 		eligibleLoaded = true
 	}
 	writeFieldErrors := func() {
@@ -213,7 +214,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// One materialization decides this deployment's launch configuration. The
 	// preview below, the estimate, and a create submitted from this form all
 	// read the same object.
-	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
+	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, requestTargetCards(profileNode, req), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
 	if errs.add(fieldExtraArgs, err) {
 		// ProductErrors that name a key land on that key's control; the
 		// extra-args parse error is the one that starts on the text box.
@@ -250,6 +251,13 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	resp.Moved = launch.Moved
 	resp.TemplateParams = launch.TemplateParams
 	resp.TemplateResidualArgs = launch.TemplateResidual
+	// The form values are already answered, so the deployer sees the share
+	// the refusal is about and can lower it. An edit is not asked: the
+	// deployment's own engine already holds the host memory in question.
+	if base == nil && errs.add("sleepable", s.sleepHostBacking(eng.Name(), req, quick, profileNode)) {
+		writeFieldErrors()
+		return
+	}
 	if requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides); overrideErr == nil && placement.PD == nil {
 		mount, components := previewComponentMounts(nil, selection.Components, nil)
 		draft := evaluationLaunchRequest(evaluatePlanEnv{request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, selection: selection, placement: placement, quick: quick, userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides, modelMount: mount, componentMounts: components, templateResidual: launch.TemplateResidual}, nil)
@@ -369,6 +377,23 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			}
 		}
 	}
+	// The node list offers no node a create naming it refuses for never
+	// fitting. It is judged before the draft's own node is planned, so the
+	// list is the same whichever node the draft has, in either placement
+	// mode. Automatic placement has ranked and listed its candidates by now:
+	// what it lists is what it trialled, as before. A memory-limited draft is
+	// left to its node's dGPU checks.
+	poolFits := false
+	if requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides); overrideErr == nil && req.NNodes <= 1 && req.VRAMLimitGiB <= 0 {
+		candidateReq := cloneRequest(*req)
+		candidateReq.Image = resp.Image
+		admissionSelection := selection
+		admissionSelection.ExtraArgs = launch.TemplateResidual
+		anyCards := placement
+		anyCards.GPUIndexes = nil // each node's scheduler picks its cards
+		mount, components := previewComponentMounts(s.d.Store, selection.Components, nil)
+		poolFits = s.markNeverFitting(ctx, resp.EligibleNodes, fleet, s.poolLaunch(&candidateReq, eng, model, admissionSelection, anyCards, quick, userExtraArgs, servedName, mount, components, requestOverrides))
+	}
 	// Computed after automatic placement so the weight networks, peers and
 	// local-path facts are the selected node's, not the unnamed request's.
 	weightFacts, weightFactsErr := s.evaluateWeightFacts(model, selection, profileNode)
@@ -407,7 +432,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			resp.Acquisition.Nodes = s.evaluateNodeAcquisition(ctx, pinned, resp.Image, templateImageSources(selection, resp.Image), model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, known)
 		}
 	}
-	resp.Diagnostics, err = s.inspectDeploymentModel(ctx, model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes, false)
+	resp.Diagnostics, err = s.inspectWeights(ctx, selection, model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes)
 	if errs.add("model_id", err) {
 		writeFieldErrors()
 		return
@@ -495,7 +520,9 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 			return
 		}
 	}
-	if errs.empty() && IsAutomaticPlacement(req) && req.NNodes <= 1 && resp.SelectedNode == nil {
+	// An automatic draft with no node is refused when no node of its pool
+	// could ever run it. A node the list above found to fit settles that.
+	if errs.empty() && req.NNodes <= 1 && placement.PD == nil && IsAutomaticPlacement(req) && resp.SelectedNode == nil && !poolFits {
 		candidateReq := cloneRequest(*req)
 		candidateReq.Image = resp.Image
 		admissionSelection := selection

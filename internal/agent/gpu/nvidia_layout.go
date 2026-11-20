@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -37,9 +38,12 @@ type layoutAnswer struct {
 type nvidiaLayout struct {
 	mu        sync.Mutex
 	inventory string // the cards the last successful probe listed
-	topology  layoutAnswer
-	listing   layoutAnswer // `nvidia-smi -L`
-	pcieAt    time.Time    // when dmon was last asked
+	// unified are the cards of that probe whose memory is the host's pool
+	// (accelerator.UnifiedMemory), by UUID: Metrics sees no model names.
+	unified  map[string]bool
+	topology layoutAnswer
+	listing  layoutAnswer // `nvidia-smi -L`
+	pcieAt   time.Time    // when dmon was last asked
 }
 
 // nvidiaInventoryKey names the cards nvidia-smi listed: which card sits at
@@ -59,10 +63,35 @@ func nvidiaInventoryKey(gpus []proto.GPUInfo) string {
 
 func (p *SMIProber) rememberInventory(gpus []proto.GPUInfo) string {
 	key := nvidiaInventoryKey(gpus)
+	var unified map[string]bool
+	for _, g := range gpus {
+		if g.UUID != "" && accelerator.UnifiedMemory(g.Name) {
+			if unified == nil {
+				unified = map[string]bool{}
+			}
+			unified[g.UUID] = true
+		}
+	}
 	p.layout.mu.Lock()
 	p.layout.inventory = key
+	// An empty roster is a driver hiccup as often as a real card removal, and
+	// the metrics rows it accompanies are empty anyway, so the previous
+	// judgment is kept: it can fill nothing that is not listed, and the next
+	// successful probe replaces it wholesale.
+	if len(gpus) > 0 {
+		p.layout.unified = unified
+	}
 	p.layout.mu.Unlock()
 	return key
+}
+
+// unifiedMemoryCards are the cards the last non-empty probe recognized as
+// unified memory, by UUID; nil when nothing was probed yet or the last
+// non-empty roster had no unified-memory card.
+func (p *SMIProber) unifiedMemoryCards() map[string]bool {
+	p.layout.mu.Lock()
+	defer p.layout.mu.Unlock()
+	return p.layout.unified
 }
 
 // layoutQuery answers a layout query for the cards in inventory: from the

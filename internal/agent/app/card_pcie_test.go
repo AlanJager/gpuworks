@@ -224,3 +224,44 @@ func TestDoctorSeesHeldHardwareFindingsWithoutMovingThem(t *testing.T) {
 		t.Fatalf("doctor = %+v findings=%+v", r.Accelerators, r.Findings)
 	}
 }
+
+// GWKS-417: a unified-memory part is the SoC's own GPU, and its on-chip link
+// trains narrower than its capability by design (x1 of x16 on Jetson Thor).
+// Width alone is not a fault there and raised a warning that never cleared;
+// a busy card's slow link is still one.
+func TestAnOnChipCardsNarrowLinkIsNotAFault(t *testing.T) {
+	h := newPCIeHost(t)
+	now := time.Now()
+	n := pcieNode(h, &now)
+	onChip := func(busy bool) proto.GPUInfo {
+		cards := pcieCard()
+		cards[0].Name = "NVIDIA Thor"
+		n.applyPCIeFindings(cards, map[string]bool{cardIdent: busy}, nil)
+		return cards[0]
+	}
+	h.link("16.0", "1")
+	for i := 0; i < 5; i++ {
+		if c := onChip(true); c.HealthCode != "" {
+			t.Fatalf("report %d raised %q for an on-chip link's width", i+1, c.HealthCode)
+		}
+	}
+	// The same link on a discrete card is still raised.
+	for i := 0; i < 2; i++ {
+		report(n, false, nil)
+	}
+	if c := report(n, false, nil); c.HealthCode != accelerator.HealthPCIeLinkDegraded {
+		t.Fatalf("a discrete card's x1 link = %q", c.HealthCode)
+	}
+	// Three good reports clear it before the speed case.
+	h.link("16.0", "16")
+	for i := 0; i < 3; i++ {
+		report(n, false, nil)
+	}
+	h.link("2.5", "1")
+	for i := 0; i < 2; i++ {
+		onChip(true)
+	}
+	if c := onChip(true); c.HealthCode != accelerator.HealthPCIeLinkDegraded {
+		t.Fatalf("a busy on-chip card's slow link = %q", c.HealthCode)
+	}
+}

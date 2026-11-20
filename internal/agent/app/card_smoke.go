@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -202,14 +203,37 @@ func runtimeUnusableEvidence(at time.Time, detail string) []accelerator.HealthFi
 // Nothing is blamed on a workload's own failure: the check is the vendor's
 // runtime, so a card that answers stays healthy and only the deployment's own
 // error explains it.
+//
+// A card another instance is serving on is left alone, as a round leaves it.
+// The instance that failed shared it (a partition beside others), so the
+// reason a round has for not asking holds in full: work is running there,
+// which answers whether the card can be used, and a context created beside it
+// can disturb it. Asking anyway judged the whole card by one start: on an
+// Ascend die with two partitions serving, a third given a 1 GiB quota failed
+// to start with 507033, the check that followed answered
+// aclrtSetDevice=507033 as well, and the die was withdrawn from scheduling
+// while both partitions kept answering requests. CANN's own reason, in the
+// failed engine's log, was EE1023 "Alloc Stream resource failed. Reason: Too
+// many streams are created": what a die in use had left for one more
+// process, which is not what this check exists to find. A card that has really
+// failed is still found: its instances stop serving, and the failure of the
+// last of them asks it.
 func (n *NodeRuntime) recheckCardsAfterStartFailure(uuid string) {
 	if n.cardSmoke == nil || uuid == "" {
 		return
 	}
 	idents := map[string]bool{}
-	for _, ident := range n.instanceCards(uuid) {
+	given, besides := n.instanceCards(uuid)
+	for _, ident := range given {
 		if ident != "" {
 			idents[ident] = true
+		}
+	}
+	for ident := range servedCards(besides, n.occupancy.identOf) {
+		if idents[ident] {
+			delete(idents, ident)
+			n.log.Info("runtime check after a failed start left a card alone: other instances are serving on it",
+				"instance", uuid, "card", ident)
 		}
 	}
 	if len(idents) == 0 {
@@ -225,13 +249,33 @@ func (n *NodeRuntime) recheckCardsAfterStartFailure(uuid string) {
 }
 
 // instanceCards is a seam over the engine, which starts containers and has no
-// business in a test of these rules.
-func (n *NodeRuntime) instanceCards(uuid string) []string {
+// business in a test of these rules: the cards the instance was given, and
+// what the other instances are serving on right now.
+func (n *NodeRuntime) instanceCards(uuid string) ([]string, engine.HeldCards) {
 	if n.instanceCardIdents != nil {
 		return n.instanceCardIdents(uuid)
 	}
 	if n.engine == nil {
-		return nil
+		return nil, engine.HeldCards{}
 	}
-	return n.engine.CardIdentsOf(uuid)
+	return n.engine.CardIdentsOf(uuid), n.engine.ServingCardsBesides(uuid)
+}
+
+// servedCards names the cards instances are serving on. A card bound by index
+// only is named from the cards last probed, like cardsInUse names it; one
+// that cannot be named is left out, so its card is asked rather than assumed
+// to be serving.
+func servedCards(serving engine.HeldCards, identOf func(int) (string, bool)) map[string]bool {
+	cards := map[string]bool{}
+	for _, ident := range serving.Idents {
+		if ident != "" {
+			cards[ident] = true
+		}
+	}
+	for _, index := range serving.Indexes {
+		if ident, ok := identOf(index); ok {
+			cards[ident] = true
+		}
+	}
+	return cards
 }

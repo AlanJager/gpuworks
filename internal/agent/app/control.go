@@ -213,6 +213,9 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 	n.imageSeen.forget(ds.ImageRefs)
 	if n.engine != nil {
 		n.engine.SetDesiredFull(ctx, ds.Instances)
+		// After the desired set is known, so a group an instance still
+		// mounts is kept (ADR 0077).
+		n.engine.ReleaseManagedDirGroups(ds.ReleasedDirGroups)
 		// The orphan sweep is opt-in (server orphan_cleanup setting). Its
 		// name-prefix ownership is not cluster-scoped: with the sweep on by
 		// default, any second gpuworks agent sharing this container runtime —
@@ -265,6 +268,7 @@ func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) b
 	if n.engine != nil {
 		n.engine.ApplyUpdate(ctx, su.Instances, su.RemovedInstances)
 		n.engine.UpdateObservations(su.Observations)
+		n.engine.ReleaseManagedDirDeployments(su.ReleasedDirDeployments)
 	}
 	if n.bench != nil {
 		n.bench.ApplyUpdate(ctx, su.Benchmarks, su.RemovedBenchmarks)
@@ -323,6 +327,11 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 	} else {
 		paths = append(paths, statAgentOwnedPath("udocker", filepath.Join(n.stateDir, "udocker")))
 		paths = append(paths, statManagedPath("docker", "/var/lib/docker"))
+	}
+	if n.engine != nil {
+		if root := n.engine.ManagedDirRoot(); root != "" {
+			paths = append(paths, managedDirUsage(root, paths))
+		}
 	}
 	return append(paths, n.storagePathUsage()...)
 }

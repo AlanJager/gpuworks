@@ -35,6 +35,8 @@ const reapWaitLimit = 2 * time.Second
 // Tracker keeps the pid and exit files of the workloads under Dir.
 type Tracker struct {
 	Dir string
+	// KillWait overrides killWaitLimit; tests shorten it.
+	KillWait time.Duration
 
 	mu      sync.Mutex
 	reaping map[string]chan struct{} // workloads whose exit status is not yet recorded
@@ -159,11 +161,20 @@ func (t *Tracker) Running() ([]string, error) {
 	return names, nil
 }
 
+// killWaitLimit bounds how long Stop waits for a group to be gone after
+// SIGKILL. An engine may still need seconds to release accelerator resources
+// after the signal, before it exits.
+const killWaitLimit = 15 * time.Second
+
 // Stop sends SIGTERM to the group of name and SIGKILL once grace has passed.
-// It waits on the whole group, not its leader: an engine's workers can outlive
-// a leader that exits on SIGTERM, and they hold the memory and port the next
-// start needs. A workload that is not tracked or already gone is stopped.
+// It waits for the whole group: a worker can outlive the leader and retain
+// GPU memory or open ports. On Linux, already-exited processes can remain
+// visible until reaped, so after SIGKILL they do not keep removal pending.
 func (t *Tracker) Stop(ctx context.Context, name string, grace time.Duration) error {
+	return t.stop(ctx, name, grace, groupStillWorking)
+}
+
+func (t *Tracker) stop(ctx context.Context, name string, grace time.Duration, stillWorking func(int) bool) error {
 	pid, ok := t.PID(name)
 	if !ok {
 		return nil
@@ -175,19 +186,31 @@ func (t *Tracker) Stop(ctx context.Context, name string, grace time.Duration) er
 	defer deadline.Stop()
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
-	for groupAlive(pid) {
+	killed := false
+	for groupAlive(pid) && (!killed || stillWorking(pid)) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-deadline.C:
+			if killed {
+				return fmt.Errorf("process group of %s is still alive %s after SIGKILL", name, t.killWait())
+			}
 			if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil && err != syscall.ESRCH {
 				return fmt.Errorf("kill process group of %s: %w", name, err)
 			}
-			return nil
+			killed = true
+			deadline.Reset(t.killWait())
 		case <-tick.C:
 		}
 	}
 	return nil
+}
+
+func (t *Tracker) killWait() time.Duration {
+	if t.KillWait > 0 {
+		return t.KillWait
+	}
+	return killWaitLimit
 }
 
 // Forget drops the pid and exit files of a stopped workload, after letting a

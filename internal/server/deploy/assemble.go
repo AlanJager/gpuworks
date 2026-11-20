@@ -50,6 +50,12 @@ type ResolveLaunchInput struct {
 	Engine                 Engine
 	Params                 Params
 	ContainerOverrides     ContainerOverrides
+
+	// TemplateStartTimeoutSec is the selected template spec's
+	// start_timeout_sec: it replaces DefaultStartTimeoutSec, and an explicit
+	// StartTimeoutSec replaces it. Zero when the spec states none.
+	TemplateStartTimeoutSec int
+
 	// ComponentModelMount is the template component's primary mount; it
 	// replaces DefaultModelMount, and an override may not contradict it.
 	ComponentModelMount string
@@ -99,6 +105,12 @@ type ResolveLaunchInput struct {
 	// memlock_unlimited take. Empty when the deployment has no template or the
 	// spec states none.
 	TemplateDockerArgs []string
+	// TemplateDirs are the selected template spec's writable directories
+	// (spec dirs); each becomes a managed mount (managedDirMounts).
+	TemplateDirs []ManagedDir
+	// ManagedDirGroup is the deployment's managed directory group key
+	// (proto.ManagedDirGroupKey); empty for a deployment not created yet.
+	ManagedDirGroup string
 }
 
 // ResolveLaunch is the only public path that merges catalog facts, image
@@ -179,7 +191,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 		params.PriorityScheduling = false
 	}
 	built := input.Engine.Build(params)
-	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params)} {
+	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params), peersEnv(params)} {
 		if len(extra) == 0 {
 			continue
 		}
@@ -320,8 +332,13 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	if mount, needed := kvDiskMount(params.Quick, input.ModelWeightBytes); needed {
 		launch.Mounts = append(launch.Mounts, mount)
 	}
+	launch.Mounts = append(launch.Mounts, managedDirMounts(input.TemplateDirs, input.ManagedDirGroup)...)
 	launch.Mounts = append(launch.Mounts, computeNetworkMounts(params)...)
-	if err := validateResolvedMounts(launch.Mounts, modelMount); err != nil {
+	// The agent mounts the platform's own files (the peers file, the
+	// pre-start wrapper) under proto.PlatformFileDir, so no other mount may
+	// reach into it.
+	launch.Peers = peersFile(params)
+	if err := validateResolvedMounts(launch.Mounts, modelMount, platformFilePaths(launch.Peers != nil, input.StoredLaunch)); err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch mounts: %w", err)
 	}
 	launch.ModelMount = modelMount
@@ -411,32 +428,60 @@ func replaceManualServedName(command, servedName string) string {
 	return manualCommandServedNamePattern.ReplaceAllString(command, "${1}--served-model-name "+quoted)
 }
 
-func validateResolvedMounts(mounts []proto.MountSpec, modelMount string) error {
+// validateResolvedMounts is the launch's half of the one container path rule
+// (proto.ContainerPathsOverlap): every mount the launch makes - the model,
+// components, assets, template dirs, the KV disk tier, the deployment's own
+// rows and the compute network's files - is a valid target, and no two are the
+// same path or nest. A template's own paths were already checked against each
+// other at import (inferencecatalog.validateContainerPaths). reserved are the
+// paths the agent mounts the platform's own files at (platformFilePaths): no
+// mount may overlap one.
+func validateResolvedMounts(mounts []proto.MountSpec, modelMount string, reserved []string) error {
 	modelMount = path.Clean(strings.TrimSpace(modelMount))
-	seen := map[string]struct{}{modelMount: {}}
+	if err := reservedMountTarget(modelMount, reserved); err != nil {
+		return err
+	}
+	seen := []string{modelMount}
 	for _, mount := range mounts {
 		target := strings.TrimSpace(mount.Target)
 		if target == "" || !strings.HasPrefix(target, "/") || path.Clean(target) != target || target == "/" {
 			return fmt.Errorf("invalid target %q", mount.Target)
 		}
-		if _, duplicate := seen[target]; duplicate {
-			return messages.NewProductError(messages.ErrorMountTargetDuplicate,
-				fmt.Sprintf("two mounts target %s inside the container", target),
-				map[string]any{"target": target})
+		if err := reservedMountTarget(target, reserved); err != nil {
+			return err
 		}
-		for existing := range seen {
-			if mountPathContains(existing, target) || mountPathContains(target, existing) {
-				return fmt.Errorf("nested mount targets %q and %q overlap", existing, target)
+		for _, existing := range seen {
+			if existing == target {
+				return messages.NewProductError(messages.ErrorMountTargetDuplicate,
+					fmt.Sprintf("two mounts target %s inside the container", target),
+					map[string]any{"target": target})
+			}
+			if proto.ContainerPathsOverlap(existing, target) {
+				parent, child := existing, target
+				if len(child) < len(parent) {
+					parent, child = child, parent
+				}
+				return messages.NewProductError(messages.ErrorMountTargetNested,
+					fmt.Sprintf("nested mount targets %q and %q overlap", parent, child),
+					map[string]any{"parent": parent, "child": child})
 			}
 		}
-		seen[target] = struct{}{}
+		seen = append(seen, target)
 	}
 	return nil
 }
 
-func mountPathContains(parent, child string) bool {
-	parent, child = path.Clean(parent), path.Clean(child)
-	return parent != "." && parent != "/" && strings.HasPrefix(child, parent+"/")
+// reservedMountTarget refuses a mount target that overlaps a path the
+// platform keeps for its own files, with MOUNT_TARGET_RESERVED.
+func reservedMountTarget(target string, reserved []string) error {
+	for _, keep := range reserved {
+		if proto.ContainerPathsOverlap(keep, target) {
+			return messages.NewProductError(messages.ErrorMountTargetReserved,
+				fmt.Sprintf("mount target %q overlaps %s, which the platform keeps for the files it provides", target, keep),
+				map[string]any{"target": target, "reserved": keep})
+		}
+	}
+	return nil
 }
 
 func parseOptionalCommand(value string) ([]string, error) {

@@ -22,6 +22,13 @@ type InferenceDetectedWarning struct {
 	AlternativeAvailable bool   `json:"alternative_available"`
 }
 
+// InferenceTemplateDetail carries the authenticated caller's available actions.
+// The delete transaction still checks live references when the action runs.
+type InferenceTemplateDetail struct {
+	InferenceTemplate
+	CanDelete bool `json:"can_delete"`
+}
+
 type InferenceTemplate struct {
 	DetectedSupport   *InferenceDetectedSupport `json:"detected_support,omitempty"`
 	ID                uint                      `json:"id"`
@@ -75,6 +82,7 @@ type InferenceSpecDTO struct {
 	RuntimeWeightBytes int64          `json:"runtime_weight_bytes,omitempty"`
 	ShmBytes           int64          `json:"shm_bytes,omitempty"`         // the /dev/shm size the engine needs; omitted when the spec states none
 	MemlockUnlimited   bool           `json:"memlock_unlimited,omitempty"` // the engine needs unlimited locked memory; omitted when false
+	StartTimeoutSec    int            `json:"start_timeout_sec,omitempty"` // the instance start timeout the spec states; omitted when none
 	// DockerArgs are extra docker run options the spec's engine needs, applied
 	// before the deployment's own docker_args. Omitted when none.
 	DockerArgs     []string          `json:"docker_args,omitempty"`
@@ -97,6 +105,17 @@ type InferenceSpecDTO struct {
 	// ImageSources are further references the template offers for pulling Image,
 	// preferred first; Image itself is tried after them (ADR 0038).
 	ImageSources []string `json:"image_sources,omitempty"`
+	// Dirs are the writable host directories the platform keeps for a
+	// deployment of the spec on every node (ADR 0077). Omitted when none.
+	Dirs []InferenceManagedDir `json:"dirs,omitempty"`
+}
+
+// InferenceManagedDir is one writable directory a spec declares.
+type InferenceManagedDir struct {
+	Name       string `json:"name"`
+	MountPath  string `json:"mount_path"`
+	LimitBytes int64  `json:"limit_bytes"`
+	Retain     string `json:"retain"`
 }
 
 type InferenceAsset struct {
@@ -125,10 +144,13 @@ type APIContract struct {
 // metric's short name, or {"to": name, "scale": factor} when it is scaled;
 // the editor writes it back as it reads it.
 type APIMetrics struct {
-	Endpoint string                     `json:"endpoint,omitempty"`
-	Format   string                     `json:"format,omitempty"`
-	Inherit  string                     `json:"inherit,omitempty"`
-	Map      map[string]json.RawMessage `json:"map,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	// Port is "separate" when the endpoint listens on a port of its own that
+	// the platform reserves for the instance; absent means the API port.
+	Port    string                     `json:"port,omitempty"`
+	Format  string                     `json:"format,omitempty"`
+	Inherit string                     `json:"inherit,omitempty"`
+	Map     map[string]json.RawMessage `json:"map,omitempty"`
 }
 
 type APIOperation struct {

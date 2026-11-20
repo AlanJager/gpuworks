@@ -37,9 +37,18 @@ type ProviderInstance struct {
 	// is a node of (provider.Instance.Cluster); such an instance joins
 	// through its cluster's DaemonSet, never by an agent installed on it.
 	ManagedCluster string `gorm:"size:128"`
-	NodeID         uint   `gorm:"index"` // linked gpuworks node once agent installed
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// HPCClusterID is the vendor's HPC cluster (provider.Instance.HPC) the
+	// instance is a compute node of, with the cluster's name and scheduler
+	// as the vendor reported them at the last sync; empty for any other
+	// instance. Such an instance takes an agent of its own, but its queue
+	// owns its lifecycle.
+	HPCClusterID        string `gorm:"column:hpc_cluster_id;size:128"`
+	HPCClusterName      string `gorm:"column:hpc_cluster_name;size:128"`
+	HPCScheduler        string `gorm:"column:hpc_scheduler;size:32"`
+	HPCSchedulerVersion string `gorm:"column:hpc_scheduler_version;size:32"`
+	NodeID              uint   `gorm:"index"` // linked gpuworks node once agent installed
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // ProviderBootstrapToken is a legacy provider-install record retained only for

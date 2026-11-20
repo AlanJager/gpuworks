@@ -81,7 +81,10 @@ type Config struct {
 	// server: their routes live under /api/v1/x/<name>/, so no package
 	// may have one as its id (PLUGIN_ID_TAKEN).
 	CompiledModules []string
-	Log             *slog.Logger
+	// UpgradeGate is how long a new version must stay up after an
+	// upgrade; zero is DefaultUpgradeGate.
+	UpgradeGate time.Duration
+	Log         *slog.Logger
 }
 
 // Bridge is the plugin host of one server.
@@ -92,9 +95,17 @@ type Bridge struct {
 	state *pushstate.State
 	host  *pluginhost.Host
 
-	// admin serializes the administration calls (install, enable,
-	// disable, uninstall) with each other and with Run's start.
-	admin sync.Mutex
+	// locks serialize the administration calls on each package id with
+	// each other and with Run's start of it; table serializes refresh.
+	locks idLocks
+	table sync.Mutex
+	// upgrades counts the upgrades under way, which Run waits for when
+	// it stops; upgradeGate is how long a new version must stay up.
+	upgrades    sync.WaitGroup
+	upgradeGate time.Duration
+	// cancelWait is how long a disable or uninstall waits for an upgrade
+	// of the same package before it ends the upgrade's gate.
+	cancelWait time.Duration
 
 	mu sync.Mutex
 	// entries are the installed packages as last verified, by id.
@@ -113,12 +124,18 @@ type Bridge struct {
 	// running is true while Run runs: plugins enabled meanwhile start at
 	// once.
 	running bool
+	// stopping is set once Run begins to stop: no upgrade starts after it.
+	stopping bool
 	// markerRetry is how long a start waits to be tried again when the
 	// package's data marker could not be read.
 	markerRetry time.Duration
 	// known are the routes each installed package last verified with, by
 	// package id, so one that breaks keeps answering them as down.
 	known map[string]knownRoutes
+	// pending are the newer builds the imported indexes offer for the
+	// installed packages (their versions), by package id, as the catalog
+	// last read them.
+	pending map[string]string
 
 	// routes is the route table compiled from entries on every refresh.
 	routes atomic.Pointer[RouteTable]
@@ -149,7 +166,8 @@ type identity struct {
 }
 
 // Open verifies the installed packages (rehashing every file), removes
-// what an interrupted install left, and loads pushed state, so what was
+// what an interrupted install left, rolls back an upgrade the server was
+// stopped in the middle of (recoverUpgrades), and loads pushed state, so what was
 // pushed is enforced before the server serves a request and before any
 // plugin starts. It starts no plugin.
 func Open(ctx context.Context, cfg Config) (*Bridge, error) {
@@ -163,10 +181,17 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 		cfg.HostSetup = hostsetup.DefaultRecords()
 	}
 	b := &Bridge{cfg: cfg, log: cfg.Log, pkgs: cfg.Packages, entries: map[string]extpkg.Entry{}, pushers: map[string]identity{}, refusals: map[string]error{}, crashloops: map[string]map[string]any{},
-		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}}
+		markerRetry: 30 * time.Second, known: map[string]knownRoutes{}, pending: map[string]string{}, upgradeGate: cfg.UpgradeGate,
+		cancelWait: gateCancelWait}
+	if b.upgradeGate <= 0 {
+		b.upgradeGate = DefaultUpgradeGate
+	}
 	if err := b.pkgs.Dir.Cleanup(); err != nil {
 		return nil, fmt.Errorf("plugins: remove interrupted installs: %w", err)
 	}
+	// An upgrade the server was stopped in the middle of is rolled back
+	// before anything is verified, loaded or started.
+	b.recoverUpgrades()
 	entries, err := b.pkgs.List()
 	if err != nil {
 		return nil, fmt.Errorf("plugins: list installed packages: %w", err)
@@ -220,6 +245,7 @@ func Open(ctx context.Context, cfg Config) (*Bridge, error) {
 	if b.host, err = pluginhost.New(hostCfg); err != nil {
 		return nil, err
 	}
+	b.refreshPending()
 	b.refreshHealth()
 	return b, nil
 }
@@ -244,26 +270,28 @@ func (b *Bridge) Run(ctx context.Context) error {
 			b.log.Error("pushed state stopped", "err", err)
 		}
 	}()
-	b.admin.Lock()
 	// What root left in the offline maintenance journal applies through
 	// pushed state's writer, which runs now, before any plugin starts.
 	b.applyMaintenance(stateCtx)
 	b.mu.Lock()
-	b.running = true
+	b.running, b.stopping = true, false
 	ids := slices.Sorted(maps.Keys(b.entries))
 	b.mu.Unlock()
 	for _, id := range ids {
+		unlock := b.locks.lock(id)
 		b.startIfEnabled(id)
+		unlock()
 	}
-	b.admin.Unlock()
 
 	<-ctx.Done()
-	b.admin.Lock()
 	b.mu.Lock()
-	b.running = false
+	b.running, b.stopping = false, true
 	b.mu.Unlock()
+	// An upgrade waiting out its health gate rolls back now; it starts
+	// nothing, since Run no longer runs.
+	b.locks.cancelGates()
+	b.upgrades.Wait()
 	b.stopAll()
-	b.admin.Unlock()
 	stopState()
 	<-done
 	return nil

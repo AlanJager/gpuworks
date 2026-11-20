@@ -16,6 +16,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/packages"
@@ -68,7 +69,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 	gpus := inferencecatalog.GPUSelector{Vendor: "nvidia", CC: ">=8.0", Name: "H100", ArchID: "sm_90"}
 	primary := inferencecatalog.Component{Name: "main", Role: "primary", Weights: weights(fullTemplateID), WeightBytes: 4_000_000_000, MountPath: "/models/main"}
 	draft := inferencecatalog.Component{Name: "draft", Role: "speculative_draft", ModelID: fullDraftID, Weights: weights(fullDraftID), WeightBytes: 1_000_000_000, MountPath: fullDraftMount}
-	prometheus := &inferenceapi.Metrics{Endpoint: "/stats", Inherit: "sglang", Map: inferenceapi.MetricMap{
+	prometheus := &inferenceapi.Metrics{Endpoint: "/stats", Port: inferenceapi.MetricsPortSeparate, Inherit: "sglang", Map: inferenceapi.MetricMap{
 		"adapter_ms_total":   {To: "prompt_tokens_total", Scale: 0.001},
 		"adapter_requests_x": {To: "requests_running"},
 	}}
@@ -91,7 +92,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 		Name: "optimized-h100", DisplayNameZHCN: "H100 · BF16 · 投机解码", DisplayNameEN: "H100 · BF16 · Speculative", Scenario: "latency", Engine: "vllm",
 		Image: "gpuworks/vllm:test", ImageSources: []string{"quay.io/gpuworks/vllm:test", "registry.example/gpuworks/vllm:test"},
 		Weights: weights(fullTemplateID), WeightBytes: 140_000_000_000, RuntimeWeightBytes: 70_000_000_000,
-		GPUs: gpus, Args: []string{"--max-model-len", "32768"}, Env: map[string]string{"VLLM_TEST": "1", "DRAFT_PATH": fullDraftMount},
+		GPUs: gpus, Args: []string{"--max-model-len", "32768"}, Env: map[string]string{"VLLM_TEST": "1", "DRAFT_PATH": fullDraftMount, "METRICS_LISTEN": "127.0.0.1:${GPUWORKS_METRICS_PORT}"},
 		PreStartArgv: []string{"/opt/gpuworks/serve.py", "--prepare"},
 		Assets:       []inferencecatalog.Asset{{File: fullAssetPath, SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(asset)), UnpackTo: "/opt/gpuworks/serve.py"}},
 		Entrypoint:   []string{"python3", "-m", "vllm.entrypoints.openai.api_server"},
@@ -106,7 +107,9 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 		ManualCommand:    "set -eu\ncase \"${GPUWORKS_PD_ROLE}/${GPUWORKS_NODE_RANK}\" in\n  *) exec vllm serve ${GPUWORKS_MODEL_PATH} --port ${GPUWORKS_API_PORT} ;;\nesac",
 		ShmBytes:         429_496_729_600,
 		MemlockUnlimited: true,
+		StartTimeoutSec:  5400,
 		DockerArgs:       []string{"--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"},
+		Dirs:             []deploy.ManagedDir{{Name: "session-state", MountPath: "/state", LimitBytes: 400 << 30, Retain: deploy.ManagedDirRetainDeployment}},
 	}
 	scripted := inferencecatalog.InferenceSpec{
 		Name: "scripted", Engine: "vllm", Image: "gpuworks/vllm:test", Weights: weights(fullTemplateID),
@@ -301,7 +304,7 @@ func TestInferenceTemplateYAMLRoundTripsEveryFieldThroughImport(t *testing.T) {
 	text := response.Body.String()
 	for _, want := range []string{
 		"tokenizer_ref: ms://Acme/Tokenizer@0123456789abcdef0123456789abcdef01234567",
-		"runtime_weight_bytes: 70000000000", "pd_mode: vllm-nixl", "shm_bytes: 429496729600", "memlock_unlimited: true", "docker_args:", "--cap-add=SYS_PTRACE", "kv_bytes_per_token:", "model_config:", "unsupported:",
+		"runtime_weight_bytes: 70000000000", "pd_mode: vllm-nixl", "shm_bytes: 429496729600", "memlock_unlimited: true", "start_timeout_sec: 5400", "docker_args:", "--cap-add=SYS_PTRACE", "kv_bytes_per_token:", "model_config:", "unsupported:",
 		"arch_id: sm_90", "readme_zh_cn: README.zh-CN.md", "resolver: |", "pre_start_script: |", "request_defaults:", "format: json",
 	} {
 		if !strings.Contains(text, want) {
@@ -391,7 +394,7 @@ func TestInferenceTemplateYAMLWireContract(t *testing.T) {
 	row := store.InferenceModel{ModelID: "acme/wire", Source: "user", Unsupported: `[]`, Specs: []store.InferenceSpecRow{{
 		Source: "user", Name: "plain", Engine: "vllm", Image: "vllm:wire", Quantization: "bf16",
 		WeightSources: `[{"provider":"huggingface","repo_id":"acme/wire"}]`, GPUs: `{"vendor":"nvidia"}`, Args: `[]`, Env: `{}`, PreStartArgv: `[]`,
-		RuntimeWeightBytes: 12884901888, PDMode: "vllm-nixl", ShmBytes: 429496729600, MemlockUnlimited: true,
+		RuntimeWeightBytes: 12884901888, PDMode: "vllm-nixl", ShmBytes: 429496729600, MemlockUnlimited: true, StartTimeoutSec: 5400,
 		DockerArgs: `["--cap-add=SYS_PTRACE"]`,
 	}}}
 	if err := database.ImportUserInferenceCatalog([]store.InferenceModel{row}, false); err != nil {
@@ -417,6 +420,7 @@ func TestInferenceTemplateYAMLWireContract(t *testing.T) {
 		"        pd_mode: vllm-nixl\n" +
 		"        shm_bytes: 429496729600\n" +
 		"        memlock_unlimited: true\n" +
+		"        start_timeout_sec: 5400\n" +
 		"        docker_args:\n" +
 		"          - --cap-add=SYS_PTRACE\n"
 	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "application/yaml; charset=utf-8" || recorder.Body.String() != want {

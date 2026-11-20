@@ -72,6 +72,9 @@ func doctor(ctx context.Context, log *slog.Logger, args []string, out, stderr io
 		return nil
 	}
 	conf, state, fromFile, err := launch.resolve(os.Getenv)
+	if err == nil {
+		useSavedSlurmIdentity(&conf, state)
+	}
 	var report proto.DoctorReport
 	if err != nil {
 		// Never echo the raw parse/validation error or its file contents.
@@ -177,7 +180,10 @@ func smoke(log *slog.Logger, args []string) error {
 	if fs.NArg() != 0 {
 		return errors.New("smoke: unexpected argument")
 	}
-	conf, _, _, err := launch.resolve(os.Getenv)
+	conf, stateDir, _, err := launch.resolve(os.Getenv)
+	if err == nil {
+		useSavedSlurmIdentity(&conf, stateDir)
+	}
 	if err != nil {
 		return errors.New("invalid connection configuration")
 	}

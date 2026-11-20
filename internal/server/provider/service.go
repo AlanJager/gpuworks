@@ -20,7 +20,8 @@ type Service struct {
 	box             *auth.Secretbox
 	readAgentBinary AgentBinaryReader
 	drivers         map[string]Driver
-	clusterLists    clusterListCache
+	clusterLists    listCache[[]Cluster]
+	hpcLists        listCache[HPCClusterList]
 	// sshPrecheck replaces the SSH precheck an install precheck runs; nil is
 	// the real one (provision.NewSSHPrechecker).
 	sshPrecheck provision.Prechecker
@@ -129,7 +130,12 @@ func (s *Service) Update(ctx context.Context, providerID uint, name string, cred
 	if err != nil {
 		return nil, err
 	}
-	return s.store.UpdateProvider(providerID, name, cipher, "valid")
+	updated, err := s.store.UpdateProvider(providerID, name, cipher, "valid")
+	if err == nil {
+		// What was listed with the old credentials says nothing about the new ones.
+		s.ForgetAccount(providerID)
+	}
+	return updated, err
 }
 
 func mergeCredentials(base, patch Credentials) Credentials {
@@ -226,6 +232,9 @@ func (s *Service) Power(ctx context.Context, providerID uint, externalID string,
 	if err := s.refuseClusterNode(providerID, externalID); err != nil {
 		return err
 	}
+	if err := s.refuseHPCNode(providerID, externalID); err != nil {
+		return err
+	}
 	if on {
 		return drv.PowerOn(ctx, creds, externalID)
 	}
@@ -253,6 +262,9 @@ func (s *Service) DeleteInstance(ctx context.Context, providerID uint, externalI
 	if err := s.refuseClusterNode(providerID, externalID); err != nil {
 		return err
 	}
+	if err := s.refuseHPCNode(providerID, externalID); err != nil {
+		return err
+	}
 	if err := drv.DeleteInstance(ctx, creds, externalID); err != nil {
 		return err
 	}
@@ -269,6 +281,9 @@ func (s *Service) ResizeInstance(ctx context.Context, providerID uint, externalI
 		return err
 	}
 	if err := s.refuseClusterNode(providerID, externalID); err != nil {
+		return err
+	}
+	if err := s.refuseHPCNode(providerID, externalID); err != nil {
 		return err
 	}
 	return drv.ResizeInstance(ctx, creds, externalID, req)
@@ -496,6 +511,9 @@ func (s *Service) installTarget(ctx context.Context, providerID uint, externalID
 			target := insts[i]
 			if target.Cluster != "" {
 				return nil, nil, Credentials{}, nil, &InstanceInClusterError{Cluster: target.Cluster}
+			}
+			if target.HPC != nil {
+				return nil, nil, Credentials{}, nil, &InstanceInHPCClusterError{Cluster: target.HPC.ID, Scheduler: target.HPC.Scheduler}
 			}
 			if getter, ok := drv.(InstanceGetter); ok && target.Power != PowerStopped {
 				target = s.detailUntilSSH(ctx, getter, creds, target)

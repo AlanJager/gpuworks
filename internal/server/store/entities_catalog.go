@@ -77,12 +77,19 @@ type InferenceSpecRow struct {
 	ShmBytes int64 `gorm:"column:shm_bytes"`
 	// MemlockUnlimited starts the spec's container with unlimited locked memory.
 	MemlockUnlimited bool `gorm:"column:memlock_unlimited"`
+	// StartTimeoutSec is the instance start timeout the spec states, in
+	// seconds; zero states none and the cluster default applies.
+	StartTimeoutSec int `gorm:"column:start_timeout_sec"`
 	// DockerArgs is the extra docker run options the spec's engine needs: JSON
 	// []string (inferencecatalog.InferenceSpec.DockerArgs), read and written
 	// whole with the rest of the spec, same shape as args.
 	DockerArgs string `gorm:"column:docker_args;type:text"`
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Dirs is the writable directories the spec declares: JSON
+	// []deploy.ManagedDir (inferencecatalog.InferenceSpec.Dirs), read and
+	// written whole with the rest of the spec; "" when it declares none.
+	Dirs      string `gorm:"column:dirs;type:text"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (InferenceSpecRow) TableName() string { return "inference_specs" }

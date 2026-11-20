@@ -365,18 +365,18 @@ func TestOrdinaryLastLinesAreNotAReasonOutsideAStartupExit(t *testing.T) {
 	const logs = "INFO:     127.0.0.1:53210 - \"POST /v1/chat/completions HTTP/1.1\" 200 OK\n"
 	e := newHermeticEngine(&loggingHeadlessDriver{headlessTestDriver: &headlessTestDriver{}, logs: logs}, func(proto.InstanceStatus) {}, slog.Default(), t.TempDir())
 
-	serving, msg := e.exitedFailure(t.Context(), "c", runtime.Status{Exists: true, ExitCode: 9}, proto.PhaseServing, "oom", "container exited while running (code 9)")
+	serving, msg := e.exitedFailure(t.Context(), "c", runtime.Status{Exists: true, ExitCode: 9}, 0, proto.PhaseServing, "oom", "container exited while running (code 9)")
 	if serving.Evidence != nil || msg != "container exited while running (code 9)" {
 		t.Fatalf("serving exit: evidence %q, message %q", serving.Evidence, msg)
 	}
-	oom, msg := e.exitedFailure(t.Context(), "c", runtime.Status{Exists: true, ExitCode: 137, OOMKilled: true}, proto.PhaseHealthCheck, "headless worker OOM-killed", "headless worker exited (code 137)")
+	oom, msg := e.exitedFailure(t.Context(), "c", runtime.Status{Exists: true, ExitCode: 137, OOMKilled: true}, 0, proto.PhaseHealthCheck, "headless worker OOM-killed", "headless worker exited (code 137)")
 	if oom.Code != proto.ErrorContainerOOMKilled || oom.Evidence != nil || msg != "headless worker OOM-killed" {
 		t.Fatalf("oom exit: %+v, message %q", oom, msg)
 	}
-	timeout := proto.RuntimeFailure{Code: proto.ErrorWorkerReadinessTimeout, Phase: proto.PhaseHealthCheck}
-	e.attachOutput(t.Context(), "c", &timeout)
-	if timeout.Evidence != nil {
-		t.Fatalf("running container: evidence %q", timeout.Evidence)
+	unhealthy := proto.RuntimeFailure{Code: proto.ErrorContainerUnhealthy, Phase: proto.PhaseHealthCheck}
+	e.attachOutput(t.Context(), "c", 0, &unhealthy, false)
+	if unhealthy.Evidence != nil {
+		t.Fatalf("running container: evidence %q", unhealthy.Evidence)
 	}
 }
 

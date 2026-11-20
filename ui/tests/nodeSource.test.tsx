@@ -42,6 +42,7 @@ const byHand = node("by-hand");
 const instance = node("ecs-a10", { resource: "vm", provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun" });
 const accountClusterNode = node("ack-worker", { resource: "kubernetes", provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", cluster_uuid: CLUSTER_OF_ACCOUNT, cluster_name: "prod-gpu" });
 const ownClusterNode = node("k3s-worker", { resource: "kubernetes", cluster_uuid: CLUSTER_ON_ITS_OWN, cluster_name: "edge-k3s" });
+const slurmNode = node("slurm-gpu000", { resource: "slurm", cluster_uuid: "s-lab", cluster_name: "hpc-lab" });
 const otherAccount = node("pod-1", { resource: "container", provider_id: 5, provider_name: "pods", provider_kind: "runpod" });
 const fleet = [byHand, instance, accountClusterNode, ownClusterNode, otherAccount];
 
@@ -160,7 +161,7 @@ const chips = (group = "Filtered", clear = /^Clear filter: /) => screen.queryAll
 const asked = () => queries.map((query) => query.extra?.source);
 
 test("a node added by hand says so; one that joined through an external platform links to that platform's row and says what it is there", async () => {
-  stubApi();
+  stubApi([...fleet, slurmNode]);
   renderAt("/nodes");
 
   const manual = await sourceCell("by-hand");
@@ -182,6 +183,11 @@ test("a node added by hand says so; one that joined through an external platform
   assert.equal(inOwnCluster.getByRole("link", { name: "edge-k3s" }).getAttribute("href"), `/providers?open=k${CLUSTER_ON_ITS_OWN}`);
   assert.ok(inOwnCluster.getByText("Kubernetes cluster"));
   assert.equal(inOwnCluster.queryAllByText(/·/).length, 0, "no vendor to name before it");
+
+  // A node of a Slurm cluster connected on its own: the cluster's Slurm row, named as a Slurm cluster.
+  const inSlurm = await sourceCell("slurm-gpu000");
+  assert.equal(inSlurm.getByRole("link", { name: "hpc-lab" }).getAttribute("href"), "/providers?open=ss-lab");
+  assert.ok(inSlurm.getByText("Slurm cluster"));
 
   const container = await sourceCell("pod-1");
   assert.equal(container.getByRole("link", { name: "pods" }).getAttribute("href"), "/providers?open=p5");
@@ -415,6 +421,8 @@ test("a platform's address opens its row: an account's by id, with one of its cl
   assert.equal(platformPath({ provider_id: 3, cluster_uuid: "e-1" }), "/providers?open=p3&cluster=e-1");
   assert.equal(platformPath({ provider_id: 3, cluster_uuid: "u-1&open=k2" }), "/providers?open=p3&cluster=u-1%26open%3Dk2", "the UUID cannot open a second row");
   assert.equal(platformPath({ cluster_uuid: "c-7" }), "/providers?open=kc-7");
+  assert.equal(platformPath({ cluster_uuid: "c-7", resource: "slurm" }), "/providers?open=sc-7", "a Slurm cluster's row has its own prefix");
+  assert.equal(platformPath({ provider_id: 3, cluster_uuid: "e-1", resource: "slurm" }), "/providers?open=p3&cluster=e-1", "an E-HPC cluster is under its account");
   const read = new URLSearchParams(platformPath({ provider_id: 3, cluster_uuid: "u-1&open=k2" }).split("?")[1]);
   assert.deepEqual([read.getAll("open"), read.get("cluster"), read.has("tab")], [["p3"], "u-1&open=k2", false]);
 });

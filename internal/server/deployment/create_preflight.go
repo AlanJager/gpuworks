@@ -4,6 +4,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -46,7 +47,7 @@ func (s *Service) prepareLaunchPreflight(eng deploy.Engine, req *dto.DeployReque
 		return out, err
 	}
 	params := deploy.Params{
-		ModelPath: out.modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort,
+		ModelPath: out.modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort, MetricsPort: planning.PreviewMetricsPort, MetricsPortSeparate: inferenceapi.SeparateMetricsPort(selection.APIContract),
 		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, PriorityScheduling: requestsPriorityScheduling(req), Quick: launch.Quick,
 		TemplateArgs: launch.TemplateResidual, TemplateEnv: selection.Env, ExtraArgs: launch.UserResidual,
 		Vendor: targetVendor, NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
@@ -59,12 +60,13 @@ func (s *Service) prepareLaunchPreflight(eng deploy.Engine, req *dto.DeployReque
 	}
 	pdReq.preflight(&params)
 	out.input = deploy.ResolveLaunchInput{
-		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec,
+		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: s.d.Store.DeploymentPolicy().StartTimeoutSec, TemplateStartTimeoutSec: selection.startTimeoutSec(),
 		Engine: eng, Params: params, Image: req.Image,
 		Entrypoint: selection.Entrypoint, PreStartArgv: selection.PreStartArgv,
 		PreStartScript: selection.PreStartScript, RuntimeAssets: selection.Assets,
 		ComponentMounts: out.componentMounts, APIContract: selection.APIContract,
 		TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(), TemplateDockerArgs: selection.dockerArgs(),
+		TemplateDirs:    selection.Dirs,
 		AllowUnresolved: true,
 	}
 	return out, nil
@@ -88,7 +90,7 @@ func (p launchPreflight) run(req *dto.DeployRequest, selection templateSelection
 func (s *Service) evaluateLaunchPreflight(eng deploy.Engine, req *dto.DeployRequest, selection templateSelection, targetVendor string, profileNode *store.Node, rankNodes []*store.Node, resp *dto.EvaluateResponse, base *editLaunchBase) error {
 	draft := cloneRequest(*req)
 	selection.APIContract = nil
-	launch, err := materializeDeployRequestWithBase(eng.Name(), &draft, selection, DeployTargetCards(profileNode, draft.Placement), s.requestEngineVersion(eng.Name(), &draft, selection, targetVendor, profileNode), base)
+	launch, err := materializeDeployRequestWithBase(eng.Name(), &draft, selection, requestTargetCards(profileNode, &draft), s.requestEngineVersion(eng.Name(), &draft, selection, targetVendor, profileNode), base)
 	if err != nil {
 		return err
 	}

@@ -78,8 +78,9 @@ type NodeRuntime struct {
 	// outside the schedule ends when the agent does.
 	cardSmokeCtx context.Context
 	// instanceCardIdents is a seam beside heldCards: the cards one
-	// instance was given, whatever state it reached.
-	instanceCardIdents func(uuid string) []string
+	// instance was given, whatever state it reached, and the cards the
+	// other instances are serving on (engine.ServingCardsBesides).
+	instanceCardIdents func(uuid string) ([]string, engine.HeldCards)
 	// heldCards overrides where cardsInUse reads this agent's own
 	// placements, so the card occupancy rules can be tested without an
 	// engine starting containers. Nil means ask the engine.
@@ -304,7 +305,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 		mountRunner = kube.HostExec
 	}
 	n.occupancy.load(filepath.Join(stateDir, cardOccupancyFile))
-	n.storage = newStorageRuntime(stateDir, n.mountBusy, mountRunner)
+	n.storage = newStorageRuntime(stateDir, n.mountBusy, storageUsers(n), mountRunner)
 	n.servingForward = newServingForwarder(log, n.currentNodeToken, n.instanceAPIPort)
 	n.perftest = perftest.Host(stateDir)
 	if accelerator.HasRuntimeAssetBundles(prober.Vendor()) {
@@ -384,15 +385,6 @@ func (n *NodeRuntime) setModelsRoot(root string) {
 	n.modelsDirMu.Lock()
 	n.modelsDir = root
 	n.modelsDirMu.Unlock()
-}
-
-// CachedRuntimeAssetDigests exposes the engine's validated content-addressed
-// cache to the connection handshake without coupling conn to engine internals.
-func (n *NodeRuntime) CachedRuntimeAssetDigests() []string {
-	if n.engine == nil {
-		return nil
-	}
-	return n.engine.CachedRuntimeAssetDigests()
 }
 
 // ContainerTerminalArgv exposes the runtime-specific PTY command to conn.

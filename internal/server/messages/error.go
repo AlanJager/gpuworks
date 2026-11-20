@@ -72,6 +72,9 @@ const (
 	ErrorCatalogMetricsJSONPathInvalid    = "CATALOG_METRICS_JSON_PATH_INVALID"
 	ErrorCatalogMetricsJSONHistogram      = "CATALOG_METRICS_JSON_HISTOGRAM"
 	ErrorCatalogMetricsJSONCompareCounter = "CATALOG_METRICS_JSON_COMPARE_COUNTER"
+	ErrorCatalogMetricsPortInvalid        = "CATALOG_METRICS_PORT_INVALID"
+	ErrorCatalogMetricsPortUndeclared     = "CATALOG_METRICS_PORT_UNDECLARED"
+	ErrorCatalogMetricsPortUnreferenced   = "CATALOG_METRICS_PORT_UNREFERENCED"
 	// ErrorCatalogRequestStats* report an api.request_stats entry the gateway
 	// could not honour. Params carry the entry's reply path and target stat.
 	ErrorCatalogRequestStatsPathInvalid   = "CATALOG_REQUEST_STATS_PATH_INVALID"
@@ -86,11 +89,26 @@ const (
 	// ErrorCatalogShmBytesInvalid reports a catalog spec whose shm_bytes is
 	// negative or above 16 TiB. Params: model, spec, shm_bytes, max_bytes.
 	ErrorCatalogShmBytesInvalid = "CATALOG_SHM_BYTES_INVALID"
+	// ErrorCatalogStartTimeoutInvalid reports a catalog spec whose
+	// start_timeout_sec is outside the deployment start timeout bounds.
+	// Params: model, spec, start_timeout_sec, min_sec, max_sec.
+	ErrorCatalogStartTimeoutInvalid = "CATALOG_START_TIMEOUT_INVALID"
+	// ErrorCatalogMountPathConflict reports two container paths of one catalog
+	// spec (the model mount, a component mount_path, an asset unpack_to, a dir
+	// mount_path) that are the same or nest. Params: model, spec, field, path,
+	// other_field, other_path.
+	ErrorCatalogMountPathConflict = "CATALOG_MOUNT_PATH_CONFLICT"
 	// ErrorInferenceSpecTargetRequired reports a delete-spec request that did
 	// not name both the owning model_id and the user spec to retire.
-	ErrorInferenceSpecTargetRequired = "INFERENCE_SPEC_TARGET_REQUIRED"
-	// ErrorInferenceTemplateModelRequired reports a request for a template's
-	// editable YAML that did not name the model.
+	ErrorInferenceSpecTargetRequired     = "INFERENCE_SPEC_TARGET_REQUIRED"
+	ErrorDeploymentTemplateSelectionGone = "DEPLOYMENT_TEMPLATE_SELECTION_GONE"
+	// A delete is blocked while a deployment pins its target or another
+	// template mounts the model as a component.
+	ErrorInferenceTemplateDeploymentReference = "INFERENCE_TEMPLATE_DEPLOYMENT_REFERENCE"
+	ErrorInferenceSpecDeploymentReference     = "INFERENCE_SPEC_DEPLOYMENT_REFERENCE"
+	ErrorInferenceTemplateMixedSources        = "INFERENCE_TEMPLATE_MIXED_SOURCES"
+	ErrorInferenceTemplateComponentReference  = "INFERENCE_TEMPLATE_COMPONENT_REFERENCE"
+	// ErrorInferenceTemplateModelRequired reports a missing model_id.
 	ErrorInferenceTemplateModelRequired = "INFERENCE_TEMPLATE_MODEL_REQUIRED"
 	// ErrorInferenceTemplateSpecSourceInvalid reports a spec_source filter that
 	// is neither user nor upstream.

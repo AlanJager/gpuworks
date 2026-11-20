@@ -415,3 +415,27 @@ func TestNodeCacheEntriesDeriveUseFromDeploymentsAndInstances(t *testing.T) {
 		t.Fatalf("entry b = %+v, want transferring", eb)
 	}
 }
+
+// The shared filesystem a node reports under a local storage is written when
+// it appears and when it goes, not on every report.
+func TestApplyStorageStatusKeepsTheSharedFilesystem(t *testing.T) {
+	f := newStorageFixture(t)
+	shared := proto.StorageStatus{ID: f.local.ID, State: proto.StorageStateReady, Path: "/opt/gpuworks/models", Writable: true,
+		SharedFSType: "nfs4", SharedFSSource: "10.0.0.5:/opt"}
+	f.report(t, f.n1, shared)
+	row, err := f.st.StorageNodeStateFor(f.local.ID, f.n1.ID)
+	if err != nil || row.SharedFSType != "nfs4" || row.SharedFSSource != "10.0.0.5:/opt" {
+		t.Fatalf("row = %+v %v", row, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	f.report(t, f.n1, shared)
+	if again, _ := f.st.StorageNodeStateFor(f.local.ID, f.n1.ID); !again.UpdatedAt.Equal(row.UpdatedAt) {
+		t.Fatal("an unchanged report rewrote the row")
+	}
+	local := shared
+	local.SharedFSType, local.SharedFSSource = "", ""
+	f.report(t, f.n1, local)
+	if row, _ = f.st.StorageNodeStateFor(f.local.ID, f.n1.ID); row.SharedFSType != "" || row.SharedFSSource != "" {
+		t.Fatalf("moved to a local disk, the row still names %+v", row)
+	}
+}

@@ -18,7 +18,11 @@ The dGPU capability status in the table above is derived from the server's parti
 When dGPU is unavailable, the node can still use full-GPU deployment. The platform does not silently start instances that fail dGPU requirements with unlimited GPU memory instead.
 For tested Ascend combinations, CANN, and runtime details, see the [Ascend Matrix](ascend-support-matrix.md). For outstanding PPU work, see the [Development Ledger](../dev/ledgers/ppu-support-gaps.md).
 
+NVIDIA unified-memory cards (models named `GB10`, `RTX Spark …`, or `Thor`) share one memory pool with the host, and `nvidia-smi` may answer `[N/A]` for their `memory.total` and `memory.used`. The agent then fills both from the host's `/proc/meminfo`: capacity is `MemTotal`, and memory in use is `MemTotal − MemAvailable`, which is the host pool's use by every process rather than the GPU clients' alone; a value the driver answers itself is not overwritten. These cards are on-chip GPUs, so a PCIe link narrower than its capability is not raised as a health warning, while a slow link still is. For Jetson Thor only this recognition and the capacity, in-use, and health handling above exist, and none of it has been verified on real hardware; engine images, deployment, and dGPU (HAMi is x86_64 only) on it are outside the verified scope.
+
 Kubernetes nodes (see [Connect a Kubernetes Cluster](../how-to/connect-kubernetes.md)) support whole-card deployment for NVIDIA, Ascend, Hygon, PPU, AMD, and Kunlunxin; dGPU is available there for NVIDIA HAMi-core, Ascend vcann-rt, PPU ppu-slicing-shim, and AMD rocm-slicing-shim, while Hygon's native vdev remains unavailable on Kubernetes (whole-card deployment only).
+
+Slurm nodes (an on-premises Slurm cluster, or an Alibaba Cloud E-HPC cluster, see [Connect a Slurm Cluster](../how-to/connect-slurm-nodes.md)) currently support NVIDIA cards only: the cards stay Slurm's to allocate and a deployment borrows one with a placeholder job; a node without an NVIDIA GPU (a CPU queue) gets no agent and does not appear on the platform. HPC products of cloud vendors other than E-HPC, and schedulers other than Slurm (PBS and others), cannot be connected yet.
 
 
 ## dGPU Capability Comparison
@@ -117,4 +121,4 @@ Single-node device injection does not require XDR or RDMA. Multi-node TP require
 
 Container options follow the common administrator template contract. Scheduled device injection is not a security sandbox for arbitrary privileged options, images or host mounts. The agent injects container-logical `XPU_VISIBLE_DEVICES`, and `CUDA_VISIBLE_DEVICES` in the image entrypoint also uses container-logical indexes. Import suitable image and model specs explicitly; see [Kunlun P800 deployment](../how-to/kunlun-p800.md).
 
-<!-- translation-source-sha256: 131e04a4d10494f34199d8530469c21656e2f9220d6af7673056427db9f9af2c -->
+<!-- translation-source-sha256: 48211d5f1f77a36c60877fc959b92b1b57188e970c3e8f9e6cbf26f60f04d1cd -->

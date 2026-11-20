@@ -42,6 +42,7 @@ import {
   type MonitorRequestsQuery,
 } from "./monitorRequestsApi";
 import type { TelemetryExport, TelemetryExportTest, TelemetryExportUpdate } from "./telemetryApi";
+import type { SlurmApplyCheck, SlurmApplyOutcome, SlurmCluster, SlurmClusterEdit, SlurmClusterRequest, SlurmClusterUpdate, SlurmDefaults, SlurmRemoveOutcome, SlurmRemoveStep } from "./slurmApi";
 import type { DebugSessionStart, DebugSessionState, DiagnosticsBundle, DiagnosticsBundleStart, DiagnosticsBundles } from "./diagnosticsApi";
 
 /** What an operator sets one card to (PUT /nodes/{uuid}/gpus/scheduling). */
@@ -228,6 +229,12 @@ export interface RuntimeSocketDenial {
   command?: string;
 }
 
+/** One step that brings a Slurm node back to running jobs (dto.NodeSlurmFix). */
+export interface NodeSlurmFix {
+  code: string;
+  commands: string[];
+}
+
 export interface Node {
   uuid: string;
   // scheduling is whether the node takes new replicas: cordoned takes none,
@@ -239,7 +246,7 @@ export interface Node {
   scheduling_by?: string;
   // cordon_reason is why the platform holds the node now; absent unless
   // scheduling_by is platform.
-  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot" | "kube_unschedulable";
+  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot" | "kube_unschedulable" | "slurm_node_unavailable";
   // cordon_message is why an extension holds the node out of scheduling;
   // absent when none does.
   cordon_message?: ProductMessage;
@@ -254,6 +261,14 @@ export interface Node {
   // placement_policy_availability says, per knob, whether it takes effect on
   // this node; reason is a product code when it does not.
   placement_policy_availability?: NodePlacementPolicyAvailability[];
+  /** The node's name in Slurm, while its agent borrows the node's cards from Slurm. */
+  slurm_node?: string;
+  /** Why Slurm will not start jobs on the node; absent when it will. */
+  slurm_unavailable?: string;
+  /** Slurm's own Reason text for that state, shown as written. */
+  slurm_reason?: string;
+  /** The steps that bring the node back, in order, built by the server: text by code, commands as written. */
+  slurm_fixes?: NodeSlurmFix[];
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back
@@ -1672,6 +1687,9 @@ export interface InferenceProfileSummary {
   weight_repo_ids?: string[];
   gpus: GPUPredicate;
 }
+export interface InferenceTemplateDetail extends InferenceTemplate {
+  can_delete: boolean;
+}
 export interface InferenceTemplate {
   detected_support?: { preferred_engine: string; warnings: Array<{ reason: string; quantization?: string; alternative_available: boolean }> };
   id: number;
@@ -1726,8 +1744,12 @@ export interface InferenceSpec {
   shm_bytes?: number;
   /** The spec's container starts with unlimited locked memory (--ulimit memlock=-1:-1); absent when false. */
   memlock_unlimited?: boolean;
+  /** The instance start timeout in seconds the spec states; absent when none. */
+  start_timeout_sec?: number;
   /** Extra docker run options the spec's engine needs, applied before the deployment's own docker_args. */
   docker_args?: string[];
+  /** Writable host directories the platform keeps for a deployment of the spec on every node (ADR 0077); absent when none. */
+  dirs?: Array<{ name: string; mount_path: string; limit_bytes: number; retain: string }>;
   gpus: GPUPredicate;
   args?: string[];
   env?: Record<string, string>;
@@ -2777,7 +2799,7 @@ export interface DataRetentionStatus {
 export type ProviderCategory = "public_cloud" | "private_cloud";
 
 /** What an external platform hands over to become compute nodes (provider.Resource). */
-export type PlatformResource = "vm" | "container" | "host" | "kubernetes";
+export type PlatformResource = "vm" | "container" | "host" | "kubernetes" | "slurm";
 
 /** A resource a provider kind connects, with the vendor's own product name for it when it has one (ECS, ACK). */
 export interface KindResource {
@@ -2860,6 +2882,8 @@ export interface ProviderKindInfo {
   server_dial_auto_port?: boolean;
   /** The account's managed Kubernetes clusters can be listed and connected (GET /providers/{id}/clusters). */
   can_list_clusters?: boolean;
+  /** The account's HPC clusters (E-HPC) can be listed and connected as Slurm entries (GET /providers/{id}/hpc-clusters). */
+  can_list_hpc_clusters?: boolean;
   /** What the kind connects, in the order to list it. */
   resources: KindResource[];
   /** The platform type the kind's accounts are filed under; the platform choice is grouped by it. Empty for a kind that declares none. */
@@ -2876,6 +2900,8 @@ export interface ProviderCategoryInfo {
   resources?: KindResource[];
   /** Added as a Kubernetes cluster entry, with the cluster form, not as an account. */
   kube_cluster?: boolean;
+  /** Added as another kind of cluster entry (slurm), with that kind's cluster form, not as an account. */
+  cluster_kind?: "slurm";
   /** The kinds filed under the type, in the order of items. */
   kinds: string[];
 }
@@ -2919,6 +2945,59 @@ export interface ProviderClusterPool {
   vendor: KubeVendor;
   /** The cluster's entry holds this pool: the DaemonSet runs on its nodes. */
   in_entry: boolean;
+}
+
+export type HPCClusterState = "uninit" | "creating" | "initing" | "pending" | "running" | "exception" | "stopping" | "stopped" | "releasing" | "unknown";
+
+/** An HPC cluster (Alibaba Cloud E-HPC) of a cloud account (dto.ProviderHPCCluster), listed live. */
+export interface ProviderHPCCluster {
+  external_id: string;
+  /** The cluster's ID when the cloud gave no name. */
+  name: string;
+  region: string;
+  /** The cluster's workload manager, lower case: slurm, pbs… Empty when the cloud did not say. */
+  scheduler: string;
+  scheduler_version: string;
+  /** The cluster's state as the server's stable code; the text is the client's. unknown: a word the cloud does not document (see vendor_state). */
+  state: HPCClusterState;
+  /** The badge colour the server gives the state. */
+  state_tone: "success" | "info" | "neutral" | "danger";
+  /** The cloud's own word for the state. */
+  vendor_state: string;
+  running: boolean;
+  /** Compute nodes the cloud lists in the cluster now, in any state; absent when the listing gives no count. Not a GPU count. */
+  compute_nodes?: number;
+  /** Compute nodes with a GPU as the last sync listed them; only given when there is no compute_nodes. */
+  gpu_nodes?: number;
+  /** An entry can be made from it: it runs, schedules with Slurm and has no entry yet. */
+  connectable: boolean;
+  /** The platform can also run the setup on its manager node itself. */
+  can_apply: boolean;
+  /** Why a cluster with no entry cannot be connected at all, as the server decides: scheduler_not_slurm (only Slurm's cards the agent shares). */
+  unsupported_reason?: "scheduler_not_slurm";
+  /** Why a Slurm cluster with no entry cannot be connected yet because of its state, as the server decides; at most one of the two reasons is set. */
+  not_connectable_reason?: "cluster_starting" | "cluster_pending" | "cluster_exception" | "cluster_stopped" | "cluster_releasing" | "cluster_state_unknown";
+  /** The Slurm entry already made from this cluster. */
+  entry?: { uuid: string; name: string };
+}
+
+/**
+ * The account's E-HPC clusters and how far the cloud let it be listed
+ * (dto.ProviderHPCClusterList). access "permission_missing" (permission is the
+ * RAM action) and "not_activated" (code is the cloud's word) leave items empty
+ * and are no error; partial says the clusters of failed_regions could not be
+ * read, so a cluster of theirs may be missing.
+ */
+export interface ProviderHPCClusterList extends List<ProviderHPCCluster> {
+  access: "ok" | "permission_missing" | "not_activated";
+  permission?: string;
+  code?: string;
+  partial: boolean;
+  failed_regions: Array<{ region: string; code: string; message: string; permission?: string }>;
+  /** When the cloud was read for this listing. */
+  listed_at?: string;
+  /** A newer read is going on behind this listing: ask again shortly. */
+  refreshing: boolean;
 }
 
 export interface ProviderInstance {
@@ -3960,6 +4039,10 @@ export interface PreflightSummary {
 
 export interface EvaluateResponse {
   gpu_candidates?: GPUCandidates;
+  /** The instance start timeout the draft resolves to, and where it came from
+   * (cluster, template, engine or deployment); absent when not resolved. */
+  start_timeout_sec?: number;
+  start_timeout_source?: string;
   schema_version?: number;
   diagnostics?: DiagnosticReport;
   request_id?: string;
@@ -4314,6 +4397,9 @@ export interface DGPU {
   memory_used_bytes?: number;
   sm_util_pct?: number;
   updated_at?: string;
+  /** The slice's dGPU backend keeps no such reading, so none will arrive. */
+  memory_used_unsupported?: boolean;
+  sm_util_unsupported?: boolean;
 }
 
 /** An instance a dGPU quota change left at its limit until it restarts, and why. */
@@ -4416,11 +4502,25 @@ export interface MonitorReplicaCount {
   desired: number;
 }
 
+/**
+ * Where a deployment runs, as the server states it: node names in node-rank
+ * order, the widest replica's node count, the most cards on one node, and the
+ * tensor-parallel degree only when the platform knows it (absent for a
+ * callable recipe or instances stating different degrees). The client formats
+ * and localises it (pages/monitor/placement.ts) and derives nothing.
+ */
+export interface MonitorPlacement {
+  nodes: string[];
+  nnodes: number;
+  gpus_per_node: number;
+  tensor_parallel?: number;
+}
+
 export interface MonitorService {
   deployment_id: number;
   name: string;
   engine: string;
-  placement: string;
+  placement: MonitorPlacement;
   replicas: MonitorReplicaCount;
   state: "running" | "starting" | "stopped" | "failed" | "asleep" | "offline";
   request_rate: number | null;
@@ -4486,7 +4586,7 @@ export interface MonitorDeploymentSummary {
   id: number;
   name: string;
   engine: string;
-  placement: string;
+  placement: MonitorPlacement;
   replicas: MonitorReplicaCount;
 }
 
@@ -4595,7 +4695,8 @@ export type MonitorSignalSourceKey =
   | "tpot"
   | "queue_time"
   | "prefill_time"
-  | "decode_time";
+  | "decode_time"
+  | "kv_hit_rate";
 export type MonitorSignalSource = "engine" | "gateway";
 
 // engineReportsNoMetrics: every signal with data came from the gateway, so
@@ -5078,7 +5179,7 @@ export const api = {
       `/api/v1/inference-templates/organizations${query}`,
     ),
   inferenceTemplate: (modelID: string) =>
-    getJSON<InferenceTemplate>(
+    getJSON<InferenceTemplateDetail>(
       `/api/v1/inference-templates/model/${modelID.split("/").map(encodeURIComponent).join("/")}`,
     ),
   // The flat YAML the template editor shows. The server writes it from the
@@ -5157,6 +5258,8 @@ export const api = {
       `/api/v1/inference-templates/import${overwrite ? "?overwrite=true" : ""}`,
       file,
     ),
+  deleteInferenceTemplate: (modelID: string) =>
+    sendJSON<{ deleted: boolean; model_deleted: boolean }>("DELETE", `/api/v1/inference-templates?model_id=${encodeURIComponent(modelID)}`),
   deleteInferenceTemplateSpec: (modelID: string, spec: string) =>
     sendJSON<{ deleted: boolean; model_deleted: boolean }>(
       "DELETE",
@@ -5640,7 +5743,26 @@ export const api = {
   deleteKubeCluster: (uuid: string) => sendJSON<void>("DELETE", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}`),
   /** Applies (or, with remove, deletes) an entry's manifest on its cluster; a failure still carries the results it got to. */
   kubeClusterOperation: (uuid: string, op: "apply" | "remove", dryRun: boolean) => kubeClusterOperation(uuid, op, dryRun),
+  slurmClusters: () => getJSON<List<SlurmCluster>>("/api/v1/slurm/clusters"),
+  slurmDefaults: () => getJSON<SlurmDefaults>("/api/v1/slurm/defaults"),
+  createSlurmCluster: (body: SlurmClusterRequest) => sendJSON<SlurmCluster>("POST", "/api/v1/slurm/clusters", body),
+  updateSlurmCluster: (uuid: string, body: SlurmClusterUpdate) => sendJSON<SlurmClusterEdit>("PUT", `/api/v1/slurm/clusters/${encodeURIComponent(uuid)}`, body),
+  revokeSlurmCluster: (uuid: string) => sendJSON<SlurmCluster>("POST", `/api/v1/slurm/clusters/${encodeURIComponent(uuid)}/revoke`),
+  /** withOfflineNodes deletes the entry together with its nodes (409 SLURM_CLUSTER_NODES_ONLINE / SLURM_CLUSTER_NODES_HAVE_INSTANCES when the server will not). */
+  deleteSlurmCluster: (uuid: string, withOfflineNodes = false) =>
+    sendJSON<void>("DELETE", `/api/v1/slurm/clusters/${encodeURIComponent(uuid)}${withOfflineNodes ? "?with_offline_nodes=true" : ""}`),
+  /** Runs the setup on the cluster's controller through the cloud account (admin; entries with can_apply). */
+  applySlurmCluster: (uuid: string) => sendJSON<SlurmApplyOutcome>("POST", `/api/v1/slurm/clusters/${encodeURIComponent(uuid)}/apply`, { dry_run: false }),
+  /** The setup script the controller is served, as text, with the enrollment token left out (admin). */
+  slurmClusterScript: (uuid: string) => getText(`/api/v1/slurm/clusters/${encodeURIComponent(uuid)}/script`),
+  /** The check alone: what applying would do, with nothing changed on the cluster. */
+  checkSlurmCluster: (uuid: string) => sendJSON<SlurmApplyCheck>("POST", `/api/v1/slurm/clusters/${encodeURIComponent(uuid)}/apply`, { dry_run: true }),
+  /** One uninstall step on the cluster's controller, through the cloud account (admin; entries with can_apply). */
+  removeSlurmCluster: (uuid: string, step: SlurmRemoveStep) =>
+    sendJSON<SlurmRemoveOutcome>("POST", `/api/v1/slurm/clusters/${encodeURIComponent(uuid)}/remove`, { step }),
   providerClusters: (id: number) => getJSON<List<ProviderCluster>>(`/api/v1/providers/${id}/clusters`),
+  /** fresh waits for a new read of the cloud (after a sync); otherwise the last listing comes at once. */
+  providerHPCClusters: (id: number, fresh = false) => getJSON<ProviderHPCClusterList>(`/api/v1/providers/${id}/hpc-clusters${fresh ? "?fresh=1" : ""}`),
 
   providerKinds: () => getJSON<ProviderKindList>("/api/v1/providers/kinds"),
   providers: () => getJSON<List<CloudProvider>>("/api/v1/providers"),

@@ -191,6 +191,10 @@ func TestStoragesBecomeReadyAndAreReportedOnlyWhenTheyChange(t *testing.T) {
 	if !kinds["storage"] || !kinds["storage_cache"] {
 		t.Fatalf("path usage = %+v", usage)
 	}
+	// The share has disappeared, so its nearest existing ancestor is local.
+	// Otherwise the fixture classifies that ancestor as NFS and the agent
+	// correctly recreates the requested shared directory there.
+	r.fs.onLocalDisk(filepath.Dir(shared))
 	if err := os.RemoveAll(shared); err != nil {
 		t.Fatal(err)
 	}

@@ -105,8 +105,25 @@ func TestCapabilityDerivationMatrix(t *testing.T) {
 	})
 	t.Run("old agent", func(t *testing.T) {
 		node := testNode(t, "ascend", nil)
+		node.PartitionSafetyProtocol = 0
 		got := ForGPU(node, &node.GPUs[0])
 		if len(got) != 1 || got[0].ReasonCode != messages.ErrorPartitionAgentUpgradeRequired {
+			t.Fatalf("capabilities = %+v", got)
+		}
+	})
+	t.Run("old agent with a per-card probe report stays ready", func(t *testing.T) {
+		node := testNode(t, "ascend", []proto.AssetReport{{Backend: accelerator.BackendAscendLogical, Root: "/assets", Files: []string{"libvruntime.so"}}})
+		node.PartitionSafetyProtocol = 0
+		got := ForGPU(node, &node.GPUs[0])
+		if len(got) != 1 || got[0].Status != StatusReady {
+			t.Fatalf("capabilities = %+v", got)
+		}
+	})
+	t.Run("node-wide probe report cannot establish per-card readiness", func(t *testing.T) {
+		node := testNode(t, "ascend", []proto.AssetReport{{Backend: accelerator.BackendAscendLogical, Root: "/assets", Files: []string{"libvruntime.so"}}})
+		node.PartitionProbes = `[{"backend":"ascend-dgpu","status":"passed"}]`
+		got := ForGPU(node, &node.GPUs[0])
+		if len(got) != 1 || got[0].Status != StatusUnavailable || got[0].ReasonCode != messages.ErrorPartitionAgentUpgradeRequired {
 			t.Fatalf("capabilities = %+v", got)
 		}
 	})
@@ -397,5 +414,63 @@ func TestAMDDGPUIsProbeExemptAndRuntimeConstrained(t *testing.T) {
 	node.PartitionSafetyProtocol = 0
 	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || got[0].ReasonCode != messages.ErrorPartitionAgentUpgradeRequired {
 		t.Fatalf("old agent AMD capability = %+v", got)
+	}
+}
+
+// An agent that keeps the partition safety contract is current. When it sent
+// no probe report (released agents send null when no probe ran), the reason
+// is what the card lacks, never a request to upgrade.
+func TestCurrentAgentWithoutProbeReportIsNotAskedToUpgrade(t *testing.T) {
+	const complete = `[{"backend":"hygon-dgpu","root":"/opt","files":["libamdhip64.so","libhydmi.so","libhydmi_mig.so","librocm_smi64.so","gpuworks-hygon-vdev-helper"]}]`
+	gpuIndex := 0
+	for _, tc := range []struct {
+		name           string
+		protocol       int
+		assets, probes string
+		wantCode       string
+		wantParams     proto.PartitionReasonParams
+		wantReason     string
+	}{
+		{"null probes, no assets", proto.PartitionSafetyCurrent, `[]`, `null`, messages.ErrorPartitionAssetsMissing,
+			proto.PartitionReasonParams{MissingAssets: []string{"gpuworks-hygon-vdev-helper", "libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so"}},
+			"missing dGPU assets: gpuworks-hygon-vdev-helper, libamdhip64.so, libhydmi.so, libhydmi_mig.so, librocm_smi64.so"},
+		{"empty probes, no assets", proto.PartitionSafetyCurrent, `[]`, `[]`, messages.ErrorPartitionAssetsMissing,
+			proto.PartitionReasonParams{MissingAssets: []string{"gpuworks-hygon-vdev-helper", "libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so"}},
+			"missing dGPU assets: gpuworks-hygon-vdev-helper, libamdhip64.so, libhydmi.so, libhydmi_mig.so, librocm_smi64.so"},
+		{"null probes, helper missing", proto.PartitionSafetyCurrent, `[{"backend":"hygon-dgpu","root":"/opt","files":["libamdhip64.so","libhydmi.so","libhydmi_mig.so","librocm_smi64.so"]}]`, `null`, messages.ErrorPartitionAssetsMissing,
+			proto.PartitionReasonParams{MissingAssets: []string{"gpuworks-hygon-vdev-helper"}}, "missing dGPU assets: gpuworks-hygon-vdev-helper"},
+		{"null probes, assets complete", proto.PartitionSafetyCurrent, complete, `null`, messages.ErrorPartitionProbePending,
+			proto.PartitionReasonParams{GPUIndex: &gpuIndex}, "dGPU probe has not completed: no result received for GPU 0"},
+		{"lowest safety level counts as current", proto.PartitionSafetyOwnership, `[]`, `null`, messages.ErrorPartitionAssetsMissing,
+			proto.PartitionReasonParams{MissingAssets: []string{"gpuworks-hygon-vdev-helper", "libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so"}},
+			"missing dGPU assets: gpuworks-hygon-vdev-helper, libamdhip64.so, libhydmi.so, libhydmi_mig.so, librocm_smi64.so"},
+		{"agent without the safety contract", 0, complete, `null`, messages.ErrorPartitionAgentUpgradeRequired,
+			proto.PartitionReasonParams{}, "agent has not reported current dGPU safety capability; upgrade the agent"},
+		{"agent without the safety contract, unreadable report", 0, complete, ``, messages.ErrorPartitionAgentUpgradeRequired,
+			proto.PartitionReasonParams{}, "agent has not reported current dGPU safety capability; upgrade the agent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			node := &store.Node{
+				Name: "haiguang", PartitionSafetyProtocol: tc.protocol, GPUVendor: "hygon", Arch: "amd64", Framework: "dtk", FrameworkVersion: "26.04", RuntimeDriver: "docker",
+				PartitionAssets: tc.assets, PartitionProbes: tc.probes,
+			}
+			node.GPUs = []store.GPU{{Index: 0, Vendor: "hygon", ArchID: "K100_AI"}}
+			got := ForGPU(node, &node.GPUs[0])
+			if len(got) != 1 || got[0].Backend != accelerator.BackendHygonLogical || got[0].Status != StatusUnavailable ||
+				got[0].ReasonCode != tc.wantCode || got[0].Reason != tc.wantReason || got[0].ProbeStatus != "" {
+				t.Fatalf("capabilities = %+v", got)
+			}
+			if reflect.DeepEqual(tc.wantParams, proto.PartitionReasonParams{}) {
+				if got[0].ReasonParams != nil {
+					t.Fatalf("reason params = %+v, want none", *got[0].ReasonParams)
+				}
+			} else if !hasReason(got[0], tc.wantCode, tc.wantParams) {
+				t.Fatalf("reason params = %+v, want %+v", got[0].ReasonParams, tc.wantParams)
+			}
+			var product *messages.ProductError
+			if err := ValidateReady(node, accelerator.BackendHygonLogical); !errors.As(err, &product) || product.Code() != tc.wantCode {
+				t.Fatalf("ValidateReady = %v, want code %s", err, tc.wantCode)
+			}
+		})
 	}
 }

@@ -9,6 +9,7 @@ import Cube from "@hugeicons/core-free-icons/CubeIcon";
 import DashboardSquare01 from "@hugeicons/core-free-icons/DashboardSquare01Icon";
 import Database01 from "@hugeicons/core-free-icons/Database01Icon";
 import Global from "@hugeicons/core-free-icons/GlobalIcon";
+import Hierarchy from "@hugeicons/core-free-icons/HierarchyIcon";
 import Gpu from "@hugeicons/core-free-icons/GpuIcon";
 import Key01 from "@hugeicons/core-free-icons/Key01Icon";
 import Layers01 from "@hugeicons/core-free-icons/Layers01Icon";
@@ -73,6 +74,7 @@ export const ConsoleIcon = {
   networks: createHugeIcon(ConnectIcon),
   platforms: createHugeIcon(Cloud),
   kubernetes: createHugeIcon(ShipWheel),
+  slurm: createHugeIcon(Hierarchy),
   apiKeys: createHugeIcon(Key01),
   settings: createHugeIcon(Settings01),
   notifications: createHugeIcon(Notification01),

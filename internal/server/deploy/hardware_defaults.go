@@ -89,3 +89,35 @@ func lowestShareTheCardsAllow(cards []CardFacts, step float64) (float64, bool) {
 	}
 	return lowest, found
 }
+
+// SleepSliceCards is the capacity a sleepable Ascend partition's share is
+// measured against: the partition's memory limit, not the physical card.
+//
+// The engine sees the limit as its card, so gpu_memory_utilization is a share
+// of the limit and what it leaves is all the engine has for the memory it
+// does not budget. With sleep mode on, vllm-ascend holds more beside its KV
+// cache than its start-up profile counted: on a 910B4 with vllm-ascend
+// 0.26.0rc1 and Qwen3-0.6B under an 8 GiB limit at the default 0.9, the
+// profile left 6.38 GiB for the KV cache, and during kernel warm-up the
+// partition backend refused a 0.29 GiB allocation with 7.88 GiB accounted,
+// so the engine held at least 1.8 GiB beside the cache where the limit left
+// 0.8 GiB. That ended the engine at every start. Measuring the default
+// against the limit keeps the card reserve (estimate.MaxGPUMemUtil) inside
+// the partition instead: 2 GiB of an 8 GiB limit.
+//
+// Only the combination that was observed is changed: another vendor's
+// partition, or the same one without sleep, ran at the card-derived default.
+// A share the deployer states is still theirs (capDefaultsToCards).
+func SleepSliceCards(vendor string, sleepable bool, limitBytes int64, cards []CardFacts) []CardFacts {
+	if !sleepable || limitBytes <= 0 || accelerator.NormalizeVendor(vendor) != accelerator.VendorAscend {
+		return cards
+	}
+	out := make([]CardFacts, len(cards))
+	for index, card := range cards {
+		if card.MemoryTotalBytes > limitBytes {
+			card.MemoryTotalBytes = limitBytes
+		}
+		out[index] = card
+	}
+	return out
+}

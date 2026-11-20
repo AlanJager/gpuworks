@@ -612,3 +612,189 @@ func TestMixedBatchSkipsNodesAlignedBeforePreviewOrWhileQueued(t *testing.T) {
 		t.Fatalf("dispatches=%d result=%+v err=%v", f.tr.count(), done.Counts, err)
 	}
 }
+
+// A node the platform no longer has cannot confirm or fail its attempt, and
+// no upgrade can still be running on it: an unconfirmed attempt is settled
+// as node_removed by the system, the slot is free for other nodes, and the
+// history keeps the timeout. A node that is merely offline keeps blocking.
+func TestRemovedNodeSettlesItsUnconfirmedAttempt(t *testing.T) {
+	f := newFixture(t, 2, true)
+	r := f.create(t, "first", []string{"n1"}, 0)
+	f.tick(t)
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	f.tr.mu.Lock()
+	delete(f.tr.connections, "n1") // gone offline
+	f.tr.mu.Unlock()
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); i.Phase != "unconfirmed" || i.VerifiedAt != nil {
+		t.Fatalf("an offline node's attempt was settled: %+v", i)
+	}
+	if err := f.st.DeleteNode("n1"); err != nil {
+		t.Fatal(err)
+	}
+	f.tick(t)
+	i := f.item(t, r.Record.ID, "n1")
+	if i.Phase != "unconfirmed" || i.Reason != "confirmation_timeout" || i.VerifiedAt == nil || i.VerifiedBy != "system" || i.VerificationCode != ReasonNodeRemoved {
+		t.Fatalf("removed node's attempt = %+v", i)
+	}
+	f.create(t, "second", []string{"n2"}, 0)
+}
+
+// An attempt still in flight when its node is removed is not settled early:
+// a deleted Kubernetes or Slurm node's agent keeps running and enrolls again,
+// and the upgrade it was given may still be applying. It waits out its
+// deadline like any attempt, and is settled then; its run stays paused for
+// an administrator with the rest of its queue.
+func TestRemovedNodeSettlesItsAttemptOnlyAfterTheDeadline(t *testing.T) {
+	f := newFixture(t, 3, true)
+	r := f.create(t, "first", []string{"n1", "n2"}, 0)
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); !activePhase(i.Phase) {
+		t.Fatalf("n1 not in flight: %+v", i)
+	}
+	if err := f.st.DeleteNode("n1"); err != nil {
+		t.Fatal(err)
+	}
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); !activePhase(i.Phase) || i.VerifiedAt != nil {
+		t.Fatalf("an attempt in flight was settled before its deadline: %+v", i)
+	}
+	if b, err := f.st.AgentUpgradeBlocker(f.s.heldSince()); err != nil || b == nil {
+		t.Fatalf("the slot was freed before the deadline: %v", err)
+	}
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	i := f.item(t, r.Record.ID, "n1")
+	if i.Phase != "unconfirmed" || i.Reason != "confirmation_timeout" || i.VerifiedAt == nil || i.VerificationCode != ReasonNodeRemoved {
+		t.Fatalf("after the deadline = %+v", i)
+	}
+	if n2 := f.item(t, r.Record.ID, "n2"); n2.Phase != "queued" {
+		t.Fatalf("the paused run went on to n2: %+v", n2)
+	}
+	run, err := f.st.AgentUpgradeRun(r.Record.ID)
+	if err != nil || run.PauseReason != "confirmation_required" {
+		t.Fatalf("run = %+v, %v; want paused for an administrator", run, err)
+	}
+	// Nothing unconfirmed holds the slot any more: what is left is the paused
+	// run's own queue, which continuing or stopping it settles.
+	if b, err := f.st.AgentUpgradeBlocker(f.s.heldSince()); err != nil || b != nil {
+		t.Fatalf("still blocked by %+v, %v", b, err)
+	}
+}
+
+// An attempt that missed its deadline holds the slot only for
+// UnconfirmedHold: by then its agent has confirmed or rolled back, so other
+// nodes may be upgraded; the attempt stays unconfirmed and unverified until
+// its node says how it ended, and its run stays paused.
+func TestUnconfirmedAttemptHoldsTheSlotOnlyForAWhile(t *testing.T) {
+	f := newFixture(t, 2, true)
+	r := f.create(t, "first", []string{"n1"}, 0)
+	f.tick(t)
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	f.tr.mu.Lock()
+	delete(f.tr.connections, "n1")
+	f.tr.mu.Unlock()
+	p, _ := f.s.Preview(context.Background(), []string{"n2"})
+	_, err := f.s.Create(context.Background(), CreateRequest{NodeUUIDs: p.NodeUUIDs, ExpectedTargetVersion: p.TargetVersion, ExpectedManifestFingerprint: p.ManifestFingerprint, IdempotencyKey: "early"})
+	var refusal *Error
+	if !errors.As(err, &refusal) || refusal.Code != "AGENT_UPGRADE_ACTIVE" {
+		t.Fatalf("within the hold = %v; want the slot held", err)
+	}
+	if _, err := f.s.BeginServerUpgrade(); err == nil {
+		t.Fatal("the server upgrade went ahead within the hold")
+	}
+	f.now = f.now.Add(f.s.cfg.UnconfirmedHold + time.Second)
+	if done, err := f.s.BeginServerUpgrade(); err != nil {
+		t.Fatalf("server upgrade after the hold = %v", err)
+	} else {
+		done(false)
+	}
+	second := f.create(t, "second", []string{"n2"}, 0)
+	f.tick(t)
+	if i := f.item(t, second.Record.ID, "n2"); !activePhase(i.Phase) {
+		t.Fatalf("another node was not upgraded after the hold: %+v", i)
+	}
+	if i := f.item(t, r.Record.ID, "n1"); i.Phase != "unconfirmed" || i.VerifiedAt != nil {
+		t.Fatalf("the unconfirmed attempt was rewritten: %+v", i)
+	}
+}
+
+// A node back on a new session at its old version did not take the upgrade:
+// once watched for OldVersionSettle its unconfirmed attempt is settled as
+// reconnected_old_version. One still in flight is left to its deadline.
+func TestNodeBackOnItsOldVersionSettlesItsUnconfirmedAttempt(t *testing.T) {
+	f := newFixture(t, 2, true)
+	r := f.create(t, "first", []string{"n1"}, 0)
+	f.tick(t)
+	f.tr.set("n1", Connection{SessionID: "back-n1", Version: "old", Ready: true, Caps: []string{proto.CapUpgradePush}})
+	f.now = f.now.Add(f.s.cfg.OldVersionSettle + time.Second)
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); !activePhase(i.Phase) {
+		t.Fatalf("an attempt in flight was settled by an old-version session: %+v", i)
+	}
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); i.Phase != "unconfirmed" || i.VerifiedAt != nil {
+		t.Fatalf("settled before it was watched: %+v", i)
+	}
+	f.now = f.now.Add(f.s.cfg.OldVersionSettle - time.Second)
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); i.VerifiedAt != nil {
+		t.Fatalf("settled before OldVersionSettle: %+v", i)
+	}
+	f.now = f.now.Add(2 * time.Second)
+	f.tick(t)
+	i := f.item(t, r.Record.ID, "n1")
+	if i.VerifiedAt == nil || i.VerifiedBy != "system" || i.VerificationCode != ReasonReconnectedOldVersion {
+		t.Fatalf("back on the old version = %+v", i)
+	}
+	if len(f.s.oldVersion) != 0 {
+		t.Fatalf("watch left behind: %v", f.s.oldVersion)
+	}
+}
+
+// A rolled-back agent reports so just after it registers: that report, with
+// the agent's own words, settles the attempt, not the old-version watch.
+func TestRollbackReportWinsOverTheOldVersionWatch(t *testing.T) {
+	f := newFixture(t, 1, true)
+	r := f.create(t, "first", []string{"n1"}, 0)
+	f.tick(t)
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	f.tr.set("n1", Connection{SessionID: "back-n1", Version: "old", Ready: true, Caps: []string{proto.CapUpgradePush}})
+	f.tick(t)
+	f.s.Observe(Observation{NodeUUID: "n1", SessionID: "back-n1", Version: "old", State: "failed", Code: proto.ErrorAgentUpgradeRolledBack, Error: "new binary did not register", At: f.now})
+	f.now = f.now.Add(f.s.cfg.OldVersionSettle + time.Second)
+	f.tick(t)
+	i := f.item(t, r.Record.ID, "n1")
+	if i.VerificationCode != "rolled_back" || i.VerificationNote != "new binary did not register" {
+		t.Fatalf("rolled back = %+v", i)
+	}
+}
+
+// Once an unconfirmed attempt no longer holds the slot its node may be
+// upgraded again; a failure the agent then reports is the new attempt's, not
+// the old one's.
+func TestAFailureIsTheAttemptInFlightsNotAnOlderUnconfirmedOnes(t *testing.T) {
+	f := newFixture(t, 1, true)
+	old := f.create(t, "old", []string{"n1"}, 0)
+	f.tick(t)
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	f.now = f.now.Add(f.s.cfg.UnconfirmedHold + time.Second)
+	again := f.create(t, "again", []string{"n1"}, 0)
+	f.tick(t)
+	if i := f.item(t, again.Record.ID, "n1"); !activePhase(i.Phase) {
+		t.Fatalf("the node was not upgraded again: %+v", i)
+	}
+	f.s.Observe(Observation{NodeUUID: "n1", SessionID: "old-n1", Version: "old", State: "failed", Error: "no space left", At: f.now})
+	f.tick(t)
+	if i := f.item(t, again.Record.ID, "n1"); i.Phase != "failed" || i.Error != "no space left" {
+		t.Fatalf("the new attempt = %+v; want its own failure", i)
+	}
+	if i := f.item(t, old.Record.ID, "n1"); i.Phase != "unconfirmed" || i.VerifiedAt != nil {
+		t.Fatalf("the old attempt took the new one's failure: %+v", i)
+	}
+}

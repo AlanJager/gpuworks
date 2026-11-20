@@ -158,7 +158,7 @@
       "fields": [
         "kv_offload_backend"
       ],
-      "contract": "MISSING: no KV offload backend besides the engine's own ships (ADR 0069), so /engines lists no kv_backends and the cards never render; backend selection, replaced-key tombstones and the instance panel label are covered by RTL only until a backend row and a node that runs it exist"
+      "contract": "MISSING: vllm/lmcache is now published via /engines kv_backends (ADR 0069) on NVIDIA and Ascend targets, and DeployKvOffloadSection renders its card; browser E2E execution against a real LMCache daemon is not yet added, so backend selection, replaced-key tombstones and the instance panel label remain covered by RTL and Go tests"
     },
     {
       "component": "ContainerOverridesEditor and advanced inputs",

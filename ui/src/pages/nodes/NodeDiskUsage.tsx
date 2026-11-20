@@ -19,6 +19,7 @@ export function pathKindLabel(t: TFunction, row: PathUsage, storages: Storage[])
     case "host": return t("diskUsage.kind.host", { ns: "nodes" });
     case "storage": return t("diskUsage.kind.storage", { ns: "nodes", name });
     case "storage_cache": return t("diskUsage.kind.storageCache", { ns: "nodes", name });
+    case "managed_dirs": return t("diskUsage.kind.managedDirs", { ns: "nodes" });
     default: return row.kind;
   }
 }

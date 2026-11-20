@@ -82,8 +82,8 @@ Use an administrator account. The node must be online; older agents also need ac
 1. Open **Compute Nodes**, select the nodes to update, and click **Upgrade selected Agents**. The target summary shows the build type, build time, source, and matching release record, with a link to Version and updates. Selection is retained across pages; the toolbar shows the selected count and a clear action. The preview includes only selected nodes and shows the target version and each node's eligibility or reason for skipping or manual action.
 2. Verify that the target is the current server version and confirm that workloads can tolerate a brief interruption. A different version string may represent a downgrade; unidentifiable target builds such as `dev` cannot be used for bulk upgrades.
 3. View total, processed, succeeded, failed, skipped, and unconfirmed counts, and open per-node results. Only one agent upgrades at a time across the platform; **Upgrade Agent** in node details uses the same queue. Use **Recent Agent upgrades** in the toolbar to view history; progress records remain available after refreshing the page. The latest 20 completed runs are retained; runs with queued work or unresolved reservations are never pruned.
-4. Success requires a new formal connection from the target agent version and a normal status report. Transfer or reconnection timeouts pause the queue; unconfirmed means the outcome is unknown and does not mean it is safe to retry. Check the node's processes, version, service logs, and connection state. After confirming that the old process has exited and no upgrade remains in progress, an administrator can release the reservation with an audit note, then preview and confirm the remaining nodes. Continuing creates a linked new batch and preserves the original results.
-5. **Stop remaining upgrades** cancels only nodes that have not started. The current upgrade remains under observation. Console server upgrades are rejected while an upgrade is running or an unconfirmed reservation remains unresolved, keeping the target stable.
+4. Success requires a new formal connection from the target agent version and a normal status report. Transfer or reconnection timeouts pause the queue and mark the node unconfirmed, meaning the outcome is unknown. For 5 minutes after the timeout it still holds the platform's single upgrade slot; after that it no longer does, and other nodes and the server can be upgraded as usual: the agent itself finishes or rolls back the upgrade within its confirmation window (a node that was off rolls back when it next starts), and only an online, confirmed agent is upgraded again. The batch stays paused for an administrator to check and continue or stop; the administrator can also check the node's processes, version, service logs, and connection state, release its unconfirmed reservation with an audit note, then preview and confirm the remaining nodes. Continuing creates a linked new batch and preserves the original results. The system releases the reservation itself when the node later reconnects on the target version, the agent reports a failure or rollback, or the node reconnects on its previous version and stays connected for 30 seconds (the upgrade did not take effect), and, once the confirmation deadline has passed, when the node has been removed from the platform (deleted by hand, or cleaned up after its cloud instance or cluster node went away); the batch stays paused for an administrator to continue. Deleting a node does not release an upgrade still in progress early: after deleting a Kubernetes or Slurm node, or a forced deletion, the agent on the machine keeps running and joins again under a new identity.
+5. **Stop remaining upgrades** cancels only nodes that have not started. The current upgrade remains under observation. Console server upgrades are rejected while an upgrade is running, an unconfirmed reservation is less than 5 minutes past its timeout, or a batch still has queued nodes, keeping the target stable.
 
 For older agents that download their binary, the batch package remains pinned during the download. Older server-initiated agents that cannot receive an upgrade package over the connection require the manual procedure below. Upgrading does not automatically drain workloads or guarantee uninterrupted requests; verify workload recovery one node at a time for multi-node inference and PD disaggregation.
 
@@ -96,6 +96,16 @@ Nodes connected through a DaemonSet are upgraded in a batch like any other: the 
 - A node that joins the cluster later first runs the image's own program and switches to the server's current agent before it registers; it needs no upgrade.
 
 See [Connect a Kubernetes Cluster](connect-kubernetes.md).
+
+### Nodes of a Slurm Cluster
+
+Nodes connected through a cluster entry (an on-premises Slurm cluster, or an E-HPC cluster under a cloud account) are upgraded in batches like other nodes: the agent lives in the node's install directory (`/var/lib/gpuworks` by default), and the upgrade replaces that program in place.
+
+- The health check script `check.sh` is independent of agent upgrades: each interval it only checks whether the agent service is there and installs it when it is not; a node that joins the cluster later first gets the server's current agent version.
+- After a server upgrade the connect script itself (the logic of `check.sh`, how it edits `slurm.conf`) may have changed: to put the cluster on the new script, run the connect command again (or “Check and apply” for a cloud account's cluster), which is idempotent; before that you can run the check command (`-s -- --check`) to see what it would change, which changes nothing. When the script directory is not on shared storage, the connect command copies the new script to the nodes.
+- Upgrading the server does not change `slurm.conf` and does not rerun the connect script.
+
+See [Connect a Slurm Cluster](connect-slurm-nodes.md).
 
 ### Rerun the Installation Script on the Node
 
@@ -168,6 +178,6 @@ Run the following commands in the actual installation directory on the control p
 
 For options and backup layout, see the [CLI Reference](../reference/cli.md#gpuworks-upgrade) and [Installation Layout](../reference/install-layout.md). For the connection mechanism, see [Architecture](../explanation/architecture.md#连接与流).
 
-<!-- translation-source-sha256: 1516407da481d2587d5dbb60b163d5b8c95fe77729764a486a94b910a6c757c2 -->
+<!-- translation-source-sha256: c91635e935f882d3ff9f90aed04c09433160b2959d22c40b12c5814ac20c2a43 -->
 <!-- translation-localized-code-block: 3922c94b253dd971ff8ee6ae0ddcc7cfd4f7c28127fe2cdc7a322efe51808c1c 4afd6537a965876c65d49343fb5e1f684063bc8ac4f4c50eda0eac4ed077140b Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: a55f0c19bcc94075a6148de522ad5e9559f13d4ecac8b070a5d0483f303608ab 853eb242efd6c57c33a48c52b2dee9bb32684441a0c5dd7ebbe8746ce3a92f39 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

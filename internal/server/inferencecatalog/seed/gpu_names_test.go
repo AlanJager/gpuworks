@@ -124,8 +124,8 @@ func TestCatalogNamePredicatesMatchStoredNames(t *testing.T) {
 
 // RTX Spark carries the same sm_121 GPU and unified memory pool as DGX Spark
 // (GB10), so every single-node spec written for GB10 serves it too. The
-// two-node GB10 profile is left out: it relies on the pair of Sparks being
-// linked to each other, which a single RTX Spark host is not.
+// multi-node GB10 profiles are left out: they rely on several Sparks linked to
+// each other, which a single RTX Spark host is not.
 func TestRTXSparkMatchesEverySingleNodeGB10Spec(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
@@ -136,7 +136,7 @@ func TestRTXSparkMatchesEverySingleNodeGB10Spec(t *testing.T) {
 	matched := 0
 	for _, model := range catalog.Models {
 		for _, spec := range model.Specs {
-			if spec.GPUs.Name == "" || spec.Name == tensorfoldGB10Spec {
+			if spec.GPUs.Name == "" || spec.Name == tensorfoldGB10Spec || statesDistributedVariable(spec) {
 				continue
 			}
 			predicate := chipmatch.Predicate{Vendor: spec.GPUs.Vendor, Name: spec.GPUs.Name}

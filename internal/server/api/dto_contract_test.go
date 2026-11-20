@@ -202,7 +202,7 @@ func TestAPIKeyDTOContractCannotExposeSecret(t *testing.T) {
 }
 
 func TestFlatSpecAndMatchedByDTOUseLiteralWireJSON(t *testing.T) {
-	specWire := `{"id":7,"source":"upstream","name":"blackwell","display_name_zh_cn":"Blackwell · NVFP4","display_name_en":"Blackwell · NVFP4","engine":"vllm","image":"vllm:latest","weight_sources":[{"provider":"huggingface","repo_id":"org/model","revision":"commit","subfolder":"runtime"}],"weight_bytes":2000,"runtime_weight_bytes":1000,"shm_bytes":429496729600,"memlock_unlimited":true,"docker_args":["--cap-add=SYS_PTRACE"],"gpus":{"vendor":"nvidia","cc":">=10.0"}}`
+	specWire := `{"id":7,"source":"upstream","name":"blackwell","display_name_zh_cn":"Blackwell · NVFP4","display_name_en":"Blackwell · NVFP4","engine":"vllm","image":"vllm:latest","weight_sources":[{"provider":"huggingface","repo_id":"org/model","revision":"commit","subfolder":"runtime"}],"weight_bytes":2000,"runtime_weight_bytes":1000,"shm_bytes":429496729600,"memlock_unlimited":true,"start_timeout_sec":5400,"docker_args":["--cap-add=SYS_PTRACE"],"gpus":{"vendor":"nvidia","cc":">=10.0"}}`
 	var spec dto.InferenceSpecDTO
 	if err := json.Unmarshal([]byte(specWire), &spec); err != nil {
 		t.Fatal(err)
@@ -230,6 +230,11 @@ func TestFlatSpecAndMatchedByDTOUseLiteralWireJSON(t *testing.T) {
 	spec.MemlockUnlimited = false
 	if raw, err := json.Marshal(spec); err != nil || strings.Contains(string(raw), "memlock_unlimited") {
 		t.Fatalf("flat spec DTO without memlock_unlimited wire=%s err=%v", raw, err)
+	}
+	// start_timeout_sec is left out when the spec states none.
+	spec.StartTimeoutSec = 0
+	if raw, err := json.Marshal(spec); err != nil || strings.Contains(string(raw), "start_timeout_sec") {
+		t.Fatalf("flat spec DTO without start_timeout_sec wire=%s err=%v", raw, err)
 	}
 	// And docker_args is left out when the spec states none.
 	spec.DockerArgs = nil
@@ -319,6 +324,42 @@ func TestNodeWireCarriesTheRuntimeGPUReasonAsACodeAndOmitsItWhenThereIsNone(t *t
 	}
 
 	assertJSONKeysAbsent(t, marshalJSONObject(t, dto.Node{UUID: "node-1", State: "online"}), "runtime_gpu_blocked")
+}
+
+// Why Slurm will not run jobs on a node travels by exact key (the code, Slurm's
+// own words, the line the server composed), round-trips, and is absent when
+// there is none.
+func TestNodeWireCarriesWhySlurmWillNotRunJobs(t *testing.T) {
+	raw, err := json.Marshal(dto.Node{
+		UUID: "node-1", Scheduling: "cordoned", SchedulingBy: "platform", CordonReason: "slurm_node_unavailable",
+		SlurmNode: "gpu-1", SlurmUnavailable: "gres_missing",
+		SlurmReason: "gres/gpu count reported lower than configured (0 < 2)",
+		SlurmFixes: []dto.NodeSlurmFix{
+			{Code: "gres_conf", Commands: []string{"NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]"}},
+			{Code: "resume", Commands: []string{"scontrol update nodename=gpu-1 state=resume"}},
+		},
+		Labels: map[string]string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// encoding/json escapes "<" as \u003c.
+	want := `{"uuid":"node-1","scheduling":"cordoned","scheduling_by":"platform","cordon_reason":"slurm_node_unavailable","uncordon":"",` +
+		`"state":"","hostname":"","os":"","kernel":"","arch":"","cpu_model":"","cpu_cores":0,"mem_total_gib":0,"disk_total_gib":0,"gpu_count":0,` +
+		`"slurm_node":"gpu-1","slurm_unavailable":"gres_missing","slurm_reason":"gres/gpu count reported lower than configured (0 \u003c 2)",` +
+		`"slurm_fixes":[{"code":"gres_conf","commands":["NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]"]},{"code":"resume","commands":["scontrol update nodename=gpu-1 state=resume"]}],"labels":{},"has_ssh_credential":false,"created_at":"0001-01-01T00:00:00Z","gpus":null,` +
+		`"placement_policy":null,"placement_policy_availability":null}`
+	if string(raw) != want {
+		t.Fatalf("node wire JSON\n got %s\nwant %s", raw, want)
+	}
+	var back dto.Node
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.SlurmNode != "gpu-1" || back.SlurmUnavailable != "gres_missing" || len(back.SlurmFixes) != 2 || back.SlurmFixes[0].Code != "gres_conf" || back.SlurmFixes[1].Commands[0] != "scontrol update nodename=gpu-1 state=resume" {
+		t.Fatalf("round trip = %+v", back)
+	}
+	assertJSONKeysAbsent(t, marshalJSONObject(t, dto.Node{UUID: "node-1", State: "online"}), "slurm_node", "slurm_unavailable", "slurm_reason", "slurm_fixes")
 }
 
 // The runtime a node passed over travels by exact key with its reason and
