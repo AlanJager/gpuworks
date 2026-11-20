@@ -3,7 +3,7 @@ import { Alert } from "../pages/DeploymentControls";
 import { Activity, useCallback, useMemo, useState, type ReactNode } from "react";
 import { type MetricPoint, type MetricSeries } from "../api";
 import TimeSeriesChart, { autoValueFmt, defaultSeriesName } from "./TimeSeriesChart";
-import { useInstanceMetricSeries, rateSeries } from "../instanceMetricSeries";
+import { firstWindow, useInstanceMetricSeries, rateSeries } from "../instanceMetricSeries";
 import { StageCharts, useInstanceStages } from "./InstanceStagePanel";
 import { RangeHeader, useMetricRange, useMetricWindow } from "./MetricWindow";
 import { HelpTip } from "../ui-kit/HelpTip";
@@ -48,6 +48,7 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
   const specDraftTokens = useInstanceMetricSeries(METRICS.specDraftTokens, instanceUuid, selection);
   const specAcceptRateInstant = useInstanceMetricSeries(METRICS.specAcceptRateInstant, instanceUuid, selection);
 
+  const cachePercentSeries = useMemo(() => asPercent(cache.data?.items ?? []), [cache.data]);
   const promptRate = useMemo(() => rateSeries(promptTokens.data?.items ?? []), [promptTokens.data]);
   const generationRate = useMemo(() => rateSeries(generationTokens.data?.items ?? []), [generationTokens.data]);
   const concurrencySeries = useMemo(() => [
@@ -135,6 +136,7 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
                 height={190}
                 series={concurrencySeries}
                 seriesName={concurrencySeriesName}
+                xRange={firstWindow(running, waiting)}
                 valueFmt={(v) => v.toFixed(0)}
                 integer
               />
@@ -146,6 +148,7 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
               ) : (
                 <TimeSeriesChart height={190} series={[...withMetricLabel(promptRate, "prompt"), ...withMetricLabel(generationRate, "generation")]}
                   seriesName={labels => t(labels.metric === "prompt" ? "instanceMetrics.promptThroughput" : "instanceMetrics.generationThroughput")}
+                  xRange={firstWindow(promptTokens, generationTokens)}
                   unit="tok/s" valueFmt={autoValueFmt} />
               )}
             </ChartCard>
@@ -154,21 +157,21 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
         <TabPanel value="cache">
           <div className="deployment-metric-charts">
             <ChartCard title={t("instanceMetrics.cacheUsage")} description={t("instanceMetrics.cacheUsageDescription")}>
-              <TimeSeriesChart height={190} series={cache.data?.items ?? []} unit="%" valueFmt={(v) => percentScaled(v).toFixed(0)} />
+              <TimeSeriesChart height={190} series={cachePercentSeries} xRange={cache.window} yRange={PERCENT_RANGE} unit="%" valueFmt={(v) => v.toFixed(0)} />
             </ChartCard>
             <ChartCard
               title={t("instanceMetrics.specAcceptRate")}
               description={t("instanceMetrics.specAcceptRateDescription")}
               hint={t("instanceMetrics.specAcceptRateScopeHint")}
             >
-              <RatioChart series={specCardSeries} countersReported={specCountersReported} />
+              <RatioChart series={specCardSeries} xRange={firstWindow(specAcceptedTokens, specDraftTokens, specAcceptRateInstant)} countersReported={specCountersReported} />
             </ChartCard>
             <ChartCard
               title={t("instanceMetrics.kvHitRate")}
               description={t("instanceMetrics.kvHitRateDescription")}
               hint={t("instanceMetrics.kvHitRateScopeHint")}
             >
-              <RatioChart series={kvCardSeries} countersReported={kvCountersReported} gatewayCounts />
+              <RatioChart series={kvCardSeries} xRange={firstWindow(kvHits, kvQueries, kvHitRateInstant)} countersReported={kvCountersReported} gatewayCounts />
             </ChartCard>
           </div>
           {group === "cache" && cacheTiers}
@@ -185,17 +188,20 @@ export default function InferenceMetricsPanel({ instanceUuid, historical = false
 
 // gatewayCounts marks a signal the gateway also measures, per deployment: its
 // unreported message then points to the deployment's panel.
-function RatioChart({ series, countersReported, gatewayCounts = false }: { series: MetricSeries[]; countersReported: boolean; gatewayCounts?: boolean }) {
+function RatioChart({ series, xRange, countersReported, gatewayCounts = false }: { series: MetricSeries[]; xRange?: [number, number]; countersReported: boolean; gatewayCounts?: boolean }) {
   const { t } = useTranslation("deployments");
+  const percentSeries = useMemo(() => asPercent(series), [series]);
   if (!hasPoints(series)) {
     return <Unreported text={countersReported ? t("instanceMetrics.metricNoTraffic") : t(gatewayCounts ? "instanceMetrics.metricUnavailableDeployment" : "instanceMetrics.metricUnavailable")} />;
   }
   return (
     <TimeSeriesChart
       height={190}
-      series={series}
+      series={percentSeries}
+      xRange={xRange}
+      yRange={PERCENT_RANGE}
       unit="%"
-      valueFmt={(v) => percentScaled(v).toFixed(1)}
+      valueFmt={(v) => v.toFixed(1)}
     />
   );
 }
@@ -212,6 +218,18 @@ function Unreported({ text }: { text: string }) {
 // percentages across versions; anything above 1 can only be a percentage.
 export function percentScaled(value: number): number {
   return value > 1 ? value : value * 100;
+}
+
+// A ratio or usage gauge is bounded: its axis is 0..100 %, not a fit around
+// the data (a single 75 % reading would otherwise get an axis reading 1.2).
+const PERCENT_RANGE: [number, number] = [0, 100];
+
+// asPercent puts a gauge's points on the 0..100 scale the chart's pinned axis
+// uses, once, before drawing: scaling in the label formatter instead read
+// each tick by itself, so a fraction axis ticking 0.8, 1.0, 1.2 labelled the
+// last as "1.2" and the other two as 80 and 100.
+function asPercent(series: MetricSeries[]): MetricSeries[] {
+  return series.map((item) => ({ ...item, points: (item.points ?? []).map(([time, value]): MetricPoint => [time, percentScaled(value)]) }));
 }
 
 function withMetricLabel(series: MetricSeries[], metric: string): MetricSeries[] {

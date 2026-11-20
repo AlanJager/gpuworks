@@ -127,6 +127,27 @@ test("an RDMA network charts NIC, RDMA, errors and its roles, queried once per m
   assert.ok(calls.slice(8).every(([, p]) => p.range === "24h" && p.step === "10m"));
 });
 
+// A link that has reported one sample is drawn on the range chosen (an hour,
+// then a day), not on the day-wide axis ECharts gives a lone point.
+test("each chart's time axis is the selected range, with a lone sample visible", async () => {
+  const before = Date.now();
+  stub("metricsQuery", async (metric) => list(metric === "gpuworks_node_nic_rx_bytes_per_sec" ? [{ labels: { node: "a", iface: "bond0" }, points: [[before - 20_000, 5e9]] }] : []));
+  wrap(<NetworkMonitorPanel network={network("ethernet", ["compute"], [node("a", "gpu-a", "bond0")])} />);
+  const echarts = await import("echarts/core");
+  const card = async () => (await screen.findByText(n.monitor.nicRx)).closest(".ant-card") as HTMLElement;
+  const option = async () => {
+    await waitFor(async () => assert.ok((await card()).querySelector("div[role=img] canvas")));
+    return echarts.getInstanceByDom((await card()).querySelector<HTMLElement>("div[role=img]")!)!.getOption() as { xAxis: Array<{ min: number; max: number }>; series: Array<{ showSymbol: boolean }> };
+  };
+  const hour = await option();
+  assert.equal(hour.xAxis[0].max - hour.xAxis[0].min, 3_600_000);
+  assert.ok(hour.xAxis[0].max >= before && hour.xAxis[0].max <= Date.now());
+  assert.equal(hour.series[0].showSymbol, true);
+
+  await userEvent.click(screen.getByText("24h"));
+  await waitFor(async () => assert.equal((await option()).xAxis[0].max - (await option()).xAxis[0].min, 24 * 3_600_000));
+});
+
 test("an Ethernet compute network explains its traffic is inside the NIC totals", async () => {
   stub("metricsQuery", async () => list([]));
   wrap(<NetworkMonitorPanel network={network("host_ethernet", ["compute", "serving"], [node("a", "gpu-a", "eth0")])} />);

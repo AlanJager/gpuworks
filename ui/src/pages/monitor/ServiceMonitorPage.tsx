@@ -3,6 +3,7 @@ import { Alert, Button, Card, Col, Row, Skeleton, Space, Tabs, Typography } from
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { APIError } from "../../apiError";
+import { rangeWindow } from "../../monitorRange";
 import { engineReportsNoMetrics, type MonitorDeploymentCharts } from "../../api";
 import PageHeader from "../../components/PageHeader";
 import TimeSeriesChart, { type RightAxis } from "../../components/TimeSeriesChart";
@@ -72,7 +73,9 @@ function ServiceMonitorPageContent() {
   const lastData = useRef(data);
   if (data) lastData.current = data;
   const layoutData = data ?? lastData.current;
-
+  // The window the charts cover, taken again with each answer: a preset ends
+  // at the time it was asked, so the axis moves with the data, not the clock.
+  const chartWindow = useMemo(() => rangeWindow(range), [range, data]);
 
   if (!validId) {
     return <Alert type="error" showIcon message={t("deployment.notFound")} />;
@@ -99,6 +102,7 @@ function ServiceMonitorPageContent() {
               series={series}
               height={CHART_HEIGHT}
               group="monitor-service"
+              xRange={chartWindow}
               seriesName={seriesName}
               {...(key === "kv" ? { leftName: t("metrics.usage_pct"), yRange: PERCENT_RANGE, rightAxis: kvHitRateAxis } : {})}
             />

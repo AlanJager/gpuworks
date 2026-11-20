@@ -212,3 +212,108 @@ test("an unreported prefix-cache hit rate and stage times point to the deploymen
   assert.match(card("KV Cache Hit Rate").textContent ?? "", /deployment-wide figure is in the deployment metrics/);
   assert.ok(!card("Speculative Accept Rate").textContent?.includes("deployment"), "the gateway has no speculative-decoding figure");
 });
+
+// What the chart actually holds: ECharts' resolved option for the chart in a
+// card, read back from the live instance behind it.
+async function chartOption(title: string) {
+  const echarts = await import("echarts/core");
+  const host = card(title).querySelector<HTMLElement>('[role="img"]');
+  assert.ok(host, `${title} has a chart`);
+  const instance = echarts.getInstanceByDom(host);
+  assert.ok(instance, `${title} chart is mounted`);
+  return instance.getOption() as {
+    xAxis: Array<{ min?: number; max?: number }>;
+    yAxis: Array<{ min?: number; max?: number; interval?: number }>;
+    series: Array<{ showSymbol?: boolean; data: Array<[number, number]> }>;
+  };
+}
+
+// recordWindows answers like stubMetrics and remembers each query's bounds.
+function recordWindows(byMetric: Record<string, MetricSeries[]>) {
+  const asked = new Map<string, { start: number; end: number }>();
+  api.metricsQuery = (async (metric: string, params: { start?: number; end?: number } = {}) => {
+    asked.set(metric, { start: params.start!, end: params.end! });
+    return list(byMetric[metric] ?? []);
+  }) as typeof api.metricsQuery;
+  return asked;
+}
+
+test("a single speculative-accept ratio point draws a visible point on the window the query asked for", async () => {
+  const at = Date.now() - 5_000;
+  // Both counters moved within one scrape interval: one ratio window, 0.753.
+  const asked = recordWindows({
+    gpuworks_infer_requests_running: series([[at, 1]]),
+    gpuworks_infer_spec_accepted_tokens_total: series([[at - 15_000, 0], [at, 753]]),
+    gpuworks_infer_spec_draft_tokens_total: series([[at - 15_000, 0], [at, 1000]]),
+  });
+  render(<I18nextProvider i18n={i18n}><InferenceMetricsPanel instanceUuid="inst-1" /></I18nextProvider>);
+  fireEvent.click(screen.getByRole("tab", { name: "Cache & engine" }));
+
+  await waitFor(() => assert.ok(card("Speculative Accept Rate").querySelector("canvas")));
+  assert.ok(!card("Speculative Accept Rate").textContent?.includes("no qualifying traffic yet"), "one ratio point is data, not the empty state");
+  const option = await chartOption("Speculative Accept Rate");
+  const window = asked.get("gpuworks_infer_spec_accepted_tokens_total");
+  assert.ok(window);
+  assert.equal(window.end - window.start, 15 * 60_000);
+  assert.deepEqual([option.xAxis[0].min, option.xAxis[0].max], [window.start, window.end], "x axis is the 15 minute window, not a day either side of the point");
+  assert.deepEqual([option.yAxis[0].min, option.yAxis[0].max], [0, 100], "a ratio is read against 0..100 %");
+  assert.equal(option.series[0].showSymbol, true, "a lone point has no segment, so it shows its symbol");
+  assert.equal(option.series[0].data.length, 1);
+  assert.equal(option.series[0].data[0][0], at);
+  assert.ok(Math.abs(option.series[0].data[0][1] - 75.3) < 1e-9, "0.753 is drawn as 75.3 on the 0..100 axis");
+});
+
+test("the cache charts hold a 0..100 axis over the query window, whether the engine reports fractions or percentages", async () => {
+  const at = Date.now() - 5_000;
+  const asked = recordWindows({
+    gpuworks_infer_requests_running: series([[at, 1]]),
+    // vLLM: 0..1 fractions. Both are one reading: a fitted axis would pad around it.
+    gpuworks_infer_gpu_cache_usage_percent: series([[at, 0.55]]),
+    gpuworks_infer_kv_hits_total: series([[at - 15_000, 100], [at, 120]]),
+    gpuworks_infer_kv_queries_total: series([[at - 15_000, 200], [at, 240]]),
+  });
+  render(<I18nextProvider i18n={i18n}><InferenceMetricsPanel instanceUuid="inst-1" /></I18nextProvider>);
+  fireEvent.click(screen.getByRole("tab", { name: "Cache & engine" }));
+  await waitFor(() => assert.ok(card("KV Cache Hit Rate").querySelector("canvas")));
+  for (const [title, metric, value] of [["GPU Cache Usage", "gpuworks_infer_gpu_cache_usage_percent", 55], ["KV Cache Hit Rate", "gpuworks_infer_kv_hits_total", 50]] as const) {
+    const option = await chartOption(title);
+    const window = asked.get(metric)!;
+    assert.deepEqual([option.xAxis[0].min, option.xAxis[0].max], [window.start, window.end], title);
+    assert.deepEqual([option.yAxis[0].min, option.yAxis[0].max, option.yAxis[0].interval], [0, 100, 20], title);
+    assert.ok(Math.abs(option.series[0].data[0][1] - value) < 1e-9, `${title} ${option.series[0].data[0][1]}`);
+    assert.equal(option.series[0].showSymbol, true, `${title} has a single point`);
+  }
+});
+
+test("a multi-point instance chart keeps its line without symbols and takes the query window", async () => {
+  const at = Date.now() - 5_000;
+  const asked = recordWindows({
+    gpuworks_infer_requests_running: series([[at - 20_000, 1], [at - 10_000, 2], [at, 3]]),
+  });
+  render(<I18nextProvider i18n={i18n}><InferenceMetricsPanel instanceUuid="inst-1" /></I18nextProvider>);
+  await waitFor(() => assert.ok(card("Instance Request Concurrency").querySelector("canvas")));
+  const option = await chartOption("Instance Request Concurrency");
+  const window = asked.get("gpuworks_infer_requests_running")!;
+  assert.deepEqual([option.xAxis[0].min, option.xAxis[0].max], [window.start, window.end]);
+  assert.equal(option.series[0].showSymbol, false);
+  assert.equal(option.series[0].data.length, 3);
+});
+
+test("stage-duration and preemption charts take the query window too", async () => {
+  const at = Date.now() - 5_000;
+  const asked = recordWindows({
+    gpuworks_infer_requests_running: series([[at, 1]]),
+    gpuworks_infer_queue_time_seconds: [{ labels: { ...LABELS, quantile: "0.95" }, points: [[at, 0.2]] }],
+    gpuworks_infer_preemptions_total: series([[at - 10_000, 0], [at, 3]]),
+  });
+  render(<I18nextProvider i18n={i18n}><InferenceMetricsPanel instanceUuid="inst-1" /></I18nextProvider>);
+  await waitFor(() => assert.ok(card("Stage Duration p95").querySelector("canvas")));
+  await waitFor(() => assert.ok(card("Preemptions /s").querySelector("canvas")));
+  const stage = await chartOption("Stage Duration p95");
+  const queue = asked.get("gpuworks_infer_queue_time_seconds")!;
+  assert.deepEqual([stage.xAxis[0].min, stage.xAxis[0].max], [queue.start, queue.end]);
+  assert.equal(stage.series[0].showSymbol, true);
+  const preempt = await chartOption("Preemptions /s");
+  const preemptWindow = asked.get("gpuworks_infer_preemptions_total")!;
+  assert.deepEqual([preempt.xAxis[0].min, preempt.xAxis[0].max], [preemptWindow.start, preemptWindow.end]);
+});

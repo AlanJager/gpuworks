@@ -3,7 +3,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { type MetricSeries } from "../api";
-import { rateSeries, useInstanceMetricSeries } from "../instanceMetricSeries";
+import { firstWindow, rateSeries, useInstanceMetricSeries } from "../instanceMetricSeries";
 import type { TimeRangeSelection } from "../timeRange";
 import TimeSeriesChart, { defaultSeriesName } from "./TimeSeriesChart";
 
@@ -33,13 +33,15 @@ export function StageCharts({ queue, prefill, decode, preemptions }: ReturnType<
   ], [queue.data, prefill.data, decode.data]);
   const preemptSeries = useMemo(() => rateSeries(preemptions.data?.items ?? []), [preemptions.data]);
   const seriesName = useCallback((labels: Record<string, string>, index: number) => stageSeriesName(labels, index, t), [t]);
+  const stageWindow = firstWindow(queue, prefill, decode);
+  const preemptWindow = firstWindow(preemptions);
 
   return (
     <>
       <StageCard title={t("instanceStages.stageTitle")} description={t("instanceStages.stageDescription")}>
         {(queue.error || prefill.error || decode.error) && <Notice tone="danger" title={t("metrics.loadFailed")}>{(queue.error || prefill.error || decode.error)?.message}</Notice>}
         {hasPoints(stageSeries) ? (
-          <TimeSeriesChart height={190} series={stageSeries} seriesName={seriesName} unit="ms" valueFmt={(v) => v.toFixed(0)} />
+          <TimeSeriesChart height={190} series={stageSeries} xRange={stageWindow} seriesName={seriesName} unit="ms" valueFmt={(v) => v.toFixed(0)} />
         ) : (
           <NotCollected text={t("instanceStages.notCollectedDeployment")} />
         )}
@@ -47,7 +49,7 @@ export function StageCharts({ queue, prefill, decode, preemptions }: ReturnType<
       <StageCard title={t("instanceStages.preemptTitle")} description={t("instanceStages.preemptDescription")}>
         {preemptions.error && <Notice tone="danger" title={t("metrics.loadFailed")}>{preemptions.error.message}</Notice>}
         {hasPoints(preemptSeries) ? (
-          <TimeSeriesChart height={190} series={preemptSeries} seriesName={seriesName} unit="/s" valueFmt={(v) => v.toFixed(2)} />
+          <TimeSeriesChart height={190} series={preemptSeries} xRange={preemptWindow} seriesName={seriesName} unit="/s" valueFmt={(v) => v.toFixed(2)} />
         ) : (
           <NotCollected text={t("instanceStages.notCollected")} />
         )}

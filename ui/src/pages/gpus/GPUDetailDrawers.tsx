@@ -6,6 +6,7 @@ import {
 } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { rangeWindow } from "../../monitorRange";
 import { api, type DGPU, type MetricSeries, type PhysicalGPU } from "../../api";
 import DetailDrawer from "../../components/detail/DetailDrawer";
 import DetailSection from "../../components/detail/DetailSection";
@@ -196,7 +197,7 @@ function GPUHistory({ node, gpu }: { node: string; gpu: number }) {
   return <><Segmented value={range} onChange={(value) => setRange(value as keyof typeof ranges)} options={Object.keys(ranges)} size="small" /><ChartGrid charts={charts} /></>;
 }
 
-function DGPUHistory({ gpu }: { gpu: DGPU }) {
+export function DGPUHistory({ gpu }: { gpu: DGPU }) {
   const { t } = useTranslation("gpus");
   const [range, setRange] = useState<keyof typeof ranges>("15m");
   const specs: ChartSpec[] = [
@@ -211,15 +212,17 @@ function DGPUHistory({ gpu }: { gpu: DGPU }) {
 }
 
 type ChartSpec = [string, string, string, (value: number) => string, ((series: MetricSeries[]) => MetricSeries[])?, [number, number]?];
-type ChartModel = { title: string; unit: string; format: (value: number) => string; series: MetricSeries[]; yRange?: [number, number] };
+// window is the [startMS, endMS] the answered queries covered (a range ends when it was asked).
+type ChartModel = { title: string; unit: string; format: (value: number) => string; series: MetricSeries[]; yRange?: [number, number]; window?: [number, number] };
 
-function useMetricCharts(specs: ChartSpec[], params: { node: string; gpu: string; instance?: string; range: string; step: string }): ChartModel[] {
+function useMetricCharts(specs: ChartSpec[], params: { node: string; gpu: string; instance?: string; range: keyof typeof ranges; step: string }): ChartModel[] {
   const [charts, setCharts] = useState<ChartModel[]>(() => specs.map(([title, , unit, format, , yRange]) => ({ title, unit, format, series: [], yRange })));
   useEffect(() => {
     let alive = true;
+    const queryWindow = rangeWindow(params.range);
     Promise.all(specs.map(async ([title, metric, unit, format, transform, yRange]) => {
       const series = (await api.metricsQuery(metric, params)).items;
-      return { title, unit, format, series: transform ? transform(series) : series, yRange };
+      return { title, unit, format, series: transform ? transform(series) : series, yRange, window: queryWindow };
     }))
       .then((data) => { if (alive) setCharts(data); })
       .catch(() => { if (alive) setCharts(specs.map(([title, , unit, format, , yRange]) => ({ title, unit, format, series: [], yRange }))); });
@@ -230,7 +233,7 @@ function useMetricCharts(specs: ChartSpec[], params: { node: string; gpu: string
 }
 
 function ChartGrid({ charts }: { charts: ChartModel[] }) {
-  return <div className="gpu-chart-grid">{charts.map((chart) => <div className="gpu-chart" key={chart.title}><Typography.Text strong>{chart.title}</Typography.Text><TimeSeriesChart height={180} series={chart.series} unit={chart.unit} valueFmt={chart.format} yRange={chart.yRange} /></div>)}</div>;
+  return <div className="gpu-chart-grid">{charts.map((chart) => <div className="gpu-chart" key={chart.title}><Typography.Text strong>{chart.title}</Typography.Text><TimeSeriesChart height={180} series={chart.series} unit={chart.unit} valueFmt={chart.format} yRange={chart.yRange} xRange={chart.window} /></div>)}</div>;
 }
 
 const SM_AVERAGE_WINDOW_MS = 60_000;

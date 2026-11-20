@@ -291,3 +291,24 @@ test("explorer series name their node or deployment, a deleted one marked delete
   assert.equal(explorerSeriesName(t, { deployment: "8", deployment_name: "old", deployment_deleted: "true" }, 0), "old (deleted)");
   assert.equal(explorerSeriesName(t, { deployment: "9" }, 0), "#9");
 });
+
+// A series with one sample (a metric that just started) is drawn on the hour
+// the explorer asked for, not on the day-wide axis ECharts gives a lone point,
+// and its point is visible.
+test("a single sample is drawn on the selected range's window", async () => {
+  const before = Date.now();
+  const sample = before - 30_000;
+  globalThis.fetch = seriesFetch(JSON.stringify({ items: [{ labels: { metric: "gpuworks_gpu_utilization" }, points: [[sample, 42]] }], total: 1 }));
+  const { container } = await renderExplorer();
+  await waitFor(() => assert.ok(container.querySelector('[role="img"] canvas')));
+  const echarts = await import("echarts/core");
+  const instance = echarts.getInstanceByDom(container.querySelector<HTMLElement>('div[role="img"]')!);
+  assert.ok(instance);
+  const option = instance.getOption() as { xAxis: Array<{ min: number; max: number }>; series: Array<{ showSymbol: boolean; data: unknown[] }> };
+  const after = Date.now();
+  const hour = 3_600_000;
+  assert.ok(option.xAxis[0].max >= before && option.xAxis[0].max <= after, "the window ends when the series was asked for");
+  assert.equal(option.xAxis[0].max - option.xAxis[0].min, hour);
+  assert.equal(option.series[0].showSymbol, true);
+  assert.equal(option.series[0].data.length, 1);
+});

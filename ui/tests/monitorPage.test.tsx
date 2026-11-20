@@ -317,6 +317,23 @@ test("the cluster input/output card replaces VRAM by node and reads the whole cl
   assert.ok(screen.getByText("Covers 80% of 50 requests (the rest returned no usage)"));
 });
 
+// A cluster that has just started reports one token sample; the chart draws it
+// on the hour asked for (the page's default range), with the point visible.
+test("the cluster tokens chart holds the selected range as its time axis, a lone sample visible", async () => {
+  const before = Date.now();
+  const at = before - 20_000;
+  api.monitorOverview = async () => ({ ...overview, events: [], cluster_tokens: { prompt: { labels: {}, points: [[at, 100]] }, generation: { labels: {}, points: [[at, 50]] } } });
+  const { container } = renderPage();
+  const echarts = await import("echarts/core");
+  await waitFor(() => assert.ok(container.querySelector("div[role=img] canvas")));
+  const card = (await screen.findByText("Cluster token throughput")).closest(".ant-card") as HTMLElement;
+  const chart = echarts.getInstanceByDom(card.querySelector<HTMLElement>("div[role=img]")!)!;
+  const option = chart.getOption() as { xAxis: Array<{ min: number; max: number }>; series: Array<{ showSymbol: boolean }> };
+  assert.equal(option.xAxis[0].max - option.xAxis[0].min, 3_600_000);
+  assert.ok(option.xAxis[0].max >= before && option.xAxis[0].max <= Date.now());
+  assert.deepEqual(option.series.map((line) => line.showSymbol), [true, true]);
+});
+
 test("the cluster input/output card shows an error with a retry when the distribution fails", async () => {
   api.monitorOverview = async () => overview;
   api.monitorDistributions = async () => {

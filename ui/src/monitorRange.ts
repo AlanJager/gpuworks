@@ -42,6 +42,12 @@ export function rangeBounds(range: MonitorRange, now = Date.now()): { from: numb
   return { from: now - (PRESET_MS[range as MonitorPreset] ?? PRESET_MS["1h"]), to: now };
 }
 
+/** rangeWindow is rangeBounds as the [startMS, endMS] pair a chart pins its time axis to. */
+export function rangeWindow(range: MonitorRange, now = Date.now()): [number, number] {
+  const { from, to } = rangeBounds(range, now);
+  return [from, to];
+}
+
 /** rangeParams are the query parameters the monitor API takes for a range. */
 export function rangeParams(range: MonitorRange): Record<string, string> {
   const picked = pickedBounds(range);
