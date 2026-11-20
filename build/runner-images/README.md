@@ -141,7 +141,7 @@ For what to look for in real-hardware verification and how far it has been taken
 
 ### Testing the 910B L2 reload candidate
 
-For the vLLM-Ascend v0.26.0rc1 910B base, add `ASCEND_VLLM_PATCHES: "1"` to the candidate tier's build arguments and give that candidate a new immutable revision. The build applies the reload-context patch strictly and records it in `/opt/gpuworks/patches-ascend-vllm.json`. On a 910B4 with the Qwen3-0.6B W8A16 profile, compare a deterministic completion before L2 sleep and after the request wakes the deployment. Check both the reply and the successful `reload_weights` log before promoting the image and updating the catalog.
+For the vLLM-Ascend v0.26.0rc1 910B base, add `ASCEND_VLLM_RELOAD_CONFIG_PATCH: "1"` to the candidate tier's build arguments and give that candidate a new immutable revision. The build applies the reload-context patch strictly and records it in `/opt/gpuworks/patches-ascend-vllm.json`. On a 910B4 with the Qwen3-0.6B W8A16 profile, compare a deterministic completion before L2 sleep and after the request wakes the deployment. Check both the reply and the successful `reload_weights` log before promoting the image and updating the catalog.
 
 ## Common commands
 
