@@ -250,6 +250,7 @@ func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel paral
 		MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 		Headless: req.Topology.Headless, NodeAddress: req.Topology.NodeAddress,
 		ComputeNetwork:     req.Topology.Network,
+		Peers:              req.Topology.Peers,
 		PD:                 req.PD,
 		Host:               deploy.RuntimeBindHost(req.Node.RuntimeDriver),
 		ImplicitServedName: req.ImplicitServedName,

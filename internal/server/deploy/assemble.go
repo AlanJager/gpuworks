@@ -191,7 +191,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 		params.PriorityScheduling = false
 	}
 	built := input.Engine.Build(params)
-	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params)} {
+	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params), peersEnv(params)} {
 		if len(extra) == 0 {
 			continue
 		}
@@ -334,6 +334,13 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	}
 	launch.Mounts = append(launch.Mounts, managedDirMounts(input.TemplateDirs, input.ManagedDirGroup)...)
 	launch.Mounts = append(launch.Mounts, computeNetworkMounts(params)...)
+	// The agent mounts the platform's own files (the peers file, the
+	// pre-start wrapper) under proto.PlatformFileDir, so no other mount may
+	// reach into it.
+	launch.Peers = peersFile(params)
+	if err := validatePlatformFileMounts(launch.Mounts, launch.Peers != nil, input.StoredLaunch); err != nil {
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch mounts: %w", err)
+	}
 	if err := validateResolvedMounts(launch.Mounts, modelMount); err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch mounts: %w", err)
 	}

@@ -406,6 +406,9 @@ type Params struct {
 	NodeAddress string
 	// ComputeNetwork is this rank's resolved compute network, if any.
 	ComputeNetwork ComputeNetwork
+	// Peers is every rank of this rank's multi-node group; the launch writes
+	// them to its peers file (peersFile). Nil when there is no file to write.
+	Peers []proto.PeerRank
 	// PD is set on a PD disaggregated instance (ADR 0028).
 	PD *PDLaunch
 	// RuntimeDriver is the container runtime the target node reports

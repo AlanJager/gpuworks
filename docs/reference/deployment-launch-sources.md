@@ -122,11 +122,72 @@ dtype 兼容矩阵只用于准入与告警，不改写 argv。
 ## 拓扑
 
 - **多机**：rank 0 为 leader，其余为 headless follower。vLLM 注入 `--distributed-executor-backend mp --nnodes --node-rank --headless --master-addr --master-port`（端口默认 29500），`VLLM_HOST_IP` 取节点的参数网络地址；SGLang 注入 `--nnodes --node-rank --dist-init-addr`。
+- **peers 文件**：每个 rank 带一份列出全组 rank 与 rail 的只读 JSON，路径在 `GPUWORKS_PEERS_FILE`，见下文「多机 peers 文件」。
 - **参数网络**：注入 `NCCL_SOCKET_IFNAME`、`GLOO_SOCKET_IFNAME`、`NCCL_IB_*`、`UCX_NET_DEVICES` 等系统层 env；使用 RDMA 时追加 docker 参数 `--device /dev/infiniband --ulimit memlock=-1 --cap-add IPC_LOCK`（ADR 0027）；部署自己的 docker 参数已写 `memlock` 时不再追加这一项，见「锁定内存」。
 - **PD 分离**：按角色生成 vLLM `--kv-transfer-config` 或 SGLang `--disaggregation-*`，以及 NIXL/UCX 相关 env 与主机挂载；`vllm-mooncake` 另在 `kv_connector_extra_config` 写 `mooncake_protocol`（主机 RDMA 网络为 `rdma`，否则 `tcp`），并给 prefill 设 `VLLM_MOONCAKE_BOOTSTRAP_PORT`、给所有实例设 `VLLM_HOST_IP`，模型含线性注意力或 Mamba 层（`config.json` 的 `layer_types`）时再加 `--no-disable-hybrid-kv-cache-manager`（模板或用户写了任一极性时不加）；模板或用户写 connector 参数会被拒绝（ADR 0028）。
 
 sleep、LoRA、投机解码、KV 卸载等特性只在对应字典字段被声明时注入参数，例如 vLLM sleep 注入
 `--enable-sleep-mode` 与 `VLLM_SERVER_DEV_MODE=1`。
+
+### 多机 peers 文件（`GPUWORKS_PEERS_FILE`）
+
+多机部署（`nnodes > 1`，含多机 PD 角色）的每个 rank 都带一份只读 JSON，列出同组全部 rank 的位置，配方据此写自己的 rendezvous 或 rank table（fleet.conf、HCCL rank table、Mooncake 配置等），不必自建发现。文件在 `/gpuworks/peers.json`：agent 把它写在实例自己的运行时挂载目录里并只读挂载到这里，容器每次启动重写，实例删除时一并删除。路径既是启动变量 `${GPUWORKS_PEERS_FILE}`（模板的 args、env、准备脚本与手写命令里都会展开），也以同名同值的系统层 env `GPUWORKS_PEERS_FILE` 出现在容器里。没有 peers 文件的启动（单机、agent 不支持）在模板字段里引用 `${GPUWORKS_PEERS_FILE}` 会报错，和单机引用 `${GPUWORKS_MASTER_ADDR}` 一样；手写命令里则与其他本次没有的变量一样留给 shell。`/gpuworks` 是平台放自己文件的目录，见[推理目录语法](inference-catalog-spec.md#变量展开)中的平台路径规则。
+
+内容在组被放置时确定（对应 Go 类型 `proto.PeersFile`，决策见 [ADR 0078](../adr/0078-multi-node-peers-file.md)），各 rank 的文件只有 `node_rank` 不同。字段名沿用启动变量（`node_rank`、`nnodes`、`node_addr`、`master_addr`、`master_port`，即对应变量的小写）与网络接口的词汇（节点的 `interface`、`hcas`，每条 rail 的 `name`、`netdev`、`ip`）；凡是同时作为启动变量存在的值，在每个 rank 上都与该 rank 的启动变量相等：
+
+```json
+{
+  "version": 1,
+  "node_rank": 1,
+  "nnodes": 2,
+  "master_addr": "192.168.177.51",
+  "master_port": 29500,
+  "network": {"type": "host_rdma", "link_layer": "roce"},
+  "ranks": [
+    {
+      "node_rank": 0,
+      "node_uuid": "3f0c…",
+      "node_name": "gb10-1",
+      "hostname": "gb10-1",
+      "node_addr": "192.168.177.51",
+      "management": {"interface": "eno1", "ip": "10.0.0.51"},
+      "interface": "enp1s0f1np1",
+      "hcas": [
+        {"name": "roceP2p1s0f1:1", "device": "roceP2p1s0f1", "port": 1, "netdev": "enP2p1s0f1np1", "ip": "192.168.178.51"},
+        {"name": "rocep1s0f1:1", "device": "rocep1s0f1", "port": 1, "netdev": "enp1s0f1np1", "ip": "192.168.177.51"}
+      ]
+    },
+    {
+      "node_rank": 1,
+      "node_uuid": "9a41…",
+      "node_name": "gb10-2",
+      "hostname": "gb10-2",
+      "node_addr": "192.168.177.52",
+      "management": {"interface": "eno1", "ip": "10.0.0.52"},
+      "interface": "enp1s0f1np1",
+      "hcas": [
+        {"name": "roceP2p1s0f1:1", "device": "roceP2p1s0f1", "port": 1, "netdev": "enP2p1s0f1np1", "ip": "192.168.178.52"},
+        {"name": "rocep1s0f1:1", "device": "rocep1s0f1", "port": 1, "netdev": "enp1s0f1np1", "ip": "192.168.177.52"}
+      ]
+    }
+  ]
+}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `version` | 形状版本，当前 `1`；字段含义变化才升版本，只新增字段不升，读者应忽略不认识的键 |
+| `node_rank` / `nnodes` | 读者自己的 rank（等于 `${GPUWORKS_NODE_RANK}`，0 为 leader）与组内 rank 数（等于 `${GPUWORKS_NNODES}`，也是 `ranks` 的长度） |
+| `master_addr` / `master_port` | 全组的 rendezvous，等于 `${GPUWORKS_MASTER_ADDR}`、`${GPUWORKS_MASTER_PORT}`；没有时省略 |
+| `network` | 组共用的参数网络：`type`（`host_rdma`、`host_ethernet`、`accelerator_rdma`、`accelerator_hccs`）与 `link_layer`（`infiniband`、`roce`、`hccs`，以太网为空）；走管理网络时省略 |
+| `ranks[].node_rank` | 该 rank 的序号 |
+| `ranks[].node_uuid` / `node_name` / `hostname` | 节点在平台里的身份与名字，以及节点上报的主机名 |
+| `ranks[].node_addr` | 该 rank 对组宣告的地址，等于它自己的 `${GPUWORKS_NODE_ADDR}`：参数网络上的地址，没有时为可路由的管理地址 |
+| `ranks[].management` | 节点在管理网络上的 `interface` 与 `ip`；agent 未上报时省略 |
+| `ranks[].interface` | 承载组 bootstrap 流量的主机网卡；未解析出时省略 |
+| `ranks[].hcas[]` | 参数网络在该节点上的 rail，顺序与 `NCCL_IB_HCA` 相同：主机 RDMA 网络为 RDMA 端口，加速卡网络为卡的端口，以太网为空。`name` 是平台对 rail 的命名（RDMA 端口为 `设备:端口`，如 `rocep1s0f1:1`；卡为 `npu3`），`device`、`port` 是 RDMA rail 拆开的设备与端口（卡为空），`netdev` 是持有该 rail 地址的主机网卡（RoCE 下即 GID 表对应地址所在的网卡，可能是端口之上的 bridge、bond），`ip` 是 rail 自己的 IPv4 地址（RoCE 为经端口 GID 表核实的地址，否则取网卡地址；IPoIB 地址；卡的端口地址），未上报时省略 |
+
+文件只写平台放置时已知、或 agent 上报的事实；RoCE GID index 这类在容器里探测的值不写。agent 不支持 peers 文件（能力 `launch.peers_file`，旧版本 agent 不宣告）的节点上，该 rank 既没有文件也没有这个变量；单机部署没有 peers 文件。
 
 ## 用户输入与容器覆盖
 
@@ -268,7 +329,7 @@ udocker 运行时（runveil 与 udocker CLI 两种启动器）在非国产卡上
 写法 `${GPUWORKS_NAME}`，名称为大写字母、数字与下划线。可用变量：解析器输出，加上平台给出的 `GPUWORKS_GPU_COUNT`、
 `GPUWORKS_TP_SIZE`、`GPUWORKS_MODEL_PATH`、`GPUWORKS_SERVED_MODEL_NAME`、`GPUWORKS_API_HOST`、`GPUWORKS_API_PORT`、
 `GPUWORKS_NNODES`、`GPUWORKS_NODE_RANK`、`GPUWORKS_HEADLESS`，多机时另有 `GPUWORKS_NODE_ADDR`、`GPUWORKS_MASTER_ADDR`、
-`GPUWORKS_MASTER_PORT`，PD 实例另有 `GPUWORKS_PD_ROLE`、`GPUWORKS_PD_SIDE_CHANNEL_HOST`、`GPUWORKS_PD_SIDE_CHANNEL_PORT`、`GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT`；
+`GPUWORKS_MASTER_PORT`，带 peers 文件时另有 `GPUWORKS_PEERS_FILE`，PD 实例另有 `GPUWORKS_PD_ROLE`、`GPUWORKS_PD_SIDE_CHANNEL_HOST`、`GPUWORKS_PD_SIDE_CHANNEL_PORT`、`GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT`；
 `PP_SIZE` 没有默认值。模板字段里不带前缀的旧写法（`${NODE_RANK}`）仍然展开；手写命令只展开带前缀的名字，其余 `${...}`
 留给 shell。完整词表、出现条件与报错规则见[推理目录语法](inference-catalog-spec.md#变量展开)。
 
@@ -280,14 +341,15 @@ agent 不重建目录、镜像或命令语义，只做以下节点事实相关�
 2. vLLM 多机：`GLOO_SOCKET_IFNAME`、`NCCL_SOCKET_IFNAME` 为空时按 `VLLM_HOST_IP` 所在网卡填充。
 3. 档位资产只读挂载。
 4. 有准备脚本时写 `/gpuworks/pre-start.sh`（`set -eu`、脚本、`exec "$@"`），entrypoint 变为 `/bin/sh /gpuworks/pre-start.sh`，原命令作为参数。
-5. KV 磁盘层挂载源与配额。
-6. **设备注入**（覆盖同名 env，替换已有的 `--gpus`/`--runtime`）：
+5. 多机 rank 带 peers 文件时，把它写成只读文件并挂载到 `/gpuworks/peers.json`，见「多机 peers 文件」。
+6. KV 磁盘层挂载源与配额。
+7. **设备注入**（覆盖同名 env，替换已有的 `--gpus`/`--runtime`）：
    - NVIDIA：`--gpus "device=…"` + 从 0 开始编号的 `CUDA_VISIBLE_DEVICES`
    - 海光：`--device` kfd/DRM、`/opt/hyhal`、`--group-add video`、`HIP/ROCR/HYGON_VISIBLE_DEVICES`
    - 昇腾 docker：`--runtime ascend` + `ASCEND_VISIBLE_DEVICES` 等；昇腾 nerdctl：`/dev/davinci*` 设备与驱动挂载
    - PPU：`/dev/alixpu*` 设备、`NVIDIA_VISIBLE_DEVICES=void`、`CUDA_VISIBLE_DEVICES`
    - 昆仑芯：Linux amd64 / Docker 整卡 TP；逐卡重新核对 UUID/BDF/minor 与 sysfs 后，注入所选 `/dev/xpuN` 和一个 `/dev/xpuctrl`。设备占用由公共计算进程清单上报，不以显存用量替代占用检查。模板参数遵循公共管理员契约，不另设厂商专属 Docker 参数过滤器。多机原生通信依赖见[厂商支持矩阵](support-matrix.md)。
-7. **dGPU 分区**：服务端只下发显存上限、算力百分比与后端名，注入全部在 agent：
+8. **dGPU 分区**：服务端只下发显存上限、算力百分比与后端名，注入全部在 agent：
    - HAMi-core：挂载 `libvgpu.so`，`LD_PRELOAD`、`CUDA_DEVICE_MEMORY_LIMIT_<i>`，以及部署带算力百分比时的 `CUDA_DEVICE_SM_LIMIT`（部署请求目前不接受算力百分比，见 [dGPU 说明](../explanation/dgpu.md)）
    - vcann-rt：挂载 `libvruntime.so` 等，`ENPU_DSMI_HOOK=1`、`LD_LIBRARY_PATH`
    - HGGC：挂载 `hggc_quota.so` 等，`LD_PRELOAD`、`HGGC_DEVICE_MEMORY_LIMIT_<i>`

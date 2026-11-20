@@ -254,7 +254,7 @@ func helloCapabilitiesForRuntime(prober gpu.Prober, runtimeDriver string) []stri
 		// name; the handler must provide the concrete PTY implementation.
 	}
 	caps = append(caps, proto.CapNetworkUpdate, proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapBenchRequestTimeout, proto.CapImagePullCandidates,
-		proto.CapStorageFiles, proto.CapCardChecks, proto.CapLaunchNameVerbatim)
+		proto.CapStorageFiles, proto.CapCardChecks, proto.CapLaunchNameVerbatim, proto.CapPeersFile)
 	if upgradeSupported() {
 		caps = append(caps, proto.CapUpgradePush)
 		if kubeboot.Running() {

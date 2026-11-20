@@ -417,6 +417,11 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		return
 	}
 
+	if err := e.applyPeersFile(&ws, spec); err != nil {
+		e.failLaunch(spec, err, proto.ErrorPeersFilePrepareFailed, proto.PhaseContainerPrepare, "peers file preparation failed: "+err.Error())
+		return
+	}
+
 	if err := e.applyKVDiskMount(&ws, spec); err != nil {
 		e.failLaunch(spec, err, proto.ErrorKVDiskPrepareFailed, proto.PhaseContainerPrepare, "KV disk tier preparation failed: "+err.Error())
 		return

@@ -448,7 +448,8 @@ A text spec that relies on tensor parallelism alone, with no expert, data or pip
 Variable references in `args` / `env` / `entrypoint` / `pre_start_*` are expanded on every deployment, regardless of whether placement
 is present. The documented spelling carries the `GPUWORKS_` prefix, such as `${GPUWORKS_NODE_RANK}`; the older spelling without the prefix (`${NODE_RANK}`)
 remains an alias in these template fields and expands the same way. Available variables = resolver return values + platform facts for this launch (the sole sources are
-the vocabulary in `internal/server/placement/expand.go` and `internal/server/deploy/launch_variables.go`). The table lists the prefixed spelling:
+the vocabulary in `internal/server/placement/expand.go` and `internal/server/deploy/launch_variables.go`). The table lists the prefixed spelling;
+the platform environment variables and container files a template can rely on are listed in the same table (rows whose kind is not a launch variable are not expanded):
 
 | Variable | Value | When Available |
 |---|---|---|
@@ -468,10 +469,15 @@ the vocabulary in `internal/server/placement/expand.go` and `internal/server/dep
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | Address this instance's KV side channel listens on | PD instances whose address is known |
 | `GPUWORKS_PD_SIDE_CHANNEL_PORT` | First port of this rank's extra port block, the KV side channel port; each rank of a multi-node instance has its own | PD instances whose port is allocated |
 | `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | The side channel port of this instance's leader: its own on the leader, the leader's on a follower. Use it where a follower meets the leader's side channel (such as SGLang's bootstrap server); commands the platform composes do not use it | PD instances whose port is allocated |
+| `GPUWORKS_PEERS_FILE` | The path of this rank's peers file, `/gpuworks/peers.json`, listing every rank of the group and its rails; see [Multi-Node Peers File](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file). Also a container env with the same name and value | Multi-node only, on a node whose agent supports it |
+| Container env `GPUWORKS_PEERS_FILE` | Same as the launch variable of that name, for programs the recipe starts to read directly (kind: environment variable) | As above |
+| File `/gpuworks/peers.json` | The read-only peers file (kind: file) | As above |
+| File `/gpuworks/pre-start.sh` | The wrapper the platform puts around the preparation script; the entrypoint runs it (kind: file) | When the spec or deployment has a preparation script |
 
 Rules:
 
-- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_*`, `NNODES`, `NODE_RANK`, `HEADLESS`, `NODE_ADDR`, `MASTER_*`, or `PD_*`
+- **The platform path `/gpuworks`**: the platform keeps the files it provides (the peers file and preparation wrapper above) under `/gpuworks` in the container. A template's `assets[].unpack_to` and `components[].mount_path` and a deployment's mounts may not be `/gpuworks`, a path below it, or `/`; they are refused at import or evaluation. A deployment restarted as stored keeps a mount it was created with, unless it would cover this launch's peers file.
+- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_*`, `NNODES`, `NODE_RANK`, `HEADLESS`, `NODE_ADDR`, `MASTER_*`, `PEERS_FILE`, or `PD_*`
   in resolver results causes an immediate error—the node, port, and rank are not yet available when the resolver runs.
 - **Missing variables cause failure**: unresolved names in args / env / entrypoint / `pre_start_argv` cause deployment errors. A spec without a resolver
   that references a name outside the vocabulary (such as the typo `${NODE_RNAK}` or `${PP_SIZE}` without a resolver) is rejected during import. A single-node deployment

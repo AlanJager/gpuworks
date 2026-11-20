@@ -44,6 +44,7 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 	rank := planning.GroupRank{Ranks: len(nodes)}
 	if slot.Unit.MultiNode() {
 		rank.Group, rank.Attempt = fmt.Sprintf("pd-%d-%s", dep.ID, auth.NewUUID()[:8]), attempt
+		rank.Peers = planning.GroupPeers(nodes, pd.group)
 	}
 	sideSize := pd.mode.ExtraPorts(role, pd.placement.TP(role))
 
@@ -138,6 +139,7 @@ func (c *Controller) planPDRank(ctx context.Context, deployment *unitDeployment,
 	if err != nil {
 		return nil, planning.PDRecord{}, nil, err
 	}
+	topology.Peers = c.peersFor(node, topology.Peers)
 	pd.placement.RankLaunch(pd.mode, launch.role, launch.unit, launch.rank.Rank, topology, launch.ports).Apply(&req)
 	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
 	if err != nil || refusal != nil {

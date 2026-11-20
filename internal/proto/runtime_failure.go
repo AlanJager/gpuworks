@@ -156,15 +156,16 @@ const (
 	// ErrorContainerRuntimeUnavailable: the node's container runtime could
 	// not be set up (Runtime, Detail).
 	ErrorContainerRuntimeUnavailable = "CONTAINER_RUNTIME_UNAVAILABLE"
-	// ErrorRuntimeAssetPrepareFailed, ErrorPreStartPrepareFailed and
-	// ErrorKVDiskPrepareFailed: a host-side preparation of the container's
-	// mounts failed (Detail). For pre-start that is installing the wrapper
+	// ErrorRuntimeAssetPrepareFailed, ErrorPreStartPrepareFailed,
+	// ErrorKVDiskPrepareFailed and ErrorPeersFilePrepareFailed: a host-side
+	// preparation of the container's mounts failed (Detail). For pre-start that is installing the wrapper
 	// (writing /gpuworks/pre-start.sh, or a launch it cannot wrap); the
 	// preparation itself runs inside the container, and its failure is the
 	// container exiting (ErrorContainerExited).
 	ErrorRuntimeAssetPrepareFailed = "RUNTIME_ASSET_PREPARE_FAILED"
 	ErrorPreStartPrepareFailed     = "PRE_START_PREPARE_FAILED"
 	ErrorKVDiskPrepareFailed       = "KV_DISK_PREPARE_FAILED"
+	ErrorPeersFilePrepareFailed    = "PEERS_FILE_PREPARE_FAILED"
 	// ErrorMountVolumeUnsupported: a mount names a runtime-managed volume
 	// and the node's container runtime has no named volumes (Runtime is the
 	// driver, Resource the volume).

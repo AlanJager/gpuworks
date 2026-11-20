@@ -450,7 +450,8 @@ placement:
 `args` / `env` / `entrypoint` / `pre_start_*` 中的变量引用在每次部署时展开，与有没有 placement
 无关。规范写法带 `GPUWORKS_` 前缀，如 `${GPUWORKS_NODE_RANK}`；不带前缀的旧写法（`${NODE_RANK}`）在这些模板字段里
 作为别名同样展开。可用变量 = resolver 返回值 + 平台为这次启动给出的事实（唯一产地
-`internal/server/placement/expand.go` 的词表与 `internal/server/deploy/launch_variables.go`），下表按带前缀的写法列出：
+`internal/server/placement/expand.go` 的词表与 `internal/server/deploy/launch_variables.go`），下表按带前缀的写法列出；
+模板能依赖的平台环境变量与容器内文件也列在同一张表里（「种类」不是启动变量的行不参与展开）：
 
 | 变量 | 值 | 何时存在 |
 |---|---|---|
@@ -470,10 +471,15 @@ placement:
 | `GPUWORKS_PD_SIDE_CHANNEL_HOST` | 本实例 KV side channel 的监听地址 | PD 实例且地址已知 |
 | `GPUWORKS_PD_SIDE_CHANNEL_PORT` | 本 rank 额外端口段的首端口，即 KV side channel 端口；多机实例的各 rank 各有各的 | PD 实例且端口已分配 |
 | `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` | 本实例 leader 的 side channel 端口：leader 上就是自己的，follower 上是 leader 的。follower 要连 leader 的 side channel（如 SGLang 的 bootstrap 服务）时用它；平台自己组装的命令不用 | PD 实例且端口已分配 |
+| `GPUWORKS_PEERS_FILE` | 本 rank 的 peers 文件路径 `/gpuworks/peers.json`，列出全组 rank 与 rail，见[多机 peers 文件](deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file)；同名同值也是容器 env | 仅多机，且节点 agent 支持 |
+| 容器 env `GPUWORKS_PEERS_FILE` | 与同名启动变量相同，供配方启动的程序直接读取（种类：环境变量） | 同上 |
+| 文件 `/gpuworks/peers.json` | 只读的 peers 文件（种类：文件） | 同上 |
+| 文件 `/gpuworks/pre-start.sh` | 平台包装准备脚本的 wrapper，entrypoint 改为执行它（种类：文件） | 档位或部署有准备脚本时 |
 
 规则：
 
-- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PD_*`
+- **平台路径 `/gpuworks`**：平台把自己提供的文件（上表的 peers 文件与准备脚本 wrapper）放在容器的 `/gpuworks` 下。模板的 `assets[].unpack_to`、`components[].mount_path` 以及部署的挂载都不能是 `/gpuworks`、其下的路径或 `/`，导入或评估时就被拒绝；部署按原样重启时保留创建时已有的挂载，除非它会盖住这次的 peers 文件。
+- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PEERS_FILE`、`PD_*`
   出现在 resolver 结果里直接报错——resolver 运行时还没有节点、端口和 rank。
 - **缺变量即失败**：args / env / entrypoint / `pre_start_argv` 里未解析的名字在部署时报错；没有 resolver 的
   spec 引用词表外的名字（如拼错的 `${NODE_RNAK}`、无 resolver 的 `${PP_SIZE}`）在导入时就被拒绝。单机部署

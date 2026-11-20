@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/network"
@@ -30,6 +31,10 @@ type DistTopology struct {
 	// it; 0 with a NetworkName is the management network.
 	NetworkID   uint
 	NetworkName string
+	// Peers is every rank of the group (GroupPeers), which the launch writes
+	// to the rank's peers file; nil for a single rank, and for a rank whose
+	// agent does not write one (PeersFileSupported).
+	Peers []proto.PeerRank
 }
 
 // RoutableHost is the host a peer would dial for this node: its management
@@ -62,6 +67,9 @@ type GroupRank struct {
 	// Master is the address every rank of the generation rendezvous at: its
 	// leader's. Empty keeps the deployment's.
 	Master string
+	// Peers is every rank of the generation (GroupPeers); nil for a single
+	// rank.
+	Peers []proto.PeerRank
 }
 
 // RankTopology is one rank's place: rank 0 leads and serves, the rest are
@@ -75,15 +83,15 @@ func RankTopology(node *store.Node, compute *netplan.Resolved, rank GroupRank) (
 	if node == nil {
 		return DistTopology{}, fmt.Errorf("rank topology requires a node")
 	}
-	topology := DistTopology{NNodes: max(rank.Ranks, 1), NodeRank: rank.Rank, Group: rank.Group, Attempt: rank.Attempt, Role: "leader", NodeAddress: RoutableHost(node)}
+	topology := DistTopology{NNodes: max(rank.Ranks, 1), NodeRank: rank.Rank, Group: rank.Group, Attempt: rank.Attempt, Role: "leader", NodeAddress: rankAddress(node, compute)}
+	if topology.NNodes > 1 {
+		topology.Peers = rank.Peers
+	}
 	if topology.NodeRank > 0 {
 		topology.Headless, topology.Role = true, "follower"
 	}
 	if compute != nil {
 		topology.NetworkID, topology.NetworkName, topology.Network = rankNetwork(*compute)
-		if compute.IP != "" {
-			topology.NodeAddress = compute.IP
-		}
 	}
 	if topology.NNodes > 1 && (compute == nil || compute.IP == "") {
 		return DistTopology{}, fmt.Errorf("node %s has no address on the network the group shares", node.DisplayName())

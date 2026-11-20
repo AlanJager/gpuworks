@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -411,8 +412,11 @@ func validRelativePath(value string) bool {
 	return value != "." && !path.IsAbs(value) && path.Clean(value) == value && !strings.HasPrefix(value, "../")
 }
 
+// validContainerPath is a container path a template may mount at: absolute,
+// clean, and outside proto.PlatformFileDir, where the platform puts the files
+// it provides (the pre-start wrapper, the peers file).
 func validContainerPath(value string) bool {
-	return strings.HasPrefix(value, "/") && path.Clean(value) == value && value != "/"
+	return strings.HasPrefix(value, "/") && path.Clean(value) == value && value != "/" && !proto.PlatformFilePath(value)
 }
 
 // splitInlineFlag separates a "--flag=value" token. It is spelled out here

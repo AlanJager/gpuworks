@@ -11,7 +11,8 @@ import (
 // LaunchRequest.ImplicitServedName from the node's agent at launch time
 // (planning.TranslatesServedName); a preview that skipped it would show, and
 // seed a manual command with, a --served-model-name an older host-process
-// agent translates to a host path.
+// agent translates to a host path. The same holds for the peers file
+// (planning.PeersFileSupported).
 func (s *Service) planLaunch(ctx context.Context, req planning.LaunchRequest) (planning.LaunchPlan, error) {
 	if req.Node != nil {
 		var caps []string

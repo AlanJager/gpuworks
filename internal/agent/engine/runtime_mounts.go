@@ -20,6 +20,8 @@ var runtimeMountPurposes = map[string]struct{}{
 	"pre-start": {},
 	"dgpu":      {},
 	"overlays":  {},
+	// The peers file of a multi-node rank (peers_file.go), written read-only.
+	peersMountPurpose: {},
 	// PrepareInstanceDir creates this one 0755 owned by the runtime mount owner
 	// and the container writes into it, which the other four never do; see
 	// proto.MountPurposeKVDisk.

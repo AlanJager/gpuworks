@@ -1,0 +1,34 @@
+# ADR 0078: Every rank of a multi-node deployment gets a read-only peers file
+
+Date: 2026-11-19 · Status: Accepted
+
+## Context
+
+The launch variables of a multi-node deployment give a rank only its own address and the leader's (`NODE_ADDR`, `MASTER_ADDR`, `MASTER_PORT`). That is enough for the vLLM and SGLang rendezvous, but many recipes need to know where every rank of the group is before they start: pico-dgx-ds4's `fleet.conf` needs each rank's host name, management address, and for every RDMA link the HCA name and RoCE address; Ascend HCCL rank tables and Mooncake configurations are similar. Without a list from the platform, a recipe has to build its own discovery round inside the container (broadcasting to each other, exchanging files on shared storage), which is slow and written anew by every recipe.
+
+The server already has all of these facts when it places a group: which nodes the group has and their ranks, the address, bootstrap interface and rails the group's shared compute network resolved to on every node (`netplan.Resolved`), and the network inventory the agents report (the interface of each RDMA port and its RoCE address verified against the GID table, the accelerator card ports' addresses).
+
+## Decision
+
+1. **One typed, versioned document that reuses existing vocabulary**: `proto.PeersFile`. At the top: `version`, the reader's own `node_rank`, `nnodes`, `master_addr`/`master_port`, the shared network's `type`/`link_layer`, and `ranks` in rank order; each rank has `node_rank`, `node_uuid`/`node_name`/`hostname`, `node_addr`, `management` (`interface`, `ip`, the management address the agent reports), the bootstrap `interface`, and the compute network's `hcas` (each rail's `name`, `device`/`port`, `netdev`, `ip`, as the network API describes rails). Field names are the launch variables in lower case and the network API's field names; no new names are invented. Every value that also exists as a launch variable equals that rank's launch variable on every rank (the reader's own row takes its `node_addr` from the rank's `NODE_ADDR`; both come from the same function). Adding fields keeps `version`; only a change of meaning raises it. The shape is documented in [Deployment Launch Parameter Sources](../reference/deployment-launch-sources.md#多机-peers-文件gpuworks_peers_file).
+2. **Built at placement, saved with the launch**: before planning the ranks of a generation, the controller builds the list from that generation's nodes and the group network it already resolved (`planning.GroupPeers`). It reaches the launch parameters through the topology, and `deploy.ResolveLaunch` combines it with the rank's own number and the rendezvous into `ResolvedLaunch.Peers`. The document is part of the desired state, saved with the instance like argv and env, and is not derived again on a re-push or reconnect, so a container always sees the facts of its generation's placement. The evaluation preview builds it the same way.
+3. **The path is a launch variable and an env of the same name**: `${GPUWORKS_PEERS_FILE}` is a platform fact like `${GPUWORKS_NODE_RANK}` (`placement.VarPeersFile`; a resolver cannot return it), expanded in a template's args, env, preparation script and in manual commands; the system-layer env `GPUWORKS_PEERS_FILE`, with the same value, lets a program the recipe starts find the file without being passed it. A launch without a peers file whose template fields reference it fails, as a single-node reference to `MASTER_ADDR` does.
+4. **The agent writes the file and mounts it read-only in the platform directory**: the agent writes the document into the instance's own runtime mount directory (purpose `peers`) and mounts it read-only at `/gpuworks/peers.json`; it is rewritten on every container start and deleted when the instance is reclaimed. Every runtime uses the same mount (docker, nerdctl, udocker, Kubernetes volumes; the host-process runtime maps container paths to host paths through its mount table), so every runtime that supports multi-node can use it. A failed write fails that start with `PEERS_FILE_PREPARE_FAILED`, before any container is created.
+5. **`/gpuworks` belongs to the platform**: the files the platform provides (the peers file, the preparation wrapper) are all under `/gpuworks` in the container (`proto.PlatformFileDir`). Container paths a template declares (`assets[].unpack_to`, `components[].mount_path`, and the writable directories templates declare later) and a deployment's own mounts may not be it, lie under it, or be `/`: they are refused at template import and at deployment evaluation and creation. A deployment restarted as stored keeps a mount it was created with, unless it would cover this launch's peers file. Platform files added later go into the same directory and cannot collide with a recipe's mounts.
+6. **Sent by capability**: the document, the variable and the env go only to ranks whose agent advertises `launch.peers_file`; a rank on an older agent gets none of them, so the path never names a file that is not there. The list itself still includes that rank.
+7. **No values the container probes itself**: values that depend on the container's view of devices, such as the RoCE GID index, are not written; the recipe probes them inside the container.
+
+## Trade-offs
+
+- **One more JSON key in the desired state**: the list can be derived from the node and network tables, but the derivation has to happen at the moment of placement; deriving it again after the node inventory or network changes would show one running container a list that disagrees with the other ranks'. Like argv and env it is a fact of this launch, so it is saved with `ResolvedLaunch`, with `proto.PeersFile` as its only type.
+- **A file rather than a set of env variables**: the number of ranks and rails varies, and spreading them over env would need an invented numbering convention; one JSON document can be read by any language and is easy for a recipe to convert into its own format.
+- **Reusing the rail description**: a rail's interface and address come from `netplan.Rails`, the same reading of rails the network pages and NCCL injection use, instead of a second inventory parser.
+- **One file per rank, differing only in `node_rank`**: the files could be identical, with ranks told apart by `NODE_RANK`, but with the reader's rank in the file a program reading it needs no extra argument.
+
+## Consequences
+
+- Protocol: `ResolvedLaunch.peers` (`proto.PeersFile`), agent capability `launch.peers_file`, failure code `PEERS_FILE_PREPARE_FAILED`; launch variable `PEERS_FILE`; platform directory `proto.PlatformFileDir`.
+- No new database columns or tables; the document is saved in the instance's existing desired state.
+- Single-node deployments, and ranks on agents that do not advertise the capability, have no peers file.
+
+<!-- translation-source-sha256: a01f45213858b4ebd996f6fe86292abc152329bce27660f353c15522521e5aa1 -->

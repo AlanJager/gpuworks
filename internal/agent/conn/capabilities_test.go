@@ -36,7 +36,7 @@ func TestHelloCapabilitiesReflectVendor(t *testing.T) {
 		if terminal.Supported() {
 			want = append(want, proto.CapWebterm)
 		}
-		want = append(want, "state.update.network", proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapBenchRequestTimeout, proto.CapImagePullCandidates, "storage.files", proto.CapCardChecks, "launch.name_verbatim")
+		want = append(want, "state.update.network", proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapBenchRequestTimeout, proto.CapImagePullCandidates, "storage.files", proto.CapCardChecks, "launch.name_verbatim", "launch.peers_file")
 		if upgradeSupported() {
 			want = append(want, proto.CapUpgradePush)
 		}
@@ -59,7 +59,7 @@ func TestHelloCapabilitiesNilProber(t *testing.T) {
 	if terminal.Supported() {
 		want = append(want, proto.CapWebterm)
 	}
-	want = append(want, "state.update.network", proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapBenchRequestTimeout, proto.CapImagePullCandidates, "storage.files", proto.CapCardChecks, "launch.name_verbatim")
+	want = append(want, "state.update.network", proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapBenchRequestTimeout, proto.CapImagePullCandidates, "storage.files", proto.CapCardChecks, "launch.name_verbatim", "launch.peers_file")
 	if upgradeSupported() {
 		want = append(want, proto.CapUpgradePush)
 	}

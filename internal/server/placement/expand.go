@@ -36,6 +36,10 @@ const (
 	VarPDSideChannelHost       = "PD_SIDE_CHANNEL_HOST"
 	VarPDSideChannelPort       = "PD_SIDE_CHANNEL_PORT"
 	VarPDLeaderSideChannelPort = "PD_LEADER_SIDE_CHANNEL_PORT"
+	// A rank of a multi-node group whose agent writes peers files also states
+	// where its peers file is (proto.PeersFileMountPath); the container has
+	// the same value in its GPUWORKS_PEERS_FILE environment variable.
+	VarPeersFile = "PEERS_FILE"
 )
 
 // VariablePrefix is the documented spelling of every platform variable:
@@ -82,6 +86,7 @@ var launchOwned = map[string]struct{}{
 	VarModelPath: {}, VarServedModelName: {}, VarAPIHost: {}, VarAPIPort: {}, VarNNodes: {}, VarNodeRank: {},
 	VarHeadless: {}, VarNodeAddr: {}, VarMasterAddr: {}, VarMasterPort: {},
 	VarPDRole: {}, VarPDSideChannelHost: {}, VarPDSideChannelPort: {}, VarPDLeaderSideChannelPort: {},
+	VarPeersFile: {},
 }
 
 // LaunchOwned reports whether name is a variable only the launch states.

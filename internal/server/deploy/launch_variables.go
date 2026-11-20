@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	placementeval "gpuworks.ai/gpuworks/internal/server/placement"
 )
 
@@ -69,6 +70,9 @@ func launchVariables(engine Engine, params Params, modelMount string, placement 
 		}
 		if params.MasterPort > 0 {
 			variables[placementeval.VarMasterPort] = int64(params.MasterPort)
+		}
+		if peersFile(params) != nil {
+			variables[placementeval.VarPeersFile] = proto.PeersFileMountPath
 		}
 	}
 	if params.PD != nil {

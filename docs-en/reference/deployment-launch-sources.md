@@ -122,11 +122,72 @@ Template specs always use the `engine` command mode; `image-entry` and `manual` 
 ## Topology
 
 - **Multi-node**: rank 0 is the leader; the others are headless followers. vLLM injects `--distributed-executor-backend mp --nnodes --node-rank --headless --master-addr --master-port` (default port 29500), and sets `VLLM_HOST_IP` to the node's parameter network address. SGLang injects `--nnodes --node-rank --dist-init-addr`.
+- **Peers file**: every rank receives a read-only JSON listing every rank of the group and its rails, at the path in `GPUWORKS_PEERS_FILE`; see "Multi-Node Peers File" below.
 - **Parameter network**: injects system-layer env such as `NCCL_SOCKET_IFNAME`, `GLOO_SOCKET_IFNAME`, `NCCL_IB_*`, and `UCX_NET_DEVICES`. When RDMA is used, it appends the docker arguments `--device /dev/infiniband --ulimit memlock=-1 --cap-add IPC_LOCK` (ADR 0027). If the deployment's own docker arguments already specify `memlock`, this item is not appended; see "Locked Memory".
 - **PD disaggregation**: generates vLLM `--kv-transfer-config` or SGLang `--disaggregation-*` by role, along with NIXL/UCX-related env and host mounts. `vllm-mooncake` also writes `mooncake_protocol` into `kv_connector_extra_config` (`rdma` on a Host RDMA network, otherwise `tcp`), sets `VLLM_MOONCAKE_BOOTSTRAP_PORT` on prefill, and sets `VLLM_HOST_IP` on every instance; for a model with linear attention or Mamba layers (`layer_types` in `config.json`) it also adds `--no-disable-hybrid-kv-cache-manager`, unless the template or user states either polarity. Connector parameters supplied by a template or user are rejected (ADR 0028).
 
 Features such as sleep, LoRA, speculative decoding, and KV offloading inject arguments only when the corresponding dictionary fields are declared. For example, vLLM sleep injects
 `--enable-sleep-mode` and `VLLM_SERVER_DEV_MODE=1`.
+
+### Multi-Node Peers File (`GPUWORKS_PEERS_FILE`)
+
+Every rank of a multi-node deployment (`nnodes > 1`, including multi-node PD roles) receives a read-only JSON document listing where every rank of its group is, so a recipe can write its own rendezvous or rank table (fleet.conf, an HCCL rank table, a Mooncake configuration, and so on) without building discovery of its own. The file is at `/gpuworks/peers.json`: the agent writes it in the instance's own runtime mount directory and mounts it read-only there; it is rewritten on every container start and removed with the instance. The path is both the launch variable `${GPUWORKS_PEERS_FILE}` (expanded in a template's args, env, preparation script and in manual commands) and, with the same name and value, the system-layer env `GPUWORKS_PEERS_FILE` in the container. A launch without a peers file (single node, an agent without support) whose template fields reference `${GPUWORKS_PEERS_FILE}` fails, like a single-node reference to `${GPUWORKS_MASTER_ADDR}`; in a manual command it is left to the shell like any other variable the launch does not state. `/gpuworks` is the directory where the platform keeps its own files; see the platform path rule in [Inference Catalog Syntax](inference-catalog-spec.md#变量展开).
+
+The content is fixed when the group is placed (its Go type is `proto.PeersFile`; for the decision see [ADR 0078](../adr/0078-multi-node-peers-file.md)). The files of the ranks differ only in `node_rank`. Field names follow the launch variables (`node_rank`, `nnodes`, `node_addr`, `master_addr`, `master_port`: the variables in lower case) and the network API's vocabulary (a node's `interface` and `hcas`, each rail's `name`, `netdev` and `ip`). Every value that also exists as a launch variable equals that rank's launch variable on every rank:
+
+```json
+{
+  "version": 1,
+  "node_rank": 1,
+  "nnodes": 2,
+  "master_addr": "192.168.177.51",
+  "master_port": 29500,
+  "network": {"type": "host_rdma", "link_layer": "roce"},
+  "ranks": [
+    {
+      "node_rank": 0,
+      "node_uuid": "3f0c…",
+      "node_name": "gb10-1",
+      "hostname": "gb10-1",
+      "node_addr": "192.168.177.51",
+      "management": {"interface": "eno1", "ip": "10.0.0.51"},
+      "interface": "enp1s0f1np1",
+      "hcas": [
+        {"name": "roceP2p1s0f1:1", "device": "roceP2p1s0f1", "port": 1, "netdev": "enP2p1s0f1np1", "ip": "192.168.178.51"},
+        {"name": "rocep1s0f1:1", "device": "rocep1s0f1", "port": 1, "netdev": "enp1s0f1np1", "ip": "192.168.177.51"}
+      ]
+    },
+    {
+      "node_rank": 1,
+      "node_uuid": "9a41…",
+      "node_name": "gb10-2",
+      "hostname": "gb10-2",
+      "node_addr": "192.168.177.52",
+      "management": {"interface": "eno1", "ip": "10.0.0.52"},
+      "interface": "enp1s0f1np1",
+      "hcas": [
+        {"name": "roceP2p1s0f1:1", "device": "roceP2p1s0f1", "port": 1, "netdev": "enP2p1s0f1np1", "ip": "192.168.178.52"},
+        {"name": "rocep1s0f1:1", "device": "rocep1s0f1", "port": 1, "netdev": "enp1s0f1np1", "ip": "192.168.177.52"}
+      ]
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `version` | Shape version, currently `1`. It changes only when a field's meaning changes, not when fields are added; readers should ignore keys they do not know |
+| `node_rank` / `nnodes` | The reader's own rank (equal to `${GPUWORKS_NODE_RANK}`; 0 leads) and the number of ranks in the group (equal to `${GPUWORKS_NNODES}`, and the length of `ranks`) |
+| `master_addr` / `master_port` | The rendezvous of the whole group, equal to `${GPUWORKS_MASTER_ADDR}` and `${GPUWORKS_MASTER_PORT}`; omitted when there is none |
+| `network` | The compute network the group shares: `type` (`host_rdma`, `host_ethernet`, `accelerator_rdma`, `accelerator_hccs`) and `link_layer` (`infiniband`, `roce`, `hccs`; empty for Ethernet); omitted when the group runs over the management network |
+| `ranks[].node_rank` | The rank's number |
+| `ranks[].node_uuid` / `node_name` / `hostname` | The node's identity and name in the platform, and the host name the node reports |
+| `ranks[].node_addr` | The address the rank advertises to the group, equal to its own `${GPUWORKS_NODE_ADDR}`: its address on the compute network, otherwise its routable management address |
+| `ranks[].management` | The node's `interface` and `ip` on the management network; omitted when its agent has not reported one |
+| `ranks[].interface` | The host interface carrying the group's bootstrap traffic; omitted when none was resolved |
+| `ranks[].hcas[]` | The compute network's rails on that node, in the order `NCCL_IB_HCA` names them: RDMA ports on a host RDMA network, the cards' ports on an accelerator network, empty on Ethernet. `name` is the platform's name for the rail (`device:port` for an RDMA port, such as `rocep1s0f1:1`; `npu3` for a card), `device` and `port` are an RDMA rail's device and port split out (empty for a card), `netdev` the host interface holding the rail's address (for RoCE the interface whose address the port's GID table carries, which can be a bridge or bond above the port), and `ip` the rail's own IPv4 address (for RoCE the address verified against the port's GID table, otherwise the interface's; the IPoIB address; the card port's address); omitted when not reported |
+
+The file states only facts known when the platform placed the group or reported by the agents; values a container probes for itself, such as the RoCE GID index, are not included. On a node whose agent does not support peers files (capability `launch.peers_file`, which older agents do not advertise), that rank has neither the file nor the variable; single-node deployments have no peers file.
 
 ## User Input and Container Overrides
 
@@ -262,7 +323,7 @@ Variables expand at every launch, in template args, env, entrypoint, and prepara
 The syntax is `${GPUWORKS_NAME}`, where the name consists of uppercase letters, digits, and underscores. Available variables are resolver outputs plus the platform-provided `GPUWORKS_GPU_COUNT`,
 `GPUWORKS_TP_SIZE`, `GPUWORKS_MODEL_PATH`, `GPUWORKS_SERVED_MODEL_NAME`, `GPUWORKS_API_HOST`, `GPUWORKS_API_PORT`,
 `GPUWORKS_NNODES`, `GPUWORKS_NODE_RANK`, and `GPUWORKS_HEADLESS`, with `GPUWORKS_NODE_ADDR`, `GPUWORKS_MASTER_ADDR`, and
-`GPUWORKS_MASTER_PORT` additionally available for multi-node deployments, and `GPUWORKS_PD_ROLE`, `GPUWORKS_PD_SIDE_CHANNEL_HOST`, `GPUWORKS_PD_SIDE_CHANNEL_PORT`, and `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` for PD instances;
+`GPUWORKS_MASTER_PORT` additionally available for multi-node deployments, `GPUWORKS_PEERS_FILE` when the launch has a peers file, and `GPUWORKS_PD_ROLE`, `GPUWORKS_PD_SIDE_CHANNEL_HOST`, `GPUWORKS_PD_SIDE_CHANNEL_PORT`, and `GPUWORKS_PD_LEADER_SIDE_CHANNEL_PORT` for PD instances;
 `PP_SIZE` has no default. Template fields still expand the older unprefixed spelling (`${NODE_RANK}`); a handwritten command expands prefixed names only and leaves every other `${...}`
 to the shell. For the full vocabulary, availability conditions, and error rules, see [Inference Catalog Syntax](inference-catalog-spec.md#变量展开).
 
@@ -274,14 +335,15 @@ The agent does not reconstruct catalog, image, or command semantics. It only mak
 2. For multi-node vLLM: fills empty `GLOO_SOCKET_IFNAME` and `NCCL_SOCKET_IFNAME` from the network interface containing `VLLM_HOST_IP`.
 3. Mounts spec assets read-only.
 4. If a preparation script exists, writes `/gpuworks/pre-start.sh` (`set -eu`, script, `exec "$@"`), changes the entrypoint to `/bin/sh /gpuworks/pre-start.sh`, and passes the original command as arguments.
-5. Sets the KV disk tier mount source and quota.
-6. **Device injection** (overrides env with the same name and replaces existing `--gpus`/`--runtime`):
+5. For a multi-node rank with a peers file, writes it as a read-only file and mounts it at `/gpuworks/peers.json`; see "Multi-Node Peers File".
+6. Sets the KV disk tier mount source and quota.
+7. **Device injection** (overrides env with the same name and replaces existing `--gpus`/`--runtime`):
    - NVIDIA: `--gpus "device=…"` + `CUDA_VISIBLE_DEVICES` numbered from 0
    - Hygon: `--device` kfd/DRM, `/opt/hyhal`, `--group-add video`, `HIP/ROCR/HYGON_VISIBLE_DEVICES`
    - Ascend docker: `--runtime ascend` + `ASCEND_VISIBLE_DEVICES`, etc.; Ascend nerdctl: `/dev/davinci*` devices and driver mounts
    - PPU: `/dev/alixpu*` devices, `NVIDIA_VISIBLE_DEVICES=void`, `CUDA_VISIBLE_DEVICES`
    - Kunlunxin: Linux amd64 / Docker whole-card TP. Recheck each selected card’s UUID/BDF/minor and sysfs identity, then inject only its `/dev/xpuN` plus `/dev/xpuctrl`. Occupancy comes from the common compute-process inventory, not memory usage alone. Template options use the common administrator contract, with no vendor-specific Docker option filter. See the [support matrix](support-matrix.md) for native multi-node requirements.
-7. **dGPU partitioning**: the server sends only the GPU memory limit, compute percentage, and backend name; all injection happens in the agent:
+8. **dGPU partitioning**: the server sends only the GPU memory limit, compute percentage, and backend name; all injection happens in the agent:
    - HAMi-core: mounts `libvgpu.so`; sets `LD_PRELOAD`, `CUDA_DEVICE_MEMORY_LIMIT_<i>`, and `CUDA_DEVICE_SM_LIMIT` when the deployment carries a compute percentage (deployment requests currently do not accept a compute percentage; see [dGPU Explained](../explanation/dgpu.md))
    - vcann-rt: mounts `libvruntime.so`, etc.; sets `ENPU_DSMI_HOOK=1` and `LD_LIBRARY_PATH`
    - HGGC: mounts `hggc_quota.so`, etc.; sets `LD_PRELOAD` and `HGGC_DEVICE_MEMORY_LIMIT_<i>`
