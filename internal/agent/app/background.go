@@ -6,6 +6,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 
 	"gpuworks.ai/gpuworks/internal/agent/collector"
+	"gpuworks.ai/gpuworks/internal/agent/dgpucache"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -70,7 +71,8 @@ func (n *NodeRuntime) runningInstances() []collector.RunningInstance {
 		out = append(out, collector.RunningInstance{
 			UUID: s.UUID, APIPort: s.APIPort, Engine: s.Engine,
 			MetricPath: s.MetricPath, MetricPrefix: s.MetricPrefix, MetricMap: s.MetricMap, Observation: s.Observation,
-			GPUIndexes: s.GPUIndexes, VRAMLimit: s.VRAMLimitBytes, DGPUCache: n.engine.DGPUCachePath(s.UUID),
+			GPUIndexes:   s.GPUIndexes,
+			DGPUUsage:    func() ([]dgpucache.DeviceUsage, bool, error) { return n.engine.DGPUUsage(s) },
 			DeploymentID: s.DeploymentID,
 		})
 	}

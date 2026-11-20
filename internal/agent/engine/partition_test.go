@@ -38,7 +38,8 @@ func TestAscendPartitionGeneratesPrivateConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("apply failed: %s", reason)
 	}
-	if ws.Env["ENPU_DSMI_HOOK"] != "1" || len(ws.Mounts) != 3 {
+	if ws.Env["ENPU_DSMI_HOOK"] != "1" || mountAt(ws, accelerator.AscendConfigTarget) == nil ||
+		mountAt(ws, accelerator.AscendPreloadTarget) == nil || mountAt(ws, accelerator.AscendLibraryTarget) == nil {
 		t.Fatalf("env/mounts = %+v/%+v", ws.Env, ws.Mounts)
 	}
 	config, err := os.ReadFile(filepath.Join(root, "dgpu-runtime", "instances", "ascend_instance", "npu_info.config"))

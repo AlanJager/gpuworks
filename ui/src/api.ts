@@ -4389,6 +4389,9 @@ export interface DGPU {
   memory_used_bytes?: number;
   sm_util_pct?: number;
   updated_at?: string;
+  /** The slice's dGPU backend keeps no such reading, so none will arrive. */
+  memory_used_unsupported?: boolean;
+  sm_util_unsupported?: boolean;
 }
 
 /** An instance a dGPU quota change left at its limit until it restarts, and why. */

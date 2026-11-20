@@ -21,4 +21,7 @@ func (nvidiaLogicalBackend) SkipsBehaviorProbe() bool { return true }
 // allocation check and memory query; the agent rewrites it there.
 func (nvidiaLogicalBackend) LiveMemoryLimit() bool { return true }
 
+// HAMi-core's shared cache carries each process's memory and SM utilization.
+func (nvidiaLogicalBackend) SliceUsage(int) (memory, compute bool) { return true, true }
+
 func (nvidiaLogicalBackend) Profiles() []PartitionProfile { return nil }

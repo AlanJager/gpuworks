@@ -126,7 +126,7 @@ test("a slice's detail shows its use only when its backend reports it", async ()
   assert.ok(within(reported).getByRole("heading", { name: gpus.detail.monitoringData }));
   cleanup();
 
-  // A starting slice, like any Ascend or PPU slice, has reported no use: no empty block stands in for it.
+  // A starting slice has reported no use yet: no empty block stands in for it.
   renderPage();
   fireEvent.click(await screen.findByRole("tab", { name: gpus.tab.dgpu }));
   fireEvent.click(await screen.findByRole("button", { name: "qwen3-dgpu-c" }));
@@ -134,6 +134,72 @@ test("a slice's detail shows its use only when its backend reports it", async ()
   assert.ok(await within(silent).findByRole("heading", { name: gpus.detail.quotaInfo }));
   assert.equal(within(silent).queryByRole("heading", { name: gpus.detail.currentUse }), null);
   assert.equal(within(silent).queryByRole("heading", { name: gpus.detail.monitoringData }), null);
+});
+
+// GWKS-424: an Ascend or PPU slice now reports its memory like an NVIDIA one,
+// and a reading its backend never keeps says so rather than "No data", which
+// reads as a report that is late. The rows carry the keys GET /dgpus puts on
+// the wire for each case (TestDGPUListSaysWhichReadingsABackendKeeps).
+test("a reading the slice's backend never keeps says so, in the list and in the detail", async () => {
+  const [a, b, c] = dgpus.items;
+  const withBackends = { items: [
+    // Ascend: memory, never compute.
+    { ...a, deployment_name: "ascend-slice", sm_util_pct: undefined, sm_util_unsupported: true },
+    // A backend that keeps neither reading.
+    { ...b, deployment_name: "hygon-slice", memory_used_bytes: undefined, sm_util_pct: undefined, updated_at: undefined, memory_used_unsupported: true, sm_util_unsupported: true },
+    // A starting NVIDIA slice: nothing reported yet, both still to come.
+    c,
+  ] };
+  const fetchFixture = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).startsWith("/api/v1/dgpus") ? Response.json(withBackends) : fetchFixture(input);
+  try {
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: gpus.tab.dgpu }));
+    const unsupported = gpus.sliceReading.unsupported;
+    const ascend = (await screen.findByText("ascend-slice")).closest("tr") as HTMLElement;
+    assert.ok(within(ascend).getByText("7.0 GiB"), "the Ascend slice shows the memory it holds");
+    assert.equal(within(ascend).getAllByText(unsupported).length, 1, "only its compute reading is unsupported");
+    assert.equal(within(ascend).queryByText(gpus.noData), null);
+    const hygon = screen.getByText("hygon-slice").closest("tr") as HTMLElement;
+    assert.equal(within(hygon).getAllByText(unsupported).length, 2);
+    assert.equal(within(hygon).queryByText(gpus.noData), null);
+    const starting = screen.getByText("qwen3-dgpu-c").closest("tr") as HTMLElement;
+    assert.equal(within(starting).getAllByText(gpus.noData).length, 2, "a reading still to come stays 'No data'");
+    assert.equal(within(starting).queryByText(unsupported), null);
+
+    // The explanation is behind a focusable help button, not on the page,
+    // and reaching it does not open the row's detail.
+    const help = within(ascend).getByRole("button", { name: gpus.sliceReading.unsupportedLabel });
+    assert.equal(screen.queryByText(gpus.sliceReading.unsupportedHelp), null);
+    help.focus();
+    fireEvent.focus(help);
+    assert.ok(await screen.findAllByText(gpus.sliceReading.unsupportedHelp));
+    fireEvent.click(help);
+    assert.equal(screen.queryByRole("dialog"), null);
+
+    // The detail shows the memory it has, says the compute reading is not
+    // supported, and charts only what the backend keeps.
+    fireEvent.click(screen.getByRole("button", { name: "ascend-slice" }));
+    const drawer = await screen.findByRole("dialog");
+    assert.ok(await within(drawer).findByRole("heading", { name: gpus.detail.currentUse }));
+    assert.ok(within(drawer).getByText("7.0 GiB / 8.0 GiB"));
+    assert.ok(within(drawer).getByText(unsupported));
+    assert.ok(within(drawer).getByRole("heading", { name: gpus.detail.monitoringData }));
+    assert.ok(within(drawer).getByText(i18n.t("metric.sliceVRAM", { limit: "8.0 GiB" })));
+    assert.equal(within(drawer).queryByText(gpus.metric.smReferenceAvg), null);
+  } finally {
+    globalThis.fetch = fetchFixture;
+  }
+});
+
+test("both locales name the unsupported reading and explain it", () => {
+  const zh = JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/zh/gpus.json", import.meta.url), "utf8"));
+  assert.deepEqual(Object.keys(zh.sliceReading).sort(), Object.keys(gpus.sliceReading).sort());
+  assert.equal(zh.sliceReading.unsupported, "不支持");
+  assert.notEqual(zh.sliceReading.unsupported, zh.noData);
+  assert.notEqual(gpus.sliceReading.unsupported, gpus.noData);
+  // The column's help no longer says the figure is HAMi's alone.
+  for (const locale of [gpus, zh]) assert.ok(!/^Memory the HAMi|^HAMi/.test(locale.tooltip.actualVRAM));
 });
 
 test("memory segments follow the books: limits, what slices hold beyond them, residue, free", () => {

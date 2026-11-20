@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/dgpucache"
 	agentruntime "gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -20,7 +22,11 @@ import (
 // from the node-wide ledger so colocated instances get stable identities.
 type ascendPartitionInjector struct{}
 
-func (ascendPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentruntime.WorkloadSpec, spec proto.InstanceDesiredState) (bool, string) {
+func (a ascendPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentruntime.WorkloadSpec, spec proto.InstanceDesiredState) (bool, string) {
+	return a.applyWithUsageMount(e, ctx, ws, spec, canMountAscendUsageLedger(os.Geteuid(), e.Driver()))
+}
+
+func (ascendPartitionInjector) applyWithUsageMount(e *Engine, ctx context.Context, ws *agentruntime.WorkloadSpec, spec proto.InstanceDesiredState, mountUsage bool) (bool, string) {
 	if len(spec.GPUIndexes) != 1 {
 		return false, "Ascend logical slicing currently requires exactly one GPU per instance"
 	}
@@ -77,6 +83,17 @@ func (ascendPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentru
 	if err := writePrivateFile(configHost, []byte(config), 0o644); err != nil {
 		return false, "write Ascend slice config: " + err.Error()
 	}
+	// vcann-rt keeps what the slice is charged in a POSIX shared memory
+	// object named after the slice, which a container with an IPC namespace
+	// of its own keeps to itself. Backing that name with a file of the
+	// agent's is what lets the collector read what the slice holds.
+	if mountUsage {
+		ledgerHost := e.usageLedgerPath(spec.UUID)
+		if err := freshUsageLedger(ledgerHost); err != nil {
+			return false, "Ascend partition ledger: " + err.Error()
+		}
+		ws.Mounts = append(ws.Mounts, agentruntime.Mount{Source: ledgerHost, Target: ascendLedgerTarget(shmID, virtualID)})
+	}
 	ws.Mounts = append(ws.Mounts,
 		agentruntime.Mount{Source: asset.Files["libvruntime.so"], Target: libTarget, ReadOnly: true},
 		agentruntime.Mount{Source: preloadHost, Target: accelerator.AscendPreloadTarget, ReadOnly: true},
@@ -93,6 +110,46 @@ func (ascendPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentru
 		ws.Env[accelerator.EnvLDLibraryPath] = driverLibraryPath
 	}
 	return true, ""
+}
+
+// Linux may deny shm_open(O_CREAT) in sticky /dev/shm when the bind source
+// is owned by another UID, even when the file already exists and is writable.
+// A root agent can supply a file owned by the directory owner. PRoot shares
+// the host's /dev/shm directly, so it needs no bind.
+func canMountAscendUsageLedger(agentUID int, driver agentruntime.Driver) bool {
+	return agentUID == 0 && (driver == nil || driver.Name() != "udocker")
+}
+
+// ascendLedgerTarget is where vcann-rt's shm_open finds its memory ledger
+// inside the container: "/enpu-vmem-<shm-id>-<virtual-npu-id>"
+// (src/memory_ledger.c in the patched source the asset is built from).
+func ascendLedgerTarget(shmID string, virtualID int) string {
+	return fmt.Sprintf("/dev/shm/enpu-vmem-%s-%d", shmID, virtualID)
+}
+
+// usage reads the slice's memory ledger. An Ascend slice is one card.
+func (ascendPartitionInjector) usage(e *Engine, spec proto.InstanceDesiredState) ([]dgpucache.DeviceUsage, error) {
+	device, err := dgpucache.ReadAscendLedger(e.usageLedgerPath(spec.UUID))
+	if errors.Is(err, os.ErrNotExist) {
+		// PRoot and OCI workloads with host IPC can use the ledger the shim
+		// creates in /dev/shm. This also covers slices already running when
+		// the agent is upgraded.
+		data, readErr := os.ReadFile(filepath.Join(e.stateDir, partitionStateRoot, "instances", sanitizeID(spec.UUID), "npu_info.config"))
+		if readErr != nil {
+			return nil, readErr
+		}
+		config := parsePartitionConfig(string(data))
+		shmID := sanitizeHardwareID(config["shm-id"])
+		virtualID, idErr := strconv.Atoi(config["virtual-npu-id"])
+		if shmID == "" || idErr != nil || virtualID < 0 {
+			return nil, fmt.Errorf("Ascend partition config has no valid usage ledger name")
+		}
+		device, err = dgpucache.ReadAscendLedger(e.hostRoot + ascendLedgerTarget(shmID, virtualID))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return []dgpucache.DeviceUsage{device}, nil
 }
 
 func (ascendPartitionInjector) assetReports(e *Engine) []proto.AssetReport {

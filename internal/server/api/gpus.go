@@ -207,12 +207,29 @@ func (a *apiHandlers) buildGPUInventory() (*gpuInventoryCache, error) {
 						row.PendingLimit = dep.VRAMLimitBytes
 					}
 				}
+				memory, compute := sliceUsage(&spec)
+				row.MemoryUsedUnsupported, row.SMUtilUnsupported = !memory, !compute
 				applyDGPUMetrics(&row, metrics, node.UUID, gpuIndex, instance.UUID)
 				out.dgpu.Items = append(out.dgpu.Items, row)
 			}
 		}
 	}
 	return out, nil
+}
+
+// sliceUsage is which of its own readings a slice's partition backend keeps
+// (accelerator.SliceUsage): the memory it is charged and its compute
+// utilization. A desired state from before backends were named is NVIDIA's.
+func sliceUsage(spec *proto.InstanceDesiredState) (memory, compute bool) {
+	backendID := spec.PartitionBackend
+	if backendID == "" {
+		backendID = accelerator.BackendNVIDIALogical
+	}
+	backend, ok := accelerator.Lookup(backendID)
+	if !ok {
+		return false, false
+	}
+	return accelerator.SliceUsage(backend, spec.SMLimitPct)
 }
 
 func physicalGPU(node *store.Node, partitionReports partitioncap.Reports, gpu *store.GPU, allocation planning.GPUAllocation, deployment func(uint) *store.Deployment, metrics map[string]map[string]MetricLatest) dto.PhysicalGPU {

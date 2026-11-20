@@ -23,7 +23,7 @@ import { cardHasDetail, physicalCardKey } from "../nodes/cardIdentity";
 import GPUHealthTag, { gpuHealthStatus, gpuOwned } from "../components/GPUHealth";
 import ResourceTable, { storedPageSize, type ResourceColumn, type ServerSort } from "../components/resourceTable/ResourceTable";
 import DGPUQuotaModal from "./DGPUQuotaModal";
-import { DGPUDetail, PhysicalGPUDetail } from "./gpus/GPUDetailDrawers";
+import { DGPUDetail, PhysicalGPUDetail, SliceReadingAbsent } from "./gpus/GPUDetailDrawers";
 import { allocationLabels, dash, fmtGiB, fmtRate, gpuHeading, optionalPercent, shortID, vendorLabel } from "./gpus/gpuFormat";
 
 
@@ -313,9 +313,9 @@ function DGPUView({ rows, loading, error, onOpen, onEditQuota, onRefresh }: { ro
         ? <Space direction="vertical" size={0} align="end">{fmtGiB(row.memory_limit_bytes)}<Tooltip title={t("quota.pendingTooltip")}><Tag color="orange">{t("quota.pendingTag", { limit: fmtGiB(row.pending_limit_bytes) })}</Tag></Tooltip></Space>
         : fmtGiB(row.memory_limit_bytes),
     },
-    { key: "memory_used", title: <Tooltip title={t("tooltip.actualVRAM")}><span className="gpu-column-help">{t("column.actualVRAM")}</span></Tooltip>, width: 120, align: "right", sortValue: (row) => row.memory_used_bytes, render: (_, row) => row.memory_used_bytes == null ? t("noData") : fmtGiB(row.memory_used_bytes) },
+    { key: "memory_used", title: <Tooltip title={t("tooltip.actualVRAM")}><span className="gpu-column-help">{t("column.actualVRAM")}</span></Tooltip>, width: 120, align: "right", sortValue: (row) => row.memory_used_bytes, render: (_, row) => row.memory_used_bytes == null ? <SliceReadingAbsent unsupported={row.memory_used_unsupported} /> : fmtGiB(row.memory_used_bytes) },
     { key: "sm_limit", title: t("column.smLimit"), width: 110, align: "right", sortValue: (row) => row.sm_limit_pct, render: (_, row) => row.sm_limit_pct ? `${row.sm_limit_pct}%` : "-" },
-    { key: "sm_util", title: <Tooltip title={t("tooltip.smReference")}><span className="gpu-column-help">{t("column.smReference")}</span></Tooltip>, width: 110, align: "right", sortValue: (row) => row.sm_util_pct, render: (_, row) => row.sm_util_pct == null ? t("noData") : `${row.sm_util_pct.toFixed(0)}%` },
+    { key: "sm_util", title: <Tooltip title={t("tooltip.smReference")}><span className="gpu-column-help">{t("column.smReference")}</span></Tooltip>, width: 110, align: "right", sortValue: (row) => row.sm_util_pct, render: (_, row) => row.sm_util_pct == null ? <SliceReadingAbsent unsupported={row.sm_util_unsupported} /> : `${row.sm_util_pct.toFixed(0)}%` },
     {
       key: "actions", role: "actions", width: 120,
       render: (_, row) => <Space size={2} onClick={(event) => event.stopPropagation()}>

@@ -8,17 +8,19 @@ import (
 	"strconv"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/dgpucache"
 	agentruntime "gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // ppuPartitionInjector implements the PPU logical partition backend: the
-// ppu-slicing-shim quota/hook libraries (hooking the HGGC runtime) are mounted into the container and activated through
-// LD_PRELOAD plus HGGC_DEVICE_* env, with per-instance quota ledgers in
-// /dev/shm (host IPC namespace, because inference workloads use --ipc=host).
+// ppu-slicing-shim quota/hook libraries are mounted into the container and
+// activated through LD_PRELOAD and HGGC_DEVICE_* env. A file in the instance's
+// partition state directory backs its usage ledger, independently of the
+// container's IPC namespace.
 //
-// On the kube driver the agent's own /dev/shm is its pod's private tmpfs,
-// not the host's, so --ipc=host buys it nothing: see e.hostRoot and
+// On the kube driver the ledger is a file in the host's /dev/shm instead,
+// pre-created through e.hostRoot and mounted into the pod: see
 // createHostShmLedger in partition.go (shared with partition_amd.go).
 type ppuPartitionInjector struct{}
 
@@ -54,13 +56,27 @@ func (ppuPartitionInjector) apply(e *Engine, _ context.Context, ws *agentruntime
 		ws.Env[accelerator.PPUEnvSMLimitPrefix+ordinal] = strconv.Itoa(smLimit)
 	}
 	ledger := ppuLedgerPath(spec.UUID)
-	ws.Env[accelerator.PPUEnvLedgerPath] = ledger
 	if e.hostRoot != "" {
 		if err := createHostShmLedger(e.hostRoot, ledger); err != nil {
 			return false, "PPU partition ledger: " + err.Error()
 		}
+		ws.Env[accelerator.PPUEnvLedgerPath] = ledger
 		ws.Mounts = append(ws.Mounts, agentruntime.Mount{Source: ledger, Target: ledger})
+		return true, ""
 	}
+	// The ledger is the slice's usage surface as well as its accounting, and
+	// a container with an IPC namespace of its own keeps /dev/shm to itself.
+	// Backing the path with a file of the agent's is what lets the collector
+	// read what the slice holds whatever the container's IPC mode.
+	source := e.usageLedgerPath(spec.UUID)
+	if err := freshUsageLedger(source); err != nil {
+		return false, "PPU partition ledger: " + err.Error()
+	}
+	// The shim accepts a file outside /dev/shm, where Linux permits open
+	// with O_CREAT even if the container user did not create the file.
+	target := filepath.Join(filepath.Dir(quotaTarget), "usage-ledger")
+	ws.Env[accelerator.PPUEnvLedgerPath] = target
+	ws.Mounts = append(ws.Mounts, agentruntime.Mount{Source: source, Target: target})
 	return true, ""
 }
 
@@ -76,19 +92,26 @@ func (ppuPartitionInjector) applyLimit(*Engine, proto.InstanceDesiredState) (boo
 
 func (ppuPartitionInjector) cleanupInstance(e *Engine, uuid string) error {
 	err := os.RemoveAll(filepath.Join(e.stateDir, partitionStateRoot, "instances", sanitizeID(uuid)))
-	// PPU quota ledgers live in the host's /dev/shm: on every driver but
-	// kube, that is the agent's own /dev/shm too (the workload shares it via
-	// --ipc=host), and e.hostRoot is "", so this is exactly the path used
-	// before kube support existed. On kube, e.hostRoot prefixes the path
-	// with the agent's view of the host root (see createHostShmLedger). The
-	// shim normally unlinks a clean ledger on process exit, but a failed or
-	// killed startup can leave one behind. Remove the exact per-instance
-	// path during teardown so retries and deletions do not accumulate stale
-	// accounting files.
+	// Also remove the host /dev/shm ledger still used by kube and by
+	// workloads that started with host IPC before Docker bound the ledger
+	// directly. e.hostRoot points to the host filesystem for the kube agent.
 	if removeErr := os.Remove(e.hostRoot + ppuLedgerPath(uuid)); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 		err = errors.Join(err, removeErr)
 	}
 	return err
+}
+
+// usage reads the shim's usage region: the agent's own file behind the
+// ledger path, or the host's /dev/shm for the kube driver and for an instance
+// started with --ipc=host before the agent backed the path itself.
+func (ppuPartitionInjector) usage(e *Engine, spec proto.InstanceDesiredState) ([]dgpucache.DeviceUsage, error) {
+	if e.hostRoot == "" {
+		devices, err := dgpucache.ReadPPULedger(e.usageLedgerPath(spec.UUID), len(spec.GPUIndexes))
+		if !errors.Is(err, os.ErrNotExist) {
+			return devices, err
+		}
+	}
+	return dgpucache.ReadPPULedger(e.hostRoot+ppuLedgerPath(spec.UUID), len(spec.GPUIndexes))
 }
 
 func ppuLedgerPath(uuid string) string {

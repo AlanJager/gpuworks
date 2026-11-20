@@ -84,6 +84,11 @@
   },
   "unnamedDeployment": "Unnamed deployment",
   "noData": "No data",
+  "sliceReading": {
+    "unsupported": "Not supported",
+    "unsupportedHelp": "GPUWorks cannot read this metric for the slice's dGPU backend. PPU measures compute only for a slice whose compute limit is below 100%.",
+    "unsupportedLabel": "Why this reading is not supported"
+  },
   "fullGPU": "Full GPU",
   "none": "None",
   "allocation": {
@@ -128,7 +133,7 @@
     "asleep": "Asleep L{{level}}"
   },
   "tooltip": {
-    "actualVRAM": "Memory the HAMi interception counts for the slice; nvidia-smi shows about 0.4 GiB more per process (its CUDA context)",
+    "actualVRAM": "Memory the slice's dGPU interception counts against its limit. The vendor tool shows more per process: on NVIDIA, about 0.4 GiB of CUDA context",
     "smReference": "A sampled reference: slices time-sharing the SMs jump between 0 and 100 per sample; the details chart shows a 1-minute average"
   },
   "quota": {

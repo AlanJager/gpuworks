@@ -19,6 +19,10 @@ func (ascendLogicalBackend) HostRequirementNotes() []string {
 	return []string{"The inference image must provide glibc 2.33 or newer"}
 }
 
+// vcann-rt's memory ledger carries what the slice is charged; it publishes no
+// compute figure.
+func (ascendLogicalBackend) SliceUsage(int) (memory, compute bool) { return true, false }
+
 var ascendProfiles = []PartitionProfile{
 	{Backend: BackendAscendLogical, Vendor: VendorAscend, Framework: "cann", VersionPrefix: "8.5", Architectures: []string{"x86_64"}, DisplayCompatibility: "CANN 8.5.x × x86_64", Verified: true, ChipFamilies: []string{"910B2", "910B2C"}},
 	{Backend: BackendAscendLogical, Vendor: VendorAscend, Framework: "cann", VersionPrefix: "8.5", Architectures: []string{"arm64"}, DisplayCompatibility: "CANN 8.5.x × ARM64", ChipFamilies: []string{"910B4"}},

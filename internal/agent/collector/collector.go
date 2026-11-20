@@ -43,8 +43,11 @@ type RunningInstance struct {
 	// legacy map (prometheus.go mappingFor).
 	Observation *proto.InstanceObservation
 	GPUIndexes  []int
-	VRAMLimit   int64
-	DGPUCache   string
+	// DGPUUsage reads what a dGPU instance's slice holds on each of its
+	// cards, in GPUIndexes order, and whether the figures carry a compute
+	// utilization (engine.DGPUUsage). Nil, or no devices, for an instance
+	// with no per-slice figure.
+	DGPUUsage func() (devices []dgpucache.DeviceUsage, compute bool, err error)
 	// DeploymentID is the owning deployment (0 for a legacy/standalone
 	// instance with none). When non-zero it is added as a "deployment" label
 	// on every sample this instance produces, so the server-side monitor can
@@ -155,28 +158,35 @@ func (c *Collector) collect(ctx context.Context) proto.MetricBatch {
 	return proto.MetricBatch{Samples: samples}
 }
 
+// dgpuSamples reports each dGPU slice's own use of its cards, as the
+// partition backend's interposer accounts it. A slice whose region is not
+// there yet - the engine has not allocated, or the instance was started by an
+// agent that did not keep one - reports nothing rather than zero.
 func (c *Collector) dgpuSamples(now int64) []proto.MetricSample {
 	var samples []proto.MetricSample
 	for _, in := range c.instances() {
-		if in.VRAMLimit <= 0 || in.DGPUCache == "" || len(in.GPUIndexes) == 0 {
+		if in.DGPUUsage == nil || len(in.GPUIndexes) == 0 {
 			continue
 		}
-		snapshot, err := dgpucache.ReadCache(in.DGPUCache, len(in.GPUIndexes))
+		devices, compute, err := in.DGPUUsage()
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, dgpucache.ErrCacheUninitialized) {
-				c.log.Debug("dGPU cache read failed", "instance", in.UUID, "err", err)
+				c.log.Debug("dGPU usage read failed", "instance", in.UUID, "err", err)
 			}
 			continue
 		}
-		for visibleIndex, usage := range snapshot.Devices {
+		for visibleIndex, usage := range devices {
+			if visibleIndex >= len(in.GPUIndexes) {
+				break
+			}
 			labels := map[string]string{
 				"node": c.nodeUUID, "gpu": strconv.Itoa(in.GPUIndexes[visibleIndex]), "instance": in.UUID,
 			}
 			AddDeploymentLabel(labels, in.DeploymentID)
-			samples = append(samples,
-				proto.MetricSample{Metric: "gpuworks_dgpu_memory_used_bytes", Labels: labels, Value: float64(usage.MemoryUsedBytes), TimeMS: now},
-				proto.MetricSample{Metric: "gpuworks_dgpu_sm_util", Labels: labels, Value: float64(usage.SMUtilPercent), TimeMS: now},
-			)
+			samples = append(samples, proto.MetricSample{Metric: "gpuworks_dgpu_memory_used_bytes", Labels: labels, Value: float64(usage.MemoryUsedBytes), TimeMS: now})
+			if compute {
+				samples = append(samples, proto.MetricSample{Metric: "gpuworks_dgpu_sm_util", Labels: labels, Value: float64(usage.SMUtilPercent), TimeMS: now})
+			}
 		}
 	}
 	return samples

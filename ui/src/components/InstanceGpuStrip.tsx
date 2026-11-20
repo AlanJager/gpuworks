@@ -17,8 +17,8 @@ const METRICS = {
   power: "gpuworks_gpu_power_watts",
 } as const;
 
-// A dGPU instance's own share of each card, as the HAMi interception counts
-// it. The card-wide metrics above include every other slice on the card, so
+// A dGPU instance's own share of each card, as its partition backend's
+// interception counts it (HAMi-core, vCANN or the PPU shim). The card-wide metrics above include every other slice on the card, so
 // for such an instance they are context, not its own load.
 const SLICE_METRICS = {
   sliceMemoryUsed: "gpuworks_dgpu_memory_used_bytes",
