@@ -69,7 +69,7 @@ func (n *NodeRuntime) runningInstances() []collector.RunningInstance {
 	var out []collector.RunningInstance
 	for _, s := range n.engine.MetricSpecs() {
 		out = append(out, collector.RunningInstance{
-			UUID: s.UUID, APIPort: s.APIPort, Engine: s.Engine,
+			UUID: s.UUID, APIPort: s.APIPort, MetricsPort: s.MetricsPort, Engine: s.Engine,
 			MetricPath: s.MetricPath, MetricPrefix: s.MetricPrefix, MetricMap: s.MetricMap, Observation: s.Observation,
 			GPUIndexes:   s.GPUIndexes,
 			DGPUUsage:    func() ([]dgpucache.DeviceUsage, bool, error) { return n.engine.DGPUUsage(s) },

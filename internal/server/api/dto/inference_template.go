@@ -144,10 +144,13 @@ type APIContract struct {
 // metric's short name, or {"to": name, "scale": factor} when it is scaled;
 // the editor writes it back as it reads it.
 type APIMetrics struct {
-	Endpoint string                     `json:"endpoint,omitempty"`
-	Format   string                     `json:"format,omitempty"`
-	Inherit  string                     `json:"inherit,omitempty"`
-	Map      map[string]json.RawMessage `json:"map,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	// Port is "separate" when the endpoint listens on a port of its own that
+	// the platform reserves for the instance; absent means the API port.
+	Port    string                     `json:"port,omitempty"`
+	Format  string                     `json:"format,omitempty"`
+	Inherit string                     `json:"inherit,omitempty"`
+	Map     map[string]json.RawMessage `json:"map,omitempty"`
 }
 
 type APIOperation struct {

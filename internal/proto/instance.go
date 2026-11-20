@@ -148,7 +148,13 @@ type InstanceDesiredState struct {
 	// The agent checks the engine on the API port answers under it.
 	ServedModelName string `json:"served_model_name,omitempty"`
 	APIPort         int    `json:"api_port"`
-	StartTimeout    int    `json:"start_timeout_seconds"`
+	// MetricsPort is the port the engine's metrics endpoint listens on when
+	// its template declared api.metrics.port: separate: reserved with the API
+	// port at launch and part of Ports, fixed for the instance's life. Zero
+	// means the endpoint is on the API port (and, from a server that predates
+	// the field, always).
+	MetricsPort  int `json:"metrics_port,omitempty"`
+	StartTimeout int `json:"start_timeout_seconds"`
 
 	// Distributed process metadata. Headless ranks participate in the engine's
 	// worker group but do not expose an HTTP endpoint of their own.

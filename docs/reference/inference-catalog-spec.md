@@ -356,6 +356,7 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
 | 类别 | 模板写 | 容器里看到 | 主机侧由谁定 | 生命周期 |
 |---|---|---|---|---|
 | 启动变量 | 在 `args` / `env` / `entrypoint` / `pre_start_*` 里引用 `${GPUWORKS_*}`（多机 rank 的 `${GPUWORKS_PEERS_FILE}` 也在其中），见[变量展开](#变量展开)；权重 `subfolder` 只能引用 `${GPUWORKS_NODE_RANK}` | 本次启动的值 | 平台 | 每次启动 |
+| 指标端口 | `api.metrics.port: separate`，并在启动字段里引用 `${GPUWORKS_METRICS_PORT}`，见 [api.metrics](#apimetrics引擎指标映射) | launcher 监听的本机端口（`${GPUWORKS_METRICS_PORT}`），不由模板指定数值 | 平台（与 API 端口一起保留） | 实例创建时定下，随实例保留 |
 | 系统层环境变量 | 不用写；`env` 里同名键覆盖它 | 计算网络的 `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`，见[环境变量分层](deployment-launch-sources.md#环境变量分层)；多机 rank 有 peers 文件时还有 `GPUWORKS_PEERS_FILE`（与同名启动变量同值，给配方启动的程序直接读） | 平台 | 每次启动 |
 | 主权重 | `weights`；`subfolder` 可写 `rank${GPUWORKS_NODE_RANK}`，见[按 rank 拆分的权重](#按-rank-拆分的权重) | 只读，在 `${GPUWORKS_MODEL_PATH}`（缺省 `/model`，有 primary 组件时为它的 `mount_path`）；按 rank 拆分时每个 rank 只有自己的子目录 | 平台（模型存储） | 随模型 |
 | 组件权重 | `components[].mount_path` | 只读，在该路径 | 平台（模型存储） | 随模型 |
@@ -463,6 +464,7 @@ placement:
 | `GPUWORKS_SERVED_MODEL_NAME` | 部署的服务名，即网关与健康检查发给引擎的 `model` | 总是 |
 | `GPUWORKS_API_HOST` | 服务应绑定的地址：callable 为 `0.0.0.0`，其他引擎 `127.0.0.1` | 总是 |
 | `GPUWORKS_API_PORT` | 平台为本实例保留、网关与健康检查会访问的端口；headless rank 为 `0` | 总是 |
+| `GPUWORKS_METRICS_PORT` | 平台为本实例额外保留的指标端口，launcher 在这个端口上导出引擎指标，agent 抓取它（见 [api.metrics](#apimetrics引擎指标映射)）；headless rank 为 `0` | 仅模板声明了 `api.metrics.port: separate` |
 | `GPUWORKS_NNODES` / `GPUWORKS_NODE_RANK` | 节点数与本 rank 序号；单机为 `1` / `0` | 总是 |
 | `GPUWORKS_HEADLESS` | 本 rank 不对外服务时为 `1`，否则 `0` | 总是 |
 | `GPUWORKS_NODE_ADDR` | 本 rank 所在节点的可路由地址（不是 rank 0 的） | 仅多机 |
@@ -475,7 +477,7 @@ placement:
 
 规则：
 
-- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PEERS_FILE`、`PD_*`
+- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`METRICS_PORT`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`、`PEERS_FILE`、`PD_*`
   出现在 resolver 结果里直接报错——resolver 运行时还没有节点、端口和 rank。
 - **缺变量即失败**：args / env / entrypoint / `pre_start_argv` 里未解析的名字在部署时报错；没有 resolver 的
   spec 引用词表外的名字（如拼错的 `${NODE_RNAK}`、无 resolver 的 `${PP_SIZE}`）在导入时就被拒绝。单机部署
@@ -595,6 +597,7 @@ api:
 api:
   metrics:
     endpoint: /metrics            # 可选，默认 /metrics；以 / 开头
+    port: api                     # 可选：api（默认，端点在 API 端口上）或 separate（平台另给一个端口）
     format: prometheus            # 可选：prometheus（默认，Prometheus 文本）或 json
     inherit: sglang               # 可选：vllm 或 sglang，先套用该引擎的内置映射
     map:                          # 引擎指标族（可带 {k="v"} 选择器）→ 词表短名
@@ -604,8 +607,14 @@ api:
 
 - **生效映射** = 继承的映射（`inherit` 指定的引擎，或 `vllm` / `sglang` 模板自身引擎的内置映射）逐条叠加 `map`，同一个键以 `map` 为准。
 - **`format: json`**：端点返回一个 JSON 文档（如 Strata 的 `/metrics`），`map` 的键写成用点连接的键路径（`totals.output_tokens`），取路径上的数字（布尔值记 1/0，取不到或不是数字则不出该指标）；字符串写成比较 `路径==词` / `路径!=词`（如 `live.state!=idle`），成立记 1、否则 0，只能映射到 gauge。只能映射计数器和 gauge，不能写 `inherit`，也不套用引擎内置映射；文档超过 1 MiB 或不是合法 JSON 时整份不读。
+- **`port: separate`**：引擎独占 API 端口、那里没有 `/metrics`（如只有 `/health`、`/v1/models`、`/v1/chat/completions` 的 Rust 前端）时，由镜像里的 launcher 在第二个本机端口上导出指标，不代理请求。声明后平台为每个实例**多保留一个端口**（与 API 端口一起分配，通常紧邻其后），在启动变量 `${GPUWORKS_METRICS_PORT}`（旧写法 `${METRICS_PORT}`）里给出，模板用它告诉 launcher 往哪里监听；agent 改为抓取 `http://127.0.0.1:<该端口><endpoint>`，不再抓 API 端口。只写 `api` 或不写则与过去一样，不保留端口、不产生该变量。
+  - **端口是启动的事实**：保留的端口随实例的期望状态存下（实例详情的 `ports` 列表里，API 端口之后），agent 重启或容器重启后沿用同一个端口；它取部署创建时的模板快照，之后改模板的 `port` 不影响已有实例，要换就是新一代实例。`endpoint`、`format`、`map` 仍按[运行中生效](#apimetrics引擎指标映射)取当前声明。
+  - **哪个 rank 有**：只有对外服务的 rank 有（单机实例，多机实例的 rank 0 / leader，PD 的每个 leader）；headless rank 与 API 端口一样没有，`${GPUWORKS_METRICS_PORT}` 在其上为 `0`，所以同一份命令可以在所有 rank 上展开。指标只从有端口的那个 rank 抓取。
+  - **预览**：部署评估里的命令用占位端口（与 API 端口的占位同理），创建部署时换成实际保留的端口。
+  - **两者必须配套**（导入、目录包上传、编辑器保存时检查）：声明了 `separate` 却没有在 `args` / `env` / `entrypoint` / `pre_start_*` / `manual_command` 里引用 `${GPUWORKS_METRICS_PORT}`，报 `CATALOG_METRICS_PORT_UNREFERENCED`（agent 抓的端口上没有服务）；引用了却没有声明，报 `CATALOG_METRICS_PORT_UNDECLARED`（平台不会保留这个端口；resolver 也不能返回同名变量）。`port` 写成别的值（包括具体端口号，端口由平台分配、模板不能指定）报 `CATALOG_METRICS_PORT_INVALID`。
+  - 较旧的 agent 不认识该端口，仍抓 API 端口，得到的只是没有引擎指标，不影响部署。
 - **不声明时**：`vllm` / `sglang` 用内置映射；`callable` 抓 `/metrics`，按抓到的 `vllm:` / `sglang:` 前缀自动套用对应映射，都没有则不出引擎指标。
-- **校验**（导入、目录包上传、编辑器保存）：目标必须是词表短名；直方图用族名映射、不带选择器、不换算；同一已映射直方图族的 `_bucket` / `_sum` / `_count` 行不能再映射；换算系数非负；`inherit` 只能是 `vllm` / `sglang`；`format` 只能是 `prometheus` / `json`，`json` 时键必须是键路径（可带 `==词` / `!=词` 比较）、目标不能是直方图、比较不能映射到计数器、不能写 `inherit`。错误码为 `CATALOG_METRICS_*`。
+- **校验**（导入、目录包上传、编辑器保存）：目标必须是词表短名；直方图用族名映射、不带选择器、不换算；同一已映射直方图族的 `_bucket` / `_sum` / `_count` 行不能再映射；换算系数非负；`inherit` 只能是 `vllm` / `sglang`；`format` 只能是 `prometheus` / `json`，`port` 只能是 `api` / `separate`，`json` 时键必须是键路径（可带 `==词` / `!=词` 比较）、目标不能是直方图、比较不能映射到计数器、不能写 `inherit`。错误码为 `CATALOG_METRICS_*`。
 - **运行中生效**：映射取部署所用档位的**当前**声明，不随部署快照冻结；模板保存或内置目录随 server 升级变化后，引用该档位的运行中实例原地更新、不重启（[ADR 0039](../adr/0039-inference-metric-sources.md)）。档位被删除的部署沿用快照里的 `api` 契约。`api.metrics` 不参与部署是否偏离模板的判断。
 
 ### api.request_stats：回复里的逐请求统计

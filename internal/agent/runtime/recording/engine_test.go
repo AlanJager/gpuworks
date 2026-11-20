@@ -107,3 +107,80 @@ func TestFakeEngineFollowsTheContainer(t *testing.T) {
 	}
 	t.Fatal("the fake engine outlived its container")
 }
+
+// A command that hands the engine a metrics port (--metrics-port, which is
+// what a template declaring api.metrics.port: separate does) gets the fake
+// engine's /metrics on that port alone: the API port answers 404 for it, and a
+// command without the flag keeps /metrics on the API port as before. This is
+// the stand-in the process tests scrape.
+func TestFakeEngineServesMetricsOnTheMetricsPortOnly(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "fake-engine")
+	build := exec.Command("go", "build", "-o", bin, "gpuworks.ai/gpuworks/test/fake-engine")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake engine: %v\n%s", err, out)
+	}
+	model := filepath.Join(dir, "model")
+	if err := os.MkdirAll(model, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(model, "config.json"), []byte(`{"model_type":"qwen3"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := New(filepath.Join(dir, "launch.json")).WithEngine(bin)
+	status := func(port int, path string) int {
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d%s", port, path))
+		if err != nil {
+			return 0
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	waitFor := func(port int) {
+		t.Helper()
+		for i := 0; i < 200; i++ {
+			if status(port, "/health") == http.StatusOK {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("the fake engine never answered on %d", port)
+	}
+	run := func(name, flags string) {
+		t.Helper()
+		script := "exec python3 -m sglang.launch_server " + flags
+		spec := runtime.WorkloadSpec{Name: name, Image: "img", Entrypoint: []string{"/bin/sh"}, Cmd: []string{"-c", script},
+			Mounts: []runtime.Mount{{Source: model, Target: "/model", ReadOnly: true}}}
+		if _, err := d.Run(context.Background(), spec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apiPort, metricsPort, plainPort := freePort(t), freePort(t), freePort(t)
+	run("gpuworks-own-metrics", fmt.Sprintf("--port %d --metrics-port %d", apiPort, metricsPort))
+	run("gpuworks-plain", fmt.Sprintf("--port %d", plainPort))
+	waitFor(apiPort)
+	waitFor(plainPort)
+	for i := 0; i < 200 && status(metricsPort, "/metrics") != http.StatusOK; i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := status(metricsPort, "/metrics"); got != http.StatusOK {
+		t.Fatalf("metrics port /metrics = %d, want 200", got)
+	}
+	if got := status(metricsPort, "/v1/models"); got != http.StatusNotFound {
+		t.Fatalf("metrics port serves more than /metrics: /v1/models = %d", got)
+	}
+	if got := status(apiPort, "/metrics"); got != http.StatusNotFound {
+		t.Fatalf("API port /metrics = %d, want 404 when the engine has a metrics port", got)
+	}
+	if got := status(apiPort, "/v1/models"); got != http.StatusOK {
+		t.Fatalf("API port /v1/models = %d", got)
+	}
+	if got := status(plainPort, "/metrics"); got != http.StatusOK {
+		t.Fatalf("a launch without a metrics port: API port /metrics = %d, want 200", got)
+	}
+	for _, name := range []string{"gpuworks-own-metrics", "gpuworks-plain"} {
+		if err := d.Stop(context.Background(), name); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

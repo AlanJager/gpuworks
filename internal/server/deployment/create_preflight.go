@@ -4,6 +4,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -46,7 +47,7 @@ func (s *Service) prepareLaunchPreflight(eng deploy.Engine, req *dto.DeployReque
 		return out, err
 	}
 	params := deploy.Params{
-		ModelPath: out.modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort,
+		ModelPath: out.modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort, MetricsPort: planning.PreviewMetricsPort, MetricsPortSeparate: inferenceapi.SeparateMetricsPort(selection.APIContract),
 		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, PriorityScheduling: requestsPriorityScheduling(req), Quick: launch.Quick,
 		TemplateArgs: launch.TemplateResidual, TemplateEnv: selection.Env, ExtraArgs: launch.UserResidual,
 		Vendor: targetVendor, NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,

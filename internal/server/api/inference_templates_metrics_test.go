@@ -67,3 +67,25 @@ func TestInferenceTemplateViewCarriesTheMetricsFormat(t *testing.T) {
 		t.Fatalf("api.metrics = %s\nwant          %s", encoded, want)
 	}
 }
+
+// A spec that serves its metrics on a port of its own says so on the template
+// detail: api.metrics.port is part of what the spec declares, and a reader that
+// does not see it would show a spec that reserves a second port as one that
+// does not. A spec on the API port has no key.
+func TestInferenceTemplateViewCarriesTheMetricsPort(t *testing.T) {
+	view := inferenceTemplateView(store.InferenceModel{ModelID: "acme/metrics-port", Source: "user", Specs: []store.InferenceSpecRow{
+		{Name: "separate", Source: "user", Engine: deploy.EngineCallable, APIContract: `{"operations":[{"type":"openai.chat"}],"metrics":{"endpoint":"/stats","port":"separate"}}`},
+		{Name: "api", Source: "user", Engine: deploy.EngineCallable, APIContract: `{"operations":[{"type":"openai.chat"}],"metrics":{"endpoint":"/stats"}}`},
+	}})
+	byName := map[string]string{}
+	for _, spec := range view.Specs {
+		encoded, err := json.Marshal(spec.API.Metrics)
+		if err != nil {
+			t.Fatal(err)
+		}
+		byName[spec.Name] = string(encoded)
+	}
+	if byName["separate"] != `{"endpoint":"/stats","port":"separate"}` || byName["api"] != `{"endpoint":"/stats"}` {
+		t.Fatalf("api.metrics on the wire = %v", byName)
+	}
+}

@@ -123,6 +123,9 @@ func validateExecutableContract(modelID string, spec *InferenceSpec) error {
 			return err
 		}
 	}
+	if err := validateMetricsPort(modelID, spec); err != nil {
+		return err
+	}
 	if err := validateComponents(where, spec); err != nil {
 		return err
 	}
@@ -426,4 +429,37 @@ func splitInlineFlag(token string) (string, string, bool) {
 		return token[:index], token[index+1:], true
 	}
 	return token, "", false
+}
+
+// validateMetricsPort checks that a spec's launch and its api.metrics.port
+// agree about the metrics port: a launch that references
+// ${GPUWORKS_METRICS_PORT} needs the platform to reserve it (port: separate),
+// and a spec that has it reserved needs to put something on it, or the agent
+// would scrape a port nobody listens on. Both are ProductErrors so the
+// importer, the editor and the release tooling report the same stable codes.
+func validateMetricsPort(modelID string, spec *InferenceSpec) error {
+	values := append(append(append([]string{}, spec.Args...), spec.Entrypoint...), spec.PreStartArgv...)
+	for _, value := range spec.Env {
+		values = append(values, value)
+	}
+	values = append(values, spec.PreStartScript, spec.ManualCommand)
+	referenced := false
+	for _, name := range placementeval.References(values...) {
+		if placementeval.Canonical(name) == placementeval.VarMetricsPort {
+			referenced = true
+		}
+	}
+	separate := spec.API != nil && spec.API.Metrics != nil && spec.API.Metrics.Port == inferenceapi.MetricsPortSeparate
+	params := map[string]any{"model": modelID, "spec": spec.Name}
+	switch {
+	case referenced && !separate:
+		return messages.NewProductError(messages.ErrorCatalogMetricsPortUndeclared,
+			fmt.Sprintf("model %s spec %s references ${%s%s} without declaring api.metrics port: %s", modelID, spec.Name, placementeval.VariablePrefix, placementeval.VarMetricsPort, inferenceapi.MetricsPortSeparate),
+			params)
+	case separate && !referenced:
+		return messages.NewProductError(messages.ErrorCatalogMetricsPortUnreferenced,
+			fmt.Sprintf("model %s spec %s declares api.metrics port: %s but never references ${%s%s}", modelID, spec.Name, inferenceapi.MetricsPortSeparate, placementeval.VariablePrefix, placementeval.VarMetricsPort),
+			params)
+	}
+	return nil
 }

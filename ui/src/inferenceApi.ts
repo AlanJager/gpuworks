@@ -90,6 +90,9 @@ export interface InferenceAPIContract {
  * platform inference metrics. A map value is a metric name, or {to, scale}. */
 export interface InferenceAPIMetrics {
   endpoint?: string;
+  // "separate": the endpoint listens on a port of its own that the platform
+  // reserves for the instance; absent means the API port.
+  port?: "separate";
   // "json": the endpoint answers one JSON document and map keys are dotted
   // paths of numbers in it; absent means Prometheus text.
   format?: "prometheus" | "json";

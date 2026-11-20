@@ -292,14 +292,26 @@ func (c *Controller) planRank(ctx context.Context, dep *store.Deployment, node *
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	port := 0
+	req.Topology = topology
+	port, metricsPort := 0, 0
 	if !topology.Headless {
 		var rejected *scheduler.Reason
-		if port, rejected = c.pickPort(node); rejected != nil {
+		if req.NeedsMetricsPort() {
+			// A template that declares api.metrics.port: separate has a
+			// second port reserved with the API port; it is part of the
+			// instance's desired state from here on.
+			var picked []int
+			if picked, rejected = c.pickPorts(node, 1, 1); rejected == nil {
+				port, metricsPort = picked[0], picked[1]
+			}
+		} else {
+			port, rejected = c.pickPort(node)
+		}
+		if rejected != nil {
 			return nil, rejected, nil, nil
 		}
 	}
-	req.Topology, req.APIPort = topology, port
+	req.APIPort, req.MetricsPort = port, metricsPort
 	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
 	if err != nil || refusal != nil {
 		return nil, refusal, plan.YieldWait(refusal), err
@@ -307,6 +319,9 @@ func (c *Controller) planRank(ctx context.Context, dep *store.Deployment, node *
 	ports := []int{}
 	if !topology.Headless {
 		ports = []int{port}
+		if metricsPort > 0 {
+			ports = append(ports, metricsPort)
+		}
 	}
 	return &rankLaunch{node: node, plan: plan, port: port, modelHostPath: modelHostPath, reads: files.reads(),
 		extras: instanceExtras{Ports: ports, ExplainNetwork: topology.NNodes > 1, Unit: unit}}, nil, nil, nil

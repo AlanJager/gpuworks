@@ -14,7 +14,7 @@ import (
 // of one instance rather than to the deployment: a manual command shared by
 // every rank has to reference them instead of stating a value.
 var rankOwnedVariables = []string{
-	placementeval.VarAPIPort, placementeval.VarNodeRank, placementeval.VarNodeAddr,
+	placementeval.VarAPIPort, placementeval.VarMetricsPort, placementeval.VarNodeRank, placementeval.VarNodeAddr,
 	placementeval.VarMasterAddr, placementeval.VarMasterPort,
 	placementeval.VarPDSideChannelHost, placementeval.VarPDSideChannelPort, placementeval.VarPDLeaderSideChannelPort,
 }

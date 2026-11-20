@@ -58,6 +58,11 @@ func launchVariables(engine Engine, params Params, modelMount string, placement 
 	// A headless rank serves no API; zero says so instead of a port nobody
 	// reserved for it.
 	variables[placementeval.VarAPIPort] = int64(params.APIPort)
+	if params.MetricsPortSeparate {
+		// Stated like the API port: zero where the rank has none (a headless
+		// rank) or a trial launch reserved none.
+		variables[placementeval.VarMetricsPort] = int64(params.MetricsPort)
+	}
 	variables[placementeval.VarNNodes] = int64(nnodes)
 	variables[placementeval.VarNodeRank] = int64(params.NodeRank)
 	variables[placementeval.VarHeadless] = headless
@@ -95,6 +100,10 @@ func launchVariables(engine Engine, params Params, modelMount string, placement 
 		// A template that places a rank-owned fact itself hands the draft
 		// the reference a manual command understands.
 		for _, name := range rankOwnedVariables {
+			if name == placementeval.VarMetricsPort && !params.MetricsPortSeparate {
+				// Only a template that declared the port states it.
+				continue
+			}
 			variables[name] = variableReference(name)
 		}
 	}

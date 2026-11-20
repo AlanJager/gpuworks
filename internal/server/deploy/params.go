@@ -359,6 +359,13 @@ type Params struct {
 	ServedName          string
 	Host                string // default 127.0.0.1
 	APIPort             int
+	// MetricsPort is the second port reserved for the instance's metrics
+	// endpoint, zero when none is. The launch states it as METRICS_PORT only
+	// when the template's api.metrics declares port: separate
+	// (MetricsPortSeparate, read by the caller from the deployment's template
+	// snapshot; the API contract of the launch is the model's and has none).
+	MetricsPort         int
+	MetricsPortSeparate bool
 	APIKey              string
 	// AssignedGPUs is the number of GPUs placement assigned to this node. It is
 	// a fact written by the scheduler (or the deployment preview), never by

@@ -50,7 +50,14 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 
 	leader := pdRankLaunch{unit: unit, role: role, rank: rank, pd: planning.PDRecord{Role: role},
 		unitRecord: &planning.UnitRecord{Key: slot.Key, Followers: slot.Unit.FollowersKey()}}
+	// The leader's blocks, in the order they are picked: the API port, the
+	// metrics port of a template that declares api.metrics.port: separate,
+	// the side channel block, the port the unit's ranks meet on.
 	blocks := []int{1}
+	metrics := planning.DeploymentNeedsMetricsPort(dep)
+	if metrics {
+		blocks = append(blocks, 1)
+	}
 	if sideSize > 0 {
 		blocks = append(blocks, sideSize)
 	}
@@ -62,11 +69,17 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 		c.recordRankRefusal(dep, rejected, rank, nodes[0])
 		return false, nil
 	}
+	next := 1
 	leader.ports.API = ports[0]
 	leader.held = []int{ports[0]}
+	if metrics {
+		leader.ports.Metrics = ports[next]
+		leader.held = append(leader.held, ports[next])
+		next++
+	}
 	if sideSize > 0 {
-		leader.ports.SideChannel = ports[1]
-		leader.held = append(leader.held, portBlock(ports[1], sideSize)...)
+		leader.ports.SideChannel = ports[next]
+		leader.held = append(leader.held, portBlock(ports[next], sideSize)...)
 	}
 	if slot.Unit.MultiNode() {
 		leader.ports.Master = ports[len(ports)-1]

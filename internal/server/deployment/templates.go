@@ -204,6 +204,12 @@ func applyCurrentModelAPIContract(selection *templateSelection, model *store.Mod
 	var templateContract inferenceapi.Contract
 	if json.Unmarshal(selection.APIContract, &templateContract) == nil {
 		contract.TokenizerRef = templateContract.TokenizerRef
+		// The template's metrics port is a launch fact (the instance reserves
+		// it and the launch states it), so it stays in the snapshot. The rest
+		// of api.metrics is read from the tier's current declaration.
+		if templateContract.Metrics != nil && templateContract.Metrics.Port != "" {
+			contract.Metrics = &inferenceapi.Metrics{Port: templateContract.Metrics.Port}
+		}
 	}
 	encoded, err := json.Marshal(contract)
 	if err == nil {

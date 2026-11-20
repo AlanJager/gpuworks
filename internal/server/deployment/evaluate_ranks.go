@@ -3,6 +3,8 @@ package deployment
 import (
 	"context"
 
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
@@ -171,7 +173,7 @@ func (s *Service) evaluateRankFallback(env evaluateRankEnv) bool {
 		perNode, parallel.TP = 0, 0
 	}
 	params := deploy.Params{
-		ModelPath: modelMount, ServedName: servedName, APIPort: planning.PreviewAPIPort,
+		ModelPath: modelMount, ServedName: servedName, APIPort: planning.PreviewAPIPort, MetricsPort: planning.PreviewMetricsPort, MetricsPortSeparate: inferenceapi.SeparateMetricsPort(selection.APIContract),
 		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, PriorityScheduling: requestsPriorityScheduling(req), Quick: quick, TemplateArgs: templateArgs,
 		TemplateEnv: templateEnv, ExtraArgs: userExtraArgs,
 		Arch: arch, ArchID: archID, Vendor: vendor, ModelType: model.Arch,

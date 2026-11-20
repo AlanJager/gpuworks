@@ -203,7 +203,6 @@ weights:
 Each rank of a multi-node deployment then downloads and mounts only its own part (decision in [ADR 0076](../adr/0076-rank-scoped-weights.md)):
 
 - At create, the subfolder is expanded for every rank into one model artifact per rank (same provider, repository and revision, own subfolder). Rank 0's artifact is the deployment's model; the other ranks' bindings are kept in the deployment snapshot and never resolved from the catalog again.
-- The revision is the one the template states now: a registered artifact of a known, different revision is never a substitute (an empty revision means unknown, not different). Re-importing the template with another revision makes the next deployment create and download new artifacts for every rank instead of silently keeping the old revision's directories. The deploy form's "use a registered model" lists only rank 0's artifact at that revision (it is the deployment's model); the other ranks' artifacts are created and bound by the platform and are not choices.
 - Each node's download task, model marker and local model identity are its rank's subfolder. Admission, disk budgeting and preparation progress are per rank too: rank `r`'s node reserves disk only for rank `r`'s artifact, and a node that already holds that subfolder counts no download.
 - The mount keeps the repository-relative paths: in rank `r`'s container the weights are under `${GPUWORKS_MODEL_PATH}/rank<r>/…`, so the command writes `${GPUWORKS_MODEL_PATH}/rank${GPUWORKS_NODE_RANK}/…`.
 - `weight_bytes` (and `runtime_weight_bytes`) state one rank's size; the memory estimate multiplies it back to the group's weights.
@@ -354,6 +353,7 @@ A template declares only what it needs, and the platform provides it on every la
 | Kind | The template writes | The container sees | Host side decided by | Lifetime |
 |---|---|---|---|---|
 | Launch variables | References to `${GPUWORKS_*}` in `args` / `env` / `entrypoint` / `pre_start_*` (a multi-node rank's `${GPUWORKS_PEERS_FILE}` among them), see [Variable Expansion](#变量展开); a weight `subfolder` may reference only `${GPUWORKS_NODE_RANK}` | This launch's values | The platform | Every launch |
+| Metrics port | `api.metrics.port: separate`, and a reference to `${GPUWORKS_METRICS_PORT}` in the launch fields, see [api.metrics](#apimetrics引擎指标映射) | The local port the launcher listens on (`${GPUWORKS_METRICS_PORT}`); the template does not choose the number | The platform (reserved together with the API port) | Fixed when the instance is created, kept with the instance |
 | System-layer environment variables | Nothing; a key of the same name in `env` overrides it | The compute network's `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`, see [Environment Variable Layers](deployment-launch-sources.md#环境变量分层); a multi-node rank with a peers file also gets `GPUWORKS_PEERS_FILE` (the same value as the launch variable, for programs the recipe starts to read directly) | The platform | Every launch |
 | Primary weights | `weights`; `subfolder` may say `rank${GPUWORKS_NODE_RANK}`, see [Rank-Scoped Weights](#按-rank-拆分的权重) | Read-only at `${GPUWORKS_MODEL_PATH}` (default `/model`, or the primary component's `mount_path`); with rank-scoped weights each rank holds only its own subfolder | The platform (model storage) | With the model |
 | Component weights | `components[].mount_path` | Read-only at that path | The platform (model storage) | With the model |
@@ -461,6 +461,7 @@ the vocabulary in `internal/server/placement/expand.go` and `internal/server/dep
 | `GPUWORKS_SERVED_MODEL_NAME` | The deployment's served name, which the gateway and the health check send to the engine as `model` | Always |
 | `GPUWORKS_API_HOST` | Address the service binds to: `0.0.0.0` for callable, `127.0.0.1` for other engines | Always |
 | `GPUWORKS_API_PORT` | Port the platform reserves for this instance, accessed by the gateway and health checks; `0` for a headless rank | Always |
+| `GPUWORKS_METRICS_PORT` | The extra metrics port the platform reserves for this instance: the launcher exports engine metrics there and the agent scrapes it (see [api.metrics](#apimetrics引擎指标映射)); `0` for a headless rank | Only when the template declares `api.metrics.port: separate` |
 | `GPUWORKS_NNODES` / `GPUWORKS_NODE_RANK` | Number of nodes and index of this rank; `1` / `0` for a single node | Always |
 | `GPUWORKS_HEADLESS` | `1` if this rank does not serve external requests; otherwise `0` | Always |
 | `GPUWORKS_NODE_ADDR` | Routable address of the node this rank runs on (not rank 0's) | Multi-node only |
@@ -473,7 +474,7 @@ the vocabulary in `internal/server/placement/expand.go` and `internal/server/dep
 
 Rules:
 
-- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_*`, `NNODES`, `NODE_RANK`, `HEADLESS`, `NODE_ADDR`, `MASTER_*`, `PEERS_FILE`, or `PD_*`
+- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_*`, `METRICS_PORT`, `NNODES`, `NODE_RANK`, `HEADLESS`, `NODE_ADDR`, `MASTER_*`, `PEERS_FILE`, or `PD_*`
   in resolver results causes an immediate error—the node, port, and rank are not yet available when the resolver runs.
 - **Missing variables cause failure**: unresolved names in args / env / entrypoint / `pre_start_argv` cause deployment errors. A spec without a resolver
   that references a name outside the vocabulary (such as the typo `${NODE_RNAK}` or `${PP_SIZE}` without a resolver) is rejected during import. A single-node deployment
@@ -593,6 +594,7 @@ Declare the engine's metrics endpoint and how engine metrics map to the platform
 api:
   metrics:
     endpoint: /metrics            # Optional; default: /metrics; starts with /
+    port: api                     # Optional: api (default, the endpoint is on the API port) or separate (the platform gives it a port of its own)
     format: prometheus            # Optional: prometheus (default, Prometheus text) or json
     inherit: sglang               # Optional: vllm or sglang; apply that engine's built-in mapping first
     map:                          # Engine metric family (optional {k="v"} selector) -> vocabulary short name
@@ -602,8 +604,14 @@ api:
 
 - **Effective mapping** = inherited mappings (from the engine specified by `inherit`, or the built-in mappings for a `vllm` / `sglang` template's own engine) overlaid entry by entry with `map`; `map` takes precedence for the same key.
 - **`format: json`**: the endpoint returns a JSON document (such as Strata's `/metrics`). Write `map` keys as dot-separated key paths (`totals.output_tokens`) to extract the number at the path (booleans become 1/0; missing or nonnumeric values produce no metric). For strings, write a comparison as `path==value` / `path!=value` (such as `live.state!=idle`), which yields 1 when true and 0 otherwise and can only map to a gauge. Only counters and gauges can be mapped; `inherit` is not allowed, and no built-in engine mapping is applied. Documents larger than 1 MiB or invalid JSON are not read at all.
+- **`port: separate`**: for an engine that owns its API port completely and serves no `/metrics` there (such as a Rust front end with only `/health`, `/v1/models` and `/v1/chat/completions`), a launcher in the image exports the metrics on a second local port, without proxying requests. Once declared, the platform **reserves one more port per instance** (allocated together with the API port, usually right after it) and states it in the launch variable `${GPUWORKS_METRICS_PORT}` (older spelling `${METRICS_PORT}`), which the template uses to tell the launcher where to listen. The agent then scrapes `http://127.0.0.1:<that port><endpoint>` instead of the API port. With `api` or nothing written, behavior is as before: no port is reserved and the variable does not exist.
+  - **The port is a fact of the launch**: the reserved port is stored with the instance's desired state (in the `ports` list of the instance detail, after the API port) and is kept across agent restarts and container restarts. It comes from the template snapshot taken when the deployment was created, so changing `port` in the template later does not affect existing instances; changing it means a new generation of instances. `endpoint`, `format` and `map` still use the current declaration, as in [takes effect at runtime](#apimetrics引擎指标映射).
+  - **Which ranks have it**: only ranks that serve (a single-node instance, rank 0 / the leader of a multi-node instance, every PD leader). A headless rank has none, like its API port, and `${GPUWORKS_METRICS_PORT}` is `0` there, so one command can expand on every rank. Metrics are scraped only from the rank that has the port.
+  - **Preview**: the command in the deployment evaluation uses a placeholder port (as for the API port) and creation replaces it with the port actually reserved.
+  - **The two must come as a pair** (checked at import, catalog package upload and editor save): declaring `separate` without referencing `${GPUWORKS_METRICS_PORT}` in `args` / `env` / `entrypoint` / `pre_start_*` / `manual_command` is `CATALOG_METRICS_PORT_UNREFERENCED` (nothing listens on the scraped port); referencing it without declaring is `CATALOG_METRICS_PORT_UNDECLARED` (the platform reserves no such port; a resolver cannot return a variable of that name either). Any other value of `port`, including a concrete port number (the platform allocates the port; a template cannot choose it), is `CATALOG_METRICS_PORT_INVALID`.
+  - An older agent does not know the port and still scrapes the API port, so it simply gets no engine metrics; the deployment is unaffected.
 - **When omitted**: `vllm` / `sglang` use built-in mappings. `callable` scrapes `/metrics` and automatically applies the corresponding mapping based on the `vllm:` / `sglang:` prefixes found; if neither is present, no engine metrics are produced.
-- **Validation** (import, catalog package upload, editor save): targets must be vocabulary short names; histograms must map by family name, without selectors or scaling; the `_bucket` / `_sum` / `_count` lines of an already mapped histogram family cannot be mapped again; scale factors must be nonnegative; `inherit` must be `vllm` / `sglang`; `format` must be `prometheus` / `json`. With `json`, keys must be key paths (optionally with `==value` / `!=value` comparisons), targets cannot be histograms, comparisons cannot map to counters, and `inherit` is not allowed. Error codes are `CATALOG_METRICS_*`.
+- **Validation** (import, catalog package upload, editor save): targets must be vocabulary short names; histograms must map by family name, without selectors or scaling; the `_bucket` / `_sum` / `_count` lines of an already mapped histogram family cannot be mapped again; scale factors must be nonnegative; `inherit` must be `vllm` / `sglang`; `format` must be `prometheus` / `json`; `port` must be `api` / `separate`. With `json`, keys must be key paths (optionally with `==value` / `!=value` comparisons), targets cannot be histograms, comparisons cannot map to counters, and `inherit` is not allowed. Error codes are `CATALOG_METRICS_*`.
 - **Takes effect at runtime**: mappings use the **current** declaration of the spec used by the deployment and are not frozen with the deployment snapshot. After a template is saved or the built-in catalog changes with a server upgrade, running instances referencing that spec update in place without restarting ([ADR 0039](../adr/0039-inference-metric-sources.md)). Deployments whose spec has been deleted continue to use the `api` contract in their snapshot. `api.metrics` is not considered when determining whether a deployment differs from its template.
 
 ### api.request_stats: Per-Request Statistics in Responses
@@ -769,7 +777,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 6b2e48093ade97947d4e4f39025683bcb0644ca13bce4a677a2df08036100ee8 -->
+<!-- translation-source-sha256: b4bcf33abab34ab9137582e0b8f73ce9bc0d2ce52f3213648cdeb0ccf649eb2c -->
 <!-- translation-localized-code-block: a580200df2b28bc011bb736a64288086932955375e5ae8897762ee97bd667e26 8e0792250b6c0eb3ec0dad5bfca28308dc0b1afeb27e9c33bb24ddb21e20ba07 -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 4cf9267c119973bda779b8e29a9ad818c097c803df34a09ac14492502ab9dce2 e78acb98a7a082fdad6d2080ea7754cc18152f1bec68f60c312e46e33f3bfd59 -->
@@ -777,6 +785,6 @@ Warnings do not block import. A successful import response includes the same `wa
 <!-- translation-localized-code-block: 0db7a21f5d58dc3f0536ef0b3909ce67ba6415f6c0e158dbee9122f79b1f2209 8da5a4455c5d0ab53369e8e0b4455543b9acd70a2615f7faf4b34b620d9cd204 Translate the inline shell comment. -->
 <!-- translation-localized-code-block: a611f2e8254725bdcf88ae19eb23c532ef8c679903131a8881bbd61f09aafdb2 33859cded67f664966175739bc36d429175e7fe4c8f3d71422f40719d24be6e6 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: bee5e6aa5c268b0bca3195996e1394ed7ca27c6938ea75731026b323c425c162 50a7b72308d2093f9b328d73f1c889122beed6408c02fe79a803f0bd63b3246f Translate YAML comments and illustrative user-facing reason text. -->
-<!-- translation-localized-code-block: d0cf90e53d24fed8cc724f20d6eb7df85810710388a02b23e6ede399e6bb8294 9a3a3028b77be7c62002a4762ea29528a08dd641897608dcc4383e36d62744cb Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: ed93aa7d8dc7ab4de4eb6a57ba14a8d08385ab5c6f68ce1d01d09b1520808e6c 6eea2db5a786a386d47baff90f8f621ce18884b6a8f127c011e81e77c4de00ed -->
 <!-- translation-localized-code-block: a7d524edd753182838ebcc0b5d00da0acb23a4e6ceb9481fd31f031c520b6138 7454b07423d39cda5d3f4e571f923044557c02bd167ecf53284bb63e4e601388 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: cb01e807364a6fa35f11fd6e177ffbbcbfe444a9860c0043a088d4693962c102 7c96acf3d55e07b7b1526005845a7f4eaae06818f9de255105ab3e2d2216985f Translate YAML comments and illustrative user-facing reason text. -->
