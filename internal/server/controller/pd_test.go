@@ -10,6 +10,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/kvbackend"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -591,5 +592,44 @@ func TestPDIsHeldOnANetworkItsTransportCannotUse(t *testing.T) {
 	f.ctrl.now = func() time.Time { return time.Now().Add(time.Hour) }
 	if insts := f.reconcile(t); len(insts) != 3 {
 		t.Fatalf("instances after leaving the network = %d, want 3", len(insts))
+	}
+}
+
+func TestPDReconcileWithLMCacheCreatesPrefillAndDecode(t *testing.T) {
+	f := newPDFixture(t, "pd_reconcile_lmcache", twoPrefillOneDecode)
+	quick := fmt.Sprintf(`{"kv_offload_backend":%q}`, kvbackend.LMCache)
+	if err := f.st.DB().Model(&store.Deployment{}).Where("id = ?", f.dep.ID).Update("quick_params", quick).Error; err != nil {
+		t.Fatal(err)
+	}
+	insts := f.reconcile(t)
+	if len(insts) != 3 {
+		t.Fatalf("instances = %d, want 3", len(insts))
+	}
+	for _, inst := range insts {
+		if inst.DistAttempt != 0 || inst.DistGroup != "" || inst.NNodes != 1 {
+			t.Fatalf("%s single-node PD unit got dist metadata: nnodes=%d group=%q attempt=%d", inst.Role, inst.NNodes, inst.DistGroup, inst.DistAttempt)
+		}
+		spec := desiredOf(t, inst)
+		if spec.RequestedFeatures != nil && spec.RequestedFeatures.MultiNode {
+			t.Fatalf("%s single-node PD unit marked MultiNode=true", inst.Role)
+		}
+		config := argAfter(spec.Argv, "--kv-transfer-config")
+		switch inst.Role {
+		case pdmode.RolePrefill:
+			for _, want := range []string{
+				`"kv_connector":"MultiConnector"`,
+				`"kv_connector_module_path":"vllm.distributed.kv_transfer.kv_connector.v1.multi_connector"`,
+				`"kv_connector":"LMCacheMPConnector"`,
+				`"kv_role":"kv_producer"`,
+			} {
+				if !strings.Contains(config, want) {
+					t.Fatalf("prefill config missing %s: %s", want, config)
+				}
+			}
+		case pdmode.RoleDecode:
+			if strings.Contains(config, "LMCacheMPConnector") || strings.Contains(config, "MultiConnector") {
+				t.Fatalf("decode should not carry LMCache offload: %s", config)
+			}
+		}
 	}
 }

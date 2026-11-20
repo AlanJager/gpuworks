@@ -17,7 +17,7 @@ A backend is one descriptor row in `internal/server/kvbackend`, unique per (engi
 | `PDRoles` | PD roles that keep the backend, always including prefill; other roles launch without offload |
 | `Topology` | The node-count cap and whether PP and DP are allowed |
 
-A row holds only the data decisions are made on. There is no `init()` registration and no mutable package state. Today the only row is `vllm/native`, so the deploy form and the API behave exactly as with native offload alone.
+A row holds only the data decisions are made on. There is no `init()` registration and no mutable package state. Today the built-in table carries `vllm/native` (the default) and `vllm/lmcache` (the first external backend).
 
 ## Where each part lives
 
@@ -54,4 +54,4 @@ A row holds only the data decisions are made on. There is no `init()` registrati
 - A backend's own dictionary keys (keys that depend on `kv_offload_backend`) have no mechanism yet. `PDRoleLaunchConfig` clears only the native keys, and `TestPDRoleLaunchConfigDropsEveryOffloadKey` fails once such a key appears, as a reminder to clear it on roles that do not keep the backend.
 - A rendering cannot carry mounts or `/dev/shm` needs yet; the first backend that needs them adds the fields.
 
-<!-- translation-source-sha256: c00faa1ad79e55019441591c54daa1ad61a819d7b1e50739ef960dccaeb2cba9 -->
+<!-- translation-source-sha256: 497dfadb24f5160db1320b5a6da76c961ff8adcff701d1deb4df2012382d33eb -->

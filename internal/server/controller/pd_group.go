@@ -41,9 +41,9 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 		return false, fmt.Errorf("deployment %d: %s unit %d is not in the placement", dep.ID, role, slot.Unit.Index)
 	}
 	unit := units[slot.Unit.Index]
-	rank := planning.GroupRank{Ranks: len(nodes), Attempt: attempt}
+	rank := planning.GroupRank{Ranks: len(nodes)}
 	if slot.Unit.MultiNode() {
-		rank.Group = fmt.Sprintf("pd-%d-%s", dep.ID, auth.NewUUID()[:8])
+		rank.Group, rank.Attempt = fmt.Sprintf("pd-%d-%s", dep.ID, auth.NewUUID()[:8]), attempt
 	}
 	sideSize := pd.mode.ExtraPorts(role, pd.placement.TP(role))
 

@@ -38,7 +38,10 @@ type vllmOffloadBackend struct {
 // id. A backend row without one here cannot be selected
 // (TestKVBackendSetRendersEverySelectableRow).
 func vllmOffloadBackends() map[string]vllmOffloadBackend {
-	return map[string]vllmOffloadBackend{kvbackend.Native: {render: nativeVLLMOffload}}
+	return map[string]vllmOffloadBackend{
+		kvbackend.Native:  {render: nativeVLLMOffload},
+		kvbackend.LMCache: {render: lmcacheVLLMOffload},
+	}
 }
 
 // nativeKVKeys are the launch configuration keys of an engine's own KV
@@ -75,6 +78,41 @@ func nativeVLLMOffload(p Params) *kvContribution {
 		}, standaloneAsFlags: true}
 	}
 	return nil
+}
+
+const (
+	lmcacheMPConnectorModule   = "lmcache.integration.vllm.lmcache_mp_connector"
+	vllmMultiConnectorModule   = "vllm.distributed.kv_transfer.kv_connector.v1.multi_connector"
+	lmcacheDefaultMPHost       = "tcp://localhost"
+	lmcacheDefaultMPPort       = 5555
+	lmcacheDefaultTransferMode = "lmcache_driven"
+)
+
+// lmcacheVLLMOffload renders LMCache's multiprocess connector talking to a
+// node-local daemon over ZMQ. Under PD it participates on prefill as a
+// kv_producer and pins the outer MultiConnector to vLLM's upstream
+// multi_connector module so vllm-ascend's AscendMultiConnector override does
+// not pass empty block tables on cold misses.
+func lmcacheVLLMOffload(p Params) *kvContribution {
+	role := "kv_both"
+	var wrapper map[string]any
+	if p.PD != nil && p.PD.Role == pdmode.RolePrefill {
+		role = "kv_producer"
+		wrapper = map[string]any{"kv_connector_module_path": vllmMultiConnectorModule}
+	}
+	return &kvContribution{
+		object: map[string]any{
+			"kv_connector":             "LMCacheMPConnector",
+			"kv_role":                  role,
+			"kv_connector_module_path": lmcacheMPConnectorModule,
+			"kv_connector_extra_config": map[string]any{
+				"lmcache.mp.host":             lmcacheDefaultMPHost,
+				"lmcache.mp.port":             lmcacheDefaultMPPort,
+				"lmcache.mp.mp_transfer_mode": lmcacheDefaultTransferMode,
+			},
+		},
+		wrapper: wrapper,
+	}
 }
 
 // vllmPDContribution is a PD instance's connector in its role's connector
