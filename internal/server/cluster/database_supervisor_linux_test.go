@@ -41,7 +41,7 @@ func expectHelperDeath(t *testing.T) <-chan error {
 	return died
 }
 
-const fakeReady = `echo '{"id":7,"address":"127.0.0.1:9001"}'; exec 1>&-; `
+const fakeReady = `echo '{"id":7,"address":"127.0.0.1:9001","protocol":1}'; exec 1>&-; `
 
 func TestHelperReportsIdentityAndStopsOnInterrupt(t *testing.T) {
 	died := expectHelperDeath(t)
@@ -50,7 +50,7 @@ func TestHelperReportsIdentityAndStopsOnInterrupt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info != (helperIdentity{ID: 7, Address: "127.0.0.1:9001"}) {
+	if info != (helperIdentity{ID: 7, Address: "127.0.0.1:9001", Protocol: HelperProtocolVersion}) {
 		t.Fatalf("identity=%+v", info)
 	}
 	args, err := os.ReadFile(os.Getenv(helperBinaryEnv) + ".args")
@@ -100,8 +100,10 @@ func TestHelperStopKillsChildThatIgnoresInterrupt(t *testing.T) {
 func TestHelperStartFailures(t *testing.T) {
 	for name, test := range map[string]struct{ script, want string }{
 		"malformed line":   {`echo 'listening on 9001'; exec sleep 60`, "did not report its address"},
-		"unknown field":    {`echo '{"id":7,"address":"127.0.0.1:9001","pid":1}'; exec sleep 60`, "did not report its address"},
-		"missing identity": {`echo '{"id":0,"address":""}'; exec sleep 60`, "incomplete identity"},
+		"unknown field":    {`echo '{"id":7,"address":"127.0.0.1:9001","protocol":1,"pid":1}'; exec sleep 60`, "did not report its address"},
+		"missing identity": {`echo '{"id":0,"address":"","protocol":1}'; exec sleep 60`, "incomplete identity"},
+		"no protocol":      {`echo '{"id":7,"address":"127.0.0.1:9001"}'; exec sleep 60`, "did not report a protocol version; this server supports version 1"},
+		"newer protocol":   {`echo '{"id":7,"address":"127.0.0.1:9001","protocol":2}'; exec sleep 60`, "speaks protocol version 2; this server supports version 1"},
 		"early exit":       {`echo 'raft directory is damaged' >&2; exit 3`, "raft directory is damaged"},
 		"silent exit":      {`exit 1`, "did not report its address"},
 	} {
@@ -239,7 +241,7 @@ func TestHelperBinaryMustExist(t *testing.T) {
 }
 
 func TestStartDatabaseRejectsChildOnAnotherAddress(t *testing.T) {
-	fakeHelper(t, `echo $$ > "$0.pid"; echo '{"id":7,"address":"127.0.0.1:9777"}'; exec 1>&-; exec sleep 60`)
+	fakeHelper(t, `echo $$ > "$0.pid"; echo '{"id":7,"address":"127.0.0.1:9777","protocol":1}'; exec 1>&-; exec sleep 60`)
 	cfg := DatabaseConfig{Dir: filepath.Join(t.TempDir(), "raft"), Address: "127.0.0.1:9001", Name: "gpuworks.db"}
 	_, err := StartDatabase(t.Context(), cfg)
 	if err == nil || !strings.Contains(err.Error(), `stored database address "127.0.0.1:9777" differs`) {
