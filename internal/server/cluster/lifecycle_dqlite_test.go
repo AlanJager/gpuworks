@@ -4,13 +4,13 @@ package cluster
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/canonical/go-dqlite/v3/client"
 	"gpuworks.ai/gpuworks/internal/server/cluster/identity"
 )
 
@@ -18,14 +18,17 @@ func TestDatabaseStartedLifecycleSurvivesReadinessFailure(t *testing.T) {
 	requireDatabaseHelper(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	trust, policy, fixtures := authorizedDatabaseFixtures(t, 2)
+	// Three members: the database process keeps a single voter in any smaller
+	// cluster, so a lost quorum and its return need three voters.
+	trust, policy, fixtures := authorizedDatabaseFixtures(t, 3)
 	for _, f := range fixtures {
 		if err := identity.PublishTransportPolicy(f.policyPath, 0, policy); err != nil {
 			t.Fatal(err)
 		}
 	}
-	first, second := fixtures[0], fixtures[1]
+	first, second, third := fixtures[0], fixtures[1], fixtures[2]
 	second.config.Seeds = []string{first.config.Address}
+	third.config.Seeds = []string{first.config.Address}
 	if err := os.Chmod(filepath.Dir(second.config.Dir), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -52,23 +55,15 @@ func TestDatabaseStartedLifecycleSurvivesReadinessFailure(t *testing.T) {
 	if id != preparedID {
 		t.Fatal("prepared identity not used")
 	}
-	_, dial, err := trust.TLSConfigs(first.certificate, first.key, time.Now(), mustPolicyAuthorizer(t, policy))
-	if err != nil {
+	c := openAuthorizedFixture(t, ctx, trust, third)
+	conversionWait(t, ctx, "three voters", func() bool {
+		members, err := a.Members(ctx)
+		return err == nil && len(members) == 3 && members[0].Role == "voter" && members[1].Role == "voter" && members[2].Role == "voter"
+	})
+	// Two of three voters stop: the one left has no quorum.
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
-	connect := func() *client.Client {
-		t.Helper()
-		c, err := client.New(ctx, first.config.Address, client.WithDialFunc(client.DialFuncWithTLS(client.DefaultDialFunc, dial)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return c
-	}
-	c := connect()
-	if err := c.Assign(ctx, id, client.Voter); err != nil {
-		t.Fatal(err)
-	}
-	c.Close()
 	if err := b.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -91,15 +86,11 @@ func TestDatabaseStartedLifecycleSurvivesReadinessFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("restored member ready")
-	if _, err := b.SQL.ExecContext(ctx, "CREATE TABLE recovered_fixture (id INTEGER PRIMARY KEY)"); err != nil {
-		t.Fatal("recovered write", err)
-	}
+	lifecycleWrite(t, ctx, b.SQL, "recovered write", "CREATE TABLE IF NOT EXISTS recovered_fixture (id INTEGER PRIMARY KEY)")
 	if err := a.WaitReady(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.SQL.ExecContext(ctx, "CREATE TABLE lifecycle_fixture (id INTEGER PRIMARY KEY)"); err != nil {
-		t.Fatal(err)
-	}
+	lifecycleWrite(t, ctx, a.SQL, "write on the member that stayed", "CREATE TABLE IF NOT EXISTS lifecycle_fixture (id INTEGER PRIMARY KEY)")
 	if err := b.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +105,26 @@ func TestDatabaseStartedLifecycleSurvivesReadinessFailure(t *testing.T) {
 		t.Fatal("policy lease retained", err)
 	}
 	owner.Close()
+}
+
+// lifecycleWrite repeats an idempotent statement until it commits. Readiness
+// does not wait for an election: the two members that restore the quorum may
+// still be choosing a leader, or the old one may be stepping down, and a
+// write that meets either fails with an error the caller is expected to
+// retry.
+func lifecycleWrite(t *testing.T, ctx context.Context, db *sql.DB, description, statement string) {
+	t.Helper()
+	for {
+		_, err := db.ExecContext(ctx, statement)
+		if err == nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("%s: %v (last error: %v)", description, ctx.Err(), err)
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
 }
 
 // The upstream join marker can survive a committed Add. Verify the exact
@@ -191,13 +202,4 @@ func TestDatabaseRetainedJoinMarkerRequiresExplicitReconciliation(t *testing.T) 
 	if b.ID != id {
 		t.Fatal("reconciliation changed identity")
 	}
-}
-
-func mustPolicyAuthorizer(t *testing.T, policy identity.TransportPolicy) identity.PeerAuthorizer {
-	t.Helper()
-	authorize, err := policy.Authorizer(policy.ClusterID, policy.CAFingerprint)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return authorize
 }
