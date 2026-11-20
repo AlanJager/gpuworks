@@ -104,6 +104,26 @@ func TestSleepResidueIsUnmeasuredWhenTheReadingIsTheHostPool(t *testing.T) {
 	}
 }
 
+// The residue guard follows the HostPoolMemory mark, not the card's name: a
+// unified-memory card whose used figure the driver answered itself (Apple
+// silicon reports per-process device accounting) keeps that reading.
+func TestSleepResidueReadsADeviceAnsweredUsedOnAUnifiedCard(t *testing.T) {
+	h := newSleepHTTPServer(t)
+	prober := newResidueProber(map[int]float64{0: 2 << 30})
+	prober.GPUs = []proto.GPUInfo{{Index: 0, UUID: "GPU-mac", Name: "Apple M4 Pro", PCIeBDF: "0000:3f:00.0"}}
+	prober.hostPool = false
+	prober.procs = []gpu.ComputeProcess{{PID: 41, Name: "VLLM::Worker", PCIeBDF: "00000000:3F:00.0", MemoryBytes: 1 << 30}}
+	e, reported := newResidueEngine(t, prober)
+	spec := residueSpec(h, t, "res-device-used", 0)
+	e.desired[spec.UUID] = spec
+
+	spec.DesiredSleep = 1
+	e.reconcileSleep(context.Background(), spec)
+	if st := <-reported; st.SleepLevel != 1 || st.SleepResidueBytes != 2<<30 {
+		t.Fatalf("report = level %d residue %d, want level 1 residue %d", st.SleepLevel, st.SleepResidueBytes, 2<<30)
+	}
+}
+
 func TestSleepMultiGPUResidueIsTheLargestCard(t *testing.T) {
 	h := newSleepHTTPServer(t)
 	prober := newResidueProber(map[int]float64{0: 2 << 30, 1: 3 << 30})

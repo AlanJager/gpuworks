@@ -66,16 +66,26 @@ func (e *Engine) measureSleepResidue(ctx context.Context, spec proto.InstanceDes
 		return 0
 	}
 	used := map[int]float64{}
+	skipped := map[int]bool{}
 	for _, m := range metrics {
 		// A host-pool figure counts every process on the host, so it is not
-		// what this instance holds: such a card stays unmeasured.
-		if v, ok := m.Values[memoryUsedMetric]; ok && !m.HostPoolMemory {
+		// what this instance holds: such a card stays unmeasured. The skip is
+		// logged as its own reason, not left to surface as a missing reading.
+		if m.HostPoolMemory {
+			skipped[m.Index] = true
+			continue
+		}
+		if v, ok := m.Values[memoryUsedMetric]; ok {
 			used[m.Index] = v
 		}
 	}
 	var residue int64
 	for _, index := range resolved.GPUIndexes {
 		v, ok := used[index]
+		if !ok && skipped[index] {
+			e.log.Debug("sleep residue not measured: the used figure is the host pool's, not the instance's", "uuid", spec.UUID, "gpu", index)
+			return 0
+		}
 		if !ok || v < 0 {
 			e.log.Debug("sleep residue not measured: no memory reading for card", "uuid", spec.UUID, "gpu", index)
 			return 0

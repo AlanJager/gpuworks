@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // layoutHost is an nvidia-smi whose cards, MIG listing and driver a test
@@ -139,5 +141,25 @@ func TestNVIDIAFrameworkIsAskedOncePerDriver(t *testing.T) {
 	p.Framework(t.Context())
 	if h.calls["smi"] != 2 {
 		t.Fatalf("framework queries = %d, want asked again for the new driver", h.calls["smi"])
+	}
+}
+
+// An empty roster is a driver hiccup as often as a real card removal: the
+// unified-memory judgment survives it (with no cards listed there are no
+// metric rows to fill anyway), and the next roster that lists cards replaces
+// it.
+func TestUnifiedJudgmentsSurviveAnEmptyRoster(t *testing.T) {
+	p := &SMIProber{}
+	p.rememberInventory([]proto.GPUInfo{{Index: 0, UUID: "GPU-thor", Name: "NVIDIA Thor", PCIeBDF: "0000:05:00.0"}})
+	if !p.unifiedMemoryCards()["GPU-thor"] {
+		t.Fatal("the Thor card was not remembered as unified memory")
+	}
+	p.rememberInventory(nil)
+	if !p.unifiedMemoryCards()["GPU-thor"] {
+		t.Fatal("an empty roster wiped the unified-memory judgment")
+	}
+	p.rememberInventory([]proto.GPUInfo{{Index: 0, UUID: "GPU-5090", Name: "NVIDIA GeForce RTX 5090", PCIeBDF: "0000:05:00.0"}})
+	if cards := p.unifiedMemoryCards(); len(cards) != 0 {
+		t.Fatalf("a roster of discrete cards left %v behind", cards)
 	}
 }
