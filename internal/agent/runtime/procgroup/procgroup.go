@@ -162,21 +162,19 @@ func (t *Tracker) Running() ([]string, error) {
 }
 
 // killWaitLimit bounds how long Stop waits for a group to be gone after
-// SIGKILL. A killed process is gone once the kernel has released what it
-// held, which for an engine with tens of gigabytes on an accelerator takes
-// seconds, not the instant the signal is sent.
+// SIGKILL. An engine may still need seconds to release accelerator resources
+// after the signal, before it exits.
 const killWaitLimit = 15 * time.Second
 
-// Stop sends SIGTERM to the group of name and SIGKILL once grace has passed,
-// and returns once the group is gone. It waits on the whole group, not its
-// leader: an engine's workers can outlive a leader that exits on SIGTERM, and
-// they hold the memory and port the next start needs. After SIGKILL it keeps
-// waiting, for the same reason: the caller goes on to report the workload
-// removed and its cards free, and a process still letting go of a card then
-// reads as somebody else's. A group that survives killWait is an error, so
-// the removal stays pending instead of being reported done. A workload that
-// is not tracked or already gone is stopped.
+// Stop sends SIGTERM to the group of name and SIGKILL once grace has passed.
+// It waits for the whole group: a worker can outlive the leader and retain
+// GPU memory or open ports. On Linux, already-exited processes can remain
+// visible until reaped, so after SIGKILL they do not keep removal pending.
 func (t *Tracker) Stop(ctx context.Context, name string, grace time.Duration) error {
+	return t.stop(ctx, name, grace, groupStillWorking)
+}
+
+func (t *Tracker) stop(ctx context.Context, name string, grace time.Duration, stillWorking func(int) bool) error {
 	pid, ok := t.PID(name)
 	if !ok {
 		return nil
@@ -189,7 +187,7 @@ func (t *Tracker) Stop(ctx context.Context, name string, grace time.Duration) er
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	killed := false
-	for groupAlive(pid) {
+	for groupAlive(pid) && (!killed || stillWorking(pid)) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

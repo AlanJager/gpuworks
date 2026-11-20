@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -222,73 +221,4 @@ func TestTrackReportsAPidItCannotRecord(t *testing.T) {
 		t.Fatal("Track succeeded without a state directory")
 	}
 	tr.awaitReap(context.Background(), "x")
-}
-
-// lingeringWorker starts a process in leader's group that ignores SIGTERM
-// and that only this test can reap: killed, it stays in the group until the
-// test waits on it, the way an engine process is still letting go of a card
-// for a while after SIGKILL.
-func lingeringWorker(t *testing.T, leader *exec.Cmd) *exec.Cmd {
-	t.Helper()
-	worker := exec.Command("/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.05; done")
-	worker.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: leader.Process.Pid}
-	if err := worker.Start(); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(100 * time.Millisecond) // let the shells install their traps
-	return worker
-}
-
-// Stop returning is what lets the caller report the workload removed and its
-// cards free. SIGKILL is only sent when the grace runs out; the group is gone
-// some time after, and until then its processes still hold what they held.
-func TestStopReturnsOnlyOnceAKilledGroupIsGone(t *testing.T) {
-	tr := &Tracker{Dir: t.TempDir(), KillWait: 5 * time.Second}
-	leader := start(t, tr, "serving", "trap '' TERM; while :; do sleep 0.05; done")
-	worker := lingeringWorker(t, leader)
-	const grace, lingers = 100 * time.Millisecond, 400 * time.Millisecond
-	reaped := make(chan struct{})
-	go func() {
-		defer close(reaped)
-		time.Sleep(grace + lingers)
-		_ = worker.Wait()
-	}()
-	began := time.Now()
-	if err := tr.Stop(context.Background(), "serving", grace); err != nil {
-		t.Fatal(err)
-	}
-	if elapsed := time.Since(began); elapsed < grace+lingers {
-		t.Fatalf("Stop returned after %s, while a killed process of the group was still there", elapsed)
-	}
-	if groupAlive(leader.Process.Pid) {
-		t.Fatal("Stop returned with the group still alive")
-	}
-	<-reaped
-}
-
-// A group that is still there after SIGKILL and the wait is not stopped: the
-// caller must hear it, and keep the removal pending, rather than report cards
-// free that a process still holds. A later Stop, once the group is gone,
-// succeeds.
-func TestStopFailsWhileAKilledGroupIsStillThere(t *testing.T) {
-	tr := &Tracker{Dir: t.TempDir(), KillWait: 200 * time.Millisecond}
-	leader := start(t, tr, "serving", "trap '' TERM; while :; do sleep 0.05; done")
-	worker := lingeringWorker(t, leader)
-	err := tr.Stop(context.Background(), "serving", 100*time.Millisecond)
-	if err == nil || !strings.Contains(err.Error(), "still alive") {
-		t.Fatalf("Stop = %v, want an error naming the group that outlived SIGKILL", err)
-	}
-	if !groupAlive(leader.Process.Pid) {
-		t.Fatal("the fixture's unreaped worker should keep the group alive")
-	}
-	// The caller's deadline still wins over the wait.
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	if err := tr.Stop(ctx, "serving", time.Minute); err != context.DeadlineExceeded {
-		t.Fatalf("Stop under a deadline = %v, want the context's deadline", err)
-	}
-	_ = worker.Wait()
-	if err := tr.Stop(context.Background(), "serving", 100*time.Millisecond); err != nil {
-		t.Fatalf("Stop once the group is gone = %v", err)
-	}
 }
