@@ -10,7 +10,7 @@
 
 ## 决策
 
-1. **形状：在 spec 自己的权重来源的 `subfolder` 里写 rank 变量**，如 `subfolder: rank${NODE_RANK}`（也接受 `${GPUWORKS_NODE_RANK}`，与模板 args 的两种拼写相同）。子目录里只能出现这一个变量；同一 spec 的所有来源要么都写、要么都不写（只写一个的镜像源会让每个 rank 拿到整份仓库）。`weight_bytes` 与 `runtime_weight_bytes` 表示一个 rank 的大小。
+1. **形状：在 spec 自己的权重来源的 `subfolder` 里写 rank 变量**，如 `subfolder: rank${GPUWORKS_NODE_RANK}`。拼写规则与模板的启动字段同一条（`placement.Canonical`）：文档写带前缀的形式，不带前缀的 `${NODE_RANK}` 是别名，子目录不另立规则。子目录里只能出现这一个变量；同一 spec 的所有来源要么都写、要么都不写（只写一个的镜像源会让每个 rank 拿到整份仓库）。`weight_bytes` 与 `runtime_weight_bytes` 表示一个 rank 的大小。
 2. **创建时展开成每个 rank 一个模型制品**：按部署的节点数 `n`，rank 0 的子目录按已有规则解析（选来源、revision、复用已登记的制品），其结果就是部署的 `model_id`；rank 1…n-1 用与 rank 0 相同的来源、仓库与 revision 加上自己的子目录解析（不会混用镜像或 commit）。整份仓库不能代替某个 rank 的子目录。
 3. **绑定记在部署快照里**：`deploy.CatalogSelection.rank_weights` 是 `[{rank, subfolder, store_model_id}]`，`weight_subfolder` 保留模板原文（导出模板时原样写回）。与组件的 `store_model_id` 一样，绑定在创建时定下，以后不再从可变的目录重新解析。
 4. **按 rank 读**：`planning.RankModelIDs(dep, r)` 是 rank `r` 读的模型（它自己的制品，加上各 rank 共用的组件与挂载）；控制器在每个 rank 的节点上只确保这些模型就绪（下载任务、复制、缓存填充都按这个制品），实例记录的读取与挂载路径也是它。`planning.DeploymentModelIDs` 仍是全部 rank 的并集，供下载归属、取消、驱逐保护使用；准备进度按节点所在的 rank 只列该 rank 的模型。
@@ -21,7 +21,7 @@
 
 - **否决 `components[].rank`**：每个 rank 写一个组件，模板就绑死了节点数，四个几乎一样的条目要同步维护；组件在所有 rank 上都挂载、主组件又与部署模型重合，加上 rank 维度要改写组件的全部语义。子目录变量沿用现有的来源、制品身份与下载路径，只多一个展开。
 - **rank 0 的制品当部署模型**：名称、服务名、推理配置、估算用的 config 都继续读一行模型；其他 rank 的行由平台创建，只作制品身份。代价是在模型页上一个部署对应 n 行同仓库不同子目录的模型。
-- **挂载保留仓库相对路径**：与已有的子目录语义一致，容器里权重在 `${MODEL_PATH}/rank<r>/…`，配方用 `${MODEL_PATH}/rank${NODE_RANK}/…` 引用；不为此另造"挂载到子目录"的规则。
+- **挂载保留仓库相对路径**：与已有的子目录语义一致，容器里权重在 `${GPUWORKS_MODEL_PATH}/rank<r>/…`，配方用 `${GPUWORKS_MODEL_PATH}/rank${GPUWORKS_NODE_RANK}/…` 引用；不为此另造"挂载到子目录"的规则。
 - **快照里多一个键**：rank 绑定无法在每次调和时可靠地推导（模型行可能被删除重建、revision 可能被解析到别处），与组件绑定同理记成创建时的事实；它属于快照这个整体读写的具名类型，旧快照没有这个键即"不按 rank 拆分"。
 - **未做**：自动放置时优先把 rank `r` 放到已有 `rank<r>/` 的节点（目前 rank 顺序就是节点顺序，已有其他 rank 子目录的节点照样下载自己的那份）。
 

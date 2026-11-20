@@ -50,13 +50,13 @@ func TestRankScopedWeightSources(t *testing.T) {
 	}{
 		{name: "another variable", edit: func(spec *InferenceSpec) {
 			spec.Weights.Sources[0].Subfolder = "tp${TP_SIZE}"
-		}, want: "may name only ${NODE_RANK}, not ${TP_SIZE}"},
+		}, want: "may name only ${GPUWORKS_NODE_RANK}, not ${TP_SIZE}"},
 		{name: "a mirror without the rank", edit: func(spec *InferenceSpec) {
 			spec.Weights.Sources[1].Subfolder = ""
-		}, want: "either every weight source names ${NODE_RANK}"},
+		}, want: "either every weight source names ${GPUWORKS_NODE_RANK}"},
 		{name: "with components", edit: func(spec *InferenceSpec) {
 			spec.Components = []Component{{Name: "main", Role: "primary", Weights: spec.Weights, WeightBytes: 1000, MountPath: "/model"}}
-		}, want: "only the spec's own weights may name ${NODE_RANK}"},
+		}, want: "only the spec's own weights may name ${GPUWORKS_NODE_RANK}"},
 		{name: "with pd_mode", edit: func(spec *InferenceSpec) {
 			spec.PDMode = "nixl"
 		}, want: ""},

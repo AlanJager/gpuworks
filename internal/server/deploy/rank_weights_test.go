@@ -41,6 +41,21 @@ func TestRankSubfolderExpansionAndMatching(t *testing.T) {
 	if got := UnknownSubfolderVariable("rank${GPUWORKS_NODE_RANK}"); got != "" {
 		t.Fatalf("the prefixed rank variable was refused: %q", got)
 	}
+	// Both spellings are one variable under the launch fields' alias rule
+	// (placement.Canonical), so they may be mixed and still name one rank;
+	// a lower-case or prefixed non-rank name is refused like any other.
+	mixed := "r${GPUWORKS_NODE_RANK}/part${NODE_RANK}"
+	if got := ExpandRankSubfolder(mixed, 1); got != "r1/part1" {
+		t.Fatalf("mixed expansion = %q", got)
+	}
+	if rank, ok := RankOfSubfolder(mixed, "r1/part1"); !ok || rank != 1 {
+		t.Fatalf("mixed match = %d %v", rank, ok)
+	}
+	for _, other := range []string{"rank${node_rank}", "rank${GPUWORKS_NNODES}", "rank${GPUWORKS_}"} {
+		if RankScopedSubfolder(other) || UnknownSubfolderVariable(other) == "" {
+			t.Fatalf("%s is accepted as the rank", other)
+		}
+	}
 }
 
 // The binding is a stored contract: exact wire keys, round-tripped through

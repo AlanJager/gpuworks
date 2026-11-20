@@ -8,20 +8,28 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	placementeval "gpuworks.ai/gpuworks/internal/server/placement"
 )
 
-// rankVariables are the spellings of the rank variable a weight subfolder may
-// use: the bare launch variable and its documented prefixed form, the same two
-// a template's args accept (placement.Canonical).
-var rankVariables = []string{"${NODE_RANK}", "${GPUWORKS_NODE_RANK}"}
+// subfolderReference is any ${...} in a weight subfolder. It is wider than the
+// launch fields' variable pattern on purpose: a subfolder is a literal path
+// apart from the rank, so every other reference, however it is spelled, is
+// refused rather than left in the path.
+var subfolderReference = regexp.MustCompile(`\$\{([^}]*)\}`)
 
-var subfolderVariable = regexp.MustCompile(`\$\{[^}]*\}`)
+// rankReference reports whether a reference names the rank under either
+// spelling the launch fields accept: the documented ${GPUWORKS_NODE_RANK} or
+// its older alias ${NODE_RANK} (placement.Canonical is the one alias rule).
+func rankReference(name string) bool {
+	return placementeval.Canonical(name) == placementeval.VarNodeRank
+}
 
 // RankScopedSubfolder reports whether a weight source's subfolder names the
-// rank, as in "rank${NODE_RANK}".
+// rank, as in "rank${GPUWORKS_NODE_RANK}".
 func RankScopedSubfolder(subfolder string) bool {
-	for _, variable := range rankVariables {
-		if strings.Contains(subfolder, variable) {
+	for _, match := range subfolderReference.FindAllStringSubmatch(subfolder, -1) {
+		if rankReference(match[1]) {
 			return true
 		}
 	}
@@ -32,13 +40,9 @@ func RankScopedSubfolder(subfolder string) bool {
 // the rank variable, "" when there is none. The rank is the only fact a
 // subfolder may depend on: it is known before anything is downloaded.
 func UnknownSubfolderVariable(subfolder string) string {
-	for _, match := range subfolderVariable.FindAllString(subfolder, -1) {
-		known := false
-		for _, variable := range rankVariables {
-			known = known || match == variable
-		}
-		if !known {
-			return match
+	for _, match := range subfolderReference.FindAllStringSubmatch(subfolder, -1) {
+		if !rankReference(match[1]) {
+			return match[0]
 		}
 	}
 	return ""
@@ -47,15 +51,17 @@ func UnknownSubfolderVariable(subfolder string) string {
 // ExpandRankSubfolder is the subfolder rank reads. A subfolder that does not
 // name the rank is returned unchanged.
 func ExpandRankSubfolder(subfolder string, rank int) string {
-	for _, variable := range rankVariables {
-		subfolder = strings.ReplaceAll(subfolder, variable, strconv.Itoa(rank))
-	}
-	return subfolder
+	return subfolderReference.ReplaceAllStringFunc(subfolder, func(match string) string {
+		if rankReference(subfolderReference.FindStringSubmatch(match)[1]) {
+			return strconv.Itoa(rank)
+		}
+		return match
+	})
 }
 
 // RankSubfolderMatches reports whether actual is the subfolder some rank of the
-// rank-scoped template reads ("rank${NODE_RANK}" matches "rank3", not
-// "rank3/x" or the whole repository).
+// rank-scoped template reads ("rank${GPUWORKS_NODE_RANK}" matches "rank3",
+// not "rank3/x" or the whole repository).
 func RankSubfolderMatches(template, actual string) bool {
 	if !RankScopedSubfolder(template) {
 		return template == actual
@@ -66,23 +72,27 @@ func RankSubfolderMatches(template, actual string) bool {
 
 // RankOfSubfolder is the rank whose expansion of template is actual.
 func RankOfSubfolder(template, actual string) (int, bool) {
-	pattern := regexp.QuoteMeta(template)
-	for _, variable := range rankVariables {
-		pattern = strings.ReplaceAll(pattern, regexp.QuoteMeta(variable), `([0-9]+)`)
+	var pattern strings.Builder
+	last := 0
+	for _, bounds := range subfolderReference.FindAllStringSubmatchIndex(template, -1) {
+		pattern.WriteString(regexp.QuoteMeta(template[last:bounds[0]]))
+		if rankReference(template[bounds[2]:bounds[3]]) {
+			pattern.WriteString(`([0-9]+)`)
+		} else {
+			pattern.WriteString(regexp.QuoteMeta(template[bounds[0]:bounds[1]]))
+		}
+		last = bounds[1]
 	}
-	match := regexp.MustCompile(`^` + pattern + `$`).FindStringSubmatch(actual)
-	if match == nil {
+	pattern.WriteString(regexp.QuoteMeta(template[last:]))
+	match := regexp.MustCompile(`^` + pattern.String() + `$`).FindStringSubmatch(actual)
+	if len(match) < 2 {
 		return 0, false
 	}
 	rank, err := strconv.Atoi(match[1])
 	if err != nil {
 		return 0, false
 	}
-	for _, other := range match[2:] {
-		if other != match[1] {
-			return 0, false
-		}
-	}
+	// Every reference names the same rank: the expansion is the proof.
 	return rank, ExpandRankSubfolder(template, rank) == actual
 }
 

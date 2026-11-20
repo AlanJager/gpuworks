@@ -22,7 +22,7 @@ func validateRankScopedWeights(modelID string, spec *InferenceSpec) error {
 	for _, component := range spec.Components {
 		for _, source := range component.Weights.Sources {
 			if deploy.RankScopedSubfolder(source.Subfolder) {
-				return fmt.Errorf("model %s spec %s component %s: only the spec's own weights may name ${NODE_RANK} in a subfolder", modelID, spec.Name, component.Name)
+				return fmt.Errorf("model %s spec %s component %s: only the spec's own weights may name ${GPUWORKS_NODE_RANK} in a subfolder", modelID, spec.Name, component.Name)
 			}
 		}
 	}
@@ -30,7 +30,7 @@ func validateRankScopedWeights(modelID string, spec *InferenceSpec) error {
 		return nil
 	}
 	if scoped != len(spec.Weights.Sources) {
-		return fmt.Errorf("model %s spec %s: either every weight source names ${NODE_RANK} in its subfolder or none does", modelID, spec.Name)
+		return fmt.Errorf("model %s spec %s: either every weight source names ${GPUWORKS_NODE_RANK} in its subfolder or none does", modelID, spec.Name)
 	}
 	if len(spec.Components) > 0 {
 		return fmt.Errorf("model %s spec %s: rank-scoped weights cannot be combined with components", modelID, spec.Name)

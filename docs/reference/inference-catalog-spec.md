@@ -189,7 +189,7 @@ sources:
 #### 按 rank 拆分的权重
 
 多机配方预先把权重切成每个 rank 一份、放在同一仓库的不同子目录时，spec 自己的 `weights.sources`
-可以在 `subfolder` 里写 rank 变量（`${NODE_RANK}`，或带前缀的 `${GPUWORKS_NODE_RANK}`）：
+可以在 `subfolder` 里写 rank 变量 `${GPUWORKS_NODE_RANK}`（与模板字段一样，不带前缀的旧写法 `${NODE_RANK}` 是它的别名）：
 
 ```yaml
 weight_bytes: 137438953472          # 一个 rank 的大小
@@ -198,16 +198,16 @@ weights:
   sources:
   - modelscope:
       repo_id: org/model-tp4
-      subfolder: rank${NODE_RANK}   # rank 0 读 rank0/，rank 3 读 rank3/
+      subfolder: rank${GPUWORKS_NODE_RANK}   # rank 0 读 rank0/，rank 3 读 rank3/
 ```
 
 多机部署的每个 rank 只下载、只挂载自己那一份（决策见 [ADR 0076](../adr/0076-rank-scoped-weights.md)）：
 
 - 创建部署时按节点数把子目录展开成每个 rank 一个模型制品（来源、仓库、revision 相同，子目录不同）；rank 0 的制品就是部署的模型，其余 rank 的绑定记进部署快照，此后不再从目录重新解析。
 - 每个节点的下载任务、模型标记与本地模型身份都是它那个 rank 的子目录；准入、磁盘预算与准备进度也按 rank 计算：rank `r` 的节点只为 rank `r` 的制品留磁盘，已有该子目录的节点不再计下载。
-- 挂载仍保留仓库内的相对路径：rank `r` 的容器里权重在 `${MODEL_PATH}/rank<r>/…`，命令里写 `${MODEL_PATH}/rank${NODE_RANK}/…`。
+- 挂载仍保留仓库内的相对路径：rank `r` 的容器里权重在 `${GPUWORKS_MODEL_PATH}/rank<r>/…`，命令里写 `${GPUWORKS_MODEL_PATH}/rank${GPUWORKS_NODE_RANK}/…`。
 - `weight_bytes`（及 `runtime_weight_bytes`）写一个 rank 的大小；显存估算按"每个 rank 一份"乘回整组的权重。
-- 子目录里只能出现 rank 变量；同一 spec 的所有来源要么都写、要么都不写；不能与 `components`、`pd_mode` 一起用，也不能以 PD 方式部署（`RANK_WEIGHTS_PD_UNSUPPORTED`）。请求显式指定 `model_id` 时，它必须是 rank 0 的制品（`RANK_WEIGHTS_MODEL_NOT_RANK_ZERO`）。单机部署只读 rank 0 那一份。
+- 子目录里只能出现 rank 变量；同一 spec 的所有来源要么都写、要么都不写；不能与 `components`、`pd_mode` 一起用，也不能以 PD 方式部署（`RANK_WEIGHTS_PD_UNSUPPORTED`）。请求显式指定 `model_id` 时，它必须是 rank 0 的制品（`RANK_WEIGHTS_MODEL_NOT_RANK_ZERO`）。单机部署的 `${GPUWORKS_NODE_RANK}` 为 `0`（与变量表一致），只读 rank 0 那一份；子目录的份数由配方决定，平台不核对部署的节点数与之相符。
 
 同一 spec 多个来源表示"任一可拉"。部署的 `model_source.provider` 选定运行哪一家权重；节点怎么取到权重（已有、同步组内复制、从共享存储读取或下载）由[拉取设置](../how-to/configure-pull-settings.md)决定。
 
@@ -353,9 +353,9 @@ PD 配方往往不只是「两个角色各一份参数」：角色的 TP、每�
 
 | 类别 | 模板写 | 容器里看到 | 主机侧由谁定 | 生命周期 |
 |---|---|---|---|---|
-| 启动变量 | 在 `args` / `env` / `entrypoint` / `pre_start_*` 里引用 `${GPUWORKS_*}`，见[变量展开](#变量展开) | 本次启动的值 | 平台 | 每次启动 |
+| 启动变量 | 在 `args` / `env` / `entrypoint` / `pre_start_*` 里引用 `${GPUWORKS_*}`，见[变量展开](#变量展开)；权重 `subfolder` 只能引用 `${GPUWORKS_NODE_RANK}` | 本次启动的值 | 平台 | 每次启动 |
 | 系统层环境变量 | 不用写；`env` 里同名键覆盖它 | 计算网络的 `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`，见[环境变量分层](deployment-launch-sources.md#环境变量分层) | 平台 | 每次启动 |
-| 主权重 | `weights` | 只读，在 `${GPUWORKS_MODEL_PATH}`（缺省 `/model`，有 primary 组件时为它的 `mount_path`） | 平台（模型存储） | 随模型 |
+| 主权重 | `weights`；`subfolder` 可写 `rank${GPUWORKS_NODE_RANK}`，见[按 rank 拆分的权重](#按-rank-拆分的权重) | 只读，在 `${GPUWORKS_MODEL_PATH}`（缺省 `/model`，有 primary 组件时为它的 `mount_path`）；按 rank 拆分时每个 rank 只有自己的子目录 | 平台（模型存储） | 随模型 |
 | 组件权重 | `components[].mount_path` | 只读，在该路径 | 平台（模型存储） | 随模型 |
 | 资产 | `assets[].unpack_to` | 只读，展开到该路径 | 平台（模板包） | 随模板版本 |
 | KV 磁盘层 | 不能写（部署参数） | 读写，平台选的路径 | 平台（节点托管目录） | 随节点上的实例，超限修剪 |

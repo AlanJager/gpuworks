@@ -79,6 +79,6 @@
 | [0073](0073-personal-inference-keys-and-batch-ownership.md) | 新推理 key 属当前用户；正用户批处理按用户可见，历史零用户按原 key 隔离，采用显式重新发放而不猜归属 | 2026-11-18 | 已接受 |
 | [0074](0074-node-connection-state-from-sessions.md) | 节点连接展示来自认证 session；旧 online 未重连显示 connecting，投影不写回调度事实，保留启动恢复宽限 | 2026-11-18 | 已接受 |
 | [0075](0075-slurm-allocates-node-cards.md) | Slurm 计算节点上卡归 Slurm，实例启动前用占位作业借卡，借到哪张用哪张、server 事后改绑；集群以条目接入，健康检查在每个节点引导 agent | 2026-11-15 | 已接受；补充 0052 |
-| [0076](0076-rank-scoped-weights.md) | 按 rank 拆分的权重：spec 权重来源的 `subfolder` 写 `${NODE_RANK}`，创建时解析成每个 rank 一个模型制品（rank 0 即部署模型，其余绑定记入快照），下载、挂载、磁盘准入都按 rank | 2026-11-19 | 已接受 |
+| [0076](0076-rank-scoped-weights.md) | 按 rank 拆分的权重：spec 权重来源的 `subfolder` 写 `${GPUWORKS_NODE_RANK}`，创建时解析成每个 rank 一个模型制品（rank 0 即部署模型，其余绑定记入快照），下载、挂载、磁盘准入都按 rank | 2026-11-19 | 已接受 |
 
 说明：0012–0014 原分别与 0004、0004、0006 撞号，2026-09-03 整理时按创建顺序重新编号；历史提交信息与 MR 描述中的旧编号不再准确。原 0024（节点网络对象）同理，因与数据面 lane 的 0024 撞号，2026-09-30 改为 0030；此前引用「ADR 0024」指网络对象的文字已随之更新，`CLAUDE.md` 与 `todo.md` 中的「ADR 0024」指数据面 lane。

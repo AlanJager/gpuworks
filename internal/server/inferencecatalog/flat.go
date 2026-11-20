@@ -575,7 +575,7 @@ func validateWeights(modelID, specName string, weights *Weights) error {
 			return fmt.Errorf("model %s spec %s has invalid %s subfolder: %w", modelID, specName, source.Provider, err)
 		}
 		if variable := deploy.UnknownSubfolderVariable(subfolder); variable != "" {
-			return fmt.Errorf("model %s spec %s %s subfolder may name only ${NODE_RANK}, not %s", modelID, specName, source.Provider, variable)
+			return fmt.Errorf("model %s spec %s %s subfolder may name only ${GPUWORKS_NODE_RANK}, not %s", modelID, specName, source.Provider, variable)
 		}
 		source.Subfolder = subfolder
 	}
