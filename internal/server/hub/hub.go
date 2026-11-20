@@ -356,7 +356,9 @@ func (h *Hub) RunServerDialReconnect(ctx context.Context, interval time.Duration
 }
 
 func (h *Hub) reconnectServerDial(ctx context.Context) {
-	nodes, err := h.store.ServerDialNodes()
+	// The owner's context bounds discovery: a member that lost database
+	// quorum must still stop this loop when its business generation ends.
+	nodes, err := h.store.ServerDialNodesContext(ctx)
 	if err != nil {
 		h.log.Warn("list server_dial nodes failed", "err", err)
 		return

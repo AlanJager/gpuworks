@@ -1,0 +1,60 @@
+--- a/src/gateway.c
++++ b/src/gateway.c
+@@ -188,6 +188,18 @@
+ 		    SQLITE_SHM_UNLOCK | SQLITE_SHM_EXCLUSIVE);                 \
+ 	}
+ 
++/* A failed query step leaves the rows it already encoded in the response
++ * buffer. A failure sent after them is read by the client as a failure whose
++ * code is the column count and whose message is the first column name, so the
++ * real error is lost. Return the buffer to the start of the response body. */
++static void discard_encoded_rows(struct handle *req)
++{
++	void *cursor;
++	buffer__reset(req->buffer);
++	cursor = buffer__advance(req->buffer, req->response_offset);
++	dqlite_assert(cursor != NULL);
++}
++
+ /* Encode fa failure response and invoke the request callback */
+ static void failure(struct handle *req, int code, const char *message)
+ {
+@@ -847,6 +859,7 @@
+ 	}
+ 
+ 	if (status != 0) {
++		discard_encoded_rows(req);
+ 		exec_failure(g, req, status);
+ 		goto done;
+ 	}
+@@ -932,6 +945,10 @@
+ 		return gateway_finalize(g);
+ 	}
+ 
++	if (status != RAFT_OK) {
++		discard_encoded_rows(req);
++	}
++
+ 	if (status != RAFT_OK && tail) {
+ 		failure(req, SQLITE_ERROR, "nonempty statement tail");
+ 		goto done;
+@@ -1623,6 +1640,7 @@
+ 	req->type = type;
+ 	req->schema = schema;
+ 	req->buffer = buffer;
++	req->response_offset = buffer__offset(buffer);
+ 	req->db_id = 0;
+ 	req->cancellation_requested = false;
+ 	req->parameters_bound = 0;
+--- a/src/gateway.h
++++ b/src/gateway.h
+@@ -67,6 +67,9 @@
+ 	int schema;
+ 	/* Buffer where the response to this request will be written. */
+ 	struct buffer *buffer;
++	/* Offset in the buffer at which the response body starts, after the
++	 * space the connection reserved for the message header. */
++	size_t response_offset;
+ 	/* Cursor for reading the request. */
+ 	struct cursor cursor;
+ 	/* Database ID parsed from this request.

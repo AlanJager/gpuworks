@@ -18,6 +18,8 @@ import (
 // upgrade and uninstall test runs. A test that applies host setup sets its
 // own (fakeHostSetup); one that reaches root commands without it fails.
 func TestMain(m *testing.M) {
+	clusterInstallTestChild()
+	serveStopTestChild()
 	root, err := os.MkdirTemp("", "gpuworks-cli-hostsetup-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

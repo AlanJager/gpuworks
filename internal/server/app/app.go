@@ -34,7 +34,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/healthcheck"
 	"gpuworks.ai/gpuworks/internal/server/hub"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/packages"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/modelmeta"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/outbound"
@@ -95,13 +94,18 @@ type App struct {
 	scaleReplicas func(deploymentID uint, role string, replicas int) error
 	// ext is what the extension modules registered (extension_start.go).
 	ext *extensionSet
+	// ha is the replicated control plane's part of this member's lifecycle
+	// (ha_runtime.go); nil on a single-node server. memberState is the
+	// state that lifecycle keeps on the App.
+	ha haRuntime
+	memberState
 	// slurmSweep removes the Slurm nodes that left their cluster, asking the
 	// cloud about the nodes of entries made from a cloud cluster.
 	slurmSweep *slurmsweep.Sweeper
 }
 
 // New builds the server from config.
-func New(cfg Config, log *slog.Logger) (a *App, err error) {
+func New(cfg Config, log *slog.Logger) (*App, error) {
 	cfg = normalizeRuntimeConfig(cfg)
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err
@@ -111,11 +115,22 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 		cfg.DBPath = filepath.Join(cfg.DataDir, "gpuworks.db")
 	}
 	b := bus.New()
-	st, master, err := openCredentialStore(cfg, b, log)
+	// A member of a replicated control plane whose business is still closed
+	// has no store to assemble on yet; it serves through its own lifecycle.
+	if closed, err := openClosedMember(cfg, b, log); closed != nil || err != nil {
+		return closed, err
+	}
+	st, master, ha, err := openServeStore(cfg, b, log)
 	if err != nil {
 		return nil, err
 	}
-	a = &App{cfg: cfg, log: log, store: st, bus: b, selfLog: cfg.SelfLog}
+	return assembleBusiness(cfg, log, b, st, master, ha)
+}
+
+// assembleBusiness builds the business server on an open store. It owns st
+// and ha from the call on: a failure closes both.
+func assembleBusiness(cfg Config, log *slog.Logger, b *bus.Bus, st *store.Store, master string, ha haRuntime) (a *App, err error) {
+	a = &App{cfg: cfg, log: log, store: st, bus: b, selfLog: cfg.SelfLog, ha: ha}
 	defer func(built *App) {
 		if err != nil {
 			_ = built.Close()
@@ -124,44 +139,16 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	// The node lists, the dashboard and the monitor share one snapshot of the
 	// fleet instead of each reading every node and card per request.
 	st.EnableFleetNodeSnapshot(nil)
-	embedded, err := startEmbeddedCatalogs(st, log)
-	if err != nil {
-		return nil, err
-	}
-	// Bring stored deployments to the current launch-configuration shape before
-	// anything reads one. The controller launches instances straight from these
-	// columns, so a row still in the old shape would be started from a
-	// configuration that is missing values nobody merges in any more.
-	if err := normalizeLaunchConfigs(st); err != nil {
-		return nil, err
-	}
 	catalogPackages, err := packages.New(filepath.Join(cfg.DataDir, "catalog-packages"))
 	if err != nil {
 		return nil, err
 	}
-	// Materialize the exact package embedded in this binary before updating the
-	// database projection. A later server version then keeps this directory as
-	// long as an older deployment or instance snapshot still references it.
-	embeddedCatalog, embeddedDigest, err := seed.Package()
-	if err != nil {
-		return nil, err
-	}
-	if _, err := catalogPackages.PutLoaded(embeddedCatalog, embeddedDigest); err != nil {
-		return nil, err
-	}
-	if err := embedded.finish(st); err != nil {
-		return nil, err
-	}
-	if recovered, err := st.RecoverServerBenchmarkRuns(); err != nil {
-		return nil, err
-	} else if recovered > 0 {
-		log.Warn("recovered orphaned server benchmarks", "count", recovered)
-	}
-	// Express the configured model endpoint as site rules, the one place a
-	// node's download addresses come from, so node downloads stay hermetic
-	// without a second, implicit endpoint setting.
-	if strings.TrimSpace(cfg.ModelEndpoint) != "" {
-		if err := ensureModelEndpointRules(st, strings.TrimSpace(cfg.ModelEndpoint)); err != nil {
+	// A business generation of a cluster member starts on a database and on
+	// package files the cluster already serves from: the steps that rewrite
+	// them belong to the start of a server that owns its store.
+	generation := ha != nil && ha.generation()
+	if !generation {
+		if err := applyStartupState(cfg, st, catalogPackages, log); err != nil {
 			return nil, err
 		}
 	}
@@ -184,17 +171,15 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 	if err := os.MkdirAll(modelLogoDir, 0o755); err != nil {
 		return nil, err
 	}
-	if referenced, referenceErr := st.ReferencedCatalogPackageDigests(); referenceErr != nil {
-		log.Warn("list referenced inference catalog packages during startup", "error", referenceErr)
-	} else if removed, pruneErr := catalogPackages.Prune(referenced); pruneErr != nil {
-		log.Warn("prune inference catalog packages during startup", "error", pruneErr)
-	} else if len(removed) > 0 {
-		log.Info("pruned unreferenced inference catalog packages during startup", "count", len(removed))
+	if !generation {
+		pruneCatalogPackages(st, catalogPackages, log)
 	}
 	h.SetRuntimeAssetLoader(func(packageDigest, modelID, file string) ([]byte, error) {
 		return catalogPackages.ReadAsset(strings.ToLower(strings.TrimSpace(packageDigest)), modelID, file)
 	})
-	deploy.SetDefaultImage(deploy.EngineVLLM, cfg.VLLMImage)
+	if !generation {
+		deploy.SetDefaultImage(deploy.EngineVLLM, cfg.VLLMImage)
+	}
 	ctrl := controller.New(st, h, log)
 	ctrl.SetNetworks(networks)
 	h.SetEnginePorts(ctrl.EnginePorts)
@@ -208,16 +193,23 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 		return nil, err
 	}
 	st.SetSecretbox(box)
-	// The network settings' proxies become proxy entries once the key that
-	// seals their passwords is there; until that succeeds they stay put.
-	if err := st.CarryOverNetworkProxies(); err != nil {
-		log.Warn("carry the network settings' proxies over to the pull settings", "err", err)
+	if !generation {
+		// The network settings' proxies become proxy entries once the key that
+		// seals their passwords is there; until that succeeds they stay put.
+		if err := st.CarryOverNetworkProxies(); err != nil {
+			log.Warn("carry the network settings' proxies over to the pull settings", "err", err)
+		}
+		ensurePlatformSSHKey(st, log)
 	}
-	ensurePlatformSSHKey(st, log)
 	warnUnmanagedStoragePaths(st, cfg.StorageProbeRoots, log)
 	jwtSigner, err := auth.NewTokenSigner(master, 24*time.Hour)
 	if err != nil {
 		return nil, err
+	}
+	if ha != nil {
+		if err := ha.assemble(a, jwtSigner, catalogPackages); err != nil {
+			return nil, err
+		}
 	}
 	provSvc := provider.NewService(st, box)
 	if err := provider.UseDataDir(cfg.DataDir); err != nil {
@@ -397,7 +389,7 @@ func New(cfg Config, log *slog.Logger) (a *App, err error) {
 
 	// No read/write timeouts: the agent WS and SSE are long-lived. The WS
 	// route bypasses these via hijacking; SSE flushes keepalives.
-	a.http = &http.Server{Handler: handler}
+	a.http = &http.Server{Handler: a.memberHandler(handler)}
 	return a, nil
 }
 
@@ -408,6 +400,9 @@ func (a *App) Run(ctx context.Context) error {
 		return err
 	}
 	defer finish()
+	if handled, err := a.runClosedMember(ctx); handled {
+		return err
+	}
 	tlsConfig, err := a.cfg.listenerTLS()
 	if err != nil {
 		return err
@@ -444,99 +439,23 @@ func (a *App) Run(ctx context.Context) error {
 		a.lns = nil
 		a.lnMu.Unlock()
 	}()
+	// A member's own listeners and control loops come up before any business
+	// loop; one that cannot start fails Run like a failed bind.
+	errc := make(chan error, len(lns)+1)
+	stopMember, err := a.startMember(ctx, errc)
+	if err != nil {
+		a.hub.StopSessions()
+		return err
+	}
+	defer stopMember()
 
-	// bg tracks every loop started below that runs on the shared ctx; see
-	// backgroundGroup in shutdown.go (proxyAcct/RunMetrics track their own).
-	var bg backgroundGroup
-	goBG := bg.start
-
-	// Background: flip stale-online nodes to offline as a safety net.
-	goBG(func() { a.staleLoop(ctx) })
-	goBG(func() { a.eventRetentionLoop(ctx) }) // Background: bound the deployment event timeline.
-	goBG(func() { a.clusterNodeLoop(ctx) })    // Background: remove Kubernetes and Slurm nodes that left their cluster.
-	// Background: reconnect nodes that listen for reverse server_dial sessions.
-	goBG(func() { a.hub.RunServerDialReconnect(ctx, a.cfg.ServerDialReconnectInterval) })
-	goBG(func() { a.hub.RunNodeQueues(ctx) }) // persist reports queued off the read loops
-	// Background: the independent SSH path after ordinary reconnects exhaust.
-	goBG(func() { a.recovery.Run(ctx) })
 	// The public entry point's connector service (`gpuworks expose`) runs on
 	// its own and forwards to what this server really bound.
 	if err := expose.RecordServerOrigin(a.cfg.DataDir, exposeOrigin(lns)); err != nil {
 		a.log.Warn("cannot record the listening address for `gpuworks expose`", "err", err)
 	}
-	// Background: reconcile deployments → instances.
-	goBG(func() { a.ctrl.Run(ctx) })
-	goBG(func() { a.agentUpgrades.Run(ctx) })
-	// Background: verify each PD prefill instance's KV handoff once.
-	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.TSDB()) })
-	// Background: schedules, waiting wakes, residency.
-	waits, orders := a.ctrl.PlacementWaits(), a.ctrl.Orders()
-	goBG(func() {
-		runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.hostMemory(), a.scaleReplicas, waits, orders, a.log)
-	}) // Background: schedules, waiting wakes, residency.
-	for _, run := range a.services() {
-		goBG(func() { run(ctx) }) // Background: health checks, card records, usage report, notices, extension services.
-	}
-	// Background: the batches in progress, resumed from their checkpoints.
-	if err := a.batches.Start(ctx); err != nil {
-		a.log.Error("batch executor not started", "err", err)
-	} else {
-		goBG(func() { <-ctx.Done(); a.batches.Wait() })
-	}
-	// Background: prune metrics/logs beyond the retention window
-	// (--metrics-retention, default 72h).
-	//
-	// RunMetrics deliberately runs on its OWN context (metricsCtx),
-	// never the shared shutdown ctx: the proxy accountant's final flush (see
-	// acctDone below) is only enqueued into the metrics ingest queue partway
-	// through the accountant's OWN ctx.Done handling, which takes up to
-	// proxy.finalFlushWaitTimeout. If RunMetrics reacted to the same
-	// ctx, it would very likely have already drained whatever was queued at
-	// that instant and returned - with nothing left running to ever pick up
-	// the accountant's later enqueue, silently dropping it. Keeping it on a
-	// separate context lets Run stop it explicitly, after stopProxyAccounting
-	// confirms the accountant (and therefore its final enqueue) is done - see
-	// stopMetricsIngest.
-	metricsCtx, metricsCancel := context.WithCancel(context.Background())
-	logsCtx, logsCancel := context.WithCancel(context.Background())
-	defer logsCancel()
-	// Every stop path drains metrics explicitly; the defer also covers future
-	// early returns while bringing up the remaining loops.
-	defer metricsCancel()
-	metricsDone := make(chan struct{})
-	logsDone := make(chan struct{})
-	if a.obs != nil {
-		goBG(func() { a.ops.run(ctx) })
-		goBG(func() { a.ops.backfill(ctx) })
-		goBG(func() { a.ops.replayScheduling(ctx) })
-		go func() {
-			defer close(logsDone)
-			a.obs.RunLogs(logsCtx)
-		}()
-		go func() {
-			defer close(metricsDone)
-			a.obs.RunMetrics(metricsCtx)
-		}()
-		// Background: the server's own error-level slog records become
-		// searchable server-source logs instead of living only in the
-		// process's rotated file.
-		goBG(func() { a.obs.RunSelfLogs(ctx, a.selfLog) })
-	} else {
-		close(metricsDone)
-		close(logsDone)
-	}
-	// Accounting stops after requests have actually returned, including ones
-	// whose HTTP connection was force-closed. Its final enqueue then precedes
-	// the metrics loop's final drain (stopRun).
-	acctCtx, acctCancel := context.WithCancel(context.Background())
-	defer acctCancel()
-	acctDone := make(chan struct{})
-	go func() {
-		defer close(acctDone)
-		a.proxyAcct.Run(acctCtx)
-	}()
+	workers := a.startBusinessWorkers(ctx)
 
-	errc := make(chan error, len(lns))
 	var serving backgroundGroup
 	defer serving.wait()
 	for _, ln := range lns {
@@ -561,6 +480,6 @@ func (a *App) Run(ctx context.Context) error {
 	case err = <-errc:
 	}
 	a.lifetime.stop()
-	a.stopRun(lns, waitRequests, acctCancel, acctDone, metricsCancel, metricsDone, logsCancel, logsDone, &bg)
+	a.stopRun(lns, waitRequests, workers)
 	return err
 }

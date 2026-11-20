@@ -1363,6 +1363,22 @@ var migrations = []migration{
 	{Version: 229, Name: "storage_node_shared_fs", Apply: addStorageNodeSharedFS},
 	{Version: 230, Name: "inference_spec_start_timeout", Apply: addInferenceSpecStartTimeout},
 	{Version: 231, Name: "inference_spec_dirs", Apply: addInferenceSpecDirs},
+	// Cluster ledger. These versions belong to this tree only. The older
+	// control-plane branch used lower numbers that this schema already spent.
+	{Version: 232, Name: "cluster_admission", Apply: migrateClusterAdmission},
+	{Version: 233, Name: "cluster_material_grants", Apply: migrateClusterMaterialGrants},
+	{Version: 234, Name: "cluster_authorizations", Apply: migrateClusterAuthorizations},
+	{Version: 235, Name: "cluster_enrollment_origins", Apply: migrateClusterEnrollmentOrigins},
+	{Version: 236, Name: "cluster_invitation_origin", Apply: migrateClusterInvitationOrigin},
+	{Version: 237, Name: "material_replicas", Apply: migrateMaterialReplicas},
+	{Version: 238, Name: "material_remote_receipts", Apply: migrateMaterialRemoteReceipts},
+	{Version: 239, Name: "material_manifests", Apply: migrateMaterialManifests},
+	{Version: 240, Name: "committed_notifications", Apply: migrateCommittedNotifications},
+	{Version: 241, Name: "notification_topic_resource", Apply: migrateNotificationTopicResource},
+	{Version: 242, Name: "committed_notification_revision", Apply: migrateNotificationRevision},
+	{Version: 243, Name: "maintenance_phase", Apply: migrateMaintenancePhase},
+	{Version: 244, Name: "maintenance_resume_open", Apply: migrateMaintenanceResumeOpen},
+	{Version: 245, Name: "catalog_gc_barrier", Apply: migrateCatalogGCBarrier},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

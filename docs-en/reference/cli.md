@@ -39,6 +39,7 @@ To specify another installation directory, append `--dir /path/to/installation` 
 | | [`migrate`](#gpuworks-migrate) | Run migrations and seed the built-in catalog in the specified SQLite database, then exit | Operators/developers, for offline checks or database premigration |
 | | [`reset-password`](#gpuworks-reset-password) | Reset the administrator account password | Operators, when the password is forgotten |
 | | [`plugin`](#gpuworks-plugin) | Verify, install, list, enable, disable and uninstall plugin packages, show pushed state, import trust and package indexes, check compatibility before a downgrade, correct the plugin clock and release restriction tables offline | Operators; works with the server stopped; enable, disable, uninstall, clock reset and pstate clear require it |
+| | [`cluster`](#gpuworks-cluster) | Preflight and install a three-member control-plane cluster over SSH; plus the member-side commands `cluster-init`, `cluster-address`, `cluster-join`, and `cluster-status`, available only in a Linux build with the `dqlite` tag | Operators, installing a control-plane cluster or repairing a member by hand |
 | | [`host-identity`](#gpuworks-host-identity) | As root, read the host identity facts only root may read and write them to `/run/gpuworks/host-identity.json` | systemd runs it before every start of the server; not run by hand |
 | | `version` | Print the version | Anyone |
 | | `edition` | Print the build edition (`community` for the community build); the `version` output does not include it | Anyone; to confirm which build is installed when troubleshooting |
@@ -307,6 +308,47 @@ Every subcommand takes `--data DIR` (by default found the same way as for `reset
 At every start, after loading pushed state and before starting any plugin, the server applies each entry in order through the same path a running server uses: a clock correction through `State.CorrectClock`, a clear through `State.ClearTable`; each applied entry writes one `audit=true` log line with `op`, `by` and `reason`. Once every entry applied, the journal is emptied. When an entry fails, it stops there: that entry and the ones after it stay in the journal for the next start, the entries applied before it are removed, and the administrator banner `PLUGIN_MAINTENANCE_FAILED` (`op` and the code of the failure: `op` is the entry's `clock_reset` or `pstate_clear`, `journal` when the journal itself cannot be read, or `unknown` for a line that does not decode or names an operation this build does not know; the code is `BAD_REQUEST` for an entry it cannot read) is shown until the next start.
 
 This build compiles in no project root, so for now only packages certified by an issuer trusted in `server.yaml` install; a fork puts in its own roots through `cli.Options.PluginRoots` in its build.
+
+## gpuworks cluster
+
+Installs a three-member control-plane cluster; for the steps, see [Install a three-member control-plane cluster](../how-to/control-plane-cluster.md). `gpuworks cluster install` and `gpuworks cluster check` can also be written `gpuworks cluster-install` and `gpuworks cluster-check`. Both work from the management machine over SSH on the three hosts and run from any build; the distributed `--binary` must be a Linux build with the `dqlite` tag.
+
+### cluster install and cluster check
+
+| flag | Default | Description |
+|---|---|---|
+| `--config PATH` | empty | A version 1 `cluster.yaml` with each node's address, directory, and SSH settings; cannot be combined with `--hosts`, `--ssh-user`, `--ssh-key`, or `--dir` |
+| `--hosts A,B,C` | empty | Without a config file: exactly three distinct IPv4 addresses |
+| `--ssh-user USER` | empty | SSH account on the three hosts |
+| `--ssh-key PATH` | SSH agent and SSH config | Local SSH identity file |
+| `--binary PATH` | none, required | The Linux cluster build to distribute |
+| `--database-helper PATH` | empty | The database helper, installed beside the server as `gpuworks-dqlite`; not accepted by `cluster check` |
+| `--dir DIR` | `/opt/gpuworks/server`; under the SSH user's home with `--no-service` | Installation directory; it must not exist on any of the three hosts |
+| `--password-file PATH` | none | Initial administrator password file: a regular file with mode 600, one line, at least 8 bytes. With `--config` in a terminal it can be omitted and is then prompted for; not accepted by `cluster check` |
+| `--http-port N` | `8800` | HTTP port on the three hosts |
+| `--enrollment-port N` | `9443` | HTTPS enrollment port on the three hosts |
+| `--database-port N` | `9001` | Database port on the three hosts (mutual TLS); member sessions use the next port |
+| `--timeout DURATION` | `15m` | Deadline for the whole installation |
+| `--storage-probe DURATION` | `30s` | Measures synchronous write latency for this long on the filesystem that will hold each node's data; `0` skips it, at most `5m`. `check` recommends a storage tier from it without changing whether the check passes; `install` chooses the storage tier from it |
+| `--storage-tier TIER` | Chosen from the measurement | `install` only: the cluster's storage tier, `standard` or `slow-storage`; takes precedence over `storage_tier` in `cluster.yaml`. When storage is too slow, installation continues only if a tier is given. See [Storage tiers](../how-to/control-plane-cluster.md#storage-tiers) |
+| `--no-service` | `false` | Preview only: detached processes that do not come back after a host reboot |
+| `--interactive` | `false` | Ask for each setting and install; needs a terminal; `install` only |
+| `--configure` | `false` | Ask for each setting and write `cluster.yaml` without any remote operation; `install` only |
+
+Running `gpuworks cluster install` with no argument is the same as `--interactive`. When installation fails, data and logs already created on the hosts are kept and the command exits with 1.
+
+### Member-Side Commands
+
+These commands run on a member host and are called by `cluster install`; they exist only in a Linux build with the `dqlite` tag.
+
+| Command | flag | Description |
+|---|---|---|
+| `gpuworks cluster-init` | `--offline` (required; confirms every server using this database is stopped), `--listen IP:PORT`, `--public-url https://HOST:PORT`, `--storage-tier TIER` (`standard` or `slow-storage`, default `standard`), `--data DIR`, `--db PATH` | On the stopped first node, create the cluster identity and the enrollment listener configuration, and record the cluster's storage tier; members that join later adopt it |
+| `gpuworks cluster-address` | `--offline` (required), `--address HOST:PORT`, `--timeout DURATION` (default `5m`), `--data DIR`, `--db PATH` | Change the first node's database address to the one the member certificate names; after an interruption, run it again to continue |
+| `gpuworks cluster-join` | `--address HOST:PORT`, `--cluster-id ID`, `--ca-fingerprint FP`, `--enrollment-url https://HOST:PORT`, `--public-url URL`, `--public-listen IP:PORT`, `--token-file PATH` (required for a first join; omit on a retry after admission), `--timeout DURATION` (default `5m`), `--data DIR`, `--db PATH` | Join this host to the cluster as a new member |
+| `gpuworks cluster-status` | `--data DIR`, `--db PATH`, `--http-addr HOST:PORT`, `--timeout DURATION` (default `5s`, the deadline of one probe) | Report, read-only, the storage tier this member has recorded with its election wait, and the role, voters, listeners, whether business is open, and the leader as this member sees them; it does not join, open business, or start a database |
+
+`gpuworks cluster-install-node`, `gpuworks cluster-check-node`, and `gpuworks cluster-install-supervise` are internal commands that `cluster install` calls over SSH; do not run them by hand.
 
 ## gpuworks host-identity
 
@@ -656,5 +698,5 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 
 - Gated repositories require `export HF_TOKEN=…`. If it is not set, the tool displays a message and treats these repositories as returning 401. The product itself fetches metadata without a token, so predefined models must include their own facts required for estimation.
 
-<!-- translation-source-sha256: 6d49c1dd283a81a0cc080a5df48a77a37c92231dc9c8af96df67ffe95396e3ba -->
+<!-- translation-source-sha256: cf61607e48f0bd461b40052289350f77dc74175e83a71270cd0e61ca5338b4f6 -->
 <!-- translation-localized-code-block: 97428c61d0b0a154e15b86cb32f62698fe47be9a13f5d8d97870a67b551d77de ad2a948283214a4b9cf06c0fbf9e90995a5b4e623c49d1e33386cb49050b110a Translate uninstall command comments. -->

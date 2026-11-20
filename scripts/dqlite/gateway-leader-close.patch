@@ -1,0 +1,81 @@
+--- a/src/gateway.c
++++ b/src/gateway.c
+@@ -732,12 +732,12 @@
+ 	CHECK_LEADER(req);
+ 	LOOKUP_DB(request.db_id);
+ 	FAIL_IF_CHECKPOINTING;
+-	g->req = req;
+ 
+ 	struct exec *exec = raft_malloc(sizeof *exec);
+ 	if (exec == NULL) {
+ 		return DQLITE_NOMEM;
+ 	}
++	g->req = req;
+ 	*exec = (struct exec){
+ 		.data = g,
+ 		.sql = request.sql,
+@@ -899,12 +899,12 @@
+ 	LOOKUP_DB(request.db_id);
+ 	LOOKUP_STMT(request.stmt_id);
+ 	FAIL_IF_CHECKPOINTING;
+-	g->req = req;
+ 
+ 	struct exec *exec = raft_malloc(sizeof *exec);
+ 	if (exec == NULL) {
+ 		return DQLITE_ERROR;
+ 	}
++	g->req = req;
+ 	*exec = (struct exec){
+ 		.data = g,
+ 		.stmt = stmt->stmt,
+@@ -992,12 +992,12 @@
+ 	CHECK_LEADER(req);
+ 	LOOKUP_DB(request.db_id);
+ 	FAIL_IF_CHECKPOINTING;
+-	g->req = req;
+ 
+ 	struct exec *exec = raft_malloc(sizeof *exec);
+ 	if (exec == NULL) {
+ 		return DQLITE_ERROR;
+ 	}
++	g->req = req;
+ 	*exec = (struct exec){
+ 		.data = g,
+ 		.sql = request.sql,
+@@ -1042,10 +1042,15 @@
+ 	struct handle *req = g->req;
+ 	struct response_empty response = { 0 };
+ 	g->req = NULL;
+-	raft_free(r);
+ 	if (g->close_cb != NULL) {
+-		g->close_cb(g);
+-	} else if (status != 0) {
++		/* Drop the open leader before the connection close callback.
++		 * close_cb alone leaves db->leaders > 0 and db__close aborts. */
++		gateway_finalize(g);
++		raft_free(r);
++		return;
++	}
++	raft_free(r);
++	if (status != 0) {
+ 		failure(req, translateRaftErrCode(status),
+ 			raft_strerror(status));
+ 	} else {
+@@ -1503,10 +1508,14 @@
+ 	struct handle *req = g->req;
+ 	struct response_empty response = { 0 };
+ 	g->req = NULL;
+-	raft_free(r);
+ 	if (g->close_cb != NULL) {
+-		g->close_cb(g);
+-	} else if (g->raft->state == RAFT_LEADER) {
++		/* Same leader leak as raftChangeCb when shutdown wins the race. */
++		gateway_finalize(g);
++		raft_free(r);
++		return;
++	}
++	raft_free(r);
++	if (g->raft->state == RAFT_LEADER) {
+ 		tracef("transfer failed");
+ 		failure(req, DQLITE_ERROR, "leadership transfer failed");
+ 	} else {

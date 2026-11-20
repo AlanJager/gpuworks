@@ -1357,315 +1357,688 @@
     },
     {
       "term_en": "Node Label",
-      "translations": { "zh": "用户标签" }
+      "translations": {
+        "zh": "用户标签"
+      }
     },
     {
       "term_en": "System Label",
-      "translations": { "zh": "系统标签" }
+      "translations": {
+        "zh": "系统标签"
+      }
     },
     {
       "term_en": "Node Requirement",
-      "translations": { "zh": "节点条件" },
-      "forbidden": { "zh": ["节点标签约束", "节点标签筛选"] }
+      "translations": {
+        "zh": "节点条件"
+      },
+      "forbidden": {
+        "zh": [
+          "节点标签约束",
+          "节点标签筛选"
+        ]
+      }
     },
     {
       "term_en": "Cordon",
-      "translations": { "zh": "停止调度" }
+      "translations": {
+        "zh": "停止调度"
+      }
     },
     {
       "term_en": "Extension-Held Cordon",
-      "translations": { "zh": "扩展停止调度" }
+      "translations": {
+        "zh": "扩展停止调度"
+      }
     },
     {
       "term_en": "Extension Module",
-      "translations": { "zh": "扩展模块" }
+      "translations": {
+        "zh": "扩展模块"
+      }
     },
     {
       "term_en": "Feature Key",
-      "translations": { "zh": "功能键" }
+      "translations": {
+        "zh": "功能键"
+      }
     },
     {
       "term_en": "Feature Availability",
-      "translations": { "zh": "可用性" }
+      "translations": {
+        "zh": "可用性"
+      }
     },
     {
       "term_en": "Node Identity",
-      "translations": { "zh": "节点身份" }
+      "translations": {
+        "zh": "节点身份"
+      }
     },
     {
       "term_en": "Plugin Package",
-      "translations": { "zh": "插件包" }
+      "translations": {
+        "zh": "插件包"
+      }
     },
     {
       "term_en": "Publisher Certificate",
-      "translations": { "zh": "发布者证书" }
+      "translations": {
+        "zh": "发布者证书"
+      }
     },
     {
       "term_en": "Pushed Table",
-      "translations": { "zh": "推送表" }
+      "translations": {
+        "zh": "推送表"
+      }
     },
     {
       "term_en": "Authority",
-      "translations": { "zh": "权威" }
+      "translations": {
+        "zh": "权威"
+      }
     },
     {
       "term_en": "Down Grace",
-      "translations": { "zh": "宽限" }
+      "translations": {
+        "zh": "宽限"
+      }
     },
     {
       "term_en": "Restriction Override",
-      "translations": { "zh": "限制覆盖" }
+      "translations": {
+        "zh": "限制覆盖"
+      }
     },
     {
       "term_en": "Extension Clock",
-      "translations": { "zh": "extclock" }
+      "translations": {
+        "zh": "extclock"
+      }
     },
     {
       "term_en": "Node Drain",
-      "translations": { "zh": "驱逐" }
+      "translations": {
+        "zh": "驱逐"
+      }
     },
     {
       "term_en": "Allocation Claim",
-      "translations": { "zh": "资源分配权" }
+      "translations": {
+        "zh": "资源分配权"
+      }
     },
     {
       "term_en": "Physical Footprint",
-      "translations": { "zh": "物理占用" }
+      "translations": {
+        "zh": "物理占用"
+      }
     },
     {
       "term_en": "Transition Peak",
-      "translations": { "zh": "过渡峰值" }
+      "translations": {
+        "zh": "过渡峰值"
+      }
     },
     {
       "term_en": "Same-NUMA Constraint",
-      "translations": { "zh": "同 NUMA 约束" }
+      "translations": {
+        "zh": "同 NUMA 约束"
+      }
     },
     {
       "term_en": "PD Deployment",
-      "translations": { "zh": "PD 部署" }
+      "translations": {
+        "zh": "PD 部署"
+      }
     },
     {
       "term_en": "Role",
-      "translations": { "zh": "角色" }
+      "translations": {
+        "zh": "角色"
+      }
     },
     {
       "term_en": "PD Mode",
-      "translations": { "zh": "PD 模式" }
+      "translations": {
+        "zh": "PD 模式"
+      }
     },
     {
       "term_en": "Wire Protocol",
-      "translations": { "zh": "线协议" }
+      "translations": {
+        "zh": "线协议"
+      }
     },
     {
       "term_en": "Fallback",
-      "translations": { "zh": "降级" }
+      "translations": {
+        "zh": "降级"
+      }
     },
     {
       "term_en": "PD Effectiveness",
-      "translations": { "zh": "PD 有效性" }
+      "translations": {
+        "zh": "PD 有效性"
+      }
     },
     {
       "term_en": "Replica",
-      "translations": { "zh": "副本" }
+      "translations": {
+        "zh": "副本"
+      }
     },
     {
       "term_en": "Instance",
-      "translations": { "zh": "实例" }
+      "translations": {
+        "zh": "实例"
+      }
     },
     {
       "term_en": "Generation",
-      "translations": { "zh": "代" }
+      "translations": {
+        "zh": "代"
+      }
     },
     {
       "term_en": "RDMA Runtime Transport",
-      "translations": { "zh": "RDMA 运行传输" }
+      "translations": {
+        "zh": "RDMA 运行传输"
+      }
     },
     {
       "term_en": "Network",
-      "translations": { "zh": "网络" },
-      "forbidden": { "zh": ["VPC"] }
+      "translations": {
+        "zh": "网络"
+      },
+      "forbidden": {
+        "zh": [
+          "VPC"
+        ]
+      }
     },
     {
       "term_en": "HCA",
-      "translations": { "zh": "HCA（rail）" },
-      "forbidden": { "zh": ["RDMA 网卡"] }
+      "translations": {
+        "zh": "HCA（rail）"
+      },
+      "forbidden": {
+        "zh": [
+          "RDMA 网卡"
+        ]
+      }
     },
     {
       "term_en": "HCA IP",
-      "translations": { "zh": "HCA IP" }
+      "translations": {
+        "zh": "HCA IP"
+      }
     },
     {
       "term_en": "Bootstrap Address",
-      "translations": { "zh": "bootstrap 地址" },
-      "forbidden": { "zh": ["管理地址"] }
+      "translations": {
+        "zh": "bootstrap 地址"
+      },
+      "forbidden": {
+        "zh": [
+          "管理地址"
+        ]
+      }
     },
     {
       "term_en": "Auto / Manual",
-      "translations": { "zh": "自动 / 手动" }
+      "translations": {
+        "zh": "自动 / 手动"
+      }
     },
     {
       "term_en": "Storage-sync / Compute / Serving Network",
-      "translations": { "zh": "存储同步网络 / 参数网络 / 服务网络" },
-      "forbidden": { "zh": ["数据网络", "业务网络"], "en": ["parameter network", "parameter traffic"] }
+      "translations": {
+        "zh": "存储同步网络 / 参数网络 / 服务网络"
+      },
+      "forbidden": {
+        "zh": [
+          "数据网络",
+          "业务网络"
+        ],
+        "en": [
+          "parameter network",
+          "parameter traffic"
+        ]
+      }
     },
     {
       "term_en": "Attachment",
-      "translations": { "zh": "加载" },
-      "forbidden": { "zh": ["挂载"] }
+      "translations": {
+        "zh": "加载"
+      },
+      "forbidden": {
+        "zh": [
+          "挂载"
+        ]
+      }
     },
     {
       "term_en": "Management Network",
-      "translations": { "zh": "管理网" },
-      "forbidden": { "zh": ["直连地址"] }
+      "translations": {
+        "zh": "管理网"
+      },
+      "forbidden": {
+        "zh": [
+          "直连地址"
+        ]
+      }
     },
     {
       "term_en": "Platform SSH Key",
-      "translations": { "zh": "平台密钥" }
+      "translations": {
+        "zh": "平台密钥"
+      }
     },
     {
       "term_en": "Platform Resource",
-      "translations": { "zh": "平台资源" }
+      "translations": {
+        "zh": "平台资源"
+      }
     },
     {
       "term_en": "Node Source",
-      "translations": { "zh": "节点来源" }
+      "translations": {
+        "zh": "节点来源"
+      }
     },
     {
       "term_en": "External Platform",
-      "translations": { "zh": "外部平台" },
-      "forbidden": { "zh": ["第三方平台", "接入平台", "算力来源"] }
+      "translations": {
+        "zh": "外部平台"
+      },
+      "forbidden": {
+        "zh": [
+          "第三方平台",
+          "接入平台",
+          "算力来源"
+        ]
+      }
     },
     {
       "term_en": "Compute Node Address",
-      "translations": { "zh": "计算节点接入地址" },
-      "forbidden": { "zh": ["直连地址", "主机接入地址"] }
+      "translations": {
+        "zh": "计算节点接入地址"
+      },
+      "forbidden": {
+        "zh": [
+          "直连地址",
+          "主机接入地址"
+        ]
+      }
     },
     {
       "term_en": "Network Inventory",
-      "translations": { "zh": "网卡清单" },
-      "forbidden": { "zh": ["网络配置"] }
+      "translations": {
+        "zh": "网卡清单"
+      },
+      "forbidden": {
+        "zh": [
+          "网络配置"
+        ]
+      }
     },
     {
       "term_en": "Card Reachability Test",
-      "translations": { "zh": "卡连通性测试" },
-      "forbidden": { "zh": ["卡间带宽"] }
+      "translations": {
+        "zh": "卡连通性测试"
+      },
+      "forbidden": {
+        "zh": [
+          "卡间带宽"
+        ]
+      }
     },
     {
       "term_en": "Storage",
-      "translations": { "zh": "存储" },
-      "forbidden": { "zh": ["存储策略"] }
+      "translations": {
+        "zh": "存储"
+      },
+      "forbidden": {
+        "zh": [
+          "存储策略"
+        ]
+      }
     },
     {
       "term_en": "Model File",
-      "translations": { "zh": "模型文件" },
-      "forbidden": { "zh": ["副本", "模型拷贝"] }
+      "translations": {
+        "zh": "模型文件"
+      },
+      "forbidden": {
+        "zh": [
+          "副本",
+          "模型拷贝"
+        ]
+      }
     },
     {
       "term_en": "Model Location",
-      "translations": { "zh": "位置查询" }
+      "translations": {
+        "zh": "位置查询"
+      }
     },
     {
       "term_en": "Writer Node",
-      "translations": { "zh": "写入节点" }
+      "translations": {
+        "zh": "写入节点"
+      }
     },
     {
       "term_en": "Control Plane Heartbeat",
-      "translations": { "zh": "控制面心跳" }
+      "translations": {
+        "zh": "控制面心跳"
+      }
     },
     {
       "term_en": "Internal Network Test",
-      "translations": { "zh": "内部测试" },
-      "forbidden": { "zh": ["压测"] }
+      "translations": {
+        "zh": "内部测试"
+      },
+      "forbidden": {
+        "zh": [
+          "压测"
+        ]
+      }
     },
     {
       "term_en": "Inference Metric Vocabulary",
-      "translations": { "zh": "平台指标词表" }
+      "translations": {
+        "zh": "平台指标词表"
+      }
     },
     {
       "term_en": "Metric Source",
-      "translations": { "zh": "指标来源" }
+      "translations": {
+        "zh": "指标来源"
+      }
     },
     {
       "term_en": "Instance Observation",
-      "translations": { "zh": "观察配置" }
+      "translations": {
+        "zh": "观察配置"
+      }
     },
     {
       "term_en": "Signal",
-      "translations": { "zh": "信号" }
+      "translations": {
+        "zh": "信号"
+      }
     },
     {
       "term_en": "Environment Package",
-      "translations": { "zh": "环境包" }
+      "translations": {
+        "zh": "环境包"
+      }
     },
     {
       "term_en": "Shared by Memory",
-      "translations": { "zh": "按内存共享卡" }
+      "translations": {
+        "zh": "按内存共享卡"
+      }
     },
-    { "term_en": "Request Success Rate", "translations": { "zh": "请求成功率" } },
-    { "term_en": "Session Completion Rate", "translations": { "zh": "会话完成率" } },
-    { "term_en": "Cache Report Coverage", "translations": { "zh": "缓存上报覆盖率" } },
-    { "term_en": "Node Replacement", "translations": { "zh": "节点失联重调度" }, "forbidden": { "zh": ["故障转移"] } },
-    { "term_en": "Sleep Residue", "translations": { "zh": "休眠残留" } },
-    { "term_en": "Automatic Placement", "translations": { "zh": "自动放置" } },
-    { "term_en": "Placement Policy", "translations": { "zh": "放置策略" } },
-    { "term_en": "Card Gate", "translations": { "zh": "卡准入闸" } },
-    { "term_en": "Managed Directory", "translations": { "zh": "托管目录" } },
-    { "term_en": "Card Preference", "translations": { "zh": "卡偏好档" } },
-    { "term_en": "Instance Note", "translations": { "zh": "实例提示" } },
-    { "term_en": "Lifecycle Schedule", "translations": { "zh": "定时计划" } },
-    { "term_en": "Yield Policy", "translations": { "zh": "出让策略" } },
-    { "term_en": "Idle Time", "translations": { "zh": "闲置时间" } },
-    { "term_en": "Never Yield", "translations": { "zh": "不自动出让" } },
-    { "term_en": "Yield on a Turn", "translations": { "zh": "按时自动出让" } },
-    { "term_en": "Longest Serving Time", "translations": { "zh": "最长服务时间" } },
-    { "term_en": "Longest Request Hold", "translations": { "zh": "请求最长挂起时间" } },
-    { "term_en": "Residency Arbiter", "translations": { "zh": "驻留仲裁" } },
-    { "term_en": "Yield (Residency)", "translations": { "zh": "让卡" } },
-    { "term_en": "Held Sleep", "translations": { "zh": "保持休眠" } },
-    { "term_en": "Wake Waiting", "translations": { "zh": "唤醒等位" } },
-    { "term_en": "Yielding Wake", "translations": { "zh": "让位唤醒" } },
-    { "term_en": "Scheduling History", "translations": { "zh": "调度记录" } },
-    { "term_en": "Batch", "translations": { "zh": "批处理任务" } },
+    {
+      "term_en": "Request Success Rate",
+      "translations": {
+        "zh": "请求成功率"
+      }
+    },
+    {
+      "term_en": "Session Completion Rate",
+      "translations": {
+        "zh": "会话完成率"
+      }
+    },
+    {
+      "term_en": "Cache Report Coverage",
+      "translations": {
+        "zh": "缓存上报覆盖率"
+      }
+    },
+    {
+      "term_en": "Node Replacement",
+      "translations": {
+        "zh": "节点失联重调度"
+      },
+      "forbidden": {
+        "zh": [
+          "故障转移"
+        ]
+      }
+    },
+    {
+      "term_en": "Sleep Residue",
+      "translations": {
+        "zh": "休眠残留"
+      }
+    },
+    {
+      "term_en": "Automatic Placement",
+      "translations": {
+        "zh": "自动放置"
+      }
+    },
+    {
+      "term_en": "Placement Policy",
+      "translations": {
+        "zh": "放置策略"
+      }
+    },
+    {
+      "term_en": "Card Gate",
+      "translations": {
+        "zh": "卡准入闸"
+      }
+    },
+    {
+      "term_en": "Managed Directory",
+      "translations": {
+        "zh": "托管目录"
+      }
+    },
+    {
+      "term_en": "Card Preference",
+      "translations": {
+        "zh": "卡偏好档"
+      }
+    },
+    {
+      "term_en": "Instance Note",
+      "translations": {
+        "zh": "实例提示"
+      }
+    },
+    {
+      "term_en": "Lifecycle Schedule",
+      "translations": {
+        "zh": "定时计划"
+      }
+    },
+    {
+      "term_en": "Yield Policy",
+      "translations": {
+        "zh": "出让策略"
+      }
+    },
+    {
+      "term_en": "Idle Time",
+      "translations": {
+        "zh": "闲置时间"
+      }
+    },
+    {
+      "term_en": "Never Yield",
+      "translations": {
+        "zh": "不自动出让"
+      }
+    },
+    {
+      "term_en": "Yield on a Turn",
+      "translations": {
+        "zh": "按时自动出让"
+      }
+    },
+    {
+      "term_en": "Longest Serving Time",
+      "translations": {
+        "zh": "最长服务时间"
+      }
+    },
+    {
+      "term_en": "Longest Request Hold",
+      "translations": {
+        "zh": "请求最长挂起时间"
+      }
+    },
+    {
+      "term_en": "Residency Arbiter",
+      "translations": {
+        "zh": "驻留仲裁"
+      }
+    },
+    {
+      "term_en": "Yield (Residency)",
+      "translations": {
+        "zh": "让卡"
+      }
+    },
+    {
+      "term_en": "Held Sleep",
+      "translations": {
+        "zh": "保持休眠"
+      }
+    },
+    {
+      "term_en": "Wake Waiting",
+      "translations": {
+        "zh": "唤醒等位"
+      }
+    },
+    {
+      "term_en": "Yielding Wake",
+      "translations": {
+        "zh": "让位唤醒"
+      }
+    },
+    {
+      "term_en": "Scheduling History",
+      "translations": {
+        "zh": "调度记录"
+      }
+    },
+    {
+      "term_en": "Batch",
+      "translations": {
+        "zh": "批处理任务"
+      }
+    },
     {
       "term_en": "Kubernetes Cluster",
-      "translations": { "zh": "Kubernetes 集群" },
-      "forbidden": { "zh": ["本地 Kubernetes 集群", "其他 Kubernetes 集群"] }
+      "translations": {
+        "zh": "Kubernetes 集群"
+      },
+      "forbidden": {
+        "zh": [
+          "本地 Kubernetes 集群",
+          "其他 Kubernetes 集群"
+        ]
+      }
     },
     {
       "term_en": "Enrollment Token",
-      "translations": { "zh": "接入令牌" }
+      "translations": {
+        "zh": "接入令牌"
+      }
     },
     {
       "term_en": "Kube Runtime",
-      "translations": { "zh": "kube 运行时" }
+      "translations": {
+        "zh": "kube 运行时"
+      }
     },
     {
       "term_en": "Hold Pod / Card Borrowing",
-      "translations": { "zh": "占位 Pod / 借卡" }
+      "translations": {
+        "zh": "占位 Pod / 借卡"
+      }
     },
     {
       "term_en": "Failure Code",
-      "translations": { "zh": "失败码" }
+      "translations": {
+        "zh": "失败码"
+      }
     },
     {
       "term_en": "Check ID",
-      "translations": { "zh": "检查 id" }
+      "translations": {
+        "zh": "检查 id"
+      }
     },
     {
       "term_en": "Check Status",
-      "translations": { "zh": "检查状态" }
+      "translations": {
+        "zh": "检查状态"
+      }
     },
     {
       "term_en": "Runtime Failure",
-      "translations": { "zh": "运行期失败原因" }
+      "translations": {
+        "zh": "运行期失败原因"
+      }
     },
     {
       "term_en": "Boundary Classification",
-      "translations": { "zh": "外部边界分类" }
+      "translations": {
+        "zh": "外部边界分类"
+      }
     },
     {
       "term_en": "KV Offload Backend",
-      "translations": { "zh": "KV 卸载后端" }
+      "translations": {
+        "zh": "KV 卸载后端"
+      }
+    },
+    {
+      "term_en": "Control-Plane Cluster",
+      "translations": {
+        "zh": "控制面集群"
+      }
+    },
+    {
+      "term_en": "Member",
+      "translations": {
+        "zh": "成员"
+      }
+    },
+    {
+      "term_en": "Database Helper",
+      "translations": {
+        "zh": "数据库辅助程序"
+      }
+    },
+    {
+      "term_en": "Transport Policy",
+      "translations": {
+        "zh": "传输策略"
+      }
+    },
+    {
+      "term_en": "Business Generation",
+      "translations": {
+        "zh": "业务代际"
+      }
+    },
+    {
+      "term_en": "Material Proof",
+      "translations": {
+        "zh": "材料证明"
+      }
     }
   ],
   "do_not_translate": [

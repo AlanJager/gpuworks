@@ -23,6 +23,18 @@ import (
 // aborts startup: serving from rows whose configuration could not be read would
 // mean launching engines with arguments nobody can account for.
 func normalizeLaunchConfigs(st *store.Store) error {
+	return checkLaunchConfigs(st, true)
+}
+
+// requireNormalizedLaunchConfigs is the read-only counterpart for a cluster
+// member preparing business on a store it does not own. It must wait for the
+// rewrite of the server that does, instead of performing it while other
+// members launch from the same rows.
+func requireNormalizedLaunchConfigs(st *store.Store) error {
+	return checkLaunchConfigs(st, false)
+}
+
+func checkLaunchConfigs(st *store.Store, rewrite bool) error {
 	deployments, err := st.ListDeployments()
 	if err != nil {
 		return fmt.Errorf("list deployments for launch configuration normalization: %w", err)
@@ -44,6 +56,9 @@ func normalizeLaunchConfigs(st *store.Store) error {
 		}
 		if !changed {
 			continue
+		}
+		if !rewrite {
+			return fmt.Errorf("deployment %d requires launch configuration normalization", dep.ID)
 		}
 		snapshotJSON := dep.CatalogSelectionSnapshot
 		if hasSnapshot {

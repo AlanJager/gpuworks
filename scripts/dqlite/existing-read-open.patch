@@ -1,0 +1,281 @@
+--- a/src/protocol.h
++++ b/src/protocol.h
+@@ -47,7 +47,8 @@
+ 	DQLITE_REQUEST_CLUSTER,
+ 	DQLITE_REQUEST_TRANSFER,
+ 	DQLITE_REQUEST_DESCRIBE,
+-	DQLITE_REQUEST_WEIGHT
++	DQLITE_REQUEST_WEIGHT,
++	DQLITE_REQUEST_OPEN_EXISTING_READ = 20
+ };
+ 
+ #define DQLITE_REQUEST_CLUSTER_FORMAT_V0 0 /* ID and address */
+--- a/src/request.h
++++ b/src/request.h
+@@ -13,6 +13,7 @@
+ 	X(text, filename, ##__VA_ARGS__) \
+ 	X(uint64, flags, ##__VA_ARGS__)  \
+ 	X(text, vfs, ##__VA_ARGS__)
++#define REQUEST_OPEN_EXISTING_READ(X, ...) REQUEST_OPEN(X, ##__VA_ARGS__)
+ #define REQUEST_PREPARE(X, ...)         \
+ 	X(uint64, db_id, ##__VA_ARGS__) \
+ 	X(text, sql, ##__VA_ARGS__)
+@@ -64,7 +65,8 @@
+ 	X(cluster, CLUSTER, __VA_ARGS__)                     \
+ 	X(transfer, TRANSFER, __VA_ARGS__)                   \
+ 	X(describe, DESCRIBE, __VA_ARGS__)                   \
+-	X(weight, WEIGHT, __VA_ARGS__)
++	X(weight, WEIGHT, __VA_ARGS__)                       \
++	X(open_existing_read, OPEN_EXISTING_READ, __VA_ARGS__)
+ 
+ REQUEST__TYPES(REQUEST__DEFINE);
+ 
+--- a/src/db.c
++++ b/src/db.c
+@@ -54,12 +54,11 @@
+ 	sqlite3_free(db->filename);
+ }
+ 
+-int db__open(struct db *db, sqlite3 **out)
++static int dbOpen(struct db *db, sqlite3 **out, int flags)
+ {
+ 	tracef("open conn: %s page_size:%u", db->filename, db->config->vfs.page_size);
+ 
+ 	sqlite3 *conn = NULL;
+-	int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXRESCODE;
+ 	int rv = sqlite3_open_v2(db->filename, &conn, flags, db->config->vfs.name);
+ 	if (rv != SQLITE_OK) {
+ 		tracef("open_v2 failed %d (%d)", rv, sqlite3_system_errno(conn));
+@@ -69,3 +68,20 @@
+ 	*out = conn;
+ 	return SQLITE_OK;
+ }
++
++int db__open(struct db *db, sqlite3 **out)
++{
++	return dbOpen(db, out, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
++		      SQLITE_OPEN_EXRESCODE);
++}
++
++int db__open_existing_read(struct db *db, sqlite3 **out)
++{
++	int rc = dbOpen(db, out, SQLITE_OPEN_READONLY | SQLITE_OPEN_EXRESCODE);
++	if (rc == SQLITE_OK && sqlite3_db_readonly(*out, "main") != 1) {
++		sqlite3_close(*out);
++		*out = NULL;
++		return SQLITE_CANTOPEN;
++	}
++	return rc;
++}
+--- a/src/db.h
++++ b/src/db.h
+@@ -44,5 +44,8 @@
+  */
+ int db__open(struct db *db, sqlite3 **conn);
+ 
++/* Open only an existing database with SQLite read-only flags. */
++int db__open_existing_read(struct db *db, sqlite3 **conn);
++
+ 
+ #endif /* DB_H_*/
+--- a/src/leader.c
++++ b/src/leader.c
+@@ -52,12 +52,13 @@
+ 	return l->db->read_index > raft_last_applied(l->raft);
+ }
+ 
+-int leader__init(struct leader *l, struct db *db, struct raft *raft)
++static int leaderInit(struct leader *l, struct db *db, struct raft *raft,
++		      bool existing_read)
+ {
+ 	tracef("leader init");
+ 	int rc;
+ 	sqlite3 *conn;
+-	rc = db__open(db, &conn);
++	rc = existing_read ? db__open_existing_read(db, &conn) : db__open(db, &conn);
+ 	if (rc != 0) {
+ 		tracef("open failed %d", rc);
+ 		return rc;
+@@ -72,6 +73,16 @@
+ 	db->leaders++;
+ 	return 0;
+ }
++int leader__init(struct leader *l, struct db *db, struct raft *raft)
++{
++	return leaderInit(l, db, raft, false);
++}
++
++int leader__init_existing_read(struct leader *l, struct db *db, struct raft *raft)
++{
++	return leaderInit(l, db, raft, true);
++}
++
+ static inline bool leader_closing(struct leader *leader)
+ {
+ 	return leader->close_cb != NULL;
+--- a/src/leader.h
++++ b/src/leader.h
+@@ -107,6 +107,9 @@
+  */
+ int leader__init(struct leader *l, struct db *db, struct raft *raft);
+ 
++/* Initialize a connection without creating or writing the main database. */
++int leader__init_existing_read(struct leader *l, struct db *db, struct raft *raft);
++
+ /**
+  * Submit a request to step a SQLite statement.
+  *
+--- a/src/vfs.c
++++ b/src/vfs.c
+@@ -1237,6 +1237,7 @@
+ 	sqlite3_file base;            /* Base class. Must be first. */
+ 	struct vfs *vfs;              /* Pointer to volatile VFS data. */
+ 	struct vfsDatabase *database; /* Underlying database content. */
++	bool readonly;               /* Access mode of this main-file handle. */
+ 	enum vfsMainFileState state;  /* The current connection status. */
+ 	uint16_t sharedMask; /* Mask of shared locks held */
+ 	uint16_t exclMask;   /* Mask of exclusive locks held. The special value
+@@ -1401,6 +1402,9 @@
+ 			    sqlite_int64 offset)
+ {
+ 	struct vfsMainFile *f = (struct vfsMainFile *)file;
++	if (f->readonly) {
++		return SQLITE_READONLY;
++	}
+ 
+ 	/* == Safety==
+ 	 * It is expected for this call to be done in two different cases:
+@@ -1469,6 +1473,9 @@
+ static int vfsMainFileTruncate(sqlite3_file *file, sqlite_int64 size)
+ {
+ 	struct vfsMainFile *f = (struct vfsMainFile *)file;
++	if (f->readonly) {
++		return SQLITE_READONLY;
++	}
+ 	/* == Safety==
+ 	 * See vfsMainFileWrite.
+ 	 */
+@@ -2202,7 +2209,6 @@
+ 	int exclusive = flags & SQLITE_OPEN_EXCLUSIVE;
+ 	int create = flags & SQLITE_OPEN_CREATE;
+ 
+-	(void)out_flags;
+ 
+ 	dqlite_assert(vfs != NULL);
+ 	dqlite_assert(vfs->pAppData != NULL);
+@@ -2274,6 +2280,9 @@
+ 			},
+ 			.database = database,
+ 		};
++		if (out_flags != NULL) {
++			*out_flags = flags;
++		}
+ 
+ 		return SQLITE_OK;
+ 	}
+@@ -2299,7 +2308,12 @@
+ 		},
+ 		.vfs = v,
+ 		.database = database,
++		.readonly = (flags & SQLITE_OPEN_READONLY) != 0,
+ 	};
++	/* SQLite derives pager read-only state from xOpen's reported flags. */
++	if (out_flags != NULL) {
++		*out_flags = flags;
++	}
+ 	database->open_count++;
+ 	return SQLITE_OK;
+ }
+@@ -2524,6 +2538,14 @@
+ 	}
+ 	struct vfsMainFile *f = (struct vfsMainFile*)file;
+ 
++	if (sqlite3_db_readonly(db, "main") == 1) {
++		/* Never bootstrap an empty database through a read-only OPEN. */
++		if (f->database->n_pages == 0) {
++			return SQLITE_CANTOPEN;
++		}
++		goto configure_connection;
++	}
++
+ 	/* Disable syncs. */
+ 	rv = sqlite3_exec(db, "PRAGMA synchronous=OFF", NULL, NULL, pzErrMsg);
+ 	if (rv != SQLITE_OK) {
+@@ -2559,6 +2581,7 @@
+ 		}
+ 	}
+ 
++configure_connection:
+ 	rv = sqlite3_wal_autocheckpoint(db, 0);
+ 	if (rv != SQLITE_OK) {
+ 		tracef("sqlite3_wal_autocheckpoint off failed %d", rv);
+--- a/src/gateway.c
++++ b/src/gateway.c
+@@ -339,6 +339,67 @@
+ 		raft_free(g->leader);
+ 		g->leader = NULL;
+ 		return rc;
++	}
++	g->leader->data = g;
++	response.id = 0;
++	SUCCESS_V0(db, DB);
++	return 0;
++}
++
++/* Restrict this capability to a plain database name, never a path or URI. */
++static bool plainDatabaseName(const char *name)
++{
++	size_t n = strlen(name);
++	if (n == 0 || n > 511 || strcmp(name, ".") == 0 ||
++	    strcmp(name, "..") == 0) {
++		return false;
++	}
++	for (size_t i = 0; i < n; i++) {
++		unsigned char c = (unsigned char)name[i];
++		if (c < 0x20 || c == 0x7f || c == '/' || c == '\\' ||
++		    c == ':' || c == '?') {
++			return false;
++		}
++	}
++	return true;
++}
++
++static int handle_open_existing_read(struct gateway *g, struct handle *req)
++{
++	struct cursor *cursor = &req->cursor;
++	struct db *db;
++	int rc;
++	START_V0(open_existing_read, db);
++	if (cursor->cap != 0 || request.flags != 0 ||
++	    strcmp(request.vfs, "volatile") != 0 ||
++	    !plainDatabaseName(request.filename)) {
++		failure(req, DQLITE_PARSE, "invalid existing read-only open");
++		return 0;
++	}
++	CHECK_LEADER(req);
++	if (g->leader != NULL) {
++		failure(req, SQLITE_BUSY,
++			"a database for this connection is already open");
++		return 0;
++	}
++
++	/* Restore and applied OPEN commands populate this registry. A read-only
++	 * client must not create even a missing registry record. */
++	db = registry__get(g->registry, request.filename);
++	if (db == NULL) {
++		failure(req, SQLITE_CANTOPEN, "existing database not loaded");
++		return 0;
++	}
++	g->leader = raft_malloc(sizeof *g->leader);
++	if (g->leader == NULL) {
++		return DQLITE_NOMEM;
++	}
++	rc = leader__init_existing_read(g->leader, db, g->raft);
++	if (rc != 0) {
++		raft_free(g->leader);
++		g->leader = NULL;
++		failure(req, rc, "existing read-only database open failed");
++		return 0;
+ 	}
+ 	g->leader->data = g;
+ 	response.id = 0;

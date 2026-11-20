@@ -55,6 +55,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/readyz", a.ready)
 		r.Post("/auth/login", a.login)
 		// A Kubernetes node's agent authenticates with the enrollment token.
 		r.Post("/kube/enroll", a.kubeEnroll)

@@ -1,0 +1,19 @@
+--- a/src/raft/replication.c
++++ b/src/raft/replication.c
+@@ -576,7 +576,15 @@
+ 	index = request->index;
+ 	raft_free(request);
+ 	if (status != 0) {
+-		if (index <= logLastIndex(r->log)) {
++		if (status == RAFT_CANCELED && r->state == RAFT_UNAVAILABLE &&
++		    index <= r->commit_index) {
++			/* Closing cancels a pending local append even when followers
++			 * already made its prefix committed. Preserve that prefix;
++			 * only uncommitted entries may transition to truncated. */
++			if (r->commit_index < logLastIndex(r->log)) {
++				logTruncate(r->log, r->commit_index + 1);
++			}
++		} else if (index <= logLastIndex(r->log)) {
+ 			logTruncate(r->log, index);
+ 		}
+ 		if (r->state == RAFT_LEADER) {

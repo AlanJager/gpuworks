@@ -3,6 +3,7 @@
 package packages
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -253,11 +254,21 @@ func (store *Store) Pack(digest string, writer io.Writer) error {
 
 // Load returns the validated package projection for an immutable digest.
 func (store *Store) Load(digest string) (inferencecatalog.Package, error) {
+	return store.LoadContext(context.Background(), digest)
+}
+
+// LoadContext is Load for a caller that must stop between file reads, such as
+// a material inventory scan whose request was cancelled.
+func (store *Store) LoadContext(ctx context.Context, digest string) (inferencecatalog.Package, error) {
 	if store == nil || !digestPattern.MatchString(digest) {
 		return inferencecatalog.Package{}, errors.New("invalid catalog package digest")
 	}
+	if err := ctx.Err(); err != nil {
+		return inferencecatalog.Package{}, err
+	}
 	root := filepath.Join(store.root, digest)
-	actual, err := inferencecatalog.PackageDigest(os.DirFS(root))
+	files := cancellableFS{FS: os.DirFS(root), ctx: ctx}
+	actual, err := inferencecatalog.PackageDigest(files)
 	if err != nil {
 		return inferencecatalog.Package{}, fmt.Errorf("open catalog package %s: %w", digest, err)
 	}
@@ -266,6 +277,6 @@ func (store *Store) Load(digest string) (inferencecatalog.Package, error) {
 	}
 	// An official package is stored as published, so it may hold specs this
 	// build skips (PutOfficial).
-	pkg, _, err := inferencecatalog.LoadPackageTolerant(os.DirFS(root))
+	pkg, _, err := inferencecatalog.LoadPackageTolerant(files)
 	return pkg, err
 }

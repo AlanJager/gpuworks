@@ -10,7 +10,7 @@ import (
 
 // stopRun is the one stop/drain order for cancellation and listener failure.
 // App resources stay open after it; Close owns their final release.
-func (a *App) stopRun(lns []*trackingListener, waitRequests func(), acctCancel context.CancelFunc, acctDone <-chan struct{}, metricsCancel context.CancelFunc, metricsDone <-chan struct{}, logsCancel context.CancelFunc, logsDone <-chan struct{}, bg *backgroundGroup) {
+func (a *App) stopRun(lns []*trackingListener, waitRequests func(), workers *businessWorkers) {
 	a.proxy.StopHolding()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -23,13 +23,7 @@ func (a *App) stopRun(lns []*trackingListener, waitRequests func(), acctCancel c
 	closeConns(lns) // Shutdown leaves hijacked websocket connections open.
 	a.hub.StopSessions()
 	waitRequests()
-	bg.wait() // Batch/automation producers may still complete gateway requests.
-	acctCancel()
-	a.stopProxyAccounting(acctDone)
-	a.stopMetricsIngest(metricsCancel, metricsDone)
-	logsCancel()
-	<-logsDone
-	a.flushRequestSinks()
+	workers.stop()
 }
 
 // backgroundGroup tracks the loops Run starts on its shared ctx (other than

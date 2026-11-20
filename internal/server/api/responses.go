@@ -40,12 +40,25 @@ func writeErr(w http.ResponseWriter, code int, err error) { writeErrWith(w, code
 // text and params, for a refusal that carries what the client needs to
 // show (the impact of an unconfirmed plugin uninstall).
 func writeErrWith(w http.ResponseWriter, code int, err error, extra map[string]any) {
+	// Both mean "not here, now": a closed member, or a follower asked for a
+	// write only the scheduling leader may commit. Nothing committed, so 503
+	// lets the edge try the next member instead of surfacing a server error
+	// for a healthy cluster.
+	if errors.Is(err, store.ErrBusinessWritesClosed) || errors.Is(err, store.ErrStaleSchedulingGeneration) {
+		code = http.StatusServiceUnavailable
+	}
 	var productErr *messages.ProductError
 	if !errors.As(err, &productErr) && store.IsStorageFull(err) {
 		// Which write it was matters less than where the room ran out: the
 		// server's own disk, which no retry or input fixes.
 		err = messages.WrapProductError(ErrorServerStorageFull, "the server's disk is full; free space on the server host and retry: "+err.Error(), serverStorageParams(w), err)
 		code = http.StatusInsufficientStorage
+	}
+	// Both mean "not here, now": a closed member, or a follower asked for a
+	// write only the scheduling leader may commit. 503 lets the edge try the
+	// next member instead of surfacing a server error for a healthy cluster.
+	if errors.Is(err, store.ErrBusinessWritesClosed) || errors.Is(err, store.ErrStaleSchedulingGeneration) {
+		code = http.StatusServiceUnavailable
 	}
 	response := map[string]any{"error": err.Error()}
 	report := boundedDiagnosticReport(diagnosticsFromError(err))

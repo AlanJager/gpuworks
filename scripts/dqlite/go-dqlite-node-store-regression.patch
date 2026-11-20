@@ -1,0 +1,365 @@
+--- /dev/null
++++ b/client/store_dedup_test.go
+@@ -0,0 +1,362 @@
++package client
++
++import (
++	"context"
++	"fmt"
++	"os"
++	"path/filepath"
++	"reflect"
++	"sync"
++	"syscall"
++	"testing"
++	"time"
++)
++
++func nodeStoreFixture(t *testing.T) (*YamlNodeStore, string, []NodeInfo) {
++	t.Helper()
++	path := filepath.Join(t.TempDir(), "cluster.yaml")
++	s, err := NewYamlNodeStore(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return s, path, []NodeInfo{{ID: 1, Address: "127.0.0.1:9001", Role: NodeRole(0)}, {ID: 2, Address: "127.0.0.1:9002", Role: NodeRole(1)}}
++}
++
++func nodeStoreStat(t *testing.T, path string) os.FileInfo {
++	t.Helper()
++	info, err := os.Stat(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return info
++}
++
++func requireNodeStore(t *testing.T, s *YamlNodeStore, want []NodeInfo) {
++	t.Helper()
++	got, err := s.Get(context.Background())
++	if err != nil || !reflect.DeepEqual(got, want) {
++		t.Fatalf("Get=%v,%v want=%v", got, err, want)
++	}
++}
++
++func TestYamlNodeStoreFirstSetAndUnchangedFile(t *testing.T) {
++	for _, existing := range []bool{false, true} {
++		t.Run(fmt.Sprint(existing), func(t *testing.T) {
++			s, path, nodes := nodeStoreFixture(t)
++			if existing {
++				if err := s.Set(context.Background(), nodes); err != nil {
++					t.Fatal(err)
++				}
++				prior := nodeStoreStat(t, path)
++				var err error
++				s, err = NewYamlNodeStore(path)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if err := s.Set(context.Background(), nodes); err != nil {
++					t.Fatal(err)
++				}
++				if os.SameFile(prior, nodeStoreStat(t, path)) {
++					t.Fatal("first Set after startup skipped persistence")
++				}
++			} else if err := s.Set(context.Background(), nodes); err != nil {
++				t.Fatal(err)
++			}
++			before := nodeStoreStat(t, path)
++			for i := 0; i < 4; i++ {
++				if err := s.Set(context.Background(), nodes); err != nil {
++					t.Fatal(err)
++				}
++			}
++			after := nodeStoreStat(t, path)
++			if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
++				t.Fatal("unchanged Set replaced or rewrote file")
++			}
++			requireNodeStore(t, s, nodes)
++		})
++	}
++}
++
++func TestYamlNodeStoreAllFieldsAndOrderPersist(t *testing.T) {
++	for _, field := range []string{"id", "address", "role", "order", "append", "remove"} {
++		t.Run(field, func(t *testing.T) {
++			s, path, nodes := nodeStoreFixture(t)
++			if err := s.Set(context.Background(), nodes); err != nil {
++				t.Fatal(err)
++			}
++			before := nodeStoreStat(t, path)
++			next := append([]NodeInfo(nil), nodes...)
++			switch field {
++			case "id":
++				next[0].ID = 9
++			case "address":
++				next[0].Address = "127.0.0.1:9009"
++			case "role":
++				next[0].Role = NodeRole(2)
++			case "order":
++				next[0], next[1] = next[1], next[0]
++			case "append":
++				next = append(next, NodeInfo{ID: 3, Address: "127.0.0.1:9003", Role: NodeRole(2)})
++			case "remove":
++				next = next[:1]
++			}
++			if err := s.Set(context.Background(), next); err != nil {
++				t.Fatal(err)
++			}
++			if os.SameFile(before, nodeStoreStat(t, path)) {
++				t.Fatal("changed snapshot was not persisted")
++			}
++			reopened, err := NewYamlNodeStore(path)
++			if err != nil {
++				t.Fatal(err)
++			}
++			requireNodeStore(t, reopened, next)
++			if err := s.Set(context.Background(), nil); err != nil {
++				t.Fatal(err)
++			}
++			got, err := s.Get(context.Background())
++			if err != nil || len(got) != 0 {
++				t.Fatalf("empty Set: %v %v", got, err)
++			}
++			reopened, err = NewYamlNodeStore(path)
++			if err != nil {
++				t.Fatal(err)
++			}
++			got, err = reopened.Get(context.Background())
++			if err != nil || len(got) != 0 {
++				t.Fatalf("empty persisted: %v %v", got, err)
++			}
++		})
++	}
++}
++
++func TestYamlNodeStoreRepairsCurrentFile(t *testing.T) {
++	for _, damage := range []string{"missing", "bytes", "truncated", "mode", "symlink", "hardlink", "same-bytes-replacement", "same-inode-identical", "same-inode-restored-mtime", "fifo", "replacement"} {
++		t.Run(damage, func(t *testing.T) {
++			s, path, nodes := nodeStoreFixture(t)
++			if err := s.Set(context.Background(), nodes); err != nil {
++				t.Fatal(err)
++			}
++			expected, err := os.ReadFile(path)
++			if err != nil {
++				t.Fatal(err)
++			}
++			target := path + ".target"
++			switch damage {
++			case "missing":
++				err = os.Remove(path)
++			case "bytes":
++				err = os.WriteFile(path, []byte("malformed: ["), 0600)
++			case "truncated":
++				err = os.Truncate(path, 0)
++			case "mode":
++				err = os.Chmod(path, 0644)
++			case "symlink":
++				if err = os.Rename(path, target); err == nil {
++					err = os.Symlink(target, path)
++				}
++			case "same-inode-identical", "same-inode-restored-mtime":
++				prior := nodeStoreStat(t, path)
++				// Ensure observable ctime advancement independently of mtime restoration.
++				time.Sleep(2 * time.Millisecond)
++				err = os.WriteFile(path, expected, 0600)
++				if err == nil && damage == "same-inode-restored-mtime" {
++					err = os.Chtimes(path, prior.ModTime(), prior.ModTime())
++				}
++			case "fifo":
++				if err = os.Remove(path); err == nil {
++					err = syscall.Mkfifo(path, 0600)
++				}
++			case "hardlink":
++				err = os.Link(path, target)
++			case "same-bytes-replacement":
++				if err = os.WriteFile(target, expected, 0600); err == nil {
++					err = os.Rename(target, path)
++				}
++			case "replacement":
++				if err = os.WriteFile(target, []byte("different"), 0600); err == nil {
++					err = os.Rename(target, path)
++				}
++			}
++			if err != nil {
++				t.Fatal(err)
++			}
++			damaged, _ := os.Lstat(path)
++			if err = s.Set(context.Background(), nodes); err != nil {
++				t.Fatal(err)
++			}
++			actual, err := os.ReadFile(path)
++			if err != nil || string(actual) != string(expected) {
++				t.Fatalf("repair: %q %v", actual, err)
++			}
++			stat, err := os.Lstat(path)
++			if err != nil || !stat.Mode().IsRegular() || stat.Mode().Perm() != 0600 {
++				t.Fatalf("repair metadata: %v %v", stat, err)
++			}
++			if damaged != nil && os.SameFile(damaged, stat) {
++				t.Fatal("damaged/replaced file was not replaced")
++			}
++			if damage == "symlink" || damage == "hardlink" {
++				b, e := os.ReadFile(target)
++				if e != nil || string(b) != string(expected) {
++					t.Fatalf("symlink target modified: %q %v", b, e)
++				}
++			}
++		})
++	}
++}
++
++func TestYamlNodeStoreFailedWriteDoesNotPublishOrPoisonRetry(t *testing.T) {
++	for _, failure := range []string{"rename", "create"} {
++		t.Run(failure, func(t *testing.T) {
++			s, path, nodes := nodeStoreFixture(t)
++			if err := s.Set(context.Background(), nodes); err != nil {
++				t.Fatal(err)
++			}
++			saved := path + ".saved"
++			if err := os.Rename(path, saved); err != nil {
++				t.Fatal(err)
++			}
++			if err := os.Mkdir(path, 0700); err != nil {
++				t.Fatal(err)
++			}
++			if failure == "create" {
++				s.path = filepath.Join(path, "absent", "cluster.yaml")
++			}
++			next := append([]NodeInfo(nil), nodes...)
++			next[0].ID = 7
++			if err := s.Set(context.Background(), next); err == nil {
++				t.Fatal("write to invalid destination succeeded")
++			}
++			requireNodeStore(t, s, nodes)
++			s.path = path
++			if err := os.Remove(path); err != nil {
++				t.Fatal(err)
++			}
++			if err := os.Rename(saved, path); err != nil {
++				t.Fatal(err)
++			}
++			before := nodeStoreStat(t, path)
++			// Even the previous value is written after a failed operation, not falsely cached.
++			if err := s.Set(context.Background(), nodes); err != nil {
++				t.Fatal(err)
++			}
++			if os.SameFile(before, nodeStoreStat(t, path)) {
++				t.Fatal("failed write poisoned successful-write cache")
++			}
++			if err := s.Set(context.Background(), next); err != nil {
++				t.Fatal(err)
++			}
++			requireNodeStore(t, s, next)
++			files, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".cluster.yaml*"))
++			if err != nil || len(files) != 0 {
++				t.Fatalf("temporary files leaked: %v %v", files, err)
++			}
++		})
++	}
++}
++
++func TestYamlNodeStoreSnapshotOwnershipAndConcurrentAccess(t *testing.T) {
++	s, path, nodes := nodeStoreFixture(t)
++	want := append([]NodeInfo(nil), nodes...)
++	if err := s.Set(context.Background(), nodes); err != nil {
++		t.Fatal(err)
++	}
++	nodes[0].ID = 99
++	requireNodeStore(t, s, want)
++	got, _ := s.Get(context.Background())
++	got[0].Address = "changed"
++	requireNodeStore(t, s, want)
++	var wg sync.WaitGroup
++	errs := make(chan error, 8)
++	for i := 0; i < 8; i++ {
++		wg.Add(1)
++		go func(i int) {
++			defer wg.Done()
++			for n := 0; n < 20; n++ {
++				if i%2 == 0 {
++					if e := s.Set(context.Background(), want); e != nil {
++						errs <- e
++						return
++					}
++				} else {
++					v, e := s.Get(context.Background())
++					if e != nil || !reflect.DeepEqual(v, want) {
++						errs <- fmt.Errorf("bad concurrent snapshot %v %v", v, e)
++						return
++					}
++				}
++			}
++		}(i)
++	}
++	wg.Wait()
++	close(errs)
++	for e := range errs {
++		t.Error(e)
++	}
++	reopened, e := NewYamlNodeStore(path)
++	if e != nil {
++		t.Fatal(e)
++	}
++	requireNodeStore(t, reopened, want)
++}
++
++func TestYamlNodeStoreMalformedStartup(t *testing.T) {
++	_, path, _ := nodeStoreFixture(t)
++	if err := os.WriteFile(path, []byte("invalid: ["), 0600); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := NewYamlNodeStore(path); err == nil {
++		t.Fatal("malformed startup accepted")
++	}
++}
++
++// External strace checks actual fsync/rename counts; a separate injected fsync EIO
++// verifies that a failed syscall cannot be converted into a cached success.
++func TestYamlNodeStorePersistenceSyscallProbe(t *testing.T) {
++	mode := os.Getenv("GPUWORKS_NODESTORE_PROBE")
++	if mode == "" {
++		return
++	}
++	s, path, nodes := nodeStoreFixture(t)
++	if mode == "startup" {
++		initial := []byte("- ID: 1\n  Address: 127.0.0.1:9001\n  Role: 0\n- ID: 2\n  Address: 127.0.0.1:9002\n  Role: 1\n")
++		if e := os.WriteFile(path, initial, 0600); e != nil {
++			t.Fatal(e)
++		}
++		var e error
++		s, e = NewYamlNodeStore(path)
++		if e != nil {
++			t.Fatal(e)
++		}
++	}
++	err := s.Set(context.Background(), nodes)
++	if mode == "sync-error" {
++		if err == nil {
++			t.Fatal("expected injected real fsync failure")
++		}
++		got, _ := s.Get(context.Background())
++		if len(got) != 0 {
++			t.Fatal("failed fsync published memory")
++		}
++	} else if err != nil {
++		t.Fatal(err)
++	}
++	if mode == "changed" {
++		nodes[0].Role = NodeRole(2)
++	}
++	if mode == "repair" {
++		if e := os.Truncate(path, 0); e != nil {
++			t.Fatal(e)
++		}
++	}
++	if err = s.Set(context.Background(), nodes); err != nil {
++		t.Fatal(err)
++	}
++	requireNodeStore(t, s, nodes)
++	reopened, e := NewYamlNodeStore(path)
++	if e != nil {
++		t.Fatal(e)
++	}
++	requireNodeStore(t, reopened, nodes)
++}

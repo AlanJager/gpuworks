@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -150,8 +151,10 @@ func (s *Store) Close() error {
 		return nil
 	}
 	defer s.releaseDatabase()
+	// A replicated store has a third pool; the pools may also be shared.
+	seen := map[*sql.DB]bool{}
 	var closeErr error
-	for _, db := range []*gorm.DB{s.readDB, s.db} {
+	for _, db := range []*gorm.DB{s.schedulingDB, s.readDB, s.db} {
 		if db == nil {
 			continue
 		}
@@ -160,7 +163,16 @@ func (s *Store) Close() error {
 			closeErr = errors.Join(closeErr, err)
 			continue
 		}
-		closeErr = errors.Join(closeErr, pool.Close())
+		if !seen[pool] {
+			closeErr = errors.Join(closeErr, pool.Close())
+			seen[pool] = true
+		}
+	}
+	// The runtime lease and a replicated backend outlive the pools: nothing
+	// else may own the database until its connections are gone.
+	if s.closeBackend != nil {
+		closeErr = errors.Join(closeErr, s.closeBackend())
+		s.closeBackend = nil
 	}
 	return closeErr
 }

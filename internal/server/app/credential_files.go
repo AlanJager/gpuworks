@@ -16,33 +16,76 @@ import (
 // openCredentialStore enforces credential permissions and creation policy
 // before the rest of the server allocates resources or accepts requests.
 func openCredentialStore(cfg Config, events *bus.Bus, log *slog.Logger) (*store.Store, string, error) {
-	if err := cfg.Extensions.validate(); err != nil {
-		return nil, "", err
-	}
-	policy, err := startupCredentialPolicy(cfg)
+	return openCredentialStoreWith(cfg, log, func(o store.OpenOptions) (*store.Store, error) {
+		return store.OpenWith(cfg.DBPath, events, o)
+	})
+}
+
+// openCredentialStoreWith is openCredentialStore around the caller's way of
+// opening the database: the same policy, key and account steps guard every
+// kind of store this server runs on.
+func openCredentialStoreWith(cfg Config, log *slog.Logger, open func(store.OpenOptions) (*store.Store, error)) (*store.Store, string, error) {
+	policy, master, err := startupCredentials(cfg, log)
 	if err != nil {
 		return nil, "", err
 	}
-	if err := protectStartupCredentials(cfg, log, policy); err != nil {
-		return nil, "", err
-	}
-	master, err := masterSecret(cfg, policy)
-	if err != nil {
-		return nil, "", fmt.Errorf("load credential encryption key: %w", err)
-	}
-	st, err := store.OpenWith(cfg.DBPath, events, store.OpenOptions{Policies: []securefile.Policy{policy}, Extensions: MigrationSets(cfg.Extensions)})
+	st, err := open(storeOptions(cfg, policy))
 	if err != nil {
 		return nil, "", err
 	}
-	if err := checkStoredPluginState(st); err != nil {
-		_ = st.Close()
-		return nil, "", err
-	}
-	if err := bootstrapAdminAccount(cfg, st, log, policy); err != nil {
+	if err := admitCredentialStore(cfg, st, log, policy); err != nil {
 		_ = st.Close()
 		return nil, "", err
 	}
 	return st, master, nil
+}
+
+// startupCredentials is the part of openCredentialStore that needs no
+// database: extension validation, credential file protection and the
+// credential encryption key.
+func startupCredentials(cfg Config, log *slog.Logger) (securefile.Policy, string, error) {
+	policy, err := protectedCredentialPolicy(cfg, log)
+	if err != nil {
+		return securefile.Policy{}, "", err
+	}
+	master, err := masterSecret(cfg, policy)
+	if err != nil {
+		return securefile.Policy{}, "", fmt.Errorf("load credential encryption key: %w", err)
+	}
+	return policy, master, nil
+}
+
+// protectedCredentialPolicy validates the extensions and protects the
+// credential files, without reading or creating the credential encryption
+// key.
+func protectedCredentialPolicy(cfg Config, log *slog.Logger) (securefile.Policy, error) {
+	if err := cfg.Extensions.validate(); err != nil {
+		return securefile.Policy{}, err
+	}
+	policy, err := startupCredentialPolicy(cfg)
+	if err != nil {
+		return securefile.Policy{}, err
+	}
+	if err := protectStartupCredentials(cfg, log, policy); err != nil {
+		return securefile.Policy{}, err
+	}
+	return policy, nil
+}
+
+// storeOptions are the options every store of this server opens with.
+func storeOptions(cfg Config, policy securefile.Policy) store.OpenOptions {
+	return store.OpenOptions{Policies: []securefile.Policy{policy}, Extensions: MigrationSets(cfg.Extensions)}
+}
+
+// admitCredentialStore is the part of openCredentialStore that follows the
+// open: it refuses stored plugin state this build cannot run and creates the
+// first administrator. It writes, so a store whose business is closed is
+// admitted only once it opens.
+func admitCredentialStore(cfg Config, st *store.Store, log *slog.Logger, policy securefile.Policy) error {
+	if err := checkStoredPluginState(st); err != nil {
+		return err
+	}
+	return bootstrapAdminAccount(cfg, st, log, policy)
 }
 
 // configuredInstallLayout identifies the installation that owns this binary.

@@ -1,0 +1,137 @@
+--- a/src/raft/uv_append.c
++++ b/src/raft/uv_append.c
+@@ -119,6 +119,8 @@
+ 	struct uv *uv = segment->uv;
+ 	uvSegmentBufferClose(&segment->pending);
+ 	RaftHeapFree(segment);
++	dqlite_assert(uv->append_closing_writers > 0);
++	uv->append_closing_writers--;
+ 	uvMaybeFireCloseCb(uv);
+ }
+ 
+@@ -137,6 +139,9 @@
+ 	}
+ 
+ 	queue_remove(&s->queue);
++	/* The segment has left append_segments, but its writer still owns
++	 * memory and a callback that refer to this instance. */
++	uv->append_closing_writers++;
+ 	UvWriterClose(&s->writer, uvAliveSegmentWriterCloseCb);
+ }
+ 
+--- a/src/raft/uv.c
++++ b/src/raft/uv.c
+@@ -177,6 +177,9 @@
+ 	if (!queue_empty(&uv->append_segments)) {
+ 		return;
+ 	}
++	if (uv->append_closing_writers != 0) {
++		return;
++	}
+ 	if (!queue_empty(&uv->finalize_reqs)) {
+ 		return;
+ 	}
+@@ -720,6 +723,7 @@
+ 	uv->prepare_next_counter = 1;
+ 	uv->append_next_index = 1;
+ 	queue_init(&uv->append_segments);
++	uv->append_closing_writers = 0;
+ 	queue_init(&uv->append_pending_reqs);
+ 	queue_init(&uv->append_writing_reqs);
+ 	uv->barrier = NULL;
+--- a/src/raft/uv.h
++++ b/src/raft/uv.h
+@@ -80,6 +80,7 @@
+ 	queue append_segments;          /* Open segments in use. */
+ 	queue append_pending_reqs;      /* Pending append requests. */
+ 	queue append_writing_reqs;      /* Append requests in flight */
++	unsigned append_closing_writers; /* Segment writers being closed */
+ 	struct UvBarrier *barrier;      /* Inflight barrier request */
+ 	queue finalize_reqs;            /* Segments waiting to be closed */
+ 	struct uv_work_s finalize_work; /* Resize and rename segments */
+--- a/src/raft/uv_writer.c
++++ b/src/raft/uv_writer.c
+@@ -250,6 +250,7 @@
+ 	w->event_fd = -1;
+ 	w->event_poller.data = NULL;
+ 	w->check.data = NULL;
++	w->close_work.data = NULL;
+ 	w->close_cb = NULL;
+ 	queue_init(&w->poll_queue);
+ 	queue_init(&w->work_queue);
+@@ -334,19 +335,61 @@
+ 	return rv;
+ }
+ 
+-static void uvWriterCleanUpAndFireCloseCb(struct UvWriter *w)
++/* Release the file descriptor and the KAIO context.
++ *
++ * io_destroy() sleeps uninterruptibly until the context is quiescent, which
++ * always costs at least an RCU grace period and has no upper bound while a
++ * write is stuck in the kernel; close() can block in a file system's flush
++ * and release hooks. Both must stay off the loop thread, which drives the
++ * raft heartbeats. Nothing else refers to the descriptor or to the context
++ * at this point: the event poller is closed, every polled request has been
++ * finished and no threadpool write is in flight. */
++static void uvWriterReleaseOsResources(struct UvWriter *w)
+ {
+-	dqlite_assert(w->closing);
+-
+ 	UvOsClose(w->fd);
+-	RaftHeapFree(w->events);
+ 	UvOsIoDestroy(w->ctx);
++}
+ 
++static void uvWriterFireCloseCb(struct UvWriter *w)
++{
++	RaftHeapFree(w->events);
+ 	if (w->close_cb != NULL) {
+ 		w->close_cb(w);
+ 	}
+ }
+ 
++static void uvWriterCloseWorkCb(uv_work_t *work)
++{
++	struct UvWriter *w = work->data;
++	uvWriterReleaseOsResources(w);
++}
++
++static void uvWriterCloseAfterWorkCb(uv_work_t *work, int status)
++{
++	struct UvWriter *w = work->data;
++	if (status != 0) {
++		/* The work never ran: release here rather than leak. */
++		uvWriterReleaseOsResources(w);
++	}
++	uvWriterFireCloseCb(w);
++}
++
++static void uvWriterCleanUpAndFireCloseCb(struct UvWriter *w)
++{
++	int rv;
++	dqlite_assert(w->closing);
++
++	w->close_work.data = w;
++	rv = uv_queue_work(w->loop, &w->close_work, uvWriterCloseWorkCb,
++			   uvWriterCloseAfterWorkCb);
++	if (rv != 0) {
++		/* UNTESTED: with the current libuv implementation this can't
++		 * fail. Fall back to releasing on the loop thread. */
++		uvWriterReleaseOsResources(w);
++		uvWriterFireCloseCb(w);
++	}
++}
++
+ static void uvWriterPollerCloseCb(struct uv_handle_s *handle)
+ {
+ 	struct UvWriter *w = handle->data;
+--- a/src/raft/uv_writer.h
++++ b/src/raft/uv_writer.h
+@@ -29,6 +29,7 @@
+ 	struct uv_poll_s
+ 	    event_poller;        /* Poll event_fd for completed poll requests */
+ 	struct uv_check_s check; /* Check for completed threadpool requests */
++	struct uv_work_s close_work; /* Release OS resources off the loop */
+ 	UvWriterCloseCb close_cb; /* Close callback */
+ 	queue poll_queue;         /* Pollable write requests */
+ 	queue work_queue;         /* Threadpool write requests */

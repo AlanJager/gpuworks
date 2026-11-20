@@ -83,7 +83,7 @@ func testCustomCallableImageDeploys(t *testing.T, loaderFails bool) {
 	}
 	t.Cleanup(func() { stopProcess(agent) })
 	node := waitNode(t, base, adminToken, func(candidate processNode) bool {
-		return candidate.UUID == seed.UUID && candidate.State == "online"
+		return candidate.UUID == seed.UUID && candidate.State == "online" && candidate.GPUCount == 1
 	})
 
 	// 1. The custom tab's form: any reference, engine callable, framework

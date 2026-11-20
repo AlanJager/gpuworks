@@ -1,0 +1,16 @@
+--- a/src/conn.c
++++ b/src/conn.c
+@@ -33,7 +33,12 @@
+ 	int rv;
+ 	if (status != 0) {
+ 		conn_trace(c, "write cb status %d", status);
+-		goto abort;
++		conn__stop(c);
++		/* A query yielding rows resumes only from this callback. Resume
++		 * its cancelled exec, or the gateway never finalizes its leader
++		 * and db__close aborts on the leaked leaders count. */
++		(void)gateway__resume(&c->gateway, &finished);
++		return;
+ 	}
+ 
+ 	buffer__reset(&c->write);

@@ -119,6 +119,11 @@ func TestAdminBootstrapLogSilentOnSecondStart(t *testing.T) {
 	if strings.Contains(first.String(), "password=") {
 		t.Fatal("first start exposed the generated password in the log")
 	}
+	// A second start follows a stopped server; a clustered database refuses
+	// a second owner while the first still holds it.
+	if err := firstApp.Close(); err != nil {
+		t.Fatalf("stop the first start: %v", err)
+	}
 
 	var second strings.Builder
 	secondApp, err := New(cfg, slog.New(slog.NewTextHandler(&second, nil)))

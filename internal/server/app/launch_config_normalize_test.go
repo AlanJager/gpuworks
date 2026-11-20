@@ -34,7 +34,7 @@ func legacyDeployment() *store.Deployment {
 
 func openStoreWithLegacyRow(t *testing.T, dbPath string) (*store.Store, uint) {
 	t.Helper()
-	st, err := store.Open(dbPath, bus.New())
+	st, err := openServerDatabase(t, dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;`).Error; err != nil {
 		t.Fatal("a launch configuration that could not be written must abort startup")
 	}
 
-	reopened, err := store.Open(dbPath, bus.New())
+	reopened, err := openServerDatabase(t, dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}

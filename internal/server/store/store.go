@@ -5,11 +5,13 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -21,7 +23,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 )
 
-// Store wraps the database handle and the event bus.
 type Store struct {
 	db  *gorm.DB
 	Bus *bus.Bus
@@ -87,6 +88,29 @@ type Store struct {
 	// again (event_retention.go). Same-package tests set it; nil in
 	// production.
 	eventRetentionBatchHook func(deleted int64)
+	// schedulingDB is the local-only database connection for replicated
+	// scheduling decisions. SQLite single-member stores use db when nil.
+	schedulingDB                  *gorm.DB
+	localSchedulingLeader         func(context.Context) (bool, error)
+	closeBackend                  func() error
+	refreshTransportAuthorization func(context.Context) error
+	confirmTransportAuthorization transportAuthorizationConfirmation
+	grantClusterMembership        clusterMembershipGrant
+	grantClusterMembershipKeys    func(context.Context, ClusterIdentity, []string) (uint64, []ClusterTransportMember, error)
+	// diagnosticLogger is configured before the Store is shared with workers.
+	diagnosticLogger     *slog.Logger
+	currentClusterLeader func(context.Context) (uint64, error)
+
+	businessWriteBarrier *businessWriteBarrier
+	inferenceMembership  func(context.Context) error
+	// maintenanceToken is process-local and shared with Store copies. It is not a replicated ledger.
+	maintenanceToken *maintenanceToken
+	// agentStatusTx marks a scoped ordinary-pool transaction. Agent reports are
+	// not scheduling decisions and must remain writable on dqlite followers.
+	agentStatusTx bool
+	// fencedSchedulingTx marks a scoped transaction whose owner already checks
+	// the scheduling generation before and after all enclosed writes.
+	fencedSchedulingTx bool
 }
 
 func (s *Store) SetSecretbox(box *auth.Secretbox) { s.secretbox = box }
@@ -123,8 +147,6 @@ func HashToken(tok string) string {
 var ErrNotFound = errors.New("not found")
 var ErrReferenced = errors.New("resource is referenced")
 
-// ErrCatalogManaged refuses deleting an official (catalog-managed) image
-// version or series: the catalog deprecates them instead.
 var ErrCatalogManaged = errors.New("official images are managed by the catalog")
 
 // ---- node queries ----
@@ -167,8 +189,14 @@ func (s *Store) ListNodes() ([]Node, error) {
 // online state survives a restart; the hub's live sessions decide which of
 // these nodes actually needs reconnecting.
 func (s *Store) ServerDialNodes() ([]Node, error) {
+	return s.ServerDialNodesContext(context.Background())
+}
+
+// ServerDialNodesContext binds node discovery to the reconnect owner so loss of
+// database quorum cannot keep that owner alive after cancellation.
+func (s *Store) ServerDialNodesContext(ctx context.Context) ([]Node, error) {
 	var nodes []Node
-	err := s.db.Where("connect_mode = ? AND server_dial_address <> ''", "server_dial").Order("id").Find(&nodes).Error
+	err := s.db.WithContext(ctx).Where("connect_mode = ? AND server_dial_address <> ''", "server_dial").Order("id").Find(&nodes).Error
 	return nodes, err
 }
 
@@ -216,10 +244,6 @@ func NodeLabels(raw string) (map[string]string, error) {
 	return labels, nil
 }
 
-// RegisterNode creates a node during bootstrap and stores the token hash.
-// Returns the created node. Publishes a node.changed event after commit.
-// legacyTokenPrefix marks a Token column that holds no plaintext token: rows
-// registered with only a token hash.
 const legacyTokenPrefix = "legacy-"
 
 // PlaintextToken is the node's token as its agent holds it, false for a row

@@ -344,6 +344,7 @@ server 启动时以及之后每 6 小时按这两个上限清理一次事件，�
 |---|---|---|---|
 | `GPUWORKS_ADMIN_PASSWORD` | 无 | 首次创建 admin 账户时的初始密码；`gpuworks install` 也按 `--password` > 该变量 > 交互 > 随机 的顺序使用它。只在创建账户时读取 | `gpuworks serve`、`gpuworks install` |
 | `GPUWORKS_ADDR`、`GPUWORKS_DATA_DIR`、`GPUWORKS_TRUSTED_PROXIES` | 无 | 仅为 `server.yaml` 之前的老单元保留：命令行与 `server.yaml` 都没提供对应值时才生效，`install` 接管后不再使用 | `gpuworks serve` |
+| `GPUWORKS_DQLITE_BIN` | server 可执行文件旁边的 `gpuworks-dqlite` | 只在带 `dqlite` 标签的 Linux 构建里读取：数据库辅助程序的路径。集群安装把辅助程序放在 server 旁边，不需要设置。集群的存储档位不是环境变量或 `server.yaml` 的键：它在安装时确定并记录在成员的 `cluster-enrollment/config.json` 里，见[存储档位](../how-to/control-plane-cluster.md#存储档位) | [安装三成员控制面集群](../how-to/control-plane-cluster.md) |
 
 ### Agent 环境变量
 

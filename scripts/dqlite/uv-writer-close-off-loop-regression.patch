@@ -1,0 +1,293 @@
+--- a/test/raft/integration/test_uv_append.c
++++ b/test/raft/integration/test_uv_append.c
+@@ -4,6 +4,7 @@
+ #include "../lib/uv.h"
+ #include "append_helpers.h"
+ 
++#include <time.h>
+ #include <unistd.h>
+ 
+ /* Maximum number of blocks a segment can have */
+@@ -67,6 +68,50 @@
+ 
+ /******************************************************************************
+  *
++ * Slow io_destroy(2), interposed at link time with -Wl,--wrap=io_destroy.
++ *
++ *****************************************************************************/
++
++int __real_io_destroy(aio_context_t ctx);
++int __wrap_io_destroy(aio_context_t ctx);
++
++static unsigned slowDestroyMsecs;   /* Sleep this long before destroying */
++static unsigned slowDestroyStarted; /* Destroys entered while slowed down */
++static unsigned slowDestroyDone;    /* Destroys completed while slowed down */
++
++int __wrap_io_destroy(aio_context_t ctx)
++{
++    unsigned msecs = __atomic_load_n(&slowDestroyMsecs, __ATOMIC_SEQ_CST);
++    int rv;
++    if (msecs != 0) {
++        struct timespec ts = {msecs / 1000, (long)(msecs % 1000) * 1000000};
++        __atomic_add_fetch(&slowDestroyStarted, 1, __ATOMIC_SEQ_CST);
++        nanosleep(&ts, NULL);
++    }
++    rv = __real_io_destroy(ctx);
++    if (msecs != 0) {
++        __atomic_add_fetch(&slowDestroyDone, 1, __ATOMIC_SEQ_CST);
++    }
++    return rv;
++}
++
++struct slowClose
++{
++    bool closed;
++    unsigned started; /* Destroys entered when the instance reported closed */
++    unsigned done;    /* Destroys completed at that time */
++};
++
++static void slowCloseCb(struct raft_io *io)
++{
++    struct slowClose *c = io->data;
++    c->started = __atomic_load_n(&slowDestroyStarted, __ATOMIC_SEQ_CST);
++    c->done = __atomic_load_n(&slowDestroyDone, __ATOMIC_SEQ_CST);
++    c->closed = true;
++}
++
++/******************************************************************************
++ *
+  * Assertions
+  *
+  *****************************************************************************/
+@@ -1005,3 +1050,113 @@
+     APPEND_WAIT(0);
+     return MUNIT_OK;
+ }
++
++/* The instance reports closed only after every segment writer has released its
++ * KAIO context, however long the kernel takes. Nothing may refer to the
++ * instance afterwards. */
++TEST(append, closeWaitsForSlowWriterRelease, setUp, tearDownDeps, 0, NULL)
++{
++    struct fixture *f = data;
++    struct slowClose c = {false, 0, 0};
++    uint64_t deadline = uv_hrtime() + 30 * 1000000000ULL;
++    APPEND(MAX_SEGMENT_BLOCKS, SEGMENT_BLOCK_SIZE);
++    APPEND(1, 64);
++    __atomic_store_n(&slowDestroyStarted, 0, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&slowDestroyDone, 0, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&slowDestroyMsecs, 300, __ATOMIC_SEQ_CST);
++    f->io.data = &c;
++    f->io.close(&f->io, slowCloseCb);
++    while (!c.closed) {
++        munit_assert_true(uv_hrtime() < deadline);
++        uv_run(&f->loop, UV_RUN_ONCE);
++    }
++    __atomic_store_n(&slowDestroyMsecs, 0, __ATOMIC_SEQ_CST);
++    munit_assert_uint(c.started, >=, 1);
++    munit_assert_uint(c.done, ==, c.started);
++    munit_assert_uint(__atomic_load_n(&slowDestroyStarted, __ATOMIC_SEQ_CST), ==,
++                      c.started);
++    raft_uv_close(&f->io);
++    return MUNIT_OK;
++}
++
++/* Many segments are filled and finalized back to back while the kernel is slow
++ * to destroy each context, so several writers are being released at once; the
++ * instance is then closed in the middle of it. Every context must be destroyed
++ * before the instance reports closed, and the entries must all be on disk. */
++TEST(append, segmentChurnWithSlowWriterRelease, setUp, tearDownDeps, 0, NULL)
++{
++    struct fixture *f = data;
++    struct slowClose c = {false, 0, 0};
++    uint64_t deadline = uv_hrtime() + 120 * 1000000000ULL;
++    int i;
++    __atomic_store_n(&slowDestroyStarted, 0, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&slowDestroyDone, 0, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&slowDestroyMsecs, 20, __ATOMIC_SEQ_CST);
++    for (i = 0; i < 300; i++) {
++        APPEND_SUBMIT(0, MAX_SEGMENT_BLOCKS, SEGMENT_BLOCK_SIZE);
++        while (!_result0.done) {
++            munit_assert_true(uv_hrtime() < deadline);
++            uv_run(&f->loop, UV_RUN_ONCE);
++        }
++    }
++    f->io.data = &c;
++    f->io.close(&f->io, slowCloseCb);
++    while (!c.closed) {
++        munit_assert_true(uv_hrtime() < deadline);
++        uv_run(&f->loop, UV_RUN_ONCE);
++    }
++    __atomic_store_n(&slowDestroyMsecs, 0, __ATOMIC_SEQ_CST);
++    /* One writer per filled segment, plus the ones prepared ahead. */
++    munit_assert_uint(c.started, >=, 300);
++    munit_assert_uint(c.done, ==, c.started);
++    munit_assert_uint(__atomic_load_n(&slowDestroyStarted, __ATOMIC_SEQ_CST), ==,
++                      c.started);
++    raft_uv_close(&f->io);
++    do {
++        struct uv_loop_s _loop;
++        struct raft_uv_transport _transport;
++        struct raft_io _io;
++        raft_term _term;
++        raft_id _voted_for;
++        struct raft_snapshot *_snapshot;
++        raft_index _start_index;
++        struct raft_entry *_entries;
++        size_t _n;
++        void *_batch = NULL;
++        size_t _i;
++        int _rv;
++        _rv = uv_loop_init(&_loop);
++        munit_assert_int(_rv, ==, 0);
++        _transport.version = 1;
++        _rv = raft_uv_tcp_init(&_transport, &_loop);
++        munit_assert_int(_rv, ==, 0);
++        _rv = raft_uv_init(&_io, &_loop, f->dir, &_transport);
++        munit_assert_int(_rv, ==, 0);
++        _rv = _io.init(&_io, 1, "1");
++        munit_assert_int(_rv, ==, 0);
++        _rv = _io.load(&_io, &_term, &_voted_for, &_snapshot, &_start_index,
++                       &_entries, &_n);
++        munit_assert_int(_rv, ==, 0);
++        _io.close(&_io, NULL);
++        uv_run(&_loop, UV_RUN_NOWAIT);
++        raft_uv_close(&_io);
++        raft_uv_tcp_close(&_transport);
++        uv_loop_close(&_loop);
++        munit_assert_ptr_null(_snapshot);
++        munit_assert_size(_n, ==, 300 * MAX_SEGMENT_BLOCKS);
++        for (_i = 0; _i < _n; _i++) {
++            struct raft_entry *_entry = &_entries[_i];
++            uint64_t _value = *(uint64_t *)_entry->buf.base;
++            munit_assert_ullong(_value, ==, _i);
++        }
++        for (_i = 0; _i < _n; _i++) {
++            struct raft_entry *_entry = &_entries[_i];
++            if (_entry->batch != _batch) {
++                _batch = _entry->batch;
++                raft_free(_batch);
++            }
++        }
++        raft_free(_entries);
++    } while (0);
++    return MUNIT_OK;
++}
+--- a/test/raft/unit/test_uv_writer.c
++++ b/test/raft/unit/test_uv_writer.c
+@@ -1,3 +1,5 @@
++#include <time.h>
++
+ #include "../../../src/raft/uv_fs.h"
+ #include "../../../src/raft/uv_writer.h"
+ #include "../lib/aio.h"
+@@ -27,6 +29,57 @@
+ 
+ /******************************************************************************
+  *
++ * Slow io_destroy(2), interposed at link time with -Wl,--wrap=io_destroy.
++ *
++ *****************************************************************************/
++
++int __real_io_destroy(aio_context_t ctx);
++int __wrap_io_destroy(aio_context_t ctx);
++
++static unsigned slowDestroyMsecs;  /* Sleep this long before destroying */
++static unsigned slowDestroyDone;   /* Destroys completed while slowed down */
++
++int __wrap_io_destroy(aio_context_t ctx)
++{
++    unsigned msecs = __atomic_load_n(&slowDestroyMsecs, __ATOMIC_SEQ_CST);
++    int rv;
++    if (msecs != 0) {
++        struct timespec ts = {msecs / 1000, (long)(msecs % 1000) * 1000000};
++        nanosleep(&ts, NULL);
++    }
++    rv = __real_io_destroy(ctx);
++    if (msecs != 0) {
++        __atomic_add_fetch(&slowDestroyDone, 1, __ATOMIC_SEQ_CST);
++    }
++    return rv;
++}
++
++struct heartbeat
++{
++    uint64_t last;    /* Time of the previous tick, in nanoseconds */
++    uint64_t max_gap; /* Longest interval between two ticks */
++    unsigned ticks;
++};
++
++static void heartbeatCb(uv_timer_t *timer)
++{
++    struct heartbeat *h = timer->data;
++    uint64_t now = uv_hrtime();
++    if (now - h->last > h->max_gap) {
++        h->max_gap = now - h->last;
++    }
++    h->last = now;
++    h->ticks++;
++}
++
++static void heartbeatCloseCb(uv_handle_t *handle)
++{
++    bool *closed = handle->data;
++    *closed = true;
++}
++
++/******************************************************************************
++ *
+  * Helper macros.
+  *
+  *****************************************************************************/
+@@ -389,3 +442,51 @@
+     WRITE_CLOSE(1, 0, 0, RAFT_CANCELED);
+     return MUNIT_OK;
+ }
++
++/* Destroying the KAIO context sleeps in the kernel. The loop must keep running
++ * its timers meanwhile, and the close callback must not fire before the
++ * context is actually destroyed. */
++TEST(UvWriterClose, slowDestroy, setUp, tearDownDeps, 0, NULL)
++{
++    struct fixture *f = data;
++    struct heartbeat heartbeat = {0, 0, 0};
++    uv_timer_t timer;
++    bool timer_closed = false;
++    uint64_t deadline;
++    unsigned done;
++    int rv;
++    SKIP_IF_NO_FIXTURE;
++    WRITE(1, 0, 0);
++
++    rv = uv_timer_init(&f->loop, &timer);
++    munit_assert_int(rv, ==, 0);
++    timer.data = &heartbeat;
++    rv = uv_timer_start(&timer, heartbeatCb, 10, 10);
++    munit_assert_int(rv, ==, 0);
++
++    __atomic_store_n(&slowDestroyDone, 0, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&slowDestroyMsecs, 500, __ATOMIC_SEQ_CST);
++    heartbeat.last = uv_hrtime();
++    deadline = heartbeat.last + 20 * 1000000000ULL;
++    CLOSE_SUBMIT;
++    while (!f->closed) {
++        munit_assert_true(uv_hrtime() < deadline);
++        uv_run(&f->loop, UV_RUN_ONCE);
++    }
++    heartbeatCb(&timer); /* Account for the interval that ends now. */
++    done = __atomic_load_n(&slowDestroyDone, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&slowDestroyMsecs, 0, __ATOMIC_SEQ_CST);
++
++    timer.data = &timer_closed;
++    uv_close((uv_handle_t *)&timer, heartbeatCloseCb);
++    while (!timer_closed) {
++        uv_run(&f->loop, UV_RUN_ONCE);
++    }
++
++    /* The context was destroyed exactly once, before the close callback. */
++    munit_assert_uint(done, ==, 1);
++    /* The loop was never away for half of the time the destroy took. */
++    munit_assert_ullong(heartbeat.max_gap, <, 250 * 1000000ULL);
++    munit_assert_uint(heartbeat.ticks, >=, 10);
++    return MUNIT_OK;
++}

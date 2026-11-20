@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -422,9 +423,12 @@ func firstNonEmpty(vals ...string) string {
 // ---- settings ----
 
 func (a *apiHandlers) getSettings(w http.ResponseWriter, r *http.Request) {
-	m, err := a.d.Store.AllSettings()
+	// A leadership transition closes in-flight reads with transient driver
+	// errors. The request-boundary retry keeps the same freshness contract; it
+	// never serves stale or cached settings.
+	m, err := allSettingsWithReadRetry(r.Context(), a.d.Store.AllSettings, store.ClusterMembershipGrantTimeout)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeErr(w, settingsStoreErrorStatus(err), err)
 		return
 	}
 	// Values are JSON strings; return them parsed for convenience.
@@ -449,12 +453,16 @@ func (a *apiHandlers) getSettings(w http.ResponseWriter, r *http.Request) {
 	delete(out, store.SettingBranding.String())
 	// Data retention has its bounds and status beside it on its own route.
 	delete(out, store.SettingDataRetention.String())
-	out[store.SettingDeploymentPolicy.String()] = a.deploymentPolicyJSON()
+	out[store.SettingDeploymentPolicy.String()] = deploymentPolicyJSON(m[store.SettingDeploymentPolicy.String()])
 	writeJSON(w, http.StatusOK, out)
 }
 
 func (a *apiHandlers) putSetting(w http.ResponseWriter, r *http.Request) {
 	key := chi.URLParam(r, "key")
+	if store.IsInternalSchedulingSetting(store.SettingKey(key)) {
+		writeErr(w, http.StatusForbidden, store.ErrInternalSchedulingSetting)
+		return
+	}
 	if key == "default_model_source" {
 		writeProductError(w, http.StatusGone, ErrorSettingRemoved, "default_model_source has been removed; choose model_source explicitly", map[string]any{"setting": key})
 		return
@@ -564,8 +572,11 @@ func (a *apiHandlers) putSetting(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.d.Store.SetSetting(store.SettingKey(key), string(body)); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+	if err := setSettingWithWriteRetry(r.Context(), func(ctx context.Context) error {
+		return a.d.Store.SetBusinessSetting(ctx, store.SettingKey(key), string(body))
+	}, settingsWriteRetryBudget); err != nil {
+		a.logSettingWriteError(r, err)
+		writeErr(w, settingsStoreErrorStatus(err), err)
 		return
 	}
 	if key == "orphan_cleanup" {
