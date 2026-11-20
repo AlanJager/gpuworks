@@ -50,7 +50,7 @@ export default function CardTestResult({ run }: { run: NetworkTestRun }) {
             type={odd.length > 0 && verdictType[verdict] === "success" ? "warning" : verdictType[verdict]}
             showIcon
             message={t(`test.card.verdict.${matrix ? "matrix" : "ping"}.${verdict}`)}
-            description={odd.length > 0 ? t("test.card.odd", { count: odd.length, pairs: shown + (odd.length > 5 ? t("test.card.more", { count: odd.length - 5 }) : "") }) : undefined}
+            description={odd.length > 0 ? <span className="text-fg-default">{t("test.card.odd", { count: odd.length, pairs: shown + (odd.length > 5 ? t("test.card.more", { count: odd.length - 5 }) : "") })}</span> : undefined}
           />
         )}
         {run.pairs.length === 1
