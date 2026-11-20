@@ -356,6 +356,30 @@ test("a chart group with real series renders the chart instead of the not-collec
   assert.equal(screen.queryByText("Not collected yet"), null);
 });
 
+// A deployment that has just started has one scrape per chart. Every chart is
+// drawn on the selected range's window, with the point visible, rather than on
+// the day-wide axis a lone point gets from ECharts; the kv chart stays 0..100.
+test("one scrape per chart is drawn on the selected range's window", async () => {
+  const before = Date.now();
+  const at = before - 20_000;
+  const lone = (series: Array<{ labels: Record<string, string>; points: Array<[number, number]> }>) => series.map((s) => ({ ...s, points: [[at, s.points[0][1]]] as Array<[number, number]> }));
+  const charts = Object.fromEntries(Object.entries(deployment.charts).map(([key, series]) => [key, lone(series as never)]));
+  api.monitorDeployment = async () => ({ ...deployment, charts: charts as never });
+  const { container } = renderPage("/monitor/d/102?range=15m");
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Qwen2.5-7B-Instruct" })));
+  const echarts = await import("echarts/core");
+  await waitFor(() => assert.ok(container.querySelectorAll("div[role=img] canvas").length >= 6));
+  const hosts = [...container.querySelectorAll<HTMLElement>("div[role=img]")].filter((host) => host.querySelector("canvas"));
+  assert.equal(hosts.length, Object.keys(charts).length);
+  const after = Date.now();
+  for (const host of hosts) {
+    const option = echarts.getInstanceByDom(host)!.getOption() as { xAxis: Array<{ min: number; max: number }>; series: Array<{ showSymbol: boolean }> };
+    assert.equal(option.xAxis[0].max - option.xAxis[0].min, 15 * 60_000);
+    assert.ok(option.xAxis[0].max >= before && option.xAxis[0].max <= after);
+    assert.ok(option.series.every((line) => line.showSymbol === true));
+  }
+});
+
 test("an invalid deployment id in the URL shows a not-found message without fetching", async () => {
   let calls = 0;
   api.monitorDeployment = async () => { calls += 1; return deployment; };

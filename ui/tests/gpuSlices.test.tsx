@@ -51,7 +51,7 @@ const dgpus = fixture("dgpus");
 const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: GPUPage } = await import("../src/pages/GPUPage.tsx");
-const { movingAverage } = await import("../src/pages/gpus/GPUDetailDrawers.tsx");
+const { DGPUHistory, movingAverage } = await import("../src/pages/gpus/GPUDetailDrawers.tsx");
 const { memorySegments } = await import("../src/components/GPUMemoryComposition.tsx");
 const { gpuModelSummary } = await import("../src/nodes/cardIdentity.ts");
 
@@ -224,4 +224,36 @@ test("a mixed node is summarised by model, not after its first card", () => {
   assert.equal(gpuModelSummary({ gpu_count: 2, gpus: [{ name: "Quadro RTX 8000" }, { name: "NVIDIA GeForce RTX 2080 Ti" }] }), "1 × Quadro RTX 8000 · 1 × GeForce RTX 2080 Ti");
   assert.equal(gpuModelSummary({ gpu_count: 8, gpus: Array.from({ length: 8 }, () => ({ name: "NVIDIA H100" })) }), "8 × H100");
   assert.equal(gpuModelSummary({ gpu_count: 2, gpus: [] }), "2 × GPU");
+});
+
+// A slice that has reported one sample is drawn on the range chosen, with the
+// SM reference on its 0..100 axis and the VRAM on its 0..limit axis.
+test("a slice's history charts hold the selected range as their time axis, a lone sample visible", async () => {
+  const before = Date.now();
+  const stubbed = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (!url.startsWith("/api/v1/metrics/query")) throw new Error(`Unexpected request: ${url}`);
+    return Response.json({ items: [{ labels: { gpu: "1" }, points: [[before - 20_000, 50]] }], total: 1 });
+  };
+  try {
+    const { container } = render(<I18nextProvider i18n={i18n}><DGPUHistory gpu={dgpus.items[0]} /></I18nextProvider>);
+    const echarts = await import("echarts/core");
+    const options = async () => {
+      await waitFor(() => assert.equal(container.querySelectorAll("div[role=img] canvas").length, 2));
+      return [...container.querySelectorAll<HTMLElement>("div[role=img]")].map((host) => echarts.getInstanceByDom(host)!.getOption() as { xAxis: Array<{ min: number; max: number }>; yAxis: Array<{ min: number; max: number }>; series: Array<{ showSymbol: boolean }> });
+    };
+    const quarter = await options();
+    for (const option of quarter) {
+      assert.equal(option.xAxis[0].max - option.xAxis[0].min, 15 * 60_000);
+      assert.ok(option.xAxis[0].max >= before && option.xAxis[0].max <= Date.now());
+      assert.equal(option.series[0].showSymbol, true);
+    }
+    assert.deepEqual(quarter.map((option) => [option.yAxis[0].min, option.yAxis[0].max]), [[0, dgpus.items[0].memory_limit_bytes], [0, 100]]);
+
+    fireEvent.click(screen.getByText("6h"));
+    await waitFor(async () => assert.equal((await options())[0].xAxis[0].max - (await options())[0].xAxis[0].min, 6 * 3_600_000));
+  } finally {
+    globalThis.fetch = stubbed;
+  }
 });

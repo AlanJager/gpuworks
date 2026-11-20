@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api, type MetricPoint, type MetricSeries } from "../../api";
 import type { NetworkDetail, NetworkNode } from "../../networkTypes";
 import TimeSeriesChart from "../../components/TimeSeriesChart";
+import { rangeWindow } from "../../monitorRange";
 import { formatBitRate, isAcceleratorRDMA, isHostRDMA } from "./networkDisplay";
 
 const RANGES = ["15m", "1h", "6h", "24h"] as const;
@@ -43,12 +44,15 @@ export default function NetworkMonitorPanel({ network }: { network: NetworkDetai
   const [range, setRange] = useState<Range>("1h");
   const [data, setData] = useState<Partial<Record<Metric, MetricSeries[]>> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The window the answered queries covered: a range ends when it was asked.
+  const [queryWindow, setQueryWindow] = useState<[number, number] | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
     setData(null);
+    const asked = Date.now();
     Promise.all(METRICS.map(async (metric) => [metric, (await api.metricsQuery(metric, { range, step: STEPS[range] })).items] as const))
-      .then((pairs) => { if (alive) { setData(Object.fromEntries(pairs)); setError(null); } })
+      .then((pairs) => { if (alive) { setData(Object.fromEntries(pairs)); setQueryWindow(rangeWindow(range, asked)); setError(null); } })
       .catch((e: Error) => { if (alive) setError(e.message); });
     return () => { alive = false; };
   }, [range]);
@@ -105,6 +109,7 @@ export default function NetworkMonitorPanel({ network }: { network: NetworkDetai
                 <TimeSeriesChart
                   height={200}
                   series={chart.series}
+                  xRange={queryWindow}
                   valueFmt={chart.rate ? formatBitRate : (v) => `${v.toFixed(v < 10 ? 1 : 0)}/s`}
                   seriesName={(labels) => labels.node}
                   group={`network-${network.id}`}

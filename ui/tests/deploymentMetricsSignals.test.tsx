@@ -189,3 +189,45 @@ test("a failed read is reported with the server's message and no chart claims da
   assert.equal(screen.queryByText("Waiting for Deployment Metrics"), null);
   assert.equal(screen.getAllByText("No data").length, 3);
 });
+
+// The chart's resolved option, read from the live ECharts instance in a card.
+async function chartOption(title: string) {
+  const echarts = await import("echarts/core");
+  const host = chartCard(title).querySelector<HTMLElement>('[role="img"]');
+  assert.ok(host, `${title} has a chart`);
+  const instance = echarts.getInstanceByDom(host);
+  assert.ok(instance, `${title} chart is mounted`);
+  return instance.getOption() as {
+    xAxis: Array<{ min?: number; max?: number }>;
+    yAxis: Array<{ min?: number; max?: number; interval?: number }>;
+    series: Array<{ showSymbol?: boolean; data: Array<[number, number]> }>;
+  };
+}
+
+// A deployment whose instance has been up for one scrape: every chart holds a
+// single point. They are drawn on the window the server answered for (start_ms
+// .. end_ms), and cache usage, a percentage from the server, on a 0..100 axis.
+test("one scrape per chart is drawn on the window the server answered for, with cache usage on 0..100", async () => {
+  const end = Date.now();
+  const start = end - 15 * 60_000;
+  serve({
+    start_ms: start, end_ms: end,
+    sources: { running: "engine", prompt_tokens: "engine", generation_tokens: "engine" },
+    concurrency: [line("running", [[end - 10_000, 2]], "inst-pico-1"), line("waiting", [[end - 10_000, 0]], "inst-pico-1")],
+    kv: [line("usage_pct", [[end - 10_000, 20]], "inst-pico-1")],
+    throughput: [line("prompt_tok_s", [[end - 10_000, 10]], "inst-pico-1"), line("generation_tok_s", [[end - 10_000, 80]], "inst-pico-1")],
+  });
+  renderPanel();
+  await waitFor(() => assert.ok(chartCard("Instance GPU Cache").querySelector("canvas")));
+  for (const title of ["Deployment Request Concurrency", "Token Throughput", "Instance GPU Cache"]) {
+    const option = await chartOption(title);
+    assert.deepEqual([option.xAxis[0].min, option.xAxis[0].max], [start, end], `${title} x axis is the answered window`);
+    assert.equal(option.series[0].showSymbol, true, `${title} has one point, which must be visible`);
+  }
+  const cache = await chartOption("Instance GPU Cache");
+  assert.deepEqual([cache.yAxis[0].min, cache.yAxis[0].max, cache.yAxis[0].interval], [0, 100, 20]);
+  assert.deepEqual(cache.series[0].data, [[end - 10_000, 20]], "a percentage is drawn as served, not rescaled");
+  // Concurrency is a count: not pinned.
+  const concurrency = await chartOption("Deployment Request Concurrency");
+  assert.deepEqual([concurrency.yAxis[0].min, concurrency.yAxis[0].max], [undefined, undefined]);
+});

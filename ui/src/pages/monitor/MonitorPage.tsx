@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Col, Row, Skeleton } from "antd";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import InfoTitle from "./InfoTitle";
 import RequestLookup from "./RequestLookup";
 import { DistributionState, InputOutputHeatmap } from "./RequestShapeCards";
 import { useMonitorDistributions, useMonitorOverview } from "./useMonitor";
+import { rangeWindow } from "../../monitorRange";
 
 const DISTRIBUTION_HEIGHT = 260;
 
@@ -96,6 +97,9 @@ function MonitorPageContent() {
   const lastData = useRef(data);
   if (data) lastData.current = data;
   const layoutData = data ?? lastData.current;
+  // The window the charts cover, taken again with each answer: a preset ends
+  // at the time it was asked, so the axis moves with the data, not the clock.
+  const chartWindow = useMemo(() => rangeWindow(range), [range, data]);
 
   // The service table's narrowings: the state filter (summary and column
   // funnel) and a signal tile's. Picking either replaces the other; both
@@ -180,6 +184,7 @@ function MonitorPageContent() {
                   generation={layoutData.cluster_tokens.generation}
                   events={layoutData.events}
                   group="monitor-overview"
+                  xRange={chartWindow}
                 />
               </Card>
             </Col>

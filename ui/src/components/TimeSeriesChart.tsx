@@ -37,6 +37,11 @@ interface Props {
   // [0, limit] for a slice's memory: a fitted axis turns a flat 0% line into
   // ticks reading "1 1 1 0 0 0" and hides how far a value is from its cap.
   yRange?: [number, number];
+  // xRange pins the time axis to the window the data was queried over
+  // ([startMS, endMS]): a fresh instance with one scrape then reads as one
+  // point in a 15 minute window instead of an axis a day wide. The axis
+  // widens, never clips, to a point outside it. Optional and additive.
+  xRange?: [number, number];
   // leftName names the left value axis instead of unit (which still
   // suffixes tooltip values).
   leftName?: string;
@@ -56,7 +61,7 @@ export function applyChartGroup(chart: { group: string } | null | undefined, gro
   echarts.connect(group);
 }
 
-export default function TimeSeriesChart({ series, height = 200, unit, valueFmt = autoValueFmt, seriesName = defaultSeriesName, resetKey, group, markLines, yRange, integer, leftName, rightAxis, connectNulls, onSeriesClick }: Props) {
+export default function TimeSeriesChart({ series, height = 200, unit, valueFmt = autoValueFmt, seriesName = defaultSeriesName, resetKey, group, markLines, yRange, xRange, integer, leftName, rightAxis, connectNulls, onSeriesClick }: Props) {
   const { t } = useTranslation("common");
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
@@ -90,9 +95,9 @@ export default function TimeSeriesChart({ series, height = 200, unit, valueFmt =
       chart.clear();
       previousResetKey.current = resetKey;
     }
-    const option = buildTimeSeriesOption(visibleSeries, { unit, valueFmt, seriesName, markLines, yRange, integer, leftName, rightAxis, connectNulls, triggerLineEvent: !!onSeriesClick });
-    chart.setOption(option, { notMerge: false, lazyUpdate: true, replaceMerge: ["series", "legend", "yAxis"] });
-  }, [resetKey, seriesName, unit, valueFmt, visibleSeries, markLines, yRange?.[0], yRange?.[1], integer, leftName, rightAxis, connectNulls, onSeriesClick]);
+    const option = buildTimeSeriesOption(visibleSeries, { unit, valueFmt, seriesName, markLines, yRange, xRange, integer, leftName, rightAxis, connectNulls, triggerLineEvent: !!onSeriesClick });
+    chart.setOption(option, { notMerge: false, lazyUpdate: true, replaceMerge: ["series", "legend", "yAxis", "xAxis"] });
+  }, [resetKey, seriesName, unit, valueFmt, visibleSeries, markLines, yRange?.[0], yRange?.[1], xRange?.[0], xRange?.[1], integer, leftName, rightAxis, connectNulls, onSeriesClick]);
 
   useEffect(() => {
     const chart = chartRef.current;

@@ -14,6 +14,13 @@ export interface RightAxis {
   yRange?: [number, number];
 }
 
+// ZERO_SPAN_PAD_MS is the half-width of the x axis around a chart whose points
+// all share one timestamp and which was given no window: ECharts' time scale
+// expands a zero-width extent by a day each way, so a lone scrape would
+// read as a two-day axis. Five minutes either side is wide enough for the
+// ticks to read as clock times and narrow enough to still look like "now".
+export const ZERO_SPAN_PAD_MS = 5 * 60_000;
+
 const PALETTE = [colors.chartPrimary, colors.chartSecondary, colors.chartTertiary, colors.chartQuaternary, colors.chartTeal, colors.chartViolet];
 // autoValueFmt keeps as many decimals as the magnitude needs: a fixed
 // one-decimal format turned a 0..0.1 tok/s axis into "0.1 0.1 0.0 0.0".
@@ -78,7 +85,8 @@ export function buildTimeSeriesOption(
     rightAxis,
     connectNulls = true,
     triggerLineEvent = false,
-  }: { unit?: string; valueFmt?: (v: number) => string; seriesName?: (labels: Record<string, string>, index: number) => string; markLines?: ChartMarkLine[]; yRange?: [number, number]; integer?: boolean; leftName?: string; rightAxis?: RightAxis; connectNulls?: boolean; triggerLineEvent?: boolean },
+    xRange,
+  }: { unit?: string; valueFmt?: (v: number) => string; seriesName?: (labels: Record<string, string>, index: number) => string; markLines?: ChartMarkLine[]; yRange?: [number, number]; integer?: boolean; leftName?: string; rightAxis?: RightAxis; connectNulls?: boolean; triggerLineEvent?: boolean; xRange?: [number, number] },
 ): EChartsOption {
   const legend = visibleSeries.map((entry, index) => seriesName(entry.labels, index));
   // About five time labels whatever the window or width: ECharts' time axis
@@ -94,7 +102,24 @@ export function buildTimeSeriesOption(
       last = Math.max(last, point[0]);
     }
   }
-  const span = last > first ? last - first : 0;
+  // The x axis: pinned to the query window when the caller gives one (a lone
+  // scrape would otherwise stretch the axis to a day around itself, and a
+  // 15 minute window with data in its last minute would not read as 15
+  // minutes). The window only ever widens to take in a point outside it - step
+  // rounding or a clock offset between server and browser must not clip real
+  // data. Without a window, a zero-span extent is padded (ZERO_SPAN_PAD_MS);
+  // any other extent is left to the data, as before.
+  const xWindow = validWindow(xRange);
+  let xMin: number | undefined;
+  let xMax: number | undefined;
+  if (xWindow) {
+    xMin = Math.min(xWindow[0], first);
+    xMax = Math.max(xWindow[1], last);
+  } else if (first === last) {
+    xMin = first - ZERO_SPAN_PAD_MS;
+    xMax = last + ZERO_SPAN_PAD_MS;
+  }
+  const span = xMin !== undefined && xMax !== undefined ? xMax - xMin : last > first ? last - first : 0;
   // A chart of one line is named by its title; a legend would only repeat it
   // and take the strip the x-axis labels need.
   const showLegend = visibleSeries.length > 1;
@@ -131,14 +156,16 @@ export function buildTimeSeriesOption(
     grid: { containLabel: true, top: axisName || dualAxis ? 28 : 18, right: 20, bottom: showLegend ? 30 : 6, left: 8 },
     tooltip: { trigger: "axis", axisPointer: { type: "cross" }, valueFormatter: (value) => `${valueFmt(Number(value))}${unit ? ` ${unit}` : ""}` },
     legend: { show: showLegend, type: "scroll", bottom: 2, left: 8, right: 8, textStyle: { color: colors.text, fontSize: 12 }, data: legend },
-    xAxis: { type: "time", boundaryGap: [0, 0], axisLabel: { color: colors.chartTick, hideOverlap: true, ...(span ? { formatter: spacedTimeLabels(span) } : {}) }, axisLine: { lineStyle: { color: colors.chartGrid } }, splitLine: { lineStyle: { color: colors.chartGrid, type: "dashed" } } },
+    xAxis: { type: "time", boundaryGap: [0, 0], ...(xMin !== undefined ? { min: xMin, max: xMax } : {}), axisLabel: { color: colors.chartTick, hideOverlap: true, ...(span ? { formatter: spacedTimeLabels(span) } : {}) }, axisLine: { lineStyle: { color: colors.chartGrid } }, splitLine: { lineStyle: { color: colors.chartGrid, type: "dashed" } } },
     yAxis: dualAxis ? [valueAxis(axisName, yRange, "left"), valueAxis(rightAxis?.name, rightAxis?.yRange, "right")] : valueAxis(axisName, yRange, "left"),
     series: visibleSeries.map((entry, index) => ({
       id: metricSeriesID(entry.labels, index),
       name: legend[index],
       type: "line",
       ...(dualAxis ? { yAxisIndex: onRight[index] ? 1 : 0 } : {}),
-      showSymbol: false,
+      // A line needs two points to draw; a lone point (or an isolated one
+      // between gaps) would be invisible, so only those show their symbol.
+      ...(hasLonePoint(entry.points, connectNulls) ? { showSymbol: true, symbolSize: 6 } : { showSymbol: false }),
       triggerLineEvent,
       smooth: false,
       connectNulls,
@@ -158,6 +185,27 @@ export function buildTimeSeriesOption(
         : undefined,
     })),
   };
+}
+
+// validWindow returns the window when it can bound an axis: two finite
+// numbers, the end after the start.
+function validWindow(range: [number, number] | undefined): [number, number] | undefined {
+  return range && Number.isFinite(range[0]) && Number.isFinite(range[1]) && range[1] > range[0] ? range : undefined;
+}
+
+// hasLonePoint reports whether a finite point would draw no segment: the only
+// finite point of its line, or - when gaps are kept (connectNulls false) - one
+// whose neighbours are both unavailable.
+function hasLonePoint(points: MetricSeries["points"], connectNulls: boolean): boolean {
+  const finite = (index: number) => index >= 0 && index < points.length && Number.isFinite(points[index][1]);
+  let count = 0;
+  let lone = false;
+  for (let i = 0; i < points.length; i++) {
+    if (!finite(i)) continue;
+    count++;
+    if (!connectNulls && !finite(i - 1) && !finite(i + 1)) lone = true;
+  }
+  return connectNulls ? count > 0 && count < 2 : lone;
 }
 
 // spacedTimeLabels formats an axis's ascending ticks, leaving blank any tick

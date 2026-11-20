@@ -22,11 +22,14 @@ export default function ClusterTokensChart({
   generation,
   events,
   group,
+  xRange,
 }: {
   prompt: MonitorSeries;
   generation: MonitorSeries;
   events: MonitorEvent[];
   group?: string;
+  // xRange is the window the series were queried over, [startMS, endMS].
+  xRange?: [number, number];
 }) {
   const { t } = useTranslation("monitoring");
   const series = useMemo(() => {
@@ -47,5 +50,5 @@ export default function ClusterTokensChart({
     [t],
   );
 
-  return <TimeSeriesChart series={series} height={220} unit="tok/s" seriesName={seriesName} markLines={markLines} group={group} />;
+  return <TimeSeriesChart series={series} height={220} unit="tok/s" seriesName={seriesName} markLines={markLines} group={group} xRange={xRange} />;
 }

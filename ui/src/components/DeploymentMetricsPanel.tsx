@@ -10,6 +10,10 @@ import { MetricStat } from "./InferenceMetricsPanel";
 import { resolveRange, stepString, type TimeRangeSelection } from "../timeRange";
 import { useTranslation } from "react-i18next";
 
+// The server sends cache usage as a percentage (usage_pct), so its axis is
+// 0..100 whatever the readings, not a fit around them.
+const PERCENT_RANGE: [number, number] = [0, 100];
+
 const LIVE_STATES = new Set(["running", "starting", "optimizing"]);
 
 // One stable string per selection so polling restarts only when the window
@@ -36,6 +40,9 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
   }, eff.pollMs, [queryKey]);
   const signals: MonitorDeploymentSignals | null = metrics.data?.queryKey === queryKey ? metrics.data.signals : null;
   const error = metrics.error;
+  // The window the answered query covered (echoed by the server); until it
+  // answers, nothing is drawn, so the selection's own window stands in.
+  const xRange: [number, number] = signals ? [signals.start_ms, signals.end_ms] : [eff.startMS, eff.endMS];
 
   const rangeHeader = (
     <RangeHeader selection={selection} onChange={setSelection} beyondRetention={eff.beyondRetention}
@@ -105,12 +112,12 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
 
       <div className="deployment-metric-charts">
         <ChartCard title={t("metrics.concurrency")} description={t("metrics.concurrencyDescription")}>
-          <MetricPlot series={concurrencySeries} height={190} valueFmt={(v) => v.toFixed(0)} integer />
+          <MetricPlot series={concurrencySeries} height={190} xRange={xRange} valueFmt={(v) => v.toFixed(0)} integer />
         </ChartCard>
         <ChartCard title={t("metrics.tokenThroughput")} description={t("metrics.tokenDescription", {
           prompt: promptNow?.toFixed(1) ?? "—", generation: generationNow?.toFixed(1) ?? "—",
         })}>
-          <MetricPlot series={tokenSeries} height={190} unit="tok/s" valueFmt={autoValueFmt} />
+          <MetricPlot series={tokenSeries} height={190} xRange={xRange} unit="tok/s" valueFmt={autoValueFmt} />
         </ChartCard>
         <ChartCard title={t("metrics.instanceCache")} description={t("metrics.instanceCacheDescription")}
           action={onSelectInstance && sampled.size > 0 && (
@@ -119,7 +126,7 @@ export default function DeploymentMetricsPanel({ instances, deploymentId, onSele
               <SelectContent>{Array.from(sampled, ([uuid,label])=><SelectItem key={uuid} value={uuid}>{label}</SelectItem>)}</SelectContent>
             </Select>
           )}>
-          <MetricPlot series={cache} height={210} unit="%" valueFmt={v => v.toFixed(0)}
+          <MetricPlot series={cache} height={210} xRange={xRange} yRange={PERCENT_RANGE} unit="%" valueFmt={v => v.toFixed(0)}
             onSeriesClick={onSelectInstance && (labels => onSelectInstance(labels.instance))} />
         </ChartCard>
       </div>
