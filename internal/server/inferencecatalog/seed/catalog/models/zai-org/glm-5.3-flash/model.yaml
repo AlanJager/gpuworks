@@ -614,12 +614,19 @@ specs:
 # against the pinned image before copying. serve.py derives --hf-overrides
 # from the mounted checkpoint's text_config, and warmup.py loads the CANN
 # extensions and checks the patched weight loader before vLLM starts.
-# Source and builder: build/inference-templates/glm53-910b/. The two
-# GPUWORKS_RUNVEIL_* switches are read only by that overlay, nothing else in
-# the platform: GPUWORKS_RUNVEIL_BG_THREAD_BALANCE detects the tracer and is
-# inert without one, while GPUWORKS_RUNVEIL_WAITPID_WORKAROUND acts whenever
-# it is set, taking the same build and RoPE paths in a native container. The
-# measured profile is this one, on udocker. First start compiles the
+# Source and builder: build/inference-templates/glm53-910b/. The overlay reads
+# two GPUWORKS_RUNVEIL_* switches that nothing else in the platform reads, and
+# this profile sets only one of them. GPUWORKS_RUNVEIL_WAITPID_WORKAROUND is
+# set: it replaces torch's ninja build runner, whose waitpid for one child
+# never returns under a PRoot tracer, and computes the RoPE cache on the CPU.
+# It acts whenever it is set, taking the same two paths in a native container.
+# GPUWORKS_RUNVEIL_BG_THREAD_BALANCE is not set any more: it pinned the tracer
+# and every background thread to one CPU to keep the tracer from starving, and
+# the embedded PRoot now serves its tracees fairly on its own (see
+# build/runtime-assets/proot/README.md). The overlay still carries that module,
+# inert unless the switch is set, so it can be turned back on from the
+# deployment form if an eight-card start-up ever needs it. The measured profile
+# is this one, on udocker, and it was measured with both switches set. First start compiles the
 # extensions and captures graphs, so allow a long start timeout.
 - name: w8a8-vllm-910b-graph-tp8
   display_name_zh_cn: 910B (A2) · INT8 W8A8 · 8 卡 · 纯文本
@@ -674,7 +681,6 @@ specs:
   - '{"multistream_overlap_shared_expert":true}'
   - --enable-chunked-prefill
   env:
-    GPUWORKS_RUNVEIL_BG_THREAD_BALANCE: '1'
     GPUWORKS_RUNVEIL_WAITPID_WORKAROUND: '1'
     HCCL_BUFFSIZE: '1024'
     HCCL_CONNECT_TIMEOUT: '1200'

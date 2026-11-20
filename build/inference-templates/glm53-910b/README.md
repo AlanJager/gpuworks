@@ -19,8 +19,12 @@ switched on by `GPUWORKS_RUNVEIL_BG_THREAD_BALANCE` and
 when there is none, whereas `WAITPID_WORKAROUND` acts on the environment
 variable alone — with it set, a native container also gets the ninja build
 runner that reads `.ninja_log` instead of waiting on the child, and the
-CPU-computed RoPE cache. The DFlash2 proposer modules are part of the same
-overlay but the profile does not enable a draft.
+CPU-computed RoPE cache. **The catalog profile sets only
+`WAITPID_WORKAROUND`**: the embedded PRoot serves its tracees fairly on its own
+now (`build/runtime-assets/proot/README.md`), which is what `BG_THREAD_BALANCE`
+worked around, so its module stays in the overlay but inert, and can be turned
+back on from the deployment form. The DFlash2 proposer modules are part of the
+same overlay but the profile does not enable a draft.
 
 `serve.py` reads the mounted checkpoint's `text_config` and passes it to
 `vllm serve` as `--hf-overrides`, so the profile never carries its own copy.

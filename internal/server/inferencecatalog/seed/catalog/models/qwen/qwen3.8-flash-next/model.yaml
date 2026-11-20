@@ -329,7 +329,17 @@ specs:
 # layer (method mtp, this image's name for the 910C recipe's deprecated
 # qwen3_5_mtp; three draft tokens as in that recipe) and
 # move the decode graph sizes to multiples of four (one target plus three
-# draft tokens per sequence).
+# draft tokens per sequence). Two arguments come from measuring the MTP
+# profile on 4x 910B2: --max-num-seqs is 16, since the fixed KV pool holds
+# about 1.44M tokens and the previous 4 was a scheduler ceiling, with the
+# decode graphs captured up to the matching batch (16, and 64 = 16 x 4 under
+# MTP); and the MTP drafter replays graphs (enforce_eager false) where
+# vLLM-Ascend's 910C recipe runs it eager, which on its own is +61% single
+# stream. Together they measured 268.78 tokens/s of output at concurrency 16
+# against 89.49 for the previous arguments, 3.0x, with median TPOT at
+# concurrency 1 down from 39.4 to 24.9 ms.
+# TORCHNPU_PRECOMPILE_THREADS bounds torch_npu's kernel precompile pool, as in
+# the measured launches.
 - name: int8-vllm-910b-tp4
   display_name_zh_cn: 910B (A2) · INT8 W8A8 · 4 卡
   display_name_en: 910B (A2) · INT8 W8A8 · 4 cards
@@ -361,7 +371,7 @@ specs:
   - --max-model-len
   - '262144'
   - --max-num-seqs
-  - '4'
+  - '16'
   - --max-num-batched-tokens
   - '8192'
   - --long-prefill-token-threshold
@@ -392,21 +402,17 @@ specs:
   - --engram-config
   - '{"cpu_offload":true,"dp_shared_memory":false}'
   - --compilation-config
-  - '{"cudagraph_capture_sizes":[1,2,4],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - '{"cudagraph_capture_sizes":[1,2,4,8,16],"cudagraph_mode":"FULL_DECODE_ONLY"}'
   - --additional-config
   - '{"enable_cpu_binding":false,"ascend_compilation_config":{"fuse_norm_quant":false}}'
   - --no-async-scheduling
-  performance_tradeoffs: &q38_910b_tradeoffs
-  - param: --max-num-seqs
-    reason: memory_fit
-    detail_en: "Four 64 GiB cards leave a fixed 20 GiB KV pool per card after the weights; at the full 262144-token context that pool holds about five sequences, and the decode graphs are captured for at most four."
-    detail_zh: "4 张 64 GiB 卡放下权重后每卡固定留 20 GiB KV 池；按 262144 token 满上下文约能容纳 5 条序列，decode 图最多只捕获到 4 条。"
   env: &q38_910b_env
     VLLM_USE_V2_MODEL_RUNNER: '1'
     OMP_NUM_THREADS: '8'
     HCCL_BUFFSIZE: '200'
     TASK_QUEUE_ENABLE: '1'
     PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    TORCHNPU_PRECOMPILE_THREADS: '4'
   placement: &q38_910b_placement
     language: starlark
     resolver: |
@@ -457,7 +463,7 @@ specs:
   - --max-model-len
   - '262144'
   - --max-num-seqs
-  - '4'
+  - '16'
   - --max-num-batched-tokens
   - '8192'
   - --long-prefill-token-threshold
@@ -488,21 +494,12 @@ specs:
   - --engram-config
   - '{"cpu_offload":true,"dp_shared_memory":false}'
   - --compilation-config
-  - '{"cudagraph_capture_sizes":[4,8,12,16],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - '{"cudagraph_capture_sizes":[4,8,12,16,24,32,48,64],"cudagraph_mode":"FULL_DECODE_ONLY"}'
   - --speculative-config
-  - '{"method":"mtp","num_speculative_tokens":3,"enforce_eager":true}'
+  - '{"method":"mtp","num_speculative_tokens":3,"enforce_eager":false}'
   - --additional-config
   - '{"enable_cpu_binding":false,"ascend_compilation_config":{"fuse_norm_quant":false}}'
   - --no-async-scheduling
-  performance_tradeoffs: &q38_910b_mtp_tradeoffs
-  - param: --max-num-seqs
-    reason: memory_fit
-    detail_en: "Four 64 GiB cards leave a fixed 20 GiB KV pool per card after the weights; at the full 262144-token context that pool holds about five sequences, and the decode graphs are captured for at most four."
-    detail_zh: "4 张 64 GiB 卡放下权重后每卡固定留 20 GiB KV 池；按 262144 token 满上下文约能容纳 5 条序列，decode 图最多只捕获到 4 条。"
-  - param: --speculative-config.enforce_eager
-    reason: hardware_plugin_requires
-    detail_en: "The MTP drafter runs eager as in vLLM-Ascend's own Qwen3.8 MTP recipe; the target keeps its decode graph. This image falls back to the PyTorch causal_conv1d_update, which syncs per request."
-    detail_zh: "MTP 草稿层沿用 vLLM-Ascend 官方 Qwen3.8 MTP 配方的 eager 方式，主模型保留 decode 图；该镜像的 causal_conv1d_update 回退到逐请求同步的 PyTorch 实现。"
   env: *q38_910b_env
   placement: *q38_910b_placement
   api: *q38_910b_api
@@ -527,7 +524,6 @@ specs:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
   args: *q38_910b_args
-  performance_tradeoffs: *q38_910b_tradeoffs
   env: *q38_910b_env
   placement: *q38_910b_placement
   api: *q38_910b_api
@@ -552,7 +548,6 @@ specs:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
   args: *q38_910b_mtp_args
-  performance_tradeoffs: *q38_910b_mtp_tradeoffs
   env: *q38_910b_env
   placement: *q38_910b_placement
   api: *q38_910b_api

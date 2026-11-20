@@ -112,6 +112,11 @@ When comparing points, record their order and the risk of cache carryover. There
   Unobservable values must not enter statistics as zero elapsed time.
 - A chunk can contain multiple tokens. Chunk intervals cannot be called per-token intervals, and chunk counts do not establish quantization-kernel or speculative-decoding behavior.
   `1000 / TPOT P50(ms)` represents only median decoding interaction speed. It excludes TTFT and does not equal overall throughput divided by concurrency.
+- Speculative-decoding report fields are derived from chunks and must state their denominator. `tokens_per_iteration` is the number of tokens emitted per iteration;
+  the `acceptance_rate` derived from it (`1 - 1 / tokens_per_iteration`) has the **emitted tokens** as its denominator,
+  meaning "the share of the output that came from drafts". That is not the engine's own "accepted drafts / proposed drafts", so the two must not be cited
+  interchangeably, and this field does not establish the draft model's hit rate. For the engine definition, take the engine counters
+  (`spec_draft_tokens_total` / `spec_accepted_tokens_total`, see [Inference Metrics](../reference/inference-metrics.md)).
 - Retain the wall-clock window for overall throughput: the actual elapsed time from measurement start to end, including first-turn processing, between-turn waiting, and completion within the window. List any steady-state or rolling peak separately,
   with its window and calculation method. Explicitly state whether failed-request elapsed time, partial tokens, and retries are included; do not silently exclude them.
 - Record planned session concurrency, actual active sessions, and actual in-flight HTTP requests separately. C denotes configured session concurrency; configured C does not prove that C requests are running throughout.
@@ -164,6 +169,6 @@ it does not claim that existing automated tests already cover them:
 Submission notes must list the affected categories, definition or compatibility changes, verification evidence, and remaining uncovered gaps.
 Updating only this standard or the inventory does not complete feature acceptance. When adding or extending automated gates, record their actual coverage.
 
-<!-- translation-source-sha256: 6cc691705ea887a81d7152c95722f822e1a9d61f14a709982ae6f395bd815d5e -->
+<!-- translation-source-sha256: c18240764ee87096402a31cb356b40fb2fa8575010b4dcaafa5fe5d61ccb7ce9 -->
 <!-- translation-localized-code-block: 977144588ed733c0dadfd47e149c044f60bba423c5b93e11b83c5513e1614dff 6b511c4b3f0f41683b442a4e6cb0a145a99b4e27746207c44f3779b6d591bcdc Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->
 <!-- translation-localized-code-block: 4c924402689a27813f3d7761be0409e453871ab4f5fb56bdc20093d442152dbe 7f4166cdce26676d6792f6702d52311a6771e8c4729d36cab34b5144e363572d Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->

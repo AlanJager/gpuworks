@@ -61,6 +61,7 @@ The evaluation itself does not pull images or start additional containers.
 | TPOT | For successful requests, `(last output generation time − first output generation time) ÷ (output token count − 1)`. Includes only streaming requests with an observable decoding interval, at least two content chunks, and more than 1 output token |
 | E2E latency | In evaluations, this metric ends at the last generated output. **Request and session evidence** separately lists stream-completion latency, which includes finalization after output; do not interchange the two |
 | Maximum output throughput (10s) | Highest output throughput in any 10-second window within the point, without dilution from startup and finalization phases |
+| Speculative decoding (client-side approximation) | The "tokens per iteration" inferred from multi-token chunks, and the **share of the output that came from drafts** (`1 - 1 / tokens per iteration`). The UI labels the latter "acceptance rate", but its denominator is the **tokens already emitted**, not the **draft tokens proposed**, so it is not the draft acceptance rate that vLLM/SGLang report themselves and is usually higher: in one measurement on 4x 910B with MTP and 3 draft tokens this field read 52.9% while the engine's own figure was 37.2%. For the engine definition, read `vllm:spec_decode_num_{draft,accepted}_tokens_total` from the engine's `/metrics`, or `gpuworks_infer_spec_{draft,accepted}_tokens_total` from monitoring |
 
 The “Throughput vs. Interactivity Pareto” chart plots per-user output speed on the horizontal axis and output throughput on the vertical axis, with one dot per test point.
 The former “Per-user Output Throughput” metric divided output throughput by concurrency, including TTFT and gaps between requests, and is discontinued.
@@ -153,4 +154,4 @@ A single parameter scan does not establish the throughput ceiling, and stability
 Information that cannot be obtained automatically from external endpoints, such as GPU model, precision, and the actual kernel, appears as unknown. Managed deployments export snapshots of existing GPUs, TP,
 images, and startup arguments. Configuration values cannot substitute for logs or profiler evidence of the kernel actually running.
 
-<!-- translation-source-sha256: 5c8e0169bc3d87df701e48711c89ed598edc0abce56a2c34acae5e4f67e7593f -->
+<!-- translation-source-sha256: 807ac66836ebbdca9b5d9afe25a4b05474d543191f8267a276150cb9dcbcce70 -->
