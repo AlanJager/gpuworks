@@ -4,6 +4,7 @@ package extplugin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -133,7 +134,7 @@ func TestContractBootRollsBackAnInterruptedUpgrade(t *testing.T) {
 	// The disk as a server leaves it when it dies after making 2.0.0
 	// current: the marker, the snapshot, the new version current, and
 	// data the new version changed.
-	st, err := store.Open(s.db, bus.New())
+	st, err := store.OpenRuntime(context.Background(), s.db, bus.New())
 	if err != nil {
 		t.Fatal(err)
 	}
