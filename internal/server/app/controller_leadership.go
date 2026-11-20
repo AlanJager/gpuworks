@@ -21,7 +21,7 @@ type inferenceRoleObservation struct {
 // Role observation controls lifetime only. Store scheduling transactions still
 // constrain commits; observing a leader is neither a quorum grant nor an RPC fence.
 func (a *App) runLeaderController(ctx context.Context, run func(context.Context)) {
-	superviseController(ctx, a.store.LocalSchedulingLeader, run, a.log, time.Second, 2*time.Second, func(leader bool) error {
+	superviseControllerFrom(ctx, a.inferenceRoleHeld(), a.store.LocalSchedulingLeader, run, a.log, time.Second, 2*time.Second, func(leader bool) error {
 		if leader {
 			if err := a.store.BeginSchedulingLeadership(ctx); err != nil {
 				return err
@@ -44,6 +44,14 @@ func (a *App) noteInferenceRole(leader bool) {
 	a.inferenceRole.leader = leader
 }
 
+// inferenceRoleHeld reports that this process last recorded itself as the
+// database leader: an earlier controller ended without losing the role.
+func (a *App) inferenceRoleHeld() bool {
+	a.inferenceRole.mu.Lock()
+	defer a.inferenceRole.mu.Unlock()
+	return a.inferenceRole.seen && a.inferenceRole.leader
+}
+
 func (a *App) inferenceDatabaseRoleChanged(context.Context) bool {
 	a.inferenceRole.mu.Lock()
 	defer a.inferenceRole.mu.Unlock()
@@ -53,6 +61,15 @@ func (a *App) inferenceDatabaseRoleChanged(context.Context) bool {
 }
 
 func superviseController(ctx context.Context, observe func(context.Context) (bool, error), run func(context.Context), log *slog.Logger, interval, observationTimeout time.Duration, onRole func(bool) error, schedulingOpen func() bool) {
+	superviseControllerFrom(ctx, false, observe, run, log, interval, observationTimeout, onRole, schedulingOpen)
+}
+
+// superviseControllerFrom is superviseController for a supervisor that
+// replaces an earlier one in the same process. held says the earlier one
+// ended while this member still had the role, so no loss was journaled; the
+// first start is then journaled as a restart. The restart line contains the
+// start line, so a reader that looks for the start line still sees the role.
+func superviseControllerFrom(ctx context.Context, held bool, observe func(context.Context) (bool, error), run func(context.Context), log *slog.Logger, interval, observationTimeout time.Duration, onRole func(bool) error, schedulingOpen func() bool) {
 	var cancel context.CancelFunc
 	var done <-chan struct{}
 	drain := func() {
@@ -77,7 +94,11 @@ func superviseController(ctx context.Context, observe func(context.Context) (boo
 			log.Debug("observe local scheduling role", "err", err)
 		}
 		if !local || err != nil {
-			if cancel != nil {
+			// A role the earlier supervisor still held is lost here too, and
+			// is journaled and recorded the same way although no controller
+			// of this supervisor is running.
+			if cancel != nil || held {
+				held = false
 				log.Info("stopping controller after local scheduling role lost")
 				drain()
 				if onRole != nil {
@@ -101,7 +122,12 @@ func superviseController(ctx context.Context, observe func(context.Context) (boo
 				completed := make(chan struct{})
 				cancel, done = stop, completed
 				go func() { defer close(completed); run(child) }()
-				log.Info("starting controller on local database leader")
+				if held {
+					held = false
+					log.Info("restarting controller on local database leader")
+				} else {
+					log.Info("starting controller on local database leader")
+				}
 			}
 		}
 		timer := time.NewTimer(interval)
