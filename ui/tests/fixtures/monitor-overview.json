@@ -13,7 +13,7 @@
   ],
   "services": [
     {
-      "deployment_id": 101, "name": "Qwen3-32B", "engine": "vllm", "placement": "TP4 · gpu3, gpu4",
+      "deployment_id": 101, "name": "Qwen3-32B", "engine": "vllm", "placement": {"nodes": ["gpu3", "gpu4"], "nnodes": 1, "gpus_per_node": 4, "tensor_parallel": 4},
       "replicas": { "ready": 2, "desired": 2 }, "state": "running",
       "request_rate": 8.4, "ttft_p95_ms": 210,
       "running": 12, "waiting": 0, "kv_usage_pct": 38, "kv_hit_rate_pct": 61,
@@ -21,7 +21,7 @@
       "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
     },
     {
-      "deployment_id": 102, "name": "Qwen2.5-7B-Instruct", "engine": "vllm", "placement": "TP1 · gpu1",
+      "deployment_id": 102, "name": "Qwen2.5-7B-Instruct", "engine": "vllm", "placement": {"nodes": ["gpu1"], "nnodes": 1, "gpus_per_node": 1, "tensor_parallel": 1},
       "replicas": { "ready": 1, "desired": 1 }, "state": "running",
       "request_rate": 14.2, "ttft_p95_ms": 480,
       "running": 64, "waiting": 21, "kv_usage_pct": 94, "kv_hit_rate_pct": 33,
@@ -29,7 +29,7 @@
       "health": { "status": "timeout", "threshold_sec": 30, "last": { "at_ms": 1758182640000, "status": "timeout", "latency_ms": 30000, "message": "context deadline exceeded" }, "recent_mean_ms": null, "recent_ok": 0, "recent": [{ "at_ms": 1758182640000, "status": "timeout", "latency_ms": 30000, "message": "context deadline exceeded" }] }
     },
     {
-      "deployment_id": 103, "name": "Llama-3.1-70B", "engine": "sglang", "placement": "TP8 · gpu5, gpu6",
+      "deployment_id": 103, "name": "Llama-3.1-70B", "engine": "sglang", "placement": {"nodes": ["gpu5", "gpu6"], "nnodes": 1, "gpus_per_node": 8, "tensor_parallel": 8},
       "replicas": { "ready": 0, "desired": 2 }, "state": "starting",
       "request_rate": null, "ttft_p95_ms": null,
       "running": null, "waiting": null, "kv_usage_pct": null, "kv_hit_rate_pct": null,
@@ -37,7 +37,7 @@
       "health": { "status": "no_replica", "threshold_sec": 60, "last": null, "recent_mean_ms": null, "recent_ok": 0, "recent": [] }
     },
     {
-      "deployment_id": 104, "name": "DeepSeek-V2-Lite", "engine": "vllm", "placement": "TP1 · gpu2",
+      "deployment_id": 104, "name": "DeepSeek-V2-Lite", "engine": "vllm", "placement": {"nodes": ["gpu2"], "nnodes": 1, "gpus_per_node": 1, "tensor_parallel": 1},
       "replicas": { "ready": 1, "desired": 1 }, "state": "running",
       "request_rate": 0, "ttft_p95_ms": null,
       "running": 0, "waiting": 0, "kv_usage_pct": 2, "kv_hit_rate_pct": 0,
@@ -45,7 +45,7 @@
       "health": { "status": "off", "threshold_sec": 60, "last": null, "recent_mean_ms": null, "recent_ok": 0, "recent": [] }
     },
     {
-      "deployment_id": 105, "name": "Baichuan2-13B", "engine": "vllm", "placement": "TP2 · gpu3",
+      "deployment_id": 105, "name": "Baichuan2-13B", "engine": "vllm", "placement": {"nodes": ["gpu3"], "nnodes": 1, "gpus_per_node": 2, "tensor_parallel": 2},
       "replicas": { "ready": 1, "desired": 1 }, "state": "running",
       "request_rate": 6.1, "ttft_p95_ms": 340,
       "running": 32, "waiting": 8, "kv_usage_pct": 55, "kv_hit_rate_pct": 40,
@@ -53,7 +53,7 @@
       "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
     },
     {
-      "deployment_id": 106, "name": "Yi-1.5-34B", "engine": "sglang", "placement": "TP2 · gpu7",
+      "deployment_id": 106, "name": "Yi-1.5-34B", "engine": "sglang", "placement": {"nodes": ["gpu7"], "nnodes": 1, "gpus_per_node": 2, "tensor_parallel": 2},
       "replicas": { "ready": 1, "desired": 1 }, "state": "running",
       "request_rate": 2.3, "ttft_p95_ms": 180,
       "running": 5, "waiting": 0, "kv_usage_pct": 20, "kv_hit_rate_pct": 71,
@@ -61,7 +61,7 @@
       "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
     },
     {
-      "deployment_id": 107, "name": "ChatGLM3-6B", "engine": "vllm", "placement": "TP1 · gpu8",
+      "deployment_id": 107, "name": "ChatGLM3-6B", "engine": "vllm", "placement": {"nodes": ["gpu8"], "nnodes": 1, "gpus_per_node": 1, "tensor_parallel": 1},
       "replicas": { "ready": 0, "desired": 1 }, "state": "failed",
       "request_rate": 1.8, "ttft_p95_ms": null,
       "running": null, "waiting": null, "kv_usage_pct": null, "kv_hit_rate_pct": null,
@@ -69,7 +69,7 @@
       "health": { "status": "failed", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "failed", "latency_ms": 12, "http_status": 503, "message": "no healthy upstream" }, "recent_mean_ms": null, "recent_ok": 0, "recent": [{ "at_ms": 1758182640000, "status": "failed", "latency_ms": 12, "http_status": 503, "message": "no healthy upstream" }] }
     },
     {
-      "deployment_id": 108, "name": "InternLM2-20B", "engine": "vllm", "placement": "TP2 · gpu4",
+      "deployment_id": 108, "name": "InternLM2-20B", "engine": "vllm", "placement": {"nodes": ["gpu4"], "nnodes": 1, "gpus_per_node": 2, "tensor_parallel": 2},
       "replicas": { "ready": 1, "desired": 1 }, "state": "running",
       "request_rate": 9.7, "ttft_p95_ms": 260,
       "running": 18, "waiting": 3, "kv_usage_pct": 47, "kv_hit_rate_pct": 55,
@@ -77,7 +77,7 @@
       "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
     },
     {
-      "deployment_id": 109, "name": "Mixtral-8x7B", "engine": "vllm", "placement": "TP4 · gpu5",
+      "deployment_id": 109, "name": "Mixtral-8x7B", "engine": "vllm", "placement": {"nodes": ["gpu5"], "nnodes": 1, "gpus_per_node": 4, "tensor_parallel": 4},
       "replicas": { "ready": 1, "desired": 1 }, "state": "asleep",
       "request_rate": 0.4, "ttft_p95_ms": null,
       "running": 0, "waiting": 0, "kv_usage_pct": null, "kv_hit_rate_pct": null,
@@ -85,7 +85,7 @@
       "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
     },
     {
-      "deployment_id": 110, "name": "GLM-4-9B", "engine": "sglang", "placement": "TP1 · gpu6",
+      "deployment_id": 110, "name": "GLM-4-9B", "engine": "sglang", "placement": {"nodes": ["gpu6"], "nnodes": 1, "gpus_per_node": 1, "tensor_parallel": 1},
       "replicas": { "ready": 1, "desired": 1 }, "state": "running",
       "request_rate": 11.5, "ttft_p95_ms": 300,
       "running": 40, "waiting": 12, "kv_usage_pct": 61, "kv_hit_rate_pct": 45,
@@ -93,7 +93,7 @@
       "health": { "status": "pending", "threshold_sec": 60, "last": null, "recent_mean_ms": null, "recent_ok": 0, "recent": [] }
     },
     {
-      "deployment_id": 111, "name": "Qwen2-72B", "engine": "vllm", "placement": "TP8 · gpu1, gpu2",
+      "deployment_id": 111, "name": "Qwen2-72B", "engine": "vllm", "placement": {"nodes": ["gpu1", "gpu2"], "nnodes": 1, "gpus_per_node": 8, "tensor_parallel": 8},
       "replicas": { "ready": 2, "desired": 2 }, "state": "running",
       "request_rate": 20.9, "ttft_p95_ms": 220,
       "running": 50, "waiting": 6, "kv_usage_pct": 70, "kv_hit_rate_pct": 38,

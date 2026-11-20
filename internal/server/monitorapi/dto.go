@@ -1,9 +1,8 @@
 package monitorapi
 
 import (
-	"fmt"
 	"math"
-	"strings"
+	"sort"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -126,27 +125,56 @@ func mergeDetail(maps ...map[string]any) map[string]any {
 	return out
 }
 
-// deploymentPlacement renders the "TP4 · gpu3, gpu4" summary the wire
-// contract's services[].placement and deployment.placement fields carry. TP
-// is the widest per-instance GPU count seen among the deployment's replicas
-// (0 when it has none yet, which omits the "TP_" segment entirely); node
-// names fall back to instance-derived ones exactly like
-// monitor.resolveNodeNames does, since the app-side adapter always leaves
-// DeploymentRef.NodeNames empty.
-func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.InstanceRef, nodeNames map[string]string) string {
-	tp := 0
-	for _, inst := range instances {
-		if n := len(inst.GPUIndexes); n > tp {
-			tp = n
+// deploymentPlacement states where a deployment runs as facts
+// (dto.MonitorPlacement), not a display string: the client formats and
+// localises them. Nodes follow node-rank order: replicas (DistGroup) in the
+// order they first appear among the instances, each replica's ranks leader
+// first, every node named once. Node names fall back to instance-derived ones
+// exactly like monitor.resolveNodeNames does, since the app-side adapter
+// always leaves DeploymentRef.NodeNames empty.
+func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.InstanceRef, nodeNames map[string]string) dto.MonitorPlacement {
+	// groupOf numbers each replica by first appearance; a single-node
+	// instance (no DistGroup) is a replica of its own.
+	groupOf := make([]int, len(instances))
+	index := map[string]int{}
+	groupSize := map[int]int{}
+	gpus := 0
+	for i, inst := range instances {
+		g, seen := index[inst.DistGroup]
+		if inst.DistGroup == "" || !seen {
+			g = len(groupSize)
+			if inst.DistGroup != "" {
+				index[inst.DistGroup] = g
+			}
 		}
+		groupOf[i] = g
+		groupSize[g]++
+		gpus = max(gpus, len(inst.GPUIndexes))
 	}
+	nnodes := 0
+	for i, inst := range instances {
+		nnodes = max(nnodes, groupSize[groupOf[i]], inst.NNodes)
+	}
+	order := make([]int, len(instances))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		ia, ib := order[a], order[b]
+		if groupOf[ia] != groupOf[ib] {
+			return groupOf[ia] < groupOf[ib]
+		}
+		return instances[ia].NodeRank < instances[ib].NodeRank
+	})
 	names := dep.NodeNames
 	if len(names) == 0 {
+		names = []string{}
 		seen := map[string]bool{}
-		for _, inst := range instances {
-			name := nodeNames[inst.NodeUUID]
+		for _, i := range order {
+			uuid := instances[i].NodeUUID
+			name := nodeNames[uuid]
 			if name == "" {
-				name = inst.NodeUUID
+				name = uuid
 			}
 			if name != "" && !seen[name] {
 				seen[name] = true
@@ -154,17 +182,7 @@ func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.Instance
 			}
 		}
 	}
-	var b strings.Builder
-	if tp > 0 {
-		fmt.Fprintf(&b, "TP%d", tp)
-	}
-	if len(names) > 0 {
-		if b.Len() > 0 {
-			b.WriteString(" · ")
-		}
-		b.WriteString(strings.Join(names, ", "))
-	}
-	return b.String()
+	return dto.MonitorPlacement{Nodes: names, NNodes: nnodes, GPUsPerNode: gpus, TensorParallel: dep.TensorParallel}
 }
 
 // deploymentState is the state the deployment list shows

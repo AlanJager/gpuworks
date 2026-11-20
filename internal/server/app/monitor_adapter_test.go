@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/healthcheck"
 	"gpuworks.ai/gpuworks/internal/server/monitorapi"
@@ -175,8 +177,10 @@ func TestMonitorServiceOverviewEndToEnd(t *testing.T) {
 	if svcRow.State != "running" {
 		t.Fatalf("service state = %q, want running", svcRow.State)
 	}
-	if svcRow.Placement != "TP1 · gpu3" {
-		t.Fatalf("placement = %q, want %q", svcRow.Placement, "TP1 · gpu3")
+	// The fixture's argv states no tensor-parallel flag, so the degree is
+	// unknown and omitted rather than guessed from the GPU count.
+	if want := (dto.MonitorPlacement{Nodes: []string{"gpu3"}, NNodes: 1, GPUsPerNode: 1}); !reflect.DeepEqual(svcRow.Placement, want) {
+		t.Fatalf("placement = %+v, want %+v", svcRow.Placement, want)
 	}
 	if svcRow.Running == nil || svcRow.Waiting == nil || svcRow.KVUsagePct == nil || svcRow.PromptTokS == nil || svcRow.GenerationTokS == nil {
 		t.Fatalf("service row must carry collected metrics: %+v", svcRow)

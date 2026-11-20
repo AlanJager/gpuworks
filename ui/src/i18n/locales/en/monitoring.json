@@ -80,6 +80,14 @@
     "placement": "{{engine}} · {{placement}}",
     "signalFilter": "Signal"
   },
+  "placement": {
+    "none": "Not placed yet",
+    "tensorParallel": "TP{{count}}",
+    "gpus_one": "{{count}} GPU",
+    "gpus_other": "{{count}} GPUs",
+    "multiNode_one": "{{nodes}} nodes × {{count}} GPU",
+    "multiNode_other": "{{nodes}} nodes × {{count}} GPUs"
+  },
   "metricExplorer": {
     "title": "Metric explorer",
     "metric": "Metric",

@@ -24,8 +24,12 @@ type DeploymentRef struct {
 	// Nil keeps ordinary deployments counted from their running leaders.
 	ReplicasReady *int
 	NodeNames     []string
-	ServedName    string
-	SleepDesired  int
+	// TensorParallel is the tensor-parallel degree the deployment's launch
+	// commands state; 0 when the platform does not know it (a callable
+	// engine, or instances stating different degrees).
+	TensorParallel int
+	ServedName     string
+	SleepDesired   int
 	// State is the state the deployment list shows
 	// (deployment.EffectiveState): preparation failures, scheduling timeouts,
 	// a delete in flight and a deployment the gateway refuses for sleep are
@@ -58,7 +62,14 @@ type InstanceRef struct {
 	NodeUUID     string
 	State        string
 	GPUIndexes   []int
-	SleepLevel   int
+	// DistGroup, NodeRank and NNodes place the instance in a multi-node
+	// group: instances of one replica share DistGroup (empty for a
+	// single-node replica), NodeRank is the instance's rank in it (0 is the
+	// leader) and NNodes the group's node count (0 or 1 when single-node).
+	DistGroup  string
+	NodeRank   int
+	NNodes     int
+	SleepLevel int
 	// Asleep is whether the gateway refuses this instance for sleep
 	// (planning.InstanceAsleep): it reports a sleep level, or it is under a
 	// sleep order its engine has not carried out yet. The level alone is not

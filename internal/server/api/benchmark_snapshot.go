@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"strconv"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -77,24 +76,11 @@ func redactBenchmarkEnv(env map[string]string) map[string]string {
 }
 
 // benchmarkTensorParallel reads the deployment's tensor-parallel degree out of
-// its own argv. The flag spellings come from the engine (deploy.TPFlagsForEngine)
-// rather than from a list restated here: an engine that spells the dimension
-// --tp would otherwise be reported at its fallback.
+// its own argv (deploy.TensorParallelFromArgv: the flag spellings come from
+// the engine rather than a list restated here), falling back to the GPU count.
 func benchmarkTensorParallel(engine string, argv []string, fallback int) int {
-	flags := deploy.TPFlagsForEngine(engine)
-	for i, arg := range argv {
-		for _, flag := range flags {
-			if value, found := strings.CutPrefix(arg, flag+"="); found {
-				if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
-					return parsed
-				}
-			}
-			if arg == flag && i+1 < len(argv) {
-				if parsed, err := strconv.Atoi(argv[i+1]); err == nil && parsed > 0 {
-					return parsed
-				}
-			}
-		}
+	if tp, ok := deploy.TensorParallelFromArgv(engine, argv); ok {
+		return tp
 	}
 	if fallback > 0 {
 		return fallback

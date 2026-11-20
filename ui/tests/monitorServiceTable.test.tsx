@@ -119,6 +119,20 @@ test("a signal narrowing is a toolbar filter chip beside the column filters, and
   assert.equal(cleared, 1);
 });
 
+test("a multi-node service's sub-line shows nodes x cards in rank order, and a TP only when the server sent one", () => {
+  const spark: MonitorService = {
+    ...services[0], deployment_id: 9002, name: "pico-dgx-ds4", engine: "callable",
+    placement: { nodes: ["gb10-1", "gb10-2", "gb10-3", "gb10-4"], nnodes: 4, gpus_per_node: 1 },
+  };
+  const stated: MonitorService = { ...spark, deployment_id: 9003, name: "stated-tp", engine: "vllm", placement: { ...spark.placement, tensor_parallel: 4 } };
+  const pending: MonitorService = { ...spark, deployment_id: 9004, name: "unplaced", placement: { nodes: [], nnodes: 0, gpus_per_node: 0 } };
+  renderTable({ services: [spark, stated, pending] } as never);
+  const sub = (name: string) => screen.getByText(name).closest("tr")!.querySelector(".resource-table-sub")?.textContent;
+  assert.equal(sub("pico-dgx-ds4"), "callable · 4 nodes × 1 GPU · gb10-1, gb10-2, gb10-3, gb10-4");
+  assert.equal(sub("stated-tp"), "vllm · TP4 · 4 nodes × 1 GPU · gb10-1, gb10-2, gb10-3, gb10-4");
+  assert.equal(sub("unplaced"), "callable · Not placed yet");
+});
+
 test("clicking a row navigates to the service monitor route (mouse-only row affordance)", async () => {
   matchMediaMatches = true; // wide layout so every column, including state, renders
   renderTable();
