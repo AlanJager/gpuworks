@@ -85,6 +85,25 @@ type MonitorReplicaCount struct {
 	Desired int `json:"desired"`
 }
 
+// MonitorPlacement is where a deployment runs, as facts the client formats
+// and localises itself (the server sends no display string).
+//
+// Nodes are the display names of the nodes the deployment's instances sit on,
+// in node-rank order (the leader first, replica by replica, each node once).
+// NNodes is the widest node count of one replica (1 for a single-node
+// replica) and GPUsPerNode the most GPUs any one instance holds; both are 0
+// while the deployment has no instances. TensorParallel is the tensor
+// parallel degree the engine's launch command states (vLLM and SGLang), and
+// is omitted when the platform does not know it: a callable recipe's
+// parallel scheme is not the platform's to read, and instances that state
+// different degrees (PD roles) have no single one.
+type MonitorPlacement struct {
+	Nodes          []string `json:"nodes"`
+	NNodes         int      `json:"nnodes"`
+	GPUsPerNode    int      `json:"gpus_per_node"`
+	TensorParallel int      `json:"tensor_parallel,omitempty"`
+}
+
 // MonitorServiceRow is one row of the cluster overview's service table.
 // Every *float64 field is nil - never 0 - when the underlying metric was not
 // collected for this deployment (see MonitorSignal's doc comment for why).
@@ -92,7 +111,7 @@ type MonitorServiceRow struct {
 	DeploymentID   uint                `json:"deployment_id"`
 	Name           string              `json:"name"`
 	Engine         string              `json:"engine"`
-	Placement      string              `json:"placement"`
+	Placement      MonitorPlacement    `json:"placement"`
 	Replicas       MonitorReplicaCount `json:"replicas"`
 	State          string              `json:"state"`
 	RequestRate    *float64            `json:"request_rate"`
@@ -165,7 +184,7 @@ type MonitorDeploymentSummary struct {
 	ID        uint                `json:"id"`
 	Name      string              `json:"name"`
 	Engine    string              `json:"engine"`
-	Placement string              `json:"placement"`
+	Placement MonitorPlacement    `json:"placement"`
 	Replicas  MonitorReplicaCount `json:"replicas"`
 }
 

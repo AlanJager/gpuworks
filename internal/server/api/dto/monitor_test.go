@@ -29,7 +29,7 @@ func TestMonitorOverviewWireContract(t *testing.T) {
 			{"key": "preemptions", "collected": false}
 		],
 		"services": [
-			{"deployment_id": 42, "name": "Qwen3-32B", "engine": "vllm", "placement": "TP4 · gpu3, gpu4",
+			{"deployment_id": 42, "name": "Qwen3-32B", "engine": "vllm", "placement": {"nodes": ["gpu3", "gpu4"], "nnodes": 1, "gpus_per_node": 4, "tensor_parallel": 4},
 			 "replicas": {"ready": 2, "desired": 2}, "state": "running",
 			 "request_rate": null, "ttft_p95_ms": null,
 			 "running": 64, "waiting": 12, "kv_usage_pct": 94, "kv_hit_rate_pct": 41,
@@ -127,6 +127,30 @@ func TestMonitorOverviewWireContract(t *testing.T) {
 // TestMonitorOverviewWireContract's uncollected fixture: error_rate,
 // request_rate, ttft, tpot and preemptions all carry real values, and
 // services[].request_rate/ttft_p95_ms are non-null.
+// The placement is facts, not a display string: node names in rank order, the
+// node and per-node card counts, and a tensor-parallel degree only when the
+// platform knows it (the key is absent otherwise, never 0 or null).
+func TestMonitorPlacementWireContract(t *testing.T) {
+	known, err := json.Marshal(MonitorPlacement{Nodes: []string{"gb10-1", "gb10-2"}, NNodes: 2, GPUsPerNode: 1, TensorParallel: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"nodes":["gb10-1","gb10-2"],"nnodes":2,"gpus_per_node":1,"tensor_parallel":2}`; string(known) != want {
+		t.Fatalf("wire =\n%s\nwant\n%s", known, want)
+	}
+	unknown, err := json.Marshal(MonitorPlacement{Nodes: []string{"gb10-1"}, NNodes: 1, GPUsPerNode: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"nodes":["gb10-1"],"nnodes":1,"gpus_per_node":4}`; string(unknown) != want {
+		t.Fatalf("wire =\n%s\nwant\n%s", unknown, want)
+	}
+	var back MonitorPlacement
+	if err := json.Unmarshal(known, &back); err != nil || back.NNodes != 2 || back.TensorParallel != 2 || len(back.Nodes) != 2 || back.Nodes[1] != "gb10-2" {
+		t.Fatalf("round trip %+v %v", back, err)
+	}
+}
+
 func TestMonitorOverviewPhase2SignalsWireContract(t *testing.T) {
 	const wire = `{
 		"as_of": 0, "stale": false,
@@ -141,7 +165,7 @@ func TestMonitorOverviewPhase2SignalsWireContract(t *testing.T) {
 			{"key": "preemptions", "collected": true, "value": 0.5}
 		],
 		"services": [
-			{"deployment_id": 42, "name": "svc", "engine": "vllm", "placement": "",
+			{"deployment_id": 42, "name": "svc", "engine": "vllm", "placement": {"nodes": [], "nnodes": 0, "gpus_per_node": 0},
 			 "replicas": {"ready": 2, "desired": 2}, "state": "running",
 			 "request_rate": 42, "ttft_p95_ms": 2500,
 			 "running": null, "waiting": null, "kv_usage_pct": null, "kv_hit_rate_pct": null,
@@ -276,7 +300,7 @@ func TestMonitorOverviewEmptyListsAreEmptyNotNull(t *testing.T) {
 func TestMonitorDeploymentWireContract(t *testing.T) {
 	const wire = `{
 		"as_of": 0, "stale": true,
-		"deployment": {"id": 42, "name": "Qwen3-32B", "engine": "vllm", "placement": "TP4 · gpu3, gpu4", "replicas": {"ready": 2, "desired": 2}},
+		"deployment": {"id": 42, "name": "Qwen3-32B", "engine": "vllm", "placement": {"nodes": ["gpu3", "gpu4"], "nnodes": 1, "gpus_per_node": 4, "tensor_parallel": 4}, "replicas": {"ready": 2, "desired": 2}},
 		"alignment": null,
 		"ttft_breakdown": null,
 		"charts": {"latency": [], "concurrency": [{"labels": {"metric": "running"}, "points": [[1000, 5]]}], "kv": [], "throughput": [], "stage_time": [], "preemptions": []},
@@ -341,7 +365,7 @@ func TestMonitorDeploymentWireContract(t *testing.T) {
 func TestMonitorDeploymentPhase2AlignmentAndTTFTBreakdownWireContract(t *testing.T) {
 	const wire = `{
 		"as_of": 0, "stale": false,
-		"deployment": {"id": 42, "name": "svc", "engine": "vllm", "placement": "", "replicas": {"ready": 1, "desired": 1}},
+		"deployment": {"id": 42, "name": "svc", "engine": "vllm", "placement": {"nodes": [], "nnodes": 0, "gpus_per_node": 0}, "replicas": {"ready": 1, "desired": 1}},
 		"alignment": {"proxy_requests": 5120, "engine_completed": 5094, "client_errors": 12, "server_errors": 6, "lost": 8},
 		"ttft_breakdown": {"queue_ms": 180, "prefill_ms": 260, "first_token_ms": 40, "total_ms": 480, "approximate": false},
 		"charts": {"latency": [], "concurrency": [], "kv": [], "throughput": [], "stage_time": [], "preemptions": []},

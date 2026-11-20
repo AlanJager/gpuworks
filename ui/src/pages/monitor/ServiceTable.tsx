@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Badge } from "../../components/ui/badge";
 import StateSummary from "./StateSummary";
 import { STATE_BADGE, offeredStates } from "./serviceStates";
+import { formatPlacement } from "./placement";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import type { HealthStatus, MonitorService, MonitorStateCount } from "../../api";
@@ -117,7 +118,7 @@ export default function ServiceTable({
           <Link to={`/monitor/d/${row.deployment_id}`} onClick={(event) => event.stopPropagation()}>
             {row.name}
           </Link>
-          <span className="resource-table-sub">{t("table.placement", { engine: row.engine, placement: row.placement })}</span>
+          <span className="resource-table-sub">{t("table.placement", { engine: row.engine, placement: formatPlacement(t, row.placement) })}</span>
         </>
       ),
     },

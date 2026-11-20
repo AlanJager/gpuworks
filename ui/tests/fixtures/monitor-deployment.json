@@ -1,7 +1,7 @@
 {
   "as_of": 1758182650000,
   "stale": false,
-  "deployment": { "id": 102, "name": "Qwen2.5-7B-Instruct", "engine": "vllm", "placement": "TP2 · gpu1, gpu2", "replicas": { "ready": 2, "desired": 2 } },
+  "deployment": { "id": 102, "name": "Qwen2.5-7B-Instruct", "engine": "vllm", "placement": {"nodes": ["gpu1", "gpu2"], "nnodes": 1, "gpus_per_node": 2, "tensor_parallel": 2}, "replicas": { "ready": 2, "desired": 2 } },
   "alignment": { "proxy_requests": 5120, "engine_completed": 5094, "client_errors": 12, "server_errors": 8, "lost": 6, "in_flight": 3, "discrepancy_persistent": true },
   "ttft_breakdown": { "queue_ms": 180, "prefill_ms": 260, "first_token_ms": 40, "total_ms": 480, "approximate": true },
   "charts": {

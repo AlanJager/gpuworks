@@ -4502,11 +4502,25 @@ export interface MonitorReplicaCount {
   desired: number;
 }
 
+/**
+ * Where a deployment runs, as the server states it: node names in node-rank
+ * order, the widest replica's node count, the most cards on one node, and the
+ * tensor-parallel degree only when the platform knows it (absent for a
+ * callable recipe or instances stating different degrees). The client formats
+ * and localises it (pages/monitor/placement.ts) and derives nothing.
+ */
+export interface MonitorPlacement {
+  nodes: string[];
+  nnodes: number;
+  gpus_per_node: number;
+  tensor_parallel?: number;
+}
+
 export interface MonitorService {
   deployment_id: number;
   name: string;
   engine: string;
-  placement: string;
+  placement: MonitorPlacement;
   replicas: MonitorReplicaCount;
   state: "running" | "starting" | "stopped" | "failed" | "asleep" | "offline";
   request_rate: number | null;
@@ -4572,7 +4586,7 @@ export interface MonitorDeploymentSummary {
   id: number;
   name: string;
   engine: string;
-  placement: string;
+  placement: MonitorPlacement;
   replicas: MonitorReplicaCount;
 }
 
