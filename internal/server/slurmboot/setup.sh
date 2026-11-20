@@ -252,11 +252,11 @@ install_check_script() {
 	fi
 	# Temporary files get names nobody can have planted (mktemp), so writing
 	# them never follows a link someone left there.
-	src=$(mktemp "$SCRIPT_DIR/.check.sh.src.XXXXXX") && tmp=$(mktemp "$SCRIPT_DIR/.check.sh.XXXXXX") || {
+	if ! src=$(mktemp "$SCRIPT_DIR/.check.sh.src.XXXXXX") || ! tmp=$(mktemp "$SCRIPT_DIR/.check.sh.XXXXXX"); then
 		rm -f "${src:-}"
 		mark "step=check_script status=failed path=$(clean "$SCRIPT_DIR/check.sh")"
 		fail "cannot write in $SCRIPT_DIR"
-	}
+	fi
 	cat >"$src" <<'GWKS_CHECK_SCRIPT_EOF'
 @@CHECK_SCRIPT@@
 GWKS_CHECK_SCRIPT_EOF
@@ -514,4 +514,3 @@ main() {
 # read completely before anything runs; stdin goes to /dev/null so no command
 # (ssh, say) can swallow what is left of it.
 main "$@" </dev/null
-exit $?

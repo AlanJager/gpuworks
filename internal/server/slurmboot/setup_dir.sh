@@ -21,6 +21,8 @@
 # of them. A missing tail is fine (root makes it); a dangling link is not. A
 # share exported with root squash shows root's files as nobody's.
 # GWKS_OWNER_UID stands in for root's uid in tests.
+# The function arguments expand when the directory check runs on each host.
+# shellcheck disable=SC2016
 DIR_CHECK='
 gwks_dir_bits() {
 	gw_b=$1

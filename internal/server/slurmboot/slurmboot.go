@@ -162,11 +162,9 @@ func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// paramsBlock is the setup script's parameters. The health check's omit the
-// token (checkParamsBlock): the check script is world readable on every node.
+// Only the controller-side setup script receives the enrollment token.
 func paramsBlock(p Params) string {
-	return strings.Replace(checkParamsBlock(p), "SERVER_URL="+shQuote(p.ServerURL)+"\n",
-		"SERVER_URL="+shQuote(p.ServerURL)+"\nTOKEN="+shQuote(p.Token)+"\n", 1)
+	return fmt.Sprintf("SERVER_URL=%s\nTOKEN=%s\nSCRIPT_DIR=%s", shQuote(p.ServerURL), shQuote(p.Token), shQuote(p.ScriptDir))
 }
 
 func checkParamsBlock(p Params) string {

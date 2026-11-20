@@ -169,7 +169,7 @@ analyze_conf() {
 		mark "step=conf_include status=warn files=$(clean "$INCLUDES")"
 	fi
 	# A state list with only CYCLE (or none) is ANY, plus the cycling.
-	ORIG_STATE=$(printf '%s' "${ORIG_STATE:-ANY}" | tr 'a-z' 'A-Z' | tr -cd 'A-Z_,')
+	ORIG_STATE=$(printf '%s' "${ORIG_STATE:-ANY}" | LC_ALL=C tr '[:lower:]' '[:upper:]' | LC_ALL=C tr -cd '[:upper:]_,')
 	[ -n "$ORIG_STATE" ] || ORIG_STATE=ANY
 }
 

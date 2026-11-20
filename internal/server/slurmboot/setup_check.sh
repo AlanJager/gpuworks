@@ -46,7 +46,7 @@ do_check() {
 	choose_interval
 	say "CHECK ONLY: nothing is changed on this cluster."
 	check="$SCRIPT_DIR/check.sh"
-	action=write
+	action='write'
 	[ -e "$check" ] && action=replace
 	say "Would write the health check program $check ($action)."
 	mark "step=check_script status=plan path=$(clean "$check") action=$action"
@@ -66,7 +66,7 @@ do_check() {
 	[ -z "$CHAINED" ] || files="$files,chained"
 	if [ "$SHARED" = no ]; then
 		list_nodes
-		csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
+		csv=$(nodes_csv "$NODES")
 		say "Would copy $files to: ${csv:-no other node (sinfo lists none)}"
 		mark "step=distribute_plan nodes=${csv:-none} files=$files"
 	else

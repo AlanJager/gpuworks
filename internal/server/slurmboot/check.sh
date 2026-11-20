@@ -112,9 +112,9 @@ state_wanted() {
 	[ -n "$flags" ] || return 0
 	resolve_node
 	[ -n "$NODE_INFO" ] || return 0
-	st=$(printf '%s\n' "$NODE_INFO" | tr ' ' '\n' | sed -n 's/^State=//p' | head -n 1 | tr 'a-z' 'A-Z')
+	st=$(printf '%s\n' "$NODE_INFO" | tr ' ' '\n' | sed -n 's/^State=//p' | head -n 1 | LC_ALL=C tr '[:lower:]' '[:upper:]')
 	[ -n "$st" ] || return 0
-	base=$(printf '%s' "${st%%+*}" | tr -cd 'A-Z')
+	base=$(printf '%s' "${st%%+*}" | LC_ALL=C tr -cd '[:upper:]')
 	drain=0
 	case "+$st+" in *+DRAIN+* | *+DRAINING+* | *+DRAINED+*) drain=1 ;; esac
 	idle=0 alloc=0 mixed=0

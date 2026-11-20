@@ -96,7 +96,7 @@ reach_nodes() {
 	gpu_nodes
 	[ -n "$GPU_NODES" ] || return 0
 	REACH_CMD=$(reach_command)
-	csv=$(printf '%s\n' $GPU_NODES | tr '\n' ',' | sed 's/,$//')
+	csv=$(nodes_csv "$GPU_NODES")
 	mkdir -p "$WORK/reach"
 	if have clush; then
 		got=$(budgeted clush -w "$csv" "$REACH_CMD" </dev/null 2>/dev/null)
@@ -149,8 +149,8 @@ check_server_reach() {
 	if [ "$REACH_NODES" = yes ]; then
 		reach_nodes
 	fi
-	failed=$(printf '%s\n' $REACH_FAILED | tr '\n' ',' | sed 's/^,//; s/,$//')
-	unknown=$(printf '%s\n' $REACH_UNKNOWN | tr '\n' ',' | sed 's/^,//; s/,$//')
+	failed=$(nodes_csv "$REACH_FAILED")
+	unknown=$(nodes_csv "$REACH_UNKNOWN")
 	mark "step=server_reach_summary url=$(clean "$SERVER_URL") ok=$REACH_OK failed=${failed:-none} unknown=${unknown:-none}"
 	if [ -n "$failed" ]; then
 		PARTIAL=1
