@@ -740,9 +740,9 @@ specs:
   display_name_en: DGX Spark (GB10) ×4 · FP8 · pico TP4
   scenario: balanced
   engine: callable
-  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r3
+  image: gpuworks/pico-dgx-ds4:v2.0-22a39ac-r4
   image_sources:
-  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r3
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/pico-dgx-ds4:v2.0-22a39ac-r4
   weights:
     quantization: fp8
     sources:
@@ -784,6 +784,8 @@ specs:
   - ${GPUWORKS_API_HOST}
   - --port
   - ${GPUWORKS_API_PORT}
+  - --served-name
+  - ${GPUWORKS_SERVED_MODEL_NAME}
   placement:
     language: starlark
     resolver: |
