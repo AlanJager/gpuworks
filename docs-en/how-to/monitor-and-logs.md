@@ -37,7 +37,7 @@ Gateway fallbacks for TPOT and stage durations are generated only for engines wh
 
 Without engine metrics, the metrics panel in deployment details displays available gateway statistics instead. For the full list of metric names, sources, and units, see the [Inference Metrics Glossary](../reference/inference-metrics.md).
 
-The service page's “KV Cache” chart plots two lines per replica: usage on the left axis and prefix cache hit rate on the right, both from 0–100%. For engines that export hit/query counts (vLLM), the hit rate at each point is hits divided by queries within that point's interval. For engines that report only an instantaneous hit rate (SGLang), that value is used directly. A point with no queries is left blank, rather than plotted as 0.
+The service page's “KV Cache” chart plots two lines per replica: usage on the left axis and prefix cache hit rate on the right, both from 0–100%. For engines that export hit/query counts (vLLM), the hit rate at each point is hits divided by queries within that point's interval. For engines that report only an instantaneous hit rate (SGLang), that value is used directly. A point with no queries is left blank, rather than plotted as 0. When the engine exports no cache metrics (such as Strata), the gateway computes the rate from the cache hit counts in response `usage` instead: one deployment-wide line, not per replica, counting only requests that reported a hit count, and no line is drawn when none did.
 
 ## 2. View Requests and Request Distributions
 
@@ -230,4 +230,4 @@ The deployment command preview shows `SGLANG_LOGGING_CONFIG_PATH` and the pre-st
 
 For startup methods without automatic injection, reasons multi-GPU logs may still lack levels, and how to take over the full script yourself, see [SGLang Logging Injection: Behavior and Boundaries](../explanation/sglang-logging.md).
 
-<!-- translation-source-sha256: b229159aec1fd52bcab9aebef2488366526dbfc328f98d4cc8c5e5c1d78635ec -->
+<!-- translation-source-sha256: 59947a896ae0370ac6bd3b9876c477351858cd3e76c02fac0ceca001cbf9478d -->

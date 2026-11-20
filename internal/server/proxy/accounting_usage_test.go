@@ -93,6 +93,7 @@ func TestGatewayCountsTokensAndFirstTokenOfForwardedReplies(t *testing.T) {
 		metricPromptTokens:     64 + 11,
 		metricCompletionTokens: 80 + 2,
 		metricCachedTokens:     59 + 8,
+		metricCacheReported:    64 + 11, // both replies stated their cache figure
 		metricUsageMissing:     1,
 		metricTTFTCount:        2, // the two streams; the plain reply is not timed
 		metricDurationCount:    3,

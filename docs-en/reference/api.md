@@ -1985,7 +1985,7 @@ Custom time ranges for monitoring charts: `overview`, `deployments/{id}`, `deplo
 `range` supports `15m`, `1h` (default), `6h`, `24h`, and `168h`; alternatively, use paired `from`+`to` values. Unknown deployments return 404; deleted deployments return 404 `MONITOR_DEPLOYMENT_DELETED` (`params`: `deployment_id`, `name`, `served_name`).
 
 - `log_instances`: UUIDs of live replicas and replicas recently stopped within the window, up to 64; usable with `/logs/search?instances=...`.
-- `sources`: indicates whether `ttft`, `e2e`, `prompt_tokens`, `generation_tokens`, and `running` come from `engine` or `gateway`; signals without data are omitted. See [Inference Metrics](inference-metrics.md#网关指标) for definitions.
+- `sources`: indicates whether `ttft`, `e2e`, `prompt_tokens`, `generation_tokens`, `running`, `tpot`, `queue_time`, `prefill_time`, `decode_time`, and `kv_hit_rate` (prefix cache hit rate; the gateway value counts only requests that stated a cache hit count, see [Gateway Cache Hit Rate](inference-metrics.md#gateway-cache-hit-rate)) come from `engine` or `gateway`; signals without data are omitted. See [Inference Metrics](inference-metrics.md#网关指标) for definitions.
 - `health`: same as the [health check](#健康检查) in deployment details.
 
 PD deployments also return `pd`:
@@ -2357,4 +2357,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 22cc38d406195280b28a3614c5ebd7f701195f789fd857a168f805418d4b38ca -->
+<!-- translation-source-sha256: 35e568dfa01c9e05737d963294b2c7ff7f6f201f056942c90f3268c1b1a3097e -->

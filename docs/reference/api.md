@@ -2000,7 +2000,7 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 `range` 支持 `15m`、`1h`（默认）、`6h`、`24h`、`168h`，也可使用成对的 `from`+`to`；未知部署返回 404，已删除的部署返回 404 `MONITOR_DEPLOYMENT_DELETED`（`params`：`deployment_id`、`name`、`served_name`）。
 
 - `log_instances`：存活及窗口内近期停止的副本 UUID，最多 64 个，可用于 `/logs/search?instances=...`。
-- `sources`：`ttft`、`e2e`、`prompt_tokens`、`generation_tokens`、`running` 各取自 `engine` 还是 `gateway`，没有数据的信号省略。口径见[推理指标](inference-metrics.md#网关指标)。
+- `sources`：`ttft`、`e2e`、`prompt_tokens`、`generation_tokens`、`running`、`tpot`、`queue_time`、`prefill_time`、`decode_time`、`kv_hit_rate`（前缀缓存命中率，网关值只统计报了缓存命中数的请求，见[网关缓存命中率](inference-metrics.md#网关缓存命中率)）各取自 `engine` 还是 `gateway`，没有数据的信号省略。口径见[推理指标](inference-metrics.md#网关指标)。
 - `health`：同部署详情的[健康检查](#健康检查)。
 
 PD 部署另返回 `pd`：
