@@ -29,4 +29,4 @@ Every 10 seconds the agent scrapes `http://127.0.0.1:<API port><path>` (ADR 0039
 - Protocol: `InstanceDesiredState.metrics_port`.
 - New error codes: `CATALOG_METRICS_PORT_INVALID`, `CATALOG_METRICS_PORT_UNDECLARED`, `CATALOG_METRICS_PORT_UNREFERENCED` (en/zh texts changed together).
 
-<!-- translation-source-sha256: 00d7cbe30845ea0f8b95fcf5b79fe326c5695ba365385ad579b2c76f6a6988e5 -->
+<!-- translation-source-sha256: be0e408326427383035001565364a6ccfb4e1cdaf98e7f8212d3899cf49fdeae -->
