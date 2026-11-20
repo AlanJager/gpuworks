@@ -153,8 +153,8 @@ func statesDistributedVariable(spec inferencecatalog.InferenceSpec) bool {
 		values = append(values, value)
 	}
 	for _, name := range placement.References(values...) {
-		switch name {
-		case placement.VarMasterAddr, placement.VarMasterPort, placement.VarNodeRank, placement.VarNodeAddr:
+		switch placement.Canonical(name) {
+		case placement.VarMasterAddr, placement.VarMasterPort, placement.VarNodeRank, placement.VarNodeAddr, placement.VarPeersFile:
 			return true
 		}
 	}
