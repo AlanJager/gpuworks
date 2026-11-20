@@ -41,6 +41,11 @@ detect_shared() {
 	mark "step=shared status=$SHARED fstype=$(clean "$FSTYPE")"
 }
 
+# Node lists are built by appending a space and a name for each host.
+nodes_csv() {
+	printf '%s' "${1# }" | tr ' ' ','
+}
+
 # list_nodes puts into NODES every node the cluster lists but this machine.
 list_nodes() {
 	self_short=$(hostname -s 2>/dev/null)
@@ -103,7 +108,7 @@ gwks_safe && (umask 022 && mkdir -p '$SCRIPT_DIR') && gwks_safe && (umask 077 &&
 		tool=pdsh
 	fi
 	if [ -n "$tool" ]; then
-		csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
+		csv=$(nodes_csv "$NODES")
 		say "Copying with $tool to: $csv"
 		said=$(fanout "$csv" "$prep")
 		safe=''
@@ -117,7 +122,7 @@ gwks_safe && (umask 022 && mkdir -p '$SCRIPT_DIR') && gwks_safe && (umask 077 &&
 				echo failed unreachable >"$WORK/dist/$(clean "$n")"
 			fi
 		done
-		csv=$(printf '%s\n' $safe | tr '\n' ',' | sed 's/,$//')
+		csv=$(nodes_csv "$safe")
 		if [ -n "$csv" ]; then
 			for f in $FILES; do
 				if [ "$tool" = clush ]; then
@@ -133,7 +138,7 @@ gwks_safe && (umask 022 && mkdir -p '$SCRIPT_DIR') && gwks_safe && (umask 077 &&
 			done
 		fi
 	else
-		csv=$(printf '%s\n' $NODES | tr '\n' ',' | sed 's/,$//')
+		csv=$(nodes_csv "$NODES")
 		ssh_opts="-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 		say "Copying with ssh to: $csv (at most $DIST_JOBS at a time)"
 		started=$(date +%s)
@@ -175,7 +180,7 @@ gwks_safe && (umask 022 && mkdir -p '$SCRIPT_DIR') && gwks_safe && (umask 077 &&
 			;;
 		esac
 	done
-	failed=$(printf '%s\n' $failed | tr '\n' ',' | sed 's/^,//; s/,$//')
+	failed=$(nodes_csv "$failed")
 	mark "step=distribute_summary ok=$nok failed=${failed:-none}"
 	if [ -n "$failed" ]; then
 		PARTIAL=1

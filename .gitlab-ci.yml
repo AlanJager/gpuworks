@@ -46,7 +46,7 @@ variables:
 
 .go-core:
   image:
-    name: golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
+    name: &core_go_image golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
   variables:
     # gpu3 cannot reach proxy.golang.org consistently. Keep direct fallback for
     # modules that have not reached the mainland mirrors yet.
@@ -358,15 +358,68 @@ ui-check:
       - ui-check-report/
     expire_in: 14 days
 
+# Bootstrap the tool image before it has a registry digest. Fork pipelines
+# can validate the same image without access to a publisher's credentials.
+core-test-image:
+  stage: core-prepare
+  tags: [gpuworks-l3]
+  needs:
+    - job: change-record
+      artifacts: false
+  variables:
+    CORE_GO_IMAGE: *core_go_image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_REGISTRY_IMAGE'
+      changes:
+        - build/core-test-image/Dockerfile
+        - .gitlab-ci.yml
+      variables:
+        PUBLISH_CORE_TEST_IMAGE: "1"
+    - if: '$GPUWORKS_CORE_TEST_IMAGE == null || $GPUWORKS_CORE_TEST_IMAGE == ""'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - build/core-test-image/Dockerfile
+        - scripts/test_slurmboot_shellcheck.sh
+        - .gitlab-ci.yml
+  script:
+    - |
+      image="gpuworks-core-test:$CI_JOB_ID"
+      config=$(mktemp -d)
+      trap 'docker image rm "$image" >/dev/null 2>&1 || true; rm -rf "$config"' EXIT
+      docker build --build-arg "GO_IMAGE=$CORE_GO_IMAGE" --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-mirrors.aliyun.com}" -t "$image" build/core-test-image
+      cache="$HOME/.cache/gpuworks-ci/$CI_PROJECT_ID"
+      mkdir -p "$cache/go-build" "$cache/go-mod"
+      docker run --rm --user "$(id -u):$(id -g)" \
+        -v "$cache/go-mod:/go/pkg/mod" -v "$cache/go-build:/go-cache" -e GOCACHE=/go-cache -e HOME=/tmp \
+        -e GOPROXY=https://goproxy.cn,direct -e GOSUMDB=sum.golang.google.cn -e GOFLAGS=-modcacherw -e GOTOOLCHAIN=local \
+        -v "$CI_PROJECT_DIR:/src:ro" -w /src "$image" ./scripts/test_slurmboot_shellcheck.sh
+      if [ "${PUBLISH_CORE_TEST_IMAGE:-}" = 1 ]; then
+        ref="$CI_REGISTRY_IMAGE/core-test:$CI_COMMIT_SHA"
+        printf '%s' "$CI_REGISTRY_PASSWORD" | docker --config "$config" login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+        docker tag "$image" "$ref"
+        docker --config "$config" push "$ref"
+        docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$ref"
+        docker image rm "$ref"
+      fi
+
 core-test:
   extends: .go-core
   stage: core
+  image: $GPUWORKS_CORE_TEST_IMAGE
+  rules:
+    - if: '$GPUWORKS_CORE_TEST_IMAGE'
+      variables:
+        CHECK_CORE_IMAGE_SHELLCHECK: "1"
+    - when: on_success
+      variables:
+        GPUWORKS_CORE_TEST_IMAGE: *core_go_image
   # One retry: environment hiccups on the shared runners (a full disk once
   # failed the build-cache writes) otherwise cascade — every L4 cloud lane
   # hard-needs this job and gets skipped for the night. Persistent failures
   # still fail the pipeline; the retry only heals one-shot flakes.
   retry: 1
   script:
+    - if [ "${CHECK_CORE_IMAGE_SHELLCHECK:-}" = 1 ]; then ./scripts/test_slurmboot_shellcheck.sh; fi
     - ./scripts/check_time_policy.sh
     - ./scripts/check_architecture.sh
     - ./scripts/check_ci_yaml.sh
