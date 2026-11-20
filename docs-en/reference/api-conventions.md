@@ -183,6 +183,10 @@ Clients first check the HTTP status, then read `code` and `params`. For a generi
 These conventions apply to the management API. For the inference gateway's error format, see [OpenAI-Compatible Gateway](openai-gateway.md). Error codes are defined in
 `internal/server/api/errors.go` and `internal/server/messages` (generic codes in `messages/http.go`). Individual endpoints may also return business-specific error codes.
 
+The cluster enrollment listener also uses `CLUSTER_TLS_REQUIRED` (426, enrollment requires a completed HTTPS handshake), `CLUSTER_REQUEST_INVALID` (400), `CLUSTER_INVITATION_REQUIRED` (401, enrollment needs the invitation bearer), `CLUSTER_IDENTITY_MISMATCH` (409), `CLUSTER_ADMISSION_REJECTED` (403), and `CLUSTER_UNAVAILABLE` (503). Issuing an invitation uses the existing management session; a non-administrator still receives `ADMINISTRATOR_REQUIRED`.
+
+A member of a control-plane cluster answers 503 (code `SERVICE_UNAVAILABLE`) when it cannot commit a write: only the member holding the database leader can commit it and this member is not that one, or this member's business writes are closed. Nothing is committed, and the cluster entry can send the request to another member. A member that has not opened business answers business paths with 503 and the plain-text body `member business service is not ready`, not JSON.
+
 ## Checks
 
 `make check-api-conventions` performs type checks on `internal/server/api`, identifies the value written by every `writeJSON` / `writeSSE`
@@ -193,5 +197,5 @@ call, and reports:
 
 This check is included in `make test-unit`.
 
-<!-- translation-source-sha256: e2bda9af30c4ebf9224b33165c7eb2a3db50322778468b87776098bdb9ea2b9f -->
+<!-- translation-source-sha256: f638c01a6d9aba713db7f577e9825befe260f6185b0e6567771d0f36f581f980 -->
 <!-- translation-localized-code-block: bae0e4c7d262a34ee3ef790d5e20acb056000102304e33d31fffd72989b4b11c 575be17f25555cdcb9a913a995f63b3814eab0f2391908631ca49f5fa2d37787 Translate password input prompt -->

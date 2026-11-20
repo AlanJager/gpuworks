@@ -9,6 +9,8 @@
 - **server**（`cmd/gpuworks` → `internal/server`）：控制面 + Web UI + OpenAI 兼容网关。子命令 `serve` / `install` / `upgrade` / `reset-password` / `migrate`。
 - **agent**（`cmd/gpuworks-agent` → `internal/agent`）：跑在每个 GPU 节点上，负责探测、容器运行、采集。子命令 `run` / `smoke` / `upgrade` / `doctor` / `grant-device-access` / `bench` / `runveil`（ps/images/exec/logs 排障）/ `uninstall`。
 
+控制面集群另有一个辅助程序 `gpuworks-dqlite`（`cmd/gpuworks-dqlite`），承载数据库节点，是唯一使用 cgo 的制品，只在 `linux && cgo && dqlite` 下构建；server 的集群代码在 `linux && dqlite` 下构建，仍是 `CGO_ENABLED=0`。默认构建不含集群运行时。
+
 逐包说明见 `docs/dev/code-map.md`。
 
 ### 连接架构
@@ -29,6 +31,7 @@ yamux 流：`ctrl`（双向 JSON Lines 控制面）、`telemetry`（agent 在数
 - `internal/server/deployment` 是部署创建/评估与部署读模型的唯一入口（纯状态推导在 `planning`），不依赖 `net/http` 与 `api`（`make check-architecture` 守护）；api 的 handler 只做解码、调用、按 `Kind` 映射 HTTP 状态，新的部署业务逻辑写进 `deployment`。
 - `messages` 产语言中立 ProductError（稳定 code + 插值参数 + 英文 fallback），人类可读文本归客户端 locale。
 - `selfinstall` / `installcred` 是叶子包，install 与 server 两端共用，不得反向依赖 server。
+- 控制面集群：`internal/server/cluster`（+`identity`）经 go-dqlite 的纯 Go client/driver 连接自己启动并监管的 `gpuworks-dqlite` 子进程，不链接 libdqlite；store 的集群文件与 app 的成员生命周期都在 `dqlite` 标签后，各有 `!linux || !dqlite` 的桩。带标签的构建与测试必须用 `make dqlite-deps` 生成的 SDK modfile（`-mod=readonly`），server 用到的 client/driver 也打了补丁。
 - agent `gpu` 不用 NVML cgo，走 `nvidia-smi` + `/proc` + sysfs；`gpu.Prober` 可注入做 hermetic 测试。
 - agent `runtime` driver shell out 到 CLI，不用 Go SDK；`runtime.Driver` 可注入做 hermetic 测试。
 - `internal/engines` 是纯叶子包无依赖：`modelmeta` 经 `inferenceapi` 被 `deploy` 依赖、agent 又不能依赖 server，两侧只能共用这个叶子包。
@@ -44,7 +47,7 @@ make run-server # 本地起 server
 make demo       # 起 server + agent，验证接入/心跳/重连
 ```
 
-其他常用：`make vet`、`make tidy`、`make test-integration`（fake agent/runtime 的产品级测试）、`make test-coverage-report`、`make server-linux-amd64` / `release-packages`（发布构建）、`make check-assets` / `check-libvgpu`（内嵌原生资产校验）、`make fake-engine` / `fake-model`（测试资产）。云端 L4 矩阵见 `make test-l4-*` 与 `docs/dev/testing.md`。
+其他常用：`make dqlite-deps` / `dqlite-helper` / `server-linux-amd64-dqlite`（控制面集群的原生依赖、辅助程序与带集群运行时的 server，见 `scripts/dqlite/README.md`）、`make vet`、`make tidy`、`make test-integration`（fake agent/runtime 的产品级测试）、`make test-coverage-report`、`make server-linux-amd64` / `release-packages`（发布构建）、`make check-assets` / `check-libvgpu`（内嵌原生资产校验）、`make fake-engine` / `fake-model`（测试资产）。云端 L4 矩阵见 `make test-l4-*` 与 `docs/dev/testing.md`。
 
 ## 代码规约
 

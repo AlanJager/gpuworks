@@ -212,6 +212,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/agent/connect` | agent 长连接 WS upgrade 入口 | 节点 token（非管理 JWT） |
 | GET | `/install.sh` | curl\|sh 安装脚本 | 无 |
 | GET | `/api/v1/healthz` | 健康检查（管理面） | JWT |
+| GET | `/api/v1/readyz` | 业务就绪检查（无需登录，供负载均衡与集群入口探测）：就绪时 200，正文固定为 `{"status":"ready"}`；业务库不可读或成员尚未开放业务时 503；响应不含任何配置、身份或计数 | 无 |
 | GET | `/api/v1/peer-transfers` | 当前管理节点进程的 peer 传输观测；可选单个 `transfer_id`，返回有效中继预算、活动中继数、带宽额度等待数、累计结果及有界运行观测。无对应观测返回空列表，未接入观测能力返回 503；非法筛选返回 400。计数为内层 TLS 流字节，不代表文件校验进度。 | JWT |
 | GET | `/healthz` | 健康检查（无需登录，供探活/负载均衡） | 无 |
 | GET | `/api/v1/engines?target_vendor=amd` | 面向指定厂商的引擎参数字典（省略 `target_vendor` 时使用通用 profile，未知厂商返回 400）；AMD profile 只表示实现准入范围，不证明特定 GPU/ROCm 版本已通过真机验收 | JWT |
@@ -1861,8 +1862,8 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | GET | `/api/v1/updates/server/result` | 传入本次升级的 `attempt` 或已接受响应的 `backup`，核对下载、等待重启、失败或已确认回滚。无匹配证据时返回 `unknown`。 | JWT(admin) |
 | POST | `/api/v1/updates/server` | 可传入 `{channel,version,sha256,attempt}` 精确选择包。无选择时沿用渠道最新版本。下载发布包，备份并替换服务端后重启；接受返回 202 `{from,to,backup}`，下一次启动确认或回滚；见[服务端升级限制](#服务端升级限制) | JWT(admin) |
 | POST | `/api/v1/updates/server/upload` | 同上，但请求体是上传的发布压缩包（上限 512 MiB）；不是可用的发布包时 400 `SERVER_UPGRADE_ARCHIVE_INVALID`（含控制台升级之前的版本：它们不会确认或回滚自己的启动，`detail` 提示改用 `gpuworks upgrade --archive`） | JWT(admin) |
-| GET | `/api/v1/settings` | 全部设置项当前值（不含 `telemetry_export` 与 `branding`，它们只经各自的专用接口读写） | JWT |
-| PUT | `/api/v1/settings/{key}` | 修改单个设置项；`telemetry_export`、`branding`、`security` 回 400 `SETTING_HAS_OWN_ROUTE`（`security` 走 `PATCH /api/v1/security/settings`，整体替换会静默清掉请求体没提到的开关）。`deployment`（待调度超时、实例启动超时、事件保留）只有管理员可改（否则 403 `ADMINISTRATOR_REQUIRED`）：请求体叠加在当前值上，只改其中出现的键，叠加后越界回 400 `FIELD_INVALID` 且不写入 | JWT(admin) |
+| GET | `/api/v1/settings` | 全部设置项当前值（不含 `telemetry_export` 与 `branding`，它们只经各自的专用接口读写；也不含调度围栏的三个内部键） | JWT |
+| PUT | `/api/v1/settings/{key}` | 修改单个设置项；调度围栏使用的三个内部键 `scheduling.generation`、`scheduling.owner`、`scheduling.confirmation` 不能经此接口写入，回 403（其他 `scheduling.*` 键不受影响）；`telemetry_export`、`branding`、`security` 回 400 `SETTING_HAS_OWN_ROUTE`（`security` 走 `PATCH /api/v1/security/settings`，整体替换会静默清掉请求体没提到的开关）。`deployment`（待调度超时、实例启动超时、事件保留）只有管理员可改（否则 403 `ADMINISTRATOR_REQUIRED`）：请求体叠加在当前值上，只改其中出现的键，叠加后越界回 400 `FIELD_INVALID` 且不写入 | JWT(admin) |
 | GET | `/api/v1/security/settings` | 安全开关：`playground_preview_network`（试验场 HTML 预览是否允许发起网络请求，默认 `false`）与 `inference_open_access`（是否接受不带 API key 的 `/v1` 请求，默认 `false`；打开后不带 key 的请求被匿名放行，带了 key 的仍照常校验，网关读不到设置按关闭处理），见[OpenAI 兼容网关的认证](openai-gateway.md#认证)；设置读取失败时接口返回 500 `SECURITY_SETTINGS_UNAVAILABLE`，不返回伪造的默认值 | JWT |
 | PATCH | `/api/v1/security/settings` | 修改上述开关，只改 body 里出现的字段；读取现有策略失败时返回 500 `SECURITY_SETTINGS_UNAVAILABLE` 且不写入；成功响应为已提交的策略 | admin |
 | GET | `/api/v1/branding` | 品牌外观：`product_name`、`console_title`、`login_description`、`logo`（base64 `data:` URL，PNG/JPEG/WebP/SVG），四个字段总是出现，空串表示用内置默认值（默认文案由客户端按界面语言渲染）。登录页在登录前就要显示，所以不需登录 | 无 |
