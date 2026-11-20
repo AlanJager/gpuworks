@@ -79,7 +79,8 @@ func (r PreparationReads) preparationNodeIDs(dep *store.Deployment, instances []
 // visible; recorded holds only rows that exist, which is what the runtime
 // state reads — a row that does not exist says nothing about the deployment.
 func ModelProgress(rows Rows, dep *store.Deployment) (shown, recorded []dto.ModelNodePresence) {
-	ids, err := planning.DeploymentModelIDs(dep)
+	// A node reads only its rank's models when the weights are rank-scoped.
+	nodeModels, err := planning.NodeModelIDs(dep)
 	if err != nil {
 		return nil, nil
 	}
@@ -89,7 +90,7 @@ func ModelProgress(rows Rows, dep *store.Deployment) (shown, recorded []dto.Mode
 		if node == nil {
 			continue
 		}
-		for _, modelID := range ids {
+		for _, modelID := range nodeModels(node) {
 			presence, exists := modelPreparationPresence(rows, node, modelID, rules)
 			shown = append(shown, presence)
 			if exists {

@@ -311,8 +311,10 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 	}
 	parallel := req.Placement.Parallelism(req.Topology.NNodes)
 	parallel.DP = dp
+	weightModel, weightRanks := rankWeightModel(req.Selection, req.Model, req.Topology.NodeRank)
 	return Input{
 		Model: req.Model, Node: req.Node, Engine: req.Engine, Quick: req.Quick,
+		WeightModel: weightModel, WeightRanks: weightRanks,
 		SpecWeightBytes:      req.Selection.WeightBytes,
 		RuntimeWeightBytes:   req.Selection.RuntimeWeightBytes,
 		ComponentWeightBytes: componentWeightBytes,

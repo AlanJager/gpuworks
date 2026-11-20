@@ -43,7 +43,7 @@ func TestEnsureDeploymentModelsPresentStopsRepushingAfterModelFileFailed(t *test
 	c := New(st, hub, nil)
 
 	for attempt := 0; attempt < 3; attempt++ {
-		_, ready, err := c.ensureDeploymentModelsPresent(context.Background(), node, dep, model)
+		_, ready, err := c.ensureDeploymentModelsPresent(context.Background(), node, dep, model, 0)
 		if err != nil {
 			t.Fatalf("attempt %d: %v", attempt, err)
 		}
@@ -87,7 +87,7 @@ func TestEnsureDeploymentModelsPresentPushesPendingModelFile(t *testing.T) {
 	hub := &distributedTestHub{online: map[string]bool{node.UUID: true}, updates: map[string][]proto.StateUpdate{}}
 	c := New(st, hub, nil)
 
-	_, ready, err := c.ensureDeploymentModelsPresent(context.Background(), node, dep, model)
+	_, ready, err := c.ensureDeploymentModelsPresent(context.Background(), node, dep, model, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

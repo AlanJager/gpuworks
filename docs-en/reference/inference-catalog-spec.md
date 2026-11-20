@@ -185,6 +185,28 @@ sources:
 
 `subfolder` selects one subtree of the repository by directory prefix, and the download keeps the repository-relative paths. When no directory has that name, it can name a single file in the repository and only that file is downloaded (for example, one adapter from a repository that keeps many LoRA files at its root); when a directory and a file share the name, the directory is selected.
 
+#### Rank-scoped weights
+
+When a multi-node recipe pre-splits its weights into one part per rank, kept in subfolders of one repository, the spec's own `weights.sources` may name the rank variable `${GPUWORKS_NODE_RANK}` in `subfolder` (as in template fields, the older unprefixed `${NODE_RANK}` is its alias):
+
+```yaml
+weight_bytes: 137438953472          # one rank's size
+weights:
+  quantization: fp8
+  sources:
+  - modelscope:
+      repo_id: org/model-tp4
+      subfolder: rank${GPUWORKS_NODE_RANK}   # rank 0 reads rank0/, rank 3 reads rank3/
+```
+
+Each rank of a multi-node deployment then downloads and mounts only its own part (decision in [ADR 0076](../adr/0076-rank-scoped-weights.md)):
+
+- At create, the subfolder is expanded for every rank into one model artifact per rank (same provider, repository and revision, own subfolder). Rank 0's artifact is the deployment's model; the other ranks' bindings are kept in the deployment snapshot and never resolved from the catalog again.
+- Each node's download task, model marker and local model identity are its rank's subfolder. Admission, disk budgeting and preparation progress are per rank too: rank `r`'s node reserves disk only for rank `r`'s artifact, and a node that already holds that subfolder counts no download.
+- The mount keeps the repository-relative paths: in rank `r`'s container the weights are under `${GPUWORKS_MODEL_PATH}/rank<r>/…`, so the command writes `${GPUWORKS_MODEL_PATH}/rank${GPUWORKS_NODE_RANK}/…`.
+- `weight_bytes` (and `runtime_weight_bytes`) state one rank's size; the memory estimate multiplies it back to the group's weights.
+- A subfolder may name only the rank variable; either every source of the spec names it or none does; it cannot be combined with `components` or `pd_mode`, nor deployed as PD (`RANK_WEIGHTS_PD_UNSUPPORTED`). A request that names `model_id` must name rank 0's artifact (`RANK_WEIGHTS_MODEL_NOT_RANK_ZERO`). On a single-node deployment `${GPUWORKS_NODE_RANK}` is `0` (as the variable table states), so it reads rank 0's part only; how many parts exist is the recipe's to decide, and the platform does not check the deployment's node count against it.
+
 Multiple sources in the same spec mean that any one can be pulled. The deployment's `model_source.provider` selects which provider's weights to run; [pull settings](../how-to/configure-pull-settings.md) determine how the node obtains them (already present, copied within a sync group, read from shared storage, or downloaded).
 
 ### image_sources: Image Sources Declared by the Template
@@ -329,9 +351,9 @@ A template declares only what it needs, and the platform provides it on every la
 
 | Kind | The template writes | The container sees | Host side decided by | Lifetime |
 |---|---|---|---|---|
-| Launch variables | References to `${GPUWORKS_*}` in `args` / `env` / `entrypoint` / `pre_start_*`; see [Variable Expansion](#变量展开) | This launch's values | The platform | Every launch |
+| Launch variables | References to `${GPUWORKS_*}` in `args` / `env` / `entrypoint` / `pre_start_*`, see [Variable Expansion](#变量展开); a weight `subfolder` may reference only `${GPUWORKS_NODE_RANK}` | This launch's values | The platform | Every launch |
 | System-layer environment variables | Nothing; a key of the same name in `env` overrides it | The compute network's `NCCL_*` / `GLOO_SOCKET_IFNAME` / `UCX_NET_DEVICES`; see [Environment Variable Layers](deployment-launch-sources.md#环境变量分层) | The platform | Every launch |
-| Primary weights | `weights` | Read-only at `${GPUWORKS_MODEL_PATH}` (default `/model`, or the primary component's `mount_path`) | The platform (model storage) | With the model |
+| Primary weights | `weights`; `subfolder` may say `rank${GPUWORKS_NODE_RANK}`, see [Rank-Scoped Weights](#按-rank-拆分的权重) | Read-only at `${GPUWORKS_MODEL_PATH}` (default `/model`, or the primary component's `mount_path`); with rank-scoped weights each rank holds only its own subfolder | The platform (model storage) | With the model |
 | Component weights | `components[].mount_path` | Read-only at that path | The platform (model storage) | With the model |
 | Assets | `assets[].unpack_to` | Read-only, unpacked to that path | The platform (template package) | With the template version |
 | KV disk tier | Cannot (a deployment parameter) | Read-write, at a path the platform picks | The platform (node-managed directory) | While an instance runs on the node; pruned to its limit |
@@ -718,9 +740,10 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 3edf69606107c703a4551731f33072c5869a8fbcaa0d3d4f40377abfcaab6cd5 -->
+<!-- translation-source-sha256: 1e180fbf6e8faf6f59b90de8b025aa175c5065f773523d18c7c8513feab197a4 -->
 <!-- translation-localized-code-block: a580200df2b28bc011bb736a64288086932955375e5ae8897762ee97bd667e26 8e0792250b6c0eb3ec0dad5bfca28308dc0b1afeb27e9c33bb24ddb21e20ba07 -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
+<!-- translation-localized-code-block: 4cf9267c119973bda779b8e29a9ad818c097c803df34a09ac14492502ab9dce2 e78acb98a7a082fdad6d2080ea7754cc18152f1bec68f60c312e46e33f3bfd59 -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 0db7a21f5d58dc3f0536ef0b3909ce67ba6415f6c0e158dbee9122f79b1f2209 8da5a4455c5d0ab53369e8e0b4455543b9acd70a2615f7faf4b34b620d9cd204 Translate the inline shell comment. -->
 <!-- translation-localized-code-block: a611f2e8254725bdcf88ae19eb23c532ef8c679903131a8881bbd61f09aafdb2 33859cded67f664966175739bc36d429175e7fe4c8f3d71422f40719d24be6e6 Translate YAML comments and illustrative user-facing reason text. -->

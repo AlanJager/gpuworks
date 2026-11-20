@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 
 	"gopkg.in/yaml.v3"
@@ -519,6 +520,9 @@ func validateSpec(modelID string, index int, spec *InferenceSpec, names map[stri
 	if err := validateWeights(modelID, spec.Name, &spec.Weights); err != nil {
 		return err
 	}
+	if err := validateRankScopedWeights(modelID, spec); err != nil {
+		return err
+	}
 	if len(spec.PreStartArgv) > 0 && strings.TrimSpace(spec.PreStartScript) != "" {
 		return fmt.Errorf("model %s spec %s cannot set both pre_start_argv and pre_start_script", modelID, spec.Name)
 	}
@@ -569,6 +573,9 @@ func validateWeights(modelID, specName string, weights *Weights) error {
 		subfolder, err := modelrepo.NormalizeSubfolder(source.Subfolder)
 		if err != nil {
 			return fmt.Errorf("model %s spec %s has invalid %s subfolder: %w", modelID, specName, source.Provider, err)
+		}
+		if variable := deploy.UnknownSubfolderVariable(subfolder); variable != "" {
+			return fmt.Errorf("model %s spec %s %s subfolder may name only ${GPUWORKS_NODE_RANK}, not %s", modelID, specName, source.Provider, variable)
 		}
 		source.Subfolder = subfolder
 	}

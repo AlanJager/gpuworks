@@ -208,12 +208,13 @@ func (c *Controller) evictCacheRow(ctx context.Context, node *store.Node, id uin
 	return c.deleteCacheFile(ctx, node, row)
 }
 
-// ensureDeploymentModelsPresent makes the deployment's primary model and every
-// template component readable on the node, each from wherever the node can
-// read it.
-func (c *Controller) ensureDeploymentModelsPresent(ctx context.Context, node *store.Node, dep *store.Deployment, primary *store.Model) (deploymentModels, bool, error) {
+// ensureDeploymentModelsPresent makes what rank of the deployment reads
+// readable on the node, each from wherever the node can read it: the primary
+// model (the rank's own artifact for rank-scoped weights) and every template
+// component.
+func (c *Controller) ensureDeploymentModelsPresent(ctx context.Context, node *store.Node, dep *store.Deployment, primary *store.Model, rank int) (deploymentModels, bool, error) {
 	out := deploymentModels{Components: map[uint]store.ModelLocation{}}
-	models, err := c.deploymentModels(dep, primary)
+	models, err := c.deploymentModels(dep, primary, rank)
 	if err != nil {
 		return out, false, err
 	}
@@ -228,7 +229,7 @@ func (c *Controller) ensureDeploymentModelsPresent(ctx context.Context, node *st
 		}
 		out.Components[model.ID] = loc
 	}
-	out.Primary = out.Components[primary.ID]
+	out.Primary = out.Components[models[0].ID]
 	return out, true, nil
 }
 

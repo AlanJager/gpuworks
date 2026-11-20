@@ -306,7 +306,7 @@ func TestTrialRefusesANodeTheStorageCannotServe(t *testing.T) {
 	f := newStorageControllerFixture(t)
 	f.ready(t, f.node, proto.StorageStatus{ID: f.nfs.ID, State: proto.StorageStateReady, Path: "/mnt/gpuworks/model-archive", Writable: true})
 	dep := f.deployment(t, f.nfs) // saves into the NFS, which lacks the model
-	refusal, err := f.c.modelUnavailable(dep, f.node, f.model)
+	refusal, err := f.c.modelUnavailable(dep, f.node, f.model, 0)
 	if err != nil || refusal == nil || refusal.Code != scheduler.ReasonModelMissingInStorage || refusal.Params["storage"] != "model-archive" {
 		t.Fatalf("trial refusal = %+v err=%v", refusal, err)
 	}

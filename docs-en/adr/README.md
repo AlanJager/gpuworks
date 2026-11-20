@@ -83,7 +83,8 @@ Note: 0012–0014 originally collided with 0004, 0004, and 0006, respectively, a
 
 <!-- translation-source-sha256: e9ff52f0efbf4a944e57a811f5b94505b68eb0f546cdc5adafa4acb50af48c07 -->
 | [0075](0075-slurm-allocates-node-cards.md) | On a Slurm compute node the cards are Slurm's: an instance borrows them with a placeholder job before it starts, takes whichever cards Slurm gives, and the server rebinds it afterwards; a cluster joins as an entry and its health check bootstraps the agent on each node | 2026-11-15 | Accepted; supplements 0052 |
+| [0076](0076-rank-scoped-weights.md) | Rank-scoped weights: the `subfolder` of a spec's weight sources names `${GPUWORKS_NODE_RANK}`, resolved at create into one model artifact per rank (rank 0's is the deployment's model, the others are bound in the snapshot); download, mount and disk admission are per rank | 2026-11-19 | Accepted |
 
 Note: 0012–0014 originally collided with 0004, 0004, and 0006, respectively, and were renumbered by creation order during cleanup on 2026-09-03. Old numbers in historical commit messages and MR descriptions are no longer accurate. Similarly, the original 0024 (node network objects) was renumbered to 0030 on 2026-09-30 because it collided with the data-plane lane's 0024. Earlier references to “ADR 0024” meaning network objects were updated accordingly; “ADR 0024” in `CLAUDE.md` and `todo.md` refers to the data-plane lane.
 
-<!-- translation-source-sha256: e99b2007b87c6f931feba7f574b5606dac9a11e718d5c4b750beee17eb9d3e35 -->
+<!-- translation-source-sha256: 364459026b4e45a0804b31a64e19a4e9975c04a0286c75e0ffde4fdc48a3624b -->

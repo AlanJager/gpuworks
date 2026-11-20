@@ -122,7 +122,7 @@ func portBlock(first, size int) []int {
 // with. A nil launch means the rank cannot start now (see planRank).
 func (c *Controller) planPDRank(ctx context.Context, deployment *unitDeployment, node *store.Node, model *store.Model, launch pdRankLaunch) (*rankLaunch, planning.PDRecord, *scheduler.Reason, error) {
 	dep, pd := deployment.dep, deployment.pd
-	files, ready, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model)
+	files, ready, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model, 0) // PD refuses rank-scoped weights
 	if err != nil || !ready {
 		return nil, planning.PDRecord{}, nil, err
 	}
