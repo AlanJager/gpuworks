@@ -262,4 +262,36 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Apple silicon (macOS 15+, M1-M5): vllm-metal runs as a host process from the
+# gpuworks-runner metal package. weight_bytes is the measured safetensors total.
+- name: bf16-vllm-apple
+  display_name_zh_cn: Apple 芯片 · BF16
+  display_name_en: Apple silicon · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 4855588ea1a12789f2e965e5f52a9e4a24c94b2a
+  weight_bytes: 4063515592
+  gpus:
+    vendor: apple
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]
