@@ -1,0 +1,155 @@
+diff --git a/src/cli/cli.c b/src/cli/cli.c
+index 4e79066..840d65c 100644
+--- a/src/cli/cli.c
++++ b/src/cli/cli.c
+@@ -467,7 +467,7 @@ int main(int argc, char *const argv[])
+ 	tracee = get_tracee(NULL, 0, true);
+ 	if (tracee == NULL)
+ 		goto error;
+-	tracee->pid = getpid();
++	set_tracee_pid(tracee, getpid());
+ 
+ 	/* Pre-configure the first tracee.  */
+ 	status = parse_config(tracee, argc, argv);
+diff --git a/src/tracee/event.c b/src/tracee/event.c
+index ce59f07..64e3392 100644
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -101,7 +101,7 @@ int launch_process(Tracee *tracee, char *const argv[])
+ 
+ 	default: /* parent */
+ 		/* We know the pid of the first tracee now.  */
+-		tracee->pid = pid;
++		set_tracee_pid(tracee, pid);
+ 		return 0;
+ 	}
+ 
+diff --git a/src/tracee/tracee.c b/src/tracee/tracee.c
+index 58ab7df..2ab2a7a 100644
+--- a/src/tracee/tracee.c
++++ b/src/tracee/tracee.c
+@@ -52,6 +52,47 @@
+ typedef LIST_HEAD(tracees, tracee) Tracees;
+ static Tracees tracees;
+ 
++/* get_tracee() is called for every event of every tracee and
++ * free_terminated_tracees() once per event.  Both walked the whole
++ * list of tracees, so with thousands of threads the two linear walks
++ * cost more CPU than the ptrace(2) calls they accompany.  Index the
++ * tracees by pid and keep a count of the terminated ones so that both
++ * become O(1) in the common case.  The order in which events are
++ * served is not affected.  */
++#define TRACEE_INDEX_SIZE 1024 /* A power of two.  */
++typedef LIST_HEAD(tracee_bucket, tracee) TraceeBucket;
++static TraceeBucket tracee_index[TRACEE_INDEX_SIZE];
++static size_t nb_terminated_tracees;
++
++static TraceeBucket *tracee_bucket(pid_t pid)
++{
++	/* Knuth's multiplicative hash; pids are dense and the low bits
++	 * alone would cluster.  */
++	uint32_t hash = (uint32_t) pid * UINT32_C(2654435761);
++
++	return &tracee_index[hash & (TRACEE_INDEX_SIZE - 1)];
++}
++
++static void unindex_tracee(Tracee *tracee)
++{
++	if (!tracee->indexed)
++		return;
++	LIST_REMOVE(tracee, index_link);
++	tracee->indexed = false;
++}
++
++/**
++ * Set @tracee's pid to @pid, keeping the pid index consistent.  Every
++ * assignment to Tracee.pid has to go through this function.
++ */
++void set_tracee_pid(Tracee *tracee, pid_t pid)
++{
++	unindex_tracee(tracee);
++	tracee->pid = pid;
++	LIST_INSERT_HEAD(tracee_bucket(pid), tracee, index_link);
++	tracee->indexed = true;
++}
++
+ 
+ /**
+  * Remove @zombie from its parent's list of zombies.  Note: this is a
+@@ -93,6 +134,11 @@ static int remove_tracee(Tracee *tracee)
+ 	int event;
+ 
+ 	LIST_REMOVE(tracee, link);
++	unindex_tracee(tracee);
++	if (tracee->terminated) {
++		assert(nb_terminated_tracees > 0);
++		nb_terminated_tracees--;
++	}
+ 
+ 	/* Clean objects that are linked to this tracee's life
+ 	 * span.  */
+@@ -226,7 +272,7 @@ static Tracee *new_tracee(pid_t pid)
+ 
+ 	talloc_set_destructor(tracee, remove_tracee);
+ 
+-	tracee->pid = pid;
++	set_tracee_pid(tracee, pid);
+ 	tracee->vpid = next_vpid++;
+ 
+ 	LIST_INSERT_HEAD(&tracees, tracee, link);
+@@ -331,7 +377,7 @@ Tracee *get_tracee(const Tracee *current_tracee, pid_t pid, bool create)
+ 	if (current_tracee != NULL && current_tracee->pid == pid)
+ 		return (Tracee *)current_tracee;
+ 
+-	LIST_FOREACH(tracee, &tracees, link) {
++	LIST_FOREACH(tracee, tracee_bucket(pid), index_link) {
+ 		if (tracee->pid == pid) {
+ 			/* Flush then allocate a new memory collector.  */
+ 			TALLOC_FREE(tracee->ctx);
+@@ -349,7 +395,10 @@ Tracee *get_tracee(const Tracee *current_tracee, pid_t pid, bool create)
+  */
+ void terminate_tracee(Tracee *tracee)
+ {
+-        tracee->terminated = true;
++        if (!tracee->terminated) {
++                tracee->terminated = true;
++                nb_terminated_tracees++;
++        }
+ 
+         /* Case where the terminated tracee is marked
+            to kill all tracees on exit.
+@@ -367,6 +416,9 @@ void free_terminated_tracees()
+ {
+ 	Tracee *next;
+ 
++	if (nb_terminated_tracees == 0)
++		return;
++
+ 	/* Items can't be deleted when using LIST_FOREACH.  */
+ 	next = tracees.lh_first;
+ 	while (next != NULL) {
+diff --git a/src/tracee/tracee.h b/src/tracee/tracee.h
+index 1e40a38..8818fd1 100644
+--- a/src/tracee/tracee.h
++++ b/src/tracee/tracee.h
+@@ -85,6 +85,12 @@ typedef struct tracee {
+ 	/* Link for the list of all tracees.  */
+ 	LIST_ENTRY(tracee) link;
+ 
++	/* Link for the pid-indexed hash table of all tracees.  */
++	LIST_ENTRY(tracee) index_link;
++
++	/* Is this tracee currently in the pid-indexed hash table?  */
++	bool indexed;
++
+ 	/* Process identifier. */
+ 	pid_t pid;
+ 
+@@ -274,6 +280,7 @@ typedef struct tracee {
+ #define TRACEE(a) talloc_get_type_abort(talloc_parent(talloc_parent(a)), Tracee)
+ 
+ extern Tracee *get_tracee(const Tracee *tracee, pid_t pid, bool create);
++extern void set_tracee_pid(Tracee *tracee, pid_t pid);
+ extern Tracee *get_ptracee(const Tracee *ptracer, pid_t pid, bool only_stopped,
+ 			bool only_with_pevent, word_t wait_options);
+ extern Tracee *get_stopped_ptracee(const Tracee *ptracer, pid_t pid,

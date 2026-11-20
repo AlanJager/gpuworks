@@ -7,13 +7,23 @@ variant.
 
 ## Source of the embedded binaries
 
-- `proot-x86_64-static-nofd`: upstream `proot-me/proot` `704a4ab7` plus
-  `patches/proot-nobrk-nofd.patch`. It predates `build.sh`;
-  `reproduce-embedded-x86_64.sh` rebuilds it byte for byte.
-- `proot-arm64-static-nofd`: upstream `a0dc181e` plus the nofd, temp-noise and
-  arm64-faccessat2 patches, built with the `build.sh` steps.
+Both are upstream `proot-me/proot` `a0dc181e` plus the nofd, temp-noise,
+arm64-faccessat2, tracee-index and fair-adaptive patches, built with
+`build.sh`, which writes an evidence manifest next to each artifact (patch
+hashes, compiler, every gate's result, the artifact's own hash). The hashes in
+`internal/assets/bin/manifest.sha256` are what ships.
 
-New builds use `build.sh`.
+- `proot-x86_64-static-nofd`: built in an `ubuntu:24.04` container with GCC
+  13.3.0. It used to be an older build (upstream `704a4ab7` with the nofd
+  patch only, predating `build.sh`), replaced when the event-loop patches went
+  in, so both architectures now have the same source and the same gates.
+- `proot-arm64-static-nofd`: built natively on an openEuler 24.03 ARM64 host
+  (kernel 5.10) with GCC 12.3.1, because the ARM64 machines on hand either run
+  a kernel too old for the path-resolution gate or cannot run a container at
+  all. The predecessor was a GCC 7.3.0 build. The artifact is byte for byte
+  the binary that produced the 910B measurements above
+  (`8418b9fa9395818c7b47a9fbda201eb2f8b311a47c76b10f4f0cd34c7af1aabe`), so the
+  numbers and the shipped binary are the same thing.
 
 ## Variants
 
@@ -33,10 +43,19 @@ New builds use `build.sh`.
   glibc `realpath()` checks access host paths and incorrectly return `ENOENT`
   for guest directories, preventing CANN platform and operator discovery.
 
+- `patches/proot-tracee-index.patch` indexes the tracees by pid and counts the
+  terminated ones, so `get_tracee()` and `free_terminated_tracees()` stop
+  walking the whole list on every event. It is a pure CPU change and keeps the
+  order in which events are served.
+
+- `patches/proot-fair-adaptive.patch` makes the event loop serve the oldest
+  pending tracees first when that is worth its cost. Both are applied to every
+  variant, like the two patches above, so neither is an A/B variable.
+
 The names are historical. In particular, `nofd` is not a claim that every
 file-descriptor syscall is bypassed.
 
-## Many-thread stress harness and the rejected fair-wait patch
+## Many-thread fairness: the harness and the shipped event loop
 
 PRoot serves every traced syscall of every thread from one process, and Linux
 lists a process's tracees newest first, so with thousands of threads a saturated
@@ -47,20 +66,71 @@ ones sit in tracing-stop (seen with SGLang TP8 on 8 GPUs under runveil).
 each, 60 of them looping on `stat()` plus a spawner churning short-lived
 threads, and a main thread per process that must keep making progress.
 `stress/smoke.sh <proot>` checks exit codes, fork/wait, a compile and threaded
-Python. Use both when changing the event loop.
+Python. Use both when changing the event loop; `stress/gate_event_loop.sh`
+runs a smaller, asserting version of both and is a mandatory build gate.
 
-A patch that drains all pending `waitpid` results per round and indexes tracees
-by pid fixed the stress case (main threads went from 0 to about 27 iterations/s)
-but stalled real SGLang weight loading on an 8xH200 box, so it is **not** built
-or shipped. The patch, the A/B table and a hypothesis are in
-`artifacts/work/2026-10-20-runveil-many-threads/plan.md`; the shipped mitigation
-is the thread-pool caps the server adds for SGLang on runveil nodes
-(`internal/server/deploy/runveil_env.go`).
+Two patches address it, and both are shipped in every variant.
+
+`proot-tracee-index.patch` removes the two linear list walks per event
+(`get_tracee()`, `free_terminated_tracees()`). It is the cheap half: tracer CPU
+during a 4-rank vLLM start-up on 910B fell from 29% to 5.1% of a core, and from
+22% to 8% for a 32B SGLang start-up on 8 H200. It does not change which tracee
+is served next, so it does not fix starvation on its own.
+
+`proot-fair-adaptive.patch` is the fairness half. Collecting every pending
+`waitpid` result per round and serving them oldest-first does equalize the
+tracees, but the `WNOHANG` call that ends a collection has to walk the whole
+children list to find nothing, and that walk costs about 43 ns per tracee
+(measured: 18 us at 500 tracees, 94 us at 2200, 136 us at 3000). Paying it on
+every round is what made an earlier unconditional version unusable: loading a
+122B checkpoint on 8 H200 took 615 s instead of 35 s, with the tracer at 100%
+system time. So the patch collects only while a collection pays for itself: a
+round that yields at least `nb_tracees / 37` events keeps collecting, and below
+that the interval between collections doubles up to 1024 rounds. Phases with
+many threads in flight (warmup, kernel compilation) get the fairness; phases
+with few (reading weights from storage) fall back to the upstream loop and pay
+nothing. `PROOT_FAIR_BATCH=1` restores the upstream loop exactly, which is the
+escape hatch if a workload ever regresses; `PROOT_FAIR_BATCH=n` caps a
+collection at n events and `PROOT_FAIR_ADAPTIVE=0` collects on every round,
+both only useful for measuring.
+
+Measured three ways, all single runs:
+
+| Case | Upstream loop | Shipped (adaptive) |
+| --- | --- | --- |
+| harness, 2200 threads, 16 busy | 182.5k syscall-stops/s, 5731 scans/s | 181.6k stops/s (-0.5%), 174 scans/s, interval backs off to 1024 |
+| harness, 1700 threads, 512 busy | fair only with an unconditional collection | 64.3k stops/s, served min/max 1.01, interval stays at 1 |
+| SGLang 122B, TP8, 8 H200, same machine | weight load 29.4-61.1 s, rank init 24.9-100.5 s | weight load 29.7-38.0 s, rank init 7.1-23.7 s |
+| vLLM Qwen3.8-Flash-Next W4A8 MTP, TP4, 910B | warmup 72 / 91 / 2766 / 2899 s, worker CPU spread 4.9x, 96 min to ready | warmup 58.4 / 61.3 / 64.0 / 66.4 s, worker CPU spread 1.21x, 15m44s to ready |
+
+The 910B run is the honest headline: the same start-up that spent 48 minutes
+with two of four ranks starving in warmup now finishes warmup within 8 seconds
+of each other, with no environment variable set. The 8 H200 comparison is
+against the upstream loop on the same machine (`PROOT_FAIR_BATCH=1`); the
+earlier 615 s unconditional-collection figure came from a different rented
+machine and was not re-measured there, so it bounds the risk of collecting
+unconditionally, not the behaviour of this patch.
+
+Two other designs were measured and rejected: FIFO aging (timestamp every stop
+and serve in time order) deadlocks at low concurrency, because the queue never
+fills and throughput collapses to 20 events/s, and a timer only converts the
+deadlock into a latency bound; a rotating cursor over the tracee list costs
+only 2.7% once amortized but does not equalize (served-count skew 82952 against
+the upstream 128971 in the harness).
+
+The thread-pool caps the server adds for SGLang on runveil nodes
+(`internal/server/deploy/runveil_env.go`) stay as they are: they reduce how
+many threads are created, which is useful whatever the tracer does.
 
 ## Build and mandatory gates
 
-Run the build in a native Linux Ubuntu 24.04 container of the target architecture (amd64 or arm64). The safe nofd variant is
-the default. The script emits an evidence manifest next to the artifact:
+Run the build in a native Linux Ubuntu 24.04 container of the target
+architecture (amd64 or arm64), on a host kernel of **5.8 or newer**: the
+path-resolution gate is deliberately strict and asserts `faccessat2`, which
+older kernels do not have, so an older host fails the build with
+`guest faccessat2: Function not implemented` (a 4.19 ARM64 host does). The safe
+nofd variant is the default. The script emits an evidence manifest next to the
+artifact:
 
 ```bash
 out="$(mktemp -d /tmp/gpuworks-proot-output.XXXXXX)"
@@ -70,8 +140,18 @@ docker run --rm --platform linux/amd64 \
   bash /src/build/runtime-assets/proot/build.sh
 ```
 
+Two inputs can be supplied locally when the network will not cooperate:
+`PROOT_TALLOC_TARBALL=<file>` replaces the download from download.samba.org
+(the pinned sha256 is still what is checked, and Ubuntu's
+`talloc_2.4.2.orig.tar.gz` is the same tarball), and `PROOT_REPOSITORY=<path>`
+accepts a local clone or `git bundle` of PRoot instead of cloning from github
+(the commit is pinned by sha, and the manifest records the source used).
+
 Every artifact must pass the real udocker `-k 6.8.0` Python dynamic-loader
-shape. The script also starts a guest AF_UNIX socket under `/tmp` while using a
+shape, the guest path-resolution gate and the event-loop gate
+(`stress/gate_event_loop.sh`: exit codes, a signal death, 300 forks and their
+wait, a compile-and-run, 64 Python threads, shell job control, and a
+many-thread fairness run in which no rank may fall under 100 iterations). The script also starts a guest AF_UNIX socket under `/tmp` while using a
 separate guest root and verifies that a successful bind never creates the exact
 guest pathname directly in the host `/tmp` namespace. For long translated
 paths PRoot may use a private short temporary binding, so the literal
