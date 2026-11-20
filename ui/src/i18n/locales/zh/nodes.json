@@ -643,7 +643,8 @@
       "udocker": "runveil",
       "host": "环境包",
       "storage": "存储 {{name}}",
-      "storageCache": "存储 {{name}} 的缓存"
+      "storageCache": "存储 {{name}} 的缓存",
+      "managedDirs": "托管目录"
     }
   },
   "doctor": {
@@ -823,6 +824,7 @@
       "docker": "Docker",
       "storage": "存储",
       "storage_cache": "存储缓存",
+      "managed_dirs": "托管目录",
       "agent": "agent 目录"
     },
     "pluginNone": "无（由 gpuworks 直接挂载设备）",

@@ -90,6 +90,11 @@ const (
 	// start_timeout_sec is outside the deployment start timeout bounds.
 	// Params: model, spec, start_timeout_sec, min_sec, max_sec.
 	ErrorCatalogStartTimeoutInvalid = "CATALOG_START_TIMEOUT_INVALID"
+	// ErrorCatalogMountPathConflict reports two container paths of one catalog
+	// spec (the model mount, a component mount_path, an asset unpack_to, a dir
+	// mount_path) that are the same or nest. Params: model, spec, field, path,
+	// other_field, other_path.
+	ErrorCatalogMountPathConflict = "CATALOG_MOUNT_PATH_CONFLICT"
 	// ErrorInferenceSpecTargetRequired reports a delete-spec request that did
 	// not name both the owning model_id and the user spec to retire.
 	ErrorInferenceSpecTargetRequired     = "INFERENCE_SPEC_TARGET_REQUIRED"

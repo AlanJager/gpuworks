@@ -1609,6 +1609,7 @@
     { "term_en": "Automatic Placement", "translations": { "zh": "自动放置" } },
     { "term_en": "Placement Policy", "translations": { "zh": "放置策略" } },
     { "term_en": "Card Gate", "translations": { "zh": "卡准入闸" } },
+    { "term_en": "Managed Directory", "translations": { "zh": "托管目录" } },
     { "term_en": "Card Preference", "translations": { "zh": "卡偏好档" } },
     { "term_en": "Instance Note", "translations": { "zh": "实例提示" } },
     { "term_en": "Lifecycle Schedule", "translations": { "zh": "定时计划" } },

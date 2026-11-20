@@ -549,6 +549,7 @@ func inferenceTemplateView(model store.InferenceModel) dto.InferenceTemplate {
 			enrichTemplateAPIContract(view.API, raw)
 		}
 		_ = json.Unmarshal([]byte(spec.Components), &view.Components)
+		view.Dirs = managedDirsView(spec.Dirs)
 		out.Specs = append(out.Specs, view)
 	}
 	return out

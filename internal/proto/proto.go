@@ -263,6 +263,10 @@ type Hello struct {
 	// HostSystemUUID is the host's firmware system UUID, normalized with
 	// NormalizeHostSystemUUID (see host_system_uuid.go for when it is empty).
 	HostSystemUUID string `json:"host_system_uuid,omitempty"`
+	// ManagedDirGroups are the managed directory groups on the node
+	// (ManagedDirGroupKey), so the server can name the ones whose deployment
+	// is gone in its replay (DesiredState.ReleasedDirGroups).
+	ManagedDirGroups []string `json:"managed_dir_groups,omitempty"`
 }
 
 // Reject explains why a connection is being closed. It is sent before the
@@ -507,12 +511,17 @@ const (
 
 // PathUsage reports statfs for a managed path without recursively scanning it.
 type PathUsage struct {
-	Kind string `json:"kind"` // models | udocker | docker | storage | storage_cache
+	Kind string `json:"kind"` // models | udocker | docker | storage | storage_cache | managed_dirs
 	// StorageID names the storage a storage or storage_cache entry measures.
 	StorageID      uint   `json:"storage_id,omitempty"`
 	Path           string `json:"path"`
 	TotalBytes     int64  `json:"total_bytes"`
 	AvailableBytes int64  `json:"available_bytes"`
+	// SharesDiskWith names the other kinds in the same report that measure
+	// this same filesystem. Only the managed_dirs entry states it: admission
+	// charges a launch's image and weights against the managed directories'
+	// free space only when they land on the same disk.
+	SharesDiskWith []string `json:"shares_disk_with,omitempty"`
 }
 
 // NodeStatus is the periodic node-level report (status.node).

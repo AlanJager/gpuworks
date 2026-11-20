@@ -421,6 +421,10 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		e.failLaunch(spec, err, proto.ErrorKVDiskPrepareFailed, proto.PhaseContainerPrepare, "KV disk tier preparation failed: "+err.Error())
 		return
 	}
+	if err := e.applyManagedDirMounts(&ws, spec); err != nil {
+		e.failLaunch(spec, err, proto.ErrorManagedDirPrepareFailed, proto.PhaseContainerPrepare, "managed directory preparation failed: "+err.Error())
+		return
+	}
 
 	if err := e.applyDeviceInjectionForLaunch(ctx, &ws, spec.GPUIndexes, driver.Name(), spec.NNodes); err != nil {
 		e.reportInjectionFailure(spec, err)

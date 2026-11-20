@@ -118,6 +118,7 @@ models:                       # FlatCatalog: a single top-level models list
 | `memlock_unlimited` | Optional Boolean, default `false`; non-Boolean values (numbers, strings, and so on) are rejected | When `true`, the deployment's container uses `--ulimit memlock=-1:-1` (removing the locked-memory limit only for this container), for engines that lock large amounts of host memory into RAM (for example, DeepInfer uses `cudaHostRegister` to lock about 197 GB). If the deployment's own `docker_args` already specifies `memlock`, that setting takes precedence and no duplicate is appended; this is merged with the `memlock` injected for host RDMA networking into a single entry. See [Locked Memory](deployment-launch-sources.md#锁定内存memlock) |
 | `start_timeout_sec` | Optional integer, seconds; 60–86400 (the same bounds as the deployment's own `start_timeout_sec`), otherwise the stable error code `CATALOG_START_TIMEOUT_INVALID` is reported; an explicit `0` is equivalent to omitting it | Startup health check budget for instances of this spec, for recipes whose first start converts weights or warms caches for tens of minutes. It is the template step of the startup wait limit (source `template`): cluster default → template → raised to the engine deadline → the deployment's `start_timeout_sec`; for the order and rules see [Startup Wait Limit](deployment-launch-sources.md#启动等待上限). Saved with the spec snapshot, so later template changes do not affect existing deployments |
 | `docker_args` | Optional string array; each item nonempty after trimming; validated exactly like the deployment's own `container_overrides.docker_args` (`deploy.ValidateDockerArgs`): options that hand the container the host (`--privileged`, `--pid`, `-v /`, and so on) are rejected, as are options the platform already manages (`--name`, `--network`, `--gpus`, `--shm-size`, `-e`, `-v`, `--mount`, `--entrypoint`, and so on); `--ipc=host` together with this same spec's own `shm_bytes` is also rejected | Extra `docker run` options the engine needs (for example `--cap-add=SYS_PTRACE`), the template layer of the deployment's own `docker_args`: the template's own args apply first, then the deployment's own, then the platform's (RDMA, memlock). If the deployment itself does not state `--ipc=host` but the selected template does, the deployment's own `shm_bytes` is rejected rather than silently having no effect, because it would never apply. See [the three-layer order of docker run arguments](deployment-launch-sources.md#docker-run-参数的三层顺序) |
+| `dirs[]` | Optional, at most 8 entries; `name` is 1–32 lower-case letters, digits or `-` (not starting or ending with `-`), unique within the spec; `mount_path` is an absolute, clean container path other than `/` that overlaps no other container path of the spec ([one container path space](#模板与平台的分工)); `limit_bytes` is a byte count, > 0 and ≤ 64 TiB (`1<<46`); `retain` may only be `deployment`, written back on import when omitted | Writable host directories the platform keeps for the deployment on every node it runs on; see [dirs: Managed Writable Directories](#dirs-managed-writable-directories) |
 | `gpus` | Required | See below |
 | `args` | String array | Included in the engine command line; supports `${VAR}` [variable expansion](#变量展开); split using the parameter dictionary at deployment time (see below) |
 | `env` | Nonempty keys | Container environment variables; values support `${VAR}` expansion |
@@ -356,6 +357,7 @@ A template declares only what it needs, and the platform provides it on every la
 | Primary weights | `weights`; `subfolder` may say `rank${GPUWORKS_NODE_RANK}`, see [Rank-Scoped Weights](#按-rank-拆分的权重) | Read-only at `${GPUWORKS_MODEL_PATH}` (default `/model`, or the primary component's `mount_path`); with rank-scoped weights each rank holds only its own subfolder | The platform (model storage) | With the model |
 | Component weights | `components[].mount_path` | Read-only at that path | The platform (model storage) | With the model |
 | Assets | `assets[].unpack_to` | Read-only, unpacked to that path | The platform (template package) | With the template version |
+| Writable directories | `dirs[]` (`name`, `mount_path`, `limit_bytes`, `retain`); see [dirs](#dirs托管的可写目录) | Read-write at `mount_path`; one per node | The platform (node-managed directory; needs the agent capability `mount.managed_dirs`) | With the deployment; never pruned |
 | KV disk tier | Cannot (a deployment parameter) | Read-write, at a path the platform picks | The platform (node-managed directory) | While an instance runs on the node; pruned to its limit |
 | Deployment mounts | Cannot (the deployment's `extra_mounts`) | As each row states | The operator | Not managed by the platform |
 | Compute network files | Nothing | Read-only host files the accelerator network needs (same path) | The platform | Every launch |
@@ -366,7 +368,8 @@ Rules:
 
 - **One variable spelling**: documentation and examples always write the prefixed `${GPUWORKS_X}`; the older unprefixed spelling still expands as an alias in template fields, while a hand-written manual command recognizes only the prefixed one.
 - **One set of units**: sizes in a spec are always bytes (`*_bytes`), durations always seconds (`*_sec`), and container paths always absolute, clean paths (`mount_path`, `unpack_to`).
-- **One container path space**: no two mounts in the table (primary weights, components, assets, KV disk tier, deployment mounts, compute network files) may target the same path or nest inside each other; deployment evaluation and creation check them together, and two mounts on one target are reported as `MOUNT_TARGET_DUPLICATE`.
+- **One container path space**: no two mounts in the table (primary weights, components, assets, dirs, KV disk tier, deployment mounts, compute network files) may target the same path or nest inside each other, by one rule (`proto.ContainerPathsOverlap`). The template's own paths (the model mount, component `mount_path`s, asset `unpack_to`s, dir `mount_path`s) are checked against each other on import and a conflict is `CATALOG_MOUNT_PATH_CONFLICT` (its parameters name both fields and paths; several assets may unpack into one directory); together with the deployment's own mounts and the platform's they are checked again on evaluation, creation and every launch, where one target is `MOUNT_TARGET_DUPLICATE` and nesting is `MOUNT_TARGET_NESTED`.
+- **Agent capability**: each facility only the node's agent can provide has one capability name; a launch that uses it goes only to nodes that announce the capability, and an older agent's node is refused with the scheduling reason `agent_capability_missing` (parameters `capability`, `node`), so the deployment waits for an upgrade or another node instead of starting a container that lacks what the template declared. Declaring `dirs` needs `mount.managed_dirs`.
 
 ## entrypoint: The Sole Declaration Point for Entrypoint Overrides
 
@@ -654,6 +657,30 @@ A model referenced by `model_id` must be in the same document/catalog package or
 - **Clone or edit a template with documentation and assets**: the generated catalog package also includes referenced component models; these entries contain no specs or documentation.
 - **Upload a catalog package**: the package must still include the component models it references.
 
+## dirs: Managed Writable Directories
+
+When an engine needs a host directory it can write, that survives its instances being recreated, and that is cleaned up when the deployment is deleted (a session store, a spill area, logs, or a compile cache or snapshot it derives at first start and reuses), the spec declares `dirs`:
+
+```yaml
+dirs:
+- name: pico-state
+  mount_path: /pico
+  limit_bytes: 429496729600
+  retain: deployment
+```
+
+How it divides the work with weights, assets, the KV disk tier and deployment mounts is in [What the Template Declares and What the Platform Provides](#模板与平台的分工).
+
+- **One per node**: on every node an instance of the deployment lands on, the agent creates `managed-dir/<deployment>-<creation second>/<name>` under the node's runtime mount root (`GPUWORKS_RUNTIME_MOUNT_ROOT`, by default `<state>/runtime-mounts`, `<state>` on docker nodes), owned by the runtime mount owner, and mounts it read-write at `mount_path`. docker, nerdctl, runveil (udocker), Kubernetes and host processes (paths rewritten to the host directory) treat it as any other mount. Instances of one deployment on one node share the directory; a recipe that needs them apart splits it into subdirectories itself with the existing `${GPUWORKS_NODE_RANK}`. There is no launch variable for the path: the recipe writes `mount_path` directly.
+- **One mechanism with the KV disk tier**: the KV disk tier is the same kind of managed directory, switched on by a deployment parameter and kept under `kv-disk/<deployment>`; it is a cache, removed once the last instance leaves the node and pruned past its ceiling by the sweeper. `dirs` is state, kept until the deployment is deleted and never pruned.
+- **Kept until the deployment is deleted**: stopping, restarting, failing over or re-forming a multi-node group leaves it alone, and an instance that returns to the same node sees what was written there. Once the deployment is deleted (its instances confirmed torn down, its row gone) the server tells every connected node to remove the deployment's directories; a node offline at the time lists the groups it holds in its next hello, the server's replay names those whose deployment no longer exists, and the node removes them then. A group a desired instance still mounts is kept. The group name carries the deployment's creation time, so after a database change (a reinstalled server, a restored backup) a new deployment with the same id does not get the old directory.
+- **Admitted on the declared size**: scheduling requires the disk the node keeps managed directories on (the agent reports its free space as `managed_dirs`) to hold every `limit_bytes`, the KV disk tier's ceiling and the disk reserve (the storage settings' reserve, else a tenth of that disk, at most 50 GiB); when the agent reports that disk is shared with the models root or the current runtime's image store, the weights to download and the image to unpack count there too. Otherwise the node is refused with `insufficient_managed_dir_disk`, and the reason states how much is needed, available, declared and reserved. A node that does not report the disk (an older agent) is not checked here. Admission does not subtract what a directory already holds, because that is already out of the free space.
+- **Not pruned or capped**: the directory holds state, not a cache, so the platform deletes nothing in it by size and sets no filesystem quota; staying within `limit_bytes` is the recipe's part.
+- **Path conflicts**: `mount_path` shares one container path space with every other mount; the rule is in [What the Template Declares and What the Platform Provides](#模板与平台的分工).
+- **Agent capability**: the agent announces `mount.managed_dirs` in its hello; a launch that declares `dirs` goes only to nodes that announce it, and an older agent's node is refused with `agent_capability_missing`. When a directory cannot be prepared the instance fails to start with `MANAGED_DIR_PREPARE_FAILED`.
+
+See [ADR 0077](../adr/0077-template-managed-writable-dirs.md) for the trade-offs.
+
 ## performance_tradeoffs: Reasons for Performance-Costing Settings
 
 Some settings let an engine run on a given piece of hardware or a given model at the price of throughput or latency, such as turning off graph capture, turning off prefix caching, or capping concurrency at a single digit. `internal/engines` holds a registry with each engine's spellings (`engines.ScanPerformanceCosts`) that recognizes these settings in a spec's launch and grades them:
@@ -740,7 +767,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 1e180fbf6e8faf6f59b90de8b025aa175c5065f773523d18c7c8513feab197a4 -->
+<!-- translation-source-sha256: 73e142cac710dc0d3e092dfba60cba8c1af8747418de65718c27c428810ad1c4 -->
 <!-- translation-localized-code-block: a580200df2b28bc011bb736a64288086932955375e5ae8897762ee97bd667e26 8e0792250b6c0eb3ec0dad5bfca28308dc0b1afeb27e9c33bb24ddb21e20ba07 -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 4cf9267c119973bda779b8e29a9ad818c097c803df34a09ac14492502ab9dce2 e78acb98a7a082fdad6d2080ea7754cc18152f1bec68f60c312e46e33f3bfd59 -->

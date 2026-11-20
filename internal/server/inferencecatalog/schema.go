@@ -3,6 +3,7 @@ package inferencecatalog
 import (
 	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/inferencemetrics"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -255,7 +256,23 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 				"type":        "boolean",
 				"description": "Start the container with unlimited locked memory (--ulimit memlock=-1:-1), for an engine that pins large host memory (for example with cudaHostRegister). A memlock ulimit in the deployment's docker_args overrides it.",
 			},
-			"docker_args":    stringArraySchema("Extra docker run options the engine needs (for example --cap-add=SYS_PTRACE), applied before the deployment's own docker_args and the platform's. Validated the same way as the deployment's own container_overrides.docker_args: platform-managed options (--name, --network, --gpus, --shm-size, -e, -v, --mount, --entrypoint, ...) and options that would hand the container the host (--privileged, --pid, -v /, ...) are refused, and --ipc=host together with shm_bytes is refused."),
+			"docker_args": stringArraySchema("Extra docker run options the engine needs (for example --cap-add=SYS_PTRACE), applied before the deployment's own docker_args and the platform's. Validated the same way as the deployment's own container_overrides.docker_args: platform-managed options (--name, --network, --gpus, --shm-size, -e, -v, --mount, --entrypoint, ...) and options that would hand the container the host (--privileged, --pid, -v /, ...) are refused, and --ipc=host together with shm_bytes is refused."),
+			"dirs": map[string]any{
+				"type":        "array",
+				"maxItems":    deploy.MaxManagedDirs,
+				"description": "Writable host directories the platform keeps for the deployment on every node it runs on: created on first start, mounted read-write at mount_path, kept while the deployment's instances are restarted or recreated, and removed when the deployment is deleted. Admission requires each node's managed-directory disk to have the declared limits plus the disk reserve free.",
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []string{"name", "mount_path", "limit_bytes"},
+					"properties": map[string]any{
+						"name":        map[string]any{"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$", "description": "Unique within the spec; names the directory on the node."},
+						"mount_path":  map[string]any{"type": "string", "pattern": "^/.+", "description": "Absolute container path; may not overlap the model mount, a component mount_path, an asset unpack_to or another dir."},
+						"limit_bytes": map[string]any{"type": "integer", "minimum": 1, "maximum": deploy.MaxManagedDirLimitBytes, "description": "Most the template writes there, in bytes like the spec's other sizes: reserved on every node at admission. The platform does not prune or cap the directory; staying within it is the recipe's job."},
+						"retain":      map[string]any{"type": "string", "enum": []string{deploy.ManagedDirRetainDeployment}, "description": "How long the directory lives; deployment (the default) keeps it until the deployment is deleted."},
+					},
+				},
+			},
 			"pre_start_argv": stringArraySchema("One command run inside the container, not on the host, every time the container starts, before the engine command; entries must be nonempty. The agent runs it from the wrapper /gpuworks/pre-start.sh (/bin/sh with set -eu, then exec of the engine command), with the container's full environment: the spec's env, the deployment's env and the accelerator variables the agent injects. ${GPUWORKS_*} variables are expanded by the server at deploy time. A nonzero exit stops the start: the engine never runs and the instance fails as an exited container, with the command's output as evidence. Mutually exclusive with pre_start_script."),
 			"pre_start_script": map[string]any{
 				"type":        "string",

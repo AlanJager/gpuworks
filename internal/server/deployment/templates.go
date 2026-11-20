@@ -31,7 +31,10 @@ type templateSelection struct {
 	ExtraArgs        []string
 	// DockerArgs are the selected spec's own docker run options, decoded from
 	// InferenceSpecRow.DockerArgs; nil when the spec states none.
-	DockerArgs     []string
+	DockerArgs []string
+	// Dirs are the selected spec's writable directories, decoded from
+	// InferenceSpecRow.Dirs; nil when the spec declares none.
+	Dirs           []deploy.ManagedDir
 	Env            map[string]string
 	PreStartArgv   []string
 	PreStartScript string
@@ -60,37 +63,6 @@ type templateSelection struct {
 	// resolved to (resolveRankWeights).
 	WeightRanks int
 	RankWeights []deploy.RankWeight
-}
-
-// shmBytes is the /dev/shm size the selected spec states, or zero when the
-// deployment has no template or the spec states none.
-func (s templateSelection) shmBytes() int64 {
-	if s.Spec == nil {
-		return 0
-	}
-	return s.Spec.ShmBytes
-}
-
-// startTimeoutSec is the instance start timeout the selected spec states, or
-// zero when the deployment has no template or the spec states none.
-func (s templateSelection) startTimeoutSec() int {
-	if s.Spec == nil {
-		return 0
-	}
-	return s.Spec.StartTimeoutSec
-}
-
-// memlockUnlimited reports whether the selected spec asks for unlimited locked
-// memory in its container.
-func (s templateSelection) memlockUnlimited() bool {
-	return s.Spec != nil && s.Spec.MemlockUnlimited
-}
-
-// dockerArgs is the selected spec's own docker run options, decoded once in
-// applyTemplateDefaults (DockerArgs); nil when the deployment has no template
-// or the spec states none.
-func (s templateSelection) dockerArgs() []string {
-	return s.DockerArgs
 }
 
 func (s *Service) resolveDeploymentModelFromTemplate(ctx context.Context, modelID uint, selection *templateSelection, templateID uint) (*store.Model, error) {
@@ -304,6 +276,9 @@ func (s *Service) applyTemplateDefaults(req *dto.DeployRequest, hardware templat
 		if err := json.Unmarshal([]byte(spec.DockerArgs), &selection.DockerArgs); err != nil {
 			return selection, fmt.Errorf("inference spec %s docker_args: %w", spec.Name, err)
 		}
+	}
+	if selection.Dirs, err = deploy.DecodeManagedDirs(spec.Dirs); err != nil {
+		return selection, fmt.Errorf("inference spec %s: %w", spec.Name, err)
 	}
 	if strings.TrimSpace(spec.Env) != "" {
 		if err := json.Unmarshal([]byte(spec.Env), &selection.Env); err != nil {
@@ -549,7 +524,7 @@ func snapshotTemplateSelection(selection templateSelection, image string) deploy
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, Entrypoint: selection.Entrypoint,
 		Placement: selection.Placement, APIContract: selection.APIContract,
-		Components: selection.Components, RankWeights: selection.RankWeights, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, StartTimeoutSec: selection.Spec.StartTimeoutSec, DockerArgs: selection.DockerArgs, ImageSources: templateImageSources(selection, image),
+		Components: selection.Components, RankWeights: selection.RankWeights, PDMode: selection.Spec.PDMode, ShmBytes: selection.Spec.ShmBytes, MemlockUnlimited: selection.Spec.MemlockUnlimited, StartTimeoutSec: selection.Spec.StartTimeoutSec, DockerArgs: selection.DockerArgs, Dirs: selection.Dirs, ImageSources: templateImageSources(selection, image),
 		DeviatedFields: selection.Diff, MatchedBy: selection.MatchedBy,
 		ImageDigestWarning: strings.Contains(strings.ToLower(image), "@sha256:"),
 	}

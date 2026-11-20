@@ -57,6 +57,10 @@ type DesiredState struct {
 	// a leftover binary) would otherwise destroy this control plane's
 	// instances. Operators opt in per cluster via the server setting.
 	OrphanCleanup bool `json:"orphan_cleanup,omitempty"`
+	// ReleasedDirGroups are the managed directory groups the agent listed in
+	// its hello (Hello.ManagedDirGroups) whose deployment no longer exists:
+	// the agent removes each one no desired instance mounts.
+	ReleasedDirGroups []string `json:"released_dir_groups,omitempty"`
 }
 
 // StateUpdate is the payload of a state.update (incremental) message. Each list
@@ -81,6 +85,11 @@ type StateUpdate struct {
 	// ignored (its stored desired state already carries the new observation
 	// for the next launch or state.sync). An older agent ignores the field.
 	Observations []ObservationUpdate `json:"observations,omitempty"`
+	// ReleasedDirDeployments are deployments just deleted: the agent removes
+	// every managed directory group of theirs that no desired instance mounts.
+	// The server sends it to every connected agent advertising CapManagedDirs,
+	// because only the nodes know which of them hold a group.
+	ReleasedDirDeployments []uint `json:"released_dir_deployments,omitempty"`
 }
 
 // ObservationUpdate is one instance's new observation together with the

@@ -85,10 +85,14 @@ type CatalogSelection struct {
 	// (deploy.launchDockerArgs). A running deployment keeps the args it was
 	// created with: this snapshot, not a fresh catalog read, is what every
 	// later launch of the deployment resolves against.
-	DockerArgs         []string `json:"docker_args,omitempty"`
-	DeviatedFields     []string `json:"deviated_fields,omitempty"`
-	MatchedBy          string   `json:"matched_by"`
-	ImageDigestWarning bool     `json:"image_digest_warning,omitempty"`
+	DockerArgs []string `json:"docker_args,omitempty"`
+	// Dirs are the template's writable directories (spec dirs). A snapshot
+	// written before templates declared them has none, which is what it
+	// means.
+	Dirs               []ManagedDir `json:"dirs,omitempty"`
+	DeviatedFields     []string     `json:"deviated_fields,omitempty"`
+	MatchedBy          string       `json:"matched_by"`
+	ImageDigestWarning bool         `json:"image_digest_warning,omitempty"`
 	// Extra holds the document's fields this type does not name, verbatim. A
 	// field added by a newer server survives a decode/encode cycle here instead
 	// of being dropped on the next write.

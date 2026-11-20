@@ -115,6 +115,9 @@ func (s *Session) buildReplay() (proto.DesiredState, uint, error) {
 	if err := s.completeNetworkConfig(node, &ds.Network); err != nil {
 		return proto.DesiredState{}, 0, err
 	}
+	if ds.ReleasedDirGroups, err = s.hub.store.ReleasedManagedDirGroups(s.managedDirGroups); err != nil {
+		return proto.DesiredState{}, 0, err
+	}
 	if err := s.hydrateRuntimeAssetContent(ds.Instances); err != nil {
 		return proto.DesiredState{}, 0, err
 	}

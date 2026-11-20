@@ -6,7 +6,6 @@ package planning
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -57,9 +56,14 @@ type Input struct {
 	// runtime image is already present and requires no additional disk; false
 	// and nil conservatively reserve the catalog estimate.
 	RuntimeImageCached *bool
-	Node               *store.Node // must be loaded with GPUs
-	Engine             string
-	Quick              deploy.LaunchConfig
+	// ManagedDirBytes is what the template's writable directories declare
+	// (deploy.ManagedDirBytes); admission reserves it, with the KV disk
+	// tier's ceiling, on the disk the node keeps managed directories on
+	// (deploy.ManagedDiskBytes, managedDirAdmission).
+	ManagedDirBytes int64
+	Node            *store.Node // must be loaded with GPUs
+	Engine          string
+	Quick           deploy.LaunchConfig
 	// Parallel is the deployment's parallelism; an unstated one lets the
 	// scheduler choose the GPU count on a single node.
 	Parallel   parallelism.Spec
@@ -216,6 +220,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 	}
 	storageAdmit := admitStorage(st, in, storageWeightBytes, componentWeightBytes)
 	diskNeedBytes := storageAdmit.NeedBytes
+	managedDirs := managedDirAdmission(st, in.Node, deploy.ManagedDiskBytes(in.ManagedDirBytes, in.Quick, weightBytes), diskNeedBytes, runtimeImageBytes)
 	// KV cache is allocated dynamically by the serving engine. It is exposed as
 	// an informational capacity estimate below, but is intentionally excluded
 	// from scheduler startup admission.
@@ -230,6 +235,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 
 	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, excludeInstance: in.ExcludeInstanceUUID, reserved: reservedAgainst(st, in.YieldPolicy), servingUnavailable: in.ServingUnavailable}
 	snap := nodeSnapshot(st, in.Node, dtypeOK, dtypeReason, view)
+	snap.ManagedDirDiskAvailBytes = managedDirs.AvailBytes
 	if in.Unloaded {
 		// A card that is busy or unhealthy now is a reason to wait, not to
 		// refuse; so is a disk that is full now.
@@ -238,6 +244,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 			snap.GPUs[i].WholeGPUAllocated, snap.GPUs[i].ForeignBytes = false, 0
 		}
 		diskNeedBytes, runtimeImageBytes = 0, 0
+		managedDirs = managedDirNeed{}
 		// A storage that is not ready here, or a cache full of models in use,
 		// passes with time; a model larger than the cache cap does not.
 		if storageAdmit.Refusal != nil && storageAdmit.Refusal.Code != scheduler.ReasonModelExceedsCacheLimit {
@@ -281,6 +288,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		MMEncoderBytes:       mmEncoder,
 		DiskNeedBytes:        diskNeedBytes,
 		RuntimeDiskNeedBytes: runtimeImageBytes,
+		ManagedDirNeedBytes:  managedDirs.NeedBytes,
 		HeadCount:            estimate.HeadCount(cfg),
 		AllowedGPUIndexes:    in.GPUIndexes,
 		Consent:              in.Consent,
@@ -319,6 +327,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 	out.GPUCandidates = scheduler.GPUCandidates(req, candidates)
 	out.Result = scheduler.Schedule(req, snap)
 	explainDiskRefusal(st, in, req, snap, &out.Result)
+	explainManagedDirRefusal(in, managedDirs, &out.Result)
 	if candidateError != nil && !out.Result.OK {
 		out.PlacementError = candidateError
 	}
@@ -533,52 +542,6 @@ func nodeGPUProfile(node *store.Node) (string, string, string, float64) {
 	}
 	arch := node.ArchOf(g)
 	return node.VendorOf(g), arch.ID, arch.Family, parseCC(g.ComputeCapability)
-}
-
-func parseCC(s string) float64 {
-	var maj, min int
-	if _, err := fscan(s, &maj, &min); err != nil {
-		return 0
-	}
-	return float64(maj) + float64(min)/10
-}
-
-func fscan(s string, maj, min *int) (int, error) {
-	parts := strings.SplitN(s, ".", 2)
-	if len(parts) == 0 {
-		return 0, errParse
-	}
-	*maj = atoi(parts[0])
-	if len(parts) == 2 {
-		*min = atoi(parts[1])
-	}
-	return 2, nil
-}
-
-var errParse = errStr("parse")
-
-type errStr string
-
-func (e errStr) Error() string { return string(e) }
-
-func atoi(s string) int {
-	n := 0
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			break
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n
-}
-
-func parseInts(s string) []int {
-	if s == "" {
-		return nil
-	}
-	var v []int
-	_ = json.Unmarshal([]byte(s), &v)
-	return v
 }
 
 // deploymentFeatures are the platform features a deployment asks of the nodes

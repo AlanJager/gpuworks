@@ -105,6 +105,17 @@ type InferenceSpecDTO struct {
 	// ImageSources are further references the template offers for pulling Image,
 	// preferred first; Image itself is tried after them (ADR 0038).
 	ImageSources []string `json:"image_sources,omitempty"`
+	// Dirs are the writable host directories the platform keeps for a
+	// deployment of the spec on every node (ADR 0077). Omitted when none.
+	Dirs []InferenceManagedDir `json:"dirs,omitempty"`
+}
+
+// InferenceManagedDir is one writable directory a spec declares.
+type InferenceManagedDir struct {
+	Name       string `json:"name"`
+	MountPath  string `json:"mount_path"`
+	LimitBytes int64  `json:"limit_bytes"`
+	Retain     string `json:"retain"`
 }
 
 type InferenceAsset struct {

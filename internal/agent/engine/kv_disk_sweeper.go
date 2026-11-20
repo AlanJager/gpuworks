@@ -276,12 +276,7 @@ func (e *Engine) applyKVDiskMount(ws *runtime.WorkloadSpec, spec proto.InstanceD
 	if err != nil {
 		return err
 	}
-	target := filepath.Clean(mount.Target)
-	for index := range ws.Mounts {
-		if filepath.Clean(ws.Mounts[index].Target) == target {
-			ws.Mounts[index].Source = dir
-		}
-	}
+	setManagedMountSource(ws, mount.Target, dir)
 	limit, parseErr := strconv.ParseInt(mount.SizeHint, 10, 64)
 	if parseErr == nil && limit > 0 {
 		applyKVDiskProjectQuota(e.log, dir, spec.DeploymentID, limit)

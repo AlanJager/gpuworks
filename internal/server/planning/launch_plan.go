@@ -80,7 +80,11 @@ type LaunchRequest struct {
 	// ImplicitServedName is deploy.Params.ImplicitServedName: the node's
 	// host-process agent would translate an explicit model name to a path.
 	ImplicitServedName bool
-	Sleepable          bool
+	// AgentCaps are the capabilities the node's agent announced; nil when it
+	// is not connected. A launch using a facility the agent lacks is refused
+	// (agentCapabilityRefusal).
+	AgentCaps []string
+	Sleepable bool
 	// PriorityScheduling is the deployment's ask for per-request priority
 	// scheduling (deploy.Params.PriorityScheduling).
 	PriorityScheduling bool
@@ -218,6 +222,9 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	plan.Params, plan.Profile, plan.LaunchInput = allocated.Params, allocated.Profile, allocated.LaunchInput
 	plan.Resolved, plan.Warnings = allocated.Resolved, allocated.Warnings
 	plan.Resolved.StartupEstimate = launchStartupEstimate(req, plan.Resolved)
+	if refusal := agentCapabilityRefusal(req.AgentCaps, req.Node, plan.Resolved); refusal != nil {
+		plan.Output.Result = scheduler.Result{OK: false, Message: *refusal, Explain: scheduler.Explain{Filters: []scheduler.Reason{*refusal}}}
+	}
 	return plan, nil
 }
 
@@ -287,6 +294,7 @@ func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, erro
 		PreStartArgv: req.Selection.PreStartArgv, PreStartScript: req.Selection.PreStartScript,
 		RuntimeAssets: req.Selection.RuntimeAssets, ComponentMounts: req.ComponentMounts, ModelPaths: req.ModelPaths,
 		TemplateShmBytes: req.Selection.ShmBytes, TemplateMemlockUnlimited: req.Selection.MemlockUnlimited, TemplateDockerArgs: req.Selection.DockerArgs,
+		TemplateDirs: req.Selection.Dirs, ManagedDirGroup: req.Source.ManagedDirGroup,
 		APIContract: req.APIContract, AllowUnresolved: true, TargetValidation: deploy.CollectTargetCapabilities,
 	})
 	if err != nil {
@@ -322,6 +330,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		KVBytesPerToken:      catalogKVBytesPerTokenForSelection(st, req.Selection.TemplateID, req.Selection.ModelID, req.Model, req.Engine),
 		RuntimeImageBytes:    CatalogImageBytes(st, req.Source.Image),
 		RuntimeImageCached:   runtimeImageCached(st, req),
+		ManagedDirBytes:      deploy.ManagedDirBytes(req.Selection.Dirs),
 		Unloaded:             req.Unloaded,
 		ExcludeDeploymentID:  req.ExcludeDeploymentID,
 		ExcludeInstanceUUID:  req.ExcludeInstanceUUID,

@@ -174,6 +174,9 @@ const (
 	// the volume). A volume starting with "/" would be a bind mount the host
 	// path rules never judged.
 	ErrorMountVolumeInvalid = "MOUNT_VOLUME_INVALID"
+	// ErrorManagedDirPrepareFailed: a template-declared writable directory
+	// (MountPurposeManagedDir) could not be prepared on the host (Detail).
+	ErrorManagedDirPrepareFailed = "MANAGED_DIR_PREPARE_FAILED"
 	// ErrorDGPUPartitionFailed: the dGPU limit could not be applied (Detail).
 	ErrorDGPUPartitionFailed = "DGPU_PARTITION_FAILED"
 	// ErrorContainerRunFailed: the runtime refused to create or start the

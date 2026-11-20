@@ -102,6 +102,8 @@ unknown/0 处理，避免过度承诺。
 运行时磁盘只在镜像确实需要拉取时预留：agent 实时 inspect 确认目标节点已缓存该镜像时不再扣
 镜像大小，缓存状态未知（agent 离线或超时）按未缓存保守处理。
 
+模板以 `dirs` 声明托管的可写目录时，存放托管目录的磁盘（agent 上报的 `managed_dirs`）须放得下声明的上限之和、KV 磁盘层的上限（两者是同一种托管目录）与磁盘保留空间，与模型目录或运行时镜像目录同盘时再计入待下载的权重与待解压的镜像；不足以 `insufficient_managed_dir_disk` 拒绝（[托管的可写目录](../reference/inference-catalog-spec.md#dirs托管的可写目录)）。
+
 并行度是运行时事实：普通 spec 根据分配卡数推导 tp；多机或特殊拓扑由 args 显式表达。这样
 目录不重复存储会与真实 GPU 集合冲突的 tp/nodes，也让预览和实际 controller 共享 ResolveLaunch。
 

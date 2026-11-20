@@ -1748,6 +1748,8 @@ export interface InferenceSpec {
   start_timeout_sec?: number;
   /** Extra docker run options the spec's engine needs, applied before the deployment's own docker_args. */
   docker_args?: string[];
+  /** Writable host directories the platform keeps for a deployment of the spec on every node (ADR 0077); absent when none. */
+  dirs?: Array<{ name: string; mount_path: string; limit_bytes: number; retain: string }>;
   gpus: GPUPredicate;
   args?: string[];
   env?: Record<string, string>;

@@ -140,6 +140,10 @@ type InferenceSpec struct {
 	// (deploy.ValidateDockerArgs): platform-managed options and options that
 	// would hand the container the host are refused.
 	DockerArgs []string `yaml:"docker_args,omitempty" json:"docker_args,omitempty"`
+	// Dirs are writable host directories the platform keeps for the
+	// deployment on every node it runs on, mounted at each mount_path and
+	// removed with the deployment (managed_dirs.go, ADR 0077).
+	Dirs []deploy.ManagedDir `yaml:"dirs,omitempty" json:"dirs,omitempty"`
 	// RetiredDisplayProfile is the display_profile key specs carried before
 	// display names. It is still read, so older YAML imports, but never
 	// stored; CatalogWarnings reports it.

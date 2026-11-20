@@ -84,8 +84,12 @@ type InferenceSpecRow struct {
 	// []string (inferencecatalog.InferenceSpec.DockerArgs), read and written
 	// whole with the rest of the spec, same shape as args.
 	DockerArgs string `gorm:"column:docker_args;type:text"`
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Dirs is the writable directories the spec declares: JSON
+	// []deploy.ManagedDir (inferencecatalog.InferenceSpec.Dirs), read and
+	// written whole with the rest of the spec; "" when it declares none.
+	Dirs      string `gorm:"column:dirs;type:text"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (InferenceSpecRow) TableName() string { return "inference_specs" }
