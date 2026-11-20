@@ -328,7 +328,7 @@ The request body is merged into the current value, changing only the keys it con
 | Key | Factory Default | Range | Meaning |
 |---|---|---|---|
 | `pending_timeout_sec` | 600 | 5–86400 | How long to wait before marking a deployment as failed when it still cannot be placed after its weights are ready (not a queue timeout) |
-| `start_timeout_sec` | 1800 | 60–86400 | Default for the automatic startup health budget; known engine deadlines can extend it up to 86400 seconds; an inference template spec that states `start_timeout_sec` replaces it with its own value. A timeout marks this startup attempt as failed and recreates the instance according to retry rules. Edit it in the "Deployment" card in Settings; an individual deployment can override it with `start_timeout_sec` ("Start timeout" under "Runtime environment" in the deployment form) |
+| `start_timeout_sec` | 1800 | 60–86400 | The first step of the startup wait limit (source `cluster`): a template spec's `start_timeout_sec` replaces it, a known engine deadline can extend it up to 86400 seconds, and a deployment's own value replaces all of them; see [Startup Wait Limit](deployment-launch-sources.md#启动等待上限). A timeout marks this startup attempt as failed and recreates the instance according to retry rules. Edit it in the "Deployment" card in Settings; an individual deployment can override it with `start_timeout_sec` ("Start timeout" under "Runtime environment" in the deployment form) |
 | `event_retention_days` | 180 | 1–3650 | Number of days to retain the event timeline |
 | `event_retention_bytes` | 50 GiB | 64 MiB–1 TiB | Event timeline retention in bytes; whichever limit is reached first, bytes or days, applies |
 
@@ -412,6 +412,6 @@ The following names appear in the code but are not user-configurable settings. D
 - `GPUWORKS_PARTITION_PROBE_BACKEND`, `GPUWORKS_PARTITION_PROBE_QUOTA_MIB`: Inputs injected into the probe program when the agent starts a dGPU probe container; they are not configuration settings read by the agent.
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
-<!-- translation-source-sha256: 22fa10f61879d4efcba893c3fdedc29d48952d9ebcd9d1c5aabb5375dff9e837 -->
+<!-- translation-source-sha256: 55f5debd6af309799b6e058acf801c7a40ea39da57482977334188d382406f7e -->
 <!-- translation-localized-code-block: 86f9f71f25c2b857ad0011486eb8c57eb9996ec1a4417ab035e24d7b4b1f898d dc1d5c5bc85efcc1eb7d1d72bc584329c53e7d9c636c376ad8a7ce5dc1d901cb Reviewed configuration comments; usage_report=false suppresses the daily report and node/GPU counts, while automatic checks retain installation ID and versions. Keys and values unchanged. -->
 <!-- translation-localized-code-block: 2a636013886e3274f9549d011376c48f05c387773ed46b7bf2ba8e5018147ee9 dcf0c95e55438a724e2ae70bef18a40f8ba32a257bab9f5a81a715cb374fc0e3 Reviewed the comments of the plugins example, including max_down_grace; keys and values unchanged. -->

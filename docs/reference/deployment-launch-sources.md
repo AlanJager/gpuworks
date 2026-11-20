@@ -113,7 +113,7 @@ dtype 兼容矩阵只用于准入与告警，不改写 argv。
 | `api` | API 契约与健康检查路径 |
 | `shm_bytes` | 容器 `/dev/shm` 的下限，见「`/dev/shm` 大小」；随档位快照保存，之后改模板不影响已有部署 |
 | `memlock_unlimited` | 为 `true` 时容器带 `--ulimit memlock=-1:-1`，见「锁定内存」；随档位快照保存 |
-| `start_timeout_sec` | 实例启动健康检查预算，代替集群默认、被部署自己的 `start_timeout_sec` 覆盖，实例记录的来源为 `template`；随档位快照保存，之后改模板不影响已有部署 |
+| `start_timeout_sec` | 启动等待上限的模板一步（来源 `template`），见「启动等待上限」；随档位快照保存，之后改模板不影响已有部署 |
 | `docker_args` | 追加到 `docker run` 的最前面，排在部署自己的 `docker_args` 与平台追加的参数之前，见「docker run 参数的三层顺序」；随档位快照保存，之后改模板不影响已有部署 |
 | `image` | 部署使用的镜像；无需先在镜像目录登记 |
 
@@ -230,6 +230,17 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 
 评估接口把这些错误挂在部署表单的 docker 参数或共享内存控件旁；创建接口返回 400。udocker 运行时只解析其中的 `--device`。
 模板档位的 `docker_args` 不合规会在导入时被拒绝，不会留到部署阶段才发现。
+
+## 启动等待上限
+
+实例启动后等引擎健康检查通过的最长时间（`start_timeout_sec`，秒，60–86400）按以下顺序决定，每一步的结果记在实例与评估响应的 `start_timeout_source`：
+
+1. `cluster`：集群默认，设置 `deployment.start_timeout_sec`（出厂 1800）。
+2. `template`：所选推理模板档位声明了 `start_timeout_sec` 时取代上一步。
+3. `engine`：托管 vLLM 的最终环境显式声明 `VLLM_ENGINE_READY_TIMEOUT_S`、且它加 30 秒探测余量比上一步更长时，抬高到它（最多 86400）。
+4. `deployment`：部署自己的 `start_timeout_sec` 取代以上全部，不再被抬高；短于引擎等待上限时只报冲突（`start_timeout_conflict`）。
+
+模板与部署用的是同一个字段名、同一单位和同一取值范围；模板的值随档位快照保存，之后改模板不影响已有部署。值在实例创建时定下，修改只影响之后启动的实例。
 
 ## 环境变量分层
 

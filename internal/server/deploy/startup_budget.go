@@ -20,7 +20,9 @@ const vllmReadyTimeoutEnv = "VLLM_ENGINE_READY_TIMEOUT_S"
 // budget is the cluster default, replaced by the template spec's
 // start_timeout_sec when it states one ("template"), raised to an explicit vLLM
 // engine deadline plus margin ("engine"), and replaced by the deployment's own
-// start_timeout_sec ("deployment"), which nothing raises. It only
+// start_timeout_sec ("deployment"), which nothing raises; the source names
+// are the steps docs/reference/deployment-launch-sources.md lists under
+// "Startup Wait Limit" in the same order. It only
 // respects explicit vLLM engine-mode deadlines through template wrappers.
 // Automatic injection requires its known executable; manual commands stay independent.
 func resolveStartupBudget(input ResolveLaunchInput, launch *ResolvedLaunch) error {
