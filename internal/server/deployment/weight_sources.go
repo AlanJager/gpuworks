@@ -23,6 +23,12 @@ import (
 // bytes on disk: a complete repository contains the requested subfolder, but a
 // subfolder-only copy does not contain the whole repository.
 //
+// A rank-scoped source (ADR 0076) is the exception to the revision relaxation:
+// its ranks are one pre-split set of files that belong to one commit, so a
+// registered artifact of a known, different revision is not that source's
+// artifact (see revisionConflicts). The template says which commit it means,
+// and a changed revision yields new artifacts rather than the old ones.
+//
 // The relaxation is safe because it only decides which registered row a
 // deployment starts from; the resolved model's real provider and revision are
 // then written back into the deployment snapshot, so what gets mounted is
@@ -37,7 +43,30 @@ func TemplateWeightMatchesModel(source weightSource, model *store.Model) bool {
 	}
 	return model != nil &&
 		strings.EqualFold(strings.TrimSpace(model.SourceID), strings.TrimSpace(source.RepoID)) &&
-		modelArtifactSatisfiesSubfolder(model.ArtifactSubfolder, source.Subfolder)
+		modelArtifactSatisfiesSubfolder(model.ArtifactSubfolder, source.Subfolder) &&
+		(!deploy.RankScopedSubfolder(source.Subfolder) || !revisionConflicts(source, model))
+}
+
+// revisionConflicts reports whether model is at a known revision other than
+// the one source names. An unknown revision on either side (a copy scanned
+// from a storage, a source that names none) conflicts with nothing, as in
+// ADR 0018.
+func revisionConflicts(source weightSource, model *store.Model) bool {
+	want, have := strings.TrimSpace(source.Revision), strings.TrimSpace(model.Revision)
+	return want != "" && have != "" && want != have
+}
+
+// TemplateWeightOffersModel is TemplateWeightMatchesModel for the models a
+// deploy form offers to choose: of a rank-scoped source only rank 0's
+// artifact, which is the deployment's own model. The other ranks' artifacts
+// are created and bound by the platform, and naming one as the deployment's
+// model is refused (checkRankZeroModel).
+func TemplateWeightOffersModel(source weightSource, model *store.Model) bool {
+	if !TemplateWeightMatchesModel(source, model) {
+		return false
+	}
+	return !deploy.RankScopedSubfolder(source.Subfolder) ||
+		strings.TrimSpace(model.ArtifactSubfolder) == deploy.ExpandRankSubfolder(source.Subfolder, 0)
 }
 
 // templateWeightMatchesAnySource accepts a model that satisfies any declared

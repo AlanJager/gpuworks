@@ -205,6 +205,7 @@ weights:
 多机部署的每个 rank 只下载、只挂载自己那一份（决策见 [ADR 0076](../adr/0076-rank-scoped-weights.md)）：
 
 - 创建部署时按节点数把子目录展开成每个 rank 一个模型制品（来源、仓库、revision 相同，子目录不同）；rank 0 的制品就是部署的模型，其余 rank 的绑定记进部署快照，此后不再从目录重新解析。
+- revision 以模板现在写的为准：已登记的制品只要 revision 已知且与之不同，就不能代替（revision 为空表示未知，不算不同）。改写 revision 后重新导入，下次部署会为每个 rank 创建新 revision 的制品并下载，不会静默沿用旧 revision 的目录。部署页「使用已登记的模型」只列 rank 0 在该 revision 的制品（部署的模型就是它），其余 rank 的制品由平台创建与绑定，不作为选项。
 - 每个节点的下载任务、模型标记与本地模型身份都是它那个 rank 的子目录；准入、磁盘预算与准备进度也按 rank 计算：rank `r` 的节点只为 rank `r` 的制品留磁盘，已有该子目录的节点不再计下载。
 - 挂载仍保留仓库内的相对路径：rank `r` 的容器里权重在 `${GPUWORKS_MODEL_PATH}/rank<r>/…`，命令里写 `${GPUWORKS_MODEL_PATH}/rank${GPUWORKS_NODE_RANK}/…`。
 - `weight_bytes`（及 `runtime_weight_bytes`）写一个 rank 的大小；显存估算按"每个 rank 一份"乘回整组的权重。

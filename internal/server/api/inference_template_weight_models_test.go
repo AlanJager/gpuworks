@@ -183,3 +183,43 @@ func TestTemplateWeightModelsRefusals(t *testing.T) {
 		t.Fatalf("POST status=%d", recorder.Code)
 	}
 }
+
+// A rank-scoped spec's ranks are one pre-split set of files of one revision.
+// The form offers rank 0's artifact at the revision the template states, as
+// the single registered model a choice of the source reuses: the other ranks'
+// rows (a deployment's own model must be rank 0's) and the rows of a revision
+// the template no longer states are not choices.
+func TestTemplateWeightModelsOffersOnlyRankZeroAtTheStatedRevision(t *testing.T) {
+	f := newSourceIDFixture(t)
+	templateID := weightModelsTemplate(t, f, `[{"provider":"modelscope","repo_id":"Acme/Ranked","revision":"new","subfolder":"rank${GPUWORKS_NODE_RANK}"}]`)
+	for rank := range 4 {
+		f.model(&store.Model{Source: "modelscope", SourceID: "Acme/Ranked", Revision: "old", ArtifactSubfolder: fmt.Sprintf("rank%d", rank)})
+	}
+	ask := func() (models []uint, reuse uint) {
+		t.Helper()
+		rec := f.get(weightModelsPath(templateID), true)
+		var resp struct {
+			Models  []struct{ ID uint } `json:"models"`
+			Sources []struct {
+				ReuseModelID uint `json:"reuse_model_id"`
+			} `json:"sources"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &resp) != nil || len(resp.Sources) != 1 {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		for _, model := range resp.Models {
+			models = append(models, model.ID)
+		}
+		return models, resp.Sources[0].ReuseModelID
+	}
+	if models, reuse := ask(); len(models) != 0 || reuse != 0 {
+		t.Fatalf("only revision old is registered, but the form is offered %v (reuse %d)", models, reuse)
+	}
+	var current []*store.Model
+	for rank := range 4 {
+		current = append(current, f.model(&store.Model{Source: "modelscope", SourceID: "Acme/Ranked", Revision: "new", ArtifactSubfolder: fmt.Sprintf("rank%d", rank)}))
+	}
+	if models, reuse := ask(); fmt.Sprint(models) != fmt.Sprint([]uint{current[0].ID}) || reuse != current[0].ID {
+		t.Fatalf("form offers %v (reuse %d), want only rank 0's artifact %d", models, reuse, current[0].ID)
+	}
+}

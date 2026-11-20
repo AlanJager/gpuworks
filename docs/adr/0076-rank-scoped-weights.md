@@ -30,3 +30,5 @@
 - `deploy.RankWeight`、`deploy.ExpandRankSubfolder` 等子目录规则；`inferencecatalog` 的导入校验；`deployment` 的按 rank 解析与准入；`planning.RankModelIDs`、`planning.NodeModelIDs`；控制器的 `ensureDeploymentModelsPresent` 按 rank。
 - agent 与协议不变：每个 rank 的制品就是一个普通的带子目录的模型。
 - 新失败码 `RANK_WEIGHTS_MODEL_NOT_RANK_ZERO`、`RANK_WEIGHTS_PD_UNSUPPORTED`；不新增表或列。
+
+2026-11-20 补充：按 rank 拆分的来源，revision 是制品身份的一部分，不是偏好。各 rank 是同一个 commit 的一组预切文件，所以已登记的制品只要 revision 已知且与模板现在写的不同，就不匹配（模板重新导入新 revision 后，创建部署为每个 rank 新建该 revision 的制品并下载；空 revision 仍表示未知，不算不同）。整仓库来源仍按 ADR 0018 把 revision 当偏好。同一规则下，部署页「使用已登记的模型」只列 rank 0 在该 revision 的制品：其余 rank 的制品由平台创建，选了会被 `RANK_WEIGHTS_MODEL_NOT_RANK_ZERO` 拒绝；显式指定其他 revision 的制品返回 `TEMPLATE_MODEL_MISMATCH`。不新增表、列或失败码。

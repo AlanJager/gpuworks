@@ -31,4 +31,6 @@ Template weight sources already support `subfolder`, and the model artifact iden
 - The agent and the protocol are unchanged: each rank's artifact is an ordinary model with a subfolder.
 - New failure codes `RANK_WEIGHTS_MODEL_NOT_RANK_ZERO` and `RANK_WEIGHTS_PD_UNSUPPORTED`; no new table or column.
 
-<!-- translation-source-sha256: 70b389b160ef2819b5e392298eb26f9496252351950dc67977199993ed15c8ea -->
+2026-11-20 addendum: for a rank-scoped source the revision is part of the artifact's identity, not a preference. The ranks are one pre-split set of files of one commit, so a registered artifact of a known revision different from the one the template states now does not match (re-importing the template at a new revision makes a deployment create and download new artifacts for every rank; an empty revision still means unknown, not different). A whole-repository source keeps treating the revision as a preference under ADR 0018. By the same rule the deploy form's "use a registered model" lists only rank 0's artifact at that revision: the other ranks' artifacts are created by the platform, and picking one is refused with `RANK_WEIGHTS_MODEL_NOT_RANK_ZERO`; naming an artifact of another revision returns `TEMPLATE_MODEL_MISMATCH`. No new table, column or failure code.
+
+<!-- translation-source-sha256: 6d4d0c6daeb38a49bf977f7ec6a35fdbae413ac0e66f312905d8c566b334e0f2 -->

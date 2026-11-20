@@ -203,6 +203,7 @@ weights:
 Each rank of a multi-node deployment then downloads and mounts only its own part (decision in [ADR 0076](../adr/0076-rank-scoped-weights.md)):
 
 - At create, the subfolder is expanded for every rank into one model artifact per rank (same provider, repository and revision, own subfolder). Rank 0's artifact is the deployment's model; the other ranks' bindings are kept in the deployment snapshot and never resolved from the catalog again.
+- The revision is the one the template states now: a registered artifact of a known, different revision is never a substitute (an empty revision means unknown, not different). Re-importing the template with another revision makes the next deployment create and download new artifacts for every rank instead of silently keeping the old revision's directories. The deploy form's "use a registered model" lists only rank 0's artifact at that revision (it is the deployment's model); the other ranks' artifacts are created and bound by the platform and are not choices.
 - Each node's download task, model marker and local model identity are its rank's subfolder. Admission, disk budgeting and preparation progress are per rank too: rank `r`'s node reserves disk only for rank `r`'s artifact, and a node that already holds that subfolder counts no download.
 - The mount keeps the repository-relative paths: in rank `r`'s container the weights are under `${GPUWORKS_MODEL_PATH}/rank<r>/…`, so the command writes `${GPUWORKS_MODEL_PATH}/rank${GPUWORKS_NODE_RANK}/…`.
 - `weight_bytes` (and `runtime_weight_bytes`) state one rank's size; the memory estimate multiplies it back to the group's weights.
@@ -768,7 +769,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 5bd8cd63dc62f673122248b8c1200ce3073c2412a1711dcef50e17f00f2e6c14 -->
+<!-- translation-source-sha256: 6b2e48093ade97947d4e4f39025683bcb0644ca13bce4a677a2df08036100ee8 -->
 <!-- translation-localized-code-block: a580200df2b28bc011bb736a64288086932955375e5ae8897762ee97bd667e26 8e0792250b6c0eb3ec0dad5bfca28308dc0b1afeb27e9c33bb24ddb21e20ba07 -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 4cf9267c119973bda779b8e29a9ad818c097c803df34a09ac14492502ab9dce2 e78acb98a7a082fdad6d2080ea7754cc18152f1bec68f60c312e46e33f3bfd59 -->
