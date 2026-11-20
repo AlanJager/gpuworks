@@ -136,6 +136,9 @@ func (m *Manager) runMount(ctx context.Context, key, export, path, opts string, 
 	err := m.g.run(ctx, key, m.o.MountTimeout+m.o.CallTimeout, func() error {
 		cctx, cancel := context.WithTimeout(ctx, m.o.MountTimeout)
 		defer cancel()
+		clean := filepath.Clean(path)
+		m.noteMounting(clean, 1)
+		defer m.noteMounting(clean, -1)
 		res.out, res.err = m.o.Runner(cctx, "mount", "-t", "nfs", "-o", opts, export, path)
 		res.timedOut = cctx.Err() != nil && errors.Is(cctx.Err(), context.DeadlineExceeded)
 		if res.err == nil && record {

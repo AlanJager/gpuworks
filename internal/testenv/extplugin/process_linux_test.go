@@ -42,6 +42,10 @@ func TestMain(m *testing.M) {
 			os.Exit(hostHelper(os.Args[2:]))
 		}
 	}
+	if _, child := os.LookupEnv(envConformancePackage); child {
+		// A conformance child runs the package its parent laid out.
+		os.Exit(m.Run())
+	}
 	dir, err := os.MkdirTemp("", "extplugin-pkg-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

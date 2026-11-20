@@ -93,6 +93,12 @@ type StorageStatus struct {
 	CachePath           string `json:"cache_path,omitempty"`
 	CacheTotalBytes     int64  `json:"cache_total_bytes,omitempty"`
 	CacheAvailableBytes int64  `json:"cache_available_bytes,omitempty"`
+	// SharedFSType and SharedFSSource name the shared (network or FUSE)
+	// filesystem a local storage's directory sits on, as mountinfo does
+	// ("nfs4", "10.0.0.5:/opt"); the type is "network" when mountinfo did
+	// not say. Empty on a local disk and for other storage types.
+	SharedFSType   string `json:"shared_fs_type,omitempty"`
+	SharedFSSource string `json:"shared_fs_source,omitempty"`
 }
 
 // StorageStatusReport is the payload of status.storage. It is the node's full

@@ -25,6 +25,9 @@ func TestProbeSizesUnifiedMemoryCardsFromHostMemTotal(t *testing.T) {
 		{"RTX Spark unavailable", spark, "[N/A]", "12.1", hostInfo, hostKiB * 1024},
 		{"GB10 unavailable", "NVIDIA GB10", "[N/A]", "12.1", hostInfo, hostKiB * 1024},
 		{"RTX Spark zero", spark, "0", "12.1", hostInfo, hostKiB * 1024},
+		// GWKS-417: the Jetson Thor module's GPU, as the report names it.
+		{"Thor unavailable", "NVIDIA Thor", "[N/A]", "12.1", hostInfo, hostKiB * 1024},
+		{"Thor look-alike stays unknown", "NVIDIA Thorium", "[N/A]", "12.1", hostInfo, 0},
 		{"GB10 reports its memory", "NVIDIA GB10", "119444", "12.1", hostInfo, 119444 << 20},
 		{"discrete GeForce RTX", "NVIDIA GeForce RTX 5090", "[N/A]", "12.0", hostInfo, 0},
 		{"discrete RTX", "NVIDIA RTX A6000", "[N/A]", "8.6", hostInfo, 0},

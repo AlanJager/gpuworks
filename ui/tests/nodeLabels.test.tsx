@@ -29,6 +29,7 @@ const { Form, message } = await import("antd");
 const { default: NodePlacementLabels, matchedNames } = await import("../src/components/NodePlacementLabels.tsx");
 const { installFleet } = await import("./helpers/fakeFleet.ts");
 const { default: NodeLabelsModal } = await import("../src/components/NodeLabelsModal.tsx");
+const { FeedbackHost, message: zeronMessage } = await import("../src/ui-kit/feedback");
 const { api } = await import("../src/api.ts");
 type NodeType = import("../src/api").Node;
 const nodes = [
@@ -36,7 +37,7 @@ const nodes = [
   { uuid: "b", hostname: "worker-b", state: "online", labels: { pool: "inference", zone: "b" } },
 ] as unknown as NodeType[];
 const original = { ...api };
-afterEach(() => { cleanup(); message.destroy(); Object.assign(api, original); });
+afterEach(() => { cleanup(); message.destroy(); zeronMessage.destroy(); Object.assign(api, original); });
 after(() => { closeChannels(); dom.window.close(); });
 const wrap = (child: React.ReactNode) => <I18nextProvider i18n={i18n}>{child}</I18nextProvider>;
 
@@ -76,7 +77,7 @@ test("node label editor retains failed edits and submits exact replacements", as
    if (fail) throw new Error("offline");
    return { ...nodes[0], labels };
  };
- render(wrap(<NodeLabelsModal node={nodes[0]} onClose={() => {}} onSaved={(value) => { saved = value; }} />));
+ render(wrap(<><FeedbackHost /><NodeLabelsModal node={nodes[0]} onClose={() => {}} onSaved={(value) => { saved = value; }} /></>));
  fireEvent.change(screen.getAllByLabelText("Label value")[0], { target: { value: "training" } });
  fireEvent.click(screen.getByRole("button", { name: "Save" }));
  await waitFor(() => assert.equal(bodies.length, 1));
@@ -87,4 +88,21 @@ test("node label editor retains failed edits and submits exact replacements", as
  fireEvent.click(screen.getByRole("button", { name: "Save" }));
  await waitFor(() => assert.ok(saved));
  assert.deepEqual(saved?.labels, { pool: "training", zone: "a", empty: "" });
+});
+
+test("node label editor adds and removes rows and refuses a blank key without asking the server", async () => {
+ const bodies: Record<string, string>[] = [];
+ api.updateNodeLabels = async (_uuid, labels) => { bodies.push(labels); return { ...nodes[1], labels }; };
+ render(wrap(<><FeedbackHost /><NodeLabelsModal node={nodes[1]} onClose={() => {}} onSaved={() => {}} /></>));
+ assert.equal((await screen.findAllByLabelText("Label key")).length, 2);
+ fireEvent.click(screen.getByRole("button", { name: locale.labels.add }));
+ assert.equal(screen.getAllByLabelText("Label key").length, 3);
+ fireEvent.click(screen.getByRole("button", { name: "Save" }));
+ assert.ok(await screen.findByText(locale.labels.keyRequired));
+ assert.equal(bodies.length, 0, "a blank key is never sent");
+ fireEvent.click(screen.getAllByRole("button", { name: locale.labels.remove })[2]);
+ fireEvent.click(screen.getAllByRole("button", { name: locale.labels.remove })[0]);
+ fireEvent.click(screen.getByRole("button", { name: "Save" }));
+ await waitFor(() => assert.equal(bodies.length, 1));
+ assert.deepEqual(bodies[0], { zone: "b" });
 });

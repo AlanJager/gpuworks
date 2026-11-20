@@ -17,6 +17,7 @@ import (
 type residueProber struct {
 	gpu.FixedProber
 	used       map[int]float64 // index → used bytes; a missing index has no row
+	hostPool   bool            // the used figures are the host pool's, not the device's
 	metricsErr error
 	procs      []gpu.ComputeProcess
 	procsErr   error
@@ -40,7 +41,7 @@ func (p *residueProber) Metrics(context.Context) ([]gpu.Metric, error) {
 	}
 	var out []gpu.Metric
 	for index, used := range p.used {
-		out = append(out, gpu.Metric{Index: index, Vendor: "nvidia", Values: map[string]float64{
+		out = append(out, gpu.Metric{Index: index, Vendor: "nvidia", HostPoolMemory: p.hostPool, Values: map[string]float64{
 			"gpuworks_gpu_utilization":        0,
 			"gpuworks_gpu_memory_total_bytes": 80 << 30,
 			"gpuworks_gpu_memory_used_bytes":  used,
@@ -81,6 +82,25 @@ func TestSleepReportsMeasuredResidueWhenAloneOnItsCard(t *testing.T) {
 	st := <-reported
 	if st.SleepLevel != 1 || st.SleepResidueBytes != int64(1.5*(1<<30)) {
 		t.Fatalf("report = level %d residue %d, want level 1 residue %d", st.SleepLevel, st.SleepResidueBytes, int64(1.5*(1<<30)))
+	}
+}
+
+// GWKS-417: a unified-memory card's use, filled from host meminfo, counts
+// every process on the host. It is not what the sleeping engine holds, so the
+// residue stays unmeasured and the server keeps its estimate.
+func TestSleepResidueIsUnmeasuredWhenTheReadingIsTheHostPool(t *testing.T) {
+	h := newSleepHTTPServer(t)
+	prober := newResidueProber(map[int]float64{0: 60 << 30})
+	prober.hostPool = true
+	prober.procs = []gpu.ComputeProcess{{PID: 41, Name: "VLLM::Worker", PCIeBDF: "00000000:3F:00.0", MemoryBytes: 1 << 30}}
+	e, reported := newResidueEngine(t, prober)
+	spec := residueSpec(h, t, "res-host-pool", 0)
+	e.desired[spec.UUID] = spec
+
+	spec.DesiredSleep = 1
+	e.reconcileSleep(context.Background(), spec)
+	if st := <-reported; st.SleepLevel != 1 || st.SleepResidueBytes != 0 {
+		t.Fatalf("report = level %d residue %d, want level 1 and no measured residue", st.SleepLevel, st.SleepResidueBytes)
 	}
 }
 

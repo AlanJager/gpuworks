@@ -14,7 +14,7 @@ import (
 // module's: install refuses such a package, so only one installed before
 // that check, or placed on disk by hand, can declare one, and its
 // declaration is left out (logged at boot). It runs at Open and after every
-// refresh, under admin.
+// refresh, under the table lock.
 func (b *Bridge) declareFeatures() {
 	d := b.cfg.Features
 	if d == nil {

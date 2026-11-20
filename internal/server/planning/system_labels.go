@@ -60,6 +60,7 @@ func SystemLabels(node *store.Node, facts NodeFacts) []SystemLabel {
 	labels = append(labels, storageLabels(node, facts.Storages)...)
 	labels = append(labels, providerLabels(node, facts.Providers)...)
 	labels = append(labels, kubeLabels(node, facts.KubeClusters)...)
+	labels = append(labels, slurmLabels(node, facts.SlurmClusters)...)
 	sortSystemLabels(labels)
 	return labels
 }

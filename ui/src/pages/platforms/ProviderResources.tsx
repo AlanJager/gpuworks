@@ -11,11 +11,15 @@ import { ConsoleIcon } from "../../ui-kit/consoleIcons";
 import { formatTime } from "../../i18n/datetime";
 import { Spinner } from "../../ui-kit/Spinner";
 import KubeClusterDrawer from "../kubernetes/KubeClusterDrawer";
+import type { SlurmCluster } from "../../slurmApi";
+import { slurmEntryOf } from "../../slurmClusters";
 import ClusterGroup from "./ClusterGroup";
+import HpcClusterGroup from "./HpcClusterGroup";
 import { SpanRow, TableGroup } from "./GroupRows";
 import InstanceRow, { WIDE_ONLY, type InstanceColumns } from "./InstanceRow";
 import { PlatformResourceBadges } from "./PlatformResourceBadge";
 import { useAccountClusters } from "./useAccountClusters";
+import { useAccountHPCClusters } from "./useAccountHPCClusters";
 
 // An account can hold hundreds of instances: its group shows this many, then more on request.
 const INSTANCE_STEP = 10;
@@ -23,18 +27,23 @@ const INSTANCES_GROUP = "instances";
 
 /**
  * What an account holds, under its row, in one table grouped by what the
- * machines belong to: the account's own instances, then each of its managed
- * Kubernetes clusters with the GPU node pools to connect. A kind without
- * managed Kubernetes has its instances alone, ungrouped. Instances are as the
- * last sync found them; clusters are read from the cloud when the row opens.
+ * machines belong to: the account's own instances, then each HPC cluster
+ * (E-HPC) with its Slurm entry, then each of its managed Kubernetes clusters
+ * with the GPU node pools to connect. An account with neither has its
+ * instances alone, ungrouped. Instances are as the last sync found them;
+ * both kinds of cluster are read from the cloud when the row opens and after
+ * each sync, each with its own loading, empty and failure states: they are
+ * separate cloud products, so one failing leaves the other.
  */
-export default function ProviderResources({ provider, kindInfo, refreshKey, entries, onEntriesChanged, admin, focusCluster, onSync, syncing = false }: {
+export default function ProviderResources({ provider, kindInfo, refreshKey, entries, slurmEntries = [], onEntriesChanged, admin, focusCluster, onSync, syncing = false }: {
   provider: CloudProvider;
   kindInfo?: ProviderKindInfo;
   /** Changes when the account's instances were synced: they are read again. */
   refreshKey: string;
   /** The cluster entries the page polls, by UUID. */
   entries: Record<string, KubeCluster>;
+  /** The Slurm entries the page polls: the ones made from this account's E-HPC clusters sit in their cluster's group. */
+  slurmEntries?: SlurmCluster[];
   onEntriesChanged: () => void;
   admin: boolean;
   /** The cluster entry (UUID) to bring into view once the clusters are read, as a compute node's source asks. */
@@ -54,12 +63,16 @@ export default function ProviderResources({ provider, kindInfo, refreshKey, entr
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
 
   const resources = provider.resources ?? [];
-  const instanceResources = resources.filter((resource) => resource.type !== "kubernetes");
+  // Clusters (ACK, E-HPC) are the groups of their own, not a kind of instance.
+  const instanceResources = resources.filter((resource) => resource.type !== "kubernetes" && resource.type !== "slurm");
   // The account has clusters when the server says it connects them (its row's resources); an account that already
   // holds entries always shows them.
   const hasClusters = resources.some((resource) => resource.type === "kubernetes")
     || Object.values(entries).some((entry) => entry.source?.provider_id === provider.id);
+  const hasHPC = resources.some((resource) => resource.type === "slurm")
+    || slurmEntries.some((entry) => entry.source?.provider_id === provider.id);
   const clusters = useAccountClusters({ providerId: provider.id, providerName: provider.name, enabled: hasClusters, onChanged: onEntriesChanged });
+  const hpc = useAccountHPCClusters({ providerId: provider.id, enabled: hasHPC });
 
   // Only the latest read lands: one that answers after a newer one started, or after the row closed, is dropped.
   const readRef = useRef(0);
@@ -76,7 +89,7 @@ export default function ProviderResources({ provider, kindInfo, refreshKey, entr
   // A sync changes the refresh key: the clusters are read from the cloud again with it, so one sync brings both up to date.
   const firstKey = useRef(refreshKey);
   useEffect(() => {
-    if (refreshKey !== firstKey.current) clusters.load();
+    if (refreshKey !== firstKey.current) { clusters.load(); hpc.load({ fresh: true }); }
   }, [refreshKey]);
 
   const power = async (inst: ProviderInstance, action: "on" | "off") => {
@@ -92,13 +105,17 @@ export default function ProviderResources({ provider, kindInfo, refreshKey, entr
     }
   };
 
-  // The cluster a compute node's source points at is brought into view once, when the cloud has answered.
+  // The cluster a compute node's source points at is brought into view once its group is drawn: the groups come
+  // from the cloud's two listings and the page's entries, which answer in any order, so it is looked for again
+  // whenever one of them changes and only counts as done when the group was found.
   const focused = useRef(false);
   useEffect(() => {
-    if (!focusCluster || focused.current || clusters.clusters === null) return;
+    if (!focusCluster || focused.current) return;
+    const group = root.current?.querySelector(`[data-cluster-entry="${CSS.escape(focusCluster)}"]`);
+    if (!group) return;
     focused.current = true;
-    root.current?.querySelector(`[data-cluster-entry="${CSS.escape(focusCluster)}"]`)?.scrollIntoView?.({ block: "center" });
-  }, [focusCluster, clusters.clusters]);
+    group.scrollIntoView?.({ block: "center" });
+  }, [focusCluster, clusters.clusters, hpc.clusters, entries, slurmEntries, folded]);
 
   const columns: InstanceColumns = {
     price: kindInfo?.capabilities.has_pricing === true,
@@ -120,18 +137,21 @@ export default function ProviderResources({ provider, kindInfo, refreshKey, entr
     return next;
   });
 
+  // The server's instance list is the account's own: a cluster's nodes are the cluster's, not instances.
   const items = instances ?? [];
+  const grouped = hasClusters || hasHPC;
+  const row = (inst: ProviderInstance, index: number) => (
+    <InstanceRow key={inst.external_id} inst={inst} index={index} columns={columns} indent={grouped}
+      powering={powering === `${inst.external_id}:on` ? "on" : powering === `${inst.external_id}:off` ? "off" : null}
+      onPower={(action) => power(inst, action)} onInstall={() => setInstallFor(inst)} />
+  );
   const instanceRows = (
     <>
       {instances === null && <SpanRow colSpan={colSpan}><Spinner label={t("detail.loadingInstances")} /></SpanRow>}
-      {instances !== null && items.length === 0 && !loadError && <SpanRow colSpan={colSpan} className="text-center text-fg-muted">{t("instances.empty")}</SpanRow>}
-      {items.slice(0, shown).map((inst, index) => (
-        <InstanceRow key={inst.external_id} inst={inst} index={index} columns={columns} indent={hasClusters}
-          powering={powering === `${inst.external_id}:on` ? "on" : powering === `${inst.external_id}:off` ? "off" : null}
-          onPower={(action) => power(inst, action)} onInstall={() => setInstallFor(inst)} />
-      ))}
+      {instances !== null && items.length === 0 && !loadError && <SpanRow colSpan={colSpan} className="text-center text-fg-muted">{t(provider.synced_at ? "instances.emptyAfterSync" : "instances.empty")}</SpanRow>}
+      {items.slice(0, shown).map(row)}
       {items.length > shown && (
-        <SpanRow colSpan={colSpan} className={hasClusters ? "ps-11" : undefined}>
+        <SpanRow colSpan={colSpan} className={grouped ? "ps-11" : undefined}>
           <Button variant="link" size="sm" onClick={() => setShown(shown + INSTANCE_STEP)}>{t("detail.showMore", { count: Math.min(INSTANCE_STEP, items.length - shown), rest: items.length - shown })}</Button>
         </SpanRow>
       )}
@@ -143,6 +163,11 @@ export default function ProviderResources({ provider, kindInfo, refreshKey, entr
   const listed = new Set((clusters.clusters ?? []).map((c) => c.external_id));
   const unlisted = clusters.clusters === null ? [] : Object.values(entries)
     .filter((entry) => entry.source?.provider_id === provider.id && !listed.has(entry.source.cluster_id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // The same for the Slurm entries made from this account's HPC clusters.
+  const hpcListed = new Set((hpc.clusters ?? []).map((c) => c.external_id));
+  const hpcUnlisted = hpc.clusters === null ? [] : slurmEntries
+    .filter((entry) => entry.source?.provider_id === provider.id && !hpcListed.has(entry.source.provider_cluster_id))
     .sort((a, b) => a.name.localeCompare(b.name));
   const joined = items.filter((inst) => inst.node_id !== 0).length;
 
@@ -159,11 +184,24 @@ export default function ProviderResources({ provider, kindInfo, refreshKey, entr
       {(!kindInfo?.resources?.length || kindInfo.resources.some((resource) => resource.type === "container")) && <Notice tone="info" title={t("instances.containerRuntimeNote")} />}
       {loadError && <Notice tone="danger" title={t("instances.loadFailed")} children={loadError} action={<Button variant="secondary" size="sm" onClick={load}>{t("instances.retry")}</Button>} />}
       {clusters.loadError && <Notice tone="danger" title={t("clusters.loadFailed")} children={clusters.loadError} action={<Button variant="secondary" size="sm" onClick={clusters.load}>{t("instances.retry")}</Button>} />}
-      <Table variant="bordered" size="md" aria-busy={instances === null || (hasClusters && clusters.clusters === null)}>
+      {/* What the cloud lets this account list is said quietly: no permission or no activation is not a failure, only an empty list. */}
+      {hpc.listing?.access === "permission_missing" && <Notice tone="info" title={t("hpc.noPermission", { permission: hpc.listing.permission })} />}
+      {hpc.listing?.access === "not_activated" && <Notice tone="info" title={t("hpc.notActivated")}>{hpc.listing.code ? t("hpc.notActivatedCode", { code: hpc.listing.code }) : undefined}</Notice>}
+      {hpc.listing?.partial && (
+        <Notice tone="warning" title={t("hpc.partial")}>
+          <ul className="m-0 list-disc ps-5">
+            {hpc.listing.failed_regions.map((f) => (
+              <li key={f.region}>{f.permission ? t("hpc.failedRegionPermission", { region: f.region, permission: f.permission }) : t("hpc.failedRegion", { region: f.region, code: f.code || f.message })}</li>
+            ))}
+          </ul>
+        </Notice>
+      )}
+      {hpc.loadError && <Notice tone="danger" title={t("hpc.loadFailed")} children={hpc.loadError} action={<Button variant="secondary" size="sm" onClick={() => hpc.load({ fresh: true })}>{t("instances.retry")}</Button>} />}
+      <Table variant="bordered" size="md" aria-busy={instances === null || (hasClusters && clusters.clusters === null) || (hasHPC && hpc.clusters === null)}>
         <TableHeader>
           <TableRow>{titles.map(({ title, className }) => <TableHead key={title} className={`whitespace-nowrap ${className ?? ""}`}>{title}</TableHead>)}</TableRow>
         </TableHeader>
-        {!hasClusters ? <TableBody>{instanceRows}</TableBody> : (
+        {!grouped ? <TableBody>{instanceRows}</TableBody> : (
           <>
             <TableGroup
               name={t("detail.standaloneInstances")}
@@ -181,8 +219,21 @@ export default function ProviderResources({ provider, kindInfo, refreshKey, entr
             >
               {instanceRows}
             </TableGroup>
-            {clusters.clusters === null && <TableBody><SpanRow colSpan={colSpan}><Spinner label={t("detail.loadingClusters")} /></SpanRow></TableBody>}
-            {clusters.clusters !== null && clusters.clusters.length === 0 && unlisted.length === 0 && !clusters.loadError && (
+            {hasHPC && hpc.clusters === null && <TableBody><SpanRow colSpan={colSpan}><Spinner label={t("detail.loadingHPCClusters")} /></SpanRow></TableBody>}
+            {hasHPC && hpc.clusters !== null && hpc.clusters.length === 0 && hpcUnlisted.length === 0 && !hpc.loadError && hpc.listing?.access === "ok" && (
+              <TableBody><SpanRow colSpan={colSpan} className="text-center text-fg-muted">{t("hpc.empty")}</SpanRow></TableBody>
+            )}
+            {(hpc.clusters ?? []).map((cluster) => (
+              <HpcClusterGroup key={`hpc:${cluster.external_id}`} cluster={cluster} entry={slurmEntryOf(slurmEntries, provider.id, cluster.external_id)}
+                provider={provider} colSpan={colSpan} open={!folded.has(`hpc:${cluster.external_id}`)} onToggle={() => toggle(`hpc:${cluster.external_id}`)}
+                admin={admin} onChanged={onEntriesChanged} />
+            ))}
+            {hpcUnlisted.map((entry) => (
+              <HpcClusterGroup key={`hpc:${entry.uuid}`} entry={entry} unread={!!hpc.loadError || hpc.listing?.access !== "ok" || !!hpc.listing?.partial} provider={provider}
+                colSpan={colSpan} open={!folded.has(`hpc:${entry.uuid}`)} onToggle={() => toggle(`hpc:${entry.uuid}`)} admin={admin} onChanged={onEntriesChanged} />
+            ))}
+            {hasClusters && clusters.clusters === null && <TableBody><SpanRow colSpan={colSpan}><Spinner label={t("detail.loadingClusters")} /></SpanRow></TableBody>}
+            {hasClusters && clusters.clusters !== null && clusters.clusters.length === 0 && unlisted.length === 0 && !clusters.loadError && (
               <TableBody><SpanRow colSpan={colSpan} className="text-center text-fg-muted">{t("clusters.empty")}</SpanRow></TableBody>
             )}
             {(clusters.clusters ?? []).map((cluster) => (

@@ -9,10 +9,10 @@ func defaultStatfs(path string) (Usage, error) {
 	if err := unix.Statfs(path, &st); err != nil {
 		return Usage{}, err
 	}
-	bs := int64(st.Bsize)
+	bs := uint64(st.Bsize)
 	return Usage{
-		TotalBytes:     int64(st.Blocks) * bs,
-		AvailableBytes: int64(st.Bavail) * bs,
+		TotalBytes:     BlockBytes(st.Blocks, bs),
+		AvailableBytes: BlockBytes(st.Bavail, bs),
 		FSType:         darwinFSMagic[unix.ByteSliceToString(st.Fstypename[:])],
 	}, nil
 }

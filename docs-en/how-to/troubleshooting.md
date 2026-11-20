@@ -164,6 +164,40 @@ kubectl -n <namespace> logs ds/gpuworks-agent
 
 After the fix, confirm the node appears on the Nodes page and is online. When none of this matches, keep the Events of `describe pod` and the agent log, and see “Still Unresolved?” at the end of this page.
 
+## Slurm Node Does Not Join or Does Not Come Online
+
+**Symptom**: an entry connected from a Slurm cluster (an on-premises cluster, or an E-HPC cluster under a cloud account) has no node on the Nodes page for a long time; on the External Platforms page the cluster's status is “Not connected yet”, and after 10 minutes “Not connected for long”;
+or the cluster row says “GPU nodes N, joined M” with M below N and “GPU nodes without an agent” lists nodes with a reason (“never joined” or “joined, agent offline”); or a node appeared but is stopped from scheduling, or instances queue and do not start. For the connect steps and settings see [Connect a Slurm Cluster](connect-slurm-nodes.md); this section points from the symptom to the right place without repeating them.
+When a node has appeared and is only stuck on “Connecting” or keeps going offline, read “Node Stays Connecting or Does Not Come Online” first.
+
+**How to confirm**: first check on the Slurm manager node that the health check is in effect, then look at the check script and its log on a GPU node that did not join. On the External Platforms page, “Troubleshoot” beside the cluster's status gives the same commands and the common causes (only once it is “Not connected for long”). `<script dir>` defaults to `/opt/gpuworks-slurm` and `<install dir>` to `/var/lib/gpuworks`:
+
+```bash
+# Slurm manager node: is the health check slurmctld runs our check.sh
+scontrol show config | grep -i HealthCheck
+# a GPU node: is the check script there, and the latest install log
+ls -l <script dir>/check.sh
+tail -n 50 <install dir>/slurm-check.log
+```
+
+| Symptom | What to look at | What to do |
+|---|---|---|
+| The connect command just finished and no node has appeared | slurmd runs the check script every health check interval (300 seconds by default), and before installing a node waits a random time of up to half an interval, so by default up to about 7.5 minutes; after `reconfigure` an immediate run is not guaranteed | Wait one and a half intervals; if there is still nothing, go through the rows below |
+| `HealthCheckProgram` in `scontrol show config` is not `<script dir>/check.sh` | The connect command asks slurmctld again at the end and finishes “partial”, printing the program it actually runs; this happens when `HealthCheckProgram` is set in a file that `slurm.conf` `Include`s, or the file was edited and not reloaded yet | Change that line in the included file (the command cannot edit an included file), then `scontrol reconfigure`; when unsure what it would do, run the check command (`-s -- --check`) first, see [Check First, Then Apply](connect-slurm-nodes.md#先检查再应用) |
+| The cluster is not configless and the node does not see the new `slurm.conf` | Every node keeps its own `slurm.conf`, and `scontrol reconfigure` only makes slurmd re-read the one on its own disk; the connect command (and the check) says “not configless” | Distribute the updated `slurm.conf` to the compute nodes the way you usually do |
+| `check.sh` is missing on the node (`ls` says no such file), or `slurm-check.log` does not exist | The script directory is not on shared storage and was not copied to this node (the copy failed, the node joined the cluster later, `sinfo` did not list it); in the connect command's output, `FAILED (unreachable / copy / verify / time_cap / unsafe)` marks the nodes whose copy failed (`unsafe`: another account could change the script directory on that node; make it root's and not writable by group or others as the output says, then run it again) | Put the script directory on shared storage, or copy `check.sh` (0755), `token` (0600), and `chained` where there is one to the same path by hand; run the connect command again after scaling out; an E-HPC script directory is on the shared NAS, so this usually does not happen |
+| `slurm-check.log` says `cannot read the enrollment token` | The token file is on root-restricted shared storage (root squash) and root on the node cannot read it | Run the connect command again, or copy `token` to this node's local disk with mode 0600 |
+| The log shows curl failing, or downloading `install.sh` failing | The node cannot reach the entry's management node address (the agent connects out and downloads the agent from the same address; the node's own DNS must resolve it) | Fix the network from the node to the management node; the address cannot be changed after the entry is created, so delete the entry and recreate it to change it; for the general connectivity check see “Node Stays Connecting” |
+| The entry's detail (or Troubleshoot) says "The last check found hosts that cannot reach …" or "The setup has run, but no node has contacted the server since" | The check and Check and apply ask `<address>/healthz` with `curl` from the Slurm manager node and each GPU node and give the reason per host (the name does not resolve, the connection is refused or has no route, it timed out, a TLS error); this is especially common when the address is the temporary public address of `gpuworks expose` (`*.trycloudflare.com`): it changes when the connector is rebuilt and often cannot be reached from the nodes' network | Use an address every compute node can reach that is stable (the address cannot be changed after creation: delete the entry and create it again), then Check and apply; the reason in the detail is the server's reading, see [Connect a Slurm Cluster](connect-slurm-nodes.md) |
+| The node has no log of installing an agent, and the entry reads “Revoked” on the External Platforms page | Before installing, the check script asks the server whether the token is still valid, and installs nothing for a revoked one (agents already installed keep running) | Nothing to do if that is intended; to keep connecting new nodes, create the entry again |
+| The log or the agent reports a refused registration: `node_taken`, `unknown_token`, `other_cluster` | `node_taken`: another entry of the same Slurm cluster held this node name in the last 15 minutes; `unknown_token`: the token is revoked or unknown; `other_cluster`: the token belongs to another Slurm cluster (the first node to register binds the token to the cluster's `ClusterName`) | For `node_taken`, wait until the other entry's node has been offline for more than 15 minutes, or delete the duplicate entry; for the others create the entry again and run the connect command again |
+| The node has no NVIDIA GPU (a node of a CPU queue) | On a node without an NVIDIA GPU the check script does nothing, does not register, and the node is not counted among “GPU nodes” | Not a fault; only nodes with an NVIDIA GPU become compute nodes |
+| The node is drained or down in Slurm and the check does not run on it (the cluster row shows its Slurm state, `drained` or `down`) | On the Slurm manager node, `scontrol show node <node>` shows `State` and `Reason`; a `Reason` of `gres/gpu count reported lower than configured` means `gres.conf` lacks a gpu line for this node | Remove the cause and `scontrol update nodename=<node> state=resume`; for a missing `gres.conf` line, add one on the Slurm manager node, `scontrol reconfigure`, then resume (for an E-HPC cluster “Check and apply” handles it together: it adds the line and resumes the nodes held back); for a down node check slurmd first |
+| The node is online but stopped from scheduling (reason `slurm_node_unavailable`), or a deployment stays queued | The node detail's runtime row gives Slurm's own reason and the manual recovery steps, whose commands can be copied | Follow the steps there; the platform lifts the stop by itself once Slurm recovers, and a stop set by an operator is not touched, see [Connect a Slurm Cluster](connect-slurm-nodes.md#运行时能看到什么) |
+| “Check and apply” is disabled, or says it cannot be done | Hover for the reason (`operation_blocked`): not made from a cloud account's cluster, the account was deleted, the driver cannot run commands on the Slurm manager node, the account's cluster listing does not have it, the cluster listing is still being read or failed, the cluster is not Slurm, or the token is revoked | Act on the reason; the cloud account's RAM permissions need `ehpc:ListClusters`, `ehpc:GetCluster`, and the Cloud Assistant ones, see [Rent Cloud GPUs · Alibaba Cloud](rent-cloud-gpus.md#阿里云); the connect command on the Slurm manager node also works |
+
+Once fixed, confirm the node appears on the Compute Nodes page and is online. If none of this matches, keep the connect command's output on the Slurm manager node, `scontrol show config | grep -i HealthCheck`, and `slurm-check.log` on the node, and see “Still Unresolved?” at the end of this page.
+
 ## Automatic Recovery After a Node Disconnects
 
 **Symptoms**: A node changes from “Online” to “Offline”, and an “Out-of-band recovery” card appears in its details.
@@ -1075,7 +1109,24 @@ For a multi-node follower, the corresponding message is `headless worker readine
 The budget applies while waiting for health checks after instance startup. Its value is determined when the instance is created; changes affect only instances started afterward.
 Exceeding the budget fails the startup attempt and triggers recreation according to the rules below.
 
+**Start stalled: `engine start stalled`**
 
+While it waits for the health check of a container it has just created, the agent observes three kinds of signal once a minute: the last lines of the container's output, memory in use and utilization of the cards the instance is on, and the CPU time, bytes read and written, page faults and set of the container's processes (without the process that traces the others, such as udocker's PRoot). When all three can be observed and none has changed for **20 minutes in a row**, the agent no longer waits for the start timeout: it fails the attempt with `ENGINE_START_STALLED` and the attempt is recreated by the retry rules. The reason says how long each signal has been flat and what state the processes are in, with the last lines of the output.
+
+No stall is declared in these cases, and the start timeout remains the limit:
+
+- **A signal cannot be observed**: an instance with no card; cards whose metrics cannot be read, lack memory or utilization, or whose memory is the host's pool (unified memory); runtimes that cannot name the container's processes (nerdctl, kube); processes whose read and write counters cannot be read (an agent that is not root while the container's processes are, or a kernel without task I/O accounting). So only single-node instances on docker and udocker are declared stalled.
+- **It may be waiting for someone else**: the ranks of a multi-node deployment; any time while another instance on the same node is being started or stopped.
+- **It is not a new start**: a container adopted after an agent restart, and an engine that was ready once and is recovering.
+- **Too few observations**: a verdict needs at least 10 observations in a row that found nothing moving, none more than 3 minutes after the one before; a longer gap starts the count over.
+- **It still advances, only extremely slowly**: for example, when udocker's PRoot is saturated by system calls the engine still prints a line every few minutes, which is not a stall. The start timeout's reason then carries the process state, for example `processes: 4 in tracing stop (…); tracer proot-arm64 running at 99% of a core`, to judge by.
+- On a card shared with another instance the figures are the whole card's, so that instance's activity reads as change.
+
+The quiet phases of a valid start (loading weights, compiling or capturing a graph) each change at least one of the signals and are not taken for a stall.
+
+**The engine reports that it gave up: `ENGINE_START_ABORTED`**
+
+When an SGLang scheduler process raises, it prints `Scheduler hit an exception` and has the main process end the whole process tree (`SIGQUIT received … one child failed`). Normally the container exits with it; when the main process does not exit, the HTTP process keeps answering the health check as not ready. The agent checks the output of a newly created container once a minute, and when it sees such output twice in a row while the container is still running it fails the attempt with `ENGINE_START_ABORTED`, with the exception the process raised. This applies on every runtime, to SGLang only, and to newly created containers only.
 
 Instance details show the **startup wait limit** separately from the **rough startup estimate**. For managed vLLM, an explicit final `VLLM_ENGINE_READY_TIMEOUT_S` receives 30 extra seconds for probing under the automatic policy, capped at 86400 seconds. When the variable is neither explicitly set nor removed, the platform coordinates the inner wait budget. Manual commands and replaced entrypoints do not have their internal timeout inferred. An explicit deployment budget takes priority even when shorter than the engine deadline; the page reports the conflict. Probe heartbeats do not establish model-loading progress.
 
@@ -1398,7 +1449,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 5. For connection issues, include the result of `GET /api/v1/agent/rejects`, the exit code of `gpuworks-agent smoke`, the deployment request body, and the network topology (whether a reverse proxy / NAT is involved).
    Remove API keys, node tokens, and other credentials before sharing.
 
-<!-- translation-source-sha256: e3a3639101dbedcb3c705550cee2a7b45010a85c0591b801874f9ac1ee4d361e -->
+<!-- translation-source-sha256: 72202dd8e4fcc51fa3f040a5fcaa8493830a79384592bca0b399e7cf52539caf -->
+<!-- translation-localized-code-block: 5a54acf993d1267a588edaed6adb42fabe4eaa22a37d698098643916823bb39b 63b848b372a289196a7de991833e1e2e7e410a903f69538cc9e20e3119d7859f -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
-<!-- translation-localized-code-block: ecd053199ed2d70bfd9cfa13dbb9bfda98198039c7d10b385f1bef0f8196c8b0 6a3d1a90332170571fd2968b9aeeb4d65a94fcdc3c5c3e21339d8d32a6107895 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

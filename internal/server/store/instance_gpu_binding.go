@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"log/slog"
+	"slices"
 
 	"gorm.io/gorm"
 
@@ -137,6 +138,77 @@ func realignInstanceGPUs(tx *gorm.DB, nodeID uint, gpus []proto.GPUInfo) error {
 			"instance", inst.UUID, "from", inst.GPUIndexes, "to", string(raw))
 	}
 	return nil
+}
+
+// rebindReportedCards adds to updates the rebinding of inst to the cards an
+// agent reports it runs on (proto.InstanceStatus.GPUIdents): on a node whose
+// cards an allocator outside the platform hands out (Slurm), which cards an
+// instance gets is known only after the agent asked for them. The device
+// indexes are the ones the node's stored cards carry for those identities.
+// A report naming a card the node does not have, or a different number of
+// cards, is not applied: the instance would be counted on cards nothing
+// knows, and the ledger would lose track of what it holds.
+func (s *Store) rebindReportedCards(inst *Instance, idents []string, updates map[string]any) error {
+	var current []string
+	if inst.GPUIdents != "" {
+		_ = json.Unmarshal([]byte(inst.GPUIdents), &current)
+	}
+	if slices.Equal(current, idents) {
+		return nil
+	}
+	var indexes []int
+	if inst.GPUIndexes != "" {
+		_ = json.Unmarshal([]byte(inst.GPUIndexes), &indexes)
+	}
+	if len(indexes) != len(idents) {
+		slog.Warn("instance keeps its cards: the reported rebinding names a different number of cards",
+			"instance", inst.UUID, "placed", inst.GPUIndexes, "reported", idents)
+		return nil
+	}
+	var cards []GPU
+	if err := s.db.Select("Index", "UUID", "PCIeBDF").Where("node_id = ?", inst.NodeID).Find(&cards).Error; err != nil {
+		return err
+	}
+	indexOf := map[string]int{}
+	for index, ident := range storedCardIdents(cards) {
+		indexOf[ident] = index
+	}
+	rebound := make([]int, 0, len(idents))
+	for _, ident := range idents {
+		index, ok := indexOf[ident]
+		if !ok {
+			slog.Warn("instance keeps its cards: the reported rebinding names a card the node does not have",
+				"instance", inst.UUID, "card", ident)
+			return nil
+		}
+		rebound = append(rebound, index)
+	}
+	updates["GPUIndexes"] = jsonStr(rebound)
+	updates["GPUIdents"] = jsonStr(idents)
+	if spec := respecGPUCards(inst.DesiredStateJSON, rebound, idents); spec != "" {
+		updates["DesiredStateJSON"] = spec
+	}
+	slog.Info("instance rebound to the cards its node's allocator gave it",
+		"instance", inst.UUID, "from", inst.GPUIndexes, "to", jsonStr(rebound))
+	return nil
+}
+
+// respecGPUCards is respecGPUIndexes that also rebinds the identities.
+func respecGPUCards(specJSON string, indexes []int, idents []string) string {
+	if specJSON == "" {
+		return ""
+	}
+	var spec proto.InstanceDesiredState
+	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
+		return ""
+	}
+	spec.GPUIndexes = indexes
+	spec.GPUIdents = idents
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 // respecGPUIndexes returns the desired state with its device indexes

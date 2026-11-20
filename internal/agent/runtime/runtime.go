@@ -178,11 +178,41 @@ func PullProxyEnv(ctx context.Context, base []string) []string {
 	return out
 }
 
-// Mount is a host→container bind mount.
+// Mount is a host→container bind mount, or a named volume at a container
+// path. Exactly one of Source and Volume is set; only a NamedVolumeDriver
+// runs a Volume mount.
 type Mount struct {
 	Source   string // host path
+	Volume   string // named volume the runtime owns (proto.ValidVolumeName)
 	Target   string // container path
 	ReadOnly bool
+}
+
+// VolumeArg is the mount as the value of a docker-style `-v` flag:
+// <source or volume>:<target>[:ro].
+func (m Mount) VolumeArg() string {
+	source := m.Source
+	if m.Volume != "" {
+		source = m.Volume
+	}
+	arg := source + ":" + m.Target
+	if m.ReadOnly {
+		arg += ":ro"
+	}
+	return arg
+}
+
+// NamedVolumeDriver is implemented by a driver whose runtime owns named
+// volumes (docker, nerdctl). A driver without it has nowhere to keep one, and
+// a launch with a Volume mount is refused before it reaches the driver.
+type NamedVolumeDriver interface {
+	NamedVolumes() bool
+}
+
+// SupportsNamedVolumes reports whether driver runs Volume mounts.
+func SupportsNamedVolumes(driver Driver) bool {
+	named, ok := driver.(NamedVolumeDriver)
+	return ok && named.NamedVolumes()
 }
 
 // WorkloadSpec is a driver-agnostic container spec (plan §3).
@@ -359,6 +389,14 @@ type Driver interface {
 	Logs(ctx context.Context, containerID string, follow bool, tail int) (io.ReadCloser, error)
 	// Exec runs a command in the container and returns combined output.
 	Exec(ctx context.Context, containerID string, cmd []string) ([]byte, error)
+}
+
+// ProcessRooter is optional: a driver that can name the host process a
+// container's processes descend from (its init, or the leader of its process
+// group). The engine reads their state from /proc while a start makes no
+// progress; a driver without it leaves that unknown.
+type ProcessRooter interface {
+	RootPID(ctx context.Context, containerID string) (int, error)
 }
 
 // PTYExecer is an optional runtime extension for opening a real terminal for

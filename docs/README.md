@@ -43,6 +43,7 @@
 - [接入 ZStack Cloud](how-to/onboard-zstack-cloud.md)
 - [接入 Kubernetes 集群](how-to/connect-kubernetes.md)
 - [接入公有云托管 Kubernetes（阿里云 ACK、DigitalOcean、Nebius）](how-to/connect-managed-kubernetes.md)
+- [接入 Slurm 集群（含阿里云 E-HPC）](how-to/connect-slurm-nodes.md)
 - [给控制台一个公网地址](how-to/expose-public-address.md)
 - [生产环境部署](how-to/deploy-production.md)
 - [配置节点网络](how-to/configure-networks.md)

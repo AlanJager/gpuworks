@@ -147,7 +147,9 @@ func TestRecoveryRoutesNeverConsultTheFeatureGateOrPlugins(t *testing.T) {
 		{http.MethodPost, "/api/v1/plugins/install?approve=sha256:00", "the package bytes"},
 		{http.MethodPost, "/api/v1/plugins/acme_backup/disable", ""},
 		{http.MethodPost, "/api/v1/plugins/acme_backup/enable", ""},
-		{http.MethodDelete, "/api/v1/plugins/acme_backup", ""},
+		{http.MethodGet, "/api/v1/plugins/acme_backup/impact", ""},
+		{http.MethodPost, "/api/v1/plugins/acme_backup/restart", ""},
+		{http.MethodDelete, "/api/v1/plugins/acme_backup?confirm=sha256:aa", ""},
 		{http.MethodPost, "/api/v1/auth/password", `{"current_password":"gpuworks-test-password-2026","new_password":"recovered-password-2026"}`},
 	} {
 		if rec := rig.do(login.Token, step.method, step.path, step.body); rec.Code < 200 || rec.Code > 299 {
@@ -160,7 +162,7 @@ func TestRecoveryRoutesNeverConsultTheFeatureGateOrPlugins(t *testing.T) {
 	if n := banners.calls.Load(); n != 0 {
 		t.Fatalf("the recovery surface asked plugins for banners %d times", n)
 	}
-	if got := strings.Join(plugins.recorded(), "|"); got != "list|install sha256:00 keep admin|disable acme_backup admin|enable acme_backup admin|uninstall acme_backup keep admin" {
+	if got := strings.Join(plugins.recorded(), "|"); got != "list|install sha256:00 keep admin|disable acme_backup admin|enable acme_backup admin|impact acme_backup|restart acme_backup admin|uninstall acme_backup keep sha256:aa admin" {
 		t.Fatalf("plugin administration calls = %s", got)
 	}
 }

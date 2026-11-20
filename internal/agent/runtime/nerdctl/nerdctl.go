@@ -61,6 +61,9 @@ func (d *Driver) WithAuthDir(dir string) *Driver {
 // Name implements runtime.Driver.
 func (d *Driver) Name() string { return "nerdctl" }
 
+// NamedVolumes: nerdctl creates a named volume on first use and keeps it.
+func (d *Driver) NamedVolumes() bool { return true }
+
 // Detect reports whether nerdctl is usable (binary present + containerd
 // reachable in our namespace). Docker is preferred when both are available;
 // node.go only tries this driver after docker detection fails.
@@ -411,11 +414,7 @@ func (d *Driver) buildRunArgs(spec runtime.WorkloadSpec) []string {
 		args = append(args, "-e", k+"="+v)
 	}
 	for _, m := range spec.Mounts {
-		mnt := m.Source + ":" + m.Target
-		if m.ReadOnly {
-			mnt += ":ro"
-		}
-		args = append(args, "-v", mnt)
+		args = append(args, "-v", m.VolumeArg())
 	}
 	if len(spec.Entrypoint) > 0 {
 		args = append(args, "--entrypoint", spec.Entrypoint[0])

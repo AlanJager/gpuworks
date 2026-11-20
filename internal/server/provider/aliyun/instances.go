@@ -249,6 +249,7 @@ func (d *Driver) assistantOnline(ctx context.Context, creds provider.Credentials
 
 // ListInstances lists the GPU instances in the regions in scope: an account
 // often holds many more CPU-only instances, which the agent cannot serve.
+// Instances that are compute nodes of an E-HPC cluster say so (ehpcClusters).
 func (d *Driver) ListInstances(ctx context.Context, creds provider.Credentials) ([]provider.Instance, error) {
 	regions, err := d.regions(ctx, creds)
 	if err != nil {
@@ -277,9 +278,17 @@ func (d *Driver) ListInstances(ctx context.Context, creds provider.Credentials) 
 				return nil, fmt.Errorf("cloud assistant status: %w", err)
 			}
 		}
+		var hpc map[string]ehpcCluster
+		if holdsEHPCNodes(raw) {
+			hpc = d.ehpcClusters(ctx, creds, region)
+		}
 		out := make([]provider.Instance, 0, len(raw))
 		for _, inst := range raw {
-			out = append(out, mapInstance(inst, online[inst.InstanceID]))
+			mapped := mapInstance(inst, online[inst.InstanceID])
+			if id := inst.tag(ehpcClusterTag); id != "" {
+				mapped.HPC = hpcCluster(id, hpc)
+			}
+			out = append(out, mapped)
 		}
 		return out, nil
 	})

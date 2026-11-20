@@ -50,6 +50,9 @@ type Engine struct {
 	checkPorts func(proto.InstanceDesiredState) error
 	// owner is labelled on every launched container (workload_labels.go).
 	owner workloadOwnerSlot
+	// startStall configures the watch for a start that makes no progress
+	// (start_stall.go); the zero value uses its constants.
+	startStall startStall
 
 	mu          sync.Mutex
 	assetMu     sync.Mutex // serializes content-addressed cache publication
@@ -114,6 +117,10 @@ type Engine struct {
 	otherRuntimes func(ctx context.Context, active string) []runtime.LocalImageSource
 	// cardGate is what a start waits on before launching (SetCardGate).
 	cardGate func(ctx context.Context, idents []string, limit time.Duration) bool
+	// cardLeaser borrows cards from the node's own allocator (Slurm) before
+	// a start; nil on nodes whose cards are the platform's (card_lease.go).
+	cardLeaser CardLeaser
+	canRebind  func() bool
 }
 
 // WithNetworkConfig injects the node's network configuration reader. Its URL
@@ -293,8 +300,11 @@ func (e *Engine) runtimeMountManager() *RuntimeMountManager {
 }
 
 // applyPreStart installs a per-instance wrapper inside the container. The
-// wrapper runs on every container start and then execs the engine command with
-// the original argument boundaries intact.
+// wrapper is written on the host and mounted read-only at preStartMountPath,
+// and becomes the entrypoint: it runs inside the container on every container
+// start, under /bin/sh with set -eu and the container's environment, and then
+// execs the engine command with the original argument boundaries intact. A
+// failing preparation step exits the container before the engine starts.
 func (e *Engine) applyPreStart(ws *runtime.WorkloadSpec, spec proto.InstanceDesiredState) error {
 	hasArgv := len(spec.PreStartArgv) > 0
 	hasScript := spec.PreStartScript != ""
@@ -391,7 +401,7 @@ func toWorkloadSpec(spec proto.InstanceDesiredState, name string) runtime.Worklo
 		DockerArgs:  spec.DockerArgs,
 	}
 	for _, m := range spec.Mounts {
-		ws.Mounts = append(ws.Mounts, runtime.Mount{Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly})
+		ws.Mounts = append(ws.Mounts, runtime.Mount{Source: m.Source, Volume: m.Volume, Target: m.Target, ReadOnly: m.ReadOnly})
 	}
 	if spec.ModelPath != "" && spec.ModelMount != "" {
 		ws.Mounts = append(ws.Mounts, runtime.Mount{
@@ -479,6 +489,40 @@ func (e *Engine) RunningSpecs() []proto.InstanceDesiredState {
 		}
 	}
 	return out
+}
+
+// StorageUsers returns every instance this agent holds that may have a
+// container (running, sleeping, starting, stopping or stopped until its
+// container is confirmed gone, an old generation still to be reclaimed), for
+// the question "does anything of the
+// platform have this directory mounted". settled is false when that cannot
+// be answered: the control plane has not sent the instances yet, or one is
+// being torn down whose mounts the agent no longer has on record.
+func (e *Engine) StorageUsers() (specs []proto.InstanceDesiredState, settled bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	settled = e.desiredKnown
+	for _, s := range e.desired {
+		// One wanted stopped has no container once its teardown is confirmed;
+		// until then it is listed below with what it had mounted.
+		if s.DesiredState != "stopped" {
+			specs = append(specs, s)
+		}
+	}
+	for _, s := range e.cleanupRequired {
+		specs = append(specs, s)
+		if s.ModelPath == "" && len(s.Mounts) == 0 {
+			settled = false // removed before this agent knew what it mounted
+		}
+	}
+	for uuid := range e.inFlight {
+		_, wanted := e.desired[uuid]
+		_, reclaiming := e.cleanupRequired[uuid]
+		if !wanted && !reclaiming {
+			settled = false
+		}
+	}
+	return specs, settled
 }
 
 // DesiredKnown reports whether the control plane has told this agent what

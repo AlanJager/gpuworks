@@ -44,8 +44,7 @@ type OverrideRequest struct {
 // and every rule of pushed state refuse with PLUGIN_OVERRIDE_REJECTED.
 // Every call is audited, refused or not.
 func (b *Bridge) Override(ctx context.Context, req OverrideRequest) (o pushstate.Override, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
+	defer b.locks.lock(req.Owner)()
 	reason := strings.TrimSpace(req.Reason)
 	defer func() {
 		// The audit line carries the reason as stored, cut to the stored
@@ -68,8 +67,6 @@ func (b *Bridge) Override(ctx context.Context, req OverrideRequest) (o pushstate
 // again as last pushed. An id not in force is PLUGIN_OVERRIDE_NOT_FOUND.
 // Every call is audited, refused or not.
 func (b *Bridge) RemoveOverride(ctx context.Context, id int64, by Administrator) (o pushstate.Override, err error) {
-	b.admin.Lock()
-	defer b.admin.Unlock()
 	defer func() { b.auditOverride("remove_override", o.Owner, o.Kind, o.Entry, id, "", by, err) }()
 	return b.state.RemoveOverride(ctx, id)
 }

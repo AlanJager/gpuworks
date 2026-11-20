@@ -7,6 +7,8 @@ import { account, aliyunKind } from "./helpers/platformFixtures.ts";
 
 const { i18n } = await createI18n(["providers"], "en");
 const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+const { default: userEvent } = await import("@testing-library/user-event");
+const { openSelect, chooseOption } = await import("./helpers/zeronSelect.ts");
 const { default: ProviderInstallModal } = await import("../src/components/ProviderInstallModal.tsx");
 const { default: ProviderResources } = await import("../src/pages/platforms/ProviderResources.tsx");
 const { MemoryRouter } = await import("react-router-dom");
@@ -60,11 +62,11 @@ test("the install dialog offers Cloud Assistant by name and reports it was used"
   assert.match((await screen.findByRole("tooltip")).textContent ?? "", /through Alibaba Cloud Cloud Assistant.*falls back to SSH/);
   fireEvent.blur(screen.getByRole("button", { name: "More information" }));
   assert.ok(screen.getByText("Connection"));
-  fireEvent.mouseDown(document.querySelector(".ant-select-selector") as HTMLElement);
-  await waitFor(() => assert.ok(document.querySelectorAll(".ant-select-item-option").length >= 3));
-  const options = [...document.querySelectorAll(".ant-select-item-option")].map((el) => el.textContent);
-  assert.deepEqual(options, ["Automatic", "Cloud Assistant", "Direct · root@47.0.0.1:22"]);
-  fireEvent.click([...document.querySelectorAll(".ant-select-item-option")][1] as HTMLElement);
+  const connection = screen.getByRole("combobox", { name: "Connection" });
+  assert.deepEqual(await openSelect(connection), ["Automatic", "Cloud Assistant", "Direct · root@47.0.0.1:22"]);
+  await userEvent.setup().keyboard("{Escape}");
+  await chooseOption(connection, "Cloud Assistant");
+  await waitFor(() => assert.equal(screen.getByRole("combobox", { name: "Connection" }).textContent, "Cloud Assistant"));
 
   fireEvent.click(screen.getByRole("button", { name: /^(loading)?Install$/ }));
   await waitFor(() => assert.ok(screen.getByText("Used Cloud Assistant")));

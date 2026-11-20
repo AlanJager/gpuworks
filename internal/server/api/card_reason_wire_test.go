@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -191,4 +192,79 @@ func TestANodeSaysWhichRuntimeItPassedOverOnTheWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertJSONKeysAbsent(t, plain, "runtime_fallback_from", "runtime_fallback_reason", "runtime_fallback_plugin")
+}
+
+// A node whose Slurm will not run jobs on it says so on the wire: the code,
+// Slurm's own words, the cordon with its reason, and, for a missing gres.conf,
+// the line the server composed for the node's cards (one card, several cards).
+// A node Slurm runs jobs on, and one that is not on Slurm, carry none of it.
+func TestANodeSaysWhySlurmWillNotRunJobsOnTheWire(t *testing.T) {
+	n := newNetworkAPI(t)
+	ok := true
+	card := func(i int) proto.GPUInfo {
+		return proto.GPUInfo{Index: i, UUID: fmt.Sprintf("GPU-%d", i), Vendor: "nvidia", PCIeBDF: fmt.Sprintf("0000:%02x:00.0", 0x3f+i), MemoryTotalBytes: 24 << 30, Healthy: true}
+	}
+	for _, tc := range []struct {
+		uuid  string
+		cards []proto.GPUInfo
+		sys   proto.SysInfo
+	}{
+		{"gres-two", []proto.GPUInfo{card(0), card(1)}, proto.SysInfo{SlurmNode: "gpu-1", SlurmUnavailable: proto.SlurmNodeGRESMissing, SlurmReason: "gres/gpu count reported lower than configured (0 < 2)"}},
+		{"gres-one", []proto.GPUInfo{card(0)}, proto.SysInfo{SlurmNode: "gpu-2", SlurmUnavailable: proto.SlurmNodeGRESMissing, SlurmReason: "gres/gpu count reported lower than configured (0 < 1)"}},
+		{"drained", []proto.GPUInfo{card(0), card(1)}, proto.SysInfo{SlurmNode: "gpu-3", SlurmUnavailable: proto.SlurmNodeDrained, SlurmReason: "maintenance"}},
+		{"running", []proto.GPUInfo{card(0), card(1)}, proto.SysInfo{SlurmNode: "gpu-4"}},
+		{"plain", []proto.GPUInfo{card(0)}, proto.SysInfo{}},
+	} {
+		if _, err := n.store.RegisterNode(tc.uuid, store.HashToken(tc.uuid), tc.uuid); err != nil {
+			t.Fatal(err)
+		}
+		tc.sys.GPUVendor, tc.sys.RuntimeDriver = "nvidia", "docker"
+		if err := n.store.UpdateNodeStatus(tc.uuid, proto.NodeStatus{GPUProbeOK: &ok, GPUs: tc.cards, Sys: tc.sys}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	get := func(uuid string) map[string]any {
+		t.Helper()
+		node := map[string]any{}
+		if err := json.Unmarshal(n.memberGet("/api/v1/nodes/"+uuid), &node); err != nil {
+			t.Fatal(err)
+		}
+		return node
+	}
+	assertJSONValues(t, get("gres-two"), map[string]any{
+		"scheduling": "cordoned", "scheduling_by": "platform", "cordon_reason": "slurm_node_unavailable",
+		"slurm_node": "gpu-1", "slurm_unavailable": "gres_missing",
+		"slurm_reason": "gres/gpu count reported lower than configured (0 < 2)",
+		"slurm_fixes": fixes(
+			"gres_conf", []any{"NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]"},
+			"reconfigure", []any{"scontrol reconfigure"},
+			"resume", []any{"scontrol update nodename=gpu-1 state=resume"},
+			"restart_slurmd", []any{"sudo systemctl restart slurmd"}),
+	})
+	assertJSONValues(t, get("gres-one"), map[string]any{
+		"cordon_reason": "slurm_node_unavailable",
+		"slurm_fixes": fixes(
+			"gres_conf", []any{"NodeName=gpu-2 Name=gpu File=/dev/nvidia0"},
+			"reconfigure", []any{"scontrol reconfigure"},
+			"resume", []any{"scontrol update nodename=gpu-2 state=resume"},
+			"restart_slurmd", []any{"sudo systemctl restart slurmd"}),
+	})
+	drained := get("drained")
+	assertJSONValues(t, drained, map[string]any{
+		"cordon_reason": "slurm_node_unavailable", "slurm_node": "gpu-3", "slurm_unavailable": "drained", "slurm_reason": "maintenance",
+		"slurm_fixes": fixes("resume_drained", []any{"scontrol update nodename=gpu-3 state=resume"}),
+	})
+	running := get("running")
+	assertJSONValues(t, running, map[string]any{"scheduling": "schedulable", "slurm_node": "gpu-4"})
+	assertJSONKeysAbsent(t, running, "slurm_unavailable", "slurm_reason", "slurm_fixes", "cordon_reason")
+	assertJSONKeysAbsent(t, get("plain"), "slurm_node", "slurm_unavailable", "slurm_reason", "slurm_fixes")
+}
+
+// fixes is the wire form of slurm_fixes from code, commands pairs.
+func fixes(pairs ...any) []any {
+	var out []any
+	for i := 0; i < len(pairs); i += 2 {
+		out = append(out, map[string]any{"code": pairs[i], "commands": pairs[i+1]})
+	}
+	return out
 }

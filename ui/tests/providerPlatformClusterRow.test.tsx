@@ -241,7 +241,7 @@ for (const address of ["/providers?open=p3&cluster=missing", "/providers?open=p1
     const open = new URLSearchParams(address.split("?")[1]).get("open");
     await waitFor(() => assert.deepEqual(opened(), open === "p3" ? ["ali-prod"] : open === "p1" ? ["Pods"] : []));
     if (open === "p3") await screen.findByRole("rowgroup", { name: "ack-gpu" });
-    if (open === "p1") assert.ok(await screen.findByText(p.instances.empty));
+    if (open === "p1") assert.ok(await screen.findByText(p.instances.emptyAfterSync));
     assert.equal(screen.queryAllByRole("alert").length, 0);
   });
 }

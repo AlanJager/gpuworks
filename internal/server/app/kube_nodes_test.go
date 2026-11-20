@@ -33,7 +33,7 @@ func TestSweepRemovesOnlyNodesTheirClusterNoLongerHas(t *testing.T) {
 		}
 		return *n
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	peer := enroll("peer", store.NodeStateOnline, now)
 	gone := enroll("gone", store.NodeStateOffline, now.Add(-time.Hour))
 	stillThere := enroll("rebooting", store.NodeStateOffline, now.Add(-time.Hour))
@@ -112,7 +112,7 @@ func TestSweepNeedsTwoAnswersInARow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	for _, n := range []struct{ name, state string }{{"peer", store.NodeStateOnline}, {"flaky", store.NodeStateOffline}} {
 		node, _, err := st.EnrollKubeNode(c.Token, "uid", n.name)
 		if err != nil {

@@ -1,0 +1,185 @@
+INFO 11-19 12:17:32 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:17:32 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:17:32 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:17:32 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:17:32 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-19 12:17:56,126 - 3382930 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+INFO 11-19 12:17:58 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 12:17:58 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(APIServer pid=3382930) INFO 11-19 12:17:59 [api_utils.py:345]
+(APIServer pid=3382930) INFO 11-19 12:17:59 [api_utils.py:345]        █     █     █▄   ▄█
+(APIServer pid=3382930) INFO 11-19 12:17:59 [api_utils.py:345]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.26.0
+(APIServer pid=3382930) INFO 11-19 12:17:59 [api_utils.py:345]   █▄█▀ █     █     █     █  model   /model
+(APIServer pid=3382930) INFO 11-19 12:17:59 [api_utils.py:345]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=3382930) INFO 11-19 12:17:59 [api_utils.py:345]
+(APIServer pid=3382930) INFO 11-19 12:17:59 [api_utils.py:273] non-default args: {'model_tag': '/model', 'enable_auto_tool_choice': True, 'tool_call_parser': 'q
+(APIServer pid=3382930) INFO 11-19 12:18:58 [model.py:623] Resolved architecture: Qwen3_5ForConditionalGeneration
+(APIServer pid=3382930) INFO 11-19 12:18:58 [model.py:1788] Using max model len 262144
+(APIServer pid=3382930) WARNING 11-19 12:18:58 [speculative.py:687] method `qwen3_5_mtp` is deprecated and replaced with mtp.
+(APIServer pid=3382930) INFO 11-19 12:19:38 [model.py:623] Resolved architecture: Qwen3_5MTP
+(APIServer pid=3382930) INFO 11-19 12:19:38 [model.py:1788] Using max model len 262144
+(APIServer pid=3382930) WARNING 11-19 12:19:38 [speculative.py:901] Enabling num_speculative_tokens > 1 will run multiple times of forward on same MTP layer,whi
+(APIServer pid=3382930) INFO 11-19 12:19:38 [scheduler.py:252] Chunked prefill is enabled with max_num_batched_tokens=16384.
+(APIServer pid=3382930) WARNING 11-19 12:19:38 [config.py:563] Mamba cache mode is set to 'align' for Qwen3_5ForConditionalGeneration by default when prefix cac
+(APIServer pid=3382930) INFO 11-19 12:19:38 [config.py:583] Warning: Prefix caching in Mamba cache 'align' mode is currently enabled. Its support for Mamba laye
+(APIServer pid=3382930) INFO 11-19 12:19:39 [patch_mamba_config.py:104] Setting attention block size to 1536 tokens to ensure that attention page size is >= mam
+(APIServer pid=3382930) INFO 11-19 12:19:39 [patch_mamba_config.py:119] Padding mamba page size by 1.92% to ensure that mamba page size and attention page size
+(APIServer pid=3382930) INFO 11-19 12:19:39 [vllm.py:1109] Asynchronous scheduling is enabled.
+(APIServer pid=3382930) INFO 11-19 12:19:39 [kernel.py:295] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_
+(APIServer pid=3382930) WARNING 11-19 12:19:39 [platform.py:1061] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True,
+(APIServer pid=3382930) WARNING 11-19 12:19:39 [platform.py:1119] Speculative quantization is set but Ascend automatically uses the main model's quantization me
+(APIServer pid=3382930) INFO 11-19 12:19:40 [ascend_config.py:921] Dynamic EPLB is False
+(APIServer pid=3382930) INFO 11-19 12:19:40 [ascend_config.py:922] The number of redundant experts is 0
+(APIServer pid=3382930) INFO 11-19 12:19:40 [platform.py:785] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(APIServer pid=3382930) INFO 11-19 12:19:41 [compilation.py:329] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=3382930) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `u
+INFO 11-19 12:20:21 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:20:21 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:20:21 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:20:21 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:20:21 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+(EngineCore pid=3418159) 2026-11-19 12:20:45,075 - 3418159 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+(EngineCore pid=3418159) INFO 11-19 12:20:45 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElast
+(EngineCore pid=3418159) INFO 11-19 12:20:45 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>`
+(EngineCore pid=3418159) INFO 11-19 12:20:45 [core.py:116] Initializing a V1 LLM engine (v0.26.0) with config: model='/model', speculative_config=SpeculativeCon
+(EngineCore pid=3418159) INFO 11-19 12:20:45 [multiproc_executor.py:140] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=127.0.0.1, mq_connect_
+INFO 11-19 12:21:02 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:21:02 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:21:02 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:21:02 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:21:02 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-19 12:21:25,048 - 3425484 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+INFO 11-19 12:21:25 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 12:21:25 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+INFO 11-19 12:21:31 [ascend_config.py:921] Dynamic EPLB is False
+INFO 11-19 12:21:31 [ascend_config.py:922] The number of redundant experts is 0
+(Worker pid=3425484) INFO 11-19 12:21:34 [parallel_state.py:1615] world_size=4 rank=0 local_rank=0 distributed_init_method=tcp://127.0.0.1:37647 backend=hccl
+INFO 11-19 12:21:38 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:21:38 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:21:38 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:21:38 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:21:38 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-19 12:22:01,773 - 3432365 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+INFO 11-19 12:22:01 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 12:22:01 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+INFO 11-19 12:22:06 [ascend_config.py:921] Dynamic EPLB is False
+INFO 11-19 12:22:06 [ascend_config.py:922] The number of redundant experts is 0
+(Worker pid=3432365) INFO 11-19 12:22:10 [parallel_state.py:1615] world_size=4 rank=1 local_rank=1 distributed_init_method=tcp://127.0.0.1:37647 backend=hccl
+INFO 11-19 12:22:14 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:22:14 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:22:14 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:22:14 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:22:14 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-19 12:22:37,645 - 3441631 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+INFO 11-19 12:22:37 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 12:22:37 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+INFO 11-19 12:22:42 [ascend_config.py:921] Dynamic EPLB is False
+INFO 11-19 12:22:42 [ascend_config.py:922] The number of redundant experts is 0
+(Worker pid=3441631) INFO 11-19 12:22:46 [parallel_state.py:1615] world_size=4 rank=2 local_rank=2 distributed_init_method=tcp://127.0.0.1:37647 backend=hccl
+INFO 11-19 12:22:50 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:22:50 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:22:50 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:22:50 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:22:50 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-19 12:23:13,259 - 3445890 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.26.0+empty: default 1
+INFO 11-19 12:23:13 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `n
+INFO 11-19 12:23:13 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+INFO 11-19 12:23:17 [ascend_config.py:921] Dynamic EPLB is False
+INFO 11-19 12:23:17 [ascend_config.py:922] The number of redundant experts is 0
+(Worker pid=3445890) INFO 11-19 12:23:21 [parallel_state.py:1615] world_size=4 rank=3 local_rank=3 distributed_init_method=tcp://127.0.0.1:37647 backend=hccl
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+(Worker pid=3425484) INFO 11-19 12:23:21 [parallel_state.py:1946] rank 0 in world size 4 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[rank3]:[W1119 12:23:22.501641385 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with m
+[rank2]:[W1119 12:23:22.540611230 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with m
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+(Worker pid=3445890) WARNING 11-19 12:23:22 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+[rank1]:[W1119 12:23:22.073865479 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with m
+(Worker pid=3441631) WARNING 11-19 12:23:22 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+[rank0]:[W1119 12:23:23.796492704 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with m
+(Worker pid=3445890) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_
+(Worker pid=3441631) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_
+(Worker pid=3432365) WARNING 11-19 12:23:33 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+(Worker pid=3441631) WARNING 11-19 12:23:38 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+(Worker_TP2 pid=3441631) INFO 11-19 12:23:38 [model_runner_v1.py:3614] Starting to load model /model...
+(Worker pid=3445890) WARNING 11-19 12:23:38 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+(Worker_TP3 pid=3445890) INFO 11-19 12:23:38 [model_runner_v1.py:3614] Starting to load model /model...
+(Worker_TP2 pid=3441631) INFO 11-19 12:23:39 [modelslim_config.py:584] Applied hf_to_vllm_mapper to quant_description keys
+(Worker_TP3 pid=3445890) INFO 11-19 12:23:39 [modelslim_config.py:584] Applied hf_to_vllm_mapper to quant_description keys
+(Worker_TP3 pid=3445890) INFO 11-19 12:23:41 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP2 pid=3441631) INFO 11-19 12:23:41 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker pid=3432365) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_
+INFO 11-19 12:24:11 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:24:11 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:24:11 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:24:11 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:24:11 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+INFO 11-19 12:24:24 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 11-19 12:24:24 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 11-19 12:24:24 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-19 12:24:24 [__init__.py:237] Platform plugin ascend is activated
+INFO 11-19 12:24:24 [platform.py:61] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+(Worker_TP3 pid=3445890) INFO 11-19 12:24:45 [model_runner_v1.py:3639] Loading drafter model...
+(Worker_TP3 pid=3445890) INFO 11-19 12:24:45 [kernel.py:295] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused
+(Worker_TP3 pid=3445890) WARNING 11-19 12:24:45 [platform.py:1061] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True
+(Worker_TP3 pid=3445890) INFO 11-19 12:24:45 [ascend_config.py:921] Dynamic EPLB is False
+(Worker_TP3 pid=3445890) INFO 11-19 12:24:45 [ascend_config.py:922] The number of redundant experts is 0
+(Worker_TP3 pid=3445890) INFO 11-19 12:24:45 [platform.py:785] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(Worker_TP3 pid=3445890) INFO 11-19 12:24:45 [llm_base_proposer.py:444] [spec_decode/base] Loading draft model: method=mtp, load_format=None, model=/model
+(Worker_TP3 pid=3445890) /usr/local/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/impl/ops_legacy/dynamic/gelu_grad_v2.py:97: SyntaxWarning: invalid escape
+(Worker_TP3 pid=3445890)   gelu_grad_erf = erfc(-\hat{x}) / 2 + (1 /sqrt(Pi)) * (\hat{x}) * exp(-\hat{x}^2)
+(Worker_TP3 pid=3445890) /usr/local/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/impl/ops_legacy/dynamic/gelu_grad_v2.py:157: SyntaxWarning: invalid escap
+(Worker_TP3 pid=3445890)   gelu_grad_erf = erfc(-\hat{x}) / 2 + (1 /sqrt(Pi)) * (\hat{x}) * exp(-\hat{x}^2)
+(Worker_TP3 pid=3445890) INFO 11-19 12:25:05 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP3 pid=3445890) INFO 11-19 12:25:05 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP3 pid=3445890) INFO 11-19 12:25:05 [llm_base_proposer.py:619] [spec_decode/base] Detected MTP model. Sharing target model embedding weights with the d
+(Worker_TP3 pid=3445890) INFO 11-19 12:25:05 [llm_base_proposer.py:706] [spec_decode/base] Wrapping draft model with ACLGraphWrapper: runtime_mode=FULL, use_eag
+(Worker_TP3 pid=3445890) INFO 11-19 12:25:07 [model_runner_v1.py:3710] Loading model weights took 8.6550 GB
+(Worker_TP3 pid=3445890) INFO 11-19 12:25:07 [model_runner_v1.py:3742] Model runner load_model total time: 88.25 seconds
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:22 [model_runner_v1.py:3639] Loading drafter model...
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:22 [kernel.py:295] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused
+(Worker_TP2 pid=3441631) WARNING 11-19 12:25:22 [platform.py:1061] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:22 [ascend_config.py:921] Dynamic EPLB is False
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:22 [ascend_config.py:922] The number of redundant experts is 0
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:22 [platform.py:785] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:22 [llm_base_proposer.py:444] [spec_decode/base] Loading draft model: method=mtp, load_format=None, model=/model
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:22 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:23 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:29 [llm_base_proposer.py:619] [spec_decode/base] Detected MTP model. Sharing target model embedding weights with the d
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:30 [llm_base_proposer.py:706] [spec_decode/base] Wrapping draft model with ACLGraphWrapper: runtime_mode=FULL, use_eag
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:31 [model_runner_v1.py:3710] Loading model weights took 8.6550 GB
+(Worker_TP2 pid=3441631) INFO 11-19 12:25:31 [model_runner_v1.py:3742] Model runner load_model total time: 113.03 seconds
+(Worker pid=3432365) WARNING 11-19 12:26:09 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+(Worker_TP1 pid=3432365) INFO 11-19 12:26:12 [model_runner_v1.py:3614] Starting to load model /model...
+(Worker_TP1 pid=3432365) INFO 11-19 12:26:13 [modelslim_config.py:584] Applied hf_to_vllm_mapper to quant_description keys
+(Worker pid=3425484) WARNING 11-19 12:59:32 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+(Worker pid=3425484) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_
+(Worker pid=3425484) WARNING 11-19 13:21:23 [__init__.py:204] min_p and logit_bias parameters won't work with speculative decoding.
+(Worker_TP1 pid=3432365) INFO 11-19 13:22:03 [compilation.py:1091] Using OOT custom backend for compilation.
+(Worker_TP0 pid=3425484) INFO 11-19 13:22:03 [model_runner_v1.py:3614] Starting to load model /model...
+(Worker_TP0 pid=3425484) INFO 11-19 13:22:33 [modelslim_config.py:584] Applied hf_to_vllm_mapper to quant_description keys

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import TemporaryAddressHint from "./TemporaryAddressHint";
-import { Alert, Button, Collapse, Input, Modal, Radio, Select, Space, Switch, Typography } from "antd";
 import { APIError, apiErrorText } from "../apiError";
 import {
   api,
@@ -16,6 +15,21 @@ import { localizedText } from "../i18n/localizedText";
 import { DEFAULT_AGENT_LISTEN } from "../agentListen";
 import { HelpTip } from "../ui-kit/HelpTip";
 import OnboardingChecks, { onboardingCheckText } from "./OnboardingChecks";
+import { confirm } from "../ui-kit/feedback";
+import { Notice } from "../ui-kit/Notice";
+import { PasswordInput } from "../ui-kit/PasswordInput";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { RadioGroup, RadioItem } from "./ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select";
+import { Switch } from "./ui/switch";
+import { Textarea } from "./ui/textarea";
+
+const DIALOG_STYLE = { width: "min(720px, calc(100vw - 32px))", maxWidth: "calc(100vw - 32px)" };
+const Label = ({ children }: { children: string }) => <span className="font-semibold text-fg-default">{children}</span>;
+const Hint = ({ children }: { children: string }) => <span className="text-fg-muted">{children}</span>;
 
 // AutoDL's port documentation: its Pro instances open HTTP ports only, which
 // a server-dialed agent cannot use, so the one-click install never offers it.
@@ -108,7 +122,7 @@ export default function ProviderInstallModal({
         // Opening a port restarts the instance (RunPod): nothing changed yet,
         // so ask, and install again only when the operator agrees.
         setSubmitting(false);
-        Modal.confirm({
+        confirm({
           title: t("install.restartConfirm.title"),
           content: t(restartConfirmContent(error.params?.need)),
           okText: t("install.restartConfirm.ok"),
@@ -130,151 +144,149 @@ export default function ProviderInstallModal({
   // Closing after an install refreshes the instance list, so it shows as onboarded.
   const close = installed ? onDone : onClose;
 
+  const connections = [
+    { value: "auto", label: t("install.autoConnection"), disabled: false },
+    ...(inst?.ssh_connections || []).map((connection) => ({
+      value: connection.id,
+      disabled: !connection.install_supported,
+      label: isCommandChannel(connection)
+        ? localizedText(connection.label, language) || connection.type
+        : `${localizedText(connection.label, language) || t(connection.type === "direct" ? "install.direct" : "install.proxy")} · ${connection.user || "root"}@${connection.host}:${connection.port}${connection.install_supported ? "" : t("install.terminalOnly")}`,
+    })),
+  ];
+  const details = [
+    ...(result?.precheck_details?.length ? [{ key: "precheck", label: t("install.precheckDetails"), checks: result.precheck_details }] : []),
+    ...(result?.install_details?.length ? [{ key: "details", label: t("install.details"), checks: result.install_details }] : []),
+  ];
+
   return (
-    <Modal
-      className="provider-install-modal"
-      width={720}
-      centered
-      title={t("install.title", { name: inst?.name ?? "" })}
-      open={!!inst}
-      onCancel={close}
-      footer={installed ? (
-        <Button type="primary" onClick={close}>{t("install.done")}</Button>
-      ) : (
-        <>
-          <Button onClick={close}>{t("install.cancel")}</Button>
-          <Button type="primary" loading={submitting} onClick={() => void submit()}>
-            {verdict ? t("install.retry") : t("install.install")}
-          </Button>
-        </>
-      )}
-      destroyOnHidden
-    >
-      <Space direction="vertical" size={12} style={{ width: "100%" }}>
-        {submitting && <Alert type="info" showIcon message={t("install.running")} />}
-        {verdict && <InstallVerdictBanner outcome={verdict.outcome} detail={verdict.check ? onboardingCheckText(tCommon, verdict.check) : verdict.detail} />}
-        {!installed && (
-          <>
-            <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              {t(autoAuthKey(providerKind))} <HelpTip content={t(`${autoAuthKey(providerKind)}Help`)} />
-            </Typography.Paragraph>
-            <Typography.Text strong>{t("install.connection")}</Typography.Text>
-            <Select
-              style={{ width: "100%" }}
-              aria-label={t("install.connection")}
-              value={sshConnectionID}
-              onChange={setSSHConnectionID}
-              options={[
-                { value: "auto", label: t("install.autoConnection") },
-                ...(inst?.ssh_connections || []).map((connection) => ({
-                  value: connection.id,
-                  disabled: !connection.install_supported,
-                  label: isCommandChannel(connection)
-                    ? localizedText(connection.label, language) || connection.type
-                    : `${localizedText(connection.label, language) || t(connection.type === "direct" ? "install.direct" : "install.proxy")} · ${connection.user || "root"}@${connection.host}:${connection.port}${connection.install_supported ? "" : t("install.terminalOnly")}`,
-                })),
-              ]}
-            />
-            {serverDialSupported ? (
-              <Radio.Group value={connectMode} onChange={(event) => setConnectMode(event.target.value)}>
-                <Radio.Button value="agent_dial">{t("install.agentDial")}</Radio.Button>
-                <Radio.Button value="server_dial">{t("install.serverDial")}</Radio.Button>
-              </Radio.Group>
-            ) : providerKind === "autodl" ? (
-              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                {t("install.autodlAgentDialOnly")}{" "}
-                <a href={AUTODL_PORT_DOCS} target="_blank" rel="noreferrer">{t("install.autodlPortDocs")}</a>
-              </Typography.Paragraph>
-            ) : null}
-            {connectMode === "agent_dial" ? (
-              <>
-                <Typography.Text strong>{t("install.serverURL")}</Typography.Text>
-                <Input value={serverURL} onChange={(event) => setServerURL(event.target.value)} placeholder={window.location.origin} />
-                {/* What the node will be told to dial: a quick-tunnel address here
-                    stops working as soon as the connector restarts. */}
-                <TemporaryAddressHint value={serverURL} />
-              </>
-            ) : (
-              <>
-                {/* Where the agent listens comes first: the address below may
-                    name another port when a platform maps it. */}
-                <Typography.Text strong>{t("install.listenAddress")}</Typography.Text>
-                <Input aria-label={t("install.listenAddress")} value={listen} onChange={(event) => setListen(event.target.value)} placeholder={serverDialAutoPort ? t("install.automatic") : DEFAULT_AGENT_LISTEN} />
-                <Typography.Text type="secondary">{t("install.listenAddressHelp")}</Typography.Text>
-                <Typography.Text strong>{t("install.agentAddress")}</Typography.Text>
-                <Input
-                  aria-label={t("install.agentAddress")}
-                  value={serverDialAddress}
-                  onChange={(event) => setServerDialAddress(event.target.value)}
-                  placeholder={serverDialAutoPort ? t("install.automatic") : t("install.addressPlaceholder")}
-                />
-                <Typography.Text type="secondary">{t(serverDialAutoPort ? "install.autoPortHelp" : "install.agentAddressHelp")}</Typography.Text>
-              </>
-            )}
-            <Collapse
-              ghost
-              items={[{
-                key: "advanced",
-                label: t("install.advanced"),
-                children: (
-                  <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                    <Typography.Text strong>{t("install.installDir")}</Typography.Text>
-                    <Input aria-label={t("install.installDir")} value={installDir} onChange={(event) => setInstallDir(event.target.value)} placeholder="/opt/gpuworks" />
-                    <Typography.Text type="secondary">{t("install.installDirHelp")}</Typography.Text>
-                    <Space size={8}>
-                      <Switch checked={useSystemd} onChange={setUseSystemd} aria-label={t("install.useSystemd")} />
-                      <Typography.Text strong>{t("install.useSystemd")}</Typography.Text>
-                    </Space>
-                    <Typography.Text type="secondary">{t(useSystemd ? "install.useSystemdHelp" : "install.useSystemdOffHelp")}</Typography.Text>
-                    <Typography.Text strong>{t("install.credentialOverride")}</Typography.Text>
-                    <Typography.Text type="secondary">{t("install.credentialOverrideHelp")}</Typography.Text>
-                    <Input.TextArea
-                      rows={6}
-                      value={key}
-                      onChange={(event) => setKey(event.target.value)}
-                      placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n..."}
-                      aria-label={t("install.privateKey")}
-                    />
-                    <Input.Password
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      placeholder={t("install.passwordPlaceholder")}
-                      aria-label={t("install.password")}
-                      autoComplete="off"
-                    />
-                  </Space>
-                ),
-              }]}
-            />
-          </>
-        )}
-        {result?.server_url && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {t("install.serverURLUsed", { url: result.server_url })}
-          </Typography.Text>
-        )}
-        {result?.ssh_connection && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {isCommandChannel(result.ssh_connection)
-              ? t("install.connectionUsedChannel", { label: localizedText(result.ssh_connection.label, language) || result.ssh_connection.type })
-              : t("install.connectionUsed", { label: localizedText(result.ssh_connection.label, language) || "SSH", user: result.ssh_connection.user || "root", host: result.ssh_connection.host, port: result.ssh_connection.port })}
-          </Typography.Text>
-        )}
-        {result?.ssh_attempts?.filter((attempt) => attempt.status === "failed").map((attempt) => (
-          <Alert key={`${attempt.connection_id}:${attempt.target}`} type="warning" showIcon message={t("install.attemptFailed", { target: attempt.target })} description={attempt.detail} />
-        ))}
-        {result?.checks && <InstallChecks checks={result.checks} />}
-        {(!!result?.precheck_details?.length || !!result?.install_details?.length) && (
-          <Collapse
-            ghost
-            items={[
-              ...(result?.precheck_details?.length ? [{ key: "precheck", label: t("install.precheckDetails"), children: <InstallChecks checks={result.precheck_details} /> }] : []),
-              ...(result?.install_details?.length ? [{ key: "details", label: t("install.details"), children: <InstallChecks checks={result.install_details} /> }] : []),
-            ]}
-          />
-        )}
-      </Space>
-    </Modal>
+    <Dialog open={!!inst} onOpenChange={(next) => { if (!next) close(); }}>
+      <DialogContent className="provider-install-modal flex max-h-[calc(100dvh-32px)] flex-col" closeButtonLabel={tCommon("actions.close")} style={DIALOG_STYLE}>
+        <DialogHeader><DialogTitle>{t("install.title", { name: inst?.name ?? "" })}</DialogTitle></DialogHeader>
+        <div className="-mx-6 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6">
+          {submitting && <Notice tone="info" title={t("install.running")} />}
+          {verdict && <InstallVerdictBanner outcome={verdict.outcome} detail={verdict.check ? onboardingCheckText(tCommon, verdict.check) : verdict.detail} />}
+          {!installed && (
+            <>
+              <p className="m-0 text-fg-muted">
+                {t(autoAuthKey(providerKind))} <HelpTip content={t(`${autoAuthKey(providerKind)}Help`)} />
+              </p>
+              <Label>{t("install.connection")}</Label>
+              <Select value={sshConnectionID} onValueChange={setSSHConnectionID}>
+                <SelectTrigger aria-label={t("install.connection")} wrapperClassName="w-full" className="w-full" />
+                <SelectContent>
+                  {connections.map((connection) => <SelectItem key={connection.value} value={connection.value} disabled={connection.disabled}>{connection.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {serverDialSupported ? (
+                <RadioGroup value={connectMode} onValueChange={(mode) => setConnectMode(mode as "agent_dial" | "server_dial")} className="w-auto flex-row flex-wrap">
+                  <RadioItem index={0} value="agent_dial" label={t("install.agentDial")} />
+                  <RadioItem index={1} value="server_dial" label={t("install.serverDial")} />
+                </RadioGroup>
+              ) : providerKind === "autodl" ? (
+                <p className="m-0 text-fg-muted">
+                  {t("install.autodlAgentDialOnly")}{" "}
+                  <a href={AUTODL_PORT_DOCS} target="_blank" rel="noreferrer">{t("install.autodlPortDocs")}</a>
+                </p>
+              ) : null}
+              {connectMode === "agent_dial" ? (
+                <>
+                  <Label>{t("install.serverURL")}</Label>
+                  <Input aria-label={t("install.serverURL")} value={serverURL} onChange={(event) => setServerURL(event.target.value)} placeholder={window.location.origin} />
+                  {/* What the node will be told to dial: a quick-tunnel address here
+                      stops working as soon as the connector restarts. */}
+                  <TemporaryAddressHint value={serverURL} />
+                </>
+              ) : (
+                <>
+                  {/* Where the agent listens comes first: the address below may
+                      name another port when a platform maps it. */}
+                  <Label>{t("install.listenAddress")}</Label>
+                  <Input aria-label={t("install.listenAddress")} value={listen} onChange={(event) => setListen(event.target.value)} placeholder={serverDialAutoPort ? t("install.automatic") : DEFAULT_AGENT_LISTEN} />
+                  <Hint>{t("install.listenAddressHelp")}</Hint>
+                  <Label>{t("install.agentAddress")}</Label>
+                  <Input
+                    aria-label={t("install.agentAddress")}
+                    value={serverDialAddress}
+                    onChange={(event) => setServerDialAddress(event.target.value)}
+                    placeholder={serverDialAutoPort ? t("install.automatic") : t("install.addressPlaceholder")}
+                  />
+                  <Hint>{t(serverDialAutoPort ? "install.autoPortHelp" : "install.agentAddressHelp")}</Hint>
+                </>
+              )}
+              <Accordion type="single" collapsible>
+                <AccordionItem value="advanced">
+                  <AccordionTrigger>{t("install.advanced")}</AccordionTrigger>
+                  <AccordionContent>
+                    <div className="flex w-full flex-col gap-2.5">
+                      <Label>{t("install.installDir")}</Label>
+                      <Input aria-label={t("install.installDir")} value={installDir} onChange={(event) => setInstallDir(event.target.value)} placeholder="/opt/gpuworks" />
+                      <Hint>{t("install.installDirHelp")}</Hint>
+                      <Switch checked={useSystemd} onCheckedChange={setUseSystemd} label={t("install.useSystemd")} />
+                      <Hint>{t(useSystemd ? "install.useSystemdHelp" : "install.useSystemdOffHelp")}</Hint>
+                      <Label>{t("install.credentialOverride")}</Label>
+                      <Hint>{t("install.credentialOverrideHelp")}</Hint>
+                      <Textarea
+                        rows={6}
+                        value={key}
+                        onChange={(event) => setKey(event.target.value)}
+                        placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n..."}
+                        aria-label={t("install.privateKey")}
+                      />
+                      <PasswordInput
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder={t("install.passwordPlaceholder")}
+                        aria-label={t("install.password")}
+                        autoComplete="off"
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </>
+          )}
+          {result?.server_url && (
+            <span className="text-label text-fg-muted">
+              {t("install.serverURLUsed", { url: result.server_url })}
+            </span>
+          )}
+          {result?.ssh_connection && (
+            <span className="text-label text-fg-muted">
+              {isCommandChannel(result.ssh_connection)
+                ? t("install.connectionUsedChannel", { label: localizedText(result.ssh_connection.label, language) || result.ssh_connection.type })
+                : t("install.connectionUsed", { label: localizedText(result.ssh_connection.label, language) || "SSH", user: result.ssh_connection.user || "root", host: result.ssh_connection.host, port: result.ssh_connection.port })}
+            </span>
+          )}
+          {result?.ssh_attempts?.filter((attempt) => attempt.status === "failed").map((attempt) => (
+            <Notice key={`${attempt.connection_id}:${attempt.target}`} tone="warning" title={t("install.attemptFailed", { target: attempt.target })}>{attempt.detail}</Notice>
+          ))}
+          {result?.checks && <InstallChecks checks={result.checks} />}
+          {details.length > 0 && (
+            <Accordion type="multiple">
+              {details.map((detail) => (
+                <AccordionItem key={detail.key} value={detail.key}>
+                  <AccordionTrigger>{detail.label}</AccordionTrigger>
+                  <AccordionContent><InstallChecks checks={detail.checks} /></AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          )}
+        </div>
+        <DialogFooter>
+          {installed ? (
+            <Button variant="primary" onClick={close}>{t("install.done")}</Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={close}>{t("install.cancel")}</Button>
+              <Button variant="primary" loading={submitting} onClick={() => void submit()}>
+                {verdict ? t("install.retry") : t("install.install")}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -282,14 +294,12 @@ export default function ProviderInstallModal({
 // until the dialog is closed, where a toast would have been gone in seconds.
 function InstallVerdictBanner({ outcome, detail }: { outcome: InstallOutcome; detail?: string }) {
   const { t } = useTranslation("providers");
-  const type = outcome === "installed" ? "success" : outcome === "failed" ? "error" : "warning";
+  // Zeron alerts have no success tone; a finished install reads as information.
+  const tone = outcome === "installed" ? "info" : outcome === "failed" ? "danger" : "warning";
   return (
-    <Alert
-      type={type}
-      showIcon
-      message={t(`install.outcome.${outcome}.title`)}
-      description={outcome === "failed" && detail ? detail : t(`install.outcome.${outcome}.description`)}
-    />
+    <Notice tone={tone} title={t(`install.outcome.${outcome}.title`)}>
+      {outcome === "failed" && detail ? detail : t(`install.outcome.${outcome}.description`)}
+    </Notice>
   );
 }
 

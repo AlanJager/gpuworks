@@ -38,6 +38,8 @@
 //
 // The package imports only the standard library and pkg/extapi. The
 // plugintest package runs a plugin in process against a fake server, for
-// the plugin's own tests. The protocol is described in
+// the plugin's own tests; the conformance package runs the plugin's binary
+// against the same fake server and checks it against the rules the server
+// holds every plugin to. The protocol is described in
 // docs/reference/plugin-protocol.md.
 package pluginsdk

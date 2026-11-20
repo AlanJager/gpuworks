@@ -9,6 +9,7 @@ import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
 const closeChannels = trackMessageChannels();
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
+dom.window.HTMLElement.prototype.setPointerCapture = () => {};
 for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "HTMLTextAreaElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
@@ -363,7 +364,7 @@ test("an administrator switches a management role off and sees the node's new st
   assert.ok(screen.getByRole("link", { name: n.management.name }), "the loaded management network is named in the viewer's language");
   const compute = screen.getByRole("switch", { name: n.management.roleSwitch.compute });
   assert.equal(compute.getAttribute("aria-checked"), "true");
-  await waitFor(() => assert.equal(compute.hasAttribute("disabled"), false));
+  await waitFor(() => assert.equal(compute.getAttribute("aria-disabled"), null));
   await userEvent.click(compute);
   await waitFor(() => assert.deepEqual(calls, [["uuid-a", ["compute"]]]));
   await waitFor(() => assert.equal(screen.getByRole("switch", { name: n.management.roleSwitch.compute }).getAttribute("aria-checked"), "false"));
@@ -377,7 +378,7 @@ test("a failed role change keeps the switch and shows the error", async () => {
   stub("setManagementRoles", async () => { throw new Error("database is locked"); });
   wrap(<NodeNetworksCard nodeUUID="uuid-a" />);
   const serving = await screen.findByRole("switch", { name: n.management.roleSwitch.serving });
-  await waitFor(() => assert.equal(serving.hasAttribute("disabled"), false));
+  await waitFor(() => assert.equal(serving.getAttribute("aria-disabled"), null));
   await userEvent.click(serving);
   assert.ok(await screen.findByText(/database is locked/));
   assert.equal(screen.getByRole("switch", { name: n.management.roleSwitch.serving }).getAttribute("aria-checked"), "true");
@@ -391,7 +392,7 @@ test("members see the management roles read-only, and an old agent has no addres
   const storage = screen.getByRole("switch", { name: n.management.roleSwitch.storage_sync });
   assert.equal(storage.getAttribute("aria-checked"), "false");
   for (const role of ["serving", "storage_sync", "compute"] as const) {
-    assert.ok(screen.getByRole("switch", { name: n.management.roleSwitch[role] }).hasAttribute("disabled"));
+    assert.equal(screen.getByRole("switch", { name: n.management.roleSwitch[role] }).getAttribute("aria-disabled"), "true");
   }
   assert.equal(screen.queryByText(n.management.nat), null);
 });

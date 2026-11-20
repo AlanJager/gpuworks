@@ -165,6 +165,40 @@ kubectl -n <namespace> logs ds/gpuworks-agent
 
 修好后确认节点出现在「计算节点」页且在线。以上都对不上时，保留 `describe pod` 的 Events 与 agent 日志，见本页末尾「仍未解决？」。
 
+## Slurm 节点不加入或不上线
+
+**现象**：从 Slurm 集群（线下集群，或云账号下的 E-HPC 集群）接入的条目迟迟没有节点出现在节点页；「外部平台」页该集群的状态是「未接入」，超过 10 分钟变成「长时间未接入」；
+或集群行写着「GPU 节点 N 台，已接入 M 台」而 M 小于 N，「没有 agent 的 GPU 节点」里列着节点和原因（「从未接入」或「已接入，agent 离线」）；或节点出现了但被停止调度，或实例排队起不来。接入步骤与各项设置见[接入 Slurm 集群](connect-slurm-nodes.md)，本节按症状指到对应位置，不重复其中的说明。
+节点已经出现、只是一直「连接中」或反复离线时，先看「节点一直「连接中」或不上线」一节。
+
+**怎么确认**：先在 Slurm 管控节点上确认健康检查已经生效，再到一台没加入的 GPU 节点上看检查脚本和它的日志。在「外部平台」页点集群状态旁的「排查」，给出的是同样的命令和常见原因（长时间未接入时才有这个入口）。`<脚本目录>` 默认 `/opt/gpuworks-slurm`，`<安装目录>` 默认 `/var/lib/gpuworks`：
+
+```bash
+# Slurm 管控节点：slurmctld 在用的健康检查是不是我们的 check.sh
+scontrol show config | grep -i HealthCheck
+# 一台 GPU 节点：检查脚本在不在、最近的安装日志
+ls -l <脚本目录>/check.sh
+tail -n 50 <安装目录>/slurm-check.log
+```
+
+| 症状 | 看什么 | 处理 |
+|---|---|---|
+| 刚执行完接入命令，节点还没出现 | 检查脚本由 slurmd 按健康检查周期运行（默认 300 秒），节点开始安装前还会随机等待最多半个周期，所以默认最多约 7 分半钟；`reconfigure` 之后不保证立即运行一次 | 等一个半周期再看；还没有就按下面各行排查 |
+| `scontrol show config` 里的 `HealthCheckProgram` 不是 `<脚本目录>/check.sh` | 接入命令最后会再问一次 slurmctld 并以「有要手工处理的」收尾，写出它实际在用的程序；`HealthCheckProgram` 写在 `slurm.conf` `Include` 的文件里、或文件改了还没重新加载，都会这样 | 在被包含的文件里改掉那一行（命令改不了被包含的文件），然后 `scontrol reconfigure`；不确定会做什么时，先用检查命令（`-s -- --check`）看一遍，见[先检查，再应用](connect-slurm-nodes.md#先检查再应用) |
+| 集群不是 configless，节点上看不到新的 `slurm.conf` | 每个节点各有一份 `slurm.conf`，`scontrol reconfigure` 只让 slurmd 重读它自己磁盘上的那份；接入命令（和检查）会提示「not configless」 | 按你们惯常的办法把更新后的 `slurm.conf` 分发到计算节点 |
+| 节点上没有 `check.sh`（`ls` 报不存在），或 `slurm-check.log` 不存在 | 脚本目录不在共享存储上，又没有复制到这台节点（复制失败、之后才加入集群的节点、`sinfo` 没列出它）；接入命令的输出里 `FAILED (unreachable / copy / verify / time_cap / unsafe)` 就是复制失败的节点（`unsafe`：该节点上的脚本目录别的账号能改，按输出提示改成属于 root、组和其他人不可写后重新执行） | 脚本目录放到共享存储上，或把 `check.sh`（0755）、`token`（0600）和有则复制的 `chained` 手工复制到同一路径；扩容后再执行一次接入命令；E-HPC 的脚本目录在共享 NAS 上，通常不会出这个问题 |
+| `slurm-check.log` 里有 `cannot read the enrollment token` | 令牌文件在 root 受限的共享存储上（root squash），节点上的 root 读不到 | 再执行一次接入命令，或把 `token` 以 0600 复制到这台节点本地 |
+| 日志里 curl 失败，或下载 `install.sh` 失败 | 节点连不上条目的「管理节点接入地址」（agent 主动外连，也从这个地址下载 agent；节点自己的 DNS 要能解析它） | 修好节点到管理节点的网络；地址在条目创建后不能改，要改就删掉条目重建；连通性的通用检查见「节点一直「连接中」」一节 |
+| 条目详情（或「排查」）写着「最近一次检查发现有主机访问不到 …」或「接入已执行，但之后没有节点联系过 server」 | 检查和「检查并应用」会用 `curl` 从 Slurm 管控节点和每台 GPU 节点访问 `<接入地址>/healthz`，逐台写出原因（域名解析失败、连接被拒绝或没有路由、连接超时、TLS 错误）；填的是 `gpuworks expose` 的临时公网地址（`*.trycloudflare.com`）时尤其常见：它在连接器重建后会变，从节点所在网络也常常访问不到 | 把条目的接入地址换成各计算节点都访问得到的固定地址（接入地址创建后不能改，删掉条目重新创建），再「检查并应用」；详情里的原因由 server 判断，说明见[接入 Slurm 集群](connect-slurm-nodes.md) |
+| 节点上没有安装 agent 的日志，「外部平台」页的条目是「已吊销」 | 检查脚本在安装前问 server 令牌是否还有效，吊销了就什么也不装（已装的 agent 照常运行） | 不需要时无需处理；要继续接入新节点就重新创建条目 |
+| 日志或 agent 报注册被拒绝：`node_taken`、`unknown_token`、`other_cluster` | `node_taken`：同一个 Slurm 集群的另一个条目最近 15 分钟内持有这个节点名；`unknown_token`：令牌被吊销或不认识；`other_cluster`：令牌属于另一个 Slurm 集群（第一台登记的节点把令牌绑定到集群的 `ClusterName`） | `node_taken` 等另一个条目在该节点离线超过 15 分钟，或删掉重复的条目；其余重新创建条目并重新执行接入命令 |
+| 节点没有 NVIDIA GPU（CPU 队列的节点） | 检查脚本在没有 NVIDIA GPU 的节点上什么也不做，不登记，也不算在「GPU 节点」里 | 不是故障；只有带 NVIDIA GPU 的节点会成为计算节点 |
+| 节点被 Slurm drain 或 down，检查没有在它上面运行（集群行里该节点的 Slurm 状态写着 `drained`、`down`） | 在 Slurm 管控节点上 `scontrol show node <节点>` 看 `State` 与 `Reason`；`Reason` 为 `gres/gpu count reported lower than configured` 是 `gres.conf` 里缺这台节点的 gpu 行 | 处理掉原因后 `scontrol update nodename=<节点> state=resume`；缺 `gres.conf` 行的在 Slurm 管控节点上补一行、`scontrol reconfigure` 再 resume（E-HPC 集群用「检查并应用」一并处理，会补行并恢复被扣住的节点）；down 的节点先查 slurmd |
+| 节点在线，但被停止调度（原因 `slurm_node_unavailable`），或部署一直排队 | 节点详情的运行时一栏给出 Slurm 自己的原因和手工恢复的步骤，命令可以直接复制 | 按那里的步骤恢复；Slurm 恢复后平台自动解除，运维手动设的停止调度不受影响，见[接入 Slurm 集群](connect-slurm-nodes.md#运行时能看到什么) |
+| 「检查并应用」置灰，或提示做不了 | 悬停写原因（`operation_blocked`）：不是从云账号集群创建的、账号已删除、驱动不能在 Slurm 管控节点执行命令、账号的集群列表里没有它、集群列表还在读取或读取失败、集群不是 Slurm、令牌已吊销 | 按原因处理；云账号的 RAM 权限要有 `ehpc:ListClusters`、`ehpc:GetCluster` 和云助手的几项，见[租用云 GPU · 阿里云](rent-cloud-gpus.md#阿里云)；也可以用 Slurm 管控节点上的接入命令 |
+
+修好后确认节点出现在「计算节点」页且在线。以上都对不上时，保留 Slurm 管控节点的接入命令输出、`scontrol show config | grep -i HealthCheck` 与节点上的 `slurm-check.log`，见本页末尾「仍未解决？」。
+
 ## 节点掉线后的自愈与 recovery
 
 **现象**：节点从「在线」变「离线」，节点详情出现「带外恢复」卡片。
@@ -1077,7 +1111,24 @@ agent 会等待超时的 `run` 返回并删除它创建的容器；最多等待 
 预算从实例启动后等待健康检查时使用；值在实例创建时确定，修改只影响之后启动的实例。
 超过预算就判本次启动失败，按下方规则重建。
 
+**启动卡死：`engine start stalled`**
 
+agent 刚创建容器并等待健康检查期间，每分钟观察一次三类信号：容器输出的最后几行、实例所在卡的显存占用与利用率、容器内进程的 CPU 时间、读写字节数、缺页数与进程集合（不计跟踪其他进程的那个进程，例如 udocker 的 PRoot）。三类信号都能观察到、并且**连续 20 分钟**都没有变化时，不再等到启动超时，直接以 `ENGINE_START_STALLED` 判本次启动失败并按重试规则重建。失败原因里写明每类信号已停滞多久、各进程处于什么状态，并附输出的最后几行。
+
+以下情况不判卡死，仍由启动超时兜底：
+
+- **有信号观察不到**：没有分配卡的实例；卡的指标读不到、缺显存或利用率、或显存取自宿主内存池的统一内存卡；拿不到容器进程的运行时（nerdctl、kube）；进程的读写计数读不到（agent 不是 root 而容器进程是 root，或内核没有开启任务 I/O 统计）。因此只有 docker 和 udocker 上的单机实例会被判卡死。
+- **可能在等别人**：多机部署的各个 rank；同一节点上有别的实例正在启动或停止的那段时间。
+- **不是新启动**：agent 重启后接管的容器，以及曾经就绪、正在恢复的引擎。
+- **采样不足**：判定需要至少 10 次连续的「全部不动」的观察，且相邻两次间隔不超过 3 分钟；间隔更长则重新计时。
+- **仍在前进，只是极慢**：例如 udocker 的 PRoot 被系统调用压满时，引擎每隔几分钟仍会多打一行日志，这不算卡死。此时启动超时的失败原因里会带上进程状态，例如 `processes: 4 in tracing stop (…); tracer proot-arm64 running at 99% of a core`，可据此判断。
+- 卡被其他实例共用时，读到的是整卡的数字，别的实例的活动会让它看起来在变化。
+
+加载权重、图编译、图捕获这些安静阶段至少会让其中一类信号变化，不会被判卡死。
+
+**引擎自己报告已放弃：`ENGINE_START_ABORTED`**
+
+SGLang 的 scheduler 进程抛出异常时会打印 `Scheduler hit an exception` 并让主进程结束整个进程树（`SIGQUIT received … one child failed`）。通常容器随之退出；若主进程没有退出，HTTP 进程会一直以未就绪应答健康检查。agent 每分钟检查一次新创建容器的输出，连续两次看到这样的输出而容器仍在运行，就以 `ENGINE_START_ABORTED` 判本次启动失败，原因里带上进程抛出的异常。这一条在所有运行时上生效，只针对 SGLang，只针对新创建的容器。
 
 实例详情把**启动等待上限**与**粗略预计启动耗时**分开展示。托管 vLLM 的最终环境若声明 `VLLM_ENGINE_READY_TIMEOUT_S`，自动预算至少给它再留 30 秒探测余量，最高 86400 秒；该变量既未显式声明、也未被明确删除时，平台会协调内部等待预算。手写命令或替换入口不推断其内部超时。部署显式设置的预算优先，即使短于引擎等待上限也不擅自扩展，页面会提示冲突。等待心跳不代表模型加载在推进。
 

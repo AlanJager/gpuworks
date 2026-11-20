@@ -33,9 +33,34 @@ type Plugin struct {
 	Permissions []PluginPermission `json:"permissions"`
 	// ApproveHash is the approval the administrator gave.
 	ApproveHash string `json:"approve_hash,omitempty"`
-	// Actions are what an administrator may do with it now: enable,
-	// disable, uninstall.
+	// Previous is the newest unpacked version older than Version, kept for
+	// rollback; absent when there is none.
+	Previous string `json:"previous,omitempty"`
+	// OnDemand marks a server part that starts on its first call and goes
+	// idle without calls.
+	OnDemand bool `json:"on_demand"`
+	// Pending is the newer build the imported package indexes offer;
+	// absent when they offer none.
+	Pending *PluginPending `json:"pending,omitempty"`
+	// Features are the feature keys the package declares, by key, each with
+	// its availability now: full, read_only or locked.
+	Features []PluginFeature `json:"features"`
+	// Actions are what an administrator may do with it now, computed by the
+	// server: enable, disable, restart, uninstall, purge (uninstall with
+	// ?purge=true), upgrade, rollback (with a previous version).
 	Actions []string `json:"actions"`
+}
+
+// PluginPending is a newer build of an installed package.
+type PluginPending struct {
+	Version string `json:"version"`
+}
+
+// PluginFeature is one feature key a package declares.
+type PluginFeature struct {
+	Key string `json:"key"`
+	// Availability is full, read_only or locked.
+	Availability string `json:"availability"`
 }
 
 // PluginPermission is one permission of a plugin package.
@@ -63,6 +88,20 @@ type PluginInstalled struct {
 	// install.
 	Previous string `json:"previous,omitempty"`
 	// Unchanged reports that this exact build was already installed.
+	Unchanged bool `json:"unchanged"`
+}
+
+// PluginUpgraded answers POST /api/v1/plugins/{id}/upgrade once the new
+// version passed its health gate.
+type PluginUpgraded struct {
+	Plugin Plugin `json:"plugin"`
+	// Previous is the version that was current before, kept for rollback
+	// with a snapshot of its data.
+	Previous string `json:"previous"`
+	// AutoApproved reports that the approval hash did not change and the
+	// site policy applied the upgrade without a new approval.
+	AutoApproved bool `json:"auto_approved"`
+	// Unchanged reports that this exact build was already unpacked.
 	Unchanged bool `json:"unchanged"`
 }
 

@@ -16,9 +16,10 @@ export default function NodeSourceCell({ source, unknown = false }: { source?: N
   if (!source) return <span className="text-fg-muted">{t(unknown ? "source.unknown" : "source.manual")}</span>;
   const kind = source.provider_kind ? tProviders(`kind.${source.provider_kind}`, { defaultValue: source.provider_kind }) : "";
   // A cluster connected on its own is its own platform; one connected from an account is listed under the account.
-  const name = source.provider_id ? source.provider_name || kind : source.cluster_name || t("source.standaloneCluster");
+  const standalone = t(source.resource === "slurm" ? "source.standaloneSlurm" : "source.standaloneCluster");
+  const name = source.provider_id ? source.provider_name || kind : source.cluster_name || standalone;
   const what = source.cluster_uuid
-    ? source.provider_id ? t("source.cluster", { name: source.cluster_name }) : t("source.standaloneCluster")
+    ? source.provider_id ? t("source.cluster", { name: source.cluster_name }) : standalone
     : source.resource ? tProviders(`resource.${source.resource}`, { defaultValue: source.resource }) : "";
   return (
     <>

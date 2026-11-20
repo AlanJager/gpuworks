@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
-import { account, capabilities, cloudEntry, kubeEntry, runpodKind as runpod, servePlatforms, zstackKind as zstack } from "./helpers/platformFixtures.ts";
+import { account, capabilities, cloudEntry, ehpcEntry, kubeEntry, runpodKind as runpod, servePlatforms, slurmEntry, zstackKind as zstack } from "./helpers/platformFixtures.ts";
 import { field, footerButtons, freshPopupFramesPerTest } from "./helpers/platformDialog.ts";
 
 // The External Platforms page (ui/src/pages/CloudProvidersPage.tsx) as one
@@ -430,6 +430,41 @@ test("deleting an account says nothing in the cloud is released; one clusters we
   await user.click(within(asking).getByRole("button", { name: "Delete" }));
   await waitFor(() => assert.deepEqual(deleted, [3]));
   await noConfirmation();
+});
+
+// Slurm clusters connected from an account (SlurmCluster.source.provider_id) are kept the same way, and the
+// confirmation counts them apart from the Kubernetes ones: what the operator does afterwards differs.
+test("deleting an account that Slurm clusters were connected from says how many become clusters of their own, apart from the Kubernetes ones", async () => {
+  const ali = account(3, "ali-prod", "aliyun");
+  const fromAli = [ehpcEntry(), ehpcEntry({ id: 8, uuid: "s-8", name: "ehpc-two", source: { provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", provider_cluster_id: "ehpc-sz-2" } })];
+  // Neither is ali-prod's: one of another account, one made by hand.
+  const others = [ehpcEntry({ id: 9, uuid: "s-9", name: "ehpc-other", source: { provider_id: 8, provider_name: "do", provider_kind: "digitalocean", provider_cluster_id: "ehpc-x" } }), slurmEntry()];
+  servePlatforms(api, { providers: [ali], clusters: [cloudEntry()], slurm: [...fromAli, ...others] });
+  const deleted: number[] = [];
+  Object.assign(api, { deleteProvider: async (id: number) => { deleted.push(id); } });
+  const { user } = renderPage();
+  await screen.findByText("ali-prod");
+
+  await user.click(action("ali-prod", "Delete"));
+  const asking = await confirmation("ali-prod");
+  assert.deepEqual(consequences(asking), [
+    p.table.deleteConsequence,
+    p.table.deleteClusterConsequence.replace("{{count}}", "1"),
+    p.table.deleteSlurmConsequence.replace("{{count}}", "2"),
+  ]);
+  assert.deepEqual(deleted, [], "asking is not deleting");
+  await user.click(within(asking).getByRole("button", { name: "Delete" }));
+  await waitFor(() => assert.deepEqual(deleted, [3]));
+});
+
+test("in zh the confirmation counts the Slurm clusters connected from the account in their own sentence", async () => {
+  servePlatforms(api, { providers: [account(3, "ali-prod", "aliyun")], slurm: [ehpcEntry()] });
+  const { user } = renderPage("zh");
+  await screen.findByText("ali-prod");
+  await user.click(action("ali-prod", "删除"));
+  const asking = await screen.findByRole("dialog", { name: "确认删除外部平台「ali-prod」？" });
+  const zhp = locales.zh.locale.providers;
+  assert.deepEqual(consequences(asking), [zhp.table.deleteConsequence, zhp.table.deleteSlurmConsequence.replace("{{count}}", "1")]);
 });
 
 test("in zh the confirmation names the account and counts the clusters connected from it", async () => {

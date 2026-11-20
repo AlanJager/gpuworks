@@ -67,6 +67,11 @@ const (
 	// has neither.
 	KeyKubernetesCluster = Prefix + "kubernetes-cluster"
 	KeyKubernetesNode    = Prefix + "kubernetes-node"
+	// KeySlurmCluster and KeySlurmNode are the same for a node that joined
+	// from a Slurm cluster entry: the entry (by its UUID) and the node's name
+	// in Slurm. A node added any other way has neither.
+	KeySlurmCluster = Prefix + "slurm-cluster"
+	KeySlurmNode    = Prefix + "slurm-node"
 )
 
 // ManagementNetwork is the value a network key takes when the management
@@ -80,7 +85,7 @@ func SystemKeys() []string {
 	return []string{
 		KeyNode, KeyVendor, KeyCPUArch, KeyGPUModel, KeyGPUArch,
 		KeyComputeNetwork, KeyStorageSyncNetwork, KeyServingNetwork, KeyStorage,
-		KeyProvider, KeyRegion, KeyKubernetesCluster, KeyKubernetesNode,
+		KeyProvider, KeyRegion, KeyKubernetesCluster, KeyKubernetesNode, KeySlurmCluster, KeySlurmNode,
 	}
 }
 

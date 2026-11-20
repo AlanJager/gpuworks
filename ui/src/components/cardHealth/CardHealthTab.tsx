@@ -1,8 +1,10 @@
-import { Alert, List, Skeleton, Space, Typography } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CardRef } from "../../api";
 import { agoText } from "../../format";
+import { Notice } from "../../ui-kit/Notice";
+import { InfoItem, InfoItemContent, InfoItemDescription, InfoItemGroup, InfoItemLeading, InfoItemTitle } from "../ui/info-item";
+import { Skeleton } from "../ui/skeleton";
 import CheckCell from "./CheckCell";
 import CheckDetail from "./CheckDetail";
 import HealthRecords from "./HealthRecords";
@@ -28,33 +30,36 @@ export default function CardHealthTab({ nodeUUID, card, cardLabel }: { nodeUUID:
     setPage(1);
   };
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      {checks.error && <Alert type="error" showIcon message={checks.error} />}
-      {!data && !checks.error && <Skeleton active />}
+    <div className="flex w-full flex-col gap-4">
+      {checks.error && <Notice tone="danger" title={checks.error} />}
+      {!data && !checks.error && <div className="flex flex-col gap-3"><Skeleton className="h-4 w-2/5" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/5" /></div>}
       {data && <HealthBanner data={data} />}
       {row && (
-        <List
-          size="small"
-          dataSource={row.cells}
-          rowKey={(cell) => cell.check}
-          renderItem={(cell) => {
+        <InfoItemGroup role="list">
+          {row.cells.map((cell) => {
             const reason = codeText(t, cell.status, cell.code);
             const ago = cell.checked_at ? agoText(t, (Date.now() - new Date(cell.checked_at).getTime()) / 1000) : "";
             return (
-              <List.Item style={{ cursor: cell.status === "na" ? "default" : "pointer" }} onClick={() => cell.status !== "na" && select(selected === cell.check ? undefined : cell.check)}>
-                <Space size={12} wrap>
-                  <CheckCell cell={cell} selected={selected === cell.check} />
-                  <Typography.Text strong>{checkName(t, cell.check)}</Typography.Text>
-                  <Typography.Text>{statusName(t, cell.stale ? "stale" : cell.status)}</Typography.Text>
-                  {reason && <Typography.Text type="secondary">{reason}</Typography.Text>}
-                  {ago && <Typography.Text type="secondary">{t("cardHealth.lastChecked", { ago })}</Typography.Text>}
-                  {!!cell.duration_ms && <Typography.Text type="secondary">{`${cell.duration_ms} ms`}</Typography.Text>}
-                  {periods[cell.check] && <Typography.Text type="secondary">{periodText(t, periods[cell.check])}</Typography.Text>}
-                </Space>
-              </List.Item>
+              <InfoItem key={cell.check} role="listitem" className={cell.status === "na" ? "cursor-default" : "cursor-pointer"} onClick={() => cell.status !== "na" && select(selected === cell.check ? undefined : cell.check)}>
+                <InfoItemLeading className="bg-transparent"><CheckCell cell={cell} selected={selected === cell.check} /></InfoItemLeading>
+                <InfoItemContent>
+                  <InfoItemTitle className="flex flex-wrap items-baseline gap-3">
+                    <span className="font-semibold">{checkName(t, cell.check)}</span>
+                    <span className="font-normal">{statusName(t, cell.stale ? "stale" : cell.status)}</span>
+                  </InfoItemTitle>
+                  {(reason || ago || !!cell.duration_ms || periods[cell.check]) && (
+                    <InfoItemDescription className="flex flex-wrap gap-x-3">
+                      {reason && <span>{reason}</span>}
+                      {ago && <span>{t("cardHealth.lastChecked", { ago })}</span>}
+                      {!!cell.duration_ms && <span>{`${cell.duration_ms} ms`}</span>}
+                      {periods[cell.check] && <span>{periodText(t, periods[cell.check])}</span>}
+                    </InfoItemDescription>
+                  )}
+                </InfoItemContent>
+              </InfoItem>
             );
-          }}
-        />
+          })}
+        </InfoItemGroup>
       )}
       {row && selected && (
         <CheckDetail
@@ -70,7 +75,7 @@ export default function CardHealthTab({ nodeUUID, card, cardLabel }: { nodeUUID:
           }}
         />
       )}
-      {records.error && <Alert type="error" showIcon message={records.error} />}
+      {records.error && <Notice tone="danger" title={records.error} />}
       <HealthRecords
         data={records.data}
         page={page}
@@ -79,6 +84,6 @@ export default function CardHealthTab({ nodeUUID, card, cardLabel }: { nodeUUID:
         filter={selected ? checkName(t, selected) : undefined}
         onClearFilter={() => select(undefined)}
       />
-    </Space>
+    </div>
   );
 }

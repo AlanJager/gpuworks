@@ -1,0 +1,72 @@
+/sgl-workspace/sglang/python/sglang/launch_server.py:57: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended entrypoint.
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+[2026-11-19 16:00:17] get env TRITON_CACHE_DIR = /root/.cache/sglang/triton
+[2026-11-19 16:00:18] get env TORCHINDUCTOR_CACHE_DIR = /root/.cache/sglang/inductor
+[2026-11-19 16:00:19] get env LD_LIBRARY_PATH = /usr/local/Ascend/cann-9.0.0/lib64:/usr/local/Ascend/cann-9.0.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.0.0/lib64/plugin/nnengine:/usr/local/Asc
+[2026-11-19 16:00:28] Disable hybrid SWA memory for Gemma3ForConditionalGeneration as it is not yet supported.
+[2026-11-19 16:03:54 TP0] Capture target decode NPU graph end. elapsed=48.87 s, mem usage=1.28 GB, avail mem=1.29 GB.
+[2026-11-19 16:03:54 TP0] max_total_num_tokens=88064, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=2048, context_len=131072, available_gpu_mem=1.29 GB
+[2026-11-19 16:03:54 TP0] Tree cache initialized: source=default impl=RadixCache hybrid_swa=False hybrid_ssm=False hicache_attached=False streaming_wrapped=False
+[2026-11-19 16:03:56] Engine startup timings (s): load_weight=116.72, kv_cache_allocation=0.29, scheduler_e2e=186.61, cuda_graph={prefill=0.00, decode=48.87, target_verify=0.00, draft_prefill=0.00, dr
+[2026-11-19 16:03:56] INFO:     Started server process [1]
+[2026-11-19 16:03:56] INFO:     Waiting for application startup.
+[2026-11-19 16:03:56] Using default chat sampling params from model generation config: {'top_k': 64, 'top_p': 0.95}
+[2026-11-19 16:03:56] INFO:     Application startup complete.
+[2026-11-19 16:03:56] INFO:     Uvicorn running on http://127.0.0.1:30000 (Press CTRL+C to quit)
+....[2026-11-19 16:03:57] INFO:     127.0.0.1:45656 - "GET /model_info HTTP/1.1" 200 OK
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/openai/serving_chat.py:875: DeprecationWarning: max_tokens is deprecated in favor of the max_completion_tokens field
+  max_output_tokens = request.max_completion_tokens or request.max_tokens
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/openai/protocol.py:1035: DeprecationWarning: max_tokens is deprecated in favor of the max_completion_tokens field
+  "max_new_tokens": self.max_completion_tokens or self.max_tokens,
+[transformers] Deprecated: `processor.image_token` will switch from returning `tokenizer.image_token` to `tokenizer.boi_token` in v5.11.
+[2026-11-19 16:04:33 TP2] Scheduler hit an exception: Traceback (most recent call last):
+  File "/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/error_code.py", line 43, in wapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/dynamo/torchair/core/_backend.py", line 140, in run
+    return super(TorchNpuGraph, self).run((inputs, assigned_outputs, stream))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Unsupport run graph with different stream.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/sgl-workspace/sglang/python/sglang/srt/managers/scheduler.py", line 5064, in run_scheduler_process
+    return self._executor.run(inputs, assigned_outputs, stream)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/error_code.py", line 46, in wapper
+    raise type(e)("\n".join(msg))
+RuntimeError: Unsupport run graph with different stream.
+Traceback (most recent call last):
+  File "/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/error_code.py", line 43, in wapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/dynamo/torchair/core/_backend.py", line 140, in run
+    return super(TorchNpuGraph, self).run((inputs, assigned_outputs, stream))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Unsupport run graph with different stream.
+
+
+[ERROR] 2026-11-19-16:04:33 (PID:172, Device:2, RankID:2) ERR03005 GRAPH internal error
+
+[2026-11-19 16:04:33] SIGQUIT received. signum=None, frame=None. It usually means one child failed.
+[2026-11-19 16:04:33] Sleeping 5 seconds before crash diagnostics to let GPU activity settle.
+[2026-11-19 16:04:33 TP3] Scheduler hit an exception: Traceback (most recent call last):
+  File "/usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_utils/error_code.py", line 43, in wapper
+[2026-11-19 16:04:39] CUDA user-triggered coredump is not enabled. Set CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 before CUDA initialization.
+[2026-11-19 16:04:39] CUDA coredump pipe not found for PID 170: /workspace/corepipe.cuda.ab89dbbcaab6.170. Ensure CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 was set before this process initialized CUDA.
+[2026-11-19 16:04:39] CUDA coredump pipe not found for PID 171: /workspace/corepipe.cuda.ab89dbbcaab6.171. Ensure CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 was set before this process initialized CUDA.
+[2026-11-19 16:04:39] CUDA coredump pipe not found for PID 172: /workspace/corepipe.cuda.ab89dbbcaab6.172. Ensure CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 was set before this process initialized CUDA.
+[2026-11-19 16:04:39] CUDA coredump pipe not found for PID 173: /workspace/corepipe.cuda.ab89dbbcaab6.173. Ensure CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 was set before this process initialized CUDA.
+[2026-11-19 16:04:39] Waiting 60.0 seconds for CUDA coredumps before exiting.
+[2026-11-19 16:05:39] kill_process_tree called: parent_pid=1, include_parent=True, pid=1
+[2026-11-19 16:05:39] SIGQUIT received. signum=None, frame=None. It usually means one child failed.
+[2026-11-19 16:05:39] SIGTERM/SIGQUIT/Exception triggered, but crash dump already performed, skipping.
+[2026-11-19 16:05:39] kill_process_tree called: parent_pid=1, include_parent=True, pid=1
+[2026-11-19 16:05:39] SIGQUIT received. signum=None, frame=None. It usually means one child failed.
+[2026-11-19 16:05:39] SIGTERM/SIGQUIT/Exception triggered, but crash dump already performed, skipping.
+[2026-11-19 16:05:39] kill_process_tree called: parent_pid=1, include_parent=True, pid=1
+[2026-11-19 16:05:39] SIGQUIT received. signum=None, frame=None. It usually means one child failed.
+[2026-11-19 16:05:39] SIGTERM/SIGQUIT/Exception triggered, but crash dump already performed, skipping.
+[2026-11-19 16:05:39] kill_process_tree called: parent_pid=1, include_parent=True, pid=1

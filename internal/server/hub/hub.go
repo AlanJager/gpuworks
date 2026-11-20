@@ -538,6 +538,6 @@ func (h *Hub) serverHello() proto.Hello {
 		ProtoMin: proto.ProtoMin,
 		ProtoMax: proto.ProtoMax,
 		Version:  version.Version,
-		Caps:     []string{proto.CapTelemetryStream},
+		Caps:     []string{proto.CapTelemetryStream, proto.CapInstanceCardRebind},
 	}
 }

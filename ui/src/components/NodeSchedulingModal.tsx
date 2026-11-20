@@ -46,7 +46,7 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 function cordonReasonText(t: Translate, node: Node): string {
   if (node.scheduling_by === "operator") return t("scheduling.by.operator");
   if (node.scheduling_by === "platform") {
-    const why = node.cordon_reason === "card_needs_host_reboot" || node.cordon_reason === "kube_unschedulable"
+    const why = node.cordon_reason === "card_needs_host_reboot" || node.cordon_reason === "kube_unschedulable" || node.cordon_reason === "slurm_node_unavailable"
       ? t(`scheduling.cordonReason.${node.cordon_reason}`)
       : runtimeGpuBlockedReason(t, node);
     return why ? `${why} ${t("scheduling.by.platformLifts")}` : t("scheduling.by.platformLifts");

@@ -184,7 +184,7 @@ func TestRevokingTheKeyRaisesTheRevokedBanner(t *testing.T) {
 	if len(sp.started()) != 0 {
 		t.Fatal("a revoked package was started")
 	}
-	if err := next.Uninstall(context.Background(), "acme_backup", false, "admin"); err != nil {
+	if err := uninstallConfirmed(t, next, context.Background(), "acme_backup", false); err != nil {
 		t.Fatal(err)
 	}
 	waitBanners(t, next)
@@ -286,7 +286,7 @@ func TestBridgeMetricsFollowTheInstalledPackages(t *testing.T) {
 			t.Fatalf("metrics lack %q:\n%s", want, out)
 		}
 	}
-	if err := b.Uninstall(context.Background(), "acme_driver", false, "admin"); err != nil {
+	if err := uninstallConfirmed(t, b, context.Background(), "acme_driver", false); err != nil {
 		t.Fatal(err)
 	}
 	buf.Reset()

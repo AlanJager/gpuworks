@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -241,11 +242,14 @@ func (o Options) pluginSetEnabled(log *slog.Logger, sub string, args []string, s
 }
 
 // pluginUninstall removes a package and everything it pushed, releasing its
-// holds, so a later install of the same id starts clean. Running it again
-// finishes an uninstall whose package went but whose rows did not.
+// holds, so a later install of the same id starts clean. It first prints
+// what the uninstall changes, read from the database, and changes nothing
+// without --yes. Running it again finishes an uninstall whose package went
+// but whose rows did not.
 func (o Options) pluginUninstall(log *slog.Logger, name string, args []string, stdout io.Writer) error {
 	fs, p := pluginFlags(name)
 	purge := fs.Bool("purge", false, "also move the plugin's data to the trash")
+	yes := fs.Bool("yes", false, "uninstall after printing what it changes")
 	id, err := onePackageID(fs, name, args)
 	if err != nil {
 		return err
@@ -255,16 +259,43 @@ func (o Options) pluginUninstall(log *slog.Logger, name string, args []string, s
 		return err
 	}
 	defer done()
-	removeErr := h.Remove(id, *purge)
-	if removeErr != nil && codeText(removeErr) != messages.ErrorPluginNotInstalled {
-		return removeErr
-	}
 	ctx := context.Background()
 	snap, err := st.LoadPushedState(ctx)
 	if err != nil {
 		return err
 	}
 	own := ownerState(snap, id)
+	version, err := h.Dir.Current(id)
+	if err != nil {
+		return err
+	}
+	// A purge of a package already uninstalled without one still removes
+	// its data, so it asks for --yes like any other uninstall.
+	keptData := false
+	if version == "" && *purge {
+		if _, err := os.Stat(h.Dir.Package(id)); err == nil {
+			keptData = true
+		}
+	}
+	if version != "" || !own.empty() || keptData {
+		if version != "" || !own.empty() {
+			fmt.Fprintln(stdout, uninstallImpact(id, version, own, snap))
+		}
+		if keptData {
+			fmt.Fprintf(stdout, "purging %s moves its data directory to the trash and deletes its data marker\n", id)
+		}
+		if !*yes {
+			flags := "--yes"
+			if *purge {
+				flags = "--purge --yes"
+			}
+			return fmt.Errorf("nothing was changed; run plugin %s %s %s to uninstall it", name, id, flags)
+		}
+	}
+	removeErr := h.Remove(id, *purge)
+	if removeErr != nil && codeText(removeErr) != messages.ErrorPluginNotInstalled {
+		return removeErr
+	}
 	if removeErr != nil && own.empty() {
 		return removeErr
 	}
@@ -281,4 +312,46 @@ func (o Options) pluginUninstall(log *slog.Logger, name string, args []string, s
 	}
 	log.Info("plugin uninstalled", "id", id, "purge", *purge, "data", p.data, "tables", len(own.Owners))
 	return nil
+}
+
+// uninstallImpact describes what uninstalling id changes, from the stored
+// rows: the nodes released (those no other owner also holds), the fleet
+// caps lifted, the feature keys whose rows go (they lock unless another
+// owner answers for them), and the banners and overrides removed.
+func uninstallImpact(id, version string, own ownedState, snap pstate.Snapshot) string {
+	others := map[int64]bool{}
+	for _, h := range snap.Rows.NodeHolds {
+		if h.Owner != id {
+			others[h.NodeID] = true
+		}
+	}
+	var released []string
+	for _, h := range own.Rows.NodeHolds {
+		if !others[h.NodeID] {
+			released = append(released, strconv.FormatInt(h.NodeID, 10))
+		}
+	}
+	var caps []string
+	for _, s := range own.Rows.CapacitySteps {
+		if s.MaxNodesWithCards != nil && !slices.Contains(caps, "max_nodes_with_cards") {
+			caps = append(caps, "max_nodes_with_cards")
+		}
+		if s.MaxCards != nil && !slices.Contains(caps, "max_cards") {
+			caps = append(caps, "max_cards")
+		}
+	}
+	what := id
+	if version != "" {
+		what += " " + version
+	}
+	text := fmt.Sprintf("uninstalling %s deletes %d tables and releases %d held nodes", what, len(own.Owners), len(released))
+	if len(released) > 0 {
+		text += " (" + strings.Join(released, ", ") + ")"
+	}
+	text += fmt.Sprintf(", lifts %d fleet caps", len(caps))
+	if len(caps) > 0 {
+		text += " (" + strings.Join(caps, ", ") + ")"
+	}
+	return text + fmt.Sprintf(", drops the availability of %d features and removes %d banners and %d overrides",
+		len(own.Rows.AvailabilityRows), len(own.Rows.Banners), len(own.Overrides))
 }

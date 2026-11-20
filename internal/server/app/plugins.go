@@ -40,6 +40,9 @@ type PluginRuntime struct {
 	// TickInterval is the least time between two writer ticks of pushed
 	// state (one second when zero).
 	TickInterval time.Duration
+	// UpgradeGate is how long a new version must stay up after an
+	// upgrade (pluginbridge.DefaultUpgradeGate when zero).
+	UpgradeGate time.Duration
 }
 
 // pluginsModuleName is the built-in module's name; no compiled module may
@@ -101,6 +104,7 @@ func (m *pluginsModule) Init(ctx context.Context, h *Host) error {
 		StaticFeatures:   maps.Clone(h.reg.featureBy),
 		HealthChanged:    func() { bus.PublishChange(pluginbridge.FeatureTopic, "", "changed") },
 		CompiledModules:  compiledNames(m.cfg.Extensions.Modules, h.reg.apis),
+		UpgradeGate:      rt.UpgradeGate,
 		Log:              h.Log(),
 	})
 	if err != nil {
@@ -193,10 +197,6 @@ func (p pluginAdmin) Disable(ctx context.Context, id, by string) (dto.Plugin, er
 	return pluginDTO(v), productErrorOf(err)
 }
 
-func (p pluginAdmin) Uninstall(ctx context.Context, id string, purge bool, by string) error {
-	return productErrorOf(p.b.Uninstall(ctx, id, purge, by))
-}
-
 // productErrorOf hands a wire refusal from pkg/extapi on as the product
 // error it is, so the API keeps its code and params.
 func productErrorOf(err error) error {
@@ -221,7 +221,14 @@ func pluginPermissions(names []string) []dto.PluginPermission {
 func pluginDTO(v pluginbridge.View) dto.Plugin {
 	out := dto.Plugin{ID: v.ID, Version: v.Version, Publisher: v.Publisher, Trust: v.Trust, Enabled: v.Enabled, State: v.State,
 		Restarts: v.Restarts, Parts: nonNil(v.Parts), Isolation: v.Isolation, Roles: nonNil(v.Roles), Permissions: pluginPermissions(v.Permissions),
-		ApproveHash: v.ApproveHash, Actions: nonNil(v.Actions)}
+		ApproveHash: v.ApproveHash, Previous: v.Previous, OnDemand: v.OnDemand, Features: make([]dto.PluginFeature, len(v.Features)),
+		Actions: nonNil(v.Actions)}
+	for i, f := range v.Features {
+		out.Features[i] = dto.PluginFeature{Key: f.Key, Availability: f.Access}
+	}
+	if v.Pending != "" {
+		out.Pending = &dto.PluginPending{Version: v.Pending}
+	}
 	if v.Code != "" {
 		out.Message = &dto.ProductMessage{Code: v.Code, Params: v.Params, Message: v.Message}
 	}

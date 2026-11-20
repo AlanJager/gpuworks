@@ -94,6 +94,12 @@ ui/src/components/vendorAssets.ts):
                (https://www.kunlunxin.com/wp-content/uploads/2023/01/logo-quan.png).
   apple.svg    Glyph from Simple Icons (https://simpleicons.org, CC0-1.0).
 
+Platform marks live in ui/public/provider-logos/; among them:
+
+  slurm.svg    Wikimedia Commons "File:Slurm_logo.svg", traced from the
+               logos at https://slurm.net/branding/, licensed under the GNU
+               General Public License; Slurm is a trademark of SchedMD LLC.
+
 Vendor, cloud provider and model organization names and logos shown in the UI
 are trademarks of their respective owners and are used only to identify
 compatible hardware and services.

@@ -63,6 +63,9 @@ func (s *Service) reconcile(ctx context.Context) error {
 			i.Phase = "unconfirmed"
 		}
 	}
+	if err := s.settleRemovedNodes(items); err != nil {
+		return err
+	}
 	for _, i := range items {
 		if activePhase(i.Phase) || (i.Phase == "unconfirmed" && i.VerifiedAt == nil) {
 			if err := s.observeConnection(i); err != nil {
@@ -275,3 +278,51 @@ func (s *Service) observeEvent(o Observation) error {
 	}
 	return nil
 }
+
+// settleRemovedNodes settles the unconfirmed attempts whose node the
+// platform no longer has (deleted by hand, or by a sweep once the cloud or
+// the cluster dropped it): that node's agent will never come back to confirm
+// or fail them, so nothing else would end the hold on the slot. Only an
+// attempt past its deadline is settled, never one in flight: deleting a
+// Kubernetes or Slurm node, or forcing a deletion, leaves its agent running,
+// and it enrolls again under a new identity while the upgrade it was given
+// may still be applying; the deadline bounds that, as it does for any
+// attempt. The sweeps remove a node only after it has been gone longer than
+// the deadline, so their attempts are always unconfirmed by then. The run
+// stays paused, as after any unconfirmed attempt: the rest of its queue
+// waits for an administrator to continue it.
+func (s *Service) settleRemovedNodes(items []store.AgentUpgradeItem) error {
+	var uuids []string
+	for _, i := range items {
+		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
+			uuids = append(uuids, i.NodeUUID)
+		}
+	}
+	if len(uuids) == 0 {
+		return nil
+	}
+	exists, err := s.st.ExistingNodeUUIDs(uuids)
+	if err != nil {
+		return err
+	}
+	for index := range items {
+		i := &items[index]
+		if exists[i.NodeUUID] {
+			continue
+		}
+		if i.Phase == "unconfirmed" && i.VerifiedAt == nil {
+			if _, err := s.st.VerifyAgentUpgrade(i.ID, s.now(), "system", ReasonNodeRemoved, ""); err != nil {
+				return err
+			}
+			now := s.now()
+			i.VerifiedAt = &now
+			s.notify()
+			s.cfg.Logger.Info("agent upgrade attempt settled: its node was removed", "run", i.RunID, "node", i.NodeUUID)
+		}
+	}
+	return nil
+}
+
+// ReasonNodeRemoved is the verification code of an unconfirmed attempt whose
+// node was removed from the platform.
+const ReasonNodeRemoved = "node_removed"

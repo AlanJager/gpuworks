@@ -122,7 +122,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `pd_mode` | 可选，PD 模式名（`internal/server/pdmode` 的名字，如 `sglang-mooncake`）；模式的引擎必须与 `engine` 相同 | 声明后该 spec 只能以这个模式的 PD 分离部署，其 `args` 与 `env` 是模型在 PD 下需要的配置。模式见 [PD 分离部署](../how-to/pd-disaggregation.md) |
 | `pd_roles` | 可选，按角色写版式；必须同时写 `pd_mode`。每个角色：`tp`（必填，≥ 1）、`pp`、`nodes`（一个实例跨几台节点）、`units`（初始实例数），后三项缺省为 1 | PD 部署表单据此预填角色与实例。见 [PD 版式与手工命令](#pd-版式与手工命令) |
 | `manual_command` | 可选字符串，shell 脚本（不是 JSON argv），≤ 64 KiB | 部署默认使用的手工命令。PD spec 的脚本必须引用 `${GPUWORKS_PD_ROLE}`。见 [PD 版式与手工命令](#pd-版式与手工命令) |
-| `pre_start_argv` / `pre_start_script` | **二选一**；argv 项非空；script ≤ 64 KiB | 引擎启动前在容器内执行 |
+| `pre_start_argv` / `pre_start_script` | **二选一**；argv 项非空；script ≤ 64 KiB | 在**容器内**（不是宿主机）执行，**每次容器启动**都跑一遍，跑完才启动引擎：agent 把它写进 `/gpuworks/pre-start.sh`（`/bin/sh`、`set -eu`，最后 `exec` 引擎命令）并设为 entrypoint。能用容器的全部环境变量：spec 与部署的 `env`，以及 agent 注入的加速卡变量；`${GPUWORKS_*}` 变量由服务端在部署时[展开](#变量展开)。任何一步失败（非零退出、未定义变量）都让容器在引擎启动前退出，实例以容器退出失败，输出作为证据；包装脚本本身写不出时实例以 `PRE_START_PREPARE_FAILED` 失败 |
 | `assets[]` | 见下 | 随包分发的小文件 |
 | `entrypoint` | 项非空 | 见下文专节 |
 | `placement` | 见下 | 拓扑推导 |
@@ -350,8 +350,7 @@ server 组装期，不接受运行时对 checkpoint 布局的探测改写（该�
   目录里 `qwen3-asr-1.7b` 的 sglang spec 不声明 entrypoint 是正确的。
 - **vLLM 不需要覆盖**：`vllm serve` 是统一入口，内置目录里所有 vLLM
   video/image/audio spec 均未声明 entrypoint。
-- 厂商构建镜像入口不同时逐 spec 声明（例：hygon 构建的
-  `qwen3-tts-12hz-1.7b-voicedesign`）。
+- 厂商构建镜像入口不同时逐 spec 声明。
 - 覆盖只换入口不换参数。diffusion 的参数解析器不认 `--mem-fraction-static`、
   `--context-length` 等 LLM 参数，`--enable-cache-report` 要 0.5.18、`--enable-metrics`
   要 0.5.21 起才认（0.5.18 之前也不认 `--served-model-name`）；`--model-type diffusion`

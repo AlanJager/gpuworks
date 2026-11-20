@@ -4,7 +4,7 @@ import type { KindResource, PlatformResource } from "../../api";
 import { Badge } from "../../components/ui/badge";
 
 const RESOURCE_COLORS: Record<PlatformResource, "blue" | "purple" | "gray" | "green"> = {
-  vm: "blue", container: "purple", host: "gray", kubernetes: "green",
+  vm: "blue", container: "purple", host: "gray", kubernetes: "green", slurm: "green",
 };
 
 /** The console's word for a kind of resource: "VM", "Kubernetes". */

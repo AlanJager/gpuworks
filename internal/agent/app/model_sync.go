@@ -20,6 +20,7 @@ import (
 type activeModelSync struct {
 	transferID string
 	key        string
+	target     string // the directory the transfer writes
 	receiver   *agentmodelsync.Receiver
 	canceled   atomic.Bool
 	relayDone  chan struct{}
@@ -80,7 +81,7 @@ func (n *NodeRuntime) rpcModelSyncListen(params json.RawMessage) (any, error) {
 		}
 	}
 	started := time.Now()
-	active := &activeModelSync{transferID: p.TransferID, key: p.Key}
+	active := &activeModelSync{transferID: p.TransferID, key: p.Key, target: absTarget}
 	n.reportModelSyncStatus(active, proto.ModelFileStatus{
 		Key: p.Key, State: proto.MFSyncing, Path: absTarget, BytesTotal: p.ExpectedFileBytes,
 		TransferID: p.TransferID, Acquisition: proto.ModelAcquirePeer,
@@ -186,6 +187,7 @@ func (n *NodeRuntime) modelSyncSend(ctx context.Context, params json.RawMessage,
 		transport = "relay"
 	}
 	observe := n.peerTransferPhaseReporter(p.ReportPhase, p.TransferID, transport)
+	defer n.storage.holdRead(p.SourcePath)()
 	writeArchive := func(w io.Writer) error {
 		return n.StreamModelArchive(ctx, p.SourcePath, agentmodelsync.RateLimitedWriter(ctx, w, p.RateLimitKBs))
 	}

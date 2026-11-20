@@ -34,6 +34,9 @@ func New() *Driver { return &Driver{} }
 // Name implements runtime.Driver.
 func (d *Driver) Name() string { return "docker" }
 
+// NamedVolumes: docker creates a named volume on first use and keeps it.
+func (d *Driver) NamedVolumes() bool { return true }
+
 // Detect reports whether Docker is usable for workloads on this host. A
 // reachable remote daemon is deliberately rejected because bind mounts and
 // accelerator devices would resolve on the remote machine, not this node.
@@ -372,11 +375,7 @@ func buildRunArgs(spec runtime.WorkloadSpec) []string {
 		args = append(args, "-e", k+"="+v)
 	}
 	for _, m := range spec.Mounts {
-		mnt := m.Source + ":" + m.Target
-		if m.ReadOnly {
-			mnt += ":ro"
-		}
-		args = append(args, "-v", mnt)
+		args = append(args, "-v", m.VolumeArg())
 	}
 	if len(spec.Entrypoint) > 0 {
 		args = append(args, "--entrypoint", spec.Entrypoint[0])
@@ -438,6 +437,21 @@ func (d *Driver) Status(ctx context.Context, id string) (runtime.Status, error) 
 		return runtime.Status{}, fmt.Errorf("unexpected docker inspect output %q", line)
 	}
 	return runtime.Status{Exists: true, Running: parts[0] == "true", ExitCode: exitCode, OOMKilled: parts[2] == "true", Health: parts[3]}, nil
+}
+
+// RootPID is the container's init process as the host numbers it
+// (runtime.ProcessRooter).
+func (d *Driver) RootPID(ctx context.Context, id string) (int, error) {
+	out, err := output(ctx, 10*time.Second, "inspect", "--format", "{{.State.Pid}}", id)
+	if err != nil {
+		return 0, err
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	pid, err := strconv.Atoi(strings.TrimSpace(lines[len(lines)-1]))
+	if err != nil || pid <= 0 {
+		return 0, fmt.Errorf("unexpected docker inspect output %q", out)
+	}
+	return pid, nil
 }
 
 // Logs returns the container's log stream.

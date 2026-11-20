@@ -55,7 +55,10 @@ type RuntimeFailure struct {
 	// MaxFailureCauses.
 	Causes []FailureCause `json:"causes,omitempty"`
 	// Evidence is the line the engine's failure began with (its root cause),
-	// at most MaxFailureEvidence lines of MaxFailureEvidenceChars.
+	// or, when the output named no error, its last lines oldest first: of a
+	// startup exit, and of a startup that ran out of time while the process
+	// kept running. At most MaxFailureEvidence lines of
+	// MaxFailureEvidenceChars.
 	Evidence []string `json:"evidence,omitempty"`
 }
 
@@ -116,6 +119,22 @@ const (
 	// ErrorAcceleratorCardMissing: a card the instance is placed on is no
 	// longer present on the node (Resource is its identity).
 	ErrorAcceleratorCardMissing = "ACCELERATOR_CARD_MISSING"
+	// ErrorCardLeaseFailed: the node's own allocator (Slurm) did not give the
+	// instance its cards: the placeholder job could not be submitted, ended
+	// before it started, or waited past its timeout (Detail, with the
+	// allocator's reason).
+	ErrorCardLeaseFailed = "CARD_LEASE_FAILED"
+	// ErrorCardLeaseRebindUnsupported: the allocator gave other cards than
+	// the placed ones and the server cannot rebind the instance to them
+	// (Resource is the cards given).
+	ErrorCardLeaseRebindUnsupported = "CARD_LEASE_REBIND_UNSUPPORTED"
+	// ErrorCardLeaseCardMismatch: a card the allocator gave is another model
+	// or size than the one placed (Resource is the card given, Detail says
+	// what each is).
+	ErrorCardLeaseCardMismatch = "CARD_LEASE_CARD_MISMATCH"
+	// ErrorCardLeaseLost: the allocator took the instance's cards back while
+	// it ran (a Slurm job cancelled, timed out or preempted; Detail).
+	ErrorCardLeaseLost = "CARD_LEASE_LOST"
 	// ErrorDistributedNetworkUnavailable: no network interface could be
 	// chosen for a multi-node engine (Detail).
 	ErrorDistributedNetworkUnavailable = "DISTRIBUTED_NETWORK_UNAVAILABLE"
@@ -139,10 +158,22 @@ const (
 	ErrorContainerRuntimeUnavailable = "CONTAINER_RUNTIME_UNAVAILABLE"
 	// ErrorRuntimeAssetPrepareFailed, ErrorPreStartPrepareFailed and
 	// ErrorKVDiskPrepareFailed: a host-side preparation of the container's
-	// mounts failed (Detail).
+	// mounts failed (Detail). For pre-start that is installing the wrapper
+	// (writing /gpuworks/pre-start.sh, or a launch it cannot wrap); the
+	// preparation itself runs inside the container, and its failure is the
+	// container exiting (ErrorContainerExited).
 	ErrorRuntimeAssetPrepareFailed = "RUNTIME_ASSET_PREPARE_FAILED"
 	ErrorPreStartPrepareFailed     = "PRE_START_PREPARE_FAILED"
 	ErrorKVDiskPrepareFailed       = "KV_DISK_PREPARE_FAILED"
+	// ErrorMountVolumeUnsupported: a mount names a runtime-managed volume
+	// and the node's container runtime has no named volumes (Runtime is the
+	// driver, Resource the volume).
+	ErrorMountVolumeUnsupported = "MOUNT_VOLUME_UNSUPPORTED"
+	// ErrorMountVolumeInvalid: a mount's volume is not a runtime volume name
+	// (ValidVolumeName), or the mount states a host path as well (Resource is
+	// the volume). A volume starting with "/" would be a bind mount the host
+	// path rules never judged.
+	ErrorMountVolumeInvalid = "MOUNT_VOLUME_INVALID"
 	// ErrorDGPUPartitionFailed: the dGPU limit could not be applied (Detail).
 	ErrorDGPUPartitionFailed = "DGPU_PARTITION_FAILED"
 	// ErrorContainerRunFailed: the runtime refused to create or start the
@@ -163,6 +194,17 @@ const (
 	// ErrorEngineHealthTimeout: the engine did not become healthy within its
 	// start timeout (Detail is the last health result, if any).
 	ErrorEngineHealthTimeout = "ENGINE_HEALTH_TIMEOUT"
+	// ErrorEngineStartStalled: the start of a newly created container made
+	// no progress for a long time while the container kept running: nothing
+	// new in its output, nothing moving on its cards, its processes idle
+	// (Detail says how long each has been flat and what state the processes
+	// are in; Evidence is the output's last lines).
+	ErrorEngineStartStalled = "ENGINE_START_STALLED"
+	// ErrorEngineStartAborted: during the start of a newly created container
+	// the engine reported that one of its processes failed and that it was
+	// shutting down, and the container kept running without becoming
+	// healthy (Causes; Evidence is the exception the process raised).
+	ErrorEngineStartAborted = "ENGINE_START_ABORTED"
 	// ErrorWorkerReadinessTimeout: a headless worker did not stay up long
 	// enough within its start timeout.
 	ErrorWorkerReadinessTimeout = "WORKER_READINESS_TIMEOUT"

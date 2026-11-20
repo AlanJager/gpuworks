@@ -23,6 +23,7 @@ func (m *Manager) Reconcile(ctx context.Context, specs []Spec) []Status {
 	m.recMu.Lock()
 	defer m.recMu.Unlock()
 
+	m.snapshotEligible()
 	out := make([]Status, len(specs))
 	var wg sync.WaitGroup
 	for i, sp := range specs {
@@ -35,6 +36,11 @@ func (m *Manager) Reconcile(ctx context.Context, specs []Spec) []Status {
 	wg.Wait()
 
 	keep := make(map[string]bool, len(specs))
+	listed := make(map[uint]bool, len(specs))
+	for _, sp := range specs {
+		listed[sp.ID] = true
+	}
+	m.forgetStuck(listed)
 	for _, sp := range specs {
 		p := filepath.Clean(sp.Path)
 		keep[p] = true
@@ -46,7 +52,28 @@ func (m *Manager) Reconcile(ctx context.Context, specs []Spec) []Status {
 	return out
 }
 
+// reconcileOne is reconcileSpec, plus what the agent does about a storage
+// that stopped answering (recoverStuck).
 func (m *Manager) reconcileOne(ctx context.Context, sp Spec) Status {
+	st, sharePath := m.reconcileSpec(ctx, sp)
+	if st.State != StateUnresponsive {
+		m.clearStuck(sp.ID)
+		return st
+	}
+	return m.recoverStuck(ctx, sp, st, sharePath)
+}
+
+// reconcileSpec makes one spec usable. sharePath reports that the status
+// was decided on the storage's own directory, not on its node cache.
+func (m *Manager) reconcileSpec(ctx context.Context, sp Spec) (st Status, sharePath bool) {
+	st = m.reconcileShare(ctx, sp)
+	if st.State == StateReady && sp.Type == TypeNFSCache {
+		return m.reconcileCache(ctx, sp, st), false
+	}
+	return st, true
+}
+
+func (m *Manager) reconcileShare(ctx context.Context, sp Spec) Status {
 	st := Status{ID: sp.ID, Path: sp.Path}
 	// The server always sends explicit directories; this package has no default of its own.
 	if strings.TrimSpace(sp.Path) == "" {
@@ -83,20 +110,37 @@ func (m *Manager) reconcileOne(ctx context.Context, sp Spec) Status {
 		st.Message = fmt.Sprintf("storage type %q is not supported by this agent", sp.Type)
 		return st
 	}
-	if st.State == StateReady && sp.Type == TypeNFSCache {
-		st = m.reconcileCache(ctx, sp, st)
-	}
 	return st
 }
 
 func (m *Manager) reconcileLocal(ctx context.Context, sp Spec, st Status) Status {
+	st.SharedFSType, st.SharedFSSource = "", ""
 	if err := m.call(ctx, storageKey(sp.ID), func() error { return os.MkdirAll(sp.Path, 0o755) }); err != nil {
 		return failErr(st, err, "create directory")
 	}
-	return m.finishReady(ctx, sp, st, sp.Path)
+	st = m.finishReady(ctx, sp, st, sp.Path)
+	if st.State != StateReady || !IsNetworkFS(st.fsMagic) {
+		return st
+	}
+	// The directory is on a shared filesystem: name it as mountinfo does.
+	// It stays ready; the platform warns about it.
+	st.SharedFSType = "network"
+	if entries, err := m.readMounts(); err == nil {
+		if e, ok := ContainingMount(entries, sp.Path); ok {
+			st.SharedFSType, st.SharedFSSource = e.FSType, e.Source
+		}
+	}
+	return st
 }
 
 func (m *Manager) reconcileDir(ctx context.Context, sp Spec, st Status) Status {
+	if sp.Type == TypeSharedDir {
+		if reason, msg, err := m.createOnShare(ctx, sp); err != nil {
+			return failErr(st, err, "create directory")
+		} else if reason != "" {
+			return failWith(st, reason, msg)
+		}
+	}
 	err := m.call(ctx, storageKey(sp.ID), func() error { return checkReadableDir(sp.Path) })
 	if err != nil {
 		return failErr(st, err, "check directory")
@@ -165,7 +209,7 @@ func (m *Manager) finishReady(ctx context.Context, sp Spec, st Status, writeDir 
 		return failErr(st, err, "statfs")
 	}
 	st.State, st.Reason, st.Message = StateReady, "", ""
-	st.TotalBytes, st.AvailableBytes = u.TotalBytes, u.AvailableBytes
+	st.TotalBytes, st.AvailableBytes, st.fsMagic = u.TotalBytes, u.AvailableBytes, u.FSType
 	w, err := m.writable(ctx, key, writeDir, writeDir != sp.Path)
 	if err != nil {
 		return failErr(st, err, "write probe")
@@ -271,4 +315,54 @@ func failErr(st Status, err error, what string) Status {
 		return failWith(st, ReasonPathMissing, what+": "+err.Error())
 	}
 	return failWith(st, ReasonOther, what+": "+err.Error())
+}
+
+// createOnShare creates a shared directory that does not exist yet (such as a
+// models directory suggested on a cluster's NAS) when its nearest existing
+// ancestor is on a network or FUSE filesystem. Any other ancestor (the root
+// filesystem, or a local disk's mount point) means the share is not
+// mounted, and creating the directory there would write models to the local
+// disk, so it is answered as not mounted and nothing is created. A
+// directory that exists is left to the checks that follow.
+func (m *Manager) createOnShare(ctx context.Context, sp Spec) (reason, msg string, err error) {
+	key := storageKey(sp.ID)
+	var missing bool
+	if err := m.call(ctx, key, func() error {
+		_, statErr := os.Stat(sp.Path)
+		missing = errors.Is(statErr, fs.ErrNotExist)
+		return nil
+	}); err != nil || !missing {
+		return "", "", err
+	}
+	if reason, msg, err := m.ancestorOnShare(ctx, key, nearestExisting(sp.Path)); err != nil || reason != "" {
+		return reason, msg, err
+	}
+	return "", "", m.call(ctx, key, func() error { return os.MkdirAll(sp.Path, 0o755) })
+}
+
+// ancestorOnShare says whether dir, the nearest existing ancestor of a
+// shared directory that does not exist yet, is on a network or FUSE
+// filesystem. Being a mount point is not enough here: the root filesystem
+// is one.
+func (m *Manager) ancestorOnShare(ctx context.Context, key, dir string) (reason, msg string, err error) {
+	u, err := m.statfs(ctx, key, dir)
+	if err != nil {
+		return "", "", err
+	}
+	if IsNetworkFS(u.FSType) {
+		return "", "", nil
+	}
+	return ReasonNotMounted, fmt.Sprintf("%s does not exist, and %s is not on a network filesystem; "+
+		"the share is not mounted there, and creating the directory would write to the local disk", dir, dir), nil
+}
+
+// nearestExisting is path, or its nearest ancestor that exists.
+func nearestExisting(path string) string {
+	dir := path
+	for {
+		if _, err := os.Stat(dir); err == nil || dir == filepath.Dir(dir) {
+			return dir
+		}
+		dir = filepath.Dir(dir)
+	}
 }

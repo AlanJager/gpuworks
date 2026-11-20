@@ -67,5 +67,11 @@ type StorageNodeState struct {
 	Path      string `gorm:"size:512"` // the directory or mount point in effect on the node
 	CachePath string `gorm:"size:512"`
 	Writable  bool
-	UpdatedAt time.Time
+	// SharedFSType and SharedFSSource name the shared filesystem a local
+	// storage's directory sits on, as the node reported it (proto
+	// StorageStatus); empty on a local disk. Every node on it writes the
+	// same files, which a local storage does not expect.
+	SharedFSType   string `gorm:"size:32"`
+	SharedFSSource string `gorm:"size:256"`
+	UpdatedAt      time.Time
 }

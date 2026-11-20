@@ -130,7 +130,7 @@ func TestStoragesAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seeded := `{"updated_at":` + string(revision) + `,"id":1,"name":"default","type":"local","enabled":true,"is_default":true,"all_nodes":true,"path":"/opt/gpuworks/models","targets":[],"nodes":{"total":0,"ready":0,"problems":[]},"writable":true,"model_count":0,"deployment_ids":[]}`
+	seeded := `{"updated_at":` + string(revision) + `,"id":1,"name":"default","type":"local","enabled":true,"is_default":true,"all_nodes":true,"path":"/opt/gpuworks/models","targets":[],"nodes":{"total":0,"ready":0,"on_shared_fs":0,"problems":[]},"writable":true,"model_count":0,"deployment_ids":[]}`
 	if code, _ := call("", http.MethodGet, "/api/v1/storages", ""); code != http.StatusUnauthorized {
 		t.Fatalf("anonymous list = %d", code)
 	}

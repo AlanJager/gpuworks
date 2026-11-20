@@ -256,6 +256,9 @@ func ArchBrand(family string) string {
 // "RTX Spark" never answers for "RTX 5090". New NVIDIA desktop unified-memory
 // SKUs land here by hand, not by pattern.
 //
+// "Thor" is the Jetson Thor module's integrated GPU, which nvidia-smi names
+// "NVIDIA Thor". No discrete NVIDIA card's name starts with that word.
+//
 // Apple silicon is listed by generation: the stored name drops the "Apple"
 // brand word, so "Apple M4 Pro" is "M4 Pro" and its first token is the
 // generation. A Mac's card is already sized net of the OS (the Metal working
@@ -263,7 +266,7 @@ func ArchBrand(family string) string {
 // it on purpose: that working set is the ceiling for every GPU user on the
 // Mac - the window server and the owner's own applications - not the engine's
 // alone.
-var unifiedMemoryModels = [][]string{{"GB10"}, {"RTX", "Spark"}, {"M1"}, {"M2"}, {"M3"}, {"M4"}, {"M5"}, {"M6"}}
+var unifiedMemoryModels = [][]string{{"GB10"}, {"RTX", "Spark"}, {"Thor"}, {"M1"}, {"M2"}, {"M3"}, {"M4"}, {"M5"}, {"M6"}}
 
 // UnifiedMemory reports whether this GPU model addresses the host's memory
 // pool instead of its own device memory. name may be raw, as a probe reports

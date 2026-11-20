@@ -122,7 +122,7 @@ models:                       # FlatCatalog: a single top-level models list
 | `pd_mode` | Optional PD mode name (a name from `internal/server/pdmode`, such as `sglang-mooncake`); the mode's engine must equal `engine` | Once declared, the spec can only be deployed as PD disaggregation in that mode, and its `args` and `env` are what the model needs under PD. For the modes see [PD Disaggregation Deployment](../how-to/pd-disaggregation.md) |
 | `pd_roles` | Optional layout by role; requires `pd_mode`. Each role: `tp` (required, ≥ 1), `pp`, `nodes` (how many nodes one instance spans), `units` (initial instance count); the last three default to 1 | The PD deployment form is pre-filled with the roles and instances from it. See [PD Layout and Manual Command](#pd-版式与手工命令) |
 | `manual_command` | Optional string, a shell script (not a JSON argv), ≤ 64 KiB | The manual command a deployment uses by default. A PD spec's script must reference `${GPUWORKS_PD_ROLE}`. See [PD Layout and Manual Command](#pd-版式与手工命令) |
-| `pre_start_argv` / `pre_start_script` | **Mutually exclusive**; argv entries are nonempty; script ≤ 64 KiB | Executed inside the container before the engine starts |
+| `pre_start_argv` / `pre_start_script` | **Mutually exclusive**; argv entries are nonempty; script ≤ 64 KiB | Runs **inside the container** (not on the host), on **every container start**, before the engine starts: the agent writes it into `/gpuworks/pre-start.sh` (`/bin/sh`, `set -eu`, ending with `exec` of the engine command) and makes that the entrypoint. It sees the container's full environment: the spec's and the deployment's `env` and the accelerator variables the agent injects; `${GPUWORKS_*}` variables are [expanded](#变量展开) by the server at deploy time. Any failing step (a nonzero exit, an unset variable) makes the container exit before the engine starts, and the instance fails as an exited container with the output as evidence; if the wrapper itself cannot be written, the instance fails with `PRE_START_PREPARE_FAILED` |
 | `assets[]` | See below | Small files distributed with the package |
 | `entrypoint` | Nonempty entries | See the dedicated section below |
 | `placement` | See below | Topology derivation |
@@ -349,8 +349,7 @@ Authoring conventions:
   The sglang spec for `qwen3-asr-1.7b` in the catalog correctly omits entrypoint.
 - **vLLM does not need an override**: `vllm serve` is the unified entrypoint, and no vLLM
   video/image/audio spec in the built-in catalog declares entrypoint.
-- If a vendor-built image has a different entrypoint, declare it for each spec (for example, the hygon build of
-  `qwen3-tts-12hz-1.7b-voicedesign`).
+- If a vendor-built image has a different entrypoint, declare it for each spec.
 - An override changes only the entrypoint, not the arguments. The diffusion argument parser does not recognize LLM arguments such as `--mem-fraction-static`
   and `--context-length`; `--enable-cache-report` requires 0.5.18, and `--enable-metrics`
   requires 0.5.21 or later (versions before 0.5.18 also do not recognize `--served-model-name`). For specs with `--model-type diffusion`
@@ -694,7 +693,7 @@ Warnings do not block import. A successful import response includes the same `wa
 - The image catalog (system image manifest) is a separate domain. For the format, see
   [Image Catalog and Inference Image Families](image-families.md#manifest-格式).
 
-<!-- translation-source-sha256: 30b1b4de87e0446a9a7cc3837cd3d4171f7ce3d00880d7d525ec29badbefd7b9 -->
+<!-- translation-source-sha256: d603c1411258dcdab9654d1e32c4a1b8aebce38ee83ad9e643efb4764fca63b5 -->
 <!-- translation-localized-code-block: 26b59d93b4900f054e9c78c569388285db977d8a1a29c7231646a264e33074f3 d2ac202220acef0f04a4a5bdf2d4ffd3695b808693b508f83ea49253037b2d2d Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 9a54a7271e193f98f78581cbb5fb446f8d5d1aa46c942d8f4fb3536f5f81b115 22ec1397368cfc809b65ad278feb838b5690c611dd587bc022c6e151b5596d99 Translate YAML comments and illustrative user-facing reason text. -->
 <!-- translation-localized-code-block: 06db934de28e923689ee3d7a5291cfb9c5c39413ce9a4c3a87dfc3b0d6dc051d 213afdd99d9dc95fee88560f64a09e012578484b424f46c160ffd92f44b8bd72 Translate YAML comments and illustrative user-facing reason text. -->

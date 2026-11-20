@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/slurm"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -72,6 +74,9 @@ type cardOccupancy struct {
 	path string
 	// bootTime reads when the running boot started (hostBootTime when nil).
 	bootTime func() time.Time
+	// slurm reports the cards other Slurm jobs hold, in place of the
+	// runtime, on a node whose cards Slurm allocates (slurm_node.go).
+	slurm atomic.Pointer[slurm.Leaser]
 }
 
 // learnCards records which card each device index names in a probe that
@@ -515,14 +520,20 @@ type externalCardHolders interface {
 // that cannot ask restates the last answer, as for processes: not knowing is
 // not the same as knowing a card is free.
 func (n *NodeRuntime) applyExternalHolders(ctx context.Context, gpus []proto.GPUInfo) {
-	runtime, ok := n.runtimeDriver().(externalCardHolders)
-	if !ok {
+	var runtime externalCardHolders
+	if l := n.occupancy.slurm.Load(); l != nil {
+		// Slurm hands this node's cards out; whatever the runtime is, the
+		// other jobs' allocations are the ones to report.
+		runtime = l
+	} else if r, ok := n.runtimeDriver().(externalCardHolders); ok {
+		runtime = r
+	} else {
 		return
 	}
 	holders, err := runtime.ExternalCardHolders(ctx)
 	n.occupancy.mu.Lock()
 	if err != nil {
-		slog.Debug("kubelet allocations unavailable; restating the last", "err", err)
+		slog.Debug("allocations outside the platform unavailable; restating the last", "err", err)
 		holders = n.occupancy.external
 	} else {
 		n.occupancy.external = holders

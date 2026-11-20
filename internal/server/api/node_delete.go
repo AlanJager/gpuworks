@@ -76,10 +76,11 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A Kubernetes node's agent belongs to its cluster's DaemonSet, which
-	// nothing here can uninstall; the node comes back while the DaemonSet
-	// still selects it (the cluster's manifest is where it is removed).
-	if !force && node.KubeClusterID == 0 {
+	// A Kubernetes node's agent belongs to its cluster's DaemonSet, and a Slurm
+	// node's to the cluster's health check; nothing here can uninstall either.
+	// The node comes back while the DaemonSet still selects it or the health
+	// check still runs (the cluster is where it is removed).
+	if !force && node.KubeClusterID == 0 && node.SlurmClusterID == 0 {
 		if !node.HasSSHCredential {
 			writeProductError(w, http.StatusConflict, ErrorNodeDeleteSSHRequired,
 				"normal deletion requires saved SSH credentials to uninstall the agent; node retained. Configure SSH and retry, or uninstall the agent manually and use force=true to remove only its management record", nil)
@@ -101,6 +102,13 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.d.CardHealth != nil {
 		a.d.CardHealth.ForgetNode(uuid, node.ID)
+	}
+	// Deleting a Slurm node takes it off its entry's list too (the node may
+	// have left the cluster with no agent left to say so); the next report
+	// stores the list whole again, even when it is the one remembered, so a
+	// node still in the cluster comes back on it.
+	if node.SlurmClusterID != 0 {
+		a.slurm.ListChanged(node.SlurmClusterID)
 	}
 	if a.d.KickNode != nil {
 		a.d.KickNode(uuid)

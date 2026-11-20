@@ -1,6 +1,6 @@
 # Rent Cloud GPUs
 
-Connect GPU instances from Alibaba Cloud, RunPod, CompShare, AutoDL, or Vast.ai to GPUWorks, then stop or release the cloud resources when you finish using them. Rent an instance in the provider's console first, then sync it and install the agent in this platform. This guide also lists the supported REST APIs for creating instances.
+Connect GPU instances from Alibaba Cloud, RunPod, CompShare, AutoDL, or Vast.ai to GPUWorks, then stop or release the cloud resources when you finish using them; the ACK managed Kubernetes clusters and E-HPC (Slurm) clusters under an Alibaba Cloud account also join as a whole through the account, without installing an agent node by node. Rent an instance in the provider's console first, then sync it and install the agent in this platform. This guide also lists the supported REST APIs for creating instances.
 
 **Prerequisites**:
 
@@ -44,7 +44,7 @@ in the list: **fields left blank retain their existing values**. You cannot chan
 ## Sync Instances and Check Types, Regions, and Prices
 
 1. Click **Sync** for an account in the **Connected external platforms** list (or **Sync All** at the left of the list's toolbar to sync every external platform that can be synced at once; the “Last synced: <time>” beside it is the latest sync of any account). The list's **Vendor** column shows the provider (such as Alibaba Cloud or RunPod), and its **Platform type** column shows **Public cloud**. On completion, the message reads **Synchronization complete; N instances found**.
-2. Click the expand arrow on the left of the account row to view its instance table. For a provider with managed Kubernetes (Alibaba Cloud, DigitalOcean), the row expands to one grouped table: the account's own instances are in the **Standalone instances** group, followed by one group per managed cluster (see [Connect Managed Kubernetes from a Public Cloud](connect-managed-kubernetes.md)); for other providers it shows the instances alone, ungrouped. The first 10 instances are shown; click **Show N more** at the end of the table for the rest:
+2. Click the expand arrow on the left of the account row to view its instance table. For a provider with managed Kubernetes or HPC clusters (Alibaba Cloud: ACK and E-HPC; DigitalOcean: DOKS), the row expands to one grouped table: the account's own instances are in the **Standalone instances** group, followed by one group per E-HPC cluster (see [Connect a Slurm Cluster](connect-slurm-nodes.md#alibaba-cloud-e-hpc)) and one group per managed cluster (see [Connect Managed Kubernetes from a Public Cloud](connect-managed-kubernetes.md)); for other providers it shows the instances alone, ungrouped. A cluster's nodes are not in **Standalone instances** and are not counted in the account's instance count. The first 10 instances are shown; click **Show N more** at the end of the table for the rest:
 
    | Column | Meaning |
    |---|---|
@@ -150,8 +150,8 @@ The provider rejected the credentials. Check that you copied the complete API ke
 **An account shows Error, or clicking Sync reports Synchronization failed**
 Sync actually calls the provider API; a failure marks the account as **Error**. Follow the failure message to check for revoked credentials or overdue payments, then click **Sync**. A successful sync automatically restores **Valid** status.
 
-**The instance table is empty (“No instances have been synchronized. Click Sync above and try again.”)**
-You have not synced yet, or the provider account has no instances. Click **Sync** first.
+**The instance table is empty**
+“Instances have not been synced yet. Click Sync above.” means you have not synced: click **Sync**. “The last sync found no instances.” means the account was just synced and has no instances (in the selected regions), so syncing again does not help; if the account does have instances, check the credentials' permissions and the selected regions.
 
 **Install Agent fails**
 
@@ -216,6 +216,9 @@ Leave **Regions** blank to sync all regions in the account. If you have instance
 | `ecs:StartInstance`, `ecs:StopInstance` | Power on and power off; omit if not needed |
 | `cs:DescribeClustersV1`, `cs:DescribeClusterNodePools`, `ecs:DescribeInstanceTypes` | Lists ACK clusters and their GPU node pools under the expanded account; omit if you do not connect ACK |
 | `cs:DescribeClusterUserKubeconfig` | Issues a kubeconfig valid for 15 minutes when GPUWORKS applies the connect manifest to an ACK cluster; omit if you connect with kubectl only |
+| `ehpc:ListClusters` | Lists the account's E-HPC clusters region by region (name, scheduler, status), a cluster with no GPU node yet included; without it the E-HPC clusters cannot be read, the top of the list quietly says this permission has to be allowed (it is not an error), and existing entries are still listed on their own. Omit if you have no E-HPC |
+| `ehpc:ListRegions` | Asks E-HPC in which regions it is offered and lists the clusters of those only; without it the listing still works, asking every region instead. Omit if you have no E-HPC |
+| `ehpc:GetCluster` | The E-HPC cluster entry's "Check and apply", and the uninstall the platform runs, use it to find the cluster's Slurm manager node instance ID, then run the connect script and add the missing `gres.conf` lines there through Cloud Assistant (the `ecs:DescribeCloudAssistantStatus`, `ecs:RunCommand` and `ecs:DescribeInvocationResults` above; see [Connect a Slurm Cluster](connect-slurm-nodes.md#alibaba-cloud-e-hpc)); omit if you do not use that feature |
 | `ecs:DescribeSecurityGroupAttribute` | Read inbound security group rules for server-initiated connections; omit if you do not use this check |
 
 ```json
@@ -235,7 +238,10 @@ Leave **Regions** blank to sync all regions in the account. If you have instance
         "ecs:DescribeInstanceTypes",
         "cs:DescribeClustersV1",
         "cs:DescribeClusterNodePools",
-        "cs:DescribeClusterUserKubeconfig"
+        "cs:DescribeClusterUserKubeconfig",
+        "ehpc:ListRegions",
+        "ehpc:ListClusters",
+        "ehpc:GetCluster"
       ],
       "Resource": "*"
     }
@@ -255,7 +261,7 @@ GPUWORKS does not create or release instances on Alibaba Cloud, so it does not n
 **Create from the command line** ([Alibaba Cloud CLI](https://help.aliyun.com/zh/cli/); run as an identity with RAM management permissions):
 
 ```bash
-POLICY='{"Version":"1","Statement":[{"Effect":"Allow","Action":["ecs:DescribeRegions","ecs:DescribeInstances","ecs:DescribeCloudAssistantStatus","ecs:RunCommand","ecs:DescribeInvocationResults","ecs:StartInstance","ecs:StopInstance","ecs:DescribeInstanceTypes","cs:DescribeClustersV1","cs:DescribeClusterNodePools","cs:DescribeClusterUserKubeconfig"],"Resource":"*"}]}'
+POLICY='{"Version":"1","Statement":[{"Effect":"Allow","Action":["ecs:DescribeRegions","ecs:DescribeInstances","ecs:DescribeCloudAssistantStatus","ecs:RunCommand","ecs:DescribeInvocationResults","ecs:StartInstance","ecs:StopInstance","ecs:DescribeInstanceTypes","cs:DescribeClustersV1","cs:DescribeClusterNodePools","cs:DescribeClusterUserKubeconfig","ehpc:ListRegions","ehpc:ListClusters","ehpc:GetCluster"],"Resource":"*"}]}'
 aliyun ram CreatePolicy --PolicyName gpuworks-ecs --PolicyDocument "$POLICY"
 aliyun ram CreateUser --UserName gpuworks
 aliyun ram AttachPolicyToUser --PolicyType Custom --PolicyName gpuworks-ecs --UserName gpuworks
@@ -304,6 +310,8 @@ Cloud Assistant records executed commands; retention depends on Alibaba Cloud se
 
 For GPUWORKS to apply the manifest, the cluster's API Server needs a public address (select “Expose API Server with EIP” when creating the cluster; clusters without one show “Private network only” and can be connected only with kubectl). If you use a RAM sub-account, that sub-account must also be granted cluster administrator RBAC permissions (or permissions to create Namespaces, RBAC, DaemonSets, and PriorityClasses) on the cluster under “Authorizations” in the ACK console; otherwise the issued kubeconfig is rejected by the cluster, and GPUWORKS shows the cluster's rejection reason verbatim.
 
+**E-HPC clusters**: after the “Standalone instances” group, the account's E-HPC clusters are listed live (beside ACK, each read on its own; a cluster with no GPU node yet, or one not synced yet, is listed all the same), one group per cluster, and a group's header shows the cluster's name, its scheduler and version, and its status, with the cluster ID, region, scheduler, status, and GPU nodes in the group; the compute nodes are scaled by the cluster's queue and are not listed one by one, and cannot be powered, released, or installed on one by one here. The header of a Slurm cluster has Connect: the whole cluster joins as one entry, which is created first and then “Check and apply”: the platform first has the Slurm manager node run, through Cloud Assistant, a check that changes nothing and lists the plan, and only your confirmation runs it for real, after which the compute nodes get the agent by themselves; a cluster with another scheduler cannot be connected. The steps, what the platform does and how it differs from an on-premises Slurm cluster are in [Connect a Slurm Cluster · Alibaba Cloud E-HPC](connect-slurm-nodes.md#alibaba-cloud-e-hpc).
+
 **Power control**: power-off uses **normal stop** (billing continues), preserving resources such as the instance's GPUs and fixed public IP. **Economical mode** releases those resources, and capacity may be unavailable when restarting. GPUWORKS does not use that mode.
 
 ## DigitalOcean
@@ -318,5 +326,5 @@ For GPUWORKS to apply the manifest, the cluster's API Server needs a public addr
 
 **DOKS clusters**: an expanded account lists the account's DOKS clusters below the “Standalone instances” group, one group per cluster showing its NVIDIA GPU node pools (AMD node pools are not listed). Connect it with “Connect” in the group header, settling the node pools in the drawer (all are chosen by default); after that, the agent runs only on the nodes of the chosen pools (selected by the node label `doks.digitalocean.com/node-pool-id`). GPUWORKS can apply the manifest with a kubeconfig valid for 15 minutes, or you can run kubectl yourself; see [Connect Managed Kubernetes from a Public Cloud](connect-managed-kubernetes.md).
 
-<!-- translation-source-sha256: 2d6bb04ca5510c9ea63d698a1a46a731f91b2611688855b1083b6cd01d599097 -->
-<!-- translation-localized-code-block: a6a0a8058e9146b7cd2f396be4bad9947574d42b7cd5f0b9919404ca23294d5e 2c9437c6fbea28b4dc5c7f8200bb9e8b0b7ef31cd2e89dfcf8055f3c69392472 Translate Chinese code comments, preserving executable statements, parameter values, and paths. -->
+<!-- translation-source-sha256: 6af376f487f356883795d7217dcbbe2209ee7f567b5624ea4d3d599df429bbfc -->
+<!-- translation-localized-code-block: 675cedb48fb1b362779834db30153097fcf32f7c5f9318873f06457c6c403f15 1baa9c3c2dfe0f872ddb2db8ddc99d366787581ddae4535f41ac3467f3e20e68 -->

@@ -323,6 +323,7 @@ specs:
   - qwen3
   - --mm-encoder-tp-mode
   - data
+  - --default-chat-template-kwargs.enable_thinking=false
   env:
     VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM: 'false'
   pre_start_argv:

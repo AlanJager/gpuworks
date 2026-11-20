@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
-import { account, aliyunKind, cloudCluster, cloudEntry, connectedCluster, instance, runpodKind } from "./helpers/platformFixtures.ts";
+import { account, aliyunKind, cloudCluster, cloudEntry, connectedCluster, hpcCluster, hpcClusterList, instance, runpodKind } from "./helpers/platformFixtures.ts";
 import { columnTitles, foldButton, groupHeader, groupNames, groupOf, groupRows, instanceNames } from "./helpers/platformDetail.ts";
 import { list } from "./helpers/listPage.ts";
 
@@ -19,7 +19,7 @@ import { list } from "./helpers/listPage.ts";
 // tests/providerClusterEntries.test.tsx; an instance's row in
 // tests/providerInstanceRows.test.tsx.
 
-const languages = { en: await createI18n(["providers", "kubernetes"], "en"), zh: await createI18n(["providers", "kubernetes"], "zh") };
+const languages = { en: await createI18n(["providers", "kubernetes", "slurm"], "en"), zh: await createI18n(["providers", "kubernetes", "slurm"], "zh") };
 const p = languages.en.locale.providers;
 const { MemoryRouter } = await import("react-router-dom");
 const { act, cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
@@ -30,6 +30,7 @@ const { formatTime } = await import("../src/i18n/datetime.ts");
 type CloudProvider = import("../src/api.ts").CloudProvider;
 type KubeCluster = import("../src/api.ts").KubeCluster;
 type ProviderCluster = import("../src/api.ts").ProviderCluster;
+type ProviderHPCCluster = import("../src/api.ts").ProviderHPCCluster;
 type ProviderInstance = import("../src/api.ts").ProviderInstance;
 type ProviderKindInfo = import("../src/api.ts").ProviderKindInfo;
 
@@ -49,14 +50,15 @@ const ackEntry = cloudEntry({ uuid: "e-1", name: "ack-gpu", node_count: 3, clust
 const oldEntry = cloudEntry({ id: 9, uuid: "e-9", name: "ack-old", source: { provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", cluster_id: "c-old" } });
 const cloud = [connectedCluster("c-gpu", "ack-gpu", "e-1"), cloudCluster("c-lab", "ack-lab")];
 
-interface Served { instances?: ProviderInstance[] | Error; clusters?: ProviderCluster[] | Error }
-/** What the detail reads: the account's instances as of the last sync, and its clusters from the cloud. Counts each read. */
+interface Served { instances?: ProviderInstance[] | Error; clusters?: ProviderCluster[] | Error; hpc?: ProviderHPCCluster[] | Error }
+/** What the detail reads: the account's instances as of the last sync, and its managed and HPC clusters from the cloud. Counts each read. */
 function serve(served: Served = {}) {
-  const reads = { instances: [] as number[], clusters: [] as number[] };
-  const state = { instances: served.instances ?? [], clusters: served.clusters ?? [] };
+  const reads = { instances: [] as number[], clusters: [] as number[], hpc: [] as number[] };
+  const state = { instances: served.instances ?? [], clusters: served.clusters ?? [], hpc: served.hpc ?? [] };
   Object.assign(api, {
     providerInstances: async (id: number) => { reads.instances.push(id); if (state.instances instanceof Error) throw state.instances; return list(state.instances); },
     providerClusters: async (id: number) => { reads.clusters.push(id); if (state.clusters instanceof Error) throw state.clusters; return list(state.clusters); },
+    providerHPCClusters: async (id: number) => { reads.hpc.push(id); if (state.hpc instanceof Error) throw state.hpc; return hpcClusterList(state.hpc); },
   });
   return { reads, state };
 }
@@ -209,12 +211,12 @@ for (const language of ["en", "zh"] as const) {
     assert.equal(within(table()).getAllByRole("row").length, 3, "the header row and one row per instance: no group header");
     assert.equal(within(table()).queryAllByRole("button").filter((button) => button.hasAttribute("aria-expanded") && !button.hasAttribute("aria-haspopup")).length, 0, "nothing to fold");
     assert.ok(screen.getByText(copy.synced));
-    assert.deepEqual(reads, { instances: [1], clusters: [] });
+    assert.deepEqual(reads, { instances: [1], clusters: [], hpc: [] });
     await user.click(screen.getByRole("button", { name: copy.sync }));
     assert.equal(synced, 1, "Sync is the page's: the account is synchronized");
     // The sync done, the page hands a new refresh key.
     rerender(view({ provider: pods, language, refreshKey: "2", onSync: () => { synced += 1; } }));
-    await waitFor(() => assert.deepEqual(reads, { instances: [1, 1], clusters: [] }, "the instances are read again; there is no cluster to read"));
+    await waitFor(() => assert.deepEqual(reads, { instances: [1, 1], clusters: [], hpc: [] }, "the instances are read again; there is no cluster to read"));
     assert.equal(screen.queryAllByText(/Kubernetes|Standalone instances|独立实例/).length, 0);
   });
 }
@@ -275,13 +277,33 @@ for (const [what, provider] of [["an account with managed Kubernetes", ali], ["a
     const loading = await screen.findByText(p.detail.loadingInstances);
     assert.equal(loading.closest('[role="status"]')?.textContent, p.detail.loadingInstances);
     assert.equal(table().getAttribute("aria-busy"), "true");
-    assert.equal(screen.queryAllByText(p.instances.empty).length, 0, "still reading is not empty");
+    assert.equal(screen.queryAllByText(p.instances.emptyAfterSync).length, 0, "still reading is not empty");
 
     await act(async () => answer(list([])));
-    assert.ok(await screen.findByText(p.instances.empty));
+    assert.ok(await screen.findByText(p.instances.emptyAfterSync));
     assert.equal(screen.queryAllByText(p.detail.loadingInstances).length, 0);
     await waitFor(() => assert.equal(table().getAttribute("aria-busy"), "false"));
     assert.deepEqual(await instanceNames(), []);
+  });
+
+  test(`an account without instances says whether it was never synced or the last sync found none (${what})`, async () => {
+    serve({ instances: [], clusters: [] });
+    const never = mount({ provider: { ...provider, synced_at: undefined } });
+    assert.ok(await screen.findByText(p.instances.empty), "never synced: points to Sync");
+    assert.equal(screen.queryAllByText(p.instances.emptyAfterSync).length, 0);
+    never.unmount();
+
+    const synced = mount({ provider });
+    assert.ok(await screen.findByText(p.instances.emptyAfterSync), "synced and empty: says the sync found nothing");
+    assert.equal(screen.queryAllByText(p.instances.empty).length, 0, "it does not ask for a sync that was just done");
+    synced.unmount();
+    assert.match(p.instances.emptyAfterSync, /sync found no instances/);
+    assert.doesNotMatch(p.instances.emptyAfterSync, /Click Sync/);
+    // In Chinese too: a synced account is not told to sync.
+    const zhSynced = mount({ provider, language: "zh" });
+    assert.ok(await screen.findByText("上次同步没有找到实例"));
+    assert.equal(screen.queryAllByText(/请点击上方/).length, 0);
+    zhSynced.unmount();
   });
 
   test(`when the instances of ${what} cannot be read the detail says so with the server's reason, does not call the account empty, and Retry reads them again`, async () => {
@@ -290,7 +312,7 @@ for (const [what, provider] of [["an account with managed Kubernetes", ali], ["a
     // An error, in the detail and beside what it is about: the table below has no instance to show.
     const failed = (await screen.findByText(p.instances.loadFailed)).closest('[role="alert"]') as HTMLElement;
     assert.ok(failed.textContent?.includes("provider instances: database is locked"));
-    assert.equal(screen.queryAllByText(p.instances.empty).length, 0, "failing is not being empty");
+    assert.equal(screen.queryAllByText(p.instances.emptyAfterSync).length, 0, "failing is not being empty");
     assert.deepEqual(await instanceNames(), []);
     if (provider === ali) assert.ok(await groupOf("ack-gpu"), "the clusters do not wait for the instances");
 
@@ -308,22 +330,25 @@ for (const [what, provider] of [["an account with managed Kubernetes", ali], ["a
 }
 
 test("the instances and the clusters are read again when the account was synchronized, and only then", async () => {
-  const { reads, state } = serve({ instances: [train1], clusters: cloud });
+  const { reads, state } = serve({ instances: [train1], clusters: cloud, hpc: [slurmLab] });
   const mounted = mount();
   await screen.findByText("train-01");
   await groupOf("ack-gpu");
+  await groupOf("gpuworks-slurm-test");
   // The page renders again on every poll: the same sync, nothing to read.
   mounted.rerender(view());
-  assert.deepEqual(reads, { instances: [3], clusters: [3] });
+  assert.deepEqual(reads, { instances: [3], clusters: [3], hpc: [3] });
 
   state.instances = [train1, train2];
   state.clusters = [...cloud, cloudCluster("c-new", "ack-new")];
+  state.hpc = [slurmLab, hpcCluster("ehpc-sz-new", "ehpc-new")];
   mounted.rerender(view({ refreshKey: "2" }));
   assert.ok(await screen.findByText("train-02"));
   assert.ok(await groupOf("ack-new"), "the clusters are read from the cloud again with the sync");
-  assert.deepEqual(reads, { instances: [3, 3], clusters: [3, 3] }, "once each");
+  assert.ok(await groupOf("ehpc-new"), "so are the E-HPC clusters");
+  assert.deepEqual(reads, { instances: [3, 3], clusters: [3, 3], hpc: [3, 3] }, "once each");
   mounted.rerender(view({ refreshKey: "2" }));
-  assert.deepEqual(reads, { instances: [3, 3], clusters: [3, 3] }, "the same sync again reads nothing");
+  assert.deepEqual(reads, { instances: [3, 3], clusters: [3, 3], hpc: [3, 3] }, "the same sync again reads nothing");
 });
 
 test("Sync above the table asks the page to sync, from the pointer or the keyboard; it is busy while the account syncs; reading nothing by itself", async () => {
@@ -341,7 +366,7 @@ test("Sync above the table asks the page to sync, from the pointer or the keyboa
   sync.focus();
   await user.keyboard("{Enter}");
   assert.equal(synced, 2);
-  assert.deepEqual(reads, { instances: [3], clusters: [3] }, "pressing Sync reads nothing itself: the page's sync hands a new key");
+  assert.deepEqual(reads, { instances: [3], clusters: [3], hpc: [3] }, "pressing Sync reads nothing itself: the page's sync hands a new key");
   const busy = (button: HTMLButtonElement) => button.disabled || button.getAttribute("aria-busy") === "true" || button.hasAttribute("data-loading");
   assert.equal(busy(sync), false);
   rerender(view({ onSync, syncing: true }));
@@ -356,4 +381,60 @@ test("an account of a kind that cannot list instances has neither Sync nor a syn
   await groupOf("ack-gpu");
   assert.equal(screen.queryAllByRole("button", { name: "Sync" }).length, 0);
   assert.equal(screen.queryAllByText(`Last synced: ${formatTime("2026-11-10T07:55:00Z")}`).length + screen.queryAllByText(/never synced|not synced yet/i).length, 0);
+});
+
+// E-HPC: an account's HPC clusters are groups of their own, between its own instances and its managed Kubernetes
+// clusters, read live from the cloud: the cluster's name, its scheduler and version, its facts, and, where the server
+// says the cluster can be connected, where its Slurm entry stands (what connecting does is in
+// tests/slurmHpcGroup.test.tsx). The cluster's nodes are not listed: they join through the cluster's entry.
+const hpcCopy = {
+  en: { instances: "Standalone instances", unsupported: "This E-HPC cluster schedules with PBS. Only Slurm clusters can be connected.", connect: "Connect", pending: "Not connected yet", reading: "Reading E-HPC clusters" },
+  zh: { instances: "独立实例", unsupported: "这个 E-HPC 集群用 PBS 调度，目前只能接入 Slurm 集群。", connect: "接入", pending: "未接入", reading: "正在读取 E-HPC 集群" },
+};
+const slurmLab = hpcCluster("ehpc-sz-iqinzafcg4", "gpuworks-slurm-test");
+const pbsLab = hpcCluster("ehpc-sz-pbs", "ehpc-sz-pbs", { scheduler: "pbs", scheduler_version: "19.1.1", gpu_nodes: 1 });
+for (const language of ["en", "zh"] as const) {
+  test(`in ${language} an E-HPC cluster is its own group, after the standalone instances and before the Kubernetes clusters, with its facts and no node rows or actions of its own`, async () => {
+    const copy = hpcCopy[language];
+    serve({ instances: [train1], clusters: cloud, hpc: [slurmLab, pbsLab] });
+    mount({ language });
+    await groupOf("ack-gpu");
+    assert.deepEqual(await groupNames(), [copy.instances, "gpuworks-slurm-test", "ehpc-sz-pbs", "ack-gpu", "ack-lab"]);
+
+    const slurm = await groupOf("gpuworks-slurm-test");
+    const header = await groupHeader(slurm);
+    assert.ok(within(header).getByText("Slurm 22.05.8"));
+    assert.ok(within(header).getByText(copy.pending), "no entry yet");
+    assert.ok(within(header).getByRole("button", { name: copy.connect }), "the server says the cluster can be connected");
+    assert.equal((await groupRows(slurm)).length, 1, "the facts are one row: the cluster's nodes are not listed");
+    assert.ok(within(slurm).getByText("ehpc-sz-iqinzafcg4"));
+
+    // A cluster the cloud gave no name goes by its id; under a scheduler that cannot be connected it offers nothing.
+    const pbs = await groupOf("ehpc-sz-pbs");
+    const pbsHeader = await groupHeader(pbs);
+    assert.ok(within(pbsHeader).getByText("PBS 19.1.1"));
+    assert.equal(within(pbsHeader).queryAllByRole("button", { name: copy.connect }).length, 0);
+    assert.ok(within(pbs).getByText(copy.unsupported));
+    assert.equal(document.body.textContent?.includes("{{"), false);
+  });
+}
+
+test("the E-HPC clusters are read for an account whose kind connects them, while they are read the table says so, and the Kubernetes clusters do not wait for them", async () => {
+  const { reads } = serve({ instances: [train1], clusters: cloud, hpc: [slurmLab] });
+  mount();
+  assert.ok(await screen.findByText(hpcCopy.en.reading));
+  await groupOf("ack-gpu");
+  await groupOf("gpuworks-slurm-test");
+  assert.equal(screen.queryByText(hpcCopy.en.reading), null);
+  assert.deepEqual(reads.hpc, [3]);
+});
+
+test("an account whose kind connects no E-HPC never asks the cloud for HPC clusters, and one without managed Kubernetes either is not grouped", async () => {
+  const { reads } = serve({ instances: [instance({ external_id: "i-plain", name: "plain" })] });
+  mount({ provider: pods, kindInfo: runpodKind });
+  await screen.findByText("plain");
+  assert.deepEqual(await groupNames().catch(() => []), []);
+  assert.deepEqual(reads.hpc, []);
+  assert.deepEqual(reads.clusters, []);
+  assert.equal(table().getAttribute("aria-busy"), "false");
 });

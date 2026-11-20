@@ -45,6 +45,8 @@ var launchEnv = []struct {
 	{"GPUWORKS_RUNTIME_DRIVER", func(c *agentconf.Config) *string { return &c.RuntimeDriver }},
 	{"GPUWORKS_RUNTIME_MOUNT_ROOT", func(c *agentconf.Config) *string { return &c.MountRoot }},
 	{"GPUWORKS_UDOCKER_BUNDLE", func(c *agentconf.Config) *string { return &c.UdockerBundle }},
+	{"GPUWORKS_SLURM_ENROLL_TOKEN", func(c *agentconf.Config) *string { return &c.SlurmEnrollToken }},
+	{"GPUWORKS_SLURM_NODE", func(c *agentconf.Config) *string { return &c.SlurmNode }},
 }
 
 // resolve is the configuration an agent command runs with: the state
@@ -126,6 +128,7 @@ func configure(args []string, stdin io.Reader, out io.Writer) error {
 	fs.StringVar(&c.RuntimeDriver, "driver", "", "force runtime driver")
 	fs.StringVar(&c.MountRoot, "mount-root", "", "runtime mount root")
 	fs.StringVar(&c.UdockerBundle, "udocker-bundle", "", "offline udocker bundle directory")
+	fs.StringVar(&c.SlurmNode, "slurm-node", "", "this node's Slurm name: the stdin token is then a Slurm cluster entry's enrollment token, which the agent trades for its node token on every start")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -136,8 +139,13 @@ func configure(args []string, stdin io.Reader, out io.Writer) error {
 		return fmt.Errorf("--state is required")
 	}
 	token, err := bufio.NewReader(stdin).ReadString('\n')
-	if c.Token = strings.TrimSpace(token); c.Token == "" {
+	if token = strings.TrimSpace(token); token == "" {
 		return fmt.Errorf("the node token is read from stdin and none was given: %v", err)
+	}
+	if strings.TrimSpace(c.SlurmNode) != "" {
+		c.SlurmEnrollToken = token
+	} else {
+		c.Token = token
 	}
 	if err := agentconf.Write(*state, c); err != nil {
 		return err

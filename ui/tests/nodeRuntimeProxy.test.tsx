@@ -77,15 +77,15 @@ function show(statusPollMs?: number) {
 }
 const loaded = () => waitFor(() => {
   assert.ok(screen.getByText(locale.nodes.pullProxy.title));
-  assert.equal(dom.window.document.querySelector(".ant-skeleton") === null, true, "still loading");
+  assert.equal(dom.window.document.querySelector("[aria-busy=\"true\"]") === null, true, "still loading");
 });
 const driverLine = (driver: string) => fill(rt.driver, { driver });
 const restartButton = () => screen.queryByRole("button", { name: rt.restart });
-// jsdom never finishes antd's leave motion, so a dismissed dialog stays in the
-// DOM carrying its leave class; that class is what "closed" looks like here.
+// A dismissed dialog may stay in the DOM while its exit motion runs; Base UI
+// marks it closed meanwhile.
 const dialogClosed = () => {
   const dialog = screen.queryByRole("dialog");
-  return !dialog || dialog.classList.contains("ant-zoom-leave");
+  return !dialog || dialog.hasAttribute("data-closed") || dialog.hasAttribute("data-ending-style");
 };
 const bodyText = () => dom.window.document.body.textContent || "";
 
@@ -180,8 +180,8 @@ test("dockerd still on another proxy is flagged, with a restart button for an ad
   try {
     show();
     await loaded();
-    const tag = screen.getByText(rt.notApplied).closest(".ant-tag") as HTMLElement;
-    assert.ok(tag.className.includes("ant-tag-orange"), `tag class: ${tag.className}`);
+    const badge = screen.getByText(rt.notApplied).closest('[data-slot="badge"]') as HTMLElement;
+    assert.equal(badge.dataset.status, "warning", "flagged as a warning");
     assert.ok(screen.getByText(fill(rt.stillUsing, { proxy: "http://old.example:8080" })));
     await waitFor(() => assert.ok(restartButton()));
   } finally {
@@ -266,7 +266,7 @@ test("restart confirmation for a node without live-restore warns that containers
     // Pending: the confirm button shows a spinner and the dialog cannot be dismissed.
     const cancel = within(dialog).getByRole("button", { name: locale.nodes.action.cancel }) as HTMLButtonElement;
     assert.equal(cancel.disabled, true, "cancel is disabled while the restart runs");
-    assert.ok(dialog.querySelector(".ant-btn-loading"), "confirm shows its loading state");
+    assert.equal((within(dialog).getByRole("button", { name: rt.confirmOk }) as HTMLButtonElement).disabled, true, "confirm shows its loading state");
     fireEvent.keyDown(dialog, { key: "Escape", keyCode: 27 });
     assert.ok(!dialogClosed(), "Esc does not close a running restart");
 

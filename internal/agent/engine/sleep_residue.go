@@ -67,7 +67,9 @@ func (e *Engine) measureSleepResidue(ctx context.Context, spec proto.InstanceDes
 	}
 	used := map[int]float64{}
 	for _, m := range metrics {
-		if v, ok := m.Values[memoryUsedMetric]; ok {
+		// A host-pool figure counts every process on the host, so it is not
+		// what this instance holds: such a card stays unmeasured.
+		if v, ok := m.Values[memoryUsedMetric]; ok && !m.HostPoolMemory {
 			used[m.Index] = v
 		}
 	}

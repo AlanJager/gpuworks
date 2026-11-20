@@ -6,13 +6,15 @@ const PROVIDER_LOGOS: Record<string, string> = {
   compshare: "/provider-logos/compshare.webp",
   digitalocean: "/provider-logos/digitalocean.svg",
   runpod: "/provider-logos/runpod.webp",
+  slurm: "/provider-logos/slurm.svg",
   vast: "/provider-logos/vast.webp",
   zstack: "/provider-logos/zstack.svg",
 };
 
-// Vendor marks are UI assets under public/provider-logos; a kind without one
-// shows its initial instead, and a cluster connected on its own the
-// Kubernetes menu icon (its card is named by the platform type's id).
+// Vendor marks are UI assets under public/provider-logos (Slurm's mark among
+// them, credited in NOTICE); a kind without one shows its initial instead,
+// and a Kubernetes cluster connected on its own the console's Kubernetes menu
+// icon (its card is named by the platform type's id).
 const KUBERNETES_LOGO = "kubernetes";
 export default function ProviderKindLogo({ kind }: { kind: string }) {
   const logo = PROVIDER_LOGOS[kind];

@@ -38,9 +38,21 @@ type fakeHost struct {
 	nextID   int
 
 	mountHook func(ctx context.Context) // runs before mount decides; used to block
+
+	// forceFail makes "umount -f -l <path>" fail with this output; forced
+	// runs after a forced unmount took the mount off, as the kernel failing
+	// the calls blocked on it would.
+	forceFail map[string]string
+	forced    func(path string)
+	// forceDetachFail makes it detach the mount and then fail with this
+	// output, and forceHang makes it detach and then not return until it is
+	// killed: umount.nfs talks to the server after the mount point is gone.
+	forceDetachFail map[string]string
+	forceHang       map[string]bool
 }
 
-type fakeMount struct{ path, export, opts string }
+// fstype is what mountinfo shows; "" is nfs4.
+type fakeMount struct{ path, export, opts, fstype string }
 
 func newFakeHost(t *testing.T) *fakeHost {
 	t.Helper()
@@ -68,10 +80,20 @@ func (h *fakeHost) writeInfo() {
 		if exp.readOnly {
 			mode = "ro"
 		}
-		fmt.Fprintf(&b, "%d 22 0:%d / %s %s,noatime shared:%d - nfs4 %s %s,vers=%s,rsize=1048576,proto=tcp\n",
-			100+i, 50+i, h.escape(m.path), mode, 200+i, m.export, mode, vers)
+		fstype := m.fstype
+		if fstype == "" {
+			fstype = "nfs4"
+		}
+		fmt.Fprintf(&b, "%d 22 0:%d / %s %s,noatime shared:%d - %s %s %s,vers=%s,rsize=1048576,proto=tcp\n",
+			100+i, 50+i, h.escape(m.path), mode, 200+i, fstype, m.export, mode, vers)
 	}
-	if err := os.WriteFile(h.infoPath, []byte(b.String()), 0o644); err != nil {
+	// The kernel never shows a reader half a table: replace the file in one
+	// step, so a read that races a mount sees the table before or after it.
+	tmp := h.infoPath + ".next"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.Rename(tmp, h.infoPath); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -83,6 +105,41 @@ func (h *fakeHost) addForeign(path, export string) {
 	h.mounts = append(h.mounts, fakeMount{path: path, export: export})
 	if _, ok := h.exports[export]; !ok {
 		h.exports[export] = fakeExport{}
+	}
+	h.writeInfo()
+}
+
+// addForeignFS is addForeign for a filesystem of another type.
+func (h *fakeHost) addForeignFS(path, source, fstype string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.mounts = append(h.mounts, fakeMount{path: path, export: source, fstype: fstype})
+	h.writeInfo()
+}
+
+// detachOutside takes the mount on path away without the manager, as an
+// operator's own "umount -f -l" does.
+func (h *fakeHost) detachOutside(path string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i, m := range h.mounts {
+		if m.path == path {
+			h.mounts = append(h.mounts[:i], h.mounts[i+1:]...)
+			break
+		}
+	}
+	h.writeInfo()
+}
+
+// remountedAs replaces what is mounted on path, as someone unmounting it
+// and mounting something else there does.
+func (h *fakeHost) remountedAs(path, source, fstype string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.mounts {
+		if h.mounts[i].path == path {
+			h.mounts[i].export, h.mounts[i].fstype = source, fstype
+		}
 	}
 	h.writeInfo()
 }
@@ -122,7 +179,7 @@ func (h *fakeHost) run(ctx context.Context, name string, args ...string) ([]byte
 		}
 		return h.mount(args)
 	case "umount":
-		return h.umount(args)
+		return h.umount(ctx, args)
 	}
 	return []byte(name + ": command not found\n"), exitErr{127}
 }
@@ -165,19 +222,31 @@ func (h *fakeHost) mount(args []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (h *fakeHost) umount(args []string) ([]byte, error) {
+func (h *fakeHost) umount(ctx context.Context, args []string) ([]byte, error) {
+	// A forced lazy unmount is exactly `umount -f -l <path>`: it detaches a
+	// busy mount point too, and fails only for its own reasons.
+	force := len(args) == 3 && args[0] == "-f" && args[1] == "-l"
+	if force {
+		args = args[2:]
+	}
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		h.t.Errorf("umount must be called as plain `umount <path>`, got %v", args)
+		h.t.Errorf("umount must be called as `umount <path>` or `umount -f -l <path>`, got %v", args)
 		return []byte("umount: bad usage\n"), exitErr{1}
 	}
 	path := args[0]
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if out := h.forceFail[path]; force && out != "" {
+		return []byte(out + "\n"), exitErr{32}
+	}
+	if force && h.forced != nil {
+		defer h.forced(path)
+	}
 	for i, m := range h.mounts {
 		if m.path != path {
 			continue
 		}
-		if h.busy[path] {
+		if h.busy[path] && !force {
 			return []byte(fmt.Sprintf("umount: %s: target is busy.\n", path)), exitErr{32}
 		}
 		h.mounts = append(h.mounts[:i], h.mounts[i+1:]...)
@@ -187,6 +256,15 @@ func (h *fakeHost) umount(args []string) ([]byte, error) {
 		ents, _ := os.ReadDir(path)
 		for _, x := range ents {
 			os.RemoveAll(filepath.Join(path, x.Name()))
+		}
+		if out := h.forceDetachFail[path]; force && out != "" {
+			return []byte(out + "\n"), exitErr{32}
+		}
+		if force && h.forceHang[path] {
+			h.mu.Unlock()
+			<-ctx.Done() // exec kills the command when its context ends
+			h.mu.Lock()
+			return nil, fmt.Errorf("signal: killed")
 		}
 		return nil, nil
 	}
@@ -212,6 +290,14 @@ func (f *fakeStatfs) blockPath(p string) chan struct{} {
 	ch := make(chan struct{})
 	f.block[p] = ch
 	return ch
+}
+
+// letThrough stops blocking new calls on p; the ones already blocked stay
+// blocked until the channel blockPath returned is closed.
+func (f *fakeStatfs) letThrough(p string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.block, p)
 }
 
 func (f *fakeStatfs) count(p string) int {

@@ -304,7 +304,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 		mountRunner = kube.HostExec
 	}
 	n.occupancy.load(filepath.Join(stateDir, cardOccupancyFile))
-	n.storage = newStorageRuntime(stateDir, n.mountBusy, mountRunner)
+	n.storage = newStorageRuntime(stateDir, n.mountBusy, storageUsers(n), mountRunner)
 	n.servingForward = newServingForwarder(log, n.currentNodeToken, n.instanceAPIPort)
 	n.perftest = perftest.Host(stateDir)
 	if accelerator.HasRuntimeAssetBundles(prober.Vendor()) {

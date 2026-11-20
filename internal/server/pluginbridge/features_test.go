@@ -60,7 +60,7 @@ func TestFeatureKeysFollowInstallsAndKeepTheirOwner(t *testing.T) {
 	if !w.gate.Declared("acme.tools") || w.announced.Load() == before {
 		t.Fatal("an upgrade's new key was not declared and announced")
 	}
-	if err := b.Uninstall(ctx, "acme_backup", true, "admin"); err != nil {
+	if err := uninstallConfirmed(t, b, ctx, "acme_backup", true); err != nil {
 		t.Fatal(err)
 	}
 	if w.gate.Declared("acme.backup") || w.gate.Declared("acme.tools") || !w.gate.Declared("acme.vault") {

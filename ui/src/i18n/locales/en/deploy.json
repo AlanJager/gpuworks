@@ -751,7 +751,6 @@
       "strategySpreadHelp": "Start each replica on the candidate running the fewest of this deployment's replicas",
       "strategyBinpack": "Binpack",
       "strategyBinpackHelp": "Fill the candidate with the least room left first, keeping other nodes free",
-      "chipMismatchSuffix": " · chip mismatch",
       "auto": "Automatic",
       "autoDescription": "Match by VRAM and topology",
       "manual": "Manual",

@@ -1,13 +1,10 @@
 package extpkg
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/extpkg/archive"
@@ -85,6 +82,11 @@ type InstallOptions struct {
 	// compiled into the server, whose routes live under the same
 	// /api/v1/x/<name>/ (ErrorPluginIDTaken), refused before approval.
 	ReservedIDs []string
+	// Claim, when set, runs once the package is verified, accepted and
+	// unpacked to its version directory, before it is made current, with
+	// no lock of the data directory held: a server takes the lock of the
+	// package's id there. What was decided is checked again after it.
+	Claim func(id string)
 }
 
 // Install reads a package from r, verifies it in an incoming directory,
@@ -95,6 +97,9 @@ type InstallOptions struct {
 func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 	return h.place(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
 		if err := CheckIDFree(v.Manifest.ID, opt.ReservedIDs); err != nil {
+			return layout.Control{}, err
+		}
+		if err := h.checkNotUpgrading(v.Manifest.ID); err != nil {
 			return layout.Control{}, err
 		}
 		current, err := h.Dir.Current(v.Manifest.ID)
@@ -115,7 +120,7 @@ func (h *Host) Install(r io.Reader, opt InstallOptions) (*Installed, error) {
 			return layout.Control{}, approvalRequired(v.Manifest, hash, h.diffFromCurrent(v, current))
 		}
 		return layout.Control{Enabled: enabled, ApprovedHash: string(hash), ApprovedBy: opt.ApprovedBy, At: h.now().UTC()}, nil
-	})
+	}, opt.Claim)
 }
 
 // diffFromCurrent is what v asks for compared with installed version
@@ -130,156 +135,6 @@ func (h *Host) diffFromCurrent(v *Verified, current string) ApprovalDiff {
 	d := DiffApproval(old, v)
 	d.FromVersion = current
 	return d
-}
-
-// UpgradeOptions are an upgrade's choices.
-type UpgradeOptions struct {
-	// ApprovedBy names who approved the upgrade.
-	ApprovedBy string
-	// Approve must equal the incoming package's approval hash, unless the
-	// hash is the approved one and the site policy auto-approves that.
-	Approve extapi.Digest
-	// Features, when set, refuses a package declaring a feature key
-	// someone else provides (ErrorPluginFeatureTaken), before approval.
-	Features FeatureOwners
-}
-
-// Upgraded is the outcome of an upgrade.
-type Upgraded struct {
-	*Installed
-	// Diff is what the new version asks for compared with the old one.
-	Diff ApprovalDiff
-	// AutoApproved reports that the approval hash was unchanged and the
-	// site policy applied the upgrade without a new approval.
-	AutoApproved bool
-}
-
-// Upgrade replaces installed package id with the package read from r, the
-// way Install places it, keeping whether the package is enabled. The
-// package's id must be installed (ErrorPluginNotInstalled). Without
-// approval it is refused with ErrorPluginApprovalRequired, whose params
-// carry the diff from the installed version (an *ApprovalNeeded cause
-// holds it too), and nothing changes. An approval hash equal to the
-// approved one counts as approved when the site policy auto-approves
-// unchanged upgrades.
-func (h *Host) Upgrade(r io.Reader, opt UpgradeOptions) (*Upgraded, error) {
-	up := &Upgraded{}
-	in, err := h.place(r, opt.Features, func(v *Verified, hash extapi.Digest) (layout.Control, error) {
-		m := v.Manifest
-		current, err := h.Dir.Current(m.ID)
-		if err != nil {
-			return layout.Control{}, err
-		}
-		if current == "" {
-			return layout.Control{}, notInstalled(m.ID)
-		}
-		ctl, _, err := h.Dir.ReadControl(m.ID)
-		if err != nil {
-			return layout.Control{}, err
-		}
-		up.Diff = h.diffFromCurrent(v, current)
-		up.Diff.HashChanged = string(hash) != ctl.ApprovedHash
-		up.AutoApproved = !up.Diff.HashChanged && h.Verifier.Policy.AutoApproveUnchanged
-		approvedBy := opt.ApprovedBy
-		switch {
-		case up.AutoApproved:
-			// Nothing new was approved: the earlier approver stands.
-			approvedBy = ctl.ApprovedBy
-		case opt.Approve != hash:
-			return layout.Control{}, approvalRequired(m, hash, up.Diff)
-		}
-		return layout.Control{
-			Enabled: ctl.Enabled, ApprovedHash: string(hash), ApprovedBy: approvedBy, At: h.now().UTC(),
-			// Host setup steps already applied stay applied unless the
-			// new version asks for one more.
-			HostSetupApplied: ctl.HostSetupApplied && len(up.Diff.HostSetupAdded) == 0,
-		}, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	up.Installed = in
-	return up, nil
-}
-
-// place reads, verifies and unpacks a package under the data directory's
-// lock. decide runs after verification, before anything is moved into
-// place: it refuses the package or returns the control file to write.
-func (h *Host) place(r io.Reader, features FeatureOwners, decide func(*Verified, extapi.Digest) (layout.Control, error)) (*Installed, error) {
-	unlock, err := h.Dir.Lock()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = unlock() }()
-	// Under the lock no other install is running: what an interrupted one
-	// left behind goes first.
-	if err := h.Dir.Cleanup(); err != nil {
-		return nil, err
-	}
-	stage, err := h.Dir.Stage()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = stage.Abort() }()
-	c, err := archive.Read(r, stage, h.limits())
-	if err != nil {
-		return nil, err
-	}
-	v, err := h.Verifier.Verify(c, Install)
-	if err != nil {
-		return nil, err
-	}
-	m := v.Manifest
-	if err := h.CheckDataMarker(m); err != nil {
-		return nil, err
-	}
-	if err := checkFeatureOwners(m, features); err != nil {
-		return nil, err
-	}
-	hash, err := ApprovalHash(v)
-	if err != nil {
-		return nil, err
-	}
-	ctl, err := decide(v, hash)
-	if err != nil {
-		return nil, err
-	}
-	out := &Installed{Verified: v, ApprovalHash: hash, Enabled: ctl.Enabled}
-	switch existing, err := os.ReadFile(filepath.Join(h.Dir.Version(m.ID, m.Version), archive.ManifestMember)); {
-	case err == nil:
-		if !bytes.Equal(existing, c.Manifest) {
-			return nil, messages.NewProductError(messages.ErrorPluginVersionConflict,
-				fmt.Sprintf("%s %s is installed with other contents", m.ID, m.Version),
-				map[string]any{"id": m.ID, "version": m.Version})
-		}
-		out.Unchanged = true
-	case errors.Is(err, fs.ErrNotExist):
-		if err := stage.WriteSignature(c); err != nil {
-			return nil, err
-		}
-		exec := map[string]bool{}
-		for _, f := range m.Files {
-			exec[f.Path] = f.Exec
-		}
-		if err := stage.Seal(exec); err != nil {
-			return nil, err
-		}
-		if err := stage.Commit(h.Dir, m.ID, m.Version); err != nil {
-			return nil, err
-		}
-	default:
-		return nil, err
-	}
-	if out.Previous, err = h.Dir.Activate(m.ID, m.Version); err != nil {
-		return nil, err
-	}
-	if out.Previous == m.Version {
-		out.Previous = ""
-	}
-	if err := h.Dir.WriteControl(m.ID, ctl); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 // SetEnabled records whether installed package id may run: a server starts
@@ -367,6 +222,12 @@ func (h *Host) Recheck(id string, full bool) (*Verified, error) {
 	if version == "" {
 		return nil, notInstalled(id)
 	}
+	return h.recheckVersion(id, version, full)
+}
+
+// recheckVersion verifies unpacked version of package id again, whether
+// it is current or not.
+func (h *Host) recheckVersion(id, version string, full bool) (*Verified, error) {
 	c, err := layout.ReadInstalled(h.Dir.Version(id, version), h.hasher(), full)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,8 @@ package api
 
 import (
 	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -58,8 +60,24 @@ func TestEvaluateEligibilityUsesActualArchitectureForTemplateLaunch(t *testing.T
 	if !nodes["eligible-gfx942"].Eligible {
 		t.Fatalf("ordinary target rejected: %+v", nodes["eligible-gfx942"])
 	}
-	// The gfx1151 launch resolves to data parallelism, which AMD runs.
-	if !nodes["eligible-gfx1151"].Eligible {
-		t.Fatalf("architecture-dependent resolved DP launch refused: %+v", nodes["eligible-gfx1151"])
+	// The gfx1151 launch resolves to data parallelism, which AMD runs: the
+	// target accepts it. Its one card cannot hold the two workers, and that -
+	// the launch as its real architecture resolves it - is all it is turned
+	// down for.
+	gfx1151 := nodes["eligible-gfx1151"]
+	if gfx1151.Eligible || len(gfx1151.Reasons) != 1 || gfx1151.Reasons[0]["code"] != "placement_rejected" || !strings.Contains(fmt.Sprint(gfx1151.Reasons[0]["params"]), "data parallel 2") {
+		t.Fatalf("architecture-dependent resolved DP launch = %+v, want it turned down only for its card count", gfx1151)
+	}
+	// The reason is the error a create naming the node answers, without the
+	// planner's own prefix, and the node is judged the same when it is the
+	// node the draft has: the list does not flip with the selection.
+	if detail := fmt.Sprint(gfx1151.Reasons[0]["params"]); strings.Contains(detail, "deployment 0") || !strings.Contains(detail, "resolve launch: vllm topology: ") {
+		t.Fatalf("reason detail = %s", detail)
+	}
+	for _, selected := range []string{"eligible-gfx942", "eligible-gfx1151"} {
+		nodes = eligibleNodesOf(t, h, fmt.Sprintf(`{"template_id":%d,"template_spec_name":"fp8-balanced","target_vendor":"amd","placement_mode":"manual","node_uuid":%q,"quick_params":{"max_model_len":512}}`, template.ID, selected))
+		if !nodes["eligible-gfx942"].Eligible || nodes["eligible-gfx1151"].Eligible || !reflect.DeepEqual(nodes["eligible-gfx1151"].Reasons, gfx1151.Reasons) {
+			t.Fatalf("with %s selected: gfx942=%+v gfx1151=%+v, want the list of the automatic draft", selected, nodes["eligible-gfx942"], nodes["eligible-gfx1151"])
+		}
 	}
 }
