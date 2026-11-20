@@ -346,7 +346,7 @@ Environment variables serve only the agent and installation scripts; the server 
 |---|---|---|---|
 | `GPUWORKS_ADMIN_PASSWORD` | None | Initial password when the admin account is first created; `gpuworks install` also uses it in the order `--password` > this variable > interactive input > random. Read only when creating the account | `gpuworks serve`, `gpuworks install` |
 | `GPUWORKS_ADDR`, `GPUWORKS_DATA_DIR`, `GPUWORKS_TRUSTED_PROXIES` | None | Retained only for old units predating `server.yaml`: take effect only when neither the command line nor `server.yaml` provides the corresponding value; no longer used after `install` takes over | `gpuworks serve` |
-| `GPUWORKS_DQLITE_BIN` | `gpuworks-dqlite` beside the server executable | Read only in a Linux build with the `dqlite` tag: path of the database helper. A cluster installation puts the helper beside the server, so it does not need to be set. The cluster's storage tier is neither an environment variable nor a `server.yaml` key: it is settled at installation and recorded in the member's `cluster-enrollment/config.json`; see [Storage tiers](../how-to/control-plane-cluster.md#storage-tiers) | [Install a three-member control-plane cluster](../how-to/control-plane-cluster.md) |
+| `GPUWORKS_DQLITE_BIN` | `gpuworks-dqlite` beside the server executable | Read only in a Linux build with the `dqlite` tag: path of the database helper. A cluster installation puts the helper beside the server, so it does not need to be set. The cluster's storage tier is neither an environment variable nor a `server.yaml` key: it is settled at installation and recorded in the member's `cluster-enrollment/config.json`; see [Storage tiers](../explanation/control-plane-cluster.md#storage-tiers) | [Control-plane cluster behaviour and limits](../explanation/control-plane-cluster.md) |
 
 ### Agent Environment Variables
 
@@ -413,6 +413,6 @@ The following names appear in the code but are not user-configurable settings. D
 - `GPUWORKS_PARTITION_PROBE_BACKEND`, `GPUWORKS_PARTITION_PROBE_QUOTA_MIB`: Inputs injected into the probe program when the agent starts a dGPU probe container; they are not configuration settings read by the agent.
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
-<!-- translation-source-sha256: 69c8e5dc60368e089f62dccfb08a9fe13200eec20eafe2a4e4a95a8222a21a93 -->
+<!-- translation-source-sha256: 05aa25ab682f5e2e76454c8c008cdfa924ebb0dc9e1bae380b912fcd157ec587 -->
 <!-- translation-localized-code-block: 86f9f71f25c2b857ad0011486eb8c57eb9996ec1a4417ab035e24d7b4b1f898d dc1d5c5bc85efcc1eb7d1d72bc584329c53e7d9c636c376ad8a7ce5dc1d901cb Reviewed configuration comments; usage_report=false suppresses the daily report and node/GPU counts, while automatic checks retain installation ID and versions. Keys and values unchanged. -->
 <!-- translation-localized-code-block: 2a636013886e3274f9549d011376c48f05c387773ed46b7bf2ba8e5018147ee9 dcf0c95e55438a724e2ae70bef18a40f8ba32a257bab9f5a81a715cb374fc0e3 Reviewed the comments of the plugins example, including max_down_grace; keys and values unchanged. -->

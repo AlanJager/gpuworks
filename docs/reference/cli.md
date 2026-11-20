@@ -39,7 +39,6 @@ gpuworks restarted (systemd)
 | | [`migrate`](#gpuworks-migrate) | 对指定 SQLite 执行迁移和内置目录 seed 后退出 | 运维/开发，离线检查或预迁移数据库 |
 | | [`reset-password`](#gpuworks-reset-password) | 重置管理员账户密码 | 运维，忘记密码时 |
 | | [`plugin`](#gpuworks-plugin) | 校验、安装、列出、启停、卸载插件包，查看推送状态，导入信任与包索引，降级前检查兼容性，离线校正插件时钟与释放限制表 | 运维，server 停止时也能用；启停、卸载、时钟校正与清除表要求 server 已停止 |
-| | [`cluster`](#gpuworks-cluster) | 经 SSH 预检查并安装三成员控制面集群；另有只在带 `dqlite` 标签的 Linux 构建里可用的成员侧命令 `cluster-init`、`cluster-address`、`cluster-join`、`cluster-status` | 运维，安装控制面集群或手工修复成员 |
 | | [`host-identity`](#gpuworks-host-identity) | 以 root 读出只有 root 能读的主机身份并写进 `/run/gpuworks/host-identity.json` | systemd 在每次启动 server 之前执行，不手工运行 |
 | | `version` | 打印版本 | 任何人 |
 | | `edition` | 打印构建版本类别（社区版为 `community`）；`version` 的输出不含它 | 任何人；排查时确认装的是哪种构建 |
@@ -308,47 +307,6 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 server 每次启动时，在读入推送状态之后、拉起任何插件之前，按顺序经运行中的同一条路径应用每一条：时钟校正走 `State.CorrectClock`，清除走 `State.ClearTable`；每条应用后写一行 `audit=true` 的日志，带 `op`、`by` 与 `reason`。全部应用后清空日志。某一条应用失败时，停在这一条：它与之后的记录留在日志里，下次启动再试，之前已应用的记录从日志里删掉；同时显示管理员横幅 `PLUGIN_MAINTENANCE_FAILED`（`op` 与失败的码：`op` 为该条的 `clock_reset` 或 `pstate_clear`，日志本身读不出来时为 `journal`，某行解不开或写的是本版本不认识的操作时为 `unknown`；读不懂的记录码为 `BAD_REQUEST`），直到下次启动。
 
 本构建没有编进任何项目根密钥，所以目前只有 `server.yaml` 里主机信任的签发者签发的包能安装；分叉在自己的构建里经 `cli.Options.PluginRoots` 换上根密钥。
-
-## gpuworks cluster
-
-安装三成员控制面集群，步骤见[安装三成员控制面集群](../how-to/control-plane-cluster.md)。`gpuworks cluster install` 与 `gpuworks cluster check` 也可以写成 `gpuworks cluster-install`、`gpuworks cluster-check`。两者从管理机经 SSH 操作三台主机，可以用任何构建运行；被分发的 `--binary` 必须是带 `dqlite` 标签的 Linux 构建。
-
-### cluster install 与 cluster check
-
-| flag | 默认值 | 说明 |
-|---|---|---|
-| `--config PATH` | 空 | 版本 1 的 `cluster.yaml`，含每个节点的地址、目录和 SSH 设置；不能与 `--hosts`、`--ssh-user`、`--ssh-key`、`--dir` 同用 |
-| `--hosts A,B,C` | 空 | 不用配置文件时：恰好三个互不相同的 IPv4 地址 |
-| `--ssh-user USER` | 空 | 三台主机上的 SSH 账户 |
-| `--ssh-key PATH` | SSH agent 与 SSH 配置 | 本地 SSH 私钥文件 |
-| `--binary PATH` | 无，必填 | 要分发的 Linux 集群构建 |
-| `--database-helper PATH` | 空 | 数据库辅助程序，装在 server 旁边，文件名 `gpuworks-dqlite`；`cluster check` 不接受 |
-| `--dir DIR` | `/opt/gpuworks/server`；`--no-service` 时在 SSH 用户的主目录下 | 安装目录，三台主机上都必须不存在 |
-| `--password-file PATH` | 无 | 初始管理员口令文件：权限 600 的普通文件，一行，至少 8 个字节。带 `--config` 在终端里运行时可省略并按提示输入；`cluster check` 不接受 |
-| `--http-port N` | `8800` | 三台主机上的 HTTP 端口 |
-| `--enrollment-port N` | `9443` | 三台主机上的 HTTPS 注册端口 |
-| `--database-port N` | `9001` | 三台主机上的数据库端口（双向 TLS）；成员会话使用下一个端口 |
-| `--timeout DURATION` | `15m` | 整个安装的时限 |
-| `--storage-probe DURATION` | `30s` | 在每个节点将存放数据的文件系统上测量这么长时间的同步写延迟；`0` 跳过，最长 `5m`。`check` 据此给出建议的存储档位，不改变检查的通过与否；`install` 据此选择存储档位 |
-| `--storage-tier TIER` | 按测量结果选择 | 只用于 `install`：集群的存储档位，`standard` 或 `slow-storage`，优先于 `cluster.yaml` 的 `storage_tier`。存储过慢时只有指定了档位才继续安装。见[存储档位](../how-to/control-plane-cluster.md#存储档位) |
-| `--no-service` | `false` | 只用于预览：以后台进程运行，主机重启后不会拉起 |
-| `--interactive` | `false` | 逐项提问并安装，需要终端；只用于 `install` |
-| `--configure` | `false` | 逐项提问并写出 `cluster.yaml`，不做远端操作；只用于 `install` |
-
-不带参数运行 `gpuworks cluster install` 等同于 `--interactive`。安装失败时远端已创建的数据和日志保留，命令以 1 退出。
-
-### 成员侧命令
-
-这些命令在成员主机上运行，由 `cluster install` 调用；只存在于带 `dqlite` 标签的 Linux 构建里。
-
-| 命令 | flag | 说明 |
-|---|---|---|
-| `gpuworks cluster-init` | `--offline`（必填，确认使用该数据库的 server 都已停止）、`--listen IP:PORT`、`--public-url https://HOST:PORT`、`--storage-tier TIER`（`standard` 或 `slow-storage`，默认 `standard`）、`--data DIR`、`--db PATH` | 在已停止的首节点上生成集群身份和注册监听配置，并记录集群的存储档位；之后加入的成员采用这个档位 |
-| `gpuworks cluster-address` | `--offline`（必填）、`--address HOST:PORT`、`--timeout DURATION`（默认 `5m`）、`--data DIR`、`--db PATH` | 把首节点的数据库地址改为成员证书对应的地址；中断后可以重新运行继续 |
-| `gpuworks cluster-join` | `--address HOST:PORT`、`--cluster-id ID`、`--ca-fingerprint FP`、`--enrollment-url https://HOST:PORT`、`--public-url URL`、`--public-listen IP:PORT`、`--token-file PATH`（首次加入必填；已被接纳后重试时省略）、`--timeout DURATION`（默认 `5m`）、`--data DIR`、`--db PATH` | 把本机作为新成员加入集群 |
-| `gpuworks cluster-status` | `--data DIR`、`--db PATH`、`--http-addr HOST:PORT`、`--timeout DURATION`（默认 `5s`，单次探测的时限） | 只读地报告本成员记录的存储档位及其选举等待时间、看到的角色、投票成员、监听器、业务是否开放和 leader；不加入集群、不开放业务、不启动数据库 |
-
-`gpuworks cluster-install-node`、`gpuworks cluster-check-node` 和 `gpuworks cluster-install-supervise` 是 `cluster install` 经 SSH 调用的内部命令，不手工运行。
 
 ## gpuworks host-identity
 
