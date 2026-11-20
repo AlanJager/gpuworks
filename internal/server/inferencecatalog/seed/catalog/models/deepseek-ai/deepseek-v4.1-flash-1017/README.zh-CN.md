@@ -5,7 +5,7 @@
 - **SGLang**：来自 [SGLang 官方文档](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1)，使用专用 `lmsysorg/sglang:dev-dsv41` 镜像（CUDA 13），不能替换成 V4 镜像或普通旧版 runner。
 - **vLLM（NVIDIA）**：来自 [vLLM 官方配方](https://github.com/vllm-project/recipes/blob/main/models/deepseek-ai/DeepSeek-V4.1-Flash.yaml)，需要 vLLM 0.31.0 及以上；昇腾使用下述独立 vLLM-Ascend 镜像。
 - **DeepInfer**：DeepSeek 开源的推理框架 [DeepInfer](https://github.com/deepseek-ai/DeepInfer)（commit `774ce24`）。镜像 `gpuworks/deepinfer:774ce24-r9` 在其上补了 OpenAI 兼容 HTTP 服务（协议层用 DeepSeek 的 deepseek-recipe）、单机 Engram 本机取数和多机请求中继；只服务文本输入，开源版不含 PD 分离。
-- **pico-dgx-ds4**：社区项目 [pico-dgx-ds4](https://github.com/Picom-code/pico-dgx-ds4)（MIT，v2.0 = commit `22a39ac`），在 4 台 DGX Spark（GB10）上以 TP4 跑这个模型，rank 之间走 RoCE。权重预先按 rank 转换，发布在 ModelScope `gpuworks/DeepSeek-V4.1-Flash-1017-pico-dgx-ds4-tp4`，每个 rank 一个子目录（约 128 GB），每个节点只下载自己那一份。镜像 `gpuworks/pico-dgx-ds4:v2.0-22a39ac-r6` 带 pico 的引擎与前端，以及一个启动器：读平台的 peers 文件生成 pico 的 fleet 配置（交换机组网或环形组网，见 `--topology`）、在容器里探测 RoCE GID，rank 0 另起 OpenAI 兼容前端。
+- **pico-dgx-ds4**：社区项目 [pico-dgx-ds4](https://github.com/Picom-code/pico-dgx-ds4)（MIT，v2.0 = commit `22a39ac`），在 4 台 DGX Spark（GB10）上以 TP4 跑这个模型，rank 之间走 RoCE。权重预先按 rank 转换，发布在 ModelScope `gpuworks/DeepSeek-V4.1-Flash-1017-pico-dgx-ds4-tp4`，每个 rank 一个子目录（约 128 GB），每个节点只下载自己那一份。镜像 `gpuworks/pico-dgx-ds4:v2.0-22a39ac-r7` 带 pico 的引擎与前端，以及一个启动器：读平台的 peers 文件生成 pico 的 fleet 配置（交换机组网或环形组网，见 `--topology`）、在容器里探测 RoCE GID，rank 0 另起 OpenAI 兼容前端。
 
 ## 配方
 
@@ -54,7 +54,7 @@ vLLM-Ascend v0.30.0rc2 A3 镜像。模板声明 512 GiB `/dev/shm` 和
 - **按 rank 的权重与可写目录**：`subfolder: rank${GPUWORKS_NODE_RANK}` 让每个节点只下载自己的 rank；`dirs` 声明的 `/state`（64 GiB）放 fleet 配置、会话 spill 与引擎 socket，随部署保留。
 - **容器选项**：引擎用 io_uring 直读 Engram 分片，没有退路，而 Docker 默认 seccomp 拒绝 `io_uring_setup`，所以模板带 `--security-opt seccomp=unconfined`；另声明 `memlock_unlimited`。
 - **节点环境**（模板管不到）：GB10 是统一内存，页缓存会挤占引擎可用的内存，启动前宿主页缓存应尽量少，否则会话缓存可能分到 0 GiB；Engram 若放在 loop 设备上，loop 需要开 direct I/O。
-- **监控**：pico 的前端没有 `/metrics`，镜像里的启动器在平台分配的独立指标端口（`api.metrics.port: separate`，`${GPUWORKS_METRICS_PORT}`）上导出引擎指标：运行中与排队请求（dsfront 的 admin 状态）、会话缓存占用率、投机解码的草稿与接受 token。TTFT、TPOT、吞吐与前缀缓存命中率由网关统计。排队数只计 dsfront 入口处被挡住的请求，平时多为 0；会话缓存占用率是 pico 会话缓存的填充比例，与 vLLM 的 KV 池含义相近但不相同。
+- **监控**：pico 的前端没有 `/metrics`，镜像里的启动器在平台分配的独立指标端口（`api.metrics.port: separate`，`${GPUWORKS_METRICS_PORT}`）上导出引擎指标：运行中与排队请求（dsfront 的 admin 状态）、会话缓存占用率、投机解码的草稿与接受 token，以及从 dsfront 每个请求的完成行解析出的输入/缓存命中/生成 token 计数（吞吐与前缀缓存命中率）和 TTFT 直方图。TPOT 与端到端延迟由网关统计。排队数只计 dsfront 入口处被挡住的请求，平时多为 0；会话缓存占用率是 pico 会话缓存的填充比例，与 vLLM 的 KV 池含义相近但不相同。
 - **启动前的页缓存**：GB10 是统一内存，刚下载完权重的节点页缓存很大，引擎按 4 个 rank 中最小的可用内存分配会话缓存，可能只分到几十 MB，长上下文与多轮复用随之失效（不报错）。首次部署前可在节点上清一次页缓存（`echo 3 | sudo tee /proc/sys/vm/drop_caches`）再启动。
 
 ## 实测
