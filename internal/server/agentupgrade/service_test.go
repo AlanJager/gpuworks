@@ -773,3 +773,28 @@ func TestRollbackReportWinsOverTheOldVersionWatch(t *testing.T) {
 		t.Fatalf("rolled back = %+v", i)
 	}
 }
+
+// Once an unconfirmed attempt no longer holds the slot its node may be
+// upgraded again; a failure the agent then reports is the new attempt's, not
+// the old one's.
+func TestAFailureIsTheAttemptInFlightsNotAnOlderUnconfirmedOnes(t *testing.T) {
+	f := newFixture(t, 1, true)
+	old := f.create(t, "old", []string{"n1"}, 0)
+	f.tick(t)
+	f.now = f.now.Add(3 * time.Minute)
+	f.tick(t)
+	f.now = f.now.Add(f.s.cfg.UnconfirmedHold + time.Second)
+	again := f.create(t, "again", []string{"n1"}, 0)
+	f.tick(t)
+	if i := f.item(t, again.Record.ID, "n1"); !activePhase(i.Phase) {
+		t.Fatalf("the node was not upgraded again: %+v", i)
+	}
+	f.s.Observe(Observation{NodeUUID: "n1", SessionID: "old-n1", Version: "old", State: "failed", Error: "no space left", At: f.now})
+	f.tick(t)
+	if i := f.item(t, again.Record.ID, "n1"); i.Phase != "failed" || i.Error != "no space left" {
+		t.Fatalf("the new attempt = %+v; want its own failure", i)
+	}
+	if i := f.item(t, old.Record.ID, "n1"); i.Phase != "unconfirmed" || i.VerifiedAt != nil {
+		t.Fatalf("the old attempt took the new one's failure: %+v", i)
+	}
+}

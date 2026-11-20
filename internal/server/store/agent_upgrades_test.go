@@ -204,3 +204,22 @@ func TestAgentUpgradeRetentionPreservesUnresolvedReservations(t *testing.T) {
 		t.Fatalf("unresolved history removed=%+v %v", blocker, err)
 	}
 }
+
+// An unconfirmed attempt holds the slot from the time it became unconfirmed
+// to heldSince, and not after; a verified one never does.
+func TestUnconfirmedAttemptHoldsTheSlotFromHeldSince(t *testing.T) {
+	st := newTestStore(t)
+	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	if _, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "u", RequestFingerprint: "u", TargetVersion: "t"}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "unconfirmed", FinishedAt: &now}}, now, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := st.AgentUpgradeBlocker(now); err != nil || b == nil {
+		t.Fatalf("at the moment it became unconfirmed: %v, %v; want held", b, err)
+	}
+	if b, err := st.AgentUpgradeBlocker(now.Add(time.Second)); err != nil || b != nil {
+		t.Fatalf("after its hold: %+v, %v; want free", b, err)
+	}
+	if _, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "v", RequestFingerprint: "v", TargetVersion: "t"}, []AgentUpgradeItem{{NodeUUID: "n2", Phase: "queued"}}, now, now); err != ErrAgentUpgradeConflict {
+		t.Fatalf("create within the hold = %v; want a conflict", err)
+	}
+}

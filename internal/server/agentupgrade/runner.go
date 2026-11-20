@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sort"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -248,6 +249,10 @@ func (s *Service) observeEvent(o Observation) error {
 	if err != nil {
 		return err
 	}
+	// A node can have an attempt in flight and an older one still
+	// unconfirmed (once the older stops holding the slot, the node may be
+	// upgraded again): a failure is the attempt in flight's first.
+	sort.SliceStable(items, func(a, b int) bool { return activePhase(items[a].Phase) && !activePhase(items[b].Phase) })
 	for _, i := range items {
 		if i.NodeUUID != o.NodeUUID || (!activePhase(i.Phase) && !(i.Phase == "unconfirmed" && i.VerifiedAt == nil)) || i.StartedAt == nil {
 			continue
