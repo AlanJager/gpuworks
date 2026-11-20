@@ -1,10 +1,12 @@
 package api
 
+import "context"
+
 func (a *apiHandlers) pruneUnreferencedCatalogPackages() {
 	if a == nil || a.d.Store == nil || a.d.CatalogPackages == nil {
 		return
 	}
-	referenced, err := a.d.Store.ReferencedCatalogPackageDigests()
+	referenced, err := a.d.Store.CatalogPackageReferencesForGC(context.Background())
 	if err != nil {
 		if a.d.Log != nil {
 			a.d.Log.Warn("list referenced inference catalog packages", "error", err)

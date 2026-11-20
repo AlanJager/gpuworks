@@ -46,8 +46,10 @@ var errDeploymentPolicyRefused = errors.New("deployment policy refused")
 // every launch actually reads (Store.DeploymentPolicy), not the stored text.
 // A policy stored before a key existed lacks it, and a form reading the raw
 // document would show that field empty although the shipped default applies.
-func (a *apiHandlers) deploymentPolicyJSON() json.RawMessage {
-	raw, err := json.Marshal(a.d.Store.DeploymentPolicy())
+// stored is the value from the settings the handler already read, so the
+// response is one snapshot and a failed second read cannot turn into defaults.
+func deploymentPolicyJSON(stored string) json.RawMessage {
+	raw, err := json.Marshal(store.DeploymentPolicyFromSetting(stored))
 	if err != nil {
 		return json.RawMessage(`{}`)
 	}

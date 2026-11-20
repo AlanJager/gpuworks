@@ -153,11 +153,23 @@ func CatalogVersion(publishedAt, digest string) string {
 }
 
 func PackageDigest(fsys fs.FS) (string, error) {
+	_, digest, err := LoadPackageDigest(fsys)
+	return digest, err
+}
+
+// LoadPackageDigest returns the validated projection and exact archive digest
+// after one semantic validation and a complete deterministic archive pass.
+// The projection is the tolerant one PackPackage validates: a stored official
+// package may hold specs this build skips, and it is digested as published.
+// Failure returns neither a projection nor a digest. Mutable filesystem callers
+// must retain their directory ownership and content checks around this read.
+func LoadPackageDigest(fsys fs.FS) (Package, string, error) {
 	hash := sha256.New()
-	if err := PackPackage(hash, fsys); err != nil {
-		return "", err
+	pkg, err := packPackage(hash, fsys)
+	if err != nil {
+		return Package{}, "", err
 	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return pkg, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // MarshalModelYAML emits the canonical per-model document used inside a
@@ -252,10 +264,21 @@ func WritePackageDirectoryWithFiles(root, publishedAt string, catalog FlatCatalo
 // PackPackage writes a deterministic tar.gz representation of a validated
 // package. It intentionally carries no host timestamps, ownership, or modes.
 func PackPackage(writer io.Writer, fsys fs.FS) error {
+	_, err := packPackage(writer, fsys)
+	return err
+}
+
+func packPackage(writer io.Writer, fsys fs.FS) (pkg Package, err error) {
+	defer func() {
+		if err != nil {
+			pkg = Package{}
+		}
+	}()
 	// A stored official package may hold specs this build skips; it is packed
 	// as it was published.
-	if _, _, err := loadPackage(fsys, true); err != nil {
-		return err
+	pkg, _, err = loadPackage(fsys, true)
+	if err != nil {
+		return pkg, err
 	}
 	var files []string
 	if err := fs.WalkDir(fsys, ".", func(name string, entry fs.DirEntry, walkErr error) error {
@@ -271,7 +294,7 @@ func PackPackage(writer io.Writer, fsys fs.FS) error {
 		files = append(files, name)
 		return nil
 	}); err != nil {
-		return err
+		return pkg, err
 	}
 	sort.Strings(files)
 
@@ -283,26 +306,26 @@ func PackPackage(writer io.Writer, fsys fs.FS) error {
 	for _, name := range files {
 		data, err := fs.ReadFile(fsys, name)
 		if err != nil {
-			return fmt.Errorf("read package file %s: %w", name, err)
+			return pkg, fmt.Errorf("read package file %s: %w", name, err)
 		}
 		header := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(data)), ModTime: time.Unix(0, 0).UTC(), Typeflag: tar.TypeReg, Format: tar.FormatPAX}
 		if err := tarWriter.WriteHeader(header); err != nil {
-			return fmt.Errorf("write package header %s: %w", name, err)
+			return pkg, fmt.Errorf("write package header %s: %w", name, err)
 		}
 		if _, err := tarWriter.Write(data); err != nil {
-			return fmt.Errorf("write package file %s: %w", name, err)
+			return pkg, fmt.Errorf("write package file %s: %w", name, err)
 		}
 	}
 	if err := tarWriter.Close(); err != nil {
-		return fmt.Errorf("close inference catalog tar: %w", err)
+		return pkg, fmt.Errorf("close inference catalog tar: %w", err)
 	}
 	if err := gz.Close(); err != nil {
-		return fmt.Errorf("close inference catalog gzip: %w", err)
+		return pkg, fmt.Errorf("close inference catalog gzip: %w", err)
 	}
 	if counted.bytes > catalogasset.MaxPackageBytes {
-		return fmt.Errorf("compressed inference catalog package is %d bytes, limit is %d", counted.bytes, catalogasset.MaxPackageBytes)
+		return pkg, fmt.Errorf("compressed inference catalog package is %d bytes, limit is %d", counted.bytes, catalogasset.MaxPackageBytes)
 	}
-	return nil
+	return pkg, nil
 }
 
 type countingWriter struct {

@@ -248,7 +248,7 @@ func newEnvConfigured(t testing.TB, configure func(*serverapp.Config), modelEndp
 	// material.
 	dsn := dbPath
 	if dsn == "" {
-		dsn = ":memory:"
+		dsn = defaultDatabase(dir)
 	}
 	if modelEndpoint != "" {
 		if endpoint, err := url.Parse(modelEndpoint); err == nil {

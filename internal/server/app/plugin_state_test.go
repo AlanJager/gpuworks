@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/pkg/extapi"
 )
 
@@ -16,7 +14,7 @@ import (
 func TestNewRefusesNewerPluginState(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "gpuworks.db")
-	st, err := store.Open(db, bus.New())
+	st, err := openServerDatabase(t, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,13 +37,13 @@ func TestNewRefusesNewerPluginState(t *testing.T) {
 		t.Fatalf("refusal does not name the version to run: %#v", err)
 	}
 	// The refusal closed the database and changed nothing in it.
-	got, err := store.ReadPluginMarkers(db)
-	if err != nil || len(got) != 1 || got[0] != marker {
-		t.Fatalf("markers after the refusal = %v %v", got, err)
-	}
-	st, err = store.Open(db, bus.New())
+	st, err = openServerDatabase(t, db)
 	if err != nil {
 		t.Fatalf("database still held after the refusal: %v", err)
+	}
+	got, err := st.PluginMarkers()
+	if err != nil || len(got) != 1 || got[0] != marker {
+		t.Fatalf("markers after the refusal = %v %v", got, err)
 	}
 	if err := st.DeletePluginMarker(marker.Name); err != nil {
 		t.Fatal(err)

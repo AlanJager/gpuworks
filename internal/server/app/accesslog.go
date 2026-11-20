@@ -200,6 +200,12 @@ func (w *accessResponseWriter) WriteHeader(code int) {
 	if w.written {
 		return
 	}
+	// Informational responses do not commit the final response. A protocol
+	// upgrade is terminal, matching net/http's handling of 101.
+	if code >= 100 && code < 200 && code != http.StatusSwitchingProtocols {
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
 	w.status = code
 	w.written = true
 	w.ResponseWriter.WriteHeader(code)

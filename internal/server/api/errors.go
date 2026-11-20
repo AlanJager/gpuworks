@@ -537,6 +537,14 @@ const (
 	// ErrorBatchModelEndpoint: the deployments serving the {model} the batch
 	// was asked to send its requests to do not serve its {endpoint}.
 	ErrorBatchModelEndpoint = "BATCH_MODEL_ENDPOINT"
+
+	// Cluster enrollment. English fallbacks stay at the call site.
+	ErrorClusterTLSRequired        = "CLUSTER_TLS_REQUIRED"
+	ErrorClusterRequestInvalid     = "CLUSTER_REQUEST_INVALID"
+	ErrorClusterUnavailable        = "CLUSTER_UNAVAILABLE"
+	ErrorClusterInvitationRequired = "CLUSTER_INVITATION_REQUIRED"
+	ErrorClusterIdentityMismatch   = "CLUSTER_IDENTITY_MISMATCH"
+	ErrorClusterAdmissionRejected  = "CLUSTER_ADMISSION_REJECTED"
 )
 
 // WarningBatchModelSleepHeld is the warning on a created batch whose {model}
