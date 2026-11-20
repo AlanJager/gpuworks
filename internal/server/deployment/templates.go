@@ -105,7 +105,7 @@ func (s *Service) resolveDeploymentModelFromTemplate(ctx context.Context, modelI
 		model = requested
 	}
 	if model == nil {
-		model, err = s.resolveTemplateWeightModelForNode(lookupSource(selection.Weight), selection.Model, selection.Spec.Engine, selection.Spec.Quantization, selection.Spec.WeightBytes, selection.NodeID, selection.StoragePins, selection.ExplicitProvider)
+		model, err = s.resolveWeightArtifact(lookupSource(selection.Weight), selection.Model, selection.Spec.Engine, selection.Spec.Quantization, selection.Spec.WeightBytes, selection.NodeID, selection.StoragePins, selection.rankScoped(), selection.ExplicitProvider)
 		if err != nil {
 			return nil, err
 		}

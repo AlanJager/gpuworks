@@ -17,7 +17,8 @@ import (
 // ?template_id=&spec_source=&spec_name=). The deploy form asks it as soon as
 // a spec is chosen, before any evaluation, to offer the matching models and
 // to know which one a choice of a declared source reuses. The match is
-// deployment.TemplateWeightMatchesModel, the rule the create path enforces.
+// deployment.TemplateWeightMatchesModel, the rule the create path enforces (a rank-scoped source offers only rank 0's
+// artifact, the deployment's own model).
 func (a *apiHandlers) listTemplateWeightModels(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	templateID, err := strconv.ParseUint(strings.TrimSpace(query.Get("template_id")), 10, 64)
@@ -51,7 +52,7 @@ func (a *apiHandlers) listTemplateWeightModels(w http.ResponseWriter, r *http.Re
 		match := dto.TemplateWeightMatch{Provider: source.Provider, RepoID: source.RepoID, Revision: source.Revision, Subfolder: source.Subfolder}
 		for i := range candidates {
 			candidate := &candidates[i]
-			if !deployment.TemplateWeightMatchesModel(source, candidate) {
+			if !deployment.TemplateWeightOffersModel(source, candidate) {
 				continue
 			}
 			serving[candidate.ID] = true

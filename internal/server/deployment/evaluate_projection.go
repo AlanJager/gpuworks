@@ -32,7 +32,7 @@ func (s *Service) evaluateWeightSourceOptions(selection templateSelection) []dto
 		// may have been resolved further than the declared row spells.
 		option.Suggested = selection.SuggestedWeight.Provider == source.Provider && strings.EqualFold(selection.SuggestedWeight.RepoID, source.RepoID)
 		for i := range models {
-			if TemplateWeightMatchesModel(source, &models[i]) {
+			if TemplateWeightOffersModel(source, &models[i]) {
 				option.Registered = true
 				break
 			}
