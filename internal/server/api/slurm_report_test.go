@@ -126,7 +126,7 @@ func TestSlurmGPUNodeReportsReconcileWithTheEnrolledNodes(t *testing.T) {
 	// is not a node Slurm has, so nothing is missing and it is not a GPU node
 	// the entry has (a node enrolled within a report interval is, until a list
 	// has had the chance to name it).
-	if err := rig.st.DB().Model(&store.Node{}).Where("slurm_node = ?", "gpu-2").Update("created_at", time.Now().Add(-time.Hour)).Error; err != nil {
+	if err := rig.st.DB().Model(&store.Node{}).Where("slurm_node = ?", "gpu-2").Update("created_at", time.Now().UTC().Add(-time.Hour)).Error; err != nil {
 		t.Fatal(err)
 	}
 	rec = rig.do(rig.session, http.MethodGet, "/api/v1/slurm/clusters", "")
@@ -403,7 +403,7 @@ func TestSlurmGPUNodeCountIncludesNodesThatEnrolledSinceTheLastList(t *testing.T
 	}
 	// Once the lag has passed, a list that leaves a node out means it has left.
 	send(`{"digest":"d3","state_digest":"s3","nodes":[{"name":"gpu-1","state":"idle","gpus":1}]}`)
-	if err := rig.st.DB().Model(&store.Node{}).Where("slurm_node = ?", "gpu-2").Update("created_at", time.Now().Add(-slurmcluster.ListLag-time.Minute)).Error; err != nil {
+	if err := rig.st.DB().Model(&store.Node{}).Where("slurm_node = ?", "gpu-2").Update("created_at", time.Now().UTC().Add(-slurmcluster.ListLag-time.Minute)).Error; err != nil {
 		t.Fatal(err)
 	}
 	if gpu, joined := counts(); gpu != 1 || joined != 2 {

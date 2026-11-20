@@ -37,7 +37,7 @@ func (a *App) clusterNodeLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			cutoff := time.Now().Add(-kubeNodeGoneAfter)
+			cutoff := time.Now().UTC().Add(-kubeNodeGoneAfter)
 			sweepGoneKubeNodes(ctx, a.log, a.store, a.hub.CallNode, a.hub.Kick, cutoff, strikes)
 			a.slurmSweep.Sweep(ctx, cutoff)
 		}

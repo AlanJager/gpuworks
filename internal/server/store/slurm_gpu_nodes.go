@@ -175,13 +175,14 @@ func (s *Store) SlurmMissingNodes(clusterIDs ...uint) ([]SlurmMissingNode, error
 // hidden partition, is still in its cluster): the candidates for having left
 // their cluster. An entry that has reported no node condemns nothing. Offline nodes are
 // few, and the state column is indexed; the two subqueries use the list's
-// unique index.
+// unique index. cutoff is compared in UTC, the zone last_seen_at is written
+// in (SQLite compares times as text).
 func (s *Store) OfflineSlurmNodes(cutoff time.Time) ([]Node, error) {
 	var nodes []Node
 	err := s.reader().Where(`state = ? AND slurm_cluster_id > 0 AND (last_seen_at IS NULL OR last_seen_at < ?)
 		AND EXISTS (SELECT 1 FROM slurm_gpu_nodes g WHERE g.cluster_id = nodes.slurm_cluster_id)
 		AND NOT EXISTS (SELECT 1 FROM slurm_gpu_nodes g WHERE g.cluster_id = nodes.slurm_cluster_id AND g.name = nodes.slurm_node)`,
-		NodeStateOffline, cutoff).Order("id").Find(&nodes).Error
+		NodeStateOffline, cutoff.UTC()).Order("id").Find(&nodes).Error
 	return nodes, err
 }
 
@@ -189,11 +190,12 @@ func (s *Store) OfflineSlurmNodes(cutoff time.Time) ([]Node, error) {
 // account's cluster whose agents have been gone since before cutoff, listed
 // or not: the cloud lists the cluster's nodes itself, so it is asked about
 // them (slurmsweep). Offline nodes are few, and the state column is indexed.
+// cutoff is compared in UTC, as in OfflineSlurmNodes.
 func (s *Store) OfflineCloudSlurmNodes(cutoff time.Time) ([]Node, error) {
 	var nodes []Node
 	err := s.reader().Where(`state = ? AND slurm_cluster_id > 0 AND (last_seen_at IS NULL OR last_seen_at < ?)
 		AND EXISTS (SELECT 1 FROM slurm_clusters c WHERE c.id = nodes.slurm_cluster_id AND c.provider_id IS NOT NULL)`,
-		NodeStateOffline, cutoff).Order("id").Find(&nodes).Error
+		NodeStateOffline, cutoff.UTC()).Order("id").Find(&nodes).Error
 	return nodes, err
 }
 

@@ -89,7 +89,7 @@ func TestEnrollSlurmNodeRefusesANodeAnotherEntryHolds(t *testing.T) {
 	if _, _, err := s.EnrollSlurmNode(other.Token, "elsewhere", "gpu-1"); err != nil {
 		t.Fatalf("same node name in another Slurm cluster: %v", err)
 	}
-	old := time.Now().Add(-2 * SlurmNodeTakenFor)
+	old := time.Now().UTC().Add(-2 * SlurmNodeTakenFor)
 	if err := s.DB().Model(&Node{}).Where("uuid = ?", n.UUID).Updates(map[string]any{"state": NodeStateOffline, "last_seen_at": old}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestOfflineSlurmNodesAreThoseTheirClusterNoLongerLists(t *testing.T) {
 	s := newTestStore(t)
 	c := newSlurmCluster(t, s, "hpc")
 	empty := newSlurmCluster(t, s, "silent")
-	long := time.Now().Add(-time.Hour)
+	long := time.Now().UTC().Add(-time.Hour)
 	enroll := func(cluster *SlurmCluster, name, state string, seen *time.Time) {
 		t.Helper()
 		if _, _, err := s.EnrollSlurmNode(cluster.Token, "demo-"+cluster.Name, name); err != nil {
@@ -401,7 +401,7 @@ func TestOfflineSlurmNodesAreThoseTheirClusterNoLongerLists(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	recent := time.Now()
+	recent := time.Now().UTC()
 	enroll(c, "listed-gone", NodeStateOffline, &long)       // listed: stays
 	enroll(c, "unlisted-gone", NodeStateOffline, &long)     // not listed, long gone: a candidate
 	enroll(c, "no-gres", NodeStateOffline, &long)           // listed without a GPU GRES: still in the cluster, stays
@@ -578,7 +578,7 @@ func TestSlurmUnlistedNodeCountsAreTheRecentNodesNoListNames(t *testing.T) {
 	if _, _, err := s.EnrollSlurmNode(other.Token, "demo2", "gpu-1"); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	age := func(name string, d time.Duration) {
 		t.Helper()
 		if err := s.DB().Model(&Node{}).Where("slurm_cluster_id = ? AND slurm_node = ?", c.ID, name).Update("created_at", now.Add(-d)).Error; err != nil {
