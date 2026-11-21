@@ -41,7 +41,8 @@ func ObserveClusterStatus(ctx context.Context, cfg Config, httpAddr string, time
 	report.probeLocal(ctx, httpAddr, timeout)
 	report.peers = probePeerDatabases(ctx, report, timeout)
 	report.observeQuorum(ctx, cfg, timeout)
-	report.enrolledKeys = statusEnrolledKeys(cfg)
+	report.observeTransportPolicy(cfg)
+	report.observedAt, report.probeTimeout = time.Now(), timeout
 	// Peer/quorum discovery can outlast an earlier material eligibility result.
 	// Observe business admission last, through the same gate as real requests.
 	if httpAddr != "" && report.httpState == "listening" {
@@ -86,9 +87,15 @@ type clusterStatus struct {
 	joinURL             string
 	cert                []byte
 	key                 []byte
-	// enrolledKeys is the number of member keys the local transport policy
-	// names; see membershipShortfall.
-	enrolledKeys int
+	// enrolledKeys and revokedKeys count the member keys the local transport
+	// policy names, policyChanged is when it last changed, observedAt is when
+	// this report was taken and probeTimeout the deadline each of its probes
+	// had; see membershipShortfall.
+	enrolledKeys  int
+	revokedKeys   int
+	policyChanged time.Time
+	observedAt    time.Time
+	probeTimeout  time.Duration
 }
 
 type statusMember struct {
@@ -348,10 +355,11 @@ func tcpResult(err error) string {
 func (s clusterStatus) format() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Status report\n")
+	shortfall := s.membershipShortfall(s.observedAt)
 	switch {
-	case s.business == "open" && s.membershipShortfall() != "":
+	case s.business == "open" && shortfall != "":
 		// Business answers, but the next member to fail may stop it.
-		fmt.Fprintf(&b, "Overall: degraded (business reads verified; %s)\n", s.membershipShortfall())
+		fmt.Fprintf(&b, "Overall: degraded (business reads verified; %s)\n", shortfall)
 	case s.business == "open":
 		fmt.Fprintln(&b, "Overall: ready (business reads verified)")
 	case s.httpAddr == "":
@@ -368,7 +376,7 @@ func (s clusterStatus) format() string {
 	}
 	fmt.Fprintf(&b, "Role: %s (%s)\n", s.role, s.roleSource)
 	fmt.Fprintf(&b, "Voters: %d\n", s.voters)
-	fmt.Fprintf(&b, "Fault tolerant: %t\n", s.faultTolerant)
+	fmt.Fprintf(&b, "Fault tolerant: %s\n", s.faultTolerance())
 	fmt.Fprintf(&b, "Database directory: %s\n", s.directory)
 	fmt.Fprintf(&b, "Sync: %s\n", s.sync)
 	if s.httpAddr == "" {
