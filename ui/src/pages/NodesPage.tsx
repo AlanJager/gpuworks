@@ -51,6 +51,7 @@ export default function NodesPage() {
   const { t } = useTranslation("nodes");
   const isAdmin = useIsAdmin();
   const [selectedNodeUUIDs, setSelectedNodeUUIDs] = useState<string[]>([]);
+  const [upgradeAllRequest, setUpgradeAllRequest] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
@@ -241,7 +242,7 @@ export default function NodesPage() {
         }
       />
       <div className="empty:hidden mb-4"><RejectedAgentsNotice onAddNode={isAdmin ? () => setAddOpen(true) : undefined} /></div>
-      {!error && <div className="empty:hidden mb-4"><AgentFleetNotice summary={data?.agent_fleet} failed={!!data && !data.agent_fleet} retry={refetch} fleetSearch={fleetSearch} /></div>}
+      {!error && <div className="empty:hidden mb-4"><AgentFleetNotice summary={data?.agent_fleet} failed={!!data && !data.agent_fleet} retry={refetch} fleetSearch={fleetSearch} onUpgradeAll={isAdmin ? () => setUpgradeAllRequest(n => n + 1) : undefined} /></div>}
       <Card>
         <ResourceTable<Node>
           tableId={NODE_TABLE_ID}
@@ -263,7 +264,7 @@ export default function NodesPage() {
               <Typography.Text>{t("batchUpgrade.selectedCount", { count: selectedNodeUUIDs.length })}</Typography.Text>
               <Button type="link" onClick={() => setSelectedNodeUUIDs([])}>{t("batchUpgrade.clearSelection")}</Button>
             </Space>}
-            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} onStarted={() => setSelectedNodeUUIDs([])} />
+            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} upgradeAllRequest={upgradeAllRequest} onStarted={() => setSelectedNodeUUIDs([])} />
           </>}
           sort={sort}
           onSortChange={setSort}

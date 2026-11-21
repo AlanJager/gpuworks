@@ -104,6 +104,13 @@ test("the card's detail draws its memory as booked, slice by slice", async () =>
     `${gpus.composition.free}0.5 GiB`,
     `${gpus.composition.usedLegend}14.7 GiB`,
   ]);
+  // How the bar is drawn is behind the title's help, not a grey line under
+  // the legend: the legend already names the marker.
+  assert.equal(section.querySelector(".gpu-memory-composition-note"), null);
+  assert.ok(!section.textContent?.includes(gpus.composition.titleHelp));
+  const help = within(section).getByRole("button", { name: common.helpTip.label });
+  help.focus();
+  assert.ok(await screen.findByText(gpus.composition.titleHelp));
 });
 
 test("the dGPU list shows a starting slice with its state", async () => {

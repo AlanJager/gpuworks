@@ -102,7 +102,11 @@
     "serverConfirm": "The server backs up its database, master key and current binary, then swaps the binary and restarts. The console and the /v1 gateway are unavailable for about a minute; inference on the nodes keeps running. If the new version does not come up, the backup and the current version are put back automatically.",
     "serverUpgrading": "Upgrading from {{from}} to {{to}}; the server is restarting…",
     "serverUpgradingHelp": "This page refreshes once the new version answers. If it does not come up, the server rolls back to the current version on its own.",
-    "agentFollowup": "Server upgraded · Agent target {{version}}",
+    "agentFollowup": {
+      "upgrade": "Server upgraded to {{version}}; {{count}} nodes need their Agent upgraded",
+      "blocked": "Server upgraded to {{version}}; {{count}} nodes cannot upgrade their Agent for now",
+      "none": "Server upgraded to {{version}}"
+    },
     "viewNodes": "View compute nodes",
     "serverUpgraded": "The server now runs {{version}}",
     "serverNotBack": "{{version}} did not answer within 5 minutes and may have been rolled back; check the server log and install-history.jsonl in the install directory.",

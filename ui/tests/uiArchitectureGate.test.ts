@@ -21,7 +21,7 @@ test("the UI and architecture gates enforce copy budgets", (t) => {
   }
   copyFileSync(new URL("../antd-inventory.json", import.meta.url), join(root, "ui/antd-inventory.json"));
   const setLongLimit = (limit: number) => writeFileSync(join(root, "scripts/arch-constraints.txt"),
-    `ui_copy_long_strings\t${limit}\tmax\nui_copy_caveat_strings\t0\tmax\nui_copy_helper_strings\t0\tmax\nui_copy_message_strings\t0\tmax\nui_copy_sentences_strings\t0\tmax\nui_copy_en_strings\t0\tmax\nui_copy_inline_help_refs\t0\tmax\nee_ui_internal_imports\t0\tmax\n`);
+    `ui_copy_long_strings\t${limit}\tmax\nui_copy_caveat_strings\t0\tmax\nui_copy_helper_strings\t0\tmax\nui_copy_message_strings\t0\tmax\nui_copy_sentences_strings\t0\tmax\nui_copy_clauses_strings\t0\tmax\nui_copy_command_strings\t0\tmax\nui_copy_en_strings\t0\tmax\nui_copy_inline_help_refs\t0\tmax\nee_ui_internal_imports\t0\tmax\n`);
   const run = (json: string, script = "check_ui_architecture.sh") => {
     writeFileSync(join(dir, "common.json"), json);
     return spawnSync("sh", [join("scripts", script)], { cwd: root, encoding: "utf8" });
@@ -34,17 +34,34 @@ test("the UI and architecture gates enforce copy budgets", (t) => {
     assert.equal(failure.status, 1);
     assert.match(failure.stderr, new RegExp(kind + "\\tcommon:title"));
   }
+  // Clauses chained with ； are sentences written to pass the sentence count;
+  // one "problem；fix" pair and a colon that opens no chain are left alone.
+  assert.equal(run(JSON.stringify({ title: "版本过旧；请先升级", label: "目标版本：{{version}}" })).status, 0);
+  for (const value of ["色块按记账绘制：切片按上限计；黑线是实际占用。", "甲；乙；丙"]) {
+    const failure = run(JSON.stringify({ title: value }));
+    assert.equal(failure.status, 1);
+    assert.match(failure.stderr, /clauses\tcommon:title/);
+  }
+  // A command the user types is a block's text (a *Command key), never part
+  // of a sentence, not even inside a HelpTip.
+  assert.equal(run(JSON.stringify({ uninstallCommand: "gpuworks-agent uninstall --state <目录>", note: "由 gpuworks agent 上报，经 sudo 写入" })).status, 0);
+  for (const [key, value] of [["title", "请执行 gpuworks-agent uninstall"], ["infoHelp", "在主机上执行 sudo systemctl restart docker"], ["hint", "重新执行 kubectl apply"]]) {
+    const failure = run(JSON.stringify({ [key]: value }));
+    assert.equal(failure.status, 1);
+    assert.match(failure.stderr, new RegExp("command\\tcommon:" + key));
+  }
   const message = run(JSON.stringify({ apiError: { X: "字".repeat(81) } }));
   assert.equal(message.status, 1);
   assert.match(message.stderr, /message\tcommon:apiError\.X/);
   assert.doesNotMatch(message.stderr, /helper\t/);
   // A Help key keeps its 200 characters only inside a HelpTip.
-  writeFileSync(page, '<HelpTip content={t("infoHelp")} />\n<Form.Item extra={t("infoHelp")} />\n<p className="muted">{t("infoHelp")}</p>\n');
+  writeFileSync(page, '<HelpTip content={t("infoHelp")} />\n<Form.Item extra={t("infoHelp")} />\n<p className="muted">{t("infoHelp")}</p>\n<DetailSection title={t("title")} extra={<HelpTip content={t("infoHelp")} />}>\n');
   const inline = run(JSON.stringify({ infoHelp: "说明" }));
   assert.equal(inline.status, 1);
   assert.match(inline.stderr, /inlinehelp\tPage\.tsx:2/);
   assert.match(inline.stderr, /inlinehelp\tPage\.tsx:3/);
   assert.doesNotMatch(inline.stderr, /Page\.tsx:1/);
+  assert.doesNotMatch(inline.stderr, /Page\.tsx:4/, "a HelpTip in a section title's extra is the HelpTip the rule asks for");
   writeFileSync(page, "");
   writeFileSync(join(enDir, "common.json"), JSON.stringify({ title: "x".repeat(241) }));
   const english = run(JSON.stringify({ title: "短标题" }));

@@ -240,6 +240,7 @@ agent writing UI text checks it too.
 | Facts as values | Related numbers share one line, `label value · label value`, not one sentence each. |
 | Warnings act | A warning (`Notice`, amber text) names the problem and the next step in one sentence; text with no next step is not a warning. |
 | Empty states | A title, at most one sentence, and the action. |
+| No chained clauses | A string joins at most two clauses with `；`; a `：` that opens such a chain counts as one more. Three clauses are three sentences written to pass the sentence count: cut, or split into the parts below. |
 
 How the text is written, checked by the reader, not by a budget:
 
@@ -249,6 +250,8 @@ How the text is written, checked by the reader, not by a budget:
 | No unasked reassurance | "Does not lose a replica", "changes nothing" and the like are cut. A consequence is written only when the action destroys or interrupts something. |
 | Product words | `rank`, `wrapper`, `runner`, `server_dial`, package and file names the user does not type stay off the page. Commands and config keys the user must type are written as they are typed. |
 | Chinese as Chinese | Chinese text is written for a Chinese reader, not translated clause by clause: 无法访问, not 够不到; 正被使用, not 有东西在用; 平台的, not 我们的; 仍没有节点接入, not 已等了一阵. |
+| The user's side | A title or summary says what the user sees or cannot do, not what the server did or how it files the case: "4 Agents cannot connect: their node credential does not match this server", not "refused for a credential this server does not know"; "14 nodes run an Agent version that differs from the server", not "Agent target 56cb84fa" over "Different build (14)". A bare value is not a title. |
+| Charts explain themselves | What a colour, a line or a shade stands for is a legend entry beside its swatch, or the mark's tooltip. No sentence names a colour ("the black line", "red = error"): the name is wrong in the other theme and unreadable without colour. How the chart is computed is the `HelpTip` beside its title. |
 
 ### Problems and what to do
 
@@ -277,6 +280,15 @@ Use separate keys whenever one of these holds, whatever the surface:
 - the same fix answers several summaries (write it once and reuse the key);
 - the component already has a title and a body.
 
+A fix is on the page. A `HelpTip` holds causes and method; a user who never
+hovers still reads what to do. A fix written only in a `HelpTip`, or a command
+inside a sentence, is the fault this section exists to prevent.
+
+A notice that counts things offers the action on them. Its button does the
+fix (opens the batch dialog, the form, the drawer); "Dismiss" alone is not an
+action. A count that filters the list is a link named for what it does ("View
+these nodes"), not a number that happens to be clickable.
+
 Parts shown together are read together: text a component joins from several
 keys counts as one message, and its total follows "One helper line" and
 "Messages" above. Joining five sentences into one paragraph is the same fault
@@ -301,8 +313,35 @@ raised budget, a renamed key or a split key.
 | `ui_copy_helper_strings` | Non-`Help` page strings over 40 Chinese characters |
 | `ui_copy_message_strings` | Error, warning and reason strings over 80 Chinese characters |
 | `ui_copy_sentences_strings` | Non-`Help` strings of more than two sentences |
+| `ui_copy_clauses_strings` | Non-`Help` strings chaining clauses with `；` past "No chained clauses" |
+| `ui_copy_command_strings` | Strings, `Help` keys included, with a command the user types inside a sentence (a key named `*Command` holds a block's text) |
 | `ui_copy_en_strings` | English strings over 240 characters (400 for `Help` keys) |
 | `ui_copy_inline_help_refs` | Places that put a `Help` key on the page instead of in a `HelpTip` |
+
+### Reviewing copy
+
+The budgets count length and shape. They cannot tell whether a sentence helps,
+and text can pass every one of them and still leave the user without a clue:
+the three strings that prompted this section did. A maintainer reviewing a
+change that adds or edits text under `ui/src/i18n/locales/` reads each string
+where it is shown (the merge request carries a screenshot of a new notice,
+chart or dialog, in both languages) and sends the change back when one of
+these holds. Text written by an agent gets the same reading.
+
+| Ask | Send back when |
+| --- | --- |
+| Would a user who has never seen the code know what is wrong, or what the number means? | The summary is in the server's words (refused, booked, reconciled, a build class, an internal state name), or the title is a bare value. See "The user's side". |
+| Is the next step on the page, and can it be taken there? | The fix is only in a `HelpTip` or the docs; the only button is "Dismiss"; a filtering link reads as a label; a command sits inside a sentence. |
+| Does the chart need a sentence to be read? | A sentence names a colour, a line or a shade, or says how the chart is drawn, outside a legend and a `HelpTip`. |
+| Was a budget passed by shape? | Clauses chained with `；` or `：`; a key renamed `*Help` or `*Command` for the allowance; one message split into keys that are shown together; a raised budget. |
+| Does the count match what it counts? | The title says "N Agents" over a list of N hosts, or a total that the rows below do not add up to. |
+| Do both languages say the same thing, each as its own reader would write it? | One language carries a fact, a caveat or an action the other lacks; see "Chinese as Chinese". |
+
+The rewrite belongs to the same merge request: "copy to be polished later" is
+not a follow-up. Shapes to copy for a notice with its fix and action:
+`nodes:rejects.{summary,causeHelp,fix}` with `RejectedAgentsNotice`, and
+`nodes:fleet.{mismatch,fact,upgradeAll}` with `AgentFleetNotice`; for a chart,
+`gpus:composition` with `GPUMemoryComposition`.
 
 ## Choosing a component
 
@@ -354,4 +393,4 @@ Resource names that open a drawer use the native link button variant (`variant="
 
 `tests/tableNameAffordance.test.ts` runs in the normal UI test gate and scans name-column renderers across product pages. `ui-check` also runs `tests/browser/table-link-rules.mjs` against every visited page/drawer, including full-page details reached from a list: visible table text links and clickable resource names must resolve to the theme color, including nested text. Its unit tests exercise failures and exclusions; real computed colors require the browser job. When changing shared navigation, test breadcrumbs through the current page and click the parent link; use heading roles when the resource name also appears in the breadcrumb.
 
-<!-- translation-source-sha256: 1a58b937d43d61ba06ea7ed7483ca0bbc43edf0222f3686d948bbd9a7b36b01c -->
+<!-- translation-source-sha256: fc623cddb2ed66058fb189a381f83219cf79599fd59653f57847b37ac6d96a8a -->

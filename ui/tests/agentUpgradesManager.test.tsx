@@ -357,3 +357,33 @@ test("an attempt the system settled shows why in the reader's language, and only
   assert.ok(screen.getByText("Later verification: disk full while unpacking"), "an agent's failure detail stays visible");
   assert.ok(!screen.queryByRole("button", { name: k.release }), "a settled attempt offers no release");
 });
+
+test("a whole-fleet request previews every node, fixes the range to what came back, and is ignored for a non-admin", async () => {
+  const state = backend();
+  const all = (request: number, isAdmin = true) => <I18nextProvider i18n={i18n}><AgentUpgradeManager isAdmin={isAdmin} selectedNodeUUIDs={[]} upgradeAllRequest={request} /></I18nextProvider>;
+  const view = render(all(0));
+  await act(async () => { await Promise.resolve(); });
+  assert.deepEqual(state.previews, [], "nothing is previewed until the page asks");
+  view.rerender(all(1));
+  const dialog = await screen.findByRole("dialog", { name: k.previewTitle });
+  assert.deepEqual(state.previews, [{ scope: "all" }]);
+  // Previewing again asks about the nodes the first answer listed, as the dialog says.
+  await userEvent.click(within(dialog).getByRole("button", { name: k.refreshPreview }));
+  await waitFor(() => assert.deepEqual(state.previews.at(-1), { node_uuids: preview().node_uuids }));
+  view.unmount();
+  state.previews.length = 0;
+  const member = render(all(0, false));
+  member.rerender(all(1, false));
+  await act(async () => { await Promise.resolve(); });
+  assert.deepEqual(state.previews, []);
+});
+
+test("a whole-fleet request while a batch blocks the fleet shows what blocks it and previews nothing", async () => {
+  const blocker = { run_id: 7, node_uuid: "node-a", name: "stuck-node", reason: "unconfirmed" };
+  const state = backend([run({ state: "finished", blocked_by_item: blocker as never })]);
+  const view = render(<I18nextProvider i18n={i18n}><AgentUpgradeManager isAdmin selectedNodeUUIDs={[]} upgradeAllRequest={0} /></I18nextProvider>);
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: k.history }).className.includes("dangerous")));
+  view.rerender(<I18nextProvider i18n={i18n}><AgentUpgradeManager isAdmin selectedNodeUUIDs={[]} upgradeAllRequest={1} /></I18nextProvider>);
+  assert.ok(await screen.findByText(k.blocked.replace("{{name}}", "stuck-node")));
+  assert.deepEqual(state.previews, []);
+});

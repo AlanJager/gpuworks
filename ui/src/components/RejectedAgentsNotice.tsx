@@ -4,6 +4,7 @@ import { formatTime } from "../i18n/datetime";
 import { Notice } from "../ui-kit/Notice";
 import { HelpTip } from "../ui-kit/HelpTip";
 import { Button } from "./ui/button";
+import CopyButton from "./CopyButton";
 
 // An Agent refused for its credential retries every five minutes, so a source
 // that has been quiet this long has been dealt with (or its Agent stopped).
@@ -56,8 +57,9 @@ export function rejectedAgents(events: AgentRejectEvent[], now: number): Rejecte
 
 /**
  * Says which hosts run an Agent this server refuses for its credential, and
- * what to do about it. Nothing is shown while there is none, or while the
- * list cannot be read.
+ * what to do about each: the ways out are on the notice, one line each, the
+ * command as a block to copy. Why it happens is the title's HelpTip. Nothing
+ * is shown while there is none, or while the list cannot be read.
  */
 export default function RejectedAgentsNotice({ onAddNode }: { onAddNode?: () => void }) {
   const { t } = useTranslation("nodes");
@@ -67,10 +69,11 @@ export default function RejectedAgentsNotice({ onAddNode }: { onAddNode?: () => 
   const { data } = usePolling(api.agentRejects, 30000);
   const agents = rejectedAgents(data?.items ?? [], Date.now());
   if (agents.length === 0) return null;
+  const uninstall = `gpuworks-agent uninstall --state ${t("rejects.stateDir")}`;
   return <Notice tone="warning"
-    title={<>{t("rejects.refused", { count: agents.length })} <HelpTip content={t("rejects.refusedHelp")} /></>}
+    title={<>{t("rejects.summary", { count: agents.length })} <HelpTip content={t("rejects.causeHelp")} /></>}
     action={onAddNode && <Button size="sm" variant="ghost" onClick={onAddNode}>{t("action.add")}</Button>}>
-    <ul className="m-0 list-none p-0">
+    <ul className="m-0 list-none p-0" data-part="sources">
       {agents.slice(0, SHOWN).map((agent) => <li key={`${agent.host}\n${agent.tokenPrefix}`}>
         {t("rejects.source", {
           host: agent.host || t("rejects.unknownAddress"),
@@ -82,5 +85,14 @@ export default function RejectedAgentsNotice({ onAddNode }: { onAddNode?: () => 
       </li>)}
       {agents.length > SHOWN && <li>{t("rejects.more", { count: agents.length - SHOWN })}</li>}
     </ul>
+    <div className="mt-2 flex flex-col gap-1" data-part="fixes">
+      <strong>{t("rejects.fixesTitle")}</strong>
+      <p className="m-0">{t("rejects.fix.readd")}</p>
+      <p className="m-0">{t("rejects.fix.uninstall")}</p>
+      <div className="flex items-start gap-1">
+        <pre tabIndex={0} aria-label={t("rejects.fix.uninstall")} className="m-0 flex-1 overflow-x-auto px-3 py-2">{uninstall}</pre>
+        <CopyButton text={uninstall} label={t("gpuIsolation.copy")} success={t("gpuIsolation.copied")} manualTitle={t("gpuIsolation.manualCopyTitle")} size="small" />
+      </div>
+    </div>
   </Notice>;
 }

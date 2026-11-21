@@ -1,6 +1,7 @@
 import { Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { AnalyticsRange } from "../../analyticsApi";
+import { HelpTip } from "../../ui-kit/HelpTip";
 
 /**
  * leadingBackfilled is how many leading buckets began before live accumulation did: those hold figures filled in
@@ -15,10 +16,11 @@ export function leadingBackfilled(range: AnalyticsRange): number {
   return range.buckets.filter((b) => b < range.live_since_ms).length;
 }
 
-// BackfillNote explains the shaded buckets; it is shown only when the range
-// starts before live accumulation did and there is filled-in history.
+// BackfillNote names the shaded buckets and keeps how they were computed in
+// its help; it is shown only when the range starts before live accumulation
+// did and there is filled-in history.
 export default function BackfillNote({ range, kind }: { range: AnalyticsRange; kind: "usage" | "quality" }) {
   const { t } = useTranslation("analytics");
   if (leadingBackfilled(range) === 0) return null;
-  return <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>{t(`backfill.${kind}`)}</Typography.Paragraph>;
+  return <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>{t("backfill.note")} <HelpTip content={t(`backfill.${kind}Help`)} /></Typography.Paragraph>;
 }

@@ -106,7 +106,6 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
           </li>
         )}
       </ul>
-      <span className="text-fg-muted gpu-memory-composition-note">{t("composition.note")}</span>
     </div>
   );
 }

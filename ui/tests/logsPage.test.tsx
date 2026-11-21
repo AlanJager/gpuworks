@@ -230,6 +230,11 @@ test("histogram renders bars for buckets whose rows have no level", async () => 
 	const h = (el: Element) => parseFloat((el as HTMLElement).style.height);
 	assert.ok(h(bars[0]) > h(bars[1]), `unstamped volume must dominate: ${h(bars[0])} vs ${h(bars[1])}`);
 	assert.ok(h(bars[0]) > 3, "the unstamped bar must be visible, not the 3% floor");
+	// What each colour stands for is a legend with a swatch, not a colour
+	// name inside the caption.
+	const legend = [...document.querySelectorAll('[data-part="legend"] li')];
+	assert.deepEqual(legend.map((li) => li.textContent), [i18n.t("logs:histogram.legend.error"), i18n.t("logs:histogram.legend.other")]);
+	assert.ok(legend.every((li) => (li.firstElementChild as HTMLElement).style.background));
 });
 
 // The service monitor page's per-line "→" link deep-links here with both an

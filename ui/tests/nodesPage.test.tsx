@@ -272,6 +272,51 @@ test("dismissing the fleet notice follows the account and target while leaving t
   await screen.findByRole("button", ignore);
 });
 
+test("the fleet notice states the mismatch, offers the batch upgrade to an admin and leads to the nodes it counts", async () => {
+  stubApi([onlineNode]);
+  const nodes = api.nodesPage;
+  api.nodesPage = async query => ({
+    ...await nodes(query),
+    agent_fleet: { target: "56cb84fa", align: 14, upgrade: 0, downgrade: 0, different_build: 14, check: 2 },
+  });
+  const previews: unknown[] = [];
+  api.agentUpgradePreview = async (body) => {
+    previews.push(body);
+    return { target_version: "56cb84fa", manifest_fingerprint: "sha256:sealed", node_uuids: [onlineNode.uuid!], counts: { eligible: 1 },
+      nodes: [{ node_uuid: onlineNode.uuid!, name: onlineNode.name!, from_version: "old", os: "linux", arch: "amd64", transport: "push", eligibility: "eligible" }] } as never;
+  };
+  const { container } = renderPage(101);
+  // The title is the problem in the operator's words; the server's build
+  // classes stay in the table filter.
+  assert.ok(await screen.findByText("14 nodes run an Agent version that differs from the server"));
+  assert.equal(container.querySelector('[data-part="facts"]')?.textContent, "Target version 56cb84fa · 14 can upgrade · 2 cannot upgrade for now");
+  assert.equal(screen.queryByText(/Different build/), null);
+  assert.equal(screen.getByRole("link", { name: "View these nodes" }).getAttribute("href"), "/nodes?agent_upgrade=align");
+  assert.equal(screen.getByRole("link", { name: "See why they cannot upgrade" }).getAttribute("href"), "/nodes?agent_upgrade=check");
+  fireEvent.click(await screen.findByRole("button", { name: "Upgrade all" }));
+  await waitFor(() => assert.deepEqual(previews, [{ scope: "all" }]));
+});
+
+test("a member sees the fleet mismatch without the upgrade action", async () => {
+  stubApi([onlineNode]);
+  api.me = async () => ({ role: "member" }) as never;
+  const nodes = api.nodesPage;
+  api.nodesPage = async query => ({ ...await nodes(query), agent_fleet: { target: "56cb84fa", align: 3, check: 0 } });
+  renderPage(101);
+  assert.ok(await screen.findByText("3 nodes run an Agent version that differs from the server"));
+  assert.equal(screen.queryByRole("button", { name: "Upgrade all" }), null);
+  assert.equal(screen.queryByRole("link", { name: "See why they cannot upgrade" }), null);
+});
+
+test("while a batch runs the fleet notice offers its progress, not a second batch", async () => {
+  stubApi([onlineNode]);
+  const nodes = api.nodesPage;
+  api.nodesPage = async query => ({ ...await nodes(query), agent_fleet: { target: "56cb84fa", align: 3, check: 0, run_id: 9 } });
+  renderPage(101);
+  assert.equal((await screen.findByRole("link", { name: "View upgrade progress" })).getAttribute("href"), "/nodes?agent_run=9");
+  assert.equal(screen.queryByRole("button", { name: "Upgrade all" }), null);
+});
+
 test("the latest-rejection column is gone from the table; the drawer keeps the detail", async () => {
   stubApi([offlineNode]);
   renderPage();

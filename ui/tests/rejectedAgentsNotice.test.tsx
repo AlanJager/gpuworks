@@ -31,7 +31,7 @@ await i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
-const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { api } = await import("../src/api.ts");
 const { default: RejectedAgentsNotice, rejectedAgents } = await import("../src/components/RejectedAgentsNotice.tsx");
 const { formatTime } = await import("../src/i18n/datetime.ts");
@@ -43,7 +43,7 @@ afterEach(async () => {
   await i18n.changeLanguage("en");
 });
 
-const en = locale("en", "nodes").rejects as Record<string, string>;
+const en = locale("en", "nodes").rejects as Record<string, string> & { fix: Record<string, string> };
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 // What GET /api/v1/agent/rejects answers: newest first, the remote with the
 // port of that attempt, the credential cut to the eight characters the server
@@ -101,13 +101,21 @@ test("refused Agents are named with host, credential prefix, attempts and times,
   api.agentRejects = (async () => list(events)) as never;
   let opened = 0;
   mount(() => { opened += 1; });
-  assert.ok(await screen.findByText(en.refused.replace("{{count}}", "2")));
-  const rows = [...document.querySelectorAll("li")].map((li) => li.textContent);
+  assert.ok(await screen.findByText(en.summary.replace("{{count}}", "2")));
+  const rows = [...document.querySelectorAll('[data-part="sources"] li')].map((li) => li.textContent);
   assert.deepEqual(rows, [
     `192.0.2.230 · credential 891e71d7… · 2 attempts · first ${formatTime(events[1].at)} · last ${formatTime(events[0].at)}`,
     `192.0.2.231 · credential ${en.emptyToken}… · 1 attempts · first ${formatTime(events[2].at)} · last ${formatTime(events[2].at)}`,
   ]);
   assert.ok(!document.body.textContent?.includes("41374"), "the per-attempt port is not shown");
+
+  // The ways out are on the notice, not behind the help: one line each, and
+  // the uninstall command as a block that names the state directory, since
+  // two Agents on one host differ only by it.
+  const fixes = document.querySelector('[data-part="fixes"]') as HTMLElement;
+  assert.deepEqual([...fixes.querySelectorAll("p")].map((p) => p.textContent), [en.fix.readd, en.fix.uninstall]);
+  assert.equal(fixes.querySelector("pre")?.textContent, `gpuworks-agent uninstall --state ${en.stateDir}`);
+  assert.ok(within(fixes).getByRole("button", { name: locale("en", "nodes").gpuIsolation.copy }));
 
   // Both controls are buttons a keyboard reaches: the explanation and the action.
   const help = screen.getByRole("button", { name: locale("en", "common").helpTip.label });
@@ -123,14 +131,14 @@ test("refused Agents are named with host, credential prefix, attempts and times,
 test("a viewer who cannot add nodes sees the refusals without the action", async () => {
   api.agentRejects = (async () => list([reject("192.0.2.230:41374", "891e71d7", 1)])) as never;
   mount();
-  assert.ok(await screen.findByText(en.refused.replace("{{count}}", "1")));
+  assert.ok(await screen.findByText(en.summary.replace("{{count}}", "1")));
   assert.equal(screen.queryByRole("button", { name: locale("en", "nodes").action.add }), null);
 });
 
 test("more sources than fit are counted, not listed", async () => {
   api.agentRejects = (async () => list(Array.from({ length: 7 }, (_, index) => reject(`192.0.2.${index + 1}:4000`, `tok${index}tok${index}`, index + 1)))) as never;
   mount();
-  assert.ok(await screen.findByText(en.refused.replace("{{count}}", "7")));
+  assert.ok(await screen.findByText(en.summary.replace("{{count}}", "7")));
   assert.equal(document.querySelectorAll("li").length, 6);
   assert.ok(screen.getByText(en.more.replace("{{count}}", "2")));
 });
@@ -153,7 +161,7 @@ test("the Chinese copy names the same facts", async () => {
   const event = reject("192.0.2.230:41374", "891e71d7", 1);
   api.agentRejects = (async () => list([event])) as never;
   mount();
-  assert.ok(await screen.findByText(zh.refused.replace("{{count}}", "1")));
+  assert.ok(await screen.findByText(zh.summary.replace("{{count}}", "1")));
   assert.ok(screen.getByText(`192.0.2.230 · 凭据 891e71d7… · 1 次 · 首次 ${formatTime(event.at)} · 最近 ${formatTime(event.at)}`));
 });
 
@@ -169,14 +177,17 @@ test("an address with no port, IPv6 included, is the host as it stands", () => {
   assert.deepEqual(groups.map((group) => [group.host, group.tokenPrefix, group.count]), [["fd00::88", "aaaaaaaa", 2], ["10.0.0.7", "bbbbbbbb", 1]]);
 });
 
-test("the help says what the server saw, the usual causes, and how to remove only the leftover Agent", () => {
+test("the title states the problem, the help holds only the causes, and the fix is its own text", () => {
   for (const lang of ["en", "zh"]) {
-    const rejects = locale(lang, "nodes").rejects as Record<string, string>;
+    const rejects = locale(lang, "nodes").rejects as Record<string, string> & { fix: Record<string, string> };
     // The title states the observation; it does not tell the operator to
     // uninstall an Agent that may be the node's own.
-    assert.ok(!/uninstall|卸载/i.test(rejects.refused), rejects.refused);
-    // Two Agents on one host differ by state directory: a bare uninstall
-    // would not say which one is meant.
-    assert.ok(rejects.refusedHelp.includes("gpuworks-agent uninstall --state "), rejects.refusedHelp);
+    assert.ok(!/uninstall|卸载/i.test(rejects.summary), rejects.summary);
+    // What to do is read on the notice. A fix inside the help is one the
+    // operator finds only by hovering, and a command there cannot be copied.
+    assert.ok(!/uninstall|卸载|gpuworks-agent/i.test(rejects.causeHelp), rejects.causeHelp);
+    assert.ok(/uninstall|卸载/i.test(rejects.fix.uninstall), rejects.fix.uninstall);
+    // The command is built by the component, not written into a sentence.
+    for (const text of [rejects.summary, rejects.fix.readd, rejects.fix.uninstall]) assert.ok(!text.includes("--state"), text);
   }
 });

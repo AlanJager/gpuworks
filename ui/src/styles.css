@@ -473,7 +473,6 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
 .gpu-memory-composition-legend li > .ant-typography { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gpu-memory-composition-legend li > .ant-typography:last-child { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
 .gpu-column-help { border-bottom: 1px dashed var(--fg-subtle); cursor: help; }
-.gpu-memory-composition-note { display: block; margin-top: 8px; font-size: 12px; }
 
 .ant-btn { transition: color .15s ease, background-color .15s ease, border-color .15s ease, transform .15s ease; }
 .ant-btn:active:not(:disabled) { transform: scale(.97); }

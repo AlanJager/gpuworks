@@ -17,7 +17,7 @@ check_max() {
 
 # Keep the command status: a failed audit must never look like zero findings.
 failed=0
-for kind in long caveat helper message sentences en inlinehelp; do
+for kind in long caveat helper message sentences clauses command en inlinehelp; do
   count=$(node scripts/ui_copy_audit.mjs "$kind")
   key=ui_copy_${kind}_strings
   [ "$kind" = inlinehelp ] && key=ui_copy_inline_help_refs

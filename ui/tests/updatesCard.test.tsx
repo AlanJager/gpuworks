@@ -394,12 +394,12 @@ test("the console upgrades the server after confirming and waits for the new ver
     const notice = (await screen.findByRole("link", { name: u.viewNodes })).closest("tr")!;
     assert.equal(notice.previousElementSibling, row(u.server));
     assert.equal(notice.nextElementSibling, row(u.images));
-    assert.match(notice.textContent ?? "", /Different builds \(2\)/);
-    assert.match(notice.textContent ?? "", /Pending alignment \(1\)/);
-    assert.doesNotMatch(notice.textContent ?? "", /downgrade/i);
-    assert.match(notice.textContent ?? "", /Currently unavailable for upgrade \(1\)/);
-    assert.doesNotMatch(notice.textContent ?? "", /offline/i);
-    assert.deepEqual(within(notice).getAllByRole("link").map(link => link.getAttribute("href")), ["/nodes"]);
+    // The notice says what is left to do in the operator's terms, not the
+    // server's build classes, and leads to the nodes it is about.
+    assert.match(notice.textContent ?? "", /Server upgraded to f90e474e; 3 nodes need their Agent upgraded/);
+    assert.match(notice.textContent ?? "", /3 can upgrade · 1 cannot upgrade for now/);
+    assert.doesNotMatch(notice.textContent ?? "", /downgrade|different build|alignment|offline/i);
+    assert.deepEqual(within(notice).getAllByRole("link").map(link => link.getAttribute("href")), ["/nodes?agent_upgrade=align"]);
     within(notice).getByRole("button", { name: "Close" }).focus();
     await userEvent.keyboard("{Enter}");
     await waitFor(() => assert.ok(!screen.queryByRole("link", { name: u.viewNodes }), "the upgrade notice is hidden"));
@@ -475,8 +475,8 @@ test("an uploaded release goes to the server upload endpoint", async () => {
     await userEvent.upload(inputs[0], new File([new Uint8Array([0x1f, 0x8b])], "gpuworks-f90e474e-linux-amd64.tar.gz", { type: "application/gzip" }));
     await waitFor(() => assert.deepEqual(s.calls, ["uploadServer:gpuworks-f90e474e-linux-amd64.tar.gz"]));
     const notice = (await screen.findByRole("link", { name: u.viewNodes })).closest("tr")!;
-    assert.match(notice.textContent ?? "", /Currently unavailable for upgrade \(2\)/);
-    assert.deepEqual(within(notice).getAllByRole("link").map(link => link.getAttribute("href")), ["/nodes"]);
+    assert.match(notice.textContent ?? "", /Server upgraded to f90e474e; 2 nodes cannot upgrade their Agent for now/);
+    assert.deepEqual(within(notice).getAllByRole("link").map(link => link.getAttribute("href")), ["/nodes?agent_upgrade=check"]);
   } finally {
     s.restore();
   }

@@ -8,7 +8,8 @@ import UpgradePreviewModal from "./UpgradePreviewModal";
 import UpgradeRunDrawer from "./UpgradeRunDrawer";
 import UpgradeSummary from "./UpgradeSummary";
 
-export default function AgentUpgradeManager({ isAdmin, requestedRunID, selectedNodeUUIDs, onStarted }: { isAdmin: boolean; requestedRunID?: number; selectedNodeUUIDs: string[]; onStarted?: () => void }) {
+/** upgradeAllRequest counts the times the page asked to upgrade every node; each new value opens the whole-fleet preview. */
+export default function AgentUpgradeManager({ isAdmin, requestedRunID, selectedNodeUUIDs, upgradeAllRequest = 0, onStarted }: { isAdmin: boolean; requestedRunID?: number; selectedNodeUUIDs: string[]; upgradeAllRequest?: number; onStarted?: () => void }) {
   const { t } = useTranslation("nodes");
   const [watch, setWatch] = useState(false);
   const runs = usePolling(() => api.agentUpgradeRuns(), watch ? 5000 : 0, [watch]);
@@ -33,10 +34,12 @@ export default function AgentUpgradeManager({ isAdmin, requestedRunID, selectedN
   const [error, setError] = useState("");
   const key = useRef("");
   const perform = useAgentUpgradeAction();
-  const loadPreview = (source?: number) => void perform(async () => {
+  const loadPreview = (source?: number, all = false) => void perform(async () => {
     setHistoryOpen(false); setSourceRun(source); setPreviewOpen(true); setPreview(null); setError(""); setPreviewLoading(true);
     try {
-      const result = source ? await api.continueAgentUpgradePreview(source) : await api.agentUpgradePreview({ node_uuids: [...selectedSnapshot.current] });
+      const result = source ? await api.continueAgentUpgradePreview(source) : await api.agentUpgradePreview(all ? { scope: "all" } : { node_uuids: [...selectedSnapshot.current] });
+      // The whole-fleet preview fixes its range like a selection does: previewing again asks about these nodes.
+      if (all) selectedSnapshot.current = [...result.node_uuids];
       key.current = newAgentUpgradeKey(); setPreview(result);
     } catch (e) { setError((e as Error).message); }
     finally { setPreviewLoading(false); }
@@ -58,6 +61,10 @@ export default function AgentUpgradeManager({ isAdmin, requestedRunID, selectedN
   });
   const latest = runs.data?.items.find(agentUpgradeRunning) ?? runs.data?.items[0];
   const blocker = runs.data?.blocked_by_item ?? latest?.blocked_by_item;
+  // A blocked fleet cannot start a batch; the history dialog names what blocks it.
+  const upgradeAll = useRef(() => {});
+  upgradeAll.current = () => { if (blocker) { setHistoryOpen(true); refresh(); } else loadPreview(undefined, true); };
+  useEffect(() => { if (isAdmin && upgradeAllRequest) upgradeAll.current(); }, [isAdmin, upgradeAllRequest]);
   return <>
     <Space wrap>
       {isAdmin && <Button disabled={!selectedNodeUUIDs.length || previewLoading || busy || !!blocker} onClick={() => {

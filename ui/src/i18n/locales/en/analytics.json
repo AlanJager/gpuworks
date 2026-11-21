@@ -48,8 +48,9 @@
   },
   "backfill": {
     "label": "Filled in from the request log",
-    "usage": "The shaded part was filled in once from the per-request log: it may contain sampled estimates and does not include /v1/messages or /v1/responses requests. The rest is counted live over every request, without sampling.",
-    "quality": "The shaded part was filled in once from the per-request log and may contain sampled estimates. The rest is counted live over every request, without sampling."
+    "note": "The shaded period was filled in from the request log",
+    "usageHelp": "Figures for this period were filled in from the per-request log: they may contain sampled estimates and do not include /v1/messages or /v1/responses requests. The rest is summed by the hour over every request.",
+    "qualityHelp": "Figures for this period were filled in from the per-request log and may contain sampled estimates. The rest is summed by the hour over every request."
   },
   "names": {
     "deletedKey": "Deleted API token #{{id}}",
@@ -274,7 +275,7 @@
         "node": "Details (by node)",
         "gpu": "Details (by card)"
       },
-      "hint": "Click a header to sort; tinted rows average below {{threshold}}% utilization",
+      "idleHelp": "Low load means mean utilization below {{threshold}}% over the period.",
       "unit": {
         "model": "Card model",
         "node": "Node",
@@ -328,7 +329,7 @@
     },
     "table": {
       "title": "By deployment",
-      "hint": "Click a header to sort. Token figures are the whole deployment's.",
+      "hint": "Token figures are the whole deployment's",
       "deployment": "Deployment",
       "model": "Card model",
       "instances": "Replicas (mean / max)",

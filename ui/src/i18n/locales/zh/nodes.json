@@ -182,10 +182,16 @@
     }
   },
   "rejects": {
-    "refused": "{{count}} 个 Agent 使用本服务端不认识的凭据连接，已被拒绝",
-    "refusedHelp": "列出的主机上有 Agent 用服务端没有记录的节点凭据连接。常见原因：节点移除或重新添加后旧 Agent 仍在运行；主机上另一个状态目录里还有 Agent；服务端恢复过备份。应当是节点就重新添加，是残留 Agent 就卸载：gpuworks-agent uninstall --state <状态目录>。只列最近 30 分钟。",
+    "summary": "{{count}} 个 Agent 的节点凭据与本服务端不一致，无法接入",
+    "causeHelp": "常见原因：节点移除或重新添加后，旧 Agent 仍在运行；主机上另一个状态目录里还有 Agent；服务端恢复过备份。只列最近 30 分钟内的连接。",
     "source": "{{host}} · 凭据 {{prefix}}… · {{count}} 次 · 首次 {{first}} · 最近 {{last}}",
     "more": "另有 {{count}} 个未显示",
+    "fixesTitle": "按主机的实际情况处理",
+    "fix": {
+      "readd": "主机需要接入本服务端：重新添加节点。",
+      "uninstall": "主机上是残留的 Agent：在该主机上执行下面的命令卸载。"
+    },
+    "stateDir": "<状态目录>",
     "emptyToken": "（空）",
     "unknownAddress": "未知地址"
   },
@@ -858,7 +864,17 @@
     "loadError": "节点版本信息获取失败",
     "retry": "重试",
     "noTarget": "无法识别当前 Server 的 Agent 目标版本",
-    "target": "Agent 目标版本 {{target}}",
+    "mismatch": "{{count}} 台节点的 Agent 版本与服务端不一致",
+    "blockedOnly": "{{count}} 台节点的 Agent 暂不可升级",
+    "upgrading": "Agent 升级批次正在执行",
+    "fact": {
+      "target": "目标版本 {{target}}",
+      "align": "可升级 {{count}} 台",
+      "check": "暂不可升级 {{count}} 台"
+    },
+    "upgradeAll": "批量升级",
+    "viewNodes": "查看这些节点",
+    "viewBlocked": "查看不可升级原因",
     "progress": "查看升级进度",
     "filter": "Agent 状态",
     "ignore": "忽略本次提示",
@@ -872,13 +888,6 @@
       "check": "暂不可升级",
       "all": "全部",
       "align": "版本不同"
-    },
-    "count": {
-      "check": "暂不可升级 {{count}} 台",
-      "upgrade": "待升级 {{count}} 台",
-      "downgrade": "待对齐 {{count}} 台",
-      "different_build": "构建不同 {{count}} 台",
-      "align": "版本不同 {{count}} 台"
     }
   },
   "batchUpgrade": {
