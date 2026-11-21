@@ -474,6 +474,15 @@ check-architecture:
 check-change-record:
 	CGO_ENABLED=0 $(GO) run ./scripts/changerecord
 
+## code-health-report: where the tree got harder to change since
+## CODE_HEALTH_SINCE: churn, per-function complexity, deferrals
+## (scripts/codehealth). A report for comparing periods; it gates nothing.
+CODE_HEALTH_SINCE ?= 7 days ago
+CODE_HEALTH_HEAD ?= HEAD
+.PHONY: code-health-report
+code-health-report:
+	@CGO_ENABLED=0 $(GO) run ./scripts/codehealth -since "$(CODE_HEALTH_SINCE)" -head "$(CODE_HEALTH_HEAD)"
+
 ## check-api-conventions: response envelopes and snake_case field names in
 ## internal/server/api, read off the types (docs/reference/api-conventions.md).
 check-api-conventions:

@@ -42,47 +42,7 @@ func boundUpstreamError(resp *http.Response) error {
 	if len(raw) > maxUpstreamErrorBytes || resp.ContentLength > maxUpstreamErrorBytes {
 		text = "The upstream error was too large to display. Check the input and selected model."
 	} else if len(raw) > 0 {
-		var payload struct {
-			Error   json.RawMessage `json:"error"`
-			Message string          `json:"message"`
-			Detail  json.RawMessage `json:"detail"`
-		}
-		if json.Unmarshal(raw, &payload) == nil {
-			message := payload.Message
-			var nested struct {
-				Message string `json:"message"`
-			}
-			if json.Unmarshal(payload.Error, &nested) == nil && nested.Message != "" {
-				message = nested.Message
-			} else {
-				var value string
-				if json.Unmarshal(payload.Error, &value) == nil {
-					message = value
-				}
-			}
-			if message == "" {
-				var value string
-				if json.Unmarshal(payload.Detail, &value) == nil {
-					message = value
-				} else {
-					var details []struct {
-						Message string `json:"msg"`
-					}
-					if json.Unmarshal(payload.Detail, &details) == nil {
-						for i, detail := range details {
-							if i == 4 {
-								break
-							}
-							if detail.Message != "" {
-								if message != "" {
-									message += "; "
-								}
-								message += detail.Message
-							}
-						}
-					}
-				}
-			}
+		if message, isJSON := upstreamErrorMessage(raw); isJSON {
 			if message != "" {
 				text = boundedDiagnostic(message)
 			}
@@ -106,6 +66,59 @@ func boundUpstreamError(resp *http.Response) error {
 	resp.TransferEncoding = nil
 	resp.Trailer = nil
 	return nil
+}
+
+// upstreamErrorMessage finds the human-readable message in an engine's JSON
+// error object: the nested or plain error, else the top-level message, else
+// the detail. isJSON is false when raw is not a JSON object of that shape.
+func upstreamErrorMessage(raw []byte) (message string, isJSON bool) {
+	var payload struct {
+		Error   json.RawMessage `json:"error"`
+		Message string          `json:"message"`
+		Detail  json.RawMessage `json:"detail"`
+	}
+	if json.Unmarshal(raw, &payload) != nil {
+		return "", false
+	}
+	message = payload.Message
+	var nested struct {
+		Message string `json:"message"`
+	}
+	var plain string
+	if json.Unmarshal(payload.Error, &nested) == nil && nested.Message != "" {
+		message = nested.Message
+	} else if json.Unmarshal(payload.Error, &plain) == nil {
+		message = plain
+	}
+	if message == "" {
+		message = upstreamDetailMessage(payload.Detail)
+	}
+	return message, true
+}
+
+// upstreamDetailMessage reads a detail that is one string, or a validation
+// list whose first four messages are joined.
+func upstreamDetailMessage(detail json.RawMessage) string {
+	var plain string
+	if json.Unmarshal(detail, &plain) == nil {
+		return plain
+	}
+	var details []struct {
+		Message string `json:"msg"`
+	}
+	if json.Unmarshal(detail, &details) != nil {
+		return ""
+	}
+	var messages []string
+	for i, d := range details {
+		if i == 4 {
+			break
+		}
+		if d.Message != "" {
+			messages = append(messages, d.Message)
+		}
+	}
+	return strings.Join(messages, "; ")
 }
 
 func boundedDiagnostic(raw string) string {
