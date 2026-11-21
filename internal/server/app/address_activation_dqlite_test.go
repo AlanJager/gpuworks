@@ -46,7 +46,7 @@ func TestRuntimeDqliteAddressActivationRecoversPublication(t *testing.T) {
 	if _, err := os.Lstat(path + ".maintenance"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("rejected listener conflict published maintenance: %v", err)
 	}
-	st, err := store.OpenRuntime(ctx, path, bus.New())
+	st, err := store.OpenRuntime(ctx, path, bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestRuntimeDqliteAddressActivationRecoversPublication(t *testing.T) {
 			if err := readAddressActivation(path+".maintenance", &intent); err != nil {
 				t.Fatal(err)
 			}
-			if runtime, err := store.OpenRuntime(ctx, path, bus.New()); err == nil {
+			if runtime, err := store.OpenRuntime(ctx, path, bus.New(), store.ReplicatedBackend()); err == nil {
 				_ = runtime.Close()
 				t.Fatal("maintenance admitted normal runtime")
 			}
@@ -176,7 +176,7 @@ func TestRuntimeDqliteAddressActivationRecoversPublication(t *testing.T) {
 	}
 	withStore := func(t *testing.T, check func(*store.Store)) {
 		t.Helper()
-		st, err := store.OpenRuntime(ctx, path, bus.New())
+		st, err := store.OpenRuntime(ctx, path, bus.New(), store.ReplicatedBackend())
 		if err != nil {
 			t.Fatal(err)
 		}

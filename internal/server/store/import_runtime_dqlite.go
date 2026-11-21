@@ -122,7 +122,7 @@ func ImportRuntimeSQLite(ctx context.Context, dataDir, dbPath string) (result st
 	if err != nil {
 		return operationDir, err
 	}
-	target, err := OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New())
+	target, err := OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), ReplicatedBackend())
 	if err != nil {
 		return operationDir, errors.Join(err, db.Close())
 	}

@@ -17,19 +17,29 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/cluster"
 )
 
-// openRuntimeDatabase opens the Linux single-member runtime database. SQL fixtures use
-// Open explicitly; runtime startup never silently falls back to SQLite.
-func openRuntimeDatabase(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
+// ReplicatedBackend is the replicated database of a server built with the
+// cluster runtime. A caller that wants it passes it; a runtime open without
+// it is SQLite.
+func ReplicatedBackend() RuntimeBackend {
+	return RuntimeBackend{database: replicatedRuntimeDatabase{}}
+}
+
+// replicatedRuntimeDatabase is the Linux dqlite backend.
+type replicatedRuntimeDatabase struct{}
+
+// open opens the single-member runtime database. It never falls back to
+// SQLite: an existing SQLite file is refused.
+func (replicatedRuntimeDatabase) open(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
 	return openRuntimeDatabaseMode(ctx, path, b, existing, false)
 }
 
-// openRuntimeDatabaseWith is the single-member open with OpenWith's options.
+// openWith is the single-member open with OpenWith's options.
 // The policy is checked again once dqlite has created its directory.
-func openRuntimeDatabaseWith(ctx context.Context, path string, b *bus.Bus, o OpenOptions) (*Store, error) {
+func (d replicatedRuntimeDatabase) openWith(ctx context.Context, path string, b *bus.Bus, o OpenOptions) (*Store, error) {
 	if err := checkRuntimeDirectoryPolicy(path, o.Policies...); err != nil {
 		return nil, err
 	}
-	st, err := openRuntimeDatabase(ctx, path, b, false)
+	st, err := d.open(ctx, path, b, false)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +52,7 @@ func openRuntimeDatabaseWith(ctx context.Context, path string, b *bus.Bus, o Ope
 	return st, nil
 }
 
-func openRuntimeMigrationDatabase(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
+func (replicatedRuntimeDatabase) openForMigration(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
 	if !existing {
 		return nil, errors.New("offline migration requires an existing database")
 	}
@@ -75,7 +85,7 @@ func openRuntimeDatabaseMode(ctx context.Context, path string, b *bus.Bus, exist
 	if err != nil {
 		return nil, err
 	}
-	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, b)
+	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, b, ReplicatedBackend())
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -143,11 +153,11 @@ func retryStaleConnection(ctx context.Context, write func() error) error {
 	}
 }
 
-func openEstablishedClusterRuntimeDatabase(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
+func (replicatedRuntimeDatabase) openEstablishedCluster(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
 	return openExpandedRuntimeDatabase(ctx, path, b, existing, false)
 }
 
-func openLegacyExpandedRuntimeDatabase(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
+func (replicatedRuntimeDatabase) openLegacyExpanded(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
 	return openExpandedRuntimeDatabase(ctx, path, b, existing, true)
 }
 
@@ -228,7 +238,7 @@ func JoinedTransportAuthorizationRefresher(ctx context.Context, db *cluster.Data
 	if !validClusterDigest(clusterID, 16) || !validClusterDigest(pin, 32) || !validClusterDigest(key, 32) {
 		return nil, ErrClusterIdentityConflict
 	}
-	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New())
+	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), ReplicatedBackend())
 	if err != nil {
 		return nil, err
 	}

@@ -97,7 +97,7 @@ func TestClosedMaterialEligibilityCloseCancelsAndJoinsProof(t *testing.T) {
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
-	db, err := store.OpenRuntime(t.Context(), filepath.Join(t.TempDir(), "gpuworks.db"), bus.New())
+	db, err := store.OpenRuntime(t.Context(), filepath.Join(t.TempDir(), "gpuworks.db"), bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestClosedMaterialEligibilityInvalidationAndRepeatedRunOwner(t *testing.T) 
 }
 
 func TestClosedMemberBusinessWritesRequireExplicitAdmission(t *testing.T) {
-	st, err := store.OpenRuntime(t.Context(), filepath.Join(t.TempDir(), "gpuworks.db"), bus.New())
+	st, err := store.OpenRuntime(t.Context(), filepath.Join(t.TempDir(), "gpuworks.db"), bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestClosedMemberBusinessWritesRequireExplicitAdmission(t *testing.T) {
 }
 
 func TestClosedMemberProofFailureAndExpiryLatchBusinessWritesClosed(t *testing.T) {
-	st, err := store.OpenRuntime(t.Context(), filepath.Join(t.TempDir(), "gpuworks.db"), bus.New())
+	st, err := store.OpenRuntime(t.Context(), filepath.Join(t.TempDir(), "gpuworks.db"), bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -129,12 +129,14 @@ func TestContractBootRollsBackAnInterruptedUpgrade(t *testing.T) {
 	if err := os.WriteFile(s.stateFile("acme_fake"), []byte("v1 rows"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The files are reopened below on the backend the server ran on.
+	backend := sv.a.Store().RuntimeBackend()
 	sv.stop()
 
 	// The disk as a server leaves it when it dies after making 2.0.0
 	// current: the marker, the snapshot, the new version current, and
 	// data the new version changed.
-	st, err := store.OpenRuntime(context.Background(), s.db, bus.New())
+	st, err := store.OpenRuntime(context.Background(), s.db, bus.New(), backend)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,7 +20,7 @@ func TestNativeCatalogPackageGCCommitsTheBarrier(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "gpuworks.db")
-	st, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{})
+	st, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Backend: ReplicatedBackend()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestNativeCatalogPackageGCCommitsTheBarrier(t *testing.T) {
 	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{})
+	reopened, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Backend: ReplicatedBackend()})
 	if err != nil {
 		t.Fatal(err)
 	}

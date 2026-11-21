@@ -31,7 +31,7 @@ func TestNativeOpenRuntimeWithAppliesExtensionSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "gpuworks.db")
-	opts := OpenOptions{Extensions: []MigrationSet{quotaSet()}}
+	opts := OpenOptions{Extensions: []MigrationSet{quotaSet()}, Backend: ReplicatedBackend()}
 	st, err := OpenRuntimeWith(ctx, path, bus.New(), opts)
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestNativeOpenRuntimeWithAppliesExtensionSchemas(t *testing.T) {
 	// A restart applies nothing again and adds a later step.
 	longer := quotaSet()
 	longer.Migrations = append(longer.Migrations, createStep(3, "items note", "ALTER TABLE ee_quota_items ADD COLUMN note TEXT"))
-	again, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{longer}})
+	again, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{longer}, Backend: ReplicatedBackend()})
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestNativeOpenRuntimeWithAppliesExtensionSchemas(t *testing.T) {
 		t.Fatalf("older extension set = %v, want ErrNamespaceTooNew", err)
 	}
 	// The refused open released its lease and its database.
-	final, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{longer}})
+	final, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{longer}, Backend: ReplicatedBackend()})
 	if err != nil {
 		t.Fatalf("open after a refused open: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestNativeOpenRuntimeWithAppliesExtensionSchemas(t *testing.T) {
 	if err := os.Chmod(path+".dqlite", 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{}); err == nil || !strings.Contains(err.Error(), "only its owner can access") {
+	if _, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Backend: ReplicatedBackend()}); err == nil || !strings.Contains(err.Error(), "only its owner can access") {
 		t.Fatalf("group-readable native directory = %v", err)
 	}
 	if err := os.Chmod(path+".dqlite", 0o700); err != nil {
@@ -101,7 +101,7 @@ func TestNativeOpenRuntimeWithAppliesExtensionSchemas(t *testing.T) {
 	if err := os.WriteFile(path+".join", []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{}); err == nil || !strings.Contains(err.Error(), "cluster join is incomplete") {
+	if _, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Backend: ReplicatedBackend()}); err == nil || !strings.Contains(err.Error(), "cluster join is incomplete") {
 		t.Fatalf("open beside a join marker = %v", err)
 	}
 }
@@ -113,10 +113,10 @@ func TestNativeOpenRuntimeWithRollsBackAFailedExtensionStep(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gpuworks.db")
 	broken := quotaSet()
 	broken.Migrations[1] = createStep(2, "items key index", "CREATE INDEX ee_quota_items_by_key ON ee_quota_missing (key)")
-	if _, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{broken}}); err == nil {
+	if _, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{broken}, Backend: ReplicatedBackend()}); err == nil {
 		t.Fatal("open with a failing extension step succeeded")
 	}
-	st, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{quotaSet()}})
+	st, err := OpenRuntimeWith(ctx, path, bus.New(), OpenOptions{Extensions: []MigrationSet{quotaSet()}, Backend: ReplicatedBackend()})
 	if err != nil {
 		t.Fatalf("open after the failed step: %v", err)
 	}

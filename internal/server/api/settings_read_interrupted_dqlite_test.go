@@ -58,7 +58,7 @@ func TestNativeGetSettingsRetriesInterruptedReplicatedRead(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = db.Close() })
-			st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New())
+			st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), store.ReplicatedBackend())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -99,6 +99,12 @@ func TestNativeReplicatedReadInterruptedClassification(t *testing.T) {
 	if !store.ReplicatedReadInterrupted(dqlitedriver.Error{Code: 3, Message: "key"}) {
 		t.Fatal("dqlite failure frame not recognized")
 	}
+	if !store.ReplicatedBackend().ReplicatedReadInterrupted(dqlitedriver.Error{Code: 3, Message: "key"}) {
+		t.Fatal("the replicated backend does not recognize a dqlite failure frame")
+	}
+	if (store.RuntimeBackend{}).ReplicatedReadInterrupted(dqlitedriver.Error{Code: 3, Message: "key"}) {
+		t.Fatal("the SQLite backend classified a dqlite failure frame")
+	}
 	for _, err := range []error{context.Canceled, context.DeadlineExceeded, sql.ErrNoRows, store.ErrBusinessWritesClosed} {
 		if store.ReplicatedReadInterrupted(err) {
 			t.Fatalf("%v treated as an interrupted read", err)
@@ -108,7 +114,7 @@ func TestNativeReplicatedReadInterruptedClassification(t *testing.T) {
 
 // Writes do not inherit the read-only interruption class.
 func TestNativeSettingsWriteDoesNotRetryInterruptedReadClass(t *testing.T) {
-	if transientClusterReadError(dqlitedriver.Error{Code: 3, Message: "key"}) {
+	if transientClusterReadError(store.ReplicatedBackend(), dqlitedriver.Error{Code: 3, Message: "key"}) {
 		t.Fatal("write retry classifier widened")
 	}
 }

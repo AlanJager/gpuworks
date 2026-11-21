@@ -1,5 +1,3 @@
-//go:build !linux || !dqlite
-
 package store
 
 import (
@@ -16,17 +14,19 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 )
 
-// openRuntimeDatabase retains native SQLite on macOS and in the explicit pure-Go test
-// build. Production Linux dqlite builds use runtime_dqlite.go.
-func openRuntimeDatabase(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
+// sqliteRuntimeDatabase is the SQLite backend: one file beside the server,
+// no members. The opens that only a cluster has are refused.
+type sqliteRuntimeDatabase struct{}
+
+func (d sqliteRuntimeDatabase) open(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
 	if existing {
 		return nil, errors.New("offline cluster metadata operations require native Linux dqlite")
 	}
-	return openRuntimeDatabaseWith(ctx, path, b, OpenOptions{})
+	return d.openWith(ctx, path, b, OpenOptions{})
 }
 
-// openRuntimeDatabaseWith is the SQLite fallback with OpenWith's options.
-func openRuntimeDatabaseWith(ctx context.Context, path string, b *bus.Bus, o OpenOptions) (*Store, error) {
+// openWith refuses to create a SQLite file beside a replicated database.
+func (sqliteRuntimeDatabase) openWith(ctx context.Context, path string, b *bus.Bus, o OpenOptions) (*Store, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func openRuntimeDatabaseWith(ctx context.Context, path string, b *bus.Bus, o Ope
 	return OpenWith(path, b, o)
 }
 
-func openRuntimeMigrationDatabase(ctx context.Context, path string, b *bus.Bus, existing bool) (_ *Store, resultErr error) {
+func (sqliteRuntimeDatabase) openForMigration(ctx context.Context, path string, b *bus.Bus, existing bool) (_ *Store, resultErr error) {
 	if !existing || path == "" || path == ":memory:" || strings.HasPrefix(path, "file:") {
 		return nil, errors.New("offline migration requires an existing filesystem database")
 	}
@@ -78,10 +78,18 @@ func openRuntimeMigrationDatabase(ctx context.Context, path string, b *bus.Bus, 
 	return st, nil
 }
 
-func openEstablishedClusterRuntimeDatabase(context.Context, string, *bus.Bus, bool) (*Store, error) {
+func (sqliteRuntimeDatabase) openEstablishedCluster(context.Context, string, *bus.Bus, bool) (*Store, error) {
 	return nil, errors.New("established cluster runtime requires native Linux dqlite")
 }
 
-func openLegacyExpandedRuntimeDatabase(context.Context, string, *bus.Bus, bool) (*Store, error) {
+func (sqliteRuntimeDatabase) openLegacyExpanded(context.Context, string, *bus.Bus, bool) (*Store, error) {
 	return nil, errors.New("legacy expanded cluster runtime requires native Linux dqlite")
 }
+
+// leaderUnavailable is always false: a local SQLite connection has no leader
+// to elect.
+func (sqliteRuntimeDatabase) leaderUnavailable(error) bool { return false }
+
+// readInterrupted is always false: a local SQLite read has no leadership
+// transfer to retry across.
+func (sqliteRuntimeDatabase) readInterrupted(error) bool { return false }

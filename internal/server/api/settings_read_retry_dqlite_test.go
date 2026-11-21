@@ -55,7 +55,7 @@ func TestNativeGetSettingsRetriesGatewayEOFOnLeaderStepdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New())
+	st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		t.Fatal(err)
 	}

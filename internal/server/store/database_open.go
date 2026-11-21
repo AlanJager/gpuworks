@@ -31,6 +31,10 @@ type OpenOptions struct {
 	// transaction with its marker; ExtensionTables then hands out their
 	// tables. None leaves the database exactly as Open does.
 	Extensions []MigrationSet
+	// Backend is the database the runtime opens (OpenRuntimeWith,
+	// OpenExpandedRuntimeWith) run on; the zero value is SQLite. Open and
+	// OpenWith are SQLite whatever it says.
+	Backend RuntimeBackend
 }
 
 // OpenWith is Open with extension schemas.

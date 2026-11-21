@@ -155,7 +155,7 @@ func (s *LegacyJoinedRaftSession) openClassifiedStore(ctx context.Context, b *bu
 	if !validClusterDigest(clusterID, 16) || !validClusterDigest(pin, 32) || !validClusterDigest(key, 32) {
 		return nil, false, ErrClusterIdentityConflict
 	}
-	st, err := OpenReplicated(ctx, s.db.SQL, s.db.Scheduling, b)
+	st, err := OpenReplicated(ctx, s.db.SQL, s.db.Scheduling, b, ReplicatedBackend())
 	if err != nil {
 		return nil, false, err
 	}

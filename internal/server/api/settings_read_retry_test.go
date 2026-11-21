@@ -40,7 +40,7 @@ func TestTransientClusterReadErrorClasses(t *testing.T) {
 		{"other", errors.New("disk I/O error"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := transientClusterReadError(tc.err); got != tc.want {
+			if got := transientClusterReadError(store.RuntimeBackend{}, tc.err); got != tc.want {
 				t.Fatalf("transientClusterReadError(%v)=%t want %t", tc.err, got, tc.want)
 			}
 		})
@@ -51,7 +51,7 @@ func TestAllSettingsReadRetryRecoversTransientEOF(t *testing.T) {
 	want := map[string]string{"k": `"v"`}
 	var calls atomic.Int32
 	started := time.Now()
-	got, err := allSettingsWithReadRetry(t.Context(), func() (map[string]string, error) {
+	got, err := allSettingsWithReadRetry(t.Context(), store.RuntimeBackend{}, func() (map[string]string, error) {
 		if calls.Add(1) <= 2 {
 			return nil, io.EOF
 		}
@@ -72,7 +72,7 @@ func TestAllSettingsReadRetryExhaustsBudgetWithLastError(t *testing.T) {
 	const budget = 300 * time.Millisecond
 	var calls atomic.Int32
 	started := time.Now()
-	_, err := allSettingsWithReadRetry(t.Context(), func() (map[string]string, error) {
+	_, err := allSettingsWithReadRetry(t.Context(), store.RuntimeBackend{}, func() (map[string]string, error) {
 		return nil, fmt.Errorf("transient failure %d: %w", calls.Add(1), io.EOF)
 	}, budget)
 	elapsed := time.Since(started)
@@ -87,7 +87,7 @@ func TestAllSettingsReadRetryExhaustsBudgetWithLastError(t *testing.T) {
 func TestAllSettingsReadRetryKeepsNonTransientError(t *testing.T) {
 	original := errors.New("UNIQUE constraint failed: settings.key")
 	var calls atomic.Int32
-	_, err := allSettingsWithReadRetry(t.Context(), func() (map[string]string, error) {
+	_, err := allSettingsWithReadRetry(t.Context(), store.RuntimeBackend{}, func() (map[string]string, error) {
 		calls.Add(1)
 		return nil, original
 	}, 2*time.Second)
@@ -100,7 +100,7 @@ func TestAllSettingsReadRetryStopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	var calls atomic.Int32
 	started := time.Now()
-	_, err := allSettingsWithReadRetry(ctx, func() (map[string]string, error) {
+	_, err := allSettingsWithReadRetry(ctx, store.RuntimeBackend{}, func() (map[string]string, error) {
 		if calls.Add(1) == 2 {
 			cancel()
 		}

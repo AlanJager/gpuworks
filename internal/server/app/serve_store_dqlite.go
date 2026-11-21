@@ -105,7 +105,9 @@ func openServeStore(cfg Config, events *bus.Bus, log *slog.Logger) (*store.Store
 	// openClosedMember ran first; the store rechecks the join marker under
 	// its runtime lease.
 	ctx, cancel := context.WithTimeout(context.Background(), serveStoreOpenTimeout)
-	st, err := store.OpenRuntimeWith(ctx, cfg.DBPath, events, storeOptions(cfg, policy))
+	options := storeOptions(cfg, policy)
+	options.Backend = store.ReplicatedBackend()
+	st, err := store.OpenRuntimeWith(ctx, cfg.DBPath, events, options)
 	cancel()
 	if err != nil {
 		return nil, "", nil, err

@@ -22,7 +22,7 @@ func OpenJoinedMemberStore(ctx context.Context, db *cluster.Database, b *bus.Bus
 	if clusterID == "" || pin == "" {
 		return nil, ErrClusterIdentityConflict
 	}
-	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, b)
+	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, b, ReplicatedBackend())
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func openOwnedMemberStore(ctx context.Context, db *cluster.Database, b *bus.Bus,
 	if !validClusterDigest(clusterID, 16) || !validClusterDigest(pin, 32) || !validClusterDigest(key, 32) {
 		return nil, ErrClusterIdentityConflict
 	}
-	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, b)
+	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, b, ReplicatedBackend())
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,7 @@ func TestSettingsStoreErrorStatusSeparatesLostConnectionFromStoreFailure(t *test
 		fmt.Errorf("read settings: %w", driver.ErrBadConn),
 		errors.Join(driver.ErrBadConn, errors.New("leader stepped down")),
 	} {
-		if got := settingsStoreErrorStatus(err); got != http.StatusServiceUnavailable {
+		if got := settingsStoreErrorStatus(store.RuntimeBackend{}, err); got != http.StatusServiceUnavailable {
 			t.Errorf("%v status=%d", err, got)
 		}
 	}
@@ -35,11 +35,11 @@ func TestSettingsStoreErrorStatusSeparatesLostConnectionFromStoreFailure(t *test
 		errors.New("EOF"),
 		errors.New("driver: bad connection"),
 	} {
-		if got := settingsStoreErrorStatus(err); got != http.StatusInternalServerError {
+		if got := settingsStoreErrorStatus(store.RuntimeBackend{}, err); got != http.StatusInternalServerError {
 			t.Errorf("%v status=%d", err, got)
 		}
 	}
-	if lostDatabaseConnection(nil) {
+	if lostDatabaseConnection(store.RuntimeBackend{}, nil) {
 		t.Error("nil error reported as a lost connection")
 	}
 }

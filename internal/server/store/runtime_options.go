@@ -26,7 +26,7 @@ func OpenRuntimeWith(ctx context.Context, path string, b *bus.Bus, o OpenOptions
 		return nil, err
 	}
 	return openRuntimeWith(ctx, path, b, false, func(ctx context.Context, path string, b *bus.Bus, _ bool) (*Store, error) {
-		return openRuntimeDatabaseWith(ctx, path, b, o)
+		return o.Backend.runtimeDatabase().openWith(ctx, path, b, o)
 	})
 }
 
@@ -40,7 +40,7 @@ func OpenExpandedRuntimeWith(ctx context.Context, path string, b *bus.Bus, o Ope
 	if err := checkRuntimeDirectoryPolicy(path, o.Policies...); err != nil {
 		return nil, err
 	}
-	st, err := OpenExpandedRuntime(ctx, path, b)
+	st, err := OpenExpandedRuntime(ctx, path, b, o.Backend)
 	if err != nil {
 		return nil, err
 	}

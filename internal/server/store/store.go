@@ -90,9 +90,12 @@ type Store struct {
 	eventRetentionBatchHook func(deleted int64)
 	// schedulingDB is the local-only database connection for replicated
 	// scheduling decisions. SQLite single-member stores use db when nil.
-	schedulingDB                  *gorm.DB
-	localSchedulingLeader         func(context.Context) (bool, error)
-	closeBackend                  func() error
+	schedulingDB          *gorm.DB
+	localSchedulingLeader func(context.Context) (bool, error)
+	closeBackend          func() error
+	// backend is the database these connections belong to; the zero value
+	// is SQLite (runtime_backend.go).
+	backend                       RuntimeBackend
 	refreshTransportAuthorization func(context.Context) error
 	confirmTransportAuthorization transportAuthorizationConfirmation
 	grantClusterMembership        clusterMembershipGrant
