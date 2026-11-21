@@ -78,6 +78,46 @@ class TranslationTest(unittest.TestCase):
             "unknown translation-reviewer marker",
         ])
 
+    def test_write_settles_a_conflict_in_the_marker_block_and_refuses_one_in_the_text(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ("docs", "docs-en"):
+                (root / name).mkdir()
+            source, translated = root / "docs/guide.md", root / "docs-en/guide.md"
+            source.write_text("# 指南\n\n```bash\n# 检查\nmake test\n```\n\n两个分支各加了一句。\n")
+            body = "# Guide\n\n```bash\n# Check\nmake test\n```\n\nBoth branches added a sentence.\n"
+            code = "<!-- translation-localized-code-block: " + "c" * 64 + " " + "d" * 64 + " comment -->\n"
+            ours = "<!-- translation-source-sha256: " + "a" * 64 + " -->\n" + code
+            theirs = "<!-- translation-source-sha256: " + "b" * 64 + " -->\n" + code
+            base = "<!-- translation-source-sha256: " + "e" * 64 + " -->\n" + code
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            for conflict in (
+                "<<<<<<< HEAD\n" + ours + "=======\n" + theirs + ">>>>>>> feature\n",
+                "<<<<<<< HEAD\n" + ours + "||||||| 4a0f5b4ae\n" + base + "=======\n" + theirs + ">>>>>>> feature\n",
+            ):
+                translated.write_text(body + "\n" + conflict)
+                with redirect_stderr(io.StringIO()):
+                    check_translations.write(root, ["guide.md"])
+                self.assertEqual(translated.read_text(),
+                                 body + "\n<!-- translation-source-sha256: " + digest + " -->\n" + code)
+            # The marker block is the only place a conflict is settled for the author.
+            for page, text in (
+                (translated, "# Guide\n\n<<<<<<< HEAD\nOurs.\n=======\nTheirs.\n>>>>>>> feature\n\n" + ours),
+                (translated, "# Guide\n\n<<<<<<< HEAD\nOurs.\n\n" + ours + "=======\nTheirs.\n\n" + theirs + ">>>>>>> feature\n"),
+                (source, "# 指南\n\n<<<<<<< HEAD\n我们的。\n=======\n他们的。\n>>>>>>> feature\n"),
+            ):
+                translated.write_text(body + "\n" + ours)
+                page.write_text(text)
+                before = translated.read_text()
+                with self.assertRaises(SystemExit) as refused:
+                    check_translations.write(root, ["guide.md"])
+                self.assertIn("merge conflict", str(refused.exception))
+                self.assertEqual(translated.read_text(), before)
+            # A heading underline is not a conflict.
+            self.assertFalse(translation_markers.has_conflict("Title\n=======\n"))
+            page = "Title\n=======\n\n" + ours
+            self.assertEqual(translation_markers.without_marker_conflict(page), page)
+
     def test_staged_english_pages_drop_the_review_markers(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

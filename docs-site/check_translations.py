@@ -92,7 +92,13 @@ def write(root, names, approve_code_blocks=False):
             raise SystemExit(f"{name}: no Chinese source at docs/{name}")
         if not target.is_file():
             raise SystemExit(f"{name}: no translation at docs-en/{name}")
-        text = target.read_text()
+        if translation_markers.has_conflict(original.read_text()):
+            raise SystemExit(f"{name}: docs/{name} still has merge conflict lines; resolve them first")
+        # A merge of two edits to this page conflicts in the marker block
+        # whatever else it does; that part is settled by recording again.
+        text = translation_markers.without_marker_conflict(target.read_text())
+        if translation_markers.has_conflict(text):
+            raise SystemExit(f"{name}: docs-en/{name} still has merge conflict lines in its text; resolve them first")
         markers = translation_markers.parse(text)
         body = translation_markers.strip(text)
         approved = markers.code_blocks

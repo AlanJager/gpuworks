@@ -8,6 +8,12 @@ reviewed, so the facts live next to the translation they describe:
 
 Only the trailing run of marker lines (blank lines allowed in between) counts.
 The site staging strips the block, so it never reaches the HTML or the PDF.
+
+Two branches that edit the same Chinese page each record a different hash on
+the same line, so merging them always conflicts in this block even when both
+translations merge cleanly. The block is derived, never merged by hand:
+without_marker_conflict drops what git left there, and recording the hash
+again writes the one line that is true of the merged page.
 """
 
 import re
@@ -16,6 +22,10 @@ from dataclasses import dataclass, field
 
 MARKER_RE = re.compile(r"^<!-- translation-([a-z0-9-]+): (.*?) -->$")
 HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+# The lines git writes around the sides of a conflict, diff3 base included.
+CONFLICT_RE = re.compile(r"^(<{7}|\|{7}|={7}|>{7})( .*)?$")
+# The two that cannot be anything else in a page ("=======" underlines a heading).
+CONFLICT_SIDE_RE = re.compile(r"^(<{7}|>{7}) ")
 SOURCE = "source-sha256"
 CODE_BLOCK = "localized-code-block"
 
@@ -39,6 +49,29 @@ def split(text: str) -> tuple[str, list[str]]:
     if not markers:
         return text, []
     return "\n".join(lines[:start]).rstrip("\n") + "\n", markers
+
+
+def without_marker_conflict(text: str) -> str:
+    """Drop the conflict lines of a merge that conflicted only in the marker block.
+
+    Both sides' markers stay, for parse and render to reduce to one block. A
+    conflict that reaches into the page body is left exactly as it is.
+    """
+    lines = text.splitlines()
+    start = len(lines)
+    while start > 0 and (not lines[start - 1].strip() or MARKER_RE.match(lines[start - 1])
+                         or CONFLICT_RE.match(lines[start - 1])):
+        start -= 1
+    tail = lines[start:]
+    if not any(CONFLICT_SIDE_RE.match(line) for line in tail):
+        return text
+    kept = [line for line in tail if not CONFLICT_RE.match(line)]
+    return "\n".join(lines[:start] + kept) + "\n"
+
+
+def has_conflict(text: str) -> bool:
+    """Whether git's conflict lines are still in the text."""
+    return any(CONFLICT_SIDE_RE.match(line) for line in text.splitlines())
 
 
 def strip(text: str) -> str:

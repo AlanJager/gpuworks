@@ -7,8 +7,9 @@ import (
 
 // routeDocs (apidocs_gen.go) is the one-line description docs/reference/api.md
 // gives each GET route, keyed by normalizeRoute. TestRouteDocsMatchAPIReference
-// keeps it equal to the document; regenerate it with
-// go test ./internal/server/aihelper -run TestRouteDocsMatchAPIReference -update.
+// keeps it equal to the document; regenerate it with make api-docs. The file
+// is never edited or merged by hand: after a merge conflict in it, settle
+// docs/reference/api.md and regenerate.
 
 var routeParam = regexp.MustCompile(`\{[^}]*\}|\*`)
 
