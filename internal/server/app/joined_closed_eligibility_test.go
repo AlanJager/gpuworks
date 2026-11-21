@@ -345,9 +345,9 @@ func TestClosedTransportRefreshBadConnectionContext(t *testing.T) {
 		keep          bool
 	}{
 		{name: "expired_attempt_bad_connection", deadline: true, failure: driver.ErrBadConn, keep: true},
-		{name: "live_attempt_bad_connection", failure: driver.ErrBadConn},
+		{name: "live_attempt_bad_connection", failure: driver.ErrBadConn, keep: true},
 		{name: "elapsed_deadline_pending_context_bad_connection", clockDeadline: -time.Millisecond, failure: driver.ErrBadConn, keep: true},
-		{name: "future_deadline_bad_connection", clockDeadline: time.Minute, failure: driver.ErrBadConn},
+		{name: "future_deadline_bad_connection", clockDeadline: time.Minute, failure: driver.ErrBadConn, keep: true},
 		{name: "elapsed_deadline_parent_canceled_bad_connection", clockDeadline: -time.Millisecond, canceled: true, failure: driver.ErrBadConn},
 		{name: "elapsed_deadline_pending_context_integrity_failure", clockDeadline: -time.Millisecond, failure: integrityFailure},
 		{name: "parent_canceled_bad_connection", canceled: true, failure: driver.ErrBadConn},

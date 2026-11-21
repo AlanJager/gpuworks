@@ -273,6 +273,18 @@ func ClusterGrantWaitedOutWriter(err error) bool {
 // error nothing classifies.
 func ClusterGrantInterrupted(err error) bool { return clusterMembershipAttemptInterrupted(err) }
 
+// ClusterGrantUndecided reports a grant error that carries no verdict on this
+// member: the attempt was interrupted, waited out the writer, ran out of time,
+// or the database answered with a failure response. A failure response is not
+// told apart from the leftover bytes a leadership transfer leaves in one (see
+// ReplicatedReadInterrupted), so none of them is read as a refusal. It is
+// false for every definitive refusal, also when one of these is joined to it,
+// and for an error nothing classifies.
+func ClusterGrantUndecided(err error) bool {
+	return clusterMembershipAttemptInterrupted(err) ||
+		(!clusterMembershipAttemptDefinitive(err) && ReplicatedReadInterrupted(err))
+}
+
 // ErrClusterMembershipObservationTimeout marks a live observation that used
 // up its own bound while the grant's budget had not expired. It says the
 // leader could not be read in time, nothing about the membership itself.

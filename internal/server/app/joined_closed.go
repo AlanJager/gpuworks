@@ -356,25 +356,29 @@ func (a *App) closedTransportAuthorizationRefresh(refresh func(context.Context) 
 		if err == nil {
 			err = ctx.Err()
 		}
-		// A refresh that used up its cycle is a bounded timeout, and keeps the
-		// proof. It does not always come back as the context's error: a socket
-		// deadline may return ErrBadConn, and the driver "no available leader",
-		// before the context's timer has published DeadlineExceeded. The
-		// reached deadline identifies those. A verdict, an error nothing
-		// classifies, a failure while the cycle is live, and parent
-		// cancellation close.
-		deadline, hasDeadline := ctx.Deadline()
-		deadlineReached := errors.Is(ctx.Err(), context.DeadlineExceeded) || (hasDeadline && time.Until(deadline) <= 0)
-		// A grant that waited out the writer for the whole cycle comes back
-		// as the database's busy answer, not as the deadline it coincides with.
-		timedOut := (store.ClusterGrantInterrupted(err) && (errors.Is(err, context.DeadlineExceeded) || deadlineReached)) ||
-			(store.ClusterGrantWaitedOutWriter(err) && deadlineReached)
-		if err != nil && (errors.Is(ctx.Err(), context.Canceled) || !timedOut) {
-			ctxErr := ctx.Err()
+		if err == nil {
+			return nil
+		}
+		// Only a verdict closes the member: a refusal the database returned,
+		// an error nothing classifies, and the parent's cancellation. A
+		// refresh that was interrupted, found the writer taken, ran out of
+		// its cycle or got a database failure response says nothing about
+		// this member, whether or not the cycle's deadline was reached. It
+		// keeps the proof and the next cycle repeats it. The proof's own
+		// window still ends a member that cannot verify for that long, and
+		// every business request still obtains its own grant.
+		ctxErr := ctx.Err()
+		undecided := store.ClusterGrantUndecided(err)
+		closes := errors.Is(ctxErr, context.Canceled) || !undecided
+		if closes {
 			a.invalidateCandidateMaterialEligibility()
-			if a.log != nil {
-				a.log.DebugContext(ctx, "closed transport refresh invalidated material eligibility", "err_class", closedMemberErrorClass(err), "ctx_class", closedMemberErrorClass(ctxErr), "timed_out", timedOut)
+		}
+		if a.log != nil {
+			message := "closed transport refresh kept material eligibility after an undecided failure"
+			if closes {
+				message = "closed transport refresh invalidated material eligibility"
 			}
+			a.log.DebugContext(ctx, message, "err_class", closedMemberErrorClass(err), "ctx_class", closedMemberErrorClass(ctxErr), "undecided", undecided)
 		}
 		return err
 	}
