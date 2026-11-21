@@ -6,6 +6,8 @@ import (
 	"context"
 	"net/http"
 	"sync"
+
+	"gpuworks.ai/gpuworks/internal/server/enrollment"
 )
 
 type enrollmentHandlerGate struct {
@@ -27,7 +29,22 @@ func newEnrollmentHandlerGate(base http.Handler) *enrollmentHandlerGate {
 	return &enrollmentHandlerGate{base: base}
 }
 
+// listenerObservationPath reports a route that stays with the listener's own
+// handler while prepared routes are installed. The quorum observation of a
+// member is read from its database process, which does not change when its
+// business opens; prepared routes define neither path, so without this a
+// serving member answers them with 404 and `cluster-status` observes no
+// leader. Both handlers authenticate the member and are counted by the
+// listener's request owner, as they are while business is closed.
+func listenerObservationPath(path string) bool {
+	return path == enrollment.ClusterQuorumFactsPath || path == enrollment.ClusterQuorumDiscoveryPath
+}
+
 func (g *enrollmentHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if listenerObservationPath(r.URL.Path) {
+		g.base.ServeHTTP(w, r)
+		return
+	}
 	g.mu.Lock()
 	active := g.active
 	if active != nil {
