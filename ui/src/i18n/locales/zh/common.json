@@ -1078,7 +1078,21 @@
     "CARD_LEASE_FAILED": "节点的调度器没有把实例要的 GPU 分给它：{{detail}}",
     "CARD_LEASE_REBIND_UNSUPPORTED": "节点的调度器分来了别的 GPU（{{resource}}），当前 server 不能把实例改到这些卡上，请升级 server。",
     "CARD_LEASE_CARD_MISMATCH": "节点的调度器分来的 GPU 型号或显存不同（{{resource}}）：{{detail}}",
-    "CARD_LEASE_LOST": "节点的调度器收回了实例的 GPU：{{detail}}"
+    "CARD_LEASE_LOST": "节点的调度器收回了实例的 GPU：{{detail}}",
+    "PROVIDER_CHECK_FAILED": "连接检查失败。",
+    "PROVIDER_ENDPOINT_INVALID": "API 接口地址为空，或不是有效的 http(s) 地址。",
+    "PROVIDER_CREDENTIAL_MISSING": "必填凭据字段为空。",
+    "PROVIDER_DNS_FAILED": "无法解析接口地址的主机名。",
+    "PROVIDER_TCP_REFUSED": "接口地址拒绝连接。",
+    "PROVIDER_TCP_UNREACHABLE": "无法到达接口地址所在的主机或网络。",
+    "PROVIDER_TCP_TIMEOUT": "连接接口地址超时。",
+    "PROVIDER_TLS_FAILED": "无法与接口地址建立 TLS 安全连接。",
+    "PROVIDER_PROXY_FAILED": "无法连接为 GPUWorks 服务器设置的代理。",
+    "PROVIDER_CLOCK_SKEW": "GPUWorks 服务器与平台的时间相差过大。",
+    "PROVIDER_HTTP_UNREACHABLE": "接口地址没有响应请求。",
+    "PROVIDER_KIND_UNKNOWN": "未知的外部平台类型。",
+    "PROVIDER_AUTH_FAILED": "平台拒绝了这组凭据。",
+    "PROVIDER_TEST_UNAVAILABLE": "连接测试未能完成，请稍后重试。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {

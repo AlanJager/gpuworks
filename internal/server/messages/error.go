@@ -117,6 +117,49 @@ const (
 	// path. A deployer sees it when a hand-written mount row collides with one
 	// the platform owns, such as the managed directory behind the KV disk tier.
 	ErrorMountTargetDuplicate = "MOUNT_TARGET_DUPLICATE"
+	// ErrorProviderCheckFailed reports a connection-test check that failed
+	// without a more specific product code.
+	ErrorProviderCheckFailed = "PROVIDER_CHECK_FAILED"
+	// ErrorProviderEndpointInvalid reports a provider endpoint that is empty or
+	// not a plain http(s) URL.
+	ErrorProviderEndpointInvalid = "PROVIDER_ENDPOINT_INVALID"
+	// ErrorProviderCredentialMissing reports a required credential field left
+	// empty for a provider connection test.
+	ErrorProviderCredentialMissing = "PROVIDER_CREDENTIAL_MISSING"
+	// ErrorProviderDNSFailed reports a provider endpoint host that the
+	// resolver cannot resolve.
+	ErrorProviderDNSFailed = "PROVIDER_DNS_FAILED"
+	// ErrorProviderTCPRefused reports a TCP connect actively refused by the
+	// provider endpoint.
+	ErrorProviderTCPRefused = "PROVIDER_TCP_REFUSED"
+	// ErrorProviderTCPUnreachable reports a TCP connect that could not reach
+	// the provider endpoint host or network.
+	ErrorProviderTCPUnreachable = "PROVIDER_TCP_UNREACHABLE"
+	// ErrorProviderTCPTimeout reports a TCP connect that timed out against the
+	// provider endpoint.
+	ErrorProviderTCPTimeout = "PROVIDER_TCP_TIMEOUT"
+	// ErrorProviderTLSFailed reports a TLS handshake failure against the
+	// provider endpoint.
+	ErrorProviderTLSFailed = "PROVIDER_TLS_FAILED"
+	// ErrorProviderProxyFailed reports a configured proxy the server cannot
+	// use or reach on the way to the provider endpoint.
+	ErrorProviderProxyFailed = "PROVIDER_PROXY_FAILED"
+	// ErrorProviderClockSkew reports a local clock too far from the provider
+	// endpoint's Date header.
+	ErrorProviderClockSkew = "PROVIDER_CLOCK_SKEW"
+	// ErrorProviderHTTPUnreachable reports a provider endpoint that did not
+	// answer an HTTP request.
+	ErrorProviderHTTPUnreachable = "PROVIDER_HTTP_UNREACHABLE"
+	// ErrorProviderKindUnknown reports a connection-test request naming a
+	// provider kind no registered driver implements.
+	ErrorProviderKindUnknown = "PROVIDER_KIND_UNKNOWN"
+	// ErrorProviderAuthFailed reports a provider that did not accept the
+	// credentials when the driver made its credential validation call.
+	ErrorProviderAuthFailed = "PROVIDER_AUTH_FAILED"
+	// ErrorProviderTestUnavailable reports a connection test that could not
+	// run to its end: the stored configuration cannot be read, its driver is
+	// not registered, or the run outlived its deadline.
+	ErrorProviderTestUnavailable = "PROVIDER_TEST_UNAVAILABLE"
 	// ErrorShmBelowKVCPUTier reports a deployment whose own /dev/shm size is
 	// smaller than the CPU KV tier it enables. The engine keeps the whole tier
 	// in /dev/shm, so such a container can never start.

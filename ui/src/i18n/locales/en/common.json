@@ -1078,7 +1078,21 @@
     "CARD_LEASE_FAILED": "The node's scheduler did not give the instance its GPUs: {{detail}}",
     "CARD_LEASE_REBIND_UNSUPPORTED": "The node's scheduler gave other GPUs ({{resource}}) and this server cannot move the instance to them; upgrade the server.",
     "CARD_LEASE_CARD_MISMATCH": "The node's scheduler gave a different kind of GPU ({{resource}}): {{detail}}",
-    "CARD_LEASE_LOST": "The node's scheduler took the instance's GPUs back: {{detail}}"
+    "CARD_LEASE_LOST": "The node's scheduler took the instance's GPUs back: {{detail}}",
+    "PROVIDER_CHECK_FAILED": "The connection check failed.",
+    "PROVIDER_ENDPOINT_INVALID": "The API endpoint is empty or is not an http(s) address.",
+    "PROVIDER_CREDENTIAL_MISSING": "A required credential field is empty.",
+    "PROVIDER_DNS_FAILED": "The endpoint hostname could not be resolved.",
+    "PROVIDER_TCP_REFUSED": "The endpoint refused the connection.",
+    "PROVIDER_TCP_UNREACHABLE": "The endpoint host or network is unreachable.",
+    "PROVIDER_TCP_TIMEOUT": "Connecting to the endpoint timed out.",
+    "PROVIDER_TLS_FAILED": "A secure (TLS) connection to the endpoint could not be set up.",
+    "PROVIDER_PROXY_FAILED": "The proxy set for the GPUWorks server could not be reached.",
+    "PROVIDER_CLOCK_SKEW": "The clocks of the GPUWorks server and the platform differ too much.",
+    "PROVIDER_HTTP_UNREACHABLE": "The endpoint did not answer the request.",
+    "PROVIDER_KIND_UNKNOWN": "Unknown external platform type.",
+    "PROVIDER_AUTH_FAILED": "The platform rejected the credentials.",
+    "PROVIDER_TEST_UNAVAILABLE": "The connection test could not be completed. Try again later."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {
