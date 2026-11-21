@@ -2,6 +2,8 @@
 // Counts UI strings that break docs/dev/ui.md "Copy on the page".
 //   node scripts/ui_copy_audit.mjs <kind>   -> count for one kind (see KINDS)
 //   node scripts/ui_copy_audit.mjs list     -> all, one "kind id len text" per line
+//   node scripts/ui_copy_audit.mjs commonkeys -> keys in the shared namespace
+//                                              (ui_common_locale_keys)
 // Each count feeds ui_copy_<kind>_strings (ui_copy_inline_help_refs for
 // inlinehelp) in scripts/arch-constraints.txt. Node built-ins only.
 import { readdirSync, readFileSync } from "node:fs";
@@ -95,8 +97,15 @@ for (const path of [...sources(root)].sort()) {
   });
 }
 
+// The common namespace is for words several features share; a feature's copy
+// goes in its own namespace file. apiError is left out: it holds one entry per
+// product error code, which scripts/i18n-check.mjs keeps in step with the codes.
+const commonKeys = () => [...strings(JSON.parse(readFileSync(join(root, "i18n", "locales", "en", "common.json"), "utf8")), "")]
+  .filter(([key]) => !key.startsWith("apiError.")).length;
+
 export const KINDS = ["long", "caveat", "helper", "message", "sentences", "clauses", "command", "en", "inlinehelp"];
 const mode = process.argv[2] ?? "list";
 if (KINDS.includes(mode)) console.log(found.filter((f) => f.kind === mode).length);
+else if (mode === "commonkeys") console.log(commonKeys());
 else if (mode === "list") for (const f of found) console.log(`${f.kind}\t${f.id}\t${f.length}\t${f.text.replace(/\n/g, "\\n")}`);
-else { console.error(`unknown mode ${mode}: want list or one of ${KINDS.join(", ")}`); process.exit(2); }
+else { console.error(`unknown mode ${mode}: want list, commonkeys or one of ${KINDS.join(", ")}`); process.exit(2); }

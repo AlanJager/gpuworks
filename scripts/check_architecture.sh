@@ -230,7 +230,7 @@ measure() {
   ui_untested_shared_files)
     untested_shared_ui | grep -c . || true
     ;;
-  ui_copy_*_strings | ui_copy_inline_help_refs | ee_ui_internal_imports)
+  ui_copy_*_strings | ui_copy_inline_help_refs | ui_common_locale_keys | ee_ui_internal_imports)
     echo "UI"
     ;;
   ui_bundle_gzip_kb)

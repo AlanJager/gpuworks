@@ -21,7 +21,7 @@ test("the UI and architecture gates enforce copy budgets", (t) => {
   }
   copyFileSync(new URL("../antd-inventory.json", import.meta.url), join(root, "ui/antd-inventory.json"));
   const setLongLimit = (limit: number) => writeFileSync(join(root, "scripts/arch-constraints.txt"),
-    `ui_copy_long_strings\t${limit}\tmax\nui_copy_caveat_strings\t0\tmax\nui_copy_helper_strings\t0\tmax\nui_copy_message_strings\t0\tmax\nui_copy_sentences_strings\t0\tmax\nui_copy_clauses_strings\t0\tmax\nui_copy_command_strings\t0\tmax\nui_copy_en_strings\t0\tmax\nui_copy_inline_help_refs\t0\tmax\nee_ui_internal_imports\t0\tmax\n`);
+    `ui_copy_long_strings\t${limit}\tmax\nui_copy_caveat_strings\t0\tmax\nui_copy_helper_strings\t0\tmax\nui_copy_message_strings\t0\tmax\nui_copy_sentences_strings\t0\tmax\nui_copy_clauses_strings\t0\tmax\nui_copy_command_strings\t0\tmax\nui_copy_en_strings\t0\tmax\nui_copy_inline_help_refs\t0\tmax\nui_common_locale_keys\t0\tmax\nee_ui_internal_imports\t0\tmax\n`);
   const run = (json: string, script = "check_ui_architecture.sh") => {
     writeFileSync(join(dir, "common.json"), json);
     return spawnSync("sh", [join("scripts", script)], { cwd: root, encoding: "utf8" });
@@ -67,6 +67,15 @@ test("the UI and architecture gates enforce copy budgets", (t) => {
   const english = run(JSON.stringify({ title: "短标题" }));
   assert.equal(english.status, 1);
   assert.match(english.stderr, /en\tcommon:title/);
+  // common only shrinks: a new shared key is over the budget, a product error
+  // code's text (one per code, kept in step by i18n-check) is not counted.
+  writeFileSync(join(enDir, "common.json"), JSON.stringify({ apiError: { X: "Failed" } }));
+  assert.equal(run(JSON.stringify({ apiError: { X: "失败" } })).status, 0);
+  writeFileSync(join(enDir, "common.json"), JSON.stringify({ nodeDrawerTitle: "Node" }));
+  const grown = run(JSON.stringify({ nodeDrawerTitle: "节点" }));
+  assert.equal(grown.status, 1);
+  assert.match(grown.stdout, /ui_common_locale_keys 1\/0 \(max\)/);
+  assert.match(grown.stderr, /common\.json grew: put a feature's copy in its own namespace file/);
   writeFileSync(join(enDir, "common.json"), "{}");
   assert.notEqual(run("{").status, 0);
   const legacy = run(JSON.stringify({ title: "字".repeat(121) }), "check_architecture.sh");

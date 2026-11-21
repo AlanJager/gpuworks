@@ -30,9 +30,9 @@
 - 需要额外前置条件才能测的键（如 `ui_bundle_gzip_kb` 需要先构建 UI），在 `measure()` 里返回
   `EXTERNAL`，预算循环只打印并跳过，由专门脚本测量。
 
-文案长度、免责短语、覆盖层导入和逐文件 antd 检查由 `./scripts/check_ui_architecture.sh` 执行。
+文案长度、免责短语、`common` namespace 的 key 数、覆盖层导入和逐文件 antd 检查由 `./scripts/check_ui_architecture.sh` 执行。
 GitLab 的 `core-ui`、GitHub 的 `ui` 和本地 `make ui` 共用这个入口。`./scripts/check_architecture.sh`
-在有 Node 时也调用它；无 Node 时打印提示，由 UI 构建执行这四项检查。前三项预算仍由架构脚本对比基线。
+在有 Node 时也调用它；无 Node 时打印提示，由 UI 构建执行这五项检查。前四项预算仍由架构脚本对比基线。
 
 初值取 2026-09-09 `refactor/refactor-2` 分支上的实测结果，不是计划正文里的人工估算值。
 
@@ -179,6 +179,24 @@ node scripts/ui_copy_audit.mjs clauses  # 或 command；list 逐条列出
 
 排除：无。串句拆成 summary / fix 等独立 key 或改成 `标签 值 · 标签 值`；命令由组件拼成可复制块。
 句子是否说清了问题和下一步，预算数不出来，由 `docs/dev/ui.md` "Reviewing copy" 的 maintainer review 把关。
+
+### ui_common_locale_keys（初值 590，2026-11-21）
+
+意图：`ui/src/i18n/locales/{en,zh}/common.json` 是每个功能都往里加文案的地方，2026-11-21 审计主线前一周的 185 次合并，51 次改了它，
+分支在这里冲突。`common` 只放多个功能共用的词（导航、通用动作、状态、表格与表单的通用文字）；一个功能自己的文案
+写进它自己的 namespace 文件（`nodes.json`、`deploy.json`、`deployments.json`、`models.json`、`settings.json`、`storage.json` 等，
+全部见 `ui/src/i18n/locales/en/`），没有合适的文件就新建一个。存量记为基线，只降不升：把某个功能的 key 搬出
+`common` 时，在同一个 MR 里把限额收紧到新实测值。
+
+计数对象是 `en/common.json` 里值为字符串的叶子 key（`zh` 与 `en` 的 key 一致，由 `make i18n-check` 保证，数一份即可）。
+
+```sh
+node scripts/ui_copy_audit.mjs commonkeys
+```
+
+排除：`apiError.*`（2026-11-21 为 1022 条，连同它整份文件是 1612 条）。每个产品错误码在这里有且只有一条文案，
+`scripts/i18n-check.mjs` 逐码核对缺失与多余，UI 也固定从 `common:apiError.<码>` 取文案；新增错误码必然新增一条，
+不是可以放进功能 namespace 的文案，计入就等于每个新错误码都要放宽一次预算。
 
 ### ee_ui_internal_imports（初值 0，2026-11-16）
 
