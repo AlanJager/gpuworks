@@ -117,14 +117,35 @@ test("a node whose mount stopped answering says since when and what the agent wi
   ] } }) });
   renderDetail("/storage/3?tab=nodes");
   const row = async (name: string) => (await screen.findByText(name, { selector: "tbody a" })).closest("tr") as HTMLElement;
+  // Nothing to do while the agent still acts by itself; one thing to do once
+  // it gave up; otherwise waiting for the server or the reason's own fix.
+  const waysOut: Record<string, string[]> = {
+    unresponsive_retrying: [], stuck_will_remount: [], stuck_restart_needed: ["stuck_restart_needed"],
+    stuck_in_use: ["wait", "stuck_in_use"], stuck_not_managed: ["wait", "stuck_not_managed"],
+    stuck_nested_mount: ["wait", "stuck_nested_mount"], stuck_shared_server: ["wait", "stuck_shared_server"],
+  };
   for (const [name, reason] of [
     ["agent-mounted", "stuck_will_remount"], ["serving", "stuck_in_use"], ["operator-mounted", "stuck_not_managed"], ["slow", "unresponsive_retrying"],
     ["nested", "stuck_nested_mount"], ["shared-server", "stuck_shared_server"], ["given-up", "stuck_restart_needed"],
   ] as const) {
     const node = await row(name);
     assert.ok(within(node).getByText(locale.common.storageNodeState.unresponsive));
-    const text = `${locale.common.storageReason[reason]} · ${since}`;
-    assert.ok(within(detailOf(node)).getByText(text), `${name} shows: ${text}`);
+    // The detail has room, so the reason is shown in parts: what is wrong,
+    // what the agent does or why it leaves the mount alone, each way out on
+    // its own line, then since when.
+    const detail = within(detailOf(node));
+    const parts = locale.common.storageReason.unresponsive;
+    const ownSummary = reason === "unresponsive_retrying" || reason === "stuck_restart_needed";
+    assert.ok(detail.getByText(parts.summary[ownSummary ? reason : "stuck"]), `${name} says what is wrong`);
+    assert.ok(detail.getByText(parts.reason[reason]), `${name} says what the agent does: ${parts.reason[reason]}`);
+    const fixes = waysOut[reason].map((fix) => parts.fix[fix]);
+    if (fixes.length > 1) assert.deepEqual(detail.getAllByRole("listitem").map((item) => item.textContent), fixes, `${name} lists its ways out`);
+    else {
+      assert.equal(detail.queryAllByRole("listitem").length, 0, `${name} has no list`);
+      for (const fix of fixes) assert.ok(detail.getByText(fix), `${name} says what to do: ${fix}`);
+    }
+    assert.ok(detail.getByText(since), `${name} says since when`);
+    assert.ok(locale.common.storageReason[reason], `${reason} keeps its one-line text`);
   }
 });
 

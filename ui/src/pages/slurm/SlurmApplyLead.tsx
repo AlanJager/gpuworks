@@ -22,7 +22,7 @@ export default function SlurmApplyLead({ cluster, onChanged }: { cluster: SlurmC
     <div className="flex max-w-[880px] flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Button variant="primary" size="sm" onClick={() => setApplying(true)}>{t("actions.apply")}</Button>
-        <span className="text-fg-muted">{t("detail.applyHelp")}</span>
+        <span className="text-fg-muted">{t("detail.applyNote")}</span>
       </div>
       {cluster.setup_command && (
         <Accordion type="single" collapsible value={manual ? "manual" : ""} onValueChange={(next: string) => setManual(next === "manual")}>

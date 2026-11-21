@@ -107,64 +107,105 @@ const deniedSocket = {
   cause: "not_in_group", socket: "/var/run/docker.sock", group: "docker", gid: 999, account: "gpusvc", same_name_gid: 1002, supervisor: "nohup",
   command: "sudo gpasswd -a gpusvc docker\nsudo -u gpusvc sh -c 's=/home/gpusvc/gpuworks; exec \"$s/agent-restart.sh\"'",
 };
-const restartEffect = "After the restart the agent uses docker. Instances on runveil are not moved: their processes keep running after the agent stops, and the restarted agent starts them again in docker, so stop this node's deployments first.";
+const restartEffect = "After the restart the agent uses docker. Instances on runveil are not moved: they keep running when the agent stops and are started again in docker, so stop this node's deployments first.";
 const optOut = "If gpusvc is not meant to use docker, set this node's runtime to runveil (udocker); the notice and the per-minute check then stop.";
+const impact = "This node uses runveil for now.";
 const socketNode = (socket: Record<string, unknown>) =>
   ({ runtime_fallback_from: "docker", runtime_fallback_reason: "socket_permission_denied", runtime_fallback_socket: socket }) as Parameters<typeof RuntimeFallbackNotice>[0]["node"];
+/** The notice's parts in the order they are shown, each as [part, text]: one element per part, never one paragraph. */
+const parts = () => Array.from(screen.getByRole("alert").querySelectorAll("[data-part]"), (el) => [el.getAttribute("data-part"), el.textContent]);
 
 test("a socket the agent's account may not open names the account, the group, the directory-service clash, what a restart does, and copies the server's command", async () => {
   let copied = "";
   Object.defineProperty(globalThis.navigator, "clipboard", { value: { writeText: async (text: string) => { copied = text; } }, configurable: true });
   renderNotice({ gpu_vendor: "nvidia", ...socketNode(deniedSocket) });
-  assert.equal(screen.getByRole("alert").textContent,
-    "docker is installed, but the agent's account gpusvc may not open its socket /var/run/docker.sock, which belongs to group docker (gid 999), so this node uses runveil for now. " +
-    "Add gpusvc to that group, then restart the agent: it has only the groups it started with. " +
-    "gpusvc is in another group named docker (gid 1002), likely from a directory service such as NIS or LDAP. The socket belongs to the host's own docker group (gid 999), and only that group opens it. " +
-    restartEffect + " " + optOut);
+  assert.deepEqual(parts(), [
+    ["summary", "The agent's account gpusvc may not open the docker socket /var/run/docker.sock, which belongs to group docker (gid 999)."],
+    ["impact", impact],
+    ["sameName", "gpusvc is in another group named docker (gid 1002), likely from a directory service such as NIS or LDAP. Only the host's own docker group (gid 999) opens the socket."],
+    ["fix", "Add gpusvc to that group, then restart the agent: it keeps only the groups it started with."],
+    ["after", restartEffect],
+    ["optOut", optOut],
+  ]);
+  // The server's command restarts the agent, so the notice shows no restart command of its own.
+  assert.equal(screen.getByRole("alert").querySelector("pre"), null);
   fireEvent.click(screen.getByRole("button", { name: /Copy the command/ }));
   await screen.findByText("Command copied");
   assert.equal(copied, deniedSocket.command);
   assert.equal(runtimeFallbackCommand(socketNode(deniedSocket)), deniedSocket.command);
 });
 
-test("without a known supervisor the notice says how to restart the agent, since the command cannot", () => {
+test("without a known supervisor the notice shows how to restart the agent as commands to copy, since the server's command cannot", async () => {
+  let copied = "";
+  Object.defineProperty(globalThis.navigator, "clipboard", { value: { writeText: async (text: string) => { copied = text; } }, configurable: true });
   const { supervisor: _, ...unsupervised } = deniedSocket;
   renderNotice(socketNode({ ...unsupervised, same_name_gid: undefined, command: "sudo gpasswd -a gpusvc docker" }));
-  const text = screen.getByRole("alert").textContent ?? "";
-  assert.ok(text.includes("To restart the agent: sudo systemctl restart gpuworks-agent, or, on an install without systemd, stop it and run agent-restart.sh in its state directory as gpusvc. " + restartEffect), text);
-  assert.doesNotMatch(text, /directory service/);
+  assert.deepEqual(parts(), [
+    ["summary", "The agent's account gpusvc may not open the docker socket /var/run/docker.sock, which belongs to group docker (gid 999)."],
+    ["impact", impact],
+    ["fix", "Add gpusvc to that group, then restart the agent: it keeps only the groups it started with."],
+    ["restart", "With systemd:sudo systemctl restart gpuworks-agent"],
+    ["restart", "Without systemd, stop the agent, then run this in its state directory as gpusvc:./agent-restart.sh"],
+    ["after", restartEffect],
+    ["optOut", optOut],
+  ]);
+  // The commands are blocks of their own, reachable by keyboard, not words in a sentence.
+  const blocks = Array.from(screen.getByRole("alert").querySelectorAll("pre"));
+  assert.deepEqual(blocks.map((pre) => pre.textContent), ["sudo systemctl restart gpuworks-agent", "./agent-restart.sh"]);
+  assert.deepEqual(blocks.map((pre) => pre.tabIndex), [0, 0]);
+  assert.doesNotMatch(screen.getByRole("alert").textContent ?? "", /directory service/);
   assert.ok(screen.getByRole("button", { name: /Copy the command/ }));
+  const restartCopies = screen.getAllByRole("button", { name: "Copy the restart command" });
+  assert.equal(restartCopies.length, 2);
+  fireEvent.click(restartCopies[1]);
+  await screen.findByText("Command copied");
+  assert.equal(copied, "./agent-restart.sh");
 });
 
 test("once the account is in the group, the notice asks only for a restart", () => {
   renderNotice(socketNode({ cause: "restart_pending", socket: "/var/run/docker.sock", group: "docker", gid: 999, account: "gpusvc", supervisor: "systemd", command: "sudo systemctl restart gpuworks-agent" }));
-  assert.equal(screen.getByRole("alert").textContent,
-    "gpusvc is now in group docker (gid 999), which owns the docker socket /var/run/docker.sock, but the agent started before that and keeps the groups it started with, so this node uses runveil until the agent is restarted. " +
-    restartEffect + " " + optOut);
+  assert.deepEqual(parts(), [
+    ["summary", "gpusvc is now in group docker (gid 999), but the agent started before that and keeps only the groups it started with."],
+    ["impact", impact],
+    ["fix", "Restart the agent."],
+    ["after", restartEffect],
+    ["optOut", optOut],
+  ]);
   assert.ok(screen.getByRole("button", { name: /Copy the command/ }));
 });
 
 test("when the agent already holds the socket's group, the notice blames the mode or a security module and offers no group command", () => {
   renderNotice(socketNode({ cause: "group_held", socket: "/var/run/docker.sock", group: "docker", gid: 999, account: "gpusvc", supervisor: "systemd" }));
-  assert.equal(screen.getByRole("alert").textContent,
-    "docker refuses the agent's account gpusvc its socket /var/run/docker.sock although the agent already has group docker (gid 999), so this node uses runveil for now. " +
-    "The socket's mode or a security module (SELinux, AppArmor) refuses it; adding groups will not help. " + optOut);
+  // No restart is the way out here, so nothing is said about what one does.
+  assert.deepEqual(parts(), [
+    ["summary", "docker refuses the agent's account gpusvc its socket /var/run/docker.sock although the agent already has group docker (gid 999)."],
+    ["impact", impact],
+    ["fix", "Check the socket's mode or a security module (SELinux, AppArmor); adding groups will not help."],
+    ["optOut", optOut],
+  ]);
   assert.equal(screen.queryByRole("button"), null);
 });
 
 test("a socket of the root group is not answered by joining root", () => {
   renderNotice(socketNode({ cause: "root_group", socket: "/var/run/docker.sock", group: "root", gid: 0, account: "gpusvc", supervisor: "systemd" }));
-  const text = screen.getByRole("alert").textContent ?? "";
-  assert.match(text, /^docker's socket \/var\/run\/docker\.sock belongs to the root group, which the agent's account gpusvc should not join/);
-  assert.doesNotMatch(text, /gpasswd/);
+  assert.deepEqual(parts(), [
+    ["summary", "docker's socket /var/run/docker.sock belongs to the root group, which the agent's account gpusvc should not join."],
+    ["impact", impact],
+    ["fix", "Give the socket a group of its own that gpusvc is in, then restart the agent."],
+    ["after", restartEffect],
+    ["optOut", optOut],
+  ]);
+  assert.doesNotMatch(screen.getByRole("alert").textContent ?? "", /gpasswd/);
   assert.equal(screen.queryByRole("button"), null);
 });
 
 test("a socket whose group the agent could not read says so and offers no command", () => {
   renderNotice(socketNode({ cause: "unknown", socket: "/var/run/docker.sock" }));
-  assert.equal(screen.getByRole("alert").textContent,
-    "The agent's account (unknown) may not open the docker socket /var/run/docker.sock, and the agent could not read the socket's group, so this node uses runveil for now. " +
-    "If (unknown) is not meant to use docker, set this node's runtime to runveil (udocker); the notice and the per-minute check then stop.");
+  assert.deepEqual(parts(), [
+    ["summary", "The agent's account (unknown) may not open the docker socket /var/run/docker.sock, and the agent could not read the socket's group."],
+    ["impact", impact],
+    ["optOut", "If (unknown) is not meant to use docker, set this node's runtime to runveil (udocker); the notice and the per-minute check then stop."],
+  ]);
   assert.equal(screen.queryByRole("button"), null);
 });
 
@@ -172,4 +213,10 @@ test("a socket reason that came without its facts is shown as its code, not as a
   renderNotice({ runtime_fallback_from: "docker", runtime_fallback_reason: "socket_permission_denied" });
   assert.equal(screen.getByRole("alert").textContent, "docker: socket_permission_denied");
   assert.equal(screen.queryByRole("button"), null);
+});
+
+test("a socket cause this client does not know is shown as its code and still copies the server's command", () => {
+  renderNotice(socketNode({ cause: "something_new", socket: "/var/run/docker.sock", command: "sudo fix-it" }));
+  assert.equal(screen.getByRole("alert").textContent, "docker: socket_permission_denied (something_new)");
+  assert.ok(screen.getByRole("button", { name: /Copy the command/ }));
 });

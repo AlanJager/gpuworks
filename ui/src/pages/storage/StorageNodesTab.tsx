@@ -6,7 +6,7 @@ import ResourceTable, { type ResourceColumn } from "../../components/resourceTab
 import { detailExpandable } from "../../components/detail/DetailDrawer";
 import { formatTime } from "../../i18n/datetime";
 import { storageTypeInfo, type Storage, type StorageModelFile, type StorageNodeStatus } from "../../storageTypes";
-import { storageReasonText, storageStateLabel } from "../../storageDisplay";
+import { storageReasonParts, storageReasonText, storageStateLabel } from "../../storageDisplay";
 import { agoText, formatBytes } from "../../format";
 import { nodeRowName } from "../../nodeDisplay";
 import StorageCapacity from "./StorageCapacity";
@@ -63,7 +63,9 @@ export default function StorageNodesTab({ storage, files }: { storage: Storage; 
     { key: "writable", title: t("nodes.column.writable"), width: 90, sortValue: (n) => (n.writable ? 1 : 0), render: (_, n) => t(n.writable ? "nodes.yes" : "nodes.no") },
   ];
   const extra = (n: StorageNodeStatus) => {
-    const detail = [n.reason ? storageReasonText(t, n.reason) : "", n.message].filter(Boolean).join(" · ");
+    // An unresponsive mount's reason has room here for its parts; any other reason is one line.
+    const parts = storageReasonParts(t, n.reason);
+    const detail = parts ? "" : [n.reason ? storageReasonText(t, n.reason) : "", n.message].filter(Boolean).join(" · ");
     const limit = cacheLimitOf(storage, n.node_uuid);
     const used = cached.get(n.node_uuid) ?? 0;
     const seconds = n.updated_at ? Math.max(0, (Date.now() - new Date(n.updated_at).getTime()) / 1000) : 0;
@@ -89,11 +91,20 @@ export default function StorageNodesTab({ storage, files }: { storage: Storage; 
           <dt>{t("nodes.column.updated")}</dt>
           <dd>{n.updated_at ? <Tooltip title={formatTime(n.updated_at)}><span>{agoText(t, seconds)}</span></Tooltip> : "—"}</dd>
         </div>
-        {(detail || n.state === "offline" || n.needs_own_directory) && (
+        {(parts || detail || n.state === "offline" || n.needs_own_directory) && (
           <div style={{ gridColumn: "1 / -1" }}>
             <dt>{t("nodes.column.state")}</dt>
             <dd>
               {n.state === "offline" && <div>{t("nodes.offlineHint")}</div>}
+              {parts && (
+                <>
+                  <div><strong>{parts.summary}</strong></div>
+                  <div>{parts.reason}</div>
+                  {parts.fixes.length === 1 && <div>{parts.fixes[0]}</div>}
+                  {parts.fixes.length > 1 && <ul className="m-0 list-disc pl-4">{parts.fixes.map((fix) => <li key={fix}>{fix}</li>)}</ul>}
+                  {n.message && <div>{n.message}</div>}
+                </>
+              )}
               {detail && <div>{detail}</div>}
               {n.needs_own_directory && <Typography.Text type="warning">{t("nodes.ownDirectoryHint")}</Typography.Text>}
             </dd>

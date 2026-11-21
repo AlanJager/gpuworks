@@ -122,7 +122,7 @@ export default function CatalogDetails({
         </header>
         {(revisionError || retryMatches) && (
           <aside aria-label={t("catalog.templates")}>
-            <EmptyState compact description={revisionError || <><strong>{t("catalog.templatesError")}</strong><span>{t("catalog.templatesHelp")}</span></>}
+            <EmptyState compact description={revisionError || <><strong>{t("catalog.templatesError")}</strong><span>{t("catalog.templatesNote")}</span></>}
               action={<Button size="sm" variant="link" onClick={revisionError ? retryRevision : retryMatches}>{t("catalog.retry")}</Button>} />
           </aside>
         )}
@@ -165,7 +165,7 @@ export default function CatalogDetails({
         <section className="model-readme-body" aria-label="README">
           <h4>{t("catalog.readme")}</h4>
           {error ? (
-            <EmptyState compact description={<><strong>{error}</strong><span>{t("catalog.readmeHelp")}</span></>}
+            <EmptyState compact description={<><strong>{error}</strong><span>{t("catalog.readmeNote")}</span></>}
               action={error !== t("catalog.missingReadme") && <Button size="sm" variant="link" onClick={() => setRetry((v) => v + 1)}>{t("catalog.retry")}</Button>} />
           ) : readme ? (
             <MarkdownContent content={readme} allowHtml assetBase={base} />

@@ -133,7 +133,7 @@
     "asleep": "休眠 L{{level}}"
   },
   "tooltip": {
-    "actualVRAM": "切片的 dGPU 拦截库按上限统计的显存。厂商工具看到的进程显存会更多：NVIDIA 上约多 0.4 GiB 的 CUDA context",
+    "actualVRAM": "计入 dGPU 上限的显存；厂商工具显示的更多，NVIDIA 上约多 0.4 GiB 的 CUDA context",
     "smReference": "按采样周期取的参考值，两个切片分时共用 SM 时会在 0 和 100 之间跳变；看趋势请打开详情里的 1 分钟均值"
   },
   "quota": {

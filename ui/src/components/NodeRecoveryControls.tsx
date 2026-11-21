@@ -159,7 +159,7 @@ export function NodeSSHAccess({ node, onUpdated }: { node: Node; onUpdated: Upda
               <span>{t("ssh.probeAfterSave")}</span>
             </label>
             {info && <p className="text-fg-muted">{t("ssh.existingAuth", { method: t(authModeLabel[info.auth_mode]) })}</p>}
-            {info?.auth_mode === "password" && <p className="text-fg-muted">{t("ssh.savedPasswordHelp")}</p>}
+            {info?.auth_mode === "password" && <p className="text-fg-muted">{t("ssh.savedPasswordNote")}</p>}
             <DialogFooter className="justify-between">
               <span>{info && <ConfirmPopover title={t("ssh.clearConfirm")} destructive onConfirm={remove}
                 trigger={<Button type="button" variant="destructive" loading={deleting}>{t("ssh.clear")}</Button>} />}</span>

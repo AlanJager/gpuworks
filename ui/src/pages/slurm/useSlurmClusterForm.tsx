@@ -175,7 +175,7 @@ export function useSlurmClusterForm({ open, onCreated, onEdited, onClose, prefil
       {created.source && created.can_apply && (
         <div className="flex flex-col items-start gap-2">
           <strong className="font-semibold text-fg-default">{t("created.byGpuworks")}</strong>
-          <span className="text-fg-muted">{t("created.byGpuworksHelp")}</span>
+          <span className="text-fg-muted">{t("created.byGpuworksNote")}</span>
           <Button variant="primary" onClick={() => setApplying(true)}>{t("created.applyNow")}</Button>
           <strong className="mt-2 font-semibold text-fg-default">{t("created.byHand")}</strong>
         </div>

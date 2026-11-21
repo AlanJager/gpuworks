@@ -135,6 +135,23 @@ node scripts/ui_copy_audit.mjs long     # 或 caveat；list 逐条列出
 
 排除：无。超长说明改写或移进文档；"不包含模型文件"这类事实不算免责，正则不收。
 
+### ui_copy_helper_strings / ui_copy_message_strings / ui_copy_sentences_strings / ui_copy_en_strings / ui_copy_inline_help_refs（基线 309 / 42 / 26 / 56 / 95，2026-11-21）
+
+意图：上面两条只拦 120 字，而规范写的是一行 40 字，文案于是贴着 120 字写，`Help` 后缀的 key 又只看名字不看渲染。这五条按规范本身计数，存量记为基线，只降不升。
+
+- `ui_copy_helper_strings`：非 `Help`、非消息 key 的中文字符串超过 40 字。
+- `ui_copy_message_strings`：消息 key（路径里有 `apiError`、`warning(s)`、`error(s)`、`schedule`、`finding`、`fallback`、`blocked`、`unavailable`、`todo`、`reason`，或以 `Reason`/`Error`/`Warning` 结尾的一段）超过 80 字。
+- 长度按渲染后的样子数：`$t(...)` 引用和 `{{占位符}}` 各算两个字。
+- `ui_copy_sentences_strings`：非 `Help` 的中文字符串超过两句（数 `。！？`）。
+- `ui_copy_en_strings`：英文 locale 超过 240 字符（`Help` key 400）。
+- `ui_copy_inline_help_refs`：`.tsx` 里把 `Help` key 放进表单项 `extra`，或直接作为 `p`/`span`/`div`/antd `Text` 的文字，而不是 `HelpTip` 的内容。
+
+```sh
+node scripts/ui_copy_audit.mjs helper   # 或 message、sentences、en、inlinehelp；list 逐条列出
+```
+
+排除：无。超出的文案删减、拆成"事实 + 下一步"、移进 `HelpTip` 或文档；不靠改 key 名或拆 key 过关。
+
 ### ee_ui_internal_imports（初值 0，2026-11-16）
 
 意图：控制台覆盖层模块（单独构建的控制台复制进 `ui/src/extensions/<id>/` 的代码，本仓库 git 忽略）只通过

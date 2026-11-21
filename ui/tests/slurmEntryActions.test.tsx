@@ -116,7 +116,7 @@ test("revoking asks first, says nothing is lost for the nodes already connected,
   await chooseRowAction(user, group().parentElement as HTMLElement, s.actions.revoke);
   let asked = await dialog();
   assert.ok(asked.getByText(s.actions.revokeConfirm.replace("{{name}}", "hpc-lab")));
-  assert.ok(asked.getByText(s.actions.revokeHelp));
+  assert.ok(asked.getByText(s.actions.revokeNote));
   await user.click(asked.getByRole("button", { name: s.actions.cancel }));
   await noDialog();
   assert.equal(calls.revoke, undefined);
@@ -150,7 +150,7 @@ test("Uninstall of an entry the platform can reach runs the agents step, counts 
   const { changes, user } = renderActions(ehpcEntry({ node_count: 2 }));
   await chooseRowAction(user, group().parentElement as HTMLElement, s.actions.uninstall);
   const d = await dialog();
-  assert.ok(d.getByText(s.uninstall.byGpuworksHelp));
+  assert.ok(d.getByText(s.uninstall.byGpuworksNote));
   await user.click(d.getByRole("button", { name: s.uninstall.run.uninstall_agents }));
   assert.deepEqual(calls.remove, [["s-7", "uninstall_agents"]]);
   assert.ok(await d.findByText(s.uninstall.agentsSent));
@@ -331,7 +331,7 @@ test("a revoked entry the platform can still reach offers its uninstall steps it
   const { user } = renderActions(ehpcEntry({ revoked: true, can_apply: false, can_remove: true, operation_blocked: "revoked", setup_command: undefined, check_command: undefined }));
   await chooseRowAction(user, group().parentElement as HTMLElement, s.actions.uninstall);
   const d = await dialog();
-  assert.ok(d.getByText(s.uninstall.byGpuworksHelp));
+  assert.ok(d.getByText(s.uninstall.byGpuworksNote));
   await user.click(d.getByRole("button", { name: s.uninstall.run.uninstall_agents }));
   assert.deepEqual(calls.remove, [["s-7", "uninstall_agents"]]);
   escape();

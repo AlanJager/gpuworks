@@ -45,7 +45,7 @@
     "restarting": "服务端正在重启至 {{version}}",
     "unknown": "升级结果待确认",
     "recheckRunning": "重新核对运行版本",
-    "unknownHelp": "5 分钟内未收到 {{version}} 应答。此页每 15 秒核对一次，也可查看服务端日志和 install-history.jsonl。",
+    "unknownNote": "5 分钟内未收到 {{version}} 应答，此页每 15 秒重查。详见服务端日志。",
     "probe": {
       "offline": "{{time}} 核对时服务端仍未应答。",
       "unconfirmed": "{{time}} 核对时 {{version}} 已应答，尚未确认本次回滚。"
@@ -118,8 +118,8 @@
     "channel": "更新渠道",
     "channelRelease": "正式发布版（release）",
     "channelNightly": "滚动预览版（nightly）",
-    "channelReleaseHelp": "只接收打过版本号的正式版本，更新少、更稳。",
-    "channelNightlyHelp": "每次主干构建都会推送，更新快，适合尝鲜和内部测试。",
+    "channelReleaseNote": "只接收打过版本号的正式版本，更新少、更稳。",
+    "channelNightlyNote": "每次主干构建都会推送，更新快，适合尝鲜和内部测试。",
     "autoCheck": "自动检测新版本",
     "autoCheckOnHelp": "开启时，打开控制台会自动向发布源检查更新（服务端每小时最多一次），并附带 server 与 agent 的版本号。",
     "autoCheckOffHelp": "已关闭：服务端不再自动检查。点「检查更新」时仍会读取版本索引。",

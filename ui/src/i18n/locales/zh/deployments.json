@@ -1135,8 +1135,8 @@
     "openTemplate": "打开模板"
   },
   "instanceNote": {
-    "INSTANCE_CARD_SHARED_OUTSIDE": "与平台外进程共用 GPU {{gpu_indexes}}（外部占用 {{foreign_gib}} GiB）。显存隔离，算力与带宽共享，推理可能因此变慢。",
-    "INSTANCE_CARD_SHARED_OUTSIDE_UNKNOWN": "与平台外进程共用 GPU {{gpu_indexes}}，其显存用量未知。算力与带宽共享，推理可能因此变慢。"
+    "INSTANCE_CARD_SHARED_OUTSIDE": "与平台外进程共用 GPU {{gpu_indexes}}（外部占用 {{foreign_gib}} GiB），推理可能变慢。",
+    "INSTANCE_CARD_SHARED_OUTSIDE_UNKNOWN": "与平台外进程共用 GPU {{gpu_indexes}}（外部显存用量未知），推理可能变慢。"
   },
   "imagePreparation": {
     "label": "镜像准备进度",

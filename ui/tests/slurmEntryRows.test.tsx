@@ -137,7 +137,7 @@ test("an entry that no node has joined yet opens to the setup command with what 
   assert.equal(screen.getByLabelText(s.setup.command, { selector: "pre" }).textContent, SETUP_COMMAND);
   // An entry made by hand has no one to apply it: the commands are its way in, not folded away, and nothing offers to apply.
   assert.equal(screen.queryAllByRole("button", { name: s.detail.manual }).length, 0);
-  assert.equal(screen.queryAllByText(s.detail.applyHelp).length, 0);
+  assert.equal(screen.queryAllByText(s.detail.applyNote).length, 0);
   for (const key of ["script", "distribute", "conf", "reconfigure"] as const) assert.ok(screen.getByText(s.setup.step[key]));
   // The interval is the server's.
   assert.ok(await screen.findByText("Every GPU node then joins by itself within one to one and a half health-check intervals (an interval is 5 min)."));
@@ -227,7 +227,7 @@ test("an entry whose last agent left says how old its list is, and an administra
   assert.match(facts(s.fact.connectedBy)[s.fact.nodes], /^GPU nodes 1 \(list as of .+\), online 0, offline 1$/);
   await user.click(screen.getByRole("button", { name: s.missing.remove }));
   assert.ok(await screen.findByText("Remove node compute001?"));
-  assert.ok(screen.getByText(s.missing.removeHelp));
+  assert.ok(screen.getByText(s.missing.removeNote));
   await user.click(screen.getAllByRole("button", { name: s.missing.remove }).at(-1)!);
   await waitFor(() => assert.equal(screen.queryAllByRole("list", { name: s.missing.list }).length, 0, "the list is read again after the removal"));
   assert.deepEqual(removed, [["n-1", false]]);

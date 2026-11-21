@@ -45,7 +45,7 @@
     "restarting": "Restarting the server into {{version}}",
     "unknown": "Upgrade result unconfirmed",
     "recheckRunning": "Recheck running version",
-    "unknownHelp": "No response from {{version}} within five minutes. This page rechecks every 15 seconds. See the server log and install-history.jsonl for details.",
+    "unknownNote": "No response from {{version}} within five minutes. This page rechecks every 15 seconds; see the server log for details.",
     "probe": {
       "offline": "The server was still unreachable at {{time}}.",
       "unconfirmed": "{{version}} responded at {{time}}. Rollback for this upgrade is still unconfirmed."
@@ -118,8 +118,8 @@
     "channel": "Update channel",
     "channelRelease": "Release",
     "channelNightly": "Nightly",
-    "channelReleaseHelp": "Only tagged releases: fewer updates, more stable.",
-    "channelNightlyHelp": "Every main-branch build: frequent updates, for early adopters and internal testing.",
+    "channelReleaseNote": "Only tagged releases: fewer updates, more stable.",
+    "channelNightlyNote": "Every main-branch build: frequent updates, for early adopters and internal testing.",
     "autoCheck": "Check for new versions automatically",
     "autoCheckOnHelp": "When on, opening the console checks the release sources for updates (the server asks at most once an hour), sending the server and agent version numbers.",
     "autoCheckOffHelp": "Off: the server does not check by itself. \"Check for updates\" still reads the version index when you ask.",

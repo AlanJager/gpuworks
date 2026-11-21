@@ -80,7 +80,7 @@
     "rdmaInferred": "Nothing to fill in: once nodes are attached, each node's bootstrap IP, HCAs and HCA IPs are inferred. You can then add or remove HCAs in the node list.",
     "acceleratorInferred": "No selector is needed: once nodes are attached, each node's rails are the accelerator cards whose port is up and has an address, and you can add or remove cards in the node list. The handshake uses a host address (the management address by default); data moves on the cards' ports.",
     "acceleratorBootstrapCidrHint": "For the handshake only (HCCL rootInfo, MASTER_ADDR): it moves to the host interface inside this subnet. Data moves on the cards' ports, which are not in this subnet.",
-    "roleNotOnType": "Accelerator networks ($t(networks:typeGroup.accelerator)) carry compute traffic only: host processes cannot bind the address of a card's port, so storage sync and serving cannot use them.",
+    "roleNotOnType": "Accelerator networks ($t(networks:typeGroup.accelerator)) carry compute traffic only; storage sync and serving cannot use them.",
     "typeHelp": "Sets transport and device injection. $t(type.host_ethernet): TCP. $t(type.host_rdma): IB/RoCE. $t(type.accelerator_rdma): on-card RoCE. $t(type.accelerator_hccs): A3/910C HCCS/HIXL with vNICs."
   },
   "detail": {

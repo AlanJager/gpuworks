@@ -17,6 +17,11 @@ ui_bundle_gzip_kb	2450	warn
 ui_untested_shared_files	0	max
 ui_copy_long_strings	0	max
 ui_copy_caveat_strings	0	max
+ui_copy_helper_strings	309	max
+ui_copy_message_strings	42	max
+ui_copy_sentences_strings	26	max
+ui_copy_en_strings	56	max
+ui_copy_inline_help_refs	95	max
 ee_ui_internal_imports	0	max
 setting_key_literal	0	max
 vendor_normalize_funcs	1	max

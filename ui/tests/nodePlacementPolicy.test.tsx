@@ -44,7 +44,10 @@ test("each knob of the dictionary renders by its kind with its label and help", 
     assert.ok(screen.getByTestId("placement-policy-loading"), "a loading placeholder shows first");
     const toggle = await screen.findByRole("switch", { name: text.share_with_foreign.label });
     assert.equal(toggle.getAttribute("aria-checked"), "false");
-    assert.ok(screen.getByText(text.share_with_foreign.help));
+    assert.ok(screen.getByText(text.share_with_foreign.summary), "one line on the page");
+    assert.equal(screen.queryByText(text.share_with_foreign.help), null, "the rest waits in the help tip");
+    await userEvent.setup({ document: dom.window.document }).hover(screen.getByRole("button", { name: locale.common.helpTip.label }));
+    assert.ok(await screen.findByText(text.share_with_foreign.help));
     assert.equal(screen.queryByText(/No effect on this node/), null);
   } finally {
     restore();

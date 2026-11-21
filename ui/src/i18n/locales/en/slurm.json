@@ -14,8 +14,8 @@
   },
   "stalled": {
     "title": "No node has joined yet",
-    "intro": "The cluster has waited a while for its first node and none has joined. Check what slurm.conf holds on the Slurm manager node, then what the check left on a GPU node:",
-    "introApplied": "The cluster has waited a while for its first node and none has joined. Click Check and apply first: gpuworks checks and sets it up on the Slurm manager node through Cloud Assistant, so you need not log in. If none joins after it was applied, look at what the check left on a GPU node:",
+    "intro": "No node has joined yet. Check slurm.conf, then what the check script left on a GPU node:",
+    "introApplied": "No node has joined yet. Click Check and apply first; if still none joins, look at what the check script left on a GPU node:",
     "on": {
       "controller": "On the Slurm manager node",
       "node": "On a GPU node"
@@ -26,7 +26,7 @@
     "notRunApplied": "Check and apply has not succeeded yet: click it, read the plan, apply it, then wait one to one and a half health-check intervals.",
     "script": "The check script is not visible on the node: the script directory is not on shared storage and the setup could not copy it there.",
     "connect": "The node cannot reach the management node address: read slurm-check.log in the install directory.",
-    "conf": "The cluster keeps its own slurm.conf on every node: distribute the updated one and reload it."
+    "conf": "Every node keeps its own slurm.conf: distribute the updated one and reload it."
   },
   "actions": {
     "edit": "Edit",
@@ -36,7 +36,7 @@
     "uninstall": "Uninstall",
     "revoke": "Revoke",
     "revokeConfirm": "Revoke the enrollment token of {{name}}?",
-    "revokeHelp": "Nodes already connected keep working. New nodes can no longer join with this cluster's token.",
+    "revokeNote": "Nodes already connected keep working. New nodes can no longer join with this cluster's token.",
     "revoked": "Cluster {{name}} revoked",
     "delete": "Delete",
     "cancel": "Cancel",
@@ -71,7 +71,7 @@
     "namePlaceholder": "slurm-prod",
     "serverUrl": "Management node address",
     "serverUrlHelp": "The address the agents on the compute nodes connect to the GPUWorks management node at. It must be reachable from the compute nodes.",
-    "serverUrlQuick": "This is the platform's own temporary public address. It changes when the connector is rebuilt, so the nodes lose the server: use an address of this server that every compute node can reach.",
+    "serverUrlQuick": "This is a temporary public address that changes when the connector is rebuilt. Enter a fixed address of this server that every compute node can reach.",
     "serverUrlRequired": "Enter the management node address",
     "serverUrlInvalid": "Enter an http:// or https:// address",
     "advanced": "Advanced",
@@ -93,7 +93,7 @@
     "idleReturnHelpRange": "A borrowed card goes back to Slurm after sitting idle this long ({{min}} to {{max}} seconds).",
     "pendingTimeout": "Queue timeout",
     "pendingTimeoutHelp": "A placeholder job that still waits in Slurm's queue after this long is given up.",
-    "pendingTimeoutHelpRange": "A placeholder job that still waits in Slurm's queue after this long is given up ({{min}} to {{max}} seconds).",
+    "pendingTimeoutHelpRange": "A placeholder job still queued after this long is given up ({{min}} to {{max}} seconds).",
     "secondsUnit": "s",
     "defaultsFailed": "The defaults could not be loaded",
     "defaultsFailedHelp": "Fields left empty still take the server's defaults; the hints are missing.",
@@ -105,11 +105,11 @@
   },
   "created": {
     "title": "Cluster {{name}} is ready",
-    "note": "Run this command as root on the Slurm manager node. The GPU nodes show up in the node list by themselves.",
+    "note": "Run this command as root on the Slurm manager node. The GPU nodes join automatically.",
     "noteSource": "Next, set the cluster up, one way or the other:",
     "byGpuworks": "Let gpuworks set it up",
     "byHand": "Or run this on the Slurm manager node yourself",
-    "byGpuworksHelp": "gpuworks first has the Slurm manager node check what the setup would do, which changes nothing, and applies it only when you confirm.",
+    "byGpuworksNote": "gpuworks runs the setup on the Slurm manager node: it checks first and applies only when you confirm.",
     "applyNow": "Check and apply",
     "applyBlocked": "gpuworks cannot set this cluster up for you"
   },
@@ -127,7 +127,7 @@
       "slurm_conf": "slurm.conf could not be fully updated: check it on the Slurm manager node.",
       "reconfigure": "Slurm's configuration could not be reloaded: run scontrol reconfigure on the Slurm manager node.",
       "resume": "Some nodes could not be resumed ({{nodes}}): check them with sinfo.",
-      "reach": "{{nodes}} cannot reach {{url}}, so the agents cannot enroll from them: use an address they can reach (not a temporary public address), or give the VPC a NAT gateway or enter a private address; then apply again."
+      "reach": "{{nodes}} cannot reach {{url}}; apply again once fixed. $t(common:slurmApplyReason.server_unreachable_fix)"
     },
     "steps": "Steps",
     "status": {
@@ -182,15 +182,15 @@
     "waiting": "No node has joined yet. Run the setup command below on the Slurm manager node; the GPU nodes appear in the node list within one to one and a half health-check intervals.",
     "revoked": "The enrollment token is revoked: new nodes can no longer join.",
     "waitingApply": "No node has joined yet. Check and apply sets the cluster up; the GPU nodes appear in the node list within one to one and a half health-check intervals.",
-    "applyHelp": "gpuworks runs the setup on the cluster's Slurm manager node: it checks first, and applies only when you confirm.",
+    "applyNote": "gpuworks runs the setup on the Slurm manager node: it checks first and applies only when you confirm.",
     "manual": "Run it by hand",
     "showCommands": "Setup commands"
   },
   "waiting": {
-    "no_compute_nodes": "The cloud lists no compute nodes in this cluster yet: add GPU nodes first; they join through the health check once they are up.",
+    "no_compute_nodes": "This cluster has no compute nodes yet. Add GPU nodes; they join automatically once they are up.",
     "not_applied": "The setup has not been run on this cluster yet, so nothing is installed on its nodes.",
     "joining": "The setup is done; the GPU nodes join within one to one and a half health-check intervals.",
-    "no_node_called": "The setup has run, but no node has contacted the server since: they cannot reach {{url}}, or the script is not on them.",
+    "no_node_called": "The setup has run, but no node has contacted the server since: they cannot reach {{url}}, or the check script is not on them.",
     "server_unreachable": "The last check found hosts that cannot reach {{url}}: {{hosts}}."
   },
   "reach": {
@@ -240,7 +240,7 @@
     },
     "remove": "Remove",
     "removeTitle": "Remove node {{name}}?",
-    "removeHelp": "Only the platform's record of the node is deleted; the cluster is not changed. A node still in the cluster joins again at its next health check."
+    "removeNote": "Only the platform's record of the node is deleted. A node still in the cluster joins again at its next health check."
   },
   "edit": {
     "savedTitle": "Cluster {{name}} saved",
@@ -257,9 +257,9 @@
   },
   "uninstall": {
     "title": "Uninstall from cluster {{name}}",
-    "intro": "Uninstalling is two steps: first every node's check removes its own agent (the cards go back to Slurm), then the health check is taken out of slurm.conf and any health check the cluster had before is restored.",
+    "intro": "Uninstalling takes two steps: every node removes its own agent, then the health check is taken out of slurm.conf and the cluster's previous one is restored.",
     "byGpuworks": "Let gpuworks run the steps",
-    "byGpuworksHelp": "gpuworks runs each step on the cluster's Slurm manager node through the cloud account.",
+    "byGpuworksNote": "gpuworks runs each step on the cluster's Slurm manager node through the cloud account.",
     "byHand": "Or run the commands on the Slurm manager node yourself",
     "run": {
       "uninstall_agents": "Uninstall the agents",
@@ -280,13 +280,13 @@
   },
   "delete": {
     "title": "Delete cluster {{name}}?",
-    "help": "Only the cluster record here is removed; agents still installed on the nodes are not uninstalled.",
+    "note": "Only the cluster record here is removed; agents still installed on the nodes are not uninstalled.",
     "hasNodes_one": "This cluster still has {{count}} node.",
     "hasNodes_other": "This cluster still has {{count}} nodes.",
     "withNodes_one": "Delete the cluster together with its {{count}} node",
     "withNodes_other": "Delete the cluster together with its {{count}} nodes",
     "blocker": {
-      "online": "Some of its agents are still connected. Uninstall them first; once they are offline the cluster can be deleted with its nodes.",
+      "online": "Some of its agents are still connected. Uninstall them first, then delete the cluster once they are offline.",
       "instances": "Some of its nodes still run instances. Remove those deployments first.",
       "unknown": "The cluster cannot be deleted with its nodes now."
     },
@@ -310,7 +310,7 @@
   },
   "operation": {
     "title": "Check and apply to cluster {{name}}",
-    "intro": "gpuworks runs the setup on the Slurm manager node of cluster {{cluster}} through the account {{account}}. It first checks what the setup would do, which changes nothing; you confirm before anything is applied.",
+    "intro": "gpuworks runs the setup on the Slurm manager node of cluster {{cluster}} through the account {{account}}. It checks first and applies only when you confirm.",
     "checking": "Checking what the setup would do…",
     "checked": "Checked, and nothing has been changed yet. Review the plan, then apply.",
     "checkedPartial": "Checked, with points that need your attention. Nothing has been changed yet.",
@@ -323,9 +323,9 @@
     "attention": "Needs your attention",
     "warning": {
       "conf_include": "slurm.conf includes {{files}}: health check settings in them are not seen by the edit, and the result is verified afterwards.",
-      "program_not_in_conf": "slurmctld runs the health check program {{program}}, which slurm.conf does not name (an included file, or an edit not yet reloaded): it is chained, but a setting in an included file may override ours.",
+      "program_not_in_conf": "slurmctld runs the health check program {{program}}, which slurm.conf does not name (an included file, or an edit not yet reloaded). It is still chained, but a setting in an included file may override the platform's.",
       "not_configless": "This cluster is not configless: copy {{path}} to the compute nodes yourself after applying, or the health check does not take effect there.",
-      "no_gpu_gres": "{{nodes}} have no gpu Gres in slurm.conf, so nothing is added to gres.conf for them: add Gres=gpu:<count> to their NodeName lines first.",
+      "no_gpu_gres": "{{nodes}} have no gpu Gres in slurm.conf, so nothing is added to gres.conf for them. Add Gres=gpu:<count> to their NodeName lines first.",
       "server_unreachable": "Some hosts cannot reach {{url}}, so the agents cannot enroll from them: see the server address below."
     },
     "gres": {
@@ -349,7 +349,7 @@
       "unchanged": "Already as the setup would write it: nothing to change.",
       "commented": "The cluster's own settings, kept as comments in place",
       "line": "line {{line}}",
-      "chained": "The cluster's own health check {{program}} keeps running after ours, in the node states {{state}}.",
+      "chained": "The cluster's own health check {{program}} keeps running after the platform's, in the node states {{state}}.",
       "configless": "The cluster is configless: the nodes pick the change up on reload.",
       "notConfigless": "The cluster is not configless."
     },
@@ -364,7 +364,7 @@
     "close": "Close"
   },
   "sharedStorage": {
-    "line": "The cluster's nodes share a NAS: register {{path}} as model storage and every node uses one copy of a model, so nodes the cluster adds need not download it again.",
+    "line": "The cluster's nodes share a NAS: register {{path}} as model storage and every node uses one copy of each model.",
     "register": "Register as model storage"
   }
 }

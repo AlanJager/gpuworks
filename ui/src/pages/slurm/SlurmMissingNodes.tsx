@@ -31,7 +31,7 @@ export default function SlurmMissingNodes({ cluster, admin = false, onChanged }:
                 onConfirm={async () => { await api.deleteNode(node.node_uuid!); onChanged?.(); }}
                 trigger={<Button variant="link" size="sm">{t("missing.remove")}</Button>}
               >
-                <p className="m-0">{t("missing.removeHelp")}</p>
+                <p className="m-0">{t("missing.removeNote")}</p>
               </ConfirmPopover>
             )}
           </li>
