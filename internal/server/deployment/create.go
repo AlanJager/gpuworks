@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // ValidateReplicaShape gives evaluation and create the same replica and rank
@@ -103,341 +103,159 @@ func CreateRowError(err error) error {
 	return internal(err)
 }
 
-// createOnce is one attempt at Create.
+// createOnce is one attempt at Create: its steps in order, the first error
+// ending it. No deployment row is written before persist.
 func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store.Deployment, error) {
-	if err := validateNames(req.Name, req.ServedName); err != nil {
-		return nil, invalid(err)
-	}
-	if strings.TrimSpace(req.TargetVendor) != "" && accelerator.NormalizeVendor(req.TargetVendor) == "" {
-		return nil, invalid(productError(messages.ErrorTargetVendorInvalid, "target_vendor is not supported", map[string]any{"vendor": req.TargetVendor}))
-	}
-	unitsAuto, err := s.autoPlaceRequest(&req)
-	if err != nil {
-		return nil, unitPlacementKind(err)
-	}
-	defaultUnitStrategy(&req)
-	if err := ValidateReplicaShape(&req); err != nil {
-		return nil, invalid(err)
-	}
-	if err := ValidateStartTimeout(&req); err != nil {
-		return nil, invalid(err)
-	}
-	if err := ValidateHealthCheckThreshold(&req); err != nil {
-		return nil, invalid(err)
-	}
-	if err := s.ValidateMountModels(&req); err != nil {
-		return nil, invalid(err)
-	}
-	if err := checkManualCommandRanks(&req); err != nil {
-		return nil, invalid(err)
-	}
-	pdReq, err := s.preparePDDeployRequest(&req, "")
-	if err == nil && pdReq != nil {
-		_, _, err = s.pdGroup(pdReq)
-	}
-	if err != nil {
-		return nil, invalid(err)
-	}
-	if err := s.pickAutomaticNode(ctx, &req); err != nil {
-		return nil, err
-	}
-	reqs, strategy, err := s.RequestPlacement(&req)
-	if err != nil {
-		return nil, err
-	}
-	profileNode, _ := s.d.Store.NodeWithGPUs(templateTargetNodeUUID(req.NodeUUID, req.NodeUUIDs))
-	selection, err := s.applyTemplateDefaults(&req, nodeTemplateHardware(profileNode))
-	if err == nil {
-		err = checkPDSpec(selection, placementPD(&req))
-	}
-	if err == nil && selection.ManualCommandDefault {
-		// The spec's own command was checked when it was imported, against
-		// the layout it was written for; this request may span more nodes.
-		err = checkManualCommandRanks(&req)
-	}
-	if err != nil {
-		return nil, invalid(err)
-	}
-	eng, err := deploy.SelectEngine(req.Engine)
-	if err == nil {
-		err = pdReq.checkEngine(eng.Name())
-	}
-	if err != nil {
-		return nil, invalid(err)
-	}
-	preserveEngineModelName(&req)
-	// The same materialization the deploy form previewed. What is stored from
-	// here on is the launch configuration itself, never the four inputs it was
-	// assembled from.
-	targetVendor := accelerator.NormalizeVendor(req.TargetVendor)
-	if targetVendor == "" {
-		targetVendor = planning.RequirementVendor(reqs)
-	}
-	launch, err := s.materializeCreateLaunch(eng.Name(), &req, selection, requestTargetCards(profileNode, &req), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
-	if err != nil {
-		return nil, invalid(err)
-	}
-	if pdReq != nil {
-		if err := planning.CheckPDArgs(eng.Name(), launch.TemplateResidual, launch.UserResidual); err != nil {
-			return nil, invalid(err)
+	c := &createState{s: s, ctx: ctx, req: &req}
+	for _, step := range []func() error{
+		c.checkRequest,
+		c.resolveTemplate,
+		c.materializeLaunch,
+		c.runPreflight,
+		c.resolveModel,
+		c.resolveNodes,
+		c.admitWeights,
+		c.resolveImage,
+		c.persist,
+		c.startDownloads,
+	} {
+		if err := step(); err != nil {
+			return nil, err
 		}
 	}
-	// A multi-node group settles its nodes and parallelism first: an
-	// unstated TP and PP default from the nodes, and the launch preflight
-	// below measures the result. Nothing is persisted by this step.
-	dp, err := deploy.PlacementDataParallel(eng.Name(), launch.Quick.DP, launch.TemplateResidual, launch.UserResidual)
+	return c.created, nil
+}
+
+// createState is what the steps of one Create attempt share: what the steps
+// so far have settled about the request. The request itself is rewritten as
+// it is normalized (its units, node, ranks, image and partition backend).
+type createState struct {
+	s   *Service
+	ctx context.Context
+	req *dto.DeployRequest
+
+	unitsAuto    bool
+	pdReq        *pdRequest
+	reqs         map[string][]string
+	strategy     store.PlacementStrategy
+	profileNode  *store.Node
+	selection    templateSelection
+	eng          deploy.Engine
+	targetVendor string
+
+	launch          deploy.Materialized
+	dp              int
+	distNodes       []*store.Node
+	preflight       launchPreflight
+	modelMount      string
+	componentMounts []proto.MountSpec
+	placement       planning.Placement
+
+	model              *store.Model
+	quick              deploy.LaunchConfig
+	userExtraArgs      string
+	served, name       string
+	templateConfig     templateInferenceConfig
+	healthCheck        bool
+	healthThreshold    int
+	priorityScheduling bool
+	yieldPolicy        yieldpolicy.Policy
+
+	// node is the deployment's node, rank zero of a multi-node group;
+	// targets are every node the launch lands on.
+	node      *store.Node
+	targets   []*store.Node
+	rankNodes []*store.Node
+
+	weights        []weightTarget
+	weightStorage  *store.Storage
+	saveTo         uint
+	components     []templateComponent
+	componentPlans []componentPlan
+
+	created *store.Deployment
+}
+
+// persist writes the deployment row.
+func (c *createState) persist() error {
+	snapshot, err := catalogSelectionDocument(c.selection, c.req.Image)
 	if err != nil {
-		return nil, invalid(err)
-	}
-	var distNodes []*store.Node
-	if req.NNodes > 1 {
-		distNodes, err = s.PrepareDistributedDeployRequest(&req, dp)
-		if err != nil {
-			return nil, invalid(err)
-		}
-	}
-	// Resolve request-owned command, environment and mounts before template
-	// model registration or image acquisition can mutate persistent state.
-	// Evaluate runs the same preflight (evaluateLaunchPreflight).
-	preflight, err := s.prepareLaunchPreflight(eng, &req, selection, launch, dp, targetVendor, profileNode, pdReq)
-	if err != nil {
-		return nil, invalid(err)
-	}
-	modelMount, componentMounts, placement := preflight.modelMount, preflight.componentMounts, preflight.placement
-	imageNodes := append([]*store.Node{profileNode}, distNodes...)
-	if pdReq != nil {
-		imageNodes = append(imageNodes, pdReq.nodes...)
-	}
-	if err := s.admitImagePlatforms(eng.Name(), selection, req.Image, imageNodes); err != nil {
-		return nil, invalid(err)
-	}
-	imageFor := func(node *store.Node) string {
-		return s.rankImage(eng.Name(), selection, req.Image, node).Image
-	}
-	if err := preflight.run(&req, selection, profileNode, distNodes, pdReq, imageFor); err != nil {
-		return nil, invalid(err)
-	}
-	model, err := s.resolveDeploymentModelFromTemplate(ctx, req.ModelID, &selection, req.TemplateID)
-	if err != nil {
-		return nil, invalid(err)
-	}
-	launch, err = materializeDeployRequest(eng.Name(), &req, selection, requestTargetCards(profileNode, &req), s.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
-	if err != nil {
-		return nil, invalid(err)
-	}
-	selection.ExtraArgs = launch.TemplateResidual
-	quick, userExtraArgs := launch.Quick, deploy.FormatArgsText(launch.UserResidual)
-	served := req.ServedName
-	if served == "" {
-		served = model.Name
-	}
-	name := req.Name
-	if name == "" {
-		name = served
-	}
-	// The served name is judged first, as the name defaults to it.
-	if err := TextFieldError("served_name", served, MaxNameRunes); err != nil {
-		return nil, invalid(err)
-	}
-	if err := TextFieldError("name", name, MaxNameRunes); err != nil {
-		return nil, invalid(err)
-	}
-	model, templateConfig, err := s.initTemplateModelInferenceConfig(&selection, model)
-	if err != nil {
-		return nil, internal(err)
-	}
-	// The candidate's operations say what a check asks.
-	healthCheck, healthThreshold, err := CreateHealthCheck(&req, model)
-	if err != nil {
-		return nil, invalid(err)
-	}
-	priorityScheduling, err := ResolvePriorityScheduling(req.PriorityScheduling, requestPriorityScheduling(&req, eng.Name(), targetVendor, pdReq != nil, launch.TemplateResidual, launch.UserResidual, selection.Entrypoint))
-	if err != nil {
-		return nil, invalid(err)
-	}
-	// Warnings are surfaced by evaluate before submit; keep the same helper in
-	// this path as a guard for API clients that submit without evaluating.
-	_ = deploy.PerformanceWarnings(quick, userExtraArgs, model.Arch, 0)
-	if pdReq != nil {
-		distNodes = pdReq.otherNodes()
-	}
-	var node *store.Node
-	if sleepErr := planning.SleepDeclarable(req.Sleepable, eng.Name(), targetVendor); sleepErr != nil {
-		return nil, invalid(SleepDeclarationError(sleepErr))
-	}
-	yieldPolicy, err := createYieldPolicy(req, eng.Name(), pdReq != nil)
-	if err != nil {
-		return nil, invalid(err)
-	}
-	if req.NNodes > 1 && pdReq == nil {
-		node, err = s.d.Store.NodeWithGPUs(distNodes[0].UUID)
-		if err != nil {
-			return nil, invalid(err)
-		}
-	} else {
-		node, err = s.RequestNode(req.NodeUUID)
-		if err != nil {
-			return nil, invalid(err)
-		}
-	}
-	// A refused backend is a ProductError with the capability's reason code
-	// (partitioncap.ValidateReady), whose params name the node.
-	req.PartitionBackend, err = ResolvePartitionBackend(node, req.VRAMLimitGiB, req.PartitionBackend)
-	if err != nil {
-		return nil, invalid(err)
-	}
-	for _, distNode := range distNodes {
-		if _, err := ResolvePartitionBackend(distNode, req.VRAMLimitGiB, req.PartitionBackend); err != nil {
-			return nil, invalid(distributedPartitionRefusal(distNode, req.PartitionBackend, err))
-		}
-	}
-	if err := s.admitImagePlatforms(eng.Name(), selection, req.Image, append([]*store.Node{node}, distNodes...)); err != nil {
-		return nil, invalid(err)
-	}
-	targets := append([]*store.Node{node}, distNodes...)
-	if err := s.sleepHostBacking(eng.Name(), &req, quick, targets...); err != nil {
-		return nil, conflict(err)
-	}
-	var rankNodes []*store.Node
-	if req.NNodes > 1 && pdReq == nil {
-		rankNodes = distNodes
-	}
-	weights, err := s.weightTargets(selection, model, targets, rankNodes)
-	if err != nil {
-		return nil, internal(err)
-	}
-	weightStorage, err := s.resolveSaveToStorage(req.ModelSource, model, weights[0].nodes)
-	if err != nil {
-		return nil, conflict(err)
-	}
-	for _, weight := range weights[1:] {
-		if _, err := s.resolveSaveToStorage(req.ModelSource, weight.model, weight.nodes); err != nil {
-			return nil, conflict(err)
-		}
-	}
-	// What the request names is what the deployment keeps: 0 leaves where a
-	// node saves a model it must fetch to the default order.
-	saveTo := s.previewSaveToStorageID(req.ModelSource, model, node)
-	components, err := s.templateComponents(selection.Components)
-	if err != nil {
-		return nil, internal(err)
-	}
-	admitted := append([]weightTarget(nil), weights...)
-	for _, component := range components {
-		if _, err := s.resolveSaveToStorage(req.ModelSource, component.model, targets); err != nil {
-			return nil, conflict(err)
-		}
-		admitted = append(admitted, weightTarget{model: component.model, nodes: targets})
-	}
-	// A template component no target can read yet follows the primary into
-	// the shared storage it already sits on, rather than into every node's
-	// local storage; the evaluate forecast shows the same plans. The
-	// deployment still keeps only what the request named.
-	componentPlans, err := s.planComponents(req.ModelSource, model, components, weightStorage, store.StoragePins(reqs), targets)
-	if err != nil {
-		return nil, internal(err)
-	}
-	rules := store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: saveTo}
-	for _, admitted := range admitted {
-		if err := s.admitDeploymentModel(ctx, admitted.model, rules, admitted.nodes); err != nil {
-			return nil, conflict(err)
-		}
-	}
-	imageResolution := s.rankImage(eng.Name(), selection, req.Image, node)
-	if strings.TrimSpace(imageResolution.Image) == "" {
-		code, params := messages.ErrorAcquisitionImageRequired, map[string]any(nil)
-		if len(imageResolution.Warnings) > 0 {
-			code, params = imageResolution.Warnings[0].Code, imageResolution.Warnings[0].Params
-		}
-		return nil, invalid(productError(code, "no runtime image is available for the target node", params))
-	}
-	req.Image = imageResolution.Image
-	reqs = planning.WithNodeVendor(reqs, node)
-	if err := s.checkCreateCanEverFit(ctx, &req, pdReq != nil, reqs, eng, model, selection, placement, quick, launch.UserResidual, modelMount, componentMounts); err != nil {
-		return nil, invalid(err)
-	}
-	// An automatically placed create re-runs the plan the evaluation answered
-	// with: resources may have moved since, and the answer is the same
-	// conflict the client handles for stale labels - not a doomed row.
-	if IsAutomaticPlacement(&req) && req.NNodes <= 1 && pdReq == nil {
-		requestOverrides, _ := RequestContainerOverrides(req.ContainerOverrides)
-		if err := s.revalidateAutomaticPlacement(ctx, &req, eng, model, selection, placement, quick, launch.UserResidual, strings.TrimSpace(req.ServedName), node, modelMount, componentMounts, requestOverrides, saveTo); err != nil {
-			return nil, conflict(err)
-		}
-	}
-	snapshot, err := catalogSelectionDocument(selection, req.Image)
-	if err != nil {
-		return nil, internal(err)
+		return internal(err)
 	}
 	dep := &store.Deployment{
-		Name:                     name,
-		ModelID:                  model.ID,
-		TemplateID:               req.TemplateID,
-		TemplateSpecSource:       req.TemplateSpecSource,
-		TemplateSpecName:         req.TemplateSpecName,
-		TemplateScenario:         req.Scenario,
-		TemplateDeviated:         selection.Deviated,
+		Name:                     c.name,
+		ModelID:                  c.model.ID,
+		TemplateID:               c.req.TemplateID,
+		TemplateSpecSource:       c.req.TemplateSpecSource,
+		TemplateSpecName:         c.req.TemplateSpecName,
+		TemplateScenario:         c.req.Scenario,
+		TemplateDeviated:         c.selection.Deviated,
 		CatalogSelectionSnapshot: snapshot,
-		NodeID:                   node.ID,
-		ServedName:               served,
-		SaveToStorageID:          saveTo,
-		Engine:                   eng.Name(),
-		Image:                    req.Image,
-		QuickParams:              LaunchConfigJSON(quick),
-		ExtraArgs:                userExtraArgs,
-		ContainerOverrides:       jsonStr(req.ContainerOverrides),
-		Placement:                jsonStr(StoredPlacement(req.Placement, IsAutomaticPlacement(&req) && req.NNodes <= 1 && pdReq == nil)),
-		PlacementStrategy:        strategy,
-		UnitsAuto:                unitsAuto,
-		DistGroup:                req.DistGroup,
-		DistRole:                 req.DistRole,
-		NNodes:                   req.NNodes,
-		NodeRank:                 req.NodeRank,
-		MasterAddr:               req.MasterAddr,
-		MasterPort:               req.MasterPort,
+		NodeID:                   c.node.ID,
+		ServedName:               c.served,
+		SaveToStorageID:          c.saveTo,
+		Engine:                   c.eng.Name(),
+		Image:                    c.req.Image,
+		QuickParams:              LaunchConfigJSON(c.quick),
+		ExtraArgs:                c.userExtraArgs,
+		ContainerOverrides:       jsonStr(c.req.ContainerOverrides),
+		Placement:                jsonStr(StoredPlacement(c.req.Placement, IsAutomaticPlacement(c.req) && c.req.NNodes <= 1 && c.pdReq == nil)),
+		PlacementStrategy:        c.strategy,
+		UnitsAuto:                c.unitsAuto,
+		DistGroup:                c.req.DistGroup,
+		DistRole:                 c.req.DistRole,
+		NNodes:                   c.req.NNodes,
+		NodeRank:                 c.req.NodeRank,
+		MasterAddr:               c.req.MasterAddr,
+		MasterPort:               c.req.MasterPort,
 		NodeIDs: func() string {
-			ids := []uint{node.ID}
-			if req.NNodes > 1 {
+			ids := []uint{c.node.ID}
+			if c.req.NNodes > 1 {
 				ids = ids[:0]
 			}
-			for _, n := range distNodes {
+			for _, n := range c.distNodes {
 				ids = append(ids, n.ID)
 			}
 			return jsonStr(ids)
 		}(),
-		Sleepable:               req.Sleepable,
-		HealthCheck:             healthCheck,
-		HealthCheckThresholdSec: healthThreshold,
-		TokenizeDisabled:        req.TokenizeEnabled != nil && !*req.TokenizeEnabled,
-		PriorityScheduling:      priorityScheduling,
-		VRAMLimitBytes:          int64(req.VRAMLimitGiB * (1 << 30)),
-		StartTimeoutSec:         req.StartTimeoutSec,
-		PartitionBackend:        req.PartitionBackend,
-		Replicas:                req.Replicas,
-		RoutingPolicy:           req.RoutingPolicy,
+		Sleepable:               c.req.Sleepable,
+		HealthCheck:             c.healthCheck,
+		HealthCheckThresholdSec: c.healthThreshold,
+		TokenizeDisabled:        c.req.TokenizeEnabled != nil && !*c.req.TokenizeEnabled,
+		PriorityScheduling:      c.priorityScheduling,
+		VRAMLimitBytes:          int64(c.req.VRAMLimitGiB * (1 << 30)),
+		StartTimeoutSec:         c.req.StartTimeoutSec,
+		PartitionBackend:        c.req.PartitionBackend,
+		Replicas:                c.req.Replicas,
+		RoutingPolicy:           c.req.RoutingPolicy,
 		State:                   store.DeployActive,
 	}
-	dep.SetPolicy(yieldPolicy)
-	var created *store.Deployment
-	if selection.Model == nil {
-		created, err = s.d.Store.CreateDeploymentWithRequirements(dep, reqs)
+	dep.SetPolicy(c.yieldPolicy)
+	if c.selection.Model == nil {
+		c.created, err = c.s.d.Store.CreateDeploymentWithRequirements(dep, c.reqs)
 	} else {
-		created, err = s.d.Store.CreateDeploymentFromTemplate(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
+		c.created, err = c.s.d.Store.CreateDeploymentFromTemplate(dep, c.reqs, c.templateConfig.modelID, c.templateConfig.operations, c.templateConfig.inputModalities)
 	}
 	if err != nil {
-		return nil, CreateRowError(err)
+		return CreateRowError(err)
 	}
+	return nil
+}
+
+// startDownloads starts the transfers the deployment owns. A transfer that
+// cannot start takes the row back out.
+func (c *createState) startDownloads() error {
 	// Start the download only after validation and persistence: a rejected
 	// create must not leave an unowned transfer running.
-	for _, weight := range weights {
-		if err := s.startSharedModelDownload(weight.model, weightStorage, weight.nodes, created.ID); err != nil {
-			_ = s.d.Store.DeleteDeployment(created.ID)
-			return nil, err
+	for _, weight := range c.weights {
+		if err := c.s.startSharedModelDownload(weight.model, c.weightStorage, weight.nodes, c.created.ID); err != nil {
+			_ = c.s.d.Store.DeleteDeployment(c.created.ID)
+			return err
 		}
 	}
-	if err := s.startComponentDownloads(componentPlans, targets, created.ID); err != nil {
-		_ = s.d.Store.DeleteDeployment(created.ID)
-		return nil, err
+	if err := c.s.startComponentDownloads(c.componentPlans, c.targets, c.created.ID); err != nil {
+		_ = c.s.d.Store.DeleteDeployment(c.created.ID)
+		return err
 	}
-	return created, nil
+	return nil
 }

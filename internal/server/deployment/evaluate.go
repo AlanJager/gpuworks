@@ -3,10 +3,9 @@ package deployment
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 
-	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/acquisition"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -66,478 +65,150 @@ func (e *evaluation) fieldErrors(resp *dto.EvaluateResponse, errs *evaluateField
 	e.answer(*resp)
 }
 
+// evaluate runs the preview's steps in order. A step that has answered (the
+// field errors so far, or the error that stops the preview) returns false and
+// ends the evaluation.
 func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto.EvaluateRequest) {
 	// The preview works on the create body itself: one request shape, so an
 	// input that reaches the create (sleepable) cannot vanish from the preview.
-	req := &evaluateReq.DeployRequest
 	// Field-attributable validation failures are collected instead of refusing
 	// the request: evaluation is the interactive endpoint, and the form keeps
 	// the draft while it shows each error beside its control. Create refuses.
-	errs := &evaluateFieldErrors{}
-	// An automatic multi-node or PD request is previewed on the nodes the
-	// server would pick now; the create picks again.
-	autoPlaced, autoErr := s.autoPlaceRequest(req)
-	if autoErr != nil {
-		errs.add("placement_mode", autoErr)
-		out.fieldErrors(&dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, Replicas: req.Replicas, AutoPlaced: true}, errs)
-		return
-	}
-	reqs := s.collectEvaluationRequestErrors(req, errs)
-	profileNode, _ := s.d.Store.NodeWithGPUs(templateTargetNodeUUID(req.NodeUUID, req.NodeUUIDs))
-	targetVendor := accelerator.NormalizeVendor(evaluateReq.TargetVendor)
-	if strings.TrimSpace(evaluateReq.TargetVendor) != "" && targetVendor == "" {
-		errs.add("target_vendor", productError(messages.ErrorTargetVendorInvalid, "target_vendor is not supported", map[string]any{"vendor": evaluateReq.TargetVendor}))
-	}
-	if targetVendor == "" {
-		targetVendor = planning.RequirementVendor(reqs)
-	}
-	hardware := nodeTemplateHardware(profileNode)
-	// An explicitly named spec is a complete execution contract and resolves
-	// without hardware facts; injecting the vendor hint here would turn the
-	// cc-less GPU into a chipmatch rejection and make automatic placement with
-	// a selected template impossible. The vendor hint serves the unnamed-spec
-	// matching path only.
-	if hardware.GPU.Vendor == "" && req.TemplateSpecName == "" {
-		hardware.GPU.Vendor = targetVendor
-	}
-	selection, err := s.applyTemplateDefaults(req, hardware)
-	if err != nil {
-		out.fail(err)
-		return
-	}
-	errs.add(fieldPDPlacement, checkPDSpec(selection, placementPD(req)))
-	preserveEngineModelName(req)
-	// The mounts the request states are judged against the assembled launch's
-	// own rules here, so the form learns about a duplicate or nested target at
-	// the same moment it learns everything else about the draft.
-	if err := validateMountRowRequest(req, mountRowTargets(selection.Components, requestModelMount(req))); err != nil {
-		errs.add(FieldContainerMounts, err)
-	} else if err := s.ValidateMountModels(req); err != nil {
-		errs.add(FieldContainerMounts, err)
-	}
-	// Each replica is placed as its own unit; this tree admits no joint
-	// multi-replica group, so the scope is always per-replica. The response
-	// exists from here on so every field-error exit carries the template facts
-	// it already resolved.
-	resp := dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, OK: true, Replicas: req.Replicas, AutoPlaced: autoPlaced, PlanScope: "per_replica", TemplateMatch: selection.Match, MatchedBy: selection.MatchedBy, TemplateDeviated: selection.Deviated}
-	if selection.ManualCommandDefault {
-		// The spec owns its command: the editor starts from that script.
-		resp.ManualCommandDraft = selection.Spec.ManualCommand
-	}
-	if selection.Spec != nil {
-		resp.TemplateSpecSource = selection.Spec.Source
-		resp.TemplateSpecName = selection.Spec.Name
-	}
-	resp.Warnings = append(resp.Warnings, selection.Warnings...)
-	// The eligibility answer rides along even when an early field error stops
-	// the preview: the node dropdown renders reasons for exactly those
-	// drafts. Requirements that cannot be read leave every node ineligible
-	// rather than every node eligible.
-	pool, poolErr := requestPool(req)
-	placement := evaluationPlacement(req)
-	eligibleLoaded := false
-	var fleet []*store.Node // the nodes the eligibility was read from
-	loadEligible := func(requests func(*store.Node) map[int]planning.TargetCardRequest) {
-		if eligibleLoaded {
-			return
-		}
-		resp.EligibleNodes, resp.PoolPartitionCapability, fleet = s.evaluateEligibleNodes(selection, pool, poolErr, IsAutomaticPlacement(req) && req.NNodes <= 1, requests)
-		eligibleLoaded = true
-	}
-	writeFieldErrors := func() {
-		loadEligible(nil)
-		// A draft with a field error still answers whether it can be checked,
-		// so the switch does not flicker while the deployer fixes the field.
-		if resp.HealthCheckable == nil {
-			s.noteHealthCheckable(ctx, &resp, req, selection)
-		}
-		out.fieldErrors(&resp, errs)
-	}
-
-	// A placement read failure was collected above; the zero placement keeps
-	// the rest of the answer renderable.
-	eng, err := deploy.SelectEngine(req.Engine)
-	if err != nil {
-		errs.add("engine", productError(messages.ErrorEngineInvalid, "unknown engine", map[string]any{"engine": req.Engine}))
-		writeFieldErrors()
-		return
-	}
-	// Placement keeps the target-specific sleep refusals and their diagnostics.
-	if sleepErr := planning.SleepDeclarable(req.Sleepable, eng.Name(), ""); sleepErr != nil {
-		errs.add("sleepable", SleepDeclarationError(sleepErr))
-	}
-	// Whether the form may offer a yield policy other than never: the create's
-	// own check, answered even when a field error stops the preview below.
-	yieldEligible := dto.EligibilityOf(planning.DraftYieldPolicyRefusal(req.Sleepable, eng.Name(), req.NNodes, placementPD(req) != nil))
-	resp.YieldPolicyEligible = &yieldEligible
-	if !errs.empty() {
-		// A draft with an early field error is what the form must fix before a
-		// preview means anything; continuing would only re-report the same
-		// rules from the assembled launch.
-		writeFieldErrors()
-		return
-	}
-	profile, err := deploy.ProfileForTarget(eng.Name(), targetVendor)
-	if err != nil {
-		out.fail(err)
-		return
-	}
-	resp.Image = req.Image
-	if resp.Image == "" {
-		resp.Image = profile.DefaultImage
-	}
-	// The selection as the create's launch preflight sees it: before the model
-	// binds the components and its API contract (evaluateLaunchPreflight).
-	preflightSelection := selection
-	preflightSelection.Components = append([]deploy.ComponentBinding(nil), selection.Components...)
-	model, err := s.resolveDeploymentModelFromTemplate(ctx, req.ModelID, &selection, req.TemplateID)
-	if errs.add("model_id", err) {
-		writeFieldErrors()
-		return
-	}
-	s.noteHealthCheckableOf(&resp, &selection, model)
-	// A quick registration may not have metadata yet. Keep evaluation and
-	// scheduling usable, but tell clients that the VRAM estimate is incomplete.
-	if model.WeightBytes <= 0 && (selection.Spec == nil || (selection.Spec.WeightBytes <= 0 && selection.Spec.RuntimeWeightBytes <= 0)) {
-		resp.Skipped = true
-		resp.SkipReason = "model weight size is unknown"
-	}
-	servedName := strings.TrimSpace(req.ServedName)
-	if strings.Contains(strings.ToLower(strings.TrimSpace(req.Image)), "@sha256:") {
-		resp.Warnings = append(resp.Warnings, messages.NewWarning(messages.WarningImageDigestUnverified, map[string]any{"image": req.Image}))
-	}
-	base, err := s.evaluationLaunchBase(evaluateReq.DeploymentID)
-	if err != nil {
-		out.err = internal(err)
-		return
-	}
-	// One materialization decides this deployment's launch configuration. The
-	// preview below, the estimate, and a create submitted from this form all
-	// read the same object.
-	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, requestTargetCards(profileNode, req), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
-	if errs.add(fieldExtraArgs, err) {
-		// ProductErrors that name a key land on that key's control; the
-		// extra-args parse error is the one that starts on the text box.
-		writeFieldErrors()
-		return
-	}
-	quick := launch.Quick
-	userExtraArgs := launch.UserResidual
-	// Materialization parsed this text already. Compare the original user
-	// tokens before any flags moved into fields or were derived for a task.
-	submittedExtra, _ := deploy.ParseArgsText(req.ExtraArgs)
-	var storedArgs *deploy.StoredLaunchConfig
-	if base != nil {
-		storedArgs = &base.Args
-	}
-	if command, err := effectiveRequestCommand(req, selection); err == nil && command.InterpretEngineDialect && !sameStoredExtraArgs(eng.Name(), submittedExtra, storedArgs) {
-		resp.Warnings = append(resp.Warnings, deploy.ExtraArgsEngineWarnings(eng.Name(), userExtraArgs)...)
-	}
-	priority := requestPriorityScheduling(req, eng.Name(), targetVendor, placementPD(req) != nil, launch.TemplateResidual, userExtraArgs, selection.Entrypoint)
-	resp.PriorityScheduling = &priority
-	if _, priorityErr := ResolvePriorityScheduling(req.PriorityScheduling, priority); errs.add("priority_scheduling", priorityErr) {
-		writeFieldErrors()
-		return
-	}
-	resp.EffectiveParams = launchConfigMap(quick)
-	// FormValues is the same configuration read as a display instruction: the
-	// effective values plus the argument text after the moved flags left it.
-	// The form sets its fields from this and derives nothing itself.
-	formValues := launchConfigMap(quick)
-	formValues["extra_args"] = deploy.FormatArgsText(launch.UserResidual)
-	resp.FormValues = formValues
-	resp.Defaults = &dto.EvaluateDefaults{ModelMount: deploy.DefaultModelMount, MasterPort: deploy.DefaultMasterPort, Engine: deploy.DefaultEngine}
-	resp.EngineDecidesParamKeys = launch.EngineDecidesParamKeys
-	resp.Moved = launch.Moved
-	resp.TemplateParams = launch.TemplateParams
-	resp.TemplateResidualArgs = launch.TemplateResidual
-	// The form values are already answered, so the deployer sees the share
-	// the refusal is about and can lower it. An edit is not asked: the
-	// deployment's own engine already holds the host memory in question.
-	if base == nil && errs.add("sleepable", s.sleepHostBacking(eng.Name(), req, quick, profileNode)) {
-		writeFieldErrors()
-		return
-	}
-	if requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides); overrideErr == nil && placement.PD == nil {
-		mount, components := previewComponentMounts(nil, selection.Components, nil)
-		draft := evaluationLaunchRequest(evaluatePlanEnv{request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, selection: selection, placement: placement, quick: quick, userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides, modelMount: mount, componentMounts: components, templateResidual: launch.TemplateResidual}, nil)
-		// Choosing another node also chooses its cards; explicit indexes are
-		// validated by the displayed plan for the selected node, not this dropdown.
-		draft.Placement.GPUIndexes = nil
-		if requests, requestErr := planning.TargetRequestsForLaunch(draft); requestErr == nil {
-			loadEligible(requests)
-		}
-	}
-	loadEligible(nil)
-	if placement.PD != nil {
-		requestOverrides, _ := RequestContainerOverrides(req.ContainerOverrides)
-		s.evaluatePD(evaluatePDEnv{ctx: ctx, out: out, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model,
-			selection: selection, launch: launch, requestOverrides: requestOverrides, servedName: servedName, errs: errs,
-			targetVendor: targetVendor, profileNode: profileNode})
-		return
-	}
-	if req.NNodes <= 0 {
-		req.NNodes = 1
-	}
-	// A multi-node draft gets the structural preflight inline, computed before
-	// the distributed validation can stop the response, so the summary rides
-	// along with the field errors it explains. Deep network probing stays with
-	// the preflight RPC.
-	if req.NNodes > 1 {
-		resp.Preflight = s.evaluateInlinePreflight(req)
-		if !resp.Preflight.OK {
-			resp.OK = false
-		}
-	}
-	var rankNodes []*store.Node
-	// A parallelism the nodes cannot hold is reported on its field, but the
-	// image and weight acquisition below still resolves: they depend only on
-	// the nodes and the model, and the form shows them above the parallelism.
-	parallelInvalid := false
-	if req.NNodes > 1 {
-		normalized := dto.DeployRequest{
-			NodeUUID: req.NodeUUID, NodeUUIDs: req.NodeUUIDs, NNodes: req.NNodes,
-			NodeRank: req.NodeRank, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
-			Placement: req.Placement,
-		}
-		dp, err := deploy.PlacementDataParallel(eng.Name(), quick.DP, launch.TemplateResidual, launch.UserResidual)
-		if errs.add("data_parallel_size", err) {
-			writeFieldErrors()
-			return
-		}
-		nodes, err := s.PrepareDistributedDeployRequest(&normalized, dp)
-		if err != nil {
-			field := distributedErrorField(err)
-			errs.add(field, err)
-			if !isParallelismField(field) {
-				writeFieldErrors()
-				return
-			}
-			parallelInvalid = true
-			// The form keeps what the deployer typed: form_values echoes the
-			// stated degrees, since a key missing from it clears the field.
-			if placement.TP > 0 {
-				resp.FormValues["tp"] = placement.TP
-			}
-			if placement.PP > 0 {
-				resp.FormValues["pp"] = placement.PP
-			}
-			// Rank zero is the node the acquisition facts describe.
-			if len(req.NodeUUIDs) > 0 {
-				req.NodeUUID = req.NodeUUIDs[0]
-			}
-		} else {
-			req.NodeUUID = normalized.NodeUUID
-			req.NodeRank = normalized.NodeRank
-			req.MasterAddr = normalized.MasterAddr
-			req.MasterPort = normalized.MasterPort
-			// The parallelism that takes effect, defaulted from the nodes
-			// when the draft stated none, is what the form shows and what
-			// the plan below runs with.
-			req.Placement = normalized.Placement
-			placement = evaluationPlacement(req)
-			resp.FormValues["tp"], resp.FormValues["pp"] = placement.TP, placement.PP
-		}
-		for _, n := range nodes {
-			withGPUs, err := s.d.Store.NodeWithGPUs(n.UUID)
-			if err != nil {
-				errs.add("node_uuids", productError(messages.ErrorDeploymentNodeInvalid, fmt.Sprintf("node %s: %v", n.UUID, err), map[string]any{"node": n.UUID, "detail": err.Error()}))
-				writeFieldErrors()
-				return
-			}
-			rankNodes = append(rankNodes, withGPUs)
-		}
-	}
-
-	// Automatic placement: every eligible node is planned, the candidates list
-	// records each answer, and the best feasible node becomes the draft's node
-	// for the rest of this evaluation. A create repeating the draft re-validates
-	// the choice and answers AUTOMATIC_PLACEMENT_STALE when the world moved.
-	if IsAutomaticPlacement(req) && req.NNodes <= 1 {
-		requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides)
-		if overrideErr == nil {
-			automaticSelection := selection
-			automaticSelection.ExtraArgs = launch.TemplateResidual
-			selected, candidates := s.evaluateAutomaticPlacement(ctx, req, eng, model, automaticSelection, placement, quick, userExtraArgs, servedName, resp.Image, requestOverrides, resp.EligibleNodes, evaluateReq.DeploymentID)
-			resp.SelectedNode = selected
-			resp.Candidates = candidates
-			if selected != nil {
-				req.NodeUUID = selected.UUID
-				// The facts the acquisition panel narrows to "the node this
-				// draft lands on" follow the automatic pick too: profileNode
-				// was resolved from a request that names no node, and leaving
-				// it nil answers node_unselected beside a selected_node that
-				// already names the node.
-				if withGPUs, nodeErr := s.d.Store.NodeWithGPUs(selected.UUID); nodeErr == nil {
-					profileNode = withGPUs
-				}
-				if resp.OK && !resp.Skipped {
-					resp.OK = true
-				}
-			}
-		}
-	}
-	// The node list offers no node a create naming it refuses for never
-	// fitting. It is judged before the draft's own node is planned, so the
-	// list is the same whichever node the draft has, in either placement
-	// mode. Automatic placement has ranked and listed its candidates by now:
-	// what it lists is what it trialled, as before. A memory-limited draft is
-	// left to its node's dGPU checks.
-	poolFits := false
-	if requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides); overrideErr == nil && req.NNodes <= 1 && req.VRAMLimitGiB <= 0 {
-		candidateReq := cloneRequest(*req)
-		candidateReq.Image = resp.Image
-		admissionSelection := selection
-		admissionSelection.ExtraArgs = launch.TemplateResidual
-		anyCards := placement
-		anyCards.GPUIndexes = nil // each node's scheduler picks its cards
-		mount, components := previewComponentMounts(s.d.Store, selection.Components, nil)
-		poolFits = s.markNeverFitting(ctx, resp.EligibleNodes, fleet, s.poolLaunch(&candidateReq, eng, model, admissionSelection, anyCards, quick, userExtraArgs, servedName, mount, components, requestOverrides))
-	}
-	// Computed after automatic placement so the weight networks, peers and
-	// local-path facts are the selected node's, not the unnamed request's.
-	weightFacts, weightFactsErr := s.evaluateWeightFacts(model, selection, profileNode)
-	if weightFactsErr != nil {
-		resp.Diagnostics = diagnosticsFromError(weightFactsErr)
-		errs.add("model_id", weightFactsErr)
-		writeFieldErrors()
-		return
-	}
-	// The template's weight sources with the suggested and registered facts,
-	// so the form's chooser renders a server answer too.
-	resp.WeightSources = s.evaluateWeightSourceOptions(selection)
-
-	node, nerr := s.d.Store.NodeWithGPUs(req.NodeUUID)
-	nodeFound := nerr == nil
-	if req.NNodes == 1 && nerr == nil {
-		rankNodes = []*store.Node{node}
-	}
-	if nerr == nil {
-		req.PartitionBackend, err = ResolvePartitionBackend(node, req.VRAMLimitGiB, req.PartitionBackend)
-		if errs.add("partition_backend", err) {
-			writeFieldErrors()
+	r := &evaluateState{s: s, ctx: ctx, out: out, req: &evaluateReq.DeployRequest, errs: &evaluateFieldErrors{},
+		excludeDeployment: evaluateReq.DeploymentID, statedVendor: evaluateReq.TargetVendor}
+	for _, step := range []func() bool{
+		r.resolveTemplate,
+		r.resolveEngineAndModel,
+		r.materializeLaunch,
+		r.listEligibleNodes,
+		r.prepareDistributed,
+		r.placeAutomatically,
+		r.resolveAcquisition,
+		r.planRanks,
+		r.finish,
+	} {
+		if !step() {
 			return
 		}
 	}
-	image := s.evaluateImageFacts(evaluateImageEnv{
-		ctx: ctx, request: req, response: &resp, engine: eng, selection: selection,
-		targetVendor: targetVendor, profileNode: profileNode, node: node, nodeFound: nodeFound, weightFacts: weightFacts,
-	})
-	if resp.Acquisition != nil {
-		if pinned := pinnedNodeUUIDs(req); len(pinned) > 0 {
-			known := map[string]*bool{}
-			if profileNode != nil {
-				known[profileNode.UUID] = resp.Acquisition.Image.Cached
-			}
-			resp.Acquisition.Nodes = s.evaluateNodeAcquisition(ctx, pinned, resp.Image, templateImageSources(selection, resp.Image), model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, known)
-		}
-	}
-	resp.Diagnostics, err = s.inspectWeights(ctx, selection, model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: s.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes)
-	if errs.add("model_id", err) {
-		writeFieldErrors()
-		return
-	}
-	if resp.Acquisition != nil {
-		resp.Acquisition.Components = s.evaluateComponentAcquisition(req.ModelSource, model, selection.Components, store.StoragePins(req.NodeRequirements), rankNodes)
-	}
-	if parallelInvalid {
-		writeFieldErrors()
-		return
-	}
-	arch, archID, vendor := image.arch, image.archID, image.vendor
-	imageCached := image.imageCached
-	// nodeImageCached is the same fact narrowed to the node the estimate lands
-	// on; evaluatePlan fills it in for the per-rank assembly.
-	var nodeImageCached *bool
+}
 
-	// Estimate + schedule (shared with the controller).
-	gpuCount := len(placement.GPUIndexes)
-	resolver := templatePlacementResolver(selection.Placement)
-	templateArgs := append([]string(nil), launch.TemplateResidual...)
-	templateEnv := cloneStringMap(selection.Env)
-	templateEntrypoint := append([]string(nil), selection.Entrypoint...)
-	// The launch inputs a request owns: the container override layer it states,
-	// and the template layer the write boundary would keep (the residual, not
-	// the spec's raw argument list).
-	requestOverrides, overrideErr := RequestContainerOverrides(req.ContainerOverrides)
-	if errs.add("", overrideErr) {
-		// The override layer is a section, not one control: the page-level
-		// line carries its decode failures.
-		writeFieldErrors()
-		return
-	}
-	previewModelMount, previewMounts := previewComponentMounts(s.d.Store, selection.Components, node)
-	plan, ok := s.evaluatePlan(evaluatePlanEnv{
-		ctx: ctx, out: out, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model,
-		node: node, nodeFound: nodeFound, profileNode: profileNode, imageCached: imageCached,
-		nodeImageCached: nodeImageCached, selection: selection, placement: placement, quick: quick,
-		userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides,
-		modelMount: previewModelMount, componentMounts: previewMounts, gpuCount: gpuCount,
-		resolver: resolver, templateResidual: launch.TemplateResidual, errs: errs,
-	})
-	if !ok {
-		return
-	}
-	nodeImageCached, quick = plan.nodeImageCached, plan.quick
-	tp := plan.tp
-	parallelismSummary, parallelismErr := evaluateParallelism(placement, req.NNodes, tp, plan.placementResolved, quick, launch.TemplateResidual, launch.UserResidual, eng.Name())
-	if errs.add("data_parallel_size", parallelismErr) {
-		writeFieldErrors()
-		return
-	}
-	resp.Parallelism = parallelismSummary
-	placementVariables, allowUnresolvedPlacement := plan.placementVariables, plan.allowUnresolved
-	dynamicTPPreview := plan.dynamicTPPreview
+// evaluateState is the evaluation state the steps share: what the steps so
+// far have settled about the draft and a later step reads. The request is
+// rewritten as the draft is normalized (its node, ranks, placement and
+// partition backend), and the response is filled in as the steps go.
+type evaluateState struct {
+	s    *Service
+	ctx  context.Context
+	out  *evaluation
+	req  *dto.DeployRequest
+	errs *evaluateFieldErrors
+	resp dto.EvaluateResponse
+	// excludeDeployment is the deployment an edit previews, whose own
+	// holdings do not count against it; statedVendor is the target vendor as
+	// the request wrote it.
+	excludeDeployment uint
+	statedVendor      string
 
-	rankSelection := snapshotTemplateSelection(selection, resp.Image)
-	// The template layer a launch resolves against is the residual the write
-	// boundary kept, not the spec's own argument list: dictionary flags are
-	// edited through the form and the engine dictionary, and a spec token that
-	// happens to name one is what the stored row no longer carries either.
-	rankSelection.ExtraArgs = launch.TemplateResidual
-	if !s.evaluateRanks(evaluateRankEnv{
-		ctx: ctx, out: out, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, launch: launch,
-		selection: selection, rankSelection: rankSelection, rankNodes: rankNodes, placement: placement,
-		quick: quick, userExtraArgs: userExtraArgs, dynamicTPPreview: dynamicTPPreview,
-		nodeImageCached: nodeImageCached, requestOverrides: requestOverrides,
-		arch: arch, archID: archID, vendor: vendor, servedName: servedName,
-		placementVariables: placementVariables, allowUnresolved: allowUnresolvedPlacement,
-		modelWeightBytes: plan.modelWeightBytes, templateArgs: templateArgs, templateEnv: templateEnv,
-		templateEntrypoint: templateEntrypoint, tp: tp, errs: errs,
-	}) {
+	reqs         map[string][]string
+	profileNode  *store.Node
+	targetVendor string
+	selection    templateSelection
+	// preflightSelection is the selection as the create's launch preflight
+	// sees it: before the model binds the components and its API contract
+	// (evaluateLaunchPreflight).
+	preflightSelection templateSelection
+	pool               map[string][]string
+	poolErr            error
+	placement          planning.Placement
+	eligibleLoaded     bool
+	fleet              []*store.Node // the nodes the eligibility was read from
+
+	eng        deploy.Engine
+	model      *store.Model
+	servedName string
+	base       *editLaunchBase
+	launch     deploy.Materialized
+	quick      deploy.LaunchConfig
+
+	rankNodes []*store.Node
+	// parallelInvalid: a parallelism the nodes cannot hold is reported on
+	// its field, but the image and weight acquisition still resolves: they
+	// depend only on the nodes and the model, and the form shows them above
+	// the parallelism.
+	parallelInvalid bool
+	// poolFits: the node list found a node the draft fits.
+	poolFits    bool
+	weightFacts acquisition.WeightFacts
+	node        *store.Node
+	nodeFound   bool
+	image       evaluateImageResult
+
+	// The launch inputs a request owns, as the plan read them: the container
+	// override layer it states and the mounts of the preview.
+	requestOverrides deploy.ContainerOverrides
+	modelMount       string
+	componentMounts  []proto.MountSpec
+}
+
+// loadEligible answers the node list once; the first call decides it. The
+// eligibility answer rides along even when an early field error stops the
+// preview: the node dropdown renders reasons for exactly those drafts.
+// Requirements that cannot be read leave every node ineligible rather than
+// every node eligible.
+func (r *evaluateState) loadEligible(requests func(*store.Node) map[int]planning.TargetCardRequest) {
+	if r.eligibleLoaded {
 		return
 	}
+	r.resp.EligibleNodes, r.resp.PoolPartitionCapability, r.fleet = r.s.evaluateEligibleNodes(r.selection, r.pool, r.poolErr, IsAutomaticPlacement(r.req) && r.req.NNodes <= 1, requests)
+	r.eligibleLoaded = true
+}
+
+// writeFieldErrors answers with the field errors collected so far.
+func (r *evaluateState) writeFieldErrors() {
+	r.loadEligible(nil)
+	// A draft with a field error still answers whether it can be checked,
+	// so the switch does not flicker while the deployer fixes the field.
+	if r.resp.HealthCheckable == nil {
+		r.s.noteHealthCheckable(r.ctx, &r.resp, r.req, r.selection)
+	}
+	r.out.fieldErrors(&r.resp, r.errs)
+}
+
+// finish runs the checks that need the previewed ranks and answers.
+func (r *evaluateState) finish() bool {
 	// Checked once the ranks are previewed, so the form shows the refusal
 	// beside the launches and the draft that would satisfy it.
-	errs.add(fieldContainerCmd, checkManualCommandRanks(req))
+	r.errs.add(fieldContainerCmd, checkManualCommandRanks(r.req))
 	// The create resolves its launch on the per-node card count the request
 	// states, where the plan above used the cards the scheduler assigned; a
 	// memory-limited draft can get fewer cards than it states. The same
 	// preflight here makes what the create would refuse a blocking error.
-	if errs.empty() {
-		if errs.add("", s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp, base)) {
-			writeFieldErrors()
-			return
+	if r.errs.empty() {
+		if r.errs.add("", r.s.evaluateLaunchPreflight(r.eng, r.req, r.preflightSelection, r.targetVendor, r.profileNode, r.rankNodes, &r.resp, r.base)) {
+			r.writeFieldErrors()
+			return false
 		}
 	}
 	// An automatic draft with no node is refused when no node of its pool
 	// could ever run it. A node the list above found to fit settles that.
-	if errs.empty() && req.NNodes <= 1 && placement.PD == nil && IsAutomaticPlacement(req) && resp.SelectedNode == nil && !poolFits {
-		candidateReq := cloneRequest(*req)
-		candidateReq.Image = resp.Image
-		admissionSelection := selection
-		admissionSelection.ExtraArgs = launch.TemplateResidual
-		if err := s.checkPoolCanEverFit(ctx, &candidateReq, reqs, eng, model, admissionSelection, placement, quick, userExtraArgs, servedName, previewModelMount, previewMounts, requestOverrides); err != nil {
-			out.admissionErr = err
-			errs.add("", err)
+	if r.errs.empty() && r.req.NNodes <= 1 && r.placement.PD == nil && IsAutomaticPlacement(r.req) && r.resp.SelectedNode == nil && !r.poolFits {
+		candidateReq := cloneRequest(*r.req)
+		candidateReq.Image = r.resp.Image
+		admissionSelection := r.selection
+		admissionSelection.ExtraArgs = r.launch.TemplateResidual
+		if err := r.s.checkPoolCanEverFit(r.ctx, &candidateReq, r.reqs, r.eng, r.model, admissionSelection, r.placement, r.quick, r.launch.UserResidual, r.servedName, r.modelMount, r.componentMounts, r.requestOverrides); err != nil {
+			r.out.admissionErr = err
+			r.errs.add("", err)
 		}
 	}
-	if !errs.empty() {
-		out.fieldErrors(&resp, errs)
-		return
+	if !r.errs.empty() {
+		r.out.fieldErrors(&r.resp, r.errs)
+		return false
 	}
-	resp.Warnings = uniqueWarnings(resp.Warnings)
-	out.answer(resp)
+	r.resp.Warnings = uniqueWarnings(r.resp.Warnings)
+	r.out.answer(r.resp)
+	return true
 }
 
 // distributedErrorField maps the distributed request errors onto the form
