@@ -541,13 +541,16 @@ for (const [file, source] of [[storageBackendPath, storageBackendSource], [bench
 // Every non-streaming REST fetch in the central API client must decode the
 // structured error envelope. This catches custom upload/import paths that do
 // not use getJSON/sendJSON.
-const apiClientPath = path.join(root, "ui/src/api.ts");
-const apiClientLines = fs.readFileSync(apiClientPath, "utf8").split("\n");
-for (const [index, line] of apiClientLines.entries()) {
-  if (!line.includes("if (!res.ok)")) continue;
-  const nearby = apiClientLines.slice(index, index + 4).join("\n");
-  if (!nearby.includes("localizedResponseError")) {
-    errors.push(`ui/src/api.ts:${index + 1}: non-streaming REST error bypasses localizedResponseError`);
+// ui/src/api.ts only re-exports; the client itself is the files under ui/src/api.
+const apiClientPaths = [path.join(root, "ui/src/api.ts"), ...filesUnder(path.join(root, "ui/src/api"), ".ts")];
+for (const apiClientPath of apiClientPaths) {
+  const apiClientLines = fs.readFileSync(apiClientPath, "utf8").split("\n");
+  for (const [index, line] of apiClientLines.entries()) {
+    if (!line.includes("if (!res.ok)")) continue;
+    const nearby = apiClientLines.slice(index, index + 4).join("\n");
+    if (!nearby.includes("localizedResponseError")) {
+      errors.push(`${path.relative(root, apiClientPath)}:${index + 1}: non-streaming REST error bypasses localizedResponseError`);
+    }
   }
 }
 
