@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -145,5 +146,46 @@ func TestGPUAvailableBytesIsZeroOnAHeldCardWhoseForeignMemoryIsUnknown(t *testin
 		if item.AvailableBytes != 0 {
 			t.Fatalf("holder %+v: available = %d, want 0 on a held card whose foreign memory is unknown", holder, item.AvailableBytes)
 		}
+	}
+}
+
+// What a card does not offer is reported by cause: a sleeper's residue under
+// its own key, so what is left of the total after the allocated, sleeping and
+// available figures is what processes outside the platform hold (with their
+// headroom), and a client cannot mistake that for a sleeping instance.
+func TestGPUSleepingBytesIsReportedApartFromForeignMemory(t *testing.T) {
+	node := store.Node{State: store.NodeStateOnline, PartitionSafetyProtocol: proto.PartitionSafetyForeignTracked}
+	raw, _ := json.Marshal([]proto.CardProcess{{PID: 41235, Name: "python3", MemoryBytes: 62 << 30}})
+	for _, tc := range []struct {
+		name     string
+		foreign  string
+		sleeping int64
+		wire     string
+	}{
+		{name: "foreign only", foreign: string(raw), wire: `"allocated_bytes":53687091200,"sleeping_bytes":0,"available_bytes":22548578304,`},
+		{name: "sleeper only", sleeping: 3 << 30, wire: `"allocated_bytes":53687091200,"sleeping_bytes":3221225472,"available_bytes":93415538688,`},
+		{name: "both", foreign: string(raw), sleeping: 3 << 30, wire: `"allocated_bytes":53687091200,"sleeping_bytes":3221225472,"available_bytes":19327352832,`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gpu := store.GPU{MemoryTotal: 140 << 30, HealthStatus: "OK", ForeignProcesses: tc.foreign}
+			item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 50 << 30, SleepingBytes: tc.sleeping}, func(uint) *store.Deployment { return nil }, nil)
+			if item.SleepingBytes != tc.sleeping {
+				t.Fatalf("sleeping = %d, want %d", item.SleepingBytes, tc.sleeping)
+			}
+			withheld := item.MemoryTotalBytes - item.AllocatedBytes - item.SleepingBytes - item.AvailableBytes
+			if want := int64(0); tc.foreign == "" && withheld != want {
+				t.Fatalf("withheld = %d on a card nothing outside the platform holds", withheld)
+			}
+			if want := int64(62+7) << 30; tc.foreign != "" && withheld != want {
+				t.Fatalf("withheld = %d, want %d (foreign memory and its headroom)", withheld, want)
+			}
+			body, err := json.Marshal(item)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(body), tc.wire) {
+				t.Fatalf("wire JSON lacks %s:\n%s", tc.wire, body)
+			}
+		})
 	}
 }

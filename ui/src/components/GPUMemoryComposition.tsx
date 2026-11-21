@@ -18,16 +18,25 @@ export interface MemorySegment {
 
 // memorySegments splits a card's memory the way the scheduler books it: each
 // occupant's share (a dGPU slice's limit, or the whole card), what slices
-// hold beyond their limits, a sleeper's residue, and what is left. The
-// figures come from the inventory (allocated_bytes / available_bytes), so
-// the bar can never disagree with the card's allocation state; occupant
-// limits only say how the allocated part divides.
-export function memorySegments(gpu: Pick<PhysicalGPU, "memory_total_bytes" | "allocated_bytes" | "available_bytes" | "occupants">, labels: {
+// hold beyond their limits, a sleeper's residue, what the platform withholds
+// for another reason, and what is left. The figures come from the inventory
+// (allocated_bytes / sleeping_bytes / available_bytes), so the bar can never
+// disagree with the card's allocation state; occupant limits only say how
+// the allocated part divides.
+//
+// What is withheld is named by its cause, never as a sleeper's: on a card
+// processes outside the platform hold it is their memory and the headroom
+// kept beside it. And what is left is "allocatable" only on a card that
+// takes work; on one that does not it is merely free.
+export function memorySegments(gpu: Pick<PhysicalGPU, "memory_total_bytes" | "allocated_bytes" | "sleeping_bytes" | "available_bytes" | "occupants" | "foreign_processes" | "schedulable" | "allocation_state">, labels: {
   slice: (name: string, limitGiB: string) => string;
   wholeCard: (name: string) => string;
   overhead: string;
   sleeping: string;
+  foreign: string;
+  withheld: string;
   free: string;
+  idle: string;
 }): MemorySegment[] {
   const total = Math.max(gpu.memory_total_bytes, 0);
   const allocated = Math.min(Math.max(gpu.allocated_bytes, 0), total);
@@ -52,9 +61,14 @@ export function memorySegments(gpu: Pick<PhysicalGPU, "memory_total_bytes" | "al
     const holder = awake.find((item) => !item.limit_bytes) ?? awake[0];
     segments.push({ key: holder?.instance_uuid ?? "allocated", label: labels.wholeCard(holder ? holder.deployment_name || holder.instance_uuid.slice(0, 8) : "-"), bytes: allocated, color: colors.chartPrimary });
   }
-  const sleeping = total - allocated - available;
+  const sleeping = Math.min(Math.max(gpu.sleeping_bytes || 0, 0), total - allocated - available);
   if (sleeping > 0) segments.push({ key: "sleeping", label: labels.sleeping, bytes: sleeping, color: colors.chartQuaternary, overhead: true });
-  if (available > 0) segments.push({ key: "free", label: labels.free, bytes: available, color: colors.borderSoft });
+  const withheld = total - allocated - sleeping - available;
+  // On a node nobody can reach nothing is on offer whatever holds the card,
+  // so its outside processes do not account for what is withheld there.
+  const foreign = gpu.allocation_state !== "unknown" && (gpu.foreign_processes?.length ?? 0) > 0;
+  if (withheld > 0) segments.push({ key: "withheld", label: foreign ? labels.foreign : labels.withheld, bytes: withheld, color: colors.chartSlate, overhead: true });
+  if (available > 0) segments.push({ key: "free", label: gpu.schedulable ? labels.free : labels.idle, bytes: available, color: colors.borderSoft });
   return segments;
 }
 
@@ -69,7 +83,10 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
     wholeCard: (name) => t("composition.wholeCard", { name }),
     overhead: t("composition.overhead"),
     sleeping: t("composition.sleeping"),
+    foreign: t("composition.foreign"),
+    withheld: t("composition.withheld"),
     free: t("composition.free"),
+    idle: t("composition.idle"),
   });
   const total = gpu.memory_total_bytes || 1;
   const used = gpu.load.memory_used_bytes;

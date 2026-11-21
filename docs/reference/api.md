@@ -1681,6 +1681,8 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 - `unusable`：完全不接任务，原因见卡的 `schedulable`、`health_status`、`ownership`、`foreign_processes`。
 - `unknown`：节点未在线，读数是上次上报值；`available_bytes` 为 0，不计入可分配数量，已有分配与硬件健康信息仍保留。
 
+显存按台账分为 `allocated_bytes`（运行中实例占用）、`sleeping_bytes`（休眠实例的残留）与 `available_bytes`（还能分配）。三者之和小于 `memory_total_bytes` 时，差额是因其它原因扣留的显存：平台外进程占用及其预留余量，或节点未在线。
+
 `overview.health` 按 `ok`、`warning`、`error` 统计健康等级。告警卡仍可能服务；被直通或被平台外进程占用的卡也可能健康为 `ok`。
 状态随 20 秒快照刷新。
 
