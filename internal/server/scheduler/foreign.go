@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
-	serverestimate "gpuworks.ai/gpuworks/internal/server/estimate"
 )
 
 // Sharing a card with processes outside the platform (ADR 0068).
@@ -52,7 +51,7 @@ func (g GPU) foreignHold() int64 {
 	if g.ForeignBytes <= 0 {
 		return 0
 	}
-	return g.ForeignBytes + serverestimate.ForeignHeadroomBytes(g.MemoryTotal)
+	return g.ForeignBytes + max(g.ForeignHeadroomBytes, 0)
 }
 
 // sleeps is whether the deployment puts its engine to sleep.

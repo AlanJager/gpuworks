@@ -141,3 +141,90 @@ test("a rejected save reports the server's reason", async () => {
     stub.restore();
   }
 });
+
+// The headroom beside processes outside the platform: a share of the card
+// and a floor, both of which may be zero. The floor is typed in GiB and
+// stored in bytes.
+const headroomInputs = () => ({
+  pct: screen.getByRole("spinbutton", { name: text("foreignHeadroomPct") }) as HTMLInputElement,
+  floor: screen.getByRole("spinbutton", { name: text("foreignHeadroomMin") }) as HTMLInputElement,
+});
+const served = { deployment: { pending_timeout_sec: 600, start_timeout_sec: 1800, foreign_headroom_pct: 5, foreign_headroom_min_bytes: 4 * 2 ** 30 } };
+
+test("shows the stored headroom and saves it beside the start timeout", async () => {
+  const stub = stubAPI(served);
+  try {
+    const card = renderCard();
+    await waitFor(() => assert.equal(headroomInputs().pct.value, "5"));
+    assert.equal(headroomInputs().floor.value, "4");
+    assert.ok(screen.getByText(text("foreignHeadroom")));
+    assert.ok(screen.getByText(text("foreignHeadroomHint")));
+    assert.equal(screen.queryByText(settingsLocale.deployment.warning.noForeignHeadroom), null);
+
+    const user = userEvent.setup({ document: dom.window.document });
+    await user.clear(headroomInputs().pct);
+    await user.type(headroomInputs().pct, "10");
+    await user.clear(headroomInputs().floor);
+    await user.type(headroomInputs().floor, "2.5");
+    await user.click(card.save());
+    await waitFor(() => assert.equal(stub.puts.length, 1));
+    assert.deepEqual(stub.puts[0], { key: "deployment", value: { start_timeout_sec: 1800, foreign_headroom_pct: 10, foreign_headroom_min_bytes: 2.5 * 2 ** 30 } });
+  } finally {
+    stub.restore();
+  }
+});
+
+test("keeping no headroom is allowed, warned about, and stored as zeros", async () => {
+  const stub = stubAPI(served);
+  try {
+    const card = renderCard();
+    await waitFor(() => assert.equal(headroomInputs().pct.value, "5"));
+    const user = userEvent.setup({ document: dom.window.document });
+    await user.clear(headroomInputs().pct);
+    await user.type(headroomInputs().pct, "0");
+    // A floor still stands: something is kept, so nothing to warn about.
+    assert.equal(screen.queryByText(settingsLocale.deployment.warning.noForeignHeadroom), null);
+    await user.clear(headroomInputs().floor);
+    await user.type(headroomInputs().floor, "0");
+    assert.ok(await screen.findByText(settingsLocale.deployment.warning.noForeignHeadroom));
+    assert.equal(card.save().disabled, false);
+    await user.click(card.save());
+    await waitFor(() => assert.deepEqual(stub.puts, [{ key: "deployment", value: { start_timeout_sec: 1800, foreign_headroom_pct: 0, foreign_headroom_min_bytes: 0 } }]));
+  } finally {
+    stub.restore();
+  }
+});
+
+for (const [field, value] of [["pct", "51"], ["pct", "-1"], ["pct", "2.5"], ["floor", "65"], ["floor", "-1"], ["pct", ""], ["floor", ""]] as const) {
+  test(`a headroom ${field} of "${value}" is refused before it is sent`, async () => {
+    const stub = stubAPI(served);
+    try {
+      const card = renderCard();
+      await waitFor(() => assert.equal(headroomInputs().pct.value, "5"));
+      const user = userEvent.setup({ document: dom.window.document });
+      await user.clear(headroomInputs()[field]);
+      if (value) await user.type(headroomInputs()[field], value);
+      await user.tab();
+      assert.equal(card.save().disabled, true);
+      assert.ok(await screen.findByText("Enter a whole share from 0 to 50 and a minimum from 0 to 64 GiB."));
+      await user.click(card.save());
+      assert.equal(stub.puts.length, 0);
+    } finally {
+      stub.restore();
+    }
+  });
+}
+
+test("a server that serves no headroom is not asked to store one", async () => {
+  const stub = stubAPI({ deployment: { start_timeout_sec: 1800 } });
+  try {
+    const card = renderCard();
+    await waitFor(() => assert.equal(card.input().value, "1800"));
+    assert.equal(screen.queryByText(text("foreignHeadroom")), null);
+    const user = userEvent.setup({ document: dom.window.document });
+    await user.click(card.save());
+    await waitFor(() => assert.deepEqual(stub.puts, [{ key: "deployment", value: { start_timeout_sec: 1800 } }]));
+  } finally {
+    stub.restore();
+  }
+});

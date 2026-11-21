@@ -108,7 +108,7 @@ func TestGPUAllocationOverviewUsesExclusiveClassification(t *testing.T) {
 				raw, _ := json.Marshal([]proto.CardProcess{{PID: 4242, Name: "external", MemoryBytes: 1 << 30}})
 				gpu.ForeignProcesses = string(raw)
 			}
-			item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: tc.awake, SleepingBytes: tc.sleeping}, func(uint) *store.Deployment { return nil }, nil)
+			item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: tc.awake, SleepingBytes: tc.sleeping}, store.DefaultDeploymentPolicy(), func(uint) *store.Deployment { return nil }, nil)
 			if item.AllocationState != tc.state {
 				t.Fatalf("state=%s want %s", item.AllocationState, tc.state)
 			}
@@ -128,7 +128,7 @@ func TestGPUAvailableBytesLeavesOutForeignMemory(t *testing.T) {
 	node := store.Node{State: store.NodeStateOnline, PartitionSafetyProtocol: proto.PartitionSafetyForeignTracked}
 	raw, _ := json.Marshal([]proto.CardProcess{{PID: 41235, Name: "python3", MemoryBytes: 62 << 30}})
 	gpu := store.GPU{MemoryTotal: 140 << 30, HealthStatus: "OK", ForeignProcesses: string(raw)}
-	item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 50 << 30}, func(uint) *store.Deployment { return nil }, nil)
+	item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 50 << 30}, store.DefaultDeploymentPolicy(), func(uint) *store.Deployment { return nil }, nil)
 	if want := int64(140-62-7-50) << 30; item.AvailableBytes != want {
 		t.Fatalf("available = %d, want %d (total less foreign, headroom and claims)", item.AvailableBytes, want)
 	}
@@ -142,42 +142,60 @@ func TestGPUAvailableBytesIsZeroOnAHeldCardWhoseForeignMemoryIsUnknown(t *testin
 	for _, holder := range []proto.CardProcess{{Name: "python3", MemoryBytes: 60 << 30}, {PID: 41235, Name: "python3"}} {
 		raw, _ := json.Marshal([]proto.CardProcess{holder})
 		gpu := store.GPU{MemoryTotal: 140 << 30, HealthStatus: "OK", ForeignProcesses: string(raw)}
-		item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 16 << 30}, func(uint) *store.Deployment { return nil }, nil)
+		item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 16 << 30}, store.DefaultDeploymentPolicy(), func(uint) *store.Deployment { return nil }, nil)
 		if item.AvailableBytes != 0 {
 			t.Fatalf("holder %+v: available = %d, want 0 on a held card whose foreign memory is unknown", holder, item.AvailableBytes)
 		}
 	}
 }
 
-// What a card does not offer is reported by cause: a sleeper's residue under
-// its own key, so what is left of the total after the allocated, sleeping and
-// available figures is what processes outside the platform hold (with their
-// headroom), and a client cannot mistake that for a sleeping instance.
-func TestGPUSleepingBytesIsReportedApartFromForeignMemory(t *testing.T) {
+// What a card does not offer is reported by cause: a sleeper's residue and
+// the memory processes outside the platform hold each under its own key, so
+// what is left of the total after the allocated, sleeping, foreign and
+// available figures is the headroom the deployment policy keeps beside those
+// processes. A client can then tell a sleeper from a holder, and a holder's
+// reading from memory nobody uses; with no headroom kept, nothing is left.
+func TestGPUWithheldMemoryIsReportedByCause(t *testing.T) {
 	node := store.Node{State: store.NodeStateOnline, PartitionSafetyProtocol: proto.PartitionSafetyForeignTracked}
 	raw, _ := json.Marshal([]proto.CardProcess{{PID: 41235, Name: "python3", MemoryBytes: 62 << 30}})
+	shipped := store.DefaultDeploymentPolicy()
+	none := shipped
+	none.ForeignHeadroomPct, none.ForeignHeadroomMinBytes = 0, 0
+	floor := none
+	floor.ForeignHeadroomMinBytes = 2 << 30
 	for _, tc := range []struct {
 		name     string
 		foreign  string
 		sleeping int64
+		policy   store.DeploymentPolicy
+		headroom int64
 		wire     string
 	}{
-		{name: "foreign only", foreign: string(raw), wire: `"allocated_bytes":53687091200,"sleeping_bytes":0,"available_bytes":22548578304,`},
-		{name: "sleeper only", sleeping: 3 << 30, wire: `"allocated_bytes":53687091200,"sleeping_bytes":3221225472,"available_bytes":93415538688,`},
-		{name: "both", foreign: string(raw), sleeping: 3 << 30, wire: `"allocated_bytes":53687091200,"sleeping_bytes":3221225472,"available_bytes":19327352832,`},
+		{name: "foreign only", foreign: string(raw), policy: shipped, headroom: 7 << 30,
+			wire: `"allocated_bytes":53687091200,"sleeping_bytes":0,"foreign_bytes":66571993088,"available_bytes":22548578304,`},
+		{name: "sleeper only", sleeping: 3 << 30, policy: shipped,
+			wire: `"allocated_bytes":53687091200,"sleeping_bytes":3221225472,"foreign_bytes":0,"available_bytes":93415538688,`},
+		{name: "both", foreign: string(raw), sleeping: 3 << 30, policy: shipped, headroom: 7 << 30,
+			wire: `"allocated_bytes":53687091200,"sleeping_bytes":3221225472,"foreign_bytes":66571993088,"available_bytes":19327352832,`},
+		{name: "foreign, no headroom kept", foreign: string(raw), policy: none,
+			wire: `"allocated_bytes":53687091200,"sleeping_bytes":0,"foreign_bytes":66571993088,"available_bytes":30064771072,`},
+		{name: "foreign, a floor only", foreign: string(raw), policy: floor, headroom: 2 << 30,
+			wire: `"allocated_bytes":53687091200,"sleeping_bytes":0,"foreign_bytes":66571993088,"available_bytes":27917287424,`},
+		{name: "no holder, no headroom whatever the policy", policy: floor,
+			wire: `"allocated_bytes":53687091200,"sleeping_bytes":0,"foreign_bytes":0,"available_bytes":96636764160,`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gpu := store.GPU{MemoryTotal: 140 << 30, HealthStatus: "OK", ForeignProcesses: tc.foreign}
-			item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 50 << 30, SleepingBytes: tc.sleeping}, func(uint) *store.Deployment { return nil }, nil)
+			item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{AllocatedBytes: 50 << 30, SleepingBytes: tc.sleeping}, tc.policy, func(uint) *store.Deployment { return nil }, nil)
 			if item.SleepingBytes != tc.sleeping {
 				t.Fatalf("sleeping = %d, want %d", item.SleepingBytes, tc.sleeping)
 			}
-			withheld := item.MemoryTotalBytes - item.AllocatedBytes - item.SleepingBytes - item.AvailableBytes
-			if want := int64(0); tc.foreign == "" && withheld != want {
-				t.Fatalf("withheld = %d on a card nothing outside the platform holds", withheld)
+			if want := int64(62) << 30; tc.foreign != "" && item.ForeignBytes != want {
+				t.Fatalf("foreign = %d, want %d (the holder's reading alone)", item.ForeignBytes, want)
 			}
-			if want := int64(62+7) << 30; tc.foreign != "" && withheld != want {
-				t.Fatalf("withheld = %d, want %d (foreign memory and its headroom)", withheld, want)
+			headroom := item.MemoryTotalBytes - item.AllocatedBytes - item.SleepingBytes - item.ForeignBytes - item.AvailableBytes
+			if headroom != tc.headroom {
+				t.Fatalf("left unexplained = %d, want the headroom %d", headroom, tc.headroom)
 			}
 			body, err := json.Marshal(item)
 			if err != nil {
@@ -187,5 +205,17 @@ func TestGPUSleepingBytesIsReportedApartFromForeignMemory(t *testing.T) {
 				t.Fatalf("wire JSON lacks %s:\n%s", tc.wire, body)
 			}
 		})
+	}
+}
+
+// A held card whose holders' memory is not known counts none of it: the
+// card offers nothing, and no figure is invented for the holders.
+func TestGPUForeignBytesIsZeroWhenTheHoldersMemoryIsUnknown(t *testing.T) {
+	node := store.Node{State: store.NodeStateOnline, PartitionSafetyProtocol: proto.PartitionSafetyForeignTracked}
+	raw, _ := json.Marshal([]proto.CardProcess{{PID: 41235, Name: "python3"}})
+	gpu := store.GPU{MemoryTotal: 140 << 30, HealthStatus: "OK", ForeignProcesses: string(raw)}
+	item := physicalGPU(&node, partitioncap.Reports{}, &gpu, planning.GPUAllocation{}, store.DefaultDeploymentPolicy(), func(uint) *store.Deployment { return nil }, nil)
+	if item.ForeignBytes != 0 || item.AvailableBytes != 0 || len(item.ForeignProcesses) != 1 {
+		t.Fatalf("foreign %d available %d holders %d, want 0, 0 and the holder listed", item.ForeignBytes, item.AvailableBytes, len(item.ForeignProcesses))
 	}
 }

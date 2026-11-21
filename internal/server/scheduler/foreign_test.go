@@ -16,6 +16,13 @@ const (
 	reporterForeignBytes = int64(67089334272)
 )
 
+// shippedHeadroom is the headroom the shipped deployment policy keeps on a
+// card of that size (store.DefaultDeploymentPolicy: 5%, at least 4 GiB), as
+// the planner states it on a snapshot's held cards.
+func shippedHeadroom(total int64) int64 {
+	return serverestimate.ForeignHeadroomBytes(total, 5, 4*giB)
+}
+
 // reporterCard is that card as the planner snapshots it for an agent that
 // keeps foreign processes reported beside its own instances: held outside
 // the platform, so it takes no whole-card work, but shareable by memory.
@@ -23,7 +30,8 @@ func reporterCard(index int) GPU {
 	return GPU{
 		Index: index, MemoryTotal: reporterCardTotal, Schedulable: false,
 		HeldOutsidePlatform: true, ForeignShareable: true, ForeignBytes: reporterForeignBytes,
-		PartitionBackends: []string{accelerator.BackendNVIDIALogical},
+		ForeignHeadroomBytes: shippedHeadroom(reporterCardTotal),
+		PartitionBackends:    []string{accelerator.BackendNVIDIALogical},
 	}
 }
 
@@ -86,7 +94,7 @@ func TestAPartitionIsAdmittedOnACardHeldOutsideThePlatformByRemainingMemory(t *t
 		t.Fatalf("per-GPU bytes = %d, want the partition claim %d", res.Plan.PerGPUBytes, partitionClaim(req))
 	}
 	card := reporterCard(0)
-	wantAvailable := reporterCardTotal - reporterForeignBytes - serverestimate.ForeignHeadroomBytes(reporterCardTotal)
+	wantAvailable := reporterCardTotal - reporterForeignBytes - shippedHeadroom(reporterCardTotal)
 	if card.Available() != wantAvailable {
 		t.Fatalf("available = %d, want total - foreign - headroom = %d", card.Available(), wantAvailable)
 	}
@@ -208,7 +216,7 @@ func TestAnOverriddenHeldCardStillCountsTheForeignMemoryForPartitions(t *testing
 // not "no free GPU", which sends the reader looking for a deployment to stop.
 func TestAHeldCardWithNoRoomLeftNamesTheForeignMemory(t *testing.T) {
 	card := GPU{Index: 0, MemoryTotal: 80 * giB, HeldOutsidePlatform: true, ForeignShareable: true,
-		ForeignBytes: 74 * giB, AllocatedBytes: 2 * giB, PartitionBackends: []string{accelerator.BackendNVIDIALogical}}
+		ForeignBytes: 74 * giB, ForeignHeadroomBytes: shippedHeadroom(80 * giB), AllocatedBytes: 2 * giB, PartitionBackends: []string{accelerator.BackendNVIDIALogical}}
 	res := Schedule(reporterPartition(16), nvidiaNode(card))
 	if res.OK || res.Message.Code != ReasonNoFit || res.Message.Params["foreign_bytes"] != 74*giB {
 		t.Fatalf("refusal = ok %v %+v, want %s with foreign_bytes", res.OK, res.Message, ReasonNoFit)
@@ -222,7 +230,7 @@ func TestAHeldCardWithNoRoomLeftNamesTheForeignMemory(t *testing.T) {
 // applied.
 func TestAnOverriddenHeldCardStillTakesWholeCardWork(t *testing.T) {
 	card := GPU{Index: 0, MemoryTotal: 80 * giB, Schedulable: true, HeldOutsidePlatform: true,
-		ForeignBytes: 77 * giB, PartitionBackends: []string{accelerator.BackendNVIDIALogical}}
+		ForeignBytes: 77 * giB, ForeignHeadroomBytes: shippedHeadroom(80 * giB), PartitionBackends: []string{accelerator.BackendNVIDIALogical}}
 	whole := reporterPartition(50)
 	whole.PerGPULimitBytes, whole.PartitionBackend = 0, ""
 	if res := Schedule(whole, nvidiaNode(card)); !res.OK {
@@ -239,5 +247,36 @@ func TestAnOverriddenHeldCardStillTakesWholeCardWork(t *testing.T) {
 	}
 	if _, named := res.Message.Params["foreign_bytes"]; named {
 		t.Fatalf("whole-card no_fit names foreign memory it never subtracted: %+v", res.Message.Params)
+	}
+}
+
+// With no headroom kept (the operator's deployment policy), a held card
+// offers everything its holders leave: a partition that the headroom alone
+// kept off the card is admitted, and a refusal states no headroom figure.
+func TestAHeldCardWithNoHeadroomOffersEverythingItsHoldersLeave(t *testing.T) {
+	card := reporterCard(0)
+	// 140.4 GiB card, 62.5 GiB held: 77.9 GiB left, 70.9 GiB with the
+	// shipped headroom. A 74 GiB slice (74.5 with its overhead) is between.
+	req := reporterPartition(74)
+	if res := Schedule(req, nvidiaNode(card)); res.OK || res.Message.Code != ReasonNoFit {
+		t.Fatalf("with the shipped headroom = ok %v %+v, want %s", res.OK, res.Message, ReasonNoFit)
+	} else if res.Message.Params["foreign_headroom_bytes"] != shippedHeadroom(reporterCardTotal) {
+		t.Fatalf("refusal params = %+v, want the headroom named", res.Message.Params)
+	}
+	card.ForeignHeadroomBytes = 0
+	if got, want := card.Available(), reporterCardTotal-reporterForeignBytes; got != want {
+		t.Fatalf("available = %d, want total - foreign = %d", got, want)
+	}
+	if res := Schedule(req, nvidiaNode(card)); !res.OK || res.Plan == nil || res.Plan.GPUIndexes[0] != 0 {
+		t.Fatalf("with no headroom = ok %v %+v, want placed on GPU 0", res.OK, res.Message)
+	}
+	res := Schedule(reporterPartition(80), nvidiaNode(card))
+	if res.OK || res.Message.Code != ReasonNoFit || res.Message.Params["foreign_bytes"] != reporterForeignBytes {
+		t.Fatalf("an 80 GiB slice = ok %v %+v, want %s naming the foreign memory", res.OK, res.Message, ReasonNoFit)
+	}
+	for _, key := range []string{"foreign_headroom_bytes", "foreign_headroom_gib"} {
+		if _, stated := res.Message.Params[key]; stated {
+			t.Fatalf("refusal states %s though none is kept: %+v", key, res.Message.Params)
+		}
 	}
 }

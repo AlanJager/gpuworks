@@ -2,6 +2,7 @@ import { Tooltip } from "./ui/tooltip";
 import { useTranslation } from "react-i18next";
 import type { PhysicalGPU } from "../api";
 import { colors } from "../theme/tokens";
+import { HelpTip } from "../ui-kit/HelpTip";
 
 const GIB = 1024 ** 3;
 const SLICE_COLORS = [colors.chartPrimary, colors.chartTeal, colors.chartViolet, colors.chartQuaternary, colors.chartSecondary];
@@ -14,26 +15,33 @@ export interface MemorySegment {
   // A segment the platform counts against the card but no engine asked for:
   // drawn hatched so it does not read as somebody's slice.
   overhead?: boolean;
+  // Why the segment is there, for the ⓘ beside its legend entry.
+  help?: string;
 }
 
 // memorySegments splits a card's memory the way the scheduler books it: each
 // occupant's share (a dGPU slice's limit, or the whole card), what slices
 // hold beyond their limits, a sleeper's residue, what the platform withholds
 // for another reason, and what is left. The figures come from the inventory
-// (allocated_bytes / sleeping_bytes / available_bytes), so the bar can never
-// disagree with the card's allocation state; occupant limits only say how
-// the allocated part divides.
+// (allocated_bytes / sleeping_bytes / foreign_bytes / available_bytes), so
+// the bar can never disagree with the card's allocation state; occupant
+// limits only say how the allocated part divides.
 //
-// What is withheld is named by its cause, never as a sleeper's: on a card
-// processes outside the platform hold it is their memory and the headroom
-// kept beside it. And what is left is "allocatable" only on a card that
-// takes work; on one that does not it is merely free.
-export function memorySegments(gpu: Pick<PhysicalGPU, "memory_total_bytes" | "allocated_bytes" | "sleeping_bytes" | "available_bytes" | "occupants" | "foreign_processes" | "schedulable" | "allocation_state">, labels: {
+// What is withheld is named by its cause, never as a sleeper's. On a card
+// processes outside the platform hold it is two things: their memory, a
+// reading that matches the vendor tool, and the headroom the deployment
+// policy keeps beside it, which nobody uses - none when the policy keeps
+// none. And what is left is "allocatable" only on a card that takes work; on
+// one that does not it is merely free.
+export function memorySegments(gpu: Pick<PhysicalGPU, "memory_total_bytes" | "allocated_bytes" | "sleeping_bytes" | "foreign_bytes" | "available_bytes" | "occupants" | "foreign_processes" | "schedulable" | "allocation_state">, labels: {
   slice: (name: string, limitGiB: string) => string;
   wholeCard: (name: string) => string;
   overhead: string;
   sleeping: string;
   foreign: string;
+  foreignUnknown: string;
+  headroom: string;
+  headroomHelp: string;
   withheld: string;
   free: string;
   idle: string;
@@ -66,8 +74,18 @@ export function memorySegments(gpu: Pick<PhysicalGPU, "memory_total_bytes" | "al
   const withheld = total - allocated - sleeping - available;
   // On a node nobody can reach nothing is on offer whatever holds the card,
   // so its outside processes do not account for what is withheld there.
-  const foreign = gpu.allocation_state !== "unknown" && (gpu.foreign_processes?.length ?? 0) > 0;
-  if (withheld > 0) segments.push({ key: "withheld", label: foreign ? labels.foreign : labels.withheld, bytes: withheld, color: colors.chartSlate, overhead: true });
+  const held = gpu.allocation_state !== "unknown" && (gpu.foreign_processes?.length ?? 0) > 0;
+  const foreign = Math.min(Math.max(gpu.foreign_bytes || 0, 0), withheld);
+  if (withheld > 0 && !held) {
+    segments.push({ key: "withheld", label: labels.withheld, bytes: withheld, color: colors.chartSlate, overhead: true });
+  } else if (withheld > 0 && foreign <= 0) {
+    // Held by processes whose memory is not known: the whole card is kept
+    // from the platform, and no part of it can be called headroom.
+    segments.push({ key: "foreign", label: labels.foreignUnknown, bytes: withheld, color: colors.chartSlate });
+  } else if (withheld > 0) {
+    segments.push({ key: "foreign", label: labels.foreign, bytes: foreign, color: colors.chartSlate });
+    if (withheld - foreign > 0) segments.push({ key: "headroom", label: labels.headroom, help: labels.headroomHelp, bytes: withheld - foreign, color: colors.chartSlate, overhead: true });
+  }
   if (available > 0) segments.push({ key: "free", label: gpu.schedulable ? labels.free : labels.idle, bytes: available, color: colors.borderSoft });
   return segments;
 }
@@ -84,6 +102,9 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
     overhead: t("composition.overhead"),
     sleeping: t("composition.sleeping"),
     foreign: t("composition.foreign"),
+    foreignUnknown: t("composition.foreignUnknown"),
+    headroom: t("composition.headroom"),
+    headroomHelp: t("composition.headroomHelp"),
     withheld: t("composition.withheld"),
     free: t("composition.free"),
     idle: t("composition.idle"),
@@ -97,7 +118,9 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
           <Tooltip key={segment.key} content={`${segment.label} · ${fmtGiB(segment.bytes)}`}>
             <span
               className={segment.overhead ? "is-overhead" : undefined}
-              style={{ width: `${(segment.bytes / total) * 100}%`, background: segment.color }}
+              // backgroundColor, not the shorthand: the shorthand would reset
+              // the hatching .is-overhead draws as a background image.
+              style={{ width: `${(segment.bytes / total) * 100}%`, backgroundColor: segment.color }}
             />
           </Tooltip>
         ))}
@@ -110,8 +133,9 @@ export default function GPUMemoryComposition({ gpu }: { gpu: PhysicalGPU }) {
       <ul className="gpu-memory-composition-legend">
         {segments.map((segment) => (
           <li key={segment.key}>
-            <span className={`gpu-memory-swatch${segment.overhead ? " is-overhead" : ""}`} style={{ background: segment.color }} />
+            <span className={`gpu-memory-swatch${segment.overhead ? " is-overhead" : ""}`} style={{ backgroundColor: segment.color }} />
             <span className="min-w-0 truncate">{segment.label}</span>
+            {segment.help && <HelpTip content={segment.help} label={t("composition.helpLabel", { name: segment.label })} />}
             <span className="ml-auto flex-none tabular-nums text-fg-muted">{fmtGiB(segment.bytes)}</span>
           </li>
         ))}

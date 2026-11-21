@@ -144,7 +144,10 @@ function diskNote(t: TFunction<"deploy">, value: Exclude<ScheduleMessageLike, st
 function foreignNote(t: TFunction<"deploy">, value: Exclude<ScheduleMessageLike, string>): string {
   const foreign = value.params?.foreign_gib;
   if (foreign === undefined || foreign === null || foreign === "") return "";
-  return " " + t("scheduleNote.foreign_held", { foreign_gib: foreign, foreign_headroom_gib: value.params?.foreign_headroom_gib });
+  // The server states the headroom only when the deployment policy keeps one.
+  const headroom = value.params?.foreign_headroom_gib;
+  if (headroom === undefined || headroom === null || headroom === "") return " " + t("scheduleNote.foreign_held_only", { foreign_gib: foreign });
+  return " " + t("scheduleNote.foreign_held", { foreign_gib: foreign, foreign_headroom_gib: headroom });
 }
 
 function note(t: TFunction<"deploy">, key: string, param: string, value: unknown): string {

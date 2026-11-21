@@ -11,7 +11,8 @@ import (
 // DeploymentPolicy holds the cluster-wide deployment bounds: how long an
 // unscheduled deployment may sit without a placement before that is reported
 // as a failure, how long a started instance may take to answer its health
-// check, and how long the timeline is kept.
+// check, how long the timeline is kept, and how much memory is left free
+// beside processes outside the platform on a card shared with them.
 type DeploymentPolicy struct {
 	// PendingTimeoutSec is how long a deployment whose weights are all present
 	// may remain unscheduled before it is reported as failed instead of pending.
@@ -33,6 +34,15 @@ type DeploymentPolicy struct {
 	// whichever trips first wins.
 	EventRetentionDays  int   `json:"event_retention_days"`
 	EventRetentionBytes int64 `json:"event_retention_bytes"`
+	// ForeignHeadroomPct and ForeignHeadroomMinBytes are the memory kept free
+	// beside processes outside the platform on a card shared with them
+	// (ADR 0068): that percentage of the card, at least that many bytes.
+	// Zero is a value here, not "unset": an operator who knows the holders
+	// do not grow (an inference engine that takes its memory at start) may
+	// keep nothing. A policy stored before these keys existed reads the
+	// shipped values (DeploymentPolicyFromSetting overlays the defaults).
+	ForeignHeadroomPct      int   `json:"foreign_headroom_pct"`
+	ForeignHeadroomMinBytes int64 `json:"foreign_headroom_min_bytes"`
 }
 
 // Bounds. A zero or negative value is never accepted: the timeout decides when
@@ -55,17 +65,26 @@ const (
 
 	DeploymentEventRetentionBytesLo = int64(64) << 20
 	DeploymentEventRetentionBytesHi = int64(1) << 40
+
+	// The headroom may be nothing at all; its ceiling only keeps a typing
+	// mistake from withholding every shared card whole.
+	DeploymentForeignHeadroomPctHi      = 50
+	DeploymentForeignHeadroomMinBytesHi = int64(64) << 30
 )
 
 // DefaultDeploymentPolicy is the shipped policy: 10 minutes to schedule, 30
-// minutes for a started instance to become healthy, and a timeline kept for
-// 180 days or 50 GiB, whichever comes first.
+// minutes for a started instance to become healthy, a timeline kept for
+// 180 days or 50 GiB, whichever comes first, and 5% of a shared card, at
+// least 4 GiB, left free beside processes outside the platform.
 func DefaultDeploymentPolicy() DeploymentPolicy {
 	return DeploymentPolicy{
 		PendingTimeoutSec:   600,
 		StartTimeoutSec:     1800,
 		EventRetentionDays:  180,
 		EventRetentionBytes: 50 << 30,
+
+		ForeignHeadroomPct:      5,
+		ForeignHeadroomMinBytes: 4 << 30,
 	}
 }
 
@@ -84,6 +103,10 @@ func ValidateDeploymentPolicy(p DeploymentPolicy) error {
 			DeploymentEventRetentionDaysLo, DeploymentEventRetentionDaysHi},
 		{"event_retention_bytes", p.EventRetentionBytes,
 			DeploymentEventRetentionBytesLo, DeploymentEventRetentionBytesHi},
+		{"foreign_headroom_pct", int64(p.ForeignHeadroomPct),
+			0, DeploymentForeignHeadroomPctHi},
+		{"foreign_headroom_min_bytes", p.ForeignHeadroomMinBytes,
+			0, DeploymentForeignHeadroomMinBytesHi},
 	} {
 		if c.v < c.lo || c.v > c.hi {
 			return fmt.Errorf("deployment.%s must be between %d and %d", c.name, c.lo, c.hi)

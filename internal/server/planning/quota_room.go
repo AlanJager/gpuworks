@@ -76,6 +76,7 @@ func QuotaRoom(st *store.Store, dep *store.Deployment, limitBytes int64, live []
 			next[key] += limited
 		}
 	}
+	policy := st.DeploymentPolicy()
 	for _, key := range order {
 		node := nodes[key.node]
 		var capacity, foreign int64
@@ -86,7 +87,9 @@ func QuotaRoom(st *store.Store, dep *store.Deployment, limitBytes int64, live []
 				// A card shared with processes outside the platform keeps
 				// what they hold, and the headroom beside it, out of reach,
 				// as admission does (scheduler.GPU.Available).
-				foreign, foreignKnown = ForeignHold(node, &gpu)
+				var headroom int64
+				foreign, headroom, foreignKnown = ForeignHold(node, &gpu, policy)
+				foreign += headroom
 			}
 		}
 		allocation := ledgers[key.node][key.index]

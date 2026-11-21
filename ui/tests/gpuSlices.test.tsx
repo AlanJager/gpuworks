@@ -52,7 +52,9 @@ const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: GPUPage } = await import("../src/pages/GPUPage.tsx");
 const { DGPUHistory, movingAverage } = await import("../src/pages/gpus/GPUDetailDrawers.tsx");
-const { memorySegments } = await import("../src/components/GPUMemoryComposition.tsx");
+const { default: GPUMemoryComposition, memorySegments } = await import("../src/components/GPUMemoryComposition.tsx");
+const userEventModule = await import("@testing-library/user-event");
+const userEvent = userEventModule.default ?? userEventModule;
 const { gpuModelSummary } = await import("../src/nodes/cardIdentity.ts");
 
 const originalFetch = globalThis.fetch;
@@ -209,9 +211,14 @@ test("both locales name the unsupported reading and explain it", () => {
   for (const locale of [gpus, zh]) assert.ok(!/^Memory the HAMi|^HAMi/.test(locale.tooltip.actualVRAM));
 });
 
+const segmentLabels = {
+  slice: (name: string, limit: string) => `${name}:${limit}`, wholeCard: (name: string) => `whole:${name}`, overhead: "overhead", sleeping: "sleeping",
+  foreign: "foreign", foreignUnknown: "foreign-unknown", headroom: "headroom", headroomHelp: "headroom-help", withheld: "withheld", free: "free", idle: "idle",
+};
+
 test("memory segments follow the books: limits, what slices hold beyond them, residue, free", () => {
   const card = gpusPage.items.find((gpu: { index: number }) => gpu.index === 1);
-  const labels = { slice: (name: string, limit: string) => `${name}:${limit}`, wholeCard: (name: string) => `whole:${name}`, overhead: "overhead", sleeping: "sleeping", foreign: "foreign", withheld: "withheld", free: "free", idle: "idle" };
+  const labels = { ...segmentLabels };
   const segments = memorySegments(card, labels);
   assert.deepEqual(segments.map((s) => [s.label, s.bytes / GIB]), [["qwen3-dgpu-a:8.0", 8], ["qwen3-dgpu-b:8.0", 8], ["qwen3-dgpu-c:4.0", 4], ["overhead", 1.5], ["free", 0.5]]);
   const whole = gpusPage.items.find((gpu: { index: number }) => gpu.index === 0);
@@ -223,29 +230,80 @@ test("memory segments follow the books: limits, what slices hold beyond them, re
 
 // The card as GPU-7824d54f reported it: nothing of ours on it, a vLLM somebody
 // started by hand holding 10 GiB. What the platform withholds there is that
-// process and its headroom, not a sleeping instance, and what is left is not
-// on offer while the card takes no work.
+// process, a figure the vendor tool agrees with, and the headroom kept beside
+// it, which nobody uses - not a sleeping instance. What is left is not on
+// offer while the card takes no work.
 test("memory withheld on a card is named by its cause, and free is allocatable only where work is taken", () => {
-  const labels = { slice: (name: string, limit: string) => `${name}:${limit}`, wholeCard: (name: string) => `whole:${name}`, overhead: "overhead", sleeping: "sleeping", foreign: "foreign", withheld: "withheld", free: "free", idle: "idle" };
+  const labels = { ...segmentLabels };
   const held = {
-    memory_total_bytes: 22 * GIB, allocated_bytes: 0, sleeping_bytes: 0, available_bytes: 8 * GIB, occupants: [],
+    memory_total_bytes: 22 * GIB, allocated_bytes: 0, sleeping_bytes: 0, foreign_bytes: 10 * GIB, available_bytes: 8 * GIB, occupants: [],
     schedulable: false, foreign_processes: [{ pid: 3565129, name: "VLLM::EngineCore", memory_bytes: 10 * GIB }],
     allocation_state: "unusable" as const,
   };
   const rows = (gpu: Parameters<typeof memorySegments>[0]) => memorySegments(gpu, labels).map((s) => [s.label, s.bytes / GIB]);
-  assert.deepEqual(rows(held), [["foreign", 14], ["idle", 8]]);
+  assert.deepEqual(rows(held), [["foreign", 10], ["headroom", 4], ["idle", 8]]);
+  // Only the headroom explains itself: it is the one figure no tool shows.
+  assert.deepEqual(memorySegments(held, labels).map((s) => s.help), [undefined, "headroom-help", undefined]);
   // An operator opened the card to scheduling: the same room is now on offer.
-  assert.deepEqual(rows({ ...held, schedulable: true }), [["foreign", 14], ["free", 8]]);
+  assert.deepEqual(rows({ ...held, schedulable: true }), [["foreign", 10], ["headroom", 4], ["free", 8]]);
   // A sleeper beside the outside process: each keeps its own figure.
-  assert.deepEqual(rows({ ...held, schedulable: true, sleeping_bytes: 1 * GIB, available_bytes: 7 * GIB }), [["sleeping", 1], ["foreign", 14], ["free", 7]]);
+  assert.deepEqual(rows({ ...held, schedulable: true, sleeping_bytes: 1 * GIB, available_bytes: 7 * GIB }), [["sleeping", 1], ["foreign", 10], ["headroom", 4], ["free", 7]]);
+  // The deployment policy keeps no headroom: no headroom is drawn or
+  // explained, and everything the process leaves is free.
+  assert.deepEqual(rows({ ...held, available_bytes: 12 * GIB }), [["foreign", 10], ["idle", 12]]);
+  assert.deepEqual(rows({ ...held, schedulable: true, available_bytes: 12 * GIB }), [["foreign", 10], ["free", 12]]);
+  // Claims have taken part of the headroom's room: what is left of it.
+  assert.deepEqual(rows({ ...held, schedulable: true, allocated_bytes: 11 * GIB, available_bytes: 0, occupants: [{ instance_uuid: "i-1", deployment_id: 1, deployment_name: "qwen", state: "running" }] }),
+    [["whole:qwen", 11], ["foreign", 10], ["headroom", 1]]);
+  // Holders whose memory is not known: the card offers nothing, and no part
+  // of it is called headroom.
+  assert.deepEqual(rows({ ...held, foreign_bytes: 0, available_bytes: 0, foreign_processes: [{ pid: 7, name: "python3" }] }), [["foreign-unknown", 22]]);
   // Nothing outside the platform and nobody asleep (a node nobody can reach
   // offers nothing): withheld, with no cause invented for it.
-  assert.deepEqual(rows({ ...held, foreign_processes: undefined, available_bytes: 0 }), [["withheld", 22]]);
+  assert.deepEqual(rows({ ...held, foreign_bytes: 0, foreign_processes: undefined, available_bytes: 0 }), [["withheld", 22]]);
   // The same card once its node is gone: the outside process no longer
   // explains why none of it is on offer.
   assert.deepEqual(rows({ ...held, allocation_state: "unknown", available_bytes: 0 }), [["withheld", 22]]);
   // A faulty card with nothing on it is idle, not allocatable.
-  assert.deepEqual(rows({ ...held, foreign_processes: [], available_bytes: 22 * GIB }), [["idle", 22]]);
+  assert.deepEqual(rows({ ...held, foreign_bytes: 0, foreign_processes: [], available_bytes: 22 * GIB }), [["idle", 22]]);
+});
+
+// The legend is what tells the two withheld figures apart on the page, and
+// the headroom's entry carries the explanation; with no headroom kept there
+// is neither entry nor explanation.
+test("the legend lists outside processes and their headroom apart, the headroom with its explanation", async () => {
+  const held = {
+    ...gpusPage.items[0], memory_total_bytes: 22 * GIB, allocated_bytes: 0, sleeping_bytes: 0, foreign_bytes: 10 * GIB, available_bytes: 8 * GIB, occupants: [],
+    schedulable: false, foreign_processes: [{ pid: 3565129, name: "VLLM::EngineCore", memory_bytes: 10 * GIB }], allocation_state: "unusable",
+    load: { memory_used_bytes: 10 * GIB },
+  };
+  const view = render(<I18nextProvider i18n={i18n}><GPUMemoryComposition gpu={held} /></I18nextProvider>);
+  const legend = view.container.querySelector(".gpu-memory-composition-legend") as HTMLElement;
+  assert.deepEqual([...legend.querySelectorAll("li")].map((li) => li.textContent), [
+    `${gpus.composition.foreign}10.0 GiB`, `${gpus.composition.headroom}4.0 GiB`, `${gpus.composition.idle}8.0 GiB`, `${gpus.composition.usedLegend}10.0 GiB`,
+  ]);
+  // The headroom is hatched, the process beside it solid: the swatch's colour
+  // is set without the background shorthand, which would cancel the hatching
+  // the class draws as a background image.
+  const swatches = [...legend.querySelectorAll<HTMLElement>(".gpu-memory-swatch")];
+  assert.deepEqual(swatches.map((swatch) => swatch.classList.contains("is-overhead")), [false, true, false, false]);
+  assert.match(swatches[1].getAttribute("style") ?? "", /background-color:/);
+  assert.equal(swatches[1].style.backgroundImage, "");
+  const bar = [...view.container.querySelectorAll<HTMLElement>(".gpu-memory-composition-bar > span")];
+  assert.deepEqual(bar.map((part) => part.classList.contains("is-overhead")), [false, true, false]);
+  assert.match(bar[1].getAttribute("style") ?? "", /background-color:/);
+  const tip = within(legend).getByRole("button", { name: i18n.t("composition.helpLabel", { name: gpus.composition.headroom }) });
+  const user = userEvent.setup({ document: dom.window.document });
+  await user.hover(tip);
+  assert.ok(await screen.findByText(/Settings › Nodes & deployments › Deployment/));
+  view.unmount();
+
+  const none = render(<I18nextProvider i18n={i18n}><GPUMemoryComposition gpu={{ ...held, available_bytes: 12 * GIB }} /></I18nextProvider>);
+  const bare = none.container.querySelector(".gpu-memory-composition-legend") as HTMLElement;
+  assert.deepEqual([...bare.querySelectorAll("li")].map((li) => li.textContent), [
+    `${gpus.composition.foreign}10.0 GiB`, `${gpus.composition.idle}12.0 GiB`, `${gpus.composition.usedLegend}10.0 GiB`,
+  ]);
+  assert.equal(within(bare).queryByRole("button"), null);
 });
 
 test("the SM reference is averaged over the trailing minute", () => {

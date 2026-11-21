@@ -227,6 +227,7 @@
   "scheduleNote": {
     "sleeping_residue": "keep {{sleeping_gib}} GiB resident for sleeping instances.",
     "foreign_held": "Processes outside the platform use {{foreign_gib}} GiB of the card, and {{foreign_headroom_gib}} GiB is kept free beside them.",
+    "foreign_held_only": "Processes outside the platform use {{foreign_gib}} GiB of the card.",
     "image_delivery_detail": "Reported failure: {{detail}}",
     "model_unavailable_detail": "Reported failure: {{detail}}",
     "plan_failed_detail": "Reported failure: {{detail}}",
