@@ -28,6 +28,11 @@ for kind in long caveat helper message sentences clauses command en inlinehelp; 
 done
 [ "$failed" -eq 0 ] || exit 1
 
+if ! check_max ui_common_locale_keys "$(node scripts/ui_copy_audit.mjs commonkeys)"; then
+  echo "common.json grew: put a feature's copy in its own namespace file (ui/src/i18n/locales/<lang>/<feature>.json); common holds only words several features share" >&2
+  exit 1
+fi
+
 imports=$(node scripts/ui_overlay_imports.mjs)
 count=$(printf '%s\n' "$imports" | awk 'NF { n++ } END { print n+0 }')
 if ! check_max ee_ui_internal_imports "$count"; then

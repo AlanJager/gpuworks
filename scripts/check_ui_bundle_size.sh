@@ -38,6 +38,6 @@ if [ "$kb" -gt "$limit" ]; then
       gz=$(gzip -c "$path" | wc -c | tr -d '[:space:]')
       printf '    %6d / %6d  %s\n' $(( (size + 1023) / 1024 )) $(( (gz + 1023) / 1024 )) "${path#"$DIST"/}" >&2
     done
-  echo "  Split or trim the bundle; if the growth is intended, raise $KEY in $BUDGET_FILE with a '# raised: <reason>' comment." >&2
+  echo "  Split or trim the bundle; if the growth is intended, raise $KEY in $BUDGET_FILE and record it with a '- 放宽' line in scripts/arch-constraints.md." >&2
 fi
 exit 0

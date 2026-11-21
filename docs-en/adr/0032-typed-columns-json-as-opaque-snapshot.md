@@ -39,7 +39,7 @@ use text matching or `json_extract`, with results that depend on serialization d
      that adjacent rows differ in state or phase (events are appended only when either changes). Collapsing applies only to historical progress rows written by older versions,
      which retention eventually removes. Permanently adding two columns for a transitional read-side transform is exactly what decision 1 is meant to prevent.
 6. **Enforce this with three ratchet budgets** (`scripts/arch-constraints.md`): `store_text_columns` caps the total number of columns that can hold JSON
-   (`type:text` columns plus fixed-length columns whose comments declare JSON). Adding one requires raising the cap and explaining in `# raised:` why it cannot be a typed column.
+   (`type:text` columns plus fixed-length columns whose comments declare JSON). Adding one requires raising the cap and explaining in its loosening record in `scripts/arch-constraints.md` why it cannot be a typed column.
    `store_text_columns_undocumented` requires comments on all these columns. `store_sql_json_lines` caps SQL lines that inspect JSON outside migrations
    (JSON functions, `instr(`, and `->` / `->>` operators; comment lines do not count). The only current exception is the timeline collapsing above.
    The script cannot detect JSON in fixed-length columns whose comments do not mention it, or `LIKE` text matching on JSON columns; review must catch these.
@@ -56,4 +56,4 @@ use text matching or `json_extract`, with results that depend on serialization d
 - This rule applies to every new or modified column. Existing columns that predate the rule and do not meet decision 2 are listed in `todo.md` and remain unchanged until addressed there;
   the budget blocks additions and does not endorse existing columns.
 
-<!-- translation-source-sha256: 16653121ca8612b634913cfd885e4ebf86ab6f24947375866ad1ee9c067024d3 -->
+<!-- translation-source-sha256: 0bdc24a64c785d821887aef6b993d2f20497acfa5839ac1496406c3a938658d8 -->

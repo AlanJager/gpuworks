@@ -39,7 +39,7 @@
      保证相邻两行的 state 或 phase 必不相同（只在二者变化时才追加事件），折叠只对旧版本写下的进度型历史行起作用，
      这些行由 retention 淘汰。为一个过渡性的读侧变换永久加两列，正是第 1 条要拦的事。
 6. **由三条棘轮预算守护**（`scripts/arch-constraints.md`）：`store_text_columns` 限制能装 JSON 的列总数
-   （`type:text` 列，加上注释声明 JSON 的定长列），新增必须上调并在 `# raised:` 里写明为什么不能是带类型的列；
+   （`type:text` 列，加上注释声明 JSON 的定长列），新增必须上调并在 `scripts/arch-constraints.md` 的放宽记录里写明为什么不能是带类型的列；
    `store_text_columns_undocumented` 要求这些列都有注释；`store_sql_json_lines` 限制迁移之外看进 JSON 的 SQL
    行数（JSON 函数、`instr(`、`->` / `->>` 运算符，注释行不计），当前唯一的例外是上面的时间线折叠。
    定长列装 JSON 而注释不说、对 JSON 列做 `LIKE` 文本匹配，脚本都看不见，归评审。
