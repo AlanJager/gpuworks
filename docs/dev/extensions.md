@@ -74,6 +74,7 @@ type Service interface{ Run(ctx context.Context) error }
 | `NodeIdentity(ctx, ids, salt)` | 指定节点的加盐硬件身份（`store.NodeIdentity`），原始序列号不出核心，见[节点身份与节点清单](#节点身份与节点清单) |
 | `NodeInventory(ctx, cursor, limit)` | 按加入顺序分页的节点清单（`store.NodeInventoryPage`）：名称、加入时间、自己的卡（序号、型号、有无序列号） |
 | `NodeNamesByID(ctx, ids)` | 指定节点的显示名，以 id 为键（`map[uint]string`），读池上一次查询 |
+| `ClusterObservation(ctx, timeout)` | 本 server 所在控制面集群的一次观测（`app.ClusterObservation`）：成员、角色、谁在回应、能否再失去一个成员；与 `cluster-status` 报告同源。单机或不含集群运行时的构建回答 `Clustered: false`。只读，可在 `Init` 之后、服务请求时调用；每个探测以 `timeout` 为限并依次进行 |
 | `HostIdentity(salt)` | 管理 server 所在机器的加盐身份（`hostidentity.Salted`），见[管理 server 的主机身份](#管理-server-的主机身份) |
 
 `Host` 不交出 `*store.Store`，也不交出数据库句柄。`Init` 返回之后再注册会被拒绝（`ReapplySchedulingHolds`、`ReapplySchedulingHoldsFor`、`NodeFleet`、`NodeIdentity`、`NodeInventory` 、`NodeNamesByID` 与 `HostIdentity` 不是注册，任何时候都可调用）：有返回值的方法返回 `app.ErrHostClosed`，其他方法 panic。`Init` 出错时 `New` 失败并关闭数据库，同一数据目录可以立即再次启动。

@@ -80,7 +80,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 		if !ok {
 			continue
 		}
-		h := &Host{name: name, log: a.log.With("module", name), bus: a.bus, dataDir: cfg.DataDir,
+		h := &Host{name: name, log: a.log.With("module", name), bus: a.bus, dataDir: cfg.DataDir, cfg: cfg,
 			install: a.settings.installID, master: master, section: section, st: a.store, reg: set}
 		if h.tables, err = a.store.ExtensionTables(name); err != nil && !errors.Is(err, store.ErrUnknownNamespace) {
 			return err

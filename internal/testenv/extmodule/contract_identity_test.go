@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/app"
@@ -175,5 +176,25 @@ func TestAModuleReadsNodeNamesByIDFromTheHost(t *testing.T) {
 	}
 	if _, err := mod.host.NodeNamesByID(ctx, ids); !errors.Is(err, store.ErrNodeReadBatch) {
 		t.Fatalf("501 ids = %v, want ErrNodeReadBatch", err)
+	}
+}
+
+// A module reads the control-plane cluster through its Host while serving. A
+// server that never joined a cluster answers as a single server, and the
+// probe bound is required.
+func TestAModuleReadsTheClusterObservationFromTheHost(t *testing.T) {
+	mod := &fakeModule{name: "fake"}
+	testenv.NewWithExtensions(t, app.Extensions{Modules: []app.Module{mod}}, nil)
+	before := time.Now()
+	got, err := mod.host.ClusterObservation(context.Background(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Clustered || got.ObservedAt.Before(before) || len(got.Members) != 0 || got.LeaderID != 0 ||
+		got.Shortfall.Kind != app.ClusterShortfallNone {
+		t.Fatalf("single server observation = %+v", got)
+	}
+	if _, err := mod.host.ClusterObservation(context.Background(), 0); !errors.Is(err, app.ErrClusterObservationTimeout) {
+		t.Fatalf("no probe bound = %v, want ErrClusterObservationTimeout", err)
 	}
 }
