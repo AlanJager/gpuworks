@@ -17,7 +17,7 @@ func readClosedClusterDiscovery(ctx context.Context, tx *sql.Tx, expected Cluste
 	if !validClusterDigest(providerKey, 32) || !validClusterDigest(requesterKey, 32) || provider.ID == 0 {
 		return ClusterAdmission{}, nil, ErrClusterAdmissionRejected
 	}
-	if _, err := classifyJoinedSchema(ctx, db, expected); err != nil {
+	if _, err := classifyJoinedSchemaClass(ctx, db, expected); err != nil {
 		return ClusterAdmission{}, nil, err
 	}
 	admissions, err := clusterTransportAdmissions(db)

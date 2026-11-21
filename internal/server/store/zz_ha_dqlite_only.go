@@ -32,10 +32,11 @@ func readClosedClusterFactsDB(ctx context.Context, db *gorm.DB, expected Cluster
 	if first.Term == 0 || first.Index == 0 || first.ConfigurationIndex == 0 || first.ConfigurationIndex > first.Index || first.LeaderID == 0 {
 		return fail(ErrClusterIdentityConflict)
 	}
-	legacy, err := classifyJoinedSchema(ctx, db, expected)
+	class, err := classifyJoinedSchemaClass(ctx, db, expected)
 	if err != nil {
 		return fail(err)
 	}
+	legacy := class == joinedSchemaLegacy
 	var phase MaintenancePhaseState
 	if !legacy {
 		phase, err = (&Store{db: db}).ReadMaintenancePhase(ctx)

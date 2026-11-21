@@ -925,6 +925,7 @@
     "CLUSTER_TLS_REQUIRED": "Cluster enrollment requires a completed HTTPS handshake.",
     "CLUSTER_REQUEST_INVALID": "The cluster enrollment request is invalid.",
     "CLUSTER_UNAVAILABLE": "The cluster enrollment service is unavailable.",
+    "CLUSTER_UPGRADE_IN_PROGRESS": "The control plane is being upgraded. Try again shortly.",
     "CLUSTER_INVITATION_REQUIRED": "Cluster enrollment requires an invitation.",
     "CLUSTER_IDENTITY_MISMATCH": "The cluster identity does not match the invitation.",
     "CLUSTER_ADMISSION_REJECTED": "The cluster rejected this enrollment.",

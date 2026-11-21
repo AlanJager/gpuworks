@@ -183,7 +183,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/deployments/7" \
 上述约定针对管理 API，推理网关的错误格式见 [OpenAI 兼容网关](openai-gateway.md)。错误码定义见
 `internal/server/api/errors.go` 与 `internal/server/messages`（通用码在 `messages/http.go`），具体接口还可能返回业务错误码。
 
-集群注册监听器另用这些码：`CLUSTER_TLS_REQUIRED`（426，注册必须走已完成握手的 HTTPS）、`CLUSTER_REQUEST_INVALID`（400）、`CLUSTER_INVITATION_REQUIRED`（401，注册要用邀请 bearer）、`CLUSTER_IDENTITY_MISMATCH`（409）、`CLUSTER_ADMISSION_REJECTED`（403）、`CLUSTER_UNAVAILABLE`（503）。邀请签发走现有管理会话，角色不足时仍是 `ADMINISTRATOR_REQUIRED`。
+集群注册监听器另用这些码：`CLUSTER_TLS_REQUIRED`（426，注册必须走已完成握手的 HTTPS）、`CLUSTER_REQUEST_INVALID`（400）、`CLUSTER_INVITATION_REQUIRED`（401，注册要用邀请 bearer）、`CLUSTER_IDENTITY_MISMATCH`（409）、`CLUSTER_ADMISSION_REJECTED`（403）、`CLUSTER_UNAVAILABLE`（503）。邀请签发走现有管理会话，角色不足时仍是 `ADMINISTRATOR_REQUIRED`。控制面集群升级表结构期间，每个成员对业务请求（包括 `/api/v1/readyz`）回 503 `CLUSTER_UPGRADE_IN_PROGRESS`，带 `Retry-After`；请求没有被处理，升级结束后成员自行恢复。
 
 控制面集群的成员在不能提交写入时返回 503（代码 `SERVICE_UNAVAILABLE`）：写入只有持有数据库 leader 的成员能提交而本成员不是，或本成员的业务写入已关闭。此时没有任何内容被提交，集群入口可以把请求改发给别的成员。尚未开放业务的成员对业务路径返回 503，正文是纯文本 `member business service is not ready`，不是 JSON。
 

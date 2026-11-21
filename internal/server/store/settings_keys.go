@@ -114,13 +114,14 @@ func (k SettingKey) String() string { return string(k) }
 // ErrInternalSchedulingSetting refuses a client write to a controller fencing fact.
 var ErrInternalSchedulingSetting = errors.New("setting is reserved for internal scheduling")
 
-// IsInternalSchedulingSetting identifies only the controller fencing facts.
-// Other keys, including operator-defined scheduling.* keys, remain public.
+// IsInternalSchedulingSetting identifies only the controller fencing facts
+// and the records a cluster upgrade keeps while it runs. Other keys,
+// including operator-defined scheduling.* keys, remain public.
 func IsInternalSchedulingSetting(key SettingKey) bool {
 	switch string(key) {
 	case schedulingGenerationSetting, schedulingOwnerSetting, schedulingConfirmationSetting:
 		return true
 	default:
-		return false
+		return isClusterUpgradeSetting(key)
 	}
 }

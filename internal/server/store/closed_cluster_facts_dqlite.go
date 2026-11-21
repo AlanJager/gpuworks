@@ -44,7 +44,9 @@ func (s *LegacyJoinedRaftSession) ReadLocalQuorumFacts(ctx context.Context, requ
 		if err != nil {
 			return err
 		}
-		if _, err := classifyEstablishedRuntimeSnapshot(ctx, gormTx, expected, providerKey, address, raftDir); err != nil {
+		// A member whose executable is ahead of the schema still observes
+		// the cluster for its peers.
+		if _, err := classifyEstablishedRuntimeSnapshot(ctx, gormTx, expected, providerKey, address, raftDir); err != nil && !errors.Is(err, ErrSchemaUpgradePending) {
 			return err
 		}
 		legacy, phase, admissions, err = readClosedClusterFactsDB(ctx, gormTx, expected, providerKey, requesterKey, first)

@@ -40,6 +40,7 @@ func (a *App) classifyJoinedStore(ctx context.Context) error {
 	if b == nil {
 		b = bus.New()
 	}
+	announced := false
 	for {
 		attempt, cancel := context.WithTimeout(ctx, 5*time.Second)
 		st, legacy, err := classifier.OpenClassifiedStore(attempt, b)
@@ -74,9 +75,48 @@ func (a *App) classifyJoinedStore(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return err
 		}
+		if errors.Is(err, store.ErrSchemaUpgradePending) {
+			// This executable is ahead of the schema. The member keeps
+			// serving the database with its business closed, says which
+			// executable it runs, and asks again until the cluster upgrade
+			// has applied the migrations.
+			if !a.waitForClusterUpgrade(ctx, &announced) {
+				return ctx.Err()
+			}
+			continue
+		}
 		if !errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
+	}
+}
+
+// waitForClusterUpgrade reports this member's executable for the cluster
+// upgrade and waits one interval. It returns false when ctx ended.
+func (a *App) waitForClusterUpgrade(ctx context.Context, announced *bool) bool {
+	if a.businessHTTP != nil {
+		a.businessHTTP.clusterUpgrade.Store(true)
+	}
+	if !*announced {
+		*announced = true
+		a.log.Info("database schema is older than this executable; business stays closed until the cluster upgrade applies the migrations")
+	}
+	if reporter, ok := a.joinedRaft.(interface {
+		ReportClusterUpgradeCapability(context.Context) error
+	}); ok {
+		attempt, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if err := reporter.ReportClusterUpgradeCapability(attempt); err != nil && ctx.Err() == nil {
+			a.log.Debug("report executable for the cluster upgrade", "err", err)
+		}
+		cancel()
+	}
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 
@@ -103,6 +143,10 @@ func (a *App) prepareJoinedMaterialRuntime(ctx context.Context) error {
 		phase, err := a.store.ReadMaintenancePhase(ctx)
 		if err != nil {
 			return err
+		}
+		if a.businessHTTP != nil {
+			// A phase other than serving is a cluster upgrade under way.
+			a.businessHTTP.clusterUpgrade.Store(phase.Phase != store.MaintenanceServing)
 		}
 		if phase.Phase == store.MaintenanceServing {
 			break
