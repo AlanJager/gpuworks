@@ -18,7 +18,7 @@ const languages = { en: en.i18n, zh: zh.i18n };
 const k = en.locale.kubernetes;
 const p = en.locale.providers;
 const { MemoryRouter } = await import("react-router-dom");
-const { cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
+const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { default: CloudProvidersPage } = await import("../src/pages/CloudProvidersPage.tsx");
 const { api } = await import("../src/api.ts");
@@ -287,7 +287,17 @@ test("an administrator's actions on a cluster row are those of an entry made by 
     folded: [k.actions.manifest, k.actions.revoke, k.actions.delete],
   }, "editing the entry, but no node pools, apply or remove: gpuworks has no way into a cluster connected by hand");
   const account = within(await rowOf("ali-prod"));
-  assert.equal(account.queryAllByRole("button", { name: k.actions.revoke }).length + account.queryAllByRole("button", { name: en.locale.common.actions.more }).length, 0, "an account's row keeps its own actions, none folded");
+  assert.equal(account.queryAllByRole("button", { name: k.actions.revoke }).length, 0, "an account's row has none of the entry's actions");
+  // The account's row keeps its own buttons; its connection test folds into the menu.
+  assert.deepEqual(
+    account.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
+    ["Expand row", p.table.edit, p.table.sync, p.table.delete, en.locale.common.actions.more],
+  );
+  account.getByRole("button", { name: en.locale.common.actions.more }).click();
+  const accountMenu = await screen.findByRole("menu");
+  assert.deepEqual(within(accountMenu).getAllByRole("menuitem").map((item) => item.textContent), [p.test.run]);
+  fireEvent.keyDown(accountMenu, { key: "Escape", code: "Escape", keyCode: 27 });
+  await waitFor(() => assert.equal(screen.queryAllByRole("menu").length, 0, "the menu closed"));
   assert.equal(account.getAllByRole("button", { name: p.table.sync }).length, 1);
 
   const before = server.reads.clusters;
@@ -352,3 +362,31 @@ for (const language of ["en", "zh"] as const) {
     assert.ok(await screen.findByText(hint), "on hover it names the others and the namespace");
   });
 }
+
+test("an account's Test connection, from its row menu, tests the stored credentials: one POST to its test route with no body, and the result in the dialog", async () => {
+  servePlatforms(api, { providers: [ali], clusters: [] });
+  const sent: { route: string; method?: string; hasBody: boolean; contentType: string | null }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push({ route: String(input), method: init?.method, hasBody: init?.body !== undefined && init?.body !== null, contentType: new Headers(init?.headers).get("Content-Type") });
+    // An account type with no single endpoint: its endpoint check does not apply, its credentials are verified.
+    const frames = [
+      ["check", { seq: 1, name: "endpoint_format", status: "skipped", duration_ms: 0, hint: "not_applicable" }],
+      ["check", { seq: 2, name: "auth_request", status: "ok", duration_ms: 180 }],
+      ["done", { ok: true }],
+    ].map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join("");
+    return new Response(frames, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const { user } = renderPage();
+    await user.click(within(await rowOf("ali-prod")).getByRole("button", { name: en.locale.common.actions.more }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: p.test.run }));
+    const dialog = await screen.findByRole("dialog", { name: p.test.title });
+    await within(dialog).findByText(p.test.ok);
+    assert.ok(within(dialog).getByText(p.test.check.auth_request));
+    assert.ok(within(dialog).getByText(p.test.hint.not_applicable));
+    assert.deepEqual(sent, [{ route: `/api/v1/providers/${ali.id}/test`, method: "POST", hasBody: false, contentType: null }]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

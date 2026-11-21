@@ -12,5 +12,48 @@
   "clusters": {"loadFailed": "无法读取集群", "empty": "这个账号下没有托管 Kubernetes 集群", "column": {"gpuPools": "GPU 节点池"}, "field": {"id": "集群 ID", "api": "API Server", "nodes": "已接入节点", "region": "地域", "version": "版本"}, "nodes_one": "{{count}} 个节点", "nodes_other": "{{count}} 个节点", "entryGone": "云账号里已经没有这个集群。它的条目和已接入的节点还在，可以在右侧吊销或删除。", "entryUnread": "云上的集群没有读到，节点池暂时无法显示；条目仍可在右侧操作。", "publicAPI": "公网可访问", "privateAPI": "仅内网可访问", "privateAPIHint": "API Server 没有公网地址，gpuworks 无法替你应用 manifest；接入后在集群内网里执行 kubectl 命令即可。", "connected": "已接入", "notRunning": "集群未就绪", "noGPUPools": "没有可识别的 GPU 节点池（自动模式节点池、共享 GPU 或不支持的厂商不会列出）", "pool": "{{name}} · {{model}} ×{{count}} · {{nodes}} 个节点", "mixedModels": "多种型号", "connect": "接入", "editPools": "修改", "inEntry": "已在条目里"},
   "detail": {"syncedAt": "上次同步时间：{{time}}", "neverSynced": "还没有同步过实例", "standaloneInstances": "独立实例", "loadingInstances": "正在读取实例", "loadingClusters": "正在读取集群", "loadingHPCClusters": "正在读取 E-HPC 集群", "showMore": "再显示 {{count}} 台（还有 {{rest}} 台）", "collapse": "收起 {{name}}", "expand": "展开 {{name}}"},
   "instances": {"empty": "还没有同步过实例，请点击上方“同步”", "emptyAfterSync": "上次同步没有找到实例", "notReturned": "未返回", "cancel": "取消", "powerOn": "开机", "powerOff": "关机", "powerOffConfirm": "确认关闭该实例？", "installAgent": "一键装 Agent", "onboarded": "已接入", "containerRuntimeNote": "容器类型实例会自动使用 runveil 运行时（无需 root 和守护进程）。", "loadFailed": "实例列表读取失败", "retry": "重试", "pricePerHour": "¥{{price}}/时", "column": {"instance": "实例", "gpu": "GPU", "sshConnection": "连接方式", "status": "状态", "price": "费用", "region": "区域", "type": "类型"}, "power": {"running": "运行中", "stopped": "已停止", "unknown": "未知"}, "connection": {"copy": "复制 SSH 命令", "direct": "直连", "proxy": "外部平台代理", "terminalOnly": "仅终端", "noSSH": "无需 SSH"}, "type": {"container": "容器", "vm": "虚拟机"}, "message": {"powerOnSent": "已发送开机请求", "powerOffSent": "已发送关机请求", "actionFailed": "操作失败：{{detail}}"}},
-  "hpc": {"scheduler": {"slurm": "Slurm", "pbs": "PBS", "unknown": "未知调度器"}, "unsupported": "这个 E-HPC 集群用 {{scheduler}} 调度，目前只能接入 Slurm 集群。", "loadFailed": "读不到 E-HPC 集群", "noPermission": "此账号的密钥无权列出 E-HPC 集群。请在密钥的 RAM 策略里放行 {{permission}}。", "notActivated": "该账号没有开通 E-HPC，所以没有 E-HPC 集群。", "notActivatedCode": "云厂商返回：{{code}}", "partial": "有些地域没能读取，这些地域里的 E-HPC 集群可能没有显示：", "failedRegion": "{{region}}：{{code}}", "failedRegionPermission": "{{region}}：密钥无权在该地域列出（{{permission}}）", "empty": "这个账号下没有 E-HPC 集群", "field": {"scheduler": "调度器", "computeNodes": "计算节点", "gpuNodes": "GPU 节点"}, "state": {"uninit": "安装中", "creating": "创建中", "initing": "初始化中", "pending": "待配置", "running": "运行中", "exception": "异常", "stopping": "停止中", "stopped": "已停止", "releasing": "释放中", "unknown": "状态未知（{{state}}）"}, "notConnectable": {"cluster_starting": "集群还在创建，运行后可以接入。", "cluster_pending": "集群还没有配置完，配置好并运行后可以接入。", "cluster_exception": "集群异常，请在 E-HPC 控制台处理后再接入。", "cluster_stopped": "集群已停止，请在 E-HPC 控制台启动后再接入。", "cluster_releasing": "集群正在释放，不能接入。", "cluster_state_unknown": "云上报告的集群状态无法识别，运行后可以接入。"}, "entryGone": "账号下已经没有这个集群。它的条目和已接入的节点还在，可以在右侧卸载、吊销或删除。", "entryUnread": "读不到云上的 E-HPC 集群，所以无法显示集群本身；条目仍可在右侧管理。"}
+  "hpc": {"scheduler": {"slurm": "Slurm", "pbs": "PBS", "unknown": "未知调度器"}, "unsupported": "这个 E-HPC 集群用 {{scheduler}} 调度，目前只能接入 Slurm 集群。", "loadFailed": "读不到 E-HPC 集群", "noPermission": "此账号的密钥无权列出 E-HPC 集群。请在密钥的 RAM 策略里放行 {{permission}}。", "notActivated": "该账号没有开通 E-HPC，所以没有 E-HPC 集群。", "notActivatedCode": "云厂商返回：{{code}}", "partial": "有些地域没能读取，这些地域里的 E-HPC 集群可能没有显示：", "failedRegion": "{{region}}：{{code}}", "failedRegionPermission": "{{region}}：密钥无权在该地域列出（{{permission}}）", "empty": "这个账号下没有 E-HPC 集群", "field": {"scheduler": "调度器", "computeNodes": "计算节点", "gpuNodes": "GPU 节点"}, "state": {"uninit": "安装中", "creating": "创建中", "initing": "初始化中", "pending": "待配置", "running": "运行中", "exception": "异常", "stopping": "停止中", "stopped": "已停止", "releasing": "释放中", "unknown": "状态未知（{{state}}）"}, "notConnectable": {"cluster_starting": "集群还在创建，运行后可以接入。", "cluster_pending": "集群还没有配置完，配置好并运行后可以接入。", "cluster_exception": "集群异常，请在 E-HPC 控制台处理后再接入。", "cluster_stopped": "集群已停止，请在 E-HPC 控制台启动后再接入。", "cluster_releasing": "集群正在释放，不能接入。", "cluster_state_unknown": "云上报告的集群状态无法识别，运行后可以接入。"}, "entryGone": "账号下已经没有这个集群。它的条目和已接入的节点还在，可以在右侧卸载、吊销或删除。", "entryUnread": "读不到云上的 E-HPC 集群，所以无法显示集群本身；条目仍可在右侧管理。"},
+  "test": {
+    "title": "测试连接",
+    "run": "测试连接",
+    "running": "正在测试连接…",
+    "ok": "连接验证通过",
+    "failed": "连接失败",
+    "interrupted": "测试中断，未能完成。请检查网络后重试。",
+    "status": {"ok": "通过", "failed": "未通过", "skipped": "已跳过"},
+    "proxy": {"used": "经 {{variables}} 设置的代理访问", "unused": "{{variables}} 设置了代理，访问该地址时不使用"},
+    "check": {
+      "endpoint_format": "接口地址格式",
+      "credentials_shape": "凭据完整性",
+      "dns_resolve": "DNS 解析",
+      "tcp_connect": "TCP 连接",
+      "tls_handshake": "TLS 握手",
+      "proxy_detect": "代理检测",
+      "clock_skew": "时钟偏差",
+      "auth_request": "认证",
+      "protocol_shape": "协议版本",
+      "api_endpoints": "API 接口",
+      "read_permissions": "读取权限",
+      "resource_summary": "资源摘要"
+    },
+    "hint": {
+      "depends_failed": "前置检查未通过",
+      "not_applicable": "该平台没有单一的 API 接口地址，无需检查",
+      "via_proxy": "请求经代理发出，无需检查直连",
+      "endpoint_empty": "请填写 API 接口地址",
+      "endpoint_shape": "请按 https://主机:端口/路径 填写，不带 ? 和 # 部分",
+      "credential_missing": "请补全缺失的凭据字段",
+      "dns": "请检查主机名和 GPUWorks 服务器的 DNS 设置",
+      "tcp_refused": "请检查端口是否正确、服务是否已启动",
+      "tcp_unreachable": "请检查地址，以及 GPUWorks 服务器到它的网络",
+      "tcp_timeout": "请检查防火墙是否放行 GPUWorks 服务器访问该端口",
+      "tls": "请检查该地址是否启用 HTTPS、证书是否有效",
+      "proxy": "请检查代理地址是否正确、代理是否在运行",
+      "auth": "请检查密钥是否正确、是否已过期或被停用",
+      "clock_skew": "请用 NTP 校准 GPUWorks 服务器和平台的时间",
+      "http": "请确认该地址是平台的 API 地址",
+      "zstack_version": "需要 ZStack Cloud 4.8.0 或更高版本，请检查版本和许可证",
+      "zstack_permission": "请给该账号开通物理机、GPU 设备及其配置的查询权限"
+    }
+  }
 }
