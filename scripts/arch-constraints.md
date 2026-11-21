@@ -9,16 +9,24 @@
 - 超限、统计命令执行失败或计数无效时，门禁失败（exit 1）。
 - `max` 键实测**严格低于**限额时打印 WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值。
 - 误报以**修模式为先**，不以调预算为先。每条排除项都记录在本文；改脚本时必须同步本文。
-- **上调（`max` 变大、`min` 变小）必须带理由**：`check_architecture.sh` 把本文件与基线版本
+- **预算行只有三个字段**：键、限额、方向。理由、历史一律写在本文该键的小节里，不写在
+  `arch-constraints.txt` 行尾——行尾注释会让改同一条预算的两个 MR 必然冲突。带第 4 个字段的行直接 FAIL。
+- **放宽（`max`/`warn` 变大、`min` 变小）必须留记录**：`check_architecture.sh` 把预算文件与基线版本
   比较——基线优先取 CI 给出的合并请求基线 `$GPUWORKS_ARCH_BASELINE`，否则取
   `git merge-base HEAD origin/master`；解析不出基线（浅克隆、没有 `origin` remote、当前就在
-  default branch 上）时打印 NOTE 并跳过，不算失败。被判定为上调的行必须在行尾追加 Tab 分隔的
-  `# raised: <原因>` 注释（`min` 键同一标记），否则直接 FAIL；新增或删除的键不算上调。该注释
-  是第 4 个 Tab 分隔字段，不影响 `key<TAB>limit<TAB>direction` 的既有解析。
+  default branch 上）时打印 NOTE 并跳过，不算失败。被判定为放宽的键，必须在本文该键小节的
+  "调整记录"里有一行（独占一行、从行首写起）：
+
+  ```text
+  - 放宽 `<键>` <基线限额>→<新限额>（GWKS-<单号>）：<原因>；回落条件：<什么落地后把限额降回去>
+  ```
+
+  例如 ``- 放宽 `api_fanout` 52→53（GWKS-123）：api 新增对 foo 包的调用；回落条件：GWKS-124 把 foo 的入口并进 bar 后降回 52``。
+  脚本按键名、基线限额、新限额、`GWKS-<数字>` 和非空的"回落条件"逐项匹配，缺一项就 FAIL，并打印要补的那一行。
+  新增或删除的键不算放宽；基线里已有的历史上调不追溯。收紧限额不需要记录。
 - **`warn` 是软预算**：实测超过限额只打印 WARNING（附该键的替代做法提示），实测低于限额提示可收紧，
-  **从不失败**；基线比较也不检查 `warn` 键。用于不宜硬拦、但需要在评审里被看见的趋势
-  （`ui_antd_icon_import_files`、`ui_bundle_gzip_kb`）。收紧或上调 `warn` 限额同样在行尾写
-  `# raised: <原因>` 说明上调理由（约定，不由脚本强制）。
+  **从不失败**。用于不宜硬拦、但需要在评审里被看见的趋势（`ui_antd_icon_import_files`、
+  `ui_bundle_gzip_kb`、`app_prod_lines`）。上调 `warn` 限额同样要写上面的放宽记录。
 - 需要额外前置条件才能测的键（如 `ui_bundle_gzip_kb` 需要先构建 UI），在 `measure()` 里返回
   `EXTERNAL`，预算循环只打印并跳过，由专门脚本测量。
 
@@ -123,7 +131,7 @@ grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src --include='*.ts' --include='*.tsx' 
 文件数只能拦"新文件引入 antd"，拦不住已有文件里继续加 antd 用法；逐文件的棘轮由下面的
 `ui/antd-inventory.json` 负责。
 
-调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录）：
+调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `ui_antd_import_files`（限额 287 时）：raised: master added antd before this ratchet existed (ModelSourceIDField, OutboundPolicyCard, the benchmark report export in benchmarkReportExport.css and EvaluationDetailPage, and the deploy diagnostics in DeployDiagnostics and DeploySubmissionError); the per-file snapshot (ui/antd-inventory.json) starts from that tree
 
@@ -367,7 +375,7 @@ go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
 推导、模型准备观测），不依赖 `net/http` 与 `api`（依赖方向检查守护）；`api` 的 handler 只做解码、调用、映射。该包按 store 写入
 与读取，`store_concrete_importers` 22→23；`api` 仍为其余 handler 依赖 store，故没有随之减少。
 
-调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录）：
+调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `store_concrete_importers`（限额 24 时）：raised: the Slurm entry use cases (internal/server/slurmcluster) moved out of the HTTP handlers: the entry views read the store in grouped queries and report ingestion replaces an entry's node list, over the store's own Slurm rows (SlurmCluster, SlurmGPUNode, the counts and blockers), behind narrow interfaces; earlier: the deployment use cases (internal/server/deployment) create and evaluate a deployment and keep its read model (row lookups, runtime state) over the store, moved out of the HTTP handlers so the automation, batches and MCP can call them; api still imports store for the handlers not yet moved; earlier: the scheduling activity (internal/server/schedactivity) counts the events the store hands over (store.ObservedEvent, store.ResidencyMachine) and reads the replay and the deployments it names from the store; earlier: Cloud resource ownership moved into provider/zstack/cloud/resourceclaim; cloud retains host onboarding, while resourceclaim owns node/GPU reads and lease lifecycle state; internal/server/analytics answers the usage analytics queries over the usage tables, whose rows are store's own typed entities (UsageCounts, UsageGroup, the deployment and user name lookups) - a narrow interface would need a parallel set of row types for the same tables
 
@@ -468,7 +476,7 @@ find internal/server/app -maxdepth 1 -type f -name '*.go' ! -name '*_test.go' -e
 - 不量 `forgetDeployment` 的行数：缺陷正是它太短（漏清 5 份状态）。改用 `controller_struct_maps` 加 GWKS-303 的完整性测试。
 - `app_prod_lines` 是软预算：搬出功能服务会降它，新的装配代码合理地会涨它，只要在评审里被看见。
 
-调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录）：
+调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `controller_struct_fields`（限额 34 时）：lowered by GWKS-306 (the transfer run table became one field, Controller.syncs); earlier raised: the server's sleep and wake order lock and the placement hints moved from package globals in planning (lifecycleMu, placementHints) into lifecycle.Orders, built by the controller and handed to the API and the automation (GWKS-305); the controller holds it (Controller.orders)
 - `controller_exported_methods`（限额 15 时）：lowered by GWKS-306 (the five model transfer methods became Controller.Transfers); earlier raised: the server's sleep and wake order lock and the placement hints moved from package globals in planning (lifecycleMu, placementHints) into lifecycle.Orders, built by the controller and handed to the API and the automation (GWKS-305); Controller.Orders hands it to the app
@@ -516,7 +524,7 @@ go list -e -f '{{join .Imports "\n"}}' ./internal/server/api \
 2026-11-12：部署用例（用例层拆分的第一组）。创建与评估搬进 `internal/server/deployment`，api 改为依赖它（+1），不再直接依赖
 `acquisition` 与 `placement`（−2），`api_fanout` 49→48。
 
-调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录）：
+调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `api_fanout`（限额 52 时）：raised: api calls the Slurm entry use cases in internal/server/slurmcluster (views, report ingestion, one-time codes, what was seen of a setup, with one Forget per entry) instead of keeping them in its handlers; earlier: master and the Slurm branch each added one import while apart (the feature gate below, and the Slurm leaf internal/server/slurmboot), so the merge is one above both; earlier: Slurm clusters (like Kubernetes ones) join through scripts rendered by a pure leaf package, internal/server/slurmboot (parameters in, shell text out, imports nothing from this repository, guarded by check_architecture.sh), which api serves directly at /slurm/setup.sh and /slurm/check.sh; the scripts carry the entry settings and are not part of Deps, so api_deps_fields stays; earlier: extension routes answer to the feature gate (internal/server/featuregate, a leaf whose only dependency is messages): api applies it in the extension route wrapper and reads it for GET /console/manifest; earlier: the server's sleep and wake order lock and the placement hints moved from package globals in planning (lifecycleMu, placementHints) into lifecycle.Orders, built by the controller and handed to the API and the automation (GWKS-305); api imports the leaf lifecycle (no store import) for it; earlier: Kubernetes clusters (ADR 0052) render their join manifest in the leaf package internal/server/kubemanifest (no store import; parameters in, YAML out), which api serves directly; earlier: diagnostics: api starts and stops debug sessions and diagnostics collections and maps their records (internal/server/diagnostics, which holds the sessions, the request recorder and the collection builder; no store import), the one new import; earlier: card health checks: api reads each card's check states from the in-memory tracker and builds the health tab's table from them (internal/server/cardhealth), which keeps them out of the store because every status report brings them again; earlier: yield policies: api validates a deployment's yield policy and parameters with the yieldpolicy leaf (then named servicelevel; the policy model, no store import), the one new import (the service level constants it used to take from store are gone); earlier: the user experience improvement program (docs/reference/usage-report.md), api counts its calls, product errors and panics into the leaf usagereport package; and the scheduling center: api reads a deployment's schedule the way the automation does (internal/server/automation, a leaf with no store import: the next occurrence of each order and the automation's event codes), so the one new import is that leaf (44 was master's own count)
 
@@ -544,7 +552,7 @@ CGO_ENABLED=0 go run ./scripts/apiconv -opaque      # 加 -v 列出字段
 排除：带 `MarshalJSON`/`MarshalText` 的类型自己决定编码，不计入。初值来自 API 规范统一时的实测：
 统一前 42，把节点拓扑、benchmark `long_tail`、agent 拒绝记录、终端会话改为具名 DTO 后为 40。
 
-调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录）：
+调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `api_opaque_response_fields`（限额 45 时）：raised: the provider connection test streams its checks over SSE (testconn.Check.Detail), whose detail keys differ by check exactly as dto.SchedulingHistoryEntry.Params differ by event code; a named type per check would duplicate the checks' own vocabulary; earlier: GET /deployments/{id}/draft answers the create request itself (dto.DeployRequest), whose open maps now also appear in a response; and GET /scheduling/history lists the timeline events across deployments (dto.SchedulingHistoryEntry.Params), whose params differ by event code exactly as dto.InstanceEvent.Params do; a named type per code would duplicate the timeline's own event vocabulary (43 was master's own count)
 
@@ -617,7 +625,7 @@ awk '/^type Deps struct/ {inside=1; next}
 因此 `api_fanout` 与 `store_concrete_importers` 不变（`templateexport` 不导入 store，读 store 的部分放在 app）；
 响应里的 notes 用已有的 `messages.Warning`，`api_opaque_response_fields` 不变。
 
-调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录）：
+调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `api_deps_fields`（限额 64 时）：raised: Deps.Extensions, everything a separately built server hands the API in one bundle (api.ExtensionDeps: the routes it mounts inside /api/v1, the feature gate they answer to, the console banners and the edition the manifest names), so later extension hooks add fields inside the bundle rather than here; a Router option was weighed, but Router's variadic is auth.SessionPolicy and every caller would change; earlier: lowered by GWKS-306 (SyncModel and CancelModelSync became Deps.ModelTransfers); earlier raised: the server's sleep and wake order lock and the placement hints moved from package globals in planning (lifecycleMu, placementHints) into lifecycle.Orders, built by the controller and handed to the API and the automation (GWKS-305); Deps.Orders; earlier: Deps.Lists, the server's one snapshot of every deployment and instance (deployment.Lists, R-32) that the deployment and instance lists read instead of every row per request; nil reads them per request, so handler tests need no change. Folding it into Deps.Preparation was weighed and rejected: nine api call sites and the tests' Deps{Preparation: ...} literals would change for no gain; earlier: Deps.NodeDoctor composes live Agent health checks and disconnected-node access evidence through one diagnostic service, adding one field to the corrected master baseline of 61; earlier: a realignment, not new fields - the measurement read api.go, where Deps no longer lives, and returned 0; 61 is the count at 8ac050aa0 read from dependencies.go, and the ratchet resumes from there; earlier: Deps.CatalogTemplates, saving a running deployment as an inference template (it reads the deployment, tests its operations through the gateway and builds the template in package templateexport), one named interface so api imports neither templateexport nor the gateway; earlier: Deps.Diagnostics, one named interface for the debug sessions and diagnostics collections (files under the data directory, no store row), rather than methods on Server or Monitor, which are about something else; earlier: Deps.CardHealth, each card's check states in memory, their failure records and the agent reads behind them (the last run of a check), one named interface for what the cardhealth tracker holds; earlier: Deps.SchedulingActivity, the in-memory rollups of the scheduling activity (the last 24 hours, counted as events are written) that the activity route, the sharing stats and the node timelines read instead of the event log; earlier: Deps.WakeHeld, the gateway's held requests by deployment, an in-memory fact of the proxy that the scheduling overview reads and that has no store row (a plain func rather than another method on an unrelated interface); Deps.Networks, the one network service every component shares; Deps.Telemetry, the request trace export setting and its running exporter (ADR 0046), a named interface of its own rather than methods on an unrelated one; Deps.Preparation, one named interface for model preparation where it is produced (the hub's copy progress, the controller's placements, evictions and cache retry), so none of those in-memory facts sit in the store; Deps.UsageReport, the improvement program's daily report (status, switch, preview, the counters the API adds to), and Deps.Notices, the notice bell fed from the signed distribution channel, two named interfaces of their own rather than methods on Server or Outside, which are about something else; Deps.Analytics, usage analytics (the data retention setting, its status, and the long-term statistics queries), one named interface for what lives in the app's statistics service rather than methods on Monitor, whose snapshots are the recent raw data; Deps.Experience, the switch for the experience environment beside the server (status, on/off, reset, password), one named interface for a separate process the settings page controls, rather than methods on Server, which is about this server's own listeners and restart
 
@@ -790,7 +798,7 @@ cat internal/server/api/dto/*_test.go | grep -c ''
 ### store_text_columns（初值 74，2026-10-01 → 70（镜像目录四个适配声明列删除，迁移 115）→ 72（计量扩到注释声明 JSON 的定长列）→ 73（`inference_specs.image_sources`，迁移 133）→ 75（`gpus.foreign_processes`，迁移 146）→ 76（`nodes.accelerator_vendors`，迁移 156）→ 81（`inference_specs.pd_roles` 与 `manual_command`，迁移 220）→ 82（`inference_specs.docker_args`，迁移 220））
 
 意图：持久化默认用带类型的列/表，JSON 只做整体读写的不透明快照（ADR 0032）。能装 JSON 的列是把 schema
-藏进 Go 代码的入口，所以按行数设上限。新增这样的列必须上调本项，并在 `# raised:` 里写明
+藏进 Go 代码的入口，所以按行数设上限。新增这样的列必须上调本项，并在放宽记录里写明
 为什么不能是带类型的列。
 
 计数对象是 store 非测试文件里带 `gorm:"` 标签的结构体字段行，满足任一条件即计入：
@@ -841,7 +849,7 @@ ZStack Cloud 接入增加 `CloudHost.Snapshot`，上限从 73 调整到 74：该
 - 其他能装 JSON 的写法：`type:` 取 `text` 以外的值（`TEXT`、`json`、`longtext`），或 GORM 的
   `serializer:json`。目前 store 里一处都没有。
 
-调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录）：
+调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `store_text_columns`（限额 83 时）：raised: inference_specs.dirs is the typed []deploy.ManagedDir (inferencecatalog.InferenceSpec.Dirs, ADR 0077) of writable directories a template spec declares; read and written whole with the rest of the spec projection and copied into the deployment snapshot, never queried, sorted, joined or updated in part, the same opaque-snapshot shape as components on that row. Earlier: inference_specs.docker_args is the typed []string (inferencecatalog.InferenceSpec.DockerArgs) of extra docker run options a template spec's engine needs; it is read and written whole with the rest of the spec projection, never queried, sorted, joined or updated in part, the same opaque-snapshot shape as args and entrypoint on the same row, where a typed child table would only add a join to every template read. Earlier: inference_specs.manual_command is a shell script a template owns whole, free text like pre_start_script on the same row, never parsed by the database; inference_specs.pd_roles is the typed inferencecatalog.PDRoleShapes layout of a PD-only spec (a few integers per role), read and written whole with the rest of the spec projection to seed the deploy form, never queried, sorted, joined or updated in part, the same opaque-snapshot shape as placement and components on that row, where a typed child table would only add a join to every template read. Earlier: instances.runtime_failure is the typed proto.RuntimeFailure snapshot of a rejected pre-container launch. The observed host facts cannot be reconstructed after a node changes; it is written/read whole with Message, never queried or joined. RuntimeObservation requires a created container and cannot own this failure. Earlier: card_health_episodes.first_evidence and latest_evidence: the evidence a failing card check read, as free text in the card health message's form (accelerator.FormatHealthEvidence, bounded to 1 KiB), not JSON; vendors name different fields, so there is no fixed set of typed columns for it; earlier: nodes.accelerator_vendors (proto.AcceleratorPresence list), every vendor whose cards are on the host's PCI bus as the agent last reported it, so the operator can choose which the node manages; it is replaced whole on each report and read whole to draw the choice, never queried, sorted or joined, and a typed table would cost a write per vendor on every status report of a 1000-node fleet that nearly always has one; gpus.foreign_processes, the compute processes somebody outside the platform is running on a card (proto.CardProcess), reported whole by the agent and read whole to show who holds it; the verdict asks only whether it is empty (GPU.HeldOutsidePlatform), the database never queries into it, and a typed table would add a join to every card read of a fleet that mostly has none; inference_specs.image_sources (ADR 0038), the ordered list of further pull references a template declares for its image; it is read and written whole with the rest of the spec projection and never queried, sorted, joined or updated in part, so a typed table would only add a join to every template read; same opaque-snapshot shape as args and entrypoint on the same row; CloudHost.Snapshot preserves the complete installation-time CloudResource inventory, read and written as one opaque snapshot rather than queried by its fields
 

@@ -1,12 +1,13 @@
 # Architecture constraints consumed by scripts/check_architecture.sh.
-# Format: key<TAB>limit<TAB>direction[<TAB># raised: <reason>]
+# Format: key<TAB>limit<TAB>direction, and nothing else on the line.
 #   max = measured must stay <= limit (ratchet down only)
 #   min = measured must stay >= limit (ratchet up only)
 #   warn = soft budget: over the limit only warns, never fails
-#   A loosened limit (max grew, min shrank) vs the origin/master baseline
-#   fails unless the line carries that trailing "# raised: <reason>" comment.
-# Rationale, exact measurement command and exclusion list per key:
-# scripts/arch-constraints.md
+#   A loosened limit (max or warn grew, min shrank) vs the origin/master
+#   baseline fails unless scripts/arch-constraints.md records it in a
+#   "- 放宽" line (format in that file's rules).
+# Rationale, exact measurement command, exclusion list and the history of
+# every limit per key: scripts/arch-constraints.md
 pending_removal_literal	0	max
 deployment_state_literal	0	max
 engine_literal_server	2	max
