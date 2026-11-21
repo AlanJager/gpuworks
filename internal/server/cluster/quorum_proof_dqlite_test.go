@@ -40,10 +40,7 @@ func TestNativeQuorumProofRequiresFreshThreeVoterBarrier(t *testing.T) {
 		members, err := dbs[0].Members(ctx)
 		return err == nil && len(members) == 3 && members[0].Role == "voter" && members[1].Role == "voter" && members[2].Role == "voter"
 	})
-	baseline, err := dbs[0].QuorumProof(ctx)
-	if err != nil {
-		t.Fatal("actual Database quorum-proof capability", err)
-	}
+	baseline := settledQuorumProof(t, ctx, "actual Database quorum-proof capability", dbs[0])
 	leaderIndex := -1
 	for i, db := range dbs {
 		if db.ID == baseline.LeaderID {
@@ -189,15 +186,7 @@ func TestNativeQuorumProofRequiresFreshThreeVoterBarrier(t *testing.T) {
 		// a membership change that only commits once they are back. A proof is
 		// refused, by design, until that change has settled; any other refusal
 		// is a failure.
-		var recovered QuorumProof
-		conversionWait(t, ctx, "recovered proof after pending membership change", func() bool {
-			var err error
-			recovered, err = leader.QuorumProof(ctx)
-			if err != nil && !strings.Contains(err.Error(), "quorum configuration is changing") {
-				t.Fatal("native process/late callbacks did not permit recovered proof", err)
-			}
-			return err == nil
-		})
+		recovered := settledQuorumProof(t, ctx, "native process/late callbacks did not permit recovered proof", leader)
 		materialQuorumAssertProof(t, recovered, beforeMembers)
 		if recovered.Index <= baseline.Index || recovered.Term < baseline.Term {
 			t.Fatalf("recovered actual proof regressed: baseline=%+v recovered=%+v", baseline, recovered)
@@ -377,4 +366,24 @@ func materialQuorumSQLSnapshot(t *testing.T, ctx context.Context, db *sql.DB) ma
 		t.Fatalf("actual representative SQL mutation witness is not empty: %v", result["write-audit"])
 	}
 	return result
+}
+
+// settledQuorumProof reads a proof once the membership has settled. The
+// members already list as voters while the configuration entry that made the
+// last one a voter is still uncommitted, or its promotion still in progress;
+// the database process refuses a proof until then, by design, with "quorum
+// configuration is changing". That refusal is waited out within ctx; any other
+// error fails the test.
+func settledQuorumProof(t *testing.T, ctx context.Context, description string, db *Database) QuorumProof {
+	t.Helper()
+	var proof QuorumProof
+	conversionWait(t, ctx, description+": membership change still pending", func() bool {
+		var err error
+		proof, err = db.QuorumProof(ctx)
+		if err != nil && !strings.Contains(err.Error(), "quorum configuration is changing") {
+			t.Fatal(description, err)
+		}
+		return err == nil
+	})
+	return proof
 }

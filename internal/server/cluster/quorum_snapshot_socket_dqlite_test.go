@@ -39,10 +39,7 @@ func TestNativeQuorumSnapshotJoinsActualSQLSocketClose(t *testing.T) {
 		members, err := dbs[0].Members(ctx)
 		return err == nil && len(members) == 3 && members[0].Role == "voter" && members[1].Role == "voter" && members[2].Role == "voter"
 	})
-	proof, err := dbs[0].QuorumProof(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	proof := settledQuorumProof(t, ctx, "socket ACK first proof", dbs[0])
 	leaderIndex := -1
 	for i, db := range dbs {
 		if db.ID == proof.LeaderID {
