@@ -16,7 +16,8 @@ import (
 // the local cluster node is mid-leadership-change, so a bounded retry can
 // succeed on the next leader. Anything else (constraint violations, invalid
 // stored values, caller cancellation) is returned to the caller unchanged.
-func transientClusterReadError(err error) bool {
+// backend is the store's: only it knows its driver's no-leader error.
+func transientClusterReadError(backend store.RuntimeBackend, err error) bool {
 	switch {
 	case err == nil:
 		return false
@@ -32,15 +33,15 @@ func transientClusterReadError(err error) bool {
 		return true
 	default:
 		// Dial-time failure while no leader is elected yet.
-		return store.ReplicatedLeaderUnavailable(err)
+		return backend.ReplicatedLeaderUnavailable(err)
 	}
 }
 
 // retryableSettingsRead adds, for this side-effect-free read only, a dqlite
 // failure frame that interrupted the result during a leadership transfer.
 // Writes keep transientClusterReadError alone.
-func retryableSettingsRead(err error) bool {
-	return transientClusterReadError(err) || store.ReplicatedReadInterrupted(err)
+func retryableSettingsRead(backend store.RuntimeBackend, err error) bool {
+	return transientClusterReadError(backend, err) || backend.ReplicatedReadInterrupted(err)
 }
 
 // allSettingsWithReadRetry repeats one replicated read while it fails with a
@@ -48,9 +49,9 @@ func retryableSettingsRead(err error) bool {
 // failure. The caller's context cancels the wait immediately. The last error
 // is returned when the budget is exhausted; it is never replaced by a
 // synthetic timeout.
-func allSettingsWithReadRetry(ctx context.Context, read func() (map[string]string, error), budget time.Duration) (map[string]string, error) {
+func allSettingsWithReadRetry(ctx context.Context, backend store.RuntimeBackend, read func() (map[string]string, error), budget time.Duration) (map[string]string, error) {
 	settings, err := read()
-	if err == nil || !retryableSettingsRead(err) {
+	if err == nil || !retryableSettingsRead(backend, err) {
 		return settings, err
 	}
 	deadline := time.Now().UTC().Add(budget)
@@ -72,7 +73,7 @@ func allSettingsWithReadRetry(ctx context.Context, read func() (map[string]strin
 		case <-timer.C:
 		}
 		settings, err = read()
-		if err == nil || !retryableSettingsRead(err) {
+		if err == nil || !retryableSettingsRead(backend, err) {
 			return settings, err
 		}
 		backoff = min(backoff*2, 400*time.Millisecond)
@@ -81,10 +82,10 @@ func allSettingsWithReadRetry(ctx context.Context, read func() (map[string]strin
 
 // lostDatabaseConnection reports a driver failure caused by leadership loss or
 // a dropped replicated-database connection.
-func lostDatabaseConnection(err error) bool {
+func lostDatabaseConnection(backend store.RuntimeBackend, err error) bool {
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, driver.ErrBadConn) || errors.Is(err, sql.ErrConnDone) ||
-		store.ReplicatedLeaderUnavailable(err)
+		backend.ReplicatedLeaderUnavailable(err)
 }
 
 // settingsStoreErrorStatus is the status for a settings read or write the
@@ -92,8 +93,8 @@ func lostDatabaseConnection(err error) bool {
 // this member cannot reach a leader: 503 lets the edge, which retries only
 // 502 and 503, send the request to another member. The write is safe to send
 // again because the same key and value converge. Anything else stays 500.
-func settingsStoreErrorStatus(err error) int {
-	if lostDatabaseConnection(err) {
+func settingsStoreErrorStatus(backend store.RuntimeBackend, err error) int {
+	if lostDatabaseConnection(backend, err) {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusInternalServerError

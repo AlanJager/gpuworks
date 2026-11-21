@@ -38,8 +38,9 @@ func (d replicatedDialect) Initialize(db *gorm.DB) error {
 // OpenReplicated binds existing SQL pools without migrations, seeding, or
 // process recovery. On success Store owns both pools; on failure the caller
 // retains ownership. InitializeSchema must be called explicitly by the
-// authorized initializer before serving an uninitialized database.
-func OpenReplicated(ctx context.Context, normal, scheduling *sql.DB, b *bus.Bus) (*Store, error) {
+// authorized initializer before serving an uninitialized database. backend is
+// the database the pools connect to: the Store classifies their errors by it.
+func OpenReplicated(ctx context.Context, normal, scheduling *sql.DB, b *bus.Bus, backend RuntimeBackend) (*Store, error) {
 	if normal == nil || scheduling == nil || normal == scheduling {
 		return nil, errors.New("replicated storage requires separate normal and local-only scheduling pools")
 	}
@@ -61,7 +62,7 @@ func OpenReplicated(ctx context.Context, normal, scheduling *sql.DB, b *bus.Bus)
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db, schedulingDB: local, Bus: b}, nil
+	return &Store{db: db, schedulingDB: local, Bus: b, backend: backend}, nil
 }
 
 // InitializeSchema applies migrations and default configuration. It never

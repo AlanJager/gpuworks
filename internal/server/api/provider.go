@@ -426,9 +426,9 @@ func (a *apiHandlers) getSettings(w http.ResponseWriter, r *http.Request) {
 	// A leadership transition closes in-flight reads with transient driver
 	// errors. The request-boundary retry keeps the same freshness contract; it
 	// never serves stale or cached settings.
-	m, err := allSettingsWithReadRetry(r.Context(), a.d.Store.AllSettings, store.ClusterMembershipGrantTimeout)
+	m, err := allSettingsWithReadRetry(r.Context(), a.d.Store.RuntimeBackend(), a.d.Store.AllSettings, store.ClusterMembershipGrantTimeout)
 	if err != nil {
-		writeErr(w, settingsStoreErrorStatus(err), err)
+		writeErr(w, settingsStoreErrorStatus(a.d.Store.RuntimeBackend(), err), err)
 		return
 	}
 	// Values are JSON strings; return them parsed for convenience.
@@ -572,11 +572,11 @@ func (a *apiHandlers) putSetting(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := setSettingWithWriteRetry(r.Context(), func(ctx context.Context) error {
+	if err := setSettingWithWriteRetry(r.Context(), a.d.Store.RuntimeBackend(), func(ctx context.Context) error {
 		return a.d.Store.SetBusinessSetting(ctx, store.SettingKey(key), string(body))
 	}, settingsWriteRetryBudget); err != nil {
 		a.logSettingWriteError(r, err)
-		writeErr(w, settingsStoreErrorStatus(err), err)
+		writeErr(w, settingsStoreErrorStatus(a.d.Store.RuntimeBackend(), err), err)
 		return
 	}
 	if key == "orphan_cleanup" {

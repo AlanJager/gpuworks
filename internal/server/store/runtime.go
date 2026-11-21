@@ -16,21 +16,22 @@ import (
 
 // OpenRuntime holds exclusive process ownership until Store.Close. Offline
 // maintenance uses the same lock; legacy binaries do not honor this protocol.
-func OpenRuntime(ctx context.Context, path string, b *bus.Bus) (*Store, error) {
-	return openRuntime(ctx, path, b, false)
+// The zero backend is SQLite.
+func OpenRuntime(ctx context.Context, path string, b *bus.Bus, backend RuntimeBackend) (*Store, error) {
+	return openRuntimeWith(ctx, path, b, false, backend.runtimeDatabase().open)
 }
 
 // OpenRuntimeForMigration opens an existing stopped single-member database
 // under the runtime lease and applies only schema migrations. Expanded Raft
 // clusters need a separate coordinated quorum migration operation.
-func OpenRuntimeForMigration(ctx context.Context, path string, b *bus.Bus) (*Store, error) {
-	return openRuntimeWith(ctx, path, b, true, openRuntimeMigrationDatabase)
+func OpenRuntimeForMigration(ctx context.Context, path string, b *bus.Bus, backend RuntimeBackend) (*Store, error) {
+	return openRuntimeWith(ctx, path, b, true, backend.runtimeDatabase().openForMigration)
 }
 
 // OpenExistingRuntime opens an established native database for offline metadata
 // operations. It neither initializes schema nor runs application recovery.
-func OpenExistingRuntime(ctx context.Context, path string, b *bus.Bus) (*Store, error) {
-	return openRuntime(ctx, path, b, true)
+func OpenExistingRuntime(ctx context.Context, path string, b *bus.Bus, backend RuntimeBackend) (*Store, error) {
+	return openRuntimeWith(ctx, path, b, true, backend.runtimeDatabase().open)
 }
 
 // HasExpandedRuntime inspects the durable Raft membership before the ordinary
@@ -72,8 +73,8 @@ func HasExpandedRuntime(path string) (bool, error) {
 
 // OpenExpandedRuntime reopens an existing multi-member database
 // without performing application startup writes or granting business readiness.
-func OpenExpandedRuntime(ctx context.Context, path string, b *bus.Bus) (*Store, error) {
-	return openRuntimeWith(ctx, path, b, true, openEstablishedClusterRuntimeDatabase)
+func OpenExpandedRuntime(ctx context.Context, path string, b *bus.Bus, backend RuntimeBackend) (*Store, error) {
+	return openRuntimeWith(ctx, path, b, true, backend.runtimeDatabase().openEstablishedCluster)
 }
 
 // OpenLegacyExpandedRuntime reopens an established v114 multi-member database
@@ -81,12 +82,8 @@ func OpenExpandedRuntime(ctx context.Context, path string, b *bus.Bus) (*Store, 
 // returned Store is capable of writes; callers must keep it in a closed
 // control-plane lifecycle until coordinated migration is complete. It must
 // never be passed to ordinary application startup.
-func OpenLegacyExpandedRuntime(ctx context.Context, path string, b *bus.Bus) (*Store, error) {
-	return openRuntimeWith(ctx, path, b, true, openLegacyExpandedRuntimeDatabase)
-}
-
-func openRuntime(ctx context.Context, path string, b *bus.Bus, existing bool) (*Store, error) {
-	return openRuntimeWith(ctx, path, b, existing, openRuntimeDatabase)
+func OpenLegacyExpandedRuntime(ctx context.Context, path string, b *bus.Bus, backend RuntimeBackend) (*Store, error) {
+	return openRuntimeWith(ctx, path, b, true, backend.runtimeDatabase().openLegacyExpanded)
 }
 
 func openRuntimeWith(ctx context.Context, path string, b *bus.Bus, existing bool, open func(context.Context, string, *bus.Bus, bool) (*Store, error)) (*Store, error) {

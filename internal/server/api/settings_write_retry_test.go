@@ -20,7 +20,7 @@ import (
 
 func TestSetSettingWriteRetryRecoversBadConnection(t *testing.T) {
 	var calls atomic.Int32
-	err := setSettingWithWriteRetry(t.Context(), func(context.Context) error {
+	err := setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(context.Context) error {
 		if calls.Add(1) <= 2 {
 			return driver.ErrBadConn
 		}
@@ -33,7 +33,7 @@ func TestSetSettingWriteRetryRecoversBadConnection(t *testing.T) {
 
 func TestSetSettingWriteRetryExhaustsBudgetWithLastError(t *testing.T) {
 	started := time.Now()
-	err := setSettingWithWriteRetry(t.Context(), func(context.Context) error { return driver.ErrBadConn }, 300*time.Millisecond)
+	err := setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(context.Context) error { return driver.ErrBadConn }, 300*time.Millisecond)
 	if !errors.Is(err, driver.ErrBadConn) {
 		t.Fatalf("exhausted retry returned %v", err)
 	}
@@ -45,11 +45,11 @@ func TestSetSettingWriteRetryExhaustsBudgetWithLastError(t *testing.T) {
 func TestSetSettingWriteRetryKeepsNonTransientError(t *testing.T) {
 	original := errors.New("UNIQUE constraint failed: settings.key")
 	var calls atomic.Int32
-	err := setSettingWithWriteRetry(t.Context(), func(context.Context) error { calls.Add(1); return original }, 2*time.Second)
+	err := setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(context.Context) error { calls.Add(1); return original }, 2*time.Second)
 	if !errors.Is(err, original) || calls.Load() != 1 {
 		t.Fatalf("calls=%d err=%v", calls.Load(), err)
 	}
-	err = setSettingWithWriteRetry(t.Context(), func(context.Context) error { return store.ErrBusinessWritesClosed }, 2*time.Second)
+	err = setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(context.Context) error { return store.ErrBusinessWritesClosed }, 2*time.Second)
 	if !errors.Is(err, store.ErrBusinessWritesClosed) {
 		t.Fatalf("closed write admission was replaced: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestSetSettingWriteRetryStopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	var calls atomic.Int32
 	started := time.Now()
-	err := setSettingWithWriteRetry(ctx, func(context.Context) error {
+	err := setSettingWithWriteRetry(ctx, store.RuntimeBackend{}, func(context.Context) error {
 		if calls.Add(1) == 2 {
 			cancel()
 		}
@@ -83,7 +83,7 @@ func TestSetSettingWriteRetryConvergesAfterCommittedButUnacknowledgedWrite(t *te
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	var calls atomic.Int32
-	err = setSettingWithWriteRetry(t.Context(), func(ctx context.Context) error {
+	err = setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(ctx context.Context) error {
 		if err := st.SetBusinessSetting(ctx, "test.ha.committed", `"v5"`); err != nil {
 			return err
 		}
@@ -206,7 +206,7 @@ func TestPutSettingKeepsNonTransientWriteError(t *testing.T) {
 func TestSetSettingWriteRetryBudgetBoundsSlowAttempts(t *testing.T) {
 	started := time.Now()
 	var calls atomic.Int32
-	err := setSettingWithWriteRetry(t.Context(), func(ctx context.Context) error {
+	err := setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(ctx context.Context) error {
 		calls.Add(1)
 		select {
 		case <-ctx.Done():
@@ -222,7 +222,7 @@ func TestSetSettingWriteRetryBudgetBoundsSlowAttempts(t *testing.T) {
 		t.Fatalf("slow attempts stretched the budget to %s (calls=%d)", elapsed, calls.Load())
 	}
 	started = time.Now()
-	_ = setSettingWithWriteRetry(t.Context(), func(ctx context.Context) error {
+	_ = setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(ctx context.Context) error {
 		<-ctx.Done()
 		return driver.ErrBadConn
 	}, 300*time.Millisecond)
@@ -235,12 +235,12 @@ func TestSetSettingWriteRetryBudgetBoundsSlowAttempts(t *testing.T) {
 // definitive and must not be retried.
 func TestSetSettingWriteRetryReturnsJoinedClosureAtOnce(t *testing.T) {
 	joined := errors.Join(store.ErrBusinessWritesClosed, driver.ErrBadConn)
-	if !transientClusterReadError(joined) {
+	if !transientClusterReadError(store.RuntimeBackend{}, joined) {
 		t.Fatal("fixture no longer exercises the joined-error case")
 	}
 	var calls atomic.Int32
 	started := time.Now()
-	err := setSettingWithWriteRetry(t.Context(), func(context.Context) error { calls.Add(1); return joined }, 2*time.Second)
+	err := setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(context.Context) error { calls.Add(1); return joined }, 2*time.Second)
 	if !errors.Is(err, store.ErrBusinessWritesClosed) || calls.Load() != 1 || time.Since(started) > 200*time.Millisecond {
 		t.Fatalf("calls=%d err=%v elapsed=%s", calls.Load(), err, time.Since(started))
 	}
@@ -251,7 +251,7 @@ func TestSetSettingWriteRetryReturnsJoinedClosureAtOnce(t *testing.T) {
 // the write retry: the caller would answer 500 instead of handing over.
 func TestSetSettingWriteRetryKeepsTheClusterErrorWhenTheBudgetCutsARetry(t *testing.T) {
 	var calls atomic.Int32
-	err := setSettingWithWriteRetry(t.Context(), func(ctx context.Context) error {
+	err := setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(ctx context.Context) error {
 		if calls.Add(1) == 1 {
 			return driver.ErrBadConn
 		}
@@ -265,7 +265,7 @@ func TestSetSettingWriteRetryKeepsTheClusterErrorWhenTheBudgetCutsARetry(t *test
 
 // A first attempt that is merely slow has no cluster error to report.
 func TestSetSettingWriteRetryReportsTheBudgetForASlowFirstAttempt(t *testing.T) {
-	err := setSettingWithWriteRetry(t.Context(), func(ctx context.Context) error {
+	err := setSettingWithWriteRetry(t.Context(), store.RuntimeBackend{}, func(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}, 100*time.Millisecond)

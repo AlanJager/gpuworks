@@ -290,7 +290,7 @@ func verifyAddressActivation(ctx context.Context, db *cluster.Database, expected
 	if id, pin := db.TransportIdentity(); id != "" && (id != expected.ClusterID || pin != expected.CAFingerprint) {
 		return store.ErrClusterIdentityConflict
 	}
-	st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New())
+	st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		return err
 	}
@@ -308,7 +308,7 @@ func initializeAddressAdmission(ctx context.Context, db *cluster.Database, expec
 	if err := verifyAddressActivation(ctx, db, expected); err != nil {
 		return err
 	}
-	st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New())
+	st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		return err
 	}

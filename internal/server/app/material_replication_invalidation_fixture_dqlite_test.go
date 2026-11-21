@@ -105,7 +105,7 @@ func newReplicationInvalidationFixture(t *testing.T, ctx context.Context, interc
 			}
 		})
 		if i == 0 {
-			st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New())
+			st, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), store.ReplicatedBackend())
 			if err != nil {
 				t.Fatal(err)
 			}

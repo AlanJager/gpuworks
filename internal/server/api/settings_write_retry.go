@@ -22,7 +22,7 @@ const settingsWriteRetryBudget = 4 * time.Second
 // write admission is definitive even when joined with a driver error. The
 // caller's context cancels the wait immediately, and the last attempt's error
 // is returned when the budget is exhausted.
-func setSettingWithWriteRetry(ctx context.Context, write func(context.Context) error, budget time.Duration) error {
+func setSettingWithWriteRetry(ctx context.Context, backend store.RuntimeBackend, write func(context.Context) error, budget time.Duration) error {
 	// time.Now keeps its monotonic reading through UTC, so wall-clock steps
 	// cannot stretch or cut the budget.
 	deadline := time.Now().UTC().Add(budget)
@@ -32,7 +32,7 @@ func setSettingWithWriteRetry(ctx context.Context, write func(context.Context) e
 	var lastTransient error
 	for {
 		err := write(attemptCtx)
-		if err == nil || errors.Is(err, store.ErrBusinessWritesClosed) || !transientClusterReadError(err) {
+		if err == nil || errors.Is(err, store.ErrBusinessWritesClosed) || !transientClusterReadError(backend, err) {
 			if err != nil && ctx.Err() != nil {
 				return ctx.Err()
 			}

@@ -14,5 +14,5 @@ import (
 // A SQLite file at the same path would be refused by New.
 func openServerDatabase(t *testing.T, path string) (*store.Store, error) {
 	t.Helper()
-	return store.OpenRuntime(t.Context(), path, bus.New())
+	return store.OpenRuntime(t.Context(), path, bus.New(), store.ReplicatedBackend())
 }

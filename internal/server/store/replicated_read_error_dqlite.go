@@ -35,3 +35,11 @@ func ReplicatedWriterBusy(err error) bool {
 	var failure dqlitedriver.Error
 	return errors.As(err, &failure) && failure.Code&0xff == dqlitedriver.ErrBusy
 }
+
+func (replicatedRuntimeDatabase) leaderUnavailable(err error) bool {
+	return ReplicatedLeaderUnavailable(err)
+}
+
+func (replicatedRuntimeDatabase) readInterrupted(err error) bool {
+	return ReplicatedReadInterrupted(err)
+}

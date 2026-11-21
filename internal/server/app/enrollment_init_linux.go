@@ -66,7 +66,7 @@ func InitializeEnrollmentWithTier(ctx context.Context, cfg Config, listen, publi
 	if err != nil {
 		return result, err
 	}
-	st, err := store.OpenExistingRuntime(ctx, cfg.DBPath, bus.New())
+	st, err := store.OpenExistingRuntime(ctx, cfg.DBPath, bus.New(), store.ReplicatedBackend())
 	if err != nil {
 		return result, err
 	}

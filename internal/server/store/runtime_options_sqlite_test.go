@@ -1,9 +1,8 @@
-//go:build !linux || !dqlite
-
 package store
 
 import (
 	"context"
+	"database/sql/driver"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +11,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 )
 
-// Without native dqlite the runtime open is the SQLite store under the
-// runtime lease, with the same extension schemas OpenWith applies.
+// Without a backend the runtime open is the SQLite store under the runtime
+// lease, with the same extension schemas OpenWith applies.
 func TestOpenRuntimeWithAppliesExtensionSchemas(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gpuworks.db")
 	st, err := OpenRuntimeWith(context.Background(), path, bus.New(), OpenOptions{Extensions: []MigrationSet{quotaSet()}})
@@ -74,11 +73,60 @@ func TestOpenRuntimeWithRefusesMarkersAndReplicatedFiles(t *testing.T) {
 	}
 }
 
-// Without the replicated database no read error is a leadership transfer.
-func TestReplicatedReadInterruptedIsFalseWithoutReplication(t *testing.T) {
-	for _, err := range []error{nil, context.Canceled, os.ErrDeadlineExceeded} {
-		if ReplicatedReadInterrupted(err) {
-			t.Fatalf("%v classified as an interrupted replicated read", err)
+// On SQLite no error is a leadership change, whichever way the Store was
+// opened, and the Store names the backend it was opened on.
+func TestSQLiteBackendClassifiesNoErrorAsReplicated(t *testing.T) {
+	st, err := OpenRuntimeWith(context.Background(), filepath.Join(t.TempDir(), "gpuworks.db"), bus.New(), OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var none *Store
+	for _, backend := range []RuntimeBackend{{}, st.RuntimeBackend(), none.RuntimeBackend()} {
+		if backend != (RuntimeBackend{}) {
+			t.Fatalf("backend = %+v, want the zero SQLite backend", backend)
 		}
+		for _, err := range []error{nil, context.Canceled, os.ErrDeadlineExceeded, driver.ErrBadConn} {
+			if backend.ReplicatedReadInterrupted(err) || backend.ReplicatedLeaderUnavailable(err) {
+				t.Fatalf("%v classified as a replicated database error", err)
+			}
+		}
+	}
+}
+
+// The opens only a cluster has are refused on SQLite, and none of them
+// leaves a database or keeps the runtime lease.
+func TestSQLiteBackendRefusesClusterOpens(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gpuworks.db")
+	ctx := context.Background()
+	for name, open := range map[string]func() (*Store, error){
+		"existing":        func() (*Store, error) { return OpenExistingRuntime(ctx, path, bus.New(), RuntimeBackend{}) },
+		"expanded":        func() (*Store, error) { return OpenExpandedRuntime(ctx, path, bus.New(), RuntimeBackend{}) },
+		"legacy expanded": func() (*Store, error) { return OpenLegacyExpandedRuntime(ctx, path, bus.New(), RuntimeBackend{}) },
+	} {
+		if st, err := open(); err == nil || !strings.Contains(err.Error(), "native Linux dqlite") {
+			_ = st.Close()
+			t.Fatalf("%s open = %v, want a refusal", name, err)
+		}
+	}
+	if _, err := OpenRuntimeForMigration(ctx, path, bus.New(), RuntimeBackend{}); err == nil || !strings.Contains(err.Error(), "existing regular SQLite database") {
+		t.Fatalf("migration of a missing database = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("a refused open created the database: %v", err)
+	}
+	st, err := OpenRuntime(ctx, path, bus.New(), RuntimeBackend{})
+	if err != nil {
+		t.Fatalf("open after the refusals: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := OpenRuntimeForMigration(ctx, path, bus.New(), RuntimeBackend{})
+	if err != nil {
+		t.Fatalf("offline migration of the SQLite database: %v", err)
+	}
+	if err := migrated.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
