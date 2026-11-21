@@ -175,3 +175,27 @@ func gpuMatchesChipPredicate(gpu store.GPU, predicate chipmatch.Predicate, unsup
 	reported := chipmatch.ReportedGPU(gpu.Name, gpu.Vendor, gpu.ArchID, gpu.ComputeCapability)
 	return chipmatch.Select(reported, []chipmatch.Spec{{GPUs: predicate}}, unsupported).Matched
 }
+
+// listEligibleNodes answers the node list for the launch as materialized,
+// and hands a PD draft to its own preview.
+func (r *evaluateState) listEligibleNodes() bool {
+	if requestOverrides, overrideErr := RequestContainerOverrides(r.req.ContainerOverrides); overrideErr == nil && r.placement.PD == nil {
+		mount, components := previewComponentMounts(nil, r.selection.Components, nil)
+		draft := evaluationLaunchRequest(evaluatePlanEnv{request: r.req, excludeDeployment: r.excludeDeployment, response: &r.resp, engine: r.eng, model: r.model, selection: r.selection, placement: r.placement, quick: r.quick, userExtraArgs: r.launch.UserResidual, servedName: r.servedName, requestOverrides: requestOverrides, modelMount: mount, componentMounts: components, templateResidual: r.launch.TemplateResidual}, nil)
+		// Choosing another node also chooses its cards; explicit indexes are
+		// validated by the displayed plan for the selected node, not this dropdown.
+		draft.Placement.GPUIndexes = nil
+		if requests, requestErr := planning.TargetRequestsForLaunch(draft); requestErr == nil {
+			r.loadEligible(requests)
+		}
+	}
+	r.loadEligible(nil)
+	if r.placement.PD != nil {
+		requestOverrides, _ := RequestContainerOverrides(r.req.ContainerOverrides)
+		r.s.evaluatePD(evaluatePDEnv{ctx: r.ctx, out: r.out, request: r.req, excludeDeployment: r.excludeDeployment, response: &r.resp, engine: r.eng, model: r.model,
+			selection: r.selection, launch: r.launch, requestOverrides: requestOverrides, servedName: r.servedName, errs: r.errs,
+			targetVendor: r.targetVendor, profileNode: r.profileNode})
+		return false
+	}
+	return true
+}

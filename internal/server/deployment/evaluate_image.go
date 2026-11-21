@@ -176,3 +176,61 @@ func (s *Service) storageFacts(model *store.Model, node *store.Node) ([]acquisit
 	}
 	return present, targets, nil
 }
+
+// resolveAcquisition answers where the image and the weights come from for
+// the node the draft lands on.
+func (r *evaluateState) resolveAcquisition() bool {
+	// Computed after automatic placement so the weight networks, peers and
+	// local-path facts are the selected node's, not the unnamed request's.
+	var weightFactsErr error
+	r.weightFacts, weightFactsErr = r.s.evaluateWeightFacts(r.model, r.selection, r.profileNode)
+	if weightFactsErr != nil {
+		r.resp.Diagnostics = diagnosticsFromError(weightFactsErr)
+		r.errs.add("model_id", weightFactsErr)
+		r.writeFieldErrors()
+		return false
+	}
+	// The template's weight sources with the suggested and registered facts,
+	// so the form's chooser renders a server answer too.
+	r.resp.WeightSources = r.s.evaluateWeightSourceOptions(r.selection)
+
+	var err, nerr error
+	r.node, nerr = r.s.d.Store.NodeWithGPUs(r.req.NodeUUID)
+	r.nodeFound = nerr == nil
+	if r.req.NNodes == 1 && nerr == nil {
+		r.rankNodes = []*store.Node{r.node}
+	}
+	if nerr == nil {
+		r.req.PartitionBackend, err = ResolvePartitionBackend(r.node, r.req.VRAMLimitGiB, r.req.PartitionBackend)
+		if r.errs.add("partition_backend", err) {
+			r.writeFieldErrors()
+			return false
+		}
+	}
+	r.image = r.s.evaluateImageFacts(evaluateImageEnv{
+		ctx: r.ctx, request: r.req, response: &r.resp, engine: r.eng, selection: r.selection,
+		targetVendor: r.targetVendor, profileNode: r.profileNode, node: r.node, nodeFound: r.nodeFound, weightFacts: r.weightFacts,
+	})
+	if r.resp.Acquisition != nil {
+		if pinned := pinnedNodeUUIDs(r.req); len(pinned) > 0 {
+			known := map[string]*bool{}
+			if r.profileNode != nil {
+				known[r.profileNode.UUID] = r.resp.Acquisition.Image.Cached
+			}
+			r.resp.Acquisition.Nodes = r.s.evaluateNodeAcquisition(r.ctx, pinned, r.resp.Image, templateImageSources(r.selection, r.resp.Image), r.model, store.SourceRules{Pinned: store.StoragePins(r.req.NodeRequirements), SaveTo: r.s.previewSaveToStorageID(r.req.ModelSource, r.model, r.profileNode)}, known)
+		}
+	}
+	r.resp.Diagnostics, err = r.s.inspectWeights(r.ctx, r.selection, r.model, store.SourceRules{Pinned: store.StoragePins(r.req.NodeRequirements), SaveTo: r.s.previewSaveToStorageID(r.req.ModelSource, r.model, r.profileNode)}, r.rankNodes)
+	if r.errs.add("model_id", err) {
+		r.writeFieldErrors()
+		return false
+	}
+	if r.resp.Acquisition != nil {
+		r.resp.Acquisition.Components = r.s.evaluateComponentAcquisition(r.req.ModelSource, r.model, r.selection.Components, store.StoragePins(r.req.NodeRequirements), r.rankNodes)
+	}
+	if r.parallelInvalid {
+		r.writeFieldErrors()
+		return false
+	}
+	return true
+}

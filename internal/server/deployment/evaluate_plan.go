@@ -148,3 +148,73 @@ func (s *Service) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, bool) {
 	}
 	return out, true
 }
+
+// planRanks estimates and schedules the draft, then previews the launch of
+// each rank.
+func (r *evaluateState) planRanks() bool {
+	arch, archID, vendor := r.image.arch, r.image.archID, r.image.vendor
+	imageCached := r.image.imageCached
+	// nodeImageCached is the same fact narrowed to the node the estimate lands
+	// on; evaluatePlan fills it in for the per-rank assembly.
+	var nodeImageCached *bool
+
+	// Estimate + schedule (shared with the controller).
+	gpuCount := len(r.placement.GPUIndexes)
+	resolver := templatePlacementResolver(r.selection.Placement)
+	templateArgs := append([]string(nil), r.launch.TemplateResidual...)
+	templateEnv := cloneStringMap(r.selection.Env)
+	templateEntrypoint := append([]string(nil), r.selection.Entrypoint...)
+	// The launch inputs a request owns: the container override layer it states,
+	// and the template layer the write boundary would keep (the residual, not
+	// the spec's raw argument list).
+	var overrideErr error
+	r.requestOverrides, overrideErr = RequestContainerOverrides(r.req.ContainerOverrides)
+	if r.errs.add("", overrideErr) {
+		// The override layer is a section, not one control: the page-level
+		// line carries its decode failures.
+		r.writeFieldErrors()
+		return false
+	}
+	r.modelMount, r.componentMounts = previewComponentMounts(r.s.d.Store, r.selection.Components, r.node)
+	plan, ok := r.s.evaluatePlan(evaluatePlanEnv{
+		ctx: r.ctx, out: r.out, request: r.req, excludeDeployment: r.excludeDeployment, response: &r.resp, engine: r.eng, model: r.model,
+		node: r.node, nodeFound: r.nodeFound, profileNode: r.profileNode, imageCached: imageCached,
+		nodeImageCached: nodeImageCached, selection: r.selection, placement: r.placement, quick: r.quick,
+		userExtraArgs: r.launch.UserResidual, servedName: r.servedName, requestOverrides: r.requestOverrides,
+		modelMount: r.modelMount, componentMounts: r.componentMounts, gpuCount: gpuCount,
+		resolver: resolver, templateResidual: r.launch.TemplateResidual, errs: r.errs,
+	})
+	if !ok {
+		return false
+	}
+	nodeImageCached, r.quick = plan.nodeImageCached, plan.quick
+	tp := plan.tp
+	parallelismSummary, parallelismErr := evaluateParallelism(r.placement, r.req.NNodes, tp, plan.placementResolved, r.quick, r.launch.TemplateResidual, r.launch.UserResidual, r.eng.Name())
+	if r.errs.add("data_parallel_size", parallelismErr) {
+		r.writeFieldErrors()
+		return false
+	}
+	r.resp.Parallelism = parallelismSummary
+	placementVariables, allowUnresolvedPlacement := plan.placementVariables, plan.allowUnresolved
+	dynamicTPPreview := plan.dynamicTPPreview
+
+	rankSelection := snapshotTemplateSelection(r.selection, r.resp.Image)
+	// The template layer a launch resolves against is the residual the write
+	// boundary kept, not the spec's own argument list: dictionary flags are
+	// edited through the form and the engine dictionary, and a spec token that
+	// happens to name one is what the stored row no longer carries either.
+	rankSelection.ExtraArgs = r.launch.TemplateResidual
+	if !r.s.evaluateRanks(evaluateRankEnv{
+		ctx: r.ctx, out: r.out, request: r.req, excludeDeployment: r.excludeDeployment, response: &r.resp, engine: r.eng, model: r.model, launch: r.launch,
+		selection: r.selection, rankSelection: rankSelection, rankNodes: r.rankNodes, placement: r.placement,
+		quick: r.quick, userExtraArgs: r.launch.UserResidual, dynamicTPPreview: dynamicTPPreview,
+		nodeImageCached: nodeImageCached, requestOverrides: r.requestOverrides,
+		arch: arch, archID: archID, vendor: vendor, servedName: r.servedName,
+		placementVariables: placementVariables, allowUnresolved: allowUnresolvedPlacement,
+		modelWeightBytes: plan.modelWeightBytes, templateArgs: templateArgs, templateEnv: templateEnv,
+		templateEntrypoint: templateEntrypoint, tp: tp, errs: r.errs,
+	}) {
+		return false
+	}
+	return true
+}

@@ -221,3 +221,53 @@ func (s *Service) revalidateAutomaticPlacement(ctx context.Context, req *dto.Dep
 		"the evaluated placement no longer fits the node",
 		map[string]any{"node": node.UUID, "detail": detail}, nil)
 }
+
+// placeAutomatically picks the node of an automatic single-node draft, then
+// marks the listed nodes the draft could never fit.
+func (r *evaluateState) placeAutomatically() bool {
+	// Automatic placement: every eligible node is planned, the candidates list
+	// records each answer, and the best feasible node becomes the draft's node
+	// for the rest of this evaluation. A create repeating the draft re-validates
+	// the choice and answers AUTOMATIC_PLACEMENT_STALE when the world moved.
+	if IsAutomaticPlacement(r.req) && r.req.NNodes <= 1 {
+		requestOverrides, overrideErr := RequestContainerOverrides(r.req.ContainerOverrides)
+		if overrideErr == nil {
+			automaticSelection := r.selection
+			automaticSelection.ExtraArgs = r.launch.TemplateResidual
+			selected, candidates := r.s.evaluateAutomaticPlacement(r.ctx, r.req, r.eng, r.model, automaticSelection, r.placement, r.quick, r.launch.UserResidual, r.servedName, r.resp.Image, requestOverrides, r.resp.EligibleNodes, r.excludeDeployment)
+			r.resp.SelectedNode = selected
+			r.resp.Candidates = candidates
+			if selected != nil {
+				r.req.NodeUUID = selected.UUID
+				// The facts the acquisition panel narrows to "the node this
+				// draft lands on" follow the automatic pick too: profileNode
+				// was resolved from a request that names no node, and leaving
+				// it nil answers node_unselected beside a selected_node that
+				// already names the node.
+				if withGPUs, nodeErr := r.s.d.Store.NodeWithGPUs(selected.UUID); nodeErr == nil {
+					r.profileNode = withGPUs
+				}
+				if r.resp.OK && !r.resp.Skipped {
+					r.resp.OK = true
+				}
+			}
+		}
+	}
+	// The node list offers no node a create naming it refuses for never
+	// fitting. It is judged before the draft's own node is planned, so the
+	// list is the same whichever node the draft has, in either placement
+	// mode. Automatic placement has ranked and listed its candidates by now:
+	// what it lists is what it trialled, as before. A memory-limited draft is
+	// left to its node's dGPU checks.
+	if requestOverrides, overrideErr := RequestContainerOverrides(r.req.ContainerOverrides); overrideErr == nil && r.req.NNodes <= 1 && r.req.VRAMLimitGiB <= 0 {
+		candidateReq := cloneRequest(*r.req)
+		candidateReq.Image = r.resp.Image
+		admissionSelection := r.selection
+		admissionSelection.ExtraArgs = r.launch.TemplateResidual
+		anyCards := r.placement
+		anyCards.GPUIndexes = nil // each node's scheduler picks its cards
+		mount, components := previewComponentMounts(r.s.d.Store, r.selection.Components, nil)
+		r.poolFits = r.s.markNeverFitting(r.ctx, r.resp.EligibleNodes, r.fleet, r.s.poolLaunch(&candidateReq, r.eng, r.model, admissionSelection, anyCards, r.quick, r.launch.UserResidual, r.servedName, mount, components, requestOverrides))
+	}
+	return true
+}
