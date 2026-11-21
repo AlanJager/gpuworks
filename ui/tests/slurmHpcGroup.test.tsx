@@ -262,7 +262,7 @@ test("Check and apply checks first and shows the plan: the gres.conf lines, how 
   assert.ok(modal.getByText("Copies the files (check.sh, token, chained) to 2 nodes: gpu000, gpu001."));
   assert.equal(modal.getByLabelText(s.plan.conf.block, { selector: "pre" }).textContent, "HealthCheckProgram=/opt/gpuworks-slurm/check.sh\nHealthCheckInterval=60\nHealthCheckNodeState=ANY,CYCLE");
   assert.equal(modal.getByText(s.plan.conf.commented).nextElementSibling?.textContent, "line 7: HealthCheckProgram=/usr/sbin/nhc");
-  assert.ok(modal.getByText("The cluster's own health check /usr/sbin/nhc keeps running after ours, in the node states IDLE,CYCLE."));
+  assert.ok(modal.getByText("The cluster's own health check /usr/sbin/nhc keeps running after the platform's, in the node states IDLE,CYCLE."));
   assert.equal(modal.getByText(s.plan.resume).nextElementSibling?.textContent, "gpu000");
   assert.equal(modal.queryAllByText(s.plan.attention).length, 0);
   await user.click(modal.getByRole("button", { name: s.operation.confirm }));
@@ -290,9 +290,9 @@ test("a plan with points that need attention says each, by the server's code, be
   const warnings = within(modal.getByText(s.plan.attention).parentElement as HTMLElement).getAllByRole("listitem").map((item) => item.textContent);
   assert.deepEqual(warnings, [
     "slurm.conf includes /etc/slurm/a.conf, /etc/slurm/b.conf: health check settings in them are not seen by the edit, and the result is verified afterwards.",
-    "slurmctld runs the health check program /usr/sbin/nhc, which slurm.conf does not name (an included file, or an edit not yet reloaded): it is chained, but a setting in an included file may override ours.",
+    "slurmctld runs the health check program /usr/sbin/nhc, which slurm.conf does not name (an included file, or an edit not yet reloaded). It is still chained, but a setting in an included file may override the platform's.",
     "This cluster is not configless: copy /etc/slurm/slurm.conf to the compute nodes yourself after applying, or the health check does not take effect there.",
-    "gpu006 have no gpu Gres in slurm.conf, so nothing is added to gres.conf for them: add Gres=gpu:<count> to their NodeName lines first.",
+    "gpu006 have no gpu Gres in slurm.conf, so nothing is added to gres.conf for them. Add Gres=gpu:<count> to their NodeName lines first.",
   ]);
   assert.ok(modal.getByText(s.plan.gres.none));
   assert.ok(modal.getByText("The script directory is on shared storage (nfs4): nothing is copied."));
@@ -575,7 +575,7 @@ test("an entry the platform can apply leads with Check and apply and one line ab
   const calls = stub({ clusters: [connectedLab] });
   const { user } = mount([waitingEntry()]);
   const row = await detailRow();
-  assert.ok(row.getByText(s.detail.applyHelp), "one line says the platform runs it on the manager node");
+  assert.ok(row.getByText(s.detail.applyNote), "one line says the platform runs it on the manager node");
   assert.ok(row.getByText(s.detail.waitingApply));
   assert.equal(row.queryAllByLabelText(s.setup.command, { selector: "pre" }).length, 0, "no command up front");
   assert.equal(row.queryAllByLabelText(s.setup.checkCommand, { selector: "pre" }).length, 0);
@@ -603,7 +603,7 @@ test("in Chinese the lead says 检查并应用 and 手动执行", async () => {
   assert.equal(label, "检查并应用");
   assert.ok(row.getByRole("button", { name: label }));
   assert.ok(row.getByRole("button", { name: zh.locale.slurm.detail.manual }));
-  assert.ok(row.getByText(zh.locale.slurm.detail.applyHelp));
+  assert.ok(row.getByText(zh.locale.slurm.detail.applyNote));
 });
 
 test("an entry the platform cannot apply keeps its commands, folded under one line until opened; a revoked one shows the revoked line", async () => {
@@ -616,7 +616,7 @@ test("an entry the platform cannot apply keeps its commands, folded under one li
   assert.equal(fold.getAttribute("aria-expanded"), "false");
   fireEvent.click(fold);
   assert.equal((await row.findByLabelText(s.setup.command, { selector: "pre" })).textContent, SETUP_COMMAND);
-  assert.equal(row.queryAllByText(s.detail.applyHelp).length, 0);
+  assert.equal(row.queryAllByText(s.detail.applyNote).length, 0);
   cleanup();
   stub({ clusters: [connectedLab] });
   mount([waitingEntry({ revoked: true, state: "revoked", setup_command: undefined, check_command: undefined, can_apply: false, operation_blocked: "revoked" })]);
@@ -716,7 +716,8 @@ test("an apply that left hosts unable to reach the server lists them in the outc
   await user.click(await modal.findByRole("button", { name: s.operation.confirm }));
   assert.ok(await modal.findByText(s.apply.partial));
   const todo = within(modal.getByText(s.apply.todoTitle).nextElementSibling as HTMLElement).getAllByRole("listitem").map((item) => item.textContent);
-  assert.deepEqual(todo, [s.apply.todo.reach.replace("{{nodes}}", "gpu000").replace("{{url}}", "https://gpuworks.example")]);
+  // The item is its own summary followed by the one fix the failed-apply error also ends with.
+  assert.deepEqual(todo, [`gpu000 cannot reach https://gpuworks.example; apply again once fixed. ${en.locale.common.slurmApplyReason.server_unreachable_fix}`]);
   assert.equal(within(modal.getByRole("list", { name: s.reach.failedList })).getAllByRole("listitem")[0].textContent, "Compute node gpu000 cannot reach https://gpuworks.example: timed out");
   assert.ok(stepsShown(modal).includes("Needs attentionReach the server's address from the hosts"), String(stepsShown(modal)));
 });
@@ -803,17 +804,22 @@ test("in Chinese the cluster's own node is the Slurm 管控节点 and 管理节�
   const unreachable = new APIError("SLURM_APPLY_FAILED", { step: "setup", reason: "server_unreachable", output: "", url: "http://203.0.113.9:8800", kind: "timeout" }, "x", 424);
   assert.equal(
     apiErrorText(t as never, unreachable),
-    "配置没有完成（配置健康检查）：Slurm 管控节点访问不到管理节点接入地址 http://203.0.113.9:8800（连接超时）。节点要能访问这个地址：集群所在 VPC 没有公网出口时配置 NAT 网关，或把 gpuworks 部署在同一 VPC 内并填写内网地址。",
+    "配置没有完成（配置健康检查）：Slurm 管控节点访问不到管理节点接入地址 http://203.0.113.9:8800（连接超时）。请为集群 VPC 配置 NAT 网关，或把 gpuworks 部署到同一 VPC 并填写内网地址。",
   );
   assert.equal(
     apiErrorText(tEn as never, unreachable),
-    "The setup on the Slurm manager node did not finish (setting up the health check): the Slurm manager node cannot reach the management node address http://203.0.113.9:8800 (connection timed out). The cluster's nodes must reach it too: add a NAT gateway when the cluster's VPC has no public egress, or host gpuworks in the same VPC and enter its private address.",
+    "The setup on the Slurm manager node did not finish (setting up the health check): the Slurm manager node cannot reach the management node address http://203.0.113.9:8800 (connection timed out). Add a NAT gateway to the cluster's VPC, or host gpuworks in the same VPC and enter its private address.",
   );
   // An older server names no address: the wording still says which address and what to do.
   assert.match(
     apiErrorText(t as never, new APIError("SLURM_APPLY_FAILED", { step: "setup", reason: "server_unreachable", output: "" }, "x", 424)),
     /^配置没有完成（配置健康检查）：Slurm 管控节点访问不到管理节点接入地址。.*NAT 网关/,
   );
+  // The to-do item of a partial apply ends with the same fix, written once; only who cannot reach the address differs.
+  const fix = zh.locale.common.slurmApplyReason.server_unreachable_fix;
+  assert.equal(fix, "请为集群 VPC 配置 NAT 网关，或把 gpuworks 部署到同一 VPC 并填写内网地址。");
+  assert.equal(zh.i18n.getFixedT("zh", "slurm")("apply.todo.reach", { nodes: "gpu000", url: "http://203.0.113.9:8800" }), `gpu000 无法访问 http://203.0.113.9:8800，处理后再应用一次。${fix}`);
+  for (const text of [zh.locale.common.slurmApplyReason.server_unreachable, zh.locale.common.slurmApplyReason.server_unreachable_at, zh.locale.slurm.apply.todo.reach]) assert.doesNotMatch(text, /NAT/, `the fix is written once: ${text}`);
   const collect = (value: unknown, texts: string[]): string[] => { if (typeof value === "string") texts.push(value); else if (value && typeof value === "object") Object.values(value).forEach((v) => collect(v, texts)); return texts; };
   const common = zh.locale.common as Record<string, Record<string, unknown>>;
   const texts = collect(zh.locale.slurm, []);

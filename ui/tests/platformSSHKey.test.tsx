@@ -142,7 +142,7 @@ test("the SSH editor selects keyboard-interactive for a saved password and sends
   await waitFor(() => assert.ok(screen.getByRole("button", { name: nodes.ssh.save })));
   assert.ok(screen.getByRole("radio", { name: nodes.ssh.auth.password, checked: true }));
   assert.ok(screen.getByText(nodes.ssh.existingAuth.replace("{{method}}", nodes.ssh.auth.password)));
-  assert.ok(screen.getByText(nodes.ssh.savedPasswordHelp));
+  assert.ok(screen.getByText(nodes.ssh.savedPasswordNote));
   fireEvent.click(screen.getByRole("radio", { name: nodes.ssh.auth.key }));
   fireEvent.change(screen.getByPlaceholderText("-----BEGIN OPENSSH PRIVATE KEY-----"), { target: { value: "EDITOR STALE KEY" } });
   fireEvent.click(screen.getByRole("radio", { name: "Keyboard-interactive" }));

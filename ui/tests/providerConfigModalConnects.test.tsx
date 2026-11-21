@@ -453,7 +453,7 @@ test("in Chinese the platform types, their vendors and what Kubernetes connects 
   await waitFor(() => assert.deepEqual(connects("可以接入"), [
     ["ECS", "同步实例后，对选中的实例一键安装 agent。"],
     ["ACK", "列出账号下的托管集群，选择 GPU 节点池后接入，池里的节点自动成为计算节点。"],
-    ["E-HPC", "列出账号下的 E-HPC 集群（Slurm），接入后集群里的 GPU 计算节点自动成为计算节点，以后扩容的节点也一样。"],
+    ["E-HPC", "接入账号下的 E-HPC（Slurm）集群，现有和新增的 GPU 节点自动接入。"],
   ]));
   // A virtual machine is 虚拟机 here, as everywhere else in the console.
   assert.deepEqual(tagTitles("可以接入"), ["虚拟机", "Kubernetes", "Slurm"]);

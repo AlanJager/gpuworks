@@ -1135,8 +1135,8 @@
     "openTemplate": "Open the template"
   },
   "instanceNote": {
-    "INSTANCE_CARD_SHARED_OUTSIDE": "Shares GPU {{gpu_indexes}} with processes outside the platform ({{foreign_gib}} GiB). Memory is isolated; compute and bandwidth are shared, which can slow inference.",
-    "INSTANCE_CARD_SHARED_OUTSIDE_UNKNOWN": "Shares GPU {{gpu_indexes}} with processes outside the platform whose memory is not known. Compute and bandwidth are shared, which can slow inference."
+    "INSTANCE_CARD_SHARED_OUTSIDE": "Shares GPU {{gpu_indexes}} with processes outside the platform ({{foreign_gib}} GiB), which can slow inference.",
+    "INSTANCE_CARD_SHARED_OUTSIDE_UNKNOWN": "Shares GPU {{gpu_indexes}} with processes outside the platform (memory unknown), which can slow inference."
   },
   "imagePreparation": {
     "label": "Image preparation progress",

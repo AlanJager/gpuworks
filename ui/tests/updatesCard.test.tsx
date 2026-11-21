@@ -526,13 +526,13 @@ test("switching the channel shows it at once, checks it, and says when it is emp
   let answer: (status: UpdateStatus) => void = () => {};
   try {
     renderCard();
-    await waitFor(() => assert.ok(screen.getByText(u.channelNightlyHelp)));
+    await waitFor(() => assert.ok(screen.getByText(u.channelNightlyNote)));
     // The check of the new channel is held until the test answers it.
     apiModule.api.updates = (refresh = false) => { s.refreshes.push(refresh); return new Promise((resolve) => { answer = resolve; }); };
     await userEvent.click(screen.getByRole("combobox"));
     await userEvent.click(await screen.findByRole("option", { name: u.channelRelease }));
     // Before any answer: the new channel, its help and "checking" are shown.
-    await waitFor(() => assert.ok(screen.getByText(u.channelReleaseHelp)));
+    await waitFor(() => assert.ok(screen.getByText(u.channelReleaseNote)));
     assert.ok(screen.getByText(u.checking));
     assert.deepEqual(s.calls, ["channel:release"]);
     await waitFor(() => assert.deepEqual(s.refreshes, [false, true]));
@@ -554,7 +554,7 @@ test("a saved channel never shows the previous channel's offers if its check fai
     await userEvent.click(screen.getByRole("combobox"));
     await userEvent.click(await screen.findByRole("option", {name:u.channelRelease}));
     await screen.findByText("check failed");
-    assert.ok(screen.getByText(u.channelReleaseHelp));
+    assert.ok(screen.getByText(u.channelReleaseNote));
     assert.equal(within(row(u.server)).queryByText("f90e474e"), null);
   } finally { s.restore(); }
 });
@@ -564,10 +564,10 @@ test("a channel that cannot be saved goes back to the one in use", async () => {
   apiModule.api.setUpdateChannel = async () => { throw new Error("server.yaml is read-only"); };
   try {
     renderCard();
-    await waitFor(() => assert.ok(screen.getByText(u.channelNightlyHelp)));
+    await waitFor(() => assert.ok(screen.getByText(u.channelNightlyNote)));
     await userEvent.click(screen.getByRole("combobox"));
     await userEvent.click(await screen.findByRole("option", { name: u.channelRelease }));
-    await waitFor(() => assert.ok(screen.getByText(u.channelNightlyHelp)));
+    await waitFor(() => assert.ok(screen.getByText(u.channelNightlyNote)));
     assert.equal(screen.queryByText(u.checking), null);
     assert.deepEqual(s.refreshes, [false], "nothing is checked for a channel that was not saved");
   } finally {

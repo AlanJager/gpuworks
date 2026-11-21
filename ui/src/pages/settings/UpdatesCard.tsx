@@ -305,7 +305,7 @@ export default function UpdatesCard() {
         {t("versionPicker.recheckRunning")}
       </Button>
     }>
-      <div>{t("versionPicker.unknownHelp", {version:attempt?.to})}</div>
+      <div>{t("versionPicker.unknownNote", {version:attempt?.to})}</div>
       {lastCheck && <div>{t(`versionPicker.probe.${lastCheck.reason}`, {time:formatTimeSec(lastCheck.at), version:lastCheck.version})}</div>}
     </Notice>}
     {stage === "rollback" && <Notice tone="warning" title={t("versionPicker.restored", {version:attempt?.from})}
@@ -344,7 +344,7 @@ export default function UpdatesCard() {
             <OptionSelect aria-label={t("updates.channel")} value={channel} options={channelOptions}
               disabled={!status.channel_editable || busy !== "" || waiting || switchingTo !== null}
               onChange={value => void switchChannel(value)} />
-            <p className="gw-channel-help">{channel === "release" ? t("updates.channelReleaseHelp") : t("updates.channelNightlyHelp")}</p>
+            <p className="gw-channel-help">{channel === "release" ? t("updates.channelReleaseNote") : t("updates.channelNightlyNote")}</p>
           </div>}
           <div className="gw-check">
             {status && (loading || !notChecked) && <span>{loading ? t("updates.checking") : t("updates.checkedAt", { time: formatTime(status.checked_at) })}</span>}

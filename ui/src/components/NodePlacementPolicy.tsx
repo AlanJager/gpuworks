@@ -4,6 +4,7 @@ import { api, type Node, type NodePlacementPolicySetting, type NodePlacementPoli
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
 import { Switch } from "./ui/switch";
+import { HelpTip } from "../ui-kit/HelpTip";
 
 /**
  * NodePlacementPolicy edits a node's placement policy: the per-node knobs on
@@ -11,7 +12,8 @@ import { Switch } from "./ui/switch";
  * default come from the server's dictionary (GET
  * /scheduling/node-placement-policies), and whether each takes effect on this
  * node from the node itself, so a knob the server adds needs only its
- * label and help (nodes:placementPolicy.<key>.*). A knob that has no effect
+ * label, one-line summary and help (nodes:placementPolicy.<key>.*); the help
+ * is the ⓘ beside the knob. A knob that has no effect
  * on the node now can still be set; the server says why it does not apply.
  */
 export default function NodePlacementPolicy({ node, onUpdated }: { node: Node; onUpdated: (node: Node) => void }) {
@@ -64,6 +66,8 @@ export default function NodePlacementPolicy({ node, onUpdated }: { node: Node; o
         const value = values[setting.key] ?? setting.default;
         const availability = node.placement_policy_availability?.find((item) => item.key === setting.key);
         const label = t(`placementPolicy.${setting.key}.label`, { defaultValue: setting.key });
+        const summary = t(`placementPolicy.${setting.key}.summary`, { defaultValue: "" });
+        const help = t(`placementPolicy.${setting.key}.help`, { defaultValue: "" });
         return (
           <div key={setting.key} className="flex flex-col gap-1">
             {setting.kind === "bool" ? (
@@ -76,7 +80,12 @@ export default function NodePlacementPolicy({ node, onUpdated }: { node: Node; o
             ) : (
               <span>{label}: <code>{String(value)}</code></span>
             )}
-            <p className="text-sm text-fg-muted">{t(`placementPolicy.${setting.key}.help`, { defaultValue: "" })}</p>
+            {(summary || help) && (
+              <p className="flex items-center gap-1 text-sm text-fg-muted">
+                {summary}
+                {help && <HelpTip content={help} />}
+              </p>
+            )}
             {availability && !availability.applicable && (
               <Alert status="warning">
                 <AlertTitle>

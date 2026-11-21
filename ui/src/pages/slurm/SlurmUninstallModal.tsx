@@ -82,7 +82,7 @@ export default function SlurmUninstallModal({ cluster, onClose, onChanged, onDel
           {cluster.can_remove && (
             <div className="flex flex-col gap-2">
               <strong className="font-semibold text-fg-default">{t("uninstall.byGpuworks")}</strong>
-              <span className="text-fg-muted">{t("uninstall.byGpuworksHelp")}</span>
+              <span className="text-fg-muted">{t("uninstall.byGpuworksNote")}</span>
               {error && <Notice tone="danger" title={error} role="alert" />}
               {uninstalled && !done && <Notice tone="info" title={t("uninstall.agentsSent")} role="status" />}
               {uninstalled && !done && waitLeft > 0 && <p role="status" className="m-0">{t("uninstall.waiting", { seconds: waitLeft })}</p>}

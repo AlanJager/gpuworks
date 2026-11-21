@@ -228,7 +228,7 @@ measure() {
   ui_untested_shared_files)
     untested_shared_ui | grep -c . || true
     ;;
-  ui_copy_long_strings | ui_copy_caveat_strings | ee_ui_internal_imports)
+  ui_copy_*_strings | ui_copy_inline_help_refs | ee_ui_internal_imports)
     echo "UI"
     ;;
   ui_bundle_gzip_kb)

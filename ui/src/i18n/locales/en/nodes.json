@@ -183,7 +183,7 @@
   },
   "rejects": {
     "refused": "Agents refused for a credential this server does not know: {{count}}",
-    "refusedHelp": "The server saw an Agent on each listed host connect with a node credential it has no record of. Usual causes: the node was removed or added again while its old Agent kept running, a second Agent runs from another state directory, or the server's records changed (a restored backup). Add the host again if it should be a node; remove a leftover Agent with gpuworks-agent uninstall --state <its directory>. Sources of the last 30 minutes are listed.",
+    "refusedHelp": "An Agent on each listed host connected with a node credential the server does not know. Causes: the node was removed or re-added while its old Agent kept running, a second Agent runs from another state directory, or the server was restored from backup. Re-add the host if it should be a node; remove a leftover Agent with gpuworks-agent uninstall --state <its directory>. Lists the last 30 minutes.",
     "source": "{{host}} · credential {{prefix}}… · {{count}} attempts · first {{first}} · last {{last}}",
     "more": "{{count}} more not shown",
     "emptyToken": "(empty)",
@@ -237,18 +237,33 @@
       "daemon_not_ready": "{{from}} is installed but did not answer when the agent started (still starting or busy), so this node uses runveil for now. The agent retries every minute and switches back to {{from}} once it answers and the node is idle.",
       "gpu_runtime_unconfigured": "{{from}} and {{plugin}} are installed but {{from}} is not configured for GPUs, so this node uses runveil. Configure it and restart {{from}}; the node switches back once it is idle.",
       "gpu_ready": "{{from}} is ready and can be switched to; the node switches automatically once it is idle.",
-      "socket_permission_denied": "{{from}} is installed, but the agent's account {{account}} may not open its socket {{socket}}, which belongs to {{group}}, so this node uses runveil for now. Add {{account}} to that group, then restart the agent: it has only the groups it started with.",
-      "socket_restart_pending": "{{account}} is now in {{group}}, which owns the {{from}} socket {{socket}}, but the agent started before that and keeps the groups it started with, so this node uses runveil until the agent is restarted.",
-      "socketSameName": "{{account}} is in another group named {{name}} (gid {{sameGid}}), likely from a directory service such as NIS or LDAP. The socket belongs to the host's own {{name}} group (gid {{gid}}), and only that group opens it.",
-      "socketRestartHow": "To restart the agent: sudo systemctl restart gpuworks-agent, or, on an install without systemd, stop it and run agent-restart.sh in its state directory as {{account}}.",
-      "socketGroup": "group {{group}} (gid {{gid}})",
-      "socketGid": "the group with gid {{gid}}",
-      "socket_group_held": "{{from}} refuses the agent's account {{account}} its socket {{socket}} although the agent already has {{group}}, so this node uses runveil for now. The socket's mode or a security module (SELinux, AppArmor) refuses it; adding groups will not help.",
-      "socket_root_group": "{{from}}'s socket {{socket}} belongs to the root group, which the agent's account {{account}} should not join, so this node uses runveil for now. Give the socket a group of its own that {{account}} is in, then restart the agent.",
-      "socket_unknown": "The agent's account {{account}} may not open the {{from}} socket {{socket}}, and the agent could not read the socket's group, so this node uses runveil for now.",
-      "socketRestartEffect": "After the restart the agent uses {{from}}. Instances on runveil are not moved: their processes keep running after the agent stops, and the restarted agent starts them again in {{from}}, so stop this node's deployments first.",
-      "socketOptOut": "If {{account}} is not meant to use {{from}}, set this node's runtime to runveil (udocker); the notice and the per-minute check then stop.",
-      "socketAccountUnknown": "(unknown)"
+      "socket": {
+        "summary": {
+          "not_in_group": "The agent's account {{account}} may not open the {{from}} socket {{socket}}, which belongs to {{group}}.",
+          "restart_pending": "{{account}} is now in {{group}}, but the agent started before that and keeps only the groups it started with.",
+          "group_held": "{{from}} refuses the agent's account {{account}} its socket {{socket}} although the agent already has {{group}}.",
+          "root_group": "{{from}}'s socket {{socket}} belongs to the root group, which the agent's account {{account}} should not join.",
+          "unknown": "The agent's account {{account}} may not open the {{from}} socket {{socket}}, and the agent could not read the socket's group."
+        },
+        "impact": "This node uses runveil for now.",
+        "sameName": "{{account}} is in another group named {{name}} (gid {{sameGid}}), likely from a directory service such as NIS or LDAP. Only the host's own {{name}} group (gid {{gid}}) opens the socket.",
+        "fix": {
+          "not_in_group": "Add {{account}} to that group, then restart the agent: it keeps only the groups it started with.",
+          "restart_pending": "Restart the agent.",
+          "group_held": "Check the socket's mode or a security module (SELinux, AppArmor); adding groups will not help.",
+          "root_group": "Give the socket a group of its own that {{account}} is in, then restart the agent."
+        },
+        "restart": {
+          "systemd": "With systemd:",
+          "manual": "Without systemd, stop the agent, then run this in its state directory as {{account}}:",
+          "copy": "Copy the restart command"
+        },
+        "after": "After the restart the agent uses {{from}}. Instances on runveil are not moved: they keep running when the agent stops and are started again in {{from}}, so stop this node's deployments first.",
+        "optOut": "If {{account}} is not meant to use {{from}}, set this node's runtime to runveil (udocker); the notice and the per-minute check then stop.",
+        "group": "group {{group}} (gid {{gid}})",
+        "gid": "the group with gid {{gid}}",
+        "accountUnknown": "(unknown)"
+      }
     }
   },
   "accelerator": {
@@ -381,7 +396,7 @@
     "portRequired": "Enter the SSH port",
     "probeAfterSave": "Run a probe immediately after saving",
     "existingAuth": "Saved credential: {{method}}. Credentials are never displayed for security reasons and must be entered again when saving.",
-    "savedPasswordHelp": "During recovery, a saved password can be tried with password or keyboard-interactive authentication.",
+    "savedPasswordNote": "During recovery, a saved password can be tried with password or keyboard-interactive authentication.",
     "password": "SSH password",
     "passwordRequired": "Enter the SSH password",
     "keyboardInteractiveHelp": "For targets that ask for one hidden password prompt. Multi-step verification and MFA prompts are not supported.",
@@ -1405,7 +1420,8 @@
     "notApplicable": "No effect on this node now: {{reason}}",
     "share_with_foreign": {
       "label": "Allow partitions beside processes outside the platform",
-      "help": "Memory-limited dGPU partitions may be placed on cards that processes outside the platform also use, when memory fits. Cards without such processes are always tried first. Memory is isolated; compute and bandwidth are not. Turning this off does not stop running instances, but replacing them (a restart, a crash, scaling) follows the new setting; a rolling restart waits rather than drop a replica."
+      "summary": "Memory-limited dGPU partitions may use cards that processes outside the platform also use; free cards are tried first.",
+      "help": "Memory is isolated; compute and bandwidth are not. Turning this off affects only instances placed afterwards, not running ones."
     },
     "reason": {
       "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "This node has no ready dGPU partition backend; the setting has no effect until it has one.",
@@ -1414,7 +1430,7 @@
   },
   "slurm": {
     "unavailable": {
-      "gres_missing": "Slurm registered node {{node}} without its GPUs: slurmd found fewer GPUs than the Slurm manager node expects (usually no gres.conf), so Slurm drained the node and will not start the jobs that borrow its cards.",
+      "gres_missing": "Slurm registered node {{node}} without its GPUs (usually a missing gres.conf) and drained it, so jobs that borrow its cards will not start.",
       "invalid_registration": "Slurm refused the registration of node {{node}}, so it will not start the jobs that borrow its cards.",
       "down": "Slurm has node {{node}} down or not responding, so it will not start the jobs that borrow its cards.",
       "drained": "Slurm has node {{node}} drained or draining, so it will not start the jobs that borrow its cards.",

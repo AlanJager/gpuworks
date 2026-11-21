@@ -50,7 +50,7 @@ export default function SlurmDeleteDialog({ cluster, onClose, onDeleted, onUnins
       <DialogContent closeButtonLabel={tCommon("actions.close")} closeButtonDisabled={deleting} className="flex flex-col gap-4">
         <DialogHeader><DialogTitle>{t("delete.title", { name: cluster.name })}</DialogTitle></DialogHeader>
         <div className="flex min-w-0 flex-col items-start gap-2">
-          <p className="m-0 text-fg-muted">{t("delete.help")}</p>
+          <p className="m-0 text-fg-muted">{t("delete.note")}</p>
           {hasNodes && (
             <>
               <p className="m-0 text-fg-danger">{t("delete.hasNodes", { count: cluster.node_count })}</p>

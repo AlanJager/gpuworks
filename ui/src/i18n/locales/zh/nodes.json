@@ -183,7 +183,7 @@
   },
   "rejects": {
     "refused": "{{count}} 个 Agent 使用本服务端不认识的凭据连接，已被拒绝",
-    "refusedHelp": "服务端看到列出的主机上有 Agent 用它没有记录的节点凭据连接。常见原因：节点被移除或重新添加后旧 Agent 仍在运行；该主机另一个状态目录里还有一个 Agent；服务端记录变了（如恢复过备份）。这台主机应当是节点就重新添加；是残留的 Agent 就只卸载它：gpuworks-agent uninstall --state <它的状态目录>。只列最近 30 分钟的来源。",
+    "refusedHelp": "列出的主机上有 Agent 用服务端没有记录的节点凭据连接。常见原因：节点移除或重新添加后旧 Agent 仍在运行；主机上另一个状态目录里还有 Agent；服务端恢复过备份。应当是节点就重新添加，是残留 Agent 就卸载：gpuworks-agent uninstall --state <状态目录>。只列最近 30 分钟。",
     "source": "{{host}} · 凭据 {{prefix}}… · {{count}} 次 · 首次 {{first}} · 最近 {{last}}",
     "more": "另有 {{count}} 个未显示",
     "emptyToken": "（空）",
@@ -237,18 +237,33 @@
       "daemon_not_ready": "{{from}} 已安装但 agent 启动时没有响应（可能仍在启动或正忙），已暂用 runveil。agent 每分钟重试；{{from}} 响应后，节点空闲时自动切回。",
       "gpu_runtime_unconfigured": "检测到 {{from}} 且已安装 {{plugin}}，但 {{from}} 未配置 GPU 支持，已改用 runveil。建议配置后重启 {{from}}；之后节点空闲时自动切回。",
       "gpu_ready": "{{from}} 已可用，可切换；节点空闲时将自动切换。",
-      "socket_permission_denied": "{{from}} 的 socket {{socket}} 属于{{group}}，agent 的账号 {{account}} 无权打开，已暂用 runveil。请把 {{account}} 加入该组再重启 agent（它只有启动时的组）。",
-      "socket_restart_pending": "{{account}} 已加入{{group}}（{{from}} 的 socket {{socket}} 属于该组），但 agent 是在此之前启动的，仍只有启动时的组，重启 agent 之前节点继续使用 runveil。",
-      "socketSameName": "{{account}} 所在的另一个组也叫 {{name}}（gid {{sameGid}}），很可能来自 NIS、LDAP 等目录服务；socket 属于本机自己的 {{name}} 组（gid {{gid}}），只有这个组能打开它。",
-      "socketRestartHow": "重启 agent：sudo systemctl restart gpuworks-agent；不用 systemd 的安装，先停掉 agent，再以 {{account}} 运行状态目录下的 agent-restart.sh。",
-      "socketGroup": "组 {{group}}（gid {{gid}}）",
-      "socketGid": "gid 为 {{gid}} 的组",
-      "socket_group_held": "agent 已在{{group}}中，{{from}} 的 socket {{socket}} 仍拒绝账号 {{account}}，已暂用 runveil。拒绝来自 socket 权限位或 SELinux、AppArmor，加组无效。",
-      "socket_root_group": "{{from}} 的 socket {{socket}} 属于 root 组，账号 {{account}} 不应加入，已暂用 runveil。请给 socket 设专用组并把 {{account}} 加入，再重启 agent。",
-      "socket_unknown": "agent 的账号 {{account}} 无权打开 {{from}} 的 socket {{socket}}，且读不到 socket 所属的组，已暂用 runveil。",
-      "socketRestartEffect": "重启后 agent 改用 {{from}}。runveil 上的实例不会迁移：agent 停止后其进程仍在运行，重启后的 agent 又会在 {{from}} 中再启动一份，请先停掉该节点上的部署。",
-      "socketOptOut": "如果 {{account}} 本就不该用 {{from}}，把节点运行时设为 runveil（udocker），提示和每分钟的复查随之停止。",
-      "socketAccountUnknown": "（未知）"
+      "socket": {
+        "summary": {
+          "not_in_group": "agent 的账号 {{account}} 无权打开 {{from}} 的 socket {{socket}}，它属于{{group}}。",
+          "restart_pending": "{{account}} 已加入{{group}}，但 agent 在此之前启动，只保留启动时的组。",
+          "group_held": "agent 已在{{group}}中，{{from}} 的 socket {{socket}} 仍拒绝账号 {{account}}。",
+          "root_group": "{{from}} 的 socket {{socket}} 属于 root 组，agent 的账号 {{account}} 不应加入。",
+          "unknown": "agent 的账号 {{account}} 无权打开 {{from}} 的 socket {{socket}}，且读不到 socket 所属的组。"
+        },
+        "impact": "节点暂用 runveil。",
+        "sameName": "{{account}} 所在的另一个组也叫 {{name}}（gid {{sameGid}}），可能来自 NIS、LDAP 等目录服务；只有本机的 {{name}} 组（gid {{gid}}）能打开 socket。",
+        "fix": {
+          "not_in_group": "把 {{account}} 加入该组，再重启 agent；agent 只保留启动时的组。",
+          "restart_pending": "重启 agent。",
+          "group_held": "请检查 socket 的权限位或 SELinux、AppArmor，加组无效。",
+          "root_group": "给 socket 设一个专用组并加入 {{account}}，再重启 agent。"
+        },
+        "restart": {
+          "systemd": "使用 systemd 时：",
+          "manual": "未使用 systemd 时，先停掉 agent，再以 {{account}} 在它的状态目录下运行：",
+          "copy": "复制重启命令"
+        },
+        "after": "重启后 agent 改用 {{from}}。runveil 上的实例不会迁移：agent 停止后进程仍在运行，重启后还会在 {{from}} 中再启动一份，请先停掉该节点上的部署。",
+        "optOut": "如果 {{account}} 本就不该用 {{from}}，把节点运行时设为 runveil（udocker），提示和每分钟的复查随之停止。",
+        "group": "组 {{group}}（gid {{gid}}）",
+        "gid": "gid 为 {{gid}} 的组",
+        "accountUnknown": "（未知）"
+      }
     }
   },
   "accelerator": {
@@ -381,7 +396,7 @@
     "portRequired": "请输入 SSH 端口",
     "probeAfterSave": "保存后立即探测一次",
     "existingAuth": "已保存凭据：{{method}}。出于安全原因，凭证不会回显；保存时需重新输入。",
-    "savedPasswordHelp": "恢复连接时，已保存的密码可通过密码认证或键盘交互认证尝试登录。",
+    "savedPasswordNote": "恢复连接时，已保存的密码可通过密码认证或键盘交互认证尝试登录。",
     "password": "SSH 密码",
     "passwordRequired": "请输入 SSH 密码",
     "keyboardInteractiveHelp": "适用于仅要求一次非回显密码应答的目标，不支持多步验证或 MFA 提示。",
@@ -1405,7 +1420,8 @@
     "notApplicable": "当前在此节点上不生效：{{reason}}",
     "share_with_foreign": {
       "label": "允许分区与平台外进程共卡",
-      "help": "显存够时，带显存上限的 dGPU 分区可以放到同时被平台外进程使用的卡上；总是先尝试没有这类进程的卡。显存隔离，算力与带宽不隔离。关闭后已运行的实例不受影响，但重新放置（重启、故障替换、扩容）按新设置；滚动重启会停住等待，而不会丢副本。"
+      "summary": "带显存上限的 dGPU 分区可使用有平台外进程的卡，优先用空闲卡。",
+      "help": "显存隔离，算力与带宽不隔离。关闭后只影响之后放置的实例，已运行的不受影响。"
     },
     "reason": {
       "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "此节点没有就绪的 dGPU 分区后端；在有之前此设置不生效。",
@@ -1414,7 +1430,7 @@
   },
   "slurm": {
     "unavailable": {
-      "gres_missing": "Slurm 登记节点 {{node}} 时没有 GPU：slurmd 发现的 GPU 比 Slurm 管控节点配置的少（通常是没有 gres.conf），Slurm 已把该节点 drain，不会启动借卡的作业。",
+      "gres_missing": "Slurm 登记节点 {{node}} 时没有 GPU（通常是缺少 gres.conf），已将其 drain，借卡的作业不会启动。",
       "invalid_registration": "Slurm 拒绝了节点 {{node}} 的登记，因此不会启动借卡的作业。",
       "down": "Slurm 把节点 {{node}} 标为 down 或无响应，因此不会启动借卡的作业。",
       "drained": "Slurm 把节点 {{node}} 标为 drained 或 draining，因此不会启动借卡的作业。",
@@ -1423,11 +1439,11 @@
     "says": "Slurm 给出的原因：{{reason}}",
     "howToFix": "让节点恢复的步骤：",
     "step": {
-      "gres_conf": "在 Slurm 管控节点上（如果这台节点自己保存了 Slurm 配置文件，也在这台节点上），把这一行加进 gres.conf：",
+      "gres_conf": "在 Slurm 管控节点的 gres.conf 加这一行；本节点自存配置时也加：",
       "reconfigure": "在 Slurm 管控节点上，重新加载配置；节点会带着 GPU 重新登记：",
       "restart_slurmd": "如果之后节点仍显示 invalid，在这台节点上重启 slurmd：",
       "resume": "在 Slurm 管控节点上，让节点 {{node}} 恢复服务：",
-      "resume_drained": "处理掉 Slurm 给出的原因后，在 Slurm 管控节点上让节点 {{node}} 恢复服务：",
+      "resume_drained": "处理完 Slurm 给出的原因后，在 Slurm 管控节点上恢复节点 {{node}}：",
       "check_slurmd": "在这台节点上，确认 slurmd 在运行并查看它的日志："
     },
     "copy": "复制命令",

@@ -42,7 +42,7 @@ export default function SlurmEntryActions({ cluster, onChanged, labeled = false 
     okText: t("actions.revoke"),
     cancelText: t("actions.cancel"),
     okButtonProps: { danger: true },
-    content: <p className="m-0 text-fg-muted">{t("actions.revokeHelp")}</p>,
+    content: <p className="m-0 text-fg-muted">{t("actions.revokeNote")}</p>,
     onOk: async () => {
       try {
         await api.revokeSlurmCluster(cluster.uuid);

@@ -264,7 +264,7 @@ export default function OnlineCatalog({active, provider: source, onProvider, onM
         <div className="catalog-empty" role="status">
           <EmptyState kind="models" description={<>
             <strong>{failure || t("catalog.noResults")}</strong>
-            <span>{failure ? t("catalog.unavailableHelp") : t("catalog.noResultsHelp")}</span>
+            <span>{failure ? t("catalog.unavailableNote") : t("catalog.noResultsNote")}</span>
           </>} action={<>
             {failure ? <Button size="sm" onClick={retry}>{t("catalog.retry")}</Button> :
               (query || capability !== "all") && <Button size="sm" onClick={() => {
