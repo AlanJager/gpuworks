@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -46,6 +48,17 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 				anchor = time.Now()
 				clock.mu.Unlock()
 			}
+			// The following proof's measured cost is applied by the clock read
+			// that publishes its result (Reprove holds the eligibility lock
+			// there). Moving the clock when the proof returns instead leaves a
+			// moment in which a waiting request reads the new time against
+			// the earlier proof's deadline, which a real clock cannot produce.
+			var atPublication *time.Duration
+			setAgeAtPublication := func(d time.Duration) {
+				clock.mu.Lock()
+				atPublication = &d
+				clock.mu.Unlock()
+			}
 			var proofs, reads, grants atomic.Int32
 			captured := make(chan time.Time, 1)
 			var captureOnce sync.Once
@@ -56,6 +69,9 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 			releaseNext := func() { nextOnce.Do(func() { close(nextRelease) }) }
 			e := newMaterialEligibility(func() time.Time {
 				clock.mu.Lock()
+				if atPublication != nil && materialClockReadBy("Reprove") {
+					clock.now, anchor, atPublication = base.Add(*atPublication), time.Now(), nil
+				}
 				now := clock.now.Add(time.Since(anchor))
 				clock.mu.Unlock()
 				if reads.Load() == 1 && readinessCaptureClockCaller() {
@@ -84,7 +100,7 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 					close(nextStarted)
 					select {
 					case <-nextRelease:
-						setAge(renewalStart + 2*materialEligibilityWindow - thinRemaining - followingRemaining) // Following proof leaves6.74 seconds.
+						setAgeAtPublication(renewalStart + 2*materialEligibilityWindow - thinRemaining - followingRemaining) // Following proof leaves6.74 seconds.
 						return true, nil
 					case <-ctx.Done():
 						return false, ctx.Err()
@@ -433,5 +449,22 @@ func TestReadinessPreFinalCutoffCapIsNotAuthority(t *testing.T) {
 				t.Fatalf("cap changed: %v want%v", elapsed, wantWait)
 			}
 		})
+	}
+}
+
+// materialClockReadBy reports whether the eligibility method that is reading
+// the clock is the named one.
+func materialClockReadBy(name string) bool {
+	var pcs [24]uintptr
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs[:])])
+	const method = "gpuworks.ai/gpuworks/internal/server/app.(*materialEligibility)."
+	for {
+		frame, more := frames.Next()
+		if strings.HasPrefix(frame.Function, method) {
+			return frame.Function == method+name
+		}
+		if !more {
+			return false
+		}
 	}
 }
