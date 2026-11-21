@@ -1029,11 +1029,13 @@
       "stopped": "管理员已禁用调度，直到手动启用",
       "allowed": "管理员已启用调度，直到手动禁用",
       "schedulable": "可调度",
-      "blocked": "平台判定不可用"
+      "blocked": "平台判定不可用",
+      "heldOutside": "被平台外进程占用，未启用调度"
     },
     "stop": "禁用调度",
     "resume": "启用调度",
     "allowConfirm": "平台判定这张卡不可用。启用调度后将允许新部署，直到你禁用调度。健康状态和平台外占用仍会显示。确定启用调度？",
+    "allowConfirmHeldOutside": "卡上有平台外进程，启用后新部署与其共卡，算力与带宽不隔离。确定启用调度？",
     "done": {
       "stopped": "已禁用这张卡的调度",
       "schedulable": "这张卡已可调度"
@@ -1410,22 +1412,6 @@
       "REQUIRES_AGENT": "需要 Agent 已连接后才能执行检查。",
       "NOT_REPORTED": "Agent 未返回此项结构化结果，无法判断；可查看原始报告。",
       "INFORMATION_COLLECTED": "已取得此项详细信息；具体异常列在检查列表中。"
-    }
-  },
-  "placementPolicy": {
-    "title": "放置策略",
-    "loadFailed": "无法加载放置策略设置。",
-    "saveFailed": "设置未保存：{{detail}}",
-    "empty": "此节点没有放置策略设置。",
-    "notApplicable": "当前在此节点上不生效：{{reason}}",
-    "share_with_foreign": {
-      "label": "允许分区与平台外进程共卡",
-      "summary": "带显存上限的 dGPU 分区可使用有平台外进程的卡，优先用空闲卡。",
-      "help": "显存隔离，算力与带宽不隔离。关闭后只影响之后放置的实例，已运行的不受影响。"
-    },
-    "reason": {
-      "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "此节点没有就绪的 dGPU 分区后端；在有之前此设置不生效。",
-      "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "请升级此节点的 agent，使其在共用卡上持续跟踪平台外进程；在此之前此设置不生效。"
     }
   },
   "slurm": {

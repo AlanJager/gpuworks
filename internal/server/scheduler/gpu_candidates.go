@@ -25,7 +25,7 @@ type GPUCandidate struct {
 // GPUCandidates explains every card of node before the selected GPU range is
 // applied, through the same card gates as Schedule. The list is what an
 // operator picks cards from, and picking a card consents to sharing it with
-// processes outside the platform (nodepolicy.Consent), so it is judged with
+// processes outside the platform (Consent), so it is judged with
 // that consent. Model fit, parallelism and topology remain the complete
 // plan's responsibility.
 func GPUCandidates(req Request, node NodeSnapshot) []GPUCandidate {

@@ -33,9 +33,12 @@ func freeH20(index int) GPU {
 }
 
 // reporterPartition is the deployment of the report: vllm on nvidia-dgpu
-// with a 50 GiB memory limit, pinned to GPU 0 at TP 1.
+// with a 50 GiB memory limit, on GPU 0 at TP 1, which the operator chose:
+// the tests of what may share a card by memory describe a request that
+// consents to it (gates_test.go covers one that does not).
 func reporterPartition(limitGiB int64) Request {
 	return Request{
+		Consent:     Consent{CardsChosen: true},
 		WeightBytes: 15 * giB, HeadCount: 32, GPUMemUtil: 0.9, ReserveBytes: 3 * giB,
 		PerGPULimitBytes: limitGiB * giB, PartitionBackend: accelerator.BackendNVIDIALogical,
 		AllowedGPUIndexes: []int{0}, UtilizationIsShare: true,
@@ -46,12 +49,8 @@ func partitionClaim(req Request) int64 {
 	return serverestimate.PartitionClaimBytes(req.PerGPULimitBytes, req.PartitionBackend, func() int64 { return reserveFor(req) })
 }
 
-// nvidiaNode allows partitions beside processes outside the platform: the
-// tests of what may share a card by memory describe a node that allows it
-// (gates_test.go covers one that does not).
 func nvidiaNode(gpus ...GPU) NodeSnapshot {
-	return NodeSnapshot{UUID: "h20", Vendor: accelerator.VendorNVIDIA, DtypeSupported: true, DiskAvailBytes: 1 << 50, GPUs: gpus,
-		Policy: NodePolicy{ShareWithForeign: true}}
+	return NodeSnapshot{UUID: "h20", Vendor: accelerator.VendorNVIDIA, DtypeSupported: true, DiskAvailBytes: 1 << 50, GPUs: gpus}
 }
 
 // A pin names the cards a request may use; the filters must judge those,

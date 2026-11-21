@@ -11,11 +11,12 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// A pool replica's replacement is placed across the whole pool, so a node
-// that has stopped allowing sharing with processes outside the platform does
-// not hold the roll when another pool node takes the replacement: only a
-// replica that cannot move is kept (ADR 0068).
-func TestRollingRestartDrainsAPoolReplicaOnASwitchedOffNode(t *testing.T) {
+// A pool replica's replacement is placed across the whole pool, so a card
+// that processes outside the platform took after the replica was placed, and
+// that nobody enabled scheduling on, does not hold the roll when another
+// pool node takes the replacement: only a replica that cannot move is kept
+// (ADR 0068).
+func TestRollingRestartDrainsAPoolReplicaOnACardHeldSince(t *testing.T) {
 	st, err := store.Open("file:rolling_foreign_pool?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -45,10 +46,9 @@ func TestRollingRestartDrainsAPoolReplicaOnASwitchedOffNode(t *testing.T) {
 	if _, err := st.CreateInstance(&store.Instance{UUID: "roll-whole-card-1", DeploymentID: other.ID, NodeID: shared.ID, State: proto.InstRunning, GPUIndexes: "[1]"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := st.SetNodePlacementPolicy(shared.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-		p.ShareWithForeign = true
-		return p, nil
-	}); err != nil {
+	// The shared node's card 0 is free of outside processes when the replica
+	// is placed.
+	if err := st.DB().Model(&store.GPU{}).Where("node_id = ?", shared.ID).Update("foreign_processes", "").Error; err != nil {
 		t.Fatal(err)
 	}
 	dep, err := createTestDeploymentWithRequirements(t, st, &store.Deployment{
@@ -59,7 +59,7 @@ func TestRollingRestartDrainsAPoolReplicaOnASwitchedOffNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Placed while only the shared node was online and allowed sharing.
+	// Placed while only the shared node was online.
 	hub := &distributedTestHub{online: map[string]bool{shared.UUID: true}, updates: map[string][]proto.StateUpdate{}}
 	c := New(st, hub, nil)
 	c.SetDrainProbe(fakeDrainProbe{})
@@ -68,19 +68,16 @@ func TestRollingRestartDrainsAPoolReplicaOnASwitchedOffNode(t *testing.T) {
 	}
 	insts, err := st.InstancesForDeployment(dep.ID)
 	if err != nil || len(insts) != 1 || insts[0].NodeID != shared.ID || insts[0].GPUIndexes != "[0]" {
-		t.Fatalf("instances = %+v %v, want one on the shared node's held card", insts, err)
+		t.Fatalf("instances = %+v %v, want one on the shared node's card 0", insts, err)
 	}
 	replica := insts[0].UUID
 	_ = st.SetInstanceState(replica, proto.InstRunning, "")
 	if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", replica).Update("created_at", time.Now().UTC().Add(-time.Hour)).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := st.SetNodePlacementPolicy(shared.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-		p.ShareWithForeign = false
-		return p, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	// A process outside the platform appears on the replica's card, which
+	// nobody enabled scheduling on.
+	holdCard(t, st, shared, 0)
 	hub.online[clean.UUID] = true
 	if err := st.RequestRollingRestart(dep.ID, time.Now().UTC()); err != nil {
 		t.Fatal(err)

@@ -30,21 +30,21 @@ func request(w fixtures.World) dto.DeployRequest {
 }
 
 type admissionRow struct {
-	mode         string // auto, manual, or auto-echo: an automatic plan sent back with its cards
-	partition    bool
-	occupancy    string // free, whole, partition or foreign
-	allowForeign bool
+	mode      string // auto, manual, or auto-echo: an automatic plan sent back with its cards
+	partition bool
+	occupancy string // free, whole, partition or foreign
+	// enabled: an operator enabled scheduling on the node's cards.
+	enabled bool
 }
 
 func (r admissionRow) name() string {
-	return fmt.Sprintf("%s/partition-%v/%s/sharing-%v", r.mode, r.partition, r.occupancy, r.allowForeign)
+	return fmt.Sprintf("%s/partition-%v/%s/enabled-%v", r.mode, r.partition, r.occupancy, r.enabled)
 }
 
 // arrange occupies both cards and returns the request with the number of
 // deployments that exist before it.
 func (r admissionRow) arrange(t *testing.T, w fixtures.World) (dto.DeployRequest, int) {
 	t.Helper()
-	w.AllowForeignSharing(t, r.allowForeign)
 	existing := 0
 	switch r.occupancy {
 	case "whole", "partition":
@@ -64,6 +64,9 @@ func (r admissionRow) arrange(t *testing.T, w fixtures.World) (dto.DeployRequest
 		}
 		w.HoldForeign(t, indexes...)
 	}
+	if r.enabled {
+		w.EnableCards(t)
+	}
 	req := request(w)
 	if r.partition {
 		req.VRAMLimitGiB = 16
@@ -82,12 +85,13 @@ type admissionExpectation struct {
 	fits, previewOK, created bool
 }
 
-// A slice fits beside another slice, and beside a foreign holder when the node
-// allows sharing or the operator chose the card. Automatic preview OK only
+// A slice fits beside another slice, and beside a foreign holder when the
+// operator chose the card; a card an operator enabled scheduling on takes
+// either kind of deployment beside the holder. Automatic preview OK only
 // validates the draft, while manual preview OK includes its node plan. Manual
 // creation records intent even while the cards are busy.
 func (r admissionRow) expectation() admissionExpectation {
-	fits := r.occupancy == "free" || (r.occupancy == "partition" && r.partition) || (r.occupancy == "foreign" && r.partition && (r.allowForeign || r.mode == "manual"))
+	fits := r.occupancy == "free" || (r.occupancy == "partition" && r.partition) || (r.occupancy == "foreign" && (r.enabled || (r.partition && r.mode == "manual")))
 	return admissionExpectation{fits: fits, previewOK: fits || r.mode != "manual", created: fits || r.mode == "manual"}
 }
 
@@ -98,8 +102,8 @@ func TestPlacementModeByAllocationAndOccupancy(t *testing.T) {
 	for _, mode := range []string{"auto", "manual", "auto-echo"} {
 		for _, partition := range []bool{false, true} {
 			for _, occupancy := range []string{"free", "whole", "partition", "foreign"} {
-				for _, allowForeign := range []bool{false, true} {
-					row := admissionRow{mode: mode, partition: partition, occupancy: occupancy, allowForeign: allowForeign}
+				for _, enabled := range []bool{false, true} {
+					row := admissionRow{mode: mode, partition: partition, occupancy: occupancy, enabled: enabled}
 					t.Run(row.name(), func(t *testing.T) {
 						w := fixtures.NewWorld(t)
 						req, rows := row.arrange(t, w)

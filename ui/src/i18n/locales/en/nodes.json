@@ -1029,11 +1029,13 @@
       "stopped": "Disabled by an administrator; remains disabled until enabled",
       "allowed": "Enabled by an administrator; remains enabled until disabled",
       "schedulable": "Schedulable",
-      "blocked": "Judged unusable by the platform"
+      "blocked": "Judged unusable by the platform",
+      "heldOutside": "In use outside the platform; scheduling not enabled"
     },
     "stop": "Disable scheduling",
     "resume": "Enable scheduling",
     "allowConfirm": "The platform judged this card unusable. Enabling scheduling permits new deployments until you disable it. Health and outside use remain visible. Enable scheduling?",
+    "allowConfirmHeldOutside": "Processes outside the platform use this card. New deployments will share it with them; compute and bandwidth are not isolated. Enable scheduling?",
     "done": {
       "stopped": "Scheduling disabled on this card",
       "schedulable": "This card is schedulable"
@@ -1410,22 +1412,6 @@
       "REQUIRES_AGENT": "This check requires a connected Agent.",
       "NOT_REPORTED": "The Agent did not return structured results for this item. Review the original report.",
       "INFORMATION_COLLECTED": "Detailed information is available. Findings are listed separately among the checks."
-    }
-  },
-  "placementPolicy": {
-    "title": "Placement policy",
-    "loadFailed": "The placement policy settings could not be loaded.",
-    "saveFailed": "The setting was not saved: {{detail}}",
-    "empty": "This node has no placement settings.",
-    "notApplicable": "No effect on this node now: {{reason}}",
-    "share_with_foreign": {
-      "label": "Allow partitions beside processes outside the platform",
-      "summary": "Memory-limited dGPU partitions may use cards that processes outside the platform also use; free cards are tried first.",
-      "help": "Memory is isolated; compute and bandwidth are not. Turning this off affects only instances placed afterwards, not running ones."
-    },
-    "reason": {
-      "NODE_PLACEMENT_POLICY_NO_PARTITION_BACKEND": "This node has no ready dGPU partition backend; the setting has no effect until it has one.",
-      "NODE_PLACEMENT_POLICY_AGENT_TOO_OLD": "Upgrade this node's agent to track processes outside the platform on shared cards; the setting has no effect until then."
     }
   },
   "slurm": {

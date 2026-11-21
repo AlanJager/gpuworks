@@ -731,12 +731,8 @@ _Avoid_: restart count（已删除）、attempt 单指数字
 一类加速卡（当前只有 Apple 统一内存）的调度语义：一张卡可以同时承载多个实例，每个实例按准入时的内存份额（`memory_claim_bytes`）记账，卡满即止。份额在准入时确定并随实例保存，之后不按模板或估算重算（ADR 0044）。
 _Avoid_: 把它当 dGPU 切分、按卡独占计数
 
-**放置策略 — Placement Policy**:
-运维按节点设置的放置旋钮（`nodepolicy.Policy`，节点行的 `placement_*` 列），决定调度器在这个节点上可以把工作放到哪里；它不停止放置，那是节点调度状态（封锁、排空）的事。旋钮由 `nodepolicy.Settings` 一处定义，字典、补丁、DTO 与存储写入都由它驱动；第一个旋钮是 `share_with_foreign`（允许分区与平台外进程共卡，默认关，ADR 0068）。
-_Avoid_: scheduling（已指封锁/排空）、按节点存 Setting 键、把旋钮写进 labels
-
 **卡准入闸 — Card Gate**:
-调度器里在某个条件下扣下一张本可使用的卡的规则（`scheduler.cardGate`），按表序决定先报哪个拒绝原因；可同意的闸在节点放置策略或请求的同意（手工选卡）下放行。闸不改卡的能力事实（如 `ForeignShareable`）。
+调度器里在某个条件下扣下一张本可使用的卡的规则（`scheduler.cardGate`），按表序决定先报哪个拒绝原因；可同意的闸在请求的同意（手工选卡）下放行；运维对一张卡启用调度后，这张卡本身可调度，不再经过闸。闸不改卡的能力事实（如 `ForeignShareable`）。
 _Avoid_: 把同意折进能力位、在 `takesWorkFor` 里加特例
 
 **卡偏好档 — Card Preference**:

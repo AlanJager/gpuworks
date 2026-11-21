@@ -254,13 +254,6 @@ export interface Node {
   // server: allowed; confirm, when the platform will cordon it again on its
   // next report; refused, while an extension holds it.
   uncordon?: "allowed" | "confirm" | "refused";
-  // placement_policy is the operator's per-node placement knobs, keyed as
-  // the dictionary (GET /scheduling/node-placement-policies) keys them; the
-  // UI renders them from the dictionary rather than naming any here.
-  placement_policy?: Record<string, NodePlacementPolicyValue>;
-  // placement_policy_availability says, per knob, whether it takes effect on
-  // this node; reason is a product code when it does not.
-  placement_policy_availability?: NodePlacementPolicyAvailability[];
   /** The node's name in Slurm, while its agent borrows the node's cards from Slurm. */
   slurm_node?: string;
   /** Why Slurm will not start jobs on the node; absent when it will. */
@@ -4175,22 +4168,6 @@ export interface GPUCandidates {
   items: { index: number; available: boolean; reason?: ScheduleReason; note?: ScheduleReason }[];
 }
 
-// A node placement policy knob's value, shaped by its kind.
-export type NodePlacementPolicyValue = boolean | string;
-
-// One knob of GET /api/v1/scheduling/node-placement-policies.
-export interface NodePlacementPolicySetting {
-  key: string;
-  kind: "bool" | string;
-  default: NodePlacementPolicyValue;
-}
-
-export interface NodePlacementPolicyAvailability {
-  key: string;
-  applicable: boolean;
-  reason?: string;
-}
-
 // PdRoleName is the fixed pair every PD mode declares today (ADR 0028); the
 // mode catalog is the only place new role names could come from.
 export type PdRoleName = "prefill" | "decode";
@@ -5148,10 +5125,6 @@ export const api = {
     ),
   setNodeScheduling: (uuid: string, scheduling: NodeScheduling) =>
     sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(uuid)}/scheduling`, { scheduling }),
-  setNodePlacementPolicy: (uuid: string, patch: Record<string, NodePlacementPolicyValue>) =>
-    sendJSON<Node>("PATCH", `/api/v1/nodes/${encodeURIComponent(uuid)}/placement-policy`, patch),
-  nodePlacementPolicyDictionary: () =>
-    getJSON<{ items: NodePlacementPolicySetting[] }>("/api/v1/scheduling/node-placement-policies").then((list) => list.items ?? []),
   nodeHealthChecks: (nodeUUID: string, card?: CardRef) => {
     const q = cardQuery(card);
     return getJSON<CardHealthChecks>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-checks${q ? `?${q}` : ""}`);

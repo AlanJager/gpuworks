@@ -15,6 +15,17 @@ func cleanCard(index int, degraded bool) GPU {
 	return g
 }
 
+// enabledNode is the reporter's node whose held cards an operator enabled
+// scheduling on, so the scheduler may choose them.
+func enabledNode(gpus ...GPU) NodeSnapshot {
+	for i, g := range gpus {
+		if g.HeldOutsidePlatform {
+			gpus[i] = enabled(g)
+		}
+	}
+	return nvidiaNode(gpus...)
+}
+
 func sharedCard(index int, degraded bool) GPU {
 	g := reporterCard(index)
 	g.Degraded = degraded
@@ -45,7 +56,7 @@ func TestPreferenceTiersFollowTheTableOrder(t *testing.T) {
 		{"three cards", []GPU{full(cleanCard(0, true)), sharedCard(1, false), sharedCard(2, true)}, 1, []string{ReasonForeignSharedGPUsUsed}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			res := Schedule(automatic(16), heldNode(true, tc.cards...))
+			res := Schedule(automatic(16), enabledNode(tc.cards...))
 			if !res.OK || !reflect.DeepEqual(res.Plan.GPUIndexes, []int{tc.want}) {
 				t.Fatalf("plan = %+v %+v, want GPU %d", res.Plan, res.Message, tc.want)
 			}
@@ -65,17 +76,17 @@ func TestPreferenceTiersFollowTheTableOrder(t *testing.T) {
 	}
 }
 
-// Switched on, a clean card that fits wins; the plan on a shared card says
+// Enabled, a held card still loses to a clean card that fits; the plan on a shared card says
 // how many and how much the processes outside hold, and marks the
 // concession as worth looking at other nodes for.
 func TestSharingIsUsedOnlyWhenNoCleanCardFits(t *testing.T) {
-	res := Schedule(automatic(16), heldNode(true, reporterCard(0), freeH20(1)))
+	res := Schedule(automatic(16), enabledNode(reporterCard(0), freeH20(1)))
 	if !res.OK || res.Plan.GPUIndexes[0] != 1 || len(res.Plan.Concessions) != 0 {
 		t.Fatalf("plan = %+v, want the clean GPU 1 with no concession", res.Plan)
 	}
 	busy := freeH20(1)
 	busy.AllocatedBytes, busy.WholeGPUAllocated = busy.MemoryTotal, true
-	res = Schedule(automatic(16), heldNode(true, reporterCard(0), busy))
+	res = Schedule(automatic(16), enabledNode(reporterCard(0), busy))
 	if !res.OK || res.Plan.GPUIndexes[0] != 0 {
 		t.Fatalf("plan = %+v %+v, want the shared GPU 0", res.Plan, res.Message)
 	}
@@ -88,27 +99,32 @@ func TestSharingIsUsedOnlyWhenNoCleanCardFits(t *testing.T) {
 	}
 }
 
-// A pin to a shared card lands there with the concession stated; a card an
-// operator allowed work on is not shared by this rule.
-func TestPinnedAndOverriddenCardsAndConcessions(t *testing.T) {
-	pinned := reporterPartition(16)
-	res := Schedule(pinned, heldNode(true, reporterCard(0), freeH20(1)))
+// A pin to a shared card nobody enabled lands there with the concession
+// stated, and so does one the scheduler chose because an operator enabled it.
+func TestPinnedAndEnabledCardsAndConcessions(t *testing.T) {
+	res := Schedule(reporterPartition(16), nvidiaNode(reporterCard(0), freeH20(1)))
 	if !res.OK || res.Plan.GPUIndexes[0] != 0 || hasReason(res.Plan, ReasonForeignSharedGPUsUsed) == nil {
 		t.Fatalf("pinned plan = %+v %+v", res.Plan, res.Message)
 	}
-	overridden := reporterCard(0)
-	overridden.Schedulable = true
-	res = Schedule(automatic(16), heldNode(true, overridden))
+	res = Schedule(automatic(16), enabledNode(reporterCard(0)))
+	if !res.OK || !reflect.DeepEqual(res.Plan.Concessions, []Concession{{Code: ReasonForeignSharedGPUsUsed, PoolWide: true}}) {
+		t.Fatalf("enabled card plan = %+v %+v, want the sharing concession", res.Plan, res.Message)
+	}
+	// Holders whose memory is not known have no figure to state: the card
+	// an operator enabled is used without the concession.
+	unknown := enabled(reporterCard(0))
+	unknown.ForeignShareable, unknown.ForeignBytes = false, 0
+	res = Schedule(automatic(16), nvidiaNode(unknown))
 	if !res.OK || len(res.Plan.Concessions) != 0 {
-		t.Fatalf("overridden card plan = %+v, want no concession", res.Plan)
+		t.Fatalf("enabled card of unknown holders = %+v %+v, want placed with no concession", res.Plan, res.Message)
 	}
 }
 
 // The deploy form's card list is what an operator picks from, and picking
-// is consent: a shared card is offered with a note even while the node does
-// not allow automatic sharing; a deployment that sleeps is not offered it.
+// is consent: a shared card is offered with a note though nobody enabled
+// scheduling on it; a deployment that sleeps is not offered it.
 func TestGPUCandidatesNoteASharedCard(t *testing.T) {
-	node := heldNode(false, reporterCard(0), freeH20(1))
+	node := nvidiaNode(reporterCard(0), freeH20(1))
 	got := GPUCandidates(reporterPartition(16), node)
 	if !got[0].Available || got[0].Note == nil || got[0].Note.Code != ReasonForeignSharedCard || got[0].Note.Params["foreign_gib"] != gib(reporterForeignBytes) {
 		t.Fatalf("shared card = %+v note %+v", got[0], got[0].Note)

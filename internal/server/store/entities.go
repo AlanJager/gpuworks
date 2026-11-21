@@ -8,7 +8,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 )
 
 // Node states say whether the control plane has the node's agent on the
@@ -55,11 +54,6 @@ type Node struct {
 	// platform lifts only its own cordons (SchedulingSource). Empty on a
 	// schedulable node.
 	SchedulingBy SchedulingSource `gorm:"size:16;not null;default:''"`
-	// PlacementPolicy is the operator's per-node placement knobs
-	// (nodepolicy.Policy), one typed column each (placement_<key>), written
-	// only by SetNodePlacementPolicy. Unlike Scheduling it does not stop
-	// placement; it shapes where on the node work may go.
-	PlacementPolicy nodepolicy.Policy `gorm:"embedded;embeddedPrefix:placement_"`
 
 	// Hardware summary (denormalized for list views; full detail via GPUs).
 	OS               string `gorm:"size:32"`

@@ -1,7 +1,5 @@
 package scheduler
 
-import "gpuworks.ai/gpuworks/internal/server/nodepolicy"
-
 // Card gates: conditions that withhold a card a request could otherwise use.
 //
 // A gate never changes what the snapshot says a card is (Schedulable,
@@ -19,11 +17,9 @@ type cardGate struct {
 	// applies is whether the card is subject to the gate for this request;
 	// it may be any card, Schedulable or not.
 	applies func(GPU, Request) bool
-	// consented lets the card through when the node's policy or the
-	// request's own consent allows it; nil for a gate nothing lets through.
-	// It asks the policy's methods (nodepolicy), never its fields, so the
-	// rule it applies is stated once.
-	consented func(NodePolicy, Request) bool
+	// consented lets the card through when the request's own consent
+	// allows it; nil for a gate nothing lets through.
+	consented func(Request) bool
 	// refusal explains the cards on node the gate withholds.
 	refusal func(req Request, node string, withheld []GPU) Reason
 }
@@ -44,19 +40,20 @@ var sleepBesideForeignGate = cardGate{
 }
 
 // foreignSharingGate keeps a memory-limited partition off a card processes
-// outside the platform hold unless the node's placement policy allows it or
-// the operator chose the card (nodepolicy.Policy.SharesForeign). The card
-// can be shared - the agent reports the holders' memory - so the refusal
-// names the setting that would let it (ADR 0068).
+// outside the platform hold unless the operator chose the card for this
+// deployment. The card can be shared - the agent reports the holders'
+// memory - so the refusal names the cards an operator may enable scheduling
+// on: a card they enabled is Schedulable and never reaches this gate
+// (ADR 0068).
 var foreignSharingGate = cardGate{
 	name: "foreign_sharing",
 	applies: func(g GPU, req Request) bool {
 		return g.sharesForeignWith(req) && !g.Schedulable
 	},
-	consented: func(policy NodePolicy, req Request) bool { return policy.SharesForeign(req.Consent) },
+	consented: func(req Request) bool { return req.Consent.CardsChosen },
 	refusal: func(_ Request, node string, withheld []GPU) Reason {
 		params := cardListParams(withheld)
-		params["setting"], params["node"] = string(nodepolicy.KeyShareWithForeign), node
+		params["node"] = node
 		return Reason{Code: ReasonHeldOutsidePlatformNotAllowed, Params: params}
 	},
 }
@@ -79,7 +76,7 @@ func resolveGatesConsenting(req Request, node NodeSnapshot, consentAll bool) Nod
 			if !gate.applies(g, req) {
 				continue
 			}
-			if gate.consented != nil && (consentAll || gate.consented(node.Policy, req)) {
+			if gate.consented != nil && (consentAll || gate.consented(req)) {
 				continue
 			}
 			g.withheld = k + 1
@@ -95,7 +92,7 @@ func resolveGatesConsenting(req Request, node NodeSnapshot, consentAll bool) Nod
 // lift, by planning once more in memory as if consented - only for a request
 // that was refused, so a placement that fits costs nothing more. When cards
 // were withheld by such a gate and the request would then be placed, the
-// refusal is that gate's, naming the setting, rather than the shortage the
+// refusal is that gate's, naming the cards, rather than the shortage the
 // withheld cards caused (a busy clean card beside held ones). When it would
 // not be placed even so, a refusal that named the gate gives way to the
 // reason that would remain: allowing it would not help.

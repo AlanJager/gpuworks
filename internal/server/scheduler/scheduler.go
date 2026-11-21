@@ -11,7 +11,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	serverestimate "gpuworks.ai/gpuworks/internal/server/estimate"
-	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/pkg/topoparse"
 )
@@ -32,7 +31,8 @@ type GPU struct {
 	NUMANode       int
 	// Schedulable is whether work may go on this card at all
 	// (store.GPU.CanTakeWork): this node's own, at a level that serves,
-	// and not held outside the platform.
+	// and not held outside the platform - or one an operator enabled
+	// scheduling on, whatever the platform judged.
 	Schedulable bool
 	// HeldOutsidePlatform marks a card a process outside the platform is
 	// using — one reason it is not Schedulable that is not a fault, and
@@ -161,13 +161,16 @@ type NodeSnapshot struct {
 	// ServingUnavailable marks a node with no network that may carry serving
 	// traffic: no serving network, and the management network may not.
 	ServingUnavailable bool
-	// Policy is the node's placement policy; the card gates ask it whether
-	// a card they would withhold may be used (cardGate.consented).
-	Policy NodePolicy
 }
 
-// NodePolicy is a node's placement policy (package nodepolicy).
-type NodePolicy = nodepolicy.Policy
+// Consent is what a placement request itself says about the cards: the zero
+// value lets the scheduler choose.
+type Consent struct {
+	// CardsChosen: an operator picked the cards (planning: the "gpus" key
+	// of a manual placement), which consents to sharing them with processes
+	// outside the platform.
+	CardsChosen bool
+}
 
 // Request describes what to place. Weight and multimodal bytes are the startup
 // requirements; KV cache is deliberately absent because engines allocate those
@@ -216,10 +219,10 @@ type Request struct {
 	// its engine; a node whose vendor lacks one is filtered out.
 	Features []accelerator.Feature
 	// Consent is what the request itself says about the cards: an operator
-	// who chose them consents to sharing them (nodepolicy.Consent). The zero
-	// value is the scheduler choosing. AllowedGPUIndexes alone is not
-	// consent: the platform pins cards of its own.
-	Consent nodepolicy.Consent
+	// who chose them consents to sharing them. The zero value is the
+	// scheduler choosing. AllowedGPUIndexes alone is not consent: the
+	// platform pins cards of its own.
+	Consent Consent
 	// GPUMemUtil is the effective whole-GPU capacity fraction this deployment
 	// runs at. It is materialized from the launch configuration before the
 	// request is built, so there is no such thing as "not set": Validate
@@ -310,8 +313,8 @@ const (
 	ReasonHeldOutsidePlatformSleep = "held_outside_platform_sleep"
 	// ReasonHeldOutsidePlatformNotAllowed: cards that could take the
 	// partition ({gpus}, {count} on {node}) are shared with processes
-	// outside the platform, and the node's placement policy does not allow
-	// partitions beside them; {setting} names the policy key that would.
+	// outside the platform, and no operator enabled scheduling on them or
+	// chose them for this deployment.
 	ReasonHeldOutsidePlatformNotAllowed = "held_outside_platform_not_allowed"
 	// ReasonForeignSharedGPUsUsed: the chosen group includes cards shared
 	// with processes outside the platform ({gpus}, {count}, up to

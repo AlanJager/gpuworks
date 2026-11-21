@@ -9,7 +9,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -98,7 +97,7 @@ func TestEvaluatePlacesTheReportedPartitionBesideTheForeignProcess(t *testing.T)
 	node := foreignHeldNode(t, st, "h20", proto.PartitionSafetyForeignTracked, reporterForeign)
 	in := Input{
 		Model: &store.Model{WeightBytes: 15 << 30}, Node: node, Engine: "vllm",
-		Quick: deploy.LaunchConfig{GPUMemUtil: 0.9}, GPUIndexes: []int{0}, Consent: nodepolicy.Consent{CardsChosen: true},
+		Quick: deploy.LaunchConfig{GPUMemUtil: 0.9}, GPUIndexes: []int{0}, Consent: scheduler.Consent{CardsChosen: true},
 		VRAMLimitBytes: 50 << 30, PartitionBackend: accelerator.BackendNVIDIALogical,
 	}
 	out := in.Evaluate(st)

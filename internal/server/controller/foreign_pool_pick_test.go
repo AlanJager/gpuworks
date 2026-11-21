@@ -40,12 +40,7 @@ func TestPoolPlacementPrefersANodeWithACleanCard(t *testing.T) {
 			// The shared node's free card is held outside the platform; its
 			// other card runs a whole-card deployment.
 			shared := foreignHeldH20(t, st, "shared", proto.PartitionSafetyForeignTracked)
-			if _, _, _, err := st.SetNodePlacementPolicy(shared.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-				p.ShareWithForeign = true
-				return p, nil
-			}); err != nil {
-				t.Fatal(err)
-			}
+			enableHeldCards(t, st, shared.UUID)
 			if _, err := st.UpsertModelFile(&store.ModelFile{ModelID: model.ID, NodeID: shared.ID, State: proto.MFPresent, Path: "/models/pool-pick"}); err != nil {
 				t.Fatal(err)
 			}

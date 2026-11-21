@@ -14,14 +14,14 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// A partition placed automatically beside processes outside the platform,
-// on a node that has since stopped allowing it, is not taken down by a
-// rolling restart: its replacement could not be placed, so the roll waits
-// and says which setting would let it go on (ADR 0068). Allowed again, the
+// A partition whose card processes outside the platform took after it was
+// placed is not taken down by a rolling restart while nobody enabled
+// scheduling on the card: its replacement could not be placed, so the roll
+// waits and names the card an operator may enable (ADR 0068). Enabled, the
 // roll proceeds.
-func TestRollingRestartKeepsAReplicaWhoseReplacementTheSwitchWouldRefuse(t *testing.T) {
+func TestRollingRestartKeepsAReplicaWhoseReplacementTheHeldCardWouldRefuse(t *testing.T) {
 	for i, allow := range []bool{false, true} {
-		t.Run(fmt.Sprintf("allow=%v", allow), func(t *testing.T) {
+		t.Run(fmt.Sprintf("enabled=%v", allow), func(t *testing.T) {
 			st, err := store.Open(fmt.Sprintf("file:rolling_foreign_%d?mode=memory&cache=shared", i), bus.New())
 			if err != nil {
 				t.Fatal(err)
@@ -53,12 +53,8 @@ func TestRollingRestartKeepsAReplicaWhoseReplacementTheSwitchWouldRefuse(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Placed while the node allowed sharing; the switch is now as
-			// the case says.
-			if _, _, _, err := st.SetNodePlacementPolicy(node.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-				p.ShareWithForeign = true
-				return p, nil
-			}); err != nil {
+			// Placed while card 0 was free of outside processes.
+			if err := st.DB().Model(&store.GPU{}).Where("node_id = ?", node.ID).Update("foreign_processes", "").Error; err != nil {
 				t.Fatal(err)
 			}
 			hub := &distributedTestHub{online: map[string]bool{node.UUID: true}, updates: map[string][]proto.StateUpdate{}}
@@ -69,18 +65,19 @@ func TestRollingRestartKeepsAReplicaWhoseReplacementTheSwitchWouldRefuse(t *test
 			}
 			insts, err := st.InstancesForDeployment(dep.ID)
 			if err != nil || len(insts) != 1 || insts[0].GPUIndexes != "[0]" {
-				t.Fatalf("instances = %+v %v, want one beside the foreign process", insts, err)
+				t.Fatalf("instances = %+v %v, want one on card 0", insts, err)
 			}
 			replica := insts[0].UUID
 			_ = st.SetInstanceState(replica, proto.InstRunning, "")
 			if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", replica).Update("created_at", time.Now().UTC().Add(-time.Hour)).Error; err != nil {
 				t.Fatal(err)
 			}
-			if _, _, _, err := st.SetNodePlacementPolicy(node.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-				p.ShareWithForeign = allow
-				return p, nil
-			}); err != nil {
-				t.Fatal(err)
+			// A process outside the platform appears on the replica's card;
+			// the operator has enabled scheduling on it or not, as the
+			// case says.
+			holdCard(t, st, node, 0)
+			if allow {
+				enableHeldCards(t, st, node.UUID)
 			}
 			if err := st.RequestRollingRestart(dep.ID, time.Now().UTC()); err != nil {
 				t.Fatal(err)
@@ -91,19 +88,19 @@ func TestRollingRestartKeepsAReplicaWhoseReplacementTheSwitchWouldRefuse(t *test
 			got, _ := st.InstanceByUUID(replica)
 			if allow {
 				if got.State != proto.InstDraining {
-					t.Fatalf("allowed: replica %s, want draining", got.State)
+					t.Fatalf("enabled: replica %s, want draining", got.State)
 				}
 				return
 			}
 			if got.State != proto.InstRunning {
-				t.Fatalf("switched off: replica %s, want it kept running", got.State)
+				t.Fatalf("not enabled: replica %s, want it kept running", got.State)
 			}
 			last, found, err := st.LatestScheduleEvent(dep.ID)
 			if err != nil || !found {
 				t.Fatalf("no refusal recorded: %v %v", found, err)
 			}
-			if data := fmt.Sprint(last.Data); !strings.Contains(data, scheduler.ReasonHeldOutsidePlatformNotAllowed) || !strings.Contains(data, "share_with_foreign") {
-				t.Fatalf("recorded = %s, want %s naming the setting", data, scheduler.ReasonHeldOutsidePlatformNotAllowed)
+			if data := fmt.Sprint(last.Data); !strings.Contains(data, scheduler.ReasonHeldOutsidePlatformNotAllowed) || strings.Contains(data, "setting") {
+				t.Fatalf("recorded = %s, want %s naming no setting", data, scheduler.ReasonHeldOutsidePlatformNotAllowed)
 			}
 		})
 	}

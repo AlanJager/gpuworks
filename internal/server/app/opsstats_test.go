@@ -306,24 +306,23 @@ func TestOpsStatsBackfillsFromTheRequestLogOnce(t *testing.T) {
 	}
 }
 
-// A card held outside the platform counts as schedulable capacity only when
-// the scheduler may place a partition on it by memory (ADR 0068): the
-// holders' memory known, the node's agent keeping them reported beside a
-// partition, a partition backend ready on the card, and a node whose
-// placement policy lets automatic placement share it. Counting any other
-// held card would report capacity the scheduler never uses.
-func TestOpsStatsCountsAHeldCardAsSchedulableOnlyWhenAPartitionMayShareIt(t *testing.T) {
+// A card held outside the platform counts as schedulable capacity only once
+// an operator enabled scheduling on it (ADR 0068): the scheduler never
+// chooses any other held card on its own, so counting one would report
+// capacity it never uses. The decision is the operator's about the card, so
+// neither the node's agent nor its partition backend changes the count.
+func TestOpsStatsCountsAHeldCardAsSchedulableOnlyWhenAnOperatorEnabledIt(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		safety      int
 		ready       bool
-		allow       bool
+		enabled     bool
 		schedulable float64
 	}{
-		{"current agent with a ready backend", proto.PartitionSafetyForeignTracked, true, true, 60},
-		{"node does not allow sharing", proto.PartitionSafetyForeignTracked, true, false, 0},
-		{"agent before foreign tracking", 1, true, true, 0},
-		{"no ready partition backend", proto.PartitionSafetyForeignTracked, false, true, 0},
+		{"enabled", proto.PartitionSafetyForeignTracked, true, true, 60},
+		{"not enabled", proto.PartitionSafetyForeignTracked, true, false, 0},
+		{"enabled, agent before foreign tracking", 1, true, true, 60},
+		{"enabled, no ready partition backend", proto.PartitionSafetyForeignTracked, false, true, 60},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Date(2026, 10, 22, 2, 0, 0, 0, time.UTC)
@@ -333,7 +332,7 @@ func TestOpsStatsCountsAHeldCardAsSchedulableOnlyWhenAPartitionMayShareIt(t *tes
 				t.Fatal(err)
 			}
 			updates := map[string]any{"state": store.NodeStateOnline, "gpu_vendor": "nvidia", "arch": "amd64", "os": "linux",
-				"runtime_driver": "docker", "partition_safety_protocol": tc.safety, "placement_share_with_foreign": tc.allow}
+				"runtime_driver": "docker", "partition_safety_protocol": tc.safety}
 			if tc.ready {
 				index := 0
 				probes, _ := json.Marshal([]proto.PartitionProbeResult{{Backend: accelerator.BackendNVIDIALogical, GPUIndex: &index, Status: proto.PartitionProbePassed}})
@@ -348,6 +347,11 @@ func TestOpsStatsCountsAHeldCardAsSchedulableOnlyWhenAPartitionMayShareIt(t *tes
 				ComputeCapability: "9.0", MemoryTotal: 140 << 30, ForeignProcesses: string(held)}
 			if err := st.DB().Create(&card).Error; err != nil {
 				t.Fatal(err)
+			}
+			if tc.enabled {
+				if _, err := st.SetCardScheduling("n1", card.Ident, store.CardSchedulingSchedulable); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if err := ops.sampleGPUTime(now, time.Minute); err != nil {
 				t.Fatal(err)

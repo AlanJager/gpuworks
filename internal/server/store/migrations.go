@@ -1350,7 +1350,7 @@ var migrations = []migration{
 	{Version: 216, Name: "node_last_recovery_code", Apply: addNodeLastRecoveryCode},
 	{Version: 217, Name: "check_codes_upper_snake", Apply: upperCaseCheckCodes},
 	{Version: 218, Name: "node_runtime_fallback_socket", Apply: addNodeRuntimeFallbackSocket},
-	{Version: 219, Name: "node_placement_policy", Apply: addNodePlacementPolicy},
+	{Version: 219, Name: "node_placement_policy", Apply: func(*gorm.DB) error { return nil }}, // retired: dropped by 246
 	{Version: 220, Name: "inference_spec_pd_roles_manual_command_docker_args", Apply: addInferenceSpecPDRolesManualCommandAndDockerArgs},
 	{Version: 221, Name: "node_host_system_uuid", Apply: addNodeHostSystemUUID},
 	{Version: 222, Name: "plugin_trust", Apply: addPluginTrustTables},
@@ -1379,6 +1379,7 @@ var migrations = []migration{
 	{Version: 243, Name: "maintenance_phase", Apply: migrateMaintenancePhase},
 	{Version: 244, Name: "maintenance_resume_open", Apply: migrateMaintenanceResumeOpen},
 	{Version: 245, Name: "catalog_gc_barrier", Apply: migrateCatalogGCBarrier},
+	{Version: 246, Name: "drop_node_placement_policy", Apply: dropNodePlacementPolicy},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

@@ -28,12 +28,7 @@ func TestPoolPlacementHintWinsOverTheCleanCardPreference(t *testing.T) {
 		t.Fatal(err)
 	}
 	shared := foreignHeldH20(t, st, "hint-shared", proto.PartitionSafetyForeignTracked)
-	if _, _, _, err := st.SetNodePlacementPolicy(shared.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-		p.ShareWithForeign = true
-		return p, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	enableHeldCards(t, st, shared.UUID)
 	clean := foreignHeldH20(t, st, "hint-clean", proto.PartitionSafetyForeignTracked)
 	if err := st.DB().Model(&store.GPU{}).Where("node_id = ?", clean.ID).Update("foreign_processes", "").Error; err != nil {
 		t.Fatal(err)
