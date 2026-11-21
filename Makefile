@@ -561,6 +561,22 @@ check-doc-links:
 check-translations:
 	python3 -B docs-site/check_translations.py
 
+## api-docs: rebuild what is derived from docs/reference/api.md and its English
+## page: the source hash at the end of docs-en/reference/api.md and the AI
+## assistant's route catalog internal/server/aihelper/apidocs_gen.go. Neither is
+## merged by hand: when a merge or rebase conflicts in them, settle the text of
+## the two pages, run this, and `git add` the results. It refuses while either
+## page's text still has conflict lines, and starts the catalog from empty when
+## the merge left it uncompilable.
+API_ROUTE_DOCS := internal/server/aihelper/apidocs_gen.go
+.PHONY: api-docs
+api-docs:
+	python3 -B docs-site/check_translations.py --write docs/reference/api.md >/dev/null
+	@CGO_ENABLED=0 $(GO) build ./internal/server/aihelper 2>/dev/null \
+	  || printf 'package aihelper\n\nvar routeDocs = map[string]string{}\n' > $(API_ROUTE_DOCS)
+	CGO_ENABLED=0 $(GO) test ./internal/server/aihelper -count=1 -run '^TestRouteDocsMatchAPIReference$$' -update
+	CGO_ENABLED=0 $(GO) test ./internal/server/aihelper -count=1 -run '^TestRouteDoc'
+
 .PHONY: check-assets
 ## check-assets: validate embedded native assets independently of Go tests
 check-assets: check-libvgpu check-perftest check-ascend-compat

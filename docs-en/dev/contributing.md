@@ -29,6 +29,7 @@ English translations retain the original sections, steps, restrictions, and exam
 translate descriptions and image alt text without changing commands, paths, parameters, or sample values. You may reuse existing Chinese screenshots, but the English text must state the screenshot language.
 After a source document changes, review its translation, then run `python3 docs-site/check_translations.py --write docs/<path>.md` to record the SHA-256 of the reviewed source at the end of the English page; do not refresh hashes without checking the translation.
 Run `python3 docs-site/check_translations.py` to check for stale translations and code block changes; also use `--require-complete` for site-wide English acceptance checks.
+The hash at the end of an English page and `internal/server/aihelper/apidocs_gen.go` are both derived content. When a merge or rebase conflicts there, do not merge them by hand: resolve the conflicts in the Chinese and English text first, then run `make api-docs` (for other pages, the `--write` command above) to regenerate them, and `git add` the results.
 
 ## Writing Conventions
 
@@ -187,7 +188,7 @@ do not merely append a new rule at the end while retaining outdated conclusions 
   For explanations, check that concepts and reasoning are clear; for references, check accuracy and ease of lookup. Check that any illustrations and examples agree with the text.
   For API lists, also check that methods, paths, and authentication remain consistent with the original, that parameters and restrictions remain discoverable, and that references cover the information moved out;
   simple APIs must not become tutorials, and complex explanations must not be crammed into table cells. GET route descriptions in `api.md` also generate the AI assistant's API catalog.
-  After changing them, synchronize the catalog with the repository's existing generation command and run consistency tests. Route summaries retain the purpose, required query parameters and valid values, and key fields for locating the API, rather than merely saying “see link”.
+  After changing them, run `make api-docs` to synchronize the catalog and run consistency tests. Route summaries retain the purpose, required query parameters and valid values, and key fields for locating the API, rather than merely saying “see link”.
   `search_api` does not read linked content, and its returned summaries are truncated. When shortening GET descriptions, also verify that typical fields retrieve the corresponding API and that values required to call it still appear in the summaries actually returned.
 - Verify the relevant workflow when adding or substantially changing an operational path. Wording-only changes do not mechanically require rerunning every environment; this does not replace the repository's required pre-commit checks.
   Record versions, environments, results, and uncovered areas in the MR or existing acceptance record, and store evidence according to repository conventions.
@@ -199,5 +200,5 @@ Before adding an ADR, confirm that the issue is a long-term architectural tradeo
 status, context, decision, consequences, and supersession relationships, and update `docs/adr/README.md`. Link implementation documentation to the ADR;
 do not copy the full decision into multiple guides.
 
-<!-- translation-source-sha256: de0b33f056507f9eee4f3f263ffda14b8b8eaa58b417f19048f1e60c0b933023 -->
+<!-- translation-source-sha256: ae988b1716a10015fdd25b059e74dd616a264df6df6d054d59c65fe999151085 -->
 <!-- translation-localized-code-block: 6ac2188471df1d13d3f555100a0be8446e1e7e797f8484dd9a8478a88ab5e2ff b5c81a401976b96af4b52f6d68e1178451469f2e31988ec96e9ef86319c56f5b Reviewed English writing-template prose: present-tense wording only; heading levels, placeholders, prerequisites and executable examples are unchanged. -->
