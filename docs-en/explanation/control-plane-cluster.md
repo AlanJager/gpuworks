@@ -28,6 +28,7 @@ These are limits of this release.
 - **Revoking a member key at run time applies to new database connections only.** Established connections are not cut.
 - **There is no recovery-time guarantee.** Writes resume after a leader election and after members reopen business; the time depends on the storage's synchronous write latency and on the network. It grows clearly on slow disks; no number of seconds is guaranteed here. The [storage tier](#storage-tiers) settled at installation sets the election wait; what it lists is a recovery target, not a guarantee.
 - **A member is not upgraded, restarted or stopped with the single-server commands.** `gpuworks upgrade`, `gpuworks restart`, `gpuworks stop` and the upgrade in the console act on one server only; they do not know the member's own service unit, its database helper or the other members. On a cluster member's installation they refuse and change nothing. A member is upgraded, started and stopped one at a time, following the procedure of the edition that provides the cluster.
+- **Fewer than three members is not supported, and members are not removed by hand.** With two members the database helper keeps a single voter and the other member stops receiving data, so one more failure stops the cluster. When a member's host fails, leave it in the membership: two of the three voters remain and still commit writes. This release has no procedure for replacing a member. After a member has left or lost its vote, the cluster status report says `Overall: degraded` instead of `ready`.
 - **The first start is slow.** Migrations on a new database commit one by one and are synchronized to the majority.
 - **Only Linux amd64 members are supported**; the helper is the only artifact that uses cgo.
 
@@ -46,4 +47,4 @@ The recovery targets come from a small measured sample and are no guarantee for 
 
 When the server starts the helper it reads the helper's one-line ready announcement, in which `protocol` is the protocol version the helper implements. The server accepts only the version it supports; with a different version, or with no version in the announcement, it refuses to start the database and the error names both versions. Install the helper and the server as a pair.
 
-<!-- translation-source-sha256: a98610c733b5eb87c6006156530028802a90374992cd919a6f9a2cc633138534 -->
+<!-- translation-source-sha256: 9418a7e530563b63d6705faaa27be0c2ac95514394380c8d382385c13b6033d7 -->

@@ -88,12 +88,10 @@ func ConfirmClusterCatchUp(context.Context, []*cluster.Database) (string, string
 	return "", "", 0, enrollmentPlatform()
 }
 
-var ErrRemovalBreaksQuorum = errors.New("removing this member would leave fewer than two voters")
-
-func RemoveClusterMember(context.Context, *cluster.Database, uint64) error {
+func RemoveClusterMember(context.Context, *cluster.Database, uint64, func(context.Context, cluster.Member) bool, bool) error {
 	return enrollmentPlatform()
 }
 
-func ReplaceClusterMember(context.Context, *cluster.Database, uint64, uint64) error {
+func ReplaceClusterMember(context.Context, *cluster.Database, uint64, uint64, func(context.Context, cluster.Member) bool, bool) error {
 	return enrollmentPlatform()
 }

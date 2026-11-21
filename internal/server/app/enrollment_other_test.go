@@ -57,10 +57,10 @@ func TestEnrollmentUnsupportedBuildDoesNotCreateState(t *testing.T) {
 	if _, _, _, err := ConfirmClusterCatchUp(t.Context(), nil); err == nil {
 		t.Fatal("unsupported build confirmed catch-up")
 	}
-	if err := RemoveClusterMember(t.Context(), nil, 1); err == nil {
+	if err := RemoveClusterMember(t.Context(), nil, 1, nil, false); err == nil {
 		t.Fatal("unsupported build removed a member")
 	}
-	if err := ReplaceClusterMember(t.Context(), nil, 1, 2); err == nil {
+	if err := ReplaceClusterMember(t.Context(), nil, 1, 2, nil, false); err == nil {
 		t.Fatal("unsupported build replaced a member")
 	}
 	entries, err := os.ReadDir(dir)

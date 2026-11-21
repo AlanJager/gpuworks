@@ -41,6 +41,7 @@ func ObserveClusterStatus(ctx context.Context, cfg Config, httpAddr string, time
 	report.probeLocal(ctx, httpAddr, timeout)
 	report.peers = probePeerDatabases(ctx, report, timeout)
 	report.observeQuorum(ctx, cfg, timeout)
+	report.enrolledKeys = statusEnrolledKeys(cfg)
 	// Peer/quorum discovery can outlast an earlier material eligibility result.
 	// Observe business admission last, through the same gate as real requests.
 	if httpAddr != "" && report.httpState == "listening" {
@@ -85,6 +86,9 @@ type clusterStatus struct {
 	joinURL             string
 	cert                []byte
 	key                 []byte
+	// enrolledKeys is the number of member keys the local transport policy
+	// names; see membershipShortfall.
+	enrolledKeys int
 }
 
 type statusMember struct {
@@ -345,6 +349,9 @@ func (s clusterStatus) format() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Status report\n")
 	switch {
+	case s.business == "open" && s.membershipShortfall() != "":
+		// Business answers, but the next member to fail may stop it.
+		fmt.Fprintf(&b, "Overall: degraded (business reads verified; %s)\n", s.membershipShortfall())
 	case s.business == "open":
 		fmt.Fprintln(&b, "Overall: ready (business reads verified)")
 	case s.httpAddr == "":
