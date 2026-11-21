@@ -40,6 +40,15 @@ func (a *App) classifyJoinedStore(ctx context.Context) error {
 	if b == nil {
 		b = bus.New()
 	}
+	if upgrader, ok := a.joinedRaft.(interface {
+		SetClusterUpgradeExtensions([]store.MigrationSet) error
+	}); ok {
+		// The upgrade steps report and apply this server's extension
+		// schemas together with the core's.
+		if err := upgrader.SetClusterUpgradeExtensions(a.memberExtensionSchemas()); err != nil {
+			return err
+		}
+	}
 	announced := false
 	for {
 		attempt, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -62,10 +71,23 @@ func (a *App) classifyJoinedStore(ctx context.Context) error {
 			a.legacyClosed = legacy
 			if !legacy {
 				// The classified store opened without this server's extension
-				// schemas. A member applies none: they must already be there.
-				if err := a.adoptExtensionSchemas(ctx); err != nil {
-					return err
+				// schemas. A member applies none itself: it waits for the
+				// cluster upgrade to apply the ones that are missing.
+				for {
+					err := a.adoptExtensionSchemas(ctx)
+					if err == nil {
+						break
+					}
+					if !errors.Is(err, store.ErrExtensionSchemaNotApplied) {
+						return err
+					}
+					if !a.waitForClusterUpgrade(ctx, &announced) {
+						return ctx.Err()
+					}
 				}
+				// Say which executable this member runs now, so an upgrade
+				// does not count it by what it ran before.
+				a.reportClusterUpgradeCapability(ctx)
 			}
 			if err := a.installClosedBusinessWriteBarrier(); err != nil {
 				return err
@@ -101,15 +123,7 @@ func (a *App) waitForClusterUpgrade(ctx context.Context, announced *bool) bool {
 		*announced = true
 		a.log.Info("database schema is older than this executable; business stays closed until the cluster upgrade applies the migrations")
 	}
-	if reporter, ok := a.joinedRaft.(interface {
-		ReportClusterUpgradeCapability(context.Context) error
-	}); ok {
-		attempt, cancel := context.WithTimeout(ctx, 5*time.Second)
-		if err := reporter.ReportClusterUpgradeCapability(attempt); err != nil && ctx.Err() == nil {
-			a.log.Debug("report executable for the cluster upgrade", "err", err)
-		}
-		cancel()
-	}
+	a.reportClusterUpgradeCapability(ctx)
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	select {
@@ -120,14 +134,39 @@ func (a *App) waitForClusterUpgrade(ctx context.Context, announced *bool) bool {
 	}
 }
 
-// adoptExtensionSchemas records this server's extension schemas on a store
-// the member did not open with them.
-func (a *App) adoptExtensionSchemas(ctx context.Context) error {
+// reportClusterUpgradeCapability records which executable this member runs,
+// for the cluster upgrade. A failure is retried by the next report.
+func (a *App) reportClusterUpgradeCapability(ctx context.Context) {
+	reporter, ok := a.joinedRaft.(interface {
+		ReportClusterUpgradeCapability(context.Context) error
+	})
+	if !ok {
+		return
+	}
+	attempt, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := reporter.ReportClusterUpgradeCapability(attempt); err != nil && ctx.Err() == nil {
+		a.log.Debug("report executable for the cluster upgrade", "err", err)
+	}
+}
+
+// memberExtensionSchemas are the extension migration sets this server
+// includes, none for an App that is not a cluster member.
+func (a *App) memberExtensionSchemas() []store.MigrationSet {
 	closed, ok := a.ha.(*memberRuntime)
 	if !ok {
 		return nil
 	}
-	return a.store.AdoptExtensionSchemas(ctx, storeOptions(closed.member.cfg, closed.member.policy).Extensions)
+	return storeOptions(closed.member.cfg, closed.member.policy).Extensions
+}
+
+// adoptExtensionSchemas records this server's extension schemas on a store
+// the member did not open with them.
+func (a *App) adoptExtensionSchemas(ctx context.Context) error {
+	if _, ok := a.ha.(*memberRuntime); !ok {
+		return nil
+	}
+	return a.store.AdoptExtensionSchemas(ctx, a.memberExtensionSchemas())
 }
 
 // prepareJoinedMaterialRuntime observes phase before any deferred startup
@@ -147,6 +186,10 @@ func (a *App) prepareJoinedMaterialRuntime(ctx context.Context) error {
 		if a.businessHTTP != nil {
 			// A phase other than serving is a cluster upgrade under way.
 			a.businessHTTP.clusterUpgrade.Store(phase.Phase != store.MaintenanceServing)
+		}
+		if phase.Phase != store.MaintenanceServing {
+			// Keep the report fresh until the upgrade finishes.
+			a.reportClusterUpgradeCapability(ctx)
 		}
 		if phase.Phase == store.MaintenanceServing {
 			break

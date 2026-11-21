@@ -33,6 +33,10 @@ var (
 	ErrClusterUpgradeRefused = errors.New("cluster upgrade step refused")
 )
 
+// clusterUpgradeReportFresh is how recently a member must have repeated its
+// report to count as present. A waiting member repeats it every second.
+const clusterUpgradeReportFresh = 30 * time.Second
+
 const (
 	// One row per member, keyed by a prefix of its key fingerprint that keeps
 	// the key within the settings key length.
@@ -47,66 +51,152 @@ func isClusterUpgradeSetting(key SettingKey) bool {
 	return strings.HasPrefix(string(key), "cluster.upgrade.")
 }
 
-// schemaPosition is how far a migration list has been followed: the number of
-// markers and the name of the last one.
+// schemaPosition is how far the migration lists have been followed: for the
+// core list the number of markers and the name of the last one, and the same
+// for every extension namespace that has a marker.
 type schemaPosition struct {
-	Markers int    `json:"markers"`
-	Last    string `json:"last"`
+	Markers int                       `json:"markers"`
+	Last    string                    `json:"last"`
+	Sets    map[string]schemaPosition `json:"sets,omitempty"`
 }
 
-func positionOf(list []migration) schemaPosition {
-	return schemaPosition{Markers: len(list), Last: list[len(list)-1].Name}
+func (p schemaPosition) equal(other schemaPosition) bool {
+	if p.Markers != other.Markers || p.Last != other.Last || len(p.Sets) != len(other.Sets) {
+		return false
+	}
+	for namespace, set := range p.Sets {
+		if theirs, ok := other.Sets[namespace]; !ok || !set.equal(theirs) {
+			return false
+		}
+	}
+	return true
 }
 
-// clusterUpgrader performs the upgrade steps for one migration list: the
-// executable's, or a test's.
+// extensionMarkers counts the markers of every namespace.
+func (p schemaPosition) extensionMarkers() int {
+	total := 0
+	for _, set := range p.Sets {
+		total += set.Markers
+	}
+	return total
+}
+
+func positionOf(list []migration, sets []MigrationSet) schemaPosition {
+	position := schemaPosition{Markers: len(list)}
+	if len(list) > 0 {
+		position.Last = list[len(list)-1].Name
+	}
+	for _, set := range sets {
+		if n := len(set.Migrations); n > 0 {
+			if position.Sets == nil {
+				position.Sets = map[string]schemaPosition{}
+			}
+			position.Sets[set.Namespace] = schemaPosition{Markers: n, Last: set.Migrations[n-1].Name}
+		}
+	}
+	return position
+}
+
+// clusterUpgrader performs the upgrade steps for one executable's schema:
+// the core migration list and the migration sets of its extension modules.
 type clusterUpgrader struct {
 	s    *Store
 	list []migration
+	sets []MigrationSet
 }
 
-func (s *Store) clusterUpgrader() clusterUpgrader { return clusterUpgrader{s: s, list: migrations} }
+func (s *Store) clusterUpgrader() clusterUpgrader {
+	return clusterUpgrader{s: s, list: migrations, sets: s.extensions}
+}
+
+// ClusterUpgradeFor is the Store's upgrade steps for an executable that
+// includes these extension migration sets. A Store bound before its
+// extension schemas were adopted does not know them otherwise.
+func (s *Store) ClusterUpgradeFor(sets []MigrationSet) ClusterUpgradeSteps {
+	return ClusterUpgradeSteps{u: clusterUpgrader{s: s, list: migrations, sets: sets}}
+}
+
+// ClusterUpgradeSteps are the upgrade steps bound to one executable's schema.
+type ClusterUpgradeSteps struct{ u clusterUpgrader }
+
+func (c ClusterUpgradeSteps) Status(ctx context.Context) (ClusterUpgradeStatus, error) {
+	return c.u.status(ctx)
+}
+func (c ClusterUpgradeSteps) Report(ctx context.Context, memberKey string) error {
+	return c.u.report(ctx, memberKey)
+}
+func (c ClusterUpgradeSteps) Begin(ctx context.Context) (ClusterUpgradeStatus, error) {
+	return c.u.begin(ctx)
+}
+func (c ClusterUpgradeSteps) Migrate(ctx context.Context) (ClusterUpgradeStatus, error) {
+	return c.u.migrate(ctx)
+}
+func (c ClusterUpgradeSteps) Finish(ctx context.Context) (ClusterUpgradeStatus, error) {
+	return c.u.finish(ctx)
+}
+func (c ClusterUpgradeSteps) Abort(ctx context.Context) (ClusterUpgradeStatus, error) {
+	return c.u.abort(ctx)
+}
 
 // ClusterUpgradeMember is one admitted member and the executable it reported.
 type ClusterUpgradeMember struct {
 	KeyFingerprint string
 	Address        string
 	// Reported is false for a member that has not started an executable
-	// that reports; Markers and Last are then empty.
-	Reported bool
-	Markers  int
-	Last     string
+	// that reports; the rest is then empty. Markers and Last are the core
+	// list's, Extensions counts the markers of its extension modules.
+	Reported   bool
+	Markers    int
+	Last       string
+	Extensions int
+	// Fresh is true when the report was repeated within the last
+	// clusterUpgradeReportFresh; a member repeats it while it waits.
+	Fresh    bool
+	position schemaPosition
 }
 
 // ClusterUpgradeStatus is one observation of the upgrade facts.
 type ClusterUpgradeStatus struct {
 	Phase MaintenancePhaseState
-	// Applied counts the database's markers and Known this executable's.
-	Applied int
-	Known   int
-	// Base is the marker count when the window began, zero outside one.
+	// Applied counts the database's core markers and Known this
+	// executable's; the Extensions pair counts the markers of the
+	// executable's extension modules the same way.
+	Applied           int
+	Known             int
+	AppliedExtensions int
+	KnownExtensions   int
+	// Base is the core marker count when the window began, zero outside one.
 	Base    int
 	Members []ClusterUpgradeMember
-	// want is the position of the executable that made the observation.
-	want schemaPosition
+	// want is the position of the executable that made the observation,
+	// applied the database's, and base the one recorded at begin.
+	want, applied, base schemaPosition
 }
 
-// Pending is how many migrations this executable would apply.
-func (s ClusterUpgradeStatus) Pending() int { return s.Known - s.Applied }
+// Pending is how many migrations this executable would apply, core and
+// extension modules together.
+func (s ClusterUpgradeStatus) Pending() int {
+	return s.Known - s.Applied + s.KnownExtensions - s.AppliedExtensions
+}
 
-// Ready reports that every admitted member runs an executable with exactly
-// this executable's migration list.
+// Ready reports that every admitted member last reported exactly this
+// executable's migration lists, and that most of them repeated the report
+// recently. A member that is down keeps its last report; one that came back
+// on another executable has replaced it.
 func (s ClusterUpgradeStatus) Ready() bool {
-	want := s.want
-	if len(s.Members) == 0 || want.Markers == 0 {
+	if len(s.Members) == 0 || s.want.Markers == 0 {
 		return false
 	}
+	fresh := 0
 	for _, member := range s.Members {
-		if !member.Reported || member.Markers != want.Markers || member.Last != want.Last {
+		if !member.Reported || !member.position.equal(s.want) {
 			return false
 		}
+		if member.Fresh {
+			fresh++
+		}
 	}
-	return true
+	return fresh*2 > len(s.Members)
 }
 
 // pendingSchemaMigrations counts this executable's migrations the database
@@ -152,13 +242,17 @@ func (u clusterUpgrader) report(ctx context.Context, memberKey string) error {
 	if err != nil {
 		return err
 	}
-	value, err := json.Marshal(positionOf(u.list))
+	value, err := json.Marshal(positionOf(u.list, u.sets))
 	if err != nil {
 		return err
 	}
-	return s.db.WithContext(ctx).Exec(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-		WHERE settings.value != excluded.value`, key, string(value), time.Now().UTC()).Error
+	// The time is the database's, so every member's report is dated by one
+	// clock. A repeated report is rewritten only once its date is half the
+	// freshness bound old.
+	return s.db.WithContext(ctx).Exec(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+		WHERE settings.value != excluded.value OR COALESCE(strftime('%s', 'now') - strftime('%s', settings.updated_at), ?) >= ?`,
+		key, string(value), int(clusterUpgradeReportFresh/time.Second), int(clusterUpgradeReportFresh/time.Second)/2).Error
 }
 
 // ClusterUpgradeStatus reads the phase, the schema position and every
@@ -172,19 +266,24 @@ func (u clusterUpgrader) status(ctx context.Context) (ClusterUpgradeStatus, erro
 	var status ClusterUpgradeStatus
 	err := u.s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
-		status, err = readClusterUpgradeStatus(ctx, tx, u.list)
+		status, err = readClusterUpgradeStatus(ctx, tx, u.list, u.sets)
 		return err
 	})
 	return status, err
 }
 
-func readClusterUpgradeStatus(ctx context.Context, tx *gorm.DB, list []migration) (ClusterUpgradeStatus, error) {
-	status := ClusterUpgradeStatus{Known: len(list), want: positionOf(list)}
+func readClusterUpgradeStatus(ctx context.Context, tx *gorm.DB, list []migration, sets []MigrationSet) (ClusterUpgradeStatus, error) {
+	status := ClusterUpgradeStatus{Known: len(list), want: positionOf(list, sets)}
 	pending, err := pendingMigrationsOf(tx, list)
 	if err != nil {
 		return status, err
 	}
 	status.Applied = status.Known - pending
+	status.applied = positionOf(list[:status.Applied], nil)
+	if status.applied.Sets, err = appliedNamespacePositions(tx, sets); err != nil {
+		return status, err
+	}
+	status.KnownExtensions, status.AppliedExtensions = status.want.extensionMarkers(), status.applied.extensionMarkers()
 	if status.Phase, err = (&Store{db: tx}).ReadMaintenancePhase(ctx); err != nil {
 		return status, err
 	}
@@ -207,34 +306,107 @@ func readClusterUpgradeStatus(ctx context.Context, tx *gorm.DB, list []migration
 		if err != nil {
 			return status, err
 		}
-		var reported schemaPosition
-		found, err := readClusterUpgradeSetting(tx, key, &reported)
-		if err != nil {
+		member := &status.Members[i]
+		var age int64
+		if member.Reported, err = readClusterUpgradeSetting(tx, key, &member.position, &age); err != nil {
 			return status, err
 		}
-		status.Members[i].Reported = found
-		status.Members[i].Markers, status.Members[i].Last = reported.Markers, reported.Last
+		member.Markers, member.Last, member.Extensions = member.position.Markers, member.position.Last, member.position.extensionMarkers()
+		member.Fresh = member.Reported && age >= -int64(clusterUpgradeReportFresh/time.Second) && age <= int64(clusterUpgradeReportFresh/time.Second)
 	}
-	var base schemaPosition
-	if _, err := readClusterUpgradeSetting(tx, clusterUpgradeBaseSetting, &base); err != nil {
+	var age int64
+	if _, err := readClusterUpgradeSetting(tx, clusterUpgradeBaseSetting, &status.base, &age); err != nil {
 		return status, err
 	}
-	status.Base = base.Markers
+	status.Base = status.base.Markers
 	return status, nil
 }
 
-func readClusterUpgradeSetting(tx *gorm.DB, key string, into *schemaPosition) (bool, error) {
-	var values []string
-	if err := tx.Raw(`SELECT value FROM settings WHERE key = ?`, key).Scan(&values).Error; err != nil {
+// readClusterUpgradeSetting reads one upgrade record and its age in seconds
+// by the database's clock.
+func readClusterUpgradeSetting(tx *gorm.DB, key string, into *schemaPosition, age *int64) (bool, error) {
+	rows, err := tx.Raw(`SELECT value, CAST(strftime('%s', 'now') AS INTEGER) - CAST(strftime('%s', updated_at) AS INTEGER) FROM settings WHERE key = ?`, key).Rows()
+	if err != nil {
 		return false, err
 	}
-	if len(values) != 1 {
-		return false, nil
+	if !rows.Next() {
+		return false, errors.Join(rows.Err(), rows.Close())
 	}
-	if err := json.Unmarshal([]byte(values[0]), into); err != nil || into.Markers <= 0 || into.Last == "" {
+	var value string
+	var seconds *int64
+	if err := rows.Scan(&value, &seconds); err != nil {
+		return false, errors.Join(err, rows.Close())
+	}
+	if err := rows.Close(); err != nil {
+		return false, err
+	}
+	if err := json.Unmarshal([]byte(value), into); err != nil || into.Markers <= 0 || into.Last == "" {
 		return false, fmt.Errorf("cluster upgrade record %s is invalid", key)
 	}
+	*age = int64(clusterUpgradeReportFresh/time.Second) + 1
+	if seconds != nil {
+		*age = *seconds
+	}
 	return true, nil
+}
+
+// appliedNamespacePositions reads how far the database has followed each of
+// the executable's extension sets. A namespace's markers must be a prefix of
+// its set, and the database must hold no namespace the executable lacks: an
+// executable without a module cannot stand in for one that has it.
+func appliedNamespacePositions(tx *gorm.DB, sets []MigrationSet) (map[string]schemaPosition, error) {
+	if !tx.Migrator().HasTable(&NamespaceMigration{}) {
+		return nil, nil
+	}
+	var rows []NamespaceMigration
+	if err := tx.Select("namespace", "version", "name").Order("namespace, version").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("%w: read extension migration markers: %w", ErrSchemaIncompatible, err)
+	}
+	recorded := map[string][]NamespaceMigration{}
+	for _, row := range rows {
+		recorded[row.Namespace] = append(recorded[row.Namespace], row)
+	}
+	var positions map[string]schemaPosition
+	for _, set := range sets {
+		applied := recorded[set.Namespace]
+		delete(recorded, set.Namespace)
+		if len(applied) > len(set.Migrations) {
+			return nil, fmt.Errorf("%w: namespace %s has %d markers, this executable knows %d", ErrSchemaIncompatible, set.Namespace, len(applied), len(set.Migrations))
+		}
+		for i, marker := range applied {
+			if set.Migrations[i].Version != marker.Version || set.Migrations[i].Name != marker.Name {
+				return nil, fmt.Errorf("%w: namespace %s migration %d differs from this executable", ErrSchemaIncompatible, set.Namespace, marker.Version)
+			}
+		}
+		if len(applied) > 0 {
+			if positions == nil {
+				positions = map[string]schemaPosition{}
+			}
+			positions[set.Namespace] = schemaPosition{Markers: len(applied), Last: applied[len(applied)-1].Name}
+		}
+	}
+	for namespace := range recorded {
+		return nil, fmt.Errorf("%w: the database has extension namespace %s, which this executable does not include", ErrSchemaIncompatible, namespace)
+	}
+	return positions, nil
+}
+
+// refuseNotReady says which members keep a step from running.
+func refuseNotReady(status ClusterUpgradeStatus) error {
+	var differ, silent []string
+	for _, member := range status.Members {
+		switch {
+		case !member.Reported || !member.position.equal(status.want):
+			differ = append(differ, member.Address)
+		case !member.Fresh:
+			silent = append(silent, member.Address)
+		}
+	}
+	if len(differ) > 0 {
+		return refuseClusterUpgrade("these members have not reported this executable's migrations (%d core, %d of extension modules): %s",
+			status.Known, status.KnownExtensions, strings.Join(differ, ", "))
+	}
+	return refuseClusterUpgrade("fewer than half of the members repeated their report in the last %s; silent: %s", clusterUpgradeReportFresh, strings.Join(silent, ", "))
 }
 
 func refuseClusterUpgrade(format string, args ...any) error {
@@ -265,10 +437,10 @@ func (u clusterUpgrader) begin(ctx context.Context) (ClusterUpgradeStatus, error
 		return status, refuseClusterUpgrade("the database already has every migration of this executable; no window is needed")
 	}
 	if !status.Ready() {
-		return status, refuseClusterUpgrade("not every member has reported this executable's %d migrations", status.Known)
+		return status, refuseNotReady(status)
 	}
 	if status.Phase.Phase == MaintenanceServing {
-		value, err := json.Marshal(positionOf(u.list[:status.Applied]))
+		value, err := json.Marshal(status.applied)
 		if err != nil {
 			return status, err
 		}
@@ -277,7 +449,7 @@ func (u clusterUpgrader) begin(ctx context.Context) (ClusterUpgradeStatus, error
 			clusterUpgradeBaseSetting, string(value), time.Now().UTC()).Error; err != nil {
 			return status, err
 		}
-		status.Base = status.Applied
+		status.Base, status.base = status.Applied, status.applied
 	}
 	isolated := make([]string, 0, len(status.Members))
 	for _, member := range status.Members {
@@ -323,9 +495,18 @@ func (u clusterUpgrader) migrate(ctx context.Context) (ClusterUpgradeStatus, err
 		return status, refuseClusterUpgrade("migrations are applied only in phase upgrading, the phase is %s", status.Phase.Phase)
 	}
 	if !status.Ready() {
-		return status, refuseClusterUpgrade("not every member has reported this executable's %d migrations", status.Known)
+		return status, refuseNotReady(status)
 	}
-	if err := migrateDB(s.schedulingWriter().WithContext(ctx), u.list); err != nil {
+	db := s.schedulingWriter().WithContext(ctx)
+	if err := migrateDB(db, u.list); err != nil {
+		return status, err
+	}
+	// The extension modules' own schemas follow the core's, as they do when
+	// a single server starts.
+	if err := validateMigrationSets(u.sets); err != nil {
+		return status, err
+	}
+	if err := migrateNamespaces(db, u.sets); err != nil {
 		return status, err
 	}
 	return u.status(ctx)
@@ -354,7 +535,7 @@ func (u clusterUpgrader) finish(ctx context.Context) (ClusterUpgradeStatus, erro
 		return status, refuseClusterUpgrade("%d migrations are not applied", status.Pending())
 	}
 	if !status.Ready() {
-		return status, refuseClusterUpgrade("not every member has reported this executable's %d migrations", status.Known)
+		return status, refuseNotReady(status)
 	}
 	return s.reopenAfterClusterUpgrade(ctx, status)
 }
@@ -381,8 +562,9 @@ func (u clusterUpgrader) abort(ctx context.Context) (ClusterUpgradeStatus, error
 		}
 		return status, s.removeClusterUpgradeRecords(ctx)
 	}
-	if status.Base == 0 || status.Applied != status.Base {
-		return status, refuseClusterUpgrade("the schema moved from %d to %d markers in this window; restore a backup to go back", status.Base, status.Applied)
+	if status.Base == 0 || !status.applied.equal(status.base) {
+		return status, refuseClusterUpgrade("the schema has moved in this window (core markers %d, now %d; extension markers %d, now %d); restore a backup to go back",
+			status.base.Markers, status.Applied, status.base.extensionMarkers(), status.AppliedExtensions)
 	}
 	return s.reopenAfterClusterUpgrade(ctx, status)
 }

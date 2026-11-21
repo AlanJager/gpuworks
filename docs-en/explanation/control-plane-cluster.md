@@ -51,10 +51,10 @@ When the server starts the helper it reads the helper's one-line ready announcem
 
 A version that brings new migrations cannot be rolled out one member at a time: the three members share one database, and a migration changes the schema for all three at once. The cluster does this step in a short maintenance window.
 
-- **A member on the new program waits first.** The new version of the server starts on the older schema: it keeps serving its database replica, keeps its business closed, and records its migration list in the database. The other members go on serving business, so while members are replaced one by one, business stays available until the last one is replaced. A program older than the database schema still refuses to start.
+- **A member on the new program waits first.** The new version of the server starts on the older schema: it keeps serving its database replica, keeps its business closed, and records its migration list in the database. The other members go on serving business, so while members are replaced one by one, business stays available until the last one is replaced. A program older than the database schema still refuses to start, and so does one that lacks an extension module the database already has.
 - **The database leader performs three steps**, and each requires all three members to have reported the same migration list:
   1. Begin: the maintenance phase goes from `serving` to `upgrading`. From then on no member accepts a business write, including a member still running the old program.
-  2. Migrate: the pending migrations run once, in order, each committed in one transaction with its marker. After a leader change or a failure the step is repeated on the new leader, and migrations already committed are skipped.
+  2. Migrate: the pending migrations of the core and of each extension module run once, in order, each committed in one transaction with its marker. When the new version brings one more module, its tables are created in this step too. After a leader change or a failure the step is repeated on the new leader, and migrations already committed are skipped.
   3. Finish: the maintenance phase returns to `serving`; the members open business again on their own, without a restart.
 - **Answers in the window**: every member answers business requests (including `/api/v1/readyz`) with 503 and the product code `CLUSTER_UPGRADE_IN_PROGRESS`, with `Retry-After`. `/healthz` is unchanged.
 - **Abort** is available only while no migration has run; the maintenance phase returns to `serving`, and the members then have to go back to the earlier program. Once a migration has run there is no way back except restoring the backup taken before the upgrade, so a backup is required before upgrading.
@@ -62,9 +62,9 @@ A version that brings new migrations cannot be rolled out one member at a time: 
 
 Current limits:
 
-- Only core migrations are applied. Nothing applies an extension module's own schema migrations in a cluster yet.
-- A member reports the program it started with. If a member is put back on the old program during an upgrade, the others do not notice; after the finish that old program refuses to start because the schema is newer than it.
+- A member reports its program each time it starts, and repeats the report every few seconds while it waits for the upgrade. When a member is replaced by another version inside the window and started, its report changes and the later steps are refused. An old version without this feature does not report, so that case goes unnoticed; once the migrations have run it refuses to start because the schema is newer than it.
+- A member that is down keeps its last report. As long as most members repeated theirs within the last 30 seconds the steps go on, and the member catches up when it returns.
 - The command and console that replace the programs member by member, pick the leader and show progress at the entry do not exist yet; the steps above are called one by one.
 
 
-<!-- translation-source-sha256: cb299dea78ef1a957008bb33366bcbef4c5ad4baab5a2aaf281192bd1bc8fa1c -->
+<!-- translation-source-sha256: 9b7df160cf8f13b33a9d255826e1d6c77157294000f87f2299dbbabd85f6197e -->

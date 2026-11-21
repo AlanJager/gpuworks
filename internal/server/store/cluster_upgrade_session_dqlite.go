@@ -20,6 +20,25 @@ type clusterMigrationRun struct {
 
 var clusterMigrationRuns sync.Map // *LegacyJoinedRaftSession -> *clusterMigrationRun
 
+var clusterUpgradeExtensions sync.Map // *LegacyJoinedRaftSession -> []MigrationSet
+
+// SetClusterUpgradeExtensions tells the session which extension migration
+// sets this executable includes. The upgrade steps report and apply them with
+// the core list. Call it before the member classifies its schema.
+func (s *LegacyJoinedRaftSession) SetClusterUpgradeExtensions(sets []MigrationSet) error {
+	if err := validateMigrationSets(sets); err != nil {
+		return err
+	}
+	clusterUpgradeExtensions.Store(s, append([]MigrationSet(nil), sets...))
+	return nil
+}
+
+func (s *LegacyJoinedRaftSession) clusterUpgradeSteps(st *Store) ClusterUpgradeSteps {
+	sets, _ := clusterUpgradeExtensions.Load(s)
+	extensions, _ := sets.([]MigrationSet)
+	return st.ClusterUpgradeFor(extensions)
+}
+
 const (
 	clusterMigrationBudget = 30 * time.Minute
 	clusterMigrationWait   = 6 * time.Second
@@ -32,7 +51,7 @@ func (s *LegacyJoinedRaftSession) ReportClusterUpgradeCapability(ctx context.Con
 	if err != nil {
 		return err
 	}
-	return st.ReportClusterUpgradeCapability(ctx, key)
+	return s.clusterUpgradeSteps(st).Report(ctx, key)
 }
 
 // ClusterUpgrade performs one upgrade step for an admitted member. Status is
@@ -58,8 +77,9 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 	if admitted != 1 {
 		return status, leader, false, ErrClusterAdmissionRejected
 	}
+	steps := s.clusterUpgradeSteps(st)
 	if action != "status" && !leader {
-		status, err = st.ClusterUpgradeStatus(ctx)
+		status, err = steps.Status(ctx)
 		if err == nil {
 			err = refuseClusterUpgrade("this member is not the database leader")
 		}
@@ -67,18 +87,18 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 	}
 	switch action {
 	case "status":
-		status, err = st.ClusterUpgradeStatus(ctx)
+		status, err = steps.Status(ctx)
 	case "begin":
-		status, err = st.BeginClusterUpgrade(ctx)
+		status, err = steps.Begin(ctx)
 	case "finish":
-		status, err = st.FinishClusterUpgrade(ctx)
+		status, err = steps.Finish(ctx)
 	case "abort":
-		status, err = st.AbortClusterUpgrade(ctx)
+		status, err = steps.Abort(ctx)
 	case "migrate":
-		migrating, err = s.runClusterMigration(ctx, st)
+		migrating, err = s.runClusterMigration(ctx, steps)
 		if err == nil {
-			status, err = st.ClusterUpgradeStatus(ctx)
-		} else if observed, statusErr := st.ClusterUpgradeStatus(ctx); statusErr == nil {
+			status, err = steps.Status(ctx)
+		} else if observed, statusErr := steps.Status(ctx); statusErr == nil {
 			status = observed
 		}
 	default:
@@ -89,7 +109,7 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 
 // runClusterMigration starts the migration unless one is running, and waits a
 // short while for it. It reports true while the run continues.
-func (s *LegacyJoinedRaftSession) runClusterMigration(ctx context.Context, st *Store) (bool, error) {
+func (s *LegacyJoinedRaftSession) runClusterMigration(ctx context.Context, steps ClusterUpgradeSteps) (bool, error) {
 	value, _ := clusterMigrationRuns.LoadOrStore(s, &clusterMigrationRun{})
 	run := value.(*clusterMigrationRun)
 	run.mu.Lock()
@@ -98,7 +118,7 @@ func (s *LegacyJoinedRaftSession) runClusterMigration(ctx context.Context, st *S
 		run.done, run.err = done, nil
 		go func() {
 			budget, cancel := context.WithTimeout(context.Background(), clusterMigrationBudget)
-			_, err := st.MigrateClusterSchema(budget)
+			_, err := steps.Migrate(budget)
 			cancel()
 			run.mu.Lock()
 			run.err = err
@@ -145,7 +165,7 @@ func (s *LegacyJoinedRaftSession) clusterUpgradeStore(ctx context.Context) (*Sto
 	if db == nil || db.ID == 0 || db.SQL == nil || db.Scheduling == nil {
 		return nil, "", false, errors.New("native session is unavailable")
 	}
-	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, nil)
+	st, err := OpenReplicated(ctx, db.SQL, db.Scheduling, nil, ReplicatedBackend())
 	if err != nil {
 		return nil, "", false, err
 	}

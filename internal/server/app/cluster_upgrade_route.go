@@ -54,10 +54,12 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 			Action: request.Action, Leader: leader, Migrating: migrating,
 			Phase: status.Phase.Phase, PhaseRevision: status.Phase.Revision,
 			Applied: status.Applied, Known: status.Known, Base: status.Base, Ready: status.Ready(),
+			AppliedExtensions: status.AppliedExtensions, KnownExtensions: status.KnownExtensions,
 		}
 		for _, member := range status.Members {
 			response.Members = append(response.Members, enrollment.ClusterUpgradeMember{
-				Address: member.Address, Reported: member.Reported, Markers: member.Markers, Last: member.Last})
+				Address: member.Address, Reported: member.Reported, Markers: member.Markers, Last: member.Last,
+				Extensions: member.Extensions, Fresh: member.Fresh})
 		}
 		switch {
 		case errors.Is(err, store.ErrClusterUpgradeRefused):
