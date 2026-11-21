@@ -18,9 +18,10 @@ type clusterMigrationRun struct {
 	err  error
 }
 
-var clusterMigrationRuns sync.Map // *LegacyJoinedRaftSession -> *clusterMigrationRun
-
-var clusterUpgradeExtensions sync.Map // *LegacyJoinedRaftSession -> []MigrationSet
+const (
+	clusterMigrationBudget = 30 * time.Minute
+	clusterMigrationWait   = 6 * time.Second
+)
 
 // SetClusterUpgradeExtensions tells the session which extension migration
 // sets this executable includes. The upgrade steps report and apply them with
@@ -29,20 +30,17 @@ func (s *LegacyJoinedRaftSession) SetClusterUpgradeExtensions(sets []MigrationSe
 	if err := validateMigrationSets(sets); err != nil {
 		return err
 	}
-	clusterUpgradeExtensions.Store(s, append([]MigrationSet(nil), sets...))
+	s.upgradeMu.Lock()
+	s.upgradeSets = append([]MigrationSet(nil), sets...)
+	s.upgradeMu.Unlock()
 	return nil
 }
 
 func (s *LegacyJoinedRaftSession) clusterUpgradeSteps(st *Store) ClusterUpgradeSteps {
-	sets, _ := clusterUpgradeExtensions.Load(s)
-	extensions, _ := sets.([]MigrationSet)
-	return st.ClusterUpgradeFor(extensions)
+	s.upgradeMu.Lock()
+	defer s.upgradeMu.Unlock()
+	return st.ClusterUpgradeFor(s.upgradeSets)
 }
-
-const (
-	clusterMigrationBudget = 30 * time.Minute
-	clusterMigrationWait   = 6 * time.Second
-)
 
 // ReportClusterUpgradeCapability records this member's executable for the
 // cluster upgrade, through the session that still owns the database.
@@ -78,6 +76,11 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 		return status, leader, false, ErrClusterAdmissionRejected
 	}
 	steps := s.clusterUpgradeSteps(st)
+	if action == "status" {
+		s.migration.mu.Lock()
+		migrating = s.migration.done != nil
+		s.migration.mu.Unlock()
+	}
 	if action != "status" && !leader {
 		status, err = steps.Status(ctx)
 		if err == nil {
@@ -96,10 +99,10 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 		status, err = steps.Abort(ctx)
 	case "migrate":
 		migrating, err = s.runClusterMigration(ctx, steps)
-		if err == nil {
-			status, err = steps.Status(ctx)
-		} else if observed, statusErr := steps.Status(ctx); statusErr == nil {
+		if observed, statusErr := steps.Status(ctx); statusErr == nil {
 			status = observed
+		} else if err == nil && !migrating {
+			err = statusErr
 		}
 	default:
 		err = errors.New("unknown cluster upgrade step")
@@ -110,8 +113,7 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 // runClusterMigration starts the migration unless one is running, and waits a
 // short while for it. It reports true while the run continues.
 func (s *LegacyJoinedRaftSession) runClusterMigration(ctx context.Context, steps ClusterUpgradeSteps) (bool, error) {
-	value, _ := clusterMigrationRuns.LoadOrStore(s, &clusterMigrationRun{})
-	run := value.(*clusterMigrationRun)
+	run := &s.migration
 	run.mu.Lock()
 	if run.done == nil {
 		done := make(chan struct{})
@@ -152,16 +154,7 @@ func (s *LegacyJoinedRaftSession) clusterUpgradeStore(ctx context.Context) (*Sto
 	if s == nil {
 		return nil, "", false, errors.New("native session is unavailable")
 	}
-	// A member that waits for the upgrade classifies the schema again every
-	// second and holds the session meanwhile; wait for a gap between attempts.
-	for deadline := time.Now().Add(3 * time.Second); !s.mu.TryLock(); {
-		if ctx.Err() != nil || time.Now().After(deadline) {
-			return nil, "", false, errors.Join(ctx.Err(), errors.New("native session is classifying or closing"))
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	db := s.db
-	s.mu.Unlock()
+	db := s.live.Load()
 	if db == nil || db.ID == 0 || db.SQL == nil || db.Scheduling == nil {
 		return nil, "", false, errors.New("native session is unavailable")
 	}

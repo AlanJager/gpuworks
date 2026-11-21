@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,6 +37,21 @@ type LegacyJoinedRaftSession struct {
 	once     sync.Once
 	closeErr error
 	owned    bool
+	// live is db for the cluster upgrade steps, which must not wait for a
+	// classification that holds mu behind a running migration.
+	live atomic.Pointer[cluster.Database]
+	// upgradeSets are the executable's extension migration sets, and
+	// migration the one schema migration this member runs at a time.
+	upgradeMu   sync.Mutex
+	upgradeSets []MigrationSet
+	migration   clusterMigrationRun
+}
+
+// newJoinedRaftSession is the session of a member whose database runs.
+func newJoinedRaftSession(db *cluster.Database, id uint64, address, raftDir string, release func() error) *LegacyJoinedRaftSession {
+	s := &LegacyJoinedRaftSession{db: db, id: id, address: address, raftDir: raftDir, release: release}
+	s.live.Store(db)
+	return s
 }
 
 // StartLegacyJoinedRaft uses the persisted discovery cache only as dial seeds.
@@ -99,7 +115,7 @@ func StartLegacyJoinedRaft(ctx context.Context, path, address, clusterID, pin st
 	if db.ID != id || db.Address != address || db.TransportMemberKey() != keyFingerprint {
 		return nil, errors.Join(ErrClusterIdentityConflict, db.Close())
 	}
-	return &LegacyJoinedRaftSession{db: db, id: id, address: address, raftDir: raftDir, release: release}, nil
+	return newJoinedRaftSession(db, id, address, raftDir, release), nil
 }
 
 // OpenStore waits for SQL quorum, then verifies live member identity and exact
@@ -206,6 +222,7 @@ func (s *LegacyJoinedRaftSession) Close() error {
 		s.mu.Lock()
 		db, release := s.db, s.release
 		s.db = nil
+		s.live.Store(nil)
 		s.release = nil
 		s.mu.Unlock()
 		s.closeErr = db.Close()

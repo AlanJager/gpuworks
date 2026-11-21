@@ -72,7 +72,7 @@ func StartEstablishedRaft(ctx context.Context, path string, expected ClusterIden
 	if err := ctx.Err(); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
-	return &LegacyJoinedRaftSession{db: db, id: db.ID, address: db.Address, raftDir: raftDir, release: release}, nil
+	return newJoinedRaftSession(db, db.ID, db.Address, raftDir, release), nil
 }
 
 // Both exact schema versions must qualify the live transport key against its

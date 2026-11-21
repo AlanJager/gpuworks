@@ -263,13 +263,10 @@ func (s *Store) ClusterUpgradeStatus(ctx context.Context) (ClusterUpgradeStatus,
 }
 
 func (u clusterUpgrader) status(ctx context.Context) (ClusterUpgradeStatus, error) {
-	var status ClusterUpgradeStatus
-	err := u.s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var err error
-		status, err = readClusterUpgradeStatus(ctx, tx, u.list, u.sets)
-		return err
-	})
-	return status, err
+	// Plain reads, not one transaction: on the replicated store a
+	// transaction waits for the writer, which a running migration holds.
+	// Each step acts through its own conditional write.
+	return readClusterUpgradeStatus(ctx, u.s.db.WithContext(ctx), u.list, u.sets)
 }
 
 func readClusterUpgradeStatus(ctx context.Context, tx *gorm.DB, list []migration, sets []MigrationSet) (ClusterUpgradeStatus, error) {
