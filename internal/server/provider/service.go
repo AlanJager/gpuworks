@@ -9,6 +9,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/nodeaddr"
+	"gpuworks.ai/gpuworks/internal/server/provider/testconn"
 	"gpuworks.ai/gpuworks/internal/server/provision"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -25,6 +26,9 @@ type Service struct {
 	// sshPrecheck replaces the SSH precheck an install precheck runs; nil is
 	// the real one (provision.NewSSHPrechecker).
 	sshPrecheck provision.Prechecker
+	// connectionTests replaces the runner a connection test uses; nil is the
+	// real one (testconn.New).
+	connectionTests *testconn.Runner
 }
 
 // NewService builds the provider service. box encrypts stored credentials.
