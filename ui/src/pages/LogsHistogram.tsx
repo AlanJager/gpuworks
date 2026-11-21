@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import type { LogsBucket } from "../api";
 import { formatTimeSec } from "../i18n/datetime";
 
+const ERROR_COLOR = "#cf1322";
+const OTHER_COLOR = "#5b8ff0";
+
 // LogsHistogram draws log volume per time bucket, error/fatal stacked in red
 // over everything else in blue. With onPick each bar is a button that hands
 // back its bucket start, so the page can narrow its window to it.
@@ -24,6 +27,14 @@ export default function LogsHistogram({ buckets, onPick }: { buckets: LogsBucket
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {t("histogram.caption")}
       </Typography.Text>
+      <ul data-part="legend" style={{ display: "flex", gap: 12, margin: "4px 0 0", padding: 0, listStyle: "none", fontSize: 12 }}>
+        {([["error", ERROR_COLOR], ["other", OTHER_COLOR]] as const).map(([key, color]) => (
+          <li key={key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+            {t(`histogram.legend.${key}`)}
+          </li>
+        ))}
+      </ul>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 64, marginTop: 6 }}>
         {oldestFirst.map((b, i) => {
           const bad = (b.counts["error"] ?? 0) + (b.counts["fatal"] ?? 0); // unstamped lines are not "bad"
@@ -43,8 +54,8 @@ export default function LogsHistogram({ buckets, onPick }: { buckets: LogsBucket
                 }}
                 style={{ flex: 1, height: `${Math.max((totals[i] / max) * 100, 3)}%`, display: "flex", flexDirection: "column", justifyContent: "flex-end", cursor: onPick ? "pointer" : "default", minWidth: 3 }}
               >
-                <div style={{ background: "#cf1322", height: totals[i] ? `${(bad / totals[i]) * 100}%` : 0, borderRadius: 2 }} />
-                <div style={{ background: "#5b8ff0", height: totals[i] ? `${(good / totals[i]) * 100}%` : 0, borderRadius: 2 }} />
+                <div style={{ background: ERROR_COLOR, height: totals[i] ? `${(bad / totals[i]) * 100}%` : 0, borderRadius: 2 }} />
+                <div style={{ background: OTHER_COLOR, height: totals[i] ? `${(good / totals[i]) * 100}%` : 0, borderRadius: 2 }} />
               </div>
             </Tooltip>
           );

@@ -348,14 +348,16 @@ test("the backfill note and the zone appear only when the range starts before li
   stub();
   mount();
   await waitFor(() => assert.ok(document.querySelector('[data-stat="requests"]')));
-  assert.ok(screen.getByText(a.backfill.usage));
+  // The page names the shaded period; how it was computed is in the help.
+  assert.ok(screen.getByText(a.backfill.note));
+  assert.ok(!document.body.textContent?.includes(a.backfill.usageHelp));
   assert.ok(screen.getByText(i18n.t("analytics:zoneNote", { zone: fx.ZONE })));
   cleanup();
   stub();
   analyticsApi.usage = async () => ({ ...fx.usageToday(), range: { ...fx.usageToday().range, live_since_ms: fx.TODAY_START } });
   mount();
   await waitFor(() => assert.ok(document.querySelector('[data-stat="requests"]')));
-  assert.ok(screen.queryByText(a.backfill.usage) === null);
+  assert.ok(screen.queryByText(a.backfill.note) === null);
   cleanup();
   // A fresh installation: the range starts before live accumulation did, but
   // nothing older than it exists, so nothing was filled in.
@@ -364,13 +366,13 @@ test("the backfill note and the zone appear only when the range starts before li
   analyticsApi.usage = async () => ({ ...fresh, range: { ...fresh.range, earliest_ms: fresh.range.live_since_ms } });
   mount();
   await waitFor(() => assert.ok(document.querySelector('[data-stat="requests"]')));
-  assert.ok(screen.queryByText(a.backfill.usage) === null);
+  assert.ok(screen.queryByText(a.backfill.note) === null);
   cleanup();
   stub();
   analyticsApi.usage = async () => ({ ...fresh, range: { ...fresh.range, earliest_ms: 0 } });
   mount();
   await waitFor(() => assert.ok(document.querySelector('[data-stat="requests"]')));
-  assert.ok(screen.queryByText(a.backfill.usage) === null);
+  assert.ok(screen.queryByText(a.backfill.note) === null);
 });
 
 test("the mark beside the picker names the retention of the tab on hover and links to the setting", async () => {

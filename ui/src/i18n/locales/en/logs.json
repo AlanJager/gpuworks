@@ -4,7 +4,11 @@
   },
   "description": "Search container and infrastructure logs by keyword, instance, level, and time",
   "histogram": {
-    "caption": "Log volume over the selected time range (red = error, blue = info/warn); click a bar to narrow to that period"
+    "caption": "Log volume over the selected time range; click a bar to narrow to that period",
+    "legend": {
+      "error": "error / fatal",
+      "other": "Other levels"
+    }
   },
   "range": {
     "30m": "Last 30m",

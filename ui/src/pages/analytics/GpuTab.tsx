@@ -11,6 +11,7 @@ import { useExportModel } from "./exportContext";
 import { fmtFixed, fmtInt, fmtPct, fmtWatts } from "./format";
 import { systemLabelName } from "../../components/SystemLabelTags";
 import { useNodeLabelOptions } from "../../nodes/useNodeLabelOptions";
+import { HelpTip } from "../../ui-kit/HelpTip";
 import { groupCards, groupRows, summarize, summarizeGroups, IDLE_UTIL, type FilterOption } from "./gpuModel";
 import GpuTable from "./GpuTable";
 import QueryState from "./QueryState";
@@ -219,7 +220,7 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
               )}
               <EChart option={heat(d)} height={heatHeight(d.heat.length)} label={t("gpus.chart.aria")} />
             </Card>
-            <Card styles={{ body: { padding: 0 } }} title={<Space align="baseline"><span>{t(`gpus.table.title.${group}`)}</span><Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>{t("gpus.table.hint", { threshold: IDLE_UTIL })}</Typography.Text></Space>}>
+            <Card styles={{ body: { padding: 0 } }} title={<Space align="baseline"><span>{t(`gpus.table.title.${group}`)}</span><HelpTip content={t("gpus.table.idleHelp", { threshold: IDLE_UTIL })} /></Space>}>
               <GpuTable rows={rows} group={group} />
             </Card>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>

@@ -135,7 +135,7 @@ node scripts/ui_copy_audit.mjs long     # 或 caveat；list 逐条列出
 
 排除：无。超长说明改写或移进文档；"不包含模型文件"这类事实不算免责，正则不收。
 
-### ui_copy_helper_strings / ui_copy_message_strings / ui_copy_sentences_strings / ui_copy_en_strings / ui_copy_inline_help_refs（基线 309 / 42 / 26 / 56 / 95，2026-11-21）
+### ui_copy_helper_strings / ui_copy_message_strings / ui_copy_sentences_strings / ui_copy_en_strings / ui_copy_inline_help_refs（基线 305 / 42 / 26 / 56 / 95，2026-11-21）
 
 意图：上面两条只拦 120 字，而规范写的是一行 40 字，文案于是贴着 120 字写，`Help` 后缀的 key 又只看名字不看渲染。这五条按规范本身计数，存量记为基线，只降不升。
 
@@ -151,6 +151,22 @@ node scripts/ui_copy_audit.mjs helper   # 或 message、sentences、en、inlineh
 ```
 
 排除：无。超出的文案删减、拆成"事实 + 下一步"、移进 `HelpTip` 或文档；不靠改 key 名或拆 key 过关。
+
+### ui_copy_clauses_strings / ui_copy_command_strings（基线 24 / 12，2026-11-21）
+
+意图：上面几条按长度和句号计数，文案于是用"：…，…；…"把三句话串成一句，或把处理命令写进 `HelpTip` 的句子里；
+页面上读不懂、命令也复制不了（`docs/dev/ui.md` "No chained clauses"、"Problems and what to do"）。只降不升。
+
+- `ui_copy_clauses_strings`：非 `Help` 的中文字符串里 `；` 出现两次及以上，或一个 `；` 之前还有引出它的 `：`。
+- `ui_copy_command_strings`：中文字符串（含 `Help` key）的句子里带用户要敲的命令：`sudo <命令>`、`gpuworks`/`gpuworks-agent` 的子命令、
+  `kubectl`/`systemctl`/`journalctl`。key 以 `Command` 结尾的是命令块的内容，不计。
+
+```sh
+node scripts/ui_copy_audit.mjs clauses  # 或 command；list 逐条列出
+```
+
+排除：无。串句拆成 summary / fix 等独立 key 或改成 `标签 值 · 标签 值`；命令由组件拼成可复制块。
+句子是否说清了问题和下一步，预算数不出来，由 `docs/dev/ui.md` "Reviewing copy" 的 maintainer review 把关。
 
 ### ee_ui_internal_imports（初值 0，2026-11-16）
 

@@ -45,7 +45,7 @@ export function PhysicalGPUDetail({ gpu, onClose }: { gpu: PhysicalGPU | null; o
                   <>
                     {/* What the card is doing now is what one opens it for most. */}
                     {cardHasDetail(gpu) && gpuCapacityBytes(gpu) !== undefined && (
-                      <DetailSection title={t("composition.title")}><GPUMemoryComposition gpu={gpu} /></DetailSection>
+                      <DetailSection title={t("composition.title")} extra={<HelpTip content={t("composition.titleHelp")} />}><GPUMemoryComposition gpu={gpu} /></DetailSection>
                     )}
                     <DetailSection title={t("detail.basicInfo")}>
                       <Descriptions bordered size="small" column={1}>

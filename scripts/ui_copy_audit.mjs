@@ -17,6 +17,15 @@ export const HELPER = 40;
 export const MESSAGE = 80;
 // A string on the page is at most this many sentences; more is an explanation.
 export const SENTENCES = 2;
+// A string on the page chains at most this many clauses with ； (a ： that
+// opens such a chain counts as one more): three clauses are three sentences
+// written to pass the sentence count.
+export const CLAUSES = 2;
+// A command the user types is a copyable block the code builds, never words
+// inside a sentence, where it can be neither copied nor found without hovering.
+// A key named *Command holds such a block's text and is the place for one.
+export const COMMAND = /(?:^|[^\w./-])(?:sudo\s+[a-z]|gpuworks(?:-agent)?\s+(?:install|uninstall|upgrade|serve|run|smoke|doctor|configure|migrate|reset-password)\b|(?:kubectl|systemctl|journalctl)\s+[a-z])/;
+const isCommand = (key) => /command$/i.test(key);
 // English runs about twice the Chinese length.
 export const EN_LONG = 240;
 export const EN_HELP_LONG = 400;
@@ -54,7 +63,10 @@ const add = (kind, id, length, text) => found.push({ kind, id, length, text });
 for (const [id, key, text, length] of locale("zh")) {
   const help = isHelp(key);
   if (length > (help ? HELP_LONG : LONG)) add("long", id, length, text);
+  if (!isCommand(key) && COMMAND.test(text)) add("command", id, length, text);
   if (help) continue;
+  const chained = (text.match(/；/g) ?? []).length;
+  if (chained + (chained && /：.*；/.test(text) ? 1 : 0) >= CLAUSES) add("clauses", id, length, text);
   if (CAVEAT.test(text)) add("caveat", id, length, text);
   if (isMessage(key)) { if (length > MESSAGE) add("message", id, length, text); }
   else if (length > HELPER) add("helper", id, length, text);
@@ -66,9 +78,10 @@ for (const [id, key, text, length] of locale("en")) {
 
 // A key named *Help is HelpTip content and is shown only there. These are the
 // places that put one on the page instead: a form item's `extra`, or the text
-// of a paragraph, span, div or antd Text.
+// of a paragraph, span, div or antd Text. An `extra` that is itself a HelpTip
+// (a section title's ⓘ) is the HelpTip the rule asks for.
 const HELP_CALL = String.raw`t\(\s*["'\x60][^"'\x60]*[Hh]elp["'\x60]`;
-const INLINE = new RegExp(String.raw`extra=\{[^\n]*${HELP_CALL}|<(?:p|span|div|Text|Typography\.Text|Typography\.Paragraph)\b[^>]*>[^<\n]*\{[^<\n]*${HELP_CALL}`);
+const INLINE = new RegExp(String.raw`extra=\{(?!\s*<HelpTip\b)[^\n]*${HELP_CALL}|<(?:p|span|div|Text|Typography\.Text|Typography\.Paragraph)\b[^>]*>[^<\n]*\{[^<\n]*${HELP_CALL}`);
 function* sources(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
@@ -82,7 +95,7 @@ for (const path of [...sources(root)].sort()) {
   });
 }
 
-export const KINDS = ["long", "caveat", "helper", "message", "sentences", "en", "inlinehelp"];
+export const KINDS = ["long", "caveat", "helper", "message", "sentences", "clauses", "command", "en", "inlinehelp"];
 const mode = process.argv[2] ?? "list";
 if (KINDS.includes(mode)) console.log(found.filter((f) => f.kind === mode).length);
 else if (mode === "list") for (const f of found) console.log(`${f.kind}\t${f.id}\t${f.length}\t${f.text.replace(/\n/g, "\\n")}`);

@@ -182,10 +182,16 @@
     }
   },
   "rejects": {
-    "refused": "Agents refused for a credential this server does not know: {{count}}",
-    "refusedHelp": "An Agent on each listed host connected with a node credential the server does not know. Causes: the node was removed or re-added while its old Agent kept running, a second Agent runs from another state directory, or the server was restored from backup. Re-add the host if it should be a node; remove a leftover Agent with gpuworks-agent uninstall --state <its directory>. Lists the last 30 minutes.",
+    "summary": "{{count}} Agents cannot connect: their node credential does not match this server",
+    "causeHelp": "Usual causes: the node was removed or re-added while its old Agent kept running; a second Agent runs from another state directory on the host; the server was restored from a backup. Lists connections from the last 30 minutes.",
     "source": "{{host}} · credential {{prefix}}… · {{count}} attempts · first {{first}} · last {{last}}",
     "more": "{{count}} more not shown",
+    "fixesTitle": "What to do, host by host",
+    "fix": {
+      "readd": "The host should be a node of this server: add the node again.",
+      "uninstall": "The Agent on the host is a leftover: run the command below on that host to uninstall it."
+    },
+    "stateDir": "<state directory>",
     "emptyToken": "(empty)",
     "unknownAddress": "Unknown address"
   },
@@ -858,7 +864,17 @@
     "loadError": "Could not load node version information",
     "retry": "Retry",
     "noTarget": "The running server has no identifiable Agent target version",
-    "target": "Agent target {{target}}",
+    "mismatch": "{{count}} nodes run an Agent version that differs from the server",
+    "blockedOnly": "{{count}} nodes cannot upgrade their Agent for now",
+    "upgrading": "An Agent upgrade batch is running",
+    "fact": {
+      "target": "Target version {{target}}",
+      "align": "{{count}} can upgrade",
+      "check": "{{count}} cannot upgrade for now"
+    },
+    "upgradeAll": "Upgrade all",
+    "viewNodes": "View these nodes",
+    "viewBlocked": "See why they cannot upgrade",
     "progress": "View upgrade progress",
     "filter": "Agent status",
     "ignore": "Dismiss this notice",
@@ -872,13 +888,6 @@
       "check": "Currently unavailable for upgrade",
       "all": "All",
       "align": "Different version"
-    },
-    "count": {
-      "check": "Currently unavailable for upgrade ({{count}})",
-      "upgrade": "Agents to upgrade ({{count}})",
-      "downgrade": "Pending alignment ({{count}})",
-      "different_build": "Different builds ({{count}})",
-      "align": "Different versions ({{count}})"
     }
   },
   "batchUpgrade": {

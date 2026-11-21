@@ -119,15 +119,15 @@
   },
   "composition": {
     "title": "Memory allocation",
+    "titleHelp": "Blocks are memory the scheduler has reserved for each instance; the marker is what the card has in use now. An instance rarely fills its reservation, so the two need not match. Whether another deployment fits follows Allocatable.",
     "aria": "Memory allocation",
     "slice": "{{name}} · limit {{limit}} GiB",
     "wholeCard": "{{name}} · whole card",
-    "overhead": "Held outside the limits (runtime context)",
-    "sleeping": "Sleeping instances' residue",
+    "overhead": "Fixed runtime use (not counted in slice limits)",
+    "sleeping": "Held by sleeping instances",
     "free": "Allocatable",
     "used": "Card in use: {{used}}",
-    "usedLegend": "Card in use",
-    "note": "Blocks are what the scheduler books: a dGPU slice books its limit plus the runtime overhead held outside it. The black line is what the card has in use now."
+    "usedLegend": "Card in use"
   },
   "state": {
     "asleep": "Asleep L{{level}}"

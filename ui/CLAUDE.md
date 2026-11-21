@@ -8,6 +8,7 @@
 - Preserve routes, API contracts, permissions and business behavior.
 - All UI text belongs in `src/i18n/locales/{zh,en}`; use `i18n/glossary.json`.
 - Text follows docs/dev/ui.md "Copy on the page": one helper line per field or block; formulas, caveats, data sources and method notes go into `ui-kit/HelpTip` or the docs, never as extra grey lines. Do not add small text to explain a value.
+- A notice says what is wrong in the user's words and carries its fix and its action on the page; causes go into the `HelpTip`. A chart's colours and lines are named by its legend, never by a sentence. Check new text against docs/dev/ui.md "Reviewing copy" before proposing it.
 - Run TypeScript, ESLint, i18n, build and related tests; `scripts/ui_check_ci.sh` checks the pages in a browser.
 - After migrating a page: `node scripts/ui_antd_inventory.mjs --write` and lower `ui_antd_import_files`.
 - Page frame, titles and radii follow docs/dev/ui.md "Page look"; after swapping components, screenshot every touched page at 1440 and 1024 and compare. If unsure, stop and ask the user.
