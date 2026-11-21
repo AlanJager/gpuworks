@@ -304,9 +304,15 @@ func TestSingleAddressConversionRefusesUnsafeInputs(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			before, err := inspectConversionDirectory(context.Background(), source+".dqlite")
-			if err != nil {
-				t.Fatal(err)
+			// A running database rewrites files in its directory (it replaces
+			// cluster.yaml through a temporary name), so that directory is
+			// neither listed nor compared while one runs.
+			var before map[string]conversionFile
+			if name != "running source" {
+				var err error
+				if before, err = inspectConversionDirectory(context.Background(), source+".dqlite"); err != nil {
+					t.Fatal(err)
+				}
 			}
 			operationCtx, stop := context.WithTimeout(ctx, 2*time.Second)
 			defer stop()
