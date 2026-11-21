@@ -32,7 +32,15 @@ func TestClusterCommandsReachTheInstallationSurface(t *testing.T) {
 		_                                                                                 = selfinstall.NewIO
 		_ *selfinstall.IO
 		_ error = selfinstall.ErrNoTerminal
-		_       = dto.ClusterInvitationResponse{}
+		// The backup commands read and prune archives in every build.
+		_ func(string) (app.ClusterBackup, error)   = app.InspectClusterBackup
+		_ func(string) ([]app.ClusterBackup, error) = app.ListClusterBackups
+		_ func(string, int) ([]string, error)       = app.PruneClusterBackups
+		_                                           = app.ClusterBackupManifest{}.Migrations
+		_                                           = app.ClusterBackupOptions{}.Timeout
+		_                                           = app.ClusterRestoreOptions{}.ConfigFile
+		_ error                                     = app.ErrClusterBackupInvalid
+		_                                           = dto.ClusterInvitationResponse{}
 	)
 	if selfinstall.DefaultDir == "" {
 		t.Fatal("the default install directory is empty")

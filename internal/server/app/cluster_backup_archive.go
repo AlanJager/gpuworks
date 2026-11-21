@@ -66,7 +66,9 @@ type ClusterBackupMember struct {
 // ClusterBackupManifest describes one archive. Member is the member that took
 // the backup: the archive carries that member's key, and a restore rebuilds
 // the cluster from that member's addresses. The database image lies between
-// the leader's barriers IndexFrom and IndexTo of Term.
+// the leader's barriers IndexFrom and IndexTo of Term. Release is the program
+// that wrote the archive, which during an upgrade is ahead of the schema;
+// Migrations says which schema the image has.
 type ClusterBackupManifest struct {
 	Format             int                   `json:"format"`
 	CreatedAt          time.Time             `json:"created_at"`

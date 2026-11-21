@@ -26,6 +26,10 @@ func TestClusterCommandsReachTheEngineOperations(t *testing.T) {
 		_ = app.CheckClusterMaterialBootstrap
 		_ = app.ClusterUpgradeStep
 		_ = app.ClusterTransportPolicyPath
+		_ = app.BackupCluster
+		_ = app.RestoreClusterMember
+		_ = app.ClusterBackupDirectory
+		_ = app.ClusterRestoreResult{}
 		_ = app.ClusterJoinTarget{}
 		_ = app.ClusterJoinInfo{}
 		_ = store.ReadRemoteClusterMaterials
