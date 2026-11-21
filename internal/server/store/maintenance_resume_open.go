@@ -44,3 +44,21 @@ func migrateMaintenanceResumeOpen(db *gorm.DB) error {
 	}
 	return db.Exec(maintenanceResumeOpenNoReplaceTrigger).Error
 }
+
+// schemaTrigger returns the text of a trigger this executable's migrations
+// create. A copy of a database replays that text, never the source's, so a
+// trigger of the same name with another body cannot bring SQL with it.
+func schemaTrigger(name string) (string, bool) {
+	if sql, ok := maintenancePhaseTrigger(name); ok {
+		return sql, true
+	}
+	switch name {
+	case "maintenance_resume_open_no_delete":
+		return maintenanceResumeOpenNoDeleteTrigger, true
+	case "maintenance_resume_open_no_update":
+		return maintenanceResumeOpenNoUpdateTrigger, true
+	case "maintenance_resume_open_no_replace":
+		return maintenanceResumeOpenNoReplaceTrigger, true
+	}
+	return "", false
+}

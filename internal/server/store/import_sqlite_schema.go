@@ -29,6 +29,12 @@ type sqliteImportSchema struct {
 }
 
 func inspectSQLiteImport(ctx context.Context, db *sql.DB) (sqliteImportSchema, error) {
+	return inspectSQLiteSource(ctx, db, validateSQLiteImportMigrations)
+}
+
+// inspectSQLiteSource reads the complete object inventory of a SQLite source
+// once its migration markers pass markers. No object is omitted.
+func inspectSQLiteSource(ctx context.Context, db *sql.DB, markers func(context.Context, *sql.DB) error) (sqliteImportSchema, error) {
 	var schema sqliteImportSchema
 	checks, err := db.QueryContext(ctx, "PRAGMA integrity_check")
 	if err != nil {
@@ -55,7 +61,7 @@ func inspectSQLiteImport(ctx context.Context, db *sql.DB) (sqliteImportSchema, e
 	if results != 1 {
 		return schema, fmt.Errorf("incomplete SQLite integrity check: results=%d", results)
 	}
-	if err := validateSQLiteImportMigrations(ctx, db); err != nil {
+	if err := markers(ctx, db); err != nil {
 		return schema, err
 	}
 	rows, err := db.QueryContext(ctx, "SELECT type, name, sql FROM sqlite_schema ORDER BY name")
@@ -190,7 +196,7 @@ func sqliteImportColumns(ctx context.Context, db *sql.DB, table string) ([]strin
 // statements, including writable_schema tampering, before passing it to another
 // driver. Quotes and comments can legitimately contain semicolons or keywords.
 func maintenanceTriggerImportable(name, ddl string) bool {
-	want, ok := maintenancePhaseTrigger(name)
+	want, ok := schemaTrigger(name)
 	if !ok {
 		return false
 	}

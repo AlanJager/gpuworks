@@ -158,7 +158,7 @@ func importSQLiteSnapshot(ctx context.Context, target *gorm.DB, source *sql.DB, 
 		for _, trigger := range schema.triggers {
 			// Replay the executable's own trigger text. A same-named trigger with
 			// any other body was already rejected, so this cannot run source SQL.
-			sql, ok := maintenancePhaseTrigger(trigger.name)
+			sql, ok := schemaTrigger(trigger.name)
 			if !ok {
 				return fmt.Errorf("create import trigger %q: unknown", trigger.name)
 			}
