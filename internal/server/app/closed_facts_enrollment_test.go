@@ -480,3 +480,57 @@ func TestClosedFactsEnrollmentWithdrawalJoinsActualHandler(t *testing.T) {
 		t.Fatal("signed canceled request did not finish")
 	}
 }
+
+// A member whose business is open has its business routes installed on the
+// facts listener. Those define no quorum route; the signed observation is
+// still answered by the listener, from the same session.
+func TestClosedFactsEnrollmentAnswersWhileBusinessRoutesAreInstalled(t *testing.T) {
+	f := newClosedFactsTLSFixture(t)
+	server := f.start(t)
+	client := f.client(t, &f.requesterPair)
+	business := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/cluster/enrollment/certificate" {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	prepared, err := newEnrollmentServer(server.addr, business, server.config, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared.materialRequests = server.materialRequests
+	if err := server.adoptPreparedHandler(prepared); err != nil {
+		t.Fatal(err)
+	}
+	response, data, err := closedFactsRouteRequest(t, client, server, http.MethodPost, enrollment.ClusterQuorumFactsPath, closedFactsRouteBody)
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("facts with business routes installed: response=%v data=%s err=%v", response, data, err)
+	}
+	facts, err := enrollment.DecodeClusterQuorumFacts(data)
+	if err != nil || facts.Nonce != closedFactsRouteNonce || facts.LeaderID != f.session.proof.LeaderID || facts.Term != f.session.proof.Term || len(facts.Members) != len(f.session.proof.Members) {
+		t.Fatalf("facts with business routes installed: %+v %v", facts, err)
+	}
+	response, data, err = closedFactsRouteRequest(t, client, server, http.MethodPost, enrollment.ClusterQuorumDiscoveryPath, closedFactsRouteBody)
+	if err != nil || response.StatusCode == http.StatusNotFound {
+		t.Fatalf("discovery with business routes installed: response=%v data=%s err=%v", response, data, err)
+	}
+	response, _, err = closedFactsRouteRequest(t, client, server, http.MethodPost, "/api/v1/cluster/enrollment/certificate", "{}")
+	if err != nil || response.StatusCode != http.StatusAccepted {
+		t.Fatalf("business route was not served by the installed routes: response=%v err=%v", response, err)
+	}
+	// An unauthenticated caller gets nothing more than before.
+	if response, _, err := closedFactsRouteRequest(t, f.client(t, nil), server, http.MethodPost, enrollment.ClusterQuorumFactsPath, closedFactsRouteBody); err == nil {
+		t.Fatalf("facts without a member certificate: %d", response.StatusCode)
+	}
+	// Withdrawing the listener's request owner still closes the route.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := server.materialRequests.withdraw(ctx); err != nil {
+		t.Fatal(err)
+	}
+	response, data, err = closedFactsRouteRequest(t, client, server, http.MethodPost, enrollment.ClusterQuorumFactsPath, closedFactsRouteBody)
+	if err != nil || response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("withdrawn owner admitted a read: response=%v data=%s err=%v", response, data, err)
+	}
+}

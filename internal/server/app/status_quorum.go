@@ -28,8 +28,13 @@ const enrollmentCertificatePath = "/api/v1/cluster/enrollment/certificate"
 // statusQuorumFetch is the live leader read. Tests replace it with one snapshot.
 var statusQuorumFetch = fetchStatusQuorum
 
-func (s *clusterStatus) observeQuorum(ctx context.Context, timeout time.Duration) {
+func (s *clusterStatus) observeQuorum(ctx context.Context, cfg Config, timeout time.Duration) {
 	facts, ok := statusQuorumFetch(ctx, *s, timeout)
+	if !ok {
+		// No enrollment listener gave the leader's facts; the database
+		// processes still know their leader.
+		facts, ok = statusQuorumProofRead(ctx, cfg, *s, timeout)
+	}
 	if !ok {
 		return
 	}
