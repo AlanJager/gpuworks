@@ -204,7 +204,7 @@ func (r *evaluateState) planRanks() bool {
 	// edited through the form and the engine dictionary, and a spec token that
 	// happens to name one is what the stored row no longer carries either.
 	rankSelection.ExtraArgs = r.launch.TemplateResidual
-	if !r.s.evaluateRanks(evaluateRankEnv{
+	return r.s.evaluateRanks(evaluateRankEnv{
 		ctx: r.ctx, out: r.out, request: r.req, excludeDeployment: r.excludeDeployment, response: &r.resp, engine: r.eng, model: r.model, launch: r.launch,
 		selection: r.selection, rankSelection: rankSelection, rankNodes: r.rankNodes, placement: r.placement,
 		quick: r.quick, userExtraArgs: r.launch.UserResidual, dynamicTPPreview: dynamicTPPreview,
@@ -213,8 +213,5 @@ func (r *evaluateState) planRanks() bool {
 		placementVariables: placementVariables, allowUnresolved: allowUnresolvedPlacement,
 		modelWeightBytes: plan.modelWeightBytes, templateArgs: templateArgs, templateEnv: templateEnv,
 		templateEntrypoint: templateEntrypoint, tp: tp, errs: r.errs,
-	}) {
-		return false
-	}
-	return true
+	})
 }
