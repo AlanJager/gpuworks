@@ -27,7 +27,7 @@ const maxLifecycleBody = 1 << 20
 
 // pluginConn is the host's HTTP/2 client on a plugin's serve connection.
 type pluginConn struct {
-	cc *http2.ClientConn //nolint:staticcheck // SA1019: the plugin connection is an HTTP/2 conversation on an already-open socket pair; moving to net/http's ClientConn and Server is a change of its own.
+	cc *http2.ClientConn //nolint:staticcheck // SA1019: net/http's ClientConn waits at the plugin's stream limit, where this one refuses at once; a call there would turn from PLUGIN_UNAVAILABLE into PLUGIN_TIMEOUT. It stays until net/http can refuse instead of wait.
 	// plain and stream bound the calls in flight (Spec.MaxConcurrency
 	// each), so open streams never take the slots of short calls;
 	// lifecycle calls take no slot, so a saturated plugin still answers
@@ -41,7 +41,7 @@ type pluginConn struct {
 
 func newPluginConn(c net.Conn, maxConcurrency int, callTimeout time.Duration) (*pluginConn, error) {
 	meter := newStallMeter(nil)
-	cc, err := (&http2.Transport{AllowHTTP: true}).NewClientConn(&meteredConn{Conn: c, m: meter, scan: newFrameScan()}) //nolint:staticcheck // SA1019: the plugin connection is an HTTP/2 conversation on an already-open socket pair; moving to net/http's ClientConn and Server is a change of its own.
+	cc, err := (&http2.Transport{AllowHTTP: true}).NewClientConn(&meteredConn{Conn: c, m: meter, scan: newFrameScan()}) //nolint:staticcheck // SA1019: net/http's ClientConn waits at the plugin's stream limit, where this one refuses at once; a call there would turn from PLUGIN_UNAVAILABLE into PLUGIN_TIMEOUT. It stays until net/http can refuse instead of wait.
 	if err != nil {
 		_ = c.Close()
 		return nil, err
