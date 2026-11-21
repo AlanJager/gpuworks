@@ -1910,7 +1910,7 @@ export interface UpdateStatus {
     installable: boolean;
     /** True when the console can upgrade this server in place. */
     self_upgrade: boolean;
-    /** Why it cannot: no_service_manager, not_installed, not_installed_binary or not_writable. */
+    /** Why it cannot: no_service_manager, not_installed, not_installed_binary, cluster_member or not_writable. */
     self_upgrade_blocker?: string;
     /** The installation directory the server runs from, when it was installed. */
     install_dir?: string;

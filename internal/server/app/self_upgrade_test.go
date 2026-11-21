@@ -182,6 +182,50 @@ func TestSelfUpgradeRefusals(t *testing.T) {
 	}
 }
 
+// A control-plane cluster member is never upgraded from its console: the
+// swap would replace one member's server and leave its database process and
+// the other members behind.
+func TestSelfUpgradeIsBlockedOnAClusterMember(t *testing.T) {
+	settings, dir, restarts := installedTree(t)
+	marker := filepath.Join(settings.cfg.DataDir, "cluster-enrollment", "config.json")
+	if err := os.MkdirAll(filepath.Dir(marker), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte(`{"storage_tier":"standard"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := settings.SelfUpgradeBlocker(); got != "cluster_member" {
+		t.Fatalf("blocker = %q", got)
+	}
+	_, err := settings.Upgrade(context.Background(), bytes.NewReader(releaseArchive(t, "v2.0.0")), "admin", dto.ServerUpgradeSelection{})
+	var settingsErr *api.ServerSettingsError
+	if !errors.As(err, &settingsErr) || settingsErr.Code != api.ErrorServerUpgradeUnavailable || settingsErr.Params["reason"] != "cluster_member" {
+		t.Fatalf("err = %v", err)
+	}
+	if *restarts != 0 {
+		t.Fatal("a refused upgrade restarted the server")
+	}
+	binary, _ := os.ReadFile(filepath.Join(dir, "gpuworks"))
+	if !bytes.Contains(binary, []byte("gpuworks v1.0.0")) {
+		t.Fatalf("binary changed: %q", binary)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, "backups")); len(entries) != 0 {
+		t.Fatalf("a refused upgrade left a backup: %v", entries)
+	}
+	// A second database member blocks it too, without the enrollment file.
+	other, _, _ := installedTree(t)
+	membership := filepath.Join(other.cfg.DataDir, "gpuworks.db.dqlite", "cluster.yaml")
+	if err := os.MkdirAll(filepath.Dir(membership), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(membership, []byte("- ID: 1\n  Address: 10.0.0.1:9001\n- ID: 2\n  Address: 10.0.0.2:9001\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := other.SelfUpgradeBlocker(); got != "cluster_member" {
+		t.Fatalf("blocker with two database members = %q", got)
+	}
+}
+
 // The console never switches editions: a release of another edition is
 // refused with its own code and the editions as parameters, and nothing is
 // swapped or restarted.

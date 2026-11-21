@@ -1922,7 +1922,7 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 
 在线更新检查、候选列表与安装请求使用同一排序规则，不因跨渠道而放行旧版本。两边都是正式版本号 `vX.Y.Z` 时比较版本号，否则比较构建时间；时间无法解析时沿用原有更新检测行为，将不同版本视为可更新。签名索引中的数据库迁移编号不作为在线安装门槛。上传发布包保持原有验证方式，不受这项在线排序限制。
 
-- 409 `SERVER_UPGRADE_UNAVAILABLE`：不能自升级，`reason` 为 `no_service_manager`、`not_installed`、`not_installed_binary` 或 `not_writable`。
+- 409 `SERVER_UPGRADE_UNAVAILABLE`：不能自升级，`reason` 为 `no_service_manager`、`not_installed`、`not_installed_binary`、`cluster_member`（控制面集群的成员不在控制台升级）或 `not_writable`。
 - 409 `SERVER_ALREADY_AT_RELEASE`：已是目标版本；409 `SERVER_NEWER_THAN_RELEASE`：目标构建不比当前版本更新。
 - 404 `UPDATE_NOT_PUBLISHED`：渠道没有本平台的包。
 - 502 `UPDATE_DOWNLOAD_FAILED`：无来源能提供与索引大小、SHA-256 一致的包。`file` 指出文件，`detail` 给出各源原因；不会替换运行中的服务。

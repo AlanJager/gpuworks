@@ -482,6 +482,18 @@ test("an uploaded release goes to the server upload endpoint", async () => {
   }
 });
 
+test("a cluster member shows why it cannot upgrade and offers no single-server command", async () => {
+  const s = stub([statusFixture({ server: { ...selfUpgradable, self_upgrade: false, self_upgrade_blocker: "cluster_member" } })]);
+  try {
+    renderCard();
+    await waitFor(() => assert.ok(within(row(u.server)).getByText(u.blocker.cluster_member)));
+    assert.equal(within(row(u.server)).queryByText("sudo gpuworks upgrade"), null);
+    assert.equal(within(row(u.server)).queryByRole("button", { name: u.upgrade }), null);
+  } finally {
+    s.restore();
+  }
+});
+
 test("a server that cannot upgrade itself shows the command and why", async () => {
   const s = stub([statusFixture({ server: { ...selfUpgradable, self_upgrade: false, self_upgrade_blocker: "not_writable" } })]);
   try {

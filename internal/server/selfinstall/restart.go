@@ -32,6 +32,9 @@ func (i *Installer) Restart(ctx context.Context) (string, error) {
 		return "", err
 	}
 	i.adoptLayout(inst.Config, false, false)
+	if err := i.refuseClusterMember("restart"); err != nil {
+		return "", err
+	}
 	svc := i.service(inst.Mode, inst.ServiceUser, i.unitConfig(inst.ServiceUser, inst.Mode))
 	if inst.FromInstallJSON {
 		if err := i.adoptInstallJSON(ctx, inst, svc); err != nil {
@@ -70,6 +73,9 @@ func (i *Installer) Stop(ctx context.Context) (string, error) {
 		return "", err
 	}
 	i.adoptLayout(inst.Config, false, false)
+	if err := i.refuseClusterMember("stop"); err != nil {
+		return "", err
+	}
 	svc := i.service(inst.Mode, inst.ServiceUser, i.unitConfig(inst.ServiceUser, inst.Mode))
 	if err := svc.Stop(ctx); err != nil {
 		return inst.Mode, fmt.Errorf("stop the service: %w", err)

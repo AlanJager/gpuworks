@@ -112,6 +112,7 @@
       "no_service_manager": "这个进程退出后没有服务管理器把它拉起来（systemd 或 gpuworks serve --supervise），所以不能在控制台升级。",
       "not_installed": "服务端不是用 gpuworks install 安装的，不能在控制台升级。",
       "not_installed_binary": "服务端运行的不是安装目录里的二进制，不能在控制台升级。",
+      "cluster_member": "这台服务端是控制面集群的成员，不能在控制台升级；集群成员要在主机上逐台升级。",
       "not_writable": "服务账户没有安装目录的写权限，不能在控制台升级。"
     },
     "channel": "更新渠道",
