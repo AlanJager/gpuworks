@@ -1669,6 +1669,8 @@ Without pagination parameters, all results are returned. With `page` or `page_si
 - `unusable`: accepts no tasks at all; see the GPU's `schedulable`, `health_status`, `ownership`, and `foreign_processes` for reasons.
 - `unknown`: the node is offline, and readings are from its last report. `available_bytes` is 0, and the GPU is excluded from the allocatable count. Existing allocations and hardware health information are retained.
 
+Memory is booked as `allocated_bytes` (held by awake instances), `sleeping_bytes` (the residue sleeping instances keep) and `available_bytes` (still allocatable). When the three add up to less than `memory_total_bytes`, the difference is memory withheld for another reason: processes outside the platform and the headroom kept beside them, or an offline node.
+
 `overview.health` counts GPUs by health level: `ok`, `warning`, and `error`. GPUs with warnings may still serve workloads; GPUs passed through or occupied by processes outside the platform may also have health `ok`.
 States refresh with the 20-second snapshot.
 
@@ -2409,4 +2411,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: f1c180220c95b04e455ef52c14176091906350ae2fd6cc0f0f8e968cca7c9ec4 -->
+<!-- translation-source-sha256: 3f7e95873817ce53b2d0b87eea8cc16a31a6effc8efb5897f40a7b287a6dc01a -->

@@ -125,7 +125,10 @@
     "wholeCard": "{{name}} · whole card",
     "overhead": "Fixed runtime use (not counted in slice limits)",
     "sleeping": "Held by sleeping instances",
+    "foreign": "Held by processes outside the platform (with headroom)",
+    "withheld": "Not allocatable",
     "free": "Allocatable",
+    "idle": "Free (not open to scheduling)",
     "used": "Card in use: {{used}}",
     "usedLegend": "Card in use"
   },

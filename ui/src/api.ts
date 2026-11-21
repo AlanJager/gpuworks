@@ -4335,6 +4335,10 @@ export interface PhysicalGPU {
   scheduling_actions?: CardScheduling[];
   allocation_state: "available" | "partial" | "allocated" | "unusable" | "unknown";
   allocated_bytes: number;
+  /** The residue sleeping instances keep. What is left of the total after
+   * this, allocated_bytes and available_bytes is withheld for another
+   * reason (processes outside the platform, an unreachable node). */
+  sleeping_bytes: number;
   available_bytes: number;
   occupants: GPUOccupant[];
   load: GPULoad;

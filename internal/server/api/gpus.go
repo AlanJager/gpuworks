@@ -253,7 +253,7 @@ func physicalGPU(node *store.Node, partitionReports partitioncap.Reports, gpu *s
 		HealthStatus:      gpu.HealthStatus, HealthCode: gpu.HealthCode, HealthMessage: gpu.HealthMessage,
 		HealthEvidence: evidence, HealthGuide: guide,
 		NodeUUID: node.UUID, NodeName: node.DisplayName(), NodeState: node.ConnectionState(), DriverVersion: node.GPUDriver,
-		AllocatedBytes: allocation.AllocatedBytes, AvailableBytes: available, Occupants: []dto.GPUOccupant{},
+		AllocatedBytes: allocation.AllocatedBytes, SleepingBytes: allocation.SleepingBytes, AvailableBytes: available, Occupants: []dto.GPUOccupant{},
 	}
 	switch {
 	case node.State != store.NodeStateOnline:

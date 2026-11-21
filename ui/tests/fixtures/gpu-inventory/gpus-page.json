@@ -34,6 +34,7 @@
       "driver_version": "580.126.09",
       "allocation_state": "allocated",
       "allocated_bytes": 48318382080,
+      "sleeping_bytes": 0,
       "available_bytes": 0,
       "occupants": [
         {
@@ -83,6 +84,7 @@
       "driver_version": "580.126.09",
       "allocation_state": "partial",
       "allocated_bytes": 23085449216,
+      "sleeping_bytes": 0,
       "available_bytes": 536870912,
       "occupants": [
         {
@@ -141,6 +143,7 @@
       "driver_version": "580.126.09",
       "allocation_state": "unusable",
       "allocated_bytes": 0,
+      "sleeping_bytes": 0,
       "available_bytes": 0,
       "occupants": [],
       "load": {}

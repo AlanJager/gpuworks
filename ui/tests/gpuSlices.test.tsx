@@ -211,14 +211,41 @@ test("both locales name the unsupported reading and explain it", () => {
 
 test("memory segments follow the books: limits, what slices hold beyond them, residue, free", () => {
   const card = gpusPage.items.find((gpu: { index: number }) => gpu.index === 1);
-  const labels = { slice: (name: string, limit: string) => `${name}:${limit}`, wholeCard: (name: string) => `whole:${name}`, overhead: "overhead", sleeping: "sleeping", free: "free" };
+  const labels = { slice: (name: string, limit: string) => `${name}:${limit}`, wholeCard: (name: string) => `whole:${name}`, overhead: "overhead", sleeping: "sleeping", foreign: "foreign", withheld: "withheld", free: "free", idle: "idle" };
   const segments = memorySegments(card, labels);
   assert.deepEqual(segments.map((s) => [s.label, s.bytes / GIB]), [["qwen3-dgpu-a:8.0", 8], ["qwen3-dgpu-b:8.0", 8], ["qwen3-dgpu-c:4.0", 4], ["overhead", 1.5], ["free", 0.5]]);
   const whole = gpusPage.items.find((gpu: { index: number }) => gpu.index === 0);
   assert.deepEqual(memorySegments(whole, labels).map((s) => [s.label, s.bytes / GIB]), [["whole:qwen3-fullcard", 45]]);
   // A sleeper keeps its residue, drawn as such and not as its slice.
-  const asleep = { ...card, allocated_bytes: 8.5 * GIB, available_bytes: 12.5 * GIB, occupants: [card.occupants[0], { ...card.occupants[1], sleep_level: 1 }] };
+  const asleep = { ...card, allocated_bytes: 8.5 * GIB, sleeping_bytes: 1 * GIB, available_bytes: 12.5 * GIB, occupants: [card.occupants[0], { ...card.occupants[1], sleep_level: 1 }] };
   assert.deepEqual(memorySegments(asleep, labels).map((s) => [s.label, s.bytes / GIB]), [["qwen3-dgpu-a:8.0", 8], ["overhead", 0.5], ["sleeping", 1], ["free", 12.5]]);
+});
+
+// The card as GPU-7824d54f reported it: nothing of ours on it, a vLLM somebody
+// started by hand holding 10 GiB. What the platform withholds there is that
+// process and its headroom, not a sleeping instance, and what is left is not
+// on offer while the card takes no work.
+test("memory withheld on a card is named by its cause, and free is allocatable only where work is taken", () => {
+  const labels = { slice: (name: string, limit: string) => `${name}:${limit}`, wholeCard: (name: string) => `whole:${name}`, overhead: "overhead", sleeping: "sleeping", foreign: "foreign", withheld: "withheld", free: "free", idle: "idle" };
+  const held = {
+    memory_total_bytes: 22 * GIB, allocated_bytes: 0, sleeping_bytes: 0, available_bytes: 8 * GIB, occupants: [],
+    schedulable: false, foreign_processes: [{ pid: 3565129, name: "VLLM::EngineCore", memory_bytes: 10 * GIB }],
+    allocation_state: "unusable" as const,
+  };
+  const rows = (gpu: Parameters<typeof memorySegments>[0]) => memorySegments(gpu, labels).map((s) => [s.label, s.bytes / GIB]);
+  assert.deepEqual(rows(held), [["foreign", 14], ["idle", 8]]);
+  // An operator opened the card to scheduling: the same room is now on offer.
+  assert.deepEqual(rows({ ...held, schedulable: true }), [["foreign", 14], ["free", 8]]);
+  // A sleeper beside the outside process: each keeps its own figure.
+  assert.deepEqual(rows({ ...held, schedulable: true, sleeping_bytes: 1 * GIB, available_bytes: 7 * GIB }), [["sleeping", 1], ["foreign", 14], ["free", 7]]);
+  // Nothing outside the platform and nobody asleep (a node nobody can reach
+  // offers nothing): withheld, with no cause invented for it.
+  assert.deepEqual(rows({ ...held, foreign_processes: undefined, available_bytes: 0 }), [["withheld", 22]]);
+  // The same card once its node is gone: the outside process no longer
+  // explains why none of it is on offer.
+  assert.deepEqual(rows({ ...held, allocation_state: "unknown", available_bytes: 0 }), [["withheld", 22]]);
+  // A faulty card with nothing on it is idle, not allocatable.
+  assert.deepEqual(rows({ ...held, foreign_processes: [], available_bytes: 22 * GIB }), [["idle", 22]]);
 });
 
 test("the SM reference is averaged over the trailing minute", () => {
