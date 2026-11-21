@@ -195,7 +195,8 @@ func (s *clusterStatus) fillPeerOrigins(ctx context.Context, facts enrollment.Cl
 		}
 		i, ok := index[member.ID]
 		if !ok {
-			s.peers = append(s.peers, statusPeer{id: member.ID, address: member.Address, database: "not observed", enrollment: "not observed", material: "not observed"})
+			// A member the cache does not list yet has not been probed.
+			s.peers = append(s.peers, statusPeer{id: member.ID, database: "not observed", enrollment: "not observed", material: "not observed"})
 			i = len(s.peers) - 1
 			index[member.ID] = i
 		}

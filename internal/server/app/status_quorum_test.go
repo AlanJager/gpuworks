@@ -62,10 +62,13 @@ func TestStatusAppliesLiveQuorumWithoutTreatingIndexAsMaterialReadiness(t *testi
 }
 
 func TestStatusLiveQuorumMarksThreeVotersFaultTolerant(t *testing.T) {
+	// The other two voters answer: one that does not is not fault tolerance.
+	peer, stop := openStatusPort(t)
+	t.Cleanup(stop)
 	root := writeStatusRaft(t, statusIdentity(1, "127.0.0.1:1", 0), statusMembers(
 		statusIdentity(1, "127.0.0.1:1", 0),
-		statusIdentity(2, "127.0.0.1:2", 0),
-		statusIdentity(3, "127.0.0.1:3", 0),
+		statusIdentity(2, peer, 0),
+		statusIdentity(3, peer, 0),
 	), map[string]string{"metadata1": "m", "0000000000000001-0000000000000001": "s"})
 	previous := statusQuorumFetch
 	statusQuorumFetch = func(context.Context, clusterStatus, time.Duration) (enrollment.ClusterQuorumFacts, bool) {
@@ -73,8 +76,8 @@ func TestStatusLiveQuorumMarksThreeVotersFaultTolerant(t *testing.T) {
 			LeaderID: 1, Term: 2, Index: 9, ConfigurationIndex: 4,
 			Members: []enrollment.ClusterMember{
 				{ID: 1, Address: "127.0.0.1:1", Role: "voter"},
-				{ID: 2, Address: "127.0.0.1:2", Role: "voter"},
-				{ID: 3, Address: "127.0.0.1:3", Role: "voter"},
+				{ID: 2, Address: peer, Role: "voter"},
+				{ID: 3, Address: peer, Role: "voter"},
 			},
 		}, true
 	}
