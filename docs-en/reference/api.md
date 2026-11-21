@@ -1907,7 +1907,7 @@ When no source is available, the response is still 200 with `available=false`; `
 
 Online update checks, version choices and installation requests use the same ordering rule; changing channels does not permit older versions. When both IDs are formal `vX.Y.Z` versions, compare version numbers; otherwise compare build times. Unreadable times retain the original update-check behavior: a different version is treated as an update. The database migration number in the signed index is not an online installation requirement. Uploaded packages keep their existing validation and are not subject to this online ordering restriction.
 
-- 409 `SERVER_UPGRADE_UNAVAILABLE`: self-upgrade is unavailable; `reason` is `no_service_manager`, `not_installed`, `not_installed_binary`, or `not_writable`.
+- 409 `SERVER_UPGRADE_UNAVAILABLE`: self-upgrade is unavailable; `reason` is `no_service_manager`, `not_installed`, `not_installed_binary`, `cluster_member` (a control-plane cluster member is not upgraded from the console), or `not_writable`.
 - 409 `SERVER_ALREADY_AT_RELEASE`: already at the target version; 409 `SERVER_NEWER_THAN_RELEASE`: the target build is not newer than the current version.
 - 404 `UPDATE_NOT_PUBLISHED`: the channel has no package for the current platform.
 - 502 `UPDATE_DOWNLOAD_FAILED`: no source provides a package matching the size and SHA-256 in the index. `file` identifies the file, and `detail` gives each source's failure reason; the running service is not replaced.
@@ -2362,4 +2362,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 76a89d61db3785024090c59321f1c205b78db8c61e2bc2c839cda1b082cd9467 -->
+<!-- translation-source-sha256: ea4039ee82130accc87de17366562ec64995df99562ab1ea6b49be5e6ba67faa -->

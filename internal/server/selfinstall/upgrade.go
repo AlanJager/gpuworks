@@ -90,6 +90,9 @@ func (i *Installer) Upgrade(ctx context.Context, req UpgradeRequest) (UpgradeRep
 	// An upgrade keeps the installation's layout unless the operator names
 	// somewhere else on this command line.
 	i.adoptLayout(inst.Config, req.DataDirSet, req.LogsDirSet)
+	if err := i.refuseClusterMember("upgrade"); err != nil {
+		return UpgradeReport{}, err
+	}
 	req.Addr = installedProbeAddr(inst.Config)
 
 	unlock, err := i.lockUpgrade(ctx)

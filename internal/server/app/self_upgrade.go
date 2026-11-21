@@ -23,7 +23,9 @@ import (
 
 // installLayout is the installation this process runs from, or the reason a
 // console upgrade is not possible: no_service_manager, not_installed,
-// not_installed_binary or not_writable.
+// not_installed_binary, cluster_member or not_writable. A cluster member is
+// refused because swapping one member's server leaves its database process
+// and the other members on another release.
 func (s *serverSettings) installLayout() (selfinstall.Layout, string) {
 	if s.restart == nil {
 		return selfinstall.Layout{}, "no_service_manager"
@@ -31,6 +33,9 @@ func (s *serverSettings) installLayout() (selfinstall.Layout, string) {
 	layout, reason := configuredInstallLayout(s.cfg, s.executable())
 	if reason != "" {
 		return selfinstall.Layout{}, reason
+	}
+	if member, err := selfinstall.ClusterMember(layout.DataDir); err != nil || member {
+		return selfinstall.Layout{}, "cluster_member"
 	}
 	probe, err := os.CreateTemp(layout.Dir, ".write-probe-*")
 	if err != nil {

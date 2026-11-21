@@ -243,12 +243,15 @@ export default function UpdatesCard() {
             </Space>
           );
         }
+        // A cluster member is not offered the single-server command: it
+        // refuses there too.
+        const offerCommand = status?.server.self_upgrade_blocker !== "cluster_member";
         return (
           <Space direction="vertical" size={2}>
               {browseVersions}
-            <span className="inline-flex items-center gap-1"><Text code>sudo gpuworks upgrade</Text>
+            {offerCommand && <span className="inline-flex items-center gap-1"><Text code>sudo gpuworks upgrade</Text>
               <CopyButton size="small" text="sudo gpuworks upgrade" label={tCommon("gpuHealth.copyCommand")} />
-            </span>
+            </span>}
             {status?.server.self_upgrade_blocker && <Text type="secondary">{t(`updates.blocker.${status.server.self_upgrade_blocker}`, { defaultValue: status.server.self_upgrade_blocker })}</Text>}
           </Space>
         );

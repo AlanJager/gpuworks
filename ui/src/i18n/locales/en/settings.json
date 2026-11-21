@@ -112,6 +112,7 @@
       "no_service_manager": "Nothing would start this process again after it exits (systemd, or gpuworks serve --supervise), so it cannot be upgraded from the console.",
       "not_installed": "The server was not installed with gpuworks install, so it cannot be upgraded from the console.",
       "not_installed_binary": "The server does not run the installed binary, so it cannot be upgraded from the console.",
+      "cluster_member": "This server is a member of a control-plane cluster, so it cannot be upgraded from the console; cluster members are upgraded one at a time on their hosts.",
       "not_writable": "The service account cannot write the install directory, so the server cannot be upgraded from the console."
     },
     "channel": "Update channel",

@@ -56,7 +56,7 @@ type ServerBuildInfo struct {
 // Installable says the release has an archive for this server's platform.
 // SelfUpgrade says the console can upgrade this server in place; otherwise
 // SelfUpgradeBlocker names why (no_service_manager, not_installed,
-// not_installed_binary, not_writable) and the CLI is the way. InstallDir is
+// not_installed_binary, cluster_member, not_writable) and the CLI is the way. InstallDir is
 // the installation the server runs from (the directory of its server.yaml),
 // for the commands the page offers; empty when it was started without one.
 type ServerUpdate struct {
