@@ -8,12 +8,14 @@ import {
   type ProviderCategoryInfo,
   type ProviderCredentialField,
   type ProviderKindInfo,
+  type ProviderTestOverride,
 } from "../api";
 import { localizedText } from "../i18n/localizedText";
 import { clusterFormKind, clusterCategoryOf } from "../platformClusters";
 import { useKubeClusterForm } from "../pages/kubernetes/useKubeClusterForm";
 import { useSlurmClusterForm } from "../pages/slurm/useSlurmClusterForm";
 import { PlatformResourceBadge } from "../pages/platforms/PlatformResourceBadge";
+import ProviderTestDialog, { NOOP_TEST_RUN, type ProviderTestRun } from "./ProviderTestDialog";
 import { FormField } from "../ui-kit/form/FormField";
 import { formSubmit } from "../ui-kit/form/submit";
 import { Notice } from "../ui-kit/Notice";
@@ -83,6 +85,7 @@ export default function ProviderConfigModal({
   const [kind, setKind] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [testJob, setTestJob] = useState<{ run: ProviderTestRun } | null>(null);
   const [loadedProviderID, setLoadedProviderID] = useState<number | null>(null);
   const [loadError, setLoadError] = useState(false);
   const editing = !!provider;
@@ -102,6 +105,7 @@ export default function ProviderConfigModal({
     form.reset(BLANK);
     setKind("");
     setSubmitError(null);
+    setTestJob(null);
     onClose();
   };
   const editReady = !provider || (loadedProviderID === provider.id && kindInfos.some((info) => info.kind === provider.kind));
@@ -191,6 +195,7 @@ export default function ProviderConfigModal({
       else made = await api.addProvider({ kind, ...body });
       form.reset(BLANK);
       setKind("");
+      setTestJob(null);
       onSaved(made && { id: made.id, kind: made.kind });
     } catch (e) {
       setSubmitError(t("config.operationFailed", { operation: t(provider ? "config.operation.update" : "config.operation.add"), detail: (e as Error).message }));
@@ -199,7 +204,22 @@ export default function ProviderConfigModal({
     }
   };
 
+  const startTest = () => {
+    // A test that is already open is the one this button would start.
+    if (testJob) return;
+    const values = testValuesOf(form.getValues());
+    if (provider) {
+      // A saved account is tested on the server over what it stores: the form shows only what may be read back
+      // (never a secret), so what it holds overrides the stored values and a field left blank keeps its own.
+      const override = Object.keys(values).length > 0 ? values : undefined;
+      setTestJob({ run: (onCheck, signal) => api.testSavedProviderConnection(provider.id, onCheck, override, signal) });
+      return;
+    }
+    setTestJob({ run: (onCheck, signal) => api.testProviderConnection({ kind, ...values }, onCheck, signal) });
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }} disablePointerDismissal>
       <DialogContent size="lg" closeButtonLabel={tCommon("actions.close")} closeButtonDisabled={busy} className="flex max-h-[calc(100dvh-32px)] flex-col gap-4">
         <DialogHeader>
@@ -284,8 +304,9 @@ export default function ProviderConfigModal({
           <div ref={footerRef} className="contents">
             {clusterChosen ? cluster.footer(close) : (
               <>
+                <Button variant="secondary" onClick={startTest} disabled={!kind || submitting || testJob !== null}>{t("test.run")}</Button>
                 <Button variant="ghost" onClick={close} disabled={submitting}>{t("config.cancel")}</Button>
-                <Button type="submit" form={formId} variant="primary" loading={submitting || (editing && !editReady && !loadError)} disabled={!editReady || loadError}>
+                <Button type="submit" form={formId} variant="primary" loading={submitting || (editing && !editReady && !loadError)} disabled={!editReady || loadError || testJob !== null}>
                   {t(provider ? "config.save" : "config.add")}
                 </Button>
               </>
@@ -294,6 +315,8 @@ export default function ProviderConfigModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <ProviderTestDialog open={testJob !== null} run={testJob?.run ?? NOOP_TEST_RUN} onClose={() => setTestJob(null)} />
+    </>
   );
 }
 
@@ -357,4 +380,19 @@ function requestOf(values: FormValues, fields: ProviderCredentialField[]) {
   }
   if (Object.keys(extra).length > 0) body.extra = extra;
   return body;
+}
+
+/** What a connection test sends of the form: the fields that hold something, trimmed. A blank one is left out, not sent as an empty credential. */
+function testValuesOf(values: FormValues): ProviderTestOverride {
+  const req: ProviderTestOverride = {};
+  for (const key of ["endpoint", "api_key", "public_key", "private_key"] as const) {
+    const value = values[key].trim();
+    if (value) req[key] = value;
+  }
+  const extra: Record<string, string> = {};
+  for (const [name, value] of Object.entries(values.extra ?? {})) {
+    if (typeof value === "string" && value.trim()) extra[name] = value.trim();
+  }
+  if (Object.keys(extra).length > 0) req.extra = extra;
+  return req;
 }

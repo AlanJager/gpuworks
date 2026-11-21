@@ -223,8 +223,8 @@ test("a platform's name is its name and nothing else: not a button or a link, an
   assert.deepEqual(read, [], "and reads no saved configuration");
   assert.equal(within(rowOf("Hosts")).getByRole("button", { name: "Expand row" }).getAttribute("aria-expanded"), "false", "nor does it open the row");
 
-  // Every account has the three actions, in this order; each is an icon named for what it does.
-  assert.deepEqual(within(within(rowOf("Hosts")).getAllByRole("cell").at(-1) as HTMLElement).getAllByRole("button").map((button) => button.getAttribute("aria-label")), ["Edit", "Sync", "Delete"]);
+  // Every account has the three actions, in this order, each an icon named for what it does; the connection test folds into the menu.
+  assert.deepEqual(within(within(rowOf("Hosts")).getAllByRole("cell").at(-1) as HTMLElement).getAllByRole("button").map((button) => button.getAttribute("aria-label")), ["Edit", "Sync", "Delete", "More"]);
   await user.click(action("Hosts", "Edit"));
   const dialog = await screen.findByRole("dialog", { name: "Edit External Platform" });
   await waitFor(() => assert.equal((within(dialog).getByLabelText(field("Name")) as HTMLInputElement).value, "Hosts"));

@@ -338,6 +338,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Put("/providers/{id}", a.updateProvider)
 			r.Delete("/providers/{id}", a.deleteProvider)
 			r.Post("/providers/{id}/sync", a.syncProvider)
+			r.Post("/providers/test", a.testProviderConnection)
+			r.Post("/providers/{id}/test", a.testSavedProviderConnection)
 			r.Get("/providers/{id}/clusters", a.providerClusters)
 			r.Get("/providers/{id}/hpc-clusters", a.providerHPCClusters)
 			r.Post("/providers/{id}/instances", a.createProviderInstance)

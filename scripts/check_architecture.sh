@@ -890,9 +890,27 @@ forbid_import ./internal/server/controller \
 
 # Shared orchestration only sees provider contracts. The app imports all solely
 # to register drivers; concrete assembly and ownership rules belong to drivers.
-forbid_import ./internal/server/provider \
-  'gpuworks/internal/server/provider/' \
-  'provider service does not import concrete drivers'
+# The connection-test runner (provider/testconn) is a leaf the service drives,
+# not a driver, so it is exempt from the driver-import ban.
+provider_driver_imports=$(pkg_imports ./internal/server/provider \
+  | grep -F 'gpuworks/internal/server/provider/' \
+  | grep -vx 'gpuworks.ai/gpuworks/internal/server/provider/testconn' || true)
+if [ -n "$provider_driver_imports" ]; then
+  echo "  FAIL: provider service does not import concrete drivers" >&2
+  echo "$provider_driver_imports" | sed 's/^/    /' >&2
+  failures=$((failures + 1))
+else
+  echo "  ok: provider service does not import concrete drivers"
+fi
+# The exemption holds only while testconn stays a leaf: it knows neither the
+# provider contracts (the service hands it plain inputs and vendor checks),
+# nor any driver, nor the store.
+forbid_import ./internal/server/provider/testconn \
+  'gpuworks/internal/server/provider' \
+  'provider connection-test runner does not import the provider service or drivers'
+forbid_import ./internal/server/provider/testconn \
+  'gpuworks/internal/server/store' \
+  'provider connection-test runner does not import store'
 forbid_import ./internal/server/controller \
   'gpuworks/internal/server/provider/' \
   'controller does not import concrete provider drivers'

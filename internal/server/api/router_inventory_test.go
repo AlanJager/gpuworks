@@ -401,11 +401,13 @@ POST /api/v1/plugins/{id}/rollback
 POST /api/v1/plugins/{id}/upgrade
 POST /api/v1/priority-classes
 POST /api/v1/providers
+POST /api/v1/providers/test
 POST /api/v1/providers/{id}/install
 POST /api/v1/providers/{id}/instances
 POST /api/v1/providers/{id}/instances/{externalID}/power
 POST /api/v1/providers/{id}/instances/{externalID}/resize
 POST /api/v1/providers/{id}/sync
+POST /api/v1/providers/{id}/test
 POST /api/v1/pull/credentials
 POST /api/v1/pull/credentials/{id}/test
 POST /api/v1/pull/proxies

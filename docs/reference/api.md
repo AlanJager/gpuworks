@@ -1777,6 +1777,8 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | PUT | `/api/v1/providers/{id}` | 更新云厂商账号 | JWT |
 | DELETE | `/api/v1/providers/{id}` | 删除云厂商账号，连同它的实例记录及该账号的 Cloud 主机发现快照缓存（同一事务，失败回滚）；不释放云上的实例和集群，已接入的节点保留；从它接入的集群条目保留，`source` 去掉、`pool_ids` 不变，此后按独立接入的集群处理（`can_apply`、`can_remove` 为 false，`operation_blocked` 为 `no_source`） | JWT |
 | POST | `/api/v1/providers/{id}/sync` | 同步该账号下的实例：列出的实例写入/更新，云端已不存在的实例行移除（关联节点保留，带外恢复置 `stopped`）；返回的 `count` 与 `instances` 同实例列表，不含托管 Kubernetes 集群的节点和 HPC 集群的计算节点；成功时把当前时间记为账号的 `synced_at`；列举失败返回 424、不改动实例行和 `synced_at` | JWT |
+| POST | `/api/v1/providers/test` | 测试一组尚未保存的凭据：`{kind, endpoint?, api_key?, public_key?, private_key?, extra?}`；以 SSE 逐项返回检查结果，测试失败仍是 200，见[云平台连接测试](#云平台连接测试)；`kind` 未注册返回 400 `PROVIDER_KIND_UNKNOWN`（`kind`） | JWT |
+| POST | `/api/v1/providers/{id}/test` | 测试已保存的账号；请求体可省略，给出时为 `{endpoint?, api_key?, public_key?, private_key?, extra?}`，非空字段只在本次测试里覆盖已保存的值（留空的密钥沿用已保存的值，规则同更新账号），不落库、不返回已保存的密钥；响应同上，见[云平台连接测试](#云平台连接测试)；账号不存在返回 404 | JWT |
 | GET | `/api/v1/providers/{id}/clusters` | 该账号下的托管 Kubernetes 集群，实时向云厂商读取、不落库：`{items:[{external_id,name,region,version,type?,type_label?,state,running,public_api,gpu_pools:[{id,name,gpu_model,gpu_count,nodes,vendor,in_entry}],entry?:{uuid,name},connectable,agent_image_source}],total}`；`connectable` 说明能否由它新建条目：集群运行中、有 GPU 节点池且还没有条目；`type` 是集群属于厂商的哪种产品（`ack_managed`、`ack_dedicated`、`ack_edge`、`ack_lingjun`、`ack_registered`、`doks`），`type_label` 是它的中英文名称，驱动分辨不出时两者都不出现；Pod 运行在虚拟节点上的集群（ACK Serverless、ACS）没有能运行 agent 的节点，不列出；`agent_image_source` 是由它建条目时默认的 agent 镜像仓库（按地域）；`entry` 是已由它建的集群条目，`in_entry` 说明该节点池是否已在条目里（DaemonSet 在它的节点上运行）；驱动没有集群能力回 501，云厂商报错回 424 | JWT |
 | GET | `/api/v1/providers/{id}/hpc-clusters` | 该账号下的 HPC 集群（阿里云 E-HPC），向云厂商读取、不落库：要逐个地域询问，连接冷时要几秒，所以 server 在内存里留着上一次读到的列表（最长 24 小时），请求立刻拿到它，`listed_at` 是那次读取的时间；列表超过 15 秒时同时在后台重新读取（每个账号同一时刻只读一次），最多等 1 秒，读完就返回新的，否则返回旧的并带 `refreshing: true`，控制台过 2 秒再取一次；还没有读过时等这次读取；`?fresh=1` 等新的读取完成（同步之后用）。与托管 Kubernetes 集群的列表（`/clusters`）并列而不合并：两者是不同的云产品，权限、字段和失败各自独立，一个读不到不影响另一个。先问 E-HPC 在哪些地域有服务（`ehpc:ListRegions`；密钥没有这个权限或调用失败时，改为逐个询问账号的每个地域），再逐个地域只在它自己的 E-HPC 地址读取 `ehpc:ListClusters`（分页读完；不借用别的地域或中心地址的答案，因为响应里没有地域，借来的集群会被记到被问的地域名下），同一个集群只列一次，每个地域各自成败，一个失败不拖垮别的：没有 E-HPC 服务的地域、账号在该地域没有开通 E-HPC 的（代码属 `NotActivated`/`NotOpen`/`NotEnabled` 一类）跳过，没有集群；个别地域失败（限流、该地域的 RAM 策略不放行、网络等）时返回其余地域的集群并标 `partial`；所有地域都失败时才整体失败。`{items:[{external_id,name,region,scheduler,scheduler_version,state,state_tone,vendor_state,running,compute_nodes?,gpu_nodes?,connectable,can_apply,unsupported_reason?,not_connectable_reason?,entry?:{uuid,name}}],total,access,permission?,code?,partial,failed_regions:[{region,code,message,permission?}]}`（地域、ID 升序）：`access` 为 `ok`、`permission_missing`（没有任何地域读得动，且都是 RAM 拒绝：`permission` 是缺的动作 `ehpc:ListClusters`，`items` 为空，不是错误）或 `not_activated`（没有任何地域读得动，账号都没开通 E-HPC：`code` 是云厂商的原话，`items` 为空）；`partial` 为 true 表示有地域没读到，它们在 `failed_regions`（`code`、`message` 是云厂商的，因 RAM 拒绝时带 `permission`），这些地域里的集群可能不在 `items` 里：集群里一个 GPU 节点都还没有、或还没同步过，照样列出；`name` 云厂商没给时是 `external_id`；`scheduler` 为小写的调度器（`slurm`、`pbs`…），`scheduler_version` 是云厂商报的版本；`state` 是集群状态的稳定代码（`uninit`、`creating`、`initing`、`pending`、`running`、`exception`、`stopping`、`stopped`、`releasing`，云厂商文档以外的词是 `unknown`），文字由客户端按语言写；`state_tone` 是状态的颜色语义（`success`、`info`、`neutral`、`danger`），`vendor_state` 是云厂商的原话，`running` 为它报告可用；`compute_nodes` 是云厂商此刻列出的该集群计算节点数（任何状态：创建中、运行中、异常；E-HPC 的 `ListClusters` `Nodes` 三项计数之和，同一次实时读取，列表没给计数时没有这个字段：数量未知，不是 0），云厂商不说其中哪些带 GPU，所以它不是 GPU 节点数；`gpu_nodes` 是上次实例同步里该集群带 GPU 的计算节点数，只在没有 `compute_nodes` 时给出（同步可能是很久以前的，实时计数优先；还没有同步列出过该集群时也没有这个字段）；`connectable` 说明能否由它新建 Slurm 条目：集群运行中、调度器是 Slurm 且还没有条目；`can_apply` 说明建好后平台能否经云账号在 Slurm 管控节点上执行 setup（驱动能在 Slurm 管控节点执行命令；集群的地域和调度器来自上次同步里它的节点，没有节点时来自这次读到的列表，整个响应只读一次云厂商，不是每个集群读一次）；`unsupported_reason` 是没有条目的集群根本不能接入的原因，现在只有 `scheduler_not_slurm`（调度器不是 Slurm），客户端据此写提示，不自己比较调度器（集群还在创建、云厂商还没给出调度器时不算）；`not_connectable_reason` 是 Slurm 集群没有条目、因为状态暂时不能接入的原因，`cluster_starting`（创建或初始化中，运行后可接入）、`cluster_pending`（待配置）、`cluster_exception`（异常，要先在 E-HPC 控制台处理）、`cluster_stopped`（已停止或停止中，要先在控制台启动）、`cluster_releasing`（释放中）或 `cluster_state_unknown`，与 `unsupported_reason` 至多给一个，调度器的原因优先；`entry` 是已由它建的 Slurm 条目。驱动没有 HPC 集群能力回 501，所有地域都失败（不是 RAM 拒绝或未开通）回 424 | JWT |
 | POST | `/api/v1/providers/{id}/instances` | 租用新实例；云厂商报错返回 424（不支持返回 501） | JWT |
@@ -1787,6 +1789,51 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | POST | `/api/v1/providers/{id}/install` | 在已租实例上安装 agent；连接参数同创建节点。需要重启 Pod 时先返回 409，显式允许后才修改；见[云实例安装与重启确认](#云实例安装与重启确认)；实例是托管 Kubernetes 集群的节点时回 409 `PROVIDER_INSTANCE_IN_CLUSTER`（`cluster`）；是 HPC 集群的计算节点时回 409 `PROVIDER_INSTANCE_IN_HPC_CLUSTER`（`cluster`；它们随集群条目接入，不逐台安装） | JWT |
 
 云厂商相关接口里，云厂商 API 或实例 SSH 出错一律返回 424 Failed Dependency，正文 `{error}` 是原因。不用 502/504：Cloudflare 等 CDN/隧道会把源站 502/504 的正文换成它自己的错误页，原因就丢了。
+
+### 云平台连接测试
+
+`POST /api/v1/providers/test` 与 `POST /api/v1/providers/{id}/test` 的响应是 SSE（`Content-Type: text/event-stream`）。
+请求本身有误（JSON 无法解析、`kind` 未注册、账号不存在）在开始推送前按普通错误返回；一旦开始推送，HTTP 状态恒为 200，测试结果在事件里。
+
+每完成一项检查推送一个 `check` 事件，全部结束后推送一个 `done` 事件：
+
+```text
+event: check
+data: {"seq":4,"name":"tcp_connect","status":"failed","duration_ms":12,"code":"PROVIDER_TCP_REFUSED","hint":"tcp_refused"}
+
+event: done
+data: {"ok":false,"failed":["tcp_connect"]}
+```
+
+- `check`：`{seq, name, status, duration_ms, code?, detail?, hint?}`。`status` 为 `ok`、`failed` 或 `skipped`；`code` 只在 `failed` 时出现，是稳定的错误码；`hint` 是给客户端选取说明文字的键；`detail` 的键随检查项而不同（见下表）。云厂商返回的原文、凭据与代理变量的值都不会出现在事件里，失败原因写入 server 日志（凭据值已替换）。
+- `done`：`{"ok":true}`；有检查失败时为 `{"ok":false,"failed":[...]}`，`failed` 按推送顺序列出失败的检查项；测试无法跑完（已保存的配置读不出、该类型的驱动未注册，或整次测试超过 2 分钟）时为 `{"ok":false,"code":"PROVIDER_TEST_UNAVAILABLE"}`。
+- 客户端断开连接即取消测试，不再推送后续事件。
+
+检查项按下表顺序执行。一项失败时，依赖它的检查项为 `skipped`，`hint` 为 `depends_failed`，`detail.depends` 是它所依赖的那一项；其余检查项照常执行。
+
+| `name` | 检查内容 | 通过时的 `detail` | 失败的 `code`（`hint`；`detail`） |
+|---|---|---|---|
+| `endpoint_format` | endpoint 是不带用户名、查询串的 http(s) 地址；留空时用该类型的默认地址 | `scheme`、`host` | `PROVIDER_ENDPOINT_INVALID`（`endpoint_empty`、`endpoint_shape`） |
+| `credentials_shape` | 该类型的必填凭据字段都已填写 | `fields`（必填字段数） | `PROVIDER_CREDENTIAL_MISSING`（`credential_missing`；`field`） |
+| `dns_resolve` | server 能解析 endpoint 的主机名 | `ips`，endpoint 本身是 IP 时另有 `literal: true` | `PROVIDER_DNS_FAILED`（`dns`；`host`） |
+| `tcp_connect` | server 能连上 endpoint 的端口 | `address`、`rtt_ms` | `PROVIDER_TCP_REFUSED`（`tcp_refused`）、`PROVIDER_TCP_UNREACHABLE`（`tcp_unreachable`）、`PROVIDER_TCP_TIMEOUT`（`tcp_timeout`） |
+| `tls_handshake` | https 的 TLS 握手与证书校验 | `server_name`、`cert_days_left`；http 为 `mode: "plain_http"` | `PROVIDER_TLS_FAILED`（`tls`） |
+| `proxy_detect` | server 进程的代理环境变量，以及访问 endpoint 是否经过代理 | `proxy: "none"`，或 `proxy: "env"`、`variables`（已设置的变量名，按字典序）、`used` | `PROVIDER_PROXY_FAILED`（`proxy`）：代理设置无法使用 |
+| `clock_skew` | endpoint 响应的 `Date` 与 server 时钟相差不超过 5 分钟 | `skew_seconds`；没有或无法解析 `Date` 时为 `date_header: "absent"` 或 `"unparseable"` | `PROVIDER_CLOCK_SKEW`（`clock_skew`；`skew_seconds`）、`PROVIDER_HTTP_UNREACHABLE`（`http`） |
+| `auth_request` | 用这组凭据向云厂商发一次校验请求 | 无；ZStack 为 `auth`、`hosts` | `PROVIDER_AUTH_FAILED`（`auth`）；ZStack 为 `ZSTACK_*` 错误码 |
+
+访问 endpoint 要经过代理时，server 需要连上的是代理：`dns_resolve` 与 `tcp_connect` 改为检查代理的地址，通过时 `detail` 为 `target: "proxy"`（`tcp_connect` 另有 `rtt_ms`），失败时为 `PROVIDER_PROXY_FAILED`（`proxy`；`target: "proxy"`）；`tls_handshake` 为 `skipped`、`hint` 为 `via_proxy`；代理拒绝连接 endpoint 时 `clock_skew` 以 `PROVIDER_PROXY_FAILED` 失败。
+
+没有 endpoint 的类型（阿里云，由驱动按地域选择地址）：`endpoint_format` 与 `dns_resolve` 到 `clock_skew` 各项为 `skipped`、`hint` 为 `not_applicable`，这种跳过不影响后面的检查项，`auth_request` 照常执行。
+
+ZStack Cloud 在 `auth_request` 之后还有四项，失败时为 `ZSTACK_*` 错误码：
+
+| `name` | 检查内容 | `detail` |
+|---|---|---|
+| `protocol_shape` | Cloud 的 GPU 查询协议属于哪一代 | `shape`（`modern`、`intermediate`、`legacy`、`gpu_query`，失败时 `unsupported`）、`allocation_field`（`present`、`absent`、`unobserved`）、`cpu_reservation_config`（`bound`、`unbound`、`unprobed`、`error`）；失败时另有 `missing` |
+| `api_endpoints` | 产品要用的只读接口是否存在 | `absent`、`denied`、`gpu_query: "pci_fallback"`（各自有才出现）；失败时为 `missing` 或 `endpoint` |
+| `read_permissions` | 产品实际会发的只读查询是否被允许 | `queries: "all"`；失败时为 `denied`（`hint` 为 `zstack_permission`）或 `query` |
+| `resource_summary` | 读到的资源数量 | `hosts`、`gpus`、`gpus_free` |
 
 ### 云实例安装与重启确认
 

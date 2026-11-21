@@ -12,6 +12,7 @@ import {
 import PageHeader from "../components/PageHeader";
 import ResourceTable, { type ResourceColumn } from "../components/resourceTable/ResourceTable";
 import ProviderConfigModal from "../components/ProviderConfigModal";
+import ProviderTestDialog, { NOOP_TEST_RUN, type ProviderTestRun } from "../components/ProviderTestDialog";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Container } from "../components/ui/container";
@@ -84,6 +85,7 @@ export default function CloudProvidersPage() {
   const [instanceRefreshVersion, setInstanceRefreshVersion] = useState(0);
   const [kindInfos, setKindInfos] = useState<ProviderKindInfo[]>([]);
   const [categories, setCategories] = useState<ProviderCategoryInfo[]>([]);
+  const [testJob, setTestJob] = useState<{ run: ProviderTestRun } | null>(null);
   // The platform types a cluster connected on its own is added as, as the server offers them.
   const clusterCategory = clusterCategoryOf(categories, "kubernetes");
   const slurmCategory = clusterCategoryOf(categories, "slurm");
@@ -286,7 +288,9 @@ export default function CloudProvidersPage() {
           <RowActions label={p.name} actions={[
             { key: "edit", label: t("table.edit"), icon: ConsoleIcon.edit, common: true, onSelect: () => openEdit(p) },
             { key: "sync", label: t("table.sync"), icon: ConsoleIcon.refresh, common: true, disabled: !syncable, hint: syncable ? undefined : t("table.comingSoon"), loading: syncing === p.id, onSelect: () => void doSync(p.id) },
-            { key: "delete", label: t("table.delete"), icon: ConsoleIcon.delete, danger: true, onSelect: () => confirmDelete(p) },
+            // The row keeps its three buttons; the connection test folds into the menu.
+            { key: "delete", label: t("table.delete"), icon: ConsoleIcon.delete, common: true, danger: true, onSelect: () => confirmDelete(p) },
+            { key: "test", label: t("test.run"), icon: ConsoleIcon.networks, onSelect: () => setTestJob({ run: (onCheck, signal) => api.testSavedProviderConnection(p.id, onCheck, undefined, signal) }) },
           ]} />
         );
       },
@@ -442,6 +446,7 @@ export default function CloudProvidersPage() {
         canConnectCluster={isAdmin}
         onClusterCreated={() => { void clusters.refetch(); void slurm.refetch(); }}
       />
+      <ProviderTestDialog open={testJob !== null} run={testJob?.run ?? NOOP_TEST_RUN} onClose={() => setTestJob(null)} />
     </>
   );
 }

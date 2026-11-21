@@ -496,6 +496,13 @@ CGO_ENABLED=0 go run ./scripts/apiconv -opaque      # 加 -v 列出字段
 `container_overrides`）因此也出现在响应里。它们是同一个请求契约，不是新加的不透明字段；编辑计划里逐字段的变化
 （`DeploymentChange.from/to`）用字符串而不是 `any`。
 
+2026-11-21：云平台连接测试（`docs/reference/api.md#云平台连接测试`）44→45：`POST /providers/test` 与
+`POST /providers/{id}/test` 以 SSE 逐项返回检查结果，`testconn.Check.Detail` 的键随检查项而不同
+（`dns_resolve` 是 `ips`，`clock_skew` 是 `skew_seconds`，ZStack 的 `protocol_shape` 是 `shape` 等），与
+`dto.SchedulingHistoryEntry.Params` 随事件码而不同是同一回事；每项一个具名类型只会把检查项自己的词表再写一遍。
+控制台按键名插值，所以每个检查项的 `detail` 键都有字面 wire JSON 断言（`provider/testconn`、
+`provider/zstack/cloud` 与 `api` 的连接测试用例），键名改动会让这些用例失败。
+
 排除：带 `MarshalJSON`/`MarshalText` 的类型自己决定编码，不计入。初值来自 API 规范统一时的实测：
 统一前 42，把节点拓扑、benchmark `long_tail`、agent 拒绝记录、终端会话改为具名 DTO 后为 40。
 

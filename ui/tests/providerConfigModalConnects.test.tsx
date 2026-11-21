@@ -374,7 +374,7 @@ test("the Kubernetes cluster tab is reached with the arrows like any other and s
   assert.ok(document.activeElement === tab(K8S), "the selected tab is the tabs' one stop");
   await user.keyboard("{ArrowLeft}");
   await waitFor(() => assert.equal(selectedLabel(), "New Cloud"));
-  assert.deepEqual(footerButtons(), ["Cancel", "Add"]);
+  assert.deepEqual(footerButtons(), ["Test connection", "Cancel", "Add"]);
   assert.ok(document.activeElement === tab("Other"));
 });
 
@@ -382,7 +382,7 @@ test("the Kubernetes cluster tab puts the cluster form in place of the vendor's,
   const user = mount({ defaultKind: "runpod", canConnectCluster: true });
   await waitFor(() => assert.equal(selectedLabel(), "RunPod"));
   assert.deepEqual(fieldLabels(), [p.config.type, p.config.name, "API Key"]);
-  assert.deepEqual(footerButtons(), ["Cancel", "Add"]);
+  assert.deepEqual(footerButtons(), ["Test connection", "Cancel", "Add"]);
   // The vendor's form: its Add submits it, and the platform choice is not one of its fields.
   const vendorForm = dialog().querySelector("form") as HTMLFormElement;
   const addButton = within(dialog()).getByRole("button", { name: "Add" }) as HTMLButtonElement;
@@ -416,7 +416,7 @@ test("the Kubernetes cluster tab puts the cluster form in place of the vendor's,
   await choice.en.pickType(user, "Public cloud");
   await waitFor(() => assert.deepEqual(fieldLabels(), [p.config.type, p.config.name, "API Key"]));
   assert.equal(selectedLabel(), "Alibaba Cloud");
-  assert.deepEqual(footerButtons(), ["Cancel", "Add"]);
+  assert.deepEqual(footerButtons(), ["Test connection", "Cancel", "Add"]);
   assert.equal(dialog().querySelectorAll("form").length, 1);
   assert.deepEqual(connects("It connects").map(([tag]) => tag), ["ECS", "ACK", "E-HPC"]);
 });
@@ -444,7 +444,7 @@ test("opened on Kubernetes the dialog is on the cluster form even when the serve
   await waitFor(() => assert.equal(selectedLabel(), "RunPod"));
   assert.deepEqual(typeTabs(), [["Public cloud", true], ["Private cloud", false]]);
   assert.deepEqual(fieldLabels(), [p.config.type, p.config.name, "API Key"]);
-  assert.deepEqual(footerButtons(), ["Cancel", "Add"]);
+  assert.deepEqual(footerButtons(), ["Test connection", "Cancel", "Add"]);
   assert.equal(dialog().querySelectorAll("form").length, 1);
 });
 
@@ -495,7 +495,7 @@ test("editing an account shows its platform as a fixed field: no tabs, nothing t
   assert.equal(screen.queryAllByText("It connects").length, 0);
   assert.equal(screen.queryAllByRole("list").length, 0);
   assert.deepEqual(fieldLabels(), [p.config.type, p.config.name, "API Key"]);
-  assert.deepEqual(footerButtons(), ["Cancel", "Save"]);
+  assert.deepEqual(footerButtons(), ["Test connection", "Cancel", "Save"]);
   assert.equal(dialog().querySelectorAll("form").length, 1);
 });
 
@@ -521,7 +521,7 @@ test("without a cluster category from the server nobody is offered Kubernetes, n
   await waitFor(() => assert.equal(selectedLabel(), "RunPod"));
   assert.deepEqual(await choice.en.types(), ["Public cloud", "Private cloud"]);
   assert.equal(screen.queryAllByRole("tab", { name: /Kubernetes/ }).length, 0);
-  assert.deepEqual(footerButtons(), ["Cancel", "Add"]);
+  assert.deepEqual(footerButtons(), ["Test connection", "Cancel", "Add"]);
 });
 
 test("the Kubernetes tab is the category the server marks as added with the cluster form, whatever its id, and says what that category connects; an empty one is no tab", async () => {

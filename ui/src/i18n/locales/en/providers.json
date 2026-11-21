@@ -104,5 +104,48 @@
   "clusters": { "loadFailed": "Cannot read the clusters", "empty": "This account has no managed Kubernetes clusters", "column": {"gpuPools": "GPU node pools"}, "field": {"id": "Cluster ID", "api": "API server", "nodes": "Nodes joined", "region": "Region", "version": "Version"}, "nodes_one": "{{count}} node", "nodes_other": "{{count}} nodes", "entryGone": "The account no longer has this cluster. Its entry and the nodes that joined are still here: revoke or delete it on the right.", "entryUnread": "The cloud's clusters could not be read, so the node pools cannot be shown; the entry can still be managed on the right.", "publicAPI": "Publicly reachable", "privateAPI": "Private network only", "privateAPIHint": "The API server has no public address, so gpuworks cannot apply the manifest for you; after connecting, run the kubectl command from inside the cluster's network.", "connected": "Connected", "notRunning": "Cluster not ready", "noGPUPools": "No recognizable GPU node pool (auto-mode pools, shared GPUs and unsupported vendors are not listed)", "pool": "{{name}} · {{model}} ×{{count}} · {{nodes}} nodes", "mixedModels": "mixed models", "connect": "Connect", "editPools": "Change", "inEntry": "In the entry"},
   "detail": {"syncedAt": "Last synced: {{time}}", "neverSynced": "Instances not synced yet", "standaloneInstances": "Standalone instances", "loadingInstances": "Reading instances", "loadingClusters": "Reading clusters", "loadingHPCClusters": "Reading E-HPC clusters", "showMore": "Show {{count}} more ({{rest}} left)", "collapse": "Collapse {{name}}", "expand": "Expand {{name}}"},
   "instances": {"empty": "Instances have not been synced yet. Click Sync above.", "emptyAfterSync": "The last sync found no instances.", "notReturned": "Not returned", "cancel": "Cancel", "powerOn": "Power on", "powerOff": "Power off", "powerOffConfirm": "Power off this instance?", "installAgent": "Install Agent", "onboarded": "Onboarded", "containerRuntimeNote": "Container instances automatically use the runveil runtime (no root or daemon needed).", "loadFailed": "Failed to load the instance list", "retry": "Retry", "pricePerHour": "¥{{price}}/hr", "column": {"instance": "Instance", "gpu": "GPU", "sshConnection": "Connection", "status": "Status", "price": "Price", "region": "Region", "type": "Type"}, "power": {"running": "Running", "stopped": "Stopped", "unknown": "Unknown"}, "connection": {"copy": "Copy SSH command", "direct": "Direct", "proxy": "External platform proxy", "terminalOnly": "Terminal only", "noSSH": "no SSH needed"}, "type": {"container": "Container", "vm": "Virtual machine"}, "message": {"powerOnSent": "Power-on request sent", "powerOffSent": "Power-off request sent", "actionFailed": "Action failed: {{detail}}"}},
-  "hpc": {"scheduler": {"slurm": "Slurm", "pbs": "PBS", "unknown": "unknown scheduler"}, "unsupported": "This E-HPC cluster schedules with {{scheduler}}. Only Slurm clusters can be connected.", "loadFailed": "Cannot read the E-HPC clusters", "noPermission": "This account's key may not list E-HPC clusters. Allow {{permission}} in the key's RAM policy.", "notActivated": "E-HPC is not activated for this account, so it has no E-HPC clusters.", "notActivatedCode": "The cloud said: {{code}}", "partial": "Some regions could not be read, so E-HPC clusters in them may be missing:", "failedRegion": "{{region}}: {{code}}", "failedRegionPermission": "{{region}}: the key may not list there ({{permission}})", "empty": "This account has no E-HPC clusters", "field": {"scheduler": "Scheduler", "computeNodes": "Compute nodes", "gpuNodes": "GPU nodes"}, "state": {"uninit": "Installing", "creating": "Creating", "initing": "Initializing", "pending": "Awaiting setup", "running": "Running", "exception": "Error", "stopping": "Stopping", "stopped": "Stopped", "releasing": "Releasing", "unknown": "Unknown state ({{state}})"}, "notConnectable": {"cluster_starting": "The cluster is still being created. You can connect it once it is running.", "cluster_pending": "The cluster has not been configured yet. You can connect it once it is configured and running.", "cluster_exception": "The cluster is in an error state. Fix it in the E-HPC console, then connect it.", "cluster_stopped": "The cluster is stopped. Start it in the E-HPC console, then connect it.", "cluster_releasing": "The cluster is being released and cannot be connected.", "cluster_state_unknown": "The cloud reported a cluster state this page does not recognize. You can connect it once it is running."}, "entryGone": "The account no longer has this cluster. Its entry and the nodes that joined are still here: uninstall, revoke or delete it on the right.", "entryUnread": "The cloud's E-HPC clusters could not be read, so the cluster cannot be shown; the entry can still be managed on the right."}
+  "hpc": {"scheduler": {"slurm": "Slurm", "pbs": "PBS", "unknown": "unknown scheduler"}, "unsupported": "This E-HPC cluster schedules with {{scheduler}}. Only Slurm clusters can be connected.", "loadFailed": "Cannot read the E-HPC clusters", "noPermission": "This account's key may not list E-HPC clusters. Allow {{permission}} in the key's RAM policy.", "notActivated": "E-HPC is not activated for this account, so it has no E-HPC clusters.", "notActivatedCode": "The cloud said: {{code}}", "partial": "Some regions could not be read, so E-HPC clusters in them may be missing:", "failedRegion": "{{region}}: {{code}}", "failedRegionPermission": "{{region}}: the key may not list there ({{permission}})", "empty": "This account has no E-HPC clusters", "field": {"scheduler": "Scheduler", "computeNodes": "Compute nodes", "gpuNodes": "GPU nodes"}, "state": {"uninit": "Installing", "creating": "Creating", "initing": "Initializing", "pending": "Awaiting setup", "running": "Running", "exception": "Error", "stopping": "Stopping", "stopped": "Stopped", "releasing": "Releasing", "unknown": "Unknown state ({{state}})"}, "notConnectable": {"cluster_starting": "The cluster is still being created. You can connect it once it is running.", "cluster_pending": "The cluster has not been configured yet. You can connect it once it is configured and running.", "cluster_exception": "The cluster is in an error state. Fix it in the E-HPC console, then connect it.", "cluster_stopped": "The cluster is stopped. Start it in the E-HPC console, then connect it.", "cluster_releasing": "The cluster is being released and cannot be connected.", "cluster_state_unknown": "The cloud reported a cluster state this page does not recognize. You can connect it once it is running."}, "entryGone": "The account no longer has this cluster. Its entry and the nodes that joined are still here: uninstall, revoke or delete it on the right.", "entryUnread": "The cloud's E-HPC clusters could not be read, so the cluster cannot be shown; the entry can still be managed on the right."},
+  "test": {
+    "title": "Test connection",
+    "run": "Test connection",
+    "running": "Testing the connection…",
+    "ok": "Connection verified",
+    "failed": "Connection failed",
+    "interrupted": "The test stopped before it finished. Check the network and run it again.",
+    "status": {"ok": "Passed", "failed": "Failed", "skipped": "Skipped"},
+    "proxy": {"used": "Through the proxy set in {{variables}}", "unused": "Proxy set in {{variables}}, not used for this address"},
+    "check": {
+      "endpoint_format": "Endpoint format",
+      "credentials_shape": "Credentials",
+      "dns_resolve": "DNS resolution",
+      "tcp_connect": "TCP connection",
+      "tls_handshake": "TLS handshake",
+      "proxy_detect": "Proxy detection",
+      "clock_skew": "Clock skew",
+      "auth_request": "Authentication",
+      "protocol_shape": "Protocol version",
+      "api_endpoints": "API endpoints",
+      "read_permissions": "Read permissions",
+      "resource_summary": "Resource summary"
+    },
+    "hint": {
+      "depends_failed": "A check it depends on failed",
+      "not_applicable": "This platform has no single API endpoint to check",
+      "via_proxy": "Requests go through the proxy, so there is no direct connection to check",
+      "endpoint_empty": "Enter the API endpoint",
+      "endpoint_shape": "Use the form https://host:port/path, with no ? or # part",
+      "credential_missing": "Fill in the missing credential field",
+      "dns": "Check the hostname and the DNS settings of the GPUWorks server",
+      "tcp_refused": "Check the port and that the service is running",
+      "tcp_unreachable": "Check the address and the network from the GPUWorks server to it",
+      "tcp_timeout": "Check that firewalls let the GPUWorks server reach the port",
+      "tls": "Check that the address serves HTTPS with a valid certificate",
+      "proxy": "Check the proxy address and that the proxy is running",
+      "auth": "Check that the key is correct and has not expired or been disabled",
+      "clock_skew": "Sync the clocks of the GPUWorks server and the platform with NTP",
+      "http": "Check that the address is the platform's API endpoint",
+      "zstack_version": "Needs ZStack Cloud 4.8.0 or later; check its version and license",
+      "zstack_permission": "Let the account read hosts, GPU devices and their settings"
+    }
+  }
 }
