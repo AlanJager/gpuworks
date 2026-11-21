@@ -96,6 +96,29 @@ test("letting work onto a card the platform judged unusable asks first, and a re
   await screen.findByText(read("common").apiError.CARD_NOT_OWNED);
 });
 
+test("a card processes outside the platform use says so, and enabling it states what sharing means", async () => {
+  const user = userEvent.setup({ document: dom.window.document });
+  const sent: string[] = [];
+  apiAny.setCardScheduling = async (_n: string, _c: unknown, to: string) => { sent.push(to); return node; };
+  show(card({ schedulable: false, foreign_processes: [{ pid: 41235, name: "python3", memory_bytes: 67089334272 }], scheduling_actions: ["stopped", "schedulable"] }));
+  assert.ok(screen.getByText(cs.state.heldOutside));
+  assert.equal(screen.queryByText(cs.state.blocked), null);
+  await user.click(screen.getByRole("button", { name: cs.resume }));
+  assert.deepEqual(sent, [], "nothing is sent before the confirmation");
+  await screen.findByText(cs.allowConfirmHeldOutside);
+  assert.equal(screen.queryByText(cs.allowConfirm), null, "the fault wording is not shown for a held card");
+  assert.match(cs.allowConfirmHeldOutside, /share it with them/);
+  assert.match(cs.allowConfirmHeldOutside, /compute and bandwidth are not isolated/);
+  await user.click(screen.getAllByRole("button", { name: cs.resume }).at(-1)!);
+  await waitFor(() => assert.deepEqual(sent, ["schedulable"]));
+});
+
+test("an enabled held card reads as enabled, not as held", () => {
+  show(card({ scheduling_allowed: true, foreign_processes: [{ pid: 1, name: "python3" }], scheduling_actions: ["stopped"] }));
+  assert.ok(screen.getByText(cs.state.allowed));
+  assert.equal(screen.queryByText(cs.state.heldOutside), null);
+});
+
 test("explicit scheduling uses persistent enable/disable wording", async () => {
   show(card({ scheduling_allowed: true, scheduling_actions: ["stopped"] }));
   assert.ok(screen.getByText("Enabled by an administrator; remains enabled until disabled"));

@@ -91,10 +91,10 @@ func (c *Controller) recordRollStalled(dep *store.Deployment, since time.Time, s
 
 // rollReplacementRefused checks, before a rolling restart drains a
 // partition that shares its card with processes outside the platform,
-// whether its replacement could be placed on its node without it. A node
-// whose placement policy stopped allowing such sharing after the replica was
-// placed would refuse it (ADR 0068): the refusal is returned and the replica
-// kept. Anything else - another reason, a check that cannot run - lets the
+// whether its replacement could be placed on its node without it. A card
+// the processes took after the replica was placed, and that no operator
+// enabled scheduling on, would refuse it (ADR 0068): the refusal is returned
+// and the replica kept. Anything else - another reason, a check that cannot run - lets the
 // roll go on as before; only this case is one the roll itself would cause.
 // The check plans one node, and only for a replica on a held card that
 // cannot move: a pool replica whose requirements do not pin it to one node

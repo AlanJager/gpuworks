@@ -8,15 +8,34 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
+
+// newInstanceNotesAPI is the router over a store with one registered node,
+// "notes-node", and an admin token.
+func newInstanceNotesAPI(t *testing.T) *acceleratorAPI {
+	t.Helper()
+	st, err := store.Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	signer, token := roleTestToken(t, st, "admin")
+	a := &acceleratorAPI{t: t, st: st, token: token}
+	a.router = Router(Deps{Store: st, AuthSigner: signer})
+	if _, err := st.RegisterNode("notes-node", store.HashToken("notes-node"), "notes-node"); err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
 
 // An instance on a card shared with processes outside the platform carries
 // the note on every read of it - alone, in the list, in its deployment - and
 // one on a clean card carries no notes key at all.
 func TestInstanceNotesOnTheWire(t *testing.T) {
-	a := newPlacementPolicyAPI(t)
-	node, err := a.st.NodeByUUID("policy")
+	a := newInstanceNotesAPI(t)
+	node, err := a.st.NodeByUUID("notes-node")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -41,7 +41,7 @@ result. It is not equivalent to `status` above.
 Switching to a whole-card deployment when the status is `unavailable` is not evidence that dGPU verification passed.
 
 When a card also runs compute processes outside the platform, a memory-limited deployment can share it with them by the memory left, but by default only when you pick that card yourself;
-to let automatic placement use such cards too, turn on "Allow partitions beside processes outside the platform" under "Placement policy" on the node detail's overview. Even then,
+to let automatic placement use such a card too, expand it in the node detail's GPU table and choose "Enable scheduling" under "Scheduling". Even then,
 scheduling uses cards without such processes first. Sharing a card isolates memory only; compute and bandwidth are shared, and the instance panel shows a shared-card note. See
 [Card Is in Use by Processes Outside the Platform](troubleshooting.md#card-is-in-use-by-processes-outside-the-platform).
 
@@ -81,4 +81,4 @@ Rejections (the original quota remains unchanged):
 The deployment timeline records “dGPU memory limit A → B” with the counts of instances updated immediately and those awaiting restart. When an instance exits because usage reaches its limit, the failure reason is
 `dGPU memory limit reached on GPU N: the engine needed X GiB, its limit is Y GiB`.
 
-<!-- translation-source-sha256: bf141cc1b883c2a8bb6cc9508cf847e330ce3898a8a416277b6c05da2fcdb7c7 -->
+<!-- translation-source-sha256: a749122aa8182e15de1f40f7d0c04539f89b6d55803cd14b6e5d2b5498bd302e -->

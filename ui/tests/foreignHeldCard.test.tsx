@@ -86,14 +86,16 @@ test("an offered card shared with processes outside the platform says so when pi
   assert.doesNotMatch((screen.getByRole("button", { name: "1" }) as HTMLButtonElement).title, /outside the platform/);
 });
 
-test("a refusal naming a setting reads the setting's own label, whatever the setting", async () => {
-  const params = { setting: "share_with_foreign", gpus: [0, 1], count: 2, node: "h20" };
-  assert.match(scheduleText(t, { code: "held_outside_platform_not_allowed", params }),
-    /Turn on "Allow partitions beside processes outside the platform" in the node's placement policy/);
+test("a refusal over cards nobody enabled names the cards and where to enable them", async () => {
+  const params = { gpus: [0, 1], count: 2, node: "h20" };
+  const en = scheduleText(t, { code: "held_outside_platform_not_allowed", params });
+  assert.match(en, /GPU 0, 1 on this node are used by processes outside the platform and scheduling is not enabled on them/);
+  assert.match(en, /Enable scheduling on them in the node's GPU tab, or pick the cards yourself/);
+  assert.doesNotMatch(en, /placement policy|\{\{/);
   const { i18n: zh } = await createI18n(["deploy", "nodes"], "zh");
-  assert.match(scheduleText(zh.getFixedT("zh", "deploy"), { code: "held_outside_platform_not_allowed", params }), /开启「允许分区与平台外进程共卡」/);
-  // A setting the client has no label for still names its key.
-  assert.match(scheduleText(t, { code: "held_outside_platform_not_allowed", params: { ...params, setting: "future_knob" } }), /"future_knob"/);
+  const text = scheduleText(zh.getFixedT("zh", "deploy"), { code: "held_outside_platform_not_allowed", params });
+  assert.match(text, /GPU 0, 1 有平台外进程，未启用调度。请在节点的 GPU 页签对它们启用调度/);
+  assert.doesNotMatch(text, /放置策略|\{\{/);
 });
 
 test("a plan on a shared card states how many and how much", () => {

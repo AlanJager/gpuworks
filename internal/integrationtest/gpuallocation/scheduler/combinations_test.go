@@ -8,7 +8,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/integrationtest/gpuallocation/internal/fixtures"
-	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 )
 
@@ -23,21 +22,21 @@ const (
 	backendDimension
 	healthDimension
 	selectionDimension
-	policyDimension
+	cardDecisionDimension
 	sleepDimension
 	dimensionCount
 )
 
 var scheduleDimensions = [dimensionCount][]string{
-	modeDimension:      {"whole", "partition", "native"},
-	occupancyDimension: {"empty", "half", "three-quarters"},
-	residueDimension:   {"no-residue", "residue"},
-	foreignDimension:   {"no-foreign", "known-foreign", "unknown-foreign"},
-	backendDimension:   {"backend-ready", "backend-absent"},
-	healthDimension:    {"healthy", "stopped"},
-	selectionDimension: {"automatic", "operator-pin", "platform-pin"},
-	policyDimension:    {"sharing-off", "sharing-on"},
-	sleepDimension:     {"awake-only", "sleepable"},
+	modeDimension:         {"whole", "partition", "native"},
+	occupancyDimension:    {"empty", "half", "three-quarters"},
+	residueDimension:      {"no-residue", "residue"},
+	foreignDimension:      {"no-foreign", "known-foreign", "unknown-foreign"},
+	backendDimension:      {"backend-ready", "backend-absent"},
+	healthDimension:       {"healthy", "stopped"},
+	selectionDimension:    {"automatic", "operator-pin", "platform-pin"},
+	cardDecisionDimension: {"not-enabled", "enabled"},
+	sleepDimension:        {"awake-only", "sleepable"},
 }
 
 type scheduleCombination [dimensionCount]string
@@ -53,7 +52,10 @@ func (c scheduleCombination) input() scheduleInput {
 	if c[backendDimension] == "backend-absent" {
 		g.PartitionBackends = nil
 	}
-	g.Schedulable = c[healthDimension] == "healthy" && c[foreignDimension] == "no-foreign"
+	// An operator who stopped the card has no enable decision on it
+	// (store.SetCardScheduling keeps one or the other); one who enabled it
+	// lets work on whatever holds it.
+	g.Schedulable = c[healthDimension] == "healthy" && (c[foreignDimension] == "no-foreign" || c.enabled())
 	g.HeldOutsidePlatform = c[foreignDimension] != "no-foreign"
 	g.ForeignShareable = c[foreignDimension] == "known-foreign" && c[healthDimension] == "healthy"
 	if c[foreignDimension] == "known-foreign" {
@@ -75,9 +77,11 @@ func (c scheduleCombination) input() scheduleInput {
 	if c[sleepDimension] == "sleepable" {
 		r.Features = []accelerator.Feature{accelerator.FeatureEngineSleep}
 	}
-	return scheduleInput{request: r, node: scheduler.NodeSnapshot{UUID: "combinations", Vendor: "nvidia", DtypeSupported: true,
-		Policy: nodepolicy.Policy{ShareWithForeign: c[policyDimension] == "sharing-on"}, GPUs: []scheduler.GPU{g}}}
+	return scheduleInput{request: r, node: scheduler.NodeSnapshot{UUID: "combinations", Vendor: "nvidia", DtypeSupported: true, GPUs: []scheduler.GPU{g}}}
 }
+
+// enabled is whether an operator enabled scheduling on the card.
+func (c scheduleCombination) enabled() bool { return c[cardDecisionDimension] == "enabled" }
 
 // The oracle uses this fixture's explicit budgets, not GPU.UsableFor,
 // CapacityFor, Claim, or another production admission helper. For a 64 GiB
@@ -90,8 +94,15 @@ func (c scheduleCombination) expectation() scheduleExpectation {
 	}
 	ok := c[healthDimension] == "healthy"
 	if c[foreignDimension] != "no-foreign" {
-		ok = ok && c[modeDimension] == "partition" && c[foreignDimension] == "known-foreign" && c[sleepDimension] == "awake-only" && (c[selectionDimension] == "operator-pin" || c[policyDimension] == "sharing-on")
-		room -= fixtures.ForeignHolderBytes + fixtures.ForeignHeadroom
+		// A card the operator enabled takes every kind of work; otherwise
+		// only a partition the operator pinned, beside holders of known
+		// memory, and never one that sleeps.
+		if !c.enabled() {
+			ok = ok && c[modeDimension] == "partition" && c[foreignDimension] == "known-foreign" && c[sleepDimension] == "awake-only" && c[selectionDimension] == "operator-pin"
+		}
+		if c[foreignDimension] == "known-foreign" {
+			room -= fixtures.ForeignHolderBytes + fixtures.ForeignHeadroom
+		}
 	}
 	switch c[modeDimension] {
 	case "whole":
@@ -160,13 +171,13 @@ func TestScheduleCombinations(t *testing.T) {
 	}
 }
 
-// Hold memory and capabilities in a fitting state so policy, consent and sleep
+// Hold memory and capabilities in a fitting state so the card's decision, consent and sleep
 // cannot be masked by a shortage. In particular a platform pin is not consent.
 func TestForeignConsentAndSleepCombinations(t *testing.T) {
 	for _, selection := range scheduleDimensions[selectionDimension] {
-		for _, policy := range scheduleDimensions[policyDimension] {
+		for _, decision := range scheduleDimensions[cardDecisionDimension] {
 			for _, sleep := range scheduleDimensions[sleepDimension] {
-				row := scheduleCombination{modeDimension: "partition", occupancyDimension: "empty", residueDimension: "no-residue", foreignDimension: "known-foreign", backendDimension: "backend-ready", healthDimension: "healthy", selectionDimension: selection, policyDimension: policy, sleepDimension: sleep}
+				row := scheduleCombination{modeDimension: "partition", occupancyDimension: "empty", residueDimension: "no-residue", foreignDimension: "known-foreign", backendDimension: "backend-ready", healthDimension: "healthy", selectionDimension: selection, cardDecisionDimension: decision, sleepDimension: sleep}
 				want := row.expectation()
 				if !want.ok {
 					want.code = scheduler.ReasonHeldOutsidePlatformNotAllowed

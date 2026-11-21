@@ -16,7 +16,9 @@ export function CardSchedulingTag({ gpu }: { gpu: GPU }) {
 
 // CardSchedulingControl states where the card stands and offers what the
 // server says may be done to it. Letting work onto a card the platform judged
-// unusable is confirmed first. The decision persists until disabled.
+// unusable is confirmed first, and a card processes outside the platform use
+// says so: enabling it is how an operator consents to sharing it. The
+// decision persists until disabled.
 export function CardSchedulingControl({ node, gpu, onUpdated }: { node: Node; gpu: GPU; onUpdated: (node: Node) => void }) {
   const { t } = useTranslation("nodes");
   const { t: tCommon } = useTranslation("common");
@@ -33,7 +35,8 @@ export function CardSchedulingControl({ node, gpu, onUpdated }: { node: Node; gp
       setBusy(null);
     }
   };
-  const state = gpu.scheduling_stopped ? "stopped" : gpu.scheduling_allowed ? "allowed" : gpu.schedulable ? "schedulable" : "blocked";
+  const heldOutside = !!gpu.foreign_processes?.length;
+  const state = gpu.scheduling_stopped ? "stopped" : gpu.scheduling_allowed ? "allowed" : gpu.schedulable ? "schedulable" : heldOutside ? "heldOutside" : "blocked";
   return (
     <Space size={8} wrap>
       <Typography.Text>{t(`cardScheduling.state.${state}`)}</Typography.Text>
@@ -48,7 +51,7 @@ export function CardSchedulingControl({ node, gpu, onUpdated }: { node: Node; gp
             {t("cardScheduling.resume")}
           </Button>
         ) : (
-          <Popconfirm title={t("cardScheduling.allowConfirm")} okText={t("cardScheduling.resume")} onConfirm={() => set("schedulable")}>
+          <Popconfirm title={t(heldOutside ? "cardScheduling.allowConfirmHeldOutside" : "cardScheduling.allowConfirm")} okText={t("cardScheduling.resume")} onConfirm={() => set("schedulable")}>
             <Button size="small" loading={busy === "schedulable"}>{t("cardScheduling.resume")}</Button>
           </Popconfirm>
         ))}

@@ -56,7 +56,7 @@ what it should decide. The architecture gate excludes only the fixtures package
 from the production store-import budget.
 
 Shared fixtures keep complete node reports: foreign holders enter through
-`UpdateNodeStatus`, and placement policy changes use `SetNodePlacementPolicy`.
+`UpdateNodeStatus`, and an operator's decision about a card uses `SetCardScheduling`.
 Group trials use an empty store so synthetic nodes cannot inherit another
 fixture node's claims or topology.
 

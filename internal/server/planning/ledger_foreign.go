@@ -7,8 +7,6 @@ package planning
 import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/estimate"
-	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
-	"gpuworks.ai/gpuworks/internal/server/partitioncap"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -31,28 +29,6 @@ func foreignShare(node *store.Node, g *store.GPU) (int64, bool) {
 		bytes, _ = g.ForeignBytes()
 	}
 	return bytes, shareable && node.PartitionSafetyProtocol >= proto.PartitionSafetyForeignTracked
-}
-
-// PartitionMayShareHeldCard is whether the scheduler may place a partition
-// on a card held outside the platform on its own: foreignShare's verdict, a
-// partition backend ready on the card, as NodeSnapshot hands them to
-// admission, and a node whose placement policy allows it without an
-// operator choosing the card. Statistics that count such a card as
-// schedulable capacity ask it, so they do not count capacity the scheduler
-// never uses.
-func PartitionMayShareHeldCard(node *store.Node, g *store.GPU) bool {
-	if !node.PlacementPolicy.SharesForeign(nodepolicy.Consent{}) {
-		return false
-	}
-	if _, shareable := foreignShare(node, g); !shareable {
-		return false
-	}
-	for _, capability := range partitioncap.ForGPU(node, g) {
-		if capability.Status == partitioncap.StatusReady {
-			return true
-		}
-	}
-	return false
 }
 
 // ForeignHold is the memory on one of the node's cards that processes

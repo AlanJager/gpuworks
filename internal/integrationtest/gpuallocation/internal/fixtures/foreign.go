@@ -8,13 +8,16 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// AllowForeignSharing uses the same policy update as an operator's edit.
-func (w World) AllowForeignSharing(t *testing.T, allow bool) {
+// EnableCards records an operator's decision to enable scheduling on every
+// card of the node, through the same store call as the card's own action.
+func (w World) EnableCards(t *testing.T) {
 	t.Helper()
-	_, _, node, err := w.Store.SetNodePlacementPolicy(w.Node.UUID, func(policy store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-		policy.ShareWithForeign = allow
-		return policy, nil
-	})
+	for _, gpu := range w.Node.GPUs {
+		if _, err := w.Store.SetCardScheduling(w.Node.UUID, gpu.Ident, store.CardSchedulingSchedulable); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node, err := w.Store.NodeWithGPUs(w.Node.UUID)
 	if err != nil {
 		t.Fatal(err)
 	}

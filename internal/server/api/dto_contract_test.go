@@ -347,8 +347,7 @@ func TestNodeWireCarriesWhySlurmWillNotRunJobs(t *testing.T) {
 	want := `{"uuid":"node-1","scheduling":"cordoned","scheduling_by":"platform","cordon_reason":"slurm_node_unavailable","uncordon":"",` +
 		`"state":"","hostname":"","os":"","kernel":"","arch":"","cpu_model":"","cpu_cores":0,"mem_total_gib":0,"disk_total_gib":0,"gpu_count":0,` +
 		`"slurm_node":"gpu-1","slurm_unavailable":"gres_missing","slurm_reason":"gres/gpu count reported lower than configured (0 \u003c 2)",` +
-		`"slurm_fixes":[{"code":"gres_conf","commands":["NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]"]},{"code":"resume","commands":["scontrol update nodename=gpu-1 state=resume"]}],"labels":{},"has_ssh_credential":false,"created_at":"0001-01-01T00:00:00Z","gpus":null,` +
-		`"placement_policy":null,"placement_policy_availability":null}`
+		`"slurm_fixes":[{"code":"gres_conf","commands":["NodeName=gpu-1 Name=gpu File=/dev/nvidia[0-1]"]},{"code":"resume","commands":["scontrol update nodename=gpu-1 state=resume"]}],"labels":{},"has_ssh_credential":false,"created_at":"0001-01-01T00:00:00Z","gpus":null}`
 	if string(raw) != want {
 		t.Fatalf("node wire JSON\n got %s\nwant %s", raw, want)
 	}

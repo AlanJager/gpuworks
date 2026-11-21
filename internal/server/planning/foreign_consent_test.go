@@ -2,19 +2,20 @@ package planning
 
 import (
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/nodepolicy"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// The node's placement policy reaches the scheduler through the snapshot,
-// and the operator's choice of cards through Input.Consent.
-func TestEvaluateAppliesTheNodePolicyAndTheOperatorsConsent(t *testing.T) {
+// An operator's decision about a card reaches the scheduler through the
+// snapshot (the card takes work), and their choice of cards for one
+// deployment through Input.Consent.
+func TestEvaluateAppliesTheCardsDecisionAndTheOperatorsConsent(t *testing.T) {
 	st := foreignStore(t)
 	node := foreignHeldNode(t, st, "h20", proto.PartitionSafetyForeignTracked, reporterForeign)
 	node.GPUs[1].ForeignProcesses = node.GPUs[0].ForeignProcesses // both cards held
@@ -23,34 +24,42 @@ func TestEvaluateAppliesTheNodePolicyAndTheOperatorsConsent(t *testing.T) {
 		Quick: deploy.LaunchConfig{GPUMemUtil: 0.9}, VRAMLimitBytes: 50 << 30,
 		PartitionBackend: accelerator.BackendNVIDIALogical,
 	}
-	if snap := NodeSnapshot(st, node, true, ""); snap.Policy != node.PlacementPolicy {
-		t.Fatalf("snapshot policy = %+v, want the node's", snap.Policy)
-	}
 	out := in.Evaluate(st)
 	if out.Result.OK || out.Result.Message.Code != scheduler.ReasonHeldOutsidePlatformNotAllowed ||
-		out.Result.Message.Params["setting"] != string(nodepolicy.KeyShareWithForeign) {
-		t.Fatalf("switched off, automatic = ok %v %+v", out.Result.OK, out.Result.Message)
+		out.Result.Message.Params["node"] != node.UUID || out.Result.Message.Params["count"] != 2 {
+		t.Fatalf("not enabled, automatic = ok %v %+v", out.Result.OK, out.Result.Message)
 	}
-	chosen := in
-	chosen.GPUIndexes, chosen.Consent = []int{0}, nodepolicy.Consent{CardsChosen: true}
-	if out := chosen.Evaluate(st); !out.Result.OK || out.Result.Plan.GPUIndexes[0] != 0 {
-		t.Fatalf("switched off, chosen card = ok %v %+v", out.Result.OK, out.Result.Message)
+	if _, named := out.Result.Message.Params["setting"]; named {
+		t.Fatalf("the refusal names a setting: %+v", out.Result.Message.Params)
 	}
-	node.PlacementPolicy.ShareWithForeign = true
-	out = in.Evaluate(st)
-	if !out.Result.OK || out.Result.Plan == nil {
-		t.Fatalf("switched on = ok %v %+v", out.Result.OK, out.Result.Message)
-	}
-	// The card list is judged as picked by the operator either way.
-	node.PlacementPolicy.ShareWithForeign = false
-	out = in.Evaluate(st)
+	// The card list is judged as picked by the operator.
 	if !candidateAvailable(t, out.GPUCandidates, 0) {
-		t.Fatalf("held card not offered while switched off: %+v", out.GPUCandidates)
+		t.Fatalf("held card not offered while not enabled: %+v", out.GPUCandidates)
 	}
 	for _, candidate := range out.GPUCandidates {
 		if candidate.Index == 0 && (candidate.Note == nil || candidate.Note.Code != scheduler.ReasonForeignSharedCard) {
 			t.Fatalf("held card note = %+v", candidate.Note)
 		}
+	}
+	chosen := in
+	chosen.GPUIndexes, chosen.Consent = []int{0}, scheduler.Consent{CardsChosen: true}
+	if out := chosen.Evaluate(st); !out.Result.OK || out.Result.Plan.GPUIndexes[0] != 0 {
+		t.Fatalf("not enabled, chosen card = ok %v %+v", out.Result.OK, out.Result.Message)
+	}
+	// Enabling scheduling on card 1 lets the scheduler choose it, and the
+	// plan says it shares the card.
+	now := time.Now().UTC()
+	node.GPUs[1].SchedulingAllowedAt = &now
+	out = in.Evaluate(st)
+	if !out.Result.OK || out.Result.Plan == nil || out.Result.Plan.GPUIndexes[0] != 1 {
+		t.Fatalf("card 1 enabled = ok %v %+v plan %+v, want GPU 1", out.Result.OK, out.Result.Message, out.Result.Plan)
+	}
+	var noted bool
+	for _, reason := range out.Result.Plan.Reasons {
+		noted = noted || reason.Code == scheduler.ReasonForeignSharedGPUsUsed
+	}
+	if !noted {
+		t.Fatalf("plan reasons = %+v, want %s", out.Result.Plan.Reasons, scheduler.ReasonForeignSharedGPUsUsed)
 	}
 }
 
@@ -113,31 +122,31 @@ func TestDeploymentLaunchOffItsPinnedNodeCarriesNoConsent(t *testing.T) {
 	}
 }
 
-// Statistics count a held card as capacity only where the scheduler would
-// place on it automatically: the node must allow it.
-func TestPartitionMaySharedHeldCardFollowsTheNodePolicy(t *testing.T) {
+// What the holders take is kept out of what the platform may offer whether
+// or not an operator enabled scheduling on the card.
+func TestForeignHoldIsCountedWhateverTheCardsDecision(t *testing.T) {
 	st := foreignStore(t)
 	node := foreignHeldNode(t, st, "h20", proto.PartitionSafetyForeignTracked, reporterForeign)
-	if PartitionMayShareHeldCard(node, &node.GPUs[0]) {
-		t.Fatal("a held card counts as capacity while the node does not allow sharing")
-	}
-	node.PlacementPolicy.ShareWithForeign = true
-	if !PartitionMayShareHeldCard(node, &node.GPUs[0]) {
-		t.Fatal("a held card the node allows sharing does not count")
+	if node.GPUs[0].CanTakeWork() {
+		t.Fatal("a held card nobody enabled takes work")
 	}
 	if bytes, known := ForeignHold(node, &node.GPUs[0]); !known || bytes <= reporterForeign.MemoryBytes {
-		t.Fatalf("foreign hold = %d %v: memory is counted whatever the policy", bytes, known)
+		t.Fatalf("foreign hold = %d %v, want the holder's memory and headroom", bytes, known)
 	}
-	node.PlacementPolicy.ShareWithForeign = false
+	now := time.Now().UTC()
+	node.GPUs[0].SchedulingAllowedAt = &now
+	if !node.GPUs[0].CanTakeWork() {
+		t.Fatal("an enabled held card takes no work")
+	}
 	if bytes, known := ForeignHold(node, &node.GPUs[0]); !known || bytes <= reporterForeign.MemoryBytes {
-		t.Fatalf("foreign hold switched off = %d %v", bytes, known)
+		t.Fatalf("foreign hold on an enabled card = %d %v", bytes, known)
 	}
 }
 
 // Cards an operator pins on a PD unit or a multi-node rank are the
 // operator's choice as much as the top-level "gpus": the rank's launch
 // carries the consent, so a hand-picked held card that fits by memory is
-// admitted on a node whose switch is off. A unit the platform places names
+// admitted though nobody enabled scheduling on the card. A unit the platform places names
 // no cards, and gives none.
 func TestPDRankLaunchConsentsForTheUnitsPinnedCards(t *testing.T) {
 	st := foreignStore(t)

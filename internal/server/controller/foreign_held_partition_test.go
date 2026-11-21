@@ -53,13 +53,48 @@ func foreignHeldH20(t *testing.T, st *store.Store, name string, safety int) *sto
 	return reloaded
 }
 
+// enableHeldCards records an operator's decision to enable scheduling on
+// every card of the node that processes outside the platform hold, the way
+// the card's own action does (store.SetCardScheduling).
+func enableHeldCards(t *testing.T, st *store.Store, nodeUUID string) {
+	t.Helper()
+	node, err := st.NodeWithGPUs(nodeUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := 0
+	for _, g := range node.GPUs {
+		if !g.HeldOutsidePlatform() {
+			continue
+		}
+		if _, err := st.SetCardScheduling(nodeUUID, g.Ident, store.CardSchedulingSchedulable); err != nil {
+			t.Fatal(err)
+		}
+		enabled++
+	}
+	if enabled == 0 {
+		t.Fatalf("node %s has no held card to enable", nodeUUID)
+	}
+}
+
+// holdCard reports a process outside the platform on one of the node's
+// cards, as a later status report would.
+func holdCard(t *testing.T, st *store.Store, node *store.Node, index int) {
+	t.Helper()
+	held, _ := json.Marshal([]proto.CardProcess{{PID: 41235, Name: "python3", MemoryBytes: 67089334272}})
+	if err := st.DB().Model(&store.GPU{}).Where("node_id = ? AND \"index\" = ?", node.ID, index).Update("foreign_processes", string(held)).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The reported deployment - manual placement, pinned to GPU 0, TP 1, a 50 GiB
 // nvidia-dgpu limit - starts beside the foreign process once the agent keeps
 // reporting it: an operator who picked the card consented to sharing it. An
-// automatic placement does so only on a node whose placement policy allows
-// it, and otherwise waits naming the setting. With an agent that would forget
+// automatic placement does so only on a card an operator enabled scheduling
+// on, and otherwise waits naming the card. With an agent that would forget
 // the holder, it waits and says the card is held outside the platform rather
-// than "no free GPU".
+// than "no free GPU" - unless the operator enabled the card, whose decision
+// stands whatever the platform judged (store.GPU.CanTakeWork).
 func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testing.T) {
 	for i, tc := range []struct {
 		name   string
@@ -67,15 +102,17 @@ func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testi
 		// automatic leaves the placement to the scheduler with GPU 1 taken
 		// whole by another deployment: the shape that answered no_free_gpu.
 		automatic bool
-		allow     bool
-		starts    bool
-		refusal   string
+		// enable is the operator enabling scheduling on the held card.
+		enable  bool
+		starts  bool
+		refusal string
 	}{
 		{"pinned, agent keeps foreign processes reported", proto.PartitionSafetyForeignTracked, false, false, true, ""},
-		{"automatic, the other card taken, node allows", proto.PartitionSafetyForeignTracked, true, true, true, ""},
-		{"automatic, the other card taken, node does not allow", proto.PartitionSafetyForeignTracked, true, false, false, scheduler.ReasonHeldOutsidePlatformNotAllowed},
-		{"pinned, agent before that", proto.PartitionSafetyOwnership, false, true, false, scheduler.ReasonGPUsHeldOutsidePlatform},
-		{"automatic, agent before that", proto.PartitionSafetyOwnership, true, true, false, ""},
+		{"automatic, the other card taken, card enabled", proto.PartitionSafetyForeignTracked, true, true, true, ""},
+		{"automatic, the other card taken, card not enabled", proto.PartitionSafetyForeignTracked, true, false, false, scheduler.ReasonHeldOutsidePlatformNotAllowed},
+		{"pinned, agent before that", proto.PartitionSafetyOwnership, false, false, false, scheduler.ReasonGPUsHeldOutsidePlatform},
+		{"automatic, agent before that", proto.PartitionSafetyOwnership, true, false, false, ""},
+		{"automatic, agent before that, card enabled", proto.PartitionSafetyOwnership, true, true, true, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, err := store.Open(fmt.Sprintf("file:foreign_held_partition_%d?mode=memory&cache=shared", i), bus.New())
@@ -84,13 +121,8 @@ func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testi
 			}
 			t.Cleanup(func() { _ = st.Close() })
 			node := foreignHeldH20(t, st, "h20-3e", tc.safety)
-			if tc.allow {
-				if _, _, _, err := st.SetNodePlacementPolicy(node.UUID, func(p store.NodePlacementPolicy) (store.NodePlacementPolicy, error) {
-					p.ShareWithForeign = true
-					return p, nil
-				}); err != nil {
-					t.Fatal(err)
-				}
+			if tc.enable {
+				enableHeldCards(t, st, node.UUID)
 			}
 			model, err := st.UpsertModel(&store.Model{
 				Source: "huggingface", SourceID: "fixture/foreign-held", Revision: "main", Name: "foreign-held", WeightBytes: 15 << 30,
@@ -142,8 +174,8 @@ func TestTheReportedPinnedPartitionReplicaStartsBesideTheForeignProcess(t *testi
 				if tc.refusal != "" && (!strings.Contains(data, tc.refusal) || strings.Contains(data, scheduler.ReasonNoFreeGPU)) {
 					t.Fatalf("refusal = %s, want it to name %s, not %s", data, tc.refusal, scheduler.ReasonNoFreeGPU)
 				}
-				if tc.refusal == scheduler.ReasonHeldOutsidePlatformNotAllowed && !strings.Contains(data, "share_with_foreign") {
-					t.Fatalf("refusal = %s, want it to name the setting", data)
+				if tc.refusal == scheduler.ReasonHeldOutsidePlatformNotAllowed && (!strings.Contains(data, `"gpus":[0]`) || !strings.Contains(data, `"node":"h20-3e"`) || strings.Contains(data, "setting")) {
+					t.Fatalf("refusal = %s, want it to name card 0 of the node and no setting", data)
 				}
 				return
 			}
