@@ -33,10 +33,7 @@ func TestNativeLocalQuorumReadSnapshot(t *testing.T) {
 		members, err := dbs[0].Members(ctx)
 		return err == nil && len(members) == 3 && members[0].Role == "voter" && members[1].Role == "voter" && members[2].Role == "voter"
 	})
-	initial, err := dbs[0].QuorumProof(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	initial := settledQuorumProof(t, ctx, "snapshot first proof", dbs[0])
 	var leader, follower *Database
 	for _, db := range dbs {
 		if db.ID == initial.LeaderID {

@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -189,6 +191,13 @@ func TestReceivedMaterialStageParentReplacementUsesHeldCleanup(t *testing.T) {
 }
 
 func TestReceivedMaterialPreservesLinkAndActualCleanupFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		// Root removes from a mode-0500 directory, so the cleanup below would
+		// succeed. Run this exact assertion as an account without that
+		// privilege, as a root-run CI container needs.
+		runMaterialTestUnprivileged(t, "TestReceivedMaterialPreservesLinkAndActualCleanupFailure")
+		return
+	}
 	source, target, body, digest := materialStageIdentityFixture(t)
 	linkFailure := errors.New("publication rejected by existing link seam")
 	var stage string
@@ -211,5 +220,52 @@ func TestReceivedMaterialPreservesLinkAndActualCleanupFailure(t *testing.T) {
 	}
 	if got, err := target.ReadFile(stage); err != nil || !bytes.Equal(got, body) {
 		t.Fatalf("failed actual cleanup did not retain original bytes: %q %v", got, err)
+	}
+}
+
+// runMaterialTestUnprivileged runs one test of this package again as the
+// nobody account. The test binary is copied out of go test's private build
+// directory so that account can execute it, and the child's temporary
+// directory is one it owns.
+func runMaterialTestUnprivileged(t *testing.T, name string) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "gpuworks-material-denied-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := filepath.Join(dir, "app.test")
+	if err := os.WriteFile(child, binary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(child, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(dir, "work")
+	if err := os.Mkdir(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const unprivilegedID = 65534
+	if err := os.Chown(work, unprivilegedID, unprivilegedID); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(child, "-test.run=^"+name+"$", "-test.v")
+	cmd.Dir = work
+	cmd.Env = append(os.Environ(), "TMPDIR="+work, "HOME="+work)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: unprivilegedID, Gid: unprivilegedID, Groups: []uint32{}}}
+	output, err := cmd.CombinedOutput()
+	if err != nil || !bytes.Contains(output, []byte("--- PASS: "+name)) {
+		t.Fatalf("%s as an unprivileged account: %v\n%s", name, err, output)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,6 +24,23 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
+// checklistListen is a loopback address nothing holds. An uninstall that is
+// not a preview checks that the installation's addresses were released; a
+// server.yaml without a listen section makes that the default port, which
+// another server on the test host may hold.
+func checklistListen(t *testing.T) serverconfig.Listen {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return serverconfig.Listen{Console: []string{addr}}
+}
+
 // This fixture is the schema the migrations really produce (store.Open), in
 // WAL mode, rather than hand-written tables: a hand-made CREATE TABLE repeats
 // whatever column names the inventory query assumed, which is how a query of
@@ -35,7 +53,7 @@ func serverChecklistFixture(t *testing.T) (selfinstall.Layout, *sql.DB) {
 	if err := os.MkdirAll(layout.DataDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := serverconfig.Write(layout.ConfigPath(), serverconfig.File{DataDir: layout.DataDir, Log: serverconfig.Log{File: layout.LogFile()}}, 0600); err != nil {
+	if err := serverconfig.Write(layout.ConfigPath(), serverconfig.File{DataDir: layout.DataDir, Log: serverconfig.Log{File: layout.LogFile()}, Listen: checklistListen(t)}, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(layout.Binary(), []byte("fixture binary"), 0755); err != nil {
@@ -479,7 +497,7 @@ func TestUninstallCLISnapshotBudgetProducesUnknown(t *testing.T) {
 
 func TestUninstallCLIKeepResourcesDoesNotBypassPurgeOwnership(t *testing.T) {
 	layout, _ := serverChecklistFixture(t)
-	if err := serverconfig.Write(layout.ConfigPath(), serverconfig.File{DataDir: layout.Dir, Log: serverconfig.Log{File: layout.LogFile()}}, 0600); err != nil {
+	if err := serverconfig.Write(layout.ConfigPath(), serverconfig.File{DataDir: layout.Dir, Log: serverconfig.Log{File: layout.LogFile()}, Listen: checklistListen(t)}, 0600); err != nil {
 		t.Fatal(err)
 	}
 	before := checklistTree(t, layout.Dir)
