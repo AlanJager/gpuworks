@@ -152,6 +152,7 @@ func (s *clusterStatus) applyQuorumFacts(facts enrollment.ClusterQuorumFacts) {
 	if s.sync != "not replicating" {
 		s.sync = "observed"
 	}
+	s.leaderID = facts.LeaderID
 	s.leader = strconv.FormatUint(facts.LeaderID, 10)
 	if leaderAddress != "" {
 		s.leader += " " + leaderAddress

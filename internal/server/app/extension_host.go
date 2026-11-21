@@ -25,6 +25,7 @@ type Host struct {
 	log     *slog.Logger
 	bus     *bus.Bus
 	dataDir string
+	cfg     Config
 	install string
 	master  string
 	section serverconfig.File

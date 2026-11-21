@@ -73,6 +73,7 @@ type clusterStatus struct {
 	businessObservation string
 	materials           string
 	leader              string
+	leaderID            uint64
 	term                string
 	commit              string
 	configIndex         string

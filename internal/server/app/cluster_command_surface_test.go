@@ -1,7 +1,9 @@
 package app_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/app"
@@ -18,9 +20,16 @@ func TestClusterCommandsReachTheInstallationSurface(t *testing.T) {
 	var (
 		_ func(string) (storagetier.Tier, error) = app.RecordedStorageTier
 		_ app.ClusterCatchUp
-		_ = selfinstall.RenderUnit
-		_ = selfinstall.UnitConfig{}
-		_ = selfinstall.NewIO
+		// A module of that server reads the cluster's state through its Host.
+		_ func(*app.Host, context.Context, time.Duration) (app.ClusterObservation, error) = (*app.Host).ClusterObservation
+		_                                                                                 = app.ClusterObservedMember{}
+		_                                                                                 = app.ClusterShortfall{Kind: app.ClusterShortfallFewVoters}
+		_                                                                                 = []app.ClusterShortfallKind{app.ClusterShortfallNone, app.ClusterShortfallVotersMissing}
+		_                                                                                 = []app.ClusterFaultTolerance{app.ClusterTolerant, app.ClusterNotTolerant, app.ClusterToleranceUnverified}
+		_ error                                                                           = app.ErrClusterObservationTimeout
+		_                                                                                 = selfinstall.RenderUnit
+		_                                                                                 = selfinstall.UnitConfig{}
+		_                                                                                 = selfinstall.NewIO
 		_ *selfinstall.IO
 		_ error = selfinstall.ErrNoTerminal
 		_       = dto.ClusterInvitationResponse{}

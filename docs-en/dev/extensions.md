@@ -74,6 +74,7 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `NodeIdentity(ctx, ids, salt)` | The salted hardware identity of the named nodes (`store.NodeIdentity`); raw serials never leave the core. See [Node identity and node inventory](#node-identity-and-node-inventory) |
 | `NodeInventory(ctx, cursor, limit)` | A page of the node inventory in enrollment order (`store.NodeInventoryPage`): names, enrollment times, each node's own cards (index, model, whether it has a serial) |
 | `NodeNamesByID(ctx, ids)` | The display names of the named nodes, keyed by ID (`map[uint]string`), in one query on the read pool |
+| `ClusterObservation(ctx, timeout)` | One observation of the control-plane cluster this server belongs to (`app.ClusterObservation`): the members, their roles, which of them answer, and whether the cluster can lose another member; it has the same source as the `cluster-status` report. A single server, or a build without the cluster runtime, answers `Clustered: false`. Read-only, and may be called after `Init`, while serving; each probe is bounded by `timeout` and they run one after the other |
 | `HostIdentity(salt)` | The salted identity of the machine the management server runs on (`hostidentity.Salted`); see [The management server's host identity](#the-management-servers-host-identity) |
 
 The `Host` hands out neither the `*store.Store` nor a database handle. A registration after `Init` returns is refused (`ReapplySchedulingHolds`, `ReapplySchedulingHoldsFor`, `NodeFleet`, `NodeIdentity`, `NodeInventory` `NodeNamesByID` and `HostIdentity` are not registrations and may be called at any time): methods with an error result return `app.ErrHostClosed`, the others panic. If `Init` fails, `New` fails and closes the database, so the same data directory starts again at once.
@@ -489,4 +490,4 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 - It has no `init()` registration and no new package globals: everything comes in through `cli.Options` and `app.Config`.
 - It never interrupts running workloads: the gate acts only on new requests and writes, and holders cordon without draining.
 
-<!-- translation-source-sha256: bdb2da269f597673b527c742bde067a6812bcf18201e949e57019cfae3e8898f -->
+<!-- translation-source-sha256: d4ba3899657badf3eedff2227e26e86491822f03d8d9cfccb65ccd32c4e5793e -->

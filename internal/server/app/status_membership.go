@@ -99,26 +99,40 @@ func (s clusterStatus) toleratesLosing(missing int) bool {
 	return (s.voters-missing-1)*2 > s.voters
 }
 
-// faultTolerance words the "Fault tolerant" line. A voter that is
-// unreachable cannot be the one the cluster loses next; one that only gave
-// no answer in time leaves the question open.
-func (s clusterStatus) faultTolerance() string {
+// faultToleranceVerdict is the verdict behind the "Fault tolerant" line. A
+// voter that is unreachable cannot be the one the cluster loses next; one
+// that only gave no answer in time leaves the question open.
+func (s clusterStatus) faultToleranceVerdict() ClusterFaultTolerance {
 	unreachable, silent := s.voterAnswers()
 	if !s.faultTolerant || !s.toleratesLosing(unreachable) {
-		return "false"
+		return ClusterNotTolerant
 	}
 	if !s.toleratesLosing(unreachable + silent) {
-		return "unverified (" + s.silentVoters(silent) + ")"
+		return ClusterToleranceUnverified
 	}
-	return "true"
+	return ClusterTolerant
+}
+
+// faultTolerance words the "Fault tolerant" line from its verdict.
+func (s clusterStatus) faultTolerance() string {
+	switch s.faultToleranceVerdict() {
+	case ClusterTolerant:
+		return "true"
+	case ClusterToleranceUnverified:
+		_, silent := s.voterAnswers()
+		return "unverified (" + s.silentVoters(silent) + ")"
+	default:
+		return "false"
+	}
 }
 
 func (s clusterStatus) silentVoters(silent int) string {
 	return fmt.Sprintf("%d of %d voters did not answer within %s", silent, s.voters, s.probeTimeout)
 }
 
-// membershipShortfall says why a cluster whose business answers is still not
-// at full strength, or returns "" when it is, or when that cannot be told.
+// shortfall says why a cluster whose business answers is still not at full
+// strength; its kind is ClusterShortfallNone when it is, or when that cannot
+// be told.
 //
 // Only the membership the leader reported counts. A single member is not a
 // cluster yet, and a cluster that is still being formed is not short of
@@ -126,38 +140,52 @@ func (s clusterStatus) silentVoters(silent int) string {
 // in a cluster of two with no more keys enrolled than it has members: an
 // installation between its second and third member. With three voters or
 // more it is short when one of them is unreachable or gave no answer in
-// time; the reason says which (see voterAnswers).
-func (s clusterStatus) membershipShortfall(now time.Time) string {
+// time (see voterAnswers).
+func (s clusterStatus) shortfall(now time.Time) ClusterShortfall {
 	live := s.liveMembers()
 	if live < 2 || s.forming(now) {
-		return ""
+		return ClusterShortfall{}
 	}
 	if s.voters < 3 {
 		if live == 2 && s.enrolledKeys <= live {
-			return ""
+			return ClusterShortfall{}
 		}
-		voters := "voters"
-		if s.voters == 1 {
-			voters = "voter"
-		}
-		return fmt.Sprintf("%d %s among %d members, not fault tolerant", s.voters, voters, live)
+		return ClusterShortfall{Kind: ClusterShortfallFewVoters, Voters: s.voters, Members: live}
 	}
 	unreachable, silent := s.voterAnswers()
-	var reasons []string
-	if unreachable > 0 {
-		reasons = append(reasons, fmt.Sprintf("%d of %d voters unreachable", unreachable, s.voters))
+	if unreachable == 0 && silent == 0 {
+		return ClusterShortfall{}
 	}
-	if silent > 0 {
-		reasons = append(reasons, s.silentVoters(silent))
-	}
-	if len(reasons) == 0 {
+	return ClusterShortfall{Kind: ClusterShortfallVotersMissing, Voters: s.voters, Members: live, Unreachable: unreachable, Silent: silent}
+}
+
+// membershipShortfall words shortfall for the report's "Overall" line, or
+// returns "" when the cluster is short of nothing.
+func (s clusterStatus) membershipShortfall(now time.Time) string {
+	short := s.shortfall(now)
+	switch short.Kind {
+	case ClusterShortfallFewVoters:
+		voters := "voters"
+		if short.Voters == 1 {
+			voters = "voter"
+		}
+		return fmt.Sprintf("%d %s among %d members, not fault tolerant", short.Voters, voters, short.Members)
+	case ClusterShortfallVotersMissing:
+		var reasons []string
+		if short.Unreachable > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d of %d voters unreachable", short.Unreachable, short.Voters))
+		}
+		if short.Silent > 0 {
+			reasons = append(reasons, s.silentVoters(short.Silent))
+		}
+		switch {
+		case !s.toleratesLosing(short.Unreachable):
+			reasons = append(reasons, "not fault tolerant")
+		case !s.toleratesLosing(short.Unreachable + short.Silent):
+			reasons = append(reasons, "fault tolerance unverified")
+		}
+		return strings.Join(reasons, ", ")
+	default:
 		return ""
 	}
-	switch {
-	case !s.toleratesLosing(unreachable):
-		reasons = append(reasons, "not fault tolerant")
-	case !s.toleratesLosing(unreachable + silent):
-		reasons = append(reasons, "fault tolerance unverified")
-	}
-	return strings.Join(reasons, ", ")
 }
