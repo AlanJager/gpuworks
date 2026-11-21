@@ -40,7 +40,7 @@ func ObserveClusterStatus(ctx context.Context, cfg Config, httpAddr string, time
 	}
 	report.probeLocal(ctx, httpAddr, timeout)
 	report.peers = probePeerDatabases(ctx, report, timeout)
-	report.observeQuorum(ctx, timeout)
+	report.observeQuorum(ctx, cfg, timeout)
 	// Peer/quorum discovery can outlast an earlier material eligibility result.
 	// Observe business admission last, through the same gate as real requests.
 	if httpAddr != "" && report.httpState == "listening" {
