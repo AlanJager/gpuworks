@@ -95,78 +95,16 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 			}
 			ready := resp.StatusCode == http.StatusOK
 			if ready && readiness.Service == "strata" {
-				ready = decodeErr == nil && readiness.Loaded != nil && *readiness.Loaded
-				if !ready {
-					lastResult += ", readiness=not_loaded"
-					if decodeErr != nil || readiness.Loaded == nil {
-						lastResult = fmt.Sprintf("HTTP %d, readiness=unknown", resp.StatusCode)
-					}
-				}
-				if decodeErr == nil && !ready && readiness.Loaded != nil && readiness.APIKey != nil && !*readiness.APIKey {
-					modelsReq, modelsErr := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", spec.APIPort), nil)
-					var modelsResp *http.Response
-					if modelsErr == nil {
-						modelsResp, modelsErr = client.Do(modelsReq) //nolint:bodyclose // readStrataModels consumes and closes the successful response.
-					}
-					if modelsErr == nil {
-						models, valid := readStrataModels(modelsResp)
-						if valid {
-							ready = intentionallyUnloaded(models)
-							if len(models) == 0 && !loadRequested {
-								loadRequested = true
-								e.reportStateProgress(spec, proto.InstStarting, id, "", "engine child is not loaded; recovering", proto.PhaseHealthCheck, 0, 0, 0, 0)
-								loadResult = requestStrataLoad(ctx, client, spec.APIPort)
-							}
-						}
-					}
+				var childAbsent bool
+				ready, lastResult, childAbsent = strataChildReady(ctx, client, spec.APIPort, resp.StatusCode, readiness, decodeErr)
+				if childAbsent && !loadRequested {
+					loadRequested = true
+					e.reportStateProgress(spec, proto.InstStarting, id, "", "engine child is not loaded; recovering", proto.PhaseHealthCheck, 0, 0, 0, 0)
+					loadResult = requestStrataLoad(ctx, client, spec.APIPort)
 				}
 			}
 			if ready {
-				// A healthy answer on the port may come from someone else's
-				// engine while ours is still loading weights.
-				if err := checkServesOwnModel(ctx, client, spec); err != nil {
-					e.failAfterContainer(ctx, spec, failureOf(err, proto.ErrorEnginePortInUse, proto.PhaseHealthCheck), err.Error())
-					return false
-				}
-				e.log.Info("instance healthy", "uuid", spec.UUID, "port", spec.APIPort)
-				var startupSeconds *float64
-				if fresh {
-					elapsed := time.Since(healthStarted).Seconds()
-					startupSeconds = &elapsed
-				}
-				e.mu.Lock()
-				process := e.processLocked(spec.UUID)
-				doPrewarm := spec.Sleepable && spec.DesiredSleep == 0 && !process.prewarmed
-				if doPrewarm {
-					process.prewarmed = true
-				}
-				e.mu.Unlock()
-				if doPrewarm {
-					e.reportState(spec, proto.InstOptimizing, id, "", "prewarming sleep")
-					if err := e.prewarmSleep(ctx, spec); err != nil {
-						e.failAfterContainer(ctx, spec, proto.RuntimeFailure{Code: proto.ErrorSleepPrewarmFailed, Phase: proto.PhaseHealthCheck, Detail: err.Error()}, "sleep prewarm failed: "+err.Error())
-						return false
-					}
-				}
-				e.mu.Lock()
-				actualSleep := e.processOfLocked(spec.UUID).sleepLevel
-				e.mu.Unlock()
-				var measured json.RawMessage
-				if readLogs {
-					measured = e.collectMeasured(ctx, spec, id, startupSeconds)
-				}
-				paths := readOpenAPIPaths(ctx, client, spec.APIPort)
-				if ctx.Err() != nil {
-					return false
-				}
-				e.report(proto.InstanceStatus{
-					UUID: spec.UUID, State: proto.InstRunning, ContainerID: id,
-					Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort),
-					Measured: measured, SleepLevel: actualSleep,
-					OpenAPIPaths:     paths,
-					L1HostBufferHeld: e.holdsL1HostBuffer(spec.UUID),
-				})
-				return true
+				return e.reportHealthy(ctx, client, spec, id, fresh, readLogs, healthStarted)
 			}
 		}
 		if now := time.Now(); fresh && !now.Before(nextStallSample) {
@@ -206,6 +144,96 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 			}
 		}
 	}
+	e.failHealthTimeout(ctx, spec, id, fresh, healthStarted, lastObservedAt, lastTarget, lastResult, stall)
+	return false
+}
+
+// strataChildReady reads a strata supervisor's healthy answer: its engine
+// child is ready when loaded, or when its models were unloaded on purpose.
+// result is what the health diagnostic shows for this answer. childAbsent
+// says the supervisor lists no model at all, so a load has to be asked for.
+func strataChildReady(ctx context.Context, client *http.Client, port, status int, readiness engineReadiness, decodeErr error) (ready bool, result string, childAbsent bool) {
+	if decodeErr != nil || readiness.Loaded == nil {
+		return false, fmt.Sprintf("HTTP %d, readiness=unknown", status), false
+	}
+	if *readiness.Loaded {
+		return true, fmt.Sprintf("HTTP %d", status), false
+	}
+	result = fmt.Sprintf("HTTP %d, readiness=not_loaded", status)
+	if readiness.APIKey == nil || *readiness.APIKey {
+		return false, result, false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", port), nil)
+	if err != nil {
+		return false, result, false
+	}
+	resp, err := client.Do(req) //nolint:bodyclose // readStrataModels consumes and closes the successful response.
+	if err != nil {
+		return false, result, false
+	}
+	models, valid := readStrataModels(resp)
+	if !valid {
+		return false, result, false
+	}
+	return intentionallyUnloaded(models), result, len(models) == 0
+}
+
+// reportHealthy takes an instance whose engine answered healthy to running:
+// the answer must be its own model's, a sleepable instance is prewarmed
+// once, and the report carries what the start measured. It returns false
+// when one of those fails the instance or ctx ended first.
+func (e *Engine) reportHealthy(ctx context.Context, client *http.Client, spec proto.InstanceDesiredState, id string, fresh, readLogs bool, healthStarted time.Time) bool {
+	// A healthy answer on the port may come from someone else's
+	// engine while ours is still loading weights.
+	if err := checkServesOwnModel(ctx, client, spec); err != nil {
+		e.failAfterContainer(ctx, spec, failureOf(err, proto.ErrorEnginePortInUse, proto.PhaseHealthCheck), err.Error())
+		return false
+	}
+	e.log.Info("instance healthy", "uuid", spec.UUID, "port", spec.APIPort)
+	var startupSeconds *float64
+	if fresh {
+		elapsed := time.Since(healthStarted).Seconds()
+		startupSeconds = &elapsed
+	}
+	e.mu.Lock()
+	process := e.processLocked(spec.UUID)
+	doPrewarm := spec.Sleepable && spec.DesiredSleep == 0 && !process.prewarmed
+	if doPrewarm {
+		process.prewarmed = true
+	}
+	e.mu.Unlock()
+	if doPrewarm {
+		e.reportState(spec, proto.InstOptimizing, id, "", "prewarming sleep")
+		if err := e.prewarmSleep(ctx, spec); err != nil {
+			e.failAfterContainer(ctx, spec, proto.RuntimeFailure{Code: proto.ErrorSleepPrewarmFailed, Phase: proto.PhaseHealthCheck, Detail: err.Error()}, "sleep prewarm failed: "+err.Error())
+			return false
+		}
+	}
+	e.mu.Lock()
+	actualSleep := e.processOfLocked(spec.UUID).sleepLevel
+	e.mu.Unlock()
+	var measured json.RawMessage
+	if readLogs {
+		measured = e.collectMeasured(ctx, spec, id, startupSeconds)
+	}
+	paths := readOpenAPIPaths(ctx, client, spec.APIPort)
+	if ctx.Err() != nil {
+		return false
+	}
+	e.report(proto.InstanceStatus{
+		UUID: spec.UUID, State: proto.InstRunning, ContainerID: id,
+		Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort),
+		Measured: measured, SleepLevel: actualSleep,
+		OpenAPIPaths:     paths,
+		L1HostBufferHeld: e.holdsL1HostBuffer(spec.UUID),
+	})
+	return true
+}
+
+// failHealthTimeout fails an instance whose engine never answered healthy
+// within its start timeout, with the last answer seen and, where the start
+// was watched, what its processes were doing.
+func (e *Engine) failHealthTimeout(ctx context.Context, spec proto.InstanceDesiredState, id string, fresh bool, healthStarted, lastObservedAt time.Time, lastTarget, lastResult string, stall *stallWatch) {
 	message := "health check timed out"
 	failure := proto.RuntimeFailure{Code: proto.ErrorEngineHealthTimeout, Phase: proto.PhaseHealthCheck}
 	if !lastObservedAt.IsZero() {
@@ -220,7 +248,7 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 		}
 	}
 	if ctx.Err() != nil {
-		return false
+		return
 	}
 	var measured json.RawMessage
 	if fresh {
@@ -229,7 +257,6 @@ func (e *Engine) probeAndReportStartup(ctx context.Context, spec proto.InstanceD
 	}
 	e.attachOutput(ctx, id, spec.VRAMLimitBytes, &failure, true)
 	e.failAfterContainer(ctx, spec, failure, message, measured)
-	return false
 }
 
 // probeHeadlessAndReport verifies that a distributed worker remains alive for
