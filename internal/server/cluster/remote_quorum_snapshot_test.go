@@ -78,6 +78,12 @@ func (f *remoteSnapshotFixture) unchanged(t *testing.T, tx *sql.Tx) {
 			t.Fatal("transaction escaped snapshot cleanup", err)
 		}
 	}
+	// database/sql rolls a transaction back on its own goroutine when the
+	// context ends, so the connection may return to the pool just after the
+	// read has returned.
+	for deadline := time.Now().Add(5 * time.Second); f.pool.Stats().InUse != 0 && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
 	if f.pool.Stats().InUse != 0 {
 		t.Fatal("dedicated SQL connection remains in use")
 	}
