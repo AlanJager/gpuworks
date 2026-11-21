@@ -43,6 +43,6 @@ func (i *Installer) refuseClusterMember(command string) error {
 	if !member {
 		return nil
 	}
-	return fmt.Errorf("%w (%s): `gpuworks %s` acts on one server only, and does not know the member's own service unit, its database process or the other members; nothing was changed. Follow the cluster procedure in the control-plane cluster documentation (explanation/control-plane-cluster)",
+	return fmt.Errorf("%w (%s): `gpuworks %s` acts on one server only, and does not know the member's own service unit, its database process or the other members; nothing was changed. Upgrade a cluster with `gpuworks cluster upgrade` from the machine it was installed from; restart or stop a member through its own service unit (explanation/control-plane-cluster)",
 		ErrClusterMember, i.layout.DataDir, command)
 }
