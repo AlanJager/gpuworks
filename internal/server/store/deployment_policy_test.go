@@ -192,16 +192,18 @@ func TestSweepEventRetentionAppliesBothBounds(t *testing.T) {
 	})
 }
 
-// A policy stored before start_timeout_sec existed has no such key. It must
-// keep its own values and read the shipped start timeout, not fall back to the
-// defaults wholesale because the missing key decoded as zero.
+// A policy stored before start_timeout_sec (or the foreign headroom) existed
+// has no such key. It must keep its own values and read the shipped ones for
+// the keys it lacks, not fall back to the defaults wholesale because a
+// missing key decoded as zero.
 func TestDeploymentPolicyOldValueGainsStartTimeoutDefault(t *testing.T) {
 	st := openPolicyStore(t)
 	if err := st.SetSetting(SettingDeploymentPolicy, `{"pending_timeout_sec":120,"event_retention_days":30,"event_retention_bytes":1073741824}`); err != nil {
 		t.Fatal(err)
 	}
 	got := st.DeploymentPolicy()
-	want := DeploymentPolicy{PendingTimeoutSec: 120, StartTimeoutSec: 1800, EventRetentionDays: 30, EventRetentionBytes: 1 << 30}
+	want := DeploymentPolicy{PendingTimeoutSec: 120, StartTimeoutSec: 1800, EventRetentionDays: 30, EventRetentionBytes: 1 << 30,
+		ForeignHeadroomPct: 5, ForeignHeadroomMinBytes: 4 << 30}
 	if got != want {
 		t.Fatalf("old stored policy read as %+v, want %+v", got, want)
 	}
@@ -214,6 +216,43 @@ func TestValidStartTimeoutSec(t *testing.T) {
 	} {
 		if got := ValidStartTimeoutSec(seconds); got != want {
 			t.Fatalf("ValidStartTimeoutSec(%d) = %v, want %v", seconds, got, want)
+		}
+	}
+}
+
+// The headroom beside processes outside the platform is the operator's: the
+// shipped policy keeps 5% of a card, at least 4 GiB; a policy stored before
+// the keys existed reads those; zero is a value an operator may store, not
+// "unset"; and a value out of range falls back whole, as every other key.
+func TestDeploymentPolicyForeignHeadroom(t *testing.T) {
+	st := openPolicyStore(t)
+	if got := st.DeploymentPolicy(); got.ForeignHeadroomPct != 5 || got.ForeignHeadroomMinBytes != 4<<30 {
+		t.Fatalf("seeded headroom = %d%% / %d bytes, want 5%% / 4 GiB", got.ForeignHeadroomPct, got.ForeignHeadroomMinBytes)
+	}
+	const older = `{"pending_timeout_sec":120,"start_timeout_sec":3600,"event_retention_days":30,"event_retention_bytes":1073741824}`
+	if got := DeploymentPolicyFromSetting(older); got.ForeignHeadroomPct != 5 || got.ForeignHeadroomMinBytes != 4<<30 || got.PendingTimeoutSec != 120 {
+		t.Fatalf("a policy without the keys = %+v, want the shipped headroom beside its own values", got)
+	}
+	const none = `{"pending_timeout_sec":120,"start_timeout_sec":3600,"event_retention_days":30,"event_retention_bytes":1073741824,"foreign_headroom_pct":0,"foreign_headroom_min_bytes":0}`
+	if err := st.SetSetting(SettingDeploymentPolicy, none); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.DeploymentPolicy(); got.ForeignHeadroomPct != 0 || got.ForeignHeadroomMinBytes != 0 || got.PendingTimeoutSec != 120 {
+		t.Fatalf("a stored zero headroom = %+v, want it kept", got)
+	}
+	for _, raw := range []string{
+		`{"foreign_headroom_pct":-1}`,
+		`{"foreign_headroom_pct":51}`,
+		`{"foreign_headroom_min_bytes":-1}`,
+		`{"foreign_headroom_min_bytes":68719476737}`,
+	} {
+		if got := DeploymentPolicyFromSetting(raw); got != DefaultDeploymentPolicy() {
+			t.Fatalf("raw %q parsed to %+v, want the shipped default", raw, got)
+		}
+	}
+	for _, raw := range []string{`{"foreign_headroom_pct":50}`, `{"foreign_headroom_min_bytes":68719476736}`} {
+		if got := DeploymentPolicyFromSetting(raw); got == DefaultDeploymentPolicy() {
+			t.Fatalf("raw %q at the bound was refused", raw)
 		}
 	}
 }

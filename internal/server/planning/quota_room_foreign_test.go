@@ -51,7 +51,7 @@ func TestQuotaRoomKeepsTheForeignMemoryOutOfAHeldCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	total := int64(143771 << 20)
-	want := total - reporterForeign.MemoryBytes - estimate.ForeignHeadroomBytes(total)
+	want := total - reporterForeign.MemoryBytes - estimate.ForeignHeadroomBytes(total, 5, 4<<30)
 	if short == nil || short.FreeBytes != want {
 		t.Fatalf("shortfall = %+v, want the card refused with %d free (total less foreign and headroom)", short, want)
 	}

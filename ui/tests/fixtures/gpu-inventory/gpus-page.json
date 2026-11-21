@@ -35,6 +35,7 @@
       "allocation_state": "allocated",
       "allocated_bytes": 48318382080,
       "sleeping_bytes": 0,
+      "foreign_bytes": 0,
       "available_bytes": 0,
       "occupants": [
         {
@@ -85,6 +86,7 @@
       "allocation_state": "partial",
       "allocated_bytes": 23085449216,
       "sleeping_bytes": 0,
+      "foreign_bytes": 0,
       "available_bytes": 536870912,
       "occupants": [
         {
@@ -144,6 +146,7 @@
       "allocation_state": "unusable",
       "allocated_bytes": 0,
       "sleeping_bytes": 0,
+      "foreign_bytes": 0,
       "available_bytes": 0,
       "occupants": [],
       "load": {}

@@ -200,11 +200,13 @@ func onGrid(steps, step float64) float64 {
 }
 
 // ForeignHeadroomBytes is the memory left free beside processes outside the
-// platform on a card a memory-limited partition shares with them: 5% of the
-// card, at least 4 GiB. What they hold is a reading taken once a minute, not
-// a limit they keep to, and an out-of-memory failure there costs both their
-// workload and the partition; the same shape as the host-memory headroom an
-// L1 sleep keeps (sleep.HostMemoryHeadroom). See ADR 0068.
-func ForeignHeadroomBytes(totalBytes int64) int64 {
-	return max(totalBytes/20, 4<<30)
+// platform on a card shared with them: pct percent of the card, at least
+// minBytes. What they hold is a reading taken once a minute, not a limit
+// they keep to, and an out-of-memory failure there costs both their workload
+// and the partition; the same shape as the host-memory headroom an L1 sleep
+// keeps (sleep.HostMemoryHeadroom). The two figures are the operator's
+// (store.DeploymentPolicy, 5% and 4 GiB as shipped); both zero keeps nothing
+// free, for holders known not to grow. See ADR 0068.
+func ForeignHeadroomBytes(totalBytes int64, pct int, minBytes int64) int64 {
+	return max(totalBytes*int64(pct)/100, minBytes, 0)
 }

@@ -376,6 +376,9 @@ func nodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason s
 	allocations := gpuAllocations(st, node, view)
 	partitionReports := partitioncap.Decode(node)
 	var gpus []scheduler.GPU
+	// The deployment policy is read for the first card processes outside the
+	// platform hold, once per snapshot: most nodes have none.
+	var policy *store.DeploymentPolicy
 	for _, g := range node.OwnedGPUs() {
 		a := allocations[g.Index]
 		var readyBackends []string
@@ -385,10 +388,19 @@ func nodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason s
 			}
 		}
 		foreignBytes, foreignShareable := foreignShare(node, &g)
+		var foreignHeadroomBytes int64
+		if foreignBytes > 0 {
+			if policy == nil {
+				read := st.DeploymentPolicy()
+				policy = &read
+			}
+			foreignHeadroomBytes = foreignHeadroom(*policy, g.MemoryTotal)
+		}
 		gpus = append(gpus, scheduler.GPU{
-			WholeGPUAllocated: a.WholeGPUAllocated,
-			ForeignBytes:      foreignBytes,
-			ForeignShareable:  foreignShareable,
+			WholeGPUAllocated:    a.WholeGPUAllocated,
+			ForeignBytes:         foreignBytes,
+			ForeignHeadroomBytes: foreignHeadroomBytes,
+			ForeignShareable:     foreignShareable,
 
 			Index: g.Index, MemoryTotal: g.MemoryTotal, AllocatedBytes: a.AllocatedBytes, SleepingBytes: a.SleepingBytes,
 			NUMANode: g.NUMANode, Schedulable: g.CanTakeWork(), HeldOutsidePlatform: g.HeldOutsidePlatform(),

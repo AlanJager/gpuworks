@@ -1669,7 +1669,7 @@ Without pagination parameters, all results are returned. With `page` or `page_si
 - `unusable`: accepts no tasks at all; see the GPU's `schedulable`, `health_status`, `ownership`, and `foreign_processes` for reasons.
 - `unknown`: the node is offline, and readings are from its last report. `available_bytes` is 0, and the GPU is excluded from the allocatable count. Existing allocations and hardware health information are retained.
 
-Memory is booked as `allocated_bytes` (held by awake instances), `sleeping_bytes` (the residue sleeping instances keep) and `available_bytes` (still allocatable). When the three add up to less than `memory_total_bytes`, the difference is memory withheld for another reason: processes outside the platform and the headroom kept beside them, or an offline node.
+Memory is booked as `allocated_bytes` (held by awake instances), `sleeping_bytes` (the residue sleeping instances keep), `foreign_bytes` (the memory of processes outside the platform that is counted; 0 when their memory is not known) and `available_bytes` (still allocatable). When the four add up to less than `memory_total_bytes`, the difference is memory withheld for another reason: on a card of an online node it is the headroom kept beside processes outside the platform (the deployment policy's `foreign_headroom_pct` and `foreign_headroom_min_bytes`; no difference when both are 0), and the whole card when the outside processes' memory is not known or the node is offline.
 
 `overview.health` counts GPUs by health level: `ok`, `warning`, and `error`. GPUs with warnings may still serve workloads; GPUs passed through or occupied by processes outside the platform may also have health `ok`.
 States refresh with the 20-second snapshot.
@@ -2411,4 +2411,4 @@ Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_c
 
 An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.
 
-<!-- translation-source-sha256: 3f7e95873817ce53b2d0b87eea8cc16a31a6effc8efb5897f40a7b287a6dc01a -->
+<!-- translation-source-sha256: 02dac3d5061357a624a5cab3840c4aa78241ea4862cdf8afc693ccd93c1ffee5 -->

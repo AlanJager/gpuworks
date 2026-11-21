@@ -45,7 +45,9 @@ const (
 )
 
 // gpuInventoryTopics are the bus topics whose changes invalidate it.
-var gpuInventoryTopics = []string{"instance", "deployment", "node"}
+// "setting": the deployment policy's headroom beside processes outside the
+// platform decides a shared card's free figure.
+var gpuInventoryTopics = []string{"instance", "deployment", "node", "setting"}
 
 // listGPUs answers GET /gpus. With page or page_size it returns one
 // dto.GPUPage (see gpuPage); without them, every GPU with the overview.
@@ -145,6 +147,7 @@ func (a *apiHandlers) buildGPUInventory() (*gpuInventoryCache, error) {
 		return nil, err
 	}
 	deployment := func(id uint) *store.Deployment { return rows.Deployment(id) }
+	policy := a.d.Store.DeploymentPolicy()
 
 	out := &gpuInventoryCache{
 		physical: dto.GPUListResponse{Items: []dto.PhysicalGPU{}},
@@ -174,7 +177,7 @@ func (a *apiHandlers) buildGPUInventory() (*gpuInventoryCache, error) {
 				gpuByIndex[gpu.Index] = gpu
 			}
 			allocation := allocations[gpu.Index]
-			item := physicalGPU(node, partitionReports, &gpu, allocation, deployment, metrics)
+			item := physicalGPU(node, partitionReports, &gpu, allocation, policy, deployment, metrics)
 			out.physical.Items = append(out.physical.Items, item)
 			accumulateGPUOverview(&out.physical.Overview, &gpu, &item)
 		}
@@ -232,9 +235,9 @@ func sliceUsage(spec *proto.InstanceDesiredState) (memory, compute bool) {
 	return accelerator.SliceUsage(backend, spec.SMLimitPct)
 }
 
-func physicalGPU(node *store.Node, partitionReports partitioncap.Reports, gpu *store.GPU, allocation planning.GPUAllocation, deployment func(uint) *store.Deployment, metrics map[string]map[string]MetricLatest) dto.PhysicalGPU {
-	foreign, foreignKnown := planning.ForeignHold(node, gpu)
-	available := gpu.MemoryTotal - allocation.AllocatedBytes - allocation.SleepingBytes - foreign
+func physicalGPU(node *store.Node, partitionReports partitioncap.Reports, gpu *store.GPU, allocation planning.GPUAllocation, policy store.DeploymentPolicy, deployment func(uint) *store.Deployment, metrics map[string]map[string]MetricLatest) dto.PhysicalGPU {
+	foreign, headroom, foreignKnown := planning.ForeignHold(node, gpu, policy)
+	available := gpu.MemoryTotal - allocation.AllocatedBytes - allocation.SleepingBytes - foreign - headroom
 	if available < 0 || !foreignKnown || node.State != store.NodeStateOnline {
 		available = 0
 	}
@@ -253,7 +256,7 @@ func physicalGPU(node *store.Node, partitionReports partitioncap.Reports, gpu *s
 		HealthStatus:      gpu.HealthStatus, HealthCode: gpu.HealthCode, HealthMessage: gpu.HealthMessage,
 		HealthEvidence: evidence, HealthGuide: guide,
 		NodeUUID: node.UUID, NodeName: node.DisplayName(), NodeState: node.ConnectionState(), DriverVersion: node.GPUDriver,
-		AllocatedBytes: allocation.AllocatedBytes, SleepingBytes: allocation.SleepingBytes, AvailableBytes: available, Occupants: []dto.GPUOccupant{},
+		AllocatedBytes: allocation.AllocatedBytes, SleepingBytes: allocation.SleepingBytes, ForeignBytes: foreign, AvailableBytes: available, Occupants: []dto.GPUOccupant{},
 	}
 	switch {
 	case node.State != store.NodeStateOnline:

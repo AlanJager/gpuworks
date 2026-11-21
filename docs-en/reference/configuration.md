@@ -331,8 +331,12 @@ The request body is merged into the current value, changing only the keys it con
 | `start_timeout_sec` | 1800 | 60–86400 | The first step of the startup wait limit (source `cluster`): a template spec's `start_timeout_sec` replaces it, a known engine deadline can extend it up to 86400 seconds, and a deployment's own value replaces all of them; see [Startup Wait Limit](deployment-launch-sources.md#启动等待上限). A timeout marks this startup attempt as failed and recreates the instance according to retry rules. Edit it in the "Deployment" card in Settings; an individual deployment can override it with `start_timeout_sec` ("Start timeout" under "Runtime environment" in the deployment form) |
 | `event_retention_days` | 180 | 1–3650 | Number of days to retain the event timeline |
 | `event_retention_bytes` | 50 GiB | 64 MiB–1 TiB | Event timeline retention in bytes; whichever limit is reached first, bytes or days, applies |
+| `foreign_headroom_pct` | 5 | 0–50 | On a card shared with processes outside the platform, the memory left unallocated beside what they hold, as a percentage of the card's memory |
+| `foreign_headroom_min_bytes` | 4 GiB | 0–64 GiB | The minimum for that headroom; the headroom is the larger of the share and the minimum |
 
 At startup and every 6 hours after, the server trims events to these two limits, oldest first, in small batches, giving up the database write between batches so other writes are not held up for long; it deletes only as many as the limits require. When the server stops, a trim stops between batches and the next one picks up the rest. The byte count is estimated from the characters of an event's text (message, parameters, event code): a multi-byte character such as Chinese counts as one, so actual usage can exceed the set value.
+
+The memory of processes outside the platform is a reading taken once a minute, not a limit they keep to; when they grow, the headroom keeps them and the instances on the same card from running out of memory. Setting both keys to 0 keeps no headroom; use it only when those processes hold a fixed amount (for example an inference engine that takes its memory once at startup). A change applies at once to later placements, to quota changes in place and to the allocatable memory in the GPU list; running instances are not affected. In the console it is under Settings › Nodes & deployments › Deployment.
 
 If values saved by older versions lack new keys, those keys use factory defaults when read. If the stored value cannot be parsed or is out of range, the entire value falls back to factory defaults.
 
@@ -413,6 +417,6 @@ The following names appear in the code but are not user-configurable settings. D
 - `GPUWORKS_PARTITION_PROBE_BACKEND`, `GPUWORKS_PARTITION_PROBE_QUOTA_MIB`: Inputs injected into the probe program when the agent starts a dGPU probe container; they are not configuration settings read by the agent.
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
-<!-- translation-source-sha256: 05aa25ab682f5e2e76454c8c008cdfa924ebb0dc9e1bae380b912fcd157ec587 -->
+<!-- translation-source-sha256: e353df8482fa8b6bb553da9c1311c1304dbecd5fd38018c5d46bf423920a4ecb -->
 <!-- translation-localized-code-block: 86f9f71f25c2b857ad0011486eb8c57eb9996ec1a4417ab035e24d7b4b1f898d dc1d5c5bc85efcc1eb7d1d72bc584329c53e7d9c636c376ad8a7ce5dc1d901cb Reviewed configuration comments; usage_report=false suppresses the daily report and node/GPU counts, while automatic checks retain installation ID and versions. Keys and values unchanged. -->
 <!-- translation-localized-code-block: 2a636013886e3274f9549d011376c48f05c387773ed46b7bf2ba8e5018147ee9 dcf0c95e55438a724e2ae70bef18a40f8ba32a257bab9f5a81a715cb374fc0e3 Reviewed the comments of the plugins example, including max_down_grace; keys and values unchanged. -->

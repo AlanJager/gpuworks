@@ -1,12 +1,14 @@
 package planning
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/estimate"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -130,16 +132,17 @@ func TestForeignHoldIsCountedWhateverTheCardsDecision(t *testing.T) {
 	if node.GPUs[0].CanTakeWork() {
 		t.Fatal("a held card nobody enabled takes work")
 	}
-	if bytes, known := ForeignHold(node, &node.GPUs[0]); !known || bytes <= reporterForeign.MemoryBytes {
-		t.Fatalf("foreign hold = %d %v, want the holder's memory and headroom", bytes, known)
+	policy := st.DeploymentPolicy()
+	if held, headroom, known := ForeignHold(node, &node.GPUs[0], policy); !known || held != reporterForeign.MemoryBytes || headroom <= 0 {
+		t.Fatalf("foreign hold = %d + %d %v, want the holder's memory and headroom", held, headroom, known)
 	}
 	now := time.Now().UTC()
 	node.GPUs[0].SchedulingAllowedAt = &now
 	if !node.GPUs[0].CanTakeWork() {
 		t.Fatal("an enabled held card takes no work")
 	}
-	if bytes, known := ForeignHold(node, &node.GPUs[0]); !known || bytes <= reporterForeign.MemoryBytes {
-		t.Fatalf("foreign hold on an enabled card = %d %v", bytes, known)
+	if held, headroom, known := ForeignHold(node, &node.GPUs[0], policy); !known || held != reporterForeign.MemoryBytes || headroom <= 0 {
+		t.Fatalf("foreign hold on an enabled card = %d + %d %v", held, headroom, known)
 	}
 }
 
@@ -173,5 +176,61 @@ func TestPDRankLaunchConsentsForTheUnitsPinnedCards(t *testing.T) {
 				t.Fatalf("consent = %+v, want CardsChosen %v", input.Consent, tc.want)
 			}
 		})
+	}
+}
+
+// The headroom kept beside processes outside the platform is the stored
+// deployment policy's, read for every snapshot: admission, a quota change in
+// place and the free figure all follow one setting, and storing zero hands
+// the headroom back.
+func TestForeignHeadroomFollowsTheDeploymentPolicy(t *testing.T) {
+	st := foreignStore(t)
+	node := foreignHeldNode(t, st, "h20", proto.PartitionSafetyForeignTracked, reporterForeign)
+	total := node.GPUs[0].MemoryTotal
+	shipped := estimate.ForeignHeadroomBytes(total, 5, 4<<30)
+	card := func() scheduler.GPU { return NodeSnapshot(st, node, true, "").GPUs[0] }
+	if got := card(); got.ForeignHeadroomBytes != shipped || got.Available() != total-reporterForeign.MemoryBytes-shipped {
+		t.Fatalf("shipped policy: headroom %d available %d, want %d and total less both", got.ForeignHeadroomBytes, got.Available(), shipped)
+	}
+	// A card nothing outside the platform holds keeps no headroom.
+	if got := NodeSnapshot(st, node, true, "").GPUs[1]; got.ForeignHeadroomBytes != 0 {
+		t.Fatalf("free card headroom = %d", got.ForeignHeadroomBytes)
+	}
+	// 77.9 GiB is left beside the holder; a 74 GiB slice needs the headroom.
+	in := Input{
+		Model: &store.Model{WeightBytes: 15 << 30}, Node: node, Engine: "vllm",
+		Quick: deploy.LaunchConfig{GPUMemUtil: 0.9}, VRAMLimitBytes: 74 << 30,
+		PartitionBackend: accelerator.BackendNVIDIALogical,
+		GPUIndexes:       []int{0}, Consent: scheduler.Consent{CardsChosen: true},
+	}
+	out := in.Evaluate(st)
+	if out.Result.OK || out.Result.Message.Code != scheduler.ReasonNoFit || out.Result.Message.Params["foreign_headroom_bytes"] != shipped {
+		t.Fatalf("shipped policy, 74 GiB slice = ok %v %+v, want %s naming the headroom", out.Result.OK, out.Result.Message, scheduler.ReasonNoFit)
+	}
+
+	policy := st.DeploymentPolicy()
+	policy.ForeignHeadroomPct, policy.ForeignHeadroomMinBytes = 0, 0
+	raw, _ := json.Marshal(policy)
+	if err := st.SetSetting(store.SettingDeploymentPolicy, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if got := card(); got.ForeignHeadroomBytes != 0 || got.Available() != total-reporterForeign.MemoryBytes {
+		t.Fatalf("no headroom: headroom %d available %d, want 0 and total less the holder", got.ForeignHeadroomBytes, got.Available())
+	}
+	if held, headroom, known := ForeignHold(node, &node.GPUs[0], st.DeploymentPolicy()); !known || held != reporterForeign.MemoryBytes || headroom != 0 {
+		t.Fatalf("foreign hold with no headroom = %d + %d %v", held, headroom, known)
+	}
+	if out := in.Evaluate(st); !out.Result.OK || out.Result.Plan == nil || out.Result.Plan.GPUIndexes[0] != 0 {
+		t.Fatalf("no headroom, 74 GiB slice = ok %v %+v, want placed on GPU 0", out.Result.OK, out.Result.Message)
+	}
+
+	// Only a floor: 8 GiB whatever the card's size.
+	policy.ForeignHeadroomMinBytes = 8 << 30
+	raw, _ = json.Marshal(policy)
+	if err := st.SetSetting(store.SettingDeploymentPolicy, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if got := card(); got.ForeignHeadroomBytes != 8<<30 {
+		t.Fatalf("floor only: headroom %d, want 8 GiB", got.ForeignHeadroomBytes)
 	}
 }

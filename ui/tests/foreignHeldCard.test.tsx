@@ -69,6 +69,12 @@ test("a no_fit reason names what processes outside the platform hold, in both la
   const { i18n: zh } = await createI18n(["deploy"], "zh");
   assert.match(scheduleText(zh.getFixedT("zh", "deploy"), { code: "no_fit", params }), /平台外的进程占用此卡 62\.5 GiB，另在其旁保留 7\.0 GiB 余量/);
   assert.doesNotMatch(scheduleText(t, { code: "no_fit", params: { ...params, foreign_gib: undefined } }), /outside the platform/);
+  // The deployment policy keeps no headroom: the server states none, and
+  // the text invents none.
+  const bare = { ...params, foreign_headroom_gib: undefined };
+  assert.match(scheduleText(t, { code: "no_fit", params: bare }), /outside the platform use 62\.5 GiB of the card\.$/);
+  assert.doesNotMatch(scheduleText(t, { code: "no_fit", params: bare }), /kept free|undefined/);
+  assert.match(scheduleText(zh.getFixedT("zh", "deploy"), { code: "no_fit", params: bare }), /平台外的进程占用此卡 62\.5 GiB。$/);
 });
 
 test("a sleepable partition is told why the shared card is refused", () => {

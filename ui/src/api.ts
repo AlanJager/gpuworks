@@ -4339,6 +4339,11 @@ export interface PhysicalGPU {
    * this, allocated_bytes and available_bytes is withheld for another
    * reason (processes outside the platform, an unreachable node). */
   sleeping_bytes: number;
+  /** The memory of processes outside the platform that the free figure
+   * leaves out; 0 when none is counted (holders of unknown memory too).
+   * What is withheld beyond it on an online node's card is the headroom the
+   * deployment policy keeps beside them. */
+  foreign_bytes: number;
   available_bytes: number;
   occupants: GPUOccupant[];
   load: GPULoad;

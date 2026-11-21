@@ -81,7 +81,10 @@ func reasonMemoryShortfall(req Request, gpus []GPU, tp int, need int64) Reason {
 	if binding.ForeignBytes > 0 && (req.PerGPULimitBytes > 0 || binding.SharedByMemory) {
 		headroom := binding.foreignHold() - binding.ForeignBytes
 		params["foreign_bytes"], params["foreign_gib"] = binding.ForeignBytes, gib(binding.ForeignBytes)
-		params["foreign_headroom_bytes"], params["foreign_headroom_gib"] = headroom, gib(headroom)
+		// No headroom kept (the operator's policy) is no figure to state.
+		if headroom > 0 {
+			params["foreign_headroom_bytes"], params["foreign_headroom_gib"] = headroom, gib(headroom)
+		}
 	}
 	return Reason{Code: ReasonNoFit, Params: params}
 }

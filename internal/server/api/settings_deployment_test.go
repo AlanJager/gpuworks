@@ -76,13 +76,44 @@ func TestPutSettingDeploymentPolicy(t *testing.T) {
 		t.Fatalf("malformed PUT = %d, want 400", rec.Code)
 	}
 
+	// The headroom beside processes outside the platform: zero is a value an
+	// administrator may store, each key on its own, and a value out of range
+	// is refused like any other.
+	if rec, _ := do(http.MethodPut, adminToken, `{"foreign_headroom_pct":0}`); rec.Code != http.StatusOK {
+		t.Fatalf("admin PUT headroom pct = %d %s", rec.Code, rec.Body.String())
+	}
+	want.ForeignHeadroomPct = 0
+	if got := st.DeploymentPolicy(); got != want {
+		t.Fatalf("policy after headroom pct PUT = %+v, want %+v", got, want)
+	}
+	if rec, _ := do(http.MethodPut, adminToken, `{"foreign_headroom_min_bytes":0}`); rec.Code != http.StatusOK {
+		t.Fatalf("admin PUT headroom floor = %d %s", rec.Code, rec.Body.String())
+	}
+	want.ForeignHeadroomMinBytes = 0
+	if got := st.DeploymentPolicy(); got != want {
+		t.Fatalf("policy after headroom floor PUT = %+v, want %+v", got, want)
+	}
+	for _, body := range []string{`{"foreign_headroom_pct":51}`, `{"foreign_headroom_pct":-1}`, `{"foreign_headroom_min_bytes":-1}`, `{"foreign_headroom_min_bytes":68719476737}`} {
+		rec, out := do(http.MethodPut, adminToken, body)
+		if rec.Code != http.StatusBadRequest || out["code"] != ErrorFieldInvalid {
+			t.Fatalf("PUT %s = %d %v, want 400 %s", body, rec.Code, out, ErrorFieldInvalid)
+		}
+		if got := st.DeploymentPolicy(); got != want {
+			t.Fatalf("rejected PUT %s changed the policy: %+v", body, got)
+		}
+	}
+	if rec, _ := do(http.MethodPut, memberToken, `{"foreign_headroom_pct":10}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("member PUT headroom = %d, want 403", rec.Code)
+	}
+
 	// GET serves the stored document verbatim, with the wire key the form reads.
 	rec, out := do(http.MethodGet, memberToken, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET settings = %d", rec.Code)
 	}
 	policy, ok := out["deployment"].(map[string]any)
-	if !ok || policy["start_timeout_sec"] != float64(3600) || policy["pending_timeout_sec"] != float64(120) {
+	if !ok || policy["start_timeout_sec"] != float64(3600) || policy["pending_timeout_sec"] != float64(120) ||
+		policy["foreign_headroom_pct"] != float64(0) || policy["foreign_headroom_min_bytes"] != float64(0) {
 		t.Fatalf("GET deployment policy = %#v", out["deployment"])
 	}
 }
@@ -112,7 +143,7 @@ func TestGetSettingsServesTheEffectiveDeploymentPolicy(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"pending_timeout_sec":120,"start_timeout_sec":1800,"event_retention_days":30,"event_retention_bytes":1073741824}`
+	const want = `{"pending_timeout_sec":120,"start_timeout_sec":1800,"event_retention_days":30,"event_retention_bytes":1073741824,"foreign_headroom_pct":5,"foreign_headroom_min_bytes":4294967296}`
 	if string(out["deployment"]) != want {
 		t.Fatalf("deployment = %s, want %s", out["deployment"], want)
 	}

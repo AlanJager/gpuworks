@@ -50,9 +50,13 @@ type GPU struct {
 	SharedByMemory bool
 	// ForeignBytes is what processes outside the platform hold on the card,
 	// when the card is held and every holder's memory is known
-	// (store.GPU.ForeignBytes); zero otherwise. Available keeps it, and a
+	// (store.GPU.ForeignBytes); zero otherwise. Available keeps it, and the
 	// headroom beside it, out of what a partition may claim.
 	ForeignBytes int64
+	// ForeignHeadroomBytes is the memory left free beside ForeignBytes, by
+	// the operator's deployment policy (estimate.ForeignHeadroomBytes). The
+	// snapshot's builder states it; zero keeps nothing free.
+	ForeignHeadroomBytes int64
 	// ForeignShareable marks a held card that a memory-limited partition
 	// may still share by memory: healthy, not stopped by an operator, every
 	// holder's memory known, and an agent that keeps reporting the holders

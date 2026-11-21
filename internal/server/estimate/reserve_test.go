@@ -120,3 +120,26 @@ func TestPartitionClaimBytes(t *testing.T) {
 		t.Fatalf("ascend claim = %d, want limit + reserve", got)
 	}
 }
+
+// The headroom beside processes outside the platform is a share of the card
+// with a floor, both the operator's; with both zero nothing is kept.
+func TestForeignHeadroomBytes(t *testing.T) {
+	const gib = int64(1) << 30
+	for _, tc := range []struct {
+		total    int64
+		pct      int
+		minBytes int64
+		want     int64
+	}{
+		{total: 22 * gib, pct: 5, minBytes: 4 * gib, want: 4 * gib},  // the floor binds on a small card
+		{total: 140 * gib, pct: 5, minBytes: 4 * gib, want: 7 * gib}, // the share binds on a large one
+		{total: 140 * gib, pct: 0, minBytes: 4 * gib, want: 4 * gib}, // no share, the floor alone
+		{total: 140 * gib, pct: 10, minBytes: 0, want: 14 * gib},     // no floor, the share alone
+		{total: 22 * gib, pct: 0, minBytes: 0, want: 0},              // nothing kept
+		{total: 22 * gib, pct: -5, minBytes: -1, want: 0},            // never negative
+	} {
+		if got := ForeignHeadroomBytes(tc.total, tc.pct, tc.minBytes); got != tc.want {
+			t.Errorf("headroom(%d GiB, %d%%, %d) = %d, want %d", tc.total/gib, tc.pct, tc.minBytes, got, tc.want)
+		}
+	}
+}
