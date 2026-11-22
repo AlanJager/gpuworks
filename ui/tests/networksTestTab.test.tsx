@@ -595,3 +595,32 @@ test("a card test that is running or was never run says so", async () => {
   metric(n.test.overview.nodePairs, "3");
   assert.equal((screen.getAllByRole("button", { name: n.test.start })[0] as HTMLButtonElement).disabled, true);
 });
+
+test("card estimates survive a refreshed detail and equivalent label input, and update for a new selector", async () => {
+  const { default: NetworkTestPanel } = await import("../src/pages/networks/NetworkTestPanel.tsx");
+  const asked: string[] = [];
+  stub("estimateNetworkTest", async (_id, body) => {
+    if (body.scope === "label") asked.push(body.label_key!);
+    return (body.label_key === "zone" ? estimateOf(2, 1, 1, 2) : estimateOf(3, 3, 1, 6)) as never;
+  });
+  const panel = () => <I18nextProvider i18n={i18n}><MemoryRouter>
+    <NetworkTestPanel network={cardNetwork(3, 2)} onStarted={() => {}} onChanged={() => {}} />
+  </MemoryRouter></I18nextProvider>;
+  const view = render(panel());
+  const user = userEvent.setup();
+  await choose(user, n.test.scope, n.test.scopeLabel);
+  const key = screen.getByRole("textbox", { name: /Label key/ });
+  fireEvent.change(key, { target: { value: "rack" } });
+  await screen.findByText(/^3 nodes, 3 pairs: 6 probes/);
+  assert.deepEqual(asked, ["rack"]);
+
+  view.rerender(panel()); // Fresh detail, node objects and node array.
+  fireEvent.change(key, { target: { value: " rack " } });
+  assert.ok(screen.getByText(/^3 nodes, 3 pairs: 6 probes/), "the matching estimate stays visible");
+  await new Promise(resolve => setTimeout(resolve, 300)); // Beyond the estimate debounce.
+  assert.deepEqual(asked, ["rack"], "the wire request is unchanged");
+
+  fireEvent.change(key, { target: { value: "zone" } });
+  await screen.findByText(/^2 nodes, 1 pairs?: 2 probes/);
+  assert.deepEqual(asked, ["rack", "zone"]);
+});
