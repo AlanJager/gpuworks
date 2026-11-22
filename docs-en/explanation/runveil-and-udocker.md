@@ -152,5 +152,35 @@ When a container fails, it can be shown as the failure reason, hiding the engine
 All PRoot and udocker processes started by the agent, as well as container terminals and
 `gpuworks-agent runveil exec`, now use `/` as their working directory. The working directory inside the container is determined by PRoot's `-w` and is unaffected.
 
-<!-- translation-source-sha256: 7889c630ce0bd74856e2dfedf67b84dd8664a1a922d7ee708012f9931ba5baec -->
+
+## Reaping Processes When a Container Stops
+
+PRoot is started with `--kill-on-exit`: it kills everything it traced when it exits. But killing is not
+reaping — only a parent may `wait(2)`, and an engine does not wait for every worker it spawned. PRoot kills
+its tracees in no particular order, so a worker whose parent died first is handed to the init of its PID
+namespace; on the rootless nodes runveil exists for, that init is usually the container image's own
+entrypoint, which does not reap. The worker then holds a process-table slot as `<defunct>` until the node
+reboots, and every deployment leaves another batch behind.
+
+The agent therefore declares itself a child subreaper (`prctl(PR_SET_CHILD_SUBREAPER)`) before it starts a
+container: orphans are handed to the agent rather than to init. When the container is stopped, the agent
+sends SIGTERM to the workload's process group, SIGKILL once the graceful window has passed, and reaps the
+exited members of that group that belong to it as it waits, until the group is empty.
+
+The process group is the whole filter for that reaping. Other commands the agent starts are its children
+too, and waiting for one of them would take the exit status its real caller is owed, while a workload's
+process group holds only that launch and what the launch started. The group leader is excluded: the
+`exec.Cmd` that started it collects its status, which is what tells an out-of-memory kill from a clean exit
+(container exit code 137).
+
+Removing a container also has to make sure no PRoot is left running against a rootfs that is already gone.
+A launch is started before its pid file is written, so a stop that arrives in between finds no record; a
+record left by an earlier agent process may also be gone; and a container terminal or
+`gpuworks-agent runveil exec` each start a PRoot of their own that was never tracked. Before the removal the
+agent therefore scans the process table for the container's rootfs path in an argv (PRoot's `-r`, a path no
+other container can produce) and stops each launch it recognises through that launch's own process group. A
+leftover this process did not start can only be killed, not reaped — only its parent or init may `wait` for
+it.
+
+<!-- translation-source-sha256: 8e07a86ab162adb4b162a8f16eb3c0f3a5d893324d046ae787ae5f4c7a6d9cef -->
 <!-- translation-localized-code-block: a1a0d94ec2610077388e3d35c9bf83e6dcf608f1d833e08ec095d550b15d1f1e b93b87cdbcce4133356e52d054b9d435a0f4bd46ec3689de61494cb7ff8e1877 Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->

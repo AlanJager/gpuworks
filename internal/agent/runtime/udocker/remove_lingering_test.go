@@ -47,6 +47,8 @@ func TestRunveilRemoveRetriesAStopWithAnUnreapedWorker(t *testing.T) {
 	if err := worker.Start(); err != nil {
 		t.Fatal(err)
 	}
+	// Nothing waits for it here, as nothing in a workload waits for the
+	// workers the engine leaves behind.
 	t.Cleanup(func() { _ = worker.Wait() })
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -62,10 +64,13 @@ func TestRunveilRemoveRetriesAStopWithAnUnreapedWorker(t *testing.T) {
 	}
 
 	if err := d.Remove(context.Background(), id); err != nil {
-		t.Fatalf("Remove with only an unreaped worker left: %v", err)
+		t.Fatalf("Remove with only an exited worker left: %v", err)
 	}
-	if err := syscall.Kill(worker.Process.Pid, 0); err != nil {
-		t.Fatalf("fixture's zombie was reaped before the test requested it: %v", err)
+	// The worker is in the workload's process group and nobody else is
+	// waiting for it, so the teardown that signalled the group collects it
+	// rather than leaving a <defunct> entry on the node.
+	if err := syscall.Kill(worker.Process.Pid, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("the teardown left the workload's exited worker behind: kill(0) = %v", err)
 	}
 	if _, err := os.Stat(d.containerDir(id)); !os.IsNotExist(err) {
 		t.Fatalf("the completed removal left the container: %v", err)

@@ -891,6 +891,8 @@
     "CONTAINER_EXITED": "The container exited with code {{exit_code}}.",
     "CONTAINER_OOM_KILLED": "The container was killed for running out of memory (code {{exit_code}}).",
     "CONTAINER_UNHEALTHY": "The container runtime reports the worker unhealthy.",
+    "CONTAINER_PROCESSES_NOT_DRAINED": "Processes of container {{resource}} are still running on the node: {{detail}}",
+    "CONTAINER_REMOVAL_PENDING": "The container {{resource}} could not be removed yet: {{detail}}",
     "ENGINE_HEALTH_ENDPOINT_INVALID": "The engine's health endpoint is not a valid address.",
     "ENGINE_HEALTH_TIMEOUT": "The engine did not become healthy before the start timeout.",
     "ENGINE_START_STALLED": "The engine's start made no progress for a long time while its container kept running: {{detail}}",

@@ -387,6 +387,10 @@ func (d *Driver) RunWithProgress(ctx context.Context, spec runtime.WorkloadSpec,
 	slog.Info("runtime command", "runtime", d.launcherName(), "args", args)
 	cmd.Stdout = logf
 	cmd.Stderr = logf
+	// Claimed before the launch exists, so an engine process that outlives
+	// its own parent is this agent's to reap at teardown rather than a
+	// <defunct> entry under an init that does not reap.
+	procgroup.AdoptOrphans()
 	if err := cmd.Start(); err != nil {
 		slog.Warn("runtime command failed", "runtime", "udocker", "args", args, "err", err)
 		logf.Close()

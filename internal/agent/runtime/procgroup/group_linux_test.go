@@ -5,6 +5,7 @@ package procgroup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -45,17 +46,23 @@ func startGroupWithZombie(t *testing.T, tr *Tracker) (pgid, zombiePID int) {
 	return leader.Process.Pid, worker.Process.Pid
 }
 
-func TestStopDoesNotWaitForAZombieToBeReaped(t *testing.T) {
+// A zombie this process cannot wait for - its parent is another process that
+// is still alive, or an init outside this agent - must not keep a stop
+// pending: it holds nothing but a process-table slot, and no signal can move
+// it. The reaper is given no part in this one, so what remains is exactly
+// what a stop may not wait for.
+func TestStopReturnsWhileAZombieItCannotReapRemains(t *testing.T) {
 	if !procShowsAllPIDs() {
 		t.Skip("unrestricted procfs required")
 	}
 	tr := &Tracker{Dir: t.TempDir(), KillWait: 100 * time.Millisecond}
 	_, zombiePID := startGroupWithZombie(t, tr)
-	if err := tr.Stop(context.Background(), "serving", 50*time.Millisecond); err != nil {
-		t.Fatalf("Stop with only an unreaped worker left: %v", err)
+	probe := groupProbe{stillWorking: groupStillWorking, reap: func(int) int { return 0 }}
+	if err := tr.stop(context.Background(), "serving", 50*time.Millisecond, probe); err != nil {
+		t.Fatalf("Stop with only an unreapable worker left: %v", err)
 	}
 	if err := syscall.Kill(zombiePID, 0); err != nil {
-		t.Fatalf("fixture's zombie was reaped before the test requested it: %v", err)
+		t.Fatalf("a stop that may not wait for the zombie reaped it anyway: %v", err)
 	}
 }
 
@@ -113,16 +120,20 @@ func TestStopKeepsAGroupWithUninterruptibleWorkPending(t *testing.T) {
 	// The zombie keeps signal 0 succeeding while the snapshot models a
 	// worker whose kernel work keeps it in D after SIGKILL.
 	writeGroupStat(t, proc, workerPID, pgid, 1, 'D')
-	stillWorking := func(pgid int) bool { return groupHasLiveMembers(proc, pgid) }
-	err := tr.stop(context.Background(), "serving", 50*time.Millisecond, stillWorking)
-	if err == nil || !strings.Contains(err.Error(), "after SIGKILL") {
-		t.Fatalf("Stop with an uninterruptible member = %v, want a pending stop", err)
+	probe := groupProbe{
+		stillWorking: func(pgid int) bool { return groupHasLiveMembers(proc, pgid) },
+		// The snapshot is the test's; nothing in it may be waited for.
+		reap: func(int) int { return 0 },
+	}
+	err := tr.stop(context.Background(), "serving", 50*time.Millisecond, probe)
+	if err == nil || !strings.Contains(err.Error(), "after SIGKILL") || !errors.Is(err, ErrNotDrained) {
+		t.Fatalf("Stop with an uninterruptible member = %v, want a pending stop reported as ErrNotDrained", err)
 	}
 	if _, ok := tr.PID("serving"); !ok {
 		t.Fatal("pending stop forgot the group")
 	}
 	writeGroupStat(t, proc, workerPID, pgid, 1, 'Z')
-	if err := tr.stop(context.Background(), "serving", 50*time.Millisecond, stillWorking); err != nil {
+	if err := tr.stop(context.Background(), "serving", 50*time.Millisecond, probe); err != nil {
 		t.Fatalf("retry after the member exited = %v", err)
 	}
 }
