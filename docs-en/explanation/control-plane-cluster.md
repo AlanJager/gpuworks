@@ -58,6 +58,7 @@ A version that brings new migrations cannot be rolled out one member at a time: 
   2. Migrate: the pending migrations of the core and of each extension module run once, in order, each committed in one transaction with its marker. When the new version brings one more module, its tables are created in this step too. After a leader change or a failure the step is repeated on the new leader, and migrations already committed are skipped.
   3. Finish: the maintenance phase returns to `serving`; the members open business again on their own, without a restart.
 - **Answers in the window**: every member answers business requests (including `/api/v1/readyz`) with 503 and the product code `CLUSTER_UPGRADE_IN_PROGRESS`, with `Retry-After`. `/healthz` is unchanged.
+- **Progress in the window**: every member answers `GET /api/v1/cluster/upgrade-progress` on its business listener, whether its business is open or closed, without a login (no session can be checked in the window, because sessions are recorded in the business store). It holds only a state code (`idle`, `waiting`, `window`, `migrating`, `unobserved`), whether this member's business is open, the applied and target migration counts, and the total and ready member counts; it names no address, release or error text, and requests within one second share one read. On a 503 with the product code above the console switches to its "The control plane is being upgraded" screen, polls this document, and reloads by itself once a member serves again. A browser that opens the console during the window gets a self-contained progress page from the member; the status is still 503.
 - **Abort** is available only while no migration has run; the maintenance phase returns to `serving`, and the members then have to go back to the earlier program. Once a migration has run there is no way back except restoring the backup taken before the upgrade, so a backup is required before upgrading.
 - **The steps are served by each member's own enrollment listener** to a caller that presents a cluster member certificate, that is, a command run on a member host as the installation's account. Management sessions are unavailable while business is closed, so the steps are not management API routes.
 
@@ -67,5 +68,4 @@ Current limits:
 - A member that is down keeps its last report. As long as most members repeated theirs within the last 30 seconds the steps go on, and the member catches up when it returns.
 - What replaces the programs member by member and calls these steps in order is `gpuworks cluster upgrade` of the edition that provides the cluster; a build of this repository has no such command. A console entry and progress at the entry layer do not exist yet.
 
-
-<!-- translation-source-sha256: 1b4c8bb9adfefd1a8bd81348e84f2d53ed3b31dec8f7e6420fbb0b4810a334c3 -->
+<!-- translation-source-sha256: e4ca78f4799e05e80e54a4efd7e57ece73fdbf05c9446cb7e8bdc98186e29bb7 -->

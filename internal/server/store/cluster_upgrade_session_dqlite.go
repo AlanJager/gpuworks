@@ -168,3 +168,18 @@ func (s *LegacyJoinedRaftSession) clusterUpgradeStore(ctx context.Context) (*Sto
 	}
 	return st, db.TransportMemberKey(), current.ID == db.ID, nil
 }
+
+// ClusterUpgradeProgress observes the upgrade facts for a reader that proves
+// nothing: it changes nothing and reports whether a migration this member
+// started is running. The caller decides what of it to show.
+func (s *LegacyJoinedRaftSession) ClusterUpgradeProgress(ctx context.Context) (status ClusterUpgradeStatus, migrating bool, err error) {
+	st, _, _, err := s.clusterUpgradeStore(ctx)
+	if err != nil {
+		return status, false, err
+	}
+	s.migration.mu.Lock()
+	migrating = s.migration.done != nil
+	s.migration.mu.Unlock()
+	status, err = s.clusterUpgradeSteps(st).Status(ctx)
+	return status, migrating, err
+}

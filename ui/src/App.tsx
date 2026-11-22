@@ -34,6 +34,7 @@ import CloudProvidersPage from "./pages/CloudProvidersPage";
 import SettingsPage from "./pages/SettingsPage";
 import LogsPage from "./pages/LogsPage";
 import SessionBoundary from "./components/SessionBoundary";
+import ClusterUpgradeBoundary from "./components/ClusterUpgradeScreen";
 import UserMenu from "./components/UserMenu";
 import NotFoundPage from "./pages/NotFoundPage";
 import ImagesPage from "./pages/ImagesPage";
@@ -65,7 +66,7 @@ import "./pages/playground/playground.css";
 
 export default function App() {
   return (
-    <>
+    <ClusterUpgradeBoundary>
       <FeedbackHost />
       <SessionBoundary onLogout={signOutPlayground}>
         {(logout) => <AppErrorBoundary>
@@ -77,7 +78,7 @@ export default function App() {
           </Routes>
         </AppErrorBoundary>}
       </SessionBoundary>
-    </>
+    </ClusterUpgradeBoundary>
   );
 }
 
