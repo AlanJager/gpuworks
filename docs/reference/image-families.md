@@ -43,7 +43,7 @@ Agent 的周期 `status.node` 消息在 `images[]` 中上报以下字段（仅�
 ## 系统镜像
 
 内置目录 `internal/server/imagecatalog/catalog-seed.json` 由 [`gpuworks-image-manifest`](cli.md#gpuworks-image-manifest)
-从 gpuworks-runner 构建矩阵生成，当前 37 个版本，全部是 `gpuworks/gpuworks-runner:<id>-<revision>`，
+从 gpuworks-runner 构建矩阵生成，当前 38 个版本，全部是 `gpuworks/gpuworks-runner:<id>-<revision>`，
 按引擎 × 框架分 16 个系列：
 
 | 系列 | 厂商 / framework | 引擎 | 示例 image_ref | 架构 |
@@ -60,6 +60,7 @@ Agent 的周期 `status.node` 消息在 `images[]` 中上报以下字段（仅�
 | SGLang · HGGC | PPU / hggc | `sglang` | `gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3` | amd64 |
 | vLLM · Metal | Apple / metal | `vllm` | `gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2` | arm64（darwin 环境包） |
 | MLX-VLM · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.7.8-r2` | arm64（darwin 环境包） |
+| MLX-VLM · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.8.1.dev20261121-r1` | arm64（darwin 环境包） |
 | MLX Audio · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-mlx-audio0.5.9-r1` | arm64（darwin 环境包） |
 | llama.cpp · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1` | arm64（darwin 环境包） |
 | llama.cpp · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-llama.cpp-b12631-r1` | arm64（darwin 环境包） |

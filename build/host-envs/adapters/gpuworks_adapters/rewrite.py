@@ -1,4 +1,10 @@
-"""ASGI middleware that pins the "model" of JSON requests to one model."""
+"""ASGI middleware that pins the "model" of JSON requests to one model.
+
+The engine answers under the model it serves, which on a Mac is a host path
+(the agent turns the template's mount into the model's directory). The reply
+goes back under the name the request asked for, so that path never reaches
+the client: in a JSON body and in every streamed event alike.
+"""
 import json
 
 
@@ -24,7 +30,9 @@ class PinModel:
             payload = json.loads(body)
         except ValueError:
             payload = None
+        asked = None
         if isinstance(payload, dict) and "model" in payload and payload["model"] != self.model:
+            asked = payload["model"]
             payload["model"] = self.model
             body = json.dumps(payload).encode()
             scope = dict(scope)
@@ -43,4 +51,20 @@ class PinModel:
             sent = True
             return {"type": "http.request", "body": body, "more_body": False}
 
-        return await self.app(scope, replay, send)
+        if not isinstance(asked, str):
+            return await self.app(scope, replay, send)
+        served = json.dumps(self.model).encode()
+        named = json.dumps(asked).encode()
+
+        async def answer(message):
+            # The name changes length, so a declared length would be wrong:
+            # the server then frames the body itself.
+            if message["type"] == "http.response.start":
+                message = dict(message)
+                message["headers"] = [(k, v) for k, v in message.get("headers") or [] if k.lower() != b"content-length"]
+            elif message["type"] == "http.response.body" and served in message.get("body", b""):
+                message = dict(message)
+                message["body"] = message["body"].replace(served, named)
+            await send(message)
+
+        return await self.app(scope, replay, answer)

@@ -26,8 +26,9 @@ const inkling2MiniDSpark = `{"method":"dspark","num_speculative_tokens":7,"draft
 
 func TestInkling2MiniSpecsPinTheNightlyAndTheCheckpoint(t *testing.T) {
 	model, _ := catalogSpec(t, inkling2MiniModel, inkling2MiniSpecs[0])
-	if len(model.Specs) != len(inkling2MiniSpecs) {
-		t.Fatalf("specs = %d, want %d", len(model.Specs), len(inkling2MiniSpecs))
+	// The vLLM specs, and the Apple silicon one (inkling2_mini_mlx_test.go).
+	if len(model.Specs) != len(inkling2MiniSpecs)+1 {
+		t.Fatalf("specs = %d, want %d", len(model.Specs), len(inkling2MiniSpecs)+1)
 	}
 	if model.ContextLength != 1048576 || !slices.Equal(model.InputModalities, []string{"text", "image"}) {
 		t.Errorf("context = %d, modalities = %v", model.ContextLength, model.InputModalities)
