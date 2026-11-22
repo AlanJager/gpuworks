@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import React from "react";
+import { chooseOption, openSelect } from "./helpers/zeronSelect.ts";
 import { pickNodes } from "./helpers/nodePicker.ts";
 import { dom } from "./helpers/dom.ts";
 import {
@@ -19,7 +20,7 @@ import {
 import { I18nextProvider } from "react-i18next";
 
 const { MemoryRouter } = await import("react-router-dom");
-const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { message } = await import("antd");
 const { Toaster } = await import("../src/components/ui/toast.tsx");
@@ -157,6 +158,39 @@ test("the custom engine list is GET /images/engines as served, and the import se
   }]);
 });
 
+test("switching methods discards a late URL preview and allows a fresh one after switching back", async () => {
+  const url = "https://images.example/runner.tar";
+  const pending = Promise.withResolvers<void>();
+  const { user, calls } = renderPage(async (call) => {
+    if (call.path === "/api/v1/images/preview-archive-url") {
+      await pending.promise;
+      return json(200, { url, repo_tags: ["example/archive:v1"], size_bytes: 1024, previewable: true });
+    }
+    return undefined;
+  });
+  await screen.findByRole("button", { name: "vLLM · CUDA" });
+  const drawer = within(await openDrawer(user, "自定义镜像"));
+  const method = drawer.getByRole("combobox", { name: zhImages.import.method });
+  const preview = async () => {
+    await user.type(drawer.getByRole("textbox", { name: zhImages.import.url.label }), url);
+    await user.click(drawer.getByRole("button", { name: /解\s*析/ }));
+  };
+  await preview();
+  await waitFor(() => assert.ok(calls.some((call) => call.path.endsWith("/preview-archive-url"))));
+  await chooseOption(method, zhImages.import.local.enable);
+  const imageRef = drawer.getByRole("textbox", { name: zhImages.import.imageRef }) as HTMLInputElement;
+  await user.type(imageRef, "example/node:v1");
+  await act(async () => { pending.resolve(); });
+  assert.equal(imageRef.value, "example/node:v1");
+  await waitFor(() => assert.equal(method.getAttribute("aria-expanded"), "false"));
+  await openSelect(method);
+  await user.keyboard("{Home}{Enter}");
+  assert.equal(method.textContent, zhImages.import.url.title);
+  assert.equal(drawer.queryByRole("textbox", { name: zhImages.nodeTable.localDialog.path }), null);
+  await preview();
+  await waitFor(() => assert.equal(imageRef.value, "example/archive:v1"));
+});
+
 for (const rejected of [false, true]) {
   test(`registering a node file opens the exact custom version when the node ${rejected ? "rejects" : "accepts"} the load`, async () => {
     const ref = "example/local:v1";
@@ -181,8 +215,12 @@ for (const rejected of [false, true]) {
     });
     await screen.findByRole("button", { name: "vLLM · CUDA" });
     const drawer = within(await openDrawer(user, "自定义镜像"));
-    drawer.getByRole("switch", { name: zhImages.import.local.enable }).focus();
-    await user.keyboard("[Space]");
+    const method = drawer.getByRole("combobox", { name: zhImages.import.method });
+    assert.equal(method.textContent, zhImages.import.url.title);
+    assert.ok(drawer.getByRole("textbox", { name: zhImages.import.url.label }));
+    assert.equal(drawer.queryByRole("textbox", { name: zhImages.nodeTable.localDialog.path }), null);
+    await chooseOption(method, zhImages.import.local.enable);
+    assert.equal(drawer.queryByRole("textbox", { name: zhImages.import.url.label }), null);
     await user.type(drawer.getByRole("textbox", { name: zhImages.import.imageRef }), ref);
     await choose(drawer.getByRole("combobox", { name: zhImages.import.engine }), "vLLM");
     await choose(drawer.getByRole("combobox", { name: zhImages.import.framework }), "CUDA");

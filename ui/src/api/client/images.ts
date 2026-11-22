@@ -51,11 +51,12 @@ export const imagesApi = {
   // The catalog comes from the distribution channel; the request has no body.
   syncImages: () =>
     sendJSON<ImageCatalogSyncResult>("POST", "/api/v1/images/sync"),
-  previewImageArchiveURL: (url: string) =>
+  previewImageArchiveURL: (url: string, signal?: AbortSignal) =>
     sendJSON<ImageArchivePreview>(
       "POST",
       "/api/v1/images/preview-archive-url",
       { url },
+      signal,
     ),
   syncImage: (
     id: number,

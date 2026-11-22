@@ -210,6 +210,7 @@
     "collapse": "收起详情"
   },
   "import": {
+    "method": "导入方式",
     "local": {
       "enable": "从计算节点本地文件导入",
       "nodeRequired": "请选择归档所在的计算节点",

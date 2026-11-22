@@ -21,7 +21,7 @@ import { useForm } from "react-hook-form";
 import { FormField } from "../../ui-kit/form/FormField";
 import { HelpTip } from "../../ui-kit/HelpTip";
 import { Input as TextInput } from "../../components/ui/input";
-import { Switch as FileImportSwitch } from "../../components/ui/switch";
+import { OptionSelect } from "../../ui-kit/OptionSelect";
 import NodePicker from "../../nodes/NodePicker";
 import ImageArchiveURLImport from "./ImageArchiveURLImport";
 import ImageCommunityBrowser from "./ImageCommunityBrowser";
@@ -67,11 +67,12 @@ export default function ImageImportDrawer({
   const [engines, setEngines] = useState<ImageEngineOption[] | null>(null);
   const [enginesError, setEnginesError] = useState<string | null>(null);
   const [authorizing, setAuthorizing] = useState(false);
-  const [loadNodeFile, setLoadNodeFile] = useState(false);
+  const [importMethod, setImportMethod] = useState("url");
+  const loadNodeFile = sourceTab === "custom" && importMethod === "local";
   const archive = useForm<NodeArchive>({ defaultValues: { node: "", path: "" } });
   useEffect(() => {
     if (!open) {
-      setLoadNodeFile(false);
+      setImportMethod("url");
       archive.reset();
     }
   }, [open, archive]);
@@ -80,11 +81,10 @@ export default function ImageImportDrawer({
   const save = async () => {
     if (authorizing || importing) return;
     try {
-      const local = sourceTab === "custom" && loadNodeFile;
-      if (local && !(await archive.trigger())) return;
+      if (loadNodeFile && !(await archive.trigger())) return;
       await form.validateFields();
       setAuthorizing(true);
-      const file = local ? archive.getValues() : undefined;
+      const file = loadNodeFile ? archive.getValues() : undefined;
       await access.authorize();
       await importCustom(file);
     } catch { /* The form and permission control retain their own errors. */ }
@@ -123,16 +123,47 @@ export default function ImageImportDrawer({
             }}
           />
         )}
-        <ImageArchiveURLImport
-          versions={versions}
-          onMatched={onArchiveURLMatched}
-          onPrefill={(preview) =>
-            form.setFieldsValue({
-              image_ref: preview.repo_tags[0],
-              registry_sources: [preview.url],
-            })
-          }
-        />
+        {sourceTab === "custom" && (
+          <div className="grid gap-2">
+            <label htmlFor="image-import-method">{t("import.method")}</label>
+            <OptionSelect
+              id="image-import-method"
+              aria-label={t("import.method")}
+              value={importMethod}
+              onChange={setImportMethod}
+              disabled={importing || authorizing}
+              options={[
+                { value: "url", label: t("import.url.title") },
+                { value: "local", label: t("import.local.enable") },
+              ]}
+            />
+          </div>
+        )}
+        {loadNodeFile ? (
+          <div className="grid gap-3">
+            <FormField control={archive.control} name="node" label={t("nodeTable.column.node")} required
+              rules={{ required: t("import.local.nodeRequired") }}>
+              {field => <NodePicker {...field} aria-label={t("nodeTable.column.node")} filter={{ state: ["online"] }} />}
+            </FormField>
+            <FormField control={archive.control} name="path" required
+              label={t("nodeTable.localDialog.path")} description={<HelpTip content={t("nodeTable.localDialog.help")} />}
+              rules={{ validate: path => path.trim().startsWith("/") || t("import.local.pathRequired") }}>
+              {field => <TextInput {...field} aria-label={t("nodeTable.localDialog.path")} placeholder="/data/images/runner.tar" />}
+            </FormField>
+          </div>
+        ) : open && (
+          <ImageArchiveURLImport
+            showTitle={sourceTab === "community"}
+            versions={versions}
+            onMatched={onArchiveURLMatched}
+            onPrefill={(preview) =>
+              form.setFieldsValue({
+                image_ref: preview.repo_tags[0],
+                registry_sources: [preview.url],
+              })
+            }
+          />
+        )}
         <Alert
           type="info"
           showIcon
@@ -140,24 +171,6 @@ export default function ImageImportDrawer({
           description={t("import.customDescription")}
         />
         <Form form={form} layout="vertical" initialValues={{ arch: "multi", rolling_tag: false }}>
-          {sourceTab === "custom" && (
-            <div className="mb-5 grid gap-3">
-              <FileImportSwitch label={t("import.local.enable")} checked={loadNodeFile} onCheckedChange={setLoadNodeFile} />
-              {loadNodeFile && (
-                <>
-                  <FormField control={archive.control} name="node" label={t("nodeTable.column.node")} required
-                    rules={{ required: t("import.local.nodeRequired") }}>
-                    {field => <NodePicker {...field} aria-label={t("nodeTable.column.node")} filter={{ state: ["online"] }} />}
-                  </FormField>
-                  <FormField control={archive.control} name="path" required
-                    label={t("nodeTable.localDialog.path")} description={<HelpTip content={t("nodeTable.localDialog.help")} />}
-                    rules={{ validate: path => path.trim().startsWith("/") || t("import.local.pathRequired") }}>
-                    {field => <TextInput {...field} aria-label={t("nodeTable.localDialog.path")} placeholder="/data/images/runner.tar" />}
-                  </FormField>
-                </>
-              )}
-            </div>
-          )}
           <Form.Item label={t("import.seriesName")} name="series_name">
             <Input placeholder={t("import.seriesNamePlaceholder")} />
           </Form.Item>
