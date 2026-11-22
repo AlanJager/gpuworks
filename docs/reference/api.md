@@ -1877,10 +1877,14 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | DELETE | `/api/v1/networks/{id}` | 删除网络及其加载关系与测试记录（运行中的实例不受影响） | JWT(admin) |
 | POST | `/api/v1/networks/{id}/attachments` | 加载到一个节点（可带网卡/IP/HCA 覆盖）或一个节点标签 | JWT(admin) |
 | PUT | `/api/v1/networks/{id}/attachments/{attachmentID}` | 修改节点加载的覆盖值 | JWT(admin) |
-| PUT | `/api/v1/networks/{id}/attachments/{attachmentID}/label` | 修改标签加载项的 `label_key` 与 `label_value`，保留加载项 ID 和加载时间 | JWT(admin) |
+| PUT | `/api/v1/networks/{id}/attachments/{attachmentID}/label` | 修改标签加载项的 `label_key` 与 `label_value`，保留加载项 ID 和加载时间。更新直接节点加载项返回 400，加载项不存在或属于其他网络返回 404，同一网络已加载该标签选择器返回 409 | JWT(admin) |
 | DELETE | `/api/v1/networks/{id}/attachments/{attachmentID}` | 移除加载 | JWT(admin) |
 | POST | `/api/v1/networks/{id}/tests/estimate` | 同一个请求体，不发起测试：返回解析出的节点数与节点对数；卡测试另返回 `card`（`rounds`、`probes`、最长耗时 `seconds`、上限 `max_seconds`）。发起会被拒绝的请求在这里以同样的错误被拒绝 | JWT(admin) |
 | POST | `/api/v1/networks/{id}/tests` | 发起内部测试（`kind`：tcp / rdma_tool / card_ping / card_matrix；rdma_tool 需主机 RDMA 网络，card_ping（同号加速卡互 ping）与 card_matrix（全卡矩阵）需加速器 RDMA 或加速器 HCCS 网络；HCCS 网络使用 `hccn_tool -hccs_ping`，RoCE 网络使用 `-ping`；轮数 × 3 秒超过 10 分钟时返回 `NETWORK_TEST_TOO_LONG`；`scope`：all / nodes / label；`id` 0 测管理网，只支持 tcp），返回 202 与运行记录（`node_uuids` 是被测节点，发起时固定，运行中尚无 `pairs` 时已给出）；由 controller 执行 | JWT(admin) |
+
+网络详情的 `attachments[].unresolved` 为 `true` 时，该直接加载项指定的节点未出现在本网络的有效节点中。
+
+最近一次内部测试 `latest_test.failed_count` 统计结果为失败的节点对，部分通过的节点对计入 `partial_count`。每个节点对的 `rails[].passed` 表示该链路是否通过，`rail_passed_count` 是通过的链路数（零时省略）。主机 RDMA 使用通过链路的实测平均带宽 `avg_rail_gbps`，仅保存汇总带宽的历史记录没有此字段。全通节点对的带宽读数低于本次测试最快有效读数的十分之一时，服务端返回 `slow: true`。
 
 ## Settings / Network Presets
 
