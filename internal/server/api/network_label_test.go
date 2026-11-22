@@ -77,3 +77,30 @@ func TestNetworkDetachDirectFallsBackToMatchingLabel(t *testing.T) {
 		t.Fatalf("detaching from fabric changed serving network: %v", preserved)
 	}
 }
+
+func TestDirectTargetResolutionFollowsEffectiveNetwork(t *testing.T) {
+	n := newNetworkAPI(t)
+	const root = "/api/v1/networks"
+	if _, err := n.store.RegisterNode("overlap", store.HashToken("fixture"), "overlap"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"first", "second"} {
+		n.expect(n.admin, http.MethodPost, root, fmt.Sprintf(`{"name":%q,"roles":["compute"],"type":"host_rdma"}`, name), http.StatusCreated)
+	}
+	for _, id := range []string{"1", "2"} {
+		n.expect(n.admin, http.MethodPost, root+"/"+id+"/attachments", `{"node_uuid":"overlap"}`, http.StatusCreated)
+	}
+	check := func(id string, expected bool) {
+		t.Helper()
+		detail := n.expect(n.member, http.MethodGet, root+"/"+id, "", http.StatusOK)
+		target := detail["attachments"].([]any)[0].(map[string]any)
+		unresolved, _ := target["unresolved"].(bool)
+		if unresolved != expected || (len(detail["nodes"].([]any)) == 0) != expected {
+			t.Fatalf("network %s unresolved=%v, nodes=%v", id, unresolved, detail["nodes"])
+		}
+	}
+	check("1", false)
+	check("2", true)
+	n.expect(n.admin, http.MethodDelete, root+"/1/attachments/1", "", http.StatusOK)
+	check("2", false)
+}
