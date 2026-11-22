@@ -216,7 +216,7 @@ test("serving networks explain that they have no internal test", async () => {
 
 test("the test matrix sorts nodes by name and flags pairs far below the fastest one", async () => {
   const pair = (s: string, t2: string, gbps: number) => ({ source_uuid: s, source_name: s, target_uuid: t2, target_name: t2, target: `${t2}:1`, status: "passed", passed: true, reachable: true, rtt_ms_p50: 0.2, rtt_ms_p99: 0.3, gbps });
-  const latest = { ...detailFixture.latest_test, pair_count: 2, passed_count: 2, pairs: [pair("zeta", "alpha", 17.5), pair("alpha", "zeta", 0.9)] };
+  const latest = { ...detailFixture.latest_test, pair_count: 2, passed_count: 2, pairs: [pair("zeta", "alpha", 17.5), { ...pair("alpha", "zeta", 0.9), slow: true }] };
   stub("network", async () => ({ ...detailFixture, latest_test: latest }));
   const user = userEvent.setup();
   renderAt("/networks/1", <NetworkDetailPage />, "/networks/:id");
@@ -233,8 +233,8 @@ test("an RDMA bandwidth test names nodes without ib_write_bw and shows per-rail 
   const bodies: unknown[] = [];
   const rdmaRun = {
     ...detailFixture.latest_test, kind: "rdma_tool", pair_count: 1, passed_count: 1, rail_count: 2, rail_passed_count: 2,
-    pairs: [{ source_uuid: "uuid-h5", source_name: "h20-05", target_uuid: "uuid-h7", target_name: "h20-07", target: "10.20.1.17", status: "passed", passed: true, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 715.2, avg_rail_gbps: 357.6,
-      rails: [{ rail: "mlx5_0:1", target_rail: "mlx5_0:1", gbps: 358.7 }, { rail: "mlx5_1:1", target_rail: "mlx5_1:1", gbps: 356.5 }] }],
+    pairs: [{ source_uuid: "uuid-h5", source_name: "h20-05", target_uuid: "uuid-h7", target_name: "h20-07", target: "10.20.1.17", status: "passed", passed: true, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 715.2, avg_rail_gbps: 357.6, rail_passed_count: 2,
+      rails: [{ rail: "mlx5_0:1", target_rail: "mlx5_0:1", gbps: 358.7, passed: true }, { rail: "mlx5_1:1", target_rail: "mlx5_1:1", gbps: 356.5, passed: true }] }],
   };
   stub("network", async () => ({ ...detailFixture, latest_test: rdmaRun }));
   stub("startNetworkTest", async (_id, body) => { bodies.push(body); return rdmaRun as never; });
@@ -258,10 +258,10 @@ test("an RDMA bandwidth test names nodes without ib_write_bw and shows per-rail 
 // fails on every pair. The summary names the port and removes it in one click.
 test("a partially failing RDMA run names the failing HCA and removes it", async () => {
   const calls: unknown[] = [];
-  const rail = (name: string, src: string, dst: string, gbps: number) => ({ rail: name, source_ip: src, target_rail: name, target_ip: dst, gbps });
-  const gidless = { rail: "rocep189s0f0:1", target_rail: "rocep189s0f0:1", gbps: 0, code: "no_roce_v2_gid", side: "target", error: "RoCE port has no IPv4 RoCE v2 GID" };
+  const rail = (name: string, src: string, dst: string, gbps: number) => ({ rail: name, source_ip: src, target_rail: name, target_ip: dst, gbps, passed: true });
+  const gidless = { passed: false, rail: "rocep189s0f0:1", target_rail: "rocep189s0f0:1", gbps: 0, code: "no_roce_v2_gid", side: "target", error: "RoCE port has no IPv4 RoCE v2 GID" };
   const pair = (s: string, sn: string, t2: string, tn: string) => ({
-    source_uuid: s, source_name: sn, target_uuid: t2, target_name: tn, target: "100.64.29.210", status: "partial", passed: false, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 48.9, avg_rail_gbps: 24.45,
+    source_uuid: s, source_name: sn, target_uuid: t2, target_name: tn, target: "100.64.29.210", status: "partial", passed: false, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 48.9, avg_rail_gbps: 24.45, rail_passed_count: 2,
     rails: [rail("rocep61s0f0:1", "100.64.29.209", "100.64.29.210", 24.4), rail("rocep61s0f2:1", "100.64.29.213", "100.64.29.214", 24.5), gidless],
   });
   const run = { ...detailFixture.latest_test, kind: "rdma_tool", pattern: "ring", pair_count: 2, passed_count: 0, partial_count: 2, rail_count: 6, rail_passed_count: 4,

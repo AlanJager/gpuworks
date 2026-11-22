@@ -319,7 +319,10 @@ type NetworkTestPair struct {
 	Side  string `json:"side,omitempty"`
 	Error string `json:"error,omitempty"`
 	// AvgRailGbps is the mean of successful RDMA bandwidth readings.
-	AvgRailGbps float64 `json:"avg_rail_gbps,omitempty"`
+	AvgRailGbps     float64 `json:"avg_rail_gbps,omitempty"`
+	RailPassedCount int     `json:"rail_passed_count,omitempty"`
+	// Slow marks a passed measurement below one tenth of the fastest in the run.
+	Slow bool `json:"slow,omitempty"`
 	// Rails are per-rail results of an rdma_tool test; Gbps is their sum.
 	Rails []NetworkTestRail `json:"rails,omitempty"`
 	// CardShape is how the two nodes' cards reach each other in a card run:
@@ -331,6 +334,7 @@ type NetworkTestPair struct {
 // the target rail it drove, and the outcome. A rail with no peer on the
 // other node has only one side.
 type NetworkTestRail struct {
+	Passed     bool    `json:"passed"`
 	Rail       string  `json:"rail"`
 	SourceIP   string  `json:"source_ip,omitempty"`
 	TargetRail string  `json:"target_rail,omitempty"`
@@ -362,6 +366,7 @@ type NetworkTestRun struct {
 	// RailPassedCount count the rails of an rdma_tool run, and of a card run
 	// the card pairs that were pinged and that answered.
 	PartialCount    int `json:"partial_count"`
+	FailedCount     int `json:"failed_count"`
 	RailCount       int `json:"rail_count"`
 	RailPassedCount int `json:"rail_passed_count"`
 	// CardShape is what a finished card run found as a whole: the shape most

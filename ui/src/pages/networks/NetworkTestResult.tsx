@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Button, Descriptions, Modal, Space, Table, Tag, Typography } from "antd";
 import { Tabs, TabsList, TabItem, TabPanel } from "../../components/ui/tabs";
-import NetworkPairMatrix, { PairCell, pairBandwidth, railOK } from "./NetworkPairMatrix";
+import NetworkPairMatrix, { PairCell, pairBandwidth } from "./NetworkPairMatrix";
 import { useTranslation } from "react-i18next";
 import type { NetworkDetail, NetworkTestPair, NetworkTestRail, NetworkTestRun, NetworkTestStatus } from "../../networkTypes";
 import NetworkTestOverview from "./NetworkTestOverview";
@@ -63,7 +63,7 @@ function problems(t: T, run: NetworkTestRun): Problem[] {
       continue;
     }
     for (const rail of pair.rails ?? []) {
-      if (railOK(rail)) continue;
+      if (rail.passed) continue;
       const at = railAtFault(pair, rail);
       add({ key: `rail|${at.uuid}|${at.hca}|${rail.code ?? rail.error}`, node: at.name, nodeUUID: at.uuid, hca: at.hca, text: failureText(t, rail, at.name) || t("test.failed") }, pair);
     }
@@ -96,14 +96,7 @@ function PairResults({ network, run, onChanged }: { network: NetworkDetail; run:
   const [open, setOpen] = useState(false);
   const openPair = (selected: NetworkTestPair) => { setPair(selected); setOpen(true); };
   const found = useMemo(() => problems(t, run), [t, run]);
-  // Pairs far below the fastest one usually cross a slower link; flag them so
-  // a mixed fabric is visible at a glance.
-  const fastest = useMemo(() => run.pairs.reduce((max, pair) => Math.max(max, pairBandwidth(run, pair) ?? 0), 0), [run]);
-  const renderPair = (p: NetworkTestPair) => {
-    const gbps = pairBandwidth(run, p);
-    const slow = run.bandwidth && p.status === "passed" && gbps != null && gbps > 0 && gbps < fastest / 10;
-    return <PairCell t={t} pair={p} run={run} onOpen={openPair} slow={slow} failure={failureText(t, p)} />;
-  };
+  const renderPair = (p: NetworkTestPair) => <PairCell t={t} pair={p} run={run} onOpen={openPair} failure={failureText(t, p)} />;
 
   return (
     <div className="min-w-0 space-y-4">
@@ -203,7 +196,7 @@ function PairDetail({ network, run, pair, open, onClose, afterClose, onChanged }
             {
               title: t("test.result"),
               key: "result",
-              render: (_, r) => (railOK(r)
+              render: (_, r) => (r.passed
                 ? <Tag color="green">{t("test.gbps", { value: r.gbps.toFixed(1) })}</Tag>
                 : <Space size={4} wrap><Tag color="red">{t("test.failed")}</Tag><Typography.Text>{failureText(t, r, railAtFault(pair, r).name)}</Typography.Text></Space>),
             },
@@ -211,7 +204,7 @@ function PairDetail({ network, run, pair, open, onClose, afterClose, onChanged }
               title: t("table.actions"),
               key: "actions",
               render: (_, r) => {
-                if (railOK(r) || !usesRails(network.type)) return null;
+                if (r.passed || !usesRails(network.type)) return null;
                 const at = railAtFault(pair, r);
                 return at.hca ? <RemoveHCAButton network={network} hca={at.hca} nodeUUID={at.uuid} nodeName={at.name} onChanged={onChanged} label={t("rail.removeShort")} /> : null;
               },

@@ -3,7 +3,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Input } from "../../components/ui/input";
 import { Checkbox } from "../../components/ui/checkbox";
-import type { NetworkTestPair, NetworkTestRun, NetworkTestStatus, NetworkTestRail } from "../../networkTypes";
+import type { NetworkTestPair, NetworkTestRun, NetworkTestStatus } from "../../networkTypes";
 
 import NetworkMatrixViewport from "./NetworkMatrixViewport";
 
@@ -14,10 +14,6 @@ const tone = {
   failed: "bg-danger-surface text-fg-danger",
 };
 
-export function railOK(r: NetworkTestRail) {
-  return !r.code && !r.error && (r.gbps > 0 || !!r.reachable);
-}
-
 /** A historic RDMA pair without measurements has no known per-rail average. */
 export function pairBandwidth(run: NetworkTestRun, pair: NetworkTestPair) {
   return run.kind === "rdma_tool" ? pair.avg_rail_gbps : pair.gbps;
@@ -27,12 +23,11 @@ type PairCellProps = {
   t: TFunction<"networks">;
   pair: NetworkTestPair;
   run: NetworkTestRun;
-  slow: boolean;
   onOpen: (pair: NetworkTestPair) => void;
   failure: string;
 };
 
-export function PairCell({ t, pair, run, slow, onOpen, failure }: PairCellProps) {
+export function PairCell({ t, pair, run, onOpen, failure }: PairCellProps) {
   const gbps = pairBandwidth(run, pair);
   const partial = pair.status === "partial";
   let value = t("test.failed");
@@ -40,14 +35,14 @@ export function PairCell({ t, pair, run, slow, onOpen, failure }: PairCellProps)
     value = run.bandwidth ? (gbps == null ? "—" : t("test.gbps", { value: gbps.toFixed(1) })) : t("test.reachable");
   }
   const railText = partial && pair.rails?.length
-    ? t("test.railsPassed", { passed: pair.rails.filter(railOK).length, total: pair.rails.length })
+    ? t("test.railsPassed", { passed: pair.rail_passed_count ?? 0, total: pair.rails.length })
     : "";
-  const hint = failure || (slow ? t("test.slow") : partial ? t("test.partialHint") : "");
+  const hint = failure || (pair.slow ? t("test.slow") : partial ? t("test.partialHint") : "");
   const label = [value, railText].filter(Boolean).join(" · ");
   return <button type="button" onClick={() => onOpen(pair)} title={hint || undefined} aria-description={hint || undefined}
     aria-label={`${pair.source_name} → ${pair.target_name}: ${label}`}
     className={`block h-full min-h-8 w-full cursor-pointer rounded-sm px-1 py-0.5 text-center text-label tabular-nums hover:brightness-90 hover:underline focus-visible:outline-2 focus-visible:outline-current focus-visible:brightness-90 ${tone[pair.status]}`}>
-    {value}{slow && <span aria-label={t("test.slow")}> ↓</span>}
+    {value}{pair.slow && <span aria-label={t("test.slow")}> ↓</span>}
     {railText && <span className="block">{railText}</span>}
   </button>;
 }
@@ -100,6 +95,6 @@ export default function NetworkPairMatrix({ run, renderPair }: Props) {
       <span className="ml-auto text-label text-fg-muted" aria-live="polite">{t("test.matchingPairs", { count: filtered.count })}</span>
     </div>
     {filtered.count === 0 ? <p className="text-fg-muted">{t("test.noMatchingPairs")}</p> :
-      <NetworkMatrixViewport rows={filtered.rows} cols={filtered.cols} pairs={filtered.pairs} renderPair={renderPair} />}
+      <NetworkMatrixViewport key={JSON.stringify([source, target, selected])} rows={filtered.rows} cols={filtered.cols} pairs={filtered.pairs} renderPair={renderPair} />}
   </div>;
 }

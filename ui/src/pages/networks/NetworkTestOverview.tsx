@@ -19,10 +19,9 @@ export default function NetworkTestOverview({ run }: { run: NetworkTestRun }) {
       metrics.push({ label: t("test.overview.cardPairs"), value: run.rail_count },
         { label: t("test.overview.reachableCards"), value: run.rail_passed_count, tone: run.rail_passed_count ? "positive" : "default" });
     } else {
-      const failed = run.pairs.length - run.passed_count - run.partial_count;
       metrics.push({ label: t("test.status.passed"), value: run.passed_count, tone: run.passed_count ? "positive" : "default" },
         { label: t("test.status.partial"), value: run.partial_count, tone: run.partial_count ? "warning" : "default" },
-        { label: t("test.status.failed"), value: failed, tone: failed ? "critical" : "default" });
+        { label: t("test.status.failed"), value: run.failed_count, tone: run.failed_count ? "critical" : "default" });
       if (run.kind === "rdma_tool" && run.rail_count > 0) {
         metrics.push({ label: t("test.overview.passedRails"), value: `${run.rail_passed_count} / ${run.rail_count}` });
       }

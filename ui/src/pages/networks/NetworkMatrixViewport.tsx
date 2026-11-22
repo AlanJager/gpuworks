@@ -42,14 +42,11 @@ export default function NetworkMatrixViewport({ rows, cols, pairs, renderPair }:
   useLayoutEffect(() => {
     const el = viewport.current;
     if (!el) return;
-    pendingFocus.current = null;
-    el.scrollTop = 0;
-    el.scrollLeft = 0;
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [rows, cols, measure]);
+  }, [measure]);
 
   function focusCell(row: number, col: number) {
     const button = viewport.current?.querySelector<HTMLButtonElement>(`td[data-row="${row}"][data-col="${col}"] button`);

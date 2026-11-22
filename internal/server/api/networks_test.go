@@ -408,7 +408,7 @@ func TestNetworkTestRequests(t *testing.T) {
 	n.expectCode(http.MethodPost, tests, `{"scope":"all","pattern":"star"}`, http.StatusBadRequest, ErrorNetworkTestPatternInvalid)
 
 	run := n.expect(n.admin, http.MethodPost, tests, `{"scope":"label","label_key":"rack","label_value":"r2","bandwidth":false}`, http.StatusAccepted)
-	wantKeys := []string{"bandwidth", "id", "kind", "label_key", "label_value", "node_count", "node_uuids", "pair_count", "pairs", "partial_count", "passed_count", "pattern", "rail_count", "rail_passed_count", "scope", "started_at", "status"}
+	wantKeys := []string{"bandwidth", "failed_count", "id", "kind", "label_key", "label_value", "node_count", "node_uuids", "pair_count", "pairs", "partial_count", "passed_count", "pattern", "rail_count", "rail_passed_count", "scope", "started_at", "status"}
 	if !reflect.DeepEqual(keys(run), wantKeys) {
 		t.Fatalf("run keys = %v", keys(run))
 	}
@@ -468,13 +468,13 @@ func TestNetworkTestRunReportsRails(t *testing.T) {
 		t.Fatal(err)
 	}
 	latest := n.expect(n.member, http.MethodGet, "/api/v1/networks/1", "", http.StatusOK)["latest_test"].(map[string]any)
-	if latest["pattern"] != "ring" || latest["partial_count"] != float64(1) || latest["rail_count"] != float64(2) || latest["rail_passed_count"] != float64(1) {
+	if latest["pattern"] != "ring" || latest["failed_count"] != float64(1) || latest["partial_count"] != float64(1) || latest["rail_count"] != float64(2) || latest["rail_passed_count"] != float64(1) {
 		t.Fatalf("latest = %v", latest)
 	}
 	got := latest["pairs"].([]any)
 	ab, ba := got[0].(map[string]any), got[1].(map[string]any)
-	wantRail := map[string]any{"rail": "r9:1", "target_rail": "r9:1", "gbps": float64(0), "code": "no_roce_v2_gid", "side": "target", "error": "RoCE port has no IPv4 RoCE v2 GID"}
-	if ab["status"] != "partial" || ab["passed"] != false || !reflect.DeepEqual(ab["rails"].([]any)[1], wantRail) {
+	wantRail := map[string]any{"passed": false, "rail": "r9:1", "target_rail": "r9:1", "gbps": float64(0), "code": "no_roce_v2_gid", "side": "target", "error": "RoCE port has no IPv4 RoCE v2 GID"}
+	if ab["rail_passed_count"] != float64(1) || ab["rails"].([]any)[0].(map[string]any)["passed"] != true || ab["status"] != "partial" || ab["passed"] != false || !reflect.DeepEqual(ab["rails"].([]any)[1], wantRail) {
 		t.Fatalf("a->b = %v", ab)
 	}
 	if ba["status"] != "failed" || ba["code"] != "offline" || ba["side"] != "target" || ba["rails"] != nil {

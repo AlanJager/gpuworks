@@ -40,8 +40,8 @@ func TestNetworkTestRunCarriesItsLabelOnly(t *testing.T) {
 		}
 		return run
 	}
-	runKeys := []string{"bandwidth", "id", "kind", "node_count", "node_uuids", "pair_count", "pairs", "partial_count", "passed_count", "pattern", "rail_count", "rail_passed_count", "scope", "started_at", "status"}
-	labelKeys := []string{"bandwidth", "id", "kind", "label_key", "label_value", "node_count", "node_uuids", "pair_count", "pairs", "partial_count", "passed_count", "pattern", "rail_count", "rail_passed_count", "scope", "started_at", "status"}
+	runKeys := []string{"bandwidth", "failed_count", "id", "kind", "node_count", "node_uuids", "pair_count", "pairs", "partial_count", "passed_count", "pattern", "rail_count", "rail_passed_count", "scope", "started_at", "status"}
+	labelKeys := []string{"bandwidth", "failed_count", "id", "kind", "label_key", "label_value", "node_count", "node_uuids", "pair_count", "pairs", "partial_count", "passed_count", "pattern", "rail_count", "rail_passed_count", "scope", "started_at", "status"}
 
 	// start starts a run and checks the nodes under test on the wire, literally:
 	// a running run has them before it has any pairs.
@@ -152,7 +152,7 @@ func TestNetworkTestPairAverageRailBandwidth(t *testing.T) {
 			stored := &store.NetworkTestRun{Kind: tc.kind, Bandwidth: tc.kind != "card_ping", Pairs: fmt.Sprintf(`[{"reachable":true,"gbps":%g,"rails":%s}]`, tc.storedTotal, tc.rails)}
 			run := networkTestDTO(stored, nil)
 			pair := run.Pairs[0]
-			if pair.Status != tc.status || run.RailPassedCount != tc.passed || run.RailCount != len(pair.Rails) {
+			if pair.Status != tc.status || run.RailPassedCount != tc.passed || pair.RailPassedCount != tc.passed || run.RailCount != len(pair.Rails) {
 				t.Fatalf("status %q, passing rails %d/%d: %+v", pair.Status, run.RailPassedCount, run.RailCount, pair.Rails)
 			}
 			wantPartial := 0
@@ -171,6 +171,34 @@ func TestNetworkTestPairAverageRailBandwidth(t *testing.T) {
 			}
 			if strings.Contains(string(raw), `"avg_rail_gbps":`) != (tc.wantMean > 0) {
 				t.Fatalf("unexpected average field in %s", raw)
+			}
+		})
+	}
+}
+
+func TestNetworkTestSlowPairsUseComparableMeasurements(t *testing.T) {
+	for _, tc := range []struct {
+		kind     string
+		stored   string
+		wantSlow []bool
+	}{
+		{"rdma_tool", `[
+			{"reachable":true,"gbps":200,"rails":[{"gbps":90},{"gbps":110}]},
+			{"reachable":true,"gbps":10,"rails":[{"gbps":10}]},
+			{"reachable":true,"gbps":9,"rails":[{"gbps":9}]},
+			{"reachable":true,"gbps":7,"rails":[{"gbps":7},{"code":"offline"}]},
+			{"reachable":true,"gbps":800}
+		]`, []bool{false, false, true, false, false}},
+		{"tcp", `[
+			{"reachable":true,"gbps":80},{"reachable":true,"gbps":8},{"reachable":true,"gbps":7}
+		]`, []bool{false, false, true}},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			run := networkTestDTO(&store.NetworkTestRun{Kind: tc.kind, Bandwidth: true, Pairs: tc.stored}, nil)
+			for i, pair := range run.Pairs {
+				if pair.Slow != tc.wantSlow[i] {
+					t.Fatalf("pair %d slow=%t; stored=%s", i, pair.Slow, tc.stored)
+				}
 			}
 		})
 	}

@@ -42,7 +42,7 @@ type Scope = { scope: "all" | "nodes" | "label"; label_key?: string; label_value
 // A finished run as the server returns it: label_key and label_value only on a label run.
 function finishedRun(kind: string, pattern: string, scope: Scope) {
   return {
-    id: 7, status: "done", kind, pattern, ...scope, bandwidth: false, node_count: 2, pair_count: 0, passed_count: 0, partial_count: 0,
+    id: 7, status: "done", kind, pattern, ...scope, bandwidth: false, node_count: 2, pair_count: 0, passed_count: 0, partial_count: 0, failed_count: 0,
     rail_count: 0, rail_passed_count: 0, node_uuids: ["a", "b"], pairs: [], started_at: "2026-09-30T04:00:00Z", finished_at: "2026-09-30T04:00:10Z",
   } as import("../src/networkTypes.ts").NetworkTestRun;
 }
@@ -95,7 +95,7 @@ test("latest test keeps its absolute start time and planned scope for every run 
 });
 
 test("overview tones distinguish active outcomes while zero counts stay neutral", () => {
-  const run = { ...detailFixture.latest_test, passed_count: 1, partial_count: 1,
+  const run = { ...detailFixture.latest_test, passed_count: 1, partial_count: 1, failed_count: 1,
     pairs: [...detailFixture.latest_test.pairs, detailFixture.latest_test.pairs[0]], pair_count: 3 };
   const view = renderIn(<NetworkTestResult network={detailFixture} run={run} onChanged={() => {}} />);
   const tone = (label: string) => screen.getByText(label, { selector: '[data-slot="metric-card-label"]' }).closest('[data-slot="metric-card"]')?.getAttribute("data-tone");
@@ -115,9 +115,10 @@ test("mesh filters combine the two node names with any selected test statuses, a
     status, reachable: status !== "failed", passed: status === "passed",
     gbps: status === "failed" ? 0 : 180, avg_rail_gbps: status === "partial" ? 90 : undefined, rtt_ms_p50: 0, rtt_ms_p99: 0,
     ...(status === "failed" ? { code: "offline", side: "target" } : {}),
+    rail_passed_count: status === "partial" ? 2 : 0,
     rails: status === "partial" ? [
-      { rail: "rail-a", gbps: 80 }, { rail: "rail-b", gbps: 100 },
-      { rail: "rail-c", gbps: 0, code: "probe_failed", side: "target", target_rail: "port-c" },
+      { rail: "rail-a", gbps: 80, passed: true }, { rail: "rail-b", gbps: 100, passed: true },
+      { rail: "rail-c", gbps: 0, passed: false, code: "probe_failed", side: "target", target_rail: "port-c" },
     ] : [],
   });
   const pairs = [testPair("gpu-a", "gpu-b", "passed"), testPair("gpu-a", "gpu-c", "partial"),
@@ -168,7 +169,10 @@ test("a large mesh keeps both axes accessible without mounting every pair", asyn
   const pairs = names.flatMap(source => names.filter(target => target !== source).map(target => ({
     source_uuid: source, source_name: source, target_uuid: target, target_name: target, status: "passed",
   })));
-  renderIn(<NetworkPairMatrix run={{ ...detailFixture.latest_test, pairs }} renderPair={p => <button>{p.source_name} → {p.target_name}</button>} />);
+  const matrix = (snapshot: typeof pairs) => <I18nextProvider i18n={i18n}><NetworkPairMatrix
+    run={{ ...detailFixture.latest_test, pairs: snapshot }}
+    renderPair={p => <button>{p.source_name} → {p.target_name}</button>} /></I18nextProvider>;
+  const view = render(matrix(pairs));
   const table = screen.getByRole("table", { name: "Global matrix" });
   const viewport = table.closest('[data-slot="scroll-area-viewport"]') as HTMLElement;
   Object.defineProperties(viewport, { clientWidth: { value: 640 }, clientHeight: { value: 440 } });
@@ -184,7 +188,16 @@ test("a large mesh keeps both axes accessible without mounting every pair", asyn
   assert.ok(within(table).getByRole("rowheader", { name: "gpu-64" }));
   assert.ok(within(table).getByRole("columnheader", { name: "gpu-64" }));
   assert.equal(within(table).queryByRole("rowheader", { name: "gpu-01" }), null);
-  assert.ok(within(table).getByRole("button", { name: "gpu-63 → gpu-64" }));
+  const focused = within(table).getByRole("button", { name: "gpu-63 → gpu-64" });
+  focused.focus();
+  const offset = [viewport.scrollTop, viewport.scrollLeft];
+  view.rerender(matrix(structuredClone(pairs)));
+  assert.deepEqual([viewport.scrollTop, viewport.scrollLeft], offset);
+  assert.equal(document.activeElement, focused);
+  fireEvent.keyDown(focused, { key: "ArrowLeft" });
+  assert.equal(document.activeElement?.textContent, "gpu-63 → gpu-62");
+  fireEvent.change(screen.getByRole("searchbox", { name: "Filter source nodes" }), { target: { value: "gpu-01" } });
+  assert.ok(within(screen.getByRole("table", { name: "Global matrix" })).getByRole("rowheader", { name: "gpu-01" }));
 });
 
 test("known failure reasons only introduce technical details when present", async () => {
