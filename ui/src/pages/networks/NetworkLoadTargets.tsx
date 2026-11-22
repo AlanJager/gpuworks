@@ -19,10 +19,7 @@ export default function NetworkLoadTargets({ detail, onAttach, onDetach, onManag
   const { t } = useTranslation("networks");
   const [showUnresolved, setShowUnresolved] = useState(false);
   const labels = useMemo(() => detail.attachments.filter(a => a.target === "label"), [detail.attachments]);
-  const unresolved = useMemo(() => {
-    const resolved = new Set(detail.nodes.map(node => node.attachment_id));
-    return detail.attachments.filter(a => a.target === "node" && !resolved.has(a.id));
-  }, [detail.attachments, detail.nodes]);
+  const unresolved = useMemo(() => detail.attachments.filter(a => a.unresolved), [detail.attachments]);
   const panelID = `network-${detail.id}-load-targets`;
 
   return <DetailSection title={t("detail.loadedNodes", { count: detail.nodes.length })}>

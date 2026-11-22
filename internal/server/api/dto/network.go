@@ -11,6 +11,7 @@ type NetworkWarning struct {
 
 // NetworkAttachment binds a network to one node or to a node label.
 type NetworkAttachment struct {
+	Unresolved bool      `json:"unresolved,omitempty"` // Direct target has no resolved node on this network.
 	ID         uint      `json:"id"`
 	Target     string    `json:"target"` // node | label
 	NodeUUID   string    `json:"node_uuid,omitempty"`

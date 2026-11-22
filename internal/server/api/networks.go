@@ -63,11 +63,6 @@ func (st networkState) networkDTO(n store.Network, nodes map[uint]store.Node) dt
 		Type: n.Type, CIDR: n.CIDR, Interface: n.Interface,
 		Attachments: []dto.NetworkAttachment{}, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
 	}
-	for _, att := range st.Attachments {
-		if att.NetworkID == n.ID {
-			out.Attachments = append(out.Attachments, attachmentDTO(att, nodes))
-		}
-	}
 	resolvedNodes, warned := map[uint]bool{}, map[uint]bool{}
 	for _, r := range st.Resolved {
 		if r.Network.ID != n.ID {
@@ -76,6 +71,13 @@ func (st networkState) networkDTO(n store.Network, nodes map[uint]store.Node) dt
 		resolvedNodes[r.NodeID] = true
 		if len(r.Warnings) > 0 {
 			warned[r.NodeID] = true
+		}
+	}
+	for _, att := range st.Attachments {
+		if att.NetworkID == n.ID {
+			target := attachmentDTO(att, nodes)
+			target.Unresolved = att.NodeID != 0 && !resolvedNodes[att.NodeID]
+			out.Attachments = append(out.Attachments, target)
 		}
 	}
 	out.ResolvedNodeCount, out.WarningNodeCount = len(resolvedNodes), len(warned)

@@ -16,6 +16,7 @@ export interface NetworkWarning {
 }
 
 export interface NetworkAttachment {
+  unresolved?: boolean;
   id: number;
   target: "node" | "label";
   node_uuid?: string;

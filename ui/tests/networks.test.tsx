@@ -251,7 +251,7 @@ test("the overview shows attachment sources on Ethernet and keeps unmatched atta
 
 test("an unresolved direct attachment keeps its overrides and can be detached without removing a resolved node", async () => {
   const orphan = { ...detailFixture.attachments.find((a: { target: string }) => a.target === "node"),
-    id: 99, node_uuid: "unresolved-uuid", node_name: "", interface: "bond9", ip: "192.0.2.9", hcas: ["mlx5_9:1"] };
+    id: 99, unresolved: true, node_uuid: "unresolved-uuid", node_name: "", interface: "bond9", ip: "192.0.2.9", hcas: ["mlx5_9:1"] };
   stub("network", async () => ({ ...detailFixture, attachments: [...detailFixture.attachments, orphan] }));
   const removed: number[][] = [];
   stub("detachNetwork", async (id, attachmentID) => {
