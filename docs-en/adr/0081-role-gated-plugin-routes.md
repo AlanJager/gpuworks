@@ -1,6 +1,6 @@
 # ADR 0081: Plugin Routes Authorized by Role: a Route Declares `access: role`, and Pushed Tables Grant Roles and Actions
 
-Date: 2026-11-22 · Status: Proposed (adds to [ADR 0071](0071-installable-extensions.md) decisions 8, 9 and 11)
+Date: 2026-11-22 · Status: Accepted, not yet implemented (adds to [ADR 0071](0071-installable-extensions.md) decisions 8, 9 and 11)
 
 ## Background
 
@@ -29,7 +29,7 @@ One constraint decides the shape of the design: with only the two roles `admin` 
 
 ## Implementation Order
 
-Each step is merged on its own, with contract tests against the fake plugin process (ADR 0071 decision 21).
+The code starts only when the first package that pushes roles needs it, and until then no wire format is frozen for it; the three steps can then be merged separately or done together, each with contract tests against the fake plugin process (ADR 0071 decision 21).
 
 1. Manifest schema 2 and `access: role`; `authorizeDynamic` enforces with an empty snapshot (`role` routes are open only to platform administrators); the error code and the docs. After this step the visible behaviour is the same as declaring the route `admin`; what it does is settle the wire format.
 2. `roles.bindings`: the table, persistence, effective roles in the principal, the uninstall preview.
@@ -49,17 +49,8 @@ Each step is merged on its own, with contract tests against the fake plugin proc
 - No data scope: `scope_projects` in the principal is not filled by this ADR.
 - A site administrator cannot change the access level of a plugin route in the core; tightening a third-party package's route is a decision of another class (the restriction class).
 
-## Open
-
-These are the places where this proposal makes a choice that needs confirmation:
-
-1. Platform administrators always pass `role` routes (decision 1).
-2. A role name is one word, exclusive by key (decision 4), not a namespace with the package name.
-3. A site allows several packages that push roles (decision 4), not a single role authority.
-4. The value of merging step 1 on its own is only settling the wire format; if no package that pushes roles is planned soon, the three steps can be done together, or the whole can be deferred.
-
 ## Implementation Status
 
-- Not started. Today `authorizeDynamic` always passes; apart from `roles.core_actions` there is no table kind about roles; the principal's `roles` holds only the core role.
+- Not started, waiting for the first package that pushes roles. Today `authorizeDynamic` always passes; apart from `roles.core_actions` there is no table kind about roles; the principal's `roles` holds only the core role.
 
-<!-- translation-source-sha256: 74c5d51fdd8eafb83df8ee30d8223ec47a08e109593396d40025f665896e7d81 -->
+<!-- translation-source-sha256: 83674b5a9174c7ba7e0326868c92616a78b2389c64635e51d29e53a907188a7f -->
