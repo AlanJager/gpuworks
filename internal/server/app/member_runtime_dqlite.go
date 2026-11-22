@@ -39,6 +39,9 @@ type memberRuntime struct {
 	holdScheduling bool
 	// business is the App whose requests this runtime admits.
 	business *App
+	// forward hands business requests to the member that leads, and serves
+	// what the other members hand over (member_forward.go).
+	forward *memberForward
 }
 
 // newJoiningMemberRuntime is the runtime of a member with a join marker.
@@ -110,6 +113,13 @@ func (r *memberRuntime) runClosed(ctx context.Context, a *App) (bool, error) {
 }
 
 func (r *memberRuntime) handler(next http.Handler) http.Handler {
+	if a := r.business; a != nil && a.store != nil && a.hub != nil {
+		r.forward = newMemberForward(a.log, a.store.ObservedActionLeader, a.hub.SessionCount, a.hub.DropSessions)
+		// Admission comes first on either end: a member whose business is
+		// not ready neither serves nor forwards.
+		r.forward.local = memberServiceHandler(next, a)
+		return memberServiceHandler(r.forward.wrap(next), a)
+	}
 	return memberServiceHandler(next, r.business)
 }
 

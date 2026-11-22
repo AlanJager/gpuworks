@@ -247,6 +247,20 @@ func (h *Hub) SessionCount() int {
 	return len(h.sessions)
 }
 
+// DropSessions closes every live agent session. Their agents dial again; a
+// control-plane member that stopped leading uses it so they reach the leader.
+func (h *Hub) DropSessions() {
+	h.mu.RLock()
+	sessions := make([]*Session, 0, len(h.sessions))
+	for _, session := range h.sessions {
+		sessions = append(sessions, session)
+	}
+	h.mu.RUnlock()
+	for _, session := range sessions {
+		session.Close()
+	}
+}
+
 // DialAgentWithSecret connects to an agent running in server_dial listen mode,
 // proving knowledge of the install token that the agent was started with.
 func (h *Hub) DialAgentWithSecret(ctx context.Context, addr, secret string) error {

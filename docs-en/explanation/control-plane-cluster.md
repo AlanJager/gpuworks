@@ -16,6 +16,7 @@ The community distribution carries neither the cluster runtime nor any cluster c
 - **One member lost**: the other two keep serving. The entry should forward requests to members that answer 200 on `GET /api/v1/readyz`.
 - **The majority lost**: the remaining member refuses management writes with 503; it does not shrink the membership to keep writing.
 - **Scheduling follows the database leader**: only the member that holds the database leader runs the scheduling and control loops; after the leader changes, the new leader takes over. There is no separate scheduling lease.
+- **Business is served by the member that leads the database.** Any other member that receives a business request (management API, console, `/v1` inference, an agent connecting) hands it over unchanged on the mutual-TLS channel between members, so the answer through the entry is the same whichever member it lands on. `/healthz` and `/api/v1/readyz` are answered by the member that received them. A member that cannot observe a leader for the moment answers business requests with 503, which the entry may retry.
 - **A write sent to a member that cannot commit it**: it answers 503, nothing is committed, and the entry can send the request to another member.
 - **A member that has not opened business** (just started, cut off from the majority, or with materials not yet verified): business requests and `/api/v1/readyz` both answer 503 with the body `member business service is not ready`.
 
@@ -24,7 +25,7 @@ The community distribution carries neither the cluster runtime nor any cluster c
 These are limits of this release.
 
 - **In-flight streams are not resumed.** On a failover, streamed answers and image or model transfers that are already open end with the member that holds them; the client has to start again. A failure after a request has been forwarded is not retried.
-- **An agent is served by the member that holds its connection.** Members do not forward agent sessions to each other: an operation that needs the agent but arrives through another member is not guaranteed to work. After the agent reconnects through the entry, the new member serves it.
+- **When the leader changes, agents reconnect and inference requests in progress are cut.** Every agent session is on the member that leads. After the lead moves to another member, the previous one closes the sessions it holds, and each agent reconnects and reaches the new leader through whichever member it lands on. For that time (seconds, as measured) the node shows as connecting and inference requests through it get 503. Running instances are not affected. All business traffic passes through one member: the cluster adds availability, not capacity.
 - **Revoking a member key at run time applies to new database connections only.** Established connections are not cut.
 - **There is no recovery-time guarantee.** Writes resume after a leader election and after members reopen business; the time depends on the storage's synchronous write latency and on the network. It grows clearly on slow disks; no number of seconds is guaranteed here. The [storage tier](#storage-tiers) settled at installation sets the election wait; what it lists is a recovery target, not a guarantee.
 - **A member is not upgraded, restarted or stopped with the single-server commands.** `gpuworks upgrade`, `gpuworks restart`, `gpuworks stop` and the upgrade in the console act on one server only; they do not know the member's own service unit, its database helper or the other members. On a cluster member's installation they refuse and change nothing. A cluster is upgraded with `gpuworks cluster upgrade` of the edition that provides the cluster; a member is started and stopped through its own service unit.
@@ -68,4 +69,4 @@ Current limits:
 - A member that is down keeps its last report. As long as most members repeated theirs within the last 30 seconds the steps go on, and the member catches up when it returns.
 - What replaces the programs member by member and calls these steps in order is `gpuworks cluster upgrade` of the edition that provides the cluster; a build of this repository has no such command. A console entry and progress at the entry layer do not exist yet.
 
-<!-- translation-source-sha256: e4ca78f4799e05e80e54a4efd7e57ece73fdbf05c9446cb7e8bdc98186e29bb7 -->
+<!-- translation-source-sha256: 5abeadfd9320fe52d5841cfdcd635b7846ca960224b12b53dcb35f6af49ac70f -->
