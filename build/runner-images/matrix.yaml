@@ -836,3 +836,19 @@ items:
       预编译包（llama-server 与它的 dylib，Metal 着色器内嵌），不带 Python。b10660 起
       上游支持 Qwen3.8-Flash-Next（qwen4exp，含 n-gram 嵌入表），Mac 上跑它的模板用这档。
       构建：build/host-envs/build.sh llama.cpp b11617 r1。
+
+  - id: metal15.0-llama.cpp-b12631
+    revision: r1
+    backend: metal
+    engine: callable
+    builder: host-env
+    platforms: [darwin/arm64]
+    args:
+      ENGINE_VERSION: "b12631"
+      FRAMEWORK_VERSION: "15.0"
+    note: >-
+      Apple silicon 的 llama.cpp 档，与 b11617 档并存（Qwen3.8-Flash-Next 的 Mac 模板仍用
+      b11617，它在那一档上实测过）。上游 b12600 起支持 Inkling 2 Mini（inkling2_loop，
+      ggml-org/llama.cpp PR #32694），b12611 修正循环层共享 slot 时漏掉逐专家 scale
+      （#32704）；Inkling 2 Mini 的 Mac 模板用这档。
+      构建：build/host-envs/build.sh llama.cpp b12631 r1。

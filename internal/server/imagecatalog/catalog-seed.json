@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-17.4962cc81",
-  "sha256": "72659de930624e7f3a73ee2931807a4588fc6525549baefc39cd29b74916e29e",
+  "catalog_version": "2026-11-22.2944fa0d",
+  "sha256": "2da795fb1a976db34096160ec329645f743c0b868ade948b41c8e78239159766",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -188,6 +188,18 @@
             "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1"
           ],
           "notes": "Apple silicon 的 llama.cpp 档（目录引擎 callable）：上游 b11617 的 macOS arm64 预编译包（llama-server 与它的 dylib，Metal 着色器内嵌），不带 Python。b10660 起 上游支持 Qwen3.8-Flash-Next（qwen4exp，含 n-gram 嵌入表），Mac 上跑它的模板用这档。 构建：build/host-envs/build.sh llama.cpp b11617 r1。"
+        },
+        {
+          "name": "metal15.0-llama.cpp-b12631-r1",
+          "image_ref": "gpuworks/gpuworks-runner:metal15.0-llama.cpp-b12631-r1",
+          "engine_version": "b12631",
+          "framework_version": "15.0",
+          "arch": "arm64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:metal15.0-llama.cpp-b12631-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:metal15.0-llama.cpp-b12631-r1"
+          ],
+          "notes": "Apple silicon 的 llama.cpp 档，与 b11617 档并存（Qwen3.8-Flash-Next 的 Mac 模板仍用 b11617，它在那一档上实测过）。上游 b12600 起支持 Inkling 2 Mini（inkling2_loop， ggml-org/llama.cpp PR #32694），b12611 修正循环层共享 slot 时漏掉逐专家 scale （#32704）；Inkling 2 Mini 的 Mac 模板用这档。 构建：build/host-envs/build.sh llama.cpp b12631 r1。"
         }
       ]
     },

@@ -43,8 +43,8 @@ Agent 的周期 `status.node` 消息在 `images[]` 中上报以下字段（仅�
 ## 系统镜像
 
 内置目录 `internal/server/imagecatalog/catalog-seed.json` 由 [`gpuworks-image-manifest`](cli.md#gpuworks-image-manifest)
-从 gpuworks-runner 构建矩阵生成，当前 29 个版本，全部是 `gpuworks/gpuworks-runner:<id>-<revision>`，
-按引擎 × 框架分 14 个系列：
+从 gpuworks-runner 构建矩阵生成，当前 37 个版本，全部是 `gpuworks/gpuworks-runner:<id>-<revision>`，
+按引擎 × 框架分 16 个系列：
 
 | 系列 | 厂商 / framework | 引擎 | 示例 image_ref | 架构 |
 |---|---|---|---|---|
@@ -62,6 +62,7 @@ Agent 的周期 `status.node` 消息在 `images[]` 中上报以下字段（仅�
 | MLX-VLM · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.7.8-r2` | arm64（darwin 环境包） |
 | MLX Audio · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-mlx-audio0.5.9-r1` | arm64（darwin 环境包） |
 | llama.cpp · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1` | arm64（darwin 环境包） |
+| llama.cpp · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-llama.cpp-b12631-r1` | arm64（darwin 环境包） |
 
 tag 文法是 `<framework><framework 版本>[-<型号>]-<引擎><引擎版本>-<revision>`；llama.cpp 按上游写作 `llama.cpp-b<构建号>`。引擎、引擎版本、framework 与
 framework 版本都从 tag 解析；昇腾型号段（`910b`、`a3`、`310p`、`950`）只在 tag 与版本备注里，不是独立字段；
