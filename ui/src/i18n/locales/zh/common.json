@@ -1135,7 +1135,6 @@
   "resourceTable": {
     "actions": "操作",
     "settings": "自定义列",
-    "settingsTitle": "自定义列表项",
     "reset": "恢复默认",
     "selected": "已选（{{count}}）",
     "all": "全部列（{{shown}}/{{total}}）",

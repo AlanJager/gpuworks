@@ -1135,7 +1135,6 @@
   "resourceTable": {
     "actions": "Actions",
     "settings": "Customize columns",
-    "settingsTitle": "Customize columns",
     "reset": "Restore defaults",
     "selected": "Shown ({{count}})",
     "all": "All columns ({{shown}}/{{total}})",
