@@ -1,5 +1,7 @@
 package proto
 
+import "time"
+
 // RPC method names (short request/response actions).
 const (
 	RPCNodeDoctor = "node.doctor"
@@ -37,6 +39,7 @@ const (
 	RPCImagePull           = "image.pull"
 	RPCImageLoadURL        = "image.load_url"
 	RPCImageLoadPath       = "image.load_path"
+	RPCImagePreviewPath    = "image.preview_path"
 	RPCImageCancel         = "image.cancel"
 	RPCImageRemove         = "image.remove"
 	RPCImageInspect        = "image.inspect"
@@ -141,6 +144,17 @@ type ImageLoadURLParams struct {
 	RateLimitKBs int    `json:"rate_limit_kbs,omitempty"`
 	// TransferID names this attempt; see ImagePullParams.
 	TransferID string `json:"transfer_id,omitempty"`
+}
+
+// ImageArchivePreviewTimeout bounds metadata scans, including decompression.
+const ImageArchivePreviewTimeout = time.Minute
+
+type ImagePreviewPathParams struct {
+	ArchivePath string `json:"archive_path"`
+}
+
+type ImagePreviewPathResult struct {
+	RepoTags []string `json:"repo_tags"`
 }
 
 type ImageLoadPathParams struct {

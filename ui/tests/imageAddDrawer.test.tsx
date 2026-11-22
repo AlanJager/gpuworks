@@ -191,6 +191,53 @@ test("switching methods discards a late URL preview and allows a fresh one after
   await waitFor(() => assert.equal(imageRef.value, "example/archive:v1"));
 });
 
+test("a node file preview fills actual tags without registering or loading the image", async () => {
+  const endpoint = "/api/v1/images/nodes/worker-id/preview-archive-path";
+  const pending = Promise.withResolvers<void>();
+  const { calls, user } = renderPage(async call => {
+    if (call.path.startsWith("/api/v1/nodes?")) {
+      return json(200, { items: [{ uuid: "worker-id", name: "GPU Worker" }], total: 1, page: 1, page_size: 50 });
+    }
+    if (call.path !== endpoint) return undefined;
+    const { archive_path } = JSON.parse(call.body!);
+    if (archive_path === "/slow.tar") await pending.promise;
+    if (archive_path === "/bad.tar") return json(409, { code: "IMAGE_ARCHIVE_PREVIEW_FAILED", params: { detail: "bad tar" } });
+    return json(200, { repo_tags: archive_path === "/empty.tar" ? [] : ["example/real:v2", "example/real:latest"] });
+  });
+  await screen.findByRole("button", { name: "vLLM · CUDA" });
+  const drawer = within(await openDrawer(user, "自定义镜像"));
+  await chooseOption(drawer.getByRole("combobox", { name: zhImages.import.method }), zhImages.import.local.enable);
+  const resolve = drawer.getByRole("button", { name: zhImages.import.url.resolve });
+  const ref = drawer.getByRole("textbox", { name: zhImages.import.imageRef }) as HTMLInputElement;
+  const path = drawer.getByRole("textbox", { name: zhImages.nodeTable.localDialog.path });
+  await user.click(resolve);
+  await drawer.findByText(zhImages.import.local.nodeRequired);
+  assert.ok(!calls.some(call => call.method === "POST"));
+  await pickNodes(drawer.getByRole("combobox", { name: zhImages.nodeTable.column.node }), "GPU Worker");
+  const changePath = (value: string) => fireEvent.change(path, { target: { value } });
+  changePath("  /filename-without-a-tag.tar  ");
+  await user.click(resolve);
+  await waitFor(() => assert.equal(ref.value, "example/real:v2"));
+  assert.deepEqual(JSON.parse(calls.find(call => call.path === endpoint)!.body!), { archive_path: "/filename-without-a-tag.tar" });
+  await user.click(drawer.getByRole("button", { name: "example/real:latest" }));
+  assert.equal(ref.value, "example/real:latest");
+  changePath("/slow.tar");
+  assert.equal(ref.value, "");
+  await user.click(resolve);
+  await waitFor(() => assert.equal(calls.filter(call => call.path === endpoint).length, 2));
+  changePath("/empty.tar");
+  await act(async () => { pending.resolve(); });
+  await user.click(resolve);
+  await drawer.findByText(zhImages.import.local.noTags);
+  assert.equal(ref.value, "");
+  await user.type(ref, "example/manual:v1");
+  changePath("/bad.tar");
+  await user.click(resolve);
+  await drawer.findByText(/bad tar/);
+  assert.equal(ref.value, "example/manual:v1");
+  assert.ok(calls.filter(call => call.method === "POST").every(call => call.path === endpoint));
+});
+
 for (const rejected of [false, true]) {
   test(`registering a node file opens the exact custom version when the node ${rejected ? "rejects" : "accepts"} the load`, async () => {
     const ref = "example/local:v1";

@@ -15,7 +15,8 @@ import {
   type ImageSeries,
 } from "../api";
 import { apiErrorText } from "../apiError";
-import ImageImportDrawer, { type NodeArchive } from "./images/ImageImportDrawer";
+import ImageImportDrawer from "./images/ImageImportDrawer";
+import type { NodeArchive } from "./images/ImageNodeArchiveFields";
 import ImageDetailDrawer from "./images/ImageDetailDrawer";
 import { buildVersionColumns } from "./images/ImageVersionColumns";
 import {

@@ -339,12 +339,14 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 var imageArchiveHandlers = map[string]func(*NodeRuntime, context.Context, json.RawMessage) (any, error){
 	proto.RPCImageLoadURL:  (*NodeRuntime).rpcImageLoadURL,
 	proto.RPCImageLoadPath: (*NodeRuntime).rpcImageLoadPath,
+
+	proto.RPCImagePreviewPath: (*NodeRuntime).rpcImagePreviewPath,
 }
 
 // OnRPC handles short-action RPCs.
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
-	if load := imageArchiveHandlers[method]; load != nil {
-		return load(n, ctx, params)
+	if handle := imageArchiveHandlers[method]; handle != nil {
+		return handle(n, ctx, params)
 	}
 	switch method {
 	case proto.RPCDebugStart:

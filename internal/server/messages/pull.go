@@ -20,4 +20,6 @@ const (
 const (
 	ErrorImageArchivePathInvalid  = "IMAGE_ARCHIVE_PATH_INVALID"
 	ErrorImageArchivePathRequired = "IMAGE_ARCHIVE_PATH_REQUIRED"
+
+	ErrorImageArchivePreviewFailed = "IMAGE_ARCHIVE_PREVIEW_FAILED"
 )

@@ -1,14 +1,12 @@
 // Package imagearchive reads the repository tags of a container image archive
-// (a `docker save` tar or an OCI-layout tar) that is published over plain HTTP,
-// without downloading the archive.
+// (a `docker save` tar or an OCI-layout tar) from a local reader or over HTTP.
 //
 // `docker save` writes `manifest.json` (and a legacy `repositories` entry) at
 // the very end of the tar, so a Range request for the tail is enough to learn
 // the real image references. OCI-layout archives instead carry `index.json`
 // near the head, whose manifest descriptors may annotate the reference name.
 //
-// The package only uses the standard library and the caller-supplied
-// *http.Client; it performs no other I/O.
+// Callers supply the local reader or HTTP client.
 package imagearchive
 
 import (
@@ -239,9 +237,9 @@ func dockerRepoTags(b []byte) []string {
 	}
 	var tags []string
 	for _, e := range entries {
-		tags = appendTags(tags, e.RepoTags...)
+		tags = append(tags, e.RepoTags...)
 	}
-	return tags
+	return uniqueTags(tags)
 }
 
 // ociIndexTags parses an OCI index.json, collecting the ref-name annotation of
@@ -257,30 +255,23 @@ func ociIndexTags(b []byte) []string {
 	}
 	var tags []string
 	for _, m := range idx.Manifests {
-		tags = appendTags(tags, m.Annotations[refNameAnnotation])
+		tags = append(tags, m.Annotations[refNameAnnotation])
 	}
-	return tags
+	return uniqueTags(tags)
 }
 
-// appendTags appends non-empty, not-yet-present tags, preserving order.
-func appendTags(dst []string, tags ...string) []string {
-	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if t == "" {
-			continue
-		}
-		dup := false
-		for _, have := range dst {
-			if have == t {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			dst = append(dst, t)
+// uniqueTags keeps the first occurrence of each non-empty reference in archive order.
+func uniqueTags(tags []string) []string {
+	seen := make(map[string]bool, len(tags))
+	var out []string
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag != "" && !seen[tag] {
+			seen[tag] = true
+			out = append(out, tag)
 		}
 	}
-	return dst
+	return out
 }
 
 // isGzip reports whether data starts with the gzip magic bytes.

@@ -17,12 +17,10 @@ import (
 
 func TestLocalImageImportRetriesNodeFileWithoutFetchingURL(t *testing.T) {
 	c := startArchiveImportCluster(t, "registry.example/l2-local-runner:v1")
-	version := c.importArchiveImage(t, "l2-local-runner")
 	path := filepath.Join(t.TempDir(), "node image.tar")
 	if err := os.WriteFile(path, c.archive, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	syncPath := fmt.Sprintf("/api/v1/images/%d/nodes/%s/sync", version.ID, c.node.UUID)
 	post := func(route string, body any, want int) []byte {
 		t.Helper()
 		payload, _ := json.Marshal(body)
@@ -37,6 +35,16 @@ func TestLocalImageImportRetriesNodeFileWithoutFetchingURL(t *testing.T) {
 		}
 		return data
 	}
+	previewPath := fmt.Sprintf("/api/v1/images/nodes/%s/preview-archive-path", c.node.UUID)
+	var preview struct {
+		RepoTags []string `json:"repo_tags"`
+	}
+	raw := post(previewPath, map[string]string{"archive_path": path}, http.StatusOK)
+	if err := json.Unmarshal(raw, &preview); err != nil || !reflect.DeepEqual(preview.RepoTags, []string{c.imageRef}) {
+		t.Fatalf("preview before registration = %s, %v", raw, err)
+	}
+	version := c.importArchiveImage(t, "l2-local-runner")
+	syncPath := fmt.Sprintf("/api/v1/images/%d/nodes/%s/sync", version.ID, c.node.UUID)
 	post(syncPath, map[string]string{"source": "local", "archive_path": filepath.Dir(path)}, http.StatusConflict)
 	failed := c.nodeRow(t, findArchiveImportVersion(t, c.base, c.adminToken, c.imageRef))
 	if failed.State != "failed" || failed.Source != "local" || failed.TransferID != "" {

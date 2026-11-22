@@ -212,6 +212,9 @@
   "import": {
     "method": "Import method",
     "local": {
+      "noTags": "No tagged image reference was found. Enter the image reference manually.",
+      "parsed": "Filled in the image reference {{ref}}",
+      "chooseTag": "Image references in the archive",
       "enable": "Load from a compute node file",
       "nodeRequired": "Select the compute node that holds the archive",
       "pathRequired": "Enter the absolute path to the archive on this node",

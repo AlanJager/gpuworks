@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"syscall"
 )
 
 var ErrImageFileNotRegular = errors.New("archive_path must name a regular file, not a directory or device")
@@ -26,4 +27,15 @@ func CheckImageFile(ctx context.Context, loader ImageFileLoader, path string) (i
 		return 0, ErrImageFileNotRegular
 	}
 	return info.Size(), nil
+}
+
+// OpenImageFile opens the node's archive for metadata inspection. A runtime
+// in another mount namespace supplies its own host file opener.
+func OpenImageFile(ctx context.Context, driver Driver, path string) (*os.File, error) {
+	if opener, ok := driver.(interface {
+		OpenImageFile(context.Context, string) (*os.File, error)
+	}); ok {
+		return opener.OpenImageFile(ctx, path)
+	}
+	return os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 }

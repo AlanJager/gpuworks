@@ -212,6 +212,9 @@
   "import": {
     "method": "导入方式",
     "local": {
+      "noTags": "归档中未找到带 tag 的镜像引用，请手动填写。",
+      "parsed": "已回填镜像引用 {{ref}}",
+      "chooseTag": "归档中的镜像引用",
       "enable": "从计算节点本地文件导入",
       "nodeRequired": "请选择归档所在的计算节点",
       "pathRequired": "请输入归档文件在该节点上的绝对路径",

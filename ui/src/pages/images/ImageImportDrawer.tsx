@@ -18,18 +18,13 @@ import {
   type ImageEngineOption,
 } from "../../api";
 import { useForm } from "react-hook-form";
-import { FormField } from "../../ui-kit/form/FormField";
-import { HelpTip } from "../../ui-kit/HelpTip";
-import { Input as TextInput } from "../../components/ui/input";
 import { OptionSelect } from "../../ui-kit/OptionSelect";
-import NodePicker from "../../nodes/NodePicker";
+import ImageNodeArchiveFields, { type NodeArchive } from "./ImageNodeArchiveFields";
 import ImageArchiveURLImport from "./ImageArchiveURLImport";
 import ImageCommunityBrowser from "./ImageCommunityBrowser";
 import { OutboundHostAccess, useOutboundHostAccess } from "../../components/OutboundHostAccess";
 import { isArchiveURL } from "./ImagePageHelpers";
 import { useTranslation } from "react-i18next";
-
-export type NodeArchive = { node: string; path: string };
 
 type Props = {
   open: boolean;
@@ -67,6 +62,7 @@ export default function ImageImportDrawer({
   const [engines, setEngines] = useState<ImageEngineOption[] | null>(null);
   const [enginesError, setEnginesError] = useState<string | null>(null);
   const [authorizing, setAuthorizing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [importMethod, setImportMethod] = useState("url");
   const loadNodeFile = sourceTab === "custom" && importMethod === "local";
   const archive = useForm<NodeArchive>({ defaultValues: { node: "", path: "" } });
@@ -79,7 +75,7 @@ export default function ImageImportDrawer({
   const sources = Form.useWatch("registry_sources", { form, preserve: true }) as string[] | undefined;
   const access = useOutboundHostAccess((sources ?? []).filter(isArchiveURL), open);
   const save = async () => {
-    if (authorizing || importing) return;
+    if (authorizing || importing || previewing) return;
     try {
       if (loadNodeFile && !(await archive.trigger())) return;
       await form.validateFields();
@@ -140,17 +136,15 @@ export default function ImageImportDrawer({
           </div>
         )}
         {loadNodeFile ? (
-          <div className="grid gap-3">
-            <FormField control={archive.control} name="node" label={t("nodeTable.column.node")} required
-              rules={{ required: t("import.local.nodeRequired") }}>
-              {field => <NodePicker {...field} aria-label={t("nodeTable.column.node")} filter={{ state: ["online"] }} />}
-            </FormField>
-            <FormField control={archive.control} name="path" required
-              label={t("nodeTable.localDialog.path")} description={<HelpTip content={t("nodeTable.localDialog.help")} />}
-              rules={{ validate: path => path.trim().startsWith("/") || t("import.local.pathRequired") }}>
-              {field => <TextInput {...field} aria-label={t("nodeTable.localDialog.path")} placeholder="/data/images/runner.tar" />}
-            </FormField>
-          </div>
+          <ImageNodeArchiveFields
+            archive={archive}
+            busy={previewing}
+            setBusy={setPreviewing}
+            onPick={ref => form.setFieldValue("image_ref", ref)}
+            onInvalidate={ref => {
+              if (form.getFieldValue("image_ref") === ref) form.setFieldValue("image_ref", "");
+            }}
+          />
         ) : open && (
           <ImageArchiveURLImport
             showTitle={sourceTab === "community"}
@@ -277,7 +271,7 @@ export default function ImageImportDrawer({
             <Select mode="tags" tokenSeparators={[",", " "]} placeholder="https://containerimages.example/runner.tar" />
           </Form.Item>
           <OutboundHostAccess access={access} />
-          <Button type="primary" loading={importing || authorizing} onClick={() => void save()}>
+          <Button type="primary" disabled={previewing} loading={importing || authorizing} onClick={() => void save()}>
             {t("import.addImage")}
           </Button>
         </Form>

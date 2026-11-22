@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,5 +77,29 @@ echo 'unpacking registry.example/runner:v1 (sha256:aabbcc)...'`)
 	args, err := os.ReadFile(argsFile)
 	if err != nil || string(args) != "-n\nk8s.io\nload\n-i\n"+path+"\n" {
 		t.Fatalf("load args = %q, %v", args, err)
+	}
+}
+
+func TestOpenImageFileReadsResolvedFileFromWorkerRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "real image.tar"), []byte("worker archive"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "nsenter"), []byte(`#!/bin/sh
+[ "$#" = 8 ] && [ "$1 $2 $3 $4 $5 $6 $7" = "-t 1 -m -- readlink -e --" ] && [ "$8" = "/data/link.tar" ] || exit 1
+printf '%s\n' '/real image.tar'
+`), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	f, err := New(Options{HostRoot: root}).OpenImageFile(t.Context(), "/data/link.tar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil || string(data) != "worker archive" {
+		t.Fatalf("worker file = %q, %v", data, err)
 	}
 }

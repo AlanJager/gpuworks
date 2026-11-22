@@ -3,6 +3,8 @@ package kube
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -32,3 +34,22 @@ func (d *Driver) CheckImageFile(ctx context.Context, path string) (int64, error)
 }
 
 var _ runtime.ImageFileChecker = (*Driver)(nil)
+
+// Resolve absolute symlinks in the worker's mount namespace just as nerdctl
+// does, then open beneath the worker root, including if a link changes.
+func (d *Driver) OpenImageFile(ctx context.Context, path string) (*os.File, error) {
+	resolved, err := HostExec(ctx, "readlink", "-e", "--", path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve host archive: %w", err)
+	}
+	name := strings.TrimSuffix(string(resolved), "\n")
+	if !filepath.IsAbs(name) {
+		return nil, fmt.Errorf("host archive path is not absolute")
+	}
+	root, err := os.OpenRoot(firstNonEmpty(d.o.HostRoot, HostRoot))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.OpenFile(strings.TrimPrefix(name, "/"), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+}

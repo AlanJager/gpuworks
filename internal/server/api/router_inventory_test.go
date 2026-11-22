@@ -336,6 +336,7 @@ POST /api/v1/evaluate
 POST /api/v1/experience/password
 POST /api/v1/experience/reset
 POST /api/v1/images/import
+POST /api/v1/images/nodes/{uuid}/preview-archive-path
 POST /api/v1/images/preview-archive-url
 POST /api/v1/images/sync
 POST /api/v1/images/{id}/nodes/{uuid}/cancel
