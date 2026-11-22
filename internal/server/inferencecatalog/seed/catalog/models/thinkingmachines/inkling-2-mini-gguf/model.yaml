@@ -1,0 +1,95 @@
+# Inkling 2 Mini on Apple silicon through upstream llama.cpp, which supports
+# the architecture (inkling2_loop: 24 physical decoder layers, layers 6-17 run
+# three times) since b12600 (ggml-org/llama.cpp PR #32694) and its still-image
+# encoder (inkling2v) through mtmd; b12611 (#32704) fixed the per-expert scales
+# on the looped passes.
+# 值来源:
+#   - weight_bytes: ggml-org/Inkling-2-Mini-GGUF 的 Inkling-2-Mini-IQ4_NL.gguf
+#     (17627940768) 与 mmproj-Inkling-2-Mini-Q8_0.gguf (345910944) 之和,即引擎
+#     加载的两个文件。下载是整个仓库(98753022497 字节,另有 BF16、Q8_0 与
+#     BF16 mmproj),weight source 只能选仓库或子目录,不能选文件。
+#     HF 与 ModelScope 两个 revision 的每个文件 SHA-256 相同。
+#   - 架构/上下文: thinkingmachines/Inkling-2-Mini config.json(model_type
+#     inkling2_loop,text_config.model_max_length 1048576),参数量取 safetensors
+#     元数据(26388646440)。
+#   - 环境包 gpuworks/gpuworks-runner:metal15.0-llama.cpp-b12631-r1: 上游 b12631
+#     的 macOS arm64 预编译包(llama-server 与 dylib,Metal 着色器内嵌)。
+model_id: thinkingmachines/inkling-2-mini-gguf
+source: upstream
+display_title: TML Inkling 2 Mini (GGUF · llama.cpp)
+parameter_count: 26B MoE
+architecture: Inkling2LoopForConditionalGeneration
+context_length: 1048576
+release_date: '2026-11-20'
+# kv_bytes_per_token is not stated: no measurement for this GGUF on llama.cpp.
+specs:
+- name: iq4nl-llamacpp-apple
+  display_name_zh_cn: Apple 芯片 · GGUF IQ4_NL · ≥24G
+  display_name_en: Apple silicon · GGUF IQ4_NL · 24G+
+  scenario: balanced
+  engine: callable
+  image: gpuworks/gpuworks-runner:metal15.0-llama.cpp-b12631-r1
+  weights:
+    quantization: IQ4_NL
+    sources:
+    - huggingface:
+        repo_id: ggml-org/Inkling-2-Mini-GGUF
+        revision: e8a2cecf0e78914f07cc27b9be711a9b2c7561d9
+    - modelscope:
+        repo_id: ggml-org/Inkling-2-Mini-GGUF
+        revision: 62f9842d436126a97d7a5a9d1ac2779ea8517f26
+  weight_bytes: 17973851712
+  gpus:
+    vendor: apple
+  # The repository holds every quantization side by side; -m and --mmproj pick
+  # the IQ4_NL text model and the Q8_0 vision projector relative to the mount.
+  # --alias names the model after the deployment: without it llama-server
+  # answers under the -m path, a host path on a Mac. -ngl 99 keeps every layer
+  # on the GPU; --jinja applies the chat template the GGUF carries (reasoning,
+  # tool calls); --metrics serves Prometheus text on /metrics.
+  args:
+  - -m
+  - ${GPUWORKS_MODEL_PATH}/Inkling-2-Mini-IQ4_NL.gguf
+  - --mmproj
+  - ${GPUWORKS_MODEL_PATH}/mmproj-Inkling-2-Mini-Q8_0.gguf
+  - --alias
+  - ${GPUWORKS_SERVED_MODEL_NAME}
+  - --host
+  - ${GPUWORKS_API_HOST}
+  - --port
+  - ${GPUWORKS_API_PORT}
+  - -ngl
+  - '99'
+  - -c
+  - '65536'
+  - --jinja
+  - --metrics
+  entrypoint:
+  - llama-server
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.min_memory_gib < 24:
+              return reject("needs 24 GiB or more for Metal (a 36 GB Mac or larger): the IQ4_NL weights and vision projector take 18 GB")
+          return accept(gpu_memory_mib_per_device=24576)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    # llama-server --metrics: Prometheus text on /metrics (families as
+    # llama.cpp b12631 serves them on the Mac this template was tested on).
+    metrics:
+      map:
+        'llamacpp:requests_processing': requests_running
+        'llamacpp:requests_deferred': requests_waiting
+        'llamacpp:prompt_tokens_total': prompt_tokens_total
+        'llamacpp:prompt_tokens_cached_total': prompt_tokens_cache_hit_total
+        'llamacpp:tokens_predicted_total': generation_tokens_total
+    # Every reply carries llama.cpp's timings beside usage.
+    request_stats:
+      timings.prompt_ms: {to: prefill_seconds, scale: 0.001}
+      timings.predicted_ms: {to: decode_seconds, scale: 0.001}
+input_modalities: [text, image]

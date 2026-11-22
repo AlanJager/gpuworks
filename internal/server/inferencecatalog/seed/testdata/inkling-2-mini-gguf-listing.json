@@ -1,0 +1,101 @@
+[
+  {
+    "provider": "huggingface",
+    "repo_id": "ggml-org/Inkling-2-Mini-GGUF",
+    "revision": "e8a2cecf0e78914f07cc27b9be711a9b2c7561d9",
+    "files": [
+      {
+        "path": ".gitattributes",
+        "size": 1889,
+        "sha256": ""
+      },
+      {
+        "path": "Inkling-2-Mini-BF16.gguf",
+        "size": 52226509504,
+        "sha256": "7074c9762e6769a608c7b23960a7fd2444880b1174a3910149749f6d01389aec"
+      },
+      {
+        "path": "Inkling-2-Mini-IQ4_NL.gguf",
+        "size": 17627940768,
+        "sha256": "cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4"
+      },
+      {
+        "path": "Inkling-2-Mini-Q8_0.gguf",
+        "size": 27820099264,
+        "sha256": "d57542f8aea5d7639beba5fc4ae7f584754916f63ac5d5a69328c27f652f45da"
+      },
+      {
+        "path": "README.md",
+        "size": 1857,
+        "sha256": ""
+      },
+      {
+        "path": "imatrix.gguf",
+        "size": 90752032,
+        "sha256": "553662ef0d5e3d047e5753bf8275c26bbdd4306c60ddf6dc9f46c7f49f19452a"
+      },
+      {
+        "path": "mmproj-Inkling-2-Mini-BF16.gguf",
+        "size": 641805984,
+        "sha256": "e914997fe07fb2066bfdce855ec7275c15bc2b624e5423149f1027839593d9cb"
+      },
+      {
+        "path": "mmproj-Inkling-2-Mini-Q8_0.gguf",
+        "size": 345910944,
+        "sha256": "233287272ec5ac39b4168677aba54a4c024f202410f5629fac1830e1059f8abb"
+      }
+    ]
+  },
+  {
+    "provider": "modelscope",
+    "repo_id": "ggml-org/Inkling-2-Mini-GGUF",
+    "revision": "62f9842d436126a97d7a5a9d1ac2779ea8517f26",
+    "files": [
+      {
+        "path": ".gitattributes",
+        "size": 2075,
+        "sha256": "247a3cfc672484dd40bdf07af0f83ee7a4457e9a995dadb47eedc36c630103b6"
+      },
+      {
+        "path": "Inkling-2-Mini-BF16.gguf",
+        "size": 52226509504,
+        "sha256": "7074c9762e6769a608c7b23960a7fd2444880b1174a3910149749f6d01389aec"
+      },
+      {
+        "path": "Inkling-2-Mini-IQ4_NL.gguf",
+        "size": 17627940768,
+        "sha256": "cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4"
+      },
+      {
+        "path": "Inkling-2-Mini-Q8_0.gguf",
+        "size": 27820099264,
+        "sha256": "d57542f8aea5d7639beba5fc4ae7f584754916f63ac5d5a69328c27f652f45da"
+      },
+      {
+        "path": "README.md",
+        "size": 1850,
+        "sha256": "368418e8608a0c750ff3370dda0524dab6ea706d5d369da6c2aa18c6faaae2c9"
+      },
+      {
+        "path": "configuration.json",
+        "size": 76,
+        "sha256": "7f5e4dab8f262b1731914cb110764c86dbfc0459a136de7cc3ae4ae375edc828"
+      },
+      {
+        "path": "imatrix.gguf",
+        "size": 90752032,
+        "sha256": "553662ef0d5e3d047e5753bf8275c26bbdd4306c60ddf6dc9f46c7f49f19452a"
+      },
+      {
+        "path": "mmproj-Inkling-2-Mini-BF16.gguf",
+        "size": 641805984,
+        "sha256": "e914997fe07fb2066bfdce855ec7275c15bc2b624e5423149f1027839593d9cb"
+      },
+      {
+        "path": "mmproj-Inkling-2-Mini-Q8_0.gguf",
+        "size": 345910944,
+        "sha256": "233287272ec5ac39b4168677aba54a4c024f202410f5629fac1830e1059f8abb"
+      }
+    ]
+  }
+]
