@@ -79,3 +79,41 @@ func TestHelloCarriesTheHostSystemUUID(t *testing.T) {
 		hostSystemUUID = prev
 	}
 }
+
+// A hermetic agent's own source replaces the machine's firmware UUID in the
+// hello, also when it has none to report: several such agents share one test
+// machine, whose UUID would otherwise be every node's.
+func TestHelloCarriesTheCredentialsHostSystemUUID(t *testing.T) {
+	prev := hostSystemUUID
+	hostSystemUUID = func() string { return "4c4c4544-0042-3510-8051-b4c04f4e3432" }
+	defer func() { hostSystemUUID = prev }()
+	for _, want := range []string{"0f0e0d0c-0b0a-0908-0706-050403020100", ""} {
+		s := &laneTestServer{sessionID: "sess-1"}
+		_, stop := runAgainstWith(t, s, false, func(c *Conn) {
+			c.creds.HostSystemUUID = func() string { return want }
+		})
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			s.mu.Lock()
+			n := len(s.agentHellos)
+			var got string
+			if n > 0 {
+				got = s.agentHellos[0].HostSystemUUID
+			}
+			s.mu.Unlock()
+			if n > 0 {
+				if got != want {
+					t.Fatalf("hello host_system_uuid = %q, want %q", got, want)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("no hello reached the server")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := stop(); err != nil && err != context.Canceled {
+			t.Fatalf("Run: %v", err)
+		}
+	}
+}

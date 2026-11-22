@@ -54,6 +54,7 @@ type nodeOptions struct {
 	serverURL               string
 	dataLaneDisabled        bool
 	probeGate               <-chan struct{}
+	hostSystemUUID          string
 }
 type NodeOption func(*nodeOptions)
 
@@ -141,6 +142,14 @@ func WithProbeGate(gate <-chan struct{}) NodeOption {
 // copies and multi-node traffic unless a network is attached for them.
 func WithManagementAddress(address string) NodeOption {
 	return func(o *nodeOptions) { o.managementAddress = strings.TrimSpace(address) }
+}
+
+// WithHostSystemUUID sets the firmware UUID the node's agent reports. A
+// hermetic node reports none by default: its agent runs in the test process,
+// so the real one would be the test machine's, the same for every node, and
+// readable only where the tests run as root.
+func WithHostSystemUUID(id string) NodeOption {
+	return func(o *nodeOptions) { o.hostSystemUUID = strings.TrimSpace(id) }
 }
 
 type Env struct {
@@ -543,10 +552,17 @@ type Node struct {
 	dataLane bool
 	// address is the node's simulated management address.
 	address string
+	// hostSystemUUID is the firmware UUID the node's agent reports; empty
+	// reports none.
+	hostSystemUUID string
 }
 
 // networkInventory is the simulated inventory the node's agent reports: one
 // interface holding its address, which is also its management address.
+// reportedHostSystemUUID is the firmware UUID the node's agent reports in
+// place of the test machine's own.
+func (n *Node) reportedHostSystemUUID() string { return n.hostSystemUUID }
+
 func (n *Node) networkInventory() proto.NetInventory {
 	inv := proto.NetInventory{Interfaces: []proto.NetInterface{}, RDMAPorts: []proto.RDMAPort{}}
 	if n.address != "" {
@@ -631,12 +647,13 @@ func (e *Env) AddNode(name string, options ...NodeOption) *Node {
 	if address == "" {
 		address = "127.0.0.1"
 	}
-	n := &Node{Name: name, UUID: pending.UUID, Token: token, stateDir: state, Driver: fake, Runtime: d, Prober: p, cancel: cancel, serverURL: serverURL, dataLane: dataLane, address: address}
+	n := &Node{Name: name, UUID: pending.UUID, Token: token, stateDir: state, Driver: fake, Runtime: d, Prober: p, cancel: cancel, serverURL: serverURL, dataLane: dataLane, address: address, hostSystemUUID: o.hostSystemUUID}
 	ag := agentapp.New(agentapp.Config{
 		ServerURL: serverURL, Token: token, StateDir: state, Driver: d,
 		ForceDriver: o.driverName, Prober: p, DataLane: dataLane,
 		NetworkInterfaceResolver: fakeNetworkInterfaceResolver,
 		NetworkInventory:         n.networkInventory,
+		HostSystemUUID:           n.reportedHostSystemUUID,
 	}, harnessLogger(e.t))
 	n.Agent = ag
 	go func() { _ = ag.Run(ctx) }()
@@ -804,6 +821,7 @@ func (e *Env) RestartNode(t testing.TB, name string) {
 		Driver: n.Runtime, ForceDriver: force, Prober: n.Prober, DataLane: n.dataLane,
 		NetworkInterfaceResolver: fakeNetworkInterfaceResolver,
 		NetworkInventory:         n.networkInventory,
+		HostSystemUUID:           n.reportedHostSystemUUID,
 	}, harnessLogger(t))
 	n.cancel = cancel
 	n.Agent = ag

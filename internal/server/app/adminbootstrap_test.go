@@ -131,6 +131,14 @@ func TestAdminBootstrapLogSilentOnSecondStart(t *testing.T) {
 		t.Fatalf("second start: %v", err)
 	}
 	t.Cleanup(func() { secondApp.proxy.Close() })
+	// The app is never run, so nothing else stops it: in the clustered build
+	// its database process would keep writing into the temporary directory
+	// while the test removes it.
+	t.Cleanup(func() {
+		if err := secondApp.Close(); err != nil {
+			t.Errorf("app.Close: %v", err)
+		}
+	})
 	if strings.Contains(second.String(), "created admin user") {
 		t.Errorf("second start reported creating the admin user again:\n%s", second.String())
 	}

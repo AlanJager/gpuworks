@@ -62,6 +62,10 @@ type Config struct {
 	// NetworkInventory replaces the host network inventory the agent reports.
 	// Nil reports the real host; hermetic agents simulate their own addresses.
 	NetworkInventory func() proto.NetInventory
+	// HostSystemUUID replaces the machine's firmware UUID the agent reports.
+	// Nil reads the real host; hermetic agents supply their own, since
+	// several of them share one test machine.
+	HostSystemUUID func() string
 	// SimulatedHost makes the agent stand in for another machine (the
 	// experience environment's simulated node); nil is a real node.
 	SimulatedHost *hostsim.Host
@@ -241,13 +245,14 @@ func (a *Agent) Run(ctx context.Context) error {
 			return nil
 		}
 		creds := conn.Credentials{
-			ServerURL:   serverURL,
-			NodeUUID:    nodeUUID,
-			NodeToken:   nodeToken,
-			ConnectMode: connectMode(a.cfg.ConnectMode),
-			DataLane:    a.cfg.DataLane,
-			Simulated:   a.cfg.SimulatedHost,
-			EnginePorts: a.cfg.EnginePorts,
+			ServerURL:      serverURL,
+			NodeUUID:       nodeUUID,
+			NodeToken:      nodeToken,
+			ConnectMode:    connectMode(a.cfg.ConnectMode),
+			DataLane:       a.cfg.DataLane,
+			Simulated:      a.cfg.SimulatedHost,
+			HostSystemUUID: a.cfg.HostSystemUUID,
+			EnginePorts:    a.cfg.EnginePorts,
 		}
 		onReg := func(uuid, issuedToken string) error {
 			nodeUUID = uuid
@@ -344,13 +349,14 @@ func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, 
 	factory := func() *conn.Conn {
 		identityMu.Lock()
 		creds := conn.Credentials{
-			ServerURL:   serverURL,
-			NodeUUID:    *nodeUUID,
-			NodeToken:   nodeToken,
-			ConnectMode: "server_dial",
-			Simulated:   a.cfg.SimulatedHost,
-			EnginePorts: a.cfg.EnginePorts,
-			DataLane:    a.cfg.DataLane,
+			ServerURL:      serverURL,
+			NodeUUID:       *nodeUUID,
+			NodeToken:      nodeToken,
+			ConnectMode:    "server_dial",
+			Simulated:      a.cfg.SimulatedHost,
+			HostSystemUUID: a.cfg.HostSystemUUID,
+			EnginePorts:    a.cfg.EnginePorts,
+			DataLane:       a.cfg.DataLane,
 		}
 		identityMu.Unlock()
 		onReg := func(uuid, issuedToken string) error {

@@ -230,6 +230,9 @@ func (c *Conn) handshake() error {
 	hello.ConnectMode = c.creds.ConnectMode
 	hello.InstanceID = processInstanceID()
 	hello.HostSystemUUID = hostSystemUUID()
+	if c.creds.HostSystemUUID != nil {
+		hello.HostSystemUUID = c.creds.HostSystemUUID()
+	}
 	hello.Smoke = c.creds.Smoke
 	if err := c.send(proto.THello, 0, hello); err != nil {
 		endHello()

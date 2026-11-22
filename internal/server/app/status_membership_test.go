@@ -147,8 +147,7 @@ func TestStatusOverallNamesAClusterThatLostAMember(t *testing.T) {
 func TestStatusOverallNamesAVoterThatIsUnreachable(t *testing.T) {
 	database, stop := openStatusPort(t)
 	t.Cleanup(stop)
-	closed, release := openStatusPort(t)
-	release()
+	closed := closedStatusPort(t)
 	for _, c := range []struct {
 		name      string
 		addresses []string // of members 8 and 9; member 7 is this one
