@@ -55,6 +55,7 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 			Phase: status.Phase.Phase, PhaseRevision: status.Phase.Revision,
 			Applied: status.Applied, Known: status.Known, Base: status.Base, Ready: status.Ready(),
 			AppliedExtensions: status.AppliedExtensions, KnownExtensions: status.KnownExtensions,
+			AppliedByExtension: status.AppliedExtensionMarkers(),
 		}
 		for _, member := range status.Members {
 			response.Members = append(response.Members, enrollment.ClusterUpgradeMember{

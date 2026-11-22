@@ -173,6 +173,21 @@ type ClusterUpgradeStatus struct {
 	want, applied, base schemaPosition
 }
 
+// AppliedExtensionMarkers is how many markers the database holds in each
+// extension namespace this executable knows; a namespace with none is absent.
+// With Applied it says which schema the database has, so that a caller can
+// tell whether a backup was taken at this schema.
+func (s ClusterUpgradeStatus) AppliedExtensionMarkers() map[string]int {
+	if len(s.applied.Sets) == 0 {
+		return nil
+	}
+	markers := make(map[string]int, len(s.applied.Sets))
+	for namespace, position := range s.applied.Sets {
+		markers[namespace] = position.Markers
+	}
+	return markers
+}
+
 // Pending is how many migrations this executable would apply, core and
 // extension modules together.
 func (s ClusterUpgradeStatus) Pending() int {

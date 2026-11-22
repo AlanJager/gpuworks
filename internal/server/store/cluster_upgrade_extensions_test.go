@@ -58,6 +58,9 @@ func TestUpgradeWindowAppliesExtensionModuleMigrations(t *testing.T) {
 	if err != nil || status.Pending() != 2 || status.Known != status.Applied || status.KnownExtensions != 4 || status.AppliedExtensions != 2 {
 		t.Fatalf("status = %+v, %v; want two pending extension steps and no core step", status, err)
 	}
+	if byNamespace := status.AppliedExtensionMarkers(); len(byNamespace) != 1 || byNamespace[grown.Namespace] != 2 {
+		t.Fatalf("applied markers by namespace = %v; want only %q with 2", byNamespace, grown.Namespace)
+	}
 	for _, key := range keys {
 		if err := next.Report(ctx, key); err != nil {
 			t.Fatal(err)

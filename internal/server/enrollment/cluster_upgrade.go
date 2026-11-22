@@ -54,14 +54,17 @@ type ClusterUpgradeResponse struct {
 	Known         int    `json:"known"`
 	// The extension pair counts the markers of the answering executable's
 	// extension modules: applied to the database, and known to it.
-	AppliedExtensions int                    `json:"applied_extensions"`
-	KnownExtensions   int                    `json:"known_extensions"`
-	Base              int                    `json:"base"`
-	Ready             bool                   `json:"ready"`
-	Migrating         bool                   `json:"migrating"`
-	Members           []ClusterUpgradeMember `json:"members"`
-	Refused           string                 `json:"refused,omitempty"`
-	Error             string                 `json:"error,omitempty"`
+	AppliedExtensions int `json:"applied_extensions"`
+	KnownExtensions   int `json:"known_extensions"`
+	// AppliedByExtension is the applied count of each extension namespace
+	// that has a marker.
+	AppliedByExtension map[string]int         `json:"applied_by_extension,omitempty"`
+	Base               int                    `json:"base"`
+	Ready              bool                   `json:"ready"`
+	Migrating          bool                   `json:"migrating"`
+	Members            []ClusterUpgradeMember `json:"members"`
+	Refused            string                 `json:"refused,omitempty"`
+	Error              string                 `json:"error,omitempty"`
 }
 
 // ValidClusterUpgradeAction reports a step this protocol knows.
