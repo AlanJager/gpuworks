@@ -199,6 +199,14 @@ func TestAccessLogCarriesTheProductErrorThroughTheRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { application.proxy.Close() })
+	// The app is never run, so nothing else stops it: in the clustered build
+	// its database process would keep writing into the temporary directory
+	// while the test removes it.
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Errorf("app.Close: %v", err)
+		}
+	})
 
 	logs.Reset()
 	rec := httptest.NewRecorder()

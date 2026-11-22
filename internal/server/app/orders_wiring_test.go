@@ -54,6 +54,14 @@ func wiredApp(t *testing.T) (*App, http.Handler, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { application.proxy.Close() })
+	// The app is never run, so nothing else stops it: in the clustered build
+	// its database process would keep writing into the temporary directory
+	// while the test removes it.
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Errorf("app.Close: %v", err)
+		}
+	})
 	handler := application.http.Handler
 	login := httptest.NewRecorder()
 	handler.ServeHTTP(login, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"username":"admin","password":"gpuworks-test-password-2026"}`)))
