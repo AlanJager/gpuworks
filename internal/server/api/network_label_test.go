@@ -59,6 +59,7 @@ func TestNetworkDetachDirectFallsBackToMatchingLabel(t *testing.T) {
 		t.Fatalf("direct override did not win: %v", row)
 	}
 	attachment := fmt.Sprintf("/attachments/%.0f", row["attachment_id"])
+	n.expectCode(http.MethodPut, fabric+attachment+"/label", `{"label_key":"pool","label_value":"edited"}`, http.StatusBadRequest, ErrorNetworkAttachmentTargetInvalid)
 	n.expectCode(http.MethodDelete, serving+attachment, "", http.StatusNotFound, ErrorNetworkAttachmentNotFound)
 	result := n.expect(n.admin, http.MethodDelete, fabric+attachment, "", http.StatusOK)
 	if result["resolved_node_count"] != float64(1) || !reflect.DeepEqual(result["attachments"], label["attachments"]) || !reflect.DeepEqual(result["nodes"], label["nodes"]) {

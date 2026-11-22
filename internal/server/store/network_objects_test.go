@@ -327,3 +327,38 @@ func TestPlaintextTokenIgnoresThePlaceholder(t *testing.T) {
 		t.Fatal("empty token accepted")
 	}
 }
+
+func TestConcurrentNetworkLabelEditsClaimSelectorOnce(t *testing.T) {
+	s := newTestStore(t)
+	network, err := s.CreateNetwork(&Network{Name: "training", Type: "ethernet"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, key := range []string{"pool", "site"} {
+		a, err := s.CreateNetworkAttachment(&NetworkAttachment{NetworkID: network.ID, LabelKey: key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			<-start
+			results <- s.UpdateNetworkAttachmentLabel(network.ID, a.ID, "location", "west")
+		}()
+	}
+	close(start)
+	var ok, conflict int
+	for range 2 {
+		switch err := <-results; {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrNetworkAttachmentExists):
+			conflict++
+		default:
+			t.Fatal(err)
+		}
+	}
+	if ok != 1 || conflict != 1 {
+		t.Fatalf("success=%d conflicts=%d", ok, conflict)
+	}
+}

@@ -221,6 +221,9 @@ func (s *Service) UpdateLabel(networkID, attachmentID uint, key, value string) e
 	if errors.Is(err, store.ErrNotFound) {
 		return ErrAttachmentNotFound
 	}
+	if errors.Is(err, store.ErrNetworkAttachmentNotLabel) {
+		return &InvalidError{Kind: InvalidTarget, Detail: "select a label attachment to change its selector"}
+	}
 	return err
 }
 
