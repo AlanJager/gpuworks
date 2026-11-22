@@ -79,11 +79,11 @@ export default function ImageImportDrawer({
   const access = useOutboundHostAccess((sources ?? []).filter(isArchiveURL), open);
   const save = async () => {
     if (authorizing || importing) return;
-    setAuthorizing(true);
     try {
       const local = sourceTab === "custom" && loadNodeFile;
       if (local && !(await archive.trigger())) return;
       await form.validateFields();
+      setAuthorizing(true);
       const file = local ? archive.getValues() : undefined;
       await access.authorize();
       await importCustom(file);
