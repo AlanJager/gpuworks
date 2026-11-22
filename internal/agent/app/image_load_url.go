@@ -67,7 +67,7 @@ func (n *NodeRuntime) rpcImageLoadURL(ctx context.Context, raw json.RawMessage) 
 	go func() {
 		loadCtx, cancelLoad := context.WithTimeout(loadCtx, imageOperationTimeout)
 		defer cancelLoad()
-		unregister := n.beginImageOperation(p.CanonicalRef, p.TransferID, cancelLoad)
+		unregister := n.imageOps.begin(p.CanonicalRef, p.TransferID, cancelLoad)
 		defer unregister()
 		n.lockImageOperation(p.CanonicalRef, "syncing")
 		defer n.imagePullMu.Unlock()

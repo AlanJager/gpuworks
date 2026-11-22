@@ -62,7 +62,7 @@ func TestImageLoadPathLifecycle(t *testing.T) {
 				if _, err := n.OnRPC(requestCtx, proto.RPCImageLoadPath, loadPathParams(path)); err != nil {
 					t.Fatal(err)
 				}
-				defer n.cancelImageOperation(loadURLCanonical, "local-import")
+				defer n.imageOps.cancel(loadURLCanonical, "local-import")
 				loadCtx := <-started
 				requestDone()
 				synctest.Wait()
@@ -118,7 +118,7 @@ func TestImageLoadPathLifecycle(t *testing.T) {
 				}
 				time.Sleep(time.Minute)
 				synctest.Wait()
-				if len(statuses) != 0 || n.cancelImageOperation(loadURLCanonical, "local-import") {
+				if len(statuses) != 0 || n.imageOps.cancel(loadURLCanonical, "local-import") {
 					t.Fatal("finished import retained a heartbeat or cancellation registration")
 				}
 				if data, err := os.ReadFile(path); err != nil || string(data) != string(original) {
@@ -154,7 +154,7 @@ func TestImageLoadPathKeepsQueuedTransferAlive(t *testing.T) {
 	locked := true
 	defer func() {
 		if locked {
-			n.cancelImageOperation(loadURLCanonical, "local-import")
+			n.imageOps.cancel(loadURLCanonical, "local-import")
 			n.imagePullMu.Unlock()
 		}
 	}()

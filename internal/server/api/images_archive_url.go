@@ -14,6 +14,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/outbound"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -114,7 +115,7 @@ func (a *apiHandlers) fetchImageForNode(w http.ResponseWriter, r *http.Request, 
 	fetch := imagecatalog.FetchRequest{Source: req.Source, Relay: req.Relay, Force: req.Force, ArchivePath: req.ArchivePath}
 	if fetch.IsLocalFetch() || req.ArchivePath != "" {
 		if !fetch.IsLocalFetch() || !filepath.IsAbs(req.ArchivePath) || req.SourceNode != "" || req.ArchiveURL != "" || req.Relay {
-			writeProductError(w, http.StatusBadRequest, ErrorImageArchivePathInvalid, "local image import requires source=local and an absolute archive_path on the target node, without another source or relay", nil)
+			writeProductError(w, http.StatusBadRequest, messages.ErrorImageArchivePathInvalid, "local image import requires source=local and an absolute archive_path on the target node, without another source or relay", nil)
 			return
 		}
 	}

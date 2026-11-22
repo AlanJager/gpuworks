@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // Per-node image actions: fetch, peer sync, retry, cancel, remove, inspect.
@@ -52,7 +53,7 @@ func (a *apiHandlers) retryImageToNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Source == "" && req.SourceNode == "" && req.ArchiveURL == "" {
 		if row, err := a.d.Store.ImageNode(parseUint(chi.URLParam(r, "id")), a.nodeIDOf(chi.URLParam(r, "uuid"))); err == nil && row.Source == imagecatalog.FetchSourceLocal {
-			writeProductError(w, http.StatusBadRequest, ErrorImageArchivePathRequired, "choose the node archive file again to retry this local import", nil)
+			writeProductError(w, http.StatusBadRequest, messages.ErrorImageArchivePathRequired, "choose the node archive file again to retry this local import", nil)
 			return
 		}
 	}

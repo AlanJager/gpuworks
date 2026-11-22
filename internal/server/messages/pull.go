@@ -15,3 +15,9 @@ const (
 	// node forbid every address of {source} ({route}).
 	ErrorModelMetadataForbidden = "MODEL_METADATA_FORBIDDEN"
 )
+
+// Node-local archive imports take a new absolute path for each attempt.
+const (
+	ErrorImageArchivePathInvalid  = "IMAGE_ARCHIVE_PATH_INVALID"
+	ErrorImageArchivePathRequired = "IMAGE_ARCHIVE_PATH_REQUIRED"
+)

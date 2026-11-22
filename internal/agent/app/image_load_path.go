@@ -40,7 +40,7 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 		loadCtx = context.WithoutCancel(ctx)
 	}
 	loadCtx, cancel := context.WithTimeout(loadCtx, imageOperationTimeout)
-	unregister := n.beginImageOperation(p.CanonicalRef, p.TransferID, cancel)
+	unregister := n.imageOps.begin(p.CanonicalRef, p.TransferID, cancel)
 	go func() {
 		defer cancel()
 		defer unregister()

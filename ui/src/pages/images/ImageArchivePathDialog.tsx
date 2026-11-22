@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { HelpTip } from "../../ui-kit/HelpTip";
 import { Input } from "../../components/ui/input";
 
 type Props = {
@@ -39,16 +40,17 @@ export default function ImageArchivePathDialog({ imageRef, nodeLabel, onCancel, 
         </DialogHeader>
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <div className="space-y-2">
-            <label htmlFor="image-archive-path" className="text-body">{t("nodeTable.localDialog.path")}</label>
+            <div className="flex items-center gap-1">
+              <label htmlFor="image-archive-path" className="text-body">{t("nodeTable.localDialog.path")}</label>
+              <HelpTip content={t("nodeTable.localDialog.help")} />
+            </div>
             <Input
               id="image-archive-path"
               value={path}
               disabled={starting}
-              aria-describedby="image-archive-path-help"
               placeholder="/data/images/runner.tar"
               onChange={(event) => { setPath(event.target.value); setError(null); }}
             />
-            <p id="image-archive-path-help" className="text-label text-fg-muted">{t("nodeTable.localDialog.help")}</p>
             {error ? <Alert status="danger"><AlertDescription>{error}</AlertDescription></Alert> : null}
           </div>
           <DialogFooter>

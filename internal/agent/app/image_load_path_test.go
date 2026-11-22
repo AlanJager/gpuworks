@@ -89,7 +89,7 @@ func TestImageLoadPathCancelledInQueueDoesNotLoad(t *testing.T) {
 		h.node.imagePullMu.Unlock()
 		t.Fatal(err)
 	}
-	cancelled := h.node.cancelImageOperation(loadURLCanonical, "local-import")
+	cancelled := h.node.imageOps.cancel(loadURLCanonical, "local-import")
 	h.node.imagePullMu.Unlock()
 	if !cancelled {
 		t.Fatal("accepted operation was not cancellable")
