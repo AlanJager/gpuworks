@@ -925,6 +925,7 @@
     "CLUSTER_TLS_REQUIRED": "集群注册必须使用已完成握手的 HTTPS。",
     "CLUSTER_REQUEST_INVALID": "集群注册请求无效。",
     "CLUSTER_UNAVAILABLE": "集群注册服务暂不可用。",
+    "CLUSTER_UPGRADE_IN_PROGRESS": "控制面正在升级，请稍后重试。",
     "CLUSTER_INVITATION_REQUIRED": "集群注册需要邀请。",
     "CLUSTER_IDENTITY_MISMATCH": "集群身份与邀请不一致。",
     "CLUSTER_ADMISSION_REJECTED": "集群拒绝了这次注册。",

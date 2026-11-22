@@ -61,6 +61,11 @@ func (s *Store) AdoptExtensionSchemas(ctx context.Context, sets []MigrationSet) 
 	if err := checkNamespacesApplied(s.db.WithContext(ctx), sets); err != nil {
 		return err
 	}
+	// A member without a module the cluster's database holds would serve
+	// the cluster without it; a single server only warns about that.
+	if _, err := appliedNamespacePositions(s.db.WithContext(ctx), sets); err != nil {
+		return err
+	}
 	s.extensions = append([]MigrationSet(nil), sets...)
 	return nil
 }

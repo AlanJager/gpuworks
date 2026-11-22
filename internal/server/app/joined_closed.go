@@ -182,6 +182,9 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 			return err
 		}
 		router.Post(enrollment.ClusterQuorumDiscoveryPath, discovery)
+		if upgrade, err := clusterUpgradeHandler(bundle, a.joinedRaft, requests); err == nil {
+			router.Post(enrollment.ClusterUpgradePath, upgrade)
+		}
 	}
 	registerEnrollmentMaterialReceiver(router, bundle, st, receiver, requests)
 	registerEnrollmentOriginWithChange(router, bundle, st, a.invalidateCandidateMaterialEligibility)

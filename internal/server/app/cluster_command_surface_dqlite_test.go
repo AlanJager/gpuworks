@@ -24,6 +24,7 @@ func TestClusterCommandsReachTheEngineOperations(t *testing.T) {
 		_ = app.JoinCluster
 		_ = app.ObserveClusterStatus
 		_ = app.CheckClusterMaterialBootstrap
+		_ = app.ClusterUpgradeStep
 		_ = app.ClusterTransportPolicyPath
 		_ = app.ClusterJoinTarget{}
 		_ = app.ClusterJoinInfo{}

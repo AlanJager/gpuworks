@@ -545,6 +545,7 @@ const (
 	ErrorClusterInvitationRequired = "CLUSTER_INVITATION_REQUIRED"
 	ErrorClusterIdentityMismatch   = "CLUSTER_IDENTITY_MISMATCH"
 	ErrorClusterAdmissionRejected  = "CLUSTER_ADMISSION_REJECTED"
+	ErrorClusterUpgradeInProgress  = "CLUSTER_UPGRADE_IN_PROGRESS" // every business answer of a member during a cluster schema upgrade
 )
 
 // WarningBatchModelSleepHeld is the warning on a created batch whose {model}

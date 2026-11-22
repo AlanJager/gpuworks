@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/api"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -25,6 +27,9 @@ type businessHandlerGate struct {
 	materialEligibility atomic.Pointer[materialEligibility]
 	businessGuard       func(http.Handler) http.Handler
 	readinessLog        *slog.Logger
+	// clusterUpgrade is set while this member's business is closed for a
+	// cluster upgrade; the closed answer then says so.
+	clusterUpgrade atomic.Bool
 }
 
 type businessHandler struct {
@@ -41,10 +46,20 @@ type businessHandlerDrain struct {
 }
 
 func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
+	gate := &businessHandlerGate{}
 	closed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if gate.clusterUpgrade.Load() {
+			// The same status as any closed member, so an entry layer keeps
+			// treating it as not ready; the code tells a client why, and
+			// that the answer will change without its doing anything.
+			w.Header().Set("Retry-After", "5")
+			messages.WriteHTTPError(w, http.StatusServiceUnavailable, messages.NewProductError(api.ErrorClusterUpgradeInProgress,
+				"the control-plane cluster is being upgraded; the request was not processed", nil))
 			return
 		}
 		http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
@@ -53,7 +68,8 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 	if len(loggers) != 0 {
 		log = loggers[0]
 	}
-	return &businessHandlerGate{closed: closed, readinessLog: log}
+	gate.closed, gate.readinessLog = closed, log
+	return gate
 }
 
 func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {

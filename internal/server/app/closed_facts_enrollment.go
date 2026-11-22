@@ -37,6 +37,9 @@ func newClosedFactsEnrollmentServer(bundle *enrollmentBundle, session joinedRaft
 	router := chi.NewRouter()
 	router.Post(enrollment.ClusterQuorumFactsPath, handler)
 	router.Post(enrollment.ClusterQuorumDiscoveryPath, discovery)
+	if upgrade, err := clusterUpgradeHandler(bundle, session, requests); err == nil {
+		router.Post(enrollment.ClusterUpgradePath, upgrade)
+	}
 	registerClosedMaterialUnavailable(router, bundle, session, requests)
 	config := bundle.tls.Clone()
 	config.ClientAuth = tls.RequireAndVerifyClientCert

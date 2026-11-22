@@ -10,34 +10,70 @@ import (
 	"gorm.io/gorm"
 )
 
+// joinedSchemaClass is how the replicated schema relates to this executable.
+type joinedSchemaClass int
+
+const (
+	joinedSchemaCurrent joinedSchemaClass = iota
+	// joinedSchemaLegacy is exactly the expanded runtime's v114 schema.
+	joinedSchemaLegacy
+	// joinedSchemaPending has applied a prefix of this executable's
+	// migrations and waits for the cluster upgrade.
+	joinedSchemaPending
+)
+
 // classifyJoinedSchema reads one replicated snapshot before a resumed member
 // transfers ownership. Any valid phase classifies exact v115 as current;
-// even serving is only an observation, not authority for a later write.
+// even serving is only an observation, not authority for a later write. A
+// schema behind this executable is ErrSchemaUpgradePending: the member keeps
+// serving the database and asks again.
 func classifyJoinedSchema(ctx context.Context, tx *gorm.DB, expected ClusterIdentity) (legacy bool, err error) {
-	if !validClusterDigest(expected.ClusterID, 16) || !validClusterDigest(expected.CAFingerprint, 32) || expected.Protocol != ClusterProtocolVersion {
-		return false, ErrClusterIdentityConflict
+	class, err := classifyJoinedSchemaClass(ctx, tx, expected)
+	if err != nil {
+		return false, err
 	}
+	if class == joinedSchemaPending {
+		return false, ErrSchemaUpgradePending
+	}
+	return class == joinedSchemaLegacy, nil
+}
+
+// classifyJoinedSchemaClass is classifyJoinedSchema for a reader that only
+// observes the cluster, such as quorum facts, and so also answers while the
+// schema is behind this executable.
+func classifyJoinedSchemaClass(ctx context.Context, tx *gorm.DB, expected ClusterIdentity) (joinedSchemaClass, error) {
+	if !validClusterDigest(expected.ClusterID, 16) || !validClusterDigest(expected.CAFingerprint, 32) || expected.Protocol != ClusterProtocolVersion {
+		return 0, ErrClusterIdentityConflict
+	}
+	class := joinedSchemaCurrent
 	if err := checkLegacyExpandedSchema(tx); err == nil {
-		legacy = true
+		class = joinedSchemaLegacy
 	} else {
 		if retryableClassificationRead(err) {
-			return false, err
+			return 0, err
 		}
-		if err := checkCurrentSchema(tx); err != nil {
-			return false, err
+		if currentErr := checkCurrentSchema(tx); currentErr != nil {
+			if retryableClassificationRead(currentErr) {
+				return 0, currentErr
+			}
+			pending, err := pendingSchemaMigrations(tx)
+			if err != nil || pending == 0 {
+				return 0, currentErr
+			}
+			class = joinedSchemaPending
 		}
 		if _, err := (&Store{db: tx}).ReadMaintenancePhase(ctx); err != nil {
-			return false, fmt.Errorf("%w: %w", ErrMaintenancePhaseUnavailable, err)
+			return 0, fmt.Errorf("%w: %w", ErrMaintenancePhaseUnavailable, err)
 		}
 	}
 	actual, err := (&Store{db: tx}).ClusterIdentity(ctx)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	if actual.ClusterID != expected.ClusterID || actual.CAFingerprint != expected.CAFingerprint || actual.Protocol != expected.Protocol {
-		return false, ErrClusterIdentityConflict
+		return 0, ErrClusterIdentityConflict
 	}
-	return legacy, nil
+	return class, nil
 }
 
 // These errors mean the snapshot was not observed, rather than that its

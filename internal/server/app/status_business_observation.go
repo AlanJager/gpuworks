@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/server/api"
 	"io"
 	"net"
 	"net/http"
@@ -46,6 +47,9 @@ func observeBusiness(ctx context.Context, httpAddr string, timeout time.Duration
 	text := strings.Join(strings.Fields(string(body)), " ")
 	if strings.Contains(text, "member business service is not ready") {
 		return "member business service is not ready", ""
+	}
+	if strings.Contains(text, api.ErrorClusterUpgradeInProgress) {
+		return "closed for a cluster upgrade", ""
 	}
 	switch response.StatusCode {
 	case http.StatusOK:

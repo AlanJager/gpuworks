@@ -37,7 +37,7 @@ func newEnrollmentHandlerGate(base http.Handler) *enrollmentHandlerGate {
 // leader. Both handlers authenticate the member and are counted by the
 // listener's request owner, as they are while business is closed.
 func listenerObservationPath(path string) bool {
-	return path == enrollment.ClusterQuorumFactsPath || path == enrollment.ClusterQuorumDiscoveryPath
+	return path == enrollment.ClusterQuorumFactsPath || path == enrollment.ClusterQuorumDiscoveryPath || path == enrollment.ClusterUpgradePath
 }
 
 func (g *enrollmentHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {

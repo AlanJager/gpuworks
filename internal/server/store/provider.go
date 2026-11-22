@@ -413,6 +413,9 @@ func (s *Store) AllSettings() (map[string]string, error) {
 	}
 	m := make(map[string]string, len(all))
 	for _, st := range all {
+		if isClusterUpgradeSetting(SettingKey(st.Key)) {
+			continue
+		}
 		m[st.Key] = st.Value
 	}
 	return m, nil

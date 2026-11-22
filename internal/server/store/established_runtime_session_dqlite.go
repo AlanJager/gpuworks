@@ -72,7 +72,7 @@ func StartEstablishedRaft(ctx context.Context, path string, expected ClusterIden
 	if err := ctx.Err(); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
-	return &LegacyJoinedRaftSession{db: db, id: db.ID, address: db.Address, raftDir: raftDir, release: release}, nil
+	return newJoinedRaftSession(db, db.ID, db.Address, raftDir, release), nil
 }
 
 // Both exact schema versions must qualify the live transport key against its
@@ -80,10 +80,11 @@ func StartEstablishedRaft(ctx context.Context, path string, expected ClusterIden
 // or joined identity exemption; the local identity directory and replicated
 // invitation role must agree in this same read-only transaction.
 func classifyEstablishedRuntimeSnapshot(ctx context.Context, tx *gorm.DB, expected ClusterIdentity, key, address, raftDir string) (bool, error) {
-	legacy, err := classifyJoinedSchema(ctx, tx, expected)
+	class, err := classifyJoinedSchemaClass(ctx, tx, expected)
 	if err != nil {
 		return false, err
 	}
+	legacy := class == joinedSchemaLegacy
 	if !validClusterDigest(key, 32) || address == "" || !strings.HasSuffix(raftDir, ".dqlite") {
 		return false, ErrClusterIdentityConflict
 	}
@@ -114,6 +115,10 @@ func classifyEstablishedRuntimeSnapshot(ctx context.Context, tx *gorm.DB, expect
 	}
 	if err := ctx.Err(); err != nil {
 		return false, err
+	}
+	if class == joinedSchemaPending {
+		// The member qualified; only its executable is ahead of the schema.
+		return false, ErrSchemaUpgradePending
 	}
 	return legacy, nil
 }
