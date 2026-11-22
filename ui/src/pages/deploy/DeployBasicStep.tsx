@@ -10,10 +10,13 @@ import {
 } from "antd";
 import type { DetectedTemplateChip, InferenceTemplateIndexItem, Model } from "../../api";
 import { useTranslation } from "react-i18next";
+import { compareVendors, type KnownVendor } from "../../vendors";
 import ModelPicker from "./ModelPicker";
 import DeployServedNameField from "./DeployServedNameField";
 import TemplateRecommendations from "./TemplateRecommendations";
 import { LockedGroup } from "./DeployEditContext";
+
+const targetVendorOrder: readonly KnownVendor[] = ["nvidia", "ascend", "ppu", "amd"];
 
 export default function DeployBasicStep({
   templateIndex,
@@ -54,7 +57,7 @@ export default function DeployBasicStep({
         targetVendor,
       ].filter((vendor): vendor is string => Boolean(vendor)),
     ),
-  ].sort();
+  ].sort((left, right) => compareVendors(left, right, targetVendorOrder));
 
   const applyTemplate = (
     item: InferenceTemplateIndexItem,

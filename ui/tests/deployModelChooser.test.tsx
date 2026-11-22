@@ -136,7 +136,7 @@ afterEach(() => {
 });
 after(() => dom.window.close());
 
-function mount(initialValues: Record<string, unknown>) {
+function mount(initialValues: Record<string, unknown>, chips = [{ vendor: "nvidia", name: "H100" }]) {
   let form: FormInstance | undefined;
   function Host() {
     const [instance] = Form.useForm();
@@ -145,7 +145,7 @@ function mount(initialValues: Record<string, unknown>) {
       <Form form={instance} initialValues={initialValues}>
         <DeployBasicStep
           templateIndex={index}
-          chips={[{ vendor: "nvidia", name: "H100" }]}
+          chips={chips}
           selectedModel={models[0]}
         />
       </Form>
@@ -160,6 +160,25 @@ function mount(initialValues: Record<string, unknown>) {
   );
   return () => form!;
 }
+
+async function openTargetChipOptions() {
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: deployLocale.basic.targetVendor }));
+  const dropdown = (await screen.findByRole("listbox")).closest(".ant-select-dropdown")!;
+  return Array.from(dropdown.querySelectorAll(".ant-select-item-option-content"), (option) => option.textContent);
+}
+
+test("target chip options put NVIDIA, Ascend, PPU and AMD first among available vendors", async () => {
+  const chips = ["ppu", "amd", "kunlunxin", "ascend", "AMD"].map((vendor) => ({ vendor, name: vendor }));
+  const form = mount({ target_vendor: "hygon" }, chips);
+  assert.deepEqual(await openTargetChipOptions(), ["NVIDIA", "Ascend", "T-Head PPU", "AMD", "Hygon", "Kunlunxin"]);
+  assert.equal(form().getFieldValue("target_vendor"), "hygon");
+});
+
+test("an empty target chip field offers only available vendors without selecting the first", async () => {
+  const form = mount({}, []);
+  assert.deepEqual(await openTargetChipOptions(), ["NVIDIA"]);
+  assert.equal(form().getFieldValue("target_vendor"), undefined);
+});
 
 test("model selection is shown directly with matching template recommendations", async () => {
   assert.equal(
