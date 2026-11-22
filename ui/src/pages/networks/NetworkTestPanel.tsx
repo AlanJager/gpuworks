@@ -82,19 +82,24 @@ export default function NetworkTestPanel({ network, onStarted, onChanged }: { ne
   // will. Each change of the form asks again.
   const [estimate, setEstimate] = useState<{ value?: NetworkTestEstimate; error?: string }>({});
 
+  const canEstimate = card && scope && (scope !== "nodes" || (chosen?.length ?? 0) >= 2) &&
+    (scope !== "label" || labelKey?.trim());
+  // react-hook-form may return a new selection array for the same values.
+  // Depend on the effective wire request so unrelated renders keep the estimate.
+  const estimateRequest = canEstimate ? JSON.stringify(testBody({
+    kind, pattern, scope, node_uuids: chosen, label_key: labelKey, label_value: labelValue, bandwidth: false, seconds: 0,
+  })) : "";
   useEffect(() => {
     setEstimate({});
-    if (!card || !scope) return;
-    if (scope === "nodes" && (chosen ?? []).length < 2) return;
-    if (scope === "label" && !labelKey?.trim()) return;
+    if (!estimateRequest) return;
     let stale = false;
     const timer = setTimeout(() => {
-      api.estimateNetworkTest(network.id, testBody({ kind, pattern, scope, node_uuids: chosen, label_key: labelKey, label_value: labelValue, bandwidth: false, seconds: 0 }))
+      api.estimateNetworkTest(network.id, JSON.parse(estimateRequest) as NetworkTestRequest)
         .then((value) => { if (!stale) setEstimate({ value }); })
         .catch((e: Error) => { if (!stale) setEstimate({ error: e.message }); });
     }, 200);
     return () => { stale = true; clearTimeout(timer); };
-  }, [card, kind, pattern, scope, chosen, labelKey, labelValue, network.id]);
+  }, [estimateRequest, network.id]);
   const missingTool = network.nodes.filter((n) => !n.tools?.includes("ib_write_bw")).map((n) => n.node_name);
   // Nodes whose pairs fail before any traffic: said before the test starts.
   const noAddress = network.nodes.filter((n) => !n.ip).map((n) => n.node_name);
