@@ -1,0 +1,155 @@
+model_id: thinkingmachines/inkling-2-mini
+source: upstream
+display_title: TML Inkling-2-Mini
+parameter_count: 26B
+architecture: moe
+context_length: 1048576
+release_date: '2026-11-20'
+# Measured on an RTX 5090 with the image below at --max-model-len 65536:
+# 7.73 GiB of KV held 87,175 tokens. 20 of the 24 layers attend within a
+# 1,024-token window, so a longer context costs less per token.
+kv_bytes_per_token:
+  vllm: 95211
+model_config: {model_type: inkling2_loop, num_hidden_layers: 24, hidden_size: 2304, num_attention_heads: 24, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 1048576, vision_config: {patch_size: 20}}
+# Inkling 2 Mini (Inkling2LoopForConditionalGeneration) is not in a vLLM
+# release; the upstream recipe (vllm-project/vllm recipes/models/
+# thinkingmachines/Inkling-2-Mini.yaml, date_updated 2026-11-20) asks for
+# vLLM >= 0.35 or a nightly. The specs use the commit-tagged nightly
+# vllm/vllm-openai:nightly-647a768 rather than the recipe's
+# vllm/vllm-openai:inkling-2-mini: that tag is mutable, ships amd64 kernels
+# for sm100/sm103 only (TORCH_CUDA_ARCH_LIST "10.0+PTX 10.3+PTX"), while the
+# nightly is multi-arch, builds 7.5 through 12.0 and carries the same Inkling
+# 2 model code, including the sm90 (Humming) and sm12x (Triton) expert paths.
+# The platform runners (vLLM 0.30) predate the architecture.
+#
+# The checkpoint keeps the routed experts in NVFP4 and MXFP8. Its
+# quantization method (inkling2) declares a minimum compute capability of
+# 9.0, so Ampere and Ada cards are refused before loading: RTX 3090 and RTX
+# 4090 both stop with "The quantization method inkling2 is not supported for
+# the current GPU. Minimum capability: 90." The check is not the only wall:
+# with it lifted, both load the weights and then fail in the vision encoder's
+# Hopper flash-attention kernel ("no kernel image is available for execution
+# on the device"), and the remaining expert and attention paths are sm90,
+# sm100 or sm12x only. No spec is offered for them.
+specs:
+# Verified on an RTX 5090 (32 GB, driver 610.57) with this exact command at
+# the deployment's 0.9 memory share: 18.24 GiB of weights, 72,030 tokens of KV
+# (1.1 requests of 64K), 178 tokens/s single-stream decode, 493 tokens/s at 4
+# streams and 1,307 at 16. Reasoning is split out by the inkling parser; image
+# input and streamed tool calls work.
+#
+# No DSpark twin for the 5090: the speculator's draft cache needs about 4.4 GiB
+# before the first token, so at a 0.9 share vLLM refuses even 16K ("4.97 GiB
+# KV cache is needed ... available KV cache memory (4.52 GiB)"). At the full
+# card it served 32K and sped 1K-token answers up only from 178 to 184-201
+# tokens/s (15% of draft tokens accepted).
+- name: nvfp4-vllm-nvidia-rtx-5090
+  display_name_zh_cn: RTX 5090 · NVFP4 · 64K 上下文
+  display_name_en: RTX 5090 · NVFP4 · 64K context
+  scenario: balanced
+  engine: vllm
+  image: vllm/vllm-openai:nightly-647a76866b4559a74e27d1c6b55fbffe85c07ce4
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: thinkingmachines/Inkling-2-Mini
+        revision: b85c3cfa615fc413cc9af3379f491b963f3b586a
+    - modelscope:
+        repo_id: thinkingmachines/Inkling-2-Mini
+        revision: 1040c7393f82a68d2b0ae53d241c71e440ac7e17
+  weight_bytes: 20191643333
+  gpus:
+    vendor: nvidia
+    cc: '>=12.0'
+    name: RTX[ _-]?5090
+  args:
+  - --max-model-len
+  - '65536'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - inkling
+  - --reasoning-parser
+  - inkling
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # One card, as the recipe runs it (TP1); several 5090s are not
+          # verified. The weights (18.3 GiB) and one 64K-token request
+          # (5.8 GiB of KV, which vLLM checks at start) need 24.1 GiB within
+          # the engine's 0.9 share less about 2 GiB of runtime overhead.
+          if gpu.count != 1:
+              return reject("Inkling 2 Mini runs on one RTX 5090")
+          if gpu.min_memory_gib * 0.9 - 2 < 24.1:
+              return reject("the weights and one 64K-token request need 24.1 GiB; this card offers less")
+          return {"GPU_COUNT": 1, "TP_SIZE": 1, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+# Not verified by us: the recipe's own command for Hopper and Blackwell data
+# centre cards (verified upstream on H100, H200, GB200, B300 and GB300), with
+# DSpark and the 262,144-token cap the recipe sets on H100 so one spec fits
+# every 80 GB-and-larger card in the range.
+- name: nvfp4-vllm-nvidia-hopper-blackwell
+  display_name_zh_cn: Hopper / Blackwell · NVFP4 · 256K 上下文 · 投机解码
+  display_name_en: Hopper / Blackwell · NVFP4 · 256K context · Speculative
+  scenario: throughput
+  engine: vllm
+  image: vllm/vllm-openai:nightly-647a76866b4559a74e27d1c6b55fbffe85c07ce4
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: thinkingmachines/Inkling-2-Mini
+        revision: b85c3cfa615fc413cc9af3379f491b963f3b586a
+    - modelscope:
+        repo_id: thinkingmachines/Inkling-2-Mini
+        revision: 1040c7393f82a68d2b0ae53d241c71e440ac7e17
+  weight_bytes: 20191643333
+  gpus:
+    vendor: nvidia
+    cc: 9.0..10.9
+  args:
+  - --max-model-len
+  - '262144'
+  - --speculative-config
+  - '{"method":"dspark","num_speculative_tokens":7,"draft_sample_method":"probabilistic"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - inkling
+  - --reasoning-parser
+  - inkling
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # One card (the recipe's TP1, which it reports as the most
+          # efficient layout). The weights with the draft model (19.7 GiB),
+          # their activations and graphs (2.3 GiB) and the KV of one
+          # 256K-token request with DSpark (13.4 GiB) need 36 GiB within the
+          # engine's 0.9 share less about 2 GiB of runtime overhead. The KV
+          # figure extrapolates the RTX 5090 runs: vLLM asked for 4.97, 5.53
+          # and 6.66 GiB at 16K, 32K and 64K, as 20 of the 24 layers attend
+          # within a 1,024-token window.
+          if gpu.count != 1:
+              return reject("the recipe serves Inkling 2 Mini on one GPU")
+          if gpu.min_memory_gib * 0.9 - 2 < 36:
+              return reject("the weights, the draft model and one 256K-token request need 36 GiB; this card offers less")
+          return {"GPU_COUNT": 1, "TP_SIZE": 1, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+input_modalities: [text, image]
