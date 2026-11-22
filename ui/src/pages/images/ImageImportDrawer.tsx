@@ -17,18 +17,26 @@ import {
   type ImageCatalogEntry,
   type ImageEngineOption,
 } from "../../api";
+import { useForm } from "react-hook-form";
+import { FormField } from "../../ui-kit/form/FormField";
+import { HelpTip } from "../../ui-kit/HelpTip";
+import { Input as TextInput } from "../../components/ui/input";
+import { Switch as FileImportSwitch } from "../../components/ui/switch";
+import NodePicker from "../../nodes/NodePicker";
 import ImageArchiveURLImport from "./ImageArchiveURLImport";
 import ImageCommunityBrowser from "./ImageCommunityBrowser";
 import { OutboundHostAccess, useOutboundHostAccess } from "../../components/OutboundHostAccess";
 import { isArchiveURL } from "./ImagePageHelpers";
 import { useTranslation } from "react-i18next";
 
+export type NodeArchive = { node: string; path: string };
+
 type Props = {
   open: boolean;
   onClose: () => void;
   form: FormInstance;
   importing: boolean;
-  importCustom: () => void;
+  importCustom: (archive?: NodeArchive) => Promise<void> | void;
   hasExplicitTag: (ref: string) => boolean;
   sourceTab: "community" | "custom";
   /** Catalog versions searched for a reference matching a pasted archive. */
@@ -59,15 +67,26 @@ export default function ImageImportDrawer({
   const [engines, setEngines] = useState<ImageEngineOption[] | null>(null);
   const [enginesError, setEnginesError] = useState<string | null>(null);
   const [authorizing, setAuthorizing] = useState(false);
+  const [loadNodeFile, setLoadNodeFile] = useState(false);
+  const archive = useForm<NodeArchive>({ defaultValues: { node: "", path: "" } });
+  useEffect(() => {
+    if (!open) {
+      setLoadNodeFile(false);
+      archive.reset();
+    }
+  }, [open, archive]);
   const sources = Form.useWatch("registry_sources", { form, preserve: true }) as string[] | undefined;
   const access = useOutboundHostAccess((sources ?? []).filter(isArchiveURL), open);
   const save = async () => {
     if (authorizing || importing) return;
+    setAuthorizing(true);
     try {
+      const local = sourceTab === "custom" && loadNodeFile;
+      if (local && !(await archive.trigger())) return;
       await form.validateFields();
-      setAuthorizing(true);
+      const file = local ? archive.getValues() : undefined;
       await access.authorize();
-      importCustom();
+      await importCustom(file);
     } catch { /* The form and permission control retain their own errors. */ }
     finally { setAuthorizing(false); }
   };
@@ -87,7 +106,7 @@ export default function ImageImportDrawer({
   }, [open, engines]);
   const engineOptions = (engines ?? []).map((option) => ({ value: option.name, label: option.label }));
   return (
-    <Drawer title={t(`import.title.${sourceTab}`)} open={open} onClose={onClose} width={640}>
+    <Drawer title={t(`import.title.${sourceTab}`)} open={open} onClose={authorizing || importing ? undefined : onClose} width={640}>
       <div style={{ display: "flex", flexDirection: "column", gap: 20, width: "100%" }}>
         {sourceTab === "community" && (
           <ImageCommunityBrowser
@@ -121,6 +140,24 @@ export default function ImageImportDrawer({
           description={t("import.customDescription")}
         />
         <Form form={form} layout="vertical" initialValues={{ arch: "multi", rolling_tag: false }}>
+          {sourceTab === "custom" && (
+            <div className="mb-5 grid gap-3">
+              <FileImportSwitch label={t("import.local.enable")} checked={loadNodeFile} onCheckedChange={setLoadNodeFile} />
+              {loadNodeFile && (
+                <>
+                  <FormField control={archive.control} name="node" label={t("nodeTable.column.node")} required
+                    rules={{ required: t("import.local.nodeRequired") }}>
+                    {field => <NodePicker {...field} aria-label={t("nodeTable.column.node")} filter={{ state: ["online"] }} />}
+                  </FormField>
+                  <FormField control={archive.control} name="path" required
+                    label={t("nodeTable.localDialog.path")} description={<HelpTip content={t("nodeTable.localDialog.help")} />}
+                    rules={{ validate: path => path.trim().startsWith("/") || t("import.local.pathRequired") }}>
+                    {field => <TextInput {...field} aria-label={t("nodeTable.localDialog.path")} placeholder="/data/images/runner.tar" />}
+                  </FormField>
+                </>
+              )}
+            </div>
+          )}
           <Form.Item label={t("import.seriesName")} name="series_name">
             <Input placeholder={t("import.seriesNamePlaceholder")} />
           </Form.Item>

@@ -210,6 +210,13 @@
     "collapse": "收起详情"
   },
   "import": {
+    "local": {
+      "enable": "从计算节点本地文件导入",
+      "nodeRequired": "请选择归档所在的计算节点",
+      "pathRequired": "请输入归档文件在该节点上的绝对路径",
+      "versionMissing": "已登记 {{ref}}，但响应中缺少对应版本。请打开镜像详情发起节点导入。",
+      "startFailed": "已登记 {{ref}}。节点导入未能启动：{{reason}}"
+    },
     "title": {
       "community": "添加社区镜像",
       "custom": "添加自定义镜像"

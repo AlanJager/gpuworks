@@ -210,6 +210,13 @@
     "collapse": "Hide details"
   },
   "import": {
+    "local": {
+      "enable": "Load from a compute node file",
+      "nodeRequired": "Select the compute node that holds the archive",
+      "pathRequired": "Enter the absolute path to the archive on this node",
+      "versionMissing": "{{ref}} was registered, but its version was missing from the response. Open the image to start the node import.",
+      "startFailed": "{{ref}} was registered. The node import could not start: {{reason}}"
+    },
     "title": {
       "community": "Add Community Image",
       "custom": "Add Custom Image"

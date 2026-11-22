@@ -15,7 +15,7 @@ import {
   type ImageSeries,
 } from "../api";
 import { apiErrorText } from "../apiError";
-import ImageImportDrawer from "./images/ImageImportDrawer";
+import ImageImportDrawer, { type NodeArchive } from "./images/ImageImportDrawer";
 import ImageDetailDrawer from "./images/ImageDetailDrawer";
 import { buildVersionColumns } from "./images/ImageVersionColumns";
 import {
@@ -307,7 +307,7 @@ export default function ImagesPage() {
       message.error(e instanceof Error ? e.message : t("import.url.failed"));
     }
   };
-  const importCustom = async () => {
+  const importCustom = async (archive?: NodeArchive) => {
     let value;
     try {
       value = await importForm.validateFields();
@@ -319,7 +319,8 @@ export default function ImagesPage() {
       const importSource = sourceTab === "custom" ? "custom" : "community";
       // Purpose is left to the server's default (inference), which is what
       // the deploy page lists; series defaults are not edited here.
-      await api.importImages([
+      const imageRef = String(value.image_ref || "").trim();
+      const imported = await api.importImages([
         {
           name: value.series_name,
           engine: value.engine,
@@ -330,7 +331,7 @@ export default function ImagesPage() {
               engine_version: value.engine_version || "",
               framework_version: value.framework_version || "",
               arch: value.arch || "multi",
-              image_ref: String(value.image_ref || "").trim(),
+              image_ref: imageRef,
               source: importSource,
               rolling_tag: Boolean(value.rolling_tag),
               registry_sources: value.registry_sources || [],
@@ -338,13 +339,31 @@ export default function ImagesPage() {
           ],
         },
       ]);
-      message.success(t("action.imported", {
-        source: t(`action.sourceType.${importSource}`),
-      }));
       importForm.resetFields();
       setImportOpen(false);
       refetch();
       versions.refetch();
+      if (archive) {
+        const [series] = imported.items;
+        const version = series?.versions?.find((entry) => entry.image_ref === imageRef);
+        if (!version) {
+          toast.error(t("import.local.versionMissing", { ref: imageRef }));
+          return;
+        }
+        detailRef.current = series;
+        setDetail(series);
+        setSelectedVersionID(version.id);
+        setMode(version, archive.node, "local");
+        try {
+          await importFromPath(version, archive.node, archive.path.trim());
+        } catch (e) {
+          toast.error(t("import.local.startFailed", { ref: imageRef, reason: apiErrorText(tCommon, e) || t("action.pullFailed") }));
+        }
+      } else {
+        message.success(t("action.imported", {
+          source: t(`action.sourceType.${importSource}`),
+        }));
+      }
     } catch (e) {
       message.error(e instanceof Error ? e.message : t("action.importFailed"));
     } finally {
@@ -512,7 +531,7 @@ export default function ImagesPage() {
         onClose={() => setImportOpen(false)}
         form={importForm}
         importing={importing}
-        importCustom={() => void importCustom()}
+        importCustom={importCustom}
         hasExplicitTag={hasExplicitTag}
         sourceTab={sourceTab === "custom" ? "custom" : "community"}
         versions={allVersions}

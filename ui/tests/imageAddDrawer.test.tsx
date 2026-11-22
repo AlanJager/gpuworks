@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import React from "react";
+import { pickNodes } from "./helpers/nodePicker.ts";
 import { dom } from "./helpers/dom.ts";
 import {
   catalogRoutes,
@@ -8,6 +9,8 @@ import {
   i18n,
   imageEngines,
   installFetch,
+  communitySeries,
+  nightlyVersion,
   json,
   vllmOpenAIBrowse,
   zhImages,
@@ -19,6 +22,7 @@ const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { message } = await import("antd");
+const { Toaster } = await import("../src/components/ui/toast.tsx");
 const { default: ImagesPage } = await import("../src/pages/ImagesPage.tsx");
 const { formatTime } = await import("../src/i18n/datetime.ts");
 
@@ -40,7 +44,7 @@ function renderPage(...handlers: Handler[]) {
     return catalogRoutes(call);
   });
   restoreFetch = stub.restore;
-  render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/images"]}><ImagesPage /></MemoryRouter></I18nextProvider>);
+  render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/images"]}><ImagesPage /><Toaster /></MemoryRouter></I18nextProvider>);
   return { calls: stub.calls, user: userEvent.setup({ document: dom.window.document }) };
 }
 
@@ -152,6 +156,57 @@ test("the custom engine list is GET /images/engines as served, and the import se
     source: "custom", rolling_tag: false, registry_sources: [],
   }]);
 });
+
+for (const rejected of [false, true]) {
+  test(`registering a node file opens the exact custom version when the node ${rejected ? "rejects" : "accepts"} the load`, async () => {
+    const ref = "example/local:v1";
+    const path = "/mnt/images/my runner.tar";
+    const version = { ...nightlyVersion, image_ref: ref, source: "custom", present_nodes: 0 };
+    const sibling = { ...version, id: 32, image_ref: "example/local:v2" };
+    const node = { node_uuid: "worker-id", node_name: "GPU Worker", node_state: "online", state: "absent", updated_at: "" };
+    const series = { ...communitySeries, name: "Local runner", source: "custom", versions: [sibling, { ...version, nodes: [node] }] };
+    const sync = `/api/v1/images/${version.id}/nodes/${node.node_uuid}/sync`;
+    const { calls, user } = renderPage((call) => {
+      if (call.path.startsWith("/api/v1/nodes?") && new URLSearchParams(call.path.split("?")[1]).get("state") === "online") {
+        return json(200, { items: [{ uuid: node.node_uuid, name: node.node_name }], total: 1, page: 1, page_size: 50 });
+      }
+      if (call.path === "/api/v1/images/import") return json(200, { items: [series], total: 1 });
+      if (call.path === sync) return rejected
+        ? json(409, { error: "archive file missing" })
+        : json(202, { state: "syncing", transfer_id: "attempt" });
+      if (call.path === `/api/v1/images/${series.id}`) return json(200, {
+        ...series, versions: [sibling, { ...version, nodes: [{ ...node, state: rejected ? "failed" : "syncing", source: "local" }] }],
+      });
+      return undefined;
+    });
+    await screen.findByRole("button", { name: "vLLM · CUDA" });
+    const drawer = within(await openDrawer(user, "自定义镜像"));
+    drawer.getByRole("switch", { name: zhImages.import.local.enable }).focus();
+    await user.keyboard("[Space]");
+    await user.type(drawer.getByRole("textbox", { name: zhImages.import.imageRef }), ref);
+    await choose(drawer.getByRole("combobox", { name: zhImages.import.engine }), "vLLM");
+    await choose(drawer.getByRole("combobox", { name: zhImages.import.framework }), "CUDA");
+    await user.type(drawer.getByRole("textbox", { name: zhImages.import.frameworkVersion }), "13.0");
+    const file = drawer.getByRole("textbox", { name: zhImages.nodeTable.localDialog.path });
+    await user.type(file, "relative.tar");
+    await user.click(drawer.getByRole("button", { name: zhImages.import.addImage }));
+    await drawer.findByText(zhImages.import.local.nodeRequired);
+    await drawer.findByText(zhImages.import.local.pathRequired);
+    assert.ok(!calls.some((call) => call.method === "POST"));
+    await pickNodes(drawer.getByRole("combobox", { name: zhImages.nodeTable.column.node }), node.node_name);
+    await user.clear(file);
+    await user.type(file, `  ${path}  `);
+    await user.click(drawer.getByRole("button", { name: zhImages.import.addImage }));
+    await waitFor(() => assert.ok(calls.some((call) => call.path === sync)));
+    const posts = calls.filter((call) => call.method === "POST");
+    assert.deepEqual(posts.map((call) => call.path), ["/api/v1/images/import", sync]);
+    assert.deepEqual(JSON.parse(posts[1].body!), { source: "local", archive_path: path });
+    assert.ok(!posts[0].body!.includes(path));
+    assert.equal(JSON.parse(posts[0].body!).series[0].versions[0].image_ref, ref);
+    await screen.findByText(node.node_name);
+    if (rejected) await screen.findByText(/已登记 example\/local:v1.*archive file missing/);
+  });
+}
 
 test("community cards list every upstream tag, search narrows them, and the keyboard picks one", async () => {
   let releaseRepos: (() => void) | undefined;
