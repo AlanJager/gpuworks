@@ -84,5 +84,6 @@
 | [0078](0078-multi-node-peers-file.md) | 多机部署的每个 rank 带一份只读 peers 文件（`${GPUWORKS_PEERS_FILE}` 与同名 env，`proto.PeersFile`，字段沿用启动变量与网络词汇）：放置时由 server 生成、随期望状态保存，agent 写文件并只读挂载在归平台的 `/gpuworks` 下，按能力 `launch.peers_file` 下发 | 2026-11-19 | 已接受 |
 | [0079](0079-engine-metrics-on-a-separate-port.md) | 引擎指标可在 API 端口之外的第二个端口上：模板写 `api.metrics.port: separate`（不写端口号），平台与 API 端口一起保留并以 `${GPUWORKS_METRICS_PORT}` 给出；端口随期望状态（`metrics_port`）与实例 `ports` 存下，取部署快照，headless rank 为 0；agent 改抓该端口；声明与变量必须成对（`CATALOG_METRICS_PORT_*`） | 2026-11-20 | 已接受 |
 | [0080](0080-cluster-engine-behind-a-runtime-seam.md) | 集群引擎留在开源仓库、收进自己的包，经 `cli.Options` 以一个运行时值传给 server（零值是单机 SQLite，`cmd/gpuworks` 不链接 go-dqlite）；生产代码去掉 `dqlite` 构建标签与 15 个存根文件，接口取 `app` 的 `haRuntime` 与三个入口、`store` 的数据库后端、`cluster` 的两个构造；`nosqlite3` 改为统一的构建开关；分五步实施，未采纳整体移到企业仓库 | 2026-11-21 | 已接受，尚未实施 |
+| [0081](0081-role-gated-plugin-routes.md) | 插件路由按角色授权：路由在清单里声明 `access: role`（清单 schema 2），没有授予时只对平台管理员开放；角色与动作由两张特权授权表推送（`roles.bindings` 把用户 id 绑到角色，`roles.plugin_actions` 把角色绑到路由动作），角色名按键独占；在 `authorizeDynamic` 按快照执行，拒绝回 403 `PLUGIN_ACTION_FORBIDDEN`；核心路由不在内 | 2026-11-22 | 已接受，尚未实施 |
 
 说明：0012–0014 原分别与 0004、0004、0006 撞号，2026-09-03 整理时按创建顺序重新编号；历史提交信息与 MR 描述中的旧编号不再准确。原 0024（节点网络对象）同理，因与数据面 lane 的 0024 撞号，2026-09-30 改为 0030；此前引用「ADR 0024」指网络对象的文字已随之更新，`CLAUDE.md` 与 `todo.md` 中的「ADR 0024」指数据面 lane。
