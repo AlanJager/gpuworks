@@ -81,6 +81,9 @@ func newWaitingClosedMemberApp(runtime *memberRuntime, session joinedRaftSession
 		http: &http.Server{Handler: gate}}
 	a.joinedClosed, a.legacyClosed = true, true
 	a.joinedRaft, a.businessHTTP = session, gate
+	if source, ok := session.(clusterUpgradeProgressSource); ok {
+		gate.upgradeProgress = newClusterUpgradeProgress(source)
+	}
 	return a
 }
 

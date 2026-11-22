@@ -30,6 +30,9 @@ type businessHandlerGate struct {
 	// clusterUpgrade is set while this member's business is closed for a
 	// cluster upgrade; the closed answer then says so.
 	clusterUpgrade atomic.Bool
+	// upgradeProgress answers the public progress document of a cluster
+	// upgrade in either state; nil for a gate without a database session.
+	upgradeProgress *clusterUpgradeProgress
 }
 
 type businessHandler struct {
@@ -51,6 +54,10 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if gate.clusterUpgrade.Load() && wantsUpgradePage(r) {
+			serveClusterUpgradePage(w)
 			return
 		}
 		if gate.clusterUpgrade.Load() {
@@ -76,6 +83,10 @@ func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	// The public probe reports process liveness in either state.
 	if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
 		g.closed.ServeHTTP(w, r)
+		return
+	}
+	if g.upgradeProgress != nil && r.URL.Path == ClusterUpgradeProgressPath {
+		g.upgradeProgress.serve(w, r, g.businessOpen())
 		return
 	}
 	if g.materialRequired.Load() {
@@ -109,6 +120,19 @@ func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/readyz" {
 		g.logReadinessRejection(r, "entry", "no_business_generation", time.Time{}, 0, 0)
 	}
+}
+
+// businessOpen reports whether a request arriving now would reach the
+// business handler.
+func (g *businessHandlerGate) businessOpen() bool {
+	if g.materialRequired.Load() {
+		if ready, _, _ := g.materialEligibility.Load().eligibleForResult(0); !ready {
+			return false
+		}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.active != nil
 }
 
 func (g *businessHandlerGate) requireMaterialEligibility() {

@@ -1,0 +1,15 @@
+{
+  "title": "The control plane is being upgraded",
+  "body": "The console opens again by itself when the upgrade finishes. Saved configuration is not affected.",
+  "state": "Current step",
+  "schema": "Database upgrade",
+  "members": "Members ready",
+  "count": "{{done}} / {{total}}",
+  "states": {
+    "waiting": "Waiting for the upgrade window",
+    "window": "Service paused while the database is upgraded",
+    "migrating": "Upgrading the database",
+    "idle": "Restoring service",
+    "unobserved": "Progress cannot be read right now"
+  }
+}

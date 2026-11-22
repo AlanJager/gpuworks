@@ -1,6 +1,7 @@
 import { acceleratorMessageParams } from "./acceleratorMessages";
 import { formatBytes } from "./format";
 import { notifySessionExpired } from "./session";
+import { CLUSTER_UPGRADE_CODE, notifyClusterUpgrade } from "./clusterUpgrade";
 import { diagnosticReport, type DiagnosticReport } from "./diagnosticChecks";
 
 export interface APIErrorPayload {
@@ -182,6 +183,7 @@ export async function apiResponseError(response: Response, fallback: string): Pr
   }
   const detail = payload?.error || payload?.message || raw || fallback;
   if (response.status === 401 && payload?.code === "AUTHENTICATION_REQUIRED") notifySessionExpired();
+  if (response.status === 503 && payload?.code === CLUSTER_UPGRADE_CODE) notifyClusterUpgrade();
   if (payload?.code) return new APIError(payload.code, payload.params, detail, response.status, diagnosticReport(payload.diagnostics), response.headers.get("X-Request-ID") || undefined);
   return new Error(detail);
 }

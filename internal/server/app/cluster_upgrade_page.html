@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GPUWorks</title>
+<style>
+  body{margin:0;font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:#1f2937;background:#f5f7fa}
+  main{max-width:520px;margin:18vh auto 0;padding:32px;background:#fff;border:1px solid #e5e7eb;border-radius:12px}
+  h1{margin:0 0 8px;font-size:20px;font-weight:600}
+  p{margin:0 0 16px;color:#4b5563}
+  dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0}
+  dt{color:#6b7280}dd{margin:0;font-variant-numeric:tabular-nums}
+  .bar{height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden;margin:0 0 20px}
+  .bar i{display:block;height:100%;width:30%;background:#1677ff;border-radius:3px;animation:slide 1.6s ease-in-out infinite}
+  @keyframes slide{0%{margin-left:-30%}100%{margin-left:100%}}
+  @media (prefers-reduced-motion:reduce){.bar i{animation:none;width:100%;opacity:.5}}
+</style>
+</head>
+<body>
+<main role="status" aria-live="polite">
+  <h1 id="title"></h1>
+  <p id="body"></p>
+  <div class="bar" aria-hidden="true"><i></i></div>
+  <dl>
+    <dt id="l-state"></dt><dd id="state"></dd>
+    <dt id="l-schema"></dt><dd id="schema"></dd>
+    <dt id="l-members"></dt><dd id="members"></dd>
+  </dl>
+</main>
+<script>
+(function(){
+  var zh=/^zh/i.test(navigator.language||"");
+  var text=zh?{
+    title:"控制面正在升级",body:"升级完成后本页会自动打开控制台，无需操作。已提交的配置不受影响。",
+    state:"当前阶段",schema:"数据库升级",members:"成员就位",
+    states:{waiting:"等待进入升级窗口",window:"服务已暂停，数据库升级进行中",migrating:"正在升级数据库",idle:"正在恢复服务",unobserved:"暂时读不到进度"},
+    of:" / "
+  }:{
+    title:"The control plane is being upgraded",body:"This page opens the console by itself when the upgrade finishes. Saved configuration is not affected.",
+    state:"Current step",schema:"Database upgrade",members:"Members ready",
+    states:{waiting:"Waiting for the upgrade window",window:"Service paused while the database is upgraded",migrating:"Upgrading the database",idle:"Restoring service",unobserved:"Progress cannot be read right now"},
+    of:" / "
+  };
+  document.documentElement.lang=zh?"zh-CN":"en";
+  function set(id,value){document.getElementById(id).textContent=value;}
+  set("title",text.title);set("body",text.body);set("l-state",text.state);set("l-schema",text.schema);set("l-members",text.members);
+  set("state",text.states.unobserved);set("schema","—");set("members","—");
+  function poll(){
+    fetch("/api/v1/cluster/upgrade-progress",{cache:"no-store",credentials:"omit"}).then(function(r){
+      if(!r.ok) throw new Error("status");
+      return r.json();
+    }).then(function(d){
+      set("state",text.states[d.state]||d.state);
+      set("schema",d.schema.applied+text.of+d.schema.known);
+      set("members",d.members.on_target+text.of+d.members.total);
+      if(d.state==="idle"&&d.business_open){location.reload();return;}
+      setTimeout(poll,2000);
+    }).catch(function(){set("state",text.states.unobserved);setTimeout(poll,3000);});
+  }
+  poll();
+})();
+</script>
+</body>
+</html>
