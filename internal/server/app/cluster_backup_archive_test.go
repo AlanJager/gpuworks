@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -166,30 +167,16 @@ func TestClusterBackupArchiveFailureLeavesNothing(t *testing.T) {
 	})
 	t.Run("the disk fills while the archive is written", func(t *testing.T) {
 		// A file size limit makes the write fail exactly as a full disk does,
-		// with a short write and an error from the kernel.
-		_, manifest, entries := backupFixture(t)
-		big := filepath.Join(t.TempDir(), "big")
-		if err := os.WriteFile(big, bytes.Repeat([]byte("x"), 256<<10), 0600); err != nil {
-			t.Fatal(err)
-		}
-		entries[0].path = big
-		var old syscall.Rlimit
-		if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &old); err != nil {
-			t.Fatal(err)
-		}
-		limited := syscall.Rlimit{Cur: 64 << 10, Max: old.Max}
-		if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &limited); err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &old); err != nil {
-				t.Error(err)
-			}
-		}()
+		// with a short write and an error from the kernel. The limit belongs
+		// to the whole process, so it is set in a child: set here, it would
+		// also fail whatever another test, or the test log itself, writes
+		// meanwhile.
 		dir := t.TempDir()
-		_, err := writeClusterBackupArchive(filepath.Join(dir, "cluster-backup.tar"), manifest, entries)
-		if !errors.Is(err, syscall.EFBIG) {
-			t.Fatalf("write past the limit: %v", err)
+		child := exec.Command(os.Args[0], "-test.run=^TestClusterBackupDiskFullChild$", "-test.count=1", "-test.v")
+		child.Env = append(os.Environ(), clusterBackupDiskFullDirEnv+"="+dir)
+		out, err := child.CombinedOutput()
+		if err != nil || !bytes.Contains(out, []byte("--- PASS: TestClusterBackupDiskFullChild")) {
+			t.Fatalf("write past the limit: %v\n%s", err, out)
 		}
 		if names := leftovers(t, dir); len(names) != 0 {
 			t.Fatalf("an interrupted backup left %v", names)
@@ -330,5 +317,41 @@ func TestClusterBackupListAndPrune(t *testing.T) {
 	}
 	if _, err := ListClusterBackups(dir); !errors.Is(err, ErrClusterBackupInvalid) || !strings.Contains(err.Error(), "20261122T050000Z") {
 		t.Fatalf("damaged archive in the list: %v", err)
+	}
+}
+
+// clusterBackupDiskFullDirEnv names the directory the child process of the
+// disk-full case writes its archive into.
+const clusterBackupDiskFullDirEnv = "GPUWORKS_TEST_CLUSTER_BACKUP_DISK_FULL_DIR"
+
+// TestClusterBackupDiskFullChild is the body of the disk-full case, run in a
+// process of its own (see the case that starts it): it lowers this
+// process's file size limit and expects the archive write to fail with the
+// kernel's error and to leave nothing behind.
+func TestClusterBackupDiskFullChild(t *testing.T) {
+	dir := os.Getenv(clusterBackupDiskFullDirEnv)
+	if dir == "" {
+		t.Skip("run by the disk-full case in a child process")
+	}
+	_, manifest, entries := backupFixture(t)
+	big := filepath.Join(t.TempDir(), "big")
+	if err := os.WriteFile(big, bytes.Repeat([]byte("x"), 256<<10), 0600); err != nil {
+		t.Fatal(err)
+	}
+	entries[0].path = big
+	var old syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &old); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &syscall.Rlimit{Cur: 64 << 10, Max: old.Max}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := writeClusterBackupArchive(filepath.Join(dir, "cluster-backup.tar"), manifest, entries)
+	// Restore before reporting: the report itself is a write.
+	if restoreErr := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &old); restoreErr != nil {
+		t.Fatal(restoreErr)
+	}
+	if !errors.Is(err, syscall.EFBIG) {
+		t.Fatalf("write past the limit: %v", err)
 	}
 }
