@@ -152,4 +152,70 @@ specs:
     metrics:
       endpoint: /metrics
       inherit: vllm
+# Apple silicon through mlx-vlm, which loads this checkpoint as published (the
+# NVFP4 and MXFP8 experts included, no conversion) since Blaizzy/mlx-vlm #2778;
+# the package is built from the upstream commit that carries it, before a PyPI
+# release does. Verified on an M4 Max Mac Studio (128 GB) through a deployment:
+# text, image input, reasoning split into reasoning_content, structured tool
+# calls; about 35 tokens/s single-stream decode, prefill 713 tokens/s on a
+# 10.5K-token prompt; with ISL 2048 / OSL 512 at 4 concurrent requests 249
+# tokens/s in total and TTFT P50 4.0 s (llama.cpp on the same Mac: 170 and
+# 27 s). Resident about 21 GB, peaking at 30.6 GB on the 10.5K-token prompt.
+# The bundled DSpark drafter (--draft-model) slowed 1K-token answers from 35 to
+# 21 tokens/s on the Mac, so the spec leaves it off.
+- name: nvfp4-mlx-vlm-apple
+  display_name_zh_cn: Apple 芯片 · NVFP4 · MLX · ≥32G
+  display_name_en: Apple silicon · NVFP4 · MLX · 32G+
+  scenario: balanced
+  engine: callable
+  image: gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.8.1.dev20261121-r1
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: thinkingmachines/Inkling-2-Mini
+        revision: b85c3cfa615fc413cc9af3379f491b963f3b586a
+    - modelscope:
+        repo_id: thinkingmachines/Inkling-2-Mini
+        revision: 1040c7393f82a68d2b0ae53d241c71e440ac7e17
+  weight_bytes: 20191643333
+  gpus:
+    vendor: apple
+  # gpuworks-mlx-vlm serves only --model whatever a request names, and answers
+  # under the name the request asked for (the engine itself would echo the
+  # model's host path).
+  args:
+  - --model
+  - ${GPUWORKS_MODEL_PATH}
+  - --host
+  - ${GPUWORKS_API_HOST}
+  - --port
+  - ${GPUWORKS_API_PORT}
+  entrypoint:
+  - gpuworks-mlx-vlm
+  # Room for the 21 GB resident set and its 30.6 GB peak on a 10K-token prompt:
+  # a 48 GB Mac (36 GiB for Metal by default) or larger.
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.min_memory_gib < 32:
+              return reject("needs 32 GiB or more for Metal (a 48 GB Mac or larger): the weights take 20 GB and a long prompt peaks above 30 GB; a 36 GB Mac can take the llama.cpp GGUF template")
+          return accept(gpu_memory_mib_per_device=32768)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    # mlx-vlm's /metrics is a JSON document: running totals under summary,
+    # the request queue under server.
+    metrics:
+      format: json
+      map:
+        summary.in_flight: requests_running
+        server.request_queue_depth: requests_waiting
+        summary.prompt_tokens_total: prompt_tokens_total
+        summary.completion_tokens_total: generation_tokens_total
+        summary.requests_completed: requests_success_total
 input_modalities: [text, image]

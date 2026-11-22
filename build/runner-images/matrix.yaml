@@ -807,6 +807,25 @@ items:
       gpuworks-mlx-vlm 把实例钉在 --model 上（网关会改写请求的 model）。r2 修正该入口
       截断流式响应的问题。构建：build/host-envs/build.sh mlx-vlm 0.7.8 r2。
 
+  - id: metal15.0-mlx-vlm0.8.1.dev20261121
+    revision: r1
+    backend: metal
+    engine: callable
+    builder: host-env
+    platforms: [darwin/arm64]
+    args:
+      ENGINE_VERSION: "0.8.1.dev20261121"
+      ENGINE_COMMIT: "f1618d6d52be4ef25d3fe65270f7528a59c55df3"
+      FRAMEWORK_VERSION: "15.0"
+    note: >-
+      Apple silicon 的 mlx-vlm 档，与 0.7.8 档并存（PaddleOCR-VL 的 Mac 模板仍用 0.7.8，
+      它在那一档上实测过）。上游主线 2026-11-21 的提交 f1618d6：Inkling 2 Mini（inkling2_loop，
+      Blaizzy/mlx-vlm #2778）与其 tool parser（#2783）合入时还没有 PyPI 版本（最新 0.8.0
+      早于它们），版本号按 PEP 440 写作 0.8.1 的开发版。入口 gpuworks-mlx-vlm 把回复里
+      回显的模型路径换回请求的名字。Inkling 2 Mini 的 Mac MLX 模板用这档；0.8.1 发布后换正式版。
+      构建：GPUWORKS_HOSTENV_COMMIT=f1618d6d52be4ef25d3fe65270f7528a59c55df3
+      build/host-envs/build.sh mlx-vlm 0.8.1.dev20261121 r1。
+
   - id: metal15.0-mlx-audio0.5.9
     revision: r1
     backend: metal

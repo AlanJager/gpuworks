@@ -18,6 +18,9 @@ build so a changed recipe never reuses a published tag.
 
 Engines: `vllm-metal` (version = its GitHub release), `mlx-vlm` and `mlx-audio` (PyPI versions), and
 `llama.cpp` (its `bNNNNN` build; upstream's macOS release, native code with no Python).
+When a model needs mlx-vlm code merged after its latest PyPI release, `GPUWORKS_HOSTENV_COMMIT=<40-hex sha>`
+builds the wheel from that upstream commit instead; the version is then the PEP 440 development version the
+matrix names the package by (`0.8.1.dev20261121`), and `/gpuworks-env.json` records the commit.
 Packages the inference templates use are published as `gpuworks/gpuworks-runner:metal<minimum macOS>-<engine><version>-rN`
 in every registry the catalog lists (Docker Hub, quay.io, SWR, registry.zstack.ai), like the Linux runners.
 
@@ -28,7 +31,7 @@ in every registry the catalog lists (Docker Hub, quay.io, SWR, registry.zstack.a
 | `/python` | python-build-standalone CPython for `aarch64-apple-darwin`; the engine and its dependencies are installed into its own `site-packages`, so there is no venv. Absent from the llama.cpp package |
 | `/bin/<launcher>` | `exec python3 -m <module> "$@"`: `vllm`, `mlx_vlm.server` and `gpuworks-mlx-vlm`, `mlx_audio.server` and `gpuworks-mlx-audio` (the serve adapters in `adapters/`, which pin the instance to its `--model`). The llama.cpp package has upstream's `llama-server` and its dylibs here instead |
 | `/vllm-workspace/examples` | vllm-metal only: vLLM's bundled chat templates, in the working directory the Linux runners use |
-| `/gpuworks-env.json` | what was built: engine, version, Python, minimum macOS |
+| `/gpuworks-env.json` | what was built: engine, version, upstream commit (when built from one), Python, minimum macOS |
 
 The image config sets `PATH=/bin:/python/bin:/usr/bin:/bin` and `PYTHONNOUSERSITE=1` (`PATH=/bin:/usr/bin:/bin`
 for llama.cpp), and the labels `ai.gpuworks.host-env.engine` / `ai.gpuworks.host-env.version`.
