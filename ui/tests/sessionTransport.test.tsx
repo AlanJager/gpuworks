@@ -16,6 +16,7 @@ const { notifySessionExpired, notifySessionAuthenticated, subscribeSessionChange
 class EventSourceFixture extends dom.window.EventTarget {
   static sources: EventSourceFixture[] = [];
   static OPEN = 1;
+  static CLOSED = 2;
   readyState = 0;
   onerror: (() => void) | null = null;
   closeCount = 0;
@@ -204,7 +205,7 @@ test("terminal preflight propagates management expiry while retaining non-authen
 
 after(() => { globalThis.EventSource = originalEventSource; });
 
-test("a new login switches active worker subscriptions without an intervening expiry, and worker failure keeps topics live", async () => {
+test("a new login switches active worker subscriptions without an intervening expiry, and worker failure keeps topics live", async (t) => {
   const { openChangeStream } = await import("../src/events/changeStream.ts");
   class WorkerFixture {
     static all: WorkerFixture[] = [];
@@ -220,6 +221,13 @@ test("a new login switches active worker subscriptions without an intervening ex
   }
   const original = Object.getOwnPropertyDescriptor(globalThis, "SharedWorker");
   Object.defineProperty(globalThis, "SharedWorker", { configurable: true, value: WorkerFixture });
+  const intervals = new Map<number, () => void>();
+  let nextTimer = 0;
+  t.mock.method(window, "setInterval", (callback: () => void) => {
+    intervals.set(++nextTimer, callback);
+    return nextTimer;
+  });
+  t.mock.method(window, "clearInterval", (id: number) => intervals.delete(id));
   let errors = 0;
   const stream = openChangeStream(() => { errors++; });
   try {
@@ -228,10 +236,16 @@ test("a new login switches active worker subscriptions without an intervening ex
     stream.addEventListener("deployment", event => seen.push((event as MessageEvent<string>).data));
     const first = WorkerFixture.all[0];
     assert.deepEqual(first.sent.at(-1), { topics: ["node", "deployment"] });
+    assert.equal(intervals.size, 1);
+    const messagesBeforeRenewal = first.sent.length;
+    for (const renew of intervals.values()) renew();
+    assert.equal(first.sent.length, messagesBeforeRenewal + 1);
+    assert.deepEqual(first.sent.at(-1), { topics: ["node", "deployment"] });
     first.port.onmessage?.({ data: { topic: "node", data: "before" } });
     notifySessionAuthenticated();
     const current = WorkerFixture.all.at(-1)!;
     assert.ok(first.closed);
+    assert.equal(intervals.size, 1);
     assert.notEqual(current.options.name, first.options.name);
     assert.deepEqual(current.sent.at(-1), { topics: ["node", "deployment"] });
     first.port.onmessage?.({ data: { topic: "node", data: "stale" } });
@@ -239,8 +253,17 @@ test("a new login switches active worker subscriptions without an intervening ex
     current.port.onmessage?.({ data: { error: true } });
     assert.equal(errors, 1);
     current.onerror?.();
+    assert.equal(intervals.size, 0);
     EventSourceFixture.sources.at(-1)!.emit("node", { key: "native" });
     assert.deepEqual(seen, ["before", "after", '{"key":"native"}']);
+    stream.close();
+    notifySessionExpired();
+    const waiting = render(<Subscribers />);
+    const beforeLogin = WorkerFixture.all.length;
+    try {
+      act(() => notifySessionAuthenticated());
+      assert.equal(WorkerFixture.all.length, beforeLogin + 1, "one worker connection for the restored page");
+    } finally { waiting.unmount(); }
   } finally {
     stream.close();
     if (original) Object.defineProperty(globalThis, "SharedWorker", original);
@@ -248,7 +271,8 @@ test("a new login switches active worker subscriptions without an intervening ex
   }
 });
 
-test("two console tabs share one server connection and receive only their subscribed changes", async () => {
+test("two console tabs share one server connection and receive only their subscribed changes", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const worker = new dom.window.EventTarget();
   const original = Object.getOwnPropertyDescriptor(globalThis, "self");
   Object.defineProperty(globalThis, "self", { configurable: true, value: worker });
@@ -287,6 +311,42 @@ test("two console tabs share one server connection and receive only their subscr
     assert.equal(list.messages.length, 2);
     detail.close();
     assert.equal(source.closeCount, 1);
+
+    const live = connectTab();
+    live.subscribe("network");
+    const lost = EventSourceFixture.sources.at(-1)!;
+    const before = EventSourceFixture.sources.length;
+    lost.fail(); // The browser retries while CONNECTING.
+    t.mock.timers.tick(10_000);
+    assert.equal(EventSourceFixture.sources.length, before);
+    lost.readyState = EventSourceFixture.CLOSED;
+    lost.fail(); lost.fail();
+    t.mock.timers.tick(10_000);
+    assert.equal(EventSourceFixture.sources.length, before + 1, "replace a terminal stream once");
+    const recovered = EventSourceFixture.sources.at(-1)!;
+    recovered.emit("network", { id: 7 });
+    assert.deepEqual(live.messages.at(-1), { topic: "network", data: '{"id":7}' });
+    const abandoned = connectTab();
+    abandoned.subscribe("deployment");
+    for (let i = 0; i < 12; i++) {
+      t.mock.timers.tick(30_000);
+      live.subscribe("network");
+    }
+    recovered.emit("deployment", { id: 8 });
+    assert.deepEqual(abandoned.messages, [], "discard a tab that never sent close");
+    assert.equal(recovered.closeCount, 0);
+    t.mock.timers.tick(360_000);
+    assert.equal(recovered.closeCount, 1, "close the stream when the last page stops renewing");
+    live.subscribe("network"); // A suspended page can resume on its original port.
+    const resumed = EventSourceFixture.sources.at(-1)!;
+    resumed.emit("network", { id: 9 });
+    assert.deepEqual(live.messages.at(-1), { topic: "network", data: '{"id":9}' });
+    resumed.readyState = EventSourceFixture.CLOSED;
+    resumed.fail();
+    const atClose = EventSourceFixture.sources.length;
+    live.close();
+    t.mock.timers.tick(10_000);
+    assert.equal(EventSourceFixture.sources.length, atClose, "no reconnect after the last page left");
   } finally {
     if (original) Object.defineProperty(globalThis, "self", original);
     else Reflect.deleteProperty(globalThis, "self");

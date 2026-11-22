@@ -20,7 +20,15 @@ export function openChangeStream(onError: () => void): ChangeStream {
   let fallback: EventSource | null = null;
   let port: MessagePort | null = null;
   let closed = false;
+  let heartbeat: number | undefined;
+  function sendTopics() {
+    port?.postMessage({ topics: [...listeners.keys()] });
+  }
+  function onVisibilityChange() {
+    if (document.visibilityState === "visible") sendTopics();
+  }
   function disconnect() {
+    window.clearInterval(heartbeat);
     if (port) { port.postMessage({ close: true }); port.close(); port = null; }
     fallback?.close();
     fallback = null;
@@ -45,13 +53,15 @@ export function openChangeStream(onError: () => void): ChangeStream {
         const event = new MessageEvent<string>(data.topic, { data: data.data });
         events.dispatchEvent(event);
       };
-      if (listeners.size) port.postMessage({ topics: [...listeners.keys()] });
+      if (listeners.size) sendTopics();
+      heartbeat = window.setInterval(sendTopics, 30_000);
     } catch { useNative(); }
   }
   connect();
   const unsubscribe = subscribeSessionChanges(change => {
     if (change === "authenticated") { disconnect(); connect(); }
   });
+  document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("pagehide", disconnect);
   window.addEventListener("pageshow", connect);
   return {
@@ -59,7 +69,7 @@ export function openChangeStream(onError: () => void): ChangeStream {
       const existing = listeners.get(topic);
       if (!existing) listeners.set(topic, new Set([handler]));
       else existing.add(handler);
-      if (!existing) port?.postMessage({ topics: [...listeners.keys()] });
+      if (!existing) sendTopics();
       events.addEventListener(topic, handler);
       fallback?.addEventListener(topic, handler);
     },
@@ -68,7 +78,7 @@ export function openChangeStream(onError: () => void): ChangeStream {
       existing?.delete(handler);
       if (existing?.size === 0) {
         listeners.delete(topic);
-        port?.postMessage({ topics: [...listeners.keys()] });
+        sendTopics();
       }
       events.removeEventListener(topic, handler);
       fallback?.removeEventListener(topic, handler);
@@ -77,6 +87,7 @@ export function openChangeStream(onError: () => void): ChangeStream {
       closed = true;
       unsubscribe();
       disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", disconnect);
       window.removeEventListener("pageshow", connect);
       listeners.clear();
