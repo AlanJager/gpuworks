@@ -11,6 +11,7 @@ const { Text } = Typography;
 
 type Props = {
   showTitle?: boolean;
+  onInvalidate?: () => void;
   /** Every catalog version currently listed, searched for a matching tag. */
   versions: ImageCatalogEntry[];
   /**
@@ -30,7 +31,7 @@ type Props = {
  * catalog entry. The server reads the archive's real references out of its
  * tail, so the operator never has to guess them from the file name.
  */
-export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, showTitle = true }: Props) {
+export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, onInvalidate, showTitle = true }: Props) {
   const { t } = useTranslation("images");
   const [url, setUrl] = useState("");
   const access = useOutboundHostAccess([url]);
@@ -53,6 +54,7 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, 
     pending.current?.abort();
     const request = new AbortController();
     pending.current = request;
+    onInvalidate?.();
     setLoading(true);
     setError(null);
     setPreview(null);
@@ -88,7 +90,14 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, 
             value={url}
             aria-label={t("import.url.label")}
             placeholder="https://containerimages.example/runner.tar"
-            onChange={(event) => setUrl(event.target.value)}
+            onChange={(event) => {
+              pending.current?.abort();
+              setUrl(event.target.value);
+              setLoading(false);
+              setPreview(null);
+              setError(null);
+              onInvalidate?.();
+            }}
             onPressEnter={() => void resolve()}
           />
           <Button type="primary" loading={loading} onClick={() => void resolve()}>

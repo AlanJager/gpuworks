@@ -38,10 +38,17 @@ func TestLocalImageImportRetriesNodeFileWithoutFetchingURL(t *testing.T) {
 	previewPath := fmt.Sprintf("/api/v1/images/nodes/%s/preview-archive-path", c.node.UUID)
 	var preview struct {
 		RepoTags []string `json:"repo_tags"`
+
+		MetadataByTag map[string]struct {
+			Arch string `json:"arch"`
+		} `json:"metadata_by_tag"`
 	}
 	raw := post(previewPath, map[string]string{"archive_path": path}, http.StatusOK)
 	if err := json.Unmarshal(raw, &preview); err != nil || !reflect.DeepEqual(preview.RepoTags, []string{c.imageRef}) {
 		t.Fatalf("preview before registration = %s, %v", raw, err)
+	}
+	if preview.MetadataByTag[c.imageRef].Arch != "amd64" {
+		t.Fatalf("node preview omitted archive architecture: %s", raw)
 	}
 	version := c.importArchiveImage(t, "l2-local-runner")
 	syncPath := fmt.Sprintf("/api/v1/images/%d/nodes/%s/sync", version.ID, c.node.UUID)

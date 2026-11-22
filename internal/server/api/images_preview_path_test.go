@@ -26,6 +26,7 @@ func TestImagePreviewPathRoutesOnlyAuthorizedRequestsToTheSelectedNode(t *testin
 	calls := 0
 	online := true
 	var rpcErr error
+	wireResult := `{"repo_tags":["test/runner:v1","test/runner:latest"]}`
 	deps := Deps{Store: st, Bus: st.Bus, AuthSigner: signer, Online: func(string) bool { return online }}
 	deps.CallNode = func(_ context.Context, id, method string, in any) (json.RawMessage, error) {
 		calls++
@@ -33,7 +34,7 @@ func TestImagePreviewPathRoutesOnlyAuthorizedRequestsToTheSelectedNode(t *testin
 		if err != nil || id != node.UUID || method != "image.preview_path" || string(wire) != `{"archive_path":"`+path+`"}` {
 			t.Fatalf("unexpected preview RPC %s %s %s %v", id, method, wire, err)
 		}
-		return json.RawMessage(`{"repo_tags":["test/runner:v1","test/runner:latest"]}`), rpcErr
+		return json.RawMessage(wireResult), rpcErr
 	}
 	router := Router(deps)
 	request := func(method, target, token, input string, status int) string {
@@ -63,6 +64,10 @@ func TestImagePreviewPathRoutesOnlyAuthorizedRequestsToTheSelectedNode(t *testin
 	out := request("POST", route, admin, body, http.StatusOK)
 	if out != `{"repo_tags":["test/runner:v1","test/runner:latest"]}` {
 		t.Fatalf("preview response: %s", out)
+	}
+	wireResult = `{"repo_tags":["test/runner:v1"],"metadata_by_tag":{"test/runner:v1":{"engine":"vllm","engine_version":"0.30.0","framework":"cuda","framework_version":"13.0","arch":"amd64"}}}`
+	if out := request("POST", route, admin, body, http.StatusOK); out != wireResult {
+		t.Fatalf("preview metadata response: %s", out)
 	}
 	rpcErr = proto.ErrRPCUnknownMethod
 	if out := request("POST", route, admin, body, http.StatusConflict); !strings.Contains(out, "AGENT_UPGRADE_REQUIRED") {

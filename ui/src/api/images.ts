@@ -80,11 +80,23 @@ export interface ImageInspection {
   volumes?: string[];
 }
 
+export interface ArchiveImageMetadata {
+  engine?: string;
+  engine_version?: string;
+  framework?: string;
+  framework_version?: string;
+  arch?: string;
+}
+
+export interface ArchiveContents {
+  repo_tags: string[];
+  metadata_by_tag?: Record<string, ArchiveImageMetadata>;
+}
+
 /** What the server could learn about a remote image archive without downloading it. */
-export interface ImageArchivePreview {
+export interface ImageArchivePreview extends ArchiveContents {
   url: string;
   size_bytes: number;
-  repo_tags: string[];
   previewable: boolean;
 }
 

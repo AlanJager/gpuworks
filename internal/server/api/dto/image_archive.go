@@ -1,5 +1,7 @@
 package dto
 
+import "gpuworks.ai/gpuworks/pkg/imagearchive"
+
 // ImageArchivePreviewRequest asks the server what a `docker save` archive
 // published over plain HTTP contains, before anything downloads it.
 type ImageArchivePreviewRequest struct {
@@ -17,6 +19,8 @@ type ImageArchivePreview struct {
 	SizeBytes   int64    `json:"size_bytes"`
 	RepoTags    []string `json:"repo_tags"`
 	Previewable bool     `json:"previewable"`
+
+	MetadataByTag map[string]imagearchive.ImageMetadata `json:"metadata_by_tag,omitempty"`
 }
 
 // ImageNodeSyncRequest is the body of an image distribution request for one

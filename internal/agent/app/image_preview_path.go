@@ -35,12 +35,19 @@ func (n *NodeRuntime) rpcImagePreviewPath(ctx context.Context, raw json.RawMessa
 	if !info.Mode().IsRegular() {
 		return nil, runtime.ErrImageFileNotRegular
 	}
-	tags, err := imagearchive.ReadRepoTags(ctx, file)
+	contents, err := imagearchive.ReadContents(ctx, file)
 	if err != nil {
 		return nil, err
 	}
-	if tags == nil {
-		tags = []string{}
+	if contents.RepoTags == nil {
+		contents.RepoTags = []string{}
 	}
-	return proto.ImagePreviewPathResult{RepoTags: tags}, nil
+	result := proto.ImagePreviewPathResult{RepoTags: contents.RepoTags}
+	if len(contents.MetadataByTag) > 0 {
+		result.MetadataByTag = make(map[string]proto.ArchiveImageMetadata, len(contents.MetadataByTag))
+		for tag, metadata := range contents.MetadataByTag {
+			result.MetadataByTag[tag] = proto.ArchiveImageMetadata(metadata)
+		}
+	}
+	return result, nil
 }

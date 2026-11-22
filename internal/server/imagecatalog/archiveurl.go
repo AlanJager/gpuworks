@@ -151,7 +151,7 @@ func PeekArchiveURL(ctx context.Context, client *http.Client, rawURL string) (Ar
 	if client == nil {
 		client = ArchiveHTTPClient()
 	}
-	return imagearchive.PeekURL(ctx, client, rawURL)
+	return imagearchive.InspectURL(ctx, client, rawURL)
 }
 
 // ArchiveURLSize reports the archive's size with a single HEAD request.

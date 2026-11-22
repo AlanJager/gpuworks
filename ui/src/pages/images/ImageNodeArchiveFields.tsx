@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { api } from "../../api";
+import { api, type ArchiveContents, type ArchiveImageMetadata } from "../../api";
 import { apiErrorText } from "../../apiError";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -16,15 +16,16 @@ type Props = {
   archive: UseFormReturn<NodeArchive>;
   busy: boolean;
   setBusy: (busy: boolean) => void;
-  onPick: (ref: string) => void;
-  onInvalidate: (ref: string) => void;
+  onPick: (ref: string, metadata?: ArchiveImageMetadata) => void;
+  onInvalidate: () => void;
 };
 
 export default function ImageNodeArchiveFields({ archive, busy, setBusy, onPick, onInvalidate }: Props) {
   const { t } = useTranslation("images");
   const { t: common } = useTranslation("common");
   const pending = useRef<AbortController | null>(null);
-  const [tags, setTags] = useState<string[] | null>(null);
+  const [preview, setPreview] = useState<ArchiveContents | null>(null);
+  const tags = preview?.repo_tags;
   const [picked, setPicked] = useState("");
   const [error, setError] = useState("");
   useEffect(() => () => { pending.current?.abort(); setBusy(false); }, [setBusy]);
@@ -33,12 +34,12 @@ export default function ImageNodeArchiveFields({ archive, busy, setBusy, onPick,
     pending.current?.abort();
     setBusy(false);
     setError("");
-    setTags(null);
-    if (picked) onInvalidate(picked);
+    setPreview(null);
+    onInvalidate();
     setPicked("");
   };
-  const pick = (ref: string) => {
-    onPick(ref);
+  const pick = (ref: string, contents: ArchiveContents | null) => {
+    onPick(ref, contents?.metadata_by_tag?.[ref]);
     setPicked(ref);
   };
   const resolve = async () => {
@@ -51,8 +52,8 @@ export default function ImageNodeArchiveFields({ archive, busy, setBusy, onPick,
       const { node, path } = archive.getValues();
       const result = await api.previewImageArchivePath(node, path.trim(), request.signal);
       if (request.signal.aborted) return;
-      setTags(result.repo_tags);
-      if (result.repo_tags.length) pick(result.repo_tags[0]);
+      setPreview(result);
+      if (result.repo_tags.length) pick(result.repo_tags[0], result);
     } catch (e) {
       if (!request.signal.aborted) setError(apiErrorText(common, e));
     } finally {
@@ -83,7 +84,7 @@ export default function ImageNodeArchiveFields({ archive, busy, setBusy, onPick,
       {tags && tags.length > 1 && (
         <div role="group" aria-label={t("import.local.chooseTag")} className="flex flex-wrap gap-2">
           {tags.map(tag => <Button key={tag} type="button" size="sm" aria-pressed={tag === picked}
-            onClick={() => pick(tag)}>{tag}</Button>)}
+            onClick={() => pick(tag, preview)}>{tag}</Button>)}
         </div>
       )}
     </div>

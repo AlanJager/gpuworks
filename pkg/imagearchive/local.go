@@ -7,74 +7,81 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 )
 
-// ReadRepoTags reads top-level image metadata. With an uncompressed tar the
-// tar reader seeks over layers, even when manifest.json is the last member.
+// ReadRepoTags returns the archive's tagged references.
 func ReadRepoTags(ctx context.Context, file io.ReadSeeker) ([]string, error) {
+	contents, err := ReadContents(ctx, file)
+	return contents.RepoTags, err
+}
+
+// ReadContents reads top-level image metadata. With an uncompressed tar the
+// tar reader seeks over layers, even when manifest.json is the last member.
+func ReadContents(ctx context.Context, file io.ReadSeeker) (Contents, error) {
 	var magic [2]byte
 	if _, err := io.ReadFull(file, magic[:]); err != nil {
-		return nil, err
+		return Contents{}, err
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return nil, err
+		return Contents{}, err
 	}
 	var input io.Reader = file
 	if isGzip(magic[:]) {
 		gz, err := gzip.NewReader(file)
 		if err != nil {
-			return nil, err
+			return Contents{}, err
 		}
 		defer gz.Close()
 		input = archiveContextReader{ctx, gz}
 	}
+	return readTar(ctx, input, archiveMetadata{})
+}
+
+func readTar(ctx context.Context, input io.Reader, metadata archiveMetadata) (Contents, error) {
 	reader := tar.NewReader(input)
-	var ociTags []string
+	// Only retain a bounded amount of optional config/manifest data from a
+	// local archive. Continue looking for the canonical tag list afterwards.
+	var configBytes int64
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return Contents{}, err
 		}
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
-			return ociTags, nil
+			return metadata.contents(), nil
 		}
 		if err != nil {
-			return nil, err
+			return metadata.contents(), err
 		}
-		name := normalizeEntry(header.Name)
-		if header.Typeflag != tar.TypeReg || (name != "manifest.json" && name != "index.json") {
+		if header.Typeflag != tar.TypeReg {
 			continue
 		}
-		if header.Size > tailWindowLarge {
-			return nil, fmt.Errorf("archive %s exceeds the %d byte metadata limit", name, tailWindowLarge)
+		name := normalizeEntry(header.Name)
+		switch name {
+		case "manifest.json", "index.json":
+			if header.Size > tailWindowLarge {
+				return Contents{}, fmt.Errorf("archive %s exceeds the %d byte metadata limit", name, tailWindowLarge)
+			}
+		default:
+			if !metadata.configCandidate(name) {
+				continue
+			}
+			if header.Size > tailWindowLarge || configBytes+header.Size > 8*tailWindowLarge {
+				continue
+			}
+			configBytes += header.Size
 		}
 		data, err := io.ReadAll(reader)
 		if err != nil {
-			return nil, err
+			return metadata.contents(), err
 		}
-		if name == "manifest.json" {
-			if tags := taggedReferences(dockerRepoTags(data)); len(tags) > 0 {
-				return tags, nil
+		if metadata.record(name, data) && len(metadata.docker) > 0 {
+			result := metadata.contents()
+			if len(result.RepoTags) > 0 && len(result.MetadataByTag) == len(result.RepoTags) {
+				return result, nil
 			}
-		} else {
-			ociTags = taggedReferences(ociIndexTags(data))
 		}
 	}
-}
-
-// OCI ref-name annotations can be bare tags. Only a repository with an
-// explicit tag can populate the custom image reference.
-func taggedReferences(refs []string) []string {
-	out := refs[:0]
-	for _, ref := range refs {
-		name := ref[strings.LastIndexByte(ref, '/')+1:]
-		repo, tag, ok := strings.Cut(name, ":")
-		if ok && repo != "" && tag != "" && !strings.ContainsAny(ref, "@ \t\r\n") {
-			out = append(out, ref)
-		}
-	}
-	return out
 }
 
 type archiveContextReader struct {

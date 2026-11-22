@@ -127,6 +127,8 @@ func padded(size int64) int64 {
 // tailScan is the detailed result of a backwards scan.
 type tailScan struct {
 	tags []string
+
+	manifest []byte
 	// sawTar reports whether at least one valid tar header block was found in
 	// the window, i.e. the window really is the tail of an uncompressed tar.
 	sawTar bool
@@ -168,7 +170,8 @@ func scanTail(data []byte) tailScan {
 			// manifest.json straddles the window: a larger tail may help.
 			return res
 		}
-		res.tags = dockerRepoTags(data[start:end])
+		res.manifest = data[start:end]
+		res.tags = dockerRepoTags(res.manifest)
 		return res
 	}
 	return res
@@ -229,35 +232,36 @@ func ScanHead(data []byte) ([]string, bool) {
 
 // dockerRepoTags parses a `docker save` manifest.json.
 func dockerRepoTags(b []byte) []string {
-	var entries []struct {
-		RepoTags []string `json:"RepoTags"`
-	}
-	if err := json.Unmarshal(b, &entries); err != nil {
-		return nil
-	}
 	var tags []string
-	for _, e := range entries {
+	for _, e := range dockerManifest(b) {
 		tags = append(tags, e.RepoTags...)
 	}
 	return uniqueTags(tags)
 }
 
-// ociIndexTags parses an OCI index.json, collecting the ref-name annotation of
-// every manifest descriptor.
-func ociIndexTags(b []byte) []string {
-	var idx struct {
-		Manifests []struct {
-			Annotations map[string]string `json:"annotations"`
-		} `json:"manifests"`
-	}
-	if err := json.Unmarshal(b, &idx); err != nil {
+func dockerManifest(b []byte) []manifestEntry {
+	var entries []manifestEntry
+	if json.Unmarshal(b, &entries) != nil {
 		return nil
 	}
+	return entries
+}
+
+// ociIndexTags collects references declared by the OCI manifest descriptors.
+func ociIndexTags(b []byte) []string {
 	var tags []string
-	for _, m := range idx.Manifests {
+	for _, m := range ociDescriptors(b) {
 		tags = append(tags, m.Annotations[refNameAnnotation])
 	}
 	return uniqueTags(tags)
+}
+
+func ociDescriptors(b []byte) []descriptor {
+	var index struct{ Manifests []descriptor }
+	if json.Unmarshal(b, &index) != nil {
+		return nil
+	}
+	return index.Manifests
 }
 
 // uniqueTags keeps the first occurrence of each non-empty reference in archive order.

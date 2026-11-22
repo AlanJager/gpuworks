@@ -166,7 +166,7 @@ test("switching methods discards a late URL preview and allows a fresh one after
   const { user, calls } = renderPage(async (call) => {
     if (call.path === "/api/v1/images/preview-archive-url") {
       await pending.promise;
-      return json(200, { url, repo_tags: ["example/archive:v1"], size_bytes: 1024, previewable: true });
+      return json(200, { url, repo_tags: ["example/archive:v1"], metadata_by_tag: { "example/archive:v1": { engine_version: "1.2.3" } }, size_bytes: 1024, previewable: true });
     }
     return undefined;
   });
@@ -194,6 +194,10 @@ test("switching methods discards a late URL preview and allows a fresh one after
   assert.equal(drawer.queryByRole("textbox", { name: zhImages.nodeTable.localDialog.path }), null);
   await preview();
   await waitFor(() => assert.equal(imageRef.value, "example/archive:v1"));
+  const version = drawer.getByRole("textbox", { name: zhImages.import.engineVersion }) as HTMLInputElement;
+  assert.equal(version.value, "1.2.3");
+  fireEvent.change(drawer.getByRole("textbox", { name: zhImages.import.url.label }), { target: { value: url + ".new" } });
+  assert.equal(version.value, "");
 });
 
 test("a node file preview fills actual tags without registering or loading the image", async () => {
@@ -207,7 +211,10 @@ test("a node file preview fills actual tags without registering or loading the i
     const { archive_path } = JSON.parse(call.body!);
     if (archive_path === "/slow.tar") await pending.promise;
     if (archive_path === "/bad.tar") return json(409, { code: "IMAGE_ARCHIVE_PREVIEW_FAILED", params: { detail: "bad tar" } });
-    return json(200, { repo_tags: archive_path === "/empty.tar" ? [] : ["example/real:v2", "example/real:latest"] });
+    return json(200, { repo_tags: archive_path === "/empty.tar" ? [] : ["example/real:v2", "example/real:latest"], metadata_by_tag: {
+      "example/real:v2": { engine: "vllm", engine_version: "1.0", framework: "cuda", framework_version: "13.0", arch: "amd64" },
+      "example/real:latest": { engine_version: "2.0" },
+    } });
   });
   await screen.findByRole("button", { name: "vLLM · CUDA" });
   const drawer = within(await openDrawer(user, "自定义镜像"));
@@ -223,7 +230,13 @@ test("a node file preview fills actual tags without registering or loading the i
   await user.click(resolve);
   await waitFor(() => assert.equal(ref.value, "example/real:v2"));
   assert.deepEqual(JSON.parse(calls.find(call => call.path === endpoint)!.body!), { archive_path: "/filename-without-a-tag.tar" });
+  const version = drawer.getByRole("textbox", { name: zhImages.import.engineVersion }) as HTMLInputElement;
+  const frameworkVersion = drawer.getByRole("textbox", { name: zhImages.import.frameworkVersion }) as HTMLInputElement;
+  assert.equal(version.value, "1.0");
+  assert.equal(frameworkVersion.value, "13.0");
   await user.click(drawer.getByRole("button", { name: "example/real:latest" }));
+  assert.equal(version.value, "2.0");
+  assert.equal(frameworkVersion.value, "");
   assert.equal(ref.value, "example/real:latest");
   changePath("/slow.tar");
   assert.equal(ref.value, "");

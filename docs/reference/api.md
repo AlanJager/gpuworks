@@ -586,8 +586,8 @@ macOS 忽略 `no_systemd`。
 | DELETE | `/api/v1/image-series/{id}` | 删除社区/自定义镜像系列；任一版本仍被引用时 409 `IMAGE_IN_USE` | JWT(admin) |
 | POST | `/api/v1/images/import` | 两种请求体：带 `schema_version` 的系统目录 manifest（schema 2/3，其他值 400），或社区/自定义添加用的 `{"series":[...]}`（不能写 `source=official`） | JWT(admin) |
 | POST | `/api/v1/images/sync` | 从发布通道更新系统镜像目录；忽略请求体，返回版本计数与系列。错误见[目录导入结果](#目录导入结果) | JWT(admin) |
-| POST | `/api/v1/images/preview-archive-url` | 下载前解析 `docker save` 归档 URL：`{"url"}` → `url`、`size_bytes`、`repo_tags`、`previewable` | JWT(admin) |
-| POST | `/api/v1/images/nodes/{uuid}/preview-archive-path` | 在所选节点预读本地镜像 tar，输入 `{"archive_path":"/absolute/file.tar"}`，返回 `{"repo_tags":[...]}`，供添加自定义镜像时回填引用 | JWT(admin) |
+| POST | `/api/v1/images/preview-archive-url` | 下载前解析 `docker save` 归档 URL：`{"url"}` → `url`、`size_bytes`、`repo_tags`、`previewable`，可选的 `metadata_by_tag` 按引用返回引擎、框架、各自版本和宿主架构 | JWT(admin) |
+| POST | `/api/v1/images/nodes/{uuid}/preview-archive-path` | 在所选节点预读本地镜像 tar，输入 `{"archive_path":"/absolute/file.tar"}`，返回 `repo_tags` 和可选的 `metadata_by_tag`，用于回填所选引用及其配置 | JWT(admin) |
 | POST | `/api/v1/images/{id}/nodes/{uuid}/sync` | 触发节点镜像获取：空请求体按[拉取设置](../how-to/configure-pull-settings.md)拉取（与部署启动同一份候选，不能指定仓库）；`source: url` / `url-relay` 从 HTTP 归档导入；或从 `source_node` 节点间直连同步（可选 `rate_limit_kib_s`，不受同步组限制）。`source` 取 `""`、`default`、`url`、`url-relay` 以外的值回 400 `IMAGE_SOURCE_REMOVED`；来源规则让该节点无处可拉时回 409 `IMAGE_SOURCE_FORBIDDEN`；`"force":true` 时节点上已 `present` 也重新拉取 | JWT |
 | POST | `/api/v1/images/{id}/nodes/{uuid}/sync/probe` | 测试 `source_node` 到目标节点的直连握手，不传字节 | JWT |
 | POST | `/api/v1/images/{id}/nodes/{uuid}/sync/retry` | 重试节点镜像获取；节点间同步沿用记录的源节点与上次限速 | JWT |

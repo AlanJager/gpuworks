@@ -57,6 +57,7 @@ func (a *apiHandlers) previewImageArchiveURL(w http.ResponseWriter, r *http.Requ
 	}
 	writeJSON(w, http.StatusOK, dto.ImageArchivePreview{
 		URL: normalized, SizeBytes: peek.SizeBytes, RepoTags: tags, Previewable: peek.Previewable,
+		MetadataByTag: peek.MetadataByTag,
 	})
 }
 

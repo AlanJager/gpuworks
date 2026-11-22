@@ -155,6 +155,16 @@ type ImagePreviewPathParams struct {
 
 type ImagePreviewPathResult struct {
 	RepoTags []string `json:"repo_tags"`
+
+	MetadataByTag map[string]ArchiveImageMetadata `json:"metadata_by_tag,omitempty"`
+}
+
+type ArchiveImageMetadata struct {
+	Engine           string `json:"engine,omitempty"`
+	EngineVersion    string `json:"engine_version,omitempty"`
+	Framework        string `json:"framework,omitempty"`
+	FrameworkVersion string `json:"framework_version,omitempty"`
+	Arch             string `json:"arch,omitempty"`
 }
 
 type ImageLoadPathParams struct {

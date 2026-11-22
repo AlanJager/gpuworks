@@ -9,11 +9,12 @@ import {
   Select,
   Switch,
 } from "antd";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormInstance } from "antd/es/form";
 import {
   api,
   type ImageArchivePreview,
+  type ArchiveImageMetadata,
   type ImageCatalogEntry,
   type ImageEngineOption,
 } from "../../api";
@@ -66,12 +67,35 @@ export default function ImageImportDrawer({
   const [importMethod, setImportMethod] = useState("local");
   const loadNodeFile = open && sourceTab === "custom" && importMethod === "local";
   const archive = useForm<NodeArchive>({ defaultValues: { node: "", path: "" } });
+  const previous = useRef<{ fields: ArchiveImageMetadata & { image_ref: string }; url?: string } | null>(null);
+  const clearPreview = useCallback(() => {
+    if (!previous.current) return;
+    const { fields, url } = previous.current;
+    previous.current = null;
+    for (const [key, value] of Object.entries(fields)) {
+      if (form.getFieldValue(key) === value) form.setFieldValue(key, key === "arch" ? "multi" : undefined);
+    }
+    if (url) {
+      const sources: string[] = form.getFieldValue("registry_sources") ?? [];
+      form.setFieldValue("registry_sources", sources.filter(source => source !== url));
+    }
+  }, [form]);
+  const prefill = (ref: string, metadata?: ArchiveImageMetadata, url?: string) => {
+    clearPreview();
+    const fields = { ...metadata, image_ref: ref };
+    form.setFieldsValue(fields);
+    const sources: string[] = form.getFieldValue("registry_sources") ?? [];
+    const addedURL = url && !sources.includes(url) ? url : undefined;
+    if (addedURL) form.setFieldValue("registry_sources", [...sources, addedURL]);
+    previous.current = { fields, url: addedURL };
+  };
   useEffect(() => {
     if (!open) {
+      clearPreview();
       setImportMethod("local");
       archive.reset();
     }
-  }, [open, archive]);
+  }, [open, archive, clearPreview]);
   const sources = Form.useWatch("registry_sources", { form, preserve: true }) as string[] | undefined;
   const access = useOutboundHostAccess((sources ?? []).filter(isArchiveURL), open);
   const save = async () => {
@@ -126,7 +150,10 @@ export default function ImageImportDrawer({
               id="image-import-method"
               aria-label={t("import.method")}
               value={importMethod}
-              onChange={setImportMethod}
+              onChange={method => {
+                clearPreview();
+                setImportMethod(method);
+              }}
               disabled={importing || authorizing}
               options={[
                 { value: "local", label: t("import.local.enable") },
@@ -140,22 +167,19 @@ export default function ImageImportDrawer({
             archive={archive}
             busy={previewing}
             setBusy={setPreviewing}
-            onPick={ref => form.setFieldValue("image_ref", ref)}
-            onInvalidate={ref => {
-              if (form.getFieldValue("image_ref") === ref) form.setFieldValue("image_ref", "");
-            }}
+            onPick={prefill}
+            onInvalidate={clearPreview}
           />
         ) : open && (
           <ImageArchiveURLImport
             showTitle={sourceTab === "community"}
             versions={versions}
             onMatched={onArchiveURLMatched}
-            onPrefill={(preview) =>
-              form.setFieldsValue({
-                image_ref: preview.repo_tags[0],
-                registry_sources: [preview.url],
-              })
-            }
+            onInvalidate={clearPreview}
+            onPrefill={preview => {
+              const ref = preview.repo_tags[0];
+              prefill(ref, preview.metadata_by_tag?.[ref], preview.url);
+            }}
           />
         )}
         <Alert
