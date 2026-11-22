@@ -412,6 +412,13 @@ func (h *Hub) ServerDialRecoveryReady(uuid string) bool {
 // an empty lane keeps the single adaptive data profile (legacy/single-lane and
 // older server_dial agents), which never issues a SessionID or opens a data lane.
 func (h *Hub) acceptYamuxServer(netConn net.Conn, lane string, remoteOpt ...string) (*Session, func(), error) {
+	return h.acceptYamuxServerAs(netConn, lane, "", remoteOpt...)
+}
+
+// acceptYamuxServerAs is acceptYamuxServer for a connection another cluster
+// member relays: sessionID, when set, is the identity that member already
+// gave the agent, so the agent's data lane keeps matching this session.
+func (h *Hub) acceptYamuxServerAs(netConn net.Conn, lane, sessionID string, remoteOpt ...string) (*Session, func(), error) {
 	profile := proto.LaneData
 	if lane == proto.LaneCtrl {
 		profile = proto.LaneCtrl
@@ -439,7 +446,10 @@ func (h *Hub) acceptYamuxServer(netConn net.Conn, lane string, remoteOpt ...stri
 
 	sess := newSession(h, ysess, ctrl, remoteOpt...)
 	if lane == proto.LaneCtrl {
-		id, genErr := newSessionID()
+		id, genErr := sessionID, error(nil)
+		if id == "" {
+			id, genErr = newSessionID()
+		}
 		if genErr != nil {
 			_ = ysess.Close()
 			return nil, nil, genErr

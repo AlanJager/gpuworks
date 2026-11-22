@@ -118,6 +118,7 @@ func (r *memberRuntime) handler(next http.Handler) http.Handler {
 		// Admission comes first on either end: a member whose business is
 		// not ready neither serves nor forwards.
 		r.forward.local = memberServiceHandler(next, a)
+		r.forward.agents = newMemberAgentRelay(r.forward, a.hub)
 		return memberServiceHandler(r.forward.wrap(next), a)
 	}
 	return memberServiceHandler(next, r.business)

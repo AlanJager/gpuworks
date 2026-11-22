@@ -15,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/hub"
 )
 
 // A control-plane cluster serves business from one member: the one that
@@ -41,6 +43,10 @@ const (
 	// what a client sends before it serves or forwards the request.
 	memberForwardRemoteHeader = "X-Gpuworks-Member-Remote-Addr"
 	memberForwardTLSHeader    = "X-Gpuworks-Member-Client-Tls"
+	// A relayed agent session names the session identity its agent already
+	// holds (member_agent_relay.go).
+	memberForwardSessionHeader = "X-Gpuworks-Member-Agent-Session"
+	agentConnectPath           = "/api/v1/agent/connect"
 )
 
 type memberForward struct {
@@ -54,6 +60,9 @@ type memberForward struct {
 	local    http.Handler
 	sessions func() int
 	drop     func()
+	// agents keeps agent connections this member accepted attached to the
+	// member that leads; nil serves them like any other request.
+	agents *memberAgentRelay
 
 	mu        sync.Mutex
 	id        uint64
@@ -150,6 +159,9 @@ func (f *memberForward) CloseMemberSessions(ctx context.Context) error {
 	proxies := f.proxies
 	f.proxies = map[uint64]*httputil.ReverseProxy{}
 	f.mu.Unlock()
+	if f.agents != nil {
+		f.agents.relay.Close()
+	}
 	if server == nil {
 		return nil
 	}
@@ -213,8 +225,12 @@ func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 		// the leader only needs to know the request arrived over TLS.
 		served.TLS = &tls.ConnectionState{HandshakeComplete: true}
 	}
+	if id := r.Header.Get(memberForwardSessionHeader); id != "" {
+		served = served.WithContext(hub.WithRelayedSessionID(served.Context(), id))
+	}
 	served.Header.Del(memberForwardRemoteHeader)
 	served.Header.Del(memberForwardTLSHeader)
+	served.Header.Del(memberForwardSessionHeader)
 	local.ServeHTTP(w, served)
 }
 
@@ -225,8 +241,14 @@ func (f *memberForward) wrap(next http.Handler) http.Handler {
 		// Only a member may say who the client is.
 		r.Header.Del(memberForwardRemoteHeader)
 		r.Header.Del(memberForwardTLSHeader)
+		r.Header.Del(memberForwardSessionHeader)
 		if memberProbe(r) {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if f.agents != nil && f.routed() && agentControlConnect(r) {
+			// The agent's connection stays with this member whoever leads.
+			f.agents.serve(w, r)
 			return
 		}
 		proxy, forward := f.forwardTarget()
@@ -268,6 +290,13 @@ func (f *memberForward) forwardTarget() (proxy *httputil.ReverseProxy, forward b
 	return f.proxyTo(leader), true
 }
 
+// routed reports that this member takes part in the member route.
+func (f *memberForward) routed() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.id != 0 && f.server != nil && f.peerTLS != nil
+}
+
 func (f *memberForward) memberID() uint64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -283,8 +312,9 @@ func (f *memberForward) observedLeader() (uint64, bool) {
 }
 
 // observeLeader keeps the leader observation current. A member that sees
-// another member lead closes the agent sessions it still holds: their agents
-// dial again and reach the leader through whichever member they land on.
+// another member lead closes the agent sessions its hub still holds: the
+// relays behind them (member_agent_relay.go) attach to the leader instead,
+// and an agent the leader dialed itself is dialed again by the new leader.
 func (f *memberForward) observeLeader(ctx context.Context) {
 	ticker := time.NewTicker(memberLeaderObserveInterval)
 	defer ticker.Stop()
