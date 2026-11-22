@@ -63,12 +63,12 @@ export default function ImageImportDrawer({
   const [enginesError, setEnginesError] = useState<string | null>(null);
   const [authorizing, setAuthorizing] = useState(false);
   const [previewing, setPreviewing] = useState(false);
-  const [importMethod, setImportMethod] = useState("url");
-  const loadNodeFile = sourceTab === "custom" && importMethod === "local";
+  const [importMethod, setImportMethod] = useState("local");
+  const loadNodeFile = open && sourceTab === "custom" && importMethod === "local";
   const archive = useForm<NodeArchive>({ defaultValues: { node: "", path: "" } });
   useEffect(() => {
     if (!open) {
-      setImportMethod("url");
+      setImportMethod("local");
       archive.reset();
     }
   }, [open, archive]);
@@ -129,8 +129,8 @@ export default function ImageImportDrawer({
               onChange={setImportMethod}
               disabled={importing || authorizing}
               options={[
-                { value: "url", label: t("import.url.title") },
                 { value: "local", label: t("import.local.enable") },
+                { value: "url", label: t("import.url.title") },
               ]}
             />
           </div>

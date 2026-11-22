@@ -81,6 +81,7 @@ test("custom archive acquisition addresses are authorized only after the image f
   });
   await screen.findByRole("button", { name: "vLLM · CUDA" });
   const drawer = await openDrawer(user, "自定义镜像");
+  await chooseOption(within(drawer).getByRole("combobox", { name: zhImages.import.method }), zhImages.import.url.title);
   const sources = within(drawer).getByRole("combobox", { name: zhImages.import.registrySources });
   await user.type(sources, "registry.internal/team/runner:v1,");
   await user.type(sources, "https://archive.internal/runner.tar,");
@@ -119,6 +120,7 @@ test("the custom engine list is GET /images/engines as served, and the import se
       : undefined);
   await screen.findByRole("button", { name: "vLLM · CUDA" });
   const drawer = await openDrawer(user, "自定义镜像");
+  await chooseOption(within(drawer).getByRole("combobox", { name: zhImages.import.method }), zhImages.import.url.title);
   await waitFor(() => assert.ok(calls.some((call) => call.path === "/api/v1/images/engines")));
   assert.equal(calls.some((call) => call.path === "/api/v1/engines"), false, "the deploy engine profiles are not read");
 
@@ -171,20 +173,23 @@ test("switching methods discards a late URL preview and allows a fresh one after
   await screen.findByRole("button", { name: "vLLM · CUDA" });
   const drawer = within(await openDrawer(user, "自定义镜像"));
   const method = drawer.getByRole("combobox", { name: zhImages.import.method });
+  await chooseOption(method, zhImages.import.url.title);
   const preview = async () => {
     await user.type(drawer.getByRole("textbox", { name: zhImages.import.url.label }), url);
     await user.click(drawer.getByRole("button", { name: /解\s*析/ }));
   };
   await preview();
   await waitFor(() => assert.ok(calls.some((call) => call.path.endsWith("/preview-archive-url"))));
-  await chooseOption(method, zhImages.import.local.enable);
+  assert.deepEqual(await openSelect(method), [zhImages.import.local.enable, zhImages.import.url.title]);
+  await user.keyboard("{Home}{Enter}");
+  assert.equal(method.textContent, zhImages.import.local.enable);
   const imageRef = drawer.getByRole("textbox", { name: zhImages.import.imageRef }) as HTMLInputElement;
   await user.type(imageRef, "example/node:v1");
   await act(async () => { pending.resolve(); });
   assert.equal(imageRef.value, "example/node:v1");
   await waitFor(() => assert.equal(method.getAttribute("aria-expanded"), "false"));
   await openSelect(method);
-  await user.keyboard("{Home}{Enter}");
+  await user.keyboard("{End}{Enter}");
   assert.equal(method.textContent, zhImages.import.url.title);
   assert.equal(drawer.queryByRole("textbox", { name: zhImages.nodeTable.localDialog.path }), null);
   await preview();
@@ -206,7 +211,6 @@ test("a node file preview fills actual tags without registering or loading the i
   });
   await screen.findByRole("button", { name: "vLLM · CUDA" });
   const drawer = within(await openDrawer(user, "自定义镜像"));
-  await chooseOption(drawer.getByRole("combobox", { name: zhImages.import.method }), zhImages.import.local.enable);
   const resolve = drawer.getByRole("button", { name: zhImages.import.url.resolve });
   const ref = drawer.getByRole("textbox", { name: zhImages.import.imageRef }) as HTMLInputElement;
   const path = drawer.getByRole("textbox", { name: zhImages.nodeTable.localDialog.path });
@@ -263,10 +267,7 @@ for (const rejected of [false, true]) {
     await screen.findByRole("button", { name: "vLLM · CUDA" });
     const drawer = within(await openDrawer(user, "自定义镜像"));
     const method = drawer.getByRole("combobox", { name: zhImages.import.method });
-    assert.equal(method.textContent, zhImages.import.url.title);
-    assert.ok(drawer.getByRole("textbox", { name: zhImages.import.url.label }));
-    assert.equal(drawer.queryByRole("textbox", { name: zhImages.nodeTable.localDialog.path }), null);
-    await chooseOption(method, zhImages.import.local.enable);
+    assert.equal(method.textContent, zhImages.import.local.enable);
     assert.equal(drawer.queryByRole("textbox", { name: zhImages.import.url.label }), null);
     await user.type(drawer.getByRole("textbox", { name: zhImages.import.imageRef }), ref);
     await choose(drawer.getByRole("combobox", { name: zhImages.import.engine }), "vLLM");
