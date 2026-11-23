@@ -377,6 +377,31 @@ func WaitFleetOnline(client *Client, want int, timeout time.Duration) (int, erro
 	return online, fmt.Errorf("only %d of %d nodes came online within %s", online, want, timeout)
 }
 
+// WaitFleetCards polls until want nodes are online with at least gpus cards
+// each. Online means an authenticated session; the agent's GPU inventory is
+// committed after it, so a deployment created as soon as the fleet is online
+// can be refused for a node that owns no card yet.
+func WaitFleetCards(client *Client, want, gpus int, timeout time.Duration) (int, error) {
+	deadline := time.Now().Add(timeout)
+	ready := 0
+	for time.Now().Before(deadline) {
+		rows, err := ListNodes(client)
+		if err == nil {
+			ready = 0
+			for _, row := range rows {
+				if row.State == NodeStateOnline && row.GPUCount >= gpus {
+					ready++
+				}
+			}
+			if ready >= want {
+				return ready, nil
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return ready, fmt.Errorf("only %d of %d nodes were online with %d cards within %s", ready, want, gpus, timeout)
+}
+
 // ReconnectSettle is how long a node that dropped at the very end of the churn
 // is given to come back. An agent whose session lasted more than a minute
 // retries after about a second and backs off to at most thirty (the backoff in

@@ -72,7 +72,15 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	// The server's CPU per request, in microseconds; 0 checks nothing. A
 	// figure for one host only: set it where the case runs on fixed hardware.
 	maxServerCPUPerRequest := fleet.EnvInt("GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST", 0)
-	serverMaxProcs := fleet.EnvInt("GPUWORKS_GATEWAY_SERVER_GOMAXPROCS", 20)
+	// EnvInt reads 0 as unset; here 0 means the server's own default.
+	serverMaxProcs := 20
+	if raw, ok := os.LookupEnv("GPUWORKS_GATEWAY_SERVER_GOMAXPROCS"); ok {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 {
+			t.Fatalf("GPUWORKS_GATEWAY_SERVER_GOMAXPROCS=%q: want a count, or 0 for the server's default", raw)
+		}
+		serverMaxProcs = value
+	}
 	if gpus > 32 {
 		t.Fatalf("GPUWORKS_GATEWAY_GPUS_PER_NODE=%d: one deployment per node cannot exceed 32 replicas", gpus)
 	}
@@ -141,7 +149,7 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	}
 	t.Cleanup(func() { stopProcess(host) })
 	waitForFile(t, readyPath, time.Minute)
-	if _, err := fleet.WaitFleetOnline(client, nodeCount, 10*time.Minute); err != nil {
+	if _, err := fleet.WaitFleetCards(client, nodeCount, gpus, 10*time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("%d nodes x %d GPUs online in %s", nodeCount, gpus, time.Since(start).Round(time.Millisecond))

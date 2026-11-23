@@ -13,6 +13,7 @@ type NodeState struct {
 	UUID       string     `json:"uuid"`
 	State      string     `json:"state"`
 	LastSeenAt *time.Time `json:"last_seen_at"`
+	GPUCount   int        `json:"gpu_count"`
 }
 
 // NodeStateOffline is the state a node the control plane has given up on
