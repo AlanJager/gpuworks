@@ -9,6 +9,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/nodelabel"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -28,10 +29,21 @@ type imageCopyCall struct {
 	image          uint
 	target, source string
 	rateKiB        int64
+	relay          bool
 }
 
+// SyncImageFromRate is the copy that may be relayed.
 func (h *copyTestHub) SyncImageFromRate(_ context.Context, imageID uint, target, source string, rate int64) (*store.ImageNode, error) {
-	h.copies = append(h.copies, imageCopyCall{imageID, target, source, rate})
+	return h.copy(imageID, target, source, rate, true)
+}
+
+// SyncImageDirectFrom is the copy that connects the two nodes or fails.
+func (h *copyTestHub) SyncImageDirectFrom(_ context.Context, imageID uint, target, source string, rate int64) (*store.ImageNode, error) {
+	return h.copy(imageID, target, source, rate, false)
+}
+
+func (h *copyTestHub) copy(imageID uint, target, source string, rate int64, relay bool) (*store.ImageNode, error) {
+	h.copies = append(h.copies, imageCopyCall{imageID, target, source, rate, relay})
 	if h.copyErr != nil {
 		return nil, h.copyErr
 	}
@@ -62,6 +74,13 @@ func imageCopyFixture(t *testing.T, name string) (*Controller, *store.Store, *st
 	holder, err := st.RegisterNode(name+"-holder", store.HashToken(name+"h"), name+"-holder")
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Both agents reported their management address: the path a copy between
+	// two nodes takes is decided from it.
+	for i, node := range []*store.Node{target, holder} {
+		if err := st.DB().Model(node).Update("network_inventory", managementInventoryJSON(t, "10.9.0."+strconv.Itoa(i+1))).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := st.DB().Create(&store.GPU{
 		NodeID: target.ID, Index: 0, UUID: name + "-gpu-0",
@@ -132,7 +151,7 @@ func TestReplicaWaitsForACopyFromASyncGroupPeer(t *testing.T) {
 	if err != nil || !found || !strings.Contains(waitingEvent.Data, "image_delivery_waiting") {
 		t.Fatalf("image-copy wait has no actionable scheduling reason: event=%+v found=%v err=%v", waitingEvent, found, err)
 	}
-	if len(hub.copies) != 1 || hub.copies[0] != (imageCopyCall{image.ID, target.UUID, holder.UUID, 0}) {
+	if len(hub.copies) != 1 || hub.copies[0] != (imageCopyCall{image.ID, target.UUID, holder.UUID, 0, false}) {
 		t.Fatalf("copies = %+v, want one from the holder", hub.copies)
 	}
 	if waiting := c.imageWaits.waiting(image.ID); len(waiting) != 1 || waiting[0] != dep.ID {
@@ -304,5 +323,75 @@ func TestNoAllowedPullSourceRefusesTheReplica(t *testing.T) {
 	ev, found, err := st.LatestScheduleEvent(dep.ID)
 	if err != nil || !found || !strings.Contains(ev.Data, scheduler.ReasonImageSourceForbidden) {
 		t.Fatalf("refusal = %+v found=%v err=%v, want %s", ev, found, err, scheduler.ReasonImageSourceForbidden)
+	}
+}
+
+// anotherHolder registers one more online node that holds the fixture's image
+// and reported its management address.
+func anotherHolder(t *testing.T, st *store.Store, hub *copyTestHub, image *store.Image, name, ip string) *store.Node {
+	t.Helper()
+	node, err := st.RegisterNode(name, store.HashToken(name), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Model(node).Update("network_inventory", managementInventoryJSON(t, ip)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UpsertImageNode(&store.ImageNode{ImageID: image.ID, ImageVersionID: image.ID, NodeID: node.ID, State: store.ImageStatePresent}); err != nil {
+		t.Fatal(err)
+	}
+	hub.online[node.UUID] = true
+	return node
+}
+
+// A launch is not fed through the management server: its copy connects the
+// two nodes directly or not at all, so a pair that cannot reach each other
+// fails at once and the replica pulls. A node on a public cloud once waited
+// four hours on such a relay instead, with its registry never asked.
+func TestAutomaticCopyIsNeverRelayed(t *testing.T) {
+	c, _, dep, _, _, _, hub := imageCopyFixture(t, "controller_image_copy_direct_only")
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(hub.copies) != 1 || hub.copies[0].relay {
+		t.Fatalf("copies = %+v, want one copy that may not be relayed", hub.copies)
+	}
+}
+
+// A copy over the management network that failed says the target is not
+// reachable there: the next holder on that same network is not tried, the
+// replica pulls.
+func TestFailedManagementCopyDoesNotTryTheNextHolderThere(t *testing.T) {
+	c, st, dep, target, holder, image, hub := imageCopyFixture(t, "controller_image_copy_same_path")
+	anotherHolder(t, st, hub, image, "controller_image_copy_same_path-holder-2", "10.9.0.3")
+	if _, err := st.UpsertImageNode(&store.ImageNode{
+		ImageID: image.ID, ImageVersionID: image.ID, NodeID: target.ID, State: store.ImageStateFailed, Source: "peer", SourceNodeID: holder.ID,
+		Message: "send peer image archive: dial model sync target: 10.9.0.1:34787: i/o timeout",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(hub.copies) != 0 {
+		t.Fatalf("another holder on the failed network was tried: %+v", hub.copies)
+	}
+	if len(launched(t, st, dep)) != 1 {
+		t.Fatal("the replica did not start to pull the image itself")
+	}
+}
+
+// A holder the target shares no storage-sync path with is no source, in a
+// sync group or not: the copy could only fail, so none is started.
+func TestHolderWithoutAStorageSyncPathIsNoCopySource(t *testing.T) {
+	c, st, dep, target, _, _, hub := imageCopyFixture(t, "controller_image_copy_no_path")
+	if err := st.SetNodeManagementRolesOff(target.UUID, []string{netplan.RoleStorageSync}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(hub.copies) != 0 || len(launched(t, st, dep)) != 1 {
+		t.Fatalf("copies=%+v instances=%d, want no copy and the replica started", hub.copies, len(launched(t, st, dep)))
 	}
 }
