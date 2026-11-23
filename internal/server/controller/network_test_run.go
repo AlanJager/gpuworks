@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -20,10 +21,14 @@ type nodeCaller interface {
 	CallNode(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
 }
 
-// onNetworkTestEvent starts a requested network test. The test probes every
+// startNetworkTest starts a requested network test. The test probes every
 // ordered pair of nodes and can take minutes, so it runs outside the
-// deployment work queue.
-func (c *Controller) onNetworkTestEvent(key, reason string) {
+// deployment work queue, in a goroutine that belongs to Run: it gets Run's
+// context, so a stopping server cancels its probes, and Run waits on running,
+// so the test never writes to a store that is being closed. Run calls this
+// from its event loop only; a request that arrives once that loop has ended
+// stays running in the ledger and the next start closes it as interrupted.
+func (c *Controller) startNetworkTest(ctx context.Context, running *sync.WaitGroup, key, reason string) {
 	if reason != "started" {
 		return
 	}
@@ -31,10 +36,14 @@ func (c *Controller) onNetworkTestEvent(key, reason string) {
 	if err != nil {
 		return
 	}
-	go c.runNetworkTest(uint(id))
+	running.Add(1)
+	go func() {
+		defer running.Done()
+		c.runNetworkTest(ctx, uint(id))
+	}()
 }
 
-func (c *Controller) runNetworkTest(id uint) {
+func (c *Controller) runNetworkTest(parent context.Context, id uint) {
 	run, err := c.store.NetworkTestRunByID(id)
 	if err != nil || run.Status != store.NetworkTestRunning {
 		return
@@ -51,7 +60,7 @@ func (c *Controller) runNetworkTest(id uint) {
 		_ = c.store.AbandonNetworkTestRun(id)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	ctx, cancel := context.WithTimeout(parent, time.Hour)
 	defer cancel()
 	protocol := ""
 	if tested, getErr := c.store.GetNetwork(run.NetworkID); getErr == nil && tested.Type == netplan.TypeAcceleratorHCCS {
@@ -62,6 +71,14 @@ func (c *Controller) runNetworkTest(id uint) {
 		mode = run.Kind
 	}
 	pairs := nettest.Run(ctx, caller.CallNode, endpoints, nettest.Options{Mode: mode, Pattern: run.Pattern, Protocol: protocol, Bandwidth: run.Bandwidth, Seconds: run.Seconds})
+	if parent.Err() != nil {
+		// The server is stopping: the pairs cut short are not a result. The
+		// run reads as interrupted, as one that died with its process does.
+		if err := c.store.AbandonNetworkTestRun(id); err != nil {
+			c.log.Warn("interrupted network test was not closed", "run", id, "err", err)
+		}
+		return
+	}
 	passed := 0
 	for _, p := range pairs {
 		if nettest.PairStatus(mode, p, run.Bandwidth) == nettest.StatusPassed {

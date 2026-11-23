@@ -25,8 +25,6 @@ func (c *Controller) onEvent(ev bus.Event) {
 	switch ev.Topic {
 	case store.InferenceTemplateTopic:
 		c.observation.request(ev.Key)
-	case "network_test":
-		c.onNetworkTestEvent(ev.Key, ev.Reason)
 	case "deployment":
 		if id, err := strconv.ParseUint(ev.Key, 10, 64); err == nil {
 			if ev.Reason == store.DeploymentChangeRequirements || ev.Reason == store.DeploymentChangeDGPUQuota {

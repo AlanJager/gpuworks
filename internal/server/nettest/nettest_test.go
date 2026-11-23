@@ -292,3 +292,61 @@ func TestPairStatus(t *testing.T) {
 		}
 	}
 }
+
+// Agents that do not answer the stop of their listener cost a finished or
+// cancelled test one wait together, not one each: a stopping server waits for
+// the test to close what it opened.
+func TestListenersAreStoppedTogether(t *testing.T) {
+	const nodes = 4
+	listeners := map[string]listener{}
+	for i := 0; i < nodes; i++ {
+		listeners[fmt.Sprintf("n%d", i)] = listener{token: fmt.Sprintf("token-%d", i), target: "10.0.0.1:41000"}
+	}
+	// One that never opened and one whose start failed are not stopped.
+	listeners["never-opened"] = listener{}
+	listeners["failed"] = listener{token: "token-failed", err: "listen: address in use"}
+
+	var mu sync.Mutex
+	inFlight, most := 0, 0
+	stopped := map[string]string{}
+	all := make(chan struct{})
+	call := func(ctx context.Context, node, method string, params any) (json.RawMessage, error) {
+		if method != proto.RPCNetBenchStop {
+			return nil, fmt.Errorf("unexpected %s", method)
+		}
+		raw, _ := json.Marshal(params)
+		var p struct {
+			Token string `json:"token"`
+		}
+		_ = json.Unmarshal(raw, &p)
+		mu.Lock()
+		inFlight++
+		most = max(most, inFlight)
+		stopped[node] = p.Token
+		if inFlight == nodes {
+			close(all)
+		}
+		mu.Unlock()
+		// As an agent that has not answered yet: the call stays open until
+		// every other one is open too, or its own limit ends it.
+		select {
+		case <-all:
+		case <-ctx.Done():
+		}
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		return json.RawMessage(`{"stopped":true}`), ctx.Err()
+	}
+	started := time.Now()
+	stopListeners(call, listeners)
+	if most != nodes {
+		t.Fatalf("at most %d stops were open at once, want all %d", most, nodes)
+	}
+	if took := time.Since(started); took > 3*time.Second {
+		t.Fatalf("stopping took %v: the stops waited for one another", took)
+	}
+	if len(stopped) != nodes || stopped["n0"] != "token-0" || stopped["failed"] != "" || stopped["never-opened"] != "" {
+		t.Fatalf("stopped = %v, want the %d opened listeners by their own tokens", stopped, nodes)
+	}
+}
