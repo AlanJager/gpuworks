@@ -35,10 +35,13 @@ const (
 	// raft directory before it is killed. Closing ends with the directory's
 	// last writes reaching the disk, which on slow storage takes several
 	// seconds; a child killed over that is reported as a failed stop, and an
-	// install handing the member to its service then fails. The wait stays
-	// inside the 30 seconds the service unit and the installer give the whole
-	// server to stop.
-	helperStopWait    = 20 * time.Second
+	// install handing the member to its service then fails.
+	//
+	// The child is the last thing a stopping server closes. The service unit
+	// and the installer give the whole server 30 seconds and an upgrade of an
+	// install without a unit kills it after 20, so this wait leaves the steps
+	// before it (requests draining, the member withdrawing) 15 and 5 seconds.
+	helperStopWait    = 15 * time.Second
 	helperStderrLimit = 2048
 )
 

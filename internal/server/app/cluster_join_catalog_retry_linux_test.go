@@ -110,3 +110,37 @@ func TestJoinCatalogReceiptStopsWaitingWhenTheJoinDeadlineEnds(t *testing.T) {
 		t.Fatalf("index requests = %d, want 1", source.indexCalls)
 	}
 }
+
+// packageSource lists one package and answers its fetch as a member that
+// cannot pack it yet: unavailable times with a 503, then with stop.
+type packageSource struct {
+	unavailable  int
+	stop         error
+	packageCalls int
+}
+
+func (s *packageSource) FetchCatalogIndex(context.Context, []byte, []byte) (enrollment.CatalogPackageIndex, error) {
+	return enrollment.CatalogPackageIndex{Digests: []string{strings.Repeat("a", 64)}}, nil
+}
+
+func (s *packageSource) FetchCatalogPackage(context.Context, []byte, []byte, string) (inferencecatalog.Archive, error) {
+	s.packageCalls++
+	if s.packageCalls <= s.unavailable {
+		return inferencecatalog.Archive{}, &enrollment.StatusError{Code: http.StatusServiceUnavailable}
+	}
+	return inferencecatalog.Archive{}, s.stop
+}
+
+// The package fetch is asked again as the index is: the answer after the
+// 503s, here a refusal, is what the receipt returns.
+func TestJoinCatalogReceiptAsksAgainForAPackage(t *testing.T) {
+	quickCatalogRetries(t, 5*time.Second)
+	refused := &enrollment.StatusError{Code: http.StatusNotFound}
+	source := &packageSource{unavailable: 3, stop: refused}
+	if err := receiveJoinCatalog(t.Context(), t.TempDir(), source, nil, nil); !errors.Is(err, refused) {
+		t.Fatalf("err = %v, want the answer that followed the 503s", err)
+	}
+	if source.packageCalls != 4 {
+		t.Fatalf("package requests = %d, want 4", source.packageCalls)
+	}
+}
