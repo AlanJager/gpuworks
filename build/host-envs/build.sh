@@ -21,6 +21,11 @@
 #                           gpuworks-runner name, metal<macOS min>-<engine><version>-<revision>;
 #                           CLAUDE.md "内置镜像命名")
 #   UV_INDEX_URL            optional PyPI mirror for dependency resolution
+#   GPUWORKS_HOSTENV_COMMIT mlx-vlm only: build from this upstream commit (a
+#                           full 40-hex sha) instead of the PyPI release, for
+#                           model support merged after the latest release.
+#                           version is then the PEP 440 development version
+#                           the matrix names the package by (0.8.1.dev20261121)
 set -euo pipefail
 
 engine=${1:?engine}
@@ -28,6 +33,11 @@ version=${2:?version}
 revision=${3:?revision, as the runner matrix records it (r1, r2, ...)}
 [[ $revision =~ ^r[0-9]+$ ]] || { echo "revision must look like r1, got $revision" >&2; exit 2; }
 output=$(realpath -m "${4:?output tarball}")
+commit=${GPUWORKS_HOSTENV_COMMIT:-}
+if [[ -n $commit ]]; then
+  [[ $engine == mlx-vlm ]] || { echo "GPUWORKS_HOSTENV_COMMIT applies to mlx-vlm only" >&2; exit 2; }
+  [[ $commit =~ ^[0-9a-f]{40}$ ]] || { echo "GPUWORKS_HOSTENV_COMMIT must be a full 40-hex sha, got $commit" >&2; exit 2; }
+fi
 
 # Pinned inputs. Bump deliberately: the package is what a deployment runs.
 PBS_RELEASE=20261009
@@ -131,6 +141,16 @@ vllm-metal)
   ;;
 mlx-vlm)
   requirements=("mlx-vlm==$version")
+  if [[ -n $commit ]]; then
+    # mlx-vlm is pure Python: build its wheel from the commit's source and
+    # install that (--no-build below refuses a git requirement).
+    src=$cache/mlx-vlm-$commit.tar.gz
+    fetch "https://github.com/Blaizzy/mlx-vlm/archive/$commit.tar.gz" "$src"
+    mkdir -p "$work/mlx-vlm-src" "$work/wheels"
+    tar -xzf "$src" -C "$work/mlx-vlm-src" --strip-components 1
+    UV_CACHE_DIR=$cache/uv-cache "$uv" build --quiet --wheel -o "$work/wheels" "$work/mlx-vlm-src"
+    requirements=("$(ls "$work"/wheels/mlx_vlm-*.whl)")
+  fi
   launchers=("mlx_vlm.server=mlx_vlm.server" "gpuworks-mlx-vlm=gpuworks_adapters.mlx_vlm")
   ;;
 mlx-audio)
@@ -174,7 +194,7 @@ for launcher in "${launchers[@]}"; do
   chmod 0755 "$root/bin/$name"
 done
 cat >"$root/gpuworks-env.json" <<EOF
-{"engine": "$engine", "version": "$version", "python": "$PBS_PYTHON", "python_build": "$PBS_RELEASE", "macos_min": "$MACOS_TARGET"}
+{"engine": "$engine", "version": "$version", "commit": "$commit", "python": "$PBS_PYTHON", "python_build": "$PBS_RELEASE", "macos_min": "$MACOS_TARGET"}
 EOF
 
 package "PATH=/bin:/python/bin:/usr/bin:/bin" "PYTHONNOUSERSITE=1"

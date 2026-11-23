@@ -192,6 +192,15 @@ const (
 	// ErrorContainerUnhealthy: the runtime's health check failed a headless
 	// worker that is still running.
 	ErrorContainerUnhealthy = "CONTAINER_UNHEALTHY"
+	// ErrorContainerProcessesNotDrained: the container was signalled but
+	// processes of it are still on the node, so its accelerators, ports or
+	// process-table slots are not free yet (Resource is the container,
+	// Detail what remains).
+	ErrorContainerProcessesNotDrained = "CONTAINER_PROCESSES_NOT_DRAINED"
+	// ErrorContainerRemovalPending: the container could not be removed and
+	// the agent will try again (Resource, Detail). It is the code of a
+	// teardown failure that names no more specific outcome.
+	ErrorContainerRemovalPending = "CONTAINER_REMOVAL_PENDING"
 	// ErrorEngineHealthEndpointInvalid: the health endpoint the desired state
 	// names cannot be requested.
 	ErrorEngineHealthEndpointInvalid = "ENGINE_HEALTH_ENDPOINT_INVALID"

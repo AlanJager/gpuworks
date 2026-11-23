@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/procgroup"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/udocker/native"
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // ListContainers lists udocker container names, including stopped ones.
@@ -77,12 +78,26 @@ func (d *Driver) Logs(ctx context.Context, id string, follow bool, tail int) (io
 	return procgroup.Logs(ctx, d.LogPath(id), follow, tail)
 }
 
-// Stop kills the process group.
+// Stop kills the process group and reaps what it leaves behind.
 func (d *Driver) Stop(ctx context.Context, id string) error {
 	if pid, ok := d.procs().PID(id); ok {
 		slog.Info("stopping udocker workload process group", "container", id, "pid", pid)
 	}
-	return d.procs().Stop(ctx, id, 3*time.Second)
+	if err := d.procs().Stop(ctx, id, 3*time.Second); err != nil {
+		return teardownFailure(id, err)
+	}
+	return nil
+}
+
+// teardownFailure states a teardown outcome as a code (ADR 0067). Only a stop
+// that left processes running has one of its own; every other error is read as
+// a removal still pending (runtime.TeardownFailureCode).
+func teardownFailure(id string, err error) error {
+	code := proto.ErrorContainerRemovalPending
+	if errors.Is(err, procgroup.ErrNotDrained) {
+		code = proto.ErrorContainerProcessesNotDrained
+	}
+	return &runtime.TeardownError{Code: code, Container: id, Err: err}
 }
 
 // procs is the tracker of this driver's workloads. Tests point stateDir
@@ -148,6 +163,11 @@ func (d *Driver) Remove(ctx context.Context, id string) error {
 	if err := d.Stop(ctx, id); err != nil {
 		return err
 	}
+	// The rootfs is about to be deleted, so a launch the tracker has no
+	// record of must not survive this call either.
+	if err := d.stopLingeringLaunches(ctx, id); err != nil {
+		return teardownFailure(id, err)
+	}
 	// The failure of this command is expected and explained in the doc comment,
 	// so it is logged once for the operator without the generic runtime-command
 	// warning that would otherwise mark every single teardown as a problem.
@@ -155,7 +175,7 @@ func (d *Driver) Remove(ctx context.Context, id string) error {
 		// runveil owns the container directory outright; there is no CLI
 		// bookkeeping to undo.
 		if err := d.removeContainerDir(id); err != nil {
-			return fmt.Errorf("remove container rootfs %s: %w", id, err)
+			return teardownFailure(id, fmt.Errorf("remove container rootfs %s: %w", id, err))
 		}
 		d.forgetState(id)
 		return nil

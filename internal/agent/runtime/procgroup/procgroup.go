@@ -8,6 +8,7 @@ package procgroup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -55,6 +56,10 @@ func (t *Tracker) ExitPath(name string) string { return filepath.Join(t.Dir, nam
 // signal death, which is what lets the engine recognise an OOM kill from exit
 // code 137). release runs after the reap, for the caller's log file.
 func (t *Tracker) Track(name string, cmd *exec.Cmd, release func()) error {
+	// A workload's descendants are orphaned later, as it is stopped, so
+	// claiming them here is in time; doing it at the first launch keeps the
+	// attribute off a process that never runs one.
+	AdoptOrphans()
 	_ = os.Remove(t.ExitPath(name))
 	err := os.WriteFile(t.PIDPath(name), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644)
 	done := make(chan struct{})
@@ -161,49 +166,34 @@ func (t *Tracker) Running() ([]string, error) {
 	return names, nil
 }
 
-// killWaitLimit bounds how long Stop waits for a group to be gone after
+// killWaitLimit bounds how long a stop waits for a group to be gone after
 // SIGKILL. An engine may still need seconds to release accelerator resources
 // after the signal, before it exits.
 const killWaitLimit = 15 * time.Second
 
+// ErrNotDrained is the stop that left something behind: it still answered
+// signal 0 for the whole kill wait after SIGKILL, and what remains is more
+// than exited processes waiting to be reaped. The caller decides whether to
+// retry or to report it.
+var ErrNotDrained = errors.New("still alive after SIGKILL")
+
 // Stop sends SIGTERM to the group of name and SIGKILL once grace has passed.
 // It waits for the whole group: a worker can outlive the leader and retain
-// GPU memory or open ports. On Linux, already-exited processes can remain
-// visible until reaped, so after SIGKILL they do not keep removal pending.
+// GPU memory or open ports. The group's exited descendants are reaped as they
+// appear, so a stopped workload leaves no <defunct> process on the node;
+// exited members this process cannot wait for do not keep removal pending.
 func (t *Tracker) Stop(ctx context.Context, name string, grace time.Duration) error {
-	return t.stop(ctx, name, grace, groupStillWorking)
+	return t.stop(ctx, name, grace, liveGroup)
 }
 
-func (t *Tracker) stop(ctx context.Context, name string, grace time.Duration, stillWorking func(int) bool) error {
+func (t *Tracker) stop(ctx context.Context, name string, grace time.Duration, probe groupProbe) error {
 	pid, ok := t.PID(name)
 	if !ok {
 		return nil
 	}
-	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil && err != syscall.ESRCH {
-		return fmt.Errorf("stop process group of %s: %w", name, err)
-	}
-	deadline := time.NewTimer(grace)
-	defer deadline.Stop()
-	tick := time.NewTicker(50 * time.Millisecond)
-	defer tick.Stop()
-	killed := false
-	for groupAlive(pid) && (!killed || stillWorking(pid)) {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			if killed {
-				return fmt.Errorf("process group of %s is still alive %s after SIGKILL", name, t.killWait())
-			}
-			if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil && err != syscall.ESRCH {
-				return fmt.Errorf("kill process group of %s: %w", name, err)
-			}
-			killed = true
-			deadline.Reset(t.killWait())
-		case <-tick.C:
-		}
-	}
-	return nil
+	// The workload's name, not its pid, is what the error is about; a
+	// cancelled stop returns the caller's own context error unchanged.
+	return drainGroup(ctx, pid, "process group of "+name, grace, t.killWait(), probe)
 }
 
 func (t *Tracker) killWait() time.Duration {
