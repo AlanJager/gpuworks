@@ -1872,7 +1872,7 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 
 In network details, `attachments[].unresolved` is true when the node targeted by a direct attachment is absent from the network’s resolved nodes.
 
-The latest internal test reports failed node pairs in `latest_test.failed_count` and partially passing pairs in `partial_count`. On each pair, `rails[].passed` gives the outcome of each rail and `rail_passed_count` counts the passing rails (omitted when zero). For Host RDMA, `avg_rail_gbps` is the mean of successful rail measurements. Historical runs with only an aggregate have no mean. A passing pair whose measured bandwidth is below one tenth of the fastest valid reading in the run carries `slow: true`.
+The latest internal test reports failed node pairs in `latest_test.failed_count` and partially passing pairs in `partial_count`. On each pair, `rails[].passed` gives the outcome of each rail. The pair’s `rail_count` and `rail_passed_count` give the total and passing counts (omitted when zero). Card tests count only card pairs that were actually probed. For Host RDMA, `avg_rail_gbps` is the mean of successful rail measurements. Historical runs with only an aggregate have no mean. A passing pair whose measured bandwidth is below one tenth of the fastest valid reading in the run carries `slow: true`.
 
 ## Settings / Network Presets
 
@@ -2491,7 +2491,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 943c135b4dd17cb7a5163ff1ef96f31bfe4cc8daf3b1332d2dae254d1ff3a973 ### Provider Connection Test -->
 <!-- translation-source-sha256: 4a41e54a2a7691fc464f2c3bff6c62ff401cee25b2e8ede1d1511164ab86791e ### Cloud Instance Installation and Restart Confirmation -->
 <!-- translation-source-sha256: dff84f5e2e143ca7701c66cd40683e1ca6428f5d803325e20c3a4e6b759a19ae ## Web Terminal -->
-<!-- translation-source-sha256: 04a15bac9bd9493c6a8d4614baeec37163094578120493afe57a0a063b175afd ## Networks -->
+<!-- translation-source-sha256: 7858bdfd14670c6316f95db08d7f9198accf3451a7e655c9513ff13cf428941c ## Networks -->
 <!-- translation-source-sha256: 23278f685c8092e9eda5b2df89185ce71d0b220772a857e5a313072115e7fed2 ## Settings / Network Presets -->
 <!-- translation-source-sha256: 0d6096536d010c9fb3e99a7c9823f000f224ee23f15072817338937928739331 ### Update Check Results -->
 <!-- translation-source-sha256: 0e96eaf91ec4ceaa489e42f4bc76c90f1ae38793c3dc6f511af1e5a915929772 ### Server Upgrade Restrictions -->

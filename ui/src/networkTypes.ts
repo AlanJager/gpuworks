@@ -131,6 +131,7 @@ export interface NetworkTestPair {
   /** Mean of measured passing rails for RDMA bandwidth tests. */
   avg_rail_gbps?: number;
   slow?: boolean;
+  rail_count?: number;
   rail_passed_count?: number;
   /** Why the pair failed and which node it is about; runs stored before codes carry only error. */
   code?: string;

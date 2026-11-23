@@ -115,6 +115,7 @@ test("mesh filters combine the two node names with any selected test statuses, a
     status, reachable: status !== "failed", passed: status === "passed",
     gbps: status === "failed" ? 0 : 180, avg_rail_gbps: status === "partial" ? 90 : undefined, rtt_ms_p50: 0, rtt_ms_p99: 0,
     ...(status === "failed" ? { code: "offline", side: "target" } : {}),
+    rail_count: status === "partial" ? 3 : 0,
     rail_passed_count: status === "partial" ? 2 : 0,
     rails: status === "partial" ? [
       { rail: "rail-a", gbps: 80, passed: true }, { rail: "rail-b", gbps: 100, passed: true },

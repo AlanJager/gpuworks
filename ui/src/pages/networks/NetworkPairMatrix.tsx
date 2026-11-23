@@ -35,7 +35,7 @@ export function PairCell({ t, pair, run, onOpen, failure }: PairCellProps) {
     value = run.bandwidth ? (gbps == null ? "—" : t("test.gbps", { value: gbps.toFixed(1) })) : t("test.reachable");
   }
   const railText = partial && pair.rails?.length
-    ? t("test.railsPassed", { passed: pair.rail_passed_count ?? 0, total: pair.rails.length })
+    ? t("test.railsPassed", { passed: pair.rail_passed_count ?? 0, total: pair.rail_count ?? 0 })
     : "";
   const hint = failure || (pair.slow ? t("test.slow") : partial ? t("test.partialHint") : "");
   const label = [value, railText].filter(Boolean).join(" · ");

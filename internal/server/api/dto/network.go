@@ -320,6 +320,7 @@ type NetworkTestPair struct {
 	Error string `json:"error,omitempty"`
 	// AvgRailGbps is the mean of successful RDMA bandwidth readings.
 	AvgRailGbps     float64 `json:"avg_rail_gbps,omitempty"`
+	RailCount       int     `json:"rail_count,omitempty"`
 	RailPassedCount int     `json:"rail_passed_count,omitempty"`
 	// Slow marks a passed measurement below one tenth of the fastest in the run.
 	Slow bool `json:"slow,omitempty"`

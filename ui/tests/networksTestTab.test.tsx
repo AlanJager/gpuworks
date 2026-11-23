@@ -233,7 +233,7 @@ test("an RDMA bandwidth test names nodes without ib_write_bw and shows per-rail 
   const bodies: unknown[] = [];
   const rdmaRun = {
     ...detailFixture.latest_test, kind: "rdma_tool", pair_count: 1, passed_count: 1, rail_count: 2, rail_passed_count: 2,
-    pairs: [{ source_uuid: "uuid-h5", source_name: "h20-05", target_uuid: "uuid-h7", target_name: "h20-07", target: "10.20.1.17", status: "passed", passed: true, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 715.2, avg_rail_gbps: 357.6, rail_passed_count: 2,
+    pairs: [{ source_uuid: "uuid-h5", source_name: "h20-05", target_uuid: "uuid-h7", target_name: "h20-07", target: "10.20.1.17", status: "passed", passed: true, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 715.2, avg_rail_gbps: 357.6, rail_count: 2, rail_passed_count: 2,
       rails: [{ rail: "mlx5_0:1", target_rail: "mlx5_0:1", gbps: 358.7, passed: true }, { rail: "mlx5_1:1", target_rail: "mlx5_1:1", gbps: 356.5, passed: true }] }],
   };
   stub("network", async () => ({ ...detailFixture, latest_test: rdmaRun }));
@@ -261,7 +261,7 @@ test("a partially failing RDMA run names the failing HCA and removes it", async 
   const rail = (name: string, src: string, dst: string, gbps: number) => ({ rail: name, source_ip: src, target_rail: name, target_ip: dst, gbps, passed: true });
   const gidless = { passed: false, rail: "rocep189s0f0:1", target_rail: "rocep189s0f0:1", gbps: 0, code: "no_roce_v2_gid", side: "target", error: "RoCE port has no IPv4 RoCE v2 GID" };
   const pair = (s: string, sn: string, t2: string, tn: string) => ({
-    source_uuid: s, source_name: sn, target_uuid: t2, target_name: tn, target: "100.64.29.210", status: "partial", passed: false, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 48.9, avg_rail_gbps: 24.45, rail_passed_count: 2,
+    source_uuid: s, source_name: sn, target_uuid: t2, target_name: tn, target: "100.64.29.210", status: "partial", passed: false, reachable: true, rtt_ms_p50: 0, rtt_ms_p99: 0, gbps: 48.9, avg_rail_gbps: 24.45, rail_count: 3, rail_passed_count: 2,
     rails: [rail("rocep61s0f0:1", "100.64.29.209", "100.64.29.210", 24.4), rail("rocep61s0f2:1", "100.64.29.213", "100.64.29.214", 24.5), gidless],
   });
   const run = { ...detailFixture.latest_test, kind: "rdma_tool", pattern: "ring", pair_count: 2, passed_count: 0, partial_count: 2, rail_count: 6, rail_passed_count: 4,
@@ -391,7 +391,7 @@ function cardNetwork(count: number, cards: number, latest: unknown = null) {
 }
 
 function cardRail(rail: string, target: string, reachable: boolean) {
-  const base = { rail, source_ip: "172.20.0.3", target_rail: target, target_ip: "172.20.1.3", gbps: 0 };
+  const base = { rail, passed: reachable, source_ip: "172.20.0.3", target_rail: target, target_ip: "172.20.1.3", gbps: 0 };
   return reachable ? { ...base, reachable: true, rtt_ms: 0.254 } : { ...base, code: "unreachable", error: "no answer within the time limit" };
 }
 
@@ -408,6 +408,10 @@ function cardPair(source: number, target: number, shape: string, reach: (a: stri
 
 // A finished card run as the server returns it: the verdict and the counts of pinged card pairs are its own.
 function cardRun(kind: string, pattern: string, verdict: string, pairs: ReturnType<typeof cardPair>[]) {
+  pairs = pairs.map(pair => {
+    const probed = pair.rails.filter(r => r.rail && r.target_rail);
+    return { ...pair, rail_count: probed.length, rail_passed_count: probed.filter(r => r.passed).length };
+  });
   const pinged = pairs.flatMap((p) => p.rails).filter((r) => r.rail && (r as { target_rail?: string }).target_rail);
   return {
     id: 9, status: "done", kind, pattern, scope: "all", bandwidth: false, node_count: 3, pair_count: pairs.length, passed_count: 0, partial_count: pairs.length,

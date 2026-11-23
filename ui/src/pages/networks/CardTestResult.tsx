@@ -73,9 +73,8 @@ export default function CardTestResult({ run }: { run: NetworkTestRun }) {
 
 function shapeLabel(t: T, matrix: boolean, pair: NetworkTestPair) {
   const shape = shapeOf(pair);
-  const probed = (pair.rails ?? []).filter((r) => r.rail && r.target_rail);
   const label = t(`test.card.shape.${matrix ? "matrix" : "ping"}.${shape}`);
-  return shape === "mixed" ? `${label} ${probed.filter(cardOK).length}/${probed.length}` : label;
+  return shape === "mixed" ? `${label} ${pair.rail_passed_count ?? 0}/${pair.rail_count ?? 0}` : label;
 }
 
 function ShapeTag({ run, pair, onOpen }: { run: NetworkTestRun; pair: NetworkTestPair; onOpen: () => void }) {

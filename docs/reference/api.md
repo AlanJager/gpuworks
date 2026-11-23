@@ -1884,7 +1884,7 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 
 网络详情的 `attachments[].unresolved` 为 `true` 时，该直接加载项指定的节点未出现在本网络的有效节点中。
 
-最近一次内部测试 `latest_test.failed_count` 统计结果为失败的节点对，部分通过的节点对计入 `partial_count`。每个节点对的 `rails[].passed` 表示该链路是否通过，`rail_passed_count` 是通过的链路数（零时省略）。主机 RDMA 使用通过链路的实测平均带宽 `avg_rail_gbps`，仅保存汇总带宽的历史记录没有此字段。全通节点对的带宽读数低于本次测试最快有效读数的十分之一时，服务端返回 `slow: true`。
+最近一次内部测试 `latest_test.failed_count` 统计结果为失败的节点对，部分通过的节点对计入 `partial_count`。每个节点对的 `rails[].passed` 表示该链路是否通过，`rail_count` 和 `rail_passed_count` 分别是链路总数和通过数（零时省略）。加速卡测试只计入实际探测的卡对。主机 RDMA 使用通过链路的实测平均带宽 `avg_rail_gbps`，仅保存汇总带宽的历史记录没有此字段。全通节点对的带宽读数低于本次测试最快有效读数的十分之一时，服务端返回 `slow: true`。
 
 ## Settings / Network Presets
 

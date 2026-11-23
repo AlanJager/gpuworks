@@ -298,15 +298,17 @@ func networkTestDTO(run *store.NetworkTestRun, nodes map[uint]store.Node) *dto.N
 		case network.TestFailed:
 			out.FailedCount++
 		}
-		var passedRails, measuredRails int
+		var railCount, passedRails, measuredRails int
 		var railBandwidth float64
 		rails := []dto.NetworkTestRail{}
 		for _, r := range p.Rails {
-			out.RailCount++
-			passed := r.OK()
+			probed := !card || r.CardProbed()
+			if probed {
+				railCount++
+			}
+			passed := probed && r.OK()
 			if passed {
 				passedRails++
-				out.RailPassedCount++
 				if kind == networkTestRDMATool && r.Gbps > 0 {
 					measuredRails++
 					railBandwidth += r.Gbps
@@ -321,7 +323,7 @@ func networkTestDTO(run *store.NetworkTestRun, nodes map[uint]store.Node) *dto.N
 			SourceUUID: p.SourceUUID, SourceName: firstNonEmpty(names[p.SourceUUID], p.SourceUUID),
 			TargetUUID: p.TargetUUID, TargetName: firstNonEmpty(names[p.TargetUUID], p.TargetUUID),
 			Target: p.Target, Status: status, Passed: status == network.TestPassed, Reachable: p.Reachable,
-			RTTP50MS: p.RTTP50MS, RTTP99MS: p.RTTP99MS, Gbps: p.Gbps, Code: p.Code, Side: p.Side, Error: p.Error, Rails: rails, RailPassedCount: passedRails,
+			RTTP50MS: p.RTTP50MS, RTTP99MS: p.RTTP99MS, Gbps: p.Gbps, Code: p.Code, Side: p.Side, Error: p.Error, Rails: rails, RailCount: railCount, RailPassedCount: passedRails,
 		}
 		if measuredRails > 0 {
 			pair.AvgRailGbps = railBandwidth / float64(measuredRails)
@@ -330,13 +332,13 @@ func networkTestDTO(run *store.NetworkTestRun, nodes map[uint]store.Node) *dto.N
 			pair.CardShape = network.CardPairShape(p)
 		}
 		out.Pairs = append(out.Pairs, pair)
+		out.RailCount += railCount
+		out.RailPassedCount += passedRails
 	}
 	if !card && run.Bandwidth {
 		markSlowNetworkPairs(out)
 	}
 	if card && run.Status != store.NetworkTestRunning {
-		// A card run counts the card pairs that were pinged: a card without
-		// a namesake on the other node has a row but was never a probe.
 		summary := network.SummarizeCardTest(pairs)
 		out.CardShape, out.RailCount, out.RailPassedCount = summary.Shape, summary.Probed, summary.Reachable
 	}
