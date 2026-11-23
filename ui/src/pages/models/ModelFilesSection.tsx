@@ -2,6 +2,7 @@ import { PeerTransferDetails } from "../../components/peerTransfer/PeerTransferD
 import { productMessageText } from "../../apiError";
 import { Button, Flex, Popconfirm, Progress, Space, Tag, Tooltip, Typography, message } from "antd";
 import { CheckCircleFilled, CloudDownloadOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { api, type Model, type ModelNodePresence } from "../../api";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
@@ -76,6 +77,18 @@ function CancelDownload({ modelId, storageId, nodeUuid, onChanged }: { modelId: 
   </Popconfirm>;
 }
 
+// runFileAction runs one action on a file row: it says the outcome and, once
+// the server accepted it, has the files read again.
+async function runFileAction(t: TFunction, action: () => Promise<unknown>, success: string, onChanged: () => void) {
+  try {
+    await action();
+    message.success(success);
+    onChanged();
+  } catch (e) {
+    message.error(storageErrorText(t, e));
+  }
+}
+
 function RetryButton({ onClick }: { onClick: () => void }) {
   const { t } = useTranslation("models");
   return <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
@@ -90,29 +103,12 @@ function RetryButton({ onClick }: { onClick: () => void }) {
  */
 function SharedDownloadRetry({ modelId, row, onChanged }: { modelId: number; row: ModelStoragePresence; onChanged: () => void }) {
   const { t } = useTranslation("models");
-  const retry = async () => {
-    try {
-      await api.downloadModelToStorage(modelId, { storage_id: row.storage_id });
-      message.success(t("presenceMessage.downloadStarted"));
-      onChanged();
-    } catch (e) {
-      message.error(storageErrorText(t, e));
-    }
-  };
-  return <RetryButton onClick={() => void retry()} />;
+  return <RetryButton onClick={() => void runFileAction(t, () => api.downloadModelToStorage(modelId, { storage_id: row.storage_id }), t("presenceMessage.downloadStarted"), onChanged)} />;
 }
 
 function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row: ModelNodePresence; isAdmin: boolean; onChanged: () => void }) {
   const { t } = useTranslation("models");
-  const run = async (action: () => Promise<unknown>, success: string) => {
-    try {
-      await action();
-      message.success(success);
-      onChanged();
-    } catch (e) {
-      message.error(storageErrorText(t, e));
-    }
-  };
+  const run = (action: () => Promise<unknown>, success: string) => runFileAction(t, action, success, onChanged);
   // The legacy sync endpoint resolves the target by node; only offer a new
   // disk retry when that resolution cannot select a different local copy.
   const soleLocalCopy = (model.nodes ?? []).filter((copy) => copy.node_uuid === row.node_uuid && !copy.cache && (!copy.storage_type || copy.storage_type === "local")).length === 1;
