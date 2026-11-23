@@ -114,11 +114,17 @@ func decodeImageNodeSyncRequest(r *http.Request) dto.ImageNodeSyncRequest {
 func (a *apiHandlers) fetchImageForNode(w http.ResponseWriter, r *http.Request, req dto.ImageNodeSyncRequest) {
 	imageID := parseUint(chi.URLParam(r, "id"))
 	fetch := imagecatalog.FetchRequest{Source: req.Source, Relay: req.Relay, Force: req.Force, ArchivePath: req.ArchivePath}
+	if fetch.IsLocalFetch() && !a.requireManagementAdmin(w, r) {
+		return
+	}
 	if fetch.IsLocalFetch() || req.ArchivePath != "" {
 		if !fetch.IsLocalFetch() || !filepath.IsAbs(req.ArchivePath) || req.SourceNode != "" || req.ArchiveURL != "" || req.Relay {
 			writeProductError(w, http.StatusBadRequest, messages.ErrorImageArchivePathInvalid, "local image import requires source=local and an absolute archive_path on the target node, without another source or relay", nil)
 			return
 		}
+	}
+	if fetch.IsLocalFetch() {
+		a.auditNodeArchive(r, "load", chi.URLParam(r, "uuid"), req.ArchivePath)
 	}
 	if req.SourceNode != "" {
 		if a.d.PeerSync.SyncImageWithRate == nil {

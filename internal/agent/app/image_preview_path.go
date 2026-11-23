@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"path/filepath"
 	"strings"
 
@@ -25,19 +26,12 @@ func (n *NodeRuntime) rpcImagePreviewPath(ctx context.Context, raw json.RawMessa
 	defer cancel()
 	file, err := runtime.OpenImageFile(ctx, n.runtimeDriver(), path)
 	if err != nil {
-		return nil, err
+		return nil, archivePreviewError(ctx, err, proto.ArchivePreviewUnreadable)
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, runtime.ErrImageFileNotRegular
-	}
 	contents, err := imagearchive.ReadContents(ctx, file)
 	if err != nil {
-		return nil, err
+		return nil, archivePreviewError(ctx, err, proto.ArchivePreviewInvalid)
 	}
 	if contents.RepoTags == nil {
 		contents.RepoTags = []string{}
@@ -50,4 +44,18 @@ func (n *NodeRuntime) rpcImagePreviewPath(ctx context.Context, raw json.RawMessa
 		}
 	}
 	return result, nil
+}
+
+func archivePreviewError(ctx context.Context, err error, reason string) error {
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(err, context.DeadlineExceeded):
+		reason = proto.ArchivePreviewTimeout
+	case errors.Is(err, fs.ErrNotExist):
+		reason = proto.ArchivePreviewNotFound
+	case errors.Is(err, fs.ErrPermission):
+		reason = proto.ArchivePreviewPermission
+	case errors.Is(err, runtime.ErrImageFileNotRegular):
+		reason = proto.ArchivePreviewNotRegular
+	}
+	return &proto.RPCError{Code: proto.ErrorArchivePreview, Message: err.Error(), Params: map[string]any{"reason": reason}}
 }

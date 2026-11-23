@@ -271,9 +271,9 @@ export default function ImagesPage() {
     await refreshDetail(version.series_id || detail?.id || 0);
     versions.refetch();
   };
-  const importFromPath = async (version: ImageCatalogEntry, nodeUUID: string, path: string) => {
+  const importFromPath = async (version: ImageCatalogEntry, nodeUUID: string, path: string, replace: boolean) => {
     try {
-      await api.syncImage(version.id, nodeUUID, "local", { archive_path: path });
+      await api.syncImage(version.id, nodeUUID, "local", { archive_path: path, force: replace });
       toast.success(t("action.submitted", { source: t("nodeTable.sourceLocal") }));
     } finally {
       await refreshDetail(version.series_id || detail?.id || 0);
@@ -356,7 +356,7 @@ export default function ImagesPage() {
         setSelectedVersionID(version.id);
         setMode(version, archive.node, "local");
         try {
-          await importFromPath(version, archive.node, archive.path.trim());
+          await importFromPath(version, archive.node, archive.path.trim(), false);
         } catch (e) {
           toast.error(t("import.local.startFailed", { ref: imageRef, reason: apiErrorText(tCommon, e) || t("action.pullFailed") }));
         }

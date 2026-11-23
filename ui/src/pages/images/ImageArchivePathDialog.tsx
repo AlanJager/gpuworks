@@ -6,27 +6,31 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { HelpTip } from "../../ui-kit/HelpTip";
 import { Input } from "../../components/ui/input";
 
+import { isAbsoluteArchivePath } from "./ImagePageHelpers";
+import { apiErrorText } from "../../apiError";
+
 type Props = {
+  replace: boolean;
   imageRef: string;
   nodeLabel: string;
   onCancel: () => void;
   onStart: (path: string) => Promise<void>;
 };
 
-export default function ImageArchivePathDialog({ imageRef, nodeLabel, onCancel, onStart }: Props) {
+export default function ImageArchivePathDialog({ imageRef, replace, nodeLabel, onCancel, onStart }: Props) {
   const { t } = useTranslation("images");
   const { t: common } = useTranslation("common");
   const [path, setPath] = useState("");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = async () => {
-    if (!path.trim() || starting) return;
+    if (!isAbsoluteArchivePath(path) || starting) return;
     setStarting(true);
     setError(null);
     try {
       await onStart(path.trim());
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("action.pullFailed"));
+      setError(apiErrorText(common, e) || t("action.pullFailed"));
     } finally {
       setStarting(false);
     }
@@ -36,7 +40,7 @@ export default function ImageArchivePathDialog({ imageRef, nodeLabel, onCancel, 
       <DialogContent size="lg" closeButtonLabel={common("actions.close")} closeButtonDisabled={starting}>
         <DialogHeader>
           <DialogTitle>{t("nodeTable.localDialog.title", { node: nodeLabel })}</DialogTitle>
-          <DialogDescription>{t("nodeTable.localDialog.description", { ref: imageRef })}</DialogDescription>
+          <DialogDescription>{t(replace ? "nodeTable.localDialog.replaceDescription" : "nodeTable.localDialog.description", { ref: imageRef })}</DialogDescription>
         </DialogHeader>
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <div className="space-y-2">
@@ -51,12 +55,13 @@ export default function ImageArchivePathDialog({ imageRef, nodeLabel, onCancel, 
               placeholder="/data/images/runner.tar"
               onChange={(event) => { setPath(event.target.value); setError(null); }}
             />
+            {path.trim() && !isAbsoluteArchivePath(path) && <p role="alert">{t("import.local.pathRequired")}</p>}
             {error ? <Alert status="danger"><AlertDescription>{error}</AlertDescription></Alert> : null}
           </div>
           <DialogFooter>
             <Button type="button" disabled={starting} onClick={onCancel}>{t("common.cancel")}</Button>
-            <Button type="submit" variant="primary" disabled={starting || !path.trim()} aria-busy={starting}>
-              {t("nodeTable.localDialog.start")}
+            <Button type="submit" variant="primary" disabled={starting || !isAbsoluteArchivePath(path)} aria-busy={starting}>
+              {t(replace ? "nodeTable.localDialog.replace" : "nodeTable.localDialog.start")}
             </Button>
           </DialogFooter>
         </form>

@@ -71,7 +71,7 @@ type Props = {
     url: string,
     relay: boolean,
   ) => Promise<void>;
-  importFromPath: (version: ImageCatalogEntry, nodeUUID: string, path: string) => Promise<void>;
+  importFromPath: (version: ImageCatalogEntry, nodeUUID: string, path: string, replace: boolean) => Promise<void>;
   inspectVersion: (version: ImageCatalogEntry, nodeUUID: string) => void;
   cancelTransfer: (version: ImageCatalogEntry, nodeUUID: string) => void;
   removeFromNode: (version: ImageCatalogEntry, nodeUUID: string) => void;

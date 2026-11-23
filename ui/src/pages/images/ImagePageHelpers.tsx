@@ -16,6 +16,10 @@ export function transferRunning(versions: ImageCatalogEntry[] | null | undefined
   );
 }
 
+export function isAbsoluteArchivePath(path: string): boolean {
+  return path.trim().startsWith("/");
+}
+
 export function bytes(value?: number) {
   if (value === undefined || value === null) return "—";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];

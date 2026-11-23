@@ -32,6 +32,8 @@ type descriptor struct {
 }
 
 type archiveMetadata struct {
+	budgetLimited bool
+
 	docker        []manifestEntry
 	dockerConfigs map[string]bool
 	oci           []descriptor

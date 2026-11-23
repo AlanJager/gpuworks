@@ -55,6 +55,8 @@ Copy the files directly to one compute node if possible:
 
 For Kubernetes nodes, enter the file path on the worker host, such as `/data/runner.tar`. Both the file check and the load run in the host environment; the file does not need to be placed inside the Agent Pod or the shared state directory. The image is loaded into containerd's `k8s.io` namespace used by kubelet.
 
+An administrator can expand a present node in Node Distribution, select **Replace from node file**, enter the new archive’s absolute path, and confirm. Choose one of the actual tags for a multi-image archive. A transfer already active for that image on the node continues.
+
 For a new image, open **Custom → Add Custom Image** with **Load from a compute node file** selected by default. Select the online node that holds the archive and enter its absolute path. Click **Resolve** next to the path to read the tagged image reference from the archive on that node. The form also fills in the inference engine, engine version, framework, framework version, and host architecture when the image configuration declares them. Fill in any missing fields. Select a reference if there are several, or enter one manually if there are no tags. For a Docker archive containing a single untagged image, the node tags the image ID returned by this load with the reference you entered. This replaces any old image under that tag. The node verifies the ID before reporting **Present**. For an uncompressed tar, the node skips the image layers to reach the metadata. A gzip tar is read sequentially. If the one-minute preview times out, enter the reference manually. Confirm the reference, engine, framework, and framework version, then submit. The console registers the image, starts loading it on the selected node, and opens the version’s **Node distribution** tab to show progress. The path applies only to this import. If loading fails, you can retry from the registered version’s node distribution.
 
 While a transfer for an image version and target node is active, concurrent node-file imports, URL imports, automatic pulls, or peer copies do not start duplicate transfers. You can submit a new request after cancellation; a late failure from an older attempt cannot overwrite the new one.
@@ -207,7 +209,7 @@ Configuring offline sources does not disconnect the operating system from the ne
 <!-- translation-source-sha256: 479cebd2adf6224f7b3ef765f14f5c36e50e01ec8142e85e196bea49078b19c0 ### 2. Add Compute Nodes -->
 <!-- translation-source-sha256: d5a507dc03a999b52b01f6a0f5e67d339550bc4e740e6c33c044e58e0567a7a0 ### 3. Download Images on the Online Machine -->
 <!-- translation-source-sha256: f5911ccb32c4812b04dce043ce7a574f4831e5dc771f26458f47a49fbb5dca82 ### 4. Download Models on the Online Machine -->
-<!-- translation-source-sha256: d99f39536242a33fb3f0d71ec739704b07f1ad7788375e0aa6fee45a17aaebf7 ### 5. Import Images and Models -->
+<!-- translation-source-sha256: cc04fc7591d582e7aeacf5991e8698a7f0fd8f64d8755ff021a3c5d7dfcdb318 ### 5. Import Images and Models -->
 <!-- translation-source-sha256: a99d6cc4a2377156c262eb7133b43c5a6e04ab8e4d1161c8f328a229e6dc240a ### 6. Deploy and Verify -->
 <!-- translation-source-sha256: ffff45d50019870668450a1fbbc2a8a11bb2c93e6bef48feb5268da6f34fdfbc ## Special Cases -->
 <!-- translation-source-sha256: 24fe2bb1fa6636955140d33d56ff60c68948d9df3f9737800a278ce792b81bec ### Store Models on NFS -->

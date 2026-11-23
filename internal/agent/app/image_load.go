@@ -44,7 +44,7 @@ func loadImageArchive(ctx context.Context, d runtime.Driver, load imageArchiveLo
 		return proto.ImageNodeStatus{}, fmt.Errorf("load image archive: %w", err)
 	}
 	if loadedRef == "" {
-		return proto.ImageNodeStatus{}, fmt.Errorf("cannot confirm %s: the runtime did not report the reference the archive carried or an unambiguous image ID", load.CanonicalRef)
+		return proto.ImageNodeStatus{}, fmt.Errorf("cannot confirm %s: the runtime did not report the reference unambiguously; select a tag carried by the archive or import a single image", load.CanonicalRef)
 	}
 	present, err := d.ImageExists(ctx, load.CanonicalRef)
 	if err != nil {

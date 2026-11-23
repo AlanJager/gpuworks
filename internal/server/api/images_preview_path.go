@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -41,7 +43,9 @@ func (a *apiHandlers) previewImageArchivePath(w http.ResponseWriter, r *http.Req
 		writeProductError(w, http.StatusConflict, ErrorNodeOffline, "node is offline", nil)
 		return
 	}
-	ctx, cancel := rpccontext.WithTimeout(r.Context(), proto.ImageArchivePreviewTimeout)
+	a.auditNodeArchive(r, "preview", node.UUID, req.ArchivePath)
+	// Give the worker time to report its own scan deadline over the control lane.
+	ctx, cancel := rpccontext.WithTimeout(r.Context(), proto.ImageArchivePreviewTimeout+5*time.Second)
 	defer cancel()
 	raw, err := a.d.CallNode(ctx, node.UUID, proto.RPCImagePreviewPath, req)
 	if errors.Is(err, proto.ErrRPCUnknownMethod) {
@@ -49,14 +53,33 @@ func (a *apiHandlers) previewImageArchivePath(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err != nil {
-		writeProductError(w, http.StatusConflict, messages.ErrorImageArchivePreviewFailed, "node archive preview failed", map[string]any{"detail": err.Error()})
+		writeProductError(w, http.StatusConflict, messages.ErrorImageArchivePreviewFailed, "node archive preview failed", map[string]any{"reason": archivePreviewReason(err)})
 		return
 	}
 	var result imagecatalog.ArchiveContents
 	if err := json.Unmarshal(raw, &result); err != nil || result.RepoTags == nil {
-		writeProductError(w, http.StatusBadGateway, messages.ErrorImageArchivePreviewFailed, "invalid node archive preview response", map[string]any{"detail": "invalid agent response"})
+		writeProductError(w, http.StatusBadGateway, messages.ErrorImageArchivePreviewFailed, "invalid node archive preview response", nil)
 		return
 	}
 	imagecatalog.NormalizeArchiveEngines(result.MetadataByTag)
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *apiHandlers) auditNodeArchive(r *http.Request, action, node, path string) {
+	if a.d.Log != nil {
+		a.d.Log.InfoContext(r.Context(), "node image archive request", "action", action, "username", a.adminName(r), "node_uuid", node, "archive_path", path, "request_id", r.Header.Get("X-Request-ID"))
+	}
+}
+
+func archivePreviewReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return proto.ArchivePreviewTimeout
+	}
+	var refusal *proto.RPCError
+	if errors.As(err, &refusal) && refusal.Code == proto.ErrorArchivePreview {
+		if reason, ok := refusal.Params["reason"].(string); ok {
+			return reason
+		}
+	}
+	return proto.ArchivePreviewUnreadable
 }

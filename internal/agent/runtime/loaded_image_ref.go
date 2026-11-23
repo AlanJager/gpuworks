@@ -6,58 +6,75 @@ import (
 	"strings"
 )
 
-// ParseLoadedImageRef extracts the image reference a runtime's archive load
-// reported on stdout. It understands docker's "Loaded image: <ref>" (and the
-// ID-only "Loaded image ID: <id>" form) and nerdctl's "unpacking <ref>". The last
-// reference wins, because a multi-image archive ends with the entry the
-// runtime finished importing. For an untagged archive, only a single distinct
-// image ID identifies the content to tag.
+// ParseLoadedImageRef returns the sole identity reported by an archive load.
 func ParseLoadedImageRef(output string) string {
 	return ParseLoadedImageRefFor(output, "")
 }
 
-// ParseLoadedImageRefFor prefers the requested image when a multi-image load
-// reported it. Otherwise it retains the last reported reference for the caller's
-// retag fallback. Equivalent Docker Hub spellings refer to the requested image.
+// ParseLoadedImageRefFor prefers the requested tag. Only an unambiguous
+// alternative can safely be tagged as the requested catalog image.
 func ParseLoadedImageRefFor(output, image string) string {
 	wanted := loadedImageRefName(image)
-	found := ""
-	var imageID string
-	var ambiguousID bool
+	var found, identity string
+	var ambiguous bool
+	var index string
 	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), "\r"))
+		line = strings.TrimSpace(line)
+		var ref, key string
 		switch {
-		case strings.HasPrefix(line, "Loaded image ID:"):
-			id := strings.TrimSpace(strings.TrimPrefix(line, "Loaded image ID:"))
-			if !IsImageID(id) || (imageID != "" && imageID != id) {
-				ambiguousID = true
+		case strings.HasPrefix(line, "application/vnd.oci.image.index.v1+json "), strings.HasPrefix(line, "application/vnd.docker.distribution.manifest.list.v2+json "):
+			_, digest, _ := strings.Cut(line, " ")
+			if IsImageID(digest) {
+				if index != "" && index != "import@"+digest {
+					ambiguous = true
+				}
+				index = "import@" + digest
 			}
-			imageID = id
 			continue
+		case strings.HasPrefix(line, "Loaded image ID:"):
+			ref = strings.TrimSpace(strings.TrimPrefix(line, "Loaded image ID:"))
+			if !IsImageID(ref) {
+				ambiguous = true
+				continue
+			}
+			key = ref
 		case strings.HasPrefix(line, "Loaded image:"):
-			if ref := strings.TrimSpace(strings.TrimPrefix(line, "Loaded image:")); ref != "" {
-				found = ref
-			}
+			ref = strings.TrimSpace(strings.TrimPrefix(line, "Loaded image:"))
 		case strings.HasPrefix(line, "unpacking "):
-			rest := strings.TrimSpace(strings.TrimPrefix(line, "unpacking "))
-			if open := strings.LastIndex(rest, " ("); open > 0 {
-				rest = rest[:open]
+			ref, _, _ = strings.Cut(strings.TrimPrefix(line, "unpacking "), " (")
+			ref = strings.TrimSpace(ref)
+		default:
+			continue
+		}
+		// nerdctl 2.x includes the import index alongside the actual image
+		// names. An unnamed child is not a usable source for nerdctl tag.
+		if ref == "" || ref == index {
+			continue
+		}
+		if strings.HasPrefix(ref, "import@") {
+			ambiguous = true
+			continue
+		}
+		if strings.HasSuffix(ref, ":") {
+			// nerdctl 1.x prints an empty tag after unpacking a digest reference.
+			if repository, _, ok := strings.Cut(found, "@"); !ok || ref != repository+":" {
+				ambiguous = true
 			}
-			if rest = strings.TrimSpace(rest); rest != "" {
-				found = rest
+			continue
+		}
+		if key == "" {
+			key = loadedImageRefName(ref)
+			if key == wanted {
+				return image
 			}
 		}
-		if wanted != "" && loadedImageRefName(found) == wanted {
-			return image
+		if identity != "" && identity != key {
+			ambiguous = true
 		}
+		found, identity = ref, key
 	}
-	// A requested tag would already have matched above. Mixed tagged and
-	// untagged output has no single identity for a manual destination.
-	if ambiguousID || (imageID != "" && found != "") {
+	if ambiguous {
 		return ""
-	}
-	if imageID != "" {
-		return imageID
 	}
 	return found
 }

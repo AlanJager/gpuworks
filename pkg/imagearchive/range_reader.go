@@ -53,7 +53,7 @@ func (f *fetcher) configMetadata(ctx context.Context, size int64, tail, manifest
 	source := &rangeReader{ctx: ctx, f: f, size: size, tail: tail}
 	var metadata archiveMetadata
 	metadata.setDockerManifest(manifest)
-	result, _ := readTar(ctx, io.NewSectionReader(source, 0, size), metadata)
+	result, _ := metadata.readTar(ctx, io.NewSectionReader(source, 0, size), nil)
 	// Enrichment is optional. A budget limit or an unreadable config must
 	// preserve the tags already obtained by the URL preview.
 	return result.MetadataByTag

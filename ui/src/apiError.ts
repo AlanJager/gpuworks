@@ -64,6 +64,10 @@ export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
     return t("apiErrorDetail", { category, detail, defaultValue: `${category}: ${detail}` });
   }
   const params = { ...error.params };
+  if (error.code === "IMAGE_ARCHIVE_PREVIEW_FAILED") {
+    const fallback = t("apiError.IMAGE_ARCHIVE_PREVIEW_FAILED", {});
+    return t(`images:archivePreviewReason.${String(params.reason ?? "unreadable")}`, { defaultValue: fallback });
+  }
   if (error.code === "SETTING_REMOVED") {
     const target = params.setting === "default_model_source" ? "modelSource"
       : params.route === "/api/v1/pull/source-rules" ? "sourceRules"

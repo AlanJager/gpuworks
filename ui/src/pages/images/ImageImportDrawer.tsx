@@ -62,7 +62,8 @@ export default function ImageImportDrawer({
   // server's dictionary (GET /images/engines); the form adds nothing to it.
   const [engines, setEngines] = useState<ImageEngineOption[] | null>(null);
   const [enginesError, setEnginesError] = useState<string | null>(null);
-  const [authorizing, setAuthorizing] = useState(false);
+  const [savePhase, setSavePhase] = useState<"idle" | "validating" | "authorizing">("idle");
+  const authorizing = savePhase === "authorizing";
   const [previewing, setPreviewing] = useState(false);
   const [importMethod, setImportMethod] = useState("local");
   const loadNodeFile = open && sourceTab === "custom" && importMethod === "local";
@@ -98,17 +99,20 @@ export default function ImageImportDrawer({
   }, [open, archive, clearPreview]);
   const sources = Form.useWatch("registry_sources", { form, preserve: true }) as string[] | undefined;
   const access = useOutboundHostAccess((sources ?? []).filter(isArchiveURL), open);
+  const saving = useRef(false);
   const save = async () => {
-    if (authorizing || importing || previewing) return;
+    if (saving.current || importing || previewing) return;
+    saving.current = true;
+    setSavePhase("validating");
     try {
       if (loadNodeFile && !(await archive.trigger())) return;
       await form.validateFields();
-      setAuthorizing(true);
+      setSavePhase("authorizing");
       const file = loadNodeFile ? archive.getValues() : undefined;
       await access.authorize();
       await importCustom(file);
     } catch { /* The form and permission control retain their own errors. */ }
-    finally { setAuthorizing(false); }
+    finally { saving.current = false; setSavePhase("idle"); }
   };
   useEffect(() => {
     if (!open || engines) return;
@@ -154,7 +158,7 @@ export default function ImageImportDrawer({
                 clearPreview();
                 setImportMethod(method);
               }}
-              disabled={importing || authorizing}
+              disabled={importing || savePhase !== "idle"}
               options={[
                 { value: "local", label: t("import.local.enable") },
                 { value: "url", label: t("import.url.title") },
@@ -162,26 +166,29 @@ export default function ImageImportDrawer({
             />
           </div>
         )}
-        {loadNodeFile ? (
-          <ImageNodeArchiveFields
-            archive={archive}
-            busy={previewing}
-            setBusy={setPreviewing}
-            onPick={prefill}
-            onInvalidate={clearPreview}
-          />
-        ) : open && (
-          <ImageArchiveURLImport
-            showTitle={sourceTab === "community"}
-            versions={versions}
-            onMatched={onArchiveURLMatched}
-            onInvalidate={clearPreview}
-            onPrefill={preview => {
-              const ref = preview.repo_tags[0];
-              prefill(ref, preview.metadata_by_tag?.[ref], preview.url);
-            }}
-          />
-        )}
+        <fieldset disabled={importing || savePhase !== "idle"}>
+          {loadNodeFile ? (
+            <ImageNodeArchiveFields
+              archive={archive}
+              busy={previewing}
+              setBusy={setPreviewing}
+              onPick={prefill}
+              onInvalidate={clearPreview}
+            />
+          ) : open && (
+            <ImageArchiveURLImport
+              setBusy={setPreviewing}
+              showTitle={sourceTab === "community"}
+              versions={versions}
+              onMatched={onArchiveURLMatched}
+              onInvalidate={clearPreview}
+              onPrefill={preview => {
+                const ref = preview.repo_tags[0];
+                prefill(ref, preview.metadata_by_tag?.[ref], preview.url);
+              }}
+            />
+          )}
+        </fieldset>
         <Alert
           type="info"
           showIcon

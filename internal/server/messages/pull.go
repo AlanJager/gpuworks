@@ -1,5 +1,7 @@
 package messages
 
+import "gpuworks.ai/gpuworks/internal/proto"
+
 // Pull product error codes: where a node may pull an image or download model
 // weights from, decided in
 // package planning and passed on by the api layer.
@@ -21,5 +23,5 @@ const (
 	ErrorImageArchivePathInvalid  = "IMAGE_ARCHIVE_PATH_INVALID"
 	ErrorImageArchivePathRequired = "IMAGE_ARCHIVE_PATH_REQUIRED"
 
-	ErrorImageArchivePreviewFailed = "IMAGE_ARCHIVE_PREVIEW_FAILED"
+	ErrorImageArchivePreviewFailed = proto.ErrorArchivePreview
 )

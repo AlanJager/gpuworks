@@ -11,6 +11,7 @@ const { Text } = Typography;
 
 type Props = {
   showTitle?: boolean;
+  setBusy?: (busy: boolean) => void;
   onInvalidate?: () => void;
   /** Every catalog version currently listed, searched for a matching tag. */
   versions: ImageCatalogEntry[];
@@ -31,7 +32,7 @@ type Props = {
  * catalog entry. The server reads the archive's real references out of its
  * tail, so the operator never has to guess them from the file name.
  */
-export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, onInvalidate, showTitle = true }: Props) {
+export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, onInvalidate, setBusy, showTitle = true }: Props) {
   const { t } = useTranslation("images");
   const [url, setUrl] = useState("");
   const access = useOutboundHostAccess([url]);
@@ -40,7 +41,7 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, 
   const [preview, setPreview] = useState<ImageArchivePreview | null>(null);
 
   const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => pending.current?.abort(), []);
+  useEffect(() => () => { pending.current?.abort(); setBusy?.(false); }, [setBusy]);
 
   const matchedVersion = (tags: string[]) =>
     versions.find((version) => tags.includes(version.image_ref)) || null;
@@ -56,6 +57,7 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, 
     pending.current = request;
     onInvalidate?.();
     setLoading(true);
+    setBusy?.(true);
     setError(null);
     setPreview(null);
     try {
@@ -73,7 +75,7 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, 
     } catch (e) {
       if (!request.signal.aborted) setError(e instanceof APIError ? e : new Error(t("import.url.failed")));
     } finally {
-      if (!request.signal.aborted) setLoading(false);
+      if (!request.signal.aborted) { setLoading(false); setBusy?.(false); }
     }
   };
 
@@ -94,6 +96,7 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, 
               pending.current?.abort();
               setUrl(event.target.value);
               setLoading(false);
+              setBusy?.(false);
               setPreview(null);
               setError(null);
               onInvalidate?.();

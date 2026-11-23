@@ -149,6 +149,17 @@ type ImageLoadURLParams struct {
 // ImageArchivePreviewTimeout bounds metadata scans, including decompression.
 const ImageArchivePreviewTimeout = time.Minute
 
+// The preview RPC carries a stable reason even when the worker uses another locale.
+const (
+	ErrorArchivePreview      = "IMAGE_ARCHIVE_PREVIEW_FAILED"
+	ArchivePreviewNotFound   = "not_found"
+	ArchivePreviewPermission = "permission_denied"
+	ArchivePreviewNotRegular = "not_regular"
+	ArchivePreviewInvalid    = "invalid_archive"
+	ArchivePreviewTimeout    = "timeout"
+	ArchivePreviewUnreadable = "unreadable"
+)
+
 type ImagePreviewPathParams struct {
 	ArchivePath string `json:"archive_path"`
 }

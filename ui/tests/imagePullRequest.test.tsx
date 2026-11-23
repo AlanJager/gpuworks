@@ -469,16 +469,35 @@ test("a node file import sends the path to that node without changing the catalo
   await waitFor(() => assert.equal(screen.queryByRole("dialog", { name: z.nodeTable.localDialog.title.replace("{{node}}", "gpu-03") }), null));
 });
 
+test("replacing a present node image requires an absolute path and sends force", async () => {
+  const { calls, user } = renderPage({ state: "present" }, ACCEPTED);
+  const { row } = await openNightly(user);
+  await user.click(within(row).getByRole("button", { name: z.nodeTable.expand }));
+  await user.click(await screen.findByRole("button", { name: z.nodeTable.localDialog.replace }));
+  const dialog = within(await screen.findByRole("dialog", { name: z.nodeTable.localDialog.title.replace("{{node}}", "gpu-03") }));
+  const input = dialog.getByRole("textbox", { name: z.nodeTable.localDialog.path });
+  const confirm = dialog.getByRole("button", { name: z.nodeTable.localDialog.replace }) as HTMLButtonElement;
+  await user.type(input, "image.tar");
+  assert.equal(confirm.disabled, true);
+  await dialog.findByText(z.import.local.pathRequired);
+  await user.clear(input);
+  await user.type(input, "/data/new.tar");
+  await user.click(confirm);
+  await waitFor(() => assert.deepEqual(posts(calls, "/nodes/n3/sync").map(call => JSON.parse(call.body!)), [
+    { source: "local", archive_path: "/data/new.tar", force: true },
+  ]));
+});
+
 test("a failed local import reopens the file dialog and keeps the server error visible", async () => {
   const { calls, user } = renderPage({ state: "failed", source: "local" }, (call) =>
     call.method === "POST" && call.path.endsWith("/nodes/n3/sync")
-      ? json(409, { error: "archive_path must name a regular file" }) : undefined);
+      ? json(409, { code: "CONFLICT", error: "archive_path must name a regular file" }) : undefined);
   const { row } = await openNightly(user);
   await user.click(within(row).getByRole("button", { name: z.nodeTable.localAction }));
   const dialog = await screen.findByRole("dialog", { name: z.nodeTable.localDialog.title.replace("{{node}}", "gpu-03") });
   await user.type(within(dialog).getByRole("textbox", { name: z.nodeTable.localDialog.path }), "/data/images");
   await user.click(within(dialog).getByRole("button", { name: z.nodeTable.localDialog.start }));
-  await within(dialog).findByText("archive_path must name a regular file");
+  await within(dialog).findByText("操作冲突：archive_path must name a regular file");
   assert.equal((within(dialog).getByRole("textbox", { name: z.nodeTable.localDialog.path }) as HTMLInputElement).value, "/data/images");
   assert.equal(posts(calls, "/api/v1/images/31/nodes/n3/sync").length, 1);
   assert.equal(posts(calls, "/sync/retry").length, 0, "local failures must not fall back to a registry pull");

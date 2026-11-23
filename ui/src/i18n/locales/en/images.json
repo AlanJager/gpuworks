@@ -1,4 +1,12 @@
 {
+  "archivePreviewReason": {
+    "not_found": "The file was not found on this node.",
+    "permission_denied": "The node does not have permission to read this file.",
+    "not_regular": "Select a regular archive file.",
+    "invalid_archive": "The file is invalid or the image archive is damaged.",
+    "timeout": "Preview timed out. Use an uncompressed tar or enter the image details manually.",
+    "unreadable": "The node could not read the image archive."
+  },
   "page": {
     "title": "Images",
     "description": "Manage GPUWorks runtime images by series, version, and node distribution",
@@ -138,6 +146,8 @@
     "sourceLocal": "Node file",
     "localLoading": "Loading image…",
     "localDialog": {
+      "replace": "Replace from node file",
+      "replaceDescription": "Replace {{ref}} on this node with the image in the selected archive.",
       "title": "Import a local file on {{node}}",
       "start": "Start import",
       "description": "Load the archive as {{ref}}. This updates the image on this node without creating an image series.",
@@ -247,7 +257,7 @@
     "registrySourcesHelp": "Extra addresses this image can be fetched from: registry references, or the URL of a docker save archive.",
     "url": {
       "title": "Import from an HTTP directory",
-      "description": "Paste the address of a docker save archive. Its real image references are read out of the archive itself, so you do not have to guess them from the file name.",
+      "description": "Enter the full URL of the tar archive file in the HTTP directory.",
       "label": "Image archive URL",
       "required": "Enter the image archive URL first.",
       "resolve": "Resolve",

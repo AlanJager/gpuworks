@@ -126,7 +126,7 @@ export interface ImageFetchOptions {
 export function imageFetchBody(source?: string, fetch?: ImageFetchOptions) {
   if (fetch?.source_node) return { source_node: fetch.source_node, rate_limit_kib_s: fetch.rate_limit_kib_s ?? 0 };
   const force = fetch?.force ? { force: true } : {};
-  if (source === "local") return { source, archive_path: fetch?.archive_path || "" };
+  if (source === "local") return { source, archive_path: fetch?.archive_path || "", ...force };
   if (source !== "url") return { ...force };
   return {
     source,

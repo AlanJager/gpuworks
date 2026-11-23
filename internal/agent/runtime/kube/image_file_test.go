@@ -87,7 +87,7 @@ func TestOpenImageFileReadsResolvedFileFromWorkerRoot(t *testing.T) {
 	}
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "nsenter"), []byte(`#!/bin/sh
-[ "$#" = 8 ] && [ "$1 $2 $3 $4 $5 $6 $7" = "-t 1 -m -- readlink -e --" ] && [ "$8" = "/data/link.tar" ] || exit 1
+[ "$#" = 8 ] && [ "$1 $2 $3 $4 $5 $6 $7" = "-t 1 -m -- readlink -m --" ] && [ "$8" = "/data/link.tar" ] || exit 1
 printf '%s\n' '/real image.tar'
 `), 0755); err != nil {
 		t.Fatal(err)

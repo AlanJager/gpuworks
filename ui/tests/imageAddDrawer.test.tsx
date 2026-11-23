@@ -180,6 +180,10 @@ test("switching methods discards a late URL preview and allows a fresh one after
   };
   await preview();
   await waitFor(() => assert.ok(calls.some((call) => call.path.endsWith("/preview-archive-url"))));
+  const add = drawer.getByRole("button", { name: zhImages.import.addImage }) as HTMLButtonElement;
+  assert.equal(add.disabled, true, "adding must wait for the active HTTP preview");
+  await user.click(add);
+  assert.equal(calls.filter(call => call.path === "/api/v1/images/import").length, 0);
   assert.deepEqual(await openSelect(method), [zhImages.import.local.enable, zhImages.import.url.title]);
   await user.keyboard("{Home}{Enter}");
   assert.equal(method.textContent, zhImages.import.local.enable);
@@ -210,7 +214,9 @@ test("a node file preview fills actual tags without registering or loading the i
     if (call.path !== endpoint) return undefined;
     const { archive_path } = JSON.parse(call.body!);
     if (archive_path === "/slow.tar") await pending.promise;
-    if (archive_path === "/bad.tar") return json(409, { code: "IMAGE_ARCHIVE_PREVIEW_FAILED", params: { detail: "bad tar" } });
+    if (archive_path === "/old.tar") return json(409, { code: "AGENT_UPGRADE_REQUIRED" });
+    if (archive_path === "/offline.tar") return json(409, { code: "NODE_OFFLINE" });
+    if (archive_path === "/bad.tar") return json(409, { code: "IMAGE_ARCHIVE_PREVIEW_FAILED", params: { reason: "invalid_archive" } });
     return json(200, { repo_tags: archive_path === "/empty.tar" ? [] : ["example/real:v2", "example/real:latest"], metadata_by_tag: {
       "example/real:v2": { engine: "vllm", engine_version: "1.0", framework: "cuda", framework_version: "13.0", arch: "amd64" },
       "example/real:latest": { engine_version: "2.0" },
@@ -248,9 +254,14 @@ test("a node file preview fills actual tags without registering or loading the i
   await drawer.findByText(zhImages.import.local.noTags);
   assert.equal(ref.value, "");
   await user.type(ref, "example/manual:v1");
+  for (const [path, message] of [["/old.tar", "目标节点的 agent 版本过旧；请先升级 agent，再继续操作。"], ["/offline.tar", "计算节点已离线。"]]) {
+    changePath(path);
+    await user.click(resolve);
+    await drawer.findByText(message);
+  }
   changePath("/bad.tar");
   await user.click(resolve);
-  await drawer.findByText(/bad tar/);
+  await drawer.findByText("文件不是有效的镜像归档，或归档已损坏。");
   assert.equal(ref.value, "example/manual:v1");
   assert.ok(calls.filter(call => call.method === "POST").every(call => call.path === endpoint));
 });
@@ -270,7 +281,7 @@ for (const rejected of [false, true]) {
       }
       if (call.path === "/api/v1/images/import") return json(200, { items: [series], total: 1 });
       if (call.path === sync) return rejected
-        ? json(409, { error: "archive file missing" })
+        ? json(409, { code: "AGENT_UPGRADE_REQUIRED", error: "upgrade the target agent" })
         : json(202, { state: "syncing", transfer_id: "attempt" });
       if (call.path === `/api/v1/images/${series.id}`) return json(200, {
         ...series, versions: [sibling, { ...version, nodes: [{ ...node, state: rejected ? "failed" : "syncing", source: "local" }] }],
@@ -295,7 +306,7 @@ for (const rejected of [false, true]) {
     await pickNodes(drawer.getByRole("combobox", { name: zhImages.nodeTable.column.node }), node.node_name);
     await user.clear(file);
     await user.type(file, `  ${path}  `);
-    await user.click(drawer.getByRole("button", { name: zhImages.import.addImage }));
+    await user.dblClick(drawer.getByRole("button", { name: zhImages.import.addImage }));
     await waitFor(() => assert.ok(calls.some((call) => call.path === sync)));
     const posts = calls.filter((call) => call.method === "POST");
     assert.deepEqual(posts.map((call) => call.path), ["/api/v1/images/import", sync]);
@@ -303,7 +314,7 @@ for (const rejected of [false, true]) {
     assert.ok(!posts[0].body!.includes(path));
     assert.equal(JSON.parse(posts[0].body!).series[0].versions[0].image_ref, ref);
     await screen.findByText(node.node_name);
-    if (rejected) await screen.findByText(/已登记 example\/local:v1.*archive file missing/);
+    if (rejected) await screen.findByText(/已登记 example\/local:v1.*目标节点的 agent 版本过旧/);
   });
 }
 

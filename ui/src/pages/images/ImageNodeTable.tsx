@@ -1,3 +1,5 @@
+import { useIsAdmin } from "../../components/useIsAdmin";
+import { Button as ActionButton } from "../../components/ui/button";
 import { PeerTransferDetails } from "../../components/peerTransfer/PeerTransferDetails";
 import { productMessageText } from "../../apiError";
 import { Button, Popconfirm, Progress, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
@@ -65,7 +67,7 @@ type Props = {
     url: string,
     relay: boolean,
   ) => Promise<void>;
-  importFromPath: (version: ImageCatalogEntry, nodeUUID: string, path: string) => Promise<void>;
+  importFromPath: (version: ImageCatalogEntry, nodeUUID: string, path: string, replace: boolean) => Promise<void>;
   inspectVersion: (version: ImageCatalogEntry, nodeUUID: string) => void;
   /** Stops a transfer that is still running on that node. */
   cancelTransfer: (version: ImageCatalogEntry, nodeUUID: string) => void;
@@ -95,6 +97,7 @@ export default function ImageNodeTable({
   removeFromNode,
   repullVersion,
 }: Props) {
+  const isAdmin = useIsAdmin();
   const { t } = useTranslation("images");
   const { t: common } = useTranslation("common");
   // The archive dialog is the one place an address is entered, resolved and
@@ -123,7 +126,7 @@ export default function ImageNodeTable({
         ? [{ value: "peer", label: t("nodeTable.peerOption") }]
         : []),
       ...archives,
-      { value: "local", label: t("nodeTable.localOption") },
+      { value: "local", label: t("nodeTable.localOption"), disabled: !isAdmin },
     ];
   };
   // The row's own facts beyond its state, and the actions on an image the node
@@ -174,6 +177,11 @@ export default function ImageNodeTable({
             {t("nodeTable.refreshInspect")}
           </Button>
           </Tooltip>
+          {row.state === "present" && isAdmin ? (
+            <ActionButton type="button" size="sm" onClick={(event) => { event.stopPropagation(); setPathDialog({ version: selectedVersion, row }); }}>
+              {t("nodeTable.localDialog.replace")}
+            </ActionButton>
+          ) : null}
           {row.state === "present" && selectedVersion.rolling_tag ? (
             <Tooltip title={t("nodeTable.repullHelp")}>
               <Button
@@ -340,6 +348,7 @@ export default function ImageNodeTable({
           {row.state === "present" ? null : (
             <Button
               size="small"
+              disabled={!isAdmin && modeFor(selectedVersion, row) === "local"}
               loading={row.state === "pulling" || row.state === "syncing"}
               onClick={() => {
                 const mode = String(modeFor(selectedVersion, row));
@@ -405,11 +414,12 @@ export default function ImageNodeTable({
       />
       {pathDialog && (
         <ImageArchivePathDialog
+          replace={pathDialog.row.state === "present"}
           imageRef={pathDialog.version.image_ref}
           nodeLabel={nodeLabel(pathDialog.row)}
           onCancel={() => setPathDialog(null)}
           onStart={async (path) => {
-            await importFromPath(pathDialog.version, pathDialog.row.node_uuid, path);
+            await importFromPath(pathDialog.version, pathDialog.row.node_uuid, path, pathDialog.row.state === "present");
             setPathDialog(null);
           }}
         />

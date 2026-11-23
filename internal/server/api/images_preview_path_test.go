@@ -1,13 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -28,7 +31,13 @@ func TestImagePreviewPathRoutesOnlyAuthorizedRequestsToTheSelectedNode(t *testin
 	var rpcErr error
 	wireResult := `{"repo_tags":["test/runner:v1","test/runner:latest"]}`
 	deps := Deps{Store: st, Bus: st.Bus, AuthSigner: signer, Online: func(string) bool { return online }}
-	deps.CallNode = func(_ context.Context, id, method string, in any) (json.RawMessage, error) {
+	var audit bytes.Buffer
+	deps.Log = slog.New(slog.NewJSONHandler(&audit, nil))
+	deps.CallNode = func(ctx context.Context, id, method string, in any) (json.RawMessage, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) <= proto.ImageArchivePreviewTimeout {
+			t.Fatal("server must wait for the worker scan deadline")
+		}
 		calls++
 		wire, err := json.Marshal(in)
 		if err != nil || id != node.UUID || method != "image.preview_path" || string(wire) != `{"archive_path":"`+path+`"}` {
@@ -65,6 +74,10 @@ func TestImagePreviewPathRoutesOnlyAuthorizedRequestsToTheSelectedNode(t *testin
 	if out != `{"repo_tags":["test/runner:v1","test/runner:latest"]}` {
 		t.Fatalf("preview response: %s", out)
 	}
+	var event map[string]any
+	if err := json.Unmarshal(audit.Bytes(), &event); err != nil || event["username"] != "admin" || event["archive_path"] != path || event["node_uuid"] != node.UUID || event["action"] != "preview" {
+		t.Fatalf("audit = %s", audit.Bytes())
+	}
 	wireResult = `{"repo_tags":["test/runner:v1"],"metadata_by_tag":{"test/runner:v1":{"engine":"vllm","engine_version":"0.30.0","framework":"cuda","framework_version":"13.0","arch":"amd64"}}}`
 	if out := request("POST", route, admin, body, http.StatusOK); out != wireResult {
 		t.Fatalf("preview metadata response: %s", out)
@@ -76,6 +89,14 @@ func TestImagePreviewPathRoutesOnlyAuthorizedRequestsToTheSelectedNode(t *testin
 	rpcErr = proto.ErrRPCUnknownMethod
 	if out := request("POST", route, admin, body, http.StatusConflict); !strings.Contains(out, "AGENT_UPGRADE_REQUIRED") {
 		t.Fatalf("old agent response: %s", out)
+	}
+	rpcErr = &proto.RPCError{Code: proto.ErrorArchivePreview, Message: "raw filesystem detail", Params: map[string]any{"reason": proto.ArchivePreviewNotFound}}
+	if out := request("POST", route, admin, body, http.StatusConflict); !strings.Contains(out, `"reason":"not_found"`) || strings.Contains(out, "raw filesystem detail") {
+		t.Fatalf("coded preview refusal: %s", out)
+	}
+	rpcErr = context.DeadlineExceeded
+	if out := request("POST", route, admin, body, http.StatusConflict); !strings.Contains(out, `"reason":"timeout"`) {
+		t.Fatalf("server deadline: %s", out)
 	}
 	rpcErr = errors.New("file missing")
 	if out := request("POST", route, admin, body, http.StatusConflict); !strings.Contains(out, "IMAGE_ARCHIVE_PREVIEW_FAILED") {

@@ -59,3 +59,34 @@ func TestImageLoadPathOldAgentLeavesRetryableFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalArchiveReplacementRequiresForceAndKeepsActiveTransfer(t *testing.T) {
+	calls := make(chan proto.Envelope, 2)
+	h := newArchiveURLHub(t, "file:replace_local_image?mode=memory&cache=shared", func(env proto.Envelope) string {
+		calls <- env
+		return `{"result":{"state":"syncing"}}`
+	})
+	if _, err := h.store.UpsertImageNode(&store.ImageNode{ImageID: h.image.ID, NodeID: h.node.ID, State: store.ImageStatePresent}); err != nil {
+		t.Fatal(err)
+	}
+	fetch := imagecatalog.FetchRequest{Source: imagecatalog.FetchSourceLocal, ArchivePath: "/data/replacement.tar"}
+	request := func() *store.ImageNode {
+		t.Helper()
+		row, err := h.hub.PullImage(t.Context(), h.image.ID, h.node.UUID, fetch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	if row := request(); row.State != store.ImageStatePresent || len(calls) != 0 {
+		t.Fatalf("ordinary import = %+v, RPCs = %d", row, len(calls))
+	}
+	fetch.Force = true
+	first := request()
+	if first.State != store.ImageStateSyncing || first.TransferID == "" || len(calls) != 1 {
+		t.Fatalf("replacement = %+v, RPCs = %d", first, len(calls))
+	}
+	if retry := request(); retry.TransferID != first.TransferID || len(calls) != 1 {
+		t.Fatalf("replaced an active transfer: %+v", retry)
+	}
+}

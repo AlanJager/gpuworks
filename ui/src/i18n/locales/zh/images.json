@@ -1,4 +1,12 @@
 {
+  "archivePreviewReason": {
+    "not_found": "计算节点上找不到这个文件。",
+    "permission_denied": "计算节点没有权限读取这个文件。",
+    "not_regular": "请选择普通归档文件。",
+    "invalid_archive": "文件不是有效的镜像归档，或归档已损坏。",
+    "timeout": "解析超时。请使用未压缩的 tar，或手动填写镜像信息。",
+    "unreadable": "计算节点无法读取镜像归档。"
+  },
   "page": {
     "title": "镜像",
     "description": "按系列、版本和节点分布管理 GPUWorks 运行镜像",
@@ -138,6 +146,8 @@
     "sourceLocal": "节点本地文件",
     "localLoading": "正在加载镜像…",
     "localDialog": {
+      "replace": "用本地文件替换",
+      "replaceDescription": "将此节点的 {{ref}} 替换为所选归档中的镜像。",
       "title": "从 {{node}} 的本地文件导入",
       "start": "开始导入",
       "description": "将归档加载为镜像 {{ref}}。导入只更新此节点的镜像状态，不创建镜像系列。",
@@ -247,7 +257,7 @@
     "registrySourcesHelp": "该镜像可用的额外获取地址：registry 引用，或 docker save 归档的 URL。",
     "url": {
       "title": "从HTTP目录导入",
-      "description": "粘贴 docker save 归档的地址。真实的镜像引用直接从归档里读出，不必靠文件名猜。",
+      "description": "填写 HTTP 目录中具体 tar 归档文件的完整 URL。",
       "label": "镜像归档 URL",
       "required": "请先填写镜像归档 URL。",
       "resolve": "解析",

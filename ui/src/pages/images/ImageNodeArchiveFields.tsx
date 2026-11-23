@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { api, type ArchiveContents, type ArchiveImageMetadata } from "../../api";
+import { isAbsoluteArchivePath } from "./ImagePageHelpers";
 import { apiErrorText } from "../../apiError";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -70,7 +71,7 @@ export default function ImageNodeArchiveFields({ archive, busy, setBusy, onPick,
       </FormField>
       <FormField control={archive.control} name="path" required
         label={t("nodeTable.localDialog.path")} description={<HelpTip content={t("nodeTable.localDialog.help")} />}
-        rules={{ validate: path => path.trim().startsWith("/") || t("import.local.pathRequired") }}>
+        rules={{ validate: path => isAbsoluteArchivePath(path) || t("import.local.pathRequired") }}>
         {field => (
           <div className="flex items-center gap-2">
             <Input {...field} aria-label={t("nodeTable.localDialog.path")} placeholder="/data/images/runner.tar"
