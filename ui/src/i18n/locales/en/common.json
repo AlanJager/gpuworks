@@ -1599,9 +1599,6 @@
     "cannotAllow": "A selected host cannot be allowed by the outbound policy.",
     "checkFailed": "A selected host could not be checked. Check the address and try again."
   },
-  "distributedRecommendationReason": {
-    "no_layout": "No TP and PP combination fits the stated degrees and these nodes' GPU counts."
-  },
   "placementShortfall": {
     "unmet": "{{n}} do not satisfy the requirements",
     "cordoned": "{{n}} cordoned",

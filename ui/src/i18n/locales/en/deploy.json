@@ -224,6 +224,9 @@
     "noReportedGPU": "no reported GPUs",
     "hardwareDifference": "Required: {{required}}. Reported: {{actual}}. No GPU passed the deployment hardware checks."
   },
+  "distributedRecommendationReason": {
+    "no_layout": "No TP and PP combination fits the stated degrees and these nodes' GPU counts."
+  },
   "scheduleNote": {
     "sleeping_residue": "keep {{sleeping_gib}} GiB resident for sleeping instances.",
     "foreign_held": "Processes outside the platform use {{foreign_gib}} GiB of the card, and {{foreign_headroom_gib}} GiB is kept free beside them.",

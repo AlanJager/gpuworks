@@ -135,7 +135,7 @@ function distributedRefusal(t: APIErrorTranslator, params: Record<string, unknow
   const reason = String(params.reason ?? "");
   const reasonParams = typeof params.reason_params === "object" && params.reason_params !== null
     ? params.reason_params as Record<string, unknown> : {};
-  const own = t(`distributedRecommendationReason.${reason}`, { ...reasonParams, defaultValue: "" });
+  const own = t(`distributedRecommendationReason.${reason}`, { ...reasonParams, ns: "deploy", defaultValue: "" });
   if (own && own !== `distributedRecommendationReason.${reason}`) return own;
   const tDeploy = (key: string, options: Record<string, unknown> = {}) => t(key, { ns: "deploy", ...options });
   return placementRefusalText(tDeploy as unknown as TFunction<"deploy">, { code: reason, params: reasonParams });

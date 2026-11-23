@@ -224,6 +224,9 @@
     "noReportedGPU": "未上报 GPU",
     "hardwareDifference": "要求：{{required}}；实际：{{actual}}。没有 GPU 通过部署硬件检查。"
   },
+  "distributedRecommendationReason": {
+    "no_layout": "没有符合已填并行度和这些节点 GPU 数量的 TP、PP 组合。"
+  },
   "scheduleNote": {
     "sleeping_residue": "休眠实例需保留 {{sleeping_gib}} GiB 常驻显存。",
     "foreign_held": "平台外的进程占用此卡 {{foreign_gib}} GiB，另在其旁保留 {{foreign_headroom_gib}} GiB 余量。",
