@@ -242,16 +242,12 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
         report["page_rows_cleanup_ok"] = _stop_page_rows(server, token, page_rows, report)
     report["last_step"] = "list-section-verified"
 
-    # The delete button carries an icon whose label prefixes the accessible name.
-    drawer.get_by_role("button", name=re.compile(re.escape(delete["button"]) + "$")).click()
-    modal = page.get_by_role("dialog").last
-    expect(modal.get_by_text(dep_name)).to_be_visible()
-    confirm = modal.locator(".ant-modal-footer .ant-btn-primary")
+    drawer.get_by_role("button", name=delete["button"], exact=True).click()
+    title = delete["title"].replace("{{name}}", dep_name)
+    modal = page.get_by_role("dialog", name=title, exact=True)
+    confirm = modal.get_by_role("button", name=delete["button"], exact=True)
     expect(modal).to_be_in_viewport(ratio=1)
     expect(confirm).to_be_in_viewport(ratio=1)
-    # AntD spaces two-character Chinese button text.
-    expect(confirm).to_contain_text(
-        re.compile(r"\s*".join(re.escape(char) for char in delete["button"])))
     with page.expect_response(lambda r: urlsplit(r.url).path == DEPLOYMENTS + f"/{dep_id}"
                               and r.request.method == "DELETE") as deleted:
         confirm.click()

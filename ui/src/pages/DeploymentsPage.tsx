@@ -1,16 +1,18 @@
+import { Button as DialogButton } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import { Notice } from "../ui-kit/Notice";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsList, TabItem, TabPanel } from "../components/ui/tabs";
 import { playgroundRoute } from "./playground/route";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   Alert,
   Badge,
   Button,
   Card,
-  Checkbox,
   Dropdown,
   Input,
-  Modal,
   Space,
   Tooltip,
   Typography,
@@ -148,6 +150,11 @@ export default function DeploymentsPage() {
   const [templating, setTemplating] = useState<number | null>(null);
   const copyCurl = async (dep: DeploymentListItem) => { await copy(deploymentCurl(window.location.origin, dep), { success: t("page.curlCopied") }); };
 
+  function deploymentDeleted(id: number) {
+    if (id === detailId) closeDetail();
+    refetch();
+  }
+
   function actionsFor(d: DeploymentListItem): DeploymentActions {
     const state = effectiveDeploymentState(d);
     const running = state === "running";
@@ -174,7 +181,6 @@ export default function DeploymentsPage() {
         { key: "benchmark", label: t("page.benchmark"), icon: <ExperimentOutlined />, disabled: !running, onClick: () => void benchmark(d) },
         { key: "catalogTemplate", label: t("catalogTemplate.open"), icon: <FileAddOutlined />, disabled: !running, onClick: () => setTemplating(d.id) },
       ],
-      remove: { key: "delete", label: t("delete.button"), icon: <DeleteOutlined />, danger: true, onClick: () => setDeleting(d) },
     };
   }
 
@@ -271,12 +277,13 @@ export default function DeploymentsPage() {
       role: "actions",
       width: 120,
       render: (_: unknown, d: DeploymentListItem) => {
-        const { primary, terminal, menu, remove } = actionsFor(d);
+        const { primary, terminal, menu } = actionsFor(d);
+        const remove = { key: "delete", label: t("delete.button"), icon: <DeleteOutlined />, danger: true, onClick: () => setDeleting(d) };
         return <Space size={4}>
           {primary.map(action => <Tooltip key={action.key} title={action.hint}>
             <Button type="text" size="small" aria-label={action.label} icon={action.icon} disabled={action.disabled} onClick={action.onClick} />
           </Tooltip>)}
-          <Dropdown trigger={["click"]} menu={{ items: [{ ...terminal }, ...menu.map(item => ({ ...item })), { type: "divider" }, { ...remove }] }}>
+          <Dropdown trigger={["click"]} menu={{ items: [{ ...terminal }, ...menu.map(item => ({ ...item })), { type: "divider" }, remove] }}>
             <Tooltip title={t("page.more")}><Button type="text" size="small" icon={<MoreOutlined />} aria-label={t("page.more")} /></Tooltip>
           </Dropdown>
         </Space>;
@@ -325,10 +332,7 @@ export default function DeploymentsPage() {
           emptyAction={filtered ? undefined : <Button type="primary" onClick={() => navigate("/deploy")}>{t("page.create")}</Button>}
         />
       </Card>
-      <DeleteDeploymentModal dep={deleting} onClose={() => setDeleting(null)} onDeleted={() => {
-        if (deleting?.id === detailId) closeDetail();
-        refetch();
-      }} />
+      {deleting && <DeleteDeploymentDialog dep={deleting} onClose={() => setDeleting(null)} onDeleted={deploymentDeleted} />}
       {templating != null && <DeploymentCatalogTemplateModal deploymentID={templating} onClose={() => setTemplating(null)} />}
       <DeploymentDetail
         id={detailId}
@@ -336,78 +340,70 @@ export default function DeploymentsPage() {
         routingPolicies={routingPolicies.data?.items ?? []}
         routingOptions={routingOptions}
         onClose={closeDetail}
+        onDeleted={deploymentDeleted}
         actionsFor={actionsFor}
       />
     </>
   );
 }
 
-function DeleteDeploymentModal({
-  dep,
-  onClose,
-  onDeleted,
-}: {
-  dep: Pick<Deployment, "id" | "name"> | null;
-  onClose: () => void;
-  onDeleted: () => void;
+function DeleteDeploymentDialog({ dep, onClose, onDeleted, trigger }: {
+  dep: Pick<Deployment, "id" | "name">;
+  onClose?: () => void;
+  onDeleted: (id: number) => void;
+  trigger?: ReactElement;
 }) {
   const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
+  const [open, setOpen] = useState(!trigger);
   const [force, setForce] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const close = () => {
-    if (deleting) return;
+  function close() {
     setForce(false);
-    onClose();
-  };
+    setOpen(false);
+    onClose?.();
+  }
 
-  const remove = async () => {
-    if (!dep) return;
+  async function remove() {
+    if (deleting) return;
     setDeleting(true);
     try {
       await api.deleteDeployment(dep.id, force);
       message.success(force ? t("delete.forced") : t("delete.started"));
-      setForce(false);
-      onClose();
-      onDeleted();
+      close();
+      onDeleted(dep.id);
     } catch (e) {
       message.error(t("delete.failed", { detail: apiErrorText(tCommon, e) }));
     } finally {
       setDeleting(false);
     }
-  };
+  }
 
-  return (
-    <Modal
-      title={t("delete.title", { name: dep?.name ?? "" })}
-      open={dep != null}
-      onCancel={close}
-      onOk={remove}
-      okText={force ? t("delete.forceButton") : t("delete.button")}
-      cancelText={t("delete.cancel")}
-      okButtonProps={{ danger: true, loading: deleting }}
-      cancelButtonProps={{ disabled: deleting }}
-      maskClosable={!deleting}
-      closable={!deleting}
-    >
-      <Typography.Paragraph>
-        {t("delete.description")}
-      </Typography.Paragraph>
-      <Checkbox checked={force} onChange={(event) => setForce(event.target.checked)}>
-        {t("delete.force")}
-      </Checkbox>
-      {force && (
-        <Alert
-          style={{ marginTop: 16 }}
-          type="warning"
-          showIcon
-          message={t("delete.forceWarning")}
-          description={t("delete.forceDescription")}
-        />
-      )}
-    </Modal>
-  );
+  return <Dialog open={open} onOpenChange={(next, event) => {
+    if (next) setOpen(true);
+    else if (deleting) event.cancel();
+    else close();
+  }}>
+    {trigger && <DialogTrigger render={trigger} />}
+    <DialogContent size="lg" nestedBackdrop closeButtonLabel={tCommon("actions.close")} closeButtonDisabled={deleting}>
+      <form className="flex max-h-[calc(100dvh-5rem)] flex-col" onSubmit={event => { event.preventDefault(); void remove(); }}>
+        <DialogHeader><DialogTitle>{t("delete.title", { name: dep.name })}</DialogTitle></DialogHeader>
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+          <DialogDescription>{t("delete.description")}</DialogDescription>
+          <label className="flex items-center gap-2">
+            <Checkbox checked={force} onCheckedChange={setForce} disabled={deleting} />
+            {t("delete.force")}
+          </label>
+          {force && <Notice tone="warning" title={t("delete.forceWarning")}>{t("delete.forceDescription")}</Notice>}
+        </div>
+        <DialogFooter>
+          <DialogButton type="button" variant="tertiary" disabled={deleting} onClick={close}>{t("delete.cancel")}</DialogButton>
+          <DialogButton type="submit" variant="destructive" loading={deleting}>{t(force ? "delete.forceButton" : "delete.button")}</DialogButton>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
 }
 
 function DeploymentDetail({
@@ -416,6 +412,7 @@ function DeploymentDetail({
   routingOptions,
   focusInstance,
   onClose,
+  onDeleted,
   actionsFor,
 }: {
   id: number | null;
@@ -423,6 +420,7 @@ function DeploymentDetail({
   routingPolicies: RoutingPolicyOption[];
   routingOptions: Array<{ value: RoutingPolicyOption["value"]; label: string }>;
   onClose: () => void;
+  onDeleted: (id: number) => void;
   actionsFor: (dep: DeploymentListItem) => DeploymentActions;
 }) {
   const { t } = useTranslation("deployments");
@@ -514,7 +512,9 @@ function DeploymentDetail({
       open={id != null}
       onClose={onClose}
       extra={dep && (
-        <DeploymentDetailActions key={dep.id} dep={dep} actions={actionsFor(dep)} onChanged={load} />
+        <DeploymentDetailActions key={dep.id} dep={dep} actions={actionsFor(dep)} onChanged={load}
+          deleteButton={<DeleteDeploymentDialog dep={dep} onDeleted={onDeleted}
+            trigger={<DialogButton variant="tertiary" size="sm" className="text-fg-danger">{t("delete.button")}</DialogButton>} />} />
       )}
     >
       {loadError && (
