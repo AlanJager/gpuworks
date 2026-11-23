@@ -332,10 +332,10 @@ func materialReadinessFailure(ctx context.Context, cause ...error) (bool, error)
 	return false, nil
 }
 
-// proofReadUnanswered reports a database read the proof could not finish: no
-// leader to ask, a leader not read in time, or a result cut by a leadership
-// change. None of them compares a byte, so none is a negative proof.
+// proofReadUnanswered reports a database read the proof could not start: no
+// leader to ask, or a leader not read in time. Neither compares a byte, so
+// neither is a negative proof. A failure the database itself answered stays a
+// verdict: a refusal raised inside a statement arrives the same way.
 func proofReadUnanswered(err error) bool {
-	return store.ReplicatedLeaderUnavailable(err) || store.ReplicatedReadInterrupted(err) ||
-		errors.Is(err, store.ErrClusterMembershipObservationTimeout)
+	return store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout)
 }

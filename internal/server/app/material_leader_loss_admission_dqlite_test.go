@@ -38,13 +38,18 @@ func TestMaterialReadinessFailureKeepsLostLeaderSignal(t *testing.T) {
 	}
 	for name, cause := range map[string]error{
 		"no leader":               fmt.Errorf("read manifest: %w", dqlitedriver.ErrNoAvailableLeader),
-		"result cut by a failure": fmt.Errorf("read manifest: %w", dqlitedriver.Error{Code: 3, Message: "key"}),
 		"leader not read in time": fmt.Errorf("grant: %w", store.ErrClusterMembershipObservationTimeout),
 	} {
 		ready, err = materialReadinessFailure(t.Context(), cause)
 		if ready || !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("%s became a definitive proof: ready=%t err=%v", name, ready, err)
 		}
+	}
+	// A failure the database answered is indistinguishable from a refusal
+	// raised inside a statement, so it stays a verdict.
+	ready, err = materialReadinessFailure(t.Context(), fmt.Errorf("read manifest: %w", dqlitedriver.Error{Code: 3, Message: "key"}))
+	if ready || err != nil {
+		t.Fatalf("answered database failure stayed retryable: ready=%t err=%v", ready, err)
 	}
 	voted, voteErr := materialPeerVote(errRemoteMaterialBatchUnavailable)
 	if voted || voteErr != nil {
