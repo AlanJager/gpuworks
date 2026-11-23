@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
@@ -14,8 +15,50 @@ func ParseLoadedImageRef(output string) string {
 // ParseLoadedImageRefFor prefers the requested tag. Only an unambiguous
 // alternative can safely be tagged as the requested catalog image.
 func ParseLoadedImageRefFor(output, image string) string {
+	refs := loadedImageRefs(output, image)
+	if len(refs) == 1 {
+		return refs[0]
+	}
+	return ""
+}
+
+// ResolveLoadedImageRef checks aliases only when the load did not report the
+// requested tag. A single imported image may have several names.
+func ResolveLoadedImageRef(ctx context.Context, inspector ImageInspector, output, image string) string {
+	refs := loadedImageRefs(output, image)
+	if len(refs) == 0 {
+		return ""
+	}
+	if len(refs) == 1 {
+		return refs[0]
+	}
+	var commonID string
+	source := refs[0]
+	for _, ref := range refs {
+		id := ref
+		if !IsImageID(ref) {
+			inspected, err := inspector.InspectImage(ctx, ref)
+			if err != nil || !IsImageID(inspected.ID) {
+				return ""
+			}
+			id = inspected.ID
+			// Both docker and nerdctl can tag a reported name. A nerdctl
+			// content ID is not necessarily an addressable containerd name.
+			source = ref
+		}
+		if commonID != "" && id != commonID {
+			return ""
+		}
+		commonID = id
+	}
+	return source
+}
+
+func loadedImageRefs(output, image string) []string {
 	wanted := loadedImageRefName(image)
-	var found, identity string
+	var found string
+	var refs []string
+	seen := make(map[string]bool)
 	var ambiguous bool
 	var index string
 	for _, line := range strings.Split(output, "\n") {
@@ -65,18 +108,22 @@ func ParseLoadedImageRefFor(output, image string) string {
 		if key == "" {
 			key = loadedImageRefName(ref)
 			if key == wanted {
-				return image
+				return []string{image}
 			}
 		}
-		if identity != "" && identity != key {
-			ambiguous = true
+		if !seen[key] {
+			refs = append(refs, ref)
+			seen[key] = true
 		}
-		found, identity = ref, key
+		found = ref
 	}
 	if ambiguous {
-		return ""
+		return nil
 	}
-	return found
+	if len(refs) == 1 {
+		refs[0] = found
+	}
+	return refs
 }
 
 // IsImageID reports whether ref is a complete SHA-256 image content ID.

@@ -110,10 +110,10 @@ func TestImageLoadPathLifecycle(t *testing.T) {
 				} else if terminal.State != "failed" || terminal.TransferredBytes != 0 || len(base.LoadedPaths()) != 0 {
 					t.Fatalf("interrupted import reported success: %+v", terminal)
 				}
-				if finish == "cancel" && !strings.Contains(terminal.Message, "cancelled") {
+				if finish == "cancel" && terminal.Message != proto.ArchiveLoadCanceled {
 					t.Fatalf("cancel reason lost: %+v", terminal)
 				}
-				if finish == "timeout" && !strings.Contains(terminal.Message, imageOperationTimeout.String()) {
+				if finish == "timeout" && terminal.Message != proto.ArchivePreviewTimeout {
 					t.Fatalf("timeout reason lost: %+v", terminal)
 				}
 				time.Sleep(time.Minute)
@@ -138,7 +138,9 @@ func TestImageLoadPathRejectsInvalidRPCAndUnsupportedRuntime(t *testing.T) {
 		}
 	}
 	n, statuses := localImportNode(t, &imagePullTestDriver{})
-	if _, err := n.OnRPC(context.Background(), proto.RPCImageLoadPath, loadPathParams(path)); err == nil || !strings.Contains(err.Error(), "cannot load") {
+	_, err := n.OnRPC(context.Background(), proto.RPCImageLoadPath, loadPathParams(path))
+	var refusal *proto.RPCError
+	if !errors.As(err, &refusal) || refusal.Code != proto.ErrorArchiveLoad || refusal.Params["reason"] != proto.ArchiveLoadUnsupported {
 		t.Fatalf("runtime without file loading: %v", err)
 	}
 	if len(statuses) != 0 {

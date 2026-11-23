@@ -50,6 +50,9 @@ func TestImageLoadPathUsesNodeFileAndPreservesIt(t *testing.T) {
 			if fail {
 				want = "failed"
 			}
+			if fail && status.Message != proto.ArchiveLoadFailed {
+				t.Fatalf("runtime failure reason = %q", status.Message)
+			}
 			if status.State != want || status.TransferID != "local-import" || (!fail && status.ImageID != "sha256:loaded") {
 				t.Fatalf("terminal status = %+v", status)
 			}

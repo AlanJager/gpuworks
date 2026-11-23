@@ -52,9 +52,16 @@ func TestLocalImageImportRetriesNodeFileWithoutFetchingURL(t *testing.T) {
 	}
 	version := c.importArchiveImage(t, "l2-local-runner")
 	syncPath := fmt.Sprintf("/api/v1/images/%d/nodes/%s/sync", version.ID, c.node.UUID)
-	post(syncPath, map[string]string{"source": "local", "archive_path": filepath.Dir(path)}, http.StatusConflict)
+	refusal := post(syncPath, map[string]string{"source": "local", "archive_path": filepath.Dir(path)}, http.StatusConflict)
+	var startError struct {
+		Code   string
+		Params struct{ Reason string }
+	}
+	if err := json.Unmarshal(refusal, &startError); err != nil || startError.Code != "IMAGE_ARCHIVE_LOAD_FAILED" || startError.Params.Reason != "not_regular" {
+		t.Fatalf("local file validation: %s", refusal)
+	}
 	failed := c.nodeRow(t, findArchiveImportVersion(t, c.base, c.adminToken, c.imageRef))
-	if failed.State != "failed" || failed.Source != "local" || failed.TransferID != "" {
+	if failed.State != "failed" || failed.Source != "local" || failed.TransferID != "" || failed.Message != startError.Params.Reason {
 		t.Fatalf("invalid node file did not leave a retryable local failure: %+v", failed)
 	}
 	data := post(syncPath+"/retry", map[string]any{}, http.StatusBadRequest)

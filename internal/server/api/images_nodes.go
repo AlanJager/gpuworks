@@ -12,7 +12,7 @@ import (
 // Per-node image actions: fetch, peer sync, retry, cancel, remove, inspect.
 
 func (a *apiHandlers) syncImageToNode(w http.ResponseWriter, r *http.Request) {
-	a.fetchImageForNode(w, r, decodeImageNodeSyncRequest(r))
+	a.fetchImageForNode(w, r, decodeImageNodeSyncRequest(r), "load")
 }
 
 func (a *apiHandlers) probeImageToNode(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +48,7 @@ func (a *apiHandlers) probeImageToNode(w http.ResponseWriter, r *http.Request) {
 func (a *apiHandlers) retryImageToNode(w http.ResponseWriter, r *http.Request) {
 	req := decodeImageNodeSyncRequest(r)
 	if req.ArchivePath != "" || (imagecatalog.FetchRequest{Source: req.Source}).IsLocalFetch() {
-		a.fetchImageForNode(w, r, req)
+		a.fetchImageForNode(w, r, req, "retry")
 		return
 	}
 	if req.Source == "" && req.SourceNode == "" && req.ArchiveURL == "" {
@@ -91,7 +91,7 @@ func (a *apiHandlers) retryImageToNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	req.Force = req.Force || req.Source == ""
-	a.fetchImageForNode(w, r, req)
+	a.fetchImageForNode(w, r, req, "retry")
 }
 
 // nodeIDOf is the id of the node a route names, or 0.

@@ -7,6 +7,14 @@
     "timeout": "Preview timed out. Use an uncompressed tar or enter the image details manually.",
     "unreadable": "The node could not read the image archive."
   },
+  "archiveLoadReason": {
+    "timeout": "Loading the image archive timed out. Try again.",
+    "canceled": "The node image import was canceled.",
+    "reference_unknown": "Select a tag carried by the archive or import an archive containing a single image.",
+    "unsupported": "The node runtime does not support loading images from files.",
+    "upgrade_required": "Upgrade the target agent before importing the image.",
+    "stalled": "The node stopped reporting import progress. Check its connection and retry."
+  },
   "page": {
     "title": "Images",
     "description": "Manage GPUWorks runtime images by series, version, and node distribution",
@@ -228,6 +236,7 @@
       "enable": "Load from a compute node file",
       "nodeRequired": "Select the compute node that holds the archive",
       "pathRequired": "Enter the absolute path to the archive on this node",
+      "alreadyPresent": "This node already has the image. To load the file over it, choose Replace from node file.",
       "versionMissing": "{{ref}} was registered, but its version was missing from the response. Open the image to start the node import.",
       "startFailed": "{{ref}} was registered. The node import could not start: {{reason}}"
     },

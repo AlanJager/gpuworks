@@ -25,6 +25,8 @@ type imageArchiveLoad struct {
 	Load   func(context.Context) (string, error)
 }
 
+var errArchiveReferenceUnknown = errors.New("the runtime did not report the reference the archive carried or an unambiguous image ID. Select a tag carried by the archive or import a single image")
+
 // loadImageArchive runs the one sequence every archive load shares: hand the
 // archive to the runtime, tag the reference the archive actually carried when
 // it differs from the canonical reference, confirm presence, and hydrate
@@ -44,7 +46,7 @@ func loadImageArchive(ctx context.Context, d runtime.Driver, load imageArchiveLo
 		return proto.ImageNodeStatus{}, fmt.Errorf("load image archive: %w", err)
 	}
 	if loadedRef == "" {
-		return proto.ImageNodeStatus{}, fmt.Errorf("cannot confirm %s: the runtime did not report the reference the archive carried or an unambiguous image ID. Select a tag carried by the archive or import a single image", load.CanonicalRef)
+		return proto.ImageNodeStatus{}, fmt.Errorf("cannot confirm %s: %w", load.CanonicalRef, errArchiveReferenceUnknown)
 	}
 	present, err := d.ImageExists(ctx, load.CanonicalRef)
 	if err != nil {

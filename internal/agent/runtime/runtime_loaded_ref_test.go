@@ -1,8 +1,11 @@
 package runtime
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -102,5 +105,38 @@ func TestParseActualNerdctlLoadOutputs(t *testing.T) {
 		if got := ParseLoadedImageRefFor(string(data), "example/manual:v1"); got != want {
 			t.Errorf("%s selected %q, want %q", file, got, want)
 		}
+	}
+}
+
+type loadedAliasIDs map[string]string
+
+func (ids loadedAliasIDs) InspectImage(_ context.Context, ref string) (ImageInspection, error) {
+	id, ok := ids[ref]
+	if !ok {
+		return ImageInspection{}, errors.New("image unavailable")
+	}
+	return ImageInspection{ID: id}, nil
+}
+
+func TestResolveLoadedImageRefChecksAllAliasIDs(t *testing.T) {
+	const output = "Loaded image: example/runner:a\nLoaded image: example/runner:b\nLoaded image: example/runner:c"
+	id := "sha256:" + strings.Repeat("a", 64)
+	for _, tc := range []struct {
+		name, last string
+		allow      bool
+	}{
+		{"same image", id, true}, {"different image", "sha256:" + strings.Repeat("b", 64), false},
+		{"incomplete ID", "sha256:a", false}, {"missing image", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids := loadedAliasIDs{"example/runner:a": id, "example/runner:b": id}
+			if tc.last != "" {
+				ids["example/runner:c"] = tc.last
+			}
+			got := ResolveLoadedImageRef(t.Context(), ids, output, "catalog/runner:v1")
+			if (tc.allow && ids[got] != id) || (!tc.allow && got != "") {
+				t.Fatalf("resolved %q", got)
+			}
+		})
 	}
 }

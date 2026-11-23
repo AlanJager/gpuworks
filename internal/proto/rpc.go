@@ -160,6 +160,30 @@ const (
 	ArchivePreviewUnreadable = "unreadable"
 )
 
+// A local load exposes only these reasons through the catalog's node status.
+const (
+	ErrorArchiveLoad       = "IMAGE_ARCHIVE_LOAD_FAILED"
+	ArchiveLoadFailed      = "load_failed"
+	ArchiveLoadCanceled    = "canceled"
+	ArchiveLoadAmbiguous   = "reference_unknown"
+	ArchiveLoadUnsupported = "unsupported"
+	ArchiveLoadUpgrade     = "upgrade_required"
+	ArchiveLoadStalled     = "stalled"
+	ArchiveSourceLocal     = "local"
+)
+
+// SafeArchiveLoadReason also accepts status reports from older agents that
+// supplied free-form runtime errors, which may contain a node file path.
+func SafeArchiveLoadReason(reason string) string {
+	switch reason {
+	case ArchivePreviewNotFound, ArchivePreviewPermission, ArchivePreviewNotRegular, ArchivePreviewInvalid, ArchivePreviewUnreadable, ArchivePreviewTimeout,
+		ArchiveLoadCanceled, ArchiveLoadAmbiguous, ArchiveLoadUnsupported, ArchiveLoadUpgrade, ArchiveLoadStalled:
+		return reason
+	default:
+		return ArchiveLoadFailed
+	}
+}
+
 type ImagePreviewPathParams struct {
 	ArchivePath string `json:"archive_path"`
 }

@@ -1,11 +1,14 @@
 package app
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -107,4 +110,94 @@ func TestNodeArchivePreviewPermissionAndDeadline(t *testing.T) {
 			t.Fatalf("scan duration = %s", elapsed)
 		}
 	})
+}
+
+// Pausing at a compressed byte offset lets the deadline expire after tar
+// scanning started, regardless of the machine's disk or decompression speed.
+type delayedArchiveRead struct {
+	io.ReadSeeker
+	offset int64
+	paused bool
+}
+
+func (r *delayedArchiveRead) Read(p []byte) (int, error) {
+	if !r.paused {
+		pos, err := r.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return 0, err
+		}
+		left := r.offset - pos
+		if left == 0 {
+			r.paused = true
+			time.Sleep(proto.ImageArchivePreviewTimeout)
+			synctest.Wait()
+		} else if left < int64(len(p)) {
+			p = p[:left]
+		}
+	}
+	return r.ReadSeeker.Read(p)
+}
+
+func TestNodeArchivePreviewDeadlineDuringGzipScan(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		files, size int
+	}{{"many small headers", 128, 8}, {"expanded layer", 1, 256 << 10}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var archive bytes.Buffer
+			tw := tar.NewWriter(&archive)
+			writeEntry := func(name string, data []byte) {
+				t.Helper()
+				if err := tw.WriteHeader(&tar.Header{Name: name, Size: int64(len(data)), Mode: 0600}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := tw.Write(data); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := 0; i < tc.files; i++ {
+				writeEntry(fmt.Sprintf("layers/%d", i), bytes.Repeat([]byte{'a'}, tc.size))
+			}
+			writeEntry("manifest.json", []byte(`[{"RepoTags":["example/image:v1"]}]`))
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			var compressed bytes.Buffer
+			gz := gzip.NewWriter(&compressed)
+			mid := archive.Len() / 2
+			if _, err := gz.Write(archive.Bytes()[:mid]); err != nil {
+				t.Fatal(err)
+			}
+			if err := gz.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			offset := int64(compressed.Len())
+			if _, err := gz.Write(archive.Bytes()[mid:]); err != nil {
+				t.Fatal(err)
+			}
+			if err := gz.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			path := filepath.Join(t.TempDir(), "image.tar.gz")
+			if err := os.WriteFile(path, compressed.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+			driver := recording.New(filepath.Join(t.TempDir(), "spec.json"))
+			got, err := previewPath(t, driver, path)
+			if err != nil || len(got.(proto.ImagePreviewPathResult).RepoTags) != 1 {
+				t.Fatalf("complete preview = %+v, %v", got, err)
+			}
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(t.Context(), proto.ImageArchivePreviewTimeout)
+				defer cancel()
+				reader := &delayedArchiveRead{ReadSeeker: bytes.NewReader(compressed.Bytes()), offset: offset}
+				got, err := readNodeArchivePreview(ctx, reader)
+				expectArchivePreviewReason(t, err, proto.ArchivePreviewTimeout)
+				if !reader.paused || got != nil {
+					t.Fatal("expected the scan to stop without a partial preview")
+				}
+			})
+		})
+	}
 }

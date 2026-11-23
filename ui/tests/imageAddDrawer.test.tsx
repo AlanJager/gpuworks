@@ -266,8 +266,9 @@ test("a node file preview fills actual tags without registering or loading the i
   assert.ok(calls.filter(call => call.method === "POST").every(call => call.path === endpoint));
 });
 
-for (const rejected of [false, true]) {
-  test(`registering a node file opens the exact custom version when the node ${rejected ? "rejects" : "accepts"} the load`, async () => {
+for (const outcome of ["syncing", "failed", "present"] as const) {
+  const rejected = outcome === "failed";
+  test(`registering a node file opens the exact custom version when the result is ${outcome}`, async () => {
     const ref = "example/local:v1";
     const path = "/mnt/images/my runner.tar";
     const version = { ...nightlyVersion, image_ref: ref, source: "custom", present_nodes: 0 };
@@ -282,9 +283,9 @@ for (const rejected of [false, true]) {
       if (call.path === "/api/v1/images/import") return json(200, { items: [series], total: 1 });
       if (call.path === sync) return rejected
         ? json(409, { code: "AGENT_UPGRADE_REQUIRED", error: "upgrade the target agent" })
-        : json(202, { state: "syncing", transfer_id: "attempt" });
+        : json(202, outcome === "present" ? { state: "present" } : { state: "syncing", transfer_id: "attempt" });
       if (call.path === `/api/v1/images/${series.id}`) return json(200, {
-        ...series, versions: [sibling, { ...version, nodes: [{ ...node, state: rejected ? "failed" : "syncing", source: "local" }] }],
+        ...series, versions: [sibling, { ...version, nodes: [{ ...node, state: outcome, source: "local" }] }],
       });
       return undefined;
     });
@@ -314,6 +315,7 @@ for (const rejected of [false, true]) {
     assert.ok(!posts[0].body!.includes(path));
     assert.equal(JSON.parse(posts[0].body!).series[0].versions[0].image_ref, ref);
     await screen.findByText(node.node_name);
+    if (outcome === "present") await screen.findByText(zhImages.import.local.alreadyPresent);
     if (rejected) await screen.findByText(/已登记 example\/local:v1.*目标节点的 agent 版本过旧/);
   });
 }

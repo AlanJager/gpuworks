@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/engines"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog/pullref"
 	"gpuworks.ai/gpuworks/pkg/imagearchive"
 )
@@ -20,7 +21,7 @@ import (
 const (
 	FetchSourceURL      = "url"
 	FetchSourceURLRelay = "url-relay"
-	FetchSourceLocal    = "local"
+	FetchSourceLocal    = proto.ArchiveSourceLocal
 )
 
 // archiveRequestTimeout bounds one preview or HEAD against an operator

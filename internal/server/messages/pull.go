@@ -24,4 +24,5 @@ const (
 	ErrorImageArchivePathRequired = "IMAGE_ARCHIVE_PATH_REQUIRED"
 
 	ErrorImageArchivePreviewFailed = proto.ErrorArchivePreview
+	ErrorImageArchiveLoadFailed    = proto.ErrorArchiveLoad
 )

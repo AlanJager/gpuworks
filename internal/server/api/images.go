@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -297,6 +298,11 @@ func (a *apiHandlers) imageNodeDTOs(rows []store.ImageNode, nodes []store.Node) 
 			item.State, item.SizeBytes, item.TransferredBytes, item.RateBPS, item.RateLimitKiB, item.LastRateLimitKiB, item.TransferID, item.Source, item.Message = row.State, row.SizeBytes, row.TransferredBytes, row.RateBPS, row.RateLimitKiB, row.LastRateLimitKiB, row.TransferID, row.Source, row.Message
 			item.ImageDigestID = row.ImageDigestID
 			item.TransferErrorCode = row.TransferErrorCode
+			if row.Source == proto.ArchiveSourceLocal && row.State == store.ImageStateFailed && row.TransferErrorCode == "" {
+				// Rows written before local errors were classified can still contain a filesystem path.
+				item.TransferErrorCode = proto.ErrorArchiveLoad
+				item.Message = proto.SafeArchiveLoadReason(row.Message)
+			}
 			if !row.UpdatedAt.IsZero() {
 				item.UpdatedAt = row.UpdatedAt.UTC().Format(time.RFC3339)
 			}

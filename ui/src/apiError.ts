@@ -64,6 +64,12 @@ export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
     return t("apiErrorDetail", { category, detail, defaultValue: `${category}: ${detail}` });
   }
   const params = { ...error.params };
+  if (error.code === "IMAGE_ARCHIVE_LOAD_FAILED") {
+    const reason = String(params.reason ?? "load_failed");
+    const fallback = t("apiError.IMAGE_ARCHIVE_LOAD_FAILED", {});
+    const fileReason = t(`images:archivePreviewReason.${reason}`, { defaultValue: fallback });
+    return t(`images:archiveLoadReason.${reason}`, { defaultValue: fileReason });
+  }
   if (error.code === "IMAGE_ARCHIVE_PREVIEW_FAILED") {
     const fallback = t("apiError.IMAGE_ARCHIVE_PREVIEW_FAILED", {});
     return t(`images:archivePreviewReason.${String(params.reason ?? "unreadable")}`, { defaultValue: fallback });

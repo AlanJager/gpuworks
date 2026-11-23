@@ -3,7 +3,6 @@ package hub
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -31,11 +30,20 @@ func (h *Hub) loadImageArchivePath(ctx context.Context, image *store.Image, targ
 	if _, err := h.CallNode(ctx, target.UUID, proto.RPCImageLoadPath, proto.ImageLoadPathParams{
 		CanonicalRef: image.ImageRef, ArchivePath: path, TransferID: transferID,
 	}); err != nil {
-		failure := fmt.Errorf("node image archive could not be loaded: %w", err)
+		reason := proto.ArchiveLoadFailed
+		var refusal *proto.RPCError
+		if errors.As(err, &refusal) && refusal.Code == proto.ErrorArchiveLoad {
+			value, _ := refusal.Params["reason"].(string)
+			reason = proto.SafeArchiveLoadReason(value)
+		} else if errors.Is(err, context.DeadlineExceeded) {
+			reason = proto.ArchivePreviewTimeout
+		}
+		failure := messages.NewProductError(messages.ErrorImageArchiveLoadFailed, "node image archive could not be loaded", map[string]any{"reason": reason})
 		if errors.Is(err, proto.ErrRPCUnknownMethod) {
+			reason = proto.ArchiveLoadUpgrade
 			failure = messages.NewProductError(messages.ErrorAgentUpgradeRequired, "the target node is running an older agent; upgrade the agent first", nil)
 		}
-		_ = h.store.FailImageTransferIfActive(image.ID, target.ID, transferID, boundedPullMessage(failure.Error()))
+		_ = h.store.FailImageTransferIfActive(image.ID, target.ID, transferID, reason)
 		return nil, failure
 	}
 	h.watchDirectImageTransfer(image.ID, target.ID)

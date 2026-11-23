@@ -273,8 +273,14 @@ export default function ImagesPage() {
   };
   const importFromPath = async (version: ImageCatalogEntry, nodeUUID: string, path: string, replace: boolean) => {
     try {
-      await api.syncImage(version.id, nodeUUID, "local", { archive_path: path, force: replace });
-      toast.success(t("action.submitted", { source: t("nodeTable.sourceLocal") }));
+      const previous = nodeRow(version, nodeUUID);
+      const startImport = previous?.source === "local" && previous.state === "failed" && !replace ? api.retryImage : api.syncImage;
+      const result = await startImport(version.id, nodeUUID, "local", { archive_path: path, force: replace });
+      if (result.state === "present" && !result.transfer_id) {
+        toast.info(t("import.local.alreadyPresent"));
+      } else {
+        toast.success(t("action.submitted", { source: t("nodeTable.sourceLocal") }));
+      }
     } finally {
       await refreshDetail(version.series_id || detail?.id || 0);
       versions.refetch();

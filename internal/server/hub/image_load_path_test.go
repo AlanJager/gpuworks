@@ -3,11 +3,13 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -88,5 +90,42 @@ func TestLocalArchiveReplacementRequiresForceAndKeepsActiveTransfer(t *testing.T
 	}
 	if retry := request(); retry.TransferID != first.TransferID || len(calls) != 1 {
 		t.Fatalf("replaced an active transfer: %+v", retry)
+	}
+}
+
+func TestImageLoadPathClassifiesNodeFailures(t *testing.T) {
+	for _, tc := range []struct{ name, reply, want string }{
+		{"known reason", `{"error":"agent detail","code":"IMAGE_ARCHIVE_LOAD_FAILED","params":{"reason":"not_found"}}`, proto.ArchivePreviewNotFound},
+		{"unknown reason", `{"error":"agent detail","code":"IMAGE_ARCHIVE_LOAD_FAILED","params":{"reason":"unknown detail"}}`, proto.ArchiveLoadFailed},
+		{"older agent", `{"error":"agent detail"}`, proto.ArchiveLoadFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newArchiveURLHub(t, "file:"+t.Name()+"?mode=memory&cache=shared", func(proto.Envelope) string { return tc.reply })
+			_, err := h.hub.PullImage(t.Context(), h.image.ID, h.node.UUID, imagecatalog.FetchRequest{Source: imagecatalog.FetchSourceLocal, ArchivePath: "/sample/image.tar"})
+			var failure *messages.ProductError
+			if !errors.As(err, &failure) || failure.Code() != proto.ErrorArchiveLoad || failure.Params()["reason"] != tc.want || strings.Contains(failure.Error(), "agent detail") {
+				t.Fatalf("start refusal: %v", err)
+			}
+			row, err := h.store.ImageNode(h.image.ID, h.node.ID)
+			if err != nil || row.Message != tc.want || row.State != store.ImageStateFailed {
+				t.Fatalf("saved failure: %+v, %v", row, err)
+			}
+		})
+	}
+}
+
+func TestImageLoadPathClassifiesOlderAgentTerminalStatus(t *testing.T) {
+	h := newArchiveURLHub(t, "file:archive_terminal_status?mode=memory&cache=shared", func(proto.Envelope) string { return `{"result":{"state":"syncing"}}` })
+	row, err := h.hub.PullImage(t.Context(), h.image.ID, h.node.UUID, imagecatalog.FetchRequest{Source: imagecatalog.FetchSourceLocal, ArchivePath: "/sample/image.tar"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.store.ApplyImageNodeStatus(h.image.ID, h.node.ID, proto.ImageNodeStatus{State: store.ImageStateFailed, TransferID: row.TransferID, Message: "older runtime detail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err = h.store.ImageNode(h.image.ID, h.node.ID)
+	if err != nil || row.Message != proto.ArchiveLoadFailed {
+		t.Fatalf("terminal failure: %+v, %v", row, err)
 	}
 }

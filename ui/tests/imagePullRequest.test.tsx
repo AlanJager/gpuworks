@@ -490,17 +490,19 @@ test("replacing a present node image requires an absolute path and sends force",
 
 test("a failed local import reopens the file dialog and keeps the server error visible", async () => {
   const { calls, user } = renderPage({ state: "failed", source: "local" }, (call) =>
-    call.method === "POST" && call.path.endsWith("/nodes/n3/sync")
-      ? json(409, { code: "CONFLICT", error: "archive_path must name a regular file" }) : undefined);
+    call.method === "POST" && call.path.endsWith("/nodes/n3/sync/retry")
+      ? json(409, { code: "IMAGE_ARCHIVE_LOAD_FAILED", params: { reason: "not_regular" } }) : undefined);
   const { row } = await openNightly(user);
   await user.click(within(row).getByRole("button", { name: z.nodeTable.localAction }));
   const dialog = await screen.findByRole("dialog", { name: z.nodeTable.localDialog.title.replace("{{node}}", "gpu-03") });
   await user.type(within(dialog).getByRole("textbox", { name: z.nodeTable.localDialog.path }), "/data/images");
   await user.click(within(dialog).getByRole("button", { name: z.nodeTable.localDialog.start }));
-  await within(dialog).findByText("操作冲突：archive_path must name a regular file");
+  await within(dialog).findByText(z.archivePreviewReason.not_regular);
   assert.equal((within(dialog).getByRole("textbox", { name: z.nodeTable.localDialog.path }) as HTMLInputElement).value, "/data/images");
-  assert.equal(posts(calls, "/api/v1/images/31/nodes/n3/sync").length, 1);
-  assert.equal(posts(calls, "/sync/retry").length, 0, "local failures must not fall back to a registry pull");
+  assert.deepEqual(posts(calls, "/sync/retry").map(call => JSON.parse(call.body!)), [
+    { source: "local", archive_path: "/data/images" },
+  ]);
+  assert.equal(posts(calls, "/sync").length, 0);
 });
 
 test("a failed node file import can switch explicitly to automatic pulling", async () => {
@@ -531,7 +533,7 @@ test("a pending node file import blocks duplicate submits, edits and dismissal",
   let resolve!: (response: Response) => void;
   const pending = new Promise<Response>((done) => { resolve = done; });
   const { calls, user } = renderPage({ state: "failed", source: "local" }, (call) =>
-    call.method === "POST" && call.path.endsWith("/nodes/n3/sync") ? pending : undefined);
+    call.method === "POST" && call.path.endsWith("/nodes/n3/sync/retry") ? pending : undefined);
   const { row } = await openNightly(user);
   await user.click(within(row).getByRole("button", { name: z.nodeTable.localAction }));
   const dialog = await screen.findByRole("dialog", { name: z.nodeTable.localDialog.title.replace("{{node}}", "gpu-03") });
@@ -540,14 +542,14 @@ test("a pending node file import blocks duplicate submits, edits and dismissal",
   await user.type(input, "/data/runner.tar");
   try {
     await user.dblClick(start);
-    await waitFor(() => assert.equal(posts(calls, "/sync").length, 1));
+    await waitFor(() => assert.equal(posts(calls, "/sync/retry").length, 1));
     assert.equal(start.disabled, true);
     assert.equal(input.disabled, true);
     assert.equal((within(dialog).getByRole("button", { name: z.common.cancel }) as HTMLButtonElement).disabled, true);
     assert.equal((within(dialog).getByRole("button", { name: zhCommon.actions.close }) as HTMLButtonElement).disabled, true);
     await user.keyboard("{Escape}");
     assert.equal(dialog.isConnected, true);
-    assert.equal(posts(calls, "/sync").length, 1);
+    assert.equal(posts(calls, "/sync/retry").length, 1);
   } finally {
     resolve(json(202, { state: "syncing", transfer_id: "local-1" }));
   }

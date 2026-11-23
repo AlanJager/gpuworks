@@ -289,7 +289,7 @@ func (d *Driver) LoadImageRef(ctx context.Context, image string, r io.Reader) (s
 		}
 		return "", fmt.Errorf("docker load: %w", err)
 	}
-	return runtime.ParseLoadedImageRefFor(stdout.String(), image), nil
+	return runtime.ResolveLoadedImageRef(ctx, d, stdout.String(), image), nil
 }
 
 // LoadImageFile imports an archive that is already a file on disk. Handing
@@ -314,7 +314,7 @@ func (d *Driver) LoadImageFileRef(ctx context.Context, image, path string) (stri
 		}
 		return "", fmt.Errorf("docker load -i: %w", err)
 	}
-	return runtime.ParseLoadedImageRefFor(stdout.String(), image), nil
+	return runtime.ResolveLoadedImageRef(ctx, d, stdout.String(), image), nil
 }
 
 var (

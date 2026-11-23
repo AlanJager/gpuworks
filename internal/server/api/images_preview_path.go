@@ -65,9 +65,10 @@ func (a *apiHandlers) previewImageArchivePath(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (a *apiHandlers) auditNodeArchive(r *http.Request, action, node, path string) {
+func (a *apiHandlers) auditNodeArchive(r *http.Request, action, node, path string, details ...any) {
 	if a.d.Log != nil {
-		a.d.Log.InfoContext(r.Context(), "node image archive request", "action", action, "username", a.adminName(r), "node_uuid", node, "archive_path", path, "request_id", r.Header.Get("X-Request-ID"))
+		fields := []any{"action", action, "username", a.adminName(r), "node_uuid", node, "archive_path", path, "request_id", r.Header.Get("X-Request-ID")}
+		a.d.Log.InfoContext(r.Context(), "node image archive request", append(fields, details...)...)
 	}
 }
 

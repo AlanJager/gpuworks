@@ -664,6 +664,7 @@
     "MODEL_SOURCE_URL_REQUIRED": "Enter the HTTP directory the model is served from.",
     "MODEL_SOURCE_URL_INVALID": "Enter a valid absolute HTTP or HTTPS directory URL without embedded credentials.",
     "IMAGE_ARCHIVE_PATH_INVALID": "Local import requires an absolute archive file path on the target node, without another source or relay.",
+    "IMAGE_ARCHIVE_LOAD_FAILED": "The node could not load the image archive.",
     "IMAGE_ARCHIVE_PREVIEW_FAILED": "The node could not inspect the image archive.",
     "IMAGE_ARCHIVE_PATH_REQUIRED": "Choose the archive file on the node again to retry the local import.",
     "IMAGE_ARCHIVE_URL_REQUIRED": "An image archive URL is required.",

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -29,7 +28,7 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 	d := n.runtimeDriver()
 	loader, ok := d.(runtime.ImageFileLoader)
 	if !ok {
-		return nil, fmt.Errorf("runtime %s cannot load an image archive from a file", n.RuntimeDriverName())
+		return nil, nodeArchiveLoadError(proto.ArchiveLoadUnsupported)
 	}
 	// The hub can cancel the transfer while the worker is still checking the
 	// file. Register before stat and retain this same context through load.
@@ -47,9 +46,10 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 		err = loadCtx.Err()
 	}
 	if err != nil {
+		reason := nodeArchiveLoadReason(loadCtx, err, proto.ArchivePreviewUnreadable)
 		cancel()
 		unregister()
-		return nil, fmt.Errorf("read node image archive: %w", err)
+		return nil, nodeArchiveLoadError(reason)
 	}
 	go func() {
 		defer cancel()
@@ -94,7 +94,7 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 			},
 		})
 		if err != nil {
-			status = proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", Message: imageOperationError(loadCtx, err)}
+			status = proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", Message: nodeArchiveLoadReason(loadCtx, err, proto.ArchiveLoadFailed)}
 		} else {
 			status.TransferredBytes = size
 		}
@@ -105,4 +105,27 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 		n.reportImageNode(status)
 	}()
 	return proto.ImageLoadPathResult{State: "syncing", CanonicalRef: p.CanonicalRef}, nil
+}
+
+func nodeArchiveLoadError(reason string) error {
+	refusal := &proto.RPCError{Code: proto.ErrorArchiveLoad, Message: "node image archive could not be loaded", Params: map[string]any{"reason": reason}}
+	switch reason {
+	case proto.ArchiveLoadCanceled:
+		return errors.Join(refusal, context.Canceled)
+	case proto.ArchivePreviewTimeout:
+		return errors.Join(refusal, context.DeadlineExceeded)
+	default:
+		return refusal
+	}
+}
+
+func nodeArchiveLoadReason(ctx context.Context, err error, fallback string) string {
+	switch {
+	case errors.Is(ctx.Err(), context.Canceled), errors.Is(err, context.Canceled):
+		return proto.ArchiveLoadCanceled
+	case errors.Is(err, errArchiveReferenceUnknown):
+		return proto.ArchiveLoadAmbiguous
+	default:
+		return archiveFileErrorReason(ctx, err, fallback)
+	}
 }

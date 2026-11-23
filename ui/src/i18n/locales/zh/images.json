@@ -7,6 +7,14 @@
     "timeout": "解析超时。请使用未压缩的 tar，或手动填写镜像信息。",
     "unreadable": "计算节点无法读取镜像归档。"
   },
+  "archiveLoadReason": {
+    "timeout": "节点加载镜像归档超时，请重试。",
+    "canceled": "节点镜像导入已取消。",
+    "reference_unknown": "无法确定归档中的镜像。请选择归档已有的标签，或导入只含一个镜像的归档。",
+    "unsupported": "节点的容器运行时不支持从文件加载镜像。",
+    "upgrade_required": "请升级目标节点的 agent，再导入镜像。",
+    "stalled": "节点停止上报镜像导入进度，请检查节点连接后重试。"
+  },
   "page": {
     "title": "镜像",
     "description": "按系列、版本和节点分布管理 GPUWorks 运行镜像",
@@ -228,6 +236,7 @@
       "enable": "从计算节点本地文件导入",
       "nodeRequired": "请选择归档所在的计算节点",
       "pathRequired": "请输入归档文件在该节点上的绝对路径",
+      "alreadyPresent": "该节点已有此镜像，本次未加载文件。如需覆盖，请选择“用本地文件替换”。",
       "versionMissing": "已登记 {{ref}}，但响应中缺少对应版本。请打开镜像详情发起节点导入。",
       "startFailed": "已登记 {{ref}}。节点导入未能启动：{{reason}}"
     },

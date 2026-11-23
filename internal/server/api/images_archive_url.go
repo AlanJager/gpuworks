@@ -111,7 +111,7 @@ func decodeImageNodeSyncRequest(r *http.Request) dto.ImageNodeSyncRequest {
 // a node-local file load, a download of a declared archive URL, or a pull from
 // wherever the node's pull source rules say. A registry is never named here:
 // the pull settings decide, the same way they do for a launch.
-func (a *apiHandlers) fetchImageForNode(w http.ResponseWriter, r *http.Request, req dto.ImageNodeSyncRequest) {
+func (a *apiHandlers) fetchImageForNode(w http.ResponseWriter, r *http.Request, req dto.ImageNodeSyncRequest, action string) {
 	imageID := parseUint(chi.URLParam(r, "id"))
 	fetch := imagecatalog.FetchRequest{Source: req.Source, Relay: req.Relay, Force: req.Force, ArchivePath: req.ArchivePath}
 	if fetch.IsLocalFetch() && !a.requireManagementAdmin(w, r) {
@@ -124,7 +124,10 @@ func (a *apiHandlers) fetchImageForNode(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 	if fetch.IsLocalFetch() {
-		a.auditNodeArchive(r, "load", chi.URLParam(r, "uuid"), req.ArchivePath)
+		if action == "load" && req.Force {
+			action = "replace"
+		}
+		a.auditNodeArchive(r, action, chi.URLParam(r, "uuid"), req.ArchivePath, "image_version_id", imageID, "force", req.Force)
 	}
 	if req.SourceNode != "" {
 		if a.d.PeerSync.SyncImageWithRate == nil {
