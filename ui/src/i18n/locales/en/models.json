@@ -343,6 +343,12 @@
     "imported": "Imported from a scan",
     "copy": "Copied between storages"
   },
+  "remaining": {
+    "underMinute": "under 1 min left",
+    "minutes": "about {{minutes}} min left",
+    "hours": "about {{hours}} h left",
+    "hoursMinutes": "about {{hours}} h {{minutes}} min left"
+  },
   "files": {
     "completed": "Completed",
     "fromNode": "from {{node}}",

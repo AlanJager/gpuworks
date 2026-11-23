@@ -10,11 +10,11 @@ import { formatTime } from "../../i18n/datetime";
 import { useIsAdmin } from "../../components/useIsAdmin";
 import { nodeRowName } from "../../nodeDisplay";
 import { storageErrorText, storageTypeLabel } from "../../storageDisplay";
-import { formatBytes, remainingText } from "../../format";
+import { formatBytes } from "../../format";
 import { storageTypeInfo, type ModelStoragePresence } from "../../storageTypes";
 import { ModelNodeFileDelete } from "./ModelNodeFileDelete";
 import { ModelStorageFileDelete } from "./ModelStorageFileDelete";
-import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, transferEtaSeconds, transferOrigin } from "./modelPresenceDisplay";
+import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, remainingText, transferEtaSeconds, transferOrigin } from "./modelPresenceDisplay";
 
 type ModelFile = ModelNodePresence | ModelStoragePresence;
 

@@ -9,9 +9,9 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api, type Deployment, type ModelNodePresence } from "../api";
 import DeploymentImageProgress from "./DeploymentImageProgress";
-import { formatBytes, remainingText } from "../format";
+import { formatBytes } from "../format";
 import { isModelFileReady } from "../storageTypes";
-import { rateLabel, transferEtaSeconds, transferOrigin } from "./models/modelPresenceDisplay";
+import { rateLabel, remainingText, transferEtaSeconds, transferOrigin } from "./models/modelPresenceDisplay";
 import { HelpTip } from "../ui-kit/HelpTip";
 
 // All classification, timing and what may be retried comes from the server's

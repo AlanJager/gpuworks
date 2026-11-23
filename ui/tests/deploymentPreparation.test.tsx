@@ -9,7 +9,7 @@ const { render, screen, cleanup, waitFor } = await import("@testing-library/reac
 const userEvent = (await import("@testing-library/user-event")).default;
 const { DeploymentPreparation } = await import("../src/pages/DeploymentPreparation.tsx");
 const { api } = await import("../src/api.ts");
-const { i18n, locale } = await createI18n(["deployments"]);
+const { i18n, locale } = await createI18n(["deployments", "models"]);
 const labels = locale.deployments.preparation;
 const original = api.retryModelCache;
 afterEach(() => { cleanup(); api.retryModelCache = original; });

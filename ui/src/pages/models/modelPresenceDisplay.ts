@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { ModelNodePresence } from "../../api";
 import { formatBytes } from "../../format";
 
@@ -69,4 +70,18 @@ export function transferEtaSeconds(
   if (row.preparation && !row.preparation.total_known) return 0;
   if (!(row.rate_bps > 0) || !(row.size_bytes > row.downloaded)) return 0;
   return Math.ceil((row.size_bytes - row.downloaded) / row.rate_bps);
+}
+
+/**
+ * "about 1 h 40 min left" for a number of seconds. Minutes round up: an
+ * estimate that runs out before the transfer does reads as a stall.
+ */
+export function remainingText(t: TFunction, seconds: number): string {
+  if (seconds < 60) return t("remaining.underMinute", { ns: "models" });
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return t("remaining.minutes", { ns: "models", minutes });
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 === 0
+    ? t("remaining.hours", { ns: "models", hours })
+    : t("remaining.hoursMinutes", { ns: "models", hours, minutes: minutes % 60 });
 }

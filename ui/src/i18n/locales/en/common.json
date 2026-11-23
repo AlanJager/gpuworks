@@ -1331,12 +1331,6 @@
     "hours": "{{value}} h ago",
     "days": "{{value}} d ago"
   },
-  "remaining": {
-    "underMinute": "under 1 min left",
-    "minutes": "about {{minutes}} min left",
-    "hours": "about {{hours}} h left",
-    "hoursMinutes": "about {{hours}} h {{minutes}} min left"
-  },
   "copy": {
     "copied": "Copied",
     "code": "Copy code",

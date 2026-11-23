@@ -3,8 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TFunction } from "i18next";
-import { remainingText } from "../src/format.ts";
-import { transferEtaSeconds, transferOrigin } from "../src/pages/models/modelPresenceDisplay.ts";
+import { remainingText, transferEtaSeconds, transferOrigin } from "../src/pages/models/modelPresenceDisplay.ts";
 import { createI18n } from "./helpers/dom.ts";
 
 test("a copy names its source node, a download the host the agent reports", () => {
@@ -51,7 +50,7 @@ test("remaining time reads in the unit an operator plans with", async () => {
     ["en", ["under 1 min left", "about 1 min left", "about 3 min left", "about 1 h left", "about 1 h 41 min left", "about 26 h left"]],
     ["zh", ["剩余不到 1 分钟", "剩余约 1 分钟", "剩余约 3 分钟", "剩余约 1 小时", "剩余约 1 小时 41 分钟", "剩余约 26 小时"]],
   ] as const) {
-    const { i18n } = await createI18n([], lng);
+    const { i18n } = await createI18n(["models"], lng);
     const t = i18n.t.bind(i18n) as TFunction;
     assert.deepEqual([59, 60, 160, 3541, 6013, 26 * 3600].map((seconds) => remainingText(t, seconds)), want);
   }
