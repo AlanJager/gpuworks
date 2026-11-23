@@ -35,7 +35,7 @@ const image = query.has('image');
 const i18n = createInstance();
 const uuid = 'mock-long-node-1234567890abcdef1234567890abcdef';
 const message = 'Download failed while contacting registry; retry after checking the network. https://registry.example.invalid/models/' + 'long-path-segment/'.repeat(12);
-const storage = {id:1, name:'mock-nfs', type:'nfs', enabled:true, is_default:true, all_nodes:true, path:'/models', targets:[], model_count:0, deployment_ids:[], writable:true, nodes:{total:2,ready:1,problems:[],all:[{node_uuid:uuid,node_name:'mock-host-with-a-long-name',state:'ready',writable:true,total_bytes:117*1024**4,available_bytes:23*1024**4,path:'/models',message},{node_uuid:'mock-other',node_name:'mock-other',state:'failed',writable:false,message}]}};
+const storage = {id:1, name:'mock-nfs', type:'nfs', enabled:true, is_default:true, all_nodes:true, path:'/models', targets:[], model_count:0, deployment_ids:[], writable:true, nodes:{total:3,ready:1,problems:[],all:[{node_uuid:uuid,node_name:'mock-host-with-a-long-name',state:'ready',writable:true,total_bytes:117*1024**4,available_bytes:23*1024**4,path:'/models',message},{node_uuid:'mock-other',node_name:'mock-other',state:'failed',writable:false,message},{node_uuid:'mock-offline',node_name:'mock-offline',state:'offline',writable:false,last_seen_at:'2026-11-18T06:00:00Z'}]}};
 const version = {id:1,series_id:1,name:'mock-runner',image_ref:'registry.example.invalid/team/runner:latest',source:'custom',enabled:true,reference_count:0,registry_sources:[],nodes:[{node_uuid:uuid,node_name:'mock-host',node_state:'online',state:'failed',message,image_digest_id:'sha256:'+ '1234567890abcdef'.repeat(4),updated_at:'2026-11-18T08:00:00Z',transfer_id:'mock-transfer-1234567890abcdef'}]};
 window.EventSource = class {addEventListener(){} removeEventListener(){} close(){}};
 // Faithful response shape from the read-only transfer observation endpoint.
@@ -145,6 +145,29 @@ class StorageImageLayout(unittest.TestCase):
                     self.assertEqual(metrics['position'],'static')
                     if metrics['scroll']:
                         self.assertTrue(metrics['overlap']); self.assertTrue(metrics['nameAbove'])
+
+    def test_offline_node_status_does_not_show_through_the_pinned_name(self):
+        # An opaque background is not enough: a cell that is itself
+        # translucent lets the cells scrolling under it show through.
+        for width in [1440,560]:
+            for dark in [False,True]:
+                with self.subTest(width=width,dark=dark):
+                    page=self.render(width,dark)
+                    metrics=page.locator('table').evaluate('''table => {
+                      table.parentElement.scrollLeft=120;
+                      const row=table.querySelector('tbody tr.storage-node-offline');
+                      const through=el=>{ let o=1; for (let e=el; e && e!==table; e=e.parentElement) o*=Number(getComputedStyle(e).opacity); return o; };
+                      const pinned=[...row.querySelectorAll('td.resource-table-pinned')];
+                      const state=row.cells[2];
+                      return {offlineRow:!!row,pinned:pinned.length,pinnedOpacity:pinned.map(through),pinnedBackground:pinned.map(c=>getComputedStyle(c).backgroundColor),
+                        pinnedContent:pinned.map(c=>c.firstElementChild?Number(getComputedStyle(c.firstElementChild).opacity):null),stateOpacity:through(state)};
+                    }''')
+                    self.capture(page,f'storage-offline-{width}-{dark}',metrics)
+                    self.assertTrue(metrics['offlineRow']); self.assertGreaterEqual(metrics['pinned'],1)
+                    self.assertEqual(metrics['pinnedOpacity'],[1]*metrics['pinned'],'a pinned cell of a dimmed row must stay opaque')
+                    for background in metrics['pinnedBackground']: self.assertNotEqual(background,'rgba(0, 0, 0, 0)')
+                    self.assertEqual([o for o in metrics['pinnedContent'] if o is not None],[0.65]*len([o for o in metrics['pinnedContent'] if o is not None]),'the pinned cell still reads as dimmed')
+                    self.assertEqual(metrics['stateOpacity'],0.65)
 
     def test_image_expanded_facts_fit_visible_width_even_after_horizontal_scroll(self):
         for width in [1440,1024,560]:
