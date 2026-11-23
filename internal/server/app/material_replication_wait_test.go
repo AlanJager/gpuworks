@@ -102,7 +102,9 @@ func TestMaterialReplicationPassClosesMemberOnlyOnVerdict(t *testing.T) {
 		{"changed bytes", integrity, true},
 		{"timeout joined to changed bytes", errors.Join(context.DeadlineExceeded, integrity), true},
 		{"admission rejected", fmt.Errorf("grant: %w", store.ErrClusterAdmissionRejected), true},
-		{"connection lost with a commit outstanding", driver.ErrBadConn, true},
+		{"connection lost with a commit outstanding", driver.ErrBadConn, false},
+		{"deadline with a commit outstanding", fmt.Errorf("commit manifest: %w", context.DeadlineExceeded), false},
+		{"lost connection joined to changed bytes", errors.Join(driver.ErrBadConn, integrity), true},
 		{"cancellation", context.Canceled, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
