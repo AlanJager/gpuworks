@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	dqlitedriver "github.com/canonical/go-dqlite/v3/driver"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestMaterialReplicationFailurePreservesIntegrityCauses(t *testing.T) {
@@ -35,6 +37,8 @@ func TestMaterialReplicationFailurePreservesIntegrityCauses(t *testing.T) {
 		{"pass ran out of time", context.DeadlineExceeded, false},
 		{"wrapped pass ran out of time", fmt.Errorf("index material inventory locally: %w", context.DeadlineExceeded), false},
 		{"no database leader", fmt.Errorf("grant: %w", dqlitedriver.ErrNoAvailableLeader), false},
+		{"leader not read in time", fmt.Errorf("grant: %w", errors.Join(dqlitedriver.ErrNoAvailableLeader, store.ErrClusterMembershipObservationTimeout)), false},
+		{"joined no leader integrity", errors.Join(dqlitedriver.ErrNoAvailableLeader, integrity), true},
 		{"joined timeout integrity", errors.Join(context.DeadlineExceeded, integrity), true},
 		{"joined timeout unknown commit", errors.Join(context.DeadlineExceeded, driver.ErrBadConn), true},
 		{"joined timeout cancellation", errors.Join(context.DeadlineExceeded, context.Canceled), true},

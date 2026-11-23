@@ -325,9 +325,17 @@ func materialReadinessFailure(ctx context.Context, cause ...error) (bool, error)
 		return false, err
 	}
 	for _, err := range cause {
-		if proofClusterUnavailable(err) {
+		if proofClusterUnavailable(err) || proofReadUnanswered(err) {
 			return false, context.DeadlineExceeded
 		}
 	}
 	return false, nil
+}
+
+// proofReadUnanswered reports a database read the proof could not finish: no
+// leader to ask, a leader not read in time, or a result cut by a leadership
+// change. None of them compares a byte, so none is a negative proof.
+func proofReadUnanswered(err error) bool {
+	return store.ReplicatedLeaderUnavailable(err) || store.ReplicatedReadInterrupted(err) ||
+		errors.Is(err, store.ErrClusterMembershipObservationTimeout)
 }

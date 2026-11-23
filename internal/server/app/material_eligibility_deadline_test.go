@@ -35,6 +35,9 @@ func TestMaterialEligibilityDeadlineCancelsProofAndDrainsBeforeRecovery(t *testi
 	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
 		t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 	}
+	// The last confirmation is older than the unconfirmed limit, so a proof
+	// that outlives its window has nothing recent to stand on and closes.
+	clock.Advance(materialUnconfirmedLimit)
 	eligibility.setOnInvalidated(func() {
 		callbackStartOnce.Do(func() { close(callbackStarted) })
 		<-callbackRelease
@@ -116,5 +119,73 @@ func TestMaterialEligibilityDeadlineCancelsProofAndDrainsBeforeRecovery(t *testi
 	}
 	if calls.Load() != 3 || !eligibility.Eligible() {
 		t.Fatal("expired callback invalidated the replacement proof")
+	}
+}
+
+// A proof that only outlives its own window says nothing about this member.
+// With a recent confirmation behind it the member stays open, the proof's
+// I/O is still cancelled, its late success publishes nothing, and admission
+// ends at the unconfirmed limit unless a later proof succeeds.
+func TestMaterialEligibilityProofOutlivingItsWindowKeepsRecentlyConfirmedMemberOpen(t *testing.T) {
+	clock := &materialTestClock{now: time.Unix(100, 0)}
+	var calls, invalidated atomic.Int32
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	eligibility := newMaterialEligibility(clock.Now, func(ctx context.Context) (bool, error) {
+		if calls.Add(1) == 2 {
+			close(entered)
+			<-ctx.Done()
+			<-release
+		}
+		return true, nil
+	}, time.Hour)
+	eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
+		t.Fatalf("initial proof: ready=%t err=%v", ready, err)
+	}
+	clock.Advance(materialEligibilityWindow - time.Second)
+	done := make(chan error, 1)
+	go func() {
+		ready, err := eligibility.Reprove(t.Context())
+		if ready {
+			err = errors.New("a proof that outlived its window reported ready")
+		}
+		done <- err
+	}()
+	<-entered
+	eligibility.mu.Lock()
+	proofCtx := eligibility.proofCtx
+	eligibility.mu.Unlock()
+	// The published proof expires while the attempt is still inside its window.
+	clock.Advance(materialEligibilityWindow)
+	select {
+	case <-proofCtx.Done():
+	case <-time.After(materialEligibilityWindow + time.Second):
+		t.Fatal("proof I/O was not cancelled at the end of its window")
+	}
+	deadline := time.Now().Add(time.Second)
+	for !eligibility.Eligible() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !eligibility.Eligible() || invalidated.Load() != 0 {
+		t.Fatalf("window expiry closed a recently confirmed member while the prover drained: eligible=%t invalidated=%d", eligibility.Eligible(), invalidated.Load())
+	}
+	close(release)
+	if err := <-done; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("outlived proof returned %v", err)
+	}
+	if !eligibility.Eligible() || invalidated.Load() != 0 {
+		t.Fatalf("returned proof closed a recently confirmed member: eligible=%t invalidated=%d", eligibility.Eligible(), invalidated.Load())
+	}
+	if eligibility.EligibleFor(storeGrantTimeout() + materialEligibilityWindow) {
+		t.Fatal("late success was published as a fresh proof")
+	}
+	// Nothing confirms the member again: admission ends at the limit.
+	clock.Advance(materialUnconfirmedLimit)
+	if eligibility.Eligible() || invalidated.Load() != 1 {
+		t.Fatalf("member stayed open past the unconfirmed limit: eligible=%t invalidated=%d", eligibility.Eligible(), invalidated.Load())
+	}
+	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready || !eligibility.Eligible() {
+		t.Fatalf("a later proof did not reopen the member: ready=%t err=%v", ready, err)
 	}
 }
