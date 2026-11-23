@@ -431,6 +431,11 @@ type storageDeleteTransactionCounter struct {
 
 func (p *storageDeleteTransactionCounter) BeginTx(ctx context.Context, opts *sql.TxOptions) (gorm.ConnPool, error) {
 	p.count++
+	// The store's pool begins a transaction in its own way (it is watched
+	// for stalls); database/sql's begins a *sql.Tx.
+	if begin, ok := p.ConnPool.(gorm.ConnPoolBeginner); ok {
+		return begin.BeginTx(ctx, opts)
+	}
 	return p.ConnPool.(gorm.TxBeginner).BeginTx(ctx, opts)
 }
 
