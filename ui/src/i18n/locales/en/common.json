@@ -1135,7 +1135,6 @@
   "resourceTable": {
     "actions": "Actions",
     "settings": "Customize columns",
-    "settingsTitle": "Customize columns",
     "reset": "Restore defaults",
     "selected": "Shown ({{count}})",
     "all": "All columns ({{shown}}/{{total}})",
@@ -1143,6 +1142,7 @@
     "hideColumn": "Hide {{name}}",
     "resizeColumn": "Resize {{name}}",
     "total": "{{count}} items",
+    "total_one": "{{count}} item",
     "selectPage": "Select this page",
     "selectRow": "Select {{name}}",
     "expandRow": "Expand row",

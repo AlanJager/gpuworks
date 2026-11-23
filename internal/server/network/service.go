@@ -14,6 +14,7 @@ package network
 
 import (
 	"errors"
+	"slices"
 
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -85,7 +86,18 @@ type State struct {
 
 // State loads every node and network and resolves them.
 func (s *Service) State() (State, error) {
-	nodes, err := s.store.FleetNodes()
+	return s.state(s.store.FleetNodes())
+}
+
+// FreshState bypasses the fleet snapshot on search cache misses. Fetch only
+// network columns and keep the same newest-first node order as State.
+func (s *Service) FreshState() (State, error) {
+	nodes, err := s.store.NodesForNetworks()
+	slices.Reverse(nodes)
+	return s.state(nodes, err)
+}
+
+func (s *Service) state(nodes []store.Node, err error) (State, error) {
 	if err != nil {
 		return State{}, err
 	}

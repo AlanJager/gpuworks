@@ -1858,15 +1858,21 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 | GET | `/api/v1/networks` | Network list (including attachments, resolved node count, and count of nodes with notices) and role/type dictionaries (`types`: `host_ethernet` / `host_rdma` / `accelerator_rdma` / `accelerator_hccs`; `type_roles`: roles each type can serve). The first entry is the management network (`id` 0, `builtin: true`) | JWT |
 | POST | `/api/v1/networks` | Create a network (name, role, type, CIDR, and interface name wildcard). Accelerator RDMA can serve only the compute role; otherwise, returns `NETWORK_TYPE_ROLE_INVALID` | JWT(admin) |
 | GET | `/api/v1/networks/{id}` | Network details: attachments, resolved nodes (interfaces/IPs/HCAs/hints and the nodes' user-defined `labels`), and the latest internal test. `id` 0 is the management network, whose nodes include `roles_off`; it cannot be modified, deleted, or attached (returns 404), but internal tests can be started | JWT |
+| GET | `/api/v1/networks/{id}/search` | Search a network's resolved nodes (`kind=nodes`) or configured attachment targets (`kind=attachments`). Optional `q` matches a case-insensitive substring. For node searches, repeat `role` or `source` to match any selected value within each field. Role, source and keyword conditions apply together. Returns `{"ids":[...]}` with node UUIDs or attachment IDs as strings. With no keyword or filters, all IDs in the selected set are returned. | JWT |
 | PATCH | `/api/v1/nodes/management-roles` | Batch-update management network roles: `{"node_uuids":[...],"allow":[...],"deny":[...]}`. Changes only the listed roles, with all nodes in one transaction; returns `{"updated":N}` (the number of nodes actually changed). Returns 404 `MANAGEMENT_ROLES_NODE_NOT_FOUND` if a node does not exist | JWT(admin) |
 | PUT | `/api/v1/nodes/{uuid}/management-roles` | Set the roles that this node's management network does not serve (`{"roles_off":[...]}`); returns the node's network view. Applies only to new instances | JWT(admin) |
 | PUT | `/api/v1/networks/{id}` | Modify a network | JWT(admin) |
 | DELETE | `/api/v1/networks/{id}` | Delete a network and its attachments and test records (running instances are unaffected) | JWT(admin) |
 | POST | `/api/v1/networks/{id}/attachments` | Attach to a node (optionally with interface/IP/HCA overrides) or a node label | JWT(admin) |
 | PUT | `/api/v1/networks/{id}/attachments/{attachmentID}` | Modify overrides for a node attachment | JWT(admin) |
+| PUT | `/api/v1/networks/{id}/attachments/{attachmentID}/label` | Update the label attachment’s `label_key` and `label_value`, preserving its ID and attachment time. Returns 400 for a direct node attachment, 404 when the attachment is missing or belongs to another network, and 409 when the network already has the requested selector | JWT(admin) |
 | DELETE | `/api/v1/networks/{id}/attachments/{attachmentID}` | Remove an attachment | JWT(admin) |
 | POST | `/api/v1/networks/{id}/tests/estimate` | Use the same request body without starting a test: returns the resolved node count and node-pair count. Card tests also return `card` (`rounds`, `probes`, maximum duration `seconds`, and limit `max_seconds`). Requests that would be rejected when starting a test are rejected here with the same errors | JWT(admin) |
 | POST | `/api/v1/networks/{id}/tests` | Start an internal test (`kind`: tcp / rdma_tool / card_ping / card_matrix; rdma_tool requires a host RDMA network, while card_ping (pings between accelerator cards with matching indices) and card_matrix (a matrix of all cards) require an accelerator RDMA or accelerator HCCS network. HCCS card tests use `hccn_tool -hccs_ping`; RoCE card tests use `-ping`. Returns `NETWORK_TEST_TOO_LONG` if rounds × 3 seconds exceeds 10 minutes. `scope`: all / nodes / label; `id` 0 tests the management network and supports only tcp). Returns 202 and a run record (`node_uuids` lists the tested nodes, fixed when the test starts and available during execution even before `pairs` exists). Executed by the controller | JWT(admin) |
+
+In network details, `attachments[].unresolved` is true when the node targeted by a direct attachment is absent from the network’s resolved nodes.
+
+The latest internal test reports failed node pairs in `latest_test.failed_count` and partially passing pairs in `partial_count`. On each pair, `rails[].passed` gives the outcome of each rail. The pair’s `rail_count` and `rail_passed_count` give the total and passing counts (omitted when zero). Card tests count only card pairs that were actually probed. For Host RDMA, `avg_rail_gbps` is the mean of successful rail measurements. Historical runs with only an aggregate have no mean. A passing pair whose measured bandwidth is below one tenth of the fastest valid reading in the run carries `slow: true`.
 
 ## Settings / Network Presets
 
@@ -2485,7 +2491,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 943c135b4dd17cb7a5163ff1ef96f31bfe4cc8daf3b1332d2dae254d1ff3a973 ### Provider Connection Test -->
 <!-- translation-source-sha256: 4a41e54a2a7691fc464f2c3bff6c62ff401cee25b2e8ede1d1511164ab86791e ### Cloud Instance Installation and Restart Confirmation -->
 <!-- translation-source-sha256: dff84f5e2e143ca7701c66cd40683e1ca6428f5d803325e20c3a4e6b759a19ae ## Web Terminal -->
-<!-- translation-source-sha256: cf36c85bb356ed97c04ff3d7f2a72e283033383a2ee5f5e8c6dc9a7bfd9b976e ## Networks -->
+<!-- translation-source-sha256: 7858bdfd14670c6316f95db08d7f9198accf3451a7e655c9513ff13cf428941c ## Networks -->
 <!-- translation-source-sha256: 23278f685c8092e9eda5b2df89185ce71d0b220772a857e5a313072115e7fed2 ## Settings / Network Presets -->
 <!-- translation-source-sha256: 0d6096536d010c9fb3e99a7c9823f000f224ee23f15072817338937928739331 ### Update Check Results -->
 <!-- translation-source-sha256: 0e96eaf91ec4ceaa489e42f4bc76c90f1ae38793c3dc6f511af1e5a915929772 ### Server Upgrade Restrictions -->

@@ -1,0 +1,105 @@
+import { lastSessionChange, subscribeSessionChanges } from "../session";
+
+type ChangeStream = {
+  addEventListener(topic: string, listener: EventListener): void;
+  removeEventListener(topic: string, listener: EventListener): void;
+  close(): void;
+};
+
+/** Fall back to one native stream per page when the browser cannot run a shared worker. */
+export function openChangeStream(onError: (response?: Response) => void): ChangeStream {
+  function native() {
+    const source = new EventSource("/api/v1/events");
+    source.onerror = () => onError();
+    return source;
+  }
+  if (typeof SharedWorker === "undefined") return native();
+
+  const listeners = new Map<string, Set<EventListener>>();
+  const events = new EventTarget();
+  let fallback: EventSource | null = null;
+  let port: MessagePort | null = null;
+  let closed = false;
+  let heartbeat: number | undefined;
+  let resuming = false;
+  function sendTopics() {
+    port?.postMessage({ topics: [...listeners.keys()], ...(resuming && { resume: true }) });
+    resuming = false;
+  }
+  function onVisibilityChange() {
+    if (document.visibilityState === "visible") sendTopics();
+  }
+  function disconnect() {
+    window.clearInterval(heartbeat);
+    if (port) { port.postMessage({ close: true }); port.close(); port = null; }
+    fallback?.close();
+    fallback = null;
+  }
+  function useNative() {
+    disconnect();
+    if (closed) return;
+    fallback = native();
+    for (const [topic, handlers] of listeners) for (const handler of handlers) fallback.addEventListener(topic, handler);
+  }
+  function connect() {
+    if (closed || port || fallback) return;
+    try {
+      const worker = new SharedWorker(new URL("./sharedWorker.ts", import.meta.url), {
+        name: "gpuworks-changes:" + (lastSessionChange() ?? ""),
+      });
+      port = worker.port;
+      worker.onerror = () => { if (port === worker.port) useNative(); };
+      port.onmessage = ({ data }) => {
+        if (port !== worker.port) return;
+        if (data.error) {
+          onError(Response.json({ code: data.code }, { status: data.status }));
+          return;
+        }
+        const event = new MessageEvent<string>(data.topic, { data: data.data });
+        events.dispatchEvent(event);
+      };
+      if (listeners.size) sendTopics();
+      heartbeat = window.setInterval(sendTopics, 30_000);
+    } catch { useNative(); }
+  }
+  function pageShow(event: PageTransitionEvent) {
+    resuming = event.persisted;
+    connect();
+  }
+  connect();
+  const unsubscribe = subscribeSessionChanges(change => {
+    if (change === "authenticated") { disconnect(); connect(); }
+  });
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  window.addEventListener("pagehide", disconnect);
+  window.addEventListener("pageshow", pageShow);
+  return {
+    addEventListener(topic: string, handler: EventListener) {
+      const existing = listeners.get(topic);
+      if (!existing) listeners.set(topic, new Set([handler]));
+      else existing.add(handler);
+      if (!existing) sendTopics();
+      events.addEventListener(topic, handler);
+      fallback?.addEventListener(topic, handler);
+    },
+    removeEventListener(topic: string, handler: EventListener) {
+      const existing = listeners.get(topic);
+      existing?.delete(handler);
+      if (existing?.size === 0) {
+        listeners.delete(topic);
+        sendTopics();
+      }
+      events.removeEventListener(topic, handler);
+      fallback?.removeEventListener(topic, handler);
+    },
+    close() {
+      closed = true;
+      unsubscribe();
+      disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", disconnect);
+      window.removeEventListener("pageshow", pageShow);
+      listeners.clear();
+    },
+  };
+}

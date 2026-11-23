@@ -5,12 +5,18 @@ export type NetworkRole = "storage_sync" | "compute" | "serving";
 export type NetworkType = "host_ethernet" | "host_rdma" | "accelerator_rdma" | "accelerator_hccs";
 export type LinkLayer = "infiniband" | "roce" | "hccs";
 
+export interface NetworkNodeFilters {
+  roles?: string[];
+  source?: string[];
+}
+
 export interface NetworkWarning {
   code: "conflict" | "override_missing" | "link_layer_mismatch" | "rdma_no_hca" | "bootstrap_missing" | "hca_unusable" | "hca_mismatch" | string;
   params?: Record<string, string>;
 }
 
 export interface NetworkAttachment {
+  unresolved?: boolean;
   id: number;
   target: "node" | "label";
   node_uuid?: string;
@@ -96,6 +102,7 @@ export type NetworkTestSide = "source" | "target";
 
 /** One rail of an rdma_tool pair; a rail with no peer has only one side. */
 export interface NetworkTestRail {
+  passed: boolean;
   rail: string;
   source_ip?: string;
   target_rail?: string;
@@ -121,6 +128,11 @@ export interface NetworkTestPair {
   rtt_ms_p50: number;
   rtt_ms_p99: number;
   gbps: number;
+  /** Mean of measured passing rails for RDMA bandwidth tests. */
+  avg_rail_gbps?: number;
+  slow?: boolean;
+  rail_count?: number;
+  rail_passed_count?: number;
   /** Why the pair failed and which node it is about; runs stored before codes carry only error. */
   code?: string;
   side?: NetworkTestSide;
@@ -163,6 +175,7 @@ export interface NetworkTestRun {
   pair_count: number;
   passed_count: number;
   partial_count: number;
+  failed_count: number;
   /** Rails of an RDMA bandwidth run; of a card run, the card pairs pinged and those that answered. */
   rail_count: number;
   rail_passed_count: number;

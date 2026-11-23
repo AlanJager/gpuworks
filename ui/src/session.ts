@@ -7,17 +7,20 @@ let expired = false;
 function receive(change: SessionChange) {
   if (change === "expired" && expired) return;
   expired = change === "expired";
-  for (const listener of listeners) listener(change);
+  // A listener installed while restoring a session already sees the new state.
+  for (const listener of [...listeners]) {
+    if (listeners.has(listener)) listener(change);
+  }
 }
 
 function publish(change: SessionChange) {
   if (change === "expired" && expired) return;
-  receive(change);
   try {
     window.localStorage.setItem(storageKey, JSON.stringify({ type: change, nonce: crypto.randomUUID() }));
   } catch {
     // Cookie authentication remains available when browser storage is disabled.
   }
+  receive(change);
 }
 
 function onStorage(event: StorageEvent) {

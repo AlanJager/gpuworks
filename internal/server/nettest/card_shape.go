@@ -20,12 +20,15 @@ const (
 	ShapeUntested = "untested"
 )
 
+// CardProbed reports whether this row represents a ping between two actual card ports.
+func (r RailResult) CardProbed() bool { return r.Rail != "" && r.TargetRail != "" }
+
 // cardProbed lists the card pairs of a node pair that were pinged; a card
 // without a namesake on the other node has a result but was never pinged.
 func cardProbed(p Pair) []RailResult {
 	var out []RailResult
 	for _, r := range p.Rails {
-		if r.Rail != "" && r.TargetRail != "" {
+		if r.CardProbed() {
 			out = append(out, r)
 		}
 	}

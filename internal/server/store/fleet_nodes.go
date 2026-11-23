@@ -29,15 +29,17 @@ type fleetNodeCache struct {
 	// node event but a routine report, and the writes that announce nothing
 	// but are shown); reports counts routine reports and heartbeats.
 	changes, reports atomic.Uint64
+	// Hostnames affect search but do not invalidate the scheduling snapshot.
+	displayNames atomic.Uint64
 
 	mu  sync.Mutex
 	now func() time.Time
 	// rows were read at started, when changes and reports read changesAt and
 	// reportsAt.
-	rows                 []Node
-	ok                   bool
-	started              time.Time
-	changesAt, reportsAt uint64
+	rows                                 []Node
+	ok                                   bool
+	started                              time.Time
+	changesAt, reportsAt, displayNamesAt uint64
 }
 
 // EnableFleetNodeSnapshot turns FleetNodes' snapshot on; now is its clock
@@ -112,13 +114,13 @@ func (s *Store) FreshFleetNodes() ([]Node, error) {
 // older than what this rebuild was for.
 func (s *Store) rebuildFleetNodes(now time.Time) error {
 	c := &s.fleetNodes
-	changes, reports := c.changes.Load(), c.reports.Load()
+	changes, reports, names := c.changes.Load(), c.reports.Load(), c.displayNames.Load()
 	rows, err := s.ListNodes()
 	if err != nil {
 		c.rows, c.ok = nil, false
 		return err
 	}
-	c.rows, c.ok, c.started, c.changesAt, c.reportsAt = rows, true, now, changes, reports
+	c.rows, c.ok, c.started, c.changesAt, c.reportsAt, c.displayNamesAt = rows, true, now, changes, reports, names
 	return nil
 }
 
@@ -149,6 +151,24 @@ func (s *Store) RefreshFleetNodes() error {
 		return nil
 	}
 	return s.rebuildFleetNodes(c.now())
+}
+
+// FleetFactsGeneration counts explicit changes and reports that changed the facts
+// used for placement or display, excluding ordinary measurement-only reports.
+func (s *Store) FleetFactsGeneration() uint64 {
+	return s.fleetNodes.changes.Load() + s.fleetNodes.displayNames.Load()
+}
+
+// FleetViewGeneration is a conservative stamp for a regular FleetNodes read
+// about to start. Its cached rows may still have an earlier display hostname.
+func (s *Store) FleetViewGeneration() uint64 {
+	c := &s.fleetNodes
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.enabled.Load() || !c.ok {
+		return s.FleetFactsGeneration()
+	}
+	return c.changes.Load() + c.displayNamesAt
 }
 
 // noteNodeChange counts a node change for FleetNodes: a routine status report
