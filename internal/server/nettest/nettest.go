@@ -312,15 +312,25 @@ func startListeners(ctx context.Context, call Caller, endpoints []Endpoint, roun
 	return out
 }
 
+// stopListeners closes every listener the test opened. The calls do not
+// follow the test's own context: a cancelled test still has to close what it
+// opened. They run together, so nodes that do not answer cost the caller one
+// five-second limit and not one each; a stopping server waits for this.
 func stopListeners(call Caller, listeners map[string]listener) {
+	var wg sync.WaitGroup
 	for uuid, l := range listeners {
 		if l.token == "" || l.err != "" {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_, _ = call(ctx, uuid, proto.RPCNetBenchStop, map[string]string{"token": l.token})
-		cancel()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, _ = call(ctx, uuid, proto.RPCNetBenchStop, map[string]string{"token": l.token})
+		}()
 	}
+	wg.Wait()
 }
 
 func probe(ctx context.Context, call Caller, source, target Endpoint, l listener, opts Options) Pair {

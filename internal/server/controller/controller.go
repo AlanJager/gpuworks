@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -226,6 +227,11 @@ func (c *Controller) Run(ctx context.Context) {
 	if err := c.store.InterruptRunningNetworkTests(); err != nil {
 		c.log.Warn("could not close interrupted network tests", "err", err)
 	}
+	// The network tests in flight belong to this Run: each is started from the
+	// loop below with ctx, so a stopping server cancels its probes, and Run
+	// returns only once every one of them has recorded how it ended.
+	var networkTests sync.WaitGroup
+	defer networkTests.Wait()
 
 	// Prime: reconcile all existing deployments on startup.
 	if !c.primeCacheCopyClaims(ctx) {
@@ -268,6 +274,9 @@ func (c *Controller) Run(ctx context.Context) {
 			<-workerDone
 			return
 		case ev := <-sub.C():
+			if ev.Topic == "network_test" {
+				c.startNetworkTest(ctx, &networkTests, ev.Key, ev.Reason)
+			}
 			c.onEvent(ev)
 		case <-settle.C:
 			c.settleNodeStatus()

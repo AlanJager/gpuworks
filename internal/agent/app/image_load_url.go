@@ -67,7 +67,7 @@ func (n *NodeRuntime) rpcImageLoadURL(ctx context.Context, raw json.RawMessage) 
 	go func() {
 		loadCtx, cancelLoad := context.WithTimeout(loadCtx, imageOperationTimeout)
 		defer cancelLoad()
-		unregister := n.beginImageOperation(p.CanonicalRef, p.TransferID, cancelLoad)
+		unregister := n.imageOps.begin(p.CanonicalRef, p.TransferID, cancelLoad)
 		defer unregister()
 		n.lockImageOperation(p.CanonicalRef, "syncing")
 		defer n.imagePullMu.Unlock()
@@ -182,7 +182,7 @@ func (n *NodeRuntime) fetchAndLoadImageArchive(ctx context.Context, d runtime.Dr
 			if reporter, ok := loader.(runtime.LoadedRefReporter); ok {
 				return reporter.LoadImageFileRef(loadCtx, p.CanonicalRef, archive)
 			}
-			return "", loader.LoadImageFile(loadCtx, p.CanonicalRef, archive)
+			return p.CanonicalRef, loader.LoadImageFile(loadCtx, p.CanonicalRef, archive)
 		},
 	})
 	if err != nil {

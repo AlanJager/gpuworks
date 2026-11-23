@@ -336,8 +336,18 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 	return append(paths, n.storagePathUsage()...)
 }
 
+var imageArchiveHandlers = map[string]func(*NodeRuntime, context.Context, json.RawMessage) (any, error){
+	proto.RPCImageLoadURL:  (*NodeRuntime).rpcImageLoadURL,
+	proto.RPCImageLoadPath: (*NodeRuntime).rpcImageLoadPath,
+
+	proto.RPCImagePreviewPath: (*NodeRuntime).rpcImagePreviewPath,
+}
+
 // OnRPC handles short-action RPCs.
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
+	if handle := imageArchiveHandlers[method]; handle != nil {
+		return handle(n, ctx, params)
+	}
 	switch method {
 	case proto.RPCDebugStart:
 		return n.rpcDebugStart(params)
@@ -515,8 +525,6 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		return n.rpcImagePull(ctx, params)
 	case proto.RPCRuntimeRestart:
 		return n.rpcRuntimeRestart(ctx)
-	case proto.RPCImageLoadURL:
-		return n.rpcImageLoadURL(ctx, params)
 	case proto.RPCImageCancel:
 		return n.rpcImageCancel(ctx, params)
 	case proto.RPCImageRemove:

@@ -3,11 +3,14 @@ package controller
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
+	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -15,9 +18,13 @@ import (
 
 // imagePeerSyncer is the hub's node-to-node image copy, which the controller
 // starts for a node that lacks a deployment's image when a node of its sync
-// group has it.
+// group has it. The copy a launch starts connects the two nodes directly and
+// is never relayed through the management server (SyncImageDirectFrom); a
+// relayed copy a person started and the relay queued is resumed as it was
+// (SyncImageFromRate).
 type imagePeerSyncer interface {
 	SyncImageFromRate(ctx context.Context, imageID uint, targetNodeUUID, sourceNodeUUID string, rateLimitKiB int64) (*store.ImageNode, error)
+	SyncImageDirectFrom(ctx context.Context, imageID uint, targetNodeUUID, sourceNodeUUID string, rateLimitKiB int64) (*store.ImageNode, error)
 }
 
 // peerCooldown is how long a pair of nodes that failed to copy to one another
@@ -27,19 +34,34 @@ type imagePeerSyncer interface {
 const peerCooldown = 3 * time.Hour
 
 // pairCooldown remembers node pairs whose automatic copy failed, in memory: a
-// server restart forgets them, which costs one more failed attempt.
+// server restart forgets them, which costs one more failed attempt. A target
+// paired with managementPeers could not be connected to over the management
+// network.
 type pairCooldown struct {
 	mu    sync.Mutex
 	until map[[2]uint]time.Time
+	// relayed are the image copies sent through the relay, whose failure
+	// rules the relay out for their target.
+	relayed relayedCopies
 }
 
-func (p *pairCooldown) cool(source, target uint, now time.Time) {
+// managementPeers stands for every holder a target reaches over the
+// management network, relayPeers for every holder that could copy to it
+// through the management server's relay. No node has either id.
+const (
+	managementPeers uint = 0
+	relayPeers      uint = ^uint(0)
+)
+
+// cool rules the pair out for peerCooldown from failedAt, the time the copy
+// failed: a failure read again on a later launch does not start the wait over.
+func (p *pairCooldown) cool(source, target uint, failedAt time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.until == nil {
 		p.until = map[[2]uint]time.Time{}
 	}
-	p.until[[2]uint{source, target}] = now.Add(peerCooldown)
+	p.until[[2]uint{source, target}] = failedAt.Add(peerCooldown)
 }
 
 func (p *pairCooldown) cooling(source, target uint, now time.Time) bool {
@@ -54,6 +76,34 @@ func (p *pairCooldown) cooling(source, target uint, now time.Time) bool {
 		return false
 	}
 	return true
+}
+
+// relayedCopies remembers the copies the controller sent through the relay,
+// in memory, by image row and target node and the transfer each was, so the
+// failure of one is told from any other copy's: every failed copy leaves a
+// row whose source is a peer.
+type relayedCopies struct {
+	mu     sync.Mutex
+	active map[[2]uint]string
+}
+
+func (r *relayedCopies) started(image, target uint, transferID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.active == nil {
+		r.active = map[[2]uint]string{}
+	}
+	r.active[[2]uint{image, target}] = transferID
+}
+
+// ended forgets the copy to target and reports whether row is how it ended:
+// a row another transfer wrote since is that transfer's outcome.
+func (r *relayedCopies) ended(image, target uint, row *store.ImageNode) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	transferID, was := r.active[[2]uint{image, target}]
+	delete(r.active, [2]uint{image, target})
+	return was && row.Source == "peer" && row.LastTransferID == transferID
 }
 
 // imageWaits remembers which deployments wait for an image to arrive on a
@@ -97,15 +147,30 @@ type imageDelivery struct {
 	present bool
 }
 
-// deploymentImageDelivery gets a deployment's image onto node the cheapest
-// way: a node of its sync group that has it copies it over; otherwise the
-// replica pulls it at start, through the node's pull source rules. Only an
-// image the catalog knows can be copied (the ledger that tracks copies is
-// keyed by catalog row); any other image is always pulled.
+// deploymentImageDelivery gets a deployment's image onto node, cheapest way
+// first:
 //
-// A copy that fails is not retried with that pair for peerCooldown; the
-// replica then pulls the image itself. Nothing here is the deployment's
-// choice, so nothing is waited for that could not arrive.
+//  1. a node of its sync group that has it copies it over, the two nodes
+//     connected directly;
+//  2. the replica pulls it at start, through the node's pull source rules;
+//  3. when that pull has failed, a holder copies it through the management
+//     server's relay: the slowest path there is, and for a node that reaches
+//     neither a holder nor a registry the only one.
+//
+// Only an image the catalog knows can be copied (the ledger that tracks
+// copies is keyed by catalog row); any other image is always pulled.
+//
+// A direct copy that fails is not retried with that pair for peerCooldown.
+// A source that could not connect to the target over the management network
+// rules out the other holders reached over it as well: a node that one of
+// them could not connect to (a cloud container behind its own NAT) is as far
+// from the next, and trying each in turn only delays the pull. A copy that
+// failed any other way (the source went away, the load failed, someone
+// cancelled it) says nothing about the next holder. The relay is one path
+// whichever holder feeds it: once a relayed copy has given up, the relay is
+// not tried for that target for peerCooldown from then, through any holder.
+// Nothing here is the deployment's choice, so nothing is waited for that
+// could not arrive.
 func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Deployment, node *store.Node) imageDelivery {
 	if dep == nil || node == nil {
 		return imageDelivery{present: true}
@@ -120,6 +185,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 	if err == nil {
 		switch row.State {
 		case store.ImageStatePresent:
+			c.peerCool.relayed.ended(image.ID, node.ID, row)
 			c.imageWaits.forget(dep.ID)
 			return imageDelivery{present: true}
 		case store.ImageStateSyncing, store.ImageStatePulling:
@@ -139,18 +205,45 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 				c.imageWaits.set(dep.ID, image.ID)
 				return imageDelivery{}
 			}
-			if row.Source == "peer" && row.SourceNodeID != 0 {
-				c.peerCool.cool(row.SourceNodeID, node.ID, now)
+			if c.peerCool.relayed.ended(image.ID, node.ID, row) {
+				// The relayed copy gave up. The relay is ruled out for the
+				// target from that moment; the pair's direct path is not
+				// what failed, and was already ruled out before it.
+				c.peerCool.cool(relayPeers, node.ID, row.UpdatedAt)
+			} else if row.Source == "peer" && row.SourceNodeID != 0 {
+				c.peerCool.cool(row.SourceNodeID, node.ID, row.UpdatedAt)
+				if row.TransferErrorCode == messages.ErrorPeerDirectConnectFailed {
+					if path, e := c.networks.StoragePath(row.SourceNodeID, node.ID); e == nil && path.Network == netplan.ManagementName {
+						c.peerCool.cool(managementPeers, node.ID, row.UpdatedAt)
+					}
+				}
 			}
 		}
 	}
-	source, rate := c.imageCopySource(image.ID, node, now)
+	source, rate := c.imageCopySource(image.ID, node, now, false)
 	syncer, ok := c.hub.(imagePeerSyncer)
+	if source == nil && ok && !c.peerCool.cooling(relayPeers, node.ID, now) {
+		// Nothing connects to the node directly. Once its own pull has
+		// failed too, the relay is what is left.
+		if relayed, relayRate := c.imageCopySource(image.ID, node, now, true); relayed != nil && c.imagePullFailed(dep, node, row, now) {
+			started, err := syncer.SyncImageFromRate(ctx, image.ID, node.UUID, relayed.UUID, relayRate)
+			if err == nil && started != nil {
+				c.peerCool.relayed.started(image.ID, node.ID, started.TransferID)
+				c.log.Info("image pull failed; copying through the relay", "dep", dep.ID, "image", image.ImageRef, "node", node.UUID, "source", relayed.UUID)
+				c.imageWaits.set(dep.ID, image.ID)
+				c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonImageDeliveryWaiting, Params: map[string]any{"node": node.DisplayName(), "image": image.ImageRef}})
+				return imageDelivery{}
+			}
+			// Nothing was started, so nothing is ruled out: the replica
+			// pulls again and the next launch asks once more.
+			c.log.Info("relayed image copy not started; the replica pulls the image itself", "dep", dep.ID, "image", image.ImageRef, "node", node.UUID, "source", relayed.UUID, "err", err)
+		}
+	}
 	if source == nil || !ok {
 		c.imageWaits.forget(dep.ID)
 		return imageDelivery{present: true}
 	}
-	if _, err := syncer.SyncImageFromRate(ctx, image.ID, node.UUID, source.UUID, rate); err != nil {
+	if _, err := syncer.SyncImageDirectFrom(ctx, image.ID, node.UUID, source.UUID, rate); err != nil {
 		if errors.Is(err, messages.ErrPeerRelayBusy) {
 			c.imageWaits.set(dep.ID, image.ID)
 			return imageDelivery{}
@@ -165,17 +258,50 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 	return imageDelivery{}
 }
 
+// imagePullFailed is whether node's own pull of the deployment's image failed
+// within the last peerCooldown: the pull the controller started ahead of a
+// multi-node launch (the image's row on the node says so, unless someone
+// cancelled it), or the one a replica of the deployment made of this image
+// at its start.
+func (c *Controller) imagePullFailed(dep *store.Deployment, node *store.Node, row *store.ImageNode, now time.Time) bool {
+	recent := func(at time.Time) bool { return now.Sub(at) < peerCooldown }
+	if row != nil && row.State == store.ImageStateFailed && row.Source != "peer" &&
+		row.TransferErrorCode != messages.ErrorPeerTransferCanceled && recent(row.UpdatedAt) {
+		return true
+	}
+	instances, err := c.store.InstancesForDeployment(dep.ID)
+	if err != nil {
+		return false
+	}
+	for i := range instances {
+		in := &instances[i]
+		// An attempt made with another image (the deployment was edited
+		// since) says nothing about this one.
+		if in.NodeID != node.ID || strings.TrimSpace(in.Image) != strings.TrimSpace(dep.Image) || !recent(in.UpdatedAt) {
+			continue
+		}
+		if failure := in.Failure(); failure != nil && failure.Code == proto.ErrorImagePullFailed {
+			return true
+		}
+	}
+	return false
+}
+
 // imageCopySource picks the node to copy an image to target from: an online
-// node of target's sync groups that has it, preferring one on the same storage
-// sync network, skipping pairs that failed recently.
-func (c *Controller) imageCopySource(imageID uint, target *store.Node, now time.Time) (*store.Node, int64) {
+// node of target's sync groups that has it and shares a storage-sync path with
+// it, preferring one on the same storage sync network. For a direct copy it
+// skips pairs that failed recently and, after a holder could not connect over
+// it, the management network. For a relayed copy (relay) those failures are
+// why the relay is asked, so it skips neither, and takes only a pair whose
+// nodes both let the management network carry storage sync.
+func (c *Controller) imageCopySource(imageID uint, target *store.Node, now time.Time, relay bool) (*store.Node, int64) {
 	held, err := c.store.ImageHolders(imageID, target.ID)
 	if err != nil {
 		return nil, 0
 	}
 	ids := held[:0]
 	for _, id := range held {
-		if !c.peerCool.cooling(id, target.ID, now) {
+		if relay || !c.peerCool.cooling(id, target.ID, now) {
 			ids = append(ids, id)
 		}
 	}
@@ -198,32 +324,28 @@ func (c *Controller) imageCopySource(imageID uint, target *store.Node, now time.
 		return nil, 0
 	}
 	peers, err := planning.SyncPeersFor(c.store, c.networks.Resolve, target, holders)
-	if err != nil || len(peers) == 0 {
+	if err == nil {
+		// A peer on a storage sync network it shares with the target goes
+		// first; one it shares no path with is no source at all.
+		peers, err = planning.WithStoragePaths(c.networks.Resolve, target, holders, peers)
+	}
+	if err != nil {
 		return nil, 0
 	}
-	byID := make(map[uint]*store.Node, len(holders))
-	for i := range holders {
-		byID[holders[i].ID] = &holders[i]
-	}
-	best := peers[0]
-	if len(peers) > 1 {
-		// A peer on the target's own storage sync network goes first; the
-		// networks of all of them are resolved in one pass.
-		nodes := make([]store.Node, 0, len(peers)+1)
-		nodes = append(nodes, *target)
-		for _, peer := range peers {
-			nodes = append(nodes, *byID[peer.NodeID])
+	overManagement := relay || !c.peerCool.cooling(managementPeers, target.ID, now)
+	for _, peer := range peers {
+		if peer.Network == netplan.ManagementName && !overManagement {
+			continue
 		}
-		if resolved, err := c.networks.Resolve(nodes); err == nil {
-			if own, ok := resolved.For(target.ID, netplan.RoleStorageSync); ok && !own.IsManagement() {
-				for _, peer := range peers {
-					if theirs, ok := resolved.For(peer.NodeID, netplan.RoleStorageSync); ok && !theirs.IsManagement() && theirs.Network.ID == own.Network.ID {
-						best = peer
-						break
-					}
-				}
+		for i := range holders {
+			if holders[i].ID != peer.NodeID {
+				continue
 			}
+			if relay && !network.PeerRelayAllowed(&holders[i], target) {
+				break
+			}
+			return &holders[i], peer.RateLimitKiB
 		}
 	}
-	return byID[best.NodeID], best.RateLimitKiB
+	return nil, 0
 }

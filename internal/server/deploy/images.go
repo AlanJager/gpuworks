@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	enginenames "gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
@@ -193,13 +194,6 @@ func imageCandidateEligible(t ImageTarget, candidate ImageCandidate) bool {
 	if !candidate.Enabled || candidate.Deprecated || normalizeKey(candidate.ImageRef) == "" {
 		return false
 	}
-	targetEngine := normalizeKey(t.Engine)
-	if targetEngine == "" {
-		targetEngine = DefaultEngine
-	}
-	if normalizeKey(candidate.Engine) != targetEngine {
-		return false
-	}
 	if (strings.EqualFold(candidate.Source, "community") || strings.EqualFold(candidate.Source, "custom")) && strings.TrimSpace(candidate.Framework) == "" {
 		// An unclassified user image remains available through the expert
 		// custom-image path, but it is not safe to recommend in quick deploy.
@@ -229,7 +223,8 @@ func candidateCompatible(t ImageTarget, candidate ImageCandidate) bool {
 	if targetEngine == "" {
 		targetEngine = DefaultEngine
 	}
-	if normalizeKey(candidate.Engine) != targetEngine {
+	// Previously imported archives may have stored the runner build label.
+	if normalizeKey(candidate.Engine) != targetEngine && enginenames.CatalogEngineForLabel(candidate.Engine) != targetEngine {
 		return false
 	}
 	compatible, _ := catalogCompatibility(t, accelerator.VendorKey(t.Vendor), candidate)

@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -34,7 +35,19 @@ func (h *Hub) SyncImageFromRate(ctx context.Context, imageID uint, targetNodeUUI
 	return h.syncImageDirect(ctx, imageID, targetNodeUUID, sourceNodeUUID, rateLimitKiB, false)
 }
 
+// SyncImageDirectFrom is SyncImageFromRate without the relay: the source
+// connects to the target or the copy fails. A launch copies this way, because
+// its replica pulls the image when the copy fails, and a relay through the
+// management server would keep it waiting on the slowest path there is.
+func (h *Hub) SyncImageDirectFrom(ctx context.Context, imageID uint, targetNodeUUID, sourceNodeUUID string, rateLimitKiB int64) (*store.ImageNode, error) {
+	return h.startImageSync(ctx, imageID, targetNodeUUID, sourceNodeUUID, rateLimitKiB, false, false)
+}
+
 func (h *Hub) syncImageDirect(ctx context.Context, imageID uint, targetNodeUUID, requestedSourceNodeUUID string, rateLimitKiB int64, force bool) (*store.ImageNode, error) {
+	return h.startImageSync(ctx, imageID, targetNodeUUID, requestedSourceNodeUUID, rateLimitKiB, force, true)
+}
+
+func (h *Hub) startImageSync(ctx context.Context, imageID uint, targetNodeUUID, requestedSourceNodeUUID string, rateLimitKiB int64, force, relay bool) (*store.ImageNode, error) {
 	epoch, done, ok := h.sessionWork.begin()
 	if !ok {
 		return nil, errSessionsStopped
@@ -107,40 +120,80 @@ func (h *Hub) syncImageDirect(ctx context.Context, imageID uint, targetNodeUUID,
 	}
 	transferID := auth.NewUUID()
 	sizeBytes := source.SizeBytes
+	var targetRow *store.ImageNode
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		current, err := h.store.ImageNode(image.ID, target.ID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			current = nil
+		}
+		if current != nil && h.reuseImageSync(current, force) {
+			return current, nil
+		}
+		var started bool
+		targetRow, started, err = h.store.TryStartImageTransfer(ctx, current, &store.ImageNode{
+			ImageID: image.ID, NodeID: target.ID, State: store.ImageStateSyncing, SizeBytes: sizeBytes,
+			TransferID: transferID, SourceNodeID: source.NodeID, Source: "peer", RateLimitKiB: rateLimitKiB,
+			Message: "starting direct peer sync",
+		})
+		if err != nil {
+			return nil, err
+		}
+		if started {
+			break
+		}
+	}
 	copyCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	stopEpoch := context.AfterFunc(epoch, cancel)
 	h.imageSyncMu.Lock()
-	// Recheck after source validation: another caller may have started this slot.
-	if current, e := h.store.ImageNode(image.ID, target.ID); e == nil && (current.State == store.ImageStateSyncing || current.State == store.ImageStatePulling) && (!force || h.imageSyncOwners[current.TransferID] != nil) && !(current.TransferErrorCode == messages.ErrorPeerRelayBusy && h.imageSyncOwners[current.TransferID] == nil) {
-		h.imageSyncMu.Unlock()
-		stopEpoch()
-		cancel()
-		return current, nil
-	}
 	if h.imageSyncOwners == nil {
 		h.imageSyncOwners = make(map[string]context.CancelFunc)
 	}
 	h.imageSyncOwners[transferID] = cancel
-	targetRow, err := h.store.UpsertImageNode(&store.ImageNode{ImageID: image.ID, NodeID: target.ID, State: store.ImageStateSyncing, SizeBytes: sizeBytes, TransferID: transferID, SourceNodeID: source.NodeID, Source: "peer", RateLimitKiB: rateLimitKiB})
-	if err == nil {
-		err = h.store.BeginDirectImageSync(image.ID, target.ID, source.NodeID, transferID, sizeBytes, rateLimitKiB)
-	}
-	if err != nil {
-		delete(h.imageSyncOwners, transferID)
-		cancel()
-	}
 	h.imageSyncMu.Unlock()
-	if err != nil {
+	// A cancellation can win after the database claim but before this local
+	// cancel function was registered. Do not launch that already-stopped work.
+	current, err := h.store.ImageNode(image.ID, target.ID)
+	if err != nil || current.TransferID != transferID || current.State != store.ImageStateSyncing {
+		h.imageSyncMu.Lock()
+		delete(h.imageSyncOwners, transferID)
+		h.imageSyncMu.Unlock()
 		stopEpoch()
-		return nil, err
+		cancel()
+		return current, err
 	}
 	h.watchDirectImageTransfer(image.ID, target.ID)
 	confirmationWait := imageTransferConfirmWait
 	h.trackSessionWork(func() {
 		defer stopEpoch()
-		h.runDirectImageSync(copyCtx, image, target, sourceNode, target.ID, transferID, sizeBytes, rateLimitKiB, confirmationWait)
+		h.runDirectImageSync(copyCtx, image, target, sourceNode, target.ID, transferID, sizeBytes, rateLimitKiB, confirmationWait, relay)
 	})
 	return targetRow, nil
+}
+
+// reuseImageSync preserves peer recovery while respecting another acquisition
+// source's live attempt. Force is never permission to steal a fresh local load
+// or registry pull observed after source validation.
+func (h *Hub) reuseImageSync(row *store.ImageNode, force bool) bool {
+	if row.Source != "peer" {
+		return imageRowActive(row) && !(force && row.State == store.ImageStatePresent)
+	}
+	if row.State == store.ImageStatePresent {
+		return !force
+	}
+	if row.State != store.ImageStateSyncing && row.State != store.ImageStatePulling {
+		return false
+	}
+	owned := h.ownsImageSync(row.TransferID)
+	if row.TransferErrorCode == messages.ErrorPeerRelayBusy && !owned {
+		return false
+	}
+	return !force || owned || time.Since(row.UpdatedAt) < 2*time.Minute
 }
 
 // RetryImageSync resets a failed transfer and starts it again. Docker save is
@@ -173,7 +226,18 @@ func (h *Hub) RetryImageSync(ctx context.Context, imageID uint, targetNodeUUID s
 	return h.syncImageDirect(ctx, imageID, targetNodeUUID, source.UUID, row.LastRateLimitKiB, true)
 }
 
-func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target, source *store.Node, nodeID uint, transferID string, sizeBytes, rateLimitKiB int64, confirmationWait time.Duration) {
+// imageCopyRequest is one attempt of a copy between two nodes. It may fall
+// back to the relay only when the copy was started as one that may (relay)
+// and both nodes let the management network carry storage sync.
+func imageCopyRequest(image *store.Image, source, target *store.Node, path netplan.StoragePath, transferID string, sizeBytes, rateLimitKiB int64, relay bool) proto.ImageSyncCopyRequest {
+	return proto.ImageSyncCopyRequest{
+		TransferID: transferID, ImageRef: image.ImageRef, SourceNodeUUID: source.UUID, TargetNodeUUID: target.UUID,
+		SourceIP: path.SourceIP, TargetIP: path.TargetIP, ExpectedBytes: sizeBytes, RateLimitKBs: int(rateLimitKiB),
+		AllowRelay: relay && network.PeerRelayAllowed(source, target),
+	}
+}
+
+func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target, source *store.Node, nodeID uint, transferID string, sizeBytes, rateLimitKiB int64, confirmationWait time.Duration, relay bool) {
 	defer func() {
 		h.imageSyncMu.Lock()
 		cancel := h.imageSyncOwners[transferID]
@@ -190,12 +254,16 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 			_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, err.Error())
 			return
 		}
-		result, err = h.copyImagePath(ctx, proto.ImageSyncCopyRequest{TransferID: transferID, ImageRef: image.ImageRef, SourceNodeUUID: source.UUID, TargetNodeUUID: target.UUID, SourceIP: path.SourceIP, TargetIP: path.TargetIP, ExpectedBytes: sizeBytes, RateLimitKBs: int(rateLimitKiB), AllowRelay: network.PeerRelayAllowed(source, target)}, func() {
+		result, err = h.copyImagePath(ctx, imageCopyRequest(image, source, target, path, transferID, sizeBytes, rateLimitKiB, relay), func() {
 			_, _ = h.store.MarkImageSyncWaiting(image.ID, nodeID, transferID, messages.PeerRelayBusy().Error(), messages.ErrorPeerRelayBusy)
 		})
 		if !errors.Is(err, messages.ErrPeerRelayBusy) {
 			if err != nil {
-				_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, err.Error())
+				code := ""
+				if errors.Is(err, errDirectPeerConnection) {
+					code = messages.ErrorPeerDirectConnectFailed
+				}
+				_ = h.store.FailImageSyncIfActiveCode(image.ID, nodeID, transferID, err.Error(), code)
 				return
 			}
 			break

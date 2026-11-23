@@ -33,30 +33,30 @@ func operationKey(canonicalRef, transferID string) string {
 
 // begin registers one operation and returns the function that unregisters it.
 // The caller defers the returned func right after registering.
-func (n *NodeRuntime) beginImageOperation(canonicalRef, transferID string, cancel context.CancelFunc) func() {
+func (o *imageOperations) begin(canonicalRef, transferID string, cancel context.CancelFunc) func() {
 	key := operationKey(canonicalRef, transferID)
-	n.imageOps.mu.Lock()
-	if n.imageOps.ops == nil {
-		n.imageOps.ops = map[string]context.CancelFunc{}
+	o.mu.Lock()
+	if o.ops == nil {
+		o.ops = map[string]context.CancelFunc{}
 	}
-	n.imageOps.ops[key] = cancel
-	n.imageOps.mu.Unlock()
+	o.ops[key] = cancel
+	o.mu.Unlock()
 	return func() {
-		n.imageOps.mu.Lock()
-		delete(n.imageOps.ops, key)
-		n.imageOps.mu.Unlock()
+		o.mu.Lock()
+		delete(o.ops, key)
+		o.mu.Unlock()
 	}
 }
 
-// cancelImageOperation stops one registered operation. It reports whether
+// cancel stops one registered operation. It reports whether
 // anything was still running: cancelling an operation that already finished is
 // a no-op, not an error, because the server may race a cancel against the
 // terminal status.
-func (n *NodeRuntime) cancelImageOperation(canonicalRef, transferID string) bool {
+func (o *imageOperations) cancel(canonicalRef, transferID string) bool {
 	key := operationKey(canonicalRef, transferID)
-	n.imageOps.mu.Lock()
-	cancel, ok := n.imageOps.ops[key]
-	n.imageOps.mu.Unlock()
+	o.mu.Lock()
+	cancel, ok := o.ops[key]
+	o.mu.Unlock()
 	if !ok {
 		return false
 	}
@@ -76,7 +76,7 @@ func (n *NodeRuntime) rpcImageCancel(_ context.Context, raw json.RawMessage) (an
 		return nil, errors.New("image cancel requires a canonical_ref or a transfer_id")
 	}
 	state := "not_running"
-	if n.cancelImageOperation(p.CanonicalRef, p.TransferID) {
+	if n.imageOps.cancel(p.CanonicalRef, p.TransferID) {
 		state = "cancelling"
 	}
 	return proto.ImageCancelResult{State: state, Cancelled: state == "cancelling"}, nil

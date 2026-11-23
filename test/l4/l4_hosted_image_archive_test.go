@@ -22,7 +22,7 @@ import (
 // holds the runner image still has to get it a second time. Pulling ~30 GiB
 // from a registry takes 25-40 minutes per rank; the golden image's Docker
 // store is a local copy. This file hands that copy to udocker the way an
-// operator moves an image between sites ("从 URL 导入",
+// operator moves an image between sites ("从HTTP目录导入",
 // docs/how-to/import-from-http.md): `docker save` it on the VM, serve the tar
 // over HTTP on the VM's private address, declare that address on the catalog
 // image's fetch addresses, and ask each node to download it directly and load

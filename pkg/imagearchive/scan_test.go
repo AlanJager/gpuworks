@@ -246,10 +246,10 @@ func TestParseNumeric(t *testing.T) {
 	}
 }
 
-func TestAppendTagsDedupesAndSkipsEmpty(t *testing.T) {
-	got := appendTags(nil, "a:1", "", "  ", "a:1", " b:2 ")
+func TestUniqueTagsDedupesAndSkipsEmpty(t *testing.T) {
+	got := uniqueTags([]string{"a:1", "", "  ", "a:1", " b:2 "})
 	if !slices.Equal(got, []string{"a:1", "b:2"}) {
-		t.Fatalf("appendTags = %q", got)
+		t.Fatalf("uniqueTags = %q", got)
 	}
 }
 

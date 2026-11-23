@@ -79,6 +79,7 @@ func TestFetchRequestRecognisesURLSource(t *testing.T) {
 func TestPeekArchiveURLReadsTagsAndSizeWithoutDownloading(t *testing.T) {
 	archive, err := ocifixture.DockerSaveArchive(ocifixture.DockerSaveOptions{
 		RepoTags: []string{"gpustack/runner:cuda13.0-vllm0.25.1"}, LayerBytes: 512 << 10,
+		Labels: map[string]string{"io.gpuworks.engine": "vllm-dcu", "io.gpuworks.engine.version": "0.25.1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +93,9 @@ func TestPeekArchiveURLReadsTagsAndSizeWithoutDownloading(t *testing.T) {
 	}
 	if !peek.Previewable || len(peek.RepoTags) != 1 || peek.RepoTags[0] != "gpustack/runner:cuda13.0-vllm0.25.1" {
 		t.Fatalf("peek = %+v", peek)
+	}
+	if meta := peek.MetadataByTag[peek.RepoTags[0]]; meta.Engine != "vllm" || meta.EngineVersion != "0.25.1" {
+		t.Fatalf("preview metadata = %+v", meta)
 	}
 	if peek.SizeBytes != int64(len(archive)) {
 		t.Fatalf("size = %d, want %d", peek.SizeBytes, len(archive))
