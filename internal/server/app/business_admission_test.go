@@ -295,3 +295,75 @@ func TestMemberRouteKeyAnswersFromConfirmedMembershipWithoutGrant(t *testing.T) 
 		t.Fatalf("refused grant: err=%v", err)
 	}
 }
+
+// Renewals that only run out of time carry a member through a stall, but not
+// forever: once the last successful confirmation is older than the limit the
+// member refuses requests, and the next success admits them again.
+func TestBusinessRequestsAreRefusedWhenNoConfirmationSucceedsWithinTheLimit(t *testing.T) {
+	var clock atomic.Int64
+	base := time.Now().UTC()
+	var answer atomic.Pointer[error]
+	eligibility := newMaterialEligibility(func() time.Time { return base.Add(time.Duration(clock.Load())) }, func(context.Context) (bool, error) {
+		if err := answer.Load(); err != nil {
+			// A grant that used up its own timeout without an answer.
+			clock.Add(int64(store.ClusterMembershipGrantTimeout))
+			return false, *err
+		}
+		return true, nil
+	}, time.Hour)
+	gate := newBusinessHandlerGate()
+	gate.requireMaterialEligibility()
+	gate.setMaterialEligibility(eligibility)
+	gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	request := func() int {
+		w := httptest.NewRecorder()
+		gate.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+		return w.Code
+	}
+	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
+		t.Fatalf("first confirmation: ready=%t err=%v", ready, err)
+	}
+	timeout := error(context.DeadlineExceeded)
+	answer.Store(&timeout)
+	closedAt := time.Duration(-1)
+	for attempt := 0; attempt < 20 && closedAt < 0; attempt++ {
+		clock.Add(int64(materialReproofInterval))
+		_, _ = eligibility.Reprove(t.Context())
+		if code := request(); code == http.StatusServiceUnavailable {
+			closedAt = time.Duration(clock.Load())
+		} else if code != http.StatusNoContent {
+			t.Fatalf("request during unanswered renewals = %d", code)
+		}
+	}
+	if closedAt < materialUnconfirmedLimit || closedAt > materialUnconfirmedLimit+materialEligibilityWindow {
+		t.Fatalf("member closed %v after its last successful confirmation, want just past %v", closedAt, materialUnconfirmedLimit)
+	}
+	// Further unanswered renewals do not reopen it.
+	clock.Add(int64(materialReproofInterval))
+	_, _ = eligibility.Reprove(t.Context())
+	if code := request(); code != http.StatusServiceUnavailable {
+		t.Fatalf("request after the limit = %d", code)
+	}
+	answer.Store(nil)
+	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
+		t.Fatalf("confirmation after the stall: ready=%t err=%v", ready, err)
+	}
+	if code := request(); code != http.StatusNoContent {
+		t.Fatalf("request after a successful confirmation = %d", code)
+	}
+}
+
+// A member that never confirmed is not admitted on a renewal without an answer.
+func TestBusinessRequestsNeedOneSuccessfulConfirmation(t *testing.T) {
+	eligibility := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return false, context.DeadlineExceeded }, time.Hour)
+	gate := newBusinessHandlerGate()
+	gate.requireMaterialEligibility()
+	gate.setMaterialEligibility(eligibility)
+	gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	_, _ = eligibility.Reprove(t.Context())
+	w := httptest.NewRecorder()
+	gate.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("request on a member that never confirmed = %d", w.Code)
+	}
+}

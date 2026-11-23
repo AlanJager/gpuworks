@@ -34,6 +34,15 @@ const (
 	// materialEligibilityWindow - 2*ClusterMembershipGrantTimeout changes
 	// nothing; four seconds keeps one more second while proofs are fast.
 	materialIdleReproofRest = 4 * time.Second
+	// materialUnconfirmedLimit bounds how long a member keeps admitting
+	// requests on renewals that got no answer. A renewal that only ran out of
+	// time is not a refusal and extends admission, which is what carries a
+	// member through a storage stall; without a bound a member whose every
+	// renewal times out would answer forever from a view nothing confirms,
+	// and no request takes a grant of its own any more. Stalls measured on
+	// slow disks last up to eight seconds, so four proof windows leave them
+	// far behind; past that the member closes until a renewal succeeds.
+	materialUnconfirmedLimit = 4 * materialEligibilityWindow
 )
 
 // materialProofPhase spreads member starts within the existing cadence. Mix
@@ -172,7 +181,7 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 		// context ends. Proofs are serialized, so a slow renewal would otherwise
 		// close every member together. A grant that needs headroom still waits
 		// for a published proof.
-		if (e.bridging || e.proving.Load()) && e.proofCtx != nil && e.proofCtx.Err() == nil {
+		if (e.bridging || e.proving.Load()) && e.proofCtx != nil && e.proofCtx.Err() == nil && e.confirmedRecently(now) {
 			e.mu.Unlock()
 			if minRemaining <= 0 {
 				return true, "", 0
@@ -330,15 +339,19 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	unexpired := !e.deadline.IsZero() && e.now().Before(e.deadline)
 	deadlineOnly := err != nil && errors.Is(err, context.DeadlineExceeded) && live
 	keepEarlier := (err != nil || !ready) && live && unexpired
-	renewAttempt := !keepEarlier && deadlineOnly && e.now().Before(attemptDeadline)
+	renewAttempt := !keepEarlier && deadlineOnly && e.now().Before(attemptDeadline) && e.confirmedRecently(e.now())
 	invalidated := !keepEarlier && !renewAttempt && (e.stopped || e.epoch != epoch || proofCtx.Err() != nil || err != nil || !ready || !e.now().Before(attemptDeadline))
 	notifyInvalidated := invalidated && e.epoch == epoch
 	if keepEarlier {
 		ready = false
 	} else if renewAttempt {
 		// Not a successful proof: provedAt stays, so a write gate stops
-		// treating the closure as transient before this deadline ends.
+		// treating the closure as transient before this deadline ends, and
+		// the deadline never passes the unconfirmed limit.
 		e.deadline = attemptDeadline
+		if limit := e.provedAt.Add(materialUnconfirmedLimit); limit.Before(e.deadline) {
+			e.deadline = limit
+		}
 		ready = false
 	} else if invalidated {
 		if e.epoch == epoch {
@@ -361,6 +374,13 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	}
 	cancel()
 	return ready, err
+}
+
+// confirmedRecently reports whether the last successful proof is recent
+// enough for a renewal without an answer to stand in for it. Called with
+// e.mu held.
+func (e *materialEligibility) confirmedRecently(now time.Time) bool {
+	return !e.provedAt.IsZero() && now.Before(e.provedAt.Add(materialUnconfirmedLimit))
 }
 
 // successRest computes scheduling headroom only; it never publishes authority.
