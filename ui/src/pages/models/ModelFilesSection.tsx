@@ -79,10 +79,10 @@ function CancelDownload({ modelId, storageId, nodeUuid, onChanged }: { modelId: 
 
 // runFileAction runs one action on a file row: it says the outcome and, once
 // the server accepted it, has the files read again.
-async function runFileAction(t: TFunction, action: () => Promise<unknown>, success: string, onChanged: () => void) {
+async function runFileAction<R>(t: TFunction, action: () => Promise<R>, success: string | ((result: R) => string), onChanged: () => void) {
   try {
-    await action();
-    message.success(success);
+    const result = await action();
+    message.success(typeof success === "string" ? success : success(result));
     onChanged();
   } catch (e) {
     message.error(storageErrorText(t, e));
@@ -98,12 +98,15 @@ function RetryButton({ onClick }: { onClick: () => void }) {
 
 /**
  * A download into a shared storage that stopped is started again there. No
- * writer is named: the server picks a node the storage is writable on, as it
- * does for a first download.
+ * writer is named: the server keeps the writer the stopped download had while
+ * it can still write to the storage, and otherwise picks one.
  */
 function SharedDownloadRetry({ modelId, row, onChanged }: { modelId: number; row: ModelStoragePresence; onChanged: () => void }) {
   const { t } = useTranslation("models");
-  return <RetryButton onClick={() => void runFileAction(t, () => api.downloadModelToStorage(modelId, { storage_id: row.storage_id }), t("presenceMessage.downloadStarted"), onChanged)} />;
+  // Someone else may have finished the download since this page read it.
+  const outcome = (result: { status?: string } | undefined) => result?.status === "present"
+    ? t("download.alreadyPresent", { storage: row.storage_name }) : t("presenceMessage.downloadStarted");
+  return <RetryButton onClick={() => void runFileAction(t, () => api.downloadModelToStorage(modelId, { storage_id: row.storage_id }), outcome, onChanged)} />;
 }
 
 function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row: ModelNodePresence; isAdmin: boolean; onChanged: () => void }) {

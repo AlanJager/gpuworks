@@ -15,7 +15,9 @@ const { ModelDetailModal } = await import("../src/pages/ModelsPageParts.tsx");
 
 const api = apiModule.api;
 const original = { me: api.me, deleteModelOnNode: api.deleteModelOnNode, syncModel: api.syncModel, downloadModel: api.downloadModel, downloadModelToStorage: api.downloadModelToStorage, deleteModelInStorage: api.deleteModelInStorage };
-afterEach(() => { cleanup(); Object.assign(api, original); });
+const { message } = await import("antd");
+// A toast outlives the test that raised it; one left behind would answer the next test's question.
+afterEach(() => { cleanup(); message.destroy(); Object.assign(api, original); });
 
 const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(values[key]));
 const GiB = 1024 ** 3;
@@ -192,15 +194,29 @@ test("a download into a shared storage that failed can be retried there, without
   stubMe("viewer");
   const calls: unknown[] = [];
   let changed = 0;
-  api.downloadModelToStorage = (async (...args: unknown[]) => { calls.push(args); return { status: "downloading" }; }) as never;
+  // The server's 202 answer names the writer it started the download on.
+  api.downloadModelToStorage = (async (...args: unknown[]) => { calls.push(args); return { status: "downloading", writer: "n1" }; }) as never;
   renderSection(modelWith({ storages: [shared({ state: "failed", acquisition: "download", size_bytes: 0, downloaded: 0, progress: 0, message: "list files huggingface.co failed after 16 attempts" })] }), () => { changed++; });
   const user = userEvent.setup();
-  await user.tab();
-  while (document.activeElement?.getAttribute("aria-label") !== models.action.retry) await user.tab();
+  for (let stops = 0; stops < 20 && document.activeElement?.getAttribute("aria-label") !== models.action.retry; stops++) await user.tab();
+  assert.equal(document.activeElement?.getAttribute("aria-label"), models.action.retry, "the retry button is reachable by keyboard");
   await user.keyboard("{Enter}");
   await waitFor(() => assert.deepEqual(calls, [[9, { storage_id: 3 }]]));
   await waitFor(() => assert.equal(changed, 1));
-  assert.ok(screen.getByText(models.presenceMessage.downloadStarted));
+  assert.ok((await screen.findAllByText(models.presenceMessage.downloadStarted)).length >= 1);
+});
+
+test("a shared storage retry that finds the model already there says so instead of announcing a download", async () => {
+  stubMe("viewer");
+  let changed = 0;
+  // The server's 200 answer when the storage already holds the model.
+  api.downloadModelToStorage = (async () => ({ status: "present" })) as never;
+  renderSection(modelWith({ storages: [shared({ state: "failed", acquisition: "download" })] }), () => { changed++; });
+  fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
+  // No other test raises this notice, so finding it is this retry's doing; a
+  // "download started" toast may still be on screen from an earlier test.
+  assert.ok(await screen.findByText(fill(models.download.alreadyPresent, { storage: "archive" })));
+  await waitFor(() => assert.equal(changed, 1));
 });
 
 test("a shared storage file offers no retry while it moves, is complete, was not downloaded, or cannot be written", () => {
