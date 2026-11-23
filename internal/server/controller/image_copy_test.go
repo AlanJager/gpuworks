@@ -350,7 +350,7 @@ func anotherHolder(t *testing.T, st *store.Store, hub *copyTestHub, image *store
 // two nodes directly or not at all, so a pair that cannot reach each other
 // fails at once and the replica pulls. A node on a public cloud once waited
 // four hours on such a relay instead, with its registry never asked.
-func TestAutomaticCopyIsNeverRelayed(t *testing.T) {
+func TestTheFirstCopyOfALaunchIsNotRelayed(t *testing.T) {
 	c, _, dep, _, _, _, hub := imageCopyFixture(t, "controller_image_copy_direct_only")
 	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
 		t.Fatal(err)
