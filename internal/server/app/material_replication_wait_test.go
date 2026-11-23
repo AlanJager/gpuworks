@@ -4,8 +4,17 @@ package app
 
 import (
 	"context"
+	"database/sql/driver"
+	"errors"
+	"fmt"
+	"net/url"
+	"syscall"
 	"testing"
 	"time"
+
+	dqlitedriver "github.com/canonical/go-dqlite/v3/driver"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestMaterialReplicationFailedCycleRetriesBeforeNormalTick(t *testing.T) {
@@ -76,5 +85,41 @@ func TestMaterialReplicationRetryWaitHonorsCancellation(t *testing.T) {
 	tick <- time.Now()
 	if waitForMaterialReplicationCycle(ctx, tick, time.Minute, false) {
 		t.Fatal("an already queued normal tick overrode cancellation")
+	}
+}
+
+func TestMaterialReplicationPassClosesMemberOnlyOnVerdict(t *testing.T) {
+	integrity := errors.New("material digest differs")
+	for _, tc := range []struct {
+		name   string
+		err    error
+		closes bool
+	}{
+		{"pass ran out of time", context.DeadlineExceeded, false},
+		{"store call ran out of time", fmt.Errorf("index material inventory locally: %w", context.DeadlineExceeded), false},
+		{"no database leader", fmt.Errorf("grant: %w", dqlitedriver.ErrNoAvailableLeader), false},
+		{"peer unreachable", &url.Error{Op: "Post", URL: "https://fixture.invalid", Err: syscall.ECONNREFUSED}, false},
+		{"changed bytes", integrity, true},
+		{"timeout joined to changed bytes", errors.Join(context.DeadlineExceeded, integrity), true},
+		{"admission rejected", fmt.Errorf("grant: %w", store.ErrClusterAdmissionRejected), true},
+		{"connection lost with a commit outstanding", driver.ErrBadConn, true},
+		{"cancellation", context.Canceled, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			closed := 0
+			gate := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return true, nil }, materialReproofInterval)
+			gate.setOnInvalidated(func() { closed++ })
+			if ready, err := gate.Reprove(t.Context()); !ready || err != nil {
+				t.Fatal(ready, err)
+			}
+			a := &App{memberState: memberState{materialEligibility: gate}}
+			a.materialReplicationPassFailed(tc.err)
+			if tc.closes && (closed != 1 || gate.Eligible()) {
+				t.Fatalf("verdict left the member open: closed=%d eligible=%v", closed, gate.Eligible())
+			}
+			if !tc.closes && (closed != 0 || !gate.Eligible()) {
+				t.Fatalf("undecided failure closed the member: closed=%d eligible=%v", closed, gate.Eligible())
+			}
+		})
 	}
 }

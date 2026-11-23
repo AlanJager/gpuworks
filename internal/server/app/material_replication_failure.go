@@ -75,7 +75,29 @@ func materialReplicationFailureInvalidates(err error) bool {
 	if branches, joined := materialJoinedBranches(err); joined {
 		return !everyMaterialBranch(branches, func(branch error) bool { return !materialReplicationFailureInvalidates(branch) })
 	}
-	return !materialCheckpointContention(err) && !unavailableMaterialPeer(err)
+	return !materialCheckpointContention(err) && !unavailableMaterialPeer(err) && !materialOutcomeUndecided(err)
+}
+
+// materialOutcomeUndecided reports a failure that carries no verdict on this
+// member's material: the pass ran out of its own time, or the database had no
+// leader to ask. Neither says a byte, a receipt or the membership changed; a
+// change this pass did see has already closed the member through its change
+// callback, and a second cause joined to one of these keeps its own verdict.
+// The pass stays pending and the last complete proof keeps its own lifetime.
+// The caller's cancellation, a connection lost with a commit outstanding and
+// an error nothing classifies are not in this list.
+func materialOutcomeUndecided(err error) bool {
+	if store.ReplicatedLeaderUnavailable(err) {
+		return true
+	}
+	for err != nil {
+		wrapped, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return err == context.DeadlineExceeded
+		}
+		err = wrapped.Unwrap()
+	}
+	return false
 }
 
 // A peer that cannot be reached contributes no material copy. An

@@ -548,10 +548,7 @@ func (a *App) runMaterialReplication(ctx context.Context, interval time.Duration
 			return materialStartupResult(startupRejected, err)
 		})
 		if err != nil && ctx.Err() == nil {
-			if materialReplicationFailureInvalidates(err) {
-				a.invalidateCandidateMaterialEligibility()
-			}
-			a.log.Warn("cluster material replication pending", "err", err)
+			a.materialReplicationPassFailed(err)
 		}
 		if !waitForMaterialReplicationCycle(ctx, ticker.C, interval, err != nil) {
 			return

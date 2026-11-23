@@ -7,6 +7,20 @@ import (
 	"time"
 )
 
+// materialReplicationPassFailed ends a replication pass that returned err
+// while this member keeps running. Only a verdict closes the member; a pass
+// that ran out of time or found no database leader stays pending, and the
+// next pass repeats it.
+func (a *App) materialReplicationPassFailed(err error) {
+	closes := materialReplicationFailureInvalidates(err)
+	if closes {
+		a.invalidateCandidateMaterialEligibility()
+	}
+	if a.log != nil {
+		a.log.Warn("cluster material replication pending", "err", err, "closes_member", closes)
+	}
+}
+
 func waitForMaterialReplicationCycle(ctx context.Context, tick <-chan time.Time, interval time.Duration, failed bool) bool {
 	if ctx.Err() != nil {
 		return false
