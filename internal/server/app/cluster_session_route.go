@@ -15,9 +15,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// memberSessionHub is the hub's part in serving an agent session held by
-// another member: it accepts and dials member-to-member session calls. A hub
-// without it serves only the sessions of agents connected to this process.
+// memberSessionHub is one member's end of the member route: it accepts what
+// other members hand over and dials them. Without it each member serves only
+// the agents connected to its own process.
 type memberSessionHub interface {
 	SetMemberIdentity(memberID uint64, key []byte)
 	SetMemberSecureTransport(memberID uint64, server *tls.Config, peerTLS func(context.Context, uint64, string) (*tls.Config, error), authorize func(context.Context, *x509.Certificate) error) error
@@ -26,14 +26,18 @@ type memberSessionHub interface {
 	CloseMemberSessions(ctx context.Context) error
 }
 
-// memberSessions is the App's hub as a member-session router, or nil when
-// the hub cannot route between members.
+// memberSessions is what serves this member's end of the member route: the
+// forwarder of its business handler, or nil when the App has none.
 func (a *App) memberSessions() memberSessionHub {
-	if a == nil || a.hub == nil {
+	if a == nil {
 		return nil
 	}
-	sessions, _ := any(a.hub).(memberSessionHub)
-	return sessions
+	// A member that was never enrolled in a cluster has no certificate for
+	// the route and nobody to hand a request to.
+	if runtime, ok := a.ha.(*memberRuntime); ok && runtime.forward != nil && runtime.bundle != nil {
+		return runtime.forward
+	}
+	return nil
 }
 
 // routeClusterMemberSessions starts session routing when this process is a

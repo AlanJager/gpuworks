@@ -212,14 +212,20 @@ func (r *evaluateState) finish() bool {
 }
 
 // distributedErrorField maps the distributed request errors onto the form
-// fields that state them.
-func distributedErrorField(err error) string {
+// fields that state them; placement is the degrees the request stated.
+func distributedErrorField(err error, placement planning.Placement) string {
 	var productErr *messages.ProductError
 	if errors.As(err, &productErr) {
 		switch productErr.Code() {
 		case messages.ErrorMasterPortInvalid:
 			return "master_port"
 		case messages.ErrorDistributedTPRequired, messages.ErrorDistributedGPUCount:
+			return "placement.tp"
+		case messages.ErrorDistributedParallelismUnavailable:
+			// Beside the degree left blank: filling it fixes the layout.
+			if placement.TP > 0 {
+				return "placement.pp"
+			}
 			return "placement.tp"
 		case messages.ErrorDistributedParallelIndivisible:
 			return "placement.pp"

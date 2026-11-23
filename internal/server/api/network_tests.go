@@ -292,16 +292,29 @@ func networkTestDTO(run *store.NetworkTestRun, nodes map[uint]store.Node) *dto.N
 	card := network.CardTest(kind)
 	for _, p := range pairs {
 		status := network.TestPairStatus(kind, p, run.Bandwidth)
-		if status == network.TestPartial {
+		switch status {
+		case network.TestPartial:
 			out.PartialCount++
+		case network.TestFailed:
+			out.FailedCount++
 		}
+		var railCount, passedRails, measuredRails int
+		var railBandwidth float64
 		rails := []dto.NetworkTestRail{}
 		for _, r := range p.Rails {
-			out.RailCount++
-			if r.OK() {
-				out.RailPassedCount++
+			probed := !card || r.CardProbed()
+			if probed {
+				railCount++
 			}
-			rails = append(rails, dto.NetworkTestRail{Rail: r.Rail, SourceIP: r.SourceIP, TargetRail: r.TargetRail, TargetIP: r.TargetIP, Gbps: r.Gbps, Reachable: r.Reachable, RTTMS: r.RTTMS, Code: r.Code, Side: r.Side, Error: r.Error})
+			passed := probed && r.OK()
+			if passed {
+				passedRails++
+				if kind == networkTestRDMATool && r.Gbps > 0 {
+					measuredRails++
+					railBandwidth += r.Gbps
+				}
+			}
+			rails = append(rails, dto.NetworkTestRail{Passed: passed, Rail: r.Rail, SourceIP: r.SourceIP, TargetRail: r.TargetRail, TargetIP: r.TargetIP, Gbps: r.Gbps, Reachable: r.Reachable, RTTMS: r.RTTMS, Code: r.Code, Side: r.Side, Error: r.Error})
 		}
 		if len(rails) == 0 {
 			rails = nil
@@ -310,18 +323,47 @@ func networkTestDTO(run *store.NetworkTestRun, nodes map[uint]store.Node) *dto.N
 			SourceUUID: p.SourceUUID, SourceName: firstNonEmpty(names[p.SourceUUID], p.SourceUUID),
 			TargetUUID: p.TargetUUID, TargetName: firstNonEmpty(names[p.TargetUUID], p.TargetUUID),
 			Target: p.Target, Status: status, Passed: status == network.TestPassed, Reachable: p.Reachable,
-			RTTP50MS: p.RTTP50MS, RTTP99MS: p.RTTP99MS, Gbps: p.Gbps, Code: p.Code, Side: p.Side, Error: p.Error, Rails: rails,
+			RTTP50MS: p.RTTP50MS, RTTP99MS: p.RTTP99MS, Gbps: p.Gbps, Code: p.Code, Side: p.Side, Error: p.Error, Rails: rails, RailCount: railCount, RailPassedCount: passedRails,
+		}
+		if measuredRails > 0 {
+			pair.AvgRailGbps = railBandwidth / float64(measuredRails)
 		}
 		if card {
 			pair.CardShape = network.CardPairShape(p)
 		}
 		out.Pairs = append(out.Pairs, pair)
+		out.RailCount += railCount
+		out.RailPassedCount += passedRails
+	}
+	if !card && run.Bandwidth {
+		markSlowNetworkPairs(out)
 	}
 	if card && run.Status != store.NetworkTestRunning {
-		// A card run counts the card pairs that were pinged: a card without
-		// a namesake on the other node has a row but was never a probe.
 		summary := network.SummarizeCardTest(pairs)
 		out.CardShape, out.RailCount, out.RailPassedCount = summary.Shape, summary.Probed, summary.Reachable
 	}
 	return out
+}
+
+// Compare the rates displayed by the matrix. A historical RDMA aggregate
+// without rail readings has no comparable mean.
+func markSlowNetworkPairs(run *dto.NetworkTestRun) {
+	rate := func(p *dto.NetworkTestPair) float64 {
+		if run.Kind == networkTestRDMATool {
+			return p.AvgRailGbps
+		}
+		return p.Gbps
+	}
+	var fastest float64
+	for i := range run.Pairs {
+		p := &run.Pairs[i]
+		if p.Status != network.TestFailed {
+			fastest = max(fastest, rate(p))
+		}
+	}
+	for i := range run.Pairs {
+		p := &run.Pairs[i]
+		gbps := rate(p)
+		p.Slow = p.Passed && gbps > 0 && gbps < fastest/10
+	}
 }

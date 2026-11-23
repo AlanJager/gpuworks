@@ -13,7 +13,8 @@ var (
 	ErrNetworkNameTaken = errors.New("network name already exists")
 	// ErrNetworkAttachmentExists reports a second attachment of one network to
 	// the same node or the same label.
-	ErrNetworkAttachmentExists = errors.New("network is already attached to this target")
+	ErrNetworkAttachmentExists   = errors.New("network is already attached to this target")
+	ErrNetworkAttachmentNotLabel = errors.New("attachment is not a label selector")
 )
 
 // DecodeStringList decodes a JSON list column such as Network.Roles.
@@ -153,6 +154,38 @@ func (s *Store) CreateNetworkAttachment(a *NetworkAttachment) (*NetworkAttachmen
 	}
 	s.Bus.PublishChange("network", uintKey(a.NetworkID), "attached")
 	return a, nil
+}
+
+// UpdateNetworkAttachmentLabel changes only the selector, preserving its original
+// creation time and ID (the tie-breaker for overlapping attachments).
+func (s *Store) UpdateNetworkAttachmentLabel(networkID, id uint, key, value string) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Check the selector in the write itself: competing edits cannot both claim it.
+		duplicates := tx.Model(&NetworkAttachment{}).Select("1").
+			Where("network_id = ? AND node_id = 0 AND id <> ? AND label_key = ? AND label_value = ?", networkID, id, key, value)
+		res := tx.Model(&NetworkAttachment{}).
+			Where("network_id = ? AND id = ? AND node_id = 0 AND NOT EXISTS (?)", networkID, id, duplicates).
+			Updates(map[string]any{"label_key": key, "label_value": value})
+		if res.Error != nil || res.RowsAffected > 0 {
+			return res.Error
+		}
+		var att NetworkAttachment
+		err := tx.Select("node_id").Where("network_id = ? AND id = ?", networkID, id).Take(&att).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			return ErrNotFound
+		case err != nil:
+			return err
+		case att.NodeID != 0:
+			return ErrNetworkAttachmentNotLabel
+		default:
+			return ErrNetworkAttachmentExists
+		}
+	})
+	if err == nil {
+		s.Bus.PublishChange("network", uintKey(networkID), "attachment_updated")
+	}
+	return err
 }
 
 // UpdateNetworkAttachmentOverrides replaces a node attachment's overrides.

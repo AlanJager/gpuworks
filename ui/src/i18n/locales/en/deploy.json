@@ -224,6 +224,9 @@
     "noReportedGPU": "no reported GPUs",
     "hardwareDifference": "Required: {{required}}. Reported: {{actual}}. No GPU passed the deployment hardware checks."
   },
+  "distributedRecommendationReason": {
+    "no_layout": "No TP and PP combination fits the stated degrees and these nodes' GPU counts."
+  },
   "scheduleNote": {
     "sleeping_residue": "keep {{sleeping_gib}} GiB resident for sleeping instances.",
     "foreign_held": "Processes outside the platform use {{foreign_gib}} GiB of the card, and {{foreign_headroom_gib}} GiB is kept free beside them.",
@@ -897,7 +900,7 @@
       "degrees": "Parallelism",
       "split": "TP {{tp}} × PP {{pp}}, {{perNode}} GPUs per node",
       "total": "{{gpus}} GPUs in all",
-      "fromNodes": "Once nodes are picked: one pipeline stage per node, TP over the fewest GPUs a node has",
+      "fromNodes": "Leave a degree empty to recommend a layout that fits all selected nodes.",
       "tpAutomatic": "Leave empty to size from the memory estimate and topology",
       "tpRequiredAuto": "Automatic placement needs a TP: the platform has to know how many GPUs each node gives a rank",
       "tensor": "Tensor Parallel",

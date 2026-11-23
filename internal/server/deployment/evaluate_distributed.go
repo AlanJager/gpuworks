@@ -3,9 +3,9 @@ package deployment
 import (
 	"fmt"
 
-	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // prepareDistributed settles a multi-node draft: its inline preflight, its
@@ -25,19 +25,23 @@ func (r *evaluateState) prepareDistributed() bool {
 		}
 	}
 	if r.req.NNodes > 1 {
-		normalized := dto.DeployRequest{
-			NodeUUID: r.req.NodeUUID, NodeUUIDs: r.req.NodeUUIDs, NNodes: r.req.NNodes,
-			NodeRank: r.req.NodeRank, MasterAddr: r.req.MasterAddr, MasterPort: r.req.MasterPort,
-			Placement: r.req.Placement,
-		}
+		recommend := r.excludeDeployment == 0 && needsDistributedRecommendation(r.req, r.resp.AutoPlaced)
+		normalized := cloneRequest(*r.req)
 		dp, err := deploy.PlacementDataParallel(r.eng.Name(), r.quick.DP, r.launch.TemplateResidual, r.launch.UserResidual)
 		if r.errs.add("data_parallel_size", err) {
 			r.writeFieldErrors()
 			return false
 		}
-		nodes, err := r.s.PrepareDistributedDeployRequest(&normalized, dp)
+		var nodes []*store.Node
+		// An invalid rank command still needs the engine draft that corrects
+		// it. The command error is attached once those ranks are previewed.
+		if recommend && checkManualCommandRanks(r.req) == nil {
+			nodes, err = r.s.recommendDistributed(r.ctx, &normalized, dp, r.eng, r.launch, r.selection, r.model)
+		} else {
+			nodes, err = r.s.PrepareDistributedDeployRequest(&normalized, dp)
+		}
 		if err != nil {
-			field := distributedErrorField(err)
+			field := distributedErrorField(err, r.placement)
 			r.errs.add(field, err)
 			if !isParallelismField(field) {
 				r.writeFieldErrors()
@@ -61,12 +65,16 @@ func (r *evaluateState) prepareDistributed() bool {
 			r.req.NodeRank = normalized.NodeRank
 			r.req.MasterAddr = normalized.MasterAddr
 			r.req.MasterPort = normalized.MasterPort
-			// The parallelism that takes effect, defaulted from the nodes
-			// when the draft stated none, is what the form shows and what
-			// the plan below runs with.
+			// Keep suggested degrees in the summary. Echoing them as form inputs
+			// would pin them when a model or node changes.
 			r.req.Placement = normalized.Placement
+			if !recommend || r.placement.TP > 0 {
+				r.resp.FormValues["tp"] = normalized.Placement["tp"]
+			}
+			if !recommend || r.placement.PP > 0 {
+				r.resp.FormValues["pp"] = normalized.Placement["pp"]
+			}
 			r.placement = evaluationPlacement(r.req)
-			r.resp.FormValues["tp"], r.resp.FormValues["pp"] = r.placement.TP, r.placement.PP
 		}
 		for _, n := range nodes {
 			withGPUs, err := r.s.d.Store.NodeWithGPUs(n.UUID)

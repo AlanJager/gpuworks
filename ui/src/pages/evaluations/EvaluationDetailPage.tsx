@@ -65,7 +65,7 @@ function EvaluationDetail({ id }: { id: number }) {
 	refreshRef.current = { run: runQuery.refresh, curve: curve.refresh };
 	const coalescer = useMemo(() => createRefreshCoalescer(async () => { if (!exportingRef.current) await Promise.all([refreshRef.current.run(), refreshRef.current.curve()]); }, 1000), [id]);
 	useEffect(() => () => coalescer.dispose(), [coalescer]);
-	useEventPayload("benchmark", (event) => { if (event.key === String(id)) coalescer.trigger(); });
+	useEventPayload("benchmark", (event) => { if (event.key === String(id) || event.reason === "resync") coalescer.trigger(); });
 	useEffect(() => {
 		if (!active) return;
 		const fallback = setInterval(() => coalescer.trigger(), 10000);

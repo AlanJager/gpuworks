@@ -169,6 +169,7 @@
     "node_count": 2,
     "pair_count": 2,
     "passed_count": 1,
+    "failed_count": 1,
     "node_uuids": [
       "uuid-h5",
       "uuid-h7"
