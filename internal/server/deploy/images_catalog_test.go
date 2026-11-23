@@ -136,3 +136,15 @@ func TestResolveImageCatalogSkipsRollingTags(t *testing.T) {
 		t.Fatal("a rolling tag must remain selectable by hand")
 	}
 }
+
+func TestResolveImageCatalogSelectsPreviouslyImportedVendorEngine(t *testing.T) {
+	target := ImageTarget{Engine: "vllm", Vendor: "hygon", Framework: "dtk", PlatformArch: "amd64"}
+	candidate := ImageCandidate{Engine: "vllm-dcu", Framework: "dtk", Arch: "amd64", Enabled: true, Source: "custom", ImageRef: "test/runner:v1"}
+	if got := ResolveImageCatalog(target, []ImageCandidate{candidate}); got.Image != candidate.ImageRef {
+		t.Fatalf("compatible vendor build not selected: %+v", got)
+	}
+	candidate.Engine = "sglang-dcu"
+	if ImageCandidateSelectable(target, candidate) {
+		t.Fatal("SGLang vendor build offered for a vLLM deployment")
+	}
+}

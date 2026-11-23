@@ -25,6 +25,8 @@ type imageArchiveLoad struct {
 	Load   func(context.Context) (string, error)
 }
 
+var errArchiveReferenceUnknown = errors.New("the runtime did not report the reference the archive carried or an unambiguous image ID. Select a tag carried by the archive or import a single image")
+
 // loadImageArchive runs the one sequence every archive load shares: hand the
 // archive to the runtime, tag the reference the archive actually carried when
 // it differs from the canonical reference, confirm presence, and hydrate
@@ -43,12 +45,15 @@ func loadImageArchive(ctx context.Context, d runtime.Driver, load imageArchiveLo
 	if err != nil {
 		return proto.ImageNodeStatus{}, fmt.Errorf("load image archive: %w", err)
 	}
+	if loadedRef == "" {
+		return proto.ImageNodeStatus{}, fmt.Errorf("cannot confirm %s: %w", load.CanonicalRef, errArchiveReferenceUnknown)
+	}
 	present, err := d.ImageExists(ctx, load.CanonicalRef)
 	if err != nil {
 		return proto.ImageNodeStatus{}, fmt.Errorf("check loaded image: %w", err)
 	}
 	message := load.Loaded
-	if (loadedRef != "" && loadedRef != load.CanonicalRef) || !present {
+	if loadedRef != load.CanonicalRef || !present {
 		// A pre-existing canonical tag can still name an older image. Always
 		// replace it when the archive reports another reference; presence alone
 		// cannot confirm that this load updated the catalog image.
@@ -59,10 +64,17 @@ func loadImageArchive(ctx context.Context, d runtime.Driver, load imageArchiveLo
 		message = tagged
 	}
 	status := proto.ImageNodeStatus{ImageRef: load.CanonicalRef, State: "present", Message: message}
+	verifyID := runtime.IsImageID(loadedRef)
 	if inspector, ok := d.(runtime.ImageInspector); ok {
-		if inspected, inspectErr := inspector.InspectImage(ctx, load.CanonicalRef); inspectErr == nil {
+		inspected, err := inspector.InspectImage(ctx, load.CanonicalRef)
+		if err == nil {
 			status.ImageID = inspected.ID
+		} else if verifyID {
+			return proto.ImageNodeStatus{}, fmt.Errorf("verify loaded image %s: %w", load.CanonicalRef, err)
 		}
+	}
+	if verifyID && status.ImageID != loadedRef {
+		return proto.ImageNodeStatus{}, fmt.Errorf("cannot verify %s as loaded image ID %s (inspected ID %q)", load.CanonicalRef, loadedRef, status.ImageID)
 	}
 	return status, nil
 }
@@ -73,9 +85,6 @@ func loadImageArchive(ctx context.Context, d runtime.Driver, load imageArchiveLo
 // re-tagged image from a pasted address that turned out to hold something
 // else entirely.
 func tagLoadedImage(ctx context.Context, d runtime.Driver, load imageArchiveLoad, loadedRef string) (string, error) {
-	if loadedRef == "" {
-		return "", fmt.Errorf("image archive loaded but %s is not present, and the runtime did not report the reference the archive carried", load.CanonicalRef)
-	}
 	if loadedRef == load.CanonicalRef {
 		// The archive carried exactly this reference and the runtime still does
 		// not have it. Tagging a reference onto itself would only turn a clear

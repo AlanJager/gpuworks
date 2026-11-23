@@ -1,5 +1,5 @@
 import { getJSON, localizedResponseError, sendJSON, type List } from "../http";
-import { imageFetchBody, type CommunityRepo, type CommunityRepoBrowse, type ImageArchivePreview, type ImageCatalogEntry, type ImageCatalogSyncResult, type ImageEngineOption, type ImageFetchOptions, type ImageInspection, type ImageNodeSyncResult, type ImageSeries } from "../images";
+import { imageFetchBody, type ArchiveContents, type CommunityRepo, type CommunityRepoBrowse, type ImageArchivePreview, type ImageCatalogEntry, type ImageCatalogSyncResult, type ImageEngineOption, type ImageFetchOptions, type ImageInspection, type ImageNodeSyncResult, type ImageSeries } from "../images";
 
 export const imagesApi = {
   images: (source?: string) =>
@@ -51,11 +51,14 @@ export const imagesApi = {
   // The catalog comes from the distribution channel; the request has no body.
   syncImages: () =>
     sendJSON<ImageCatalogSyncResult>("POST", "/api/v1/images/sync"),
-  previewImageArchiveURL: (url: string) =>
+  previewImageArchivePath: (nodeUUID: string, path: string, signal?: AbortSignal) =>
+    sendJSON<ArchiveContents>("POST", `/api/v1/images/nodes/${encodeURIComponent(nodeUUID)}/preview-archive-path`, { archive_path: path }, signal),
+  previewImageArchiveURL: (url: string, signal?: AbortSignal) =>
     sendJSON<ImageArchivePreview>(
       "POST",
       "/api/v1/images/preview-archive-url",
       { url },
+      signal,
     ),
   syncImage: (
     id: number,

@@ -64,11 +64,23 @@ type Peek struct {
 	// is not an error: compressed archives and servers without Range support
 	// simply cannot be inspected ahead of the download.
 	Previewable bool
+
+	MetadataByTag map[string]ImageMetadata
 }
 
 // PeekURL reads an image archive's size and repository tags from rawURL,
 // fetching at most ~1.2 MiB. client must not be nil; PeekURL never mutates it.
 func PeekURL(ctx context.Context, client *http.Client, rawURL string) (Peek, error) {
+	return peekURL(ctx, client, rawURL, false)
+}
+
+// InspectURL also reads the config referenced by each tag within the same
+// Range request byte budget as PeekURL.
+func InspectURL(ctx context.Context, client *http.Client, rawURL string) (Peek, error) {
+	return peekURL(ctx, client, rawURL, true)
+}
+
+func peekURL(ctx context.Context, client *http.Client, rawURL string, withConfig bool) (Peek, error) {
 	target, err := parseArchiveURL(rawURL)
 	if err != nil {
 		return Peek{}, err
@@ -122,6 +134,9 @@ func PeekURL(ctx context.Context, client *http.Client, rawURL string) (Peek, err
 		scan = scanTail(big)
 	}
 	if len(scan.tags) > 0 {
+		if withConfig {
+			peek.MetadataByTag = f.configMetadata(ctx, size, tail, scan.manifest)
+		}
 		peek.RepoTags, peek.Previewable = scan.tags, true
 		return peek, nil
 	}
@@ -145,6 +160,9 @@ func PeekURL(ctx context.Context, client *http.Client, rawURL string) (Peek, err
 		return peek, nil
 	}
 	if tags, ok := ScanHead(head); ok {
+		if withConfig {
+			peek.MetadataByTag = f.configMetadata(ctx, size, tail, nil)
+		}
 		peek.RepoTags, peek.Previewable = tags, true
 	}
 	return peek, nil

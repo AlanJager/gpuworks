@@ -44,7 +44,7 @@ func (n *NodeRuntime) streamImage(ctx context.Context, imageRef, transferID stri
 				if reporter, ok := archiver.(runtime.StreamedRefReporter); ok {
 					return reporter.LoadImageRef(loadCtx, imageRef, rw)
 				}
-				return "", archiver.LoadImage(loadCtx, imageRef, rw)
+				return imageRef, archiver.LoadImage(loadCtx, imageRef, rw)
 			},
 		})
 		if err != nil {

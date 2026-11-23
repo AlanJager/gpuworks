@@ -273,7 +273,7 @@ func (d *Driver) LoadImage(ctx context.Context, image string, r io.Reader) error
 }
 
 // LoadImageRef loads a streamed archive and returns the reference docker named
-// on stdout ("Loaded image: <ref>"), or "" when the archive carried no tag.
+// on stdout, or the image ID when the archive carries a single untagged image.
 // A relayed archive is never a file here, so this is the only place its real
 // reference can be learned.
 func (d *Driver) LoadImageRef(ctx context.Context, image string, r io.Reader) (string, error) {
@@ -289,7 +289,7 @@ func (d *Driver) LoadImageRef(ctx context.Context, image string, r io.Reader) (s
 		}
 		return "", fmt.Errorf("docker load: %w", err)
 	}
-	return runtime.ParseLoadedImageRefFor(stdout.String(), image), nil
+	return runtime.ResolveLoadedImageRef(ctx, d, stdout.String(), image), nil
 }
 
 // LoadImageFile imports an archive that is already a file on disk. Handing
@@ -301,7 +301,7 @@ func (d *Driver) LoadImageFile(ctx context.Context, image, path string) error {
 }
 
 // LoadImageFileRef loads the archive and returns the reference docker named on
-// stdout ("Loaded image: <ref>"), or "" when the archive carried no tag.
+// stdout, or the image ID when the archive carries a single untagged image.
 func (d *Driver) LoadImageFileRef(ctx context.Context, image, path string) (string, error) {
 	slog.Info("runtime command", "runtime", "docker", "args", []string{"load", "-i", path}, "image", image)
 	cmd := exec.CommandContext(ctx, "docker", "load", "-i", path)
@@ -314,7 +314,7 @@ func (d *Driver) LoadImageFileRef(ctx context.Context, image, path string) (stri
 		}
 		return "", fmt.Errorf("docker load -i: %w", err)
 	}
-	return runtime.ParseLoadedImageRefFor(stdout.String(), image), nil
+	return runtime.ResolveLoadedImageRef(ctx, d, stdout.String(), image), nil
 }
 
 var (

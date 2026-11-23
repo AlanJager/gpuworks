@@ -9,6 +9,11 @@
 // code can keep naming deploy.EngineVLLM.
 package engines
 
+import (
+	"slices"
+	"strings"
+)
+
 const (
 	// VLLM is the vLLM inference server.
 	VLLM = "vllm"
@@ -31,6 +36,22 @@ const (
 // in the order the image form offers them: every engine in Names plus the
 // VLLMOmni image family.
 func CatalogEngines() []string { return []string{VLLM, VLLMOmni, SGLang, Callable} }
+
+// CatalogEngineForLabel maps io.gpuworks.engine from the runner images to a
+// value offered by the catalog. Unknown labels require an operator selection.
+func CatalogEngineForLabel(label string) string {
+	name := strings.ToLower(strings.TrimSpace(label))
+	switch name {
+	case "vllm-ascend", "vllm-dcu", "vllm-hggc":
+		return VLLM
+	case "sglang-npu", "sglang-dcu", "sglang-hggc":
+		return SGLang
+	}
+	if slices.Contains(CatalogEngines(), name) {
+		return name
+	}
+	return ""
+}
 
 // DisplayName is an engine's product name ("vLLM", "SGLang"); an unknown name
 // is returned as is.

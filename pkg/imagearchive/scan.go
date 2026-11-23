@@ -1,14 +1,12 @@
 // Package imagearchive reads the repository tags of a container image archive
-// (a `docker save` tar or an OCI-layout tar) that is published over plain HTTP,
-// without downloading the archive.
+// (a `docker save` tar or an OCI-layout tar) from a local reader or over HTTP.
 //
 // `docker save` writes `manifest.json` (and a legacy `repositories` entry) at
 // the very end of the tar, so a Range request for the tail is enough to learn
 // the real image references. OCI-layout archives instead carry `index.json`
 // near the head, whose manifest descriptors may annotate the reference name.
 //
-// The package only uses the standard library and the caller-supplied
-// *http.Client; it performs no other I/O.
+// Callers supply the local reader or HTTP client.
 package imagearchive
 
 import (
@@ -129,6 +127,8 @@ func padded(size int64) int64 {
 // tailScan is the detailed result of a backwards scan.
 type tailScan struct {
 	tags []string
+
+	manifest []byte
 	// sawTar reports whether at least one valid tar header block was found in
 	// the window, i.e. the window really is the tail of an uncompressed tar.
 	sawTar bool
@@ -170,7 +170,8 @@ func scanTail(data []byte) tailScan {
 			// manifest.json straddles the window: a larger tail may help.
 			return res
 		}
-		res.tags = dockerRepoTags(data[start:end])
+		res.manifest = data[start:end]
+		res.tags = dockerRepoTags(res.manifest)
 		return res
 	}
 	return res
@@ -231,56 +232,50 @@ func ScanHead(data []byte) ([]string, bool) {
 
 // dockerRepoTags parses a `docker save` manifest.json.
 func dockerRepoTags(b []byte) []string {
-	var entries []struct {
-		RepoTags []string `json:"RepoTags"`
-	}
-	if err := json.Unmarshal(b, &entries); err != nil {
-		return nil
-	}
 	var tags []string
-	for _, e := range entries {
-		tags = appendTags(tags, e.RepoTags...)
+	for _, e := range dockerManifest(b) {
+		tags = append(tags, e.RepoTags...)
 	}
-	return tags
+	return uniqueTags(tags)
 }
 
-// ociIndexTags parses an OCI index.json, collecting the ref-name annotation of
-// every manifest descriptor.
+func dockerManifest(b []byte) []manifestEntry {
+	var entries []manifestEntry
+	if json.Unmarshal(b, &entries) != nil {
+		return nil
+	}
+	return entries
+}
+
+// ociIndexTags collects references declared by the OCI manifest descriptors.
 func ociIndexTags(b []byte) []string {
-	var idx struct {
-		Manifests []struct {
-			Annotations map[string]string `json:"annotations"`
-		} `json:"manifests"`
-	}
-	if err := json.Unmarshal(b, &idx); err != nil {
-		return nil
-	}
 	var tags []string
-	for _, m := range idx.Manifests {
-		tags = appendTags(tags, m.Annotations[refNameAnnotation])
+	for _, m := range ociDescriptors(b) {
+		tags = append(tags, m.Annotations[refNameAnnotation])
 	}
-	return tags
+	return uniqueTags(tags)
 }
 
-// appendTags appends non-empty, not-yet-present tags, preserving order.
-func appendTags(dst []string, tags ...string) []string {
-	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if t == "" {
-			continue
-		}
-		dup := false
-		for _, have := range dst {
-			if have == t {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			dst = append(dst, t)
+func ociDescriptors(b []byte) []descriptor {
+	var index struct{ Manifests []descriptor }
+	if json.Unmarshal(b, &index) != nil {
+		return nil
+	}
+	return index.Manifests
+}
+
+// uniqueTags keeps the first occurrence of each non-empty reference in archive order.
+func uniqueTags(tags []string) []string {
+	seen := make(map[string]bool, len(tags))
+	var out []string
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag != "" && !seen[tag] {
+			seen[tag] = true
+			out = append(out, tag)
 		}
 	}
-	return dst
+	return out
 }
 
 // isGzip reports whether data starts with the gzip magic bytes.

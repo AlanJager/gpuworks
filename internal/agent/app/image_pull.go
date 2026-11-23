@@ -30,7 +30,7 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 	go func() {
 		pullCtx, cancelPull := context.WithTimeout(context.WithoutCancel(ctx), imageOperationTimeout)
 		defer cancelPull()
-		unregister := n.beginImageOperation(p.CanonicalRef, p.TransferID, cancelPull)
+		unregister := n.imageOps.begin(p.CanonicalRef, p.TransferID, cancelPull)
 		defer unregister()
 		n.lockImageOperation(p.CanonicalRef, "pulling")
 		defer n.imagePullMu.Unlock()

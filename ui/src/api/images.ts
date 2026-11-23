@@ -80,11 +80,23 @@ export interface ImageInspection {
   volumes?: string[];
 }
 
+export interface ArchiveImageMetadata {
+  engine?: string;
+  engine_version?: string;
+  framework?: string;
+  framework_version?: string;
+  arch?: string;
+}
+
+export interface ArchiveContents {
+  repo_tags: string[];
+  metadata_by_tag?: Record<string, ArchiveImageMetadata>;
+}
+
 /** What the server could learn about a remote image archive without downloading it. */
-export interface ImageArchivePreview {
+export interface ImageArchivePreview extends ArchiveContents {
   url: string;
   size_bytes: number;
-  repo_tags: string[];
   previewable: boolean;
 }
 
@@ -94,9 +106,10 @@ export interface ImageNodeSyncResult {
   message?: string;
 }
 
-/** Extra fields the "url" image source needs; ignored by every other source. */
+/** Options for archive URLs, node files, peer copies and forced pulls. */
 export interface ImageFetchOptions {
   archive_url?: string;
+  archive_path?: string;
   relay?: boolean;
   source_node?: string;
   rate_limit_kib_s?: number;
@@ -107,12 +120,13 @@ export interface ImageFetchOptions {
 /**
  * imageFetchBody builds the sync request. No source means "pull through the
  * pull settings": the body is empty (or only {force:true}). A manual copy from
- * a node names source_node; an archive URL import names source "url". The
+ * a node names source_node; archives name source "url" or "local". The
  * client never names a registry.
  */
 export function imageFetchBody(source?: string, fetch?: ImageFetchOptions) {
   if (fetch?.source_node) return { source_node: fetch.source_node, rate_limit_kib_s: fetch.rate_limit_kib_s ?? 0 };
   const force = fetch?.force ? { force: true } : {};
+  if (source === "local") return { source, archive_path: fetch?.archive_path || "", ...force };
   if (source !== "url") return { ...force };
   return {
     source,
