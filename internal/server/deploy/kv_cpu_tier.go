@@ -62,7 +62,7 @@ func launchKVCPUTierBytes(engine Engine, q LaunchConfig, command EffectiveComman
 //     measured against the tier. An explicit deployment size together with a
 //     template's --ipc=host is refused rather than silently dropped: the
 //     deployment's own args not stating --ipc=host means
-//     ValidateContainerDockerArgs never saw this combination.
+//     ValidateDockerArgs never saw this combination.
 //   - an explicit override wins, but one smaller than the CPU tier can never
 //     start, so it is refused here, where preflight and evaluation see it.
 //   - otherwise the larger of the engine default plus the CPU tier, and the

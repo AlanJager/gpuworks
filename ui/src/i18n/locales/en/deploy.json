@@ -135,7 +135,9 @@
     "ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED": "Sleep mode on Ascend cannot run with expandable segments, so {{variable}} was changed to {{value}}; if memory runs out, lower gpu_memory_utilization or max_model_len, or turn sleep off.",
     "KUBE_ENGINE_PORTS_OUTSIDE": "Running instances hold ports outside the new engine port range {{range}}: {{instances}}. They keep their ports and keep running; only instances started later use the new range.",
     "PD_UCX_NETLINK_HANG": "The kernel of {{names}} makes UCX hang (its IPv6 route dump ends in a way UCX cannot read), and PD mode {{mode}} moves the KV with NIXL over Ethernet, so the engine will likely never finish starting. The deployment can still be created; turn IPv6 off on the node first (this disables IPv6 for the whole host); the commands are listed below.",
-    "PD_UCX_NETLINK_HANG_RDMA": "The kernel of {{names}} makes UCX hang (its IPv6 route dump ends in a way UCX cannot read). On the RDMA network {{network}} UCX is held to RDMA transports and may not run that check, so this PD deployment is allowed; if its engine hangs while starting, turn IPv6 off on the node (this disables IPv6 for the whole host): {{fix}}"
+    "PD_UCX_NETLINK_HANG_RDMA": "The kernel of {{names}} makes UCX hang (its IPv6 route dump ends in a way UCX cannot read). On the RDMA network {{network}} UCX is held to RDMA transports and may not run that check, so this PD deployment is allowed; if its engine hangs while starting, turn IPv6 off on the node (this disables IPv6 for the whole host): {{fix}}",
+    "DOCKER_ARG_PRIVILEGED": "{{arg}} lets the container use every device on the node and change kernel settings, which gives it control of the node. Keep it only if the image needs it.",
+    "DOCKER_ARG_SHARED_PID": "{{arg}} lets the container see and end other instances' processes on the node. Keep it only if the image needs it."
   },
   "warningFeature": {
     "dgpu": "dynamic GPU (dGPU)",
@@ -463,7 +465,9 @@
     "title": "Configuration Evaluation",
     "vram": "VRAM startup estimate: {{text}}",
     "evaluationSkipped": "VRAM estimation skipped",
-    "weightUnknown": "The model weight size is not available yet. Deployment can continue and metadata will be refreshed in the background."
+    "weightUnknown": "The model weight size is not available yet. Deployment can continue and metadata will be refreshed in the background.",
+    "fieldErrors": "{{count}} setting needs changing; see the field marked in red.",
+    "fieldErrors_other": "{{count}} settings need changing; see the fields marked in red."
   },
   "confirm": {
     "title": "Confirm Configuration",

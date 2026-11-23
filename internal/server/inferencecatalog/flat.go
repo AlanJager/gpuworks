@@ -137,8 +137,8 @@ type InferenceSpec struct {
 	// --cap-add=SYS_PTRACE), applied before the deployment's own docker args
 	// and the platform's (see deploy.launchDockerArgs). Validated the same way
 	// as a deployment's own container_overrides.docker_args
-	// (deploy.ValidateDockerArgs): platform-managed options and options that
-	// would hand the container the host are refused.
+	// (deploy.ValidateDockerArgs): platform-managed options are refused;
+	// options that hand the container the host are allowed and warned about.
 	DockerArgs []string `yaml:"docker_args,omitempty" json:"docker_args,omitempty"`
 	// Dirs are writable host directories the platform keeps for the
 	// deployment on every node it runs on, mounted at each mount_path and

@@ -132,18 +132,6 @@ func (o ContainerOverrides) Validate() error {
 	return nil
 }
 
-// validateUnsafeDockerArg refuses options that would hand the container the
-// host: they are not a restatement of a platform field, they are never allowed.
-func validateUnsafeDockerArg(arg string) error {
-	trimmed := strings.TrimSpace(arg)
-	for _, blocked := range []string{"--privileged", "--pid=host", "--pid", "-v /", "--volume /"} {
-		if trimmed == blocked || strings.HasPrefix(trimmed, blocked+"=") || strings.HasPrefix(trimmed, blocked+":") {
-			return fmt.Errorf("docker arg %q is not allowed", arg)
-		}
-	}
-	return nil
-}
-
 // convertMounts turns the rows into mount specs. A model row mounts the
 // directory modelPaths gives for its model, read-only; without one (a preview
 // before the model is on the node) its source is ModelMountPlaceholder.

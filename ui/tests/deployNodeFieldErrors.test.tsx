@@ -60,6 +60,7 @@ function snapshot() {
     ariaRequired: control.getAttribute("aria-required"),
     fieldErrorText: field.querySelector(".ant-form-item-explain-error")?.textContent ?? null,
     globalAlertText: document.querySelector(".deploy-step-summary .ant-alert-error .ant-alert-message")?.textContent ?? null,
+    summaryText: document.querySelector('.deploy-step-summary [role="alert"]')?.textContent ?? null,
     submitDisabled: button.disabled, requestCount: requests.length };
 }
 test("a distributed node error reaches its real field, accessible feedback and focus handle", async () => {
@@ -94,7 +95,10 @@ test("a distributed node error reaches its real field, accessible feedback and f
   assert.equal(observed.getFieldInstancePresent, true, "the actual Select ref reaches Form");
   assert.deepEqual(observed.fieldErrors, [expected], "the literal API error routes to distributed_nodes");
   assert.equal(observed.globalError, null, "a mounted node field is not a global error");
+  // The summary says one setting needs changing; it does not repeat the
+  // field's own error as a page-level one.
   assert.equal(observed.globalAlertText, null);
+  assert.equal(observed.summaryText, locale.deploy.summary.fieldErrors.replace("{{count}}", "1"));
   assert.equal(observed.fieldErrorText, expected);
   assert.equal(observed.submitDisabled, false, "settled field feedback is not a successful-submit claim");
   const control = document.querySelector<HTMLInputElement>("#distributed_nodes")!;
