@@ -298,6 +298,7 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	// launchd is a file nothing rotates.
 	slog.SetDefault(log)
 	warnUnclaimedSections(log, file, opt.claimedSections())
+	capServerMaxProcs(log)
 
 	defer startStallWatch(log, stallAfter, cfg.DataDir)()
 

@@ -44,8 +44,12 @@ import (
 // GPUWORKS_GATEWAY_PROMPT_BYTES pads each prompt (long-context requests);
 // GPUWORKS_GATEWAY_TRACE_EXPORT=1 runs with the request trace export on;
 // GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST budgets the server's CPU per
-// request (the nightly job sets it for its runner: the figure depends on the
-// host's CPU); GPUWORKS_GATEWAY_PRIORITY_CLASS=high binds the clients' key to that request
+// request (set for the slowest runner CPU, a 2.2 GHz Xeon Silver 4210);
+// GPUWORKS_GATEWAY_SERVER_GOMAXPROCS (20) is the server process's GOMAXPROCS,
+// fixed so the figure does not follow the runner's core count: on a
+// 192-thread, four-NUMA-node host the server's default costs 2.5 times the
+// CPU per request of 20 processors for the same throughput; 0 leaves the
+// server's own default; GPUWORKS_GATEWAY_PRIORITY_CLASS=high binds the clients' key to that request
 // priority class, so every request has its engine priority written into the
 // body (the deployments run priority scheduling by default).
 func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
@@ -68,6 +72,15 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	// The server's CPU per request, in microseconds; 0 checks nothing. A
 	// figure for one host only: set it where the case runs on fixed hardware.
 	maxServerCPUPerRequest := fleet.EnvInt("GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST", 0)
+	// EnvInt reads 0 as unset; here 0 means the server's own default.
+	serverMaxProcs := 20
+	if raw, ok := os.LookupEnv("GPUWORKS_GATEWAY_SERVER_GOMAXPROCS"); ok {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 {
+			t.Fatalf("GPUWORKS_GATEWAY_SERVER_GOMAXPROCS=%q: want a count, or 0 for the server's default", raw)
+		}
+		serverMaxProcs = value
+	}
 	if gpus > 32 {
 		t.Fatalf("GPUWORKS_GATEWAY_GPUS_PER_NODE=%d: one deployment per node cannot exceed 32 replicas", gpus)
 	}
@@ -90,6 +103,10 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 		serverArgs = append(serverArgs, "--config", loopbackOutboundConfig(t))
 	}
 	server := serverCommand(t, fleetAdminPassword, serverBin, serverArgs...)
+	if serverMaxProcs > 0 {
+		server.Env = append(server.Env, "GOMAXPROCS="+strconv.Itoa(serverMaxProcs))
+		t.Logf("server GOMAXPROCS=%d", serverMaxProcs)
+	}
 	server.Stdout, server.Stderr = fleetProcessLog(t, workRoot, "server.log")
 	if err := server.Start(); err != nil {
 		t.Fatalf("start the control plane: %v", err)
@@ -132,7 +149,7 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	}
 	t.Cleanup(func() { stopProcess(host) })
 	waitForFile(t, readyPath, time.Minute)
-	if _, err := fleet.WaitFleetOnline(client, nodeCount, 10*time.Minute); err != nil {
+	if _, err := fleet.WaitFleetCards(client, nodeCount, gpus, 10*time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("%d nodes x %d GPUs online in %s", nodeCount, gpus, time.Since(start).Round(time.Millisecond))

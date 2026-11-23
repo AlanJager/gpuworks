@@ -390,6 +390,7 @@ udocker-bundle 对应的变量，只在需要临时覆盖文件中的值时使�
 | `DOCKER_HOST`、`DOCKER_CONTEXT` | docker 驱动只接受本机 unix socket：`DOCKER_HOST` 不是 `unix://` 或 `DOCKER_CONTEXT` 不是 `default` 时，docker 驱动判为不可用，因为 bind mount 和加速卡设备会落到远端机器上 | 运行时自动探测 |
 | `ASCEND_HOME_PATH` | 探测昇腾 CANN 版本时优先查找其下的 `version.info` | agent GPU 探测 |
 | `HF_TOKEN` | 读取受限（gated）的 HuggingFace 仓库 | `gpuworks-catalog-model-config` |
+| `GOMAXPROCS` | Go 运行时同时运行 Go 代码的线程数。server 在没有设置它时把默认值限制在 32：在逻辑核很多、跨多个 NUMA 节点的机器上，用满全部核会让网关高负载时每请求 CPU 多出 2.5–3.5 倍而吞吐不变；按规模目标同时承受网关、机群重部署与 server 发起评测时，server 约用 15 个核。核数本来不超过 32、或容器 CPU 限额更低的机器不受影响。设置这个变量则按设置的值运行，启动日志会写明被限制前后的值 | `gpuworks serve` |
 | `INVOCATION_ID` | systemd 给单元进程设置；server 据此判断自己被 `Restart=always` 监督，允许控制台「立即重启」 | `gpuworks serve` |
 | `LC_ALL`、`LC_CTYPE`、`LANG` | 判断 locale 是否 UTF-8，决定 `install` 打印块状还是纯 ASCII banner | `gpuworks install` |
 | `GPUWORKS_API_KEY`、`GPUWORKS_URL`、`GPUWORKS_WS_URL` | 只出现在界面生成的 curl/Python 示例里，由用户在自己的 shell 中设置，程序本身不读取 | 推理示例片段 |
