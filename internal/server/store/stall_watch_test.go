@@ -60,8 +60,7 @@ func stallReport(t *testing.T, dir string, want ...string) string {
 // Another connection holds the database's write lock, as a write that waits
 // for the disk does. A write through the store then waits in SQLite itself:
 // the stall watch must name the wait and keep the stack of the goroutine in
-// it, for a plain statement and for a transaction alike. Statements that
-// return in time leave nothing.
+// it.
 func TestAWriteWaitingForTheDatabaseIsInAStallReport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gpuworks.db")
 	st, err := Open(path, bus.New())
@@ -69,18 +68,14 @@ func TestAWriteWaitingForTheDatabaseIsInAStallReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	dir := startStallWatch(t)
-
 	if _, err := st.RegisterNode("uuid-quick", HashToken("token-quick"), "host-quick"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.db.Transaction(func(tx *gorm.DB) error { return tx.Exec("UPDATE nodes SET hostname = hostname").Error }); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(300 * time.Millisecond)
-	if reports := stallwatch.Reports(dir); len(reports) != 0 {
-		t.Fatalf("reports for statements that returned in time: %v", reports)
-	}
+	// The watch starts after the set-up: on a starved runner an ordinary
+	// statement can take longer than this test's 100ms threshold, and that
+	// a wait under the threshold leaves nothing is the watch's own test
+	// (stallwatch.TestWaitsUnderTheThresholdLeaveNothing), on a clock.
+	dir := startStallWatch(t)
 
 	other, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -114,9 +109,6 @@ func TestAWriteWaitingForTheDatabaseIsInAStallReport(t *testing.T) {
 		t.Fatalf("the write after the lock was released: %v", err)
 	}
 	stallReport(t, dir, "ended:")
-	if got := len(stallwatch.Reports(dir)); got != 1 {
-		t.Errorf("%d reports, want the one stall", got)
-	}
 }
 
 // slowCommits is a database whose transactions commit only when released: a
