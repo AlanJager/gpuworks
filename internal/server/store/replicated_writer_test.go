@@ -177,8 +177,10 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 		// A held connection: a consistent read of the schema for a backup, and
 		// the read-only discovery of a closed cluster.
 		`\.Conn\(ctx\)`: {"store/backup_sqlite_schema.go": 1, "store/closed_cluster_discovery_dqlite.go": 1, "cluster/quorum_snapshot.go": 1},
-		// GORM's held connection: a read with its preloads.
-		`\.Connection\(`: {"store/node_accelerator_report.go": 1},
+		// GORM's held connection, which is a raw connection of the pool: one
+		// helper, used by one read with its preloads.
+		`\.Connection\(`:      {"store/stall_watch.go": 1},
+		`watchedConnection\(`: {"store/stall_watch.go": 1, "store/node_accelerator_report.go": 1},
 		// The raw pool: closing, statistics, and SQLite files opened here
 		// (never a member's database).
 		`\.DB\(\)\.DB\(\)|[a-z]db\.DB\(\)|\bdb\.DB\(\)|GDB\.DB\(\)`: {"store/database_files.go": 1, "store/database_open.go": 3, "store/migration_snapshot.go": 1, "store/plugin_trust.go": 1},
