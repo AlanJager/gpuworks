@@ -119,6 +119,7 @@ func (r *memberRuntime) handler(next http.Handler) http.Handler {
 		// not ready neither serves nor forwards.
 		r.forward.local = memberServiceHandler(next, a)
 		r.forward.agents = newMemberAgentRelay(r.forward, a.hub)
+		r.forward.answers = a.memberAnswerer
 		return memberServiceHandler(r.forward.wrap(next), a)
 	}
 	return memberServiceHandler(next, r.business)

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,6 +61,9 @@ type memberForward struct {
 	local    http.Handler
 	sessions func() int
 	drop     func()
+	// answers is the module that answers a peer's question by name
+	// (member_ask.go); nil answers none.
+	answers func(name string) MemberAnswerer
 	// agents keeps agent connections this member accepted attached to the
 	// member that leads; nil serves them like any other request.
 	agents *memberAgentRelay
@@ -202,6 +206,12 @@ func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 	peer.once.Do(func() { peer.err = authorize(r.Context(), r.TLS.PeerCertificates[0]) })
 	if peer.err != nil {
 		http.Error(w, "member is not admitted", http.StatusForbidden)
+		return
+	}
+	// A question to a module is answered here, by whichever member it
+	// reaches (member_ask.go).
+	if strings.HasPrefix(r.URL.Path, memberAskPrefix) {
+		f.serveAsk(w, r)
 		return
 	}
 	// A member forwards to the leader it observed. One that is no longer the

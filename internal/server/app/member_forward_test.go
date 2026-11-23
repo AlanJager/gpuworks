@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -433,5 +434,65 @@ func TestMemberForwardIsInertWithoutARoute(t *testing.T) {
 	defer ln.Close()
 	if err := forward.ServeMemberSessions(ln); err == nil {
 		t.Fatal("an unconfigured route was served")
+	}
+}
+
+// One member asks another's module a question over the member route and
+// gets that member's own answer, whoever leads; a member that is not
+// admitted, a module that answers nothing, and a member with no route are
+// all "no answer", and nothing is served to a caller without a certificate.
+func TestMemberAsksAnotherMembersModule(t *testing.T) {
+	c := newForwardCluster(t, 1, 2, 3)
+	for id, m := range c.members {
+		m.forward.answers = func(name string) MemberAnswerer {
+			if name != "fake" {
+				return nil
+			}
+			return func(_ context.Context, question []byte) ([]byte, error) {
+				if string(question) == "fail" {
+					return nil, errors.New("no")
+				}
+				return []byte(fmt.Sprintf("member %d heard %q", id, question)), nil
+			}
+		}
+	}
+	ask := func(from, to uint64, name, question string) (string, error) {
+		out, err := c.members[from].forward.ask(context.Background(), to, name, []byte(question))
+		return string(out), err
+	}
+	// No leader is observed and business is refused; a question is still answered.
+	for _, to := range []uint64{2, 3} {
+		if got, err := ask(1, to, "fake", "hello"); err != nil || got != fmt.Sprintf(`member %d heard "hello"`, to) {
+			t.Fatalf("ask member %d = %q, %v", to, got, err)
+		}
+	}
+	c.lead(2)
+	if got, err := ask(3, 1, "fake", "again"); err != nil || got != `member 1 heard "again"` {
+		t.Fatalf("ask a member that does not lead = %q, %v", got, err)
+	}
+	for name, call := range map[string]func() (string, error){
+		"a module that answers nothing": func() (string, error) { return ask(1, 2, "other", "x") },
+		"a name that is no module":      func() (string, error) { return ask(1, 2, "../fake", "x") },
+		"an answerer that fails":        func() (string, error) { return ask(1, 2, "fake", "fail") },
+		"a member with no route":        func() (string, error) { return ask(1, 9, "fake", "x") },
+	} {
+		if got, err := call(); !errors.Is(err, ErrMemberUnreachable) {
+			t.Errorf("%s = %q, %v, want %v", name, got, err, ErrMemberUnreachable)
+		}
+	}
+	if _, err := ask(1, 2, "fake", strings.Repeat("x", MemberQuestionLimit+1)); err == nil {
+		t.Error("a question over the limit was sent")
+	}
+	// The member asked does not admit the asker.
+	c.members[2].admit.Store(false)
+	c.members[3].forward.proxies = map[uint64]*httputil.ReverseProxy{} // a new connection, so admission is checked again
+	if got, err := ask(3, 2, "fake", "x"); !errors.Is(err, ErrMemberUnreachable) {
+		t.Errorf("asked by a member that is not admitted = %q, %v", got, err)
+	}
+	// Without a member certificate the route does not complete a handshake.
+	plain := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: c.pool, ServerName: "127.0.0.1"}}, Timeout: 5 * time.Second}
+	if resp, err := plain.Post("https://"+c.members[1].route.Addr().String()+memberAskPrefix+"fake", "application/octet-stream", strings.NewReader("x")); err == nil {
+		resp.Body.Close()
+		t.Errorf("a caller without a member certificate was answered %d", resp.StatusCode)
 	}
 }

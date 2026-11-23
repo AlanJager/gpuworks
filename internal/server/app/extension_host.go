@@ -32,6 +32,60 @@ type Host struct {
 	tables  *store.ExtensionTables
 	st      *store.Store
 	reg     *extensionSet
+	app     *App
+}
+
+// MemberAnswerer answers a question another member of the control-plane
+// cluster asked this module (Host.AnswerMembers). It is called on the
+// member route, for an admitted member's certificate only.
+type MemberAnswerer func(ctx context.Context, question []byte) ([]byte, error)
+
+// MemberQuestionLimit bounds a question to a member and its answer.
+const MemberQuestionLimit = 64 << 10
+
+var (
+	// ErrNotClusterMember: this server is not a member of a control-plane
+	// cluster, so it has nobody to ask.
+	ErrNotClusterMember = errors.New("this server is not a member of a control-plane cluster")
+	// ErrMemberUnreachable: the member has no route, did not answer, or
+	// nothing on it answers for the module.
+	ErrMemberUnreachable = errors.New("the member gave no answer")
+)
+
+// moduleName is the form of a module's name on the member route.
+var moduleName = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
+
+// AnswerMembers makes answer what this module tells the other members of
+// the cluster that ask it (AskMember). A module registers one answerer; on
+// a single server it is never called.
+func (h *Host) AnswerMembers(answer MemberAnswerer) {
+	h.mustBeOpen("AnswerMembers")
+	if answer == nil {
+		panic(fmt.Sprintf("extension %s: AnswerMembers(nil)", h.name))
+	}
+	if h.reg.answers == nil {
+		h.reg.answers = map[string]MemberAnswerer{}
+	}
+	if _, dup := h.reg.answers[h.name]; dup {
+		panic(fmt.Sprintf("extension %s: AnswerMembers called twice", h.name))
+	}
+	h.reg.answers[h.name] = answer
+}
+
+// AskMember asks this module on another member of the control-plane cluster
+// a question and returns what its AnswerMembers function answered. member is
+// a ClusterObservedMember's ID. The question travels over the members' own
+// route: mutual TLS with the members' certificates, so the answer comes from
+// the member asked and nobody else can ask. Question and answer are at most
+// MemberQuestionLimit bytes. Unlike the registrations it is called while
+// serving. A single server answers ErrNotClusterMember; a member that is
+// down, or runs a build whose module registered no answerer, answers
+// ErrMemberUnreachable.
+func (h *Host) AskMember(ctx context.Context, member uint64, question []byte) ([]byte, error) {
+	if h.app == nil {
+		return nil, ErrNotClusterMember
+	}
+	return h.app.askMember(ctx, member, h.name, question)
 }
 
 // ErrHostClosed is returned (or, for registrations without an error result,

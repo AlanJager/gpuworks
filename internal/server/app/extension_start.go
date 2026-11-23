@@ -28,6 +28,9 @@ type extensionSet struct {
 	dynamic  *featuregate.DynamicSet
 	source   featuregate.Source
 	sourceBy string
+	// answers are what each module tells the other cluster members that
+	// ask it, by module name.
+	answers map[string]MemberAnswerer
 	// platform limits the whole server, registered by platformBy.
 	platform   api.PlatformLimiter
 	platformBy string
@@ -83,7 +86,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 		if !ok {
 			continue
 		}
-		h := &Host{name: name, log: a.log.With("module", name), bus: a.bus, dataDir: cfg.DataDir, cfg: cfg,
+		h := &Host{app: a, name: name, log: a.log.With("module", name), bus: a.bus, dataDir: cfg.DataDir, cfg: cfg,
 			install: a.settings.installID, master: master, section: section, st: a.store, reg: set}
 		if h.tables, err = a.store.ExtensionTables(name); err != nil && !errors.Is(err, store.ErrUnknownNamespace) {
 			return err
@@ -137,4 +140,13 @@ func moduleService(a *App, name string, svc Service) func(context.Context) {
 			a.log.Error("extension service stopped", "module", name, "err", err)
 		}
 	}
+}
+
+// memberAnswerer is the function module name answers the other members
+// with; nil when it has none.
+func (a *App) memberAnswerer(name string) MemberAnswerer {
+	if a == nil || a.ext == nil {
+		return nil
+	}
+	return a.ext.answers[name]
 }

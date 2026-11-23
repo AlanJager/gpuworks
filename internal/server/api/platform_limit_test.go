@@ -29,7 +29,7 @@ func (l *switchLimiter) PlatformLimit() PlatformLimit { return *l.cur.Load() }
 // inventory holds every route a limit can meet.
 func fullRouter(extra ...Extension) http.Handler {
 	nop := func(http.ResponseWriter, *http.Request) {}
-	return Router(Deps{AgentConnect: nop, InstallSh: nop, ProxyV1: http.HandlerFunc(nop),
+	return Router(Deps{AgentConnect: nop, InstallSh: nop, ProxyV1: http.HandlerFunc(nop), UIHandler: http.HandlerFunc(nop),
 		Extensions: ExtensionDeps{Extensions: extra}})
 }
 
@@ -125,6 +125,7 @@ func TestPlatformLimitServesByClass(t *testing.T) {
 		d.Extensions = ExtensionDeps{Extensions: []Extension{ext, other}, Platform: limiter, PlatformOwner: "owner"}
 		d.ProxyV1 = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { served++; w.WriteHeader(http.StatusNoContent) })
 		d.AgentConnect = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
+		d.UIHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) })
 	})
 	t.Cleanup(func() { _ = rig.st.Close() })
 	read := rig.mint("read")
@@ -151,6 +152,11 @@ func TestPlatformLimitServesByClass(t *testing.T) {
 		{"another extension's read", rig.session, "GET", "/api/v1/x/other/things", 200, 200, refused},
 		{"a core route whose path names the limiting extension", rig.session, "GET", "/api/v1/nodes/owner", 404, 404, refused},
 		{"a path that climbs out of the limiting extension", rig.session, "GET", "/api/v1/x/owner/../other/things", 404, 404, 404},
+		{"the console's page", "", "GET", "/", 202, 202, 202},
+		{"a console page by its address", "", "GET", "/x/owner", 202, 202, 202},
+		{"a console file", "", "HEAD", "/assets/index.js", 202, 202, 202},
+		{"an agent download", "", "GET", "/dl/gpuworks-agent-linux-amd64", 202, 202, 202},
+		{"a write to the catch-all", "", "POST", "/dl/gpuworks-agent-linux-amd64", 202, refused, refused},
 		{"no such route", rig.session, "GET", "/api/v1/does-not-exist", 404, 404, 404},
 		{"no such method", rig.session, "TRACE", "/api/v1/nodes", 405, 405, 405},
 	} {
@@ -251,10 +257,12 @@ change GET /api/v1/slurm/clusters/{uuid}/setup
 change GET /install.sh
 change GET /kube/manifest.yaml
 change GET /slurm/setup.sh
+change OPTIONS /*
 read POST /api/v1/mcp
 recovery DELETE /api/v1/diagnostics/debug-session
 recovery DELETE /api/v1/plugins/overrides/{oid}
 recovery DELETE /api/v1/plugins/{id}
+recovery GET /*
 recovery GET /api/v1/agent/connect
 recovery GET /api/v1/auth/me
 recovery GET /api/v1/branding
@@ -277,6 +285,7 @@ recovery GET /api/v1/updates/server/versions
 recovery GET /healthz
 recovery GET /slurm/check.sh
 recovery GET /slurm/token-status
+recovery HEAD /*
 recovery POST /api/v1/auth/activity
 recovery POST /api/v1/auth/login
 recovery POST /api/v1/auth/logout

@@ -68,6 +68,7 @@ type Service interface{ Run(ctx context.Context) error }
 | `AddBannerSource(b)` | 控制台每页顶部的横幅 |
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
 | `LimitPlatform(src)` | 整台 server 的可用性来源（见“可用性”）；全部模块中至多一个 |
+| `AnswerMembers(fn)` / `AskMember(ctx, member, question)` | 控制面集群里，本模块回答其他成员的提问，以及向另一个成员上的本模块提问。走成员之间已有的通道（成员证书双向 TLS），所以答案确实来自被问的成员，别人也问不了；提问和回答各不超过 64 KiB。被问的成员不必是主节点。单机上 `AskMember` 返回 `ErrNotClusterMember`；成员不在线或其构建没有注册回答函数时返回 `ErrMemberUnreachable`。`AskMember` 在运行期间调用 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
 | `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
 | `ReapplySchedulingHoldsFor(ids)` | 同上，但只对答案变了的那些节点（按节点 id）重新应用 |

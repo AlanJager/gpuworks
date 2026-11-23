@@ -145,6 +145,19 @@ func classifyPlatformRoute(method, pattern, path, owner string) (class platformC
 	if pattern == "/v1/*" {
 		return platformServe, true
 	}
+	if pattern == "/*" {
+		// The catch-all is the console's files and the agent downloads
+		// under /dl/. Without the console nobody reaches the page that
+		// lifts a limit, and a machine that already joined fetches its
+		// agent from /dl/ to upgrade or repair itself; a new machine gains
+		// nothing from the file, since its enrollment is refused. Only
+		// reading them is served.
+		switch method {
+		case http.MethodGet, http.MethodHead:
+			return platformRecovery, true
+		}
+		return platformChange, true
+	}
 	if !strings.HasPrefix(pattern, "/api/v1/") {
 		return platformChange, false
 	}

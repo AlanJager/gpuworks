@@ -101,3 +101,35 @@ func (*nilLimiterModule) Init(_ context.Context, h *app.Host) error {
 	}
 	return nil
 }
+
+// A module on a single server registers what it answers the other members
+// and has nobody to ask: AskMember says so instead of failing some other
+// way, so one code path serves a single server and a cluster.
+func TestASingleServerHasNoMemberToAsk(t *testing.T) {
+	m := &askingModule{}
+	testenv.NewWithExtensions(t, app.Extensions{Modules: []app.Module{m}}, nil)
+	if _, err := m.host.AskMember(context.Background(), 2, []byte("x")); !errors.Is(err, app.ErrNotClusterMember) {
+		t.Fatalf("AskMember on a single server = %v, want %v", err, app.ErrNotClusterMember)
+	}
+	if !m.twicePanicked || !m.nilPanicked {
+		t.Fatalf("a second answerer panicked: %t, a nil one: %t", m.twicePanicked, m.nilPanicked)
+	}
+	if !panics(func() { m.host.AnswerMembers(func(context.Context, []byte) ([]byte, error) { return nil, nil }) }) {
+		t.Fatal("AnswerMembers after Init must panic")
+	}
+}
+
+type askingModule struct {
+	host                       *app.Host
+	twicePanicked, nilPanicked bool
+}
+
+func (*askingModule) Name() string { return "fake" }
+func (m *askingModule) Init(_ context.Context, h *app.Host) error {
+	m.host = h
+	answer := func(context.Context, []byte) ([]byte, error) { return []byte("here"), nil }
+	m.nilPanicked = panics(func() { h.AnswerMembers(nil) })
+	h.AnswerMembers(answer)
+	m.twicePanicked = panics(func() { h.AnswerMembers(answer) })
+	return nil
+}
