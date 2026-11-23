@@ -22,6 +22,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 	cordonedFor := ""
 	var heldBy SchedulingSource
 	placementChanged := false
+	var displayNameChanged bool
 	var factsChangedOf uint // the node's id when the report changed its hold facts
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var n Node
@@ -128,6 +129,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 				updates["network_inventory"] = string(b)
 			}
 		}
+		displayNameChanged = strings.TrimSpace(n.Name) == "" && n.Hostname != st.Sys.Hostname
 		placementChanged = nodePlacementFactsChanged(n, updates)
 		if err := tx.Model(&Node{}).Where("id = ?", n.ID).Updates(updates).Error; err != nil {
 			return err
@@ -151,6 +153,9 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		if node, nodeErr := s.NodeByUUID(uuid); nodeErr == nil {
 			_ = s.RecordLegacyModelsRoot(node.ID, root)
 		}
+	}
+	if displayNameChanged {
+		s.fleetNodes.displayNames.Add(1)
 	}
 	if placementChanged {
 		// What placement decides on changed: the node snapshot's next read

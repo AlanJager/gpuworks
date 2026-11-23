@@ -11,6 +11,7 @@ type NetworkWarning struct {
 
 // NetworkAttachment binds a network to one node or to a node label.
 type NetworkAttachment struct {
+	Unresolved bool      `json:"unresolved,omitempty"` // Direct target has no resolved node on this network.
 	ID         uint      `json:"id"`
 	Target     string    `json:"target"` // node | label
 	NodeUUID   string    `json:"node_uuid,omitempty"`
@@ -99,6 +100,11 @@ type NetworkRail struct {
 	Gap string `json:"gap,omitempty"`
 }
 
+// NetworkTargetMatches identifies matching rows of a network detail table.
+type NetworkTargetMatches struct {
+	IDs []string `json:"ids"`
+}
+
 // NetworkDetail is one network with the nodes it resolved to.
 type NetworkDetail struct {
 	Network
@@ -151,6 +157,12 @@ type NetworkAttachmentRequest struct {
 	Interface  string   `json:"interface"`
 	IP         string   `json:"ip"`
 	HCAs       []string `json:"hcas"`
+}
+
+// NetworkLabelRequest changes a label attachment's matching selector.
+type NetworkLabelRequest struct {
+	LabelKey   string `json:"label_key"`
+	LabelValue string `json:"label_value"`
 }
 
 // NetworkOverrideRequest replaces a node attachment's overrides.
@@ -306,6 +318,12 @@ type NetworkTestPair struct {
 	Code  string `json:"code,omitempty"`
 	Side  string `json:"side,omitempty"`
 	Error string `json:"error,omitempty"`
+	// AvgRailGbps is the mean of successful RDMA bandwidth readings.
+	AvgRailGbps     float64 `json:"avg_rail_gbps,omitempty"`
+	RailCount       int     `json:"rail_count,omitempty"`
+	RailPassedCount int     `json:"rail_passed_count,omitempty"`
+	// Slow marks a passed measurement below one tenth of the fastest in the run.
+	Slow bool `json:"slow,omitempty"`
 	// Rails are per-rail results of an rdma_tool test; Gbps is their sum.
 	Rails []NetworkTestRail `json:"rails,omitempty"`
 	// CardShape is how the two nodes' cards reach each other in a card run:
@@ -317,6 +335,7 @@ type NetworkTestPair struct {
 // the target rail it drove, and the outcome. A rail with no peer on the
 // other node has only one side.
 type NetworkTestRail struct {
+	Passed     bool    `json:"passed"`
 	Rail       string  `json:"rail"`
 	SourceIP   string  `json:"source_ip,omitempty"`
 	TargetRail string  `json:"target_rail,omitempty"`
@@ -348,6 +367,7 @@ type NetworkTestRun struct {
 	// RailPassedCount count the rails of an rdma_tool run, and of a card run
 	// the card pairs that were pinged and that answered.
 	PartialCount    int `json:"partial_count"`
+	FailedCount     int `json:"failed_count"`
 	RailCount       int `json:"rail_count"`
 	RailPassedCount int `json:"rail_passed_count"`
 	// CardShape is what a finished card run found as a whole: the shape most

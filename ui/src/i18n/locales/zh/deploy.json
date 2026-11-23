@@ -224,6 +224,9 @@
     "noReportedGPU": "未上报 GPU",
     "hardwareDifference": "要求：{{required}}；实际：{{actual}}。没有 GPU 通过部署硬件检查。"
   },
+  "distributedRecommendationReason": {
+    "no_layout": "没有符合已填并行度和这些节点 GPU 数量的 TP、PP 组合。"
+  },
   "scheduleNote": {
     "sleeping_residue": "休眠实例需保留 {{sleeping_gib}} GiB 常驻显存。",
     "foreign_held": "平台外的进程占用此卡 {{foreign_gib}} GiB，另在其旁保留 {{foreign_headroom_gib}} GiB 余量。",
@@ -897,7 +900,7 @@
       "degrees": "并行度",
       "split": "TP {{tp}} × PP {{pp}}，每个节点 {{perNode}} 张卡",
       "total": "共 {{gpus}} 张卡",
-      "fromNodes": "选定节点后按节点默认：每个节点一个流水线阶段，TP 取节点中最少的 GPU 数",
+      "fromNodes": "留空的并行度将按模型和所有所选节点的可用资源推荐。",
       "tpAutomatic": "留空由显存估算与拓扑自动决定",
       "tpRequiredAuto": "自动放置需要先填写 TP：平台要知道每个节点给每个 rank 几张卡",
       "tensor": "张量并行",

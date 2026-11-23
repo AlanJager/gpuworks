@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 
 	"github.com/coder/websocket"
@@ -58,7 +59,7 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		h.serveDataLane(netConn, c, remote)
 		return
 	}
-	sess, cleanup, err := h.acceptYamuxServer(netConn, lane, remote)
+	sess, cleanup, err := h.acceptYamuxServerAs(netConn, lane, relayedSessionID(r.Context()), remote)
 	if err != nil {
 		if errors.Is(err, errSmokeHandshake) {
 			_ = netConn.Close()
@@ -73,6 +74,32 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("agent session failed", attrs...)
 		_ = netConn.Close()
 		_ = c.Close(websocket.StatusInternalError, "session")
+		return
+	}
+	h.serveSession(sess, cleanup, remote)
+}
+
+// AgentRemote is the agent's address as this server records it for r.
+func (h *Hub) AgentRemote(r *http.Request) string { return h.agentRemote(r) }
+
+// ServeRelayedConn runs an agent session on a connection a relay in this
+// process opened (agent_relay.go), until the session ends. sessionID is the
+// identity the relay gave the agent.
+func (h *Hub) ServeRelayedConn(netConn net.Conn, lane, sessionID, remote string) {
+	sessionCtx, done, ok := h.sessionWork.begin()
+	if !ok {
+		_ = netConn.Close()
+		return
+	}
+	defer done()
+	stopClose := context.AfterFunc(sessionCtx, func() { _ = netConn.Close() })
+	defer stopClose()
+	sess, cleanup, err := h.acceptYamuxServerAs(netConn, lane, sessionID, remote)
+	if err != nil {
+		if !errors.Is(err, errSmokeHandshake) {
+			h.log.Warn("relayed agent session failed", "err", err, "remote", remote)
+		}
+		_ = netConn.Close()
 		return
 	}
 	h.serveSession(sess, cleanup, remote)

@@ -21,8 +21,8 @@ After completing this guide, all ranks of a replica are ready, and you can compl
    If a network probe fails, fix routes, firewalls, or ports first. Do not bypass the failure by disabling authentication.
 2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)). In manual mode, fix the node order by rank 0…N-1 on the deployments page; in automatic mode you may name only the first ranks' nodes and the platform picks the rest. Then configure parallelism. Tensor parallelism (TP) and pipeline parallelism (PP)
    apply to the entire deployment. Total cards = TP × PP; each node runs TP × PP ÷ node count cards (the division must be exact).
-   After you select nodes, TP defaults to the smallest GPU count among selected nodes, and PP defaults to the node count. TP can also span nodes: for example, two nodes with
-   1 card each can use TP 2. A node with more GPUs than the per-node card count uses only some of them.
+   With manually selected nodes, leave TP or PP blank to recommend a layout that fits the model on every node. The form displays the resulting degrees and confirms them on submission. Explicit degrees are preserved. Setting both uses fixed-placement validation.
+   For manual launch commands, the launch check compares the parallelism the command states with the cards each layout assigns, as on a single node. The recommendation skips layouts that do not match. When a matching layout is refused by the scheduler (not enough memory, say), that refusal is reported; when none matches, the default layout is used and the launch check reports the error.
    In the multi-node form, parallelism settings follow nodes and precede the image. TP / PP errors appear on the corresponding fields and do not prevent image and weight acquisition estimates from appearing.
    Automatic placement requires TP: the platform needs it to work out how many free cards each node must have. Without TP the request returns 400 `AUTO_PLACEMENT_TP_REQUIRED`.
 3. Select the image and weights, then expand the per-node acquisition estimates, such as “1 of 2 nodes needs to pull the image.”
@@ -116,7 +116,7 @@ The platform evaluates placement rank by rank using the deployment configuration
 - Automatic placement does not start some ranks while it waits for the rest: the ranks of a replica are created together or wait together.
 
 <!-- translation-source-sha256: 394fff9ffd2c8ec282986af25c4be5641d62af3f50d7b5c1cf2bc6dedd14fc26 # Multi-Node Inference -->
-<!-- translation-source-sha256: e1e0bde47ed9bbecd133904bf8f5c14ede8b6434f6a2a5fc4a1740fdb2afa53e ## Deploy a Multi-Node Replica -->
+<!-- translation-source-sha256: 856d62bed43496e739df022bef95d303a5c1eec20cb6b658369c406d4eeffc77 ## Deploy a Multi-Node Replica -->
 <!-- translation-source-sha256: 2a0da34f13ef888e615d2253fc103bb1d8274dd46aef4108f2ba3030247880be ## Automatic and Manual Placement -->
 <!-- translation-source-sha256: e769f3df8aca9125650c9f869fa18aa84e6761aae7b8ad485cfc5dedb34e4841 ### How Nodes Are Chosen at Creation -->
 <!-- translation-source-sha256: 1190b04e9f68bc3368fe3c396bf8462ced3580f74f12555f461c67d9ed89978f ### Choosing Again When a Replica Starts -->

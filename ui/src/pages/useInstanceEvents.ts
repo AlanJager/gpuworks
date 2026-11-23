@@ -50,7 +50,7 @@ export function useInstanceEvents(uuid: string, enabled = true): EventTimelineSt
   const reload = useCallback(() => setReloads((value) => value + 1), []);
 
   useEventPayload("instance", (event) => {
-    if (event.key !== uuid || event.reason === "progress") return;
+    if (event.reason !== "resync" && (event.key !== uuid || event.reason === "progress")) return;
     reload();
   });
 
