@@ -109,6 +109,7 @@ type Controller struct {
 	// (image_acquisition.go).
 	peerCool   pairCooldown
 	imageWaits imageWaits
+	relayed    relayedCopies
 	// imageRefsNotify asks the image refs worker for a push (image_refs.go).
 	imageRefsNotify chan struct{}
 	// failover is node replacement's memory (node_failover.go).

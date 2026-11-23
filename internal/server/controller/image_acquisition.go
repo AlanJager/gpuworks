@@ -74,6 +74,32 @@ func (p *pairCooldown) cooling(source, target uint, now time.Time) bool {
 	return true
 }
 
+// relayedCopies remembers the copies the controller sent through the relay
+// (image row, target node), in memory, so the failure of one is told from a
+// direct copy's: both leave a failed row whose source is a peer.
+type relayedCopies struct {
+	mu     sync.Mutex
+	active map[[2]uint]bool
+}
+
+func (r *relayedCopies) started(image, target uint) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.active == nil {
+		r.active = map[[2]uint]bool{}
+	}
+	r.active[[2]uint{image, target}] = true
+}
+
+// ended forgets the copy and reports whether there was one.
+func (r *relayedCopies) ended(image, target uint) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	was := r.active[[2]uint{image, target}]
+	delete(r.active, [2]uint{image, target})
+	return was
+}
+
 // imageWaits remembers which deployments wait for an image to arrive on a
 // node by copy, so an image event re-queues those and not every deployment.
 type imageWaits struct {
@@ -135,9 +161,10 @@ type imageDelivery struct {
 // from the next, and trying each in turn only delays the pull. A copy that
 // failed any other way (the source went away, the load failed, someone
 // cancelled it) says nothing about the next holder. The relay is one path
-// whichever holder feeds it, so it is tried once per peerCooldown for a
-// target, not once per holder. Nothing here is the deployment's choice, so
-// nothing is waited for that could not arrive.
+// whichever holder feeds it: once a relayed copy has given up, the relay is
+// not tried for that target for peerCooldown from then, through any holder.
+// Nothing here is the deployment's choice, so nothing is waited for that
+// could not arrive.
 func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Deployment, node *store.Node) imageDelivery {
 	if dep == nil || node == nil {
 		return imageDelivery{present: true}
@@ -152,6 +179,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 	if err == nil {
 		switch row.State {
 		case store.ImageStatePresent:
+			c.relayed.ended(image.ID, node.ID)
 			c.imageWaits.forget(dep.ID)
 			return imageDelivery{present: true}
 		case store.ImageStateSyncing, store.ImageStatePulling:
@@ -171,7 +199,12 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 				c.imageWaits.set(dep.ID, image.ID)
 				return imageDelivery{}
 			}
-			if row.Source == "peer" && row.SourceNodeID != 0 {
+			if c.relayed.ended(image.ID, node.ID) {
+				// The relayed copy gave up. The relay is ruled out for the
+				// target from that moment; the pair's direct path is not
+				// what failed, and was already ruled out before it.
+				c.peerCool.cool(relayPeers, node.ID, row.UpdatedAt)
+			} else if row.Source == "peer" && row.SourceNodeID != 0 {
 				c.peerCool.cool(row.SourceNodeID, node.ID, row.UpdatedAt)
 				if row.TransferErrorCode == messages.ErrorPeerDirectConnectFailed {
 					if path, e := c.networks.StoragePath(row.SourceNodeID, node.ID); e == nil && path.Network == netplan.ManagementName {
@@ -183,22 +216,20 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 	}
 	source, rate := c.imageCopySource(image.ID, node, now, false)
 	syncer, ok := c.hub.(imagePeerSyncer)
-	if source == nil && ok && c.imagePullFailed(dep, node, row, now) && !c.peerCool.cooling(relayPeers, node.ID, now) {
-		// Nothing connects to the node directly and its own pull failed:
-		// the relay is what is left.
-		if relayed, relayRate := c.imageCopySource(image.ID, node, now, true); relayed != nil {
+	if source == nil && ok && !c.peerCool.cooling(relayPeers, node.ID, now) {
+		// Nothing connects to the node directly. Once its own pull has
+		// failed too, the relay is what is left.
+		if relayed, relayRate := c.imageCopySource(image.ID, node, now, true); relayed != nil && c.imagePullFailed(dep, node, row, now) {
 			_, err := syncer.SyncImageFromRate(ctx, image.ID, node.UUID, relayed.UUID, relayRate)
-			if !errors.Is(err, messages.ErrPeerRelayBusy) {
-				// A relay that is busy has not been tried yet; the launch
-				// asks again. Any other outcome is the one attempt.
-				c.peerCool.cool(relayPeers, node.ID, now)
-			}
-			if err == nil || errors.Is(err, messages.ErrPeerRelayBusy) {
+			if err == nil {
+				c.relayed.started(image.ID, node.ID)
 				c.log.Info("image pull failed; copying through the relay", "dep", dep.ID, "image", image.ImageRef, "node", node.UUID, "source", relayed.UUID)
 				c.imageWaits.set(dep.ID, image.ID)
 				c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonImageDeliveryWaiting, Params: map[string]any{"node": node.DisplayName(), "image": image.ImageRef}})
 				return imageDelivery{}
 			}
+			// Nothing was started, so nothing is ruled out: the replica
+			// pulls again and the next launch asks once more.
 			c.log.Info("relayed image copy not started; the replica pulls the image itself", "dep", dep.ID, "image", image.ImageRef, "node", node.UUID, "source", relayed.UUID, "err", err)
 		}
 	}
@@ -223,11 +254,13 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 
 // imagePullFailed is whether node's own pull of the deployment's image failed
 // within the last peerCooldown: the pull the controller started ahead of a
-// multi-node launch (the image's row on the node says so), or the one a
-// replica of the deployment made at its start.
+// multi-node launch (the image's row on the node says so, unless someone
+// cancelled it), or the one a replica of the deployment made of this image
+// at its start.
 func (c *Controller) imagePullFailed(dep *store.Deployment, node *store.Node, row *store.ImageNode, now time.Time) bool {
 	recent := func(at time.Time) bool { return now.Sub(at) < peerCooldown }
-	if row != nil && row.State == store.ImageStateFailed && row.Source != "peer" && recent(row.UpdatedAt) {
+	if row != nil && row.State == store.ImageStateFailed && row.Source != "peer" &&
+		row.TransferErrorCode != messages.ErrorPeerTransferCanceled && recent(row.UpdatedAt) {
 		return true
 	}
 	instances, err := c.store.InstancesForDeployment(dep.ID)
@@ -236,7 +269,9 @@ func (c *Controller) imagePullFailed(dep *store.Deployment, node *store.Node, ro
 	}
 	for i := range instances {
 		in := &instances[i]
-		if in.NodeID != node.ID || !recent(in.UpdatedAt) {
+		// An attempt made with another image (the deployment was edited
+		// since) says nothing about this one.
+		if in.NodeID != node.ID || in.Image != dep.Image || !recent(in.UpdatedAt) {
 			continue
 		}
 		if failure := in.Failure(); failure != nil && failure.Code == proto.ErrorImagePullFailed {

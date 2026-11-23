@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -117,6 +118,9 @@ func TestAFailedRelayIsNotRetriedThroughTheNextHolder(t *testing.T) {
 	if !c.peerCool.cooling(relayPeers, target.ID, c.now()) {
 		t.Fatal("the relay is not cooling for the target")
 	}
+	if !c.peerCool.cooling(relayPeers, target.ID, c.now().Add(peerCooldown-time.Minute)) {
+		t.Fatal("the relay's cooldown ended before three hours from its failure")
+	}
 	if c.peerCool.cooling(relayPeers, target.ID, c.now().Add(peerCooldown+time.Minute)) {
 		t.Fatal("the relay is still ruled out after the cooldown")
 	}
@@ -180,28 +184,41 @@ func TestAnOldPullFailureDoesNotOpenTheRelay(t *testing.T) {
 	}
 }
 
-// A relay that is busy has not been tried: the replica waits and the launch
-// asks again, without the one attempt being spent.
-func TestABusyRelayIsAskedAgain(t *testing.T) {
-	c, st, dep, target, holder, image, hub := imageCopyFixture(t, "controller_image_relay_busy")
+// A relayed copy that could not be started rules nothing out: the replica
+// pulls again and the next launch asks the relay once more.
+func TestARelayThatDidNotStartIsNotCounted(t *testing.T) {
+	c, st, dep, target, holder, image, hub := imageCopyFixture(t, "controller_image_relay_not_started")
 	directCopyFailed(t, st, image, target, holder)
 	reconcile(t, c, dep)
 	replicaPullFailed(t, st, dep, target)
 	afterRetryBackoff(c)
-	hub.copyErr = messages.ErrPeerRelayBusy
+	// As the hub answers when the holder went away between the pick and the start.
+	hub.copyErr = errors.New("selected source node is offline or no longer has this image")
 	reconcile(t, c, dep)
-	if len(hub.copies) != 1 || !hub.copies[0].relay || len(launched(t, st, dep)) != 1 {
-		t.Fatalf("copies=%+v instances=%d, want one relay request and the replica waiting", hub.copies, len(launched(t, st, dep)))
+	if len(hub.copies) != 1 || !hub.copies[0].relay {
+		t.Fatalf("copies = %+v, want the one relay request", hub.copies)
 	}
 	if c.peerCool.cooling(relayPeers, target.ID, c.now()) {
-		t.Fatal("a busy relay was counted as the target's one attempt")
+		t.Fatal("a relay that never started was counted against the target")
 	}
-	hub.copyErr = nil
+	if got := len(launched(t, st, dep)); got != 2 {
+		t.Fatalf("instances = %d, want the failed attempt and a new one pulling", got)
+	}
+}
+
+// An attempt that failed to pull another image, before the deployment was
+// edited, does not open the relay for the image it runs now.
+func TestAPullFailureOfAnotherImageDoesNotOpenTheRelay(t *testing.T) {
+	c, st, dep, target, holder, image, hub := imageCopyFixture(t, "controller_image_relay_other_image")
+	directCopyFailed(t, st, image, target, holder)
 	reconcile(t, c, dep)
-	if len(hub.copies) != 2 || !hub.copies[1].relay {
-		t.Fatalf("copies = %+v, want the relay asked again once it is free", hub.copies)
+	replicaPullFailed(t, st, dep, target)
+	if err := st.DB().Model(&store.Instance{}).Where("deployment_id = ?", dep.ID).UpdateColumn("image", "gpustack/runner:v0").Error; err != nil {
+		t.Fatal(err)
 	}
-	if !c.peerCool.cooling(relayPeers, target.ID, c.now()) {
-		t.Fatal("a started relay is not the target's one attempt")
+	afterRetryBackoff(c)
+	reconcile(t, c, dep)
+	if len(hub.copies) != 0 {
+		t.Fatalf("copies = %+v, want none: this image's pull has not failed", hub.copies)
 	}
 }
