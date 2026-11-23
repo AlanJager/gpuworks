@@ -552,6 +552,99 @@ specs:
   placement: *q38_910b_placement
   api: *q38_910b_api
   shm_bytes: 137438953472
+# Ascend 910B (A2), eight cards, TP8 with expert parallelism, W4A8 weights
+# with the checkpoint's MTP layer. The arguments and environment are a
+# published vLLM-Ascend v0.32.0rc1 deployment recipe for eight NPUs
+# (`vllm serve --tensor-parallel-size 8 --quantization ascend ...`), taken as
+# written; this profile has not been launched or measured on this platform,
+# and where it differs from the four-card profiles above (8 sequences, 4096
+# batched tokens, async scheduling, CPU binding, the shared-expert and
+# FlashComm switches in --additional-config, KV sized by
+# --gpu-memory-utilization instead of a fixed pool) the recipe's value is
+# kept rather than the four-card measurement. Three things are this
+# catalog's, not the recipe's: the image is the same pinned v0.32.0rc1
+# openEuler index the four-card profiles run (the recipe names the mutable
+# tag `v0.32.0rc1`); the speculative method is `mtp`, this image's name for
+# the recipe's deprecated `qwen3_5_mtp`; and the 64 GiB floor per card is the
+# four-card profiles', since the recipe does not state its cards' memory. The
+# recipe's node-specific settings (HCCL_IF_IP and the *_SOCKET_IFNAME
+# interface names) and its optional jemalloc preload are left out: they name
+# one host's address, interface and library path. --engram-config maps one
+# 23.8 GiB copy of the embedding table per rank, about 190 GiB of host
+# memory for eight ranks.
+- name: w4a8-vllm-910b-tp8-mtp
+  display_name_zh_cn: 910B (A2) · INT4 W4A8 · 8 卡 · MTP 投机解码
+  display_name_en: 910B (A2) · INT4 W4A8 · 8 cards · MTP speculative
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/vllm-ascend@sha256:53a60329962f843fa4c8965c28e98c194a894e34ce5e473edf79e57cbb723188
+  weights:
+    quantization: w4a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-Flash-Next-w4a8
+        revision: d75537fdf781e6a8e85bfb6bf091b987e3b0ab96
+  weight_bytes: 194325007155
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --data-parallel-size
+  - '1'
+  - --enable-expert-parallel
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '8'
+  - --max-num-batched-tokens
+  - '4096'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enable-prefix-caching
+  - --mamba-cache-mode
+  - align
+  - --async-scheduling
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --reasoning-parser
+  - qwen3
+  - --engram-config
+  - '{"cpu_offload":true,"dp_shared_memory":false}'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --speculative-config
+  - '{"method":"mtp","num_speculative_tokens":3,"enforce_eager":false}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"enable_shared_expert_dp":true,"enable_fused_mc2":0,"enable_flashcomm1":true,"multistream_overlap_shared_expert":true,"ascend_compilation_config":{"fuse_norm_quant":false,"enable_npugraph_ex":true,"enable_static_kernel":false,"enable_super_kernel":false}}'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    VLLM_ENGINE_READY_TIMEOUT_S: '7200'
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: '3000'
+    VLLM_CHAT_TEMPLATE_RENDER_TIMEOUT: '300'
+    HCCL_BUFFSIZE: '1024'
+    HCCL_CONNECT_TIMEOUT: '1200'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_PROC_BIND: 'false'
+    OMP_NUM_THREADS: '10'
+    TASK_QUEUE_ENABLE: '1'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("the eight-card 910B recipe runs exactly 8 cards on one node")
+          if gpu.min_memory_gib < 64:
+              return reject("each card requires at least 64 GiB")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api: *q38_910b_api
+  shm_bytes: 274877906944
 - name: fp8-sglang-ppu-m890p-tp8-256k
   display_name_zh_cn: PPU M890P · FP8 · 8 卡
   display_name_en: PPU M890P · FP8 · 8 GPUs

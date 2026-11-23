@@ -136,3 +136,32 @@ was not measured separately.
 **The first request is slow.** Some kernels are compiled just in time for the tensor shapes a request actually
 uses, so the first request takes markedly longer than the ones after it; the throughput above is the steady
 state once that cache is warm. The cache lives inside the container, so a rebuilt container pays it again.
+
+## Ascend 910B (A2) · 8 cards · TP8 (not measured on this platform)
+
+`w4a8-vllm-910b-tp8-mtp`: one node with eight 910B cards of at least 64 GiB each, TP8 with expert
+parallelism, the W4A8 weights (`Eco-Tech/Qwen3.8-Flash-Next-w4a8` `d75537fd…`) with the checkpoint's own MTP
+layer, on the same image as the four-card profiles. Its arguments and environment follow a published
+vLLM-Ascend `v0.32.0rc1` recipe for eight cards; **this profile has not been launched or load-tested on this
+platform**, so there are no throughput figures. Where it differs from the four-card profiles above:
+
+| Setting | This profile (the recipe's value) | Four-card profiles (measured here) |
+| --- | --- | --- |
+| Concurrency ceiling `--max-num-seqs` | 8 | 16 |
+| Batched tokens per step | 4096 | 8192 |
+| KV cache | sized by `--gpu-memory-utilization 0.90` | fixed 20 GiB per card, utilization 0.95 |
+| Scheduling | `--async-scheduling` | `--no-async-scheduling` |
+| CPU binding `enable_cpu_binding` | on | off |
+| Other `--additional-config` switches | shared-expert DP, FlashComm1, shared-expert multistream overlap, NPUGraph EX; fused MC2, static kernel and super kernel off | none |
+| Decode graph sizes | vLLM's defaults | multiples of four, captured up to 64 |
+| `HCCL_BUFFSIZE` / `OMP_NUM_THREADS` | 1024 / 10 | 200 / 8 |
+| Images per request and other multimodal limits | not set | 32 images, bounded pixel range |
+
+Three things do not follow the recipe: the image is pinned by digest (the recipe names the mutable tag
+`v0.32.0rc1`); the speculative method is `mtp` (the recipe's `qwen3_5_mtp` is this image's old name for it);
+and the 64 GiB floor per card is the four-card profiles', because the recipe does not state its cards'
+memory. Settings that name one host (`HCCL_IF_IP`, the `*_SOCKET_IFNAME` interface names, the jemalloc
+preload path) are left out.
+
+**Host memory**: each of the eight ranks maps its own 23.8 GiB copy of the embedding table, about 190 GiB of
+free memory, plus the page cache for the checkpoint.
