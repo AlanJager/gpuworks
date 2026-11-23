@@ -109,9 +109,7 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 		return err
 	}
 	expected := store.ClusterIdentity{ClusterID: bundle.info.ClusterID, CAFingerprint: bundle.info.CAFingerprint, Protocol: bundle.info.Protocol}
-	confirmed := func() ([]store.ClusterTransportMember, bool) {
-		return a.store.ConfirmedClusterMembership(memberRouteMembershipAge)
-	}
+	confirmed := a.store.ConfirmedClusterMembership
 	grant := func(ctx context.Context) ([]store.ClusterTransportMember, error) {
 		_, members, err := a.store.GrantClusterMembership(ctx, expected, localKey)
 		return members, err
@@ -207,14 +205,28 @@ const memberRouteMembershipAge = materialEligibilityWindow
 // it take a fresh grant: a member admitted since the last confirmation is
 // found that way, and one removed since then is still accepted until the
 // next confirmation.
-func memberRouteKey(ctx context.Context, confirmed func() ([]store.ClusterTransportMember, bool), grant func(context.Context) ([]store.ClusterTransportMember, error), pick func([]store.ClusterTransportMember) string) (string, error) {
-	if members, ok := confirmed(); ok {
+//
+// A grant that brings no answer (storage stalled, no leader) is not a
+// refusal: the last confirmed list then stands in for it up to the
+// unconfirmed limit, the same bound that ends this member's own admission
+// without an answer. Without that, a stall longer than the list's age cut
+// the members off from the leader while every one of them was still open.
+// The list is dropped when this member's admission is invalidated.
+func memberRouteKey(ctx context.Context, confirmed func(time.Duration) ([]store.ClusterTransportMember, bool), grant func(context.Context) ([]store.ClusterTransportMember, error), pick func([]store.ClusterTransportMember) string) (string, error) {
+	if members, ok := confirmed(memberRouteMembershipAge); ok {
 		if key := pick(members); key != "" {
 			return key, nil
 		}
 	}
 	members, err := grant(ctx)
 	if err != nil {
+		if store.ClusterGrantUndecided(err) {
+			if members, ok := confirmed(materialUnconfirmedLimit); ok {
+				if key := pick(members); key != "" {
+					return key, nil
+				}
+			}
+		}
 		return "", err
 	}
 	return pick(members), nil

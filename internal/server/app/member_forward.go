@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/hub"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // A control-plane cluster serves business from one member: the one that
@@ -179,9 +181,26 @@ type memberPeerKey struct{}
 
 // memberPeer remembers that a connection's certificate was authorized, so a
 // kept-alive connection pays the membership check once.
+// memberPeer is one member connection's authorization: decided once, by the
+// first answer. An attempt that brought no answer decides nothing.
 type memberPeer struct {
-	once sync.Once
-	err  error
+	mu      sync.Mutex
+	decided bool
+	err     error
+}
+
+func (p *memberPeer) authorize(decide func() error) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.decided {
+		return p.err
+	}
+	err := decide()
+	if err != nil && store.ClusterGrantUndecided(err) {
+		return err
+	}
+	p.decided, p.err = true, err
+	return err
 }
 
 // serveForwarded is the leader's end: an admitted member's request is served
@@ -199,8 +218,13 @@ func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 		refuseMemberBusiness(w)
 		return
 	}
-	peer.once.Do(func() { peer.err = authorize(r.Context(), r.TLS.PeerCertificates[0]) })
-	if peer.err != nil {
+	if err := peer.authorize(func() error { return authorize(r.Context(), r.TLS.PeerCertificates[0]) }); err != nil {
+		if store.ClusterGrantUndecided(err) {
+			// No answer about the peer: not ready, and the next request on
+			// this connection asks again.
+			refuseMemberBusiness(w)
+			return
+		}
 		http.Error(w, "member is not admitted", http.StatusForbidden)
 		return
 	}

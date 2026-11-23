@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -268,9 +269,10 @@ func TestMemberRouteKeyAnswersFromConfirmedMembershipWithoutGrant(t *testing.T) 
 			return ""
 		}
 	}
-	confirmed := func(ok bool) func() ([]store.ClusterTransportMember, bool) {
-		return func() ([]store.ClusterTransportMember, bool) {
-			if !ok {
+	// confirmed(age) is a list confirmed that long ago; a negative age is none.
+	confirmed := func(age time.Duration) func(time.Duration) ([]store.ClusterTransportMember, bool) {
+		return func(maxAge time.Duration) ([]store.ClusterTransportMember, bool) {
+			if age < 0 || age > maxAge {
 				return nil, false
 			}
 			return members, true
@@ -284,16 +286,45 @@ func TestMemberRouteKeyAnswersFromConfirmedMembershipWithoutGrant(t *testing.T) 
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	if key, err := memberRouteKey(ctx, confirmed(true), stalled, pick("peer")); err != nil || key != "peer" {
+	if key, err := memberRouteKey(ctx, confirmed(0), stalled, pick("peer")); err != nil || key != "peer" {
 		t.Fatalf("confirmed member: key=%q err=%v", key, err)
 	}
 	if waited := time.Since(started); waited > 100*time.Millisecond {
 		t.Fatalf("confirmed member waited %v for a grant", waited)
 	}
-	// Without a confirmed list young enough, the grant decides, and its
-	// failure is the answer.
-	if _, err := memberRouteKey(ctx, confirmed(false), stalled, pick("peer")); !errors.Is(err, context.DeadlineExceeded) {
+	// Without any confirmed list the grant decides, and its failure is the
+	// answer.
+	if _, err := memberRouteKey(ctx, confirmed(-1), stalled, pick("peer")); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("no confirmed list: err=%v", err)
+	}
+	// A list too old to answer by itself stands in for a grant that brought
+	// no answer, up to the unconfirmed limit and not beyond; it never stands
+	// in for a refusal, and it does not admit a key it does not name.
+	short := func(parent context.Context) (context.Context, context.CancelFunc) {
+		return context.WithTimeout(parent, 50*time.Millisecond)
+	}
+	for _, tc := range []struct {
+		name string
+		age  time.Duration
+		key  string
+		want string
+	}{
+		{"inside the limit", memberRouteMembershipAge + time.Second, "peer", "peer"},
+		{"past the limit", materialUnconfirmedLimit + time.Second, "peer", ""},
+		{"key the list does not name", memberRouteMembershipAge + time.Second, "stranger", ""},
+	} {
+		stallCtx, stop := short(t.Context())
+		key, err := memberRouteKey(stallCtx, confirmed(tc.age), stalled, pick(tc.key))
+		stop()
+		if key != tc.want || (tc.want == "") != errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("%s: key=%q err=%v", tc.name, key, err)
+		}
+	}
+	refusedGrant := func(context.Context) ([]store.ClusterTransportMember, error) {
+		return nil, store.ErrClusterAdmissionRejected
+	}
+	if key, err := memberRouteKey(t.Context(), confirmed(memberRouteMembershipAge+time.Second), refusedGrant, pick("peer")); key != "" || !errors.Is(err, store.ErrClusterAdmissionRejected) {
+		t.Fatalf("an aged list stood in for a refusal: key=%q err=%v", key, err)
 	}
 	var grants atomic.Int32
 	fresh := func(context.Context) ([]store.ClusterTransportMember, error) {
@@ -301,17 +332,17 @@ func TestMemberRouteKeyAnswersFromConfirmedMembershipWithoutGrant(t *testing.T) 
 		return append([]store.ClusterTransportMember{{ID: 3, KeyFingerprint: "joined"}}, members...), nil
 	}
 	// A member admitted after the last confirmation is found by a grant.
-	if key, err := memberRouteKey(t.Context(), confirmed(true), fresh, pick("joined")); err != nil || key != "joined" || grants.Load() != 1 {
+	if key, err := memberRouteKey(t.Context(), confirmed(0), fresh, pick("joined")); err != nil || key != "joined" || grants.Load() != 1 {
 		t.Fatalf("new member: key=%q err=%v grants=%d", key, err, grants.Load())
 	}
 	// A key no list names is refused after that one grant.
-	if key, err := memberRouteKey(t.Context(), confirmed(true), fresh, pick("stranger")); err != nil || key != "" || grants.Load() != 2 {
+	if key, err := memberRouteKey(t.Context(), confirmed(0), fresh, pick("stranger")); err != nil || key != "" || grants.Load() != 2 {
 		t.Fatalf("unknown member: key=%q err=%v grants=%d", key, err, grants.Load())
 	}
 	denied := func(context.Context) ([]store.ClusterTransportMember, error) {
 		return nil, store.ErrClusterAdmissionRejected
 	}
-	if _, err := memberRouteKey(t.Context(), confirmed(false), denied, pick("peer")); !errors.Is(err, store.ErrClusterAdmissionRejected) {
+	if _, err := memberRouteKey(t.Context(), confirmed(-1), denied, pick("peer")); !errors.Is(err, store.ErrClusterAdmissionRejected) {
 		t.Fatalf("refused grant: err=%v", err)
 	}
 }
@@ -385,5 +416,32 @@ func TestBusinessRequestsNeedOneSuccessfulConfirmation(t *testing.T) {
 	gate.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("request on a member that never confirmed = %d", w.Code)
+	}
+}
+
+// One member connection's authorization is decided by the first answer. An
+// attempt without an answer decides nothing, so the next request asks again
+// instead of the connection staying refused after the stall.
+func TestMemberPeerAuthorizationIsNotDecidedByAnAttemptWithoutAnAnswer(t *testing.T) {
+	peer := &memberPeer{}
+	calls := 0
+	answers := []error{fmt.Errorf("grant: %w", context.DeadlineExceeded), nil, store.ErrClusterAdmissionRejected}
+	ask := func() error { calls++; return answers[calls-1] }
+	if err := peer.authorize(ask); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first attempt: %v", err)
+	}
+	if err := peer.authorize(ask); err != nil || calls != 2 {
+		t.Fatalf("second attempt: err=%v calls=%d", err, calls)
+	}
+	if err := peer.authorize(ask); err != nil || calls != 2 {
+		t.Fatalf("a decided connection asked again: err=%v calls=%d", err, calls)
+	}
+	refused := &memberPeer{}
+	calls = 2
+	if err := refused.authorize(ask); !errors.Is(err, store.ErrClusterAdmissionRejected) {
+		t.Fatalf("refusal: %v", err)
+	}
+	if err := refused.authorize(func() error { return nil }); !errors.Is(err, store.ErrClusterAdmissionRejected) {
+		t.Fatalf("a refused connection was admitted later: %v", err)
 	}
 }
