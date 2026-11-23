@@ -219,7 +219,11 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 		})
 		if !errors.Is(err, messages.ErrPeerRelayBusy) {
 			if err != nil {
-				_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, err.Error())
+				code := ""
+				if errors.Is(err, errDirectPeerConnection) {
+					code = messages.ErrorPeerDirectConnectFailed
+				}
+				_ = h.store.FailImageSyncIfActiveCode(image.ID, nodeID, transferID, err.Error(), code)
 				return
 			}
 			break
