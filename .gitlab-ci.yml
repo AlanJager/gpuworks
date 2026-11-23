@@ -752,8 +752,9 @@ core-l3:
 # artifacts/archive/2026-09-19-log-center/plan.md), a server-origin
 # saturation evaluation under the server's RSS budget, and the /v1 data plane
 # under 1000 streaming clients with a budget on the server's CPU per request
-# (set for the slowest runner CPU, a 2.2 GHz Xeon Silver 4210: a faster
-# runner only reads lower). All are measurements of
+# (set for the slowest runner CPU, a 2.2 GHz Xeon Silver 4210, with the
+# server held to 20 Go processors so a many-core runner reads the same: a
+# faster runner only reads lower). All are measurements of
 # a loaded host and need no Docker and no GPU. Strict mode turns a too-low descriptor
 # limit into a failure instead of a skip that would read as green.
 l2-fleet-redeploy-churn:
