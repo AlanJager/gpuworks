@@ -74,7 +74,10 @@ def assert_viewport(page):
 
 
 def _focus_index(dialog):
-    return dialog.evaluate("""element => {
+    return dialog.evaluate("""async element => {
+        // Base UI's focus guard redirects on the next animation frame.
+        if (document.activeElement?.hasAttribute('data-base-ui-focus-guard'))
+            await new Promise(resolve => requestAnimationFrame(resolve));
         const active = document.activeElement;
         if (active?.hasAttribute('data-base-ui-focus-guard')
             && (active.previousElementSibling === element || active.nextElementSibling === element)) return -2;
@@ -324,9 +327,11 @@ def assert_nested_dismissals(dialog, parent, reopen, dismissals, mutation_count,
         if focus_trigger is not None:
             expect(focus_trigger).to_be_focused()
         check(mutation_count() == baseline, f"{label} sent a mutation")
+        # A nested modal hides the parent from role queries while it owns focus.
+        parent_panel = parent.element_handle()
         dialog = reopen()
         expect(dialog).to_be_visible()
-        expect(parent).to_be_visible()
+        check(parent_panel.is_visible(), f"{label}: the parent disappeared on reopen")
     return dialog
 
 
@@ -352,4 +357,4 @@ def mask(dialog):
     if wrap.count() > 0:
         wrap.click(position={"x": 8, "y": 8})
     else:
-        dialog.page.locator('[data-slot="dialog-backdrop"]').click(position={"x": 8, "y": 8})
+        dialog.locator('..').locator(':scope > [data-slot="dialog-backdrop"]').click(position={"x": 8, "y": 8})

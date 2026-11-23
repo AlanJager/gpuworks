@@ -15,7 +15,9 @@ const { ModelDetailModal } = await import("../src/pages/ModelsPageParts.tsx");
 
 const api = apiModule.api;
 const original = { me: api.me, deleteModelOnNode: api.deleteModelOnNode, syncModel: api.syncModel, downloadModel: api.downloadModel, downloadModelToStorage: api.downloadModelToStorage, deleteModelInStorage: api.deleteModelInStorage };
-afterEach(() => { cleanup(); Object.assign(api, original); });
+const { message } = await import("antd");
+// A toast outlives the test that raised it; one left behind would answer the next test's question.
+afterEach(() => { cleanup(); message.destroy(); Object.assign(api, original); });
 
 const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(values[key]));
 const GiB = 1024 ** 3;
@@ -188,6 +190,65 @@ test("retrying a failed public download keeps its non-default storage and exact 
   await waitFor(() => assert.equal(changed, 1));
 });
 
+test("a download into a shared storage that failed can be retried there, without naming a writer", async () => {
+  stubMe("viewer");
+  const calls: unknown[] = [];
+  let changed = 0;
+  // The server's 202 answer names the writer it started the download on.
+  api.downloadModelToStorage = (async (...args: unknown[]) => { calls.push(args); return { status: "downloading", writer: "n1" }; }) as never;
+  renderSection(modelWith({ storages: [shared({ state: "failed", acquisition: "download", size_bytes: 0, downloaded: 0, progress: 0, message: "list files huggingface.co failed after 16 attempts" })] }), () => { changed++; });
+  const user = userEvent.setup();
+  for (let stops = 0; stops < 20 && document.activeElement?.getAttribute("aria-label") !== models.action.retry; stops++) await user.tab();
+  assert.equal(document.activeElement?.getAttribute("aria-label"), models.action.retry, "the retry button is reachable by keyboard");
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.deepEqual(calls, [[9, { storage_id: 3 }]]));
+  await waitFor(() => assert.equal(changed, 1));
+  assert.ok((await screen.findAllByText(models.presenceMessage.downloadStarted)).length >= 1);
+});
+
+test("a shared storage retry that finds the model already there says so instead of announcing a download", async () => {
+  stubMe("viewer");
+  let changed = 0;
+  // The server's 200 answer when the storage already holds the model.
+  api.downloadModelToStorage = (async () => ({ status: "present" })) as never;
+  renderSection(modelWith({ storages: [shared({ state: "failed", acquisition: "download" })] }), () => { changed++; });
+  fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
+  // No other test raises this notice, so finding it is this retry's doing; a
+  // "download started" toast may still be on screen from an earlier test.
+  assert.ok(await screen.findByText(fill(models.download.alreadyPresent, { storage: "archive" })));
+  await waitFor(() => assert.equal(changed, 1));
+});
+
+test("a shared storage file offers no retry while it moves, is complete, was not downloaded, or cannot be written", () => {
+  stubMe("viewer");
+  for (const over of [
+    { state: "downloading", acquisition: "download" },
+    { state: "present", acquisition: "download" },
+    { state: "failed", acquisition: "registered" },
+    { state: "failed", acquisition: "download", writable: false },
+  ]) {
+    renderSection(modelWith({ storages: [shared(over)] }));
+    assert.equal(screen.queryByRole("button", { name: models.action.retry }), null, JSON.stringify(over));
+    cleanup();
+  }
+  for (const state of ["canceled", "download_required", "insufficient_disk_space"]) {
+    renderSection(modelWith({ storages: [shared({ state, acquisition: "download" })] }));
+    assert.ok(screen.getByRole("button", { name: models.action.retry }), state);
+    cleanup();
+  }
+});
+
+test("a rejected shared storage retry shows the server error and keeps the retry", async () => {
+  stubMe("viewer");
+  let changed = 0;
+  api.downloadModelToStorage = (async () => { throw new Error("storage is read-only"); }) as never;
+  renderSection(modelWith({ storages: [shared({ state: "failed", acquisition: "download" })] }), () => { changed++; });
+  fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
+  assert.ok(await screen.findByText("storage is read-only"));
+  assert.equal(changed, 0);
+  assert.ok(screen.getByRole("button", { name: models.action.retry }));
+});
+
 test("retrying a legacy public download without a storage uses the node download endpoint", async () => {
   stubMe("admin");
   const downloads: unknown[][] = [];
@@ -278,17 +339,29 @@ test("the detail dialog carries the model files and the copy action", async () =
   assert.equal(copied.length, 1);
 });
 
-test("a transfer in flight shows its rate next to the bytes; a finished file shows none", () => {
+test("a transfer in flight shows its rate and remaining time next to the bytes; a finished file shows none", () => {
   stubMe("viewer");
   renderSection(modelWith({ nodes: [
     row({ state: "downloading", progress: 0.5, downloaded: 7.5 * GiB, rate_bps: 48 * 1024 ** 2 }),
     row({ node_uuid: "n2", node_name: "node-01", state: "syncing", progress: 0.25, downloaded: 3.75 * GiB, rate_bps: 1.5 * GiB }),
     row({ node_uuid: "n3", node_name: "node-02", rate_bps: 9 * 1024 ** 2 }),
   ], storages: [shared({ state: "downloading", progress: 0.1, downloaded: 1.5 * GiB, rate_bps: 512 * 1024 })] }));
-  assert.ok(screen.getByText("7.5 GiB / 15.0 GiB · 48.0 MiB/s"));
-  assert.ok(screen.getByText("3.8 GiB / 15.0 GiB · 1.5 GiB/s"));
-  assert.ok(screen.getByText("1.5 GiB / 15.0 GiB · 512.0 KiB/s"), "a shared storage transfer shows its rate too");
+  assert.ok(screen.getByText("7.5 GiB / 15.0 GiB · 48.0 MiB/s · about 3 min left"));
+  assert.ok(screen.getByText("3.8 GiB / 15.0 GiB · 1.5 GiB/s"), "a node-to-node sync shows its rate but promises no end");
+  assert.ok(screen.getByText("1.5 GiB / 15.0 GiB · 512.0 KiB/s · about 7 h 41 min left"), "a shared storage transfer shows its rate too");
   assert.equal(screen.queryByText(/9\.0 MiB\/s/), null, "a present file reports no rate");
+  assert.equal(screen.queryAllByText(/ left$/).length, 2, "only the two public downloads say how long they still need");
+});
+
+test("a transfer without a rate or a total makes no promise about when it ends", () => {
+  stubMe("viewer");
+  renderSection(modelWith({ nodes: [
+    row({ state: "downloading", progress: 0.5, downloaded: 7.5 * GiB, rate_bps: 0 }),
+    row({ node_uuid: "n2", node_name: "node-01", state: "downloading", progress: 0, size_bytes: 0, downloaded: 2 * GiB, rate_bps: 48 * 1024 ** 2 }),
+  ] }));
+  assert.ok(screen.getByText("7.5 GiB / 15.0 GiB"), "a stalled download shows its bytes alone");
+  assert.ok(screen.getByText("2.0 GiB · 48.0 MiB/s"), "an unknown total has no remaining time");
+  assert.equal(screen.queryByText(/ left$/), null);
 });
 
 test("only a finished transfer shows Completed, including shared downloads and node caches", () => {

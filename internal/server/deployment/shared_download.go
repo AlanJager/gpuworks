@@ -12,8 +12,8 @@ import (
 )
 
 // StartSharedDownloadOn starts the one download of m into a shared storage
-// through a writer node: writerUUID, or the one sharedWriter picks when it is
-// empty. owner is the deployment the download is for, none for an operator's.
+// through a writer node: writerUUID, or when it is empty the writer a stopped
+// download had (while it can still write) and else the one sharedWriter picks. owner is the deployment the download is for, none for an operator's.
 // It answers the writer, nil when the storage already holds the model.
 func (s *Service) StartSharedDownloadOn(m *store.Model, storage *store.Storage, writerUUID string, owner ...uint) (*store.Node, error) {
 	deploymentID := uint(0)
@@ -61,10 +61,22 @@ func (s *Service) StartSharedDownloadOn(m *store.Model, storage *store.Storage, 
 	}
 	var writer *store.Node
 	var err error
-	if writerUUID == "" {
-		writer, err = s.sharedWriter(storage, m)
-	} else {
+	if writerUUID != "" {
 		writer, err = s.selectedSharedWriter(storage, m, writerUUID)
+	} else {
+		// A retry that names no writer keeps the one the stopped download
+		// had while it can still write: an operator may have chosen it for
+		// what it can reach.
+		if readErr == nil && current.WriterNodeID != 0 {
+			if previous, lookupErr := s.d.Store.NodeByID(current.WriterNodeID); lookupErr == nil {
+				if kept, keepErr := s.selectedSharedWriter(storage, m, previous.UUID); keepErr == nil {
+					writer = kept
+				}
+			}
+		}
+		if writer == nil {
+			writer, err = s.sharedWriter(storage, m)
+		}
 	}
 	if err != nil {
 		return nil, conflict(err)

@@ -678,9 +678,13 @@ tbody tr[data-state="selected"]:hover > .resource-table-pinned { background-imag
 .storage-control-planes li { margin-bottom: 4px; }
 .storage-target-list { margin: 6px 0 0; padding-left: 18px; }
 .storage-target-list li { margin-bottom: 4px; }
-.storage-node-offline td { opacity: 0.65; }
-/* Keep sticky cache actions opaque when the node is offline. */
-.storage-cache-management .storage-node-offline td { opacity: 1; }
+/* An offline node's row is dimmed. A pinned cell covers what scrolls under
+   it, so it has to stay opaque: it dims what it holds instead of itself. */
+.storage-node-offline td:not(.resource-table-pinned) { opacity: 0.65; }
+.storage-node-offline td.resource-table-pinned > * { opacity: 0.65; }
+/* The cache table does not dim an offline node at all. */
+.storage-cache-management .storage-node-offline td,
+.storage-cache-management .storage-node-offline td.resource-table-pinned > * { opacity: 1; }
 .storage-node-override { padding: 8px 12px; border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 6px; }
 .gpu-health-command { display: flex; align-items: flex-start; gap: 4px; margin-top: 2px; }
 .gpu-health-command > .ant-typography { flex: 1 1 auto; min-width: 0; }
