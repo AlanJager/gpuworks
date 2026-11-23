@@ -10,6 +10,7 @@ import EvictionSuggestionAlert from "./EvictionSuggestion";
 import { APIError } from "../../apiError";
 import DeployDiagnostics from "./DeployDiagnostics";
 import { HelpTip } from "../../ui-kit/HelpTip";
+import { Notice } from "../../ui-kit/Notice";
 
 export default function DeployStepSummary({
   result,
@@ -35,6 +36,7 @@ export default function DeployStepSummary({
     Form.useWatch("replicas", { form, preserve: true }) || 1,
   );
   const warnings = result?.warnings ?? [];
+  const fieldErrorCount = result?.errors?.length ?? 0;
   // A failed evaluation says why, in the scheduler's own words. The summary used
   // to announce a "startup memory check" for every failure, which was wrong for
   // each of the ones that were not about memory — a tensor parallel that cannot
@@ -63,6 +65,10 @@ export default function DeployStepSummary({
   ) : !result.ok ? (
     planFailure ? (
       <Alert type="error" showIcon message={planFailure} action={registrationModelId ? <ModelDiskRegistrationLink modelId={registrationModelId} /> : undefined} />
+    ) : fieldErrorCount > 0 ? (
+      // The errors themselves sit beside their fields; the summary says the
+      // draft did not pass, instead of staying blank.
+      <Notice tone="danger" role="alert" title={t("summary.fieldErrors", { count: fieldErrorCount })} />
     ) : null
   ) : replicas > 1 ? (
     <Alert

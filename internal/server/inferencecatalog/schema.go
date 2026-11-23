@@ -256,7 +256,7 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 				"type":        "boolean",
 				"description": "Start the container with unlimited locked memory (--ulimit memlock=-1:-1), for an engine that pins large host memory (for example with cudaHostRegister). A memlock ulimit in the deployment's docker_args overrides it.",
 			},
-			"docker_args": stringArraySchema("Extra docker run options the engine needs (for example --cap-add=SYS_PTRACE), applied before the deployment's own docker_args and the platform's. Validated the same way as the deployment's own container_overrides.docker_args: platform-managed options (--name, --network, --gpus, --shm-size, -e, -v, --mount, --entrypoint, ...) and options that would hand the container the host (--privileged, --pid, -v /, ...) are refused, and --ipc=host together with shm_bytes is refused."),
+			"docker_args": stringArraySchema("Extra docker run options the engine needs (for example --cap-add=SYS_PTRACE), applied before the deployment's own docker_args and the platform's. Validated the same way as the deployment's own container_overrides.docker_args: platform-managed options (--name, --network, --gpus, --shm-size, -e, -v, --mount, --entrypoint, ...) are refused, and --ipc=host together with shm_bytes is refused. Options that hand the container the host (--privileged, --pid) are allowed; the deploy preview warns about them."),
 			"dirs": map[string]any{
 				"type":        "array",
 				"maxItems":    deploy.MaxManagedDirs,

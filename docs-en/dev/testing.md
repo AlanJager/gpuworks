@@ -93,8 +93,11 @@ pipelines with `FLEET_REDEPLOY_CHURN=1` (the nightly schedule includes this vari
 causes a failure rather than a skip. Logs from both processes are compressed into a single tar.gz (the 40 separate per-process log files were once rejected by the gateway with 413 on upload) and retained as artifacts for 14 days. Disconnect/reconnect counts and endpoint p99 are currently reported without assertions;
 thresholds will be set after enough nightly runs have accumulated to establish trends. The gateway case also asserts the server's CPU per request
 (`GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST`): per-request costs such as database reads or copies add up step by step and only show in throughput and latency once the
-host saturates, while a CPU budget stops each step. The figure depends on the CPU model; the job's budget is set for the slowest runner (a 2.2 GHz Xeon Silver 4210), and a
-faster runner only reads lower.
+host saturates, while a CPU budget stops each step. The figure depends on the CPU model; the job's budget is set for the slowest runner (a 2.2 GHz Xeon Silver 4210).
+It also depends on the server's `GOMAXPROCS`: on a runner with 192 logical CPUs over four NUMA
+nodes, a server using every CPU spends 2.5 times the CPU per request of one on 20, at the same throughput. The case therefore fixes the server process's
+`GOMAXPROCS` at 20 (`GPUWORKS_GATEWAY_SERVER_GOMAXPROCS`; 0 keeps the server's own default),
+so the figure is comparable on any runner, and a faster runner only reads lower.
 
 The multi-process configuration can run with prebuilt binaries. **This is the only way to run it on machines without the Go toolchain**:
 
@@ -479,7 +482,7 @@ This guide documents testing methods. Put one-off run logs, screenshots, image d
 <!-- translation-source-sha256: d36f98ad07ab7667a2c11d0c783e088482c87fbca9e924a84390acaf7f677283 ## L1–L4 -->
 <!-- translation-source-sha256: 3ba7708a8ba2ce5ae01ae06e412b83f612d7b50a50e05845477e247314880811 ## Fake Engine Generation Protocol -->
 <!-- translation-source-sha256: 782c3d1b8c729bbd9121868e4807b20bd105e0d998b8fc0fedc574be44091028 ## Load Tests (Outside the Default Suite) -->
-<!-- translation-source-sha256: 75dbb418d6d64b859056bb64b19e97afa1cee418363f5e271bb13a45693be965 ### Two Configurations, One Shared Driver -->
+<!-- translation-source-sha256: ea10648bbbf6c3fb314970aa99ad10cc447107683d3819ee90acefd36a9545c7 ### Two Configurations, One Shared Driver -->
 <!-- translation-source-sha256: c79d7d79f17001e4b3619e346b8d86284cd5eaef6a1f150cb33a50890d0b4bda ### Disconnects and Reconnects -->
 <!-- translation-source-sha256: 2d40e123b208041b994b40e1cee382787be77291c0ab8c8f14c38eb24f432e15 ### Single-Process Teardown -->
 <!-- translation-source-sha256: 5c3e60a90cab0e3fbfb98c31b738915fd326f9056c1c12c2f97956fef4febd32 ### List Responses During Onboarding -->

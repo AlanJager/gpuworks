@@ -96,7 +96,7 @@ func TestResolveLaunchRefusesOwnShmWithTemplateHostIPC(t *testing.T) {
 		t.Fatalf("shm = %d, want none under the template's host IPC", launch.ShmBytes)
 	}
 	// The deployment's own --ipc=host (not the template's) is still judged by
-	// ValidateContainerDockerArgs at decode time, unchanged.
+	// ValidateDockerArgs at decode time, unchanged.
 	_, err = DecodeContainerOverrides([]byte(`{"docker_args":["--ipc=host"],"shm_bytes":34359738368}`))
 	var productErr *messages.ProductError
 	if !errors.As(err, &productErr) || productErr.Code() != ErrorShmSizeWithHostIPC {
@@ -106,11 +106,14 @@ func TestResolveLaunchRefusesOwnShmWithTemplateHostIPC(t *testing.T) {
 
 // ValidateDockerArgs is the one function a deployment's own
 // container_overrides.docker_args and a template spec's docker_args both call:
-// it refuses a host-escaping option before judging a platform-managed
-// restatement and --ipc=host together with the same layer's own shm_bytes.
+// it refuses a platform-managed restatement and --ipc=host together with the
+// same layer's own shm_bytes, and lets the host-access options through (the
+// preview warns about them instead).
 func TestValidateDockerArgsIsOneFunctionForBothLayers(t *testing.T) {
-	if err := ValidateDockerArgs([]string{"--privileged"}, 0); err == nil {
-		t.Fatal("--privileged accepted")
+	for _, args := range [][]string{{"--privileged"}, {"--pid=host"}, {"--pid", "host"}, {"--pid host"}} {
+		if err := ValidateDockerArgs(args, 0); err != nil {
+			t.Fatalf("%q refused: %v", args, err)
+		}
 	}
 	if err := ValidateDockerArgs([]string{"--network=host"}, 0); err == nil {
 		t.Fatal("--network=host accepted")

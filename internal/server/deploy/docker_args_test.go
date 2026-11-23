@@ -9,7 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 )
 
-func TestValidateContainerDockerArgsRejectsEachManagedSpelling(t *testing.T) {
+func TestValidateDockerArgsRejectsEachManagedSpelling(t *testing.T) {
 	cases := []struct {
 		args   []string
 		code   string
@@ -38,7 +38,7 @@ func TestValidateContainerDockerArgsRejectsEachManagedSpelling(t *testing.T) {
 		{[]string{"--entrypoint=/bin/sh"}, ErrorDockerArgUseEntrypointField, "--entrypoint"},
 	}
 	for _, tc := range cases {
-		err := ValidateContainerDockerArgs(tc.args, 0)
+		err := ValidateDockerArgs(tc.args, 0)
 		var productErr *messages.ProductError
 		if !errors.As(err, &productErr) {
 			t.Fatalf("%v: err=%v, want a product error", tc.args, err)
@@ -49,23 +49,23 @@ func TestValidateContainerDockerArgsRejectsEachManagedSpelling(t *testing.T) {
 	}
 }
 
-func TestValidateContainerDockerArgsKeepsOrdinaryOptions(t *testing.T) {
+func TestValidateDockerArgsKeepsOrdinaryOptions(t *testing.T) {
 	args := []string{
 		"--ipc=host", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK",
 		"--device", "/dev/infiniband", "-it", "-m", "64g", "-u", "1000", "--security-opt", "seccomp=unconfined",
 	}
-	if err := ValidateContainerDockerArgs(args, 0); err != nil {
+	if err := ValidateDockerArgs(args, 0); err != nil {
 		t.Fatalf("ordinary docker args rejected: %v", err)
 	}
 	// A value token is not an option even when it begins with a dash.
-	if err := ValidateContainerDockerArgs([]string{"--ulimit", "-1"}, 0); err != nil {
+	if err := ValidateDockerArgs([]string{"--ulimit", "-1"}, 0); err != nil {
 		t.Fatalf("value token judged as an option: %v", err)
 	}
 }
 
-func TestValidateContainerDockerArgsRejectsShmWithHostIPC(t *testing.T) {
+func TestValidateDockerArgsRejectsShmWithHostIPC(t *testing.T) {
 	for _, args := range [][]string{{"--ipc=host"}, {"--ipc", "host"}, {"--ipc host"}} {
-		err := ValidateContainerDockerArgs(args, 32<<30)
+		err := ValidateDockerArgs(args, 32<<30)
 		var productErr *messages.ProductError
 		if !errors.As(err, &productErr) || productErr.Code() != ErrorShmSizeWithHostIPC {
 			t.Fatalf("%v: err=%v, want %s", args, err, ErrorShmSizeWithHostIPC)
@@ -73,10 +73,10 @@ func TestValidateContainerDockerArgsRejectsShmWithHostIPC(t *testing.T) {
 	}
 	// Without a stated size the engine default is simply unused under host
 	// IPC, which is the documented vLLM setup and not a conflict.
-	if err := ValidateContainerDockerArgs([]string{"--ipc=host"}, 0); err != nil {
+	if err := ValidateDockerArgs([]string{"--ipc=host"}, 0); err != nil {
 		t.Fatalf("host IPC without a size rejected: %v", err)
 	}
-	if err := ValidateContainerDockerArgs([]string{"--ipc=shareable"}, 32<<30); err != nil {
+	if err := ValidateDockerArgs([]string{"--ipc=shareable"}, 32<<30); err != nil {
 		t.Fatalf("private IPC with a size rejected: %v", err)
 	}
 }
@@ -151,6 +151,65 @@ func TestContainerOverridesDecodeAndValidateShm(t *testing.T) {
 	for _, empty := range []string{"", "null", "{}"} {
 		if overrides, err := DecodeContainerOverrides([]byte(empty)); err != nil || !reflect.DeepEqual(overrides, ContainerOverrides{}) {
 			t.Fatalf("%q decoded to %+v err=%v", empty, overrides, err)
+		}
+	}
+}
+
+// Every refused arg is answered at once, in argument order, and an allowed
+// host-access option ahead of them does not hide them: the deploy form shows
+// them all beside the docker args field.
+func TestDockerArgErrorsAnswersEveryRefusedArg(t *testing.T) {
+	args := []string{"--shm-size 256g", "--network=host ", "--name Qwen3.8_INT", "--privileged",
+		"--device=/dev/kfd", "--group-add video ", "--cap-add=SYS_PTRACE", "--security-opt seccomp=unconfined"}
+	errs := DockerArgErrors(args, 0)
+	want := []struct{ code, arg string }{
+		{ErrorDockerArgUseShmField, "--shm-size 256g"},
+		{ErrorDockerArgPlatformManaged, "--network=host"},
+		{ErrorDockerArgPlatformManaged, "--name Qwen3.8_INT"},
+	}
+	if len(errs) != len(want) {
+		t.Fatalf("errors = %v, want %d", errs, len(want))
+	}
+	for i, w := range want {
+		var productErr *messages.ProductError
+		if !errors.As(errs[i], &productErr) || productErr.Code() != w.code || productErr.Params()["arg"] != w.arg {
+			t.Fatalf("errors[%d] = %v, want %s for %q", i, errs[i], w.code, w.arg)
+		}
+	}
+	if err := ValidateDockerArgs(args, 0); err == nil || err.Error() != errs[0].Error() {
+		t.Fatalf("ValidateDockerArgs = %v, want the first of DockerArgErrors %v", err, errs[0])
+	}
+}
+
+func TestDockerArgHostAccessWarnings(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want []string // the arg param of each warning
+	}{
+		{[]string{"--privileged"}, []string{"--privileged"}},
+		{[]string{" --privileged "}, []string{"--privileged"}},
+		{[]string{"--privileged=true"}, []string{"--privileged=true"}},
+		{[]string{"--privileged=false"}, nil},
+		{[]string{"--pid=host"}, []string{"--pid=host"}},
+		{[]string{"--pid host"}, []string{"--pid host"}},
+		{[]string{"--pid", "host"}, []string{"--pid"}},
+		{[]string{"--pid=container:abc"}, []string{"--pid=container:abc"}},
+		{[]string{"--pid"}, nil},
+		{[]string{"--cap-add=SYS_PTRACE", "--ipc=host", "--group-add", "video"}, nil},
+		{[]string{"--privileged", "--pid=host"}, []string{"--privileged", "--pid=host"}},
+	} {
+		warnings := DockerArgHostAccessWarnings(tc.args)
+		if len(warnings) != len(tc.want) {
+			t.Fatalf("%q: warnings = %+v, want %q", tc.args, warnings, tc.want)
+		}
+		for i, w := range warnings {
+			want := messages.WarningDockerArgSharedPID
+			if w.Params["option"] == "--privileged" {
+				want = messages.WarningDockerArgPrivileged
+			}
+			if w.Code != want || w.Params["arg"] != tc.want[i] {
+				t.Fatalf("%q: warnings[%d] = %+v, want %s for %q", tc.args, i, w, want, tc.want[i])
+			}
 		}
 	}
 }
