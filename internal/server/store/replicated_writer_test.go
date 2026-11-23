@@ -152,6 +152,11 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 	all(nil, "check disabled")
 	st.writerGuard.off.Store(false)
 	all(ErrClusterAdmissionRejected, "check enabled again")
+	// The constructor's own startup work is not checked.
+	st.writerGuard.opening.Store(true)
+	all(nil, "store still opening")
+	st.writerGuard.opening.Store(false)
+	all(ErrClusterAdmissionRejected, "store opened")
 	if _, ok := st.writerGuard.applies(withoutWriterGuard(context.Background())); ok {
 		t.Fatal("an exempt context is still checked")
 	}
@@ -164,7 +169,8 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 	reviewed := map[string]map[string]int{
 		// Exempt transactions: the cluster's own writes only.
-		`withoutWriterGuard\(`: {"cluster_admission.go": 1, "replicated_writer.go": 1},
+		// and loading an image or an import into an empty database.
+		`withoutWriterGuard\(`: {"cluster_admission.go": 1, "replicated_writer.go": 1, "restore_image.go": 1, "import_sqlite.go": 1},
 		// A held connection: a consistent read of the schema for a backup, and
 		// the read-only discovery of a closed cluster.
 		`\.Conn\(ctx\)`: {"backup_sqlite_schema.go": 1, "closed_cluster_discovery_dqlite.go": 1},
@@ -180,6 +186,8 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 		// The member key is set in one place.
 		`writerGuard\.key\.Store\(`: {"zz_ha_dqlite_only.go": 1},
 		`\.off\.Store\(`:            {},
+		// Startup work is exempt in the one constructor that does any.
+		`\.opening\.Store\(`: {"runtime_dqlite.go": 2},
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

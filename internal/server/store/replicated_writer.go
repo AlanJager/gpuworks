@@ -38,6 +38,12 @@ type writerGuard struct {
 	refused atomic.Pointer[func()]
 	// off disables the check. Tests use it as their negative control.
 	off atomic.Bool
+	// opening is set while the Store's constructor does its own startup work
+	// (schema check or migration, default rows, orphaned sessions). That work
+	// belongs to the database, not to a request, and must also run on an
+	// installation whose admission has yet to be recovered. Nothing else can
+	// reach the Store before the constructor returns it.
+	opening atomic.Bool
 }
 
 type writerGuardExemptKey struct{}
@@ -50,7 +56,7 @@ func withoutWriterGuard(ctx context.Context) context.Context {
 }
 
 func (g *writerGuard) applies(ctx context.Context) (string, bool) {
-	if g == nil || g.off.Load() || ctx.Value(writerGuardExemptKey{}) != nil {
+	if g == nil || g.off.Load() || g.opening.Load() || ctx.Value(writerGuardExemptKey{}) != nil {
 		return "", false
 	}
 	key := g.key.Load()

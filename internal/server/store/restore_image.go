@@ -144,7 +144,9 @@ func (s *Store) RestoreDatabaseImage(ctx context.Context, imagePath string) erro
 	if s.schedulingDB != nil {
 		target = s.schedulingDB
 	}
-	if err := importSQLiteSnapshot(ctx, target, source, schema); err != nil {
+	// The target is empty: it has no admission table to read until the image
+	// is in it. The caller keeps it out of service.
+	if err := importSQLiteSnapshot(withoutWriterGuard(ctx), target, source, schema); err != nil {
 		return fmt.Errorf("restore database image: %w", err)
 	}
 	return nil

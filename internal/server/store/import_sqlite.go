@@ -66,7 +66,8 @@ func (s *Store) ImportSQLite(ctx context.Context, sourcePath, backupPath string)
 	if s.schedulingDB != nil {
 		target = s.schedulingDB
 	}
-	if err := importSQLiteSnapshot(ctx, target, backup, schema); err != nil {
+	// As for a restored image: an empty target, out of service.
+	if err := importSQLiteSnapshot(withoutWriterGuard(ctx), target, backup, schema); err != nil {
 		return fmt.Errorf("SQLite import failed; backup retained at %s: %w", backupPath, err)
 	}
 	return nil
