@@ -1,5 +1,7 @@
 package proto
 
+import "time"
+
 // RPC method names (short request/response actions).
 const (
 	RPCNodeDoctor = "node.doctor"
@@ -36,6 +38,8 @@ const (
 	RPCImageSyncProbe      = "image.sync.probe"
 	RPCImagePull           = "image.pull"
 	RPCImageLoadURL        = "image.load_url"
+	RPCImageLoadPath       = "image.load_path"
+	RPCImagePreviewPath    = "image.preview_path"
 	RPCImageCancel         = "image.cancel"
 	RPCImageRemove         = "image.remove"
 	RPCImageInspect        = "image.inspect"
@@ -140,6 +144,73 @@ type ImageLoadURLParams struct {
 	RateLimitKBs int    `json:"rate_limit_kbs,omitempty"`
 	// TransferID names this attempt; see ImagePullParams.
 	TransferID string `json:"transfer_id,omitempty"`
+}
+
+// ImageArchivePreviewTimeout bounds metadata scans, including decompression.
+const ImageArchivePreviewTimeout = time.Minute
+
+// The preview RPC carries a stable reason even when the worker uses another locale.
+const (
+	ErrorArchivePreview      = "IMAGE_ARCHIVE_PREVIEW_FAILED"
+	ArchivePreviewNotFound   = "not_found"
+	ArchivePreviewPermission = "permission_denied"
+	ArchivePreviewNotRegular = "not_regular"
+	ArchivePreviewInvalid    = "invalid_archive"
+	ArchivePreviewTimeout    = "timeout"
+	ArchivePreviewUnreadable = "unreadable"
+)
+
+// A local load exposes only these reasons through the catalog's node status.
+const (
+	ErrorArchiveLoad       = "IMAGE_ARCHIVE_LOAD_FAILED"
+	ArchiveLoadFailed      = "load_failed"
+	ArchiveLoadCanceled    = "canceled"
+	ArchiveLoadAmbiguous   = "reference_unknown"
+	ArchiveLoadUnsupported = "unsupported"
+	ArchiveLoadUpgrade     = "upgrade_required"
+	ArchiveLoadStalled     = "stalled"
+	ArchiveSourceLocal     = "local"
+)
+
+// SafeArchiveLoadReason also accepts status reports from older agents that
+// supplied free-form runtime errors, which may contain a node file path.
+func SafeArchiveLoadReason(reason string) string {
+	switch reason {
+	case ArchivePreviewNotFound, ArchivePreviewPermission, ArchivePreviewNotRegular, ArchivePreviewInvalid, ArchivePreviewUnreadable, ArchivePreviewTimeout,
+		ArchiveLoadCanceled, ArchiveLoadAmbiguous, ArchiveLoadUnsupported, ArchiveLoadUpgrade, ArchiveLoadStalled:
+		return reason
+	default:
+		return ArchiveLoadFailed
+	}
+}
+
+type ImagePreviewPathParams struct {
+	ArchivePath string `json:"archive_path"`
+}
+
+type ImagePreviewPathResult struct {
+	RepoTags []string `json:"repo_tags"`
+
+	MetadataByTag map[string]ArchiveImageMetadata `json:"metadata_by_tag,omitempty"`
+}
+
+type ArchiveImageMetadata struct {
+	Engine           string `json:"engine,omitempty"`
+	EngineVersion    string `json:"engine_version,omitempty"`
+	Framework        string `json:"framework,omitempty"`
+	FrameworkVersion string `json:"framework_version,omitempty"`
+	Arch             string `json:"arch,omitempty"`
+}
+
+type ImageLoadPathParams struct {
+	CanonicalRef string `json:"canonical_ref"`
+	ArchivePath  string `json:"archive_path"`
+	TransferID   string `json:"transfer_id"`
+}
+
+type ImageLoadPathResult struct {
+	State        string `json:"state"`
+	CanonicalRef string `json:"canonical_ref"`
 }
 
 // ImageCancelParams asks the node to stop one image operation. The transfer id

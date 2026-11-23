@@ -203,6 +203,8 @@ tag，不做 semver 过滤，`vllm/vllm-openai:qwen38` 这类 tag 同样可选�
 没有推理模板时要在部署的命令编辑里写出适配器的完整命令。添加抽屉里也可以先粘贴 `docker save` 归档的 URL 解析出真实引用，
 见[从 HTTP 文件服务器导入](../how-to/import-from-http.md#从-url-导入镜像归档)。
 
+归档已在计算节点上时，可在添加自定义镜像时选择该节点并填写绝对路径。进度和重试入口见[离线环境部署](../how-to/deploy-offline.md)。
+
 社区与自定义的添加都走 `POST /api/v1/images/import` 的 `{"series":[...]}` 表单（没有 `schema_version`），
 不能用它写 `source=official`。
 

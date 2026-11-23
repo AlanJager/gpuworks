@@ -1,4 +1,20 @@
 {
+  "archivePreviewReason": {
+    "not_found": "计算节点上找不到这个文件。",
+    "permission_denied": "计算节点没有权限读取这个文件。",
+    "not_regular": "请选择普通归档文件。",
+    "invalid_archive": "文件不是有效的镜像归档，或归档已损坏。",
+    "timeout": "解析超时。请使用未压缩的 tar，或手动填写镜像信息。",
+    "unreadable": "计算节点无法读取镜像归档。"
+  },
+  "archiveLoadReason": {
+    "timeout": "节点加载镜像归档超时，请重试。",
+    "canceled": "节点镜像导入已取消。",
+    "reference_unknown": "无法确定归档中的镜像。请选择归档已有的标签，或导入只含一个镜像的归档。",
+    "unsupported": "节点的容器运行时不支持从文件加载镜像。",
+    "upgrade_required": "请升级目标节点的 agent，再导入镜像。",
+    "stalled": "节点停止上报镜像导入进度，请检查节点连接后重试。"
+  },
   "page": {
     "title": "镜像",
     "description": "按系列、版本和节点分布管理 GPUWorks 运行镜像",
@@ -133,6 +149,19 @@
     "olderVersion": "旧版本"
   },
   "nodeTable": {
+    "localOption": "从节点本地文件导入…",
+    "localAction": "导入本地文件…",
+    "sourceLocal": "节点本地文件",
+    "localLoading": "正在加载镜像…",
+    "localDialog": {
+      "replace": "用本地文件替换",
+      "replaceDescription": "将此节点的 {{ref}} 替换为所选归档中的镜像。",
+      "title": "从 {{node}} 的本地文件导入",
+      "start": "开始导入",
+      "description": "将归档加载为镜像 {{ref}}。导入只更新此节点的镜像状态，不创建镜像系列。",
+      "path": "镜像归档文件路径",
+      "help": "填写此计算节点上已有 tar 文件的绝对路径，不是目录或管理节点路径。格式需受节点容器运行时支持；导入后保留原文件。"
+    },
     "column": {
       "node": "节点",
       "status": "状态",
@@ -163,7 +192,7 @@
     "sourceMirror": "Mirror",
     "sourceURL": "URL",
     "sourceURLRelay": "URL·中转",
-    "sourceFromURL": "从 URL 导入…",
+    "sourceFromURL": "从HTTP目录导入…",
     "pullFromURL": "从 URL 获取…",
     "relay": "管理节点中转",
     "relayHelp": "由管理节点下载归档并流式推送到该节点。节点自身无法访问镜像站时使用；该传输不可续传。",
@@ -199,6 +228,18 @@
     "collapse": "收起详情"
   },
   "import": {
+    "method": "导入方式",
+    "local": {
+      "noTags": "归档中未找到带 tag 的镜像引用，请手动填写。",
+      "parsed": "已回填镜像引用 {{ref}}",
+      "chooseTag": "归档中的镜像引用",
+      "enable": "从计算节点本地文件导入",
+      "nodeRequired": "请选择归档所在的计算节点",
+      "pathRequired": "请输入归档文件在该节点上的绝对路径",
+      "alreadyPresent": "该节点已有此镜像，本次未加载文件。如需覆盖，请选择“用本地文件替换”。",
+      "versionMissing": "已登记 {{ref}}，但响应中缺少对应版本。请打开镜像详情发起节点导入。",
+      "startFailed": "已登记 {{ref}}。节点导入未能启动：{{reason}}"
+    },
     "title": {
       "community": "添加社区镜像",
       "custom": "添加自定义镜像"
@@ -224,8 +265,8 @@
     "registrySources": "获取地址",
     "registrySourcesHelp": "该镜像可用的额外获取地址：registry 引用，或 docker save 归档的 URL。",
     "url": {
-      "title": "从 URL 导入",
-      "description": "粘贴 docker save 归档的地址。真实的镜像引用直接从归档里读出，不必靠文件名猜。",
+      "title": "从HTTP目录导入",
+      "description": "填写 HTTP 目录中具体 tar 归档文件的完整 URL。",
       "label": "镜像归档 URL",
       "required": "请先填写镜像归档 URL。",
       "resolve": "解析",

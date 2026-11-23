@@ -56,6 +56,7 @@ usage_report: false        # 不发日报，自动检查不带节点数/GPU型�
 | `data_dir` | `./data` | 数据库、master.key、指标与日志库、推理目录包等 | `--data`（数据库路径另可 `--db`） |
 | `log.file` / `max_size` / `keep` | `<data>/logs/gpuworks-server.log`、10MB、20 | 服务自身日志的文件与轮转（`max_size` 用 KB/MB/GB，1024 进制）；留空的项取默认值 | `--log-file`、`--log-max-size`、`--log-keep` |
 | `log.level` | info | 日志级别：`debug` / `info` / `warn` / `error`，其他值按 info | `--log-level` |
+| `log.stall_report_after` | 3s | 一次日志写入或存储操作等待超过这个时长时，把全部 goroutine 的堆栈记为卡顿报告（`<data>/diagnostics/stalls/`）；`0` 关闭，见[排障](../how-to/troubleshooting.md#server-卡住或偶发变慢时卡顿报告与现场堆栈) | `--stall-report-after` |
 | `trusted_proxies` | 空（install 写入 `127.0.0.1/32, ::1/128`） | 允许提供 `X-Forwarded-For` / `-Host` / `-Proto` / `-Port` 的代理；公网入口（`gpuworks expose`）启用期间另外信任来自本机的连接，不必列出（[ADR 0049](../adr/0049-expose-trusts-same-host-connector.md)） | `--trusted-proxies` |
 | `tls_cert_file` / `tls_key_file` | 空 | 原生 HTTPS 的 PEM 证书链和私钥路径，必须同时设置。非维护监听使用 TLS 1.2 以上；要求显式监听 IP，不支持通配地址。本机 `127.0.0.1` / `::1` 维护入口保留 HTTP，见[生产部署](../how-to/deploy-production.md#原生-https) | — |
 | `outbound_restrict_private_hosts` | `false` | 管理节点 HTTP 出站的私网严格模式；默认关闭，普通私网及本机回环无需白名单。设为 `true` 后，仅允许 `outbound_allow_private_hosts` 授权的私网目标。保存后下一次请求生效；特殊元数据、链路本地和保留地址始终拒绝 | — |

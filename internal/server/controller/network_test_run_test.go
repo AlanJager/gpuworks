@@ -130,6 +130,91 @@ func TestControllerRunsRequestedNetworkTests(t *testing.T) {
 	}
 }
 
+// stuckProbeHub is a hub whose agents open and close their listeners as the
+// real ones do and never answer a probe: the probe waits for its context, as
+// a call to an agent that went silent does.
+type stuckProbeHub struct {
+	*distributedTestHub
+	entered  chan struct{}
+	once     sync.Once
+	mu       sync.Mutex
+	canceled int
+}
+
+func (h *stuckProbeHub) CallNode(ctx context.Context, _, method string, _ any) (json.RawMessage, error) {
+	switch method {
+	case proto.RPCNetBenchStart:
+		return json.RawMessage(`{"port":41000}`), nil
+	case proto.RPCNetBenchStop:
+		return json.RawMessage(`{"stopped":true}`), nil
+	case proto.RPCNetProbe:
+		h.once.Do(func() { close(h.entered) })
+		<-ctx.Done()
+		h.mu.Lock()
+		h.canceled++
+		h.mu.Unlock()
+		return nil, ctx.Err()
+	}
+	return nil, fmt.Errorf("unexpected %s", method)
+}
+
+// A network test belongs to Run: stopping the server cancels its probes, the
+// run is recorded as interrupted and not as a finished result, and Run does
+// not return before that is written.
+func TestStoppingTheControllerCancelsARunningNetworkTestAndWaitsForIt(t *testing.T) {
+	st, lan := networkTestStore(t, "controller_network_test_stop")
+	hub := &stuckProbeHub{
+		distributedTestHub: &distributedTestHub{online: map[string]bool{"n1": true, "n2": true}, updates: map[string][]proto.StateUpdate{}},
+		entered:            make(chan struct{}),
+	}
+	c := New(st, hub, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); c.Run(ctx) }()
+	time.Sleep(50 * time.Millisecond) // let Run subscribe before the request is published
+
+	started, err := st.StartNetworkTestRun(&store.NetworkTestRun{NetworkID: lan.ID, Scope: "all", Seconds: 1, Nodes: `["n1","n2"]`, NodeCount: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-hub.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the network test never called a node")
+	}
+	select {
+	case <-stopped:
+		t.Fatal("Run returned while the server was not asked to stop")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if run, err := st.NetworkTestRunByID(started.ID); err != nil || run.Status != store.NetworkTestRunning {
+		t.Fatalf("run before the stop = %+v, err = %v", run, err)
+	}
+
+	// A probe has its own limit of ten seconds and more; a test that only
+	// waited that out was not cancelled by the stop.
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return within 3 s: the network test was not cancelled with it")
+	}
+	// Run has returned, so whatever the test writes is written.
+	run, err := st.NetworkTestRunByID(started.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != store.NetworkTestInterrupted || run.Pairs != "" || run.FinishedAt == nil {
+		t.Fatalf("run after the stop = %+v, want interrupted with no result", run)
+	}
+	hub.mu.Lock()
+	canceled := hub.canceled
+	hub.mu.Unlock()
+	if canceled == 0 {
+		t.Fatal("no node call saw the cancellation")
+	}
+}
+
 func TestControllerAbandonsNetworkTestsWithoutNodeRPC(t *testing.T) {
 	st, lan := networkTestStore(t, "controller_network_test_no_rpc")
 	// A run left over from a previous process is closed when Run starts.

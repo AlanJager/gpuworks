@@ -59,6 +59,9 @@ func TestPreviewImageArchiveURLReportsRealTagAndSize(t *testing.T) {
 	if !got.Previewable || len(got.RepoTags) != 1 || got.RepoTags[0] != "gpustack/runner:cuda13.0-vllm0.25.1" {
 		t.Errorf("preview = %+v", got)
 	}
+	if got.MetadataByTag[got.RepoTags[0]].Arch != "amd64" {
+		t.Errorf("config metadata = %v", got.MetadataByTag)
+	}
 	if got.SizeBytes != size {
 		t.Errorf("size_bytes = %d, want %d", got.SizeBytes, size)
 	}

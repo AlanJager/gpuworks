@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, message } from "antd";
+import { toast } from "../components/ui/toast";
 import { useTranslation } from "react-i18next";
 import {
   api,
@@ -15,6 +16,7 @@ import {
 } from "../api";
 import { apiErrorText } from "../apiError";
 import ImageImportDrawer from "./images/ImageImportDrawer";
+import type { NodeArchive } from "./images/ImageNodeArchiveFields";
 import ImageDetailDrawer from "./images/ImageDetailDrawer";
 import { buildVersionColumns } from "./images/ImageVersionColumns";
 import {
@@ -154,9 +156,9 @@ export default function ImagesPage() {
   const availablePeer = (version: ImageCatalogEntry, target: ImageNode) =>
     peerSources(version, target).length > 0;
   // A node pulls through the pull settings unless the operator chose another
-  // way for it (a peer copy or an archive URL), each of which has its own dialog.
+  // way for it (peer copy, archive URL or node file), each with its own dialog.
   const modeFor = (version: ImageCatalogEntry, target: ImageNode): FetchMode =>
-    sourceByNode[`${version.id}:${target.node_uuid}`] || autoSourceValue;
+    sourceByNode[`${version.id}:${target.node_uuid}`] || (target.state === "failed" && target.source === "local" ? "local" : autoSourceValue);
   const setMode = (
     version: ImageCatalogEntry,
     nodeUUID: string,
@@ -182,7 +184,7 @@ export default function ImagesPage() {
         await api.syncImage(version.id, nodeUUID, undefined, { force: true });
         message.success(t("action.repullSubmitted"));
       } else {
-        if (retry) await api.retryImage(version.id, nodeUUID);
+        if (retry && nodeRow(version, nodeUUID)?.source !== "local") await api.retryImage(version.id, nodeUUID);
         else await api.syncImage(version.id, nodeUUID);
         message.success(t("action.pullSubmitted"));
       }
@@ -269,6 +271,21 @@ export default function ImagesPage() {
     await refreshDetail(version.series_id || detail?.id || 0);
     versions.refetch();
   };
+  const importFromPath = async (version: ImageCatalogEntry, nodeUUID: string, path: string, replace: boolean) => {
+    try {
+      const previous = nodeRow(version, nodeUUID);
+      const startImport = previous?.source === "local" && previous.state === "failed" && !replace ? api.retryImage : api.syncImage;
+      const result = await startImport(version.id, nodeUUID, "local", { archive_path: path, force: replace });
+      if (result.state === "present" && !result.transfer_id) {
+        toast.info(t("import.local.alreadyPresent"));
+      } else {
+        toast.success(t("action.submitted", { source: t("nodeTable.sourceLocal") }));
+      }
+    } finally {
+      await refreshDetail(version.series_id || detail?.id || 0);
+      versions.refetch();
+    }
+  };
   // recordArchiveURL appends a pasted archive address to a catalog version's
   // declared sources, which is what makes it selectable on every node and
   // acceptable to the sync endpoint.
@@ -297,7 +314,7 @@ export default function ImagesPage() {
       message.error(e instanceof Error ? e.message : t("import.url.failed"));
     }
   };
-  const importCustom = async () => {
+  const importCustom = async (archive?: NodeArchive) => {
     let value;
     try {
       value = await importForm.validateFields();
@@ -309,7 +326,8 @@ export default function ImagesPage() {
       const importSource = sourceTab === "custom" ? "custom" : "community";
       // Purpose is left to the server's default (inference), which is what
       // the deploy page lists; series defaults are not edited here.
-      await api.importImages([
+      const imageRef = String(value.image_ref || "").trim();
+      const imported = await api.importImages([
         {
           name: value.series_name,
           engine: value.engine,
@@ -320,7 +338,7 @@ export default function ImagesPage() {
               engine_version: value.engine_version || "",
               framework_version: value.framework_version || "",
               arch: value.arch || "multi",
-              image_ref: String(value.image_ref || "").trim(),
+              image_ref: imageRef,
               source: importSource,
               rolling_tag: Boolean(value.rolling_tag),
               registry_sources: value.registry_sources || [],
@@ -328,13 +346,31 @@ export default function ImagesPage() {
           ],
         },
       ]);
-      message.success(t("action.imported", {
-        source: t(`action.sourceType.${importSource}`),
-      }));
       importForm.resetFields();
       setImportOpen(false);
       refetch();
       versions.refetch();
+      if (archive) {
+        const [series] = imported.items;
+        const version = series?.versions?.find((entry) => entry.image_ref === imageRef);
+        if (!version) {
+          toast.error(t("import.local.versionMissing", { ref: imageRef }));
+          return;
+        }
+        detailRef.current = series;
+        setDetail(series);
+        setSelectedVersionID(version.id);
+        setMode(version, archive.node, "local");
+        try {
+          await importFromPath(version, archive.node, archive.path.trim(), false);
+        } catch (e) {
+          toast.error(t("import.local.startFailed", { ref: imageRef, reason: apiErrorText(tCommon, e) || t("action.pullFailed") }));
+        }
+      } else {
+        message.success(t("action.imported", {
+          source: t(`action.sourceType.${importSource}`),
+        }));
+      }
     } catch (e) {
       message.error(e instanceof Error ? e.message : t("action.importFailed"));
     } finally {
@@ -485,6 +521,7 @@ export default function ImagesPage() {
         probeImage={(version, nodeUUID, sourceNode) => api.probeImage(version.id, nodeUUID, sourceNode)}
         syncFromPeer={syncFromPeer}
         pullFromURL={pullFromURL}
+        importFromPath={importFromPath}
         cancelTransfer={(version, nodeUUID) => void cancelTransfer(version, nodeUUID)}
         removeFromNode={(version, nodeUUID) => void removeFromNode(version, nodeUUID)}
         inspectVersion={(version, nodeUUID) =>
@@ -501,7 +538,7 @@ export default function ImagesPage() {
         onClose={() => setImportOpen(false)}
         form={importForm}
         importing={importing}
-        importCustom={() => void importCustom()}
+        importCustom={importCustom}
         hasExplicitTag={hasExplicitTag}
         sourceTab={sourceTab === "custom" ? "custom" : "community"}
         versions={allVersions}

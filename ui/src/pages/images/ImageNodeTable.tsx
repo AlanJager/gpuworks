@@ -1,3 +1,5 @@
+import { useIsAdmin } from "../../components/useIsAdmin";
+import { Button as ActionButton } from "../../components/ui/button";
 import { PeerTransferDetails } from "../../components/peerTransfer/PeerTransferDetails";
 import { productMessageText } from "../../apiError";
 import { Button, Popconfirm, Progress, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
@@ -19,6 +21,8 @@ import {
 import { detailExpandable } from "../../components/detail/DetailDrawer";
 import ImageArchiveURLDialog from "./ImageArchiveURLDialog";
 import ImagePeerSyncDialog from "./ImagePeerSyncDialog";
+import ImageArchivePathDialog from "./ImageArchivePathDialog";
+import { Badge } from "../../components/ui/badge";
 
 const { Text } = Typography;
 type FetchMode = "peer" | string;
@@ -63,6 +67,7 @@ type Props = {
     url: string,
     relay: boolean,
   ) => Promise<void>;
+  importFromPath: (version: ImageCatalogEntry, nodeUUID: string, path: string, replace: boolean) => Promise<void>;
   inspectVersion: (version: ImageCatalogEntry, nodeUUID: string) => void;
   /** Stops a transfer that is still running on that node. */
   cancelTransfer: (version: ImageCatalogEntry, nodeUUID: string) => void;
@@ -86,11 +91,13 @@ export default function ImageNodeTable({
   probeImage,
   syncFromPeer,
   pullFromURL,
+  importFromPath,
   inspectVersion,
   cancelTransfer,
   removeFromNode,
   repullVersion,
 }: Props) {
+  const isAdmin = useIsAdmin();
   const { t } = useTranslation("images");
   const { t: common } = useTranslation("common");
   // The archive dialog is the one place an address is entered, resolved and
@@ -104,6 +111,7 @@ export default function ImageNodeTable({
   // Peer sync is chosen, probed and rate limited in its own dialog, like the
   // URL fetch: the choices belong to one transfer, not to the table row.
   const [peerDialog, setPeerDialog] = useState<{ version: ImageCatalogEntry; row: ImageNode } | null>(null);
+  const [pathDialog, setPathDialog] = useState<{ version: ImageCatalogEntry; row: ImageNode } | null>(null);
   const declaredArchiveURL = (version: ImageCatalogEntry) =>
     (version.registry_sources ?? []).find((entry) => isArchiveURL(entry)) || "";
   // Each row names its node; the page lists no nodes of its own.
@@ -118,6 +126,7 @@ export default function ImageNodeTable({
         ? [{ value: "peer", label: t("nodeTable.peerOption") }]
         : []),
       ...archives,
+      { value: "local", label: t("nodeTable.localOption"), disabled: !isAdmin },
     ];
   };
   // The row's own facts beyond its state, and the actions on an image the node
@@ -168,6 +177,11 @@ export default function ImageNodeTable({
             {t("nodeTable.refreshInspect")}
           </Button>
           </Tooltip>
+          {row.state === "present" && isAdmin ? (
+            <ActionButton type="button" size="sm" onClick={(event) => { event.stopPropagation(); setPathDialog({ version: selectedVersion, row }); }}>
+              {t("nodeTable.localDialog.replace")}
+            </ActionButton>
+          ) : null}
           {row.state === "present" && selectedVersion.rolling_tag ? (
             <Tooltip title={t("nodeTable.repullHelp")}>
               <Button
@@ -231,6 +245,7 @@ export default function ImageNodeTable({
         if (row.state !== "pulling" && row.state !== "syncing") {
           return <Text type="secondary">—</Text>;
         }
+        if (row.source === "local") return <span className="text-fg-muted">{t("nodeTable.localLoading")}</span>;
         const expected = row.size_bytes || selectedVersion.size_bytes || 0;
         const done = row.transferred_bytes || 0;
         return (
@@ -264,6 +279,8 @@ export default function ImageNodeTable({
             <Tag>Huawei Cloud</Tag>
           ) : row.source === "mirror" ? (
             <Tag>{t("nodeTable.sourceMirror")}</Tag>
+          ) : row.source === "local" ? (
+            <Badge size="sm" status="neutral">{t("nodeTable.sourceLocal")}</Badge>
           ) : row.source === "offline" ? (
             <Tag>{t("nodeTable.offline")}</Tag>
           ) : row.source === "url" ? (
@@ -290,6 +307,8 @@ export default function ImageNodeTable({
             <Tag color="cyan">{t("nodeTable.peerFrom", {
               node: row.source_node_name || row.source_node_uuid.slice(0, 8),
             })}</Tag>
+          ) : row.source === "local" ? (
+            <Badge size="sm" status="info">{t("nodeTable.sourceLocal")}</Badge>
           ) : row.source && /[./]/.test(row.source) ? (
             <Tag color="processing" title={row.source}>{t("nodeTable.pullingFrom", { source: registryName(row.source) })}</Tag>
           ) : (
@@ -329,6 +348,7 @@ export default function ImageNodeTable({
           {row.state === "present" ? null : (
             <Button
               size="small"
+              disabled={!isAdmin && modeFor(selectedVersion, row) === "local"}
               loading={row.state === "pulling" || row.state === "syncing"}
               onClick={() => {
                 const mode = String(modeFor(selectedVersion, row));
@@ -342,6 +362,10 @@ export default function ImageNodeTable({
                   row.state === "failed" && /^url(-relay)?$/.test(row.source || "")
                     ? declaredArchiveURL(selectedVersion)
                     : "";
+                if (mode === "local") {
+                  setPathDialog({ version: selectedVersion, row });
+                  return;
+                }
                 if (mode === "peer") {
                   setPeerDialog({ version: selectedVersion, row });
                   return;
@@ -365,7 +389,9 @@ export default function ImageNodeTable({
                 ? t("nodeTable.pullFromURL")
                 : modeFor(selectedVersion, row) === "peer"
                   ? t("nodeTable.peerAction")
-                  : t("nodeTable.pull")}
+                  : modeFor(selectedVersion, row) === "local"
+                    ? t("nodeTable.localAction")
+                    : t("nodeTable.pull")}
             </Button>
           )}
         </Space>
@@ -386,6 +412,18 @@ export default function ImageNodeTable({
         // An image reaches every node of the fleet; the drawer pages them.
         pagination={{ defaultPageSize: 20, hideOnSinglePage: true, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
       />
+      {pathDialog && (
+        <ImageArchivePathDialog
+          replace={pathDialog.row.state === "present"}
+          imageRef={pathDialog.version.image_ref}
+          nodeLabel={nodeLabel(pathDialog.row)}
+          onCancel={() => setPathDialog(null)}
+          onStart={async (path) => {
+            await importFromPath(pathDialog.version, pathDialog.row.node_uuid, path, pathDialog.row.state === "present");
+            setPathDialog(null);
+          }}
+        />
+      )}
       <ImageArchiveURLDialog
         open={Boolean(dialog)}
         version={dialog?.version ?? null}

@@ -4,12 +4,15 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // Per-node image actions: fetch, peer sync, retry, cancel, remove, inspect.
 
 func (a *apiHandlers) syncImageToNode(w http.ResponseWriter, r *http.Request) {
-	a.fetchImageForNode(w, r, decodeImageNodeSyncRequest(r))
+	a.fetchImageForNode(w, r, decodeImageNodeSyncRequest(r), "load")
 }
 
 func (a *apiHandlers) probeImageToNode(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +47,16 @@ func (a *apiHandlers) probeImageToNode(w http.ResponseWriter, r *http.Request) {
 
 func (a *apiHandlers) retryImageToNode(w http.ResponseWriter, r *http.Request) {
 	req := decodeImageNodeSyncRequest(r)
+	if req.ArchivePath != "" || (imagecatalog.FetchRequest{Source: req.Source}).IsLocalFetch() {
+		a.fetchImageForNode(w, r, req, "retry")
+		return
+	}
+	if req.Source == "" && req.SourceNode == "" && req.ArchiveURL == "" {
+		if row, err := a.d.Store.ImageNode(parseUint(chi.URLParam(r, "id")), a.nodeIDOf(chi.URLParam(r, "uuid"))); err == nil && row.Source == imagecatalog.FetchSourceLocal {
+			writeProductError(w, http.StatusBadRequest, messages.ErrorImageArchivePathRequired, "choose the node archive file again to retry this local import", nil)
+			return
+		}
+	}
 	// A retry of a peer transfer keeps the recorded source node and creates a
 	// new transfer. It must not start a fresh sync through the generic fetch
 	// path, which would lose the retry semantics and source validation.
@@ -78,7 +91,7 @@ func (a *apiHandlers) retryImageToNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	req.Force = req.Force || req.Source == ""
-	a.fetchImageForNode(w, r, req)
+	a.fetchImageForNode(w, r, req, "retry")
 }
 
 // nodeIDOf is the id of the node a route names, or 0.

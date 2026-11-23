@@ -746,6 +746,9 @@ func (s *Store) ApplyImageNodeStatus(imageID, nodeID uint, st proto.ImageNodeSta
 	if current.TransferErrorCode == "PEER_TRANSFER_CANCELED" && current.TransferID == "" && st.State != ImageStatePresent {
 		return nil
 	}
+	if current.Source == proto.ArchiveSourceLocal && st.State == ImageStateFailed {
+		st.Message = proto.SafeArchiveLoadReason(st.Message)
+	}
 	updates := map[string]any{"state": st.State, "message": st.Message, "runtime_size_bytes": nil}
 	if st.ImageID != "" {
 		updates["image_digest_id"] = st.ImageID

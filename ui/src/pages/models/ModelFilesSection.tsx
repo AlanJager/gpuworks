@@ -2,6 +2,7 @@ import { PeerTransferDetails } from "../../components/peerTransfer/PeerTransferD
 import { productMessageText } from "../../apiError";
 import { Button, Flex, Popconfirm, Progress, Space, Tag, Tooltip, Typography, message } from "antd";
 import { CheckCircleFilled, CloudDownloadOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { api, type Model, type ModelNodePresence } from "../../api";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
@@ -14,7 +15,7 @@ import { formatBytes } from "../../format";
 import { storageTypeInfo, type ModelStoragePresence } from "../../storageTypes";
 import { ModelNodeFileDelete } from "./ModelNodeFileDelete";
 import { ModelStorageFileDelete } from "./ModelStorageFileDelete";
-import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, transferOrigin } from "./modelPresenceDisplay";
+import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, remainingText, transferEtaSeconds, transferOrigin } from "./modelPresenceDisplay";
 
 type ModelFile = ModelNodePresence | ModelStoragePresence;
 
@@ -42,14 +43,15 @@ function SourceText({ row }: { row: Parameters<typeof transferOrigin>[0] }) {
 
 const FILE_PAGE_SIZE = 10;
 
-/** A transfer's progress, bytes and, while it moves, its rate. */
+/** A transfer's progress, bytes and, while it moves, its rate and the time it still needs. */
 function TransferProgress({ row }: { row: ModelFile }) {
   const { t } = useTranslation("models");
   const moving = row.state === "downloading" || row.state === "syncing";
   const complete = row.state === "present" && ["download", "auto", "peer", "copy"].includes(row.acquisition);
   if (!("node_uuid" in row) && !moving && !complete) return <>—</>;
   const rate = moving ? rateLabel(row.rate_bps) : "";
-  const details = [modelPresenceBytes(row), rate].filter(Boolean).join(" · ");
+  const eta = transferEtaSeconds(row);
+  const details = [modelPresenceBytes(row), rate, eta > 0 ? remainingText(t, eta) : ""].filter(Boolean).join(" · ");
   return <Space direction="vertical" size={0} className="model-file-progress">
     <Progress percent={complete ? 100 : Math.round((row.progress || 0) * 100)} size="small" status={moving ? "normal" : undefined}
       format={complete ? () => <Space size={4}><CheckCircleFilled />{t("files.completed")}</Space> : undefined} />
@@ -76,17 +78,41 @@ function CancelDownload({ modelId, storageId, nodeUuid, onChanged }: { modelId: 
   </Popconfirm>;
 }
 
+// runFileAction runs one action on a file row: it says the outcome and, once
+// the server accepted it, has the files read again.
+async function runFileAction<R>(t: TFunction, action: () => Promise<R>, success: string | ((result: R) => string), onChanged: () => void) {
+  try {
+    const result = await action();
+    message.success(typeof success === "string" ? success : success(result));
+    onChanged();
+  } catch (e) {
+    message.error(storageErrorText(t, e));
+  }
+}
+
+function RetryButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation("models");
+  return <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
+    <Button type="text" size="small" icon={<ReloadOutlined />} aria-label={t("action.retry")} onClick={onClick} />
+  </Tooltip>;
+}
+
+/**
+ * A download into a shared storage that stopped is started again there. No
+ * writer is named: the server keeps the writer the stopped download had while
+ * it can still write to the storage, and otherwise picks one.
+ */
+function SharedDownloadRetry({ modelId, row, onChanged }: { modelId: number; row: ModelStoragePresence; onChanged: () => void }) {
+  const { t } = useTranslation("models");
+  // Someone else may have finished the download since this page read it.
+  const outcome = (result: { status?: string } | undefined) => result?.status === "present"
+    ? t("download.alreadyPresent", { storage: row.storage_name }) : t("presenceMessage.downloadStarted");
+  return <RetryButton onClick={() => void runFileAction(t, () => api.downloadModelToStorage(modelId, { storage_id: row.storage_id }), outcome, onChanged)} />;
+}
+
 function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row: ModelNodePresence; isAdmin: boolean; onChanged: () => void }) {
   const { t } = useTranslation("models");
-  const run = async (action: () => Promise<unknown>, success: string) => {
-    try {
-      await action();
-      message.success(success);
-      onChanged();
-    } catch (e) {
-      message.error(storageErrorText(t, e));
-    }
-  };
+  const run = (action: () => Promise<unknown>, success: string) => runFileAction(t, action, success, onChanged);
   // The legacy sync endpoint resolves the target by node; only offer a new
   // disk retry when that resolution cannot select a different local copy.
   const soleLocalCopy = (model.nodes ?? []).filter((copy) => copy.node_uuid === row.node_uuid && !copy.cache && (!copy.storage_type || copy.storage_type === "local")).length === 1;
@@ -107,9 +133,7 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
     {row.state === "download_required" && <Tooltip title={t("action.internetDownload")} trigger={["hover", "focus"]}>
       <Button type="text" size="small" icon={<CloudDownloadOutlined />} aria-label={t("action.internetDownload")} onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))} />
     </Tooltip>}
-    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled" || diskRetry) && <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
-      <Button type="text" size="small" icon={<ReloadOutlined />} aria-label={t("action.retry")} onClick={retry} />
-    </Tooltip>}
+    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled" || diskRetry) && <RetryButton onClick={retry} />}
     {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} nodeUuid={row.node_uuid} onChanged={onChanged} />}
     {row.state === "syncing" && <Popconfirm title={t("presenceAction.cancelConfirm")} onConfirm={() => run(() => api.cancelModelSync(model.id, row.node_uuid), t("presenceMessage.syncCanceled"))} okText={t("presenceAction.cancelSync")} cancelText={t("presenceAction.continueSync")}>
       <Tooltip title={t("presenceAction.cancelSync")} trigger={["hover", "focus"]}>
@@ -203,13 +227,15 @@ export function ModelFilesSection({ model, onChanged }: { model: Model; onChange
   const columns: ResourceColumn<ModelFile>[] = [
     { key: "location", title: tStorage("files.column.place"), width: 132, render: (_, row) => <FileLocation row={row} /> },
     { key: "state", title: t("detail.status"), width: 88, ellipsis: false, render: (_, row) => <StateTag state={row.state} /> },
-    { key: "progress", title: t("detail.progress"), width: 218, minWidth: 218, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
+    { key: "progress", title: t("detail.progress"), width: 344, minWidth: 344, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
     { key: "size", title: t("detail.size"), width: 78, align: "right", render: (_, row) => row.size_bytes ? formatBytes(row.size_bytes) : "—" },
     { key: "actions", role: "actions", title: t("column.actions"), width: 100, render: (_, row) => (
       <div onClick={(event) => event.stopPropagation()}>
         {"node_uuid" in row ? <NodeFileActions model={model} row={row} isAdmin={isAdmin} onChanged={onChanged} /> : <Space size={4} wrap>
           {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") &&
             <CancelDownload modelId={model.id} storageId={row.storage_id} onChanged={onChanged} />}
+          {row.acquisition === "download" && row.writable && ["failed", "canceled", "download_required", "insufficient_disk_space"].includes(row.state) &&
+            <SharedDownloadRetry modelId={model.id} row={row} onChanged={onChanged} />}
           {isAdmin && <ModelStorageFileDelete modelId={model.id} storageId={row.storage_id} storageName={row.storage_name} storageType={row.storage_type} writable={row.writable} cachedNodes={row.cached_nodes} onDone={onChanged} />}
         </Space>}
       </div>

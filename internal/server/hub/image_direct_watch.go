@@ -134,7 +134,10 @@ func (h *Hub) abandonDirectImageTransfer(ctx context.Context, imageID, nodeID ui
 	if ctx.Err() != nil {
 		return
 	}
-	const message = "this transfer stopped reporting progress, so it was cancelled (agent restart, lost connection, or a runtime that never returned). Retry it."
+	message := "this transfer stopped reporting progress, so it was cancelled (agent restart, lost connection, or a runtime that never returned). Retry it."
+	if row.Source == proto.ArchiveSourceLocal {
+		message = proto.ArchiveLoadStalled
+	}
 	changed, err := h.store.FailImageNodeIfUnchanged(imageID, nodeID, row.TransferID, row.UpdatedAt, message)
 	if err != nil || !changed {
 		return

@@ -55,6 +55,7 @@ func TestArchiveLoadDoesNotMistakeOldCanonicalForNewContent(t *testing.T) {
 		{name: "different reference first load", loaded: "publisher/runner:new", wantTags: 1},
 		{name: "same reference replaces old content without retag", loaded: canonical, old: true},
 		{name: "load failure preserves old content", loaded: "publisher/runner:new", old: true, loadErr: errors.New("corrupt archive"), wantErr: "corrupt archive"},
+		{name: "unknown identity cannot confirm pre-existing canonical", old: true, wantErr: "did not report the reference"},
 		{name: "unknown loaded reference cannot confirm absent canonical", wantErr: "did not report the reference"},
 		{name: "metadata inspection failure does not keep stale canonical", loaded: "publisher/runner:new", old: true, inspectErr: errors.New("inspect unavailable"), wantTags: 1},
 	} {
@@ -133,15 +134,34 @@ func TestStreamedArchiveRetagsAnExistingCanonicalWhenItCarriedAnotherReference(t
 	}
 }
 
-func TestArchiveLoadUnknownReferenceKeepsPresentCanonicalCompatibility(t *testing.T) {
+func TestArchiveLoadVerifiesUntaggedImageID(t *testing.T) {
 	const canonical = "catalog/runner:latest"
-	d := &archiveIdentityDriver{Driver: recording.New(t.TempDir() + "/spec.json"), ids: map[string]string{canonical: "old-A"}}
-	status, err := loadImageArchive(context.Background(), d, imageArchiveLoad{CanonicalRef: canonical, RuntimeName: "fixture", Loaded: "loaded", Load: func(context.Context) (string, error) { return "", nil }})
-	if err != nil || status.State != "present" || d.tagCalls != 0 || d.ids[canonical] != "old-A" {
-		t.Fatalf("legacy unknown-ref behavior changed: status=%+v err=%v tags=%d", status, err, d.tagCalls)
-	}
-	// Compatibility does not prove the unidentified archive replaced the content.
-	if status.ImageID != "old-A" {
-		t.Fatalf("invented identity for unknown loaded reference: %+v", status)
+	const id = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	for _, tc := range []struct {
+		name, old, inspected string
+		inspectErr           error
+		wantError            string
+	}{
+		{name: "first import", inspected: id},
+		{name: "replace an old image", old: "old", inspected: id},
+		{name: "tag points to other content", old: "old", inspected: "other", wantError: "cannot verify"},
+		{name: "inspection failed", inspected: id, inspectErr: errors.New("inspect unavailable"), wantError: "inspect unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &archiveIdentityDriver{Driver: recording.New(""), ids: map[string]string{canonical: tc.old, id: tc.inspected}, inspectErr: tc.inspectErr}
+			status, err := loadImageArchive(t.Context(), d, imageArchiveLoad{CanonicalRef: canonical, Load: func(context.Context) (string, error) { return id, nil }})
+			if d.tagCalls != 1 {
+				t.Fatalf("tag calls = %d", d.tagCalls)
+			}
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) || status.State == "present" {
+					t.Fatalf("unverified import: status=%+v error=%v", status, err)
+				}
+				return
+			}
+			if err != nil || status.State != "present" || status.ImageID != id || d.ids[canonical] != id {
+				t.Fatalf("status=%+v canonical=%q error=%v", status, d.ids[canonical], err)
+			}
+		})
 	}
 }

@@ -9,7 +9,7 @@ const { render, screen, cleanup, waitFor } = await import("@testing-library/reac
 const userEvent = (await import("@testing-library/user-event")).default;
 const { DeploymentPreparation } = await import("../src/pages/DeploymentPreparation.tsx");
 const { api } = await import("../src/api.ts");
-const { i18n, locale } = await createI18n(["deployments"]);
+const { i18n, locale } = await createI18n(["deployments", "models"]);
 const labels = locale.deployments.preparation;
 const original = api.retryModelCache;
 afterEach(() => { cleanup(); api.retryModelCache = original; });
@@ -25,6 +25,16 @@ test("copying shows its measured percentage, phase and storage link", async () =
     const user = userEvent.setup({ document: dom.window.document });
     await user.tab();
     assert.equal(dom.window.document.activeElement, screen.getByRole("link"));
+});
+test("a download shows how long it still needs, and none while its total is unconfirmed", () => {
+    const GiB = 1024 ** 3;
+    const download = { acquisition: "download", cache: false, size_bytes: 181 * GiB, downloaded: 98.8 * GiB, rate_bps: 14 * 1024 ** 2 };
+    show([row({ ...download, preparation: { phase: "downloading", total_known: true, idle_seconds: 0 } })]);
+    assert.ok(screen.getByText("98.8 GiB / 181.0 GiB · 14.0 MiB/s · about 1 h 41 min left"));
+    cleanup();
+    show([row({ ...download, preparation: { phase: "downloading", total_known: false, idle_seconds: 0 } })]);
+    assert.equal(screen.queryByText(/ left$/), null);
+    assert.ok(screen.getByText(/14\.0 MiB\/s$/));
 });
 test("old agent, unknown total and checking have no invented percentage", () => {
     show([row({ rate_bps: 0, preparation: { phase: "checking", total_known: false, idle_seconds: 0 } })]);

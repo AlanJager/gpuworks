@@ -9,14 +9,18 @@ import {
   Select,
   Switch,
 } from "antd";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormInstance } from "antd/es/form";
 import {
   api,
   type ImageArchivePreview,
+  type ArchiveImageMetadata,
   type ImageCatalogEntry,
   type ImageEngineOption,
 } from "../../api";
+import { useForm } from "react-hook-form";
+import { OptionSelect } from "../../ui-kit/OptionSelect";
+import ImageNodeArchiveFields, { type NodeArchive } from "./ImageNodeArchiveFields";
 import ImageArchiveURLImport from "./ImageArchiveURLImport";
 import ImageCommunityBrowser from "./ImageCommunityBrowser";
 import { OutboundHostAccess, useOutboundHostAccess } from "../../components/OutboundHostAccess";
@@ -28,7 +32,7 @@ type Props = {
   onClose: () => void;
   form: FormInstance;
   importing: boolean;
-  importCustom: () => void;
+  importCustom: (archive?: NodeArchive) => Promise<void> | void;
   hasExplicitTag: (ref: string) => boolean;
   sourceTab: "community" | "custom";
   /** Catalog versions searched for a reference matching a pasted archive. */
@@ -58,18 +62,57 @@ export default function ImageImportDrawer({
   // server's dictionary (GET /images/engines); the form adds nothing to it.
   const [engines, setEngines] = useState<ImageEngineOption[] | null>(null);
   const [enginesError, setEnginesError] = useState<string | null>(null);
-  const [authorizing, setAuthorizing] = useState(false);
+  const [savePhase, setSavePhase] = useState<"idle" | "validating" | "authorizing">("idle");
+  const authorizing = savePhase === "authorizing";
+  const [previewing, setPreviewing] = useState(false);
+  const [importMethod, setImportMethod] = useState("local");
+  const loadNodeFile = open && sourceTab === "custom" && importMethod === "local";
+  const archive = useForm<NodeArchive>({ defaultValues: { node: "", path: "" } });
+  const previous = useRef<{ fields: ArchiveImageMetadata & { image_ref: string }; url?: string } | null>(null);
+  const clearPreview = useCallback(() => {
+    if (!previous.current) return;
+    const { fields, url } = previous.current;
+    previous.current = null;
+    for (const [key, value] of Object.entries(fields)) {
+      if (form.getFieldValue(key) === value) form.setFieldValue(key, key === "arch" ? "multi" : undefined);
+    }
+    if (url) {
+      const sources: string[] = form.getFieldValue("registry_sources") ?? [];
+      form.setFieldValue("registry_sources", sources.filter(source => source !== url));
+    }
+  }, [form]);
+  const prefill = (ref: string, metadata?: ArchiveImageMetadata, url?: string) => {
+    clearPreview();
+    const fields = { ...metadata, image_ref: ref };
+    form.setFieldsValue(fields);
+    const sources: string[] = form.getFieldValue("registry_sources") ?? [];
+    const addedURL = url && !sources.includes(url) ? url : undefined;
+    if (addedURL) form.setFieldValue("registry_sources", [...sources, addedURL]);
+    previous.current = { fields, url: addedURL };
+  };
+  useEffect(() => {
+    if (!open) {
+      clearPreview();
+      setImportMethod("local");
+      archive.reset();
+    }
+  }, [open, archive, clearPreview]);
   const sources = Form.useWatch("registry_sources", { form, preserve: true }) as string[] | undefined;
   const access = useOutboundHostAccess((sources ?? []).filter(isArchiveURL), open);
+  const saving = useRef(false);
   const save = async () => {
-    if (authorizing || importing) return;
+    if (saving.current || importing || previewing) return;
+    saving.current = true;
+    setSavePhase("validating");
     try {
+      if (loadNodeFile && !(await archive.trigger())) return;
       await form.validateFields();
-      setAuthorizing(true);
+      setSavePhase("authorizing");
+      const file = loadNodeFile ? archive.getValues() : undefined;
       await access.authorize();
-      importCustom();
+      await importCustom(file);
     } catch { /* The form and permission control retain their own errors. */ }
-    finally { setAuthorizing(false); }
+    finally { saving.current = false; setSavePhase("idle"); }
   };
   useEffect(() => {
     if (!open || engines) return;
@@ -87,7 +130,7 @@ export default function ImageImportDrawer({
   }, [open, engines]);
   const engineOptions = (engines ?? []).map((option) => ({ value: option.name, label: option.label }));
   return (
-    <Drawer title={t(`import.title.${sourceTab}`)} open={open} onClose={onClose} width={640}>
+    <Drawer title={t(`import.title.${sourceTab}`)} open={open} onClose={authorizing || importing ? undefined : onClose} width={640}>
       <div style={{ display: "flex", flexDirection: "column", gap: 20, width: "100%" }}>
         {sourceTab === "community" && (
           <ImageCommunityBrowser
@@ -104,16 +147,48 @@ export default function ImageImportDrawer({
             }}
           />
         )}
-        <ImageArchiveURLImport
-          versions={versions}
-          onMatched={onArchiveURLMatched}
-          onPrefill={(preview) =>
-            form.setFieldsValue({
-              image_ref: preview.repo_tags[0],
-              registry_sources: [preview.url],
-            })
-          }
-        />
+        {sourceTab === "custom" && (
+          <div className="grid gap-2">
+            <label htmlFor="image-import-method">{t("import.method")}</label>
+            <OptionSelect
+              id="image-import-method"
+              aria-label={t("import.method")}
+              value={importMethod}
+              onChange={method => {
+                clearPreview();
+                setImportMethod(method);
+              }}
+              disabled={importing || savePhase !== "idle"}
+              options={[
+                { value: "local", label: t("import.local.enable") },
+                { value: "url", label: t("import.url.title") },
+              ]}
+            />
+          </div>
+        )}
+        <fieldset disabled={importing || savePhase !== "idle"}>
+          {loadNodeFile ? (
+            <ImageNodeArchiveFields
+              archive={archive}
+              busy={previewing}
+              setBusy={setPreviewing}
+              onPick={prefill}
+              onInvalidate={clearPreview}
+            />
+          ) : open && (
+            <ImageArchiveURLImport
+              setBusy={setPreviewing}
+              showTitle={sourceTab === "community"}
+              versions={versions}
+              onMatched={onArchiveURLMatched}
+              onInvalidate={clearPreview}
+              onPrefill={preview => {
+                const ref = preview.repo_tags[0];
+                prefill(ref, preview.metadata_by_tag?.[ref], preview.url);
+              }}
+            />
+          )}
+        </fieldset>
         <Alert
           type="info"
           showIcon
@@ -227,7 +302,7 @@ export default function ImageImportDrawer({
             <Select mode="tags" tokenSeparators={[",", " "]} placeholder="https://containerimages.example/runner.tar" />
           </Form.Item>
           <OutboundHostAccess access={access} />
-          <Button type="primary" loading={importing || authorizing} onClick={() => void save()}>
+          <Button type="primary" disabled={previewing} loading={importing || authorizing} onClick={() => void save()}>
             {t("import.addImage")}
           </Button>
         </Form>

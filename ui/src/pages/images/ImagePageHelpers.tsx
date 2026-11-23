@@ -16,6 +16,10 @@ export function transferRunning(versions: ImageCatalogEntry[] | null | undefined
   );
 }
 
+export function isAbsoluteArchivePath(path: string): boolean {
+  return path.trim().startsWith("/");
+}
+
 export function bytes(value?: number) {
   if (value === undefined || value === null) return "—";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -130,7 +134,7 @@ export function imageSourceOptions(registrySources?: string[], t?: TFunction) {
   }
   options.push({
     value: archiveURLDialogValue,
-    label: t?.("nodeTable.sourceFromURL") || "From URL…",
+    label: t?.("nodeTable.sourceFromURL") || "Import from an HTTP directory…",
     opensDialog: true,
   });
   return options;

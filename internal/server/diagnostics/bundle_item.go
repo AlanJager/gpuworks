@@ -14,6 +14,7 @@ const (
 	BundleItemServerDisk    = "server_disk"
 	BundleItemServerHost    = "server_host_identity"
 	BundleItemServerLog     = "server_log"
+	BundleItemServerStall   = "server_stall_report"
 	BundleItemDebugFile     = "debug_file"
 	BundleItemNode          = "node"
 	BundleItemNodeAgentLog  = "node_agent_log"
@@ -34,6 +35,8 @@ func (it BundleItem) ID() string {
 		return BundleItemServerHost
 	case it.Path == "server/gpuworks-server.log":
 		return BundleItemServerLog
+	case parts[0] == "server" && len(parts) == 3 && parts[1] == "stalls":
+		return BundleItemServerStall
 	case parts[0] == "debug":
 		return BundleItemDebugFile
 	case parts[0] == "nodes" && len(parts) == 2:

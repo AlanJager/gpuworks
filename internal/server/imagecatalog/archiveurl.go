@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/engines"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog/pullref"
 	"gpuworks.ai/gpuworks/pkg/imagearchive"
 )
@@ -19,6 +21,7 @@ import (
 const (
 	FetchSourceURL      = "url"
 	FetchSourceURLRelay = "url-relay"
+	FetchSourceLocal    = proto.ArchiveSourceLocal
 )
 
 // archiveRequestTimeout bounds one preview or HEAD against an operator
@@ -30,9 +33,22 @@ const archiveRequestTimeout = 30 * time.Second
 // downloading it.
 type ArchivePeek = imagearchive.Peek
 
+// ArchiveContents is the common node-file and URL preview metadata.
+type ArchiveContents = imagearchive.Contents
+
+// NormalizeArchiveEngines translates raw image labels at the catalog boundary,
+// including metadata received from agents running an older version.
+func NormalizeArchiveEngines(byTag map[string]imagearchive.ImageMetadata) {
+	for tag, metadata := range byTag {
+		metadata.Engine = engines.CatalogEngineForLabel(metadata.Engine)
+		byTag[tag] = metadata
+	}
+}
+
 // FetchRequest is how one node is asked to acquire an image. Source is empty
-// (pull it from wherever the node's pull source rules say) or FetchSourceURL;
-// ArchiveURL and Relay apply only to the latter. It travels from the API layer
+// (pull through the node's pull source rules), FetchSourceURL, or FetchSourceLocal.
+// ArchiveURL and Relay apply to URLs; ArchivePath names a file on the target node.
+// It travels from the API layer
 // to the hub as one value so adding a way to fetch an image never means adding
 // another collaborator to the API's dependency set.
 type FetchRequest struct {
@@ -46,6 +62,12 @@ type FetchRequest struct {
 	// rolling tag (nightly, latest) moves upstream while the local copy stays.
 	// A transfer still in progress is never started twice.
 	Force bool
+
+	ArchivePath string
+}
+
+func (r FetchRequest) IsLocalFetch() bool {
+	return strings.EqualFold(strings.TrimSpace(r.Source), FetchSourceLocal)
 }
 
 // IsURLFetch reports whether the request asks for an archive URL rather than a
@@ -143,7 +165,9 @@ func PeekArchiveURL(ctx context.Context, client *http.Client, rawURL string) (Ar
 	if client == nil {
 		client = ArchiveHTTPClient()
 	}
-	return imagearchive.PeekURL(ctx, client, rawURL)
+	peek, err := imagearchive.InspectURL(ctx, client, rawURL)
+	NormalizeArchiveEngines(peek.MetadataByTag)
+	return peek, err
 }
 
 // ArchiveURLSize reports the archive's size with a single HEAD request.

@@ -203,6 +203,8 @@ are visible when you select the callable engine on the deployment page. The call
 without an inference template, you must enter the adapter's complete command in the deployment command editor. You can also paste a `docker save` archive URL in the add drawer to resolve the actual reference first.
 See [Importing from an HTTP File Server](../how-to/import-from-http.md#从-url-导入镜像归档).
 
+If the archive is already on a compute node, select that node and enter the absolute path when adding the custom image. See [Offline Deployment](../how-to/deploy-offline.md) for progress and retries.
+
 Adding either community or custom images uses the `{"series":[...]}` form of `POST /api/v1/images/import` (without `schema_version`);
 this form cannot write `source=official`.
 
@@ -253,7 +255,7 @@ runtime explanation.
 <!-- translation-source-sha256: 9c257d0e90fb08b1d44411cbd6b9f9ea179b57560836ea3c1cd6ae87603a805d ### Updating the Catalog -->
 <!-- translation-source-sha256: 08cbd3a68161bac743ed7d8cb6f162c396865921af93b019a514f113f24a1a3a ### Manifest Format -->
 <!-- translation-source-sha256: da92f9dfca846e8a1b55ab4708a4b1f01f97ccd6dd44145d4619b20fd54ee18e ## Community Images -->
-<!-- translation-source-sha256: 26595477683414f63cfb79903168ed7bce9132bd31bf25bbbd2aedf15ff74cc2 ## Custom Images -->
+<!-- translation-source-sha256: 77522a45a9d473abc1fd18744cbf1bd083213fe1c1c54f96fe725d892d366f57 ## Custom Images -->
 <!-- translation-source-sha256: 805025bcb72e52bd5d6cb9496e9072b968df6e5021ac6078fd9fad2a474dd203 ## Rolling Tags -->
 <!-- translation-source-sha256: 742e7f615036b822e5ef95a1f1bd9050876ecbf7c9cbc7bd221682d7a78b7748 ## Automatic Image Selection, Pull Addresses, and Command Modes -->
 <!-- translation-localized-code-block: 33dc668ac5b0d9b2a0cfa8da37a7788f4ecfcf62c3fc515c19751dd7eb192fa9 410f13f2684f9c121d60a95145d5030433a0f81edaec77f7421b35c3c4604973 Translate illustrative sha256 placeholder -->

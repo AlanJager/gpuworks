@@ -42,6 +42,8 @@ type DockerSaveOptions struct {
 	// RepoTags are the references baked into manifest.json. An empty list
 	// produces an archive whose references cannot be previewed.
 	RepoTags []string
+	// Labels are embedded in the image configuration.
+	Labels map[string]string
 	// LayerBytes pads the layer payload so the archive is larger than the tail
 	// window a previewer reads. Zero uses a small default.
 	LayerBytes int
@@ -73,7 +75,17 @@ func DockerSaveArchive(opts DockerSaveOptions) ([]byte, error) {
 	layerDir := hexDigest(layer)
 	// Like docker, the config names the uncompressed layer by its digest
 	// (diff_id); loaders verify layer.tar against it.
-	config := []byte(`{"architecture":"amd64","os":"linux","config":{"Entrypoint":["/entrypoint.sh"],"Cmd":["--serve"],"Env":["PATH=/usr/bin"]},"rootfs":{"type":"layers","diff_ids":["sha256:` + layerDir + `"]}}`)
+	configFields := map[string]any{"Entrypoint": []string{"/entrypoint.sh"}, "Cmd": []string{"--serve"}, "Env": []string{"PATH=/usr/bin"}}
+	if len(opts.Labels) > 0 {
+		configFields["Labels"] = opts.Labels
+	}
+	config, err := json.Marshal(map[string]any{
+		"architecture": "amd64", "os": "linux", "config": configFields,
+		"rootfs": map[string]any{"type": "layers", "diff_ids": []string{"sha256:" + layerDir}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal image config: %w", err)
+	}
 	configName := hexDigest(config) + ".json"
 
 	entries := []saveEntry{

@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Descriptions, Input, Space, Tag, Typography } from "antd";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
 import { APIError } from "../../apiError";
@@ -10,6 +10,9 @@ import { bytes } from "./ImagePageHelpers";
 const { Text } = Typography;
 
 type Props = {
+  showTitle?: boolean;
+  setBusy?: (busy: boolean) => void;
+  onInvalidate?: () => void;
   /** Every catalog version currently listed, searched for a matching tag. */
   versions: ImageCatalogEntry[];
   /**
@@ -29,13 +32,16 @@ type Props = {
  * catalog entry. The server reads the archive's real references out of its
  * tail, so the operator never has to guess them from the file name.
  */
-export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }: Props) {
+export default function ImageArchiveURLImport({ versions, onMatched, onPrefill, onInvalidate, setBusy, showTitle = true }: Props) {
   const { t } = useTranslation("images");
   const [url, setUrl] = useState("");
   const access = useOutboundHostAccess([url]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [preview, setPreview] = useState<ImageArchivePreview | null>(null);
+
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => { pending.current?.abort(); setBusy?.(false); }, [setBusy]);
 
   const matchedVersion = (tags: string[]) =>
     versions.find((version) => tags.includes(version.image_ref)) || null;
@@ -46,12 +52,19 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }
       setError(new Error(t("import.url.required")));
       return;
     }
+    pending.current?.abort();
+    const request = new AbortController();
+    pending.current = request;
+    onInvalidate?.();
     setLoading(true);
+    setBusy?.(true);
     setError(null);
     setPreview(null);
     try {
       await access.authorize();
-      const result = await api.previewImageArchiveURL(address);
+      if (request.signal.aborted) return;
+      const result = await api.previewImageArchiveURL(address, request.signal);
+      if (request.signal.aborted) return;
       setPreview(result);
       const match = matchedVersion(result.repo_tags || []);
       if (match) {
@@ -60,16 +73,16 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }
       }
       if (result.repo_tags?.length) onPrefill(result);
     } catch (e) {
-      setError(e instanceof APIError ? e : new Error(t("import.url.failed")));
+      if (!request.signal.aborted) setError(e instanceof APIError ? e : new Error(t("import.url.failed")));
     } finally {
-      setLoading(false);
+      if (!request.signal.aborted) { setLoading(false); setBusy?.(false); }
     }
   };
 
   const tags = preview?.repo_tags || [];
   const match = preview ? matchedVersion(tags) : null;
   return (
-    <Card size="small" title={t("import.url.title")}>
+    <Card size="small" title={showTitle ? t("import.url.title") : undefined}>
       <Space direction="vertical" size={10} style={{ width: "100%" }}>
         <Text type="secondary">{t("import.url.description")}</Text>
         <Space.Compact style={{ width: "100%" }}>
@@ -79,7 +92,15 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }
             value={url}
             aria-label={t("import.url.label")}
             placeholder="https://containerimages.example/runner.tar"
-            onChange={(event) => setUrl(event.target.value)}
+            onChange={(event) => {
+              pending.current?.abort();
+              setUrl(event.target.value);
+              setLoading(false);
+              setBusy?.(false);
+              setPreview(null);
+              setError(null);
+              onInvalidate?.();
+            }}
             onPressEnter={() => void resolve()}
           />
           <Button type="primary" loading={loading} onClick={() => void resolve()}>

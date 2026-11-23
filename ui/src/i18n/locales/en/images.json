@@ -1,4 +1,20 @@
 {
+  "archivePreviewReason": {
+    "not_found": "The file was not found on this node.",
+    "permission_denied": "The node does not have permission to read this file.",
+    "not_regular": "Select a regular archive file.",
+    "invalid_archive": "The file is invalid or the image archive is damaged.",
+    "timeout": "Preview timed out. Use an uncompressed tar or enter the image details manually.",
+    "unreadable": "The node could not read the image archive."
+  },
+  "archiveLoadReason": {
+    "timeout": "Loading the image archive timed out. Try again.",
+    "canceled": "The node image import was canceled.",
+    "reference_unknown": "Select a tag carried by the archive or import an archive containing a single image.",
+    "unsupported": "The node runtime does not support loading images from files.",
+    "upgrade_required": "Upgrade the target agent before importing the image.",
+    "stalled": "The node stopped reporting import progress. Check its connection and retry."
+  },
   "page": {
     "title": "Images",
     "description": "Manage GPUWorks runtime images by series, version, and node distribution",
@@ -133,6 +149,19 @@
     "olderVersion": "Older version"
   },
   "nodeTable": {
+    "localOption": "Import from node file…",
+    "localAction": "Import local file…",
+    "sourceLocal": "Node file",
+    "localLoading": "Loading image…",
+    "localDialog": {
+      "replace": "Replace from node file",
+      "replaceDescription": "Replace {{ref}} on this node with the image in the selected archive.",
+      "title": "Import a local file on {{node}}",
+      "start": "Start import",
+      "description": "Load the archive as {{ref}}. This updates the image on this node without creating an image series.",
+      "path": "Image archive file path",
+      "help": "Enter the absolute path of an existing tar file on this compute node, not a directory or a management server path. The node runtime must support its format. The original file is kept."
+    },
     "column": {
       "node": "Node",
       "status": "Status",
@@ -163,7 +192,7 @@
     "sourceMirror": "Mirror",
     "sourceURL": "URL",
     "sourceURLRelay": "URL · relayed",
-    "sourceFromURL": "Import from a URL…",
+    "sourceFromURL": "Import from an HTTP directory…",
     "pullFromURL": "Get from URL…",
     "relay": "Relay through the management server",
     "relayHelp": "The management server downloads the archive and streams it to this node. Use it when the node cannot reach the mirror itself; the transfer cannot resume.",
@@ -199,6 +228,18 @@
     "collapse": "Hide details"
   },
   "import": {
+    "method": "Import method",
+    "local": {
+      "noTags": "No tagged image reference was found. Enter the image reference manually.",
+      "parsed": "Filled in the image reference {{ref}}",
+      "chooseTag": "Image references in the archive",
+      "enable": "Load from a compute node file",
+      "nodeRequired": "Select the compute node that holds the archive",
+      "pathRequired": "Enter the absolute path to the archive on this node",
+      "alreadyPresent": "This node already has the image. To load the file over it, choose Replace from node file.",
+      "versionMissing": "{{ref}} was registered, but its version was missing from the response. Open the image to start the node import.",
+      "startFailed": "{{ref}} was registered. The node import could not start: {{reason}}"
+    },
     "title": {
       "community": "Add Community Image",
       "custom": "Add Custom Image"
@@ -224,8 +265,8 @@
     "registrySources": "Acquisition addresses",
     "registrySourcesHelp": "Extra addresses this image can be fetched from: registry references, or the URL of a docker save archive.",
     "url": {
-      "title": "Import from a URL",
-      "description": "Paste the address of a docker save archive. Its real image references are read out of the archive itself, so you do not have to guess them from the file name.",
+      "title": "Import from an HTTP directory",
+      "description": "Enter the full URL of the tar archive file in the HTTP directory.",
       "label": "Image archive URL",
       "required": "Enter the image archive URL first.",
       "resolve": "Resolve",

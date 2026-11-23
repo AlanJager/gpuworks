@@ -1419,6 +1419,30 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 用户不存在时报 `not found`，先核对用户名和数据目录；出现权限错误时检查当前用户对该数据库的访问权限。
 见 [CLI](../reference/cli.md)。
 
+## server 卡住或偶发变慢时：卡顿报告与现场堆栈
+
+**现象**：请求偶尔要等几秒才返回，或一段时间内 server 日志一行都没有，事后看不出当时卡在哪里。
+
+**卡顿报告（自动）**：server 自己盯着会等磁盘的几处：日志写入（日志文件与 stderr）、数据库语句以及事务的开始与提交（单写连接的排队和落盘都在这里；集群里包括到数据库进程的往返）、指标库、日志库和请求记录库的写入。其中一处等待超过 3 秒（`log.stall_report_after`）时，它立刻在内存里取下全部 goroutine 的堆栈，磁盘能写后存成文件，所以日志或磁盘本身卡住时也能留下现场：
+
+- 文件在 server 数据目录的 `diagnostics/stalls/stall-<UTC 时间>.txt`，保留最新 20 份；两份报告之间至少隔 1 分钟，期间的卡顿只计数，写在下一份报告里。
+- 报告开头是 server 版本、发现时间、当时在等的各处及已等时长（`waiting:`）、内核的 I/O 压力（`io pressure:`），随后是全部堆栈；等待持续到 30 秒时再取一次堆栈（`still waiting at`），结束时补一行 `ended: …, after <时长>`。没有 `ended` 行说明进程在卡顿结束前退出了。离上一份报告不足 1 分钟就开始的卡顿，如果持续到满 1 分钟仍未结束，会在那时取栈并写报告。
+- 卡顿结束后 server 日志有一行 `process stall recorded site=… duration=… report=…`。`process pause recorded` 表示整个进程在这段时间内没有被调度（被冻结、CPU 被抢占或内存回收），这种情况没有堆栈，文件名是 `stall-<时间>.pause.txt`；至少 1 秒才算。日志行里的 `report=` 只在报告文件确实写下时才有。
+- 看报告时先看 `waiting:` 确认卡在哪一类操作，再在堆栈里找停在该操作上的 goroutine，以及排在它后面等同一把锁的 goroutine。
+- [收集诊断信息](#无法登录现场时调试采集与收集诊断信息)会带上时间范围内的报告（`server/stalls/`）。
+
+agent 用同样的方式盯着自己写日志文件（`gpuworks-agent run --stall-report-after`，默认 3 秒，`0` 关闭），报告在 agent 状态目录的 `stalls/` 下（默认 `/opt/gpuworks/stalls/`）。agent 的报告不随诊断信息收集，需要时在节点上取；日志文件打不开、agent 只写 stderr 时不记录。
+
+**现场堆栈（按需）**：server 正卡着而没有报告时（例如卡在上面没有覆盖的地方），在 server 主机上取当前堆栈，不需要重启，也不会终止进程：
+
+```bash
+kill -USR1 "$(systemctl show -p MainPID --value gpuworks)"   # 打开仅回环的 pprof 监听，10 分钟后自动关闭
+grep 'pprof window open' /opt/gpuworks/server/data/logs/gpuworks-server.log | tail -n 1   # 实际地址，默认 127.0.0.1:6060
+curl -s 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=2' > goroutines.txt
+```
+
+不在 systemd 下运行时，把 PID 换成 server 进程自己的；信号只发给 server 进程，`--supervise` 的父进程收到 `USR1` 会退出。不要用 `kill -QUIT`：它会终止进程。
+
 ## 无法登录现场时：调试采集与收集诊断信息
 
 不能登录客户服务器时，让管理员在 **设置 → 诊断** 里操作，把下载的压缩包发回来。
@@ -1431,6 +1455,7 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 | `server/disk.json` | server 的数据、日志、备份目录与 SQLite 临时目录：所在文件系统的总量与剩余量，以及每个目录下各项的大小（从大到小） |
 | `server/host-identity.json` | server 所在机器的身份（系统 UUID、主板序列号、machine-id、根文件系统 UUID），每项只有加盐摘要 `h` 与原始值的最后 4 个字符 `tail`，读不到的项缺省；盐是固定的，同一台机器在每次收集里摘要相同，见[扩展点](../dev/extensions.md#管理-server-的主机身份) |
 | `server/gpuworks-server.log` | 时间范围内的 server 日志（含 info，日志页只有 warn 以上） |
+| `server/stalls/stall-<时间>.txt` | 时间范围内的[卡顿报告](#server-卡住或偶发变慢时卡顿报告与现场堆栈)，原样收入 |
 | `nodes/<uuid>/agent.log`、`doctor.json` | 所选节点（不选时为所选部署的实例所在节点）的 agent 日志与诊断报告 |
 | `instances/<uuid>.log` | 所选部署的实例日志 |
 | `debug/<会话>/`、`nodes/<uuid>/debug/` | 时间重叠的调试采集 |
