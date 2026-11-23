@@ -495,8 +495,9 @@ var serverLogIdentity = []string{"code", "reason", "method", "path", "status"}
 
 func serverLogger(path, maxSize string, keep int, level slog.Level) (*slog.Logger, func()) {
 	// The stderr-only logger a missing or unusable log file falls back to is
-	// watched for stalls as the file logger is (logging.NewLogger).
-	base := slog.New(slog.NewTextHandler(stallwatch.Writer(logging.StallSite, os.Stderr), &slog.HandlerOptions{Level: level}))
+	// written by whoever logs, and watched for stalls (the queued outputs
+	// of logging.NewLogger are watched in their writing goroutines).
+	base := slog.New(slog.NewTextHandler(stallwatch.Writer(logging.StderrStallSite, os.Stderr), &slog.HandlerOptions{Level: level}))
 	if strings.TrimSpace(path) == "" {
 		return base, func() {}
 	}

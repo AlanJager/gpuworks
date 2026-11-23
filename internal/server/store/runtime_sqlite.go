@@ -66,6 +66,7 @@ func (sqliteRuntimeDatabase) openForMigration(ctx context.Context, path string, 
 	if err != nil {
 		return nil, err
 	}
+	watchDatabase(db)
 	st := &Store{db: db, Bus: b}
 	defer func() {
 		if resultErr != nil {

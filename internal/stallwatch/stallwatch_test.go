@@ -255,9 +255,18 @@ func TestAWaitThatNeverEndsIsCapturedTwiceThenForgotten(t *testing.T) {
 	if !strings.Contains(logged.String(), "process stall continues") {
 		t.Errorf("no line for the second capture: %s", logged.String())
 	}
+	// The wait never returned: neither the file nor the log may say the
+	// stall ended.
 	events := run(w, c, 40*time.Second)
-	if len(events) != 1 || events[0].kind != eventEnd {
-		t.Fatalf("events once the wait is abandoned: %+v, want the end alone", events)
+	if len(events) != 1 || events[0].kind != eventUnended || len(events[0].waiting) != 1 || events[0].waiting[0].Site != "database statement" {
+		t.Fatalf("events once the wait is abandoned: %+v, want the one that says it never returned", events)
+	}
+	raw, _ = os.ReadFile(Reports(dir)[0])
+	if strings.Contains(string(raw), "ended:") || !strings.Contains(string(raw), "no longer watched: ") || !strings.Contains(string(raw), "these waits never returned") {
+		t.Fatalf("report of a wait that never returned:\n%s", raw)
+	}
+	if strings.Contains(logged.String(), "process stall recorded") || !strings.Contains(logged.String(), "process stall no longer watched: a wait never returned") {
+		t.Fatalf("log of a wait that never returned: %s", logged.String())
 	}
 	w.mu.Lock()
 	left := len(w.waits)
@@ -389,19 +398,42 @@ func TestALateLookIsNotAPauseAndAPauseDoesNotCostTheStallItsReport(t *testing.T)
 	if events := step(w, c); len(events) != 0 {
 		t.Fatalf("a look 900ms late at a 100ms threshold was recorded: %+v", events)
 	}
+	// A wait that was open across a pause did not wait on its disk for
+	// that long: the pause is recorded, and it is not recorded a second
+	// time as a stall with stacks from after it.
 	end := w.Begin("log output")
 	c.add(1500 * time.Millisecond)
 	events := step(w, c)
-	if len(events) != 2 || events[0].kind != eventPause || events[1].kind != eventStall {
-		t.Fatalf("events after a 1.5s pause with a wait open: %+v, want the pause and the stall", events)
+	if len(events) != 1 || events[0].kind != eventPause {
+		t.Fatalf("events after a 1.5s pause with a wait open: %+v, want the pause alone", events)
 	}
 	end()
+	if events := run(w, c, time.Second); len(events) != 0 {
+		t.Fatalf("events after the paused wait returned: %+v", events)
+	}
+	// The pause cost the next stall nothing: a wait that begins right after
+	// it and does not return is reported once it has waited the threshold,
+	// inside the minimum interval of the pause's own record.
+	hung := w.Begin("database commit")
+	events = run(w, c, 200*time.Millisecond)
+	if len(events) != 1 || events[0].kind != eventStall || events[0].waiting[0].Site != "database commit" {
+		t.Fatalf("events for a hang right after a pause: %+v, want its report", events)
+	}
+	// A pause in the middle of a stall that is already reported leaves the
+	// stall's clock alone: it does not end and start again.
+	c.add(1500 * time.Millisecond)
+	for _, ev := range step(w, c) {
+		if ev.kind != eventStill {
+			t.Fatalf("a pause during a reported stall produced %+v; only the stall's second look may follow", ev)
+		}
+	}
+	hung()
 	run(w, c, time.Second)
 	all := readReports(t, dir)
-	if len(Reports(dir)) != 2 || !strings.Contains(all, "did not run for 1.5s") || !strings.Contains(all, "goroutines:") {
+	if len(Reports(dir)) != 2 || !strings.Contains(all, "did not run for 1.5s") || !strings.Contains(all, "goroutines:") || !strings.Contains(all, "database commit") || strings.Contains(all, "  log output") {
 		t.Fatalf("reports %v:\n%s", Reports(dir), all)
 	}
-	if !strings.Contains(logged.String(), "process pause recorded") || !strings.Contains(logged.String(), "process stall recorded") {
+	if !strings.Contains(logged.String(), "process pause recorded") || strings.Count(logged.String(), "process stall recorded") != 1 {
 		t.Fatalf("log: %s", logged.String())
 	}
 }
