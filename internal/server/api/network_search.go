@@ -61,8 +61,7 @@ type networkSearchEntry struct {
 	started    time.Time
 }
 
-func (a *apiHandlers) networkSearchGeneration() uint64 {
-	generation := a.d.Store.FleetFactsGeneration()
+func (a *apiHandlers) networkSearchGeneration(generation uint64) uint64 {
 	if b := a.d.Store.Bus; b != nil {
 		generation += b.Generation("network")
 	}
@@ -97,7 +96,7 @@ func (a *apiHandlers) searchableNetwork(id uint) (dto.NetworkDetail, error) {
 	defer c.mu.Unlock()
 	// Capture the generation before reading; a write during a build expires
 	// that entry on the next read. Waiters for the same snapshot share the build.
-	entry := networkSearchEntry{started: time.Now().UTC(), generation: a.networkSearchGeneration()}
+	entry := networkSearchEntry{started: time.Now().UTC(), generation: a.networkSearchGeneration(a.d.Store.FleetFactsGeneration())}
 	prev, ok := c.entries[id]
 	if ok && a.d.Store.Bus != nil && prev.generation == entry.generation && entry.started.Sub(prev.started) < networkSearchMaxAge {
 		return prev.detail, nil

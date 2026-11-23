@@ -130,7 +130,7 @@ func (a *apiHandlers) getNetwork(w http.ResponseWriter, r *http.Request) {
 	}
 	// Reuse the ordinary fleet snapshot on detail refreshes. Only the overview
 	// is searchable; the latest test may contain a multi-megabyte matrix.
-	entry := networkSearchEntry{started: time.Now().UTC(), generation: a.networkSearchGeneration()}
+	entry := networkSearchEntry{started: time.Now().UTC(), generation: a.networkSearchGeneration(a.d.Store.FleetViewGeneration())}
 	st, err := a.loadNetworkState()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)

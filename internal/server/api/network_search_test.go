@@ -251,8 +251,19 @@ func TestNetworkSearchSeesChangedFactsAndReusesRoutineReports(t *testing.T) {
 	if a.networkSearch.entries[0].started != started {
 		t.Fatal("ordinary unchanged reports invalidated search")
 	}
+	// A normal overview can still see the previous hostname inside the fleet
+	// report window. It must not seed search with those rows as the new generation.
+	n.store.EnableFleetNodeSnapshot(func() time.Time { return time.Unix(100, 0) })
+	if _, err := n.store.FleetNodes(); err != nil {
+		t.Fatal(err)
+	}
 	report.Sys.Hostname = "new-host"
 	send()
+	n.expect(n.member, http.MethodGet, "/api/v1/networks/0", "", http.StatusOK)
+	got := n.expect(n.member, http.MethodGet, "/api/v1/networks/0/search?kind=nodes&q=new-host", "", http.StatusOK)
+	if !reflect.DeepEqual(got["ids"], []any{"u1"}) {
+		t.Fatalf("search after overview returned %v", got)
+	}
 	check("new-host", "192.0.2.1")
 	report.Network.Management.IP = "192.0.2.2"
 	send()

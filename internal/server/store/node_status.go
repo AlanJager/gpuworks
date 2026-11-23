@@ -154,7 +154,10 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 			_ = s.RecordLegacyModelsRoot(node.ID, root)
 		}
 	}
-	if placementChanged || displayNameChanged {
+	if displayNameChanged {
+		s.fleetNodes.displayNames.Add(1)
+	}
+	if placementChanged {
 		// What placement decides on changed: the node snapshot's next read
 		// sees it, not one after the report window (fleet_nodes.go). The
 		// event stays a routine report for its subscribers, which batch
