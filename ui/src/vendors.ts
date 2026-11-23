@@ -33,9 +33,9 @@ export function vendorForFramework(framework?: string): Vendor {
   return frameworkVendors[key] || "unknown";
 }
 
-/** Sort comparator: known vendors in display order, then the rest by name. */
-export function compareVendors(left: string, right: string): number {
-  const a = (knownVendors as readonly string[]).indexOf(left);
-  const b = (knownVendors as readonly string[]).indexOf(right);
-  return (a < 0 ? knownVendors.length : a) - (b < 0 ? knownVendors.length : b) || left.localeCompare(right);
+/** Sort the listed vendors first, then the rest by name. */
+export function compareVendors(left: string, right: string, order: readonly string[] = knownVendors): number {
+  const a = order.indexOf(left);
+  const b = order.indexOf(right);
+  return (a < 0 ? order.length : a) - (b < 0 ? order.length : b) || left.localeCompare(right);
 }
