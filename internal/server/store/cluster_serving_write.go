@@ -15,7 +15,10 @@ import (
 func (s *Store) servingClusterWriteTransaction(ctx context.Context, fn func(*gorm.DB) error) error {
 	ctx, endWork := s.bindMaintenanceWork(ctx, MaintenanceWorkTransaction)
 	defer endWork()
-	return s.clusterWriteTransaction(ctx, func(tx *gorm.DB) error {
+	// What a member records while serving (material replicas, receipts and
+	// manifests, the action-grant roster, its enrollment origin) is a
+	// member's write like any other: a revoked member does not commit it.
+	return s.clusterWriteTransaction(withWriterGuard(ctx), func(tx *gorm.DB) error {
 		phase, err := (&Store{db: tx}).ReadMaintenancePhase(ctx)
 		if err != nil {
 			return err

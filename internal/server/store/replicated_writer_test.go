@@ -163,49 +163,63 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 }
 
 // The check is in the pool, so a new Store method cannot write without it.
-// What could go around the pool is a different way to reach the database:
-// each such construct in this package is counted here, and a new one fails
-// until someone has looked at it and raised the count on purpose.
+// What could go around the pool is a different way to reach the database.
+// Each such construct under internal/server is counted here, and a new one
+// fails until someone has looked at it and raised the count on purpose.
+// Enterprise modules live in another repository and are not scanned: they
+// reach the database through Store.DB() and ExtensionTables, which are this
+// pool.
 func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 	reviewed := map[string]map[string]int{
-		// Exempt transactions: the cluster's own writes only.
-		// and loading an image or an import into an empty database.
-		`withoutWriterGuard\(`: {"cluster_admission.go": 1, "replicated_writer.go": 1, "restore_image.go": 1, "import_sqlite.go": 1},
+		// Exempt transactions: membership decisions and grants, and loading an
+		// image or an import into an empty database.
+		`withoutWriterGuard\(`: {"store/cluster_admission.go": 1, "store/replicated_writer.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1},
 		// A held connection: a consistent read of the schema for a backup, and
 		// the read-only discovery of a closed cluster.
-		`\.Conn\(ctx\)`: {"backup_sqlite_schema.go": 1, "closed_cluster_discovery_dqlite.go": 1},
+		`\.Conn\(ctx\)`: {"store/backup_sqlite_schema.go": 1, "store/closed_cluster_discovery_dqlite.go": 1, "cluster/quorum_snapshot.go": 1},
 		// GORM's held connection: a read with its preloads.
-		`\.Connection\(`: {"node_accelerator_report.go": 1},
+		`\.Connection\(`: {"store/node_accelerator_report.go": 1},
 		// The raw pool: closing, statistics, and SQLite files opened here
 		// (never a member's database).
-		`\.DB\(\)`:    {"database_files.go": 1, "database_open.go": 3, "migration_snapshot.go": 1, "plugin_trust.go": 1},
-		`GetDBConn\(`: {"replicated_writer.go": 1, "stall_watch.go": 3},
+		`\.DB\(\)\.DB\(\)|[a-z]db\.DB\(\)|\bdb\.DB\(\)|GDB\.DB\(\)`: {"store/database_files.go": 1, "store/database_open.go": 3, "store/migration_snapshot.go": 1, "store/plugin_trust.go": 1},
+		`GetDBConn\(`: {"store/replicated_writer.go": 1, "store/stall_watch.go": 3},
 		// Calls on a pool object: the stall watch's pass-through, and import
 		// inside its own transaction.
-		`ConnPool\.(ExecContext|QueryContext|QueryRowContext|PrepareContext)\(`: {"import_sqlite.go": 1, "stall_watch.go": 4},
-		// The member key is set in one place.
-		`writerGuard\.key\.Store\(`: {"zz_ha_dqlite_only.go": 1},
+		`ConnPool\.(ExecContext|QueryContext|QueryRowContext|PrepareContext)\(`: {"store/import_sqlite.go": 1, "store/stall_watch.go": 4},
+		// The member key is set in one place; the check is never turned off.
+		`writerGuard\.key\.Store\(`: {"store/zz_ha_dqlite_only.go": 1},
 		`\.off\.Store\(`:            {},
 		// Startup work is exempt in the one constructor that does any.
-		`\.opening\.Store\(`: {"runtime_dqlite.go": 2},
-	}
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
+		`\.opening\.Store\(`: {"store/runtime_dqlite.go": 2},
+		// A write that returns rows outside a transaction is refused by the
+		// pool on a member; none exists.
+		"Raw\\(\\s*[\"`]\\s*(INSERT|UPDATE|DELETE|REPLACE)": {},
+		// Read-only transactions: reads of a held or raw connection.
+		`sql\.TxOptions\{ReadOnly: true\}`: {"store/closed_cluster_discovery_dqlite.go": 1, "store/uninstall_inventory.go": 1, "store/backup_sqlite_schema.go": 1, "cluster/quorum_snapshot.go": 1},
+		// Every Store on a cluster's database. Those bound to the member's key
+		// are checked: the runtime, a joined member, the legacy joined runtime
+		// and the join's authorization refresher. The others are offline tools
+		// on a database that is out of service (import, restore, address
+		// activation) and the upgrade session, which acts for the operator.
+		`OpenReplicated\(`: {"store/replicated.go": 1, "store/runtime_dqlite.go": 2, "store/cluster_join_store_dqlite.go": 2, "store/legacy_joined_runtime_dqlite.go": 1,
+			"store/import_runtime_dqlite.go": 1, "store/cluster_upgrade_session_dqlite.go": 1, "app/cluster_restore_linux.go": 2, "app/address_activation_linux.go": 2},
 	}
 	found := map[string]map[string]int{}
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
+	matchers := map[string]*regexp.Regexp{}
+	for pattern := range reviewed {
+		matchers[pattern] = regexp.MustCompile(pattern)
+	}
+	err := filepath.WalkDir("..", func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
 		}
-		raw, err := os.ReadFile(name)
+		raw, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
-		for pattern := range reviewed {
+		name := filepath.ToSlash(strings.TrimPrefix(path, "../"))
+		for pattern, match := range matchers {
 			var n int
-			match := regexp.MustCompile(pattern)
 			for _, line := range strings.Split(string(raw), "\n") {
 				if code, _, _ := strings.Cut(line, "//"); match.MatchString(code) {
 					n++
@@ -218,6 +232,10 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 				found[pattern][name] = n
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	for pattern, files := range reviewed {
 		for name, n := range found[pattern] {
@@ -230,5 +248,66 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 				t.Errorf("%s: reviewed %d use(s) of %s, found %d: lower the count", name, n, pattern, found[pattern][name])
 			}
 		}
+	}
+}
+
+// A decision on the scheduling pool must survive a commit on the other pool.
+// The scheduling pool begins without the writer; if the admission read came
+// first it would pin a snapshot, and a heartbeat committing before the
+// decision's first write would fail the decision for good. The pool takes the
+// writer first, so the other commit waits instead.
+func TestSchedulingPoolWriteSurvivesACommitOnTheOtherPool(t *testing.T) {
+	st := replicatedOnSQLite(t)
+	key := strings.Repeat("a", 64)
+	if err := st.db.Exec("INSERT INTO cluster_admissions (key_fingerprint) VALUES (?)", key).Error; err != nil {
+		t.Fatal(err)
+	}
+	st.writerGuard.key.Store(&key)
+	other := make(chan error, 1)
+	committedInside := false
+	err := st.schedulingDB.Transaction(func(tx *gorm.DB) error {
+		go func() { other <- st.db.Exec("INSERT INTO things (n) VALUES (7)").Error }()
+		select {
+		case err := <-other:
+			committedInside = true
+			other <- err
+		case <-time.After(300 * time.Millisecond):
+		}
+		return tx.Exec("INSERT INTO things (n) VALUES (8)").Error
+	})
+	if err != nil {
+		t.Fatalf("scheduling write after a commit on the other pool (committed inside=%t): %v", committedInside, err)
+	}
+	if committedInside {
+		t.Fatal("the other pool committed while the scheduling transaction should have owned the writer")
+	}
+	if err := <-other; err != nil {
+		t.Fatalf("the waiting write on the other pool: %v", err)
+	}
+	// Statements that would write without the read are refused on a member.
+	if err := st.db.Raw("INSERT INTO things (n) VALUES (9) RETURNING id").Scan(new(int)).Error; !errors.Is(err, errWriteNeedsTransaction) {
+		t.Fatalf("a write returning rows outside a transaction: %v", err)
+	}
+	if err := st.db.Raw("UPDATE things SET n = 1 RETURNING id").Row().Scan(new(int)); err == nil {
+		t.Fatal("a single-row write outside a transaction ran")
+	}
+	readOnly := &sql.TxOptions{ReadOnly: true}
+	if err := st.db.Transaction(func(tx *gorm.DB) error { return tx.Exec("INSERT INTO things (n) VALUES (10)").Error }, readOnly); !errors.Is(err, errWriteNeedsTransaction) {
+		t.Fatalf("a write in a read-only transaction: %v", err)
+	}
+	if err := st.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Raw("DELETE FROM things RETURNING id").Scan(new(int)).Error
+	}, readOnly); !errors.Is(err, errWriteNeedsTransaction) {
+		t.Fatalf("a write returning rows in a read-only transaction: %v", err)
+	}
+	var n int64
+	if err := st.db.Raw("SELECT count(*) FROM things WHERE n IN (9, 10, 1)").Scan(&n).Error; err != nil || n != 0 {
+		t.Fatalf("a refused statement changed rows: n=%d err=%v", n, err)
+	}
+	// Inside a write transaction the same statement runs, checked.
+	if err := st.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Raw("INSERT INTO things (n) VALUES (9) RETURNING id").Scan(new(int)).Error
+	}); err != nil {
+		t.Fatalf("a write returning rows inside a transaction: %v", err)
 	}
 }

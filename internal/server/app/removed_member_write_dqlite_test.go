@@ -205,6 +205,22 @@ func TestNativeRevokedMemberStopsServingAtItsNextAnswer(t *testing.T) {
 				t.Fatal("a refused confirmation inside the live window left the member serving")
 			}
 			t.Logf("serving ended %v after the revocation, with the next confirmation", time.Since(revokedAt).Round(time.Millisecond))
+			// A member that was refused comes back by itself once its row
+			// is in order: the next confirmation reopens it and its writes
+			// commit again. Nothing has to be restarted or reset.
+			revoked.OnWriterRefused(eligibility.Invalidate)
+			if err := revoked.SetBusinessSetting(ctx, key, `"refused"`); !errors.Is(err, store.ErrClusterAdmissionRejected) {
+				t.Fatalf("revoked member's write: %v", err)
+			}
+			if err := f.stores[0].DB().Model(&store.ClusterAdmission{}).Where("key_fingerprint = ?", f.keys[1]).Update("revoked_at", nil).Error; err != nil {
+				t.Fatal(err)
+			}
+			if ready, err := eligibility.Reprove(ctx); err != nil || !ready || !eligibility.Eligible() {
+				t.Fatalf("confirmation after the admission was restored: ready=%t err=%v", ready, err)
+			}
+			if err := revoked.SetBusinessSetting(ctx, key, `"back"`); err != nil {
+				t.Fatalf("readmitted member's write: %v", err)
+			}
 		})
 	}
 }
