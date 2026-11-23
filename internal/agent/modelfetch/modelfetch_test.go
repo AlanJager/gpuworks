@@ -40,6 +40,9 @@ type hub struct {
 	// stall makes every transfer of these files deliver its first half and
 	// then nothing (and, once resumed, nothing at all).
 	stall map[string]bool
+	// cut makes every transfer of these files deliver that many bytes of the
+	// range it was asked for and then drop the connection.
+	cut map[string]int
 
 	mu       sync.Mutex
 	starts   map[string][]int64 // first byte of each content request, per file
@@ -122,6 +125,17 @@ func (h *hub) content(w http.ResponseWriter, r *http.Request, name string) {
 	h.mu.Lock()
 	h.starts[name] = append(h.starts[name], start)
 	h.mu.Unlock()
+	if limit := h.cut[name]; limit > 0 {
+		end := int64(len(data)) - 1
+		if _, last, _ := strings.Cut(strings.TrimPrefix(spec, "bytes="), "-"); last != "" {
+			end, _ = strconv.ParseInt(last, 10, 64)
+		}
+		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(data)))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(data[start:min(start+int64(limit), end+1)])
+		return
+	}
 	if !h.stall[name] {
 		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 		return

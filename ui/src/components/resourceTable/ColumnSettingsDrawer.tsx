@@ -59,7 +59,7 @@ export default function ColumnSettingsDrawer({ open, columns, prefs, onChange, o
       open={open}
       onClose={onClose}
       width={560}
-      title={t("resourceTable.settingsTitle")}
+      title={t("resourceTable.settings")}
       className="resource-table-settings"
       footer={<Button onClick={onReset}>{t("resourceTable.reset")}</Button>}
     >

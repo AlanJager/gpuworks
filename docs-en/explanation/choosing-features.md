@@ -146,8 +146,8 @@ GPU interconnect bandwidth depends on hardware (such as NVLink), which is the ma
 
 - All nodes must share one compute network, or all must allow the management network to handle parameter synchronization. Otherwise, the entire group falls back to the management network (evaluation returns
   `COMPUTE_NETWORK_FALLBACK`), or the deployment is rejected. Allow bidirectional TCP between node addresses on the selected network.
-- By default, TP is the smallest GPU count among the selected nodes, and PP is the node count. This keeps tensor parallelism within nodes where possible and pipeline parallelism
-  across nodes. TP can also span nodes.
+- With manually selected nodes and TP or PP left blank, the platform recommends the fewest cards that fit the model on the cards free on each node, trying 1, 2, 4, 8 cards per node and then every card a node has. At equal size it prefers one
+  pipeline stage per node, which keeps tensor parallelism within nodes and pipeline parallelism across nodes. TP can also span nodes.
 - A multi-node deployment starts with **1 replica** (`replicas > 1` returns `DISTRIBUTED_REPLICA_COUNT`). After creation, use "Edit replicas" in deployment details
   (`PUT /api/v1/deployments/{id}/replicas`), listing the nodes for each replica, to scale to multiple multi-node replicas. Sleep is supported.
 - RDMA compute networks enforce IB transport. If the container cannot see verbs devices, startup fails immediately instead of silently falling back to TCP (a TCP fallback
@@ -323,7 +323,7 @@ For combinations not listed here, use the errors and warnings returned by evalua
 <!-- translation-source-sha256: e27ff4e52befc9fda54992dda7e1a179e3a51fa0b6fab891fba79462da39d6a9 ## Exclusive Full GPU (Default) -->
 <!-- translation-source-sha256: 6c69f5f0b9b1798c643cbd33df750dbacdaf54137557454c2ce913033f0b3be7 ## dGPU (GPU Memory Quotas) -->
 <!-- translation-source-sha256: 492f1ac6846d7ff2de71ae3f9d23daf2b9246c5e66adf6253cf9f712e095dcfd ## Sleep/Wake: Models Take Turns on One GPU -->
-<!-- translation-source-sha256: 555b1565b735d6405b9df0bf85c43bb44de7d51b4b5de0ca9ffb0140ff8fa4c4 ## Single-Node Multi-GPU TP and Multi-Node Inference -->
+<!-- translation-source-sha256: 82e13d39f3a385d6ee7f4c53a3a605f173be68eb8aafa1f00c6e330791a12ff4 ## Single-Node Multi-GPU TP and Multi-Node Inference -->
 <!-- translation-source-sha256: 3f861ab1188d62b3a50b2220399276029f6ec59ab2a42b87eae51b68db17a42c ## Replica Count and Gateway Routing Policies -->
 <!-- translation-source-sha256: 885bdb9b938f713a2c331c37674711a5199e34972fcfd5101698bf830dd967c8 ## PD Disaggregation -->
 <!-- translation-source-sha256: 38a7f2d3b09c81fee8d19fa6424ce9e9885382888e8e98aa1075a333a74e5d95 ## Rented Cloud Machines and Your Own Nodes -->

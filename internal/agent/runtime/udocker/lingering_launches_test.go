@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -245,8 +246,13 @@ func TestRemoveReportsACancelledTeardownAsAPendingRemoval(t *testing.T) {
 	d.runveil = true
 	const id = "gpuworks-cancelled"
 	root := preparedContainer(t, d, id)
+	// After startLaunch kills the group, wait for Track to write its exit
+	// status before TempDir removes the state directory.
+	var reaper sync.WaitGroup
+	t.Cleanup(reaper.Wait)
 	launch, _ := startLaunch(t, root, `trap '' TERM; : > "$READY"; while :; do sleep 1; done`)
-	if err := d.procs().Track(id, launch, nil); err != nil {
+	reaper.Add(1)
+	if err := d.procs().Track(id, launch, reaper.Done); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

@@ -442,6 +442,7 @@
     "RECOVERY_NO_RECONNECT": "The agent did not reconnect after it was reinstalled.",
     "RECOVERY_PROVIDER_INSTANCE_GONE": "The node’s cloud instance no longer exists.",
     "RECOVERY_STEP_FAILED": "A recovery step failed.",
+    "DISTRIBUTED_PARALLELISM_UNAVAILABLE": "Cannot recommend parallelism on {{node}}: {{reason}} Specify TP and PP to use a fixed configuration.",
     "DISTRIBUTED_GPU_COUNT": "Node “{{node}}” has {{available}} GPUs; TP × PP needs {{required}} per node.",
     "DISTRIBUTED_PARALLEL_INDIVISIBLE": "TP {{tp}} × PP {{pp}} cannot be shared equally by {{nodes}} nodes; make it a multiple of the node count.",
     "MODEL_SOURCE_ID_REQUIRED": "Enter a model source ID.",
@@ -1135,7 +1136,6 @@
   "resourceTable": {
     "actions": "Actions",
     "settings": "Customize columns",
-    "settingsTitle": "Customize columns",
     "reset": "Restore defaults",
     "selected": "Shown ({{count}})",
     "all": "All columns ({{shown}}/{{total}})",
@@ -1143,6 +1143,7 @@
     "hideColumn": "Hide {{name}}",
     "resizeColumn": "Resize {{name}}",
     "total": "{{count}} items",
+    "total_one": "{{count}} item",
     "selectPage": "Select this page",
     "selectRow": "Select {{name}}",
     "expandRow": "Expand row",

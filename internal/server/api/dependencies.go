@@ -294,6 +294,7 @@ type apiHandlers struct {
 	gpuCacheAt           time.Time
 	gpuCache             *gpuInventoryCache
 	gpuCacheGeneration   uint64
+	networkSearch        networkSearchCache
 	overview             overviewCache // the scheduling overview (scheduling_overview.go)
 	benchmarkMu          sync.Mutex
 	benchmarkExecutions  map[uint]*benchmarkExecution

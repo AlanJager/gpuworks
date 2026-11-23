@@ -17,9 +17,9 @@ The **Listen addresses** card under Settings → General (the `listen.*` setting
 UI fields that require a server address are prefilled with the address currently used by your browser. You can change it to a domain name or reverse proxy address; the corresponding API field, `server_url`, must be supplied explicitly.
 Changing `listen.agent` affects **already installed** agents: they only dial the address in their installation command. If that address no longer forwards to the new listen address, they go offline until forwarding is fixed or the agents are reinstalled.
 
-The **Network topology and settings** card at the top of **Compute → Networks** shows each setting on a simple topology diagram and a complex topology diagram,
-alongside a numbered reference table explaining where you configure it, what it does, and what it does not determine. Hover over a number or table row to highlight the corresponding items.
-If these address concepts are unfamiliar, start with this diagram.
+Open **Network guide** under **Compute → Networks** for example topologies of a simple deployment and a deployment with dedicated networks. Hover over a numbered item or its table row to highlight the corresponding path and see where to configure it and what it controls. To inspect interfaces, addresses, and connectivity in your environment, open a network from the resource list.
+
+The Attached to column shows names for up to five attachments. For larger sets, it shows separate counts for directly attached nodes and labels. Select the counts to open the network overview. The resolved node count includes nodes matched by labels.
 
 ## Networks
 
@@ -49,7 +49,7 @@ After nodes are attached, values are inferred for each node from the network inv
 | HCA | Select ACTIVE ports. If the node has InfiniBand ports, select only InfiniBand; otherwise, select RoCE. RoCE ports require an IPv4 address on their interface. Keep only the group with the highest speed (use interface speed for RoCE), excluding, for example, 1G management ports. |
 | Bootstrap | Select in this order: the bootstrap specified on the node; if a bootstrap CIDR is set on the network, an interface whose address falls within it (leave it empty and warn if none matches; do not fall back); the address of the first HCA's interface; for InfiniBand without IPoIB, the management network address. |
 
-The node list on the network details page shows each node's bootstrap IP and grouped HCAs with HCA IPs, marked **Auto** or **Manual**:
+Expand a node in the network overview. The indented details show that node’s bootstrap IP, HCAs, and HCA IPs, marked **Auto** or **Manual**:
 
 - Click ✕ next to an HCA to remove it. By default, this removes it from **every** node on the network that uses it (HCAs on each node must be paired one to one). You can select the option to remove it from this node only. **Add HCA** lets you select from the ports reported by that node; unavailable ports show the reason (inactive or no IPv4 address on the interface). After the first addition or removal, the node's HCA list is fixed to the list at that moment (**Manual**) and no longer changes with the inventory. **Back to auto** restores inference. You cannot remove a node's last HCA; detach the node if you no longer need it on the network.
 - **Change** next to bootstrap lets you select an interface on that node that has an address; **Back to auto** clears the override.
@@ -96,14 +96,22 @@ automatically by deployment and card tests once the network is attached.
 
 ### Attach to Nodes or Labels
 
-On the network details page, click **Attach**, select multiple nodes or switch to a node label and enter `key=value`, then click **Save**. Check the attachment results and node list. If individual nodes fail, address only those failures; you do not need to repeat successful attachments.
+In the network details, click **Attach nodes** in the node table toolbar, select one or more nodes, and click **Save**.
+
+The **Overview** tab lists the nodes of a dedicated network in a paginated table. **Loaded nodes** shows the total number of nodes in the table. The configured label count and **Manage labels** appear below the heading. Each row shows the roles, attachment source and attachment time. For host RDMA networks, the summary shows the node’s resolved bootstrap IP for this network and its HCA port count. Accelerator networks show the bootstrap IP and card count. Use the button before the node name or click the row background to expand it. The expanded row shows the bootstrap interface, per-port addresses and configured overrides, and lets you add or remove HCAs. Ethernet rows show the interface and IP address and indicate when no IP was resolved. Expanded accelerator rows show the RoCE or HCCS address for the selected network type. The port count includes manually assigned ports that are currently unusable. Expand the row to check their status.
+
+Search across pages by part of a node name, UUID, interface name, HCA name, IP address or node label (for example, `rack=east`). The role and attachment source columns each support multiple selections and can be combined with the search. The management network’s resolved nodes table also supports cross-page search and label filtering. Use the row actions to edit or detach a direct node attachment. For nodes attached by label, the source column shows the matching rule. Edit the rule in **Manage labels** above the table. Changing an attachment label affects all nodes matched by that rule.
+
+Open **Manage labels**, enter a label key and value in the form, and click **Save** to add a rule. The same dialog lets you search and detach existing rules, including those that currently match no nodes. Click **Edit** on a rule to fill the form with its key and value, change the fields, and click **Save** to update that rule. Direct attachments that have not resolved to nodes can also be viewed and managed separately.
 
 A network can be attached to any number of nodes and node labels. Each node ultimately uses only one network for each role:
 
 1. Direct node attachments take precedence over label attachments.
 2. If multiple networks for the same role match at the same priority, the earliest attachment takes effect. The node details page and the node list on the network details page show an orange exclamation mark beside that node; hover over it to see which networks are not in effect.
 
-**Attach** lets you select multiple nodes at once. Failure for an individual node (for example, a deleted node) does not affect the others. Results are listed for each node, and nodes that are already attached count as successful.
+Detaching a direct node attachment removes its overrides and causes the node to be resolved again. If a label rule on this network takes over the role, the node stays in the table and its attachment source changes to that label.
+
+**Attach nodes** lets you select multiple nodes at once. Failure for an individual node (for example, a deleted node) does not affect the others. Results are listed for each node, and nodes that are already attached count as successful.
 
 When attaching a Host Ethernet network to a node, you can override the default selector by specifying an interface or IP. For Host RDMA, Accelerator RDMA, and Accelerator HCCS networks, you can specify a bootstrap interface or IP on the node (see the previous sections) and add or remove rails in the node list. Overrides are validated against the agent's reported network inventory; values absent from the inventory also show an orange exclamation mark. You can save even when the node is offline.
 
@@ -212,7 +220,7 @@ Ring tests can detect problems with individual nodes or HCAs, but cannot detect 
 
 **RDMA bandwidth (ib_write_bw)** first checks the HCAs and tools:
 
-- Each node pair starts a server on the target HCA, then connects from the source HCA. HCAs run in parallel, and bandwidth is the sum across HCAs. HCA IPs on the same subnet are paired first (including point-to-point /30 and /31 subnets); the rest are paired in order. Extra HCAs fail with “This HCA has no HCA to pair with on the other node”. The handshake uses the target node's bootstrap address.
+- Each node pair starts a server on the target HCA, then connects from the source HCA. HCAs measure bandwidth in parallel. HCA IPs on the same subnet are paired first (including point-to-point /30 and /31 subnets); the rest are paired in order. Extra HCAs fail with “This HCA has no HCA to pair with on the other node”. The handshake uses the target node's bootstrap address.
 - RoCE uses an IPv4 RoCE v2 GID, matching the default selection in NCCL 2.21 and later. If the RoCE interface has no IPv4 address, the test reports failure directly rather than letting the tool select a GID itself.
 - The tool first uses `ib_write_bw` from the host's `PATH`, then the version bundled with the agent. The bundled version dynamically links to the host's `libibverbs` and `librdmacm` and can run once userspace libraries such as rdma-core or MLNX_OFED are installed. If neither version can run, the affected nodes are listed before the test starts, and the test also fails with “Cannot run ib_write_bw; install perftest”. The package manager installs the userspace libraries along with perftest.
 
@@ -245,15 +253,21 @@ The form shows the node count, probe count, round count, and estimated maximum d
 
 1. Select the test method, **Nodes** (all nodes on the network, selected nodes, or filter by label), and **Pairs** (All pairs or Ring). At least two nodes are required. To test TCP throughput, select **Measure throughput** and set the seconds per pair.
 2. Check the address, HCA, and tool notices before starting: nodes without an address (bootstrap for RDMA) or a usable HCA are listed. For card tests, also check the estimated duration. Correct configuration that affects this test, then click **Start test**.
-3. Wait for results. Review **Problems** first, then open failed node pairs for details. Use the result descriptions below to fix wiring, addresses, or tools. Run the same scope again to confirm the problems are resolved.
+3. Wait for the results. Inspect the node-pair measurements, or open the issue summary to locate affected pairs. Use the result descriptions below to fix wiring, addresses, or tools. Run the same scope again to confirm the problems are resolved.
 
 Each network retains its 10 most recent results. Tests in progress when the server restarts are marked as interrupted.
 
 ### View TCP and RDMA Bandwidth Results
 
-**Problems** groups failures by node, HCA, and reason, and states how many pairs are affected. For an HCA that should not be used, click **Remove HCA** directly; run the test again to see the effect.
+The results show the latest test start date and time in the browser’s time zone. Summary cards show the test scope and outcomes. Card connectivity tests report card-pair counts.
 
-Below, All pairs shows a node matrix, and Ring shows a node-pair list. Each pair is classified as **Passed / Partial (some HCAs failed) / Failed**. Click or press Enter to view source and target addresses and RTT. RDMA tests also list the source and target of each HCA pair, their respective IPs, and results.
+All pairs opens the **Global matrix** by default. Rows identify source nodes and columns identify targets. Each cell represents one direction. The headers stay visible as you scroll. Hover over a truncated name to see it in full. Filter by source name, target name, and one or more statuses together. For example, selecting only partial results shows RDMA pairs for which some rails passed and others failed in the same direction. Ring tests list the directed pairs that were tested. Drag the horizontal scrollbar at the bottom of the matrix to inspect other target nodes, or focus a cell and use the arrow keys.
+
+**Average RDMA bandwidth** includes only the rails that passed. If three rails measure 90, 95, and 100 Gbps and the fourth fails, the pair shows 95 Gbps with 3/4 rails passed. A pair with no passing rails has no bandwidth reading. Click a result or press Enter to inspect the HCAs and IP addresses at both ends of each rail, its bandwidth, and any failure reason. TCP shows the measured throughput for that direction when throughput testing is enabled, or reachability when only connectivity was tested.
+
+The count on **Issue summary** is the number of distinct problems grouped by node, HCA, and reason. Expand a problem to see the affected directed pairs, then select a pair for details.
+
+An administrator can select **Remove HCA** on a failed rail to change the port selection for this network. By default, confirming removes the named port from every node attachment on this network that currently uses it. For an issue confined to one node, select the option to remove it from that node only. If any affected node would lose its last HCA, the entire operation is rejected. Check the resulting HCA lists in the network overview. The physical ports keep their settings and running instances continue to use their startup configuration. Existing test results retain their original measurements. Rerun the same scope to verify the new configuration.
 
 ### View Accelerator Card Reachability Results
 
@@ -274,19 +288,19 @@ If most node pairs have the same shape, the results give the corresponding concl
 Click or press Enter to open a node pair: the full card matrix shows a source-card × target-card grid, while same-named cards shows a list of individual pairs. Hover to see both addresses, RTT, or the failure reason. When testing only one node pair, this grid is shown directly.
 
 <!-- translation-source-sha256: 51bfbaa0eaf8df0684e8466c9fe4f5b46218c11fcba5b700eacd9ddf07af8e52 # Configure Node Networks -->
-<!-- translation-source-sha256: 21b1b5c19438b943597d3bcccd8aba22e7b29574c42b15b52683f408920811fc ## Listen Addresses and How Others Connect -->
+<!-- translation-source-sha256: 87da0dcda82bf17a5b4c55f56d6365e68bb937e3db156e9b7f16883a19f80cf5 ## Listen Addresses and How Others Connect -->
 <!-- translation-source-sha256: 122f3ee7f865413c75fa818965a19469e6408d3d5f56954de59fd76e43d9453c ## Networks -->
-<!-- translation-source-sha256: 4f525482177fab50c69fd8a3abef52e78cc5382caf74e0729962592d8791915e ### RDMA Networks: Automatic Bootstrap and HCA Inference -->
+<!-- translation-source-sha256: e29db6c90ea54bf69cc9862576dd61beb68a020bc9f3e886444f89f88ad7ef9a ### RDMA Networks: Automatic Bootstrap and HCA Inference -->
 <!-- translation-source-sha256: 6935e75bb6d73ecb608f2481c66a507cd625cd31b7dedc0bc184b2f8214b2e01 ### Accelerator RDMA Networks: Ports Built Into Accelerator Cards -->
 <!-- translation-source-sha256: 0fb560905054db1c05783b855f3deccc5bbc6f01dde86d695b7f4cb8d682a258 ### Accelerator HCCS Networks: A3/910C LingQu Fabric -->
-<!-- translation-source-sha256: 9a841d3882e5ecfdf15a779eb95c9d0635b93fa25a7d5a3aa34ca0d995d0082d ### Attach to Nodes or Labels -->
+<!-- translation-source-sha256: 14a367a134ba3d1ba1735c6f7d4997ec7cbe2e1f1e303dbea25f1905a1ac18e5 ### Attach to Nodes or Labels -->
 <!-- translation-source-sha256: f6bfe43f4ce1306cc5cb73d27db28f6000e49479849dd2190e9ad508617bc3dd ### Management Network -->
 <!-- translation-source-sha256: 9894ba3099a8fa0448bcef68e8ea1c90f3b25fe775a3b5d7d3a346116c678050 ### How Each Role Takes Effect -->
 <!-- translation-source-sha256: 5fbaa5d7f8afa3598722cfde78023df76f941e7c3728fcf3f0b96d9cd9b8adfe ## Node Proxies and Download Addresses -->
 <!-- translation-source-sha256: a5c5abd191d70bdb36cbf7f045ffdaf9fbffe1630fb73a230dabe788485b6c7f ## Internal Tests -->
 <!-- translation-source-sha256: 983faa02172551ad56ac40f9510358512a0c1ab9b2481994f00589059405b0c5 ### Select the Test Method and Scope -->
-<!-- translation-source-sha256: c1336a24414c64ea569176bebc14f2191770d7d641f559f428e7193973ff6d46 ### Prepare TCP or Host RDMA Tests -->
+<!-- translation-source-sha256: 2fc0ec62b4c6a3be0ed677ccb932ec77b792f2a7acd690bd1242bee457a2641f ### Prepare TCP or Host RDMA Tests -->
 <!-- translation-source-sha256: 32a81b1ea984a99ce5e64583cb669bb526668b1b03d3ad4aaf0385913293f164 ### Prepare Accelerator RDMA Tests -->
-<!-- translation-source-sha256: 0de94f8a0c280b5747e4aa9605ffa3095208810db37f29024e283f078dd9b6a4 ### Start a Test -->
-<!-- translation-source-sha256: d8ef6a2c2a080d56e9d4f6425ce92d34ef30770aa7193adbd1f02c4ee2b987dd ### View TCP and RDMA Bandwidth Results -->
+<!-- translation-source-sha256: 6e819baf37cc033ab44953d750e83cbb810249809470476402dae3eb094ec5b1 ### Start a Test -->
+<!-- translation-source-sha256: e3d1fe28d0b35e820330c39f628e2dc6ace0adcb28a2ea1c6383e929acf5e5dd ### View TCP and RDMA Bandwidth Results -->
 <!-- translation-source-sha256: afcd2fda5c505c0e13a02d0e06059aa97cf7e801f8a1a2033e0e31635766d6a4 ### View Accelerator Card Reachability Results -->

@@ -232,7 +232,7 @@ func TestCardTestRequests(t *testing.T) {
 	// exact keys the UI reads.
 	results := `[{"source_uuid":"node-000","target_uuid":"node-001","target":"10.9.0.2","reachable":true,"rails":[` +
 		`{"rail":"npu0","source_ip":"172.20.0.0","target_rail":"npu0","target_ip":"172.20.1.0","gbps":0,"reachable":true,"rtt_ms":0.25},` +
-		`{"rail":"npu0","source_ip":"172.20.0.0","target_rail":"npu1","target_ip":"172.20.1.1","gbps":0,"code":"unreachable","error":"no answer within the time limit"}]}]`
+		`{"rail":"npu0","source_ip":"172.20.0.0","target_rail":"npu1","target_ip":"172.20.1.1","gbps":0,"code":"unreachable","error":"no answer within the time limit"},{"rail":"npu7","code":"no_peer_rail"}]}]`
 	if err := n.store.FinishNetworkTestRun(stored.ID, results, 1, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -240,8 +240,8 @@ func TestCardTestRequests(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+n.member)
 	rec := httptest.NewRecorder()
 	n.router.ServeHTTP(rec, req)
-	want := `"rails":[{"rail":"npu0","source_ip":"172.20.0.0","target_rail":"npu0","target_ip":"172.20.1.0","gbps":0,"reachable":true,"rtt_ms":0.25},` +
-		`{"rail":"npu0","source_ip":"172.20.0.0","target_rail":"npu1","target_ip":"172.20.1.1","gbps":0,"code":"unreachable","error":"no answer within the time limit"}]`
+	want := `"rail_count":2,"rail_passed_count":1,"rails":[{"passed":true,"rail":"npu0","source_ip":"172.20.0.0","target_rail":"npu0","target_ip":"172.20.1.0","gbps":0,"reachable":true,"rtt_ms":0.25},` +
+		`{"passed":false,"rail":"npu0","source_ip":"172.20.0.0","target_rail":"npu1","target_ip":"172.20.1.1","gbps":0,"code":"unreachable","error":"no answer within the time limit"},{"passed":false,"rail":"npu7","gbps":0,"code":"no_peer_rail"}]`
 	body := rec.Body.String()
 	// One of two card pairs answered, the same-named one: the diagonal, read
 	// from the results by the server, for the pair and for the run.

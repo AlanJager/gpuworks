@@ -1426,7 +1426,7 @@ curl --fail-with-body -sS \
 | `node_requirements` | 节点条件：`{"<key>": ["<value>", …]}`，同一键的多个值是「其中之一」，不同键「同时满足」。键可以是节点标签，也可以是系统标签（见上「节点标签」）；保留域里不是这八个系统键的一律拒绝（拼错的键不会悄悄匹配 0 台），`gpuworks.ai/vendor` 只能有一个值，网络键的值是网络 ID 或 `management`。多机与 PD 部署逐 rank 列节点，不接受 `gpuworks.ai/node`。错误 `NODE_REQUIREMENTS_INVALID`；所选节点不满足 `NODE_REQUIREMENTS_UNMET`（`params.detail` 写明哪个键） |
 | `yield_policy` | 出让策略，对象，形状同 `PUT /deployments/{id}/yield-policy` 的请求体（`policy` 加参数）；省略按 `never`。`never` 以外的策略要求 `sleepable`，策略不是 `never` 还要求单机部署，否则 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`。评估按它计算放置：按出让策略共卡的部署睡着时，对不与它共卡的部署仍按全量占用 |
 | `placement_strategy` | `spread` 或 `binpack`，随部署保存；其它值 `PLACEMENT_STRATEGY_INVALID`。没写时单机是 `spread`，多机与 PD（不论自动还是手动）是 `binpack` |
-| `placement.gpus`、`placement.tp`、`placement.pp` | 明确的物理 GPU 索引；TP、PP 是整个部署的并行度（每节点 TP × PP ÷ `nnodes` 张卡，必须整除）。多机未给 TP 时默认每节点一个流水线阶段、TP 取所选节点中最少的 GPU 数，生效值写回 placement；单机未给 TP 时由调度器按 PP 的整数倍挑卡（TP = 卡数 ÷ PP），自动放置同样按所填 TP、PP 选节点；评估在 `form_values.tp/pp` 与 `parallelism`（`tp`、`pp`、`nodes`、`gpus_per_node`）中返回；多机评估与手动放置的 `acquisition.nodes` 逐节点给出获取预估 |
+| `placement.gpus`、`placement.tp`、`placement.pp` | 明确的物理 GPU 索引；TP、PP 是整个部署的并行度（每节点 TP × PP ÷ `nnodes` 张卡，必须整除）。多机手动放置未给 TP 或 PP 时（不是正整数的 TP、PP 按未给处理），按模型和各节点当前空闲的卡试算，每节点按 1、2、4、8 张翻倍试算，再试节点的全部卡，给了 TP 时试每一个能得出该 TP 的卡数，推荐放得下的最少卡数：同样卡数优先每节点一个流水线阶段，模板有放置偏好时偏好优先，KV 估算装不下上下文的组合排在最后；没有可行组合时评估与创建都返回 `DISTRIBUTED_PARALLELISM_UNAVAILABLE`（`params.node` 为拒绝的节点，`params.reason` 为调度器原因码或 `no_layout`，`params.reason_params` 为该原因自带的参数；评估把它挂在留空的 TP 或 PP 上），不会排队等卡；模型权重大小未知时取默认值：每节点一个流水线阶段、TP 取所选节点中最少的 GPU 数。TP、PP 都给时按固定配置校验，卡暂时不够可以排队。生效值写回 placement；单机未给 TP 时由调度器按 PP 的整数倍挑卡（TP = 卡数 ÷ PP），自动放置同样按所填 TP、PP 选节点；评估在 `parallelism`（`tp`、`pp`、`nodes`、`gpus_per_node`）中返回生效值，`form_values.tp/pp` 不回显手动多机推荐的留空项；多机评估与手动放置的 `acquisition.nodes` 逐节点给出获取预估 |
 | `routing_policy` | 多副本网关策略：`least_request`（默认）、`prefix_affinity` 或 `failover`；不属于引擎启动参数 |
 | `tokenize_enabled` | 网关是否把 `/v1/tokenize`、`/v1/detokenize` 转给该部署（见 [OpenAI 兼容网关](openai-gateway.md#分词tokenize)）：省略为开启，`false` 关闭；与引擎无关，引擎不提供时由引擎自己回错 |
 | `priority_scheduling` | 引擎是否按请求优先级调度（见[请求优先级](../explanation/request-priority.md)）：省略时，最终有效的 LLM 入口及参数允许就开启，否则关闭；显式 `true` 而不允许时创建与编辑回 400，码为拒绝原因（`PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED`、`PRIORITY_SCHEDULING_LAUNCH_UNSUPPORTED`、`PRIORITY_SCHEDULING_TARGET_UNVERIFIED`、`PRIORITY_SCHEDULING_PD_UNSUPPORTED` 或 `PRIORITY_SCHEDULING_POLICY_CONFLICT`，`params.field` 为 `priority_scheduling`）。编辑省略时保持原值（参数不再允许时关闭）；修改需要重建副本 |
@@ -1870,15 +1870,21 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | GET | `/api/v1/networks` | 网络列表（含加载关系、解析节点数、有提示的节点数）与角色/类型字典（`types`：`host_ethernet` / `host_rdma` / `accelerator_rdma` / `accelerator_hccs`；`type_roles`：每种类型可承担的角色）；第一项是管理网（`id` 0、`builtin: true`） | JWT |
 | POST | `/api/v1/networks` | 新建网络（名称、角色、类型、CIDR、网卡名通配）。加速器 RDMA 和加速器 HCCS 只能承担参数角色，否则返回 `NETWORK_TYPE_ROLE_INVALID` | JWT(admin) |
 | GET | `/api/v1/networks/{id}` | 网络详情：加载关系、解析到的节点（网卡/IP/HCA/提示，以及节点的用户标签 `labels`）、最近一次内部测试；`id` 0 是管理网，节点带 `roles_off`；不能修改、删除、加载（返回 404），可以发起内部测试 | JWT |
+| GET | `/api/v1/networks/{id}/search` | 搜索当前网络解析到的节点（`kind=nodes`）或配置的加载对象（`kind=attachments`）。可选的 `q` 按子串匹配，忽略大小写。查询节点时，可重复传入 `role` 和 `source`。同类条件匹配任一值，角色、来源和关键词同时生效。返回 `{"ids":[...]}`，元素分别为节点 UUID 或字符串形式的加载项 ID。未设置关键词和筛选条件时返回所选范围内全部 ID。 | JWT |
 | PATCH | `/api/v1/nodes/management-roles` | 批量修改管理网角色：`{"node_uuids":[...],"allow":[...],"deny":[...]}`，只改列出的角色，所有节点同一事务，返回 `{"updated":N}`（实际有变化的节点数）；节点不存在返回 404 `MANAGEMENT_ROLES_NODE_NOT_FOUND` | JWT(admin) |
 | PUT | `/api/v1/nodes/{uuid}/management-roles` | 设置该节点管理网不承担的角色（`{"roles_off":[...]}`），返回该节点的网络视图；只对新实例生效 | JWT(admin) |
 | PUT | `/api/v1/networks/{id}` | 修改网络 | JWT(admin) |
 | DELETE | `/api/v1/networks/{id}` | 删除网络及其加载关系与测试记录（运行中的实例不受影响） | JWT(admin) |
 | POST | `/api/v1/networks/{id}/attachments` | 加载到一个节点（可带网卡/IP/HCA 覆盖）或一个节点标签 | JWT(admin) |
 | PUT | `/api/v1/networks/{id}/attachments/{attachmentID}` | 修改节点加载的覆盖值 | JWT(admin) |
+| PUT | `/api/v1/networks/{id}/attachments/{attachmentID}/label` | 修改标签加载项的 `label_key` 与 `label_value`，保留加载项 ID 和加载时间。更新直接节点加载项返回 400，加载项不存在或属于其他网络返回 404，同一网络已加载该标签选择器返回 409 | JWT(admin) |
 | DELETE | `/api/v1/networks/{id}/attachments/{attachmentID}` | 移除加载 | JWT(admin) |
 | POST | `/api/v1/networks/{id}/tests/estimate` | 同一个请求体，不发起测试：返回解析出的节点数与节点对数；卡测试另返回 `card`（`rounds`、`probes`、最长耗时 `seconds`、上限 `max_seconds`）。发起会被拒绝的请求在这里以同样的错误被拒绝 | JWT(admin) |
 | POST | `/api/v1/networks/{id}/tests` | 发起内部测试（`kind`：tcp / rdma_tool / card_ping / card_matrix；rdma_tool 需主机 RDMA 网络，card_ping（同号加速卡互 ping）与 card_matrix（全卡矩阵）需加速器 RDMA 或加速器 HCCS 网络；HCCS 网络使用 `hccn_tool -hccs_ping`，RoCE 网络使用 `-ping`；轮数 × 3 秒超过 10 分钟时返回 `NETWORK_TEST_TOO_LONG`；`scope`：all / nodes / label；`id` 0 测管理网，只支持 tcp），返回 202 与运行记录（`node_uuids` 是被测节点，发起时固定，运行中尚无 `pairs` 时已给出）；由 controller 执行 | JWT(admin) |
+
+网络详情的 `attachments[].unresolved` 为 `true` 时，该直接加载项指定的节点未出现在本网络的有效节点中。
+
+最近一次内部测试 `latest_test.failed_count` 统计结果为失败的节点对，部分通过的节点对计入 `partial_count`。每个节点对的 `rails[].passed` 表示该链路是否通过，`rail_count` 和 `rail_passed_count` 分别是链路总数和通过数（零时省略）。加速卡测试只计入实际探测的卡对。主机 RDMA 使用通过链路的实测平均带宽 `avg_rail_gbps`，仅保存汇总带宽的历史记录没有此字段。全通节点对的带宽读数低于本次测试最快有效读数的十分之一时，服务端返回 `slow: true`。
 
 ## Settings / Network Presets
 
