@@ -496,3 +496,35 @@ func TestMemberAsksAnotherMembersModule(t *testing.T) {
 		t.Errorf("a caller without a member certificate was answered %d", resp.StatusCode)
 	}
 }
+
+// A module's Init runs before the member's route exists. A question asked
+// then says so, apart from a single server and from a member that does not
+// answer, so the module can tell "not asked" from "no answer".
+func TestAskingBeforeTheMemberRouteIsUp(t *testing.T) {
+	ctx := context.Background()
+	single := &App{}
+	if _, err := single.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrNotClusterMember) {
+		t.Fatalf("a server on an ordinary store = %v", err)
+	}
+	never := &App{ha: &memberRuntime{}}
+	if _, err := never.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrNotClusterMember) {
+		t.Fatalf("a member never enrolled in a cluster = %v", err)
+	}
+	// Enrolled, and the modules' Init is running: no route yet.
+	runtime := &memberRuntime{bundle: &enrollmentBundle{}}
+	member := &App{ha: runtime}
+	if _, err := member.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("before the route exists = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// The route exists but has no certificate-bound transport yet.
+	runtime.forward = newMemberForward(nil, func(context.Context) (uint64, error) { return 0, errors.New("none") }, func() int { return 0 }, func() {})
+	if _, err := member.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("before the transport is set = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// Once it is up, a member that is not there is "no answer".
+	c := newForwardCluster(t, 1, 2)
+	up := &App{ha: &memberRuntime{bundle: &enrollmentBundle{}, forward: c.members[1].forward}}
+	if _, err := up.askMember(ctx, 9, "fake", nil); !errors.Is(err, ErrMemberUnreachable) {
+		t.Fatalf("a member with no route = %v, want %v", err, ErrMemberUnreachable)
+	}
+}

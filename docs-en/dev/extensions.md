@@ -68,7 +68,7 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `AddBannerSource(b)` | Banners at the top of every console page |
 | `GuardNodeInsert(g)` | A guard on every new node's insert |
 | `LimitPlatform(src)` | The source of the whole server's availability (see "Availability"); at most one across all modules |
-| `AnswerMembers(fn)` / `AskMember(ctx, member, question)` | In a control-plane cluster, what this module answers the other members, and a question to this module on another member. It travels over the members' existing channel (mutual TLS with member certificates), so the answer comes from the member asked and nobody else can ask; question and answer are at most 64 KiB each. The member asked need not lead. On a single server `AskMember` returns `ErrNotClusterMember`; for a member that is down, or whose build registered no answerer, `ErrMemberUnreachable`. `AskMember` is called while serving |
+| `AnswerMembers(fn)` / `AskMember(ctx, member, question)` | In a control-plane cluster, what this module answers the other members, and a question to this module on another member. It travels over the members' existing channel (mutual TLS with member certificates), so the answer comes from the member asked and nobody else can ask; question and answer are at most 64 KiB each. The member asked need not lead. On a single server `AskMember` returns `ErrNotClusterMember`; on a cluster member, until its route to the others is up, `ErrMemberRouteNotReady` (a module's `Init` runs before the route, so a question asked there always gets it: the question was not asked, which says nothing about the member); for a member that is down, or whose build registered no answerer, `ErrMemberUnreachable`. `AskMember` is called while serving |
 | `HoldScheduling(h)` | A scheduling holder, keyed by its source; a repeated source is refused |
 | `ReapplySchedulingHolds()` | The holder's answers changed: asks for the holds to be applied to every node again, rather than at each node's next status report |
 | `ReapplySchedulingHoldsFor(ids)` | The same, but only for the nodes (by node ID) whose answers changed |
@@ -507,7 +507,7 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 <!-- translation-source-sha256: 600e483e0b83247381c3c8f35d4c3a9cd2add820dab7afdc49b2c72a818f3699 # Extension Points: The Module Contract and Installable Extensions -->
 <!-- translation-source-sha256: 6e2c8b3b69d01b86bf00ccf832608a3f9f438723c909f6c6ff0f4fb9bf33a032 ## Tiers -->
 <!-- translation-source-sha256: c038a66ecb98cf6640ab0f130c8fdecc416cee3f7838156205d8e11c42acf375 ## How a build composes -->
-<!-- translation-source-sha256: 5470e79f8a809cda46ce1ceadc6537f6b0f3cff2a362061370395a523be9be5b ## Modules and the Host -->
+<!-- translation-source-sha256: 12d2deb582bf6d5768b09b576e9ae8f8a2553d6469c1b12e6609b521f8dba61d ## Modules and the Host -->
 <!-- translation-source-sha256: bb4b0a8ca852821bcb93b5224c5602547dba0e040ab2a679a6cf26ac4a2fec66 ## Reapplying holds and the node fleet -->
 <!-- translation-source-sha256: 2943f81690cda9ea5bf5f35a0039d7d1e8340998af623c72f252ab2b4f93de83 ## Node identity and node inventory -->
 <!-- translation-source-sha256: 9ecb281ae30f5bf0846d54c4585c8451f859dab2bb0912982eb541919e54d968 ### The management server's host identity -->

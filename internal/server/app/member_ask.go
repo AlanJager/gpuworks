@@ -55,6 +55,12 @@ func (f *memberForward) ask(ctx context.Context, member uint64, name string, que
 	if len(question) > MemberQuestionLimit {
 		return nil, fmt.Errorf("a question to a member is at most %d bytes", MemberQuestionLimit)
 	}
+	f.mu.Lock()
+	configured := f.peerTLS != nil
+	f.mu.Unlock()
+	if !configured {
+		return nil, ErrMemberRouteNotReady
+	}
 	proxy := f.proxyTo(member)
 	if proxy == nil {
 		return nil, fmt.Errorf("%w: member %d has no route", ErrMemberUnreachable, member)
@@ -86,8 +92,14 @@ func (f *memberForward) ask(ctx context.Context, member uint64, name string, que
 // askMember is Host.AskMember on a cluster member.
 func (a *App) askMember(ctx context.Context, member uint64, name string, question []byte) ([]byte, error) {
 	runtime, ok := a.ha.(*memberRuntime)
-	if !ok || runtime.forward == nil || runtime.bundle == nil {
+	if !ok || runtime.bundle == nil {
+		// Not on a replicated store, or never enrolled in a cluster.
 		return nil, ErrNotClusterMember
+	}
+	if runtime.forward == nil {
+		// The route is made when the business handler is, after the
+		// modules' Init.
+		return nil, ErrMemberRouteNotReady
 	}
 	return runtime.forward.ask(ctx, member, name, question)
 }

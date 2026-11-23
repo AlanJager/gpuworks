@@ -47,6 +47,11 @@ var (
 	// ErrNotClusterMember: this server is not a member of a control-plane
 	// cluster, so it has nobody to ask.
 	ErrNotClusterMember = errors.New("this server is not a member of a control-plane cluster")
+	// ErrMemberRouteNotReady: this server is a cluster member whose route
+	// to the other members is not up yet. A module's Init runs before the
+	// route exists, so a question asked there always gets this; it says
+	// nothing about the member asked.
+	ErrMemberRouteNotReady = errors.New("this member's route to the other members is not up yet")
 	// ErrMemberUnreachable: the member has no route, did not answer, or
 	// nothing on it answers for the module.
 	ErrMemberUnreachable = errors.New("the member gave no answer")
@@ -75,9 +80,11 @@ func (h *Host) AnswerMembers(answer MemberAnswerer) {
 // route: mutual TLS with the members' certificates, so the answer comes from
 // the member asked and nobody else can ask. Question and answer are at most
 // MemberQuestionLimit bytes. Unlike the registrations it is called while
-// serving. A single server answers ErrNotClusterMember; a member that is
-// down, or runs a build whose module registered no answerer, answers
-// ErrMemberUnreachable.
+// serving. A single server answers ErrNotClusterMember. A cluster member
+// answers ErrMemberRouteNotReady until its route to the others is up, which
+// is after every module's Init returned: the question was not asked. A
+// member that is down, or runs a build whose module registered no answerer,
+// answers ErrMemberUnreachable.
 func (h *Host) AskMember(ctx context.Context, member uint64, question []byte) ([]byte, error) {
 	if h.app == nil {
 		return nil, ErrNotClusterMember
