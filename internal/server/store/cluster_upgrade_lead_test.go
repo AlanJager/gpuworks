@@ -25,7 +25,13 @@ type fakeLeadership struct {
 	// the wait running out does not depend on how fast the machine is.
 	giveUp     int
 	cancelWait context.CancelFunc
+	// clock advances by tick with every look, so pauses between requests
+	// are counted in looks and not in the machine's time.
+	clock time.Time
+	tick  time.Duration
 }
+
+func (f *fakeLeadership) now() time.Time { return f.clock }
 
 // waiting returns a context that the fake ends after giveUp looks.
 func (f *fakeLeadership) waiting(t *testing.T, giveUp int) context.Context {
@@ -40,6 +46,7 @@ func (f *fakeLeadership) Leader(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 	f.looks++
+	f.clock = f.clock.Add(f.tick)
 	if f.giveUp > 0 && f.looks >= f.giveUp {
 		defer f.cancelWait()
 	}
@@ -75,7 +82,11 @@ func (f *fakeLeadership) Transfer(ctx context.Context, id uint64) error {
 }
 
 func (f *fakeLeadership) leadership(self uint64) clusterLeadership {
-	return clusterLeadership{Self: self, Leader: f.Leader, Transfer: f.Transfer, Poll: time.Millisecond}
+	if f.tick == 0 {
+		f.tick = 50 * time.Millisecond
+	}
+	// With a backoff of one look, every look after a refusal asks again.
+	return clusterLeadership{Self: self, Leader: f.Leader, Transfer: f.Transfer, Poll: time.Millisecond, Backoff: time.Nanosecond, Now: f.now}
 }
 
 func TestLeadershipHandoverAsksTheLeaderUntilThisMemberLeads(t *testing.T) {
@@ -172,5 +183,71 @@ func TestLeadershipIsHandedOverOnlyToAMemberWhoseBusinessCanBeOpen(t *testing.T)
 		if err := refuseClusterLead(closed); !errors.Is(err, ErrClusterUpgradeRefused) || !strings.Contains(err.Error(), phase) {
 			t.Fatalf("phase %s = %v; want a refusal that names it", phase, err)
 		}
+	}
+}
+
+// The request opens a connection to the leader, so a leader that keeps
+// refusing is asked with a pause that doubles up to ten times the first, and
+// an accepted request is not repeated until a second has passed without
+// effect.
+func TestLeadershipHandoverAsksSparingly(t *testing.T) {
+	refusing := &fakeLeadership{leader: 1, transferErr: errors.New("leadership transfer in progress"), tick: 50 * time.Millisecond}
+	l := clusterLeadership{Self: 2, Leader: refusing.Leader, Transfer: refusing.Transfer, Poll: time.Millisecond, Backoff: 100 * time.Millisecond, Now: refusing.now}
+	// 200 looks are ten seconds of the fake clock: requests at 0, 0.1, 0.3,
+	// 0.7, 1.5 s and then every second.
+	if err := l.take(refusing.waiting(t, 200)); err == nil {
+		t.Fatal("a leader that always refuses handed over")
+	}
+	if got := len(refusing.transfers); got < 10 || got > 15 {
+		t.Fatalf("%d requests in 200 looks; want about one a second after the first few", got)
+	}
+
+	// Accepted, but the handover takes 30 looks (1.5 s): asked twice, at
+	// the start and once more after a second without effect.
+	slow := &fakeLeadership{leader: 1, delay: 30, tick: 50 * time.Millisecond}
+	l = clusterLeadership{Self: 2, Leader: slow.Leader, Transfer: slow.Transfer, Poll: time.Millisecond, Backoff: 100 * time.Millisecond, Now: slow.now}
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	if err := l.take(ctx); err != nil || slow.leader != 2 {
+		t.Fatalf("a slow handover: %v, leader %d", err, slow.leader)
+	}
+	if got := len(slow.transfers); got != 2 {
+		t.Fatalf("%d requests for a handover that took 1.5 s; want 2", got)
+	}
+}
+
+// The lead step, once the caller is admitted: the refusal comes before the
+// answer of a member that already leads, a leader asks nothing, another
+// member takes the leadership, and a failed take leaves it not leading.
+func TestLeadStepRefusesBeforeItAnswersALeader(t *testing.T) {
+	serving := ClusterUpgradeStatus{Phase: MaintenancePhaseState{Phase: MaintenanceServing}, Applied: 5, Known: 5}
+	closed := serving
+	closed.Phase.Phase = MaintenanceUpgrading
+	takes := 0
+	take := func(context.Context) error { takes++; return nil }
+	status := func(s ClusterUpgradeStatus, err error) func(context.Context) (ClusterUpgradeStatus, error) {
+		return func(context.Context) (ClusterUpgradeStatus, error) { return s, err }
+	}
+	ctx := t.Context()
+
+	if _, leads, err := leadClusterUpgradeStep(ctx, status(closed, nil), true, take); !errors.Is(err, ErrClusterUpgradeRefused) || !leads || takes != 0 {
+		t.Fatalf("a leader of a cluster that does not serve = leads %v, %v, %d takes; want the refusal", leads, err, takes)
+	}
+	if _, leads, err := leadClusterUpgradeStep(ctx, status(closed, nil), false, take); !errors.Is(err, ErrClusterUpgradeRefused) || leads || takes != 0 {
+		t.Fatalf("a follower of a cluster that does not serve = leads %v, %v, %d takes", leads, err, takes)
+	}
+	if got, leads, err := leadClusterUpgradeStep(ctx, status(serving, nil), true, take); err != nil || !leads || takes != 0 || got.Known != 5 {
+		t.Fatalf("a member that leads = leads %v, %v, %d takes; want no request", leads, err, takes)
+	}
+	if _, leads, err := leadClusterUpgradeStep(ctx, status(serving, nil), false, take); err != nil || !leads || takes != 1 {
+		t.Fatalf("a follower = leads %v, %v, %d takes; want one take", leads, err, takes)
+	}
+	failed := errors.New("database leadership was not handed over: not leader")
+	if _, leads, err := leadClusterUpgradeStep(ctx, status(serving, nil), false, func(context.Context) error { return failed }); !errors.Is(err, failed) || leads {
+		t.Fatalf("a failed take = leads %v, %v", leads, err)
+	}
+	unread := errors.New("driver: bad connection")
+	if _, _, err := leadClusterUpgradeStep(ctx, status(ClusterUpgradeStatus{}, unread), false, take); !errors.Is(err, unread) || takes != 1 {
+		t.Fatalf("an unreadable status = %v, %d takes; want the error and no take", err, takes)
 	}
 }

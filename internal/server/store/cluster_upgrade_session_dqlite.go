@@ -89,14 +89,10 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 		s.migration.mu.Unlock()
 	}
 	if action == "lead" {
-		if status, err = steps.Status(ctx); err != nil {
-			return status, leader, false, err
-		}
-		if err = refuseClusterLead(status); err != nil || leader {
-			return status, leader, false, err
-		}
-		err = TakeDatabaseLeadership(ctx, s.live.Load())
-		return status, err == nil, false, err
+		status, leader, err = leadClusterUpgradeStep(ctx, steps.Status, leader, func(ctx context.Context) error {
+			return TakeDatabaseLeadership(ctx, s.live.Load())
+		})
+		return status, leader, false, err
 	}
 	if action != "status" && !leader {
 		status, err = steps.Status(ctx)
