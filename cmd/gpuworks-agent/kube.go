@@ -20,6 +20,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/kubeapi"
 	"gpuworks.ai/gpuworks/internal/agentconf"
+	"gpuworks.ai/gpuworks/internal/logging"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -270,6 +271,7 @@ func reexecKubeAgent() error {
 	for strings.HasSuffix(bin, ".old") {
 		bin = strings.TrimSuffix(bin, ".old")
 	}
+	logging.Flush()
 	return syscall.Exec(bin, os.Args, os.Environ())
 }
 

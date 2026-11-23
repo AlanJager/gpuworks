@@ -14,8 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"gpuworks.ai/gpuworks/internal/stallwatch"
 )
 
 // RotationOptions configures a RotatingWriter.
@@ -290,17 +288,34 @@ func StderrIsAFile(stderr *os.File, maxBytes int64) bool {
 	return true
 }
 
-// StallSite is the name a log write has in a stall report.
-const StallSite = "log output"
+// StallSite and StderrStallSite are the names a log write has in a stall
+// report: the write to the log file, and the copy to stderr.
+const (
+	StallSite       = "log output"
+	StderrStallSite = "log output to stderr"
+)
 
-// NewLogger returns base's handler duplicated to an optional rotating file:
-// every record is written to stderr (so systemd/journald and console runs keep
-// working) and, when Path is set, to that file (FileOnly drops the stderr copy). A file that cannot be opened
-// degrades to stderr with a warning rather than failing startup — losing logs
-// must not stop the process. The returned closer flushes the file.
+// NewLogger returns a logger that writes every record to stderr (so
+// systemd/journald and console runs keep working) and, when Path is set, to
+// that rotating file (FileOnly drops the stderr copy). A file that cannot be
+// opened degrades to base with a warning rather than failing startup — losing
+// logs must not stop the process.
+//
+// Neither output is written by the goroutine that logs: each has a bounded
+// queue and its own writing goroutine (queuedWriter), so storage that stops
+// taking writes delays the log and nothing else. The returned closer waits a
+// bounded time for both outputs to take what is queued, then closes the file;
+// call it on every path that ends the process, or the last records are lost.
 func NewLogger(base *slog.Logger, opts FileOptions) (*slog.Logger, func()) {
+	log, closeLog, _ := newLogger(base, opts)
+	return log, closeLog
+}
+
+// newLogger is NewLogger, also returning the queues it started (none when it
+// fell back to base).
+func newLogger(base *slog.Logger, opts FileOptions) (*slog.Logger, func(), []*queuedWriter) {
 	if strings.TrimSpace(opts.Path) == "" {
-		return base, func() {}
+		return base, func() {}, nil
 	}
 	// Detect shell redirection to our own log before opening the rotating
 	// writer: startup rotation can replace the path's inode. A second writer
@@ -315,24 +330,41 @@ func NewLogger(base *slog.Logger, opts FileOptions) (*slog.Logger, func()) {
 	w, err := NewRotatingWriter(opts.Path, RotationOptions{MaxBytes: opts.MaxBytes, Keep: opts.Keep})
 	if err != nil {
 		base.Warn("log file unavailable; using stderr", "path", opts.Path, "err", err)
-		return base, func() {}
+		return base, func() {}, nil
 	}
+	// Called by the file's own writing goroutine, never by one that logs.
 	w.OnError(func(err error) {
 		base.Warn("log file writes failed; using stderr until they succeed again", "path", opts.Path, "err", err)
 	})
-	// RotatingWriter consumes the full record even when disabled or failing.
-	// Write it first so a stderr failure cannot short-circuit the healthy file;
-	// its non-failing Write contract also ensures stderr is always attempted.
-	var out io.Writer = io.MultiWriter(w, os.Stderr)
-	if opts.FileOnly {
-		out = w
+	// The file and stderr do not wait for each other: a disk that stalls
+	// leaves the journal's copy on time, and the reverse.
+	file := newQueuedWriter(w, "file", StallSite, queueLines, queueBytes)
+	var out io.Writer = file
+	queues := []*queuedWriter{file}
+	var stderr *queuedWriter
+	if !opts.FileOnly {
+		stderr = newQueuedWriter(os.Stderr, "stderr", StderrStallSite, queueLines, queueBytes)
+		out = io.MultiWriter(file, stderr)
+		queues = append(queues, stderr)
 	}
-	// A write that the file or stderr does not take holds the handler's lock,
-	// and with it everything that logs: the process's stall watch is told how
-	// long each write has been waiting.
-	out = stallwatch.Writer(StallSite, out)
+	for _, q := range queues {
+		track(q, true)
+	}
 	h := slog.NewTextHandler(out, &slog.HandlerOptions{Level: opts.Level})
-	return slog.New(h), func() { _ = w.Close() }
+	return slog.New(h), func() {
+		for _, q := range queues {
+			track(q, false)
+		}
+		// One bound for both: they drain side by side.
+		flushed := make(chan bool, 1)
+		go func() { flushed <- stderr == nil || stderr.Close(flushTimeout) }()
+		if file.Close(flushTimeout) {
+			// A file whose write never returned is left open: closing it
+			// would wait on the same write.
+			_ = w.Close()
+		}
+		<-flushed
+	}, queues
 }
 
 // ParseSize parses a byte size with an optional KB/MB/GB suffix. Suffixes are

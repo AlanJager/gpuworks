@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/logging"
 )
 
 const (
@@ -41,6 +43,8 @@ const (
 // The pools cannot be repaired in place, so the server exits and its service
 // manager restarts both processes. Tests replace it.
 var helperDied = func(err error) {
+	// The records that lead up to this are still queued for the log file.
+	logging.Flush()
 	fmt.Fprintf(os.Stderr, "dqlite helper exited unexpectedly: %v\n", err)
 	os.Exit(1)
 }

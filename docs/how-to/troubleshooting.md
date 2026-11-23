@@ -1428,6 +1428,7 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 - 文件在 server 数据目录的 `diagnostics/stalls/stall-<UTC 时间>.txt`，保留最新 20 份；两份报告之间至少隔 1 分钟，期间的卡顿只计数，写在下一份报告里。
 - 报告开头是 server 版本、发现时间、当时在等的各处及已等时长（`waiting:`）、内核的 I/O 压力（`io pressure:`），随后是全部堆栈；等待持续到 30 秒时再取一次堆栈（`still waiting at`），结束时补一行 `ended: …, after <时长>`。没有 `ended` 行说明进程在卡顿结束前退出了。
 - 卡顿结束后 server 日志有一行 `process stall recorded site=… duration=… report=…`。`process pause recorded` 表示整个进程在这段时间内没有被调度（被冻结、CPU 被抢占或内存回收），这种情况没有堆栈。
+- 日志写入不拖住请求：server 和 agent 的每条日志先进内存队列（文件和 stderr 各一条，各 4096 条、4 MiB），由各自的 goroutine 写出，所以磁盘卡住时日志晚到、报告里 `log output` 下停着的是写日志的 goroutine。队列满后新日志被丢弃，恢复后日志里有一行 `log records dropped: the output was not taking writes output=… dropped=… since=… for=…`。进程崩溃或被强杀时，队列里还没写出的日志会丢失；正常停止最多等 3 秒把队列写完。
 - 看报告时先看 `waiting:` 确认卡在哪一类操作，再在堆栈里找停在该操作上的 goroutine，以及排在它后面等同一把锁的 goroutine。
 - [收集诊断信息](#无法登录现场时调试采集与收集诊断信息)会带上时间范围内的报告（`server/stalls/`）。
 

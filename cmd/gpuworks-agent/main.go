@@ -238,9 +238,10 @@ func run(log *slog.Logger, args []string) error {
 	throttleCtx, stopThrottle := context.WithCancel(context.Background())
 	defer stopThrottle()
 	go throttle.Run(throttleCtx)
-	// A log write that the disk does not take stops everything that logs.
-	// The agent records what it was doing when one waits too long, beside
-	// its log, the way the server does (internal/stallwatch).
+	// A log write that the disk does not take holds up the log, not who
+	// logs (logging.NewLogger queues it). The agent records what it was
+	// doing when one waits too long, beside its log, the way the server
+	// does (internal/stallwatch).
 	stallWatch := stallwatch.New(stallwatch.Options{
 		Dir:    filepath.Join(cfg.StateDir, "stalls"),
 		Log:    log,

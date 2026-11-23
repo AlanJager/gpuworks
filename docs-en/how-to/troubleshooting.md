@@ -1426,6 +1426,7 @@ See [CLI](../reference/cli.md).
 - The files are `diagnostics/stalls/stall-<UTC time>.txt` in the server's data directory; the newest 20 are kept. Two reports are at least 1 minute apart; stalls in between are only counted, and the count is written in the next report.
 - A report starts with the server version, the time it was noticed, what was waiting and for how long (`waiting:`), and the kernel's I/O pressure (`io pressure:`), followed by all stacks. If the wait reaches 30 seconds the stacks are taken once more (`still waiting at`), and a line `ended: …, after <duration>` is added when it ends. No `ended` line means the process exited before the stall was over.
 - After the stall the server log has one line `process stall recorded site=… duration=… report=…`. `process pause recorded` means the whole process was not scheduled during that time (frozen, starved of CPU, or memory reclaim); there are no stacks in that case.
+- Writing the log does not hold up requests: the server and the agent put each record into an in-memory queue first (one for the file and one for stderr, 4096 records and 4 MiB each), and a goroutine per output writes them. While the disk stalls the log arrives late, and the goroutine a report shows stopped under `log output` is the one that writes the log. Once a queue is full new records are dropped, and when writing works again the log has one line `log records dropped: the output was not taking writes output=… dropped=… since=… for=…`. Records still queued when the process crashes or is killed are lost; a normal stop waits up to 3 seconds for the queue to be written.
 - To read a report, look at `waiting:` first to see which kind of operation was stuck, then find in the stacks the goroutine stopped in that operation and the goroutines queued behind it for the same lock.
 - [Collect diagnostics](#无法登录现场时调试采集与收集诊断信息) includes the reports in the time range (`server/stalls/`).
 
@@ -1542,7 +1543,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 3b9bd45c354e3073dc0f5409212c860a80f62f127a30e9819da2c6a8338d6430 ## Reverse Proxy Batches Streaming Output or Truncates Long Requests -->
 <!-- translation-source-sha256: 81e18958b5bcfae45dda667e516faaf018d2cb221db969636794a3ff6ac384e8 ## An Operation Reports "The Server Host's Disk Is Full" -->
 <!-- translation-source-sha256: b0834e1bb1b00d344ab133dd87553f7399555d48589d4f1005833f1b338f7d74 ## Forgotten Admin Password -->
-<!-- translation-source-sha256: 930495e784dec418f641c894cee971ff2bdf1d4e134a18e8b14f36326cc1348e ## When the Server Hangs or Is Slow Now and Then: Stall Reports and Live Stacks -->
+<!-- translation-source-sha256: 4db069932d3574308bc73e3498f9283bbb5349a01a48b05e3e0c8f7e9543addb ## When the Server Hangs or Is Slow Now and Then: Stall Reports and Live Stacks -->
 <!-- translation-source-sha256: 3937e7b5e3154a9cf5d7e092f90da6f978efc383086341914f85a66f6fdc9c96 ## When You Cannot Log In On Site: Debug Collection and Collecting Diagnostics -->
 <!-- translation-source-sha256: 702e2f608eecf6ecf6d04476d009d11a8cce41793fea5d7fcf3d4f71c14ee034 ## Still Unresolved? -->
 <!-- translation-localized-code-block: 5a54acf993d1267a588edaed6adb42fabe4eaa22a37d698098643916823bb39b 63b848b372a289196a7de991833e1e2e7e410a903f69538cc9e20e3119d7859f -->

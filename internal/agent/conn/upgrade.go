@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/logging"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -235,6 +236,9 @@ func installAndExec(bin, tmp string, args []string) error {
 		return fmt.Errorf("mark upgrade pending: %w", err)
 	}
 	_ = os.Remove(bin + upgradeRolledBackSuffix)
+	// The new image starts with an empty log queue: what this one has not
+	// written yet would be lost.
+	logging.Flush()
 	if err := execFn(bin, args, os.Environ()); err != nil {
 		_ = os.Remove(bin + upgradePendingSuffix)
 		_ = os.Remove(bin)
@@ -367,6 +371,7 @@ func (g *UpgradeGuard) rollback(reason string) {
 		g.log.Error("restore previous agent binary", "err", err)
 		return
 	}
+	logging.Flush()
 	if err := execFn(g.bin, os.Args, os.Environ()); err != nil {
 		g.log.Error("exec previous agent binary", "err", err)
 	}
