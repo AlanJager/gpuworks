@@ -109,6 +109,8 @@ type Controller struct {
 	// (image_acquisition.go).
 	peerCool   pairCooldown
 	imageWaits imageWaits
+	// networkTests are the network tests in flight (network_test_run.go).
+	networkTests networkTests
 	// imageRefsNotify asks the image refs worker for a push (image_refs.go).
 	imageRefsNotify chan struct{}
 	// failover is node replacement's memory (node_failover.go).
@@ -226,6 +228,10 @@ func (c *Controller) Run(ctx context.Context) {
 	if err := c.store.InterruptRunningNetworkTests(); err != nil {
 		c.log.Warn("could not close interrupted network tests", "err", err)
 	}
+	// A test started from here on is cancelled when ctx ends, and Run returns
+	// only once it has recorded that.
+	c.networkTests.open(ctx)
+	defer c.networkTests.wait()
 
 	// Prime: reconcile all existing deployments on startup.
 	if !c.primeCacheCopyClaims(ctx) {

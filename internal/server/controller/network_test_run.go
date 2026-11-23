@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -20,9 +21,50 @@ type nodeCaller interface {
 	CallNode(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
 }
 
+// networkTests are the network tests the controller is running. They belong
+// to Run: each gets Run's context, so a stopping server cancels its probes,
+// and Run waits for them, so none writes to a store that is being closed.
+type networkTests struct {
+	mu  sync.Mutex
+	ctx context.Context // Run's, nil while Run is not running
+	wg  sync.WaitGroup
+}
+
+func (n *networkTests) open(ctx context.Context) {
+	n.mu.Lock()
+	n.ctx = ctx
+	n.mu.Unlock()
+}
+
+// start runs test in the background under Run's context. It reports false,
+// and starts nothing, when Run is not running or is stopping.
+func (n *networkTests) start(test func(context.Context)) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.ctx == nil || n.ctx.Err() != nil {
+		return false
+	}
+	ctx := n.ctx
+	n.wg.Add(1)
+	go func() {
+		defer n.wg.Done()
+		test(ctx)
+	}()
+	return true
+}
+
+// wait lets no further test start and returns once those running have ended.
+func (n *networkTests) wait() {
+	n.mu.Lock()
+	n.ctx = nil
+	n.mu.Unlock()
+	n.wg.Wait()
+}
+
 // onNetworkTestEvent starts a requested network test. The test probes every
 // ordered pair of nodes and can take minutes, so it runs outside the
-// deployment work queue.
+// deployment work queue. A request that arrives while the server stops is
+// left running in the ledger; the next start closes it as interrupted.
 func (c *Controller) onNetworkTestEvent(key, reason string) {
 	if reason != "started" {
 		return
@@ -31,10 +73,10 @@ func (c *Controller) onNetworkTestEvent(key, reason string) {
 	if err != nil {
 		return
 	}
-	go c.runNetworkTest(uint(id))
+	c.networkTests.start(func(ctx context.Context) { c.runNetworkTest(ctx, uint(id)) })
 }
 
-func (c *Controller) runNetworkTest(id uint) {
+func (c *Controller) runNetworkTest(parent context.Context, id uint) {
 	run, err := c.store.NetworkTestRunByID(id)
 	if err != nil || run.Status != store.NetworkTestRunning {
 		return
@@ -51,7 +93,7 @@ func (c *Controller) runNetworkTest(id uint) {
 		_ = c.store.AbandonNetworkTestRun(id)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	ctx, cancel := context.WithTimeout(parent, time.Hour)
 	defer cancel()
 	protocol := ""
 	if tested, getErr := c.store.GetNetwork(run.NetworkID); getErr == nil && tested.Type == netplan.TypeAcceleratorHCCS {
@@ -62,6 +104,14 @@ func (c *Controller) runNetworkTest(id uint) {
 		mode = run.Kind
 	}
 	pairs := nettest.Run(ctx, caller.CallNode, endpoints, nettest.Options{Mode: mode, Pattern: run.Pattern, Protocol: protocol, Bandwidth: run.Bandwidth, Seconds: run.Seconds})
+	if parent.Err() != nil {
+		// The server is stopping: the pairs cut short are not a result. The
+		// run reads as interrupted, as one that died with its process does.
+		if err := c.store.AbandonNetworkTestRun(id); err != nil {
+			c.log.Warn("interrupted network test was not closed", "run", id, "err", err)
+		}
+		return
+	}
 	passed := 0
 	for _, p := range pairs {
 		if nettest.PairStatus(mode, p, run.Bandwidth) == nettest.StatusPassed {
