@@ -27,7 +27,7 @@ relative paths outside the repository. Do not add private artifacts references t
 
 English translations retain the original sections, steps, restrictions, and examples; do not replace full content with summaries. Prefer terminology from the GPUWorks English UI;
 translate descriptions and image alt text without changing commands, paths, parameters, or sample values. You may reuse existing Chinese screenshots, but the English text must state the screenshot language.
-After a source document changes, review its translation, then run `python3 docs-site/check_translations.py --write docs/<path>.md` to record the SHA-256 of the reviewed source at the end of the English page; do not refresh hashes without checking the translation.
+After a source document changes, review its translation, then run `python3 docs-site/check_translations.py --write docs/<path>.md` to record the SHA-256 of each reviewed source section at the end of the English page; do not refresh hashes without checking the translation.
 Run `python3 docs-site/check_translations.py` to check for stale translations and code block changes; also use `--require-complete` for site-wide English acceptance checks.
 The hash at the end of an English page and `internal/server/aihelper/apidocs_gen.go` are both derived content. When a merge or rebase conflicts there, do not merge them by hand: resolve the conflicts in the Chinese and English text first, then run `make api-docs` (for other pages, the `--write` command above) to regenerate them, and `git add` the results.
 
@@ -200,5 +200,14 @@ Before adding an ADR, confirm that the issue is a long-term architectural tradeo
 status, context, decision, consequences, and supersession relationships, and update `docs/adr/README.md`. Link implementation documentation to the ADR;
 do not copy the full decision into multiple guides.
 
-<!-- translation-source-sha256: ae988b1716a10015fdd25b059e74dd616a264df6df6d054d59c65fe999151085 -->
+<!-- translation-source-sha256: 13ceddc133eeeebb1ee4e00fb7a72628e57da3a3e68153fbedcfa120a6a39198 # Contribution Guide -->
+<!-- translation-source-sha256: 956930905dd52c9343a6383f6bf7ef29839c04c3068abe8252102cf5753374f0 ## Development Workflow -->
+<!-- translation-source-sha256: 60b57fe84985aaae16f7f527ddd8c2a625a9f8a16e2517b74ac0830d1f1f11f4 ## Documentation Locations -->
+<!-- translation-source-sha256: 37e2573e7e41bf5c0a843de622d09509701243b77774747000ffe46378be54a8 ## Writing Conventions -->
+<!-- translation-source-sha256: 44c1635d382e2dd5a4befaffcd9ba9d4eeb5feed65d1bd68d1a7b480e8fe5dc3 ### Content Structure -->
+<!-- translation-source-sha256: 1dab26b020dd412bfa8a4c04ad872cee1a573c1b44817c13912f28f1a59507a0 ### Steps and Examples -->
+<!-- translation-source-sha256: e17cae7ca53ddb457c4327048918c86dd0514e1d35ddfbb679943e0185382eb4 ### Screenshots and Flowcharts -->
+<!-- translation-source-sha256: b7ac90ee96175ebe50f50f5b5e4b27d68eb34f634f3c620266330677aad37268 ### Style and Layout -->
+<!-- translation-source-sha256: 5d313689877c79ba4b2333ba74ec181cf810a0c17514acb879faf7ccd179509b ### Updates and Acceptance -->
+<!-- translation-source-sha256: 3c68ce975e086f7e908b848f686e503cf42aa33d4a441d6139fc67c61157f14d ## ADRs -->
 <!-- translation-localized-code-block: 6ac2188471df1d13d3f555100a0be8446e1e7e797f8484dd9a8478a88ab5e2ff b5c81a401976b96af4b52f6d68e1178451469f2e31988ec96e9ef86319c56f5b Reviewed English writing-template prose: present-tense wording only; heading levels, placeholders, prerequisites and executable examples are unchanged. -->

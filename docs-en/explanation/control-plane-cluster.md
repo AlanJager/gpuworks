@@ -69,4 +69,10 @@ Current limits:
 - A member that is down keeps its last report. As long as most members repeated theirs within the last 30 seconds the steps go on, and the member catches up when it returns.
 - What replaces the programs member by member and calls these steps in order is `gpuworks cluster upgrade` of the edition that provides the cluster; a build of this repository has no such command. A console entry and progress at the entry layer do not exist yet.
 
-<!-- translation-source-sha256: c936fb02dd60739dc04202c178a00becdd9d482321131e91a10f70c573ac505d -->
+<!-- translation-source-sha256: d893a7614f922930a0120a0577e4098bee4fbdbc0a805c47575855a11736c20c # Control-Plane Cluster Behaviour and Limits -->
+<!-- translation-source-sha256: 759f9f888c6cdaa0e610709be4e93ac8423ae04edf6c39dc34a64a1eae8fa022 ## Composition -->
+<!-- translation-source-sha256: 142dbf736ea9e3307388d697bf8e3bc6404972ce7557916b76037348cea06640 ## Behaviour on Failure -->
+<!-- translation-source-sha256: 0c107885f72821f97efd1713f64d70cb0abf5ddbedd10e0a4dc63a4733bcaebb ## Limits -->
+<!-- translation-source-sha256: c56a989bc2555e6ad4a6cf5dd7ffe407203e6a9f32497c41ea4ce8ca3322cf66 ## Storage Tiers -->
+<!-- translation-source-sha256: 5b963d9b6cab0af7f80ccbda255cde725e9cbf149f23b48fa1e3bc2159cd2c1d ## Protocol Version of the Database Helper -->
+<!-- translation-source-sha256: eaf8bd1fe2717d28bd1bb30280880649a75da600dfd209d3b68e148280a845e9 ## Upgrading the Cluster's Schema -->

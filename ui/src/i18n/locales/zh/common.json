@@ -891,6 +891,8 @@
     "CONTAINER_EXITED": "容器已退出，退出码 {{exit_code}}。",
     "CONTAINER_OOM_KILLED": "容器因内存耗尽被终止（退出码 {{exit_code}}）。",
     "CONTAINER_UNHEALTHY": "容器运行时报告工作进程不健康。",
+    "CONTAINER_PROCESSES_NOT_DRAINED": "容器 {{resource}} 的进程仍在节点上运行：{{detail}}",
+    "CONTAINER_REMOVAL_PENDING": "容器 {{resource}} 暂时未能删除：{{detail}}",
     "ENGINE_HEALTH_ENDPOINT_INVALID": "引擎健康检查地址无效。",
     "ENGINE_HEALTH_TIMEOUT": "引擎在启动超时前未就绪。",
     "ENGINE_START_STALLED": "引擎启动长时间没有任何进展，容器仍在运行：{{detail}}",

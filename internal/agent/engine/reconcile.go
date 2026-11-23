@@ -233,7 +233,11 @@ func (e *Engine) finishEnsure(spec proto.InstanceDesiredState) {
 			delete(e.pending, uuid)
 			e.mu.Unlock()
 			e.log.Error("instance teardown pending; resources may still be held", "uuid", uuid, "err", cleanupErr)
-			e.report(proto.InstanceStatus{UUID: uuid, State: proto.InstRemoving, Message: "teardown pending: " + cleanupErr.Error()})
+			e.reportCleanupPending(uuid, proto.RuntimeFailure{
+				Code:     runtime.TeardownFailureCode(cleanupErr),
+				Resource: containerName(uuid),
+				Detail:   cleanupErr.Error(),
+			}, "teardown pending: "+cleanupErr.Error(), nil)
 			return
 		}
 		e.releaseKVDiskDir(cleanupSpec)
