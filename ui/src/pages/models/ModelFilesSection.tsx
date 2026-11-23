@@ -204,7 +204,7 @@ export function ModelFilesSection({ model, onChanged }: { model: Model; onChange
   const columns: ResourceColumn<ModelFile>[] = [
     { key: "location", title: tStorage("files.column.place"), width: 132, render: (_, row) => <FileLocation row={row} /> },
     { key: "state", title: t("detail.status"), width: 88, ellipsis: false, render: (_, row) => <StateTag state={row.state} /> },
-    { key: "progress", title: t("detail.progress"), width: 300, minWidth: 300, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
+    { key: "progress", title: t("detail.progress"), width: 344, minWidth: 344, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
     { key: "size", title: t("detail.size"), width: 78, align: "right", render: (_, row) => row.size_bytes ? formatBytes(row.size_bytes) : "—" },
     { key: "actions", role: "actions", title: t("column.actions"), width: 100, render: (_, row) => (
       <div onClick={(event) => event.stopPropagation()}>
