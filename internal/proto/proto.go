@@ -214,7 +214,7 @@ const (
 const (
 	RejectBadToken      = "bad_token"      // node token missing or unrecognised
 	RejectProtoMismatch = "proto_mismatch" // no overlapping protocol version
-	RejectStaleSession  = "stale_session"  // data lane SessionID does not match the node's current ctrl session
+	RejectStaleSession  = "stale_session"  // data lane SessionID does not match the node's current ctrl session; or a relayed ctrl session another connection replaced
 )
 
 // Envelope is one control-plane message on the ctrl stream.
