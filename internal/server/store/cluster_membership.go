@@ -56,6 +56,13 @@ func (s *Store) GrantClusterMembershipKeys(ctx context.Context, expected Cluster
 	return revision, members, err
 }
 
+// elapsedClock reads the clock for measuring elapsed time in memory. Its value
+// keeps the monotonic reading, so a step of the wall clock neither shortens
+// nor stretches an age measured with it; time.Now().UTC() drops that reading.
+// A value from it is never written to the database or serialized, which is
+// what the UTC rule for this package is about.
+var elapsedClock = time.Now
+
 // confirmedClusterMembership is the member list of the latest successful
 // grant, kept in memory only.
 type confirmedClusterMembership struct {
@@ -67,7 +74,7 @@ func (s *Store) rememberConfirmedMembership(members []ClusterTransportMember, er
 	if err != nil || len(members) == 0 {
 		return
 	}
-	s.confirmedMembership.Store(&confirmedClusterMembership{members: slices.Clone(members), at: time.Now()})
+	s.confirmedMembership.Store(&confirmedClusterMembership{members: slices.Clone(members), at: elapsedClock()})
 }
 
 // ConfirmedClusterMembership returns the member list the latest successful

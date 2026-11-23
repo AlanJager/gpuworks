@@ -72,4 +72,12 @@ func TestConfirmedClusterMembershipFollowsSuccessfulGrantsOnly(t *testing.T) {
 	if _, ok := s.ConfirmedClusterMembership(time.Hour); ok {
 		t.Fatal("a forgotten membership was still reported as confirmed")
 	}
+	// The age is measured on the monotonic clock: a wall clock stepped back
+	// by an hour does not make an old confirmation young.
+	if _, _, err := s.GrantClusterMembership(t.Context(), ClusterIdentity{}, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if at := s.confirmedMembership.Load().at; at.Equal(at.Round(0)) && at == at.Round(0) {
+		t.Fatal("the confirmation time carries no monotonic reading")
+	}
 }
