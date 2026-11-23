@@ -40,6 +40,9 @@ const peerCooldown = 3 * time.Hour
 type pairCooldown struct {
 	mu    sync.Mutex
 	until map[[2]uint]time.Time
+	// relayed are the image copies sent through the relay, whose failure
+	// rules the relay out for their target.
+	relayed relayedCopies
 }
 
 // managementPeers stands for every holder a target reaches over the
@@ -182,7 +185,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 	if err == nil {
 		switch row.State {
 		case store.ImageStatePresent:
-			c.relayed.ended(image.ID, node.ID, row)
+			c.peerCool.relayed.ended(image.ID, node.ID, row)
 			c.imageWaits.forget(dep.ID)
 			return imageDelivery{present: true}
 		case store.ImageStateSyncing, store.ImageStatePulling:
@@ -202,7 +205,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 				c.imageWaits.set(dep.ID, image.ID)
 				return imageDelivery{}
 			}
-			if c.relayed.ended(image.ID, node.ID, row) {
+			if c.peerCool.relayed.ended(image.ID, node.ID, row) {
 				// The relayed copy gave up. The relay is ruled out for the
 				// target from that moment; the pair's direct path is not
 				// what failed, and was already ruled out before it.
@@ -225,7 +228,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 		if relayed, relayRate := c.imageCopySource(image.ID, node, now, true); relayed != nil && c.imagePullFailed(dep, node, row, now) {
 			started, err := syncer.SyncImageFromRate(ctx, image.ID, node.UUID, relayed.UUID, relayRate)
 			if err == nil && started != nil {
-				c.relayed.started(image.ID, node.ID, started.TransferID)
+				c.peerCool.relayed.started(image.ID, node.ID, started.TransferID)
 				c.log.Info("image pull failed; copying through the relay", "dep", dep.ID, "image", image.ImageRef, "node", node.UUID, "source", relayed.UUID)
 				c.imageWaits.set(dep.ID, image.ID)
 				c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonImageDeliveryWaiting, Params: map[string]any{"node": node.DisplayName(), "image": image.ImageRef}})
