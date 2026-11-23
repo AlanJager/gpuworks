@@ -3,10 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
-
-	"golang.org/x/sys/unix"
 )
 
 var ErrImageFileNotRegular = errors.New("archive_path must name a regular file, not a directory or device")
@@ -39,24 +36,5 @@ func OpenImageFile(ctx context.Context, driver Driver, path string) (*os.File, e
 	}); ok {
 		return opener.OpenImageFile(ctx, path)
 	}
-	return OpenRegularImageFile(path, os.OpenFile)
-}
-
-// OpenRegularImageFile follows normal path resolution but takes a metadata-only
-// handle first. Reopening that handle reads exactly the regular file checked,
-// including when a symlink is replaced during preview.
-func OpenRegularImageFile(path string, open func(string, int, os.FileMode) (*os.File, error)) (*os.File, error) {
-	handle, err := open(path, unix.O_PATH, 0)
-	if err != nil {
-		return nil, err
-	}
-	defer handle.Close()
-	info, err := handle.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, ErrImageFileNotRegular
-	}
-	return os.Open(fmt.Sprintf("/proc/self/fd/%d", handle.Fd()))
+	return OpenRegularImageFile(nil, path)
 }

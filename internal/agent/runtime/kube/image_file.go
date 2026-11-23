@@ -51,5 +51,5 @@ func (d *Driver) OpenImageFile(ctx context.Context, path string) (*os.File, erro
 		return nil, err
 	}
 	defer root.Close()
-	return runtime.OpenRegularImageFile(strings.TrimPrefix(name, "/"), root.OpenFile)
+	return runtime.OpenRegularImageFile(root, strings.TrimPrefix(name, "/"))
 }
