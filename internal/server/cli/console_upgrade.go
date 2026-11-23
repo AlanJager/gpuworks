@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/logging"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/version"
@@ -15,7 +16,7 @@ import (
 
 // consoleUpgradeConfirmTimeout is how long a new binary started by a console
 // upgrade has to answer on /healthz as its own release, migrations included.
-const consoleUpgradeConfirmTimeout = 15 * time.Minute
+var consoleUpgradeConfirmTimeout = 15 * time.Minute
 
 // guardConsoleUpgrade runs before the database is opened. When a console
 // upgrade is waiting for this start it counts the start; when the new binary
@@ -58,7 +59,9 @@ func confirmConsoleUpgrade(ctx context.Context, log *slog.Logger, layout selfins
 	case ctx.Err() != nil:
 	default:
 		log.Error("console upgrade did not become healthy; exiting so the next start rolls back", "to", pending.To, "error", err)
-		os.Exit(1)
+		// The server's deferred log closer does not run past os.Exit.
+		logging.Flush()
+		exitProcess(1)
 	}
 }
 
@@ -71,3 +74,6 @@ func serviceMode() string {
 	}
 	return selfinstall.ModeNohup
 }
+
+// exitProcess ends the process; a test replaces it.
+var exitProcess = os.Exit

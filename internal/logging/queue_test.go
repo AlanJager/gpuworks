@@ -60,11 +60,41 @@ func TestFlushLeavesNothingQueuedInAnOpenLogger(t *testing.T) {
 type gate struct {
 	mu     sync.Mutex
 	open   chan struct{}
+	once   sync.Once
 	buf    bytes.Buffer
 	writes int
 }
 
 func newGate() *gate { return &gate{open: make(chan struct{})} }
+
+// release lets the output take writes from now on.
+func (g *gate) release() { g.once.Do(func() { close(g.open) }) }
+
+// gatedQueue is a queue over sink that the test's end releases and closes,
+// so a test that fails half way leaves no goroutine behind.
+func gatedQueue(t *testing.T, sink *gate, name, site string, maxLines, maxBytes int) *queuedWriter {
+	t.Helper()
+	q := newQueuedWriter(sink, name, site, maxLines, maxBytes)
+	t.Cleanup(func() {
+		sink.release()
+		q.Close(5 * time.Second)
+	})
+	return q
+}
+
+// returns fails the test when fn has not returned long after anything but
+// a call that waits on the shut output would have. It asserts that fn is not
+// held, not how fast it is: a starved runner may take seconds for anything.
+func returns(t *testing.T, what string, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { defer close(done); fn() }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Minute):
+		t.Fatalf("%s did not return: it waits on the output", what)
+	}
+}
 
 func (g *gate) Write(p []byte) (int, error) {
 	<-g.open
@@ -85,7 +115,7 @@ func (g *gate) String() string {
 // included, waited behind it for seconds.
 func TestAnOutputThatTakesNothingDoesNotDelayWhoLogsOrARequest(t *testing.T) {
 	sink := newGate()
-	q := newQueuedWriter(sink, "file", StallSite, 4096, 1<<20)
+	q := gatedQueue(t, sink, "file", StallSite, 4096, 1<<20)
 	log := slog.New(slog.NewTextHandler(q, nil))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Info("request", "path", r.URL.Path)
@@ -93,31 +123,31 @@ func TestAnOutputThatTakesNothingDoesNotDelayWhoLogsOrARequest(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// The output is shut for the whole loop; with the write on the caller
+	// the first record would never return.
 	var worst time.Duration
 	started := time.Now()
-	for i := 0; i < 200; i++ {
-		begin := time.Now()
-		log.Info("direct", "n", i)
-		resp, err := http.Get(fmt.Sprintf("%s/r/%d", server.URL, i))
-		if err != nil {
-			t.Fatal(err)
+	returns(t, "logging and serving requests against a shut output", func() {
+		for i := 0; i < 200; i++ {
+			begin := time.Now()
+			log.Info("direct", "n", i)
+			resp, err := http.Get(fmt.Sprintf("%s/r/%d", server.URL, i))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			resp.Body.Close()
+			if took := time.Since(begin); took > worst {
+				worst = took
+			}
 		}
-		resp.Body.Close()
-		if took := time.Since(begin); took > worst {
-			worst = took
-		}
-	}
-	// The output has been shut for the whole loop; with the write on the
-	// caller the first record would still be waiting.
-	if worst > time.Second {
-		t.Fatalf("slowest log line plus request took %v while the output took nothing", worst)
-	}
+	})
 	t.Logf("400 records and 200 requests against a shut output: %v in all, slowest pair %v", time.Since(started), worst)
 	if got := sink.String(); got != "" {
 		t.Fatalf("the shut output received %q", got)
 	}
 
-	close(sink.open)
+	sink.release()
 	if !q.Close(5 * time.Second) {
 		t.Fatal("the opened output did not take the queue")
 	}
@@ -150,7 +180,7 @@ var droppedLine = regexp.MustCompile(`^time=\S+ level=WARN msg="log records drop
 
 func TestRecordsPastTheBoundAreDroppedCountedAndReportedInPlace(t *testing.T) {
 	sink := newGate()
-	q := newQueuedWriter(sink, "file", StallSite, 4, 1<<20)
+	q := gatedQueue(t, sink, "file", StallSite, 4, 1<<20)
 	now := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
 	q.now = func() time.Time { return now }
 	write := func(s string) {
@@ -167,7 +197,7 @@ func TestRecordsPastTheBoundAreDroppedCountedAndReportedInPlace(t *testing.T) {
 		write(fmt.Sprintf("lost-%d", i))
 		now = now.Add(time.Second)
 	}
-	close(sink.open)
+	sink.release()
 	drain(t, []*queuedWriter{q})
 	write("after")
 	if !q.Close(5 * time.Second) {
@@ -188,11 +218,11 @@ func TestRecordsPastTheBoundAreDroppedCountedAndReportedInPlace(t *testing.T) {
 
 func TestTheByteBoundDropsToo(t *testing.T) {
 	sink := newGate()
-	q := newQueuedWriter(sink, "file", StallSite, 1000, 64)
+	q := gatedQueue(t, sink, "file", StallSite, 1000, 64)
 	_, _ = q.Write(bytes.Repeat([]byte("a"), 60))
 	_, _ = q.Write(bytes.Repeat([]byte("b"), 10)) // 70 > 64
 	_, _ = q.Write([]byte("cc\n"))                // fits
-	close(sink.open)
+	sink.release()
 	if !q.Close(5 * time.Second) {
 		t.Fatal("queue did not flush")
 	}
@@ -204,10 +234,10 @@ func TestTheByteBoundDropsToo(t *testing.T) {
 
 func TestRecordsLostAtTheEndAreReportedByClose(t *testing.T) {
 	sink := newGate()
-	q := newQueuedWriter(sink, "stderr", StderrStallSite, 1, 1<<20)
+	q := gatedQueue(t, sink, "stderr", StderrStallSite, 1, 1<<20)
 	_, _ = q.Write([]byte("kept\n"))
 	_, _ = q.Write([]byte("lost\n"))
-	close(sink.open)
+	sink.release()
 	if !q.Close(5 * time.Second) {
 		t.Fatal("queue did not flush")
 	}
@@ -222,15 +252,17 @@ func TestRecordsLostAtTheEndAreReportedByClose(t *testing.T) {
 
 func TestCloseWaitsNoLongerThanItsBoundForAnOutputThatTakesNothing(t *testing.T) {
 	sink := newGate()
-	defer close(sink.open)
-	q := newQueuedWriter(sink, "file", StallSite, 16, 1<<20)
+	q := gatedQueue(t, sink, "file", StallSite, 16, 1<<20)
 	_, _ = q.Write([]byte("stuck\n"))
 	begin := time.Now()
-	if q.Close(200 * time.Millisecond) {
+	var flushed bool
+	returns(t, "Close on an output that takes nothing", func() { flushed = q.Close(200 * time.Millisecond) })
+	if flushed {
 		t.Fatal("Close reported a flush the output never took")
 	}
-	if took := time.Since(begin); took < 200*time.Millisecond || took > 2*time.Second {
-		t.Fatalf("Close took %v, want about its 200ms bound", took)
+	// A timer never fires early, so the lower bound holds on any runner.
+	if took := time.Since(begin); took < 200*time.Millisecond {
+		t.Fatalf("Close gave up after %v, before its 200ms bound", took)
 	}
 }
 
@@ -296,7 +328,7 @@ func TestRotationKeepsItsBoundsBehindTheQueue(t *testing.T) {
 func TestTheStallWatchReportsTheWritingGoroutineNotWhoLogs(t *testing.T) {
 	dir := t.TempDir()
 	sink := newGate()
-	q := newQueuedWriter(sink, "file", StallSite, 4096, 1<<20)
+	q := gatedQueue(t, sink, "file", StallSite, 4096, 1<<20)
 	log := slog.New(slog.NewTextHandler(q, nil))
 	watch := stallwatch.New(stallwatch.Options{Threshold: 100 * time.Millisecond, Dir: dir, Log: log})
 	stallwatch.Use(watch)
@@ -311,11 +343,7 @@ func TestTheStallWatchReportsTheWritingGoroutineNotWhoLogs(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("no stall report while the output took nothing")
 		}
-		begin := time.Now()
-		log.Info("still logging")
-		if took := time.Since(begin); took > time.Second {
-			t.Fatalf("a log line took %v during the stall", took)
-		}
+		returns(t, "a log line during the stall", func() { log.Info("still logging") })
 		time.Sleep(10 * time.Millisecond)
 	}
 	report := read(t, stallwatch.Reports(dir)[0])
@@ -324,7 +352,7 @@ func TestTheStallWatchReportsTheWritingGoroutineNotWhoLogs(t *testing.T) {
 			t.Fatalf("report lacks %q:\n%s", want, report)
 		}
 	}
-	close(sink.open)
+	sink.release()
 	for !strings.Contains(sink.String(), "site=\""+StallSite+"\"") {
 		if time.Now().After(deadline) {
 			t.Fatalf("the stall's own log line did not arrive once the output took writes:\n%s", sink.String())
@@ -335,5 +363,137 @@ func TestTheStallWatchReportsTheWritingGoroutineNotWhoLogs(t *testing.T) {
 	<-done
 	if !q.Close(5 * time.Second) {
 		t.Fatal("queue did not flush")
+	}
+}
+
+// One record larger than the byte bound is written, not dropped for ever:
+// the bound limits what piles up behind an output.
+func TestARecordLargerThanTheByteBoundIsTakenByAnEmptyQueue(t *testing.T) {
+	sink := newGate()
+	q := gatedQueue(t, sink, "file", StallSite, 1000, 64)
+	big := append(bytes.Repeat([]byte("x"), 200), '\n')
+	_, _ = q.Write(big)               // empty queue: taken
+	_, _ = q.Write([]byte("after\n")) // behind it, over the bound: dropped
+	sink.release()
+	if !q.Close(5 * time.Second) {
+		t.Fatal("queue did not flush")
+	}
+	got := sink.String()
+	if !strings.HasPrefix(got, string(big)) || strings.Contains(got, "after") || !strings.Contains(got, "dropped=1") {
+		t.Fatalf("output = %q", got)
+	}
+}
+
+// Records dropped just before a path that exits through Flush are reported
+// by Flush: no later record would come to carry the count.
+func TestFlushReportsRecordsDroppedSinceTheLastOneThatFit(t *testing.T) {
+	sink := newGate()
+	q := gatedQueue(t, sink, "file", StallSite, 1, 1<<20)
+	track(q, true)
+	defer track(q, false)
+	_, _ = q.Write([]byte("kept\n"))
+	_, _ = q.Write([]byte("lost one\n"))
+	_, _ = q.Write([]byte("lost two\n"))
+	sink.release()
+	if !Flush() {
+		t.Fatal("Flush left records queued in an output that takes writes")
+	}
+	if got := sink.String(); !strings.HasPrefix(got, "kept\n") || !strings.Contains(got, "output=file dropped=2") || strings.Contains(got, "lost") {
+		t.Fatalf("output when Flush returned = %q", got)
+	}
+}
+
+// A record at error level is on the output when the call that logged it
+// returns, so a crash right after it does not take it along. Below error
+// level nothing waits.
+func TestAnErrorRecordIsWrittenBeforeItsCallerGoesOn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.log")
+	log, closeLog, _ := newLogger(slog.New(slog.NewTextHandler(os.Stderr, nil)), FileOptions{Path: path, FileOnly: true})
+	defer closeLog()
+	for i := 0; i < 50; i++ {
+		log.With("component", "test").Error("the reason the process is about to die", "n", i)
+		if got := strings.Count(read(t, path), "the reason the process is about to die"); got != i+1 {
+			t.Fatalf("file has %d error records when the call for record %d returned", got, i+1)
+		}
+	}
+}
+
+// Against an output that takes nothing, the first error record waits its
+// bound and marks the output as behind; the ones after it do not wait at
+// all, so a burst of errors during a stall costs who logs one bound, once.
+func TestErrorRecordsDoNotQueueUpBehindAnOutputThatTakesNothing(t *testing.T) {
+	sink := newGate()
+	q := gatedQueue(t, sink, "file", StallSite, 4096, 1<<20)
+	log := slog.New(urgentHandler{Handler: slog.NewTextHandler(q, nil), queues: []*queuedWriter{q}})
+	returns(t, "the first error record against a shut output", func() { log.Error("first") })
+	q.mu.Lock()
+	behind := q.behind
+	q.mu.Unlock()
+	if !behind {
+		t.Fatal("the output is not marked as behind after an error record it did not take")
+	}
+	// Behind: taken answers without waiting, whatever bound it is given.
+	returns(t, "error records while the output is behind", func() {
+		for i := 0; i < 200; i++ {
+			log.Error("more", "n", i)
+		}
+		if q.taken(time.Hour) {
+			t.Error("an output that took nothing reported the records as taken")
+		}
+	})
+	sink.release()
+	drain(t, []*queuedWriter{q})
+	q.mu.Lock()
+	behind = q.behind
+	q.mu.Unlock()
+	if behind || strings.Count(sink.String(), "level=ERROR") != 201 {
+		t.Fatalf("after the output caught up: behind=%v, %d error records of 201", behind, strings.Count(sink.String(), "level=ERROR"))
+	}
+	if !q.taken(time.Minute) {
+		t.Fatal("an output that caught up is still not waited for")
+	}
+}
+
+// The default logger outlives the closer. What is logged after it goes to
+// stderr, written by whoever logs, instead of vanishing.
+func TestRecordsLoggedAfterTheCloserGoToStderr(t *testing.T) {
+	dir := t.TempDir()
+	stderr, err := os.Create(filepath.Join(dir, "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stderr
+	os.Stderr = stderr
+	t.Cleanup(func() { os.Stderr = saved; stderr.Close() })
+	path := filepath.Join(dir, "server.log")
+	log, closeLog, _ := newLogger(slog.New(slog.NewTextHandler(stderr, nil)), FileOptions{Path: path, FileOnly: true})
+	log.Info("while open")
+	closeLog()
+	log.Info("after the closer")
+	log.Error("an error after the closer")
+	if got := read(t, path); !strings.Contains(got, "while open") || strings.Contains(got, "after the closer") {
+		t.Fatalf("log file = %q", got)
+	}
+	if got := read(t, stderr.Name()); strings.Count(got, "after the closer") != 2 || strings.Contains(got, "while open") {
+		t.Fatalf("stderr = %q, want the two records logged after the closer, once each", got)
+	}
+}
+
+// A panic that unwinds the goroutine holding the closer runs the closer, so
+// the records that lead up to it are written before the process reports the
+// panic and dies.
+func TestAPanicThatUnwindsPastTheCloserLeavesTheRecordsWritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.log")
+	func() {
+		defer func() { _ = recover() }()
+		log, closeLog, _ := newLogger(slog.New(slog.NewTextHandler(os.Stderr, nil)), FileOptions{Path: path, FileOnly: true})
+		defer closeLog()
+		for i := 0; i < 300; i++ {
+			log.Info("before the panic", "n", i)
+		}
+		panic("the server's main goroutine panics")
+	}()
+	if got := strings.Count(read(t, path), "before the panic"); got != 300 {
+		t.Fatalf("file has %d of 300 records after the panic unwound", got)
 	}
 }

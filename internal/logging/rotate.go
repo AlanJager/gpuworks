@@ -303,9 +303,13 @@ const (
 //
 // Neither output is written by the goroutine that logs: each has a bounded
 // queue and its own writing goroutine (queuedWriter), so storage that stops
-// taking writes delays the log and nothing else. The returned closer waits a
-// bounded time for both outputs to take what is queued, then closes the file;
-// call it on every path that ends the process, or the last records are lost.
+// taking writes delays the log and nothing else. A record at error level or
+// above waits a quarter of a second at most for the outputs to take it
+// (urgentHandler). The returned closer waits a bounded time for both outputs
+// to take what is queued, then closes the file; call it on every path that
+// ends the process (or Flush, where the closer cannot run), or the last
+// records below error level are lost. What is logged after the closer goes
+// to stderr directly.
 func NewLogger(base *slog.Logger, opts FileOptions) (*slog.Logger, func()) {
 	log, closeLog, _ := newLogger(base, opts)
 	return log, closeLog
@@ -350,8 +354,11 @@ func newLogger(base *slog.Logger, opts FileOptions) (*slog.Logger, func(), []*qu
 	for _, q := range queues {
 		track(q, true)
 	}
-	h := slog.NewTextHandler(out, &slog.HandlerOptions{Level: opts.Level})
+	// Once the closer has run, a record goes straight to stderr.
+	sink := &queuedOutput{queues: out, fallback: os.Stderr}
+	h := urgentHandler{Handler: slog.NewTextHandler(sink, &slog.HandlerOptions{Level: opts.Level}), queues: queues}
 	return slog.New(h), func() {
+		sink.close()
 		for _, q := range queues {
 			track(q, false)
 		}

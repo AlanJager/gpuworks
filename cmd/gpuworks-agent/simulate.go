@@ -8,6 +8,7 @@ import (
 
 	agentapp "gpuworks.ai/gpuworks/internal/agent/app"
 	"gpuworks.ai/gpuworks/internal/agent/simulate"
+	"gpuworks.ai/gpuworks/internal/logging"
 	"gpuworks.ai/gpuworks/internal/parentwatch"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -51,6 +52,6 @@ func applySimulation(cfg *agentapp.Config, path string) error {
 		return inv
 	}
 	// None outlives the environment that started it.
-	go parentwatch.Follow(context.Background(), spec.ParentPID, func() { os.Exit(0) })
+	go parentwatch.Follow(context.Background(), spec.ParentPID, func() { logging.Flush(); os.Exit(0) })
 	return nil
 }

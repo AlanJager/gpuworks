@@ -125,7 +125,13 @@ func (r *RuntimeTransportPolicy) apply(snapshot TransportPolicy, publish func(st
 	// keeps other publishers out, and the first Apply after opening still
 	// syncs, which confirms a publication whose sync a previous owner left
 	// unknown.
+	// What a publication refuses, the skip refuses too: a snapshot that is
+	// not a source snapshot, one that is not valid, or one from another
+	// authority must keep failing instead of passing for "unchanged".
 	if r.confirmed && sameTransportPolicy(durable, current) && snapshot.SourceRevision == current.SourceRevision && slices.Equal(snapshot.AllowedKeys, current.AllowedKeys) {
+		if err := unchangedSnapshotIsAcceptable(snapshot, current); err != nil {
+			return TransportPolicy{}, err
+		}
 		current.AllowedKeys = slices.Clone(current.AllowedKeys)
 		current.RevokedKeys = slices.Clone(current.RevokedKeys)
 		return current, nil
@@ -150,6 +156,23 @@ func (r *RuntimeTransportPolicy) apply(snapshot TransportPolicy, publish func(st
 	r.authorize = authorize
 	r.confirmed = true
 	return persisted, nil
+}
+
+// unchangedSnapshotIsAcceptable runs, for a snapshot whose keys and source
+// revision equal the confirmed policy's, the checks a publication would have
+// run on it (applyTransportPolicySnapshotLocked).
+func unchangedSnapshotIsAcceptable(snapshot, current TransportPolicy) error {
+	if snapshot.Revision != 0 || snapshot.SourceRevision == 0 {
+		return errors.New("source snapshot requires zero local revision and positive source revision")
+	}
+	snapshot.Revision = 1
+	if err := snapshot.validate(); err != nil {
+		return err
+	}
+	if snapshot.ClusterID != current.ClusterID || snapshot.CAFingerprint != current.CAFingerprint {
+		return errors.New("transport policy authority cannot change")
+	}
+	return nil
 }
 
 func sameTransportPolicy(a, b TransportPolicy) bool {

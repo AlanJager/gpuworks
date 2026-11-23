@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/logging"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/stallwatch"
@@ -80,6 +81,9 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 
 	// The server's log in the window.
 	stage("server/gpuworks-server.log", func(w io.Writer) (int64, bool, error) {
+		// The log is written by its own goroutine: what it still holds
+		// belongs in the collection.
+		logging.Flush()
 		return m.serverLogWindow(w, b.From, b.To)
 	})
 

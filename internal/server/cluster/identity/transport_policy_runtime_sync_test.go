@@ -103,3 +103,56 @@ func TestRuntimeTransportPolicySyncsOnlyWhatIsNotYetConfirmed(t *testing.T) {
 		t.Fatalf("after the confirming sync: syncs=%d err=%v, want no further sync", *syncs, err)
 	}
 }
+
+// Skipping the sync of an unchanged snapshot must not skip what a
+// publication checks: these snapshots carry the confirmed keys and source
+// revision, and were refused every second before the skip existed.
+func TestRuntimeTransportPolicyRefusesAnUnacceptableSnapshotWithTheSameKeys(t *testing.T) {
+	path, policy := policyFixture(t)
+	policy.SourceRevision = 1
+	if err := PublishTransportPolicy(path, 0, policy); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := OpenRuntimeTransportPolicy(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	syncs, _ := countPolicySyncs(t)
+	same := policy
+	same.Revision = 0
+	if _, err := owner.Apply(same); err != nil {
+		t.Fatal(err)
+	}
+	confirmed := *syncs
+	for name, change := range map[string]func(*TransportPolicy){
+		"another cluster": func(p *TransportPolicy) { p.ClusterID = "another-cluster" },
+		"another authority": func(p *TransportPolicy) {
+			p.CAFingerprint = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+		},
+		"a local revision":        func(p *TransportPolicy) { p.Revision = 7 },
+		"no authority at all":     func(p *TransportPolicy) { p.CAFingerprint = "" },
+		"a malformed fingerprint": func(p *TransportPolicy) { p.CAFingerprint = "not-a-fingerprint" },
+	} {
+		wrong := same
+		change(&wrong)
+		if got, err := owner.Apply(wrong); err == nil {
+			t.Errorf("%s with the confirmed keys was accepted as unchanged: %+v", name, got)
+		}
+	}
+	if got, err := owner.Apply(same); err != nil || *syncs != confirmed {
+		t.Fatalf("the confirmed snapshot after the refusals: syncs %d -> %d, err=%v, policy=%+v", confirmed, *syncs, err, got)
+	}
+	if snapshot, _ := owner.Snapshot(); !sameTransportPolicy(snapshot, policyAfter(t, path)) {
+		t.Fatalf("a refused snapshot changed the active policy: %+v", snapshot)
+	}
+}
+
+func policyAfter(t *testing.T, path string) TransportPolicy {
+	t.Helper()
+	durable, err := LoadTransportPolicy(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return durable
+}
