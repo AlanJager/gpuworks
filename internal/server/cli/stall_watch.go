@@ -46,6 +46,8 @@ func startStallWatch(log *slog.Logger, after time.Duration, dataDir string) func
 		defer close(done)
 		watch.Run(ctx)
 	}()
+	// Run itself gives up on a reporting goroutine that is stuck on the
+	// disk (stallwatch.DefaultStopWait), so this wait is bounded.
 	return func() {
 		stallwatch.Use(nil)
 		cancel()

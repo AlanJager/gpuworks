@@ -509,24 +509,6 @@ func modelRepoDestination(root, name string) (string, error) {
 	return filepath.Join(root, clean), nil
 }
 
-// modelRepoBytesDone reports bytes already materialized in a repository. It
-// intentionally counts partial regular files too, so a failed/ENOSPC transfer
-// can resume with truthful progress instead of jumping back to zero.
-func modelRepoBytesDone(root string) int64 {
-	var done int64
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return nil //nolint:nilerr // Progress is best effort; unreadable entries contribute no observed bytes.
-		}
-		info, statErr := entry.Info()
-		if statErr == nil && info.Mode().IsRegular() {
-			done += info.Size()
-		}
-		return nil
-	})
-	return done
-}
-
 // repoFilesPresent reports whether every file of a repository is on disk.
 //
 // approximate loosens only the size comparison, and only for a listing whose

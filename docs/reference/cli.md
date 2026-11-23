@@ -95,7 +95,7 @@ gpuworks restarted (systemd)
 - 日志同时写 stderr 和文件，按大小轮转；日志配置只有 flag 和 `server.yaml`，没有环境变量。
 - server 读取面向操作员的 `GPUWORKS_ADMIN_PASSWORD`（首次创建 admin 时的初始密码）和 `GPUWORKS_USAGE_REPORT=off`（强制关闭使用情况上报），另有守护进程设给子进程的内部标记 `GPUWORKS_SUPERVISED=1`（server 读后即从自身环境删除，不传给它启动的进程）；`GPUWORKS_ADDR`、`GPUWORKS_DATA_DIR`、`GPUWORKS_TRUSTED_PROXIES` 仅作老单元的兼容桥接，详见配置参考。
 - 收到 `SIGUSR1` 时临时打开仅回环的 pprof 监听（先试 `127.0.0.1:6060`，被占用则换随机端口），10 分钟后自动关闭；实际地址在日志里。
-- 一次日志写入、数据库语句或指标、日志、请求记录库的写入等待超过 `--stall-report-after` 时，server 在内存里取下全部 goroutine 的堆栈，磁盘能写后存为 `<data>/diagnostics/stalls/stall-<UTC 时间>.txt`（保留最新 20 份，两份之间至少隔 1 分钟），并在卡顿结束时写一行 `process stall recorded`（含时长和报告路径）。整个进程超过这个时长没有被调度时记录为 `process pause recorded`。用法见[排障](../how-to/troubleshooting.md#server-卡住或偶发变慢时卡顿报告与现场堆栈)。
+- 一次日志写入、数据库语句或事务的开始与提交、指标、日志、请求记录库的写入等待超过 `--stall-report-after` 时，server 在内存里取下全部 goroutine 的堆栈，磁盘能写后存为 `<data>/diagnostics/stalls/stall-<UTC 时间>.txt`（保留最新 20 份，两份之间至少隔 1 分钟），并在卡顿结束时写一行 `process stall recorded`（含时长和报告路径）。整个进程超过这个时长没有被调度时记录为 `process pause recorded`。用法见[排障](../how-to/troubleshooting.md#server-卡住或偶发变慢时卡顿报告与现场堆栈)。
 - `SIGINT`/`SIGTERM` 触发优雅退出；进程在 systemd 下运行（存在 `INVOCATION_ID`）或由 `--supervise` 启动时，控制台的「立即重启」和控制台升级可以让它自行退出并由 `Restart=always` 或守护进程拉起。
 
 ### `--supervise` 的进程行为
@@ -372,10 +372,11 @@ server 每次启动时，在读入推送状态之后、拉起任何插件之前�
 | 无 | `$GPUWORKS_RUNTIME_MOUNT_ROOT`、`$GPUWORKS_UDOCKER_BUNDLE` | 只能来自环境变量或配置文件的 `MOUNT_ROOT`、`UDOCKER_BUNDLE`，agent 启动时设给运行时 |
 | `--data-lane BOOL` | 无 | 默认 `true`。开专用高吞吐数据通道；只能走单连接的代理后面设为 `false` |
 | `--image-pull-max-connections N` | `$GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` | runveil（udocker）节点拉取镜像时，到每个仓库 host（经代理时为代理）同时打开的连接数上限；`0` 或不设为自动（最多 16），`1` 为只用一条连接，最大 32，超出范围启动失败。应对只允许少量连接或对多连接限流的仓库与代理，不是日常设置，见[限制镜像拉取的连接数](../how-to/configure-pull-settings.md#限制镜像拉取的连接数runveil-节点) |
+| `--stall-report-after DURATION` | 无 | 默认 `3s`。一次日志写入等待超过这个时长时，把全部 goroutine 的堆栈记为卡顿报告（`<state>/stalls/`）；`0` 关闭 |
 | `--dcgm MODE` | `$GPUWORKS_DCGM`，默认 `off` | 可选 DCGM SM 占用探针：`off` / `auto`（仅当 `dcgmi` 在 PATH 上才启用） |
 
 - `--state` 默认：`$GPUWORKS_STATE_DIR`，否则 `/opt/gpuworks`（存在时）；macOS 上其次是 `~/gpuworks`（其中有 `gpuworks-agent.conf` 时）、`~/.gpuworks`（存在时）；否则用户配置目录下的 `gpuworks`，最后 `./gpuworks-state`。
-- `--data-lane`、`--dcgm`、`--image-pull-max-connections` 不属于配置文件，不被 `configure` 记录。
+- `--data-lane`、`--stall-report-after`、`--dcgm`、`--image-pull-max-connections` 不属于配置文件，不被 `configure` 记录。
 - `--driver udocker` 选择 runveil：`udocker` 是保留的 driver 名（节点记录与 API 沿用），实现是 native 镜像处理加直接调用内嵌 PRoot 的启动器，界面显示为 runveil。
 - `--driver host` 把引擎作为宿主机进程运行，用于 macOS（Apple silicon）节点：Linux 容器在 macOS 上跑在虚拟机里，拿不到 Metal GPU。镜像是 darwin/arm64 的环境包，解包后由 agent 直接启动。
 - 不指定 driver 时，macOS 上直接选 host（即使 Docker Desktop 可用）；其他系统按 docker（daemon 可用）> nerdctl > runveil 的顺序探测；都不可用则该节点禁用部署。`--driver` 给了未知值，或给了当前系统用不了的运行时（Linux 上的 `host`、macOS 上的 `udocker`），会记录错误并且不启用任何运行时。
@@ -408,7 +409,7 @@ server 每次启动时，在读入推送状态之后、拉起任何插件之前�
 - 仅支持 Linux；从 `<server>/dl/gpuworks-agent-linux-<arch>` 下载到 `<bin>.new`，10 秒内 `smoke` 通过后才把旧二进制改名 `<bin>.old` 并换上新版本，smoke 失败则旧二进制保持原样。
 - 该 state 目录已有 agent 在运行（systemd 或 nohup 常驻）时直接拒绝，下载前就退出：`upgrade` 换上的 `run` 不在原服务里，会和常驻 agent 共用节点身份、互相顶掉连接。常驻 agent 请在节点页「升级 Agent」。
 - `server_dial` 的 agent 不知道 server 地址，也无从下载：手工 `upgrade` 直接拒绝，提示它由 server 推送升级，在节点页「升级 Agent」操作。
-- 替换后的 `run` 在配置来自文件时带 `--state <dir>` 及本次显式传入的 `--server`、`--token`、`--driver`、`--connect-mode`、`--listen`；环境变量原样继承，不把文件或环境中的 token 提升成命令行参数，也不改写配置文件。没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--dcgm`、`--image-pull-max-connections`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM`、`--image-pull-max-connections` 可改用 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` 保留；`--data-lane` 没有对应环境变量，手工升级后恢复默认值 `true`。
+- 替换后的 `run` 在配置来自文件时带 `--state <dir>` 及本次显式传入的 `--server`、`--token`、`--driver`、`--connect-mode`、`--listen`；环境变量原样继承，不把文件或环境中的 token 提升成命令行参数，也不改写配置文件。没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--stall-report-after`、`--dcgm`、`--image-pull-max-connections`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM`、`--image-pull-max-connections` 可改用 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` 保留；`--data-lane` 与 `--stall-report-after` 没有对应环境变量，手工升级后恢复默认值（`true`、`3s`）。
 - 整个过程有 10 分钟预算；同一时刻只允许一个升级。替换后的进程同样要在确认期限内注册成功，否则回滚到 `<bin>.old`。节点页「升级 Agent」对支持推送的 agent 改由 server 经连接推送二进制，不经 `/dl/` 与 `smoke`，见[升级与版本兼容](../how-to/upgrade-and-compatibility.md)。
 
 ## gpuworks-agent doctor

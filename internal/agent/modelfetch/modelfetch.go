@@ -217,7 +217,9 @@ type File struct {
 // Fetch downloads one file, starting at the address the fetch is at. A file
 // pinned to a commit continues its partial bytes at the next address; one
 // that is not starts over there, since another address may serve other
-// bytes under the same branch name.
+// bytes under the same branch name. When the last address fails too, the
+// partial bytes stay: a retry of the download continues them, and the resume
+// state names the address they came from, so another address ignores them.
 func (f *Fetcher) Fetch(ctx context.Context, file File, onProgress func(download.Progress)) error {
 	pinned := isCommit(file.Revision)
 	for f.at < len(f.order) {
@@ -229,7 +231,7 @@ func (f *Fetcher) Fetch(ctx context.Context, file File, onProgress func(download
 		if reason == "" {
 			return err // not the address's doing: retrying elsewhere cannot help
 		}
-		if !pinned {
+		if !pinned && f.at < len(f.order)-1 {
 			_ = os.Remove(file.Dest + ".part")
 			_ = os.Remove(file.Dest + ".part.state")
 		}
