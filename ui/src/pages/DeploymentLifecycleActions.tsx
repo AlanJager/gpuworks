@@ -15,7 +15,6 @@ interface DeploymentAction {
   icon?: ReactNode;
   hint?: string;
   disabled?: boolean;
-  danger?: boolean;
   onClick: () => void;
 }
 
@@ -23,11 +22,10 @@ export interface DeploymentActions {
   primary: DeploymentAction[];
   terminal: DeploymentAction;
   menu: DeploymentAction[];
-  remove: DeploymentAction;
 }
 
-export default function DeploymentDetailActions({ dep, actions, onChanged }: {
-  dep: Deployment; actions: DeploymentActions; onChanged: () => void;
+export default function DeploymentDetailActions({ dep, actions, onChanged, deleteButton }: {
+  dep: Deployment; actions: DeploymentActions; onChanged: () => void; deleteButton: ReactNode;
 }) {
   const { t } = useTranslation("deployments");
   const chevron = useIcon("chevron-down");
@@ -57,7 +55,7 @@ export default function DeploymentDetailActions({ dep, actions, onChanged }: {
         <Button variant="tertiary" size="sm" disabled={deleting} onClick={() => setConfirm("restart")}>{t("detail.restart.action")}</Button>
         <Button variant="tertiary" size="sm" className="text-fg-danger" disabled={deleting || busy} onClick={() => setConfirm("stop")}>{t("detail.stop")}</Button>
       </>}
-      <Button variant="tertiary" size="sm" className="text-fg-danger" onClick={actions.remove.onClick}>{actions.remove.label}</Button>
+      {deleteButton}
       <DropdownMenu>
         <DropdownTrigger render={<Button className="ms-auto" variant="tertiary" size="sm" trailingIcon={chevron}>{t("detailLayout.more")}</Button>} />
         <DropdownContent align="end">

@@ -8,6 +8,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/tracecontext"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
+	"gpuworks.ai/gpuworks/internal/stallwatch"
 )
 
 // Grid kinds as stored in memory; the tables keep the uxrecord kind strings.
@@ -180,6 +181,7 @@ func (s *Store) flush() error {
 	if len(w.rows) == 0 && len(w.grid) == 0 && len(w.cnt) == 0 && len(w.lat) == 0 {
 		return nil
 	}
+	defer stallwatch.Begin("request store write")()
 	created, err := s.writeBatch()
 	if err != nil {
 		s.flushErrors.Add(1)

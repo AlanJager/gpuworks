@@ -42,7 +42,7 @@
     "Tabs": 11,
     "Tag": 199,
     "Tooltip": 129,
-    "Typography": 771,
+    "Typography": 770,
     "Upload": 6,
     "antd/locale/en_US": 0,
     "antd/locale/zh_CN": 0,
@@ -124,7 +124,7 @@
     "ui/src/pages/StoragePage.tsx": {"components":{"Alert":1,"Button":4,"Card":1,"Space":4,"Tooltip":2,"Typography":6},"icons":4,"imports":["Alert","Button","Card","Space","Tooltip","Typography"],"sites":18,"types":[]},
     "ui/src/pages/TerminalPage.tsx": {"components":{"Spin":1,"Typography":1},"icons":0,"imports":["Spin","Typography"],"sites":2,"types":[]},
     "ui/src/pages/analytics/AnalyticsPage.tsx": {"components":{"Skeleton":1,"Tabs":1},"icons":0,"imports":["Skeleton","Tabs"],"sites":2,"types":[]},
-    "ui/src/pages/analytics/GpuTab.tsx": {"components":{"Alert":1,"Button":2,"Card":2,"Segmented":2,"Select":2,"Space":7,"Typography":8},"icons":0,"imports":["Alert","Button","Card","Segmented","Select","Space","Typography"],"sites":24,"types":[]},
+    "ui/src/pages/analytics/GpuTab.tsx": {"components":{"Alert":1,"Button":2,"Card":2,"Segmented":2,"Select":2,"Space":7,"Typography":7},"icons":0,"imports":["Alert","Button","Card","Segmented","Select","Space","Typography"],"sites":23,"types":[]},
     "ui/src/pages/analytics/GpuTable.tsx": {"components":{"Table":0,"Tag":3,"Typography":3},"icons":0,"imports":["Table","Tag","Typography"],"sites":6,"types":["ColumnsType"]},
     "ui/src/pages/analytics/GpuTimeTab.tsx": {"components":{"Card":2,"Space":1,"Table":11,"Typography":3},"icons":0,"imports":["Card","Space","Table","Typography"],"sites":17,"types":["ColumnsType"]},
     "ui/src/pages/analytics/QualityTab.tsx": {"components":{"Card":3,"Segmented":1,"Space":2,"Table":15,"Typography":5},"icons":0,"imports":["Card","Segmented","Space","Table","Typography"],"sites":26,"types":["ColumnsType"]},
@@ -366,5 +366,5 @@
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":183,"antdFiles":286,"cssFilesWithAntRules":12,"iconFiles":91,"iconImports":219,"sites":4211}
+  "summary": {"antRules":183,"antdFiles":286,"cssFilesWithAntRules":12,"iconFiles":91,"iconImports":219,"sites":4210}
 }

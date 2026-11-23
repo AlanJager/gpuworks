@@ -154,6 +154,7 @@ Top-level shared packages in `internal/`:
 - `proto` (control plane protocol),
 - `engines` (single source of truth for engine names; pure leaf with no dependencies: `VLLM`/`SGLang`/`Callable`. `Callable` hosts catalog-bundled Serve Adapters and has no log dialect or parameter dictionary; use `DialectNames()` instead of `Names()` when dialects/dictionaries are needed. `deploy` re-exports these as `EngineVLLM`/`EngineSGLang`/`DefaultEngine`. Because `deploy` depends on `modelmeta` through `inferenceapi` and agent cannot depend on server, both sides can share only this leaf package),
 - `logging` (size-rotated file logging shared by server+agent, `--log-file`/`--log-max-size`/`--log-keep`),
+- `stallwatch` (stall recording shared by server+agent: when a log write or a store operation waits too long, every goroutine's stack is written to a report; no in-repo imports),
 - `logthrottle` (log rate limiting shared by server and agent: each kind of record is written a limited number of times per 30 seconds, the rest counted and summarized in one record),
 - `logtext` (container-output line splitting shared by server and agent: keeps only what follows the last `\r` in a line, as a terminal shows it, so a progress bar leaves just its final frame; overlong lines are broken instead of ending the log stream with `ErrTooLong`),
 - `debuglog` (time- and size-bounded debug sessions: while one is open, records at debug and above are also written to a file of their own, the process's own log level unchanged),
@@ -195,7 +196,7 @@ React + Vite; build artifacts are output to `internal/server/webui/dist` and emb
 <!-- translation-source-sha256: 588f105fae27aee99bc97d2ac52f14f46b799973a21cad8eb22dd0a76d9b9965 # Code Map -->
 <!-- translation-source-sha256: f669310395d873be226ec5560eaebd659a69a1c2c796b051840aa7be49d70de3 ## Server Side (`internal/server/`) -->
 <!-- translation-source-sha256: 3055c04d8d83f0004d1cf4a13fea73755ae3a95ffa4a52c57ad593f89a3f444d ## Agent Side (`internal/agent/`) -->
-<!-- translation-source-sha256: 2968818acd25141ac125c171700a0da5d321049c0f37b3abf4d94e6ceede7922 ## Shared Libraries (`pkg/` and Top-Level `internal/`) -->
+<!-- translation-source-sha256: f4bee11227a4742cbead3d88f990c02d348d3bd28da3d155754703899bed799f ## Shared Libraries (`pkg/` and Top-Level `internal/`) -->
 <!-- translation-source-sha256: b369f4f834dc1a0175f774fab172fb7ea58770736a8adb5c44dcd83260dc126b ## Auxiliary Commands -->
 <!-- translation-source-sha256: 86c3bb29df4a9d97a40448de8fb95919127b5a1f5484fa303d28534d629cab95 ## Test Assets (`test/`) -->
 <!-- translation-source-sha256: 0cf534a1e01ef0258a30dafd393fad03c94f48c7dfd17bd35626668d76f3eecc ## Frontend (`ui/`) -->

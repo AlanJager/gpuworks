@@ -1,7 +1,6 @@
 package store
 
 import (
-	"database/sql"
 	"encoding/json"
 	"strconv"
 	"time"
@@ -362,7 +361,7 @@ func preloadCards(db *gorm.DB) *gorm.DB {
 // connection there would wait forever on the one that transaction holds.
 func (s *Store) withCards(db *gorm.DB, query func(*gorm.DB) error) error {
 	run := func(tx *gorm.DB) error { return query(preloadCards(tx)) }
-	if _, pool := db.Statement.ConnPool.(*sql.DB); !pool {
+	if !isDatabasePool(db.Statement.ConnPool) {
 		return run(db)
 	}
 	if db == s.db {

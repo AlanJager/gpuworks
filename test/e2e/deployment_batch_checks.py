@@ -63,7 +63,7 @@ def open_deployment_row(page, row, name, dep_id, report):
     check(body['id'] == dep_id and body['name'] == name, 'row opened another deployment')
     drawer = page.get_by_role('dialog', name=name, exact=True)
     expect(drawer).to_be_visible(timeout=12000)
-    title = drawer.locator('.ant-drawer-title')
+    title = drawer.get_by_role('heading', name=name, exact=True)
     expect(title).to_have_text(name, timeout=12000)
     expect(title.locator('b')).to_have_count(0, timeout=12000)
     report['row_detail_entry'] = {'id': dep_id, 'name': name, 'status': 200,
@@ -74,6 +74,7 @@ def open_deployment_row(page, row, name, dep_id, report):
 
 def delete_name_preview(dialog, title, report):
     report['last_step'] = 'deployment-delete-name-escaped'
-    expect(dialog.locator('.ant-modal-title')).to_have_text(title, timeout=12000)
-    expect(dialog.locator('.ant-modal-title b')).to_have_count(0, timeout=12000)
+    heading = dialog.get_by_role('heading', name=title, exact=True)
+    expect(heading).to_have_text(title, timeout=12000)
+    expect(heading.locator('b')).to_have_count(0, timeout=12000)
     report['display_name_escaped'] = True

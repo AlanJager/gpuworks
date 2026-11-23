@@ -148,6 +148,14 @@ func TestBundleCollectsTheWindowRedactedAndSaysWhatItSkipped(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(sessionDir, "session.json"), raw, 0o600)
 	_ = os.WriteFile(filepath.Join(sessionDir, "requests", "7-r1.jsonl"), []byte(`{"t":"request"}`+"\n"), 0o600)
 
+	// Stall reports: the one noticed inside the window is taken as written,
+	// the one from before it is left.
+	stallIn := "stall-" + now.Add(-10*time.Minute).Format("20060102T150405.000Z") + ".txt"
+	stallOld := "stall-" + now.Add(-2*time.Hour).Format("20060102T150405.000Z") + ".txt"
+	_ = os.MkdirAll(m.stallDir(), 0o700)
+	_ = os.WriteFile(filepath.Join(m.stallDir(), stallIn), []byte("gpuworks stall report\nwaiting:\n  4s  log output\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(m.stallDir(), stallOld), []byte("gpuworks stall report\n"), 0o600)
+
 	b, err := m.StartBundle(context.Background(), BundleRequest{DeploymentIDs: []uint{7}, NodeUUIDs: []string{"n-run", "n-old", "n-pick"}, RequestedBy: "admin"})
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +186,17 @@ func TestBundleCollectsTheWindowRedactedAndSaysWhatItSkipped(t *testing.T) {
 		}
 	}
 
+	if got := items["server/stalls/"+stallIn]; got.Status != proto.CheckPass || got.ID() != BundleItemServerStall || got.Bytes == 0 {
+		t.Fatalf("stall report item = %+v", got)
+	}
+	if _, ok := items["server/stalls/"+stallOld]; ok {
+		t.Fatal("a stall report from before the window was collected")
+	}
+
 	files := readArchive(t, m.bundleArchive(b.ID))
+	if got := files["server/stalls/"+stallIn]; !strings.Contains(got, "4s  log output") {
+		t.Fatalf("stall report in the archive = %q", got)
+	}
 	if got := files["server/gpuworks-server.log"]; strings.Contains(got, "msg=old") || !strings.Contains(got, `msg="in window"`) || !strings.Contains(got, "stack continuation") {
 		t.Fatalf("server log = %q", got)
 	}

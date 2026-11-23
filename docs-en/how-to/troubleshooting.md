@@ -1417,6 +1417,30 @@ If it reports `database ... does not exist`, use `--data` to specify the server'
 If the user does not exist, the command returns `not found`; first check the username and data directory. For permission errors, check the current user's access to the database.
 See [CLI](../reference/cli.md).
 
+## When the Server Hangs or Is Slow Now and Then: Stall Reports and Live Stacks
+
+**Symptom**: now and then a request takes seconds to return, or the server log has no line at all for a while, and afterwards nothing shows where it was stuck.
+
+**Stall reports (automatic)**: the server watches the places where it may wait for the disk: log writes (the log file and stderr), database statements and the begin and commit of transactions (where waiting for the single writer and for the disk happens; in a cluster including the round trip to the database process), and writes to the metrics, log and request record stores. When one of them waits longer than 3 seconds (`log.stall_report_after`), it immediately takes every goroutine's stack in memory and stores it as a file once the disk can be written, so the evidence exists even when the log or the disk itself is what stalled:
+
+- The files are `diagnostics/stalls/stall-<UTC time>.txt` in the server's data directory; the newest 20 are kept. Two reports are at least 1 minute apart; stalls in between are only counted, and the count is written in the next report.
+- A report starts with the server version, the time it was noticed, what was waiting and for how long (`waiting:`), and the kernel's I/O pressure (`io pressure:`), followed by all stacks. If the wait reaches 30 seconds the stacks are taken once more (`still waiting at`), and a line `ended: …, after <duration>` is added when it ends. No `ended` line means the process exited before the stall was over. A stall that begins less than 1 minute after the previous report and is still there when the minute is up gets its stacks and its report at that moment.
+- After the stall the server log has one line `process stall recorded site=… duration=… report=…`. `process pause recorded` means the whole process was not scheduled during that time (frozen, starved of CPU, or memory reclaim); there are no stacks in that case, the file is named `stall-<time>.pause.txt`, and only a pause of at least 1 second counts. A log line carries `report=` only when the report file was actually written.
+- To read a report, look at `waiting:` first to see which kind of operation was stuck, then find in the stacks the goroutine stopped in that operation and the goroutines queued behind it for the same lock.
+- [Collect diagnostics](#无法登录现场时调试采集与收集诊断信息) includes the reports in the time range (`server/stalls/`).
+
+The agent watches writes to its own log file the same way (`gpuworks-agent run --stall-report-after`, 3 seconds by default, `0` turns it off); its reports are in `stalls/` under the agent state directory (`/opt/gpuworks/stalls/` by default). The agent's reports are not part of collected diagnostics; fetch them on the node when needed. Nothing is recorded when the log file cannot be opened and the agent writes to stderr only.
+
+**Live stacks (on demand)**: when the server is stuck right now and there is no report (for example it is stuck somewhere not covered above), take the current stacks on the server host. This needs no restart and does not terminate the process:
+
+```bash
+kill -USR1 "$(systemctl show -p MainPID --value gpuworks)"   # opens a loopback-only pprof listener that closes itself after 10 minutes
+grep 'pprof window open' /opt/gpuworks/server/data/logs/gpuworks-server.log | tail -n 1   # the actual address, 127.0.0.1:6060 by default
+curl -s 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=2' > goroutines.txt
+```
+
+When the server does not run under systemd, use the server process's own PID; send the signal to the server process only, because the parent process of `--supervise` exits on `USR1`. Do not use `kill -QUIT`: it terminates the process.
+
 ## When You Cannot Log In On Site: Debug Collection and Collecting Diagnostics
 
 When you cannot log in to the customer's servers, have an administrator work in **Settings → Diagnostics** and send back the downloaded archive.
@@ -1429,6 +1453,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 | `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
 | `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#the-management-servers-host-identity) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
+| `server/stalls/stall-<time>.txt` | The [stall reports](#server-卡住或偶发变慢时卡顿报告与现场堆栈) in the time range, as written |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
 | `instances/<uuid>.log` | The chosen deployments' instance logs |
 | `debug/<session>/`, `nodes/<uuid>/debug/` | Debug collections that overlap the time range |
@@ -1517,8 +1542,10 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 3b9bd45c354e3073dc0f5409212c860a80f62f127a30e9819da2c6a8338d6430 ## Reverse Proxy Batches Streaming Output or Truncates Long Requests -->
 <!-- translation-source-sha256: 81e18958b5bcfae45dda667e516faaf018d2cb221db969636794a3ff6ac384e8 ## An Operation Reports "The Server Host's Disk Is Full" -->
 <!-- translation-source-sha256: b0834e1bb1b00d344ab133dd87553f7399555d48589d4f1005833f1b338f7d74 ## Forgotten Admin Password -->
-<!-- translation-source-sha256: f4b47ea39818df555b3ee04f7a85d5e309192d2eecfa178b7ad752825562c00e ## When You Cannot Log In On Site: Debug Collection and Collecting Diagnostics -->
+<!-- translation-source-sha256: 62e3a2f112b3bbd3b2c39b6a422b4b32997450935010fa6a9a7237a848e30a7c ## When the Server Hangs or Is Slow Now and Then: Stall Reports and Live Stacks -->
+<!-- translation-source-sha256: 3937e7b5e3154a9cf5d7e092f90da6f978efc383086341914f85a66f6fdc9c96 ## When You Cannot Log In On Site: Debug Collection and Collecting Diagnostics -->
 <!-- translation-source-sha256: 702e2f608eecf6ecf6d04476d009d11a8cce41793fea5d7fcf3d4f71c14ee034 ## Still Unresolved? -->
 <!-- translation-localized-code-block: 5a54acf993d1267a588edaed6adb42fabe4eaa22a37d698098643916823bb39b 63b848b372a289196a7de991833e1e2e7e410a903f69538cc9e20e3119d7859f -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
 <!-- translation-localized-code-block: d7bedf2c39d1189b0b6bb93c618159d59d4e9db4f959892452d1c1dfdc925b9c 41cbdf89196804621a51df585f2a864cf675566f5c55b422bcfe55a4622cc6a1 Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->
+<!-- translation-localized-code-block: b8441e6b174b9aeb6dfdb8db43681e6c0644b5ccf2f59e87da139fa51efc6409 75c73e46c9ec11a61cc5b60380e696889d8c46bbec36d8e0f24857dcf039ec4f -->
