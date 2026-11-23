@@ -99,6 +99,7 @@ type Store struct {
 	refreshTransportAuthorization func(context.Context) error
 	confirmTransportAuthorization transportAuthorizationConfirmation
 	grantClusterMembership        clusterMembershipGrant
+	confirmedMembership           atomic.Pointer[confirmedClusterMembership]
 	grantClusterMembershipKeys    func(context.Context, ClusterIdentity, []string) (uint64, []ClusterTransportMember, error)
 	// diagnosticLogger is configured before the Store is shared with workers.
 	diagnosticLogger     *slog.Logger

@@ -34,7 +34,9 @@ func (s *Store) GrantClusterMembership(ctx context.Context, expected ClusterIden
 	if s.grantClusterMembership == nil {
 		return 0, nil, errors.New("live native cluster membership is unavailable")
 	}
-	return s.grantClusterMembership(ctx, expected, requesterKey)
+	revision, members, err := s.grantClusterMembership(ctx, expected, requesterKey)
+	s.rememberConfirmedMembership(members, err)
+	return revision, members, err
 }
 
 // GrantClusterMembershipKeys increments every named admission in one replicated
@@ -49,7 +51,36 @@ func (s *Store) GrantClusterMembershipKeys(ctx context.Context, expected Cluster
 	if s.grantClusterMembershipKeys == nil {
 		return 0, nil, errors.New("live native cluster membership is unavailable")
 	}
-	return s.grantClusterMembershipKeys(ctx, expected, keys)
+	revision, members, err := s.grantClusterMembershipKeys(ctx, expected, keys)
+	s.rememberConfirmedMembership(members, err)
+	return revision, members, err
+}
+
+// confirmedClusterMembership is the member list of the latest successful
+// grant, kept in memory only.
+type confirmedClusterMembership struct {
+	members []ClusterTransportMember
+	at      time.Time
+}
+
+func (s *Store) rememberConfirmedMembership(members []ClusterTransportMember, err error) {
+	if err != nil || len(members) == 0 {
+		return
+	}
+	s.confirmedMembership.Store(&confirmedClusterMembership{members: slices.Clone(members), at: time.Now().UTC()})
+}
+
+// ConfirmedClusterMembership returns the member list the latest successful
+// grant of this process confirmed, when that grant is no older than maxAge.
+// It reads memory only. Callers that must not wait for a replicated write use
+// it between grants: a member removed since then stays in the list, and one
+// added since then is missing, for at most maxAge.
+func (s *Store) ConfirmedClusterMembership(maxAge time.Duration) ([]ClusterTransportMember, bool) {
+	confirmed := s.confirmedMembership.Load()
+	if confirmed == nil || maxAge <= 0 || time.Since(confirmed.at) > maxAge {
+		return nil, false
+	}
+	return slices.Clone(confirmed.members), true
 }
 
 func normalizeLiveClusterMembers(input []cluster.Member) ([]cluster.Member, error) {

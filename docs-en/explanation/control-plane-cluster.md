@@ -18,6 +18,7 @@ The community distribution carries neither the cluster runtime nor any cluster c
 - **Scheduling follows the database leader**: only the member that holds the database leader runs the scheduling and control loops; after the leader changes, the new leader takes over. There is no separate scheduling lease.
 - **A write sent to a member that cannot commit it**: it answers 503, nothing is committed, and the entry can send the request to another member.
 - **A member that has not opened business** (just started, cut off from the majority, or with materials not yet verified): business requests and `/api/v1/readyz` both answer 503 with the body `member business service is not ready`.
+- **A short storage stall**: a member admits requests on the membership it last confirmed. The confirmation is renewed in the background and no request waits for it, so a storage stall of a few seconds neither refuses nor delays a request for authorization. A member closes business only when the confirmation cannot be renewed for 15 seconds, or when the database answers that the member is no longer in the cluster. Until then a member that was removed or is cut off from the majority still answers reads and inference requests; a write always needs the majority, so such a member commits nothing.
 
 ## Limits
 
@@ -70,7 +71,7 @@ Current limits:
 
 <!-- translation-source-sha256: d893a7614f922930a0120a0577e4098bee4fbdbc0a805c47575855a11736c20c # Control-Plane Cluster Behaviour and Limits -->
 <!-- translation-source-sha256: 759f9f888c6cdaa0e610709be4e93ac8423ae04edf6c39dc34a64a1eae8fa022 ## Composition -->
-<!-- translation-source-sha256: 570d26da42924b1909f5b6a417fae2540af6c56a9602f152aa7b130115abf675 ## Behaviour on Failure -->
+<!-- translation-source-sha256: aa3d838ba46b2477b0c50d6301a1ddf26490334d8d616537f4361499d052512e ## Behaviour on Failure -->
 <!-- translation-source-sha256: bf89aa9690874bb21fc680175b42ebe8dc915e60c289fcf6c88b63d126f9c9c6 ## Limits -->
 <!-- translation-source-sha256: c56a989bc2555e6ad4a6cf5dd7ffe407203e6a9f32497c41ea4ce8ca3322cf66 ## Storage Tiers -->
 <!-- translation-source-sha256: 5b963d9b6cab0af7f80ccbda255cde725e9cbf149f23b48fa1e3bc2159cd2c1d ## Protocol Version of the Database Helper -->

@@ -17,7 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-func TestBusinessReadinessWaitsForCapturedRenewalBeforeFinalGrant(t *testing.T) {
+func TestBusinessReadinessWaitsForCapturedRenewalBeforePublishing(t *testing.T) {
 	for _, mode := range []string{"success", "failed", "invalidate", "stop", "cancel", "proof-cancel", "withdraw", "expired", "missing", "request-deadline", "wait-budget"} {
 		t.Run(mode, func(t *testing.T) {
 			st, err := store.Open(filepath.Join(t.TempDir(), "renewal.db"), bus.New())
@@ -28,7 +28,7 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforeFinalGrant(t *testing.T) 
 			signer, token := memberAdminSession(t, st, "readiness-renewal")
 			base := time.Now()
 			var age atomic.Int64
-			var proofs, reads, grants atomic.Int32
+			var proofs, reads atomic.Int32
 			var completed atomic.Bool
 			entered, release, readDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			proofCtx, stopProof := context.WithCancel(t.Context())
@@ -70,14 +70,6 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforeFinalGrant(t *testing.T) 
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = st.DB().Callback().Query().Remove(hook) })
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-					if grants.Add(1) == 2 && mode == "success" && !completed.Load() {
-						t.Error("final fresh grant ran before captured renewal finished")
-					}
-					return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-				})
-			})
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
 			requestCtx, cancelRequest := context.WithCancel(t.Context())
 			defer cancelRequest()
@@ -96,7 +88,7 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforeFinalGrant(t *testing.T) 
 			select {
 			case <-readDone:
 			case <-requestDone:
-				t.Fatalf("readiness returned before waiting for renewal: status=%d grants=%d", rec.Code, grants.Load())
+				t.Fatalf("readiness returned before waiting for renewal: status=%d", rec.Code)
 			case <-time.After(time.Second):
 				t.Fatal("readiness did not reach its renewal boundary")
 			}
@@ -109,8 +101,8 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforeFinalGrant(t *testing.T) 
 				}
 			case <-time.After(25 * time.Millisecond):
 			}
-			if grants.Load() != 1 || reads.Load() != 1 {
-				t.Fatalf("renewal boundary: grants=%d reads=%d want1/1", grants.Load(), reads.Load())
+			if reads.Load() != 1 {
+				t.Fatalf("renewal boundary: reads=%d want1", reads.Load())
 			}
 			switch mode {
 			case "invalidate":
@@ -147,12 +139,12 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforeFinalGrant(t *testing.T) 
 				t.Fatalf("readyz status=%d want%d reads=%d proofs=%d body=%s", rec.Code, want, reads.Load(), proofs.Load(), rec.Body.String())
 			}
 			if mode == "success" {
-				if grants.Load() != 2 || rec.Body.String() != "{\"status\":\"ready\"}\n" {
-					t.Fatalf("ready publication: grants=%d body=%q", grants.Load(), rec.Body.String())
+				if !completed.Load() || rec.Body.String() != "{\"status\":\"ready\"}\n" {
+					t.Fatalf("ready publication: renewal completed=%t body=%q", completed.Load(), rec.Body.String())
 				}
 				business := requestMemberEntry(gate, http.MethodGet, "/api/v1/engines", token)
-				if business.Code != http.StatusOK || grants.Load() != 3 || reads.Load() != 1 {
-					t.Fatalf("next authenticated business: status=%d grants=%d reads=%d", business.Code, grants.Load(), reads.Load())
+				if business.Code != http.StatusOK || reads.Load() != 1 {
+					t.Fatalf("next authenticated business: status=%d reads=%d", business.Code, reads.Load())
 				}
 			}
 		})

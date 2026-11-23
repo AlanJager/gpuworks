@@ -28,27 +28,21 @@ func TestStatusRequiresCurrentBusinessAdmissionAfterQuorumObservation(t *testing
 	root := writeStatusRaft(t, statusIdentity(7, database, 0), statusMembers(statusIdentity(7, database, 0)), map[string]string{"metadata1": "m", "0000000000000001-0000000000000001": "s"})
 	now := time.Now()
 	eligibility := newMaterialEligibility(func() time.Time { return now }, func(context.Context) (bool, error) { return true, nil }, time.Second)
-	grantFails := false
 	gate := newBusinessHandlerGate()
 	gate.requireMaterialEligibility()
 	gate.setMaterialEligibility(eligibility)
-	gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-		return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-			if grantFails {
-				return 0, nil, store.ErrClusterAdmissionRejected
-			}
-			return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-		})
-	})
 	server := httptest.NewServer(gate)
 	defer server.Close()
 	previous := statusQuorumFetch
 	t.Cleanup(func() { statusQuorumFetch = previous })
-	for _, mode := range []string{"closed", "admitted", "grant rejected", "expired during quorum", "withdrawn"} {
+	for _, mode := range []string{"closed", "admitted", "refused", "expired during quorum", "withdrawn"} {
 		t.Run(mode, func(t *testing.T) {
-			grantFails = mode == "grant rejected"
 			if ready, err := eligibility.Reprove(context.Background()); !ready || err != nil {
 				t.Fatalf("prepare proof: %t %v", ready, err)
+			}
+			if mode == "refused" {
+				// What a refusal from the database does to this member.
+				eligibility.Invalidate()
 			}
 			gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/api/v1/readyz" {
@@ -111,13 +105,6 @@ func TestStatusReadinessRejectsEligibilityLossDuringActualSettingsRead(t *testin
 			gate := newBusinessHandlerGate()
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(eligibility)
-			var grants atomic.Int32
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-					grants.Add(1)
-					return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-				})
-			})
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
 			server := httptest.NewServer(gate)
 			t.Cleanup(server.Close)
@@ -158,22 +145,34 @@ func TestStatusReadinessRejectsEligibilityLossDuringActualSettingsRead(t *testin
 			case <-time.After(2 * time.Second):
 				t.Fatal("readiness did not join original SQL read")
 			}
-			if grants.Load() != 1 {
-				t.Fatalf("readiness repeated fresh grant: %d", grants.Load())
-			}
 		})
 	}
 }
 
-func TestStatusReadinessRequiresFinalGrantAfterOneRealRead(t *testing.T) {
-	for _, mode := range []string{"grant rejected", "grant canceled", "proof expires during final grant", "withdrawn during final grant"} {
+// afterReadinessRead runs fn each time the readiness probe's settings read
+// has returned its rows: after the real SQL and before the answer is published.
+func afterReadinessRead(t *testing.T, st *store.Store, fn func()) {
+	t.Helper()
+	name := "test:after-readiness-settings:" + t.Name()
+	if err := st.DB().Callback().Query().After("gorm:query").Register(name, func(tx *gorm.DB) {
+		if tx.Statement.Table == "settings" {
+			fn()
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.DB().Callback().Query().Remove(name) })
+}
+
+func TestStatusReadinessRechecksAdmissionAfterOneRealRead(t *testing.T) {
+	for _, mode := range []string{"refused after the read", "request canceled after the read", "proof expires after the read", "withdrawn after the read"} {
 		t.Run(mode, func(t *testing.T) {
 			st, err := store.Open(filepath.Join(t.TempDir(), "business.db"), bus.New())
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = st.Close() })
-			signer, err := auth.NewTokenSigner("status-final-grant", time.Hour)
+			signer, err := auth.NewTokenSigner("status-final-check", time.Hour)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -186,45 +185,32 @@ func TestStatusReadinessRequiresFinalGrantAfterOneRealRead(t *testing.T) {
 			gate := newBusinessHandlerGate()
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(eligibility)
-			var grants, reads atomic.Int32
-			if err := st.DB().Callback().Query().Before("gorm:query").Register("test:count-readiness-settings", func(tx *gorm.DB) {
-				if tx.Statement.Table == "settings" {
-					reads.Add(1)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var reads atomic.Int32
+			afterReadinessRead(t, st, func() {
+				if reads.Add(1) != 1 {
+					return
 				}
-			}); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { st.DB().Callback().Query().Remove("test:count-readiness-settings") })
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(ctx context.Context, _ store.ClusterIdentity, _ string) (uint64, []store.ClusterTransportMember, error) {
-					if grants.Add(1) == 2 {
-						if reads.Load() != 1 {
-							t.Errorf("final grant before actual business read, or SQL was replayed: %d", reads.Load())
-						}
-						switch mode {
-						case "grant rejected":
-							return 0, nil, store.ErrClusterAdmissionRejected
-						case "grant canceled":
-							<-ctx.Done()
-							return 0, nil, ctx.Err()
-						case "proof expires during final grant":
-							advance.Store(int64(materialEligibilityWindow))
-						case "withdrawn during final grant":
-							gate.setBusinessHandler(nil)
-						}
-					}
-					return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-				})
+				switch mode {
+				case "refused after the read":
+					eligibility.Invalidate()
+				case "request canceled after the read":
+					cancel()
+				case "proof expires after the read":
+					advance.Store(int64(materialEligibilityWindow))
+				case "withdrawn after the read":
+					gate.setBusinessHandler(nil)
+				}
 			})
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
-			server := httptest.NewServer(gate)
-			t.Cleanup(server.Close)
-			if got := probeBusiness(t.Context(), server.Listener.Addr().String(), 200*time.Millisecond); got == "open" {
-				t.Fatal("readiness ignored final admission loss")
+			rec := httptest.NewRecorder()
+			gate.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil).WithContext(ctx))
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Fatalf("readiness ignored admission loss after its read: status=%d", rec.Code)
 			}
-			server.Close() // Join the canceled final grant before counting physical work.
-			if grants.Load() != 2 || reads.Load() != 1 {
-				t.Fatalf("grants=%d reads=%d; require two grants, one SQL read", grants.Load(), reads.Load())
+			if reads.Load() != 1 {
+				t.Fatalf("reads=%d; require one SQL read, never replayed", reads.Load())
 			}
 		})
 	}
@@ -241,13 +227,6 @@ func TestStatusReadyRequiresRealBusinessSettingsReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := newBusinessHandlerGate()
-	var grants atomic.Int32
-	gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-		return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-			grants.Add(1)
-			return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-		})
-	})
 	gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st}))
 	server := httptest.NewServer(gate)
 	t.Cleanup(server.Close)
@@ -260,42 +239,9 @@ func TestStatusReadyRequiresRealBusinessSettingsReads(t *testing.T) {
 	if got := probeBusiness(t.Context(), server.Listener.Addr().String(), time.Second); got == "open" {
 		t.Fatal("open admission with failing business settings SQL was reported ready")
 	}
-	if grants.Load() != 3 {
-		t.Fatalf("healthy read needs two grants, failed SQL only one: %d", grants.Load())
-	}
 }
 
-func TestReadinessDiscardsBufferedSuccessWhenFinalGrantCancelsParent(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "business.db"), bus.New())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	signer, err := auth.NewTokenSigner("status-final-cancellation", time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	var grants atomic.Int32
-	gate := newBusinessHandlerGate()
-	gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-		return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-			if grants.Add(1) == 2 {
-				cancel()
-			}
-			return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-		})
-	})
-	gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st}))
-	rec := httptest.NewRecorder()
-	gate.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil).WithContext(ctx))
-	if rec.Code != http.StatusServiceUnavailable || grants.Load() != 2 || ctx.Err() == nil {
-		t.Fatalf("canceled buffered readiness: status=%d grants=%d ctx=%v", rec.Code, grants.Load(), ctx.Err())
-	}
-}
-
-func TestStatusReadinessUsesOriginalGrantAndMaterialGuards(t *testing.T) {
+func TestStatusReadinessUsesMaterialAndGenerationGuards(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "business.db"), bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -309,55 +255,31 @@ func TestStatusReadinessUsesOriginalGrantAndMaterialGuards(t *testing.T) {
 	gate := newBusinessHandlerGate()
 	gate.requireMaterialEligibility()
 	gate.setMaterialEligibility(eligibility)
-	var mode, grants atomic.Int32
-	gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-		return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-			grants.Add(1)
-			switch mode.Load() {
-			case 1:
-				return 0, nil, store.ErrClusterAdmissionRejected
-			case 2:
-				eligibility.Invalidate()
-			case 3:
-				gate.setBusinessHandler(nil)
-			}
-			return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-		})
-	})
 	server := httptest.NewServer(gate)
 	t.Cleanup(server.Close)
-	for index, name := range []string{"ready", "grant rejected", "material invalidated during grant", "handler withdrawn during grant", "closed handler"} {
+	for index, name := range []string{"ready", "material invalidated before the probe", "handler withdrawn before the probe"} {
 		t.Run(name, func(t *testing.T) {
-			mode.Store(int32(index))
 			if ready, err := eligibility.Reprove(t.Context()); !ready || err != nil {
 				t.Fatalf("prepare: %t %v", ready, err)
 			}
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
-			if index == 4 {
+			switch index {
+			case 1:
+				eligibility.Invalidate()
+			case 2:
 				gate.setBusinessHandler(nil)
 			}
-			before := grants.Load()
 			got := probeBusiness(t.Context(), server.Listener.Addr().String(), time.Second)
 			if (got == "open") != (index == 0) {
 				t.Fatalf("readiness=%s", got)
-			}
-			want := int32(1)
-			if index == 0 {
-				want = 2
-			}
-			if index == 4 {
-				want = 0
-			}
-			if calls := grants.Load() - before; calls != want {
-				t.Fatalf("fresh grants=%d want=%d", calls, want)
 			}
 			response, err := http.Get(server.URL + "/healthz")
 			if err != nil {
 				t.Fatal(err)
 			}
 			response.Body.Close()
-			if response.StatusCode != 200 || grants.Load() != before+want {
-				t.Fatal("public liveness changed or bypass extended to readiness")
+			if response.StatusCode != 200 {
+				t.Fatal("public liveness changed with readiness")
 			}
 		})
 	}

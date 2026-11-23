@@ -25,7 +25,6 @@ type businessHandlerGate struct {
 	active              *businessHandler
 	materialRequired    atomic.Bool
 	materialEligibility atomic.Pointer[materialEligibility]
-	businessGuard       func(http.Handler) http.Handler
 	readinessLog        *slog.Logger
 	// clusterUpgrade is set while this member's business is closed for a
 	// cluster upgrade; the closed answer then says so.
@@ -143,15 +142,14 @@ func (g *businessHandlerGate) setMaterialEligibility(eligibility *materialEligib
 	g.materialEligibility.Store(eligibility)
 }
 
-// setBusinessRequestGuard is called before the closed listener starts. Any
-// later business handler is wrapped once, so every new request must obtain a
-// fresh membership grant before reaching the handler.
-func (g *businessHandlerGate) setBusinessRequestGuard(guard func(http.Handler) http.Handler) {
-	g.businessGuard = guard
-}
-
 // setBusinessHandler installs a handler for later requests; nil withdraws it.
 // Requests that already entered a handler finish through that handler.
+//
+// A request is admitted on what this process already holds: the current
+// generation and the member's last confirmed proof, which a background worker
+// renews and which ends on a refusal or when it cannot be renewed inside its
+// window. No request waits for a replicated write to be admitted, so a
+// storage stall shorter than that window delays no request and refuses none.
 func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -160,18 +158,14 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 		g.active = nil
 	} else {
 		active := &businessHandler{drained: make(chan struct{})}
-		type readinessEntryKey struct{}
 		business := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			readiness := r.Method == http.MethodGet && r.URL.Path == "/api/v1/readyz"
 			var started time.Time
 			if readiness {
 				started = time.Now()
-				if entered, ok := r.Context().Value(readinessEntryKey{}).(func() time.Time); ok {
-					started = entered()
-				}
 			}
-			// The membership grant can wait past a withdrawal or material
-			// invalidation. Recheck both before entering business.
+			// A withdrawal or an invalidation can land between the gate's
+			// entry check and this handler. Recheck both before business.
 			g.mu.Lock()
 			current := g.active == active && !active.retired
 			g.mu.Unlock()
@@ -188,9 +182,9 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 			}
 			if readiness {
 				// Readiness SQL can outlast this handler's admission. Buffer only
-				// this fixed response; successful reads need a final current grant
-				// and generation/proof check. SQL is never replayed, and ordinary
-				// in-flight business keeps its existing lifecycle.
+				// this fixed response; a successful read is published after a
+				// final generation and proof check. SQL is never replayed, and
+				// ordinary in-flight business keeps its existing lifecycle.
 				eligibility := g.materialEligibility.Load()
 				epoch := eligibility.readinessEpoch()
 				response := &capturingResponse{}
@@ -231,9 +225,10 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 					return
 				}
 				publish := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					// A nearly expired proof must not advertise readiness for the
-					// next bounded membership operation. Ordinary business retains
-					// its existing eligibility and lifecycle.
+					// A nearly expired proof must not advertise readiness: an entry
+					// layer should stop choosing this member one membership-grant
+					// timeout before its business closes. Ordinary business
+					// retains its existing eligibility and lifecycle.
 					if !currentReady() {
 						g.closed.ServeHTTP(w, r)
 						g.logReadinessRejection(r, "final_publish", currentReason, started, 0, 0)
@@ -256,9 +251,9 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 					}
 					if !eligibility.EligibleFor(waitHeadroom) {
 						// A renewal already in flight may restore the required
-						// headroom. Reserve its existing scheduling interval before
-						// the final fresh grant; the final five-second check remains.
-						// This never starts a proof or repeats the buffered SQL.
+						// headroom. Reserve its existing scheduling interval; the
+						// final five-second check remains. This never starts a
+						// proof or repeats the buffered SQL.
 						if err := eligibility.waitForReadinessRenewal(r.Context(), store.ClusterMembershipGrantTimeout, waitHeadroom, epoch, currentReady); err != nil {
 							g.closed.ServeHTTP(w, r)
 							reason := currentReason
@@ -272,39 +267,12 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 						}
 					}
 				}
-				if response.status == http.StatusOK && g.businessGuard != nil {
-					entered := false
-					g.businessGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						entered = true
-						publish.ServeHTTP(w, r)
-					})).ServeHTTP(w, r)
-					if !entered {
-						g.logReadinessRejection(r, "final_grant", "denied", started, 0, 0)
-					}
-				} else {
-					publish.ServeHTTP(w, r)
-				}
+				publish.ServeHTTP(w, r)
 				return
 			}
 			handler.ServeHTTP(w, r)
 		})
 		active.Handler = business
-		if g.businessGuard != nil {
-			guarded := g.businessGuard(business)
-			active.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/readyz" || g.readinessLog == nil {
-					guarded.ServeHTTP(w, r)
-					return
-				}
-				started, entered := time.Now(), false
-				observe := func() time.Time { entered = true; return started }
-				request := r.WithContext(context.WithValue(r.Context(), readinessEntryKey{}, observe))
-				guarded.ServeHTTP(w, request)
-				if !entered {
-					g.logReadinessRejection(r, "initial_grant", "denied", started, 0, 0)
-				}
-			})
-		}
 		g.active = active
 	}
 }
