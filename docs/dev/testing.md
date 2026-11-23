@@ -93,7 +93,10 @@ RSS（进程驻留内存）与 CPU。
 看 nightly 的趋势，积累足够运行后再定阈值。网关用例另外断言每请求 server CPU
 （`GPUWORKS_GATEWAY_MAX_SERVER_CPU_US_PER_REQUEST`）：每请求的读库、复制之类的开销逐次累加时，
 吞吐和延迟要等到饱和才显出来，CPU 预算在每一步都能拦住。这个数与 CPU 型号有关，job 里的预算按最慢的
-runner（2.2 GHz Xeon Silver 4210）定，落在更快的 runner 上只会更低。
+runner（2.2 GHz Xeon Silver 4210）定。它还与 server 的 `GOMAXPROCS` 有关：在 192 个逻辑核、4 个 NUMA
+节点的 runner 上，server 用满全部核时每请求 CPU 是 20 个核时的 2.5 倍，吞吐相同。所以用例把 server 进程的
+`GOMAXPROCS` 固定为 20（`GPUWORKS_GATEWAY_SERVER_GOMAXPROCS`，0 表示用 server 自己的默认值），
+落在哪台 runner 上都可比，更快的 runner 只会更低。
 
 多进程形态可用预编译二进制运行，**没有 Go 工具链的机器只能这样跑**：
 

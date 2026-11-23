@@ -135,7 +135,9 @@
     "ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED": "昇腾上休眠不能与 expandable segments 共存，已把 {{variable}} 改为 {{value}}；如显存不足，请调低 gpu_memory_utilization 或 max_model_len 或关闭“可休眠”。",
     "KUBE_ENGINE_PORTS_OUTSIDE": "有运行中的实例占用的端口在新的引擎端口段 {{range}} 之外：{{instances}}。它们保留原端口、继续运行；只有之后启动的实例才使用新范围。",
     "PD_UCX_NETLINK_HANG": "节点 {{names}} 的内核会让 UCX 卡住，而 PD 模式 {{mode}} 经以太网用 NIXL 传 KV，引擎很可能一直起不来。部署仍允许创建；请先在该节点上关闭整机 IPv6，修复命令见下方。",
-    "PD_UCX_NETLINK_HANG_RDMA": "节点 {{names}} 的内核会让 UCX 卡住。网络 {{network}} 走 RDMA，UCX 可能不触发该问题，部署允许创建；若引擎启动卡住，请在该节点关闭整机 IPv6：{{fix}}"
+    "PD_UCX_NETLINK_HANG_RDMA": "节点 {{names}} 的内核会让 UCX 卡住。网络 {{network}} 走 RDMA，UCX 可能不触发该问题，部署允许创建；若引擎启动卡住，请在该节点关闭整机 IPv6：{{fix}}",
+    "DOCKER_ARG_PRIVILEGED": "{{arg}} 让容器可以使用本机全部设备并改动内核设置，等于拿到本机的控制权。仅在镜像确实需要时保留。",
+    "DOCKER_ARG_SHARED_PID": "{{arg}} 让容器能看到并结束本机其他实例的进程。仅在镜像确实需要时保留。"
   },
   "warningFeature": {
     "dgpu": "动态 GPU（dGPU）",
@@ -463,7 +465,9 @@
     "title": "配置评估",
     "vram": "启动显存估算：{{text}}",
     "evaluationSkipped": "已跳过显存估算",
-    "weightUnknown": "模型权重大小尚未获得，仍可继续部署；系统会在后台刷新元数据。"
+    "weightUnknown": "模型权重大小尚未获得，仍可继续部署；系统会在后台刷新元数据。",
+    "fieldErrors": "有 {{count}} 处设置需要修改，见表单中标红的字段。",
+    "fieldErrors_other": "有 {{count}} 处设置需要修改，见表单中标红的字段。"
   },
   "confirm": {
     "title": "确认配置",

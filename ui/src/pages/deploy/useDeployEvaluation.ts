@@ -207,8 +207,12 @@ export default function useDeployEvaluation({
                 fieldError.field.replace(/^placement\./, ""))
               : "";
             if (name && hasRenderedControl(form, name)) {
+              // One field can carry several errors (every refused docker
+              // arg); they all show, not only the last one set.
+              const existing = fields.find((field) => field.name === name);
+              if (existing) existing.errors.push(text);
+              else fields.push({ name, errors: [text] });
               flagged.add(name);
-              fields.push({ name, errors: [text] });
             } else {
               unattributed.push(text);
             }
