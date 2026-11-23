@@ -174,7 +174,7 @@
     "sourceMirror": "Mirror",
     "sourceURL": "URL",
     "sourceURLRelay": "URL · relayed",
-    "sourceFromURL": "Import from a URL…",
+    "sourceFromURL": "Import from an HTTP directory…",
     "pullFromURL": "Get from URL…",
     "relay": "Relay through the management server",
     "relayHelp": "The management server downloads the archive and streams it to this node. Use it when the node cannot reach the mirror itself; the transfer cannot resume.",
@@ -246,7 +246,7 @@
     "registrySources": "Acquisition addresses",
     "registrySourcesHelp": "Extra addresses this image can be fetched from: registry references, or the URL of a docker save archive.",
     "url": {
-      "title": "Import from a URL",
+      "title": "Import from an HTTP directory",
       "description": "Paste the address of a docker save archive. Its real image references are read out of the archive itself, so you do not have to guess them from the file name.",
       "label": "Image archive URL",
       "required": "Enter the image archive URL first.",

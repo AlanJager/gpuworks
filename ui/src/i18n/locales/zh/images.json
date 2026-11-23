@@ -174,7 +174,7 @@
     "sourceMirror": "Mirror",
     "sourceURL": "URL",
     "sourceURLRelay": "URL·中转",
-    "sourceFromURL": "从 URL 导入…",
+    "sourceFromURL": "从HTTP目录导入…",
     "pullFromURL": "从 URL 获取…",
     "relay": "管理节点中转",
     "relayHelp": "由管理节点下载归档并流式推送到该节点。节点自身无法访问镜像站时使用；该传输不可续传。",
@@ -246,7 +246,7 @@
     "registrySources": "获取地址",
     "registrySourcesHelp": "该镜像可用的额外获取地址：registry 引用，或 docker save 归档的 URL。",
     "url": {
-      "title": "从 URL 导入",
+      "title": "从HTTP目录导入",
       "description": "粘贴 docker save 归档的地址。真实的镜像引用直接从归档里读出，不必靠文件名猜。",
       "label": "镜像归档 URL",
       "required": "请先填写镜像归档 URL。",

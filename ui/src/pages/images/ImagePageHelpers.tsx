@@ -130,7 +130,7 @@ export function imageSourceOptions(registrySources?: string[], t?: TFunction) {
   }
   options.push({
     value: archiveURLDialogValue,
-    label: t?.("nodeTable.sourceFromURL") || "From URL…",
+    label: t?.("nodeTable.sourceFromURL") || "Import from an HTTP directory…",
     opensDialog: true,
   });
   return options;

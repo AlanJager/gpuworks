@@ -128,7 +128,7 @@ Before starting, confirm that the server can read the archive. Ordinary private 
    cd /data/offline-images && python3 -m http.server 8090
    ```
 
-2. Open the image on the Images page. In the node table row for the target node, select “Import from a URL…” under “Acquisition Method” and enter
+2. Open the image on the Images page. In the node table row for the target node, select “Import from an HTTP directory…” under “Acquisition Method” and enter
    `http://127.0.0.1:8090/<filename>` → click “Resolve” → check the image reference in the archive → select “Relay through the management server” → click “Pull.”
 
 The server streams the download to the node without saving it to disk. Relay transfers cannot resume; an interrupted transfer starts again from the beginning. For images of tens of GB over unreliable links, prefer copying to the node and importing locally.
@@ -212,7 +212,7 @@ Configuring offline sources does not disconnect the operating system from the ne
 <!-- translation-source-sha256: ffff45d50019870668450a1fbbc2a8a11bb2c93e6bef48feb5268da6f34fdfbc ## Special Cases -->
 <!-- translation-source-sha256: 24fe2bb1fa6636955140d33d56ff60c68948d9df3f9737800a278ce792b81bec ### Store Models on NFS -->
 <!-- translation-source-sha256: 1b90763075bd7d71d68f40040f66f17faada339096386b4d1535817ba22c32d4 ### Export Images with Docker -->
-<!-- translation-source-sha256: dcaab6cc5d90bc811f6cb1b7069973ffb6948fb515570f23c454518c97bd9f91 ### Import Images Through the Control Plane Node -->
+<!-- translation-source-sha256: 71a2348752be498cb92304d8a21b732d304dd933bed416d7e3e7b932bc984a59 ### Import Images Through the Control Plane Node -->
 <!-- translation-source-sha256: 01c2500d06faeca3f771e63b3c6d219a45a3970c388302c1c419ceb3798f6497 ### Use a Private Registry -->
 <!-- translation-source-sha256: cfc41378f115c732b9e67007f3b56c6af9a83e5d12b84b399e6a59ae976fc753 ### Agent Image for Kubernetes Clusters -->
 <!-- translation-source-sha256: 5a0156a93daf2f305c4f30d02801b85d638ef8e72de98fef0c84c9b4cf9b8510 ### Store Models in a Private HTTP Directory -->
