@@ -267,6 +267,60 @@ test("deployment list exposes the copyable served name and deletes from the more
   await waitFor(() => assert.deepEqual(deleted, [[7, false]]));
 });
 
+test("drawer delete owns focus, cancels without deleting and retries the selected deployment", async () => {
+  const deployment = {
+    id: 31, name: "drawer-service", model_name: "model", model_id: 1, served_name: "model",
+    engine: "vllm", node_uuid: "", desired_state: "stopped", runtime_state: "stopped", replicas: 1,
+    sleepable: false, health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
+    template_deviated: false, created_at: "2026-09-05T00:00:00Z", operations: [], instances: [],
+  } as const;
+  api.deploymentsPage = async () => listPage([deployment]);
+  api.deployment = async () => deployment as never;
+  const requests: Array<[number, boolean | undefined]> = [];
+  let finishDelete!: () => void;
+  const pending = new Promise<void>(resolve => { finishDelete = resolve; });
+  api.deleteDeployment = async (id, force) => {
+    requests.push([id, force]);
+    if (requests.length === 1) throw new Error("try again");
+    await pending;
+  };
+  render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments"]}><DeploymentsPage /></MemoryRouter></I18nextProvider>);
+  const user = userEvent.setup();
+  const findConfirm = () => screen.findByRole("dialog", { name: "Delete deployment “drawer-service”" });
+  // A previously opened list confirmation used to leave its portal behind the next drawer.
+  await user.click(await screen.findByRole("button", { name: "More Actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: /Delete/ }));
+  await user.click(within(await findConfirm()).getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: deployment.name }));
+  const drawer = await screen.findByRole("dialog", { name: deployment.name });
+  const trigger = within(drawer).getByRole("button", { name: "Delete" });
+
+  for (const dismissal of ["Cancel", "Escape"]) {
+    await user.click(trigger);
+    const dialog = await findConfirm();
+    assert.ok(dialog.hasAttribute("data-nested"), "the confirmation must be a child dialog of the drawer");
+    await user.click(within(dialog).getByRole("checkbox"));
+    if (dismissal === "Cancel") await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    else await user.keyboard("{Escape}");
+    await waitFor(() => assert.ok(document.activeElement === trigger, "dismissal must return focus to the drawer delete button"));
+    assert.deepEqual(requests, []);
+  }
+
+  await user.click(trigger);
+  const dialog = await findConfirm();
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  await waitFor(() => assert.deepEqual(requests, [[31, false]]));
+  await user.click(within(dialog).getByRole("checkbox"));
+  await user.click(within(dialog).getByRole("button", { name: "Force Delete" }));
+  assert.deepEqual(requests, [[31, false], [31, true]]);
+  assert.ok(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled);
+  assert.ok(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Force Delete" }).disabled);
+  await user.keyboard("{Escape}");
+  assert.ok(dialog.isConnected && trigger.isConnected, "pending deletion keeps both dialogs open");
+  await act(async () => finishDelete());
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog"), "successful deletion closes the drawer"));
+});
+
 test("deployment detail links its model and every node", async () => {
   const deployment = {
     id: 9, name: "multi-node", model_name: "Qwen/Qwen3-235B", model_id: 42, served_name: "qwen", engine: "vllm",
