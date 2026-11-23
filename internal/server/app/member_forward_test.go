@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -433,5 +434,40 @@ func TestMemberForwardIsInertWithoutARoute(t *testing.T) {
 	defer ln.Close()
 	if err := forward.ServeMemberSessions(ln); err == nil {
 		t.Fatal("an unconfigured route was served")
+	}
+}
+
+// Each change of the leader a member sends business to leaves one line with
+// the leader before and after, whether this member leads, how long the last
+// observation was ago and how many agent sessions it closed; an unchanged
+// leader leaves none.
+func TestALeaderChangeLeavesOneBusinessLine(t *testing.T) {
+	var out strings.Builder
+	log := slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+		if a.Key == slog.TimeKey || a.Key == "since_last_observation_ms" {
+			return slog.Attr{}
+		}
+		return a
+	}}))
+	var leader atomic.Uint64
+	held, dropped := 3, 0
+	forward := newMemberForward(log, func(context.Context) (uint64, error) { return leader.Load(), nil },
+		func() int { return held }, func() { dropped++; held = 0 })
+	forward.SetMemberIdentity(7, []byte("key"))
+	ctx := context.Background()
+	for _, id := range []uint64{7, 7, 9, 9, 0, 7} {
+		leader.Store(id)
+		forward.observeLeaderOnce(ctx)
+	}
+	want := `level=INFO msg="business follows a new database leader" new_leader=7 this_member=7 leads=true learned="leader observation" agent_sessions_closed=0
+level=INFO msg="business follows a new database leader" new_leader=9 this_member=7 leads=false learned="leader observation" agent_sessions_closed=3 old_leader=7
+level=INFO msg="closed agent sessions held by a member that does not lead" sessions=3 leader=9
+level=INFO msg="business follows a new database leader" new_leader=7 this_member=7 leads=true learned="leader observation" agent_sessions_closed=0 old_leader=9
+`
+	if out.String() != want {
+		t.Fatalf("logged\n%s\nwant\n%s", out.String(), want)
+	}
+	if dropped != 1 {
+		t.Fatalf("sessions were closed %d times", dropped)
 	}
 }

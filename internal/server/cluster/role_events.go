@@ -1,0 +1,277 @@
+package cluster
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"log/slog"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+// roleLinePrefix starts every line the database process writes about its Raft
+// role. The lines are no part of the versioned contract with that process: a
+// process that does not write them, and a line this server does not know, are
+// both fine.
+const roleLinePrefix = "gpuworks-raft: "
+
+// roleReasonFresh is how long a reason this member observed is attributed to
+// the next change of leader.
+const roleReasonFresh = 30 * time.Second
+
+// roleField is one key=value field of a role record, in the order written.
+type roleField struct{ key, value string }
+
+// parseRoleRecord splits a record into its fields. A value may be quoted as Go
+// quotes a string; a part without "=" is kept under the key "text".
+func parseRoleRecord(record string) []roleField {
+	var fields []roleField
+	rest := strings.TrimSpace(record)
+	for rest != "" {
+		eq := strings.IndexByte(rest, '=')
+		sp := strings.IndexByte(rest, ' ')
+		if eq < 0 || (sp >= 0 && sp < eq) {
+			word := rest
+			if sp >= 0 {
+				word, rest = rest[:sp], strings.TrimLeft(rest[sp:], " ")
+			} else {
+				rest = ""
+			}
+			fields = append(fields, roleField{"text", word})
+			continue
+		}
+		key := rest[:eq]
+		rest = rest[eq+1:]
+		var value string
+		if strings.HasPrefix(rest, `"`) {
+			quoted, err := strconv.QuotedPrefix(rest)
+			if err == nil {
+				value, _ = strconv.Unquote(quoted)
+				rest = rest[len(quoted):]
+			} else {
+				value, rest = rest, ""
+			}
+		} else if sp := strings.IndexByte(rest, ' '); sp >= 0 {
+			value, rest = rest[:sp], rest[sp:]
+		} else {
+			value, rest = rest, ""
+		}
+		rest = strings.TrimLeft(rest, " ")
+		fields = append(fields, roleField{key, value})
+	}
+	return fields
+}
+
+func roleValue(fields []roleField, key string) string {
+	for _, f := range fields {
+		if f.key == key {
+			return f.value
+		}
+	}
+	return ""
+}
+
+// roleLevel is the level a record is filed at: what ends a leadership or
+// explains why one may end is a warning, the rest is information.
+func roleLevel(fields []roleField) slog.Level {
+	switch roleValue(fields, "event") {
+	case "step_down", "election_start", "election_retry", "transfer_timeout", "loop_late",
+		"slow_log_write", "peer_connect_failed", "peer_send_failed", "dropped", "health":
+		return slog.LevelWarn
+	case "app":
+		if roleValue(fields, "level") == "error" {
+			return slog.LevelError
+		}
+		return slog.LevelWarn
+	}
+	return slog.LevelInfo
+}
+
+// roleTracker follows one database process' role records and adds, at every
+// change of the leader this member knows, one record that says who led before,
+// who leads now, why as far as this member saw it, and how long this member
+// had no leader.
+type roleTracker struct {
+	log func() *slog.Logger
+
+	mu        sync.Mutex
+	self      string
+	leader    string    // member id of the leader this member follows or is; "" when none
+	lostAt    time.Time // when this member last stopped having a leader; zero while it has one
+	reason    string
+	reasonAt  time.Time
+	hadLeader bool
+}
+
+func newRoleTracker(log func() *slog.Logger) *roleTracker {
+	if log == nil {
+		log = slog.Default
+	}
+	return &roleTracker{log: log}
+}
+
+// record files one record and, when it names a new leader, the summary.
+func (t *roleTracker) record(record string) {
+	fields := parseRoleRecord(record)
+	if len(fields) == 0 {
+		return
+	}
+	at := time.Now()
+	attrs := make([]any, 0, 2*len(fields))
+	for _, f := range fields {
+		if f.key == "at" {
+			if ns, err := strconv.ParseInt(f.value, 10, 64); err == nil {
+				at = time.Unix(0, ns)
+				// The process queues its records and this server reads
+				// them a moment later; this is when the event happened.
+				attrs = append(attrs, "observed_at", at.Format(time.RFC3339Nano))
+			}
+			continue
+		}
+		attrs = append(attrs, f.key, f.value)
+	}
+	log := t.log()
+	log.Log(context.Background(), roleLevel(fields), "cluster database role event", attrs...)
+	if summary := t.follow(fields, at); summary != nil {
+		log.Info("cluster database leader changed", summary...)
+	}
+}
+
+func (t *roleTracker) follow(fields []roleField, at time.Time) []any {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	lose := func() {
+		if t.lostAt.IsZero() && (t.leader != "" || !t.hadLeader) {
+			t.lostAt = at
+		}
+	}
+	why := func(text string, replace bool) {
+		if replace || t.reason == "" || at.Sub(t.reasonAt) > roleReasonFresh {
+			t.reason, t.reasonAt = text, at
+		}
+	}
+	join := func(head string, keys ...string) string {
+		var b strings.Builder
+		b.WriteString(head)
+		for _, key := range keys {
+			if value := roleValue(fields, key); value != "" {
+				b.WriteString(" " + key + "=" + value)
+			}
+		}
+		return b.String()
+	}
+	var newLeader string
+	switch roleValue(fields, "event") {
+	case "state":
+		if id := roleValue(fields, "id"); id != "" {
+			t.self = id
+		}
+		if roleValue(fields, "old") == "UNAVAILABLE" {
+			// The process has just started and knows no leader yet.
+			lose()
+		}
+		if roleValue(fields, "old") == "LEADER" {
+			why("this member stopped leading", false)
+			lose()
+		}
+		if roleValue(fields, "new") == "LEADER" {
+			newLeader = t.self
+		}
+	case "step_down":
+		why(join("this member stepped down: "+roleValue(fields, "reason"), "contacts", "voters", "peer_ack_age_ms", "from", "new_term"), true)
+		lose()
+	case "election_start":
+		why(join("this member started an election: "+roleValue(fields, "reason"), "since_leader_contact_ms", "timeout_ms", "from"), true)
+		lose()
+	case "term_bump":
+		why(join("another member raised the term", "from", "new_term"), false)
+		lose()
+	case "vote_reply":
+		if roleValue(fields, "granted") == "1" && roleValue(fields, "pre_vote") == "0" {
+			why(join("this member voted for another", "candidate", "disrupt_leader"), false)
+			lose()
+		}
+	case "transfer_start":
+		why(join("this member was asked to hand the leadership over", "to"), true)
+	case "following":
+		newLeader = roleValue(fields, "leader")
+	}
+	if newLeader == "" || (newLeader == t.leader && t.lostAt.IsZero()) {
+		return nil
+	}
+	old := t.leader
+	if old == "" {
+		old = "none"
+	}
+	reason := t.reason
+	switch {
+	case !t.hadLeader:
+		reason = "first leader this member has seen since its database process started"
+	case reason == "" || at.Sub(t.reasonAt) > roleReasonFresh:
+		reason = "not seen by this member; read the other members' role events around this time"
+	}
+	summary := []any{
+		"old_leader", old, "new_leader", newLeader, "term", roleValue(fields, "term"),
+		"this_member", t.self, "leads", newLeader == t.self, "reason", reason,
+		"observed_at", at.Format(time.RFC3339Nano),
+	}
+	if !t.lostAt.IsZero() {
+		summary = append(summary, "without_leader_ms", at.Sub(t.lostAt).Milliseconds())
+	}
+	t.leader, t.lostAt, t.reason, t.hadLeader = newLeader, time.Time{}, "", true
+	return summary
+}
+
+// roleLineWriter separates the role records from the rest of a database
+// process' standard error: records go to the tracker, every other line to
+// rest, unchanged. Lines are passed on whole.
+type roleLineWriter struct {
+	tracker *roleTracker
+	rest    io.Writer
+
+	mu      sync.Mutex
+	partial []byte
+}
+
+// maxRoleLine bounds a line without a newline; a longer one is passed on as
+// it is.
+const maxRoleLine = 8 << 10
+
+func (w *roleLineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.partial = append(w.partial, p...)
+	for {
+		end := bytes.IndexByte(w.partial, '\n')
+		if end < 0 {
+			if len(w.partial) > maxRoleLine {
+				_, _ = w.rest.Write(w.partial)
+				w.partial = w.partial[:0]
+			}
+			break
+		}
+		line := w.partial[:end]
+		if record, ok := bytes.CutPrefix(line, []byte(roleLinePrefix)); ok {
+			w.tracker.record(string(record))
+		} else {
+			_, _ = w.rest.Write(w.partial[:end+1])
+		}
+		w.partial = w.partial[end+1:]
+	}
+	if len(w.partial) == 0 {
+		w.partial = nil
+	}
+	return len(p), nil
+}
+
+// flush passes on a last line that had no newline.
+func (w *roleLineWriter) flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.partial) > 0 {
+		_, _ = w.rest.Write(w.partial)
+		w.partial = nil
+	}
+}

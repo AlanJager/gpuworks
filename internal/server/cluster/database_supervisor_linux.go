@@ -286,23 +286,40 @@ func (p *helperProcess) stop(wait time.Duration) error {
 }
 
 // cappedStderr keeps the start of the child's diagnostics for a startup error
-// and passes everything through to the server's own stderr.
+// and passes everything through to the server's own stderr, except the
+// child's role records, which go to the server's log.
 type cappedStderr struct {
-	mu sync.Mutex
-	b  bytes.Buffer
+	mu    sync.Mutex
+	b     bytes.Buffer
+	once  sync.Once
+	lines *roleLineWriter
 }
 
 func (c *cappedStderr) Write(p []byte) (int, error) {
-	c.mu.Lock()
-	if remain := helperStderrLimit - c.b.Len(); remain > 0 {
-		c.b.Write(p[:min(remain, len(p))])
+	c.once.Do(func() {
+		c.lines = &roleLineWriter{tracker: newRoleTracker(nil), rest: stderrNotes{c}}
+	})
+	return c.lines.Write(p)
+}
+
+// stderrNotes receives the lines that are not role records.
+type stderrNotes struct{ c *cappedStderr }
+
+func (n stderrNotes) Write(p []byte) (int, error) {
+	n.c.mu.Lock()
+	if remain := helperStderrLimit - n.c.b.Len(); remain > 0 {
+		n.c.b.Write(p[:min(remain, len(p))])
 	}
-	c.mu.Unlock()
+	n.c.mu.Unlock()
 	_, _ = os.Stderr.Write(p)
 	return len(p), nil
 }
 
 func (c *cappedStderr) String() string {
+	if c.lines != nil {
+		// A child that failed to start may have ended without a newline.
+		c.lines.flush()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.b.String()
