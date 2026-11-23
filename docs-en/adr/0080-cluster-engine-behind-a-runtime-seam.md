@@ -60,4 +60,10 @@ Each step is merged on its own; after it, both the default build and the build w
 - Not started. The figures above are static measurements on `52f24211a`; whether the tagged test suite passed at that time was not verified.
 - The concrete shape of the interface (the method set, the fields of the narrow host) is settled in the merge requests of steps 1 and 2, and written back to this page once settled.
 
-<!-- translation-source-sha256: 6db21607e17fa38b78596912b0d2daeb44a7617751aba64f0b94bd9b9d0e1360 -->
+<!-- translation-source-sha256: 48d4957bf710bd767a02720eb83b3b6214f8a40c63224aad94074e3d0a2ee0a0 # ADR 0080: The Cluster Engine Is Compiled into the Server Through a Runtime Interface, No Longer Split by a Build Tag -->
+<!-- translation-source-sha256: 4103504fb1298a90d3160d3ac99ef63697b8a84f22ea97f64b71e97d93d51a26 ## Background -->
+<!-- translation-source-sha256: 23c051ab5388199c30a31d9e5f6313ac5d508d56e548d3976be37aebd5f52133 ## Decision -->
+<!-- translation-source-sha256: c6fed4c9f857e3898a70c476044db3d0fee4794b858f2924ca3303c963d8b947 ## Implementation Order -->
+<!-- translation-source-sha256: ab7baf2e9d3e4ee7cbba4221690966c5fadb7913143c2abde0587e1e25e52295 ## Trade-offs -->
+<!-- translation-source-sha256: 2b70cc6451cb5f5dca0dc26734429451ce5d72a3c795dc503e65f520ac4f0afa ## Consequences -->
+<!-- translation-source-sha256: 627a775102ce7764b97cd7558a2bf1217829af64cd1d6824981ac944aa085f61 ## Implementation Status -->
