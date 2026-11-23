@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -89,4 +90,16 @@ func (a *App) askMember(ctx context.Context, member uint64, name string, questio
 		return nil, ErrNotClusterMember
 	}
 	return runtime.forward.ask(ctx, member, name, question)
+}
+
+// moduleName is the form of a module's name on the member route.
+var moduleName = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
+
+// memberAnswerer is the function module name answers the other members
+// with; nil when it has none.
+func (a *App) memberAnswerer(name string) MemberAnswerer {
+	if a == nil || a.ext == nil {
+		return nil
+	}
+	return a.ext.answers[name]
 }

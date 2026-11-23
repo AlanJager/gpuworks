@@ -52,9 +52,6 @@ var (
 	ErrMemberUnreachable = errors.New("the member gave no answer")
 )
 
-// moduleName is the form of a module's name on the member route.
-var moduleName = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
-
 // AnswerMembers makes answer what this module tells the other members of
 // the cluster that ask it (AskMember). A module registers one answerer; on
 // a single server it is never called.

@@ -141,12 +141,3 @@ func moduleService(a *App, name string, svc Service) func(context.Context) {
 		}
 	}
 }
-
-// memberAnswerer is the function module name answers the other members
-// with; nil when it has none.
-func (a *App) memberAnswerer(name string) MemberAnswerer {
-	if a == nil || a.ext == nil {
-		return nil
-	}
-	return a.ext.answers[name]
-}
