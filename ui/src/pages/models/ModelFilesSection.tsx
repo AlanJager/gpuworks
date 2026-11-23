@@ -76,6 +76,32 @@ function CancelDownload({ modelId, storageId, nodeUuid, onChanged }: { modelId: 
   </Popconfirm>;
 }
 
+function RetryButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation("models");
+  return <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
+    <Button type="text" size="small" icon={<ReloadOutlined />} aria-label={t("action.retry")} onClick={onClick} />
+  </Tooltip>;
+}
+
+/**
+ * A download into a shared storage that stopped is started again there. No
+ * writer is named: the server picks a node the storage is writable on, as it
+ * does for a first download.
+ */
+function SharedDownloadRetry({ modelId, row, onChanged }: { modelId: number; row: ModelStoragePresence; onChanged: () => void }) {
+  const { t } = useTranslation("models");
+  const retry = async () => {
+    try {
+      await api.downloadModelToStorage(modelId, { storage_id: row.storage_id });
+      message.success(t("presenceMessage.downloadStarted"));
+      onChanged();
+    } catch (e) {
+      message.error(storageErrorText(t, e));
+    }
+  };
+  return <RetryButton onClick={() => void retry()} />;
+}
+
 function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row: ModelNodePresence; isAdmin: boolean; onChanged: () => void }) {
   const { t } = useTranslation("models");
   const run = async (action: () => Promise<unknown>, success: string) => {
@@ -107,9 +133,7 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
     {row.state === "download_required" && <Tooltip title={t("action.internetDownload")} trigger={["hover", "focus"]}>
       <Button type="text" size="small" icon={<CloudDownloadOutlined />} aria-label={t("action.internetDownload")} onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))} />
     </Tooltip>}
-    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled" || diskRetry) && <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
-      <Button type="text" size="small" icon={<ReloadOutlined />} aria-label={t("action.retry")} onClick={retry} />
-    </Tooltip>}
+    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled" || diskRetry) && <RetryButton onClick={retry} />}
     {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} nodeUuid={row.node_uuid} onChanged={onChanged} />}
     {row.state === "syncing" && <Popconfirm title={t("presenceAction.cancelConfirm")} onConfirm={() => run(() => api.cancelModelSync(model.id, row.node_uuid), t("presenceMessage.syncCanceled"))} okText={t("presenceAction.cancelSync")} cancelText={t("presenceAction.continueSync")}>
       <Tooltip title={t("presenceAction.cancelSync")} trigger={["hover", "focus"]}>
@@ -210,6 +234,8 @@ export function ModelFilesSection({ model, onChanged }: { model: Model; onChange
         {"node_uuid" in row ? <NodeFileActions model={model} row={row} isAdmin={isAdmin} onChanged={onChanged} /> : <Space size={4} wrap>
           {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") &&
             <CancelDownload modelId={model.id} storageId={row.storage_id} onChanged={onChanged} />}
+          {row.acquisition === "download" && row.writable && ["failed", "canceled", "download_required", "insufficient_disk_space"].includes(row.state) &&
+            <SharedDownloadRetry modelId={model.id} row={row} onChanged={onChanged} />}
           {isAdmin && <ModelStorageFileDelete modelId={model.id} storageId={row.storage_id} storageName={row.storage_name} storageType={row.storage_type} writable={row.writable} cachedNodes={row.cached_nodes} onDone={onChanged} />}
         </Space>}
       </div>

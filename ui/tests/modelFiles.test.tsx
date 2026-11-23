@@ -188,6 +188,51 @@ test("retrying a failed public download keeps its non-default storage and exact 
   await waitFor(() => assert.equal(changed, 1));
 });
 
+test("a download into a shared storage that failed can be retried there, without naming a writer", async () => {
+  stubMe("viewer");
+  const calls: unknown[] = [];
+  let changed = 0;
+  api.downloadModelToStorage = (async (...args: unknown[]) => { calls.push(args); return { status: "downloading" }; }) as never;
+  renderSection(modelWith({ storages: [shared({ state: "failed", acquisition: "download", size_bytes: 0, downloaded: 0, progress: 0, message: "list files huggingface.co failed after 16 attempts" })] }), () => { changed++; });
+  const user = userEvent.setup();
+  await user.tab();
+  while (document.activeElement?.getAttribute("aria-label") !== models.action.retry) await user.tab();
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.deepEqual(calls, [[9, { storage_id: 3 }]]));
+  await waitFor(() => assert.equal(changed, 1));
+  assert.ok(screen.getByText(models.presenceMessage.downloadStarted));
+});
+
+test("a shared storage file offers no retry while it moves, is complete, was not downloaded, or cannot be written", () => {
+  stubMe("viewer");
+  for (const over of [
+    { state: "downloading", acquisition: "download" },
+    { state: "present", acquisition: "download" },
+    { state: "failed", acquisition: "registered" },
+    { state: "failed", acquisition: "download", writable: false },
+  ]) {
+    renderSection(modelWith({ storages: [shared(over)] }));
+    assert.equal(screen.queryByRole("button", { name: models.action.retry }), null, JSON.stringify(over));
+    cleanup();
+  }
+  for (const state of ["canceled", "download_required", "insufficient_disk_space"]) {
+    renderSection(modelWith({ storages: [shared({ state, acquisition: "download" })] }));
+    assert.ok(screen.getByRole("button", { name: models.action.retry }), state);
+    cleanup();
+  }
+});
+
+test("a rejected shared storage retry shows the server error and keeps the retry", async () => {
+  stubMe("viewer");
+  let changed = 0;
+  api.downloadModelToStorage = (async () => { throw new Error("storage is read-only"); }) as never;
+  renderSection(modelWith({ storages: [shared({ state: "failed", acquisition: "download" })] }), () => { changed++; });
+  fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
+  assert.ok(await screen.findByText("storage is read-only"));
+  assert.equal(changed, 0);
+  assert.ok(screen.getByRole("button", { name: models.action.retry }));
+});
+
 test("retrying a legacy public download without a storage uses the node download endpoint", async () => {
   stubMe("admin");
   const downloads: unknown[][] = [];
