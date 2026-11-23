@@ -23,6 +23,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/hub"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // forwardCluster is a set of members joined by a real mutual-TLS member
@@ -526,5 +529,52 @@ func TestAskingBeforeTheMemberRouteIsUp(t *testing.T) {
 	up := &App{ha: &memberRuntime{bundle: &enrollmentBundle{}, forward: c.members[1].forward}}
 	if _, err := up.askMember(ctx, 9, "fake", nil); !errors.Is(err, ErrMemberUnreachable) {
 		t.Fatalf("a member with no route = %v, want %v", err, ErrMemberUnreachable)
+	}
+}
+
+// The order New starts a cluster member in, with the functions it calls: the
+// modules' Init first (startExtensions), then the member's handler, which
+// makes the route to the other members, then the certificate-bound
+// transport. A module that asks a member from Init is told the route is not
+// ready; the same Host gets the member's answer once the route is up. No
+// database is started: the store and the hub are only held by the route.
+func TestAModuleAsksAMemberInTheOrderNewStartsIt(t *testing.T) {
+	ctx := context.Background()
+	c := newForwardCluster(t, 2)
+	c.members[2].forward.answers = func(name string) MemberAnswerer {
+		return func(_ context.Context, question []byte) ([]byte, error) {
+			return []byte(name + " on member 2 heard " + string(question)), nil
+		}
+	}
+	runtime := &memberRuntime{bundle: &enrollmentBundle{}}
+	a := &App{ha: runtime, store: &store.Store{}, hub: &hub.Hub{}}
+	runtime.business = a
+	host := &Host{app: a, name: "fake"}
+
+	// 1. Init runs: no route exists.
+	if _, err := host.AskMember(ctx, 2, []byte("at init")); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("asked from Init = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// 2. New wraps the handler: the route exists, without its transport.
+	_ = a.memberHandler(http.NotFoundHandler())
+	if runtime.forward == nil {
+		t.Fatal("the member's handler made no route")
+	}
+	if _, err := host.AskMember(ctx, 2, []byte("no transport")); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("asked before the transport = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// 3. The member's sessions are routed: certificates and the peers' routes.
+	cert := c.certificate("member-7", 77)
+	server := &tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: c.pool, MinVersion: tls.VersionTLS13}
+	peerTLS := func(context.Context, uint64, string) (*tls.Config, error) {
+		return &tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: c.pool, ServerName: "127.0.0.1", MinVersion: tls.VersionTLS13}, nil
+	}
+	if err := runtime.forward.SetMemberSecureTransport(7, server, peerTLS, func(context.Context, *x509.Certificate) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	runtime.forward.SetMemberRoute(2, c.members[2].route.Addr().String())
+	got, err := host.AskMember(ctx, 2, []byte("after the route is up"))
+	if err != nil || string(got) != "fake on member 2 heard after the route is up" {
+		t.Fatalf("asked after the route is up = %q, %v", got, err)
 	}
 }
