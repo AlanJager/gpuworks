@@ -59,6 +59,10 @@ func (s *Store) RevokeClusterAdmission(ctx context.Context, clusterID, key strin
 	if err != nil {
 		return ClusterAdmission{}, err
 	}
+	// The member that committed a revocation knows it without asking: it
+	// drops its confirmed list, so a connection from the revoked member is
+	// decided by a fresh grant, or refused when none can be had.
+	s.ForgetConfirmedClusterMembership()
 	return admission, nil
 }
 

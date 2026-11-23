@@ -310,7 +310,7 @@ func TestMemberRouteKeyAnswersFromConfirmedMembershipWithoutGrant(t *testing.T) 
 		want string
 	}{
 		{"inside the limit", memberRouteMembershipAge + time.Second, "peer", "peer"},
-		{"past the limit", materialUnconfirmedLimit + time.Second, "peer", ""},
+		{"past the limit", memberRouteUnansweredAge + time.Second, "peer", ""},
 		{"key the list does not name", memberRouteMembershipAge + time.Second, "stranger", ""},
 	} {
 		stallCtx, stop := short(t.Context())

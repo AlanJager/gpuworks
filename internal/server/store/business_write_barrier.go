@@ -200,9 +200,6 @@ func (s *Store) withBusinessWritePoolTx(ctx context.Context, db *gorm.DB, fn fun
 		if err := requireBusinessServingMaintenancePhase(ctx, tx); err != nil {
 			return err
 		}
-		if err := s.requireBusinessWriterAdmitted(ctx, tx); err != nil {
-			return err
-		}
 		if err := fn(tx); err != nil {
 			return err
 		}

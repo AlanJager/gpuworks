@@ -417,7 +417,9 @@ func (s *Store) grantTransportAdmissionsThroughInterruption(ctx context.Context,
 // Only native construction binds this callback. Public callers cannot replace
 // the authority or member key with a request-supplied identity.
 func (s *Store) bindTransportAuthorization(expected ClusterIdentity, key string, apply func(identity.TransportPolicy) (identity.TransportPolicy, error), active func() (identity.TransportPolicy, error)) {
-	s.businessWriterKey = key
+	if s.writerGuard != nil && validClusterDigest(key, 32) {
+		s.writerGuard.key.Store(&key)
+	}
 	s.refreshTransportAuthorization = func(ctx context.Context) error {
 		revision, admissions, err := s.grantTransportAdmissionsThroughInterruption(ctx, expected, key)
 		if err != nil {

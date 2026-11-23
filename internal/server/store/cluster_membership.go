@@ -56,13 +56,6 @@ func (s *Store) GrantClusterMembershipKeys(ctx context.Context, expected Cluster
 	return revision, members, err
 }
 
-// elapsedClock reads the clock for measuring elapsed time in memory. Its value
-// keeps the monotonic reading, so a step of the wall clock neither shortens
-// nor stretches an age measured with it; time.Now().UTC() drops that reading.
-// A value from it is never written to the database or serialized, which is
-// what the UTC rule for this package is about.
-var elapsedClock = time.Now
-
 // confirmedClusterMembership is the member list of the latest successful
 // grant, kept in memory only.
 type confirmedClusterMembership struct {
@@ -77,17 +70,18 @@ func (s *Store) rememberConfirmedMembership(members []ClusterTransportMember, er
 	s.confirmedMembership.Store(&confirmedClusterMembership{members: slices.Clone(members), at: elapsedClock()})
 }
 
+// ForgetConfirmedClusterMembership drops the list of the latest successful
+// grant, so the next caller takes a fresh one. It runs when this member's own
+// admission closes and when this member commits a revocation.
+func (s *Store) ForgetConfirmedClusterMembership() {
+	s.confirmedMembership.Store(nil)
+}
+
 // ConfirmedClusterMembership returns the member list the latest successful
 // grant of this process confirmed, when that grant is no older than maxAge.
 // It reads memory only. Callers that must not wait for a replicated write use
 // it between grants: a member removed since then stays in the list, and one
 // added since then is missing, for at most maxAge.
-// ForgetConfirmedClusterMembership drops that list, so the next caller takes a
-// fresh grant. The member calls it when its own admission is invalidated.
-func (s *Store) ForgetConfirmedClusterMembership() {
-	s.confirmedMembership.Store(nil)
-}
-
 func (s *Store) ConfirmedClusterMembership(maxAge time.Duration) ([]ClusterTransportMember, bool) {
 	confirmed := s.confirmedMembership.Load()
 	if confirmed == nil || maxAge <= 0 || time.Since(confirmed.at) > maxAge {

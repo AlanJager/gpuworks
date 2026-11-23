@@ -61,6 +61,9 @@ func (a *App) stopClosedBusiness(ctx context.Context) error {
 func (a *App) closeBusinessAdmission() {
 	if a.store != nil {
 		a.store.SuspendBusinessWrites()
+		// A member connection must not be admitted from a list confirmed
+		// before this member's own admission closed, whatever closed it.
+		a.store.ForgetConfirmedClusterMembership()
 	}
 
 	if owner := a.currentClosedBusiness(); owner != nil {

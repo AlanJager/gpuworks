@@ -290,7 +290,7 @@ func (s *Store) clusterAdmission(ctx context.Context, clusterID, keyFingerprint 
 func (s *Store) clusterTransaction(ctx context.Context, fn func(*gorm.DB) error) error {
 	// Every admission, grant and material write keeps the five-second cap,
 	// whatever longer deadline its caller carries; a shorter one still wins.
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(withoutWriterGuard(ctx), 5*time.Second)
 	defer cancel()
 	return s.db.WithContext(ctx).Transaction(fn)
 }

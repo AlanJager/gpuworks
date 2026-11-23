@@ -166,10 +166,8 @@ func TestMaterialEligibilityProofOutlivingItsWindowKeepsRecentlyConfirmedMemberO
 	case <-time.After(materialEligibilityWindow + time.Second):
 		t.Fatal("proof I/O was not cancelled at the end of its window")
 	}
-	deadline := time.Now().Add(time.Second)
-	for !eligibility.Eligible() && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
+	// The request-path check decides this by itself, whether or not the
+	// proof's own cancellation callback has run yet.
 	if !eligibility.Eligible() || invalidated.Load() != 0 {
 		t.Fatalf("window expiry closed a recently confirmed member while the prover drained: eligible=%t invalidated=%d", eligibility.Eligible(), invalidated.Load())
 	}

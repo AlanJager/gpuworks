@@ -27,24 +27,3 @@ func readBusinessServingMaintenancePhase(ctx context.Context, tx *gorm.DB) error
 	}
 	return nil
 }
-
-// requireBusinessWriterAdmitted refuses a business write of a cluster member
-// whose admission is gone or revoked. It reads the member's own admission
-// inside the transaction that writes, after that transaction took the writer:
-// the answer is the leader's and commits or fails with the write, so it is
-// never older than the write and costs no replicated round of its own.
-// Serving requests may rest on a confirmation that is seconds old; committing
-// does not. A store that is not a cluster member has no key and no check.
-func (s *Store) requireBusinessWriterAdmitted(ctx context.Context, tx *gorm.DB) error {
-	if s == nil || s.businessWriterKey == "" {
-		return nil
-	}
-	var admitted int64
-	if err := tx.WithContext(ctx).Raw("SELECT count(*) FROM cluster_admissions WHERE key_fingerprint = ? AND revoked_at IS NULL", s.businessWriterKey).Scan(&admitted).Error; err != nil {
-		return errors.Join(ErrBusinessWritesClosed, err)
-	}
-	if admitted == 0 {
-		return errors.Join(ErrBusinessWritesClosed, ErrClusterAdmissionRejected)
-	}
-	return nil
-}

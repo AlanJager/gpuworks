@@ -198,6 +198,13 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 // keeps this member's own business open, and renewed by that proof.
 const memberRouteMembershipAge = materialEligibilityWindow
 
+// memberRouteUnansweredAge is how old that list may be when a fresh grant
+// brought no answer: two proof windows. A connection between members carries
+// more than a request of its own (the peer names the client it forwards for),
+// so this bound is half of what a member's own admission gets without an
+// answer; it still covers the stalls seen on slow storage several times over.
+const memberRouteUnansweredAge = 2 * materialEligibilityWindow
+
 // memberRouteKey picks a member key for one connection between members. It
 // answers from the membership this process last confirmed, so that opening a
 // connection does not wait for a replicated write. Only when there is no
@@ -208,10 +215,10 @@ const memberRouteMembershipAge = materialEligibilityWindow
 //
 // A grant that brings no answer (storage stalled, no leader) is not a
 // refusal: the last confirmed list then stands in for it up to the
-// unconfirmed limit, the same bound that ends this member's own admission
-// without an answer. Without that, a stall longer than the list's age cut
+// memberRouteUnansweredAge. Without that, a stall longer than the list's age cut
 // the members off from the leader while every one of them was still open.
-// The list is dropped when this member's admission is invalidated.
+// The list is dropped when this member's admission closes and when this
+// member commits a revocation.
 func memberRouteKey(ctx context.Context, confirmed func(time.Duration) ([]store.ClusterTransportMember, bool), grant func(context.Context) ([]store.ClusterTransportMember, error), pick func([]store.ClusterTransportMember) string) (string, error) {
 	if members, ok := confirmed(memberRouteMembershipAge); ok {
 		if key := pick(members); key != "" {
@@ -221,7 +228,7 @@ func memberRouteKey(ctx context.Context, confirmed func(time.Duration) ([]store.
 	members, err := grant(ctx)
 	if err != nil {
 		if store.ClusterGrantUndecided(err) {
-			if members, ok := confirmed(materialUnconfirmedLimit); ok {
+			if members, ok := confirmed(memberRouteUnansweredAge); ok {
 				if key := pick(members); key != "" {
 					return key, nil
 				}

@@ -170,9 +170,6 @@ func (s *Store) ackCommittedNotification(ctx context.Context, db *gorm.DB, note 
 			if err := requireBusinessServingMaintenancePhase(ctx, tx); err != nil {
 				return err
 			}
-			if err := s.requireBusinessWriterAdmitted(ctx, tx); err != nil {
-				return err
-			}
 			if err := write(tx); err != nil {
 				return err
 			}

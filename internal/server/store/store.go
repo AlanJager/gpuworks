@@ -100,8 +100,9 @@ type Store struct {
 	confirmTransportAuthorization transportAuthorizationConfirmation
 	grantClusterMembership        clusterMembershipGrant
 	confirmedMembership           atomic.Pointer[confirmedClusterMembership]
-	// businessWriterKey is this member's own key in a cluster, empty otherwise.
-	businessWriterKey          string
+	// writerGuard refuses the writes of a cluster member that is no longer
+	// admitted. Nil on a store that is not replicated.
+	writerGuard                *writerGuard
 	grantClusterMembershipKeys func(context.Context, ClusterIdentity, []string) (uint64, []ClusterTransportMember, error)
 	// diagnosticLogger is configured before the Store is shared with workers.
 	diagnosticLogger     *slog.Logger

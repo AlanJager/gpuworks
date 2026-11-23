@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"net"
@@ -286,6 +287,13 @@ func proofClusterUnavailable(err error) bool {
 
 func materialNetworkInterrupted(err error) bool {
 	if err == nil {
+		return false
+	}
+	// A file's error is a finding about this member's disk, also when its
+	// system call number reads as a timeout (ETIMEDOUT, EAGAIN on a network
+	// file system): the bytes could not be read, so nothing vouches for them.
+	var file *fs.PathError
+	if errors.As(err, &file) {
 		return false
 	}
 	var timeout net.Error

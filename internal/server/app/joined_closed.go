@@ -326,11 +326,6 @@ func (a *App) invalidateCandidateMaterialEligibility() {
 		// Its callback closes Store admission and withdraws the old routes.
 		eligibility.Invalidate()
 	}
-	if a.store != nil {
-		// A member connection must not be admitted from a list confirmed
-		// before this member's own admission was withdrawn.
-		a.store.ForgetConfirmedClusterMembership()
-	}
 	a.closeBusinessAdmission()
 }
 
@@ -343,6 +338,9 @@ func (a *App) installClosedBusinessWriteBarrier() error {
 		a.materialEligibility.setOnInvalidated(a.closeBusinessAdmission)
 	}
 	a.materialEligibilityMu.Unlock()
+	// A write the database refused because this member is no longer admitted
+	// closes the member now; its next renewal would only learn the same.
+	a.store.OnWriterRefused(a.invalidateCandidateMaterialEligibility)
 	return a.store.InstallBusinessWriteBarrier(func(context.Context) error {
 		a.materialEligibilityMu.Lock()
 		eligibility := a.materialEligibility
