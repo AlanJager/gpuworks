@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -65,6 +66,9 @@ func TestNativeSchedulingWriteSurvivesHeartbeatsOnTheOtherPool(t *testing.T) {
 	}
 	t.Logf("read-then-write on the raw scheduling pool: %d of 150 failed under %d heartbeats; first error: %v", lost, beats.Load(), first)
 	if lost == 0 {
+		if os.Getenv("GPUWORKS_TEST_STRICT") == "1" {
+			t.Fatal("the hazard did not show on this run, so the guarded half proves nothing")
+		}
 		t.Skip("the hazard did not show on this run; the guarded half proves nothing without it")
 	}
 
