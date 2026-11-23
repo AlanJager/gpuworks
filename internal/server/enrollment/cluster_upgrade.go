@@ -13,13 +13,17 @@ import (
 const ClusterUpgradePath = "/_cluster/upgrade"
 
 // The steps of a cluster upgrade. Status and report change nothing a later
-// step depends on; the others act only on the database leader.
+// step depends on. Lead acts on the member it is sent to: that member takes
+// over the database leadership, so that the member leading until then can be
+// stopped without the others waiting out an election. The remaining steps act
+// only on the database leader.
 const (
 	ClusterUpgradeStatus  = "status"
 	ClusterUpgradeBegin   = "begin"
 	ClusterUpgradeMigrate = "migrate"
 	ClusterUpgradeFinish  = "finish"
 	ClusterUpgradeAbort   = "abort"
+	ClusterUpgradeLead    = "lead"
 )
 
 // ClusterUpgradeRequest names one step.
@@ -63,14 +67,18 @@ type ClusterUpgradeResponse struct {
 	Ready              bool                   `json:"ready"`
 	Migrating          bool                   `json:"migrating"`
 	Members            []ClusterUpgradeMember `json:"members"`
-	Refused            string                 `json:"refused,omitempty"`
-	Error              string                 `json:"error,omitempty"`
+	// AgentConnections is how many agent control connections the answering
+	// member holds itself; absent when it cannot say. Stopping that member
+	// makes those agents connect again.
+	AgentConnections *int   `json:"agent_connections,omitempty"`
+	Refused          string `json:"refused,omitempty"`
+	Error            string `json:"error,omitempty"`
 }
 
 // ValidClusterUpgradeAction reports a step this protocol knows.
 func ValidClusterUpgradeAction(action string) bool {
 	switch action {
-	case ClusterUpgradeStatus, ClusterUpgradeBegin, ClusterUpgradeMigrate, ClusterUpgradeFinish, ClusterUpgradeAbort:
+	case ClusterUpgradeStatus, ClusterUpgradeBegin, ClusterUpgradeMigrate, ClusterUpgradeFinish, ClusterUpgradeAbort, ClusterUpgradeLead:
 		return true
 	}
 	return false

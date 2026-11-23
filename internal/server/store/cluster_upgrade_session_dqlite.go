@@ -7,6 +7,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/cluster"
 )
 
 // clusterMigrationRun is the one schema migration a member runs at a time.
@@ -53,8 +55,9 @@ func (s *LegacyJoinedRaftSession) ReportClusterUpgradeCapability(ctx context.Con
 }
 
 // ClusterUpgrade performs one upgrade step for an admitted member. Status is
-// answered by any member; the other steps act on the database leader only and
-// are refused elsewhere, with the state they found. migrating is true while a
+// answered by any member, and lead makes the answering member the database
+// leader; the other steps act on the database leader only and are refused
+// elsewhere, with the state they found. migrating is true while a
 // migration this member started is still running; the caller asks again.
 func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected ClusterIdentity, requesterKey, action string) (status ClusterUpgradeStatus, leader, migrating bool, err error) {
 	st, _, leader, err := s.clusterUpgradeStore(ctx)
@@ -80,6 +83,16 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 		s.migration.mu.Lock()
 		migrating = s.migration.done != nil
 		s.migration.mu.Unlock()
+	}
+	if action == "lead" {
+		if status, err = steps.Status(ctx); err != nil {
+			return status, leader, false, err
+		}
+		if err = refuseClusterLead(status); err != nil || leader {
+			return status, leader, false, err
+		}
+		err = TakeDatabaseLeadership(ctx, s.live.Load())
+		return status, err == nil, false, err
 	}
 	if action != "status" && !leader {
 		status, err = steps.Status(ctx)
@@ -146,6 +159,25 @@ func (s *LegacyJoinedRaftSession) runClusterMigration(ctx context.Context, steps
 	case <-ctx.Done():
 		return true, ctx.Err()
 	}
+}
+
+// TakeDatabaseLeadership asks the database leader to hand over to the member
+// behind db and returns once that member leads. The member that led until
+// then can afterwards be stopped without the others waiting out an election.
+func TakeDatabaseLeadership(ctx context.Context, db *cluster.Database) error {
+	if db == nil || db.ID == 0 {
+		return errors.New("native session is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, clusterLeadWait)
+	defer cancel()
+	return clusterLeadership{
+		Self: db.ID,
+		Leader: func(ctx context.Context) (uint64, error) {
+			member, err := db.Leader(ctx)
+			return member.ID, err
+		},
+		Transfer: db.Transfer,
+	}.take(ctx)
 }
 
 // clusterUpgradeStore binds the session's pools for one upgrade step. The
