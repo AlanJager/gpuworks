@@ -54,3 +54,19 @@ export function modelPresenceBytes(presence: Pick<ModelNodePresence, "downloaded
   if (presence.downloaded > 0) return formatBytes(presence.downloaded);
   return "—";
 }
+
+/**
+ * Seconds a transfer still needs, 0 when that cannot be said. A cache copy's
+ * estimate is the server's, which withholds it until the rate is stable; a
+ * download or node-to-node sync reports its bytes and rate on the row, and
+ * the estimate follows from those.
+ */
+export function transferEtaSeconds(
+  row: Pick<ModelNodePresence, "state" | "size_bytes" | "downloaded" | "rate_bps"> & Partial<Pick<ModelNodePresence, "acquisition" | "preparation">>,
+): number {
+  if (row.preparation?.eta_seconds) return row.preparation.eta_seconds;
+  if (row.acquisition === "copy" || (row.state !== "downloading" && row.state !== "syncing")) return 0;
+  if (row.preparation && !row.preparation.total_known) return 0;
+  if (!(row.rate_bps > 0) || !(row.size_bytes > row.downloaded)) return 0;
+  return Math.ceil((row.size_bytes - row.downloaded) / row.rate_bps);
+}

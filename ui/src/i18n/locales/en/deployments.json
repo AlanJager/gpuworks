@@ -816,7 +816,6 @@
     "storage": "View storage",
     "progress": "Model copy progress",
     "unknownTotal": "Total size not yet confirmed",
-    "eta": "About {{seconds}} seconds remaining",
     "idle": "No progress for {{seconds}} seconds",
     "waitForIO": "Restore storage connectivity to resume safely",
     "waitForIOHelp": "The current I/O must return before another writer can start.",

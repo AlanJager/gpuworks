@@ -1331,6 +1331,12 @@
     "hours": "{{value}} 小时前",
     "days": "{{value}} 天前"
   },
+  "remaining": {
+    "underMinute": "剩余不到 1 分钟",
+    "minutes": "剩余约 {{minutes}} 分钟",
+    "hours": "剩余约 {{hours}} 小时",
+    "hoursMinutes": "剩余约 {{hours}} 小时 {{minutes}} 分钟"
+  },
   "copy": {
     "copied": "已复制",
     "code": "复制代码",

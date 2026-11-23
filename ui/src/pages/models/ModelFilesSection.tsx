@@ -10,11 +10,11 @@ import { formatTime } from "../../i18n/datetime";
 import { useIsAdmin } from "../../components/useIsAdmin";
 import { nodeRowName } from "../../nodeDisplay";
 import { storageErrorText, storageTypeLabel } from "../../storageDisplay";
-import { formatBytes } from "../../format";
+import { formatBytes, remainingText } from "../../format";
 import { storageTypeInfo, type ModelStoragePresence } from "../../storageTypes";
 import { ModelNodeFileDelete } from "./ModelNodeFileDelete";
 import { ModelStorageFileDelete } from "./ModelStorageFileDelete";
-import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, transferOrigin } from "./modelPresenceDisplay";
+import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, transferEtaSeconds, transferOrigin } from "./modelPresenceDisplay";
 
 type ModelFile = ModelNodePresence | ModelStoragePresence;
 
@@ -42,14 +42,15 @@ function SourceText({ row }: { row: Parameters<typeof transferOrigin>[0] }) {
 
 const FILE_PAGE_SIZE = 10;
 
-/** A transfer's progress, bytes and, while it moves, its rate. */
+/** A transfer's progress, bytes and, while it moves, its rate and the time it still needs. */
 function TransferProgress({ row }: { row: ModelFile }) {
   const { t } = useTranslation("models");
   const moving = row.state === "downloading" || row.state === "syncing";
   const complete = row.state === "present" && ["download", "auto", "peer", "copy"].includes(row.acquisition);
   if (!("node_uuid" in row) && !moving && !complete) return <>—</>;
   const rate = moving ? rateLabel(row.rate_bps) : "";
-  const details = [modelPresenceBytes(row), rate].filter(Boolean).join(" · ");
+  const eta = transferEtaSeconds(row);
+  const details = [modelPresenceBytes(row), rate, eta > 0 ? remainingText(t, eta) : ""].filter(Boolean).join(" · ");
   return <Space direction="vertical" size={0} className="model-file-progress">
     <Progress percent={complete ? 100 : Math.round((row.progress || 0) * 100)} size="small" status={moving ? "normal" : undefined}
       format={complete ? () => <Space size={4}><CheckCircleFilled />{t("files.completed")}</Space> : undefined} />
@@ -203,7 +204,7 @@ export function ModelFilesSection({ model, onChanged }: { model: Model; onChange
   const columns: ResourceColumn<ModelFile>[] = [
     { key: "location", title: tStorage("files.column.place"), width: 132, render: (_, row) => <FileLocation row={row} /> },
     { key: "state", title: t("detail.status"), width: 88, ellipsis: false, render: (_, row) => <StateTag state={row.state} /> },
-    { key: "progress", title: t("detail.progress"), width: 218, minWidth: 218, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
+    { key: "progress", title: t("detail.progress"), width: 300, minWidth: 300, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
     { key: "size", title: t("detail.size"), width: 78, align: "right", render: (_, row) => row.size_bytes ? formatBytes(row.size_bytes) : "—" },
     { key: "actions", role: "actions", title: t("column.actions"), width: 100, render: (_, row) => (
       <div onClick={(event) => event.stopPropagation()}>

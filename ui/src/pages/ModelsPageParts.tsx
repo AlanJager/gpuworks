@@ -238,7 +238,7 @@ export function ModelDetailModal({
       open={!!model}
       className="model-detail-modal"
       onCancel={onClose}
-      width={720}
+      width={800}
       footer={model ? [
         <Button key="close" onClick={onClose}>{t("action.close")}</Button>,
 		<Button key="template" icon={<RocketOutlined />} onClick={() => location.assign(`/deploy?model=${model.id}`)}>{t("action.deployInferenceTemplate")}</Button>,

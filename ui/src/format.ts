@@ -36,3 +36,17 @@ export function agoText(t: TFunction, seconds: number): string {
   if (seconds < 86400) return t("ago.hours", { ns: "common", value: Math.floor(seconds / 3600) });
   return t("ago.days", { ns: "common", value: Math.floor(seconds / 86400) });
 }
+
+/**
+ * "about 1 h 40 min left" for a number of seconds. Minutes round up: an
+ * estimate that runs out before the transfer does reads as a stall.
+ */
+export function remainingText(t: TFunction, seconds: number): string {
+  if (seconds < 60) return t("remaining.underMinute", { ns: "common" });
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return t("remaining.minutes", { ns: "common", minutes });
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 === 0
+    ? t("remaining.hours", { ns: "common", hours })
+    : t("remaining.hoursMinutes", { ns: "common", hours, minutes: minutes % 60 });
+}
