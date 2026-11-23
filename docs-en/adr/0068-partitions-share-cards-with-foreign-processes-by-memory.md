@@ -54,4 +54,7 @@ Amended again 2026-11-21 (item 16, rewriting "how much the headroom is" in item 
 - No node-level bulk entrance is kept as data: several held cards on one node are enabled one by one; where a bulk action is wanted the UI sends the same card action for several cards, and no node field is added.
 - The consent retry costs one more in-memory plan only for a schedule that failed; the preference tiers are at most 2^n plans (at most 4 entries), and a tier is tried only when the one before it is empty.
 
-<!-- translation-source-sha256: 8b9d2ebce2f2652496a4cea0162d079affeb3a3788d371836287a27ee8121883 -->
+<!-- translation-source-sha256: 0417b230406729d45b39d869faba701bdc59998ad055d310aa863c759c4051ef # ADR 0068: Memory-limited partitions share a card with processes outside the platform by the memory left -->
+<!-- translation-source-sha256: df0a74ddaa4837841880afd49b08dca3f024c88697d97bb0a8ce027f61d126cd ## Context -->
+<!-- translation-source-sha256: 6fbb1a686545fde63b44261a3411972de244d7704a3e00b577d372606a09b9b0 ## Decision -->
+<!-- translation-source-sha256: 3f36af42f34e3c1816e8b3cc61074caa3c1a5e1efb9aeabb6aaeef98d1b99621 ## Trade-offs -->

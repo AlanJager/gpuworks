@@ -182,5 +182,12 @@ other container can produce) and stops each launch it recognises through that la
 leftover this process did not start can only be killed, not reaped — only its parent or init may `wait` for
 it.
 
-<!-- translation-source-sha256: 8e07a86ab162adb4b162a8f16eb3c0f3a5d893324d046ae787ae5f4c7a6d9cef -->
+<!-- translation-source-sha256: 76f4145e0c84621f82970f6832aa50774de726168f7cd2a6744549f2bfe07846 # runveil and udocker -->
+<!-- translation-source-sha256: 1ba010abd497d5c5a39d9564faca018b23d07c0c3b7c1aab250751ff03324acb ## Why There Are Two Names -->
+<!-- translation-source-sha256: 6f4931479851585d22a30bd44afe083086e5553b33c9fc423288472e17e172bc ## Which Component Handles Each Step -->
+<!-- translation-source-sha256: 17b84274acb0bbd8347f05d8e15f469e39a1b6e08febdab2d36886f21c32f68b ## Disk Layout -->
+<!-- translation-source-sha256: 86b78398c04ecde2dc81396b53ed4b2db4dd78632addb17d75eed762dfd4cb54 ## Host Paths Visible Inside the Container -->
+<!-- translation-source-sha256: 5916e8a4ee1eac799106f47c129c43844d13ed078695d27efb9d5e0e71055314 ## Runtime Identity -->
+<!-- translation-source-sha256: cee32207d327fe4e208378dba418497c3274739550dec3a6978f574cadba27e0 ## Workloads with Many Threads -->
+<!-- translation-source-sha256: 930759d8d284a0d432c66841e6716c758fe5326b202c220f2ccf921c1c8dd696 ## Reaping Processes When a Container Stops -->
 <!-- translation-localized-code-block: a1a0d94ec2610077388e3d35c9bf83e6dcf608f1d833e08ec095d550b15d1f1e b93b87cdbcce4133356e52d054b9d435a0f4bd46ec3689de61494cb7ff8e1877 Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged. -->

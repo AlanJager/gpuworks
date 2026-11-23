@@ -555,14 +555,14 @@ check-doc-links:
 	CGO_ENABLED=0 $(GO) run ./scripts/doclinks
 
 .PHONY: check-translations
-## check-translations: every docs-en/ page must match the reviewed SHA-256 of
-## its docs/ source recorded at the end of the page, with the same headings and
+## check-translations: every section of a docs-en/ page must match the reviewed
+## SHA-256 of its docs/ source section recorded at the end of the page, with the same headings and
 ## code blocks (the same check the docs-build CI job runs, without Hugo)
 check-translations:
 	python3 -B docs-site/check_translations.py
 
 ## api-docs: rebuild what is derived from docs/reference/api.md and its English
-## page: the source hash at the end of docs-en/reference/api.md and the AI
+## page: the source hashes at the end of docs-en/reference/api.md and the AI
 ## assistant's route catalog internal/server/aihelper/apidocs_gen.go. Neither is
 ## merged by hand: when a merge or rebase conflicts in them, settle the text of
 ## the two pages, run this, and `git add` the results. It refuses while either

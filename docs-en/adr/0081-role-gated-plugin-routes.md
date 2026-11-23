@@ -53,4 +53,10 @@ The code starts only when the first package that pushes roles needs it, and unti
 
 - Not started, waiting for the first package that pushes roles. Today `authorizeDynamic` always passes; apart from `roles.core_actions` there is no table kind about roles; the principal's `roles` holds only the core role.
 
-<!-- translation-source-sha256: 83674b5a9174c7ba7e0326868c92616a78b2389c64635e51d29e53a907188a7f -->
+<!-- translation-source-sha256: 574e3a5a5f9a5895272afa7eec0fe36db1206eef9357ef894b6066e8bd1eb035 # ADR 0081: Plugin Routes Authorized by Role: a Route Declares `access: role`, and Pushed Tables Grant Roles and Actions -->
+<!-- translation-source-sha256: faf52af9f10c452d5f2103646de4ad0f90bb10457d89f210036eb5c0f4763254 ## Background -->
+<!-- translation-source-sha256: e247569690bdb8e2dff69c128668e2c8a4f33e5d7e903b221cb3b44098076725 ## Decision -->
+<!-- translation-source-sha256: 28c12fbf53d69174f12687f0cdabf108588778a5bd8cc585eca00276c94cd23a ## Implementation Order -->
+<!-- translation-source-sha256: bdece96667091d4a5d9c123637d6435ea0c4300cfc7567b9064bc46e76b1bd83 ## Trade-offs -->
+<!-- translation-source-sha256: 3d5892149dee32111cac8cd4adca4405c32e9b747686c214e70c97dacba7a015 ## Not Done -->
+<!-- translation-source-sha256: 18f66cee15dbe06fa89998432ac462324ba7acfcb8a5efd372d35502fdd546b0 ## Implementation Status -->

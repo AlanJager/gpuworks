@@ -56,4 +56,7 @@ use text matching or `json_extract`, with results that depend on serialization d
 - This rule applies to every new or modified column. Existing columns that predate the rule and do not meet decision 2 are listed in `todo.md` and remain unchanged until addressed there;
   the budget blocks additions and does not endorse existing columns.
 
-<!-- translation-source-sha256: 0bdc24a64c785d821887aef6b993d2f20497acfa5839ac1496406c3a938658d8 -->
+<!-- translation-source-sha256: 53b8416121d4880bd5a77a6eb760feac0f3ab38841ce42d1889a79461912f865 # ADR 0032: Persist Facts in Typed Columns by Default; Use JSON Columns Only as Opaque Snapshots Read and Written as a Whole -->
+<!-- translation-source-sha256: 51e359542570fd16d1c4c87b2c239bf9f40311aeea572d4b1a47bcabb229848a ## Context -->
+<!-- translation-source-sha256: 29ecd25e1d8160bb119d9231a33fbc05aa9cfc3567a4f06b3393eea214f49586 ## Decision -->
+<!-- translation-source-sha256: 5d234b76febb36136688c50057ece9ea64afca5f457b38bf5ae0ea457fc2c600 ## Consequences -->
