@@ -39,6 +39,13 @@ func (a *apiHandlers) consoleManifest(w http.ResponseWriter, r *http.Request) {
 			out.Banners = append(out.Banners, banner)
 		}
 	}
+	if limit := a.consolePlatform(); limit != nil {
+		out.Platform = &dto.ConsolePlatform{Access: limit.Access.String(), Link: limit.Link,
+			Message: dto.ProductMessage{Code: limit.Notice.Code(), Params: limit.Notice.Params(), Message: limit.Notice.Error()}}
+		if limit.Action != nil && limit.Link != "" {
+			out.Platform.Action = &dto.ProductMessage{Code: limit.Action.Code(), Params: limit.Action.Params(), Message: limit.Action.Error()}
+		}
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

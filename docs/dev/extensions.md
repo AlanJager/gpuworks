@@ -67,6 +67,7 @@ type Service interface{ Run(ctx context.Context) error }
 | `DeclareFeatures(...)` / `ProvideFeatures(src)` | 声明功能键；为编译模块声明的功能键提供功能来源（全部模块中至多一个；插件包声明的功能键由插件宿主作答，不经它） |
 | `AddBannerSource(b)` | 控制台每页顶部的横幅 |
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
+| `LimitPlatform(src)` | 整台 server 的可用性来源（见“可用性”）；全部模块中至多一个 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
 | `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
 | `ReapplySchedulingHoldsFor(ids)` | 同上，但只对答案变了的那些节点（按节点 id）重新应用 |
@@ -180,6 +181,18 @@ type Service interface{ Run(ctx context.Context) error }
 - 没有模块提供功能来源时，所有声明过的功能都是锁定（`FEATURE_PROVIDER_ABSENT`）。
 - 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。核心代码不以字面量点名功能键：交给功能门的键形字面量、`featuregate.Key("…")` 转换、赋给 `featuregate.Key` 常量的字面量、功能声明的 `Key: "…"`（`featuregate.Feature{Key: …}`）与路由的 `Feature: "…"`，在非测试代码里由架构预算 `feature_key_literals_in_core`（上限 0）守护。
 - 扩展 GET 路由默认不给 AI 助手与 MCP 读，除非标记 `AIReadable`。
+
+### 整台 server 的可用性
+
+一个模块可以用 `Host.LimitPlatform` 给整台 server 定可用性（`api.PlatformLimiter`）：完整、只读或锁定。没有模块这样做时，server 从不受限；社区版没有这个来源。
+
+- 只读：读请求和数据面（`/v1/*`）照常，改动一律返回 403 `PLATFORM_READ_ONLY`。锁定：只放行恢复面，其余返回 403 `PLATFORM_LOCKED`。来源给了自己的说明时，返回它的码。来源答“隐藏”按锁定处理。
+- 恢复面在任何限制下都放行：登录与会话、健康检查、控制台清单与品牌、已接入机器的连接与健康检查脚本、插件包管理、server 自身的升级、诊断包，以及注册该来源的模块自己的路由（这样它的页面才能解除限制）。
+- 限制在鉴权之前、任何处理函数之前生效，按路由的模式分类而不是按路径猜：`/api/v1` 下的路由默认按方法分为读和改动；发放接入材料或打开交互会话的 GET 归为改动；`/api/v1` 之外的新路由必须在 `internal/server/api/platform_limit.go` 里点名，否则在任何限制下都被拒绝，并且路由清单测试会失败。
+- 来源在每个请求上被调用，遵守纯函数规则：一次原子读，不做 I/O，不加锁，不分配。
+- 限制只作用于新的请求：不停止、不驱逐、不重启正在运行的负载，已接入的机器保持连接。
+
+控制台清单在受限时带 `platform`（`access`、`link`、`message`）。锁定时控制台只留下 `link` 指向的页面，其余菜单项不可进入；只读时页面照常显示，页面上方说明改动会被拒绝。
 
 控制台按 `GET /api/v1/console/manifest` 渲染（字段见 [API 参考](../reference/api.md)），自己不推导可用性：完整照常显示；只读时组件收到 `readOnly`；锁定时菜单项带锁，页面显示锁定页和服务端给的链接；隐藏或清单里没有的功能键，什么都不显示。
 

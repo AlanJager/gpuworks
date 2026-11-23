@@ -16,3 +16,13 @@ const (
 	// quantity it is available up to ({dim}, {max}, {used}).
 	ErrorFeatureLimitReached = "FEATURE_LIMIT_REACHED"
 )
+
+// Refusals of a server that is limited as a whole (api.PlatformLimiter).
+const (
+	// ErrorPlatformLocked: the server serves only signing in, health and
+	// what lifts the limit.
+	ErrorPlatformLocked = "PLATFORM_LOCKED"
+	// ErrorPlatformReadOnly: the server serves reads and the data plane;
+	// changes are refused.
+	ErrorPlatformReadOnly = "PLATFORM_READ_ONLY"
+)

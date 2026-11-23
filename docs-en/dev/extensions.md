@@ -67,6 +67,7 @@ A module's name is its only identity: its `extensions.<name>` section in `server
 | `DeclareFeatures(...)` / `ProvideFeatures(src)` | Declares feature keys; provides the feature source for the keys compiled modules declare (at most one across all modules; the keys plugin packages declare are answered by the plugin host, not by it) |
 | `AddBannerSource(b)` | Banners at the top of every console page |
 | `GuardNodeInsert(g)` | A guard on every new node's insert |
+| `LimitPlatform(src)` | The source of the whole server's availability (see "Availability"); at most one across all modules |
 | `HoldScheduling(h)` | A scheduling holder, keyed by its source; a repeated source is refused |
 | `ReapplySchedulingHolds()` | The holder's answers changed: asks for the holds to be applied to every node again, rather than at each node's next status report |
 | `ReapplySchedulingHoldsFor(ids)` | The same, but only for the nodes (by node ID) whose answers changed |
@@ -180,6 +181,18 @@ Open-source code speaks only of availability: a feature source answers each feat
 - Without a module that provides a feature source, every declared feature is locked (`FEATURE_PROVIDER_ABSENT`).
 - Community paths never consult the gate, and running workloads are never interrupted by a change of availability. Core code never names a feature key in a literal: key-shaped literals handed to the gate, `featuregate.Key("…")` conversions, a literal assigned to a `featuregate.Key` constant, a feature declaration's `Key: "…"` (`featuregate.Feature{Key: …}`) and a route's `Feature: "…"` in non-test code are held at 0 by the architecture budget `feature_key_literals_in_core`.
 - Extension GET routes are not readable by the AI assistant and MCP unless marked `AIReadable`.
+
+### Availability of the whole server
+
+A module may set the availability of the whole server with `Host.LimitPlatform` (`api.PlatformLimiter`): full, read-only or locked. Without a module that does, the server is never limited; the community server has no such source.
+
+- Read-only: reads and the data plane (`/v1/*`) work as usual, and every change gets 403 `PLATFORM_READ_ONLY`. Locked: only the recovery surface passes, everything else gets 403 `PLATFORM_LOCKED`. When the source supplies its own notice, its code is returned. A source that answers hidden is read as locked.
+- The recovery surface passes under any limit: signing in and the session, health checks, the console manifest and branding, the connection and health-check script of machines that already joined, plugin package management, the server's own upgrade, diagnostics bundles, and the routes of the module that registered the source (so that its page can lift the limit).
+- The limit applies before authentication and before any handler, and classifies by the route's pattern rather than guessing from the path: routes under `/api/v1` are reads or changes by their method; a GET that hands out what brings a machine in, or opens an interactive session, counts as a change; a new route outside `/api/v1` must be named in `internal/server/api/platform_limit.go`, or it is refused under any limit and the route inventory test fails.
+- The source is called on every request and follows the pure-function rules: one atomic load, no I/O, no lock, no allocation.
+- A limit acts on new requests only: it never stops, evicts or restarts running workloads, and machines that already joined stay connected.
+
+While the server is limited the console manifest carries `platform` (`access`, `link`, `message`). Locked, the console keeps only the page `link` points to and the other menu entries cannot be entered; read-only, the pages show as usual and a notice above them says that changes are refused.
 
 The console renders `GET /api/v1/console/manifest` (fields in the [API reference](../reference/api.md)) and derives no availability itself: full shows as usual; read-only passes `readOnly` to the component; locked keeps the menu entry with a lock and shows the locked page with the server's link; a hidden key, or one the manifest does not list, shows nothing.
 
@@ -493,14 +506,15 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 <!-- translation-source-sha256: 600e483e0b83247381c3c8f35d4c3a9cd2add820dab7afdc49b2c72a818f3699 # Extension Points: The Module Contract and Installable Extensions -->
 <!-- translation-source-sha256: 6e2c8b3b69d01b86bf00ccf832608a3f9f438723c909f6c6ff0f4fb9bf33a032 ## Tiers -->
 <!-- translation-source-sha256: c038a66ecb98cf6640ab0f130c8fdecc416cee3f7838156205d8e11c42acf375 ## How a build composes -->
-<!-- translation-source-sha256: 069f0379c5a32fd6591f75afbadfc981cf46b280a621e76d848f47ba3142601d ## Modules and the Host -->
+<!-- translation-source-sha256: e6c17cf6bfb9be0512a1276e7731d2dea9d8291de471c85d457b50fa226b5352 ## Modules and the Host -->
 <!-- translation-source-sha256: bb4b0a8ca852821bcb93b5224c5602547dba0e040ab2a679a6cf26ac4a2fec66 ## Reapplying holds and the node fleet -->
 <!-- translation-source-sha256: 2943f81690cda9ea5bf5f35a0039d7d1e8340998af623c72f252ab2b4f93de83 ## Node identity and node inventory -->
 <!-- translation-source-sha256: 9ecb281ae30f5bf0846d54c4585c8451f859dab2bb0912982eb541919e54d968 ### The management server's host identity -->
 <!-- translation-source-sha256: 4ae6c783942232690aaca56e9e4a5788c45162e113ef31e26f3d30165bb45d96 ## Tables and migrations -->
 <!-- translation-source-sha256: 7626426b7d3733a9d407e37351869c21ccd297962bd626ed1c3572afa9d6d21b ## Hooks and call threads -->
 <!-- translation-source-sha256: c54e35660cf20799f4be55e9a0f36a22787956e1e19398ba5292402113e218a3 ## Purity rules -->
-<!-- translation-source-sha256: a42a118d8ff86decfe7a9547ac88155edbad68b2f8b152ba6b66eee97332a5f7 ## Availability -->
+<!-- translation-source-sha256: 7fd33a4504aa9548513615ac32ce91d81275e546b83f2e68035dd0dabc880199 ## Availability -->
+<!-- translation-source-sha256: 94f824ff41e97eb794d86c19fc6c54bc27e2c64bbd3ad71af5da5e6d153361fc ### Availability of the whole server -->
 <!-- translation-source-sha256: 2f0d63478baf7bf38b004b38e55e2a5b16a71c2d155f644580d42c62bbfa9988 ## Console overlay -->
 <!-- translation-source-sha256: e9fcf7fac20aca4c21f4dfcc449146cf5207289490a5ff3489950b61e20a7fac ## Codes and texts -->
 <!-- translation-source-sha256: 6fa8885393d900cd0bd114408d5214c5a1e5d017fd8793abcb7c51e96cdf5e7c ## Upgrades and installation -->

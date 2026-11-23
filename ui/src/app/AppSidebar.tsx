@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/sidebar";
 import { selectedNavKey } from "../navigation";
 import { useConsoleNavGroups } from "../extensions/shell";
+import { useConsolePlatform } from "../extensions/featureAccess";
+import { lockedOut } from "./PlatformGate";
 
 const ToggleIcon = ConsoleIcon.sidebar;
 const LockedIcon = ConsoleIcon.locked;
@@ -24,6 +26,7 @@ export default function AppSidebar() {
   const { pathname } = useLocation();
   const { state, toggle } = useSidebar();
   const navGroups = useConsoleNavGroups();
+  const { platform } = useConsolePlatform();
   const selected = selectedNavKey(pathname, navGroups);
   const collapsed = state === "collapsed";
   const toggleLabel = t(collapsed ? "header.expandNavigation" : "header.collapseNavigation");
@@ -47,16 +50,19 @@ export default function AppSidebar() {
                 <NavMenu activeValue={selected} aria-label={label} keyboardNavigation="roving">
                   {group.items.map((item) => {
                     const name = t(item.labelKey);
+                    // A locked server serves only the page that lifts the limit: the other
+                    // entries stay in place, unreachable, so the menu still shows what returns.
+                    const out = lockedOut(platform, item.key);
                     return (
                       // Icon-collapsible Sidebars size items for the 40px rail; expanded, rows
                       // keep the console's 32px items 36px apart (ui-guidelines 9.2).
                       <NavItem key={item.key} value={item.key} className="group-data-[state=expanded]/sidebar:h-auto! group-data-[state=expanded]/sidebar:py-px!">
-                        <NavItemTrigger render={<Link to={item.key} />} tooltip={collapsed ? name : undefined} tooltipSide="right" className="group-data-[state=expanded]/sidebar:h-control-md!">
+                        <NavItemTrigger render={out ? <span aria-disabled="true" /> : <Link to={item.key} />} tooltip={collapsed ? name : undefined} tooltipSide="right" className={"group-data-[state=expanded]/sidebar:h-control-md!" + (out ? " cursor-not-allowed opacity-50" : "")}>
                           {/* Decorative: antd icons name themselves ("heart"), which would leak into the link name. */}
                           <NavItemLeading aria-hidden="true">{item.icon}</NavItemLeading>
                           <NavItemContent><NavItemLabel>{name}</NavItemLabel></NavItemContent>
                           {/* A locked extension entry still opens its page, which says why and links to more. */}
-                          {item.locked && <NavItemTrailing className="group-data-[state=collapsed]/sidebar:hidden"><LockedIcon size={14} strokeWidth={1.5} role="img" aria-label={t("consoleExtension.locked.badge")} /></NavItemTrailing>}
+                          {(item.locked || out) && <NavItemTrailing className="group-data-[state=collapsed]/sidebar:hidden"><LockedIcon size={14} strokeWidth={1.5} role="img" aria-label={t("consoleExtension.locked.badge")} /></NavItemTrailing>}
                         </NavItemTrigger>
                       </NavItem>
                     );

@@ -26,6 +26,9 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 	r.Use(a.countUsage)
 	a.aiAsks.limit, a.mcpCalls.limit = aiAsksPerUser, mcpCallsPerUser
 	r.Use(a.securityHeaders)
+	// Before authentication and every handler: what a limit on the whole
+	// server does not serve (platform_limit.go). Nothing without a limiter.
+	r.Use(a.platformGuard(r))
 	r.NotFound(a.routingError(http.StatusNotFound))
 	r.MethodNotAllowed(a.routingError(http.StatusMethodNotAllowed))
 

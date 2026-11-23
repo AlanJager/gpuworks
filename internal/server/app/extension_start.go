@@ -28,10 +28,13 @@ type extensionSet struct {
 	dynamic  *featuregate.DynamicSet
 	source   featuregate.Source
 	sourceBy string
-	holders  int
-	holds    *holdpass.Runner
-	services []func(context.Context)
-	closed   bool
+	// platform limits the whole server, registered by platformBy.
+	platform   api.PlatformLimiter
+	platformBy string
+	holders    int
+	holds      *holdpass.Runner
+	services   []func(context.Context)
+	closed     bool
 	// plugins is the plugin administration of the built-in plugins module.
 	plugins api.PluginAdmin
 	// routes serves the installed plugin packages' routes.
@@ -122,7 +125,8 @@ func (set *extensionSet) apiDeps() (api.ExtensionDeps, error) {
 	if err != nil {
 		return api.ExtensionDeps{}, err
 	}
-	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins}, nil
+	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins,
+		Platform: set.platform, PlatformOwner: set.platformBy}, nil
 }
 
 // moduleService runs a module's Service on Run's context and logs an error it
