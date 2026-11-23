@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"sync"
 
 	"gorm.io/gorm"
 
@@ -23,6 +24,9 @@ const (
 	StallSiteCommit = "database commit"
 	// StallSiteRollback is a rollback.
 	StallSiteRollback = "database rollback"
+	// StallSiteConnection is taking a connection to hold across several
+	// statements: on the writer this waits for the write in progress.
+	StallSiteConnection = "database connection"
 )
 
 // watchDatabase tells the process's stall watch (internal/stallwatch) how
@@ -34,6 +38,21 @@ func watchDatabase(db *gorm.DB) {
 	pool := &watchedPool{ConnPool: db.ConnPool}
 	db.ConnPool = pool
 	db.Statement.ConnPool = pool
+}
+
+// watchedConnection runs fn on one connection of db's pool, as
+// (*gorm.DB).Connection does, with the watch seeing both the wait for that
+// connection and the statements run on it.
+func watchedConnection(db *gorm.DB, fn func(*gorm.DB) error) error {
+	var once sync.Once
+	end := stallwatch.Begin(StallSiteConnection)
+	got := func() { once.Do(end) }
+	defer got()
+	return db.Connection(func(tx *gorm.DB) error {
+		got()
+		tx.Statement.ConnPool = &watchedPool{ConnPool: tx.Statement.ConnPool}
+		return fn(tx)
+	})
 }
 
 // isDatabasePool says whether pool is the database's own connection pool

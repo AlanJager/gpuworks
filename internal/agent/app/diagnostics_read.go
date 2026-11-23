@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"gpuworks.ai/gpuworks/internal/logging"
 )
 
 // StreamDiagnostics writes the node's part of a diagnostics collection as a
@@ -13,6 +15,9 @@ import (
 // debug sessions' files. A file that is not there is left out; the server
 // reads what arrived.
 func (n *NodeRuntime) StreamDiagnostics(ctx context.Context, sessions []string, w io.Writer) error {
+	// The log is written by its own goroutine: what it still holds belongs
+	// in the collection.
+	logging.Flush()
 	dir := n.agentLogDir()
 	files := []string{"agent.log", "agent.log.1"}
 	for _, id := range sessions {

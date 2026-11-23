@@ -310,6 +310,7 @@ func ReadPluginMarkers(dsn string) ([]extapi.Marker, error) {
 	if err != nil {
 		return nil, err
 	}
+	watchDatabase(gdb)
 	pool, err := gdb.DB()
 	if err != nil {
 		return nil, err

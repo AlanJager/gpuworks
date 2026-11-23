@@ -24,6 +24,10 @@ type RuntimeTransportPolicy struct {
 	release       func() error
 	closed        bool
 	closeErr      error
+	// confirmed says this owner has seen current's publication made durable:
+	// a publication (or the directory sync that confirms an identical one)
+	// succeeded since it opened. Guarded by publicationMu.
+	confirmed bool
 }
 
 func OpenRuntimeTransportPolicy(path string) (*RuntimeTransportPolicy, error) {
@@ -114,6 +118,24 @@ func (r *RuntimeTransportPolicy) apply(snapshot TransportPolicy, publish func(st
 	if durable.SourceRevision == current.SourceRevision && (!slices.Equal(durable.AllowedKeys, current.AllowedKeys) || !slices.Equal(durable.RevokedKeys, current.RevokedKeys)) {
 		return TransportPolicy{}, errors.New("runtime transport policy source contents changed without advancing revision")
 	}
+	// The same snapshot again, over a file this owner already confirmed and
+	// that still reads back as confirmed: nothing to write and nothing to
+	// sync. The authorization refresh applies its snapshot every second, and
+	// a directory sync per second waits on the disk for no change. The lease
+	// keeps other publishers out, and the first Apply after opening still
+	// syncs, which confirms a publication whose sync a previous owner left
+	// unknown.
+	// What a publication refuses, the skip refuses too: a snapshot that is
+	// not a source snapshot, one that is not valid, or one from another
+	// authority must keep failing instead of passing for "unchanged".
+	if r.confirmed && sameTransportPolicy(durable, current) && snapshot.SourceRevision == current.SourceRevision && slices.Equal(snapshot.AllowedKeys, current.AllowedKeys) {
+		if err := unchangedSnapshotIsAcceptable(snapshot, current); err != nil {
+			return TransportPolicy{}, err
+		}
+		current.AllowedKeys = slices.Clone(current.AllowedKeys)
+		current.RevokedKeys = slices.Clone(current.RevokedKeys)
+		return current, nil
+	}
 	candidate := snapshot
 	candidate.Revision = 1
 	authorize, err := candidate.Authorizer(current.ClusterID, current.CAFingerprint)
@@ -132,7 +154,30 @@ func (r *RuntimeTransportPolicy) apply(snapshot TransportPolicy, publish func(st
 	r.current.AllowedKeys = slices.Clone(persisted.AllowedKeys)
 	r.current.RevokedKeys = slices.Clone(persisted.RevokedKeys)
 	r.authorize = authorize
+	r.confirmed = true
 	return persisted, nil
+}
+
+// unchangedSnapshotIsAcceptable runs, for a snapshot whose keys and source
+// revision equal the confirmed policy's, the checks a publication would have
+// run on it (applyTransportPolicySnapshotLocked).
+func unchangedSnapshotIsAcceptable(snapshot, current TransportPolicy) error {
+	if snapshot.Revision != 0 || snapshot.SourceRevision == 0 {
+		return errors.New("source snapshot requires zero local revision and positive source revision")
+	}
+	snapshot.Revision = 1
+	if err := snapshot.validate(); err != nil {
+		return err
+	}
+	if snapshot.ClusterID != current.ClusterID || snapshot.CAFingerprint != current.CAFingerprint {
+		return errors.New("transport policy authority cannot change")
+	}
+	return nil
+}
+
+func sameTransportPolicy(a, b TransportPolicy) bool {
+	return a.ClusterID == b.ClusterID && a.CAFingerprint == b.CAFingerprint && a.Revision == b.Revision && a.SourceRevision == b.SourceRevision &&
+		slices.Equal(a.AllowedKeys, b.AllowedKeys) && slices.Equal(a.RevokedKeys, b.RevokedKeys)
 }
 
 // Close must run after listeners and connections have stopped. Repeated calls

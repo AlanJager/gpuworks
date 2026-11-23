@@ -42,17 +42,19 @@ func TestLoggerSameStderrDestinationStaysWithinRotation(t *testing.T) {
 				saved := os.Stderr
 				os.Stderr = stderr
 				defer func() { os.Stderr = saved }()
-				log, closeLog := NewLogger(slog.New(slog.NewTextHandler(io.Discard, nil)), FileOptions{
+				log, closeLog, queues := newLogger(slog.New(slog.NewTextHandler(io.Discard, nil)), FileOptions{
 					Path: path, MaxBytes: 128, Keep: 1,
 				})
 				defer closeLog()
 				log.Info("unique-marker")
+				drain(t, queues)
 				if got := strings.Count(read(t, path), "unique-marker"); got != 1 {
 					t.Fatalf("active file has %d copies of one record", got)
 				}
 				for i := 0; i < 20; i++ {
 					log.Info("rotate", "record", i)
 				}
+				drain(t, queues)
 				before, err := stderr.Stat()
 				if err != nil {
 					t.Fatal(err)
@@ -60,6 +62,7 @@ func TestLoggerSameStderrDestinationStaysWithinRotation(t *testing.T) {
 				for i := 0; i < 20; i++ {
 					log.Info("after-rotation", "record", i)
 				}
+				drain(t, queues)
 				after, err := stderr.Stat()
 				if err != nil {
 					t.Fatal(err)
@@ -101,9 +104,10 @@ func TestLoggerUnwritableStderrPreservesHealthyFile(t *testing.T) {
 	os.Stderr = stderr
 	defer func() { os.Stderr = saved }()
 	logPath := filepath.Join(t.TempDir(), "server.log")
-	log, closeLog := NewLogger(slog.New(slog.NewTextHandler(stderr, nil)), FileOptions{Path: logPath, Keep: 1})
+	log, closeLog, queues := newLogger(slog.New(slog.NewTextHandler(stderr, nil)), FileOptions{Path: logPath, Keep: 1})
 	defer closeLog()
 	log.Info("healthy-file-marker")
+	drain(t, queues)
 	if !strings.Contains(read(t, logPath), "healthy-file-marker") {
 		t.Fatal("failed stderr write prevented the healthy log file from receiving the record")
 	}

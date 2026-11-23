@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/logging"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -138,6 +139,7 @@ func reexecAgent() error {
 	for strings.HasSuffix(bin, ".old") {
 		bin = strings.TrimSuffix(bin, ".old")
 	}
+	logging.Flush()
 	return syscall.Exec(bin, os.Args, os.Environ())
 }
 

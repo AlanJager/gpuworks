@@ -199,7 +199,9 @@ func LoadTransportPolicy(path string) (TransportPolicy, error) {
 	return p, nil
 }
 
-func syncPolicyDirectory(path string) error {
+// syncPolicyDirectory makes the policy file's directory entry durable. It is
+// a variable so a test can count the syncs.
+var syncPolicyDirectory = func(path string) error {
 	directory, err := os.Open(filepath.Dir(path))
 	if err != nil {
 		return err

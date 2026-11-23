@@ -365,7 +365,7 @@ func (s *Store) withCards(db *gorm.DB, query func(*gorm.DB) error) error {
 		return run(db)
 	}
 	if db == s.db {
-		return db.Connection(run)
+		return watchedConnection(db, run)
 	}
 	return db.Transaction(run)
 }
