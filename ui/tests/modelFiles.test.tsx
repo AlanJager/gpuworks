@@ -286,10 +286,10 @@ test("a transfer in flight shows its rate and remaining time next to the bytes; 
     row({ node_uuid: "n3", node_name: "node-02", rate_bps: 9 * 1024 ** 2 }),
   ], storages: [shared({ state: "downloading", progress: 0.1, downloaded: 1.5 * GiB, rate_bps: 512 * 1024 })] }));
   assert.ok(screen.getByText("7.5 GiB / 15.0 GiB · 48.0 MiB/s · about 3 min left"));
-  assert.ok(screen.getByText("3.8 GiB / 15.0 GiB · 1.5 GiB/s · under 1 min left"));
+  assert.ok(screen.getByText("3.8 GiB / 15.0 GiB · 1.5 GiB/s"), "a node-to-node sync shows its rate but promises no end");
   assert.ok(screen.getByText("1.5 GiB / 15.0 GiB · 512.0 KiB/s · about 7 h 41 min left"), "a shared storage transfer shows its rate too");
   assert.equal(screen.queryByText(/9\.0 MiB\/s/), null, "a present file reports no rate");
-  assert.equal(screen.queryAllByText(/ left$/).length, 3, "a present file has nothing left to wait for");
+  assert.equal(screen.queryAllByText(/ left$/).length, 2, "only the two public downloads say how long they still need");
 });
 
 test("a transfer without a rate or a total makes no promise about when it ends", () => {

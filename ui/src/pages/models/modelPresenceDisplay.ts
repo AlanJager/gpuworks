@@ -58,15 +58,18 @@ export function modelPresenceBytes(presence: Pick<ModelNodePresence, "downloaded
 
 /**
  * Seconds a transfer still needs, 0 when that cannot be said. A cache copy's
- * estimate is the server's, which withholds it until the rate is stable; a
- * download or node-to-node sync reports its bytes and rate on the row, and
- * the estimate follows from those.
+ * estimate is the server's, which withholds it until the rate is stable. A
+ * public download reports its bytes and a recent rate on the row, and the
+ * estimate follows from those; its rate reads zero within seconds of the
+ * bytes stopping. A node-to-node sync gets none: its rate is the average
+ * since it started and is not reported again once bytes stop arriving, so a
+ * stalled sync would go on promising an end.
  */
 export function transferEtaSeconds(
   row: Pick<ModelNodePresence, "state" | "size_bytes" | "downloaded" | "rate_bps"> & Partial<Pick<ModelNodePresence, "acquisition" | "preparation">>,
 ): number {
   if (row.preparation?.eta_seconds) return row.preparation.eta_seconds;
-  if (row.acquisition === "copy" || (row.state !== "downloading" && row.state !== "syncing")) return 0;
+  if (row.state !== "downloading" || row.acquisition === "copy" || row.acquisition === "peer") return 0;
   if (row.preparation && !row.preparation.total_known) return 0;
   if (!(row.rate_bps > 0) || !(row.size_bytes > row.downloaded)) return 0;
   return Math.ceil((row.size_bytes - row.downloaded) / row.rate_bps);

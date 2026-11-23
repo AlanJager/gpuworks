@@ -31,7 +31,8 @@ const MiB = 1024 ** 2;
 test("a download's remaining time follows from its bytes and rate", () => {
   const moving = { state: "downloading", acquisition: "download", size_bytes: 181 * GiB, downloaded: 98.8 * GiB, rate_bps: 14 * MiB };
   assert.equal(transferEtaSeconds(moving), 6013);
-  assert.equal(transferEtaSeconds({ ...moving, state: "syncing", acquisition: "peer" }), 6013, "a node-to-node sync is estimated the same way");
+  assert.equal(transferEtaSeconds({ ...moving, state: "syncing", acquisition: "peer" }), 0, "a node-to-node sync's rate is a since-start average that goes stale when it stalls");
+  assert.equal(transferEtaSeconds({ ...moving, acquisition: "peer" }), 0, "a peer transfer in the downloading state is still a sync");
   assert.equal(transferEtaSeconds({ ...moving, rate_bps: 0 }), 0, "no rate, no estimate");
   assert.equal(transferEtaSeconds({ ...moving, size_bytes: 0 }), 0, "no total, no estimate");
   assert.equal(transferEtaSeconds({ ...moving, downloaded: 181 * GiB }), 0, "nothing left");
