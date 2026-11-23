@@ -42,7 +42,11 @@ func TestTheServersStallWatchWritesWhereCollectionsRead(t *testing.T) {
 	}
 	end()
 	stop()
-	raw, err := os.ReadFile(stallwatch.Reports(diagnostics.StallReportDir(dataDir))[0])
+	reports := stallwatch.Reports(diagnostics.StallReportDir(dataDir))
+	if len(reports) != 1 {
+		t.Fatalf("reports: %v, want the one stall", reports)
+	}
+	raw, err := os.ReadFile(reports[0])
 	if err != nil || !strings.Contains(string(raw), "program: gpuworks server ") || !strings.Contains(string(raw), "database statement") {
 		t.Fatalf("report: %v\n%s", err, raw)
 	}
@@ -55,5 +59,41 @@ func TestTheServersStallWatchWritesWhereCollectionsRead(t *testing.T) {
 	stop()
 	if reports := stallwatch.Reports(diagnostics.StallReportDir(off)); len(reports) != 0 {
 		t.Fatalf("reports with the watch off: %v", reports)
+	}
+}
+
+// blockedLog is a log destination that never answers, as a full pipe or a
+// disk that stopped does.
+type blockedLog struct{ release chan struct{} }
+
+func (b blockedLog) Write(p []byte) (int, error) {
+	<-b.release
+	return len(p), nil
+}
+
+// The server stops its watch on the way out. With the log blocked, the
+// watch's reporting goroutine is stuck writing its line; stopping must still
+// return.
+func TestStoppingTheServersStallWatchDoesNotHangOnABlockedLog(t *testing.T) {
+	blocked := blockedLog{release: make(chan struct{})}
+	defer close(blocked.release)
+	dataDir := t.TempDir()
+	stop := startStallWatch(slog.New(slog.NewTextHandler(blocked, nil)), 50*time.Millisecond, dataDir)
+	end := stallwatch.Begin("database statement")
+	deadline := time.Now().Add(10 * time.Second)
+	for len(stallwatch.Reports(diagnostics.StallReportDir(dataDir))) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("no report")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	end()
+	time.Sleep(200 * time.Millisecond) // the end of the stall is now being logged, and waits
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); stop() }()
+	select {
+	case <-stopped:
+	case <-time.After(stallwatch.DefaultStopWait + 5*time.Second):
+		t.Fatal("stopping the watch hung on the blocked log")
 	}
 }

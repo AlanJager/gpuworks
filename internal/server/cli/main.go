@@ -494,7 +494,9 @@ func defaultLogFile(dataDir string) string {
 var serverLogIdentity = []string{"code", "reason", "method", "path", "status"}
 
 func serverLogger(path, maxSize string, keep int, level slog.Level) (*slog.Logger, func()) {
-	base := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	// The stderr-only logger a missing or unusable log file falls back to is
+	// watched for stalls as the file logger is (logging.NewLogger).
+	base := slog.New(slog.NewTextHandler(stallwatch.Writer(logging.StallSite, os.Stderr), &slog.HandlerOptions{Level: level}))
 	if strings.TrimSpace(path) == "" {
 		return base, func() {}
 	}

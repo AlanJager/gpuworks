@@ -1423,15 +1423,15 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 
 **现象**：请求偶尔要等几秒才返回，或一段时间内 server 日志一行都没有，事后看不出当时卡在哪里。
 
-**卡顿报告（自动）**：server 自己盯着会等磁盘的几处：日志写入、数据库语句（集群里包括到数据库进程的往返）、指标库、日志库和请求记录库的写入。其中一处等待超过 3 秒（`log.stall_report_after`）时，它立刻在内存里取下全部 goroutine 的堆栈，磁盘能写后存成文件，所以日志或磁盘本身卡住时也能留下现场：
+**卡顿报告（自动）**：server 自己盯着会等磁盘的几处：日志写入（日志文件与 stderr）、数据库语句以及事务的开始与提交（单写连接的排队和落盘都在这里；集群里包括到数据库进程的往返）、指标库、日志库和请求记录库的写入。其中一处等待超过 3 秒（`log.stall_report_after`）时，它立刻在内存里取下全部 goroutine 的堆栈，磁盘能写后存成文件，所以日志或磁盘本身卡住时也能留下现场：
 
 - 文件在 server 数据目录的 `diagnostics/stalls/stall-<UTC 时间>.txt`，保留最新 20 份；两份报告之间至少隔 1 分钟，期间的卡顿只计数，写在下一份报告里。
-- 报告开头是 server 版本、发现时间、当时在等的各处及已等时长（`waiting:`）、内核的 I/O 压力（`io pressure:`），随后是全部堆栈；等待持续到 30 秒时再取一次堆栈（`still waiting at`），结束时补一行 `ended: …, after <时长>`。没有 `ended` 行说明进程在卡顿结束前退出了。
-- 卡顿结束后 server 日志有一行 `process stall recorded site=… duration=… report=…`。`process pause recorded` 表示整个进程在这段时间内没有被调度（被冻结、CPU 被抢占或内存回收），这种情况没有堆栈。
+- 报告开头是 server 版本、发现时间、当时在等的各处及已等时长（`waiting:`）、内核的 I/O 压力（`io pressure:`），随后是全部堆栈；等待持续到 30 秒时再取一次堆栈（`still waiting at`），结束时补一行 `ended: …, after <时长>`。没有 `ended` 行说明进程在卡顿结束前退出了。离上一份报告不足 1 分钟就开始的卡顿，如果持续到满 1 分钟仍未结束，会在那时取栈并写报告。
+- 卡顿结束后 server 日志有一行 `process stall recorded site=… duration=… report=…`。`process pause recorded` 表示整个进程在这段时间内没有被调度（被冻结、CPU 被抢占或内存回收），这种情况没有堆栈，文件名是 `stall-<时间>.pause.txt`；至少 1 秒才算。日志行里的 `report=` 只在报告文件确实写下时才有。
 - 看报告时先看 `waiting:` 确认卡在哪一类操作，再在堆栈里找停在该操作上的 goroutine，以及排在它后面等同一把锁的 goroutine。
 - [收集诊断信息](#无法登录现场时调试采集与收集诊断信息)会带上时间范围内的报告（`server/stalls/`）。
 
-agent 用同样的方式盯着自己的日志写入，报告在 agent 状态目录的 `stalls/` 下（默认 `/opt/gpuworks/stalls/`），不随诊断信息收集，需要时在节点上取。
+agent 用同样的方式盯着自己写日志文件（`gpuworks-agent run --stall-report-after`，默认 3 秒，`0` 关闭），报告在 agent 状态目录的 `stalls/` 下（默认 `/opt/gpuworks/stalls/`）。agent 的报告不随诊断信息收集，需要时在节点上取；日志文件打不开、agent 只写 stderr 时不记录。
 
 **现场堆栈（按需）**：server 正卡着而没有报告时（例如卡在上面没有覆盖的地方），在 server 主机上取当前堆栈，不需要重启，也不会终止进程：
 

@@ -56,7 +56,8 @@ func OpenReplicated(ctx context.Context, normal, scheduling *sql.DB, b *bus.Bus,
 		if err != nil {
 			return nil, err
 		}
-		return db, watchStatements(db)
+		watchDatabase(db)
+		return db, nil
 	}
 	db, err := bind(&replicatedWriterPool{DB: normal})
 	if err != nil {

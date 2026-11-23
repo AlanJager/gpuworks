@@ -99,7 +99,7 @@ func TestBlockedLogWriteLeavesAReportWhileTheLoggerIsStillBlocked(t *testing.T) 
 	waitFor(t, "the end of the stall", func() bool { return strings.Contains(readReports(t, dir), "ended:") })
 	waitFor(t, "the log line", func() bool { return strings.Contains(sink.text(), "process stall recorded") })
 	line := sink.text()
-	if !strings.Contains(line, "site=\"log output\"") || !strings.Contains(line, "report="+Reports(dir)[0]) || !strings.Contains(line, "duration=") {
+	if !strings.Contains(line, "site=\"log output\"") || !strings.Contains(line, "report="+dir) || !strings.Contains(line, "duration=") {
 		t.Errorf("log line lacks the site, the duration or the report path: %s", line)
 	}
 	if n := strings.Count(line, "process stall recorded"); n != 1 {
@@ -255,7 +255,7 @@ func TestAWaitThatNeverEndsIsCapturedTwiceThenForgotten(t *testing.T) {
 	if !strings.Contains(logged.String(), "process stall continues") {
 		t.Errorf("no line for the second capture: %s", logged.String())
 	}
-	events := run(w, c, 200*time.Second)
+	events := run(w, c, 40*time.Second)
 	if len(events) != 1 || events[0].kind != eventEnd {
 		t.Fatalf("events once the wait is abandoned: %+v, want the end alone", events)
 	}
@@ -288,6 +288,9 @@ func TestAProcessThatDidNotRunIsRecordedWithoutStacks(t *testing.T) {
 	if len(reports) != 1 {
 		t.Fatalf("%d reports for a pause, want 1", len(reports))
 	}
+	if at, ok := ReportTime(reports[0]); !ok || !at.Equal(c.at) || !strings.HasSuffix(reports[0], ".pause.txt") {
+		t.Fatalf("pause report %s: time %v, %v", reports[0], at, ok)
+	}
 	raw, _ := os.ReadFile(reports[0])
 	if !strings.Contains(string(raw), "the whole process did not run for 7s") || strings.Contains(string(raw), "goroutines") {
 		t.Fatalf("pause report:\n%s", raw)
@@ -297,7 +300,7 @@ func TestAProcessThatDidNotRunIsRecordedWithoutStacks(t *testing.T) {
 	}
 }
 
-func TestAReportThatCannotBeWrittenIsDroppedAndTheLineStillLogged(t *testing.T) {
+func TestAReportThatCannotBeWrittenIsDroppedAndTheLineNamesNoFile(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -307,8 +310,181 @@ func TestAReportThatCannotBeWrittenIsDroppedAndTheLineStillLogged(t *testing.T) 
 	run(w, c, 2*time.Second)
 	end()
 	run(w, c, time.Second)
-	if !strings.Contains(logged.String(), "process stall recorded") {
+	if !strings.Contains(logged.String(), "process stall recorded") || !strings.Contains(logged.String(), "duration=") {
 		t.Fatalf("no log line when the report directory is unusable: %q", logged.String())
+	}
+	if strings.Contains(logged.String(), "report=") {
+		t.Fatalf("the log line names a report that is not on disk: %q", logged.String())
+	}
+}
+
+// The first event of a stall can be lost while reporting is behind. Its end
+// then has no file to name.
+func TestTheEndOfAStallWhoseReportWasLostNamesNoFile(t *testing.T) {
+	dir := t.TempDir()
+	w, c, logged := newManual(t, Options{Threshold: time.Second, Dir: dir})
+	end := w.Begin("log output")
+	var events []event
+	for at := c.at.Add(2 * time.Second); c.at.Before(at); {
+		c.add(w.interval())
+		events = append(events, w.check(c.now())...) // found, never written
+	}
+	end()
+	if len(events) != 1 || events[0].kind != eventStall {
+		t.Fatalf("events: %+v", events)
+	}
+	run(w, c, time.Second)
+	if len(Reports(dir)) != 0 {
+		t.Fatalf("reports: %v", Reports(dir))
+	}
+	if !strings.Contains(logged.String(), "process stall recorded") || strings.Contains(logged.String(), "report=") {
+		t.Fatalf("log line: %q", logged.String())
+	}
+}
+
+// A stall that starts within the interval of an earlier report is not lost
+// for good: once the interval has passed and it is still there, it gets its
+// stacks, its file and its line.
+func TestAHangThatStartsRightAfterAReportIsReportedOnceTheIntervalAllows(t *testing.T) {
+	dir := t.TempDir()
+	w, c, logged := newManual(t, Options{Threshold: 3 * time.Second, Dir: dir, MinInterval: time.Minute})
+	end := w.Begin("log output")
+	run(w, c, 4*time.Second)
+	end()
+	run(w, c, time.Second)
+	if len(Reports(dir)) != 1 {
+		t.Fatalf("%d reports for the first stall, want 1", len(Reports(dir)))
+	}
+
+	hang := w.Begin("database commit")
+	if events := run(w, c, 30*time.Second); len(events) != 0 {
+		t.Fatalf("events inside the interval: %+v", events)
+	}
+	events := run(w, c, 40*time.Second)
+	if len(events) != 1 || events[0].kind != eventStall || events[0].suppressed != 0 {
+		t.Fatalf("events once the interval passed: %+v, want the hang's report", events)
+	}
+	reports := Reports(dir)
+	if len(reports) != 2 {
+		t.Fatalf("%d reports, want the hang's as the second", len(reports))
+	}
+	raw, _ := os.ReadFile(reports[1])
+	if !strings.Contains(string(raw), "database commit") || !strings.Contains(string(raw), "goroutine 1 [running]") {
+		t.Fatalf("the hang's report:\n%s", raw)
+	}
+	hang()
+	run(w, c, time.Second)
+	if !strings.Contains(logged.String(), `site="database commit"`) || !strings.Contains(logged.String(), "report="+reports[1]) {
+		t.Fatalf("no line for the hang: %s", logged.String())
+	}
+}
+
+// A look that comes late under CPU load is not a pause, and a pause that is
+// recorded does not use up the report of the stall behind it.
+func TestALateLookIsNotAPauseAndAPauseDoesNotCostTheStallItsReport(t *testing.T) {
+	dir := t.TempDir()
+	w, c, logged := newManual(t, Options{Threshold: 100 * time.Millisecond, Dir: dir})
+	step(w, c)
+	c.add(900 * time.Millisecond)
+	if events := step(w, c); len(events) != 0 {
+		t.Fatalf("a look 900ms late at a 100ms threshold was recorded: %+v", events)
+	}
+	end := w.Begin("log output")
+	c.add(1500 * time.Millisecond)
+	events := step(w, c)
+	if len(events) != 2 || events[0].kind != eventPause || events[1].kind != eventStall {
+		t.Fatalf("events after a 1.5s pause with a wait open: %+v, want the pause and the stall", events)
+	}
+	end()
+	run(w, c, time.Second)
+	all := readReports(t, dir)
+	if len(Reports(dir)) != 2 || !strings.Contains(all, "did not run for 1.5s") || !strings.Contains(all, "goroutines:") {
+		t.Fatalf("reports %v:\n%s", Reports(dir), all)
+	}
+	if !strings.Contains(logged.String(), "process pause recorded") || !strings.Contains(logged.String(), "process stall recorded") {
+		t.Fatalf("log: %s", logged.String())
+	}
+}
+
+// With reporting behind, the second capture of a long stall is not taken:
+// the queue never holds more than the first captures.
+func TestTheSecondCaptureIsSkippedWhileReportingIsBehind(t *testing.T) {
+	dir := t.TempDir()
+	captures := 0
+	w, c, _ := newManual(t, Options{Threshold: time.Second, Dir: dir})
+	w.opts.stacks = func() ([]byte, bool) { captures++; return []byte("stacks\n"), false }
+	_ = w.Begin("log output")
+	run(w, c, 2*time.Second)
+	w.events <- event{kind: eventPause} // something the reporting goroutine has not taken yet
+	var still []event
+	for at := c.at.Add(10 * time.Second); c.at.Before(at); {
+		c.add(w.interval())
+		still = append(still, w.check(c.now())...)
+	}
+	if captures != 1 || len(still) != 1 || still[0].kind != eventStill || still[0].stacks != nil {
+		t.Fatalf("captures %d, events %+v; want one capture and a second look without stacks", captures, still)
+	}
+	w.record(still[0])
+	raw, _ := os.ReadFile(Reports(dir)[0])
+	if !strings.Contains(string(raw), "goroutines: not taken again, reporting was behind") {
+		t.Fatalf("report:\n%s", raw)
+	}
+	if cap(w.events) != 4 {
+		t.Fatalf("queue holds %d events, want 4", cap(w.events))
+	}
+}
+
+// The reporting goroutine may be writing to what stalled. Stopping waits for
+// it only so long.
+func TestStoppingDoesNotWaitForAReportThatCannotBeWritten(t *testing.T) {
+	sink := &blockedSink{release: make(chan struct{})}
+	defer close(sink.release)
+	w := New(Options{Threshold: 50 * time.Millisecond, Dir: t.TempDir(), StopWait: 200 * time.Millisecond,
+		Log: slog.New(slog.NewTextHandler(sink, nil))})
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); w.Run(ctx) }()
+	end := w.Begin("database statement")
+	waitFor(t, "the report", func() bool { return len(Reports(w.opts.Dir)) == 1 })
+	end()
+	// The end of the stall is logged through a logger that does not answer.
+	waitFor(t, "the end in the report", func() bool { return strings.Contains(readReports(t, w.opts.Dir), "ended:") })
+	time.Sleep(100 * time.Millisecond)
+	began := time.Now()
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return while its reporting goroutine was blocked")
+	}
+	if waited := time.Since(began); waited < 150*time.Millisecond {
+		t.Fatalf("Run returned after %s: it did not give the reporting goroutine its %s", waited, w.opts.StopWait)
+	}
+}
+
+func BenchmarkBeginWatched(b *testing.B) {
+	w := New(Options{})
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		w.Begin("database statement")()
+	}
+}
+
+func BenchmarkBeginWatchedParallel(b *testing.B) {
+	w := New(Options{})
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			w.Begin("database statement")()
+		}
+	})
+}
+
+func BenchmarkBeginUnwatched(b *testing.B) {
+	var w *Watchdog
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		w.Begin("database statement")()
 	}
 }
 

@@ -38,13 +38,25 @@ const (
 	// says so.
 	maxStackBytes = 8 << 20
 	// stillAfter is the multiple of the threshold after which a wait that has
-	// not ended is captured a second time: two captures tell a slow operation
-	// (stacks moved) from a hang (stacks identical).
+	// not ended is captured a second time, counted from the first capture
+	// (taken one threshold in): two captures tell a slow operation (stacks
+	// moved) from a hang (stacks identical).
 	stillAfter = 10
 	// abandonedAfter is the multiple of the threshold after which a wait is
-	// dropped from the watch: a Begin whose end never ran (a panic between
-	// the two) must not hold a stall open for ever.
-	abandonedAfter = 200
+	// dropped from the watch: a wait nothing will ever end (its goroutine is
+	// gone for good) must not hold a stall open for ever. Every bracket in
+	// this repository ends in a defer, so a panic does not leave one behind.
+	abandonedAfter = 40
+	// pauseFloor is the shortest time the watch may go unscheduled before
+	// that is called a pause of the process: under CPU load a goroutine is
+	// late by tens or hundreds of milliseconds without anything being wrong.
+	pauseFloor = time.Second
+	// queued bounds the events waiting for the reporting goroutine; each may
+	// hold a capture of up to maxStackBytes.
+	queued = 4
+	// DefaultStopWait is how long Run waits for the reporting goroutine when
+	// it stops. That goroutine may be writing to the very disk that stalled.
+	DefaultStopWait = 2 * time.Second
 )
 
 // Options configure a Watchdog.
@@ -64,6 +76,11 @@ type Options struct {
 	Log *slog.Logger
 	// Header lines open every report (the program and its version).
 	Header []string
+	// StopWait is how long Run waits, once its context ends, for the
+	// reports already queued to be written; DefaultStopWait when not
+	// positive. Past it they are abandoned: stopping must not hang on a disk
+	// that does not answer.
+	StopWait time.Duration
 
 	now    func() time.Time
 	stacks func() ([]byte, bool)
@@ -80,10 +97,14 @@ type Watchdog struct {
 	// State of the watch goroutine alone.
 	lastCheck  time.Time
 	lastReport time.Time
+	lastPause  time.Time
 	episode    *episode
 	suppressed int
 
 	events chan event
+	// written is the report the reporting goroutine last put on disk; that
+	// goroutine alone reads and sets it.
+	written string
 	// dropped counts events the reporting goroutine was too far behind to
 	// take.
 	dropped atomic.Int64
@@ -106,6 +127,8 @@ type episode struct {
 	sites      map[string]bool
 	suppressed bool
 	followed   bool
+	// reported is when the stall's stacks were taken.
+	reported time.Time
 }
 
 type eventKind int
@@ -140,6 +163,9 @@ func New(opts Options) *Watchdog {
 	if opts.MinInterval <= 0 {
 		opts.MinInterval = DefaultMinInterval
 	}
+	if opts.StopWait <= 0 {
+		opts.StopWait = DefaultStopWait
+	}
 	if opts.Log == nil {
 		opts.Log = slog.New(slog.DiscardHandler)
 	}
@@ -149,7 +175,7 @@ func New(opts Options) *Watchdog {
 	if opts.stacks == nil {
 		opts.stacks = allStacks
 	}
-	return &Watchdog{opts: opts, waits: map[uint64]wait{}, events: make(chan event, 16)}
+	return &Watchdog{opts: opts, waits: map[uint64]wait{}, events: make(chan event, queued)}
 }
 
 var noop = func() {}
@@ -173,8 +199,10 @@ func (w *Watchdog) Begin(site string) func() {
 	}
 }
 
-// Run watches until ctx ends. The reporting goroutine it starts finishes the
-// events already queued and then stops.
+// Run watches until ctx ends, then gives the reporting goroutine StopWait to
+// finish the events already queued. It returns after that whether or not the
+// goroutine is done: one blocked on a disk that does not answer is left
+// behind rather than waited for.
 func (w *Watchdog) Run(ctx context.Context) {
 	done := make(chan struct{})
 	go func() {
@@ -190,7 +218,12 @@ func (w *Watchdog) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			close(w.events)
-			<-done
+			wait := time.NewTimer(w.opts.StopWait)
+			defer wait.Stop()
+			select {
+			case <-done:
+			case <-wait.C:
+			}
 			return
 		case <-ticker.C:
 			for _, ev := range w.check(w.opts.now()) {
@@ -226,25 +259,25 @@ func (w *Watchdog) check(now time.Time) []event {
 	// The watch itself was not scheduled: the whole process was paused
 	// (frozen, starved of CPU, or stopped by the kernel while it reclaimed
 	// memory). The stacks are from after the pause, so they are not kept.
+	// A pause has its own allowance: recording one never costs the stall
+	// that follows its report.
 	if !previous.IsZero() {
-		if gap := now.Sub(previous); gap >= w.opts.Threshold+w.interval() && w.allow(now) {
-			events = append(events, event{kind: eventPause, name: reportName(now), at: now, duration: gap, suppressed: w.takeSuppressed()})
+		floor := w.opts.Threshold
+		if floor < pauseFloor {
+			floor = pauseFloor
+		}
+		gap := now.Sub(previous)
+		if gap >= floor+w.interval() && (w.lastPause.IsZero() || now.Sub(w.lastPause) >= w.opts.MinInterval) {
+			w.lastPause = now
+			events = append(events, event{kind: eventPause, name: pauseName(now), at: now, duration: gap})
 		}
 	}
 
 	over := w.over(now)
 	switch {
 	case w.episode == nil && len(over) > 0:
-		w.episode = &episode{start: now.Add(-over[0].For), sites: map[string]bool{}}
-		if !w.allow(now) {
-			w.episode.suppressed = true
-			w.suppressed++
-			break
-		}
-		stacks, cut := w.opts.stacks()
-		w.episode.name = reportName(now)
-		events = append(events, event{kind: eventStall, name: w.episode.name, at: now, duration: over[0].For,
-			waiting: over, stacks: stacks, cut: cut, suppressed: w.takeSuppressed()})
+		w.episode = &episode{start: now.Add(-over[0].For), sites: map[string]bool{}, suppressed: true}
+		w.suppressed++
 	case w.episode != nil && len(over) == 0:
 		if !w.episode.suppressed {
 			events = append(events, event{kind: eventEnd, name: w.episode.name, at: now,
@@ -252,13 +285,31 @@ func (w *Watchdog) check(now time.Time) []event {
 		}
 		w.episode = nil
 	}
+	// A stall that began too soon after the previous report is not skipped
+	// for good: it is looked at again on every tick, so one that lasts gets
+	// its report as soon as the interval allows.
+	if w.episode != nil && w.episode.suppressed && len(over) > 0 && w.allow(now) {
+		w.episode.suppressed = false
+		w.episode.reported = now
+		w.suppressed--
+		stacks, cut := w.opts.stacks()
+		w.episode.name = reportName(now)
+		events = append(events, event{kind: eventStall, name: w.episode.name, at: now, duration: over[0].For,
+			waiting: over, stacks: stacks, cut: cut, suppressed: w.takeSuppressed()})
+	}
 	if w.episode != nil {
 		for _, waiting := range over {
 			w.episode.sites[waiting.Site] = true
 		}
-		if !w.episode.suppressed && !w.episode.followed && len(over) > 0 && over[0].For >= stillAfter*w.opts.Threshold {
+		if !w.episode.suppressed && !w.episode.followed && len(over) > 0 && now.Sub(w.episode.reported) >= (stillAfter-1)*w.opts.Threshold {
 			w.episode.followed = true
-			stacks, cut := w.opts.stacks()
+			// A second capture is worth its memory only when the reporting
+			// goroutine is keeping up; behind, the first one is what counts.
+			var stacks []byte
+			cut := false
+			if len(w.events) == 0 {
+				stacks, cut = w.opts.stacks()
+			}
 			events = append(events, event{kind: eventStill, name: w.episode.name, at: now, duration: over[0].For,
 				waiting: over, stacks: stacks, cut: cut})
 		}

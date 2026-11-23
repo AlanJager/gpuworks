@@ -165,6 +165,8 @@ func run(log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	launch := newLaunchFlags(fs)
 	fs.BoolVar(&cfg.DataLane, "data-lane", true, "open a dedicated high-throughput data lane (disable for single-connection proxies)")
+	stallAfter := stallwatch.DefaultThreshold
+	fs.DurationVar(&stallAfter, "stall-report-after", stallAfter, "record a stall report under <state>/stalls when a log write waits this long (0 turns the reports off)")
 	fs.StringVar(&cfg.DCGM, "dcgm", cfg.DCGM, "optional DCGM SM-occupancy probe: off (default) | auto (opt in; enables only when dcgmi is on PATH)")
 	imagePullMaxConns := fs.Int("image-pull-max-connections", 0, "most simultaneous connections a runveil (udocker) image pull may open to one registry host (0 = automatic, up to "+strconv.Itoa(udockernative.DefaultMaxConnections)+"; 1 = one connection; at most "+strconv.Itoa(udockernative.MaxConnectionsLimit)+")")
 	enginePorts := fs.String("engine-ports", os.Getenv("GPUWORKS_ENGINE_PORTS"), "this node's own engine port range START-END (default: the server's)")
@@ -241,13 +243,16 @@ func run(log *slog.Logger, args []string) error {
 	// A log write that the disk does not take stops everything that logs.
 	// The agent records what it was doing when one waits too long, beside
 	// its log, the way the server does (internal/stallwatch).
-	stallWatch := stallwatch.New(stallwatch.Options{
-		Dir:    filepath.Join(cfg.StateDir, "stalls"),
-		Log:    log,
-		Header: []string{"program: gpuworks-agent " + version.String()},
-	})
-	stallwatch.Use(stallWatch)
-	go stallWatch.Run(throttleCtx)
+	if stallAfter > 0 {
+		stallWatch := stallwatch.New(stallwatch.Options{
+			Threshold: stallAfter,
+			Dir:       filepath.Join(cfg.StateDir, "stalls"),
+			Log:       log,
+			Header:    []string{"program: gpuworks-agent " + version.String()},
+		})
+		stallwatch.Use(stallWatch)
+		go stallWatch.Run(throttleCtx)
+	}
 	cfg.SelfLog = self
 	cfg.DebugLog = tee
 	slog.SetDefault(log)
