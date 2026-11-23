@@ -1,10 +1,15 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
+	"time"
 
+	"gorm.io/gorm"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -102,5 +107,173 @@ func TestNetworkNodeSearchCombinesRoleSourceAndQuery(t *testing.T) {
 		if got := matchNetworkTargets(detail, "nodes", tc.q, tc.roles, tc.sources).IDs; !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%+v: got %v", tc, got)
 		}
+	}
+}
+
+func TestNetworkSearchScopeAtFleetScale(t *testing.T) {
+	n := newNetworkAPI(t)
+	nodes := make([]store.Node, 1000)
+	for i := range nodes {
+		nodes[i].UUID = fmt.Sprintf("node-%04d", i)
+		nodes[i].Name = nodes[i].UUID
+		nodes[i].NetworkInventory = `{"management":{"interface":"eth0","ip":"192.0.2.1"}}`
+	}
+	nodes[0].Labels = `{"pool":"east"}`
+	nodes[1].Labels = nodes[0].Labels
+	nodes[2].Name = "CAFÉ"
+	if err := n.store.DB().CreateInBatches(&nodes, 10).Error; err != nil {
+		t.Fatal(err)
+	}
+	// An earlier direct rule on the competitor wins for node 0. node 1
+	// remains on fabric, even though its membership comes from the same label.
+	for _, name := range []string{"competitor", "fabric", "unrelated"} {
+		n.expect(n.admin, http.MethodPost, "/api/v1/networks", fmt.Sprintf(`{"name":%q,"type":"host_ethernet","roles":["compute"]}`, name), http.StatusCreated)
+	}
+	n.expect(n.admin, http.MethodPost, "/api/v1/networks/1/attachments", `{"node_uuid":"node-0000"}`, http.StatusCreated)
+	n.expect(n.admin, http.MethodPost, "/api/v1/networks/2/attachments", `{"label_key":"pool","label_value":"east"}`, http.StatusCreated)
+	attachments := make([]store.NetworkAttachment, 0, len(nodes)-2)
+	for _, node := range nodes[2:] {
+		attachments = append(attachments, store.NetworkAttachment{NetworkID: 3, NodeID: node.ID})
+	}
+	if err := n.store.DB().CreateInBatches(&attachments, 50).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	reads := map[string]int64{}
+	hook := "test:network_search_scope"
+	if err := n.store.DB().Callback().Query().After("gorm:query").Register(hook, func(tx *gorm.DB) {
+		reads[tx.Statement.Table] += tx.RowsAffected
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = n.store.DB().Callback().Query().Remove(hook) })
+	got := n.expect(n.member, http.MethodGet, "/api/v1/networks/2/search?kind=nodes&q=pool", "", http.StatusOK)["ids"]
+	if !reflect.DeepEqual(got, []any{"node-0001"}) {
+		t.Fatalf("winner after competing assignment: %v", got)
+	}
+	if reads["nodes"] != 1000 || reads["gpus"] != 0 {
+		t.Fatalf("cold search should build one fleet snapshot: %v", reads)
+	}
+	clear(reads)
+	got = n.expect(n.member, http.MethodGet, "/api/v1/networks/2/search?kind=attachments&q=pool", "", http.StatusOK)["ids"]
+	if !reflect.DeepEqual(got, []any{"2"}) || reads["nodes"] != 0 || reads["network_attachments"] != 0 || reads["networks"] != 0 {
+		t.Fatalf("searching one label attachment: result %v, reads %v", got, reads)
+	}
+	// Opening the detail page primes the same snapshot used by typing and
+	// changing filters, including on the thousand-node management network.
+	n.expect(n.member, http.MethodGet, "/api/v1/networks/0", "", http.StatusOK)
+	for _, tc := range []struct {
+		query string
+		want  []any
+	}{
+		{"q=node-0999", []any{"node-0999"}},
+		{"q=caf%C3%A9", []any{"node-0002"}},
+		{"q=POOL%3DEAST", []any{"node-0000", "node-0001"}},
+		{"q=node-0999&role=compute", []any{}},
+		{"q=node-0999&role=serving", []any{"node-0999"}},
+	} {
+		clear(reads)
+		got = n.expect(n.member, http.MethodGet, "/api/v1/networks/0/search?kind=nodes&"+tc.query, "", http.StatusOK)["ids"]
+		if !reflect.DeepEqual(got, tc.want) || reads["nodes"] != 0 || reads["network_attachments"] != 0 || reads["networks"] != 0 {
+			t.Errorf("management %s: got %v, want %v; reads %v", tc.query, got, tc.want, reads)
+		}
+	}
+	clear(reads)
+	got = n.expect(n.member, http.MethodGet, "/api/v1/networks/2/search?kind=nodes&q=pool", "", http.StatusOK)["ids"]
+	if !reflect.DeepEqual(got, []any{"node-0001"}) || reads["nodes"] != 0 || reads["networks"] != 0 {
+		t.Errorf("switching back to fabric: %v, reads %v", got, reads)
+	}
+
+}
+
+// A database write on another member has no local bus event. An explicit
+// search rebuild after expiry must bypass the underlying fleet snapshot.
+func TestNetworkSearchUnannouncedWrites(t *testing.T) {
+	n := newNetworkAPI(t)
+	node := store.Node{UUID: "u1", Name: "old", NetworkInventory: `{"management":{"interface":"eth0","ip":"192.0.2.1"}}`}
+	if err := n.store.DB().Create(&node).Error; err != nil {
+		t.Fatal(err)
+	}
+	a := apiHandlers{d: Deps{Store: n.store}}
+	assertName := func(want string) {
+		t.Helper()
+		view, err := a.searchableNetwork(0)
+		if err != nil || len(view.Nodes) != 1 || view.Nodes[0].NodeName != want {
+			t.Fatalf("expected %q, got %+v, %v", want, view.Nodes, err)
+		}
+	}
+	rename := func(name string) {
+		t.Helper()
+		if err := n.store.DB().Model(&node).Update("name", name).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	n.store.EnableFleetNodeSnapshot(nil)
+	if _, err := n.store.FleetNodes(); err != nil {
+		t.Fatal(err)
+	}
+	assertName("old")
+	rename("expired")
+	entry := a.networkSearch.entries[0]
+	entry.started = time.Now().Add(-networkSearchMaxAge)
+	a.networkSearch.entries[0] = entry
+	assertName("expired")
+}
+
+func TestNetworkSearchSeesChangedFactsAndReusesRoutineReports(t *testing.T) {
+	n := newNetworkAPI(t)
+	node := store.Node{UUID: "u1"}
+	if err := n.store.DB().Create(&node).Error; err != nil {
+		t.Fatal(err)
+	}
+	report := proto.NodeStatus{Sys: proto.SysInfo{Hostname: "old-host"}, Network: &proto.NetInventory{Management: &proto.ManagementAddress{IP: "192.0.2.1", Interface: "eth0"}}}
+	send := func() {
+		t.Helper()
+		if err := n.store.UpdateNodeStatus("u1", report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send()
+	a := apiHandlers{d: Deps{Store: n.store}}
+	check := func(name, ip string) {
+		t.Helper()
+		view, err := a.searchableNetwork(0)
+		if err != nil || len(view.Nodes) != 1 || view.Nodes[0].NodeName != name || view.Nodes[0].IP != ip {
+			t.Fatalf("want %s %s, got %+v, err %v", name, ip, view.Nodes, err)
+		}
+	}
+	check("old-host", "192.0.2.1")
+	started := a.networkSearch.entries[0].started
+	for range 3 {
+		send()
+		check("old-host", "192.0.2.1")
+	}
+	if a.networkSearch.entries[0].started != started {
+		t.Fatal("ordinary unchanged reports invalidated search")
+	}
+	report.Sys.Hostname = "new-host"
+	send()
+	check("new-host", "192.0.2.1")
+	report.Network.Management.IP = "192.0.2.2"
+	send()
+	check("new-host", "192.0.2.2")
+}
+
+func TestNetworkSearchCacheEvictsOldestBuild(t *testing.T) {
+	var c networkSearchCache
+	start := time.Now()
+	for i := range networkSearchCapacity + 1 {
+		c.remember(uint(i), networkSearchEntry{started: start.Add(time.Duration(i) * time.Second)})
+	}
+	if len(c.entries) != networkSearchCapacity {
+		t.Fatalf("retained %d networks", len(c.entries))
+	}
+	if _, ok := c.entries[0]; ok {
+		t.Fatal("oldest network not evicted")
+	}
+	older := networkSearchEntry{started: start}
+	c.remember(1, older)
+	if !c.entries[1].started.After(older.started) {
+		t.Fatal("older build replaced newer entry")
 	}
 }

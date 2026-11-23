@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -121,23 +122,47 @@ func (a *apiHandlers) listNetworks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) getNetwork(w http.ResponseWriter, r *http.Request) {
-	id := parseUint(chi.URLParam(r, "id"))
+	rawID := chi.URLParam(r, "id")
+	id := parseUint(rawID)
+	if id == 0 && !isManagementNetworkID(rawID) {
+		writeProductError(w, http.StatusNotFound, ErrorNetworkNotFound, "network not found", nil)
+		return
+	}
+	// Reuse the ordinary fleet snapshot on detail refreshes. Only the overview
+	// is searchable; the latest test may contain a multi-megabyte matrix.
+	entry := networkSearchEntry{started: time.Now().UTC(), generation: a.networkSearchGeneration()}
 	st, err := a.loadNetworkState()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	if isManagementNetworkID(chi.URLParam(r, "id")) {
-		writeJSON(w, http.StatusOK, st.managementDetail(a.latestNetworkTest(0)))
+	detail, err := st.detailByID(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeProductError(w, http.StatusNotFound, ErrorNetworkNotFound, "network not found", nil)
 		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	entry.detail = detail
+	a.networkSearch.mu.Lock()
+	a.networkSearch.remember(id, entry)
+	a.networkSearch.mu.Unlock()
+	detail.LatestTest = networkTestDTO(a.latestNetworkTest(id), st.nodeByID())
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (st networkState) detailByID(id uint) (dto.NetworkDetail, error) {
+	if id == 0 {
+		return st.managementDetail(nil), nil
 	}
 	for _, n := range st.Networks {
 		if n.ID == id {
-			writeJSON(w, http.StatusOK, st.networkDetail(n, a.latestNetworkTest(n.ID)))
-			return
+			return st.networkDetail(n, nil), nil
 		}
 	}
-	writeProductError(w, http.StatusNotFound, ErrorNetworkNotFound, "network not found", nil)
+	return dto.NetworkDetail{}, store.ErrNotFound
 }
 
 // networkDetail is one network with the nodes it resolved to and its latest

@@ -313,7 +313,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
         )}
       </DetailSection>
       <NetworkLoadTargets detail={detail} onAttach={onAttach} onDetach={detach} onManageLabels={() => setLabelsOpen(true)}>
-        <div className="network-overview-nodes"><NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes"
+        <div className="network-overview-nodes"><NetworkTargetTable<NetworkNode> networkId={detail.id} kind="nodes" overrides={detail.attachments}
           searchLabel={t(!rails ? "detail.searchEthernetNodes" : cards ? "detail.searchCardNodes" : "detail.searchNodes")}
           toolbarExtra={<Button variant="secondary" size="sm" onClick={() => onAttach(null)}>{t("detail.attachNodes")}</Button>}
           tableId="network-resolved-nodes"

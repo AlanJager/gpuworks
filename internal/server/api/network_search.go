@@ -1,15 +1,19 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // searchNetworkTargets uses the same effective nodes and attachment fields as
@@ -21,29 +25,93 @@ func (a *apiHandlers) searchNetworkTargets(w http.ResponseWriter, r *http.Reques
 		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "kind must be nodes or attachments", map[string]any{"field": "kind", "detail": "expected nodes or attachments"})
 		return
 	}
-	st, err := a.loadNetworkState()
+	rawID := chi.URLParam(r, "id")
+	id := parseUint(rawID)
+	management := isManagementNetworkID(rawID)
+	if id == 0 && !management {
+		writeProductError(w, http.StatusNotFound, ErrorNetworkNotFound, "network not found", nil)
+		return
+	}
+	detail, err := a.searchableNetwork(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeProductError(w, http.StatusNotFound, ErrorNetworkNotFound, "network not found", nil)
+		return
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	rawID := chi.URLParam(r, "id")
-	var detail dto.NetworkDetail
-	if isManagementNetworkID(rawID) {
-		detail = st.managementDetail(nil)
-	} else {
-		id := parseUint(rawID)
-		for _, n := range st.Networks {
-			if n.ID == id {
-				detail = st.networkDetail(n, nil)
-				break
-			}
-		}
-		if detail.ID == 0 {
-			writeProductError(w, http.StatusNotFound, ErrorNetworkNotFound, "network not found", nil)
+	writeJSON(w, http.StatusOK, matchNetworkTargets(detail, kind, params.Get("q"), params["role"], params["source"]))
+}
+
+// Shared across clients of the same network, bounded across different networks.
+// Search-only clients also refresh periodically for writes on another server.
+const (
+	networkSearchMaxAge   = 5 * time.Second
+	networkSearchCapacity = 8
+)
+
+type networkSearchCache struct {
+	mu      sync.Mutex
+	entries map[uint]networkSearchEntry
+}
+type networkSearchEntry struct {
+	detail     dto.NetworkDetail
+	generation uint64
+	started    time.Time
+}
+
+func (a *apiHandlers) networkSearchGeneration() uint64 {
+	generation := a.d.Store.FleetFactsGeneration()
+	if b := a.d.Store.Bus; b != nil {
+		generation += b.Generation("network")
+	}
+	return generation
+}
+
+// remember requires c.mu. An older detail read can complete after a new one.
+func (c *networkSearchCache) remember(id uint, entry networkSearchEntry) {
+	if c.entries == nil {
+		c.entries = make(map[uint]networkSearchEntry)
+	}
+	if old, ok := c.entries[id]; ok {
+		if old.started.After(entry.started) {
 			return
 		}
+	} else if len(c.entries) == networkSearchCapacity {
+		var oldestID uint
+		var oldest time.Time
+		for id, e := range c.entries {
+			if oldest.IsZero() || e.started.Before(oldest) {
+				oldestID, oldest = id, e.started
+			}
+		}
+		delete(c.entries, oldestID)
 	}
-	writeJSON(w, http.StatusOK, matchNetworkTargets(detail, kind, params.Get("q"), params["role"], params["source"]))
+	c.entries[id] = entry
+}
+
+func (a *apiHandlers) searchableNetwork(id uint) (dto.NetworkDetail, error) {
+	c := &a.networkSearch
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Capture the generation before reading; a write during a build expires
+	// that entry on the next read. Waiters for the same snapshot share the build.
+	entry := networkSearchEntry{started: time.Now().UTC(), generation: a.networkSearchGeneration()}
+	prev, ok := c.entries[id]
+	if ok && a.d.Store.Bus != nil && prev.generation == entry.generation && entry.started.Sub(prev.started) < networkSearchMaxAge {
+		return prev.detail, nil
+	}
+	state, err := a.networks().FreshState()
+	if err != nil {
+		return dto.NetworkDetail{}, err
+	}
+	st := networkState{State: state}
+	entry.detail, err = st.detailByID(id)
+	if err == nil {
+		c.remember(id, entry)
+	}
+	return entry.detail, err
 }
 
 func matchNetworkTargets(detail dto.NetworkDetail, kind, query string, roles, sources []string) dto.NetworkTargetMatches {

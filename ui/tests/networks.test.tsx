@@ -1041,3 +1041,39 @@ test("role and attachment-source filters send multi-select values with the searc
   fireEvent.change(input, { target: { value: "" } });
   assert.ok(await screen.findByRole("link", { name: "worker-0" }));
 });
+
+test("refreshed copies of the network table keep the active search; changed overrides invalidate it", async () => {
+  const { default: NetworkTargetTable } = await import("../src/pages/networks/NetworkTargetTable");
+  const nodes = detailFixture.nodes.slice(0, 2);
+  const overrides = detailFixture.attachments;
+  const calls: AbortSignal[] = [];
+  let send!: (answer: { ids: string[] }) => void;
+  stub("searchNetworkTargets", async (_id, _kind, _query, signal) => {
+    calls.push(signal!);
+    return new Promise(resolve => { send = resolve; });
+  });
+  function table(overridesCopy = structuredClone(overrides)) {
+    return <I18nextProvider i18n={i18n}><MemoryRouter>
+      <NetworkTargetTable networkId={1} kind="nodes" data={structuredClone(nodes)}
+        overrides={overridesCopy} rowKey="node_uuid" columns={[{ key: "node_name", dataIndex: "node_name", title: "Node", role: "name", width: 200 }]} />
+    </MemoryRouter></I18nextProvider>;
+  }
+  const view = render(table());
+  fireEvent.change(await screen.findByRole("searchbox"), { target: { value: "mlx" } });
+  await waitFor(() => assert.equal(calls.length, 1));
+  view.rerender(table());
+  assert.equal(calls[0].aborted, false, "refreshing identical rows must keep the pending search");
+  await act(async () => send({ ids: [nodes[0].node_uuid] }));
+  await screen.findByText(nodes[0].node_name);
+  view.rerender(table());
+  assert.ok(screen.getByText(nodes[0].node_name), "a refresh must keep showing the matching row");
+  await act(() => new Promise(resolve => setTimeout(resolve, 300)));
+  assert.equal(calls.length, 1);
+  const edited = structuredClone(overrides);
+  edited[0].interface = "mlx-new";
+  view.rerender(table(edited));
+  await waitFor(() => assert.equal(calls.length, 2));
+  await act(async () => send({ ids: [nodes[1].node_uuid] }));
+  await screen.findByText(nodes[1].node_name);
+  assert.equal(screen.queryByText(nodes[0].node_name), null);
+});

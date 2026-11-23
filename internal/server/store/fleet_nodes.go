@@ -151,6 +151,10 @@ func (s *Store) RefreshFleetNodes() error {
 	return s.rebuildFleetNodes(c.now())
 }
 
+// FleetFactsGeneration counts explicit changes and reports that changed the facts
+// used for placement or display, excluding ordinary measurement-only reports.
+func (s *Store) FleetFactsGeneration() uint64 { return s.fleetNodes.changes.Load() }
+
 // noteNodeChange counts a node change for FleetNodes: a routine status report
 // waits for the report window, anything else is seen by the next read. A
 // status report that changed what placement decides on also counts as a
