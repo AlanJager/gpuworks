@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"io"
 	"net"
@@ -85,11 +86,21 @@ func materialReplicationFailureInvalidates(err error) bool {
 // change this pass did see has already closed the member through its change
 // callback, and a second cause joined to one of these keeps its own verdict.
 // The pass stays pending and the last complete proof keeps its own lifetime.
-// The caller's cancellation, a connection lost with a commit outstanding and
-// an error nothing classifies are not in this list.
+//
+// A commit whose outcome is unknown is in this list in both of its forms: the
+// connection was lost under it, or the pass's deadline ended while it waited
+// (where a storage stall puts nearly every deadline). Either way the write
+// did or did not commit, and neither outcome is a finding about this member:
+// the next pass reads the state again, and the proof, which runs every few
+// seconds and is the authority for admission, compares this member's bytes
+// with the live manifest and closes on a difference. Closing on one form and
+// not the other would close members in exactly the stalls this rule is for.
+// The caller's cancellation and an error nothing classifies are not in this
+// list.
 func materialOutcomeUndecided(err error) bool {
 	if _, joined := err.(interface{ Unwrap() []error }); !joined &&
-		(store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout)) {
+		(store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout) ||
+			errors.Is(err, driver.ErrBadConn)) {
 		return true
 	}
 	for err != nil {

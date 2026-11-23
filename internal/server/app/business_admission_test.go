@@ -110,7 +110,10 @@ func (c *stalledConfirmation) requestAll(t *testing.T, want int) {
 		if w.Code != want {
 			t.Fatalf("%s %s = %d, want %d", tc.method, tc.path, w.Code, want)
 		}
-		if waited := time.Since(started); waited > time.Second {
+		// A request that waited for a confirmation would wait at least one
+		// grant timeout. The bound sits just below that, so a loaded runner
+		// does not fail it.
+		if waited := time.Since(started); waited > store.ClusterMembershipGrantTimeout-time.Second {
 			t.Fatalf("%s %s waited %v for a confirmation", tc.method, tc.path, waited)
 		}
 	}
@@ -141,6 +144,23 @@ func TestBusinessRequestsAreAdmittedWhileConfirmationWaitsOnStorage(t *testing.T
 	c.answer <- nil
 	<-c.renewal
 	c.requestAll(t, http.StatusNoContent)
+}
+
+// The earlier confirmation is still inside its window when the database
+// answers that this member is not admitted. The answer closes the member at
+// once; it does not wait for the window to end.
+func TestBusinessRequestsAreRefusedAtOnceWhenDenialArrivesInsideTheWindow(t *testing.T) {
+	c := newStalledConfirmation(t)
+	c.stallRenewal(t)
+	c.clock.Add((4 * time.Second).Nanoseconds())
+	c.requestAll(t, http.StatusNoContent)
+	c.answer <- store.ErrClusterAdmissionRejected
+	<-c.renewal
+	served := c.served.Load()
+	c.requestAll(t, http.StatusServiceUnavailable)
+	if c.served.Load() != served {
+		t.Fatal("a refused request reached the business handler")
+	}
 }
 
 func TestBusinessRequestsAreRefusedOnceConfirmationIsDenied(t *testing.T) {

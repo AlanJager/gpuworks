@@ -5,10 +5,13 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestMaterialEligibilityDeadlineCancelsProofAndDrainsBeforeRecovery(t *testing.T) {
@@ -188,4 +191,104 @@ func TestMaterialEligibilityProofOutlivingItsWindowKeepsRecentlyConfirmedMemberO
 	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready || !eligibility.Eligible() {
 		t.Fatalf("a later proof did not reopen the member: ready=%t err=%v", ready, err)
 	}
+}
+
+// An answer other than success is never forgotten: a refusal by the database
+// closes at once, also while an earlier proof is still inside its window; any
+// other answer leaves that proof its own window and no more. In both cases an
+// attempt that brings no answer extends nothing afterwards, and only a
+// successful proof reopens the member.
+func TestMaterialEligibilityAnswerInsideWindowIsLatched(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		atOnce bool
+		answer func(*materialEligibility) (bool, error)
+	}{
+		{"refusal by the database", true, func(*materialEligibility) (bool, error) {
+			return false, fmt.Errorf("grant: %w", store.ErrClusterAdmissionRejected)
+		}},
+		{"identity conflict joined to a timeout", true, func(*materialEligibility) (bool, error) {
+			return false, errors.Join(context.DeadlineExceeded, store.ErrClusterIdentityConflict)
+		}},
+		{"invalidation during the proof", true, func(e *materialEligibility) (bool, error) {
+			e.Invalidate()
+			return false, context.DeadlineExceeded
+		}},
+		{"not ready", false, func(*materialEligibility) (bool, error) { return false, nil }},
+		{"unclassified error", false, func(*materialEligibility) (bool, error) { return false, errors.New("no quorum") }},
+		{"changed bytes joined to a timeout", false, func(*materialEligibility) (bool, error) {
+			return false, errors.Join(context.DeadlineExceeded, errors.New("material digest differs"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clock := &materialTestClock{now: time.Unix(100, 0)}
+			var calls atomic.Int32
+			var eligibility *materialEligibility
+			eligibility = newMaterialEligibility(clock.Now, func(context.Context) (bool, error) {
+				switch calls.Add(1) {
+				case 1, 5:
+					return true, nil
+				case 2:
+					return tc.answer(eligibility)
+				default:
+					return false, fmt.Errorf("grant: %w", context.DeadlineExceeded)
+				}
+			}, time.Hour)
+			if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
+				t.Fatalf("initial proof: ready=%t err=%v", ready, err)
+			}
+			clock.Advance(4 * time.Second)
+			if ready, _ := eligibility.Reprove(t.Context()); ready {
+				t.Fatal("answering attempt reported ready")
+			}
+			if open := eligibility.Eligible(); open == tc.atOnce {
+				t.Fatalf("eligible=%t right after the answer, want %t", open, !tc.atOnce)
+			}
+			// Two attempts without an answer, the second past the first
+			// proof's window: neither extends or reopens.
+			clock.Advance(3 * time.Second)
+			if ready, err := eligibility.Reprove(t.Context()); ready || !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("attempt without an answer: ready=%t err=%v", ready, err)
+			}
+			if open := eligibility.Eligible(); open == tc.atOnce {
+				t.Fatalf("eligible=%t inside the first window after an attempt without an answer, want %t", open, !tc.atOnce)
+			}
+			clock.Advance(materialEligibilityWindow - 7*time.Second)
+			if eligibility.Eligible() {
+				t.Fatal("member stayed open past the window of its last successful proof")
+			}
+			if ready, _ := eligibility.Reprove(t.Context()); ready || eligibility.Eligible() {
+				t.Fatal("an attempt without an answer reopened a closed member")
+			}
+			if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready || !eligibility.Eligible() {
+				t.Fatalf("a successful proof did not reopen the member: ready=%t err=%v", ready, err)
+			}
+			// With a fresh confirmation behind it, no answer keeps it again.
+			clock.Advance(materialEligibilityWindow + time.Second)
+			if _, err := eligibility.Reprove(t.Context()); !errors.Is(err, context.DeadlineExceeded) || !eligibility.Eligible() {
+				t.Fatalf("attempt without an answer closed a freshly confirmed member: err=%v", err)
+			}
+		})
+	}
+}
+
+// Admission ends at its deadline without any request asking.
+func TestMaterialEligibilityExpiresAtItsDeadlineWithoutARequest(t *testing.T) {
+	var invalidated atomic.Int32
+	eligibility := newMaterialEligibility(nil, func(context.Context) (bool, error) { return true, nil }, time.Hour)
+	eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
+		t.Fatalf("initial proof: ready=%t err=%v", ready, err)
+	}
+	eligibility.mu.Lock()
+	eligibility.admitUntil(eligibility.now().Add(50 * time.Millisecond))
+	eligibility.mu.Unlock()
+	deadline := time.Now().Add(10 * time.Second)
+	for invalidated.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if invalidated.Load() != 1 {
+		t.Fatalf("deadline passed without closing admission: invalidated=%d", invalidated.Load())
+	}
+	eligibility.Stop()
 }

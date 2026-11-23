@@ -67,7 +67,7 @@ func (s *Store) rememberConfirmedMembership(members []ClusterTransportMember, er
 	if err != nil || len(members) == 0 {
 		return
 	}
-	s.confirmedMembership.Store(&confirmedClusterMembership{members: slices.Clone(members), at: time.Now().UTC()})
+	s.confirmedMembership.Store(&confirmedClusterMembership{members: slices.Clone(members), at: time.Now()})
 }
 
 // ConfirmedClusterMembership returns the member list the latest successful
@@ -75,6 +75,12 @@ func (s *Store) rememberConfirmedMembership(members []ClusterTransportMember, er
 // It reads memory only. Callers that must not wait for a replicated write use
 // it between grants: a member removed since then stays in the list, and one
 // added since then is missing, for at most maxAge.
+// ForgetConfirmedClusterMembership drops that list, so the next caller takes a
+// fresh grant. The member calls it when its own admission is invalidated.
+func (s *Store) ForgetConfirmedClusterMembership() {
+	s.confirmedMembership.Store(nil)
+}
+
 func (s *Store) ConfirmedClusterMembership(maxAge time.Duration) ([]ClusterTransportMember, bool) {
 	confirmed := s.confirmedMembership.Load()
 	if confirmed == nil || maxAge <= 0 || time.Since(confirmed.at) > maxAge {

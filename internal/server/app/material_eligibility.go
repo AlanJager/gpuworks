@@ -64,18 +64,25 @@ func materialProofPhase(id uint64) time.Duration {
 // first byte, so a slow proof cannot extend the age of its earliest read.
 // An ordinary request reads Eligible only; it never scans material files.
 type materialEligibility struct {
-	mu            sync.Mutex
-	proofSlot     chan struct{}
-	now           func() time.Time
-	prove         func(context.Context) (bool, error)
-	interval      time.Duration
-	idleRest      time.Duration
-	deadline      time.Time
-	bridging      bool
-	provedAt      time.Time
+	mu        sync.Mutex
+	proofSlot chan struct{}
+	now       func() time.Time
+	prove     func(context.Context) (bool, error)
+	interval  time.Duration
+	idleRest  time.Duration
+	deadline  time.Time
+	bridging  bool
+	provedAt  time.Time
+	// answered is set when an answer other than success, an invalidation or
+	// Stop was seen since the last successful proof. From then on an attempt
+	// that brings no answer extends nothing; only a successful proof clears it.
+	answered      bool
+	expiry        *time.Timer
 	epoch         uint64
 	cancel        context.CancelFunc
 	proofCtx      context.Context
+	proofParent   context.Context
+	proofEpoch    uint64
 	runCtx        context.Context
 	running       bool
 	stopped       bool
@@ -164,14 +171,14 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 		e.mu.Unlock()
 		return false, reason, 0
 	}
-	if e.proofCtx != nil && errors.Is(e.proofCtx.Err(), context.DeadlineExceeded) && e.confirmedRecently(e.now()) {
+	if e.proofCtx != nil && e.outlivedWindow(e.proofParent, e.proofCtx, e.proofEpoch) && e.confirmedRecently(e.now()) {
 		// The proof in progress only ran out of its own window; see Reprove.
 		// This check may run before the proof's own cancellation callback.
-		e.deadline = e.unconfirmedDeadline(e.now())
+		e.admitUntil(e.unconfirmedDeadline(e.now()))
 		e.proofCtx = nil
 	}
 	if e.proofCtx != nil && e.proofCtx.Err() != nil {
-		e.deadline = time.Time{}
+		e.closeAdmission()
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
 		if onInvalidated != nil {
@@ -195,7 +202,7 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 			}
 			return false, "headroom", 0
 		}
-		e.deadline = time.Time{}
+		e.admitUntil(time.Time{})
 		e.bridging = false
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
@@ -259,7 +266,7 @@ func (e *materialEligibility) Invalidate() {
 	}
 	e.mu.Lock()
 	e.epoch++
-	e.deadline = time.Time{}
+	e.closeAdmission()
 	cancel := e.cancel
 	onInvalidated := e.onInvalidated
 	e.mu.Unlock()
@@ -302,6 +309,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	e.cancel = cancel
 	e.proofCtx = proofCtx
 	epoch := e.epoch
+	e.proofParent, e.proofEpoch = ctx, epoch
 	started := e.now()
 	e.bridging = !e.deadline.IsZero() && started.Before(e.deadline)
 	e.mu.Unlock()
@@ -317,13 +325,13 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 			// The proof only ran out of its own window. That is no answer
 			// about this member, so admission continues on the last
 			// confirmation, up to the unconfirmed limit.
-			e.deadline = e.unconfirmedDeadline(e.now())
+			e.admitUntil(e.unconfirmedDeadline(e.now()))
 			e.proofCtx = nil
 			e.mu.Unlock()
 			return
 		}
 		e.epoch++
-		e.deadline = time.Time{}
+		e.closeAdmission()
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
 		if onInvalidated != nil {
@@ -340,49 +348,60 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	e.cancel = nil
 	e.proofCtx = nil
 	e.bridging = false
+	// An answer of "not ready" is a verdict even when it arrives late.
+	verdict := err == nil && !ready
 	if err == nil && proofCtx.Err() != nil {
 		err = proofCtx.Err()
 	}
-	// A failed refresh must not throw away a result that is still inside its
-	// window. Otherwise one blip closes every member together. A grant or
-	// peer-idle timeout is not a negative material answer either: if the
-	// earlier window has already ended, the attempt's own start still bounds
-	// how long ordinary admission may continue. Cancellation, an explicit
-	// invalidation, a definitive failure with no open earlier proof, and a
-	// proof that outlives the window still close.
+	// Three kinds of outcome besides success:
+	//   - no answer: every cause is an expired deadline, no leader to ask, or
+	//     a leader not read in time. It keeps a result still inside its
+	//     window; past it, the attempt's own start, or for a proof that
+	//     outlived its window one more window, bounds admission, never beyond
+	//     the unconfirmed limit. Otherwise one blip closes every member.
+	//   - a refusal by the database: closes at once, also inside a live window.
+	//   - any other answer ("not ready", an error nothing classifies): a read
+	//     cut by a leadership change looks the same, so the earlier result
+	//     keeps its own window as it always did, but the answer is latched:
+	//     no later attempt without an answer extends admission.
+	// Cancellation and an invalidation close at once. Only a successful proof
+	// reopens what an answer or an invalidation closed.
+	now := e.now()
 	attemptDeadline := started.Add(materialEligibilityWindow)
-	outlived := e.outlivedWindow(ctx, proofCtx, epoch) && e.confirmedRecently(e.now()) &&
-		!materialCycleHasLiveCause(err) && !errors.Is(err, context.Canceled)
+	noAnswer := !verdict && materialProofUnanswered(err)
+	refused := errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrClusterIdentityConflict)
 	live := proofCtx.Err() == nil && e.epoch == epoch && !e.stopped
-	unexpired := !e.deadline.IsZero() && e.now().Before(e.deadline)
-	deadlineOnly := err != nil && errors.Is(err, context.DeadlineExceeded) && live
-	keepEarlier := (err != nil || !ready) && live && unexpired
-	renewAttempt := !keepEarlier && deadlineOnly && e.now().Before(attemptDeadline) && e.confirmedRecently(e.now())
-	invalidated := !keepEarlier && !renewAttempt && !outlived && (e.stopped || e.epoch != epoch || proofCtx.Err() != nil || err != nil || !ready || !e.now().Before(attemptDeadline))
+	unexpired := !e.deadline.IsZero() && now.Before(e.deadline)
+	outlived := noAnswer && e.outlivedWindow(ctx, proofCtx, epoch) && e.confirmedRecently(now)
+	proved := err == nil && ready && live && now.Before(attemptDeadline)
+	keepEarlier := !proved && !refused && live && unexpired
+	renewAttempt := !keepEarlier && noAnswer && live && now.Before(attemptDeadline) && e.confirmedRecently(now)
+	invalidated := !proved && !keepEarlier && !renewAttempt && !outlived
 	notifyInvalidated := invalidated && e.epoch == epoch
-	if keepEarlier {
+	switch {
+	case proved:
+		e.provedAt, e.answered = started, false
+		e.admitUntil(attemptDeadline)
+	case keepEarlier:
+		e.answered = e.answered || !noAnswer
 		ready = false
-	} else if renewAttempt {
+	case renewAttempt:
 		// Not a successful proof: provedAt stays, so a write gate stops
-		// treating the closure as transient before this deadline ends, and
-		// the deadline never passes the unconfirmed limit.
-		e.deadline = attemptDeadline
-		if limit := e.provedAt.Add(materialUnconfirmedLimit); limit.Before(e.deadline) {
-			e.deadline = limit
+		// treating the closure as transient before this deadline ends.
+		limit := e.provedAt.Add(materialUnconfirmedLimit)
+		if limit.After(attemptDeadline) {
+			limit = attemptDeadline
 		}
+		e.admitUntil(limit)
 		ready = false
-	} else if outlived {
-		// As above for a renewal without an answer: nothing is published.
-		e.deadline = e.unconfirmedDeadline(e.now())
+	case outlived:
+		e.admitUntil(e.unconfirmedDeadline(now))
 		ready = false
-	} else if invalidated {
+	default:
 		if e.epoch == epoch {
-			e.deadline = time.Time{}
+			e.closeAdmission()
 		}
 		ready = false
-	} else {
-		e.deadline = started.Add(materialEligibilityWindow)
-		e.provedAt = started
 	}
 	onInvalidated := e.onInvalidated
 	e.mu.Unlock()
@@ -396,32 +415,6 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	}
 	cancel()
 	return ready, err
-}
-
-// confirmedRecently reports whether the last successful proof is recent
-// enough for a renewal without an answer to stand in for it. Called with
-// e.mu held.
-func (e *materialEligibility) confirmedRecently(now time.Time) bool {
-	return !e.provedAt.IsZero() && now.Before(e.provedAt.Add(materialUnconfirmedLimit))
-}
-
-// outlivedWindow reports a proof that ended only because its own window ran
-// out: nobody cancelled it, invalidated it or stopped this component. Called
-// with e.mu held.
-func (e *materialEligibility) outlivedWindow(parent, proofCtx context.Context, epoch uint64) bool {
-	return errors.Is(proofCtx.Err(), context.DeadlineExceeded) && parent.Err() == nil &&
-		e.epoch == epoch && !e.stopped && (e.runCtx == nil || e.runCtx.Err() == nil)
-}
-
-// unconfirmedDeadline is how long admission continues after an attempt that
-// brought no answer: one more proof window, never past the unconfirmed limit
-// counted from the last successful proof. Called with e.mu held.
-func (e *materialEligibility) unconfirmedDeadline(now time.Time) time.Time {
-	deadline := now.Add(materialEligibilityWindow)
-	if limit := e.provedAt.Add(materialUnconfirmedLimit); limit.Before(deadline) {
-		deadline = limit
-	}
-	return deadline
 }
 
 // successRest computes scheduling headroom only; it never publishes authority.
@@ -495,7 +488,7 @@ func (e *materialEligibility) Stop() {
 	e.mu.Lock()
 	e.stopped = true
 	e.epoch++
-	e.deadline = time.Time{}
+	e.closeAdmission()
 	cancel := e.cancel
 	onInvalidated := e.onInvalidated
 	e.mu.Unlock()

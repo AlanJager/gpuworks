@@ -100,7 +100,9 @@ type Store struct {
 	confirmTransportAuthorization transportAuthorizationConfirmation
 	grantClusterMembership        clusterMembershipGrant
 	confirmedMembership           atomic.Pointer[confirmedClusterMembership]
-	grantClusterMembershipKeys    func(context.Context, ClusterIdentity, []string) (uint64, []ClusterTransportMember, error)
+	// businessWriterKey is this member's own key in a cluster, empty otherwise.
+	businessWriterKey          string
+	grantClusterMembershipKeys func(context.Context, ClusterIdentity, []string) (uint64, []ClusterTransportMember, error)
 	// diagnosticLogger is configured before the Store is shared with workers.
 	diagnosticLogger     *slog.Logger
 	currentClusterLeader func(context.Context) (uint64, error)

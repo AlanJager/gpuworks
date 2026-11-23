@@ -326,6 +326,11 @@ func (a *App) invalidateCandidateMaterialEligibility() {
 		// Its callback closes Store admission and withdraws the old routes.
 		eligibility.Invalidate()
 	}
+	if a.store != nil {
+		// A member connection must not be admitted from a list confirmed
+		// before this member's own admission was withdrawn.
+		a.store.ForgetConfirmedClusterMembership()
+	}
 	a.closeBusinessAdmission()
 }
 

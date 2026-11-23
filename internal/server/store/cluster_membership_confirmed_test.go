@@ -67,4 +67,9 @@ func TestConfirmedClusterMembershipFollowsSuccessfulGrantsOnly(t *testing.T) {
 	if _, ok := s.ConfirmedClusterMembership(0); ok {
 		t.Fatal("a zero bound used a confirmation")
 	}
+	// The member's own invalidation drops the list; the next caller takes a grant.
+	s.ForgetConfirmedClusterMembership()
+	if _, ok := s.ConfirmedClusterMembership(time.Hour); ok {
+		t.Fatal("a forgotten membership was still reported as confirmed")
+	}
 }

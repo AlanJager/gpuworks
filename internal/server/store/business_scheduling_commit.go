@@ -31,6 +31,9 @@ func (s *Store) commitBusinessSchedulingDecision(ctx context.Context, fn func(*g
 		if err := requireBusinessServingMaintenancePhase(ctx, tx); err != nil {
 			return err
 		}
+		if err := s.requireBusinessWriterAdmitted(ctx, tx); err != nil {
+			return err
+		}
 		if err := fn(tx); err != nil {
 			return err
 		}
