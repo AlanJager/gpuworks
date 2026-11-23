@@ -241,6 +241,11 @@ func (s *Session) handshake() error {
 		}
 		return errSmokeHandshake
 	}
+	if s.hub.sessionReplaced(n.UUID, s.sessionID) {
+		// A relay brings back a session another connection replaced.
+		_ = s.send(proto.TReject, 0, proto.Reject{Reason: proto.RejectStaleSession, Detail: "another connection took this node"})
+		return &handshakeRejectError{reason: proto.RejectStaleSession, err: errors.New("relayed session was replaced")}
+	}
 	// A diagnostic handshake must preserve an earlier upgrade failure. Only a
 	// formal connection running this version can clear that observation.
 	if strings.TrimSpace(hello.Version) == version.Version {
