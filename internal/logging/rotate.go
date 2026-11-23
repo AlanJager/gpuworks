@@ -304,8 +304,9 @@ const (
 // Neither output is written by the goroutine that logs: each has a bounded
 // queue and its own writing goroutine (queuedWriter), so storage that stops
 // taking writes delays the log and nothing else. A record at error level or
-// above waits a quarter of a second at most for the outputs to take it
-// (urgentHandler). The returned closer waits a bounded time for both outputs
+// above may wait for an output that is keeping up to take it: one such wait
+// at a time in the process, 20 ms at most, and 20 ms in a second in all
+// (urgent.go states the terms and what they cost). The returned closer waits a bounded time for both outputs
 // to take what is queued, then closes the file; call it on every path that
 // ends the process (or Flush, where the closer cannot run), or the last
 // records below error level are lost. What is logged after the closer goes

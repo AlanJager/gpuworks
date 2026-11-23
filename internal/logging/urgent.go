@@ -39,6 +39,16 @@ import (
 //     record that is waited for, one goroutine at a time, 20 ms per second
 //     in all; the rest return at once.
 //
+// Two things that sum does not cover:
+//
+//   - The budget is kept per accounting second, not over a sliding one: a
+//     wait at the end of one second and the waits of the next can put close
+//     to 80 ms of waiting into some one-second span.
+//   - It counts the goroutine that waits. A caller that logs an error while
+//     holding a mutex of its own holds that mutex for up to 20 ms longer,
+//     and whoever is blocked on that mutex meanwhile is delayed too, outside
+//     this accounting. Callers were not audited for logging under a lock.
+//
 // What is given up: an error record that did not wait (another was waiting,
 // the output was not keeping up, or the budget was spent) is queued like any
 // other record, and a crash in the moments after it can lose it.

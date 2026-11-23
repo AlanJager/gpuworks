@@ -86,3 +86,42 @@ func TestNativeWriteWaitingForTheWriterAdmissionIsInAStallReport(t *testing.T) {
 		t.Fatalf("node after both writes: %+v, %v", node, err)
 	}
 }
+
+// On the replicated store too, every call into the watched pool ends the
+// wait it began: the writer's pool with its own way of beginning a
+// transaction, and the pool the scheduler reads on.
+func TestNativeEveryWatchedCallEndsItsWait(t *testing.T) {
+	ctx := dqliteTestContext(t)
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	st, err := OpenRuntimeWith(ctx, filepath.Join(dir, "gpuworks.db"), bus.New(), OpenOptions{Backend: ReplicatedBackend()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	node, err := st.RegisterNode("uuid-native-ends", HashToken("token-native-ends"), "host-native-ends")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := idleWatch(t)
+	exerciseWatchedPool(t, w, st.db)
+	if _, err := st.NodeByID(node.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ListNodes(); err != nil {
+		t.Fatal(err)
+	}
+	leftOpen(t, w, "lookups with their cards on the replicated store")
+	if reader := st.reader(); reader != st.db {
+		if _, watched := reader.Statement.ConnPool.(*watchedPool); !watched {
+			t.Fatalf("the replicated read pool is %T, which the stall watch does not see", reader.Statement.ConnPool)
+		}
+		var count int64
+		if err := reader.Model(&Node{}).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		leftOpen(t, w, "a query on the replicated read pool")
+	}
+}

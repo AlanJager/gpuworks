@@ -358,6 +358,19 @@ func (w *Watchdog) check(now time.Time) []event {
 	return events
 }
 
+// Open lists the waits that have begun and not ended, in no particular
+// order: what a bracket that never ran its end leaves behind.
+func (w *Watchdog) Open() []Waiting {
+	now := w.opts.now()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	open := make([]Waiting, 0, len(w.waits))
+	for _, waiting := range w.waits {
+		open = append(open, Waiting{Site: waiting.site, For: now.Sub(waiting.since)})
+	}
+	return open
+}
+
 // allow says whether a report may be made now, and counts it when so.
 func (w *Watchdog) allow(now time.Time) bool {
 	if !w.lastReport.IsZero() && now.Sub(w.lastReport) < w.opts.MinInterval {
