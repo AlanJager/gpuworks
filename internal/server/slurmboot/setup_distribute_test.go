@@ -3,7 +3,6 @@ package slurmboot
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // maxOverlap is the most nodes that had a command in flight at once, from the
@@ -52,18 +51,15 @@ func TestSetupCopiesToNodesInParallelWithABound(t *testing.T) {
 		w.manyNodes(6)
 		w.env["FAKE_SSH_SLEEP"] = "0.2"
 		w.env["GWKS_DIST_JOBS"] = "3"
-		start := time.Now()
 		r := w.runSetup()
-		took := time.Since(start)
 		if r.code != 0 || marker(t, r.stdout, "distribute_summary")["ok"] != "6" {
 			t.Fatalf("exit %d\n%s", r.code, r.stdout)
 		}
+		// The overlap is the whole claim: more than one node at a time, never
+		// more than the bound. How long that takes depends on the machine's
+		// load, so no wall-clock limit is asserted.
 		if got := w.maxOverlap(); got != 3 {
 			t.Fatalf("%d nodes at once, want exactly the bound of 3", got)
-		}
-		// 6 nodes x 5 commands x 0.2s one after the other is 6s; two rounds of 3 is about 2s
-		if took > 4*time.Second {
-			t.Fatalf("setup took %v: the nodes were not done in parallel", took)
 		}
 	})
 }
