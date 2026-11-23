@@ -48,10 +48,6 @@ func (r *rankRefusal) productError() error {
 	return productError(messages.ErrorDistributedParallelismUnavailable, "cannot recommend parallelism: "+r.Error(), params)
 }
 
-func invalidDistributedDegree(degree string) error {
-	return productError(messages.ErrorDistributedDegreeInvalid, degree+" must be a positive integer", map[string]any{"degree": degree})
-}
-
 // Only drafts with an unstated degree come here. Fixed placements and edits
 // keep their existing admission and may wait for cards at launch time.
 func (s *Service) recommendDistributed(ctx context.Context, req *dto.DeployRequest, dp int, eng deploy.Engine, launch deploy.Materialized, selection templateSelection, model *store.Model) ([]*store.Node, error) {
@@ -61,19 +57,17 @@ func (s *Service) recommendDistributed(ctx context.Context, req *dto.DeployReque
 	if err != nil {
 		return nil, err
 	}
-	group, err := s.prepareRankNetwork(req, nodes)
-	if err != nil {
-		return nil, err
-	}
 	p, err := requestPlacement(req)
 	if err != nil {
 		return nil, err
 	}
-	if req.Placement["tp"] != nil && p.TP <= 0 {
-		return nodes, invalidDistributedDegree("tp")
-	}
-	if req.Placement["pp"] != nil && p.PP <= 0 {
-		return nodes, invalidDistributedDegree("pp")
+	group, err := s.prepareRankNetwork(req, nodes)
+	if err != nil {
+		// A fixed layout reports its parallelism before the rank network.
+		if _, cause := nodeParallelism(nodes, p, dp); cause != nil {
+			return nil, cause
+		}
+		return nil, err
 	}
 	// A draft the trials cannot plan for a reason another check owns keeps
 	// the node-derived default, and that check reports the input as it does
@@ -119,35 +113,53 @@ func (s *Service) recommendDistributed(ctx context.Context, req *dto.DeployReque
 		layers = cfg.NumHiddenLayers
 	}
 	hint := planning.ParallelismSpec{TP: p.TP, PP: p.PP, DP: dp, NNodes: req.NNodes}
+	// The search keeps only the last candidate's error. A scheduler refusal
+	// or a failure of the server's own outranks a launch check, wherever it
+	// came in the search.
+	var refused *rankRefusal
+	var failed error
 	spec, err := planning.PlanDistributedParallelism(ctx, hint, capacity, layers, ranks[0].Selection.PlacementResolver() != "", func(candidate planning.ParallelismSpec) (planning.DistributedTrial, error) {
-		return s.trialDistributedRanks(ctx, ranks, candidate)
+		trial, err := s.trialDistributedRanks(ctx, ranks, candidate)
+		var refusal *rankRefusal
+		var unresolved *planning.LaunchResolveError
+		switch {
+		case errors.As(err, &refusal):
+			refused = refusal
+		case err != nil && !errors.As(err, &unresolved):
+			failed = err
+		}
+		return trial, err
 	})
-	var refusal *rankRefusal
 	switch {
-	case errors.As(err, &refusal):
-		return nodes, refusal.productError()
+	case err == nil:
+		setDistributedDegrees(req, spec.TP, spec.PP)
+		return nodes, nil
+	case ctx.Err() != nil:
+		return nodes, ctx.Err()
+	case failed != nil:
+		return nodes, failed
+	case refused != nil:
+		return nodes, refused.productError()
 	case errors.Is(err, planning.ErrNoDistributedLayout):
 		// Keep the original capacity and divisibility errors on their fields.
 		if _, cause := nodeParallelism(nodes, p, dp); cause != nil {
 			return nodes, cause
 		}
 		return nodes, (&rankRefusal{node: nodeNames(nodes), reason: messages.RecommendationReasonNoLayout}).productError()
-	case err != nil && ctx.Err() == nil:
-		// Every candidate failed a launch check the platform runs for any
-		// layout - a hand-written command whose degrees match none of them,
-		// say. The draft keeps the node-derived default and that check reports
-		// it as it does for a fixed layout.
-		return nodes, setNodeParallelism(req, nodes, p, dp)
-	case err != nil:
-		return nodes, err
 	}
-	setDistributedDegrees(req, spec.TP, spec.PP)
-	return nodes, nil
+	// Every candidate failed a launch check the platform runs for any layout
+	// - a hand-written command whose degrees match none of them, say. The
+	// draft keeps the node-derived default and that check reports it as it
+	// does for a fixed layout.
+	return nodes, setNodeParallelism(req, nodes, p, dp)
 }
 
+// trialDistributedRanks plans candidate on every rank. A rank that refuses
+// moves to the front of ranks: a node short of cards for one layout is the
+// likeliest to refuse the next, larger one, so later trials stop at it first.
 func (s *Service) trialDistributedRanks(ctx context.Context, ranks []planning.LaunchRequest, candidate planning.ParallelismSpec) (planning.DistributedTrial, error) {
 	result := planning.DistributedTrial{Preference: math.MaxInt64}
-	for _, rank := range ranks {
+	for i, rank := range ranks {
 		if err := ctx.Err(); err != nil {
 			return planning.DistributedTrial{}, err
 		}
@@ -158,16 +170,24 @@ func (s *Service) trialDistributedRanks(ctx context.Context, ranks []planning.La
 			return planning.DistributedTrial{}, err
 		}
 		if refusal != nil {
+			promoteRank(ranks, i)
 			return planning.DistributedTrial{}, &rankRefusal{node: node, reason: refusal.Code, params: refusal.Params}
 		}
 		// A catalog placement can still reject the GPU set the scheduler chose.
 		if plan.Output.PlacementError != nil {
+			promoteRank(ranks, i)
 			return planning.DistributedTrial{}, &rankRefusal{node: node, reason: scheduler.ReasonPlacementRejected, cause: plan.Output.PlacementError}
 		}
 		result.Preference = min(result.Preference, plan.Output.Result.Plan.Preference)
 		result.ContextShort = result.ContextShort || plan.Output.ContextShort()
 	}
 	return result, nil
+}
+
+func promoteRank(ranks []planning.LaunchRequest, i int) {
+	refusing := ranks[i]
+	copy(ranks[1:i+1], ranks[:i])
+	ranks[0] = refusing
 }
 
 func nodeNames(nodes []*store.Node) string {

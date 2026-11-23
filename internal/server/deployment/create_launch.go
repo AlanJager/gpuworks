@@ -1,6 +1,8 @@
 package deployment
 
 import (
+	"context"
+	"errors"
 	"slices"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -52,6 +54,11 @@ func (c *createState) materializeLaunch() error {
 			c.distNodes, err = c.s.recommendDistributed(c.ctx, c.req, c.dp, c.eng, candidateLaunch, preview, model)
 		} else {
 			c.distNodes, err = c.s.PrepareDistributedDeployRequest(c.req, c.dp)
+		}
+		// A request cancelled or out of time during the recommendation's
+		// trials is not a wrong request.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
 		}
 		if err != nil {
 			return invalid(err)

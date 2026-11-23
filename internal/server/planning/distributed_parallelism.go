@@ -39,9 +39,12 @@ func (o Output) ContextShort() bool {
 
 // PlanDistributedParallelism tries complete layouts in increasing card count,
 // doubling the cards per node (1, 2, 4, ...) as the scheduler sizes a single
-// node. At equal size prefer a pipeline stage per node, keeping tensor
-// communication local. A layout whose KV estimate holds the context beats one that does not;
-// a catalog preference, when present, then takes precedence over packing.
+// node, then every card a node has, where the node-derived default sits. A
+// stated TP fixes the layout's size, so every count per node is a candidate
+// and the ones it rules out are skipped before any trial. At equal size
+// prefer a pipeline stage per node, keeping tensor communication local. A
+// layout whose KV estimate holds the context beats one that does not; a
+// catalog preference, when present, then takes precedence over packing.
 func PlanDistributedParallelism(ctx context.Context, hint ParallelismSpec, cardsPerNode, layers int, catalogPreference bool, trial func(ParallelismSpec) (DistributedTrial, error)) (ParallelismSpec, error) {
 	if hint.NNodes < 2 || cardsPerNode < 1 || cardsPerNode > math.MaxInt/hint.NNodes {
 		return ParallelismSpec{}, ErrNoDistributedLayout
@@ -50,7 +53,16 @@ func PlanDistributedParallelism(ctx context.Context, hint ParallelismSpec, cards
 	var best ParallelismSpec
 	var chosen DistributedTrial
 	var last error
-	for cards := 1; cards > 0 && cards <= cardsPerNode; cards *= 2 {
+	next := func(cards int) int {
+		switch {
+		case hint.TP > 0:
+			return cards + 1
+		case cards < cardsPerNode && cards > cardsPerNode/2:
+			return cardsPerNode
+		}
+		return cards * 2
+	}
+	for cards := 1; cards > 0 && cards <= cardsPerNode; cards = next(cards) {
 		if err := ctx.Err(); err != nil {
 			return ParallelismSpec{}, err
 		}

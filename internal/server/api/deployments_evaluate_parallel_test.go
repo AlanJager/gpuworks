@@ -480,18 +480,123 @@ func TestDistributedRecommendationFollowsManualCommandCheck(t *testing.T) {
 	}
 }
 
-func TestDistributedRecommendationAttributesInvalidDegree(t *testing.T) {
+// A degree the placement reader cannot use reads as unset, as it does for a
+// fixed layout: the draft gets the recommendation a blank one gets.
+func TestDistributedRecommendationReadsUnusableDegreeAsBlank(t *testing.T) {
 	evaluate, modelID := newParallelEvaluate(t)
-	for _, tc := range []struct{ placement, field string }{
-		{`{"tp":1,"pp":-1}`, "placement.pp"},
-		{`{"tp":0,"pp":2}`, "placement.tp"},
-		{`{"pp":1.5}`, "placement.pp"},
-	} {
-		body := fmt.Sprintf(`{"model_id":%d,"engine":"vllm","nnodes":2,"node_uuids":["par-a","par-b"],"placement":%s}`, modelID, tc.placement)
-		out := evaluate(body)
-		if out.OK || len(out.Errors) != 1 || out.Errors[0].Field != tc.field || out.Errors[0].Code != "DISTRIBUTED_DEGREE_INVALID" {
-			t.Errorf("%s: want %s, got %+v", tc.placement, tc.field, out.Errors)
+	body := func(placement string) string {
+		return fmt.Sprintf(`{"model_id":%d,"engine":"vllm","nnodes":2,"node_uuids":["par-a","par-b"]%s}`, modelID, placement)
+	}
+	blank := evaluate(body(""))
+	if !blank.OK || blank.Parallelism == nil {
+		t.Fatalf("blank: %+v", blank)
+	}
+	for _, placement := range []string{`{"tp":1,"pp":-1}`, `{"tp":0,"pp":2}`, `{"pp":1.5}`} {
+		out := evaluate(body(`,"placement":` + placement))
+		if !out.OK || len(out.Errors) != 0 || out.Parallelism == nil || *out.Parallelism != *blank.Parallelism {
+			t.Errorf("%s: want %+v, got %+v errors=%+v", placement, *blank.Parallelism, out.Parallelism, out.Errors)
 		}
+	}
+}
+
+// Nodes whose card count is not a power of two keep the layouts they had
+// before recommendations: the node-derived default and a stated TP's layout
+// on every card. Both are created as recommended.
+func TestDistributedRecommendationReachesWholeThreeCardNodes(t *testing.T) {
+	evaluate, smallID, st := newParallelEvaluateWith(t, nil)
+	for i, uuid := range []string{"par-a", "par-b"} {
+		status := nodeStatusTwoGPUs(uuid, i)
+		card := status.GPUs[0]
+		card.Index = 2
+		status.GPUs = append(status.GPUs, card)
+		if err := st.UpdateNodeStatus(uuid, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	large, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/three-card", Revision: "main", Name: "three-card", WeightBytes: 330 << 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := apiHandlers{d: Deps{Store: st}}
+	for _, tc := range []struct {
+		name, placement string
+		model           uint
+		tp, pp          int
+	}{
+		{"node default", "", large.ID, 3, 2},
+		{"stated TP", `,"placement":{"tp":6}`, smallID, 6, 1},
+	} {
+		body := fmt.Sprintf(`{"model_id":%d,"name":%q,"served_name":%q,"engine":"vllm","image":"example/vllm:test","nnodes":2,"node_uuids":["par-a","par-b"]%s}`, tc.model, tc.name, tc.name, tc.placement)
+		out := evaluate(body)
+		if !out.OK || out.Parallelism == nil || out.Parallelism.TP != tc.tp || out.Parallelism.PP != tc.pp || out.Parallelism.GPUsPerNode != 3 {
+			t.Fatalf("%s: want TP%d PP%d on 3 cards per node, got %+v errors=%+v", tc.name, tc.tp, tc.pp, out.Parallelism, out.Errors)
+		}
+		w := httptest.NewRecorder()
+		h.createDeployment(w, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)))
+		var dep struct{ ID uint }
+		if w.Code != http.StatusCreated || json.Unmarshal(w.Body.Bytes(), &dep) != nil {
+			t.Fatalf("%s: create %d: %s", tc.name, w.Code, w.Body.String())
+		}
+		row, err := st.GetDeployment(dep.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var degrees struct{ TP, PP int }
+		if err := json.Unmarshal([]byte(row.Placement), &degrees); err != nil || degrees.TP != tc.tp || degrees.PP != tc.pp {
+			t.Fatalf("%s: stored placement %s: %v", tc.name, row.Placement, err)
+		}
+	}
+}
+
+// A create whose request is cancelled while its layout is being recommended
+// is not a wrong request.
+func TestDistributedRecommendationCreateCancelledIsNotInvalid(t *testing.T) {
+	_, modelID, st := newParallelEvaluateWith(t, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	body := fmt.Sprintf(`{"model_id":%d,"name":"cancelled","served_name":"cancelled","engine":"vllm","image":"example/vllm:test","nnodes":2,"node_uuids":["par-a","par-b"]}`, modelID)
+	h := apiHandlers{d: Deps{Store: st}}
+	w := httptest.NewRecorder()
+	h.createDeployment(w, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)).WithContext(ctx))
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("cancelled create: %d %s", w.Code, w.Body.String())
+	}
+	if deps, err := st.ListDeployments(); err != nil || len(deps) != 0 {
+		t.Fatalf("cancelled create stored %v, %v", deps, err)
+	}
+}
+
+// The search keeps only the last candidate's error. A scheduler refusal seen
+// earlier still outranks the launch check the last candidate failed: the
+// draft is refused for the cards, not given the node default.
+func TestDistributedRecommendationReportsRefusalOverLaterLaunchCheck(t *testing.T) {
+	evaluate, _, st := newParallelEvaluateWith(t, nil)
+	large, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/large", Revision: "main", Name: "large", WeightBytes: 170 << 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The command's TP1 x PP2 is refused for memory; every larger layout,
+	// the last candidate TP1 x PP4 included, fails the command's degrees.
+	command := "exec vllm serve /model --tensor-parallel-size 1 --pipeline-parallel-size 2 --node-rank ${GPUWORKS_NODE_RANK}"
+	out := evaluate(fmt.Sprintf(`{"name":"large","model_id":%d,"engine":"vllm","nnodes":2,"node_uuids":["par-a","par-b"]%s}`, large.ID, manualOverrides(t, command)))
+	if out.OK || len(out.Errors) != 1 || out.Errors[0].Field != "placement.tp" || out.Errors[0].Code != messages.ErrorDistributedParallelismUnavailable {
+		t.Fatalf("errors=%+v parallelism=%+v", out.Errors, out.Parallelism)
+	}
+	if reason, _ := out.Errors[0].Params["reason"].(string); reason == "" || reason == messages.RecommendationReasonNoLayout {
+		t.Fatalf("want a scheduler reason, got %+v", out.Errors[0].Params)
+	}
+}
+
+// A draft with both a parallelism error and a rank network error reports the
+// parallelism first, as the same draft with both degrees stated does.
+func TestDistributedRecommendationReportsParallelismBeforeNetwork(t *testing.T) {
+	evaluate, modelID := newParallelEvaluate(t)
+	body := func(placement string) string {
+		return fmt.Sprintf(`{"model_id":%d,"engine":"vllm","nnodes":2,"node_uuids":["par-a","par-b"],"master_addr":"not a host:1:2","placement":%s}`, modelID, placement)
+	}
+	blank, fixed := evaluate(body(`{"tp":3}`)), evaluate(body(`{"tp":3,"pp":1}`))
+	if len(fixed.Errors) == 0 || fixed.Errors[0].Code != messages.ErrorDistributedParallelIndivisible || fmt.Sprint(blank.Errors) != fmt.Sprint(fixed.Errors) {
+		t.Fatalf("TP only %+v, both stated %+v", blank.Errors, fixed.Errors)
 	}
 }
 

@@ -37,6 +37,37 @@ func TestDistributedParallelismRecommendation(t *testing.T) {
 	}
 }
 
+// A node whose card count is not a power of two still reaches the layouts the
+// node-derived default and a stated TP name: every card it has, and any count
+// the stated TP needs.
+func TestDistributedRecommendationReachesWholeNode(t *testing.T) {
+	for _, tc := range []struct {
+		name                                  string
+		tp, pp, cardsPerNode, minCards        int
+		wantTP, wantPP, wantTrials, gotTrials int
+	}{
+		{name: "three cards per node", cardsPerNode: 3, minCards: 3, wantTP: 3, wantPP: 2, wantTrials: 6},
+		{name: "stated pipeline on six cards", pp: 2, cardsPerNode: 6, minCards: 5, wantTP: 6, wantPP: 2, wantTrials: 4},
+		// Only TP6 x PP1 is tried: the other counts cannot give TP6.
+		{name: "stated tensor degree of six", tp: 6, cardsPerNode: 3, minCards: 1, wantTP: 6, wantPP: 1, wantTrials: 1},
+		{name: "seven cards per node", cardsPerNode: 7, minCards: 5, wantTP: 7, wantPP: 2, wantTrials: 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := PlanDistributedParallelism(t.Context(), ParallelismSpec{NNodes: 2, DP: 1, TP: tc.tp, PP: tc.pp}, tc.cardsPerNode, 28, false, func(spec ParallelismSpec) (DistributedTrial, error) {
+				tc.gotTrials++
+				width, err := spec.GPUsPerNode()
+				if err != nil || width < tc.minCards {
+					return DistributedTrial{}, errors.New("insufficient memory")
+				}
+				return DistributedTrial{}, nil
+			})
+			if err != nil || got.TP != tc.wantTP || got.PP != tc.wantPP || tc.gotTrials != tc.wantTrials {
+				t.Fatalf("got %+v after %d trials, %v", got, tc.gotTrials, err)
+			}
+		})
+	}
+}
+
 // A KV estimate below the context length does not refuse a layout, but a
 // larger one that holds the context wins over packing and catalog preference.
 func TestDistributedRecommendationPrefersLayoutHoldingContext(t *testing.T) {
