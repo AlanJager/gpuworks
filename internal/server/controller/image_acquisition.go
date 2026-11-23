@@ -32,7 +32,8 @@ const peerCooldown = 3 * time.Hour
 
 // pairCooldown remembers node pairs whose automatic copy failed, in memory: a
 // server restart forgets them, which costs one more failed attempt. A target
-// paired with managementPeers has failed a copy over the management network.
+// paired with managementPeers could not be connected to over the management
+// network.
 type pairCooldown struct {
 	mu    sync.Mutex
 	until map[[2]uint]time.Time
@@ -42,13 +43,15 @@ type pairCooldown struct {
 // management network. No node has this id.
 const managementPeers uint = 0
 
-func (p *pairCooldown) cool(source, target uint, now time.Time) {
+// cool rules the pair out for peerCooldown from failedAt, the time the copy
+// failed: a failure read again on a later launch does not start the wait over.
+func (p *pairCooldown) cool(source, target uint, failedAt time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.until == nil {
 		p.until = map[[2]uint]time.Time{}
 	}
-	p.until[[2]uint{source, target}] = now.Add(peerCooldown)
+	p.until[[2]uint{source, target}] = failedAt.Add(peerCooldown)
 }
 
 func (p *pairCooldown) cooling(source, target uint, now time.Time) bool {
@@ -113,12 +116,14 @@ type imageDelivery struct {
 // keyed by catalog row); any other image is always pulled.
 //
 // A copy that fails is not retried with that pair for peerCooldown; the
-// replica then pulls the image itself. A copy over the management network
-// that fails rules out the other holders reached over it as well: a node that
-// one of them could not connect to (a cloud container behind its own NAT) is
-// as far from the next, and trying each in turn only delays the pull. Nothing
-// here is the deployment's choice, so nothing is waited for that could not
-// arrive.
+// replica then pulls the image itself. A source that could not connect to the
+// target over the management network rules out the other holders reached
+// over it as well: a node that one of them could not connect to (a cloud
+// container behind its own NAT) is as far from the next, and trying each in
+// turn only delays the pull. A copy that failed any other way (the source
+// went away, the load failed, someone cancelled it) says nothing about the
+// next holder. Nothing here is the deployment's choice, so nothing is waited
+// for that could not arrive.
 func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Deployment, node *store.Node) imageDelivery {
 	if dep == nil || node == nil {
 		return imageDelivery{present: true}
@@ -153,9 +158,11 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 				return imageDelivery{}
 			}
 			if row.Source == "peer" && row.SourceNodeID != 0 {
-				c.peerCool.cool(row.SourceNodeID, node.ID, now)
-				if path, e := c.networks.StoragePath(row.SourceNodeID, node.ID); e == nil && path.Network == netplan.ManagementName {
-					c.peerCool.cool(managementPeers, node.ID, now)
+				c.peerCool.cool(row.SourceNodeID, node.ID, row.UpdatedAt)
+				if row.TransferErrorCode == messages.ErrorPeerDirectConnectFailed {
+					if path, e := c.networks.StoragePath(row.SourceNodeID, node.ID); e == nil && path.Network == netplan.ManagementName {
+						c.peerCool.cool(managementPeers, node.ID, row.UpdatedAt)
+					}
 				}
 			}
 		}
@@ -184,7 +191,8 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 // imageCopySource picks the node to copy an image to target from: an online
 // node of target's sync groups that has it and shares a storage-sync path with
 // it, preferring one on the same storage sync network, skipping pairs that
-// failed recently and, after a failure over it, the management network.
+// failed recently and, after a holder could not connect over it, the
+// management network.
 func (c *Controller) imageCopySource(imageID uint, target *store.Node, now time.Time) (*store.Node, int64) {
 	held, err := c.store.ImageHolders(imageID, target.ID)
 	if err != nil {
