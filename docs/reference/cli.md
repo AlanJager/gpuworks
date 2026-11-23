@@ -76,6 +76,7 @@ gpuworks restarted (systemd)
 | `--log-max-size SIZE` | `10MB` | 日志轮转阈值（KB/MB/GB，1024 进制） |
 | `--log-keep N` | `20` | 保留的轮转文件代数 |
 | `--log-level LEVEL` | `info` | `debug` / `info` / `warn` / `error`，其他值按 `info` |
+| `--stall-report-after DURATION` | `3s` | 一次日志写入或存储操作等待超过这个时长时记录卡顿报告；`0` 关闭 |
 | `--proxy-max-body-bytes BYTES` | `268435456`（256 MiB） | `/v1` 请求体上限，超出返回 413 |
 | `--recovery-enabled BOOL` | `true` | 启用 SSH 旁路恢复离线 agent |
 | `--recovery-grace-period DURATION` | `2m` | 断线后等待多久才开始 SSH 恢复 |
@@ -94,6 +95,7 @@ gpuworks restarted (systemd)
 - 日志同时写 stderr 和文件，按大小轮转；日志配置只有 flag 和 `server.yaml`，没有环境变量。
 - server 读取面向操作员的 `GPUWORKS_ADMIN_PASSWORD`（首次创建 admin 时的初始密码）和 `GPUWORKS_USAGE_REPORT=off`（强制关闭使用情况上报），另有守护进程设给子进程的内部标记 `GPUWORKS_SUPERVISED=1`（server 读后即从自身环境删除，不传给它启动的进程）；`GPUWORKS_ADDR`、`GPUWORKS_DATA_DIR`、`GPUWORKS_TRUSTED_PROXIES` 仅作老单元的兼容桥接，详见配置参考。
 - 收到 `SIGUSR1` 时临时打开仅回环的 pprof 监听（先试 `127.0.0.1:6060`，被占用则换随机端口），10 分钟后自动关闭；实际地址在日志里。
+- 一次日志写入、数据库语句或指标、日志、请求记录库的写入等待超过 `--stall-report-after` 时，server 在内存里取下全部 goroutine 的堆栈，磁盘能写后存为 `<data>/diagnostics/stalls/stall-<UTC 时间>.txt`（保留最新 20 份，两份之间至少隔 1 分钟），并在卡顿结束时写一行 `process stall recorded`（含时长和报告路径）。整个进程超过这个时长没有被调度时记录为 `process pause recorded`。用法见[排障](../how-to/troubleshooting.md#server-卡住或偶发变慢时卡顿报告与现场堆栈)。
 - `SIGINT`/`SIGTERM` 触发优雅退出；进程在 systemd 下运行（存在 `INVOCATION_ID`）或由 `--supervise` 启动时，控制台的「立即重启」和控制台升级可以让它自行退出并由 `Restart=always` 或守护进程拉起。
 
 ### `--supervise` 的进程行为

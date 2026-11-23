@@ -23,6 +23,7 @@ log:
   max_size: 10MB
   keep: 20
   level: debug
+  stall_report_after: 5s
 trusted_proxies: [127.0.0.1/32]
 metrics_retention: 168h
 session_idle_timeout: 2h
@@ -38,7 +39,7 @@ session_max_lifetime: 72h
 	want := File{
 		Listen:         Listen{Console: []string{"192.0.2.156:8800"}, Gateway: []string{"10.20.0.5:443"}},
 		DataDir:        "/opt/gpuworks/data",
-		Log:            Log{File: "/opt/gpuworks/logs/gpuworks-server.log", MaxSize: "10MB", Keep: 20, Level: "debug"},
+		Log:            Log{File: "/opt/gpuworks/logs/gpuworks-server.log", MaxSize: "10MB", Keep: 20, Level: "debug", StallReportAfter: "5s"},
 		TrustedProxies: []string{"127.0.0.1/32"}, MetricsRetention: "168h",
 		SessionIdleTimeout: "2h", SessionMaxLifetime: "72h",
 	}

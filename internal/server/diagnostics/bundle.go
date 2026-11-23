@@ -117,6 +117,16 @@ func (m *Manager) BundleDir() string {
 	return filepath.Join(m.dir, "bundles")
 }
 
+// StallReportDir is where a server whose data directory is dataDir keeps
+// its stall reports (internal/stallwatch): beside the collections, so a
+// collection can take the ones in its window.
+func StallReportDir(dataDir string) string {
+	return filepath.Join(dataDir, "diagnostics", "stalls")
+}
+
+// stallDir is StallReportDir as this manager sees it.
+func (m *Manager) stallDir() string { return filepath.Join(m.dir, "stalls") }
+
 // SetBundleDir puts collections somewhere other than the data directory:
 // the offline command builds next to its output, so it still works when
 // the data directory's disk is the one that is full.

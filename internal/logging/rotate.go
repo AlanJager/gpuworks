@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/stallwatch"
 )
 
 // RotationOptions configures a RotatingWriter.
@@ -288,6 +290,9 @@ func StderrIsAFile(stderr *os.File, maxBytes int64) bool {
 	return true
 }
 
+// StallSite is the name a log write has in a stall report.
+const StallSite = "log output"
+
 // NewLogger returns base's handler duplicated to an optional rotating file:
 // every record is written to stderr (so systemd/journald and console runs keep
 // working) and, when Path is set, to that file (FileOnly drops the stderr copy). A file that cannot be opened
@@ -322,6 +327,10 @@ func NewLogger(base *slog.Logger, opts FileOptions) (*slog.Logger, func()) {
 	if opts.FileOnly {
 		out = w
 	}
+	// A write that the file or stderr does not take holds the handler's lock,
+	// and with it everything that logs: the process's stall watch is told how
+	// long each write has been waiting.
+	out = stallwatch.Writer(StallSite, out)
 	h := slog.NewTextHandler(out, &slog.HandlerOptions{Level: opts.Level})
 	return slog.New(h), func() { _ = w.Close() }
 }

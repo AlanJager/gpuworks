@@ -18,6 +18,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/stallwatch"
 )
 
 // agentLogBytes bounds a node's agent log in a collection (agent.log and its
@@ -81,6 +82,22 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 	stage("server/gpuworks-server.log", func(w io.Writer) (int64, bool, error) {
 		return m.serverLogWindow(w, b.From, b.To)
 	})
+
+	// The stall reports noticed in the window, as the server wrote them:
+	// what every goroutine was doing when a log write or a store operation
+	// stopped coming back.
+	for _, report := range stallwatch.Reports(m.stallDir()) {
+		at, ok := stallwatch.ReportTime(report)
+		if !ok || at.Before(b.From) || at.After(b.To) {
+			continue
+		}
+		info, err := os.Stat(report)
+		if err != nil {
+			continue
+		}
+		name := "server/stalls/" + filepath.Base(report)
+		add(collectedItem(name, info.Size(), false), &stagedEntry{name: name, path: report})
+	}
 
 	// Debug sessions that overlap the window: the server's files as they
 	// are, and the session ids the nodes are asked for.

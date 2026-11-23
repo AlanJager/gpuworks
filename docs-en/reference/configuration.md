@@ -56,6 +56,7 @@ usage_report: false        # No daily report or node counts/GPU models with auto
 | `data_dir` | `./data` | Database, master.key, metrics and log stores, inference catalog packages, and more | `--data` (the database path can also use `--db`) |
 | `log.file` / `max_size` / `keep` | `<data>/logs/gpuworks-server.log`, 10MB, 20 | File and rotation settings for the service's own logs (`max_size` uses KB/MB/GB in powers of 1024); empty entries use their defaults | `--log-file`, `--log-max-size`, `--log-keep` |
 | `log.level` | info | Log level: `debug` / `info` / `warn` / `error`; other values use info | `--log-level` |
+| `log.stall_report_after` | 3s | When a log write or a store operation waits longer than this, every goroutine's stack is recorded as a stall report (`<data>/diagnostics/stalls/`); `0` turns the reports off. See [Troubleshooting](../how-to/troubleshooting.md#server-卡住或偶发变慢时卡顿报告与现场堆栈) | `--stall-report-after` |
 | `trusted_proxies` | Empty (install writes `127.0.0.1/32, ::1/128`) | Proxies allowed to supply `X-Forwarded-For` / `-Host` / `-Proto` / `-Port`; while exposure (`gpuworks expose`) is enabled, connections from the local host are also trusted and need not be listed ([ADR 0049](../adr/0049-expose-trusts-same-host-connector.md)) | `--trusted-proxies` |
 | `tls_cert_file` / `tls_key_file` | Empty | Paths to the PEM certificate chain and private key for native HTTPS; both must be set. Non-maintenance listeners use TLS 1.2 or later and require explicit listen IPs; wildcard addresses are unsupported. The local `127.0.0.1` / `::1` maintenance endpoints retain HTTP. See [Production Deployment](../how-to/deploy-production.md#原生-https) | — |
 | `outbound_restrict_private_hosts` | `false` | Strict mode for the management node's outbound HTTP access to private destinations. Disabled by default: ordinary private and local loopback destinations need no allowlist. When `true`, private targets require `outbound_allow_private_hosts` authorization. Changes apply to the next request after saving; special metadata, link-local, and reserved addresses remain denied | — |
@@ -418,7 +419,7 @@ The following names appear in the code but are not user-configurable settings. D
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
 <!-- translation-source-sha256: ab89d916f53e3adc2e328c60371f3d5c40187b54bc830f11e32f97e91a18943f # Configuration Reference -->
-<!-- translation-source-sha256: e40771fe683d8f4154a6332c64bf7554969a4bdb6abdbc7ddb3e3f3222c19084 ## Server Configuration File server.yaml -->
+<!-- translation-source-sha256: fe7442c29a8be0a2665274ea1a557e80579244ffcd3fbadea0a4a47c5bc37cdb ## Server Configuration File server.yaml -->
 <!-- translation-source-sha256: d7dd67b789f8b241cbd8b3967bf492083928fcc82017f21736fd516cd2d4a32f ### Management Sessions -->
 <!-- translation-source-sha256: b4b7537ec834f28badc079be352e1fbbd35c58bfe41c8f0d8b432a738119d30e ### Peer Relay Resource Limits -->
 <!-- translation-source-sha256: 0f9cebe5ca9c73fa634534ea356eeaa3ac27791558b3b42a9065ce31a744e7bc ### Listen Rules -->

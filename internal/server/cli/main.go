@@ -47,6 +47,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/stallwatch"
 	"gpuworks.ai/gpuworks/internal/version"
 )
 
@@ -214,6 +215,8 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	fs.IntVar(&logKeep, "log-keep", logKeep, "rotated log files to keep")
 	level := "info"
 	fs.StringVar(&level, "log-level", level, "debug, info, warn or error")
+	stallAfter := stallwatch.DefaultThreshold
+	fs.DurationVar(&stallAfter, "stall-report-after", stallAfter, "record a stall report when a log write or a store operation waits this long (0 turns the reports off)")
 	supervise := fs.Bool(selfinstall.SuperviseFlag, false, "stay in front of the server and start it again whenever it exits, as systemd does for the unit install writes")
 	_ = fs.Parse(args)
 	if *supervise {
@@ -241,6 +244,13 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 		}
 		if !given["log-level"] && loaded.Log.Level != "" {
 			level = loaded.Log.Level
+		}
+		if !given["stall-report-after"] && loaded.Log.StallReportAfter != "" {
+			after, err := stallReportAfter(loaded.Log.StallReportAfter)
+			if err != nil {
+				return fmt.Errorf("%s: %w", *configPath, err)
+			}
+			stallAfter = after
 		}
 		if abs, err := filepath.Abs(*configPath); err == nil {
 			cfg.ConfigPath = abs
@@ -288,6 +298,8 @@ func serve(log *slog.Logger, args []string, opt Options) (err error) {
 	// launchd is a file nothing rotates.
 	slog.SetDefault(log)
 	warnUnclaimedSections(log, file, opt.claimedSections())
+
+	defer startStallWatch(log, stallAfter, cfg.DataDir)()
 
 	// Diagnostics on demand: SIGUSR1 opens a loopback pprof listener for a
 	// bounded window (debugsrv.DefaultWindow), then it closes itself.
@@ -524,7 +536,7 @@ func usageTo(w io.Writer, extra []Command) {
 usage:
   gpuworks serve [--config server.yaml] [--addr :8800] [--data ./data]
                  [--trusted-proxies CIDRS] [--log-file PATH] [--log-max-size 10MB] [--log-keep 20]
-                 [--log-level info] [--supervise]
+                 [--log-level info] [--stall-report-after 3s] [--supervise]
   gpuworks reset-password [--user admin] [--password NEW_PASSWORD] [--data DIR] [--db PATH]
   gpuworks migrate [--data ./data] [--db PATH]
   gpuworks support-bundle [--data DIR] [--since 1h | --from T --to T]

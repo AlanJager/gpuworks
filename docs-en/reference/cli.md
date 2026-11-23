@@ -76,6 +76,7 @@ Run the control plane. Without `--config`, all functionality is served on `--add
 | `--log-max-size SIZE` | `10MB` | Log rotation threshold (KB/MB/GB, base 1024) |
 | `--log-keep N` | `20` | Number of rotated log files to retain |
 | `--log-level LEVEL` | `info` | `debug` / `info` / `warn` / `error`; other values are treated as `info` |
+| `--stall-report-after DURATION` | `3s` | Record a stall report when a log write or a store operation waits longer than this; `0` turns the reports off |
 | `--proxy-max-body-bytes BYTES` | `268435456` (256 MiB) | `/v1` request body limit; exceeding it returns 413 |
 | `--recovery-enabled BOOL` | `true` | Enable out-of-band SSH recovery for offline agents |
 | `--recovery-grace-period DURATION` | `2m` | Wait time after disconnection before starting SSH recovery |
@@ -94,6 +95,7 @@ Key behavior:
 - Logs are written to both stderr and a file, with size-based rotation. Logging is configured only through flags and `server.yaml`, with no environment variables.
 - The server reads the operator-facing `GPUWORKS_ADMIN_PASSWORD` variable (the initial password when admin is first created) and the `GPUWORKS_USAGE_REPORT=off` override (which disables usage reporting). There is also an internal marker, `GPUWORKS_SUPERVISED=1`, set by the supervisor for its child process (the server removes it from its own environment after reading it and does not pass it to processes it starts). `GPUWORKS_ADDR`, `GPUWORKS_DATA_DIR`, and `GPUWORKS_TRUSTED_PROXIES` are used only as compatibility bridges for legacy units; see the Configuration Reference for details.
 - On `SIGUSR1`, a loopback-only pprof listener is temporarily opened (first trying `127.0.0.1:6060`, then a random port if it is occupied) and automatically closed after 10 minutes. The actual address is recorded in the log.
+- When a log write, a database statement, or a write to the metrics, log or request record store waits longer than `--stall-report-after`, the server takes every goroutine's stack in memory and, once the disk can be written, stores it as `<data>/diagnostics/stalls/stall-<UTC time>.txt` (the newest 20 are kept, at least 1 minute apart), then writes one `process stall recorded` line with the duration and the report path when the stall ends. A process that was not scheduled at all for that long is recorded as `process pause recorded`. See [Troubleshooting](../how-to/troubleshooting.md#server-卡住或偶发变慢时卡顿报告与现场堆栈).
 - `SIGINT`/`SIGTERM` trigger graceful shutdown. When the process runs under systemd (`INVOCATION_ID` is present) or is started with `--supervise`, the console's "Restart now" action and console upgrades can make it exit and be restarted by `Restart=always` or the supervisor.
 
 ### Process Behavior of `--supervise`
@@ -659,7 +661,7 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 <!-- translation-source-sha256: 201e0a433d652e54297fff0d12494ee8e9e067fc4a58c576efa1babb109cc7a2 # CLI Reference -->
 <!-- translation-source-sha256: e48f15361d91f7b2f52f08c0c47cc942c26fcef3931465b0068745f4003f3da5 ## Example: Restart the Control Plane -->
 <!-- translation-source-sha256: bb615178833ddff62a14109e42bdbb10743f24b153ebff4bfb5e4e7c6672c03f ## Command Overview -->
-<!-- translation-source-sha256: cf98731452e589884b5d73cb847453f132af1cc1a0fda558e8c8836561b1301b ## gpuworks serve -->
+<!-- translation-source-sha256: 562d8bd1071f122b56f4f94e4ba90582d54815941f75c42ea47a2a8b83bcfc1e ## gpuworks serve -->
 <!-- translation-source-sha256: 9354558496572bea467e9a0059214f586dfbea9ed5f2044628f2c64796e28c63 ### Process Behavior of `--supervise` -->
 <!-- translation-source-sha256: cb414f74ad1e64b356b7ec05057876c418cbe8db889307de5f6453704978900d ## gpuworks install -->
 <!-- translation-source-sha256: 12b839fb856984f3e9ab8c1e066c1d48b76baba2830a862433cbc8af133dfeba ## gpuworks upgrade -->

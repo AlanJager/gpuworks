@@ -23,6 +23,7 @@ import (
 	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" driver (shared with the main store; avoids double registration)
 
 	"gpuworks.ai/gpuworks/internal/sqliteutil"
+	"gpuworks.ai/gpuworks/internal/stallwatch"
 )
 
 // Sample is a single metric observation to be written.
@@ -188,6 +189,7 @@ func (s *sqliteStore) WriteBatch(samples []Sample) error {
 	if len(samples) == 0 {
 		return nil
 	}
+	defer stallwatch.Begin("metrics store write")()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.Begin()

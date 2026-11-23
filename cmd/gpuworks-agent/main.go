@@ -44,6 +44,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/logthrottle"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
+	"gpuworks.ai/gpuworks/internal/stallwatch"
 	"gpuworks.ai/gpuworks/internal/version"
 	benchmeta "gpuworks.ai/gpuworks/pkg/bench"
 	"gpuworks.ai/gpuworks/pkg/bench/dataset"
@@ -237,6 +238,16 @@ func run(log *slog.Logger, args []string) error {
 	throttleCtx, stopThrottle := context.WithCancel(context.Background())
 	defer stopThrottle()
 	go throttle.Run(throttleCtx)
+	// A log write that the disk does not take stops everything that logs.
+	// The agent records what it was doing when one waits too long, beside
+	// its log, the way the server does (internal/stallwatch).
+	stallWatch := stallwatch.New(stallwatch.Options{
+		Dir:    filepath.Join(cfg.StateDir, "stalls"),
+		Log:    log,
+		Header: []string{"program: gpuworks-agent " + version.String()},
+	})
+	stallwatch.Use(stallWatch)
+	go stallWatch.Run(throttleCtx)
 	cfg.SelfLog = self
 	cfg.DebugLog = tee
 	slog.SetDefault(log)

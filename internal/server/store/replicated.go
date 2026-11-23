@@ -48,11 +48,15 @@ func OpenReplicated(ctx context.Context, normal, scheduling *sql.DB, b *bus.Bus,
 		return nil, fmt.Errorf("connect replicated storage: %w", err)
 	}
 	bind := func(pool gorm.ConnPool) (*gorm.DB, error) {
-		return gorm.Open(replicatedDialect{sqlite.Dialector{Conn: pool}}, &gorm.Config{
+		db, err := gorm.Open(replicatedDialect{sqlite.Dialector{Conn: pool}}, &gorm.Config{
 			DisableAutomaticPing: true,
 			Logger:               logger.Default.LogMode(logger.Silent),
 			NowFunc:              func() time.Time { return time.Now().UTC() },
 		})
+		if err != nil {
+			return nil, err
+		}
+		return db, watchStatements(db)
 	}
 	db, err := bind(&replicatedWriterPool{DB: normal})
 	if err != nil {
