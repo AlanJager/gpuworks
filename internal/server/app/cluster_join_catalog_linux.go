@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/cluster/identity"
@@ -103,6 +104,38 @@ func ReceiveClusterCatalog(ctx context.Context, cfg Config, target ClusterJoinTa
 	return receiveJoinCatalog(ctx, filepath.Join(dir, "catalog-packages"), client, []byte(snapshot.CertificatePEM), key)
 }
 
+// A member that serves the catalog answers 503 while it cannot read its
+// references or pack a package right now, which a member on slow storage does
+// for seconds at a time. The receipt asks again for this long, the join's own
+// deadline permitting, before it gives up.
+var (
+	joinCatalogRetryFor     = 90 * time.Second
+	joinCatalogRetryInitial = 500 * time.Millisecond
+	joinCatalogRetryMax     = 8 * time.Second
+)
+
+// retryUnavailable calls fetch until it answers anything but "unavailable
+// right now". Every other failure, and the context ending, is returned as is.
+func retryUnavailable[T any](ctx context.Context, fetch func() (T, error)) (T, error) {
+	deadline := time.Now().Add(joinCatalogRetryFor)
+	delay := joinCatalogRetryInitial
+	for {
+		value, err := fetch()
+		var status *enrollment.StatusError
+		if err == nil || !errors.As(err, &status) || !status.Unavailable() || !time.Now().Add(delay).Before(deadline) {
+			return value, err
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return value, errors.Join(err, ctx.Err())
+		case <-timer.C:
+		}
+		delay = min(2*delay, joinCatalogRetryMax)
+	}
+}
+
 type joinCatalogSource interface {
 	FetchCatalogIndex(context.Context, []byte, []byte) (enrollment.CatalogPackageIndex, error)
 	FetchCatalogPackage(context.Context, []byte, []byte, string) (inferencecatalog.Archive, error)
@@ -119,7 +152,7 @@ func receiveJoinCatalog(ctx context.Context, root string, source joinCatalogSour
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	index, err := source.FetchCatalogIndex(ctx, certificate, key)
+	index, err := retryUnavailable(ctx, func() (enrollment.CatalogPackageIndex, error) { return source.FetchCatalogIndex(ctx, certificate, key) })
 	if err != nil {
 		return err
 	}
@@ -131,7 +164,9 @@ func receiveJoinCatalog(ctx context.Context, root string, source joinCatalogSour
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		archive, err := source.FetchCatalogPackage(ctx, certificate, key, digest)
+		archive, err := retryUnavailable(ctx, func() (inferencecatalog.Archive, error) {
+			return source.FetchCatalogPackage(ctx, certificate, key, digest)
+		})
 		if err != nil {
 			return err
 		}
@@ -151,7 +186,7 @@ func receiveJoinCatalog(ctx context.Context, root string, source joinCatalogSour
 	}
 	// The initial index is only a snapshot. A reference added or removed while
 	// copying needs another receipt attempt before this command acknowledges it.
-	current, err := source.FetchCatalogIndex(ctx, certificate, key)
+	current, err := retryUnavailable(ctx, func() (enrollment.CatalogPackageIndex, error) { return source.FetchCatalogIndex(ctx, certificate, key) })
 	if err != nil {
 		return err
 	}

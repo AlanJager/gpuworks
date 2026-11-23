@@ -96,6 +96,16 @@ func validCatalogDigest(digest string) bool {
 	return true
 }
 
+// StatusError is a member request the endpoint answered with another status
+// than the one the request is answered with when it is served.
+type StatusError struct{ Code int }
+
+func (e *StatusError) Error() string { return fmt.Sprintf("member request rejected: HTTP %d", e.Code) }
+
+// Unavailable reports the endpoint saying it cannot serve the request right
+// now (503): the same request may be served a moment later.
+func (e *StatusError) Unavailable() bool { return e.Code == http.StatusServiceUnavailable }
+
 func (c *Client) memberRequest(ctx context.Context, certificatePEM, keyPEM []byte, path string, limit int64) ([]byte, error) {
 	return c.memberRequestForPeer(ctx, certificatePEM, keyPEM, path, limit, "")
 }
@@ -155,7 +165,7 @@ func (c *Client) memberRequestForPeerWithBodyAndKey(ctx context.Context, certifi
 	}
 	defer response.Body.Close()
 	if response.StatusCode != expectedStatus {
-		return nil, "", fmt.Errorf("member request rejected: HTTP %d", response.StatusCode)
+		return nil, "", &StatusError{Code: response.StatusCode}
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil || int64(len(data)) > limit {
