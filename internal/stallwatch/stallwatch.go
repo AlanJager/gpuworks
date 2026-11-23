@@ -285,30 +285,44 @@ func (w *Watchdog) check(now time.Time) []event {
 			// reported a second time as a stall, with stacks from after it,
 			// at the cost of the next real stall's report. A stall already
 			// being reported keeps its clock.
+			// One interval of the gap is the ordinary time between two
+			// looks, during which the process ran.
 			if w.episode == nil {
-				w.discount(gap, now)
+				w.discount(gap-w.interval(), now)
 			}
 		}
 	}
 
 	over, unended := w.over(now)
-	if w.episode != nil {
-		w.episode.unended = append(w.episode.unended, unended...)
-	}
-	switch {
-	case w.episode == nil && len(over) > 0:
+	if w.episode == nil && len(over) > 0 {
 		w.episode = &episode{start: now.Add(-over[0].For), sites: map[string]bool{}, suppressed: true}
 		w.suppressed++
-	case w.episode != nil && len(over) == 0:
-		if !w.episode.suppressed {
-			// "Ended" is said only of waits that returned. One the watch
-			// gave up on is still where the report shows it.
-			kind := eventEnd
-			if len(w.episode.unended) > 0 {
-				kind = eventUnended
-			}
-			events = append(events, event{kind: kind, name: w.episode.name, at: now,
+	}
+	switch {
+	case w.episode == nil:
+		// Given up on with no stall open (the clock jumped past it): there
+		// is no report to add to, and it is still said.
+		if len(unended) > 0 {
+			events = append(events, event{kind: eventUnended, at: now, duration: unended[0].For, sites: sitesOf(unended), waiting: unended})
+		}
+	default:
+		w.episode.unended = append(w.episode.unended, unended...)
+		for _, waiting := range unended {
+			w.episode.sites[waiting.Site] = true
+		}
+		if len(over) > 0 {
+			break
+		}
+		// "Ended" is said only of waits that returned. One the watch gave
+		// up on is still where it was, and that is said whether or not the
+		// stall got a report (name is empty when it did not).
+		switch {
+		case len(w.episode.unended) > 0:
+			events = append(events, event{kind: eventUnended, name: w.episode.name, at: now,
 				duration: now.Sub(w.episode.start), sites: sortedSites(w.episode.sites), waiting: w.episode.unended})
+		case !w.episode.suppressed:
+			events = append(events, event{kind: eventEnd, name: w.episode.name, at: now,
+				duration: now.Sub(w.episode.start), sites: sortedSites(w.episode.sites)})
 		}
 		w.episode = nil
 	}
@@ -362,6 +376,9 @@ func (w *Watchdog) takeSuppressed() int {
 // discount takes a pause of the whole process off the age of every open
 // wait.
 func (w *Watchdog) discount(pause time.Duration, now time.Time) {
+	if pause <= 0 {
+		return
+	}
 	w.mu.Lock()
 	for id, waiting := range w.waits {
 		waiting.since = waiting.since.Add(pause)
@@ -396,6 +413,14 @@ func (w *Watchdog) over(now time.Time) (over, unended []Waiting) {
 		return over[i].Site < over[j].Site
 	})
 	return over, unended
+}
+
+func sitesOf(waits []Waiting) []string {
+	sites := map[string]bool{}
+	for _, waiting := range waits {
+		sites[waiting.Site] = true
+	}
+	return sortedSites(sites)
 }
 
 func sortedSites(sites map[string]bool) []string {

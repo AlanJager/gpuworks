@@ -1,10 +1,8 @@
 package logging
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -20,14 +18,10 @@ const (
 	// flushTimeout bounds how long closing a logger waits for an output to
 	// take what is still queued.
 	flushTimeout = 3 * time.Second
-	// urgentWait bounds how long a record at error level or above waits for
-	// the outputs to take it before its caller goes on. On storage that
-	// answers this is well under a millisecond and the record is on its way
-	// out when the caller returns, so a crash right after an error does not
-	// lose the error. On storage that does not answer, the first such record
-	// pays this once and the ones after it pay nothing until the output has
-	// caught up (queuedWriter.behind): who logs is never held for seconds.
-	urgentWait = 250 * time.Millisecond
+	// fastWrite is what a write to an output that is keeping up takes less
+	// than: a write to a file or a pipe is microseconds. An output is waited
+	// for by an error record (urgent.go) only while its writes are this fast.
+	fastWrite = time.Millisecond
 )
 
 // queuedWriter takes records without ever waiting on its output: Write
@@ -46,8 +40,9 @@ const (
 // still queued when the process dies without closing the logger (SIGKILL, a
 // panic on a goroutine other than the one whose deferred closer runs) are
 // lost without a trace; Close and Flush wait a bounded time for them, and a
-// record at error level waits urgentWait for the output itself. The runtime
-// writes a panic's own report to stderr directly, never through a queue.
+// record at error level waits for an output that is keeping up (urgent.go).
+// The runtime writes a panic's own report to stderr directly, never through
+// a queue.
 type queuedWriter struct {
 	out  io.Writer
 	site string
@@ -67,9 +62,19 @@ type queuedWriter struct {
 	dropped int64
 	since   time.Time
 	closed  bool
-	// behind is set when the output did not take a record within
-	// urgentWait and cleared when the queue is empty again.
-	behind bool
+	// fast says the output is keeping up: its last write took less than
+	// fastWrite. A write that takes longer clears it, as does an error
+	// record the output did not take in time; only a fast write that leaves
+	// the queue empty sets it again.
+	fast bool
+	// urgent is where the one error record that is waiting for this output
+	// (urgent.go) is told that the output has taken everything up to
+	// urgentTarget.
+	urgent       chan<- struct{}
+	urgentTarget int64
+	// flushers are the Flush calls waiting for the output to take what was
+	// queued when they began.
+	flushers []flusher
 
 	done chan struct{}
 }
@@ -79,7 +84,7 @@ type queuedWriter struct {
 // report names it.
 func newQueuedWriter(out io.Writer, name, site string, maxLines, maxBytes int) *queuedWriter {
 	q := &queuedWriter{out: out, site: site, name: name, now: time.Now, maxLines: maxLines, maxBytes: maxBytes,
-		wake: make(chan struct{}, 1), done: make(chan struct{})}
+		wake: make(chan struct{}, 1), done: make(chan struct{}), fast: true}
 	go q.run()
 	return q
 }
@@ -156,50 +161,76 @@ func (q *queuedWriter) run() {
 		q.queue = q.queue[1:]
 		q.mu.Unlock()
 
+		began := q.now()
 		end := stallwatch.Begin(q.site)
 		_, _ = q.out.Write(line)
 		end()
+		took := q.now().Sub(began)
 
 		q.mu.Lock()
 		q.lines--
 		q.written++
 		q.bytes -= len(line)
-		if q.lines == 0 {
-			q.behind = false
+		switch {
+		case took >= fastWrite:
+			q.fast = false
+		case q.lines == 0:
+			q.fast = true
+		}
+		if q.urgent != nil && q.written >= q.urgentTarget {
+			// The channel has room for a token from each output, and this
+			// is this output's only one; the writer never waits for it.
+			select {
+			case q.urgent <- struct{}{}:
+			default:
+			}
+			q.urgent = nil
+		}
+		if len(q.flushers) > 0 {
+			q.releaseFlushersLocked()
 		}
 		q.mu.Unlock()
 	}
 }
 
-// taken waits up to timeout for the output to take every record queued so
-// far, and says whether it did. An output already known to be behind is not
-// waited for.
-func (q *queuedWriter) taken(timeout time.Duration) bool {
+// flusher is one Flush waiting for the output to have taken target records.
+type flusher struct {
+	target int64
+	taken  chan struct{}
+}
+
+func (q *queuedWriter) releaseFlushersLocked() {
+	kept := q.flushers[:0]
+	for _, f := range q.flushers {
+		if q.written >= f.target {
+			close(f.taken)
+			continue
+		}
+		kept = append(kept, f)
+	}
+	for i := len(kept); i < len(q.flushers); i++ {
+		q.flushers[i] = flusher{}
+	}
+	q.flushers = kept
+}
+
+// flush queues the count of dropped records and returns a channel that is
+// closed once the output has taken everything queued up to now: what is
+// logged afterwards is not waited for, so a flush under steady logging ends.
+func (q *queuedWriter) flush() <-chan struct{} {
+	taken := make(chan struct{})
 	q.mu.Lock()
-	target := q.pushed
-	behind := q.behind
+	if !q.closed {
+		q.noteDroppedLocked()
+	}
+	if q.written >= q.pushed {
+		close(taken)
+	} else {
+		q.flushers = append(q.flushers, flusher{target: q.pushed, taken: taken})
+	}
 	q.mu.Unlock()
-	if behind {
-		return false
-	}
-	deadline := time.Now().Add(timeout)
-	for pause := 20 * time.Microsecond; ; {
-		q.mu.Lock()
-		done := q.written >= target
-		if !done && !time.Now().Before(deadline) {
-			q.behind = q.lines > 0
-			q.mu.Unlock()
-			return false
-		}
-		q.mu.Unlock()
-		if done {
-			return true
-		}
-		time.Sleep(pause)
-		if pause < time.Millisecond {
-			pause *= 2
-		}
-	}
+	q.signal()
+	return taken
 }
 
 // Close stops taking records and waits up to timeout for the output to take
@@ -243,7 +274,8 @@ func track(q *queuedWriter, on bool) {
 }
 
 // Flush waits, for a bounded time, until the outputs of every open logger
-// have taken what is queued, the count of dropped records included. A path
+// have taken what was queued when it was called, the count of dropped
+// records included; what is logged meanwhile is not waited for. A path
 // that ends or replaces the process without returning to the logger's closer
 // (os.Exit, exec) calls it first, so the records that explain the exit are
 // not left in memory. It reports whether everything was taken.
@@ -254,21 +286,18 @@ func Flush() bool {
 		queues = append(queues, q)
 	}
 	live.mu.Unlock()
+	taken := make([]<-chan struct{}, 0, len(queues))
 	for _, q := range queues {
-		q.mu.Lock()
-		if !q.closed {
-			q.noteDroppedLocked()
-		}
-		q.mu.Unlock()
-		q.signal()
+		taken = append(taken, q.flush())
 	}
-	deadline := time.Now().Add(flushTimeout)
-	for _, q := range queues {
-		for !q.empty() {
-			if time.Now().After(deadline) {
-				return false
-			}
-			time.Sleep(time.Millisecond)
+	// One bound for all outputs: they drain side by side.
+	timer := time.NewTimer(flushTimeout)
+	defer timer.Stop()
+	for _, done := range taken {
+		select {
+		case <-done:
+		case <-timer.C:
+			return false
 		}
 	}
 	return true
@@ -308,32 +337,4 @@ func (o *queuedOutput) close() {
 	o.mu.Lock()
 	o.closed = true
 	o.mu.Unlock()
-}
-
-// urgentHandler makes a record at error level or above wait, for at most
-// urgentWait, until the outputs have taken it. The wait is outside the inner
-// handler's lock, so it holds up nobody but the goroutine that logged.
-type urgentHandler struct {
-	slog.Handler
-	queues []*queuedWriter
-}
-
-func (h urgentHandler) Handle(ctx context.Context, r slog.Record) error {
-	err := h.Handler.Handle(ctx, r)
-	if r.Level >= slog.LevelError {
-		// One bound for all outputs: they drain side by side.
-		deadline := time.Now().Add(urgentWait)
-		for _, q := range h.queues {
-			q.taken(time.Until(deadline))
-		}
-	}
-	return err
-}
-
-func (h urgentHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return urgentHandler{Handler: h.Handler.WithAttrs(attrs), queues: h.queues}
-}
-
-func (h urgentHandler) WithGroup(name string) slog.Handler {
-	return urgentHandler{Handler: h.Handler.WithGroup(name), queues: h.queues}
 }

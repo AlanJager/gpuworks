@@ -69,7 +69,7 @@ func (w *Watchdog) record(ev event) {
 	// What follows a report (its second capture, its end) names the file
 	// only when this goroutine wrote it: the first event may have been lost
 	// while reporting was behind, or the directory may not take files.
-	if (ev.kind == eventStill || ev.kind == eventEnd || ev.kind == eventUnended) && ev.name != w.written {
+	if (ev.kind == eventStill || ev.kind == eventEnd || ev.kind == eventUnended) && (ev.name == "" || ev.name != w.written) {
 		path = ""
 	}
 	switch ev.kind {

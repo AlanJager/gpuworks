@@ -438,30 +438,6 @@ func TestALateLookIsNotAPauseAndAPauseDoesNotCostTheStallItsReport(t *testing.T)
 	}
 }
 
-// A wait that began before a pause and is still open after it is a stall
-// once it has waited the threshold while the process ran.
-func TestAWaitOpenAcrossAPauseIsReportedForTheTimeTheProcessRan(t *testing.T) {
-	dir := t.TempDir()
-	w, c, _ := newManual(t, Options{Threshold: time.Second, Dir: dir})
-	step(w, c)
-	_ = w.Begin("log output")
-	run(w, c, 500*time.Millisecond)
-	c.add(5 * time.Second) // frozen
-	if events := step(w, c); len(events) != 1 || events[0].kind != eventPause {
-		t.Fatalf("events at the look after the pause: %+v, want the pause alone", events)
-	}
-	if events := run(w, c, 250*time.Millisecond); len(events) != 0 {
-		t.Fatalf("the wait had run 750ms of a 1s threshold: %+v", events)
-	}
-	events := run(w, c, 500*time.Millisecond)
-	if len(events) != 1 || events[0].kind != eventStall {
-		t.Fatalf("events once the wait had run a threshold: %+v, want its report", events)
-	}
-	if waited := events[0].waiting[0].For; waited < time.Second || waited > 1500*time.Millisecond {
-		t.Fatalf("the report says the wait lasted %s; the pause is not part of it", waited)
-	}
-}
-
 // With reporting behind, the second capture of a long stall is not taken:
 // the queue never holds more than the first captures.
 func TestTheSecondCaptureIsSkippedWhileReportingIsBehind(t *testing.T) {

@@ -181,8 +181,9 @@ var droppedLine = regexp.MustCompile(`^time=\S+ level=WARN msg="log records drop
 func TestRecordsPastTheBoundAreDroppedCountedAndReportedInPlace(t *testing.T) {
 	sink := newGate()
 	q := gatedQueue(t, sink, "file", StallSite, 4, 1<<20)
-	now := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
-	q.now = func() time.Time { return now }
+	// The writing goroutine reads the clock too, to time its writes.
+	clock := &clockAt{at: time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)}
+	q.now = clock.now
 	write := func(s string) {
 		if n, err := q.Write([]byte(s + "\n")); n != len(s)+1 || err != nil {
 			t.Fatalf("Write(%q) = %d, %v", s, n, err)
@@ -192,10 +193,10 @@ func TestRecordsPastTheBoundAreDroppedCountedAndReportedInPlace(t *testing.T) {
 		write(fmt.Sprintf("kept-%d", i))
 	}
 	// The queue is full (one record may be in flight; it still counts).
-	now = now.Add(time.Second)
+	clock.add(time.Second)
 	for i := 0; i < 7; i++ {
 		write(fmt.Sprintf("lost-%d", i))
-		now = now.Add(time.Second)
+		clock.add(time.Second)
 	}
 	sink.release()
 	drain(t, []*queuedWriter{q})
@@ -400,57 +401,6 @@ func TestFlushReportsRecordsDroppedSinceTheLastOneThatFit(t *testing.T) {
 	}
 	if got := sink.String(); !strings.HasPrefix(got, "kept\n") || !strings.Contains(got, "output=file dropped=2") || strings.Contains(got, "lost") {
 		t.Fatalf("output when Flush returned = %q", got)
-	}
-}
-
-// A record at error level is on the output when the call that logged it
-// returns, so a crash right after it does not take it along. Below error
-// level nothing waits.
-func TestAnErrorRecordIsWrittenBeforeItsCallerGoesOn(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "server.log")
-	log, closeLog, _ := newLogger(slog.New(slog.NewTextHandler(os.Stderr, nil)), FileOptions{Path: path, FileOnly: true})
-	defer closeLog()
-	for i := 0; i < 50; i++ {
-		log.With("component", "test").Error("the reason the process is about to die", "n", i)
-		if got := strings.Count(read(t, path), "the reason the process is about to die"); got != i+1 {
-			t.Fatalf("file has %d error records when the call for record %d returned", got, i+1)
-		}
-	}
-}
-
-// Against an output that takes nothing, the first error record waits its
-// bound and marks the output as behind; the ones after it do not wait at
-// all, so a burst of errors during a stall costs who logs one bound, once.
-func TestErrorRecordsDoNotQueueUpBehindAnOutputThatTakesNothing(t *testing.T) {
-	sink := newGate()
-	q := gatedQueue(t, sink, "file", StallSite, 4096, 1<<20)
-	log := slog.New(urgentHandler{Handler: slog.NewTextHandler(q, nil), queues: []*queuedWriter{q}})
-	returns(t, "the first error record against a shut output", func() { log.Error("first") })
-	q.mu.Lock()
-	behind := q.behind
-	q.mu.Unlock()
-	if !behind {
-		t.Fatal("the output is not marked as behind after an error record it did not take")
-	}
-	// Behind: taken answers without waiting, whatever bound it is given.
-	returns(t, "error records while the output is behind", func() {
-		for i := 0; i < 200; i++ {
-			log.Error("more", "n", i)
-		}
-		if q.taken(time.Hour) {
-			t.Error("an output that took nothing reported the records as taken")
-		}
-	})
-	sink.release()
-	drain(t, []*queuedWriter{q})
-	q.mu.Lock()
-	behind = q.behind
-	q.mu.Unlock()
-	if behind || strings.Count(sink.String(), "level=ERROR") != 201 {
-		t.Fatalf("after the output caught up: behind=%v, %d error records of 201", behind, strings.Count(sink.String(), "level=ERROR"))
-	}
-	if !q.taken(time.Minute) {
-		t.Fatal("an output that caught up is still not waited for")
 	}
 }
 
