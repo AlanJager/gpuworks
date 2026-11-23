@@ -3,7 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
-	"strings"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -75,8 +76,12 @@ func TestLateImageStartFailureCannotFailRetry(t *testing.T) {
 	resume()
 	select {
 	case got := <-first:
-		if got.err == nil || !strings.Contains(got.err.Error(), "late failure") {
-			t.Fatalf("first result=%+v %v", got.row, got.err)
+		var failure *messages.ProductError
+		if !errors.As(got.err, &failure) {
+			t.Fatalf("expected a product error for the first request, got %v", got.err)
+		}
+		if failure.Code() != proto.ErrorArchiveLoad || failure.Params()["reason"] != proto.ArchiveLoadFailed {
+			t.Fatalf("unexpected first failure: code=%s reason=%v", failure.Code(), failure.Params()["reason"])
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("first RPC did not return")
