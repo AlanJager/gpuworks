@@ -102,12 +102,17 @@ func TestAFailedRelayIsNotRetriedThroughTheNextHolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The relay gave up: no progress within its limit.
-	if _, err := st.UpsertImageNode(&store.ImageNode{
-		ImageID: image.ID, ImageVersionID: image.ID, NodeID: target.ID, State: store.ImageStateFailed, Source: "peer", SourceNodeID: relayedFrom.ID,
-		Message: "relay peer connection: no_progress_timeout",
-	}); err != nil {
+	// The relay gave up: no progress within its limit. The hub fails the
+	// row of that transfer.
+	running, err := st.ImageNode(image.ID, target.ID)
+	if err != nil || running.TransferID == "" || running.SourceNodeID != relayedFrom.ID {
+		t.Fatalf("row of the relayed copy = %+v, err = %v", running, err)
+	}
+	if err := st.FailImageSyncIfActive(image.ID, target.ID, running.TransferID, "relay peer connection: no_progress_timeout"); err != nil {
 		t.Fatal(err)
+	}
+	if failed, err := st.ImageNode(image.ID, target.ID); err != nil || failed.State != store.ImageStateFailed {
+		t.Fatalf("row after the relay gave up = %+v, err = %v", failed, err)
 	}
 	reconcile(t, c, dep)
 	for _, copy := range hub.copies[1:] {
@@ -220,5 +225,32 @@ func TestAPullFailureOfAnotherImageDoesNotOpenTheRelay(t *testing.T) {
 	reconcile(t, c, dep)
 	if len(hub.copies) != 0 {
 		t.Fatalf("copies = %+v, want none: this image's pull has not failed", hub.copies)
+	}
+}
+
+// A failure another transfer left on the row is not the relay's: an operator
+// started a copy by hand after the relayed one, and that one failed.
+func TestAnotherTransfersFailureIsNotCountedAgainstTheRelay(t *testing.T) {
+	c, st, dep, target, holder, image, hub := imageCopyFixture(t, "controller_image_relay_other_transfer")
+	directCopyFailed(t, st, image, target, holder)
+	reconcile(t, c, dep)
+	replicaPullFailed(t, st, dep, target)
+	afterRetryBackoff(c)
+	reconcile(t, c, dep)
+	if len(hub.copies) != 1 || !hub.copies[0].relay {
+		t.Fatalf("copies = %+v, want the one relayed copy", hub.copies)
+	}
+	if _, err := st.UpsertImageNode(&store.ImageNode{
+		ImageID: image.ID, ImageVersionID: image.ID, NodeID: target.ID, State: store.ImageStateFailed, Source: "peer", SourceNodeID: holder.ID,
+		LastTransferID: "started-by-hand", Message: "docker load: unexpected EOF",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reconcile(t, c, dep)
+	if c.peerCool.cooling(relayPeers, target.ID, c.now()) {
+		t.Fatal("a copy started by hand was counted as the relay's failure")
+	}
+	if !c.peerCool.cooling(holder.ID, target.ID, c.now()) {
+		t.Fatal("the pair of the failed copy is not cooling")
 	}
 }

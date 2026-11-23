@@ -57,7 +57,8 @@ func (h *copyTestHub) copy(imageID uint, target, source string, rate int64, rela
 	if err != nil {
 		return nil, err
 	}
-	return h.st.UpsertImageNode(&store.ImageNode{ImageID: imageID, ImageVersionID: imageID, NodeID: node.ID, State: store.ImageStateSyncing, Source: "peer", SourceNodeID: src.ID})
+	// The real hub names every copy; the row carries the name while it runs.
+	return h.st.UpsertImageNode(&store.ImageNode{ImageID: imageID, ImageVersionID: imageID, NodeID: node.ID, State: store.ImageStateSyncing, Source: "peer", SourceNodeID: src.ID, TransferID: "transfer-" + strconv.Itoa(len(h.copies))})
 }
 
 // imageCopyFixture is a launchable deployment on target whose catalog image

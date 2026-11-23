@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,30 +75,32 @@ func (p *pairCooldown) cooling(source, target uint, now time.Time) bool {
 	return true
 }
 
-// relayedCopies remembers the copies the controller sent through the relay
-// (image row, target node), in memory, so the failure of one is told from a
-// direct copy's: both leave a failed row whose source is a peer.
+// relayedCopies remembers the copies the controller sent through the relay,
+// in memory, by image row and target node and the transfer each was, so the
+// failure of one is told from any other copy's: every failed copy leaves a
+// row whose source is a peer.
 type relayedCopies struct {
 	mu     sync.Mutex
-	active map[[2]uint]bool
+	active map[[2]uint]string
 }
 
-func (r *relayedCopies) started(image, target uint) {
+func (r *relayedCopies) started(image, target uint, transferID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.active == nil {
-		r.active = map[[2]uint]bool{}
+		r.active = map[[2]uint]string{}
 	}
-	r.active[[2]uint{image, target}] = true
+	r.active[[2]uint{image, target}] = transferID
 }
 
-// ended forgets the copy and reports whether there was one.
-func (r *relayedCopies) ended(image, target uint) bool {
+// ended forgets the copy to target and reports whether row is how it ended:
+// a row another transfer wrote since is that transfer's outcome.
+func (r *relayedCopies) ended(image, target uint, row *store.ImageNode) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	was := r.active[[2]uint{image, target}]
+	transferID, was := r.active[[2]uint{image, target}]
 	delete(r.active, [2]uint{image, target})
-	return was
+	return was && row.Source == "peer" && row.LastTransferID == transferID
 }
 
 // imageWaits remembers which deployments wait for an image to arrive on a
@@ -179,7 +182,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 	if err == nil {
 		switch row.State {
 		case store.ImageStatePresent:
-			c.relayed.ended(image.ID, node.ID)
+			c.relayed.ended(image.ID, node.ID, row)
 			c.imageWaits.forget(dep.ID)
 			return imageDelivery{present: true}
 		case store.ImageStateSyncing, store.ImageStatePulling:
@@ -199,7 +202,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 				c.imageWaits.set(dep.ID, image.ID)
 				return imageDelivery{}
 			}
-			if c.relayed.ended(image.ID, node.ID) {
+			if c.relayed.ended(image.ID, node.ID, row) {
 				// The relayed copy gave up. The relay is ruled out for the
 				// target from that moment; the pair's direct path is not
 				// what failed, and was already ruled out before it.
@@ -220,9 +223,9 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 		// Nothing connects to the node directly. Once its own pull has
 		// failed too, the relay is what is left.
 		if relayed, relayRate := c.imageCopySource(image.ID, node, now, true); relayed != nil && c.imagePullFailed(dep, node, row, now) {
-			_, err := syncer.SyncImageFromRate(ctx, image.ID, node.UUID, relayed.UUID, relayRate)
-			if err == nil {
-				c.relayed.started(image.ID, node.ID)
+			started, err := syncer.SyncImageFromRate(ctx, image.ID, node.UUID, relayed.UUID, relayRate)
+			if err == nil && started != nil {
+				c.relayed.started(image.ID, node.ID, started.TransferID)
 				c.log.Info("image pull failed; copying through the relay", "dep", dep.ID, "image", image.ImageRef, "node", node.UUID, "source", relayed.UUID)
 				c.imageWaits.set(dep.ID, image.ID)
 				c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonImageDeliveryWaiting, Params: map[string]any{"node": node.DisplayName(), "image": image.ImageRef}})
@@ -271,7 +274,7 @@ func (c *Controller) imagePullFailed(dep *store.Deployment, node *store.Node, ro
 		in := &instances[i]
 		// An attempt made with another image (the deployment was edited
 		// since) says nothing about this one.
-		if in.NodeID != node.ID || in.Image != dep.Image || !recent(in.UpdatedAt) {
+		if in.NodeID != node.ID || strings.TrimSpace(in.Image) != strings.TrimSpace(dep.Image) || !recent(in.UpdatedAt) {
 			continue
 		}
 		if failure := in.Failure(); failure != nil && failure.Code == proto.ErrorImagePullFailed {
