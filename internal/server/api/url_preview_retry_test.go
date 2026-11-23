@@ -1,21 +1,26 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/test/ocifixture"
 )
 
 func TestURLPreviewsRecoverFromTransientUpstream(t *testing.T) {
 	for _, kind := range []string{"model listing", "model config", "image head", "image range"} {
 		t.Run(kind, func(t *testing.T) {
-			var failures atomic.Int32
+			var attempts atomic.Int32
+			var selectRange sync.Once
+			var failedRange string
 			files := &urlDirectoryFixture{root: "/model", files: map[string]string{"config.json": urlModelConfig, "model.safetensors": "weights"}, sizes: map[string]string{}}
 			archive, err := ocifixture.DockerSaveArchive(ocifixture.DockerSaveOptions{RepoTags: []string{"example/runner:v1"}, LayerBytes: 256 << 10})
 			if err != nil {
@@ -24,8 +29,14 @@ func TestURLPreviewsRecoverFromTransientUpstream(t *testing.T) {
 			_, archiveServer := ocifixture.StartArchiveServer(archive)
 			defer archiveServer.Close()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				affected := (kind == "model listing" && r.URL.Path == "/model/") || (kind == "model config" && r.URL.Path == "/model/config.json") || (kind == "image head" && r.Method == http.MethodHead) || (kind == "image range" && r.Header.Get("Range") != "")
-				if affected && failures.Add(1) == 1 {
+				affected := (kind == "model listing" && r.URL.Path == "/model/") || (kind == "model config" && r.URL.Path == "/model/config.json") || (kind == "image head" && r.Method == http.MethodHead)
+				// Only the selected range fails once. The manifest and image
+				// configuration may need different successful range requests.
+				if span := r.Header.Get("Range"); kind == "image range" && span != "" {
+					selectRange.Do(func() { failedRange = span })
+					affected = span == failedRange
+				}
+				if affected && attempts.Add(1) == 1 {
 					http.Error(w, "mirror temporarily busy", http.StatusServiceUnavailable)
 					return
 				}
@@ -45,8 +56,14 @@ func TestURLPreviewsRecoverFromTransientUpstream(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("temporary upstream should recover: status=%d body=%s", rec.Code, rec.Body.String())
 			}
-			if failures.Load() != 2 {
-				t.Fatalf("affected requests=%d, want original plus one retry", failures.Load())
+			if kind == "image range" {
+				var preview dto.ImageArchivePreview
+				if err := json.Unmarshal(rec.Body.Bytes(), &preview); err != nil || preview.MetadataByTag["example/runner:v1"].Arch != "amd64" {
+					t.Fatalf("missing image configuration after retry: %s (%v)", rec.Body.String(), err)
+				}
+			}
+			if attempts.Load() != 2 {
+				t.Fatalf("affected requests=%d, want original plus one retry", attempts.Load())
 			}
 		})
 	}
