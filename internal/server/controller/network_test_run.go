@@ -21,51 +21,14 @@ type nodeCaller interface {
 	CallNode(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
 }
 
-// networkTests are the network tests the controller is running. They belong
-// to Run: each gets Run's context, so a stopping server cancels its probes,
-// and Run waits for them, so none writes to a store that is being closed.
-type networkTests struct {
-	mu  sync.Mutex
-	ctx context.Context // Run's, nil while Run is not running
-	wg  sync.WaitGroup
-}
-
-func (n *networkTests) open(ctx context.Context) {
-	n.mu.Lock()
-	n.ctx = ctx
-	n.mu.Unlock()
-}
-
-// start runs test in the background under Run's context. It reports false,
-// and starts nothing, when Run is not running or is stopping.
-func (n *networkTests) start(test func(context.Context)) bool {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.ctx == nil || n.ctx.Err() != nil {
-		return false
-	}
-	ctx := n.ctx
-	n.wg.Add(1)
-	go func() {
-		defer n.wg.Done()
-		test(ctx)
-	}()
-	return true
-}
-
-// wait lets no further test start and returns once those running have ended.
-func (n *networkTests) wait() {
-	n.mu.Lock()
-	n.ctx = nil
-	n.mu.Unlock()
-	n.wg.Wait()
-}
-
-// onNetworkTestEvent starts a requested network test. The test probes every
+// startNetworkTest starts a requested network test. The test probes every
 // ordered pair of nodes and can take minutes, so it runs outside the
-// deployment work queue. A request that arrives while the server stops is
-// left running in the ledger; the next start closes it as interrupted.
-func (c *Controller) onNetworkTestEvent(key, reason string) {
+// deployment work queue, in a goroutine that belongs to Run: it gets Run's
+// context, so a stopping server cancels its probes, and Run waits on running,
+// so the test never writes to a store that is being closed. Run calls this
+// from its event loop only; a request that arrives once that loop has ended
+// stays running in the ledger and the next start closes it as interrupted.
+func (c *Controller) startNetworkTest(ctx context.Context, running *sync.WaitGroup, key, reason string) {
 	if reason != "started" {
 		return
 	}
@@ -73,7 +36,11 @@ func (c *Controller) onNetworkTestEvent(key, reason string) {
 	if err != nil {
 		return
 	}
-	c.networkTests.start(func(ctx context.Context) { c.runNetworkTest(ctx, uint(id)) })
+	running.Add(1)
+	go func() {
+		defer running.Done()
+		c.runNetworkTest(ctx, uint(id))
+	}()
 }
 
 func (c *Controller) runNetworkTest(parent context.Context, id uint) {

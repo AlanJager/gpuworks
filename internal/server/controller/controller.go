@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -109,8 +110,6 @@ type Controller struct {
 	// (image_acquisition.go).
 	peerCool   pairCooldown
 	imageWaits imageWaits
-	// networkTests are the network tests in flight (network_test_run.go).
-	networkTests networkTests
 	// imageRefsNotify asks the image refs worker for a push (image_refs.go).
 	imageRefsNotify chan struct{}
 	// failover is node replacement's memory (node_failover.go).
@@ -228,10 +227,11 @@ func (c *Controller) Run(ctx context.Context) {
 	if err := c.store.InterruptRunningNetworkTests(); err != nil {
 		c.log.Warn("could not close interrupted network tests", "err", err)
 	}
-	// A test started from here on is cancelled when ctx ends, and Run returns
-	// only once it has recorded that.
-	c.networkTests.open(ctx)
-	defer c.networkTests.wait()
+	// The network tests in flight belong to this Run: each is started from the
+	// loop below with ctx, so a stopping server cancels its probes, and Run
+	// returns only once every one of them has recorded how it ended.
+	var networkTests sync.WaitGroup
+	defer networkTests.Wait()
 
 	// Prime: reconcile all existing deployments on startup.
 	if !c.primeCacheCopyClaims(ctx) {
@@ -274,6 +274,9 @@ func (c *Controller) Run(ctx context.Context) {
 			<-workerDone
 			return
 		case ev := <-sub.C():
+			if ev.Topic == "network_test" {
+				c.startNetworkTest(ctx, &networkTests, ev.Key, ev.Reason)
+			}
 			c.onEvent(ev)
 		case <-settle.C:
 			c.settleNodeStatus()

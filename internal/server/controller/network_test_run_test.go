@@ -213,10 +213,6 @@ func TestStoppingTheControllerCancelsARunningNetworkTestAndWaitsForIt(t *testing
 	if canceled == 0 {
 		t.Fatal("no node call saw the cancellation")
 	}
-	// A request after the stop starts nothing.
-	if c.networkTests.start(func(context.Context) { t.Error("a test started after Run returned") }) {
-		t.Fatal("a network test was accepted after Run returned")
-	}
 }
 
 func TestControllerAbandonsNetworkTestsWithoutNodeRPC(t *testing.T) {

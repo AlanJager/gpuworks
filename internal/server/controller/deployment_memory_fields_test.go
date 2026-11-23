@@ -24,7 +24,6 @@ func TestEveryControllerFieldIsClassified(t *testing.T) {
 		"routes":               "events waiting for the next tick",
 		"observation":          "by template",
 		"peerCool":             "by node pair",
-		"networkTests":         "the tests in flight, which end with Run",
 		"imageRefsNotify":      "a signal",
 		"nodeStatusDirty":      "a flag",
 		"enginePorts":          "configuration",
