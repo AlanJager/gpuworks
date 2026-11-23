@@ -339,15 +339,20 @@ func TestTheStallWatchReportsTheWritingGoroutineNotWhoLogs(t *testing.T) {
 	go func() { defer close(done); watch.Run(ctx) }()
 
 	log.Info("the record the output does not take")
-	deadline := time.Now().Add(10 * time.Second)
-	for len(stallwatch.Reports(dir)) == 0 {
+	// The report file exists a moment before its content does: wait for
+	// the content, on a deadline a starved runner cannot miss.
+	deadline := time.Now().Add(2 * time.Minute)
+	report := ""
+	for !strings.Contains(report, "goroutines:") {
 		if time.Now().After(deadline) {
-			t.Fatal("no stall report while the output took nothing")
+			t.Fatalf("no stall report while the output took nothing; last read:\n%s", report)
 		}
 		returns(t, "a log line during the stall", func() { log.Info("still logging") })
 		time.Sleep(10 * time.Millisecond)
+		if reports := stallwatch.Reports(dir); len(reports) > 0 {
+			report = read(t, reports[0])
+		}
 	}
-	report := read(t, stallwatch.Reports(dir)[0])
 	for _, want := range []string{StallSite, "logging.(*queuedWriter).run", "logging.(*gate).Write"} {
 		if !strings.Contains(report, want) {
 			t.Fatalf("report lacks %q:\n%s", want, report)
