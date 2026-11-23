@@ -174,7 +174,17 @@ test("target chip options put NVIDIA, Ascend, PPU and AMD first among available 
   assert.equal(form().getFieldValue("target_vendor"), "hygon");
 });
 
-test("an empty target chip field offers only available vendors without selecting the first", async () => {
+test("an uppercase target chip stays selected and appears only once", async () => {
+  const form = mount({ target_vendor: "NVIDIA" }, [{ vendor: "AMD", name: "MI300X" }]);
+  assert.deepEqual(await openTargetChipOptions(), ["NVIDIA", "AMD"]);
+  const listbox = screen.getByRole("listbox");
+  assert.ok(within(listbox).getByRole("option", { name: "NVIDIA", selected: true }));
+  const dropdown = listbox.closest(".ant-select-dropdown") as HTMLElement;
+  fireEvent.click(within(dropdown).getByText("AMD", { selector: ".ant-select-item-option-content" }));
+  assert.equal(form().getFieldValue("target_vendor"), "amd");
+});
+
+test("with no detected chips, a template vendor is offered but not selected automatically", async () => {
   const form = mount({}, []);
   assert.deepEqual(await openTargetChipOptions(), ["NVIDIA"]);
   assert.equal(form().getFieldValue("target_vendor"), undefined);

@@ -18,6 +18,10 @@ import { LockedGroup } from "./DeployEditContext";
 
 const targetVendorOrder: readonly KnownVendor[] = ["nvidia", "ascend", "ppu", "amd"];
 
+function targetVendorKey(vendor?: string) {
+  return vendor?.trim().toLowerCase() || undefined;
+}
+
 export default function DeployBasicStep({
   templateIndex,
   chips,
@@ -48,14 +52,10 @@ export default function DeployBasicStep({
   const targetVendors = [
     ...new Set(
       [
-        ...chips.map((chip) => chip.vendor?.toLowerCase()).filter(Boolean),
-        ...templateIndex.flatMap((item) =>
-          item.profiles
-            .map((profile) => profile.gpus.vendor?.toLowerCase())
-            .filter(Boolean),
-        ),
+        ...chips.map((chip) => chip.vendor),
+        ...templateIndex.flatMap((item) => item.profiles.map((profile) => profile.gpus.vendor)),
         targetVendor,
-      ].filter((vendor): vendor is string => Boolean(vendor)),
+      ].map(targetVendorKey).filter((vendor): vendor is string => vendor !== undefined),
     ),
   ].sort((left, right) => compareVendors(left, right, targetVendorOrder));
 
@@ -107,6 +107,7 @@ export default function DeployBasicStep({
           <Form.Item
             label={t("basic.targetVendor")}
             name="target_vendor"
+            getValueProps={(vendor?: string) => ({ value: targetVendorKey(vendor) })}
             rules={[{ required: true, message: t("basic.targetVendorRequired") }]}
           >
             <Select
