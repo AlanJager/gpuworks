@@ -4,10 +4,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/agent/download"
 	"gpuworks.ai/gpuworks/internal/agent/modelfetch"
 	"gpuworks.ai/gpuworks/internal/agent/modelscan"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -274,4 +276,31 @@ func removeStaleRepoSidecars(log *slog.Logger, key, dir string, files []modelrep
 	if len(removed) > 0 {
 		log.Info("removed resume files left beside complete model files", "key", key, "path", dir, "files", removed)
 	}
+}
+
+// modelRepoBytesDone reports bytes already materialized in a repository. It
+// intentionally counts partial regular files too, so a failed/ENOSPC transfer
+// can resume with truthful progress instead of jumping back to zero.
+func modelRepoBytesDone(root string) int64 {
+	var done int64
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil //nolint:nilerr // Progress is best effort; unreadable entries contribute no observed bytes.
+		}
+		// A download's resume state is bookkeeping, and its part file is
+		// preallocated: neither length is model bytes.
+		if strings.HasSuffix(path, ".part.state") || strings.HasSuffix(path, ".part.state.tmp") {
+			return nil
+		}
+		if dest, partial := strings.CutSuffix(path, ".part"); partial {
+			done += download.PartialBytes(dest)
+			return nil
+		}
+		info, statErr := entry.Info()
+		if statErr == nil && info.Mode().IsRegular() {
+			done += info.Size()
+		}
+		return nil
+	})
+	return done
 }

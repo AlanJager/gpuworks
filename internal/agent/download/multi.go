@@ -198,6 +198,32 @@ func parseContentRangeBounds(value string) (start, end int64, ok bool) {
 	return start, end, true
 }
 
+// PartialBytes is how many bytes of dest an unfinished download has written
+// to "<dest>.part". A multi-connection download preallocates the part file,
+// so its length says nothing; the bytes are what its resume state records.
+// A part file without that state was written front to back.
+func PartialBytes(dest string) int64 {
+	info, err := os.Stat(dest + ".part")
+	if err != nil || !info.Mode().IsRegular() {
+		return 0
+	}
+	data, err := os.ReadFile(dest + ".part.state")
+	if err != nil {
+		return info.Size()
+	}
+	var st downloadState
+	if json.Unmarshal(data, &st) != nil || st.Size != info.Size() || len(st.Chunks) == 0 {
+		return 0
+	}
+	chunks := splitChunks(len(st.Chunks), st.Size)
+	loadState(dest+".part.state", st.URL, st.Size, chunks)
+	var done int64
+	for _, c := range chunks {
+		done += c.done - c.start
+	}
+	return done
+}
+
 // loadState populates chunk done offsets from a valid sidecar, if present.
 func loadState(statePath, url string, size int64, chunks []*chunk) {
 	data, err := os.ReadFile(statePath)
