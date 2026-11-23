@@ -126,9 +126,10 @@ func TestFlash910BProfilesPlaceAndLaunchTheirOwnShape(t *testing.T) {
 	}
 }
 
-// The eight-card W4A8 profile follows a published recipe: it takes exactly
-// eight 64 GiB A2 cards, launches them as TP8, and carries the recipe's
-// throughput switches where the measured four-card profiles chose otherwise.
+// The eight-card W4A8 profile takes exactly eight 64 GiB A2 cards, launches
+// them as TP8 with a published recipe's switches, and carries the four values
+// the 2026-11-23 measurement changed: 16 sequences, 8192 batched tokens,
+// decode graphs up to 64, and thinking off by default.
 func TestQwen38EightCard910BProfileLaunchesThePublishedRecipe(t *testing.T) {
 	_, spec := catalogSpec(t, "qwen/qwen3.8-flash-next", "w4a8-vllm-910b-tp8-mtp")
 	_, fourCard := catalogSpec(t, "qwen/qwen3.8-flash-next", "w4a8-vllm-910b-tp4-mtp")
@@ -175,12 +176,13 @@ func TestQwen38EightCard910BProfileLaunchesThePublishedRecipe(t *testing.T) {
 	}
 	for flag, want := range map[string]string{
 		"--tensor-parallel-size": "8", "--data-parallel-size": "1", "--quantization": "ascend",
-		"--max-model-len": "262144", "--max-num-seqs": "8", "--max-num-batched-tokens": "4096",
+		"--max-model-len": "262144", "--max-num-seqs": "16", "--max-num-batched-tokens": "8192",
 		"--gpu-memory-utilization": "0.90", "--mamba-cache-mode": "align",
 		"--tool-call-parser": "qwen3_xml", "--reasoning-parser": "qwen3",
-		"--engram-config":      `{"cpu_offload":true,"dp_shared_memory":false}`,
-		"--compilation-config": `{"cudagraph_mode":"FULL_DECODE_ONLY"}`,
-		"--speculative-config": `{"method":"mtp","num_speculative_tokens":3,"enforce_eager":false}`,
+		"--engram-config":                `{"cpu_offload":true,"dp_shared_memory":false}`,
+		"--compilation-config":           `{"cudagraph_capture_sizes":[4,8,12,16,24,32,48,64],"cudagraph_mode":"FULL_DECODE_ONLY"}`,
+		"--default-chat-template-kwargs": `{"enable_thinking":false}`,
+		"--speculative-config":           `{"method":"mtp","num_speculative_tokens":3,"enforce_eager":false}`,
 	} {
 		if got, found := deploy.LaunchFlag(launch.Argv, flag); !found || got != want {
 			t.Errorf("%s=%q found=%t, want %q", flag, got, found, want)
@@ -223,7 +225,7 @@ func TestQwen38EightCard910BProfileLaunchesThePublishedRecipe(t *testing.T) {
 	for name, want := range map[string]string{
 		"VLLM_USE_V2_MODEL_RUNNER": "1", "VLLM_ENGINE_READY_TIMEOUT_S": "7200", "VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS": "3000",
 		"VLLM_CHAT_TEMPLATE_RENDER_TIMEOUT": "300", "HCCL_BUFFSIZE": "1024", "HCCL_CONNECT_TIMEOUT": "1200",
-		"PYTORCH_NPU_ALLOC_CONF": "expandable_segments:True", "OMP_PROC_BIND": "false", "OMP_NUM_THREADS": "10", "TASK_QUEUE_ENABLE": "1",
+		"PYTORCH_NPU_ALLOC_CONF": "expandable_segments:True", "OMP_PROC_BIND": "false", "OMP_NUM_THREADS": "8", "TASK_QUEUE_ENABLE": "1",
 	} {
 		if got := launch.Env[name]; got != want {
 			t.Errorf("env %s=%q, want %q", name, got, want)

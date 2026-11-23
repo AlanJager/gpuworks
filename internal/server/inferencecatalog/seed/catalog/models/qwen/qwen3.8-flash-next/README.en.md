@@ -137,31 +137,45 @@ was not measured separately.
 uses, so the first request takes markedly longer than the ones after it; the throughput above is the steady
 state once that cache is warm. The cache lives inside the container, so a rebuilt container pays it again.
 
-## Ascend 910B (A2) · 8 cards · TP8 (not measured on this platform)
+## Ascend 910B (A2) · 8 cards · TP8
 
 `w4a8-vllm-910b-tp8-mtp`: one node with eight 910B cards of at least 64 GiB each, TP8 with expert
 parallelism, the W4A8 weights (`Eco-Tech/Qwen3.8-Flash-Next-w4a8` `d75537fd…`) with the checkpoint's own MTP
-layer, on the same image as the four-card profiles. Its arguments and environment follow a published
-vLLM-Ascend `v0.32.0rc1` recipe for eight cards; **this profile has not been launched or load-tested on this
-platform**, so there are no throughput figures. Where it differs from the four-card profiles above:
+layer, on the same image as the four-card profiles. The `--additional-config` switches (CPU binding,
+shared-expert DP, FlashComm1, shared-expert multistream overlap, NPUGraph EX), async scheduling, KV sized by
+`--gpu-memory-utilization 0.90` and the environment come from a published vLLM-Ascend `v0.32.0rc1` recipe
+for eight cards; the concurrency ceiling of 16, 8192 batched tokens per step, the decode graph sizes
+(multiples of four up to 64) and `OMP_NUM_THREADS=8` follow the measurement below. **Thinking is off by
+default**; a request turns it on with `chat_template_kwargs: {"enable_thinking": true}`.
 
-| Setting | This profile (the recipe's value) | Four-card profiles (measured here) |
-| --- | --- | --- |
-| Concurrency ceiling `--max-num-seqs` | 8 | 16 |
-| Batched tokens per step | 4096 | 8192 |
-| KV cache | sized by `--gpu-memory-utilization 0.90` | fixed 20 GiB per card, utilization 0.95 |
-| Scheduling | `--async-scheduling` | `--no-async-scheduling` |
-| CPU binding `enable_cpu_binding` | on | off |
-| Other `--additional-config` switches | shared-expert DP, FlashComm1, shared-expert multistream overlap, NPUGraph EX; fused MC2, static kernel and super kernel off | none |
-| Decode graph sizes | vLLM's defaults | multiples of four, captured up to 64 |
-| `HCCL_BUFFSIZE` / `OMP_NUM_THREADS` | 1024 / 10 | 200 / 8 |
-| Images per request and other multimodal limits | not set | 32 images, bounded pixel range |
+Measured (8× 910B4 32 GiB, ARM64, Docker, 2026-11-23). The baseline ran the four-card profiles' arguments
+on the same eight cards (without the fixed 20 GiB KV pool, which does not fit a 32 GiB card). 196 input
+tokens with a random prefix per request, thinking off, load sent from the node straight to the engine, one
+run per point (12–96 requests), every request successful. Output throughput (tokens/s):
+
+| Concurrency | This profile · 360 out | Baseline · 360 out | This profile · 1024 out | Baseline · 1024 out |
+| --- | --- | --- | --- | --- |
+| 1 | 30.0 | 34.5 | 30.1 | 34.7 |
+| 2 | 55.4 | 62.7 | 61.2 | 64.0 |
+| 4 | 102.1 | 106.2 | 113.8 | 115.9 |
+| 8 | 166.2 | 176.0 | 189.3 | 198.4 |
+| 16 | **219.2** | 192.5 | **283.9** | 233.5 |
+
+At concurrency 16 this profile's output throughput is 14%–22% higher, with median TTFT 1.1–1.6 s (baseline
+4.3–6.9 s) and P95 TTFT 1.8–2.8 s (baseline 16.3–42.6 s). A single stream decodes about 31 tokens/s against
+the baseline's 36: this profile is about a tenth slower at concurrency 1–2 and 2%–6% slower at 4–8 (single
+runs; that margin is too small to conclude from). With the recipe's own ceiling of 8 the profile stayed at
+164 / 198 tokens/s at concurrency 16, the extra requests queueing. The run used a 32 GiB floor per card;
+this profile keeps the four-card profiles' 64 GiB floor and **has not been run on 64 GiB cards**. On the
+32 GiB cards each card held 11.2 GiB of weights and the KV cache about 880K tokens (about 3.4 concurrent
+256K requests).
 
 Three things do not follow the recipe: the image is pinned by digest (the recipe names the mutable tag
 `v0.32.0rc1`); the speculative method is `mtp` (the recipe's `qwen3_5_mtp` is this image's old name for it);
-and the 64 GiB floor per card is the four-card profiles', because the recipe does not state its cards'
-memory. Settings that name one host (`HCCL_IF_IP`, the `*_SOCKET_IFNAME` interface names, the jemalloc
-preload path) are left out.
+and settings that name one host (`HCCL_IF_IP`, the `*_SOCKET_IFNAME` interface names, the jemalloc preload
+path) are left out.
 
-**Host memory**: each of the eight ranks maps its own 23.8 GiB copy of the embedding table, about 190 GiB of
-free memory, plus the page cache for the checkpoint.
+**Runtime**: under udocker (proot) the system calls of eight ranks all pass through the single-threaded
+proot, and the engine had not finished starting after 14 minutes; use Docker or nerdctl.
+**Host memory**: each rank maps its own copy of the embedding table, about 190 GiB of free memory at the
+four-card profiles' 23.8 GiB per copy, plus the page cache for the checkpoint.
