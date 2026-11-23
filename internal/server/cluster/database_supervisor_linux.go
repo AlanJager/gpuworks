@@ -32,8 +32,13 @@ const (
 	helperStartPause    = 100 * time.Millisecond
 	helperReadyWait     = 30 * time.Second
 	// helperStopWait is how long an interrupted child may take to close its
-	// raft directory before it is killed.
-	helperStopWait    = 5 * time.Second
+	// raft directory before it is killed. Closing ends with the directory's
+	// last writes reaching the disk, which on slow storage takes several
+	// seconds; a child killed over that is reported as a failed stop, and an
+	// install handing the member to its service then fails. The wait stays
+	// inside the 30 seconds the service unit and the installer give the whole
+	// server to stop.
+	helperStopWait    = 20 * time.Second
 	helperStderrLimit = 2048
 )
 
