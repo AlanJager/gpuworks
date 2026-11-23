@@ -32,13 +32,14 @@ const (
 // refuseMaterialManifest is the only place the manifest receiver answers 503.
 // It withdraws a staged receipt and labels the answer when the check stopped
 // before it reached a verdict: the request or its progress stream was
-// interrupted, or the final recheck lost its database leader. The sender then
-// takes this member as unavailable. Every finding about bytes, identity,
-// pointer or membership stays unlabelled and remains a verdict.
+// interrupted, or the first read or the final recheck lost its database
+// leader. The sender then takes this member as unavailable. Every finding
+// about bytes, identity, pointer or membership stays unlabelled and remains a
+// verdict.
 func refuseMaterialManifest(w http.ResponseWriter, reason materialManifestRefusal, cause error) {
 	clearMaterialManifestReceipt(w)
-	recheck := reason == manifestChangedInstalling || reason == manifestChangedInstalled
-	if reason == manifestInterrupted || (recheck && materialVerificationInterrupted(cause)) {
+	unread := reason == manifestNotCurrent || reason == manifestChangedInstalling || reason == manifestChangedInstalled
+	if reason == manifestInterrupted || (unread && materialVerificationInterrupted(cause)) {
 		w.Header().Set(materialRefusalHeader, materialRefusalInterrupted)
 	}
 	http.Error(w, string(reason), http.StatusServiceUnavailable)

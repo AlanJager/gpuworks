@@ -33,7 +33,8 @@ func TestManifestReceiverLabelsOnlyChecksThatReachedNoVerdict(t *testing.T) {
 		label  string
 	}{
 		{"not current, mismatch", manifestNotCurrent, mismatch, "material manifest is not current or complete\n", ""},
-		{"not current, even when its read was interrupted", manifestNotCurrent, noLeader, "material manifest is not current or complete\n", ""},
+		{"not current: no leader to read it from", manifestNotCurrent, noLeader, "material manifest is not current or complete\n", materialRefusalInterrupted},
+		{"not current: mismatch joined to a lost leader", manifestNotCurrent, errors.Join(noLeader, mismatch), "material manifest is not current or complete\n", ""},
 		{"references not portable", manifestReferencesNotPortable, mismatch, "material consumer references are not portable\n", ""},
 		{"install failed", manifestInstallFailed, mismatch, "material consumer paths could not be installed\n", ""},
 		{"not installed", manifestNotInstalled, mismatch, "material consumer paths are not installed\n", ""},
