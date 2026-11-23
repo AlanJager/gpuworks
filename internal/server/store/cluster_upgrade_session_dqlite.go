@@ -23,6 +23,10 @@ type clusterMigrationRun struct {
 const (
 	clusterMigrationBudget = 30 * time.Minute
 	clusterMigrationWait   = 6 * time.Second
+	// clusterLeadWait bounds one attempt to take the database leadership.
+	// It is shorter than a caller waits for the step, so the caller gets
+	// the reason.
+	clusterLeadWait = 10 * time.Second
 )
 
 // SetClusterUpgradeExtensions tells the session which extension migration

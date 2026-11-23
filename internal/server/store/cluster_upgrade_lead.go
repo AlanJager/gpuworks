@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-// clusterLeadWait bounds one attempt to take the database leadership. It is
-// shorter than a caller waits for the step, so the caller gets the reason.
-const clusterLeadWait = 10 * time.Second
-
 // clusterLeadership is the part of the database a leadership handover uses:
 // who leads now, and a request to the leader to hand over to a member.
 type clusterLeadership struct {
