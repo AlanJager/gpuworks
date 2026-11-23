@@ -69,7 +69,7 @@ func (w *Watchdog) record(ev event) {
 	// What follows a report (its second capture, its end) names the file
 	// only when this goroutine wrote it: the first event may have been lost
 	// while reporting was behind, or the directory may not take files.
-	if (ev.kind == eventStill || ev.kind == eventEnd) && ev.name != w.written {
+	if (ev.kind == eventStill || ev.kind == eventEnd || ev.kind == eventUnended) && ev.name != w.written {
 		path = ""
 	}
 	switch ev.kind {
@@ -111,6 +111,15 @@ func (w *Watchdog) record(ev event) {
 		line := fmt.Sprintf("\nended: %s, after %s\n", ev.at.UTC().Format(time.RFC3339Nano), ev.duration.Round(time.Millisecond))
 		w.write(path, []byte(line), true)
 		w.opts.Log.Warn("process stall recorded", w.attrs(path, "site", strings.Join(ev.sites, ", "), "duration", ev.duration.Round(time.Millisecond).String())...)
+	case eventUnended:
+		var b bytes.Buffer
+		fmt.Fprintf(&b, "\nno longer watched: %s, after %s; these waits never returned, and the goroutines in them are still where the stacks above show them:\n",
+			ev.at.UTC().Format(time.RFC3339Nano), ev.duration.Round(time.Millisecond))
+		for _, waiting := range ev.waiting {
+			fmt.Fprintf(&b, "  %s  %s\n", waiting.For.Round(time.Millisecond), waiting.Site)
+		}
+		w.write(path, b.Bytes(), true)
+		w.opts.Log.Warn("process stall no longer watched: a wait never returned", w.attrs(path, "site", strings.Join(ev.sites, ", "), "watched_for", ev.duration.Round(time.Millisecond).String())...)
 	case eventPause:
 		var b bytes.Buffer
 		b.WriteString("gpuworks stall report\n")

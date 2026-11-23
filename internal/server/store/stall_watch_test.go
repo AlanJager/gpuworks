@@ -222,3 +222,68 @@ func TestTheWatchedPoolIsStillSeenAsTheDatabasesPool(t *testing.T) {
 		t.Fatalf("nested transaction through the watched pool: %v", err)
 	}
 }
+
+// A lookup that holds the writer's one connection across its statements
+// (withCards) waits for that connection when a write has it. That wait is in
+// database/sql, before any statement: the watch must see it too, and the
+// statements run on the held connection afterwards.
+func TestWaitingForTheWritersConnectionIsInAStallReport(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "gpuworks.db"), bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	node, err := st.RegisterNode("uuid-held", HashToken("token-held"), "host-held")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := startStallWatch(t)
+
+	pool, err := st.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := pool.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := false
+	defer func() {
+		if !released {
+			_ = held.Close()
+		}
+	}()
+	done := make(chan error, 1)
+	go func() {
+		_, err := st.NodeByID(node.ID)
+		done <- err
+	}()
+	report := stallReport(t, dir, "goroutines:")
+	for _, want := range []string{"  " + StallSiteConnection + "\n", "store.watchedConnection", "store.(*Store).NodeByID"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report lacks %q:\n%s", want, report)
+		}
+	}
+	released = true
+	if err := held.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("the lookup once the connection was free: %v", err)
+	}
+	stallReport(t, dir, "ended:")
+
+	// On the held connection the statements are the watch's as well.
+	err = watchedConnection(st.db, func(tx *gorm.DB) error {
+		if _, watched := tx.Statement.ConnPool.(*watchedPool); !watched {
+			t.Errorf("statements on the held connection run on %T, which the watch does not see", tx.Statement.ConnPool)
+		}
+		if isDatabasePool(tx.Statement.ConnPool) {
+			t.Error("a held connection is seen as the database's pool")
+		}
+		return tx.Transaction(func(inner *gorm.DB) error { return inner.Exec("UPDATE nodes SET hostname = hostname").Error })
+	})
+	if err != nil {
+		t.Fatalf("a transaction on the held connection: %v", err)
+	}
+}

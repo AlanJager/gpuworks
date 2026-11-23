@@ -129,6 +129,9 @@ type episode struct {
 	followed   bool
 	// reported is when the stall's stacks were taken.
 	reported time.Time
+	// unended are the waits the watch gave up on while the stall lasted:
+	// their goroutines never returned.
+	unended []Waiting
 }
 
 type eventKind int
@@ -138,6 +141,9 @@ const (
 	eventStill
 	eventEnd
 	eventPause
+	// eventUnended closes a stall whose waits the watch stopped watching
+	// without ever seeing them return.
+	eventUnended
 )
 
 type event struct {
@@ -267,21 +273,42 @@ func (w *Watchdog) check(now time.Time) []event {
 			floor = pauseFloor
 		}
 		gap := now.Sub(previous)
-		if gap >= floor+w.interval() && (w.lastPause.IsZero() || now.Sub(w.lastPause) >= w.opts.MinInterval) {
-			w.lastPause = now
-			events = append(events, event{kind: eventPause, name: pauseName(now), at: now, duration: gap})
+		if gap >= floor+w.interval() {
+			if w.lastPause.IsZero() || now.Sub(w.lastPause) >= w.opts.MinInterval {
+				w.lastPause = now
+				events = append(events, event{kind: eventPause, name: pauseName(now), at: now, duration: gap})
+			}
+			// While nothing ran, nothing waited: the waits that were open
+			// did not wait on what they are watched for, they were paused
+			// like everything else. Without this every one of them would
+			// look over the threshold on this look, and the pause would be
+			// reported a second time as a stall, with stacks from after it,
+			// at the cost of the next real stall's report. A stall already
+			// being reported keeps its clock.
+			if w.episode == nil {
+				w.discount(gap, now)
+			}
 		}
 	}
 
-	over := w.over(now)
+	over, unended := w.over(now)
+	if w.episode != nil {
+		w.episode.unended = append(w.episode.unended, unended...)
+	}
 	switch {
 	case w.episode == nil && len(over) > 0:
 		w.episode = &episode{start: now.Add(-over[0].For), sites: map[string]bool{}, suppressed: true}
 		w.suppressed++
 	case w.episode != nil && len(over) == 0:
 		if !w.episode.suppressed {
-			events = append(events, event{kind: eventEnd, name: w.episode.name, at: now,
-				duration: now.Sub(w.episode.start), sites: sortedSites(w.episode.sites)})
+			// "Ended" is said only of waits that returned. One the watch
+			// gave up on is still where the report shows it.
+			kind := eventEnd
+			if len(w.episode.unended) > 0 {
+				kind = eventUnended
+			}
+			events = append(events, event{kind: kind, name: w.episode.name, at: now,
+				duration: now.Sub(w.episode.start), sites: sortedSites(w.episode.sites), waiting: w.episode.unended})
 		}
 		w.episode = nil
 	}
@@ -332,15 +359,29 @@ func (w *Watchdog) takeSuppressed() int {
 	return n
 }
 
-// over lists the waits past the threshold, longest first, and forgets the
-// ones nothing will ever end.
-func (w *Watchdog) over(now time.Time) []Waiting {
-	var over []Waiting
+// discount takes a pause of the whole process off the age of every open
+// wait.
+func (w *Watchdog) discount(pause time.Duration, now time.Time) {
+	w.mu.Lock()
+	for id, waiting := range w.waits {
+		waiting.since = waiting.since.Add(pause)
+		if waiting.since.After(now) {
+			waiting.since = now
+		}
+		w.waits[id] = waiting
+	}
+	w.mu.Unlock()
+}
+
+// over lists the waits past the threshold, longest first. The ones nothing
+// will ever end are forgotten and returned as unended.
+func (w *Watchdog) over(now time.Time) (over, unended []Waiting) {
 	w.mu.Lock()
 	for id, waiting := range w.waits {
 		age := now.Sub(waiting.since)
 		if age >= abandonedAfter*w.opts.Threshold {
 			delete(w.waits, id)
+			unended = append(unended, Waiting{Site: waiting.site, For: age})
 			continue
 		}
 		if age >= w.opts.Threshold {
@@ -354,7 +395,7 @@ func (w *Watchdog) over(now time.Time) []Waiting {
 		}
 		return over[i].Site < over[j].Site
 	})
-	return over
+	return over, unended
 }
 
 func sortedSites(sites map[string]bool) []string {
