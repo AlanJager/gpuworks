@@ -77,3 +77,53 @@ func TestSharedDownloadConcurrentRetryClaimsWriterOnce(t *testing.T) {
 		t.Fatalf("competing shared writers accepted: %s, %s", first, second)
 	}
 }
+
+// A retry that names no writer goes back to the writer the failed download
+// had, not to whichever ready node sorts first; once that writer cannot write
+// to the storage any more, another one is picked.
+func TestSharedDownloadRetryKeepsThePreviousWriterWhileItCanWrite(t *testing.T) {
+	r := newSaveToRig(t)
+	r.nfsState(t, proto.StorageStateReady, true)
+	chosen, err := r.st.RegisterNode("chosen-writer", store.HashToken("chosen"), "chosen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := func(state string, writable bool) {
+		t.Helper()
+		if err := r.st.ApplyStorageStatus(chosen.ID, proto.StorageStatusReport{Storages: []proto.StorageStatus{{ID: r.nfs.ID, State: state, Writable: writable, Path: r.nfs.Path}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report(proto.StorageStateReady, true)
+	if chosen.ID < r.node.ID {
+		t.Fatalf("the chosen writer (id %d) must not be the one a fresh pick prefers (id %d)", chosen.ID, r.node.ID)
+	}
+	fail := func() {
+		t.Helper()
+		row, err := r.st.ModelFileAt(store.FileRef{ModelID: r.model.ID, StorageID: r.nfs.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.st.UpdateModelFileStatus(row.WriterNodeID, proto.ModelFileStatus{
+			Key: store.ModelFileKey(row.ID), State: proto.MFFailed, TransferID: row.TransferID,
+			Acquisition: proto.ModelAcquireDownload, Message: "list files: context deadline exceeded",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if row, err = r.st.ModelFileAt(store.FileRef{ModelID: r.model.ID, StorageID: r.nfs.ID}); err != nil || row.State != proto.MFFailed {
+			t.Fatalf("row = %+v, err = %v; want a failed download", row, err)
+		}
+	}
+	if writer, err := r.h.StartSharedDownloadOn(r.model, r.nfs, chosen.UUID); err != nil || writer == nil || writer.ID != chosen.ID {
+		t.Fatalf("first download: writer = %+v, err = %v", writer, err)
+	}
+	fail()
+	if writer, err := r.h.StartSharedDownloadOn(r.model, r.nfs, ""); err != nil || writer == nil || writer.ID != chosen.ID {
+		t.Fatalf("retry without a writer: writer = %+v, err = %v; want the previous writer %d", writer, err, chosen.ID)
+	}
+	fail()
+	report(proto.StorageStateReady, false) // read-only there now
+	if writer, err := r.h.StartSharedDownloadOn(r.model, r.nfs, ""); err != nil || writer == nil || writer.ID != r.node.ID {
+		t.Fatalf("retry after the previous writer lost write access: writer = %+v, err = %v; want %d", writer, err, r.node.ID)
+	}
+}
