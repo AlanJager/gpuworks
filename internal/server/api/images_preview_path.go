@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/rpccontext"
 )
@@ -51,10 +52,11 @@ func (a *apiHandlers) previewImageArchivePath(w http.ResponseWriter, r *http.Req
 		writeProductError(w, http.StatusConflict, messages.ErrorImageArchivePreviewFailed, "node archive preview failed", map[string]any{"detail": err.Error()})
 		return
 	}
-	var result proto.ImagePreviewPathResult
+	var result imagecatalog.ArchiveContents
 	if err := json.Unmarshal(raw, &result); err != nil || result.RepoTags == nil {
 		writeProductError(w, http.StatusBadGateway, messages.ErrorImageArchivePreviewFailed, "invalid node archive preview response", map[string]any{"detail": "invalid agent response"})
 		return
 	}
+	imagecatalog.NormalizeArchiveEngines(result.MetadataByTag)
 	writeJSON(w, http.StatusOK, result)
 }

@@ -470,9 +470,8 @@ type ImageFileLoader interface {
 // LoadedRefReporter is ImageFileLoader for runtimes whose load output names
 // the reference the archive actually carried ("Loaded image: <ref>" for
 // docker, "unpacking <ref> (sha256:…)" for nerdctl). The returned reference is
-// empty when the output did not name one. A caller uses it to tag an archive
-// whose baked-in tag differs from the catalog reference, and to report the real
-// tag when it cannot.
+// a full image ID for an untagged Docker archive, or empty if the identity
+// is unknown. A caller uses it to tag the loaded content with the catalog reference.
 type LoadedRefReporter interface {
 	ImageFileLoader
 	LoadImageFileRef(ctx context.Context, image, path string) (string, error)
@@ -504,72 +503,6 @@ type ImageTagger interface {
 // the operator needs, so it is returned rather than worked around.
 type ImageRemover interface {
 	RemoveImage(ctx context.Context, image string) error
-}
-
-// ParseLoadedImageRef extracts the image reference a runtime's archive load
-// reported on stdout. It understands docker's "Loaded image: <ref>" (and the
-// digest-only "Loaded image ID: <id>" form, which names no reference and is
-// therefore ignored) and nerdctl's "unpacking <ref> (sha256:…)". The last
-// reference wins, because a multi-image archive ends with the entry the
-// runtime finished importing. An empty string means the output named none.
-func ParseLoadedImageRef(output string) string {
-	return ParseLoadedImageRefFor(output, "")
-}
-
-// ParseLoadedImageRefFor prefers the requested image when a multi-image load
-// reported it. Otherwise it retains the last reported reference for the caller's
-// retag fallback. Equivalent Docker Hub spellings refer to the requested image.
-func ParseLoadedImageRefFor(output, image string) string {
-	wanted := loadedImageRefName(image)
-	found := ""
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), "\r"))
-		switch {
-		case strings.HasPrefix(line, "Loaded image ID:"):
-			// A reference-less archive: docker printed a digest, not a tag.
-			continue
-		case strings.HasPrefix(line, "Loaded image:"):
-			if ref := strings.TrimSpace(strings.TrimPrefix(line, "Loaded image:")); ref != "" {
-				found = ref
-			}
-		case strings.HasPrefix(line, "unpacking "):
-			rest := strings.TrimSpace(strings.TrimPrefix(line, "unpacking "))
-			if open := strings.LastIndex(rest, " ("); open > 0 {
-				rest = rest[:open]
-			}
-			if rest = strings.TrimSpace(rest); rest != "" {
-				found = rest
-			}
-		}
-		if wanted != "" && loadedImageRefName(found) == wanted {
-			return image
-		}
-	}
-	return found
-}
-
-// loadedImageRefName applies Docker name defaults: the legacy index.docker.io
-// name, library/ and the latest tag. Registry endpoint hosts remain distinct.
-func loadedImageRefName(ref string) string {
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return ""
-	}
-	if !strings.Contains(ref, "@") && strings.LastIndex(ref, ":") <= strings.LastIndex(ref, "/") {
-		ref += ":latest"
-	}
-	host, path, slash := strings.Cut(ref, "/")
-	if !slash || (!strings.ContainsAny(host, ".:") && host != "localhost") {
-		host, path = "docker.io", ref
-	}
-	switch host {
-	case "docker.io", "index.docker.io":
-		host = "docker.io"
-		if !strings.Contains(path, "/") {
-			path = "library/" + path
-		}
-	}
-	return host + "/" + path
 }
 
 // ImagePresenceReporter reads presence, identity and size in one runtime

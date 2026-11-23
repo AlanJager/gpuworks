@@ -221,3 +221,58 @@ func TestImageLoadPathChecksLoadedReference(t *testing.T) {
 		})
 	}
 }
+
+// A host stat may take time to observe cancellation or return a cached success.
+type delayedFileCheck struct {
+	*recording.Driver
+	entered chan context.Context
+	release chan struct{}
+}
+
+func (d *delayedFileCheck) CheckImageFile(ctx context.Context, path string) (int64, error) {
+	d.entered <- ctx
+	<-d.release
+	return 1024, nil
+}
+
+func TestImageLoadPathCancellationDuringFileCheck(t *testing.T) {
+	for _, source := range []string{"operator", "request"} {
+		t.Run(source, func(t *testing.T) {
+			d := &delayedFileCheck{recording.New(""), make(chan context.Context, 1), make(chan struct{})}
+			defer close(d.release)
+			n, statuses := localImportNode(t, d)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			started := make(chan error, 1)
+			go func() {
+				_, err := n.OnRPC(ctx, proto.RPCImageLoadPath, loadPathParams("/data/runner.tar"))
+				started <- err
+			}()
+			checkCtx := <-d.entered
+			if n.imageOps.cancel(loadURLCanonical, "another-attempt") {
+				t.Fatal("unrelated transfer ID cancelled the check")
+			}
+			if source == "operator" {
+				raw, _ := json.Marshal(proto.ImageCancelParams{CanonicalRef: loadURLCanonical, TransferID: "local-import"})
+				result, err := n.OnRPC(t.Context(), proto.RPCImageCancel, raw)
+				if err != nil || !result.(proto.ImageCancelResult).Cancelled {
+					t.Fatalf("cancel during stat: result=%+v error=%v", result, err)
+				}
+			} else {
+				cancel()
+			}
+			select {
+			case <-checkCtx.Done():
+			case <-time.After(5 * time.Second):
+				t.Fatal("stat did not receive cancellation")
+			}
+			d.release <- struct{}{}
+			if err := <-started; !errors.Is(err, context.Canceled) {
+				t.Fatalf("start returned %v after cancellation", err)
+			}
+			if len(statuses) != 0 || len(d.LoadedPaths()) != 0 || n.imageOps.cancel(loadURLCanonical, "local-import") {
+				t.Fatal("cancelled preflight started a load or retained its registration")
+			}
+		})
+	}
+}

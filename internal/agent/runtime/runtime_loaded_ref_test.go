@@ -15,7 +15,7 @@ func TestParseLoadedImageRefReadsWhatTheRuntimeActuallyImported(t *testing.T) {
 			output: "e2eb06d8af82: Loading layer [====>]  65.5MB/65.5MB\nLoaded image: registry.example/team/app:v2\n",
 			want:   "registry.example/team/app:v2",
 		},
-		"docker digest only names no reference": {
+		"truncated docker image ID": {
 			output: "Loaded image ID: sha256:1f2c3d4e5f60\n",
 			want:   "",
 		},
@@ -48,6 +48,9 @@ func TestParseLoadedImageRefReadsWhatTheRuntimeActuallyImported(t *testing.T) {
 }
 
 func TestParseLoadedImageRefForPrefersTheRequestedEntry(t *testing.T) {
+	const id = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const other = "sha256:1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const idLine = "Loaded image ID: " + id + "\n"
 	for _, tc := range []struct {
 		name, output, image, want string
 	}{
@@ -61,6 +64,12 @@ func TestParseLoadedImageRefForPrefersTheRequestedEntry(t *testing.T) {
 		{"different registry is not equivalent", "Loaded image: mirror.example/team/one:v1\nLoaded image: b/two:v2\n", "team/one:v1", "b/two:v2"},
 		{"different tag is not equivalent", "Loaded image: a/one:v2\nLoaded image: b/two:v2\n", "a/one:v1", "b/two:v2"},
 		{"missing requested entry keeps fallback", "Loaded image: a/one:v1\nLoaded image: b/two:v2\n", "catalog/runner:latest", "b/two:v2"},
+		{"single untagged image", idLine, "a/one:v1", id},
+		{"same ID repeated", idLine + idLine, "a/one:v1", id},
+		{"multiple distinct IDs", idLine + "Loaded image ID: " + other, "a/one:v1", ""},
+		{"malformed ID mixed with valid ID", "Loaded image ID: invalid\n" + idLine, "a/one:v1", ""},
+		{"mixed identities with no requested ref", idLine + "Loaded image: b/two:v2", "a/one:v1", ""},
+		{"requested ref among mixed identities", idLine + "Loaded image: a/one:v1", "a/one:v1", "a/one:v1"},
 		{"unknown output stays unknown", "Loaded image ID: sha256:abcdef\n", "a/one:v1", ""},
 		{"no preference keeps last entry", "Loaded image: a/one:v1\nLoaded image: b/two:v2\n", "", "b/two:v2"},
 	} {

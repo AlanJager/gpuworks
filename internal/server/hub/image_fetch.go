@@ -36,8 +36,8 @@ func (h *Hub) beginImageFetch(ctx context.Context, next *store.ImageNode, force 
 // ownImagePullFallback lets an explicit cancel stop a legacy agent's candidate
 // watcher as well as the node operation. The existing mutex protects this
 // in-memory cancel registry only; admission is a conditional database write.
-func (h *Hub) ownImagePullFallback(ctx context.Context, transferID string) (context.Context, func()) {
-	pullCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+func (h *Hub) ownImagePullFallback(epoch context.Context, transferID string) (context.Context, func()) {
+	pullCtx, cancel := context.WithCancel(epoch)
 	h.imageSyncMu.Lock()
 	if h.imageSyncOwners == nil {
 		h.imageSyncOwners = make(map[string]context.CancelFunc)

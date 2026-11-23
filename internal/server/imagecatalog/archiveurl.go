@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog/pullref"
 	"gpuworks.ai/gpuworks/pkg/imagearchive"
 )
@@ -30,6 +31,18 @@ const archiveRequestTimeout = 30 * time.Second
 // ArchivePeek is what can be learned about a remote image archive without
 // downloading it.
 type ArchivePeek = imagearchive.Peek
+
+// ArchiveContents is the common node-file and URL preview metadata.
+type ArchiveContents = imagearchive.Contents
+
+// NormalizeArchiveEngines translates raw image labels at the catalog boundary,
+// including metadata received from agents running an older version.
+func NormalizeArchiveEngines(byTag map[string]imagearchive.ImageMetadata) {
+	for tag, metadata := range byTag {
+		metadata.Engine = engines.CatalogEngineForLabel(metadata.Engine)
+		byTag[tag] = metadata
+	}
+}
 
 // FetchRequest is how one node is asked to acquire an image. Source is empty
 // (pull through the node's pull source rules), FetchSourceURL, or FetchSourceLocal.
@@ -151,7 +164,9 @@ func PeekArchiveURL(ctx context.Context, client *http.Client, rawURL string) (Ar
 	if client == nil {
 		client = ArchiveHTTPClient()
 	}
-	return imagearchive.InspectURL(ctx, client, rawURL)
+	peek, err := imagearchive.InspectURL(ctx, client, rawURL)
+	NormalizeArchiveEngines(peek.MetadataByTag)
+	return peek, err
 }
 
 // ArchiveURLSize reports the archive's size with a single HEAD request.

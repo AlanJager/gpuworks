@@ -69,6 +69,10 @@ func TestImagePreviewPathRoutesOnlyAuthorizedRequestsToTheSelectedNode(t *testin
 	if out := request("POST", route, admin, body, http.StatusOK); out != wireResult {
 		t.Fatalf("preview metadata response: %s", out)
 	}
+	wireResult = `{"repo_tags":["test/runner:v1","test/other:v1"],"metadata_by_tag":{"test/runner:v1":{"engine":"sglang-npu","engine_version":"1.2"},"test/other:v1":{"engine":"unknown-engine","arch":"amd64"}}}`
+	if out := request("POST", route, admin, body, http.StatusOK); out != `{"repo_tags":["test/runner:v1","test/other:v1"],"metadata_by_tag":{"test/other:v1":{"arch":"amd64"},"test/runner:v1":{"engine":"sglang","engine_version":"1.2"}}}` {
+		t.Fatalf("node preview returned invalid catalog values: %s", out)
+	}
 	rpcErr = proto.ErrRPCUnknownMethod
 	if out := request("POST", route, admin, body, http.StatusConflict); !strings.Contains(out, "AGENT_UPGRADE_REQUIRED") {
 		t.Fatalf("old agent response: %s", out)

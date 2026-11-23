@@ -182,7 +182,7 @@ func (n *NodeRuntime) fetchAndLoadImageArchive(ctx context.Context, d runtime.Dr
 			if reporter, ok := loader.(runtime.LoadedRefReporter); ok {
 				return reporter.LoadImageFileRef(loadCtx, p.CanonicalRef, archive)
 			}
-			return "", loader.LoadImageFile(loadCtx, p.CanonicalRef, archive)
+			return p.CanonicalRef, loader.LoadImageFile(loadCtx, p.CanonicalRef, archive)
 		},
 	})
 	if err != nil {

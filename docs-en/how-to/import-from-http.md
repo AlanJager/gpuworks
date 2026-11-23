@@ -41,7 +41,7 @@ If downloading on the target node returns `MODEL_SOURCE_REQUIRES_NEWER_AGENT`, u
 ## Import an Image Archive from a URL
 
 1. On the Images page, open the **Community** or **Custom** tab, open the **Add Community Image** or **Add Custom Image** drawer. For a custom image, select **Import from an HTTP directory** under **Import method**. Enter the `docker save` archive URL, and click **Resolve**.
-2. Check the archive size and actual image references. If a reference matches an existing catalog entry, the URL is added to that entry's **Acquisition addresses**, and the page navigates to it. If there is no match, the form uses the first reference and reads its engine, engine version, framework, framework version, and host architecture from the image config. Check the values, fill in any missing fields, and save.
+2. Check the archive size and actual image references. If a reference matches an existing catalog entry, the URL is added to that entry's **Acquisition addresses**, and the page navigates to it. If there is no match, the form uses the first reference and reads its engine, engine version, framework, framework version, and host architecture from the image config. Node files and HTTP archives use the same engine mapping. For example, `vllm-dcu` selects vLLM and `sglang-npu` selects SGLang. Choose the engine manually for an unknown label. Check the values, fill in any missing fields, and save.
 3. If you see a message that **the archive cannot be inspected before it is downloaded** (for example, because the archive is compressed or the file server does not support Range), manually enter the image reference and acquisition address as instructed, then save. The archive contents have not yet been verified; do not infer the tag from the file name.
 4. After registration, import the image on the target node as described in the next section. Saving the URL alone does not start a transfer.
 
@@ -101,7 +101,7 @@ After import, the image is `present` on the node and is used directly during dep
 <!-- translation-source-sha256: af899cf664eb886631a58be2b9a68b545eae46de51406229183d04e5e45d9f42 # Import Models and Images from an HTTP File Server -->
 <!-- translation-source-sha256: 03ec11990a46bf07ce45927d99f99928f64c54edb41118028d8d8a6debc17037 ## Register a Model from an HTTP Directory -->
 <!-- translation-source-sha256: eb5b2d5cfd7710952d0f44b539d626ed197f613cff8552f66dfb2f3b74f974c8 ### Parsing Results and Directory Limits -->
-<!-- translation-source-sha256: 48aad9c718f3e4698341eb6b704744e71ae910a5b8aedb26125ecb5e4a637a76 ## Import an Image Archive from a URL -->
+<!-- translation-source-sha256: 5931891ad4b793a219b8deb8cc42731c4c991d5da0385d734874c00da4abfa7d ## Import an Image Archive from a URL -->
 <!-- translation-source-sha256: c118e9cc216fb034107e12e804782d9d9519210c55b1bcac67d5ca35b72b808d ## Node Acquisition Methods: Direct Connection or Management Relay -->
 <!-- translation-source-sha256: e72e94ecbb1f9cb3218e9c21b7d48f6140bd6189e35c26875d7cd857035f39a8 ## Common Errors -->
 <!-- translation-source-sha256: a7645b52988a03209f457b7d54f17af4a48d9723bb348af3395736d5a5d718e6 ## Related Information -->

@@ -49,20 +49,21 @@ func TestLoadImageFileReportsTheRuntimeErrorText(t *testing.T) {
 	}
 }
 
-func TestLoadImageFileReportsNoRefWhenTheArchiveCarriedNone(t *testing.T) {
+func TestLoadImageFileReportsUntaggedImageID(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "runner.tar")
 	if err := os.WriteFile(archive, []byte("archive"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	installFakeDocker(t, "case \"$1\" in load) echo 'Loaded image ID: sha256:abcdef';; esac")
+	const id = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	installFakeDocker(t, "case \"$1\" in load) echo 'Loaded image ID: "+id+"';; esac")
 
 	ref, err := New().LoadImageFileRef(context.Background(), "registry.example/team/runner:v1", archive)
 	if err != nil {
 		t.Fatalf("LoadImageFileRef: %v", err)
 	}
-	if ref != "" {
-		t.Fatalf("loaded ref = %q, want none", ref)
+	if ref != id {
+		t.Fatalf("loaded ref = %q, want %q", ref, id)
 	}
 }
 
