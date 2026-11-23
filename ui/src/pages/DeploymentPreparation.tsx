@@ -11,7 +11,7 @@ import { api, type Deployment, type ModelNodePresence } from "../api";
 import DeploymentImageProgress from "./DeploymentImageProgress";
 import { formatBytes } from "../format";
 import { isModelFileReady } from "../storageTypes";
-import { rateLabel, transferOrigin } from "./models/modelPresenceDisplay";
+import { rateLabel, remainingText, transferEtaSeconds, transferOrigin } from "./models/modelPresenceDisplay";
 import { HelpTip } from "../ui-kit/HelpTip";
 
 // All classification, timing and what may be retried comes from the server's
@@ -102,6 +102,7 @@ export function DeploymentPreparation({ dep, rows, onChanged }: { dep?: Deployme
       const transmitted = item.transferred_bytes || item.downloaded || 0;
       const sharedDownload = downloading && ["nfs", "nfs_cache", "shared_dir"].includes(item.storage_type ?? "");
       const origin = transferOrigin(item);
+      const eta = transferEtaSeconds(item);
       // A failure is the operator's to act on; its message is the agent's own
       // words about why, so it is never hidden behind a source line.
       const failed = view?.reason === "MODEL_PREPARATION_FAILED";
@@ -121,7 +122,7 @@ export function DeploymentPreparation({ dep, rows, onChanged }: { dep?: Deployme
           {origin ? `${"node" in origin ? t("detail.modelFromNode", { node: origin.node }) : t("detail.modelFromHost", { host: origin.host })} · ` : ""}
           {measurable ? `${formatBytes(item.downloaded)} / ${formatBytes(item.size_bytes)}` : `${formatBytes(item.downloaded)} · ${t("preparation.unknownTotal")}`}
           {item.rate_bps > 0 ? ` · ${rateLabel(item.rate_bps)}` : ""}
-          {view?.eta_seconds ? ` · ${t("preparation.eta", { seconds: view.eta_seconds })}` : ""}
+          {measurable && eta > 0 ? ` · ${remainingText(t, eta)}` : ""}
         </Typography.Text></div>}
         {!ready && view?.retryable && <Space wrap>
           <Button aria-label={t("preparation.retry")} size="small" loading={busy === `${item.node_uuid}:${item.model_id}:${item.storage_id}`} disabled={busy !== null} onClick={() => void retry(item)}>{t("preparation.retry")}</Button>

@@ -816,7 +816,6 @@
     "storage": "查看存储",
     "progress": "模型复制进度",
     "unknownTotal": "总大小尚未确认",
-    "eta": "预计剩余 {{seconds}} 秒",
     "idle": "已 {{seconds}} 秒无进展",
     "waitForIO": "恢复存储连接后可安全续传",
     "waitForIOHelp": "当前 I/O 返回前不能启动另一个写入任务。",
