@@ -168,7 +168,9 @@ test("internal test tab shows the latest result as a pair matrix", async () => {
   assert.ok(pass);
   // The reason is in the problem summary, not only behind a hover.
   const why = "Connection failed: dial tcp 10.20.1.15:41000: i/o timeout";
-  assert.equal(fail.title, why);
+  await user.hover(fail);
+  await waitFor(() => assert.equal(screen.getByRole("tooltip").textContent, why));
+  await user.unhover(fail);
   await user.click(screen.getByRole("tab", { name: /Issue summary.*1/ }));
   assert.ok(screen.getByRole("cell", { name: why }));
   await user.click(screen.getByRole("tab", { name: n.test.globalMatrix }));
@@ -225,8 +227,9 @@ test("the test matrix sorts nodes by name and flags pairs far below the fastest 
   const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
   assert.deepEqual(headers.slice(1), ["alpha", "zeta"], "columns are sorted by node name");
   const slow = screen.getByLabelText("alpha → zeta: 0.9 Gb/s");
+  await user.keyboard("{Tab}");
   slow.focus();
-  assert.equal(slow.title, n.test.slow);
+  await waitFor(() => assert.equal(screen.getByRole("tooltip").textContent, n.test.slow));
 });
 
 test("an RDMA bandwidth test names nodes without ib_write_bw and shows per-rail results", async () => {

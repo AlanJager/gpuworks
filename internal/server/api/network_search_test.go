@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"gorm.io/gorm"
@@ -111,6 +112,11 @@ func TestNetworkNodeSearchCombinesRoleSourceAndQuery(t *testing.T) {
 }
 
 func TestNetworkSearchScopeAtFleetScale(t *testing.T) {
+	// Keep the five-second cache window independent of runner speed.
+	synctest.Test(t, testNetworkSearchScopeAtFleetScale)
+}
+
+func testNetworkSearchScopeAtFleetScale(t *testing.T) {
 	n := newNetworkAPI(t)
 	nodes := make([]store.Node, 1000)
 	for i := range nodes {
@@ -189,6 +195,11 @@ func TestNetworkSearchScopeAtFleetScale(t *testing.T) {
 // A database write on another member has no local bus event. An explicit
 // search rebuild after expiry must bypass the underlying fleet snapshot.
 func TestNetworkSearchUnannouncedWrites(t *testing.T) {
+	// Keep the five-second cache window independent of runner speed.
+	synctest.Test(t, testNetworkSearchUnannouncedWrites)
+}
+
+func testNetworkSearchUnannouncedWrites(t *testing.T) {
 	n := newNetworkAPI(t)
 	node := store.Node{UUID: "u1", Name: "old", NetworkInventory: `{"management":{"interface":"eth0","ip":"192.0.2.1"}}`}
 	if err := n.store.DB().Create(&node).Error; err != nil {
@@ -214,9 +225,9 @@ func TestNetworkSearchUnannouncedWrites(t *testing.T) {
 	}
 	assertName("old")
 	rename("expired")
-	entry := a.networkSearch.entries[0]
-	entry.started = time.Now().Add(-networkSearchMaxAge)
-	a.networkSearch.entries[0] = entry
+	time.Sleep(networkSearchMaxAge - time.Nanosecond)
+	assertName("old")
+	time.Sleep(time.Nanosecond)
 	assertName("expired")
 }
 

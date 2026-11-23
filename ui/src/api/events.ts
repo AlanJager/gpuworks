@@ -12,7 +12,8 @@ let eventSessionCheck: Promise<void> | null = null;
 
 function acquireEventSource(): ReturnType<typeof openChangeStream> {
   if (!sharedEventSource) {
-    sharedEventSource = openChangeStream(() => {
+    sharedEventSource = openChangeStream(response => {
+      if (response) { void apiResponseError(response, ""); return; }
       // EventSource hides HTTP statuses, so distinguish authentication expiry
       // from an ordinary connection failure through a management request.
       if (eventSessionCheck) return;

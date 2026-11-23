@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Input } from "../../components/ui/input";
+import { Tooltip } from "../../components/ui/tooltip";
 import { Checkbox } from "../../components/ui/checkbox";
 import type { NetworkTestPair, NetworkTestRun, NetworkTestStatus } from "../../networkTypes";
 
@@ -39,12 +40,13 @@ export function PairCell({ t, pair, run, onOpen, failure }: PairCellProps) {
     : "";
   const hint = failure || (pair.slow ? t("test.slow") : partial ? t("test.partialHint") : "");
   const label = [value, railText].filter(Boolean).join(" · ");
-  return <button type="button" onClick={() => onOpen(pair)} title={hint || undefined} aria-description={hint || undefined}
+  const button = <button type="button" onClick={() => onOpen(pair)}
     aria-label={`${pair.source_name} → ${pair.target_name}: ${label}`}
     className={`block h-full min-h-8 w-full cursor-pointer rounded-sm px-1 py-0.5 text-center text-label tabular-nums hover:brightness-90 hover:underline focus-visible:outline-2 focus-visible:outline-current focus-visible:brightness-90 ${tone[pair.status]}`}>
     {value}{pair.slow && <span aria-label={t("test.slow")}> ↓</span>}
     {railText && <span className="block">{railText}</span>}
   </button>;
+  return hint ? <Tooltip content={hint}>{button}</Tooltip> : button;
 }
 
 type Props = {

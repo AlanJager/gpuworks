@@ -18,6 +18,7 @@ class EventSourceFixture extends dom.window.EventTarget {
   static OPEN = 1;
   static CLOSED = 2;
   readyState = 0;
+  onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
   closeCount = 0;
   constructor(readonly url: string) {
@@ -209,7 +210,8 @@ test("a new login switches active worker subscriptions without an intervening ex
   const { openChangeStream } = await import("../src/events/changeStream.ts");
   class WorkerFixture {
     static all: WorkerFixture[] = [];
-    onerror: (() => void) | null = null;
+    onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
     sent: { topics?: string[]; close?: boolean }[] = [];
     closed = false;
     port = {
@@ -250,9 +252,13 @@ test("a new login switches active worker subscriptions without an intervening ex
     assert.deepEqual(current.sent.at(-1), { topics: ["node", "deployment"] });
     first.port.onmessage?.({ data: { topic: "node", data: "stale" } });
     current.port.onmessage?.({ data: { topic: "deployment", data: "after" } });
-    current.port.onmessage?.({ data: { error: true } });
+    current.port.onmessage?.({ data: { error: true, status: 401, code: "AUTHENTICATION_REQUIRED" } });
     assert.equal(errors, 1);
-    current.onerror?.();
+    window.dispatchEvent(new dom.window.Event("pagehide"));
+    window.dispatchEvent(new dom.window.PageTransitionEvent("pageshow", { persisted: true }));
+    const restored = WorkerFixture.all.at(-1)!;
+    assert.deepEqual(restored.sent.at(-1), { topics: ["node", "deployment"], resume: true });
+    restored.onerror?.();
     assert.equal(intervals.size, 0);
     EventSourceFixture.sources.at(-1)!.emit("node", { key: "native" });
     assert.deepEqual(seen, ["before", "after", '{"key":"native"}']);
@@ -312,18 +318,42 @@ test("two console tabs share one server connection and receive only their subscr
     detail.close();
     assert.equal(source.closeCount, 1);
 
+    let checks = 0;
+    globalThis.fetch = async () => { checks++; return Response.json({ code: "AUTHENTICATION_REQUIRED" }, { status: 401 }); };
+    t.mock.method(Math, "random", () => 0.5);
     const live = connectTab();
     live.subscribe("network");
     const lost = EventSourceFixture.sources.at(-1)!;
     const before = EventSourceFixture.sources.length;
+    const peer = connectTab();
+    peer.subscribe("instance");
     lost.fail(); // The browser retries while CONNECTING.
     t.mock.timers.tick(10_000);
     assert.equal(EventSourceFixture.sources.length, before);
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(checks, 1);
+    assert.deepEqual(peer.messages.at(-1), { error: true, status: 401, code: "AUTHENTICATION_REQUIRED" });
+    peer.close();
     lost.readyState = EventSourceFixture.CLOSED;
     lost.fail(); lost.fail();
     t.mock.timers.tick(10_000);
     assert.equal(EventSourceFixture.sources.length, before + 1, "replace a terminal stream once");
+    for (const delay of [5_400, 10_800, 21_600, 27_000, 27_000]) {
+      const failing = EventSourceFixture.sources.at(-1)!;
+      live.subscribe("network");
+      failing.readyState = EventSourceFixture.CLOSED;
+      failing.fail();
+      t.mock.timers.tick(delay - 1);
+      assert.equal(EventSourceFixture.sources.at(-1), failing);
+      t.mock.timers.tick(1);
+      assert.notEqual(EventSourceFixture.sources.at(-1), failing);
+    }
     const recovered = EventSourceFixture.sources.at(-1)!;
+    recovered.readyState = EventSourceFixture.OPEN;
+    recovered.onopen?.();
+    assert.deepEqual(live.messages.at(-1), { topic: "network", data: '{"reason":"resync"}' });
     recovered.emit("network", { id: 7 });
     assert.deepEqual(live.messages.at(-1), { topic: "network", data: '{"id":7}' });
     const abandoned = connectTab();
@@ -334,9 +364,19 @@ test("two console tabs share one server connection and receive only their subscr
     }
     recovered.emit("deployment", { id: 8 });
     assert.deepEqual(abandoned.messages, [], "discard a tab that never sent close");
-    assert.equal(recovered.closeCount, 0);
+    abandoned.subscribe("deployment", "instance");
+    const refreshed = ["deployment", "instance"].map(topic => ({ topic, data: '{"reason":"resync"}' }));
+    assert.deepEqual(abandoned.messages, refreshed, "resuming a lease refreshes every subscribed topic");
+    abandoned.subscribe("deployment", "instance");
+    assert.deepEqual(abandoned.messages, refreshed, "ordinary heartbeat does not refetch");
+    abandoned.close();
+    recovered.readyState = EventSourceFixture.CLOSED;
+    recovered.fail();
+    t.mock.timers.tick(2_700);
+    assert.notEqual(EventSourceFixture.sources.at(-1), recovered, "successful open resets backoff");
+    const last = EventSourceFixture.sources.at(-1)!;
     t.mock.timers.tick(360_000);
-    assert.equal(recovered.closeCount, 1, "close the stream when the last page stops renewing");
+    assert.equal(last.closeCount, 1, "close the stream when the last page stops renewing");
     live.subscribe("network"); // A suspended page can resume on its original port.
     const resumed = EventSourceFixture.sources.at(-1)!;
     resumed.emit("network", { id: 9 });
