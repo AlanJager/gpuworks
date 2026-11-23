@@ -156,6 +156,7 @@
 - `proto`（控制面协议）、
 - `engines`（引擎名唯一产地，纯叶子无依赖：`VLLM`/`SGLang`/`Callable`，`Callable` 承载目录自带的 Serve Adapter、无日志方言与参数字典，需要方言/字典时用 `DialectNames()` 而非 `Names()`；`deploy` 再导出为 `EngineVLLM`/`EngineSGLang`/`DefaultEngine`，因为 `modelmeta` 经 `inferenceapi` 被 `deploy` 依赖、agent 又不能依赖 server，两侧只能共用这个叶子包）、
 - `logging`（server+agent 共用的按大小轮转文件日志，`--log-file`/`--log-max-size`/`--log-keep`）、
+- `stallwatch`（server+agent 共用的卡顿记录：日志写入或存储操作等待过久时取下全部 goroutine 堆栈写成报告，无本仓库依赖）、
 - `logthrottle`（server+agent 共用的相同日志限频：同一类记录每 30 秒限量写入，其余计数后补一条汇总）、
 - `logtext`（server+agent 共用的容器输出切行：按终端语义只保留一行中最后一个 `\r` 之后的内容，进度条重绘只剩最终一帧；超长行截断而不让日志流因 `ErrTooLong` 中断）、
 - `debuglog`（限时限量的调试会话：会话期间把 debug 及以上的记录另写一个文件，进程本身的日志级别不变）、

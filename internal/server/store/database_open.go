@@ -65,6 +65,7 @@ func OpenWith(dsn string, b *bus.Bus, o OpenOptions) (result *Store, err error) 
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	watchDatabase(gdb)
 	// SQLite: one writer. Keep a small pool and enable WAL for concurrent reads.
 	sqlDB, err := gdb.DB()
 	if err != nil {
@@ -102,6 +103,7 @@ func OpenWith(dsn string, b *bus.Bus, o OpenOptions) (result *Store, err error) 
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite (read pool): %w", sqliteutil.WrapOpenError(readOnlyDSN(dsn), err))
 		}
+		watchDatabase(readGDB)
 		readSQLDB, err := readGDB.DB()
 		if err != nil {
 			return nil, err

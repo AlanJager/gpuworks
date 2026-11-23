@@ -102,6 +102,10 @@ type Log struct {
 	MaxSize string `yaml:"max_size,omitempty"`
 	Keep    int    `yaml:"keep,omitempty"`
 	Level   string `yaml:"level,omitempty"`
+	// StallReportAfter is how long a log write or a store operation may wait
+	// before the server records a stall report ("3s"); "0" turns the
+	// reports off. Empty takes the default.
+	StallReportAfter string `yaml:"stall_report_after,omitempty"`
 }
 
 // Path returns server.yaml inside an install directory.

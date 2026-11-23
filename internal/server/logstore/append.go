@@ -3,6 +3,8 @@ package logstore
 import (
 	"fmt"
 	"sort"
+
+	"gpuworks.ai/gpuworks/internal/stallwatch"
 )
 
 // Append routes entries into the partition of their timestamp's UTC day and
@@ -13,6 +15,7 @@ func (s *sqliteStore) Append(entries []Entry) error {
 	if len(entries) == 0 {
 		return nil
 	}
+	defer stallwatch.Begin("log store write")()
 	byDay := map[string][]Entry{}
 	days := make([]string, 0, 1)
 	for _, e := range entries {
