@@ -286,11 +286,12 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 | `-e`、`--env`、`--env-file` | `DOCKER_ARG_USE_ENV_FIELD` | 环境变量行 |
 | `-v`、`--volume`、`--mount` | `DOCKER_ARG_USE_MOUNT_FIELD` | 挂载行 |
 | `--entrypoint` | `DOCKER_ARG_USE_ENTRYPOINT_FIELD` | entrypoint 覆盖 |
-| `--privileged`、`--pid`、`-v /` 挂载主机根目录 | 安全拒绝（`FIELD_INVALID`） | 不支持 |
 | `--ipc=host` 且同一层自己的 `shm_bytes` 非零 | `SHM_SIZE_WITH_HOST_IPC` | 清空该层 `shm_bytes`，或去掉 `--ipc=host` |
 
-评估接口把这些错误挂在部署表单的 docker 参数或共享内存控件旁；创建接口返回 400。udocker 运行时只解析其中的 `--device`。
+评估接口一次给出全部不合规的项，挂在部署表单的 docker 参数或共享内存控件旁；创建接口返回 400。udocker 运行时只解析其中的 `--device`。
 模板档位的 `docker_args` 不合规会在导入时被拒绝，不会留到部署阶段才发现。
+
+`--privileged` 与 `--pid`（如 `--pid=host`）把主机交给容器：前者拿到全部设备，后者能看到并结束主机或其他容器的进程。它们不被拒绝，评估结果对模板层与部署自己写的每一处分别给出警告 `DOCKER_ARG_PRIVILEGED`、`DOCKER_ARG_SHARED_PID`。
 
 ## 启动等待上限
 

@@ -280,11 +280,12 @@ The platform's own docker arguments (RDMA) are exempt from these restrictions; t
 | `-e`, `--env`, `--env-file` | `DOCKER_ARG_USE_ENV_FIELD` | Environment variable rows |
 | `-v`, `--volume`, `--mount` | `DOCKER_ARG_USE_MOUNT_FIELD` | Mount rows |
 | `--entrypoint` | `DOCKER_ARG_USE_ENTRYPOINT_FIELD` | Entrypoint override |
-| `--privileged`, `--pid`, `-v /` mounting the host root directory | Rejected for security (`FIELD_INVALID`) | Unsupported |
 | `--ipc=host` together with this same layer's own non-zero `shm_bytes` | `SHM_SIZE_WITH_HOST_IPC` | Clear that layer's `shm_bytes`, or remove `--ipc=host` |
 
-The evaluation API attaches these errors to the docker arguments or shared memory control in the deployment form; the creation API returns 400. The udocker runtime only parses `--device` among these arguments.
+The evaluation API reports every refused argument at once, beside the docker arguments or shared memory control in the deployment form; the creation API returns 400. The udocker runtime only parses `--device` among these arguments.
 A template spec's `docker_args` that fails this validation is rejected on import, so it is never discovered only at deployment time.
+
+`--privileged` and `--pid` (such as `--pid=host`) hand the container the host: the first gets every device, the second can see and end the processes of the host or of other containers. They are not refused; the evaluation warns `DOCKER_ARG_PRIVILEGED` or `DOCKER_ARG_SHARED_PID` for each one, in the template layer and in the deployment's own arguments.
 
 ## Startup Wait Limit
 
@@ -403,7 +404,7 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 <!-- translation-source-sha256: 7cc2b6f33347b0d9b66ba63c9c4a0fb6af8b5a417fdc665815d0d36051f8a48f ### `/dev/shm` Size -->
 <!-- translation-source-sha256: 48a7b71d1828df37d9707175d380a78ceddfc7234253976351bd0422b9d84871 ### Locked Memory (memlock) -->
 <!-- translation-source-sha256: 3b65db7c208f4f8d4a7be3cfddcddb58fef55416c35eedf80c20670ccdec8f3c ### The three-layer order of docker run arguments -->
-<!-- translation-source-sha256: 799082e339ecc310746057cf4a7160f67f9001369facb4f5533c9ef02be2f413 ### Disallowed Docker Arguments -->
+<!-- translation-source-sha256: bb76c53128ef748f329a936fc30e01364f210b6131b22706f35e54547cf938a5 ### Disallowed Docker Arguments -->
 <!-- translation-source-sha256: 99b335171c079ef2ccccf80c3e3dd11b85713797d865528d365392695d2b9565 ## Startup Wait Limit -->
 <!-- translation-source-sha256: d3a20fa47676a3d0fcf5336ad13fd98385bf4db45f58abbc09495f8793deed29 ## Environment Variable Layers -->
 <!-- translation-source-sha256: 5db8a885d66eb6f5288f23c22744d0c85031fbd017e3af540a33d47061712e2d ## Variable Expansion -->

@@ -321,6 +321,56 @@ test("a duplicate mount target is attributed to the mounts list, and the replica
   );
 });
 
+test("every refused docker arg shows beside the docker args field, not only the last one", async () => {
+  // A docker run command pasted into the docker args field: the server
+  // answers one field error per refused arg, all on container_docker_args.
+  stub("evaluate", async () => ({
+    ...baseAnswer,
+    ok: false,
+    errors: [
+      {
+        field: "container_docker_args",
+        code: "DOCKER_ARG_USE_SHM_FIELD",
+        params: { arg: "--shm-size 256g", option: "--shm-size" },
+      },
+      {
+        field: "container_docker_args",
+        code: "DOCKER_ARG_PLATFORM_MANAGED",
+        params: { arg: "--network=host", option: "--network" },
+      },
+    ],
+  }));
+
+  await openDeployPage();
+
+  const shmText = errorText("DOCKER_ARG_USE_SHM_FIELD", {
+    arg: "--shm-size 256g",
+    option: "--shm-size",
+  });
+  const networkText = errorText("DOCKER_ARG_PLATFORM_MANAGED", {
+    arg: "--network=host",
+    option: "--network",
+  });
+  await waitFor(() => assert.ok(screen.getByText(shmText)));
+  const dockerField = screen
+    .getByText(deployLocale.containerOverrides.dockerArgs)
+    .closest(".ant-form-item");
+  assert.ok(
+    dockerField?.textContent?.includes(shmText),
+    "the --shm-size error sits beside the docker args field",
+  );
+  assert.ok(
+    dockerField?.textContent?.includes(networkText),
+    "the --network error sits beside it too, not overwritten by the next one",
+  );
+  // The evaluation summary says the draft did not pass instead of staying
+  // blank while every error sits on a field.
+  const summary = screen
+    .getByText(i18n.t("deploy:summary.fieldErrors", { count: 2 }))
+    .closest('[role="alert"]');
+  assert.ok(summary, "the summary names how many settings need changing");
+});
+
 test("an error attributed to a field the deploy page never controls (engine) falls back to the page-level line", async () => {
   // engine has no Form.Item anywhere on the deploy page: useDeployEvaluation
   // must not drop this error just because the field name is non-empty. A

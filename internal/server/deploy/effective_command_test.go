@@ -63,7 +63,7 @@ func TestResolveEffectiveCommandRefusesInvalidOverrides(t *testing.T) {
 	for _, overrides := range []ContainerOverrides{
 		{CommandMode: "shell"},
 		{EntrypointDisplay: `["unterminated`},
-		{DockerArgs: []string{"--privileged"}},
+		{DockerArgs: []string{"--network=host"}},
 	} {
 		if _, err := ResolveEffectiveCommand(overrides, nil); err == nil {
 			t.Fatalf("%+v accepted", overrides)
