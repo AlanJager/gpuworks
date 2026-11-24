@@ -17,10 +17,11 @@ from reduced_motion import BUILD, UI
 FIXTURE = r"""
 const React = require('react');
 const {createRoot} = require('react-dom/client');
-const {MemoryRouter} = require('react-router-dom');
+const {MemoryRouter, Route, Routes} = require('react-router-dom');
 const {I18nextProvider} = require('react-i18next');
 const {api} = require('./src/api');
 const Page = require('./src/pages/InferenceTemplatesPage').default;
+const DetailPage = require('./src/pages/InferenceTemplateDetailPage').default;
 const {SideDrawer} = require('./src/ui-kit/SideDrawer');
 const MonitorPage = require('./src/pages/monitor/MonitorPage').default;
 const {ConfigProvider} = require('antd');
@@ -32,7 +33,8 @@ const i18n = require('i18next').createInstance();
 const h = React.createElement;
 const vendors = ['nvidia', 'ascend', 'amd', 'hygon', 'ppu', 'kunlunxin'];
 const chips = vendors.flatMap(vendor => Array.from({length:8}, (_,i) => ({vendor, name:`MOCK-${vendor}-${i}`})));
-const models = ['black-forest-labs', 'thinkingmachines', 'deepseek-ai', 'baseten', 'fishaudio', 'tinyllama'].flatMap(org => Array.from({length:12}, (_,i) => ({
+// Include organizations with no shipped artwork to exercise initials on both themes.
+const models = ['black-forest-labs', 'thinkingmachines', 'deepseek-ai', 'fixture-org-a', 'fixture-org-b', 'fixture-org-c'].flatMap(org => Array.from({length:12}, (_,i) => ({
  id:`${org}-${i}`, model_id:`${org}/MOCK-long-model-name-${i}`, source:'upstream',
  specs:vendors.map((vendor,j)=>({id:j,name:`MOCK-spec-${j}`,engine:'vllm',quantization:'fp8',
  gpus:{vendor,name:`MOCK-${vendor}-0`},weight_sources:[{provider:'huggingface',repo_id:`${org}/MOCK-weights-${i}`}],
@@ -41,14 +43,26 @@ const models = ['black-forest-labs', 'thinkingmachines', 'deepseek-ai', 'baseten
 api.inferenceTemplates = async () => ({items:models,total:models.length,page:1,page_size:200});
 api.detectedInferenceTemplateChips = async () => ({items:chips});
 api.inferenceTemplateChips = async () => ({items:chips});
+api.inferenceTemplate = async id => {
+  const model = models.find(item => item.model_id === id);
+  const kunlun = model.specs.find(spec => spec.gpus.vendor === 'kunlunxin');
+  return {...model, specs:[...model.specs, {...kunlun, id:vendors.length, name:'MOCK-second-profile'}]};
+};
 const drawer = new URLSearchParams(location.search).has('drawer');
 const monitor = new URLSearchParams(location.search).has('monitor');
 const locale = new URLSearchParams(location.search).get('locale') || 'en';
+const catalogPath = '/inference-templates';
+function fixturePage() {
+  if (drawer) return h(SideDrawer,{open:true,onClose(){},title:'Geometry drawer'},'Drawer body');
+  if (monitor) return h(ConfigProvider,{theme:themeConfig},h(MonitorPage));
+  return h(Routes,null,
+    h(Route,{path:catalogPath, element:h(Page)}),
+    h(Route,{path:catalogPath+'/*', element:h(ConfigProvider,{theme:themeConfig},h(DetailPage))}));
+}
 i18n.init({lng:locale,defaultNS:'inferenceTemplates',interpolation:{escapeValue:false},resources:{en:{
  monitoring:require('./src/i18n/locales/en/monitoring.json'),inferenceTemplates:require('./src/i18n/locales/en/inferenceTemplates.json'),common:require('./src/i18n/locales/en/common.json')
 },zh:{monitoring:require('./src/i18n/locales/zh/monitoring.json'),inferenceTemplates:require('./src/i18n/locales/zh/inferenceTemplates.json'),common:require('./src/i18n/locales/zh/common.json')}}}).then(()=>createRoot(document.getElementById('root')).render(h(I18nextProvider,{i18n},
- h(MemoryRouter,{initialEntries:[monitor ? '/monitor' : '/inference-templates']},h('div',{style:{marginLeft:208,padding:24,minWidth:0}},
- drawer ? h(SideDrawer,{open:true,onClose(){},title:'Geometry drawer'},'Drawer body') : monitor ? h(ConfigProvider,{theme:themeConfig},h(MonitorPage)) : h(Page))))));
+ h(MemoryRouter,{initialEntries:[monitor ? '/monitor' : catalogPath]},h('div',{style:{marginLeft:208,padding:24,minWidth:0}},fixturePage())))));
 """
 
 
@@ -64,7 +78,11 @@ class TemplateCatalogLayout(unittest.TestCase):
             raise RuntimeError("Run npm run build in ui first")
         cls.css = "\n".join(path.read_text() for path in css_files)
         cls.playwright = sync_playwright().start()
-        cls.browser = cls.playwright.chromium.launch(headless=True)
+        chrome = os.environ.get("CHROME_PATH")
+        cls.browser = cls.playwright.chromium.launch(
+            headless=True, executable_path=chrome,
+            channel=None if chrome else os.environ.get("UI_BROWSER_CHANNEL"),
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -87,8 +105,12 @@ class TemplateCatalogLayout(unittest.TestCase):
 
         page.route("**/*", route)
         page.goto("http://template-layout.test/?locale=" + locale + ("&drawer" if drawer else "&monitor" if monitor else ""))
-        if dark:
-            page.evaluate("document.documentElement.classList.add('dark')")
+        page.evaluate('''theme => {
+            const root = document.documentElement;
+            root.dataset.theme = theme;
+            root.classList.toggle('dark', theme === 'dark');
+            root.style.colorScheme = theme;
+        }''', "dark" if dark else "light")
         page.add_style_tag(content=self.css)
         page.add_script_tag(content=self.bundle)
         return page
@@ -99,6 +121,25 @@ class TemplateCatalogLayout(unittest.TestCase):
             target = Path(output)
             target.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(target / name), full_page=True)
+
+    def assert_kunlun_mark(self, mark, dark):
+        transparent = 'rgba(0, 0, 0, 0)'
+        image = mark.locator('img')
+        expect(image).to_be_visible()
+        expect(mark).to_have_css('background-color', transparent)
+        expect(image).to_have_css('background-color', transparent)
+        expect(image).to_have_css('filter', 'none' if dark else 'invert(1) hue-rotate(180deg) brightness(0.8)')
+
+    def test_vendor_marks_follow_the_theme(self):
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                page = self.render_page(1280, dark=dark)
+                groups = page.locator('.template-hardware-group')
+                kunlun = groups.locator('.vendor-logo-kunlunxin .vendor-mark')
+                nvidia = groups.locator('.vendor-logo-nvidia .vendor-mark')
+                self.assert_kunlun_mark(kunlun, dark)
+                expect(nvidia).to_have_css('background-color', 'rgb(255, 255, 255)' if dark else 'rgba(0, 0, 0, 0)')
+                expect(nvidia.locator('img')).to_have_css('filter', 'none')
 
     def test_dense_catalog_owns_scroll_and_keeps_names_and_logos(self):
         for width in (1280, 1920):
@@ -117,13 +158,19 @@ class TemplateCatalogLayout(unittest.TestCase):
                     self.assertGreater(first_brand['x'], chip_label['x'] + chip_label['width'])
                     expect(page.get_by_text('Model type', exact=True)).to_be_visible()
                     heading = page.locator('.template-filter-heading')
-                    surface = page.locator('.template-filter-panel [role="region"] .bg-surface-floating')
+                    surface = page.locator('.template-filter-panel [role="region"] > .bg-surface-floating')
                     self.assertNotEqual(heading.evaluate('el=>getComputedStyle(el).backgroundColor'), surface.evaluate('el=>getComputedStyle(el).backgroundColor'))
                     expect(page.get_by_text('Chip models', exact=True)).to_be_visible()
                     expect(page.get_by_text('Detected in this environment', exact=True)).to_have_count(0)
                     heights = page.locator('[data-slot="table-head"]').evaluate_all('els=>els.map(el=>el.getBoundingClientRect().height)')
-                    shortest_row = min(page.locator('[data-slot="table-body"] tr').evaluate_all('els=>els.map(el=>el.getBoundingClientRect().height)'))
-                    self.assertTrue(all(abs(height-shortest_row) <= 1 for height in heights), (heights, shortest_row))
+                    # Each catalog name includes a second line of metadata. The
+                    # header follows the density of a single line of body text.
+                    cell = page.locator('[data-slot="table-body"] td').first
+                    single_line = cell.evaluate('''el => {
+                        const s = getComputedStyle(el);
+                        return parseFloat(s.lineHeight) + parseFloat(s.paddingTop) + parseFloat(s.paddingBottom);
+                    }''')
+                    self.assertTrue(heights and all(abs(height - single_line) <= 1 for height in heights), (heights, single_line))
                     self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
                     container = page.locator('[data-slot="table-container"]')
                     if width == 1280:
@@ -249,6 +296,34 @@ class TemplateCatalogLayout(unittest.TestCase):
             expect(official).to_be_visible()
             page.wait_for_function("() => document.querySelector('img.template-organization-logo[src=\"/model-org-icons/deepseek-ai.webp\"]')?.naturalWidth === 96")
             self.capture(page, f'organization-colors-{dark}.png')
+
+    def test_detail_profile_list_uses_theme_surface_and_dividers(self):
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                page = self.render_page(1280, dark=dark)
+                page.locator('[data-slot="table-body"] a[href^="/inference-templates/"]').first.click()
+                group = page.locator('.template-spec-vendor-group').filter(has=page.locator('.vendor-logo-kunlunxin'))
+                header = group.locator('header')
+                profiles = group.locator('.template-spec-list')
+                rows = profiles.locator('article')
+                expect(rows).to_have_count(2)
+                # Resolve semantic colours in the page so palette changes do
+                # not require updating hard-coded RGB values in this test.
+                raised, surface, border = group.evaluate("""el => {
+                    const probe = document.createElement('span');
+                    probe.style.cssText = 'color:var(--surface-raised);background:var(--surface-floating);border-color:var(--border-subtle)';
+                    el.append(probe);
+                    const style = getComputedStyle(probe);
+                    const colors = [style.color, style.backgroundColor, style.borderLeftColor];
+                    probe.remove();
+                    return colors;
+                }""")
+                expect(header).to_have_css('background-color', raised)
+                self.assert_kunlun_mark(header.locator('.vendor-mark'), dark)
+                expect(profiles).to_have_css('background-color', surface)
+                expect(profiles).to_have_css('border-left-color', border)
+                expect(rows.first).to_have_css('border-bottom-color', border)
+                expect(rows.last).to_have_css('border-bottom-style', 'none')
 
     def test_drawer_has_square_corners(self):
         page = self.render_page(1280, drawer=True)
