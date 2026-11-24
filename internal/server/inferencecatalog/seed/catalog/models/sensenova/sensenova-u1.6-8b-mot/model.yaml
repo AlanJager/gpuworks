@@ -7,8 +7,8 @@ release_date: '2026-11-24'
 model_config: {kv_cache: false}
 specs:
 - name: fp8-vllm-nvidia-ampere-1x
-  display_name_zh_cn: Ampere 及以上 · 在线 FP8 · 单卡
-  display_name_en: Ampere+ · online FP8 · 1 GPU
+  display_name_zh_cn: Ampere 及以上 · FP8 · 单卡
+  display_name_en: Ampere+ · FP8 · 1 GPU
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.34.0-r1
