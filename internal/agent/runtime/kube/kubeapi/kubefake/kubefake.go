@@ -39,6 +39,10 @@ type Server struct {
 	Logs map[string]string
 	// Kubelet decides what a created pod becomes; nil makes it Running.
 	Kubelet func(*kubeapi.Pod)
+	// Admission is a validating admission webhook: a non-empty denied refuses
+	// the pod's creation with 403, worded as the API server words a webhook's
+	// refusal; nil admits every pod.
+	Admission func(*kubeapi.Pod) (webhook, denied string)
 	// FailNext makes the next request whose "METHOD path" has this prefix
 	// fail with the given status code, once.
 	FailNext map[string]int
@@ -424,6 +428,15 @@ func (s *Server) servePods(w http.ResponseWriter, r *http.Request, ns string, re
 		if len(p.Spec.Containers) == 0 || p.Spec.Containers[0].Image == "" {
 			s.status(w, 422, "Invalid", fmt.Sprintf("Pod %q is invalid: spec.containers: Required value", p.Metadata.Name))
 			return
+		}
+		s.mu.Lock()
+		admission := s.Admission
+		s.mu.Unlock()
+		if admission != nil {
+			if webhook, denied := admission(&p); denied != "" {
+				s.status(w, 403, "Forbidden", fmt.Sprintf("admission webhook %q denied the request: %s", webhook, denied))
+				return
+			}
 		}
 		key := ns + "/" + p.Metadata.Name
 		s.mu.Lock()
