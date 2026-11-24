@@ -202,7 +202,7 @@ func TestLeaderChangeSummary(t *testing.T) {
 			want: []map[string]any{
 				{"old_leader": "none", "new_leader": "1", "term": "5", "this_member": "3", "leads": false,
 					"reason": "first leader this member has seen since its database process started", "without_leader_ms": int64(1)},
-				{"old_leader": "1", "new_leader": "1", "term": "7", "this_member": "3", "leads": false,
+				{"kept": true, "leader": "1", "term": "7", "this_member": "3", "leads": false,
 					"reason": "another member raised the term from=1 new_term=7", "without_leader_ms": int64(10)},
 				{"old_leader": "1", "new_leader": "2", "term": "9", "this_member": "3", "leads": false,
 					"reason": "not seen by this member; read the other members' role events around this time"},
@@ -215,7 +215,24 @@ func TestLeaderChangeSummary(t *testing.T) {
 			for _, record := range tc.records {
 				tracker.record(record)
 			}
-			got := sink.named("cluster database leader changed")
+			// A leader kept after a campaign is filed under its own
+			// message, so that a search for leader changes finds only
+			// changes.
+			var got []capturedRecord
+			sink.mu.Lock()
+			for _, r := range sink.records {
+				switch r.msg {
+				case "cluster database leader changed":
+					if r.attrs["old_leader"] == r.attrs["new_leader"] {
+						t.Fatalf("a leader change names the same leader twice: %v", r.attrs)
+					}
+					got = append(got, r)
+				case "cluster database leader kept after a campaign":
+					r.attrs["kept"] = true
+					got = append(got, r)
+				}
+			}
+			sink.mu.Unlock()
 			if len(got) != len(tc.want) {
 				t.Fatalf("%d summaries, want %d: %v", len(got), len(tc.want), got)
 			}
@@ -273,5 +290,67 @@ func TestRoleLineWriterDoesNotHoldAnEndlessLine(t *testing.T) {
 	_, _ = w.Write([]byte(long))
 	if rest.Len() != len(long) || len(w.partial) != 0 {
 		t.Fatalf("passed on %d of %d bytes, kept %d", rest.Len(), len(long), len(w.partial))
+	}
+}
+
+// A member that campaigns in vain and returns to its leader, as one whose loop
+// was late does, leaves no "leader changed" line.
+func TestAVainCampaignIsNotALeaderChange(t *testing.T) {
+	tracker, sink := trackerFor(t)
+	for _, record := range []string{
+		at(0) + " event=state old=UNAVAILABLE new=FOLLOWER term=4 id=2 address=b:9001",
+		at(600) + " event=following leader=3 leader_address=c:9001 term=4",
+		at(3000) + " event=loop_late late_ms=2152 period_ms=75",
+		at(3000) + " event=election_start reason=election_timeout term=4 leader=3 since_leader_contact_ms=2221 timeout_ms=1143",
+		at(3000) + " event=state old=FOLLOWER new=CANDIDATE term=4 id=2 address=b:9001",
+		at(3006) + " event=state old=CANDIDATE new=FOLLOWER term=4 id=2 address=b:9001",
+		at(3007) + " event=following leader=3 leader_address=c:9001 term=4",
+	} {
+		tracker.record(record)
+	}
+	if changes := sink.named("cluster database leader changed"); len(changes) != 1 || changes[0].attrs["new_leader"] != "3" {
+		t.Fatalf("leader changes: %v", changes)
+	}
+	kept := sink.named("cluster database leader kept after a campaign")
+	if len(kept) != 1 {
+		t.Fatalf("kept lines: %v", kept)
+	}
+	delete(kept[0].attrs, "observed_at")
+	want := map[string]any{"leader": "3", "term": "4", "this_member": "2", "leads": false,
+		"reason": "this member started an election: election_timeout since_leader_contact_ms=2221 timeout_ms=1143", "without_leader_ms": int64(7)}
+	if !reflect.DeepEqual(kept[0].attrs, want) {
+		t.Fatalf("kept line\n got %v\nwant %v", kept[0].attrs, want)
+	}
+}
+
+// A database process that writes without limit fills at most its budget of a
+// minute; the rest is counted and reported, and a change of leader inside the
+// flood is still written.
+func TestRoleRecordsHaveABudgetPerMinute(t *testing.T) {
+	tracker, sink := trackerFor(t)
+	clock := time.Unix(1700000000, 0)
+	tracker.now = func() time.Time { return clock }
+	tracker.record(at(0) + " event=state old=UNAVAILABLE new=FOLLOWER term=1 id=2 address=b:9001")
+	for i := 0; i < 3*roleRecordsPerMinute; i++ {
+		tracker.record(at(int64(i)) + " event=vote_reply candidate=9 granted=0 reason=has_leader pre_vote=1")
+	}
+	tracker.record(at(5000) + " event=following leader=3 leader_address=c:9001 term=1")
+	if filed := len(sink.named("cluster database role event")); filed != roleRecordsPerMinute {
+		t.Fatalf("filed %d records in one minute, want %d", filed, roleRecordsPerMinute)
+	}
+	if changes := sink.named("cluster database leader changed"); len(changes) != 1 {
+		t.Fatalf("the leader change inside the flood was not written: %v", changes)
+	}
+	if early := sink.named("cluster database role events suppressed"); len(early) != 0 {
+		t.Fatalf("reported before the minute ended: %v", early)
+	}
+	clock = clock.Add(time.Minute)
+	tracker.record(at(60000) + " event=snapshot_take index=1 status=ok took_ms=300")
+	report := sink.named("cluster database role events suppressed")
+	if len(report) != 1 || report[0].attrs["suppressed"] != int64(2*roleRecordsPerMinute+2) || report[0].level != slog.LevelWarn {
+		t.Fatalf("report %v", report)
+	}
+	if filed := len(sink.named("cluster database role event")); filed != roleRecordsPerMinute+1 {
+		t.Fatalf("the next minute's record was not filed: %d", filed)
 	}
 }

@@ -204,6 +204,10 @@ func startHelper(ctx context.Context, args []string) (*helperProcess, helperIden
 	}
 	notes := &cappedStderr{}
 	cmd.Stderr = notes
+	// Tells the database process that this server files its role records.
+	// One that is not told keeps them to itself, so a server without this
+	// code still finds a start error at the head of standard error.
+	cmd.Env = append(os.Environ(), roleRecordsEnv+"=1")
 	process, err := spawnHelper(cmd)
 	if err != nil {
 		return nil, info, err

@@ -17,6 +17,16 @@ import (
 // both fine.
 const roleLinePrefix = "gpuworks-raft: "
 
+// roleRecordsEnv is set in the database process' environment by a server that
+// files role records. The process writes them only when it is set.
+const roleRecordsEnv = "GPUWORKS_RAFT_RECORDS"
+
+// roleRecordsPerMinute bounds the records filed from one database process in a
+// minute; the rest are counted and the count is filed once the minute is over.
+// The process limits its own repeats; this is the server's own guard against
+// a process that does not.
+const roleRecordsPerMinute = 240
+
 // roleReasonFresh is how long a reason this member observed is attributed to
 // the next change of leader.
 const roleReasonFresh = 30 * time.Second
@@ -78,7 +88,7 @@ func roleValue(fields []roleField, key string) string {
 func roleLevel(fields []roleField) slog.Level {
 	switch roleValue(fields, "event") {
 	case "step_down", "election_start", "election_retry", "transfer_timeout", "loop_late",
-		"slow_log_write", "peer_connect_failed", "peer_send_failed", "dropped", "health":
+		"slow_log_write", "slow_step", "peer_connect_failed", "peer_send_failed", "dropped", "health":
 		return slog.LevelWarn
 	case "app":
 		if roleValue(fields, "level") == "error" {
@@ -97,6 +107,10 @@ type roleTracker struct {
 	log func() *slog.Logger
 
 	mu        sync.Mutex
+	now       func() time.Time
+	windowAt  time.Time // start of the current minute of the budget
+	filed     int       // records filed in it
+	skipped   int       // records left out of it
 	self      string
 	leader    string    // member id of the leader this member follows or is; "" when none
 	lostAt    time.Time // when this member last stopped having a leader; zero while it has one
@@ -109,7 +123,25 @@ func newRoleTracker(log func() *slog.Logger) *roleTracker {
 	if log == nil {
 		log = slog.Default
 	}
-	return &roleTracker{log: log}
+	return &roleTracker{log: log, now: time.Now}
+}
+
+// admit applies the budget. It reports whether this record is filed and how
+// many were left out of the minute that has just ended.
+func (t *roleTracker) admit() (file bool, leftOut int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := t.now()
+	if now.Sub(t.windowAt) >= time.Minute {
+		leftOut, t.skipped = t.skipped, 0
+		t.windowAt, t.filed = now, 0
+	}
+	if t.filed >= roleRecordsPerMinute {
+		t.skipped++
+		return false, leftOut
+	}
+	t.filed++
+	return true, leftOut
 }
 
 // record files one record and, when it names a new leader, the summary.
@@ -133,13 +165,28 @@ func (t *roleTracker) record(record string) {
 		attrs = append(attrs, f.key, f.value)
 	}
 	log := t.log()
-	log.Log(context.Background(), roleLevel(fields), "cluster database role event", attrs...)
-	if summary := t.follow(fields, at); summary != nil {
-		log.Info("cluster database leader changed", summary...)
+	file, leftOut := t.admit()
+	if leftOut > 0 {
+		log.Warn("cluster database role events suppressed", "suppressed", leftOut, "per_minute", roleRecordsPerMinute)
+	}
+	if file {
+		log.Log(context.Background(), roleLevel(fields), "cluster database role event", attrs...)
+	}
+	// The leader is followed through every record, filed or not, and a
+	// change of leader is always written.
+	if summary, changed := t.follow(fields, at); summary != nil {
+		if changed {
+			log.Info("cluster database leader changed", summary...)
+		} else {
+			log.Info("cluster database leader kept after a campaign", summary...)
+		}
 	}
 }
 
-func (t *roleTracker) follow(fields []roleField, at time.Time) []any {
+// follow returns the summary to write when this record names the leader this
+// member has, and whether that leader is another than before. The same leader
+// is named again after this member campaigned in vain.
+func (t *roleTracker) follow(fields []roleField, at time.Time) ([]any, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	lose := func() {
@@ -199,8 +246,9 @@ func (t *roleTracker) follow(fields []roleField, at time.Time) []any {
 		newLeader = roleValue(fields, "leader")
 	}
 	if newLeader == "" || (newLeader == t.leader && t.lostAt.IsZero()) {
-		return nil
+		return nil, false
 	}
+	changed := newLeader != t.leader
 	old := t.leader
 	if old == "" {
 		old = "none"
@@ -221,7 +269,11 @@ func (t *roleTracker) follow(fields []roleField, at time.Time) []any {
 		summary = append(summary, "without_leader_ms", at.Sub(t.lostAt).Milliseconds())
 	}
 	t.leader, t.lostAt, t.reason, t.hadLeader = newLeader, time.Time{}, "", true
-	return summary
+	if !changed {
+		// "leader" instead of the pair: nothing changed hands.
+		summary = append([]any{"leader", newLeader}, summary[4:]...)
+	}
+	return summary, changed
 }
 
 // roleLineWriter separates the role records from the rest of a database

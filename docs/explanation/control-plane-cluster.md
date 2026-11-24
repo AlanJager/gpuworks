@@ -51,6 +51,7 @@
 
 - `cluster database role event`：数据库进程的一条角色记录。`observed_at` 是事情发生的时间（数据库进程的时钟，纳秒），日志行自己的时间晚不到一秒。
 - `cluster database leader changed`：本成员认到了新的 leader。写明原来的 leader（`old_leader`）、新的 leader（`new_leader`，成员 id）、任期（`term`）、本成员是不是新的 leader（`leads`）、本成员看到的原因（`reason`）和本成员没有 leader 的时长（`without_leader_ms`）。
+- `cluster database leader kept after a campaign`：本成员发起过选举或听到过更高的任期，但随后跟随的还是原来的 leader（`leader`）。它不是 leader 变化，查 leader 变化时只看上一条。
 - `business follows a new database leader`：本成员的业务层开始把请求发给另一个 leader。`agent_sessions_closed` 是它为了让 agent 会话向新的 leader 登记而关掉的会话数。
 
 `event` 的取值：
@@ -68,6 +69,7 @@
 | `transfer_start`、`transfer_end`、`transfer_timeout` | 原 leader | 把 leader 交给 `to`；`result=leadership_left` 是交出去了，`still_leader` 是没交成 |
 | `membership_request`、`configuration` | leader；每个成员 | 成员集合或角色的变更请求（`op=add/assign/remove`）；收到的新成员表 `members=id:角色,…` |
 | `snapshot_take`、`snapshot_install` | 每个成员 | 做了一次快照、装入了 leader 发来的快照；`took_ms` 是用时，`status` 是 `ok`、`failed`（带 `code`）或 `unfinished`。不到 250 毫秒的每 10 分钟只写一条 |
+| `slow_step` | 每个成员 | 数据库进程主循环里的一步用了 `took_ms` 毫秒（达到 100 毫秒才写）：`step` 是 `recv`（处理一条消息）、`tick`、`apply`（应用已提交的日志，`entries` 条）、`fsm_apply`（其中一条）、`snapshot_begin`、`snapshot_restore`。这一步进行时本成员既不发心跳也不应答 leader |
 | `loop_late` | 每个成员 | 数据库进程的主循环晚了 `late_ms` 才轮到（进程没被调度，或循环里有一步太久）；达到 250 毫秒才写 |
 | `slow_log_write` | 每个成员 | 一次 Raft 日志落盘用了 `ms` 毫秒；达到 500 毫秒才写 |
 | `peer_connect_failed`、`peer_send_failed`、`peer_connected` | 每个成员 | 到另一个成员（`peer`、`peer_address`）的连接失败、发送失败、重连成功 |
@@ -76,7 +78,7 @@
 | `proxy_closed` | 每个成员 | 一条经本成员到它自己数据库节点的连接没有道别就断了；健康的集群每秒有好几条，所以每 10 分钟只写一条并带略去的条数 |
 | `dropped` | 每个成员 | 有记录没写出来：`reason=reader_behind` 是 server 没来得及读，`library_queue_full` 是数据库进程内的队列满了 |
 
-重复出现的情况（`loop_late`、`slow_log_write`、同一个成员的连接失败、同一条 `app` 告警）每 10 秒只写一条，`suppressed` 是其间略去的条数。数据库进程每 0.2 秒把攒下的记录交出一次，所以相邻几行在日志里的先后可能与发生的先后差零点几秒，要排先后时按 `observed_at`。数据库进程把记录放进内存里的定长队列，另一个线程写出；写不出去时丢记录并计数，Raft 的主循环不等它。
+重复出现的情况（`loop_late`、`slow_log_write`、`slow_step`、同一个成员的连接失败、同一条 `app` 告警）每 10 秒只写一条，`suppressed` 是其间略去的条数。一个与其他成员失联的成员每个选举超时发起一次选举：`election_start`、`election_retry`、`pre_vote_won`、对同一个候选成员的 `vote_reply`、候选与跟随之间的 `state`、角色变化后的 `health`，每一种先照常写 6 条，之后同样每 10 秒一条；安静满一分钟后重新计。server 另有自己的上限：一个数据库进程一分钟最多记 240 条，超出的只计数，下一分钟写一行 `cluster database role events suppressed suppressed=…`；leader 的变化不受这个上限影响。数据库进程每 0.2 秒把攒下的记录交出一次，所以相邻几行在日志里的先后可能与发生的先后差零点几秒，要排先后时按 `observed_at`。数据库进程把记录放进内存里的定长队列，另一个线程写出；写不出去时丢记录并计数，Raft 的主循环不等它。
 
 **怎么读一次 leader 变化**：先在三个成员的日志里找同一时刻的 `cluster database leader changed`，`reason` 说的是这个成员自己看到的；说 `not seen by this member` 时到另外两个成员的日志里看。然后按下面对照：
 
@@ -85,6 +87,7 @@
 | 原 leader：`step_down reason=no_majority_contact`，`peer_ack_age_ms` 里两个成员都超过选举超时 | 原 leader 一个选举超时内没收到应答。再看它此前的 `health`、`loop_late`、`slow_log_write`：`loop_late` 大是它自己没被调度；都正常则是网络或另外两个成员的问题，到它们的日志里看同一时刻的 `loop_late`、`slow_log_write` |
 | 某个跟随成员：`election_start reason=election_timeout`，原 leader 没有 `step_down`，而是随后 `step_down reason=higher_term from=<那个成员>` | 那个跟随成员这么久没听到 leader 就发起了选举。看它的 `since_leader_contact_ms` 和此前的 `health`（`leader_gap_max_ms`）、`loop_late`：自己的循环晚到，说明是它这一侧的问题；循环正常而 leader 的消息间隔大，是 leader 那一侧或两者之间的网络 |
 | 原 leader：`transfer_start`，目标成员：`election_start reason=transfer_requested` | 有人要求交接（升级命令，或成员正常停止） |
+| 某个成员的数据库进程刚启动：`following` 之后不到一秒出现 `slow_step step=apply entries=<N> took_ms=<几千>`，随后 `loop_late` | 重启的成员在第一次听到 leader 时，把上一次快照之后的全部日志（最多约 1024 条）在主循环里一次应用完，这几秒里它不应答。用时随条数增长，与数据库总大小无关。此时若另一个成员也不在，leader 会因为收不到多数应答而让位 |
 | 原 leader 的日志在那一刻中断，重新开始于 `state old=UNAVAILABLE` | 原 leader 的进程退出或被重启 |
 
 例子（三个成员，原 leader 的数据库进程被冻结 2 秒）。跟随成员的 `health` 里自己的循环正常（`loop_late_max_ms=23`），原 leader 恢复后的第一条记录是 `loop_late late_ms=1990`：问题在原 leader 自己这一侧。
