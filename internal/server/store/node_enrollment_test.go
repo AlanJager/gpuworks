@@ -202,9 +202,13 @@ func TestReEnrollingASlurmNodeIsNeverRefused(t *testing.T) {
 	}
 }
 
-// insertNodeTx is the only place in this package that creates a node row,
-// so no way of adding a node goes round the enrollment guards. A new
-// Create of a Node anywhere else fails this until it goes through it.
+// A tripwire, not a proof: it reads this package's source for the common
+// ways of writing a node insert (Create, Save and the like on a variable
+// named node, n or nodes or on a Node literal, and INSERT INTO nodes) and
+// fails on one outside insertNodeTx. A node created under another name, or
+// through a helper, passes it. What guarantees that an insert asks the
+// guards is the behaviour test of each path (TestEveryNodeInsertPathAsksTheGuard);
+// this only makes the usual mistake fail early.
 func TestNoNodeIsCreatedBesideTheGuardedInsert(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {

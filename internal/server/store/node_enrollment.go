@@ -44,8 +44,9 @@ func (a *nodeAdmission) enrollmentGuards() []NodeEnrollmentGuard {
 
 // AddNodeEnrollmentGuard registers g on every node insert: CreateNodePending,
 // RegisterNode, EnrollKubeNode and EnrollSlurmNode, which all create the
-// row through insertNodeTx (TestNoNodeIsCreatedBesideTheGuardedInsert keeps
-// it so). Guards run in registration order and the
+// row through insertNodeTx (TestEveryNodeInsertPathAsksTheGuard proves each;
+// TestNoNodeIsCreatedBesideTheGuardedInsert trips on the usual way of
+// adding another). Guards run in registration order and the
 // first refusal wins. A nil guard is ignored; with none registered an
 // insert counts nothing and is never refused.
 func (s *Store) AddNodeEnrollmentGuard(g NodeEnrollmentGuard) {

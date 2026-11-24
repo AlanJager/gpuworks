@@ -51,6 +51,6 @@ func enrollRefusalParams(err error) map[string]any {
 		}
 		params["refusal_code"] = refusal.Code()
 	}
-	params["reason"] = proto.SlurmEnrollRefused
+	params["reason"] = proto.EnrollReasonRefused
 	return params
 }
