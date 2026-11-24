@@ -23,9 +23,10 @@ type PlatformLimiter interface {
 // PlatformLimit is a PlatformLimiter's answer.
 type PlatformLimit struct {
 	// Access is featuregate.Full (nothing is limited), ReadOnly (reads and
-	// the data plane are served, changes are refused) or Locked (only the
-	// recovery surface is served). Hidden is not an answer for a whole
-	// server and reads as Locked, so the zero value refuses.
+	// the data plane are served, changes are refused) or Locked (reads are
+	// served; the data plane and changes are refused). Hidden is not an
+	// answer for a whole server and reads as Locked, so the zero value
+	// refuses.
 	Access featuregate.Access
 	// Notice is the refusal to return instead of the core's own, built
 	// when the snapshot changed; nil uses the core's.
@@ -47,10 +48,10 @@ const (
 	// platformChange changes the server or brings something new into it:
 	// refused while ReadOnly and while Locked.
 	platformChange platformClass = iota
-	// platformRead only reads: served while ReadOnly.
+	// platformRead only reads: served under any limit.
 	platformRead
 	// platformServe is the data plane that running work answers: served
-	// while ReadOnly, so a limit never interrupts what already runs.
+	// while ReadOnly, refused while Locked.
 	platformServe
 	// platformRecovery is served under any limit: signing in, health,
 	// what machines that already joined need, and what an administrator
@@ -105,6 +106,31 @@ var platformChangingReads = map[string]bool{
 	"GET /api/v1/nodes/{uuid}/terminal":         true,
 }
 
+// platformReachingReads are GET routes that change nothing here but reach
+// outside the server to answer: a joined machine, a storage, a cloud
+// account, an image registry. They are reads, served under any limit like
+// every other; they are named so that serving them is a decision, and so
+// that one which starts to change something is moved, not overlooked.
+var platformReachingReads = map[string]bool{
+	// A joined machine answers: its files, its images, an instance's log.
+	"GET /api/v1/nodes/{uuid}/fs":                    true,
+	"GET /api/v1/images/nodes/{uuid}/runtime-images": true,
+	"GET /api/v1/instances/{uuid}/logs":              true,
+	// A storage's files, listed and downloaded, and a batch's files.
+	"GET /api/v1/storages/{id}/files":          true,
+	"GET /api/v1/storages/{id}/files/download": true,
+	"GET /api/v1/batches/{id}/files/{kind}":    true,
+	// A cloud account's own lists, and an image registry's tags.
+	"GET /api/v1/providers/{id}/instances":    true,
+	"GET /api/v1/providers/{id}/clusters":     true,
+	"GET /api/v1/providers/{id}/hpc-clusters": true,
+	"GET /api/v1/images/community/browse":     true,
+	// The server's public SSH key and a node's SSH settings without their
+	// secrets.
+	"GET /api/v1/ssh-key":          true,
+	"GET /api/v1/nodes/{uuid}/ssh": true,
+}
+
 // platformReadingPosts are POST routes that only read.
 var platformReadingPosts = map[string]bool{
 	// MCP serves read-only tools.
@@ -139,7 +165,7 @@ func classifyPlatformRoute(method, pattern, path, owner string) (class platformC
 	if platformChangingReads[key] {
 		return platformChange, true
 	}
-	if platformReadingPosts[key] {
+	if platformReadingPosts[key] || platformReachingReads[key] {
 		return platformRead, true
 	}
 	if pattern == "/v1/*" {
@@ -171,7 +197,7 @@ func classifyPlatformRoute(method, pattern, path, owner string) (class platformC
 // platformRefusals are the core's own refusals, built once.
 var (
 	platformLockedRefusal = messages.NewProductError(messages.ErrorPlatformLocked,
-		"this server is locked; only signing in and the page that unlocks it are served", nil)
+		"this server is locked; it can be viewed, and changes and inference are refused until it is unlocked", nil)
 	platformReadOnlyRefusal = messages.NewProductError(messages.ErrorPlatformReadOnly,
 		"this server is read-only; what runs keeps running and can be viewed, changes are refused", nil)
 )
@@ -184,7 +210,7 @@ func (c platformClass) allows(access featuregate.Access) bool {
 	case featuregate.ReadOnly:
 		return c != platformChange
 	}
-	return c == platformRecovery
+	return c == platformRecovery || c == platformRead
 }
 
 // platformRefusal is what a refused request is answered with under limit.

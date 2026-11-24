@@ -19,8 +19,8 @@ const (
 
 // Refusals of a server that is limited as a whole (api.PlatformLimiter).
 const (
-	// ErrorPlatformLocked: the server serves only signing in, health and
-	// what lifts the limit.
+	// ErrorPlatformLocked: the server serves reads and what lifts the
+	// limit; changes and the data plane are refused.
 	ErrorPlatformLocked = "PLATFORM_LOCKED"
 	// ErrorPlatformReadOnly: the server serves reads and the data plane;
 	// changes are refused.

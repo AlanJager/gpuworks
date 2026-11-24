@@ -10,7 +10,7 @@ const { cleanup, render, screen, waitFor } = await import("@testing-library/reac
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const manifestModule = await import("../src/consoleManifest.ts");
-const { default: PlatformGate, PlatformNotice, consolePath, lockedOut, opensPage } = await import("../src/app/PlatformGate.tsx");
+const { default: PlatformGate, PlatformNotice, consolePath, opensPage } = await import("../src/app/PlatformGate.tsx");
 const { resetConsoleManifestForTest } = await import("../src/extensions/featureAccess.ts");
 type ConsolePlatform = import("../src/consoleManifest.ts").ConsolePlatform;
 
@@ -58,14 +58,6 @@ test("a link is a console path only when it starts with one slash", () => {
   assert.equal(opensPage("https://example.com/x/acme", "/x/acme"), false);
 });
 
-test("only a locked server leaves a page out, and never the page that lifts the limit", () => {
-  assert.equal(lockedOut(undefined, "/nodes"), false);
-  assert.equal(lockedOut(readOnly({ link: "/x/acme" }), "/nodes"), false);
-  assert.equal(lockedOut(locked({ link: "/x/acme" }), "/nodes"), true);
-  assert.equal(lockedOut(locked({ link: "/x/acme" }), "/x/acme"), false);
-  assert.equal(lockedOut(locked(), "/x/acme"), true);
-});
-
 test("an unlimited server, and one whose manifest cannot be read, show the page and no notice", async () => {
   for (const answer of [undefined, new Error("offline")]) {
     stub(answer);
@@ -78,22 +70,34 @@ test("an unlimited server, and one whose manifest cannot be read, show the page 
   }
 });
 
-test("a locked server sends every page to the one that lifts the limit, which shows without a notice", async () => {
-  stub(locked({ link: "/x/acme" }));
-  renderGate("/nodes");
+test("a locked server shows the page under an alert that opens the page lifting the limit", async () => {
+  stub(locked({ link: "/x/acme", action: { code: "ACME_RENEW", message: "Renew" } }));
+  const user = renderGate("/nodes");
+  assert.ok(await screen.findByRole("heading", { name: "page" }), "a locked server serves reads, so the page shows");
+  const alert = await screen.findByRole("alert");
+  assert.ok(alert.textContent?.includes(c.apiError.PLATFORM_LOCKED));
+  await user.click(screen.getByRole("link", { name: "Renew" }));
   await waitFor(() => assert.equal(screen.getByTestId("where").textContent, "/x/acme"));
-  assert.equal(screen.queryByRole("alert"), null);
+  assert.equal(screen.queryByRole("alert"), null, "the page that lifts the limit states the matter itself");
 });
 
-test("a locked server whose link leaves the console states the limit in place of the page", async () => {
+test("a locked server whose link leaves the console shows the page and opens the link in a new tab", async () => {
   stub(locked({ link: "https://example.com/renew", action: { code: "ACME_RENEW", message: "Renew" } }));
   renderGate("/nodes");
-  const alerts = await screen.findAllByRole("alert");
-  assert.ok(alerts.every((alert) => alert.textContent?.includes(c.apiError.PLATFORM_LOCKED)));
-  assert.equal(screen.queryByRole("heading", { name: "page" }), null);
+  assert.ok(await screen.findByRole("heading", { name: "page" }));
+  const alert = await screen.findByRole("alert");
+  assert.ok(alert.textContent?.includes(c.apiError.PLATFORM_LOCKED));
   const link = screen.getByRole("link", { name: "Renew" });
   assert.equal(link.getAttribute("href"), "https://example.com/renew");
   assert.equal(link.getAttribute("target"), "_blank");
+});
+
+test("a locked server that names no page states the limit without a control", async () => {
+  stub(locked());
+  renderGate("/nodes");
+  assert.ok(await screen.findByRole("heading", { name: "page" }));
+  assert.ok((await screen.findByRole("alert")).textContent?.includes(c.apiError.PLATFORM_LOCKED));
+  assert.equal(screen.queryByRole("link"), null);
 });
 
 test("a read-only server shows the page under a notice whose control is reached with the keyboard", async () => {

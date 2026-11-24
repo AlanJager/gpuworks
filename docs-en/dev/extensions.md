@@ -187,13 +187,13 @@ Open-source code speaks only of availability: a feature source answers each feat
 
 A module may set the availability of the whole server with `Host.LimitPlatform` (`api.PlatformLimiter`): full, read-only or locked. Without a module that does, the server is never limited; the community server has no such source.
 
-- Read-only: reads and the data plane (`/v1/*`) work as usual, and every change gets 403 `PLATFORM_READ_ONLY`. Locked: only the recovery surface passes, everything else gets 403 `PLATFORM_LOCKED`. When the source supplies its own notice, its code is returned. A source that answers hidden is read as locked.
+- Read-only: reads and the data plane (`/v1/*`) work as usual, and every change gets 403 `PLATFORM_READ_ONLY`. Locked: reads and the recovery surface work as usual, and changes and the data plane (`/v1/*`) get 403 `PLATFORM_LOCKED`. When the source supplies its own notice, its code is returned. A source that answers hidden is read as locked.
 - The recovery surface passes under any limit: signing in and the session, health checks, the console manifest and branding, the connection and health-check script of machines that already joined, plugin package management, the server's own upgrade, diagnostics bundles, and the routes of the module that registered the source (so that its page can lift the limit).
-- The limit applies before authentication and before any handler, and classifies by the route's pattern rather than guessing from the path: routes under `/api/v1` are reads or changes by their method; a GET that hands out what brings a machine in, or opens an interactive session, counts as a change; a new route outside `/api/v1` must be named in `internal/server/api/platform_limit.go`, or it is refused under any limit and the route inventory test fails.
+- The limit applies before authentication and before any handler, and classifies by the route's pattern rather than guessing from the path: routes under `/api/v1` are reads or changes by their method; a GET that hands out what brings a machine in, or opens an interactive session, counts as a change and is refused under any limit; a GET that changes nothing but reaches outside the server to answer (a node's file and image lists, an instance's log stream, storage and batch file downloads, a cloud account's instance and cluster lists, a registry's tags) is a read, served as usual and named one by one in `platform_limit.go`; a new route outside `/api/v1` must be named in `internal/server/api/platform_limit.go`, or it is refused under any limit and the route inventory test fails.
 - The source is called on every request and follows the pure-function rules: one atomic load, no I/O, no lock, no allocation.
 - A limit acts on new requests only: it never stops, evicts or restarts running workloads, and machines that already joined stay connected.
 
-While the server is limited the console manifest carries `platform` (`access`, `link`, `message`). Locked, the console keeps only the page `link` points to and the other menu entries cannot be entered; read-only, the pages show as usual and a notice above them says that changes are refused.
+While the server is limited the console manifest carries `platform` (`access`, `link`, `message`). Locked and read-only, the pages show as usual (both serve reads); a notice above them says what is refused and carries a control that opens `link`. The page `link` points to states the matter itself and shows no notice.
 
 The console renders `GET /api/v1/console/manifest` (fields in the [API reference](../reference/api.md)) and derives no availability itself: full shows as usual; read-only passes `readOnly` to the component; locked keeps the menu entry with a lock and shows the locked page with the server's link; a hidden key, or one the manifest does not list, shows nothing.
 
@@ -515,7 +515,7 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 <!-- translation-source-sha256: 7626426b7d3733a9d407e37351869c21ccd297962bd626ed1c3572afa9d6d21b ## Hooks and call threads -->
 <!-- translation-source-sha256: c54e35660cf20799f4be55e9a0f36a22787956e1e19398ba5292402113e218a3 ## Purity rules -->
 <!-- translation-source-sha256: 7fd33a4504aa9548513615ac32ce91d81275e546b83f2e68035dd0dabc880199 ## Availability -->
-<!-- translation-source-sha256: 94f824ff41e97eb794d86c19fc6c54bc27e2c64bbd3ad71af5da5e6d153361fc ### Availability of the whole server -->
+<!-- translation-source-sha256: c33d418a8794f61d2e05dff29e6d850e9b88cc00247f719b788a8be46debe150 ### Availability of the whole server -->
 <!-- translation-source-sha256: 2f0d63478baf7bf38b004b38e55e2a5b16a71c2d155f644580d42c62bbfa9988 ## Console overlay -->
 <!-- translation-source-sha256: e9fcf7fac20aca4c21f4dfcc449146cf5207289490a5ff3489950b61e20a7fac ## Codes and texts -->
 <!-- translation-source-sha256: 6fa8885393d900cd0bd114408d5214c5a1e5d017fd8793abcb7c51e96cdf5e7c ## Upgrades and installation -->

@@ -391,7 +391,7 @@
     "FEATURE_READ_ONLY": "{{feature}} 在此服务器上为只读：可以查看其数据，但不能修改。",
     "FEATURE_PROVIDER_ABSENT": "{{feature}} 无法使用：此服务器上没有组件报告它是否可用。",
     "FEATURE_LIMIT_REACHED": "{{feature}} 最多允许 {{max}} 个 {{dim}}，已使用 {{used}} 个。",
-    "PLATFORM_LOCKED": "此服务器已锁定，只能登录并打开解除锁定的页面。",
+    "PLATFORM_LOCKED": "此服务器已锁定：可以查看，不能改动，推理接口不可用。",
     "PLATFORM_READ_ONLY": "此服务器为只读：正在运行的业务不受影响，可以查看，但不能修改。",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
     "PRIORITY_SCHEDULING_LAUNCH_UNSUPPORTED": "此 {{engine}} 启动入口或流水线尚未验证支持请求优先级调度。请关闭优先级调度，或选择受支持的 LLM 启动入口。",

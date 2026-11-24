@@ -64,7 +64,7 @@ func TestEveryRouteIsClassifiedForAPlatformLimit(t *testing.T) {
 			t.Errorf("%s %s is not classified for a platform limit: name it in platform_limit.go", method, pattern)
 		}
 	}
-	for _, table := range []map[string]bool{platformRecoveryRoutes, platformChangingReads, platformReadingPosts} {
+	for _, table := range []map[string]bool{platformRecoveryRoutes, platformChangingReads, platformReachingReads, platformReadingPosts} {
 		for key := range table {
 			if !seen[key] {
 				t.Errorf("platform_limit.go names %q, which is not a route", key)
@@ -83,6 +83,51 @@ func TestEveryRouteIsClassifiedForAPlatformLimit(t *testing.T) {
 		if !found {
 			t.Errorf("platform_limit.go names the subtree %q, which holds no route", prefix)
 		}
+	}
+}
+
+// A GET that acts is refused like a change under any limit, and a GET that
+// reaches outside the server without changing anything is served under any
+// limit: each is named, none is decided by its method alone.
+func TestReadsThatActAndReadsThatReachOutside(t *testing.T) {
+	for _, tc := range []struct {
+		route string
+		class platformClass
+		why   string
+	}{
+		{"GET /install.sh", platformChange, "hands out what enrolls a new machine"},
+		{"GET /kube/manifest.yaml", platformChange, "hands out what enrolls a cluster's machines"},
+		{"GET /slurm/setup.sh", platformChange, "hands out what enrolls a cluster's machines"},
+		{"GET /api/v1/kube/clusters/{uuid}/manifest", platformChange, "carries a cluster's enrollment"},
+		{"GET /api/v1/slurm/clusters/{uuid}/setup", platformChange, "carries a cluster's enrollment"},
+		{"GET /api/v1/slurm/clusters/{uuid}/script", platformChange, "carries a cluster's enrollment"},
+		{"GET /api/v1/nodes/{uuid}/terminal", platformChange, "opens an interactive session on a machine"},
+		{"GET /api/v1/nodes/{uuid}/fs", platformRead, "lists a machine's files"},
+		{"GET /api/v1/images/nodes/{uuid}/runtime-images", platformRead, "lists a machine's images"},
+		{"GET /api/v1/instances/{uuid}/logs", platformRead, "streams an instance's log"},
+		{"GET /api/v1/storages/{id}/files", platformRead, "lists a storage's files"},
+		{"GET /api/v1/storages/{id}/files/download", platformRead, "downloads a storage's file"},
+		{"GET /api/v1/batches/{id}/files/{kind}", platformRead, "downloads a batch's file"},
+		{"GET /api/v1/providers/{id}/instances", platformRead, "lists a cloud account's instances"},
+		{"GET /api/v1/providers/{id}/clusters", platformRead, "lists a cloud account's clusters"},
+		{"GET /api/v1/providers/{id}/hpc-clusters", platformRead, "lists a cloud account's clusters"},
+		{"GET /api/v1/images/community/browse", platformRead, "lists a registry's tags"},
+		{"GET /api/v1/ssh-key", platformRead, "shows the server's public key"},
+		{"GET /api/v1/nodes/{uuid}/ssh", platformRead, "shows a node's SSH settings without secrets"},
+	} {
+		method, pattern, _ := strings.Cut(tc.route, " ")
+		class, classified := classifyPlatformRoute(method, pattern, pattern, "")
+		if !classified || class != tc.class {
+			t.Errorf("%s (%s) is class %d, classified %t; want class %d", tc.route, tc.why, class, classified, tc.class)
+		}
+		for _, access := range []featuregate.Access{featuregate.ReadOnly, featuregate.Locked} {
+			if got, want := class.allows(access), tc.class == platformRead; got != want {
+				t.Errorf("%s under %s: served %t, want %t", tc.route, access, got, want)
+			}
+		}
+	}
+	if n := len(platformChangingReads) + len(platformReachingReads); n != 19 {
+		t.Errorf("platform_limit.go names %d reads that act or reach outside; this table has 19: add the new one here", n)
 	}
 }
 
@@ -135,8 +180,9 @@ func TestPlatformLimitServesByClass(t *testing.T) {
 		name, bearer, method, path string
 		full, readOnly, locked     int
 	}{
-		{"a read", rig.session, "GET", "/api/v1/nodes", 200, 200, refused},
-		{"a read with a read token", read, "GET", "/api/v1/nodes", 200, 200, refused},
+		{"a read", rig.session, "GET", "/api/v1/nodes", 200, 200, 200},
+		{"a read with a read token", read, "GET", "/api/v1/nodes", 200, 200, 200},
+		{"a read without a session", "", "GET", "/api/v1/nodes", 401, 401, 401},
 		{"a change", rig.session, "PUT", "/api/v1/nodes/n1/labels", 400, refused, refused},
 		{"a change without a session", "", "PUT", "/api/v1/nodes/n1/labels", 401, refused, refused},
 		{"a read that opens a session on a node", rig.session, "GET", "/api/v1/nodes/n1/terminal", 503, refused, refused},
@@ -149,8 +195,8 @@ func TestPlatformLimitServesByClass(t *testing.T) {
 		{"the limiting extension's change", rig.session, "POST", "/api/v1/x/owner/import", 200, 200, 200},
 		{"the limiting extension's unknown route", rig.session, "GET", "/api/v1/x/owner/nothing", 404, 404, 404},
 		{"the limiting extension's unknown method", rig.session, "DELETE", "/api/v1/x/owner/state", 405, 405, 405},
-		{"another extension's read", rig.session, "GET", "/api/v1/x/other/things", 200, 200, refused},
-		{"a core route whose path names the limiting extension", rig.session, "GET", "/api/v1/nodes/owner", 404, 404, refused},
+		{"another extension's read", rig.session, "GET", "/api/v1/x/other/things", 200, 200, 200},
+		{"a core route whose path names the limiting extension", rig.session, "GET", "/api/v1/nodes/owner", 404, 404, 404},
 		{"a path that climbs out of the limiting extension", rig.session, "GET", "/api/v1/x/owner/../other/things", 404, 404, 404},
 		{"the console's page", "", "GET", "/", 202, 202, 202},
 		{"a console page by its address", "", "GET", "/x/owner", 202, 202, 202},
@@ -188,7 +234,7 @@ func TestPlatformLimitRefusalWire(t *testing.T) {
 		}
 		return strings.TrimSpace(rec.Body.String())
 	}
-	if got, want := body("GET", "/api/v1/nodes"), `{"code":"PLATFORM_LOCKED","error":"this server is locked; only signing in and the page that unlocks it are served"}`; got != want {
+	if got, want := body("POST", "/api/v1/nodes"), `{"code":"PLATFORM_LOCKED","error":"this server is locked; it can be viewed, and changes and inference are refused until it is unlocked"}`; got != want {
 		t.Errorf("locked refusal = %s, want %s", got, want)
 	}
 	limiter.set(PlatformLimit{Access: featuregate.ReadOnly})

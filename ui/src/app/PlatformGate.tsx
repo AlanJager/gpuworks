@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
 import { Spinner } from "../ui-kit/Spinner";
 import { productMessageText } from "../apiError";
-import type { ConsolePlatform } from "../consoleManifest";
 import { consoleExtensions } from "../extensions";
 import { useConsolePlatform } from "../extensions/featureAccess";
 
@@ -21,40 +20,22 @@ export function opensPage(link: string | undefined, pathname: string): boolean {
 
 const trimSlash = (path: string) => (path.length > 1 ? path.replace(/\/+$/, "") : path);
 
-/** lockedOut reports whether the server's limit leaves the page at pathname unreachable. */
-export function lockedOut(platform: ConsolePlatform | undefined, pathname: string): boolean {
-  return platform?.access === "locked" && !opensPage(platform.link, pathname);
-}
-
 /**
- * PlatformGate shows the pages only as far as the server's limit on the whole
- * server allows (GET /api/v1/console/manifest, platform). Locked, every page
- * but the one that lifts the limit goes there; when the server names no such
- * page, the limit's own message stands in for the page. Read-only changes
- * nothing here: the pages show and the server refuses changes. The server
- * decides and enforces the limit; this only keeps the console from offering
- * what will be refused.
+ * PlatformGate holds the pages back until the server's limit on the whole
+ * server is known (GET /api/v1/console/manifest, platform). Under either
+ * limit the pages show: a read-only and a locked server both serve reads, and
+ * PlatformNotice says above every page what is refused and where to lift it.
+ * The server decides and enforces the limit.
  *
  * A console with extensions waits for the manifest before it shows a page, so
- * a locked server never flashes one; the community console, which nothing
- * limits, never waits.
+ * a limited server never shows one without its notice; the community console,
+ * which nothing limits, never waits.
  */
 export default function PlatformGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
-  const { pathname } = useLocation();
-  const { platform, settled } = useConsolePlatform();
+  const { settled } = useConsolePlatform();
   if (!settled && consoleExtensions().length > 0) return <Spinner label={t("consoleExtension.loading")} />;
-  if (!lockedOut(platform, pathname)) return <>{children}</>;
-  const path = consolePath(platform?.link);
-  if (path) return <Navigate replace to={path} />;
-  return (
-    <Notice
-      role="alert"
-      tone="danger"
-      title={productMessageText(t, platform!.message)}
-      action={platform!.link ? <a className="text-label font-medium underline underline-offset-2" href={platform!.link} target="_blank" rel="noopener noreferrer">{platform!.action ? productMessageText(t, platform!.action) : t("consoleBanners.details")}</a> : undefined}
-    />
-  );
+  return <>{children}</>;
 }
 
 /** PlatformNotice states the limit above every page but the one that lifts it. */
@@ -64,12 +45,16 @@ export function PlatformNotice() {
   const { platform } = useConsolePlatform();
   if (!platform || opensPage(platform.link, pathname)) return null;
   const path = consolePath(platform.link);
+  const label = platform.action ? productMessageText(t, platform.action) : t("consoleBanners.details");
+  const control = "text-label font-medium underline underline-offset-2";
   return (
     <Notice
       role={platform.access === "locked" ? "alert" : "status"}
       tone={platform.access === "locked" ? "danger" : "warning"}
       title={productMessageText(t, platform.message)}
-      action={path ? <Link className="text-label font-medium underline underline-offset-2" to={path}>{platform.action ? productMessageText(t, platform.action) : t("consoleBanners.details")}</Link> : undefined}
+      action={path
+        ? <Link className={control} to={path}>{label}</Link>
+        : platform.link ? <a className={control} href={platform.link} target="_blank" rel="noopener noreferrer">{label}</a> : undefined}
     />
   );
 }
