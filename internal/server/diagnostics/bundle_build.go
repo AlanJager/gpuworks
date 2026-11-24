@@ -105,7 +105,7 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 
 	// On a control-plane cluster: every member's part, so that what the
 	// cluster did can be read from all of its members' records.
-	b.Complete = m.collectMembers(ctx, b, work, filepath.Join(work, "server", "gpuworks-server.log"), add)
+	b.Complete = m.collectMembers(ctx, b, work, add)
 
 	// Debug sessions that overlap the window: the server's files as they
 	// are, and the session ids the nodes are asked for.
@@ -256,7 +256,7 @@ func addFileToTar(tw *tar.Writer, local, name string) error {
 // serverLogWindow writes the server log's lines in the window, oldest
 // generation first.
 func (m *Manager) serverLogWindow(w io.Writer, from, to time.Time) (int64, bool, error) {
-	return logWindow(m.sources.ServerLogFiles(), w, from, to, ServerLogBytes)
+	return logWindow(context.Background(), m.sources.ServerLogFiles(), w, from, to, ServerLogBytes)
 }
 
 // sessionsIn are the debug sessions that overlap the window.

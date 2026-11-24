@@ -153,10 +153,10 @@ func missingReason(err error) string {
 	return "unreachable"
 }
 
-// collectMembers stages the cluster members' parts under members/. log is
-// this member's staged log in the window. It answers whether every member's
-// part is there; nil on a server that is not a cluster member.
-func (m *Manager) collectMembers(ctx context.Context, b Bundle, work, log string, add func(BundleItem, *stagedEntry)) *bool {
+// collectMembers stages the cluster members' parts under members/. It
+// answers whether every member's part is there; nil on a server that is not
+// a cluster member.
+func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add func(BundleItem, *stagedEntry)) *bool {
 	if m.cluster == nil {
 		return nil
 	}
@@ -165,12 +165,18 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work, log string
 		return nil
 	}
 	var bundleBudget atomic.Int64
-	bundleBudget.Store(MembersBytes)
+	bundleBudget.Store(membersBudget)
 	sort.Slice(members, func(i, j int) bool { return members[i].Address < members[j].Address })
 	entries := make([]MemberIndexEntry, len(members))
+	taken := map[string]bool{}
 	var wg sync.WaitGroup
 	for i, member := range members {
 		name := memberDirName(member)
+		if taken[name] {
+			// Two addresses that read alike as a directory name.
+			name += "-" + strconv.FormatUint(member.ID, 10)
+		}
+		taken[name] = true
 		entries[i] = MemberIndexEntry{Name: name, ID: strconv.FormatUint(member.ID, 10), Address: member.Address, Role: member.Role, Self: member.Self}
 		wg.Add(1)
 		go func(entry *MemberIndexEntry, member ClusterMember) {
@@ -179,19 +185,36 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work, log string
 			var files []memberFile
 			var err error
 			if member.Self {
-				files, err = stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now(), log)
+				files, err = stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
 				if err != nil {
 					entry.Missing = "failed"
 				}
 			} else {
 				files, err = m.askMember(ctx, entry, member, dir, b.From, b.To, &partBudget{member: MemberPartBytes, bundle: &bundleBudget})
 			}
+			// What the member itself cut (its member.json says) counts like
+			// what was cut on this side.
+			cut := map[string]bool{}
+			if facts, ferr := readMemberFacts(dir); ferr == nil {
+				for _, name := range facts.Truncated {
+					cut[name] = true
+				}
+			}
 			for _, f := range files {
-				if f.truncated {
+				truncated := f.truncated || cut[f.name]
+				delete(cut, f.name)
+				if truncated {
 					entry.Truncated = append(entry.Truncated, f.name)
 				}
-				add(collectedItem("members/"+entry.Name+"/"+f.name, f.bytes, f.truncated), &stagedEntry{name: "members/" + entry.Name + "/" + f.name, path: f.path})
+				add(collectedItem("members/"+entry.Name+"/"+f.name, f.bytes, truncated), &stagedEntry{name: "members/" + entry.Name + "/" + f.name, path: f.path})
 			}
+			// Cut things that are no single file here (the stall reports as a
+			// whole, or the collecting member's log, which is under server/).
+			for name := range cut {
+				entry.Truncated = append(entry.Truncated, name)
+				add(collectedItem("members/"+entry.Name+"/"+name, 0, true), nil)
+			}
+			sort.Strings(entry.Truncated)
 			if err != nil {
 				entry.Evidence = err.Error()
 				add(failedItem("members/"+entry.Name, messages.CheckDiagnosticsMemberUnavailable, fmt.Errorf("%s: %w", entry.Missing, err), 0), nil)
@@ -226,7 +249,7 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work, log string
 // once more after a short wait. What arrived before a part ended early is
 // kept and the member is still recorded as missing.
 func (m *Manager) askMember(ctx context.Context, entry *MemberIndexEntry, member ClusterMember, dir string, from, to time.Time, budget *partBudget) ([]memberFile, error) {
-	callCtx, cancel := context.WithTimeout(ctx, MemberPartTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, memberAskTimeout)
 	defer cancel()
 	answer, err := m.cluster.OpenMemberPart(callCtx, member, from, to)
 	if errors.Is(err, ErrMemberBusy) {

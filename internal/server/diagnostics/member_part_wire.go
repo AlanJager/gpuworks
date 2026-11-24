@@ -50,7 +50,7 @@ func WriteMemberPart(ctx context.Context, w io.Writer, src MemberSource, from, t
 	if err := tw.WriteHeader(&tar.Header{Name: MemberLogFile, Mode: 0o600, Size: p.logBytes, ModTime: now}); err != nil {
 		return err
 	}
-	written, _, err := filterFiles(ctx, p.logs, tw, from, to, p.logBytes)
+	written, err := writeNewest(ctx, p.logs, tw, from, to, p.logBytes, p.logSkip)
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ var errPartBudget = errors.New("the size bound of the members' parts was reached
 // their count, all within the budget; anything else in the stream is
 // ignored, so a member cannot place a file elsewhere or fill the disk. A
 // part that reaches the budget is kept as far as it went, its last file
-// marked truncated.
+// marked truncated, and answered with errPartBudget: it is not whole.
 func readMemberPart(r io.Reader, dir string, budget *partBudget) ([]memberFile, error) {
 	gz, err := gzip.NewReader(io.LimitReader(r, MemberPartBytes))
 	if err != nil {
@@ -152,15 +152,8 @@ func readMemberPart(r io.Reader, dir string, budget *partBudget) ([]memberFile, 
 	stalls := 0
 	done := func(err error) ([]memberFile, error) {
 		sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
-		if err == nil {
+		if err == nil && !seen[MemberFactsFile] {
 			err = errors.New("the member's part holds no member.json")
-			for _, f := range files {
-				if f.name == MemberFactsFile && !f.truncated {
-					err = nil
-				} else if f.name == MemberFactsFile {
-					err = errPartBudget
-				}
-			}
 		}
 		return files, err
 	}
@@ -198,7 +191,9 @@ func readMemberPart(r io.Reader, dir string, budget *partBudget) ([]memberFile, 
 		// A file cut off by the stream's end is not whole either.
 		files = append(files, memberFile{name: name, path: local, bytes: n, truncated: h.Size > limit || err != nil})
 		if out.spent {
-			return done(nil)
+			// What follows in the part is not taken: the part is not whole,
+			// and must not be recorded as collected.
+			return done(errPartBudget)
 		}
 		if err != nil {
 			return done(fmt.Errorf("the member's part ended early: %w", err))

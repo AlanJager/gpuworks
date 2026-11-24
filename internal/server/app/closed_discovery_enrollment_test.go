@@ -84,7 +84,7 @@ func (s *closedDiscoveryRouteSession) ReadQuorumDiscoveryForCluster(ctx context.
 
 func startClosedDiscoveryFixture(t *testing.T, f *closedFactsTLSFixture, s *closedDiscoveryRouteSession) *enrollmentServer {
 	t.Helper()
-	server, err := newClosedFactsEnrollmentServer(f.bundle, s, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server, err := newClosedFactsEnrollmentServer(f.bundle, s, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}

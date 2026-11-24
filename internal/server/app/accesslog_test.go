@@ -257,3 +257,60 @@ func TestAccessLogLeavesOutTheSSHKeyOfAnAgentInstallation(t *testing.T) {
 		t.Fatalf("the request record lost its other parameters:\n%s", out)
 	}
 }
+
+func accessLogOf(t *testing.T, method, path, body string) string {
+	t.Helper()
+	var logs strings.Builder
+	h := accessLogHandler(slog.New(slog.NewTextHandler(&logs, nil)), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, err := io.ReadAll(r.Body); err != nil || string(got) != body {
+			t.Fatalf("the handler read %q, %v", got, err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	return logs.String()
+}
+
+// The server log leaves a cluster member with its diagnostics part, so the
+// request record must not carry the telemetry collector's header values or
+// the user and password of a proxy address.
+func TestAccessLogLeavesOutCollectorHeadersAndProxyCredentials(t *testing.T) {
+	out := accessLogOf(t, http.MethodPut, "/api/v1/telemetry/export",
+		`{"enabled":true,"endpoint":"https://otel.example:4318","headers":[{"name":"Authorization","value":"Bearer OTELTOKEN-7a31"},{"name":"X-Scope-OrgID","value":"TENANT-55c0"},{"name":"X-Kept","value":null}],"sample_ratio":0.5}`)
+	for _, secret := range []string{"OTELTOKEN-7a31", "TENANT-55c0"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("the request record carries a header value (%s):\n%s", secret, out)
+		}
+	}
+	for _, kept := range []string{"Authorization", "X-Scope-OrgID", "X-Kept", "otel.example:4318", "sample_ratio"} {
+		if !strings.Contains(out, kept) {
+			t.Fatalf("the request record lost %s:\n%s", kept, out)
+		}
+	}
+	// A header kept by a null value stays null: nothing was given.
+	if !strings.Contains(out, `X-Kept\",\"value\":null`) {
+		t.Fatalf("a header given without a value is not shown as such:\n%s", out)
+	}
+
+	for _, body := range []string{
+		`{"base_url":"https://llm.example/v1","proxy_mode":"custom","proxy_url":"http://proxyuser:PROXYPASS-e8f1@proxy.example:3128"}`,
+		`{"http_proxy":"http://proxyuser:PROXYPASS-e8f1@proxy.example:3128","https_proxy":"socks5://proxyuser:PROXYPASS-e8f1@proxy.example:1080","no_proxy":"localhost","rules":["http://proxyuser:PROXYPASS-e8f1@proxy.example:3128/x"]}`,
+	} {
+		out := accessLogOf(t, http.MethodPut, "/api/v1/pull/proxies", body)
+		if strings.Contains(out, "PROXYPASS-e8f1") || strings.Contains(out, "proxyuser") {
+			t.Fatalf("the request record carries a proxy's credentials:\n%s", out)
+		}
+		if !strings.Contains(out, "[REDACTED]@proxy.example") {
+			t.Fatalf("the request record lost the proxy's address:\n%s", out)
+		}
+	}
+	// An address without credentials, and text that only looks like one, are left alone.
+	out = accessLogOf(t, http.MethodPost, "/api/v1/models", `{"repo":"org/model@main","url":"https://hub.example/org/model","note":"mail ops@example.com"}`)
+	for _, kept := range []string{"org/model@main", "https://hub.example/org/model", "ops@example.com"} {
+		if !strings.Contains(out, kept) {
+			t.Fatalf("%s was changed:\n%s", kept, out)
+		}
+	}
+}

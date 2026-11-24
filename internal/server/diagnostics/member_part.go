@@ -1,12 +1,11 @@
 package diagnostics
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -38,6 +37,14 @@ const (
 	memberStallReports = 64
 	memberStallBytes   = int64(32 << 20)
 	memberSmallFile    = int64(8 << 20)
+)
+
+// The bounds a part is read and a collection unpacked with. Tests lower
+// them.
+var (
+	memberLogBound   = MemberLogBytes
+	membersBudget    = MembersBytes
+	memberAskTimeout = MemberPartTimeout
 )
 
 // The files of a member's part, relative to its directory in a collection.
@@ -119,18 +126,23 @@ func (c ctxReader) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-// capped keeps what fits its bound of the lines it is given.
+// capped keeps the newest of the lines it is given that fit its bound.
 type capped struct {
-	buf       bytes.Buffer
+	data      []byte
 	truncated bool
 }
 
 func (c *capped) add(line []byte) {
-	if int64(c.buf.Len()+len(line)) > memberSmallFile {
+	c.data = append(c.data, line...)
+	for int64(len(c.data)) > memberSmallFile {
 		c.truncated = true
-		return
+		end := bytes.IndexByte(c.data, '\n')
+		if end < 0 {
+			c.data = nil
+			return
+		}
+		c.data = c.data[end+1:]
 	}
-	c.buf.Write(line)
 }
 
 // recordSink is given a log's lines one Write at a time (filterLogWindow
@@ -161,13 +173,15 @@ func (s *recordSink) Write(line []byte) (int, error) {
 // pass that measures the window and the pass that writes it, so a rotation
 // in between changes nothing, and the small files are held in memory.
 type memberPart struct {
-	facts          MemberFacts
-	from, to       time.Time
-	logs           []*os.File // oldest first
-	logBytes       int64
-	roles, leaders []byte
-	status         string
-	stalls         []memberFile
+	facts    MemberFacts
+	from, to time.Time
+	logs     []*os.File // oldest first
+	// logBytes of the window's newest lines are given, after logSkip bytes
+	// of its oldest that did not fit.
+	logBytes, logSkip int64
+	roles, leaders    []byte
+	status            string
+	stalls            []memberFile
 }
 
 func (p *memberPart) close() {
@@ -209,16 +223,66 @@ func filterFiles(ctx context.Context, files []*os.File, w io.Writer, from, to ti
 	return written, false, nil
 }
 
+// dropOldest leaves out whole lines from the start of what it is given
+// until need bytes are gone, and passes the rest on when out is set.
+type dropOldest struct {
+	out           io.Writer
+	need, dropped int64
+}
+
+func (d *dropOldest) Write(line []byte) (int, error) {
+	if d.dropped < d.need {
+		d.dropped += int64(len(line))
+		return len(line), nil
+	}
+	if d.out != nil {
+		return d.out.Write(line)
+	}
+	return len(line), nil
+}
+
+// measureNewest reads the window's lines of the opened generations into
+// sink (all of them, whatever the bound) and answers how much of the window
+// fits max when its oldest lines are left out: kept bytes after skip bytes.
+// A log cut at its bound keeps its newest lines, which are the ones a
+// collection is made for.
+func measureNewest(ctx context.Context, files []*os.File, sink io.Writer, from, to time.Time, max int64) (kept, skip int64, err error) {
+	total, _, err := filterFiles(ctx, files, sink, from, to, math.MaxInt64)
+	if err != nil || total <= max {
+		return total, 0, err
+	}
+	oldest := &dropOldest{need: total - max}
+	if _, _, err := filterFiles(ctx, files, oldest, from, to, total); err != nil {
+		return 0, 0, err
+	}
+	return total - oldest.dropped, oldest.dropped, nil
+}
+
+// writeNewest writes what measureNewest measured: the window's lines after
+// the first skip bytes, up to kept bytes. The generations only grow, so the
+// lines are the ones that were measured.
+func writeNewest(ctx context.Context, files []*os.File, w io.Writer, from, to time.Time, kept, skip int64) (int64, error) {
+	oldest := &dropOldest{out: w, need: skip}
+	n, _, err := filterFiles(ctx, files, oldest, from, to, skip+kept)
+	return n - oldest.dropped, err
+}
+
 // logWindow writes the lines of a log's generations (given newest first)
-// that lie in the window, oldest first.
-func logWindow(files []string, w io.Writer, from, to time.Time, max int64) (int64, bool, error) {
+// that lie in the window, oldest first; when they exceed max the newest are
+// kept.
+func logWindow(ctx context.Context, files []string, w io.Writer, from, to time.Time, max int64) (int64, bool, error) {
 	opened := openLogWindow(files, from)
 	defer func() {
 		for _, f := range opened {
 			_ = f.Close()
 		}
 	}()
-	return filterFiles(context.Background(), opened, w, from, to, max)
+	kept, skip, err := measureNewest(ctx, opened, io.Discard, from, to, max)
+	if err != nil {
+		return 0, false, err
+	}
+	n, err := writeNewest(ctx, opened, w, from, to, kept, skip)
+	return n, skip > 0, err
 }
 
 // memberStalls are the stall reports of the window that fit the bounds,
@@ -232,7 +296,8 @@ func memberStalls(dir string, from, to time.Time) (kept []memberFile, truncated 
 		if !ok || at.Before(from) || at.After(to) {
 			continue
 		}
-		info, err := os.Stat(report)
+		// Lstat: a link in the directory is not a report.
+		info, err := os.Lstat(report)
 		if err != nil || !info.Mode().IsRegular() || info.Size() > memberSmallFile {
 			continue
 		}
@@ -254,13 +319,14 @@ func readMemberOwnPart(ctx context.Context, src MemberSource, from, to, now time
 	p.facts.CollectedAt, p.facts.From, p.facts.To, p.facts.Truncated = now, from, to, []string{}
 	p.logs = openLogWindow(src.LogFiles(), from)
 	sink := &recordSink{}
-	n, truncated, err := filterFiles(ctx, p.logs, sink, from, to, MemberLogBytes)
-	if err != nil {
+	// The records are read from the whole window, also from the lines the
+	// log's bound leaves out.
+	var err error
+	if p.logBytes, p.logSkip, err = measureNewest(ctx, p.logs, sink, from, to, memberLogBound); err != nil {
 		p.close()
 		return nil, err
 	}
-	p.logBytes = n
-	p.setRecords(sink, truncated)
+	p.setRecords(sink, p.logSkip > 0)
 	var cut bool
 	if p.stalls, cut = memberStalls(src.StallDir(), from, to); cut {
 		p.facts.Truncated = append(p.facts.Truncated, strings.TrimSuffix(memberStallPrefix, "/"))
@@ -274,7 +340,7 @@ func readMemberOwnPart(ctx context.Context, src MemberSource, from, to, now time
 }
 
 func (p *memberPart) setRecords(sink *recordSink, logTruncated bool) {
-	p.roles, p.leaders = sink.roles.buf.Bytes(), sink.leaders.buf.Bytes()
+	p.roles, p.leaders = sink.roles.data, sink.leaders.data
 	for _, f := range []struct {
 		name string
 		cut  bool
@@ -308,27 +374,19 @@ func (p *memberPart) small() ([]struct {
 }
 
 // stageMemberPart writes the collecting member's own part into dir. Its log
-// in the window is already staged (as server/gpuworks-server.log, at log)
-// and so are its stall reports: only the small files are written here, the
-// records read out of that log.
-func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to, now time.Time, log string) ([]memberFile, error) {
+// and stall reports are in the collection already (under server/): only the
+// small files are written here. The records are read from the log's whole
+// window, not from the staged log, which may have been cut at its bound.
+func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to, now time.Time) ([]memberFile, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	p := &memberPart{facts: src.Facts(), from: from, to: to}
 	p.facts.CollectedAt, p.facts.From, p.facts.To, p.facts.Truncated = now, from, to, []string{}
+	p.logs = openLogWindow(src.LogFiles(), from)
+	defer p.close()
 	sink := &recordSink{}
-	if f, err := os.Open(log); err == nil {
-		sc := bufio.NewScanner(ctxReader{ctx, f})
-		sc.Buffer(make([]byte, 64<<10), 4<<20)
-		for sc.Scan() {
-			_, _ = sink.Write(append(sc.Bytes(), '\n'))
-		}
-		_ = f.Close()
-		if err := sc.Err(); err != nil {
-			return nil, err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	if _, _, err := filterFiles(ctx, p.logs, sink, from, to, math.MaxInt64); err != nil {
 		return nil, err
 	}
 	p.setRecords(sink, false)

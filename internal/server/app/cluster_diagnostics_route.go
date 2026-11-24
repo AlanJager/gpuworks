@@ -39,12 +39,19 @@ var clusterDiagnosticsSource = func(cfg Config) diagnostics.MemberSource { retur
 // goroutine, inside one read of a log file or an executable on a disk that
 // does not answer; it holds no request and ends at that read's return. One
 // part is given at a time; while one is being read, another asker is told
-// 429.
-func clusterDiagnosticsHandler(bundle *enrollmentBundle, requests *materialRequestTracker, logFile string, log *slog.Logger) (http.HandlerFunc, error) {
+// 429. The reading goroutine gives the slot back when it ends, so a member
+// whose disk does not answer keeps saying 429 until that read returns, and
+// is indexed as busy by whoever asks.
+//
+// local is this member's own configuration: its database path (which a
+// member that formed the cluster may have chosen) says where its raft
+// identity and transport policy are, its log file what the part is read
+// from.
+func clusterDiagnosticsHandler(bundle *enrollmentBundle, requests *materialRequestTracker, local Config, log *slog.Logger) (http.HandlerFunc, error) {
 	if requests == nil || bundle == nil || bundle.trust == nil || bundle.dataDir == "" {
 		return nil, errors.New("cluster diagnostics require an authenticated enrollment identity")
 	}
-	cfg := Config{DataDir: bundle.dataDir, LogFile: logFile}
+	cfg := Config{DataDir: bundle.dataDir, DBPath: local.DBPath, LogFile: local.LogFile}
 	source := clusterDiagnosticsSource(cfg)
 	slot := make(chan struct{}, 1)
 	return requests.wrap(func(w http.ResponseWriter, r *http.Request) {

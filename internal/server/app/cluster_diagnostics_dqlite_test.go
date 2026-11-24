@@ -64,7 +64,20 @@ func fixtureMembers() string {
 // transport policy naming the keys it admits.
 func diagnosticsMember(t *testing.T, f *closedFactsTLSFixture, now time.Time, revoked ...string) (*enrollmentServer, string) {
 	t.Helper()
+	return diagnosticsMemberAt(t, f, now, "gpuworks.db", revoked...)
+}
+
+// diagnosticsMemberAt is diagnosticsMember with its database under another
+// name, as a member that formed the cluster may have it.
+func diagnosticsMemberAt(t *testing.T, f *closedFactsTLSFixture, now time.Time, database string, revoked ...string) (*enrollmentServer, string) {
+	t.Helper()
 	data := writeStatusRaft(t, statusIdentity(7, "127.0.0.1:9910", 0), fixtureMembers(), map[string]string{"dqlite-lock": ""})
+	local := Config{DataDir: data, DBPath: filepath.Join(data, database)}
+	if database != "gpuworks.db" {
+		if err := os.Rename(filepath.Join(data, "gpuworks.db.dqlite"), local.DBPath+".dqlite"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	writeMemberIdentity(t, f, data, closedStatusPort(t), f.serverPair)
 	f.bundle.dataDir = data
 	logFile := filepath.Join(data, "logs", "server.log")
@@ -87,7 +100,7 @@ func diagnosticsMember(t *testing.T, f *closedFactsTLSFixture, now time.Time, re
 			policy.AllowedKeys = append(policy.AllowedKeys, key)
 		}
 	}
-	path, _, err := ClusterTransportPolicyPath(Config{DataDir: data})
+	path, _, err := ClusterTransportPolicyPath(local)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +110,8 @@ func diagnosticsMember(t *testing.T, f *closedFactsTLSFixture, now time.Time, re
 	if err := identity.PublishTransportPolicy(path, 0, policy); err != nil {
 		t.Fatal(err)
 	}
-	server, err := newClosedFactsEnrollmentServer(f.bundle, f.session, logFile, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	local.LogFile = logFile
+	server, err := newClosedFactsEnrollmentServer(f.bundle, f.session, local, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,17 +248,19 @@ func TestAMemberRefusesItsDiagnosticsPart(t *testing.T) {
 	t.Run("no member certificate", func(t *testing.T) {
 		f := newClosedFactsTLSFixture(t)
 		server, _ := diagnosticsMember(t, f, now)
+		// The listener requires a member certificate: the connection is
+		// refused in the handshake, before any route.
 		response, _, err := closedFactsRouteRequest(t, f.client(t, nil), server, http.MethodPost, enrollment.ClusterDiagnosticsPath, `{}`)
-		if err == nil && response.StatusCode == http.StatusOK {
-			t.Fatal("a caller without a member certificate was given the part")
+		if err == nil || response != nil || !strings.Contains(err.Error(), "certificate required") {
+			t.Fatalf("without a member certificate: %v, %v; want the handshake refused", response, err)
 		}
 	})
 	t.Run("another method", func(t *testing.T) {
 		f := newClosedFactsTLSFixture(t)
 		server, _ := diagnosticsMember(t, f, now)
 		response, _, err := closedFactsRouteRequest(t, f.client(t, &f.requesterPair), server, http.MethodGet, enrollment.ClusterDiagnosticsPath, "")
-		if err != nil || response.StatusCode == http.StatusOK {
-			t.Fatalf("GET = %v, %v; want a refusal", response, err)
+		if err != nil || response.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("GET = %v, %v; want 405", response, err)
 		}
 	})
 }
@@ -259,5 +275,26 @@ func TestTheDiagnosticsRouteStaysWithTheListenerWhileBusinessServes(t *testing.T
 	gate.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/_cluster/diagnostics", nil))
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("the diagnostics route answered %d behind the prepared routes", response.Code)
+	}
+}
+
+// A member whose database is not at the default path still knows who it is:
+// its part carries its identity, and its own policy file admits the asker.
+func TestAMemberWithItsDatabaseElsewhereGivesItsPartAsItself(t *testing.T) {
+	now := time.Now().UTC()
+	f := newClosedFactsTLSFixture(t)
+	server, data := diagnosticsMemberAt(t, f, now, "cluster.db")
+	if _, err := os.Stat(filepath.Join(data, "gpuworks.db.dqlite")); err == nil {
+		t.Fatal("the fixture left a database at the default path")
+	}
+	cert, key := memberPEM(t, f.requesterPair)
+	answer, err := diagnosticsClient(t, f, server).OpenClusterDiagnostics(t.Context(), cert, key, now.Add(-time.Hour), now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer answer.Body.Close()
+	var facts diagnostics.MemberFacts
+	if err := json.Unmarshal([]byte(partArchive(t, answer.Body)[diagnostics.MemberFactsFile]), &facts); err != nil || facts.ID != 7 || facts.Address != "127.0.0.1:9910" {
+		t.Fatalf("member.json = %+v, %v; want member 7", facts, err)
 	}
 }

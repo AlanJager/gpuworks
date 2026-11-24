@@ -240,8 +240,9 @@ func TestAMembersPartIsUnpackedWithinItsBounds(t *testing.T) {
 			dir := t.TempDir()
 			b := budget(tc.member, tc.bundle)
 			files, err := readMemberPart(bytes.NewReader(hostilePart(t, 40, 100<<10)), dir, b)
-			if err != nil {
-				t.Fatalf("a part that reached its budget is kept as far as it went: %v", err)
+			// What arrived is kept, but the part is not whole and says so.
+			if !errors.Is(err, errPartBudget) {
+				t.Fatalf("err = %v, want the budget's", err)
 			}
 			var total int64
 			for _, f := range files {
@@ -269,8 +270,8 @@ func TestAMembersPartIsUnpackedWithinItsBounds(t *testing.T) {
 		var total int64
 		for i := 0; i < 2; i++ {
 			files, err := readMemberPart(bytes.NewReader(hostilePart(t, 40, 100<<10)), t.TempDir(), &partBudget{member: MemberPartBytes, bundle: &shared})
-			if i == 1 && err == nil {
-				t.Fatal("a second part was accepted with nothing left for its member.json")
+			if !errors.Is(err, errPartBudget) {
+				t.Fatalf("part %d: err = %v, want the budget's", i, err)
 			}
 			for _, f := range files {
 				total += f.bytes
