@@ -45,6 +45,42 @@ func TestRecentNetworkCardTestRuns(t *testing.T) {
 	}
 }
 
+func TestNetworkTestRunKeepsRecentCardRunsSeparately(t *testing.T) {
+	s := newTestStore(t)
+	finish := func(kind string) uint {
+		t.Helper()
+		run, err := s.StartNetworkTestRun(&NetworkTestRun{Kind: kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.FinishNetworkTestRun(run.ID, "[]", 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		return run.ID
+	}
+
+	oldestCard := finish("card_matrix")
+	for range networkTestKeep - 1 {
+		finish("card_ping")
+	}
+	newestCard := finish("card_matrix")
+	for range networkTestKeep {
+		finish("tcp")
+	}
+
+	got, err := s.RecentNetworkCardTestRuns(0, time.Now().UTC().Add(-time.Hour))
+	if err != nil || len(got) != networkTestKeep || got[0].ID != newestCard {
+		t.Fatalf("recent card runs = %+v, %v", got, err)
+	}
+	if _, err := s.NetworkTestRunByID(oldestCard); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("oldest card run was not pruned: %v", err)
+	}
+	latest, err := s.LatestNetworkTestRun(0)
+	if err != nil || latest.Kind != "tcp" {
+		t.Fatalf("latest network run = %+v, %v", latest, err)
+	}
+}
+
 func TestNetworkTestRunLifecycle(t *testing.T) {
 	s := newTestStore(t)
 	n, err := s.CreateNetwork(&Network{Name: "lan", Type: "ethernet", Roles: `["storage_sync"]`})

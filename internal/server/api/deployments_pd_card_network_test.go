@@ -103,6 +103,14 @@ func TestPDAdmissionUsesMeasuredCardConnectivity(t *testing.T) {
 	finishProbe(startProbe("card_ping"), `{"rail":"npu0","target_rail":"npu0","source_ip":"172.20.9.1","target_ip":"172.20.9.3","reachable":true}`, 1)
 	evaluate(false)
 	finishProbe(startProbe("card_matrix"), `{"rail":"npu0","target_rail":"npu1","source_ip":"172.20.9.1","target_ip":"172.20.9.4","code":"tool_failed"}`, 0)
+	// Host probes cannot displace a card-pair result that still blocks deployment.
+	for _, kind := range []string{"tcp", "rdma_tool"} {
+		for range 5 {
+			if err := st.FinishNetworkTestRun(startProbe(kind), "[]", 0, 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	blocked := evaluate(false)
 	if len(blocked.Errors) != 1 || blocked.Errors[0].Field != "placement.pd" ||
 		blocked.Errors[0].Code != messages.ErrorPDCardNetworkBlocked ||

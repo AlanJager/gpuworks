@@ -10,7 +10,7 @@ import (
 // ErrNetworkTestRunning reports a second test of a network while one runs.
 var ErrNetworkTestRunning = errors.New("a test of this network is already running")
 
-// networkTestKeep is how many finished runs a network keeps.
+// networkTestKeep caps both general history and completed card evidence per network.
 const networkTestKeep = 10
 
 // networkTestStale is when a still-running row can only be a run the server
@@ -102,7 +102,9 @@ func (s *Store) FinishNetworkTestRun(id uint, pairsJSON string, pairCount, passe
 		if err := tx.Model(&NetworkTestRun{}).Where("network_id = ?", run.NetworkID).Order("id desc").Limit(networkTestKeep).Pluck("id", &keep).Error; err != nil {
 			return err
 		}
-		return tx.Where("network_id = ? AND id NOT IN ?", run.NetworkID, keep).Delete(&NetworkTestRun{}).Error
+		cardEvidence := recentCompletedNetworkCardTests(tx, run.NetworkID).Select("id")
+		return tx.Where("network_id = ? AND id NOT IN ?", run.NetworkID, keep).
+			Where("id NOT IN (?)", cardEvidence).Delete(&NetworkTestRun{}).Error
 	})
 	if err != nil {
 		return err
@@ -115,9 +117,13 @@ func (s *Store) FinishNetworkTestRun(id uint, pairsJSON string, pairCount, passe
 // scoped retest cannot replace evidence for a pair it did not probe.
 func (s *Store) RecentNetworkCardTestRuns(networkID uint, since time.Time) ([]NetworkTestRun, error) {
 	var runs []NetworkTestRun
-	err := s.db.Where("network_id = ? AND status = ? AND kind IN ? AND started_at >= ?", networkID, NetworkTestDone, []string{"card_ping", "card_matrix"}, since).
-		Order("id desc").Limit(networkTestKeep).Find(&runs).Error
+	err := recentCompletedNetworkCardTests(s.db, networkID).Where("started_at >= ?", since).Find(&runs).Error
 	return runs, err
+}
+
+func recentCompletedNetworkCardTests(db *gorm.DB, networkID uint) *gorm.DB {
+	return db.Model(&NetworkTestRun{}).Where("network_id = ? AND status = ? AND kind IN ?", networkID, NetworkTestDone, []string{"card_ping", "card_matrix"}).
+		Order("id desc").Limit(networkTestKeep)
 }
 
 // LatestNetworkTestRun is the newest run of a network, if any.

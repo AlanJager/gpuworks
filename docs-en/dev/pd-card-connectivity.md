@@ -5,8 +5,10 @@ does not guarantee that every card port reaches every other card port. In
 particular, matching card indexes do not establish reachability.
 
 Evaluation and creation share a card-pair check for cross-node PD modes
-that use HCCL for KV transfer. For each pair, the check uses the newest
-valid result in the selected network's retained, completed card tests.
+that use HCCL for KV transfer. Each network separately retains its 10 newest
+completed card tests, with card pings and full card matrices sharing that limit.
+For each pair, the check uses the newest valid result in those tests. Host tests
+do not count toward the card-test limit.
 The result must be within 24 hours and match the two nodes, ports, and
 current RoCE or HCCS addresses. A narrower test, tool failure, or retest
 in progress leaves the pair's last valid result in effect.
@@ -28,4 +30,4 @@ Verify KV handoff after the engines start. Pin the intended cards and run a
 card matrix test before deployment. Connectivity evidence cannot diagnose every local Mooncake
 initialization failure, and does not replace engine startup validation.
 
-<!-- translation-source-sha256: 7ddf8d3cfd79f4920eeabe639286c0a3f91f983a0a12d415a792d5f72c4b22ec # Accelerator card connectivity in PD evaluation -->
+<!-- translation-source-sha256: 7aa3b1741f7dffff78f5ab708066ca7143e32b4262cea0a6f2e7770ea59b9f66 # Accelerator card connectivity in PD evaluation -->
