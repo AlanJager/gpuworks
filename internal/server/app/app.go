@@ -17,6 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/obsingest"
 	"gpuworks.ai/gpuworks/internal/server/offlinepkg"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/version"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -183,7 +184,7 @@ func assembleBusiness(cfg Config, log *slog.Logger, b *bus.Bus, st *store.Store,
 	ctrl := controller.New(st, h, log)
 	ctrl.SetNetworks(networks)
 	h.SetEnginePorts(ctrl.EnginePorts)
-	px := proxy.New(st, networks, h, log, cfg.ProxyMaxBodyBytes)
+	px := proxy.New(storeplane.New(st), networks, storeplane.Tunnels(h), log, cfg.ProxyMaxBodyBytes)
 	a.proxy = px
 	ctrl.SetDrainProbe(px)
 

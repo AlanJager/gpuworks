@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"regexp"
 
-	hubpkg "gpuworks.ai/gpuworks/internal/server/hub"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 )
 
 // Gateway error codes: every error the gateway itself answers on /v1 (and the
@@ -238,7 +238,7 @@ func requestRefusal(err error) *refusal {
 // the tunnel will likely open on the next attempt.
 func upstreamErrorCode(err error) string {
 	switch {
-	case errors.Is(err, hubpkg.ErrDataLaneUnavailable):
+	case errors.Is(err, plane.ErrDataLaneUnavailable):
 		return ErrorDataLaneUnavailable
 	case errors.Is(err, errInstanceUnavailable):
 		return ErrorInstanceUnavailable

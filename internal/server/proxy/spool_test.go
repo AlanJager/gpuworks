@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -214,7 +215,7 @@ func newCappedProxy(t *testing.T, maxBody int64, upstreamHit *bool) (*Proxy, str
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, slog.New(slog.NewTextHandler(io.Discard, nil)), maxBody)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, slog.New(slog.NewTextHandler(io.Discard, nil)), maxBody)
 	t.Cleanup(p.Close)
 	return p, apiKey, upstream.Close
 }

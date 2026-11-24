@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/tunnelerr"
 	"gpuworks.ai/gpuworks/internal/server/usagereport"
 )
 
@@ -35,8 +36,9 @@ const dataLaneReattachWait = 5 * time.Second
 // against a different node/instance (the proxy's retry transport) should
 // treat it as a connection-level failure; callers that cannot should surface
 // it as a retryable/unavailable condition rather than hanging or silently
-// degrading.
-var ErrDataLaneUnavailable = errors.New("data lane unavailable")
+// degrading. It is the same value as tunnelerr.ErrDataLaneUnavailable, so the
+// gateway recognises it without importing the hub.
+var ErrDataLaneUnavailable = tunnelerr.ErrDataLaneUnavailable
 
 // newSessionID returns a random 16-byte hex token identifying one ctrl session.
 // A data lane must present it to attach, so it must be unpredictable.

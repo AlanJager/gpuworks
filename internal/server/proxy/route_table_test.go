@@ -8,6 +8,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -34,7 +36,7 @@ func TestRouteTableCloseAndRestartStopsRefreshLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	r := newRouteTable(st, storeNetworks(st), readinessTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := newRouteTable(storeplane.New(st), storeNetworks(st), readinessTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	r.close()
 	r.mu.Lock()
 	runningAfterClose := r.running
@@ -70,7 +72,7 @@ func TestRouteTableBuildKeepsOnlyReadyServingCandidates(t *testing.T) {
 	if _, err := st.CreateInstance(&store.Instance{UUID: "starting", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstStarting, APIPort: 30002, Ports: "[30002]"}); err != nil {
 		t.Fatal(err)
 	}
-	r := newRouteTable(st, storeNetworks(st), readinessTestHub{online: map[string]bool{node.UUID: true}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := newRouteTable(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{node.UUID: true}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	defer r.close()
 	rows, ok := r.snapshot("model")
 	if !ok || len(rows) != 1 || len(rows[0].candidates) != 1 || rows[0].candidates[0].instanceUUID != "ready" {
@@ -82,15 +84,15 @@ func TestRouteTableBuildKeepsOnlyReadyServingCandidates(t *testing.T) {
 // periodic refresh; every other non-progress event rebuilds at once.
 func TestRouteTableRebuildsOnEventsThatChangeRouting(t *testing.T) {
 	cases := []struct {
-		e    bus.Event
+		e    plane.Change
 		want bool
 	}{
-		{bus.Event{Topic: "node", Reason: store.NodeChangeStatus}, false},
-		{bus.Event{Topic: "node", Reason: store.NodeChangeScheduling}, false},
-		{bus.Event{Topic: "node", Reason: "state:offline"}, true},
-		{bus.Event{Topic: "instance", Reason: "status"}, true},
-		{bus.Event{Topic: "instance", Reason: bus.ReasonProgress}, false},
-		{bus.Event{Topic: "deployment", Reason: "updated"}, true},
+		{plane.Change{Topic: "node", Reason: store.NodeChangeStatus}, false},
+		{plane.Change{Topic: "node", Reason: store.NodeChangeScheduling}, false},
+		{plane.Change{Topic: "node", Reason: "state:offline"}, true},
+		{plane.Change{Topic: "instance", Reason: "status"}, true},
+		{plane.Change{Topic: "instance", Reason: bus.ReasonProgress}, false},
+		{plane.Change{Topic: "deployment", Reason: "updated"}, true},
 	}
 	for _, c := range cases {
 		if got := rebuildsOn(c.e); got != c.want {
@@ -107,7 +109,7 @@ func TestRouteTableDefersEventRebuildsWithinTheGap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	r := newRouteTable(st, storeNetworks(st), readinessTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := newRouteTable(storeplane.New(st), storeNetworks(st), readinessTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	defer r.close()
 	r.rebuild()
 	before := r.lastRebuild.Load()
@@ -131,17 +133,17 @@ func TestRouteTableUrgentEvents(t *testing.T) {
 	r := &routeTable{}
 	r.current.Store(&routeSnapshot{running: map[string]bool{"live": true}})
 	cases := []struct {
-		e    bus.Event
+		e    plane.Change
 		want bool
 	}{
-		{bus.Event{Topic: "instance", Key: "live", Reason: proto.InstDraining}, true},
-		{bus.Event{Topic: "instance", Key: "live", Reason: "deleted"}, true},
-		{bus.Event{Topic: "instance", Key: "new", Reason: proto.InstRunning}, true},
-		{bus.Event{Topic: "instance", Key: "new", Reason: "sleep"}, true},
-		{bus.Event{Topic: "instance", Key: "new", Reason: "created"}, false},
-		{bus.Event{Topic: "instance", Key: "new", Reason: proto.InstStarting}, false},
-		{bus.Event{Topic: "deployment", Key: "1", Reason: "updated"}, true},
-		{bus.Event{Topic: "node", Key: "n", Reason: "state:offline"}, true},
+		{plane.Change{Topic: "instance", Key: "live", Reason: proto.InstDraining}, true},
+		{plane.Change{Topic: "instance", Key: "live", Reason: "deleted"}, true},
+		{plane.Change{Topic: "instance", Key: "new", Reason: proto.InstRunning}, true},
+		{plane.Change{Topic: "instance", Key: "new", Reason: "sleep"}, true},
+		{plane.Change{Topic: "instance", Key: "new", Reason: "created"}, false},
+		{plane.Change{Topic: "instance", Key: "new", Reason: proto.InstStarting}, false},
+		{plane.Change{Topic: "deployment", Key: "1", Reason: "updated"}, true},
+		{plane.Change{Topic: "node", Key: "n", Reason: "state:offline"}, true},
 	}
 	for _, c := range cases {
 		if got := r.urgentOn(c.e); got != c.want {
@@ -168,7 +170,7 @@ func TestRouteTableSnapshotRecordsRunningInstances(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := newRouteTable(st, storeNetworks(st), readinessTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := newRouteTable(storeplane.New(st), storeNetworks(st), readinessTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	defer r.close()
 	snap := r.current.Load()
 	if !snap.running["up"] || snap.running["booting"] {

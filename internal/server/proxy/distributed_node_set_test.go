@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -19,7 +20,7 @@ func TestDistributedSelectionDoesNotReadTheNodeSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{}}, nil, 0)
 	t.Cleanup(p.Close)
 	const notReady = "distributed model qwen-72b is not ready: no replica has every rank running on an online node"
 	for _, tc := range []struct {

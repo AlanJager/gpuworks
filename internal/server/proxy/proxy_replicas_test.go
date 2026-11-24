@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -42,7 +43,7 @@ func TestSelectInstanceRoutesAroundAnInstanceOrderedToSleep(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"replica-sleep-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"replica-sleep-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	if err := st.OrderInstancesSleep(dep.ID, []string{"replica-a"}, 1, proto.SleepModeWait); err != nil {
 		t.Fatal(err)
@@ -104,7 +105,7 @@ func TestPickAwakePassesOverAnInstanceOrderedSinceTheRouteWasRead(t *testing.T) 
 		}
 		candidates = append(candidates, candidate{instanceUUID: uuid, nodeUUID: "pick-awake-node", port: 30021 + i, uuidHash: fnv64([]byte(uuid))})
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"pick-awake-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"pick-awake-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	if err := st.OrderInstancesSleep(dep.ID, []string{"awake-a"}, 1, proto.SleepModeWait); err != nil {
 		t.Fatal(err)
@@ -174,7 +175,7 @@ func TestDistributedSelectionPicksAmongCompleteReplicas(t *testing.T) {
 	// ranks apart.
 	group("g1", nodes[0], nodes[1], proto.InstStarting)
 	group("g2", nodes[2], nodes[3], proto.InstRunning)
-	p := New(st, storeNetworks(st), readinessTestHub{online: online}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: online}, nil, 0)
 	t.Cleanup(p.Close)
 	for i := 0; i < 4; i++ {
 		_, tgt, status, message, _ := p.selectStatus("qwen-replicas")
@@ -248,7 +249,7 @@ func TestAMultiNodeReplicaIsAsleepOnlyWhenItsLeaderIs(t *testing.T) {
 	if err := st.OrderInstancesSleep(dep.ID, []string{"la-follower"}, 1, proto.SleepModeWait); err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"leader-asleep-a": true, "leader-asleep-b": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"leader-asleep-a": true, "leader-asleep-b": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	_, tgt, status, msg, asleep := p.selectStatus("leader-asleep")
 	if status != 0 || tgt.instanceUUID != "la-leader" || asleep {

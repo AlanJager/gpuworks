@@ -10,11 +10,11 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/inferencemetrics"
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -56,7 +56,7 @@ type routeDeployment struct {
 }
 
 type routeTable struct {
-	store    *store.Store
+	store    plane.Source
 	networks Networks
 	hub      Tunneler
 	log      *slog.Logger
@@ -75,7 +75,7 @@ type routeTable struct {
 	running          bool
 }
 
-func newRouteTable(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger) *routeTable {
+func newRouteTable(st plane.Source, networks Networks, hub Tunneler, log *slog.Logger) *routeTable {
 	r := &routeTable{store: st, networks: networks, hub: hub, log: log, dirty: make(chan struct{}, 1), urgent: make(chan struct{}, 1)}
 	if log == nil {
 		r.log = slog.Default()
@@ -95,7 +95,7 @@ func newRouteTable(st *store.Store, networks Networks, hub Tunneler, log *slog.L
 }
 
 func (r *routeTable) start() {
-	if r == nil || r.store == nil || r.store.Bus == nil {
+	if r == nil || r.store == nil || !r.store.Announces() {
 		return
 	}
 	r.mu.Lock()
@@ -109,8 +109,8 @@ func (r *routeTable) start() {
 	r.mu.Unlock()
 	// A template change may change what its deployments' replies are read
 	// for (api.request_stats).
-	sub := r.store.Bus.Subscribe(64, "deployment", "instance", "node", "network", store.InferenceTemplateTopic)
-	go r.run(sub, stop, done)
+	changes, unsubscribe := r.store.Changes(64, plane.TopicDeployment, plane.TopicInstance, plane.TopicNode, plane.TopicNetwork, plane.TopicInferenceTemplate)
+	go r.run(changes, unsubscribe, stop, done)
 }
 
 // close stops the table's event subscription and refresh ticker. A route table
@@ -131,7 +131,7 @@ func (r *routeTable) close() {
 	<-done
 }
 
-func (r *routeTable) run(sub *bus.Subscription, stop <-chan struct{}, done chan<- struct{}) {
+func (r *routeTable) run(changes <-chan plane.Change, unsubscribe func(), stop <-chan struct{}, done chan<- struct{}) {
 	defer close(done)
 	t := time.NewTicker(routeRefreshInterval)
 	defer t.Stop()
@@ -140,8 +140,8 @@ func (r *routeTable) run(sub *bus.Subscription, stop <-chan struct{}, done chan<
 	var deferred <-chan time.Time
 	for {
 		select {
-		case e := <-sub.C():
-			if e.Topic == "instance" && e.Reason != bus.ReasonProgress {
+		case e := <-changes:
+			if e.Topic == plane.TopicInstance && e.Reason != plane.ReasonProgress {
 				r.callbackMu.RLock()
 				callback := r.onInstanceChange
 				r.callbackMu.RUnlock()
@@ -175,7 +175,7 @@ func (r *routeTable) run(sub *bus.Subscription, stop <-chan struct{}, done chan<
 		case <-t.C:
 			r.rebuild()
 		case <-stop:
-			sub.Close()
+			unsubscribe()
 			return
 		}
 	}
@@ -193,11 +193,11 @@ func (r *routeTable) run(sub *bus.Subscription, stop <-chan struct{}, done chan<
 // reads no scheduling state, a cordon keeps running instances serving, and
 // the instances a drain moves announce themselves; a plugin refreshing its
 // holds would otherwise rebuild the table for every node it touched.
-func rebuildsOn(e bus.Event) bool {
-	if e.Reason == bus.ReasonProgress {
+func rebuildsOn(e plane.Change) bool {
+	if e.Reason == plane.ReasonProgress {
 		return false
 	}
-	return e.Topic != "node" || (e.Reason != store.NodeChangeStatus && e.Reason != store.NodeChangeScheduling)
+	return e.Topic != plane.TopicNode || (e.Reason != plane.ReasonNodeStatus && e.Reason != plane.ReasonNodeScheduling)
 }
 
 // urgentOn reports whether an event may change which instances route, and so
@@ -207,8 +207,8 @@ func rebuildsOn(e bus.Event) bool {
 // changing its sleep. What is left - instances being created, pulled or
 // started, which no request can reach yet - is the bulk of a fleet
 // redeploying, and waits.
-func (r *routeTable) urgentOn(e bus.Event) bool {
-	if e.Topic == store.InferenceTemplateTopic {
+func (r *routeTable) urgentOn(e plane.Change) bool {
+	if e.Topic == plane.TopicInferenceTemplate {
 		return false
 	}
 	if e.Topic != "instance" {
@@ -287,19 +287,11 @@ func (r *routeTable) setOnRebuild(fn func(map[string]bool)) {
 func (r *routeTable) build() (*routeSnapshot, error) {
 	// Read before the rows: a change committed while they are read moves the
 	// generation past this, and the candidates read as possibly stale.
-	routedAt := routingGeneration(r.store) + 1
-	deps, err := r.store.RoutingDeployments()
+	rows, err := r.store.Snapshot()
 	if err != nil {
 		return nil, err
 	}
-	insts, err := r.store.RoutingInstances()
-	if err != nil {
-		return nil, err
-	}
-	nodes, drivers, err := r.store.RoutingNodes()
-	if err != nil {
-		return nil, err
-	}
+	routedAt, deps, insts, nodes, drivers := rows.Generation, rows.Deployments, rows.Instances, rows.NodeUUID, rows.NodeDriver
 	byDep := make(map[uint]*routeDeployment, len(deps))
 	byName := make(map[string][]*routeDeployment)
 	for i := range deps {
