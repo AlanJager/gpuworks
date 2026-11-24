@@ -36,3 +36,14 @@ func BeginWriterTransaction(ctx context.Context, pool *sql.DB, options *sql.TxOp
 	}
 	return tx, err
 }
+
+// OwnsWriterAtBegin reports whether BeginWriterTransaction on pool returns a
+// transaction that already holds the database writer. Only the native pool
+// does; on any other pool the transaction is deferred and takes the writer at
+// its first write.
+func OwnsWriterAtBegin(pool *sql.DB) bool {
+	_, ok := pool.Driver().(interface {
+		acquireWriter(context.Context) (func(), error)
+	})
+	return ok
+}

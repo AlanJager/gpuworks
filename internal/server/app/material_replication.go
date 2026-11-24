@@ -73,6 +73,9 @@ func replicateRequiredMaterialsWithYield(ctx context.Context, dataDir string, st
 		}
 	}
 	transferredAny := false
+	// silent names each member skipped as unreachable and why, for the error
+	// of a pass that then finds too few members verified.
+	var silent []string
 	verifiedPeers := make([]store.ClusterTransportMember, 0, len(members)-1)
 	publishedMajority := false
 	installedPeers := 0
@@ -168,6 +171,7 @@ func replicateRequiredMaterialsWithYield(ctx context.Context, dataDir string, st
 			if log != nil {
 				log.Warn("cluster member is unreachable", "member", member.ID, "database", member.Address, "err", err)
 			}
+			silent = append(silent, silentMaterialMember(member, err))
 			continue
 		}
 		if err != nil {
@@ -185,7 +189,7 @@ func replicateRequiredMaterialsWithYield(ctx context.Context, dataDir string, st
 		}
 	}
 	if !publishedMajority {
-		return publishAndInstall()
+		return namingSilentMaterialMembers(publishAndInstall(), silent)
 	}
 	return nil
 }
@@ -548,10 +552,9 @@ func (a *App) runMaterialReplication(ctx context.Context, interval time.Duration
 			return materialStartupResult(startupRejected, err)
 		})
 		if err != nil && ctx.Err() == nil {
-			if materialReplicationFailureInvalidates(err) {
-				a.invalidateCandidateMaterialEligibility()
-			}
-			a.log.Warn("cluster material replication pending", "err", err)
+			a.materialReplicationPassFailed(err)
+		} else if err == nil {
+			a.materialReplicationPassCompleted()
 		}
 		if !waitForMaterialReplicationCycle(ctx, ticker.C, interval, err != nil) {
 			return

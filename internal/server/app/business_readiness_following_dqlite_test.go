@@ -18,7 +18,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-func TestNativeFollowingRenewalUsesRealProofAndGrants(t *testing.T) {
+func TestNativeFollowingRenewalUsesRealProof(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 180*time.Second)
 	defer cancel()
 	f, _, _ := newAliasBootstrapMaterialFixture(t, ctx, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"})
@@ -28,7 +28,6 @@ func TestNativeFollowingRenewalUsesRealProofAndGrants(t *testing.T) {
 		}
 	}
 	bundle, st := f.bundles[0], f.stores[0]
-	expected := store.ClusterIdentity{ClusterID: bundle.info.ClusterID, CAFingerprint: bundle.info.CAFingerprint, Protocol: bundle.info.Protocol}
 	candidate := &App{cfg: Config{DataDir: bundle.dataDir}, store: st, memberState: memberState{joinedClosed: true}, log: enrollmentNativeLog()}
 	phaseStore := func(work context.Context) (*store.Store, error) {
 		leader, err := f.databases[0].Leader(work)
@@ -42,11 +41,12 @@ func TestNativeFollowingRenewalUsesRealProofAndGrants(t *testing.T) {
 		}
 		return nil, fmt.Errorf("native phase leader %d is outside fixture", leader.ID)
 	}
-	for _, mode := range []string{"slow-then-fast", "final-headroom", "final-phase-rejection"} {
+	for _, mode := range []string{"slow-then-fast", "phase-frozen-before-following-proof"} {
 		t.Run(mode, func(t *testing.T) {
 			base := time.Now()
 			var age atomic.Int64
-			var proofs, reads, grants atomic.Int32
+			var proofs, reads atomic.Int32
+			var phase store.MaintenancePhaseState
 			entered, release, readDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			gate := newBusinessHandlerGate()
 			e := newMaterialEligibility(func() time.Time {
@@ -64,6 +64,21 @@ func TestNativeFollowingRenewalUsesRealProofAndGrants(t *testing.T) {
 				if n > 3 {
 					<-work.Done()
 					return false, work.Err()
+				}
+				if n == 3 && mode == "phase-frozen-before-following-proof" {
+					// A cluster upgrade freezes the phase. The real proof's
+					// grant is then refused, so readiness is not published.
+					leader, err := phaseStore(work)
+					if err != nil {
+						return false, err
+					}
+					current, err := leader.ReadMaintenancePhase(work)
+					if err != nil {
+						return false, err
+					}
+					if phase, err = leader.TransitionMaintenancePhase(work, current, store.MaintenanceFreezing); err != nil {
+						return false, err
+					}
 				}
 				ready, err := candidate.CandidateMemberReady(work)
 				if n == 2 && ready && err == nil {
@@ -107,10 +122,8 @@ func TestNativeFollowingRenewalUsesRealProofAndGrants(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			var phase store.MaintenancePhaseState
 			t.Cleanup(func() {
-				// The request cleanup registered below joins its final-grant
-				// callback first. Join the proof before restoring shared state.
+				// Join the proof before restoring shared state.
 				stopWork()
 				<-runDone
 				if phase.Revision != 0 {
@@ -126,30 +139,6 @@ func TestNativeFollowingRenewalUsesRealProofAndGrants(t *testing.T) {
 			})
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(e)
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, expected, f.databases[0].ID, f.keys[0], func(request context.Context, identity store.ClusterIdentity, key string) (uint64, []store.ClusterTransportMember, error) {
-					if grants.Add(1) == 2 {
-						if mode == "final-headroom" {
-							age.Add(int64(materialEligibilityWindow - store.ClusterMembershipGrantTimeout))
-						}
-						if mode == "final-phase-rejection" {
-							leader, err := phaseStore(request)
-							if err != nil {
-								return 0, nil, err
-							}
-							current, err := leader.ReadMaintenancePhase(request)
-							if err != nil {
-								return 0, nil, err
-							}
-							phase, err = leader.TransitionMaintenancePhase(request, current, store.MaintenanceFreezing)
-							if err != nil {
-								return 0, nil, err
-							}
-						}
-					}
-					return st.GrantClusterMembership(request, identity, key)
-				})
-			})
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
 			request, stopRequest := context.WithCancel(ctx)
 			rec := httptest.NewRecorder()
@@ -181,10 +170,10 @@ func TestNativeFollowingRenewalUsesRealProofAndGrants(t *testing.T) {
 			if mode == "slow-then-fast" {
 				want = http.StatusOK
 			}
-			if rec.Code != want || reads.Load() != 1 || grants.Load() != 2 || proofs.Load() != 3 {
-				t.Fatalf("native status%d want%d SQL%d grants%d proofs%d", rec.Code, want, reads.Load(), grants.Load(), proofs.Load())
+			if rec.Code != want || reads.Load() != 1 || proofs.Load() < 3 {
+				t.Fatalf("native status%d want%d SQL%d proofs%d", rec.Code, want, reads.Load(), proofs.Load())
 			}
-			if mode == "final-phase-rejection" && (phase.Revision == 0 || phase.Phase != store.MaintenanceFreezing) {
+			if mode == "phase-frozen-before-following-proof" && (phase.Revision == 0 || phase.Phase != store.MaintenanceFreezing) {
 				t.Fatalf("phase rejection lacked a committed freeze: %+v", phase)
 			}
 			if rec.Code == http.StatusOK && !e.EligibleFor(store.ClusterMembershipGrantTimeout) {

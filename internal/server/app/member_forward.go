@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/hub"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // A control-plane cluster serves business from one member: the one that
@@ -177,18 +179,33 @@ func (f *memberForward) CloseMemberSessions(ctx context.Context) error {
 
 type memberPeerKey struct{}
 
-// memberPeer remembers that a connection's certificate was authorized, so a
-// kept-alive connection pays the membership check once.
+// memberPeer is one member connection's authorization: decided once, by the
+// first answer. An attempt that brought no answer decides nothing.
 type memberPeer struct {
-	once sync.Once
-	err  error
+	mu      sync.Mutex
+	decided bool
+	err     error
+}
+
+func (p *memberPeer) authorize(decide func() error) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.decided {
+		return p.err
+	}
+	err := decide()
+	if err != nil && store.ClusterGrantUndecided(err) {
+		return err
+	}
+	p.decided, p.err = true, err
+	return err
 }
 
 // serveForwarded is the leader's end: an admitted member's request is served
 // as if the client had connected here.
 func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-		refuseMemberBusiness(w)
+		refuseMemberBusiness(w, r, refusalPeerUnidentified)
 		return
 	}
 	peer, _ := r.Context().Value(memberPeerKey{}).(*memberPeer)
@@ -196,19 +213,28 @@ func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 	authorize, local := f.authorize, f.local
 	f.mu.Unlock()
 	if peer == nil || authorize == nil || local == nil {
-		refuseMemberBusiness(w)
+		refuseMemberBusiness(w, r, refusalForwardNotReady)
 		return
 	}
-	peer.once.Do(func() { peer.err = authorize(r.Context(), r.TLS.PeerCertificates[0]) })
-	if peer.err != nil {
+	if err := peer.authorize(func() error { return authorize(r.Context(), r.TLS.PeerCertificates[0]) }); err != nil {
+		if store.ClusterGrantUndecided(err) {
+			// No answer about the peer: not ready, and the next request on
+			// this connection asks again.
+			refuseMemberBusiness(w, r, refusalPeerUndecided)
+			return
+		}
+		markRefusal(w, r, refusalPeerNotAdmitted)
 		http.Error(w, "member is not admitted", http.StatusForbidden)
 		return
 	}
 	// A member forwards to the leader it observed. One that is no longer the
 	// leader answers as a closed member does and never forwards again, so a
 	// request crosses the member route at most once.
-	if leader, known := f.observedLeader(); !known || leader != f.memberID() {
-		refuseMemberBusiness(w)
+	if leader, known := f.observedLeader(); !known {
+		refuseMemberBusiness(w, r, refusalNoKnownLeader)
+		return
+	} else if leader != f.memberID() {
+		refuseMemberBusiness(w, r, refusalNotTheLeader)
 		return
 	}
 	remote := r.Header.Get(memberForwardRemoteHeader)
@@ -257,7 +283,7 @@ func (f *memberForward) wrap(next http.Handler) http.Handler {
 			return
 		}
 		if proxy == nil {
-			refuseMemberBusiness(w)
+			refuseMemberBusiness(w, r, refusalNoKnownLeader)
 			return
 		}
 		proxy.ServeHTTP(w, r)
@@ -410,7 +436,20 @@ func (f *memberForward) proxyTo(member uint64) *httputil.ReverseProxy {
 			if f.log != nil && r.Context().Err() == nil {
 				f.log.Debug("request not forwarded to the leader", "member", member, "err", err)
 			}
-			refuseMemberBusiness(w)
+			if r.Context().Err() != nil {
+				// The client went away; that says nothing about the leader.
+				answerNotReady(w)
+				return
+			}
+			refuseMemberBusiness(w, r, refusalLeaderUnreachable)
+		},
+		// The leader's answer, unless it is itself a refusal, ends a run of
+		// refusals on this member.
+		ModifyResponse: func(resp *http.Response) error {
+			if resp.Header.Get(businessRefusalHeader) == "" {
+				memberBusinessRefusals.served()
+			}
+			return nil
 		},
 	}
 	f.proxies[member] = proxy

@@ -18,8 +18,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-func TestBusinessReadinessRenewalReservesFinalGrantHeadroom(t *testing.T) {
-	for _, mode := range []string{"renewed-before-final-grant", "renewal-exceeds-wait", "renewed-proof-exceeds-five-seconds"} {
+func TestBusinessReadinessRenewalReservesPublicationHeadroom(t *testing.T) {
+	for _, mode := range []string{"renewed-before-publishing", "renewal-exceeds-wait", "renewed-proof-exceeds-five-seconds"} {
 		t.Run(mode, func(t *testing.T) {
 			st, err := store.Open(filepath.Join(t.TempDir(), "headroom.db"), bus.New())
 			if err != nil {
@@ -32,9 +32,8 @@ func TestBusinessReadinessRenewalReservesFinalGrantHeadroom(t *testing.T) {
 			}
 			base := time.Now()
 			const ageBeforeFinal = materialEligibilityWindow - store.ClusterMembershipGrantTimeout - 218*time.Millisecond //5.218 seconds remain.
-			const finalGrantCost = 287 * time.Millisecond
 			var age atomic.Int64
-			var proofs, reads, grants atomic.Int32
+			var proofs, reads atomic.Int32
 			var completed atomic.Bool
 			entered, release, readDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			proofCtx, stopProof := context.WithCancel(t.Context())
@@ -83,17 +82,6 @@ func TestBusinessReadinessRenewalReservesFinalGrantHeadroom(t *testing.T) {
 			gate := newBusinessHandlerGate()
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(eligibility)
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-					if grants.Add(1) == 2 {
-						if mode != "renewal-exceeds-wait" && !completed.Load() {
-							t.Error("final fresh grant ran before the captured renewal")
-						}
-						age.Add(int64(finalGrantCost))
-					}
-					return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-				})
-			})
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
 			requestCtx, cancelRequest := context.WithCancel(t.Context())
 			defer cancelRequest()
@@ -118,11 +106,15 @@ func TestBusinessReadinessRenewalReservesFinalGrantHeadroom(t *testing.T) {
 				t.Fatalf("readiness completed before its blocked renewal: status%d", rec.Code)
 			case <-time.After(25 * time.Millisecond):
 			}
-			if grants.Load() != 1 || reads.Load() != 1 {
-				t.Fatalf("near-boundary renewal bypassed: grants=%d reads=%d want1/1", grants.Load(), reads.Load())
+			if reads.Load() != 1 {
+				t.Fatalf("near-boundary renewal bypassed: reads=%d want1", reads.Load())
 			}
 			if mode != "renewal-exceeds-wait" {
 				close(release)
+			} else {
+				// The wait itself uses up the proof's lifetime: by its cutoff
+				// less than a grant timeout is left.
+				age.Add(int64(materialReproofInterval))
 			}
 			select {
 			case <-done:
@@ -130,11 +122,14 @@ func TestBusinessReadinessRenewalReservesFinalGrantHeadroom(t *testing.T) {
 				t.Fatal("readiness exceeded its original bounded renewal wait")
 			}
 			want := http.StatusServiceUnavailable
-			if mode == "renewed-before-final-grant" {
+			if mode == "renewed-before-publishing" {
 				want = http.StatusOK
 			}
-			if rec.Code != want || reads.Load() != 1 || grants.Load() != 2 || proofs.Load() != 2 {
-				t.Fatalf("headroom result: status=%d want%d reads=%d grants=%d proofs=%d", rec.Code, want, reads.Load(), grants.Load(), proofs.Load())
+			if rec.Code != want || reads.Load() != 1 || proofs.Load() != 2 {
+				t.Fatalf("headroom result: status=%d want%d reads=%d proofs=%d", rec.Code, want, reads.Load(), proofs.Load())
+			}
+			if mode == "renewed-before-publishing" && !completed.Load() {
+				t.Fatal("readiness was published before the captured renewal finished")
 			}
 			if mode == "renewal-exceeds-wait" && (completed.Load() || time.Since(waitStarted) < materialReproofInterval-100*time.Millisecond) {
 				t.Fatal("slow renewal did not retain the original two-second cutoff")

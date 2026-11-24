@@ -47,6 +47,9 @@ type forwardMember struct {
 	dropped    atomic.Int64
 	authorized atomic.Int64
 	admit      atomic.Bool
+	// unanswered makes the next authorizations end as a grant that brought
+	// no answer, as during a storage stall.
+	unanswered atomic.Int64
 	seen       chan *http.Request
 }
 
@@ -138,6 +141,11 @@ func (c *forwardCluster) newMember(id uint64) *forwardMember {
 			line, _ := rw.ReadString('\n')
 			fmt.Fprintf(rw, "member %d echoes %s", id, line)
 			_ = rw.Flush()
+		case "/slow":
+			select {
+			case <-r.Context().Done():
+			case <-time.After(5 * time.Second):
+			}
 		case "/die":
 			conn, _, _ := w.(http.Hijacker).Hijack()
 			_ = conn.Close()
@@ -154,6 +162,10 @@ func (c *forwardCluster) newMember(id uint64) *forwardMember {
 	}
 	authorize := func(context.Context, *x509.Certificate) error {
 		m.authorized.Add(1)
+		if m.unanswered.Load() > 0 {
+			m.unanswered.Add(-1)
+			return fmt.Errorf("grant: %w", context.DeadlineExceeded)
+		}
 		if !m.admit.Load() {
 			return errors.New("not admitted")
 		}
@@ -301,19 +313,27 @@ func TestMemberForwardCarriesStreamsAndUpgrades(t *testing.T) {
 
 func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	c := newForwardCluster(t, 1, 2, 3)
-	refused := func(name, url string) {
+	refused := func(name, url, reason string) {
 		t.Helper()
-		if status, body, _ := forwardGet(t, url); status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
+		before := memberBusinessRefusals.snapshot()[reason]
+		status, body, header := forwardGet(t, url)
+		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
 			t.Fatalf("%s: %d %q", name, status, body)
+		}
+		if got := header.Get(businessRefusalHeader); got != reason {
+			t.Fatalf("%s: refusal header %q, want %q", name, got, reason)
+		}
+		if got := memberBusinessRefusals.snapshot()[reason]; got != before+1 {
+			t.Fatalf("%s: %s counted %d -> %d, want one more", name, reason, before, got)
 		}
 	}
 	// No member has observed a leader: nobody serves business.
-	refused("no leader observed", c.members[1].public.URL+"/api/v1/nodes")
+	refused("no leader observed", c.members[1].public.URL+"/api/v1/nodes", refusalNoKnownLeader)
 	c.lead(2)
 	// The observation ages out when the database stops answering.
 	c.members[1].leader.Store(0)
 	c.members[1].forward.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-memberLeaderFresh - time.Second)})
-	refused("stale observation", c.members[1].public.URL+"/api/v1/nodes")
+	refused("stale observation", c.members[1].public.URL+"/api/v1/nodes", refusalNoKnownLeader)
 
 	// Members disagree for a moment after a leader change: 1 still names 2,
 	// while 2 already sees 3 lead. Member 2 refuses; it does not forward a
@@ -325,7 +345,7 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	for len(c.members[3].seen) > 0 {
 		<-c.members[3].seen
 	}
-	refused("forwarded to a member that no longer leads", c.members[1].public.URL+"/api/v1/nodes")
+	refused("forwarded to a member that no longer leads", c.members[1].public.URL+"/api/v1/nodes", refusalNotTheLeader)
 	if len(c.members[3].seen) != 0 || len(c.members[2].seen) != 0 {
 		t.Fatal("a forwarded request was served or forwarded again by a member that does not lead")
 	}
@@ -333,8 +353,16 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	// A member the leader does not admit is refused before business runs.
 	c.lead(3)
 	c.members[3].admit.Store(false)
-	if status, _, _ := forwardGet(t, c.members[1].public.URL+"/api/v1/nodes"); status != http.StatusForbidden {
-		t.Fatalf("unadmitted member was answered %d", status)
+	notAdmitted := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]
+	status, body, header := forwardGet(t, c.members[1].public.URL+"/api/v1/nodes")
+	if status != http.StatusForbidden || !strings.Contains(body, "member is not admitted") {
+		t.Fatalf("unadmitted member was answered %d %q", status, body)
+	}
+	if got := header.Get(businessRefusalHeader); got != refusalPeerNotAdmitted {
+		t.Fatalf("refusal header %q, want %q", got, refusalPeerNotAdmitted)
+	}
+	if got := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]; got != notAdmitted+1 {
+		t.Fatalf("%s counted %d -> %d, want one more", refusalPeerNotAdmitted, notAdmitted, got)
 	}
 	if len(c.members[3].seen) != 0 {
 		t.Fatal("business ran for a member that is not admitted")
@@ -346,8 +374,29 @@ func TestMemberForwardSurvivesTheLeaderDyingMidRequest(t *testing.T) {
 	c.lead(2)
 	// The leader drops the connection while answering: the client gets a
 	// refusal it may retry, not a hang and not another member's answer.
-	if status, _, _ := forwardGet(t, c.members[1].public.URL+"/die"); status != http.StatusServiceUnavailable {
-		t.Fatalf("a request the leader dropped was answered %d", status)
+	unreachable := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	if status, _, header := forwardGet(t, c.members[1].public.URL+"/die"); status != http.StatusServiceUnavailable || header.Get(businessRefusalHeader) != refusalLeaderUnreachable {
+		t.Fatalf("a request the leader dropped was answered %d, refusal %q", status, header.Get(businessRefusalHeader))
+	}
+	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != unreachable+1 {
+		t.Fatalf("%s counted %d -> %d, want one more", refusalLeaderUnreachable, unreachable, got)
+	}
+	// A client that goes away while the leader is answering says nothing
+	// about the leader: it is not counted and opens no run of refusals.
+	before := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	gone, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(gone, http.MethodGet, c.members[1].public.URL+"/slow", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(50*time.Millisecond, cancel)
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+		t.Fatal("the cancelled request was answered")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != before {
+		t.Fatalf("a client abort was counted as %s: %d -> %d", refusalLeaderUnreachable, before, got)
 	}
 	// The leader's route goes away entirely; requests are refused until the
 	// members observe the next leader, then served by it.
@@ -434,6 +483,53 @@ func TestMemberForwardIsInertWithoutARoute(t *testing.T) {
 	defer ln.Close()
 	if err := forward.ServeMemberSessions(ln); err == nil {
 		t.Fatal("an unconfigured route was served")
+	}
+}
+
+// Seen on the real hosts: during a storage stall the leader's grant for a
+// member's connection timed out, the result was kept for the life of that
+// connection, and for 62 to 102 seconds every request the member forwarded
+// was answered 403 "member is not admitted" although the member was admitted
+// all along. A grant that brings no answer decides nothing: the request is
+// answered "not ready", and the next request on the same connection asks
+// again and is served.
+func TestGrantTimeoutDuringAStallDoesNotRefuseTheMembersConnectionAfterwards(t *testing.T) {
+	c := newForwardCluster(t, 1, 2)
+	c.lead(2)
+	leader, follower := c.members[2], c.members[1]
+	leader.unanswered.Store(2)
+	for i := range 2 {
+		status, body, header := forwardGet(t, follower.public.URL+"/api/v1/nodes")
+		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
+			t.Fatalf("request %d during the stall: %d %q, want 503 not ready, never 403", i, status, body)
+		}
+		if got := header.Get(businessRefusalHeader); got != refusalPeerUndecided {
+			t.Fatalf("request %d during the stall: refusal %q, want %q", i, got, refusalPeerUndecided)
+		}
+	}
+	status, body, header := forwardGet(t, follower.public.URL+"/api/v1/nodes")
+	if status != http.StatusOK || header.Get("X-Served-By") != "2" {
+		t.Fatalf("first request after the stall: %d %q", status, body)
+	}
+	// The stall's attempts and the one that answered: three questions, and
+	// none after the answer, on the one connection the member keeps open.
+	if got := leader.authorized.Load(); got != 3 {
+		t.Fatalf("the leader asked %d times, want 3", got)
+	}
+	if status, _, _ := forwardGet(t, follower.public.URL+"/api/v1/nodes"); status != http.StatusOK || leader.authorized.Load() != 3 {
+		t.Fatalf("a decided connection: status %d, asked %d times", status, leader.authorized.Load())
+	}
+	// A refusal is an answer, and is kept.
+	c2 := newForwardCluster(t, 1, 2)
+	c2.lead(2)
+	c2.members[2].admit.Store(false)
+	for range 2 {
+		if status, _, _ := forwardGet(t, c2.members[1].public.URL+"/api/v1/nodes"); status != http.StatusForbidden {
+			t.Fatalf("a member that is not admitted was answered %d", status)
+		}
+	}
+	if got := c2.members[2].authorized.Load(); got != 1 {
+		t.Fatalf("a refused connection was asked about %d times, want 1", got)
 	}
 }
 

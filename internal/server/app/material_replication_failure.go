@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"io"
 	"net"
@@ -75,7 +76,31 @@ func materialReplicationFailureInvalidates(err error) bool {
 	if branches, joined := materialJoinedBranches(err); joined {
 		return !everyMaterialBranch(branches, func(branch error) bool { return !materialReplicationFailureInvalidates(branch) })
 	}
-	return !materialCheckpointContention(err) && !unavailableMaterialPeer(err)
+	return !materialCheckpointContention(err) && !unavailableMaterialPeer(err) && !materialOutcomeUndecided(err)
+}
+
+// materialOutcomeUndecided reports a failure that carries no verdict on this
+// member's material: the pass ran out of its own time, the database had no
+// leader to ask, the leader could not be read in time, a connection was lost
+// under a commit, or too few of the other members answered for a majority.
+// The pass stays pending; the proof remains the authority for admission and
+// closes the member on a difference. A second cause joined to one of these
+// keeps its own verdict. The caller's cancellation and an error nothing
+// classifies are not undecided.
+func materialOutcomeUndecided(err error) bool {
+	if _, joined := err.(interface{ Unwrap() []error }); !joined &&
+		(store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout) ||
+			errors.Is(err, driver.ErrBadConn) || errors.Is(err, store.ErrMaterialManifestNoMajority)) {
+		return true
+	}
+	for err != nil {
+		wrapped, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return err == context.DeadlineExceeded
+		}
+		err = wrapped.Unwrap()
+	}
+	return false
 }
 
 // A peer that cannot be reached contributes no material copy. An

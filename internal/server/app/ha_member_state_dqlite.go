@@ -22,11 +22,19 @@ type memberState struct {
 	legacyClosed bool
 	joinedRaft   joinedRaftSession
 
+	// admissionJournal logs who closed admission and what proofs failed on
+	// while it was closed.
+	admissionJournal admissionJournal
+
 	materialEligibilityMu     sync.Mutex
 	materialEligibility       *materialEligibility
 	materialEligibilityCancel context.CancelFunc
 	materialEligibilityDone   chan struct{}
 	materialEligibilityClosed bool
+	// materialPending says for how long replication passes have ended
+	// without completing, so that the state is reported once and not on
+	// every pass.
+	materialPending materialPendingNotice
 
 	// entryCheck observes whether this process may hold the cluster entry.
 	// Nil leaves a business-ready member in the candidate set.

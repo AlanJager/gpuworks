@@ -19,15 +19,28 @@ func newCandidateMaterialEligibility(a *App) *materialEligibility {
 	if a != nil && a.log != nil {
 		log = a.log
 	}
+	return newJournalledMaterialEligibility(a, log, time.Now, a.CandidateMemberReadyMeasured)
+}
+
+// newJournalledMaterialEligibility builds the proof worker around measure and
+// has the member's journal told what each attempt ended on and what the
+// worker made of it.
+func newJournalledMaterialEligibility(a *App, log *slog.Logger, now func() time.Time, measure func(context.Context) (bool, CandidateProofMetrics, error)) *materialEligibility {
 	prove := func(ctx context.Context) (bool, error) {
-		ready, metrics, err := a.CandidateMemberReadyMeasured(ctx)
+		ready, metrics, err := measure(ctx)
 		log.DebugContext(ctx, "candidate material proof completed", "ready", ready, "err_class", closedMemberErrorClass(err),
 			"failure_stage", metrics.FailureStage, "failure_class", metrics.FailureClass,
 			"total_ms", float64(metrics.Total.Duration)/float64(time.Millisecond), "metrics", metrics)
+		if a != nil {
+			a.admissionJournal.attempted(ready && err == nil, closedMemberErrorClass(err), metrics.FailureStage, metrics.FailureClass, metrics.Total.Duration)
+		}
 		return ready, err
 	}
-	eligibility := newMaterialEligibility(time.Now, prove, materialReproofInterval)
+	eligibility := newMaterialEligibility(now, prove, materialReproofInterval)
 	eligibility.setIdleRest(materialIdleReproofRest)
+	if a != nil {
+		eligibility.setOnOutcome(func(proved bool) { a.admissionJournal.outcome(log, proved) })
+	}
 	return eligibility
 }
 
