@@ -33,9 +33,9 @@ func TestCapacityKeepsNodesInEnrollmentOrderAndPlacesNewcomers(t *testing.T) {
 	if hold := h.s.Hold(3, 8); hold.Code != "ACME_OVER_CAPACITY" {
 		t.Fatalf("hold = %+v", hold)
 	}
-	if h.reapply.Load() == 0 {
-		t.Fatal("the selection did not ask for a pass of the holds")
-	}
+	// The selection publishes its outcome before it asks for the pass of the
+	// holds, so the request can trail the held node by a moment.
+	h.waitFor("the selection to ask for a pass of the holds", func() bool { return h.reapply.Load() > 0 })
 	// A node the selection has not placed yet: held, because the fleet is
 	// already full and a later node never displaces an earlier one.
 	if !h.s.Hold(9, 1).held() {
