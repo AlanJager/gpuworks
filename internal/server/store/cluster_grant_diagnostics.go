@@ -19,6 +19,9 @@ const clusterGrantDiagnosticSlow = 250 * time.Millisecond
 // workers or scoped copies. It must not be called on a running Store.
 func (s *Store) SetLogger(log *slog.Logger) {
 	s.diagnosticLogger = log
+	if s.writerGuard != nil {
+		s.writerGuard.log.Store(log)
+	}
 }
 
 func (s *Store) logClusterGrantDiagnostic(ctx context.Context, operation, phase string, started time.Time, err error, timings ...slog.Attr) {

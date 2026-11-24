@@ -1,9 +1,12 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -116,10 +119,26 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 	}
 	all(nil, "no member key bound")
 
+	if got := st.WriterRefusals(); got != 0 {
+		t.Fatalf("admitted writes counted %d refusals", got)
+	}
 	var refused atomic.Int32
+	var logged bytes.Buffer
+	st.SetLogger(slog.New(slog.NewTextHandler(&logged, nil)))
 	st.OnWriterRefused(func() { refused.Add(1) })
 	st.writerGuard.key.Store(&key)
 	all(ErrClusterAdmissionRejected, "member has no admission")
+	// Every refusal is counted; the first, second, fourth and so on are logged.
+	if got := st.WriterRefusals(); got != uint64(len(writes)) {
+		t.Fatalf("counted %d refusals, want %d", got, len(writes))
+	}
+	wantLines := bits.Len(uint(len(writes)))
+	if got := strings.Count(logged.String(), "refused a write of this member"); got != wantLines {
+		t.Fatalf("logged %d refusal lines for %d refusals, want %d:\n%s", got, len(writes), wantLines, logged.String())
+	}
+	if !strings.Contains(logged.String(), "level=WARN") || !strings.Contains(logged.String(), "refused_writes=1") {
+		t.Fatalf("refusal line lacks its level or count:\n%s", logged.String())
+	}
 	deadline := time.Now().Add(10 * time.Second)
 	for refused.Load() != int32(len(writes)) && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)

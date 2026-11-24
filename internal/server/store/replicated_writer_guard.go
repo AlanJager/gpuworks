@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
+	"math/bits"
 	"strings"
 	"sync/atomic"
 )
@@ -16,6 +18,10 @@ type writerGuard struct {
 	// refused is called, on its own goroutine, when a write was refused
 	// because this member is not admitted.
 	refused atomic.Pointer[func()]
+	// refusals counts the writes refused that way, and log is where they are
+	// reported. Neither is touched by a write that is admitted.
+	refusals atomic.Uint64
+	log      atomic.Pointer[slog.Logger]
 	// off disables the check. Tests use it as their negative control.
 	off atomic.Bool
 	// opening is set while the Store's constructor does its own startup work
@@ -92,10 +98,26 @@ func (g *writerGuard) check(ctx context.Context, tx *sql.Tx, key string, ownsWri
 	if admitted != 0 {
 		return nil
 	}
+	g.reportRefusal()
 	if refused := g.refused.Load(); refused != nil {
 		go (*refused)()
 	}
 	return errors.Join(ErrBusinessWritesClosed, ErrClusterAdmissionRejected)
+}
+
+// reportRefusal counts a refused write and logs the first, second, fourth,
+// eighth and so on, so a member that keeps writing after it was removed
+// leaves a bounded number of lines.
+func (g *writerGuard) reportRefusal() {
+	n := g.refusals.Add(1)
+	if bits.OnesCount64(n) != 1 {
+		return
+	}
+	log := g.log.Load()
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Warn("refused a write of this member: the cluster no longer admits it", "refused_writes", n)
 }
 
 // errWriteNeedsTransaction refuses a write that would reach the database

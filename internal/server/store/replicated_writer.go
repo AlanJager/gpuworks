@@ -204,6 +204,15 @@ func (p *replicatedWriterPool) QueryRowContext(ctx context.Context, query string
 
 func (p *replicatedWriterPool) GetDBConn() (*sql.DB, error) { return p.DB, nil }
 
+// WriterRefusals is how many writes of this member were refused because the
+// cluster no longer admits it. It is zero on a Store that is not a member.
+func (s *Store) WriterRefusals() uint64 {
+	if s == nil || s.writerGuard == nil {
+		return 0
+	}
+	return s.writerGuard.refusals.Load()
+}
+
 // OnWriterRefused registers what runs when a write of this member was refused
 // because the member is no longer admitted. The member closes its admission
 // there instead of waiting for its next renewal to learn the same.
