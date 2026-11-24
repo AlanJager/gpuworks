@@ -86,7 +86,23 @@ func TestImageRelayTransfersArchiveAndVerifiesLoad(t *testing.T) {
 		t.Fatalf("image sync did not finish: %+v", row)
 		return store.ImageNode{}
 	}
-	got := sync(targetNode)
+	// The receiving node reports the loaded image before the sending side's
+	// result reaches the server, and it is that result which carries the
+	// whole count: a row just turned present can still show the node's last
+	// progress sample. The count must arrive; the check below names the row
+	// when it does not.
+	counted := func(node store.Node, row store.ImageNode) store.ImageNode {
+		env.EventuallyNoFail(30*time.Second, func() bool {
+			got, getErr := env.Store().ImageNode(img.ID, node.ID)
+			if getErr != nil {
+				return false
+			}
+			row = *got
+			return row.State != store.ImageStatePresent || row.TransferredBytes == archiveSize
+		})
+		return row
+	}
+	got := counted(targetNode, sync(targetNode))
 	if got.State != store.ImageStatePresent || got.TransferredBytes != archiveSize {
 		t.Fatalf("relay row=%+v want present/%d", got, archiveSize)
 	}
@@ -117,6 +133,7 @@ func TestImageRelayTransfersArchiveAndVerifiesLoad(t *testing.T) {
 		recovered = *got
 		return recovered.State == store.ImageStatePresent || recovered.State == store.ImageStateFailed
 	})
+	recovered = counted(failingNode, recovered)
 	if recovered.State != store.ImageStatePresent || recovered.TransferredBytes != archiveSize {
 		t.Fatalf("retry relay row=%+v want present/%d", recovered, archiveSize)
 	}
