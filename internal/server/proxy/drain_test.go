@@ -50,7 +50,7 @@ func TestADrainingReplicaLeavesItsSiblingServing(t *testing.T) {
 	})
 	p, _, key, depID, closeUpstream := newAccountingProxyFor(t, upstream, &store.Deployment{Engine: "vllm", Sleepable: true, Replicas: 2})
 	t.Cleanup(closeUpstream)
-	st := p.store
+	st := storeOf(p.store)
 	first, err := st.InstanceByUUID("omni-instance")
 	if err != nil {
 		t.Fatal(err)

@@ -27,6 +27,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -141,7 +142,7 @@ func TestDockerChildReadinessRejectsWaitersAndRecoversSameContainer(t *testing.T
 		wait("container removed", func() bool { in, _ := st.InstanceByUUID(uuid); return in != nil && in.State == proto.InstStopped })
 		exec.Command("docker", "rm", "-f", container).Run()
 	}()
-	p := proxy.New(st, childReadinessNetworks{}, childReadinessTunnel{}, nil, 0)
+	p := proxy.New(storeplane.New(st), childReadinessNetworks{}, childReadinessTunnel{}, nil, 0)
 	defer p.Close()
 	front := httptest.NewServer(p.AuthenticatedHandler())
 	defer front.Close()

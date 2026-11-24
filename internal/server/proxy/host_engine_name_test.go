@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -106,7 +107,7 @@ func TestGatewayReachesAFlaglessHostProcessEngine(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			p := New(st, storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+			p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 			t.Cleanup(p.Close)
 
 			want := hostModelPath

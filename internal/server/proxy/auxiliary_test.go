@@ -50,7 +50,7 @@ func servedUnder(t *testing.T, p *Proxy, engineName string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.store.UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
+	if err := storeOf(p.store).UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
 		t.Fatal(err)
 	}
 	p.routes.rebuild()
@@ -149,7 +149,7 @@ func TestTokenizeTurnedOffIsNotForwarded(t *testing.T) {
 	defer closeUpstream()
 	var records []uxrecord.Request
 	p.SetRequestSink(func(r uxrecord.Request) { records = append(records, r) })
-	if err := p.store.SetDeploymentTokenize(depID, false); err != nil {
+	if err := storeOf(p.store).SetDeploymentTokenize(depID, false); err != nil {
 		t.Fatal(err)
 	}
 	p.routes.rebuild()
@@ -168,7 +168,7 @@ func TestTokenizeTurnedOffIsNotForwarded(t *testing.T) {
 
 	// The store alone changing, without the change event, does not reach a
 	// request: the snapshot answers. Its rebuild does.
-	if err := p.store.DB().Exec("UPDATE deployments SET tokenize_disabled = ? WHERE id = ?", false, depID).Error; err != nil {
+	if err := storeOf(p.store).DB().Exec("UPDATE deployments SET tokenize_disabled = ? WHERE id = ?", false, depID).Error; err != nil {
 		t.Fatal(err)
 	}
 	if rec := postGateway(p, apiKey, http.MethodPost, "/v1/tokenize", `{"model":"omni","prompt":"x"}`); rec.Code != http.StatusNotFound {
@@ -208,7 +208,7 @@ func TestTokenizeRefusals(t *testing.T) {
 		t.Fatalf("unknown model = %d %s", rec.Code, rec.Body)
 	}
 	// Asleep: the same 503 a chat request gets, and nothing is sent.
-	if err := p.store.UpdateInstanceStatus(proto.InstanceStatus{UUID: "omni-instance", State: proto.InstRunning, SleepLevel: 1, Phase: proto.PhaseSleep}); err != nil {
+	if err := storeOf(p.store).UpdateInstanceStatus(proto.InstanceStatus{UUID: "omni-instance", State: proto.InstRunning, SleepLevel: 1, Phase: proto.PhaseSleep}); err != nil {
 		t.Fatal(err)
 	}
 	p.routes.rebuild()

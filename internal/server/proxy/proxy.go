@@ -20,6 +20,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tracecontext"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
@@ -29,7 +30,7 @@ import (
 // dataLaneUnavailableRetryAfterSeconds is the Retry-After hint sent with the
 // 503 a client gets when a tunnel open failed because the node's data lane
 // was detached and did not reattach within the hub's own wait budget
-// (hub.ErrDataLaneUnavailable). That wait already covered the common case, so
+// (plane.ErrDataLaneUnavailable). That wait already covered the common case, so
 // a client that retries needs only a short pause, not the hub's full budget
 // again.
 const dataLaneUnavailableRetryAfterSeconds = 2
@@ -46,8 +47,10 @@ type Tunneler interface {
 // Proxy serves /v1/*.
 type Proxy struct {
 	// recorder keeps raw exchanges during a debug session (capture.go).
-	recorder     RequestRecorder
-	store        *store.Store
+	recorder RequestRecorder
+	// store is where the gateway reads its rows and writes its reports
+	// (plane.Source); nil serves nothing.
+	store        plane.Source
 	hub          Tunneler
 	log          *slog.Logger
 	rp           *httputil.ReverseProxy
@@ -170,7 +173,7 @@ type Networks interface {
 
 // New builds a Proxy. maxBodyBytes caps the request body spooled to disk before
 // routing; a non-positive value falls back to DefaultMaxBodyBytes.
-func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, maxBodyBytes int64) *Proxy {
+func New(st plane.Source, networks Networks, hub Tunneler, log *slog.Logger, maxBodyBytes int64) *Proxy {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}

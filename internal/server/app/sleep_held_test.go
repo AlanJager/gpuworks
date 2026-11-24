@@ -10,6 +10,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/lifecycle"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -28,7 +29,7 @@ func heldFixture(t *testing.T) (*automationAdapter, *residencyAdapter, *store.St
 			t.Fatal(err)
 		}
 	}
-	px := proxy.New(st, noServingNetworks{}, nil, nil, 0)
+	px := proxy.New(storeplane.New(st), noServingNetworks{}, nil, nil, 0)
 	return auto, &residencyAdapter{store: st, proxy: px, orders: &lifecycle.Orders{}}, st, dep
 }
 

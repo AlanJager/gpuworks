@@ -18,10 +18,10 @@ func TestChatRejectsUnsupportedInputBeforeUpstream(t *testing.T) {
 	p, key, closeUpstream := newProxyE2E(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); _, _ = io.WriteString(w, `{"choices":[]}`) }))
 	defer closeUpstream()
 	var model store.Model
-	if err := p.store.DB().First(&model).Error; err != nil {
+	if err := storeOf(p.store).DB().First(&model).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := p.store.DB().Model(&model).Updates(map[string]any{"input_modalities": `["text"]`, "operations": `[{"type":"openai.chat"}]`}).Error; err != nil {
+	if err := storeOf(p.store).DB().Model(&model).Updates(map[string]any{"input_modalities": `["text"]`, "operations": `[{"type":"openai.chat"}]`}).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/v1/chat/completions", "/api/v1/playground/v1/chat/completions"} {
@@ -82,7 +82,7 @@ func TestChatInputDeclaredSupportedAndUnknownRemainCompatible(t *testing.T) {
 				_, _ = io.WriteString(w, `{"choices":[]}`)
 			}))
 			defer closeUpstream()
-			if err := p.store.DB().Model(&store.Model{}).Where("source_id = ?", "org/omni").Update("input_modalities", modalities).Error; err != nil {
+			if err := storeOf(p.store).DB().Model(&store.Model{}).Where("source_id = ?", "org/omni").Update("input_modalities", modalities).Error; err != nil {
 				t.Fatal(err)
 			}
 			body := `{"model":"omni","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"UklGRSUPPORTED","format":"wav"}},{"type":"image_url","image_url":{"url":"data:image/png;base64,IMAGE"}}]}]}`
