@@ -22,7 +22,7 @@ Run node commands on the affected node and server commands on the control plane 
 | Instance event timeline | Instance details; API `GET /api/v1/instances/{uuid}/events` (deployment level: `GET /api/v1/deployments/{id}/events`) | The state and phase where it is stuck and the failure reason (`params.detail`) |
 | Scheduling explanation | Deployments page; `schedule.explain` in the instance response; `plan` in the `POST /api/v1/evaluate` response | Why this card was selected and why other candidates were rejected |
 | Logs page | Search by instance, level, source (`source=instance\|node\|agent\|server`), and keyword; see [Monitoring and Logs](monitor-and-logs.md) | Engine output, errors such as `CUDA out of memory` |
-| Server logs | Installed with `gpuworks install`: `/opt/gpuworks/server/logs/gpuworks-server.log` (`~/gpuworks/server/logs/gpuworks-server.log` on macOS); direct `serve`: `<data>/logs/gpuworks-server.log`; under systemd: `journalctl -u gpuworks` | Handshake failures, recovery rounds, and proxy errors |
+| Server logs | Installed with `gpuworks install`: `/opt/gpuworks/server/logs/gpuworks-server.log` (`~/gpuworks/server/logs/gpuworks-server.log` on macOS); direct `serve`: `<data>/logs/gpuworks-server.log`; a member installed by the control-plane cluster installation: `<installation>/logs/server.log` (its data is in `<installation>/data`); under systemd: `journalctl -u gpuworks` | Handshake failures, recovery rounds, and proxy errors |
 | Agent logs | `<state>/agent.log` (the default installation state directory is `/opt/gpuworks`, or `~/gpuworks` on macOS; rotates at 10 MB and keeps one previous file, `agent.log.1`); `systemctl status gpuworks-agent` | Connections, GPU probing, pulls, and startup |
 | Environment self-check | `gpuworks-agent doctor` on the node | Runtimes, GPUs, drivers, and device permissions |
 
@@ -1457,6 +1457,8 @@ When you cannot log in to the customer's servers, have an administrator work in 
 | `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#the-management-servers-host-identity) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `server/stalls/stall-<time>.txt` | The [stall reports](#server-卡住或偶发变慢时卡顿报告与现场堆栈) in the time range, as written |
+| `members/index.json` | Only on a [control-plane cluster](../explanation/control-plane-cluster.md): one entry per member. When a member's part did not arrive, `missing` says why; the field is absent when it did (`unreachable`, `timeout`, `refused` when the member does not accept this member's key, `unsupported` when the member's release does not have this yet (a member not yet upgraded during an upgrade), `busy` when it is reading for another collection, `failed` when it answered with an error, was not the member asked for, or the transfer broke off; the error's own text is in `evidence`), the fingerprint of the member key that answered (`answered_key`), what was cut (`truncated`), and how many milliseconds the member's clock differs from the collecting member's (`clock_offset_ms`, measured at the moment the request is sent). `complete` is `false` when a member's part is missing |
+| `members/<member>/` | One directory per member, named by the member's database address (`:` replaced by `_`). `server.log` is the member's server log in the time range, `role-events.log` the database role records in it, `leader-changes.log` the leader change summaries in it, `stalls/` its stall reports, `cluster-status.txt` the cluster status as it saw it (the first line, `Observed:`, is when it looked, at most 30 seconds before the collection), and `member.json` its version, the SHA-256 of its server and database helper, its storage tier and where its log file is. The log and stall reports of the member that made the collection (`self: true`) are under `server/` and are not repeated |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
 | `instances/<uuid>.log` | The chosen deployments' instance logs |
 | `debug/<session>/`, `nodes/<uuid>/debug/` | Debug collections that overlap the time range |
@@ -1464,6 +1466,46 @@ When you cannot log in to the customer's servers, have an administrator work in 
 
 Credentials (tokens, passwords, keys, hashes) keep only their first 8 characters, which match the API key prefixes the console shows. Archives are kept for 7 days under `diagnostics/bundles/` in the server's data directory.
 When the server does not start, run [`gpuworks support-bundle`](../reference/cli.md#gpuworks-support-bundle) on the server host; it reads the database and log files directly (the nodes' part cannot be collected, and the manifest says so).
+
+### Control-Plane Cluster: the Archive Holds All Three Members' Records
+
+On a control-plane cluster, one collection holds every member's log, role records and stall reports. The member that makes the collection asks each other member's enrollment port for its part, with its own member certificate; a member reads only its own directories and asks no database, so it answers with no leader and with its business closed. A member's log is bounded at 64 MiB, its stall reports at 64 reports and 32 MiB, a member is waited for at most 2 minutes, and all members together are bounded at 512 MiB; files that were cut are listed under `truncated` in that member's `member.json` and in `members/index.json`, and are `warn` in the list. A log over its bound keeps its newest part (so does the server's own `server/gpuworks-server.log`); `role-events.log` and `leader-changes.log` are extracted from all of the log in the time range, whatever the log's bound, each up to 8 MiB, keeping the newest and marked as cut beyond that. When the bound for all members together runs out in the middle of a member's part, that member is recorded as not collected (`failed`) and the files that arrived are kept. A member reads for one collection at a time; it writes nothing to its own disk, and ends at once when the request is cancelled or the member itself is stopping. A member gives only the files in the table above: keys, certificates and database files are not among them.
+
+Three things to know about security. First, all three members' server logs leave the cluster through the member that makes the collection, so whoever receives the archive sees three hosts' logs. Second, log lines are taken as written, with no second redaction; the log is written without passwords, tokens or keys (in request records, credential fields, the values of headers the server is told to send, and the user and password in an address are written as `[REDACTED]`; only the file path of the bootstrap admin password is logged), but it does hold host names, addresses, user names and model names. Third, whether a member gives its log is decided by its own transport policy file, which is refreshed only while the cluster has a leader: while there is no leader, a member just removed from the cluster may still be accepted by the others, until a leader is back and the policy is refreshed.
+
+- **A member does not answer**: the collection still completes. The list and `manifest.json` have an item `members/<member>` with `fail` (`DIAGNOSTICS_MEMBER_UNAVAILABLE`), and `complete` in `members/index.json` is `false`. This archive does not show what that member saw: collect again once it answers, or run `gpuworks support-bundle` on that member.
+- **The cluster has no leader, or the console cannot be reached**: run `gpuworks support-bundle` on any member's host. It does not open the cluster database; it reads this member's files and asks the other members for their parts all the same. The `db/` items (nodes, deployments, settings and other records only the database holds) are marked `fail` with the reason. Add `--local` for this member's part alone.
+- **Collecting from the console**: the request is handled by the current leader, so `server/` holds the leader's log and the other members are under `members/`. When the leader itself is the member in trouble (stuck, slow disk), a collection from the console may never finish or may fail: run `gpuworks support-bundle` on a healthy member's host. It does not go through the leader; the leader's part is taken if it answers, and `index.json` says so if it does not.
+- **During an upgrade**: a member not yet upgraded does not have this and is recorded as `unsupported`, which is not a fault; collect again once the upgrade is done. The other way round, while the leader is not yet upgraded and other members are, a collection from the console has no `members/`, the same as a single server's: run `gpuworks support-bundle` on a member that is upgraded. An upgraded member recorded as `unsupported` could not mount this; the reason is in its own server log (`cluster diagnostics route is not served`).
+
+### Reading a Leader Change in Three Members' Logs
+
+1. Unpack the archive and look at `members/index.json` first: whether `complete` is `true` (none of the three members has `missing`), and each one's `clock_offset_ms`. Hosts' clocks do not have to agree; subtract each member's offset before comparing times across members (the offset is known to within half of `round_trip_ms`).
+2. Find the change:
+
+   ```bash
+   cat members/*/leader-changes.log | sort
+   ```
+
+   Each member has one line `cluster database leader changed`; lines with the same `old_leader`, `new_leader` and `term` are the same change. `reason` is what this member itself saw, and `without_leader_ms` how long it had no leader.
+
+   ```text
+   time=2026-11-23T22:50:56.203Z level=INFO msg="cluster database leader changed" old_leader=12341872649424584096 new_leader=13029695054750815211 term=3 this_member=13029695054750815211 leads=true reason="this member won the election" without_leader_ms=24
+   ```
+
+3. In the `role-events.log` of the `old_leader` member, see why it stopped leading; in that of the `new_leader` member, why it started an election. Order the lines by `observed_at`:
+
+   ```bash
+   grep -h -E 'event=(step_down|election_start|election_won|transfer_start|loop_late|slow_log_write|slow_step|health)' members/*/role-events.log | sort -t= -k4
+   ```
+
+   ```text
+   time=2026-11-23T22:50:56.000Z level=WARN msg="cluster database role event" observed_at=2026-11-23T22:50:55.994851832Z event=election_start reason=election_timeout term=2 leader=12341872649424584096 since_leader_contact_ms=1257 timeout_ms=1193
+   time=2026-11-23T22:50:56.203Z level=INFO msg="cluster database role event" observed_at=2026-11-23T22:50:56.019313298Z event=election_won term=3 votes=2 voters=3
+   ```
+
+4. Conclude with the [table of role records](../explanation/control-plane-cluster.md#数据库-leader-为什么换了角色记录): `step_down reason=no_majority_contact` on the old leader means it received no answer from a majority; `election_start reason=election_timeout` first on a follower means it stopped hearing the leader; `transfer_start` means a handover was asked for. Then look at the `loop_late`, `slow_log_write` and `health` records before it on the side at fault, and whether `members/<member>/stalls/` (`server/stalls/` for the member that made the collection) holds a stall report from that moment, to tell a process that was not scheduled from a slow disk or the network.
+5. A member whose log has nothing at all from that period, although it has no `missing` in `index.json`, was not running then: look for where its `server.log` starts again (`state old=UNAVAILABLE`).
 
 **Debug collection**: when a symptom needs debug logs or the raw requests to be understood (a client that never receives the end of a stream, say), start a debug collection, reproduce the problem once, then collect diagnostics:
 
@@ -1487,7 +1529,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
    Remove API keys, node tokens, and other credentials before sharing.
 
 <!-- translation-source-sha256: 2895f1673de6940c226c5e3e97f1bd1bffeae4dc49ccbda79318e190fe52bfc4 # Troubleshooting Guide: Find the Cause by Symptom -->
-<!-- translation-source-sha256: 18d34156511d2cdb705c314007cf3675d2a9a9f41845a19c690c03f9028710c6 ## Where to Look First -->
+<!-- translation-source-sha256: e673f3c85ebb95ed3a4ec1c45e9fb0a117dc501e1434a26193e0c87921759701 ## Where to Look First -->
 <!-- translation-source-sha256: 347b155035030c722ba005d39115f2ff028b24180aa06ebfa0b27f17976dcf65 ## Scope and Evidence of Connectivity Checks -->
 <!-- translation-source-sha256: 9114e24eb31580f67f9cf94305e5bbe6ac5d71322a090b3819a9e9ad46ebbc7e ### Node Address and Session -->
 <!-- translation-source-sha256: 184fb2451dd13860d1b0ea1e0cee5a962890feac02f6b68f290dde06f1d8f8d9 ### Streaming Requests and File Transfers -->
@@ -1546,7 +1588,9 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 81e18958b5bcfae45dda667e516faaf018d2cb221db969636794a3ff6ac384e8 ## An Operation Reports "The Server Host's Disk Is Full" -->
 <!-- translation-source-sha256: b0834e1bb1b00d344ab133dd87553f7399555d48589d4f1005833f1b338f7d74 ## Forgotten Admin Password -->
 <!-- translation-source-sha256: 9666d90fa163370158e0f17f81f95d815c9d6cfc3f8d193d81cd91e32dcdeda0 ## When the Server Hangs or Is Slow Now and Then: Stall Reports and Live Stacks -->
-<!-- translation-source-sha256: 3937e7b5e3154a9cf5d7e092f90da6f978efc383086341914f85a66f6fdc9c96 ## When You Cannot Log In On Site: Debug Collection and Collecting Diagnostics -->
+<!-- translation-source-sha256: a2e6617ef4ac80efceb4203cc78644c71e21c9a9e19c2fa1d9073ab3cd2e864f ## When You Cannot Log In On Site: Debug Collection and Collecting Diagnostics -->
+<!-- translation-source-sha256: e1ebf6655a9b58e1e7856aab8afe6a3c0ebc3c5a8f47aedf085d4109802f0255 ### Control-Plane Cluster: the Archive Holds All Three Members' Records -->
+<!-- translation-source-sha256: 605807699e1df242796ffd90468d7ccafed97d5bbb9878b0d8c3a1dd4224570d ### Reading a Leader Change in Three Members' Logs -->
 <!-- translation-source-sha256: 702e2f608eecf6ecf6d04476d009d11a8cce41793fea5d7fcf3d4f71c14ee034 ## Still Unresolved? -->
 <!-- translation-localized-code-block: 5a54acf993d1267a588edaed6adb42fabe4eaa22a37d698098643916823bb39b 63b848b372a289196a7de991833e1e2e7e410a903f69538cc9e20e3119d7859f -->
 <!-- translation-localized-code-block: d383eda0730826d3b7660b307742a2629bc299ddf17052b3a12ca3f2358f47be fe0a439b8f0aa7b27bd972caa05b4ff538ca3852b599385b66339dd84b84cb6f Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

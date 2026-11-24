@@ -22,6 +22,9 @@ const (
 	BundleItemNodeDebugFile = "node_debug_file"
 	BundleItemInstanceLog   = "instance_log"
 	BundleItemRecords       = "records"
+	BundleItemMember        = "member"
+	BundleItemMemberIndex   = "member_index"
+	BundleItemMemberFile    = "member_file"
 	BundleItemRecord        = "record"
 )
 
@@ -49,6 +52,12 @@ func (it BundleItem) ID() string {
 		return BundleItemNodeDebugFile
 	case parts[0] == "instances":
 		return BundleItemInstanceLog
+	case it.Path == "members/index.json":
+		return BundleItemMemberIndex
+	case parts[0] == "members" && len(parts) == 2:
+		return BundleItemMember
+	case parts[0] == "members":
+		return BundleItemMemberFile
 	case it.Path == "db":
 		return BundleItemRecords
 	case parts[0] == "db":
@@ -76,6 +85,8 @@ func (it BundleItem) Message() string {
 		return "the node's agent does not support this read; " + it.Path + " was not collected"
 	case messages.CheckDiagnosticsItemReadFailed:
 		return it.Path + " could not be read"
+	case messages.CheckDiagnosticsMemberUnavailable:
+		return "the control-plane member did not give its part; " + it.Path + " is missing, so the collection does not show what that member saw"
 	case messages.CheckDiagnosticsItemStageFailed:
 		return it.Path + " could not be staged on the server's disk"
 	}

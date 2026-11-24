@@ -44,6 +44,11 @@ const (
 	// CheckDiagnosticsItemReadFailed (fail): reading the part from its source
 	// (a log, a node, the records) failed.
 	CheckDiagnosticsItemReadFailed = "DIAGNOSTICS_ITEM_READ_FAILED"
+	// CheckDiagnosticsMemberUnavailable (fail): a control-plane cluster
+	// member did not give its part (unreachable, timed out, refused, or its
+	// answer ended early; the evidence says which), so the collection does
+	// not show what that member saw.
+	CheckDiagnosticsMemberUnavailable = "DIAGNOSTICS_MEMBER_UNAVAILABLE"
 	// CheckDiagnosticsItemStageFailed (fail): the part could not be written
 	// to the server's work directory.
 	CheckDiagnosticsItemStageFailed = "DIAGNOSTICS_ITEM_STAGE_FAILED"

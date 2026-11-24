@@ -84,7 +84,7 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 		// The log is written by its own goroutine: what it still holds
 		// belongs in the collection.
 		logging.Flush()
-		return m.serverLogWindow(w, b.From, b.To)
+		return m.serverLogWindow(ctx, w, b.From, b.To)
 	})
 
 	// The stall reports noticed in the window, as the server wrote them:
@@ -102,6 +102,10 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 		name := "server/stalls/" + filepath.Base(report)
 		add(collectedItem(name, info.Size(), false), &stagedEntry{name: name, path: report})
 	}
+
+	// On a control-plane cluster: every member's part, so that what the
+	// cluster did can be read from all of its members' records.
+	m.collectMembers(ctx, b, work, add)
 
 	// Debug sessions that overlap the window: the server's files as they
 	// are, and the session ids the nodes are asked for.
@@ -251,26 +255,8 @@ func addFileToTar(tw *tar.Writer, local, name string) error {
 
 // serverLogWindow writes the server log's lines in the window, oldest
 // generation first.
-func (m *Manager) serverLogWindow(w io.Writer, from, to time.Time) (int64, bool, error) {
-	var written int64
-	files := m.sources.ServerLogFiles()
-	for i := len(files) - 1; i >= 0; i-- {
-		info, err := os.Stat(files[i])
-		if err != nil || info.ModTime().Before(from) {
-			continue // a generation last written before the window holds nothing in it
-		}
-		f, err := os.Open(files[i])
-		if err != nil {
-			continue
-		}
-		n, truncated, err := filterLogWindow(f, w, from, to, ServerLogBytes-written)
-		_ = f.Close()
-		written += n
-		if err != nil || truncated {
-			return written, truncated, err
-		}
-	}
-	return written, false, nil
+func (m *Manager) serverLogWindow(ctx context.Context, w io.Writer, from, to time.Time) (int64, bool, error) {
+	return logWindow(ctx, m.sources.ServerLogFiles(), w, from, to, ServerLogBytes)
 }
 
 // sessionsIn are the debug sessions that overlap the window.

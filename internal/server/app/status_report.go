@@ -34,15 +34,10 @@ func ObserveClusterStatus(ctx context.Context, cfg Config, httpAddr string, time
 	if timeout <= 0 {
 		return "", errors.New("status requires a positive timeout")
 	}
-	report, err := readClusterStatus(cfg)
+	report, err := observeClusterStatus(ctx, cfg, httpAddr, timeout)
 	if err != nil {
 		return "", err
 	}
-	report.probeLocal(ctx, httpAddr, timeout)
-	report.peers = probePeerDatabases(ctx, report, timeout)
-	report.observeQuorum(ctx, cfg, timeout)
-	report.observeTransportPolicy(cfg)
-	report.observedAt, report.probeTimeout = time.Now(), timeout
 	// Peer/quorum discovery can outlast an earlier material eligibility result.
 	// Observe business admission last, through the same gate as real requests.
 	if httpAddr != "" && report.httpState == "listening" {
@@ -54,6 +49,23 @@ func ObserveClusterStatus(ctx context.Context, cfg Config, httpAddr string, time
 		return report.format(), fmt.Errorf("%w: %s", ErrBusinessStatusNotReady, report.business)
 	}
 	return report.format(), nil
+}
+
+// observeClusterStatus is the observation a status report is written from,
+// short of the business probe: the persisted membership, this member's
+// listeners, the other members' database ports, the leader's view when one
+// answers, and the transport policy.
+func observeClusterStatus(ctx context.Context, cfg Config, httpAddr string, timeout time.Duration) (clusterStatus, error) {
+	report, err := readClusterStatus(cfg)
+	if err != nil {
+		return clusterStatus{}, err
+	}
+	report.probeLocal(ctx, httpAddr, timeout)
+	report.peers = probePeerDatabases(ctx, report, timeout)
+	report.observeQuorum(ctx, cfg, timeout)
+	report.observeTransportPolicy(cfg)
+	report.observedAt, report.probeTimeout = time.Now(), timeout
+	return report, nil
 }
 
 type clusterStatus struct {
@@ -113,6 +125,10 @@ type statusPeer struct {
 	database   string
 	enrollment string
 	material   string
+	// origin is the peer's enrollment listener and key its member key
+	// fingerprint, as the leader reported them; empty when no leader was
+	// read.
+	origin, key string
 }
 
 type persistedRaftNode struct {

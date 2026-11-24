@@ -329,12 +329,15 @@ server 每次启动时，在读入推送状态之后、拉起任何插件之前�
 |---|---|---|
 | `--data DIR` | 同 `reset-password` | 数据目录 |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite 路径 |
-| `--log-file PATH` | `<data>/logs/gpuworks-server.log` | server 日志文件（连同轮转的各代） |
+| `--log-file PATH` | `<data>/logs/gpuworks-server.log`；集群成员见下 | server 日志文件（连同轮转的各代） |
 | `--since DURATION` | `1h` | 收集最近这么久；给了 `--from`/`--to` 时忽略 |
 | `--from T`、`--to T` | 无 | 时间范围（RFC 3339），两者都要给 |
 | `--deployments IDS` | 无 | 逗号分隔的部署 ID：收集其记录与实例日志 |
 | `--instances UUIDS` | 无 | 逗号分隔的实例 UUID：收集其日志 |
 | `--out PATH` | `./gpuworks-diagnostics-<id>.tar.gz` | 压缩包路径 |
+| `--local` | 关 | 只在控制面集群的成员上可用：只收集本成员，不向其他成员要 |
+
+**在控制面集群的成员上**（数据目录里有 `cluster-enrollment/config.json`，没有 `gpuworks.db`）：不给 `--db` 时，命令不打开数据库，所以集群没有 leader、本成员的 server 没在运行时也能用。它收集本成员的日志、卡顿报告和数据库角色记录，并用本成员的证书向其他成员要它们的部分，放在 `members/<成员>/` 下；没应答的成员在标准错误里各列一行，并记在 `members/index.json` 和 `manifest.json` 里，命令仍然成功。命令只读本机文件、向其他成员的 enrollment 端口发请求，不等 leader：没有 leader 时每个探测几秒后超时，整个命令照常结束。只在数据库里的记录（`db/`）标为读取失败并写明原因；`--deployments`、`--instances` 要读数据库，在成员上会被拒绝，这些内容在集群正常时从控制台收集。`--log-file` 不给时依次找 `<data>/logs/gpuworks-server.log`、`<安装目录>/logs/server.log`（集群安装的位置，`<安装目录>` 是数据目录的上一级）、`<安装目录>/logs/gpuworks-server.log`。要用集群自己的 `gpuworks`（带集群运行时的构建）执行；不带集群运行时的构建会直接报错。`--local` 用在单机 server 的数据目录上也会报错。
 
 ## gpuworks-agent configure
 

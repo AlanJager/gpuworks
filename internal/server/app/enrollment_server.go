@@ -22,6 +22,11 @@ import (
 
 const enrollmentShutdownTimeout = 5 * time.Second
 
+// enrollmentWriteTimeout is the listener's absolute bound on writing one
+// answer. A handler whose answer takes longer (a diagnostics part) sets its
+// own deadline. Tests shorten it.
+var enrollmentWriteTimeout = 15 * time.Second
+
 type enrollmentServer struct {
 	mu               sync.Mutex
 	addr             string
@@ -187,7 +192,7 @@ func (s *enrollmentServer) Start(ctx context.Context) error {
 		server: &http.Server{
 			Handler: s.handler, ErrorLog: slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
 			ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second,
-			WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second,
+			WriteTimeout: enrollmentWriteTimeout, IdleTimeout: 30 * time.Second,
 		},
 	}
 	s.run = run
