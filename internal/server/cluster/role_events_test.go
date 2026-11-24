@@ -191,6 +191,27 @@ func TestLeaderChangeSummary(t *testing.T) {
 			},
 		},
 		{
+			name: "this member steps down and wins again",
+			records: []string{
+				at(0) + " event=state old=UNAVAILABLE new=FOLLOWER term=1 id=1 address=a:9001",
+				at(20) + " event=election_won term=2 votes=2 voters=3",
+				at(20) + " event=state old=CANDIDATE new=LEADER term=2 id=1 address=a:9001",
+				at(9000) + " event=step_down reason=no_majority_contact term=2 contacts=1 voters=3 election_timeout_ms=750 since_check_ms=751 peer_ack_age_ms=2:voter:812,3:voter:1304",
+				at(9000) + " event=state old=LEADER new=FOLLOWER term=2 id=1 address=a:9001",
+				at(10100) + " event=election_start reason=election_timeout term=2 leader=0 since_leader_contact_ms=1100 timeout_ms=1000",
+				at(10100) + " event=state old=FOLLOWER new=CANDIDATE term=2 id=1 address=a:9001",
+				at(10150) + " event=election_won term=3 votes=2 voters=3",
+				at(10150) + " event=state old=CANDIDATE new=LEADER term=3 id=1 address=a:9001",
+			},
+			want: []map[string]any{
+				{"old_leader": "none", "new_leader": "1", "term": "2", "this_member": "1", "leads": true,
+					"reason": "first leader this member has seen since its database process started", "without_leader_ms": int64(20)},
+				{"old_leader": "1", "new_leader": "1", "term": "3", "old_term": "2", "this_member": "1", "leads": true,
+					"reason":            "this member started an election: election_timeout since_leader_contact_ms=1100 timeout_ms=1000",
+					"without_leader_ms": int64(1150)},
+			},
+		},
+		{
 			name: "the same leader after a re-election this member only heard of late",
 			records: []string{
 				at(0) + " event=state old=UNAVAILABLE new=FOLLOWER term=5 id=3 address=c:9001",
@@ -202,7 +223,9 @@ func TestLeaderChangeSummary(t *testing.T) {
 			want: []map[string]any{
 				{"old_leader": "none", "new_leader": "1", "term": "5", "this_member": "3", "leads": false,
 					"reason": "first leader this member has seen since its database process started", "without_leader_ms": int64(1)},
-				{"kept": true, "leader": "1", "term": "7", "this_member": "3", "leads": false,
+				// The leader lost the role and won it again: a change,
+				// although the same member leads.
+				{"old_leader": "1", "new_leader": "1", "term": "7", "old_term": "5", "this_member": "3", "leads": false,
 					"reason": "another member raised the term from=1 new_term=7", "without_leader_ms": int64(10)},
 				{"old_leader": "1", "new_leader": "2", "term": "9", "this_member": "3", "leads": false,
 					"reason": "not seen by this member; read the other members' role events around this time"},
@@ -223,8 +246,9 @@ func TestLeaderChangeSummary(t *testing.T) {
 			for _, r := range sink.records {
 				switch r.msg {
 				case "cluster database leader changed":
-					if r.attrs["old_leader"] == r.attrs["new_leader"] {
-						t.Fatalf("a leader change names the same leader twice: %v", r.attrs)
+					// The same member twice is a change only across terms.
+					if r.attrs["old_leader"] == r.attrs["new_leader"] && (r.attrs["old_term"] == nil || r.attrs["old_term"] == r.attrs["term"]) {
+						t.Fatalf("a leader change names the same leader in the same term: %v", r.attrs)
 					}
 					got = append(got, r)
 				case "cluster database leader kept after a campaign":
@@ -335,8 +359,9 @@ func TestRoleRecordsHaveABudgetPerMinute(t *testing.T) {
 		tracker.record(at(int64(i)) + " event=vote_reply candidate=9 granted=0 reason=has_leader pre_vote=1")
 	}
 	tracker.record(at(5000) + " event=following leader=3 leader_address=c:9001 term=1")
-	if filed := len(sink.named("cluster database role event")); filed != roleRecordsPerMinute {
-		t.Fatalf("filed %d records in one minute, want %d", filed, roleRecordsPerMinute)
+	// The budget, and the record that names the new leader outside it.
+	if filed := len(sink.named("cluster database role event")); filed != roleRecordsPerMinute+1 {
+		t.Fatalf("filed %d records in one minute, want %d and the leader's", filed, roleRecordsPerMinute)
 	}
 	if changes := sink.named("cluster database leader changed"); len(changes) != 1 {
 		t.Fatalf("the leader change inside the flood was not written: %v", changes)
@@ -347,10 +372,45 @@ func TestRoleRecordsHaveABudgetPerMinute(t *testing.T) {
 	clock = clock.Add(time.Minute)
 	tracker.record(at(60000) + " event=snapshot_take index=1 status=ok took_ms=300")
 	report := sink.named("cluster database role events suppressed")
-	if len(report) != 1 || report[0].attrs["suppressed"] != int64(2*roleRecordsPerMinute+2) || report[0].level != slog.LevelWarn {
+	if len(report) != 1 || report[0].attrs["suppressed"] != int64(2*roleRecordsPerMinute+1) || report[0].level != slog.LevelWarn {
 		t.Fatalf("report %v", report)
 	}
-	if filed := len(sink.named("cluster database role event")); filed != roleRecordsPerMinute+1 {
+	if filed := len(sink.named("cluster database role event")); filed != roleRecordsPerMinute+2 {
 		t.Fatalf("the next minute's record was not filed: %d", filed)
+	}
+}
+
+// A leader that loses the majority steps down and nobody can be elected, so
+// no summary follows. With the minute's budget spent, the records of that
+// step-down are still filed.
+func TestAStepDownWithoutASuccessorIsFiledPastTheBudget(t *testing.T) {
+	tracker, sink := trackerFor(t)
+	clock := time.Unix(1700000000, 0)
+	tracker.now = func() time.Time { return clock }
+	tracker.record(at(0) + " event=state old=UNAVAILABLE new=FOLLOWER term=1 id=1 address=a:9001")
+	tracker.record(at(10) + " event=election_won term=2 votes=2 voters=3")
+	tracker.record(at(10) + " event=state old=CANDIDATE new=LEADER term=2 id=1 address=a:9001")
+	for i := 0; i < 2*roleRecordsPerMinute; i++ {
+		tracker.record(at(20+int64(i)) + " event=vote_reply candidate=9 granted=0 reason=has_leader pre_vote=1")
+	}
+	before := len(sink.named("cluster database role event"))
+	tracker.record(at(9000) + " event=step_down reason=no_majority_contact term=2 contacts=1 voters=3 peer_ack_age_ms=2:voter:812,3:voter:1304")
+	tracker.record(at(9000) + " event=state old=LEADER new=FOLLOWER term=2 id=1 address=a:9001")
+	tracker.record(at(9100) + " event=health trigger=role_change election_timeout_ms=750 loop_late_max_ms=1")
+	tracker.record(at(9200) + " event=dropped lines=3 reason=reader_behind")
+	filed := sink.named("cluster database role event")[before:]
+	var events []string
+	for _, r := range filed {
+		events = append(events, r.attrs["event"].(string))
+	}
+	// health is not decisive and stays inside the spent budget.
+	if strings.Join(events, ",") != "step_down,state,dropped" {
+		t.Fatalf("filed past the budget: %v", events)
+	}
+	if filed[0].attrs["peer_ack_age_ms"] != "2:voter:812,3:voter:1304" || filed[0].level != slog.LevelWarn {
+		t.Fatalf("step-down record: %v at %v", filed[0].attrs, filed[0].level)
+	}
+	if changes := sink.named("cluster database leader changed"); len(changes) != 1 {
+		t.Fatalf("summaries without a successor: %v", changes)
 	}
 }

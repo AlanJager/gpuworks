@@ -51,7 +51,7 @@
 
 - `cluster database role event`：数据库进程的一条角色记录。`observed_at` 是事情发生的时间（数据库进程的时钟，纳秒），日志行自己的时间晚不到一秒。
 - `cluster database leader changed`：本成员认到了新的 leader。写明原来的 leader（`old_leader`）、新的 leader（`new_leader`，成员 id）、任期（`term`）、本成员是不是新的 leader（`leads`）、本成员看到的原因（`reason`）和本成员没有 leader 的时长（`without_leader_ms`）。
-- `cluster database leader kept after a campaign`：本成员发起过选举或听到过更高的任期，但随后跟随的还是原来的 leader（`leader`）。它不是 leader 变化，查 leader 变化时只看上一条。
+- `cluster database leader kept after a campaign`：本成员发起过选举，但随后跟随的还是原来的 leader（`leader`），任期没有变。它不是 leader 变化，查 leader 变化时只看上一条。同一个成员丢掉 leader 又重新当选是一次变化：上一条里 `old_leader` 与 `new_leader` 相同，`old_term` 与 `term` 不同。
 - `business follows a new database leader`：本成员的业务层开始把请求发给另一个 leader。`agent_sessions_closed` 是它为了让 agent 会话向新的 leader 登记而关掉的会话数。
 
 `event` 的取值：
@@ -78,7 +78,7 @@
 | `proxy_closed` | 每个成员 | 一条经本成员到它自己数据库节点的连接没有道别就断了；健康的集群每秒有好几条，所以每 10 分钟只写一条并带略去的条数 |
 | `dropped` | 每个成员 | 有记录没写出来：`reason=reader_behind` 是 server 没来得及读，`library_queue_full` 是数据库进程内的队列满了 |
 
-重复出现的情况（`loop_late`、`slow_log_write`、`slow_step`、同一个成员的连接失败、同一条 `app` 告警）每 10 秒只写一条，`suppressed` 是其间略去的条数。一个与其他成员失联的成员每个选举超时发起一次选举：`election_start`、`election_retry`、`pre_vote_won`、对同一个候选成员的 `vote_reply`、候选与跟随之间的 `state`、角色变化后的 `health`，每一种先照常写 6 条，之后同样每 10 秒一条；安静满一分钟后重新计。server 另有自己的上限：一个数据库进程一分钟最多记 240 条，超出的只计数，下一分钟写一行 `cluster database role events suppressed suppressed=…`；leader 的变化不受这个上限影响。数据库进程每 0.2 秒把攒下的记录交出一次，所以相邻几行在日志里的先后可能与发生的先后差零点几秒，要排先后时按 `observed_at`。数据库进程把记录放进内存里的定长队列，另一个线程写出；写不出去时丢记录并计数，Raft 的主循环不等它。
+重复出现的情况（`loop_late`、`slow_log_write`、`slow_step`、同一个成员的连接失败、同一条 `app` 告警）每 10 秒只写一条，`suppressed` 是其间略去的条数。一个与其他成员失联的成员每个选举超时发起一次选举：`election_start`、`election_retry`、`pre_vote_won`、对同一个候选成员的 `vote_reply`、候选与跟随之间的 `state`、角色变化后的 `health`，每一种先照常写 6 条，之后同样每 10 秒一条；安静满一分钟后重新计。server 另有自己的上限：一个数据库进程一分钟最多记 240 条，超出的只计数，下一分钟写一行 `cluster database role events suppressed suppressed=…`。`step_down`、`election_won`、`following`、`dropped`、进入或离开 `LEADER` 的 `state`，以及 leader 变化的汇总不受这个上限影响。数据库进程每 0.2 秒把攒下的记录交出一次，所以相邻几行在日志里的先后可能与发生的先后差零点几秒，要排先后时按 `observed_at`。数据库进程把记录放进内存里的定长队列，另一个线程写出；写不出去时丢记录并计数，Raft 的主循环不等它。
 
 **怎么读一次 leader 变化**：先在三个成员的日志里找同一时刻的 `cluster database leader changed`，`reason` 说的是这个成员自己看到的；说 `not seen by this member` 时到另外两个成员的日志里看。然后按下面对照：
 

@@ -20,7 +20,8 @@ const roleLinePrefix = "gpuworks-raft: "
 // roleRecordsPerMinute bounds the records filed from one database process in a
 // minute; the rest are counted and the count is filed once the minute is over.
 // The process limits its own repeats; this is the server's own guard against
-// a process that does not.
+// a process that does not. Records that end or begin a leadership are filed
+// outside the budget.
 const roleRecordsPerMinute = 240
 
 // roleReasonFresh is how long a reason this member observed is attributed to
@@ -113,6 +114,8 @@ type roleTracker struct {
 	reason    string
 	reasonAt  time.Time
 	hadLeader bool
+	term      string // term of the leader this member has
+	ledBefore bool   // this member led and stopped leading since the last summary
 }
 
 func newRoleTracker(log func() *slog.Logger) *roleTracker {
@@ -122,15 +125,31 @@ func newRoleTracker(log func() *slog.Logger) *roleTracker {
 	return &roleTracker{log: log, now: time.Now}
 }
 
+// roleDecisive reports whether a record says that a leadership ended or began,
+// or that records were lost. Those are filed whatever the budget: a leader
+// that steps down while no successor can be elected leaves nothing else.
+func roleDecisive(fields []roleField) bool {
+	switch roleValue(fields, "event") {
+	case "step_down", "election_won", "following", "dropped":
+		return true
+	case "state":
+		return roleValue(fields, "old") == "LEADER" || roleValue(fields, "new") == "LEADER"
+	}
+	return false
+}
+
 // admit applies the budget. It reports whether this record is filed and how
 // many were left out of the minute that has just ended.
-func (t *roleTracker) admit() (file bool, leftOut int) {
+func (t *roleTracker) admit(fields []roleField) (file bool, leftOut int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.now()
 	if now.Sub(t.windowAt) >= time.Minute {
 		leftOut, t.skipped = t.skipped, 0
 		t.windowAt, t.filed = now, 0
+	}
+	if roleDecisive(fields) {
+		return true, leftOut
 	}
 	if t.filed >= roleRecordsPerMinute {
 		t.skipped++
@@ -161,7 +180,7 @@ func (t *roleTracker) record(record string) {
 		attrs = append(attrs, f.key, f.value)
 	}
 	log := t.log()
-	file, leftOut := t.admit()
+	file, leftOut := t.admit(fields)
 	if leftOut > 0 {
 		log.Warn("cluster database role events suppressed", "suppressed", leftOut, "per_minute", roleRecordsPerMinute)
 	}
@@ -180,8 +199,11 @@ func (t *roleTracker) record(record string) {
 }
 
 // follow returns the summary to write when this record names the leader this
-// member has, and whether that leader is another than before. The same leader
-// is named again after this member campaigned in vain.
+// member has, and whether the leadership changed. It did not when this member
+// campaigned in vain and returned to its leader in the same term. It did,
+// with the same leader before and after, when that leader lost the role and
+// won it again: the term is then another, or this member itself stopped
+// leading in between.
 func (t *roleTracker) follow(fields []roleField, at time.Time) ([]any, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -218,6 +240,7 @@ func (t *roleTracker) follow(fields []roleField, at time.Time) ([]any, bool) {
 		if roleValue(fields, "old") == "LEADER" {
 			why("this member stopped leading", false)
 			lose()
+			t.ledBefore = true
 		}
 		if roleValue(fields, "new") == "LEADER" {
 			newLeader = t.self
@@ -244,7 +267,8 @@ func (t *roleTracker) follow(fields []roleField, at time.Time) ([]any, bool) {
 	if newLeader == "" || (newLeader == t.leader && t.lostAt.IsZero()) {
 		return nil, false
 	}
-	changed := newLeader != t.leader
+	term := roleValue(fields, "term")
+	changed := newLeader != t.leader || t.ledBefore || (term != "" && t.term != "" && term != t.term)
 	old := t.leader
 	if old == "" {
 		old = "none"
@@ -264,11 +288,16 @@ func (t *roleTracker) follow(fields []roleField, at time.Time) ([]any, bool) {
 	if !t.lostAt.IsZero() {
 		summary = append(summary, "without_leader_ms", at.Sub(t.lostAt).Milliseconds())
 	}
-	t.leader, t.lostAt, t.reason, t.hadLeader = newLeader, time.Time{}, "", true
-	if !changed {
+	switch {
+	case !changed:
 		// "leader" instead of the pair: nothing changed hands.
 		summary = append([]any{"leader", newLeader}, summary[4:]...)
+	case newLeader == t.leader:
+		// The same member again: the terms tell the two leaderships apart.
+		summary = append(summary, "old_term", t.term)
 	}
+	t.leader, t.lostAt, t.reason, t.hadLeader = newLeader, time.Time{}, "", true
+	t.term, t.ledBefore = term, false
 	return summary, changed
 }
 
