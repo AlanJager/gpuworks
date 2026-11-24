@@ -32,22 +32,9 @@ func runSupportBundle(t *testing.T, args ...string) (int, string) {
 	return code, stderr.String()
 }
 
-// A member keeps no gpuworks.db; the command must not go looking for one.
-func TestSupportBundleOnAClusterMemberDoesNotLookForASQLiteDatabase(t *testing.T) {
-	_, data := memberLayout(t)
-	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	code, stderr := runSupportBundle(t, "--data", data, "--out", out)
-	if strings.Contains(stderr, "gpuworks.db") {
-		t.Fatalf("the command looked for a sqlite database:\n%s", stderr)
-	}
-	// This build carries no cluster runtime, and says so.
-	if code == 0 || !strings.Contains(stderr, "this build carries no cluster runtime") || !strings.Contains(stderr, "the cluster's own gpuworks") {
-		t.Fatalf("exit %d:\n%s", code, stderr)
-	}
-	if entries, _ := os.ReadDir(filepath.Dir(out)); len(entries) != 0 {
-		t.Fatalf("the failed collection left %d entries beside the output", len(entries))
-	}
-}
+// What the command does with a member's data directory depends on the
+// build: support_bundle_community_test.go and support_bundle_cluster_test.go
+// each assert their own. The cases below hold for both.
 
 func TestSupportBundleOnAClusterMemberRefusesWhatOnlyTheDatabaseHolds(t *testing.T) {
 	_, data := memberLayout(t)
