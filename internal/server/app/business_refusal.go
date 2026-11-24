@@ -14,7 +14,9 @@ import (
 // businessRefusalHeader names, on a refused request, why this member did not
 // serve it. The value is one of businessRefusalCodes and nothing else: the
 // refusal is answered before authentication, so it carries no address, no
-// identity and no text from the request.
+// identity and no text from the request. It is a diagnostic for operators
+// and collectors, documented in docs/explanation/control-plane-cluster.md;
+// the codes may change between releases.
 const businessRefusalHeader = "X-Gpuworks-Refusal"
 
 // Why a member refuses business.
@@ -47,8 +49,8 @@ const (
 	refusalOther              = "other"                     // a reason this list does not name
 )
 
-// businessRefusalCodes is every value the header can carry. markRefusal
-// writes nothing else, so this is the list a client or a collector needs.
+// businessRefusalCodes is every value the header can carry; markRefusal
+// writes nothing else.
 var businessRefusalCodes = []string{
 	refusalNoGeneration, refusalGenerationChanged, refusalClusterUpgrade, refusalNoHandler,
 	refusalSessionsUnroutable, refusalTargetNotCurrent,
@@ -247,6 +249,11 @@ func markRefusal(w http.ResponseWriter, r *http.Request, reason string) {
 // refuseMemberBusiness answers as a closed member does and says why.
 func refuseMemberBusiness(w http.ResponseWriter, r *http.Request, reason string) {
 	markRefusal(w, r, reason)
+	answerNotReady(w)
+}
+
+// answerNotReady is a closed member's answer, without a reason or a count.
+func answerNotReady(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
 }

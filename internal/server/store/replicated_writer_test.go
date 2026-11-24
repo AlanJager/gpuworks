@@ -119,7 +119,7 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 	}
 	all(nil, "no member key bound")
 
-	if got := st.WriterRefusals(); got != 0 {
+	if got := st.writerGuard.refusals.Load(); got != 0 {
 		t.Fatalf("admitted writes counted %d refusals", got)
 	}
 	var refused atomic.Int32
@@ -129,7 +129,7 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 	st.writerGuard.key.Store(&key)
 	all(ErrClusterAdmissionRejected, "member has no admission")
 	// Every refusal is counted; the first, second, fourth and so on are logged.
-	if got := st.WriterRefusals(); got != uint64(len(writes)) {
+	if got := st.writerGuard.refusals.Load(); got != uint64(len(writes)) {
 		t.Fatalf("counted %d refusals, want %d", got, len(writes))
 	}
 	wantLines := bits.Len(uint(len(writes)))
@@ -147,18 +147,25 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 		t.Fatalf("refusal reported %d times, want %d", got, len(writes))
 	}
 	// The cluster's own write admits the member; it cannot depend on the read.
-	if err := st.clusterTransaction(t.Context(), func(tx *gorm.DB) error {
+	if err := st.membershipTransaction(t.Context(), func(tx *gorm.DB) error {
 		return tx.Exec("INSERT INTO cluster_admissions (key_fingerprint) VALUES (?)", key).Error
 	}); err != nil {
 		t.Fatalf("cluster write of a member without admission: %v", err)
 	}
 	all(nil, "admitted member")
-	if err := st.clusterTransaction(t.Context(), func(tx *gorm.DB) error {
+	if err := st.membershipTransaction(t.Context(), func(tx *gorm.DB) error {
 		return tx.Exec("UPDATE cluster_admissions SET revoked_at = ? WHERE key_fingerprint = ?", time.Now().UTC(), key).Error
 	}); err != nil {
 		t.Fatal(err)
 	}
 	all(ErrClusterAdmissionRejected, "revoked member")
+	// The cluster transaction helper itself is a member's write like any
+	// other; only the membership pair is exempt.
+	if err := st.clusterTransaction(t.Context(), func(tx *gorm.DB) error {
+		return tx.Exec("INSERT INTO things (n) VALUES (1)").Error
+	}); !errors.Is(err, ErrClusterAdmissionRejected) {
+		t.Fatalf("checked cluster transaction of a revoked member: %v", err)
+	}
 	// A read-only transaction and a plain read are not writes.
 	if err := st.db.Raw("SELECT count(*) FROM things").Scan(new(int64)).Error; err != nil {
 		t.Fatalf("read of a revoked member: %v", err)
@@ -166,11 +173,6 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 	if err := st.db.Transaction(func(tx *gorm.DB) error { return tx.Raw("SELECT 1").Scan(new(int)).Error }, &sql.TxOptions{ReadOnly: true}); err != nil {
 		t.Fatalf("read-only transaction of a revoked member: %v", err)
 	}
-	// Negative control: with the check off, the revoked member's writes commit.
-	st.writerGuard.off.Store(true)
-	all(nil, "check disabled")
-	st.writerGuard.off.Store(false)
-	all(ErrClusterAdmissionRejected, "check enabled again")
 	// The constructor's own startup work is not checked.
 	st.writerGuard.opening.Store(true)
 	all(nil, "store still opening")
@@ -192,7 +194,11 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 	reviewed := map[string]map[string]int{
 		// Exempt transactions: membership decisions and grants, and loading an
 		// image or an import into an empty database.
-		`withoutWriterGuard\(`: {"store/cluster_admission.go": 1, "store/replicated_writer_guard.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1},
+		`withoutWriterGuard\(`: {"store/cluster_admission.go": 2, "store/replicated_writer_guard.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1},
+		// The writes that decide membership, through the one exempt pair of
+		// helpers. Any other write of a member goes through a checked one.
+		`\.membership(Write)?Transaction\(`: {"store/cluster_admission.go": 4, "store/cluster_authorizations.go": 1, "store/cluster_material_grant_read.go": 1,
+			"store/cluster_transport_grant.go": 1, "store/cluster_seed.go": 2, "store/restore_image.go": 1},
 		// A held connection: a consistent read of the schema for a backup, and
 		// the read-only discovery of a closed cluster.
 		`\.Conn\(ctx\)`: {"store/backup_sqlite_schema.go": 1, "store/closed_cluster_discovery_dqlite.go": 1, "cluster/quorum_snapshot.go": 1},
@@ -207,9 +213,8 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 		// Calls on a pool object: the stall watch's pass-through, and import
 		// inside its own transaction.
 		`ConnPool\.(ExecContext|QueryContext|QueryRowContext|PrepareContext)\(`: {"store/import_sqlite.go": 1, "store/stall_watch.go": 4},
-		// The member key is set in one place; the check is never turned off.
+		// The member key is set in one place.
 		`writerGuard\.key\.Store\(`: {"store/zz_ha_dqlite_only.go": 1},
-		`\.off\.Store\(`:            {},
 		// Startup work is exempt in the one constructor that does any.
 		`\.opening\.Store\(`: {"store/runtime_dqlite.go": 2},
 		// A write that returns rows outside a transaction is refused by the
@@ -365,7 +370,7 @@ func TestWriterGuardFailureIsNotARefusal(t *testing.T) {
 	cancel()
 	notRefused("context ended", write(ended, st.db))
 	// The admission cannot be read at all.
-	if err := st.clusterTransaction(t.Context(), func(tx *gorm.DB) error {
+	if err := st.membershipTransaction(t.Context(), func(tx *gorm.DB) error {
 		return tx.Exec("ALTER TABLE cluster_admissions RENAME TO moved").Error
 	}); err != nil {
 		t.Fatal(err)
@@ -478,7 +483,7 @@ func TestMemberWriteOutsideAWriteTransactionIsRefused(t *testing.T) {
 		t.Fatalf("a write returning rows inside a transaction: %v", err)
 	}
 	// Revoked: the same write inside a transaction is refused by the check.
-	if err := st.clusterTransaction(t.Context(), func(tx *gorm.DB) error {
+	if err := st.membershipTransaction(t.Context(), func(tx *gorm.DB) error {
 		return tx.Exec("UPDATE cluster_admissions SET revoked_at = ?", time.Now().UTC()).Error
 	}); err != nil {
 		t.Fatal(err)

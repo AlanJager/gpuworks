@@ -76,9 +76,10 @@ func (e *materialEligibility) admitUntil(deadline time.Time) {
 }
 
 // expiryRecheck is how soon an expiry that found admission still carried by a
-// proof in progress looks again. Called with e.mu held.
+// proof in progress looks again.
 const expiryRecheck = time.Second
 
+// armExpiry is called with e.mu held.
 func (e *materialEligibility) armExpiry(after time.Duration) {
 	var timer *time.Timer
 	timer = time.AfterFunc(max(after, 0), func() {

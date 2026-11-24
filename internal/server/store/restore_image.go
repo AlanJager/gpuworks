@@ -163,7 +163,7 @@ func (s *Store) RevokeOtherClusterAdmissions(ctx context.Context, clusterID, key
 	if !validClusterDigest(key, 32) {
 		return nil, nil, ErrClusterAdmissionRejected
 	}
-	err = s.clusterWriteTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.membershipWriteTransaction(ctx, func(tx *gorm.DB) error {
 		addresses, revokedKeys = nil, nil
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err

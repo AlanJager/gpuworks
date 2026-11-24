@@ -179,8 +179,6 @@ func (f *memberForward) CloseMemberSessions(ctx context.Context) error {
 
 type memberPeerKey struct{}
 
-// memberPeer remembers that a connection's certificate was authorized, so a
-// kept-alive connection pays the membership check once.
 // memberPeer is one member connection's authorization: decided once, by the
 // first answer. An attempt that brought no answer decides nothing.
 type memberPeer struct {
@@ -440,8 +438,7 @@ func (f *memberForward) proxyTo(member uint64) *httputil.ReverseProxy {
 			}
 			if r.Context().Err() != nil {
 				// The client went away; that says nothing about the leader.
-				w.Header().Set("Cache-Control", "no-store")
-				http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
+				answerNotReady(w)
 				return
 			}
 			refuseMemberBusiness(w, r, refusalLeaderUnreachable)

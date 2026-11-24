@@ -81,25 +81,12 @@ func materialReplicationFailureInvalidates(err error) bool {
 
 // materialOutcomeUndecided reports a failure that carries no verdict on this
 // member's material: the pass ran out of its own time, the database had no
-// leader to ask, the leader could not be read in time, or too few of the
-// other members answered for a majority (one down and another refusing for
-// the moment is enough: on a cluster with a member stopped this closed the
-// leader's own business again and again). None of them says a
-// byte, a receipt or the membership changed; a
-// change this pass did see has already closed the member through its change
-// callback, and a second cause joined to one of these keeps its own verdict.
-// The pass stays pending and the last complete proof keeps its own lifetime.
-//
-// A commit whose outcome is unknown is in this list in both of its forms: the
-// connection was lost under it, or the pass's deadline ended while it waited
-// (where a storage stall puts nearly every deadline). Either way the write
-// did or did not commit, and neither outcome is a finding about this member:
-// the next pass reads the state again, and the proof, which runs every few
-// seconds and is the authority for admission, compares this member's bytes
-// with the live manifest and closes on a difference. Closing on one form and
-// not the other would close members in exactly the stalls this rule is for.
-// The caller's cancellation and an error nothing classifies are not in this
-// list.
+// leader to ask, the leader could not be read in time, a connection was lost
+// under a commit, or too few of the other members answered for a majority.
+// The pass stays pending; the proof remains the authority for admission and
+// closes the member on a difference. A second cause joined to one of these
+// keeps its own verdict. The caller's cancellation and an error nothing
+// classifies are not undecided.
 func materialOutcomeUndecided(err error) bool {
 	if _, joined := err.(interface{ Unwrap() []error }); !joined &&
 		(store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout) ||

@@ -28,7 +28,7 @@ func (s *Store) RevokeClusterAdmission(ctx context.Context, clusterID, key strin
 		return ClusterAdmission{}, ErrClusterAdmissionRejected
 	}
 	var admission ClusterAdmission
-	err := s.clusterWriteTransaction(ctx, func(tx *gorm.DB) error {
+	err := s.membershipWriteTransaction(ctx, func(tx *gorm.DB) error {
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err
 		}

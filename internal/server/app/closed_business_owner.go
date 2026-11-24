@@ -70,6 +70,7 @@ func (a *App) closeBusinessAdmission() {
 	caller := admissionCloser()
 	a.admissionJournal.closed(a.log, caller, admissionClosedByProof())
 	if a.log != nil {
+		// Every close, including those the journal leaves out.
 		a.log.Debug("closed business admission invalidated", "caller", caller)
 	}
 }

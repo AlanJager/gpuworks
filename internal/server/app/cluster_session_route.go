@@ -200,11 +200,9 @@ const memberRouteMembershipAge = materialEligibilityWindow
 
 // memberRouteUnansweredAge is how old that list may be when a fresh grant
 // brought no answer: as long as a member's own business stays open without
-// an answer, by the same constant. With half of that, a storage outage of
-// about 30 s cut the members off from the leader while it went on serving:
-// requests that entered through a member that does not lead were refused.
+// an answer, by the same constant.
 //
-// What it costs: a member revoked during such an outage is accepted by its
+// What it costs: a member revoked during a storage outage is accepted by its
 // peers for up to this long. The member that commits the revocation drops
 // its list at once, and so does a member whose own admission closes.
 const memberRouteUnansweredAge = materialUnconfirmedLimit
@@ -218,11 +216,8 @@ const memberRouteUnansweredAge = materialUnconfirmedLimit
 // next confirmation.
 //
 // A grant that brings no answer (storage stalled, no leader) is not a
-// refusal: the last confirmed list then stands in for it up to the
-// memberRouteUnansweredAge. Without that, a stall longer than the list's age cut
-// the members off from the leader while every one of them was still open.
-// The list is dropped when this member's admission closes and when this
-// member commits a revocation.
+// refusal: the last confirmed list then stands in for it up to
+// memberRouteUnansweredAge.
 func memberRouteKey(ctx context.Context, confirmed func(time.Duration) ([]store.ClusterTransportMember, bool), grant func(context.Context) ([]store.ClusterTransportMember, error), pick func([]store.ClusterTransportMember) string) (string, error) {
 	if members, ok := confirmed(memberRouteMembershipAge); ok {
 		if key := pick(members); key != "" {

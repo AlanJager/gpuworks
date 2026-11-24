@@ -13,7 +13,7 @@ func (s *Store) grantPrivateClusterMaterials(ctx context.Context, clusterID, key
 	ctx, endWork := s.bindMaintenanceWork(ctx, MaintenanceWorkTransaction)
 	defer endWork()
 	var granted ClusterAdmission
-	err := s.clusterWriteTransaction(context.WithValue(ctx, clusterGrantPurposeKey{}, "private_material_grant"), func(tx *gorm.DB) error {
+	err := s.membershipWriteTransaction(context.WithValue(ctx, clusterGrantPurposeKey{}, "private_material_grant"), func(tx *gorm.DB) error {
 		phase, identity, admission, err := readClusterMaterialGrantInput(tx, key)
 		if err != nil {
 			return err

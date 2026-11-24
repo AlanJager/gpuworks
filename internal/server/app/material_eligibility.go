@@ -39,10 +39,9 @@ const (
 	// requests on renewals that got no answer. A renewal that only ran out of
 	// time is not a refusal and extends admission, which is what carries a
 	// member through a storage stall; without a bound a member whose every
-	// renewal times out would answer forever from a view nothing confirms,
-	// and no request takes a grant of its own any more. Stalls measured on
-	// slow disks last up to eight seconds, so four proof windows leave them
-	// far behind; past that the member closes until a renewal succeeds.
+	// renewal times out would answer forever from a view nothing confirms:
+	// no request takes a grant of its own. Past the bound the member closes
+	// until a renewal succeeds.
 	materialUnconfirmedLimit = 4 * materialEligibilityWindow
 )
 
@@ -364,7 +363,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	// The window is over when the clock says so, whether or not the proof
 	// context's own timer has run yet: a proof whose stages time out at the
 	// window's end, or a process that was not scheduled across it, returns
-	// here first. Deciding by the context alone closed such a member early.
+	// here first.
 	pastWindow := !now.Before(attemptDeadline)
 	// A success that arrives after its window proves nothing about now; it
 	// is no answer, exactly as when the context had already ended.
@@ -381,7 +380,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	//   - a refusal by the database: closes at once, also inside a live window.
 	//   - any other answer ("not ready", an error nothing classifies): a read
 	//     cut by a leadership change looks the same, so the earlier result
-	//     keeps its own window as it always did, but the answer is latched:
+	//     keeps its own window, but the answer is latched:
 	//     no later attempt without an answer extends admission.
 	// Cancellation and an invalidation close at once. Only a successful proof
 	// reopens what an answer or an invalidation closed.

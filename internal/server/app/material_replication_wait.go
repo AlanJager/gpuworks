@@ -79,17 +79,10 @@ func namingSilentMaterialMembers(err error, silent []string) error {
 // materialReplicationPassFailed ends a replication pass that returned err
 // while this member keeps running. Only a verdict closes the member; a pass
 // that ran out of time, found no database leader or got too few answers
-// stays pending, and the next pass repeats it.
-//
-// While passes stay pending the member keeps serving on its proof, which is
-// a separate check with its own majority: within its last 15 seconds the
-// member confirmed its admission by a write a majority committed, compared
-// its own copies with the published manifests, and had at least one other
-// member confirm the same sets. A proof that gets no such answer ends
-// admission 60 seconds after the last one that did. So this state can last
-// as long as some member answers the proof while too few complete a pass;
-// what it leaves undone is refreshing the copies and manifests on the
-// members that do not answer.
+// stays pending, and the next pass repeats it. Meanwhile the member serves
+// on its proof, a separate check with its own majority, which is at most
+// materialEligibilityWindow old, or materialUnconfirmedLimit when the proof
+// itself gets no answer.
 func (a *App) materialReplicationPassFailed(err error) {
 	closes := materialReplicationFailureInvalidates(err)
 	if closes {

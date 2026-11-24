@@ -22,8 +22,6 @@ type writerGuard struct {
 	// reported. Neither is touched by a write that is admitted.
 	refusals atomic.Uint64
 	log      atomic.Pointer[slog.Logger]
-	// off disables the check. Tests use it as their negative control.
-	off atomic.Bool
 	// opening is set while the Store's constructor does its own startup work
 	// (schema check or migration, default rows, orphaned sessions). That work
 	// belongs to the database, not to a request, and must also run on an
@@ -34,27 +32,17 @@ type writerGuard struct {
 
 type writerGuardExemptKey struct{}
 
-// withoutWriterGuard marks the writes that decide membership or run where the
-// writer has no admission yet: claiming an invitation, the seed, revocation,
-// membership and transport grants (their own statements require the named
-// keys to be admitted, and a member asks about itself through them), and an
-// image or import loaded into an empty database. Everything else a member
-// writes, including what it records about material while serving, is checked.
+// withoutWriterGuard exempts a transaction from the check. It is for the
+// writes that decide membership (membershipTransaction) and for an image or
+// import loaded into an empty database, where the writer has no admission
+// yet. Everything else a member writes, including what it records about
+// material while serving, is checked.
 func withoutWriterGuard(ctx context.Context) context.Context {
-	if exempt, set := ctx.Value(writerGuardExemptKey{}).(bool); set && !exempt {
-		return ctx // withWriterGuard was asked for further out; it wins.
-	}
 	return context.WithValue(ctx, writerGuardExemptKey{}, true)
 }
 
-// withWriterGuard keeps the check on a write that runs through a helper
-// which would otherwise exempt it.
-func withWriterGuard(ctx context.Context) context.Context {
-	return context.WithValue(ctx, writerGuardExemptKey{}, false)
-}
-
 func (g *writerGuard) applies(ctx context.Context) (string, bool) {
-	if exempt, _ := ctx.Value(writerGuardExemptKey{}).(bool); g == nil || g.off.Load() || g.opening.Load() || exempt {
+	if exempt, _ := ctx.Value(writerGuardExemptKey{}).(bool); g == nil || g.opening.Load() || exempt {
 		return "", false
 	}
 	key := g.key.Load()
