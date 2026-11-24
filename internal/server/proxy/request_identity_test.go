@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tracecontext"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
@@ -217,11 +216,11 @@ func TestARetriedRequestKeepsItsTrace(t *testing.T) {
 	up := &traceUpstream{}
 	p, _, apiKey, depID, closeUpstream := newAccountingProxy(t, up)
 	defer closeUpstream()
-	inst, err := storeplane.Of(p.store).InstanceByUUID("omni-instance")
+	inst, err := storeOf(p.store).InstanceByUUID("omni-instance")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storeplane.Of(p.store).CreateInstance(&store.Instance{
+	if _, err := storeOf(p.store).CreateInstance(&store.Instance{
 		UUID: "omni-instance-2", DeploymentID: depID, NodeID: inst.NodeID,
 		State: proto.InstRunning, APIPort: 30001, Ports: "[30001]",
 	}); err != nil {

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
@@ -91,7 +90,7 @@ func TestKnownInstanceFailureEndsWaitingRequest(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("request did not reach failure trigger phase")
 			}
-			if err := storeplane.Of(p.store).SetInstanceFailed("omni-instance", proto.RuntimeFailure{Code: proto.ErrorContainerExited}, "container exited (code -6)"); err != nil {
+			if err := storeOf(p.store).SetInstanceFailed("omni-instance", proto.RuntimeFailure{Code: proto.ErrorContainerExited}, "container exited (code -6)"); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -138,7 +137,7 @@ func TestInstanceGuardPreservesHealthyDrainingAndSleep(t *testing.T) {
 	p.guard.add("omni-instance", call)
 	defer p.guard.remove("omni-instance", call)
 	for _, state := range []string{proto.InstRunning, proto.InstDraining} {
-		if err := storeplane.Of(p.store).SetInstanceState("omni-instance", state, "healthy"); err != nil {
+		if err := storeOf(p.store).SetInstanceState("omni-instance", state, "healthy"); err != nil {
 			t.Fatal(err)
 		}
 		p.guard.checkMissing(map[string]bool{}) // Route removal alone is not failure.
@@ -146,7 +145,7 @@ func TestInstanceGuardPreservesHealthyDrainingAndSleep(t *testing.T) {
 			t.Fatalf("healthy %s request canceled: %v", state, context.Cause(ctx))
 		}
 	}
-	if err := updateInstanceRow(storeplane.Of(p.store), "omni-instance", map[string]any{"state": proto.InstRunning, "sleep_level": 1}); err != nil {
+	if err := updateInstanceRow(storeOf(p.store), "omni-instance", map[string]any{"state": proto.InstRunning, "sleep_level": 1}); err != nil {
 		t.Fatal(err)
 	}
 	p.guard.check("omni-instance")
@@ -154,7 +153,7 @@ func TestInstanceGuardPreservesHealthyDrainingAndSleep(t *testing.T) {
 		t.Fatalf("sleep transition interrupted active call: %v", context.Cause(ctx))
 	}
 	p.Close()
-	storeplane.Of(p.store).Close()
+	storeOf(p.store).Close()
 	p.guard.check("omni-instance")
 	if ctx.Err() != nil {
 		t.Fatal("database read failure canceled a healthy request")
@@ -173,11 +172,11 @@ func TestInstanceGuardChecksDeletionAndPortChanges(t *testing.T) {
 			p.guard.add("omni-instance", oldCall)
 			defer p.guard.remove("omni-instance", oldCall)
 			if deleted {
-				if err := storeplane.Of(p.store).DeleteInstance("omni-instance"); err != nil {
+				if err := storeOf(p.store).DeleteInstance("omni-instance"); err != nil {
 					t.Fatal(err)
 				}
 			} else {
-				if err := updateInstanceRow(storeplane.Of(p.store), "omni-instance", map[string]any{"api_port": 30001}); err != nil {
+				if err := updateInstanceRow(storeOf(p.store), "omni-instance", map[string]any{"api_port": 30001}); err != nil {
 					t.Fatal(err)
 				}
 			}

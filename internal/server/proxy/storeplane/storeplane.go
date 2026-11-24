@@ -25,14 +25,6 @@ func New(st *store.Store) plane.Source {
 	return &Source{Store: st}
 }
 
-// Of returns the store behind a source made by New, or nil.
-func Of(src plane.Source) *store.Store {
-	if s, ok := src.(*Source); ok && s != nil {
-		return s.Store
-	}
-	return nil
-}
-
 // Snapshot reads the routing rows. The generation is read before the rows: a
 // change committed while they are read moves it on, and the rows then read as
 // possibly stale.

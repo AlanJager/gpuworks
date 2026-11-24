@@ -308,6 +308,12 @@ measure() {
     grep -nE '"gpuworks\.ai/gpuworks/internal/server/(bus|hub)"' internal/server/proxy/*.go internal/server/proxy/plane/*.go 2>/dev/null \
       | grep -v '_test\.go' | grep -c . || true
     ;;
+  proxy_adapter_refs)
+    # The adapter embeds the store: gateway code that imported it would be one
+    # type assertion from the handle. Only the adapter itself and tests may.
+    grep -nE '"gpuworks\.ai/gpuworks/internal/server/proxy/storeplane"|storeplane\.' internal/server/proxy/*.go internal/server/proxy/plane/*.go 2>/dev/null \
+      | grep -v '_test\.go' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c . || true
+    ;;
   proxy_store_type_files)
     grep -lE '"gpuworks\.ai/gpuworks/internal/server/store"' internal/server/proxy/*.go internal/server/proxy/plane/*.go 2>/dev/null \
       | grep -v '_test\.go' | grep -c . || true

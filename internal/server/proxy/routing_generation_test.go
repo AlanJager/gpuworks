@@ -151,7 +151,7 @@ func TestChatInputFollowsModelModalityEdits(t *testing.T) {
 	now := time.Now()
 	p.modalities.now = func() time.Time { return now }
 	var model store.Model
-	if err := storeplane.Of(p.store).DB().Where("source_id = ?", "org/omni").First(&model).Error; err != nil {
+	if err := storeOf(p.store).DB().Where("source_id = ?", "org/omni").First(&model).Error; err != nil {
 		t.Fatal(err)
 	}
 	audio := `{"model":"omni","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"UklGR","format":"wav"}}]}]}`
@@ -165,7 +165,7 @@ func TestChatInputFollowsModelModalityEdits(t *testing.T) {
 	setModalities := func(modalities string) {
 		t.Helper()
 		ops, _ := json.Marshal([]inferenceapi.Operation{{Type: "openai.chat"}})
-		if _, err := storeplane.Of(p.store).SetModelInferenceConfig(model.ID, string(ops), modalities); err != nil {
+		if _, err := storeOf(p.store).SetModelInferenceConfig(model.ID, string(ops), modalities); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -177,7 +177,7 @@ func TestChatInputFollowsModelModalityEdits(t *testing.T) {
 	if code := send(); code != http.StatusBadRequest {
 		t.Fatalf("audio no longer declared, next request: %d, want 400", code)
 	}
-	if err := storeplane.Of(p.store).DB().Model(&store.Model{}).Where("id = ?", model.ID).Update("input_modalities", `["text","audio"]`).Error; err != nil {
+	if err := storeOf(p.store).DB().Model(&store.Model{}).Where("id = ?", model.ID).Update("input_modalities", `["text","audio"]`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if code := send(); code != http.StatusBadRequest {

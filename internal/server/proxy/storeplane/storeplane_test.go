@@ -51,12 +51,9 @@ func TestNoStoreIsNoSource(t *testing.T) {
 	if src := New(nil); src != nil {
 		t.Fatalf("New(nil) = %#v, want no source", src)
 	}
-	if Of(nil) != nil {
-		t.Fatal("Of(nil) returned a store")
-	}
 	st := openStore(t, bus.New())
-	if Of(New(st)) != st {
-		t.Fatal("Of(New(st)) is not st")
+	if src, ok := New(st).(*Source); !ok || src.Store != st {
+		t.Fatal("New(st) is not a source over st")
 	}
 }
 
@@ -137,12 +134,11 @@ func TestSnapshotSurvivesEncoding(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatal(err)
 	}
-	again, err := json.Marshal(&back)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(raw) != string(again) {
-		t.Fatalf("snapshot changed across encoding:\n%s\n%s", raw, again)
+	// Structural equality over every field: a field the encoding drops or
+	// alters shows here, where encoding the decoded value again would drop
+	// it a second time and agree with itself.
+	if !reflect.DeepEqual(&back, snap) {
+		t.Fatalf("snapshot changed across encoding:\n got %+v\nwant %+v", back, *snap)
 	}
 	if back.Generation != snap.Generation || len(back.Deployments) != 1 || back.Deployments[0].ServedName != "served" ||
 		len(back.Instances) != 1 || back.Instances[0].APIPort != 30001 || back.Instances[0].State != proto.InstRunning ||
@@ -153,6 +149,34 @@ func TestSnapshotSurvivesEncoding(t *testing.T) {
 		if !strings.Contains(string(raw), key) {
 			t.Errorf("encoded snapshot has no %s: %s", key, raw)
 		}
+	}
+}
+
+// A lookup of a row that is not there answers as the store does: the
+// gateway's not-found, an empty list, or an unresolved key, never a zero row
+// that reads as found.
+func TestLookupsOfMissingRowsAreNotFound(t *testing.T) {
+	st := openStore(t, bus.New())
+	src := New(st)
+	for name, lookup := range map[string]func() error{
+		"GetDeployment":   func() error { _, err := src.GetDeployment(404); return err },
+		"InstanceByUUID":  func() error { _, err := src.InstanceByUUID("no-such-instance"); return err },
+		"NodeByID":        func() error { _, err := src.NodeByID(404); return err },
+		"GetModel":        func() error { _, err := src.GetModel(404); return err },
+		"APIKeyScopeByID": func() error { _, err := src.APIKeyScopeByID(404); return err },
+	} {
+		if err := lookup(); !errors.Is(err, plane.ErrNotFound) {
+			t.Errorf("%s of a missing row: %v, want plane.ErrNotFound", name, err)
+		}
+	}
+	if _, ok := src.ResolveAPIKey("gw-no-such-key"); ok {
+		t.Error("ResolveAPIKey resolved a key nobody issued")
+	}
+	if deps, err := src.DeploymentsByServedName("no-such-name"); err != nil || len(deps) != 0 {
+		t.Errorf("DeploymentsByServedName of an unknown name: %v, %v", deps, err)
+	}
+	if insts, err := src.InstancesForDeployment(404); err != nil || len(insts) != 0 {
+		t.Errorf("InstancesForDeployment of a missing deployment: %v, %v", insts, err)
 	}
 }
 

@@ -48,6 +48,7 @@ planning_concrete_store_refs	74	max
 planning_sync_files	0	max
 proxy_store_handle_refs	0	max
 proxy_bus_hub_imports	0	max
+proxy_adapter_refs	0	max
 proxy_store_type_files	15	max
 app_new_lines	301	max
 app_run_lines	191	max

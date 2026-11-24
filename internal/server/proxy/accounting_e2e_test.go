@@ -532,7 +532,7 @@ func TestProxyAccountingRewriteModelFailureCountedForResolvedDeployment(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := storeplane.Of(p.store).UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
+	if err := storeOf(p.store).UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
 		t.Fatal(err)
 	}
 

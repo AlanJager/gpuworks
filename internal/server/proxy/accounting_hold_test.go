@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -72,7 +71,7 @@ func TestGatewayCountsTheWaitOfHeldRequests(t *testing.T) {
 	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, `{"ok":true}`) })
 	p, acct, key, depID, closeUpstream := newAccountingProxyFor(t, upstream, &store.Deployment{Engine: "vllm", Sleepable: true})
 	t.Cleanup(closeUpstream)
-	if err := updateInstanceRow(storeplane.Of(p.store), "omni-instance", map[string]any{"sleep_level": 1}); err != nil {
+	if err := updateInstanceRow(storeOf(p.store), "omni-instance", map[string]any{"sleep_level": 1}); err != nil {
 		t.Fatal(err)
 	}
 	completed := make(chan struct{}, 1)
@@ -137,7 +136,7 @@ func TestGatewayCountsTheWaitOfHeldRequests(t *testing.T) {
 		}
 		go func() {
 			time.Sleep(200 * time.Millisecond)
-			_ = updateInstanceRow(storeplane.Of(p.store), "omni-instance", map[string]any{"sleep_level": 0})
+			_ = updateInstanceRow(storeOf(p.store), "omni-instance", map[string]any{"sleep_level": 0})
 		}()
 	})
 	req, _ = http.NewRequest(http.MethodPost, front.URL+"/v1/chat/completions", strings.NewReader(`{"model":"omni"}`))
@@ -156,10 +155,10 @@ func TestGatewayCountsTheWaitOfHeldRequests(t *testing.T) {
 	}
 
 	// Refused at once: an operator's sleep is not held.
-	if err := updateInstanceRow(storeplane.Of(p.store), "omni-instance", map[string]any{"sleep_level": 1}); err != nil {
+	if err := updateInstanceRow(storeOf(p.store), "omni-instance", map[string]any{"sleep_level": 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := updateInstanceRow(storeplane.Of(p.store), "omni-instance", map[string]any{"sleep_held": true}); err != nil {
+	if err := updateInstanceRow(storeOf(p.store), "omni-instance", map[string]any{"sleep_held": true}); err != nil {
 		t.Fatal(err)
 	}
 	if resp := postChat(t, front, key); resp.StatusCode != http.StatusServiceUnavailable {

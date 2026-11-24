@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -58,15 +57,15 @@ func TestProxyKeepsPublicDiscoveryAndRewritesJSONModel(t *testing.T) {
 		_, _ = io.WriteString(w, `{"ok":true}`)
 	}))
 	defer closeUpstream()
-	deployment, err := storeplane.Of(p.store).DeploymentByServedName("omni")
+	deployment, err := storeOf(p.store).DeploymentByServedName("omni")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storeplane.Of(p.store).SetModelInferenceConfig(deployment.ModelID, `[{"type":"openai.chat"}]`, `["text"]`); err != nil {
+	if _, err := storeOf(p.store).SetModelInferenceConfig(deployment.ModelID, `[{"type":"openai.chat"}]`, `["text"]`); err != nil {
 		t.Fatal(err)
 	}
 	desired, _ := json.Marshal(proto.InstanceDesiredState{ResolvedLaunch: proto.ResolvedLaunch{Entrypoint: []string{"vllm", "serve", "/runtime/model"}, ModelMount: "/runtime/model", APIContract: json.RawMessage(`{"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}`)}})
-	if err := storeplane.Of(p.store).UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
+	if err := storeOf(p.store).UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {

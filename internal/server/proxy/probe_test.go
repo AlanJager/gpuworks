@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
@@ -103,7 +102,7 @@ func TestAProbeReportsAnErrorReplyATimeoutAndNoReplica(t *testing.T) {
 	}
 
 	// Asleep: nothing to send to.
-	if err := storeplane.Of(p.store).UpdateInstanceStatus(proto.InstanceStatus{UUID: "omni-instance", State: proto.InstRunning, SleepLevel: 1, Phase: proto.PhaseSleep}); err != nil {
+	if err := storeOf(p.store).UpdateInstanceStatus(proto.InstanceStatus{UUID: "omni-instance", State: proto.InstRunning, SleepLevel: 1, Phase: proto.PhaseSleep}); err != nil {
 		t.Fatal(err)
 	}
 	if reply := p.Probe(context.Background(), depID, chatPath, map[string]any{"input": "1"}); !reply.NoReplica || reply.HTTPStatus != 0 {
