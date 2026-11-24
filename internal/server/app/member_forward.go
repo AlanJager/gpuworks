@@ -364,16 +364,28 @@ func (f *memberForward) observeLeaderOnce(ctx context.Context) {
 		// simply ages out.
 		return
 	}
-	previous := f.observed.Swap(&memberLeaderObservation{leader: leader, at: time.Now()})
+	now := time.Now()
+	previous := f.observed.Swap(&memberLeaderObservation{leader: leader, at: now})
 	id := f.memberID()
-	if leader == id || f.sessions == nil || f.drop == nil {
+	closed := 0
+	if leader != id && f.sessions != nil && f.drop != nil {
+		if closed = f.sessions(); closed > 0 {
+			f.drop()
+		}
+	}
+	if f.log == nil || (previous != nil && previous.leader == leader) {
 		return
 	}
-	if held := f.sessions(); held > 0 {
-		f.drop()
-		if f.log != nil && (previous == nil || previous.leader != leader) {
-			f.log.Info("closed agent sessions held by a member that does not lead", "sessions", held, "leader", leader)
-		}
+	// One line per change of the leader this member sends business to. The
+	// reason is in the database process' own records of the same moment
+	// ("cluster database role event", "cluster database leader changed").
+	attrs := []any{"new_leader", leader, "this_member", id, "leads", leader == id, "learned", "leader observation", "agent_sessions_closed", closed}
+	if previous != nil {
+		attrs = append(attrs, "old_leader", previous.leader, "since_last_observation_ms", now.Sub(previous.at).Milliseconds())
+	}
+	f.log.Info("business follows a new database leader", attrs...)
+	if closed > 0 {
+		f.log.Info("closed agent sessions held by a member that does not lead", "sessions", closed, "leader", leader)
 	}
 }
 

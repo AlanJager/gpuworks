@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Form, Input, Space, Typography, Upload, message } from "antd";
+import { Alert, Button, Card, Form, Input, Space, Upload, message } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { api, type Branding } from "../../api";
@@ -8,7 +8,6 @@ import { useIsAdmin } from "../../components/useIsAdmin";
 import { BrandMark, DEFAULT_PRODUCT_NAME, setBranding } from "../../branding";
 import LogoCropModal from "./LogoCropModal";
 
-const { Text } = Typography;
 
 /** BRANDING_ANCHOR is the fragment links to this card use (/settings#branding). */
 export const BRANDING_ANCHOR = "branding";
@@ -63,7 +62,6 @@ export default function BrandingCard() {
       extra={<Button type="primary" loading={saving} disabled={disabled} onClick={() => void save()}>{t("common.save")}</Button>}
     >
       <Space direction="vertical" size={8} style={{ width: "100%", maxWidth: 720 }}>
-        <Text type="secondary">{t("branding.description")}</Text>
         {loadError && <Alert type="error" showIcon message={loadError} action={<Button size="small" onClick={() => void load()}>{tCommon("actions.retry")}</Button>} />}
         {!isAdmin && <Alert type="info" showIcon message={t("branding.adminOnly")} />}
         <Form layout="vertical" style={{ marginTop: 8 }} disabled={disabled}>
