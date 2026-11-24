@@ -68,11 +68,7 @@
 
 .gw-updates {
   min-width: 0;
-  padding: 0 20px 16px;
-}
-
-.gw-updates > :not(.gw-toolbar, .gw-items-table) {
-  margin-top: 12px;
+  padding: 16px 20px;
 }
 
 .gw-toolbar, .gw-channel, .gw-check, .gw-preferences, .gw-build-id {
@@ -86,10 +82,16 @@
   font-weight: 400;
 }
 
+.gw-update-body {
+  display: grid;
+  gap: 12px;
+  border-inline-start: 2px solid var(--border);
+  padding-inline-start: clamp(10px, 1.5cqi, 20px);
+}
+
 .gw-toolbar {
   justify-content: space-between;
   gap: 12px 20px;
-  padding-block: 16px;
 }
 
 .gw-channel {
@@ -97,7 +99,7 @@
   gap: 4px 8px;
 }
 
-.gw-description, .gw-channel-help {
+.gw-channel-help {
   margin: 0;
   color: var(--fg-muted);
 }
@@ -108,11 +110,9 @@
 }
 
 .gw-channel-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 500;
-  color: var(--fg-default);
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  color: var(--fg-muted);
 }
 
 .gw-check {
@@ -147,17 +147,24 @@
 }
 
 .gw-updates > .gw-running-build {
-  margin: 0 0 12px;
+  margin-bottom: 16px;
+}
+
+.gw-version-group, .gw-build-identity h3 {
+  margin: 0;
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  color: var(--fg-default);
+}
+
+.gw-version-group {
+  margin-bottom: 12px;
 }
 
 .gw-build-identity h3 {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin: 0;
-  font-size: var(--font-size-label);
-  font-weight: 500;
-  color: var(--fg-muted);
 }
 
 .gw-build-id {
@@ -270,9 +277,6 @@
     gap: 8px 16px;
   }
 
-  .gw-toolbar {
-    padding-block: 12px;
-  }
 }
 
 @container updates (max-width: 615px) {

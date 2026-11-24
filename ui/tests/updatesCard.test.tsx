@@ -106,6 +106,10 @@ test("shows each item against the channel without naming the sources", async () 
   try {
     const { container } = renderCard();
     await waitFor(() => assert.ok(screen.getByText("f90e474e")));
+    const updateGroup = within(screen.getByRole("region", { name: u.updateGroup }));
+    assert.equal(updateGroup.queryByRole("switch", { name: u.autoCheck }), null);
+    assert.ok(within(container.querySelector<HTMLElement>(".gw-card-head")!).getByRole("switch", { name: u.autoCheck }));
+    assert.ok(updateGroup.getByRole("button", { name: u.check }));
     assert.deepEqual(s.refreshes, [false], "opening the page reuses the server's last check");
     assert.ok(!/oss-cn-shanghai|dl\.gpuworks\.ai|context deadline/.test(container.textContent ?? ""), "the page does not list distribution sources");
     assert.ok(within(row(u.server)).getByText(u.available));

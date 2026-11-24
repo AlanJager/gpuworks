@@ -62,11 +62,11 @@
     "failed": "未能安装 {{version}}，可重新检查并选择版本。"
   },
   "updates": {
+    "updateGroup": "更新版本",
     "buildFields": {"channel": "构建渠道", "builtAt": "构建时间", "matched": "匹配发布版本"},
     "updateItem": "更新项目",
     "channelLatest": "渠道最新",
     "title": "版本与更新",
-    "description": "检查并更新服务端版本、系统镜像目录与推理模板目录；不能联网时可以上传文件更新。",
     "check": "检查更新",
     "unavailable": "暂时无法检查更新",
     "unavailableHelp": "请确认服务端能访问外网（需要代理时在服务端主机上设置 HTTPS_PROXY）。不能联网时，系统镜像目录与推理模板目录可以在这里上传文件更新，服务端可以上传升级包或用 gpuworks upgrade --archive 升级。", "checking": "正在检查…", "unpublished": "{{channel}}渠道还没有发布任何版本", "unpublishedHelp": "发布源都能访问，只是这个渠道里还没有内容。可以切回另一个渠道，或等正式版本发布后再检查；系统镜像目录与推理模板目录仍可以在这里上传文件更新。", "invalidIndex": "发布源返回的内容没有通过签名校验", "invalidIndexHelp": "服务端连上了发布源，但收到的不是有效的发布索引：常见于需要登录认证的网关或代理拦截了请求。请检查服务端主机的出网代理与网关设置，稍后再检查；期间可以在这里上传文件更新。",
@@ -129,7 +129,7 @@
     "autoCheckOffHelp": "已关闭：服务端不再自动检查。点「检查更新」时仍会读取版本索引。",
     "notChecked": "尚未检查更新",
     "notCheckedHelp": "自动检测已关闭。点右上角「检查更新」手动检查，或在这里上传文件更新。",
-    "currentBuild": "当前控制面构建",
+    "currentBuild": "当前版本信息",
     "checkedAt": "检查于 {{time}}"
   },
   "usageReport": {
@@ -141,7 +141,6 @@
   "page": { "title": "设置", "description": "管理品牌外观、版本更新、镜像和模型从哪里拉取、节点与部署策略、安全与访问，以及 AI 服务等外部集成", "breadcrumb": { "platform": "平台", "settings": "设置" }, "tabs": { "general": "通用", "pull": "镜像与模型拉取", "nodes": "节点与部署", "access": "安全与访问", "integrations": "集成", "data": "数据保留", "diagnostics": "诊断" } },
   "branding": {
     "title": "品牌外观",
-    "description": "自定义 Logo、产品名称、顶栏标题和登录页介绍文字。留空的项使用内置默认值，默认文案会跟随界面语言；自定义的文字原样显示，不做翻译。",
     "adminOnly": "只有管理员可以修改品牌外观。",
     "logo": "Logo",
     "logoHelp": "显示在顶栏左侧和登录页上，按原比例缩放，最宽 160 像素、最高 24 像素，横版或方形图片都可以。支持 PNG、JPEG、WebP、SVG。上传后可以裁切；位图会自动缩小到 256 像素以内并压缩，未裁切且体积较小的 SVG 原样保留。",
