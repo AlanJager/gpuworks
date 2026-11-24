@@ -169,7 +169,7 @@ func (t Tier) Recorded() string {
 func (t Tier) NetworkLatency() time.Duration {
 	base, latency, timed, err := split(string(t))
 	switch {
-	case err != nil || t == "":
+	case err != nil:
 		return profiles[Standard].latency
 	case !timed:
 		return profiles[base].latency

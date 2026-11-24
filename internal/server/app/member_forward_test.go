@@ -490,8 +490,7 @@ func TestALeaderObservationStaysFreshThroughAnElectionOfTheTier(t *testing.T) {
 	}
 	previous := cluster.ProcessStorageTier()
 	t.Cleanup(func() { cluster.UseStorageTier(previous) })
-	// The member reads the tier of its own process once, when it first
-	// acts on an observation.
+	// The member acts on what the tier of its own process allows.
 	fresh := func(name string, age time.Duration) bool {
 		cluster.UseStorageTier(at(name))
 		f := &memberForward{}

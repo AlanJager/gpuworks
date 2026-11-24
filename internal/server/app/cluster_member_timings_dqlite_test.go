@@ -52,3 +52,38 @@ func TestClusterMemberTimingsNeverGuessAMembersTier(t *testing.T) {
 		t.Fatal("an installation without a member identity was asked for its peers")
 	}
 }
+
+// Which members are running is read from their database ports, with no
+// leader's help: a member that listens is listed although nobody leads, and
+// one that is stopped is not.
+func TestClusterMembersListeningNeedsNoLeader(t *testing.T) {
+	f := newStatusProofFixture(t)
+	previous := statusQuorumFetch
+	t.Cleanup(func() { statusQuorumFetch = previous })
+	statusQuorumFetch = func(context.Context, clusterStatus, time.Duration) (enrollment.ClusterQuorumFacts, bool) {
+		t.Error("the leader's membership was asked for")
+		return enrollment.ClusterQuorumFacts{}, false
+	}
+	listening, known, err := ClusterMembersListening(context.Background(), Config{DataDir: f.root}, time.Second)
+	if err != nil || known != 2 || len(listening) != 2 {
+		t.Fatalf("listening %v of %d known, %v; want the two other members", listening, known, err)
+	}
+	for _, address := range listening {
+		if address != f.follower.address && address != f.leader.address {
+			t.Fatalf("listed %s, which is neither of the other members", address)
+		}
+	}
+	// One of the two stops: the other is still found, alone.
+	f.follower.stop()
+	listening, known, err = ClusterMembersListening(context.Background(), Config{DataDir: f.root}, time.Second)
+	if err != nil || known != 2 || len(listening) != 1 || listening[0] != f.leader.address {
+		t.Fatalf("with one member stopped: listening %v of %d known, %v; want only %s", listening, known, err, f.leader.address)
+	}
+	f.leader.stop()
+	if listening, known, err = ClusterMembersListening(context.Background(), Config{DataDir: f.root}, time.Second); err != nil || known != 2 || len(listening) != 0 {
+		t.Fatalf("with both stopped: listening %v of %d known, %v", listening, known, err)
+	}
+	if _, _, err := ClusterMembersListening(context.Background(), Config{DataDir: f.root}, 0); err == nil {
+		t.Fatal("a zero timeout was accepted")
+	}
+}

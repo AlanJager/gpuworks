@@ -34,8 +34,8 @@ import (
 
 const (
 	// The leader is observed on this interval; an observation older than
-	// memberLeaderFresh, stretched on a tier that elects later (leaderFresh),
-	// is not acted on.
+	// memberLeaderFresh, stretched on a tier that elects later
+	// (observedLeader), is not acted on.
 	memberLeaderObserveInterval = 500 * time.Millisecond
 	memberLeaderObserveTimeout  = 2 * time.Second
 	memberLeaderFresh           = 3 * time.Second
@@ -78,10 +78,6 @@ type memberForward struct {
 	done      chan struct{}
 
 	observed atomic.Pointer[memberLeaderObservation]
-	// fresh is how long an observation is acted on, read once from the
-	// tier this process runs (leaderFresh).
-	fresh     time.Duration
-	freshOnce sync.Once
 }
 
 type memberLeaderObservation struct {
@@ -309,20 +305,16 @@ func (f *memberForward) memberID() uint64 {
 	return f.id
 }
 
-// leaderFresh is how long a leader observation is acted on. A leader that
-// fails is replaced after one to two election timeouts and a vote; at
-// slow-storage's timing that is inside memberLeaderFresh, and a tier that
-// elects later keeps the observation longer in proportion, so that an
-// ordinary election does not by itself make every member refuse business.
-// The tier is the process's and does not change while it serves.
-func (f *memberForward) leaderFresh() time.Duration {
-	f.freshOnce.Do(func() { f.fresh = cluster.ProcessStorageTier().Stretch(memberLeaderFresh) })
-	return f.fresh
-}
-
+// observedLeader is the leader this member last observed, while the
+// observation is fresh. A leader that fails is replaced after one to two
+// election timeouts and a vote; at slow-storage's timing that is inside
+// memberLeaderFresh, and a tier that elects later keeps the observation
+// longer in proportion, so that an ordinary election does not by itself make
+// every member refuse business.
 func (f *memberForward) observedLeader() (uint64, bool) {
 	observation := f.observed.Load()
-	if observation == nil || observation.leader == 0 || time.Since(observation.at) > f.leaderFresh() {
+	fresh := cluster.ProcessStorageTier().Stretch(memberLeaderFresh)
+	if observation == nil || observation.leader == 0 || time.Since(observation.at) > fresh {
 		return 0, false
 	}
 	return observation.leader, true
