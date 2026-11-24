@@ -730,6 +730,7 @@
     "COMPUTE_NETWORK_ACCELERATOR_REQUIRED": "节点“{{node}}”需要加速卡网络（$t(networks:typeGroup.accelerator)）；“{{network}}”不符合要求。请创建并加载相应网络。",
     "COMPUTE_NETWORK_NO_CARDS": "节点“{{node}}”在加速器网络“{{network}}”（$t(networks:typeGroup.accelerator)）上没有可用的加速卡网口。",
     "PD_NETWORK_ACCELERATOR_REQUIRED": "PD 模式 {{mode}} 的 KV 走加速卡自带的网口，跨机部署需要加速器网络（$t(networks:typeGroup.accelerator)）；这组节点共用的是“{{network}}”。",
+    "PD_CARD_NETWORK_BLOCKED": "网络 {{network}} 上所选 PD 卡口不互通：{{pairs}}（已验证卡对：{{available}}，— 表示暂无）。请改选互通卡对，或重新运行卡矩阵测试。",
     "PD_NETWORK_HOST_REQUIRED": "PD 模式 {{mode}} 需要主机网络（$t(networks:typeGroup.host)）；“{{network}}”为加速卡网络（$t(networks:typeGroup.accelerator)）。",
     "PD_NETWORK_RDMA_REQUIRED": "PD 模式 {{mode}} 经 RDMA 传 KV，节点需要在同一个主机 RDMA 网络上（单机也一样），才能拿到 RDMA 设备；当前这组节点没有共用这样的网络。",
     "PD_SLEEP_RDMA_UNSUPPORTED": "可休眠的 PD 部署不能经 RDMA 网络“{{network}}”传 KV：引擎休眠后申请不回注册给网卡的 KV 显存，唤醒会报 out of memory。请关闭“可休眠”，或改用以太网参数网络。",

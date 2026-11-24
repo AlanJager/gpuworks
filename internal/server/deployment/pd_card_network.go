@@ -31,7 +31,29 @@ func (s *Service) checkPDCardNetwork(p *pdRequest, group netplan.Group) ([]messa
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}
-	return pdCardNetworkWarnings(p, group, run, time.Now()), nil
+	warnings := pdCardNetworkWarnings(p, group, run, time.Now())
+	if p.singlePinnedPDCardPair() {
+		for _, warning := range warnings {
+			if warning.Code == messages.WarningPDCardNetworkUnreachable {
+				return nil, productError(messages.ErrorPDCardNetworkBlocked, fmt.Sprintf(
+					"the selected PD ports on %s cannot reach each other: %s (verified pairs: %s); select a reachable pair or run the card matrix test again",
+					warning.Params["network"], warning.Params["pairs"], warning.Params["available"],
+				), warning.Params)
+			}
+		}
+	}
+	return warnings, nil
+}
+
+// Only a single pinned card per role proves which link the engine must use.
+func (p *pdRequest) singlePinnedPDCardPair() bool {
+	for _, role := range []string{pdmode.RolePrefill, pdmode.RoleDecode} {
+		units := p.pd.Units(role)
+		if len(units) != 1 || len(units[0].Followers) != 0 || len(units[0].GPUIndexes) != 1 {
+			return false
+		}
+	}
+	return true
 }
 
 type pdCardPort struct {
