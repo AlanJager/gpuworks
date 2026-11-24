@@ -4,7 +4,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "./app/AppSidebar";
 import ConsoleBanners from "./app/ConsoleBanners";
-import ConsoleManifestWait from "./app/PlatformNotice";
+import ConsoleManifestWait from "./app/ConsoleManifestWait";
 import { ConsoleIcon } from "./ui-kit/consoleIcons";
 
 const AssistantIcon = ConsoleIcon.assistant;

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
 import { productMessageText } from "../apiError";
 import { useConsoleBanners, useConsolePlatform } from "../extensions/featureAccess";
-import { opensPage, PlatformNotice, platformNoticeShown } from "./PlatformNotice";
+import PlatformNotice, { opensPage, platformNoticeShown } from "./PlatformNotice";
 
 const tones: Record<string, "info" | "warning" | "danger"> = { info: "info", warning: "warning", danger: "danger" };
 

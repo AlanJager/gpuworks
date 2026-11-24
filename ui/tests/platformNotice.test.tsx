@@ -10,7 +10,8 @@ const { cleanup, render, screen, waitFor } = await import("@testing-library/reac
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const manifestModule = await import("../src/consoleManifest.ts");
-const { default: ConsoleManifestWait, PlatformNotice, consolePath, opensPage } = await import("../src/app/PlatformNotice.tsx");
+const { default: PlatformNotice, consolePath, opensPage } = await import("../src/app/PlatformNotice.tsx");
+const { default: ConsoleManifestWait } = await import("../src/app/ConsoleManifestWait.tsx");
 const { resetConsoleManifestForTest } = await import("../src/extensions/featureAccess.ts");
 type ConsolePlatform = import("../src/consoleManifest.ts").ConsolePlatform;
 

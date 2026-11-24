@@ -242,18 +242,27 @@ func (e *ProductError) Code() string           { return e.code }
 func (e *ProductError) Params() map[string]any { return e.params }
 func (e *ProductError) Unwrap() error          { return e.cause }
 
-// GatewayBody is e as the gateway's clients read an error: the OpenAI error
-// object under "error", with e's code, its English text and its params, and
-// typ as the error type (the gateway's own errors, proxy/api_errors.go).
-func (e *ProductError) GatewayBody(typ string) []byte {
-	body, _ := json.Marshal(map[string]struct {
-		Message string         `json:"message"`
-		Type    string         `json:"type"`
-		Code    string         `json:"code"`
-		Param   *string        `json:"param"`
-		Params  map[string]any `json:"params,omitempty"`
-	}{"error": {Message: e.fallback, Type: typ, Code: e.code, Params: e.params}})
+// GatewayError is an error as the gateway's clients read one: the OpenAI
+// error object, with the params its message was filled from for a client
+// that renders the code in its own language.
+type GatewayError struct {
+	Message string         `json:"message"`
+	Type    string         `json:"type"`
+	Code    string         `json:"code"`
+	Param   *string        `json:"param"`
+	Params  map[string]any `json:"params,omitempty"`
+}
+
+// Body is the {"error": {...}} body of e, the one shape every error on the
+// gateway's addresses has.
+func (e GatewayError) Body() []byte {
+	body, _ := json.Marshal(map[string]GatewayError{"error": e})
 	return body
+}
+
+// GatewayBody is e in that shape, with typ as the OpenAI error type.
+func (e *ProductError) GatewayBody(typ string) []byte {
+	return GatewayError{Message: e.fallback, Type: typ, Code: e.code, Params: e.params}.Body()
 }
 
 // NoStoragePath is the product error for two nodes that share no network

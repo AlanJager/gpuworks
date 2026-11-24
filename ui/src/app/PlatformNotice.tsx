@@ -1,11 +1,8 @@
-import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
-import { Spinner } from "../ui-kit/Spinner";
 import { productMessageText } from "../apiError";
 import type { ConsolePlatform } from "../consoleManifest";
-import { consoleExtensions } from "../extensions";
 import { useConsolePlatform } from "../extensions/featureAccess";
 
 /** consolePath is link when it is a path of this console, else undefined. */
@@ -27,20 +24,6 @@ export function platformNoticeShown(platform: ConsolePlatform | undefined, pathn
 }
 
 /**
- * ConsoleManifestWait holds the pages back until the console manifest has
- * answered, when the console has extensions: the manifest says whether the
- * server is limited as a whole, and a limited server's page never shows
- * without its notice. The community console, which nothing limits, never
- * waits.
- */
-export default function ConsoleManifestWait({ children }: { children: ReactNode }) {
-  const { t } = useTranslation();
-  const { settled } = useConsolePlatform();
-  if (!settled && consoleExtensions().length > 0) return <Spinner label={t("consoleExtension.loading")} />;
-  return <>{children}</>;
-}
-
-/**
  * PlatformNotice states the limit on the whole server (GET
  * /api/v1/console/manifest, platform) above every page but the one that
  * lifts it: what is refused, and a control that opens that page when the
@@ -48,7 +31,7 @@ export default function ConsoleManifestWait({ children }: { children: ReactNode 
  * reads, so the pages show under it. The server decides and enforces the
  * limit.
  */
-export function PlatformNotice() {
+export default function PlatformNotice() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const { platform } = useConsolePlatform();

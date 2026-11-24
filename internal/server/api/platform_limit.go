@@ -43,8 +43,8 @@ type PlatformLimit struct {
 // strictest class. A route under /api/v1 that no table names is classified
 // by its method, so a new GET there is served under a limit; a route outside
 // /api/v1 that no rule names is refused. Either way the pinned list in
-// platform_limit_test.go fails until the new route is added to it, which
-// is where serving it under a limit is decided.
+// platform_limit_routes_test.go differs until the new route is added to
+// it, which is where serving it under a limit is decided.
 type platformClass uint8
 
 const (
@@ -85,8 +85,14 @@ var platformRecoveryRoutes = map[string]bool{
 	// health check; a limit never interrupts running work.
 	"GET /api/v1/agent/connect":    true,
 	"POST /api/v1/slurm/gpu-nodes": true,
-	"GET /slurm/check.sh":          true,
-	"GET /slurm/token-status":      true,
+	// A machine of a cluster that already joined asks for its identity
+	// again when it starts without it (its pod was replaced); the answer is
+	// the identity it had. A machine that is new is a node insert, which
+	// the module that limits the server refuses through its insert guard.
+	"POST /api/v1/kube/enroll":  true,
+	"POST /api/v1/slurm/enroll": true,
+	"GET /slurm/check.sh":       true,
+	"GET /slurm/token-status":   true,
 }
 
 // platformRecoveryPrefixes are subtrees served under any limit: the
@@ -105,15 +111,6 @@ var platformRecoveryPrefixes = []string{
 var platformRefusedRecovery = map[string]bool{
 	"POST /api/v1/plugins/install":      true,
 	"POST /api/v1/plugins/{id}/upgrade": true,
-}
-
-// platformOwnCredentialRoutes are routes under /api/v1 that authenticate
-// with a credential of their own instead of a management identity. The
-// guard cannot tell their caller, so it refuses them outright; every other
-// route under /api/v1 is refused only after the caller has authenticated.
-var platformOwnCredentialRoutes = map[string]bool{
-	"POST /api/v1/kube/enroll":  true,
-	"POST /api/v1/slurm/enroll": true,
 }
 
 // platformChangingReads are GET routes that hand out what brings a new
@@ -153,9 +150,14 @@ var platformReachingReads = map[string]bool{
 	"GET /api/v1/nodes/{uuid}/ssh": true,
 }
 
-// platformReadingPosts are POST routes that read or compute and leave
-// nothing of the business behind: served under any limit. A POST that
-// starts a job, stores a resource or changes one is not here.
+// platformReadingPosts are POST routes that read: served under any limit.
+// A POST reads when it stores nothing of the business and changes nothing
+// on a node. It may compute from what the server holds, call an address
+// the request names, or ask a node a question the node answers without
+// changing itself. A POST that starts a job, stores or changes a resource,
+// or makes a node open a listener or mount something is not here, even
+// when it is called a check: the deployment preflight starts measurement
+// listeners on nodes and the storage probe mounts on one.
 var platformReadingPosts = map[string]bool{
 	// MCP serves read-only tools, and the assistant answers from what it
 	// reads.
@@ -167,17 +169,13 @@ var platformReadingPosts = map[string]bool{
 	"POST /api/v1/models/preview-url":   true,
 	"POST /api/v1/evaluate":             true,
 	"POST /api/v1/benchmarks/models":    true,
-	// Checks of something not saved: unsaved cloud credentials, a storage
-	// definition, an assistant model, a benchmark's target address, the
-	// SSH address of a machine that is not a node yet, the network between
-	// the nodes of a planned deployment. Each asks and answers; none
-	// stores what it found.
-	"POST /api/v1/providers/test":        true,
-	"POST /api/v1/storages/probe":        true,
-	"POST /api/v1/ai/configs/test":       true,
-	"POST /api/v1/benchmarks/probe":      true,
-	"POST /api/v1/nodes/precheck":        true,
-	"POST /api/v1/deployments/preflight": true,
+	// Checks of something not saved: unsaved cloud credentials, an
+	// assistant model, a benchmark's target address (a node asks it), the
+	// SSH address of a machine that is not a node yet.
+	"POST /api/v1/providers/test":   true,
+	"POST /api/v1/ai/configs/test":  true,
+	"POST /api/v1/benchmarks/probe": true,
+	"POST /api/v1/nodes/precheck":   true,
 	// Which notices this user has read: the user's own view, no resource.
 	"POST /api/v1/notices/read": true,
 }
@@ -206,7 +204,7 @@ func classifyPlatformRoute(method, pattern, path, owner string) (class platformC
 	if platformRecoveryRoutes[key] {
 		return platformRecovery, true
 	}
-	if platformRefusedRecovery[key] || platformOwnCredentialRoutes[key] {
+	if platformRefusedRecovery[key] {
 		return platformChange, true
 	}
 	for _, prefix := range platformRecoveryPrefixes {
@@ -286,9 +284,12 @@ func platformRefusal(limit PlatformLimit) *messages.ProductError {
 // A management route (under /api/v1) is refused only to a caller who has
 // authenticated: an anonymous one gets the 401 an unlimited server gives,
 // and so learns neither which routes exist nor that the server is limited.
-// The data plane, the routes that hand out enrollment material and the two
-// enrollment routes carry credentials the guard cannot check, and are
-// refused to anyone.
+// The data plane and the routes that hand out enrollment material carry
+// credentials the guard cannot check, and are refused to anyone.
+//
+// A route of an installed package that anyone may call without signing in
+// (DynamicPublic) is served under any limit, as signing in is: a package
+// that signs users in must keep working.
 //
 // It resolves the route the request would reach in routes (the router it is
 // installed on), so the class comes from the route's pattern, never from a
@@ -321,11 +322,11 @@ func (a *apiHandlers) platformGuard(routes chi.Routes) func(http.Handler) http.H
 				return
 			}
 			class, _ := classifyPlatformRoute(r.Method, pattern, path, owner)
-			if class.allows(limit.Access) {
+			if class.allows(limit.Access) || a.publicPackageRoute(r.Method, pattern, path) {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if strings.HasPrefix(pattern, "/api/v1/") && !platformOwnCredentialRoutes[r.Method+" "+pattern] {
+			if strings.HasPrefix(pattern, "/api/v1/") {
 				if _, err := a.authenticateIdentity(r); err != nil {
 					a.writeManagementAuthError(w, err)
 					return
@@ -342,6 +343,16 @@ func (a *apiHandlers) platformGuard(routes chi.Routes) func(http.Handler) http.H
 			_, _ = w.Write(append(refusal.GatewayBody("permission_error"), '\n'))
 		})
 	}
+}
+
+// publicPackageRoute reports whether the request is for an installed
+// package's route that needs no sign-in.
+func (a *apiHandlers) publicPackageRoute(method, pattern, path string) bool {
+	if a.dynamic == nil || pattern != platformExtensionRoot+"*" {
+		return false
+	}
+	route, match := a.dynamic.ext.Match(method, strings.TrimPrefix(path, strings.TrimSuffix(platformExtensionRoot, "/")))
+	return match == DynamicFound && route.Access == DynamicPublic
 }
 
 // consolePlatform is the limit as the console manifest shows it; nil while

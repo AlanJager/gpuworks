@@ -75,7 +75,7 @@ func TestEveryRouteIsClassifiedForAPlatformLimit(t *testing.T) {
 			t.Errorf("%s %s is not classified for a platform limit: name it in platform_limit.go", method, pattern)
 		}
 	}
-	for _, table := range []map[string]bool{platformRecoveryRoutes, platformRefusedRecovery, platformOwnCredentialRoutes, platformChangingReads, platformReachingReads, platformReadingPosts} {
+	for _, table := range []map[string]bool{platformRecoveryRoutes, platformRefusedRecovery, platformChangingReads, platformReachingReads, platformReadingPosts} {
 		for key := range table {
 			if !seen[key] {
 				t.Errorf("platform_limit.go names %q, which is not a route", key)
@@ -170,11 +170,15 @@ func TestPlatformLimitRoutesAreTheKnownOnes(t *testing.T) {
 	}
 }
 
-// A POST is served under a limit only when it reads or computes and leaves
-// nothing behind; one that starts work or stores something is refused. The
+// A POST is served under a limit only when it stores nothing and changes
+// nothing on a node (eleven do); one that starts work, stores something or
+// acts on a node is refused. The
 // server's own upgrade stays possible under any limit, bringing a new
 // package in does not.
 func TestWritesThatOnlyReadAndWritesThatBringCodeIn(t *testing.T) {
+	if n := len(platformReadingPosts); n != 11 {
+		t.Errorf("platform_limit.go names %d reading POSTs; this table has 11: add the new one here", n)
+	}
 	for _, tc := range []struct {
 		route string
 		class platformClass
@@ -187,8 +191,8 @@ func TestWritesThatOnlyReadAndWritesThatBringCodeIn(t *testing.T) {
 		{"POST /api/v1/evaluate", platformRead, "previews a deployment that is not created"},
 		{"POST /api/v1/benchmarks/models", platformRead, "lists what a benchmark could target"},
 		{"POST /api/v1/providers/test", platformRead, "tests credentials that are not saved"},
-		{"POST /api/v1/storages/probe", platformRead, "probes a storage that is not saved"},
-		{"POST /api/v1/deployments/preflight", platformRead, "measures the network for a deployment that is not created"},
+		{"POST /api/v1/storages/probe", platformChange, "mounts on a node to try a storage"},
+		{"POST /api/v1/deployments/preflight", platformChange, "starts measurement listeners on nodes"},
 		{"POST /api/v1/notices/read", platformRead, "records which notices this user has read"},
 		{"POST /api/v1/deployments", platformChange, "creates a deployment"},
 		{"POST /api/v1/benchmarks", platformChange, "starts a benchmark"},
@@ -201,8 +205,8 @@ func TestWritesThatOnlyReadAndWritesThatBringCodeIn(t *testing.T) {
 		{"POST /api/v1/plugins/{id}/disable", platformRecovery, "stops an installed package"},
 		{"POST /api/v1/plugins/install", platformChange, "brings a new package in"},
 		{"POST /api/v1/plugins/{id}/upgrade", platformChange, "brings a new package version in"},
-		{"POST /api/v1/kube/enroll", platformChange, "enrolls a new machine"},
-		{"POST /api/v1/slurm/enroll", platformChange, "enrolls a new machine"},
+		{"POST /api/v1/kube/enroll", platformRecovery, "gives a joined cluster's machine its identity again; a new one is refused at the insert"},
+		{"POST /api/v1/slurm/enroll", platformRecovery, "gives a joined cluster's machine its identity again; a new one is refused at the insert"},
 	} {
 		method, pattern, _ := strings.Cut(tc.route, " ")
 		if class, _ := classifyPlatformRoute(method, pattern, pattern, ""); class != tc.class {
@@ -370,6 +374,39 @@ func TestPlatformGuardAddsNothingWhenNothingIsLimited(t *testing.T) {
 		a.platformGuard(nil)(next).ServeHTTP(nil, httptestRequest(http.MethodGet, "/api/v1/nodes", ""))
 		if reached != 1 {
 			t.Errorf("%s: the handler was reached %d times", name, reached)
+		}
+	}
+}
+
+// A route of an installed package that anyone may call without signing in
+// is served under any limit, as signing in is: a package that signs users
+// in keeps working. The package's other routes follow their method.
+func TestAPackagesPublicRouteIsServedUnderALimit(t *testing.T) {
+	limiter := newSwitchLimiter(featuregate.Full)
+	rig := newDynamicRig(t, []DynamicRoute{
+		dynRoute("POST", "/login", DynamicPublic, func(r *DynamicRoute) { r.RatePerMinute, r.RateBurst = 600, 600 }),
+		dynRoute("GET", "/items", DynamicMember),
+		dynRoute("POST", "/items", DynamicMember),
+	}, func(d *Deps) { d.Extensions.Platform = limiter })
+	const refused = http.StatusForbidden
+	for _, tc := range []struct {
+		name, bearer, method, path string
+		full, readOnly, locked     int
+	}{
+		{"a package's public route", "", "POST", "/api/v1/x/acme_fake/login", 200, 200, 200},
+		{"a package's read", rig.member, "GET", "/api/v1/x/acme_fake/items", 200, 200, 200},
+		{"a package's change", rig.member, "POST", "/api/v1/x/acme_fake/items", 200, refused, refused},
+		{"a package's change without a session", "", "POST", "/api/v1/x/acme_fake/items", 401, 401, 401},
+		{"a package's public path by another method", "", "DELETE", "/api/v1/x/acme_fake/login", 401, 401, 401},
+	} {
+		for _, state := range []struct {
+			access featuregate.Access
+			want   int
+		}{{featuregate.Full, tc.full}, {featuregate.ReadOnly, tc.readOnly}, {featuregate.Locked, tc.locked}} {
+			limiter.set(PlatformLimit{Access: state.access})
+			if rec := rig.do(tc.bearer, tc.method, tc.path, ""); rec.Code != state.want {
+				t.Errorf("%s under %s: %s %s = %d %s, want %d", tc.name, state.access, tc.method, tc.path, rec.Code, rec.Body.String(), state.want)
+			}
 		}
 	}
 }

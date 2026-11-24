@@ -170,7 +170,6 @@ read POST /api/v1/ai/ask
 read POST /api/v1/ai/configs/test
 read POST /api/v1/benchmarks/models
 read POST /api/v1/benchmarks/probe
-read POST /api/v1/deployments/preflight
 read POST /api/v1/evaluate
 read POST /api/v1/mcp
 read POST /api/v1/models/local/preview
@@ -178,7 +177,6 @@ read POST /api/v1/models/preview-url
 read POST /api/v1/nodes/precheck
 read POST /api/v1/notices/read
 read POST /api/v1/providers/test
-read POST /api/v1/storages/probe
 recovery DELETE /api/v1/diagnostics/debug-session
 recovery DELETE /api/v1/plugins/overrides/{oid}
 recovery DELETE /api/v1/plugins/{id}
@@ -212,11 +210,13 @@ recovery POST /api/v1/auth/logout
 recovery POST /api/v1/auth/password
 recovery POST /api/v1/diagnostics/bundles
 recovery POST /api/v1/diagnostics/debug-session
+recovery POST /api/v1/kube/enroll
 recovery POST /api/v1/plugins/overrides
 recovery POST /api/v1/plugins/{id}/disable
 recovery POST /api/v1/plugins/{id}/enable
 recovery POST /api/v1/plugins/{id}/restart
 recovery POST /api/v1/plugins/{id}/rollback
+recovery POST /api/v1/slurm/enroll
 recovery POST /api/v1/slurm/gpu-nodes
 recovery POST /api/v1/updates/prefetch
 recovery POST /api/v1/updates/server
