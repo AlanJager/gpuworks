@@ -92,5 +92,10 @@ func (l localMember) Members(ctx context.Context) ([]diagnostics.ClusterMember, 
 			out = append(out, member)
 		}
 	}
+	if len(out) == 0 {
+		// A member removed from the cluster keeps its files: its identity
+		// is then no longer in the membership beside it.
+		return nil, errors.New("this member is not in the membership it keeps: the id in info.yaml is not listed in cluster.yaml")
+	}
 	return out, nil
 }

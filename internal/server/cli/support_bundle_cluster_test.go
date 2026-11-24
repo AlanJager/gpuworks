@@ -57,28 +57,6 @@ func clusterMemberLayout(t *testing.T) (data string) {
 	return data
 }
 
-// operatorOutput runs the command and answers what it wrote to the
-// operator's terminal as well: the lines about missing members go to the
-// process' standard error, not through the logger.
-func operatorOutput(t *testing.T, args ...string) (code int, logged, printed string) {
-	t.Helper()
-	capture, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	terminal := os.Stderr
-	os.Stderr = capture
-	t.Cleanup(func() { os.Stderr = terminal })
-	code, logged = runSupportBundle(t, args...)
-	os.Stderr = terminal
-	_ = capture.Close()
-	raw, err := os.ReadFile(capture.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return code, logged, string(raw)
-}
-
 func bundleFiles(t *testing.T, path string) map[string]string {
 	t.Helper()
 	f, err := os.Open(path)
@@ -175,9 +153,11 @@ func TestSupportBundleSaysWhenAMembersClusterIdentityCannotBeRead(t *testing.T) 
 	if code != 0 {
 		t.Fatalf("exit %d: an unreadable membership must not fail the collection\n%s", code, logged)
 	}
-	if strings.Count(printed, "\n") != 2 || !strings.Contains(printed, "the other members were not asked (this member's cluster membership could not be read: ") ||
-		!strings.Contains(printed, "the collection is incomplete") {
-		t.Fatalf("the operator is not told:\n%s\nlogged:\n%s", printed, logged)
+	identity := filepath.Join(data, "gpuworks.db.dqlite", "info.yaml")
+	want := "support-bundle: this member's cluster membership could not be read: database identity is not in the data directory (" + identity + "); " +
+		"the collection holds this member's own log, role records and stall reports, and no other member's: collect on another member\n"
+	if printed != want {
+		t.Fatalf("the operator is told:\n%s\nwant:\n%s\nlogged:\n%s", printed, want, logged)
 	}
 	files := bundleFiles(t, out)
 	for path := range files {
@@ -192,10 +172,10 @@ func TestSupportBundleSaysWhenAMembersClusterIdentityCannotBeRead(t *testing.T) 
 	found := false
 	for _, item := range manifest.Items {
 		if item.Path == "members" {
-			found = item.Status == "fail" && item.Code == "DIAGNOSTICS_ITEM_READ_FAILED" && strings.Contains(item.Evidence, "cluster membership could not be read")
+			found = item.Status == "fail" && item.Code == "DIAGNOSTICS_ITEM_READ_FAILED" && strings.Contains(item.Evidence, identity)
 		}
 	}
-	if !found || !strings.Contains(files["server/gpuworks-server.log"], "event=step_down") {
-		t.Fatalf("the manifest has no failed members item, or this member's log is missing:\n%s", files["manifest.json"])
+	if !found || !strings.Contains(files["server/gpuworks-server.log"], "event=step_down") || !strings.Contains(files["server/role-events.log"], "event=step_down") {
+		t.Fatalf("the manifest has no failed members item naming the file, or this member's log or role records are missing:\n%s", files["manifest.json"])
 	}
 }

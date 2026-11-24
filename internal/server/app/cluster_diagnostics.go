@@ -53,12 +53,30 @@ type clusterDiagnostics struct {
 }
 
 // newClusterDiagnostics is the cluster a collection covers; nil for a data
-// directory that is not a cluster member's.
+// directory that is not a cluster member's. A directory that cannot be told
+// apart is not taken for a single server's: its collection says what could
+// not be read.
 func newClusterDiagnostics(cfg Config) diagnostics.Cluster {
-	if member, err := selfinstall.ClusterMember(cfg.DataDir); err != nil || !member {
+	member, err := selfinstall.ClusterMember(cfg.DataDir)
+	if err != nil {
+		return undecidedCluster{fmt.Errorf("whether this installation is a control-plane cluster member could not be read: %w", err)}
+	}
+	if !member {
 		return nil
 	}
 	return &clusterDiagnostics{cfg: cfg}
+}
+
+// undecidedCluster is a data directory whose cluster markers could not be
+// read.
+type undecidedCluster struct{ err error }
+
+func (u undecidedCluster) Members(context.Context) ([]diagnostics.ClusterMember, error) {
+	return nil, u.err
+}
+func (undecidedCluster) Self() diagnostics.MemberSource { return nil }
+func (u undecidedCluster) OpenMemberPart(context.Context, diagnostics.ClusterMember, time.Time, time.Time) (diagnostics.MemberAnswer, error) {
+	return diagnostics.MemberAnswer{}, u.err
 }
 
 func (c *clusterDiagnostics) Self() diagnostics.MemberSource { return c }
@@ -84,15 +102,12 @@ func (c *clusterDiagnostics) observe(ctx context.Context) (clusterStatus, error)
 
 // Members lists the members from the persisted membership, and from the
 // leader's when one answers. This installation is a cluster member: a
-// membership that cannot be read, or that lists nobody, is an error, never
-// an empty list.
+// membership that cannot be read is an error, never an empty list (the
+// persisted membership is never read as empty).
 func (c *clusterDiagnostics) Members(ctx context.Context) ([]diagnostics.ClusterMember, error) {
 	report, err := c.observe(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("this member's cluster membership could not be read: %w", err)
-	}
-	if len(report.members) == 0 {
-		return nil, errors.New("this member's cluster membership lists no member")
 	}
 	out := make([]diagnostics.ClusterMember, 0, len(report.members))
 	for _, member := range report.members {

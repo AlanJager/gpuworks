@@ -324,8 +324,8 @@ func TestAMemberThatNeverAnswersIsGivenUpOnAtItsDeadline(t *testing.T) {
 
 func TestASingleServersCollectionHasNoMembers(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	m, c := clusterFixture(t, now)
-	c.members = nil // a data directory that is not a cluster member's
+	m, _ := clusterFixture(t, now)
+	m.SetCluster(nil) // a data directory that is not a cluster member's
 	b, files := collect(t, m)
 	for path := range files {
 		if strings.HasPrefix(path, "members/") {

@@ -25,9 +25,9 @@ import (
 // missing; it never fails the collection.
 type Cluster interface {
 	// Members are the cluster's members as this one knows them, itself
-	// included. Empty without an error means this server is not a cluster
-	// member. An error means it is one whose membership could not be read:
-	// the collection then says so, and holds this member's files alone.
+	// included: at least one, or an error when the membership could not be
+	// read. The collection then says so, and holds this member's files
+	// alone. A single server has no Cluster at all.
 	Members(ctx context.Context) ([]ClusterMember, error)
 	// Self is where this member's own part is read from.
 	Self() MemberSource
@@ -165,14 +165,25 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 		return
 	}
 	members, err := m.cluster.Members(ctx)
+	if err == nil && len(members) == 0 {
+		err = errors.New("the cluster lists no member")
+	}
 	if err != nil {
 		// Like a member that does not answer, this does not fail the
 		// collection; without the item it would read as a single server's.
 		add(failedItem("members", messages.CheckDiagnosticsItemReadFailed, err, 0), nil)
 		m.log.Warn("diagnostics collection could not read the cluster's members", "bundle", b.ID, "err", err)
-		return
-	}
-	if len(members) == 0 {
+		// This member's own role records need its log alone. With no
+		// membership to name its directory by, they go beside that log.
+		if self := m.cluster.Self(); self != nil {
+			files, err := stageMemberPart(ctx, filepath.Join(work, "server"), self, b.From, b.To, m.now())
+			if err != nil {
+				m.log.Warn("diagnostics collection could not read this member's role records", "bundle", b.ID, "err", err)
+			}
+			for _, f := range files {
+				add(collectedItem("server/"+f.name, f.bytes, f.truncated), &stagedEntry{name: "server/" + f.name, path: f.path})
+			}
+		}
 		return
 	}
 	var bundleBudget atomic.Int64

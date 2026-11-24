@@ -258,7 +258,7 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 		`{"path":"members/10.0.0.2_9001/role-events.log","status":"pass","bytes":212},` +
 		`{"path":"members/index.json","status":"pass","bytes":640},` +
 		// A cluster member whose membership could not be read.
-		`{"path":"members","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","evidence":"this member's cluster membership could not be read: open /data/gpuworks.db.dqlite/info.yaml: no such file or directory","bytes":0},` +
+		`{"path":"members","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","evidence":"this member's cluster membership could not be read: database identity is not in the data directory (/opt/gpuworks/data/gpuworks.db.dqlite/info.yaml)","bytes":0},` +
 		`{"path":"members/10.0.0.3_9001","status":"fail","code":"DIAGNOSTICS_MEMBER_UNAVAILABLE","evidence":"unreachable: dial tcp 10.0.0.3:9443: connect: connection refused","bytes":0},` +
 		// An item from a manifest written before items were checks.
 		`{"name":"nodes/n1/agent.log","state":"collected","bytes":9,"truncated":true}]}`
@@ -278,7 +278,7 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 		`{"id":"member_file","path":"members/10.0.0.2_9001/role-events.log","status":"pass","bytes":212},` +
 		`{"id":"member_index","path":"members/index.json","status":"pass","bytes":640},` +
 		`{"id":"members","path":"members","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","params":{"path":"members"},` +
-		`"message":"members could not be read","evidence":"this member's cluster membership could not be read: open /data/gpuworks.db.dqlite/info.yaml: no such file or directory","bytes":0},` +
+		`"message":"members could not be read","evidence":"this member's cluster membership could not be read: database identity is not in the data directory (/opt/gpuworks/data/gpuworks.db.dqlite/info.yaml)","bytes":0},` +
 		`{"id":"member","path":"members/10.0.0.3_9001","status":"fail","code":"DIAGNOSTICS_MEMBER_UNAVAILABLE","params":{"path":"members/10.0.0.3_9001"},` +
 		`"message":"the control-plane member did not give its part; members/10.0.0.3_9001 is missing, so the collection does not show what that member saw",` +
 		`"evidence":"unreachable: dial tcp 10.0.0.3:9443: connect: connection refused","bytes":0},` +

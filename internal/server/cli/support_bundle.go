@@ -74,7 +74,13 @@ func (o Options) supportBundle(ctx context.Context, log *slog.Logger, args []str
 		// A control-plane cluster member keeps no gpuworks.db: its part is
 		// its files, and the other members are asked for theirs.
 		dir, _ := expose.ResolveDataDir(dataDir)
-		if member, err := selfinstall.ClusterMember(dir); err == nil && member {
+		member, err := selfinstall.ClusterMember(dir)
+		if err != nil {
+			// Not taken silently for a single server's: the operator is told
+			// which kind of collection follows, and why.
+			fmt.Fprintf(os.Stderr, "support-bundle: cannot tell whether %s is a control-plane cluster member's (%v); collecting it as a single server's\n", dir, err)
+		}
+		if member {
 			return clusterMemberSupportBundle(ctx, log, dir, logFile, out, req, local)
 		}
 	}
@@ -169,8 +175,7 @@ func clusterMemberSupportBundle(ctx context.Context, log *slog.Logger, dataDir, 
 			missing++
 			fmt.Fprintf(os.Stderr, "support-bundle: %s is missing (%s); the collection does not show what that member saw\n", item.Path, item.Evidence)
 		case diagnostics.BundleItemMembers:
-			missing++
-			fmt.Fprintf(os.Stderr, "support-bundle: the other members were not asked (%s); the collection holds this member's own log and stall reports only\n", item.Evidence)
+			fmt.Fprintf(os.Stderr, "support-bundle: %s; the collection holds this member's own log, role records and stall reports, and no other member's: collect on another member\n", item.Evidence)
 		}
 	}
 	if missing > 0 {
