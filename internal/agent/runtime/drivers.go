@@ -117,6 +117,13 @@ type DeviceViewer interface {
 	DeviceView() DeviceView
 }
 
+// ImageStoreRooter is a stand-in driver saying where it keeps unpacked
+// image layers, "" for nowhere of its own. Without it a stand-in would be
+// taken to own the store of the runtime whose name it reports.
+type ImageStoreRooter interface {
+	ImageStoreRoot() string
+}
+
 // TargetOf is the target a driver is; the zero Target for no driver.
 func TargetOf(d Driver) Target {
 	if d == nil {

@@ -129,11 +129,14 @@ func duplicate(values []string) string {
 	return ""
 }
 
-// A vendor that requires a particular host is admitted only on the runtimes
-// its definition lists, and a fact the node has not reported is told apart
-// from one that is wrong. A vendor that requires none is not judged.
+// A node is admitted for a vendor's cards on the runtimes its definition
+// lists and on no other, a test double's name included. A fact a
+// node has not reported is told apart from one that is wrong, and an
+// unreported runtime is refused only by a vendor that requires a particular
+// host.
 func TestRuntimeMismatchFollowsTheDeclaredRuntimes(t *testing.T) {
 	linux := func(driver string) HostRuntime { return HostRuntime{OS: "linux", Arch: "amd64", Driver: driver} }
+	mac := func(driver string) HostRuntime { return HostRuntime{OS: "darwin", Arch: "arm64", Driver: driver} }
 	for _, tc := range []struct {
 		vendor  string
 		host    HostRuntime
@@ -141,10 +144,16 @@ func TestRuntimeMismatchFollowsTheDeclaredRuntimes(t *testing.T) {
 		missing bool
 	}{
 		{VendorNVIDIA, linux("docker"), false, false},
-		{VendorNVIDIA, linux("host"), false, false},
+		{VendorNVIDIA, linux(" Docker "), false, false},
+		{VendorNVIDIA, linux("udocker"), false, false},
+		{VendorNVIDIA, linux("host"), true, false},
+		{VendorNVIDIA, linux("recording"), true, false},
 		{VendorNVIDIA, linux(""), false, false},
+		{VendorNVIDIA, HostRuntime{Driver: "docker"}, false, false},
+		{VendorHygon, linux("kube"), false, false},
+		{VendorApple, mac("host"), false, false},
+		{VendorApple, mac("docker"), true, false},
 		{VendorKunlunxin, linux("nerdctl"), false, false},
-		{VendorKunlunxin, linux(" Docker "), false, false},
 		{VendorKunlunxin, linux("udocker"), true, false},
 		{VendorKunlunxin, linux(""), true, true},
 		{VendorKunlunxin, HostRuntime{Driver: "docker"}, true, true},
@@ -162,8 +171,25 @@ func TestRuntimeMismatchFollowsTheDeclaredRuntimes(t *testing.T) {
 			t.Errorf("%s on %+v: missing facts = %v, want %v", tc.vendor, tc.host, mismatch.MissingFacts, tc.missing)
 		}
 	}
+	// A vendor that lists no runtime carries no workload, on a node that
+	// has reported its runtime or not.
+	monitored := vendorSpec{id: "monitored"}
+	for _, host := range []HostRuntime{linux("docker"), linux(""), {}} {
+		mismatch := monitored.runtimeMismatch(monitored.id, host)
+		if mismatch == nil || mismatch.MissingFacts || mismatch.Requirement() != "none" {
+			t.Errorf("a vendor without runtimes on %+v: %+v", host, mismatch)
+		}
+	}
 	if got := RuntimeMismatchFor(VendorKunlunxin, linux("udocker")).Params()["required_runtime"]; got != "docker/nerdctl/kube" {
 		t.Errorf("required_runtime = %v", got)
+	}
+	// A vendor that restricts neither the system nor the architecture is
+	// described by its runtimes alone.
+	if got := RuntimeMismatchFor(VendorNVIDIA, linux("host")).Requirement(); got != "docker/nerdctl/udocker/kube" {
+		t.Errorf("NVIDIA's requirement = %q", got)
+	}
+	if got := RuntimeMismatchFor(VendorKunlunxin, linux("udocker")).Requirement(); got != "linux/amd64 with docker/nerdctl/kube" {
+		t.Errorf("Kunlunxin's requirement = %q", got)
 	}
 }
 

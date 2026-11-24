@@ -66,12 +66,14 @@ type vendorSpec struct {
 	// Running workloads on its cards.
 
 	// runtimes are the runtime drivers a workload can be given its cards
-	// on; listing RuntimeKube is what makes its cards
-	// usable on a Kubernetes node (RunsOnKube).
+	// on. A node on any other driver is refused before
+	// scheduling, so a vendor that lists none carries no workload: its
+	// cards are found and monitored only.
 	runtimes []string
 	// hostOS and hostArch are the operating system and architecture its
 	// host must have; empty for a vendor that runs on any. A vendor that
-	// requires either is also refused on a runtime it does not list.
+	// requires either is refused on a node that has not reported its
+	// runtime, where the others wait for the report.
 	hostOS, hostArch string
 	// explicitDevices: its cards must be selected by index; a workload
 	// cannot be left to take whichever it sees (RequiresDeviceSelection).

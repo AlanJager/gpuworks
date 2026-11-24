@@ -588,7 +588,7 @@ func (e *Env) AddNode(name string, options ...NodeOption) *Node {
 	if err != nil {
 		e.t.Fatalf("create pending node %q: %v", name, err)
 	}
-	o := nodeOptions{driverName: "fake"}
+	o := nodeOptions{driverName: runtime.DriverDocker}
 	for _, f := range options {
 		f(&o)
 	}

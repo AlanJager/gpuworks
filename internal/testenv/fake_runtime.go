@@ -64,9 +64,11 @@ type FakeDriver struct {
 	sideChannels map[string]func()
 }
 
+// NewFakeDriver names the fake after the runtime it stands in for, docker
+// by default: a vendor's cards are admitted only on a runtime it lists.
 func NewFakeDriver(name string) *FakeDriver {
 	if name == "" {
-		name = "fake"
+		name = runtime.DriverDocker
 	}
 	return &FakeDriver{name: name, servers: map[string]*http.Server{}, ln: map[string]net.Listener{}, names: map[string]string{}, stopped: map[string]bool{}, exitCodes: map[string]int{}, failures: map[string]error{}, loadedImages: map[string]bool{}, sharedPortOf: map[string]sharedClaim{}, archiveSize: 8 << 20}
 }
