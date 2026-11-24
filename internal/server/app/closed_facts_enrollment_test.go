@@ -182,7 +182,7 @@ func newClosedFactsTLSFixture(t *testing.T) *closedFactsTLSFixture {
 
 func (f *closedFactsTLSFixture) start(t *testing.T) *enrollmentServer {
 	t.Helper()
-	server, err := newClosedFactsEnrollmentServer(f.bundle, f.session, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server, err := newClosedFactsEnrollmentServer(f.bundle, f.session, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}

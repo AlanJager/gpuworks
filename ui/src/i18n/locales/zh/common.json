@@ -248,6 +248,7 @@
     "DIAGNOSTICS_AGENT_UNSUPPORTED": "该节点的 agent 版本不支持此项读取。",
     "DIAGNOSTICS_ITEM_READ_FAILED": "读取失败。",
     "DIAGNOSTICS_ITEM_STAGE_FAILED": "收集时无法写入 server 的磁盘。",
+    "DIAGNOSTICS_MEMBER_UNAVAILABLE": "该控制面成员未交出它的部分，本次收集看不到这个成员的记录。待它恢复应答后重新收集，或在该成员上运行 gpuworks support-bundle。",
     "TELEMETRY_ENDPOINT_INVALID": "Collector 地址无效：请填写 http(s) 地址，例如 http://otel-collector:4318（不含用户名密码、查询参数）。",
     "TELEMETRY_HEADER_INVALID": "请求头 {{name}} 不可用：名称不合法、重复，或是导出时自动设置的头（Content-Type 等）。",
     "TELEMETRY_HEADER_VALUE_REQUIRED": "请求头 {{name}} 还没有值，请填写。",

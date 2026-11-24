@@ -47,7 +47,7 @@ The recovery targets come from a small measured sample and are no guarantee for 
 
 ## Why the Database Leader Changed: Role Records
 
-Each change of the database leader cuts business requests in flight, terminals and log tails, and the agents' sessions are registered again with the new leader. Every member's server log (`logs/gpuworks-server.log`, taken along by [collecting diagnostics](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)) records what this member's database process did in Raft and why. It is always on and needs no debug build:
+Each change of the database leader cuts business requests in flight, terminals and log tails, and the agents' sessions are registered again with the new leader. Every member's server log (`<installation>/logs/server.log` on a member installed by the cluster installation; [collecting diagnostics](../how-to/troubleshooting.md#控制面集群诊断包里有三个成员的记录) takes all three members' along under `members/<member>/`, with the role records also extracted as `role-events.log`) records what this member's database process did in Raft and why. It is always on and needs no debug build:
 
 - `cluster database role event`: one role record of the database process. `observed_at` is when it happened (the database process's clock, in nanoseconds); the log line's own time is less than a second later.
 - `cluster database leader changed`: this member has recognized a new leader. It states the leader before (`old_leader`), the new leader (`new_leader`, a member id), the term (`term`), whether this member is the new leader (`leads`), the reason as this member saw it (`reason`), and how long this member had no leader (`without_leader_ms`).
@@ -138,6 +138,6 @@ Current limits:
 <!-- translation-source-sha256: 142dbf736ea9e3307388d697bf8e3bc6404972ce7557916b76037348cea06640 ## Behaviour on Failure -->
 <!-- translation-source-sha256: 0c107885f72821f97efd1713f64d70cb0abf5ddbedd10e0a4dc63a4733bcaebb ## Limits -->
 <!-- translation-source-sha256: c56a989bc2555e6ad4a6cf5dd7ffe407203e6a9f32497c41ea4ce8ca3322cf66 ## Storage Tiers -->
-<!-- translation-source-sha256: 50ca0cf7b6be3fcd8143e960c183012100be607db333718f323571fabbaa7bd9 ## Why the Database Leader Changed: Role Records -->
+<!-- translation-source-sha256: e15dc92ff681f9fd2dcd1f95a60a5be893bac3b3ed55317b3ce7b11211f4980d ## Why the Database Leader Changed: Role Records -->
 <!-- translation-source-sha256: 5b963d9b6cab0af7f80ccbda255cde725e9cbf149f23b48fa1e3bc2159cd2c1d ## Protocol Version of the Database Helper -->
 <!-- translation-source-sha256: b861fe35e2506d9b04c5a8a9cb23aee7633bb64c8d1ec6faf4eb5b3df157bae3 ## Upgrading the Cluster's Schema -->

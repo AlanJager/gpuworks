@@ -357,3 +357,7 @@ func runHelper(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	return stdout.Bytes(), nil
 }
+
+// HelperExecutable is the database process's executable as this server would
+// start it: what a diagnostics collection names the digest of.
+func HelperExecutable() (string, error) { return helperBinary() }

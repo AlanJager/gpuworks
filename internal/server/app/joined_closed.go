@@ -59,7 +59,7 @@ func (a *App) prepareClosedFactsListener(bundle *enrollmentBundle) error {
 	if strings.TrimSpace(bundle.info.ListenAddress) == "" || strings.TrimSpace(bundle.info.PublicURL) == "" {
 		return nil
 	}
-	server, err := newClosedFactsEnrollmentServer(bundle, a.joinedRaft, a.log)
+	server, err := newClosedFactsEnrollmentServer(bundle, a.joinedRaft, a.cfg.LogFile, a.log)
 	if err != nil {
 		return err
 	}
@@ -188,6 +188,9 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 		if upgrade, err := clusterUpgradeHandler(bundle, a.joinedRaft, requests, a.heldAgentConnections); err == nil {
 			router.Post(enrollment.ClusterUpgradePath, upgrade)
 		}
+	}
+	if part, err := clusterDiagnosticsHandler(bundle, requests, a.cfg.LogFile, log); err == nil {
+		router.Post(enrollment.ClusterDiagnosticsPath, part)
 	}
 	registerEnrollmentMaterialReceiver(router, bundle, st, receiver, requests)
 	registerEnrollmentOriginWithChange(router, bundle, st, a.invalidateCandidateMaterialEligibility)

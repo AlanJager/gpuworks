@@ -34,10 +34,13 @@ func newEnrollmentHandlerGate(base http.Handler) *enrollmentHandlerGate {
 // member is read from its database process, which does not change when its
 // business opens; prepared routes define neither path, so without this a
 // serving member answers them with 404 and `cluster-status` observes no
-// leader. Both handlers authenticate the member and are counted by the
-// listener's request owner, as they are while business is closed.
+// leader. A member's part of a diagnostics collection is read from its
+// directories and stays here for the same reason. These handlers
+// authenticate the member and are counted by the listener's request owner,
+// as they are while business is closed.
 func listenerObservationPath(path string) bool {
-	return path == enrollment.ClusterQuorumFactsPath || path == enrollment.ClusterQuorumDiscoveryPath || path == enrollment.ClusterUpgradePath
+	return path == enrollment.ClusterQuorumFactsPath || path == enrollment.ClusterQuorumDiscoveryPath || path == enrollment.ClusterUpgradePath ||
+		path == enrollment.ClusterDiagnosticsPath
 }
 
 func (g *enrollmentHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {

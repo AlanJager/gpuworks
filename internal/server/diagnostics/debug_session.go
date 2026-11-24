@@ -104,6 +104,9 @@ type Manager struct {
 	now   func() time.Time
 
 	sources Sources
+	// cluster is the control-plane cluster a collection covers; nil on a
+	// single server.
+	cluster Cluster
 	// hostFacts is this machine's host identity, salted into
 	// server/host-identity.json (hostidentity.Local).
 	hostFacts func() hostidentity.Facts

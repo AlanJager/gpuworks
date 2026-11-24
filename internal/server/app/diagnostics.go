@@ -32,6 +32,10 @@ func newDiagnostics(cfg Config, st *store.Store, h *hub.Hub, obs *observability,
 	m := diagnostics.NewManager(filepath.Join(cfg.DataDir, "diagnostics"), cfg.DebugLog, h, diagnosticsScope{st}, log)
 	px.SetRequestRecorder(m)
 	m.SetSources(diagnosticsSources{st: st, hub: h, logs: obs.Logs(), ux: obs.UX(), logFile: cfg.LogFile, dataDir: cfg.DataDir, backupsDir: installBackupsDir(cfg)})
+	if members := newClusterDiagnostics(cfg); members != nil {
+		// A control-plane cluster member's collection covers every member.
+		m.SetCluster(members)
+	}
 	return m
 }
 

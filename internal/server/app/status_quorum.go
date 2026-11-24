@@ -208,6 +208,7 @@ func (s *clusterStatus) fillPeerOrigins(ctx context.Context, facts enrollment.Cl
 		if member.EnrollmentOrigin == "" {
 			continue
 		}
+		s.peers[i].origin = member.EnrollmentOrigin
 		s.peers[i].enrollment, s.peers[i].material = probeEnrollmentOrigin(ctx, member.EnrollmentOrigin, s.clusterID, s.pin, s.cert, s.key, timeout)
 	}
 	sort.Slice(s.peers, func(i, j int) bool { return s.peers[i].id < s.peers[j].id })

@@ -329,12 +329,15 @@ Collects diagnostics without the server, for when the server does not start or t
 |---|---|---|
 | `--data DIR` | As for `reset-password` | Data directory |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite path |
-| `--log-file PATH` | `<data>/logs/gpuworks-server.log` | Server log file (with its rotated generations) |
+| `--log-file PATH` | `<data>/logs/gpuworks-server.log`; for a cluster member see below | Server log file (with its rotated generations) |
 | `--since DURATION` | `1h` | Collect this much recent time; ignored with `--from`/`--to` |
 | `--from T`, `--to T` | None | Time range (RFC 3339); give both |
 | `--deployments IDS` | None | Comma-separated deployment IDs whose records and instance logs to include |
 | `--instances UUIDS` | None | Comma-separated instance UUIDs whose logs to include |
 | `--out PATH` | `./gpuworks-diagnostics-<id>.tar.gz` | Archive path |
+| `--local` | Off | Only on a control-plane cluster member: collect this member alone, without asking the other members |
+
+**On a control-plane cluster member** (its data directory has `cluster-enrollment/config.json` and no `gpuworks.db`): without `--db` the command does not open the database, so it works while the cluster has no leader and while this member's server is not running. It collects this member's log, stall reports and database role records, and asks the other members for their parts with this member's certificate, placing them under `members/<member>/`; each member that does not answer gets a line on standard error and an entry in `members/index.json`, and the command still succeeds. Records only the database holds (`db/`) are marked as failed to read, with the reason; `--deployments` and `--instances` read the database and are refused on a member, so collect those from the console while the cluster serves. Without `--log-file` it looks for `<data>/logs/gpuworks-server.log`, then `<installation>/logs/server.log` (where the cluster installation keeps it; `<installation>` is the data directory's parent), then `<installation>/logs/gpuworks-server.log`. Run it with the cluster's own `gpuworks` (a build that carries the cluster runtime); a build without it reports an error at once. `--local` on a single server's data directory is an error too.
 
 ## gpuworks-agent configure
 
@@ -675,7 +678,7 @@ Maintain each model's `model_config` in the inference catalog package (the subse
 <!-- translation-source-sha256: 3971e0f58259c786cafecb857f1d3b3756b975ea7be8103bc4b90ef33446cb53 ## gpuworks plugin -->
 <!-- translation-source-sha256: 762521050469bb46a7abbd2d1e614997566572221a86387838656f54066db0df ### Maintenance journal -->
 <!-- translation-source-sha256: 9a164d00b28c9de9331829caf45f211142a51aaf4f906caca6c0798dc0328add ## gpuworks host-identity -->
-<!-- translation-source-sha256: 43e7c1a5156597455d770d3f91dd86a32ace7efd39a988e72e6fbc287500a890 ## gpuworks support-bundle -->
+<!-- translation-source-sha256: ed1237cd423122b3b1d59e673a500e4bd5b7c1a1fc033cbd6c13c32faef7afe2 ## gpuworks support-bundle -->
 <!-- translation-source-sha256: 3dd2ae37a11fd7403c31c028058240a2a7b77aec6a47c5a8cf575ba53f2d0a27 ## gpuworks-agent configure -->
 <!-- translation-source-sha256: e55796b9f748b9bacd313ac75cfeeb2cd9214cc253d2725c6d4fd317c3a46d48 ## gpuworks-agent run -->
 <!-- translation-source-sha256: 1bd943974d27c67cd4e548d103ddbac5430ee786325d1a8e0027dfe15bcb3ae9 ## gpuworks-agent smoke -->
