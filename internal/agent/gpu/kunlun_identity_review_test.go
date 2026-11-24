@@ -73,7 +73,7 @@ func TestKunlunAvailableRequiresExplicitBrand(t *testing.T) {
 func TestKunlunInjectionRequiresProbeBaselineAndManagesWholeInventory(t *testing.T) {
 	p, _ := kunlunFixture(t)
 	inj := p.RuntimeInjectionForDriver([]int{1}, runtime.TargetNamed("docker"))
-	if inj.UnsupportedReason != "Kunlun injection requires a successful probe baseline" || inj.Failure == nil || len(inj.Grant.DockerDeviceArgs()) != 0 || inj.ManagedSelection != nil {
+	if inj.UnsupportedReason != "Kunlun injection requires a successful probe baseline" || inj.Failure == nil || len(inj.Grant.DockerDeviceArgs()) != 0 || len(inj.ClearEnv) != 0 || len(inj.Grant.Replaces.Devices) != 0 {
 		t.Fatalf("injection without probe baseline: %+v", inj)
 	}
 
@@ -84,11 +84,11 @@ func TestKunlunInjectionRequiresProbeBaselineAndManagesWholeInventory(t *testing
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
-	if inj.ManagedSelection == nil || strings.Join(inj.ManagedSelection.DevicePaths, ",") != "/dev/xpu0,/dev/xpu1,/dev/xpuctrl" {
-		t.Fatalf("managed device paths = %+v", inj.ManagedSelection)
+	if strings.Join(inj.Grant.Replaces.Devices, ",") != "/dev/xpu0,/dev/xpu1,/dev/xpuctrl" {
+		t.Fatalf("managed device paths = %+v", inj.Grant.Replaces)
 	}
-	if len(inj.ManagedSelection.Env) != 1 || inj.ManagedSelection.Env[0] != "XPU_VISIBLE_DEVICES" {
-		t.Fatalf("managed environment = %+v", inj.ManagedSelection.Env)
+	if len(inj.ClearEnv) != 1 || inj.ClearEnv[0] != "XPU_VISIBLE_DEVICES" {
+		t.Fatalf("managed environment = %+v", inj.ClearEnv)
 	}
 	if inj.Env["XPU_VISIBLE_DEVICES"] != "0" {
 		t.Fatalf("Docker must use compact container-logical XPU indexes: %+v", inj.Env)

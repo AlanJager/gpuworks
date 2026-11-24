@@ -103,11 +103,12 @@ func acceleratorMounts(spec runtime.WorkloadSpec) []runtime.Mount {
 	// Devices among the workload's own options: the ones a user wrote or the
 	// server resolved (a compute network's /dev/infiniband), and every
 	// device of a record on disk that has no grant.
-	for i := 0; i < len(spec.DockerArgs); i++ {
-		arg := spec.DockerArgs[i]
-		if arg == "--device" && i+1 < len(spec.DockerArgs) {
+	own := spec.OwnDockerArgs()
+	for i := 0; i < len(own); i++ {
+		arg := own[i]
+		if arg == "--device" && i+1 < len(own) {
 			i++
-			add(strings.SplitN(spec.DockerArgs[i], ":", 2)[0])
+			add(strings.SplitN(own[i], ":", 2)[0])
 			continue
 		}
 		if value, ok := strings.CutPrefix(arg, "--device="); ok {

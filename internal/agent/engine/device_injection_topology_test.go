@@ -121,22 +121,22 @@ func TestKunlunManagedSelectionUsesAtomicMergeAndPreservesResolvedRDMA(t *testin
 		},
 	}
 	inj := gpu.RuntimeInjection{
-		ManagedSelection: &gpu.RuntimeSelectionCleanup{
-			Env:         []string{"XPU_VISIBLE_DEVICES"},
-			DevicePaths: []string{"/dev/xpu0", "/dev/xpu1", "/dev/xpuctrl", "/dev/xdrdrv"},
-		},
+		ClearEnv: []string{"XPU_VISIBLE_DEVICES"},
 		Env: map[string]string{
 			"BKCL_ENABLE_XDR":    "1",
 			"BKCL_RDMA_VERBS":    "1",
 			"BKCL_ENABLE_IBGDA":  "0",
 			"BKCL_SOCKET_IFNAME": "bond0",
 		},
-		Grant: runtime.DeviceGrant{RuntimeClass: "runc",
+		Grant: runtime.DeviceGrant{
+			RuntimeClass: runtime.PlainRuntimeClass,
 			Devices: []runtime.Device{
 				{Path: "/dev/xpu1", Access: runtime.DeviceAccessAll},
 				{Path: "/dev/xpuctrl", Access: runtime.DeviceAccessAll},
 				{Path: "/dev/xdrdrv"},
-			}},
+			},
+			Replaces: runtime.Replaced{Devices: []string{"/dev/xpu0", "/dev/xpu1", "/dev/xpuctrl", "/dev/xdrdrv"}},
+		},
 	}
 	applyRuntimeInjection(&ws, inj, []int{1}, runtime.TargetNamed("docker"))
 	want := []string{

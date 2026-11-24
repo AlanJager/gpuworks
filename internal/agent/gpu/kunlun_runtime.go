@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -33,30 +34,25 @@ func kunlunResourceError(resource, reason string) *InjectionError {
 }
 
 func resolvedKunlunRDMAArgs(args []string) *InjectionError {
-	hasRDMA, hasMemlock, hasLock := false, false, false
-	for i := 0; i < len(args); i++ {
-		key, value, eq := strings.Cut(args[i], "=")
-		if !eq && (key == "--device" || key == "--ulimit" || key == "--cap-add") && i+1 < len(args) {
-			i++
-			value = args[i]
+	own := runtime.ParseOwnOptions(args)
+	hasMemlock := false
+	for _, limit := range own.Ulimits {
+		if !strings.HasPrefix(limit, "memlock=") {
+			continue
 		}
-		if key == "--device" && (value == "/dev/infiniband" || value == "/dev/infiniband:/dev/infiniband" || value == "/dev/infiniband:/dev/infiniband:rwm") {
-			hasRDMA = true
-		}
-		if key == "--cap-add" && strings.EqualFold(value, "IPC_LOCK") {
-			hasLock = true
-		}
-		if key == "--ulimit" && strings.HasPrefix(value, "memlock=") {
-			hasMemlock = true
-			if value != "memlock=-1" && value != "memlock=-1:-1" {
-				return kunlunResourceError("memlock", "Kunlun host RDMA requires unlimited memlock; resolved limit is finite")
-			}
+		hasMemlock = true
+		if limit != "memlock=-1" && limit != "memlock=-1:-1" {
+			return kunlunResourceError("memlock", "Kunlun host RDMA requires unlimited memlock; resolved limit is finite")
 		}
 	}
-	if !hasRDMA {
+	rdma := runtime.Device{Path: "/dev/infiniband"}
+	mapped := runtime.Device{Path: "/dev/infiniband", Access: runtime.DeviceAccessAll}
+	if !slices.ContainsFunc(own.Devices, func(value string) bool {
+		return value == rdma.DockerValue() || value == mapped.DockerValue() || value == "/dev/infiniband:/dev/infiniband"
+	}) {
 		return kunlunResourceError("/dev/infiniband", "Kunlun multi-node runtime requires resolved host RDMA device access")
 	}
-	if !hasLock {
+	if !slices.ContainsFunc(own.Capabilities, func(value string) bool { return strings.EqualFold(value, "IPC_LOCK") }) {
 		return kunlunResourceError("IPC_LOCK", "Kunlun host RDMA requires IPC_LOCK capability")
 	}
 	if !hasMemlock {
@@ -101,7 +97,7 @@ func (p *KunlunProber) RuntimeInjectionForLaunch(ctx context.Context, req Inject
 			return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorResourceUnavailable, Vendor: p.Vendor(), Resource: "/dev/xdrdrv"}, err.Error())
 		}
 		inj.Grant.Devices = append(inj.Grant.Devices, runtime.Device{Path: "/dev/xdrdrv"})
-		inj.ManagedSelection.DevicePaths = append(inj.ManagedSelection.DevicePaths, "/dev/xdrdrv")
+		inj.Grant.Replaces.Devices = append(inj.Grant.Replaces.Devices, "/dev/xdrdrv")
 	}
 	if err := ctx.Err(); err != nil {
 		return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorDeviceUnavailable, Vendor: p.Vendor()}, err.Error())

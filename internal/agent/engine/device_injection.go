@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -50,10 +49,8 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 	for key, value := range ws.Env {
 		env[key] = value
 	}
-	if inj.ManagedSelection != nil {
-		for _, key := range inj.ManagedSelection.Env {
-			delete(env, key)
-		}
+	for _, key := range inj.ClearEnv {
+		delete(env, key)
 	}
 	for key, value := range inj.Env {
 		// NVIDIA Container Toolkit uses the host device IDs from --gpus to
@@ -70,14 +67,8 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 	}
 	updated.Env = env
 
-	args := append([]string(nil), ws.DockerArgs...)
-	if cleanup := inj.ManagedSelection; cleanup != nil {
-		args = removeDockerDevicePaths(args, cleanup.DevicePaths)
-		for _, option := range cleanup.DockerOptions {
-			args = runtime.WithoutDockerOption(args, option)
-		}
-	}
-	updated.DockerArgs = args
+	// What the grant replaces among the workload's own options is left out
+	// where they are read (WorkloadSpec.OwnDockerArgs).
 	updated.Grant = inj.Grant
 	if len(inj.Mounts) > 0 {
 		mounts := append([]runtime.Mount(nil), ws.Mounts...)
@@ -87,56 +78,6 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 		updated.Mounts = mounts
 	}
 	*ws = updated
-}
-
-// removeDockerDevicePaths removes only --device mappings whose host source
-// names a prober-managed device path. Other devices and malformed options are
-// preserved; device backends replace their accelerator nodes without dropping
-// unrelated access such as /dev/infiniband.
-func removeDockerDevicePaths(args, paths []string) []string {
-	managed := make(map[string]bool, len(paths))
-	for _, path := range paths {
-		managed[filepath.Clean(path)] = true
-	}
-	result := make([]string, 0, len(args))
-	for index := 0; index < len(args); index++ {
-		arg := args[index]
-		if arg == "--device" {
-			if index+1 == len(args) {
-				result = append(result, arg)
-				continue
-			}
-			value := args[index+1]
-			if managedDockerDevice(value, managed) {
-				index++
-				continue
-			}
-			result = append(result, arg, value)
-			index++
-			continue
-		}
-		if value, ok := strings.CutPrefix(arg, "--device="); ok && managedDockerDevice(value, managed) {
-			continue
-		}
-		result = append(result, arg)
-	}
-	return result
-}
-
-func managedDockerDevice(value string, managed map[string]bool) bool {
-	// DRM by-path aliases contain the colon in their PCI BDF, so split-at-first
-	// colon parsing does not recover the source path. Match declared full source
-	// paths first, then retain the existing parser for ordinary device paths.
-	for path := range managed {
-		if value == path || strings.HasPrefix(value, path+":") {
-			return true
-		}
-	}
-	return managed[filepath.Clean(dockerDeviceSource(value))]
-}
-
-func dockerDeviceSource(value string) string {
-	return strings.SplitN(value, ":", 2)[0]
 }
 
 func compactDeviceIndexes(count int) string {

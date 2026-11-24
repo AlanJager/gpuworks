@@ -124,13 +124,13 @@ func TestAMDRuntimeUsesSelectedRenderWithoutGuessingUserspaceOrdinals(t *testing
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
-	if strings.Join(inj.ManagedSelection.Env, ",") != "NVIDIA_VISIBLE_DEVICES,CUDA_VISIBLE_DEVICES,HIP_VISIBLE_DEVICES,ROCR_VISIBLE_DEVICES,GPU_DEVICE_ORDINAL" ||
-		strings.Join(inj.ManagedSelection.DockerOptions, ",") != "--gpus,--runtime" {
-		t.Fatalf("AMD selector cleanup = env %v docker %v", inj.ManagedSelection.Env, inj.ManagedSelection.DockerOptions)
+	if strings.Join(inj.ClearEnv, ",") != "NVIDIA_VISIBLE_DEVICES,CUDA_VISIBLE_DEVICES,HIP_VISIBLE_DEVICES,ROCR_VISIBLE_DEVICES,GPU_DEVICE_ORDINAL" ||
+		!inj.Grant.Replaces.ToolkitRequest || !inj.Grant.Replaces.RuntimeClass {
+		t.Fatalf("AMD selector cleanup = env %v replaces %+v", inj.ClearEnv, inj.Grant.Replaces)
 	}
 	wantPaths := []string{"/dev/dri", "/dev/dri/by-path", "/dev/dri/card7", "/dev/dri/card8", "/dev/dri/renderD135", "/dev/dri/renderD136", "/dev/kfd"}
-	if !reflect.DeepEqual(inj.ManagedSelection.DevicePaths, wantPaths) {
-		t.Fatalf("AMD device path cleanup = %v, want %v", inj.ManagedSelection.DevicePaths, wantPaths)
+	if !reflect.DeepEqual(inj.Grant.Replaces.Devices, wantPaths) {
+		t.Fatalf("AMD device path cleanup = %v, want %v", inj.Grant.Replaces.Devices, wantPaths)
 	}
 	joined := strings.Join(inj.Grant.DockerDeviceArgs(), " ")
 	if joined != "--device /dev/kfd:/dev/kfd:rwm --device /dev/dri/renderD135:/dev/dri/renderD135:rwm" {
@@ -191,8 +191,8 @@ func TestAMDRuntimeCleanupIncludesByPathAliases(t *testing.T) {
 		t.Fatal(injection.UnsupportedReason)
 	}
 	want := []string{"/dev/dri", "/dev/dri/by-path", "/dev/dri/by-path/pci-0000:43:00.0-render", "/dev/dri/card7", "/dev/dri/card8", "/dev/dri/renderD135", "/dev/dri/renderD136", "/dev/kfd"}
-	if !reflect.DeepEqual(injection.ManagedSelection.DevicePaths, want) {
-		t.Fatalf("AMD by-path cleanup = %v, want %v", injection.ManagedSelection.DevicePaths, want)
+	if !reflect.DeepEqual(injection.Grant.Replaces.Devices, want) {
+		t.Fatalf("AMD by-path cleanup = %v, want %v", injection.Grant.Replaces.Devices, want)
 	}
 	if strings.Contains(strings.Join(injection.Grant.DockerDeviceArgs(), " "), "by-path") {
 		t.Fatalf("injection must expose only the verified render node: %v", injection.Grant.DockerDeviceArgs())

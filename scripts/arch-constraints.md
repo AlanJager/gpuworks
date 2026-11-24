@@ -732,19 +732,18 @@ grep -rnE '(==|!=) *("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Drive
 排除：`*_test.go`。同时匹配字符串字面量与名字常量，写法包括 `==`、`!=`（名字在哪一边都算）、`case`（一行里任何位置）、`EqualFold` 与 `Contains`。剩下的在 dGPU 注入器（`engine/partition_hygon.go`、
 `partition_ascend.go`）与 `engine/engine.go`、`engine/runtime_mounts.go`。
 
-### agent_container_option_literals（初值 5）
+### agent_container_option_literals（初值 1）
 
 意图：设备后端与 engine 里手写容器命令行选项（`--device`、`--gpus`、`--runtime`、`--group-add`、`--tmpfs`）。设备
-后端授予的是 `runtime.DeviceGrant`，由各运行时驱动自己渲染。目标 0。
+后端授予的是 `runtime.DeviceGrant`，要顶替 workload 自带的哪些设置写在它的 `Replaces` 里，由各运行时驱动渲染；读
+workload 自带选项用 `runtime.ParseOwnOptions`。目标 0。
 
 ```sh
 grep -rnE '"--(device|gpus|runtime|group-add|tmpfs)"' internal/agent/gpu internal/agent/engine --include='*.go' \
   | grep -v '_test\.go' | grep -c .
 ```
 
-排除：`*_test.go`。剩下的是昆仑芯对 server 解析出的 RDMA 选项的检查（`gpu/kunlun_runtime.go`）、AMD 要清掉的
-旧选项名（`gpu/amd_runtime.go`）、海光 dGPU 后端的 `--tmpfs`（`engine/partition_hygon.go`）与 engine 清理旧设备
-路径（`engine/device_injection.go`）。
+排除：`*_test.go`。剩下的一处是海光 dGPU 后端的 `--tmpfs`（`engine/partition_hygon.go`）。
 
 ### agent_direct_exec（初值 5）
 

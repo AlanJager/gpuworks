@@ -31,7 +31,7 @@ func TestApplyDeviceInjectionEmptySelectionIsNoOp(t *testing.T) {
 
 func TestApplyDeviceInjectionFailureLeavesWorkloadUnchanged(t *testing.T) {
 	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), injectionProber{inj: gpu.RuntimeInjection{
-		ManagedSelection:  &gpu.RuntimeSelectionCleanup{Env: []string{"CUDA_VISIBLE_DEVICES"}, DockerOptions: []string{"--runtime"}, DevicePaths: []string{"/dev/host"}},
+		ClearEnv:          []string{"CUDA_VISIBLE_DEVICES"},
 		Env:               map[string]string{"VISIBLE": "0"},
 		Mounts:            []gpu.RuntimeMount{{Source: "/host/driver", Target: "/driver"}},
 		UnsupportedReason: "selected render device disappeared",
@@ -52,37 +52,16 @@ func TestApplyDeviceInjectionFailureLeavesWorkloadUnchanged(t *testing.T) {
 	}
 }
 
-func TestRemoveDockerDevicePathsPreservesUnmanagedMappingsAndMalformedOption(t *testing.T) {
-	args := []string{
-		"--device", "/dev/dri/renderD135:/dev/dri/renderD135:rwm",
-		"--device=/dev/dri:/dev/dri:rwm",
-		"--device", "/dev/dri/by-path/pci-0000:43:00.0-render:/dev/dri/renderD135:rwm",
-		"--device=/dev/dri/by-path:/dev/dri/by-path:rwm",
-		"--device", "/dev/infiniband/uverbs0:/dev/infiniband/uverbs0:rwm",
-		"--device=/dev/dri-other/renderD135:/dev/dri-other/renderD135:rwm",
-		"--device", "--privileged",
-		"--mount", "type=bind,src=/host,dst=/data",
-	}
-	got := removeDockerDevicePaths(args, []string{
-		"/dev/dri", "/dev/dri/renderD135", "/dev/dri/by-path",
-		"/dev/dri/by-path/pci-0000:43:00.0-render",
-	})
-	want := []string{
-		"--device", "/dev/infiniband/uverbs0:/dev/infiniband/uverbs0:rwm",
-		"--device=/dev/dri-other/renderD135:/dev/dri-other/renderD135:rwm",
-		"--device", "--privileged",
-		"--mount", "type=bind,src=/host,dst=/data",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("removeDockerDevicePaths = %v, want %v", got, want)
-	}
-}
-
 func TestApplyDeviceInjectionAppliesProberManagedSelections(t *testing.T) {
 	e := NewWithProber(&headlessTestDriver{name: "nerdctl"}, nil, slog.Default(), t.TempDir(), injectionProber{inj: gpu.RuntimeInjection{
-		ManagedSelection: &gpu.RuntimeSelectionCleanup{Env: []string{"CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"}, DockerOptions: []string{"--runtime"}, DevicePaths: []string{"/dev/dri", "/dev/dri/by-path", "/dev/dri/by-path/pci-0000:43:00.0-render", "/dev/dri/card7", "/dev/dri/card8", "/dev/dri/renderD135", "/dev/dri/renderD136", "/dev/kfd"}},
-		Env:              map[string]string{"AMD_TEST_VISIBLE": "7"},
-		Grant:            runtime.DeviceGrant{Devices: []runtime.Device{{Path: "/dev/kfd", Access: runtime.DeviceAccessAll}, {Path: "/dev/dri/renderD135", Access: runtime.DeviceAccessAll}}},
+		ClearEnv: []string{"CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"},
+		Env:      map[string]string{"AMD_TEST_VISIBLE": "7"},
+		Grant: runtime.DeviceGrant{
+			Devices: []runtime.Device{{Path: "/dev/kfd", Access: runtime.DeviceAccessAll}, {Path: "/dev/dri/renderD135", Access: runtime.DeviceAccessAll}},
+			Replaces: runtime.Replaced{RuntimeClass: true, Devices: []string{
+				"/dev/dri", "/dev/dri/by-path", "/dev/dri/by-path/pci-0000:43:00.0-render", "/dev/dri/card7", "/dev/dri/card8", "/dev/dri/renderD135", "/dev/dri/renderD136", "/dev/kfd",
+			}},
+		},
 	}})
 	ws := runtime.WorkloadSpec{
 		Env: map[string]string{"CUDA_VISIBLE_DEVICES": "all", "ROCR_VISIBLE_DEVICES": "0", "KEEP": "value"},
@@ -126,8 +105,8 @@ func TestNonAMDInjectorsKeepEnvironmentValuesAndArgumentMerge(t *testing.T) {
 		t.Run(vendor, func(t *testing.T) {
 			prober := &gpu.FixedProber{VendorName: vendor}
 			inj := prober.RuntimeInjection([]int{7})
-			if inj.ManagedSelection != nil {
-				t.Fatalf("legacy %s injector unexpectedly requests managed cleanup: %+v", vendor, inj)
+			if len(inj.ClearEnv) != 0 || !reflect.DeepEqual(inj.Grant.Replaces, runtime.Replaced{}) {
+				t.Fatalf("%s injector unexpectedly requests managed cleanup: %+v", vendor, inj)
 			}
 			e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), prober)
 			originalEnv := map[string]string{"KEEP": "old", "CUDA_VISIBLE_DEVICES": "legacy"}

@@ -108,8 +108,8 @@ func TestKunlunLaunchInjectionIsAtomic(t *testing.T) {
 	if got.UnsupportedReason != "" || !strings.Contains(args, "/dev/xpu1") || !strings.Contains(args, "/dev/xdrdrv") || strings.Contains(args, "/dev/xpu0") {
 		t.Fatal(got)
 	}
-	if got.ManagedSelection == nil || !strings.Contains(strings.Join(got.ManagedSelection.DevicePaths, ","), "/dev/xdrdrv") {
-		t.Fatalf("XDR is not cleaned up with the managed selection: %+v", got.ManagedSelection)
+	if !strings.Contains(strings.Join(got.Grant.Replaces.Devices, ","), "/dev/xdrdrv") {
+		t.Fatalf("XDR is not cleaned up with the managed selection: %+v", got.Grant.Replaces)
 	}
 }
 

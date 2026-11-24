@@ -80,3 +80,76 @@ func TestDockerRunArgsReplacesTheWorkloadsOwnSingletons(t *testing.T) {
 		})
 	}
 }
+
+// What a grant replaces among the workload's own options is left out where
+// they are read, in either spelling; a device it does not manage stays, a
+// by-path alias with colons in its name is matched whole, and the options
+// themselves are not edited.
+func TestOwnDockerArgsLeavesOutWhatTheGrantReplaces(t *testing.T) {
+	own := []string{
+		"--device", "/dev/dri/renderD128",
+		"--device=/dev/dri/by-path/pci-0000:43:00.0-render:/dev/dri/renderD128",
+		"--device", "/dev/kfd:/dev/kfd:rwm",
+		"--device", "/dev/infiniband",
+		"--gpus", "all", "--runtime=nvidia", "--ipc=host",
+		"--device",
+	}
+	spec := WorkloadSpec{DockerArgs: append([]string(nil), own...), Grant: DeviceGrant{Replaces: Replaced{
+		ToolkitRequest: true, RuntimeClass: true,
+		Devices: []string{"/dev/dri", "/dev/dri/by-path/pci-0000:43:00.0-render", "/dev/dri/renderD128", "/dev/kfd"},
+	}}}
+	want := []string{"--device", "/dev/infiniband", "--ipc=host", "--device"}
+	if got := spec.OwnDockerArgs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("OwnDockerArgs() = %q, want %q", got, want)
+	}
+	if !reflect.DeepEqual(spec.DockerArgs, own) {
+		t.Fatalf("the workload's own options were edited: %q", spec.DockerArgs)
+	}
+	spec.Grant = DeviceGrant{}
+	if got := spec.OwnDockerArgs(); !reflect.DeepEqual(got, own) {
+		t.Fatalf("with nothing replaced OwnDockerArgs() = %q, want the options as they are", got)
+	}
+}
+
+func TestParseOwnOptions(t *testing.T) {
+	got := ParseOwnOptions([]string{
+		"--device", "/dev/infiniband", "--device=/dev/x:/dev/y:rwm",
+		"--cap-add", "IPC_LOCK", "--cap-add=SYS_ADMIN",
+		"--ulimit", "memlock=-1", "--ulimit=stack=67108864",
+		"--ipc=host", "--privileged", "--ulimit memlock=4096", "--device",
+	})
+	want := OwnOptions{
+		Devices:      []string{"/dev/infiniband", "/dev/x:/dev/y:rwm"},
+		Capabilities: []string{"IPC_LOCK", "SYS_ADMIN"},
+		Ulimits:      []string{"memlock=-1", "stack=67108864"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseOwnOptions = %+v, want %+v", got, want)
+	}
+}
+
+func TestWithoutDockerDevicesPreservesUnmanagedMappingsAndMalformedOption(t *testing.T) {
+	args := []string{
+		"--device", "/dev/dri/renderD135:/dev/dri/renderD135:rwm",
+		"--device=/dev/dri:/dev/dri:rwm",
+		"--device", "/dev/dri/by-path/pci-0000:43:00.0-render:/dev/dri/renderD135:rwm",
+		"--device=/dev/dri/by-path:/dev/dri/by-path:rwm",
+		"--device", "/dev/infiniband/uverbs0:/dev/infiniband/uverbs0:rwm",
+		"--device=/dev/dri-other/renderD135:/dev/dri-other/renderD135:rwm",
+		"--device", "--privileged",
+		"--mount", "type=bind,src=/host,dst=/data",
+	}
+	got := withoutDockerDevices(args, []string{
+		"/dev/dri", "/dev/dri/renderD135", "/dev/dri/by-path",
+		"/dev/dri/by-path/pci-0000:43:00.0-render",
+	})
+	want := []string{
+		"--device", "/dev/infiniband/uverbs0:/dev/infiniband/uverbs0:rwm",
+		"--device=/dev/dri-other/renderD135:/dev/dri-other/renderD135:rwm",
+		"--device", "--privileged",
+		"--mount", "type=bind,src=/host,dst=/data",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("withoutDockerDevices = %v, want %v", got, want)
+	}
+}

@@ -214,3 +214,20 @@ func TestOwnDevicesAreBoundBeforeGrantedOnes(t *testing.T) {
 		t.Fatalf("bound in order %v, want %v", got, want)
 	}
 }
+
+// A device among the workload's own options that its grant replaces is not
+// bound: only the granted nodes of the backend's devices are.
+func TestReplacedOwnDevicesAreNotBound(t *testing.T) {
+	spec := runtime.WorkloadSpec{
+		DockerArgs: []string{"--device", "/dev/dri/renderD128", "--device", "/dev/infiniband"},
+		Grant: runtime.DeviceGrant{
+			Vendor:   accelerator.VendorAMD,
+			Devices:  []runtime.Device{{Path: "/dev/dri/renderD135", Access: runtime.DeviceAccessAll}},
+			Replaces: runtime.Replaced{Devices: []string{"/dev/dri/renderD128", "/dev/dri/renderD135"}},
+		},
+	}
+	got := mountSources(acceleratorMounts(spec))
+	if want := []string{"/dev/infiniband", "/dev/dri/renderD135"}; !slices.Equal(got, want) {
+		t.Fatalf("bound %v, want %v", got, want)
+	}
+}

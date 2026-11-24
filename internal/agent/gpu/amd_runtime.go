@@ -261,13 +261,12 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, target runtime.Targ
 		devices = append(devices, runtime.Device{Path: path, Access: runtime.DeviceAccessAll})
 	}
 	return RuntimeInjection{
-		ManagedSelection: &RuntimeSelectionCleanup{
-			Env:           []string{"NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"},
-			DockerOptions: []string{"--gpus", "--runtime"},
-			DevicePaths:   p.dockerDevicePathsUnset(inventory),
+		ClearEnv: []string{"NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"},
+		Grant: runtime.DeviceGrant{
+			Devices:  devices,
+			Replaces: runtime.Replaced{ToolkitRequest: true, RuntimeClass: true, Devices: p.dockerDevicePathsUnset(inventory)},
 		},
-		Grant: runtime.DeviceGrant{Devices: devices},
-		Env:   amdPinnedEnv(pinned),
+		Env: amdPinnedEnv(pinned),
 	}
 }
 

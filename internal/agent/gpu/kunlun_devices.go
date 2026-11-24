@@ -106,11 +106,15 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	}
 	devices = append(devices, agentruntime.Device{Path: "/dev/xpuctrl", Access: agentruntime.DeviceAccessAll})
 	return RuntimeInjection{
-		ManagedSelection: &RuntimeSelectionCleanup{Env: []string{"XPU_VISIBLE_DEVICES"}, DevicePaths: managedPaths},
-		Env:              map[string]string{"XPU_VISIBLE_DEVICES": strings.Join(logical, ",")},
-		// The plain runtime, so that a node whose default runtime injects
-		// another vendor's devices cannot add them.
-		Grant: agentruntime.DeviceGrant{RuntimeClass: agentruntime.PlainRuntimeClass, Devices: devices},
+		ClearEnv: []string{"XPU_VISIBLE_DEVICES"},
+		Env:      map[string]string{"XPU_VISIBLE_DEVICES": strings.Join(logical, ",")},
+		Grant: agentruntime.DeviceGrant{
+			// The plain runtime, so that a node whose default runtime
+			// injects another vendor's devices cannot add them.
+			RuntimeClass: agentruntime.PlainRuntimeClass,
+			Devices:      devices,
+			Replaces:     agentruntime.Replaced{Devices: managedPaths},
+		},
 	}
 }
 
