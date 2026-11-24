@@ -196,9 +196,9 @@ func leafCause(err error) AnswerCause {
 	return 0
 }
 
-// joinedBranches finds the first multi-cause error along err's
+// JoinedBranches finds the first multi-cause error along err's
 // single-wrapper chain. An empty join is reported with no branches.
-func joinedBranches(err error) ([]error, bool) {
+func JoinedBranches(err error) ([]error, bool) {
 	for cause := err; cause != nil; {
 		if joined, multiple := cause.(interface{ Unwrap() []error }); multiple {
 			return joined.Unwrap(), true
@@ -215,7 +215,7 @@ func joinedBranches(err error) ([]error, bool) {
 // EveryBranch reports whether err is a join, found along its single-wrapper
 // chain, and if so whether it is non-empty and each branch satisfies holds.
 func EveryBranch(err error, holds func(error) bool) (held, joined bool) {
-	branches, joined := joinedBranches(err)
+	branches, joined := JoinedBranches(err)
 	if !joined {
 		return false, false
 	}

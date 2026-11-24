@@ -372,7 +372,7 @@ func (a *App) closedTransportAuthorizationRefresh(refresh func(context.Context) 
 		// keeps the proof and the next cycle repeats it. The proof's own
 		// window still ends a member that cannot verify for that long.
 		ctxErr := ctx.Err()
-		undecided := store.ClusterGrantUndecided(err)
+		undecided := store.GrantUndecided.Unanswered(err)
 		closes := errors.Is(ctxErr, context.Canceled) || !undecided
 		if closes {
 			a.invalidateCandidateMaterialEligibility()

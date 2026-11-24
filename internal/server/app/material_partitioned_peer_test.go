@@ -49,7 +49,7 @@ func TestPartitionedReceiverRefusalIsAnUnavailablePeer(t *testing.T) {
 		&materialReceiverStatus{status: http.StatusServiceUnavailable, text: "manifest receiver rejected current bytes or identity: HTTP 503"},
 	} {
 		explained := explainMemberReachability(t.Context(), fmt.Errorf("replicate manifest to member 2: %w", refusal), "172.20.9.23:9001")
-		if !unavailableMaterialPeer(explained) {
+		if !peerUnreachable(explained) {
 			t.Fatalf("partitioned 503 not unavailable: %v", explained)
 		}
 		probe := fmt.Errorf("probe material member 2: %w", explained)
@@ -79,7 +79,7 @@ func TestReceiverRefusalWithoutPartitionEvidenceStillInvalidates(t *testing.T) {
 			withMemberDatabaseDial(t, tc.dial)
 			refusal := materialStatusError(statusResponse(tc.status), []byte("no"))
 			explained := explainMemberReachability(t.Context(), refusal, "172.20.9.23:9001")
-			if unavailableMaterialPeer(explained) {
+			if peerUnreachable(explained) {
 				t.Fatalf("treated as unavailable: %v", explained)
 			}
 			if !materialReplicationFailureInvalidates(explained) {
@@ -95,7 +95,7 @@ func TestManifestIdentityMismatchIsNeverAPartition(t *testing.T) {
 	withMemberDatabaseDial(t, databaseTimesOut)
 	mismatch := &materialReceiverStatus{status: http.StatusNoContent, text: "manifest receiver rejected current bytes or identity: HTTP 204"}
 	explained := explainMemberReachability(t.Context(), mismatch, "172.20.9.23:9001")
-	if unavailableMaterialPeer(explained) || !materialReplicationFailureInvalidates(explained) {
+	if peerUnreachable(explained) || !materialReplicationFailureInvalidates(explained) {
 		t.Fatalf("identity mismatch softened: %v", explained)
 	}
 }

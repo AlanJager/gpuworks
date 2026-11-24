@@ -384,7 +384,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	//     no later attempt without an answer extends admission.
 	// Cancellation and an invalidation close at once. Only a successful proof
 	// reopens what an answer or an invalidation closed.
-	noAnswer := lateSuccess || (!verdict && materialProofUnanswered(err))
+	noAnswer := lateSuccess || (!verdict && store.ProofUnanswered.Unanswered(err))
 	refused := errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrClusterIdentityConflict)
 	live := proofCtx.Err() == nil && !pastWindow && e.epoch == epoch && !e.stopped
 	unexpired := !e.deadline.IsZero() && now.Before(e.deadline)

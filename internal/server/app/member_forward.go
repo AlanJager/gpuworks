@@ -194,7 +194,7 @@ func (p *memberPeer) authorize(decide func() error) error {
 		return p.err
 	}
 	err := decide()
-	if err != nil && store.ClusterGrantUndecided(err) {
+	if err != nil && store.GrantUndecided.Unanswered(err) {
 		return err
 	}
 	p.decided, p.err = true, err
@@ -217,7 +217,7 @@ func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := peer.authorize(func() error { return authorize(r.Context(), r.TLS.PeerCertificates[0]) }); err != nil {
-		if store.ClusterGrantUndecided(err) {
+		if store.GrantUndecided.Unanswered(err) {
 			// No answer about the peer: not ready, and the next request on
 			// this connection asks again.
 			refuseMemberBusiness(w, r, refusalPeerUndecided)

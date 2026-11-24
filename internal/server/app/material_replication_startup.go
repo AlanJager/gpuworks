@@ -5,6 +5,8 @@ package app
 import (
 	"context"
 	"errors"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // materialStartupFailure retains a live rejection while allowing the original
@@ -12,7 +14,7 @@ import (
 func (a *App) materialStartupFailure(ctx context.Context, err error) (error, bool) {
 	var rejected error
 	live := materialCycleHasLiveCause(err)
-	if _, joined := materialJoinedBranches(err); errors.Is(err, errMaterialSourceUnpublished) && !joined && ctx.Err() == nil {
+	if _, joined := store.JoinedBranches(err); errors.Is(err, errMaterialSourceUnpublished) && !joined && ctx.Err() == nil {
 		// Nothing was published to check against. The full replication that
 		// follows is this member's first; carrying a veto to its end would
 		// close the business a fresh proof opened in the meantime. A second

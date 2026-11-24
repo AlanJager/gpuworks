@@ -80,13 +80,13 @@ func TestProbeRefusalWithoutAVerdictSendsNothingAndChangesNothing(t *testing.T) 
 			peer.StartTLS()
 			defer peer.Close()
 			err := probeRemoteMaterialReplica(t.Context(), f.client, peer.URL, item.Digest, item.Bytes, 7)
-			if err == nil || unavailableMaterialPeer(err) != tc.unavailable {
-				t.Fatalf("probe error %v: unavailable=%v, want %v", err, unavailableMaterialPeer(err), tc.unavailable)
+			if err == nil || peerUnreachable(err) != tc.unavailable {
+				t.Fatalf("probe error %v: unavailable=%v, want %v", err, peerUnreachable(err), tc.unavailable)
 			}
 			changes := 0
 			transferred, err := ensureRemoteMaterialReplica(t.Context(), f.store, f.client, peer.URL, source, item.Digest, item.Bytes, 7, func() { changes++ })
 			if tc.unavailable {
-				if err == nil || !unavailableMaterialPeer(err) || transferred || uploads != 0 || changes != 0 {
+				if err == nil || !peerUnreachable(err) || transferred || uploads != 0 || changes != 0 {
 					t.Fatalf("transferred=%v uploads=%d changes=%d err=%v; want an unavailable peer, nothing sent, nothing changed", transferred, uploads, changes, err)
 				}
 				if materialReplicationFailureInvalidates(fmt.Errorf("replicate manifest to member 7: %w", err)) {
@@ -123,7 +123,7 @@ func TestBrokenPeerExchangeIsAnUnavailablePeer(t *testing.T) {
 		{"EOF outside a peer request", fmt.Errorf("read manifest: %w", io.ErrUnexpectedEOF), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unavailableMaterialPeer(tc.err); got != tc.unavailable {
+			if got := peerUnreachable(tc.err); got != tc.unavailable {
 				t.Fatalf("unavailable=%v want %v: %v", got, tc.unavailable, tc.err)
 			}
 			if got := materialReplicationFailureInvalidates(tc.err); got == tc.unavailable {

@@ -167,7 +167,7 @@ func replicateRequiredMaterialsWithYield(ctx context.Context, dataDir string, st
 		if err != nil {
 			err = explainMemberReachability(ctx, err, member.Address)
 		}
-		if unavailableMaterialPeer(err) {
+		if peerUnreachable(err) {
 			if log != nil {
 				log.Warn("cluster member is unreachable", "member", member.ID, "database", member.Address, "err", err)
 			}
@@ -272,7 +272,7 @@ func ensureRemoteMaterialReplica(ctx context.Context, st *store.Store, client *h
 		if probeErr == nil {
 			return false, nil
 		}
-		if unavailableMaterialPeer(probeErr) {
+		if peerUnreachable(probeErr) {
 			// The peer answered nothing about the bytes it holds. Sending them
 			// again would report a change that did not happen.
 			return false, probeErr
